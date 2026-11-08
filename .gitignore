@@ -1,0 +1,11 @@
+node_modules/
+.env*
+dist/
+build/
+.DS_Store
+.claude/
+CLAUDE.md
+sessionyann.md
+steps/
+# le kit est décompressé dans harness-interface-kit/ ; le zip d'origine reste en local
+*.zip

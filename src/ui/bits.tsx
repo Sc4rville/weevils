@@ -57,7 +57,10 @@ export function SessionRow({ session }: { session: Session }) {
           <StatusChar s={session.status} />
         </span>
         <span className="dur">{dur(now - (session.status === 'done' ? session.lastActivityAt : ref))}</span>
-        <span className="tool">{session.tool}</span>
+        <span className="tool">
+          {session.tool}
+          {session.machineId !== 'vps' && <span className="tag">@{session.machineId}</span>}
+        </span>
         <span className="stack-text">
           <span className="title">{session.title}</span>
           {waiting && session.attention && <span className="meta ellipsis">{session.attention}</span>}

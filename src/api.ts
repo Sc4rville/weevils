@@ -47,12 +47,13 @@ export const api = {
   screen: (id: string) => call<{ screen: string | null }>('GET', `/api/sessions/${enc(id)}/screen`),
   send: (id: string, text: string) => call<{ id: string }>('POST', `/api/sessions/${enc(id)}/send`, { text }),
   key: (id: string, key: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/key`, { key }),
-  create: (body: { projectId: string; repo?: string; tool: Tool; text: string }) => call<{ id: string }>('POST', '/api/sessions', body),
+  create: (body: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string }) => call<{ id: string }>('POST', '/api/sessions', body),
   main: (text: string) => call<{ route: { kind: string; sessionId?: string } }>('POST', '/api/main', { text }),
   choose: (mainId: string, sessionId: string) => call<{ ok: true }>('POST', '/api/main/choose', { mainId, sessionId }),
   toggleH24: (id: string) => call<{ ok: true }>('POST', `/api/h24/${enc(id)}/toggle`, {}),
-  files: (repo: string) => call<{ files: string[] }>('GET', `/api/repos/${enc(repo)}/files`),
-  file: (repo: string, path: string) => call<FileContent>('GET', `/api/repos/${enc(repo)}/file?path=${enc(path)}`),
+  repos: (machine: string) => call<{ repos: string[] }>('GET', `/api/repos?machine=${enc(machine)}`),
+  files: (repo: string, machine: string) => call<{ files: string[] }>('GET', `/api/repos/${enc(repo)}/files?machine=${enc(machine)}`),
+  file: (repo: string, path: string, machine: string) => call<FileContent>('GET', `/api/repos/${enc(repo)}/file?path=${enc(path)}&machine=${enc(machine)}`),
 }
 
 /** Connexion + instantané tenu à jour par le flux SSE (le serveur annonce une version, on recharge). */

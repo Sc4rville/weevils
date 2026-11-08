@@ -132,8 +132,8 @@ const routes: [string, RegExp, Handler][] = [
     sseClients.add(res)
     _req.on('close', () => sseClients.delete(res))
   }],
-  ['GET', /^\/api\/sessions\/([^/]+)$/, (_req, res, _u, [id]) => {
-    const d = w.detail(decodeURIComponent(id))
+  ['GET', /^\/api\/sessions\/([^/]+)$/, async (_req, res, _u, [id]) => {
+    const d = await w.detailAny(decodeURIComponent(id))
     d ? json(res, 200, d) : json(res, 404, { error: 'session introuvable' })
   }],
   ['GET', /^\/api\/sessions\/([^/]+)\/screen$/, async (_req, res, _u, [id]) => json(res, 200, { screen: await w.screen(decodeURIComponent(id)) })],
@@ -149,7 +149,17 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/sessions$/, async (req, res) => {
     const body = await readBody(req)
     const tool = body.tool === 'codex' ? 'codex' : 'claude'
-    json(res, 200, await w.create({ projectId: String(body.projectId ?? ''), repo: body.repo ? String(body.repo) : undefined, tool, text: String(body.text ?? '') }))
+    json(
+      res,
+      200,
+      await w.create({
+        projectId: String(body.projectId ?? ''),
+        repo: body.repo ? String(body.repo) : undefined,
+        tool,
+        text: String(body.text ?? ''),
+        machineId: body.machineId ? String(body.machineId) : undefined,
+      }),
+    )
   }],
   ['POST', /^\/api\/main$/, async (req, res) => {
     const body = await readBody(req)
@@ -164,8 +174,19 @@ const routes: [string, RegExp, Handler][] = [
     await w.toggleH24(decodeURIComponent(id))
     json(res, 200, { ok: true })
   }],
-  ['GET', /^\/api\/repos\/([^/]+)\/files$/, async (_req, res, _u, [repo]) => json(res, 200, { files: await w.files(decodeURIComponent(repo)) })],
-  ['GET', /^\/api\/repos\/([^/]+)\/file$/, (_req, res, url, [repo]) => json(res, 200, w.file(decodeURIComponent(repo), url.searchParams.get('path') ?? ''))],
+  ['GET', /^\/api\/repos$/, async (_req, res, url) => {
+    const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
+    json(res, 200, remote ? await remote.call('GET', '/api/repos') : { repos: w.allRepos() })
+  }],
+  ['GET', /^\/api\/repos\/([^/]+)\/files$/, async (_req, res, url, [repo]) => {
+    const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
+    json(res, 200, remote ? await remote.call('GET', `/api/repos/${repo}/files`) : { files: await w.files(decodeURIComponent(repo)) })
+  }],
+  ['GET', /^\/api\/repos\/([^/]+)\/file$/, async (_req, res, url, [repo]) => {
+    const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
+    const p = url.searchParams.get('path') ?? ''
+    json(res, 200, remote ? await remote.call('GET', `/api/repos/${repo}/file?path=${encodeURIComponent(p)}`) : w.file(decodeURIComponent(repo), p))
+  }],
 ]
 
 const PUBLIC = new Set(['/api/login', '/api/me'])

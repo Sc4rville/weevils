@@ -265,6 +265,12 @@ button:disabled {
   font-weight: 650;
 }
 
+.row .tag {
+  font-size: 0.75rem;
+  font-weight: 650;
+  margin-left: 5px;
+}
+
 .row .title {
   flex: 1;
   min-width: 0;

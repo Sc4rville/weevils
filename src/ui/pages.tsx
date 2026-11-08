@@ -237,7 +237,7 @@ function SessionPage({ id }: { id: string }) {
           {s.status === 'working' && s.workStartedAt != null && <> · travaille depuis {durLong(now - s.workStartedAt)}</>}
           <br />
           {s.repo ?? s.cwd}
-          {s.branch && <> · {s.branch}</>} · {s.origin === 'weevils' ? 'pilotée par weevils' : s.origin}
+          {s.branch && <> · {s.branch}</>} · {s.machineId} · {s.origin === 'weevils' ? 'pilotée par weevils' : s.origin}
         </>
       }
       foot={
@@ -320,34 +320,36 @@ function SessionPage({ id }: { id: string }) {
 
 const fileLists = new Map<string, Promise<string[]>>()
 const fileContents = new Map<string, Promise<FileContent>>()
-const listFiles = (repo: string) => {
-  if (!fileLists.has(repo)) fileLists.set(repo, api.files(repo).then((r) => r.files).catch((e) => (fileLists.delete(repo), Promise.reject(e))))
-  return fileLists.get(repo)!
+const listFiles = (repo: string, machine: string) => {
+  const k = `${machine}:${repo}`
+  if (!fileLists.has(k)) fileLists.set(k, api.files(repo, machine).then((r) => r.files).catch((e) => (fileLists.delete(k), Promise.reject(e))))
+  return fileLists.get(k)!
 }
-const readFile = (repo: string, path: string) => {
-  const k = `${repo}\u0000${path}`
-  if (!fileContents.has(k)) fileContents.set(k, api.file(repo, path).catch((e) => (fileContents.delete(k), Promise.reject(e))))
+const readFile = (repo: string, path: string, machine: string) => {
+  const k = `${machine}:${repo}\u0000${path}`
+  if (!fileContents.has(k)) fileContents.set(k, api.file(repo, path, machine).catch((e) => (fileContents.delete(k), Promise.reject(e))))
   return fileContents.get(k)!
 }
-/** Préchargement discret (au survol / à l'ouverture d'une bande). */
-export const prefetchRepo = (repo: string) => void listFiles(repo).catch(() => undefined)
+/** Préchargement discret (à l'ouverture d'une bande) : l'explorateur s'ouvre ensuite sans attente. */
+export const prefetchRepo = (repo: string, machine: string) => void listFiles(repo, machine).catch(() => undefined)
 
 function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: string; dir?: string }) {
   const { snap, push, colors } = useApp()
   const project = snap.projects.find((p) => p.id === projectId)
   const theRepo = repo ?? (project?.repos.length === 1 ? project.repos[0] : undefined)
+  const machine = (theRepo && project?.where[theRepo]) || 'vps'
   const [files, setFiles] = useState<string[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
   useEffect(() => {
     if (!theRepo) return
     let off = false
-    listFiles(theRepo)
+    listFiles(theRepo, machine)
       .then((f) => !off && setFiles(f))
       .catch((e) => !off && setErr((e as Error).message))
     return () => {
       off = true
     }
-  }, [theRepo])
+  }, [theRepo, machine])
 
   const entries = useMemo(() => {
     if (!files) return null
@@ -371,7 +373,7 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
     return (
       <Shell slot={slot} kicker={project.name} title="/ repos" meta={plural(project.repos.length, 'repo', 'repos')}>
         {project.repos.map((r) => (
-          <Line key={r} ch="/" onClick={() => push({ kind: 'files', projectId, repo: r })}>
+          <Line key={r} ch="/" meta={project.where[r]} onClick={() => push({ kind: 'files', projectId, repo: r })}>
             {r}
           </Line>
         ))}
@@ -380,7 +382,12 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
   }
 
   return (
-    <Shell slot={slot} kicker={dir ? `${theRepo}/${dir.split('/').slice(0, -1).join('/')}` : project.name} title={dir ? `/${dir.split('/').pop()}` : `/ ${theRepo}`} meta={files ? plural(files.length, 'fichier', 'fichiers') : 'lecture du repo…'}>
+    <Shell
+      slot={slot}
+      kicker={dir ? `${theRepo}/${dir.split('/').slice(0, -1).join('/')}` : project.name}
+      title={dir ? `/${dir.split('/').pop()}` : `/ ${theRepo}`}
+      meta={`${machine} · ${files ? plural(files.length, 'fichier', 'fichiers') : 'lecture du repo…'}`}
+    >
       {err && <ErrorBand text={err} />}
       {entries?.folders.map(([name, count]) => (
         <Line key={name} ch="/" meta={plural(count, 'fichier', 'fichiers')} onClick={() => push({ kind: 'files', projectId, repo: theRepo, dir: dir ? `${dir}/${name}` : name })}>
@@ -403,18 +410,19 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
 const kb = (n: number) => (n < 1024 ? `${n} o` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} ko` : `${(n / 1024 / 1024).toFixed(1)} Mo`)
 
 function FilePage({ projectId, repo, path }: { projectId: string; repo: string; path: string }) {
-  const { colors } = useApp()
+  const { colors, snap } = useApp()
+  const machine = snap.projects.find((p) => p.id === projectId)?.where[repo] ?? 'vps'
   const [file, setFile] = useState<FileContent | null>(null)
   const [err, setErr] = useState<string | null>(null)
   useEffect(() => {
     let off = false
-    readFile(repo, path)
+    readFile(repo, path, machine)
       .then((f) => !off && setFile(f))
       .catch((e) => !off && setErr((e as Error).message))
     return () => {
       off = true
     }
-  }, [repo, path])
+  }, [repo, path, machine])
   const prose = /\.(md|markdown|txt)$/i.test(path)
   return (
     <Shell
@@ -434,18 +442,24 @@ function FilePage({ projectId, repo, path }: { projectId: string; repo: string; 
 
 function MachinePage({ projectId }: { projectId: string }) {
   const { snap, push, now, colors } = useApp()
-  const machine = snap.machines[0]
-  if (!machine) return <Missing />
-  const live = snap.sessions.filter((s) => s.status !== 'done')
   return (
-    <Shell slot={colors[projectId] ?? 'agent'} kicker={snap.projects.find((p) => p.id === projectId)?.name ?? 'weevils'} title={`@ ${machine.name}`} meta={machine.note}>
-      <div className="in label">{plural(live.length, 'session ouverte', 'sessions ouvertes')}</div>
-      {live.map((s) => (
-        <Line key={s.id} ch={<StatusChar s={s.status} />} meta={`${status[s.status].label} · ${s.origin} · ${ago(now - s.lastActivityAt)}`} onClick={() => push({ kind: 'session', id: s.id })}>
-          <span className="strong">{s.projectId}</span> · {s.tool} · {s.title}
-        </Line>
-      ))}
-      {live.length === 0 && <div className="in meta empty">Aucune session ouverte sur cette machine.</div>}
+    <Shell slot={colors[projectId] ?? 'agent'} kicker={snap.projects.find((p) => p.id === projectId)?.name ?? 'weevils'} title="@ machines" meta={plural(snap.machines.length, 'machine', 'machines')}>
+      {snap.machines.map((machine) => {
+        const live = snap.sessions.filter((s) => s.machineId === machine.id && s.status !== 'done')
+        return (
+          <div key={machine.id}>
+            <div className="in label">
+              {machine.name} · {machine.online === false ? 'hors ligne' : 'en ligne'} · {plural(live.length, 'session ouverte', 'sessions ouvertes')}
+            </div>
+            {machine.note && <div className="in meta" style={{ paddingBottom: 6 }}>{machine.note}</div>}
+            {live.map((s) => (
+              <Line key={s.id} ch={<StatusChar s={s.status} />} meta={`${status[s.status].label} · ${s.origin} · ${ago(now - s.lastActivityAt)}`} onClick={() => push({ kind: 'session', id: s.id })}>
+                <span className="strong">{s.projectId}</span> · {s.tool} · {s.title}
+              </Line>
+            ))}
+          </div>
+        )
+      })}
       <div className="in label">depuis un terminal</div>
       <div className="in meta" style={{ paddingBottom: 16 }}>
         <span className="strong">wv</span> lance claude dans le dossier courant, <span className="strong">wv codex</span> lance codex, <span className="strong">wv ls</span> liste
@@ -457,18 +471,35 @@ function MachinePage({ projectId }: { projectId: string }) {
 
 function NewSessionPage({ projectId }: { projectId: string }) {
   const { snap, replace, colors } = useApp()
-  const project = snap.projects.find((p) => p.id === projectId)
+  const any = projectId === '__any'
+  const [machine, setMachine] = useState(snap.machines[0]?.id ?? 'vps')
+  const [allRepos, setAllRepos] = useState<string[] | null>(null)
+  const project = any
+    ? { id: '__any', name: 'nouvelle session', kind: 'repo' as const, repos: allRepos ?? [], where: Object.fromEntries((allRepos ?? []).map((r) => [r, machine])), lastActivityAt: 0 }
+    : snap.projects.find((p) => p.id === projectId)
   const [tool, setTool] = useState<Tool>('claude')
-  const [repo, setRepo] = useState<string | undefined>(project?.repos[0])
+  const [repo, setRepo] = useState<string | undefined>(any ? undefined : project?.repos[0])
   const [err, setErr] = useState<string | null>(null)
   const created = useRef(false)
+  useEffect(() => {
+    if (!any) return
+    setAllRepos(null)
+    api
+      .repos(machine)
+      .then((r) => setAllRepos(r.repos))
+      .catch((e) => setErr((e as Error).message))
+  }, [any, machine])
   if (!project) return <Missing />
   const create = async (text: string) => {
     if (created.current) return
+    if (any && !repo) {
+      setErr('choisis d’abord un repo')
+      throw new Error('repo')
+    }
     created.current = true
     setErr(null)
     try {
-      const r = await api.create({ projectId, repo, tool, text })
+      const r = await api.create({ projectId: any ? (repo ?? '') : projectId, repo, tool, text, machineId: repo ? project.where[repo] : undefined })
       replace({ kind: 'session', id: r.id })
     } catch (e) {
       created.current = false
@@ -491,11 +522,33 @@ function NewSessionPage({ projectId }: { projectId: string }) {
           {t}
         </Line>
       ))}
-      {project.repos.length > 1 && (
+      {any && snap.machines.length > 1 && (
+        <>
+          <div className="in label">machine</div>
+          {snap.machines.map((m) => (
+            <Line
+              key={m.id}
+              className={machine === m.id ? 'invert' : ''}
+              ch={machine === m.id ? '>' : '@'}
+              go={null}
+              disabled={m.online === false}
+              meta={m.online === false ? 'hors ligne' : undefined}
+              onClick={() => {
+                setMachine(m.id)
+                setRepo(undefined)
+              }}
+            >
+              {m.name}
+            </Line>
+          ))}
+        </>
+      )}
+      {(project.repos.length > 1 || any) && (
         <>
           <div className="in label">repo</div>
+          {any && !allRepos && <div className="in meta empty">lecture des repos…</div>}
           {project.repos.map((r) => (
-            <Line key={r} className={repo === r ? 'invert' : ''} ch={repo === r ? '>' : '/'} go={null} onClick={() => setRepo(r)}>
+            <Line key={r} className={repo === r ? 'invert' : ''} ch={repo === r ? '>' : '/'} go={null} meta={any ? undefined : project.where[r]} onClick={() => setRepo(r)}>
               {r}
             </Line>
           ))}

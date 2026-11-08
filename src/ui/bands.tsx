@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useState, type CSSProperties } from 'react'
 import type { MainMessage, Project, Session } from '../../shared/api.ts'
 import { api } from '../api'
+import { prefetchRepo } from './pages'
 import { useApp } from './app-context'
 import { Appear, Collapse, Composer, Line, SessionRow, spring } from './bits'
 import { ago, plural } from './format'
@@ -127,7 +128,10 @@ export function ProjectBand({ project }: { project: Project }) {
   const done = sessions.filter((s) => s.status === 'done')
   const att = active.filter((s) => s.status === 'needs_user')
   const jobs = snap.h24.filter((a) => a.projectId === project.id)
-  const toggle = () => setExpanded(mode === 'open' ? null : project.id)
+  const toggle = () => {
+    if (mode !== 'open') for (const r of project.repos) prefetchRepo(r, project.where[r] ?? 'vps')
+    setExpanded(mode === 'open' ? null : project.id)
+  }
 
   const summary = [
     active.length ? working(active.filter((s) => s.status === 'working').length) : 'rien ne tourne',
@@ -212,13 +216,13 @@ export function ProjectBand({ project }: { project: Project }) {
         <div className="band tone">
           {project.repos.length > 0 && <div className="in label">repos</div>}
           {project.repos.map((r) => (
-            <Line key={r} ch="/" meta="parcourir les fichiers" onClick={() => push({ kind: 'files', projectId: project.id, repo: r })}>
+            <Line key={r} ch="/" meta={`${project.where[r] ?? 'vps'} · parcourir les fichiers`} onClick={() => push({ kind: 'files', projectId: project.id, repo: r })}>
               {r}
             </Line>
           ))}
-          <div className="in label">machine</div>
+          <div className="in label">machines</div>
           <Line ch="@" meta={plural(active.length, 'session ouverte', 'sessions ouvertes')} onClick={() => push({ kind: 'machine', projectId: project.id })}>
-            {snap.machines[0]?.name ?? 'vps'}
+            {[...new Set(sessions.map((s) => s.machineId))].join(' · ') || snap.machines[0]?.name}
           </Line>
           {jobs.length > 0 && <div className="in label">h24</div>}
           {jobs.map((a) => (
@@ -237,16 +241,24 @@ export function ProjectBand({ project }: { project: Project }) {
 // Bande de fin : réglages et état de la connexion. Elle remplit l'espace jusqu'au rail H24.
 
 export function FootBand() {
-  const { snap, theme, setTheme, offline, colors, logout } = useApp()
+  const { snap, theme, setTheme, offline, colors, logout, push } = useApp()
   const dark = theme === 'dark'
   return (
     <section className="band demo" style={color(colors.__foot ?? 'p3')} aria-label="réglages">
       <div className="in head">
         <h2 className="h2" style={{ margin: 0 }}>
-          {snap.machines[0]?.name ?? 'vps'}
+          machines
         </h2>
-        <span className="chars meta strong">{offline ? 'reconnexion…' : 'en ligne'}</span>
+        <span className="chars meta strong">{offline ? 'reconnexion…' : ''}</span>
       </div>
+      {snap.machines.map((m) => (
+        <Line key={m.id} ch="@" meta={m.online === false ? 'hors ligne' : 'en ligne'} onClick={() => push({ kind: 'machine', projectId: '' })}>
+          {m.name}
+        </Line>
+      ))}
+      <Line ch="+" meta="dans n’importe quel repo, sur la machine de ton choix" onClick={() => push({ kind: 'new', projectId: '__any' })}>
+        nouvelle session ailleurs
+      </Line>
       <Line ch="~" meta={`passer en ${dark ? 'clair' : 'sombre'}`} go={null} onClick={() => setTheme(dark ? 'light' : 'dark')}>
         thème {dark ? 'sombre' : 'clair'}
       </Line>

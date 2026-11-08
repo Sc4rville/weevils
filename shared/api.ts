@@ -54,6 +54,8 @@ export interface Project {
   /** 'repo' : famille de repos de ~/projects ; 'invented' : catégorie créée par weevils. */
   kind: 'repo' | 'invented'
   repos: string[]
+  /** Machine qui porte chaque repo (fichiers, nouvelle session). */
+  where: Record<string, string>
   lastActivityAt: number
 }
 
@@ -61,6 +63,7 @@ export interface Machine {
   id: string
   name: string
   note: string
+  online?: boolean
 }
 
 export interface H24Activity {

@@ -11,13 +11,15 @@ export interface Placement {
 
 /** lws-demo, lws-oss → lws ; mygame-trailer → mygame ; pli → pli. */
 export function familyOf(repo: string): string {
-  return repo.split(/[-_.]/)[0] || repo
+  return (repo.split(/[-_.]/)[0] || repo).toLowerCase()
 }
 
-export function place(cwd: string, projectsDir: string): Placement {
+/** roots : dossiers de projets de la machine (~/projects, ~/Documents/projects…). */
+export function place(cwd: string, roots: string[]): Placement {
   if (cwd) {
-    const rel = path.relative(projectsDir, cwd)
-    if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+    for (const root of roots) {
+      const rel = path.relative(root, cwd)
+      if (rel.startsWith('..') || path.isAbsolute(rel)) continue
       // On saute les dossiers cachés (.night/lws → lws).
       const repo = rel.split(path.sep).find((seg) => seg && !seg.startsWith('.'))
       if (repo) {

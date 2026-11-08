@@ -5,7 +5,8 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { H24Activity, MainMessage, Project, Session, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
-import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, HOME, LOGS_DIR, MACHINE, PROJECTS_DIR, RECENT_MS, STALE_MS } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, HOME, LOGS_DIR, MACHINE, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
+import { Remote, parseRemotes } from './remotes.ts'
 import { familyOf, place } from './projects.ts'
 import { TranscriptStore, lastMessageOf, titleOf } from './transcripts.ts'
 import type { Transcript } from './transcripts.ts'
@@ -72,6 +73,7 @@ export class Weevils {
   panes: ManagedPane[] = []
   main: MainMessage[] = []
   h24: H24Activity[] = []
+  remotes: Remote[] = []
   version = 1
   private listeners = new Set<() => void>()
   private bumpTimer: NodeJS.Timeout | null = null
@@ -99,6 +101,8 @@ export class Weevils {
   // ---------------------------------------------------------------- boucle
 
   start() {
+    this.remotes = parseRemotes(REMOTES).map(([id, url]) => new Remote(id, url, () => this.bump()))
+    for (const r of this.remotes) r.start()
     this.store.scan(Date.now())
     this.refreshH24()
     setInterval(() => {
@@ -202,7 +206,7 @@ export class Weevils {
   // ---------------------------------------------------------------- sessions
 
   private toSession(t: Transcript, now: number): Session {
-    const where = place(t.cwd, PROJECTS_DIR)
+    const where = place(t.cwd, PROJECT_ROOTS)
     const pane = this.paneFor(t.id)
     const hook = this.hooks.get(t.id)
     const hookAlive = hook?.pid ? pidAlive(hook.pid) : undefined
@@ -249,7 +253,7 @@ export class Weevils {
 
   /** Pane lancée par weevils dont le transcript n'existe pas encore. */
   private placeholder(p: ManagedPane, now: number): Session {
-    const where = place(p.cwd, PROJECTS_DIR)
+    const where = place(p.cwd, PROJECT_ROOTS)
     return {
       id: p.sessionId ?? p.name,
       projectId: where.projectId,
@@ -286,14 +290,37 @@ export class Weevils {
     return list.sort((a, b) => b.lastActivityAt - a.lastActivityAt)
   }
 
-  projects(sessions: Session[]): Project[] {
+  /** Projets de cette machine seule (chaque weevilsd les calcule pour ses sessions). */
+  localProjects(sessions: Session[]): Project[] {
     const map = new Map<string, Project>()
     for (const s of sessions) {
-      const where = place(s.cwd, PROJECTS_DIR)
-      const p = map.get(s.projectId) ?? { id: s.projectId, name: where.projectName, kind: where.kind, repos: [], lastActivityAt: 0 }
-      if (s.repo && !p.repos.includes(s.repo)) p.repos.push(s.repo)
+      const where = place(s.cwd, PROJECT_ROOTS)
+      const p = map.get(s.projectId) ?? { id: s.projectId, name: where.projectName, kind: where.kind, repos: [], where: {}, lastActivityAt: 0 }
+      if (s.repo && !p.repos.includes(s.repo)) {
+        p.repos.push(s.repo)
+        p.where[s.repo] = MACHINE.id
+      }
       p.lastActivityAt = Math.max(p.lastActivityAt, s.lastActivityAt)
       map.set(p.id, p)
+    }
+    return [...map.values()]
+  }
+
+  /** Fusion par projet : un même projet regroupe ses repos et sessions de toutes les machines. */
+  projects(sessions: Session[], extra: Project[] = []): Project[] {
+    const map = new Map<string, Project>()
+    for (const p of [...this.localProjects(sessions.filter((s) => s.machineId === MACHINE.id)), ...extra]) {
+      const cur = map.get(p.id)
+      if (!cur) {
+        map.set(p.id, { ...p, repos: [...p.repos], where: { ...p.where } })
+        continue
+      }
+      for (const r of p.repos) {
+        if (!cur.repos.includes(r)) cur.repos.push(r)
+        cur.where[r] ??= p.where[r]
+      }
+      cur.lastActivityAt = Math.max(cur.lastActivityAt, p.lastActivityAt)
+      if (p.kind === 'repo') cur.kind = 'repo'
     }
     // Les projets d'abord, les catégories inventées ensuite ; chacun par activité récente.
     return [...map.values()].sort((a, b) => (a.kind === b.kind ? b.lastActivityAt - a.lastActivityAt : a.kind === 'repo' ? -1 : 1))
@@ -302,14 +329,18 @@ export class Weevils {
   snapshot(): Snapshot {
     if (this.snap) return this.snap
     const now = Date.now()
-    const sessions = this.sessions(now)
+    const remote = this.remotes.filter((r) => r.online && r.snap)
+    const sessions = [...this.sessions(now), ...remote.flatMap((r) => r.snap!.sessions)].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
     this.snap = {
       version: this.version,
       now,
-      machines: [MACHINE],
-      projects: this.projects(sessions),
+      machines: [
+        { ...MACHINE, online: true },
+        ...this.remotes.map((r) => ({ ...(r.snap?.machines[0] ?? { id: r.id, name: r.id, note: '' }), online: r.online })),
+      ],
+      projects: this.projects(sessions, remote.flatMap((r) => r.snap!.projects)),
       sessions,
-      h24: this.h24,
+      h24: [...this.h24, ...remote.flatMap((r) => r.snap!.h24)],
       conversations: [],
       main: this.main.slice(-30),
     }
@@ -319,6 +350,24 @@ export class Weevils {
   private resolveId(id: string) {
     const p = this.panes.find((x) => x.name === id && x.sessionId)
     return p?.sessionId ?? id
+  }
+
+  /** Machine distante qui porte cette session (ou ce repo), sinon undefined = ici. */
+  remoteFor(sessionId: string) {
+    return this.remotes.find((r) => r.has(sessionId))
+  }
+  remoteById(machineId?: string) {
+    if (!machineId || machineId === MACHINE.id) return undefined
+    const r = this.remotes.find((x) => x.id === machineId)
+    if (!r) throw new Error(`machine inconnue : ${machineId}`)
+    return r
+  }
+
+  async detailAny(id: string): Promise<SessionDetail | undefined> {
+    const local = this.detail(id)
+    if (local) return local
+    const r = this.remoteFor(id)
+    return r ? r.call<SessionDetail>('GET', `/api/sessions/${encodeURIComponent(id)}`) : undefined
   }
 
   detail(id: string): SessionDetail | undefined {
@@ -333,6 +382,8 @@ export class Weevils {
 
   /** Écrit dans la session ; si elle n'a plus de processus, la rouvre dans une pane weevils. */
   async send(id: string, text: string): Promise<{ id: string }> {
+    const remote = this.remoteFor(id)
+    if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/send`, { text })
     const real = this.resolveId(id)
     const s = this.snapshot().sessions.find((x) => x.id === real)
     if (!s) throw new Error('session introuvable')
@@ -352,21 +403,29 @@ export class Weevils {
   }
 
   async key(id: string, key: string) {
+    const remote = this.remoteFor(id)
+    if (remote) return void (await remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/key`, { key }))
     const pane = this.paneFor(this.resolveId(id))
     if (!pane) throw new Error('weevils ne voit pas l’écran de cette session')
     await sendKey(pane.name, key)
   }
 
   async screen(id: string): Promise<string | null> {
+    const remote = this.remoteFor(id)
+    if (remote) return (await remote.call<{ screen: string | null }>('GET', `/api/sessions/${encodeURIComponent(id)}/screen`)).screen
     const pane = this.paneFor(this.resolveId(id))
     if (!pane) return null
     return capture(pane.name)
   }
 
-  async create(input: { projectId: string; repo?: string; tool: Tool; text: string }): Promise<{ id: string }> {
-    const repos = this.projects(this.sessions()).find((p) => p.id === input.projectId)?.repos ?? []
-    const repo = input.repo ?? repos[0] ?? (fs.existsSync(path.join(PROJECTS_DIR, input.projectId)) ? input.projectId : undefined)
-    const cwd = repo ? path.join(PROJECTS_DIR, repo) : PROJECTS_DIR
+  async create(input: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string }): Promise<{ id: string }> {
+    const project = this.snapshot().projects.find((p) => p.id === input.projectId)
+    const repoGuess = input.repo ?? project?.repos[0]
+    const machineId = input.machineId ?? (repoGuess ? project?.where[repoGuess] : undefined)
+    const remote = this.remoteById(machineId)
+    if (remote) return remote.call('POST', '/api/sessions', { ...input, repo: repoGuess, machineId: remote.snap?.machines[0]?.id })
+    const repo = repoGuess ?? (this.repoRoot(input.projectId) ? input.projectId : undefined)
+    const cwd = repo ? path.join(this.repoRoot(repo) ?? PROJECTS_DIR, repo) : PROJECTS_DIR
     if (!fs.existsSync(cwd)) throw new Error(`dossier introuvable : ${cwd}`)
     const text = input.text.trim()
     const title = text ? text.replace(/\s+/g, ' ').slice(0, 60) : 'nouvelle session'
@@ -540,11 +599,29 @@ export class Weevils {
 
   // ---------------------------------------------------------------- fichiers
 
+  /** Racine de projets qui contient ce repo, sur cette machine. */
+  repoRoot(repo: string) {
+    return PROJECT_ROOTS.find((root) => fs.existsSync(path.join(root, repo)))
+  }
+
   repoDir(repo: string) {
     if (!/^[\w.@+-]+$/.test(repo) || repo.startsWith('.')) throw new Error('repo invalide')
-    const dir = path.join(PROJECTS_DIR, repo)
-    if (!fs.existsSync(dir)) throw new Error('repo introuvable')
-    return dir
+    const root = this.repoRoot(repo)
+    if (!root) throw new Error('repo introuvable')
+    return path.join(root, repo)
+  }
+
+  /** Tous les repos de cette machine (pour lancer une session ailleurs que dans un projet actif). */
+  allRepos(): string[] {
+    const out = new Set<string>()
+    for (const root of PROJECT_ROOTS) {
+      try {
+        for (const e of fs.readdirSync(root, { withFileTypes: true })) if (e.isDirectory() && !e.name.startsWith('.')) out.add(e.name)
+      } catch {
+        /* racine absente */
+      }
+    }
+    return [...out].sort()
   }
 
   async files(repo: string): Promise<string[]> {

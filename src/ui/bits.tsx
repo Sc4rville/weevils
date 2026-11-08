@@ -1,8 +1,8 @@
 import { AnimatePresence, motion, type Transition } from 'motion/react'
 import { useState, type FormEvent, type ReactNode } from 'react'
-import type { Message, Session } from '../state/types'
+import type { Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
-import { dur, durLong, status } from './format'
+import { dur, status } from './format'
 
 /** Ressort commun : léger dépassement, pour que les bandes aient de l'inertie. */
 export const spring: Transition = { type: 'spring', stiffness: 420, damping: 32, mass: 0.9 }
@@ -37,23 +37,31 @@ export function Appear({ children }: { children: ReactNode }) {
   )
 }
 
+export function StatusChar({ s }: { s: Session['status'] }) {
+  return <span className={s === 'working' ? 'spin' : undefined}>{status[s].ch}</span>
+}
+
 export function SessionRow({ session }: { session: Session }) {
   const { push, now } = useApp()
   const st = status[session.status]
   const waiting = session.status === 'needs_user'
+  const ref = session.status === 'working' && session.workStartedAt ? session.workStartedAt : session.lastActivityAt
   return (
     <button
       className={`row ${waiting ? 'invert' : ''}`}
       onClick={() => push({ kind: 'session', id: session.id })}
-      aria-label={`${session.tool}, ${session.title}, ${st.label}, ouverte depuis ${durLong(now - session.openedAt)}`}
+      aria-label={`${session.tool}, ${session.title}, ${st.label}${waiting && session.attention ? ` : ${session.attention}` : ''}`}
     >
       <span className="in" aria-hidden>
         <span className="st">
-          <span className={session.status === 'working' ? 'spin' : undefined}>{st.ch}</span>
+          <StatusChar s={session.status} />
         </span>
-        <span className="dur">{dur(now - session.openedAt)}</span>
+        <span className="dur">{dur(now - (session.status === 'done' ? session.lastActivityAt : ref))}</span>
         <span className="tool">{session.tool}</span>
-        <span className="title">{session.title}</span>
+        <span className="stack-text">
+          <span className="title">{session.title}</span>
+          {waiting && session.attention && <span className="meta ellipsis">{session.attention}</span>}
+        </span>
       </span>
     </button>
   )
@@ -108,27 +116,37 @@ export function Composer({
   onFocus,
   prompt = '>',
   className = 'tone',
+  disabled,
 }: {
   placeholder: string
   label: string
-  onSend: (text: string) => void
+  onSend: (text: string) => void | Promise<void>
   onFocus?: () => void
   prompt?: string
   className?: string
+  disabled?: boolean
 }) {
   const [text, setText] = useState('')
-  const submit = (e: FormEvent) => {
+  const [busy, setBusy] = useState(false)
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
     const t = text.trim()
-    if (!t) return
+    if (!t || busy) return
     setText('')
-    onSend(t)
+    setBusy(true)
+    try {
+      await onSend(t)
+    } catch {
+      setText(t) // on rend le texte en cas d'échec, rien n'est perdu
+    } finally {
+      setBusy(false)
+    }
   }
   return (
     <form className={`composer band ${className}`} onSubmit={submit}>
       <div className="in">
         <span className="prompt" aria-hidden>
-          {prompt}
+          {busy ? <span className="spin">*</span> : prompt}
         </span>
         <input
           value={text}
@@ -138,9 +156,9 @@ export function Composer({
           aria-label={label}
           enterKeyHint="send"
           autoComplete="off"
-          autoCorrect="on"
+          disabled={disabled}
         />
-        <button className="send" type="submit" disabled={!text.trim()} aria-label="envoyer">
+        <button className="send" type="submit" disabled={!text.trim() || busy || disabled} aria-label="envoyer">
           ↑
         </button>
       </div>
@@ -153,12 +171,20 @@ export function Messages({ messages, author }: { messages: Message[]; author: st
     <AnimatePresence initial={false}>
       {messages.map((m) => (
         <Appear key={m.id}>
-          <div className={`msg band ${m.role === 'user' ? 'tone' : ''} ${m.role === 'event' ? 'event' : ''}`}>
-            <div className="in">
-              <span className="who">{m.role === 'user' ? (m.via ? 'toi · via weevils' : 'toi') : m.role === 'event' ? '* événement' : author}</span>
-              <div className="text">{m.text}</div>
+          {m.role === 'event' ? (
+            <div className="msg band event">
+              <div className="in">
+                <div className="text">→ {m.text}</div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className={`msg band ${m.role === 'user' ? 'tone' : ''}`}>
+              <div className="in">
+                <span className="who">{m.role === 'user' ? 'toi' : author}</span>
+                <div className="text">{m.text}</div>
+              </div>
+            </div>
+          )}
         </Appear>
       ))}
     </AnimatePresence>

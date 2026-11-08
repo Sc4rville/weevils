@@ -1,14 +1,15 @@
 import { animate, motion, useDragControls, useMotionValue } from 'motion/react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { h24Stats } from '../state/store'
+import { api } from '../api'
 import { useApp } from './app-context'
 import { spring } from './bits'
-import { durLong } from './format'
+import { ago, durLong } from './format'
 
 /** Bande H24 collée en bas : on la tire vers le haut (ou on la touche) pour voir les activités permanentes. */
 export function H24Rail() {
-  const { state, dispatch, now, h24Open: open, setH24Open: setOpen } = useApp()
-  const stats = h24Stats(state)
+  const { snap, now, refresh, h24Open: open, setH24Open: setOpen } = useApp()
+  const list = snap.h24
+  const stats = { running: list.filter((a) => a.runState === 'running').length, total: list.length }
   const y = useMotionValue(0)
   const drawer = useRef<HTMLDivElement>(null)
   const probe = useRef<HTMLDivElement>(null)
@@ -41,10 +42,7 @@ export function H24Rail() {
     return () => ctrl.stop()
   }, [open, closedY, y])
 
-  const summary = [`${stats.enabled} ${stats.enabled > 1 ? 'activés' : 'activé'}`, `${stats.running} en cours`, stats.paused ? `${stats.paused} en pause` : null]
-    .filter(Boolean)
-    .join(' · ')
-  const projectName = (id: string) => state.projects.find((p) => p.id === id)?.name ?? '?'
+  const summary = stats.total ? `${stats.running} en cours · ${stats.total - stats.running} récents` : 'rien ne tourne en continu'
 
   return (
     <>
@@ -102,40 +100,44 @@ export function H24Rail() {
         </button>
 
         <div id="h24-body" className="h24-body" inert={!open}>
-          {state.h24.map((a) => {
+          {list.map((a) => {
             const running = a.runState === 'running'
             const paused = a.runState === 'paused'
             return (
               <div key={a.id} className="band tone" style={{ marginBottom: 2 }}>
                 <div className="in" style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBlock: 12 }}>
-                  <span className="st h2" aria-hidden style={{ width: 28, textAlign: 'center' }}>
-                    {running ? <span className="spin">*</span> : paused ? '||' : '_'}
+                  <span className="h2" aria-hidden style={{ width: 28, textAlign: 'center' }}>
+                    {running ? <span className="spin">*</span> : paused ? '||' : a.kind === 'job' ? '✓' : '_'}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="strong" style={{ fontSize: '1.0625rem' }}>
+                    <div className="strong ellipsis" style={{ fontSize: '1.0625rem' }}>
                       {a.title}
                     </div>
                     <div className="meta">
-                      {projectName(a.projectId)} · {a.enabled ? 'activé' : 'désactivé'} · {a.schedule}
+                      {a.kind === 'job'
+                        ? running
+                          ? `en cours${a.runStartedAt ? ` depuis ${durLong(now - a.runStartedAt)}` : ''}`
+                          : `terminé ${a.runStartedAt ? ago(now - a.runStartedAt) : ''}`
+                        : `${paused ? 'en pause' : 'planifié'} · ${a.schedule}`}
                     </div>
-                    <div className="meta strong">
-                      {running && a.runStartedAt ? `en cours depuis ${durLong(now - a.runStartedAt)}` : paused ? 'en pause' : 'en veille'}
-                    </div>
-                    <div className="small">{a.lastEvent}</div>
+                    <div className="small ellipsis">{a.lastEvent}</div>
                   </div>
-                  <button
-                    className="ch"
-                    onClick={() => dispatch({ type: 'h24/toggle', id: a.id, at: Date.now() })}
-                    aria-label={paused ? `reprendre ${a.title}` : `mettre en pause ${a.title}`}
-                  >
-                    {paused ? '>' : '||'}
-                  </button>
+                  {a.canToggle && (
+                    <button
+                      className="ch"
+                      onClick={() => void api.toggleH24(a.id).then(refresh)}
+                      aria-label={paused ? `reprendre ${a.title}` : `mettre en pause ${a.title}`}
+                    >
+                      {paused ? '>' : '||'}
+                    </button>
+                  )}
                 </div>
               </div>
             )
           })}
+          {list.length === 0 && <div className="in meta empty">Aucun job en cours ni récent sur le VPS.</div>}
           <div className="in meta" style={{ paddingBlock: 14 }}>
-            Activé = planifié en permanence. En cours = exécute une tâche maintenant. Activités fictives.
+            Jobs longs lancés sur le VPS (fichiers de ~/logs) et tâches planifiées wv-*.
           </div>
         </div>
       </motion.div>

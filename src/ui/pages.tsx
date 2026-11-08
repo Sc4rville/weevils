@@ -1,8 +1,9 @@
 import { motion } from 'motion/react'
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import type { Tool } from '../state/types'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import type { Message, SessionDetail, Tool } from '../../shared/api.ts'
+import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
-import { Collapse, Composer, Line, Messages, spring } from './bits'
+import { Collapse, Composer, Line, Messages, StatusChar, spring } from './bits'
 import { ago, dur, durLong, plural, status } from './format'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
@@ -59,7 +60,11 @@ function Shell({
           <h1 ref={heading} tabIndex={-1} className="h2" style={{ margin: 0 }}>
             {title}
           </h1>
-          {meta && <div className="meta" style={{ marginTop: 4 }}>{meta}</div>}
+          {meta && (
+            <div className="meta" style={{ marginTop: 4 }}>
+              {meta}
+            </div>
+          )}
         </div>
       </div>
       <div className="page-body" data-scroll>
@@ -76,7 +81,7 @@ function useStickToBottom(count: number) {
   const first = useRef(true)
   useEffect(() => {
     const el = document.querySelector<HTMLElement>('.page:last-of-type [data-scroll]')
-    if (!el) return
+    if (!el || count === 0) return
     const go = (smooth: boolean) => el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
     go(!first.current)
     const t = setTimeout(() => go(!first.current), 420)
@@ -89,14 +94,10 @@ export function PageView({ page }: { page: Page }) {
   switch (page.kind) {
     case 'session':
       return <SessionPage id={page.id} />
-    case 'conversation':
-      return <ConversationPage id={page.id} />
-    case 'conversations':
-      return <ConversationsPage projectId={page.projectId} />
     case 'files':
-      return <FilesPage projectId={page.projectId} />
+      return <FilesPage projectId={page.projectId} repo={page.repo} dir={page.dir} />
     case 'file':
-      return <FilePage projectId={page.projectId} path={page.path} />
+      return <FilePage projectId={page.projectId} repo={page.repo} path={page.path} />
     case 'machine':
       return <MachinePage projectId={page.projectId} />
     case 'new':
@@ -104,75 +105,188 @@ export function PageView({ page }: { page: Page }) {
   }
 }
 
-function Missing() {
+function Missing({ text = 'Cet élément n’existe plus.' }: { text?: string }) {
   return (
     <Shell slot="agent" kicker="weevils" title="introuvable">
-      <div className="in meta empty">Cet élément n’existe plus (remise à zéro ?).</div>
+      <div className="in meta empty">{text}</div>
     </Shell>
   )
 }
 
+function ErrorBand({ text }: { text: string }) {
+  return (
+    <div className="band invert" role="alert">
+      <div className="in meta" style={{ paddingBlock: 12 }}>
+        ! {text}
+      </div>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
+// Session : le fil, l'écran du terminal, les touches.
+
+const KEYS: [string, string, string][] = [
+  ['1', '1', 'choix 1'],
+  ['2', '2', 'choix 2'],
+  ['3', '3', 'choix 3'],
+  ['up', '↑', 'flèche haut'],
+  ['down', '↓', 'flèche bas'],
+  ['enter', '⏎', 'entrée'],
+  ['esc', 'esc', 'échap'],
+  ['tab', 'tab', 'tabulation'],
+]
+
+function Keys({ id, onError }: { id: string; onError: (m: string) => void }) {
+  return (
+    <div className="in keys">
+      {KEYS.map(([k, label, aria]) => (
+        <button key={k} className="key" aria-label={aria} onClick={() => void api.key(id, k).catch((e) => onError((e as Error).message))}>
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function SessionPage({ id }: { id: string }) {
-  const { state, dispatch, act, now } = useApp()
+  const { snap, now, replace, colors } = useApp()
+  const [detail, setDetail] = useState<SessionDetail | null>(null)
+  const [missing, setMissing] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [pending, setPending] = useState<Message[]>([])
+  const [screenText, setScreenText] = useState<string | null>(null)
+  const [showScreen, setShowScreen] = useState<boolean | null>(null)
   const [showSubs, setShowSubs] = useState(true)
-  const s = state.sessions.find((x) => x.id === id)
-  useStickToBottom(s?.messages.length ?? 0)
-  if (!s) return <Missing />
-  const project = state.projects.find((p) => p.id === s.projectId)!
-  const machine = state.machines.find((m) => m.id === s.machineId)
-  const pending = state.interventions.find((i) => i.sessionId === s.id && i.status === 'pending')
+
+  // Le détail suit chaque nouvelle version annoncée par le serveur.
+  useEffect(() => {
+    let off = false
+    api
+      .session(id)
+      .then((d) => {
+        if (off) return
+        setDetail(d)
+        setMissing(false)
+        if (d.session.id !== id) replace({ kind: 'session', id: d.session.id })
+      })
+      .catch(() => !off && setMissing(true))
+    return () => {
+      off = true
+    }
+  }, [id, snap.version, replace])
+
+  const s = snap.sessions.find((x) => x.id === id) ?? detail?.session
+  const screenOpen = showScreen ?? s?.status === 'needs_user'
+
+  // Écran du terminal : rafraîchi tant qu'il est affiché.
+  useEffect(() => {
+    if (!s?.hasScreen || !screenOpen) return
+    let off = false
+    const tick = () =>
+      api
+        .screen(id)
+        .then((r) => !off && setScreenText(r.screen))
+        .catch(() => undefined)
+    tick()
+    const t = setInterval(tick, 1500)
+    return () => {
+      off = true
+      clearInterval(t)
+    }
+  }, [id, s?.hasScreen, screenOpen])
+
+  const messages = useMemo(() => {
+    const real = detail?.messages ?? []
+    const seen = new Set(real.filter((m) => m.role === 'user').map((m) => m.text.trim()))
+    return [...real, ...pending.filter((p) => !seen.has(p.text.trim()))]
+  }, [detail, pending])
+  useStickToBottom(messages.length)
+
+  if (!s) return missing ? <Missing text="Session introuvable : elle a peut-être plus de trois jours." /> : <Shell slot="agent" kicker="weevils" title="…">{null}</Shell>
+
+  const project = snap.projects.find((p) => p.id === s.projectId)
   const st = status[s.status]
   const active = s.subagents.filter((a) => a.status === 'working').length
-  const done = s.subagents.length - active
+
+  const send = async (text: string) => {
+    setErr(null)
+    const tmp: Message = { id: `pending-${Date.now()}`, role: 'user', text, at: Date.now() }
+    setPending((p) => [...p, tmp])
+    try {
+      const r = await api.send(s.id, text)
+      if (r.id !== id) replace({ kind: 'session', id: r.id })
+    } catch (e) {
+      setPending((p) => p.filter((x) => x.id !== tmp.id))
+      setErr((e as Error).message)
+      throw e
+    }
+  }
 
   return (
     <Shell
-      slot={project.color}
-      kicker={project.name}
+      slot={colors[s.projectId] ?? 'agent'}
+      kicker={project?.name ?? s.projectId}
       title={s.title}
       meta={
         <>
           <span className="strong">
-            {s.tool} · {st.ch} {st.label}
+            {s.tool} · <StatusChar s={s.status} /> {st.label}
           </span>
           {' · '}ouverte depuis {durLong(now - s.openedAt)}
           {s.status === 'working' && s.workStartedAt != null && <> · travaille depuis {durLong(now - s.workStartedAt)}</>}
           <br />
-          {s.origin}
-          {machine && <> · {machine.name}</>}
+          {s.repo ?? s.cwd}
+          {s.branch && <> · {s.branch}</>} · {s.origin === 'weevils' ? 'pilotée par weevils' : s.origin}
         </>
       }
-      foot={<Composer placeholder={`écris à ${s.tool}`} label={`message à la session ${s.title}`} onSend={(t) => act.sendToSession(s.id, t)} />}
+      foot={
+        <Composer
+          placeholder={s.controllable ? (s.live ? `écris à ${s.tool}` : `reprendre avec ${s.tool}`) : 'lecture seule'}
+          label={`message à la session ${s.title}`}
+          onSend={send}
+          disabled={!s.controllable}
+        />
+      }
     >
-      {pending && (
+      {err && <ErrorBand text={err} />}
+
+      {s.status === 'needs_user' && (
         <div className="band invert">
-          <div className="in" style={{ paddingTop: 14 }}>
+          <div className="in" style={{ paddingBlock: 14 }}>
             <div className="small strong">! à toi</div>
-            <div className="h2">{pending.title}</div>
-            <div className="meta" style={{ paddingBottom: 6 }}>
-              {pending.description}
-            </div>
+            <div className="h2">{s.attention ?? 'la session attend ta réponse'}</div>
+            {!s.hasScreen && <div className="meta">Réponds dans le terminal où elle tourne.</div>}
           </div>
-          {pending.choices.map((c) => (
-            <Line key={c.id} ch="→" go={null} onClick={() => dispatch({ type: 'resolve', interventionId: pending.id, choiceId: c.id, at: Date.now() })}>
-              {c.label}
-            </Line>
-          ))}
-          <div style={{ height: 8 }} />
+        </div>
+      )}
+
+      {s.hasScreen && (
+        <div className={`band ${s.status === 'needs_user' ? 'invert' : 'tone'}`}>
+          <Line ch=">_" go={screenOpen ? '−' : '+'} onClick={() => setShowScreen(!screenOpen)} label={screenOpen ? 'masquer l’écran du terminal' : 'voir l’écran du terminal'}>
+            <span className="strong">écran du terminal</span>
+          </Line>
+          <Collapse open={screenOpen}>
+            <pre className="screen">{screenText ?? 'lecture de l’écran…'}</pre>
+            <Keys id={s.id} onError={setErr} />
+            <div style={{ height: 10 }} />
+          </Collapse>
+        </div>
+      )}
+
+      {!s.controllable && (
+        <div className="band tone">
+          <div className="in meta" style={{ paddingBlock: 12 }}>
+            Ouverte dans un terminal que weevils ne pilote pas : tu la lis ici, mais pour lui écrire, lance tes sessions avec <span className="strong">wv</span>. Une fois
+            fermée, weevils pourra la reprendre.
+          </div>
         </div>
       )}
 
       {s.subagents.length > 0 && (
         <div className="band tone">
-          <Line
-            ch="&"
-            go={showSubs ? '−' : '+'}
-            onClick={() => setShowSubs((v) => !v)}
-            label={`sous-agents : ${active} actifs, ${done} terminés. ${showSubs ? 'replier' : 'déplier'}`}
-          >
-            <span className="strong">sous-agents</span> · {active} {active > 1 ? 'actifs' : 'actif'} · {done} {done > 1 ? 'terminés' : 'terminé'}
+          <Line ch="&" go={showSubs ? '−' : '+'} onClick={() => setShowSubs((v) => !v)} label={`sous-agents : ${active} actifs`}>
+            <span className="strong">sous-agents</span> · {active} {active > 1 ? 'actifs' : 'actif'} · {s.subagents.length - active} terminés
           </Line>
           <Collapse open={showSubs}>
             {s.subagents.map((a) => (
@@ -181,11 +295,11 @@ function SessionPage({ id }: { id: string }) {
                   {a.status === 'working' ? <span className="spin">*</span> : '✓'}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div>
-                    <span className="strong">{a.label}</span> · {a.status === 'working' ? 'travaille' : 'terminé'}
+                  <div className="ellipsis">
+                    <span className="strong">{a.activity}</span>
                   </div>
                   <div className="meta">
-                    {a.activity} · {dur((a.endedAt ?? now) - a.startedAt)}
+                    {a.label} · {a.status === 'working' ? 'travaille' : 'terminé'} · {dur((a.endedAt ?? now) - a.startedAt)}
                   </div>
                 </div>
               </div>
@@ -195,142 +309,199 @@ function SessionPage({ id }: { id: string }) {
         </div>
       )}
 
-      <Messages messages={s.messages} author={s.tool} />
-      {s.messages.length === 0 && <div className="in meta empty">Aucun message. Écris le premier en bas.</div>}
+      <Messages messages={messages} author={s.tool} />
+      {detail && messages.length === 0 && <div className="in meta empty">Pas encore de message. La session démarre.</div>}
     </Shell>
   )
 }
 
-function ConversationPage({ id }: { id: string }) {
-  const { state, act, now } = useApp()
-  const c = state.conversations.find((x) => x.id === id)
-  useStickToBottom(c?.messages.length ?? 0)
-  if (!c) return <Missing />
-  const project = state.projects.find((p) => p.id === c.projectId)
-  return (
-    <Shell
-      slot={project?.color ?? 'agent'}
-      kicker={project ? project.name : 'à ranger'}
-      title={c.title}
-      meta={
-        <>
-          <span className="strong">{c.source}</span> · conversation fictive · {ago(now - c.updatedAt)}
-        </>
-      }
-      foot={<Composer placeholder={`écris à ${c.source}`} label={`message dans la conversation ${c.title}`} onSend={(t) => act.sendToConversation(c.id, t)} />}
-    >
-      <Messages messages={c.messages} author={c.source} />
-    </Shell>
-  )
-}
+// ---------------------------------------------------------------------------
+// Explorateur de fichiers : un dossier par page, la liste du repo est gardée en cache.
 
-function ConversationsPage({ projectId }: { projectId: string }) {
-  const { state, push, now } = useApp()
-  const project = state.projects.find((p) => p.id === projectId)
+const fileLists = new Map<string, Promise<string[]>>()
+const fileContents = new Map<string, Promise<FileContent>>()
+const listFiles = (repo: string) => {
+  if (!fileLists.has(repo)) fileLists.set(repo, api.files(repo).then((r) => r.files).catch((e) => (fileLists.delete(repo), Promise.reject(e))))
+  return fileLists.get(repo)!
+}
+const readFile = (repo: string, path: string) => {
+  const k = `${repo}\u0000${path}`
+  if (!fileContents.has(k)) fileContents.set(k, api.file(repo, path).catch((e) => (fileContents.delete(k), Promise.reject(e))))
+  return fileContents.get(k)!
+}
+/** Préchargement discret (au survol / à l'ouverture d'une bande). */
+export const prefetchRepo = (repo: string) => void listFiles(repo).catch(() => undefined)
+
+function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: string; dir?: string }) {
+  const { snap, push, colors } = useApp()
+  const project = snap.projects.find((p) => p.id === projectId)
+  const theRepo = repo ?? (project?.repos.length === 1 ? project.repos[0] : undefined)
+  const [files, setFiles] = useState<string[] | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => {
+    if (!theRepo) return
+    let off = false
+    listFiles(theRepo)
+      .then((f) => !off && setFiles(f))
+      .catch((e) => !off && setErr((e as Error).message))
+    return () => {
+      off = true
+    }
+  }, [theRepo])
+
+  const entries = useMemo(() => {
+    if (!files) return null
+    const prefix = dir ? `${dir}/` : ''
+    const folders = new Map<string, number>()
+    const leaves: string[] = []
+    for (const f of files) {
+      if (!f.startsWith(prefix)) continue
+      const rest = f.slice(prefix.length)
+      const slash = rest.indexOf('/')
+      if (slash >= 0) folders.set(rest.slice(0, slash), (folders.get(rest.slice(0, slash)) ?? 0) + 1)
+      else leaves.push(rest)
+    }
+    return { folders: [...folders].sort((a, b) => a[0].localeCompare(b[0])), leaves: leaves.sort((a, b) => a.localeCompare(b)) }
+  }, [files, dir])
+
   if (!project) return <Missing />
-  const convs = state.conversations.filter((c) => c.projectId === projectId).sort((a, b) => b.updatedAt - a.updatedAt)
+  const slot = colors[projectId] ?? 'agent'
+
+  if (!theRepo) {
+    return (
+      <Shell slot={slot} kicker={project.name} title="/ repos" meta={plural(project.repos.length, 'repo', 'repos')}>
+        {project.repos.map((r) => (
+          <Line key={r} ch="/" onClick={() => push({ kind: 'files', projectId, repo: r })}>
+            {r}
+          </Line>
+        ))}
+      </Shell>
+    )
+  }
+
   return (
-    <Shell slot={project.color} kicker={project.name} title='" conversations' meta="échanges chatgpt et claude rangés dans ce projet">
-      {convs.map((c) => (
-        <Line key={c.id} ch='"' meta={`${c.source} · ${ago(now - c.updatedAt)}`} onClick={() => push({ kind: 'conversation', id: c.id })}>
-          {c.title}
+    <Shell slot={slot} kicker={dir ? `${theRepo}/${dir.split('/').slice(0, -1).join('/')}` : project.name} title={dir ? `/${dir.split('/').pop()}` : `/ ${theRepo}`} meta={files ? plural(files.length, 'fichier', 'fichiers') : 'lecture du repo…'}>
+      {err && <ErrorBand text={err} />}
+      {entries?.folders.map(([name, count]) => (
+        <Line key={name} ch="/" meta={plural(count, 'fichier', 'fichiers')} onClick={() => push({ kind: 'files', projectId, repo: theRepo, dir: dir ? `${dir}/${name}` : name })}>
+          <span className="strong">{name}/</span>
         </Line>
       ))}
-      {convs.length === 0 && <div className="in meta empty">Aucune conversation rangée ici pour l’instant.</div>}
-    </Shell>
-  )
-}
-
-function FilesPage({ projectId }: { projectId: string }) {
-  const { state, push } = useApp()
-  const project = state.projects.find((p) => p.id === projectId)
-  if (!project?.repo) return <Missing />
-  return (
-    <Shell slot={project.color} kicker={project.name} title={`/ ${project.repo.label}`} meta="repo simulé · pas connecté à GitHub">
-      {project.repo.files.map((f) => (
-        <Line key={f.path} ch="/" onClick={() => push({ kind: 'file', projectId, path: f.path })}>
-          {f.path}
-        </Line>
-      ))}
-    </Shell>
-  )
-}
-
-function FilePage({ projectId, path }: { projectId: string; path: string }) {
-  const { state } = useApp()
-  const project = state.projects.find((p) => p.id === projectId)
-  const file = project?.repo?.files.find((f) => f.path === path)
-  if (!project || !file) return <Missing />
-  return (
-    <Shell slot={project.color} kicker={`${project.name} / fichiers`} title={file.path} meta="contenu fictif">
-      <pre className="in code">{file.content}</pre>
-    </Shell>
-  )
-}
-
-function MachinePage({ projectId }: { projectId: string }) {
-  const { state, push, now } = useApp()
-  const project = state.projects.find((p) => p.id === projectId)
-  const machine = state.machines.find((m) => state.sessions.some((s) => s.projectId === projectId && s.machineId === m.id))
-  if (!project || !machine) return <Missing />
-  const sessions = state.sessions.filter((s) => s.machineId === machine.id)
-  return (
-    <Shell slot={project.color} kicker={project.name} title={`@ ${machine.name}`} meta={machine.note}>
-      <div className="in label">{plural(sessions.length, 'session', 'sessions')} sur cette machine</div>
-      {sessions.map((s) => {
-        const p = state.projects.find((x) => x.id === s.projectId)
+      {entries?.leaves.slice(0, 500).map((name) => {
+        const path = dir ? `${dir}/${name}` : name
         return (
-          <Line
-            key={s.id}
-            ch={status[s.status].ch}
-            meta={`${status[s.status].label} · ouverte depuis ${durLong(now - s.openedAt)}`}
-            onClick={() => push({ kind: 'session', id: s.id })}
-          >
-            <span className="strong">{p?.name}</span> · {s.tool} · {s.title}
+          <Line key={name} ch="·" onClick={() => push({ kind: 'file', projectId, repo: theRepo, path })}>
+            {name}
           </Line>
         )
       })}
+      {entries && entries.folders.length + entries.leaves.length === 0 && <div className="in meta empty">Dossier vide.</div>}
+    </Shell>
+  )
+}
+
+const kb = (n: number) => (n < 1024 ? `${n} o` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} ko` : `${(n / 1024 / 1024).toFixed(1)} Mo`)
+
+function FilePage({ projectId, repo, path }: { projectId: string; repo: string; path: string }) {
+  const { colors } = useApp()
+  const [file, setFile] = useState<FileContent | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => {
+    let off = false
+    readFile(repo, path)
+      .then((f) => !off && setFile(f))
+      .catch((e) => !off && setErr((e as Error).message))
+    return () => {
+      off = true
+    }
+  }, [repo, path])
+  const prose = /\.(md|markdown|txt)$/i.test(path)
+  return (
+    <Shell
+      slot={colors[projectId] ?? 'agent'}
+      kicker={`${repo}/${path.split('/').slice(0, -1).join('/')}`}
+      title={path.split('/').pop()}
+      meta={file ? `${kb(file.size)}${file.truncated ? ' · tronqué' : ''}` : 'lecture…'}
+    >
+      {err && <ErrorBand text={err} />}
+      {file?.binary && <div className="in meta empty">Fichier binaire : pas d’aperçu.</div>}
+      {file && !file.binary && <pre className={`in ${prose ? 'code' : 'code mono'}`}>{file.content}</pre>}
+    </Shell>
+  )
+}
+
+// ---------------------------------------------------------------------------
+
+function MachinePage({ projectId }: { projectId: string }) {
+  const { snap, push, now, colors } = useApp()
+  const machine = snap.machines[0]
+  if (!machine) return <Missing />
+  const live = snap.sessions.filter((s) => s.status !== 'done')
+  return (
+    <Shell slot={colors[projectId] ?? 'agent'} kicker={snap.projects.find((p) => p.id === projectId)?.name ?? 'weevils'} title={`@ ${machine.name}`} meta={machine.note}>
+      <div className="in label">{plural(live.length, 'session ouverte', 'sessions ouvertes')}</div>
+      {live.map((s) => (
+        <Line key={s.id} ch={<StatusChar s={s.status} />} meta={`${status[s.status].label} · ${s.origin} · ${ago(now - s.lastActivityAt)}`} onClick={() => push({ kind: 'session', id: s.id })}>
+          <span className="strong">{s.projectId}</span> · {s.tool} · {s.title}
+        </Line>
+      ))}
+      {live.length === 0 && <div className="in meta empty">Aucune session ouverte sur cette machine.</div>}
+      <div className="in label">depuis un terminal</div>
+      <div className="in meta" style={{ paddingBottom: 16 }}>
+        <span className="strong">wv</span> lance claude dans le dossier courant, <span className="strong">wv codex</span> lance codex, <span className="strong">wv ls</span> liste
+        les sessions, <span className="strong">wv a</span> s’y rattache. weevils les voit et les pilote.
+      </div>
     </Shell>
   )
 }
 
 function NewSessionPage({ projectId }: { projectId: string }) {
-  const { state, act, replace } = useApp()
+  const { snap, replace, colors } = useApp()
+  const project = snap.projects.find((p) => p.id === projectId)
   const [tool, setTool] = useState<Tool>('claude')
-  const [title, setTitle] = useState('')
+  const [repo, setRepo] = useState<string | undefined>(project?.repos[0])
+  const [err, setErr] = useState<string | null>(null)
   const created = useRef(false)
-  const project = state.projects.find((p) => p.id === projectId)
   if (!project) return <Missing />
-  const create = (text: string) => {
+  const create = async (text: string) => {
     if (created.current) return
     created.current = true
-    const id = act.createSession(projectId, tool, title, text)
-    replace({ kind: 'session', id })
+    setErr(null)
+    try {
+      const r = await api.create({ projectId, repo, tool, text })
+      replace({ kind: 'session', id: r.id })
+    } catch (e) {
+      created.current = false
+      setErr((e as Error).message)
+      throw e
+    }
   }
   return (
     <Shell
-      slot={project.color}
+      slot={colors[projectId] ?? 'agent'}
       kicker={project.name}
       title="+ nouvelle session"
-      meta="démo : la session est créée localement, rien n’est lancé"
+      meta="lancée sur le VPS dans une session wv, pilotable d’ici et depuis un terminal (wv a)"
       foot={<Composer placeholder="premier message" label="premier message de la session" onSend={create} />}
     >
+      {err && <ErrorBand text={err} />}
       <div className="in label">outil</div>
       {(['claude', 'codex'] as Tool[]).map((t) => (
         <Line key={t} className={tool === t ? 'invert' : ''} ch={tool === t ? '>' : ' '} go={null} onClick={() => setTool(t)} label={`${t}${tool === t ? ', choisi' : ''}`}>
           {t}
         </Line>
       ))}
-      <div className="in label">intitulé (facultatif)</div>
-      <div className="band tone composer">
-        <div className="in">
-          <span className="prompt" aria-hidden>
-            #
-          </span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="ex. refaire la page d’accueil" aria-label="intitulé de la session" />
-        </div>
-      </div>
-      <Line ch="+" go={null} meta="ou écris directement le premier message en bas" onClick={() => create('')}>
+      {project.repos.length > 1 && (
+        <>
+          <div className="in label">repo</div>
+          {project.repos.map((r) => (
+            <Line key={r} className={repo === r ? 'invert' : ''} ch={repo === r ? '>' : '/'} go={null} onClick={() => setRepo(r)}>
+              {r}
+            </Line>
+          ))}
+        </>
+      )}
+      <Line ch="+" go={null} meta="ou écris directement le premier message en bas" onClick={() => void create('').catch(() => undefined)}>
         ouvrir sans message
       </Line>
     </Shell>

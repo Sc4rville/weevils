@@ -1,4 +1,4 @@
-import type { SessionStatus } from '../state/types'
+import type { SessionStatus } from '../../shared/api.ts'
 
 /** Durée compacte, façon croquis : 12m, 1h36, 14h01, 2j. */
 export function dur(ms: number): string {

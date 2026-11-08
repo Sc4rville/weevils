@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# wv — lance claude ou codex dans une session tmux que weevils voit et pilote depuis l'iPhone.
+#
+#   wv                  claude dans le dossier courant
+#   wv "fais ceci"      claude avec un premier message
+#   wv codex [msg]      codex
+#   wv ls               sessions wv en cours
+#   wv a [nom]          s'y rattacher (la plus récente par défaut)
+set -euo pipefail
+
+tool=claude
+case "${1:-}" in
+  ls)
+    tmux list-sessions -F '#{session_name}  #{@wv_tool}  #{@wv_cwd}' 2>/dev/null | grep '^wv-' || echo "aucune session wv"
+    exit 0 ;;
+  a|attach)
+    name=${2:-$(tmux list-sessions -F '#{session_created} #{session_name}' 2>/dev/null | grep ' wv-' | sort -n | tail -1 | cut -d' ' -f2)}
+    [ -n "$name" ] || { echo "aucune session wv"; exit 1; }
+    if [ -n "${TMUX:-}" ]; then exec tmux switch-client -t "=$name"; else exec tmux attach -t "=$name"; fi ;;
+  claude|codex)
+    tool=$1; shift ;;
+esac
+
+dir=$(basename "$PWD")
+short=$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')
+name="wv-${dir:0:18}-$short"
+title=${1:-nouvelle session}
+
+if [ "$tool" = claude ]; then
+  id=$(cat /proc/sys/kernel/random/uuid)
+  tmux new-session -d -s "$name" -x 120 -y 40 -c "$PWD" claude --session-id "$id" "$@"
+  tmux set-option -t "=$name:" @wv_session_id "$id"
+else
+  tmux new-session -d -s "$name" -x 120 -y 40 -c "$PWD" codex "$@"
+fi
+tmux set-option -t "=$name:" @wv_tool "$tool"
+tmux set-option -t "=$name:" @wv_title "${title:0:60}"
+tmux set-option -t "=$name:" @wv_cwd "$PWD"
+
+if [ -n "${TMUX:-}" ]; then exec tmux switch-client -t "=$name"; else exec tmux attach -t "=$name"; fi

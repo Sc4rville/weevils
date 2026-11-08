@@ -1,0 +1,205 @@
+// weevilsd : API + flux temps réel pour l'app, et récepteur local des hooks Claude Code.
+// Lancer : node server/index.ts (Node 22, TypeScript natif).
+
+import crypto from 'node:crypto'
+import fs from 'node:fs'
+import http from 'node:http'
+import path from 'node:path'
+import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, PORT } from './config.ts'
+import { Weevils } from './core.ts'
+
+const w = new Weevils()
+w.start()
+
+// ---------------------------------------------------------------- secret partagé (ce soir) → passkey (demain)
+
+fs.mkdirSync(CONFIG_DIR, { recursive: true })
+fs.mkdirSync(DATA_DIR, { recursive: true })
+const SECRET_FILE = path.join(CONFIG_DIR, 'secret')
+if (!fs.existsSync(SECRET_FILE)) fs.writeFileSync(SECRET_FILE, crypto.randomBytes(9).toString('base64url'), { mode: 0o600 })
+const SECRET = fs.readFileSync(SECRET_FILE, 'utf8').trim()
+const TOKENS_FILE = path.join(DATA_DIR, 'tokens.json')
+let tokens = new Set<string>()
+try {
+  tokens = new Set(JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf8')))
+} catch {
+  /* aucun appareil connecté */
+}
+const saveTokens = () => fs.writeFileSync(TOKENS_FILE, JSON.stringify([...tokens]), { mode: 0o600 })
+
+const cookieToken = (req: http.IncomingMessage) => /(?:^|;\s*)wv=([\w-]+)/.exec(req.headers.cookie ?? '')?.[1]
+/** Requête née sur le VPS même (tunnel SSH, outils locaux) : jamais passée par Caddy, donc sans en-têtes de proxy. */
+const isLocal = (req: http.IncomingMessage) =>
+  ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '') && !req.headers['x-forwarded-for'] && !req.headers['x-forwarded-proto']
+const authed = (req: http.IncomingMessage) => {
+  if (isLocal(req)) return true
+  const t = cookieToken(req)
+  return !!t && tokens.has(t)
+}
+
+// ---------------------------------------------------------------- utilitaires
+
+const json = (res: http.ServerResponse, status: number, body: unknown) => {
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+  res.end(JSON.stringify(body))
+}
+
+const readBody = (req: http.IncomingMessage, limit = 1 << 20) =>
+  new Promise<any>((resolve, reject) => {
+    let data = ''
+    req.on('data', (c) => {
+      data += c
+      if (data.length > limit) {
+        reject(new Error('corps trop grand'))
+        req.destroy()
+      }
+    })
+    req.on('end', () => {
+      try {
+        resolve(data ? JSON.parse(data) : {})
+      } catch {
+        reject(new Error('JSON invalide'))
+      }
+    })
+    req.on('error', reject)
+  })
+
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webmanifest': 'application/manifest+json',
+  '.json': 'application/json',
+  '.woff2': 'font/woff2',
+}
+
+function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string) {
+  let file = path.join(DIST_DIR, pathname === '/' ? 'index.html' : pathname)
+  if (!file.startsWith(DIST_DIR) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(DIST_DIR, 'index.html')
+  if (!fs.existsSync(file)) return json(res, 503, { error: 'app non construite : npm run build' })
+  const ext = path.extname(file)
+  res.writeHead(200, {
+    'content-type': MIME[ext] ?? 'application/octet-stream',
+    'cache-control': pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
+  })
+  fs.createReadStream(file).pipe(res)
+}
+
+// ---------------------------------------------------------------- flux temps réel
+
+const sseClients = new Set<http.ServerResponse>()
+w.onChange(() => {
+  const data = `event: version\ndata: ${w.version}\n\n`
+  for (const res of sseClients) res.write(data)
+})
+setInterval(() => {
+  for (const res of sseClients) res.write(': ping\n\n')
+}, 25_000)
+
+// ---------------------------------------------------------------- API
+
+type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void> | void
+
+const routes: [string, RegExp, Handler][] = [
+  ['POST', /^\/api\/login$/, async (req, res) => {
+    const body = await readBody(req)
+    if (typeof body.secret !== 'string' || body.secret.trim() !== SECRET) {
+      await new Promise((r) => setTimeout(r, 800))
+      return json(res, 401, { error: 'code incorrect' })
+    }
+    const t = crypto.randomBytes(24).toString('base64url')
+    tokens.add(t)
+    saveTokens()
+    res.setHeader('set-cookie', `wv=${t}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`)
+    json(res, 200, { ok: true })
+  }],
+  ['GET', /^\/api\/me$/, (req, res) => json(res, 200, { authed: authed(req) })],
+  ['POST', /^\/api\/logout$/, (req, res) => {
+    const t = cookieToken(req)
+    if (t) {
+      tokens.delete(t)
+      saveTokens()
+    }
+    res.setHeader('set-cookie', 'wv=; Path=/; Max-Age=0')
+    json(res, 200, { ok: true })
+  }],
+  ['GET', /^\/api\/snapshot$/, (_req, res) => json(res, 200, w.snapshot())],
+  ['GET', /^\/api\/events$/, (_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' })
+    res.write(`event: version\ndata: ${w.version}\n\n`)
+    sseClients.add(res)
+    _req.on('close', () => sseClients.delete(res))
+  }],
+  ['GET', /^\/api\/sessions\/([^/]+)$/, (_req, res, _u, [id]) => {
+    const d = w.detail(decodeURIComponent(id))
+    d ? json(res, 200, d) : json(res, 404, { error: 'session introuvable' })
+  }],
+  ['GET', /^\/api\/sessions\/([^/]+)\/screen$/, async (_req, res, _u, [id]) => json(res, 200, { screen: await w.screen(decodeURIComponent(id)) })],
+  ['POST', /^\/api\/sessions\/([^/]+)\/send$/, async (req, res, _u, [id]) => {
+    const body = await readBody(req)
+    json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? '')))
+  }],
+  ['POST', /^\/api\/sessions\/([^/]+)\/key$/, async (req, res, _u, [id]) => {
+    const body = await readBody(req)
+    await w.key(decodeURIComponent(id), String(body.key ?? ''))
+    json(res, 200, { ok: true })
+  }],
+  ['POST', /^\/api\/sessions$/, async (req, res) => {
+    const body = await readBody(req)
+    const tool = body.tool === 'codex' ? 'codex' : 'claude'
+    json(res, 200, await w.create({ projectId: String(body.projectId ?? ''), repo: body.repo ? String(body.repo) : undefined, tool, text: String(body.text ?? '') }))
+  }],
+  ['POST', /^\/api\/main$/, async (req, res) => {
+    const body = await readBody(req)
+    json(res, 200, await w.sendMain(String(body.text ?? '').trim()))
+  }],
+  ['POST', /^\/api\/main\/choose$/, async (req, res) => {
+    const body = await readBody(req)
+    await w.chooseMain(String(body.mainId ?? ''), String(body.sessionId ?? ''))
+    json(res, 200, { ok: true })
+  }],
+  ['POST', /^\/api\/h24\/([^/]+)\/toggle$/, async (_req, res, _u, [id]) => {
+    await w.toggleH24(decodeURIComponent(id))
+    json(res, 200, { ok: true })
+  }],
+  ['GET', /^\/api\/repos\/([^/]+)\/files$/, async (_req, res, _u, [repo]) => json(res, 200, { files: await w.files(decodeURIComponent(repo)) })],
+  ['GET', /^\/api\/repos\/([^/]+)\/file$/, (_req, res, url, [repo]) => json(res, 200, w.file(decodeURIComponent(repo), url.searchParams.get('path') ?? ''))],
+]
+
+const PUBLIC = new Set(['/api/login', '/api/me'])
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url ?? '/', 'http://local')
+  try {
+    if (!url.pathname.startsWith('/api/')) return serveStatic(req, res, url.pathname)
+    if (!PUBLIC.has(url.pathname) && !authed(req)) return json(res, 401, { error: 'connexion requise' })
+    for (const [method, re, handler] of routes) {
+      const m = re.exec(url.pathname)
+      if (m && req.method === method) return await handler(req, res, url, m.slice(1))
+    }
+    json(res, 404, { error: 'route inconnue' })
+  } catch (e) {
+    json(res, 400, { error: (e as Error).message })
+  }
+})
+
+server.listen(PORT, '127.0.0.1', () => console.log(`weevilsd → http://127.0.0.1:${PORT}`))
+
+// Hooks Claude Code : port séparé, local uniquement, pas d'authentification nécessaire.
+http
+  .createServer(async (req, res) => {
+    try {
+      const body = await readBody(req, 256 << 10)
+      w.hook(body, req.headers['x-pid'] as string | undefined)
+      console.log(`[hook] ${body?.hook_event_name ?? '?'} ${String(body?.session_id ?? '').slice(0, 8)}`)
+      res.writeHead(200).end('ok')
+    } catch {
+      res.writeHead(400).end()
+    }
+  })
+  .listen(HOOK_PORT, '127.0.0.1', () => console.log(`hooks → http://127.0.0.1:${HOOK_PORT}`))
+
+process.on('uncaughtException', (e) => console.error('[weevilsd]', e))
+process.on('unhandledRejection', (e) => console.error('[weevilsd]', e))

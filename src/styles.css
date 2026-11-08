@@ -16,11 +16,16 @@
   color-scheme: light;
   --ink: #000;
   --agent: #b39bff;
-  --lws: #6fa4ff;
-  --crm: #ff7f67;
-  --idees: #ff8ad6;
-  --demo: #5fe3a1;
   --h24: #ffc64c;
+  /* Palette des projets : vive, texte noir. */
+  --p0: #6fa4ff;
+  --p1: #ff7f67;
+  --p2: #ff8ad6;
+  --p3: #5fe3a1;
+  --p4: #ceef36;
+  --p5: #ff9f43;
+  --p6: #4dd8e6;
+  --p7: #ff5c8a;
 }
 
 /* Sombre : couleurs profondes mais chaleureuses, texte blanc. */
@@ -28,11 +33,16 @@
   color-scheme: dark;
   --ink: #fff;
   --agent: #5522b5;
-  --lws: #1b40bb;
-  --crm: #9c204a;
-  --idees: #861a73;
-  --demo: #0b6b4a;
   --h24: #744900;
+  /* Palette des projets : profonde, saturée, texte blanc. */
+  --p0: #1b40bb;
+  --p1: #9c204a;
+  --p2: #861a73;
+  --p3: #0b6b4a;
+  --p4: #4f6a00;
+  --p5: #9a3d0a;
+  --p6: #00687a;
+  --p7: #a3123f;
   --mix: 11%;
   --dl: 0.07;
 }
@@ -549,4 +559,49 @@ h1[tabindex='-1']:focus {
 /* Pas de cadre autour des champs : la bande suffit, le curseur montre où l'on écrit. */
 input:focus-visible {
   outline: none;
+}
+
+/* Écran du terminal : seule exception à la police unique, pour que les cadres des TUI restent alignés. */
+.screen,
+.code.mono {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+.screen {
+  margin: 0;
+  padding: 10px var(--pad) 12px;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.code.mono {
+  font-size: 0.8125rem;
+  white-space: pre;
+  overflow-x: auto;
+  overflow-wrap: normal;
+}
+
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.key {
+  min-width: 48px;
+  height: 46px;
+  padding-inline: 10px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 1.0625rem;
+  font-weight: 650;
+  background: color-mix(in oklab, currentColor 14%, transparent);
+}
+
+.key:active {
+  background: color-mix(in oklab, currentColor 30%, transparent);
 }

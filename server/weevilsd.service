@@ -1,0 +1,16 @@
+[Unit]
+Description=weevilsd — serveur weevils (sessions Claude/Codex, API de l'app)
+After=network.target
+
+[Service]
+WorkingDirectory=%h/projects/weevils
+ExecStart=/usr/bin/node server/index.ts
+Restart=always
+# Les sessions d'agents (serveur tmux lancé par weevilsd) doivent survivre à un redémarrage de weevilsd.
+KillMode=process
+RestartSec=2
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target

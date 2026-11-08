@@ -12,6 +12,8 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: publicHost ? [publicHost] : [],
     hmr: publicHost ? { protocol: 'wss', host: publicHost, clientPort: 443 } : undefined,
+    // weevilsd sert l'API ; en dev, le serveur de dev la relaie (flux SSE compris).
+    proxy: { '/api': { target: 'http://127.0.0.1:4179', changeOrigin: false } },
   },
   test: { environment: 'node' },
 })

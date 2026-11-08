@@ -1,33 +1,45 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useState, type CSSProperties } from 'react'
-import { globalStats, h24Stats, projectStats, sessionLabel } from '../state/store'
-import type { Conversation, MainMessage, Project } from '../state/types'
+import type { MainMessage, Project, Session } from '../../shared/api.ts'
+import { api } from '../api'
 import { useApp } from './app-context'
 import { Appear, Collapse, Composer, Line, SessionRow, spring } from './bits'
 import { ago, plural } from './format'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
-/** Taille du nom selon l'état de la bande. */
+/** Taille du nom selon l'état de la bande : ouverte = grosse, les autres = fines lanières. Rien ne passe derrière. */
 const NAME_SIZE = { open: '3rem', normal: '2.125rem', mini: '1.375rem' } as const
+
+const working = (n: number) => `${n} ${n > 1 ? 'travaillent' : 'travaille'}`
 
 // ---------------------------------------------------------------------------
 // Agent principal : la bande du haut, l'endroit central.
 
 export function AgentBand() {
-  const { state, expanded, setExpanded, act } = useApp()
+  const { snap, expanded, setExpanded, push, refresh } = useApp()
   const open = expanded === 'agent'
-  const g = globalStats(state)
-  const h = h24Stats(state)
+  const live = snap.sessions.filter((s) => s.status !== 'done')
+  const att = snap.sessions.filter((s) => s.status === 'needs_user').length
+  const running = snap.h24.filter((a) => a.runState === 'running').length
   const summary = [
-    `${g.working} ${g.working > 1 ? 'travaillent' : 'travaille'}`,
-    g.waiting ? `${g.waiting} à toi` : null,
-    g.toSort ? `${g.toSort} à ranger` : null,
-    `h24 ${h.running} en cours`,
+    live.length ? working(live.filter((s) => s.status === 'working').length) : 'aucune session ouverte',
+    att ? `${att} à toi` : null,
+    running ? `h24 ${running} en cours` : null,
   ]
     .filter(Boolean)
     .join(' · ')
-  const sorting = state.conversations.filter((c) => c.suggestion)
+  const examples = snap.projects
+    .filter((p) => p.kind === 'repo')
+    .slice(0, 2)
+    .map((p) => `reprends ${p.name}`)
+
+  const send = async (text: string) => {
+    setExpanded('agent')
+    const r = await api.main(text)
+    refresh()
+    if (r.route.kind === 'open' && r.route.sessionId) setTimeout(() => push({ kind: 'session', id: r.route.sessionId! }), 350)
+  }
 
   return (
     <section className="band agent" style={color('agent')} aria-label="agent principal">
@@ -37,49 +49,40 @@ export function AgentBand() {
             weevils
           </motion.span>
         </button>
-        <span className="chars small strong" aria-label="mode démo, données fictives">
-          démo
-        </span>
       </div>
       <div className="in meta summary">{summary}</div>
 
       <Collapse open={open} id="agent-body">
         <div aria-live="polite">
           <AnimatePresence initial={false}>
-            {state.main.slice(-6).map((m) => (
+            {snap.main.slice(-6).map((m) => (
               <Appear key={m.id}>
                 <MainMsg m={m} />
               </Appear>
             ))}
           </AnimatePresence>
         </div>
-        {sorting.length > 0 && (
-          <div className="band tone">
-            <div className="in label">à ranger</div>
-            {sorting.map((c) => (
-              <SortLine key={c.id} c={c} />
-            ))}
+        {examples.length > 0 && (
+          <div className="in meta" style={{ paddingBlock: 8 }}>
+            essaie :{' '}
+            <span className="inline-actions" style={{ display: 'inline-flex' }}>
+              {examples.map((t) => (
+                <button key={t} className="link" onClick={() => void send(t)}>
+                  « {t} »
+                </button>
+              ))}
+            </span>
           </div>
         )}
-        <div className="in meta" style={{ paddingBlock: 8 }}>
-          essaie :{' '}
-          <span className="inline-actions" style={{ display: 'inline-flex' }}>
-            {['reprends le crm', 'ouvre claude lws', 'on avance ?'].map((t) => (
-              <button key={t} className="link" onClick={() => act.sendMain(t)}>
-                « {t} »
-              </button>
-            ))}
-          </span>
-        </div>
       </Collapse>
 
-      <Composer placeholder="dis à weevils quoi faire" label="message à l’agent principal" onSend={act.sendMain} onFocus={() => setExpanded('agent')} />
+      <Composer placeholder="dis à weevils quoi faire" label="message à l’agent principal" onSend={send} onFocus={() => setExpanded('agent')} />
     </section>
   )
 }
 
 function MainMsg({ m }: { m: MainMessage }) {
-  const { state, push, act } = useApp()
+  const { snap, push, refresh } = useApp()
   if (m.role === 'user') {
     return (
       <div className="msg band tone">
@@ -90,7 +93,8 @@ function MainMsg({ m }: { m: MainMessage }) {
       </div>
     )
   }
-  const choices = m.ask && !m.ask.chosenSessionId ? state.sessions.filter((s) => s.status !== 'done') : []
+  const choices = m.ask && !m.ask.chosenSessionId ? snap.sessions.filter((s) => s.controllable).slice(0, 8) : []
+  const label = (s: Session) => `${s.projectId} · ${s.tool} · ${s.title}`
   return (
     <div className="msg band">
       <div className="in">
@@ -101,56 +105,12 @@ function MainMsg({ m }: { m: MainMessage }) {
             ouvrir la session →
           </button>
         )}
-        {m.ask?.chosenSessionId && <div className="meta">destination choisie ✓</div>}
       </div>
       {choices.map((s) => (
-        <Line key={s.id} ch="→" go={null} onClick={() => act.chooseMain(m.id, s.id)}>
-          {sessionLabel(state, s.id)}
+        <Line key={s.id} ch="→" go={null} onClick={() => void api.choose(m.id, s.id).then(refresh)}>
+          {label(s)}
         </Line>
       ))}
-    </div>
-  )
-}
-
-function SortLine({ c }: { c: Conversation }) {
-  const { state, dispatch } = useApp()
-  const [choosing, setChoosing] = useState(false)
-  const name = (id?: string | null) => state.projects.find((p) => p.id === id)?.name ?? '?'
-  const classify = (projectId: string) => {
-    dispatch({ type: 'classify', conversationId: c.id, projectId })
-    setChoosing(false)
-  }
-  const pending = c.suggestion === 'pending'
-  return (
-    <div>
-      <div className="in" style={{ paddingBlock: 8 }}>
-        <div className="ellipsis" style={{ fontSize: '1.0625rem' }}>
-          <span className="strong">" </span>
-          {c.title}
-        </div>
-        <div className="meta">
-          {pending ? `${c.source} · weevils propose ${name(c.suggestedProjectId)} : ${c.suggestionReason}` : `${c.source} · rangée dans ${name(c.projectId)} ✓`}
-        </div>
-        <div className="inline-actions">
-          {pending && (
-            <button className="link" onClick={() => classify(c.suggestedProjectId!)}>
-              ranger dans {name(c.suggestedProjectId)}
-            </button>
-          )}
-          <button className="link" onClick={() => setChoosing((v) => !v)} aria-expanded={choosing}>
-            {pending ? 'ailleurs…' : 'changer'}
-          </button>
-        </div>
-      </div>
-      <Collapse open={choosing}>
-        {state.projects
-          .filter((p) => p.id !== c.projectId)
-          .map((p) => (
-            <Line key={p.id} ch="→" go={null} onClick={() => classify(p.id)} label={`ranger dans ${p.name}`}>
-              {p.name}
-            </Line>
-          ))}
-      </Collapse>
     </div>
   )
 }
@@ -159,27 +119,26 @@ function SortLine({ c }: { c: Conversation }) {
 // Bande projet : nom fort, caractères-icônes, sessions. Elle s'ouvre, les autres se replient.
 
 export function ProjectBand({ project }: { project: Project }) {
-  const { state, expanded, setExpanded, push, now, setH24Open } = useApp()
+  const { snap, expanded, setExpanded, push, now, colors, setH24Open } = useApp()
+  const [showDone, setShowDone] = useState(false)
   const mode = expanded === null ? 'normal' : expanded === project.id ? 'open' : 'mini'
-  const stats = projectStats(state, project.id)
-  const sessions = state.sessions.filter((s) => s.projectId === project.id)
-  const pending = state.interventions.filter((i) => i.projectId === project.id && i.status === 'pending')
-  const convs = state.conversations.filter((c) => c.projectId === project.id).sort((a, b) => b.updatedAt - a.updatedAt)
-  const h24 = state.h24.filter((a) => a.projectId === project.id)
-  const machine = state.machines.find((m) => sessions.some((s) => s.machineId === m.id))
+  const sessions = snap.sessions.filter((s) => s.projectId === project.id)
+  const active = sessions.filter((s) => s.status !== 'done')
+  const done = sessions.filter((s) => s.status === 'done')
+  const att = active.filter((s) => s.status === 'needs_user')
+  const jobs = snap.h24.filter((a) => a.projectId === project.id)
   const toggle = () => setExpanded(mode === 'open' ? null : project.id)
 
   const summary = [
-    plural(stats.sessions, 'session', 'sessions'),
-    stats.working ? `${stats.working} ${stats.working > 1 ? 'travaillent' : 'travaille'}` : null,
-    stats.pending ? `${stats.pending} à toi` : null,
+    active.length ? working(active.filter((s) => s.status === 'working').length) : 'rien ne tourne',
+    att.length ? `${att.length} à toi` : null,
+    !active.length ? ago(now - project.lastActivityAt) : null,
   ]
     .filter(Boolean)
     .join(' · ')
 
   return (
-    <section className="band" style={color(project.color)} aria-label={`projet ${project.name}`} data-project={project.id}>
-      {/* Taille adaptative : la bande ouverte grossit, les autres deviennent de fines lanières. Rien ne passe derrière. */}
+    <section className="band" style={color(colors[project.id] ?? 'p0')} aria-label={`projet ${project.name}`} data-project={project.id}>
       <motion.div className="in head" initial={false} animate={{ minHeight: mode === 'mini' ? 50 : 64, paddingTop: mode === 'mini' ? 0 : 8 }} transition={spring}>
         <button className="head-name" onClick={toggle} aria-expanded={mode === 'open'} aria-controls={`more-${project.id}`}>
           <motion.span className="name" initial={false} animate={{ fontSize: NAME_SIZE[mode] }} transition={spring}>
@@ -195,28 +154,23 @@ export function ProjectBand({ project }: { project: Project }) {
         </button>
         {mode !== 'mini' && (
           <div className="chars">
-            {project.repo && (
+            {project.repos.length > 0 && (
               <button className="ch" aria-label={`fichiers de ${project.name}`} onClick={() => push({ kind: 'files', projectId: project.id })}>
                 /
               </button>
             )}
-            {machine && (
-              <button className="ch" aria-label={`machine de ${project.name}`} onClick={() => push({ kind: 'machine', projectId: project.id })}>
-                @
-              </button>
-            )}
+            <button className="ch" aria-label={`machine de ${project.name}`} onClick={() => push({ kind: 'machine', projectId: project.id })}>
+              @
+            </button>
             <button
-              className={`ch ${stats.pending ? '' : 'off'}`}
-              disabled={!stats.pending}
-              aria-label={stats.pending ? `${plural(stats.pending, 'action', 'actions')} à traiter dans ${project.name}` : `rien à traiter dans ${project.name}`}
-              onClick={() => pending[0] && push({ kind: 'session', id: pending[0].sessionId })}
+              className={`ch ${att.length ? '' : 'off'}`}
+              disabled={!att.length}
+              aria-label={att.length ? `${plural(att.length, 'session attend', 'sessions attendent')} ta réponse` : 'rien ne t’attend'}
+              onClick={() => att[0] && push({ kind: 'session', id: att[0].id })}
             >
               <span>
-                !{stats.pending > 0 && <sup>{stats.pending}</sup>}
+                !{att.length > 0 && <sup>{att.length}</sup>}
               </span>
-            </button>
-            <button className="ch" aria-label={`conversations de ${project.name}`} onClick={() => push({ kind: 'conversations', projectId: project.id })}>
-              "
             </button>
             <button className="ch" aria-label={`nouvelle session dans ${project.name}`} onClick={() => push({ kind: 'new', projectId: project.id })}>
               +
@@ -228,56 +182,47 @@ export function ProjectBand({ project }: { project: Project }) {
       <Collapse open={mode !== 'mini'}>
         {project.kind === 'invented' && (
           <div className="in meta" style={{ paddingBottom: 6 }}>
-            catégorie inventée par weevils · aucun repo
+            catégorie inventée par weevils · hors repo
           </div>
         )}
         <AnimatePresence initial={false}>
-          {sessions.map((s) => (
+          {active.map((s) => (
             <Appear key={s.id}>
               <SessionRow session={s} />
             </Appear>
           ))}
         </AnimatePresence>
-        {sessions.length === 0 && <div className="in meta empty">aucune session · + pour en ouvrir une</div>}
+        {active.length === 0 && <div className="in meta empty">rien ne tourne · dernière activité {ago(now - project.lastActivityAt)}</div>}
+        {done.length > 0 && (
+          <>
+            <Line ch="✓" go={showDone ? '−' : '+'} onClick={() => setShowDone((v) => !v)} label={`${done.length} sessions terminées`}>
+              <span className="meta">{plural(done.length, 'session terminée', 'sessions terminées')}</span>
+            </Line>
+            <Collapse open={showDone}>
+              {done.slice(0, 12).map((s) => (
+                <SessionRow key={s.id} session={s} />
+              ))}
+            </Collapse>
+          </>
+        )}
         <div style={{ height: 12 }} />
       </Collapse>
 
       <Collapse open={mode === 'open'} id={`more-${project.id}`}>
-        {pending.map((i) => (
-          <Line key={i.id} className="invert" ch="!" meta="la session attend ta décision" onClick={() => push({ kind: 'session', id: i.sessionId })}>
-            {i.title}
-          </Line>
-        ))}
         <div className="band tone">
-          <div className="in label">conversations</div>
-          {convs.map((c) => (
-            <Line key={c.id} ch='"' meta={`${c.source} · ${ago(now - c.updatedAt)}`} onClick={() => push({ kind: 'conversation', id: c.id })}>
-              {c.title}
+          {project.repos.length > 0 && <div className="in label">repos</div>}
+          {project.repos.map((r) => (
+            <Line key={r} ch="/" meta="parcourir les fichiers" onClick={() => push({ kind: 'files', projectId: project.id, repo: r })}>
+              {r}
             </Line>
           ))}
-          {convs.length === 0 && <div className="in meta empty">aucune conversation rangée ici</div>}
-
-          {(project.repo || machine) && <div className="in label">où ça vit</div>}
-          {project.repo && (
-            <Line ch="/" meta={`${plural(project.repo.files.length, 'fichier', 'fichiers')} · repo simulé`} onClick={() => push({ kind: 'files', projectId: project.id })}>
-              {project.repo.label}
-            </Line>
-          )}
-          {machine && (
-            <Line ch="@" meta={plural(state.sessions.filter((s) => s.machineId === machine.id).length, 'session', 'sessions')} onClick={() => push({ kind: 'machine', projectId: project.id })}>
-              {machine.name}
-            </Line>
-          )}
-
-          {h24.length > 0 && <div className="in label">h24</div>}
-          {h24.map((a) => (
-            <Line
-              key={a.id}
-              ch={a.runState === 'running' ? <span className="spin">*</span> : a.runState === 'paused' ? '||' : '_'}
-              meta={a.runState === 'running' ? 'en cours' : a.runState === 'paused' ? 'en pause' : `en veille · ${a.schedule}`}
-              onClick={() => setH24Open(true)}
-              go="↓"
-            >
+          <div className="in label">machine</div>
+          <Line ch="@" meta={plural(active.length, 'session ouverte', 'sessions ouvertes')} onClick={() => push({ kind: 'machine', projectId: project.id })}>
+            {snap.machines[0]?.name ?? 'vps'}
+          </Line>
+          {jobs.length > 0 && <div className="in label">h24</div>}
+          {jobs.map((a) => (
+            <Line key={a.id} ch={a.runState === 'running' ? <span className="spin">*</span> : '✓'} meta={a.runState === 'running' ? 'en cours' : a.lastEvent} onClick={() => setH24Open(true)} go="↓">
               {a.title}
             </Line>
           ))}
@@ -289,37 +234,28 @@ export function ProjectBand({ project }: { project: Project }) {
 }
 
 // ---------------------------------------------------------------------------
-// Démo : dernière bande, elle remplit l'espace jusqu'au rail H24.
+// Bande de fin : réglages et état de la connexion. Elle remplit l'espace jusqu'au rail H24.
 
-export function DemoBand() {
-  const { state, dispatch, act } = useApp()
-  const fired = state.firedEvents.includes('terminal-arrival-01')
-  const dark = state.theme === 'dark'
+export function FootBand() {
+  const { snap, theme, setTheme, offline, colors, logout } = useApp()
+  const dark = theme === 'dark'
   return (
-    <section className="band demo" style={color('demo')} aria-label="démo">
+    <section className="band demo" style={color(colors.__foot ?? 'p3')} aria-label="réglages">
       <div className="in head">
         <h2 className="h2" style={{ margin: 0 }}>
-          démo
+          {snap.machines[0]?.name ?? 'vps'}
         </h2>
+        <span className="chars meta strong">{offline ? 'reconnexion…' : 'en ligne'}</span>
       </div>
-      <Line ch="~" meta={`passer en ${dark ? 'clair' : 'sombre'}`} go={null} onClick={() => dispatch({ type: 'theme', theme: dark ? 'light' : 'dark' })}>
+      <Line ch="~" meta={`passer en ${dark ? 'clair' : 'sombre'}`} go={null} onClick={() => setTheme(dark ? 'light' : 'dark')}>
         thème {dark ? 'sombre' : 'clair'}
       </Line>
-      <Line
-        ch=">"
-        meta={fired ? 'déjà arrivée dans lws · remise à zéro pour rejouer' : 'une session codex arrive dans lws'}
-        go={null}
-        disabled={fired}
-        onClick={act.fireTerminal}
-      >
-        simuler une session ouverte depuis le terminal
-      </Line>
-      <Line ch="0" meta="revenir au scénario de départ" go={null} onClick={act.reset}>
-        remise à zéro
-      </Line>
-      <div className="in meta" style={{ paddingBlock: 14 }}>
-        Tout est fictif : aucune connexion à GitHub, au VPS, à Claude ni à ChatGPT.
+      <div className="in meta" style={{ paddingBlock: 10 }}>
+        Pour qu’une session ouverte dans un terminal soit pilotable d’ici, lance-la avec <span className="strong">wv</span> (ou <span className="strong">wv codex</span>).
       </div>
+      <Line ch="x" meta="cet appareil devra se reconnecter" go={null} onClick={logout}>
+        se déconnecter
+      </Line>
     </section>
   )
 }

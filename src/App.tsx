@@ -1,21 +1,29 @@
 import { AnimatePresence, MotionConfig } from 'motion/react'
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { loadState, reducer, routeCommand, saveState, uid, type Target } from './state/store'
-import { Ctx, type AppCtx, type Page } from './ui/app-context'
-import { AgentBand, DemoBand, ProjectBand } from './ui/bands'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { api, useLive } from './api'
+import { Ctx, colorSlots, type AppCtx, type Page, type Theme } from './ui/app-context'
+import { AgentBand, FootBand, ProjectBand } from './ui/bands'
 import { spring } from './ui/bits'
 import { H24Rail } from './ui/h24'
+import { Login } from './ui/login'
 import { PageView } from './ui/pages'
 
-const REPLY_DELAY = 900
 const THEME_COLOR = { light: '#B39BFF', dark: '#5522B5' }
+const THEME_KEY = 'weevils-theme'
 
-const pageKey = (p: Page, i: number) => `${i}:${p.kind}:${'id' in p ? p.id : p.projectId}:${'path' in p ? p.path : ''}`
+function initialTheme(): Theme {
+  try {
+    const t = localStorage.getItem(THEME_KEY)
+    if (t === 'light' || t === 'dark') return t
+  } catch {
+    /* stockage indisponible */
+  }
+  return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
 
 export default function App() {
-  const [state, dispatch] = useReducer(reducer, undefined, () => loadState(Date.now()))
-  const stateRef = useRef(state)
-  stateRef.current = state
+  const live = useLive()
+  const [theme, setThemeState] = useState<Theme>(initialTheme)
   const [now, setNow] = useState(() => Date.now())
   const [expanded, setExpanded] = useState<string | null>(null)
   const [h24Open, setH24Open] = useState(false)
@@ -28,13 +36,23 @@ export default function App() {
     const t = setInterval(() => setNow(Date.now()), 15000)
     return () => clearInterval(t)
   }, [])
+  useEffect(() => {
+    if (live.snap) setNow(Date.now())
+  }, [live.snap])
 
-  useEffect(() => saveState(state), [state])
+  const setTheme = useCallback((t: Theme) => {
+    setThemeState(t)
+    try {
+      localStorage.setItem(THEME_KEY, t)
+    } catch {
+      /* ignoré */
+    }
+  }, [])
 
   useEffect(() => {
-    document.documentElement.dataset.theme = state.theme
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[state.theme])
-  }, [state.theme])
+    document.documentElement.dataset.theme = theme
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme])
+  }, [theme])
 
   // Hauteur visible réelle (clavier iPhone ouvert) pour que la saisie reste au-dessus du clavier.
   useEffect(() => {
@@ -108,77 +126,61 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [back, h24Open])
 
-  // ---- Actions de démo (réponses simulées, jamais d'appel réseau).
-  const act = useMemo<AppCtx['act']>(() => {
-    const replyLater = (target: Target, sourceId: string) =>
-      setTimeout(() => dispatch({ type: 'reply', target, msgId: `${sourceId}-r`, at: Date.now() }), REPLY_DELAY)
-    return {
-      sendToSession(id, text) {
-        const msgId = uid('m')
-        const target: Target = { kind: 'session', id }
-        dispatch({ type: 'send', target, msgId, text, at: Date.now() })
-        replyLater(target, msgId)
-      },
-      sendToConversation(id, text) {
-        const msgId = uid('m')
-        const target: Target = { kind: 'conversation', id }
-        dispatch({ type: 'send', target, msgId, text, at: Date.now() })
-        replyLater(target, msgId)
-      },
-      sendMain(text) {
-        const route = routeCommand(stateRef.current, text)
-        const msgId = uid('w')
-        dispatch({ type: 'main/send', msgId, text, route, at: Date.now() })
-        setExpanded('agent')
-        if (route.kind === 'forward') replyLater({ kind: 'session', id: route.sessionId }, `${msgId}-f`)
-        if (route.kind === 'open') setTimeout(() => push({ kind: 'session', id: route.sessionId }), 450)
-      },
-      chooseMain(mainMsgId, sessionId) {
-        dispatch({ type: 'main/choose', mainMsgId, sessionId, at: Date.now() })
-        replyLater({ kind: 'session', id: sessionId }, `${mainMsgId}-f`)
-      },
-      createSession(projectId, tool, title, text) {
-        const id = uid('s')
-        dispatch({ type: 'session/create', id, projectId, tool, title, text, at: Date.now() })
-        if (text.trim()) replyLater({ kind: 'session', id }, `${id}-m1`)
-        return id
-      },
-      fireTerminal() {
-        dispatch({ type: 'event/terminal', at: Date.now() })
-        setExpanded(null)
-        setTimeout(() => {
-          const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
-          document.querySelector('[data-project="lws"]')?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' })
-        }, 80)
-      },
-      reset() {
-        dispatch({ type: 'reset', at: Date.now() })
-        setExpanded(null)
-        setH24Open(false)
-        window.scrollTo({ top: 0 })
-      },
-    }
-  }, [push])
+  const logout = useCallback(() => {
+    void api.logout().finally(() => live.setAuthed(false))
+  }, [live])
 
-  const ctx: AppCtx = { state, dispatch, now, push, replace, back, expanded, setExpanded, h24Open, setH24Open, act }
-  const projects = state.projects
+  const projectIds = live.snap?.projects.map((p) => p.id).join('|') ?? ''
+  const colors = useMemo(() => colorSlots(projectIds ? projectIds.split('|') : []), [projectIds])
+
+  if (live.authed === false) return <Login onDone={() => live.setAuthed(true)} />
+  if (!live.snap) {
+    return (
+      <main className="stack">
+        <section className="band agent" style={{ ['--c' as string]: 'var(--agent)', flex: 1 }}>
+          <div className="in head">
+            <span className="name">weevils</span>
+          </div>
+          <div className="in meta summary">{live.offline ? 'VPS injoignable, nouvelle tentative…' : 'connexion au VPS…'}</div>
+        </section>
+      </main>
+    )
+  }
+
+  const ctx: AppCtx = {
+    snap: live.snap,
+    now,
+    offline: live.offline,
+    colors,
+    push,
+    replace,
+    back,
+    expanded,
+    setExpanded,
+    h24Open,
+    setH24Open,
+    theme,
+    setTheme,
+    refresh: live.refresh,
+    logout,
+  }
 
   return (
     <Ctx.Provider value={ctx}>
       <MotionConfig reducedMotion="user" transition={spring}>
         <main className="stack" aria-hidden={stack.length > 0 || undefined} inert={stack.length > 0}>
           <AgentBand />
-          {projects.map((p) => (
+          {live.snap.projects.map((p) => (
             <ProjectBand key={p.id} project={p} />
           ))}
-          <DemoBand />
+          <FootBand />
         </main>
         <div inert={stack.length > 0}>
           <H24Rail />
         </div>
         <AnimatePresence>
           {stack.map((p, i) => (
-            <PageView key={pageKey(p, i)} page={p} />
+            <PageView key={`${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : ''}`} page={p} />
           ))}
         </AnimatePresence>
       </MotionConfig>

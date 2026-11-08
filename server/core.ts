@@ -9,6 +9,7 @@ import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, HOME, LOGS_DIR, MACHINE, PROJECT_ROOTS
 import { Remote, parseRemotes } from './remotes.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
 import { llmClassify, ruleMatch } from './classify.ts'
+import { Push } from './push.ts'
 import type { CatalogEntry } from './classify.ts'
 import { familyOf, place } from './projects.ts'
 import { TranscriptStore, lastMessageOf, titleOf } from './transcripts.ts'
@@ -78,6 +79,8 @@ export class Weevils {
   h24: H24Activity[] = []
   remotes: Remote[] = []
   convs = new ConversationStore(DATA_DIR)
+  push = new Push()
+  private prevStatus = new Map<string, { status: Session['status']; since: number; notifiedAt?: number }>()
   classifier: Snapshot['classifier'] = { running: false, queued: 0 }
   private catalogCache: { at: number; list: CatalogEntry[] } | null = null
   version = 1
@@ -107,6 +110,7 @@ export class Weevils {
   // ---------------------------------------------------------------- boucle
 
   start() {
+    void this.push.init()
     this.remotes = parseRemotes(REMOTES).map(([id, url]) => new Remote(id, url, () => this.bump()))
     for (const r of this.remotes) r.start()
     this.store.scan(Date.now())
@@ -137,7 +141,37 @@ export class Weevils {
       this.version++
       this.snap = null
       for (const fn of this.listeners) fn()
+      this.notifyTransitions()
     }, 200)
+  }
+
+  /** Notification quand une session se met à t'attendre, ou finit un travail de plus d'une minute. */
+  private notifyTransitions() {
+    if (!this.push.enabled) return
+    const snap = this.snapshot()
+    const now = Date.now()
+    const first = this.prevStatus.size === 0
+    const next = new Map<string, { status: Session['status']; since: number; notifiedAt?: number }>()
+    for (const s of snap.sessions) {
+      const prev = this.prevStatus.get(s.id)
+      const entry = prev && prev.status === s.status ? prev : { status: s.status, since: now, notifiedAt: prev?.notifiedAt }
+      next.set(s.id, entry)
+      if (first || !prev || prev.status === s.status) continue
+      if (prev.notifiedAt && now - prev.notifiedAt < 60_000) continue
+      let body: string | null = null
+      if (s.status === 'needs_user') body = s.attention ?? 'attend ta réponse'
+      else if (prev.status === 'working' && (s.status === 'idle' || s.status === 'done') && now - prev.since > 60_000) body = `a fini · ${s.lastMessage ?? s.title}`
+      if (!body) continue
+      entry.notifiedAt = now
+      const project = snap.projects.find((p) => p.id === s.projectId)?.name ?? s.projectId
+      void this.push.send({
+        title: `${project} · ${s.tool}${s.machineId !== MACHINE.id ? ` @${s.machineId}` : ''}`,
+        body: body.slice(0, 180),
+        url: `/#s=${encodeURIComponent(s.id)}`,
+        tag: s.id,
+      })
+    }
+    this.prevStatus = next
   }
 
   private persist() {

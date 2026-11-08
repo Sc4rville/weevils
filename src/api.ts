@@ -74,6 +74,9 @@ export const api = {
       x.onerror = () => reject(new Error('envoi interrompu'))
       x.send(file)
     }),
+  push: () => call<{ enabled: boolean; publicKey: string; devices: number }>('GET', '/api/push'),
+  pushSubscribe: (sub: PushSubscriptionJSON) => call<{ ok: true; devices: number }>('POST', '/api/push/subscribe', sub),
+  pushTest: () => call<{ ok: true }>('POST', '/api/push/test', {}),
   repos: (machine: string) => call<{ repos: string[] }>('GET', `/api/repos?machine=${enc(machine)}`),
   files: (repo: string, machine: string) => call<{ files: string[] }>('GET', `/api/repos/${enc(repo)}/files?machine=${enc(machine)}`),
   file: (repo: string, path: string, machine: string) => call<FileContent>('GET', `/api/repos/${enc(repo)}/file?path=${enc(path)}&machine=${enc(machine)}`),

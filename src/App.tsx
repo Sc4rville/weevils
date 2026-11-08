@@ -126,6 +126,23 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [back, h24Open])
 
+  // Notification touchée : « /#s=<id> » au lancement, ou message du service worker si l'app est déjà ouverte.
+  const ready = !!live.snap
+  useEffect(() => {
+    if (!ready) return
+    const open = (url: string) => {
+      const m = /#s=([^&]+)/.exec(url)
+      if (m) {
+        history.replaceState(history.state, '', location.pathname)
+        push({ kind: 'session', id: decodeURIComponent(m[1]) })
+      }
+    }
+    open(location.hash)
+    const onMsg = (e: MessageEvent) => e.data?.type === 'open' && open(String(e.data.url))
+    navigator.serviceWorker?.addEventListener('message', onMsg)
+    return () => navigator.serviceWorker?.removeEventListener('message', onMsg)
+  }, [ready, push])
+
   const logout = useCallback(() => {
     void api.logout().finally(() => live.setAuthed(false))
   }, [live])

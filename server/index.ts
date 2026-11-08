@@ -171,6 +171,15 @@ const routes: [string, RegExp, Handler][] = [
     json(res, 200, { ok: true })
   }],
   ['POST', /^\/api\/import$/, (req, res) => receiveImport(req, res)],
+  ['GET', /^\/api\/push$/, (_req, res) => json(res, 200, { enabled: w.push.enabled, publicKey: w.push.publicKey, devices: w.push.count })],
+  ['POST', /^\/api\/push\/subscribe$/, async (req, res) => {
+    w.push.subscribe((await readBody(req)) as any)
+    json(res, 200, { ok: true, devices: w.push.count })
+  }],
+  ['POST', /^\/api\/push\/test$/, async (_req, res) => {
+    await w.push.send({ title: 'weevils', body: 'Les notifications marchent. Je te préviens quand une session t’attend ou a fini.', url: '/', tag: 'test' })
+    json(res, 200, { ok: true })
+  }],
   ['GET', /^\/api\/conversations$/, (_req, res, url) =>
     json(res, 200, { conversations: w.conversationList({ projectId: url.searchParams.get('project') ?? undefined, q: url.searchParams.get('q') ?? undefined }) })],
   ['GET', /^\/api\/conversations\/([^/]+)$/, (_req, res, _u, [id]) => {

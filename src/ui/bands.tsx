@@ -313,6 +313,52 @@ export function ProjectBand({ project }: { project: Project }) {
 // ---------------------------------------------------------------------------
 // Bande de fin : réglages et état de la connexion. Elle remplit l'espace jusqu'au rail H24.
 
+const b64 = (s: string) => {
+  const pad = '='.repeat((4 - (s.length % 4)) % 4)
+  const raw = atob((s + pad).replace(/-/g, '+').replace(/_/g, '/'))
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0))
+}
+
+/** Notifications : abonnement Web Push (iPhone : seulement depuis l'app installée sur l'écran d'accueil). */
+function NotifyLine() {
+  const supported = typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+  const standalone = typeof window !== 'undefined' && (matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true)
+  const ios = /iphone|ipad/i.test(navigator.userAgent)
+  const [state, setState] = useState<'idle' | 'busy' | 'on' | 'error'>(supported && Notification.permission === 'granted' ? 'on' : 'idle')
+  const [msg, setMsg] = useState<string | null>(null)
+  const enable = async () => {
+    setState('busy')
+    setMsg(null)
+    try {
+      const info = await api.push()
+      if (!info.enabled) throw new Error('notifications indisponibles sur le serveur')
+      const perm = await Notification.requestPermission()
+      if (perm !== 'granted') throw new Error('autorisation refusée (réglages de l’iPhone → weevils → notifications)')
+      const reg = await navigator.serviceWorker.ready
+      const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(info.publicKey) }))
+      await api.pushSubscribe(sub.toJSON())
+      await api.pushTest()
+      setState('on')
+      setMsg('notification de test envoyée')
+    } catch (e) {
+      setState('error')
+      setMsg((e as Error).message)
+    }
+  }
+  if (!supported || (ios && !standalone)) {
+    return (
+      <Line ch="!" go={null} meta="installe weevils sur l’écran d’accueil (Partager → Sur l’écran d’accueil), puis active-les depuis l’app">
+        notifications
+      </Line>
+    )
+  }
+  return (
+    <Line ch="!" go={null} meta={msg ?? (state === 'on' ? 'activées · quand une session t’attend ou a fini' : 'te prévenir quand une session t’attend ou a fini')} onClick={() => void enable()}>
+      notifications {state === 'on' ? '· activées' : state === 'busy' ? '…' : ''}
+    </Line>
+  )
+}
+
 export function FootBand() {
   const { snap, theme, setTheme, offline, colors, logout, push } = useApp()
   const dark = theme === 'dark'
@@ -338,6 +384,7 @@ export function FootBand() {
       <Line ch="↑" meta="export ChatGPT ou Claude.ai (.zip)" onClick={() => push({ kind: 'import' })}>
         importer des conversations
       </Line>
+      <NotifyLine />
       <Line ch="~" meta={`passer en ${dark ? 'clair' : 'sombre'}`} go={null} onClick={() => setTheme(dark ? 'light' : 'dark')}>
         thème {dark ? 'sombre' : 'clair'}
       </Line>

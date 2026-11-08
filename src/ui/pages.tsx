@@ -1,80 +1,11 @@
-import { motion } from 'motion/react'
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Message, SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
-import { Collapse, Composer, Line, Messages, StatusChar, spring } from './bits'
+import { Collapse, Composer, Line, Messages, StatusChar } from './bits'
+import { ConversationPage, ConversationsPage, ImportPage } from './convs'
+import { Shell } from './shell'
 import { ago, dur, durLong, plural, status } from './format'
-
-const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
-
-/** Page plein écran dans la couleur du projet. Glisser vers la droite = retour. */
-function Shell({
-  slot,
-  kicker,
-  title,
-  meta,
-  children,
-  foot,
-}: {
-  slot: string
-  kicker: string
-  title: ReactNode
-  meta?: ReactNode
-  children: ReactNode
-  foot?: ReactNode
-}) {
-  const { back } = useApp()
-  const heading = useRef<HTMLHeadingElement>(null)
-  useEffect(() => {
-    heading.current?.focus({ preventScroll: true })
-  }, [])
-  return (
-    <motion.div
-      className="page"
-      style={color(slot)}
-      initial={{ x: '100%' }}
-      animate={{ x: 0 }}
-      exit={{ x: '100%' }}
-      transition={spring}
-      drag="x"
-      dragDirectionLock
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={{ left: 0, right: 0.9 }}
-      dragSnapToOrigin
-      onDragEnd={(_, info) => {
-        if (info.offset.x > 110 || info.velocity.x > 600) back()
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-label={typeof title === 'string' ? title : kicker}
-    >
-      <div className="page-head band tone">
-        <div className="in">
-          <button className="back" onClick={back} aria-label={`retour · ${kicker}`}>
-            <span aria-hidden>&lt;</span>
-            <span className="meta" aria-hidden>
-              {kicker}
-            </span>
-          </button>
-          <h1 ref={heading} tabIndex={-1} className="h2" style={{ margin: 0 }}>
-            {title}
-          </h1>
-          {meta && (
-            <div className="meta" style={{ marginTop: 4 }}>
-              {meta}
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="page-body" data-scroll>
-        {children}
-        <div className="fill" />
-      </div>
-      {foot && <div className="page-foot">{foot}</div>}
-    </motion.div>
-  )
-}
 
 /** Garde la fin du fil visible quand un message arrive. */
 function useStickToBottom(count: number) {
@@ -102,6 +33,12 @@ export function PageView({ page }: { page: Page }) {
       return <MachinePage projectId={page.projectId} />
     case 'new':
       return <NewSessionPage projectId={page.projectId} />
+    case 'conversations':
+      return <ConversationsPage projectId={page.projectId} />
+    case 'conversation':
+      return <ConversationPage id={page.id} />
+    case 'import':
+      return <ImportPage />
   }
 }
 

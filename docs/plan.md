@@ -111,3 +111,23 @@ Icônes, nettoyage, densité, animations : après avoir vécu quelques jours ave
 2. Lancer désormais les sessions via `wv` (dans zellij) pour pouvoir leur écrire en direct.
 3. Conversations : exports seuls, ou exports + extension Chrome.
 4. Projet = famille de repos par préfixe (`lws-*`, `mygame-*`).
+
+## État au 8 novembre 2026 (soir)
+
+Fait et vérifié en vrai :
+- weevilsd en service permanent sur le VPS, app servie sur weevils.scarville.tech, connexion par code ou QR (passkey Face ID : à faire).
+- Sessions Claude Code et Codex du VPS **et du PC** (fédération par tunnel SSH inversé), rangées par projet, état exact par les hooks.
+- Écrire à une session, lire l'écran du terminal, répondre aux questions (touches), créer une session, reprendre une session fermée : testé avec Codex de bout en bout.
+- Pilotage par tmux (`wv`), qui survit aux redémarrages de weevilsd.
+- Explorateur de fichiers fluide (cache + préchargement), sur la machine qui porte le repo.
+- H24 : jobs longs de ~/logs et timers `wv-*`.
+- Conversations ChatGPT / Claude.ai : import des exports (zip ou JSON, depuis l'iPhone ou ~/weevils-imports), lecture, « continuer ici » avec un agent.
+- Classement intelligent : règles + `codex exec` éphémère (abonnement), catégories inventées, corrections réutilisées.
+- Plus aucune donnée de démo dans l'app.
+
+Reste :
+- Reconnecter Claude Code sur le VPS (connexion expirée) : `ssh -t vps claude` puis `/login`.
+- Notifications push iPhone quand une session attend.
+- Passkey Face ID à la place du code.
+- Agent principal avec un vrai modèle (aujourd'hui : règles simples).
+- Style et UX (phase 8), avec Scarville.

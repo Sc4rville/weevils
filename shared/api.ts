@@ -79,15 +79,24 @@ export interface H24Activity {
   canToggle: boolean
 }
 
-export interface Conversation {
+/** Conversation ChatGPT / Claude.ai importée (sans ses messages). */
+export interface ConversationSummary {
   id: string
   source: 'chatgpt' | 'claude'
   title: string
   projectId: string | null
   updatedAt: number
+  messageCount: number
+  preview: string
+  /** new : pas encore vue ; auto : rangée par weevils ; pending : à ranger par toi ; accepted / corrected : ton choix ; none : laissée de côté. */
+  status: 'new' | 'auto' | 'pending' | 'accepted' | 'corrected' | 'none'
   suggestedProjectId?: string
-  suggestionReason?: string
-  suggestion?: 'pending' | 'accepted' | 'corrected'
+  reason?: string
+  confidence?: number
+}
+
+export interface ConversationDetail {
+  conversation: ConversationSummary
   messages: Message[]
 }
 
@@ -107,7 +116,10 @@ export interface Snapshot {
   projects: Project[]
   sessions: Session[]
   h24: H24Activity[]
-  conversations: Conversation[]
+  conversations: ConversationSummary[]
+  conversationCounts: { total: number; pending: number; byProject: Record<string, number> }
+  /** Classement en cours (lots restants), pour l'afficher. */
+  classifier: { running: boolean; queued: number; lastError?: string }
   main: MainMessage[]
 }
 

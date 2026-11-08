@@ -170,6 +170,26 @@ const routes: [string, RegExp, Handler][] = [
     await w.chooseMain(String(body.mainId ?? ''), String(body.sessionId ?? ''))
     json(res, 200, { ok: true })
   }],
+  ['POST', /^\/api\/import$/, (req, res) => receiveImport(req, res)],
+  ['GET', /^\/api\/conversations$/, (_req, res, url) =>
+    json(res, 200, { conversations: w.conversationList({ projectId: url.searchParams.get('project') ?? undefined, q: url.searchParams.get('q') ?? undefined }) })],
+  ['GET', /^\/api\/conversations\/([^/]+)$/, (_req, res, _u, [id]) => {
+    const d = w.conversationDetail(decodeURIComponent(id))
+    d ? json(res, 200, d) : json(res, 404, { error: 'conversation introuvable' })
+  }],
+  ['POST', /^\/api\/conversations\/([^/]+)\/classify$/, async (req, res, _u, [id]) => {
+    const body = await readBody(req)
+    w.classifyManually(decodeURIComponent(id), { projectId: body.projectId ? String(body.projectId) : undefined, newCategory: body.newCategory ? String(body.newCategory) : undefined })
+    json(res, 200, { ok: true })
+  }],
+  ['POST', /^\/api\/conversations\/([^/]+)\/continue$/, async (req, res, _u, [id]) => {
+    const body = await readBody(req)
+    json(res, 200, await w.continueConversation(decodeURIComponent(id), body.tool === 'codex' ? 'codex' : 'claude', String(body.text ?? '')))
+  }],
+  ['POST', /^\/api\/classify$/, (_req, res) => {
+    void w.classify()
+    json(res, 200, { ok: true })
+  }],
   ['POST', /^\/api\/h24\/([^/]+)\/toggle$/, async (_req, res, _u, [id]) => {
     await w.toggleH24(decodeURIComponent(id))
     json(res, 200, { ok: true })
@@ -190,6 +210,32 @@ const routes: [string, RegExp, Handler][] = [
 ]
 
 const PUBLIC = new Set(['/api/login', '/api/me'])
+
+/** Envoi d'un export (zip ou JSON, jusqu'à 1 Go) : écrit tel quel sur disque, puis importé. */
+async function receiveImport(req: http.IncomingMessage, res: http.ServerResponse) {
+  const dir = path.join(DATA_DIR, 'uploads')
+  fs.mkdirSync(dir, { recursive: true })
+  const file = path.join(dir, `export-${Date.now()}`)
+  const out = fs.createWriteStream(file)
+  let size = 0
+  await new Promise<void>((resolve, reject) => {
+    req.on('data', (c: Buffer) => {
+      size += c.length
+      if (size > 1 << 30) {
+        req.destroy()
+        reject(new Error('fichier trop gros (1 Go max)'))
+      }
+    })
+    req.pipe(out)
+    out.on('finish', resolve)
+    req.on('error', reject)
+  })
+  try {
+    json(res, 200, await w.importFile(file))
+  } finally {
+    fs.rmSync(file, { force: true })
+  }
+}
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://local')

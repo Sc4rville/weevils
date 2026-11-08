@@ -1,7 +1,7 @@
 // Client de weevilsd : appels REST + flux temps réel (SSE). Aucune donnée fictive.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { SessionDetail, Snapshot, Tool } from '../shared/api.ts'
+import type { ConversationDetail, ConversationSummary, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
 
 export class ApiError extends Error {
   status: number
@@ -51,6 +51,29 @@ export const api = {
   main: (text: string) => call<{ route: { kind: string; sessionId?: string } }>('POST', '/api/main', { text }),
   choose: (mainId: string, sessionId: string) => call<{ ok: true }>('POST', '/api/main/choose', { mainId, sessionId }),
   toggleH24: (id: string) => call<{ ok: true }>('POST', `/api/h24/${enc(id)}/toggle`, {}),
+  conversations: (opts: { project?: string; q?: string }) => call<{ conversations: ConversationSummary[] }>('GET', `/api/conversations?${new URLSearchParams(opts)}`),
+  conversation: (id: string) => call<ConversationDetail>('GET', `/api/conversations/${enc(id)}`),
+  classify: (id: string, target: { projectId?: string; newCategory?: string }) => call<{ ok: true }>('POST', `/api/conversations/${enc(id)}/classify`, target),
+  continueConv: (id: string, tool: Tool, text: string) => call<{ id: string }>('POST', `/api/conversations/${enc(id)}/continue`, { tool, text }),
+  /** Envoi d'un export avec progression (XHR : fetch ne donne pas l'avancement de l'envoi). */
+  importExport: (file: File, onProgress: (p: number) => void) =>
+    new Promise<{ added: number; updated: number; total: number }>((resolve, reject) => {
+      const x = new XMLHttpRequest()
+      x.open('POST', '/api/import')
+      x.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
+      x.onload = () => {
+        let d: any = {}
+        try {
+          d = JSON.parse(x.responseText)
+        } catch {
+          /* réponse vide */
+        }
+        if (x.status < 300) resolve(d)
+        else reject(new Error(d.error ?? `échec (${x.status})`))
+      }
+      x.onerror = () => reject(new Error('envoi interrompu'))
+      x.send(file)
+    }),
   repos: (machine: string) => call<{ repos: string[] }>('GET', `/api/repos?machine=${enc(machine)}`),
   files: (repo: string, machine: string) => call<{ files: string[] }>('GET', `/api/repos/${enc(repo)}/files?machine=${enc(machine)}`),
   file: (repo: string, path: string, machine: string) => call<FileContent>('GET', `/api/repos/${enc(repo)}/file?path=${enc(path)}&machine=${enc(machine)}`),

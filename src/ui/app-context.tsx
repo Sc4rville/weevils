@@ -9,6 +9,9 @@ export type Page =
   | { kind: 'file'; projectId: string; repo: string; path: string }
   | { kind: 'machine'; projectId: string }
   | { kind: 'new'; projectId: string }
+  | { kind: 'conversations'; projectId?: string }
+  | { kind: 'conversation'; id: string }
+  | { kind: 'import' }
 
 export interface AppCtx {
   snap: Snapshot

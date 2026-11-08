@@ -1,0 +1,266 @@
+// Conversations ChatGPT / Claude.ai : liste, lecture, rangement, import, « continuer ici ».
+
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import type { ConversationDetail, ConversationSummary, Tool } from '../../shared/api.ts'
+import { api } from '../api'
+import { useApp } from './app-context'
+import { Collapse, Composer, Line, Messages } from './bits'
+import { ago, plural } from './format'
+import { Shell } from './shell'
+
+const SOURCE = { chatgpt: 'chatgpt', claude: 'claude.ai' } as const
+
+export function statusLabel(c: ConversationSummary, name: (id: string) => string) {
+  switch (c.status) {
+    case 'auto':
+      return `rangée dans ${name(c.projectId!)} par weevils`
+    case 'accepted':
+    case 'corrected':
+      return `rangée dans ${name(c.projectId!)}`
+    case 'pending':
+      return c.suggestedProjectId ? `à ranger · ${name(c.suggestedProjectId)} ?` : 'à ranger'
+    case 'none':
+      return 'non classée'
+    default:
+      return 'classement en attente'
+  }
+}
+
+export function useProjectName() {
+  const { snap } = useApp()
+  return (id: string) => snap.projects.find((p) => p.id === id)?.name ?? id.replace(/^cat-/, '')
+}
+
+export function ConvLine({ c }: { c: ConversationSummary }) {
+  const { push, now } = useApp()
+  const name = useProjectName()
+  return (
+    <Line ch='"' meta={`${SOURCE[c.source]} · ${ago(now - c.updatedAt)} · ${statusLabel(c, name)}`} onClick={() => push({ kind: 'conversation', id: c.id })}>
+      {c.title}
+    </Line>
+  )
+}
+
+/** Choisir où ranger : un projet, une catégorie existante, ou une nouvelle catégorie. */
+export function Chooser({ c, onDone }: { c: ConversationSummary; onDone: () => void }) {
+  const { snap, refresh } = useApp()
+  const [err, setErr] = useState<string | null>(null)
+  const go = async (target: { projectId?: string; newCategory?: string }) => {
+    try {
+      await api.classify(c.id, target)
+      refresh()
+      onDone()
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }
+  return (
+    <div className="band tone">
+      {err && <div className="in meta">! {err}</div>}
+      {snap.projects
+        .filter((p) => p.id !== c.projectId && p.id !== 'divers' && p.id !== 'general')
+        .map((p) => (
+          <Line key={p.id} ch="→" go={null} meta={p.kind === 'invented' ? 'catégorie' : undefined} onClick={() => void go({ projectId: p.id })}>
+            {p.name}
+          </Line>
+        ))}
+      <Composer prompt="+" placeholder="nouvelle catégorie (ex. santé)" label="nouvelle catégorie" onSend={(t) => go({ newCategory: t })} />
+    </div>
+  )
+}
+
+export function ConversationsPage({ projectId }: { projectId?: string }) {
+  const { snap, colors } = useApp()
+  const [list, setList] = useState<ConversationSummary[] | null>(null)
+  const [q, setQ] = useState('')
+  const project = projectId ? snap.projects.find((p) => p.id === projectId) : undefined
+
+  useEffect(() => {
+    let off = false
+    const t = setTimeout(
+      () =>
+        api
+          .conversations(q.trim() ? { q: q.trim() } : projectId ? { project: projectId } : {})
+          .then((r) => !off && setList(r.conversations))
+          .catch(() => !off && setList([])),
+      q ? 250 : 0,
+    )
+    return () => {
+      off = true
+      clearTimeout(t)
+    }
+  }, [q, projectId, snap.version])
+
+  return (
+    <Shell
+      slot={projectId ? (colors[projectId] ?? 'agent') : 'agent'}
+      kicker={project?.name ?? 'weevils'}
+      title='" conversations'
+      meta={list ? plural(list.length, 'conversation', 'conversations') : 'lecture…'}
+    >
+      <div className="band tone composer">
+        <div className="in">
+          <span className="prompt" aria-hidden>
+            ?
+          </span>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="chercher dans les titres" aria-label="chercher une conversation" />
+        </div>
+      </div>
+      {list?.map((c) => <ConvLine key={c.id} c={c} />)}
+      {list && list.length === 0 && (
+        <div className="in meta empty">{q ? 'Rien trouvé.' : snap.conversationCounts.total ? 'Aucune conversation rangée ici.' : 'Aucune conversation importée pour l’instant.'}</div>
+      )}
+    </Shell>
+  )
+}
+
+export function ConversationPage({ id }: { id: string }) {
+  const { colors, replace, refresh } = useApp()
+  const name = useProjectName()
+  const [d, setD] = useState<ConversationDetail | null>(null)
+  const [missing, setMissing] = useState(false)
+  const [choosing, setChoosing] = useState(false)
+  const [tool, setTool] = useState<Tool>('claude')
+  const [err, setErr] = useState<string | null>(null)
+  const { snap } = useApp()
+
+  useEffect(() => {
+    let off = false
+    api
+      .conversation(id)
+      .then((r) => !off && setD(r))
+      .catch(() => !off && setMissing(true))
+    return () => {
+      off = true
+    }
+  }, [id, snap.version])
+
+  if (!d) return <Shell slot="agent" kicker="conversations" title={missing ? 'introuvable' : '…'}>{null}</Shell>
+  const c = d.conversation
+
+  const accept = async () => {
+    await api.classify(c.id, { projectId: c.suggestedProjectId })
+    refresh()
+  }
+  const cont = async (text: string) => {
+    setErr(null)
+    try {
+      const r = await api.continueConv(c.id, tool, text)
+      replace({ kind: 'session', id: r.id })
+    } catch (e) {
+      setErr((e as Error).message)
+      throw e
+    }
+  }
+
+  return (
+    <Shell
+      slot={c.projectId ? (colors[c.projectId] ?? 'agent') : 'agent'}
+      kicker={c.projectId ? name(c.projectId) : 'à ranger'}
+      title={c.title}
+      meta={`${SOURCE[c.source]} · ${plural(c.messageCount, 'message', 'messages')} · ${new Date(c.updatedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}`}
+      foot={<Composer placeholder={`continuer avec ${tool} (nouvelle session)`} label="continuer cette conversation avec un agent" onSend={cont} />}
+    >
+      {err && (
+        <div className="band invert" role="alert">
+          <div className="in meta" style={{ paddingBlock: 12 }}>
+            ! {err}
+          </div>
+        </div>
+      )}
+      <div className={`band ${c.status === 'pending' ? 'invert' : 'tone'}`}>
+        <div className="in" style={{ paddingBlock: 12 }}>
+          <div className="strong">{statusLabel(c, name)}</div>
+          {c.reason && <div className="meta">{c.reason}</div>}
+          <div className="inline-actions">
+            {c.status === 'pending' && c.suggestedProjectId && (
+              <button className="link" onClick={() => void accept()}>
+                ranger dans {name(c.suggestedProjectId)}
+              </button>
+            )}
+            <button className="link" onClick={() => setChoosing((v) => !v)} aria-expanded={choosing}>
+              {c.projectId ? 'changer' : 'ailleurs…'}
+            </button>
+          </div>
+        </div>
+      </div>
+      <Collapse open={choosing}>
+        <Chooser c={c} onDone={() => setChoosing(false)} />
+      </Collapse>
+      <Messages messages={d.messages} author={SOURCE[c.source]} />
+      <div className="band tone">
+        <div className="in label">continuer avec</div>
+        {(['claude', 'codex'] as Tool[]).map((t) => (
+          <Line key={t} className={tool === t ? 'invert' : ''} ch={tool === t ? '>' : ' '} go={null} onClick={() => setTool(t)}>
+            {t}
+          </Line>
+        ))}
+        <div className="in meta" style={{ paddingBottom: 12 }}>
+          Une nouvelle session reçoit la fin de cette conversation en contexte, dans le repo du projet.
+        </div>
+      </div>
+    </Shell>
+  )
+}
+
+export function ImportPage() {
+  const { snap, refresh } = useApp()
+  const [progress, setProgress] = useState<number | null>(null)
+  const [result, setResult] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const input = useRef<HTMLInputElement>(null)
+
+  const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setErr(null)
+    setResult(null)
+    setProgress(0)
+    try {
+      const r = await api.importExport(file, setProgress)
+      setResult(`${plural(r.total, 'conversation lue', 'conversations lues')} · ${r.added} nouvelles · ${r.updated} mises à jour`)
+      refresh()
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setProgress(null)
+      if (input.current) input.current.value = ''
+    }
+  }
+
+  const cl = snap.classifier
+  return (
+    <Shell slot="agent" kicker="weevils" title="importer des conversations" meta={plural(snap.conversationCounts.total, 'conversation importée', 'conversations importées')}>
+      <label className="row band invert" style={{ display: 'block', cursor: 'pointer' }}>
+        <span className="in">
+          <span className="st" aria-hidden>
+            {progress != null ? <span className="spin">*</span> : '↑'}
+          </span>
+          <span className="stack-text">
+            <span className="strong">{progress != null ? `envoi… ${Math.round(progress * 100)} %` : 'choisir le fichier d’export (.zip ou .json)'}</span>
+            <span className="meta">ChatGPT ou Claude.ai, weevils reconnaît le format</span>
+          </span>
+        </span>
+        <input ref={input} type="file" accept=".zip,.json,application/zip,application/json" onChange={(e) => void onFile(e)} style={{ position: 'absolute', opacity: 0, width: 1, height: 1 }} />
+      </label>
+      {result && <div className="in meta strong" style={{ paddingBlock: 12 }}>✓ {result}</div>}
+      {err && <div className="in meta strong" style={{ paddingBlock: 12 }}>! {err}</div>}
+      <div className="in meta" style={{ paddingBlock: 10 }}>
+        {cl.running ? `Classement en cours · ${cl.queued} restantes.` : cl.lastError ? `Dernier classement interrompu : ${cl.lastError}` : snap.conversationCounts.pending ? `${snap.conversationCounts.pending} à ranger par toi.` : 'Tout est rangé.'}
+      </div>
+      <div className="band tone">
+        <div className="in label">obtenir l’export</div>
+        <div className="in meta" style={{ paddingBottom: 8 }}>
+          <span className="strong">ChatGPT</span> : Paramètres → Contrôle des données → Exporter les données. Le lien arrive par e-mail ; télécharge le zip sur l’iPhone, puis choisis-le ici.
+        </div>
+        <div className="in meta" style={{ paddingBottom: 8 }}>
+          <span className="strong">Claude.ai</span> : Paramètres → Confidentialité → Exporter les données. Même chose.
+        </div>
+        <div className="in meta" style={{ paddingBottom: 14 }}>
+          Depuis un ordinateur, tu peux aussi déposer le zip dans <span className="strong">~/weevils-imports</span> sur le VPS : il est importé tout seul.
+          Réimporter un export plus récent ajoute seulement ce qui a changé.
+        </div>
+      </div>
+    </Shell>
+  )
+}

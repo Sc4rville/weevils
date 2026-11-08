@@ -4,9 +4,12 @@ import { execFile } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { H24Activity, MainMessage, Project, Session, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
+import type { ConversationDetail, ConversationSummary, H24Activity, MainMessage, Project, Session, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
 import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, HOME, LOGS_DIR, MACHINE, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
+import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
+import { llmClassify, ruleMatch } from './classify.ts'
+import type { CatalogEntry } from './classify.ts'
 import { familyOf, place } from './projects.ts'
 import { TranscriptStore, lastMessageOf, titleOf } from './transcripts.ts'
 import type { Transcript } from './transcripts.ts'
@@ -74,6 +77,9 @@ export class Weevils {
   main: MainMessage[] = []
   h24: H24Activity[] = []
   remotes: Remote[] = []
+  convs = new ConversationStore(DATA_DIR)
+  classifier: Snapshot['classifier'] = { running: false, queued: 0 }
+  private catalogCache: { at: number; list: CatalogEntry[] } | null = null
   version = 1
   private listeners = new Set<() => void>()
   private bumpTimer: NodeJS.Timeout | null = null
@@ -110,6 +116,9 @@ export class Weevils {
       this.linkCodexPanes()
     }, 1500)
     setInterval(() => void this.watchPanes(), 2500)
+    setInterval(() => void this.watchImports(), 30_000)
+    setInterval(() => void this.classify(), 60_000)
+    setTimeout(() => void this.classify(), 5000)
     setInterval(() => this.refreshH24(), 10_000)
     // Les durées et états « périmés » évoluent avec le temps.
     setInterval(() => this.bump(), 30_000)
@@ -280,7 +289,7 @@ export class Weevils {
   sessions(now = Date.now()): Session[] {
     const list = this.store
       .all()
-      .filter((t) => now - t.lastActivityAt < RECENT_MS && (t.messages.length > 0 || this.paneFor(t.id)))
+      .filter((t) => now - t.lastActivityAt < RECENT_MS && (t.messages.length > 0 || this.paneFor(t.id)) && !t.cwd.startsWith(DATA_DIR))
       .map((t) => this.toSession(t, now))
     const known = new Set(list.map((s) => s.id))
     for (const p of this.panes) {
@@ -338,10 +347,12 @@ export class Weevils {
         { ...MACHINE, online: true },
         ...this.remotes.map((r) => ({ ...(r.snap?.machines[0] ?? { id: r.id, name: r.id, note: '' }), online: r.online })),
       ],
-      projects: this.projects(sessions, remote.flatMap((r) => r.snap!.projects)),
+      projects: this.withConversationProjects(this.projects(sessions, remote.flatMap((r) => r.snap!.projects)), now),
       sessions,
       h24: [...this.h24, ...remote.flatMap((r) => r.snap!.h24)],
-      conversations: [],
+      conversations: this.convs.summaries(),
+      conversationCounts: this.convs.counts(),
+      classifier: this.classifier,
       main: this.main.slice(-30),
     }
     return this.snap
@@ -350,6 +361,175 @@ export class Weevils {
   private resolveId(id: string) {
     const p = this.panes.find((x) => x.name === id && x.sessionId)
     return p?.sessionId ?? id
+  }
+
+  /** Un projet sans session mais avec des conversations récentes a lui aussi sa bande ; idem pour les catégories inventées. */
+  private withConversationProjects(projects: Project[], now: number): Project[] {
+    const known = new Set(projects.map((p) => p.id))
+    const latest = new Map<string, number>()
+    for (const c of this.convs.summaries()) if (c.projectId) latest.set(c.projectId, Math.max(latest.get(c.projectId) ?? 0, c.updatedAt))
+    const cats = new Map(this.convs.categories().map((c) => [c.id, c.name]))
+    const extra: Project[] = []
+    for (const [id, at] of latest) {
+      if (known.has(id) || now - at > 14 * 86400_000) continue
+      const entry = this.catalogCache?.list.find((e) => e.id === id)
+      extra.push({
+        id,
+        name: cats.get(id) ?? entry?.name ?? id,
+        kind: cats.has(id) ? 'invented' : 'repo',
+        repos: entry?.repos ?? [],
+        where: Object.fromEntries((entry?.repos ?? []).map((r) => [r, MACHINE.id])),
+        lastActivityAt: at,
+      })
+    }
+    const all = [...projects, ...extra]
+    for (const p of all) {
+      const at = latest.get(p.id)
+      if (at && at > p.lastActivityAt && !projects.includes(p)) p.lastActivityAt = at
+    }
+    return all.sort((a, b) => (a.kind === b.kind ? b.lastActivityAt - a.lastActivityAt : a.kind === 'repo' ? -1 : 1))
+  }
+
+  // ---------------------------------------------------------------- conversations
+
+  async importFile(file: string) {
+    const parsed = parseExport(await readExportFile(file))
+    const r = this.convs.import(parsed)
+    this.bump()
+    void this.classify()
+    return { ...r, total: parsed.length }
+  }
+
+  /** Dépose un export dans ~/weevils-imports (scp, navigateur…) : il est importé tout seul. */
+  private async watchImports() {
+    const dir = path.join(HOME, 'weevils-imports')
+    let files: string[] = []
+    try {
+      files = fs.readdirSync(dir).filter((f) => /\.(zip|json)$/i.test(f))
+    } catch {
+      return
+    }
+    for (const f of files) {
+      const full = path.join(dir, f)
+      try {
+        const r = await this.importFile(full)
+        console.log(`[import] ${f} : ${r.added} nouvelles, ${r.updated} mises à jour`)
+        fs.mkdirSync(path.join(dir, 'importés'), { recursive: true })
+        fs.renameSync(full, path.join(dir, 'importés', f))
+      } catch (e) {
+        console.error(`[import] ${f} : ${(e as Error).message}`)
+      }
+    }
+  }
+
+  conversationDetail(id: string): ConversationDetail | undefined {
+    return this.convs.detail(id)
+  }
+
+  conversationList(opts: { projectId?: string; q?: string }): ConversationSummary[] {
+    if (opts.q) return this.convs.search(opts.q)
+    if (opts.projectId) return this.convs.byProject(opts.projectId)
+    return this.convs.summaries(500)
+  }
+
+  classifyManually(id: string, target: { projectId?: string; newCategory?: string }) {
+    const projectId = target.newCategory ? this.convs.ensureCategory(target.newCategory) : target.projectId
+    if (!projectId) throw new Error('projet manquant')
+    this.convs.correct(id, projectId)
+    this.bump()
+  }
+
+  /** Repos de toutes les machines, regroupés par famille : la liste des destinations possibles. */
+  private async catalog(): Promise<CatalogEntry[]> {
+    if (this.catalogCache && Date.now() - this.catalogCache.at < 10 * 60_000) return this.catalogCache.list
+    const repos = new Set(this.allRepos())
+    for (const r of this.remotes.filter((x) => x.online)) {
+      try {
+        for (const name of (await r.call<{ repos: string[] }>('GET', '/api/repos')).repos) repos.add(name)
+      } catch {
+        /* machine indisponible */
+      }
+    }
+    const fam = new Map<string, CatalogEntry>()
+    for (const repo of repos) {
+      const id = familyOf(repo)
+      const e = fam.get(id) ?? { id, name: id, repos: [] }
+      e.repos.push(repo)
+      if (!e.about) {
+        try {
+          const readme = fs.readFileSync(path.join(this.repoDir(repo), 'README.md'), 'utf8')
+          e.about = readme
+            .split('\n')
+            .map((l) => l.replace(/^#+\s*/, '').trim())
+            .filter((l) => l && !l.startsWith('!') && !l.startsWith('<'))
+            .slice(0, 2)
+            .join(' — ')
+            .slice(0, 160)
+        } catch {
+          /* pas de README ici */
+        }
+      }
+      fam.set(id, e)
+    }
+    const list = [...fam.values()]
+    this.catalogCache = { at: Date.now(), list }
+    return list
+  }
+
+  /** Une passe de classement : règles pour tout, LLM pour ce qui reste et qui est récent. */
+  async classify() {
+    if (this.classifier.running) return
+    const todo = this.convs.unclassified(400)
+    if (!todo.length) return
+    this.classifier = { running: true, queued: todo.length }
+    this.bump()
+    try {
+      const catalog = await this.catalog()
+      const cats = this.convs.categories()
+      const known = new Set([...catalog.map((c) => c.id), ...cats.map((c) => c.id)])
+      const forLlm: typeof todo = []
+      for (const c of todo) {
+        const hit = ruleMatch(`${c.title} ${c.preview}`, [...catalog, ...cats.map((x) => ({ id: x.id, name: x.name, repos: [] }))])
+        if (hit) this.convs.setClassification(c.id, { projectId: hit.id, status: 'auto', reason: hit.reason, confidence: hit.confidence })
+        else if (Date.now() - c.updatedAt < 180 * 86400_000) forLlm.push(c)
+        else this.convs.setClassification(c.id, { projectId: null, status: 'none', reason: 'ancienne, non classée' })
+      }
+      this.bump()
+      // Lots de 25, plafonnés par passe pour ménager le quota de l'abonnement.
+      for (let i = 0; i < Math.min(forLlm.length, 100); i += 25) {
+        const batch = forLlm.slice(i, i + 25)
+        this.classifier = { running: true, queued: forLlm.length - i }
+        this.bump()
+        const verdicts = await llmClassify(batch, catalog, this.convs.categories(), this.convs.corrections(), path.join(DATA_DIR, 'classifier'))
+        for (const v of verdicts) {
+          if (!batch.some((b) => b.id === v.id)) continue
+          let projectId = v.project && known.has(v.project) ? v.project : null
+          if (!projectId && v.newCategory) projectId = this.convs.ensureCategory(v.newCategory)
+          if (projectId && v.confidence >= 0.7) this.convs.setClassification(v.id, { projectId, status: 'auto', reason: v.reason, confidence: v.confidence })
+          else this.convs.setClassification(v.id, { projectId: null, status: 'pending', suggested: projectId, reason: v.reason, confidence: v.confidence })
+        }
+      }
+      this.classifier = { running: false, queued: this.convs.unclassified(1).length }
+    } catch (e) {
+      this.classifier = { running: false, queued: this.convs.unclassified(400).length, lastError: (e as Error).message.slice(0, 200) }
+      console.error('[classement]', (e as Error).message)
+    }
+    this.bump()
+  }
+
+  /** « Continuer ici » : une nouvelle session d'agent qui reçoit la conversation en contexte. */
+  async continueConversation(id: string, tool: Tool, text: string) {
+    const d = this.convs.detail(id)
+    if (!d) throw new Error('conversation introuvable')
+    let context = ''
+    for (const m of [...d.messages].reverse()) {
+      const line = `${m.role === 'user' ? 'Moi' : d.conversation.source === 'chatgpt' ? 'ChatGPT' : 'Claude'} : ${m.text}\n\n`
+      if (context.length + line.length > 8000) break
+      context = line + context
+    }
+    const prompt = `Contexte : suite de ma conversation ${d.conversation.source === 'chatgpt' ? 'ChatGPT' : 'Claude.ai'} « ${d.conversation.title} » (fin de l'échange ci-dessous).\n\n${context}---\n${text}`
+    const projectId = d.conversation.projectId ?? 'general'
+    return this.create({ projectId, tool, text: prompt })
   }
 
   /** Machine distante qui porte cette session (ou ce repo), sinon undefined = ici. */

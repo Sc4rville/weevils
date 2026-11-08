@@ -3,6 +3,7 @@ import { useState, type CSSProperties } from 'react'
 import type { MainMessage, Project, Session } from '../../shared/api.ts'
 import { api } from '../api'
 import { prefetchRepo } from './pages'
+import { ConvLine, statusLabel, useProjectName } from './convs'
 import { useApp } from './app-context'
 import { Appear, Collapse, Composer, Line, SessionRow, spring } from './bits'
 import { ago, plural } from './format'
@@ -13,6 +14,11 @@ const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 const NAME_SIZE = { open: '3rem', normal: '2.125rem', mini: '1.375rem' } as const
 
 const working = (n: number) => `${n} ${n > 1 ? 'travaillent' : 'travaille'}`
+/** « 2 travaillent », ou « 3 ouvertes » quand rien ne travaille. */
+const activity = (list: { status: string }[]) => {
+  const w = list.filter((s) => s.status === 'working').length
+  return w ? working(w) : `${list.length} ${list.length > 1 ? 'ouvertes' : 'ouverte'}`
+}
 
 // ---------------------------------------------------------------------------
 // Agent principal : la bande du haut, l'endroit central.
@@ -23,9 +29,12 @@ export function AgentBand() {
   const live = snap.sessions.filter((s) => s.status !== 'done')
   const att = snap.sessions.filter((s) => s.status === 'needs_user').length
   const running = snap.h24.filter((a) => a.runState === 'running').length
+  const toSort = snap.conversations.filter((c) => c.status === 'pending')
   const summary = [
-    live.length ? working(live.filter((s) => s.status === 'working').length) : 'aucune session ouverte',
+    live.length ? activity(live) : 'aucune session ouverte',
     att ? `${att} à toi` : null,
+    snap.conversationCounts.pending ? `${snap.conversationCounts.pending} à ranger` : null,
+    snap.classifier.running ? `classement… ${snap.classifier.queued}` : null,
     running ? `h24 ${running} en cours` : null,
   ]
     .filter(Boolean)
@@ -63,6 +72,19 @@ export function AgentBand() {
             ))}
           </AnimatePresence>
         </div>
+        {toSort.length > 0 && (
+          <div className="band tone">
+            <div className="in label">à ranger</div>
+            {toSort.slice(0, 5).map((c) => (
+              <SortLine key={c.id} id={c.id} />
+            ))}
+            {toSort.length > 5 && (
+              <Line ch='"' onClick={() => push({ kind: 'conversations' })}>
+                <span className="meta">les {toSort.length} conversations à ranger</span>
+              </Line>
+            )}
+          </div>
+        )}
         {examples.length > 0 && (
           <div className="in meta" style={{ paddingBlock: 8 }}>
             essaie :{' '}
@@ -79,6 +101,35 @@ export function AgentBand() {
 
       <Composer placeholder="dis à weevils quoi faire" label="message à l’agent principal" onSend={send} onFocus={() => setExpanded('agent')} />
     </section>
+  )
+}
+
+function SortLine({ id }: { id: string }) {
+  const { snap, push, refresh } = useApp()
+  const name = useProjectName()
+  const c = snap.conversations.find((x) => x.id === id)
+  if (!c) return null
+  return (
+    <div className="in" style={{ paddingBlock: 8 }}>
+      <div className="ellipsis" style={{ fontSize: '1.0625rem' }}>
+        <span className="strong">" </span>
+        {c.title}
+      </div>
+      <div className="meta ellipsis">
+        {statusLabel(c, name)}
+        {c.reason ? ` · ${c.reason}` : ''}
+      </div>
+      <div className="inline-actions">
+        {c.suggestedProjectId && (
+          <button className="link" onClick={() => void api.classify(c.id, { projectId: c.suggestedProjectId }).then(refresh)}>
+            ranger dans {name(c.suggestedProjectId)}
+          </button>
+        )}
+        <button className="link" onClick={() => push({ kind: 'conversation', id: c.id })}>
+          voir / ailleurs…
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -128,14 +179,17 @@ export function ProjectBand({ project }: { project: Project }) {
   const done = sessions.filter((s) => s.status === 'done')
   const att = active.filter((s) => s.status === 'needs_user')
   const jobs = snap.h24.filter((a) => a.projectId === project.id)
+  const convCount = snap.conversationCounts.byProject[project.id] ?? 0
+  const convs = snap.conversations.filter((c) => c.projectId === project.id)
   const toggle = () => {
     if (mode !== 'open') for (const r of project.repos) prefetchRepo(r, project.where[r] ?? 'vps')
     setExpanded(mode === 'open' ? null : project.id)
   }
 
   const summary = [
-    active.length ? working(active.filter((s) => s.status === 'working').length) : 'rien ne tourne',
+    active.length ? activity(active) : sessions.length ? 'rien ne tourne' : null,
     att.length ? `${att.length} à toi` : null,
+    convCount ? plural(convCount, 'conversation', 'conversations') : null,
     !active.length ? ago(now - project.lastActivityAt) : null,
   ]
     .filter(Boolean)
@@ -176,9 +230,18 @@ export function ProjectBand({ project }: { project: Project }) {
                 !{att.length > 0 && <sup>{att.length}</sup>}
               </span>
             </button>
-            <button className="ch" aria-label={`nouvelle session dans ${project.name}`} onClick={() => push({ kind: 'new', projectId: project.id })}>
-              +
-            </button>
+            {convCount > 0 && (
+              <button className="ch" aria-label={`${plural(convCount, 'conversation', 'conversations')} de ${project.name}`} onClick={() => push({ kind: 'conversations', projectId: project.id })}>
+                <span>
+                  "<sup>{convCount}</sup>
+                </span>
+              </button>
+            )}
+            {project.kind === 'repo' || project.repos.length > 0 ? (
+              <button className="ch" aria-label={`nouvelle session dans ${project.name}`} onClick={() => push({ kind: 'new', projectId: project.id })}>
+                +
+              </button>
+            ) : null}
           </div>
         )}
       </motion.div>
@@ -196,7 +259,8 @@ export function ProjectBand({ project }: { project: Project }) {
             </Appear>
           ))}
         </AnimatePresence>
-        {active.length === 0 && <div className="in meta empty">rien ne tourne · dernière activité {ago(now - project.lastActivityAt)}</div>}
+        {active.length === 0 && sessions.length > 0 && <div className="in meta empty">rien ne tourne · dernière activité {ago(now - project.lastActivityAt)}</div>}
+        {sessions.length === 0 && mode === 'normal' && convs.slice(0, 3).map((c) => <ConvLine key={c.id} c={c} />)}
         {done.length > 0 && (
           <>
             <Line ch="✓" go={showDone ? '−' : '+'} onClick={() => setShowDone((v) => !v)} label={`${done.length} sessions terminées`}>
@@ -214,6 +278,15 @@ export function ProjectBand({ project }: { project: Project }) {
 
       <Collapse open={mode === 'open'} id={`more-${project.id}`}>
         <div className="band tone">
+          {convCount > 0 && <div className="in label">conversations</div>}
+          {convs.slice(0, 4).map((c) => (
+            <ConvLine key={c.id} c={c} />
+          ))}
+          {convCount > 4 && (
+            <Line ch='"' onClick={() => push({ kind: 'conversations', projectId: project.id })}>
+              <span className="meta">les {convCount} conversations</span>
+            </Line>
+          )}
           {project.repos.length > 0 && <div className="in label">repos</div>}
           {project.repos.map((r) => (
             <Line key={r} ch="/" meta={`${project.where[r] ?? 'vps'} · parcourir les fichiers`} onClick={() => push({ kind: 'files', projectId: project.id, repo: r })}>
@@ -258,6 +331,12 @@ export function FootBand() {
       ))}
       <Line ch="+" meta="dans n’importe quel repo, sur la machine de ton choix" onClick={() => push({ kind: 'new', projectId: '__any' })}>
         nouvelle session ailleurs
+      </Line>
+      <Line ch='"' meta={`${plural(snap.conversationCounts.total, 'importée', 'importées')} · chatgpt et claude.ai`} onClick={() => push({ kind: 'conversations' })}>
+        conversations
+      </Line>
+      <Line ch="↑" meta="export ChatGPT ou Claude.ai (.zip)" onClick={() => push({ kind: 'import' })}>
+        importer des conversations
       </Line>
       <Line ch="~" meta={`passer en ${dark ? 'clair' : 'sombre'}`} go={null} onClick={() => setTheme(dark ? 'light' : 'dark')}>
         thème {dark ? 'sombre' : 'clair'}

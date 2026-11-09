@@ -480,7 +480,7 @@ export function Rich({ text, code = true }: { text: string; code?: boolean }) {
 }
 
 /** Une bulle : texte sélectionnable, appui long = tout le message copié (le nom devient « copié » un instant). */
-function Bubble({ className, style, who, copy, children }: { className: string; style?: React.CSSProperties; who: string; copy: string; children: ReactNode }) {
+function Bubble({ className, style, who, copy, mid, children }: { className: string; style?: React.CSSProperties; who: string; copy: string; mid?: string; children: ReactNode }) {
   const t = useT(C)
   const [copied, setCopied] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -522,7 +522,7 @@ function Bubble({ className, style, who, copy, children }: { className: string; 
     }
   }, [])
   return (
-    <div ref={ref} className={`${className} ${copied ? 'copied' : ''}`} style={style}>
+    <div ref={ref} className={`${className} ${copied ? 'copied' : ''}`} style={style} data-mid={mid}>
       <div className="in">
         <span className="who">{copied ? t.copied : who}</span>
         {children}
@@ -547,12 +547,13 @@ function group(messages: Message[]): Group[] {
 }
 
 function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
+  const mid = steps[0].id
   const t = useT(M)
   const [open, setOpen] = useState(false)
   const last = step(steps[steps.length - 1].text)
   if (steps.length === 1) {
     return (
-      <div className="msg band event">
+      <div className="msg band event" data-mid={mid}>
         <div className="in">
           <div className="text">
             <Icon name="arrow" dir="right" /> {last}
@@ -562,7 +563,7 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
     )
   }
   return (
-    <div className="msg band event">
+    <div className="msg band event" data-mid={mid}>
       <button className="in steps-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className="text">
           {live ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="arrow" dir="right" />} {t.steps(steps.length)} · <span key={last} className="fade-in">{last}</span>
@@ -599,7 +600,8 @@ export function useAuthors() {
 /** Classe et style d'une bulle signée : le violet de weevboss, ou la couleur de l'agent externe. */
 export const authorTone = (a: Author) => (a.color ? { className: 'tone orch ext', style: { '--who': a.color } as React.CSSProperties } : { className: 'tone orch', style: undefined })
 
-export function Messages({ messages, author, working = false }: { messages: Message[]; author: string; working?: boolean }) {
+/** after(id) : ce qui s'affiche sous un message (la barre de questions d'askthread.tsx), id = data-mid du message. */
+export function Messages({ messages, author, working = false, after }: { messages: Message[]; author: string; working?: boolean; after?: (id: string) => ReactNode }) {
   const t = useT(M)
   const td = useT(D)
   const [all, setAll] = useState(false)
@@ -617,6 +619,7 @@ export function Messages({ messages, author, working = false }: { messages: Mess
         g.kind === 'steps' ? (
           <Appear key={g.id}>
             <Steps steps={g.steps} live={working && i === groups.length - 1} />
+            {after?.(g.id)}
           </Appear>
         ) : (
           <Appear key={g.m.id}>
@@ -625,9 +628,11 @@ export function Messages({ messages, author, working = false }: { messages: Mess
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
               who={g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}
               copy={g.m.role === 'user' ? userText(g.m.text) : g.m.text}
+              mid={g.m.id}
             >
               {g.m.role === 'user' ? <Clamp text={userText(g.m.text)} /> : g.m.role === 'orchestrator' ? <Clamp text={g.m.text} /> : <Prose text={g.m.text} />}
             </Bubble>
+            {after?.(g.m.id)}
           </Appear>
         ),
       )}

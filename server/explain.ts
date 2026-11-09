@@ -1,4 +1,4 @@
-// Questions rapides depuis la vue d'un fichier : « explique », « où c'est utilisé », « demande ».
+// Questions rapides depuis la vue d'un fichier ou un fil de conversation : « explique », « où c'est utilisé », « demande ».
 // Modèle rapide (gpt-4.1 ~1 s, sinon haiku) avec le contexte de la page ; une demande d'action part au vrai weevboss.
 
 import { execFile } from 'node:child_process'
@@ -65,10 +65,13 @@ const tidy = (s: string) => s.replace(/\*\*|__|`/g, '').replace(/^#+\s*/gm, '').
 export async function explain(w: Weevils, req: ExplainRequest): Promise<ExplainReply> {
   const t = tr(M)
   const sel = clip(req.selection.trim(), 1500)
-  const head = t.head(user(), req.repo, req.path, clip(req.around, 6000), sel, req.from, req.to)
+  const conv = req.kind === 'conv'
+  const head = conv
+    ? t.headConv(user(), req.title ?? '', req.tool ?? '', req.project ?? '', req.repo, clip(req.around, 7000), sel)
+    : t.head(user(), req.repo, req.path, clip(req.around, 6000), sel, req.from, req.to)
   if (req.mode === 'usage') {
     const term = usageTerm(req.selection)
-    const hits = term ? await hitsFor(w, req, term).catch(() => []) : []
+    const hits = term && req.repo ? await hitsFor(w, req, term).catch(() => []) : []
     const list = hits.slice(0, 30).map((h) => `${h.path}:${h.line}: ${h.text}`).join('\n')
     return { text: tidy(await quick(head + t.usage(list))), hits }
   }
@@ -77,7 +80,7 @@ export async function explain(w: Weevils, req: ExplainRequest): Promise<ExplainR
     if (!q) return { text: '' }
     const out = await quick(head + t.ask(q))
     if (out.includes(ACTION) && ORCHESTRATOR) {
-      await w.sendMain(t.forward(req.repo, req.path, req.from, req.to, clip(sel, 300), q))
+      await w.sendMain(conv ? t.forwardConv(req.title ?? '', clip(sel, 300), q) : t.forward(req.repo, req.path, req.from, req.to, clip(sel, 300), q))
       return { text: '', forwarded: true }
     }
     return { text: tidy(out.replace(ACTION, '')) }
@@ -88,8 +91,13 @@ export async function explain(w: Weevils, req: ExplainRequest): Promise<ExplainR
 /** Corps reçu de l'app, rendu sûr (types, tailles). */
 export function readExplain(b: any): ExplainRequest {
   const mode = b?.mode === 'usage' || b?.mode === 'ask' ? b.mode : 'explain'
+  const str = (v: unknown, n = 200) => (v ? String(v).slice(0, n) : undefined)
   return {
     mode,
+    kind: b?.kind === 'conv' ? 'conv' : 'file',
+    title: str(b?.title),
+    tool: str(b?.tool, 40),
+    project: str(b?.project),
     repo: String(b?.repo ?? ''),
     path: String(b?.path ?? ''),
     machine: b?.machine ? String(b.machine) : undefined,

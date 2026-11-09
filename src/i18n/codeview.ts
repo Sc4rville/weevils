@@ -1,8 +1,9 @@
 import { defineMessages } from './index'
 
-/** Vue d'un fichier qu'on interroge (src/ui/codeview.tsx) : la barre de mots sous la sélection et ses réponses. */
+/** Questions sur une sélection (src/ui/ask.tsx), dans un fichier ou un fil : la barre de mots sous la sélection et ses réponses. */
 export default defineMessages({
   fr: {
+    openFile: 'ouvre le fichier',
     explain: 'explique',
     usage: 'où c’est utilisé',
     ask: 'demande',
@@ -12,6 +13,7 @@ export default defineMessages({
     nowhere: 'nulle part ailleurs',
   },
   en: {
+    openFile: 'open the file',
     explain: 'explain',
     usage: 'where it’s used',
     ask: 'ask',

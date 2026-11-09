@@ -170,18 +170,26 @@ export interface SessionDetail {
   messages: Message[]
 }
 
-/** Une question posée depuis la vue d'un fichier : le mot ou la sélection tapés, et ce qui les entoure. */
+/** Une question posée depuis la vue d'un fichier ou un fil de conversation : le mot ou la sélection tapés, et ce qui les entoure. */
 export interface ExplainRequest {
   mode: 'explain' | 'usage' | 'ask'
+  /** file : vue d'un fichier (défaut) ; conv : fil d'une session ou de weevboss. */
+  kind?: 'file' | 'conv'
+  /** Repo du fichier ou de la session (vide pour le fil de weevboss). */
   repo: string
+  /** file : chemin du fichier ; conv : vide. */
   path: string
+  /** conv : titre de la conversation, outil (claude, codex, weevboss) et projet. */
+  title?: string
+  tool?: string
+  project?: string
   machine?: string
   /** Texte sélectionné (vide : la question porte sur ce qui est affiché). */
   selection: string
-  /** Lignes de la sélection, numérotées à partir de 1. */
+  /** file : lignes de la sélection, numérotées à partir de 1 (conv : 0). */
   from: number
   to: number
-  /** Les lignes autour, déjà numérotées (« 12│ code »). */
+  /** file : les lignes autour, numérotées (« 12│ code ») ; conv : les messages autour (« [auteur] texte »). */
   around: string
   /** mode ask : la question, écrite ou dictée. */
   question?: string

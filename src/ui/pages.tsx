@@ -11,6 +11,8 @@ import { CalmConv, CalmGrid } from './calm'
 import { markSeen } from './seen'
 import { Shell } from './shell'
 import { CodeFile } from './codeview'
+import { listFiles } from './repofiles'
+import { useThreadAsk } from './askthread'
 import { ago, dur, durLong, status } from './format'
 import { Icon } from './icons'
 import { useT } from '../i18n'
@@ -165,6 +167,8 @@ function SessionPage({ id }: { id: string }) {
   }, [detail, pending])
   useStickToBottom(messages.length)
   const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
+  const sp = snap.projects.find((p) => p.id === s?.projectId)
+  const th = useThreadAsk(messages, { title: s?.title ?? '', tool: s?.tool ?? 'claude', project: sp?.name, projectId: s?.projectId, repo: s?.repo ?? undefined, machine: s?.machineId })
 
   if (!s) return missing ? <Missing /> : <Shell slot="agent" kicker="weevils" title="…">{null}</Shell>
 
@@ -220,6 +224,7 @@ function SessionPage({ id }: { id: string }) {
           </button>
         </>
       }
+      action={th.voice}
       side={preview.open ? <Preview url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false })} /> : undefined}
       foot={
         <Composer
@@ -260,7 +265,9 @@ function SessionPage({ id }: { id: string }) {
         </div>
       )}
 
-      <Messages messages={messages} author={s.tool} working={s.status === 'working'} />
+      <div ref={th.ref} className="ask-thread">
+        <Messages messages={messages} author={s.tool} working={s.status === 'working'} after={th.after} />
+      </div>
 
       {s.status === 'needs_user' && (
         <div className="msg band tone ask">
@@ -306,13 +313,7 @@ function SessionPage({ id }: { id: string }) {
 // ---------------------------------------------------------------------------
 // Explorateur de fichiers : un dossier par page, la liste du repo est gardée en cache.
 
-const fileLists = new Map<string, Promise<string[]>>()
 const fileContents = new Map<string, Promise<FileContent>>()
-const listFiles = (repo: string, machine: string) => {
-  const k = `${machine}:${repo}`
-  if (!fileLists.has(k)) fileLists.set(k, api.files(repo, machine).then((r) => r.files).catch((e) => (fileLists.delete(k), Promise.reject(e))))
-  return fileLists.get(k)!
-}
 const readFile = (repo: string, path: string, machine: string) => {
   const k = `${machine}:${repo}\u0000${path}`
   if (!fileContents.has(k)) fileContents.set(k, api.file(repo, path, machine).catch((e) => (fileContents.delete(k), Promise.reject(e))))

@@ -10,6 +10,7 @@ import { ConvLine } from './convs'
 import { useApp } from './app-context'
 import { ensurePush } from '../push'
 import { VoiceLogo } from './voice'
+import { useThreadAsk } from './askthread'
 import { isUnread, useSeen } from './seen'
 import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, authorTone, spring, useAuthors } from './bits'
 import B from '../i18n/bits'
@@ -156,6 +157,10 @@ export function AgentBand() {
   const [draft, setDraft] = useState({ text: '', n: 0, reset: false })
   const heard = useRef('')
   useStickBottom(body, snap.main.length, open)
+  // Le fil ouvert s'interroge comme un fichier ; avec une sélection, le logo pose sa question dessus (réponse sur place).
+  const th = useThreadAsk(snap.main, { title: 'weevboss', tool: 'weevboss' })
+  const onSel = open && th.selected
+  const mainReply = snap.main.filter((m) => m.role === 'assistant').at(-1)
 
   // Envoyer (clavier, logo vocal, pièce jointe) n'ouvre jamais le plein écran : le message et la réponse s'affichent dans l'aperçu.
   // Garanti par bands.test.tsx (déjà régressé deux fois).
@@ -178,7 +183,14 @@ export function AgentBand() {
           </button>
         )}
         <div className="agent-top">
-          <VoiceLogo take={() => { const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }} onText={(x) => { heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }} onSend={() => form.current?.requestSubmit()} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
+          <VoiceLogo
+            take={() => { if (onSel) return ''; const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }}
+            onText={(x) => { if (onSel) return th.a.voiceText(x); heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }}
+            onSend={() => (onSel ? th.a.voiceSend() : form.current?.requestSubmit())}
+            replyKey={th.a.replyKey ?? mainReply?.id}
+            replyText={th.a.replyKey ? th.a.shown : mainReply?.text}
+            working={snap.mainWorking || th.a.waiting}
+          />
           <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={toggleDevil} aria-pressed={!!devilOn} aria-label={devilOn ? td.on : td.off}>
             <FilledIcon name="devil" />
           </button>
@@ -198,7 +210,9 @@ export function AgentBand() {
             if (s && s.top <= 0 && e.changedTouches[0].clientY - s.y > 90) setExpanded(null)
           }}
         >
-          <Messages messages={snap.main} author="weevboss" working={snap.mainWorking || !!snap.devil?.working} />
+          <div ref={th.ref} className="ask-thread">
+            <Messages messages={snap.main} author="weevboss" working={snap.mainWorking || !!snap.devil?.working} after={th.after} />
+          </div>
           {snap.mainWorking && <Working author="weevboss" />}
           {snap.devil?.working && <Working author="devil" />}
         </motion.div>

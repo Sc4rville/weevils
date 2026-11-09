@@ -1,70 +1,23 @@
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ExplainReply, ExplainRequest, Message } from '../../shared/api.ts'
-import { api, type FileContent } from '../api'
+import type { FileContent } from '../api'
 import { useApp } from './app-context'
 import { Shell } from './shell'
-import { VoiceLogo } from './voice'
-import { Icon } from './icons'
-import { plain } from './format'
+import { AskPanel, AskVoice, useAsk } from './ask'
 import { around, lineRange, selText, spanLines, spanWords, wordAt, type Sel } from './codesel'
+import { caretAt, rangeOf } from './textpick'
 import { useT } from '../i18n'
 import M from '../i18n/pages'
-import C from '../i18n/codeview'
 import './codeview.css'
 
 /**
  * Vue d'un fichier qu'on interroge : chaque mot répond au tap (surligné dans la couleur du projet), un glissé prend
- * plusieurs mots, la marge des numéros prend des lignes entières. Sous la sélection, une barre de mots : explique,
+ * plusieurs mots, la marge des numéros prend des lignes entières. Sous la sélection, la barre de ask.tsx : explique,
  * où c'est utilisé, demande. Les réponses arrivent sur place, d'un modèle rapide qui connaît la page.
  * Le logo de weevboss, en haut, écoute aussi : la question dictée porte sur la sélection, ou sur ce qui est affiché.
  */
 
-type Mode = ExplainRequest['mode']
-
-interface Answer {
-  id: string
-  mode: Mode
-  loading: boolean
-  reply?: ExplainReply
-  err?: string
-  /** Question transmise au vrai weevboss : sa réponse est le premier message après cet instant. */
-  since?: number
-  voice?: boolean
-}
-
 /** Bord gauche réservé au geste retour (glisser vers la droite depuis le bord). */
-const EDGE = 22
-
-const caretAt = (x: number, y: number): { node: Node; offset: number } | null => {
-  const d = document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null }
-  if (d.caretPositionFromPoint) {
-    const p = d.caretPositionFromPoint(x, y)
-    return p ? { node: p.offsetNode, offset: p.offset } : null
-  }
-  const r = document.caretRangeFromPoint?.(x, y)
-  return r ? { node: r.startContainer, offset: r.startOffset } : null
-}
-
-const rangeIn = (el: Element, s: number, e: number): Range | null => {
-  // Retrouve les nœuds texte (la ligne peut être coupée par le surlignage) pour mesurer un mot à l'écran.
-  const r = document.createRange()
-  let pos = 0
-  let started = false
-  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
-    const len = n.textContent?.length ?? 0
-    if (!started && s <= pos + len) {
-      r.setStart(n, s - pos)
-      started = true
-    }
-    if (started && e <= pos + len) {
-      r.setEnd(n, e - pos)
-      return r
-    }
-    pos += len
-  }
-  return null
-}
+export const EDGE = 22
 
 /** Le point (x, y) dans le fichier : ligne, colonne, mot sous le doigt, ou la marge des numéros. */
 function hit(box: HTMLElement, lines: string[], x: number, y: number): { line: number; col: number; gutter: boolean; word: [number, number] | null } | null {
@@ -83,7 +36,7 @@ function hit(box: HTMLElement, lines: string[], x: number, y: number): { line: n
   // Le curseur tombe entre deux caractères : le mot retenu est celui qui est vraiment sous le doigt.
   for (const k of [col, col - 1]) {
     const w = wordAt(lines[line] ?? '', k)
-    const r = w && rangeIn(ct, w[0], w[1])
+    const r = w && rangeOf(ct, w[0], w[1])
     if (!w || !r) continue
     for (const rect of r.getClientRects()) if (x >= rect.left - 3 && x <= rect.right + 3 && y >= rect.top - 2 && y <= rect.bottom + 2) return { line, col: k, gutter: false, word: w }
   }
@@ -113,9 +66,8 @@ const CodeLine = memo(function CodeLine({ n, text, s, e, whole, flash }: { n: nu
 })
 
 export function CodeFile({ projectId, repo, path, machine, line, file, err }: { projectId: string; repo: string; path: string; machine: string; line?: number; file: FileContent | null; err: string | null }) {
-  const { colors, snap, push } = useApp()
+  const { colors, push } = useApp()
   const t = useT(M)
-  const c = useT(C)
   const prose = /\.(md|markdown|txt)$/i.test(path)
   const lines = useMemo(() => (file && !file.binary ? file.content.replace(/\n$/, '').split('\n') : []), [file])
   const box = useRef<HTMLDivElement>(null)
@@ -123,22 +75,38 @@ export function CodeFile({ projectId, repo, path, machine, line, file, err }: { 
   const [dragging, setDragging] = useState(false)
   /** Ligne sous laquelle s'ouvre la question quand rien n'est sélectionné (logo vocal). */
   const [spot, setSpot] = useState<number | null>(null)
-  const [asking, setAsking] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [answer, setAnswer] = useState<Answer | null>(null)
-  const [copied, setCopied] = useState(false)
   const [flash, setFlash] = useState<number | null>(null)
-  const heard = useRef('')
-  const input = useRef<HTMLInputElement>(null)
-  const seq = useRef(0)
 
-  const reset = useCallback(() => {
-    seq.current++
-    setAnswer(null)
-    setAsking(false)
-    setDraft('')
-    setCopied(false)
-  }, [])
+  /** Lignes affichées à l'écran (0-based), pour une question sans sélection. */
+  const visible = (): [number, number] => {
+    const el = box.current
+    const sc = el?.closest('[data-scroll]')
+    if (!el || !sc || !lines.length) return [0, Math.min(lines.length - 1, 30)]
+    const { top, bottom } = sc.getBoundingClientRect()
+    const rows = el.querySelectorAll<HTMLElement>('[data-l]')
+    const find = (y: number) => {
+      let lo = 0
+      let hi = rows.length - 1
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        if (rows[mid].getBoundingClientRect().bottom < y) lo = mid + 1
+        else hi = mid
+      }
+      return lo
+    }
+    return [find(top + 8), find(bottom - 8)]
+  }
+
+  // ---- Questions : le contexte est lu au moment de demander (sélection, ou ce qui est affiché).
+  const a = useAsk(
+    () => {
+      const [from, to] = sel ? [sel.start.line, sel.end.line] : spot != null ? [spot, spot] : visible()
+      return { kind: 'file', repo, path, machine, selection: sel ? selText(lines, sel) : '', from: from + 1, to: to + 1, around: around(lines, from, to) }
+    },
+    { onVoice: () => !sel && spot == null && setSpot(visible()[0]) },
+  )
+  const live = useRef(a)
+  live.current = a
 
   // ---- Gestes : tap = un mot ; glissé horizontal = des mots ; marge = des lignes ; glissé vertical = défilement.
   const selRef = useRef(sel)
@@ -197,7 +165,7 @@ export function CodeFile({ projectId, repo, path, machine, line, file, err }: { 
       g = null
       setDragging(false)
       if (was.mode === 'off') return
-      reset()
+      live.current.reset()
       setSpot(null)
       if (was.mode !== 'pending') return
       // Tap : le mot sous le doigt, ou rien (tap à côté = tout ferme).
@@ -223,7 +191,7 @@ export function CodeFile({ projectId, repo, path, machine, line, file, err }: { 
       el.removeEventListener('pointerup', up)
       el.removeEventListener('pointercancel', cancel)
     }
-  }, [lines, reset])
+  }, [lines])
 
   // ---- Arrivée depuis « où c'est utilisé » : la ligne visée, au centre, un éclair de couleur.
   const goLine = useCallback((n: number) => {
@@ -237,168 +205,25 @@ export function CodeFile({ projectId, repo, path, machine, line, file, err }: { 
     if (line && lines.length) goLine(Math.min(line, lines.length) - 1)
   }, [line, lines.length, goLine])
 
-  /** Lignes affichées à l'écran (0-based), pour une question sans sélection. */
-  const visible = (): [number, number] => {
-    const el = box.current
-    const sc = el?.closest('[data-scroll]')
-    if (!el || !sc || !lines.length) return [0, Math.min(lines.length - 1, 30)]
-    const { top, bottom } = sc.getBoundingClientRect()
-    const rows = el.querySelectorAll<HTMLElement>('[data-l]')
-    const find = (y: number) => {
-      let lo = 0
-      let hi = rows.length - 1
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1
-        if (rows[mid].getBoundingClientRect().bottom < y) lo = mid + 1
-        else hi = mid
-      }
-      return lo
-    }
-    return [find(top + 8), find(bottom - 8)]
-  }
-
-  // ---- Questions
-  const ask = async (mode: Mode, question?: string, voice = false) => {
-    const id = `${++seq.current}`
-    const [from, to] = sel ? [sel.start.line, sel.end.line] : spot != null ? [spot, spot] : visible()
-    const body: ExplainRequest = {
-      mode,
-      repo,
-      path,
-      machine,
-      selection: sel ? selText(lines, sel) : '',
-      from: from + 1,
-      to: to + 1,
-      around: around(lines, from, to),
-      question,
-    }
-    setAnswer({ id, mode, loading: true, voice })
-    try {
-      const reply = await api.explain(body)
-      if (seq.current !== Number(id)) return
-      setAnswer({ id, mode, loading: !!reply.forwarded, reply, since: reply.forwarded ? Date.now() - 2000 : undefined, voice })
-    } catch (e) {
-      if (seq.current === Number(id)) setAnswer({ id, mode, loading: false, err: (e as Error).message, voice })
-    }
-  }
-  const submit = (voice = false) => {
-    const q = draft.trim()
-    if (!q) return
-    setAsking(false)
-    setDraft('')
-    void ask('ask', q, voice)
-  }
-  const copy = () => {
-    if (!sel) return
-    void navigator.clipboard?.writeText(selText(lines, sel)).then(() => setCopied(true)).catch(() => undefined)
-  }
-
-  // Une demande d'action est partie au vrai weevboss : sa réponse, dès qu'elle arrive dans son fil, s'affiche ici aussi.
-  const forwardedReply: Message | undefined = answer?.since ? snap.main.find((m) => m.role === 'assistant' && m.at >= answer.since!) : undefined
-  const shown = forwardedReply ? plain(forwardedReply.text) : answer?.reply?.text
-  const waiting = answer ? (answer.reply?.forwarded ? !forwardedReply : answer.loading) : false
-
-  useEffect(() => {
-    if (asking) input.current?.focus({ preventScroll: true })
-  }, [asking])
-
-  // ---- Logo vocal : le texte entendu remplit la question, sous la sélection ou sous la première ligne affichée.
-  const voiceText = (x: string) => {
-    heard.current = heard.current ? `${heard.current} ${x}` : x
-    if (!sel && spot == null) setSpot(visible()[0])
-    seq.current++
-    setAnswer(null)
-    setAsking(true)
-    setDraft(heard.current)
-  }
-  const voiceSend = () => {
-    const q = (heard.current || draft).trim()
-    heard.current = ''
-    if (!q) return
-    setAsking(false)
-    setDraft('')
-    void ask('ask', q, true)
-  }
-
   const anchor = dragging ? frozen.current : sel ? sel.end.line : spot
   const panel =
     anchor != null ? (
-      <div className={dragging ? 'qa held' : 'qa'}>
-        {sel && (
-          <div className="words qa-bar" role="group">
-            <button className={`word ${answer?.mode === 'explain' ? 'on' : ''}`} onClick={() => void ask('explain')}>
-              {c.explain}
-            </button>
-            <button className={`word ${answer?.mode === 'usage' ? 'on' : ''}`} onClick={() => void ask('usage')}>
-              {c.usage}
-            </button>
-            <button className={`word ${asking || answer?.mode === 'ask' ? 'on' : ''}`} onClick={() => (setAnswer(null), setAsking(true))}>
-              {c.ask}
-            </button>
-            <button className={`word ${copied ? 'on' : ''}`} onClick={copy}>
-              {copied ? c.copied : c.copy}
-            </button>
-          </div>
-        )}
-        {asking && (
-          <form
-            className="qa-ask"
-            onSubmit={(e) => {
-              e.preventDefault()
-              submit()
-            }}
-          >
-            <span className="strong" aria-hidden>
-              <Icon name="chevron" dir="right" />
-            </span>
-            <input ref={input} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setAsking(false)} aria-label={c.askLabel} enterKeyHint="send" />
-          </form>
-        )}
-        {answer && (
-          <div className="qa-answer" aria-live="polite">
-            {waiting && !shown && (
-              <span className="spin fluo">
-                <Icon name="star" />
-              </span>
-            )}
-            {answer.err && <div className="strong">! {answer.err}</div>}
-            {shown && <p className="qa-text">{shown}</p>}
-            {answer.reply?.hits && (
-              <div className="qa-hits">
-                {answer.reply.hits.length === 0 && <div className="meta">{c.nowhere}</div>}
-                {answer.reply.hits.map((h, i) => (
-                  <button
-                    key={`${h.path}:${h.line}:${i}`}
-                    className="qa-hit"
-                    onClick={() => (h.path === path ? goLine(h.line - 1) : push({ kind: 'file', projectId, repo, path: h.path, line: h.line }))}
-                  >
-                    <span className="strong">
-                      {h.path === path ? '' : h.path}:{h.line}
-                    </span>
-                    <span className="qa-snip">{h.text}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      <AskPanel
+        a={a}
+        text={sel ? selText(lines, sel) : null}
+        held={dragging}
+        onHit={(h) => (h.path === path ? goLine(h.line - 1) : push({ kind: 'file', projectId, repo, path: h.path, line: h.line }))}
+        hitLabel={(h) => `${h.path === path ? '' : h.path}:${h.line}`}
+      />
     ) : null
 
-  const replyKey = answer?.voice ? (forwardedReply?.id ?? (answer.reply && !answer.reply.forwarded ? answer.id : undefined)) : undefined
   return (
     <Shell
       slot={colors[projectId] ?? 'agent'}
       kicker={`${repo}/${path.split('/').slice(0, -1).join('/')}`}
       title={path.split('/').pop()}
       meta={file ? `${t.size(file.size)}${file.truncated ? t.truncated : ''}` : t.reading}
-      action={
-        file && !file.binary ? (
-          <div className="page-voice">
-            <VoiceLogo take={() => ''} onText={voiceText} onSend={voiceSend} replyKey={replyKey} replyText={shown} working={waiting} />
-          </div>
-        ) : undefined
-      }
+      action={file && !file.binary ? <AskVoice a={a} /> : undefined}
     >
       {err && (
         <div className="band invert" role="alert">

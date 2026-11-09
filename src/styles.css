@@ -281,12 +281,6 @@ button:disabled {
   font-weight: 650;
 }
 
-.row .tag {
-  font-size: 0.75rem;
-  font-weight: 650;
-  margin-left: 5px;
-}
-
 .row .title {
   flex: 1;
   min-width: 0;
@@ -411,11 +405,9 @@ button:disabled {
   font-style: italic;
 }
 
+/* Mise en avant : du gras, jamais de soulignement. */
 .link {
-  font-weight: 650;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-thickness: 2px;
+  font-weight: 700;
   min-height: 44px;
   display: inline-flex;
   align-items: center;
@@ -514,16 +506,12 @@ button:disabled {
 }
 
 .page.split .page-side {
-  border-top: 2px solid var(--ink);
+  background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h);
 }
 
 @media (min-width: 900px) {
   .page.split .page-cols {
     flex-direction: row;
-  }
-  .page.split .page-side {
-    border-top: 0;
-    border-left: 2px solid var(--ink);
   }
 }
 
@@ -997,31 +985,9 @@ input:focus-visible {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Message de l'orchestrateur dans le fil d'une session : signé ◆ weevils, dans la couleur de weevils (violet), trait à gauche. */
+/* Message de l'orchestrateur dans le fil d'une session : signé weevils, bulle d'une teinte légèrement différente (son violet), rien d'autre. */
 .msg.orch {
-  position: relative;
-  /* Violet de weevils, mais toujours décalé en luminosité par rapport à la page : visible même dans la bande violette. */
   background: oklch(from var(--agent) calc(l + var(--dl) * 1.8) calc(c * 1.1) h);
-}
-
-.msg.orch::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 5px;
-  background: var(--ink);
-  opacity: 0.6;
-}
-
-.msg.orch .who {
-  color: var(--ink);
-}
-
-.orch-ic {
-  font-size: 0.75em;
-  vertical-align: 1px;
 }
 
 /* ---------- Ligne de session : une seule ligne, l'activité à droite ---------- */
@@ -1046,16 +1012,6 @@ input:focus-visible {
   color: var(--ink);
 }
 
-.row .tool-ic .tag {
-  font-size: 0.625rem;
-  font-weight: 650;
-  line-height: 1;
-  padding: 3px 5px;
-  margin: 0;
-  border: 1.5px solid currentColor;
-  border-radius: 999px;
-  opacity: 0.85;
-}
 
 .row .line .title {
   flex: 1 1 38%;

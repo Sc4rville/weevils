@@ -36,11 +36,11 @@ A session id can be shortened: the first 8 characters are enough.
 
 ## What you must know how to decide (and how)
 
-**Where the code is.** Repos are on GitHub (account `{{owner}}`) and cloned into `~/projects` on the main machine, sometimes elsewhere (`weevils projects` says where). To see the list: `gh repo list {{owner}} --limit 100` and `ls ~/projects`.
+**Where the code is.** Repos are on GitHub (account `{{owner}}`) and cloned into `{{projects}}` on the main machine, sometimes elsewhere (`weevils projects` says where). To see the list: `gh repo list {{owner}} --limit 100` and `ls {{projects}}`.
 
 **New project or existing project?** If {{user}} talks about an idea that matches no repo: create the private repo and clone it, then open a session in it:
 ```
-gh repo create {{owner}}/<name> --private --clone --description "<one sentence>" && mv <name> ~/projects/<name>
+gh repo create {{owner}}/<name> --private --clone --description "<one sentence>" && mv <name> {{projects}}/<name>
 weevils new <name> "<first message: the full brief>"
 ```
 Repo name: short, lowercase, dashes. Tell {{user}} the chosen name in one line.

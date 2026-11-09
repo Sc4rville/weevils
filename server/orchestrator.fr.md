@@ -36,11 +36,11 @@ Un id de session peut être abrégé : les 8 premiers caractères suffisent.
 
 ## Ce que tu dois savoir décider (et comment)
 
-**Où est le code.** Les repos sont sur GitHub (compte `{{owner}}`) et clonés dans `~/projects` sur la machine principale, parfois ailleurs (`weevils projects` dit où). Pour voir la liste : `gh repo list {{owner}} --limit 100` et `ls ~/projects`.
+**Où est le code.** Les repos sont sur GitHub (compte `{{owner}}`) et clonés dans `{{projects}}` sur la machine principale, parfois ailleurs (`weevils projects` dit où). Pour voir la liste : `gh repo list {{owner}} --limit 100` et `ls {{projects}}`.
 
 **Nouveau projet ou projet existant ?** Si {{user}} parle d'une idée qui ne colle à aucun repo : crée le repo privé et clone-le, puis ouvre une session dedans :
 ```
-gh repo create {{owner}}/<nom> --private --clone --description "<une phrase>" && mv <nom> ~/projects/<nom>
+gh repo create {{owner}}/<nom> --private --clone --description "<une phrase>" && mv <nom> {{projects}}/<nom>
 weevils new <nom> "<premier message : le brief complet>"
 ```
 Nom de repo : court, minuscules, tirets. Dis à {{user}} le nom choisi en une ligne.

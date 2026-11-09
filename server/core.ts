@@ -1036,9 +1036,12 @@ export class Weevils {
     // Un gabarit par langue (orchestrator.fr.md, orchestrator.en.md) ; weevboss répond dans la langue où on lui écrit.
     const src = path.join(import.meta.dirname, `orchestrator.${lang()}.md`)
     try {
-      // Gabarit : {{user}} (prénom configuré, sinon « l'utilisateur » / « the user ») et {{owner}} (compte GitHub configuré, sinon demandé à gh).
+      // Gabarit : {{user}} (prénom configuré, sinon « l'utilisateur » / « the user »), {{owner}} (compte GitHub configuré, sinon
+      // demandé à gh) et {{projects}} (premier dossier de WEEVILS_PROJECTS, ~/projects par défaut).
       const owner = process.env.WEEVILS_GH_OWNER?.trim() || '$(gh api user -q .login)'
-      fs.writeFileSync(path.join(ORCH_DIR, 'CLAUDE.md'), fs.readFileSync(src, 'utf8').replaceAll('{{user}}', user()).replaceAll('{{owner}}', owner))
+      const projects = PROJECTS_DIR.startsWith(HOME + path.sep) ? '~' + PROJECTS_DIR.slice(HOME.length) : PROJECTS_DIR
+      const text = fs.readFileSync(src, 'utf8').replaceAll('{{user}}', user()).replaceAll('{{owner}}', owner).replaceAll('{{projects}}', projects)
+      fs.writeFileSync(path.join(ORCH_DIR, 'CLAUDE.md'), text)
     } catch (e) {
       console.error(`[orchestrateur] CLAUDE.md : ${(e as Error).message}`)
     }

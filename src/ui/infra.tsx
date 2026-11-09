@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { FsListing, InfraDetail, InfraPoint, Level, MachineBrief, QuotaInfo, QuotaWindow, UsageInfo, UsageRow } from '../../shared/infra.ts'
 import { api, type FileContent } from '../api'
 import { intlLocale, useT } from '../i18n'
@@ -9,6 +9,7 @@ import { CodeFile } from './codeview'
 import { durLong } from './format'
 import { Icon } from './icons'
 import { Shell } from './shell'
+import { copyText } from './copy'
 import './infra.css'
 
 /**
@@ -178,6 +179,27 @@ function DayChart({ points, episodes }: { points: InfraPoint[]; episodes: InfraD
 
 const hhmm = (t: number) => new Date(t).toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit' })
 
+/** Une ligne « clé · valeur », la valeur en gras ; absente quand la valeur est inconnue. */
+function Kv({ k, v, onClick }: { k: string; v: ReactNode; onClick?: () => void }) {
+  if (v == null || v === '' || v === false) return null
+  const body = (
+    <>
+      <span className="meta">{k}</span>
+      <span className="v">{v}</span>
+    </>
+  )
+  return onClick ? (
+    <button className="in kv tap" onClick={onClick}>
+      {body}
+    </button>
+  ) : (
+    <div className="in kv">{body}</div>
+  )
+}
+
+const money = (n: number, cur: string | null) => `${Math.round(n * 100) / 100} ${cur ?? ''}`.trim()
+const dayName = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(intlLocale(), { weekday: 'short' })
+
 export function InfraPage({ machine, projectId }: { machine?: string; projectId?: string }) {
   const { snap, push } = useApp()
   const t = useT(M)
@@ -185,14 +207,11 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
   const [id, setId] = useState(machine ?? fromProject ?? snap.machines[0]?.id ?? '')
   const [d, setD] = useState<InfraDetail | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
   useEffect(() => {
     let off = false
     setErr(null)
-    const load = () =>
-      api
-        .infra(id)
-        .then((x) => !off && (setD(x), setErr(null)))
-        .catch((e) => !off && setErr((e as Error).message))
+    const load = () => api.infra(id).then((x) => !off && (setD(x), setErr(null))).catch((e) => !off && setErr((e as Error).message))
     void load()
     const tm = setInterval(load, 20_000)
     return () => {
@@ -201,40 +220,24 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
     }
   }, [id])
   const m = snap.machines.find((x) => x.id === id)
-  const shown = d?.id === id ? d : null
+  const x = d?.id === id ? d : null
+  const f = x?.facts
   const sessions = snap.sessions.filter((s) => s.machineId === id && s.status !== 'done')
   const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0)
+  const copy = (cmd: string) => void copyText(cmd).then((ok) => ok && (setCopied(cmd), setTimeout(() => setCopied(null), 1500)))
+  const place = f ? [f.city, f.region !== f.city ? f.region : undefined, f.country].filter(Boolean).join(', ') : ''
+  const direct = f?.ip && f.publicIp && f.sshPort ? `ssh ${f.sshPort !== 22 ? `-p ${f.sshPort} ` : ''}${f.user}@${f.ip}` : ''
+  const offer = x?.offer
+  // La première ligne sous le titre : qui l'héberge (ou quel matériel), l'offre, où.
+  const headline = f ? [f.provider ?? f.hardware, offer?.plan, place].filter(Boolean).join(' · ') : ''
   return (
-    <Shell
-      slot="agent"
-      kicker="weevils"
-      title={m?.name ?? id}
-      meta={
-        shown ? (
-          <>
-            {t.cores(shown.cores)} · {t.size(shown.memTotal)} · {shown.os}
-            <br />
-            {t.load(...shown.load)} · {t.up(durLong(shown.uptime))}
-            {shown.weevboss && (
-              <>
-                <br />
-                <span className="strong">{t.weevbossHere}</span>
-              </>
-            )}
-          </>
-        ) : m?.online === false ? (
-          t.offline
-        ) : (
-          '…'
-        )
-      }
-    >
+    <Shell slot="agent" kicker="weevils" title={m?.name ?? id} meta={headline || (m?.online === false ? t.offline : undefined)}>
       <div className="ipage">
         {snap.machines.length > 1 && (
           <div className="in mx-tabs">
-            {snap.machines.map((x) => (
-              <button key={x.id} className={`mx-tab ${x.id === id ? 'on' : ''} ${x.online === false ? 'off' : ''}`} onClick={() => setId(x.id)} aria-pressed={x.id === id}>
-                {x.name}
+            {snap.machines.map((y) => (
+              <button key={y.id} className={`mx-tab ${y.id === id ? 'on' : ''} ${y.online === false ? 'off' : ''}`} onClick={() => setId(y.id)} aria-pressed={y.id === id}>
+                {y.name}
               </button>
             ))}
           </div>
@@ -246,27 +249,50 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
             </div>
           </div>
         )}
-        {shown && (
+        {x && f && (
           <>
-            <Stat label={t.cpu} pct={shown.cpu} level={levelOf1(shown.cpu, 'cpu')} text={`${shown.cpu} %`} />
-            <Stat label={t.mem} pct={pct(shown.memUsed, shown.memTotal)} level={levelOf1(pct(shown.memUsed, shown.memTotal), 'mem')} text={t.of(t.size(shown.memUsed), t.size(shown.memTotal))} />
-            <Stat
-              label={t.swap}
-              pct={shown.swapTotal ? pct(shown.swapUsed, shown.swapTotal) : null}
-              level={pct(shown.swapUsed, shown.swapTotal) > 50 ? 'warn' : 'ok'}
-              text={shown.swapTotal ? t.of(t.size(shown.swapUsed), t.size(shown.swapTotal)) : t.noSwap}
-            />
-            <Stat
-              label={t.disk}
-              pct={pct(shown.diskUsed, shown.diskTotal)}
-              level={pct(shown.diskUsed, shown.diskTotal) >= 92 ? 'crit' : pct(shown.diskUsed, shown.diskTotal) >= 85 ? 'warn' : 'ok'}
-              text={t.of(t.size(shown.diskUsed), t.size(shown.diskTotal))}
-            />
+            <div className="in label">{t.machineLabel}</div>
+            <Kv k={f.provider ? t.host : t.hardware} v={f.provider ?? f.hardware} />
+            <Kv k={t.offer} v={offer?.plan ? `${offer.plan}${offer.price != null ? ` · ${t.perMonth(money(offer.price, offer.currency))}` : ''}` : null} onClick={offer?.url ? () => window.open(offer.url!, '_blank', 'noopener') : undefined} />
+            <Kv k={t.cpu} v={`${t.cores(x.cores)}${f.cpuModel ? ` · ${f.cpuModel}` : ''}`} />
+            <Kv k={t.mem} v={t.size(x.memTotal)} />
+            <Kv k={t.disk} v={x.diskTotal ? t.size(x.diskTotal) : null} />
+            <Kv k={t.system} v={[f.os, f.arch, f.virt].filter(Boolean).join(' · ')} />
+            <Kv k={t.region} v={place} />
+            <Kv k={t.network} v={f.network} />
+            <Kv k={t.upSince} v={durLong(x.uptime)} />
+            <Kv k="weevboss" v={x.weevboss ? t.here : null} />
 
-            <div className="in label">{t.today}</div>
-            <DayChart points={shown.day} episodes={shown.episodes} />
-            {shown.episodes.length > 0 && <div className="in label">{t.peaks}</div>}
-            {shown.episodes.map((e) => (
+            {(x.reach.length > 0 || direct || f.rdns) && <div className="in label">{t.connect}</div>}
+            {x.reach.map((r) => (
+              <Kv key={`${r.from}:${r.alias}`} k={t.from(r.from)} v={copied === `ssh ${r.alias}` ? t.copied : `ssh ${r.alias}`} onClick={() => copy(`ssh ${r.alias}`)} />
+            ))}
+            <Kv k={f.ip ?? ''} v={direct ? (copied === direct ? t.copied : direct) : null} onClick={() => copy(direct)} />
+            <Kv k={t.rdns} v={f.rdns} />
+
+            <div className="in label">{t.loadLabel}</div>
+            <Stat label={t.cpu} pct={x.cpu} level={levelOf1(x.cpu, 'cpu')} text={`${x.cpu} % · ${t.load(...x.load)}`} />
+            <Stat label={t.mem} pct={pct(x.memUsed, x.memTotal)} level={levelOf1(pct(x.memUsed, x.memTotal), 'mem')} text={t.of(t.size(x.memUsed), t.size(x.memTotal))} />
+            {x.swapTotal > 0 && <Stat label={t.swap} pct={pct(x.swapUsed, x.swapTotal)} level={pct(x.swapUsed, x.swapTotal) > 50 ? 'warn' : 'ok'} text={t.of(t.size(x.swapUsed), t.size(x.swapTotal))} />}
+            {x.diskTotal > 0 && <Stat label={t.disk} pct={pct(x.diskUsed, x.diskTotal)} level={pct(x.diskUsed, x.diskTotal) >= 92 ? 'crit' : pct(x.diskUsed, x.diskTotal) >= 85 ? 'warn' : 'ok'} text={t.of(t.size(x.diskUsed), t.size(x.diskTotal))} />}
+
+            {x.consumers.length > 0 && <div className="in label">{t.consumers}</div>}
+            {x.consumers.map((c, i) => (
+              <Line
+                key={`${c.kind}:${c.label}:${i}`}
+                ch={c.kind === 'session' ? '*' : c.kind === 'container' ? '#' : '>_'}
+                go={c.sessionId ? '→' : null}
+                onClick={c.sessionId ? () => push({ kind: 'session', id: c.sessionId! }) : undefined}
+                meta={[`${t.size(c.mem)} · ${c.cpu} % CPU`, ...c.parts].join(' · ')}
+              >
+                <span className="strong">{c.label}</span>
+                {c.count > 1 ? ` ×${c.count}` : ''}
+              </Line>
+            ))}
+
+            {x.day.length > 1 && <div className="in label">{t.today}</div>}
+            {x.day.length > 1 && <DayChart points={x.day} episodes={x.episodes} />}
+            {x.episodes.map((e) => (
               <div key={e.from} className="in row-static">
                 <span className="st lv-text-crit" aria-hidden>
                   <Icon name="bang" />
@@ -281,8 +307,14 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
               </div>
             ))}
 
-            {shown.advice.length > 0 && <div className="in label">{t.advice}</div>}
-            {shown.advice.map((a) => (
+            {x.days.length > 1 && <div className="in label">{t.days(x.days.length)}</div>}
+            {x.days.length > 1 &&
+              x.days.map((y) => (
+                <Kv key={y.day} k={dayName(y.day)} v={t.dayLine(y.cpu, y.cpuMax, y.mem, y.memMax)} />
+              ))}
+
+            {x.advice.length > 0 && <div className="in label">{t.advice}</div>}
+            {x.advice.map((a) => (
               <div key={a} className="in advice">
                 {a}
               </div>
@@ -290,20 +322,19 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
           </>
         )}
 
-        <div className="in label">{t.sessions}</div>
+        {sessions.length > 0 && <div className="in label">{t.sessions}</div>}
         {sessions.map((s) => (
           <SessionRow key={s.id} session={s} />
         ))}
-        {!sessions.length && <div className="in meta empty">{t.nothing}</div>}
 
-        {shown && shown.servers.length > 0 && <div className="in label">{t.servers}</div>}
-        {shown?.servers.map((s) =>
+        {x && x.servers.length > 0 && <div className="in label">{t.servers}</div>}
+        {x?.servers.map((s) =>
           s.url ? (
             <Line key={s.port} ch="#" meta={s.url.replace(/^https:\/\//, '')} onClick={() => window.open(s.url, '_blank', 'noopener')} go="↑">
               <span className="strong">{s.port}</span> {s.name} {s.dir}
             </Line>
           ) : (
-            <Line key={s.port} ch="#" go={null} onClick={s.dir ? () => push({ kind: 'fs', machine: id, path: s.dir! }) : undefined}>
+            <Line key={s.port} ch="#" go={s.dir ? '→' : null} onClick={s.dir ? () => push({ kind: 'fs', machine: id, path: s.dir! }) : undefined}>
               <span className="strong">{s.port}</span> {s.name} {s.dir}
             </Line>
           ),

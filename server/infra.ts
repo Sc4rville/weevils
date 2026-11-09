@@ -5,8 +5,9 @@ import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { Episode, FsListing, InfraDetail, InfraPoint, Level, ServerProc } from '../shared/infra.ts'
-import { DATA_DIR, EXPOSE_DOMAIN, HOME, MACHINE, ORCHESTRATOR } from './config.ts'
+import type { Consumer, DaySummary, Episode, FsListing, InfraDetail, InfraPoint, Level, Offer, ServerProc } from '../shared/infra.ts'
+import { facts, offer } from './discover.ts'
+import { DATA_DIR, EXPOSE_DOMAIN, HOME, MACHINE, ORCH_DIR, ORCHESTRATOR } from './config.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/infra.ts'
 
@@ -31,14 +32,38 @@ const read = (f: string) => {
 
 // ---------------------------------------------------------------- mesures
 
+/** Le cgroup de ce processus (v2) : un conteneur ou un service limité y porte ses vraies limites. */
+const CG = (() => {
+  const rel = /^0::(.*)$/m.exec(read('/proc/self/cgroup'))?.[1]
+  return rel != null ? path.join('/sys/fs/cgroup', rel) : null
+})()
+const cgNum = (f: string) => {
+  const v = CG ? read(path.join(CG, f)).trim() : ''
+  return /^\d+$/.test(v) ? Number(v) : null
+}
+
+/** vCPU réellement disponibles : la limite du cgroup (cpu.max) quand il y en a une, sinon les cœurs vus. */
+export function effectiveCores(): number {
+  const [q, per] = (CG ? read(path.join(CG, 'cpu.max')).trim() : '').split(' ')
+  const lim = /^\d+$/.test(q) && Number(per) > 0 ? Number(q) / Number(per) : Infinity
+  return Math.max(1, Math.min(os.cpus().length, Math.round(lim * 10) / 10))
+}
+
 function meminfo() {
   const txt = read('/proc/meminfo')
   const kb = (k: string) => Number(new RegExp(`^${k}:\\s+(\\d+)`, 'm').exec(txt)?.[1] ?? NaN) * 1024
-  const total = txt ? kb('MemTotal') : os.totalmem()
-  const avail = txt ? kb('MemAvailable') : os.freemem()
+  let total = txt ? kb('MemTotal') : os.totalmem()
+  let used = total - (txt ? kb('MemAvailable') : os.freemem())
+  // Limite de mémoire du cgroup (conteneur) : c'est elle, la vraie machine.
+  const max = cgNum('memory.max')
+  if (max != null && max < total) {
+    total = max
+    const inactive = Number(/^inactive_file (\d+)/m.exec(CG ? read(path.join(CG, 'memory.stat')) : '')?.[1] ?? 0)
+    used = Math.max(0, (cgNum('memory.current') ?? used) - inactive)
+  }
   const swapTotal = txt ? kb('SwapTotal') : 0
   const swapUsed = txt ? swapTotal - kb('SwapFree') : 0
-  return { total, used: total - avail, swapTotal, swapUsed }
+  return { total, used, swapTotal, swapUsed }
 }
 
 function disk() {
@@ -52,7 +77,18 @@ function disk() {
 }
 
 let lastCpu = os.cpus().map((c) => c.times)
+let lastCg: { usage: number; at: number } | null = null
 function cpuPercent() {
+  // Conteneur limité : son propre temps CPU rapporté à sa limite.
+  const cores = effectiveCores()
+  const usage = Number(/^usage_usec (\d+)/m.exec(CG ? read(path.join(CG, 'cpu.stat')) : '')?.[1] ?? NaN)
+  if (cores < os.cpus().length && Number.isFinite(usage)) {
+    const at = Date.now()
+    const prev = lastCg
+    lastCg = { usage, at }
+    if (prev && at > prev.at) return Math.min(100, Math.round(((usage - prev.usage) / 1000 / (at - prev.at) / cores) * 100))
+    return 0
+  }
   const now = os.cpus().map((c) => c.times)
   let busy = 0
   let all = 0
@@ -217,6 +253,8 @@ function flush() {
     agentMem: avg((l) => l.agentMem),
     agentCpu: avg((l) => l.agentCpu),
   }
+  const dk = disk()
+  if (dk.total) p.disk = Math.round((dk.used / dk.total) * 100)
   if (fams.size) p.top = [...fams].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => [k, Math.round(v)])
   minute = []
   const key = day(p.at)
@@ -326,7 +364,8 @@ export function sizing(points: InfraPoint[], memTotal: number, cores: number) {
   const target = [10, 20, 40, 80, 160].find((n) => n > Math.max(capacity, peak)) ?? 160
   const needMem = ((baseMem + target * perMem) / 0.85) * 1048576
   const needCpu = (baseCpu + target * perCpu) / 80
-  return { perMem, perCpu, capacity, peak, target, vcpu: tier(needCpu, VCPU), ram: tier(needMem / GB, RAM) }
+  // Jamais moins que ce que la machine a déjà : la marche suivante part d'ici.
+  return { perMem, perCpu, capacity, peak, target, vcpu: Math.max(cores, tier(needCpu, VCPU)), ram: Math.max(tier(memTotal / GB - 0.5, RAM), tier(needMem / GB, RAM)) }
 }
 
 const hhmm = (t: number) => {
@@ -334,7 +373,28 @@ const hhmm = (t: number) => {
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-export function advice(points: InfraPoint[], eps: Episode[], m: ReturnType<typeof meminfo>, d: ReturnType<typeof disk>, cores: number): string[] {
+/** Pente (par jour) d'une série de points (jour, valeur) : moindres carrés. */
+export function slope(xs: [number, number][]): number {
+  if (xs.length < 2) return 0
+  const mx = xs.reduce((s, [x]) => s + x, 0) / xs.length
+  const my = xs.reduce((s, [, y]) => s + y, 0) / xs.length
+  const num = xs.reduce((s, [x, y]) => s + (x - mx) * (y - my), 0)
+  const den = xs.reduce((s, [x]) => s + (x - mx) ** 2, 0)
+  return den ? num / den : 0
+}
+
+interface AdviceInput {
+  points: InfraPoint[]
+  eps: Episode[]
+  days: DaySummary[]
+  mem: ReturnType<typeof meminfo>
+  disk: ReturnType<typeof disk>
+  cores: number
+  offer: Offer | null
+}
+
+/** Chaque conseil vient d'une mesure qui franchit un seuil ou d'une tendance ; sans mesure, pas de conseil. */
+export function advice({ points, eps, days, mem: m, disk: d, cores, offer: o }: AdviceInput): string[] {
   const t = tr(M)
   const out: string[] = []
   if (eps.length) {
@@ -342,18 +402,36 @@ export function advice(points: InfraPoint[], eps: Episode[], m: ReturnType<typeo
     const worst = [...eps].sort((a, b) => Math.max(b.cpu, b.mem) - Math.max(a.cpu, a.mem))[0]
     out.push(t.saturated(eps.length, culprits.slice(0, 2), worst.cpu >= worst.mem ? `${worst.cpu} % CPU` : t.memPct(worst.mem), hhmm(worst.from)))
   }
-  const linux = fs.existsSync('/proc/meminfo')
-  if (linux && m.swapTotal === 0) out.push(t.noSwap(m.total >= 8 * GB ? 4 : 2))
+  if (fs.existsSync('/proc/meminfo') && m.swapTotal === 0) out.push(t.noSwap(m.total >= 8 * GB ? 4 : 2))
   else if (m.swapTotal && m.swapUsed / m.swapTotal > 0.5) out.push(t.swapHigh(Math.round((m.swapUsed / m.swapTotal) * 100)))
   const highMem = points.filter((p) => p.mem >= 85).length
   if (highMem >= 30) out.push(t.memHigh(highMem))
   const avgCpu = points.length ? points.reduce((s, p) => s + p.cpu, 0) / points.length : 0
   if (points.length >= 60 && avgCpu >= 60) out.push(t.cpuHigh(Math.round(avgCpu)))
+  // Tendances sur les jours mesurés (au moins 3) : mémoire moyenne qui monte, disque qui se remplit.
+  if (days.length >= 3) {
+    const idx = (k: string) => Math.round((Date.parse(k) - Date.parse(days[0].day)) / 86400_000)
+    const memSlope = slope(days.map((x) => [idx(x.day), x.mem]))
+    if (memSlope >= 2) out.push(t.memTrend(Math.round(memSlope * (days.length - 1)), days.length))
+    const withDisk = days.filter((x) => x.disk != null)
+    const diskSlope = slope(withDisk.map((x) => [idx(x.day), x.disk!]))
+    const last = withDisk[withDisk.length - 1]?.disk
+    if (withDisk.length >= 3 && diskSlope > 0.05 && last != null) {
+      const left = Math.round((100 - last) / diskSlope)
+      if (left <= 120) out.push(t.diskFull(left))
+    }
+  }
   if (d.total && d.used / d.total >= 0.85) out.push(t.diskHigh(Math.round((d.used / d.total) * 100), Math.round((d.total - d.used) / GB)))
   const s = sizing(points, m.total, cores)
   if (s) {
     out.push(t.perSession(Math.round(s.perMem), Math.round(s.perCpu), s.capacity))
     out.push(t.forN(s.target, s.vcpu, s.ram))
+  }
+  // Le palier au-dessus chez le même fournisseur, quand la machine est à l'étroit et que le prix est vérifié.
+  const tight = eps.length > 0 || highMem >= 30 || (s != null && s.peak >= s.capacity)
+  if (tight && o?.nextPlan && o.nextPrice != null) {
+    const delta = o.price != null ? o.nextPrice - o.price : null
+    out.push(t.upgrade(o.nextPlan, o.nextVcpu, o.nextRamGb, o.nextPrice, delta, o.currency ?? ''))
   }
   return out
 }
@@ -404,18 +482,141 @@ function servers(): Promise<ServerProc[]> {
   })
 }
 
-export async function detail(): Promise<InfraDetail> {
+/** Les jours d'historique déjà écrits (jusqu'à 7, aujourd'hui compris), résumés. */
+function lastDays(): DaySummary[] {
+  let files: string[] = []
+  try {
+    files = fs.readdirSync(DIR).filter((f) => /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f)).sort().slice(-7)
+  } catch {
+    return []
+  }
+  return files.flatMap((f) => {
+    const key = f.slice(0, 10)
+    const pts = key === todayKey ? today : load(key)
+    if (pts.length < 30) return []
+    const avg = (g: (p: InfraPoint) => number) => Math.round(pts.reduce((s, p) => s + g(p), 0) / pts.length)
+    const disks = pts.filter((p) => p.disk != null)
+    return [{ day: key, cpu: avg((p) => p.cpu), cpuMax: Math.max(...pts.map((p) => p.cpuMax)), mem: avg((p) => p.mem), memMax: Math.max(...pts.map((p) => p.mem)), ...(disks.length ? { disk: disks[disks.length - 1].disk } : {}) }]
+  })
+}
+
+/** Le conteneur docker d'un processus (id court), lu dans son cgroup. */
+const containerOf = (pid: number) => /(?:docker[-/]|containers\/)([0-9a-f]{12})/.exec(read(`/proc/${pid}/cgroup`))?.[1]
+
+/** Une session claude / codex : son id (argument --session-id / --resume, ou le dossier de travail). */
+function agentSession(pid: number): { id?: string; cwd?: string } {
+  const args = read(`/proc/${pid}/cmdline`).split('\0')
+  const i = args.findIndex((a) => a === '--session-id' || a === '--resume' || a === '-r')
+  let cwd: string | undefined
+  try {
+    cwd = fs.readlinkSync(`/proc/${pid}/cwd`)
+  } catch {
+    /* disparu */
+  }
+  return { id: i >= 0 ? args[i + 1] : undefined, cwd }
+}
+
+/**
+ * Ce qui consomme en ce moment, regroupé par ce qui l'explique : une session (avec tout ce qu'elle a lancé : tests,
+ * navigateurs, serveurs), un conteneur docker, sinon une famille de processus. CPU mesuré depuis la dernière mesure.
+ */
+async function consumers(lookup: (id: string) => { title: string; projectId: string } | undefined): Promise<Consumer[]> {
+  const list = procs()
+  if (!list.length) return []
+  const dt = (Date.now() - prevAt) / 1000
+  const cpuOf = (p: Proc) => {
+    const b = prevTicks.get(p.pid)
+    return b != null && dt > 0 ? ((p.ticks - b) / HZ / dt) * 100 : 0
+  }
+  const byPid = new Map(list.map((p) => [p.pid, p]))
+  const owner = new Map<number, number | null>()
+  const agentOf = (p: Proc): number | null => {
+    if (owner.has(p.pid)) return owner.get(p.pid)!
+    owner.set(p.pid, null)
+    const parent = byPid.get(p.ppid)
+    const r = isAgent(p) ? p.pid : parent && p.ppid > 1 ? agentOf(parent) : null
+    owner.set(p.pid, r)
+    return r
+  }
+  const groups = new Map<string, { c: Consumer; parts: Map<string, number> }>()
+  const names = new Map<string, string>()
+  const docker = list.some((p) => p.comm === 'dockerd' || p.comm.startsWith('containerd'))
+  if (docker) {
+    const out = await new Promise<string>((r) => execFile('docker', ['ps', '--format', '{{.ID}} {{.Names}}'], { timeout: 3000 }, (e, o) => r(e ? '' : String(o))))
+    for (const l of out.split('\n')) {
+      const [id, name] = l.split(' ')
+      if (id && name) names.set(id.slice(0, 12), name)
+    }
+  }
+  for (const p of list) {
+    const a = agentOf(p)
+    const cid = a == null && docker ? containerOf(p.pid) : undefined
+    let key: string
+    let make: () => Consumer
+    if (a != null) {
+      key = `s:${a}`
+      make = () => {
+        const s = agentSession(a)
+        const known = s.id ? lookup(s.id) : undefined
+        const repo = s.cwd === ORCH_DIR ? 'weevboss' : s.cwd ? path.basename(s.cwd) : byPid.get(a)!.comm
+        return { kind: 'session', label: known?.title ?? repo, sessionId: known ? s.id : undefined, projectId: known?.projectId, mem: 0, cpu: 0, count: 0, parts: [] }
+      }
+    } else if (cid) {
+      key = `d:${cid}`
+      make = () => ({ kind: 'container', label: names.get(cid) ?? cid, mem: 0, cpu: 0, count: 0, parts: [] })
+    } else {
+      // Les petits processus système ne sont pas lus en détail : seuls ceux qui pèsent reçoivent une famille.
+      const heavy = p.rss > 30 * 1048576 || cpuOf(p) > 2
+      const fam = heavy ? family(p) : p.comm
+      key = `f:${fam}`
+      make = () => ({ kind: 'process', label: fam, mem: 0, cpu: 0, count: 0, parts: [] })
+    }
+    let g = groups.get(key)
+    if (!g) groups.set(key, (g = { c: make(), parts: new Map() }))
+    const cpu = cpuOf(p)
+    g.c.mem += p.rss
+    g.c.cpu += cpu
+    g.c.count++
+    if (a != null && p.pid !== a && (p.rss > 30 * 1048576 || cpu > 2)) {
+      const f = family(p)
+      g.parts.set(f, (g.parts.get(f) ?? 0) + p.rss + cpu * 1048576 * 10)
+    } else if (a == null && !cid && (p.rss > 30 * 1048576 || cpu > 2)) {
+      // Un processus hors session : le dossier d'où il tourne dit à quel projet il sert.
+      let dir = ''
+      try {
+        dir = fs.readlinkSync(`/proc/${p.pid}/cwd`)
+      } catch {
+        /* autre utilisateur */
+      }
+      if (dir.startsWith(HOME + path.sep)) g.parts.set(path.basename(dir), (g.parts.get(path.basename(dir)) ?? 0) + p.rss + cpu * 1048576 * 10)
+    }
+  }
+  const total = meminfo().total
+  return [...groups.values()]
+    .map(({ c, parts }) => ({ ...c, cpu: Math.round(c.cpu), parts: [...parts].sort((x, y) => y[1] - x[1]).map(([k]) => k).slice(0, 4) }))
+    // Ce qui compte : au moins 1 % de la mémoire ou 5 % d'un cœur.
+    .filter((c) => c.mem >= total * 0.01 || c.cpu >= 5)
+    .sort((a, b) => b.mem / total + b.cpu / 100 / effectiveCores() - (a.mem / total + a.cpu / 100 / effectiveCores()))
+    .slice(0, 10)
+}
+
+export async function detail(lookup: (id: string) => { title: string; projectId: string } | undefined = () => undefined): Promise<InfraDetail> {
   const m = meminfo()
   const d = disk()
-  const cores = os.cpus().length
+  const cores = effectiveCores()
   const c = current ?? measure()
   const pts = [...today]
   const eps = episodes(pts)
+  const f = await facts()
+  const o = offer(f, cores, m.total, d.total)
+  const days = lastDays()
   return {
     id: MACHINE.id,
     name: MACHINE.name,
     weevboss: ORCHESTRATOR,
-    os: `${os.type()} ${os.release()}`,
+    facts: f,
+    offer: o,
+    reach: [],
     cores,
     memTotal: m.total,
     memUsed: m.used,
@@ -428,8 +629,10 @@ export async function detail(): Promise<InfraDetail> {
     uptime: os.uptime() * 1000,
     day: buckets(pts),
     episodes: eps,
+    days,
     servers: await servers(),
-    advice: advice(pts, eps, m, d, cores),
+    consumers: await consumers(lookup),
+    advice: advice({ points: pts, eps, days, mem: m, disk: d, cores, offer: o }),
   }
 }
 

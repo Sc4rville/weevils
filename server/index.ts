@@ -5,7 +5,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, ORCHESTRATOR, PORT } from './config.ts'
+import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, MACHINE, ORCHESTRATOR, PORT } from './config.ts'
 import { openaiKey, speak, speakable, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaStream, cartesiaVoices } from './fast.ts'
@@ -21,7 +21,8 @@ import { startMailBridge } from './mailbridge.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
 import { quotas, today as usageToday } from './usage.ts'
-import type { MachineBrief, UsageRow } from '../shared/infra.ts'
+import type { InfraDetail, MachineBrief, MachineFacts, Reach, UsageRow } from '../shared/infra.ts'
+import { facts } from './discover.ts'
 
 const w = new Weevils()
 w.start()
@@ -357,9 +358,17 @@ const routes: [string, RegExp, Handler][] = [
     )
     json(res, 200, { machines: [here, ...far] })
   }],
+  ['GET', /^\/api\/infra\/facts$/, async (_req, res) => json(res, 200, await facts())],
   ['GET', /^\/api\/infra$/, async (_req, res, url) => {
     const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
-    json(res, 200, remote ? await remote.call('GET', '/api/infra') : await infraDetail())
+    if (url.searchParams.has('local') || !remote) {
+      const sessions = new Map(w.snapshot().sessions.map((s) => [s.id, s]))
+      const d = await infraDetail((id) => sessions.get(id))
+      if (url.searchParams.has('local')) return json(res, 200, d)
+      return json(res, 200, { ...d, reach: await reachOf(d.facts, MACHINE.id) })
+    }
+    const d = await remote.call<InfraDetail>('GET', '/api/infra?local=1')
+    json(res, 200, { ...d, reach: await reachOf(d.facts, d.id) })
   }],
   ['GET', /^\/api\/fs$/, async (_req, res, url) => {
     const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
@@ -386,6 +395,20 @@ const routes: [string, RegExp, Handler][] = [
     json(res, 200, { ok: true })
   }],
 ]
+
+/** Comment les autres machines joignent celle-ci : leurs alias SSH qui pointent vers son IP, son reverse DNS ou son nom. */
+async function reachOf(f: MachineFacts, id: string): Promise<Reach[]> {
+  const names = new Set([f.ip, f.rdns, f.hostname, id].filter(Boolean).map((x) => x!.toLowerCase()))
+  const others: [string, MachineFacts | null][] = [
+    ...(id === MACHINE.id ? [] : [[MACHINE.name, await facts()] as [string, MachineFacts]]),
+    ...(await Promise.all(
+      w.remotes
+        .filter((r) => r.online && (r.snap?.machines[0]?.id ?? r.id) !== id)
+        .map(async (r) => [r.snap?.machines[0]?.name ?? r.id, await r.call<MachineFacts>('GET', '/api/infra/facts').catch(() => null)] as [string, MachineFacts | null]),
+    )),
+  ]
+  return others.flatMap(([from, o]) => (o?.ssh ?? []).filter((t) => names.has(t.host.toLowerCase()) || names.has(t.alias.toLowerCase())).map((t) => ({ from, alias: t.alias, user: t.user })))
+}
 
 const PUBLIC = new Set(['/api/login', '/api/me'])
 

@@ -212,3 +212,27 @@
   font-weight: 600;
   line-height: 1.35;
 }
+
+/* Une ligne clé · valeur : la clé discrète à gauche, la valeur en gras à droite. */
+.kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  min-height: 40px;
+  padding-block: 8px;
+  text-align: left;
+}
+.kv .meta {
+  flex: none;
+}
+.kv .v {
+  font-weight: 700;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+button.kv {
+  width: 100%;
+}

@@ -8,6 +8,7 @@ import { lang, tr, type Lang } from './i18n.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import V from './i18n/voice.ts'
 import { openaiKey } from './transcribe.ts'
+import { TTS_RATE, TTS_VOICE } from './config.ts'
 
 /** Une réponse courte de haiku : sans outils, sans session gardée. ~1,6 s mesuré sur le VPS. */
 export function haiku(prompt: string, timeout = 20_000): Promise<string> {
@@ -48,13 +49,29 @@ export async function quick(prompt: string, maxTokens = 260): Promise<string> {
   return haiku(prompt)
 }
 
-/** Voix gratuite dans la langue de l'app (voix neuronales Microsoft via edge-tts), débit +25 %. MP3. */
-export function tts(text: string, l: Lang = detectLang(text) ?? lang(), voice = l === 'fr' ? 'fr-FR-RemyMultilingualNeural' : 'en-US-AndrewMultilingualNeural'): Promise<Buffer> {
+/** edge-tts : celui du PATH, sinon ~/.local/bin/edge-tts (pipx install edge-tts). null : pas installé. */
+function edgeTts(): string | null {
+  const dirs = [...(process.env.PATH ?? '').split(path.delimiter).filter(Boolean), path.join(os.homedir(), '.local', 'bin')]
+  for (const dir of dirs) {
+    const bin = path.join(dir, 'edge-tts')
+    try {
+      fs.accessSync(bin, fs.constants.X_OK)
+      return bin
+    } catch {
+      /* pas ici */
+    }
+  }
+  return null
+}
+
+/** Voix gratuite dans la langue de l'app (voix neuronales Microsoft via edge-tts), débit TTS_RATE (+25 % par défaut). MP3. */
+export function tts(text: string, l: Lang = detectLang(text) ?? lang(), voice = TTS_VOICE[l]): Promise<Buffer> {
   const out = path.join(os.tmpdir(), `wv-tts-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`)
-  const bin = path.join(os.homedir(), '.local', 'bin', 'edge-tts')
+  const bin = edgeTts()
+  if (!bin) return Promise.reject(new Error(tr(V).noEdgeTts))
   const t0 = Date.now()
   return new Promise((resolve, reject) => {
-    execFile(bin, ['--voice', voice, '--rate=+25%', '--text', text, '--write-media', out], { timeout: 20_000 }, (err) => {
+    execFile(bin, ['--voice', voice, `--rate=${TTS_RATE}`, '--text', text, '--write-media', out], { timeout: 20_000 }, (err) => {
       console.log(`[rapide] voix ${Date.now() - t0} ms${err ? ' · échec' : ''}`)
       if (err) return reject(err)
       try {

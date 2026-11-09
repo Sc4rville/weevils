@@ -26,6 +26,8 @@ export interface SessionSettings {
   model?: string
   /** codex : on-request, never, untrusted… */
   approval?: string
+  /** claude : low / medium / high / max, lu dans les requêtes du transcript. */
+  effort?: string
 }
 
 export interface Session {
@@ -58,6 +60,8 @@ export interface Session {
   lastMessage?: string
   messageCount: number
   settings?: SessionSettings
+  /** Messages reçus pendant que la session travaille, pas encore traités. */
+  queued: number
 }
 
 export interface Project {
@@ -141,6 +145,7 @@ export interface Snapshot {
   /** Réglages connus de la session de l'orchestrateur, et si on peut lui envoyer des commandes (/model…). */
   mainSettings?: SessionSettings
   mainHasScreen: boolean
+  mainQueued: number
   /** Repos épinglés au fil des projets (présents même sans session). */
   pinnedRepos: string[]
 }

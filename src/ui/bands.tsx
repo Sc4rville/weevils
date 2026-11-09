@@ -6,7 +6,7 @@ import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
 import { useApp } from './app-context'
 import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, spring } from './bits'
-import { Settings, shortModel } from './settings'
+import { Settings, effortLabel, shortModel } from './settings'
 import { ago, plain, plural, step } from './format'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
@@ -41,8 +41,10 @@ export function AgentBand() {
   const live = snap.sessions.filter((s) => s.status !== 'done')
   const att = snap.sessions.filter((s) => s.status === 'needs_user').length
   const running = snap.h24.filter((a) => a.runState === 'running').length
-  const model = shortModel(snap.mainSettings?.model)
-  const summary = [live.length ? activity(live) : 'aucune session ouverte', att ? `${att} à toi` : null, running ? `h24 ${running} en cours` : null, model].filter(Boolean).join(' · ')
+  const model = [shortModel(snap.mainSettings?.model), effortLabel(snap.mainSettings?.effort)].filter(Boolean).join(' · ')
+  const summary = [live.length ? activity(live) : 'aucune session ouverte', att ? `${att} à toi` : null, running ? `h24 ${running} en cours` : null, snap.mainQueued ? `${snap.mainQueued} en attente` : null]
+    .filter(Boolean)
+    .join(' · ')
   const last = snap.main[snap.main.length - 1]
   useStickBottom(body, snap.main.length, open)
 
@@ -73,7 +75,17 @@ export function AgentBand() {
           ~
         </button>
       </div>
-      <div className="in meta summary">{summary}</div>
+      <div className="in meta summary">
+        {summary}
+        {model && (
+          <>
+            {' · '}
+            <button className="link inline" onClick={() => setSettingsOpen(true)} aria-label="changer le modèle ou l’effort" aria-controls="agent-settings">
+              {model}
+            </button>
+          </>
+        )}
+      </div>
       <Collapse open={settingsOpen} id="agent-settings">
         <div className="band tone">
           <Settings id="__main" tool="claude" settings={snap.mainSettings} canCommand={snap.mainHasScreen} run={(c) => api.mainCommand(c)} />

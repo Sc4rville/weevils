@@ -429,6 +429,13 @@ button:disabled {
   align-items: center;
 }
 
+/* Dans une ligne de texte : pas de hauteur de bouton. */
+.link.inline {
+  min-height: 0;
+  display: inline;
+  padding-block: 6px;
+}
+
 .inline-actions {
   display: flex;
   flex-wrap: wrap;

@@ -5,7 +5,7 @@ import { useApp, type Page } from './app-context'
 import { Collapse, Composer, Line, Messages, StatusChar, Working, type Attachment } from './bits'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
-import { Settings, shortModel } from './settings'
+import { Settings, effortLabel, shortModel } from './settings'
 import { ReposPage } from './repos'
 import { Shell } from './shell'
 import { ago, dur, durLong, plural, status } from './format'
@@ -184,8 +184,12 @@ function SessionPage({ id }: { id: string }) {
               <br />
             </>
           )}
-          {s.tool}
-          {s.settings?.model ? ` ${shortModel(s.settings.model)}` : ''} · <StatusChar s={s.status} /> {st.label}
+          {s.tool}{' '}
+          <button className="link inline" onClick={() => setShowSettings(true)} aria-label="changer le modèle ou l’effort" aria-controls="session-settings">
+            {[shortModel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || 'modèle'}
+          </button>
+          {' '}· <StatusChar s={s.status} /> {st.label}
+          {s.queued > 0 && <span className="strong"> · {s.queued} en attente</span>}
           {s.status === 'working' && s.workStartedAt != null ? <> depuis {durLong(now - s.workStartedAt)}</> : <> · {ago(now - s.lastActivityAt)}</>}
           {' · '}
           {s.machineId}

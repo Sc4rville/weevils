@@ -4,10 +4,13 @@ import { Line } from './bits'
 
 /** Réglages manuels d'une session : ils partent en commandes slash (/model, /effort, /fast, /compact, /clear, /approvals). */
 
-const MODELS: Record<Tool, string[]> = { claude: ['opus', 'sonnet', 'haiku'], codex: [] }
+const MODELS: Record<Tool, string[]> = { claude: ['fable', 'opus', 'sonnet', 'haiku'], codex: [] }
 const EFFORTS = ['low', 'medium', 'high', 'max']
 
 /** « claude-opus-4-1 » → « opus » ; un modèle codex est gardé tel quel. */
+export const EFFORT_FR: Record<string, string> = { low: 'effort faible', medium: 'effort moyen', high: 'effort élevé', max: 'effort max' }
+export const effortLabel = (e?: string) => (e ? (EFFORT_FR[e] ?? `effort ${e}`) : undefined)
+
 export function shortModel(model?: string): string | undefined {
   if (!model) return undefined
   const m = /opus|sonnet|haiku|fable/i.exec(model)
@@ -116,7 +119,7 @@ export function Settings({
       {tool === 'claude' ? (
         <>
           <Choice label="modèle" options={models} value={model} known={modelKnown} onPick={(m) => void send(`/model ${m}`, () => setLocal({ model: m }))} />
-          <Choice label="effort" options={EFFORTS} value={local.effort} known={false} onPick={(e) => void send(`/effort ${e}`, () => setLocal({ effort: e }))} />
+          <Choice label="effort" options={EFFORTS} value={settings?.effort ?? local.effort} known={!!settings?.effort} onPick={(e) => void send(`/effort ${e}`, () => setLocal({ effort: e }))} />
           <div className="in settings-row">
             <span className="meta settings-label">
               mode rapide

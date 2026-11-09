@@ -452,7 +452,9 @@ export class Weevils {
       subagents: t.subagents,
       lastMessage: lastMessageOf(t),
       messageCount: t.messages.length,
-      settings: t.model || t.approval ? { model: t.model, approval: t.approval } : undefined,
+      settings: t.model || t.approval || t.effort ? { model: t.model, approval: t.approval, effort: t.effort } : undefined,
+      // Une file ne survit pas à la fin du tour : si la session ne travaille plus, tout a été traité.
+      queued: status === 'working' ? t.queued.length : 0,
     }
   }
 
@@ -478,6 +480,7 @@ export class Weevils {
       hasScreen: true,
       subagents: [],
       messageCount: 0,
+      queued: 0,
       lastMessage: now - p.createdAt < 60_000 ? 'démarrage…' : undefined,
     }
   }
@@ -558,6 +561,7 @@ export class Weevils {
       mainWorking: this.orchestratorWorking(now),
       mainSettings: this.orchestratorSettings(),
       mainHasScreen: !!this.orchestratorPane(),
+      mainQueued: this.orchestratorQueued(now),
       pinnedRepos: this.pinnedRepos,
     }
     return this.snap
@@ -915,7 +919,12 @@ export class Weevils {
 
   private orchestratorSettings() {
     const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
-    return t?.model || t?.approval ? { model: t.model, approval: t.approval } : undefined
+    return t?.model || t?.approval || t?.effort ? { model: t.model, approval: t.approval, effort: t.effort } : undefined
+  }
+
+  private orchestratorQueued(now: number) {
+    const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
+    return t && this.orchestratorWorking(now) ? t.queued.length : 0
   }
 
   /** Commande slash (/model opus, /effort high, /fast, /compact, /clear, /approvals…) tapée dans la pane de la session : pas un message, pas signée. */

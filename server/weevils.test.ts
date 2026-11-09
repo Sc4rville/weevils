@@ -225,7 +225,7 @@ describe('messages weevils collés (send-keys long → pasted_content)', async (
       { type: 'user', uuid: 'u3', timestamp: '2026-11-09T05:42:00Z', message: { role: 'user', content: '<local-command-stdout>Compacted</local-command-stdout>' } },
     ]
     fs.writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
-    const t = { id: '55639800-e327-46ce-bef8-310477c7d9e2', tool: 'claude' as const, file, cwd: '', openedAt: 0, lastActivityAt: 0, workStartedAt: null, phase: 'idle' as const, messages: [], subagents: [], offset: 0, partial: '' }
+    const t = { id: '55639800-e327-46ce-bef8-310477c7d9e2', tool: 'claude' as const, file, cwd: '', openedAt: 0, lastActivityAt: 0, workStartedAt: null, phase: 'idle' as const, messages: [], subagents: [], offset: 0, partial: '', queued: [] }
     readMore(t as any, fs.statSync(file).size)
     expect(t.messages.map((m: any) => [m.role, m.text.slice(0, 40)])).toEqual([
       ['orchestrator', 'Trois retours de Scarville (les précédents on'],

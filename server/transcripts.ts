@@ -32,6 +32,10 @@ export interface Transcript {
   model?: string
   /** codex : approval_policy du dernier turn_context. */
   approval?: string
+  /** claude : effort de la dernière requête (output_config.effort). */
+  effort?: string
+  /** Messages mis en file pendant que l'agent travaille, pas encore repris comme messages de l'utilisateur. */
+  queued: { key: string; at: number }[]
 }
 
 const MAX_MESSAGES = 400
@@ -49,6 +53,16 @@ const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
 const isNoise = (text: string) => {
   const t = unwrapPasted(text)
   return !t || /^</.test(t) || /^\[Request interrupted by user/.test(t) || t.startsWith('Caveat:') || /^#?\s*AGENTS\.md instructions/i.test(t) || t.includes('<INSTRUCTIONS>')
+}
+
+const queueKey = (text: string) => unwrapPasted(text).replace(/\s+/g, ' ').slice(0, 200)
+/** Le message repris par l'agent était en file : on le retire de la file (il est déjà dans le fil). */
+function dequeue(t: Transcript, text: string): boolean {
+  const k = queueKey(text)
+  const i = t.queued.findIndex((q) => q.key === k)
+  if (i < 0) return false
+  t.queued.splice(i, 1)
+  return true
 }
 
 function push(t: Transcript, m: Message) {
@@ -86,7 +100,13 @@ function claudeLine(t: Transcript, o: any) {
     if (isNoise(text)) return
     touch(t, at)
     t.firstPrompt ??= text
+    t.queued.push({ key: queueKey(text), at })
     push(t, userMsg(o.uuid ?? `${t.id}-${at}-q`, text, at))
+    return
+  }
+  if (o.type === 'api-request-blob') {
+    const effort = o.message?.output_config?.effort
+    if (typeof effort === 'string' && effort) t.effort = effort
     return
   }
 
@@ -98,7 +118,7 @@ function claudeLine(t: Transcript, o: any) {
       t.firstPrompt ??= c
       t.phase = 'working'
       t.workStartedAt = at
-      push(t, userMsg(o.uuid ?? `${t.id}-${at}`, c, at))
+      if (!dequeue(t, c)) push(t, userMsg(o.uuid ?? `${t.id}-${at}`, c, at))
       return
     }
     if (Array.isArray(c)) {
@@ -107,6 +127,7 @@ function claudeLine(t: Transcript, o: any) {
           t.firstPrompt ??= part.text
           t.phase = 'working'
           t.workStartedAt = at
+          if (dequeue(t, String(part.text))) continue
           push(t, userMsg(`${o.uuid}-t`, String(part.text), at))
         } else if (part?.type === 'tool_result') {
           t.phase = 'working'
@@ -253,7 +274,7 @@ function codexLine(t: Transcript, o: any) {
 function emptyTranscript(file: string, tool: Tool): Transcript {
   const base = path.basename(file, '.jsonl')
   const id = tool === 'claude' ? base : (base.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)?.[0] ?? base)
-  return { id, tool, file, cwd: '', openedAt: 0, lastActivityAt: 0, workStartedAt: null, phase: 'idle', messages: [], subagents: [], offset: 0, partial: '' }
+  return { id, tool, file, cwd: '', openedAt: 0, lastActivityAt: 0, workStartedAt: null, phase: 'idle', messages: [], subagents: [], offset: 0, partial: '', queued: [] }
 }
 
 /** Lit la suite du fichier ; renvoie true si quelque chose a changé. */

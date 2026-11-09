@@ -637,7 +637,8 @@ export class Weevils {
 
   detail(id: string): SessionDetail | undefined {
     const real = this.resolveId(id)
-    const session = this.snapshot().sessions.find((s) => s.id === real)
+    // Seulement les sessions de CETTE machine : le snapshot fusionné contient aussi celles du PC, dont le fil est là-bas.
+    const session = this.snapshot().sessions.find((s) => s.id === real && s.machineId === MACHINE.id)
     if (!session) return undefined
     const t = this.store.get(real)
     return { session, messages: t?.messages ?? [] }

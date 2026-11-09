@@ -6,6 +6,7 @@ import { AgentBand, FootBand, ProjectBand } from './ui/bands'
 import { spring } from './ui/bits'
 import { H24Rail } from './ui/h24'
 import { Login } from './ui/login'
+import { Onboarding } from './ui/onboarding'
 import { PageView } from './ui/pages'
 import { usePinch } from './ui/calm'
 import { adoptUnknown } from './ui/seen'
@@ -244,6 +245,7 @@ export default function App() {
             <PageView key={`${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : ''}`} page={p} />
           ))}
         </AnimatePresence>
+        <Onboarding />
       </MotionConfig>
     </Ctx.Provider>
   )

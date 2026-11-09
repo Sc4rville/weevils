@@ -210,7 +210,7 @@ run_plain() {
   check "still one weevilsd process" test "$(count)" = 1
   check "stop / start" in_c '~/.local/bin/weevils-service stop && ! curl -sf -m 2 http://127.0.0.1:4179/api/me; ~/.local/bin/weevils-service start && for i in $(seq 20); do curl -sf http://127.0.0.1:4179/api/me && exit 0; sleep 0.5; done; exit 1'
   check "--uninstall --purge (piped) exits 0" docker exec -i "$c" bash -s -- --yes --lang fr --uninstall --purge <"$work/weevils/install.sh"
-  check "no weevilsd left, commands, settings and data gone, the clone kept" bash -c "[ \"\$(count)\" = 0 ] && docker exec $c bash -c '! test -e ~/.local/bin/weevils-service && ! test -e ~/.config/weevils && ! test -e ~/.local/share/weevils && test -f ~/weevils/install.sh'"
+  check "no weevilsd left, commands, settings and data gone, the clone kept" bash -c "[ '$(count)' = 0 ] && docker exec $c bash -c '! test -e ~/.local/bin/weevils-service && ! test -e ~/.config/weevils && ! test -e ~/.local/share/weevils && test -f ~/weevils/install.sh'"
 }
 
 # ---------------------------------------------------------------- edge cases (no systemd: plain containers)

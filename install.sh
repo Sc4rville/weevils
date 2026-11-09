@@ -746,7 +746,7 @@ finish() {
     else info "$(t no_qr)"; fi
   fi
   if [ "$mode" = lan ]; then
-    private_ip "$ip" || printf '  %s! %s%s\n' "$E$B" "$(t lan_public)" "$R"
+    [ -z "$ip" ] || private_ip "$ip" || printf '  %s! %s%s\n' "$E$B" "$(t lan_public)" "$R"
     info "$(t lan_https)"
   fi
   [ "$IS_WSL" = 0 ] || warn "$(t wsl)"

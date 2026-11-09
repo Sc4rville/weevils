@@ -1,0 +1,160 @@
+import { describe, expect, it, vi } from 'vitest'
+import type { Session, Snapshot } from '../shared/api.ts'
+import type { LoadSample, MachineLoad } from '../shared/tips.ts'
+import { actOn, IDLE_SESSION_MS, MIN_SAMPLES, personalTips, saturation, toCard, WAITING_MS, type TipInput } from './tips.ts'
+import { setLang } from './i18n.ts'
+
+// The real setLang writes prefs.json in the user's data dir: the language is switched in memory only.
+vi.mock('./i18n.ts', async (orig) => {
+  const real = await orig<typeof import('./i18n.ts')>()
+  let lang: 'en' | 'fr' = 'en'
+  return { ...real, setLang: (l: 'en' | 'fr') => void (lang = l), tr: (m: Record<string, unknown>) => m[lang] }
+})
+
+const NOW = new Date(2026, 10, 9, 15, 0).getTime()
+const H = 3600_000
+
+const session = (over: Partial<Session> = {}): Session => ({
+  id: 's1',
+  projectId: 'mygame',
+  repo: 'mygame',
+  machineId: 'vps',
+  tool: 'claude',
+  title: 'fix the jump',
+  status: 'working',
+  cwd: '/home/u/projects/mygame',
+  openedAt: NOW - 2 * H,
+  lastActivityAt: NOW - 60_000,
+  workStartedAt: null,
+  origin: 'weevils',
+  controllable: true,
+  live: true,
+  hasScreen: true,
+  subagents: [],
+  messageCount: 3,
+  queued: 0,
+  ...over,
+})
+
+const snap = (over: Partial<Snapshot> = {}): Snapshot => ({
+  version: 1,
+  now: NOW,
+  machines: [
+    { id: 'vps', name: 'vps', online: true },
+    { id: 'pc', name: 'pc', online: true },
+  ],
+  projects: [],
+  sessions: [session()],
+  h24: [],
+  conversations: [],
+  conversationCounts: { total: 0, pending: 0, byProject: {} },
+  classifier: { running: false, queued: 0 },
+  main: [],
+  mainWorking: false,
+  mainHasScreen: false,
+  mainQueued: 0,
+  pinnedRepos: [],
+  config: { userName: '', exposeDomain: '', publicHost: '' },
+  ...over,
+})
+
+const input = (over: Partial<TipInput> = {}): TipInput => ({ snap: snap(), now: NOW, loads: [], dictation: true, ...over })
+const rules = (i: TipInput) => personalTips(i).map((c) => c.rule)
+
+const load = (n: number, hot: (k: number) => boolean, cores = 4): MachineLoad => ({
+  machineId: 'vps',
+  name: 'vps',
+  cores,
+  samples: Array.from({ length: n }, (_, k): LoadSample => [NOW - k * 60_000, hot(k) ? cores * 2 : 0.3, 0.5]),
+})
+
+describe('tips — rules', () => {
+  setLang('en')
+
+  it('a quiet, well set-up state yields no card', () => {
+    expect(personalTips(input())).toEqual([])
+  })
+
+  it('saturated machine: over 20 % of hot samples, with at least an hour of data', () => {
+    expect(rules(input({ loads: [load(120, (k) => k % 3 === 0)] }))).toEqual(['saturated'])
+    expect(rules(input({ loads: [load(120, (k) => k % 10 === 0)] }))).toEqual([])
+    expect(rules(input({ loads: [load(MIN_SAMPLES - 1, () => true)] }))).toEqual([])
+    // Low memory counts too.
+    const mem: MachineLoad = { machineId: 'pc', name: 'pc', cores: 8, samples: Array.from({ length: 90 }, (_, k): LoadSample => [NOW - k * 60_000, 0.1, 0.05]) }
+    const [card] = personalTips(input({ loads: [mem] }))
+    expect(card.id).toMatch(/^saturated:pc:\d+$/)
+    expect(card.action).toEqual({ kind: 'boss', text: expect.stringContaining('100%') })
+    expect(card.text).toContain('pc')
+  })
+
+  it('saturation ignores samples older than 24 h', () => {
+    const old: MachineLoad = { ...load(100, () => true), samples: load(100, () => true).samples.map(([at, l, f]) => [at - 25 * H, l, f] as LoadSample) }
+    expect(saturation(old, NOW)).toBeNull()
+  })
+
+  it('idle sessions: live weevils panes idle for more than 12 h, id built from their ids', () => {
+    const idle = [
+      session({ id: 'a', status: 'done', lastActivityAt: NOW - 20 * H }),
+      session({ id: 'b', status: 'idle', lastActivityAt: NOW - IDLE_SESSION_MS - 60_000 }),
+      session({ id: 'c', status: 'done', live: false, lastActivityAt: NOW - 30 * H }), // already closed
+      session({ id: 'd', status: 'idle', hasScreen: false, lastActivityAt: NOW - 30 * H }), // not a weevils pane
+      session({ id: 'e', status: 'needs_user', lastActivityAt: NOW - 20 * H }), // waiting, other rule
+    ]
+    const cards = personalTips(input({ snap: snap({ sessions: idle }) }))
+    const card = cards.find((c) => c.rule === 'idle-sessions')!
+    expect(card.data).toEqual(['a', 'b'])
+    expect(card.text).toBe('2 sessions idle for over 12 h — close them?')
+    expect(card.action).toEqual({ kind: 'server' })
+    expect(toCard(card)).not.toHaveProperty('data')
+    // Same situation → same id; another set of sessions → another card.
+    expect(personalTips(input({ snap: snap({ sessions: idle }) })).find((c) => c.rule === 'idle-sessions')!.id).toBe(card.id)
+    expect(personalTips(input({ snap: snap({ sessions: idle.slice(0, 1) }) })).find((c) => c.rule === 'idle-sessions')!.id).not.toBe(card.id)
+  })
+
+  it('idle since yesterday when every session went quiet before midnight', () => {
+    const cards = personalTips(input({ snap: snap({ sessions: [session({ id: 'a', status: 'done', lastActivityAt: NOW - 20 * H })] }) }))
+    expect(cards[0].text).toBe('one session idle since yesterday — close it?')
+  })
+
+  it('closing the idle sessions goes through the session close, and the card must still apply', async () => {
+    const sessions = [session({ id: 'a', status: 'done', lastActivityAt: NOW - 20 * H }), session({ id: 'b', status: 'done', lastActivityAt: NOW - 20 * H })]
+    const i = input({ snap: snap({ sessions }) })
+    const id = personalTips(i)[0].id
+    const close = vi.fn(async () => ({ ok: true }))
+    expect(await actOn(id, i, { close })).toBe('2 sessions closed')
+    expect(close.mock.calls.map((c) => (c as unknown[])[0])).toEqual(['a', 'b'])
+    await expect(actOn(id, input(), { close })).rejects.toThrow('no longer applies')
+    await expect(actOn('saturated:vps:1', i, { close })).rejects.toThrow()
+  })
+
+  it('a session waiting for you for a long time opens it', () => {
+    const s = session({ id: 'w', status: 'needs_user', title: 'a very long session title that keeps going on', lastActivityAt: NOW - 2 * H })
+    const [card] = personalTips(input({ snap: snap({ sessions: [s] }) }))
+    expect(card.rule).toBe('waiting')
+    expect(card.action).toEqual({ kind: 'open', page: 'session', id: 'w' })
+    expect(card.text).toMatch(/for 2 h$/)
+    expect(card.text).toContain('…')
+    expect(rules(input({ snap: snap({ sessions: [{ ...s, lastActivityAt: NOW - WAITING_MS + 1000 }] }) }))).toEqual([])
+  })
+
+  it('unsorted imported conversations', () => {
+    const [card] = personalTips(input({ snap: snap({ conversationCounts: { total: 40, pending: 12, byProject: {} } }) }))
+    expect(card).toMatchObject({ id: 'unsorted:2', rule: 'unsorted', action: { kind: 'open', page: 'conversations' } })
+  })
+
+  it('only one machine, once it is used', () => {
+    const one = [{ id: 'vps', name: 'vps', online: true }]
+    expect(rules(input({ snap: snap({ machines: one }) }))).toEqual(['one-machine'])
+    expect(rules(input({ snap: snap({ machines: one, sessions: [] }) }))).toEqual([])
+  })
+
+  it('dictation without an OpenAI key', () => {
+    expect(rules(input({ dictation: false }))).toEqual(['no-dictation'])
+  })
+
+  it('cards follow the user language', () => {
+    setLang('fr')
+    expect(personalTips(input({ dictation: false }))[0].text).toContain('pour dicter')
+    setLang('en')
+  })
+})

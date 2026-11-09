@@ -20,6 +20,8 @@ import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
 import type { WvSession } from './mux.ts'
 import { capture, dialogOnScreen, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv } from './mux.ts'
+import { tr } from './i18n.ts'
+import TipsM from './i18n/tips.ts'
 
 interface HookState {
   event: string
@@ -1002,6 +1004,22 @@ export class Weevils {
     const pane = this.paneFor(this.resolveId(id))
     if (!pane) throw new Error('réglable seulement quand la session tourne dans une pane weevils (wv)')
     await this.runCommand(pane.name, checkCommand(command))
+    return { ok: true }
+  }
+
+  /**
+   * Ferme une session que weevils pilote (sa pane tmux), comme le fait le ménage des panes inactives : le processus
+   * s'arrête, le transcript reste et la session est reprenable (lui écrire la rouvre avec --resume). Jamais l'orchestrateur.
+   */
+  async close(id: string): Promise<{ ok: true }> {
+    const remote = this.remoteFor(id)
+    if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/close`, {})
+    const pane = this.paneFor(this.resolveId(id))
+    if (!pane || this.isOrchestratorPane(pane)) throw new Error(tr(TipsM).notClosable)
+    await killWv(pane.name)
+    console.log(`[sessions] ${pane.name} fermée depuis l'app`)
+    this.panes = this.panes.filter((p) => p.name !== pane.name)
+    this.bump()
     return { ok: true }
   }
 

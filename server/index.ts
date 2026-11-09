@@ -11,6 +11,7 @@ import { cartesia, cartesiaStream, frenchVoices } from './fast.ts'
 import { Readable } from 'node:stream'
 import { Weevils } from './core.ts'
 import { setLang } from './i18n.ts'
+import { tipRoutes } from './tips.ts'
 
 const w = new Weevils()
 w.start()
@@ -283,6 +284,8 @@ const routes: [string, RegExp, Handler][] = [
     const body = await readBody(req)
     json(res, 200, await w.newRepo(String(body.name ?? '').trim(), String(body.description ?? '')))
   }],
+  ['POST', /^\/api\/sessions\/([^/]+)\/close$/, async (_req, res, _u, [id]) => json(res, 200, await w.close(decodeURIComponent(id)))],
+  ...tipRoutes(w, json, readBody, () => !!openaiKey()),
   ['POST', /^\/api\/github\/pin$/, async (req, res) => {
     const body = await readBody(req)
     w.pinRepo(String(body.repo ?? ''), !!body.pinned)

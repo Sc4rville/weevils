@@ -10,6 +10,7 @@ import { openaiKey, speak, speakable, transcribe } from './transcribe.ts'
 import { cartesia, cartesiaStream, frenchVoices } from './fast.ts'
 import { Readable } from 'node:stream'
 import { Weevils } from './core.ts'
+import { setLang } from './i18n.ts'
 
 const w = new Weevils()
 w.start()
@@ -133,6 +134,11 @@ const routes: [string, RegExp, Handler][] = [
       saveTokens()
     }
     res.setHeader('set-cookie', 'wv=; Path=/; Max-Age=0')
+    json(res, 200, { ok: true })
+  }],
+  ['POST', /^\/api\/prefs$/, async (req, res) => {
+    const body = await readBody(req)
+    setLang(body.lang)
     json(res, 200, { ok: true })
   }],
   ['GET', /^\/api\/snapshot$/, (_req, res) => json(res, 200, w.snapshot())],

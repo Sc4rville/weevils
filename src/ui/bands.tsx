@@ -11,6 +11,7 @@ import { isUnread, useSeen } from './seen'
 import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, spring } from './bits'
 import { ago, plain, plural, step } from './format'
 import { Icon } from './icons'
+import { PrefLines } from './prefs'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
@@ -332,6 +333,7 @@ export function FootBand() {
       <Line ch="~" go={null} onClick={() => setTheme(dark ? 'light' : 'dark')}>
         thème {dark ? 'sombre' : 'clair'}
       </Line>
+      <PrefLines />
       <Line ch="x" go={null} onClick={logout}>
         se déconnecter
       </Line>

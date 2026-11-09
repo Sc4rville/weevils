@@ -53,6 +53,7 @@ const snap = (over: Partial<Snapshot> = {}): Snapshot => ({
   mainWorking: false,
   mainHasScreen: false,
   mainQueued: 0,
+  devil: { enabled: false, working: false },
   pinnedRepos: [],
   config: { userName: '', exposeDomain: '', publicHost: '' },
   ...over,

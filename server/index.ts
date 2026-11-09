@@ -144,9 +144,11 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ['POST', /^\/api\/prefs$/, async (req, res) => {
     const body = await readBody(req)
-    setLang(body.lang)
-    // Les autres machines suivent : leurs erreurs et leurs écrans remontent dans l'app.
-    for (const r of w.remotes) if (r.online) void r.call('POST', '/api/prefs', { lang: body.lang }).catch(() => undefined)
+    // Les autres machines suivent : leurs erreurs et leurs écrans remontent dans l'app. Relayé quand l'app parle
+    // (passe par le proxy) ou quand la langue change : deux machines qui se lisent l'une l'autre ne se renvoient
+    // pas la requête sans fin (le relais arrive en local et ne change plus rien).
+    const changed = setLang(body.lang)
+    if (changed || !isLocal(req)) for (const r of w.remotes) if (r.online) void r.call('POST', '/api/prefs', { lang: body.lang }).catch(() => undefined)
     json(res, 200, { ok: true })
   }],
   ['GET', /^\/api\/snapshot$/, (_req, res) => json(res, 200, w.snapshot())],
@@ -218,7 +220,7 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/voice\/turn$/, async (req, res) => json(res, 200, await voiceTurn(w, await readBody(req, 16 << 20)))],
   ['GET', /^\/api\/voice\/clip\/([\w-]+)\.mp3$/, (_req, res, _u, [id]) => {
     const mp3 = clip(id)
-    if (!mp3) return json(res, 404, { error: 'son expiré' })
+    if (!mp3) return json(res, 404, { error: tr(M).clipExpired })
     res.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': mp3.length, 'cache-control': 'no-store' })
     res.end(mp3)
   }],

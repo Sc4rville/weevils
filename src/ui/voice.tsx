@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { WeevbossLogo } from './logo'
 import { Icon } from './icons'
-import { tr, useLang, useT } from '../i18n'
+import { getLang, tr, useLang, useT } from '../i18n'
 import M from '../i18n/voice'
 
 /**
@@ -23,6 +23,9 @@ const blobToB64 = (b: Blob) =>
   })
 
 const MIME = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg']
+
+/** Un tap-tap plus court que ça n'est pas une phrase : rien n'est envoyé (le serveur refait le contrôle, niveau sonore compris). */
+const MIN_REC_MS = 600
 
 // Un seul élément audio, déverrouillé par le premier tap (iOS refuse de jouer sans geste).
 let player: HTMLAudioElement | null = null
@@ -180,6 +183,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
       let seq = 0
       let uploaded: Promise<unknown> = Promise.resolve()
       let uploadOk = true
+      const recStart = Date.now()
       r.ondataavailable = (ev) => {
         if (!ev.data.size) return
         chunks.current.push(ev.data)
@@ -194,9 +198,9 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
         stream.getTracks().forEach((tr) => tr.stop())
         try {
           const blob = new Blob(chunks.current, { type: mime })
-          if (blob.size < 800) throw new Error(tr(M).nothingHeard)
+          if (blob.size < 800 || Date.now() - recStart < MIN_REC_MS) throw new Error(tr(M).nothingHeard)
           await uploaded
-          const { text } = uploadOk ? await api.voiceFinish(id) : await api.transcribe(blob.type, await blobToB64(blob))
+          const { text } = uploadOk ? await api.voiceFinish(id, getLang()) : await api.transcribe(blob.type, await blobToB64(blob), getLang())
           mark('text')
           if (!text.trim()) throw new Error(tr(M).nothingHeard)
           onText(text.trim())

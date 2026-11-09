@@ -6,7 +6,7 @@ import { useApp } from './app-context'
 import { dur, inline, isCommand, plain, segments, status, step, userText } from './format'
 import { copyText, useLongPress } from './copy'
 import C from '../i18n/copy'
-import { tr, useT } from '../i18n'
+import { getLang, tr, useT } from '../i18n'
 import M from '../i18n/bits'
 import D from '../i18n/devil'
 import { isUnread, useSeen } from './seen'
@@ -321,7 +321,7 @@ export function Composer({
         try {
           const blob = new Blob(chunks.current, { type: r.mimeType || type || 'audio/mp4' })
           if (blob.size < 800) throw new Error(tr(M).nothingRecorded)
-          const { text: heard } = await api.transcribe(blob.type, await blobToB64(blob))
+          const { text: heard } = await api.transcribe(blob.type, await blobToB64(blob), getLang())
           if (heard) setText((cur) => (cur ? `${cur.replace(/\s+$/, '')} ${heard}` : heard))
         } catch (e) {
           setErr((e as Error).message)

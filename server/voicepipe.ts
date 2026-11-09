@@ -102,7 +102,7 @@ function skipId3(b: Uint8Array): Uint8Array {
   return b
 }
 
-async function pipeSentence(out: http.ServerResponse, sentence: string, voice: string | undefined, index: number, t0: number, l?: Lang) {
+async function pipeSentence(out: { write: (b: Uint8Array) => unknown }, sentence: string, voice: string | undefined, index: number, t0: number, l?: Lang) {
   if (cartesia()) {
     const stream = await cartesiaStream(sentence, voice, l)
     let firstChunk = true
@@ -117,26 +117,61 @@ async function pipeSentence(out: http.ServerResponse, sentence: string, voice: s
   }
 }
 
+/**
+ * Un même son demandé deux fois de suite (Safari d'iPhone ouvre souvent deux requêtes pour un seul élément audio :
+ * une sonde puis la lecture) n'est synthétisé qu'une fois : la seconde requête relit les morceaux déjà produits
+ * puis suit les suivants. Gardé 60 s après la fin. Avant (2026-11-09) : deux synthèses parallèles, deux sons.
+ */
+type Shared = { chunks: Uint8Array[]; done: boolean; subs: Set<(c: Uint8Array | null) => void> }
+const sharing = new Map<string, Shared>()
+
+/** Branche une réponse sur un son partagé : tout ce qui est déjà là, puis la suite, puis la fin. */
+export function follow(s: Shared, out: { write: (b: Uint8Array) => unknown; end: () => unknown }) {
+  for (const c of s.chunks) out.write(c)
+  if (s.done) return void out.end()
+  const sub = (c: Uint8Array | null) => {
+    if (c) return void out.write(c)
+    s.subs.delete(sub)
+    out.end()
+  }
+  s.subs.add(sub)
+}
+
 /** Lit la réponse en flux : la lecture démarre côté téléphone dès le premier morceau. */
 export async function speakStream(res: http.ServerResponse, text: string, oral: boolean, voice?: string) {
+  res.writeHead(200, { 'content-type': 'audio/mpeg', 'cache-control': 'no-store', 'transfer-encoding': 'chunked' })
+  const key = `${voice ?? ''}\u0000${oral ? 1 : 0}\u0000${text}`
+  const known = sharing.get(key)
+  if (known) {
+    log('même son déjà demandé : partagé, pas de seconde synthèse')
+    return follow(known, res)
+  }
+  const s: Shared = { chunks: [], done: false, subs: new Set() }
+  sharing.set(key, s)
+  const emit = (c: Uint8Array) => {
+    s.chunks.push(c)
+    for (const f of s.subs) f(c)
+  }
+  follow(s, res)
   const t0 = Date.now()
   const input = clean(text)
   // Toutes les phrases dans la langue du message entier : un « Ok. » isolé ne se décide pas seul.
   const l = langOf(text)
-  res.writeHead(200, { 'content-type': 'audio/mpeg', 'cache-control': 'no-store', 'transfer-encoding': 'chunked' })
   let i = 0
   try {
     if (oral || sayable(input)) {
       if (!oral) log('réponse déjà courte : lue sans résumé')
-      await pipeSentence(res, input, voice, i++, t0, l)
+      await pipeSentence({ write: emit }, input, voice, i++, t0, l)
     } else {
-      for await (const sentence of oralStream(input, l)) await pipeSentence(res, sentence, voice, i++, t0, l)
+      for await (const sentence of oralStream(input, l)) await pipeSentence({ write: emit }, sentence, voice, i++, t0, l)
     }
   } catch (e) {
     log(`lecture : ${(e as Error).message}`)
   }
   log(`son complet en ${Date.now() - t0} ms`)
-  res.end()
+  s.done = true
+  for (const f of [...s.subs]) f(null)
+  setTimeout(() => sharing.get(key) === s && sharing.delete(key), 60_000).unref()
 }
 
 /** Tout le son d'une phrase, en mémoire (Siri télécharge un fichier). */
@@ -185,13 +220,13 @@ export function addChunk(id: string, seq: number, type: string, data: string) {
   for (const [k, v] of uploads) if (Date.now() - v.at > 10 * 60_000) uploads.delete(k)
 }
 
-export async function finishUpload(id: string): Promise<string> {
+export async function finishUpload(id: string, l?: unknown): Promise<string> {
   const u = uploads.get(id)
   if (!u) throw new Error(tr(V).recordingNotFound)
   uploads.delete(id)
   const audio = Buffer.concat(u.parts.filter(Boolean))
   const t0 = Date.now()
-  const text = await transcribe(audio, u.type)
+  const text = await transcribe(audio, u.type, l)
   log(`transcription ${Date.now() - t0} ms (${Math.round(audio.length / 1024)} Ko déjà reçus pendant la parole)`)
   return text
 }

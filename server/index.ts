@@ -215,7 +215,10 @@ const routes: [string, RegExp, Handler][] = [
     addChunk(String(b.id), Number(b.seq), String(b.type ?? 'audio/mp4'), String(b.data ?? ''))
     json(res, 200, { ok: true })
   }],
-  ['POST', /^\/api\/voice\/finish$/, async (req, res) => json(res, 200, { text: await finishUpload(String((await readBody(req)).id)) })],
+  ['POST', /^\/api\/voice\/finish$/, async (req, res) => {
+    const b = await readBody(req)
+    json(res, 200, { text: await finishUpload(String(b.id), b.lang) })
+  }],
   ['POST', /^\/api\/voice\/marks$/, async (req, res) => {
     logMarks((await readBody(req)) as Record<string, number>)
     json(res, 200, { ok: true })
@@ -234,7 +237,7 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/transcribe$/, async (req, res) => {
     const body = await readBody(req, 24 << 20)
     if (typeof body.data !== 'string' || !body.data) return json(res, 400, { error: tr(V).missingAudio })
-    json(res, 200, { text: await transcribe(Buffer.from(body.data, 'base64'), String(body.type ?? 'audio/mp4')) })
+    json(res, 200, { text: await transcribe(Buffer.from(body.data, 'base64'), String(body.type ?? 'audio/mp4'), body.lang) })
   }],
   ['POST', /^\/api\/sessions\/([^/]+)\/key$/, async (req, res, _u, [id]) => {
     const body = await readBody(req)

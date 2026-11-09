@@ -275,7 +275,7 @@ run_edge() {
   echo $? >"$work/caddy1.rc"
   sed -n '/HTTPS/,/waiting/p' "$work/caddy1.log" | sed 's/^/  │ /'
   check "exits 0 (--domain given as a URL)" bash -c "[ \$(cat '$work/caddy1.rc') = 0 ] || { tail -30 '$work/caddy1.log'; exit 1; }"
-  check "Caddyfile: the other site untouched, one import added" docker exec "$c" bash -c 'diff /tmp/Caddyfile.orig /etc/caddy/Caddyfile | grep "^[<>]" | tr -d "\n" | grep -qx "> import /etc/caddy/weevils.caddy" && cmp /tmp/Caddyfile.orig /etc/caddy/Caddyfile.bak-weevils'
+  check "Caddyfile: the other site untouched, one import added" docker exec "$c" bash -c '[ "$(diff /tmp/Caddyfile.orig /etc/caddy/Caddyfile | grep "^[<>]" | grep -v "^> *$")" = "> import /etc/caddy/weevils.caddy" ] && cmp /tmp/Caddyfile.orig /etc/caddy/Caddyfile.bak-weevils'
   check "the other site still answers" other
   check "weevils answers over HTTPS" docker exec "$c" bash -c 'for i in $(seq 20); do curl -sk --resolve weevils.test:443:127.0.0.1 https://weevils.test/api/me | grep -q "\"authed\":false" && exit 0; sleep 0.5; done; exit 1'
   docker exec "$c" bash -c 'cp /etc/caddy/Caddyfile /tmp/cf.mid && cp /etc/caddy/weevils.caddy /tmp/wc.mid'

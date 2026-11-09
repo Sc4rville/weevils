@@ -1,12 +1,12 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useState, type CSSProperties } from 'react'
-import type { MainMessage, Project } from '../../shared/api.ts'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import type { Project } from '../../shared/api.ts'
 import { api } from '../api'
 import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
 import { useApp } from './app-context'
-import { Appear, Collapse, Composer, Line, SessionRow, spring } from './bits'
-import { ago, plural } from './format'
+import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, spring } from './bits'
+import { ago, plain, plural, step } from './format'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
@@ -21,132 +21,72 @@ const activity = (list: { status: string }[]) => {
 }
 
 // ---------------------------------------------------------------------------
-// Agent principal : la bande du haut, l'endroit central.
+// weevils, l'orchestrateur : la bande du haut est juste un chat. Lui écrit dans les sessions.
+
+function useStickBottom(ref: React.RefObject<HTMLDivElement | null>, count: number, open: boolean) {
+  useEffect(() => {
+    const el = ref.current
+    if (!el || !open) return
+    const t = setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }), 80)
+    return () => clearTimeout(t)
+  }, [ref, count, open])
+}
 
 export function AgentBand() {
-  const { snap, expanded, setExpanded, push, refresh } = useApp()
+  const { snap, expanded, setExpanded } = useApp()
   const open = expanded === 'agent'
+  const body = useRef<HTMLDivElement>(null)
   const live = snap.sessions.filter((s) => s.status !== 'done')
   const att = snap.sessions.filter((s) => s.status === 'needs_user').length
   const running = snap.h24.filter((a) => a.runState === 'running').length
-  const toSort = snap.conversations.filter((c) => c.status === 'pending')
-  const summary = [
-    live.length ? activity(live) : 'aucune session ouverte',
-    att ? `${att} à toi` : null,
-    snap.conversationCounts.pending ? `${snap.conversationCounts.pending} à ranger` : null,
-    snap.classifier.running ? `classement… ${snap.classifier.queued}` : null,
-    running ? `h24 ${running} en cours` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ')
-  const examples = snap.projects
-    .filter((p) => p.kind === 'repo')
-    .slice(0, 2)
-    .map((p) => `reprends ${p.name}`)
+  const summary = [live.length ? activity(live) : 'aucune session ouverte', att ? `${att} à toi` : null, running ? `h24 ${running} en cours` : null].filter(Boolean).join(' · ')
+  const last = snap.main[snap.main.length - 1]
+  useStickBottom(body, snap.main.length, open)
 
   const send = async (text: string) => {
     setExpanded('agent')
-    const r = await api.main(text)
-    refresh()
-    if (r.route.kind === 'open' && r.route.sessionId) setTimeout(() => push({ kind: 'session', id: r.route.sessionId! }), 350)
+    await api.main(text)
   }
 
   return (
-    <section className="band agent" style={color('agent')} aria-label="agent principal">
+    <section className="band agent" style={color('agent')} aria-label="weevils, l’orchestrateur">
       <div className="in head">
         <button className="head-name" onClick={() => setExpanded(open ? null : 'agent')} aria-expanded={open} aria-controls="agent-body">
           <motion.span className="name" initial={false} animate={{ fontSize: expanded && !open ? NAME_SIZE.mini : NAME_SIZE.normal }} transition={spring}>
             weevils
+            {snap.mainWorking && (
+              <span className="fluo" aria-hidden>
+                {' '}
+                *
+              </span>
+            )}
           </motion.span>
         </button>
       </div>
       <div className="in meta summary">{summary}</div>
 
-      <Collapse open={open} id="agent-body">
-        <div aria-live="polite">
-          <AnimatePresence initial={false}>
-            {snap.main.slice(-4).map((m) => (
-              <Appear key={m.id}>
-                <MainMsg m={m} />
-              </Appear>
-            ))}
-          </AnimatePresence>
-        </div>
-        {toSort.length > 0 && (
-          <Line ch='"' onClick={() => push({ kind: 'conversations' })}>
-            <span className="meta">{plural(toSort.length, 'conversation à ranger', 'conversations à ranger')}</span>
-          </Line>
-        )}
-        {examples.length > 0 && (
-          <div className="in meta" style={{ paddingBlock: 8 }}>
-            essaie :{' '}
-            <span className="inline-actions" style={{ display: 'inline-flex' }}>
-              {examples.map((t) => (
-                <button key={t} className="link" onClick={() => void send(t)}>
-                  « {t} »
-                </button>
-              ))}
+      {/* Replié : la dernière réponse de weevils, en une ligne. Ouvert : la conversation, qui grandit sans tout envahir. */}
+      {!open && last && last.role !== 'user' && (
+        <button className="row" onClick={() => setExpanded('agent')} aria-label="ouvrir la conversation avec weevils">
+          <span className="in">
+            <span className="stack-text">
+              <span className="ellipsis">
+                <span className="strong">{last.role === 'event' ? '→ ' : 'weevils · '}</span>
+                {last.role === 'event' ? step(last.text) : plain(last.text).split('\n')[0]}
+              </span>
             </span>
-          </div>
-        )}
+          </span>
+        </button>
+      )}
+      <Collapse open={open} id="agent-body">
+        <div ref={body} className="chat" aria-live="polite">
+          <Messages messages={snap.main} author="weevils" working={snap.mainWorking} />
+          {snap.mainWorking && <Working author="weevils" />}
+        </div>
       </Collapse>
 
-      <Composer placeholder="dis à weevils quoi faire" label="message à l’agent principal" onSend={send} onFocus={() => setExpanded('agent')} voice />
+      <Composer placeholder="dis à weevils quoi faire" label="message à weevils" onSend={send} onFocus={() => setExpanded('agent')} voice />
     </section>
-  )
-}
-
-function MainMsg({ m }: { m: MainMessage }) {
-  const { snap, push, refresh } = useApp()
-  if (m.role === 'user') {
-    return (
-      <div className="msg band tone">
-        <div className="in">
-          <span className="who">toi</span>
-          <div className="text">{m.text}</div>
-        </div>
-      </div>
-    )
-  }
-  const open = m.ask && !m.ask.chosenSessionId
-  const suggestions = open ? (m.ask!.suggestions ?? []) : []
-  // Ancien format (sans suggestions) : les sessions pilotables, les plus récentes d'abord.
-  const fallback = open && !suggestions.length ? snap.sessions.filter((s) => s.controllable && s.status !== 'done').slice(0, 6) : []
-  const name = (id: string) => snap.projects.find((p) => p.id === id)?.name ?? id
-  const pick = async (p: { suggestionId?: string; sessionId?: string }) => {
-    const r = await api.choose(m.id, p)
-    refresh()
-    if (r.id) setTimeout(() => push({ kind: 'session', id: r.id! }), 350)
-  }
-  return (
-    <div className="msg band">
-      <div className="in">
-        <span className="who">weevils</span>
-        <div className="text">{m.text}</div>
-        {m.targetSessionId && (
-          <button className="link" onClick={() => push({ kind: 'session', id: m.targetSessionId! })}>
-            ouvrir la session →
-          </button>
-        )}
-      </div>
-      {(suggestions.length > 0 || fallback.length > 0) && (
-        <div className="chips" role="list" aria-label="où envoyer">
-          {suggestions.map((sg, i) => (
-            <button key={sg.id} className={`chip ${i === 0 ? 'best' : ''}`} role="listitem" onClick={() => void pick({ suggestionId: sg.id })}>
-              <span className="chip-kind">{sg.kind === 'new' ? `+ nouvelle · ${name(sg.projectId)}` : `→ ${name(sg.projectId)} · ${sg.tool}`}</span>
-              <span className="chip-title">{sg.title}</span>
-              {sg.kind === 'session' && sg.detail && <span className="meta ellipsis">{sg.detail}</span>}
-            </button>
-          ))}
-          {fallback.map((s) => (
-            <button key={s.id} className="chip" role="listitem" onClick={() => void pick({ sessionId: s.id })}>
-              <span className="chip-kind">→ {name(s.projectId)} · {s.tool}</span>
-              <span className="chip-title">{s.title}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   )
 }
 

@@ -10,6 +10,7 @@ units=~/.config/systemd/user
 mkdir -p ~/.local/bin "$units"
 install -m 755 "$here/wv" ~/.local/bin/wv
 install -m 755 "$here/hook.sh" ~/.local/bin/weevils-hook
+install -m 755 "$here/weevils-cli" ~/.local/bin/weevils
 
 # Hooks Claude Code : on ajoute weevils-hook aux événements utiles, sans toucher aux hooks existants.
 settings=~/.claude/settings.json

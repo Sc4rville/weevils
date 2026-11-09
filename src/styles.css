@@ -949,3 +949,27 @@ input:focus-visible {
 .attach-line .link {
   min-height: 28px;
 }
+
+/* ---------- La conversation avec weevils : grandit, mais pas plus que la moitié de l'écran ---------- */
+
+.chat {
+  max-height: 48dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Message de l'orchestrateur dans le fil d'une session : signé weevils, trait violet à gauche. */
+.msg.orch {
+  position: relative;
+}
+
+.msg.orch::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  background: var(--agent);
+}

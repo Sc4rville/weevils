@@ -23,6 +23,10 @@ export const MACHINE = {
   note: process.env.WEEVILS_MACHINE_NOTE ?? 'VPS Hostinger · 4 vCPU · toujours allumé',
 }
 
+/** L'orchestrateur (la bande du haut) tourne sur une seule machine : celle qui sert l'app. */
+export const ORCHESTRATOR = (process.env.WEEVILS_ORCHESTRATOR ?? (process.env.WEEVILS_MACHINE ? '0' : '1')) === '1'
+export const ORCH_DIR = path.join(DATA_DIR, 'orchestrateur')
+
 /** Sessions plus anciennes : ignorées (on ne relit pas tout l'historique). */
 export const RECENT_MS = 3 * 24 * 3600_000
 /** Sans signe de vie depuis ce délai, une session sans processus connu est considérée terminée. */

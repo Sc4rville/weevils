@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# weevils — la commande de l'orchestrateur (et de n'importe quel agent sur cette machine) pour parler aux sessions.
+# Elle appelle le weevilsd local : une requête née sur la machine est de confiance, pas de code à fournir.
+#
+#   weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
+#   weevils new <projet> "message" [codex]   weevils projects
+set -euo pipefail
+base="http://127.0.0.1:${WEEVILS_PORT:-4179}"
+from=${WEEVILS_FROM:-weevils}
+py=python3
+
+json() { "$py" -c "import json,sys; d=json.load(sys.stdin); $1"; }
+
+resolve() {
+  # Id complet à partir d'un préfixe (8 caractères suffisent).
+  curl -sf -m 8 "$base/api/snapshot" | "$py" -c "
+import json,sys
+want=sys.argv[1]; d=json.load(sys.stdin)
+hits=[s['id'] for s in d['sessions'] if s['id'].startswith(want)]
+if len(hits)==1: print(hits[0])
+elif not hits: print('session introuvable : '+want, file=sys.stderr); sys.exit(1)
+else: print('plusieurs sessions commencent par '+want+' : '+', '.join(h[:12] for h in hits), file=sys.stderr); sys.exit(1)
+" "$1"
+}
+
+case "${1:-}" in
+  sessions)
+    curl -sf -m 8 "$base/api/snapshot" | json "
+names={p['id']:p['name'] for p in d['projects']}
+rows=[s for s in d['sessions'] if s['status']!='done']
+if not rows: print('aucune session ouverte')
+for s in rows:
+    now=(' · '+s['now']) if s.get('now') else ''
+    print(f\"{s['id'][:8]}  {names.get(s['projectId'],s['projectId']):<14} {s['tool']:<6} @{s['machineId']:<4} {s['status']:<10} {s['title']}{now}\")
+" ;;
+  projects)
+    curl -sf -m 8 "$base/api/snapshot" | json "
+for p in d['projects']:
+    where=', '.join(f\"{r} ({m})\" for r,m in p['where'].items()) or '—'
+    print(f\"{p['id']:<14} {p['name']:<14} {where}\")
+" ;;
+  read)
+    id=$(resolve "${2:?id de session}")
+    n=${3:-12}
+    curl -sf -m 8 "$base/api/sessions/$id" | json "
+s=d['session']; print(f\"# {s['title']} · {s['tool']} · {s['status']}\" + (' · '+s['now'] if s.get('now') else ''))
+for m in d['messages'][-int(sys.argv[1]):]:
+    who={'user':'Scarville','assistant':s['tool'],'orchestrator':'weevils','event':'→'}[m['role']]
+    t=' '.join(m['text'].split())
+    print(f\"{who}: {t[:600]}\")
+" "$n" ;;
+  send)
+    id=$(resolve "${2:?id de session}")
+    text=${3:?message}
+    "$py" -c 'import json,sys; print(json.dumps({"text":sys.argv[1],"from":sys.argv[2]}))' "$text" "$from" \
+      | curl -sf -m 20 -H 'content-type: application/json' --data-binary @- "$base/api/sessions/$id/send" >/dev/null
+    echo "envoyé à ${id:0:8}" ;;
+  new)
+    project=${2:?projet}
+    text=${3:?premier message}
+    tool=claude; [ "${4:-}" = codex ] && tool=codex
+    "$py" -c 'import json,sys; print(json.dumps({"projectId":sys.argv[1],"tool":sys.argv[2],"text":sys.argv[3],"from":sys.argv[4]}))' "$project" "$tool" "$text" "$from" \
+      | curl -sf -m 30 -H 'content-type: application/json' --data-binary @- "$base/api/sessions" | json "print('nouvelle session '+d['id'][:8])" ;;
+  *)
+    sed -n 2,7p "$0" | sed 's/^# \{0,1\}//'
+    exit 1 ;;
+esac

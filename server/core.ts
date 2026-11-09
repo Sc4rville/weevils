@@ -4,15 +4,15 @@ import { execFile } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { ConversationDetail, ConversationSummary, H24Activity, MainMessage, Project, Session, SessionDetail, Snapshot, Suggestion, Tool } from '../shared/api.ts'
-import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, HOME, LOGS_DIR, MACHINE, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
+import type { ConversationDetail, ConversationSummary, H24Activity, Message, Project, Session, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
+import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, HOME, LOGS_DIR, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
 import { llmClassify, ruleMatch } from './classify.ts'
 import { Push } from './push.ts'
 import type { CatalogEntry } from './classify.ts'
 import { familyOf, place } from './projects.ts'
-import { TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
+import { ORCH_PREFIX, TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
 import { llmTitles, needsTitle } from './titles.ts'
 import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
@@ -32,9 +32,10 @@ interface ManagedPane extends WvSession {
 }
 
 interface Persisted {
-  main: MainMessage[]
   hooks?: [string, HookState][]
   titles?: [string, Titled][]
+  /** Id de la session Claude de l'orchestrateur (stable : on la reprend après un redémarrage). */
+  orchestratorId?: string
 }
 
 const STATE_FILE = path.join(DATA_DIR, 'state.json')
@@ -83,7 +84,7 @@ export class Weevils {
   store = new TranscriptStore(CLAUDE_DIR, CODEX_DIR, RECENT_MS)
   hooks = new Map<string, HookState>()
   panes: ManagedPane[] = []
-  main: MainMessage[] = []
+  orchestratorId: string | null = null
   h24: H24Activity[] = []
   remotes: Remote[] = []
   convs = new ConversationStore(DATA_DIR)
@@ -103,19 +104,11 @@ export class Weevils {
   constructor() {
     try {
       const p = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) as Persisted
-      this.main = p.main ?? []
       this.hooks = new Map(p.hooks ?? [])
       this.titles = new Map(p.titles ?? [])
+      this.orchestratorId = p.orchestratorId ?? null
     } catch {
       /* premier démarrage */
-    }
-    if (!this.main.length) {
-      this.main.push({
-        id: 'hello',
-        role: 'assistant',
-        text: 'Je range tes sessions par projet. Dis-moi par exemple « reprends lws » ou « ouvre claude weevils » ; si je ne sais pas où envoyer, je te demande.',
-        at: Date.now(),
-      })
     }
   }
 
@@ -194,7 +187,7 @@ export class Weevils {
       // Les hooks des trois derniers jours suffisent (pid des sessions encore ouvertes).
       const hooks = [...this.hooks].filter(([, h]) => Date.now() - h.at < RECENT_MS)
       const titles = [...this.titles].filter(([, t]) => Date.now() - t.at < 14 * 86400_000)
-      const data: Persisted = { main: this.main.slice(-60), hooks, titles }
+      const data: Persisted = { hooks, titles, orchestratorId: this.orchestratorId ?? undefined }
       fs.writeFileSync(STATE_FILE, JSON.stringify(data, null, 1))
     } catch {
       /* disque plein ? on continue en mémoire */
@@ -405,7 +398,8 @@ export class Weevils {
       conversations: this.convs.summaries(),
       conversationCounts: this.convs.counts(),
       classifier: this.classifier,
-      main: this.main.slice(-30),
+      main: this.orchestratorMessages(),
+      mainWorking: this.orchestratorWorking(now),
     }
     return this.snap
   }
@@ -647,9 +641,11 @@ export class Weevils {
   // ---------------------------------------------------------------- actions
 
   /** Écrit dans la session ; si elle n'a plus de processus, la rouvre dans une pane weevils. */
-  async send(id: string, text: string): Promise<{ id: string }> {
+  async send(id: string, text: string, from?: string): Promise<{ id: string }> {
     const remote = this.remoteFor(id)
-    if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/send`, { text })
+    if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/send`, { text, from })
+    // Signé weevils : le fil de la session le montre comme un message de l'orchestrateur, pas de Scarville.
+    if (from === 'weevils' && !text.startsWith(ORCH_PREFIX)) text = ORCH_PREFIX + text
     const real = this.resolveId(id)
     const s = this.snapshot().sessions.find((x) => x.id === real)
     if (!s) throw new Error('session introuvable')
@@ -703,7 +699,8 @@ export class Weevils {
     return capture(pane.name)
   }
 
-  async create(input: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string }): Promise<{ id: string }> {
+  async create(input: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string; from?: string }): Promise<{ id: string }> {
+    if (input.from === 'weevils' && input.text && !input.text.startsWith(ORCH_PREFIX)) input = { ...input, text: ORCH_PREFIX + input.text }
     const project = this.snapshot().projects.find((p) => p.id === input.projectId)
     const repoGuess = input.repo ?? project?.repos[0]
     const machineId = input.machineId ?? (repoGuess ? project?.where[repoGuess] : undefined)
@@ -734,116 +731,59 @@ export class Weevils {
 
   // ---------------------------------------------------------------- agent principal
 
-  /** Mots porteurs de sens d'un texte (≥ 4 lettres, sans mots creux). */
-  private static words(text: string): Set<string> {
-    const stop = new Set(['dans', 'pour', 'avec', 'cette', 'cela', 'faut', 'fait', 'faire', 'genre', 'comme', 'mais', 'donc', 'alors', 'aussi', 'vraiment', 'juste', 'tout', 'tous', 'toute', 'session', 'claude', 'codex', 'nouvelle', 'nouveau', 'envoie', 'ouvre', 'reprends', 'this', 'that', 'with', 'from', 'what', 'quoi', 'elle', 'ils', 'nous', 'vous', 'ouais', 'truc', 'chose'])
-    return new Set(norm(text).split(' ').filter((w) => w.length >= 4 && !stop.has(w)))
-  }
+  // ---------------------------------------------------------------- orchestrateur (la bande du haut)
 
-  /** Part des mots du texte qui apparaissent dans la cible (0…1). */
-  private static overlap(a: Set<string>, target: string): number {
-    if (!a.size) return 0
-    const t = norm(target)
-    let hit = 0
-    for (const w of a) if (t.includes(w)) hit++
-    return hit / a.size
-  }
-
-  /**
-   * Destinations possibles pour un message à l'agent principal, de la plus probable à la moins probable :
-   * sessions ouvertes (sujet proche, projet nommé, état), et nouvelle session dans les projets qui collent.
-   * Règles seulement : instantané, gratuit.
-   */
-  suggest(text: string): Suggestion[] {
-    const snap = this.snapshot()
-    const n = norm(text)
-    const words = n.split(' ')
-    const bag = Weevils.words(text)
-    const tool: Tool | null = words.includes('claude') ? 'claude' : words.includes('codex') ? 'codex' : null
-    const projectScore = new Map<string, number>()
-    for (const p of snap.projects) {
-      let sc = 0
-      if (words.includes(norm(p.name)) || words.includes(p.id) || p.repos.some((r) => words.includes(r.toLowerCase()))) sc = 1
-      else sc = Weevils.overlap(bag, [p.name, ...p.repos].join(' ')) * 0.6
-      projectScore.set(p.id, sc)
-    }
-    const statusBonus = { needs_user: 0.12, idle: 0.1, working: 0.04, done: 0 }
-    const out: Suggestion[] = []
-    for (const s of snap.sessions) {
-      if (!s.controllable || s.status === 'done') continue
-      if (tool && s.tool !== tool) continue
-      const topic = Weevils.overlap(bag, [s.title, s.now ?? '', s.lastMessage ?? ''].join(' '))
-      const score = (projectScore.get(s.projectId) ?? 0) * 0.55 + topic * 0.9 + statusBonus[s.status] + Math.max(0, 0.08 - (Date.now() - s.lastActivityAt) / 36e6)
-      out.push({ id: `s:${s.id}`, kind: 'session', projectId: s.projectId, sessionId: s.id, tool: s.tool, title: s.title, detail: s.now ?? `${s.tool} · ${s.projectId}`, score })
-    }
-    const named = snap.projects.filter((p) => (projectScore.get(p.id) ?? 0) >= 1)
-    const candidates = named.length ? named : snap.projects.filter((p) => (projectScore.get(p.id) ?? 0) > 0).slice(0, 2)
-    const proposedTitle = text.replace(/\s+/g, ' ').slice(0, 48)
-    for (const p of candidates) {
-      const hasOpen = out.some((x) => x.projectId === p.id)
-      const base = projectScore.get(p.id) ?? 0
-      out.push({ id: `n:${p.id}`, kind: 'new', projectId: p.id, tool: tool ?? 'claude', title: proposedTitle, detail: `nouvelle session · ${p.name}`, score: base * 0.7 + (hasOpen ? 0 : 0.25) })
-    }
-    // Toujours une porte de sortie : nouvelle session dans le projet le plus actif.
-    if (!candidates.length && snap.projects[0]) {
-      const p = snap.projects[0]
-      out.push({ id: `n:${p.id}`, kind: 'new', projectId: p.id, tool: tool ?? 'claude', title: proposedTitle, detail: `nouvelle session · ${p.name}`, score: 0.05 })
-    }
-    return out.sort((a, b) => b.score - a.score).slice(0, 8)
-  }
-
-  private label(id: string) {
-    const s = this.snapshot().sessions.find((x) => x.id === id)
-    return s ? `${s.projectId} · ${s.tool} · « ${s.title} »` : 'cette session'
-  }
-
-  /** Un message à weevils : il propose où l'envoyer (puces en bas), du plus probable au moins probable. Rien ne part sans un geste de Scarville. */
-  async sendMain(text: string) {
-    const at = Date.now()
-    const id = crypto.randomUUID()
-    this.main.push({ id, role: 'user', text, at })
-    const suggestions = this.suggest(text)
-    const best = suggestions[0]
-    const open = /^(ouvre|ouvrir|montre|affiche|va )/.test(norm(text)) && best?.kind === 'session'
-    if (open && best.sessionId) {
-      this.main.push({ id: `${id}-a`, role: 'assistant', text: `J’ouvre ${this.label(best.sessionId)}.`, at, targetSessionId: best.sessionId })
-      this.persist()
-      this.bump()
-      return { route: { kind: 'open', sessionId: best.sessionId } }
-    }
-    const intro = best?.kind === 'session' ? 'Je l’enverrais plutôt ici :' : best ? 'Je verrais ça dans une nouvelle session :' : 'Où veux-tu envoyer ça ?'
-    this.main.push({ id: `${id}-a`, role: 'assistant', text: intro, at, ask: { text, suggestions } })
-    this.persist()
-    this.bump()
-    return { route: { kind: 'ask' } }
-  }
-
-  async chooseMain(mainId: string, pick: { sessionId?: string; suggestionId?: string }) {
-    const m = this.main.find((x) => x.id === mainId)
-    if (!m?.ask || m.ask.chosenSessionId) return { id: undefined as string | undefined }
-    const at = Date.now()
-    const sug = pick.suggestionId ? m.ask.suggestions?.find((x) => x.id === pick.suggestionId) : undefined
+  /** Le dossier de l'orchestrateur : son CLAUDE.md (rôle + commande weevils) suit le repo. */
+  private prepareOrchestrator() {
+    fs.mkdirSync(ORCH_DIR, { recursive: true })
+    const src = path.join(import.meta.dirname, 'orchestrateur.md')
     try {
-      let sessionId = sug?.kind === 'session' ? sug.sessionId : pick.sessionId
-      if (sug?.kind === 'new') {
-        const r = await this.create({ projectId: sug.projectId, tool: sug.tool, text: m.ask.text })
-        sessionId = r.id
-        m.ask.chosenSessionId = sessionId
-        this.main.push({ id: `${mainId}-c`, role: 'assistant', text: `Nouvelle session ${sug.projectId} · ${sug.tool} lancée.`, at, targetSessionId: sessionId })
-      } else if (sessionId) {
-        m.ask.chosenSessionId = sessionId
-        await this.send(sessionId, m.ask.text)
-        this.main.push({ id: `${mainId}-c`, role: 'assistant', text: `Envoyé à ${this.label(sessionId)}.`, at, targetSessionId: sessionId })
-      }
-      this.persist()
-      this.bump()
-      return { id: sessionId }
+      fs.copyFileSync(src, path.join(ORCH_DIR, 'CLAUDE.md'))
     } catch (e) {
-      this.main.push({ id: `${mainId}-c`, role: 'assistant', text: `Pas envoyé : ${(e as Error).message}`, at })
-      this.persist()
-      this.bump()
-      return { id: undefined }
+      console.error(`[orchestrateur] CLAUDE.md : ${(e as Error).message}`)
     }
+  }
+
+  private orchestratorPane() {
+    return this.orchestratorId ? this.paneFor(this.orchestratorId) : undefined
+  }
+
+  private orchestratorMessages(): Message[] {
+    const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
+    const msgs = t?.messages.slice(-40) ?? []
+    if (!msgs.length && ORCHESTRATOR) {
+      return [{ id: 'hello', role: 'assistant', text: 'Dis-moi quoi faire : je lis tes sessions, j’écris dedans, je te résume. Les détails sont dans les bandes en dessous si tu veux les suivre.', at: Date.now() }]
+    }
+    return msgs
+  }
+
+  private orchestratorWorking(now: number) {
+    const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
+    if (!t) return false
+    const hook = this.hooks.get(t.id)
+    if (hook && hook.at >= t.lastActivityAt - 2000 && ['UserPromptSubmit', 'PostToolUse'].includes(hook.event)) return true
+    if (hook?.event === 'Stop' && hook.at >= t.lastActivityAt - 2000) return false
+    return t.phase === 'working' && now - t.lastActivityAt < 10 * 60_000
+  }
+
+  /** Scarville parle à weevils : le message part dans la session Claude de l'orchestrateur (lancée ou reprise au besoin). */
+  async sendMain(text: string) {
+    if (!ORCHESTRATOR) throw new Error('l’orchestrateur ne tourne pas sur cette machine')
+    if (!text.trim()) throw new Error('message vide')
+    this.prepareOrchestrator()
+    const pane = this.orchestratorPane()
+    if (pane) {
+      await sendText(pane.name, text)
+      this.bump()
+      return { id: this.orchestratorId! }
+    }
+    const known = this.orchestratorId && this.store.get(this.orchestratorId)
+    if (!this.orchestratorId || !known) this.orchestratorId = crypto.randomUUID()
+    const id = this.orchestratorId
+    const command = known ? [...CLAUDE, '--resume', id, text] : [...CLAUDE, '--session-id', id, text]
+    await this.spawn('claude', ORCH_DIR, 'weevils', command, id)
+    this.persist()
+    return { id }
   }
 
   // ---------------------------------------------------------------- H24

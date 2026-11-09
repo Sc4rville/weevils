@@ -31,6 +31,10 @@ export interface Transcript {
 }
 
 const MAX_MESSAGES = 400
+/** Préfixe posé par le serveur quand c'est l'orchestrateur qui écrit dans une session. */
+export const ORCH_PREFIX = '[weevils] '
+const userMsg = (id: string, text: string, at: number): Message =>
+  text.startsWith(ORCH_PREFIX) ? { id, role: 'orchestrator', text: text.slice(ORCH_PREFIX.length).trim(), at } : { id, role: 'user', text: text.trim(), at }
 const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
 const isNoise = (text: string) =>
@@ -73,7 +77,7 @@ function claudeLine(t: Transcript, o: any) {
       t.firstPrompt ??= c
       t.phase = 'working'
       t.workStartedAt = at
-      push(t, { id: o.uuid ?? `${t.id}-${at}`, role: 'user', text: c.trim(), at })
+      push(t, userMsg(o.uuid ?? `${t.id}-${at}`, c, at))
       return
     }
     if (Array.isArray(c)) {
@@ -82,7 +86,7 @@ function claudeLine(t: Transcript, o: any) {
           t.firstPrompt ??= part.text
           t.phase = 'working'
           t.workStartedAt = at
-          push(t, { id: `${o.uuid}-t`, role: 'user', text: String(part.text).trim(), at })
+          push(t, userMsg(`${o.uuid}-t`, String(part.text), at))
         } else if (part?.type === 'tool_result') {
           t.phase = 'working'
         }
@@ -195,7 +199,7 @@ function codexLine(t: Transcript, o: any) {
       if (isNoise(text)) return
       t.firstPrompt ??= text
       touch(t, at)
-      push(t, { id: p.id ?? `${t.id}-${at}`, role: 'user', text, at })
+      push(t, userMsg(p.id ?? `${t.id}-${at}`, text, at))
     } else if (p.role === 'assistant' && text) {
       touch(t, at)
       push(t, { id: p.id ?? `${t.id}-${at}-a`, role: 'assistant', text, at })
@@ -352,7 +356,7 @@ export class TranscriptStore {
 export const titleOf = (t: Transcript) => short(oneLine(t.customTitle || t.title || t.firstPrompt || 'nouvelle session').replace(/^[#>*\s-]+/, ''), 60)
 /** Matière pour le renommeur : début de la session et ses derniers échanges, compacts. */
 export const digestOf = (t: Transcript, lastN = 10) => {
-  const recent = t.messages.slice(-lastN).map((m) => `${m.role === 'user' ? 'Scarville' : m.role === 'assistant' ? 'agent' : '→'} : ${short(oneLine(m.text), m.role === 'event' ? 80 : 320)}`)
+  const recent = t.messages.slice(-lastN).map((m) => `${m.role === 'user' ? 'Scarville' : m.role === 'orchestrator' ? 'weevils' : m.role === 'assistant' ? 'agent' : '→'} : ${short(oneLine(m.text), m.role === 'event' ? 80 : 320)}`)
   return { debut: short(oneLine(t.firstPrompt ?? ''), 200), recents: recent }
 }
 export const lastMessageOf = (t: Transcript) => {

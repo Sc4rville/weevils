@@ -147,7 +147,9 @@ const routes: [string, RegExp, Handler][] = [
   ['GET', /^\/api\/sessions\/([^/]+)\/screen$/, async (_req, res, _u, [id]) => json(res, 200, { screen: await w.screen(decodeURIComponent(id)) })],
   ['POST', /^\/api\/sessions\/([^/]+)\/send$/, async (req, res, _u, [id]) => {
     const body = await readBody(req)
-    json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? '')))
+    // « from: weevils » n'est accepté que d'une requête locale (l'orchestrateur, la commande weevils), jamais du téléphone.
+    const from = body.from === 'weevils' && isLocal(req) ? 'weevils' : undefined
+    json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), from))
   }],
   ['POST', /^\/api\/sessions\/([^/]+)\/attach$/, async (req, res, _u, [id]) => {
     const body = await readBody(req, 24 << 20)
@@ -177,17 +179,13 @@ const routes: [string, RegExp, Handler][] = [
         tool,
         text: String(body.text ?? ''),
         machineId: body.machineId ? String(body.machineId) : undefined,
+        from: body.from === 'weevils' && isLocal(req) ? 'weevils' : undefined,
       }),
     )
   }],
   ['POST', /^\/api\/main$/, async (req, res) => {
     const body = await readBody(req)
     json(res, 200, await w.sendMain(String(body.text ?? '').trim()))
-  }],
-  ['POST', /^\/api\/main\/choose$/, async (req, res) => {
-    const body = await readBody(req)
-    const r = await w.chooseMain(String(body.mainId ?? ''), { sessionId: body.sessionId ? String(body.sessionId) : undefined, suggestionId: body.suggestionId ? String(body.suggestionId) : undefined })
-    json(res, 200, { ok: true, id: r.id })
   }],
   ['POST', /^\/api\/import$/, (req, res) => receiveImport(req, res)],
   ['GET', /^\/api\/push$/, (_req, res) => json(res, 200, { enabled: w.push.enabled, publicKey: w.push.publicKey, devices: w.push.count })],

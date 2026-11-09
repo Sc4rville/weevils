@@ -5,7 +5,8 @@ export type SessionStatus = 'working' | 'needs_user' | 'idle' | 'done'
 
 export interface Message {
   id: string
-  role: 'user' | 'assistant' | 'event'
+  /** orchestrator : message écrit par weevils (la bande du haut) dans cette session. */
+  role: 'user' | 'assistant' | 'orchestrator' | 'event'
   text: string
   at: number
 }
@@ -102,27 +103,6 @@ export interface ConversationDetail {
   messages: Message[]
 }
 
-/** Destination proposée par l'agent principal pour un message : une session ouverte, ou une nouvelle session dans un projet. */
-export interface Suggestion {
-  id: string
-  kind: 'session' | 'new'
-  projectId: string
-  sessionId?: string
-  tool: Tool
-  /** Ce qu'on lit sur la puce : « envoyer à » / « nouvelle session », puis le titre. */
-  title: string
-  detail: string
-  score: number
-}
-
-export interface MainMessage {
-  id: string
-  role: 'user' | 'assistant'
-  text: string
-  at: number
-  targetSessionId?: string
-  ask?: { text: string; chosenSessionId?: string; suggestions?: Suggestion[] }
-}
 
 export interface Snapshot {
   version: number
@@ -135,7 +115,9 @@ export interface Snapshot {
   conversationCounts: { total: number; pending: number; byProject: Record<string, number> }
   /** Classement en cours (lots restants), pour l'afficher. */
   classifier: { running: boolean; queued: number; lastError?: string }
-  main: MainMessage[]
+  /** La conversation avec weevils, l'orchestrateur (sa propre session Claude, cachée des projets). */
+  main: Message[]
+  mainWorking: boolean
 }
 
 export interface SessionDetail {

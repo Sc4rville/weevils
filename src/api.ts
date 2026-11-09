@@ -138,6 +138,8 @@ export function useLive() {
       try {
         const s = await api.snapshot()
         have = s.version
+        // The greeting of an empty weevboss thread comes in the server's language: shown in the app's.
+        s.main = s.main.map((m) => (m.id === 'hello' ? { ...m, text: tr(M).hello } : m))
         if (!stopped) {
           setSnap(s)
           setOffline(false)

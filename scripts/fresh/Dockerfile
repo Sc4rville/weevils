@@ -4,7 +4,7 @@
 FROM ubuntu:24.04
 ARG NODE_MAJOR=22
 RUN apt-get update \
- && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl git tmux jq procps iproute2 xz-utils locales \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl git tmux jq python3 qrencode procps iproute2 xz-utils \
  && rm -rf /var/lib/apt/lists/* \
  && arch=$(dpkg --print-architecture | sed 's/amd64/x64/') \
  && ver=$(curl -fsSL "https://nodejs.org/dist/latest-v${NODE_MAJOR}.x/SHASUMS256.txt" | grep -o "node-v[0-9.]*-linux-$arch.tar.xz" | head -1) \

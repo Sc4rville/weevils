@@ -27,11 +27,12 @@ const SWIPE_V = 500
 /** Pop palette slots for the cards (picked from the card id: stable, varied). */
 const SLOTS = ['p0', 'p2', 'p4', 'p6', 'p9', 'p11', 'p13', 'p14']
 
-type Env = { touch: boolean; standalone: boolean; dictation: boolean }
+type Env = { touch: boolean; standalone: boolean; dictation: boolean; selfRepo: boolean }
 
 /** General tips: an icon and a condition each; their text lives in src/i18n/tips.ts (tip_<key>). */
 const GENERAL: { key: GeneralKey; icon: IconName; dir?: Dir; when?: (e: Env) => boolean }[] = [
-  { key: 'liveUi', icon: 'theme' },
+  // Only true when weevils' own repo is a project weevboss can hand to a session.
+  { key: 'liveUi', icon: 'theme', when: (e) => e.selfRepo },
   { key: 'dictate', icon: 'mic', when: (e) => e.dictation },
   { key: 'photo', icon: 'plus' },
   { key: 'swipeBack', icon: 'arrow', dir: 'right', when: (e) => e.touch },
@@ -100,14 +101,14 @@ const getJson = async <T,>(method: string, url: string, body?: unknown): Promise
 }
 
 /** Every candidate card, in the current language: the server's, the client-side rules, the general tips. */
-async function candidates(): Promise<TipCard[]> {
+async function candidates(selfRepo: boolean): Promise<TipCard[]> {
   const t = tr(M)
   const [server, dictation, pushOn] = await Promise.all([
     getJson<{ tips: TipCard[] }>('GET', '/api/tips').then((r) => r.tips, () => [] as TipCard[]),
     api.transcribeInfo().then((r) => r.enabled, () => false),
     pushSupported() && Notification.permission === 'default' ? api.push().then((r) => r.enabled, () => false) : Promise.resolve(false),
   ])
-  const env: Env = { touch: matchMedia('(pointer: coarse)').matches, standalone: standalone(), dictation }
+  const env: Env = { touch: matchMedia('(pointer: coarse)').matches, standalone: standalone(), dictation, selfRepo }
   const ios = /iphone|ipad/i.test(navigator.userAgent)
   const client: TipCard[] = pushOn && (!ios || env.standalone) ? [{ id: 'push-off', rule: 'push', personal: true, text: t.pushText, accept: t.pushAccept, action: { kind: 'push' } }] : []
   const general = GENERAL.filter((g) => !g.when || g.when(env)).map((g): TipCard => ({ id: `tip:${g.key}`, rule: g.key, text: t[`tip_${g.key}`], personal: false }))
@@ -136,7 +137,7 @@ const iconOf = (tip: TipCard): [IconName, Dir?] => {
 
 /** Mounted once on the feed. `paused`: a page is open. */
 export function Tips({ paused }: { paused: boolean }) {
-  const { h24Open, push, refresh, colors } = useApp()
+  const { h24Open, push, refresh, colors, snap } = useApp()
   const t = useT(M)
   const off = useTipsOff()
   const [shown, setShown] = useState<Shown | null>(null)
@@ -151,6 +152,8 @@ export function Tips({ paused }: { paused: boolean }) {
   const blockedRef = useRef(false)
   blockedRef.current = paused || h24Open
   const showingRef = useRef(false)
+  const selfRepo = useRef(false)
+  selfRepo.current = snap.projects.some((p) => p.repos.includes('weevils'))
   showingRef.current = !!shown
 
   const hide = useCallback(() => {
@@ -181,7 +184,7 @@ export function Tips({ paused }: { paused: boolean }) {
       if (checking.current || Date.now() < emptyUntil.current || !ready(loadState(), moment())) return
       checking.current = true
       try {
-        const tip = pick(await candidates(), loadState())
+        const tip = pick(await candidates(selfRepo.current), loadState())
         // Every card already seen: no new question to weevilsd every few seconds while the feed sits idle.
         if (!tip) emptyUntil.current = Date.now() + (isDebug() ? CHECK_MS : EMPTY_RETRY_MS)
         // Still quiet after the fetch?

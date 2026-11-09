@@ -17,12 +17,13 @@ try {
 
 /** Prénom de l'utilisateur, pour que les agents s'adressent à lui. Vide : user() (server/i18n.ts) dit « l'utilisateur » / « the user ». */
 export const USER_NAME = process.env.WEEVILS_USER_NAME?.trim() ?? ''
-/** @deprecated Repli figé en français : utiliser user() de './i18n.ts', lu à l'appel dans la langue de l'utilisateur. */
-export const USER = USER_NAME || 'l’utilisateur' // i18n-ignore : repli des anciens prompts français, remplacé par user()
 /** Adresse publique de l'app (notifications push, QR de connexion). */
 export const PUBLIC_URL = process.env.WEEVILS_PUBLIC_URL?.trim() || ''
 /** Domaine où les serveurs de preview sont exposés en <nom>.<domaine> (navigateur intégré). */
 export const EXPOSE_DOMAIN = process.env.WEEVILS_EXPOSE_DOMAIN?.trim() || ''
+/** Dossier des sites Caddy, un <nom>.caddy par port exposé (reverse_proxy localhost:<port>) : avec EXPOSE_DOMAIN, la page
+ * infra relie chaque port à https://<nom>.<domaine>. Vide : pas de lien. */
+export const EXPOSE_SITES_DIR = process.env.WEEVILS_EXPOSE_SITES_DIR?.trim() || ''
 export const PORT = Number(process.env.WEEVILS_PORT || 4179)
 /** Adresse d'écoute de l'app : 127.0.0.1 (derrière Caddy ou un tunnel SSH) ; 0.0.0.0 pour l'ouvrir au réseau local en http. */
 export const HOST = process.env.WEEVILS_HOST?.trim() || '127.0.0.1'
@@ -35,8 +36,11 @@ export const PROJECTS_DIR = PROJECT_ROOTS[0]
 export const REMOTES = process.env.WEEVILS_REMOTES
 export const CLAUDE_DIR = path.join(HOME, '.claude', 'projects')
 export const CODEX_DIR = path.join(process.env.CODEX_HOME ?? path.join(HOME, '.codex'), 'sessions')
-export const LOGS_DIR = path.join(HOME, 'logs')
 export const DATA_DIR = path.join(HOME, '.local', 'share', 'weevils')
+/** Journaux des jobs longs (<nom>.log) : chacun s'affiche comme une activité 24/7 tant qu'il s'écrit. */
+export const LOGS_DIR = process.env.WEEVILS_LOGS_DIR?.trim() || path.join(DATA_DIR, 'jobs')
+/** Fichiers joints à weevboss (photos, PDF…), déposés en <date>-<nom>. Même dossier par défaut que ceux des sessions. */
+export const INBOX_DIR = process.env.WEEVILS_INBOX_DIR?.trim() || path.join(DATA_DIR, 'inbox')
 export const DIST_DIR = path.resolve(import.meta.dirname, '..', 'dist')
 
 /** Nom d'hôte réduit comme le fait install.sh (slug) : minuscules, [a-z0-9-], 20 caractères. */
@@ -45,8 +49,7 @@ export const hostSlug = (host: string) =>
 
 /**
  * Identifiant de cette machine : WEEVILS_MACHINE (install.sh l'écrit), sinon le nom d'hôte, retenu au premier lancement
- * (DATA_DIR/machine-id) pour rester stable. Une installation d'avant ce choix (données déjà là, sans machine-id)
- * garde son ancien nom « vps » : ses projets et la mémoire de weevboss le citent.
+ * (DATA_DIR/machine-id) pour rester stable.
  */
 function machineId(): string {
   const env = process.env.WEEVILS_MACHINE?.trim()
@@ -58,7 +61,6 @@ function machineId(): string {
   } catch {
     /* pas encore choisi */
   }
-  if (fs.existsSync(path.join(DATA_DIR, 'state.json'))) return 'vps'
   const id = hostSlug(os.hostname())
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true })
@@ -85,3 +87,19 @@ export const STALE_MS = 30 * 60_000
 /** Session weevils sans activité : terminée dans l'app après 30 min, processus fermé après 2 h (lui écrire la rouvre avec --resume). */
 export const DONE_AFTER_MS = Number(process.env.WEEVILS_DONE_AFTER_MIN ?? 30) * 60_000
 export const KILL_AFTER_MS = Number(process.env.WEEVILS_KILL_AFTER_MIN ?? 120) * 60_000
+
+/** Voix gratuite (edge-tts) : voix de chaque langue et débit. */
+export const TTS_VOICE = {
+  fr: process.env.WEEVILS_TTS_VOICE_FR?.trim() || 'fr-FR-RemyMultilingualNeural',
+  en: process.env.WEEVILS_TTS_VOICE_EN?.trim() || 'en-US-AndrewMultilingualNeural',
+}
+export const TTS_RATE = process.env.WEEVILS_TTS_RATE?.trim() || '+25%'
+
+/**
+ * Page infra : 1 = cherche l'hébergeur de la machine (ipinfo.io) et ses offres (recherche web claude, une fois par
+ * semaine) ; facts = faits locaux seulement, aucun appel sortant ; 0 = rien.
+ */
+export const DISCOVER: '0' | 'facts' | '1' = (() => {
+  const v = process.env.WEEVILS_DISCOVER?.trim()
+  return v === '0' || v === '1' ? v : 'facts'
+})()

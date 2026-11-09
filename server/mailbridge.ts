@@ -1,8 +1,8 @@
-// Le pont e-mail : des agents externes (gepetto, instinct…) écrivent dans les sessions weevils par e-mail.
+// Le pont e-mail : des agents externes (un bot de CI, un autre agent IA…) écrivent dans les sessions weevils par e-mail.
 //
 //   Adresse         un alias de la boîte perso (moi+weevils@gmail.com) ; un filtre Gmail range ces mails sous le libellé « weevils »
 //                   hors boîte de réception. Le pont ne surveille que ce libellé : aucun autre mail n'est lu, marqué ou déplacé.
-//   Objet           « [mygame] … » session disponible du projet (sinon une nouvelle) · « [session:2cbb0bbd] » cette session
+//   Objet           « [shop] … » session disponible du projet (sinon une nouvelle) · « [session:2cbb0bbd] » cette session
 //                   « [weevboss] » l'orchestrateur · « [new:projet] » (ou « [new:projet:codex] ») une nouvelle session
 //   Corps           le message (citation du mail précédent et signature retirées)
 //   Réponse         renvoyée à l'expéditeur dans le même fil (In-Reply-To / References) ; répondre à ce mail continue la même session.

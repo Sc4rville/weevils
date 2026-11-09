@@ -6,10 +6,9 @@ import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, MACHINE, ORCHESTRATOR, PORT } from './config.ts'
-import { openaiKey, speak, speakable, transcribe } from './transcribe.ts'
+import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
-import { cartesia, cartesiaStream, cartesiaVoices } from './fast.ts'
-import { Readable } from 'node:stream'
+import { cartesia, cartesiaVoices } from './fast.ts'
 import { Weevils } from './core.ts'
 import { setLang, tr } from './i18n.ts'
 import M from './i18n/api.ts'
@@ -17,7 +16,7 @@ import P from './i18n/push.ts'
 import V from './i18n/voice.ts'
 import { tipRoutes } from './tips.ts'
 import { Hints, hintRoutes } from './hints.ts'
-import { normalizeFrom } from './authors.ts'
+import { browserSafe, isLocal, trustedFrom } from './http.ts'
 import { startMailBridge } from './mailbridge.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
@@ -55,9 +54,6 @@ try {
 const saveTokens = () => fs.writeFileSync(TOKENS_FILE, JSON.stringify([...tokens]), { mode: 0o600 })
 
 const cookieToken = (req: http.IncomingMessage) => /(?:^|;\s*)wv=([\w-]+)/.exec(req.headers.cookie ?? '')?.[1]
-/** Requête née sur le VPS même (tunnel SSH, outils locaux) : jamais passée par Caddy, donc sans en-têtes de proxy. */
-const isLocal = (req: http.IncomingMessage) =>
-  ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '') && !req.headers['x-forwarded-for'] && !req.headers['x-forwarded-proto']
 const authed = (req: http.IncomingMessage) => {
   if (isLocal(req)) return true
   const t = cookieToken(req)
@@ -102,7 +98,7 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
 }
 
-function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string) {
+function serveStatic(res: http.ServerResponse, pathname: string) {
   let file = path.join(DIST_DIR, pathname === '/' ? 'index.html' : pathname)
   if (!file.startsWith(DIST_DIR) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(DIST_DIR, 'index.html')
   if (!fs.existsSync(file)) return json(res, 503, { error: tr(M).notBuilt })
@@ -178,8 +174,7 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/sessions\/([^/]+)\/send$/, async (req, res, _u, [id]) => {
     const body = await readBody(req)
     // « from » (weevils, ou un auteur déclaré) n'est accepté que d'une requête locale (l'orchestrateur, la commande weevils), jamais du téléphone.
-    const from = isLocal(req) ? normalizeFrom(body.from) : undefined
-    json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), from))
+    json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), trustedFrom(req, body)))
   }],
   ['POST', /^\/api\/sessions\/([^/]+)\/attach$/, async (req, res, _u, [id]) => {
     const body = await readBody(req, 24 << 20)
@@ -190,23 +185,6 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/voices$/, async (req, res) => {
     w.setVoice(String((await readBody(req)).id ?? '') || undefined)
     json(res, 200, { ok: true })
-  }],
-  ['POST', /^\/api\/voice$/, async (req, res) => json(res, 200, await w.voice(String((await readBody(req)).text ?? '')))],
-  ['POST', /^\/api\/speak$/, async (req, res) => {
-    const body = await readBody(req)
-    if (cartesia()) {
-      try {
-        const stream = await cartesiaStream(await speakable(String(body.text ?? ''), !!body.oral), body.voice ? String(body.voice) : undefined)
-        res.writeHead(200, { 'content-type': 'audio/mpeg', 'cache-control': 'no-store' })
-        Readable.fromWeb(stream as any).pipe(res)
-        return
-      } catch (e) {
-        console.error(`[voix] ${(e as Error).message} · repli edge-tts`)
-      }
-    }
-    const mp3 = await speak(String(body.text ?? ''), !!body.oral)
-    res.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': mp3.length, 'cache-control': 'no-store' })
-    res.end(mp3)
   }],
   ['POST', /^\/api\/devil$/, async (req, res) => json(res, 200, await w.devil(String((await readBody(req)).text ?? '')))],
   // ---- Voix rapide : son en flux, accroches en cache, enregistrement envoyé en morceaux, mesures.
@@ -262,7 +240,7 @@ const routes: [string, RegExp, Handler][] = [
         tool,
         text: String(body.text ?? ''),
         machineId: body.machineId ? String(body.machineId) : undefined,
-        from: isLocal(req) ? normalizeFrom(body.from) : undefined,
+        from: trustedFrom(req, body),
       }),
     )
   }],
@@ -307,10 +285,6 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/conversations\/([^/]+)\/continue$/, async (req, res, _u, [id]) => {
     const body = await readBody(req)
     json(res, 200, await w.continueConversation(decodeURIComponent(id), body.tool === 'codex' ? 'codex' : 'claude', String(body.text ?? '')))
-  }],
-  ['POST', /^\/api\/classify$/, (_req, res) => {
-    void w.classify()
-    json(res, 200, { ok: true })
   }],
   ['POST', /^\/api\/h24\/([^/]+)\/toggle$/, async (_req, res, _u, [id]) => {
     await w.toggleH24(decodeURIComponent(id))
@@ -443,7 +417,7 @@ async function receiveImport(req: http.IncomingMessage, res: http.ServerResponse
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://local')
   try {
-    if (!url.pathname.startsWith('/api/')) return serveStatic(req, res, url.pathname)
+    if (!url.pathname.startsWith('/api/')) return serveStatic(res, url.pathname)
     // Le Raccourci Siri n'a pas de cookie : son jeton personnel n'ouvre que le tour de parole et le son qui va avec.
     const viaShortcut = /^\/api\/voice\/(turn|clip\/)/.test(url.pathname) && shortcutAuthed(req, url)
     if (!PUBLIC.has(url.pathname) && !viaShortcut && !authed(req)) return json(res, 401, { error: tr(M).signInRequired })
@@ -459,9 +433,11 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => console.log(`weevilsd → http://${HOST}:${PORT}`))
 
-// Hooks Claude Code : port séparé, local uniquement, pas d'authentification nécessaire.
+// Hooks Claude Code : port séparé, local uniquement, pas d'authentification nécessaire. Une page web ouverte sur
+// cette machine (Origin étrangère, DNS rebinding) ne peut pas y forger d'événements.
 http
   .createServer(async (req, res) => {
+    if (!browserSafe(req)) return void res.writeHead(403).end()
     try {
       const body = await readBody(req, 256 << 10)
       w.hook(body, req.headers['x-pid'] as string | undefined)

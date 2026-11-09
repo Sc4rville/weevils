@@ -1,4 +1,4 @@
-// Dictée depuis le téléphone : l'audio enregistré dans l'app est transcrit par OpenAI (le même moteur que la dictée du PC).
+// Dictée depuis le téléphone : l'audio enregistré dans l'app est transcrit par OpenAI.
 // Pas de « prompt » de transcription : il est recraché mot pour mot à la place de la voix (prouvé le 2026-08-02).
 // Un clip presque vide fait halluciner le modèle dans une langue au hasard (« Pralność », « al », 2026-11-09) :
 // la langue est imposée (celle de l'app) et un clip trop court ou sans parole n'est jamais envoyé.
@@ -7,31 +7,17 @@ import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { CONFIG_DIR, HOME } from './config.ts'
-import { haiku, tts } from './fast.ts'
-import { lang, tr, user, withLang, type Lang } from './i18n.ts'
+import './config.ts' // charge ~/.config/weevils/env dans process.env
+import { lang, tr, withLang, type Lang } from './i18n.ts'
 import { isLang } from '../shared/i18n.ts'
-import { detectLang } from '../shared/detect-lang.ts'
 import V from './i18n/voice.ts'
 
-/** Clé lue dans ~/.config/weevils/env, sinon dans la config de la dictée du PC. Jamais dans le code ni dans les logs. */
+/** Clé OpenAI : l'environnement, où config.ts a déjà chargé ~/.config/weevils/env. Jamais dans le code ni dans les logs. */
 export function openaiKey(): string | undefined {
-  if (process.env.OPENAI_API_KEY) return process.env.OPENAI_API_KEY
-  for (const file of [path.join(CONFIG_DIR, 'env'), path.join(HOME, '.config', 'dictee', 'env')]) {
-    try {
-      const m = /^OPENAI_API_KEY=["']?([^"'\n]+)/m.exec(fs.readFileSync(file, 'utf8'))
-      if (m) return m[1].trim()
-    } catch {
-      /* pas de fichier */
-    }
-  }
-  return undefined
+  return process.env.OPENAI_API_KEY?.trim() || undefined
 }
 
 const EXT: Record<string, string> = { 'audio/mp4': 'm4a', 'audio/mpeg': 'mp3', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/wav': 'wav', 'audio/x-m4a': 'm4a', 'audio/aac': 'aac' }
-
-/** Langue de ce qui sera dit : celle du texte, sinon la langue réglée. */
-const langOf = (text: string): Lang => detectLang(text) ?? lang()
 
 /** Seuils d'un clip qui vaut d'être transcrit : assez long, et un peu de parole dedans. */
 export const MIN_CLIP_S = 0.6
@@ -84,7 +70,7 @@ export async function transcribe(data: Buffer, mime: string, l: unknown = lang()
     throw nothing()
   }
   const form = new FormData()
-  form.append('file', new Blob([data], { type }), `voix.${ext}`)
+  form.append('file', new Blob([new Uint8Array(data)], { type }), `voix.${ext}`)
   form.append('model', 'gpt-4o-mini-transcribe')
   // La langue de l'app, imposée : sans elle, un bout de silence ressort en polonais ou en n'importe quoi.
   form.append('language', language)
@@ -105,46 +91,3 @@ export async function transcribe(data: Buffer, mime: string, l: unknown = lang()
   return text
 }
 
-/** Voix de weevboss : version orale courte (haiku, abonnement), lue par edge-tts (gratuit). MP3. */
-/** Le texte prêt à dire (version orale courte si besoin). */
-export async function speakable(text: string, oral = false): Promise<string> {
-  const input = text.replace(/```[\s\S]*?```/g, ' ').replace(/[`*_#>]/g, '').replace(/https?:\/\/\S+/g, V[langOf(text)].aLink).replace(/\s+/g, ' ').trim().slice(0, 1500)
-  return oral ? input : await toOral(input).catch(() => input.slice(0, 300))
-}
-
-export async function speak(text: string, oral = false): Promise<Buffer> {
-  const input = text
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/[`*_#>]/g, '')
-    .replace(/https?:\/\/\S+/g, V[langOf(text)].aLink)
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 1500)
-  const said = oral ? input : await toOral(input).catch(() => input.slice(0, 300))
-  return tts(said, langOf(text))
-}
-
-/** La version à dire : une ou deux phrases, comme à un pote, sans ids, chemins, fichiers ni listes. */
-async function toOral(text: string): Promise<string> {
-  const key = openaiKey()
-  const ask = `${V[langOf(text)].oral(user())}\n\n${text}`
-  if (key) {
-    try {
-      const t0 = Date.now()
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 120, temperature: 0.4, messages: [{ role: 'user', content: ask }] }),
-        signal: AbortSignal.timeout(8000),
-      })
-      const j = (await res.json()) as { choices?: { message?: { content?: string } }[] }
-      const out = (j.choices?.[0]?.message?.content ?? '').trim()
-      console.log(`[rapide] résumé oral ${Date.now() - t0} ms`)
-      if (out) return out.slice(0, 400)
-    } catch {
-      /* repli haiku */
-    }
-  }
-  const out = await haiku(ask)
-  return out.slice(0, 400) || text.slice(0, 300)
-}

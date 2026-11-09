@@ -1,5 +1,6 @@
 // Fédération : le weevilsd du VPS lit les weevilsd des autres machines (le PC) à travers un tunnel SSH inversé.
-// Côté PC, la requête arrive de 127.0.0.1 sans en-tête de proxy : elle est de confiance, comme un outil local.
+// Côté PC, la requête arrive de 127.0.0.1 sans en-tête de proxy ni Origin, Host 127.0.0.1:<port du tunnel> : elle est de confiance,
+// comme un outil local (server/http.ts).
 
 import type { Snapshot } from '../shared/api.ts'
 import { tr } from './i18n.ts'

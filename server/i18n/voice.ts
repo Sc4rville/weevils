@@ -23,6 +23,8 @@ export default defineMessages({
     transcriptionError: (status: number) => `transcription : erreur ${status}`,
     noCartesiaKey: 'clé Cartesia absente',
     noCartesiaVoice: 'aucune voix française Cartesia',
+    /** edge-tts (free voice) is not installed: say how to install it. */
+    noEdgeTts: 'voix indisponible : edge-tts n’est pas installé (pipx install edge-tts)',
   },
   en: {
     oral: (user: string) =>
@@ -39,5 +41,6 @@ export default defineMessages({
     transcriptionError: (status: number) => `transcription: error ${status}`,
     noCartesiaKey: 'no Cartesia key',
     noCartesiaVoice: 'no English Cartesia voice',
+    noEdgeTts: 'no voice: edge-tts isn’t installed (pipx install edge-tts)',
   },
 })

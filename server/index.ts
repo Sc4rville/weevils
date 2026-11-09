@@ -17,7 +17,7 @@ import P from './i18n/push.ts'
 import V from './i18n/voice.ts'
 import { tipRoutes } from './tips.ts'
 import { Hints, hintRoutes } from './hints.ts'
-import { normalizeFrom } from './authors.ts'
+import { browserSafe, isLocal, trustedFrom } from './http.ts'
 import { startMailBridge } from './mailbridge.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
@@ -55,9 +55,6 @@ try {
 const saveTokens = () => fs.writeFileSync(TOKENS_FILE, JSON.stringify([...tokens]), { mode: 0o600 })
 
 const cookieToken = (req: http.IncomingMessage) => /(?:^|;\s*)wv=([\w-]+)/.exec(req.headers.cookie ?? '')?.[1]
-/** Requête née sur le VPS même (tunnel SSH, outils locaux) : jamais passée par Caddy, donc sans en-têtes de proxy. */
-const isLocal = (req: http.IncomingMessage) =>
-  ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '') && !req.headers['x-forwarded-for'] && !req.headers['x-forwarded-proto']
 const authed = (req: http.IncomingMessage) => {
   if (isLocal(req)) return true
   const t = cookieToken(req)
@@ -178,8 +175,7 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/sessions\/([^/]+)\/send$/, async (req, res, _u, [id]) => {
     const body = await readBody(req)
     // « from » (weevils, ou un auteur déclaré) n'est accepté que d'une requête locale (l'orchestrateur, la commande weevils), jamais du téléphone.
-    const from = isLocal(req) ? normalizeFrom(body.from) : undefined
-    json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), from))
+    json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), trustedFrom(req, body)))
   }],
   ['POST', /^\/api\/sessions\/([^/]+)\/attach$/, async (req, res, _u, [id]) => {
     const body = await readBody(req, 24 << 20)
@@ -262,7 +258,7 @@ const routes: [string, RegExp, Handler][] = [
         tool,
         text: String(body.text ?? ''),
         machineId: body.machineId ? String(body.machineId) : undefined,
-        from: isLocal(req) ? normalizeFrom(body.from) : undefined,
+        from: trustedFrom(req, body),
       }),
     )
   }],
@@ -459,9 +455,11 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => console.log(`weevilsd → http://${HOST}:${PORT}`))
 
-// Hooks Claude Code : port séparé, local uniquement, pas d'authentification nécessaire.
+// Hooks Claude Code : port séparé, local uniquement, pas d'authentification nécessaire. Une page web ouverte sur
+// cette machine (Origin étrangère, DNS rebinding) ne peut pas y forger d'événements.
 http
   .createServer(async (req, res) => {
+    if (!browserSafe(req)) return void res.writeHead(403).end()
     try {
       const body = await readBody(req, 256 << 10)
       w.hook(body, req.headers['x-pid'] as string | undefined)

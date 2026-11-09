@@ -12,6 +12,7 @@ import { HintBubble, loadHints } from './ui/hints'
 import { PageView } from './ui/pages'
 import { usePinch } from './ui/calm'
 import { adoptUnknown } from './ui/seen'
+import { useDevil } from './ui/devil'
 import { ensurePush } from './push'
 import { useT } from './i18n'
 import M from './i18n/app'
@@ -31,6 +32,7 @@ function initialTheme(): Theme {
 export default function App() {
   const live = useLive()
   const t = useT(M)
+  const devil = useDevil(!!live.snap?.devil?.enabled)
   const [theme, setThemeState] = useState<Theme>(initialTheme)
   const [now, setNow] = useState(() => Date.now())
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -227,7 +229,7 @@ export default function App() {
   return (
     <Ctx.Provider value={ctx}>
       <MotionConfig reducedMotion="user" transition={spring}>
-        <div className="status-cover" aria-hidden style={live.snap && (() => { try { return localStorage.getItem('weevils-devil') === '1' } catch { return false } })() ? ({ ['--status-c' as string]: 'var(--devil)' }) : undefined} />
+        <div className="status-cover" aria-hidden style={devil ? ({ ['--status-c' as string]: 'var(--devil)' }) : undefined} />
         <motion.main
           {...pinchMain}
           className="stack"

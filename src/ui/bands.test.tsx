@@ -31,6 +31,7 @@ vi.mock('./voice', () => ({
 
 const { AgentBand } = await import('./bands')
 const { Ctx } = await import('./app-context')
+const { setDevil } = await import('./devil')
 
 const msg = (id: string, role: Message['role'], text: string, at: number): Message => ({ id, role, text, at })
 
@@ -151,12 +152,32 @@ describe('bande de weevboss : envoyer ne l’ouvre jamais en plein écran', () =
 
   it('en devil mode', async () => {
     localStorage.setItem('weevils-devil', '1')
-    render(snap([]))
+    render({ ...snap([]), devil: { enabled: true, working: false } })
     await type('dis un truc')
     await submit()
     await flush()
     expect(sent.devil).toEqual(['dis un truc'])
     expect(expanded).not.toContain('agent')
+  })
+
+  it('devil mode resté allumé sur l’appareil, mais plus de modèle branché : weevboss reçoit', async () => {
+    localStorage.setItem('weevils-devil', '1')
+    render(snap([]))
+    expect(host.querySelector('.devil-on')).toBeNull()
+    await type('dis un truc')
+    await submit()
+    await flush()
+    expect(sent.main).toEqual(['dis un truc'])
+    expect(sent.devil).toEqual([])
+  })
+
+  it('le réglage du devil mode s’applique tout de suite à la bande', async () => {
+    render({ ...snap([]), devil: { enabled: true, working: false } })
+    expect(host.querySelector('.devil-on')).toBeNull()
+    act(() => setDevil(true))
+    expect(host.querySelector('.devil-on')).not.toBeNull()
+    act(() => setDevil(false))
+    expect(host.querySelector('.devil-on')).toBeNull()
   })
 
   it('le message envoyé et la réponse apparaissent dans l’aperçu, bande réduite', async () => {

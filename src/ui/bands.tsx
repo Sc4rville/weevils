@@ -17,6 +17,7 @@ import B from '../i18n/bits'
 import { ago, plain, userText } from './format'
 import { Icon } from './icons'
 import { PrefLines } from './prefs'
+import { useDevil } from './devil'
 import { tapHint } from './hints'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
@@ -139,15 +140,8 @@ export function AgentBand() {
   const t = useT(M)
   const { snap, expanded, setExpanded } = useApp()
   const open = expanded === 'agent'
-  // Devil mode : mémorisé sur l'appareil ; les messages vont à l'autre modèle, la bande passe en orange.
-  const [devil] = useState(() => {
-    try {
-      return localStorage.getItem('weevils-devil') === '1'
-    } catch {
-      return false
-    }
-  })
-  const devilOn = devil
+  // Devil mode : réglé dans les préférences ; les messages vont à l'autre modèle, la bande passe en orange.
+  const devilOn = useDevil(!!snap.devil?.enabled)
   const body = useRef<HTMLDivElement>(null)
   const form = useRef<HTMLFormElement>(null)
   const swipe = useRef<{ y: number; top: number } | null>(null)
@@ -171,7 +165,7 @@ export function AgentBand() {
 
   return (
     <section className={`band agent tone ${devilOn ? 'devil-on' : ''} ${open ? 'open' : ''}`} style={color(devilOn ? 'devil' : 'agent')} aria-label={t.agentBand}>
-      {/* En haut : le logo (dicter) et le diablotin, sous la barre d'état. Réduite : l'aperçu vivant du fil ; un tap l'ouvre.
+      {/* En haut : le logo (dicter), sous la barre d'état. Réduite : l'aperçu vivant du fil ; un tap l'ouvre.
           Ouverte : un tap dans l'espace vide, le chevron, ou glisser vers le bas la réduit. */}
       <div className="agent-space" onClick={(e) => open && e.target === e.currentTarget && setExpanded(null)}>
         {open && (

@@ -59,11 +59,15 @@ export function signAs(author: string, text: string): string {
   return `[from:${author}] ${text}`
 }
 
+// Le préfixe est retiré par motif, jamais par une longueur : seul ce qu'il a lui-même reconnu part (« [from:x] » ou
+// « [weevils] » et les espaces qui suivent), quel que soit l'auteur et quoi que dise ensuite le message.
+const SIGNED_RE = /^(?:\[from:([a-z0-9_-]{1,32})\]|\[weevils\])[ \t]*/i
+
 /** Un message signé : son auteur et le texte sans le préfixe. null : message de l'utilisateur. */
 export function parseSigned(text: string): { author: string; text: string } | null {
-  if (text.startsWith(LEGACY_PREFIX)) return { author: BOSS, text: text.slice(LEGACY_PREFIX.length).trim() }
-  const m = PREFIX_RE.exec(text)
-  return m ? { author: m[1].toLowerCase(), text: text.slice(m[0].length).trim() } : null
+  const m = SIGNED_RE.exec(text)
+  if (!m) return null
+  return { author: m[1] ? m[1].toLowerCase() : BOSS, text: text.replace(SIGNED_RE, '').trim() }
 }
 
 /** Nom affiché d'un auteur (son id s'il n'est plus déclaré). */

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Project } from '../../shared/api.ts'
 import { api } from '../api'
 import { tr, useT } from '../i18n'
@@ -42,52 +42,88 @@ function useStickBottom(ref: React.RefObject<HTMLDivElement | null>, count: numb
 }
 
 /** L'aperçu vivant du fil, dans la bande réduite : les derniers messages, les récents en bas, les anciens remontent et s'estompent. */
+/** Au plus près du bas (px) : l'aperçu suit les nouveaux messages ; plus haut, Scarville remonte l'historique et on le laisse lire. */
+const PEEK_STICK = 48
+
+/**
+ * L'aperçu vivant du fil, dans la bande réduite : les récents en bas, les anciens remontent et s'estompent.
+ * Il défile au doigt pour remonter l'historique (sans entraîner la page) ; un tap simple ouvre la conversation.
+ */
 function Peek({ onOpen }: { onOpen: () => void }) {
   const t = useT(M)
   const tb = useT(B)
   const td = useT(D)
   const authorOf = useAuthors()
   const { snap } = useApp()
-  const items = snap.main.filter((m) => m.role !== 'event' && m.text.trim()).slice(-5)
+  const items = snap.main.filter((m) => m.role !== 'event' && m.text.trim()).slice(-60)
   const working = snap.mainWorking || !!snap.devil?.working
   const soft = { type: 'spring', stiffness: 160, damping: 26, mass: 1 } as const
+  const box = useRef<HTMLDivElement>(null)
+  const reading = useRef(false)
+  const lastItem = items[items.length - 1]
+  // Au montage : en bas, sans animation.
+  useLayoutEffect(() => {
+    const el = box.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [])
+  // Nouveau message, réponse qui s'allonge, étoile qui apparaît : on redescend, sauf si Scarville remonte.
+  useEffect(() => {
+    const el = box.current
+    if (!el || reading.current) return
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }, [items.length, lastItem?.id, lastItem?.text.length, working])
   return (
-    <div className="peek" role="button" tabIndex={0} aria-label={t.openChat} onClick={onOpen} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}>
-      <AnimatePresence initial={false} mode="popLayout">
-        {items.map((m) => {
-          const tone = m.role === 'orchestrator' ? authorTone(authorOf(m.author)) : null
-          const who = m.role === 'user' ? tb.you : m.role === 'orchestrator' ? authorOf(m.author).name : m.devil ? td.devil : 'weevboss'
-          const text = (m.role === 'user' ? userText(m.text) : plain(m.text)).replace(/\s+/g, ' ')
-          return (
-            <motion.div
-              key={m.id}
-              layout="position"
-              className={`peek-item ${m.role === 'user' ? '' : tone ? tone.className.replace('tone ', '') : m.devil ? 'devil' : 'base'}`}
-              style={tone?.style}
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -18 }}
-              transition={soft}
-            >
+    <motion.div
+      ref={box}
+      layoutScroll
+      className="peek"
+      role="button"
+      tabIndex={0}
+      aria-label={t.openChat}
+      onClick={onOpen}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}
+      onScroll={(e) => {
+        const el = e.currentTarget
+        reading.current = el.scrollHeight - el.scrollTop - el.clientHeight > PEEK_STICK
+      }}
+    >
+      <div className="peek-list">
+        <AnimatePresence initial={false} mode="popLayout">
+          {items.map((m) => {
+            const tone = m.role === 'orchestrator' ? authorTone(authorOf(m.author)) : null
+            const who = m.role === 'user' ? tb.you : m.role === 'orchestrator' ? authorOf(m.author).name : m.devil ? td.devil : 'weevboss'
+            const text = (m.role === 'user' ? userText(m.text) : plain(m.text)).replace(/\s+/g, ' ')
+            return (
+              <motion.div
+                key={m.id}
+                layout="position"
+                className={`peek-item ${m.role === 'user' ? '' : tone ? tone.className.replace('tone ', '') : m.devil ? 'devil' : 'base'}`}
+                style={tone?.style}
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -18 }}
+                transition={soft}
+              >
+                <div className="in">
+                  <span className="txt">
+                    <span className="strong">{who}</span> {text}
+                  </span>
+                </div>
+              </motion.div>
+            )
+          })}
+          {working && (
+            <motion.div key="working" layout="position" className="peek-item" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={soft}>
               <div className="in">
-                <span className="txt">
-                  <span className="strong">{who}</span> {text}
+                <span className="spin fluo">
+                  <Icon name="star" />
                 </span>
               </div>
             </motion.div>
-          )
-        })}
-        {working && (
-          <motion.div key="working" layout="position" className="peek-item" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={soft}>
-            <div className="in">
-              <span className="spin fluo">
-                <Icon name="star" />
-              </span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
   )
 }
 
@@ -121,16 +157,13 @@ export function AgentBand() {
   const heard = useRef('')
   useStickBottom(body, snap.main.length, open)
 
-  // Envoyé depuis le logo : la bande reste réduite. Écrit dans le champ : la conversation s'ouvre.
-  const viaLogo = useRef(false)
+  // Envoyer (clavier, logo vocal, pièce jointe) n'ouvre jamais le plein écran : le message et la réponse s'affichent dans l'aperçu.
+  // Garanti par bands.test.tsx (déjà régressé deux fois).
   const send = async (text: string) => {
-    if (!viaLogo.current) setExpanded('agent')
-    viaLogo.current = false
     if (devilOn) await api.devil(text)
     else await api.main(text)
   }
   const attach = async (text: string, files: { name: string; type: string; data: string }[]) => {
-    setExpanded('agent')
     await api.mainAttach(text, files)
   }
 
@@ -145,7 +178,7 @@ export function AgentBand() {
           </button>
         )}
         <div className="agent-top">
-          <VoiceLogo take={() => { const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }} onText={(x) => { heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }} onSend={() => { viaLogo.current = true; form.current?.requestSubmit() }} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
+          <VoiceLogo take={() => { const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }} onText={(x) => { heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }} onSend={() => form.current?.requestSubmit()} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
           <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={toggleDevil} aria-pressed={!!devilOn} aria-label={devilOn ? td.on : td.off}>
             <FilledIcon name="devil" />
           </button>

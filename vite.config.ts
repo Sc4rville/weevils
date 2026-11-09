@@ -27,5 +27,6 @@ export default defineConfig({
     // weevilsd sert l'API ; en dev, le serveur de dev la relaie (flux SSE compris).
     proxy: { '/api': { target: 'http://127.0.0.1:4179', changeOrigin: false } },
   },
-  test: { environment: 'node' },
+  // Tests en mode développement de React (act), même si le shell a NODE_ENV=production.
+  test: { environment: 'node', env: { NODE_ENV: 'test' } },
 })

@@ -5,7 +5,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, PORT } from './config.ts'
+import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, PORT } from './config.ts'
 import { openaiKey, speak, speakable, transcribe } from './transcribe.ts'
 import { cartesia, cartesiaStream, frenchVoices } from './fast.ts'
 import { Readable } from 'node:stream'
@@ -123,7 +123,9 @@ const routes: [string, RegExp, Handler][] = [
     const t = crypto.randomBytes(24).toString('base64url')
     tokens.add(t)
     saveTokens()
-    res.setHeader('set-cookie', `wv=${t}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`)
+    // Secure seulement derrière HTTPS (Caddy envoie x-forwarded-proto) : sinon le navigateur jetterait le cookie en http simple.
+    const secure = req.headers['x-forwarded-proto'] === 'https' ? ' Secure;' : ''
+    res.setHeader('set-cookie', `wv=${t}; Path=/; HttpOnly;${secure} SameSite=Lax; Max-Age=31536000`)
     json(res, 200, { ok: true })
   }],
   ['GET', /^\/api\/me$/, (req, res) => json(res, 200, { authed: authed(req) })],
@@ -331,7 +333,7 @@ const server = http.createServer(async (req, res) => {
   }
 })
 
-server.listen(PORT, '127.0.0.1', () => console.log(`weevilsd → http://127.0.0.1:${PORT}`))
+server.listen(PORT, HOST, () => console.log(`weevilsd → http://${HOST}:${PORT}`))
 
 // Hooks Claude Code : port séparé, local uniquement, pas d'authentification nécessaire.
 http

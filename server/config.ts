@@ -22,9 +22,11 @@ export const USER = USER_NAME || 'l’utilisateur'
 export const PUBLIC_URL = process.env.WEEVILS_PUBLIC_URL?.trim() || ''
 /** Domaine où les serveurs de preview sont exposés en <nom>.<domaine> (navigateur intégré). */
 export const EXPOSE_DOMAIN = process.env.WEEVILS_EXPOSE_DOMAIN?.trim() || ''
-export const PORT = Number(process.env.WEEVILS_PORT ?? 4179)
+export const PORT = Number(process.env.WEEVILS_PORT || 4179)
+/** Adresse d'écoute de l'app : 127.0.0.1 (derrière Caddy ou un tunnel SSH) ; 0.0.0.0 pour l'ouvrir au réseau local en http. */
+export const HOST = process.env.WEEVILS_HOST?.trim() || '127.0.0.1'
 /** Hooks Claude Code : écoute locale uniquement, jamais exposée par Caddy. */
-export const HOOK_PORT = Number(process.env.WEEVILS_HOOK_PORT ?? 4180)
+export const HOOK_PORT = Number(process.env.WEEVILS_HOOK_PORT || 4180)
 /** Racines des projets de cette machine, séparées par « : » (ex. ~/projects:~/Documents/projects). */
 export const PROJECT_ROOTS = (process.env.WEEVILS_PROJECTS ?? path.join(HOME, 'projects')).split(':').filter(Boolean)
 export const PROJECTS_DIR = PROJECT_ROOTS[0]

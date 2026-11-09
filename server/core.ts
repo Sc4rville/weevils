@@ -5,7 +5,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { ConversationDetail, ConversationSummary, H24Activity, Message, Project, Session, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
-import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, LOGS_DIR, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, LOGS_DIR, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
 import { llmClassify, ruleMatch } from './classify.ts'
@@ -20,7 +20,7 @@ import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
 import type { WvSession } from './mux.ts'
 import { capture, dialogOnScreen, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv } from './mux.ts'
-import { tr } from './i18n.ts'
+import { lang, onLangChange, tr, user } from './i18n.ts'
 import TipsM from './i18n/tips.ts'
 
 interface HookState {
@@ -236,7 +236,11 @@ export class Weevils {
 
   constructor() {
     this.migrateCategories()
-    if (ORCHESTRATOR) this.prepareOrchestrator()
+    if (ORCHESTRATOR) {
+      this.prepareOrchestrator()
+      // Langue changée dans l'app : le CLAUDE.md de weevboss est réécrit dans la nouvelle langue.
+      onLangChange(() => this.prepareOrchestrator())
+    }
     // Tous les repos connus sont de confiance d'avance.
     try {
       if (trustDirs(this.allRepos().map((r) => this.repoDir(r)))) console.log('[sessions] dossiers de ~/projects marqués de confiance pour Claude Code')
@@ -967,11 +971,12 @@ export class Weevils {
   /** Le dossier de l'orchestrateur : son CLAUDE.md (rôle + commande weevils) suit le repo. */
   private prepareOrchestrator() {
     fs.mkdirSync(ORCH_DIR, { recursive: true })
-    const src = path.join(import.meta.dirname, 'orchestrateur.md')
+    // Un gabarit par langue (orchestrator.fr.md, orchestrator.en.md) ; weevboss répond dans la langue où on lui écrit.
+    const src = path.join(import.meta.dirname, `orchestrator.${lang()}.md`)
     try {
-      // Gabarit : {{user}} (prénom configuré, sinon « l'utilisateur ») et {{owner}} (compte GitHub configuré, sinon demandé à gh).
+      // Gabarit : {{user}} (prénom configuré, sinon « l'utilisateur » / « the user ») et {{owner}} (compte GitHub configuré, sinon demandé à gh).
       const owner = process.env.WEEVILS_GH_OWNER?.trim() || '$(gh api user -q .login)'
-      fs.writeFileSync(path.join(ORCH_DIR, 'CLAUDE.md'), fs.readFileSync(src, 'utf8').replaceAll('{{user}}', USER).replaceAll('{{owner}}', owner))
+      fs.writeFileSync(path.join(ORCH_DIR, 'CLAUDE.md'), fs.readFileSync(src, 'utf8').replaceAll('{{user}}', user()).replaceAll('{{owner}}', owner))
     } catch (e) {
       console.error(`[orchestrateur] CLAUDE.md : ${(e as Error).message}`)
     }

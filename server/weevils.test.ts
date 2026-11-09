@@ -210,3 +210,27 @@ describe('messages collés / dictés', async () => {
     expect(unwrapPasted('\n\n<pasted_content id="32fa">\nOuais, je disais…\n</pasted_content>')).toBe('Ouais, je disais…')
   })
 })
+
+describe('messages weevils collés (send-keys long → pasted_content)', async () => {
+  const { readMore } = await import('./transcripts.ts')
+  const fs = await import('node:fs')
+  const os = await import('node:os')
+  const path = await import('node:path')
+  it('un exemple réel de 55639800…jsonl : attribué à weevils, texte dépouillé ; un collé de Scarville reste à Scarville', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-tr-'))
+    const file = path.join(dir, '55639800-e327-46ce-bef8-310477c7d9e2.jsonl')
+    const lines = [
+      { type: 'user', uuid: 'u1', timestamp: '2026-11-09T05:40:00Z', message: { role: 'user', content: '\n\n<pasted_content id="6f2b">\n[weevils] Trois retours de Scarville (les précédents ont été bloqués par une boîte de dialogue dans ta session, c\'est réglé). 1) Liste des projets…\n</pasted_content>' } },
+      { type: 'user', uuid: 'u2', timestamp: '2026-11-09T05:41:00Z', message: { role: 'user', content: [{ type: 'text', text: '\n\n<pasted_content id="32fa">\nOuais, je disais ce qui serait bien, c\'est que tu fasses la page repos.\n</pasted_content>' }] } },
+      { type: 'user', uuid: 'u3', timestamp: '2026-11-09T05:42:00Z', message: { role: 'user', content: '<local-command-stdout>Compacted</local-command-stdout>' } },
+    ]
+    fs.writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
+    const t = { id: '55639800-e327-46ce-bef8-310477c7d9e2', tool: 'claude' as const, file, cwd: '', openedAt: 0, lastActivityAt: 0, workStartedAt: null, phase: 'idle' as const, messages: [], subagents: [], offset: 0, partial: '' }
+    readMore(t as any, fs.statSync(file).size)
+    expect(t.messages.map((m: any) => [m.role, m.text.slice(0, 40)])).toEqual([
+      ['orchestrator', 'Trois retours de Scarville (les précédents on'],
+      ['user', 'Ouais, je disais ce qui serait bien, c\'e'],
+    ])
+    fs.rmSync(dir, { recursive: true })
+  })
+})

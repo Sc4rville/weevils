@@ -213,6 +213,30 @@ export class ConversationStore {
       .all(limit) as { id: string; title: string; preview: string; updatedAt: number }[]
   }
 
+  /** De quoi parle vraiment la conversation : les premiers messages de Scarville et les derniers échanges, compactés. */
+  excerpt(id: string, budget = 1400): string {
+    const rows = this.db.prepare('SELECT role, text FROM messages WHERE conversation_id = ? ORDER BY idx').all(id) as { role: string; text: string }[]
+    const one = (t: string, n: number) => t.replace(/\s+/g, ' ').trim().slice(0, n)
+    const head = rows.filter((m) => m.role === 'user').slice(0, 3).map((m) => `Scarville : ${one(m.text, 260)}`)
+    const tail = rows.slice(-2).map((m) => `${m.role === 'user' ? 'Scarville' : 'IA'} : ${one(m.text, 220)}`)
+    return [...head, rows.length > 5 ? '…' : '', ...tail].filter(Boolean).join('\n').slice(0, budget)
+  }
+
+  /**
+   * Les catégories sont les projets, un thème n'est pas un projet : tout ce qui avait été rangé dans une catégorie
+   * inventée (« cash », « design »…) repasse à classer, les catégories et les exemples qui les visaient disparaissent.
+   */
+  dropInventedCategories(): number {
+    const n = (this.db.prepare("SELECT COUNT(*) AS n FROM conversations WHERE project_id LIKE 'cat-%' OR suggested_project_id LIKE 'cat-%'").get() as { n: number }).n
+    this.db.exec(`
+      UPDATE conversations SET project_id = NULL, suggested_project_id = NULL, status = 'new', reason = NULL, confidence = NULL
+        WHERE project_id LIKE 'cat-%' OR suggested_project_id LIKE 'cat-%';
+      DELETE FROM corrections WHERE project_id LIKE 'cat-%';
+      DELETE FROM categories;
+    `)
+    return n
+  }
+
   setClassification(id: string, c: { projectId: string | null; status: 'auto' | 'pending' | 'accepted' | 'corrected' | 'none'; suggested?: string | null; reason?: string; confidence?: number }) {
     this.db
       .prepare('UPDATE conversations SET project_id = ?, status = ?, suggested_project_id = ?, reason = ?, confidence = ?, classified_at = ? WHERE id = ?')

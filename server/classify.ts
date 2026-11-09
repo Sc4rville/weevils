@@ -17,7 +17,6 @@ export interface CatalogEntry {
 export interface Verdict {
   id: string
   project: string | null
-  newCategory: string | null
   confidence: number
   reason: string
 }
@@ -56,11 +55,10 @@ const SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'project', 'new_category', 'confidence', 'reason'],
+        required: ['id', 'project', 'confidence', 'reason'],
         properties: {
           id: { type: 'string' },
           project: { type: ['string', 'null'] },
-          new_category: { type: ['string', 'null'] },
           confidence: { type: 'number' },
           reason: { type: 'string' },
         },
@@ -70,9 +68,8 @@ const SCHEMA = {
 }
 
 export async function llmClassify(
-  items: { id: string; title: string; preview: string }[],
+  items: { id: string; title: string; excerpt: string }[],
   catalog: CatalogEntry[],
-  categories: { id: string; name: string }[],
   examples: { title: string; projectId: string }[],
   workdir: string,
 ): Promise<Verdict[]> {
@@ -83,18 +80,16 @@ export async function llmClassify(
   const prompt = [
     'Tu ranges des conversations (ChatGPT, Claude) dans les projets de Scarville. Ne lis aucun fichier, ne lance aucune commande : réponds directement.',
     '',
-    'Projets existants (id : nom · repos · description) :',
+    'Les seules destinations possibles sont les projets ci-dessous (id : nom · repos · description). Un thème (« design », « argent », « santé ») n’est pas un projet : n’invente jamais de catégorie.',
     ...catalog.map((p) => `- ${p.id} : ${p.name}${p.repos.length ? ` · ${p.repos.slice(0, 8).join(', ')}` : ''}${p.about ? ` · ${p.about}` : ''}`),
-    categories.length ? `\nCatégories déjà inventées : ${categories.map((c) => `${c.id} (${c.name})`).join(', ')}` : '',
     examples.length ? `\nRangements validés par Scarville (à imiter) :\n${examples.map((e) => `- « ${e.title} » → ${e.projectId}`).join('\n')}` : '',
     '',
-    'Pour chaque conversation :',
-    '- project = l’id d’un projet existant ou d’une catégorie existante si elle en parle clairement, sinon null ;',
-    '- new_category = si aucun projet ne convient, un nom de catégorie thématique court en français et en minuscules (1 ou 2 mots, ex. « santé », « admin », « idées produit ») ; sinon null ;',
-    '- confidence entre 0 et 1 ; reason = une phrase courte en français.',
+    'Pour chaque conversation, lis l’extrait (premiers messages de Scarville, puis la fin) et juge de quoi elle parle vraiment :',
+    '- project = l’id d’un projet de la liste dont la conversation relève clairement (un site lws, le jeu mygame, l’app weevils…), sinon null. Dans le doute, null : Scarville tranchera.',
+    '- confidence entre 0 et 1 (≥ 0.7 seulement si c’est évident) ; reason = une phrase courte en français qui cite l’indice décisif.',
     '',
     'Conversations :',
-    JSON.stringify(items.map((i) => ({ id: i.id, titre: i.title, debut: i.preview }))),
+    JSON.stringify(items.map((i) => ({ id: i.id, titre: i.title, extrait: i.excerpt }))),
   ].join('\n')
   await new Promise<void>((resolve, reject) => {
     const child = execFile(
@@ -106,7 +101,7 @@ export async function llmClassify(
     // Sans entrée fermée, codex exec attend la suite du prompt sur stdin.
     child.stdin?.end()
   })
-  const raw = JSON.parse(fs.readFileSync(outFile, 'utf8')) as { items: { id: string; project: string | null; new_category: string | null; confidence: number; reason: string }[] }
+  const raw = JSON.parse(fs.readFileSync(outFile, 'utf8')) as { items: { id: string; project: string | null; confidence: number; reason: string }[] }
   fs.rmSync(outFile, { force: true })
-  return raw.items.map((x) => ({ id: x.id, project: x.project, newCategory: x.new_category, confidence: x.confidence, reason: x.reason }))
+  return raw.items.map((x) => ({ id: x.id, project: x.project, confidence: x.confidence, reason: x.reason }))
 }

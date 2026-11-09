@@ -58,7 +58,7 @@ export const api = {
   toggleH24: (id: string) => call<{ ok: true }>('POST', `/api/h24/${enc(id)}/toggle`, {}),
   conversations: (opts: { project?: string; q?: string }) => call<{ conversations: ConversationSummary[] }>('GET', `/api/conversations?${new URLSearchParams(opts)}`),
   conversation: (id: string) => call<ConversationDetail>('GET', `/api/conversations/${enc(id)}`),
-  classify: (id: string, target: { projectId?: string; newCategory?: string }) => call<{ ok: true }>('POST', `/api/conversations/${enc(id)}/classify`, target),
+  classify: (id: string, target: { projectId?: string }) => call<{ ok: true }>('POST', `/api/conversations/${enc(id)}/classify`, target),
   continueConv: (id: string, tool: Tool, text: string) => call<{ id: string }>('POST', `/api/conversations/${enc(id)}/continue`, { tool, text }),
   /** Envoi d'un export avec progression (XHR : fetch ne donne pas l'avancement de l'envoi). */
   importExport: (file: File, onProgress: (p: number) => void) =>

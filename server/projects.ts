@@ -26,7 +26,7 @@ export function place(cwd: string, roots: string[]): Placement {
         const fam = familyOf(repo)
         return { projectId: fam, projectName: fam, kind: 'repo', repo }
       }
-      return { projectId: 'general', projectName: 'général', kind: 'invented', repo: null }
+      return { projectId: 'divers', projectName: 'divers', kind: 'invented', repo: null }
     }
   }
   return { projectId: 'divers', projectName: 'divers', kind: 'invented', repo: null }

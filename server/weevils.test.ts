@@ -177,3 +177,29 @@ describe('écran bloqué par un dialogue (dialogOnScreen)', async () => {
     expect(dialogOnScreen('› Ask Codex to do anything\n  ← for agents')).toBeUndefined()
   })
 })
+
+describe('catégories inventées supprimées', async () => {
+  const { ConversationStore } = await import('./conversations.ts')
+  const fs = await import('node:fs')
+  const os = await import('node:os')
+  const path = await import('node:path')
+  it('ce qui était rangé dans « cash » ou « design » repart à classer, les catégories et leurs exemples disparaissent', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-db-'))
+    const s = new ConversationStore(dir)
+    s.import([
+      { id: 'a', source: 'chatgpt', title: 'Budget du jeu', createdAt: 1, updatedAt: 2, messages: [{ role: 'user', text: 'Combien coûte un trailer pour mygame ?', at: 1 }, { role: 'assistant', text: 'Environ…', at: 2 }] },
+      { id: 'b', source: 'claude', title: 'Site vitrine', createdAt: 1, updatedAt: 3, messages: [{ role: 'user', text: 'Refais la home de lws-demo', at: 1 }] },
+    ] as any)
+    const cash = s.ensureCategory('cash')
+    s.setClassification('a', { projectId: cash, status: 'auto', reason: 'x', confidence: 0.9 })
+    s.correct('b', s.ensureCategory('design'))
+    expect(s.categories().length).toBe(2)
+    expect(s.dropInventedCategories()).toBe(2)
+    expect(s.categories()).toEqual([])
+    expect(s.corrections()).toEqual([])
+    expect(s.unclassified(10).map((c) => c.id).sort()).toEqual(['a', 'b'])
+    expect(s.excerpt('a')).toMatch(/^Scarville : Combien coûte un trailer pour mygame/)
+    s.db.close()
+    fs.rmSync(dir, { recursive: true })
+  })
+})

@@ -218,7 +218,7 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ['POST', /^\/api\/conversations\/([^/]+)\/classify$/, async (req, res, _u, [id]) => {
     const body = await readBody(req)
-    w.classifyManually(decodeURIComponent(id), { projectId: body.projectId ? String(body.projectId) : undefined, newCategory: body.newCategory ? String(body.newCategory) : undefined })
+    w.classifyManually(decodeURIComponent(id), { projectId: body.projectId ? String(body.projectId) : undefined })
     json(res, 200, { ok: true })
   }],
   ['POST', /^\/api\/conversations\/([^/]+)\/continue$/, async (req, res, _u, [id]) => {

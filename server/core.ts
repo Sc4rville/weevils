@@ -130,6 +130,11 @@ export class Weevils {
   h24: H24Activity[] = []
   remotes: Remote[] = []
   convs = new ConversationStore(DATA_DIR)
+  /** Au démarrage : ce qui avait été rangé dans une catégorie thématique inventée repart à classer (les catégories sont les projets). */
+  private migrateCategories() {
+    const n = this.convs.dropInventedCategories()
+    if (n) console.log(`[classement] ${n} conversations sorties de catégories inventées, à reclasser`)
+  }
   push = new Push()
   private prevStatus = new Map<string, { status: Session['status']; since: number; notifiedAt?: number }>()
   classifier: Snapshot['classifier'] = { running: false, queued: 0 }
@@ -144,6 +149,7 @@ export class Weevils {
   private persistTimer: NodeJS.Timeout | null = null
 
   constructor() {
+    this.migrateCategories()
     try {
       const p = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) as Persisted
       this.hooks = new Map(p.hooks ?? [])
@@ -490,15 +496,15 @@ export class Weevils {
     const known = new Set(projects.map((p) => p.id))
     const latest = new Map<string, number>()
     for (const c of this.convs.summaries()) if (c.projectId) latest.set(c.projectId, Math.max(latest.get(c.projectId) ?? 0, c.updatedAt))
-    const cats = new Map(this.convs.categories().map((c) => [c.id, c.name]))
     const extra: Project[] = []
     for (const [id, at] of latest) {
       if (known.has(id) || now - at > 14 * 86400_000) continue
       const entry = this.catalogCache?.list.find((e) => e.id === id)
+      if (!entry) continue // un projet est un repo : rien d'autre ne crée de bande
       extra.push({
         id,
-        name: cats.get(id) ?? entry?.name ?? id,
-        kind: cats.has(id) ? 'invented' : 'repo',
+        name: entry.name,
+        kind: 'repo',
         repos: entry?.repos ?? [],
         where: Object.fromEntries((entry?.repos ?? []).map((r) => [r, MACHINE.id])),
         lastActivityAt: at,
@@ -587,8 +593,8 @@ export class Weevils {
     }
   }
 
-  classifyManually(id: string, target: { projectId?: string; newCategory?: string }) {
-    const projectId = target.newCategory ? this.convs.ensureCategory(target.newCategory) : target.projectId
+  classifyManually(id: string, target: { projectId?: string }) {
+    const projectId = target.projectId
     if (!projectId) throw new Error('projet manquant')
     this.convs.correct(id, projectId)
     this.bump()
@@ -640,11 +646,10 @@ export class Weevils {
     this.bump()
     try {
       const catalog = await this.catalog()
-      const cats = this.convs.categories()
-      const known = new Set([...catalog.map((c) => c.id), ...cats.map((c) => c.id)])
+      const known = new Set(catalog.map((c) => c.id))
       const forLlm: typeof todo = []
       for (const c of todo) {
-        const hit = ruleMatch(`${c.title} ${c.preview}`, [...catalog, ...cats.map((x) => ({ id: x.id, name: x.name, repos: [] }))])
+        const hit = ruleMatch(`${c.title} ${c.preview}`, catalog)
         if (hit) this.convs.setClassification(c.id, { projectId: hit.id, status: 'auto', reason: hit.reason, confidence: hit.confidence })
         else if (Date.now() - c.updatedAt < 180 * 86400_000) forLlm.push(c)
         else this.convs.setClassification(c.id, { projectId: null, status: 'none', reason: 'ancienne, non classée' })
@@ -655,11 +660,11 @@ export class Weevils {
         const batch = forLlm.slice(i, i + 25)
         this.classifier = { running: true, queued: forLlm.length - i }
         this.bump()
-        const verdicts = await llmClassify(batch, catalog, this.convs.categories(), this.convs.corrections(), path.join(DATA_DIR, 'classifier'))
+        const items = batch.map((b) => ({ id: b.id, title: b.title, excerpt: this.convs.excerpt(b.id) || b.preview }))
+        const verdicts = await llmClassify(items, catalog, this.convs.corrections(), path.join(DATA_DIR, 'classifier'))
         for (const v of verdicts) {
           if (!batch.some((b) => b.id === v.id)) continue
-          let projectId = v.project && known.has(v.project) ? v.project : null
-          if (!projectId && v.newCategory) projectId = this.convs.ensureCategory(v.newCategory)
+          const projectId = v.project && known.has(v.project) ? v.project : null
           if (projectId && v.confidence >= 0.7) this.convs.setClassification(v.id, { projectId, status: 'auto', reason: v.reason, confidence: v.confidence })
           else this.convs.setClassification(v.id, { projectId: null, status: 'pending', suggested: projectId, reason: v.reason, confidence: v.confidence })
         }
@@ -683,7 +688,7 @@ export class Weevils {
       context = line + context
     }
     const prompt = `Contexte : suite de ma conversation ${d.conversation.source === 'chatgpt' ? 'ChatGPT' : 'Claude.ai'} « ${d.conversation.title} » (fin de l'échange ci-dessous).\n\n${context}---\n${text}`
-    const projectId = d.conversation.projectId ?? 'general'
+    const projectId = d.conversation.projectId ?? 'divers'
     return this.create({ projectId, tool, text: prompt })
   }
 

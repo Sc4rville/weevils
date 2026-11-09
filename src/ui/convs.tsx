@@ -41,11 +41,11 @@ export function ConvLine({ c }: { c: ConversationSummary }) {
   )
 }
 
-/** Choisir où ranger : un projet, une catégorie existante, ou une nouvelle catégorie. */
+/** Choisir où ranger : un des projets. */
 export function Chooser({ c, onDone }: { c: ConversationSummary; onDone: () => void }) {
   const { snap, refresh } = useApp()
   const [err, setErr] = useState<string | null>(null)
-  const go = async (target: { projectId?: string; newCategory?: string }) => {
+  const go = async (target: { projectId?: string }) => {
     try {
       await api.classify(c.id, target)
       refresh()
@@ -64,7 +64,6 @@ export function Chooser({ c, onDone }: { c: ConversationSummary; onDone: () => v
             {p.name}
           </Line>
         ))}
-      <Composer prompt="+" placeholder="nouvelle catégorie (ex. santé)" label="nouvelle catégorie" onSend={(t) => go({ newCategory: t })} />
     </div>
   )
 }

@@ -91,7 +91,7 @@ export function AgentBand() {
         )}
       </Collapse>
 
-      <Composer placeholder="dis à weevils quoi faire" label="message à l’agent principal" onSend={send} onFocus={() => setExpanded('agent')} />
+      <Composer placeholder="dis à weevils quoi faire" label="message à l’agent principal" onSend={send} onFocus={() => setExpanded('agent')} voice />
     </section>
   )
 }

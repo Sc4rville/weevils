@@ -1,5 +1,6 @@
 import { AnimatePresence, motion, type Transition } from 'motion/react'
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { api } from '../api'
 import type { Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
 import { dur, plain, segments, status, step, userText } from './format'
@@ -139,41 +140,161 @@ export function Line({
   )
 }
 
+export interface Attachment {
+  name: string
+  type: string
+  /** Base64 sans préfixe, image déjà réduite. */
+  data: string
+}
+
+/** Photo du téléphone réduite (côté long ≤ 1600 px, JPEG) : légère à envoyer, lisible par l'agent. */
+async function shrink(file: File): Promise<Attachment> {
+  try {
+    const bmp = await createImageBitmap(file)
+    const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bmp.width * k)
+    canvas.height = Math.round(bmp.height * k)
+    canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height)
+    const url = canvas.toDataURL('image/jpeg', 0.85)
+    return { name: file.name.replace(/\.[^.]+$/, '') + '.jpg', type: 'image/jpeg', data: url.slice(url.indexOf(',') + 1) }
+  } catch {
+    // Format que le navigateur ne décode pas : on envoie tel quel.
+    const buf = new Uint8Array(await file.arrayBuffer())
+    let bin = ''
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000))
+    return { name: file.name, type: file.type || 'image/jpeg', data: btoa(bin) }
+  }
+}
+
+const blobToB64 = (b: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const r = new FileReader()
+    r.onerror = () => reject(new Error('lecture audio'))
+    r.onload = () => resolve(String(r.result).split(',')[1] ?? '')
+    r.readAsDataURL(b)
+  })
+
 export function Composer({
   placeholder,
   label,
   onSend,
+  onAttach,
   onFocus,
   prompt = '>',
   className = 'tone',
   disabled,
+  voice = false,
 }: {
   placeholder: string
   label: string
   onSend: (text: string) => void | Promise<void>
+  /** Envoi avec des photos ; sans lui, pas de bouton photo. */
+  onAttach?: (text: string, files: Attachment[]) => void | Promise<void>
   onFocus?: () => void
   prompt?: string
   className?: string
   disabled?: boolean
+  /** Dictée : un appui pour enregistrer, un appui pour transcrire dans le champ. */
+  voice?: boolean
 }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
+  const [files, setFiles] = useState<Attachment[]>([])
+  const [rec, setRec] = useState<'off' | 'on' | 'wait'>('off')
+  const [err, setErr] = useState<string | null>(null)
+  const recorder = useRef<MediaRecorder | null>(null)
+  const chunks = useRef<Blob[]>([])
+  const picker = useRef<HTMLInputElement>(null)
+  const canVoice = voice && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
+
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     const t = text.trim()
-    if (!t || busy) return
+    if ((!t && !files.length) || busy) return
     setText('')
+    const sent = files
+    setFiles([])
     setBusy(true)
+    setErr(null)
     try {
-      await onSend(t)
+      if (sent.length && onAttach) await onAttach(t, sent)
+      else await onSend(t)
     } catch {
       setText(t) // on rend le texte en cas d'échec, rien n'est perdu
+      setFiles(sent)
     } finally {
       setBusy(false)
     }
   }
+
+  const pick = async (list: FileList | null) => {
+    if (!list?.length) return
+    setBusy(true)
+    try {
+      const got = await Promise.all([...list].slice(0, 6).map(shrink))
+      setFiles((f) => [...f, ...got].slice(0, 6))
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+      if (picker.current) picker.current.value = ''
+    }
+  }
+
+  const toggleRec = async () => {
+    if (rec === 'wait') return
+    if (rec === 'on') {
+      recorder.current?.stop()
+      return
+    }
+    setErr(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg'].find((t) => MediaRecorder.isTypeSupported(t))
+      const r = new MediaRecorder(stream, type ? { mimeType: type } : undefined)
+      chunks.current = []
+      r.ondataavailable = (ev) => ev.data.size && chunks.current.push(ev.data)
+      r.onstop = async () => {
+        stream.getTracks().forEach((tr) => tr.stop())
+        setRec('wait')
+        try {
+          const blob = new Blob(chunks.current, { type: r.mimeType || type || 'audio/mp4' })
+          if (blob.size < 800) throw new Error('rien d’enregistré')
+          const { text: heard } = await api.transcribe(blob.type, await blobToB64(blob))
+          if (heard) setText((cur) => (cur ? `${cur.replace(/\s+$/, '')} ${heard}` : heard))
+        } catch (e) {
+          setErr((e as Error).message)
+        } finally {
+          setRec('off')
+        }
+      }
+      r.start()
+      recorder.current = r
+      setRec('on')
+    } catch (e) {
+      setErr(/denied|permission|NotAllowed/i.test((e as Error).message + (e as Error).name) ? 'micro refusé : autorise-le dans les réglages' : (e as Error).message)
+      setRec('off')
+    }
+  }
+
   return (
     <form className={`composer band ${className}`} onSubmit={submit}>
+      {(files.length > 0 || err) && (
+        <div className="in meta attach-line">
+          {files.length > 0 && (
+            <>
+              <span className="strong">
+                {files.length} {files.length > 1 ? 'photos' : 'photo'}
+              </span>
+              <button type="button" className="link small" onClick={() => setFiles([])}>
+                retirer
+              </button>
+            </>
+          )}
+          {err && <span>! {err}</span>}
+        </div>
+      )}
       <div className="in">
         <span className="prompt" aria-hidden>
           {busy ? <span className="spin">*</span> : prompt}
@@ -182,13 +303,26 @@ export function Composer({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onFocus={onFocus}
-          placeholder={placeholder}
+          placeholder={rec === 'on' ? 'j’écoute…' : rec === 'wait' ? 'je transcris…' : placeholder}
           aria-label={label}
           enterKeyHint="send"
           autoComplete="off"
           disabled={disabled}
         />
-        <button className="send" type="submit" disabled={!text.trim() || busy || disabled} aria-label="envoyer">
+        {onAttach && !disabled && (
+          <>
+            <input ref={picker} type="file" accept="image/*" multiple hidden onChange={(e) => void pick(e.target.files)} />
+            <button type="button" className="tool-btn" onClick={() => picker.current?.click()} aria-label="joindre une photo">
+              +
+            </button>
+          </>
+        )}
+        {canVoice && !disabled && (
+          <button type="button" className={`tool-btn ${rec === 'on' ? 'rec' : ''}`} onClick={() => void toggleRec()} aria-label={rec === 'on' ? 'arrêter et transcrire' : 'dicter'} aria-pressed={rec === 'on'}>
+            {rec === 'wait' ? <span className="spin">*</span> : 'o'}
+          </button>
+        )}
+        <button className="send" type="submit" disabled={(!text.trim() && !files.length) || busy || disabled} aria-label="envoyer">
           ↑
         </button>
       </div>

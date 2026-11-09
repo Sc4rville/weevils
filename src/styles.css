@@ -921,3 +921,31 @@ input:focus-visible {
     animation: none;
   }
 }
+
+/* ---------- Composer : photo et dictée ---------- */
+
+.tool-btn {
+  min-width: 40px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tool-btn.rec {
+  color: var(--fluo);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.attach-line {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: 8px;
+}
+
+.attach-line .link {
+  min-height: 28px;
+}

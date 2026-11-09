@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Message, SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
-import { Collapse, Composer, Line, Messages, StatusChar, Working } from './bits'
+import { Collapse, Composer, Line, Messages, StatusChar, Working, type Attachment } from './bits'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Shell } from './shell'
 import { ago, dur, durLong, plural, status } from './format'
@@ -147,12 +147,13 @@ function SessionPage({ id }: { id: string }) {
   const st = status[s.status]
   const active = s.subagents.filter((a) => a.status === 'working').length
 
-  const send = async (text: string) => {
+  const send = async (text: string, files: Attachment[] = []) => {
     setErr(null)
-    const tmp: Message = { id: `pending-${Date.now()}`, role: 'user', text, at: Date.now() }
+    const shown = files.length ? `${text ? `${text} ` : ''}(${files.length > 1 ? `${files.length} photos` : 'photo'})` : text
+    const tmp: Message = { id: `pending-${Date.now()}`, role: 'user', text: shown, at: Date.now() }
     setPending((p) => [...p, tmp])
     try {
-      const r = await api.send(s.id, text)
+      const r = files.length ? await api.attach(s.id, text, files) : await api.send(s.id, text)
       if (r.id !== id) replace({ kind: 'session', id: r.id })
     } catch (e) {
       setPending((p) => p.filter((x) => x.id !== tmp.id))
@@ -190,6 +191,8 @@ function SessionPage({ id }: { id: string }) {
           placeholder={s.controllable ? (s.live ? `écris à ${s.tool}` : `reprendre avec ${s.tool}`) : 'lecture seule'}
           label={`message à la session ${s.title}`}
           onSend={send}
+          onAttach={send}
+          voice
           disabled={!s.controllable}
         />
       }

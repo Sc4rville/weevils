@@ -668,6 +668,25 @@ export class Weevils {
     return { id: real }
   }
 
+  /** Message avec des photos : les fichiers sont posés sur la machine de la session, l'agent reçoit leur chemin et va les regarder. */
+  async attach(id: string, text: string, files: { name: string; type: string; data: string }[]): Promise<{ id: string }> {
+    const remote = this.remoteFor(id)
+    if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/attach`, { text, files })
+    if (!files.length) return this.send(id, text)
+    const dir = path.join(DATA_DIR, 'inbox')
+    fs.mkdirSync(dir, { recursive: true })
+    const paths: string[] = []
+    for (const f of files.slice(0, 6)) {
+      const ext = (/\/(png|jpe?g|gif|webp|heic)$/i.exec(f.type)?.[1] ?? path.extname(f.name).slice(1) ?? 'jpg').toLowerCase().replace('jpeg', 'jpg') || 'jpg'
+      const file = path.join(dir, `${new Date().toISOString().slice(0, 10)}-${crypto.randomBytes(3).toString('hex')}.${ext}`)
+      fs.writeFileSync(file, Buffer.from(f.data, 'base64'))
+      paths.push(file)
+    }
+    const n = paths.length
+    const msg = `${text.trim() || (n > 1 ? 'Regarde ces photos.' : 'Regarde cette photo.')} (${n > 1 ? `${n} photos` : 'photo'} : ${paths.join(' , ')})`
+    return this.send(id, msg)
+  }
+
   async key(id: string, key: string) {
     const remote = this.remoteFor(id)
     if (remote) return void (await remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/key`, { key }))

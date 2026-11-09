@@ -30,7 +30,12 @@ esac
 
 port=$(cfg get WEEVILS_PORT); port=${port:-4179}
 hook_port=$(cfg get WEEVILS_HOOK_PORT); hook_port=${hook_port:-4180}
-if [ "$role" = main ]; then cfg set WEEVILS_ORCHESTRATOR 1; else cfg set WEEVILS_ORCHESTRATOR 0; fi
+# weevboss runs on the main machine only. A re-run keeps a main machine's choice (WEEVILS_ORCHESTRATOR=0 stays 0);
+# a secondary machine becoming the main one gets it back.
+prev_role=$(sed -n 's/^WEEVILS_ROLE=//p' ~/.config/weevils/service.conf 2>/dev/null | head -1 || true)
+if [ "$role" = secondary ]; then cfg set WEEVILS_ORCHESTRATOR 0
+elif [ "$prev_role" = secondary ]; then cfg set WEEVILS_ORCHESTRATOR 1
+else cfg default WEEVILS_ORCHESTRATOR 1; fi
 
 # ---------------------------------------------------------------- commands: wv, weevils (agents' cli), hook, service
 mkdir -p ~/.local/bin ~/.claude

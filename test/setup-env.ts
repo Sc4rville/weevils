@@ -4,6 +4,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { afterAll } from 'vitest'
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-test-home-'))
 Object.assign(process.env, {
@@ -15,3 +16,5 @@ Object.assign(process.env, {
 })
 delete process.env.CODEX_HOME
 delete process.env.WEEVILS_PROJECTS
+// Le HOME jetable part avec le fichier de test.
+afterAll(() => fs.rmSync(home, { recursive: true, force: true }))

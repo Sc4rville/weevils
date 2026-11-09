@@ -348,13 +348,16 @@ function NotifyLine() {
   const ios = /iphone|ipad/i.test(navigator.userAgent)
   const [state, setState] = useState<'idle' | 'busy' | 'on' | 'error'>(supported && Notification.permission === 'granted' ? 'on' : 'idle')
   const [msg, setMsg] = useState<string | null>(null)
+  // Un drapeau plutôt que le texte : « notification de test envoyée » suit un changement de langue.
+  const [tested, setTested] = useState(false)
   const enable = async () => {
     setState('busy')
     setMsg(null)
+    setTested(false)
     try {
       await ensurePush({ ask: true, test: true })
       setState('on')
-      setMsg(tr(M).testSent)
+      setTested(true)
     } catch (e) {
       setState('error')
       setMsg((e as Error).message)
@@ -368,7 +371,7 @@ function NotifyLine() {
     )
   }
   return (
-    <Line ch="!" go={null} meta={msg ?? (state === 'on' ? t.notifyOn : t.notifyOff)} onClick={() => void enable()}>
+    <Line ch="!" go={null} meta={msg ?? (tested ? t.testSent : state === 'on' ? t.notifyOn : t.notifyOff)} onClick={() => void enable()}>
       {t.notifications} {state === 'on' ? t.notifyOnSuffix : state === 'busy' ? '…' : ''}
     </Line>
   )

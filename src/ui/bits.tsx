@@ -58,8 +58,35 @@ function Clamp({ text }: { text: string }) {
   )
 }
 
-/** L'outil en un signe, pas en toutes lettres : ✳ claude (son étoile), ⊚ codex. */
-export const TOOL_ICON: Record<string, string> = { claude: '✳', codex: '⊚' }
+/** Le pictogramme de l'outil, monochrome (currentColor : noir en light, blanc en dark), à la taille d'un glyphe. */
+export function ToolIcon({ tool, size = 15 }: { tool: string; size?: number }) {
+  if (tool === 'claude') {
+    // Le soleil Claude : douze rayons de longueurs inégales autour d'un centre vide.
+    const rays = [1, 0.72, 0.88, 0.66, 1, 0.7, 0.9, 0.68, 1, 0.74, 0.86, 0.7]
+    return (
+      <svg className="tool-svg" width={size} height={size} viewBox="-12 -12 24 24" aria-hidden focusable="false">
+        {rays.map((r, i) => {
+          const a = (i / rays.length) * Math.PI * 2 - Math.PI / 2
+          const x = Math.cos(a)
+          const y = Math.sin(a)
+          return <line key={i} x1={x * 3.2} y1={y * 3.2} x2={x * 10.5 * r} y2={y * 10.5 * r} stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" />
+        })}
+      </svg>
+    )
+  }
+  if (tool === 'codex') {
+    // Codex : le nœud OpenAI simplifié en trois arcs entrelacés.
+    return (
+      <svg className="tool-svg" width={size} height={size} viewBox="-12 -12 24 24" aria-hidden focusable="false">
+        {[0, 120, 240].map((deg) => (
+          <path key={deg} d="M -6.5 3.75 A 7.5 7.5 0 0 1 6.5 3.75" transform={`rotate(${deg})`} fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" />
+        ))}
+        <circle r={2.2} fill="currentColor" />
+      </svg>
+    )
+  }
+  return <span className="tool-svg">{tool.slice(0, 2)}</span>
+}
 
 export function SessionRow({ session }: { session: Session }) {
   const { push, now } = useApp()
@@ -80,7 +107,7 @@ export function SessionRow({ session }: { session: Session }) {
           <StatusChar s={session.status} />
         </span>
         <span className="tool-ic">
-          {TOOL_ICON[session.tool] ?? session.tool}
+          <ToolIcon tool={session.tool} />
           {session.machineId !== 'vps' && <span className="tag">{session.machineId}</span>}
         </span>
         <span className="title">{session.title}</span>

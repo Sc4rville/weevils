@@ -1005,19 +1005,28 @@ input:focus-visible {
 
 .row .tool-ic {
   flex: none;
-  font-size: 1.0625rem;
-  font-weight: 700;
-  line-height: 1;
   display: inline-flex;
-  align-items: baseline;
-  gap: 3px;
-  width: 22px;
+  align-items: center;
+  gap: 6px;
+  min-width: 22px;
+  line-height: 1;
+}
+
+.tool-svg {
+  flex: none;
+  display: block;
+  color: var(--ink);
 }
 
 .row .tool-ic .tag {
   font-size: 0.625rem;
-  margin-left: 0;
-  opacity: 0.8;
+  font-weight: 650;
+  line-height: 1;
+  padding: 3px 5px;
+  margin: 0;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  opacity: 0.85;
 }
 
 .row .line .title {

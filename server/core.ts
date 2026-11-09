@@ -28,7 +28,7 @@ import type { WvSession } from './mux.ts'
 import { capture, dialogOnScreen, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv } from './mux.ts'
 import { lang, onLangChange, tr, user, type Lang } from './i18n.ts'
 import TipsM from './i18n/tips.ts'
-import { normalizeFrom, publicAuthors, signAs } from './authors.ts'
+import { normalizeFrom, parseSigned, publicAuthors, signAs } from './authors.ts'
 
 interface HookState {
   event: string
@@ -949,16 +949,17 @@ export class Weevils {
     if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/send`, { text })
     const real = this.resolveId(id)
     const s = this.snapshot().sessions.find((x) => x.id === real)
-    if (!s) throw new Error(tr(M).sessionNotFound)
+    if (!s) {
+      // Absente de la liste parce qu'ouverte dans un terminal que weevils ne pilote pas : le dire, plutôt que « introuvable ».
+      const t = this.store.get(real)
+      throw new Error(t && !this.toSession(t, Date.now()).controllable ? tr(M).unmanaged : tr(M).sessionNotFound)
+    }
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
     const pane = this.paneFor(real)
     if (pane) {
       console.log(`[sessions] ${pane.name} ← message${author ? ` (${author})` : ''} · ${text.replace(/\s+/g, ' ').slice(0, 60)}`)
       await this.deliver(pane.name, real, text)
       return { id: real }
-    }
-    if (!s.controllable) {
-      throw new Error(tr(M).unmanaged)
     }
     const cwd = s.cwd && fs.existsSync(s.cwd) ? s.cwd : HOME
     const command = s.tool === 'claude' ? [...CLAUDE, '--resume', s.id, text] : ['codex', 'resume', ...CODEX_FLAGS, s.id, text]
@@ -1166,7 +1167,9 @@ export class Weevils {
   }
 
   private async confirmDelivery(pane: string, sessionId: string | undefined, text: string, before: number): Promise<boolean> {
+    // L'écran montre le texte tel que tapé (signé « [from:x] … ») ; le transcript le garde sans signature (parseSigned).
     const mark = flatScreen(text).slice(0, 48).trim()
+    const tmark = flatScreen(parseSigned(text)?.text ?? text).slice(0, 32).trim()
     const deadline = before + 6000
     while (Date.now() < deadline) {
       await sleep(300)
@@ -1174,7 +1177,7 @@ export class Weevils {
         const hook = this.hooks.get(sessionId)
         if (hook && hook.at > before && hook.event === 'UserPromptSubmit') return true
         const t = this.store.get(sessionId)
-        if (t?.messages.slice(-6).some((m) => (m.role === 'user' || m.role === 'orchestrator') && m.at >= before - 1500 && flatScreen(m.text).includes(mark.slice(0, 32)))) return true
+        if (t?.messages.slice(-6).some((m) => (m.role === 'user' || m.role === 'orchestrator') && m.at >= before - 1500 && flatScreen(m.text).includes(tmark))) return true
       }
       // Toutes les secondes : l'écran. Le texte y est (envoyé, ou en file pendant que l'agent travaille) et aucun dialogue ne le recouvre.
       if (Math.round((Date.now() - before) / 300) % 3 === 0) {

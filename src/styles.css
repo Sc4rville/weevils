@@ -73,6 +73,47 @@
   --dl: 0.07;
 }
 
+/* Zen (lecture) : papier, sable, pierre. Texte anthracite, projets en pastel terreux, accents assourdis.
+   Contrastes vérifiés (WCAG AA) : texte ≥ 6,4:1 sur toutes les bandes, étoile verte ≥ 4,1:1, logo animé ≥ 3,3:1.
+   :root en plus : passe devant les :root plus bas (--fluo, palette du logo) qui ont sinon la même spécificité. */
+:root[data-theme='zen'] {
+  color-scheme: light;
+  --ink: #33302b;
+  --agent: oklch(0.83 0.03 315);
+  --devil: oklch(0.78 0.075 50);
+  --devil-reply: oklch(0.86 0.05 150);
+  --h24: oklch(0.89 0.04 85);
+  --calm: oklch(0.9 0.025 165);
+  --calm-soft: 0.05;
+  --fluo: oklch(0.42 0.08 148);
+  /* Les 16 teintes des projets, toujours distinctes, mais douces. */
+  --p0: oklch(0.84 0.05 5);
+  --p1: oklch(0.84 0.05 27.5);
+  --p2: oklch(0.84 0.05 50);
+  --p3: oklch(0.84 0.05 72.5);
+  --p4: oklch(0.84 0.05 95);
+  --p5: oklch(0.84 0.05 117.5);
+  --p6: oklch(0.84 0.05 140);
+  --p7: oklch(0.84 0.05 162.5);
+  --p8: oklch(0.84 0.05 185);
+  --p9: oklch(0.84 0.05 207.5);
+  --p10: oklch(0.84 0.05 230);
+  --p11: oklch(0.84 0.05 252.5);
+  --p12: oklch(0.84 0.05 275);
+  --p13: oklch(0.84 0.05 297.5);
+  --p14: oklch(0.84 0.05 320);
+  --p15: oklch(0.84 0.05 342.5);
+  /* Logo vocal : teintes calmes et assez sombres pour rester lisibles sur le pastel. */
+  --anim-rec: oklch(0.48 0.1 25);
+  --anim-wait: oklch(0.46 0.07 145);
+  --anim-ready: oklch(0.42 0.08 148);
+  --anim-1: oklch(0.48 0.08 65);
+  --anim-2: oklch(0.47 0.06 220);
+  --anim-3: oklch(0.46 0.08 340);
+  --mix: 12%;
+  --dl: -0.06;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1104,6 +1145,9 @@ button.copy.done {
 [data-theme='dark'] .msg.orch.ext {
   --who-c: oklch(from var(--who) 0.44 calc(c * 0.95) h);
 }
+[data-theme='zen'] .msg.orch.ext {
+  --who-c: oklch(from var(--who) 0.86 calc(c * 0.35) h);
+}
 
 /* ---------- Ligne de session : une seule ligne, l'activité à droite ---------- */
 
@@ -1480,7 +1524,7 @@ button.copy.done {
   transform: scale(0.96);
 }
 
-/* Palette d'animation du logo : claire et vive, la même en clair et en sombre (jamais redéfinie par un thème). */
+/* Palette d'animation du logo : claire et vive, la même en clair et en sombre (seul le thème zen l'adoucit, plus haut). */
 :root {
   --anim-rec: oklch(0.84 0.2 10);
   --anim-wait: oklch(0.88 0.2 145);
@@ -1725,6 +1769,10 @@ button.copy.done {
 
 [data-theme='dark'] .peek-item.orch.ext {
   --who-c: oklch(from var(--who) 0.44 calc(c * 0.95) h);
+}
+
+[data-theme='zen'] .peek-item.orch.ext {
+  --who-c: oklch(from var(--who) 0.86 calc(c * 0.35) h);
 }
 
 .peek-item.devil {

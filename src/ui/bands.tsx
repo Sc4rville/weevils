@@ -7,7 +7,7 @@ import M from '../i18n/bands'
 import D from '../i18n/devil'
 import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
-import { useApp } from './app-context'
+import { THEMES, useApp } from './app-context'
 import { ensurePush } from '../push'
 import { VoiceLogo } from './voice'
 import { useThreadAsk } from './askthread'
@@ -454,7 +454,6 @@ function NotifyLine() {
 export function FootBand() {
   const t = useT(M)
   const { snap, theme, setTheme, offline, colors, logout, push } = useApp()
-  const dark = theme === 'dark'
   return (
     <section className="band demo" style={color(colors.__foot ?? 'p3')} aria-label={t.settings}>
       <div className="in head">
@@ -478,8 +477,8 @@ export function FootBand() {
         {t.importConversations}
       </Line>
       <NotifyLine />
-      <Line ch="~" go={null} onClick={() => setTheme(dark ? 'light' : 'dark')}>
-        {t.theme(dark)}
+      <Line ch="~" go={null} onClick={() => setTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length])}>
+        {t.theme(theme)}
       </Line>
       <PrefLines />
       <Line ch="x" go={null} onClick={logout}>

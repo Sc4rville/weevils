@@ -1,7 +1,7 @@
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, useLive } from './api'
-import { Ctx, colorSlots, type AppCtx, type Page, type Theme } from './ui/app-context'
+import { Ctx, THEME_COLOR, colorSlots, isTheme, type AppCtx, type Page, type Theme } from './ui/app-context'
 import { AgentBand, FootBand, ProjectBand } from './ui/bands'
 import { spring } from './ui/bits'
 import { H24Rail } from './ui/h24'
@@ -15,13 +15,12 @@ import { ensurePush } from './push'
 import { useT } from './i18n'
 import M from './i18n/app'
 
-const THEME_COLOR = { light: '#B39BFF', dark: '#5522B5' }
 const THEME_KEY = 'weevils-theme'
 
 function initialTheme(): Theme {
   try {
     const t = localStorage.getItem(THEME_KEY)
-    if (t === 'light' || t === 'dark') return t
+    if (isTheme(t)) return t
   } catch {
     /* stockage indisponible */
   }

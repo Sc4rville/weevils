@@ -1,6 +1,6 @@
 import { motion } from 'motion/react'
 import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react'
-import { useApp } from './app-context'
+import { THEME_COLOR, useApp, type Theme } from './app-context'
 import { spring } from './bits'
 import { Icon } from './icons'
 import { useT } from '../i18n'
@@ -13,14 +13,14 @@ const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
  * sous le clavier iOS, zone de rebond, barre d'état) prend sa couleur : rien d'un autre écran ne transparaît.
  */
 const open: { slot: string; el: HTMLElement | null }[] = []
-function applyTop(theme: string) {
+function applyTop(theme: Theme) {
   const top = open[open.length - 1]
   const root = document.documentElement
   const meta = document.querySelector('meta[name="theme-color"]')
   if (!top) {
     root.style.removeProperty('--page-c')
     delete root.dataset.page
-    meta?.setAttribute('content', theme === 'dark' ? '#5522B5' : '#B39BFF')
+    meta?.setAttribute('content', THEME_COLOR[theme])
     return
   }
   root.style.setProperty('--page-c', `var(--${top.slot})`)

@@ -51,7 +51,7 @@ export default defineMessages({
     newSessionElsewhere: 'nouvelle session ailleurs',
     imported: (n: number) => `${n} importée${n > 1 ? 's' : ''}`,
     importConversations: 'importer des conversations',
-    theme: (dark: boolean) => `thème ${dark ? 'sombre' : 'clair'}`,
+    theme: (theme: string) => `thème ${theme === 'dark' ? 'sombre' : theme === 'zen' ? 'zen' : 'clair'}`,
     logout: 'se déconnecter',
   },
   en: {
@@ -99,7 +99,7 @@ export default defineMessages({
     newSessionElsewhere: 'new session elsewhere',
     imported: (n: number) => `${n} imported`,
     importConversations: 'import conversations',
-    theme: (dark: boolean) => `${dark ? 'dark' : 'light'} theme`,
+    theme: (theme: string) => `${theme === 'dark' ? 'dark' : theme === 'zen' ? 'zen' : 'light'} theme`,
     logout: 'log out',
   },
 })

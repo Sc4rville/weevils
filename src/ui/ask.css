@@ -83,44 +83,28 @@
   text-overflow: ellipsis;
 }
 
-/* Le logo de weevboss dans une page : en bas, sur sa propre bande juste au-dessus de la saisie (il ne recouvre ni le fil
-   ni le champ), à portée du pouce — à droite, ou à gauche avec le réglage « main ». Jamais en haut à droite. */
+/* Le logo de weevboss dans une page : il flotte par-dessus le fil, en bas à gauche à portée du pouce, juste au-dessus de
+   la saisie (il ne la masque jamais et suit sa hauteur). L'ancre n'a aucune hauteur : il ne prend aucune place. */
 .page-dock {
   flex: none;
-  display: flex;
-  justify-content: flex-end;
-  padding: 2px calc(var(--pad) - 6px) 4px;
-}
-
-.page-main.no-foot .page-dock {
-  padding-bottom: calc(4px + var(--safe-b));
-}
-
-[data-hand='left'] .page-dock {
-  justify-content: flex-start;
+  position: relative;
+  height: 0;
+  z-index: 5;
 }
 
 .page-voice {
-  position: relative;
+  position: absolute;
+  left: calc(var(--pad) - 6px);
+  bottom: 8px;
+}
+
+.page-main.no-foot .page-voice {
+  bottom: calc(8px + var(--safe-b));
 }
 
 .page-voice .voice-logo {
-  height: 44px;
+  height: 48px;
   min-height: 0;
-}
-
-/* La bulle de pensée du logo : en bas à droite le logo touche le bord, elle sort donc à gauche de la tête (même biais) ;
-   en bas à gauche (main gauche), elle reprend sa place à droite. */
-.page-voice .voice-err {
-  left: auto;
-  right: 90%;
-  transform-origin: right bottom;
-}
-
-[data-hand='left'] .page-voice .voice-err {
-  left: 90%;
-  right: auto;
-  transform-origin: left bottom;
 }
 
 /* Pendant un glissé : la barre reste en place, en retrait. */

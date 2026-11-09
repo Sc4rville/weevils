@@ -61,7 +61,7 @@ export function Shell({
   foot?: ReactNode
   /** Volet à côté du fil (navigateur intégré) : la page se partage en deux. */
   side?: ReactNode
-  /** Le logo de weevboss : en bas de la page, au-dessus de la saisie, du côté de la main du pouce (jamais en haut à droite). */
+  /** Le logo de weevboss : il flotte en bas à gauche de la page, au-dessus de la saisie, sans prendre de place (jamais en haut à droite). */
   dock?: ReactNode
 }) {
   const { back } = useApp()
@@ -114,7 +114,7 @@ export function Shell({
         </div>
       </div>
       <div className="page-cols">
-        <div className={dock ? `page-main has-dock${foot ? '' : ' no-foot'}` : 'page-main'}>
+        <div className={dock && !foot ? 'page-main no-foot' : 'page-main'}>
           <div className="page-body" data-scroll>
             {children}
             <div className="fill" />

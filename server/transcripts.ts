@@ -112,6 +112,9 @@ function claudeLine(t: Transcript, o: any) {
 
   if (o.type === 'user') {
     touch(t, at)
+    // Un message mis en file est remis à l'agent avec le pas suivant de son tour (résultat d'outil ou nouveau message) :
+    // tout ce qui a été mis en file avant ce pas est donc traité.
+    if (t.queued.length) t.queued = t.queued.filter((q) => q.at >= at)
     const c = o.message?.content
     if (typeof c === 'string') {
       if (o.isMeta || isNoise(c)) return

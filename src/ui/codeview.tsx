@@ -223,7 +223,7 @@ export function CodeFile({ projectId, repo, path, machine, line, file, err }: { 
       kicker={`${repo}/${path.split('/').slice(0, -1).join('/')}`}
       title={path.split('/').pop()}
       meta={file ? `${t.size(file.size)}${file.truncated ? t.truncated : ''}` : t.reading}
-      action={file && !file.binary ? <AskVoice a={a} /> : undefined}
+      dock={file && !file.binary ? <AskVoice a={a} /> : undefined}
     >
       {err && (
         <div className="band invert" role="alert">

@@ -96,7 +96,7 @@ export function useAsk(build: () => AskBase, opts: { onVoice?: () => void } = {}
 
 export type Ask = ReturnType<typeof useAsk>
 
-/** Le logo de weevboss en haut d'une page : il écoute, sait ce qui est à l'écran, et lit sa réponse. */
+/** Le logo de weevboss en bas d'une page, sous le pouce : il écoute, sait ce qui est à l'écran, et lit sa réponse. */
 export function AskVoice({ a }: { a: Ask }) {
   return (
     <div className="page-voice">

@@ -268,6 +268,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
             exit={{ opacity: 0, rotate: -8, y: -4 }}
             transition={{ duration: 0.35, ease: 'easeOut' }}
           >
+            <span aria-hidden>! </span>
             {err}
           </motion.span>
         )}

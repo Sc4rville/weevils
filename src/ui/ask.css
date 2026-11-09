@@ -83,19 +83,25 @@
   text-overflow: ellipsis;
 }
 
-/* Le logo de weevboss dans l'en-tête de la page : il écoute aussi ici. */
-.page-head .in.has-action {
-  position: relative;
+/* Le logo de weevboss dans une page : en bas, sur sa propre bande juste au-dessus de la saisie (il ne recouvre ni le fil
+   ni le champ), à portée du pouce — à droite, ou à gauche avec le réglage « main ». Jamais en haut à droite. */
+.page-dock {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  padding: 2px calc(var(--pad) - 6px) 4px;
 }
 
-.page-head .in.has-action h1 {
-  padding-right: 72px;
+.page-main.no-foot .page-dock {
+  padding-bottom: calc(4px + var(--safe-b));
+}
+
+[data-hand='left'] .page-dock {
+  justify-content: flex-start;
 }
 
 .page-voice {
-  position: absolute;
-  right: calc(var(--pad) - 6px);
-  top: 4px;
+  position: relative;
 }
 
 .page-voice .voice-logo {
@@ -103,11 +109,18 @@
   min-height: 0;
 }
 
-/* La bulle de pensée du logo : ici le logo touche le bord droit, elle sort donc à gauche de la tête (même biais, même gras). */
+/* La bulle de pensée du logo : en bas à droite le logo touche le bord, elle sort donc à gauche de la tête (même biais) ;
+   en bas à gauche (main gauche), elle reprend sa place à droite. */
 .page-voice .voice-err {
   left: auto;
   right: 90%;
   transform-origin: right bottom;
+}
+
+[data-hand='left'] .page-voice .voice-err {
+  left: 90%;
+  right: auto;
+  transform-origin: left bottom;
 }
 
 /* Pendant un glissé : la barre reste en place, en retrait. */

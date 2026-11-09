@@ -224,7 +224,7 @@ function SessionPage({ id }: { id: string }) {
           </button>
         </>
       }
-      action={th.voice}
+      dock={th.voice}
       side={preview.open ? <Preview url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false })} /> : undefined}
       foot={
         <Composer

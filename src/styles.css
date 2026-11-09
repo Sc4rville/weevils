@@ -1574,7 +1574,7 @@ button.copy.done {
   100% { color: var(--ink); }
 }
 
-/* Message d'état du logo : une bulle de pensée sans boîte, à droite de la tête (le petit rectangle incliné), en biais. */
+/* Message d'état du logo : une bulle de pensée sans boîte, à droite de la tête (le petit rectangle incliné), en biais, texte fin précédé de « ! ». */
 .voice {
   position: relative;
 }
@@ -1585,7 +1585,7 @@ button.copy.done {
   bottom: 70%;
   transform-origin: left bottom;
   white-space: nowrap;
-  font-weight: 700;
+  font-weight: 400;
   font-size: 0.9375rem;
   line-height: 1.2;
   pointer-events: none;

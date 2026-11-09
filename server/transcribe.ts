@@ -65,6 +65,25 @@ export async function speak(text: string, oral = false): Promise<Buffer> {
 
 /** La version à dire : une ou deux phrases, comme à un pote, sans ids, chemins, fichiers ni listes. */
 async function toOral(text: string): Promise<string> {
-  const out = await haiku(`Résume ce message pour le dire à voix haute à Scarville, en une ou deux phrases courtes en français, parlé, comme un pote. Aucun identifiant, chemin, nom de fichier, commande ni liste. Réponds seulement avec la phrase à dire.\n\n${text}`)
+  const key = openaiKey()
+  const ask = `Résume ce message pour le dire à voix haute à Scarville, en une ou deux phrases courtes en français, parlé, comme un pote. Aucun identifiant, chemin, nom de fichier, commande ni liste. Réponds seulement avec la phrase à dire.\n\n${text}`
+  if (key) {
+    try {
+      const t0 = Date.now()
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 120, temperature: 0.4, messages: [{ role: 'user', content: ask }] }),
+        signal: AbortSignal.timeout(8000),
+      })
+      const j = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+      const out = (j.choices?.[0]?.message?.content ?? '').trim()
+      console.log(`[rapide] résumé oral ${Date.now() - t0} ms`)
+      if (out) return out.slice(0, 400)
+    } catch {
+      /* repli haiku */
+    }
+  }
+  const out = await haiku(ask)
   return out.slice(0, 400) || text.slice(0, 300)
 }

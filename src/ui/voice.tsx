@@ -146,15 +146,11 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
   }
 
   // Envoi vocal : la couche rapide répond tout de suite à voix haute ; une action part aussi à weevboss.
+  // Le message part à weevboss comme un message écrit ; sa vraie réponse sera résumée à l'oral puis lue.
   const send = () => {
-    const text = take()
-    if (!text) return onSend()
-    const n = ++seq.current
-    api
-      .voice(text)
-      // Une réponse à un message déjà dépassé par un plus récent n'est pas lue.
-      .then((v) => n === seq.current && queueSay(v.say, true))
-      .catch((e) => setErr((e as Error).message))
+    spoken.current = true
+    onSend()
+    take()
   }
   const tap = () => {
     unlockAudio()

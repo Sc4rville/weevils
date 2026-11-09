@@ -12,7 +12,6 @@ import { llmClassify, ruleMatch } from './classify.ts'
 import { Push } from './push.ts'
 import type { CatalogEntry } from './classify.ts'
 import { familyOf, place } from './projects.ts'
-import { voiceTurn } from './voice.ts'
 import { setCartesiaVoice } from './fast.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { ORCH_PREFIX, TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
@@ -169,35 +168,6 @@ export class Weevils {
     setCartesiaVoice(id)
     this.persist()
   }
-  /** Échanges vocaux rapides (question → réponse immédiate), mêlés au fil de weevboss. */
-  private voiceLog: Message[] = []
-
-  /** Scarville parle au logo : réponse immédiate ; une action part aussi à weevboss, telle quelle. */
-  async voice(text: string): Promise<{ say: string; kind: 'answer' | 'action' }> {
-    const t = text.trim()
-    if (!t) throw new Error('message vide')
-    const v = await voiceTurn(t, this.snapshot()).catch(() => ({ kind: 'action' as const, say: 'Ok, je m’en occupe.' }))
-    const now = Date.now()
-    if (v.kind === 'answer') {
-      this.voiceLog.push({ id: `voice-${now}-q`, role: 'user', text: t, at: now }, { id: `voice-${now}-a`, role: 'assistant', text: v.say, at: now + 1 })
-      this.voiceLog = this.voiceLog.slice(-20)
-    } else await this.sendMain(t)
-    console.log(`[voix] ${v.kind} · « ${t.slice(0, 60)} » → « ${v.say.slice(0, 80)} »`)
-    this.bump()
-    return v
-  }
-  private githubCache: Map<string, number> = new Map()
-
-  // ---------------------------------------------------------------- repos GitHub
-
-  async githubRepos(force = false) {
-    const list = await listRepos(force)
-    this.githubCache = new Map(list.map((r) => [r.name, r.pushedAt]))
-    const blurbs = loadBlurbs(DATA_DIR)
-    void describeRepos(list, PROJECT_ROOTS, DATA_DIR, () => this.bump())
-    return list.map((r) => ({ ...r, blurb: blurbs[r.name] }))
-  }
-
   pinRepo(repo: string, pinned: boolean) {
     if (!/^[\w.@+-]+$/.test(repo)) throw new Error('repo invalide')
     const has = this.pinnedRepos.includes(repo)
@@ -1102,7 +1072,7 @@ export class Weevils {
   private orchestratorMessages(): Message[] {
     const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
     // La bande du haut : tes messages et les réponses de weevils, pas ses appels d'outils.
-    const msgs = [...(t?.messages.filter((m) => m.role !== 'event') ?? []), ...this.voiceLog].sort((a, b) => a.at - b.at).slice(-40)
+    const msgs = t?.messages.filter((m) => m.role !== 'event').slice(-40) ?? []
     if (!msgs.length && ORCHESTRATOR) {
       return [{ id: 'hello', role: 'assistant', text: 'Dis-moi quoi faire : je lis tes sessions, j’écris dedans, je te résume. Les détails sont dans les bandes en dessous si tu veux les suivre.', at: Date.now() }]
     }

@@ -59,7 +59,6 @@ export const api = {
   newRepo: (name: string, description: string) => call<{ name: string }>('POST', '/api/github/repos', { name, description }),
   voices: () => call<{ enabled: boolean; voices: { id: string; name: string; gender?: string }[]; current?: string }>('GET', '/api/voices'),
   setVoice: (id: string) => call<{ ok: true }>('POST', '/api/voices', { id }),
-  voice: (text: string) => call<{ say: string; kind: 'answer' | 'action' }>('POST', '/api/voice', { text }),
   mainAttach: (text: string, files: { name: string; type: string; data: string }[]) => call<{ id: string }>('POST', '/api/main/attach', { text, files }),
   toggleH24: (id: string) => call<{ ok: true }>('POST', `/api/h24/${enc(id)}/toggle`, {}),
   conversations: (opts: { project?: string; q?: string }) => call<{ conversations: ConversationSummary[] }>('GET', `/api/conversations?${new URLSearchParams(opts)}`),

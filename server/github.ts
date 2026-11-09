@@ -4,6 +4,7 @@ import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { GithubRepo } from '../shared/api.ts'
+import { USER } from './config.ts'
 
 function gh(args: string[], cwd?: string, timeout = 30_000): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -129,7 +130,7 @@ async function readmeOf(repo: string, roots: string[]): Promise<string> {
 }
 
 /**
- * Écrit, une fois par repo et en cache, la phrase qui dit ce que c'est (« le jeu mobile de Scarville »), à partir du README et de la
+ * Écrit, une fois par repo et en cache, la phrase qui dit ce que c'est (« le jeu mobile »), à partir du README et de la
  * description. Tourne en fond ; `onDone` quand de nouvelles phrases sont là.
  */
 export async function describeRepos(list: GithubRepo[], roots: string[], dataDir: string, onDone: () => void) {
@@ -151,7 +152,7 @@ export async function describeRepos(list: GithubRepo[], roots: string[], dataDir
       const outFile = path.join(workdir, `out-${Date.now()}.json`)
       fs.writeFileSync(schemaFile, JSON.stringify(BLURB_SCHEMA))
       const prompt = [
-        'Pour chaque repo GitHub de Scarville, écris en français UNE phrase courte (3 à 8 mots, minuscule initiale, sans point final) qui dit ce que c’est, comme on le dirait à un ami : « le jeu mobile de Scarville », « le site des cours de surf », « l’app qui pilote ses agents ».',
+        `Pour chaque repo GitHub de ${USER}, écris en français UNE phrase courte (3 à 8 mots, minuscule initiale, sans point final) qui dit ce que c’est, comme on le dirait à un ami : « le jeu mobile », « le site des cours de surf », « l’app qui pilote ses agents ».`,
         'Jamais de jargon ni de liste de technologies, jamais le nom du repo recopié, jamais la description brute. Si le README ne dit rien de clair, devine d’après le nom et reste sobre (ex. « un essai mis de côté »).',
         'Ne lis aucun fichier, ne lance aucune commande : réponds directement.',
         '',

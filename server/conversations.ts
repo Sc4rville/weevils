@@ -213,12 +213,12 @@ export class ConversationStore {
       .all(limit) as { id: string; title: string; preview: string; updatedAt: number }[]
   }
 
-  /** De quoi parle vraiment la conversation : les premiers messages de Scarville et les derniers échanges, compactés. */
+  /** De quoi parle vraiment la conversation : les premiers messages de l'utilisateur et les derniers échanges, compactés. */
   excerpt(id: string, budget = 1400): string {
     const rows = this.db.prepare('SELECT role, text FROM messages WHERE conversation_id = ? ORDER BY idx').all(id) as { role: string; text: string }[]
     const one = (t: string, n: number) => t.replace(/\s+/g, ' ').trim().slice(0, n)
-    const head = rows.filter((m) => m.role === 'user').slice(0, 3).map((m) => `Scarville : ${one(m.text, 260)}`)
-    const tail = rows.slice(-2).map((m) => `${m.role === 'user' ? 'Scarville' : 'IA'} : ${one(m.text, 220)}`)
+    const head = rows.filter((m) => m.role === 'user').slice(0, 3).map((m) => `Moi : ${one(m.text, 260)}`)
+    const tail = rows.slice(-2).map((m) => `${m.role === 'user' ? 'Moi' : 'IA'} : ${one(m.text, 220)}`)
     return [...head, rows.length > 5 ? '…' : '', ...tail].filter(Boolean).join('\n').slice(0, budget)
   }
 
@@ -243,7 +243,7 @@ export class ConversationStore {
       .run(c.projectId, c.status, c.suggested ?? null, c.reason ?? null, c.confidence ?? null, Date.now(), id)
   }
 
-  /** Choix de Scarville : il devient un exemple pour les prochains classements. */
+  /** Choix de l'utilisateur : il devient un exemple pour les prochains classements. */
   correct(id: string, projectId: string) {
     const r = this.db.prepare('SELECT title, suggested_project_id, status FROM conversations WHERE id = ?').get(id) as { title: string; suggested_project_id: string | null; status: string } | undefined
     if (!r) throw new Error('conversation introuvable')

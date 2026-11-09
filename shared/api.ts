@@ -89,7 +89,6 @@ export interface GithubRepo {
 export interface Machine {
   id: string
   name: string
-  note: string
   online?: boolean
 }
 
@@ -148,6 +147,8 @@ export interface Snapshot {
   mainQueued: number
   /** Repos épinglés au fil des projets (présents même sans session). */
   pinnedRepos: string[]
+  /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */
+  config: { userName: string; exposeDomain: string; publicHost: string }
 }
 
 export interface SessionDetail {

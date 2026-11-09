@@ -69,10 +69,10 @@ describe('classement', () => {
 describe('rangement des sessions', () => {
   it('dossier → repo → famille', () => {
     expect(familyOf('lws-audit-breaker-r0')).toBe('lws')
-    expect(place('/home/alex/projects/lws-demo/src', ['/home/alex/projects']).projectId).toBe('lws')
-    expect(place('/home/alex/projects/.night/lws', ['/home/alex/projects']).repo).toBe('lws')
-    expect(place('/tmp', ['/home/alex/projects']).projectId).toBe('divers')
-    expect(place('/home/alex/Documents/projects/jarvis', ['/home/alex/projects', '/home/alex/Documents/projects']).projectId).toBe('jarvis')
+    expect(place('/home/me/projects/lws-demo/src', ['/home/me/projects']).projectId).toBe('lws')
+    expect(place('/home/me/projects/.night/lws', ['/home/me/projects']).repo).toBe('lws')
+    expect(place('/tmp', ['/home/me/projects']).projectId).toBe('divers')
+    expect(place('/home/me/Documents/projects/jarvis', ['/home/me/projects', '/home/me/Documents/projects']).projectId).toBe('jarvis')
   })
 })
 
@@ -198,7 +198,7 @@ describe('catégories inventées supprimées', async () => {
     expect(s.categories()).toEqual([])
     expect(s.corrections()).toEqual([])
     expect(s.unclassified(10).map((c) => c.id).sort()).toEqual(['a', 'b'])
-    expect(s.excerpt('a')).toMatch(/^Scarville : Combien coûte un trailer pour mygame/)
+    expect(s.excerpt('a')).toMatch(/^Moi : Combien coûte un trailer pour mygame/)
     s.db.close()
     fs.rmSync(dir, { recursive: true })
   })
@@ -216,11 +216,11 @@ describe('messages weevils collés (send-keys long → pasted_content)', async (
   const fs = await import('node:fs')
   const os = await import('node:os')
   const path = await import('node:path')
-  it('un exemple réel de 55639800…jsonl : attribué à weevils, texte dépouillé ; un collé de Scarville reste à Scarville', () => {
+  it('un exemple réel de 55639800…jsonl : attribué à weevils, texte dépouillé ; un collé de l’utilisateur reste à l’utilisateur', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-tr-'))
     const file = path.join(dir, '55639800-e327-46ce-bef8-310477c7d9e2.jsonl')
     const lines = [
-      { type: 'user', uuid: 'u1', timestamp: '2026-11-09T05:40:00Z', message: { role: 'user', content: '\n\n<pasted_content id="6f2b">\n[weevils] Trois retours de Scarville (les précédents ont été bloqués par une boîte de dialogue dans ta session, c\'est réglé). 1) Liste des projets…\n</pasted_content>' } },
+      { type: 'user', uuid: 'u1', timestamp: '2026-11-09T05:40:00Z', message: { role: 'user', content: '\n\n<pasted_content id="6f2b">\n[weevils] Trois retours (les précédents ont été bloqués par une boîte de dialogue dans ta session, c\'est réglé). 1) Liste des projets…\n</pasted_content>' } },
       { type: 'user', uuid: 'u2', timestamp: '2026-11-09T05:41:00Z', message: { role: 'user', content: [{ type: 'text', text: '\n\n<pasted_content id="32fa">\nOuais, je disais ce qui serait bien, c\'est que tu fasses la page repos.\n</pasted_content>' }] } },
       { type: 'user', uuid: 'u3', timestamp: '2026-11-09T05:42:00Z', message: { role: 'user', content: '<local-command-stdout>Compacted</local-command-stdout>' } },
     ]
@@ -228,7 +228,7 @@ describe('messages weevils collés (send-keys long → pasted_content)', async (
     const t = { id: '55639800-e327-46ce-bef8-310477c7d9e2', tool: 'claude' as const, file, cwd: '', openedAt: 0, lastActivityAt: 0, workStartedAt: null, phase: 'idle' as const, messages: [], subagents: [], offset: 0, partial: '', queued: [] }
     readMore(t as any, fs.statSync(file).size)
     expect(t.messages.map((m: any) => [m.role, m.text.slice(0, 40)])).toEqual([
-      ['orchestrator', 'Trois retours de Scarville (les précédents on'],
+      ['orchestrator', 'Trois retours (les précédents ont été bl'],
       ['user', 'Ouais, je disais ce qui serait bien, c\'e'],
     ])
     fs.rmSync(dir, { recursive: true })

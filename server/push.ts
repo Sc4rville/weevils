@@ -3,7 +3,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { CONFIG_DIR, DATA_DIR } from './config.ts'
+import { CONFIG_DIR, DATA_DIR, PUBLIC_URL } from './config.ts'
 
 interface Subscription {
   endpoint: string
@@ -39,7 +39,7 @@ export class Push {
       keys = this.wp.generateVAPIDKeys()
       fs.writeFileSync(file, JSON.stringify(keys), { mode: 0o600 })
     }
-    this.wp.setVapidDetails('https://weevils.scarville.tech', keys.publicKey, keys.privateKey)
+    this.wp.setVapidDetails(PUBLIC_URL || 'https://localhost', keys.publicKey, keys.privateKey)
     this.publicKey = keys.publicKey
     try {
       this.subs = JSON.parse(fs.readFileSync(SUBS_FILE, 'utf8'))

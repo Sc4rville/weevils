@@ -52,7 +52,7 @@ async function frenchVoice(key: string): Promise<string> {
   return frVoice
 }
 
-/** Voix choisie par Scarville dans l'app (persistée par le daemon). */
+/** Voix choisie dans l'app (persistée par le daemon). */
 let chosenVoice: string | undefined
 export const setCartesiaVoice = (id: string | undefined) => (chosenVoice = id)
 

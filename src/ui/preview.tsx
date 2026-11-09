@@ -2,35 +2,38 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { Message, Project, Session } from '../../shared/api.ts'
 import { Icon } from './icons'
 
-/** Domaine qui porte les ports exposés depuis le VPS (`expose <nom> <port>` → https://<nom>.scarville.tech). */
-const EXPOSE_DOMAIN = 'scarville.tech'
+/** Où vivent les serveurs de preview (WEEVILS_EXPOSE_DOMAIN : <nom>.<domaine>) et l'app elle-même : lus dans la config du serveur. */
+export interface PreviewConfig {
+  exposeDomain: string
+  publicHost: string
+}
 const KEY = (id: string) => `weevils-preview:${id}`
 
 const URL_RE = /https?:\/\/[^\s<>()"'`\]]+/g
 const trimPunct = (u: string) => u.replace(/[.,;:!?)]+$/, '')
 
 /** Les URL d'une appli en cours de développement, la plus récente d'abord : exposées, puis locales avec port, puis les autres. */
-export function urlsInMessages(messages: Message[]): string[] {
+export function urlsInMessages(messages: Message[], cfg: PreviewConfig): string[] {
   const seen = new Set<string>()
   const out: string[] = []
   for (let i = messages.length - 1; i >= 0; i--) {
     for (const raw of messages[i].text.match(URL_RE) ?? []) {
       const u = trimPunct(raw)
-      if (seen.has(u) || /weevils\.scarville\.tech|github\.com|anthropic\.com|claude\.ai|npmjs\.com/.test(u)) continue
+      if (seen.has(u) || (cfg.publicHost && u.includes(cfg.publicHost)) || /github\.com|anthropic\.com|claude\.ai|npmjs\.com/.test(u)) continue
       seen.add(u)
       out.push(u)
     }
   }
-  const rank = (u: string) => (u.includes(`.${EXPOSE_DOMAIN}`) ? 0 : /localhost|127\.0\.0\.1|:\d{4,5}/.test(u) ? 1 : 2)
+  const rank = (u: string) => (cfg.exposeDomain && u.includes(`.${cfg.exposeDomain}`) ? 0 : /localhost|127\.0\.0\.1|:\d{4,5}/.test(u) ? 1 : 2)
   return out.sort((a, b) => rank(a) - rank(b))
 }
 
-/** URL proposée : celle citée dans la conversation, sinon https://<repo>.scarville.tech. */
-export function guessPreviewUrl(messages: Message[], session: Session, project?: Project): string {
-  const found = urlsInMessages(messages)[0]
+/** URL proposée : celle citée dans la conversation, sinon https://<repo>.<domaine configuré>. */
+export function guessPreviewUrl(messages: Message[], session: Session, project: Project | undefined, cfg: PreviewConfig): string {
+  const found = urlsInMessages(messages, cfg)[0]
   if (found) return found
   const repo = session.repo ?? project?.repos[0]
-  return repo ? `https://${repo}.${EXPOSE_DOMAIN}` : ''
+  return repo && cfg.exposeDomain ? `https://${repo}.${cfg.exposeDomain}` : ''
 }
 
 interface Saved {
@@ -97,7 +100,7 @@ export function Preview({ url, suggestions, onUrl, onClose }: { url: string; sug
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder={`https://<nom>.${EXPOSE_DOMAIN}`}
+          placeholder="https://"
           aria-label="adresse à afficher"
           inputMode="url"
           autoCapitalize="off"

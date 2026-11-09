@@ -1,11 +1,12 @@
 // Classement des conversations, en trois étages :
 // 1. règles (gratuit, instantané) : un nom de projet ou de repo apparaît dans l'échange ;
-// 2. juge LLM sur l'abonnement (codex exec éphémère) pour le reste, par lots, avec les corrections de Scarville en exemples ;
-// 3. rien de sûr → « à ranger », c'est Scarville qui tranche.
+// 2. juge LLM sur l'abonnement (codex exec éphémère) pour le reste, par lots, avec les corrections de l'utilisateur en exemples ;
+// 3. rien de sûr → « à ranger », c'est l'utilisateur qui tranche.
 
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { USER } from './config.ts'
 
 export interface CatalogEntry {
   id: string
@@ -78,14 +79,14 @@ export async function llmClassify(
   const outFile = path.join(workdir, `out-${Date.now()}.json`)
   fs.writeFileSync(schemaFile, JSON.stringify(SCHEMA))
   const prompt = [
-    'Tu ranges des conversations (ChatGPT, Claude) dans les projets de Scarville. Ne lis aucun fichier, ne lance aucune commande : réponds directement.',
+    `Tu ranges des conversations (ChatGPT, Claude) dans les projets de ${USER}. Ne lis aucun fichier, ne lance aucune commande : réponds directement.`,
     '',
     'Les seules destinations possibles sont les projets ci-dessous (id : nom · repos · description). Un thème (« design », « argent », « santé ») n’est pas un projet : n’invente jamais de catégorie.',
     ...catalog.map((p) => `- ${p.id} : ${p.name}${p.repos.length ? ` · ${p.repos.slice(0, 8).join(', ')}` : ''}${p.about ? ` · ${p.about}` : ''}`),
-    examples.length ? `\nRangements validés par Scarville (à imiter) :\n${examples.map((e) => `- « ${e.title} » → ${e.projectId}`).join('\n')}` : '',
+    examples.length ? `\nRangements validés par ${USER} (à imiter) :\n${examples.map((e) => `- « ${e.title} » → ${e.projectId}`).join('\n')}` : '',
     '',
-    'Pour chaque conversation, lis l’extrait (premiers messages de Scarville, puis la fin) et juge de quoi elle parle vraiment :',
-    '- project = l’id d’un projet de la liste dont la conversation relève clairement (un site lws, le jeu mygame, l’app weevils…), sinon null. Dans le doute, null : Scarville tranchera.',
+    `Pour chaque conversation, lis l’extrait (premiers messages de ${USER}, puis la fin) et juge de quoi elle parle vraiment :`,
+    `- project = l’id d’un projet de la liste dont la conversation relève clairement, sinon null. Dans le doute, null : ${USER} tranchera.`,
     '- confidence entre 0 et 1 (≥ 0.7 seulement si c’est évident) ; reason = une phrase courte en français qui cite l’indice décisif.',
     '',
     'Conversations :',

@@ -3,7 +3,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { CONFIG_DIR, HOME } from './config.ts'
+import { CONFIG_DIR, HOME, USER } from './config.ts'
 import { haiku, tts } from './fast.ts'
 
 /** Clé lue dans ~/.config/weevils/env, sinon dans la config de la dictée du PC. Jamais dans le code ni dans les logs. */
@@ -66,7 +66,7 @@ export async function speak(text: string, oral = false): Promise<Buffer> {
 /** La version à dire : une ou deux phrases, comme à un pote, sans ids, chemins, fichiers ni listes. */
 async function toOral(text: string): Promise<string> {
   const key = openaiKey()
-  const ask = `Résume ce message pour le dire à voix haute à Scarville, en une ou deux phrases courtes en français, parlé, comme un pote. Aucun identifiant, chemin, nom de fichier, commande ni liste. Réponds seulement avec la phrase à dire.\n\n${text}`
+  const ask = `Résume ce message pour le dire à voix haute à ${USER}, en une ou deux phrases courtes en français, parlé, comme un pote. Aucun identifiant, chemin, nom de fichier, commande ni liste. Réponds seulement avec la phrase à dire.\n\n${text}`
   if (key) {
     try {
       const t0 = Date.now()

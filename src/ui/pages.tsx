@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Message, SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
-import { Collapse, Composer, Line, Messages, StatusChar, Working, type Attachment } from './bits'
+import { Collapse, Composer, Line, Messages, SessionRow, StatusChar, Working, type Attachment } from './bits'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Settings, effortLabel, shortModel } from './settings'
@@ -158,14 +158,14 @@ function SessionPage({ id }: { id: string }) {
     return [...real, ...pending.filter((p) => !seen.has(p.text.trim()))]
   }, [detail, pending])
   useStickToBottom(messages.length)
-  const suggestions = useMemo(() => urlsInMessages(messages), [messages])
+  const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
 
   if (!s) return missing ? <Missing /> : <Shell slot="agent" kicker="weevils" title="…">{null}</Shell>
 
   const project = snap.projects.find((p) => p.id === s.projectId)
   const st = status[s.status]
   const active = s.subagents.filter((a) => a.status === 'working').length
-  const previewUrl = preview.url ?? guessPreviewUrl(messages, s, project)
+  const previewUrl = preview.url ?? guessPreviewUrl(messages, s, project, snap.config)
 
   const send = async (text: string, files: Attachment[] = []) => {
     setErr(null)
@@ -423,21 +423,19 @@ function FilePage({ projectId, repo, path }: { projectId: string; repo: string; 
 // ---------------------------------------------------------------------------
 
 function MachinePage({ projectId }: { projectId: string }) {
-  const { snap, push, now, colors } = useApp()
+  const { snap, colors } = useApp()
   return (
-    <Shell slot={colors[projectId] ?? 'agent'} kicker={snap.projects.find((p) => p.id === projectId)?.name ?? 'weevils'} title="@ machines" meta={plural(snap.machines.length, 'machine', 'machines')}>
+    <Shell slot={colors[projectId] ?? 'agent'} kicker={snap.projects.find((p) => p.id === projectId)?.name ?? 'weevils'} title="machines" meta={plural(snap.machines.length, 'machine', 'machines')}>
       {snap.machines.map((machine) => {
         const live = snap.sessions.filter((s) => s.machineId === machine.id && s.status !== 'done')
         return (
           <div key={machine.id}>
+            {/* Rien d'écrit à la main : le nom, l'état, le nombre de sessions, puis les sessions au format de partout. */}
             <div className="in label">
-              {machine.name} · {machine.online === false ? 'hors ligne' : 'en ligne'} · {plural(live.length, 'session ouverte', 'sessions ouvertes')}
+              {machine.name} · {machine.online === false ? 'hors ligne' : 'en ligne'} · {plural(live.length, 'session', 'sessions')}
             </div>
-            {machine.note && <div className="in meta" style={{ paddingBottom: 6 }}>{machine.note}</div>}
             {live.map((s) => (
-              <Line key={s.id} ch={<StatusChar s={s.status} />} meta={`${status[s.status].label} · ${s.origin} · ${ago(now - s.lastActivityAt)}`} onClick={() => push({ kind: 'session', id: s.id })}>
-                <span className="strong">{s.projectId}</span> · {s.tool} · {s.title}
-              </Line>
+              <SessionRow key={s.id} session={s} />
             ))}
           </div>
         )

@@ -1,8 +1,20 @@
+import fs from 'node:fs'
+import os from 'node:os'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
-// WEEVILS_HOST = domaine public (Caddy en HTTPS devant le serveur local) : active le HMR à travers le proxy.
-const publicHost = process.env.WEEVILS_HOST
+// Domaine public (HTTPS devant le serveur local) : active le HMR à travers le proxy. Lu dans la config de l'utilisateur.
+function configured(name: string): string | undefined {
+  if (process.env[name]) return process.env[name]
+  try {
+    const file = process.env.WEEVILS_CONFIG ?? `${os.homedir()}/.config/weevils/env`
+    return new RegExp(`^${name}=(.*)$`, 'm').exec(fs.readFileSync(file, 'utf8'))?.[1].trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+const publicUrl = configured('WEEVILS_PUBLIC_URL')
+const publicHost = process.env.WEEVILS_HOST ?? (publicUrl ? new URL(publicUrl).host : undefined)
 
 export default defineConfig({
   plugins: [react()],

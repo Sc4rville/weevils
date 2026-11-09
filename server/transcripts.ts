@@ -13,7 +13,7 @@ export interface Transcript {
   branch?: string
   /** Titre automatique de l'outil (ai-title). */
   title?: string
-  /** Titre choisi par Scarville dans l'outil (/rename) : prime sur tout. */
+  /** Titre choisi par l'utilisateur dans l'outil (/rename) : prime sur tout. */
   customTitle?: string
   firstPrompt?: string
   originator?: string
@@ -406,7 +406,7 @@ export class TranscriptStore {
 export const titleOf = (t: Transcript) => short(oneLine(t.customTitle || t.title || t.firstPrompt || 'nouvelle session').replace(/^[#>*\s-]+/, ''), 60)
 /** Matière pour le renommeur : début de la session et ses derniers échanges, compacts. */
 export const digestOf = (t: Transcript, lastN = 10) => {
-  const recent = t.messages.slice(-lastN).map((m) => `${m.role === 'user' ? 'Scarville' : m.role === 'orchestrator' ? 'weevils' : m.role === 'assistant' ? 'agent' : '→'} : ${short(oneLine(m.text), m.role === 'event' ? 80 : 320)}`)
+  const recent = t.messages.slice(-lastN).map((m) => `${m.role === 'user' ? 'utilisateur' : m.role === 'orchestrator' ? 'weevboss' : m.role === 'assistant' ? 'agent' : '→'} : ${short(oneLine(m.text), m.role === 'event' ? 80 : 320)}`)
   return { debut: short(oneLine(t.firstPrompt ?? ''), 200), recents: recent }
 }
 export const lastMessageOf = (t: Transcript) => {

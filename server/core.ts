@@ -5,7 +5,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { ConversationDetail, ConversationSummary, H24Activity, Message, Project, Session, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
-import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, DONE_AFTER_MS, HOME, KILL_AFTER_MS, LOGS_DIR, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, LOGS_DIR, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
 import { llmClassify, ruleMatch } from './classify.ts'
@@ -72,7 +72,7 @@ export function trustDirs(dirs: string[]) {
   return changed
 }
 
-/** Comme Scarville les lance d'habitude : sans demande de permission. WEEVILS_SAFE=1 pour revenir aux confirmations. */
+/** Comme on les lance d'habitude : sans demande de permission. WEEVILS_SAFE=1 pour revenir aux confirmations. */
 const SAFE = process.env.WEEVILS_SAFE === '1'
 const CLAUDE = SAFE ? ['claude'] : ['claude', '--dangerously-skip-permissions']
 const CODEX_FLAGS = SAFE ? [] : ['--dangerously-bypass-approvals-and-sandbox']
@@ -234,6 +234,7 @@ export class Weevils {
 
   constructor() {
     this.migrateCategories()
+    if (ORCHESTRATOR) this.prepareOrchestrator()
     // Tous les repos connus sont de confiance d'avance.
     try {
       if (trustDirs(this.allRepos().map((r) => this.repoDir(r)))) console.log('[sessions] dossiers de ~/projects marqués de confiance pour Claude Code')
@@ -492,7 +493,7 @@ export class Weevils {
       repo: where.repo,
       machineId: MACHINE.id,
       tool: t.tool,
-      // Le titre choisi par Scarville dans l'outil prime ; sinon celui du renommeur (ce dont la session parle maintenant) ; sinon le début.
+      // Le titre choisi par l'utilisateur dans l'outil prime ; sinon celui du renommeur (ce dont la session parle maintenant) ; sinon le début.
       title: t.customTitle ? titleOf(t) : (this.titles.get(t.id)?.title ?? titleOf(t)),
       // En attendant l'activité réécrite : le dernier pas de l'agent (outil) plutôt que l'ancienne tâche.
       now: shortNow(this.titles.get(t.id)?.now || (t.phase === 'working' ? stepOf(t) : '')) || undefined,
@@ -554,7 +555,7 @@ export class Weevils {
       // L'orchestrateur (dossier sous DATA_DIR) n'est pas une session de projet.
       if (!known.has(id) && !p.cwd.startsWith(DATA_DIR)) list.push(this.placeholder(p, now))
     }
-    // Les sessions ouvertes dans un terminal que weevils ne pilote pas polluent la liste sans servir : cachées (Scarville, 9 nov.).
+    // Les sessions ouvertes dans un terminal que weevils ne pilote pas polluent la liste sans servir : cachées.
     return list.filter((s) => s.controllable).sort((a, b) => b.lastActivityAt - a.lastActivityAt)
   }
 
@@ -607,7 +608,8 @@ export class Weevils {
       now,
       machines: [
         { ...MACHINE, online: true },
-        ...this.remotes.map((r) => ({ ...(r.snap?.machines[0] ?? { id: r.id, name: r.id, note: '' }), online: r.online })),
+        // Une machine distante : seulement ce qui se calcule (nom, en ligne), jamais sa description.
+        ...this.remotes.map((r) => ({ id: r.snap?.machines[0]?.id ?? r.id, name: r.snap?.machines[0]?.name ?? r.id, online: r.online })),
       ],
       projects: this.withConversationProjects(this.projects(sessions, remote.flatMap((r) => r.snap!.projects)), now),
       sessions,
@@ -621,6 +623,7 @@ export class Weevils {
       mainHasScreen: !!this.orchestratorPane(),
       mainQueued: this.orchestratorQueued(now),
       pinnedRepos: this.pinnedRepos,
+      config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '' },
     }
     return this.snap
   }
@@ -864,7 +867,7 @@ export class Weevils {
   async send(id: string, text: string, from?: string): Promise<{ id: string }> {
     const remote = this.remoteFor(id)
     if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/send`, { text, from })
-    // Signé weevils : le fil de la session le montre comme un message de l'orchestrateur, pas de Scarville.
+    // Signé weevils : le fil de la session le montre comme un message de l'orchestrateur, pas de l'utilisateur.
     if (from === 'weevils' && !text.startsWith(ORCH_PREFIX)) text = ORCH_PREFIX + text
     const real = this.resolveId(id)
     const s = this.snapshot().sessions.find((x) => x.id === real)
@@ -964,7 +967,9 @@ export class Weevils {
     fs.mkdirSync(ORCH_DIR, { recursive: true })
     const src = path.join(import.meta.dirname, 'orchestrateur.md')
     try {
-      fs.copyFileSync(src, path.join(ORCH_DIR, 'CLAUDE.md'))
+      // Gabarit : {{user}} (prénom configuré, sinon « l'utilisateur ») et {{owner}} (compte GitHub configuré, sinon demandé à gh).
+      const owner = process.env.WEEVILS_GH_OWNER?.trim() || '$(gh api user -q .login)'
+      fs.writeFileSync(path.join(ORCH_DIR, 'CLAUDE.md'), fs.readFileSync(src, 'utf8').replaceAll('{{user}}', USER).replaceAll('{{owner}}', owner))
     } catch (e) {
       console.error(`[orchestrateur] CLAUDE.md : ${(e as Error).message}`)
     }
@@ -1032,7 +1037,7 @@ export class Weevils {
   private async clearDialog(pane: string): Promise<string | undefined> {
     const dlg = dialogOnScreen(await capture(pane).catch(() => ''))
     if (!dlg) return undefined
-    // Dialogue de confiance : Échap ferait quitter claude. On accepte (le dossier est à Scarville) ; sinon, Échap ferme le menu.
+    // Dialogue de confiance : Échap ferait quitter claude. On accepte (le dossier est à l'utilisateur) ; sinon, Échap ferme le menu.
     await sendKey(pane, /trust|confiance/i.test(dlg) ? 'enter' : 'esc')
     await sleep(600)
     return dlg
@@ -1040,7 +1045,7 @@ export class Weevils {
 
   /**
    * Écrit le message dans la pane et attend la preuve qu'il est arrivé : hook UserPromptSubmit de la session (claude),
-   * message de Scarville dans le transcript, ou le texte visible à l'écran (saisi ou en file d'attente) sans dialogue par-dessus.
+   * message de l'utilisateur dans le transcript, ou le texte visible à l'écran (saisi ou en file d'attente) sans dialogue par-dessus.
    * Sinon : écran capturé, Échap si un menu/dialogue est là, un seul nouvel essai, et une erreur à l'appelant.
    */
   private async deliver(pane: string, sessionId: string | undefined, text: string): Promise<void> {
@@ -1100,7 +1105,7 @@ export class Weevils {
     return t.phase === 'working' && now - t.lastActivityAt < 10 * 60_000
   }
 
-  /** Scarville parle à weevils : le message part dans la session Claude de l'orchestrateur (lancée ou reprise au besoin). */
+  /** L'utilisateur parle à weevboss : le message part dans la session Claude de l'orchestrateur (lancée ou reprise au besoin). */
   async sendMain(text: string) {
     if (!ORCHESTRATOR) throw new Error('l’orchestrateur ne tourne pas sur cette machine')
     if (!text.trim()) throw new Error('message vide')

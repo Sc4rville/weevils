@@ -157,8 +157,8 @@ export function CalmConv({ id }: { id: string }) {
     }
   }
   const run = (c: string) => (main ? api.mainCommand(c) : api.command(id, c))
-  const suggestions = useMemo(() => urlsInMessages(messages), [messages])
-  const previewUrl = preview.url ?? (s ? guessPreviewUrl(messages, s, snap.projects.find((p) => p.id === s.projectId)) : '')
+  const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
+  const previewUrl = preview.url ?? (s ? guessPreviewUrl(messages, s, snap.projects.find((p) => p.id === s.projectId), snap.config) : '')
 
   return (
     <motion.div
@@ -195,7 +195,7 @@ export function CalmConv({ id }: { id: string }) {
             navigateur
           </button>
         </div>
-        <Settings id={main ? '__main' : id} tool={main ? 'claude' : (s?.tool ?? 'claude')} settings={settings} canCommand={canCommand} run={run} />
+        <Settings userName={snap.config.userName} id={main ? '__main' : id} tool={main ? 'claude' : (s?.tool ?? 'claude')} settings={settings} canCommand={canCommand} run={run} />
       </Collapse>
       <div className="page-cols">
         <div className="page-main">

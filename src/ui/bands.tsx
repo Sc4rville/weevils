@@ -61,7 +61,7 @@ export function AgentBand() {
 
   return (
     <section className="band agent tone" style={color('agent')} aria-label="weevboss, l’orchestrateur">
-      {/* L'espace du haut reste vide pour l'instant : Scarville dira ce qu'on y met. */}
+      {/* L'espace du haut reste vide pour l'instant : à remplir plus tard. */}
       {/* Ouverte : un tap dans l'espace vide, le chevron, ou glisser vers le bas la réduit. */}
       <div className="agent-space" onClick={(e) => open && e.target === e.currentTarget && setExpanded(null)}>
         {open && (

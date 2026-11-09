@@ -99,7 +99,7 @@ export function step(text: string): string {
   return d ? `${verb} · ${d}` : verb
 }
 
-/** Ce que Scarville a écrit, sans les balises techniques du collage ni les marqueurs d'images. */
+/** Ce que l'utilisateur a écrit, sans les balises techniques du collage ni les marqueurs d'images. */
 export function userText(text: string): string {
   return text
     .replace(/<\/?pasted_content[^>]*>/g, '')

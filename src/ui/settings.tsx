@@ -71,6 +71,7 @@ export function Settings({
   canCommand,
   run,
   onPicker,
+  userName,
 }: {
   id: string
   tool: Tool
@@ -78,6 +79,7 @@ export function Settings({
   /** La session tourne dans une pane weevils : on peut lui taper des commandes. */
   canCommand: boolean
   run: (command: string) => Promise<unknown>
+  userName?: string
   /** Codex ouvre un menu dans le terminal (/model, /approvals) : montrer l'écran pour choisir avec les touches. */
   onPicker?: () => void
 }) {
@@ -106,7 +108,7 @@ export function Settings({
 
   return (
     <div className="settings">
-      {id === '__main' && <VoicePicker />}
+      {id === '__main' && <VoicePicker userName={userName ?? ''} />}
       {err && (
         <div className="in meta" role="alert">
           ! {err}

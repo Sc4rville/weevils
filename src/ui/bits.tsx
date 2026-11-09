@@ -48,7 +48,7 @@ export function StatusChar({ s }: { s: Session['status'] }) {
   )
 }
 
-/** Long message de Scarville : replié au-delà de quelques lignes, un geste pour tout lire. */
+/** Long message de l'utilisateur : replié au-delà de quelques lignes, un geste pour tout lire. */
 function Clamp({ text }: { text: string }) {
   const [open, setOpen] = useState(false)
   const long = text.length > 420

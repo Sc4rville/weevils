@@ -4,6 +4,7 @@
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { USER } from './config.ts'
 
 export interface TitleInput {
   id: string
@@ -63,7 +64,7 @@ export async function llmTitles(items: TitleInput[], workdir: string): Promise<{
   const outFile = path.join(workdir, `out-${Date.now()}.json`)
   fs.writeFileSync(schemaFile, JSON.stringify(SCHEMA))
   const prompt = [
-    'Tu nommes des sessions d’agents de code (Claude Code, Codex) pour que Scarville comprenne d’un coup d’œil, sur son téléphone, de quoi chacune parle. Ne lis aucun fichier, ne lance aucune commande : réponds directement.',
+    `Tu nommes des sessions d’agents de code (Claude Code, Codex) pour que ${USER} comprenne d’un coup d’œil, sur son téléphone, de quoi chacune parle. Ne lis aucun fichier, ne lance aucune commande : réponds directement.`,
     '',
     'Pour chaque session, à partir de son début et de ses derniers échanges :',
     '- title : le THÈME de la session, ce sur quoi on bosse dedans, en français, 2 à 5 mots, très court, style note perso (ex. « UX de weevils », « code d’accès iPhone », « perf du jeu », « mails prospects »). Sans point final, sans guillemets, sans « session » ni « conversation », jamais le premier message mot pour mot. Un titre stable : si le thème général n’a pas changé, garde le même esprit.',

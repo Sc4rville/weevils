@@ -52,7 +52,6 @@ Nice=10
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=WEEVILS_MACHINE=pc
 Environment=WEEVILS_MACHINE_NAME=pc
-Environment="WEEVILS_MACHINE_NOTE=PC de Scarville · visible quand il est allumé"
 Environment=WEEVILS_PORT=4191
 Environment=WEEVILS_PROJECTS=%h/projects:%h/Documents/projects
 

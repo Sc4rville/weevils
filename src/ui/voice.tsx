@@ -64,7 +64,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
   const chunks = useRef<Blob[]>([])
   const sendAfter = useRef(false)
   const lastReply = useRef(replyKey)
-  // Jamais de voix pendant que Scarville parle : une seule réponse en attente (la dernière), lue 1 s après l'arrêt du micro.
+  // Jamais de voix pendant que l'utilisateur parle : une seule réponse en attente (la dernière), lue 1 s après l'arrêt du micro.
   const phaseRef = useRef<Phase>('idle')
   phaseRef.current = phase
   const micStopped = useRef(0)
@@ -153,7 +153,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
   }
   const tap = () => {
     unlockAudio()
-    // La voix se tait dès que Scarville reprend la parole (le tap enchaîne sur l'enregistrement).
+    // La voix se tait dès que l'utilisateur reprend la parole (le tap enchaîne sur l'enregistrement).
     if (speaking) {
       hush()
       setSpeaking(false)
@@ -184,7 +184,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
 }
 
 /** Les voix de weevboss : un tap fait dire une phrase d'essai et garde la voix. */
-export function VoicePicker() {
+export function VoicePicker({ userName }: { userName: string }) {
   const [list, setList] = useState<{ id: string; name: string }[] | null>(null)
   const [cur, setCur] = useState<string | undefined>()
   useEffect(() => {
@@ -201,7 +201,7 @@ export function VoicePicker() {
     unlockAudio()
     setCur(id)
     void api.setVoice(id).catch(() => undefined)
-    void say('Salut Scarville, c’est moi, weevboss.', () => undefined, true, id)
+    void say(`Salut${userName ? ` ${userName}` : ''}, c’est moi, weevboss.`, () => undefined, true, id)
   }
   return (
     <div className="in words" role="group" aria-label="voix">

@@ -1,7 +1,27 @@
+import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
 export const HOME = os.homedir()
+export const CONFIG_DIR = path.join(HOME, '.config', 'weevils')
+/** Le seul fichier de config de l'utilisateur, hors du repo (modèle : weevils.env.example). NOM=valeur, une par ligne. */
+export const CONFIG_FILE = process.env.WEEVILS_CONFIG ?? path.join(CONFIG_DIR, 'env')
+try {
+  for (const line of fs.readFileSync(CONFIG_FILE, 'utf8').split('\n')) {
+    const m = /^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line)
+    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '')
+  }
+} catch {
+  /* pas de config : valeurs par défaut */
+}
+
+/** Prénom de l'utilisateur, pour que les agents s'adressent à lui (vide : « l'utilisateur »). */
+export const USER_NAME = process.env.WEEVILS_USER_NAME?.trim() ?? ''
+export const USER = USER_NAME || 'l’utilisateur'
+/** Adresse publique de l'app (notifications push, QR de connexion). */
+export const PUBLIC_URL = process.env.WEEVILS_PUBLIC_URL?.trim() || ''
+/** Domaine où les serveurs de preview sont exposés en <nom>.<domaine> (navigateur intégré). */
+export const EXPOSE_DOMAIN = process.env.WEEVILS_EXPOSE_DOMAIN?.trim() || ''
 export const PORT = Number(process.env.WEEVILS_PORT ?? 4179)
 /** Hooks Claude Code : écoute locale uniquement, jamais exposée par Caddy. */
 export const HOOK_PORT = Number(process.env.WEEVILS_HOOK_PORT ?? 4180)
@@ -14,13 +34,11 @@ export const CLAUDE_DIR = path.join(HOME, '.claude', 'projects')
 export const CODEX_DIR = path.join(process.env.CODEX_HOME ?? path.join(HOME, '.codex'), 'sessions')
 export const LOGS_DIR = path.join(HOME, 'logs')
 export const DATA_DIR = path.join(HOME, '.local', 'share', 'weevils')
-export const CONFIG_DIR = path.join(HOME, '.config', 'weevils')
 export const DIST_DIR = path.resolve(import.meta.dirname, '..', 'dist')
 
 export const MACHINE = {
   id: process.env.WEEVILS_MACHINE ?? 'vps',
-  name: process.env.WEEVILS_MACHINE_NAME ?? 'vps',
-  note: process.env.WEEVILS_MACHINE_NOTE ?? 'VPS Hostinger · 4 vCPU · toujours allumé',
+  name: process.env.WEEVILS_MACHINE_NAME ?? process.env.WEEVILS_MACHINE ?? 'vps',
 }
 
 /** L'orchestrateur (la bande du haut) tourne sur une seule machine : celle qui sert l'app. */

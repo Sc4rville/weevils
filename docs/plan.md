@@ -35,7 +35,7 @@ Constats vérifiés sur le VPS le 8 novembre 2026 :
 ### Phase 0 · Socle et sécurité (1 à 2 jours)
 - Découpage `app/` + `server/`, base SQLite (`node:sqlite`), API + flux SSE.
 - **Connexion par passkey (Face ID)**, un seul utilisateur, cookie de session. Aucune route d'écriture sans elle.
-- weevilsd en service systemd utilisateur, exposé via Caddy (`weevils.scarville.tech`), journal de toutes les actions.
+- weevilsd en service systemd utilisateur, exposé via Caddy (`weevils.example.com`), journal de toutes les actions.
 - La PWA remplace son store local par un client API (mêmes types).
 
 **Fini quand** l'iPhone se connecte avec Face ID et voit une liste de projets réelle (même vide).
@@ -92,7 +92,7 @@ Constats vérifiés sur le VPS le 8 novembre 2026 :
 - Une session Claude headless avec un serveur MCP weevils aux outils limités : lister les sessions, envoyer un message, ouvrir, classer, résumer.
 - Il route mes ordres (« reprends le crm ») vers la bonne session et demande confirmation quand c'est ambigu.
 
-### Phase 8 · Style et UX (avec Scarville)
+### Phase 8 · Style et UX (avec l’utilisateur)
 Icônes, nettoyage, densité, animations : après avoir vécu quelques jours avec les vraies données.
 
 **Total estimé** : 2 à 3 semaines de travail d'agent, livrable phase par phase, chaque phase utilisable sur l'iPhone.
@@ -115,7 +115,7 @@ Icônes, nettoyage, densité, animations : après avoir vécu quelques jours ave
 ## État au 8 novembre 2026 (soir)
 
 Fait et vérifié en vrai :
-- weevilsd en service permanent sur le VPS, app servie sur weevils.scarville.tech, connexion par code ou QR (passkey Face ID : à faire).
+- weevilsd en service permanent sur le VPS, app servie sur weevils.example.com, connexion par code ou QR (passkey Face ID : à faire).
 - Sessions Claude Code et Codex du VPS **et du PC** (fédération par tunnel SSH inversé), rangées par projet, état exact par les hooks.
 - Écrire à une session, lire l'écran du terminal, répondre aux questions (touches), créer une session, reprendre une session fermée : testé avec Codex de bout en bout.
 - Pilotage par tmux (`wv`), qui survit aux redémarrages de weevilsd.
@@ -130,4 +130,4 @@ Reste :
 - Notifications push iPhone quand une session attend.
 - Passkey Face ID à la place du code.
 - Agent principal avec un vrai modèle (aujourd'hui : règles simples).
-- Style et UX (phase 8), avec Scarville.
+- Style et UX (phase 8), avec l’utilisateur.

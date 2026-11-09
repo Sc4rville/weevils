@@ -1,6 +1,6 @@
 # Choix provisoires du prototype
 
-Décidés pour avancer, tous réversibles. Les demandes validées sont dans `docs/vision-scarville.md`.
+Décidés pour avancer, tous réversibles. Les demandes validées sont dans `docs/vision.md`.
 
 - **Stack** : Vite + React + Motion (ressorts, glisser), en web app installable (PWA). Données de démo locales, sauvegardées dans le navigateur.
 - **Caractères-icônes** : `/` fichiers, `@` machine, `!` à toi, `"` conversations, `+` nouvelle session. États de session : `*` travaille (tourne doucement), `!` à toi (ligne inversée noire), `_` disponible, `✓` terminée.

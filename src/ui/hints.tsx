@@ -22,8 +22,6 @@ const INSTALL = 'weevils-install'
 const MIN_MS = 4500
 const PER_CHAR_MS = 45
 const MAX_MS = 9000
-/** A touch this soon after the bubble appears is the tap that opened it, not a dismissal. */
-const GRACE_MS = 350
 /** Page hints wait for the page to settle. */
 const VIEW_DELAY_MS = 650
 
@@ -164,7 +162,8 @@ export function HintBubble() {
     if (!cur) return
     const text = t[cur.key]
     const timer = setTimeout(hide, Math.min(MAX_MS, MIN_MS + text.length * PER_CHAR_MS))
-    const onDown = () => Date.now() - cur.at > GRACE_MS && hide()
+    // The touch that opened the bubble came before it (pointerdown, then click): any touch now is a new one.
+    const onDown = () => hide()
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && hide()
     window.addEventListener('pointerdown', onDown, { capture: true })
     window.addEventListener('keydown', onKey)

@@ -1442,12 +1442,13 @@ button.copy.done {
   top: -1px;
 }
 
+/* Sur la ligne du nom : centré comme l'étoile (milieu de la hauteur d'x), donc sur la même ligne que le résumé. */
 .name .dot {
   width: 11px;
   height: 11px;
   margin-left: 10px;
   margin-right: 0;
-  top: -4px;
+  top: 0;
 }
 
 .row.unread .title {

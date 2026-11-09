@@ -64,6 +64,34 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
   const chunks = useRef<Blob[]>([])
   const sendAfter = useRef(false)
   const lastReply = useRef(replyKey)
+  // Jamais de voix pendant que Scarville parle : une seule réponse en attente (la dernière), lue 1 s après l'arrêt du micro.
+  const phaseRef = useRef<Phase>('idle')
+  phaseRef.current = phase
+  const micStopped = useRef(0)
+  const pending = useRef<{ text: string; oral: boolean } | null>(null)
+  const seq = useRef(0)
+  const flushTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const flush = () => {
+    clearTimeout(flushTimer.current)
+    const p = pending.current
+    if (!p) return
+    const quiet = Date.now() - micStopped.current
+    if (phaseRef.current === 'rec' || phaseRef.current === 'wait' || quiet < 1000) {
+      flushTimer.current = setTimeout(flush, Math.max(250, 1000 - quiet))
+      return
+    }
+    pending.current = null
+    setSpeaking(true)
+    setReply(true)
+    void say(p.text, () => {
+      setSpeaking(false)
+      setReply(false)
+    }, p.oral)
+  }
+  const queueSay = (text: string, oral: boolean) => {
+    pending.current = { text, oral } // la plus récente remplace les précédentes : jamais de rafale
+    flush()
+  }
 
   // weevboss vient de répondre : une vague de couleur sur le logo.
   useEffect(() => {
@@ -73,11 +101,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
     requestAnimationFrame(() => setReply(true))
     if (spoken.current && replyText) {
       spoken.current = false
-      setSpeaking(true)
-      void say(replyText, () => {
-        setSpeaking(false)
-        setReply(false)
-      })
+      queueSay(replyText, false)
       return
     }
     const t = setTimeout(() => setReply(false), 1800)
@@ -125,31 +149,26 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
   const send = () => {
     const text = take()
     if (!text) return onSend()
-    setSpeaking(true)
-    setReply(true)
-    const done = () => {
-      setSpeaking(false)
-      setReply(false)
-    }
+    const n = ++seq.current
     api
       .voice(text)
-      .then((v) => say(v.say, done, true))
-      .catch((e) => {
-        setErr((e as Error).message)
-        done()
-      })
+      // Une réponse à un message déjà dépassé par un plus récent n'est pas lue.
+      .then((v) => n === seq.current && queueSay(v.say, true))
+      .catch((e) => setErr((e as Error).message))
   }
   const tap = () => {
     unlockAudio()
+    // La voix se tait dès que Scarville reprend la parole (le tap enchaîne sur l'enregistrement).
     if (speaking) {
       hush()
       setSpeaking(false)
       setReply(false)
-      return
+      if (phase !== 'idle') return
     }
     if (phase === 'idle') void start()
     else if (phase === 'rec') {
       setPhase('wait')
+      micStopped.current = Date.now()
       rec.current?.stop()
     } else if (phase === 'wait') sendAfter.current = true
     else {

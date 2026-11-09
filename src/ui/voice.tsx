@@ -69,7 +69,6 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
   phaseRef.current = phase
   const micStopped = useRef(0)
   const pending = useRef<{ text: string; oral: boolean } | null>(null)
-  const seq = useRef(0)
   const flushTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const flush = () => {
     clearTimeout(flushTimer.current)

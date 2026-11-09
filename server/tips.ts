@@ -19,8 +19,8 @@ import M from './i18n/tips.ts'
 /** One load sample per minute, 24 h kept. */
 export const SAMPLE_MS = 60_000
 export const KEEP_MS = 24 * 3600_000
-/** Below one hour of samples, no verdict on a machine. */
-export const MIN_SAMPLES = 60
+/** Below twelve hours of samples, no verdict on a machine (one long build on a fresh install is not "often"). */
+export const MIN_SAMPLES = 12 * 60
 /** A sample is saturated above LOAD_FACTOR × cores, or under FREE_MIN of available memory. */
 export const LOAD_FACTOR = 1.5
 export const FREE_MIN = 0.1
@@ -59,15 +59,15 @@ interface Rule {
 
 const short = (s: string) => crypto.createHash('sha1').update(s).digest('base64url').slice(0, 10)
 const clip = (s: string, n = 32) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s)
-/** ISO-like week bucket: a saturated machine may come back, at most once a week. */
-const week = (now: number) => Math.floor(now / (7 * 24 * 3600_000))
+const HOUR = 3600_000
 
-/** Share of saturated samples over the last 24 h, or null with too few samples. */
-export function saturation(m: MachineLoad, now: number): number | null {
+/** Share of saturated samples over the last 24 h and the hours the samples cover, or null with too few samples. */
+export function saturation(m: MachineLoad, now: number): { share: number; hours: number } | null {
   const recent = m.samples.filter(([at]) => now - at <= KEEP_MS)
   if (recent.length < MIN_SAMPLES) return null
   const hot = recent.filter(([, load, free]) => load > LOAD_FACTOR * Math.max(1, m.cores) || free < FREE_MIN).length
-  return hot / recent.length
+  const oldest = recent.reduce((a, [at]) => Math.min(a, at), now)
+  return { share: hot / recent.length, hours: Math.max(1, Math.round((now - oldest) / HOUR)) }
 }
 
 const idleSessions = (snap: Snapshot, now: number): Session[] =>
@@ -118,10 +118,11 @@ export const RULES: Rule[] = [
     rule: 'saturated',
     check: ({ loads, now }) =>
       loads.flatMap((m) => {
-        const share = saturation(m, now)
-        if (share === null || share <= SATURATED_SHARE) return []
+        const sat = saturation(m, now)
+        if (!sat || sat.share <= SATURATED_SHARE) return []
         const t = tr(M)
-        return [{ id: `saturated:${m.machineId}:${week(now)}`, rule: 'saturated', personal: true, text: t.saturated(m.name), accept: t.askBoss, action: { kind: 'boss', text: t.saturatedAsk(m.name, Math.round(share * 100)) } } satisfies Found]
+        // Once per machine: never the same card twice.
+        return [{ id: `saturated:${m.machineId}`, rule: 'saturated', personal: true, text: t.saturated(m.name), accept: t.askBoss, action: { kind: 'boss', text: t.saturatedAsk(m.name, Math.round(sat.share * 100), sat.hours) } } satisfies Found]
       }),
   },
   {
@@ -200,7 +201,7 @@ export class LoadSampler {
   }
 
   local(): MachineLoad {
-    return { machineId: MACHINE.id, name: MACHINE.name, cores: os.cpus().length || 1, samples: this.samples }
+    return { machineId: MACHINE.id, name: MACHINE.name, cores: os.availableParallelism?.() || os.cpus().length || 1, samples: this.samples }
   }
 }
 

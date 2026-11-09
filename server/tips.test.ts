@@ -76,20 +76,28 @@ describe('tips — rules', () => {
     expect(personalTips(input())).toEqual([])
   })
 
-  it('saturated machine: over 20 % of hot samples, with at least an hour of data', () => {
-    expect(rules(input({ loads: [load(120, (k) => k % 3 === 0)] }))).toEqual(['saturated'])
-    expect(rules(input({ loads: [load(120, (k) => k % 10 === 0)] }))).toEqual([])
+  it('saturated machine: over 20 % of hot samples, with at least 12 h of data', () => {
+    expect(rules(input({ loads: [load(24 * 60, (k) => k % 3 === 0)] }))).toEqual(['saturated'])
+    expect(rules(input({ loads: [load(24 * 60, (k) => k % 10 === 0)] }))).toEqual([])
+    // A fresh install with an hour of samples: no verdict, even fully hot.
+    expect(rules(input({ loads: [load(60, () => true)] }))).toEqual([])
     expect(rules(input({ loads: [load(MIN_SAMPLES - 1, () => true)] }))).toEqual([])
-    // Low memory counts too.
-    const mem: MachineLoad = { machineId: 'pc', name: 'pc', cores: 8, samples: Array.from({ length: 90 }, (_, k): LoadSample => [NOW - k * 60_000, 0.1, 0.05]) }
+    // One 2 h build in the last 12 h: under the share.
+    expect(rules(input({ loads: [load(12 * 60, (k) => k < 120)] }))).toEqual([])
+    // Low memory counts too; the message gives the real window, not a made-up 24 h.
+    const mem: MachineLoad = { machineId: 'pc', name: 'pc', cores: 8, samples: Array.from({ length: 13 * 60 }, (_, k): LoadSample => [NOW - k * 60_000, 0.1, 0.05]) }
     const [card] = personalTips(input({ loads: [mem] }))
-    expect(card.id).toMatch(/^saturated:pc:\d+$/)
-    expect(card.action).toEqual({ kind: 'boss', text: expect.stringContaining('100%') })
+    expect(card.id).toBe('saturated:pc')
+    expect(card.action).toEqual({ kind: 'boss', text: expect.stringContaining('100% of the time over the last 13 h') })
     expect(card.text).toContain('pc')
+    // Same machine a week later: the same card, never shown twice.
+    expect(personalTips(input({ loads: [mem], now: NOW + 7 * 24 * H }))).toEqual([])
+    const later = { ...mem, samples: mem.samples.map(([at, l, f]) => [at + 7 * 24 * H, l, f] as LoadSample) }
+    expect(personalTips(input({ loads: [later], now: NOW + 7 * 24 * H }))[0].id).toBe(card.id)
   })
 
   it('saturation ignores samples older than 24 h', () => {
-    const old: MachineLoad = { ...load(100, () => true), samples: load(100, () => true).samples.map(([at, l, f]) => [at - 25 * H, l, f] as LoadSample) }
+    const old: MachineLoad = { ...load(MIN_SAMPLES, () => true), samples: load(MIN_SAMPLES, () => true).samples.map(([at, l, f]) => [at - 25 * H, l, f] as LoadSample) }
     expect(saturation(old, NOW)).toBeNull()
   })
 

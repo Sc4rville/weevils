@@ -474,7 +474,7 @@ export function Messages({ messages, author, working = false }: { messages: Mess
           <Appear key={g.m.id}>
             <div className={`msg band ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? 'tone orch' : ''}`}>
               <div className="in">
-                <span className="who">{g.m.role === 'user' ? 'toi' : g.m.role === 'orchestrator' ? 'weevils' : author}</span>
+                <span className="who">{g.m.role === 'user' ? 'toi' : g.m.role === 'orchestrator' ? 'weevboss' : author}</span>
                 {g.m.role === 'user' ? <Clamp text={userText(g.m.text)} /> : g.m.role === 'orchestrator' ? <Clamp text={g.m.text} /> : <Prose text={g.m.text} />}
               </div>
             </div>

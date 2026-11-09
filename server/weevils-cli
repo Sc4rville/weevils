@@ -48,7 +48,7 @@ n=max(1,int(sys.argv[1])) if len(sys.argv)>1 else 12
 msgs=d.get('messages') or []
 if not msgs: print('(aucun message)')
 for m in msgs[-n:]:
-    who={'user':'Scarville','assistant':s['tool'],'orchestrator':'weevils','event':'→'}.get(m.get('role'),m.get('role','?'))
+    who={'user':'Scarville','assistant':s['tool'],'orchestrator':'weevboss','event':'→'}.get(m.get('role'),m.get('role','?'))
     t=' '.join((m.get('text') or '').split())
     print(f\"{who}: {t[:600]}\")
 " "$n" ;;

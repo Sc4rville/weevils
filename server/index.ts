@@ -207,7 +207,7 @@ const routes: [string, RegExp, Handler][] = [
     json(res, 200, { ok: true, devices: w.push.count })
   }],
   ['POST', /^\/api\/push\/test$/, async (_req, res) => {
-    await w.push.send({ title: 'weevils', body: 'Les notifications marchent. Je te préviens quand une session t’attend ou a fini.', url: '/', tag: 'test' })
+    await w.push.send({ title: 'weevboss', body: 'Les notifications marchent. Je te préviens quand une session t’attend ou a fini.', url: '/', tag: 'test' })
     json(res, 200, { ok: true })
   }],
   ['GET', /^\/api\/conversations$/, (_req, res, url) =>

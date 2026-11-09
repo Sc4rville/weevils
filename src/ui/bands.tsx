@@ -51,17 +51,17 @@ export function AgentBand() {
   }
 
   return (
-    <section className="band agent tone" style={color('agent')} aria-label="weevils, l’orchestrateur">
+    <section className="band agent tone" style={color('agent')} aria-label="weevboss, l’orchestrateur">
       {/* L'espace du haut reste vide pour l'instant : Scarville dira ce qu'on y met. */}
       <div className="agent-space" aria-hidden />
 
       {/* Replié : la dernière réponse de weevils, en une ligne. Ouvert : la conversation, qui grandit sans tout envahir. */}
       {!open && last && last.role !== 'user' && (
-        <button className="row" onClick={() => setExpanded('agent')} aria-label="ouvrir la conversation avec weevils">
+        <button className="row" onClick={() => setExpanded('agent')} aria-label="ouvrir la conversation avec weevboss">
           <span className="in">
             <span className="stack-text">
               <span className="ellipsis">
-                <span className="strong">{last.role === 'event' ? '→ ' : 'weevils · '}</span>
+                <span className="strong">{last.role === 'event' ? '→ ' : 'weevboss · '}</span>
                 {last.role === 'event' ? step(last.text) : plain(last.text).split('\n')[0]}
               </span>
             </span>
@@ -70,13 +70,13 @@ export function AgentBand() {
       )}
       <Collapse open={open} id="agent-body">
         <div ref={body} className="chat" aria-live="polite">
-          <Messages messages={snap.main} author="weevils" working={snap.mainWorking} />
-          {snap.mainWorking && <Working author="weevils" />}
+          <Messages messages={snap.main} author="weevboss" working={snap.mainWorking} />
+          {snap.mainWorking && <Working author="weevboss" />}
         </div>
       </Collapse>
 
       {/* Écrire ici n'ouvre pas la conversation : elle s'ouvre à l'envoi, pour lire la réponse. */}
-      <Composer placeholder="dis à weevils quoi faire" label="message à weevils" onSend={send} onAttach={attach} anyFile voice />
+      <Composer placeholder="dis à weevboss quoi faire" label="message à weevboss" onSend={send} onAttach={attach} anyFile voice />
     </section>
   )
 }

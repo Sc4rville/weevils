@@ -1074,7 +1074,7 @@ export class Weevils {
     if (!this.orchestratorId || !known) this.orchestratorId = crypto.randomUUID()
     const id = this.orchestratorId
     const command = known ? [...CLAUDE, '--resume', id, text] : [...CLAUDE, '--session-id', id, text]
-    await this.spawn('claude', ORCH_DIR, 'weevils', command, id)
+    await this.spawn('claude', ORCH_DIR, 'weevboss', command, id)
     this.persist()
     return { id }
   }

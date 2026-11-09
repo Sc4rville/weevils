@@ -78,7 +78,7 @@ export function CalmGrid() {
       <div className="page-body" data-scroll>
         <div className="calm-grid">
           <button className="calm-cell" style={color('agent')} onClick={() => push({ kind: 'calmconv', id: 'main' })}>
-            <span className="calm-title">weevils</span>
+            <span className="calm-title">weevboss</span>
             <span className="meta">{snap.mainWorking ? 'travaille' : last ? plain(last.text).split('\n')[0] : ''}</span>
           </button>
           {sessions.map((s) => (
@@ -134,8 +134,8 @@ export function CalmConv({ id }: { id: string }) {
   const raw: Message[] = main ? snap.main : (detail?.messages ?? [])
   const messages = useMemo(() => raw.filter((m) => m.role !== 'event'), [raw])
   const working = main ? snap.mainWorking : s?.status === 'working'
-  const author = main ? 'weevils' : (s?.tool ?? 'claude')
-  const title = main ? 'weevils' : (s?.title ?? '')
+  const author = main ? 'weevboss' : (s?.tool ?? 'claude')
+  const title = main ? 'weevboss' : (s?.title ?? '')
   const settings = main ? snap.mainSettings : s?.settings
   const canCommand = main ? snap.mainHasScreen : !!s?.hasScreen
   useStickToBottom(messages.length, body)

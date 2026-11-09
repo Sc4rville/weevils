@@ -13,7 +13,7 @@ const SOURCE = { chatgpt: 'chatgpt', claude: 'claude.ai' } as const
 export function statusLabel(c: ConversationSummary, name: (id: string) => string) {
   switch (c.status) {
     case 'auto':
-      return `rangée dans ${name(c.projectId!)} par weevils`
+      return `rangée dans ${name(c.projectId!)} par weevboss`
     case 'accepted':
     case 'corrected':
       return `rangée dans ${name(c.projectId!)}`

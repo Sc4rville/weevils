@@ -11,7 +11,7 @@ self.addEventListener('push', (e) => {
     d = { body: e.data ? e.data.text() : '' }
   }
   e.waitUntil(
-    self.registration.showNotification(d.title || 'weevils', {
+    self.registration.showNotification(d.title || 'weevboss', {
       body: d.body || '',
       tag: d.tag,
       data: { url: d.url || '/' },

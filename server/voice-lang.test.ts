@@ -1,5 +1,5 @@
 // La voix de weevboss parle la langue du message, jamais celle d'un réglage global :
-// ici la langue réglée est l'anglais (ce qu'un navigateur anglais avait imposé), et Scarville écrit en français.
+// ici la langue réglée est l'anglais (ce qu'un navigateur anglais avait imposé), et l'utilisateur écrit en français.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./i18n.ts', async (orig) => ({ ...(await orig<typeof import('./i18n.ts')>()), lang: () => 'en' as const }))

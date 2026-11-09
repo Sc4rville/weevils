@@ -24,7 +24,7 @@ const mail = (o: { from?: string; subject?: string; body?: string; headers?: str
     [
       ...(o.headers ?? [`Authentication-Results: ${AR_OK}`]),
       `From: Gepetto <${o.from ?? 'gepetto@example.com'}>`,
-      `To: ${o.to ?? 'Weevils <scarville+weevils@gmail.com>'}`,
+      `To: ${o.to ?? 'Weevils <alex+weevils@gmail.com>'}`,
       `Subject: ${o.subject ?? '[mygame] salut'}`,
       `Message-ID: ${o.id ?? '<m1@example.com>'}`,
       'Content-Type: text/plain; charset=utf-8',
@@ -32,7 +32,7 @@ const mail = (o: { from?: string; subject?: string; body?: string; headers?: str
       o.body ?? 'Fais le menu.',
     ].join('\r\n'),
   )
-const CFG = { address: 'scarville+weevils@gmail.com', login: 'scarville@gmail.com', authserv: 'mx.google.com' }
+const CFG = { address: 'alex+weevils@gmail.com', login: 'alex@gmail.com', authserv: 'mx.google.com' }
 const AUTHORS = loadAuthors({
   WEEVILS_AUTHOR_GEPETTO: 'gepetto | #4fb3ff | gepetto@example.com',
   WEEVILS_AUTHOR_INSTINCT: 'instinct | #ff6f91 | instinct@agents.example.org | s3cret',
@@ -117,20 +117,20 @@ describe('sécurité du pont', () => {
     expect(screen(mail({}), CFG, AUTHORS)).toMatchObject({ ok: true, author: { id: 'gepetto' } })
   })
   it('alias Gmail : connexion au compte sans « +weevils », seul le libellé est surveillé, jamais INBOX', () => {
-    const c = mailConfig({ WEEVILS_MAIL_ADDRESS: 'Scarville+weevils@gmail.com', WEEVILS_MAIL_PASSWORD: 'abcd efgh ijkl mnop' })
-    expect(c).toMatchObject({ address: 'scarville+weevils@gmail.com', login: 'scarville@gmail.com', password: 'abcdefghijklmnop', label: 'weevils', imap: { host: 'imap.gmail.com' }, smtp: { host: 'smtp.gmail.com' }, authserv: 'mx.google.com' })
+    const c = mailConfig({ WEEVILS_MAIL_ADDRESS: 'Alex+weevils@gmail.com', WEEVILS_MAIL_PASSWORD: 'abcd efgh ijkl mnop' })
+    expect(c).toMatchObject({ address: 'alex+weevils@gmail.com', login: 'alex@gmail.com', password: 'abcdefghijklmnop', label: 'weevils', imap: { host: 'imap.gmail.com' }, smtp: { host: 'smtp.gmail.com' }, authserv: 'mx.google.com' })
     expect(mailConfig({ WEEVILS_MAIL_ADDRESS: 'y+w@gmail.com', WEEVILS_MAIL_PASSWORD: 'x', WEEVILS_MAIL_LABEL: 'INBOX' })).toBeNull()
   })
   it('ne traite que les mails adressés à l’alias du pont (To, Cc ou Delivered-To)', () => {
-    expect(screen(mail({ to: 'scarville@gmail.com' }), CFG, AUTHORS)).toMatchObject({ ok: false })
-    expect(screen(mail({ to: 'scarville+autre@gmail.com' }), CFG, AUTHORS)).toMatchObject({ ok: false })
-    expect(screen(mail({ to: 'scarville@gmail.com', headers: [`Authentication-Results: ${AR_OK}`, 'Delivered-To: scarville+weevils@gmail.com'] }), CFG, AUTHORS).ok).toBe(true)
-    expect(screen(mail({ to: 'a@b.c, "W" <scarville+weevils@gmail.com>' }), CFG, AUTHORS).ok).toBe(true)
+    expect(screen(mail({ to: 'alex@gmail.com' }), CFG, AUTHORS)).toMatchObject({ ok: false })
+    expect(screen(mail({ to: 'alex+autre@gmail.com' }), CFG, AUTHORS)).toMatchObject({ ok: false })
+    expect(screen(mail({ to: 'alex@gmail.com', headers: [`Authentication-Results: ${AR_OK}`, 'Delivered-To: alex+weevils@gmail.com'] }), CFG, AUTHORS).ok).toBe(true)
+    expect(screen(mail({ to: 'a@b.c, "W" <alex+weevils@gmail.com>' }), CFG, AUTHORS).ok).toBe(true)
   })
   it('refuse un inconnu, l’adresse du pont, et tout mail automatique', () => {
-    expect(screen(mail({ from: 'scarville@gmail.com' }), CFG, AUTHORS).ok).toBe(false)
+    expect(screen(mail({ from: 'alex@gmail.com' }), CFG, AUTHORS).ok).toBe(false)
     expect(screen(mail({ from: 'x@evil.com' }), CFG, AUTHORS).ok).toBe(false)
-    expect(screen(mail({ from: 'scarville+weevils@gmail.com' }), CFG, AUTHORS)).toMatchObject({ ok: false })
+    expect(screen(mail({ from: 'alex+weevils@gmail.com' }), CFG, AUTHORS)).toMatchObject({ ok: false })
     for (const h of ['Auto-Submitted: auto-replied', 'X-Autoreply: yes', 'Precedence: bulk', 'X-Weevils: author=gepetto']) {
       const m = mail({ headers: [`Authentication-Results: ${AR_OK}`, h] })
       expect(isAutomatic(m)).not.toBeNull()

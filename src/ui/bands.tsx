@@ -42,7 +42,7 @@ function useStickBottom(ref: React.RefObject<HTMLDivElement | null>, count: numb
 }
 
 /** L'aperçu vivant du fil, dans la bande réduite : les derniers messages, les récents en bas, les anciens remontent et s'estompent. */
-/** Au plus près du bas (px) : l'aperçu suit les nouveaux messages ; plus haut, Scarville remonte l'historique et on le laisse lire. */
+/** Au plus près du bas (px) : l'aperçu suit les nouveaux messages ; plus haut, l'utilisateur remonte l'historique et on le laisse lire. */
 const PEEK_STICK = 48
 
 /**
@@ -66,7 +66,7 @@ function Peek({ onOpen }: { onOpen: () => void }) {
     const el = box.current
     if (el) el.scrollTop = el.scrollHeight
   }, [])
-  // Nouveau message, réponse qui s'allonge, étoile qui apparaît : on redescend, sauf si Scarville remonte.
+  // Nouveau message, réponse qui s'allonge, étoile qui apparaît : on redescend, sauf si l'utilisateur remonte.
   useEffect(() => {
     const el = box.current
     if (!el || reading.current) return

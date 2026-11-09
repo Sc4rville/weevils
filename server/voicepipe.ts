@@ -21,7 +21,7 @@ const log = (s: string) => console.log(`[voix] ${s}`)
 
 // ---------------------------------------------------------------- texte à dire
 
-/** La langue de ce qui sera dit : celle du texte (la réponse de weevboss, le message de Scarville), sinon la langue réglée. */
+/** La langue de ce qui sera dit : celle du texte (la réponse de weevboss, le message de l'utilisateur), sinon la langue réglée. */
 export const langOf = (text: string): Lang => detectLang(text) ?? lang()
 
 const clean = (text: string) =>

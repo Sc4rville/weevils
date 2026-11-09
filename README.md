@@ -1,187 +1,99 @@
 # weevils
 
-**A phone cockpit for your coding agents**: see and drive your Claude Code and Codex sessions, on one or more
-machines, from your phone.
+**Watch and drive your Claude Code and Codex sessions from your phone**, on your own machine, with the subscriptions
+you already have.
 
-- **Every session, sorted by project**: live state (working, your turn, available, done), what the agent is doing
-  now, and the full thread, read straight from the Claude Code / Codex transcripts.
-- **Drive them from the phone**: write to a session, answer its permission prompts with one tap, start a new one,
-  resume a closed one, send photos, dictate.
-- **weevboss**, the orchestrator at the top: a dedicated Claude session you talk to; it reads the other sessions and
-  dispatches work to them.
-- **Several machines, one app**: each machine runs a small daemon; secondary machines join the main one through a
-  reverse SSH tunnel.
-- **Your subscriptions, no API cost**: weevils drives the official `claude` and `codex` CLIs you are already logged
-  in to. A Node 22 server with no runtime dependency, an installable web app (PWA), English and French.
+<img src="docs/first-run.gif" width="280" alt="weevils on a fresh install: the 3-card intro, the empty home, the first hint">
 
-![weevils on a phone: the project feed with a tip card, a session asking for permission, the weevboss chat, the onboarding](docs/screenshot.png)
+- **Every session, sorted by project**: what each agent is doing right now, and the full thread.
+- **Reply from the phone**: write to a session, answer its questions with one tap, send a photo, dictate, start a
+  new session or resume an old one.
+- **weevboss**: one chat at the top that reads your sessions and passes work on to them.
+- **Several machines, one app**: a laptop and a server show up side by side.
+
+No API cost: weevils drives the official `claude` and `codex` commands you are already logged in to.
 
 ## Install
 
-On a Linux machine or VPS (Ubuntu/Debian tested; dnf and pacman supported). You need Claude Code and/or Codex
-installed and logged in there; the installer takes care of the rest (git, tmux, Node.js ≥ 22.18…, with sudo after
-asking).
+You need a Linux machine (a VPS, a home server, WSL2) with **Claude Code** installed and logged in as a regular user
+(not root). Codex is optional.
 
 ```sh
 git clone https://github.com/Sc4rville/weevils && cd weevils && ./install.sh
 ```
 
-Once the repo is public, a one-liner will do the same:
+The installer asks for your first name, your language and a domain (optional, see below), then installs what
+is missing (git, tmux, Node 22…, with sudo after asking), sets up the background service and prints a link and a QR
+code. It takes a few minutes. Run it again any time to update; your settings are kept.
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/Sc4rville/weevils/main/install.sh | bash
-```
+How the phone reaches the machine:
 
-Run it again any time: it updates and keeps your settings.
-
-| option | |
+| | |
 |---|---|
-| `--yes` | no questions, defaults everywhere |
-| `--name <first name>` | how the agents call you |
-| `--lang en\|fr` | language of the installer and of the server |
-| `--domain <host>` | HTTPS through Caddy (the domain must point to the machine, ports 80/443 open) |
-| `--port <n>` | port of weevilsd on 127.0.0.1 (default 4179) |
-| `--dir <path>` | install directory when piped from curl (default `~/weevils`) |
-| `--secondary <ssh-host>` | install a secondary machine federated to the main one |
-| `--machine <id>` | id and name of this machine (default: hostname) |
-| `--no-update` | no `git pull` |
+| `--domain weevils.example.com` | **recommended**: HTTPS with an automatic certificate (the domain must point to the machine, ports 80/443 open). Needed for the installed app, notifications and the mic. |
+| `--lan` | same Wi-Fi, plain http: fine to try at home, never on a VPS |
+| neither | the app stays on 127.0.0.1: use an SSH tunnel from a computer, or [Tailscale](https://tailscale.com) (`tailscale serve`) |
 
-**HTTPS.** With `--domain weevils.example.com`, the installer sets up Caddy and a site for weevilsd (an existing
-Caddyfile keeps its sites). Without it, weevilsd only listens on 127.0.0.1: reach it through an SSH tunnel
-(`ssh -L 4179:127.0.0.1:4179 you@server`, then http://localhost:4179), or set `WEEVILS_HOST=0.0.0.0` to open it to
-your LAN over plain http. Push notifications and the installed app need HTTPS.
+Other options: `--yes` (no questions), `--name`, `--lang en|fr`, `--port`, `--secondary <ssh host>` (add a second
+machine), `--uninstall` (`--purge` also deletes settings and data). Everything the script does:
+[docs/install.md](docs/install.md).
 
-**A second machine** (a laptop, another server): install the main machine first, make sure `ssh <main host>` works
-without a password from the second one, then run there:
+## First session
 
-```sh
-./install.sh --secondary <main ssh host>
-```
+1. Scan the QR code (or open the link) on your phone: you are logged in.
+2. Add it to the home screen (iPhone: Share → Add to Home Screen; Android: Install app).
+3. On the machine, start a session in one of your repos (they live in `~/projects` by default, change it with
+   `WEEVILS_PROJECTS`):
+   ```sh
+   cd ~/projects/my-app && wv "fix the failing test"
+   ```
+   `wv` alone opens Claude Code, `wv codex` opens Codex, `wv ls` lists sessions, `wv a` attaches to one.
+4. The session shows up under its project. Tap it to read along and reply.
+5. Or skip the terminal: tap `+` on a project, or just ask weevboss at the top.
 
-It runs its own weevilsd (no app, no weevboss) and a reverse SSH tunnel to the main machine, registers itself
-there, and its sessions show up in the main app.
+Sessions opened in a plain terminal (without `wv`) are hidden: weevils can't write to them safely.
 
-Under the hood, `install.sh` calls `server/install.sh main` or `server/install.sh secondary <ssh-host>`, which
-install the commands in `~/.local/bin` (`wv`, `weevils`, `weevils-service`, `weevils-hook`), the Claude Code hooks
-and the service (`systemd --user` with linger, or a background process where there is no systemd). Control it with
-`weevils-service start|stop|restart|status|logs`. (`server/install.sh pc` is a deprecated alias of `secondary`.)
+<img src="docs/screenshot.png" alt="weevils with a few sessions running: projects, a session waiting for an answer, weevboss, the machines">
 
-All the details, what the script changes and how it is tested: [docs/install.md](docs/install.md).
+## Voice
 
-## First run
+- **Dictation** (the mic button): needs an OpenAI API key (`OPENAI_API_KEY`, paid per use) and HTTPS.
+- **Spoken replies** (tap the logo to talk to weevboss): free with [edge-tts](https://github.com/rany2/edge-tts)
+  (`pipx install edge-tts`), or nicer with Cartesia (`CARTESIA_API_KEY`).
 
-1. The installer prints the address, the **access code**, a login link (`https://<your domain>/#k=<code>`) and its
-   QR code. Scan it with your phone: you are logged in. The code is in `~/.config/weevils/secret` if you need it
-   again.
-2. **Add it to the home screen** (iPhone: Safari → Share → Add to Home Screen; Android: Chrome → Install app). On
-   iPhone the installed app asks for the code once more (it has its own cookies), then notifications can be turned on.
-3. The **onboarding** (three cards: a machine, a session, weevboss) shows on an empty feed; replay it from the
-   settings in the bottom band.
-4. Start sessions with **`wv`** so weevils can drive them: `wv` (claude in the current folder), `wv "first message"`,
-   `wv codex`, `wv ls`, `wv a` (attach). Or tap `+` in a project, or just ask weevboss. Sessions opened in a plain
-   terminal can't be written to safely, so they are hidden.
+With an OpenAI key, quick answers and spoken summaries also use OpenAI; without one they use Claude on your
+subscription.
 
-Requests coming from the machine itself (127.0.0.1, no proxy) are trusted without a code: that is how `weevils`
-(the command weevboss uses) talks to weevilsd, and how the main machine reaches a secondary one through its tunnel. Anyone with the code can type into your
-agents, which is shell access: keep it secret.
+## E-mail
 
-## Configuration
+Other agents (a CI bot, another assistant) can write to your sessions by e-mail, through an alias of your inbox.
+Only senders you declare get through. Setup and rules: [docs/email.md](docs/email.md).
 
-One file, outside the repo: `~/.config/weevils/env` (`NAME=value`, one per line), created by the installer from
-[`weevils.env.example`](weevils.env.example), which documents every key. After a change: `weevils-service restart`.
+## Settings
 
-| key | |
-|---|---|
-| `WEEVILS_USER_NAME` | your first name, for the agents |
-| `WEEVILS_LANG` | `en` or `fr` for what the server writes (the app follows the browser) |
-| `WEEVILS_PUBLIC_URL` | public address of the app (push notifications, login link) |
-| `WEEVILS_PORT`, `WEEVILS_HOOK_PORT`, `WEEVILS_HOST` | app port (4179), local hook port (4180), listen address (127.0.0.1) |
-| `WEEVILS_PROJECTS` | folders holding your repos, `:`-separated (default `~/projects`) |
-| `WEEVILS_EXPOSE_DOMAIN` | domain where preview servers are exposed as `<name>.<domain>` (built-in browser) |
-| `WEEVILS_GH_OWNER` | GitHub account of your repos (default: the one `gh` is logged in with) |
-| `WEEVILS_MACHINE`, `WEEVILS_MACHINE_NAME` | id and display name of this machine (default: hostname) |
-| `WEEVILS_ORCHESTRATOR` | `1` on the main machine (weevboss), `0` on a secondary one |
-| `WEEVILS_REMOTES` | other weevilsd to federate, `name=url,…` (filled in by `--secondary`) |
-| `OPENAI_API_KEY`, `CARTESIA_API_KEY` | dictation and spoken summaries; voice (otherwise edge-tts) |
-| `DEVIL_API_URL`, `DEVIL_API_KEY`, `DEVIL_MODEL` | devil mode: another model behind an OpenAI-compatible API |
-| `WEEVILS_AUTHOR_<ID>`, `WEEVILS_MAIL_*` | external authors and the e-mail bridge (below) |
+One file outside the repo, `~/.config/weevils/env`, created by the installer from [`.env.example`](.env.example),
+which explains every setting. After a change: `weevils-service restart` (for the port or the domain, run
+`./install.sh` again).
 
-### E-mail bridge (external agents)
+## Security
 
-Agents other than weevboss can write to the sessions by e-mail. Each one is an **author** declared in the env file
-(`WEEVILS_AUTHOR_<ID>=name | color | e-mails | secret`); its messages show in the threads signed with its name, in
-its color.
-
-- **Address**: an alias of your Gmail inbox, `you+weevils@gmail.com` (`WEEVILS_MAIL_ADDRESS`, app password in
-  `WEEVILS_MAIL_PASSWORD`), which receives and replies (as From). A Gmail filter "to: you+weevils@gmail.com" applies
-  the `weevils` label and skips the inbox; the bridge only watches that label (never INBOX), only handles mail sent
-  to the alias, and never reads, marks, moves or deletes any other mail.
-- **Subject = target**: `[project]` an available session of the project (otherwise a new one) ·
-  `[session:2cbb0bbd]` that session · `[weevboss]` the orchestrator · `[new:project]` (or `[new:project:codex]`) a
-  new session. **Body** = the message.
-- **Reply**: sent back to the sender in the same thread (In-Reply-To); answering it continues the same session.
-- **Delivery**: IMAP IDLE (push), re-armed every 30 s (fallback polling), automatic reconnection, dedup by
-  Message-ID. Log: `journalctl --user -u weevilsd | grep '\[mail\]'`.
-- **Security**: only declared senders get through, with SPF or DKIM aligned on their domain (Authentication-Results
-  of the receiving server) or the author's secret (`[key:…]` in the subject, or a `key: …` line in the body). Rate
-  limit per author. Everything else is ignored, logged, and left unread.
-- **No loops**: nothing from the bridge's own address, nothing automatic (Auto-Submitted, X-Autoreply,
-  Precedence: bulk, X-Weevils); every reply goes to the sender only and carries `Auto-Submitted: auto-replied` and
-  `X-Weevils`.
-
-## Architecture
-
-```
-phone (PWA) ──HTTPS + SSE──▶ Caddy (optional) ──▶ weevilsd :4179 (main machine, Node 22, no dependency)
-                                                    ├─ Claude Code / Codex transcripts (~/.claude, ~/.codex)
-                                                    ├─ Claude Code hooks: exact live state (127.0.0.1:4180)
-                                                    ├─ tmux sessions "wv-*": write, read the screen, keys
-                                                    ├─ weevboss: a Claude session with the `weevils` command
-                                                    └─ other machines' weevilsd, via reverse SSH tunnel (127.0.0.1:4192…)
-```
-
-- **`server/`**: weevilsd. Reads the transcripts incrementally, receives the hooks, drives tmux, imports ChatGPT /
-  Claude.ai exports (`~/weevils-imports`), sorts sessions (folder → repo → project, where a project is a family of
-  repos sharing a prefix: `shop-web`, `shop-api` → `shop`), serves the app and the API.
-- **`src/`**: the React app (Vite, Motion). **`shared/`**: types and i18n shared by both.
-- **Machines**: every machine runs its own weevilsd; the main one federates the others (`WEEVILS_REMOTES`) and is
-  the only one serving the app and running weevboss.
-
-## Development
-
-```sh
-npm install
-npm run dev          # Vite on 127.0.0.1:4178 with HMR, proxies /api to a weevilsd on :4179
-npm test             # vitest (includes the i18n test)
-npm run typecheck    # app; the server: npx tsc --noEmit -p server
-npm run i18n:check   # no hard-coded user-facing string
-npm run build        # what weevilsd serves (dist/)
-test/docker/run.sh   # installer end to end in blank Ubuntu containers (needs Docker); `edge` for the hard cases
-```
-
-Run a throwaway weevilsd next to a real one with its own home, tmux server and ports, no federation and no weevboss
-(it serves `dist/`, so `npm run build` first):
-`T=$(mktemp -d); env -u WEEVILS_REMOTES HOME=$T TMUX_TMPDIR=$T WEEVILS_PORT=4410 WEEVILS_HOOK_PORT=4411 WEEVILS_ORCHESTRATOR=0 node server/index.ts`.
-`/phones.html` shows the app at 375 / 390 / 430 px side by side.
-
-## Languages
-
-English and French, everywhere: the app follows the browser (setting in the bottom band), the server uses
-`WEEVILS_LANG` (or the app's choice), the installer `--lang`.
-
-Every area owns a small catalog with both languages side by side, same keys, checked by TypeScript:
-`src/i18n/<area>.ts` for the app, `server/i18n/<area>.ts` for the server. To add a language: add it to `Lang`,
-`LANGS` and `LANG_NAMES` in [`shared/i18n.ts`](shared/i18n.ts), then a block in every catalog; the shell parts
-(`install.sh`, `server/wv`, `server/weevils-cli`) and weevboss's prompt (`server/orchestrator.<lang>.md`) have their
-own strings.
+- **The access code is shell access.** Anyone with it can type into your agents. It lives in
+  `~/.config/weevils/secret`; keep it private.
+- **Agents run without permission prompts** (`--dangerously-skip-permissions`), so they never wait for you while you
+  are away. Set `WEEVILS_SAFE=1` to keep the prompts and answer them from the phone.
+- **Use HTTPS** (`--domain`) for anything beyond your home network.
+- **Requests from the machine itself are trusted without the code** (the `weevils` command, a second machine's
+  tunnel). If you put a proxy other than the installer's Caddy in front, it must send `X-Forwarded-For`
+  (nginx: `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`).
+- **Lost a phone?** `rm ~/.config/weevils/secret ~/.local/share/weevils/tokens.json && weevils-service restart`, then
+  log in again with the new code (`cat ~/.config/weevils/secret`).
+- The machine page shows a few facts about the server (CPU, memory, disk). It only looks up the hosting provider
+  online if you set `WEEVILS_DISCOVER=1`. The quota page reads your Claude Code / Codex login to show your usage.
 
 ## More
 
-- [docs/install.md](docs/install.md): installer details and tests
-- [docs/vision.md](docs/vision.md): design rules · [docs/decisions.md](docs/decisions.md): provisional choices
-- [docs/plan.md](docs/plan.md): the original plan · [docs/changelog.md](docs/changelog.md): what changed since
-- `harness-interface-kit/`: the original French design brief the prototype was built from
+- [docs/install.md](docs/install.md): installer details, several machines, tests
+- [CONTRIBUTING.md](CONTRIBUTING.md): development setup, checks, how the code is laid out
+- [docs/changelog.md](docs/changelog.md): what changed
 
-## License
-
-License: TBD (no license file yet).
+English and French throughout. MIT license, see [LICENSE](LICENSE).

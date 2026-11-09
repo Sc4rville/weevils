@@ -1,13 +1,12 @@
 # Changelog
 
-A short summary of what changed after the first working version. It replaces the French night log
-(`docs/backlog.md`) the feedback was first written into.
+A short summary of what changed after the first working version.
 
 ## 2026-11-09
 
 ### Open source
 - No personal data in the code: one config file outside the repo (`~/.config/weevils/env`, template
-  [`weevils.env.example`](../weevils.env.example)).
+  [`.env.example`](../.env.example)).
 - English and French everywhere (app, server, installer, `wv`); the language follows the browser and can be changed
   in the bottom band. A test fails on any hard-coded user-facing string.
 - One-command installer (`install.sh`) for a main or a secondary machine, optional HTTPS through Caddy, tested in
@@ -15,11 +14,25 @@ A short summary of what changed after the first working version. It replaces the
 - First-run onboarding (three cards: a machine, a session, weevboss), replayable from the settings.
 - Tips and action cards built from the real state (a session waiting for a while, idle sessions to close, a machine
   often maxed out…).
-- First-tap hints: the first time you tap the devil, the voice logo, a machine, the `/`, the quota brain, the green
-  star, a project's `+` or `!`, or the 24/7 band (and the first time the repos page or conversation mode opens), a
+- First-tap hints: the first time you tap the voice logo, the green star, a project's `+` or `!`, or the 24/7 band (and the first time the repos page or conversation mode opens), a
   small flat bubble says what it is and what to do with it, once, remembered by the server for every device.
 - `scripts/fresh.sh`: a blank install in an isolated Docker container, to see weevils as a newcomer; reset in one
   command.
+- Ready for strangers: README rewritten (with captures of a blank install), MIT license, CONTRIBUTING, commented
+  `.env.example`, `docs/email.md`. Settings that only made sense on one machine are now variables with neutral
+  defaults (`WEEVILS_LOGS_DIR`, `WEEVILS_INBOX_DIR`, `WEEVILS_EXPOSE_SITES_DIR`, `WEEVILS_DISCOVER`, edge-tts voices).
+  The hosting-provider lookup (ipinfo.io and a weekly web search) is off unless `WEEVILS_DISCOVER=1`.
+- Security: a request counts as local (trusted without the code) only from 127.0.0.1 with no proxy header, a
+  loopback Host and no Origin from another site or another local server, so a web page open on the machine or a DNS
+  rebinding can no longer drive the agents. The permission-prompt trade-off (`WEEVILS_SAFE`) is documented.
+- Installer: Linux checked first, WSL note, no useless QR code without a domain (the ways in are listed), `--lan`,
+  Claude Code offered and its login checked, root keeps permission prompts, Caddy follows a port change, HTTPS
+  checked at the end, `--uninstall [--purge]`; it no longer changes global Claude Code settings.
+- Tests on the critical paths: sending, delivery and the session lifecycle (tmux layer, transcripts, status
+  machine), hermetic (temporary HOME). Fixed on the way: a signed message to a Codex session was typed twice and
+  reported as not received; a photo send left a duplicate "sending" bubble. `npm run check` = typecheck (app and
+  server) + i18n + shell syntax + tests, ready for CI (`docs/ci/ci.yml`).
+- Devil mode is turned on per device from the settings in the bottom band (shown when `DEVIL_API_URL` is set).
 
 ### weevboss, the orchestrator
 - The top band is a chat with a dedicated Claude session (hidden from the projects) that has the `weevils` command
@@ -28,7 +41,7 @@ A short summary of what changed after the first working version. It replaces the
 - Three voices in every thread: you, weevboss (or another author), the agent.
 - Calm by default: a general chat that grows to half the screen at most.
 - Devil mode: another model behind an OpenAI-compatible API can join the same thread.
-- External agents can write to the sessions by e-mail (authors + e-mail bridge, see the README).
+- External agents can write to the sessions by e-mail (authors + e-mail bridge, see [email.md](email.md)).
 
 ### Sessions
 - The session page is the real conversation (you / the agent / what it is doing), in the project's color; the

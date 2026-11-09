@@ -1,5 +1,5 @@
 import type { SessionStatus } from '../../shared/api.ts'
-import { getLang, tr } from '../i18n'
+import { tr } from '../i18n'
 import M from '../i18n/format'
 
 /** Durée compacte, façon croquis : 12m, 1h36, 14h01, 2j (2d en anglais). */
@@ -42,9 +42,6 @@ export const status = Object.fromEntries(
     },
   ]),
 ) as Record<SessionStatus, { readonly ch: string; readonly label: string }>
-
-/** « 1 fichier », « 3 fichiers ». Français : 0 et 1 au singulier ; anglais : seul 1 est au singulier. */
-export const plural = (n: number, one: string, many: string) => `${n} ${(getLang() === 'fr' ? n > 1 : n !== 1) ? many : one}`
 
 /** Texte d'agent simplifié : on enlève la mise en forme markdown qui n'apporte rien sur le téléphone.
  *  `keep` garde les liens et les `commandes`, que le fil rend cliquables et copiables. */

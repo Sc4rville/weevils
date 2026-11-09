@@ -101,7 +101,7 @@ export function attentionFromScreen(text: string): string | undefined {
   const lines = text
     .split('\n')
     .slice(-30)
-    .map((l) => l.replace(/[│╭╮╰╯─┃━]/g, '').trim())
+    .map((l) => l.replace(/[│╭╮╰╯─┃━]/g, '').replace(/^[●○•⎿]\s*/, '').trim())
   const footer = /(enter to (confirm|continue|select|submit)|enter continue|esc (to cancel|to go back|back|cancel)|\(y\/n\)|\by\/n\b|tab to toggle|↑\/↓ to (navigate|select))/i
   const option = /^[❯›>]\s*(\d+[.)]\s*)?\S|^\d+[.)]\s+\S|^[❯›>]?\s*(yes|no)\b/i
   const tail = lines.length - 1

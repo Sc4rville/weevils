@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useState, type CSSProperties } from 'react'
-import type { MainMessage, Project, Session } from '../../shared/api.ts'
+import type { MainMessage, Project } from '../../shared/api.ts'
 import { api } from '../api'
 import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'

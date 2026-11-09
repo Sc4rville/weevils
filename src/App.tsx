@@ -7,6 +7,7 @@ import { spring } from './ui/bits'
 import { H24Rail } from './ui/h24'
 import { Login } from './ui/login'
 import { PageView } from './ui/pages'
+import { usePinch } from './ui/calm'
 
 const THEME_COLOR = { light: '#B39BFF', dark: '#5522B5' }
 const THEME_KEY = 'weevils-theme'
@@ -101,6 +102,9 @@ export default function App() {
   const back = useCallback(() => {
     if (stackRef.current.length) history.back()
   }, [])
+  const home = useCallback(() => {
+    if (stackRef.current.length) history.go(-stackRef.current.length)
+  }, [])
 
   useEffect(() => {
     history.replaceState({ w: 0 }, '')
@@ -164,6 +168,8 @@ export default function App() {
     return [...snap.projects].sort((a, b) => rank(a.id) - rank(b.id) || b.lastActivityAt - a.lastActivityAt)
   }, [live.snap])
 
+  const pinchMain = usePinch(() => push({ kind: 'calm' }))
+
   if (live.authed === false) return <Login onDone={() => live.setAuthed(true)} />
   if (!live.snap) {
     return (
@@ -186,6 +192,7 @@ export default function App() {
     push,
     replace,
     back,
+    home,
     expanded,
     setExpanded,
     h24Open,
@@ -200,6 +207,7 @@ export default function App() {
     <Ctx.Provider value={ctx}>
       <MotionConfig reducedMotion="user" transition={spring}>
         <motion.main
+          {...pinchMain}
           className="stack"
           aria-hidden={stack.length > 0 || undefined}
           inert={stack.length > 0}

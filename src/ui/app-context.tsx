@@ -13,6 +13,8 @@ export type Page =
   | { kind: 'conversation'; id: string }
   | { kind: 'import' }
   | { kind: 'repos' }
+  | { kind: 'calm' }
+  | { kind: 'calmconv'; id: string }
 
 export interface AppCtx {
   snap: Snapshot
@@ -23,6 +25,8 @@ export interface AppCtx {
   push: (page: Page) => void
   replace: (page: Page) => void
   back: () => void
+  /** Ferme toutes les pages : retour au fil. */
+  home: () => void
   expanded: string | null
   setExpanded: (id: string | null) => void
   h24Open: boolean

@@ -17,6 +17,9 @@
   --ink: #000;
   --agent: #b39bff;
   --h24: #ffc64c;
+  /* Mode conversation : une seule couleur apaisante. */
+  --calm: oklch(0.91 0.045 165);
+  --calm-soft: 0.07;
   /* Palette des projets : 16 teintes vives rangées par teinte (voisines = proches), texte noir. */
   --p0: oklch(0.80 0.14 5);
   --p1: oklch(0.80 0.14 27.5);
@@ -42,6 +45,8 @@
   --ink: #fff;
   --agent: #5522b5;
   --h24: #744900;
+  --calm: oklch(0.3 0.04 165);
+  --calm-soft: -0.04;
   /* Palette des projets : les mêmes 16 teintes, profondes, texte blanc. */
   --p0: oklch(0.44 0.13 5);
   --p1: oklch(0.44 0.13 27.5);
@@ -1202,5 +1207,98 @@ input:focus-visible {
 @media (min-width: 700px) {
   .repo-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* ---------- Mode conversation : grille douce, puis immersion ---------- */
+
+.calm-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.calm-cell {
+  min-height: 124px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 14px var(--pad) 16px;
+  text-align: left;
+  color: var(--ink);
+  /* La couleur du projet, adoucie : moins saturée, un peu plus claire (ou plus sombre en thème sombre). */
+  background: oklch(from var(--c) calc(l + var(--calm-soft)) calc(c * 0.6) h);
+}
+
+.calm-cell .calm-title {
+  font-weight: 700;
+  font-size: 1.125rem;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.calm-cell .meta {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.page.calm {
+  background: var(--calm);
+}
+
+.page.calm .calm-top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--safe-t) 6px 0;
+  min-height: 52px;
+}
+
+.page.calm .calm-top .ch {
+  opacity: 0.55;
+}
+
+.page.calm .msg,
+.page.calm .msg.tone,
+.page.calm .msg.orch,
+.page.calm .composer,
+.page.calm .band {
+  background: transparent;
+}
+
+.page.calm .msg .who {
+  opacity: 0.55;
+}
+
+.page.calm .composer .prompt,
+.page.calm .composer .tool-btn,
+.page.calm .composer .send {
+  opacity: 0.5;
+}
+
+.page.calm .composer .send:disabled {
+  opacity: 0.2;
+}
+
+.page.calm .composer > .in {
+  min-height: 60px;
+}
+
+.page.calm .composer input {
+  background: oklch(from var(--calm) calc(l - 0.035) c h);
+  border-radius: 999px;
+  padding-inline: 16px;
+}
+
+@media (min-width: 700px) {
+  .calm-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }

@@ -7,6 +7,7 @@ import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Settings, effortLabel, shortModel } from './settings'
 import { ReposPage } from './repos'
+import { CalmConv, CalmGrid } from './calm'
 import { Shell } from './shell'
 import { ago, dur, durLong, plural, status } from './format'
 
@@ -44,6 +45,10 @@ export function PageView({ page }: { page: Page }) {
       return <ImportPage />
     case 'repos':
       return <ReposPage />
+    case 'calm':
+      return <CalmGrid />
+    case 'calmconv':
+      return <CalmConv id={page.id} />
   }
 }
 

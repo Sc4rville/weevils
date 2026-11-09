@@ -25,6 +25,20 @@ function applyTop(theme: string) {
   if (top.el) meta?.setAttribute('content', getComputedStyle(top.el).backgroundColor)
 }
 
+/** Une page ouverte teinte toute la fenêtre (fond, barre d'état) et masque le fil : à appeler depuis chaque page plein écran. */
+export function usePageChrome(slot: string, page: React.RefObject<HTMLElement | null>) {
+  const { theme } = useApp()
+  useEffect(() => {
+    const entry = { slot, el: page.current }
+    open.push(entry)
+    applyTop(theme)
+    return () => {
+      open.splice(open.indexOf(entry), 1)
+      applyTop(theme)
+    }
+  }, [slot, theme, page])
+}
+
 /** Page plein écran dans la couleur du projet. Glisser vers la droite = retour. */
 export function Shell({
   slot,
@@ -44,21 +58,13 @@ export function Shell({
   /** Volet à côté du fil (navigateur intégré) : la page se partage en deux. */
   side?: ReactNode
 }) {
-  const { back, theme } = useApp()
+  const { back } = useApp()
   const heading = useRef<HTMLHeadingElement>(null)
   const page = useRef<HTMLDivElement>(null)
   useEffect(() => {
     heading.current?.focus({ preventScroll: true })
   }, [])
-  useEffect(() => {
-    const entry = { slot, el: page.current }
-    open.push(entry)
-    applyTop(theme)
-    return () => {
-      open.splice(open.indexOf(entry), 1)
-      applyTop(theme)
-    }
-  }, [slot, theme])
+  usePageChrome(slot, page)
   return (
     <motion.div
       ref={page}

@@ -217,6 +217,8 @@ export function Composer({
     setFiles([])
     setBusy(true)
     setErr(null)
+    // Le clavier se range tout seul : les barres système d'iOS disparaissent avec lui.
+    ;(document.activeElement as HTMLElement | null)?.blur?.()
     try {
       if (sent.length && onAttach) await onAttach(t, sent)
       else await onSend(t)

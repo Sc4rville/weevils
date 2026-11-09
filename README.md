@@ -159,8 +159,9 @@ npm run build        # what weevilsd serves (dist/)
 test/docker/run.sh   # installer end to end in blank Ubuntu containers (needs Docker); `edge` for the hard cases
 ```
 
-Run a throwaway weevilsd next to a real one with its own home and ports:
-`T=$(mktemp -d); HOME=$T TMUX_TMPDIR=$T WEEVILS_PORT=4410 WEEVILS_HOOK_PORT=4411 node server/index.ts`.
+Run a throwaway weevilsd next to a real one with its own home, tmux server and ports, no federation and no weevboss
+(it serves `dist/`, so `npm run build` first):
+`T=$(mktemp -d); env -u WEEVILS_REMOTES HOME=$T TMUX_TMPDIR=$T WEEVILS_PORT=4410 WEEVILS_HOOK_PORT=4411 WEEVILS_ORCHESTRATOR=0 node server/index.ts`.
 `/phones.html` shows the app at 375 / 390 / 430 px side by side.
 
 ## Languages

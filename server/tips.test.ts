@@ -59,7 +59,8 @@ const snap = (over: Partial<Snapshot> = {}): Snapshot => ({
   ...over,
 })
 
-const input = (over: Partial<TipInput> = {}): TipInput => ({ snap: snap(), now: NOW, loads: [], dictation: true, ...over })
+// Automatic pane cleanup turned off by default here (WEEVILS_KILL_AFTER_MIN raised), so the idle rule can speak.
+const input = (over: Partial<TipInput> = {}): TipInput => ({ snap: snap(), now: NOW, loads: [], dictation: true, reapMs: Infinity, ...over })
 const rules = (i: TipInput) => personalTips(i).map((c) => c.rule)
 
 const load = (n: number, hot: (k: number) => boolean, cores = 4): MachineLoad => ({
@@ -118,6 +119,11 @@ describe('tips — rules', () => {
     // Same situation → same id; another set of sessions → another card.
     expect(personalTips(input({ snap: snap({ sessions: idle }) })).find((c) => c.rule === 'idle-sessions')!.id).toBe(card.id)
     expect(personalTips(input({ snap: snap({ sessions: idle.slice(0, 1) }) })).find((c) => c.rule === 'idle-sessions')!.id).not.toBe(card.id)
+  })
+
+  it('no idle-sessions card while weevilsd closes idle panes on its own sooner (default 2 h)', () => {
+    const sessions = [session({ id: 'a', status: 'done', lastActivityAt: NOW - 20 * H })]
+    expect(rules(input({ snap: snap({ sessions }), reapMs: 2 * H }))).toEqual([])
   })
 
   it('idle since yesterday when every session went quiet before midnight', () => {

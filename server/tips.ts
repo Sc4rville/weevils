@@ -11,7 +11,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { Session, Snapshot } from '../shared/api.ts'
 import type { LoadSample, MachineLoad, TipCard } from '../shared/tips.ts'
-import { DATA_DIR, MACHINE } from './config.ts'
+import { DATA_DIR, KILL_AFTER_MS, MACHINE } from './config.ts'
 import type { Weevils } from './core.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/tips.ts'
@@ -39,6 +39,8 @@ export interface TipInput {
   loads: MachineLoad[]
   /** Dictation is configured (OPENAI_API_KEY). */
   dictation: boolean
+  /** weevilsd already closes a weevils pane idle for this long (WEEVILS_KILL_AFTER_MIN, 2 h by default). */
+  reapMs: number
 }
 
 /** A card plus what its action needs (never sent to the app). */
@@ -92,7 +94,10 @@ export const RULES: Rule[] = [
   },
   {
     rule: 'idle-sessions',
-    check: ({ snap, now }) => {
+    // Only when the automatic cleanup is set later than that (otherwise those panes are already gone, and a pane
+    // idle "since yesterday" would be a session just reopened).
+    check: ({ snap, now, reapMs }) => {
+      if (reapMs <= IDLE_SESSION_MS) return []
       const list = idleSessions(snap, now)
       if (!list.length) return []
       const midnight = new Date(now).setHours(0, 0, 0, 0)
@@ -234,7 +239,7 @@ export function tipRoutes(w: Weevils, json: Json, readBody: ReadBody, dictation:
     )
     return out
   }
-  const input = async (): Promise<TipInput> => ({ snap: w.snapshot(), now: Date.now(), loads: await loads(), dictation: dictation() })
+  const input = async (): Promise<TipInput> => ({ snap: w.snapshot(), now: Date.now(), loads: await loads(), dictation: dictation(), reapMs: KILL_AFTER_MS })
 
   return [
     ['GET', /^\/api\/tips$/, async (_req, res) => json(res, 200, { tips: personalTips(await input()).map(toCard) })],

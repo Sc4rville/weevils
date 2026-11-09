@@ -28,7 +28,7 @@ export default defineMessages({
     destinations:
       'The only possible destinations are the projects below (id: name · repos · description). A theme ("design", "money", "health") is not a project: never invent a category.',
     project: (id: string, name: string, repos: string, about: string) => `- ${id}: ${name}${repos ? ` · ${repos}` : ''}${about ? ` · ${about}` : ''}`,
-    examples: (user: string, lines: string) => `\nSortings approved by ${user} (follow them):\n${lines}`,
+    examples: (user: string, lines: string) => `\nAlready sorted by ${user} (do the same):\n${lines}`,
     example: (title: string, projectId: string) => `- "${title}" → ${projectId}`,
     task: (user: string) =>
       [

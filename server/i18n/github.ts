@@ -28,8 +28,8 @@ export default defineMessages({
     noClone: 'repo created but the clone is missing',
     blurbPrompt: (user: string, repos: string) =>
       [
-        `For each of ${user}'s GitHub repos, write in English ONE short phrase (3 to 8 words, lowercase first letter, no final period) that says what it is, the way you'd tell a friend: "the mobile game", "the surf lessons website", "the app that drives the agents".`,
-        'No jargon and no list of technologies, never the repo name copied over, never the raw description. If the README says nothing clear, guess from the name and keep it plain (e.g. "an experiment put aside").',
+        `For each of ${user}'s GitHub repos, write in English ONE short phrase (3 to 8 words, lowercase first letter, no final period) that says what it is, the way you'd tell a friend: "the mobile game", "the surf lessons website", "the app that runs their agents".`,
+        'No jargon and no list of technologies, never the repo name copied over, never the raw description. If the README says nothing clear, guess from the name and keep it plain (e.g. "a shelved experiment").',
         "Don't read any file, don't run any command: answer directly.",
         '',
         repos,

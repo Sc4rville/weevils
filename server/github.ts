@@ -10,7 +10,8 @@ import M from './i18n/github.ts'
 function gh(args: string[], cwd?: string, timeout = 30_000): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile('gh', args, { cwd, timeout, maxBuffer: 32 << 20 }, (err, stdout, stderr) => {
-      if (err) reject(new Error(stderr?.toString().trim().split('\n').pop() || err.message))
+      if ((err as NodeJS.ErrnoException | null)?.code === 'ENOENT') reject(new Error(tr(M).ghMissing))
+      else if (err) reject(new Error(stderr?.toString().trim().split('\n').pop() || err.message))
       else resolve(stdout.toString())
     })
   })

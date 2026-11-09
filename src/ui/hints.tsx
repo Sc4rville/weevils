@@ -113,7 +113,7 @@ function show(id: HintId, el: Element | null, key: Shown['key'] = id): boolean {
  */
 export const tapHint = (id: HintId, el: Element | null, variant?: Shown['key']) => show(id, el, variant)
 
-/** A page's hint, the first time it opens (anchored to `anchor` when given, otherwise at the top). */
+/** A page's hint, the first time it opens (anchored to `anchor` when given, otherwise at the bottom of the screen). */
 export function useViewHint(id: HintId, anchor?: RefObject<Element | null>) {
   useEffect(() => {
     const t = setTimeout(() => show(id, anchor?.current ?? null), VIEW_DELAY_MS)
@@ -136,7 +136,8 @@ function place(anchor: DOMRect | null, w: number, h: number): { style: CSSProper
   const vw = window.innerWidth
   const vh = window.innerHeight
   const margin = 10
-  if (!anchor) return { style: { left: Math.max(margin, (vw - w) / 2), top: 'calc(var(--safe-t) + 72px)' }, notch: null, below: true }
+  // A page's hint: at the bottom, where a page is mostly empty, never over its title or its first lines.
+  if (!anchor) return { style: { left: Math.max(margin, (vw - w) / 2), bottom: 'calc(var(--safe-b) + 28px)' }, notch: null, below: true }
   const cx = anchor.left + anchor.width / 2
   const left = Math.min(Math.max(margin, cx - w / 2), vw - w - margin)
   const below = anchor.bottom + 12 + h < vh - margin || anchor.top - 12 - h < margin

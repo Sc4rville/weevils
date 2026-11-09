@@ -78,3 +78,21 @@ and Node 18 from Ubuntu upgraded, a Node 20 tarball shadowing the new one, `cat 
 with a `file://` repo and `--dir`, a re-run after editing the config by hand (every value kept, API key never
 printed), `--lang fr` without a single English line, and a Caddy that already serves another site (kept, and left
 untouched when Caddy rejects the new domain).
+
+## Seeing weevils as a newcomer
+
+```sh
+scripts/fresh.sh up --port 4177 --url https://fresh.example.com   # once: builds the image, starts, prints the login link
+scripts/fresh.sh reset                                            # blank again
+scripts/fresh.sh build                                            # new image from the HEAD commit, then blank
+```
+
+A second, blank weevils next to yours, in its own Docker container (`weevils-fresh`): Ubuntu 24.04, Node 22, Claude
+Code installed but not logged in, a user without sudo, weevils put in place by its own `install.sh` from a clone of
+the committed HEAD. No key, no repo, no mail, no project, no session: its own disk, network and loopback, so it can
+neither read your data nor reach your weevilsd (which only trusts its own loopback). Limited to 2 CPUs and 2 GB.
+
+It listens on `127.0.0.1:<port>`; put a reverse proxy in front for HTTPS (Caddy: `reverse_proxy 127.0.0.1:<port>`).
+The login link stays the same across resets (the access code is kept in `~/.config/weevils-fresh/`). After a reset,
+every device that opens the app forgets what it kept about the old instance (intro done, theme, hints…): the server's
+install id changed.

@@ -4,6 +4,7 @@ import { defineMessages } from '../i18n.ts'
 
 export default defineMessages({
   fr: {
+    ghMissing: 'gh (GitHub CLI) n’est pas installé sur cette machine : installe-le, puis gh auth login',
     badRepo: 'repo invalide',
     badPath: 'chemin refusé',
     badRepoName: 'nom de repo invalide',
@@ -21,6 +22,7 @@ export default defineMessages({
     blurbItem: (name: string, description: string, readme: string, language: string) => JSON.stringify({ name, description, readme, langage: language }),
   },
   en: {
+    ghMissing: 'gh (GitHub CLI) is not installed on this machine: install it, then gh auth login',
     badRepo: 'invalid repo',
     badPath: 'path not allowed',
     badRepoName: 'invalid repo name',

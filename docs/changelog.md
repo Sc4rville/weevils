@@ -15,6 +15,11 @@ A short summary of what changed after the first working version. It replaces the
 - First-run onboarding (three cards: a machine, a session, weevboss), replayable from the settings.
 - Tips and action cards built from the real state (a session waiting for a while, idle sessions to close, a machine
   often maxed out…).
+- First-tap hints: the first time you tap the devil, the voice logo, a machine, the `/`, the quota brain, the green
+  star, a project's `+` or `!`, or the 24/7 band (and the first time the repos page or conversation mode opens), a
+  small flat bubble says what it is and what to do with it, once, remembered by the server for every device.
+- `scripts/fresh.sh`: a blank install in an isolated Docker container, to see weevils as a newcomer; reset in one
+  command.
 
 ### weevboss, the orchestrator
 - The top band is a chat with a dedicated Claude session (hidden from the projects) that has the `weevils` command

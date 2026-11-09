@@ -6,6 +6,7 @@ import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
 import { useApp } from './app-context'
 import { ensurePush } from '../push'
+import { VoiceLogo } from './voice'
 import { isUnread, useSeen } from './seen'
 import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, spring } from './bits'
 import { ago, plain, plural, step } from './format'
@@ -38,6 +39,8 @@ export function AgentBand() {
   const { snap, expanded, setExpanded } = useApp()
   const open = expanded === 'agent'
   const body = useRef<HTMLDivElement>(null)
+  const form = useRef<HTMLFormElement>(null)
+  const [draft, setDraft] = useState({ text: '', n: 0 })
   const last = snap.main[snap.main.length - 1]
   useStickBottom(body, snap.main.length, open)
 
@@ -53,7 +56,9 @@ export function AgentBand() {
   return (
     <section className="band agent tone" style={color('agent')} aria-label="weevboss, l’orchestrateur">
       {/* L'espace du haut reste vide pour l'instant : Scarville dira ce qu'on y met. */}
-      <div className="agent-space" aria-hidden />
+      <div className="agent-space">
+        <VoiceLogo onText={(t) => setDraft((d) => ({ text: t, n: d.n + 1 }))} onSend={() => form.current?.requestSubmit()} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} working={snap.mainWorking} />
+      </div>
 
       {/* Replié : la dernière réponse de weevils, en une ligne. Ouvert : la conversation, qui grandit sans tout envahir. */}
       {!open && last && last.role !== 'user' && (
@@ -81,7 +86,7 @@ export function AgentBand() {
       </Collapse>
 
       {/* Écrire ici n'ouvre pas la conversation : elle s'ouvre à l'envoi, pour lire la réponse. */}
-      <Composer placeholder="dis à weevboss quoi faire" label="message à weevboss" onSend={send} onAttach={attach} anyFile voice prompt={snap.mainWorking ? <span className="spin fluo">*</span> : '>'} />
+      <Composer placeholder="dis à weevboss quoi faire" label="message à weevboss" onSend={send} onAttach={attach} anyFile voice draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo">*</span> : '>'} />
     </section>
   )
 }

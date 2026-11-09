@@ -41,6 +41,13 @@ interface Persisted {
 }
 
 const STATE_FILE = path.join(DATA_DIR, 'state.json')
+/** Dernier appel d'outil, en mots : « Bash · Build and deploy » → « build and deploy ». */
+const stepOf = (t: { messages: { role: string; text: string }[] }) => {
+  const e = [...t.messages].reverse().find((m) => m.role === 'event')
+  if (!e) return ''
+  const [, detail] = e.text.split(' · ')
+  return (detail ?? e.text).replace(/^\//, '').toLowerCase()
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 /** Marque des dossiers comme de confiance dans ~/.claude.json : Claude Code n'affiche plus « Is this a project you trust? ». */
@@ -215,6 +222,7 @@ export class Weevils {
   private bumpTimer: NodeJS.Timeout | null = null
   private snap: Snapshot | null = null
   private persistTimer: NodeJS.Timeout | null = null
+  private retitleSoon: NodeJS.Timeout | undefined
 
   constructor() {
     this.migrateCategories()
@@ -252,7 +260,7 @@ export class Weevils {
     setInterval(() => void this.watchImports(), 30_000)
     setInterval(() => void this.classify(), 60_000)
     setTimeout(() => void this.classify(), 5000)
-    setInterval(() => void this.retitle(), 90_000)
+    setInterval(() => void this.retitle(), 45_000)
     setTimeout(() => void this.retitle(), 15_000)
     setInterval(() => this.refreshH24(), 10_000)
     // Les durées et états « périmés » évoluent avec le temps.
@@ -327,6 +335,13 @@ export class Weevils {
     const prev = this.hooks.get(id)
     const pid = pidHeader ? (findClaudePid(Number(pidHeader)) ?? prev?.pid) : prev?.pid
     this.hooks.set(id, { event: body.hook_event_name ?? 'unknown', at: Date.now(), message: body.message, pid })
+    // Nouveau message : l'activité précédente ne vaut plus, on l'efface et on la réécrit dès que possible.
+    if (body.hook_event_name === 'UserPromptSubmit') {
+      const t = this.titles.get(id)
+      if (t?.now) this.titles.set(id, { ...t, now: '' })
+      clearTimeout(this.retitleSoon)
+      this.retitleSoon = setTimeout(() => void this.retitle(), 8000)
+    }
     this.bump()
     // Écriture groupée : PostToolUse peut tomber plusieurs fois par seconde.
     if (!this.persistTimer) {
@@ -469,7 +484,8 @@ export class Weevils {
       tool: t.tool,
       // Le titre choisi par Scarville dans l'outil prime ; sinon celui du renommeur (ce dont la session parle maintenant) ; sinon le début.
       title: t.customTitle ? titleOf(t) : (this.titles.get(t.id)?.title ?? titleOf(t)),
-      now: shortNow(this.titles.get(t.id)?.now ?? '') || undefined,
+      // En attendant l'activité réécrite : le dernier pas de l'agent (outil) plutôt que l'ancienne tâche.
+      now: shortNow(this.titles.get(t.id)?.now || (t.phase === 'working' ? stepOf(t) : '')) || undefined,
       status,
       attention,
       cwd: t.cwd,

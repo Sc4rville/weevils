@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, type Transition } from 'motion/react'
-import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { api } from '../api'
 import type { Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
@@ -209,6 +209,8 @@ export function Composer({
   disabled,
   voice = false,
   anyFile = false,
+  draft,
+  formRef,
 }: {
   placeholder: string
   label: string
@@ -223,6 +225,10 @@ export function Composer({
   voice?: boolean
   /** Toute pièce jointe (PDF, zip…), pas seulement des photos. */
   anyFile?: boolean
+  /** Texte posé dans le champ de l'extérieur (dictée par le logo) ; n change à chaque nouveau texte. */
+  draft?: { text: string; n: number }
+  /** Pour envoyer depuis l'extérieur (troisième tap sur le logo). */
+  formRef?: React.RefObject<HTMLFormElement | null>
 }) {
   const [text, setText] = useState('')
   const field = useRef<HTMLInputElement>(null)
@@ -234,6 +240,9 @@ export function Composer({
   const chunks = useRef<Blob[]>([])
   const picker = useRef<HTMLInputElement>(null)
   const canVoice = voice && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
+  useEffect(() => {
+    if (draft?.text) setText((cur) => (cur.trim() ? `${cur.replace(/\s+$/, '')} ${draft.text}` : draft.text))
+  }, [draft?.n])
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -314,7 +323,7 @@ export function Composer({
   }
 
   return (
-    <form className={`composer band ${className}`} onSubmit={submit}>
+    <form ref={formRef} className={`composer band ${className}`} onSubmit={submit}>
       {(files.length > 0 || err) && (
         <div className="in meta attach-line">
           {files.length > 0 && (

@@ -94,7 +94,10 @@ export function needsTitle(prev: Titled | undefined, messageCount: number, live:
   const grown = messageCount - prev.messageCount
   if (grown <= 0) return false
   const age = now - prev.at
-  if (live) return grown >= 4 && age >= 4 * 60_000
+  // Activité effacée par un nouveau message : à réécrire tout de suite.
+  if (!prev.now && live) return true
+  // Pendant le travail, l'activité suit : toutes les 2 min dès que le fil a bougé.
+  if (live) return age >= 2 * 60_000
   // Session finie : un dernier titre quand le fil a bougé depuis.
   return age >= 2 * 60_000
 }

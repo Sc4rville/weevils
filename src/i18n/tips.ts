@@ -4,7 +4,6 @@ import { defineMessages } from './index'
 // General tips (tip_*) only say things the app really does; keep each one under ~60 characters (two lines).
 export default defineMessages({
   fr: {
-    region: 'astuce',
     general: 'astuce',
     personal: 'pour toi',
     dismiss: 'ignorer cette carte',
@@ -31,7 +30,6 @@ export default defineMessages({
     tip_import: 'importe tes conversations chatgpt et claude : weevils les range',
   },
   en: {
-    region: 'tip',
     general: 'tip',
     personal: 'for you',
     dismiss: 'dismiss this card',

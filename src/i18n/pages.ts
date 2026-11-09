@@ -44,7 +44,6 @@ export default defineMessages({
     reading: 'lecture…',
     binary: 'binaire',
     // Machines
-    machinesTitle: 'machines',
     machines: (n: number) => `${n} ${n > 1 ? 'machines' : 'machine'}`,
     online: 'en ligne',
     offline: 'hors ligne',
@@ -95,7 +94,6 @@ export default defineMessages({
     truncated: ' · truncated',
     reading: 'loading…',
     binary: 'binary file',
-    machinesTitle: 'machines',
     machines: (n: number) => `${n} ${n === 1 ? 'machine' : 'machines'}`,
     online: 'online',
     offline: 'offline',

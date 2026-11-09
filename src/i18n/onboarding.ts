@@ -22,7 +22,6 @@ export default defineMessages({
     hostPlaceholder: 'moi@mon-serveur',
     copy: 'copier',
     copied: 'copié',
-    copyLabel: 'copier la commande d’installation',
     // 2. session
     sessionTitle: 'ouvre ta première session',
     sessionLine: 'claude ou codex, dans un repo.',
@@ -60,7 +59,6 @@ export default defineMessages({
     hostPlaceholder: 'me@my-server',
     copy: 'copy',
     copied: 'copied',
-    copyLabel: 'copy the install command',
     sessionTitle: 'open your first session',
     sessionLine: 'claude or codex, in a repo.',
     sessionDoneLine: 'it’s running. nice.',

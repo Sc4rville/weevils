@@ -225,6 +225,16 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
           </>
         )}
 
+        {/* L'abonnement (quotas Claude et Codex, ce qui consomme) : sur la machine principale, celle qui sert l'app. */}
+        {id === snap.machines[0]?.id && (
+          <>
+            <div className="in label">{t.usageTitle}</div>
+            <Line ch="%" meta={t.usageMeta} onClick={() => push({ kind: 'usage' })}>
+              {t.usageLine}
+            </Line>
+          </>
+        )}
+
         {sessions.length > 0 && <div className="in label">{t.sessions}</div>}
         {sessions.map((s) => (
           <SessionRow key={s.id} session={s} />

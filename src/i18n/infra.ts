@@ -44,6 +44,8 @@ export default defineMessages({
     entries: (n: number) => `${n} ${n > 1 ? 'éléments' : 'élément'}`,
     // Abonnement
     usageTitle: 'abonnement',
+    usageLine: 'abonnements et quotas',
+    usageMeta: 'claude et codex · 5 h, semaine, par projet',
     session5h: 'session 5 h',
     week: 'semaine',
     weekOf: (m: string) => `semaine · ${m}`,
@@ -91,6 +93,8 @@ export default defineMessages({
     noMeasure: 'no measurements yet',
     entries: (n: number) => `${n} ${n === 1 ? 'item' : 'items'}`,
     usageTitle: 'subscription',
+    usageLine: 'subscriptions & quotas',
+    usageMeta: 'claude and codex · 5 h, week, by project',
     session5h: '5 h session',
     week: 'week',
     weekOf: (m: string) => `week · ${m}`,

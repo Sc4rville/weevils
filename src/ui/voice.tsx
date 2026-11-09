@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { WeevbossLogo } from './logo'
 import { Icon } from './icons'
+import { tr, useLang, useT } from '../i18n'
+import M from '../i18n/voice'
 
 /**
  * Le logo de weevboss est le bouton vocal, en trois taps qui s'enchaînent vite :
@@ -14,7 +16,7 @@ type Phase = 'idle' | 'rec' | 'wait' | 'ready'
 const blobToB64 = (b: Blob) =>
   new Promise<string>((resolve, reject) => {
     const r = new FileReader()
-    r.onerror = () => reject(new Error('lecture audio'))
+    r.onerror = () => reject(new Error(tr(M).readAudio))
     r.onload = () => resolve(String(r.result).split(',')[1] ?? '')
     r.readAsDataURL(b)
   })
@@ -90,6 +92,16 @@ const hush = () => {
 }
 
 export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }: { onText: (t: string) => void; onSend: () => void; replyKey?: string; replyText?: string; working: boolean; take: () => string }) {
+  const t = useT(M)
+  const lang = useLang()
+  // Langue changée : l'accroche gardée en mémoire est rechargée dans la nouvelle langue (le serveur suit l'app).
+  const firstLang = useRef(true)
+  useEffect(() => {
+    if (firstLang.current) return void (firstLang.current = false)
+    if (!player) return
+    const timer = setTimeout(() => void loadCue(), 800)
+    return () => clearTimeout(timer)
+  }, [lang])
   const [speaking, setSpeaking] = useState(false)
   /** Le dernier message est parti à la voix : sa réponse sera lue. */
   const spoken = useRef(false)
@@ -172,11 +184,11 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
         stream.getTracks().forEach((tr) => tr.stop())
         try {
           const blob = new Blob(chunks.current, { type: mime })
-          if (blob.size < 800) throw new Error('rien entendu')
+          if (blob.size < 800) throw new Error(tr(M).nothingHeard)
           await uploaded
           const { text } = uploadOk ? await api.voiceFinish(id) : await api.transcribe(blob.type, await blobToB64(blob))
           mark('text')
-          if (!text.trim()) throw new Error('rien entendu')
+          if (!text.trim()) throw new Error(tr(M).nothingHeard)
           onText(text.trim())
           if (sendAfter.current) {
             // Le troisième tap est arrivé pendant la transcription : on envoie dès que le champ est rempli.
@@ -193,7 +205,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
       rec.current = r
       setPhase('rec')
     } catch (e) {
-      setErr(/denied|permission|NotAllowed/i.test((e as Error).message + (e as Error).name) ? 'micro refusé' : (e as Error).message)
+      setErr(/denied|permission|NotAllowed/i.test((e as Error).message + (e as Error).name) ? tr(M).micDenied : (e as Error).message)
       setPhase('idle')
     }
   }
@@ -229,7 +241,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
     }
   }
 
-  const label = phase === 'idle' ? 'dicter à weevboss' : phase === 'rec' ? 'arrêter et transcrire' : phase === 'wait' ? 'envoyer dès que transcrit' : 'envoyer'
+  const label = phase === 'idle' ? t.dictate : phase === 'rec' ? t.stopAndTranscribe : phase === 'wait' ? t.sendWhenReady : t.send
   return (
     <div className="voice">
       <button className={`voice-logo ${phase} ${reply ? 'reply' : ''} ${working ? 'working' : ''} ${speaking ? 'speaking' : ''}`} onPointerDown={(e) => e.preventDefault()} onClick={tap} aria-label={label} aria-pressed={phase === 'rec'}>
@@ -242,17 +254,29 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
 
 /** Les voix de weevboss : un tap fait dire une phrase d'essai et garde la voix. */
 export function VoicePicker({ userName }: { userName: string }) {
+  const t = useT(M)
+  const lang = useLang()
   const [list, setList] = useState<{ id: string; name: string }[] | null>(null)
   const [cur, setCur] = useState<string | undefined>()
+  // Les voix proposées sont celles de la langue de l'app : relues quand elle change (le serveur suit l'app).
+  const loaded = useRef(false)
   useEffect(() => {
-    api
-      .voices()
-      .then((r) => {
-        setList(r.voices)
-        setCur(r.current)
-      })
-      .catch(() => setList([]))
-  }, [])
+    const load = () =>
+      api
+        .voices()
+        .then((r) => {
+          setList(r.voices)
+          setCur(r.current)
+        })
+        .catch(() => setList([]))
+    if (!loaded.current) {
+      loaded.current = true
+      void load()
+      return
+    }
+    const timer = setTimeout(() => void load(), 800)
+    return () => clearTimeout(timer)
+  }, [lang])
   const [siri, setSiri] = useState<'idle' | 'copied' | 'error'>('idle')
   // Siri / bouton Action : un jeton personnel, l'adresse prête à coller dans le Raccourci (copiée), et le lien d'installation s'il existe.
   const siriLink = async () => {
@@ -276,10 +300,10 @@ export function VoicePicker({ userName }: { userName: string }) {
     unlockAudio()
     setCur(id)
     void api.setVoice(id).catch(() => undefined)
-    void say(`Salut${userName ? ` ${userName}` : ''}, c’est moi, weevboss.`, () => undefined, true, id)
+    void say(t.hello(userName), () => undefined, true, id)
   }
   return (
-    <div className="in words" role="group" aria-label="voix">
+    <div className="in words" role="group" aria-label={t.voices}>
       {list.map((v) => (
         <button key={v.id} className={`word ${cur === v.id ? 'on' : ''}`} aria-pressed={cur === v.id} onClick={() => pick(v.id)}>
           {v.name}

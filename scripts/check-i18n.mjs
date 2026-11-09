@@ -54,7 +54,7 @@ const FR_SOLO_OK = new Set(
   tabulation`.split(/\s+/),
 )
 // Marques et noms techniques identiques dans toutes les langues.
-const BRAND = /\b(weevils?d?|weevboss|wv|claude( code)?|codex|github|gitHub|vps|tmux|zellij|opus|sonnet|haiku|fable|cartesia|openai|anthropic|ok|pwa|https?|url|api|id|json|ssh|cli)\b/gi
+const BRAND = /\b(weevils?d?|weevboss|wv|claude( code)?|codex|github|gitHub|vps|tmux|zellij|opus|sonnet|haiku|fable|cartesia|openai|anthropic|siri|ok|pwa|https?|url|api|id|json|ssh|cli)\b/gi
 
 const ATTRS = new Set([
   'aria-label', 'aria-description', 'aria-placeholder', 'aria-roledescription', 'aria-valuetext',

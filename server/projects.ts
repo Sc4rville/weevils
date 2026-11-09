@@ -17,7 +17,7 @@ export const MISC = 'divers' // i18n-ignore : identifiant, jamais affiché tel q
 /** Nom affiché d'un projet : les ids réservés (divers, general) ont un libellé dans la langue de l'utilisateur, les autres sont leur nom. */
 export const projectLabel = (id: string) => (id === MISC ? tr(M).misc : id === 'general' ? tr(M).general : id)
 
-/** lws-demo, lws-oss → lws ; mygame-trailer → mygame ; pli → pli. */
+/** shop-api, shop-web → shop ; blog → blog. */
 export function familyOf(repo: string): string {
   return (repo.split(/[-_.]/)[0] || repo).toLowerCase()
 }
@@ -28,7 +28,7 @@ export function place(cwd: string, roots: string[]): Placement {
     for (const root of roots) {
       const rel = path.relative(root, cwd)
       if (rel.startsWith('..') || path.isAbsolute(rel)) continue
-      // On saute les dossiers cachés (.night/lws → lws).
+      // On saute les dossiers cachés (.archive/shop → shop).
       const repo = rel.split(path.sep).find((seg) => seg && !seg.startsWith('.'))
       if (repo) {
         const fam = familyOf(repo)

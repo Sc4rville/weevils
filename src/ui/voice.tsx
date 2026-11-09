@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { WeevbossLogo } from './logo'
+import { Icon } from './icons'
 
 /**
  * Le logo de weevboss est le bouton vocal, en trois taps qui s'enchaînent vite :
@@ -252,7 +253,25 @@ export function VoicePicker({ userName }: { userName: string }) {
       })
       .catch(() => setList([]))
   }, [])
-  if (!list?.length) return null
+  const [siri, setSiri] = useState<'idle' | 'copied' | 'error'>('idle')
+  // Siri / bouton Action : un jeton personnel, l'adresse prête à coller dans le Raccourci (copiée), et le lien d'installation s'il existe.
+  const siriLink = async () => {
+    try {
+      const r = await api.shortcut(true)
+      const endpoint = `${location.origin}/api/voice/turn?k=${r.token}`
+      await navigator.clipboard.writeText(endpoint).catch(() => undefined)
+      setSiri('copied')
+      if (r.url) location.href = r.url
+    } catch {
+      setSiri('error')
+    }
+  }
+  const siriWord = (
+    <button key="__siri" className={`word ${siri === 'copied' ? 'on' : ''}`} onClick={() => void siriLink()} aria-label="Siri">
+      siri{siri === 'copied' ? <> <Icon name="check" /></> : siri === 'error' ? <> <Icon name="bang" /></> : null}
+    </button>
+  )
+  if (!list?.length) return <div className="in words">{siriWord}</div>
   const pick = (id: string) => {
     unlockAudio()
     setCur(id)
@@ -266,6 +285,7 @@ export function VoicePicker({ userName }: { userName: string }) {
           {v.name}
         </button>
       ))}
+      {siriWord}
     </div>
   )
 }

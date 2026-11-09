@@ -43,7 +43,7 @@ async function* oralStream(text: string): AsyncGenerator<string> {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'gpt-4o-mini', stream: true, max_tokens: 120, temperature: 0.4, messages: [{ role: 'system', content: ORAL }, { role: 'user', content: text }] }),
+    body: JSON.stringify({ model: 'gpt-4o-mini', stream: true, max_tokens: 120, temperature: 0.4, messages: [{ role: 'user', content: `${ORAL}\n\n${text}` }] }),
     signal: AbortSignal.timeout(10_000),
   })
   if (!res.ok || !res.body) {
@@ -66,8 +66,13 @@ async function* oralStream(text: string): AsyncGenerator<string> {
       } catch {
         /* ligne partielle */
       }
-      // Une phrase complète (assez longue pour sonner naturelle) part tout de suite.
-      const cut = first ? pending.search(/[.!?…](\s|$)/) : -1
+      // La première phrase part dès qu'elle est complète, ou dès une virgule après une proposition assez longue.
+      // (Message système évité plus haut : il retardait le premier mot de 1,3 s, mesuré le 9 nov.)
+      let cut = first ? pending.search(/[.!?…](\s|$)/) : -1
+      if (first && cut < 12) {
+        const comma = pending.slice(40).search(/[,;:](\s|$)/)
+        cut = comma >= 0 ? comma + 40 : -1
+      }
       if (cut >= 12) {
         log(`résumé : 1re phrase en ${Date.now() - t0} ms`)
         yield pending.slice(0, cut + 1).trim()

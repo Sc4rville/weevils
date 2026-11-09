@@ -19,9 +19,13 @@ import { tipRoutes } from './tips.ts'
 import { normalizeFrom } from './authors.ts'
 import { startMailBridge } from './mailbridge.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
+import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
+import { quotas, today as usageToday } from './usage.ts'
+import type { MachineBrief, UsageRow } from '../shared/infra.ts'
 
 const w = new Weevils()
 w.start()
+startInfra()
 // Pont e-mail (agents externes) : sur la machine de l'orchestrateur, seulement si WEEVILS_MAIL_ADDRESS / _PASSWORD sont remplis.
 if (ORCHESTRATOR) startMailBridge(w, DATA_DIR)
 
@@ -332,6 +336,49 @@ const routes: [string, RegExp, Handler][] = [
     json(res, 200, await w.newRepo(String(body.name ?? '').trim(), String(body.description ?? '')))
   }],
   ['POST', /^\/api\/sessions\/([^/]+)\/close$/, async (_req, res, _u, [id]) => json(res, 200, await w.close(decodeURIComponent(id)))],
+  // ---- Coin infrastructure : machines, système de fichiers complet, abonnements.
+  ['GET', /^\/api\/infra\/brief$/, async (_req, res, url) => {
+    const here = brief()
+    if (url.searchParams.has('local')) return json(res, 200, { machines: [here] })
+    const far = await Promise.all(
+      w.remotes.map(async (r): Promise<MachineBrief> => {
+        const id = r.snap?.machines[0]?.id ?? r.id
+        const name = r.snap?.machines[0]?.name ?? r.id
+        const off = { id, name, online: false, cpu: 0, mem: 0, level: 'ok' as const, weevboss: false }
+        if (!r.online) return off
+        try {
+          const m = (await r.call<{ machines: MachineBrief[] }>('GET', '/api/infra/brief?local=1')).machines[0]
+          return { ...m, id, name, online: true }
+        } catch {
+          // Un weevilsd plus ancien, sans /api/infra : en ligne, sans mesures.
+          return { ...off, online: true }
+        }
+      }),
+    )
+    json(res, 200, { machines: [here, ...far] })
+  }],
+  ['GET', /^\/api\/infra$/, async (_req, res, url) => {
+    const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
+    json(res, 200, remote ? await remote.call('GET', '/api/infra') : await infraDetail())
+  }],
+  ['GET', /^\/api\/fs$/, async (_req, res, url) => {
+    const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
+    const p = url.searchParams.get('path') ?? '/'
+    json(res, 200, remote ? await remote.call('GET', `/api/fs?path=${encodeURIComponent(p)}`) : listDir(p))
+  }],
+  ['GET', /^\/api\/fs\/file$/, async (_req, res, url) => {
+    const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
+    const p = url.searchParams.get('path') ?? ''
+    json(res, 200, remote ? await remote.call('GET', `/api/fs/file?path=${encodeURIComponent(p)}`) : readAny(p))
+  }],
+  ['GET', /^\/api\/usage$/, async (_req, res) => json(res, 200, await quotas())],
+  ['GET', /^\/api\/usage\/today$/, async (_req, res, url) => {
+    const sessions = new Map(w.snapshot().sessions.map((s) => [s.id, s]))
+    const rows = usageToday((id) => sessions.get(id))
+    if (url.searchParams.has('local')) return json(res, 200, { rows })
+    const far = await Promise.all(w.remotes.filter((r) => r.online).map((r) => r.call<{ rows: UsageRow[] }>('GET', '/api/usage/today?local=1').then((d) => d.rows).catch(() => [])))
+    json(res, 200, { rows: [...rows, ...far.flat()].sort((a, b) => b.weight - a.weight) })
+  }],
   ...tipRoutes(w, json, readBody, () => !!openaiKey()),
   ['POST', /^\/api\/github\/pin$/, async (req, res) => {
     const body = await readBody(req)

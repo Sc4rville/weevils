@@ -20,7 +20,43 @@ const blobToB64 = (b: Blob) =>
 
 const MIME = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg']
 
-export function VoiceLogo({ onText, onSend, replyKey, working }: { onText: (t: string) => void; onSend: () => void; replyKey?: string; working: boolean }) {
+// Un seul élément audio, déverrouillé par le premier tap (iOS refuse de jouer sans geste).
+let player: HTMLAudioElement | null = null
+const SILENCE = 'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVCSiJrDCQBTcu3UrAIwUdkRgQbFAZC1CQEwTJ9mjRvBA4UOLD8nKVOWfh+UlK3z/177OXrfOdKl7pyn3Xf//WreyTRUoAWgBgkOAGbZHBgG1OF6zM82DWbZaUmMBptgQhGjsyYqc9ae9XFz280948NMBWInljyzsNRFLPWdnZGWrddDsjK1unuSrVN9jJsK8KuQtQCtMBjCEtImISdNKJOopIpBFpNSMbIHCSRpRR5iakjTiyzLhchUUBwCgyKiweBv/7UsQbg8isVNoMPMjAAAA0gAAABEVFGmgqK////9bP/6XCykxBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq'
+export function unlockAudio() {
+  if (player) return
+  player = new Audio()
+  player.src = SILENCE
+  void player.play().catch(() => undefined)
+}
+
+async function say(text: string, onEnd: () => void) {
+  if (!player) return onEnd()
+  try {
+    const res = await fetch('/api/speak', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }), credentials: 'same-origin' })
+    if (!res.ok) throw new Error('voix')
+    const url = URL.createObjectURL(await res.blob())
+    player.src = url
+    player.onended = () => {
+      URL.revokeObjectURL(url)
+      onEnd()
+    }
+    await player.play()
+  } catch {
+    onEnd()
+  }
+}
+const hush = () => {
+  if (player) {
+    player.pause()
+    player.onended = null
+  }
+}
+
+export function VoiceLogo({ onText, onSend, replyKey, replyText, working }: { onText: (t: string) => void; onSend: () => void; replyKey?: string; replyText?: string; working: boolean }) {
+  const [speaking, setSpeaking] = useState(false)
+  /** Le dernier message est parti à la voix : sa réponse sera lue. */
+  const spoken = useRef(false)
   const [phase, setPhase] = useState<Phase>('idle')
   const [err, setErr] = useState<string | null>(null)
   const [reply, setReply] = useState(false)
@@ -35,6 +71,15 @@ export function VoiceLogo({ onText, onSend, replyKey, working }: { onText: (t: s
     lastReply.current = replyKey
     setReply(false)
     requestAnimationFrame(() => setReply(true))
+    if (spoken.current && replyText) {
+      spoken.current = false
+      setSpeaking(true)
+      void say(replyText, () => {
+        setSpeaking(false)
+        setReply(false)
+      })
+      return
+    }
     const t = setTimeout(() => setReply(false), 1800)
     return () => clearTimeout(t)
   }, [replyKey])
@@ -58,7 +103,7 @@ export function VoiceLogo({ onText, onSend, replyKey, working }: { onText: (t: s
           onText(text.trim())
           if (sendAfter.current) {
             // Le troisième tap est arrivé pendant la transcription : on envoie dès que le champ est rempli.
-            setTimeout(onSend, 30)
+            setTimeout(send, 30)
             setPhase('idle')
           } else setPhase('ready')
         } catch (e) {
@@ -76,14 +121,25 @@ export function VoiceLogo({ onText, onSend, replyKey, working }: { onText: (t: s
     }
   }
 
+  const send = () => {
+    spoken.current = true
+    onSend()
+  }
   const tap = () => {
+    unlockAudio()
+    if (speaking) {
+      hush()
+      setSpeaking(false)
+      setReply(false)
+      return
+    }
     if (phase === 'idle') void start()
     else if (phase === 'rec') {
       setPhase('wait')
       rec.current?.stop()
     } else if (phase === 'wait') sendAfter.current = true
     else {
-      onSend()
+      send()
       setPhase('idle')
     }
   }
@@ -91,7 +147,7 @@ export function VoiceLogo({ onText, onSend, replyKey, working }: { onText: (t: s
   const label = phase === 'idle' ? 'dicter à weevboss' : phase === 'rec' ? 'arrêter et transcrire' : phase === 'wait' ? 'envoyer dès que transcrit' : 'envoyer'
   return (
     <div className="voice">
-      <button className={`voice-logo ${phase} ${reply ? 'reply' : ''} ${working ? 'working' : ''}`} onPointerDown={(e) => e.preventDefault()} onClick={tap} aria-label={label} aria-pressed={phase === 'rec'}>
+      <button className={`voice-logo ${phase} ${reply ? 'reply' : ''} ${working ? 'working' : ''} ${speaking ? 'speaking' : ''}`} onPointerDown={(e) => e.preventDefault()} onClick={tap} aria-label={label} aria-pressed={phase === 'rec'}>
         <WeevbossLogo className="voice-svg" />
       </button>
       {err && <div className="meta voice-err">! {err}</div>}

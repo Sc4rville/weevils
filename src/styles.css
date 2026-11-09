@@ -1329,14 +1329,20 @@ input:focus-visible {
 .agent-space {
   height: 32dvh;
   min-height: 160px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: flex-end;
   padding-top: var(--safe-t);
 }
 
+/* Aligné à gauche sur le texte du champ : même marge que le « > » du composer. */
 .voice {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding-inline: var(--pad);
+  padding-bottom: 12px;
   display: grid;
-  justify-items: center;
+  justify-items: start;
   gap: 6px;
 }
 
@@ -1381,6 +1387,11 @@ input:focus-visible {
 /* weevboss répond : une vague de couleurs, puis retour au noir (ou blanc). */
 .voice-logo.reply .voice-svg {
   animation: voice-reply 1.8s ease-in-out;
+}
+
+/* Lit la réponse : la vague de couleur continue tant qu'il parle. */
+.voice-logo.speaking .voice-svg {
+  animation: voice-reply 2.4s ease-in-out infinite;
 }
 
 @keyframes voice-breathe {

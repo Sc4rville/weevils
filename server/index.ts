@@ -6,7 +6,7 @@ import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, PORT } from './config.ts'
-import { openaiKey, transcribe } from './transcribe.ts'
+import { openaiKey, speak, transcribe } from './transcribe.ts'
 import { Weevils } from './core.ts'
 
 const w = new Weevils()
@@ -155,6 +155,12 @@ const routes: [string, RegExp, Handler][] = [
     const body = await readBody(req, 24 << 20)
     const files = Array.isArray(body.files) ? body.files.filter((f: any) => typeof f?.data === 'string').map((f: any) => ({ name: String(f.name ?? 'photo'), type: String(f.type ?? 'image/jpeg'), data: String(f.data) })) : []
     json(res, 200, await w.attach(decodeURIComponent(id), String(body.text ?? ''), files))
+  }],
+  ['POST', /^\/api\/speak$/, async (req, res) => {
+    const body = await readBody(req)
+    const mp3 = await speak(String(body.text ?? ''))
+    res.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': mp3.length, 'cache-control': 'no-store' })
+    res.end(mp3)
   }],
   ['GET', /^\/api\/transcribe$/, (_req, res) => json(res, 200, { enabled: !!openaiKey() })],
   ['POST', /^\/api\/transcribe$/, async (req, res) => {

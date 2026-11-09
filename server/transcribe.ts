@@ -42,3 +42,27 @@ export async function transcribe(data: Buffer, mime: string): Promise<string> {
   const out = (await res.json()) as { text?: string }
   return (out.text ?? '').trim()
 }
+
+/** Voix de weevboss : la réponse lue en français par la synthèse d'OpenAI (bien meilleure que celle d'iOS). MP3. */
+export async function speak(text: string): Promise<Buffer> {
+  const key = openaiKey()
+  if (!key) throw new Error('voix non configurée sur le serveur')
+  const input = text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/[`*_#>]/g, '')
+    .replace(/https?:\/\/\S+/g, 'un lien')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 1500)
+  const res = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'gpt-4o-mini-tts', voice: 'sage', input, response_format: 'mp3', instructions: 'Parle en français, voix calme et chaleureuse, débit naturel.' }),
+    signal: AbortSignal.timeout(60_000),
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: { message?: string } }
+    throw new Error(err.error?.message ?? `voix : erreur ${res.status}`)
+  }
+  return Buffer.from(await res.arrayBuffer())
+}

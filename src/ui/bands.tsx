@@ -57,7 +57,7 @@ export function AgentBand() {
     <section className="band agent tone" style={color('agent')} aria-label="weevboss, l’orchestrateur">
       {/* L'espace du haut reste vide pour l'instant : Scarville dira ce qu'on y met. */}
       <div className="agent-space">
-        <VoiceLogo onText={(t) => setDraft((d) => ({ text: t, n: d.n + 1 }))} onSend={() => form.current?.requestSubmit()} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} working={snap.mainWorking} />
+        <VoiceLogo onText={(t) => setDraft((d) => ({ text: t, n: d.n + 1 }))} onSend={() => form.current?.requestSubmit()} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
       </div>
 
       {/* Replié : la dernière réponse de weevils, en une ligne. Ouvert : la conversation, qui grandit sans tout envahir. */}

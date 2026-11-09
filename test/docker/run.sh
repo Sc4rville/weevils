@@ -181,6 +181,8 @@ box() {
   docker cp "$work/weevils.git" "$c:/srv/weevils.git"
   docker cp "$work/weevils/install.sh" "$c:/tmp/install.sh"
   docker exec "$c" chmod -R a+rX /srv/weevils.git /tmp/install.sh
+  # Test harness only: the local "GitHub" belongs to the host's uid, which git would call dubious ownership.
+  docker exec "$c" bash -c 'printf "[safe]\n\tdirectory = *\n" >/etc/gitconfig'
   if [ -n "${2:-}" ]; then
     heavy docker exec -e DEBIAN_FRONTEND=noninteractive "$c" bash -c "$2" >"$work/setup-$1.log" 2>&1 || { echo "  setup of $1 failed:"; tail -20 "$work/setup-$1.log"; }
   fi

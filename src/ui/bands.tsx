@@ -46,8 +46,11 @@ export function AgentBand() {
   const last = snap.main[snap.main.length - 1]
   useStickBottom(body, snap.main.length, open)
 
+  // Envoyé depuis le logo : la bande reste réduite. Écrit dans le champ : la conversation s'ouvre.
+  const viaLogo = useRef(false)
   const send = async (text: string) => {
-    setExpanded('agent')
+    if (!viaLogo.current) setExpanded('agent')
+    viaLogo.current = false
     await api.main(text)
   }
   const attach = async (text: string, files: { name: string; type: string; data: string }[]) => {
@@ -65,7 +68,7 @@ export function AgentBand() {
             ⌄
           </button>
         )}
-        <VoiceLogo take={() => { const t = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return t }} onText={(t) => { heard.current = heard.current ? `${heard.current} ${t}` : t; setDraft((d) => ({ text: t, n: d.n + 1, reset: false })) }} onSend={() => form.current?.requestSubmit()} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
+        <VoiceLogo take={() => { const t = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return t }} onText={(t) => { heard.current = heard.current ? `${heard.current} ${t}` : t; setDraft((d) => ({ text: t, n: d.n + 1, reset: false })) }} onSend={() => { viaLogo.current = true; form.current?.requestSubmit() }} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
       </div>
 
       {/* Replié : la dernière réponse de weevils, en une ligne. Ouvert : la conversation, qui grandit sans tout envahir. */}

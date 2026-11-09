@@ -1,7 +1,7 @@
 import { motion } from 'motion/react'
 import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react'
 import { useApp } from './app-context'
-import { Pulse, spring } from './bits'
+import { spring } from './bits'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
@@ -13,7 +13,6 @@ export function Shell({
   meta,
   children,
   foot,
-  working = false,
 }: {
   slot: string
   kicker: string
@@ -21,8 +20,6 @@ export function Shell({
   meta?: ReactNode
   children: ReactNode
   foot?: ReactNode
-  /** L'agent de cette page travaille : la barre fluo balaie sous l'en-tête. */
-  working?: boolean
 }) {
   const { back } = useApp()
   const heading = useRef<HTMLHeadingElement>(null)
@@ -66,7 +63,6 @@ export function Shell({
             </div>
           )}
         </div>
-        <Pulse on={working} />
       </div>
       <div className="page-body" data-scroll>
         {children}

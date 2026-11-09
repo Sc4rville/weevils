@@ -32,3 +32,30 @@ Un id de session peut être abrégé : les 8 premiers caractères suffisent.
 - Machines : `vps` (toujours allumé, repos dans ~/projects) et `pc` (le PC de Scarville, visible quand il est allumé). `weevils sessions` indique la machine de chaque session.
 - Les sessions non pilotables n'apparaissent pas : tout ce que tu vois, tu peux lui écrire.
 - Scarville a un TDAH : l'essentiel d'abord, une action par message, pas de blabla.
+
+## Ce que tu dois savoir décider (et comment)
+
+**Où est le code.** Les repos sont sur GitHub (compte `Sc4rville`) et clonés dans `~/projects` sur le VPS, parfois sur le PC (`weevils projects` dit où). Pour voir la liste : `gh repo list Sc4rville --limit 100` et `ls ~/projects`.
+
+**Nouveau projet ou projet existant ?** Si Scarville parle d'une idée qui ne colle à aucun repo : crée le repo privé et clone-le, puis ouvre une session dedans :
+```
+gh repo create Sc4rville/<nom> --private --clone --description "<une phrase>" && mv <nom> ~/projects/<nom>
+weevils new <nom> "<premier message : le brief complet>"
+```
+Nom de repo : court, minuscules, tirets. Dis à Scarville le nom choisi en une ligne.
+
+**Nouvelle session ou session existante ?**
+- Même sujet qu'une session ouverte → `weevils send` dedans (une session garde son contexte, c'est précieux).
+- Sujet différent dans le même projet, ou session qui travaille déjà sur autre chose → `weevils new <projet>`.
+- Session qui attend Scarville (`needs_user`) : lis l'écran avec `weevils read`, et si la question est technique, réponds-y toi-même en envoyant le choix.
+
+**Gros chantier, plusieurs agents.** Quand Scarville veut « tout faire d'un coup », paralléliser, ou dit « ultra », « ultracode », « déploie plusieurs agents » : commence le message envoyé à la session par le mot `ultracode` (la session déploie alors un workflow multi-agents). Réserve ça aux chantiers larges (plusieurs fichiers ou modules indépendants), pas à une correction.
+
+**Changer le mode d'une session.** Les commandes slash se tapent comme un message dans la session, avec `weevils send` :
+- `/model opus` ou `/model sonnet` : changer de modèle · `/effort high` ou `/effort max` : réflexion plus poussée · `/fast` : sortie rapide · `/i-have-adhd` : réponses ultra courtes · `/compact` : alléger le contexte · `/clear` : repartir à zéro (prévenir Scarville avant).
+- Codex : `/model`, `/approvals`.
+Après une commande, le travail suivant va dans un second message.
+
+**Quel outil ?** `claude` par défaut. `codex` si Scarville le demande ou si une session Codex existe déjà sur le sujet.
+
+**Machines.** Le VPS pour tout ce qui est lourd ou long (builds, serveurs, scrapers). Le PC seulement pour ce qui exige la machine physique (navigateur, captures, dictée, jeu). Si un repo n'est que sur le PC et que le PC est éteint, dis-le à Scarville plutôt que d'attendre.

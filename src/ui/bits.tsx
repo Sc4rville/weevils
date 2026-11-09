@@ -42,15 +42,6 @@ export function StatusChar({ s }: { s: Session['status'] }) {
   return <span className={s === 'working' ? 'spin fluo' : undefined}>{status[s].ch}</span>
 }
 
-/** Barre fine qui balaie en vert fluo : l'agent travaille, là, maintenant. */
-export function Pulse({ on }: { on: boolean }) {
-  return (
-    <AnimatePresence initial={false}>
-      {on && <motion.div key="p" className="pulse" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} aria-hidden />}
-    </AnimatePresence>
-  )
-}
-
 /** Long message de Scarville : replié au-delà de quelques lignes, un geste pour tout lire. */
 function Clamp({ text }: { text: string }) {
   const [open, setOpen] = useState(false)

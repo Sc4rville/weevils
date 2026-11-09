@@ -742,6 +742,18 @@ export class Weevils {
     } catch (e) {
       console.error(`[orchestrateur] CLAUDE.md : ${(e as Error).message}`)
     }
+    // Claude Code demande « tu fais confiance à ce dossier ? » au premier lancement : on répond oui d'avance.
+    const cfg = path.join(HOME, '.claude.json')
+    try {
+      const d = JSON.parse(fs.readFileSync(cfg, 'utf8'))
+      d.projects ??= {}
+      if (!d.projects[ORCH_DIR]?.hasTrustDialogAccepted) {
+        d.projects[ORCH_DIR] = { ...(d.projects[ORCH_DIR] ?? {}), hasTrustDialogAccepted: true }
+        fs.writeFileSync(cfg, JSON.stringify(d, null, 2))
+      }
+    } catch (e) {
+      console.error(`[orchestrateur] trust : ${(e as Error).message}`)
+    }
   }
 
   private orchestratorPane() {

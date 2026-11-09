@@ -50,6 +50,7 @@ type GeneralKey = 'liveUi' | 'dictate' | 'photo' | 'swipeBack' | 'repos' | 'h24'
 const RULE_ICON: Record<string, [IconName, Dir?]> = {
   waiting: ['bang'],
   'idle-sessions': ['pause'],
+  'idle-unmanaged': ['pause'],
   saturated: ['machine'],
   unsorted: ['quote'],
   'one-machine': ['plus'],

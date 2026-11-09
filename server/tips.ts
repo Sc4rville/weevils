@@ -75,6 +75,18 @@ export function saturation(m: MachineLoad, now: number): { share: number; hours:
 const idleSessions = (snap: Snapshot, now: number): Session[] =>
   snap.sessions.filter((s) => s.live && s.hasScreen && s.controllable && (s.status === 'idle' || s.status === 'done') && now - s.lastActivityAt > IDLE_SESSION_MS)
 
+/**
+ * Live sessions weevils doesn't drive (opened in a terminal of their own) and quiet for over 12 h. The automatic
+ * cleanup never touches them and weevils can't close them: their process is alive (its hook pid answers), that's all.
+ */
+const idleUnmanaged = (snap: Snapshot, now: number): Session[] =>
+  snap.sessions.filter((s) => s.live && !s.controllable && s.status === 'idle' && now - s.lastActivityAt > IDLE_SESSION_MS)
+
+const beforeToday = (list: Session[], now: number) => {
+  const midnight = new Date(now).setHours(0, 0, 0, 0)
+  return list.every((s) => s.lastActivityAt < midnight)
+}
+
 const since = (ms: number) => {
   const t = tr(M)
   const min = Math.round(ms / 60_000)
@@ -94,16 +106,15 @@ export const RULES: Rule[] = [
   },
   {
     rule: 'idle-sessions',
-    // Only when the automatic cleanup is set later than that (otherwise those panes are already gone, and a pane
-    // idle "since yesterday" would be a session just reopened).
+    // weevils panes: weevilsd closes them itself after WEEVILS_KILL_AFTER_MIN (2 h by default), so this card only
+    // speaks when that cleanup was set later than 12 h (otherwise those panes are already gone).
     check: ({ snap, now, reapMs }) => {
       if (reapMs <= IDLE_SESSION_MS) return []
       const list = idleSessions(snap, now)
       if (!list.length) return []
-      const midnight = new Date(now).setHours(0, 0, 0, 0)
       const ids = list.map((s) => s.id).sort()
       const t = tr(M)
-      return [{ id: `idle-sessions:${short(ids.join('|'))}`, rule: 'idle-sessions', personal: true, text: t.idleSessions(list.length, list.every((s) => s.lastActivityAt < midnight)), accept: t.closeThem(list.length), action: { kind: 'server' }, data: ids }]
+      return [{ id: `idle-sessions:${short(ids.join('|'))}`, rule: 'idle-sessions', personal: true, text: t.idleSessions(list.length, beforeToday(list, now)), accept: t.closeThem(list.length), action: { kind: 'server' }, data: ids }]
     },
     act: async (f, ctx) => {
       let n = 0
@@ -117,6 +128,19 @@ export const RULES: Rule[] = [
       }
       if (!n) throw new Error(tr(M).gone)
       return tr(M).closed(n)
+    },
+  },
+  {
+    rule: 'idle-unmanaged',
+    // Sessions left open in a terminal weevils doesn't drive: the cleanup can't reach them and weevils can't close
+    // them. The card says so and hands the list to weevboss, who has a shell, to find out and ask before closing.
+    check: ({ snap, now }) => {
+      const list = idleUnmanaged(snap, now).sort((a, b) => a.lastActivityAt - b.lastActivityAt)
+      if (!list.length) return []
+      const t = tr(M)
+      const lines = list.slice(0, 8).map((s) => t.unmanagedLine(clip(s.title, 48), s.machineId, s.cwd, s.id, since(now - s.lastActivityAt)))
+      const ids = list.map((s) => s.id).sort()
+      return [{ id: `idle-unmanaged:${short(ids.join('|'))}`, rule: 'idle-unmanaged', personal: true, text: t.idleUnmanaged(list.length, beforeToday(list, now)), accept: t.askBoss, action: { kind: 'boss', text: t.idleUnmanagedAsk(list.length, lines.join('\n')) } }]
     },
   },
   {

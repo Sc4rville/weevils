@@ -6,6 +6,11 @@ import type { Tool } from '../shared/api.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/mux.ts'
 
+// weevilsd lancé à la main depuis une pane tmux hérite de $TMUX, qui l'emporte sur TMUX_TMPDIR : il lirait (et son
+// nettoyage fermerait) les sessions wv-* du serveur tmux de cette pane, même avec un autre HOME. Le serveur tmux de
+// weevils est celui de TMUX_TMPDIR (ou le défaut), jamais celui du terminal d'où il part. Sous systemd : sans effet.
+delete process.env.TMUX
+
 function tmux(args: string[], cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile('tmux', args, { cwd, timeout: 8000, maxBuffer: 4 << 20 }, (err, stdout, stderr) => {

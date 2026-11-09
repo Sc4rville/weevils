@@ -8,7 +8,12 @@
 #   wv a [nom]          s'y rattacher (la plus récente par défaut)
 #   wv vps <repo> [...]  depuis le PC : la même chose, mais sur le VPS (~/projects/<repo>)
 #   wv vps a | wv vps ls se rattacher / lister sur le VPS
+#
+# Sans demande de permission (comme d'habitude) ; WV_SAFE=1 wv … pour garder les confirmations.
 set -euo pipefail
+
+if [ "${WV_SAFE:-}" = 1 ]; then claude_flags=(); codex_flags=()
+else claude_flags=(--dangerously-skip-permissions); codex_flags=(--dangerously-bypass-approvals-and-sandbox); fi
 
 if [ "${1:-}" = vps ]; then
   shift
@@ -39,10 +44,10 @@ title=${1:-nouvelle session}
 
 if [ "$tool" = claude ]; then
   id=$(cat /proc/sys/kernel/random/uuid)
-  tmux new-session -d -s "$name" -x 120 -y 40 -c "$PWD" claude --session-id "$id" "$@"
+  tmux new-session -d -s "$name" -x 120 -y 40 -c "$PWD" claude "${claude_flags[@]}" --session-id "$id" "$@"
   tmux set-option -t "=$name:" @wv_session_id "$id"
 else
-  tmux new-session -d -s "$name" -x 120 -y 40 -c "$PWD" codex "$@"
+  tmux new-session -d -s "$name" -x 120 -y 40 -c "$PWD" codex "${codex_flags[@]}" "$@"
 fi
 tmux set-option -t "=$name:" @wv_tool "$tool"
 tmux set-option -t "=$name:" @wv_title "${title:0:60}"

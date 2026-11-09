@@ -36,6 +36,11 @@ interface Persisted {
 
 const STATE_FILE = path.join(DATA_DIR, 'state.json')
 
+/** Comme Scarville les lance d'habitude : sans demande de permission. WEEVILS_SAFE=1 pour revenir aux confirmations. */
+const SAFE = process.env.WEEVILS_SAFE === '1'
+const CLAUDE = SAFE ? ['claude'] : ['claude', '--dangerously-skip-permissions']
+const CODEX_FLAGS = SAFE ? [] : ['--dangerously-bypass-approvals-and-sandbox']
+
 const pidAlive = (pid?: number) => {
   if (!pid) return false
   try {
@@ -611,7 +616,7 @@ export class Weevils {
       throw new Error('Cette session est ouverte dans un terminal que weevils ne pilote pas. Ferme-la ou lance tes sessions avec wv pour leur écrire d’ici.')
     }
     const cwd = s.cwd && fs.existsSync(s.cwd) ? s.cwd : HOME
-    const command = s.tool === 'claude' ? ['claude', '--resume', s.id, text] : ['codex', 'resume', s.id, text]
+    const command = s.tool === 'claude' ? [...CLAUDE, '--resume', s.id, text] : ['codex', 'resume', ...CODEX_FLAGS, s.id, text]
     await this.spawn(s.tool, cwd, s.title, command, s.id)
     return { id: real }
   }
@@ -645,10 +650,10 @@ export class Weevils {
     const title = text ? text.replace(/\s+/g, ' ').slice(0, 60) : 'nouvelle session'
     if (input.tool === 'claude') {
       const id = crypto.randomUUID()
-      await this.spawn('claude', cwd, title, ['claude', '--session-id', id, ...(text ? [text] : [])], id)
+      await this.spawn('claude', cwd, title, [...CLAUDE, '--session-id', id, ...(text ? [text] : [])], id)
       return { id }
     }
-    const name = await this.spawn('codex', cwd, title, ['codex', ...(text ? [text] : [])])
+    const name = await this.spawn('codex', cwd, title, ['codex', ...CODEX_FLAGS, ...(text ? [text] : [])])
     return { id: name }
   }
 

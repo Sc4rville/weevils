@@ -195,11 +195,14 @@ run_edge() {
   say "edge: a download cut short runs nothing"
   box trunc
   len=$(wc -c <"$work/weevils/install.sh")
-  for n in 100 700 2000 5000 9000 13000 17000 21000 25000 $((len - 300)) $((len - 40)) $((len - 5)) $((len - 2)); do
-    [ "$n" -gt 0 ] && [ "$n" -lt "$len" ] || continue
+  # Cuts all along the script, then at every byte of its end (the call line included; len-1 is the whole script).
+  local cuts=0
+  for n in $(seq 50 1500 "$len") $(seq $((len - 80)) $((len - 2))); do
+    [ "$n" -gt 0 ] && [ "$n" -lt $((len - 1)) ] || continue
+    cuts=$((cuts + 1))
     head -c "$n" "$work/weevils/install.sh" | docker exec -i -e WEEVILS_REPO=/srv/weevils.git "$c" bash -s -- --yes --lang en >/dev/null 2>&1
   done
-  check "13 truncated scripts: no package, no clone, no config" docker exec "$c" bash -c '! command -v git && ! command -v tmux && ! test -e ~/weevils && ! test -e ~/.config/weevils && [ -z "$(ls /var/lib/apt/lists | grep -v -e ^partial$ -e ^lock$)" ]'
+  check "$cuts truncated scripts: no package, no clone, no config" docker exec "$c" bash -c '! command -v git && ! command -v tmux && ! test -e ~/weevils && ! test -e ~/.config/weevils && [ -z "$(ls /var/lib/apt/lists | grep -v -e ^partial$ -e ^lock$)" ]'
 
   say "edge: bad options are refused before anything runs"
   check "--port abc → exit 2" bash -c "docker exec $c bash /tmp/install.sh --yes --port abc >/dev/null 2>&1; [ \$? = 2 ]"

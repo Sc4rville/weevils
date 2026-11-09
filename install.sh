@@ -12,9 +12,13 @@ set -euo pipefail
 # Where this script lives when it runs from a clone (empty when piped from curl). Read here: inside a function,
 # bash reports "bash" for a script that comes from stdin.
 WEEVILS_SELF=${BASH_SOURCE[0]:-}
+WEEVILS_ARGS=("$@")
 
 # The whole installer is one function, called on the last line: a download cut short runs nothing at all.
-weevils_install() {
+# The call takes no arguments (they are in WEEVILS_ARGS) and no prefix of its name is a command, so even the last
+# line cut in the middle either runs everything with your options or nothing.
+_weevils_install() {
+set -- ${WEEVILS_ARGS[@]+"${WEEVILS_ARGS[@]}"}
 REPO_URL=${WEEVILS_REPO:-https://github.com/Sc4rville/weevils.git}
 SELF=$WEEVILS_SELF
 ARGS=("$@")
@@ -534,4 +538,4 @@ main
 }
 
 # Everything above is one function definition: nothing runs before the whole script is downloaded and parsed.
-weevils_install "$@"
+_weevils_install

@@ -20,6 +20,14 @@ export interface Subagent {
   endedAt?: number
 }
 
+/** Réglages d'une session tels que l'outil les écrit dans son transcript (inconnus quand absents). */
+export interface SessionSettings {
+  /** claude : opus / sonnet / haiku (ou l'id complet) ; codex : gpt-… */
+  model?: string
+  /** codex : on-request, never, untrusted… */
+  approval?: string
+}
+
 export interface Session {
   id: string
   projectId: string
@@ -49,6 +57,7 @@ export interface Session {
   subagents: Subagent[]
   lastMessage?: string
   messageCount: number
+  settings?: SessionSettings
 }
 
 export interface Project {
@@ -118,6 +127,9 @@ export interface Snapshot {
   /** La conversation avec weevils, l'orchestrateur (sa propre session Claude, cachée des projets). */
   main: Message[]
   mainWorking: boolean
+  /** Réglages connus de la session de l'orchestrateur, et si on peut lui envoyer des commandes (/model…). */
+  mainSettings?: SessionSettings
+  mainHasScreen: boolean
 }
 
 export interface SessionDetail {

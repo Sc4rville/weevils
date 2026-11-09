@@ -106,6 +106,13 @@ export function saveInbox(dir: string, files: { name: string; type: string; data
   return out
 }
 
+/** Seules les commandes de réglage passent : une ligne, pas de texte libre caché derrière. */
+export function checkCommand(command: string): string {
+  const c = command.trim()
+  if (!/^\/(model|effort|fast|compact|clear|new|approvals)([ \t]+[\w.-]+)?$/.test(c)) throw new Error(`commande refusée : ${c}`)
+  return c
+}
+
 /** Le message tel que l'agent le reçoit : le texte, puis « (photo : /chemin) » ou « (fichier : /chemin) » pour chaque pièce. */
 export function withFiles(text: string, saved: { path: string; image: boolean }[]): string {
   const n = saved.length
@@ -364,6 +371,7 @@ export class Weevils {
       subagents: t.subagents,
       lastMessage: lastMessageOf(t),
       messageCount: t.messages.length,
+      settings: t.model || t.approval ? { model: t.model, approval: t.approval } : undefined,
     }
   }
 
@@ -465,6 +473,8 @@ export class Weevils {
       classifier: this.classifier,
       main: this.orchestratorMessages(),
       mainWorking: this.orchestratorWorking(now),
+      mainSettings: this.orchestratorSettings(),
+      mainHasScreen: !!this.orchestratorPane(),
     }
     return this.snap
   }
@@ -818,6 +828,30 @@ export class Weevils {
 
   private orchestratorPane() {
     return this.orchestratorId ? this.paneFor(this.orchestratorId) : undefined
+  }
+
+  private orchestratorSettings() {
+    const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
+    return t?.model || t?.approval ? { model: t.model, approval: t.approval } : undefined
+  }
+
+  /** Commande slash (/model opus, /effort high, /fast, /compact, /clear, /approvals…) tapée dans la pane de la session : pas un message, pas signée. */
+  async command(id: string, command: string): Promise<{ ok: true }> {
+    const remote = this.remoteFor(id)
+    if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/command`, { command })
+    const pane = this.paneFor(this.resolveId(id))
+    if (!pane) throw new Error('réglable seulement quand la session tourne dans une pane weevils (wv)')
+    await sendText(pane.name, checkCommand(command))
+    return { ok: true }
+  }
+
+  /** La même chose pour la session de l'orchestrateur. */
+  async commandMain(command: string): Promise<{ ok: true }> {
+    const pane = this.orchestratorPane()
+    if (!pane) throw new Error('l’orchestrateur ne tourne pas : envoie-lui d’abord un message')
+    await sendText(pane.name, checkCommand(command))
+    this.bump()
+    return { ok: true }
   }
 
   private orchestratorMessages(): Message[] {

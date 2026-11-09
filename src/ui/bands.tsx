@@ -6,6 +6,7 @@ import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
 import { useApp } from './app-context'
 import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, spring } from './bits'
+import { Settings, shortModel } from './settings'
 import { ago, plain, plural, step } from './format'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
@@ -35,11 +36,13 @@ function useStickBottom(ref: React.RefObject<HTMLDivElement | null>, count: numb
 export function AgentBand() {
   const { snap, expanded, setExpanded } = useApp()
   const open = expanded === 'agent'
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const body = useRef<HTMLDivElement>(null)
   const live = snap.sessions.filter((s) => s.status !== 'done')
   const att = snap.sessions.filter((s) => s.status === 'needs_user').length
   const running = snap.h24.filter((a) => a.runState === 'running').length
-  const summary = [live.length ? activity(live) : 'aucune session ouverte', att ? `${att} à toi` : null, running ? `h24 ${running} en cours` : null].filter(Boolean).join(' · ')
+  const model = shortModel(snap.mainSettings?.model)
+  const summary = [live.length ? activity(live) : 'aucune session ouverte', att ? `${att} à toi` : null, running ? `h24 ${running} en cours` : null, model].filter(Boolean).join(' · ')
   const last = snap.main[snap.main.length - 1]
   useStickBottom(body, snap.main.length, open)
 
@@ -66,8 +69,16 @@ export function AgentBand() {
             )}
           </motion.span>
         </button>
+        <button className="ch" onClick={() => setSettingsOpen((v) => !v)} aria-label="réglages de weevils" aria-expanded={settingsOpen} aria-controls="agent-settings">
+          ~
+        </button>
       </div>
       <div className="in meta summary">{summary}</div>
+      <Collapse open={settingsOpen} id="agent-settings">
+        <div className="band tone">
+          <Settings id="__main" tool="claude" settings={snap.mainSettings} canCommand={snap.mainHasScreen} run={(c) => api.mainCommand(c)} />
+        </div>
+      </Collapse>
 
       {/* Replié : la dernière réponse de weevils, en une ligne. Ouvert : la conversation, qui grandit sans tout envahir. */}
       {!open && last && last.role !== 'user' && (

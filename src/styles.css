@@ -1077,3 +1077,55 @@ input:focus-visible {
   font-weight: 650;
   opacity: 1;
 }
+
+/* ---------- Réglages (modèle, effort, rapide, compact, clear) : des puces, pas un formulaire ---------- */
+
+.settings {
+  padding-block: 6px 4px;
+}
+
+.settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  min-height: 48px;
+  padding-block: 4px;
+}
+
+.settings-label {
+  font-weight: 650;
+  min-width: 92px;
+}
+
+.settings-hint {
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.opt {
+  flex: none;
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding-inline: 12px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  background: transparent;
+  color: inherit;
+}
+
+.opt.on {
+  background: var(--ink);
+  color: var(--c);
+  border-color: var(--ink);
+}

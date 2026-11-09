@@ -28,6 +28,10 @@ export interface Transcript {
   offset: number
   partial: string
   lastAssistantId?: string
+  /** Modèle vu dans la dernière réponse (claude) ou le dernier turn_context (codex). */
+  model?: string
+  /** codex : approval_policy du dernier turn_context. */
+  approval?: string
 }
 
 const MAX_MESSAGES = 400
@@ -108,6 +112,7 @@ function claudeLine(t: Transcript, o: any) {
   if (o.type === 'assistant') {
     touch(t, at)
     const msg = o.message ?? {}
+    if (typeof msg.model === 'string' && msg.model) t.model = msg.model
     for (const part of msg.content ?? []) {
       if (part?.type === 'text' && part.text?.trim()) {
         const prev = t.messages[t.messages.length - 1]
@@ -186,7 +191,11 @@ function codexLine(t: Transcript, o: any) {
     touch(t, at)
     return
   }
-  if (o.type === 'turn_context' && p.cwd) t.cwd = p.cwd
+  if (o.type === 'turn_context') {
+    if (p.cwd) t.cwd = p.cwd
+    if (typeof p.model === 'string' && p.model) t.model = p.model
+    if (typeof p.approval_policy === 'string') t.approval = p.approval_policy
+  }
   if (o.type === 'event_msg') {
     if (p.type === 'task_started') {
       t.phase = 'working'

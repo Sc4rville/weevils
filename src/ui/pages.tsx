@@ -5,6 +5,7 @@ import { useApp, type Page } from './app-context'
 import { Collapse, Composer, Line, Messages, StatusChar, Working, type Attachment } from './bits'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
+import { Settings, shortModel } from './settings'
 import { Shell } from './shell'
 import { ago, dur, durLong, plural, status } from './format'
 
@@ -97,6 +98,7 @@ function SessionPage({ id }: { id: string }) {
   const [showScreen, setShowScreen] = useState<boolean | null>(null)
   const [showSubs, setShowSubs] = useState(true)
   const [preview, setPreview] = usePreviewState(id)
+  const [showSettings, setShowSettings] = useState(false)
 
   // Le détail suit chaque nouvelle version annoncée par le serveur.
   useEffect(() => {
@@ -179,13 +181,18 @@ function SessionPage({ id }: { id: string }) {
               <br />
             </>
           )}
-          {s.tool} · <StatusChar s={s.status} /> {st.label}
+          {s.tool}
+          {s.settings?.model ? ` ${shortModel(s.settings.model)}` : ''} · <StatusChar s={s.status} /> {st.label}
           {s.status === 'working' && s.workStartedAt != null ? <> depuis {durLong(now - s.workStartedAt)}</> : <> · {ago(now - s.lastActivityAt)}</>}
           {' · '}
           {s.machineId}
           {' · '}
           <button className="link" onClick={() => setPreview({ open: !preview.open })} aria-pressed={!!preview.open}>
             {preview.open ? 'fermer le navigateur' : 'navigateur'}
+          </button>
+          {' · '}
+          <button className="link" onClick={() => setShowSettings((v) => !v)} aria-pressed={showSettings} aria-controls="session-settings">
+            réglages
           </button>
         </>
       }
@@ -252,6 +259,19 @@ function SessionPage({ id }: { id: string }) {
       )}
 
       {s.status === 'working' && <Working author={s.tool} since={s.workStartedAt} />}
+
+      <Collapse open={showSettings} id="session-settings">
+        <div className="band tone">
+          <Settings
+            id={s.id}
+            tool={s.tool}
+            settings={s.settings}
+            canCommand={s.hasScreen}
+            run={(c) => api.command(s.id, c)}
+            onPicker={() => setShowScreen(true)}
+          />
+        </div>
+      </Collapse>
 
       {s.hasScreen && (
         <div className="band tone">

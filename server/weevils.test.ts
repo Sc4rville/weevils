@@ -141,3 +141,13 @@ describe('pièces jointes pour l’orchestrateur', async () => {
     fs.rmSync(dir, { recursive: true })
   })
 })
+
+describe('commandes de réglage', async () => {
+  const { checkCommand } = await import('./core.ts')
+  it('laisse passer /model opus, /effort high, /fast, /compact, /clear, /approvals', () => {
+    for (const c of ['/model opus', '/effort high', '/fast', '/compact', '/clear', '/new', '/approvals', ' /model gpt-5.1 ']) expect(checkCommand(c)).toBe(c.trim())
+  })
+  it('refuse tout le reste', () => {
+    for (const c of ['/model opus; rm -rf', 'bonjour', '/clear\nrm', '/exit', '/model a b']) expect(() => checkCommand(c)).toThrow()
+  })
+})

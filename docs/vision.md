@@ -1,32 +1,40 @@
-# Vision — prime sur le kit
+# Vision — overrides the kit
 
-Précisions orales du 8 novembre 2026. En cas de conflit avec `harness-interface-kit/`, ce fichier gagne.
+Spoken clarifications from November 8, 2026. If anything here conflicts with `harness-interface-kit/` (the original
+French design brief), this file wins.
 
-## Esthétique
+## Look
 
-- **Tout est en bandes** horizontales empilées. Chaque bande a sa couleur.
-- **Aucun endroit sans couleur** : pas de séparation, pas de fond neutre, pas de gouttière. Même les zones système (haut/bas du téléphone) sont colorées.
-- **Pas de box, pas de cartes, pas d'icônes dessinées.** Tout se passe à l'intérieur des bandes.
-- **Icônes = caractères du clavier** (`+`, `!`, `/`, `>`, `*`, `#`, `@`, `↑`…), parfois en plus grand, pour communiquer au lieu de pictogrammes.
-- **Une seule typo** : celle de Notes sur iPhone (police système Apple). On joue uniquement sur la graisse et la taille, jamais une deuxième famille.
-- **Light** : couleurs vraiment bright, texte noir. **Sombre** : couleurs sombres mais accueillantes, texte blanc.
-- Esthétique pop, simple.
+- **Everything is a band**: full-width horizontal strips stacked on top of each other. Each band has its own color.
+- **No spot without color**: no separators, no neutral background, no gutters. Even the system areas (top and
+  bottom of the phone) are colored.
+- **No boxes, no cards, no drawn icons.** Everything happens inside the bands.
+- **Icons are keyboard characters** (`+`, `!`, `/`, `>`, `*`, `#`, `@`, `↑`…), sometimes larger, to say things
+  instead of pictograms.
+- **One typeface**: the one of Notes on iPhone (Apple's system font). Only weight and size vary, never a second family.
+- **Light**: really bright colors, black text. **Dark**: deep but welcoming colors, white text.
+- Pop, simple.
 
 ## Interaction
 
-- **Dynamique, physique** : toucher une bande l'ouvre, les autres se replient ; une chose en fait bouger une autre (animations à ressort, mouvement avec inertie).
-- **Taille adaptative, jamais « derrière »** : la bande ouverte grossit (gros titre, tout son contenu), les autres deviennent de fines lanières (nom + résumé). Aucune bande ne passe sous une autre, aucun texte coupé par la bande suivante. Références aimées : bandes droites pleine largeur (AI OS, Slava Kornilov) et l'épaisseur qui varie (app vélo) — pas leurs cartes empilées ni leurs coins arrondis.
-- **En haut** : l'agent principal, l'endroit central pour tout monitorer et prompter.
-- **En bas** : une bande sticky avec les agents qui tournent H24 et ce qui est à côté.
-- **Chaque conversation/session s'ouvre en mode chat** et on interagit directement avec elle (comme une console cloud où l'on clique sur une ressource pour la piloter).
+- **Dynamic, physical**: touching a band opens it and the others fold; one thing moves another (spring animations,
+  motion with inertia).
+- **Adaptive size, never "behind"**: the open band grows (big title, all its content), the others become thin
+  strips (name + summary). No band slides under another, no text is cut by the next band. References we liked:
+  straight full-width bands (AI OS, Slava Kornilov) and the varying thickness (a cycling app) — not their stacked
+  cards nor their rounded corners.
+- **At the top**: the main agent, the central place to monitor and prompt everything.
+- **At the bottom**: a sticky band with the agents that run 24/7 and what is around them.
+- **Every conversation/session opens as a chat** and you interact with it directly (like a cloud console where you
+  click a resource to drive it).
 
-## Ce que fait le système (cible backend)
+## What the system does (backend target)
 
-- Organisé **par repo**.
-- Un système intelligent qui voit ce qui se passe sur le VPS, sur GitHub, et connaît les transcripts ChatGPT et Claude.
-- Il range automatiquement ce fil d'informations dans les bandes ; si un élément n'est lié à aucun repo, il **invente une catégorie**.
-- Il permet de **contrôler à distance** les sessions qui tournent sur le VPS.
+- Organized **by repo**.
+- A smart layer that sees what happens on the server, on GitHub, and knows the ChatGPT and Claude transcripts.
+- It sorts this stream into the bands automatically; when an item belongs to no repo, it **invents a category**.
+- It can **remotely control** the sessions running on the server.
 
-## Plateforme
+## Platform
 
-- Usage principal : **téléphone (iPhone)**.
+- Main use: **the phone (iPhone)**.

@@ -4,7 +4,7 @@ Weevils : un poste de pilotage pour agents de code. Depuis le téléphone, voir 
 
 - Vision et règles de design : [`docs/vision.md`](docs/vision.md)
 - Plan : [`docs/plan.md`](docs/plan.md)
-- Choix provisoires : [`CHOIX-PROVISOIRES.md`](CHOIX-PROVISOIRES.md)
+- Choix provisoires : [`docs/decisions.md`](docs/decisions.md)
 
 ## Comment ça marche
 

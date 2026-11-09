@@ -1,133 +1,164 @@
-# Plan weevils : du prototype au vrai poste de pilotage
+# weevils plan: from prototype to a real cockpit
 
-Écrit le 8 novembre 2026. Objectif final : monitorer et piloter, depuis le téléphone, mes projets, mes sessions Claude Code / Codex et mes discussions LLM, rangés intelligemment, **avec mes abonnements, sans coût d'API**.
+Written on November 8, 2026. Final goal: from the phone, monitor and drive my projects, my Claude Code / Codex
+sessions and my LLM chats, sorted smartly, **on my existing subscriptions, with no API cost**.
 
-## Principes
+This is the original plan, kept for context. Some choices changed on the way (tmux instead of zellij, an access code
+instead of a passkey for now); the [state at the end](#state-on-november-8-2026-evening) says what was actually built.
 
-1. **Zéro coût en plus.** weevils ne touche jamais à un jeton ni à une clé. Il pilote les CLI officielles `claude` (2.1.x) et `codex` (0.167) déjà connectées à mes abonnements sur le VPS. Usage personnel de ces outils = leur usage normal. Les limites d'usage des abonnements s'appliquent : tout ce qui consomme (classement, H24, agent principal) doit rester sobre.
-2. **Le VPS est la source de vérité.** Un démon `weevilsd` y tourne en permanence (service systemd utilisateur) ; l'app iPhone n'est qu'une fenêtre dessus.
-3. **Plus aucune option démo dans l'app.** Les fixtures ne servent plus qu'aux tests. La bande « démo » disparaît dès que les vraies données arrivent.
-4. **Sécurité d'abord.** Pouvoir écrire dans un terminal = accès shell à distance. Rien en écriture avant l'authentification.
+## Principles
+
+1. **Zero extra cost.** weevils never touches a token or a key. It drives the official `claude` and `codex` CLIs
+   already logged in to my subscriptions on the server. Personal use of these tools = their normal use. The
+   subscriptions' usage limits apply: anything that consumes (sorting, 24/7 jobs, the main agent) must stay frugal.
+2. **The server is the source of truth.** A `weevilsd` daemon runs there permanently (a systemd user service); the
+   phone app is only a window onto it.
+3. **No demo option in the app anymore.** Fixtures are for tests only. The "demo" band goes away as soon as real
+   data arrives.
+4. **Security first.** Being able to type into a terminal = remote shell access. Nothing that writes before
+   authentication.
 
 ## Architecture
 
 ```
-iPhone (PWA weevils) ──HTTPS + SSE──▶ Caddy ──▶ weevilsd (VPS · Node 22 · SQLite)
-                                                   ├─ lit   ~/.claude/projects/**/*.jsonl   (sessions Claude Code)
-                                                   ├─ lit   ~/.codex/sessions/**/rollout-*.jsonl (sessions Codex)
-                                                   ├─ reçoit les hooks Claude Code + notify Codex (état en direct)
-                                                   ├─ pilote zellij (write-chars, dump-screen, list-sessions)
-                                                   ├─ lance  claude -p / codex exec (headless, abonnement)
-                                                   ├─ lit   git + gh (repos, branches, commits, PR)
-                                                   └─ importe les exports ChatGPT / Claude.ai
+phone (weevils PWA) ──HTTPS + SSE──▶ Caddy ──▶ weevilsd (server · Node 22 · SQLite)
+                                                 ├─ reads    ~/.claude/projects/**/*.jsonl          (Claude Code sessions)
+                                                 ├─ reads    ~/.codex/sessions/**/rollout-*.jsonl   (Codex sessions)
+                                                 ├─ receives Claude Code hooks + Codex notify (live state)
+                                                 ├─ drives   the terminal multiplexer (write, read the screen, list)
+                                                 ├─ runs     claude -p / codex exec (headless, subscription)
+                                                 ├─ reads    git + gh (repos, branches, commits, PRs)
+                                                 └─ imports  ChatGPT / Claude.ai exports
 ```
 
-Repo : `app/` (la PWA actuelle) + `server/` (weevilsd) + `shared/` (les types de `src/state/types.ts`, déjà pensés pour le backend).
+Repo: the PWA + `server/` (weevilsd) + `shared/` (the types, already designed for the backend).
 
-Constats vérifiés sur le VPS le 8 novembre 2026 :
-- chaque ligne des transcripts Claude Code porte `sessionId`, `cwd`, `gitBranch`, `isSidechain` (sous-agents) ;
-- chaque transcript Codex commence par `session_meta` avec le `cwd` ;
-- zellij 0.45 a `action write-chars` et `action dump-screen` ;
-- `~/projects` contient des familles de repos (`lws-*`, `mygame-*`) : un projet = une famille, pas un repo.
+Facts checked on the server on November 8, 2026:
+- every line of a Claude Code transcript carries `sessionId`, `cwd`, `gitBranch`, `isSidechain` (subagents);
+- every Codex transcript starts with `session_meta`, which has the `cwd`;
+- the multiplexer can type characters into a pane and dump its screen;
+- `~/projects` holds families of repos (`shop-web`, `shop-api`…): a project = a family, not a repo.
 
-## Les phases
+## Phases
 
-### Phase 0 · Socle et sécurité (1 à 2 jours)
-- Découpage `app/` + `server/`, base SQLite (`node:sqlite`), API + flux SSE.
-- **Connexion par passkey (Face ID)**, un seul utilisateur, cookie de session. Aucune route d'écriture sans elle.
-- weevilsd en service systemd utilisateur, exposé via Caddy (`weevils.example.com`), journal de toutes les actions.
-- La PWA remplace son store local par un client API (mêmes types).
+### Phase 0 · Foundation and security (1–2 days)
+- Split app / server, SQLite database (`node:sqlite`), API + SSE stream.
+- **Login with a passkey (Face ID)**, a single user, session cookie. No write route without it.
+- weevilsd as a systemd user service, behind Caddy (`weevils.example.com`), every action logged.
+- The PWA replaces its local store with an API client (same types).
 
-**Fini quand** l'iPhone se connecte avec Face ID et voit une liste de projets réelle (même vide).
+**Done when** the phone logs in with Face ID and sees a real list of projects (even empty).
 
-### Phase 1 · Voir ce qui tourne sur le VPS (2 à 3 jours)
-- Collecteur Claude Code : surveillance des `.jsonl`, lecture incrémentale (offset), messages utilisateur/assistant, outils appelés, sous-agents (`isSidechain`), `cwd` → repo → projet.
-- Collecteur Codex : même chose sur les `rollout-*.jsonl`.
-- **État exact en direct** via les hooks Claude Code (`SessionStart`, `UserPromptSubmit`, `Stop`, `Notification`, `SubagentStop`, `SessionEnd`) qui préviennent weevilsd : travaille / à toi / disponible / terminée. Pour Codex : `notify` dans `config.toml` (fin de tour) + fin de fichier.
-- Sessions vivantes via `zellij list-sessions`.
-- Projets = familles de repos de `~/projects` (règle de préfixe, modifiable dans l'app) + infos GitHub via `gh`.
+### Phase 1 · See what runs on the server (2–3 days)
+- Claude Code collector: watch the `.jsonl` files, incremental reads (offset), user/assistant messages, tool calls,
+  subagents (`isSidechain`), `cwd` → repo → project.
+- Codex collector: the same on `rollout-*.jsonl`.
+- **Exact live state** through Claude Code hooks (`SessionStart`, `UserPromptSubmit`, `Stop`, `Notification`,
+  `SubagentStop`, `SessionEnd`) that ping weevilsd: working / your turn / available / done. For Codex: `notify` in
+  `config.toml` (end of turn) + end of file.
+- Live sessions from the multiplexer.
+- Projects = families of repos in `~/projects` (prefix rule, editable in the app) + GitHub info through `gh`.
 
-**Fini quand** j'ouvre `claude` dans un terminal du VPS et la session apparaît en moins de 3 s dans la bonne bande, avec le bon état.
+**Done when** I open `claude` in a terminal on the server and the session shows up in under 3 s in the right band,
+with the right state.
 
-### Phase 2 · Agir depuis le téléphone (2 à 3 jours)
-- **Convention de lancement** : un petit lanceur `wv` démarre `claude` / `codex` dans une session zellij nommée (`wv-<repo>-<n>`). C'est ce qui permet d'écrire dans une session vivante.
-- Envoyer à une session vivante : `zellij action write-chars` + Entrée, après lecture de l'écran (`dump-screen`) pour ne jamais taper dans un menu par erreur.
-- Session fermée ou lancée hors zellij : reprise headless `claude -p --resume <id>` / `codex exec resume <id>`, réponse en streaming.
-- `+` : weevilsd ouvre une session zellij dans le repo et lance l'agent avec le premier message.
-- **« À toi »** : le hook `Notification` (permission, question) déclenche une **notification push sur l'iPhone** (Web Push, gratuit, PWA iOS 16.4+). L'app montre l'écran exact de la question et envoie la réponse choisie.
-- Garde-fous : seulement des messages vers les agents, jamais de commande shell libre ; tout est journalisé.
-- La bande démo est supprimée.
+### Phase 2 · Act from the phone (2–3 days)
+- **Launch convention**: a small launcher `wv` starts `claude` / `codex` in a named multiplexer session
+  (`wv-<repo>-<n>`). That is what makes writing into a live session possible.
+- Send to a live session: type the text + Enter, after reading the screen so we never type into a menu by mistake.
+- Session closed or started outside the multiplexer: headless resume `claude -p --resume <id>` /
+  `codex exec resume <id>`, streamed answer.
+- `+`: weevilsd opens a session in the repo and starts the agent with the first message.
+- **"Your turn"**: the `Notification` hook (permission, question) triggers a **push notification on the phone**
+  (Web Push, free, iOS 16.4+ PWA). The app shows the exact question on screen and sends the chosen answer.
+- Guardrails: only messages to agents, never free shell commands; everything is logged.
+- The demo band is removed.
 
-**Fini quand**, depuis l'iPhone, je réponds à une demande de permission d'une session Claude du VPS et je la vois repartir.
+**Done when**, from the phone, I answer a permission request of a Claude session on the server and see it go on.
 
-### Phase 3 · Transcription des conversations LLM (2 à 3 jours)
-- **Source fiable** : les exports officiels ChatGPT (`conversations.json`) et Claude.ai (zip). Importeur idempotent (dédoublonnage par identifiant), dépôt du zip depuis l'iPhone ou dossier surveillé sur le VPS.
-- **Source continue, en option** : une petite extension Chrome weevils qui, quand j'ouvre une conversation sur chatgpt.com ou claude.ai sur le PC, l'envoie à weevilsd. C'est mon compte et mon navigateur, mais lire leurs pages est fragile et en zone grise de leurs conditions : désactivable, jamais indispensable.
-- Limite honnête : aucune voie officielle ne synchronise automatiquement les conversations faites dans les apps iPhone ; elles arrivent par l'export.
-- Mode chat sur une conversation importée : on ne peut pas écrire dans ChatGPT / Claude.ai à leur place. « Continuer ici » ouvre une session Claude headless avec la conversation en contexte (abonnement).
+### Phase 3 · LLM chat transcripts (2–3 days)
+- **Reliable source**: the official ChatGPT (`conversations.json`) and Claude.ai (zip) exports. Idempotent importer
+  (dedup by id), zip uploaded from the phone or a watched folder on the server.
+- **Continuous source, optional**: a small weevils Chrome extension that sends a conversation to weevilsd when it is
+  opened on chatgpt.com or claude.ai. My account and my browser, but reading their pages is brittle and a gray area
+  of their terms: can be turned off, never required.
+- Honest limit: no official way syncs the chats made in the phone apps automatically; they come in through the export.
+- Chat mode on an imported conversation: we cannot write into ChatGPT / Claude.ai on their behalf. "Continue here"
+  opens a headless Claude session with the conversation as context (subscription).
 
-**Fini quand** un export importé donne des conversations lisibles, rangées et recherchables.
+**Done when** an imported export gives readable, sorted, searchable conversations.
 
-### Phase 4 · Classement intelligent et dynamique (2 jours)
-1. **Déterministe, gratuit, instantané** : session d'agent → `cwd` → repo → projet. Couvre presque toutes les sessions.
-2. **Local, gratuit** : embeddings sur le CPU du VPS (petit modèle multilingue) ; similarité entre une conversation et chaque projet (README, noms, conversations déjà rangées).
-3. **Juge, sur l'abonnement** : `claude -p --model haiku` seulement pour les cas incertains, en lot, réponse JSON `{projet | nouvelle catégorie, raison, confiance}`, mise en cache.
-- Les corrections deviennent des exemples réutilisés ; les catégories inventées se renomment et se fusionnent.
-- Reclassement automatique quand un repo apparaît ; « à ranger » seulement sous un seuil de confiance ; chaque rangement dit pourquoi.
+### Phase 4 · Smart, dynamic sorting (2 days)
+1. **Deterministic, free, instant**: agent session → `cwd` → repo → project. Covers almost every session.
+2. **Local, free**: embeddings on the server CPU (small multilingual model); similarity between a conversation and
+   each project (README, names, conversations already sorted).
+3. **Judge, on the subscription**: `claude -p --model haiku` only for uncertain cases, in batches, JSON answer
+   `{project | new category, reason, confidence}`, cached.
+- Corrections become reused examples; invented categories can be renamed and merged.
+- Automatic re-sorting when a repo appears; "to sort" only under a confidence threshold; every placement says why.
 
-**Fini quand** 90 % des conversations importées sont rangées sans moi.
+**Done when** 90% of imported conversations are sorted without me.
 
-### Phase 5 · Explorateur de fichiers fluide (1 à 2 jours)
-- API en lecture seule, enfermée dans le repo (`git ls-files`, respecte `.gitignore`), arbre chargé à la demande, cache et préchargement.
-- Lecture : markdown rendu, code coloré (même police), images, recherche (ripgrep).
-- **« Ce que l'agent a changé »** : les fichiers touchés par une session (outils `Edit` / `Write` des transcripts) et le diff des derniers commits, accessibles depuis la session.
+### Phase 5 · Smooth file explorer (1–2 days)
+- Read-only API, jailed in the repo (`git ls-files`, honors `.gitignore`), tree loaded on demand, cache and prefetch.
+- Reading: rendered markdown, highlighted code (same font), images, search (ripgrep).
+- **"What the agent changed"**: the files touched by a session (`Edit` / `Write` tools in the transcripts) and the
+  diff of the last commits, reachable from the session.
 
-**Fini quand** je navigue un repo et lis un fichier depuis l'iPhone sans attente perceptible.
+**Done when** I browse a repo and read a file from the phone with no noticeable wait.
 
-### Phase 6 · H24 réel (1 à 2 jours)
-- Une activité H24 = un timer systemd utilisateur qui lance `claude -p` ou `codex exec` (abonnement) dans un repo.
-- Activé / désactivé = timer actif ou non ; en cours = processus vivant ; dernier résultat = sa sortie. Pause / reprise réelles.
+### Phase 6 · Real 24/7 (1–2 days)
+- A 24/7 activity = a systemd user timer that runs `claude -p` or `codex exec` (subscription) in a repo.
+- On / off = timer active or not; running = live process; last result = its output. Real pause / resume.
 
-### Phase 7 · Agent principal réel (2 jours)
-- Une session Claude headless avec un serveur MCP weevils aux outils limités : lister les sessions, envoyer un message, ouvrir, classer, résumer.
-- Il route mes ordres (« reprends le crm ») vers la bonne session et demande confirmation quand c'est ambigu.
+### Phase 7 · Real main agent (2 days)
+- A headless Claude session with a weevils tool with limited powers: list the sessions, send a message, open,
+  sort, summarize.
+- It routes my orders ("pick the CRM back up") to the right session and asks for confirmation when it is ambiguous.
 
-### Phase 8 · Style et UX (avec l’utilisateur)
-Icônes, nettoyage, densité, animations : après avoir vécu quelques jours avec les vraies données.
+### Phase 8 · Style and UX (with the user)
+Icons, cleanup, density, animations: after living a few days with the real data.
 
-**Total estimé** : 2 à 3 semaines de travail d'agent, livrable phase par phase, chaque phase utilisable sur l'iPhone.
+**Estimated total**: 2–3 weeks of agent work, delivered phase by phase, each phase usable on the phone.
 
-## Risques
+## Risks
 
-- **Formats de transcripts non documentés** : ils changent avec les versions des CLI → parseurs tolérants, testés sur de vrais fichiers.
-- **Écrire dans un terminal est fragile** (menus, prompts) → lecture de l'écran avant chaque envoi, reprise headless en secours.
-- **Quotas d'abonnement** : classement et H24 consomment ; on mesure et on plafonne.
-- **Conditions d'utilisation** : on reste sur les CLI officielles ; on n'extrait jamais les jetons OAuth pour d'autres outils.
-- **Sessions lancées sur le PC** (pas sur le VPS) : hors périmètre au début ; plus tard, un petit relais sur le PC.
+- **Undocumented transcript formats**: they change with CLI versions → tolerant parsers, tested on real files.
+- **Typing into a terminal is brittle** (menus, prompts) → read the screen before each send, headless resume as a
+  fallback.
+- **Subscription quotas**: sorting and 24/7 consume; measure and cap.
+- **Terms of use**: stay on the official CLIs; never extract the OAuth tokens for other tools.
+- **Sessions started on another machine** (not the server): out of scope at first; later, a small relay there.
 
-## Décisions à prendre
+## Decisions to make
 
-1. Authentification : passkey Face ID (recommandé) ou Tailscale.
-2. Lancer désormais les sessions via `wv` (dans zellij) pour pouvoir leur écrire en direct.
-3. Conversations : exports seuls, ou exports + extension Chrome.
-4. Projet = famille de repos par préfixe (`lws-*`, `mygame-*`).
+1. Authentication: Face ID passkey (recommended) or Tailscale.
+2. Start sessions through `wv` from now on, so we can write to them live.
+3. Conversations: exports only, or exports + Chrome extension.
+4. Project = family of repos by prefix (`shop-*`, `game-*`).
 
-## État au 8 novembre 2026 (soir)
+## State on November 8, 2026 (evening)
 
-Fait et vérifié en vrai :
-- weevilsd en service permanent sur le VPS, app servie sur weevils.example.com, connexion par code ou QR (passkey Face ID : à faire).
-- Sessions Claude Code et Codex du VPS **et du PC** (fédération par tunnel SSH inversé), rangées par projet, état exact par les hooks.
-- Écrire à une session, lire l'écran du terminal, répondre aux questions (touches), créer une session, reprendre une session fermée : testé avec Codex de bout en bout.
-- Pilotage par tmux (`wv`), qui survit aux redémarrages de weevilsd.
-- Explorateur de fichiers fluide (cache + préchargement), sur la machine qui porte le repo.
-- H24 : jobs longs de ~/logs et timers `wv-*`.
-- Conversations ChatGPT / Claude.ai : import des exports (zip ou JSON, depuis l'iPhone ou ~/weevils-imports), lecture, « continuer ici » avec un agent.
-- Classement intelligent : règles + `codex exec` éphémère (abonnement), catégories inventées, corrections réutilisées.
-- Plus aucune donnée de démo dans l'app.
+Done and checked for real:
+- weevilsd as a permanent service on the server, app served on its own domain, login with an access code or a QR
+  code (Face ID passkey: to do).
+- Claude Code and Codex sessions of the server **and of a second machine** (federation through a reverse SSH
+  tunnel), sorted by project, exact state from the hooks.
+- Write to a session, read the terminal screen, answer questions (keys), create a session, resume a closed one:
+  tested end to end with Codex.
+- Driving through tmux (`wv`), which survives weevilsd restarts.
+- Smooth file explorer (cache + prefetch), on the machine that holds the repo.
+- 24/7: long jobs from `~/logs` and `wv-*` timers.
+- ChatGPT / Claude.ai conversations: import of the exports (zip or JSON, from the phone or `~/weevils-imports`),
+  reading, "continue here" with an agent.
+- Smart sorting: rules + ephemeral `codex exec` (subscription), invented categories, reused corrections.
+- No demo data left in the app.
 
-Reste :
-- Reconnecter Claude Code sur le VPS (connexion expirée) : `ssh -t vps claude` puis `/login`.
-- Notifications push iPhone quand une session attend.
-- Passkey Face ID à la place du code.
-- Agent principal avec un vrai modèle (aujourd'hui : règles simples).
-- Style et UX (phase 8), avec l’utilisateur.
+Left:
+- Push notifications on the phone when a session waits.
+- Face ID passkey instead of the code.
+- A main agent with a real model (today: simple rules).
+- Style and UX (phase 8), with the user.
+
+Several of these landed the next day (push notifications, weevboss as a real Claude session): see
+[changelog.md](changelog.md).

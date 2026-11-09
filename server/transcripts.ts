@@ -11,7 +11,10 @@ export interface Transcript {
   file: string
   cwd: string
   branch?: string
+  /** Titre automatique de l'outil (ai-title). */
   title?: string
+  /** Titre choisi par Scarville dans l'outil (/rename) : prime sur tout. */
+  customTitle?: string
   firstPrompt?: string
   originator?: string
   openedAt: number
@@ -59,7 +62,7 @@ function claudeLine(t: Transcript, o: any) {
   if (o.cwd) t.cwd = o.cwd
   if (o.gitBranch && o.gitBranch !== 'HEAD') t.branch = o.gitBranch
   if (o.type === 'ai-title' && o.aiTitle) t.title = o.aiTitle
-  if (o.type === 'custom-title' && o.customTitle) t.title = o.customTitle
+  if (o.type === 'custom-title' && o.customTitle) t.customTitle = o.customTitle
   if (o.isSidechain) return
 
   if (o.type === 'user') {
@@ -346,7 +349,12 @@ export class TranscriptStore {
   }
 }
 
-export const titleOf = (t: Transcript) => short(oneLine(t.title || t.firstPrompt || 'nouvelle session').replace(/^[#>*\s-]+/, ''), 60)
+export const titleOf = (t: Transcript) => short(oneLine(t.customTitle || t.title || t.firstPrompt || 'nouvelle session').replace(/^[#>*\s-]+/, ''), 60)
+/** Matière pour le renommeur : début de la session et ses derniers échanges, compacts. */
+export const digestOf = (t: Transcript, lastN = 10) => {
+  const recent = t.messages.slice(-lastN).map((m) => `${m.role === 'user' ? 'Scarville' : m.role === 'assistant' ? 'agent' : '→'} : ${short(oneLine(m.text), m.role === 'event' ? 80 : 320)}`)
+  return { debut: short(oneLine(t.firstPrompt ?? ''), 200), recents: recent }
+}
 export const lastMessageOf = (t: Transcript) => {
   const m = [...t.messages].reverse().find((x) => x.role !== 'event')
   return m ? short(oneLine(m.text), 120) : undefined

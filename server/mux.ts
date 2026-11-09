@@ -91,19 +91,31 @@ export async function capture(name: string): Promise<string> {
   return out.replace(/\s+$/g, '')
 }
 
-/** Repère une question à l'écran (permission, confiance, menu de choix) et renvoie la phrase à montrer. */
+/**
+ * Repère une vraie question à l'écran (permission, confiance, menu de choix) et renvoie la phrase à montrer.
+ * Exigeant exprès : il faut le pied de dialogue (« Enter to confirm · Esc to cancel », « (y/n) »…) dans les
+ * dernières lignes. Un mot comme « approve » ou « do you want » dans le fil normal ne suffit plus : ça créait
+ * des faux « à toi » dès qu'un fichier ou une réponse contenait ces mots.
+ */
 export function attentionFromScreen(text: string): string | undefined {
   const lines = text
     .split('\n')
     .slice(-30)
     .map((l) => l.replace(/[│╭╮╰╯─┃━]/g, '').trim())
-  const prompt = /(enter to confirm|esc to cancel|enter continue|esc back|\(y\/n\)|do you want|would you like|allow .* to|approve|press enter to continue|^[❯›>]\s*(\d+\.|yes|no))/i
-  const at = lines.findLastIndex((l) => prompt.test(l))
-  if (at < 0) return undefined
-  // La question elle-même : la ligne la plus proche au-dessus du menu qui contient « ? », coupée après.
-  for (let i = at; i >= Math.max(0, at - 14); i--) {
+  const footer = /(enter to (confirm|continue|select|submit)|enter continue|esc (to cancel|to go back|back|cancel)|\(y\/n\)|\by\/n\b|tab to toggle|↑\/↓ to (navigate|select))/i
+  const option = /^[❯›>]\s*(\d+[.)]\s*)?\S|^\d+[.)]\s+\S|^[❯›>]?\s*(yes|no)\b/i
+  const tail = lines.length - 1
+  const at = lines.findLastIndex((l) => footer.test(l))
+  if (at < 0 || tail - at > 12) return undefined
+  // Un dialogue a des options : au moins une ligne d'option entre la question et le pied.
+  const from = Math.max(0, at - 16)
+  if (!lines.slice(from, at).some((l) => option.test(l))) return undefined
+  const skip = (l: string) => !l || option.test(l) || footer.test(l) || /\+\d+ lines|ctrl\+[a-z]|\(esc\)|^[·…\-=_ ]+$/i.test(l)
+  // La question elle-même : la ligne la plus proche au-dessus du pied qui contient « ? », coupée après.
+  for (let i = at; i >= from; i--) {
     const q = lines[i].indexOf('?')
-    if (q > 3) return lines[i].slice(0, q + 1).slice(0, 180)
+    if (q > 3 && !option.test(lines[i])) return lines[i].slice(0, q + 1).slice(0, 180)
   }
-  return (lines.slice(Math.max(0, at - 14), at + 1).find((l) => l.length > 12) ?? lines[at]).slice(0, 180)
+  const line = lines.slice(from, at).find((l) => !skip(l) && l.length > 12)
+  return (line ?? 'un choix t’attend').slice(0, 180)
 }

@@ -611,3 +611,153 @@ input:focus-visible {
 .key:active {
   background: color-mix(in oklab, currentColor 30%, transparent);
 }
+
+/* ---------- Le fil d'une session : étapes repliées, code replié, l'agent qui travaille ---------- */
+
+.steps-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+}
+
+.steps-head .text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.steps-head .go {
+  flex: none;
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.steps-list {
+  padding-bottom: 8px;
+}
+
+.steps-list .text {
+  padding-block: 3px;
+  opacity: 0.85;
+}
+
+.snippet .link {
+  min-height: 36px;
+}
+
+.snippet .code {
+  padding-block: 4px 12px;
+  font-size: 0.8125rem;
+}
+
+.msg.ask > .in {
+  padding-block: 14px 10px;
+}
+
+.msg.ask .text {
+  font-size: 1.125rem;
+  font-weight: 650;
+  margin-bottom: 8px;
+}
+
+.msg.working > .in {
+  padding-block: 12px 14px;
+}
+
+.msg.working .who {
+  font-size: 0.9375rem;
+}
+
+/* Vert fluo : ce qui travaille, en ce moment. */
+:root {
+  --fluo: #39ff14;
+}
+
+[data-theme='light'] {
+  --fluo: #1fd60a;
+}
+
+.fluo {
+  color: var(--fluo);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.spin.fluo {
+  animation:
+    spin 2.6s linear infinite,
+    pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fluo,
+  .spin.fluo {
+    animation: none;
+  }
+}
+
+/* ---------- Agent principal : où envoyer, en puces qui défilent horizontalement ---------- */
+
+.chips {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 4px var(--pad) 14px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: 0 0 72%;
+  max-width: 320px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px 12px;
+  min-height: 76px;
+  background: color-mix(in oklab, currentColor 12%, transparent);
+}
+
+.chip.best {
+  background: color-mix(in oklab, currentColor 22%, transparent);
+}
+
+.chip:active {
+  background: color-mix(in oklab, currentColor 30%, transparent);
+}
+
+.chip-kind {
+  font-size: 0.8125rem;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip-title {
+  font-size: 1.0625rem;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

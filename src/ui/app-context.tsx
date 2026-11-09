@@ -43,16 +43,19 @@ export function useApp(): AppCtx {
 const SLOTS = 8
 const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)
 
-/** Couleur stable par projet, jamais la même que la bande juste au-dessus. */
+/** Couleur stable par projet ; tant qu'il y a au plus 8 projets, toutes différentes (donc jamais deux bandes voisines pareilles, quel que soit l'ordre). */
 export function colorSlots(ids: string[]): Record<string, string> {
   const out: Record<string, string> = {}
-  let prev = -1
+  const taken = new Set<number>()
+  let last = -1
   for (const id of ids) {
     let slot = hash(id) % SLOTS
-    if (slot === prev) slot = (slot + 1) % SLOTS
+    if (taken.size < SLOTS) while (taken.has(slot)) slot = (slot + 1) % SLOTS
+    else if (slot === last) slot = (slot + 1) % SLOTS
+    taken.add(slot)
     out[id] = `p${slot}`
-    prev = slot
+    last = slot
   }
-  out.__foot = `p${(prev + 3) % SLOTS}`
+  out.__foot = `p${(last + 3) % SLOTS}`
   return out
 }

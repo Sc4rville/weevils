@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Message, SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
-import { Collapse, Composer, Line, Messages, StatusChar } from './bits'
+import { Collapse, Composer, Line, Messages, StatusChar, Working } from './bits'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Shell } from './shell'
 import { ago, dur, durLong, plural, status } from './format'
@@ -114,7 +114,8 @@ function SessionPage({ id }: { id: string }) {
   }, [id, snap.version, replace])
 
   const s = snap.sessions.find((x) => x.id === id) ?? detail?.session
-  const screenOpen = showScreen ?? s?.status === 'needs_user'
+  // L'écran brut du terminal est un secours : jamais ouvert tout seul.
+  const screenOpen = showScreen ?? false
 
   // Écran du terminal : rafraîchi tant qu'il est affiché.
   useEffect(() => {
@@ -167,14 +168,20 @@ function SessionPage({ id }: { id: string }) {
       title={s.title}
       meta={
         <>
+          {s.now && (
+            <>
+              <span className="strong">{s.now}</span>
+              <br />
+            </>
+          )}
           <span className="strong">
             {s.tool} · <StatusChar s={s.status} /> {st.label}
           </span>
           {' · '}ouverte depuis {durLong(now - s.openedAt)}
           {s.status === 'working' && s.workStartedAt != null && <> · travaille depuis {durLong(now - s.workStartedAt)}</>}
-          <br />
-          {s.repo ?? s.cwd}
-          {s.branch && <> · {s.branch}</>} · {s.machineId} · {s.origin === 'weevils' ? 'pilotée par weevils' : s.origin}
+          {' · '}
+          {s.repo ?? s.cwd.replace(/^\/home\/[^/]+/, '~')}
+          {s.branch && <> · {s.branch}</>} · {s.machineId}
         </>
       }
       foot={
@@ -187,29 +194,6 @@ function SessionPage({ id }: { id: string }) {
       }
     >
       {err && <ErrorBand text={err} />}
-
-      {s.status === 'needs_user' && (
-        <div className="band invert">
-          <div className="in" style={{ paddingBlock: 14 }}>
-            <div className="small strong">! à toi</div>
-            <div className="h2">{s.attention ?? 'la session attend ta réponse'}</div>
-            {!s.hasScreen && <div className="meta">Réponds dans le terminal où elle tourne.</div>}
-          </div>
-        </div>
-      )}
-
-      {s.hasScreen && (
-        <div className={`band ${s.status === 'needs_user' ? 'invert' : 'tone'}`}>
-          <Line ch=">_" go={screenOpen ? '−' : '+'} onClick={() => setShowScreen(!screenOpen)} label={screenOpen ? 'masquer l’écran du terminal' : 'voir l’écran du terminal'}>
-            <span className="strong">écran du terminal</span>
-          </Line>
-          <Collapse open={screenOpen}>
-            <pre className="screen">{screenText ?? 'lecture de l’écran…'}</pre>
-            <Keys id={s.id} onError={setErr} />
-            <div style={{ height: 10 }} />
-          </Collapse>
-        </div>
-      )}
 
       {!s.controllable && (
         <div className="band tone">
@@ -229,7 +213,7 @@ function SessionPage({ id }: { id: string }) {
             {s.subagents.map((a) => (
               <div key={a.id} className="in" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', paddingBlock: 8 }}>
                 <span className="h2" style={{ width: 22, textAlign: 'center', lineHeight: 1.2 }} aria-hidden>
-                  {a.status === 'working' ? <span className="spin">*</span> : '✓'}
+                  {a.status === 'working' ? <span className="spin fluo">*</span> : '✓'}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="ellipsis">
@@ -246,8 +230,33 @@ function SessionPage({ id }: { id: string }) {
         </div>
       )}
 
-      <Messages messages={messages} author={s.tool} />
+      <Messages messages={messages} author={s.tool} working={s.status === 'working'} />
       {detail && messages.length === 0 && <div className="in meta empty">Pas encore de message. La session démarre.</div>}
+
+      {s.status === 'needs_user' && (
+        <div className="msg band tone ask">
+          <div className="in">
+            <span className="who">! {s.tool} te demande</span>
+            <div className="text">{s.attention ?? 'la session attend ta réponse'}</div>
+            {s.hasScreen ? <Keys id={s.id} onError={setErr} /> : <div className="meta">Réponds dans le terminal où elle tourne.</div>}
+          </div>
+        </div>
+      )}
+
+      {s.status === 'working' && <Working author={s.tool} since={s.workStartedAt} />}
+
+      {s.hasScreen && (
+        <div className="band tone">
+          <Line ch=">_" go={screenOpen ? '−' : '+'} onClick={() => setShowScreen(!screenOpen)} label={screenOpen ? 'masquer l’écran du terminal' : 'voir l’écran du terminal'}>
+            <span className="meta">écran du terminal</span>
+          </Line>
+          <Collapse open={screenOpen}>
+            <pre className="screen">{screenText ?? 'lecture de l’écran…'}</pre>
+            <Keys id={s.id} onError={setErr} />
+            <div style={{ height: 10 }} />
+          </Collapse>
+        </div>
+      )}
     </Shell>
   )
 }

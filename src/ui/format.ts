@@ -34,3 +34,67 @@ export const status: Record<SessionStatus, { ch: string; label: string }> = {
 }
 
 export const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`
+
+/** Texte d'agent simplifié : on enlève la mise en forme markdown qui n'apporte rien sur le téléphone. */
+export function plain(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, '$1$2')
+    .replace(/`([^`\n]+)`/g, '$1')
+    .replace(/^\s*[-*•]\s+/gm, '· ')
+    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/** Découpe un texte en prose et blocs de code (``` … ```), pour replier le code. */
+export function segments(text: string): { kind: 'text' | 'code'; body: string }[] {
+  const out: { kind: 'text' | 'code'; body: string }[] = []
+  const re = /```[^\n]*\n([\s\S]*?)```/g
+  let last = 0
+  for (const m of text.matchAll(re)) {
+    const i = m.index ?? 0
+    if (i > last) out.push({ kind: 'text', body: text.slice(last, i) })
+    out.push({ kind: 'code', body: m[1].replace(/\s+$/, '') })
+    last = i + m[0].length
+  }
+  if (last < text.length) out.push({ kind: 'text', body: text.slice(last) })
+  return out.filter((s) => s.body.trim())
+}
+
+const VERBS: Record<string, string> = {
+  read: 'lit',
+  edit: 'modifie',
+  multiedit: 'modifie',
+  write: 'écrit',
+  notebookedit: 'modifie',
+  bash: 'lance',
+  grep: 'cherche',
+  glob: 'cherche',
+  agent: 'délègue',
+  task: 'délègue',
+  webfetch: 'consulte',
+  websearch: 'cherche sur le web',
+  todowrite: 'planifie',
+  askuserquestion: 'demande',
+  skill: 'ouvre le skill',
+  shell: 'lance',
+  exec_command: 'lance',
+  local_shell: 'lance',
+  apply_patch: 'modifie',
+  update_plan: 'planifie',
+  view_image: 'regarde',
+}
+
+/** « Bash · Show hostname » → « lance : Show hostname ». Chemins raccourcis, outils MCP nommés par leur fin. */
+export function step(text: string): string {
+  const i = text.indexOf(' · ')
+  const rawName = i < 0 ? text : text.slice(0, i)
+  const detail = i < 0 ? '' : text.slice(i + 3)
+  const name = rawName.replace(/^mcp__[^_]+(?:_[^_]+)*__/, '').replace(/^mcp__.*?__/, '')
+  const verb = VERBS[name.toLowerCase()] ?? name.replace(/_/g, ' ').toLowerCase()
+  const d = detail.replace(/\/home\/[a-z0-9_-]+\//g, '~/')
+  return d ? `${verb} · ${d}` : verb
+}

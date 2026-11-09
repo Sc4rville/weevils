@@ -87,4 +87,34 @@ describe('questions à l’écran', () => {
   it('écran normal : rien', () => {
     expect(attentionFromScreen('› Ask Codex to do anything\n  ← for agents')).toBeUndefined()
   })
+  it('un mot de dialogue dans le fil normal ne suffit pas (faux « à toi » du 9 novembre)', () => {
+    const screen = [
+      '● Bash(cat ~/.local/bin/wv)',
+      '  ⎿  else claude_flags=(--dangerously-skip-permissions); codex_flags=(--dangerously-bypass-approvals-and-sandbox); fi',
+      '     … +5 lines (ctrl+o to expand)',
+      '● Do you want me to allow the script to continue? Would you like a summary?',
+      '',
+      '╭──────────────────────────────────────────╮',
+      '│ > essaie encore                          │',
+      '╰──────────────────────────────────────────╯',
+      '  ? for shortcuts',
+    ].join('\n')
+    expect(attentionFromScreen(screen)).toBeUndefined()
+  })
+  it('Claude : question à choix (AskUserQuestion)', () => {
+    const screen = [
+      '● Quelle couleur pour la bande ?',
+      '',
+      '  ❯ 1. Vert',
+      '    2. Bleu',
+      '    3. Autre',
+      '',
+      '  Enter to select · ↑/↓ to navigate · Esc to cancel',
+    ].join('\n')
+    expect(attentionFromScreen(screen)).toBe('Quelle couleur pour la bande ?')
+  })
+  it('Claude : permission d’outil', () => {
+    const screen = ['  Bash command', '  rm -rf dist', '  Do you want to proceed?', '  ❯ 1. Yes', '    2. No, and tell Claude what to do differently (esc)', '', '  Esc to cancel'].join('\n')
+    expect(attentionFromScreen(screen)).toBe('Do you want to proceed?')
+  })
 })

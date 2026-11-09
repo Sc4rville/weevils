@@ -3,7 +3,7 @@ import { useState, type CSSProperties } from 'react'
 import type { MainMessage, Project, Session } from '../../shared/api.ts'
 import { api } from '../api'
 import { prefetchRepo } from './pages'
-import { ConvLine, statusLabel, useProjectName } from './convs'
+import { ConvLine } from './convs'
 import { useApp } from './app-context'
 import { Appear, Collapse, Composer, Line, SessionRow, spring } from './bits'
 import { ago, plural } from './format'
@@ -65,7 +65,7 @@ export function AgentBand() {
       <Collapse open={open} id="agent-body">
         <div aria-live="polite">
           <AnimatePresence initial={false}>
-            {snap.main.slice(-6).map((m) => (
+            {snap.main.slice(-4).map((m) => (
               <Appear key={m.id}>
                 <MainMsg m={m} />
               </Appear>
@@ -73,17 +73,9 @@ export function AgentBand() {
           </AnimatePresence>
         </div>
         {toSort.length > 0 && (
-          <div className="band tone">
-            <div className="in label">à ranger</div>
-            {toSort.slice(0, 5).map((c) => (
-              <SortLine key={c.id} id={c.id} />
-            ))}
-            {toSort.length > 5 && (
-              <Line ch='"' onClick={() => push({ kind: 'conversations' })}>
-                <span className="meta">les {toSort.length} conversations à ranger</span>
-              </Line>
-            )}
-          </div>
+          <Line ch='"' onClick={() => push({ kind: 'conversations' })}>
+            <span className="meta">{plural(toSort.length, 'conversation à ranger', 'conversations à ranger')}</span>
+          </Line>
         )}
         {examples.length > 0 && (
           <div className="in meta" style={{ paddingBlock: 8 }}>
@@ -104,35 +96,6 @@ export function AgentBand() {
   )
 }
 
-function SortLine({ id }: { id: string }) {
-  const { snap, push, refresh } = useApp()
-  const name = useProjectName()
-  const c = snap.conversations.find((x) => x.id === id)
-  if (!c) return null
-  return (
-    <div className="in" style={{ paddingBlock: 8 }}>
-      <div className="ellipsis" style={{ fontSize: '1.0625rem' }}>
-        <span className="strong">" </span>
-        {c.title}
-      </div>
-      <div className="meta ellipsis">
-        {statusLabel(c, name)}
-        {c.reason ? ` · ${c.reason}` : ''}
-      </div>
-      <div className="inline-actions">
-        {c.suggestedProjectId && (
-          <button className="link" onClick={() => void api.classify(c.id, { projectId: c.suggestedProjectId }).then(refresh)}>
-            ranger dans {name(c.suggestedProjectId)}
-          </button>
-        )}
-        <button className="link" onClick={() => push({ kind: 'conversation', id: c.id })}>
-          voir / ailleurs…
-        </button>
-      </div>
-    </div>
-  )
-}
-
 function MainMsg({ m }: { m: MainMessage }) {
   const { snap, push, refresh } = useApp()
   if (m.role === 'user') {
@@ -145,8 +108,16 @@ function MainMsg({ m }: { m: MainMessage }) {
       </div>
     )
   }
-  const choices = m.ask && !m.ask.chosenSessionId ? snap.sessions.filter((s) => s.controllable).slice(0, 8) : []
-  const label = (s: Session) => `${s.projectId} · ${s.tool} · ${s.title}`
+  const open = m.ask && !m.ask.chosenSessionId
+  const suggestions = open ? (m.ask!.suggestions ?? []) : []
+  // Ancien format (sans suggestions) : les sessions pilotables, les plus récentes d'abord.
+  const fallback = open && !suggestions.length ? snap.sessions.filter((s) => s.controllable && s.status !== 'done').slice(0, 6) : []
+  const name = (id: string) => snap.projects.find((p) => p.id === id)?.name ?? id
+  const pick = async (p: { suggestionId?: string; sessionId?: string }) => {
+    const r = await api.choose(m.id, p)
+    refresh()
+    if (r.id) setTimeout(() => push({ kind: 'session', id: r.id! }), 350)
+  }
   return (
     <div className="msg band">
       <div className="in">
@@ -158,11 +129,23 @@ function MainMsg({ m }: { m: MainMessage }) {
           </button>
         )}
       </div>
-      {choices.map((s) => (
-        <Line key={s.id} ch="→" go={null} onClick={() => void api.choose(m.id, s.id).then(refresh)}>
-          {label(s)}
-        </Line>
-      ))}
+      {(suggestions.length > 0 || fallback.length > 0) && (
+        <div className="chips" role="list" aria-label="où envoyer">
+          {suggestions.map((sg, i) => (
+            <button key={sg.id} className={`chip ${i === 0 ? 'best' : ''}`} role="listitem" onClick={() => void pick({ suggestionId: sg.id })}>
+              <span className="chip-kind">{sg.kind === 'new' ? `+ nouvelle · ${name(sg.projectId)}` : `→ ${name(sg.projectId)} · ${sg.tool}`}</span>
+              <span className="chip-title">{sg.title}</span>
+              {sg.kind === 'session' && sg.detail && <span className="meta ellipsis">{sg.detail}</span>}
+            </button>
+          ))}
+          {fallback.map((s) => (
+            <button key={s.id} className="chip" role="listitem" onClick={() => void pick({ sessionId: s.id })}>
+              <span className="chip-kind">→ {name(s.projectId)} · {s.tool}</span>
+              <span className="chip-title">{s.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -196,11 +179,17 @@ export function ProjectBand({ project }: { project: Project }) {
     .join(' · ')
 
   return (
-    <section className="band" style={color(colors[project.id] ?? 'p0')} aria-label={`projet ${project.name}`} data-project={project.id}>
+    <motion.section layout="position" transition={spring} className="band" style={color(colors[project.id] ?? 'p0')} aria-label={`projet ${project.name}`} data-project={project.id}>
       <motion.div className="in head" initial={false} animate={{ minHeight: mode === 'mini' ? 50 : 64, paddingTop: mode === 'mini' ? 0 : 8 }} transition={spring}>
         <button className="head-name" onClick={toggle} aria-expanded={mode === 'open'} aria-controls={`more-${project.id}`}>
           <motion.span className="name" initial={false} animate={{ fontSize: NAME_SIZE[mode] }} transition={spring}>
             {project.name}
+            {active.some((s) => s.status === 'working') && (
+              <span className="fluo" aria-hidden>
+                {' '}
+                *
+              </span>
+            )}
           </motion.span>
           <AnimatePresence initial={false}>
             {mode === 'mini' && (
@@ -267,7 +256,7 @@ export function ProjectBand({ project }: { project: Project }) {
               <span className="meta">{plural(done.length, 'session terminée', 'sessions terminées')}</span>
             </Line>
             <Collapse open={showDone}>
-              {done.slice(0, 12).map((s) => (
+              {done.slice(0, 6).map((s) => (
                 <SessionRow key={s.id} session={s} />
               ))}
             </Collapse>
@@ -306,7 +295,7 @@ export function ProjectBand({ project }: { project: Project }) {
           <div style={{ height: 14 }} />
         </div>
       </Collapse>
-    </section>
+    </motion.section>
   )
 }
 

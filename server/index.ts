@@ -174,8 +174,8 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ['POST', /^\/api\/main\/choose$/, async (req, res) => {
     const body = await readBody(req)
-    await w.chooseMain(String(body.mainId ?? ''), String(body.sessionId ?? ''))
-    json(res, 200, { ok: true })
+    const r = await w.chooseMain(String(body.mainId ?? ''), { sessionId: body.sessionId ? String(body.sessionId) : undefined, suggestionId: body.suggestionId ? String(body.suggestionId) : undefined })
+    json(res, 200, { ok: true, id: r.id })
   }],
   ['POST', /^\/api\/import$/, (req, res) => receiveImport(req, res)],
   ['GET', /^\/api\/push$/, (_req, res) => json(res, 200, { enabled: w.push.enabled, publicKey: w.push.publicKey, devices: w.push.count })],

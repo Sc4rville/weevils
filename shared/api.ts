@@ -26,6 +26,8 @@ export interface Session {
   machineId: string
   tool: Tool
   title: string
+  /** Ce que la session fait en ce moment (dernier bloc), une phrase courte. Écrit par le renommeur. */
+  now?: string
   status: SessionStatus
   /** Ce qui t'attend (permission, question), quand status = needs_user. */
   attention?: string
@@ -100,13 +102,26 @@ export interface ConversationDetail {
   messages: Message[]
 }
 
+/** Destination proposée par l'agent principal pour un message : une session ouverte, ou une nouvelle session dans un projet. */
+export interface Suggestion {
+  id: string
+  kind: 'session' | 'new'
+  projectId: string
+  sessionId?: string
+  tool: Tool
+  /** Ce qu'on lit sur la puce : « envoyer à » / « nouvelle session », puis le titre. */
+  title: string
+  detail: string
+  score: number
+}
+
 export interface MainMessage {
   id: string
   role: 'user' | 'assistant'
   text: string
   at: number
   targetSessionId?: string
-  ask?: { text: string; chosenSessionId?: string }
+  ask?: { text: string; chosenSessionId?: string; suggestions?: Suggestion[] }
 }
 
 export interface Snapshot {

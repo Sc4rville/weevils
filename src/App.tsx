@@ -147,8 +147,22 @@ export default function App() {
     void api.logout().finally(() => live.setAuthed(false))
   }, [live])
 
-  const projectIds = live.snap?.projects.map((p) => p.id).join('|') ?? ''
+  // Couleurs stables (ordre alphabétique des projets), quel que soit l'ordre d'affichage.
+  const projectIds = live.snap?.projects.map((p) => p.id).sort().join('|') ?? ''
   const colors = useMemo(() => colorSlots(projectIds ? projectIds.split('|') : []), [projectIds])
+  // Ordre vivant : ce qui t'attend, puis ce qui travaille, puis ce qui est ouvert, puis le reste par activité.
+  const ordered = useMemo(() => {
+    const snap = live.snap
+    if (!snap) return []
+    const rank = (id: string) => {
+      const ss = snap.sessions.filter((s) => s.projectId === id)
+      if (ss.some((s) => s.status === 'needs_user')) return 0
+      if (ss.some((s) => s.status === 'working')) return 1
+      if (ss.some((s) => s.status === 'idle')) return 2
+      return 3
+    }
+    return [...snap.projects].sort((a, b) => rank(a.id) - rank(b.id) || b.lastActivityAt - a.lastActivityAt)
+  }, [live.snap])
 
   if (live.authed === false) return <Login onDone={() => live.setAuthed(true)} />
   if (!live.snap) {
@@ -187,7 +201,7 @@ export default function App() {
       <MotionConfig reducedMotion="user" transition={spring}>
         <main className="stack" aria-hidden={stack.length > 0 || undefined} inert={stack.length > 0}>
           <AgentBand />
-          {live.snap.projects.map((p) => (
+          {ordered.map((p) => (
             <ProjectBand key={p.id} project={p} />
           ))}
           <FootBand />

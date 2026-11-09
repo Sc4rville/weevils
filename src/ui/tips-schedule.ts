@@ -13,6 +13,8 @@ export const DAY_MAX = 4
 export const SHOW_MS = 14_000
 /** How often the component checks the conditions. */
 export const CHECK_MS = 5_000
+/** Nothing new to show (every card already seen): don't ask weevilsd again before this long. */
+export const EMPTY_RETRY_MS = 10 * 60_000
 /** Dev only (localStorage "weevils-tips-debug" = "1"): short idle, no cooldown, no daily cap. */
 export const DEBUG_IDLE_MS = 5_000
 /** Seen ids kept on the device (oldest forgotten beyond). */

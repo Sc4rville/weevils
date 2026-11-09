@@ -9,7 +9,7 @@ import { useApp } from './app-context'
 import { Line } from './bits'
 import { Icon, type Dir, type IconName } from './icons'
 import { replayOnboarding } from './onboarding'
-import { CHECK_MS, SHOW_MS, markShown, parseState, pick, ready, type TipsState } from './tips-schedule'
+import { CHECK_MS, EMPTY_RETRY_MS, SHOW_MS, markShown, parseState, pick, ready, type TipsState } from './tips-schedule'
 import './tips.css'
 
 // Floating tips and action cards: when you sit idle on the feed, now and then one small card slides in from a random
@@ -146,6 +146,7 @@ export function Tips({ paused }: { paused: boolean }) {
   const [exitDir, setExitDir] = useState(0)
   const lastInput = useRef(Date.now())
   const checking = useRef(false)
+  const emptyUntil = useRef(0)
   const dragged = useRef(0)
   const blockedRef = useRef(false)
   blockedRef.current = paused || h24Open
@@ -177,10 +178,12 @@ export function Tips({ paused }: { paused: boolean }) {
     const blocked = () => blockedRef.current || document.visibilityState !== 'visible' || typing(document.activeElement) || introActive()
     const moment = () => ({ now: Date.now(), lastInput: lastInput.current, showing: showingRef.current, blocked: blocked(), debug: isDebug() })
     const tick = async () => {
-      if (checking.current || !ready(loadState(), moment())) return
+      if (checking.current || Date.now() < emptyUntil.current || !ready(loadState(), moment())) return
       checking.current = true
       try {
         const tip = pick(await candidates(), loadState())
+        // Every card already seen: no new question to weevilsd every few seconds while the feed sits idle.
+        if (!tip) emptyUntil.current = Date.now() + (isDebug() ? CHECK_MS : EMPTY_RETRY_MS)
         // Still quiet after the fetch?
         if (!tip || !ready(loadState(), moment())) return
         saveState(markShown(loadState(), tip.id, Date.now()))

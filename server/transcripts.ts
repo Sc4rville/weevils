@@ -4,6 +4,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Message, Subagent, Tool } from '../shared/api.ts'
+import { tr } from './i18n.ts'
+import M from './i18n/transcripts.ts'
 
 export interface Transcript {
   id: string
@@ -195,8 +197,8 @@ function claudeSubagents(t: Transcript, now: number): Subagent[] {
       const working = now - st.mtimeMs < 90_000
       out.push({
         id,
-        label: meta.agentType && meta.agentType !== 'fork' ? meta.agentType : 'sous-agent',
-        activity: meta.description ?? 'tâche',
+        label: meta.agentType && meta.agentType !== 'fork' ? meta.agentType : tr(M).subagent,
+        activity: meta.description ?? tr(M).task,
         status: working ? 'working' : 'done',
         startedAt,
         endedAt: working ? undefined : st.mtimeMs,
@@ -403,10 +405,11 @@ export class TranscriptStore {
   }
 }
 
-export const titleOf = (t: Transcript) => short(oneLine(t.customTitle || t.title || t.firstPrompt || 'nouvelle session').replace(/^[#>*\s-]+/, ''), 60)
+export const titleOf = (t: Transcript) => short(oneLine(t.customTitle || t.title || t.firstPrompt || tr(M).newSession).replace(/^[#>*\s-]+/, ''), 60)
 /** Matière pour le renommeur : début de la session et ses derniers échanges, compacts. */
 export const digestOf = (t: Transcript, lastN = 10) => {
-  const recent = t.messages.slice(-lastN).map((m) => `${m.role === 'user' ? 'utilisateur' : m.role === 'orchestrator' ? 'weevboss' : m.role === 'assistant' ? 'agent' : '→'} : ${short(oneLine(m.text), m.role === 'event' ? 80 : 320)}`)
+  const s = tr(M)
+  const recent = t.messages.slice(-lastN).map((m) => s.said(m.role === 'user' ? s.userLabel : m.role === 'orchestrator' ? 'weevboss' : m.role === 'assistant' ? 'agent' : '→', short(oneLine(m.text), m.role === 'event' ? 80 : 320)))
   return { debut: short(oneLine(t.firstPrompt ?? ''), 200), recents: recent }
 }
 export const lastMessageOf = (t: Transcript) => {

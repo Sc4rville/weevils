@@ -6,6 +6,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { ConversationDetail, ConversationSummary, Message } from '../shared/api.ts'
+import { tr } from './i18n.ts'
+import M from './i18n/conversations.ts'
 
 interface ParsedConversation {
   id: string
@@ -86,7 +88,7 @@ export async function readExportFile(file: string): Promise<unknown> {
   fs.closeSync(fd)
   if (head.toString() !== 'PK') return JSON.parse(fs.readFileSync(file, 'utf8'))
   const text = await new Promise<string>((resolve, reject) => {
-    execFile('unzip', ['-p', file, 'conversations.json'], { maxBuffer: 1 << 29 }, (err, stdout) => (err ? reject(new Error('conversations.json introuvable dans le zip')) : resolve(stdout)))
+    execFile('unzip', ['-p', file, 'conversations.json'], { maxBuffer: 1 << 29 }, (err, stdout) => (err ? reject(new Error(tr(M).noJsonInZip)) : resolve(stdout)))
   })
   return JSON.parse(text)
 }
@@ -217,8 +219,9 @@ export class ConversationStore {
   excerpt(id: string, budget = 1400): string {
     const rows = this.db.prepare('SELECT role, text FROM messages WHERE conversation_id = ? ORDER BY idx').all(id) as { role: string; text: string }[]
     const one = (t: string, n: number) => t.replace(/\s+/g, ' ').trim().slice(0, n)
-    const head = rows.filter((m) => m.role === 'user').slice(0, 3).map((m) => `Moi : ${one(m.text, 260)}`)
-    const tail = rows.slice(-2).map((m) => `${m.role === 'user' ? 'Moi' : 'IA'} : ${one(m.text, 220)}`)
+    const t = tr(M)
+    const head = rows.filter((m) => m.role === 'user').slice(0, 3).map((m) => t.said(t.me, one(m.text, 260)))
+    const tail = rows.slice(-2).map((m) => t.said(m.role === 'user' ? t.me : t.ai, one(m.text, 220)))
     return [...head, rows.length > 5 ? '…' : '', ...tail].filter(Boolean).join('\n').slice(0, budget)
   }
 
@@ -246,7 +249,7 @@ export class ConversationStore {
   /** Choix de l'utilisateur : il devient un exemple pour les prochains classements. */
   correct(id: string, projectId: string) {
     const r = this.db.prepare('SELECT title, suggested_project_id, status FROM conversations WHERE id = ?').get(id) as { title: string; suggested_project_id: string | null; status: string } | undefined
-    if (!r) throw new Error('conversation introuvable')
+    if (!r) throw new Error(tr(M).notFound)
     const status = r.status === 'pending' && r.suggested_project_id === projectId ? 'accepted' : 'corrected'
     this.db.prepare('UPDATE conversations SET project_id = ?, status = ?, classified_at = ? WHERE id = ?').run(projectId, status, Date.now(), id)
     this.db.prepare('INSERT INTO corrections (conversation_id, title, project_id, at) VALUES (?, ?, ?, ?)').run(id, r.title, projectId, Date.now())

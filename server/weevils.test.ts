@@ -3,6 +3,8 @@ import { ruleMatch } from './classify.ts'
 import { parseExport } from './conversations.ts'
 import { familyOf, place } from './projects.ts'
 import { attentionFromScreen } from './mux.ts'
+import { tr } from './i18n.ts'
+import CM from './i18n/conversations.ts'
 
 // Exports miniatures aux formats officiels (structure seulement, contenu inventé pour le test).
 const chatgpt = [
@@ -198,7 +200,8 @@ describe('catégories inventées supprimées', async () => {
     expect(s.categories()).toEqual([])
     expect(s.corrections()).toEqual([])
     expect(s.unclassified(10).map((c) => c.id).sort()).toEqual(['a', 'b'])
-    expect(s.excerpt('a')).toMatch(/^Moi : Combien coûte un trailer pour mygame/)
+    const t = tr(CM)
+    expect(s.excerpt('a').startsWith(t.said(t.me, 'Combien coûte un trailer pour mygame'))).toBe(true)
     s.db.close()
     fs.rmSync(dir, { recursive: true })
   })

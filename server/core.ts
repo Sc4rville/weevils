@@ -162,6 +162,18 @@ export class Weevils {
   remotes: Remote[] = []
   convs = new ConversationStore(DATA_DIR)
   pinnedRepos: string[] = []
+  private githubCache: Map<string, number> = new Map()
+
+  // ---------------------------------------------------------------- repos GitHub
+
+  async githubRepos(force = false) {
+    const list = await listRepos(force)
+    this.githubCache = new Map(list.map((r) => [r.name, r.pushedAt]))
+    const blurbs = loadBlurbs(DATA_DIR)
+    void describeRepos(list, PROJECT_ROOTS, DATA_DIR, () => this.bump())
+    return list.map((r) => ({ ...r, blurb: blurbs[r.name] }))
+  }
+
   voiceId: string | undefined
   setVoice(id: string | undefined) {
     this.voiceId = id

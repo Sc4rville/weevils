@@ -83,6 +83,15 @@ body {
   min-height: 100dvh;
 }
 
+/* Une page est ouverte : la fenêtre entière est de sa couleur (sous le clavier iOS, au rebond), opaque. */
+html[data-page] {
+  background: var(--page-c);
+}
+
+html[data-page] body {
+  background: var(--page-c);
+}
+
 button,
 input,
 textarea {

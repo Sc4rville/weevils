@@ -5,6 +5,26 @@ import { spring } from './bits'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
+/**
+ * Pages ouvertes, la plus haute en dernier. Tant qu'une page est ouverte, tout ce qui pourrait dépasser (fond de la fenêtre
+ * sous le clavier iOS, zone de rebond, barre d'état) prend sa couleur : rien d'un autre écran ne transparaît.
+ */
+const open: { slot: string; el: HTMLElement | null }[] = []
+function applyTop(theme: string) {
+  const top = open[open.length - 1]
+  const root = document.documentElement
+  const meta = document.querySelector('meta[name="theme-color"]')
+  if (!top) {
+    root.style.removeProperty('--page-c')
+    delete root.dataset.page
+    meta?.setAttribute('content', theme === 'dark' ? '#5522B5' : '#B39BFF')
+    return
+  }
+  root.style.setProperty('--page-c', `var(--${top.slot})`)
+  root.dataset.page = top.slot
+  if (top.el) meta?.setAttribute('content', getComputedStyle(top.el).backgroundColor)
+}
+
 /** Page plein écran dans la couleur du projet. Glisser vers la droite = retour. */
 export function Shell({
   slot,
@@ -24,13 +44,24 @@ export function Shell({
   /** Volet à côté du fil (navigateur intégré) : la page se partage en deux. */
   side?: ReactNode
 }) {
-  const { back } = useApp()
+  const { back, theme } = useApp()
   const heading = useRef<HTMLHeadingElement>(null)
+  const page = useRef<HTMLDivElement>(null)
   useEffect(() => {
     heading.current?.focus({ preventScroll: true })
   }, [])
+  useEffect(() => {
+    const entry = { slot, el: page.current }
+    open.push(entry)
+    applyTop(theme)
+    return () => {
+      open.splice(open.indexOf(entry), 1)
+      applyTop(theme)
+    }
+  }, [slot, theme])
   return (
     <motion.div
+      ref={page}
       className={side ? 'page split' : 'page'}
       style={color(slot)}
       initial={{ x: '100%' }}

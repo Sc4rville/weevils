@@ -4,6 +4,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { CONFIG_DIR, DATA_DIR, PUBLIC_URL } from './config.ts'
+import { tr } from './i18n.ts'
+import M from './i18n/push.ts'
 
 interface Subscription {
   endpoint: string
@@ -57,7 +59,7 @@ export class Push {
   }
 
   subscribe(sub: Subscription) {
-    if (!sub?.endpoint || !sub.keys?.p256dh || !sub.keys?.auth) throw new Error('abonnement invalide')
+    if (!sub?.endpoint || !sub.keys?.p256dh || !sub.keys?.auth) throw new Error(tr(M).badSubscription)
     const fresh = !this.subs.some((s) => s.endpoint === sub.endpoint)
     this.subs = [...this.subs.filter((s) => s.endpoint !== sub.endpoint), { endpoint: sub.endpoint, keys: sub.keys }]
     this.save()

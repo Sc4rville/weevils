@@ -3,6 +3,8 @@
 
 import { execFile } from 'node:child_process'
 import type { Tool } from '../shared/api.ts'
+import { tr } from './i18n.ts'
+import M from './i18n/mux.ts'
 
 function tmux(args: string[], cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -42,7 +44,7 @@ export async function listWv(): Promise<WvSession[]> {
         name,
         tool: tool === 'codex' ? 'codex' : 'claude',
         sessionId: sessionId || undefined,
-        title: title || 'nouvelle session',
+        title: title || tr(M).newSession,
         cwd: cwd || current,
         createdAt: Number(created) * 1000,
       } satisfies WvSession
@@ -98,7 +100,7 @@ const KEYS: Record<string, string> = {
 export async function sendKey(name: string, key: string): Promise<void> {
   if (KEYS[key]) return void (await tmux(['send-keys', '-t', `=${name}:`, KEYS[key]]))
   if (/^[1-9yn]$/.test(key)) return void (await tmux(['send-keys', '-t', `=${name}:`, '-l', key]))
-  throw new Error(`touche refusée : ${key}`)
+  throw new Error(tr(M).keyRefused(key))
 }
 
 export async function capture(name: string): Promise<string> {
@@ -132,7 +134,7 @@ export function attentionFromScreen(text: string): string | undefined {
     if (q > 3 && !option.test(lines[i])) return lines[i].slice(0, q + 1).slice(0, 180)
   }
   const line = lines.slice(from, at).find((l) => !skip(l) && l.length > 12)
-  return (line ?? 'un choix t’attend').slice(0, 180)
+  return (line ?? tr(M).choiceWaiting).slice(0, 180)
 }
 
 /**

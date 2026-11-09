@@ -2,6 +2,8 @@
 // Côté PC, la requête arrive de 127.0.0.1 sans en-tête de proxy : elle est de confiance, comme un outil local.
 
 import type { Snapshot } from '../shared/api.ts'
+import { tr } from './i18n.ts'
+import M from './i18n/remotes.ts'
 
 export class Remote {
   id: string
@@ -42,7 +44,7 @@ export class Remote {
   }
 
   async call<T>(method: string, path: string, body?: unknown): Promise<T> {
-    if (!this.online) throw new Error(`${this.id} hors ligne`)
+    if (!this.online) throw new Error(tr(M).offline(this.id))
     const res = await fetch(`${this.url}${path}`, {
       method,
       headers: body !== undefined ? { 'content-type': 'application/json' } : undefined,
@@ -50,7 +52,7 @@ export class Remote {
       signal: AbortSignal.timeout(15_000),
     })
     const data = (await res.json().catch(() => ({}))) as T & { error?: string }
-    if (!res.ok) throw new Error(data.error ?? `${this.id} : erreur ${res.status}`)
+    if (!res.ok) throw new Error(data.error ?? tr(M).failed(this.id, res.status))
     return data
   }
 }

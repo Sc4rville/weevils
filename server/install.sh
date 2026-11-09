@@ -3,7 +3,7 @@
 #   server/install.sh                        main machine: weevilsd serves the app and runs weevboss
 #   server/install.sh secondary <ssh-host>   secondary machine: local weevilsd + reverse SSH tunnel to the main
 #                                            machine <ssh-host>, which federates it (its sessions show up there)
-#   server/install.sh pc                     legacy alias: secondary of the host "vps", ports 4191/4192, machine "pc"
+#   server/install.sh pc                     deprecated alias: secondary of the ssh host "vps", ports 4191/4192, machine "pc"
 # Ports come from ~/.config/weevils/env (WEEVILS_PORT, WEEVILS_HOOK_PORT); WEEVILS_TUNNEL_PORT forces the port the
 # main machine listens on for this secondary one (otherwise the main machine picks a free one).
 set -euo pipefail
@@ -16,6 +16,8 @@ svc=$here/weevils-service
 cfg() { "$svc" config "$@"; }
 
 if [ "$role" = pc ]; then
+  echo "note: 'server/install.sh pc' is deprecated (it assumes a main machine reachable as ssh host \"vps\")." >&2
+  echo "      use: server/install.sh secondary <ssh-host-of-your-main-machine>   (or ./install.sh --secondary <host>)" >&2
   role=secondary main_host=${main_host:-vps}
   cfg default WEEVILS_MACHINE pc
   cfg default WEEVILS_PORT 4191

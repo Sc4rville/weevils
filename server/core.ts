@@ -43,6 +43,26 @@ interface Persisted {
 const STATE_FILE = path.join(DATA_DIR, 'state.json')
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/** Marque des dossiers comme de confiance dans ~/.claude.json : Claude Code n'affiche plus « Is this a project you trust? ». */
+export function trustDirs(dirs: string[]) {
+  const cfg = path.join(HOME, '.claude.json')
+  let d: any = {}
+  try {
+    d = JSON.parse(fs.readFileSync(cfg, 'utf8'))
+  } catch {
+    /* premier lancement : fichier absent */
+  }
+  d.projects ??= {}
+  let changed = false
+  for (const dir of dirs) {
+    if (d.projects[dir]?.hasTrustDialogAccepted) continue
+    d.projects[dir] = { ...(d.projects[dir] ?? {}), hasTrustDialogAccepted: true }
+    changed = true
+  }
+  if (changed) fs.writeFileSync(cfg, JSON.stringify(d, null, 2))
+  return changed
+}
+
 /** Comme Scarville les lance d'habitude : sans demande de permission. WEEVILS_SAFE=1 pour revenir aux confirmations. */
 const SAFE = process.env.WEEVILS_SAFE === '1'
 const CLAUDE = SAFE ? ['claude'] : ['claude', '--dangerously-skip-permissions']
@@ -198,6 +218,12 @@ export class Weevils {
 
   constructor() {
     this.migrateCategories()
+    // Tous les repos connus sont de confiance d'avance.
+    try {
+      if (trustDirs(this.allRepos().map((r) => this.repoDir(r)))) console.log('[sessions] dossiers de ~/projects marqués de confiance pour Claude Code')
+    } catch (e) {
+      console.error(`[sessions] confiance : ${(e as Error).message}`)
+    }
     try {
       const p = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) as Persisted
       this.hooks = new Map(p.hooks ?? [])
@@ -325,6 +351,11 @@ export class Weevils {
         /* écran illisible un instant */
       }
       next.push({ ...p, sessionId: p.sessionId ?? prev?.sessionId, screenAttention })
+    }
+    for (const old of this.panes) {
+      if (next.some((p) => p.name === old.name)) continue
+      const t = old.sessionId ? this.store.get(old.sessionId) : undefined
+      console.log(`[sessions] ${old.name} disparue après ${Math.round((Date.now() - old.createdAt) / 1000)} s · ${t ? `${t.messages.length} messages` : 'aucun transcript'}${old.screenAttention ? ` · dernier écran : ${old.screenAttention}` : ''}`)
     }
     const changed = JSON.stringify(next) !== JSON.stringify(this.panes)
     this.panes = next
@@ -814,6 +845,7 @@ export class Weevils {
     if (!text.trim()) throw new Error('message vide')
     const pane = this.paneFor(real)
     if (pane) {
+      console.log(`[sessions] ${pane.name} ← message${from === 'weevils' ? ' (weevils)' : ''} · ${text.replace(/\s+/g, ' ').slice(0, 60)}`)
       await this.deliver(pane.name, real, text)
       return { id: real }
     }
@@ -845,6 +877,8 @@ export class Weevils {
     if (remote) return void (await remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/key`, { key }))
     const pane = this.paneFor(this.resolveId(id))
     if (!pane) throw new Error('weevils ne voit pas l’écran de cette session')
+    if (key === 'esc' && /trust|confiance/i.test(pane.screenAttention ?? '')) throw new Error('Échap ici fermerait la session : réponds 1 ou Entrée')
+    console.log(`[sessions] ${pane.name} ← touche ${key}`)
     await sendKey(pane.name, key)
   }
 
@@ -880,7 +914,15 @@ export class Weevils {
   private async spawn(tool: Tool, cwd: string, title: string, command: string[], sessionId?: string): Promise<string> {
     const short = crypto.randomBytes(3).toString('hex')
     const name = `wv-${path.basename(cwd).slice(0, 18)}-${short}`
-    await spawnWv(name, cwd, tool, title.slice(0, 60), command, sessionId)
+    // Jamais de dialogue de confiance au lancement : le dossier est marqué sûr avant.
+    if (tool === 'claude') trustDirs([cwd])
+    try {
+      await spawnWv(name, cwd, tool, title.slice(0, 60), command, sessionId)
+    } catch (e) {
+      console.error(`[sessions] lancement de ${name} (${tool}, ${cwd}) refusé : ${(e as Error).message}`)
+      throw e
+    }
+    console.log(`[sessions] ${name} lancée · ${tool} · ${cwd} · ${sessionId?.slice(0, 8) ?? 'id à venir'} · « ${title.slice(0, 50)} »`)
     this.panes.push({ name, tool, sessionId, title, cwd, createdAt: Date.now() })
     this.bump()
     return name
@@ -900,14 +942,8 @@ export class Weevils {
       console.error(`[orchestrateur] CLAUDE.md : ${(e as Error).message}`)
     }
     // Claude Code demande « tu fais confiance à ce dossier ? » au premier lancement : on répond oui d'avance.
-    const cfg = path.join(HOME, '.claude.json')
     try {
-      const d = JSON.parse(fs.readFileSync(cfg, 'utf8'))
-      d.projects ??= {}
-      if (!d.projects[ORCH_DIR]?.hasTrustDialogAccepted) {
-        d.projects[ORCH_DIR] = { ...(d.projects[ORCH_DIR] ?? {}), hasTrustDialogAccepted: true }
-        fs.writeFileSync(cfg, JSON.stringify(d, null, 2))
-      }
+      trustDirs([ORCH_DIR])
     } catch (e) {
       console.error(`[orchestrateur] trust : ${(e as Error).message}`)
     }
@@ -954,7 +990,8 @@ export class Weevils {
   private async clearDialog(pane: string): Promise<string | undefined> {
     const dlg = dialogOnScreen(await capture(pane).catch(() => ''))
     if (!dlg) return undefined
-    await sendKey(pane, 'esc')
+    // Dialogue de confiance : Échap ferait quitter claude. On accepte (le dossier est à Scarville) ; sinon, Échap ferme le menu.
+    await sendKey(pane, /trust|confiance/i.test(dlg) ? 'enter' : 'esc')
     await sleep(600)
     return dlg
   }

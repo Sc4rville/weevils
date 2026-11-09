@@ -18,6 +18,13 @@ fs.mkdirSync(DATA_DIR, { recursive: true })
 const SECRET_FILE = path.join(CONFIG_DIR, 'secret')
 if (!fs.existsSync(SECRET_FILE)) fs.writeFileSync(SECRET_FILE, crypto.randomBytes(9).toString('base64url'), { mode: 0o600 })
 const SECRET = fs.readFileSync(SECRET_FILE, 'utf8').trim()
+/** Saisie tolérante : majuscules, espaces et caractères qui se confondent (0/O, 1/l/I) ne font pas échouer. */
+const foldCode = (c: string) => c.replace(/\s+/g, '').toLowerCase().replace(/o/g, '0').replace(/[il]/g, '1')
+const sameCode = (a: string, b: string) => {
+  const x = crypto.createHash('sha256').update(foldCode(a)).digest()
+  const y = crypto.createHash('sha256').update(foldCode(b)).digest()
+  return crypto.timingSafeEqual(x, y)
+}
 const TOKENS_FILE = path.join(DATA_DIR, 'tokens.json')
 let tokens = new Set<string>()
 try {
@@ -105,7 +112,7 @@ type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, p
 const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/login$/, async (req, res) => {
     const body = await readBody(req)
-    if (typeof body.secret !== 'string' || body.secret.trim() !== SECRET) {
+    if (typeof body.secret !== 'string' || !sameCode(body.secret, SECRET)) {
       await new Promise((r) => setTimeout(r, 800))
       return json(res, 401, { error: 'code incorrect' })
     }

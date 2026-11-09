@@ -1,20 +1,20 @@
-import { useEffect, useState, type CSSProperties, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import type { GithubRepo } from '../../shared/api.ts'
 import { api } from '../api'
 import { useApp } from './app-context'
 import { Shell } from './shell'
 import { plural } from './format'
 
-/** Couleur par position : un pas de 7 sur les 16 teintes, donc deux cartes voisines (à côté ou dessous) n'ont jamais une teinte proche. */
-const tint = (i: number) => ({ '--c': `var(--p${(i * 7) % 16})` }) as CSSProperties
+/** Couleur par position : un pas de 7 sur les 16 teintes, donc deux icônes voisines (à côté ou dessous) n'ont jamais une teinte proche. */
+const tint = (i: number) => `var(--p${(i * 7) % 16})`
 
-function RepoIcon() {
+function RepoIcon({ color }: { color: string }) {
+  // Une grande icône de repo, plate, pleine de sa couleur : le dos arrondi, la tranche, le marque-page.
   return (
-    <svg className="repo-ic" viewBox="0 0 16 16" aria-hidden focusable="false">
-      <path
-        fill="currentColor"
-        d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z"
-      />
+    <svg className="repo-big" viewBox="0 0 96 96" aria-hidden focusable="false">
+      <path fill={color} d="M20 12a12 12 0 0 1 12-12h46a6 6 0 0 1 6 6v74a6 6 0 0 1-6 6H32a12 12 0 0 1-12-12Z" />
+      <path fill="var(--ink)" opacity="0.22" d="M32 70h46v4H32a6 6 0 0 0 0 12h46v4H32a10 10 0 0 1 0-20Z" />
+      <path fill="var(--ink)" opacity="0.22" d="M58 0h12v30l-6-4-6 4Z" />
     </svg>
   )
 }
@@ -92,20 +92,14 @@ export function ReposPage() {
       <div className="in repo-grid">
         {repos?.map((r, i) => {
           const on = pinned.has(r.name)
+          const open = () => push({ kind: 'files', projectId: r.name.split(/[-_.]/)[0].toLowerCase(), repo: r.name })
           return (
-            <div key={r.name} className="repo-card" style={tint(i)} role="button" tabIndex={0} aria-label={r.name} onClick={() => push({ kind: 'files', projectId: r.name.split(/[-_.]/)[0].toLowerCase(), repo: r.name })} onKeyDown={(e) => e.key === 'Enter' && push({ kind: 'files', projectId: r.name.split(/[-_.]/)[0].toLowerCase(), repo: r.name })}>
-              <RepoIcon />
-              <span className="repo-name">{r.name}</span>
-              {r.description && <span className="repo-desc">{r.description}</span>}
-              <button
-                className={`repo-pin ${on ? 'on' : ''}`}
-                aria-label={on ? `retirer ${r.name} du fil` : `épingler ${r.name} au fil`}
-                aria-pressed={on}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  void pin(r.name, !on)
-                }}
-              >
+            <div key={r.name} className="repo">
+              <button className="repo-open" aria-label={r.name} onClick={open}>
+                <RepoIcon color={tint(i)} />
+                <span className="repo-name">{r.name}</span>
+              </button>
+              <button className={`repo-pin ${on ? 'on' : ''}`} aria-label={on ? `retirer ${r.name} du fil` : `épingler ${r.name} au fil`} aria-pressed={on} onClick={() => void pin(r.name, !on)}>
                 {on ? '✓' : '+'}
               </button>
             </div>

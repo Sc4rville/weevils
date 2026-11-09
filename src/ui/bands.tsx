@@ -261,6 +261,13 @@ export function ProjectBand({ project }: { project: Project }) {
     saveCollapsed(project.id, v)
   }
   const toggle = () => {
+    // Une autre bande est ouverte (le fil de weevboss en grand, un autre projet) : un tap saute directement ici.
+    if (mode === 'mini') {
+      for (const r of project.repos) prefetchRepo(r, project.where[r] ?? snap.machines[0]?.id ?? '')
+      remember(false)
+      setExpanded(project.id)
+      return
+    }
     if (mode === 'open') {
       setExpanded(null)
       remember(true)

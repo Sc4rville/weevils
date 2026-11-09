@@ -249,6 +249,7 @@ case "$PORT" in '') ;; *[!0-9]*) BAD_VAL="--port $PORT" ;; *) [ "$PORT" -ge 1 ] 
 [ -z "$DOMAIN" ] || [[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || BAD_VAL="--domain $DOMAIN"
 [[ "$SECONDARY" != -* ]] || BAD_VAL="--secondary $SECONDARY"
 [ "$PURGE" = 0 ] || [ "$UNINSTALL" = 1 ] || BAD_VAL="--purge (only with --uninstall)"
+[ "$LAN" = 0 ] || [ -z "$DOMAIN" ] || BAD_VAL="--lan with --domain (pick one)"
 
 # Language: --lang, else the one already in your settings (a re-run speaks like the first run), else the locale.
 # Always ~/.config/weevils (not XDG_CONFIG_HOME): the server and the systemd unit read it there.
@@ -308,7 +309,7 @@ pkg_install() { # pkg_install pkg… (names for the detected package manager)
       quiet $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $APT_KEEP --no-install-recommends "$@" ;;
     dnf) quiet $SUDO dnf install -y -q "$@" ;;
     # No -y: refreshing the database without upgrading is a partial upgrade, which Arch warns against.
-    pacman) quiet $SUDO pacman -S --noconfirm --needed "$@" ;;
+    pacman) quiet $SUDO pacman -Syu --noconfirm --needed "$@" ;;
   esac
 }
 
@@ -480,7 +481,7 @@ configure() {
   cfg() { "$svc" config "$@"; }
   mkdir -p "$(dirname "$conf")"
   if [ ! -f "$conf" ]; then
-    install -m 600 "$DIR/weevils.env.example" "$conf"
+    install -m 600 "$DIR/.env.example" "$conf"
     fresh=1
   fi
   # A flag given now updates its key; otherwise a value already there is never overwritten.
@@ -499,9 +500,11 @@ configure() {
   fi
   # --lan: listen on every interface, for a phone on the same home network (plain http).
   [ "$LAN" = 0 ] || cfg set WEEVILS_HOST 0.0.0.0
+  # --domain after an earlier --lan: back to 127.0.0.1, Caddy is the only way in (no plain http on every interface).
+  [ -z "$DOMAIN" ] || [ "$(cfg get WEEVILS_HOST)" != 0.0.0.0 ] || cfg set WEEVILS_HOST 127.0.0.1
   # Claude Code refuses --dangerously-skip-permissions as root: agents keep their permission prompts there.
   [ "$(id -u)" != 0 ] || cfg default WEEVILS_SAFE 1
-  if [ -z "$SECONDARY" ] && [ -z "$DOMAIN" ] && [ "$LAN" = 0 ] && [ -z "$(cfg get WEEVILS_PUBLIC_URL)" ] && [ ! -f /etc/caddy/weevils.caddy ]; then
+  if [ -z "$SECONDARY" ] && [ -z "$DOMAIN" ] && [ "$LAN" = 0 ] && [ -z "$(cfg get WEEVILS_PUBLIC_URL)" ] && ! site_mine; then
     DOMAIN=$(ask "$(t ask_domain)" ""); DOMAIN=${DOMAIN#http://}; DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN%%/*}
     [ -z "$DOMAIN" ] || [[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || { warn "$(t bad_opt) $DOMAIN"; DOMAIN=''; }
   fi
@@ -580,13 +583,21 @@ caddy_apt() {
   pkg_install caddy
 }
 
+# /etc/caddy/weevils.caddy is one file for the whole machine: only the user who wrote it adopts, updates or removes
+# it (a site written before the owner line existed counts as ours).
+site_mine() {
+  local site=/etc/caddy/weevils.caddy
+  [ -f "$site" ] || return 1
+  ! grep -q '^# weevils — written by install.sh for ' "$site" || grep -qx "# weevils — written by install.sh for $(id -un)" "$site"
+}
+
 https() {
   [ -z "$SECONDARY" ] || return 0
   local site=/etc/caddy/weevils.caddy cf=/etc/caddy/Caddyfile tls='' undo port
   port=$("$DIR/server/weevils-service" config get WEEVILS_PORT)
   [ "${WEEVILS_CADDY_TLS:-}" = internal ] && tls=$'\n\ttls internal'
   # A re-run without --domain keeps the site set up before, with the current port (moved by --port or by hand).
-  if [ -z "$DOMAIN" ] && [ -f "$site" ]; then
+  if [ -z "$DOMAIN" ] && site_mine; then
     DOMAIN=$(awk 'index($0, "{") { print $1; exit }' "$site")
     [ -n "$DOMAIN" ] || return 0
     grep -q 'tls internal' "$site" && tls=$'\n\ttls internal'
@@ -616,7 +627,7 @@ https() {
   [ ! -f "$site" ] || $SUDO cp -p "$site" "$undo/weevils.caddy"
   # The Caddyfile as it was before weevils ever touched it, kept once.
   [ ! -f "$cf" ] || [ -f "$cf.bak-weevils" ] || $SUDO cp -p "$cf" "$cf.bak-weevils"
-  printf '# weevils — written by install.sh\n%s {%s\n\treverse_proxy 127.0.0.1:%s\n}\n' "$DOMAIN" "$tls" "$port" | $SUDO tee "$site" >/dev/null
+  printf '# weevils — written by install.sh for %s\n%s {%s\n\treverse_proxy 127.0.0.1:%s\n}\n' "$(id -un)" "$DOMAIN" "$tls" "$port" | $SUDO tee "$site" >/dev/null
   if [ ! -f "$cf" ] || grep -q 'The Caddyfile is an easy way to practice' "$cf"; then
     # No Caddyfile, or the untouched placeholder of the package: ours replaces it (backup kept).
     printf 'import %s\n' "$site" | $SUDO tee "$cf" >/dev/null
@@ -800,7 +811,7 @@ uninstall() {
     { crontab -l 2>/dev/null | grep -v 'weevils-service' || true; } | crontab - && ok "$(t un_cron)"
   fi
 
-  if [ -f "$site" ]; then
+  if site_mine; then
     if [ "$(id -u)" = 0 ]; then sudo=''; elif command -v sudo >/dev/null; then sudo=sudo; else sudo=none; fi
     if [ "$sudo" = none ]; then warn "$(t un_caddy_sudo)"
     else

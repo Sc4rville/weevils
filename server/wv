@@ -37,12 +37,14 @@ else
 fi
 
 # WV_SAFE gagne ; sinon WEEVILS_SAFE du fichier de config, comme weevilsd : les deux interrupteurs disent la même chose.
-WV_SAFE=${WV_SAFE:-$(sed -n 's/^[[:space:]]*WEEVILS_SAFE[[:space:]]*=[[:space:]]*["'\'']\{0,1\}\([0-9]*\).*/\1/p' "${WEEVILS_CONFIG:-$HOME/.config/weevils/env}" 2>/dev/null | head -1)}
+WV_SAFE=${WV_SAFE:-$(sed -n 's/^[[:space:]]*WEEVILS_SAFE[[:space:]]*=[[:space:]]*["'\'']\{0,1\}\([0-9]*\).*/\1/p' "${WEEVILS_CONFIG:-$HOME/.config/weevils/env}" 2>/dev/null | head -1 || true)}
 if [ "${WV_SAFE:-}" = 1 ]; then claude_flags=(); codex_flags=()
 else claude_flags=(--dangerously-skip-permissions); codex_flags=(--dangerously-bypass-approvals-and-sandbox); fi
 
 host=''
 case "${1:-}" in
+  # Ancien alias retiré : refuser plutôt que lancer un agent local avec « vps … » pour message.
+  vps) echo "wv: 'wv vps' is gone, use 'wv @vps …' (or 'wv main …')" >&2; exit 1 ;;
   @?*) host=${1#@} ;;
   main) host=$(sed -n "s/^WEEVILS_MAIN_HOST=//p" ~/.config/weevils/service.conf 2>/dev/null | tr -d "'\"")
     [ -n "$host" ] || { echo "$m_nomain" >&2; exit 1; } ;;

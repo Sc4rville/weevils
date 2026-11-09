@@ -1,4 +1,4 @@
-import { AnimatePresence, MotionConfig } from 'motion/react'
+import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, useLive } from './api'
 import { Ctx, colorSlots, type AppCtx, type Page, type Theme } from './ui/app-context'
@@ -199,13 +199,25 @@ export default function App() {
   return (
     <Ctx.Provider value={ctx}>
       <MotionConfig reducedMotion="user" transition={spring}>
-        <main className="stack" aria-hidden={stack.length > 0 || undefined} inert={stack.length > 0}>
+        <motion.main
+          className="stack"
+          aria-hidden={stack.length > 0 || undefined}
+          inert={stack.length > 0}
+          drag="x"
+          dragDirectionLock
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={{ left: 0.18, right: 0 }}
+          dragSnapToOrigin
+          onDragEnd={(_, info) => {
+            if (info.offset.x < -90 || info.velocity.x < -600) push({ kind: 'repos' })
+          }}
+        >
           <AgentBand />
           {ordered.map((p) => (
             <ProjectBand key={p.id} project={p} />
           ))}
           <FootBand />
-        </main>
+        </motion.main>
         <div inert={stack.length > 0}>
           <H24Rail />
         </div>

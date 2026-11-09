@@ -37,12 +37,19 @@ export interface Transcript {
 const MAX_MESSAGES = 400
 /** Préfixe posé par le serveur quand c'est l'orchestrateur qui écrit dans une session. */
 export const ORCH_PREFIX = '[weevils] '
-const userMsg = (id: string, text: string, at: number): Message =>
-  text.startsWith(ORCH_PREFIX) ? { id, role: 'orchestrator', text: text.slice(ORCH_PREFIX.length).trim(), at } : { id, role: 'user', text: text.trim(), at }
+/** Un texte dicté ou collé arrive enveloppé dans <pasted_content id="…">…</pasted_content> : on garde le dedans. */
+export const unwrapPasted = (text: string) => text.replace(/<pasted_content\b[^>]*>/g, '').replace(/<\/pasted_content>/g, '').trim()
+const userMsg = (id: string, raw: string, at: number): Message => {
+  const text = unwrapPasted(raw)
+  return text.startsWith(ORCH_PREFIX) ? { id, role: 'orchestrator', text: text.slice(ORCH_PREFIX.length).trim(), at } : { id, role: 'user', text, at }
+}
 const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
-const isNoise = (text: string) =>
-  !text.trim() || /^\s*</.test(text) || /^\[Request interrupted by user/.test(text.trim()) || text.startsWith('Caveat:') || /^#?\s*AGENTS\.md instructions/i.test(text.trim()) || text.includes('<INSTRUCTIONS>')
+/** Bruit : balises système (command-name, local-command-stdout, system-reminder…), interruptions, caveats. Un bloc collé n'en est pas. */
+const isNoise = (text: string) => {
+  const t = unwrapPasted(text)
+  return !t || /^</.test(t) || /^\[Request interrupted by user/.test(t) || t.startsWith('Caveat:') || /^#?\s*AGENTS\.md instructions/i.test(t) || t.includes('<INSTRUCTIONS>')
+}
 
 function push(t: Transcript, m: Message) {
   t.messages.push(m)

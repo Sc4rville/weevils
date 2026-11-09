@@ -12,6 +12,7 @@ export type Page =
   | { kind: 'conversations'; projectId?: string }
   | { kind: 'conversation'; id: string }
   | { kind: 'import' }
+  | { kind: 'repos' }
 
 export interface AppCtx {
   snap: Snapshot

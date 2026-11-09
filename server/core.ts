@@ -12,6 +12,7 @@ import { llmClassify, ruleMatch } from './classify.ts'
 import { Push } from './push.ts'
 import type { CatalogEntry } from './classify.ts'
 import { familyOf, place } from './projects.ts'
+import { createRepo, listRepos, remoteFile, remoteFiles } from './github.ts'
 import { ORCH_PREFIX, TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
 import { llmTitles, needsTitle, shortNow } from './titles.ts'
 import type { Titled } from './titles.ts'
@@ -36,6 +37,7 @@ interface Persisted {
   titles?: [string, Titled][]
   /** Id de la session Claude de l'orchestrateur (stable : on la reprend après un redémarrage). */
   orchestratorId?: string
+  pinnedRepos?: string[]
 }
 
 const STATE_FILE = path.join(DATA_DIR, 'state.json')
@@ -130,6 +132,50 @@ export class Weevils {
   h24: H24Activity[] = []
   remotes: Remote[] = []
   convs = new ConversationStore(DATA_DIR)
+  pinnedRepos: string[] = []
+  private githubCache: Map<string, number> = new Map()
+
+  // ---------------------------------------------------------------- repos GitHub
+
+  async githubRepos(force = false) {
+    const list = await listRepos(force)
+    this.githubCache = new Map(list.map((r) => [r.name, r.pushedAt]))
+    return list
+  }
+
+  pinRepo(repo: string, pinned: boolean) {
+    if (!/^[\w.@+-]+$/.test(repo)) throw new Error('repo invalide')
+    const has = this.pinnedRepos.includes(repo)
+    if (pinned && !has) this.pinnedRepos.push(repo)
+    if (!pinned && has) this.pinnedRepos = this.pinnedRepos.filter((r) => r !== repo)
+    this.persist()
+    this.bump()
+  }
+
+  async newRepo(name: string, description: string) {
+    const r = await createRepo(name, description, PROJECTS_DIR)
+    this.pinRepo(r.name, true)
+    await this.githubRepos(true)
+    return r
+  }
+
+  /** Les repos épinglés deviennent des projets du fil, même sans session. */
+  private pinnedProjects(existing: Project[]): Project[] {
+    const out: Project[] = []
+    for (const repo of this.pinnedRepos) {
+      const id = familyOf(repo)
+      const cur = existing.find((p) => p.id === id)
+      if (cur) {
+        if (!cur.repos.includes(repo)) {
+          cur.repos.push(repo)
+          cur.where[repo] = MACHINE.id
+        }
+        continue
+      }
+      out.push({ id, name: id, kind: 'repo', repos: [repo], where: { [repo]: MACHINE.id }, lastActivityAt: this.githubCache.get(repo) ?? 0 })
+    }
+    return out
+  }
   /** Au démarrage : ce qui avait été rangé dans une catégorie thématique inventée repart à classer (les catégories sont les projets). */
   private migrateCategories() {
     const n = this.convs.dropInventedCategories()
@@ -155,6 +201,7 @@ export class Weevils {
       this.hooks = new Map(p.hooks ?? [])
       this.titles = new Map(p.titles ?? [])
       this.orchestratorId = p.orchestratorId ?? null
+      this.pinnedRepos = p.pinnedRepos ?? []
     } catch {
       /* premier démarrage */
     }
@@ -235,7 +282,7 @@ export class Weevils {
       // Les hooks des trois derniers jours suffisent (pid des sessions encore ouvertes).
       const hooks = [...this.hooks].filter(([, h]) => Date.now() - h.at < RECENT_MS)
       const titles = [...this.titles].filter(([, t]) => Date.now() - t.at < 14 * 86400_000)
-      const data: Persisted = { hooks, titles, orchestratorId: this.orchestratorId ?? undefined }
+      const data: Persisted = { hooks, titles, orchestratorId: this.orchestratorId ?? undefined, pinnedRepos: this.pinnedRepos }
       fs.writeFileSync(STATE_FILE, JSON.stringify(data, null, 1))
     } catch {
       /* disque plein ? on continue en mémoire */
@@ -456,8 +503,10 @@ export class Weevils {
       cur.lastActivityAt = Math.max(cur.lastActivityAt, p.lastActivityAt)
       if (p.kind === 'repo') cur.kind = 'repo'
     }
+    const merged = [...map.values()]
+    merged.push(...this.pinnedProjects(merged))
     // Les projets d'abord, les catégories inventées ensuite ; chacun par activité récente.
-    return [...map.values()].sort((a, b) => (a.kind === b.kind ? b.lastActivityAt - a.lastActivityAt : a.kind === 'repo' ? -1 : 1))
+    return merged.sort((a, b) => (a.kind === b.kind ? b.lastActivityAt - a.lastActivityAt : a.kind === 'repo' ? -1 : 1))
   }
 
   snapshot(): Snapshot {
@@ -482,6 +531,7 @@ export class Weevils {
       mainWorking: this.orchestratorWorking(now),
       mainSettings: this.orchestratorSettings(),
       mainHasScreen: !!this.orchestratorPane(),
+      pinnedRepos: this.pinnedRepos,
     }
     return this.snap
   }
@@ -918,7 +968,8 @@ export class Weevils {
 
   private orchestratorMessages(): Message[] {
     const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
-    const msgs = t?.messages.slice(-40) ?? []
+    // La bande du haut : tes messages et les réponses de weevils, pas ses appels d'outils.
+    const msgs = t?.messages.filter((m) => m.role !== 'event').slice(-40) ?? []
     if (!msgs.length && ORCHESTRATOR) {
       return [{ id: 'hello', role: 'assistant', text: 'Dis-moi quoi faire : je lis tes sessions, j’écris dedans, je te résume. Les détails sont dans les bandes en dessous si tu veux les suivre.', at: Date.now() }]
     }
@@ -1072,6 +1123,7 @@ export class Weevils {
   }
 
   async files(repo: string): Promise<string[]> {
+    if (!this.repoRoot(repo)) return remoteFiles(repo)
     const dir = this.repoDir(repo)
     return new Promise((resolve) => {
       execFile('git', ['-C', dir, 'ls-files', '--cached', '--others', '--exclude-standard'], { timeout: 8000, maxBuffer: 32 << 20 }, (err, stdout) => {
@@ -1097,7 +1149,8 @@ export class Weevils {
     })
   }
 
-  file(repo: string, rel: string): { path: string; size: number; binary: boolean; content: string; truncated: boolean } {
+  async file(repo: string, rel: string): Promise<{ path: string; size: number; binary: boolean; content: string; truncated: boolean }> {
+    if (!this.repoRoot(repo)) return remoteFile(repo, rel)
     const dir = this.repoDir(repo)
     const full = path.resolve(dir, rel)
     if (!full.startsWith(dir + path.sep)) throw new Error('chemin refusé')

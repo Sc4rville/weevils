@@ -71,6 +71,15 @@ export interface Project {
   lastActivityAt: number
 }
 
+/** Un repo GitHub du compte. */
+export interface GithubRepo {
+  name: string
+  description: string
+  isPrivate: boolean
+  pushedAt: number
+  language?: string
+}
+
 export interface Machine {
   id: string
   name: string
@@ -130,6 +139,8 @@ export interface Snapshot {
   /** Réglages connus de la session de l'orchestrateur, et si on peut lui envoyer des commandes (/model…). */
   mainSettings?: SessionSettings
   mainHasScreen: boolean
+  /** Repos épinglés au fil des projets (présents même sans session). */
+  pinnedRepos: string[]
 }
 
 export interface SessionDetail {

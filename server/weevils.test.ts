@@ -203,3 +203,10 @@ describe('catégories inventées supprimées', async () => {
     fs.rmSync(dir, { recursive: true })
   })
 })
+
+describe('messages collés / dictés', async () => {
+  const { unwrapPasted } = await import('./transcripts.ts')
+  it('garde le texte d’un bloc pasted_content', () => {
+    expect(unwrapPasted('\n\n<pasted_content id="32fa">\nOuais, je disais…\n</pasted_content>')).toBe('Ouais, je disais…')
+  })
+})

@@ -1,7 +1,7 @@
 // Client de weevilsd : appels REST + flux temps réel (SSE). Aucune donnée fictive.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ConversationDetail, ConversationSummary, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
+import type { ConversationDetail, ConversationSummary, GithubRepo, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
 
 export class ApiError extends Error {
   status: number
@@ -54,6 +54,9 @@ export const api = {
   main: (text: string) => call<{ id: string }>('POST', '/api/main', { text }),
   command: (id: string, command: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/command`, { command }),
   mainCommand: (command: string) => call<{ ok: true }>('POST', '/api/main/command', { command }),
+  githubRepos: (fresh = false) => call<{ repos: GithubRepo[] }>('GET', `/api/github/repos${fresh ? '?fresh' : ''}`),
+  pinRepo: (repo: string, pinned: boolean) => call<{ ok: true }>('POST', '/api/github/pin', { repo, pinned }),
+  newRepo: (name: string, description: string) => call<{ name: string }>('POST', '/api/github/repos', { name, description }),
   mainAttach: (text: string, files: { name: string; type: string; data: string }[]) => call<{ id: string }>('POST', '/api/main/attach', { text, files }),
   toggleH24: (id: string) => call<{ ok: true }>('POST', `/api/h24/${enc(id)}/toggle`, {}),
   conversations: (opts: { project?: string; q?: string }) => call<{ conversations: ConversationSummary[] }>('GET', `/api/conversations?${new URLSearchParams(opts)}`),

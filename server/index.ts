@@ -244,7 +244,17 @@ const routes: [string, RegExp, Handler][] = [
   ['GET', /^\/api\/repos\/([^/]+)\/file$/, async (_req, res, url, [repo]) => {
     const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
     const p = url.searchParams.get('path') ?? ''
-    json(res, 200, remote ? await remote.call('GET', `/api/repos/${repo}/file?path=${encodeURIComponent(p)}`) : w.file(decodeURIComponent(repo), p))
+    json(res, 200, remote ? await remote.call('GET', `/api/repos/${repo}/file?path=${encodeURIComponent(p)}`) : await w.file(decodeURIComponent(repo), p))
+  }],
+  ['GET', /^\/api\/github\/repos$/, async (_req, res, url) => json(res, 200, { repos: await w.githubRepos(url.searchParams.has('fresh')) })],
+  ['POST', /^\/api\/github\/repos$/, async (req, res) => {
+    const body = await readBody(req)
+    json(res, 200, await w.newRepo(String(body.name ?? '').trim(), String(body.description ?? '')))
+  }],
+  ['POST', /^\/api\/github\/pin$/, async (req, res) => {
+    const body = await readBody(req)
+    w.pinRepo(String(body.repo ?? ''), !!body.pinned)
+    json(res, 200, { ok: true })
   }],
 ]
 

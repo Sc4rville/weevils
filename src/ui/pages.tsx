@@ -6,6 +6,7 @@ import { Collapse, Composer, Line, Messages, StatusChar, Working, type Attachmen
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Settings, shortModel } from './settings'
+import { ReposPage } from './repos'
 import { Shell } from './shell'
 import { ago, dur, durLong, plural, status } from './format'
 
@@ -41,6 +42,8 @@ export function PageView({ page }: { page: Page }) {
       return <ConversationPage id={page.id} />
     case 'import':
       return <ImportPage />
+    case 'repos':
+      return <ReposPage />
   }
 }
 
@@ -299,7 +302,7 @@ export const prefetchRepo = (repo: string, machine: string) => void listFiles(re
 
 function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: string; dir?: string }) {
   const { snap, push, colors } = useApp()
-  const project = snap.projects.find((p) => p.id === projectId)
+  const project = snap.projects.find((p) => p.id === projectId) ?? (repo ? { id: projectId, name: repo, kind: 'repo' as const, repos: [repo], where: {}, lastActivityAt: 0 } : undefined)
   const theRepo = repo ?? (project?.repos.length === 1 ? project.repos[0] : undefined)
   const machine = (theRepo && project?.where[theRepo]) || 'vps'
   const [files, setFiles] = useState<string[] | null>(null)

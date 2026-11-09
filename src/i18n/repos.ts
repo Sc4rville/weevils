@@ -19,7 +19,7 @@ export default defineMessages({
     nameLabel: 'repo name',
     desc: 'one sentence',
     descLabel: 'repo description',
-    create: 'create the repo',
+    create: 'create repo',
     unpin: (repo: string) => `unpin ${repo} from the feed`,
     pin: (repo: string) => `pin ${repo} to the feed`,
   },

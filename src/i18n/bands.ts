@@ -58,7 +58,7 @@ export default defineMessages({
     working: (n: number) => `${n} working`,
     open: (n: number) => `${n} open`,
     nothingRunning: 'nothing running',
-    yours: (n: number) => `${n} for you`,
+    yours: (n: number) => `${n} need${n === 1 ? 's' : ''} you`,
     conversations: (n: number) => `${n} conversation${n === 1 ? '' : 's'}`,
 
     agentBand: 'weevboss, the orchestrator',
@@ -69,8 +69,8 @@ export default defineMessages({
 
     projectBand: (name: string) => `project ${name}`,
     unread: 'replied, not read yet',
-    filesOf: (name: string) => `${name} files`,
-    machineOf: (name: string) => `${name} machine`,
+    filesOf: (name: string) => `files in ${name}`,
+    machineOf: (name: string) => `machine for ${name}`,
     waiting: (n: number) => `${n} ${n === 1 ? 'session is' : 'sessions are'} waiting for you`,
     nothingWaiting: 'nothing waiting for you',
     conversationsOf: (n: number, name: string) => `${n} ${name} conversation${n === 1 ? '' : 's'}`,

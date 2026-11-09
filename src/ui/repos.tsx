@@ -5,9 +5,8 @@ import { useApp } from './app-context'
 import { Shell } from './shell'
 import { plural } from './format'
 
-const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)
-/** Couleur pop stable par repo ; deux repos voisins tombent rarement sur la même puisque la grille mélange 16 teintes. */
-const tint = (name: string) => ({ '--c': `var(--p${hash(name) % 16})` }) as CSSProperties
+/** Couleur par position : un pas de 7 sur les 16 teintes, donc deux cartes voisines (à côté ou dessous) n'ont jamais une teinte proche. */
+const tint = (i: number) => ({ '--c': `var(--p${(i * 7) % 16})` }) as CSSProperties
 
 function RepoIcon() {
   return (
@@ -91,10 +90,10 @@ export function ReposPage() {
         </div>
       </form>
       <div className="in repo-grid">
-        {repos?.map((r) => {
+        {repos?.map((r, i) => {
           const on = pinned.has(r.name)
           return (
-            <div key={r.name} className="repo-card" style={tint(r.name)} role="button" tabIndex={0} aria-label={r.name} onClick={() => push({ kind: 'files', projectId: r.name.split(/[-_.]/)[0].toLowerCase(), repo: r.name })} onKeyDown={(e) => e.key === 'Enter' && push({ kind: 'files', projectId: r.name.split(/[-_.]/)[0].toLowerCase(), repo: r.name })}>
+            <div key={r.name} className="repo-card" style={tint(i)} role="button" tabIndex={0} aria-label={r.name} onClick={() => push({ kind: 'files', projectId: r.name.split(/[-_.]/)[0].toLowerCase(), repo: r.name })} onKeyDown={(e) => e.key === 'Enter' && push({ kind: 'files', projectId: r.name.split(/[-_.]/)[0].toLowerCase(), repo: r.name })}>
               <RepoIcon />
               <span className="repo-name">{r.name}</span>
               {r.description && <span className="repo-desc">{r.description}</span>}

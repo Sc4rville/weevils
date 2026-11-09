@@ -4,7 +4,8 @@ import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { GithubRepo } from '../shared/api.ts'
-import { USER } from './config.ts'
+import { lang, tr, user, type Lang } from './i18n.ts'
+import M from './i18n/github.ts'
 
 function gh(args: string[], cwd?: string, timeout = 30_000): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -49,15 +50,15 @@ export function forgetRepos() {
 
 /** Fichiers d'un repo non cloné, lus sur GitHub. */
 export async function remoteFiles(repo: string): Promise<string[]> {
-  if (!validRepoName(repo)) throw new Error('repo invalide')
+  if (!validRepoName(repo)) throw new Error(tr(M).badRepo)
   const who = await ghOwner()
   const out = JSON.parse(await gh(['api', `repos/${who}/${repo}/git/trees/HEAD?recursive=1`])) as { tree?: { path: string; type: string }[] }
   return (out.tree ?? []).filter((e) => e.type === 'blob').map((e) => e.path).slice(0, 20000)
 }
 
 export async function remoteFile(repo: string, rel: string): Promise<{ path: string; size: number; binary: boolean; content: string; truncated: boolean }> {
-  if (!validRepoName(repo)) throw new Error('repo invalide')
-  if (!rel || rel.split('/').some((s) => !s || s === '..')) throw new Error('chemin refusé')
+  if (!validRepoName(repo)) throw new Error(tr(M).badRepo)
+  if (!rel || rel.split('/').some((s) => !s || s === '..')) throw new Error(tr(M).badPath)
   const who = await ghOwner()
   const out = JSON.parse(await gh(['api', `repos/${who}/${repo}/contents/${rel.split('/').map(encodeURIComponent).join('/')}`])) as { size?: number; content?: string; encoding?: string }
   const buf = out.encoding === 'base64' && out.content ? Buffer.from(out.content.replace(/\n/g, ''), 'base64') : Buffer.alloc(0)
@@ -68,14 +69,14 @@ export async function remoteFile(repo: string, rel: string): Promise<{ path: str
 
 /** Nouveau repo privé, cloné dans `root`, avec un README qui porte le nom et la phrase. */
 export async function createRepo(name: string, description: string, root: string): Promise<{ name: string; dir: string }> {
-  if (!validRepoName(name)) throw new Error('nom de repo invalide')
+  if (!validRepoName(name)) throw new Error(tr(M).badRepoName)
   const dir = path.join(root, name)
-  if (fs.existsSync(dir)) throw new Error(`${name} existe déjà dans ${root}`)
+  if (fs.existsSync(dir)) throw new Error(tr(M).exists(name, root))
   const who = await ghOwner()
   const args = ['repo', 'create', `${who}/${name}`, '--private', '--clone']
   if (description.trim()) args.push('--description', description.trim().slice(0, 300))
   await gh(args, root, 90_000)
-  if (!fs.existsSync(dir)) throw new Error('clone absent après création')
+  if (!fs.existsSync(dir)) throw new Error(tr(M).noClone)
   fs.writeFileSync(path.join(dir, 'README.md'), `# ${name}\n${description.trim() ? `\n${description.trim()}\n` : ''}`)
   const git = (a: string[]) =>
     new Promise<void>((resolve, reject) => execFile('git', ['-C', dir, ...a], { timeout: 60_000 }, (err, _o, stderr) => (err ? reject(new Error(stderr?.toString().trim() || err.message)) : resolve())))
@@ -95,21 +96,24 @@ const BLURB_SCHEMA = {
   properties: { items: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'blurb'], properties: { name: { type: 'string' }, blurb: { type: 'string' } } } } },
 }
 
-let blurbs: Record<string, string> | null = null
+// Une phrase par langue : le cache français garde son nom d'origine, l'anglais a le sien.
+const blurbs: Partial<Record<Lang, Record<string, string>>> = {}
 let blurbing = false
 
-function blurbFile(dataDir: string) {
-  return path.join(dataDir, 'repo-blurbs.json')
+function blurbFile(dataDir: string, l: Lang) {
+  return path.join(dataDir, l === 'fr' ? 'repo-blurbs.json' : `repo-blurbs.${l}.json`)
 }
 
-export function loadBlurbs(dataDir: string): Record<string, string> {
-  if (blurbs) return blurbs
+export function loadBlurbs(dataDir: string, l: Lang = lang()): Record<string, string> {
+  const have = blurbs[l]
+  if (have) return have
+  let read: Record<string, string> = {}
   try {
-    blurbs = JSON.parse(fs.readFileSync(blurbFile(dataDir), 'utf8')) as Record<string, string>
+    read = JSON.parse(fs.readFileSync(blurbFile(dataDir, l), 'utf8')) as Record<string, string>
   } catch {
-    blurbs = {}
+    /* pas encore de phrases dans cette langue */
   }
-  return blurbs
+  return (blurbs[l] = read)
 }
 
 async function readmeOf(repo: string, roots: string[]): Promise<string> {
@@ -134,30 +138,26 @@ async function readmeOf(repo: string, roots: string[]): Promise<string> {
  * description. Tourne en fond ; `onDone` quand de nouvelles phrases sont là.
  */
 export async function describeRepos(list: GithubRepo[], roots: string[], dataDir: string, onDone: () => void) {
-  const have = loadBlurbs(dataDir)
+  const l = lang()
+  const have = loadBlurbs(dataDir, l)
   const todo = list.filter((r) => !have[r.name])
   if (!todo.length || blurbing) return
   blurbing = true
+  const t = tr(M)
   try {
     const workdir = path.join(dataDir, 'blurbs')
     fs.mkdirSync(workdir, { recursive: true })
     for (let i = 0; i < todo.length; i += 12) {
       const batch = todo.slice(i, i + 12)
-      const items = []
+      const items: string[] = []
       for (const r of batch) {
         const readme = (await readmeOf(r.name, roots)).replace(/\s+/g, ' ').trim().slice(0, 1200)
-        items.push({ name: r.name, description: r.description, readme, langage: r.language ?? '' })
+        items.push(t.blurbItem(r.name, r.description, readme, r.language ?? ''))
       }
       const schemaFile = path.join(workdir, 'schema.json')
       const outFile = path.join(workdir, `out-${Date.now()}.json`)
       fs.writeFileSync(schemaFile, JSON.stringify(BLURB_SCHEMA))
-      const prompt = [
-        `Pour chaque repo GitHub de ${USER}, écris en français UNE phrase courte (3 à 8 mots, minuscule initiale, sans point final) qui dit ce que c’est, comme on le dirait à un ami : « le jeu mobile », « le site des cours de surf », « l’app qui pilote ses agents ».`,
-        'Jamais de jargon ni de liste de technologies, jamais le nom du repo recopié, jamais la description brute. Si le README ne dit rien de clair, devine d’après le nom et reste sobre (ex. « un essai mis de côté »).',
-        'Ne lis aucun fichier, ne lance aucune commande : réponds directement.',
-        '',
-        JSON.stringify(items),
-      ].join('\n')
+      const prompt = t.blurbPrompt(user(), `[${items.join(',')}]`)
       await new Promise<void>((resolve, reject) => {
         const child = execFile(
           'codex',
@@ -170,7 +170,7 @@ export async function describeRepos(list: GithubRepo[], roots: string[], dataDir
       const raw = JSON.parse(fs.readFileSync(outFile, 'utf8')) as { items: { name: string; blurb: string }[] }
       fs.rmSync(outFile, { force: true })
       for (const x of raw.items) if (x.blurb?.trim() && batch.some((b) => b.name === x.name)) have[x.name] = x.blurb.trim().replace(/[.。]\s*$/, '').slice(0, 90)
-      fs.writeFileSync(blurbFile(dataDir), JSON.stringify(have, null, 1))
+      fs.writeFileSync(blurbFile(dataDir, l), JSON.stringify(have, null, 1))
       onDone()
     }
   } catch (e) {

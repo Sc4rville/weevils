@@ -4,7 +4,8 @@
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { USER } from './config.ts'
+import { tr, user } from './i18n.ts'
+import M from './i18n/titles.ts'
 
 export interface TitleInput {
   id: string
@@ -63,17 +64,8 @@ export async function llmTitles(items: TitleInput[], workdir: string): Promise<{
   const schemaFile = path.join(workdir, 'schema.json')
   const outFile = path.join(workdir, `out-${Date.now()}.json`)
   fs.writeFileSync(schemaFile, JSON.stringify(SCHEMA))
-  const prompt = [
-    `Tu nommes des sessions d’agents de code (Claude Code, Codex) pour que ${USER} comprenne d’un coup d’œil, sur son téléphone, de quoi chacune parle. Ne lis aucun fichier, ne lance aucune commande : réponds directement.`,
-    '',
-    'Pour chaque session, à partir de son début et de ses derniers échanges :',
-    '- title : le THÈME de la session, ce sur quoi on bosse dedans, en français, 2 à 5 mots, très court, style note perso (ex. « UX de weevils », « code d’accès iPhone », « perf du jeu », « mails prospects »). Sans point final, sans guillemets, sans « session » ni « conversation », jamais le premier message mot pour mot. Un titre stable : si le thème général n’a pas changé, garde le même esprit.',
-    '- now : la dernière chose faite ou en cours, ≤ 5 mots et ≤ 40 caractères (elle doit tenir sur une ligne de téléphone), en français, au présent, sans sujet (ex. « corrige le détecteur d’écran », « déploie sur le VPS »).',
-    'Si les derniers échanges partent sur un autre thème que le début, c’est le nouveau thème qui compte.',
-    '',
-    'Sessions :',
-    JSON.stringify(items.map((i) => ({ id: i.id, outil: i.tool, ou: i.where, debut: i.debut, derniers_echanges: i.recents }))),
-  ].join('\n')
+  const t = tr(M)
+  const prompt = t.prompt(user(), `[${items.map((i) => t.item(i.id, i.tool, i.where, i.debut, i.recents)).join(',')}]`)
   await new Promise<void>((resolve, reject) => {
     const child = execFile(
       'codex',

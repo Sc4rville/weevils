@@ -4,7 +4,7 @@ import path from 'node:path'
 
 export const HOME = os.homedir()
 export const CONFIG_DIR = path.join(HOME, '.config', 'weevils')
-/** Le seul fichier de config de l'utilisateur, hors du repo (modèle : weevils.env.example). NOM=valeur, une par ligne. */
+/** Le seul fichier de config de l'utilisateur, hors du repo (modèle : .env.example). NOM=valeur, une par ligne. */
 export const CONFIG_FILE = process.env.WEEVILS_CONFIG ?? path.join(CONFIG_DIR, 'env')
 try {
   for (const line of fs.readFileSync(CONFIG_FILE, 'utf8').split('\n')) {

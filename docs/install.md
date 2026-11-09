@@ -23,7 +23,7 @@ Run it again any time: it updates (git pull, npm ci and build only when somethin
    prints the command (`npm i -g @openai/codex`, with `sudo` when npm's global folder is not yours). If Claude Code
    is not logged in yet, the end screen says "almost ready: run claude once to log in".
 3. Clones weevils into `--dir` (default `~/weevils`) when piped from curl, or uses the clone it runs from.
-4. Writes your settings to `~/.config/weevils/env` from `weevils.env.example`. Values already there are kept;
+4. Writes your settings to `~/.config/weevils/env` from `.env.example`. Values already there are kept;
    a flag you pass (`--name`, `--lang`, `--port`, `--domain`, `--lan`, `--machine`) updates its key. A new config
    takes the first free pair of ports from 4179/4180. As root, it sets `WEEVILS_SAFE=1` (see below).
 5. `npm ci` and `vite build`.

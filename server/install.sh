@@ -137,7 +137,7 @@ RestartSec=2
 KillMode=process
 Environment=PATH=$svc_path
 Environment=NODE_ENV=production
-# Settings and keys: one per line, NAME=value (model: weevils.env.example).
+# Settings and keys: one per line, NAME=value (model: .env.example).
 EnvironmentFile=-%h/.config/weevils/env
 
 [Install]

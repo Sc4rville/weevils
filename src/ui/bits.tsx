@@ -75,7 +75,7 @@ export function SessionRow({ session }: { session: Session }) {
   const sub = waiting && session.attention ? session.attention : session.now
   return (
     <button
-      className={`row ${waiting ? 'tone' : ''}`}
+      className={`row ${waiting ? 'tone' : ''} ${session.status === 'working' ? 'live' : ''}`}
       onClick={() => push({ kind: 'session', id: session.id })}
       aria-label={`${session.tool}, ${session.title}, ${st.label}${sub ? ` : ${sub}` : ''}`}
     >

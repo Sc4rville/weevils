@@ -169,6 +169,7 @@ export function ProjectBand({ project }: { project: Project }) {
     setExpanded(mode === 'open' ? null : project.id)
   }
 
+  const busy = active.some((s) => s.status === 'working')
   const summary = [
     active.length ? activity(active) : sessions.length ? 'rien ne tourne' : null,
     att.length ? `${att.length} à toi` : null,
@@ -179,7 +180,7 @@ export function ProjectBand({ project }: { project: Project }) {
     .join(' · ')
 
   return (
-    <motion.section layout="position" transition={spring} className="band" style={color(colors[project.id] ?? 'p0')} aria-label={`projet ${project.name}`} data-project={project.id}>
+    <motion.section layout="position" transition={spring} className={`band ${busy ? 'busy' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={`projet ${project.name}`} data-project={project.id}>
       <motion.div className="in head" initial={false} animate={{ minHeight: mode === 'mini' ? 50 : 64, paddingTop: mode === 'mini' ? 0 : 8 }} transition={spring}>
         <button className="head-name" onClick={toggle} aria-expanded={mode === 'open'} aria-controls={`more-${project.id}`}>
           <motion.span className="name" initial={false} animate={{ fontSize: NAME_SIZE[mode] }} transition={spring}>

@@ -869,3 +869,55 @@ input:focus-visible {
     animation: none;
   }
 }
+
+/* ---------- Vert fluo sur ce qui travaille : liseré qui balaie en haut de la bande, trait qui respire sur la ligne ---------- */
+
+.band.busy::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 0%, var(--fluo) 35%, var(--fluo) 65%, transparent 100%);
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  animation: sweep-bg 2.2s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes sweep-bg {
+  from {
+    background-position: -60% 0;
+  }
+  to {
+    background-position: 170% 0;
+  }
+}
+
+.row.live {
+  position: relative;
+}
+
+.row.live::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  background: var(--fluo);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.row.live .title {
+  font-weight: 650;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .band.busy::before,
+  .row.live::before {
+    animation: none;
+  }
+}

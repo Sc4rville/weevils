@@ -1530,8 +1530,22 @@ button.copy.done {
   100% { color: var(--ink); }
 }
 
+/* Message d'état du logo : une bulle de pensée sans boîte, à droite de la tête (le petit rectangle incliné), en biais. */
+.voice {
+  position: relative;
+}
+
 .voice-err {
-  min-height: 1.2em;
+  position: absolute;
+  left: 90%;
+  bottom: 70%;
+  transform-origin: left bottom;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  line-height: 1.2;
+  pointer-events: none;
+  z-index: 2;
 }
 
 /* Réglages : une rangée de mots, le choix actif en gras. Ni boîte, ni fond, ni arrondi. */

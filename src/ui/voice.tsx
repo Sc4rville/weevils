@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { WeevbossLogo } from './logo'
@@ -91,6 +92,9 @@ const hush = () => {
   }
 }
 
+/** Durée d'affichage d'un message d'état du logo, avant son fondu (0,35 s) : moins de 3 s en tout. */
+const NOTE_MS = 2200
+
 export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }: { onText: (t: string) => void; onSend: () => void; replyKey?: string; replyText?: string; working: boolean; take: () => string }) {
   const t = useT(M)
   const lang = useLang()
@@ -107,6 +111,12 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
   const spoken = useRef(false)
   const [phase, setPhase] = useState<Phase>('idle')
   const [err, setErr] = useState<string | null>(null)
+  // Les petits messages d'état du logo (« rien entendu »…) : une bulle de pensée, effacée en fondu (moins de 3 s en tout).
+  useEffect(() => {
+    if (!err) return
+    const t = setTimeout(() => setErr(null), NOTE_MS)
+    return () => clearTimeout(t)
+  }, [err])
   const [reply, setReply] = useState(false)
   const rec = useRef<MediaRecorder | null>(null)
   const chunks = useRef<Blob[]>([])
@@ -247,7 +257,21 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
       <button className={`voice-logo ${phase} ${reply ? 'reply' : ''} ${working ? 'working' : ''} ${speaking ? 'speaking' : ''}`} onPointerDown={(e) => e.preventDefault()} onClick={tap} aria-label={label} aria-pressed={phase === 'rec'}>
         <WeevbossLogo className="voice-svg" />
       </button>
-      {err && <div className="meta voice-err">! {err}</div>}
+      <AnimatePresence>
+        {err && (
+          <motion.span
+            key={err}
+            className="voice-err"
+            role="status"
+            initial={{ opacity: 0, rotate: -8, y: 4 }}
+            animate={{ opacity: 1, rotate: -8, y: 0 }}
+            exit={{ opacity: 0, rotate: -8, y: -4 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+          >
+            {err}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

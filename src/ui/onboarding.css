@@ -143,8 +143,13 @@
   padding-block: 12px;
 }
 
+/* Les tuiles des machines (fantôme « + » compris) tiennent toujours dans la largeur. */
+.ob-visual {
+  --tile: min(var(--tile-max), calc((100vw - 2 * var(--pad) - (var(--n) - 1) * 16px) / var(--n)));
+}
+
 .ob-visual.small {
-  --tile: 52px !important;
+  --tile-max: 52px !important;
 }
 
 .ob-visual.small .ob-mstate {
@@ -501,7 +506,7 @@
 /* Petits écrans en hauteur : le visuel cède la place au texte. */
 @media (max-height: 700px) {
   .ob-visual {
-    --tile: 64px !important;
+    --tile-max: 64px !important;
   }
   .ob-boss {
     height: 160px;

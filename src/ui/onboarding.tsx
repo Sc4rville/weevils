@@ -336,7 +336,7 @@ function MachineStep({ machines, host }: { machines: Machine[]; host: string }) 
 
   return (
     <>
-      <div className={`ob-visual ${adding ? 'small' : ''}`} style={{ ['--tile' as string]: `${TILE[Math.min(shown.length + 1, 4)]}px` }}>
+      <div className={`ob-visual ${adding ? 'small' : ''}`} style={{ ['--tile-max' as string]: `${TILE[shown.length + 1]}px`, ['--n' as string]: shown.length + 1 }}>
         <ul className="ob-machines" aria-label={t.machineTitle}>
           <motion.span className="ob-wire" aria-hidden initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ delay: 0.1 }}>
             <motion.i animate={{ left: ['0%', '100%'] }} transition={{ duration: 1.6, repeat: Infinity, ease: 'linear' }} />

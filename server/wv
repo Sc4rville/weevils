@@ -6,7 +6,18 @@
 #   wv codex [msg]      codex
 #   wv ls               sessions wv en cours
 #   wv a [nom]          s'y rattacher (la plus récente par défaut)
+#   wv vps <repo> [...]  depuis le PC : la même chose, mais sur le VPS (~/projects/<repo>)
+#   wv vps a | wv vps ls se rattacher / lister sur le VPS
 set -euo pipefail
+
+if [ "${1:-}" = vps ]; then
+  shift
+  case "${1:-}" in
+    ''|a|attach|ls) exec ssh -t vps "wv ${1:-a} ${2:-}" ;;
+  esac
+  repo=$1; shift
+  exec ssh -t vps "cd ~/projects/$(printf '%q' "$repo") && wv $(printf '%q ' "$@")"
+fi
 
 tool=claude
 case "${1:-}" in

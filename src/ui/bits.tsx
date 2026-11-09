@@ -4,6 +4,8 @@ import { api } from '../api'
 import type { Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
 import { dur, plain, segments, status, step, userText } from './format'
+import { tr, useLang, useT } from '../i18n'
+import M from '../i18n/bits'
 import { isUnread, useSeen } from './seen'
 import { G, Icon } from './icons'
 
@@ -50,6 +52,7 @@ export function StatusChar({ s }: { s: Session['status'] }) {
 
 /** Long message de l'utilisateur : replié au-delà de quelques lignes, un geste pour tout lire. */
 function Clamp({ text }: { text: string }) {
+  const t = useT(M)
   const [open, setOpen] = useState(false)
   const long = text.length > 420
   return (
@@ -57,7 +60,7 @@ function Clamp({ text }: { text: string }) {
       <div className={`text ${long && !open ? 'clamp' : ''}`}>{text}</div>
       {long && (
         <button className="link small" onClick={() => setOpen((v) => !v)}>
-          {open ? 'replier' : 'tout lire'}
+          {open ? t.showLess : t.readAll}
         </button>
       )}
     </>
@@ -82,6 +85,7 @@ export function ToolIcon({ tool, size = 15 }: { tool: string; size?: number }) {
 
 export function SessionRow({ session }: { session: Session }) {
   const { push, now } = useApp()
+  useLang() // libellé d'état et durée suivent la langue
   useSeen()
   const unread = isUnread(session)
   const st = status[session.status]
@@ -169,7 +173,7 @@ const MAX_FILE = 32 * 1024 * 1024
 
 /** Fichier envoyé tel quel (PDF, zip, doc…). */
 async function raw(file: File): Promise<Attachment> {
-  if (file.size > MAX_FILE) throw new Error(`${file.name} dépasse 32 Mo`)
+  if (file.size > MAX_FILE) throw new Error(tr(M).tooBig(file.name))
   const buf = new Uint8Array(await file.arrayBuffer())
   let bin = ''
   for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000))
@@ -198,7 +202,7 @@ async function shrink(file: File): Promise<Attachment> {
 const blobToB64 = (b: Blob) =>
   new Promise<string>((resolve, reject) => {
     const r = new FileReader()
-    r.onerror = () => reject(new Error('lecture audio'))
+    r.onerror = () => reject(new Error(tr(M).audioRead))
     r.onload = () => resolve(String(r.result).split(',')[1] ?? '')
     r.readAsDataURL(b)
   })
@@ -235,6 +239,7 @@ export function Composer({
   /** Pour envoyer depuis l'extérieur (troisième tap sur le logo). */
   formRef?: React.RefObject<HTMLFormElement | null>
 }) {
+  const t = useT(M)
   const [text, setText] = useState('')
   const field = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -252,8 +257,8 @@ export function Composer({
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    const t = text.trim()
-    if ((!t && !files.length) || busy) return
+    const typed = text.trim()
+    if ((!typed && !files.length) || busy) return
     const sent = files
     setFiles([])
     setBusy(true)
@@ -268,10 +273,10 @@ export function Composer({
     clear()
     setTimeout(clear, 0)
     try {
-      if (sent.length && onAttach) await onAttach(t, sent)
-      else await onSend(t)
+      if (sent.length && onAttach) await onAttach(typed, sent)
+      else await onSend(typed)
     } catch {
-      setText(t) // on rend le texte en cas d'échec, rien n'est perdu
+      setText(typed) // on rend le texte en cas d'échec, rien n'est perdu
       setFiles(sent)
     } finally {
       setBusy(false)
@@ -310,7 +315,7 @@ export function Composer({
         setRec('wait')
         try {
           const blob = new Blob(chunks.current, { type: r.mimeType || type || 'audio/mp4' })
-          if (blob.size < 800) throw new Error('rien d’enregistré')
+          if (blob.size < 800) throw new Error(tr(M).nothingRecorded)
           const { text: heard } = await api.transcribe(blob.type, await blobToB64(blob))
           if (heard) setText((cur) => (cur ? `${cur.replace(/\s+$/, '')} ${heard}` : heard))
         } catch (e) {
@@ -323,7 +328,7 @@ export function Composer({
       recorder.current = r
       setRec('on')
     } catch (e) {
-      setErr(/denied|permission|NotAllowed/i.test((e as Error).message + (e as Error).name) ? 'micro refusé : autorise-le dans les réglages' : (e as Error).message)
+      setErr(/denied|permission|NotAllowed/i.test((e as Error).message + (e as Error).name) ? tr(M).micDenied : (e as Error).message)
       setRec('off')
     }
   }
@@ -335,10 +340,10 @@ export function Composer({
           {files.length > 0 && (
             <>
               <span className="strong">
-                {files.length} {files.every((f) => f.type.startsWith('image/')) ? (files.length > 1 ? 'photos' : 'photo') : files.length > 1 ? 'fichiers' : 'fichier'}
+                {t.attached(files.length, files.every((f) => f.type.startsWith('image/')))}
               </span>
               <button type="button" className="link small" onClick={() => setFiles([])}>
-                retirer
+                {t.remove}
               </button>
             </>
           )}
@@ -354,7 +359,7 @@ export function Composer({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onFocus={onFocus}
-          placeholder={rec === 'on' ? 'j’écoute…' : rec === 'wait' ? 'je transcris…' : placeholder}
+          placeholder={rec === 'on' ? t.listening : rec === 'wait' ? t.transcribing : placeholder}
           aria-label={label}
           enterKeyHint="send"
           autoComplete="off"
@@ -363,17 +368,17 @@ export function Composer({
         {onAttach && !disabled && (
           <>
             <input ref={picker} type="file" accept={anyFile ? undefined : 'image/*'} multiple hidden onChange={(e) => void pick(e.target.files)} />
-            <button type="button" className="tool-btn" onClick={() => picker.current?.click()} aria-label={anyFile ? 'joindre un fichier ou une photo' : 'joindre une photo'}>
+            <button type="button" className="tool-btn" onClick={() => picker.current?.click()} aria-label={anyFile ? t.attachAny : t.attachPhoto}>
               <Icon name="plus" />
             </button>
           </>
         )}
         {canVoice && !disabled && (
-          <button type="button" className={`tool-btn ${rec === 'on' ? 'rec' : ''}`} onClick={() => void toggleRec()} aria-label={rec === 'on' ? 'arrêter et transcrire' : 'dicter'} aria-pressed={rec === 'on'}>
+          <button type="button" className={`tool-btn ${rec === 'on' ? 'rec' : ''}`} onClick={() => void toggleRec()} aria-label={rec === 'on' ? t.stopDictation : t.dictate} aria-pressed={rec === 'on'}>
             {rec === 'wait' ? <span className="spin"><Icon name="star" /></span> : <Icon name="mic" />}
           </button>
         )}
-        <button className="send" type="submit" disabled={(!text.trim() && !files.length) || busy || disabled} aria-label="envoyer">
+        <button className="send" type="submit" disabled={(!text.trim() && !files.length) || busy || disabled} aria-label={t.send}>
           <Icon name="arrow" />
         </button>
       </div>
@@ -403,12 +408,13 @@ export function Prose({ text }: { text: string }) {
 }
 
 function Snippet({ code }: { code: string }) {
+  const t = useT(M)
   const [open, setOpen] = useState(false)
   const n = code.split('\n').length
   return (
     <div className="snippet">
       <button className="link" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <Icon name={open ? 'minus' : 'plus'} /> code · {n} {n > 1 ? 'lignes' : 'ligne'}
+        <Icon name={open ? 'minus' : 'plus'} /> {t.code(n)}
       </button>
       <Collapse open={open}>
         <pre className="code mono small">{code}</pre>
@@ -433,6 +439,7 @@ function group(messages: Message[]): Group[] {
 }
 
 function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
+  const t = useT(M)
   const [open, setOpen] = useState(false)
   const last = step(steps[steps.length - 1].text)
   if (steps.length === 1) {
@@ -450,7 +457,7 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
     <div className="msg band event">
       <button className="in steps-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className="text">
-          {live ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="arrow" dir="right" />} {steps.length} étapes · <span key={last} className="fade-in">{last}</span>
+          {live ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="arrow" dir="right" />} {t.steps(steps.length)} · <span key={last} className="fade-in">{last}</span>
         </span>
         <span className="go" aria-hidden>
           <Icon name={open ? 'minus' : 'plus'} />
@@ -472,6 +479,7 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
 const WINDOW = 60
 
 export function Messages({ messages, author, working = false }: { messages: Message[]; author: string; working?: boolean }) {
+  const t = useT(M)
   const [all, setAll] = useState(false)
   const hidden = all ? 0 : Math.max(0, messages.length - WINDOW)
   const groups = useMemo(() => group(messages.slice(hidden)), [messages, hidden])
@@ -479,7 +487,7 @@ export function Messages({ messages, author, working = false }: { messages: Mess
     <AnimatePresence initial={false}>
       {hidden > 0 && (
         <Line key="older" ch="↑" go={null} onClick={() => setAll(true)}>
-          <span className="meta">{hidden} messages plus anciens</span>
+          <span className="meta">{t.older(hidden)}</span>
         </Line>
       )}
       {groups.map((g, i) =>
@@ -491,7 +499,7 @@ export function Messages({ messages, author, working = false }: { messages: Mess
           <Appear key={g.m.id}>
             <div className={`msg band ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? 'tone orch' : ''}`}>
               <div className="in">
-                <span className="who">{g.m.role === 'user' ? 'toi' : g.m.role === 'orchestrator' ? 'weevboss' : author}</span>
+                <span className="who">{g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? 'weevboss' : author}</span>
                 {g.m.role === 'user' ? <Clamp text={userText(g.m.text)} /> : g.m.role === 'orchestrator' ? <Clamp text={g.m.text} /> : <Prose text={g.m.text} />}
               </div>
             </div>
@@ -505,11 +513,12 @@ export function Messages({ messages, author, working = false }: { messages: Mess
 /** L'agent travaille : une ligne vivante en bas du fil. */
 export function Working({ author, since }: { author: string; since?: number | null }) {
   const { now } = useApp()
+  const t = useT(M)
   return (
     <motion.div className="msg band working" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={spring}>
       <div className="in">
         <span className="who">
-          <span className="spin fluo"><Icon name="star" /></span> {author} travaille{since ? ` · ${dur(now - since)}` : ''}
+          <span className="spin fluo"><Icon name="star" /></span> {t.working(author)}{since ? ` · ${dur(now - since)}` : ''}
           <span className="dots" aria-hidden>
             <i />
             <i />

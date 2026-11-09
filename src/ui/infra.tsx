@@ -1,5 +1,5 @@
-import { useEffect, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
-import type { FsListing, InfraDetail, InfraPoint, Level, MachineBrief, QuotaInfo, QuotaWindow, UsageInfo, UsageRow } from '../../shared/infra.ts'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import type { FsListing, InfraDetail, InfraPoint, Level, QuotaInfo, QuotaWindow, UsageInfo, UsageRow } from '../../shared/infra.ts'
 import { api, type FileContent } from '../api'
 import { intlLocale, useT } from '../i18n'
 import M from '../i18n/infra'
@@ -11,39 +11,8 @@ import { Icon } from './icons'
 import { Shell } from './shell'
 import { copyText } from './copy'
 import './infra.css'
-import { tapHint } from './hints'
-
-/**
- * Le coin infrastructure, en haut à droite du fil : les machines (une icône chacune, empilées, avec CPU et mémoire),
- * « / » (le système de fichiers de chaque machine) et le cerveau (ce qu'il reste d'abonnement Claude et Codex).
- */
-
-// ---------------------------------------------------------------- données partagées, rafraîchies tant que l'app est visible
-
-function usePoll<T>(load: () => Promise<T>, every: number): T | null {
-  const [v, setV] = useState<T | null>(null)
-  useEffect(() => {
-    let off = false
-    const tick = () =>
-      document.visibilityState === 'visible' &&
-      load()
-        .then((x) => !off && setV(x))
-        .catch(() => undefined)
-    tick()
-    const t = setInterval(tick, every)
-    document.addEventListener('visibilitychange', tick)
-    return () => {
-      off = true
-      clearInterval(t)
-      document.removeEventListener('visibilitychange', tick)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [every])
-  return v
-}
 
 const quotaLevel = (p: number): Level => (p >= 90 ? 'crit' : p >= 75 ? 'warn' : 'ok')
-const worst = (q?: QuotaInfo | null) => Math.max(0, ...(q?.windows ?? []).filter((w) => w.kind !== 'model').map((w) => w.percent))
 
 /** « 16:00 », ou « jeu. 16:00 » au-delà de 20 h. */
 function when(t: number | null, now: number) {
@@ -51,36 +20,6 @@ function when(t: number | null, now: number) {
   const d = new Date(t)
   const time = d.toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit' })
   return t - now > 20 * 3600_000 ? `${d.toLocaleDateString(intlLocale(), { weekday: 'short' })} ${time}` : time
-}
-
-// ---------------------------------------------------------------- icônes : un seul aplat chacune, l'état se lit à la couleur
-
-/** Une machine : l'écran, le pied et la base d'un seul tenant. */
-const MACHINE = 'M2 3h20v14h-8v2h3v2H7v-2h3v-2H2z'
-/** Le cerveau vu de dessus, d'un seul tenant : lobes bosselés, la fente entaillée par le haut. */
-const BRAIN = 'M7 4h4v6h2V4h4v2h3v3h2v6h-2v3h-3v2H7v-2H4v-3H2V9h2V6h3z'
-
-function Solid({ d }: { d: string }) {
-  return (
-    <svg className="ic" viewBox="0 0 24 24" shapeRendering="crispEdges" aria-hidden focusable="false">
-      <path d={d} fill="currentColor" />
-    </svg>
-  )
-}
-
-/** Le cerveau se remplit par le bas comme une jauge : la part utilisée de l'abonnement, le reste en transparence. */
-function BrainFill({ pct }: { pct: number }) {
-  const id = useId()
-  const top = 4 + (1 - Math.min(100, Math.max(0, pct)) / 100) * 16
-  return (
-    <svg className="ic" viewBox="0 0 24 24" shapeRendering="crispEdges" aria-hidden focusable="false">
-      <clipPath id={id}>
-        <rect x="0" y={top} width="24" height={24 - top} />
-      </clipPath>
-      <path d={BRAIN} fill="currentColor" opacity={0.32} />
-      <path d={BRAIN} fill="currentColor" clipPath={`url(#${id})`} />
-    </svg>
-  )
 }
 
 const levelOf1 = (v: number, k: 'cpu' | 'mem'): Level => (k === 'cpu' ? (v >= 90 ? 'crit' : v >= 70 ? 'warn' : 'ok') : v >= 92 ? 'crit' : v >= 80 ? 'warn' : 'ok')
@@ -91,43 +30,6 @@ function Gauge({ pct, level, className = '' }: { pct: number; level: Level; clas
     <span className={`gauge ${className}`} aria-hidden>
       <span className={`lv-${level}`} style={{ width: `${Math.max(2, Math.min(100, pct))}%` }} />
     </span>
-  )
-}
-
-// ---------------------------------------------------------------- le coin, flottant en haut à droite du fil
-
-export function InfraCorner({ hidden }: { hidden?: boolean }) {
-  const { snap, push } = useApp()
-  const t = useT(M)
-  const brief = usePoll(() => api.infraBrief().then((r) => r.machines), 15_000)
-  const usage = usePoll(() => api.usage(), 120_000)
-  // Avant la première mesure : les machines connues du fil.
-  const machines: MachineBrief[] = brief ?? snap.machines.map((m) => ({ id: m.id, name: m.name, online: m.online !== false, cpu: 0, mem: 0, level: 'ok' as Level, weevboss: false }))
-  const c = usage?.claude
-  const top = worst(c)
-  const parts = (c?.windows ?? []).filter((w) => w.kind !== 'model').map((w) => `${w.kind === 'session' ? t.session5h : t.week} ${w.percent} %`).join(', ')
-  return (
-    <div className="infra-float" hidden={hidden}>
-      <div className={`mx-row ${machines.length > 3 ? 'many' : ''}`}>
-        {machines.map((m, i) => (
-          <button
-            key={m.id}
-            className={`mx lv-text-${m.online ? m.level : 'off'} ${i ? 'behind' : ''}`}
-            style={{ zIndex: machines.length - i, transform: i ? `translateY(${-Math.min(i, 3) * 3}px)` : undefined } as CSSProperties}
-            onClick={(e) => tapHint('machine', e.currentTarget) || push({ kind: 'infra', machine: m.id })}
-            aria-label={t.machineAria(m.name, m.cpu, m.mem, m.online)}
-          >
-            <Solid d={MACHINE} />
-          </button>
-        ))}
-      </div>
-      <button className="ix" onClick={(e) => tapHint('fs', e.currentTarget) || push({ kind: 'fs', machine: machines[0]?.id ?? '', path: '/' })} aria-label={t.filesAria}>
-        <Icon name="slash" />
-      </button>
-      <button className={`ix lv-text-${c?.ok ? quotaLevel(top) : 'off'}`} onClick={(e) => tapHint('quota', e.currentTarget) || push({ kind: 'usage' })} aria-label={t.quotaAria(parts || t.unavailable)}>
-        <BrainFill pct={c?.ok ? top : 0} />
-      </button>
-    </div>
   )
 }
 
@@ -320,6 +222,16 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
                 {a}
               </div>
             ))}
+          </>
+        )}
+
+        {/* L'abonnement (quotas Claude et Codex, ce qui consomme) : sur la machine principale, celle qui sert l'app. */}
+        {id === snap.machines[0]?.id && (
+          <>
+            <div className="in label">{t.usageTitle}</div>
+            <Line ch="%" meta={t.usageMeta} onClick={() => push({ kind: 'usage' })}>
+              {t.usageLine}
+            </Line>
           </>
         )}
 

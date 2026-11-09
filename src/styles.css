@@ -1485,7 +1485,7 @@ button.copy.done {
   min-height: 0;
 }
 
-/* Le logo et le diablotin, tout en haut, posés sur la même ligne de base. */
+/* Le logo, tout en haut, posé sur la ligne de base. */
 .agent-top {
   width: 100%;
   max-width: 760px;
@@ -1679,31 +1679,6 @@ button.copy.done {
 }
 
 /* ---------- Devil mode ---------- */
-
-.devil-btn {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: end center;
-  opacity: 0.55;
-  flex: none;
-}
-
-.devil-btn .ic {
-  width: 16px;
-  height: 16px;
-}
-
-.devil-btn.on {
-  opacity: 1;
-}
-
-.devil-note {
-  position: absolute;
-  right: max(var(--pad), calc((100% - 760px) / 2 + var(--pad)));
-  bottom: 50px;
-  font-weight: 650;
-}
 
 .msg.devil {
   background: var(--devil-reply);

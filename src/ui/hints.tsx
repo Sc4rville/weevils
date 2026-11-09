@@ -4,7 +4,7 @@ import { useT } from '../i18n'
 import M from '../i18n/hints'
 import './hints.css'
 
-// First-tap hints. The first time someone taps an element (the devil, a machine, the voice logo…), a short bubble
+// First-tap hints. The first time someone taps an element (the voice logo, the star, the +…), a short bubble
 // says what it is and what to do with it, instead of acting: the next tap acts. Pages reached by a gesture (repos,
 // conversation mode) get theirs the first time they open. Each hint shows once, ever: weevilsd keeps the seen ids
 // (GET/POST /api/hints), shared by every device. Gone after a few seconds or at the next touch. Never during the intro.
@@ -12,10 +12,10 @@ import './hints.css'
 // Also, on load: the server's install id. A different one than the device knew (server reinstalled or reset from
 // scratch) → the device forgets everything it kept about the old one (weevils-* in localStorage) and reloads.
 
-export type HintId = 'devil' | 'voice' | 'machine' | 'fs' | 'quota' | 'star' | 'newSession' | 'attention' | 'h24' | 'repos' | 'calm'
+export type HintId = 'voice' | 'star' | 'newSession' | 'attention' | 'h24' | 'repos' | 'calm'
 
 /** Every hint, for a device that already knew weevils before hints existed (they are all marked seen at once). */
-export const HINT_IDS: HintId[] = ['devil', 'voice', 'machine', 'fs', 'quota', 'star', 'newSession', 'attention', 'h24', 'repos', 'calm']
+export const HINT_IDS: HintId[] = ['voice', 'star', 'newSession', 'attention', 'h24', 'repos', 'calm']
 
 const INSTALL = 'weevils-install'
 /** Shown at least this long, plus a little per character, at most MAX_MS. */
@@ -27,7 +27,7 @@ const VIEW_DELAY_MS = 650
 
 interface Shown {
   id: HintId
-  /** Variant text key (e.g. devil not plugged in). */
+  /** Variant text key (defaults to the id). */
   key: keyof (typeof M)['en']
   anchor: DOMRect | null
   at: number

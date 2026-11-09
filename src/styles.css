@@ -873,14 +873,25 @@ button.copy.done {
   --fluo: #39ff14;
 }
 
-/* Texte noir : vert foncé plein, sans contour, pour contraster ; le fluo reste au thème à texte clair. */
 [data-theme='light'] {
-  --fluo: #0a7a2f;
+  --fluo: #1fd60a;
 }
 
 .fluo {
   color: var(--fluo);
   animation: pulse 1.6s ease-in-out infinite;
+}
+
+/* Contour noir très fin (~0,85 px) autour de l'étoile verte, seulement quand le texte du thème est noir. */
+.ic-halo {
+  display: none;
+}
+
+[data-theme='light'] .fluo .ic-halo {
+  display: inline;
+  stroke: #000;
+  stroke-width: 4.5;
+  paint-order: stroke;
 }
 
 .spin.fluo {

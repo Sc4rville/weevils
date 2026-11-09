@@ -9,6 +9,8 @@ export interface Message {
   role: 'user' | 'assistant' | 'orchestrator' | 'event'
   text: string
   at: number
+  /** Échange du devil mode (autre modèle, même fil que weevboss). */
+  devil?: boolean
 }
 
 export interface Subagent {
@@ -145,6 +147,8 @@ export interface Snapshot {
   mainSettings?: SessionSettings
   mainHasScreen: boolean
   mainQueued: number
+  /** Devil mode : modèle branché (DEVIL_API_URL) et réponse en cours. */
+  devil: { enabled: boolean; working: boolean }
   /** Repos épinglés au fil des projets (présents même sans session). */
   pinnedRepos: string[]
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */

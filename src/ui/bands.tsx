@@ -4,6 +4,7 @@ import type { Project } from '../../shared/api.ts'
 import { api } from '../api'
 import { tr, useT } from '../i18n'
 import M from '../i18n/bands'
+import D from '../i18n/devil'
 import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
 import { useApp } from './app-context'
@@ -12,7 +13,7 @@ import { VoiceLogo } from './voice'
 import { isUnread, useSeen } from './seen'
 import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, spring } from './bits'
 import { ago, plain, step } from './format'
-import { Icon } from './icons'
+import { FilledIcon, Icon } from './icons'
 import { PrefLines } from './prefs'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
@@ -41,8 +42,33 @@ function useStickBottom(ref: React.RefObject<HTMLDivElement | null>, count: numb
 
 export function AgentBand() {
   const t = useT(M)
+  const td = useT(D)
   const { snap, expanded, setExpanded } = useApp()
   const open = expanded === 'agent'
+  // Devil mode : mémorisé sur l'appareil ; les messages vont à l'autre modèle, la bande passe en orange.
+  const [devil, setDevilState] = useState(() => {
+    try {
+      return localStorage.getItem('weevils-devil') === '1'
+    } catch {
+      return false
+    }
+  })
+  const [devilNote, setDevilNote] = useState<string | null>(null)
+  const devilOn = devil && snap.devil?.enabled
+  const toggleDevil = () => {
+    if (!snap.devil?.enabled) {
+      setDevilNote(td.notConnected)
+      setTimeout(() => setDevilNote(null), 2200)
+      return
+    }
+    const next = !devil
+    setDevilState(next)
+    try {
+      localStorage.setItem('weevils-devil', next ? '1' : '0')
+    } catch {
+      /* stockage indisponible */
+    }
+  }
   const body = useRef<HTMLDivElement>(null)
   const form = useRef<HTMLFormElement>(null)
   const swipe = useRef<{ y: number; top: number } | null>(null)
@@ -56,7 +82,8 @@ export function AgentBand() {
   const send = async (text: string) => {
     if (!viaLogo.current) setExpanded('agent')
     viaLogo.current = false
-    await api.main(text)
+    if (devilOn) await api.devil(text)
+    else await api.main(text)
   }
   const attach = async (text: string, files: { name: string; type: string; data: string }[]) => {
     setExpanded('agent')
@@ -64,7 +91,7 @@ export function AgentBand() {
   }
 
   return (
-    <section className="band agent tone" style={color('agent')} aria-label={t.agentBand}>
+    <section className={`band agent tone ${devilOn ? 'devil-on' : ''}`} style={color(devilOn ? 'devil' : 'agent')} aria-label={t.agentBand}>
       {/* L'espace du haut reste vide pour l'instant : à remplir plus tard. */}
       {/* Ouverte : un tap dans l'espace vide, le chevron, ou glisser vers le bas la réduit. */}
       <div className="agent-space" onClick={(e) => open && e.target === e.currentTarget && setExpanded(null)}>
@@ -73,6 +100,10 @@ export function AgentBand() {
             <Icon name="chevron" dir="down" />
           </button>
         )}
+        <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={toggleDevil} aria-pressed={!!devilOn} aria-label={devilOn ? td.on : td.off}>
+          <FilledIcon name="devil" />
+        </button>
+        {devilNote && <span className="devil-note meta">{devilNote}</span>}
         <VoiceLogo take={() => { const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }} onText={(x) => { heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }} onSend={() => { viaLogo.current = true; form.current?.requestSubmit() }} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
       </div>
 
@@ -87,7 +118,7 @@ export function AgentBand() {
                     *{' '}
                   </span>
                 )}
-                <span className="strong">{last.role === 'event' ? <Icon name="arrow" dir="right" /> : 'weevboss · '}</span>
+                <span className="strong">{last.role === 'event' ? <Icon name="arrow" dir="right" /> : `${last.devil && last.role === 'assistant' ? td.devil : 'weevboss'} · `}</span>
                 {last.role === 'event' ? step(last.text) : plain(last.text).split('\n')[0]}
               </span>
             </span>
@@ -107,8 +138,9 @@ export function AgentBand() {
             if (s && s.top <= 0 && e.changedTouches[0].clientY - s.y > 90) setExpanded(null)
           }}
         >
-          <Messages messages={snap.main} author="weevboss" working={snap.mainWorking} />
+          <Messages messages={snap.main} author="weevboss" working={snap.mainWorking || !!snap.devil?.working} />
           {snap.mainWorking && <Working author="weevboss" />}
+          {snap.devil?.working && <Working author="devil" />}
         </motion.div>
       </Collapse>
 
@@ -120,6 +152,22 @@ export function AgentBand() {
 
 // ---------------------------------------------------------------------------
 // Bande projet : nom fort, caractères-icônes, sessions. Elle s'ouvre, les autres se replient.
+
+const COLLAPSED = 'weevils-collapsed'
+function collapsedPrefs(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(COLLAPSED) ?? '{}') as Record<string, boolean>
+  } catch {
+    return {}
+  }
+}
+function saveCollapsed(id: string, v: boolean) {
+  try {
+    localStorage.setItem(COLLAPSED, JSON.stringify({ ...collapsedPrefs(), [id]: v }))
+  } catch {
+    /* stockage indisponible */
+  }
+}
 
 export function ProjectBand({ project }: { project: Project }) {
   const t = useT(M)
@@ -133,12 +181,29 @@ export function ProjectBand({ project }: { project: Project }) {
   const jobs = snap.h24.filter((a) => a.projectId === project.id)
   const convCount = snap.conversationCounts.byProject[project.id] ?? 0
   const convs = snap.conversations.filter((c) => c.projectId === project.id)
-  const toggle = () => {
-    if (mode !== 'open') for (const r of project.repos) prefetchRepo(r, project.where[r] ?? 'vps')
-    setExpanded(mode === 'open' ? null : project.id)
+  // Réduit ou déplié, au choix, mémorisé par projet ; par défaut réduit quand rien ne tourne.
+  const [pref, setPref] = useState<boolean | undefined>(() => collapsedPrefs()[project.id])
+  const collapsed = mode === 'normal' && (pref ?? active.length === 0)
+  const remember = (v: boolean) => {
+    setPref(v)
+    saveCollapsed(project.id, v)
   }
-  // Rien ne tourne : une seule ligne (nom et actions), le détail n'apparaît qu'au tap sur le nom.
-  const compact = active.length === 0 && mode === 'normal'
+  const toggle = () => {
+    if (mode === 'open') {
+      setExpanded(null)
+      remember(true)
+      return
+    }
+    if (collapsed) {
+      for (const r of project.repos) prefetchRepo(r, project.where[r] ?? 'vps')
+      remember(false)
+      if (active.length === 0) setExpanded(project.id)
+      return
+    }
+    remember(true)
+  }
+  // Réduit : une ligne, au format de la vue « mini » (nom, étoile verte, résumé).
+  const shown = collapsed ? 'mini' : mode
   const doneOpen = showDone || (mode === 'open' && active.length === 0)
 
   const busy = active.some((s) => s.status === 'working')
@@ -155,9 +220,9 @@ export function ProjectBand({ project }: { project: Project }) {
 
   return (
     <motion.section layout="position" transition={spring} className={`band ${busy ? 'busy' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={t.projectBand(project.name)} data-project={project.id}>
-      <motion.div className="in head" initial={false} animate={{ minHeight: mode === 'mini' ? 50 : compact ? 56 : 64, paddingTop: mode === 'mini' || compact ? 0 : 8 }} transition={spring}>
+      <motion.div className="in head" initial={false} animate={{ minHeight: shown === 'mini' ? 50 : 64, paddingTop: shown === 'mini' ? 0 : 8 }} transition={spring}>
         <button className="head-name" onClick={toggle} aria-expanded={mode === 'open'} aria-controls={`more-${project.id}`}>
-          <motion.span className="name" initial={false} animate={{ fontSize: compact ? '1.75rem' : NAME_SIZE[mode] }} transition={spring}>
+          <motion.span className="name" initial={false} animate={{ fontSize: NAME_SIZE[shown] }} transition={spring}>
             {project.name}
             {unread && <span className="dot" aria-label={t.unread} />}
             {active.some((s) => s.status === 'working') && (
@@ -167,14 +232,14 @@ export function ProjectBand({ project }: { project: Project }) {
             )}
           </motion.span>
           <AnimatePresence initial={false}>
-            {mode === 'mini' && (
+            {shown === 'mini' && (
               <motion.span key="s" className="meta" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 {summary}
               </motion.span>
             )}
           </AnimatePresence>
         </button>
-        {mode !== 'mini' && (
+        {shown !== 'mini' && (
           <div className="chars">
             {project.repos.length > 0 && (
               <button className="ch" aria-label={t.filesOf(project.name)} onClick={() => push({ kind: 'files', projectId: project.id })}>
@@ -212,7 +277,7 @@ export function ProjectBand({ project }: { project: Project }) {
         )}
       </motion.div>
 
-      <Collapse open={mode !== 'mini' && !compact}>
+      <Collapse open={shown !== 'mini'}>
         <AnimatePresence initial={false}>
           {active.map((s) => (
             <Appear key={s.id}>

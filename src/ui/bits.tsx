@@ -6,6 +6,7 @@ import { useApp } from './app-context'
 import { dur, plain, segments, status, step, userText } from './format'
 import { tr, useT } from '../i18n'
 import M from '../i18n/bits'
+import D from '../i18n/devil'
 import { isUnread, useSeen } from './seen'
 import { G, Icon } from './icons'
 
@@ -480,6 +481,7 @@ const WINDOW = 60
 
 export function Messages({ messages, author, working = false }: { messages: Message[]; author: string; working?: boolean }) {
   const t = useT(M)
+  const td = useT(D)
   const [all, setAll] = useState(false)
   const hidden = all ? 0 : Math.max(0, messages.length - WINDOW)
   const groups = useMemo(() => group(messages.slice(hidden)), [messages, hidden])
@@ -497,9 +499,9 @@ export function Messages({ messages, author, working = false }: { messages: Mess
           </Appear>
         ) : (
           <Appear key={g.m.id}>
-            <div className={`msg band ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? 'tone orch' : ''}`}>
+            <div className={`msg band ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? 'tone orch' : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''}`}>
               <div className="in">
-                <span className="who">{g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? 'weevboss' : author}</span>
+                <span className="who">{g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? 'weevboss' : g.m.devil ? td.devil : author}</span>
                 {g.m.role === 'user' ? <Clamp text={userText(g.m.text)} /> : g.m.role === 'orchestrator' ? <Clamp text={g.m.text} /> : <Prose text={g.m.text} />}
               </div>
             </div>

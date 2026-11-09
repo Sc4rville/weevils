@@ -16,6 +16,9 @@
   color-scheme: light;
   --ink: #000;
   --agent: #b39bff;
+  /* Devil mode : orange pour la bande, vert pour les réponses du modèle. */
+  --devil: #ff9a3c;
+  --devil-reply: #7fe0a0;
   --h24: #ffc64c;
   /* Mode conversation : une seule couleur apaisante. */
   --calm: oklch(0.91 0.045 165);
@@ -44,6 +47,8 @@
   color-scheme: dark;
   --ink: #fff;
   --agent: #5522b5;
+  --devil: #a8470a;
+  --devil-reply: #1d6b3f;
   --h24: #744900;
   --calm: oklch(0.3 0.04 165);
   --calm-soft: -0.04;
@@ -1496,4 +1501,52 @@ input:focus-visible {
 
 .name .spin {
   margin-left: 8px;
+}
+
+/* ---------- Devil mode ---------- */
+
+.devil-btn {
+  position: absolute;
+  right: max(var(--pad), calc((100% - 760px) / 2 + var(--pad)));
+  /* Même ligne de base que le logo : posé sur le bas de l'espace, comme lui. */
+  bottom: 12px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: end center;
+  opacity: 0.55;
+  z-index: 1;
+}
+
+.devil-btn .ic {
+  width: 18px;
+  height: 18px;
+}
+
+.devil-btn.on {
+  opacity: 1;
+}
+
+.devil-note {
+  position: absolute;
+  right: max(var(--pad), calc((100% - 760px) / 2 + var(--pad)));
+  bottom: 50px;
+  font-weight: 650;
+}
+
+.msg.devil {
+  background: var(--devil-reply);
+}
+
+/* ---------- Rien ne passe sous la barre d'état iOS : une bande fixe de la couleur du haut ---------- */
+
+.status-cover {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--safe-t);
+  background: var(--status-c, var(--agent));
+  z-index: 25;
+  pointer-events: none;
 }

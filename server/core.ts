@@ -17,6 +17,7 @@ import M from './i18n/core.ts'
 import P from './i18n/push.ts'
 import { setCartesiaVoice } from './fast.ts'
 import { keepWarm, warmCues } from './voicepipe.ts'
+import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { ORCH_PREFIX, TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
 import { llmTitles, needsTitle, shortNow } from './titles.ts'
@@ -190,6 +191,11 @@ export class Weevils {
   }
 
   /** Attend la réponse écrite de weevboss à un message envoyé à `since` : terminée quand il ne travaille plus. */
+  /** Devil mode : le message va à l'autre modèle, avec l'historique récent du fil. */
+  devil(text: string) {
+    return devilSend(text, this.orchestratorMessages(), () => this.bump())
+  }
+
   async waitMainReply(since: number, timeoutMs: number): Promise<string | null> {
     const end = Date.now() + timeoutMs
     let calm = 0
@@ -657,6 +663,7 @@ export class Weevils {
       mainSettings: this.orchestratorSettings(),
       mainHasScreen: !!this.orchestratorPane(),
       mainQueued: this.orchestratorQueued(now),
+      devil: { enabled: !!devilConfig(), working: devilWorking() },
       pinnedRepos: this.pinnedRepos,
       config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '' },
     }
@@ -1143,7 +1150,8 @@ export class Weevils {
   private orchestratorMessages(): Message[] {
     const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
     // La bande du haut : tes messages et les réponses de weevils, pas ses appels d'outils.
-    const msgs = t?.messages.filter((m) => m.role !== 'event').slice(-40) ?? []
+    // Le devil mode écrit dans le même fil : ses échanges sont mêlés par ordre d'arrivée.
+    const msgs = [...(t?.messages.filter((m) => m.role !== 'event') ?? []), ...devilMessages()].sort((a, b) => a.at - b.at).slice(-40)
     if (!msgs.length && ORCHESTRATOR) {
       return [{ id: 'hello', role: 'assistant', text: tr(M).hello, at: Date.now() }]
     }

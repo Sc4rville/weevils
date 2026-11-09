@@ -42,6 +42,21 @@ const PATHS = {
 
 export type IconName = keyof typeof PATHS
 
+/** Icônes pleines (aplat, angles vifs) : pixel art sur la même grille 24. */
+const FILLED = {
+  // Diablotin : un carré, deux cornes, deux yeux évidés.
+  devil: 'M4 9h16v12H4zM4 3h4v6H4zM16 3h4v6h-4zM8 13v3h3v-3zM13 13v3h3v-3z',
+} as const
+export type FilledName = keyof typeof FILLED
+
+export function FilledIcon({ name, label, className = '' }: { name: FilledName; label?: string; className?: string }) {
+  return (
+    <svg className={`ic ${className}`} viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd" shapeRendering="crispEdges" role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true} focusable="false">
+      <path d={FILLED[name]} />
+    </svg>
+  )
+}
+
 export function Icon({ name, dir = 'up', label, className = '' }: { name: IconName; dir?: Dir; label?: string; className?: string }) {
   const turn = TURN[dir]
   return (

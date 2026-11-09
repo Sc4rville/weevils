@@ -1,39 +1,50 @@
 import type { SessionStatus } from '../../shared/api.ts'
+import { getLang, tr } from '../i18n'
+import M from '../i18n/format'
 
-/** Durée compacte, façon croquis : 12m, 1h36, 14h01, 2j. */
+/** Durée compacte, façon croquis : 12m, 1h36, 14h01, 2j (2d en anglais). */
 export function dur(ms: number): string {
   const m = Math.max(0, Math.floor(ms / 60000))
   if (m < 60) return `${m}m`
   const h = Math.floor(m / 60)
   if (h < 24) return `${h}h${String(m % 60).padStart(2, '0')}`
-  return `${Math.floor(h / 24)}j`
+  return tr(M).days(Math.floor(h / 24))
 }
 
 /** Durée lisible pour les phrases : « 12 min », « 14 h 01 », « 2 jours ». */
 export function durLong(ms: number): string {
   const m = Math.max(0, Math.floor(ms / 60000))
-  if (m < 1) return 'moins d’une minute'
-  if (m < 60) return `${m} min`
+  const t = tr(M)
+  if (m < 1) return t.lessThanMinute
+  if (m < 60) return t.minutes(m)
   const h = Math.floor(m / 60)
-  if (h < 24) return `${h} h ${String(m % 60).padStart(2, '0')}`
-  const d = Math.floor(h / 24)
-  return `${d} jour${d > 1 ? 's' : ''}`
+  if (h < 24) return t.hours(h, String(m % 60).padStart(2, '0'))
+  return t.daysLong(Math.floor(h / 24))
 }
 
 export function ago(ms: number): string {
   const m = Math.floor(ms / 60000)
-  if (m < 1) return 'à l’instant'
-  return `il y a ${durLong(ms)}`
+  if (m < 1) return tr(M).justNow
+  return tr(M).ago(durLong(ms))
 }
 
-export const status: Record<SessionStatus, { ch: string; label: string }> = {
-  working: { ch: '*', label: 'travaille' },
-  needs_user: { ch: '!', label: 'à toi' },
-  idle: { ch: '_', label: 'disponible' },
-  done: { ch: '✓', label: 'terminée' },
-}
+/** Caractère et libellé de chaque état ; le libellé suit la langue (lu à chaque accès). */
+const statusKey = { working: 'working', needs_user: 'needsUser', idle: 'idle', done: 'done' } as const
+const statusCh: Record<SessionStatus, string> = { working: '*', needs_user: '!', idle: '_', done: '✓' }
+export const status = Object.fromEntries(
+  (Object.keys(statusCh) as SessionStatus[]).map((s) => [
+    s,
+    {
+      ch: statusCh[s],
+      get label() {
+        return tr(M)[statusKey[s]]
+      },
+    },
+  ]),
+) as Record<SessionStatus, { readonly ch: string; readonly label: string }>
 
-export const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`
+/** « 1 fichier », « 3 fichiers ». Français : 0 et 1 au singulier ; anglais : seul 1 est au singulier. */
+export const plural = (n: number, one: string, many: string) => `${n} ${(getLang() === 'fr' ? n > 1 : n !== 1) ? many : one}`
 
 /** Texte d'agent simplifié : on enlève la mise en forme markdown qui n'apporte rien sur le téléphone. */
 export function plain(text: string): string {
@@ -64,28 +75,29 @@ export function segments(text: string): { kind: 'text' | 'code'; body: string }[
   return out.filter((s) => s.body.trim())
 }
 
-const VERBS: Record<string, string> = {
-  read: 'lit',
-  edit: 'modifie',
-  multiedit: 'modifie',
-  write: 'écrit',
-  notebookedit: 'modifie',
-  bash: 'lance',
-  grep: 'cherche',
-  glob: 'cherche',
-  agent: 'délègue',
-  task: 'délègue',
-  webfetch: 'consulte',
-  websearch: 'cherche sur le web',
-  todowrite: 'planifie',
-  askuserquestion: 'demande',
-  skill: 'ouvre le skill',
-  shell: 'lance',
-  exec_command: 'lance',
-  local_shell: 'lance',
-  apply_patch: 'modifie',
-  update_plan: 'planifie',
-  view_image: 'regarde',
+/** Nom d'outil (Claude Code, Codex) → clé du verbe affiché. */
+const VERBS: Record<string, keyof (typeof M)['fr']> = {
+  read: 'read',
+  edit: 'edit',
+  multiedit: 'edit',
+  write: 'write',
+  notebookedit: 'edit',
+  bash: 'run',
+  grep: 'search',
+  glob: 'search',
+  agent: 'delegate',
+  task: 'delegate',
+  webfetch: 'fetch',
+  websearch: 'webSearch',
+  todowrite: 'plan',
+  askuserquestion: 'ask',
+  skill: 'skill',
+  shell: 'run',
+  exec_command: 'run',
+  local_shell: 'run',
+  apply_patch: 'edit',
+  update_plan: 'plan',
+  view_image: 'look',
 }
 
 /** « Bash · Show hostname » → « lance : Show hostname ». Chemins raccourcis, outils MCP nommés par leur fin. */
@@ -94,7 +106,8 @@ export function step(text: string): string {
   const rawName = i < 0 ? text : text.slice(0, i)
   const detail = i < 0 ? '' : text.slice(i + 3)
   const name = rawName.replace(/^mcp__[^_]+(?:_[^_]+)*__/, '').replace(/^mcp__.*?__/, '')
-  const verb = VERBS[name.toLowerCase()] ?? name.replace(/_/g, ' ').toLowerCase()
+  const key = Object.hasOwn(VERBS, name.toLowerCase()) ? VERBS[name.toLowerCase()] : undefined
+  const verb = key ? (tr(M)[key] as string) : name.replace(/_/g, ' ').toLowerCase()
   const d = detail.replace(/\/home\/[a-z0-9_-]+\//g, '~/')
   return d ? `${verb} · ${d}` : verb
 }

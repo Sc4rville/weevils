@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { tr } from './i18n'
 import M from './i18n/app'
-import type { ConversationDetail, ConversationSummary, GithubRepo, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
+import type { ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
 
 export class ApiError extends Error {
   status: number
@@ -95,6 +95,7 @@ export const api = {
   pushTest: () => call<{ ok: true }>('POST', '/api/push/test', {}),
   repos: (machine: string) => call<{ repos: string[] }>('GET', `/api/repos?machine=${enc(machine)}`),
   files: (repo: string, machine: string) => call<{ files: string[] }>('GET', `/api/repos/${enc(repo)}/files?machine=${enc(machine)}`),
+  explain: (body: ExplainRequest) => call<ExplainReply>('POST', '/api/explain', body),
   file: (repo: string, path: string, machine: string) => call<FileContent>('GET', `/api/repos/${enc(repo)}/file?path=${enc(path)}&machine=${enc(machine)}`),
 }
 

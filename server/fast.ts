@@ -7,6 +7,7 @@ import path from 'node:path'
 import { lang, tr, type Lang } from './i18n.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import V from './i18n/voice.ts'
+import { openaiKey } from './transcribe.ts'
 
 /** Une réponse courte de haiku : sans outils, sans session gardée. ~1,6 s mesuré sur le VPS. */
 export function haiku(prompt: string, timeout = 20_000): Promise<string> {
@@ -19,6 +20,32 @@ export function haiku(prompt: string, timeout = 20_000): Promise<string> {
     })
     c.stdin?.end()
   })
+}
+
+/**
+ * Réponse courte au plus vite : gpt-4.1 (~1 s, juste là où gpt-4o-mini invente) quand la clé OpenAI est là, sinon haiku (~3 s, abonnement).
+ * Pour les questions posées depuis l'app, où l'on attend la réponse des yeux.
+ */
+export async function quick(prompt: string, maxTokens = 260): Promise<string> {
+  const key = openaiKey()
+  if (key) {
+    const t0 = Date.now()
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ model: process.env.WEEVILS_QUICK_MODEL ?? 'gpt-4.1', max_tokens: maxTokens, temperature: 0.3, messages: [{ role: 'user', content: prompt }] }),
+        signal: AbortSignal.timeout(6000),
+      })
+      const j = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+      const out = (j.choices?.[0]?.message?.content ?? '').trim()
+      console.log(`[rapide] réponse ${Date.now() - t0} ms`)
+      if (out) return out
+    } catch {
+      /* repli haiku */
+    }
+  }
+  return haiku(prompt)
 }
 
 /** Voix gratuite dans la langue de l'app (voix neuronales Microsoft via edge-tts), débit +25 %. MP3. */

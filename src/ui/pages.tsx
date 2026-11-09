@@ -10,6 +10,7 @@ import { ReposPage } from './repos'
 import { CalmConv, CalmGrid } from './calm'
 import { markSeen } from './seen'
 import { Shell } from './shell'
+import { CodeFile } from './codeview'
 import { ago, dur, durLong, status } from './format'
 import { Icon } from './icons'
 import { useT } from '../i18n'
@@ -36,7 +37,7 @@ export function PageView({ page }: { page: Page }) {
     case 'files':
       return <FilesPage projectId={page.projectId} repo={page.repo} dir={page.dir} />
     case 'file':
-      return <FilePage projectId={page.projectId} repo={page.repo} path={page.path} />
+      return <FilePage projectId={page.projectId} repo={page.repo} path={page.path} line={page.line} />
     case 'machine':
       return <MachinePage projectId={page.projectId} />
     case 'new':
@@ -395,9 +396,8 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
   )
 }
 
-function FilePage({ projectId, repo, path }: { projectId: string; repo: string; path: string }) {
-  const { colors, snap } = useApp()
-  const t = useT(M)
+function FilePage({ projectId, repo, path, line }: { projectId: string; repo: string; path: string; line?: number }) {
+  const { snap } = useApp()
   const machine = snap.projects.find((p) => p.id === projectId)?.where[repo] ?? snap.machines[0]?.id ?? ''
   const [file, setFile] = useState<FileContent | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -410,19 +410,7 @@ function FilePage({ projectId, repo, path }: { projectId: string; repo: string; 
       off = true
     }
   }, [repo, path, machine])
-  const prose = /\.(md|markdown|txt)$/i.test(path)
-  return (
-    <Shell
-      slot={colors[projectId] ?? 'agent'}
-      kicker={`${repo}/${path.split('/').slice(0, -1).join('/')}`}
-      title={path.split('/').pop()}
-      meta={file ? `${t.size(file.size)}${file.truncated ? t.truncated : ''}` : t.reading}
-    >
-      {err && <ErrorBand text={err} />}
-      {file?.binary && <div className="in meta empty">{t.binary}</div>}
-      {file && !file.binary && <pre className={`in ${prose ? 'code' : 'code mono'}`}>{file.content}</pre>}
-    </Shell>
-  )
+  return <CodeFile projectId={projectId} repo={repo} path={path} machine={machine} line={line} file={file} err={err} />
 }
 
 // ---------------------------------------------------------------------------

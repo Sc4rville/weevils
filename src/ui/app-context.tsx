@@ -6,7 +6,7 @@ export type Theme = 'light' | 'dark'
 export type Page =
   | { kind: 'session'; id: string }
   | { kind: 'files'; projectId: string; repo?: string; dir?: string }
-  | { kind: 'file'; projectId: string; repo: string; path: string }
+  | { kind: 'file'; projectId: string; repo: string; path: string; line?: number }
   | { kind: 'machine'; projectId: string }
   | { kind: 'new'; projectId: string }
   | { kind: 'conversations'; projectId?: string }

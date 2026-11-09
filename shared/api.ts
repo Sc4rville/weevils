@@ -169,3 +169,34 @@ export interface SessionDetail {
   session: Session
   messages: Message[]
 }
+
+/** Une question posée depuis la vue d'un fichier : le mot ou la sélection tapés, et ce qui les entoure. */
+export interface ExplainRequest {
+  mode: 'explain' | 'usage' | 'ask'
+  repo: string
+  path: string
+  machine?: string
+  /** Texte sélectionné (vide : la question porte sur ce qui est affiché). */
+  selection: string
+  /** Lignes de la sélection, numérotées à partir de 1. */
+  from: number
+  to: number
+  /** Les lignes autour, déjà numérotées (« 12│ code »). */
+  around: string
+  /** mode ask : la question, écrite ou dictée. */
+  question?: string
+}
+
+export interface UsageHit {
+  path: string
+  line: number
+  text: string
+}
+
+export interface ExplainReply {
+  text: string
+  /** mode usage : les endroits où le mot apparaît dans le repo. */
+  hits?: UsageHit[]
+  /** La demande était une action : transmise au vrai weevboss (sa réponse arrive dans son fil). */
+  forwarded?: boolean
+}

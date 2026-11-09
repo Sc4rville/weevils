@@ -18,6 +18,7 @@ import V from './i18n/voice.ts'
 import { tipRoutes } from './tips.ts'
 import { normalizeFrom } from './authors.ts'
 import { startMailBridge } from './mailbridge.ts'
+import { explain, grepRepo, readExplain } from './explain.ts'
 
 const w = new Weevils()
 w.start()
@@ -319,6 +320,9 @@ const routes: [string, RegExp, Handler][] = [
     const p = url.searchParams.get('path') ?? ''
     json(res, 200, remote ? await remote.call('GET', `/api/repos/${repo}/file?path=${encodeURIComponent(p)}`) : await w.file(decodeURIComponent(repo), p))
   }],
+  ['GET', /^\/api\/repos\/([^/]+)\/grep$/, async (_req, res, url, [repo]) => json(res, 200, { hits: await grepRepo(w, decodeURIComponent(repo), url.searchParams.get('q') ?? '') })],
+  // Vue d'un fichier : explique, où c'est utilisé, demande (haiku, avec le contexte de la page).
+  ['POST', /^\/api\/explain$/, async (req, res) => json(res, 200, await explain(w, readExplain(await readBody(req))))],
   ['GET', /^\/api\/github\/repos$/, async (_req, res, url) => json(res, 200, { repos: await w.githubRepos(url.searchParams.has('fresh')) })],
   ['POST', /^\/api\/github\/repos$/, async (req, res) => {
     const body = await readBody(req)

@@ -51,6 +51,7 @@ export function Shell({
   children,
   foot,
   side,
+  action,
 }: {
   slot: string
   kicker: string
@@ -60,6 +61,8 @@ export function Shell({
   foot?: ReactNode
   /** Volet à côté du fil (navigateur intégré) : la page se partage en deux. */
   side?: ReactNode
+  /** En haut à droite de l'en-tête (le logo de weevboss sur la page fichier). */
+  action?: ReactNode
 }) {
   const { back } = useApp()
   const t = useT(M)
@@ -91,7 +94,8 @@ export function Shell({
       aria-label={typeof title === 'string' ? title : kicker}
     >
       <div className="page-head band tone">
-        <div className="in">
+        <div className={action ? 'in has-action' : 'in'}>
+          {action}
           <button className="back" onClick={back} aria-label={t.back(kicker)}>
             <span aria-hidden>
               <Icon name="chevron" dir="left" />

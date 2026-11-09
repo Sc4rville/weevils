@@ -1,0 +1,179 @@
+/* Vue d'un fichier qu'on interroge : lignes numérotées, mots qui répondent au tap, barre de mots sous la sélection. */
+
+.code.lines {
+  white-space: normal;
+  /* Le doigt fait défiler verticalement ; l'horizontal est à nous (sélection), les lignes passent donc à la ligne. */
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.code.lines .cl {
+  display: grid;
+  grid-template-columns: calc(var(--gw) + 14px) minmax(0, 1fr);
+}
+
+/* La marge des numéros : un tap prend la ligne, un glissé prend des lignes (aucun défilement depuis la marge). */
+.code.lines .cg {
+  text-align: right;
+  padding-right: 12px;
+  opacity: 0.32;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  line-height: inherit;
+  touch-action: none;
+  cursor: pointer;
+}
+
+.code.lines .ct {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  cursor: text;
+}
+
+/* Le surlignage : la couleur du projet, un cran plus franche. */
+.code.lines mark {
+  color: inherit;
+  background: oklch(from var(--c) calc(l + var(--dl) * 2.2) calc(c * 1.7) h);
+  animation: cv-mark 0.16s ease-out;
+}
+
+.code.lines .whole .cg {
+  opacity: 1;
+  font-weight: 750;
+}
+
+.code.lines .flash .ct {
+  animation: cv-flash 1.6s ease-out;
+}
+
+@keyframes cv-mark {
+  from { background: transparent; }
+}
+
+@keyframes cv-flash {
+  0%, 30% { background: oklch(from var(--c) calc(l + var(--dl) * 2.2) calc(c * 1.7) h); }
+  100% { background: transparent; }
+}
+
+/* Sous la sélection : la barre de mots, la question, la réponse. Police de l'app, texte sélectionnable. */
+.qa {
+  white-space: normal;
+  font-family: var(--font);
+  -webkit-user-select: text;
+  user-select: text;
+  padding: 2px 0 12px calc(var(--gw) + 14px);
+  touch-action: auto;
+}
+
+.qa .words.qa-bar {
+  column-gap: 12px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+  min-height: 42px;
+  /* La barre part du bord du texte, pas de la marge des numéros : elle tient sur une ligne de téléphone. */
+  margin-left: calc(-1 * (var(--gw) + 14px));
+}
+
+.qa .qa-bar .word {
+  font-size: 0.9rem;
+  font-weight: 650;
+  opacity: 0.55;
+  flex: none;
+  min-height: 40px;
+}
+
+.qa .qa-bar .word.on {
+  font-weight: 800;
+  opacity: 1;
+}
+
+.qa-ask {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 1.0625rem;
+}
+
+.qa-ask input {
+  flex: 1;
+  min-width: 0;
+  font-weight: 650;
+}
+
+.qa-answer {
+  padding-top: 4px;
+  font-size: 1.0625rem;
+}
+
+.qa-text {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.4;
+  animation: cv-in 0.22s ease-out;
+}
+
+@keyframes cv-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+.qa-hits {
+  display: grid;
+  padding-top: 6px;
+}
+
+.qa-hit {
+  display: grid;
+  padding-block: 6px;
+  font-size: 0.875rem;
+  min-width: 0;
+}
+
+.qa-snip {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.75rem;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Le logo de weevboss dans l'en-tête de la page : il écoute aussi ici. */
+.page-head .in.has-action {
+  position: relative;
+}
+
+.page-head .in.has-action h1 {
+  padding-right: 72px;
+}
+
+.page-voice {
+  position: absolute;
+  right: calc(var(--pad) - 6px);
+  top: 4px;
+}
+
+.page-voice .voice-logo {
+  height: 44px;
+  min-height: 0;
+}
+
+.page-voice .voice-err {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  white-space: nowrap;
+}
+
+/* Pendant un glissé : la barre reste en place, en retrait. */
+.qa.held {
+  opacity: 0.25;
+  pointer-events: none;
+}

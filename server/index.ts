@@ -156,9 +156,10 @@ const routes: [string, RegExp, Handler][] = [
     const files = Array.isArray(body.files) ? body.files.filter((f: any) => typeof f?.data === 'string').map((f: any) => ({ name: String(f.name ?? 'photo'), type: String(f.type ?? 'image/jpeg'), data: String(f.data) })) : []
     json(res, 200, await w.attach(decodeURIComponent(id), String(body.text ?? ''), files))
   }],
+  ['POST', /^\/api\/voice$/, async (req, res) => json(res, 200, await w.voice(String((await readBody(req)).text ?? '')))],
   ['POST', /^\/api\/speak$/, async (req, res) => {
     const body = await readBody(req)
-    const mp3 = await speak(String(body.text ?? ''))
+    const mp3 = await speak(String(body.text ?? ''), !!body.oral)
     res.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': mp3.length, 'cache-control': 'no-store' })
     res.end(mp3)
   }],

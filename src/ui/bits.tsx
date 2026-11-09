@@ -226,7 +226,7 @@ export function Composer({
   /** Toute pièce jointe (PDF, zip…), pas seulement des photos. */
   anyFile?: boolean
   /** Texte posé dans le champ de l'extérieur (dictée par le logo) ; n change à chaque nouveau texte. */
-  draft?: { text: string; n: number }
+  draft?: { text: string; n: number; reset?: boolean }
   /** Pour envoyer depuis l'extérieur (troisième tap sur le logo). */
   formRef?: React.RefObject<HTMLFormElement | null>
 }) {
@@ -241,7 +241,8 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null)
   const canVoice = voice && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
   useEffect(() => {
-    if (draft?.text) setText((cur) => (cur.trim() ? `${cur.replace(/\s+$/, '')} ${draft.text}` : draft.text))
+    if (draft?.reset) setText('')
+    else if (draft?.text) setText((cur) => (cur.trim() ? `${cur.replace(/\s+$/, '')} ${draft.text}` : draft.text))
   }, [draft?.n])
 
   const submit = async (e: FormEvent) => {

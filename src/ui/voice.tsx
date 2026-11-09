@@ -30,10 +30,10 @@ export function unlockAudio() {
   void player.play().catch(() => undefined)
 }
 
-async function say(text: string, onEnd: () => void) {
+export async function say(text: string, onEnd: () => void, oral = false) {
   if (!player) return onEnd()
   try {
-    const res = await fetch('/api/speak', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }), credentials: 'same-origin' })
+    const res = await fetch('/api/speak', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, oral }), credentials: 'same-origin' })
     if (!res.ok) throw new Error('voix')
     const url = URL.createObjectURL(await res.blob())
     player.src = url
@@ -53,7 +53,7 @@ const hush = () => {
   }
 }
 
-export function VoiceLogo({ onText, onSend, replyKey, replyText, working }: { onText: (t: string) => void; onSend: () => void; replyKey?: string; replyText?: string; working: boolean }) {
+export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }: { onText: (t: string) => void; onSend: () => void; replyKey?: string; replyText?: string; working: boolean; take: () => string }) {
   const [speaking, setSpeaking] = useState(false)
   /** Le dernier message est parti à la voix : sa réponse sera lue. */
   const spoken = useRef(false)
@@ -121,9 +121,23 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working }: { on
     }
   }
 
+  // Envoi vocal : la couche rapide répond tout de suite à voix haute ; une action part aussi à weevboss.
   const send = () => {
-    spoken.current = true
-    onSend()
+    const text = take()
+    if (!text) return onSend()
+    setSpeaking(true)
+    setReply(true)
+    const done = () => {
+      setSpeaking(false)
+      setReply(false)
+    }
+    api
+      .voice(text)
+      .then((v) => say(v.say, done, true))
+      .catch((e) => {
+        setErr((e as Error).message)
+        done()
+      })
   }
   const tap = () => {
     unlockAudio()

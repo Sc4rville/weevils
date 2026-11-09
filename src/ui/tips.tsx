@@ -319,7 +319,7 @@ export function TipsLine() {
   const t = useT(M)
   const off = useTipsOff()
   return (
-    <Line ch="*" go={null} meta={off ? t.lineOff : t.lineOn} onClick={() => setTipsOff(!off)}>
+    <Line ch={<Icon name="more" />} go={null} meta={off ? t.lineOff : t.lineOn} onClick={() => setTipsOff(!off)}>
       {t.line} · {off ? t.off : t.on}
     </Line>
   )

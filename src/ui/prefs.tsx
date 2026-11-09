@@ -3,6 +3,7 @@ import { LANGS, LANG_NAMES, langIsChosen, setLang, syncServer, useLang, useT } f
 import M from '../i18n/prefs'
 import { Line } from './bits'
 import { OnboardingLine } from './onboarding'
+import { TipsLine } from './tips'
 
 /** App-wide preferences shown in the bottom band: language (and, later, tips). */
 export function PrefLines() {
@@ -17,6 +18,7 @@ export function PrefLines() {
         {t.language} · {LANG_NAMES[lang]}
       </Line>
       <OnboardingLine />
+      <TipsLine />
     </>
   )
 }

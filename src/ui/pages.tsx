@@ -176,14 +176,10 @@ function SessionPage({ id }: { id: string }) {
               <br />
             </>
           )}
-          <span className="strong">
-            {s.tool} · <StatusChar s={s.status} /> {st.label}
-          </span>
-          {' · '}ouverte depuis {durLong(now - s.openedAt)}
-          {s.status === 'working' && s.workStartedAt != null && <> · travaille depuis {durLong(now - s.workStartedAt)}</>}
+          {s.tool} · <StatusChar s={s.status} /> {st.label}
+          {s.status === 'working' && s.workStartedAt != null ? <> depuis {durLong(now - s.workStartedAt)}</> : <> · {ago(now - s.lastActivityAt)}</>}
           {' · '}
-          {s.repo ?? s.cwd.replace(/^\/home\/[^/]+/, '~')}
-          {s.branch && <> · {s.branch}</>} · {s.machineId}
+          {s.machineId}
         </>
       }
       foot={

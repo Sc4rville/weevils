@@ -38,7 +38,7 @@ const userMsg = (id: string, text: string, at: number): Message =>
 const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
 const isNoise = (text: string) =>
-  !text.trim() || /^\s*</.test(text) || text.startsWith('Caveat:') || /^#?\s*AGENTS\.md instructions/i.test(text.trim()) || text.includes('<INSTRUCTIONS>')
+  !text.trim() || /^\s*</.test(text) || /^\[Request interrupted by user/.test(text.trim()) || text.startsWith('Caveat:') || /^#?\s*AGENTS\.md instructions/i.test(text.trim()) || text.includes('<INSTRUCTIONS>')
 
 function push(t: Transcript, m: Message) {
   t.messages.push(m)

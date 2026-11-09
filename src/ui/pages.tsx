@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Message, SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
-import { Collapse, Composer, Line, Messages, SessionRow, StatusChar, Working, type Attachment } from './bits'
+import { Collapse, Composer, Line, Messages, StatusChar, Working, type Attachment } from './bits'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Settings, effortLabel, shortModel } from './settings'
@@ -11,6 +11,7 @@ import { CalmConv, CalmGrid } from './calm'
 import { markSeen } from './seen'
 import { Shell } from './shell'
 import { CodeFile } from './codeview'
+import { FsFilePage, FsPage, InfraPage, UsagePage } from './infra'
 import { listFiles } from './repofiles'
 import { useThreadAsk } from './askthread'
 import { ago, dur, durLong, status } from './format'
@@ -41,7 +42,15 @@ export function PageView({ page }: { page: Page }) {
     case 'file':
       return <FilePage projectId={page.projectId} repo={page.repo} path={page.path} line={page.line} />
     case 'machine':
-      return <MachinePage projectId={page.projectId} />
+      return <InfraPage projectId={page.projectId || undefined} />
+    case 'infra':
+      return <InfraPage machine={page.machine} />
+    case 'fs':
+      return <FsPage machine={page.machine} path={page.path} />
+    case 'fsfile':
+      return <FsFilePage machine={page.machine} path={page.path} />
+    case 'usage':
+      return <UsagePage />
     case 'new':
       return <NewSessionPage projectId={page.projectId} />
     case 'conversations':
@@ -415,29 +424,6 @@ function FilePage({ projectId, repo, path, line }: { projectId: string; repo: st
 }
 
 // ---------------------------------------------------------------------------
-
-function MachinePage({ projectId }: { projectId: string }) {
-  const { snap, colors } = useApp()
-  const t = useT(M)
-  return (
-    <Shell slot={colors[projectId] ?? 'agent'} kicker={snap.projects.find((p) => p.id === projectId)?.name ?? 'weevils'} title={t.machinesTitle} meta={t.machines(snap.machines.length)}>
-      {snap.machines.map((machine) => {
-        const live = snap.sessions.filter((s) => s.machineId === machine.id && s.status !== 'done')
-        return (
-          <div key={machine.id}>
-            {/* Rien d'écrit à la main : le nom, l'état, le nombre de sessions, puis les sessions au format de partout. */}
-            <div className="in label">
-              {machine.name} · {machine.online === false ? t.offline : t.online} · {t.sessions(live.length)}
-            </div>
-            {live.map((s) => (
-              <SessionRow key={s.id} session={s} />
-            ))}
-          </div>
-        )
-      })}
-    </Shell>
-  )
-}
 
 function NewSessionPage({ projectId }: { projectId: string }) {
   const { snap, replace, colors } = useApp()

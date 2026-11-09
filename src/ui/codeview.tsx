@@ -65,7 +65,7 @@ const CodeLine = memo(function CodeLine({ n, text, s, e, whole, flash }: { n: nu
   )
 })
 
-export function CodeFile({ projectId, repo, path, machine, line, file, err }: { projectId: string; repo: string; path: string; machine: string; line?: number; file: FileContent | null; err: string | null }) {
+export function CodeFile({ projectId, repo, path, machine, line, file, err, kicker }: { projectId: string; repo: string; path: string; machine: string; line?: number; file: FileContent | null; err: string | null; kicker?: string }) {
   const { colors, push } = useApp()
   const t = useT(M)
   const prose = /\.(md|markdown|txt)$/i.test(path)
@@ -220,7 +220,7 @@ export function CodeFile({ projectId, repo, path, machine, line, file, err }: { 
   return (
     <Shell
       slot={colors[projectId] ?? 'agent'}
-      kicker={`${repo}/${path.split('/').slice(0, -1).join('/')}`}
+      kicker={kicker ?? `${repo}/${path.split('/').slice(0, -1).join('/')}`}
       title={path.split('/').pop()}
       meta={file ? `${t.size(file.size)}${file.truncated ? t.truncated : ''}` : t.reading}
       dock={file && !file.binary ? <AskVoice a={a} /> : undefined}

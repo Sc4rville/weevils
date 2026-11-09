@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { tr } from './i18n'
 import M from './i18n/app'
+import type { FsListing, InfraDetail, MachineBrief, UsageInfo, UsageToday } from '../shared/infra.ts'
 import type { ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
 
 export class ApiError extends Error {
@@ -96,6 +97,12 @@ export const api = {
   repos: (machine: string) => call<{ repos: string[] }>('GET', `/api/repos?machine=${enc(machine)}`),
   files: (repo: string, machine: string) => call<{ files: string[] }>('GET', `/api/repos/${enc(repo)}/files?machine=${enc(machine)}`),
   explain: (body: ExplainRequest) => call<ExplainReply>('POST', '/api/explain', body),
+  infraBrief: () => call<{ machines: MachineBrief[] }>('GET', '/api/infra/brief'),
+  infra: (machine: string) => call<InfraDetail>('GET', `/api/infra?machine=${enc(machine)}`),
+  fs: (machine: string, path: string) => call<FsListing>('GET', `/api/fs?machine=${enc(machine)}&path=${enc(path)}`),
+  fsFile: (machine: string, path: string) => call<FileContent>('GET', `/api/fs/file?machine=${enc(machine)}&path=${enc(path)}`),
+  usage: () => call<UsageInfo>('GET', '/api/usage'),
+  usageToday: () => call<UsageToday>('GET', '/api/usage/today'),
   file: (repo: string, path: string, machine: string) => call<FileContent>('GET', `/api/repos/${enc(repo)}/file?path=${enc(path)}&machine=${enc(machine)}`),
 }
 

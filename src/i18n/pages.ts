@@ -1,7 +1,7 @@
 import { defineMessages } from './index'
 
 const FR_KEYS: Record<string, string> = { '1': 'choix 1', '2': 'choix 2', '3': 'choix 3', up: 'flèche haut', down: 'flèche bas', enter: 'entrée', esc: 'échap', tab: 'tabulation' }
-const EN_KEYS: Record<string, string> = { '1': 'choice 1', '2': 'choice 2', '3': 'choice 3', up: 'arrow up', down: 'arrow down', enter: 'enter', esc: 'escape', tab: 'tab' }
+const EN_KEYS: Record<string, string> = { '1': 'choice 1', '2': 'choice 2', '3': 'choice 3', up: 'up arrow', down: 'down arrow', enter: 'enter', esc: 'escape', tab: 'tab' }
 
 export default defineMessages({
   fr: {
@@ -22,10 +22,10 @@ export default defineMessages({
     composerLabel: (title: string) => `message à la session ${title}`,
     /** Bulle provisoire d'un envoi avec photos. */
     photos: (n: number) => (n > 1 ? `${n} photos` : 'photo'),
-    subagentsLabel: (n: number) => `sous-agents : ${n} actifs`,
+    subagentsLabel: (n: number) => `sous-agents : ${n} ${n > 1 ? 'actifs' : 'actif'}`,
     subagents: 'sous-agents',
     active: (n: number) => `${n} ${n > 1 ? 'actifs' : 'actif'}`,
-    finished: (n: number) => `${n} terminés`,
+    finished: (n: number) => `${n} ${n > 1 ? 'terminés' : 'terminé'}`,
     working: 'travaille',
     done: 'terminé',
     asks: (tool: string) => `${tool} te demande`,

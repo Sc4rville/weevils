@@ -9,8 +9,11 @@ import { TipsLine } from './tips'
 export function PrefLines() {
   const t = useT(M)
   const lang = useLang()
-  // weevilsd follows the app's language for what it writes (agents, notifications), even before any choice.
-  useEffect(() => syncServer(), [])
+  // weevilsd follows a language explicitly chosen here (agents, voice, notifications). An app that merely follows its
+  // browser never pushes it: any browser in another language (a test, a borrowed phone) would switch the server for everyone.
+  useEffect(() => {
+    if (langIsChosen()) syncServer()
+  }, [])
   const next = LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length]
   return (
     <>

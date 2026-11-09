@@ -4,7 +4,8 @@ import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { lang, tr } from './i18n.ts'
+import { lang, tr, type Lang } from './i18n.ts'
+import { detectLang } from '../shared/detect-lang.ts'
 import V from './i18n/voice.ts'
 
 /** Une réponse courte de haiku : sans outils, sans session gardée. ~1,6 s mesuré sur le VPS. */
@@ -21,7 +22,7 @@ export function haiku(prompt: string, timeout = 20_000): Promise<string> {
 }
 
 /** Voix gratuite dans la langue de l'app (voix neuronales Microsoft via edge-tts), débit +25 %. MP3. */
-export function tts(text: string, voice = lang() === 'fr' ? 'fr-FR-RemyMultilingualNeural' : 'en-US-AndrewMultilingualNeural'): Promise<Buffer> {
+export function tts(text: string, l: Lang = detectLang(text) ?? lang(), voice = l === 'fr' ? 'fr-FR-RemyMultilingualNeural' : 'en-US-AndrewMultilingualNeural'): Promise<Buffer> {
   const out = path.join(os.tmpdir(), `wv-tts-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`)
   const bin = path.join(os.homedir(), '.local', 'bin', 'edge-tts')
   const t0 = Date.now()
@@ -45,8 +46,7 @@ export const cartesia = () => (process.env.CARTESIA_API_KEY ? { key: process.env
 
 /** Voix par défaut de chaque langue (la première de l'API), gardée en mémoire. */
 const langVoice: Partial<Record<string, string>> = {}
-async function defaultVoice(key: string): Promise<string> {
-  const l = lang()
+async function defaultVoice(key: string, l: Lang = lang()): Promise<string> {
   if (langVoice[l]) return langVoice[l]
   const res = await fetch(`https://api.cartesia.ai/voices?language=${l}&limit=20`, { headers: { 'X-API-Key': key, 'Cartesia-Version': '2025-04-16' } })
   const j = (await res.json()) as { data?: { id: string; language?: string }[] } | { id: string; language?: string }[]
@@ -82,8 +82,12 @@ export async function cartesiaVoices(): Promise<VoiceChoice[]> {
   return out.map((v) => ({ id: v.id, name: String(v.name ?? v.id).split(/[-–(]/)[0].trim(), gender: v.gender }))
 }
 
-/** Flux MP3 de Cartesia : les premiers octets arrivent en quelques centaines de ms, on les relaie tels quels. */
-export async function cartesiaStream(text: string, voiceId?: string): Promise<ReadableStream<Uint8Array>> {
+/**
+ * Flux MP3 de Cartesia : les premiers octets arrivent en quelques centaines de ms, on les relaie tels quels.
+ * Langue : celle donnée (le message entier), sinon celle du texte, sinon la langue réglée ; jamais un réglage global seul.
+ */
+export async function cartesiaStream(text: string, voiceId?: string, language?: Lang): Promise<ReadableStream<Uint8Array>> {
+  const l = language ?? detectLang(text) ?? lang()
   const c = cartesia()
   if (!c) throw new Error(tr(V).noCartesiaKey)
   const t0 = Date.now()
@@ -93,8 +97,8 @@ export async function cartesiaStream(text: string, voiceId?: string): Promise<Re
     body: JSON.stringify({
       model_id: c.model,
       transcript: text,
-      voice: { mode: 'id', id: voiceId ?? chosenVoice ?? c.voice ?? (await defaultVoice(c.key)) },
-      language: lang(),
+      voice: { mode: 'id', id: voiceId ?? chosenVoice ?? c.voice ?? (await defaultVoice(c.key, l)) },
+      language: l,
       output_format: { container: 'mp3', sample_rate: 44100, bit_rate: 128000 },
     }),
   })

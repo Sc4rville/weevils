@@ -17,6 +17,7 @@ import M from './i18n/core.ts'
 import P from './i18n/push.ts'
 import { setCartesiaVoice } from './fast.ts'
 import { keepWarm, warmCues } from './voicepipe.ts'
+import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
@@ -25,7 +26,7 @@ import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
 import type { WvSession } from './mux.ts'
 import { capture, dialogOnScreen, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv } from './mux.ts'
-import { lang, onLangChange, tr, user } from './i18n.ts'
+import { lang, onLangChange, tr, user, type Lang } from './i18n.ts'
 import TipsM from './i18n/tips.ts'
 import { normalizeFrom, publicAuthors, signAs } from './authors.ts'
 
@@ -188,7 +189,17 @@ export class Weevils {
     this.voiceId = id
     setCartesiaVoice(id)
     this.persist()
-    warmCues(id)
+    warmCues(id, this.speakerLang())
+  }
+
+  /** La langue dans laquelle l'utilisateur parle à weevboss (ses derniers messages), sinon la langue réglée. Pour l'accroche. */
+  speakerLang(): Lang {
+    const said = this.orchestratorMessages()
+      .filter((m) => m.role === 'user' && !m.devil)
+      .slice(-6)
+      .map((m) => m.text)
+      .join('\n')
+    return detectLang(said) ?? lang()
   }
 
   /** Attend la réponse écrite de weevboss à un message envoyé à `since` : terminée quand il ne travaille plus. */

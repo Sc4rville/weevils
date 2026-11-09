@@ -13,18 +13,22 @@ import path from 'node:path'
 import { DATA_DIR, PUBLIC_URL } from './config.ts'
 import { cartesia, cartesiaStream, tts } from './fast.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
-import { lang, tr, user } from './i18n.ts'
+import { lang, tr, user, type Lang } from './i18n.ts'
+import { detectLang } from '../shared/detect-lang.ts'
 import V from './i18n/voice.ts'
 
 const log = (s: string) => console.log(`[voix] ${s}`)
 
 // ---------------------------------------------------------------- texte à dire
 
+/** La langue de ce qui sera dit : celle du texte (la réponse de weevboss, le message de Scarville), sinon la langue réglée. */
+export const langOf = (text: string): Lang => detectLang(text) ?? lang()
+
 const clean = (text: string) =>
   text
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/[`*_#>]/g, '')
-    .replace(/https?:\/\/\S+/g, tr(V).aLink)
+    .replace(/https?:\/\/\S+/g, V[langOf(text)].aLink)
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 1500)
@@ -33,7 +37,7 @@ const clean = (text: string) =>
 export const sayable = (text: string) => text.length <= 220 && !/[/\\]\w|\b[0-9a-f]{7,}\b|\w+\.(ts|tsx|js|md|json|sh|py)\b|\n[-*] /i.test(text)
 
 /** Résumé oral en flux : la première phrase est rendue dès qu'elle est complète, puis le reste. */
-async function* oralStream(text: string): AsyncGenerator<string> {
+async function* oralStream(text: string, l: Lang = langOf(text)): AsyncGenerator<string> {
   const key = openaiKey()
   if (!key) {
     yield text.slice(0, 300)
@@ -43,7 +47,7 @@ async function* oralStream(text: string): AsyncGenerator<string> {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'gpt-4o-mini', stream: true, max_tokens: 120, temperature: 0.4, messages: [{ role: 'user', content: `${tr(V).oral(user())}\n\n${text}` }] }),
+    body: JSON.stringify({ model: 'gpt-4o-mini', stream: true, max_tokens: 120, temperature: 0.4, messages: [{ role: 'user', content: `${V[l].oral(user())}\n\n${text}` }] }),
     signal: AbortSignal.timeout(10_000),
   })
   if (!res.ok || !res.body) {
@@ -98,9 +102,9 @@ function skipId3(b: Uint8Array): Uint8Array {
   return b
 }
 
-async function pipeSentence(out: http.ServerResponse, sentence: string, voice: string | undefined, index: number, t0: number) {
+async function pipeSentence(out: http.ServerResponse, sentence: string, voice: string | undefined, index: number, t0: number, l?: Lang) {
   if (cartesia()) {
-    const stream = await cartesiaStream(sentence, voice)
+    const stream = await cartesiaStream(sentence, voice, l)
     let firstChunk = true
     for await (const chunk of stream as unknown as AsyncIterable<Uint8Array>) {
       if (firstChunk && index === 0) log(`premiers octets envoyés au téléphone ${Date.now() - t0} ms après la demande`)
@@ -117,14 +121,16 @@ async function pipeSentence(out: http.ServerResponse, sentence: string, voice: s
 export async function speakStream(res: http.ServerResponse, text: string, oral: boolean, voice?: string) {
   const t0 = Date.now()
   const input = clean(text)
+  // Toutes les phrases dans la langue du message entier : un « Ok. » isolé ne se décide pas seul.
+  const l = langOf(text)
   res.writeHead(200, { 'content-type': 'audio/mpeg', 'cache-control': 'no-store', 'transfer-encoding': 'chunked' })
   let i = 0
   try {
     if (oral || sayable(input)) {
       if (!oral) log('réponse déjà courte : lue sans résumé')
-      await pipeSentence(res, input, voice, i++, t0)
+      await pipeSentence(res, input, voice, i++, t0, l)
     } else {
-      for await (const sentence of oralStream(input)) await pipeSentence(res, sentence, voice, i++, t0)
+      for await (const sentence of oralStream(input, l)) await pipeSentence(res, sentence, voice, i++, t0, l)
     }
   } catch (e) {
     log(`lecture : ${(e as Error).message}`)
@@ -134,37 +140,36 @@ export async function speakStream(res: http.ServerResponse, text: string, oral: 
 }
 
 /** Tout le son d'une phrase, en mémoire (Siri télécharge un fichier). */
-async function synth(text: string, voice?: string): Promise<Buffer> {
-  if (!cartesia()) return tts(text)
+async function synth(text: string, voice?: string, l: Lang = langOf(text)): Promise<Buffer> {
+  if (!cartesia()) return tts(text, l)
   const parts: Uint8Array[] = []
-  for await (const c of (await cartesiaStream(text, voice)) as unknown as AsyncIterable<Uint8Array>) parts.push(c)
+  for await (const c of (await cartesiaStream(text, voice, l)) as unknown as AsyncIterable<Uint8Array>) parts.push(c)
   return Buffer.concat(parts)
 }
 
 // ---------------------------------------------------------------- accroches en cache
 
-/** Accroches de la langue courante (une par ligne dans le catalogue). */
-const cues = () => tr(V).cues.split('\n')
+/** Accroches d'une langue (une par ligne dans le catalogue). */
+const cues = (l: Lang) => V[l].cues.split('\n')
 const cueDir = path.join(DATA_DIR, 'voice-cache')
 
 /** Une accroche courte, déjà générée avec la voix choisie : jouée dès l'envoi, sans attendre personne. */
-export async function cue(voice: string | undefined, n = Math.floor(Math.random() * cues().length)): Promise<Buffer> {
+export async function cue(voice: string | undefined, l: Lang = lang(), n = Math.floor(Math.random() * cues(l).length)): Promise<Buffer> {
   fs.mkdirSync(cueDir, { recursive: true })
-  const l = lang()
   const file = path.join(cueDir, `${l === 'fr' ? '' : `${l}-`}${(voice ?? 'defaut').replace(/[^\w-]/g, '')}-${n}.mp3`)
   try {
     return fs.readFileSync(file)
   } catch {
-    const mp3 = await synth(cues()[n] ?? cues()[0], voice)
+    const mp3 = await synth(cues(l)[n] ?? cues(l)[0], voice, l)
     fs.writeFileSync(file, mp3)
     return mp3
   }
 }
 
 /** Prépare toutes les accroches d'une voix (au choix de la voix, au démarrage). */
-export function warmCues(voice: string | undefined) {
+export function warmCues(voice: string | undefined, l: Lang = lang()) {
   void (async () => {
-    for (let n = 0; n < cues().length; n++) await cue(voice, n).catch(() => undefined)
+    for (let n = 0; n < cues(l).length; n++) await cue(voice, l, n).catch(() => undefined)
   })()
 }
 
@@ -257,14 +262,15 @@ export async function voiceTurn(w: Orchestrator, input: { text?: string; audio?:
   let text = (input.text ?? '').trim()
   if (!text && input.audio) text = await transcribe(Buffer.from(input.audio, 'base64'), input.type ?? 'audio/mp4')
   if (!text) throw new Error(tr(V).nothingHeard)
-  if (/^(stop|arrête|c’est bon|c'est bon|merci|thanks?( you)?|that’s it|that's it|bye)[.!]?$/i.test(text)) return { done: true, say: tr(V).bye, text }
+  if (/^(stop|arrête|c’est bon|c'est bon|merci|thanks?( you)?|that’s it|that's it|bye)[.!]?$/i.test(text)) return { done: true, say: V[langOf(text)].bye, text }
   const since = Date.now()
   await w.sendMain(text)
   const reply = await w.waitMainReply(since, 100_000)
   log(`Siri · weevboss a répondu en ${Date.now() - since} ms`)
-  const said = reply ? (sayable(clean(reply)) ? clean(reply) : await collect(oralStream(clean(reply)))) : tr(V).stillWorking
+  const l = langOf(reply ?? text)
+  const said = reply ? (sayable(clean(reply)) ? clean(reply) : await collect(oralStream(clean(reply), l))) : V[l].stillWorking
   const id = crypto.randomBytes(9).toString('base64url')
-  clips.set(id, { mp3: await synth(said, w.voiceId), at: Date.now() })
+  clips.set(id, { mp3: await synth(said, w.voiceId, l), at: Date.now() })
   for (const [k, v] of clips) if (Date.now() - v.at > 15 * 60_000) clips.delete(k)
   log(`Siri · tour complet en ${Date.now() - t0} ms`)
   const base = PUBLIC_URL || ''

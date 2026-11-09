@@ -5,7 +5,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { CONFIG_DIR, HOME } from './config.ts'
 import { haiku, tts } from './fast.ts'
-import { lang, tr, user } from './i18n.ts'
+import { lang, tr, user, type Lang } from './i18n.ts'
+import { detectLang } from '../shared/detect-lang.ts'
 import V from './i18n/voice.ts'
 
 /** Clé lue dans ~/.config/weevils/env, sinon dans la config de la dictée du PC. Jamais dans le code ni dans les logs. */
@@ -24,6 +25,9 @@ export function openaiKey(): string | undefined {
 
 const EXT: Record<string, string> = { 'audio/mp4': 'm4a', 'audio/mpeg': 'mp3', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/wav': 'wav', 'audio/x-m4a': 'm4a', 'audio/aac': 'aac' }
 
+/** Langue de ce qui sera dit : celle du texte, sinon la langue réglée. */
+const langOf = (text: string): Lang => detectLang(text) ?? lang()
+
 export async function transcribe(data: Buffer, mime: string): Promise<string> {
   const key = openaiKey()
   if (!key) throw new Error(tr(V).transcriptionOff)
@@ -31,7 +35,7 @@ export async function transcribe(data: Buffer, mime: string): Promise<string> {
   const form = new FormData()
   form.append('file', new Blob([data], { type }), `voix.${EXT[type] ?? 'm4a'}`)
   form.append('model', 'gpt-4o-mini-transcribe')
-  form.append('language', lang())
+  // Pas de langue imposée : le modèle entend celle qui est parlée (un réglage global en anglais faussait le français dicté).
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
     headers: { authorization: `Bearer ${key}` },
@@ -49,7 +53,7 @@ export async function transcribe(data: Buffer, mime: string): Promise<string> {
 /** Voix de weevboss : version orale courte (haiku, abonnement), lue par edge-tts (gratuit). MP3. */
 /** Le texte prêt à dire (version orale courte si besoin). */
 export async function speakable(text: string, oral = false): Promise<string> {
-  const input = text.replace(/```[\s\S]*?```/g, ' ').replace(/[`*_#>]/g, '').replace(/https?:\/\/\S+/g, tr(V).aLink).replace(/\s+/g, ' ').trim().slice(0, 1500)
+  const input = text.replace(/```[\s\S]*?```/g, ' ').replace(/[`*_#>]/g, '').replace(/https?:\/\/\S+/g, V[langOf(text)].aLink).replace(/\s+/g, ' ').trim().slice(0, 1500)
   return oral ? input : await toOral(input).catch(() => input.slice(0, 300))
 }
 
@@ -57,18 +61,18 @@ export async function speak(text: string, oral = false): Promise<Buffer> {
   const input = text
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/[`*_#>]/g, '')
-    .replace(/https?:\/\/\S+/g, tr(V).aLink)
+    .replace(/https?:\/\/\S+/g, V[langOf(text)].aLink)
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 1500)
   const said = oral ? input : await toOral(input).catch(() => input.slice(0, 300))
-  return tts(said)
+  return tts(said, langOf(text))
 }
 
 /** La version à dire : une ou deux phrases, comme à un pote, sans ids, chemins, fichiers ni listes. */
 async function toOral(text: string): Promise<string> {
   const key = openaiKey()
-  const ask = `${tr(V).oral(user())}\n\n${text}`
+  const ask = `${V[langOf(text)].oral(user())}\n\n${text}`
   if (key) {
     try {
       const t0 = Date.now()

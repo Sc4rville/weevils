@@ -58,11 +58,19 @@ export function FilledIcon({ name, label, className = '' }: { name: FilledName; 
   )
 }
 
+/**
+ * Icônes qui peuvent recevoir un contour fin (l'étoile verte « travaille », sur fond clair) : le même tracé, plus large, dessous.
+ * Un tracé fait d'un seul trait n'a pas de remplissage, donc paint-order ne suffit pas : le contour est ce trait dessous.
+ */
+const HALO = new Set<IconName>(['star'])
+
 export function Icon({ name, dir = 'up', label, className = '' }: { name: IconName; dir?: Dir; label?: string; className?: string }) {
   const turn = TURN[dir]
+  const transform = turn ? `rotate(${turn} 12 12)` : undefined
   return (
     <svg className={`ic ${className}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="square" strokeLinejoin="miter" strokeMiterlimit={10} role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true} focusable="false">
-      <path d={PATHS[name]} transform={turn ? `rotate(${turn} 12 12)` : undefined} />
+      {HALO.has(name) && <path className="ic-halo" d={PATHS[name]} transform={transform} />}
+      <path d={PATHS[name]} transform={transform} />
     </svg>
   )
 }

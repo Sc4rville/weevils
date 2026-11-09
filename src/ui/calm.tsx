@@ -6,7 +6,7 @@ import { useApp } from './app-context'
 import { Collapse, Composer, Messages, Working, type Attachment } from './bits'
 import { ago, plain } from './format'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
-import { Settings, effortLabel, shortModel } from './settings'
+import { Settings } from './settings'
 import { usePageChrome } from './shell'
 import { markSeen } from './seen'
 
@@ -158,7 +158,6 @@ export function CalmConv({ id }: { id: string }) {
   const run = (c: string) => (main ? api.mainCommand(c) : api.command(id, c))
   const suggestions = useMemo(() => urlsInMessages(messages), [messages])
   const previewUrl = preview.url ?? (s ? guessPreviewUrl(messages, s, snap.projects.find((p) => p.id === s.projectId)) : '')
-  const tag = [shortModel(settings?.model), effortLabel(settings?.effort)].filter(Boolean).join(' · ')
 
   return (
     <motion.div
@@ -191,7 +190,6 @@ export function CalmConv({ id }: { id: string }) {
       </div>
       <Collapse open={more}>
         <div className="in inline-actions" style={{ paddingBottom: 6 }}>
-          <span className="link inline">{tag || title}</span>
           <button className="link inline" onClick={() => setPreview({ open: !preview.open })} aria-pressed={!!preview.open}>
             navigateur
           </button>

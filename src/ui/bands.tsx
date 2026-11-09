@@ -2,6 +2,8 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Project } from '../../shared/api.ts'
 import { api } from '../api'
+import { tr, useT } from '../i18n'
+import M from '../i18n/bands'
 import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
 import { useApp } from './app-context'
@@ -9,7 +11,7 @@ import { ensurePush } from '../push'
 import { VoiceLogo } from './voice'
 import { isUnread, useSeen } from './seen'
 import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, spring } from './bits'
-import { ago, plain, plural, step } from './format'
+import { ago, plain, step } from './format'
 import { Icon } from './icons'
 import { PrefLines } from './prefs'
 
@@ -18,11 +20,11 @@ const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 /** Taille du nom selon l'état de la bande : ouverte = grosse, les autres = fines lanières. Rien ne passe derrière. */
 const NAME_SIZE = { open: '3rem', normal: '2.125rem', mini: '1.375rem' } as const
 
-const working = (n: number) => `${n} ${n > 1 ? 'travaillent' : 'travaille'}`
 /** « 2 travaillent », ou « 3 ouvertes » quand rien ne travaille. */
 const activity = (list: { status: string }[]) => {
+  const t = tr(M)
   const w = list.filter((s) => s.status === 'working').length
-  return w ? working(w) : `${list.length} ${list.length > 1 ? 'ouvertes' : 'ouverte'}`
+  return w ? t.working(w) : t.open(list.length)
 }
 
 // ---------------------------------------------------------------------------
@@ -38,6 +40,7 @@ function useStickBottom(ref: React.RefObject<HTMLDivElement | null>, count: numb
 }
 
 export function AgentBand() {
+  const t = useT(M)
   const { snap, expanded, setExpanded } = useApp()
   const open = expanded === 'agent'
   const body = useRef<HTMLDivElement>(null)
@@ -61,21 +64,21 @@ export function AgentBand() {
   }
 
   return (
-    <section className="band agent tone" style={color('agent')} aria-label="weevboss, l’orchestrateur">
+    <section className="band agent tone" style={color('agent')} aria-label={t.agentBand}>
       {/* L'espace du haut reste vide pour l'instant : à remplir plus tard. */}
       {/* Ouverte : un tap dans l'espace vide, le chevron, ou glisser vers le bas la réduit. */}
       <div className="agent-space" onClick={(e) => open && e.target === e.currentTarget && setExpanded(null)}>
         {open && (
-          <button className="agent-close" onClick={() => setExpanded(null)} aria-label="réduire la conversation">
+          <button className="agent-close" onClick={() => setExpanded(null)} aria-label={t.collapseChat}>
             <Icon name="chevron" dir="down" />
           </button>
         )}
-        <VoiceLogo take={() => { const t = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return t }} onText={(t) => { heard.current = heard.current ? `${heard.current} ${t}` : t; setDraft((d) => ({ text: t, n: d.n + 1, reset: false })) }} onSend={() => { viaLogo.current = true; form.current?.requestSubmit() }} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
+        <VoiceLogo take={() => { const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }} onText={(x) => { heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }} onSend={() => { viaLogo.current = true; form.current?.requestSubmit() }} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
       </div>
 
       {/* Replié : la dernière réponse de weevils, en une ligne. Ouvert : la conversation, qui grandit sans tout envahir. */}
       {!open && last && last.role !== 'user' && (
-        <button className="row" onClick={() => setExpanded('agent')} aria-label="ouvrir la conversation avec weevboss">
+        <button className="row" onClick={() => setExpanded('agent')} aria-label={t.openChat}>
           <span className="in">
             <span className="stack-text">
               <span className="ellipsis">
@@ -110,7 +113,7 @@ export function AgentBand() {
       </Collapse>
 
       {/* Écrire ici n'ouvre pas la conversation : elle s'ouvre à l'envoi, pour lire la réponse. */}
-      <Composer placeholder="dis à weevboss quoi faire" label="message à weevboss" onSend={send} onAttach={attach} anyFile voice draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="chevron" dir="right" />} />
+      <Composer placeholder={t.agentPlaceholder} label={t.agentLabel} onSend={send} onAttach={attach} anyFile voice draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="chevron" dir="right" />} />
     </section>
   )
 }
@@ -119,6 +122,7 @@ export function AgentBand() {
 // Bande projet : nom fort, caractères-icônes, sessions. Elle s'ouvre, les autres se replient.
 
 export function ProjectBand({ project }: { project: Project }) {
+  const t = useT(M)
   const { snap, expanded, setExpanded, push, now, colors, setH24Open } = useApp()
   const [showDone, setShowDone] = useState(false)
   const mode = expanded === null ? 'normal' : expanded === project.id ? 'open' : 'mini'
@@ -141,21 +145,21 @@ export function ProjectBand({ project }: { project: Project }) {
   useSeen()
   const unread = sessions.some(isUnread)
   const summary = [
-    active.length ? activity(active) : sessions.length ? 'rien ne tourne' : null,
-    att.length ? `${att.length} à toi` : null,
-    convCount ? plural(convCount, 'conversation', 'conversations') : null,
+    active.length ? activity(active) : sessions.length ? t.nothingRunning : null,
+    att.length ? t.yours(att.length) : null,
+    convCount ? t.conversations(convCount) : null,
     !active.length ? ago(now - project.lastActivityAt) : null,
   ]
     .filter(Boolean)
     .join(' · ')
 
   return (
-    <motion.section layout="position" transition={spring} className={`band ${busy ? 'busy' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={`projet ${project.name}`} data-project={project.id}>
+    <motion.section layout="position" transition={spring} className={`band ${busy ? 'busy' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={t.projectBand(project.name)} data-project={project.id}>
       <motion.div className="in head" initial={false} animate={{ minHeight: mode === 'mini' ? 50 : compact ? 56 : 64, paddingTop: mode === 'mini' || compact ? 0 : 8 }} transition={spring}>
         <button className="head-name" onClick={toggle} aria-expanded={mode === 'open'} aria-controls={`more-${project.id}`}>
           <motion.span className="name" initial={false} animate={{ fontSize: compact ? '1.75rem' : NAME_SIZE[mode] }} transition={spring}>
             {project.name}
-            {unread && <span className="dot" aria-label="a répondu, pas encore lu" />}
+            {unread && <span className="dot" aria-label={t.unread} />}
             {active.some((s) => s.status === 'working') && (
               <span aria-hidden>
                 <span className="spin fluo"><Icon name="star" /></span>
@@ -173,17 +177,17 @@ export function ProjectBand({ project }: { project: Project }) {
         {mode !== 'mini' && (
           <div className="chars">
             {project.repos.length > 0 && (
-              <button className="ch" aria-label={`fichiers de ${project.name}`} onClick={() => push({ kind: 'files', projectId: project.id })}>
+              <button className="ch" aria-label={t.filesOf(project.name)} onClick={() => push({ kind: 'files', projectId: project.id })}>
                 <Icon name="slash" />
               </button>
             )}
-            <button className="ch" aria-label={`machine de ${project.name}`} onClick={() => push({ kind: 'machine', projectId: project.id })}>
+            <button className="ch" aria-label={t.machineOf(project.name)} onClick={() => push({ kind: 'machine', projectId: project.id })}>
               <Icon name="machine" />
             </button>
             <button
               className={`ch ${att.length ? '' : 'off'}`}
               disabled={!att.length}
-              aria-label={att.length ? `${plural(att.length, 'session attend', 'sessions attendent')} ta réponse` : 'rien ne t’attend'}
+              aria-label={att.length ? t.waiting(att.length) : t.nothingWaiting}
               onClick={() => att[0] && push({ kind: 'session', id: att[0].id })}
             >
               <span>
@@ -192,7 +196,7 @@ export function ProjectBand({ project }: { project: Project }) {
               </span>
             </button>
             {convCount > 0 && (
-              <button className="ch" aria-label={`${plural(convCount, 'conversation', 'conversations')} de ${project.name}`} onClick={() => push({ kind: 'conversations', projectId: project.id })}>
+              <button className="ch" aria-label={t.conversationsOf(convCount, project.name)} onClick={() => push({ kind: 'conversations', projectId: project.id })}>
                 <span>
                   <Icon name="quote" />
                   <sup>{convCount}</sup>
@@ -200,7 +204,7 @@ export function ProjectBand({ project }: { project: Project }) {
               </button>
             )}
             {project.kind === 'repo' || project.repos.length > 0 ? (
-              <button className="ch" aria-label={`nouvelle session dans ${project.name}`} onClick={() => push({ kind: 'new', projectId: project.id })}>
+              <button className="ch" aria-label={t.newSessionIn(project.name)} onClick={() => push({ kind: 'new', projectId: project.id })}>
                 <Icon name="plus" />
               </button>
             ) : null}
@@ -216,12 +220,12 @@ export function ProjectBand({ project }: { project: Project }) {
             </Appear>
           ))}
         </AnimatePresence>
-        {active.length === 0 && sessions.length > 0 && <div className="in meta empty">rien ne tourne · dernière activité {ago(now - project.lastActivityAt)}</div>}
+        {active.length === 0 && sessions.length > 0 && <div className="in meta empty">{t.idleSince(ago(now - project.lastActivityAt))}</div>}
         {sessions.length === 0 && mode === 'normal' && convs.slice(0, 3).map((c) => <ConvLine key={c.id} c={c} />)}
         {done.length > 0 && (
           <>
-            <Line ch="✓" go={doneOpen ? '↑' : '↓'} onClick={() => setShowDone(!doneOpen)} label={`${done.length} sessions terminées`}>
-              <span className="meta">{plural(done.length, 'session terminée', 'sessions terminées')}</span>
+            <Line ch="✓" go={doneOpen ? '↑' : '↓'} onClick={() => setShowDone(!doneOpen)} label={t.done(done.length)}>
+              <span className="meta">{t.done(done.length)}</span>
             </Line>
             <Collapse open={doneOpen}>
               {done.slice(0, 6).map((s) => (
@@ -235,28 +239,28 @@ export function ProjectBand({ project }: { project: Project }) {
 
       <Collapse open={mode === 'open'} id={`more-${project.id}`}>
         <div className="band tone">
-          {convCount > 0 && <div className="in label">conversations</div>}
+          {convCount > 0 && <div className="in label">{t.conversationsLabel}</div>}
           {convs.slice(0, 4).map((c) => (
             <ConvLine key={c.id} c={c} />
           ))}
           {convCount > 4 && (
             <Line ch='"' onClick={() => push({ kind: 'conversations', projectId: project.id })}>
-              <span className="meta">les {convCount} conversations</span>
+              <span className="meta">{t.allConversations(convCount)}</span>
             </Line>
           )}
-          {project.repos.length > 0 && <div className="in label">repos</div>}
+          {project.repos.length > 0 && <div className="in label">{t.reposLabel}</div>}
           {project.repos.map((r) => (
             <Line key={r} ch="/" meta={project.where[r] ?? 'vps'} onClick={() => push({ kind: 'files', projectId: project.id, repo: r })}>
               {r}
             </Line>
           ))}
-          <div className="in label">machines</div>
-          <Line ch="@" meta={plural(active.length, 'session ouverte', 'sessions ouvertes')} onClick={() => push({ kind: 'machine', projectId: project.id })}>
+          <div className="in label">{t.machinesLabel}</div>
+          <Line ch="@" meta={t.openSessions(active.length)} onClick={() => push({ kind: 'machine', projectId: project.id })}>
             {[...new Set(sessions.map((s) => s.machineId))].join(' · ') || snap.machines[0]?.name}
           </Line>
-          {jobs.length > 0 && <div className="in label">h24</div>}
+          {jobs.length > 0 && <div className="in label">{t.h24Label}</div>}
           {jobs.map((a) => (
-            <Line key={a.id} ch={a.runState === 'running' ? <span className="spin"><Icon name="star" /></span> : <Icon name="check" />} meta={a.runState === 'running' ? 'en cours' : a.lastEvent} onClick={() => setH24Open(true)} go="↓">
+            <Line key={a.id} ch={a.runState === 'running' ? <span className="spin"><Icon name="star" /></span> : <Icon name="check" />} meta={a.runState === 'running' ? t.running : a.lastEvent} onClick={() => setH24Open(true)} go="↓">
               {a.title}
             </Line>
           ))}
@@ -273,6 +277,7 @@ export function ProjectBand({ project }: { project: Project }) {
 
 /** Notifications : abonnement Web Push (iPhone : seulement depuis l'app installée sur l'écran d'accueil). */
 function NotifyLine() {
+  const t = useT(M)
   const supported = typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
   const standalone = typeof window !== 'undefined' && (matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true)
   const ios = /iphone|ipad/i.test(navigator.userAgent)
@@ -284,7 +289,7 @@ function NotifyLine() {
     try {
       await ensurePush({ ask: true, test: true })
       setState('on')
-      setMsg('notification de test envoyée')
+      setMsg(tr(M).testSent)
     } catch (e) {
       setState('error')
       setMsg((e as Error).message)
@@ -293,49 +298,50 @@ function NotifyLine() {
   if (!supported || (ios && !standalone)) {
     return (
       <Line ch="!" go={null} disabled>
-        notifications
+        {t.notifications}
       </Line>
     )
   }
   return (
-    <Line ch="!" go={null} meta={msg ?? (state === 'on' ? 'activées · quand une session t’attend ou a fini' : 'te prévenir quand une session t’attend ou a fini')} onClick={() => void enable()}>
-      notifications {state === 'on' ? '· activées' : state === 'busy' ? '…' : ''}
+    <Line ch="!" go={null} meta={msg ?? (state === 'on' ? t.notifyOn : t.notifyOff)} onClick={() => void enable()}>
+      {t.notifications} {state === 'on' ? t.notifyOnSuffix : state === 'busy' ? '…' : ''}
     </Line>
   )
 }
 
 export function FootBand() {
+  const t = useT(M)
   const { snap, theme, setTheme, offline, colors, logout, push } = useApp()
   const dark = theme === 'dark'
   return (
-    <section className="band demo" style={color(colors.__foot ?? 'p3')} aria-label="réglages">
+    <section className="band demo" style={color(colors.__foot ?? 'p3')} aria-label={t.settings}>
       <div className="in head">
         <h2 className="h2" style={{ margin: 0 }}>
-          machines
+          {t.machines}
         </h2>
-        <span className="chars meta strong">{offline ? 'reconnexion…' : ''}</span>
+        <span className="chars meta strong">{offline ? t.reconnecting : ''}</span>
       </div>
       {snap.machines.map((m) => (
-        <Line key={m.id} ch="@" meta={m.online === false ? 'hors ligne' : 'en ligne'} onClick={() => push({ kind: 'machine', projectId: '' })}>
+        <Line key={m.id} ch="@" meta={m.online === false ? t.offline : t.online} onClick={() => push({ kind: 'machine', projectId: '' })}>
           {m.name}
         </Line>
       ))}
       <Line ch="+" onClick={() => push({ kind: 'new', projectId: '__any' })}>
-        nouvelle session ailleurs
+        {t.newSessionElsewhere}
       </Line>
-      <Line ch='"' meta={plural(snap.conversationCounts.total, 'importée', 'importées')} onClick={() => push({ kind: 'conversations' })}>
-        conversations
+      <Line ch='"' meta={t.imported(snap.conversationCounts.total)} onClick={() => push({ kind: 'conversations' })}>
+        {t.conversationsLabel}
       </Line>
       <Line ch="↑" onClick={() => push({ kind: 'import' })}>
-        importer des conversations
+        {t.importConversations}
       </Line>
       <NotifyLine />
       <Line ch="~" go={null} onClick={() => setTheme(dark ? 'light' : 'dark')}>
-        thème {dark ? 'sombre' : 'clair'}
+        {t.theme(dark)}
       </Line>
       <PrefLines />
       <Line ch="x" go={null} onClick={logout}>
-        se déconnecter
+        {t.logout}
       </Line>
     </section>
   )

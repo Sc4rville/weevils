@@ -91,6 +91,8 @@ RestartSec=2
 KillMode=process
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=NODE_ENV=production
+# Clés (OPENAI_API_KEY, CARTESIA_API_KEY…) : une par ligne, NOM=valeur.
+EnvironmentFile=-%h/.config/weevils/env
 Environment=WEEVILS_REMOTES=pc=http://127.0.0.1:4192
 
 [Install]

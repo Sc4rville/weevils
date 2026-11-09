@@ -35,3 +35,40 @@ export function tts(text: string, voice = 'fr-FR-RemyMultilingualNeural'): Promi
     })
   })
 }
+
+// ---------------------------------------------------------------- Cartesia (Sonic, streaming)
+
+/** Clé et réglages lus dans l'environnement du service (EnvironmentFile ~/.config/weevils/env). */
+export const cartesia = () => (process.env.CARTESIA_API_KEY ? { key: process.env.CARTESIA_API_KEY, model: process.env.CARTESIA_MODEL ?? 'sonic-2', voice: process.env.CARTESIA_VOICE_ID } : null)
+
+let frVoice: string | undefined
+async function frenchVoice(key: string): Promise<string> {
+  if (frVoice) return frVoice
+  const res = await fetch('https://api.cartesia.ai/voices?language=fr&limit=20', { headers: { 'X-API-Key': key, 'Cartesia-Version': '2025-04-16' } })
+  const j = (await res.json()) as { data?: { id: string; language?: string }[] } | { id: string; language?: string }[]
+  const list = Array.isArray(j) ? j : (j.data ?? [])
+  frVoice = list.find((v) => v.language === 'fr')?.id ?? list[0]?.id
+  if (!frVoice) throw new Error('aucune voix française Cartesia')
+  return frVoice
+}
+
+/** Flux MP3 de Cartesia : les premiers octets arrivent en quelques centaines de ms, on les relaie tels quels. */
+export async function cartesiaStream(text: string): Promise<ReadableStream<Uint8Array>> {
+  const c = cartesia()
+  if (!c) throw new Error('CARTESIA_API_KEY absente')
+  const t0 = Date.now()
+  const res = await fetch('https://api.cartesia.ai/tts/bytes', {
+    method: 'POST',
+    headers: { 'X-API-Key': c.key, 'Cartesia-Version': '2025-04-16', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model_id: c.model,
+      transcript: text,
+      voice: { mode: 'id', id: c.voice ?? (await frenchVoice(c.key)) },
+      language: 'fr',
+      output_format: { container: 'mp3', sample_rate: 44100, bit_rate: 128000 },
+    }),
+  })
+  if (!res.ok || !res.body) throw new Error(`cartesia : ${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`)
+  console.log(`[rapide] cartesia premiers octets ${Date.now() - t0} ms`)
+  return res.body
+}

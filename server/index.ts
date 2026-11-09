@@ -6,7 +6,9 @@ import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, PORT } from './config.ts'
-import { openaiKey, speak, transcribe } from './transcribe.ts'
+import { openaiKey, speak, speakable, transcribe } from './transcribe.ts'
+import { cartesia, cartesiaStream } from './fast.ts'
+import { Readable } from 'node:stream'
 import { Weevils } from './core.ts'
 
 const w = new Weevils()
@@ -159,6 +161,16 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/voice$/, async (req, res) => json(res, 200, await w.voice(String((await readBody(req)).text ?? '')))],
   ['POST', /^\/api\/speak$/, async (req, res) => {
     const body = await readBody(req)
+    if (cartesia()) {
+      try {
+        const stream = await cartesiaStream(await speakable(String(body.text ?? ''), !!body.oral))
+        res.writeHead(200, { 'content-type': 'audio/mpeg', 'cache-control': 'no-store' })
+        Readable.fromWeb(stream as any).pipe(res)
+        return
+      } catch (e) {
+        console.error(`[voix] ${(e as Error).message} · repli edge-tts`)
+      }
+    }
     const mp3 = await speak(String(body.text ?? ''), !!body.oral)
     res.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': mp3.length, 'cache-control': 'no-store' })
     res.end(mp3)

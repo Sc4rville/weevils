@@ -3,6 +3,7 @@
 
 import type { Snapshot } from '../shared/api.ts'
 import { haiku } from './fast.ts'
+import { openaiKey } from './transcribe.ts'
 
 export interface VoiceVerdict {
   kind: 'answer' | 'action'
@@ -31,12 +32,31 @@ export async function voiceTurn(text: string, snap: Snapshot): Promise<VoiceVerd
     'État actuel :',
     digestSnapshot(snap),
   ].join('\n')
-  const raw = await haiku(`${system}
-
-Scarville dit : « ${text} »
-
-Réponds uniquement avec le JSON.`)
+  const raw = await quick(system, text)
   const out = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1) || '{}') as Partial<VoiceVerdict>
   const kind = out.kind === 'answer' ? 'answer' : 'action'
   return { kind, say: (out.say ?? (kind === 'action' ? 'Ok, je m’en occupe.' : '')).trim().slice(0, 300) || 'Ok, je m’en occupe.' }
+}
+
+/** Le plus rapide disponible : gpt-4o-mini en direct (~1 s), sinon haiku via l'abonnement (~2-4 s). */
+async function quick(system: string, text: string): Promise<string> {
+  const key = openaiKey()
+  if (key) {
+    const t0 = Date.now()
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4o-mini', response_format: { type: 'json_object' }, max_tokens: 150, temperature: 0.4, messages: [{ role: 'system', content: system }, { role: 'user', content: text }] }),
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!res.ok) throw new Error(String(res.status))
+      const j = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+      console.log(`[rapide] gpt-4o-mini ${Date.now() - t0} ms`)
+      return j.choices?.[0]?.message?.content ?? '{}'
+    } catch (e) {
+      console.error(`[rapide] gpt-4o-mini : ${(e as Error).message}, repli sur haiku`)
+    }
+  }
+  return haiku(`${system}\n\nYann dit : « ${text} »\n\nRéponds uniquement avec le JSON.`)
 }

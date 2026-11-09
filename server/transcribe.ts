@@ -45,6 +45,12 @@ export async function transcribe(data: Buffer, mime: string): Promise<string> {
 }
 
 /** Voix de weevboss : version orale courte (haiku, abonnement), lue par edge-tts (gratuit). MP3. */
+/** Le texte prêt à dire (version orale courte si besoin). */
+export async function speakable(text: string, oral = false): Promise<string> {
+  const input = text.replace(/```[\s\S]*?```/g, ' ').replace(/[`*_#>]/g, '').replace(/https?:\/\/\S+/g, 'un lien').replace(/\s+/g, ' ').trim().slice(0, 1500)
+  return oral ? input : await toOral(input).catch(() => input.slice(0, 300))
+}
+
 export async function speak(text: string, oral = false): Promise<Buffer> {
   const input = text
     .replace(/```[\s\S]*?```/g, ' ')

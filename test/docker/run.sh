@@ -2,13 +2,17 @@
 # Tests install.sh for real, in blank Docker containers (ubuntu:24.04). One command, ends with PASS or FAIL.
 #
 #   test/docker/run.sh            all scenarios
-#   test/docker/run.sh systemd    VPS with systemd: install from a clone, service + linger, login over http,
-#                                 idempotent re-run, --domain with Caddy, survives a reboot
-#   test/docker/run.sh plain      container without systemd: curl | bash style (piped), background fallback, re-run
-#   test/docker/run.sh edge       the hard cases: truncated download, no sudo, node 20 (NodeSource, Ubuntu apt, tarball
-#                                 shadowing), user with sudo + file:// repo + --dir, re-run after editing the config,
-#                                 --lang fr only, bad options, a Caddyfile that already serves another site
+#   test/docker/run.sh systemd    VPS with systemd: install from a clone, service + linger, login over http, the
+#                                 end screen without a domain, idempotent re-run, --domain with Caddy, a port change
+#                                 that moves the Caddy site, survives a reboot, --uninstall then a new install
+#   test/docker/run.sh plain      container without systemd, as root: curl | bash style (piped), Claude Code from its
+#                                 official installer, WEEVILS_SAFE=1, background fallback, re-run, --uninstall --purge
+#   test/docker/run.sh edge       the hard cases: truncated download, no terminal without --yes, no sudo, node 20
+#                                 (NodeSource, Ubuntu apt, tarball shadowing), user with sudo + file:// repo + --dir,
+#                                 re-run after editing the config, --lang fr only, bad options, --lan, a Caddyfile that
+#                                 already serves another site (and a port change)
 #
+# Claude Code is a stub (/usr/local/bin/claude) everywhere but in the plain scenario, which installs the real one.
 # It installs the HEAD commit of this repo (commit first). KEEP=1 keeps the containers for a look.
 set -uo pipefail
 root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
@@ -32,6 +36,17 @@ cleanup() {
 trap cleanup EXIT
 
 say() { printf '\n\e[30;43m %s \e[0m\n' "$*"; }
+# The VPS this runs on has 'heavy' (waits for a calm machine, then nice); anywhere else, the command runs as is.
+run_heavy() { if command -v heavy >/dev/null 2>&1; then heavy "$@"; else "$@"; fi; }
+# fake_claude <container> [home of a logged-in user] — a Claude Code stub in /usr/local/bin (the real one is a big
+# download), and a credentials file in that home when given.
+fake_claude() {
+  docker exec "$1" bash -c 'printf "#!/bin/sh\necho \"2.0.0 (Claude Code)\"\n" >/usr/local/bin/claude && chmod 755 /usr/local/bin/claude'
+  if [ -n "${2:-}" ]; then
+    docker exec "$1" bash -c "mkdir -p $2/.claude && echo '{}' >$2/.claude/.credentials.json && chown -R \$(stat -c %u:%g $2) $2/.claude"
+  fi
+}
+QR='█|▀|▄'
 check() { # check "description" command… (runs on the host; use inside/as_test for the container)
   local d=$1; shift
   if "$@" >"$work/out" 2>&1; then passes=$((passes + 1)); printf '  \e[32mok\e[0m   %s\n' "$d"
@@ -49,7 +64,7 @@ echo "testing $(git -C "$work/weevils" log -1 --format='%h %s')"
 # ---------------------------------------------------------------- systemd
 run_systemd() {
   say "systemd: blank Ubuntu 24.04 VPS, regular user with sudo"
-  heavy docker build -q -t "$image" -f "$root/test/docker/systemd.Dockerfile" "$root/test/docker" >/dev/null || { fails=$((fails + 1)); echo "  FAIL docker build"; return; }
+  run_heavy docker build -q -t "$image" -f "$root/test/docker/systemd.Dockerfile" "$root/test/docker" >/dev/null || { fails=$((fails + 1)); echo "  FAIL docker build"; return; }
   local c=weevils-test-sd-$tag
   containers+=("$c")
   docker run -d --name "$c" --hostname testbox --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock "$image" >/dev/null
@@ -57,6 +72,7 @@ run_systemd() {
   docker cp "$work/weevils.git" "$c:/srv/weevils.git"
   docker cp "$work/weevils" "$c:/home/test/weevils"
   docker exec "$c" chown -R test:test /srv/weevils.git /home/test/weevils
+  fake_claude "$c" /home/test
   as_test() { docker exec -u test -w /home/test -e XDG_RUNTIME_DIR=/run/user/1000 "$c" bash -c "$1"; }
 
   check "blank: no node, git, curl, tmux" as_test '! command -v node && ! command -v git && ! command -v curl && ! command -v tmux'
@@ -75,6 +91,9 @@ run_systemd() {
   check "commands installed: wv, weevils, weevils-service, hook" as_test 'test -x ~/.local/bin/wv && test -x ~/.local/bin/weevils && test -x ~/.local/bin/weevils-service && test -x ~/.local/bin/weevils-hook'
   check "Claude Code hooks registered" as_test '[ "$(jq "[.hooks[][].hooks[].command | select(endswith(\"weevils-hook\"))] | length" ~/.claude/settings.json)" = 6 ]'
   check "end screen shows the login link" grep -q "localhost:4179/#k=" "$work/install1.log"
+  check "no domain: no QR code, the ways in explained instead" bash -c "! grep -qE '$QR' '$work/install1.log' && grep -q -- '--domain <host>' '$work/install1.log' && grep -q 'tailscale serve --bg 4179' '$work/install1.log' && grep -q -- 'install.sh --lan' '$work/install1.log' && grep -q 'ssh -L 4179:127.0.0.1:4179' '$work/install1.log'"
+  check "Claude Code logged in: 'weevils is ready', permission prompts announced" bash -c "grep -q 'weevils is ready' '$work/install1.log' && grep -q 'without permission prompts' '$work/install1.log'"
+  check "Claude settings: hooks and the bypass dialog pre-accepted, no global env" as_test 'jq -e ".skipDangerousModePermissionPrompt == true and .env == null" ~/.claude/settings.json && test -f ~/.claude/settings.json.bak-weevils && ! grep -q "^WEEVILS_SAFE=1" ~/.config/weevils/env'
   # Login from "outside" (x-forwarded-for: not a local request), over plain http.
   check "login with the code works over http, cookie without Secure" as_test '
     code=$(cat ~/.config/weevils/secret)
@@ -108,6 +127,12 @@ run_systemd() {
     grep -i "^set-cookie: wv=" /tmp/h3 | grep -qi secure'
   check "WEEVILS_PUBLIC_URL set from --domain, name kept" as_test 'grep -qx WEEVILS_PUBLIC_URL=https://weevils.test ~/.config/weevils/env && grep -qx WEEVILS_USER_NAME=Test ~/.config/weevils/env'
   check "end screen shows the https link" grep -q "https://weevils.test/#k=" "$work/install3.log"
+  check "a domain that does not resolve is said at once" grep -q "weevils.test does not resolve yet" "$work/install3.log"
+
+  say "systemd: re-run with another port: the Caddy site follows"
+  check "install.sh --port 4199 exits 0" as_test 'cd weevils && ./install.sh --yes --port 4199'
+  check "Caddy site on 4199, tls kept, HTTPS answers" as_test 'grep -q "reverse_proxy 127.0.0.1:4199" /etc/caddy/weevils.caddy && grep -q "tls internal" /etc/caddy/weevils.caddy && for i in $(seq 20); do curl -sk --resolve weevils.test:443:127.0.0.1 https://weevils.test/api/me | grep -q "\"authed\":false" && exit 0; sleep 1; done; exit 1'
+  check "back to 4179" as_test 'cd weevils && ./install.sh --yes --port 4179 >/dev/null && grep -q "reverse_proxy 127.0.0.1:4179" /etc/caddy/weevils.caddy && curl -sf http://127.0.0.1:4179/api/me'
 
   say "systemd: a second machine (--secondary), federated by the first through a reverse SSH tunnel"
   local c2=weevils-test-sd2-$tag net=weevils-test-net-$tag
@@ -128,6 +153,7 @@ run_systemd() {
   docker cp "$work/weevils.git" "$c2:/srv/weevils.git"
   docker cp "$work/weevils" "$c2:/home/test/weevils"
   docker exec "$c2" bash -c 'chmod 700 /home/test/.ssh && chmod 600 /home/test/.ssh/id_ed25519 && chown -R test:test /home/test/.ssh /srv/weevils.git /home/test/weevils'
+  fake_claude "$c2" /home/test
   as_2() { docker exec -u test -w /home/test -e XDG_RUNTIME_DIR=/run/user/1000 "$c2" bash -c "$1"; }
   echo "  \$ cd weevils && ./install.sh --yes --name Test --secondary mainbox"
   if as_2 'cd weevils && ./install.sh --yes --name Test --secondary mainbox' >"$work/install4.log" 2>&1; then
@@ -144,6 +170,17 @@ run_systemd() {
   docker restart "$c" >/dev/null
   docker exec "$c" systemctl is-system-running --wait >/dev/null 2>&1
   check "weevilsd back after reboot, without login (linger)" as_test 'for i in $(seq 30); do curl -sf http://127.0.0.1:4179/api/me && exit 0; sleep 1; done; exit 1'
+
+  say "systemd: --uninstall, then a new install"
+  as_test 'cat ~/.config/weevils/secret' >"$work/secret1"
+  check "install.sh --uninstall exits 0" as_test 'cd weevils && ./install.sh --yes --uninstall'
+  cp "$work/out" "$work/uninstall.log"; sed 's/^/  │ /' "$work/uninstall.log"
+  check "weevilsd stopped, units and commands gone" as_test '! systemctl --user is-active weevilsd && ! test -e ~/.config/systemd/user/weevilsd.service && ! test -e ~/.local/bin/wv && ! test -e ~/.local/bin/weevils && ! test -e ~/.local/bin/weevils-service && ! test -e ~/.local/bin/weevils-hook && ! curl -sf -m 2 http://127.0.0.1:4179/api/me'
+  check "weevils hooks gone from the Claude settings" as_test '[ "$(jq "[.hooks[]?[]?.hooks[]?.command | select(endswith(\"weevils-hook\"))] | length" ~/.claude/settings.json)" = 0 ]'
+  check "Caddy site and import gone, Caddyfile valid, public URL cleared" as_test '! test -e /etc/caddy/weevils.caddy && ! grep -q weevils.caddy /etc/caddy/Caddyfile && sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile && grep -qx "WEEVILS_PUBLIC_URL=" ~/.config/weevils/env'
+  check "settings and access code kept" as_test 'grep -qx WEEVILS_USER_NAME=Test ~/.config/weevils/env && test -s ~/.config/weevils/secret'
+  check "a new install works, same access code" as_test 'cd weevils && ./install.sh --yes >/dev/null && systemctl --user is-active weevilsd && curl -sf http://127.0.0.1:4179/api/me && [ "$(jq "[.hooks[][].hooks[].command | select(endswith(\"weevils-hook\"))] | length" ~/.claude/settings.json)" = 6 ]'
+  check "same access code" bash -c "[ \"\$(docker exec -u test $c cat /home/test/.config/weevils/secret)\" = \"\$(cat '$work/secret1')\" ]"
 }
 
 # ---------------------------------------------------------------- plain (no systemd)
@@ -163,12 +200,17 @@ run_plain() {
   check "cloned into ~/weevils" in_c 'test -f ~/weevils/server/index.ts && git -C ~/weevils log -1 --oneline'
   check "background mode, weevilsd running" in_c '~/.local/bin/weevils-service status | grep -q "weevilsd: running"'
   check "GET /api/me answers, app served" in_c 'curl -sf http://127.0.0.1:4179/api/me && curl -sf http://127.0.0.1:4179/ | grep -qi "<div id=\"root\""'
-  check "messages in French" grep -q "weevils est prêt" "$work/plain1.log"
+  check "messages in French" grep -q "code d'accès" "$work/plain1.log"
   check "the fallback is explained" grep -q "weevils-service start|stop|status|logs" "$work/plain1.log"
+  check "Claude Code installed by its official installer" in_c '~/.local/bin/claude --version'
+  check "not logged in yet: 'presque prêt', run claude" grep -q "presque prêt : lance claude" "$work/plain1.log"
+  check "root: WEEVILS_SAFE=1, said on the end screen, no bypass in the Claude settings" bash -c "docker exec $c grep -qx WEEVILS_SAFE=1 /root/.config/weevils/env && grep -q 'WEEVILS_SAFE=1' '$work/plain1.log' && ! docker exec $c jq -e .skipDangerousModePermissionPrompt /root/.claude/settings.json"
   count() { docker exec "$c" bash -c 'n=0; for f in /proc/[0-9]*/cmdline; do tr "\0" " " <"$f" 2>/dev/null | grep -q "^[^ ]*node server/index.ts" && n=$((n+1)); done; echo $n'; }
   check "re-run (piped again) exits 0" docker exec -i -w /root -e WEEVILS_REPO=/srv/weevils.git "$c" bash -s -- --yes --lang fr <"$work/weevils/install.sh"
   check "still one weevilsd process" test "$(count)" = 1
   check "stop / start" in_c '~/.local/bin/weevils-service stop && ! curl -sf -m 2 http://127.0.0.1:4179/api/me; ~/.local/bin/weevils-service start && for i in $(seq 20); do curl -sf http://127.0.0.1:4179/api/me && exit 0; sleep 0.5; done; exit 1'
+  check "--uninstall --purge (piped) exits 0" docker exec -i "$c" bash -s -- --yes --lang fr --uninstall --purge <"$work/weevils/install.sh"
+  check "no weevilsd left, commands, settings and data gone, the clone kept" bash -c "[ \"\$(count)\" = 0 ] && docker exec $c bash -c '! test -e ~/.local/bin/weevils-service && ! test -e ~/.config/weevils && ! test -e ~/.local/share/weevils && test -f ~/weevils/install.sh'"
 }
 
 # ---------------------------------------------------------------- edge cases (no systemd: plain containers)
@@ -183,8 +225,9 @@ box() {
   docker exec "$c" chmod -R a+rX /srv/weevils.git /tmp/install.sh
   # Test harness only: the local "GitHub" belongs to the host's uid, which git would call dubious ownership.
   docker exec "$c" bash -c 'printf "[safe]\n\tdirectory = *\n" >/etc/gitconfig'
+  fake_claude "$c"
   if [ -n "${2:-}" ]; then
-    heavy docker exec -e DEBIAN_FRONTEND=noninteractive "$c" bash -c "$2" >"$work/setup-$1.log" 2>&1 || { echo "  setup of $1 failed:"; tail -20 "$work/setup-$1.log"; }
+    run_heavy docker exec -e DEBIAN_FRONTEND=noninteractive "$c" bash -c "$2" >"$work/setup-$1.log" 2>&1 || { echo "  setup of $1 failed:"; tail -20 "$work/setup-$1.log"; }
   fi
 }
 # A regular user "u" with passwordless sudo (what a VPS provider gives you).
@@ -212,6 +255,12 @@ run_edge() {
   check "--domain 'a b{' → exit 2" bash -c "docker exec $c bash /tmp/install.sh --yes --domain 'a b{' >/dev/null 2>&1; [ \$? = 2 ]"
   check "still nothing installed" docker exec "$c" bash -c '! command -v git && ! test -e ~/.config/weevils'
 
+  say "edge: no terminal and no --yes: nothing is installed without consent"
+  docker exec -i -e WEEVILS_REPO=/srv/weevils.git "$c" bash -s -- --lang en <"$work/weevils/install.sh" >"$work/notty.log" 2>&1
+  echo $? >"$work/notty.rc"
+  check "exits non-zero, says to use --yes or a terminal" bash -c "[ \$(cat '$work/notty.rc') != 0 ] && grep -q 'run with --yes or from a terminal' '$work/notty.log'"
+  check "still nothing installed" docker exec "$c" bash -c '! command -v git && ! test -e ~/.config/weevils'
+
   say "edge: regular user without sudo, tmux missing → clear refusal"
   box nosudo 'apt-get update -qq && apt-get install -y -qq git curl jq python3 ca-certificates >/dev/null && useradd -m -s /bin/bash u'
   docker exec -i -u u -w /home/u -e WEEVILS_REPO=/srv/weevils.git "$c" bash -s -- --yes --lang en <"$work/weevils/install.sh" >"$work/nosudo.log" 2>&1
@@ -235,6 +284,7 @@ run_edge() {
   check "nothing in the home belongs to root" docker exec "$c" bash -c '[ -z "$(find /home/u -user root | head -1)" ]'
   check "config: name with a space, lang fr, mode 600" docker exec -u u "$c" bash -c 'grep -qx "WEEVILS_USER_NAME=Ana Maria" ~/.config/weevils/env && grep -qx WEEVILS_LANG=fr ~/.config/weevils/env && [ "$(stat -c %a ~/.config/weevils/env)" = 600 ]'
   check "the server reads the name with its space" docker exec -u u "$c" bash -c 'curl -sf http://127.0.0.1:4179/api/snapshot | grep -q "Ana Maria"'
+  check "Claude Code not logged in: 'presque prêt', run claude once" grep -q "presque prêt : lance claude" "$work/ns20.log"
   check "--lang fr: no English line" bash -c "! grep -E 'checking the system|getting weevils|your settings|dependencies and app|weevils is ready|access code|login link|waiting for' '$work/ns20.log'"
 
   say "edge: re-run after editing the config by hand"
@@ -245,7 +295,7 @@ run_edge() {
   check "exits 0" test "$(cat "$work/ns20b.rc")" = 0
   check "every edited value kept (port, orchestrator, key, name, note)" docker exec -u u "$c" bash -c 'diff /tmp/env.before ~/.config/weevils/env'
   check "weevilsd moved to the edited port 4185" docker exec -u u "$c" bash -c 'for i in $(seq 20); do curl -sf http://127.0.0.1:4185/api/me >/dev/null && ! curl -sf -m 1 http://127.0.0.1:4179/api/me && exit 0; sleep 0.5; done; exit 1'
-  check "re-run speaks the language of the config (fr) without --lang" grep -q "weevils est prêt" "$work/ns20b.log"
+  check "re-run speaks the language of the config (fr) without --lang" grep -q "code d'accès" "$work/ns20b.log"
   check "the API key never shows in the output" bash -c "! grep -q SECRET42 '$work/ns20b.log' '$work/ns20.log'"
   check "config still mode 600" docker exec -u u "$c" bash -c '[ "$(stat -c %a ~/.config/weevils/env)" = 600 ]'
 
@@ -267,6 +317,17 @@ run_edge() {
   check "says which node shadows the new one" grep -q "older node comes first in your PATH.*/usr/local/bin/node" "$work/tar20.log"
   check "weevilsd runs on node 22 from /usr/bin" docker exec "$c" bash -c 'grep -qx "WEEVILS_NODE=/usr/bin/node" ~/.config/weevils/service.conf && curl -sf http://127.0.0.1:4179/api/me'
 
+  say "edge: --lan, for a phone on the same home network"
+  box lan
+  docker exec -i -e WEEVILS_REPO=/srv/weevils.git "$c" bash -s -- --yes --lang en --lan <"$work/weevils/install.sh" >"$work/lan.log" 2>&1
+  echo $? >"$work/lan.rc"
+  local ip; ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$c")
+  sed -n '/weevils is ready\|almost ready/,$p' "$work/lan.log" | sed 's/^/  │ /'
+  check "exits 0, WEEVILS_HOST=0.0.0.0" bash -c "[ \$(cat '$work/lan.rc') = 0 ] && docker exec $c grep -qx WEEVILS_HOST=0.0.0.0 /root/.config/weevils/env"
+  check "end screen: the LAN address ($ip) with a QR code" bash -c "grep -q 'http://$ip:4179/#k=' '$work/lan.log' && grep -qE '$QR' '$work/lan.log'"
+  check "a private address: no warning, but http limits said" bash -c "! grep -q 'not a private network address' '$work/lan.log' && grep -q 'neither the microphone nor notifications' '$work/lan.log'"
+  check "weevilsd answers on the LAN address" docker exec "$c" curl -sf "http://$ip:4179/api/me"
+
   say "edge: Caddy already serves another site (no systemd)"
   box caddy 'apt-get update -qq && apt-get install -y -qq caddy curl >/dev/null && printf "other.test {\n\ttls internal\n\trespond \"other site\"\n}\n" >/etc/caddy/Caddyfile && cp /etc/caddy/Caddyfile /tmp/Caddyfile.orig && caddy start --config /etc/caddy/Caddyfile >/dev/null 2>&1'
   other() { docker exec "$c" bash -c 'for i in $(seq 20); do [ "$(curl -sk --resolve other.test:443:127.0.0.1 https://other.test)" = "other site" ] && exit 0; sleep 0.5; done; exit 1'; }
@@ -286,6 +347,13 @@ run_edge() {
   check "both Caddy files exactly as before, config still valid" docker exec "$c" bash -c 'cmp /tmp/cf.mid /etc/caddy/Caddyfile && cmp /tmp/wc.mid /etc/caddy/weevils.caddy && caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1'
   check "public URL back to the working domain" docker exec "$c" grep -qx WEEVILS_PUBLIC_URL=https://weevils.test /root/.config/weevils/env
   check "end screen shows the working https link" grep -q "https://weevils.test/#k=" "$work/caddy2.log"
+  check "the other site still answers" other
+  echo '  $ install.sh --port 4199     (no --domain: the site set up before follows the new port)'
+  docker exec -i -e WEEVILS_REPO=/srv/weevils.git "$c" bash -s -- --yes --lang en --port 4199 <"$work/weevils/install.sh" >"$work/caddy3.log" 2>&1
+  echo $? >"$work/caddy3.rc"
+  check "exits 0, the Caddy site moved to 4199 (tls internal kept)" bash -c "[ \$(cat '$work/caddy3.rc') = 0 ] && docker exec $c bash -c 'grep -q \"reverse_proxy 127.0.0.1:4199\" /etc/caddy/weevils.caddy && grep -q \"tls internal\" /etc/caddy/weevils.caddy' || { tail -30 '$work/caddy3.log'; exit 1; }"
+  check "weevils answers over HTTPS on the new port" docker exec "$c" bash -c 'for i in $(seq 20); do curl -sk --resolve weevils.test:443:127.0.0.1 https://weevils.test/api/me | grep -q "\"authed\":false" && curl -sf http://127.0.0.1:4199/api/me >/dev/null && exit 0; sleep 0.5; done; exit 1'
+  check "end screen shows the https link" grep -q "https://weevils.test/#k=" "$work/caddy3.log"
   check "the other site still answers" other
 }
 

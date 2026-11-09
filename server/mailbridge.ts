@@ -1,5 +1,7 @@
 // Le pont e-mail : des agents externes (gepetto, instinct…) écrivent dans les sessions weevils par e-mail.
 //
+//   Adresse         un alias de la boîte perso (moi+weevils@gmail.com) ; un filtre Gmail range ces mails sous le libellé « weevils »
+//                   hors boîte de réception. Le pont ne surveille que ce libellé : aucun autre mail n'est lu, marqué ou déplacé.
 //   Objet           « [mygame] … » session disponible du projet (sinon une nouvelle) · « [session:2cbb0bbd] » cette session
 //                   « [weevboss] » l'orchestrateur · « [new:projet] » (ou « [new:projet:codex] ») une nouvelle session
 //   Corps           le message (citation du mail précédent et signature retirées)
@@ -23,8 +25,13 @@ import { tr } from './i18n.ts'
 import M from './i18n/mail.ts'
 
 export interface MailConfig {
+  /** Adresse du pont : reçoit et répond (From). Typiquement un alias « +weevils » de la boîte perso. */
   address: string
+  /** Compte qui se connecte (IMAP / SMTP) : l'adresse sans « +alias », sauf WEEVILS_MAIL_LOGIN. */
+  login: string
   password: string
+  /** Le seul dossier surveillé : le libellé Gmail posé par le filtre « à : +weevils ». Jamais INBOX. */
+  label: string
   imap: { host: string; port: number }
   smtp: { host: string; port: number }
   /** Serveur dont on croit l'en-tête Authentication-Results (le premier du message). */
@@ -46,9 +53,14 @@ export function mailConfig(env: Record<string, string | undefined> = process.env
   const password = env.WEEVILS_MAIL_PASSWORD?.replace(/\s+/g, '')
   if (!address || !password) return null
   const gmail = /@(gmail|googlemail)\.com$/.test(address)
+  const label = env.WEEVILS_MAIL_LABEL?.trim() || 'weevils'
+  // Jamais la boîte de réception : le pont ne doit voir que les mails rangés sous son libellé.
+  if (/^inbox$/i.test(label)) return null
   return {
     address,
+    login: env.WEEVILS_MAIL_LOGIN?.trim().toLowerCase() || address.replace(/\+[^@]*@/, '@'),
     password,
+    label,
     imap: hostPort(env.WEEVILS_MAIL_IMAP, gmail ? 'imap.gmail.com' : `imap.${address.split('@')[1]}`, 993),
     smtp: hostPort(env.WEEVILS_MAIL_SMTP, gmail ? 'smtp.gmail.com' : `smtp.${address.split('@')[1]}`, 465),
     authserv: (env.WEEVILS_MAIL_AUTHSERV?.trim() || (gmail ? 'mx.google.com' : '')).toLowerCase(),
@@ -99,6 +111,12 @@ export function isAutomatic(mail: Mail): string | null {
   return null
 }
 
+/** Adressé à l'alias du pont (To, Cc, Delivered-To, X-Original-To) : le reste de la boîte ne le concerne pas. */
+export function addressedTo(mail: Mail, address: string): boolean {
+  const all = ['to', 'cc', 'delivered-to', 'x-original-to'].flatMap((h) => mail.all(h)).join(',').toLowerCase()
+  return [...all.matchAll(/[^\s<>"',;:]+@[^\s<>"',;]+/g)].some((m) => m[0] === address)
+}
+
 const KEY_SUBJECT = /\[key:([^\]\s]+)\]/i
 const KEY_BODY = /^[ \t]*(?:key|clé|cle|secret)[ \t]*:[ \t]*(\S+)[ \t]*$/im
 
@@ -111,9 +129,10 @@ const sameSecret = (a: string, b: string) => {
 export type Screen = { ok: true; author: AuthorConfig; how: string } | { ok: false; reason: string }
 
 /** Qui écrit, et a-t-il le droit : expéditeur déclaré + (SPF/DKIM alignés ou secret partagé). */
-export function screen(mail: Mail, cfg: Pick<MailConfig, 'address' | 'authserv'>, list: AuthorConfig[]): Screen {
+export function screen(mail: Mail, cfg: Pick<MailConfig, 'address' | 'login' | 'authserv'>, list: AuthorConfig[]): Screen {
   if (!mail.from) return { ok: false, reason: tr(M).noSender }
-  if (mail.from === cfg.address) return { ok: false, reason: tr(M).fromBridge }
+  if (mail.from === cfg.address || mail.from === cfg.login) return { ok: false, reason: tr(M).fromBridge }
+  if (!addressedTo(mail, cfg.address)) return { ok: false, reason: tr(M).notToBridge }
   const auto = isAutomatic(mail)
   if (auto) return { ok: false, reason: tr(M).automatic(auto) }
   const candidates = list.filter((a) => a.id !== BOSS && a.emails.includes(mail.from!))
@@ -234,7 +253,7 @@ export class MailBridge {
 
   start() {
     const ext = authors().filter((a) => a.id !== BOSS)
-    console.log('[mail]', `pont actif · ${this.cfg.address} · IMAP ${this.cfg.imap.host} · auteurs : ${ext.map((a) => `${a.id} (${a.emails.length ? a.emails.join(', ') : 'aucune adresse'}${a.secret ? ', secret' : ''})`).join(' · ') || 'aucun'}`)
+    console.log('[mail]', `pont actif · ${this.cfg.address} · IMAP ${this.cfg.imap.host} « ${this.cfg.label} » · auteurs : ${ext.map((a) => `${a.id} (${a.emails.length ? a.emails.join(', ') : 'aucune adresse'}${a.secret ? ', secret' : ''})`).join(' · ') || 'aucun'}`)
     void this.run()
   }
 
@@ -246,12 +265,13 @@ export class MailBridge {
   private async run() {
     let backoff = 2000
     while (!this.stopped) {
-      const c = new Imap({ ...this.cfg.imap, user: this.cfg.address, pass: this.cfg.password })
+      const c = new Imap({ ...this.cfg.imap, user: this.cfg.login, pass: this.cfg.password })
       this.imap = c
       try {
         await c.connect()
         await c.login()
-        const box = await c.select('INBOX')
+        // Seulement le libellé du pont (absent : erreur et nouvel essai, jamais de repli sur INBOX).
+        const box = await c.select(this.cfg.label)
         if (box.uidValidity !== this.state.uidValidity) {
           // Première connexion (ou boîte recréée) : on part de maintenant, l'historique n'est pas rejoué.
           console.log('[mail]', `boîte ${this.state.uidValidity ? 'recréée' : 'découverte'} : on part du message ${box.uidNext}`)
@@ -388,7 +408,7 @@ export class MailBridge {
   /** Répond à l'expéditeur seul, dans le même fil. `target` null : message d'erreur, le fil ne mène nulle part. */
   private async reply(mail: Mail, mid: string, author: AuthorConfig, target: string | null, text: string, sessionId?: string) {
     const to = mail.from!
-    if (to === this.cfg.address) return console.log('[mail]', 'réponse annulée : destinataire = adresse du pont')
+    if (to === this.cfg.address || to === this.cfg.login) return console.log('[mail]', 'réponse annulée : destinataire = adresse du pont')
     const domain = this.cfg.address.split('@')[1]
     const messageId = `<weevils-${crypto.randomUUID()}@${domain}>`
     const footer = sessionId ? `\n\n${tr(M).footer(sessionId.slice(0, 8))}` : ''
@@ -410,7 +430,7 @@ export class MailBridge {
     })
     if (target) this.state.threads[messageId] = target
     this.persist()
-    await smtpSend({ ...this.cfg.smtp, user: this.cfg.address, pass: this.cfg.password, from: this.cfg.address, to, data })
+    await smtpSend({ ...this.cfg.smtp, user: this.cfg.login, pass: this.cfg.password, from: this.cfg.address, to, data })
     console.log('[mail]', `réponse envoyée à ${to} · ${!target ? 'erreur' : target === BOSS ? BOSS : `session ${target.slice(0, 8)}`} · ${oneLine(text, 60)}`)
   }
 }

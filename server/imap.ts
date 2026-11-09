@@ -158,7 +158,7 @@ export class Imap extends EventEmitter {
   }
 
   /** SELECT : UIDVALIDITY et UIDNEXT de la boîte. */
-  async select(box = 'INBOX'): Promise<{ uidValidity: number; uidNext: number }> {
+  async select(box: string): Promise<{ uidValidity: number; uidNext: number }> {
     const u = await this.cmd(`SELECT ${quote(box)}`)
     const num = (re: RegExp) => Number(u.map((x) => re.exec(x.line)?.[1]).find(Boolean) ?? 0)
     return { uidValidity: num(/UIDVALIDITY (\d+)/i), uidNext: num(/UIDNEXT (\d+)/i) }

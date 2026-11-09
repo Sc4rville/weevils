@@ -16,6 +16,7 @@ export default defineMessages({
     // Journal : pourquoi un mail est ignoré.
     noSender: 'sans expéditeur',
     fromBridge: 'envoyé par l’adresse du pont (boucle)',
+    notToBridge: 'pas adressé à l’alias du pont',
     automatic: (why: string) => `automatique (${why})`,
     unknownSender: 'expéditeur inconnu',
     wrongSecret: 'secret faux',
@@ -38,6 +39,7 @@ export default defineMessages({
     footer: (id: string) => `— session ${id} · reply to this mail to continue, or put “[session:${id}]” in the subject.`,
     noSender: 'no sender',
     fromBridge: 'sent from the bridge address (loop)',
+    notToBridge: 'not addressed to the bridge alias',
     automatic: (why: string) => `automatic (${why})`,
     unknownSender: 'unknown sender',
     wrongSecret: 'wrong secret',

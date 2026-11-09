@@ -25,7 +25,7 @@ iPhone (app web installée) ──HTTPS + SSE──▶ Caddy ──▶ weevilsd 
 
 D'autres agents que weevboss peuvent écrire dans les sessions par e-mail : gepetto (ChatGPT), instinct… Chacun est un **auteur** déclaré dans `~/.config/weevils/env` (`WEEVILS_AUTHOR_<ID>=nom | couleur | e-mail | secret`) ; ses messages s'affichent dans les fils signés de son nom, dans sa couleur.
 
-- **Adresse** : une boîte dédiée (`WEEVILS_MAIL_ADDRESS` / `WEEVILS_MAIL_PASSWORD`), qui reçoit et qui répond. Gmail par défaut (IMAP + mot de passe d'application).
+- **Adresse** : un alias de ta boîte Gmail, `toi+weevils@gmail.com` (`WEEVILS_MAIL_ADDRESS`, mot de passe d'application dans `WEEVILS_MAIL_PASSWORD`), qui reçoit et qui répond (en From). Un filtre Gmail « à : toi+weevils@gmail.com » applique le libellé `weevils` et ignore la boîte de réception ; le pont ne surveille que ce libellé (jamais INBOX), ne traite que les mails adressés à l'alias, et ne lit, ne marque, ne déplace ni ne supprime aucun autre mail.
 - **Objet = cible** : `[mygame]` session disponible du projet (sinon une nouvelle) · `[session:2cbb0bbd]` cette session · `[weevboss]` l'orchestrateur · `[new:projet]` (ou `[new:projet:codex]`) une nouvelle session. **Corps** = le message.
 - **Réponse** : renvoyée à l'expéditeur, dans le même fil (In-Reply-To) ; répondre à ce mail continue la même session.
 - **Réception** : IMAP IDLE (push, quelques dizaines de ms), relancé toutes les 30 s (sondage de secours), reconnexion automatique, déduplication par Message-ID. Journal : `journalctl --user -u weevilsd | grep '\[mail\]'`.

@@ -40,6 +40,7 @@ export function AgentBand() {
   const open = expanded === 'agent'
   const body = useRef<HTMLDivElement>(null)
   const form = useRef<HTMLFormElement>(null)
+  const swipe = useRef<{ y: number; top: number } | null>(null)
   const [draft, setDraft] = useState({ text: '', n: 0, reset: false })
   const heard = useRef('')
   const last = snap.main[snap.main.length - 1]
@@ -57,7 +58,13 @@ export function AgentBand() {
   return (
     <section className="band agent tone" style={color('agent')} aria-label="weevboss, l’orchestrateur">
       {/* L'espace du haut reste vide pour l'instant : Scarville dira ce qu'on y met. */}
-      <div className="agent-space">
+      {/* Ouverte : un tap dans l'espace vide, le chevron, ou glisser vers le bas la réduit. */}
+      <div className="agent-space" onClick={(e) => open && e.target === e.currentTarget && setExpanded(null)}>
+        {open && (
+          <button className="agent-close" onClick={() => setExpanded(null)} aria-label="réduire la conversation">
+            ⌄
+          </button>
+        )}
         <VoiceLogo take={() => { const t = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return t }} onText={(t) => { heard.current = heard.current ? `${heard.current} ${t}` : t; setDraft((d) => ({ text: t, n: d.n + 1, reset: false })) }} onSend={() => form.current?.requestSubmit()} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
       </div>
 
@@ -80,10 +87,21 @@ export function AgentBand() {
         </button>
       )}
       <Collapse open={open} id="agent-body">
-        <div ref={body} className="chat" aria-live="polite">
+        <motion.div
+          ref={body}
+          className="chat"
+          aria-live="polite"
+          onTouchStart={(e) => (swipe.current = { y: e.touches[0].clientY, top: body.current?.scrollTop ?? 0 })}
+          onTouchEnd={(e) => {
+            const s = swipe.current
+            swipe.current = null
+            // Tirer vers le bas depuis le haut du fil (déjà en haut) : réduit.
+            if (s && s.top <= 0 && e.changedTouches[0].clientY - s.y > 90) setExpanded(null)
+          }}
+        >
           <Messages messages={snap.main} author="weevboss" working={snap.mainWorking} />
           {snap.mainWorking && <Working author="weevboss" />}
-        </div>
+        </motion.div>
       </Collapse>
 
       {/* Écrire ici n'ouvre pas la conversation : elle s'ouvre à l'envoi, pour lire la réponse. */}

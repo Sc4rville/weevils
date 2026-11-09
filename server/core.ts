@@ -256,8 +256,37 @@ export class Weevils {
 
   // ---------------------------------------------------------------- sessions
 
+  /** Rattachement par le contenu, quand le dossier de travail n'est pas un repo (session lancée depuis ~/Documents, /tmp…). */
+  private inferred = new Map<string, { count: number; where: ReturnType<typeof place> | null }>()
+  private inferPlace(t: Transcript): ReturnType<typeof place> | null {
+    const cached = this.inferred.get(t.id)
+    if (cached && cached.count === t.messages.length) return cached.where
+    const repos = new Set<string>(this.allRepos())
+    for (const e of this.catalogCache?.list ?? []) for (const r of e.repos) repos.add(r)
+    const score = new Map<string, number>()
+    const bump = (repo: string, n: number) => score.set(repo, (score.get(repo) ?? 0) + n)
+    const text = t.messages.map((m) => m.text).join('\n')
+    // Chemins : ~/projects/<repo>/… comptent fort.
+    for (const m of text.matchAll(/projects\/(\.night\/)?([A-Za-z0-9][\w.-]*)/g)) if (repos.has(m[2])) bump(m[2], 3)
+    // Noms de repo ou de famille cités dans le fil (≥ 4 lettres, pour éviter le bruit).
+    const low = ` ${norm(text)} `
+    for (const repo of repos) {
+      const fam = familyOf(repo)
+      for (const term of new Set([repo.toLowerCase(), fam])) {
+        if (term.length < 4) continue
+        const n = low.split(` ${term} `).length - 1
+        if (n) bump(repo, n)
+      }
+    }
+    const best = [...score.entries()].sort((a, b) => b[1] - a[1])[0]
+    const where = best && best[1] >= 2 ? { projectId: familyOf(best[0]), projectName: familyOf(best[0]), kind: 'repo' as const, repo: best[0] } : null
+    this.inferred.set(t.id, { count: t.messages.length, where })
+    return where
+  }
+
   private toSession(t: Transcript, now: number): Session {
-    const where = place(t.cwd, PROJECT_ROOTS)
+    let where = place(t.cwd, PROJECT_ROOTS)
+    if (where.kind === 'invented') where = this.inferPlace(t) ?? where
     const pane = this.paneFor(t.id)
     const hook = this.hooks.get(t.id)
     const hookAlive = hook?.pid ? pidAlive(hook.pid) : undefined
@@ -349,8 +378,9 @@ export class Weevils {
   localProjects(sessions: Session[]): Project[] {
     const map = new Map<string, Project>()
     for (const s of sessions) {
-      const where = place(s.cwd, PROJECT_ROOTS)
-      const p = map.get(s.projectId) ?? { id: s.projectId, name: where.projectName, kind: where.kind, repos: [], where: {}, lastActivityAt: 0 }
+      // Le projet d'une session est déjà tranché dans toSession (dossier, sinon contenu du fil).
+      const kind: Project['kind'] = s.repo ? 'repo' : place(s.cwd, PROJECT_ROOTS).kind
+      const p = map.get(s.projectId) ?? { id: s.projectId, name: s.projectId === 'general' ? 'général' : s.projectId, kind, repos: [], where: {}, lastActivityAt: 0 }
       if (s.repo && !p.repos.includes(s.repo)) {
         p.repos.push(s.repo)
         p.where[s.repo] = MACHINE.id

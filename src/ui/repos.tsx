@@ -1,15 +1,17 @@
 import { useEffect, useState, type CSSProperties, type FormEvent } from 'react'
 import type { GithubRepo } from '../../shared/api.ts'
 import { api } from '../api'
+import { useT } from '../i18n'
+import M from '../i18n/repos'
 import { useApp } from './app-context'
 import { Shell } from './shell'
-import { plural } from './format'
 import { Icon } from './icons'
 
 /** Couleur par position : un pas de 7 sur les 16 teintes, donc deux rectangles voisins (à côté ou dessous) n'ont jamais une teinte proche. */
 const tint = (i: number) => ({ '--c': `var(--p${(i * 7) % 16})` }) as CSSProperties
 
 export function ReposPage() {
+  const t = useT(M)
   const { snap, push, refresh } = useApp()
   const [repos, setRepos] = useState<GithubRepo[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -69,7 +71,7 @@ export function ReposPage() {
   }
 
   return (
-    <Shell slot="agent" kicker="weevils" title="repos" meta={repos ? plural(repos.length, 'repo', 'repos') : '…'}>
+    <Shell slot="agent" kicker="weevils" title={t.title} meta={repos ? t.count(repos.length) : '…'}>
       {err && (
         <div className="band invert" role="alert">
           <div className="in meta" style={{ paddingBlock: 12 }}>
@@ -82,9 +84,9 @@ export function ReposPage() {
           <span className="prompt" aria-hidden>
             <Icon name="plus" />
           </span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="nom" aria-label="nom du repo" autoCapitalize="off" autoCorrect="off" spellCheck={false} disabled={busy} />
-          <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="une phrase" aria-label="description du repo" enterKeyHint="done" disabled={busy} />
-          <button type="submit" className="send" aria-label="créer le repo" disabled={!name.trim() || busy}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t.name} aria-label={t.nameLabel} autoCapitalize="off" autoCorrect="off" spellCheck={false} disabled={busy} />
+          <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t.desc} aria-label={t.descLabel} enterKeyHint="done" disabled={busy} />
+          <button type="submit" className="send" aria-label={t.create} disabled={!name.trim() || busy}>
             {busy ? <span className="spin"><Icon name="star" /></span> : <Icon name="arrow" />}
           </button>
         </div>
@@ -99,7 +101,7 @@ export function ReposPage() {
                 <span className="repo-name">{r.name}</span>
                 {r.blurb && <span className="repo-blurb">{r.blurb}</span>}
               </button>
-              <button className={`repo-pin ${on ? 'on' : ''}`} aria-label={on ? `retirer ${r.name} du fil` : `épingler ${r.name} au fil`} aria-pressed={on} onClick={() => void pin(r.name, !on)}>
+              <button className={`repo-pin ${on ? 'on' : ''}`} aria-label={on ? t.unpin(r.name) : t.pin(r.name)} aria-pressed={on} onClick={() => void pin(r.name, !on)}>
                 <Icon name={on ? 'check' : 'plus'} />
               </button>
             </div>

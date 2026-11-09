@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { SessionSettings, Tool } from '../../shared/api.ts'
+import { tr, useT } from '../i18n'
+import M from '../i18n/settings'
 import { Line } from './bits'
 import { VoicePicker } from './voice'
 
@@ -7,12 +9,10 @@ import { VoicePicker } from './voice'
 
 const MODELS: Record<Tool, string[]> = { claude: ['fable', 'opus', 'sonnet', 'haiku'], codex: [] }
 const EFFORTS = ['low', 'medium', 'high', 'max']
-const EFFORT_WORD: Record<string, string> = { low: 'bas', medium: 'moyen', high: 'haut', max: 'max' }
+/** Effort dans la langue de l'app (« effort élevé », « high effort ») : lu à l'appel. */
+export const effortLabel = (e?: string) => (e ? tr(M).effortLabel(e) : undefined)
 
 /** « claude-opus-4-1 » → « opus » ; un modèle codex est gardé tel quel. */
-export const EFFORT_FR: Record<string, string> = { low: 'effort faible', medium: 'effort moyen', high: 'effort élevé', max: 'effort max' }
-export const effortLabel = (e?: string) => (e ? (EFFORT_FR[e] ?? `effort ${e}`) : undefined)
-
 export function shortModel(model?: string): string | undefined {
   if (!model) return undefined
   const m = /opus|sonnet|haiku|fable/i.exec(model)
@@ -52,12 +52,12 @@ export function useLocalSettings(id: string) {
   return [local, update] as const
 }
 
-function Choice({ label, options, value, onPick, words }: { label: string; options: string[]; value?: string; onPick: (v: string) => void; known: boolean; words?: Record<string, string> }) {
+function Choice({ label, options, value, onPick, words }: { label: string; options: string[]; value?: string; onPick: (v: string) => void; known: boolean; words?: (o: string) => string }) {
   return (
     <div className="in words" role="group" aria-label={label}>
       {options.map((o) => (
         <button key={o} className={`word ${value === o ? 'on' : ''}`} aria-pressed={value === o} onClick={() => onPick(o)}>
-          {words?.[o] ?? o}
+          {words ? words(o) : o}
         </button>
       ))}
     </div>
@@ -83,6 +83,7 @@ export function Settings({
   /** Codex ouvre un menu dans le terminal (/model, /approvals) : montrer l'écran pour choisir avec les touches. */
   onPicker?: () => void
 }) {
+  const t = useT(M)
   const [local, setLocal] = useLocalSettings(id)
   const [err, setErr] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<string | null>(null)
@@ -103,7 +104,7 @@ export function Settings({
   const models = model && !MODELS.claude.includes(model) ? [model, ...MODELS.claude] : MODELS.claude
 
   if (!canCommand) {
-    return <div className="in meta empty">indisponible</div>
+    return <div className="in meta empty">{t.unavailable}</div>
   }
 
   return (
@@ -116,16 +117,16 @@ export function Settings({
       )}
       {tool === 'claude' ? (
         <>
-          <Choice label="modèle" options={models} value={model} known={modelKnown} onPick={(m) => void send(`/model ${m}`, () => setLocal({ model: m, at: Date.now() }))} />
-          <Choice label="effort" options={EFFORTS} value={local.effort && local.at && Date.now() - local.at < 20_000 ? local.effort : (settings?.effort ?? local.effort)} known={!!settings?.effort} words={EFFORT_WORD} onPick={(e) => void send(`/effort ${e}`, () => setLocal({ effort: e, at: Date.now() }))} />
+          <Choice label={t.model} options={models} value={model} known={modelKnown} onPick={(m) => void send(`/model ${m}`, () => setLocal({ model: m, at: Date.now() }))} />
+          <Choice label={t.effort} options={EFFORTS} value={local.effort && local.at && Date.now() - local.at < 20_000 ? local.effort : (settings?.effort ?? local.effort)} known={!!settings?.effort} words={t.effortWord} onPick={(e) => void send(`/effort ${e}`, () => setLocal({ effort: e, at: Date.now() }))} />
           <div className="in settings-row">
             <span className="meta settings-label">
-              mode rapide
-              {local.fast != null && <span className="settings-hint"> · réglé d’ici</span>}
+              {t.fastMode}
+              {local.fast != null && <span className="settings-hint">{t.setHere}</span>}
             </span>
-            <div className="words" role="group" aria-label="mode rapide">
+            <div className="words" role="group" aria-label={t.fastMode}>
               <button className={`word ${local.fast ? 'on' : ''}`} aria-pressed={!!local.fast} onClick={() => void send('/fast', () => setLocal({ fast: !local.fast }))}>
-                {local.fast == null ? 'basculer' : local.fast ? 'activé' : 'désactivé'}
+                {local.fast == null ? t.toggle : local.fast ? t.on : t.off}
               </button>
             </div>
           </div>
@@ -133,29 +134,29 @@ export function Settings({
       ) : (
         <>
           <div className="in settings-row">
-            <span className="meta settings-label">modèle{settings?.model ? ` · ${settings.model}` : ''}</span>
+            <span className="meta settings-label">{t.model}{settings?.model ? ` · ${settings.model}` : ''}</span>
             <div className="words">
               <button className="word" onClick={() => void send('/model', onPicker)}>
-                /model
+                {'/model'}
               </button>
             </div>
           </div>
           <div className="in settings-row">
-            <span className="meta settings-label">approvals{settings?.approval ? ` · ${settings.approval}` : ''}</span>
+            <span className="meta settings-label">{t.approvals}{settings?.approval ? ` · ${settings.approval}` : ''}</span>
             <div className="words">
               <button className="word" onClick={() => void send('/approvals', onPicker)}>
-                /approvals
+                {'/approvals'}
               </button>
             </div>
           </div>
         </>
       )}
       <Line ch="⇣" go={null} onClick={() => void send('/compact')} disabled={busy === '/compact'}>
-        /compact
+        {'/compact'}
       </Line>
       {confirm ? (
         <Line ch="!" go={null} className="invert" onClick={() => void send(tool === 'codex' ? '/new' : '/clear', () => setConfirm(null))}>
-          confirmer {tool === 'codex' ? '/new' : '/clear'}
+          {t.confirm} {tool === 'codex' ? '/new' : '/clear'}
         </Line>
       ) : (
         <Line ch="×" go={null} onClick={() => setConfirm('clear')}>
@@ -164,7 +165,7 @@ export function Settings({
       )}
       {confirm && (
         <Line ch=" " go={null} onClick={() => setConfirm(null)}>
-          <span className="meta">annuler</span>
+          <span className="meta">{t.cancel}</span>
         </Line>
       )}
     </div>

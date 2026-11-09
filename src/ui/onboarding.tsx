@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, type PanInfo, type Variants } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion, type PanInfo, type Variants } from 'motion/react'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { Machine } from '../../shared/api.ts'
 import { api } from '../api'
@@ -135,7 +135,7 @@ export function Onboarding() {
   useEffect(() => {
     if (!visible) return
     if (!opener.current) opener.current = document.activeElement as HTMLElement | null
-    const id = setTimeout(() => box.current?.querySelector<HTMLElement>('.ob-card:last-of-type h2')?.focus({ preventScroll: true }), 80)
+    const id = setTimeout(() => document.getElementById(`ob-t${step}`)?.focus({ preventScroll: true }), 80)
     return () => clearTimeout(id)
   }, [visible, step])
 
@@ -394,6 +394,8 @@ function MachineStep({ machines, host }: { machines: Machine[]; host: string }) 
 // ---- 2. Session
 
 function SessionVisual({ done }: { done: boolean }) {
+  // Mouvement réduit : les lignes restent posées (la boucle finirait à zéro).
+  const still = useReducedMotion() || done
   return (
     <div className="ob-screen">
       <div className="ob-screen-bar">
@@ -407,8 +409,8 @@ function SessionVisual({ done }: { done: boolean }) {
           key={i}
           className={`ob-row ${i === 1 ? 'accent' : ''}`}
           initial={{ scaleX: 0 }}
-          animate={{ scaleX: done ? w : [0, w, w, 0] }}
-          transition={done ? { type: 'spring', stiffness: 300, damping: 24, delay: i * 0.08 } : { duration: 3.2, times: [0, 0.25, 0.85, 1], repeat: Infinity, delay: i * 0.35, ease: 'easeOut' }}
+          animate={{ scaleX: still ? w : [0, w, w, 0] }}
+          transition={still ? { type: 'spring', stiffness: 300, damping: 24, delay: i * 0.08 } : { duration: 3.2, times: [0, 0.25, 0.85, 1], repeat: Infinity, delay: i * 0.35, ease: 'easeOut' }}
         />
       ))}
       <AnimatePresence>

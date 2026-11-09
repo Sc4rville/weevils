@@ -78,6 +78,8 @@ export interface GithubRepo {
   isPrivate: boolean
   pushedAt: number
   language?: string
+  /** Ce que c'est, en une phrase humaine (écrite une fois par weevils, en cache). */
+  blurb?: string
 }
 
 export interface Machine {

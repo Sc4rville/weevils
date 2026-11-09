@@ -12,7 +12,7 @@ import { llmClassify, ruleMatch } from './classify.ts'
 import { Push } from './push.ts'
 import type { CatalogEntry } from './classify.ts'
 import { familyOf, place } from './projects.ts'
-import { createRepo, listRepos, remoteFile, remoteFiles } from './github.ts'
+import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { ORCH_PREFIX, TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
 import { llmTitles, needsTitle, shortNow } from './titles.ts'
 import type { Titled } from './titles.ts'
@@ -140,7 +140,9 @@ export class Weevils {
   async githubRepos(force = false) {
     const list = await listRepos(force)
     this.githubCache = new Map(list.map((r) => [r.name, r.pushedAt]))
-    return list
+    const blurbs = loadBlurbs(DATA_DIR)
+    void describeRepos(list, PROJECT_ROOTS, DATA_DIR, () => this.bump())
+    return list.map((r) => ({ ...r, blurb: blurbs[r.name] }))
   }
 
   pinRepo(repo: string, pinned: boolean) {

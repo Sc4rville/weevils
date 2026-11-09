@@ -1115,7 +1115,7 @@ input:focus-visible {
   border-color: var(--ink);
 }
 
-/* ---------- Repos GitHub : grandes icônes plates, toutes de la même taille, le nom dessous ---------- */
+/* ---------- Repos GitHub : rectangles de couleur bord à bord, le nom et une phrase dedans ---------- */
 
 .repo-new {
   display: flex;
@@ -1138,37 +1138,38 @@ input:focus-visible {
 
 .repo-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px 10px;
-  padding-block: 18px 28px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .repo {
   position: relative;
   min-width: 0;
+  background: var(--c);
+  color: var(--ink);
 }
 
 .repo-open {
   width: 100%;
+  min-height: 132px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  text-align: center;
-}
-
-.repo-big {
-  width: 72px;
-  height: 72px;
-  display: block;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 14px var(--pad) 16px;
+  text-align: left;
 }
 
 .repo-name {
   font-weight: 700;
-  font-size: 0.9375rem;
-  line-height: 1.2;
-  max-width: 100%;
+  font-size: 1.125rem;
+  line-height: 1.15;
   overflow-wrap: anywhere;
+  padding-right: 28px;
+}
+
+.repo-blurb {
+  font-size: 0.875rem;
+  line-height: 1.3;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -1177,15 +1178,14 @@ input:focus-visible {
 
 .repo-pin {
   position: absolute;
-  top: -4px;
+  top: 4px;
   right: 6px;
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
-  font-size: 1.125rem;
+  font-size: 1.25rem;
   font-weight: 700;
-  color: var(--ink);
 }
 
 .repo-pin.on {
@@ -1194,6 +1194,6 @@ input:focus-visible {
 
 @media (min-width: 700px) {
   .repo-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }

@@ -1,21 +1,12 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type CSSProperties, type FormEvent } from 'react'
 import type { GithubRepo } from '../../shared/api.ts'
 import { api } from '../api'
 import { useApp } from './app-context'
 import { Shell } from './shell'
 import { plural } from './format'
 
-/** Couleur par position : un pas de 7 sur les 16 teintes, donc deux icônes voisines (à côté ou dessous) n'ont jamais une teinte proche. */
-const tint = (i: number) => `var(--p${(i * 7) % 16})`
-
-function RepoIcon({ color }: { color: string }) {
-  // La silhouette d'un dossier : un rectangle avec son onglet en haut à gauche, en un seul aplat.
-  return (
-    <svg className="repo-big" viewBox="0 0 96 96" aria-hidden focusable="false">
-      <path fill={color} d="M8 18a6 6 0 0 1 6-6h24l10 10h34a6 6 0 0 1 6 6v50a6 6 0 0 1-6 6H14a6 6 0 0 1-6-6Z" />
-    </svg>
-  )
-}
+/** Couleur par position : un pas de 7 sur les 16 teintes, donc deux rectangles voisins (à côté ou dessous) n'ont jamais une teinte proche. */
+const tint = (i: number) => ({ '--c': `var(--p${(i * 7) % 16})` }) as CSSProperties
 
 export function ReposPage() {
   const { snap, push, refresh } = useApp()
@@ -26,14 +17,24 @@ export function ReposPage() {
   const [busy, setBusy] = useState(false)
   const pinned = new Set(snap.pinnedRepos)
 
+  // Les phrases s'écrivent en fond côté serveur : on relit tant qu'il en manque.
   useEffect(() => {
     let off = false
-    api
-      .githubRepos()
-      .then((r) => !off && setRepos(r.repos))
-      .catch((e) => !off && setErr((e as Error).message))
+    let tries = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const load = () =>
+      api
+        .githubRepos()
+        .then((r) => {
+          if (off) return
+          setRepos(r.repos)
+          if (r.repos.some((x) => !x.blurb) && tries++ < 20) timer = setTimeout(load, 5000)
+        })
+        .catch((e) => !off && setErr((e as Error).message))
+    void load()
     return () => {
       off = true
+      clearTimeout(timer)
     }
   }, [])
 
@@ -87,15 +88,15 @@ export function ReposPage() {
           </button>
         </div>
       </form>
-      <div className="in repo-grid">
+      <div className="repo-grid">
         {repos?.map((r, i) => {
           const on = pinned.has(r.name)
           const open = () => push({ kind: 'files', projectId: r.name.split(/[-_.]/)[0].toLowerCase(), repo: r.name })
           return (
-            <div key={r.name} className="repo">
+            <div key={r.name} className="repo" style={tint(i)}>
               <button className="repo-open" aria-label={r.name} onClick={open}>
-                <RepoIcon color={tint(i)} />
                 <span className="repo-name">{r.name}</span>
+                {r.blurb && <span className="repo-blurb">{r.blurb}</span>}
               </button>
               <button className={`repo-pin ${on ? 'on' : ''}`} aria-label={on ? `retirer ${r.name} du fil` : `épingler ${r.name} au fil`} aria-pressed={on} onClick={() => void pin(r.name, !on)}>
                 {on ? '✓' : '+'}

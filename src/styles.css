@@ -83,13 +83,20 @@ body {
   min-height: 100dvh;
 }
 
-/* Une page est ouverte : la fenêtre entière est de sa couleur (sous le clavier iOS, au rebond), opaque. */
+/* Une page est ouverte : la fenêtre entière est de sa couleur (sous le clavier iOS, au rebond), opaque,
+   et le fil principal n'est plus peint du tout : rien de lui ne peut transparaître dans la zone que le clavier décale. */
 html[data-page] {
   background: var(--page-c);
 }
 
 html[data-page] body {
   background: var(--page-c);
+}
+
+html[data-page] main.stack[inert],
+html[data-page] .h24[inert],
+html[data-page] div[inert] > .h24 {
+  visibility: hidden;
 }
 
 button,

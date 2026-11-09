@@ -187,6 +187,11 @@ const routes: [string, RegExp, Handler][] = [
     const body = await readBody(req)
     json(res, 200, await w.sendMain(String(body.text ?? '').trim()))
   }],
+  ['POST', /^\/api\/main\/attach$/, async (req, res) => {
+    const body = await readBody(req, 48 << 20)
+    const files = Array.isArray(body.files) ? body.files.filter((f: any) => typeof f?.data === 'string').map((f: any) => ({ name: String(f.name ?? 'fichier'), type: String(f.type ?? ''), data: String(f.data) })) : []
+    json(res, 200, await w.attachMain(String(body.text ?? '').trim(), files))
+  }],
   ['POST', /^\/api\/import$/, (req, res) => receiveImport(req, res)],
   ['GET', /^\/api\/push$/, (_req, res) => json(res, 200, { enabled: w.push.enabled, publicKey: w.push.publicKey, devices: w.push.count })],
   ['POST', /^\/api\/push\/subscribe$/, async (req, res) => {

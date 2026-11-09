@@ -47,6 +47,10 @@ export function AgentBand() {
     setExpanded('agent')
     await api.main(text)
   }
+  const attach = async (text: string, files: { name: string; type: string; data: string }[]) => {
+    setExpanded('agent')
+    await api.mainAttach(text, files)
+  }
 
   return (
     <section className="band agent" style={color('agent')} aria-label="weevils, l’orchestrateur">
@@ -85,7 +89,8 @@ export function AgentBand() {
         </div>
       </Collapse>
 
-      <Composer placeholder="dis à weevils quoi faire" label="message à weevils" onSend={send} onFocus={() => setExpanded('agent')} voice />
+      {/* Écrire ici n'ouvre pas la conversation : elle s'ouvre à l'envoi, pour lire la réponse. */}
+      <Composer placeholder="dis à weevils quoi faire" label="message à weevils" onSend={send} onAttach={attach} anyFile voice />
     </section>
   )
 }
@@ -193,7 +198,7 @@ export function ProjectBand({ project }: { project: Project }) {
         {sessions.length === 0 && mode === 'normal' && convs.slice(0, 3).map((c) => <ConvLine key={c.id} c={c} />)}
         {done.length > 0 && (
           <>
-            <Line ch="✓" go={showDone ? '−' : '+'} onClick={() => setShowDone((v) => !v)} label={`${done.length} sessions terminées`}>
+            <Line ch="✓" go={showDone ? '↑' : '↓'} onClick={() => setShowDone((v) => !v)} label={`${done.length} sessions terminées`}>
               <span className="meta">{plural(done.length, 'session terminée', 'sessions terminées')}</span>
             </Line>
             <Collapse open={showDone}>

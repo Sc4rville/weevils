@@ -40,22 +40,32 @@ export function useApp(): AppCtx {
   return v
 }
 
-const SLOTS = 8
+/** Les 16 teintes --p0…--p15 sont rangées par teinte : deux emplacements voisins se ressemblent, deux emplacements à ≥ 2 d'écart non. */
+const SLOTS = 16
 const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)
 
-/** Couleur stable par projet ; tant qu'il y a au plus 8 projets, toutes différentes (donc jamais deux bandes voisines pareilles, quel que soit l'ordre). */
+/**
+ * Couleur stable par projet (tirée de son id, sur la liste triée : l'ordre d'affichage ne change rien).
+ * Jusqu'à 8 projets, les emplacements utilisés sont espacés d'au moins 2 (45° de teinte, 90° jusqu'à 4 projets) : deux projets
+ * quelconques, donc deux bandes voisines quel que soit l'ordre, n'ont jamais la même teinte ni une teinte proche. Au-delà, toutes
+ * différentes tant qu'il y en a au plus 16.
+ */
 export function colorSlots(ids: string[]): Record<string, string> {
   const out: Record<string, string> = {}
+  const sorted = [...ids].sort()
+  // Le plus grand pas (jusqu'à 4 emplacements = 90° de teinte) qui laisse assez d'emplacements pour tous les projets.
+  let stride = 4
+  while (stride > 1 && Math.floor(SLOTS / stride) < sorted.length) stride--
+  const n = Math.floor(SLOTS / stride)
   const taken = new Set<number>()
   let last = -1
-  for (const id of ids) {
-    let slot = hash(id) % SLOTS
-    if (taken.size < SLOTS) while (taken.has(slot)) slot = (slot + 1) % SLOTS
-    else if (slot === last) slot = (slot + 1) % SLOTS
-    taken.add(slot)
-    out[id] = `p${slot}`
-    last = slot
+  for (const id of sorted) {
+    let k = hash(id) % n
+    if (taken.size < n) while (taken.has(k)) k = (k + 1) % n
+    taken.add(k)
+    last = k * stride
+    out[id] = `p${last}`
   }
-  out.__foot = `p${(last + 3) % SLOTS}`
+  out.__foot = `p${(last + 5) % SLOTS}`
   return out
 }

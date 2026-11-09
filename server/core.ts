@@ -80,6 +80,40 @@ const norm = (t: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
+
+// ---------------------------------------------------------------- Pièces jointes
+
+const IMAGE_RE = /^image\//i
+
+/** Écrit les fichiers reçus (base64) dans `dir`, sous <date>-<nom> (nom nettoyé, suffixe si déjà pris) ; renvoie les chemins. */
+export function saveInbox(dir: string, files: { name: string; type: string; data: string }[]): { path: string; image: boolean }[] {
+  fs.mkdirSync(dir, { recursive: true })
+  const day = new Date().toISOString().slice(0, 10)
+  const out: { path: string; image: boolean }[] = []
+  for (const f of files.slice(0, 8)) {
+    const image = IMAGE_RE.test(f.type)
+    let base = path.basename(f.name || '').replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 80)
+    if (!base || base === '.' || base === '..') base = image ? 'photo.jpg' : 'fichier'
+    if (image && !path.extname(base)) base += `.${(/\/(png|jpe?g|gif|webp|heic)$/i.exec(f.type)?.[1] ?? 'jpg').toLowerCase().replace('jpeg', 'jpg')}`
+    let file = path.join(dir, `${day}-${base}`)
+    if (fs.existsSync(file)) {
+      const ext = path.extname(base)
+      file = path.join(dir, `${day}-${base.slice(0, base.length - ext.length)}-${crypto.randomBytes(2).toString('hex')}${ext}`)
+    }
+    fs.writeFileSync(file, Buffer.from(f.data, 'base64'))
+    out.push({ path: file, image })
+  }
+  return out
+}
+
+/** Le message tel que l'agent le reçoit : le texte, puis « (photo : /chemin) » ou « (fichier : /chemin) » pour chaque pièce. */
+export function withFiles(text: string, saved: { path: string; image: boolean }[]): string {
+  const n = saved.length
+  const allImages = saved.every((s) => s.image)
+  const lead = text.trim() || (allImages ? (n > 1 ? 'Regarde ces photos.' : 'Regarde cette photo.') : n > 1 ? 'Voici des fichiers.' : 'Voici un fichier.')
+  return `${lead} ${saved.map((s) => `(${s.image ? 'photo' : 'fichier'} : ${s.path})`).join(' ')}`
+}
+
 export class Weevils {
   store = new TranscriptStore(CLAUDE_DIR, CODEX_DIR, RECENT_MS)
   hooks = new Map<string, HookState>()
@@ -700,18 +734,13 @@ export class Weevils {
     const remote = this.remoteFor(id)
     if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/attach`, { text, files })
     if (!files.length) return this.send(id, text)
-    const dir = path.join(DATA_DIR, 'inbox')
-    fs.mkdirSync(dir, { recursive: true })
-    const paths: string[] = []
-    for (const f of files.slice(0, 6)) {
-      const ext = (/\/(png|jpe?g|gif|webp|heic)$/i.exec(f.type)?.[1] ?? path.extname(f.name).slice(1) ?? 'jpg').toLowerCase().replace('jpeg', 'jpg') || 'jpg'
-      const file = path.join(dir, `${new Date().toISOString().slice(0, 10)}-${crypto.randomBytes(3).toString('hex')}.${ext}`)
-      fs.writeFileSync(file, Buffer.from(f.data, 'base64'))
-      paths.push(file)
-    }
-    const n = paths.length
-    const msg = `${text.trim() || (n > 1 ? 'Regarde ces photos.' : 'Regarde cette photo.')} (${n > 1 ? `${n} photos` : 'photo'} : ${paths.join(' , ')})`
-    return this.send(id, msg)
+    return this.send(id, withFiles(text, saveInbox(path.join(DATA_DIR, 'inbox'), files)))
+  }
+
+  /** Fichiers (photos, PDF, zip…) pour l'orchestrateur : déposés dans ~/inbox/<date>-<nom>, le message dit « (fichier : /chemin) ». */
+  async attachMain(text: string, files: { name: string; type: string; data: string }[]) {
+    if (!files.length) return this.sendMain(text)
+    return this.sendMain(withFiles(text, saveInbox(path.join(HOME, 'inbox'), files)))
   }
 
   async key(id: string, key: string) {

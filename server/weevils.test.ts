@@ -118,3 +118,26 @@ describe('questions à l’écran', () => {
     expect(attentionFromScreen(screen)).toBe('Do you want to proceed?')
   })
 })
+
+describe('pièces jointes pour l’orchestrateur', async () => {
+  const { saveInbox, withFiles } = await import('./core.ts')
+  const fs = await import('node:fs')
+  const os = await import('node:os')
+  const path = await import('node:path')
+  it('dépose <date>-<nom> dans le dossier et annonce « (fichier : /chemin) »', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-inbox-'))
+    const saved = saveInbox(dir, [
+      { name: 'devis final.pdf', type: 'application/pdf', data: Buffer.from('%PDF').toString('base64') },
+      { name: 'IMG_1.heic', type: 'image/heic', data: Buffer.from('x').toString('base64') },
+    ])
+    expect(saved.map((s) => path.basename(s.path))).toEqual([expect.stringMatching(/^\d{4}-\d{2}-\d{2}-devis-final\.pdf$/), expect.stringMatching(/-IMG_1\.heic$/)])
+    expect(fs.readFileSync(saved[0].path, 'utf8')).toBe('%PDF')
+    const msg = withFiles('range ça', saved)
+    expect(msg).toBe(`range ça (fichier : ${saved[0].path}) (photo : ${saved[1].path})`)
+    expect(withFiles('', [saved[0]])).toMatch(/^Voici un fichier\. \(fichier : /)
+    // Même nom une seconde fois : pas d'écrasement.
+    const again = saveInbox(dir, [{ name: 'devis final.pdf', type: 'application/pdf', data: '' }])
+    expect(again[0].path).not.toBe(saved[0].path)
+    fs.rmSync(dir, { recursive: true })
+  })
+})

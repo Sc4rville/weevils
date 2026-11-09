@@ -17,15 +17,23 @@
   --ink: #000;
   --agent: #b39bff;
   --h24: #ffc64c;
-  /* Palette des projets : vive, texte noir. */
-  --p0: #6fa4ff;
-  --p1: #ff7f67;
-  --p2: #ff8ad6;
-  --p3: #5fe3a1;
-  --p4: #ceef36;
-  --p5: #ff9f43;
-  --p6: #4dd8e6;
-  --p7: #ff5c8a;
+  /* Palette des projets : 16 teintes vives rangées par teinte (voisines = proches), texte noir. */
+  --p0: oklch(0.80 0.14 5);
+  --p1: oklch(0.80 0.14 27.5);
+  --p2: oklch(0.80 0.14 50);
+  --p3: oklch(0.80 0.14 72.5);
+  --p4: oklch(0.80 0.14 95);
+  --p5: oklch(0.80 0.14 117.5);
+  --p6: oklch(0.80 0.14 140);
+  --p7: oklch(0.80 0.14 162.5);
+  --p8: oklch(0.80 0.14 185);
+  --p9: oklch(0.80 0.14 207.5);
+  --p10: oklch(0.80 0.14 230);
+  --p11: oklch(0.80 0.14 252.5);
+  --p12: oklch(0.80 0.14 275);
+  --p13: oklch(0.80 0.14 297.5);
+  --p14: oklch(0.80 0.14 320);
+  --p15: oklch(0.80 0.14 342.5);
 }
 
 /* Sombre : couleurs profondes mais chaleureuses, texte blanc. */
@@ -34,15 +42,23 @@
   --ink: #fff;
   --agent: #5522b5;
   --h24: #744900;
-  /* Palette des projets : profonde, saturée, texte blanc. */
-  --p0: #1b40bb;
-  --p1: #9c204a;
-  --p2: #861a73;
-  --p3: #0b6b4a;
-  --p4: #4f6a00;
-  --p5: #9a3d0a;
-  --p6: #00687a;
-  --p7: #a3123f;
+  /* Palette des projets : les mêmes 16 teintes, profondes, texte blanc. */
+  --p0: oklch(0.44 0.13 5);
+  --p1: oklch(0.44 0.13 27.5);
+  --p2: oklch(0.44 0.13 50);
+  --p3: oklch(0.44 0.13 72.5);
+  --p4: oklch(0.44 0.13 95);
+  --p5: oklch(0.44 0.13 117.5);
+  --p6: oklch(0.44 0.13 140);
+  --p7: oklch(0.44 0.13 162.5);
+  --p8: oklch(0.44 0.13 185);
+  --p9: oklch(0.44 0.13 207.5);
+  --p10: oklch(0.44 0.13 230);
+  --p11: oklch(0.44 0.13 252.5);
+  --p12: oklch(0.44 0.13 275);
+  --p13: oklch(0.44 0.13 297.5);
+  --p14: oklch(0.44 0.13 320);
+  --p15: oklch(0.44 0.13 342.5);
   --mix: 11%;
   --dl: 0.07;
 }
@@ -981,19 +997,31 @@ input:focus-visible {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Message de l'orchestrateur dans le fil d'une session : signé weevils, trait violet à gauche. */
+/* Message de l'orchestrateur dans le fil d'une session : signé ◆ weevils, dans la couleur de weevils (violet), trait à gauche. */
 .msg.orch {
   position: relative;
+  /* Violet de weevils, mais toujours décalé en luminosité par rapport à la page : visible même dans la bande violette. */
+  background: oklch(from var(--agent) calc(l + var(--dl) * 1.8) calc(c * 1.1) h);
 }
 
 .msg.orch::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 4px;
-  background: var(--agent);
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--ink);
+  opacity: 0.6;
+}
+
+.msg.orch .who {
+  color: var(--ink);
+}
+
+.orch-ic {
+  font-size: 0.75em;
+  vertical-align: 1px;
 }
 
 /* ---------- Ligne de session : une seule ligne, l'activité à droite ---------- */

@@ -169,6 +169,17 @@ export interface Attachment {
 }
 
 /** Photo du téléphone réduite (côté long ≤ 1600 px, JPEG) : légère à envoyer, lisible par l'agent. */
+const MAX_FILE = 32 * 1024 * 1024
+
+/** Fichier envoyé tel quel (PDF, zip, doc…). */
+async function raw(file: File): Promise<Attachment> {
+  if (file.size > MAX_FILE) throw new Error(`${file.name} dépasse 32 Mo`)
+  const buf = new Uint8Array(await file.arrayBuffer())
+  let bin = ''
+  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000))
+  return { name: file.name, type: file.type || 'application/octet-stream', data: btoa(bin) }
+}
+
 async function shrink(file: File): Promise<Attachment> {
   try {
     const bmp = await createImageBitmap(file)
@@ -206,6 +217,7 @@ export function Composer({
   className = 'tone',
   disabled,
   voice = false,
+  anyFile = false,
 }: {
   placeholder: string
   label: string
@@ -218,8 +230,11 @@ export function Composer({
   disabled?: boolean
   /** Dictée : un appui pour enregistrer, un appui pour transcrire dans le champ. */
   voice?: boolean
+  /** Toute pièce jointe (PDF, zip…), pas seulement des photos. */
+  anyFile?: boolean
 }) {
   const [text, setText] = useState('')
+  const field = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [files, setFiles] = useState<Attachment[]>([])
   const [rec, setRec] = useState<'off' | 'on' | 'wait'>('off')
@@ -233,13 +248,19 @@ export function Composer({
     e.preventDefault()
     const t = text.trim()
     if ((!t && !files.length) || busy) return
-    setText('')
     const sent = files
     setFiles([])
     setBusy(true)
     setErr(null)
     // Le clavier se range tout seul : les barres système d'iOS disparaissent avec lui.
     ;(document.activeElement as HTMLElement | null)?.blur?.()
+    // Vidé après le blur : iOS peut renvoyer le texte en cours de composition au moment où le champ perd le focus.
+    const clear = () => {
+      setText('')
+      if (field.current) field.current.value = ''
+    }
+    clear()
+    setTimeout(clear, 0)
     try {
       if (sent.length && onAttach) await onAttach(t, sent)
       else await onSend(t)
@@ -255,7 +276,7 @@ export function Composer({
     if (!list?.length) return
     setBusy(true)
     try {
-      const got = await Promise.all([...list].slice(0, 6).map(shrink))
+      const got = await Promise.all([...list].slice(0, 6).map((f) => (anyFile && !f.type.startsWith('image/') ? raw(f) : shrink(f))))
       setFiles((f) => [...f, ...got].slice(0, 6))
     } catch (e) {
       setErr((e as Error).message)
@@ -308,7 +329,7 @@ export function Composer({
           {files.length > 0 && (
             <>
               <span className="strong">
-                {files.length} {files.length > 1 ? 'photos' : 'photo'}
+                {files.length} {files.every((f) => f.type.startsWith('image/')) ? (files.length > 1 ? 'photos' : 'photo') : files.length > 1 ? 'fichiers' : 'fichier'}
               </span>
               <button type="button" className="link small" onClick={() => setFiles([])}>
                 retirer
@@ -323,6 +344,7 @@ export function Composer({
           {busy ? <span className="spin">*</span> : prompt}
         </span>
         <input
+          ref={field}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onFocus={onFocus}
@@ -334,8 +356,8 @@ export function Composer({
         />
         {onAttach && !disabled && (
           <>
-            <input ref={picker} type="file" accept="image/*" multiple hidden onChange={(e) => void pick(e.target.files)} />
-            <button type="button" className="tool-btn" onClick={() => picker.current?.click()} aria-label="joindre une photo">
+            <input ref={picker} type="file" accept={anyFile ? undefined : 'image/*'} multiple hidden onChange={(e) => void pick(e.target.files)} />
+            <button type="button" className="tool-btn" onClick={() => picker.current?.click()} aria-label={anyFile ? 'joindre un fichier ou une photo' : 'joindre une photo'}>
               +
             </button>
           </>
@@ -461,7 +483,14 @@ export function Messages({ messages, author, working = false }: { messages: Mess
           <Appear key={g.m.id}>
             <div className={`msg band ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? 'tone orch' : ''}`}>
               <div className="in">
-                <span className="who">{g.m.role === 'user' ? 'toi' : g.m.role === 'orchestrator' ? 'weevils' : author}</span>
+                <span className="who">
+                  {g.m.role === 'orchestrator' && (
+                    <span className="orch-ic" aria-hidden>
+                      ◆{' '}
+                    </span>
+                  )}
+                  {g.m.role === 'user' ? 'toi' : g.m.role === 'orchestrator' ? 'weevils' : author}
+                </span>
                 {g.m.role === 'user' ? <Clamp text={userText(g.m.text)} /> : g.m.role === 'orchestrator' ? <Clamp text={g.m.text} /> : <Prose text={g.m.text} />}
               </div>
             </div>

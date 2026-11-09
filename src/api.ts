@@ -52,6 +52,7 @@ export const api = {
   key: (id: string, key: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/key`, { key }),
   create: (body: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string }) => call<{ id: string }>('POST', '/api/sessions', body),
   main: (text: string) => call<{ id: string }>('POST', '/api/main', { text }),
+  mainAttach: (text: string, files: { name: string; type: string; data: string }[]) => call<{ id: string }>('POST', '/api/main/attach', { text, files }),
   toggleH24: (id: string) => call<{ ok: true }>('POST', `/api/h24/${enc(id)}/toggle`, {}),
   conversations: (opts: { project?: string; q?: string }) => call<{ conversations: ConversationSummary[] }>('GET', `/api/conversations?${new URLSearchParams(opts)}`),
   conversation: (id: string) => call<ConversationDetail>('GET', `/api/conversations/${enc(id)}`),

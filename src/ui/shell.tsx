@@ -13,6 +13,7 @@ export function Shell({
   meta,
   children,
   foot,
+  side,
 }: {
   slot: string
   kicker: string
@@ -20,6 +21,8 @@ export function Shell({
   meta?: ReactNode
   children: ReactNode
   foot?: ReactNode
+  /** Volet à côté du fil (navigateur intégré) : la page se partage en deux. */
+  side?: ReactNode
 }) {
   const { back } = useApp()
   const heading = useRef<HTMLHeadingElement>(null)
@@ -28,7 +31,7 @@ export function Shell({
   }, [])
   return (
     <motion.div
-      className="page"
+      className={side ? 'page split' : 'page'}
       style={color(slot)}
       initial={{ x: '100%' }}
       animate={{ x: 0 }}
@@ -64,11 +67,16 @@ export function Shell({
           )}
         </div>
       </div>
-      <div className="page-body" data-scroll>
-        {children}
-        <div className="fill" />
+      <div className="page-cols">
+        <div className="page-main">
+          <div className="page-body" data-scroll>
+            {children}
+            <div className="fill" />
+          </div>
+          {foot && <div className="page-foot">{foot}</div>}
+        </div>
+        {side && <aside className="page-side">{side}</aside>}
       </div>
-      {foot && <div className="page-foot">{foot}</div>}
     </motion.div>
   )
 }

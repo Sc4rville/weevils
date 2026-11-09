@@ -475,6 +475,93 @@ button:disabled {
   padding-bottom: var(--safe-b);
 }
 
+/* Page partagée en deux : le fil d'un côté, le navigateur intégré de l'autre (dessous sur téléphone, à droite sur grand écran). */
+.page-cols,
+.page-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-side {
+  flex: none;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--ink);
+}
+
+.page.split .page-main,
+.page.split .page-side {
+  flex: 1 1 50%;
+}
+
+.page.split .page-side {
+  border-top: 2px solid var(--ink);
+}
+
+@media (min-width: 900px) {
+  .page.split .page-cols {
+    flex-direction: row;
+  }
+  .page.split .page-side {
+    border-top: 0;
+    border-left: 2px solid var(--ink);
+  }
+}
+
+.preview {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--c);
+}
+
+.preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  flex: none;
+}
+
+.preview-bar input {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  padding-inline: 10px;
+  font-size: 1.0625rem; /* ≥ 16px : pas de zoom iOS */
+  background: color-mix(in oklab, currentColor 8%, transparent);
+}
+
+.preview-bar a.key {
+  text-decoration: none;
+  color: inherit;
+}
+
+.preview-hints {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 14px;
+  padding: 0 10px 6px;
+}
+
+.preview-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.preview-note {
+  flex: none;
+  padding: 4px 10px 6px;
+  opacity: 0.7;
+}
+
 .code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

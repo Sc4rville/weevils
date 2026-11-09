@@ -4,6 +4,7 @@ import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
 import { Collapse, Composer, Line, Messages, StatusChar, Working, type Attachment } from './bits'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
+import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Shell } from './shell'
 import { ago, dur, durLong, plural, status } from './format'
 
@@ -95,6 +96,7 @@ function SessionPage({ id }: { id: string }) {
   const [screenText, setScreenText] = useState<string | null>(null)
   const [showScreen, setShowScreen] = useState<boolean | null>(null)
   const [showSubs, setShowSubs] = useState(true)
+  const [preview, setPreview] = usePreviewState(id)
 
   // Le détail suit chaque nouvelle version annoncée par le serveur.
   useEffect(() => {
@@ -140,12 +142,14 @@ function SessionPage({ id }: { id: string }) {
     return [...real, ...pending.filter((p) => !seen.has(p.text.trim()))]
   }, [detail, pending])
   useStickToBottom(messages.length)
+  const suggestions = useMemo(() => urlsInMessages(messages), [messages])
 
   if (!s) return missing ? <Missing text="Session introuvable : elle a peut-être plus de trois jours." /> : <Shell slot="agent" kicker="weevils" title="…">{null}</Shell>
 
   const project = snap.projects.find((p) => p.id === s.projectId)
   const st = status[s.status]
   const active = s.subagents.filter((a) => a.status === 'working').length
+  const previewUrl = preview.url ?? guessPreviewUrl(messages, s, project)
 
   const send = async (text: string, files: Attachment[] = []) => {
     setErr(null)
@@ -179,8 +183,13 @@ function SessionPage({ id }: { id: string }) {
           {s.status === 'working' && s.workStartedAt != null ? <> depuis {durLong(now - s.workStartedAt)}</> : <> · {ago(now - s.lastActivityAt)}</>}
           {' · '}
           {s.machineId}
+          {' · '}
+          <button className="link" onClick={() => setPreview({ open: !preview.open })} aria-pressed={!!preview.open}>
+            {preview.open ? 'fermer le navigateur' : 'navigateur'}
+          </button>
         </>
       }
+      side={preview.open ? <Preview url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false })} /> : undefined}
       foot={
         <Composer
           placeholder={s.controllable ? (s.live ? `écris à ${s.tool}` : `reprendre avec ${s.tool}`) : 'lecture seule'}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { Message, SessionDetail, Tool } from '../../shared/api.ts'
+import type { SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
 import { Collapse, Composer, Line, Messages, StatusChar, Working, type Attachment } from './bits'
@@ -9,6 +9,7 @@ import { Settings, effortLabel, shortModel } from './settings'
 import { ReposPage } from './repos'
 import { CalmConv, CalmGrid } from './calm'
 import { markSeen } from './seen'
+import { mergePending, type Pending } from './pending'
 import { Shell } from './shell'
 import { CodeFile } from './codeview'
 import { FsFilePage, FsPage, InfraPage, UsagePage } from './infra'
@@ -120,7 +121,7 @@ function SessionPage({ id }: { id: string }) {
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [missing, setMissing] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  const [pending, setPending] = useState<Message[]>([])
+  const [pending, setPending] = useState<Pending[]>([])
   const [screenText, setScreenText] = useState<string | null>(null)
   const [showScreen, setShowScreen] = useState<boolean | null>(null)
   const [showSubs, setShowSubs] = useState(true)
@@ -169,11 +170,7 @@ function SessionPage({ id }: { id: string }) {
     }
   }, [id, s?.hasScreen, screenOpen])
 
-  const messages = useMemo(() => {
-    const real = detail?.messages ?? []
-    const seen = new Set(real.filter((m) => m.role === 'user').map((m) => m.text.trim()))
-    return [...real, ...pending.filter((p) => !seen.has(p.text.trim()))]
-  }, [detail, pending])
+  const messages = useMemo(() => mergePending(detail?.messages ?? [], pending), [detail, pending])
   useStickToBottom(messages.length)
   const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
   const sp = snap.projects.find((p) => p.id === s?.projectId)
@@ -189,7 +186,7 @@ function SessionPage({ id }: { id: string }) {
   const send = async (text: string, files: Attachment[] = []) => {
     setErr(null)
     const shown = files.length ? `${text ? `${text} ` : ''}(${t.photos(files.length)})` : text
-    const tmp: Message = { id: `pending-${Date.now()}`, role: 'user', text: shown, at: Date.now() }
+    const tmp: Pending = { id: `pending-${Date.now()}`, role: 'user', text: shown, at: Date.now(), typed: text, after: detail?.messages.at(-1)?.id }
     setPending((p) => [...p, tmp])
     try {
       const r = files.length ? await api.attach(s.id, text, files) : await api.send(s.id, text)

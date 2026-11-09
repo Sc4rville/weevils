@@ -3,7 +3,6 @@
 #   server/install.sh                        main machine: weevilsd serves the app and runs weevboss
 #   server/install.sh secondary <ssh-host>   secondary machine: local weevilsd + reverse SSH tunnel to the main
 #                                            machine <ssh-host>, which federates it (its sessions show up there)
-#   server/install.sh pc                     deprecated alias: secondary of the ssh host "vps", ports 4191/4192, machine "pc"
 # Ports come from ~/.config/weevils/env (WEEVILS_PORT, WEEVILS_HOOK_PORT); WEEVILS_TUNNEL_PORT forces the port the
 # main machine listens on for this secondary one (otherwise the main machine picks a free one).
 set -euo pipefail
@@ -15,17 +14,8 @@ repo=$(dirname "$here")
 svc=$here/weevils-service
 cfg() { "$svc" config "$@"; }
 
-if [ "$role" = pc ]; then
-  echo "note: 'server/install.sh pc' is deprecated (it assumes a main machine reachable as ssh host \"vps\")." >&2
-  echo "      use: server/install.sh secondary <ssh-host-of-your-main-machine>   (or ./install.sh --secondary <host>)" >&2
-  role=secondary main_host=${main_host:-vps}
-  cfg default WEEVILS_MACHINE pc
-  cfg default WEEVILS_PORT 4191
-  WEEVILS_TUNNEL_PORT=${WEEVILS_TUNNEL_PORT:-4192}
-  [ -n "$(cfg get WEEVILS_PROJECTS)" ] || cfg set WEEVILS_PROJECTS "$HOME/projects:$HOME/Documents/projects"
-fi
 case "$role" in
-  main | vps) role=main ;;
+  main) ;;
   secondary) [ -n "$main_host" ] || { echo "usage: server/install.sh secondary <ssh host of the main machine>" >&2; exit 1; } ;;
   *) echo "usage: server/install.sh [main | secondary <ssh-host>]" >&2; exit 1 ;;
 esac
@@ -48,9 +38,12 @@ sed "s/WEEVILS_HOOK_PORT:-4180/WEEVILS_HOOK_PORT:-$hook_port/" "$here/hook.sh" >
 sed "s/WEEVILS_PORT:-4179/WEEVILS_PORT:-$port/" "$here/weevils-cli" >~/.local/bin/weevils && chmod 755 ~/.local/bin/weevils
 
 # ---------------------------------------------------------------- Claude Code hooks: weevils-hook on the useful events, other hooks kept
+# Only weevils' own entries are written to the user's Claude Code settings: no global env, no other preference.
+# (weevils sessions get their quiet variables per session: QUIET_ENV in server/mux.ts, 'quiet' in wv.)
 settings=~/.claude/settings.json
 [ -s "$settings" ] || echo '{}' >"$settings"
-cp "$settings" "$settings.bak-weevils"
+# The settings as they were before weevils ever touched them, kept once.
+[ -f "$settings.bak-weevils" ] || cp "$settings" "$settings.bak-weevils"
 tmp=$(mktemp)
 jq --arg cmd "$HOME/.local/bin/weevils-hook" '
   .hooks //= {} |
@@ -59,20 +52,21 @@ jq --arg cmd "$HOME/.local/bin/weevils-hook" '
     else .hooks[$e] = ((.hooks[$e] // []) + [{"hooks":[{"type":"command","command":$cmd}]}]) end)
 ' "$settings" >"$tmp" && mv "$tmp" "$settings"
 
-# Nothing interrupts a session: no auto-update, no tips (variables read by Claude Code).
-tmp=$(mktemp)
-jq '.env //= {} | .env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1" | .env.DISABLE_AUTOUPDATER = "1" | .env.DISABLE_TIPS = "1"' "$settings" >"$tmp" && mv "$tmp" "$settings"
-# Hook scripts that no longer exist on disk are removed (they made every Stop fail).
+# Agents run with --dangerously-skip-permissions unless WEEVILS_SAFE=1: Claude Code's one-time warning about it
+# would otherwise end the first session (weevboss included) before anyone sees it. Not as root: there the flag is
+# refused anyway, and install.sh sets WEEVILS_SAFE=1.
+if [ "$(cfg get WEEVILS_SAFE)" != 1 ] && [ "$(id -u)" != 0 ] && [ "$(jq -r '.skipDangerousModePermissionPrompt // false' "$settings")" != true ]; then
+  tmp=$(mktemp)
+  jq '.skipDangerousModePermissionPrompt = true' "$settings" >"$tmp" && mv "$tmp" "$settings"
+fi
+# weevils hooks whose script no longer exists on disk are removed (they made every Stop fail). Other hooks: untouched.
 for f in $(jq -r '.hooks[][]?.hooks[]?.command // empty' "$settings" | awk '{print $1}' | sort -u); do
-  case "$f" in /*) [ -x "$f" ] || {
+  case "$f" in */weevils-hook | */weevils*/hook.sh) [ -x "$f" ] || {
     tmp=$(mktemp)
     jq --arg f "$f" '.hooks |= with_entries(.value |= map(.hooks |= map(select((.command // "") | split(" ")[0] != $f)) | select(.hooks | length > 0)))' "$settings" >"$tmp" && mv "$tmp" "$settings"
     echo "hook removed (script missing): $f"
   } ;; esac
 done
-# Autocompact on: Claude Code no longer offers to enable it mid-work.
-cfg_json=~/.claude.json
-if [ -f "$cfg_json" ]; then tmp=$(mktemp); jq '.autoCompactEnabled = true' "$cfg_json" >"$tmp" && mv "$tmp" "$cfg_json"; fi
 
 # ---------------------------------------------------------------- secondary machine: tunnel port, registered on the main machine
 tunnel_port=${WEEVILS_TUNNEL_PORT:-}
@@ -116,6 +110,9 @@ if [ -d /run/systemd/system ] && command -v loginctl >/dev/null; then
   fi
   # The user manager starts with linger: wait for its bus (first run, or a session opened without login).
   for _ in $(seq 1 20); do [ -S "/run/user/$(id -u)/bus" ] && break; sleep 0.5; done
+  if [ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" != yes ]; then
+    echo "WARNING: linger is off: weevilsd stops when you log out and won't start at boot. Fix: sudo loginctl enable-linger $USER" >&2
+  fi
 fi
 
 units=~/.config/systemd/user

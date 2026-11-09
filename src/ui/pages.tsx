@@ -8,6 +8,7 @@ import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './pre
 import { Settings, effortLabel, shortModel } from './settings'
 import { ReposPage } from './repos'
 import { CalmConv, CalmGrid } from './calm'
+import { markSeen } from './seen'
 import { Shell } from './shell'
 import { ago, dur, durLong, plural, status } from './format'
 
@@ -126,6 +127,10 @@ function SessionPage({ id }: { id: string }) {
   }, [id, snap.version, replace])
 
   const s = snap.sessions.find((x) => x.id === id) ?? detail?.session
+  // Ouverte : tout ce qu'elle a dit jusqu'ici est lu.
+  useEffect(() => {
+    if (s) markSeen(s.id, s.lastActivityAt)
+  }, [s, s?.id, s?.lastActivityAt])
   // L'écran brut du terminal est un secours : jamais ouvert tout seul.
   const screenOpen = showScreen ?? false
 

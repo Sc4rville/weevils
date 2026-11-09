@@ -58,20 +58,29 @@ export class Push {
 
   subscribe(sub: Subscription) {
     if (!sub?.endpoint || !sub.keys?.p256dh || !sub.keys?.auth) throw new Error('abonnement invalide')
+    const fresh = !this.subs.some((s) => s.endpoint === sub.endpoint)
     this.subs = [...this.subs.filter((s) => s.endpoint !== sub.endpoint), { endpoint: sub.endpoint, keys: sub.keys }]
     this.save()
+    if (fresh) console.log(`[push] nouvel appareil abonné (${this.subs.length} au total)`)
   }
 
   async send(p: PushPayload) {
-    if (!this.wp || !this.subs.length) return
+    if (!this.wp) return console.log(`[push] module web-push absent · « ${p.title} » non envoyée`)
+    if (!this.subs.length) return console.log(`[push] aucun appareil abonné · « ${p.title} » non envoyée`)
     const dead: string[] = []
+    let ok = 0
     await Promise.all(
       this.subs.map((s) =>
-        this.wp.sendNotification(s, JSON.stringify(p), { TTL: 3600, urgency: 'high' }).catch((e: { statusCode?: number }) => {
-          if (e.statusCode === 404 || e.statusCode === 410) dead.push(s.endpoint)
-        }),
+        this.wp
+          .sendNotification(s, JSON.stringify(p), { TTL: 3600, urgency: 'high' })
+          .then(() => ok++)
+          .catch((e: { statusCode?: number; body?: string; message?: string }) => {
+            console.error(`[push] échec ${e.statusCode ?? ''} ${s.endpoint.slice(0, 40)}… ${e.body ?? e.message ?? ''}`.trim())
+            if (e.statusCode === 404 || e.statusCode === 410) dead.push(s.endpoint)
+          }),
       ),
     )
+    console.log(`[push] « ${p.title} » → ${ok}/${this.subs.length} appareils`)
     if (dead.length) {
       this.subs = this.subs.filter((s) => !dead.includes(s.endpoint))
       this.save()

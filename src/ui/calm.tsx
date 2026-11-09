@@ -8,6 +8,7 @@ import { ago, plain } from './format'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Settings, effortLabel, shortModel } from './settings'
 import { usePageChrome } from './shell'
+import { markSeen } from './seen'
 
 // Le mode conversation : pincer le fil → une grille de conversations, un tap → l'immersion. Rien d'autre que les messages.
 
@@ -127,6 +128,9 @@ export function CalmConv({ id }: { id: string }) {
   }, [id, main, snap.version, replace])
 
   const s = main ? undefined : (snap.sessions.find((x) => x.id === id) ?? detail?.session)
+  useEffect(() => {
+    if (s) markSeen(s.id, s.lastActivityAt)
+  }, [s, s?.id, s?.lastActivityAt])
   const raw: Message[] = main ? snap.main : (detail?.messages ?? [])
   const messages = useMemo(() => raw.filter((m) => m.role !== 'event'), [raw])
   const working = main ? snap.mainWorking : s?.status === 'working'

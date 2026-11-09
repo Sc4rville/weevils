@@ -8,6 +8,8 @@ import { H24Rail } from './ui/h24'
 import { Login } from './ui/login'
 import { PageView } from './ui/pages'
 import { usePinch } from './ui/calm'
+import { adoptUnknown } from './ui/seen'
+import { ensurePush } from './push'
 
 const THEME_COLOR = { light: '#B39BFF', dark: '#5522B5' }
 const THEME_KEY = 'weevils-theme'
@@ -39,7 +41,12 @@ export default function App() {
   }, [])
   useEffect(() => {
     if (live.snap) setNow(Date.now())
+    if (live.snap) adoptUnknown(live.snap.sessions)
   }, [live.snap])
+  // Autorisation déjà donnée : l'appareil se ré-abonne à chaque lancement (clé changée, serveur réinstallé…).
+  useEffect(() => {
+    if (live.authed) void ensurePush().catch(() => undefined)
+  }, [live.authed])
 
   const setTheme = useCallback((t: Theme) => {
     setThemeState(t)

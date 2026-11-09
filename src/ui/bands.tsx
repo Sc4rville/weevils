@@ -5,8 +5,9 @@ import { api } from '../api'
 import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
 import { useApp } from './app-context'
+import { ensurePush } from '../push'
+import { isUnread, useSeen } from './seen'
 import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, spring } from './bits'
-import { Settings, effortLabel, shortModel } from './settings'
 import { ago, plain, plural, step } from './format'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
@@ -36,15 +37,7 @@ function useStickBottom(ref: React.RefObject<HTMLDivElement | null>, count: numb
 export function AgentBand() {
   const { snap, expanded, setExpanded } = useApp()
   const open = expanded === 'agent'
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const body = useRef<HTMLDivElement>(null)
-  const live = snap.sessions.filter((s) => s.status !== 'done')
-  const att = snap.sessions.filter((s) => s.status === 'needs_user').length
-  const running = snap.h24.filter((a) => a.runState === 'running').length
-  const model = [shortModel(snap.mainSettings?.model), effortLabel(snap.mainSettings?.effort)].filter(Boolean).join(' · ')
-  const summary = [live.length ? activity(live) : 'aucune session ouverte', att ? `${att} à toi` : null, running ? `h24 ${running} en cours` : null, snap.mainQueued ? `${snap.mainQueued} en attente` : null]
-    .filter(Boolean)
-    .join(' · ')
   const last = snap.main[snap.main.length - 1]
   useStickBottom(body, snap.main.length, open)
 
@@ -58,39 +51,9 @@ export function AgentBand() {
   }
 
   return (
-    <section className="band agent" style={color('agent')} aria-label="weevils, l’orchestrateur">
-      <div className="in head">
-        <button className="head-name" onClick={() => setExpanded(open ? null : 'agent')} aria-expanded={open} aria-controls="agent-body">
-          <motion.span className="name" initial={false} animate={{ fontSize: expanded && !open ? NAME_SIZE.mini : NAME_SIZE.normal }} transition={spring}>
-            weevils
-            {snap.mainWorking && (
-              <span className="fluo" aria-hidden>
-                {' '}
-                *
-              </span>
-            )}
-          </motion.span>
-        </button>
-        <button className="ch" onClick={() => setSettingsOpen((v) => !v)} aria-label="réglages de weevils" aria-expanded={settingsOpen} aria-controls="agent-settings">
-          ~
-        </button>
-      </div>
-      <div className="in meta summary">
-        {summary}
-        {model && (
-          <>
-            {' · '}
-            <button className="link inline" onClick={() => setSettingsOpen(true)} aria-label="changer le modèle ou l’effort" aria-controls="agent-settings">
-              {model}
-            </button>
-          </>
-        )}
-      </div>
-      <Collapse open={settingsOpen} id="agent-settings">
-        <div className="band tone">
-          <Settings id="__main" tool="claude" settings={snap.mainSettings} canCommand={snap.mainHasScreen} run={(c) => api.mainCommand(c)} />
-        </div>
-      </Collapse>
+    <section className="band agent tone" style={color('agent')} aria-label="weevils, l’orchestrateur">
+      {/* L'espace du haut reste vide pour l'instant : Scarville dira ce qu'on y met. */}
+      <div className="agent-space" aria-hidden />
 
       {/* Replié : la dernière réponse de weevils, en une ligne. Ouvert : la conversation, qui grandit sans tout envahir. */}
       {!open && last && last.role !== 'user' && (
@@ -141,6 +104,8 @@ export function ProjectBand({ project }: { project: Project }) {
   const doneOpen = showDone || (mode === 'open' && active.length === 0)
 
   const busy = active.some((s) => s.status === 'working')
+  useSeen()
+  const unread = sessions.some(isUnread)
   const summary = [
     active.length ? activity(active) : sessions.length ? 'rien ne tourne' : null,
     att.length ? `${att.length} à toi` : null,
@@ -156,6 +121,7 @@ export function ProjectBand({ project }: { project: Project }) {
         <button className="head-name" onClick={toggle} aria-expanded={mode === 'open'} aria-controls={`more-${project.id}`}>
           <motion.span className="name" initial={false} animate={{ fontSize: compact ? '1.75rem' : NAME_SIZE[mode] }} transition={spring}>
             {project.name}
+            {unread && <span className="dot" aria-label="a répondu, pas encore lu" />}
             {active.some((s) => s.status === 'working') && (
               <span className="fluo" aria-hidden>
                 {' '}
@@ -269,11 +235,6 @@ export function ProjectBand({ project }: { project: Project }) {
 // ---------------------------------------------------------------------------
 // Bande de fin : réglages et état de la connexion. Elle remplit l'espace jusqu'au rail H24.
 
-const b64 = (s: string) => {
-  const pad = '='.repeat((4 - (s.length % 4)) % 4)
-  const raw = atob((s + pad).replace(/-/g, '+').replace(/_/g, '/'))
-  return Uint8Array.from(raw, (c) => c.charCodeAt(0))
-}
 
 /** Notifications : abonnement Web Push (iPhone : seulement depuis l'app installée sur l'écran d'accueil). */
 function NotifyLine() {
@@ -286,14 +247,7 @@ function NotifyLine() {
     setState('busy')
     setMsg(null)
     try {
-      const info = await api.push()
-      if (!info.enabled) throw new Error('notifications indisponibles sur le serveur')
-      const perm = await Notification.requestPermission()
-      if (perm !== 'granted') throw new Error('autorisation refusée (réglages de l’iPhone → weevils → notifications)')
-      const reg = await navigator.serviceWorker.ready
-      const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(info.publicKey) }))
-      await api.pushSubscribe(sub.toJSON())
-      await api.pushTest()
+      await ensurePush({ ask: true, test: true })
       setState('on')
       setMsg('notification de test envoyée')
     } catch (e) {

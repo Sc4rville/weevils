@@ -289,18 +289,19 @@ export class Weevils {
       next.set(s.id, entry)
       if (first || !prev || prev.status === s.status) continue
       if (prev.notifiedAt && now - prev.notifiedAt < 60_000) continue
-      let body: string | null = null
-      if (s.status === 'needs_user') body = s.attention ?? 'attend ta réponse'
-      else if (prev.status === 'working' && (s.status === 'idle' || s.status === 'done') && now - prev.since > 60_000) body = `a fini · ${s.lastMessage ?? s.title}`
-      if (!body) continue
-      entry.notifiedAt = now
       const project = snap.projects.find((p) => p.id === s.projectId)?.name ?? s.projectId
-      void this.push.send({
-        title: `${project} · ${s.tool}${s.machineId !== MACHINE.id ? ` @${s.machineId}` : ''}`,
-        body: body.slice(0, 180),
-        url: `/#s=${encodeURIComponent(s.id)}`,
-        tag: s.id,
-      })
+      let title: string | null = null
+      let body: string | null = null
+      if (s.status === 'needs_user') {
+        title = `${project} t’attend`
+        body = s.attention ?? 'attend ta réponse'
+      } else if (prev.status === 'working' && (s.status === 'idle' || s.status === 'done') && now - prev.since > 15_000 && s.lastMessage) {
+        title = `${project} a fini`
+        body = s.lastMessage
+      }
+      if (!title || !body) continue
+      entry.notifiedAt = now
+      void this.push.send({ title, body: body.replace(/\s+/g, ' ').slice(0, 180), url: `/#s=${encodeURIComponent(s.id)}`, tag: s.id })
     }
     this.prevStatus = next
   }

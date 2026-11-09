@@ -4,6 +4,7 @@ import { api } from '../api'
 import type { Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
 import { dur, plain, segments, status, step, userText } from './format'
+import { isUnread, useSeen } from './seen'
 
 /** Ressort commun : léger dépassement, pour que les bandes aient de l'inertie. */
 export const spring: Transition = { type: 'spring', stiffness: 420, damping: 32, mass: 0.9 }
@@ -76,6 +77,8 @@ export function ToolIcon({ tool, size = 15 }: { tool: string; size?: number }) {
 
 export function SessionRow({ session }: { session: Session }) {
   const { push, now } = useApp()
+  useSeen()
+  const unread = isUnread(session)
   const st = status[session.status]
   const waiting = session.status === 'needs_user'
   const ref = session.status === 'working' && session.workStartedAt ? session.workStartedAt : session.lastActivityAt
@@ -85,7 +88,7 @@ export function SessionRow({ session }: { session: Session }) {
   const when = dur(now - (session.status === 'done' ? session.lastActivityAt : ref))
   return (
     <button
-      className={`row ${waiting ? 'tone' : ''} ${session.status === 'working' ? 'live' : ''}`}
+      className={`row ${waiting ? 'tone' : ''} ${session.status === 'working' ? 'live' : ''} ${unread ? 'unread' : ''}`}
       onClick={() => push({ kind: 'session', id: session.id })}
       aria-label={`${session.tool}, ${session.title}, ${st.label}${act ? ` : ${act}` : ''}, ${when}`}
       title={act ? session.title : undefined}
@@ -97,7 +100,10 @@ export function SessionRow({ session }: { session: Session }) {
         <span className="tool-ic">
           <ToolIcon tool={session.tool} />
         </span>
-        <span className="title wrap">{text}</span>
+        <span className="title wrap">
+          {unread && <span className="dot" aria-hidden />}
+          {text}
+        </span>
         <span className="act">{when}</span>
       </span>
     </button>

@@ -5,7 +5,8 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { DATA_DIR } from './config.ts'
+import { DATA_DIR, USER_NAME } from './config.ts'
+import C from './i18n/config.ts'
 import { isLang, pickLang, type Lang, type Messages, type Msg } from '../shared/i18n.ts'
 
 export { defineMessages, type Lang } from '../shared/i18n.ts'
@@ -51,3 +52,6 @@ export const onLangChange = (f: (l: Lang) => void) => listeners.add(f)
 export function tr<T extends Record<string, Msg>>(m: Messages<T>): T {
   return m[current] as T
 }
+
+/** The user's name (WEEVILS_USER_NAME), else « l'utilisateur » / "the user" in the current language. Read at call time. */
+export const user = (): string => USER_NAME || tr(C).theUser

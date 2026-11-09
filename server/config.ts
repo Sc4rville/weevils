@@ -15,9 +15,10 @@ try {
   /* pas de config : valeurs par défaut */
 }
 
-/** Prénom de l'utilisateur, pour que les agents s'adressent à lui (vide : « l'utilisateur »). */
+/** Prénom de l'utilisateur, pour que les agents s'adressent à lui. Vide : user() (server/i18n.ts) dit « l'utilisateur » / « the user ». */
 export const USER_NAME = process.env.WEEVILS_USER_NAME?.trim() ?? ''
-export const USER = USER_NAME || 'l’utilisateur'
+/** @deprecated Repli figé en français : utiliser user() de './i18n.ts', lu à l'appel dans la langue de l'utilisateur. */
+export const USER = USER_NAME || 'l’utilisateur' // i18n-ignore : repli des anciens prompts français, remplacé par user()
 /** Adresse publique de l'app (notifications push, QR de connexion). */
 export const PUBLIC_URL = process.env.WEEVILS_PUBLIC_URL?.trim() || ''
 /** Domaine où les serveurs de preview sont exposés en <nom>.<domaine> (navigateur intégré). */

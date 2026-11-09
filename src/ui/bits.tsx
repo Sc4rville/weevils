@@ -58,31 +58,34 @@ function Clamp({ text }: { text: string }) {
   )
 }
 
+/** L'outil en un signe, pas en toutes lettres : ✳ claude (son étoile), ⊚ codex. */
+export const TOOL_ICON: Record<string, string> = { claude: '✳', codex: '⊚' }
+
 export function SessionRow({ session }: { session: Session }) {
   const { push, now } = useApp()
   const st = status[session.status]
   const waiting = session.status === 'needs_user'
   const ref = session.status === 'working' && session.workStartedAt ? session.workStartedAt : session.lastActivityAt
-  // Sous le titre : la question qui t'attend, sinon ce que la session fait en ce moment.
-  const sub = waiting && session.attention ? session.attention : session.now
+  // À droite : ce que la session fait (question qui t'attend, sinon son activité), puis la durée.
+  const act = waiting && session.attention ? session.attention : (session.now ?? st.label)
+  const when = dur(now - (session.status === 'done' ? session.lastActivityAt : ref))
   return (
     <button
       className={`row ${waiting ? 'tone' : ''} ${session.status === 'working' ? 'live' : ''}`}
       onClick={() => push({ kind: 'session', id: session.id })}
-      aria-label={`${session.tool}, ${session.title}, ${st.label}${sub ? ` : ${sub}` : ''}`}
+      aria-label={`${session.tool}, ${session.title}, ${st.label}${act ? ` : ${act}` : ''}, ${when}`}
     >
-      <span className="in" aria-hidden>
+      <span className="in line" aria-hidden>
         <span className="st">
           <StatusChar s={session.status} />
         </span>
-        <span className="dur">{dur(now - (session.status === 'done' ? session.lastActivityAt : ref))}</span>
-        <span className="tool">
-          {session.tool}
-          {session.machineId !== 'vps' && <span className="tag">@{session.machineId}</span>}
+        <span className="tool-ic">
+          {TOOL_ICON[session.tool] ?? session.tool}
+          {session.machineId !== 'vps' && <span className="tag">{session.machineId}</span>}
         </span>
-        <span className="stack-text">
-          <span className="title">{session.title}</span>
-          {sub && <span className="meta ellipsis">{sub}</span>}
+        <span className="title">{session.title}</span>
+        <span className="act">
+          {act} · {when}
         </span>
       </span>
     </button>

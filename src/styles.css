@@ -908,3 +908,48 @@ input:focus-visible {
   width: 4px;
   background: var(--agent);
 }
+
+/* ---------- Ligne de session : une seule ligne, l'activité à droite ---------- */
+
+.row > .in.line {
+  min-height: 48px;
+  gap: 8px;
+}
+
+.row .tool-ic {
+  flex: none;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  width: 22px;
+}
+
+.row .tool-ic .tag {
+  font-size: 0.625rem;
+  margin-left: 0;
+  opacity: 0.8;
+}
+
+.row .line .title {
+  flex: 1 1 38%;
+  min-width: 0;
+}
+
+.row .act {
+  flex: 0 1 50%;
+  min-width: 0;
+  text-align: right;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.92;
+}
+
+.row.tone .act {
+  font-weight: 650;
+  opacity: 1;
+}

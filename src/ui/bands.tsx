@@ -11,8 +11,9 @@ import { useApp } from './app-context'
 import { ensurePush } from '../push'
 import { VoiceLogo } from './voice'
 import { isUnread, useSeen } from './seen'
-import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, spring, useAuthors } from './bits'
-import { ago, plain, step } from './format'
+import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, authorTone, spring, useAuthors } from './bits'
+import B from '../i18n/bits'
+import { ago, plain, userText } from './format'
 import { FilledIcon, Icon } from './icons'
 import { PrefLines } from './prefs'
 
@@ -40,10 +41,59 @@ function useStickBottom(ref: React.RefObject<HTMLDivElement | null>, count: numb
   }, [ref, count, open])
 }
 
+/** L'aperçu vivant du fil, dans la bande réduite : les derniers messages, les récents en bas, les anciens remontent et s'estompent. */
+function Peek({ onOpen }: { onOpen: () => void }) {
+  const t = useT(M)
+  const tb = useT(B)
+  const td = useT(D)
+  const authorOf = useAuthors()
+  const { snap } = useApp()
+  const items = snap.main.filter((m) => m.role !== 'event' && m.text.trim()).slice(-5)
+  const working = snap.mainWorking || !!snap.devil?.working
+  const soft = { type: 'spring', stiffness: 160, damping: 26, mass: 1 } as const
+  return (
+    <div className="peek" role="button" tabIndex={0} aria-label={t.openChat} onClick={onOpen} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}>
+      <AnimatePresence initial={false} mode="popLayout">
+        {items.map((m) => {
+          const tone = m.role === 'orchestrator' ? authorTone(authorOf(m.author)) : null
+          const who = m.role === 'user' ? tb.you : m.role === 'orchestrator' ? authorOf(m.author).name : m.devil ? td.devil : 'weevboss'
+          const text = (m.role === 'user' ? userText(m.text) : plain(m.text)).replace(/\s+/g, ' ')
+          return (
+            <motion.div
+              key={m.id}
+              layout="position"
+              className={`peek-item ${m.role === 'user' ? '' : tone ? tone.className.replace('tone ', '') : m.devil ? 'devil' : 'base'}`}
+              style={tone?.style}
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -18 }}
+              transition={soft}
+            >
+              <div className="in">
+                <span className="txt">
+                  <span className="strong">{who}</span> {text}
+                </span>
+              </div>
+            </motion.div>
+          )
+        })}
+        {working && (
+          <motion.div key="working" layout="position" className="peek-item" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={soft}>
+            <div className="in">
+              <span className="spin fluo">
+                <Icon name="star" />
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 export function AgentBand() {
   const t = useT(M)
   const td = useT(D)
-  const authorOf = useAuthors()
   const { snap, expanded, setExpanded } = useApp()
   const open = expanded === 'agent'
   // Devil mode : mémorisé sur l'appareil ; les messages vont à l'autre modèle, la bande passe en orange.
@@ -69,7 +119,6 @@ export function AgentBand() {
   const swipe = useRef<{ y: number; top: number } | null>(null)
   const [draft, setDraft] = useState({ text: '', n: 0, reset: false })
   const heard = useRef('')
-  const last = snap.main[snap.main.length - 1]
   useStickBottom(body, snap.main.length, open)
 
   // Envoyé depuis le logo : la bande reste réduite. Écrit dans le champ : la conversation s'ouvre.
@@ -86,39 +135,23 @@ export function AgentBand() {
   }
 
   return (
-    <section className={`band agent tone ${devilOn ? 'devil-on' : ''}`} style={color(devilOn ? 'devil' : 'agent')} aria-label={t.agentBand}>
-      {/* L'espace du haut reste vide pour l'instant : à remplir plus tard. */}
-      {/* Ouverte : un tap dans l'espace vide, le chevron, ou glisser vers le bas la réduit. */}
+    <section className={`band agent tone ${devilOn ? 'devil-on' : ''} ${open ? 'open' : ''}`} style={color(devilOn ? 'devil' : 'agent')} aria-label={t.agentBand}>
+      {/* En haut : le logo (dicter) et le diablotin, sous la barre d'état. Réduite : l'aperçu vivant du fil ; un tap l'ouvre.
+          Ouverte : un tap dans l'espace vide, le chevron, ou glisser vers le bas la réduit. */}
       <div className="agent-space" onClick={(e) => open && e.target === e.currentTarget && setExpanded(null)}>
         {open && (
           <button className="agent-close" onClick={() => setExpanded(null)} aria-label={t.collapseChat}>
             <Icon name="chevron" dir="down" />
           </button>
         )}
-        <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={toggleDevil} aria-pressed={!!devilOn} aria-label={devilOn ? td.on : td.off}>
-          <FilledIcon name="devil" />
-        </button>
-        <VoiceLogo take={() => { const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }} onText={(x) => { heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }} onSend={() => { viaLogo.current = true; form.current?.requestSubmit() }} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
+        <div className="agent-top">
+          <VoiceLogo take={() => { const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }} onText={(x) => { heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }} onSend={() => { viaLogo.current = true; form.current?.requestSubmit() }} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
+          <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={toggleDevil} aria-pressed={!!devilOn} aria-label={devilOn ? td.on : td.off}>
+            <FilledIcon name="devil" />
+          </button>
+        </div>
+        {!open && <Peek onOpen={() => setExpanded('agent')} />}
       </div>
-
-      {/* Replié : la dernière réponse de weevils, en une ligne. Ouvert : la conversation, qui grandit sans tout envahir. */}
-      {!open && last && last.role !== 'user' && (
-        <button className="row" onClick={() => setExpanded('agent')} aria-label={t.openChat}>
-          <span className="in">
-            <span className="stack-text">
-              <span className="ellipsis">
-                {snap.mainWorking && (
-                  <span className="spin fluo" aria-hidden>
-                    *{' '}
-                  </span>
-                )}
-                <span className="strong">{last.role === 'event' ? <Icon name="arrow" dir="right" /> : `${last.devil && last.role === 'assistant' ? td.devil : last.role === 'orchestrator' ? authorOf(last.author).name : 'weevboss'} · `}</span>
-                {last.role === 'event' ? step(last.text) : plain(last.text).split('\n')[0]}
-              </span>
-            </span>
-          </span>
-        </button>
-      )}
       <Collapse open={open} id="agent-body">
         <motion.div
           ref={body}

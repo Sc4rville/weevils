@@ -196,11 +196,6 @@ export function ProjectBand({ project }: { project: Project }) {
       </motion.div>
 
       <Collapse open={mode !== 'mini' && !compact}>
-        {project.kind === 'invented' && (
-          <div className="in meta" style={{ paddingBottom: 6 }}>
-            catégorie inventée par weevils · hors repo
-          </div>
-        )}
         <AnimatePresence initial={false}>
           {active.map((s) => (
             <Appear key={s.id}>
@@ -238,7 +233,7 @@ export function ProjectBand({ project }: { project: Project }) {
           )}
           {project.repos.length > 0 && <div className="in label">repos</div>}
           {project.repos.map((r) => (
-            <Line key={r} ch="/" meta={`${project.where[r] ?? 'vps'} · parcourir les fichiers`} onClick={() => push({ kind: 'files', projectId: project.id, repo: r })}>
+            <Line key={r} ch="/" meta={project.where[r] ?? 'vps'} onClick={() => push({ kind: 'files', projectId: project.id, repo: r })}>
               {r}
             </Line>
           ))}
@@ -296,7 +291,7 @@ function NotifyLine() {
   }
   if (!supported || (ios && !standalone)) {
     return (
-      <Line ch="!" go={null} meta="installe weevils sur l’écran d’accueil (Partager → Sur l’écran d’accueil), puis active-les depuis l’app">
+      <Line ch="!" go={null} disabled>
         notifications
       </Line>
     )
@@ -324,23 +319,20 @@ export function FootBand() {
           {m.name}
         </Line>
       ))}
-      <Line ch="+" meta="dans n’importe quel repo, sur la machine de ton choix" onClick={() => push({ kind: 'new', projectId: '__any' })}>
+      <Line ch="+" onClick={() => push({ kind: 'new', projectId: '__any' })}>
         nouvelle session ailleurs
       </Line>
-      <Line ch='"' meta={`${plural(snap.conversationCounts.total, 'importée', 'importées')} · chatgpt et claude.ai`} onClick={() => push({ kind: 'conversations' })}>
+      <Line ch='"' meta={plural(snap.conversationCounts.total, 'importée', 'importées')} onClick={() => push({ kind: 'conversations' })}>
         conversations
       </Line>
-      <Line ch="↑" meta="export ChatGPT ou Claude.ai (.zip)" onClick={() => push({ kind: 'import' })}>
+      <Line ch="↑" onClick={() => push({ kind: 'import' })}>
         importer des conversations
       </Line>
       <NotifyLine />
-      <Line ch="~" meta={`passer en ${dark ? 'clair' : 'sombre'}`} go={null} onClick={() => setTheme(dark ? 'light' : 'dark')}>
+      <Line ch="~" go={null} onClick={() => setTheme(dark ? 'light' : 'dark')}>
         thème {dark ? 'sombre' : 'clair'}
       </Line>
-      <div className="in meta" style={{ paddingBlock: 10 }}>
-        Pour qu’une session ouverte dans un terminal soit pilotable d’ici, lance-la avec <span className="strong">wv</span> (ou <span className="strong">wv codex</span>).
-      </div>
-      <Line ch="x" meta="cet appareil devra se reconnecter" go={null} onClick={logout}>
+      <Line ch="x" go={null} onClick={logout}>
         se déconnecter
       </Line>
     </section>

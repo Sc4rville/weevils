@@ -195,9 +195,6 @@ export function ConversationPage({ id }: { id: string }) {
             {t}
           </Line>
         ))}
-        <div className="in meta" style={{ paddingBottom: 12 }}>
-          Une nouvelle session reçoit la fin de cette conversation en contexte, dans le repo du projet.
-        </div>
       </div>
     </Shell>
   )
@@ -247,19 +244,6 @@ export function ImportPage() {
       {err && <div className="in meta strong" style={{ paddingBlock: 12 }}>! {err}</div>}
       <div className="in meta" style={{ paddingBlock: 10 }}>
         {cl.running ? `Classement en cours · ${cl.queued} restantes.` : cl.lastError ? `Dernier classement interrompu : ${cl.lastError}` : snap.conversationCounts.pending ? `${snap.conversationCounts.pending} à ranger par toi.` : 'Tout est rangé.'}
-      </div>
-      <div className="band tone">
-        <div className="in label">obtenir l’export</div>
-        <div className="in meta" style={{ paddingBottom: 8 }}>
-          <span className="strong">ChatGPT</span> : Paramètres → Contrôle des données → Exporter les données. Le lien arrive par e-mail ; télécharge le zip sur l’iPhone, puis choisis-le ici.
-        </div>
-        <div className="in meta" style={{ paddingBottom: 8 }}>
-          <span className="strong">Claude.ai</span> : Paramètres → Confidentialité → Exporter les données. Même chose.
-        </div>
-        <div className="in meta" style={{ paddingBottom: 14 }}>
-          Depuis un ordinateur, tu peux aussi déposer le zip dans <span className="strong">~/weevils-imports</span> sur le VPS : il est importé tout seul.
-          Réimporter un export plus récent ajoute seulement ce qui a changé.
-        </div>
       </div>
     </Shell>
   )

@@ -44,7 +44,7 @@ export function PageView({ page }: { page: Page }) {
   }
 }
 
-function Missing({ text = 'Cet élément n’existe plus.' }: { text?: string }) {
+function Missing({ text = 'introuvable' }: { text?: string }) {
   return (
     <Shell slot="agent" kicker="weevils" title="introuvable">
       <div className="in meta empty">{text}</div>
@@ -146,7 +146,7 @@ function SessionPage({ id }: { id: string }) {
   useStickToBottom(messages.length)
   const suggestions = useMemo(() => urlsInMessages(messages), [messages])
 
-  if (!s) return missing ? <Missing text="Session introuvable : elle a peut-être plus de trois jours." /> : <Shell slot="agent" kicker="weevils" title="…">{null}</Shell>
+  if (!s) return missing ? <Missing /> : <Shell slot="agent" kicker="weevils" title="…">{null}</Shell>
 
   const project = snap.projects.find((p) => p.id === s.projectId)
   const st = status[s.status]
@@ -210,15 +210,6 @@ function SessionPage({ id }: { id: string }) {
     >
       {err && <ErrorBand text={err} />}
 
-      {!s.controllable && (
-        <div className="band tone">
-          <div className="in meta" style={{ paddingBlock: 12 }}>
-            Ouverte dans un terminal que weevils ne pilote pas : tu la lis ici, mais pour lui écrire, lance tes sessions avec <span className="strong">wv</span>. Une fois
-            fermée, weevils pourra la reprendre.
-          </div>
-        </div>
-      )}
-
       {s.subagents.length > 0 && (
         <div className="band tone">
           <Line ch="&" go={showSubs ? '−' : '+'} onClick={() => setShowSubs((v) => !v)} label={`sous-agents : ${active} actifs`}>
@@ -246,14 +237,13 @@ function SessionPage({ id }: { id: string }) {
       )}
 
       <Messages messages={messages} author={s.tool} working={s.status === 'working'} />
-      {detail && messages.length === 0 && <div className="in meta empty">Pas encore de message. La session démarre.</div>}
 
       {s.status === 'needs_user' && (
         <div className="msg band tone ask">
           <div className="in">
             <span className="who">! {s.tool} te demande</span>
             <div className="text">{s.attention ?? 'la session attend ta réponse'}</div>
-            {s.hasScreen ? <Keys id={s.id} onError={setErr} /> : <div className="meta">Réponds dans le terminal où elle tourne.</div>}
+            {s.hasScreen && <Keys id={s.id} onError={setErr} />}
           </div>
         </div>
       )}
@@ -406,7 +396,7 @@ function FilePage({ projectId, repo, path }: { projectId: string; repo: string; 
       meta={file ? `${kb(file.size)}${file.truncated ? ' · tronqué' : ''}` : 'lecture…'}
     >
       {err && <ErrorBand text={err} />}
-      {file?.binary && <div className="in meta empty">Fichier binaire : pas d’aperçu.</div>}
+      {file?.binary && <div className="in meta empty">binaire</div>}
       {file && !file.binary && <pre className={`in ${prose ? 'code' : 'code mono'}`}>{file.content}</pre>}
     </Shell>
   )
@@ -434,11 +424,6 @@ function MachinePage({ projectId }: { projectId: string }) {
           </div>
         )
       })}
-      <div className="in label">depuis un terminal</div>
-      <div className="in meta" style={{ paddingBottom: 16 }}>
-        <span className="strong">wv</span> lance claude dans le dossier courant, <span className="strong">wv codex</span> lance codex, <span className="strong">wv ls</span> liste
-        les sessions, <span className="strong">wv a</span> s’y rattache. weevils les voit et les pilote.
-      </div>
     </Shell>
   )
 }
@@ -486,7 +471,6 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       slot={colors[projectId] ?? 'agent'}
       kicker={project.name}
       title="+ nouvelle session"
-      meta="lancée sur le VPS dans une session wv, pilotable d’ici et depuis un terminal (wv a)"
       foot={<Composer placeholder="premier message" label="premier message de la session" onSend={create} />}
     >
       {err && <ErrorBand text={err} />}
@@ -520,7 +504,7 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       {(project.repos.length > 1 || any) && (
         <>
           <div className="in label">repo</div>
-          {any && !allRepos && <div className="in meta empty">lecture des repos…</div>}
+          {any && !allRepos && <div className="in meta empty">…</div>}
           {project.repos.map((r) => (
             <Line key={r} className={repo === r ? 'invert' : ''} ch={repo === r ? '>' : '/'} go={null} meta={any ? undefined : project.where[r]} onClick={() => setRepo(r)}>
               {r}
@@ -528,9 +512,6 @@ function NewSessionPage({ projectId }: { projectId: string }) {
           ))}
         </>
       )}
-      <Line ch="+" go={null} meta="ou écris directement le premier message en bas" onClick={() => void create('').catch(() => undefined)}>
-        ouvrir sans message
-      </Line>
     </Shell>
   )
 }

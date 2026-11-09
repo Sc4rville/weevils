@@ -103,7 +103,7 @@ export function Settings({
   const models = model && !MODELS.claude.includes(model) ? [model, ...MODELS.claude] : MODELS.claude
 
   if (!canCommand) {
-    return <div className="in meta empty">Réglages indisponibles : la session ne tourne pas dans une pane weevils (relance-la avec wv, ou envoie-lui un message).</div>
+    return <div className="in meta empty">indisponible</div>
   }
 
   return (
@@ -135,7 +135,7 @@ export function Settings({
             <span className="meta settings-label">modèle{settings?.model ? ` · ${settings.model}` : ''}</span>
             <div className="opts">
               <button className="opt" onClick={() => void send('/model', onPicker)}>
-                choisir dans le terminal
+                /model
               </button>
             </div>
           </div>
@@ -143,21 +143,21 @@ export function Settings({
             <span className="meta settings-label">approvals{settings?.approval ? ` · ${settings.approval}` : ''}</span>
             <div className="opts">
               <button className="opt" onClick={() => void send('/approvals', onPicker)}>
-                choisir dans le terminal
+                /approvals
               </button>
             </div>
           </div>
         </>
       )}
-      <Line ch="⇣" go={null} meta="résume le contexte pour libérer de la place" onClick={() => void send('/compact')} disabled={busy === '/compact'}>
+      <Line ch="⇣" go={null} onClick={() => void send('/compact')} disabled={busy === '/compact'}>
         /compact
       </Line>
       {confirm ? (
-        <Line ch="!" go={null} className="invert" meta="tout le fil de cette session est oublié, c’est définitif" onClick={() => void send(tool === 'codex' ? '/new' : '/clear', () => setConfirm(null))}>
-          confirmer {tool === 'codex' ? '/new' : '/clear'} · appuie encore
+        <Line ch="!" go={null} className="invert" onClick={() => void send(tool === 'codex' ? '/new' : '/clear', () => setConfirm(null))}>
+          confirmer {tool === 'codex' ? '/new' : '/clear'}
         </Line>
       ) : (
-        <Line ch="×" go={null} meta="repartir de zéro (demande confirmation)" onClick={() => setConfirm('clear')}>
+        <Line ch="×" go={null} onClick={() => setConfirm('clear')}>
           {tool === 'codex' ? '/new' : '/clear'}
         </Line>
       )}

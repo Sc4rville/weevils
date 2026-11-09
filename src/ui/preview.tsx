@@ -122,20 +122,20 @@ export function Preview({ url, suggestions, onUrl, onClose }: { url: string; sug
           ))}
         </div>
       )}
-      {url ? (
-        <iframe
-          key={`${url}#${gen}`}
-          className="preview-frame"
-          src={url}
-          title="aperçu de l’application"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
-          allow="clipboard-write; fullscreen"
-          referrerPolicy="no-referrer"
-        />
-      ) : (
-        <div className="in meta empty">Aucune adresse encore : entre celle du serveur de preview, ou expose un port depuis le VPS avec « expose ».</div>
-      )}
-      {url && <div className="preview-note meta">Page vide ? Le site refuse l’affichage intégré : ouvre-le dans un onglet (↗).</div>}
+      {/* L'iframe est posée en absolu dans un cadre flex : iOS Safari ignore la hauteur flex d'une iframe et la réduit à presque rien. */}
+      <div className="preview-body">
+        {url && (
+          <iframe
+            key={`${url}#${gen}`}
+            className="preview-frame"
+            src={url}
+            title="aperçu de l’application"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+            allow="clipboard-write; fullscreen"
+            referrerPolicy="no-referrer"
+          />
+        )}
+      </div>
     </div>
   )
 }

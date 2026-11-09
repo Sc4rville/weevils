@@ -54,9 +54,6 @@ export function Login({ onDone }: { onDone: () => void }) {
             </div>
           </div>
         )}
-        <div className="in meta" style={{ paddingBlock: 16 }}>
-          Le plus simple : scanne le QR code de connexion avec l’appareil photo. Une seule fois par appareil.
-        </div>
       </section>
     </main>
   )

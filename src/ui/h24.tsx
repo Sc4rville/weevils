@@ -135,10 +135,8 @@ export function H24Rail() {
               </div>
             )
           })}
-          {list.length === 0 && <div className="in meta empty">Aucun job en cours ni récent sur le VPS.</div>}
-          <div className="in meta" style={{ paddingBlock: 14 }}>
-            Jobs longs lancés sur le VPS (fichiers de ~/logs) et tâches planifiées wv-*.
-          </div>
+          {list.length === 0 && <div className="in meta empty">rien</div>}
+          <div style={{ height: 14 }} />
         </div>
       </motion.div>
     </>

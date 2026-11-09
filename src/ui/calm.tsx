@@ -2,6 +2,8 @@ import { motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type TouchEvent } from 'react'
 import type { Message, SessionDetail } from '../../shared/api.ts'
 import { api } from '../api'
+import { useT } from '../i18n'
+import M from '../i18n/calm'
 import { useApp } from './app-context'
 import { Collapse, Composer, Messages, Working, type Attachment } from './bits'
 import { ago, plain } from './format'
@@ -60,6 +62,7 @@ const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 // La grille : l'orchestrateur en premier, puis les conversations actives, puis par activité.
 
 export function CalmGrid() {
+  const t = useT(M)
   const { snap, push, home, colors, now } = useApp()
   const page = useRef<HTMLDivElement>(null)
   usePageChrome('calm', page)
@@ -70,9 +73,9 @@ export function CalmGrid() {
   const names = new Map(snap.projects.map((p) => [p.id, p.name]))
 
   return (
-    <motion.div ref={page} className="page calm" {...pinch} initial={{ opacity: 0, scale: 0.985 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.985 }} transition={soft} role="dialog" aria-modal="true" aria-label="conversations">
+    <motion.div ref={page} className="page calm" {...pinch} initial={{ opacity: 0, scale: 0.985 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.985 }} transition={soft} role="dialog" aria-modal="true" aria-label={t.conversations}>
       <div className="calm-top">
-        <button className="ch" onClick={home} aria-label="retour au fil">
+        <button className="ch" onClick={home} aria-label={t.backToFeed}>
           <Icon name="chevron" dir="left" />
         </button>
       </div>
@@ -80,13 +83,13 @@ export function CalmGrid() {
         <div className="calm-grid">
           <button className="calm-cell" style={color('agent')} onClick={() => push({ kind: 'calmconv', id: 'main' })}>
             <span className="calm-title">weevboss</span>
-            <span className="meta">{snap.mainWorking ? 'travaille' : last ? plain(last.text).split('\n')[0] : ''}</span>
+            <span className="meta">{snap.mainWorking ? t.working : last ? plain(last.text).split('\n')[0] : ''}</span>
           </button>
           {sessions.map((s) => (
             <button key={s.id} className="calm-cell" style={color(colors[s.projectId] ?? 'p0')} onClick={() => push({ kind: 'calmconv', id: s.id })}>
               <span className="calm-title">{s.title}</span>
               <span className="meta">
-                {names.get(s.projectId) ?? s.projectId} · {s.status === 'working' ? (s.now ?? 'travaille') : s.status === 'needs_user' ? 'à toi' : ago(now - s.lastActivityAt)}
+                {names.get(s.projectId) ?? s.projectId} · {s.status === 'working' ? (s.now ?? t.working) : s.status === 'needs_user' ? t.yourTurn : ago(now - s.lastActivityAt)}
               </span>
             </button>
           ))}
@@ -101,6 +104,7 @@ export function CalmGrid() {
 // L'immersion : une couleur, les messages, le champ. Retour par la flèche, un pincement ou en tirant vers le bas.
 
 export function CalmConv({ id }: { id: string }) {
+  const t = useT(M)
   const { snap, back, home, replace } = useApp()
   const page = useRef<HTMLDivElement>(null)
   const body = useRef<HTMLDivElement>(null)
@@ -182,17 +186,17 @@ export function CalmConv({ id }: { id: string }) {
       aria-label={title}
     >
       <div className="calm-top">
-        <button className="ch" onClick={back} aria-label="retour">
+        <button className="ch" onClick={back} aria-label={t.back}>
           <Icon name="chevron" dir="left" />
         </button>
-        <button className="ch" onClick={() => setMore((v) => !v)} aria-label="options" aria-expanded={more}>
+        <button className="ch" onClick={() => setMore((v) => !v)} aria-label={t.options} aria-expanded={more}>
           <Icon name="more" />
         </button>
       </div>
       <Collapse open={more}>
         <div className="in inline-actions" style={{ paddingBottom: 6 }}>
           <button className="link inline" onClick={() => setPreview({ open: !preview.open })} aria-pressed={!!preview.open}>
-            navigateur
+            {t.browser}
           </button>
         </div>
         <Settings userName={snap.config.userName} id={main ? '__main' : id} tool={main ? 'claude' : (s?.tool ?? 'claude')} settings={settings} canCommand={canCommand} run={run} />
@@ -210,7 +214,7 @@ export function CalmConv({ id }: { id: string }) {
             <div className="fill" />
           </div>
           <div className="page-foot">
-            <Composer placeholder={`écris à ${author}`} label={`message à ${title}`} onSend={send} onAttach={send} voice anyFile={main} disabled={!main && s ? !s.controllable : false} />
+            <Composer placeholder={t.writeTo(author)} label={t.messageTo(title)} onSend={send} onAttach={send} voice anyFile={main} disabled={!main && s ? !s.controllable : false} />
           </div>
         </div>
         {preview.open && (

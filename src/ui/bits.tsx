@@ -3,7 +3,9 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { api } from '../api'
 import type { Author, Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
-import { dur, plain, segments, status, step, userText } from './format'
+import { dur, inline, isCommand, plain, segments, status, step, userText } from './format'
+import { copyText, useLongPress } from './copy'
+import C from '../i18n/copy'
 import { tr, useT } from '../i18n'
 import M from '../i18n/bits'
 import D from '../i18n/devil'
@@ -58,7 +60,9 @@ function Clamp({ text }: { text: string }) {
   const long = text.length > 420
   return (
     <>
-      <div className={`text ${long && !open ? 'clamp' : ''}`}>{text}</div>
+      <div className={`text ${long && !open ? 'clamp' : ''}`}>
+        <Rich text={text} code={false} />
+      </div>
       {long && (
         <button className="link small" onClick={() => setOpen((v) => !v)}>
           {open ? t.showLess : t.readAll}
@@ -398,7 +402,7 @@ export function Prose({ text }: { text: string }) {
       {parts.map((p, i) =>
         p.kind === 'text' ? (
           <div key={i} className="text">
-            {plain(p.body)}
+            <Rich text={plain(p.body, true)} />
           </div>
         ) : (
           <Snippet key={i} code={p.body} />
@@ -414,12 +418,115 @@ function Snippet({ code }: { code: string }) {
   const n = code.split('\n').length
   return (
     <div className="snippet">
-      <button className="link" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <Icon name={open ? 'minus' : 'plus'} /> {t.code(n)}
-      </button>
+      <div className="snippet-head">
+        <button className="link" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+          <Icon name={open ? 'minus' : 'plus'} /> {t.code(n)}
+        </button>
+        <CopyButton text={code} />
+      </div>
       <Collapse open={open}>
         <pre className="code mono small">{code}</pre>
       </Collapse>
+    </div>
+  )
+}
+
+/** Bouton copier discret : l'icône devient une coche un instant. */
+export function CopyButton({ text }: { text: string }) {
+  const t = useT(C)
+  const [done, setDone] = useState(false)
+  const timer = useRef(0)
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  return (
+    <button
+      type="button"
+      className={`copy ${done ? 'done' : ''}`}
+      aria-label={done ? t.copied : t.copy}
+      onClick={async (e) => {
+        e.stopPropagation()
+        if (await copyText(text)) {
+          setDone(true)
+          window.clearTimeout(timer.current)
+          timer.current = window.setTimeout(() => setDone(false), 1200)
+        }
+      }}
+    >
+      <Icon name={done ? 'check' : 'copy'} />
+    </button>
+  )
+}
+
+/** Texte de message : les URL deviennent des liens (navigateur), les `commandes` ont leur bouton copier. */
+export function Rich({ text, code = true }: { text: string; code?: boolean }) {
+  const parts = useMemo(() => inline(text, code), [text, code])
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.kind === 'text' ? (
+          p.s
+        ) : p.kind === 'url' ? (
+          <a key={i} className="url" href={p.href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+            {p.label}
+          </a>
+        ) : (
+          <span key={i} className="cmd">
+            {p.s}
+            {isCommand(p.s) && <CopyButton text={p.s} />}
+          </span>
+        ),
+      )}
+    </>
+  )
+}
+
+/** Une bulle : texte sélectionnable, appui long = tout le message copié (le nom devient « copié » un instant). */
+function Bubble({ className, style, who, copy, children }: { className: string; style?: React.CSSProperties; who: string; copy: string; children: ReactNode }) {
+  const t = useT(C)
+  const [copied, setCopied] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const timer = useRef(0)
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  const press = useLongPress(async () => {
+    const ok = await copyText(copy)
+    if (ok) {
+      setCopied(true)
+      navigator.vibrate?.(12)
+      window.clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => setCopied(false), 1200)
+    }
+    return ok
+  })
+  const live = useRef(press)
+  live.current = press
+  // Écouteurs natifs : à la souris, glisser sur le texte sélectionne, donc le geste ne remonte pas au balayage de la page
+  // (motion écoute nativement sur <main>) ; ce stopPropagation priverait aussi React de l'événement, d'où l'appui long ici.
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const down = (e: globalThis.PointerEvent) => {
+      if (e.pointerType === 'mouse') e.stopPropagation()
+      live.current.onPointerDown(e)
+    }
+    const move = (e: globalThis.PointerEvent) => live.current.onPointerMove(e)
+    const up = () => live.current.onPointerUp()
+    const cancel = () => live.current.onPointerCancel()
+    el.addEventListener('pointerdown', down)
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', up)
+    el.addEventListener('pointercancel', cancel)
+    return () => {
+      el.removeEventListener('pointerdown', down)
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', up)
+      el.removeEventListener('pointercancel', cancel)
+    }
+  }, [])
+  return (
+    <div ref={ref} className={`${className} ${copied ? 'copied' : ''}`} style={style}>
+      <div className="in">
+        <span className="who">{copied ? t.copied : who}</span>
+        {children}
+      </div>
     </div>
   )
 }
@@ -513,12 +620,14 @@ export function Messages({ messages, author, working = false }: { messages: Mess
           </Appear>
         ) : (
           <Appear key={g.m.id}>
-            <div className={`msg band ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''}`} style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}>
-              <div className="in">
-                <span className="who">{g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}</span>
-                {g.m.role === 'user' ? <Clamp text={userText(g.m.text)} /> : g.m.role === 'orchestrator' ? <Clamp text={g.m.text} /> : <Prose text={g.m.text} />}
-              </div>
-            </div>
+            <Bubble
+              className={`msg band ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''}`}
+              style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
+              who={g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}
+              copy={g.m.role === 'user' ? userText(g.m.text) : g.m.text}
+            >
+              {g.m.role === 'user' ? <Clamp text={userText(g.m.text)} /> : g.m.role === 'orchestrator' ? <Clamp text={g.m.text} /> : <Prose text={g.m.text} />}
+            </Bubble>
           </Appear>
         ),
       )}

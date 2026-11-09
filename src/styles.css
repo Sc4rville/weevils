@@ -789,6 +789,67 @@ input:focus-visible {
   font-size: 0.8125rem;
 }
 
+/* ---------- Texte des messages : sélectionnable, liens, copier ---------- */
+
+/* Le balayage de la page (motion) pose user-select:none sur tout le fil : les bulles le rouvrent. */
+.msg .text,
+.msg .code {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+.msg.copied > .in .who {
+  font-weight: 800;
+}
+
+/* Lien : en gras, de la couleur du texte, jamais souligné. */
+a.url {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  -webkit-touch-callout: default;
+}
+
+.cmd {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.snippet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Copier : une icône, sans cadre, plus pâle que le texte ; une coche un instant après. */
+button.copy {
+  display: inline-grid;
+  place-items: center;
+  min-width: 36px;
+  min-height: 36px;
+  opacity: 0.45;
+  vertical-align: middle;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+button.copy.done {
+  opacity: 1;
+}
+
+.cmd button.copy {
+  min-width: 28px;
+  min-height: 24px;
+  margin-block: -6px;
+}
+
+.cmd button.copy .ic {
+  width: 0.85em;
+  height: 0.85em;
+}
+
 .msg.ask > .in {
   padding-block: 14px 10px;
 }

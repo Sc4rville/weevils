@@ -38,6 +38,7 @@ const PATHS = {
   play: 'M7 4l12 8-12 8z',
   grip: 'M7 9h10M7 15h10',
   file: 'M6 3h8l4 4v14H6z',
+  copy: 'M9 9h11v11H9zM15 5V4H4v11h1',
 } as const
 
 export type IconName = keyof typeof PATHS

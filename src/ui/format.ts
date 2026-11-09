@@ -46,19 +46,76 @@ export const status = Object.fromEntries(
 /** « 1 fichier », « 3 fichiers ». Français : 0 et 1 au singulier ; anglais : seul 1 est au singulier. */
 export const plural = (n: number, one: string, many: string) => `${n} ${(getLang() === 'fr' ? n > 1 : n !== 1) ? many : one}`
 
-/** Texte d'agent simplifié : on enlève la mise en forme markdown qui n'apporte rien sur le téléphone. */
-export function plain(text: string): string {
-  return text
+/** Texte d'agent simplifié : on enlève la mise en forme markdown qui n'apporte rien sur le téléphone.
+ *  `keep` garde les liens et les `commandes`, que le fil rend cliquables et copiables. */
+export function plain(text: string, keep = false): string {
+  const t = keep ? text : text.replace(/`([^`\n]+)`/g, '$1').replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '$1')
+  return t
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/__(.+?)__/g, '$1')
     .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, '$1$2')
-    .replace(/`([^`\n]+)`/g, '$1')
     .replace(/^\s*[-*•]\s+/gm, '· ')
-    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '$1')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
+
+/** Morceau d'une ligne de texte : prose, lien, ou commande entre accents graves. */
+export type Inline = { kind: 'text'; s: string } | { kind: 'url'; href: string; label: string } | { kind: 'cmd'; s: string }
+
+/** Domaines nus reconnus sans https:// (« myaccount.google.com/… ») : seulement des extensions courantes, pour ne pas prendre « core.ts » pour un site. */
+const TLD = 'com|org|net|io|dev|app|tech|fr|ai|co|me|gg|xyz|eu|uk|de|be|ch|ca|us|tv|ly|cloud|site|page'
+const URL_RE = new RegExp(
+  String.raw`\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)|` + '`([^`\\n]+)`' + String.raw`|(https?:\/\/[^\s<>"'` + '`' + String.raw`]+)|(?<![@\w.\/-])((?:[a-z0-9-]+\.)+(?:${TLD})(?:\/[^\s<>"'` + '`' + String.raw`]*)?)(?![\w@-])`,
+  'gi',
+)
+
+/** Ponctuation collée à la fin d'une URL nue : elle appartient à la phrase, pas au lien. */
+function trimUrl(u: string): string {
+  let out = u.replace(/[.,;:!?»”’"']+$/, '')
+  while (out.endsWith(')') && (out.match(/\(/g)?.length ?? 0) < (out.match(/\)/g)?.length ?? 0)) out = out.slice(0, -1).replace(/[.,;:!?»”’"']+$/, '')
+  return out
+}
+
+/** Repère les liens (nus ou markdown) et, si `code`, les commandes `…` ; le reste reste du texte. */
+export function inline(text: string, code = true): Inline[] {
+  const out: Inline[] = []
+  let last = 0
+  const push = (s: string) => {
+    if (!s) return
+    const prev = out[out.length - 1]
+    if (prev?.kind === 'text') prev.s += s
+    else out.push({ kind: 'text', s })
+  }
+  for (const m of text.matchAll(URL_RE)) {
+    const i = m.index ?? 0
+    if (m[1] && m[2]) {
+      push(text.slice(last, i))
+      out.push({ kind: 'url', href: m[2], label: m[1] })
+      last = i + m[0].length
+    } else if (m[3] !== undefined) {
+      push(text.slice(last, i))
+      if (code) out.push({ kind: 'cmd', s: m[3] })
+      else push(m[0])
+      last = i + m[0].length
+    } else if (m[4]) {
+      const u = trimUrl(m[4])
+      push(text.slice(last, i))
+      out.push({ kind: 'url', href: u, label: u })
+      last = i + u.length
+    } else if (m[5]) {
+      const u = trimUrl(m[5])
+      push(text.slice(last, i))
+      out.push({ kind: 'url', href: `https://${u}`, label: u })
+      last = i + u.length
+    }
+  }
+  push(text.slice(last))
+  return out
+}
+
+/** Une commande vaut un bouton copier quand elle ressemble à une ligne à taper (plusieurs mots), pas à un simple nom. */
+export const isCommand = (s: string) => /\S\s+\S/.test(s.trim()) && s.trim().length >= 6
 
 /** Découpe un texte en prose et blocs de code (``` … ```), pour replier le code. */
 export function segments(text: string): { kind: 'text' | 'code'; body: string }[] {

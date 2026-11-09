@@ -52,7 +52,7 @@ const slide: Variants = {
 const vars = (step: number) => ({ '--c': `var(--${COLORS[step]})`, '--a': `var(--${ACCENTS[step]})` }) as CSSProperties
 
 export function Onboarding() {
-  const { snap, setExpanded, push } = useApp()
+  const { snap, push } = useApp()
   const t = useT(M)
   // Un fil déjà peuplé (sessions et projets, ou weevboss déjà sollicité) = déjà accueilli : l'intro ne s'impose pas.
   const populated = (snap.sessions.length > 0 && snap.projects.length > 0) || snap.main.some((m) => m.role === 'user')
@@ -177,8 +177,8 @@ export function Onboarding() {
     setSendErr(null)
     try {
       await api.main(t.suggestion)
+      // Sending to weevboss never opens it full screen: the message and the reply show in its live preview.
       close(false)
-      setExpanded('agent')
       window.scrollTo({ top: 0 })
     } catch (e) {
       setSendErr((e as Error).message)

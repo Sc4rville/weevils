@@ -382,7 +382,9 @@ configure() {
 build() {
   step "$(t s_build)"
   cd "$DIR"
-  local omit='' stamp
+  # The main machine builds the app with vite (a devDependency): include dev deps even if the shell sets
+  # NODE_ENV=production or npm omit=dev. A secondary machine only runs the server: no dev deps.
+  local omit=--include=dev stamp
   [ -n "$SECONDARY" ] && omit=--omit=dev
   stamp="$(sha256sum package-lock.json | cut -c1-16) $(node -v) $omit"
   if [ -f node_modules/.weevils-stamp ] && [ "$(cat node_modules/.weevils-stamp)" = "$stamp" ]; then ok "$(t deps_ok)"

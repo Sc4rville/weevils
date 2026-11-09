@@ -5,6 +5,7 @@ import { familyOf, place } from './projects.ts'
 import { attentionFromScreen } from './mux.ts'
 import { tr } from './i18n.ts'
 import CM from './i18n/conversations.ts'
+import CO from './i18n/core.ts'
 
 // Exports miniatures aux formats officiels (structure seulement, contenu inventé pour le test).
 const chatgpt = [
@@ -135,8 +136,9 @@ describe('pièces jointes pour l’orchestrateur', async () => {
     expect(saved.map((s) => path.basename(s.path))).toEqual([expect.stringMatching(/^\d{4}-\d{2}-\d{2}-devis-final\.pdf$/), expect.stringMatching(/-IMG_1\.heic$/)])
     expect(fs.readFileSync(saved[0].path, 'utf8')).toBe('%PDF')
     const msg = withFiles('range ça', saved)
-    expect(msg).toBe(`range ça (fichier : ${saved[0].path}) (photo : ${saved[1].path})`)
-    expect(withFiles('', [saved[0]])).toMatch(/^Voici un fichier\. \(fichier : /)
+    const t = tr(CO)
+    expect(msg).toBe(`range ça ${t.attached(false, saved[0].path)} ${t.attached(true, saved[1].path)}`)
+    expect(withFiles('', [saved[0]])).toBe(`${t.oneFile} ${t.attached(false, saved[0].path)}`)
     // Même nom une seconde fois : pas d'écrasement.
     const again = saveInbox(dir, [{ name: 'devis final.pdf', type: 'application/pdf', data: '' }])
     expect(again[0].path).not.toBe(saved[0].path)

@@ -11,7 +11,10 @@ import { ConversationStore, parseExport, readExportFile } from './conversations.
 import { llmClassify, ruleMatch } from './classify.ts'
 import { Push } from './push.ts'
 import type { CatalogEntry } from './classify.ts'
-import { familyOf, place } from './projects.ts'
+import { MISC, familyOf, place, projectLabel } from './projects.ts'
+import { locale } from '../shared/i18n.ts'
+import M from './i18n/core.ts'
+import P from './i18n/push.ts'
 import { setCartesiaVoice } from './fast.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { ORCH_PREFIX, TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
@@ -127,7 +130,7 @@ export function saveInbox(dir: string, files: { name: string; type: string; data
   for (const f of files.slice(0, 8)) {
     const image = IMAGE_RE.test(f.type)
     let base = path.basename(f.name || '').replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 80)
-    if (!base || base === '.' || base === '..') base = image ? 'photo.jpg' : 'fichier'
+    if (!base || base === '.' || base === '..') base = image ? 'photo.jpg' : tr(M).fileName
     if (image && !path.extname(base)) base += `.${(/\/(png|jpe?g|gif|webp|heic)$/i.exec(f.type)?.[1] ?? 'jpg').toLowerCase().replace('jpeg', 'jpg')}`
     let file = path.join(dir, `${day}-${base}`)
     if (fs.existsSync(file)) {
@@ -143,7 +146,7 @@ export function saveInbox(dir: string, files: { name: string; type: string; data
 /** Seules les commandes de réglage passent : une ligne, pas de texte libre caché derrière. */
 export function checkCommand(command: string): string {
   const c = command.trim()
-  if (!/^\/(model|effort|fast|compact|clear|new|approvals)([ \t]+[\w.-]+)?$/.test(c)) throw new Error(`commande refusée : ${c}`)
+  if (!/^\/(model|effort|fast|compact|clear|new|approvals)([ \t]+[\w.-]+)?$/.test(c)) throw new Error(tr(M).commandRefused(c))
   return c
 }
 
@@ -151,8 +154,9 @@ export function checkCommand(command: string): string {
 export function withFiles(text: string, saved: { path: string; image: boolean }[]): string {
   const n = saved.length
   const allImages = saved.every((s) => s.image)
-  const lead = text.trim() || (allImages ? (n > 1 ? 'Regarde ces photos.' : 'Regarde cette photo.') : n > 1 ? 'Voici des fichiers.' : 'Voici un fichier.')
-  return `${lead} ${saved.map((s) => `(${s.image ? 'photo' : 'fichier'} : ${s.path})`).join(' ')}`
+  const t = tr(M)
+  const lead = text.trim() || (allImages ? (n > 1 ? t.lookPhotos : t.lookPhoto) : n > 1 ? t.someFiles : t.oneFile)
+  return `${lead} ${saved.map((s) => t.attached(s.image, s.path)).join(' ')}`
 }
 
 export class Weevils {
@@ -183,7 +187,7 @@ export class Weevils {
     this.persist()
   }
   pinRepo(repo: string, pinned: boolean) {
-    if (!/^[\w.@+-]+$/.test(repo)) throw new Error('repo invalide')
+    if (!/^[\w.@+-]+$/.test(repo)) throw new Error(tr(M).badRepo)
     const has = this.pinnedRepos.includes(repo)
     if (pinned && !has) this.pinnedRepos.push(repo)
     if (!pinned && has) this.pinnedRepos = this.pinnedRepos.filter((r) => r !== repo)
@@ -241,6 +245,11 @@ export class Weevils {
       // Langue changée dans l'app : le CLAUDE.md de weevboss est réécrit dans la nouvelle langue.
       onLangChange(() => this.prepareOrchestrator())
     }
+    // Langue changée dans l'app : libellés du snapshot (projets réservés, 24/7, accueil de weevboss) réécrits aussitôt.
+    onLangChange(() => {
+      this.refreshH24()
+      this.bump()
+    })
     // Tous les repos connus sont de confiance d'avance.
     try {
       if (trustDirs(this.allRepos().map((r) => this.repoDir(r)))) console.log('[sessions] dossiers de ~/projects marqués de confiance pour Claude Code')
@@ -318,10 +327,10 @@ export class Weevils {
       let title: string | null = null
       let body: string | null = null
       if (s.status === 'needs_user') {
-        title = `${project} t’attend`
-        body = s.attention ?? 'attend ta réponse'
+        title = tr(P).waitingTitle(project)
+        body = s.attention ?? tr(P).waitingBody
       } else if (prev.status === 'working' && (s.status === 'idle' || s.status === 'done') && now - prev.since > 15_000 && s.lastMessage) {
-        title = `${project} a fini`
+        title = tr(P).doneTitle(project)
         body = s.lastMessage
       }
       if (!title || !body) continue
@@ -546,7 +555,7 @@ export class Weevils {
       subagents: [],
       messageCount: 0,
       queued: 0,
-      lastMessage: now - p.createdAt < 60_000 ? 'démarrage…' : undefined,
+      lastMessage: now - p.createdAt < 60_000 ? tr(M).starting : undefined,
     }
   }
 
@@ -571,7 +580,7 @@ export class Weevils {
     for (const s of sessions) {
       // Le projet d'une session est déjà tranché dans toSession (dossier, sinon contenu du fil).
       const kind: Project['kind'] = s.repo ? 'repo' : place(s.cwd, PROJECT_ROOTS).kind
-      const p = map.get(s.projectId) ?? { id: s.projectId, name: s.projectId === 'general' ? 'général' : s.projectId, kind, repos: [], where: {}, lastActivityAt: 0 }
+      const p = map.get(s.projectId) ?? { id: s.projectId, name: projectLabel(s.projectId), kind, repos: [], where: {}, lastActivityAt: 0 }
       if (s.repo && !p.repos.includes(s.repo)) {
         p.repos.push(s.repo)
         p.where[s.repo] = MACHINE.id
@@ -588,7 +597,8 @@ export class Weevils {
     for (const p of [...this.localProjects(sessions.filter((s) => s.machineId === MACHINE.id)), ...extra]) {
       const cur = map.get(p.id)
       if (!cur) {
-        map.set(p.id, { ...p, repos: [...p.repos], where: { ...p.where } })
+        // Nom des projets réservés (divers…) dans la langue d'ici, même venu d'une autre machine.
+        map.set(p.id, { ...p, name: projectLabel(p.id) === p.id ? p.name : projectLabel(p.id), repos: [...p.repos], where: { ...p.where } })
         continue
       }
       for (const r of p.repos) {
@@ -690,8 +700,9 @@ export class Weevils {
       try {
         const r = await this.importFile(full)
         console.log(`[import] ${f} : ${r.added} nouvelles, ${r.updated} mises à jour`)
-        fs.mkdirSync(path.join(dir, 'importés'), { recursive: true })
-        fs.renameSync(full, path.join(dir, 'importés', f))
+        const done = 'importés' // i18n-ignore : nom de dossier sur disque, stable
+        fs.mkdirSync(path.join(dir, done), { recursive: true })
+        fs.renameSync(full, path.join(dir, done, f))
       } catch (e) {
         console.error(`[import] ${f} : ${(e as Error).message}`)
       }
@@ -743,7 +754,7 @@ export class Weevils {
 
   classifyManually(id: string, target: { projectId?: string }) {
     const projectId = target.projectId
-    if (!projectId) throw new Error('projet manquant')
+    if (!projectId) throw new Error(tr(M).missingProject)
     this.convs.correct(id, projectId)
     this.bump()
   }
@@ -800,7 +811,7 @@ export class Weevils {
         const hit = ruleMatch(`${c.title} ${c.preview}`, catalog)
         if (hit) this.convs.setClassification(c.id, { projectId: hit.id, status: 'auto', reason: hit.reason, confidence: hit.confidence })
         else if (Date.now() - c.updatedAt < 180 * 86400_000) forLlm.push(c)
-        else this.convs.setClassification(c.id, { projectId: null, status: 'none', reason: 'ancienne, non classée' })
+        else this.convs.setClassification(c.id, { projectId: null, status: 'none', reason: tr(M).oldUnsorted })
       }
       this.bump()
       // Lots de 25, plafonnés par passe pour ménager le quota de l'abonnement.
@@ -828,15 +839,16 @@ export class Weevils {
   /** « Continuer ici » : une nouvelle session d'agent qui reçoit la conversation en contexte. */
   async continueConversation(id: string, tool: Tool, text: string) {
     const d = this.convs.detail(id)
-    if (!d) throw new Error('conversation introuvable')
+    const t = tr(M)
+    if (!d) throw new Error(t.conversationNotFound)
     let context = ''
     for (const m of [...d.messages].reverse()) {
-      const line = `${m.role === 'user' ? 'Moi' : d.conversation.source === 'chatgpt' ? 'ChatGPT' : 'Claude'} : ${m.text}\n\n`
+      const line = `${t.said(m.role === 'user' ? t.me : d.conversation.source === 'chatgpt' ? 'ChatGPT' : 'Claude', m.text)}\n\n`
       if (context.length + line.length > 8000) break
       context = line + context
     }
-    const prompt = `Contexte : suite de ma conversation ${d.conversation.source === 'chatgpt' ? 'ChatGPT' : 'Claude.ai'} « ${d.conversation.title} » (fin de l'échange ci-dessous).\n\n${context}---\n${text}`
-    const projectId = d.conversation.projectId ?? 'divers'
+    const prompt = t.continuePrompt(d.conversation.source === 'chatgpt' ? 'ChatGPT' : 'Claude.ai', d.conversation.title, context, text)
+    const projectId = d.conversation.projectId ?? MISC
     return this.create({ projectId, tool, text: prompt })
   }
 
@@ -847,7 +859,7 @@ export class Weevils {
   remoteById(machineId?: string) {
     if (!machineId || machineId === MACHINE.id) return undefined
     const r = this.remotes.find((x) => x.id === machineId)
-    if (!r) throw new Error(`machine inconnue : ${machineId}`)
+    if (!r) throw new Error(tr(M).unknownMachine(machineId))
     return r
   }
 
@@ -877,8 +889,8 @@ export class Weevils {
     if (from === 'weevils' && !text.startsWith(ORCH_PREFIX)) text = ORCH_PREFIX + text
     const real = this.resolveId(id)
     const s = this.snapshot().sessions.find((x) => x.id === real)
-    if (!s) throw new Error('session introuvable')
-    if (!text.trim()) throw new Error('message vide')
+    if (!s) throw new Error(tr(M).sessionNotFound)
+    if (!text.trim()) throw new Error(tr(M).emptyMessage)
     const pane = this.paneFor(real)
     if (pane) {
       console.log(`[sessions] ${pane.name} ← message${from === 'weevils' ? ' (weevils)' : ''} · ${text.replace(/\s+/g, ' ').slice(0, 60)}`)
@@ -886,7 +898,7 @@ export class Weevils {
       return { id: real }
     }
     if (!s.controllable) {
-      throw new Error('Cette session est ouverte dans un terminal que weevils ne pilote pas. Ferme-la ou lance tes sessions avec wv pour leur écrire d’ici.')
+      throw new Error(tr(M).unmanaged)
     }
     const cwd = s.cwd && fs.existsSync(s.cwd) ? s.cwd : HOME
     const command = s.tool === 'claude' ? [...CLAUDE, '--resume', s.id, text] : ['codex', 'resume', ...CODEX_FLAGS, s.id, text]
@@ -912,8 +924,8 @@ export class Weevils {
     const remote = this.remoteFor(id)
     if (remote) return void (await remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/key`, { key }))
     const pane = this.paneFor(this.resolveId(id))
-    if (!pane) throw new Error('weevils ne voit pas l’écran de cette session')
-    if (key === 'esc' && /trust|confiance/i.test(pane.screenAttention ?? '')) throw new Error('Échap ici fermerait la session : réponds 1 ou Entrée')
+    if (!pane) throw new Error(tr(M).noScreen)
+    if (key === 'esc' && /trust|confiance/i.test(pane.screenAttention ?? '')) throw new Error(tr(M).escWouldClose)
     console.log(`[sessions] ${pane.name} ← touche ${key}`)
     await sendKey(pane.name, key)
   }
@@ -935,9 +947,9 @@ export class Weevils {
     if (remote) return remote.call('POST', '/api/sessions', { ...input, repo: repoGuess, machineId: remote.snap?.machines[0]?.id })
     const repo = repoGuess ?? (this.repoRoot(input.projectId) ? input.projectId : undefined)
     const cwd = repo ? path.join(this.repoRoot(repo) ?? PROJECTS_DIR, repo) : PROJECTS_DIR
-    if (!fs.existsSync(cwd)) throw new Error(`dossier introuvable : ${cwd}`)
+    if (!fs.existsSync(cwd)) throw new Error(tr(M).dirNotFound(cwd))
     const text = input.text.trim()
-    const title = text ? text.replace(/\s+/g, ' ').slice(0, 60) : 'nouvelle session'
+    const title = text ? text.replace(/\s+/g, ' ').slice(0, 60) : tr(M).newSession
     if (input.tool === 'claude') {
       const id = crypto.randomUUID()
       await this.spawn('claude', cwd, title, [...CLAUDE, '--session-id', id, ...(text ? [text] : [])], id)
@@ -1007,7 +1019,7 @@ export class Weevils {
     const remote = this.remoteFor(id)
     if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/command`, { command })
     const pane = this.paneFor(this.resolveId(id))
-    if (!pane) throw new Error('réglable seulement quand la session tourne dans une pane weevils (wv)')
+    if (!pane) throw new Error(tr(M).onlyInPane)
     await this.runCommand(pane.name, checkCommand(command))
     return { ok: true }
   }
@@ -1031,7 +1043,7 @@ export class Weevils {
   /** La même chose pour la session de l'orchestrateur. */
   async commandMain(command: string): Promise<{ ok: true }> {
     const pane = this.orchestratorPane()
-    if (!pane) throw new Error('l’orchestrateur ne tourne pas : envoie-lui d’abord un message')
+    if (!pane) throw new Error(tr(M).orchNotRunning)
     await this.runCommand(pane.name, checkCommand(command))
     this.bump()
     return { ok: true }
@@ -1076,7 +1088,7 @@ export class Weevils {
       const before = Date.now()
       await sendText(pane, text)
       if (await this.confirmDelivery(pane, sessionId, text, before)) return undefined
-      return dialogOnScreen(await capture(pane).catch(() => '')) ?? 'rien ne confirme la réception'
+      return dialogOnScreen(await capture(pane).catch(() => '')) ?? tr(M).noConfirmation
     }
     const blocked = await this.clearDialog(pane)
     const first = await attempt()
@@ -1086,7 +1098,7 @@ export class Weevils {
     const second = await attempt()
     if (!second) return
     const why = dlg ?? blocked ?? first
-    throw new Error(`message non reçu par la session · ${why}`)
+    throw new Error(tr(M).notReceived(why))
   }
 
   private async confirmDelivery(pane: string, sessionId: string | undefined, text: string, before: number): Promise<boolean> {
@@ -1114,7 +1126,7 @@ export class Weevils {
     // La bande du haut : tes messages et les réponses de weevils, pas ses appels d'outils.
     const msgs = t?.messages.filter((m) => m.role !== 'event').slice(-40) ?? []
     if (!msgs.length && ORCHESTRATOR) {
-      return [{ id: 'hello', role: 'assistant', text: 'Dis-moi quoi faire : je lis tes sessions, j’écris dedans, je te résume. Les détails sont dans les bandes en dessous si tu veux les suivre.', at: Date.now() }]
+      return [{ id: 'hello', role: 'assistant', text: tr(M).hello, at: Date.now() }]
     }
     return msgs
   }
@@ -1186,7 +1198,7 @@ export class Weevils {
           title: name,
           kind: 'job',
           projectId: familyOf(name),
-          schedule: 'job lancé à la main',
+          schedule: tr(M).manualJob,
           enabled: true,
           runState: running ? 'running' : 'waiting',
           runStartedAt: running ? st.birthtimeMs || null : st.mtimeMs,
@@ -1198,20 +1210,22 @@ export class Weevils {
       /* pas de ~/logs */
     }
     execFile('systemctl', ['--user', 'list-timers', '--all', '--output=json'], { timeout: 4000 }, (err, stdout) => {
+      const t = tr(M)
+      const when = (us: number) => new Date(us / 1000).toLocaleString(locale(lang()))
       if (!err) {
         try {
-          for (const t of JSON.parse(stdout) as { unit: string; next?: number; last?: number; activates: string }[]) {
-            if (!t.unit.startsWith('wv-')) continue
+          for (const x of JSON.parse(stdout) as { unit: string; next?: number; last?: number; activates: string }[]) {
+            if (!x.unit.startsWith('wv-')) continue
             out.push({
-              id: `timer:${t.unit}`,
-              title: t.unit.replace(/^wv-/, '').replace(/\.timer$/, ''),
+              id: `timer:${x.unit}`,
+              title: x.unit.replace(/^wv-/, '').replace(/\.timer$/, ''),
               kind: 'timer',
               projectId: null,
-              schedule: t.next ? `prochaine : ${new Date(t.next / 1000).toLocaleString('fr-FR')}` : 'planifié',
-              enabled: !!t.next,
-              runState: t.next ? 'waiting' : 'paused',
+              schedule: x.next ? t.nextRun(when(x.next)) : t.scheduled,
+              enabled: !!x.next,
+              runState: x.next ? 'waiting' : 'paused',
               runStartedAt: null,
-              lastEvent: t.last ? `dernière : ${new Date(t.last / 1000).toLocaleString('fr-FR')}` : 'jamais lancé',
+              lastEvent: x.last ? t.lastRun(when(x.last)) : t.neverRun,
               canToggle: true,
             })
           }
@@ -1230,7 +1244,7 @@ export class Weevils {
 
   async toggleH24(id: string) {
     const a = this.h24.find((x) => x.id === id)
-    if (!a?.canToggle) throw new Error('cette activité ne se met pas en pause')
+    if (!a?.canToggle) throw new Error(tr(M).cantPause)
     const unit = id.replace(/^timer:/, '')
     await new Promise<void>((resolve, reject) =>
       execFile('systemctl', ['--user', a.enabled ? 'stop' : 'start', unit], { timeout: 5000 }, (err) => (err ? reject(err) : resolve())),
@@ -1246,9 +1260,9 @@ export class Weevils {
   }
 
   repoDir(repo: string) {
-    if (!/^[\w.@+-]+$/.test(repo) || repo.startsWith('.')) throw new Error('repo invalide')
+    if (!/^[\w.@+-]+$/.test(repo) || repo.startsWith('.')) throw new Error(tr(M).badRepo)
     const root = this.repoRoot(repo)
-    if (!root) throw new Error('repo introuvable')
+    if (!root) throw new Error(tr(M).repoNotFound)
     return path.join(root, repo)
   }
 
@@ -1296,9 +1310,9 @@ export class Weevils {
     if (!this.repoRoot(repo)) return remoteFile(repo, rel)
     const dir = this.repoDir(repo)
     const full = path.resolve(dir, rel)
-    if (!full.startsWith(dir + path.sep)) throw new Error('chemin refusé')
+    if (!full.startsWith(dir + path.sep)) throw new Error(tr(M).pathRefused)
     const real = fs.realpathSync(full)
-    if (!real.startsWith(fs.realpathSync(dir) + path.sep)) throw new Error('chemin refusé')
+    if (!real.startsWith(fs.realpathSync(dir) + path.sep)) throw new Error(tr(M).pathRefused)
     const st = fs.statSync(real)
     const max = 400_000
     const fd = fs.openSync(real, 'r')

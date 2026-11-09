@@ -13,7 +13,7 @@ import type { Session, Snapshot } from '../shared/api.ts'
 import type { LoadSample, MachineLoad, TipCard } from '../shared/tips.ts'
 import { DATA_DIR, KILL_AFTER_MS, MACHINE } from './config.ts'
 import type { Weevils } from './core.ts'
-import { tr } from './i18n.ts'
+import { tr, withLang } from './i18n.ts'
 import M from './i18n/tips.ts'
 
 /** One load sample per minute, 24 h kept. */
@@ -117,6 +117,7 @@ export const RULES: Rule[] = [
       return [{ id: `idle-sessions:${short(ids.join('|'))}`, rule: 'idle-sessions', personal: true, text: t.idleSessions(list.length, beforeToday(list, now)), accept: t.closeThem(list.length), action: { kind: 'server' }, data: ids }]
     },
     act: async (f, ctx) => {
+      const t = tr(M) // before the first await: withLang only covers the synchronous part
       let n = 0
       for (const id of f.data ?? []) {
         try {
@@ -126,8 +127,8 @@ export const RULES: Rule[] = [
           console.error(`[tips] fermeture de ${id} : ${(e as Error).message}`)
         }
       }
-      if (!n) throw new Error(tr(M).gone)
-      return tr(M).closed(n)
+      if (!n) throw new Error(t.gone)
+      return t.closed(n)
     },
   },
   {
@@ -266,10 +267,15 @@ export function tipRoutes(w: Weevils, json: Json, readBody: ReadBody, dictation:
   const input = async (): Promise<TipInput> => ({ snap: w.snapshot(), now: Date.now(), loads: await loads(), dictation: dictation(), reapMs: KILL_AFTER_MS })
 
   return [
-    ['GET', /^\/api\/tips$/, async (_req, res) => json(res, 200, { tips: personalTips(await input()).map(toCard) })],
-    ['POST', /^\/api\/tips\/act$/, async (req, res) => {
+    // ?lang= : the app's language, so the cards match the screen even when the server writes in another one.
+    ['GET', /^\/api\/tips$/, async (_req, res, url) => {
+      const i = await input()
+      json(res, 200, { tips: withLang(url.searchParams.get('lang'), () => personalTips(i).map(toCard)) })
+    }],
+    ['POST', /^\/api\/tips\/act$/, async (req, res, url) => {
       const body = await readBody(req)
-      json(res, 200, { done: await actOn(String(body.id ?? ''), await input(), { close: (id) => w.close(id) }) })
+      const i = await input()
+      json(res, 200, { done: await withLang(url.searchParams.get('lang'), () => actOn(String(body.id ?? ''), i, { close: (id) => w.close(id) })) })
     }],
     ['GET', /^\/api\/tips\/load$/, (_req, res) => json(res, 200, sampler.local())],
   ]

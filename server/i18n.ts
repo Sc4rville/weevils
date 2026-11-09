@@ -48,6 +48,19 @@ export function setLang(l: unknown): boolean {
 /** Runs when the language changes (e.g. re-render the orchestrator's prompt). */
 export const onLangChange = (f: (l: Lang) => void) => listeners.add(f)
 
+/** Runs fn (synchronous part only) with the catalogs in language l — for texts the app shows as-is (tip cards), which
+ * follow the app's language even when the user never picked one (the browser's language is not saved server-side). */
+export function withLang<T>(l: unknown, fn: () => T): T {
+  if (!isLang(l) || l === current) return fn()
+  const saved = current
+  current = l
+  try {
+    return fn()
+  } finally {
+    current = saved
+  }
+}
+
 /** Messages of a catalog in the user's language, read at call time. */
 export function tr<T extends Record<string, Msg>>(m: Messages<T>): T {
   return m[current] as T

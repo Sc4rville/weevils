@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CS
 import type { TipCard } from '../../shared/tips.ts'
 import { api } from '../api'
 import { ensurePush, pushSupported } from '../push'
-import { tr, useT } from '../i18n'
+import { getLang, tr, useT } from '../i18n'
 import M from '../i18n/tips'
 import { useApp } from './app-context'
 import { Line } from './bits'
@@ -105,7 +105,7 @@ const getJson = async <T,>(method: string, url: string, body?: unknown): Promise
 async function candidates(selfRepo: boolean): Promise<TipCard[]> {
   const t = tr(M)
   const [server, dictation, pushOn] = await Promise.all([
-    getJson<{ tips: TipCard[] }>('GET', '/api/tips').then((r) => r.tips, () => [] as TipCard[]),
+    getJson<{ tips: TipCard[] }>('GET', `/api/tips?lang=${getLang()}`).then((r) => r.tips, () => [] as TipCard[]),
     api.transcribeInfo().then((r) => r.enabled, () => false),
     pushSupported() && Notification.permission === 'default' ? api.push().then((r) => r.enabled, () => false) : Promise.resolve(false),
   ])
@@ -238,7 +238,7 @@ export function Tips({ paused }: { paused: boolean }) {
         await api.main(a.text)
         setFeedback({ text: t.sentToBoss, ok: true })
       } else if (a.kind === 'server') {
-        const r = await getJson<{ done: string }>('POST', '/api/tips/act', { id: shown.tip.id })
+        const r = await getJson<{ done: string }>('POST', `/api/tips/act?lang=${getLang()}`, { id: shown.tip.id })
         setFeedback({ text: r.done || t.done, ok: true })
         refresh()
       } else if (a.kind === 'push') {

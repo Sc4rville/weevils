@@ -88,7 +88,7 @@ export default defineMessages({
     testSent: 'test notification sent',
     notifications: 'notifications',
     notifyOn: 'on · when a session needs you or is done',
-    notifyOff: 'get notified when a session needs you or is done',
+    notifyOff: 'a ping when a session needs you or ends',
     notifyOnSuffix: '· on',
 
     settings: 'settings',

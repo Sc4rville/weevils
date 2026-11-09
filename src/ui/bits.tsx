@@ -4,7 +4,7 @@ import { api } from '../api'
 import type { Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
 import { dur, plain, segments, status, step, userText } from './format'
-import { tr, useLang, useT } from '../i18n'
+import { tr, useT } from '../i18n'
 import M from '../i18n/bits'
 import { isUnread, useSeen } from './seen'
 import { G, Icon } from './icons'
@@ -85,7 +85,7 @@ export function ToolIcon({ tool, size = 15 }: { tool: string; size?: number }) {
 
 export function SessionRow({ session }: { session: Session }) {
   const { push, now } = useApp()
-  useLang() // libellé d'état et durée suivent la langue
+  const t = useT(M) // libellé d'état et durée suivent la langue
   useSeen()
   const unread = isUnread(session)
   const st = status[session.status]
@@ -99,7 +99,7 @@ export function SessionRow({ session }: { session: Session }) {
     <button
       className={`row ${waiting ? 'tone' : ''} ${session.status === 'working' ? 'live' : ''} ${unread ? 'unread' : ''}`}
       onClick={() => push({ kind: 'session', id: session.id })}
-      aria-label={`${session.tool}, ${session.title}, ${st.label}${act ? ` : ${act}` : ''}, ${when}`}
+      aria-label={t.rowAria(session.tool, session.title, st.label, act, when)}
       title={act ? session.title : undefined}
     >
       <span className="in line" aria-hidden>

@@ -5,7 +5,7 @@ export default defineMessages({
   fr: {
     title: 'h24',
     region: 'activités h24',
-    summary: (running: number, recent: number) => `${running} en cours · ${recent} récents`,
+    summary: (running: number, recent: number) => `${running} en cours · ${recent} récent${recent > 1 ? 's' : ''}`,
     nothing: 'rien ne tourne en continu',
     head: (summary: string, open: boolean) => `h24 : ${summary}. ${open ? 'replier' : 'déplier'}`,
     running: (since: string | null) => `en cours${since ? ` depuis ${since}` : ''}`,

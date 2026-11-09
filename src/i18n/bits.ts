@@ -20,9 +20,11 @@ export default defineMessages({
     send: 'envoyer',
     code: (n: number) => `code · ${n} ${n > 1 ? 'lignes' : 'ligne'}`,
     steps: (n: number) => `${n} étapes`,
-    older: (n: number) => `${n} messages plus anciens`,
+    older: (n: number) => (n > 1 ? `${n} messages plus anciens` : `${n} message plus ancien`),
     you: 'toi',
     working: (author: string) => `${author} travaille`,
+    /** Lecteur d'écran, ligne de session : outil, titre, état, activité, durée. */
+    rowAria: (tool: string, title: string, state: string, act: string | undefined, when: string) => `${tool}, ${title}, ${state}${act ? ` : ${act}` : ''}, ${when}`,
   },
   en: {
     showLess: 'show less',
@@ -42,8 +44,9 @@ export default defineMessages({
     send: 'send',
     code: (n: number) => `code · ${n} ${n === 1 ? 'line' : 'lines'}`,
     steps: (n: number) => `${n} steps`,
-    older: (n: number) => `${n} older messages`,
+    older: (n: number) => `${n} older message${n === 1 ? '' : 's'}`,
     you: 'you',
     working: (author: string) => `${author} is working`,
+    rowAria: (tool: string, title: string, state: string, act: string | undefined, when: string) => `${tool}, ${title}, ${state}${act ? `: ${act}` : ''}, ${when}`,
   },
 })

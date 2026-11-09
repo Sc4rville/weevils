@@ -10,6 +10,8 @@ import { PageView } from './ui/pages'
 import { usePinch } from './ui/calm'
 import { adoptUnknown } from './ui/seen'
 import { ensurePush } from './push'
+import { useT } from './i18n'
+import M from './i18n/app'
 
 const THEME_COLOR = { light: '#B39BFF', dark: '#5522B5' }
 const THEME_KEY = 'weevils-theme'
@@ -26,6 +28,7 @@ function initialTheme(): Theme {
 
 export default function App() {
   const live = useLive()
+  const t = useT(M)
   const [theme, setThemeState] = useState<Theme>(initialTheme)
   const [now, setNow] = useState(() => Date.now())
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -185,7 +188,7 @@ export default function App() {
           <div className="in head">
             <span className="name">weevils</span>
           </div>
-          <div className="in meta summary">{live.offline ? 'VPS injoignable, nouvelle tentative…' : 'connexion au VPS…'}</div>
+          <div className="in meta summary">{live.offline ? t.offline : t.connecting}</div>
         </section>
       </main>
     )

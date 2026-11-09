@@ -1,6 +1,8 @@
 // Client de weevilsd : appels REST + flux temps réel (SSE). Aucune donnée fictive.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { tr } from './i18n'
+import M from './i18n/app'
 import type { ConversationDetail, ConversationSummary, GithubRepo, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
 
 export class ApiError extends Error {
@@ -79,9 +81,9 @@ export const api = {
           /* réponse vide */
         }
         if (x.status < 300) resolve(d)
-        else reject(new Error(d.error ?? `échec (${x.status})`))
+        else reject(new Error(d.error ?? tr(M).failed(x.status)))
       }
-      x.onerror = () => reject(new Error('envoi interrompu'))
+      x.onerror = () => reject(new Error(tr(M).uploadInterrupted))
       x.send(file)
     }),
   push: () => call<{ enabled: boolean; publicKey: string; devices: number }>('GET', '/api/push'),

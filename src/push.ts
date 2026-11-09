@@ -1,4 +1,6 @@
 import { api } from './api'
+import { tr } from './i18n'
+import M from './i18n/app'
 
 const b64 = (s: string) => {
   const pad = '='.repeat((4 - (s.length % 4)) % 4)
@@ -12,11 +14,11 @@ export const pushSupported = () => typeof window !== 'undefined' && 'serviceWork
 export async function ensurePush(opts: { ask?: boolean; test?: boolean } = {}): Promise<boolean> {
   if (!pushSupported()) return false
   const info = await api.push()
-  if (!info.enabled) throw new Error('notifications indisponibles sur le serveur')
+  if (!info.enabled) throw new Error(tr(M).pushUnavailable)
   let perm = Notification.permission
   if (perm !== 'granted' && opts.ask) perm = await Notification.requestPermission()
   if (perm !== 'granted') {
-    if (opts.ask) throw new Error('autorisation refusée (réglages de l’iPhone → weevils → notifications)')
+    if (opts.ask) throw new Error(tr(M).pushDenied)
     return false
   }
   const reg = await navigator.serviceWorker.ready

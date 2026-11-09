@@ -986,8 +986,7 @@ export class Weevils {
     if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/command`, { command })
     const pane = this.paneFor(this.resolveId(id))
     if (!pane) throw new Error('réglable seulement quand la session tourne dans une pane weevils (wv)')
-    await this.clearDialog(pane.name)
-    await sendText(pane.name, checkCommand(command))
+    await this.runCommand(pane.name, checkCommand(command))
     return { ok: true }
   }
 
@@ -995,13 +994,29 @@ export class Weevils {
   async commandMain(command: string): Promise<{ ok: true }> {
     const pane = this.orchestratorPane()
     if (!pane) throw new Error('l’orchestrateur ne tourne pas : envoie-lui d’abord un message')
-    await this.clearDialog(pane.name)
-    await sendText(pane.name, checkCommand(command))
+    await this.runCommand(pane.name, checkCommand(command))
     this.bump()
     return { ok: true }
   }
 
   // ---------------------------------------------------------------- livraison vérifiée
+
+  /**
+   * Commande de réglage : /model ou /fast ouvrent parfois une confirmation (crédits, mode rapide…). Échap l'annulait
+   * (« Kept model as … ») : ici on la confirme par Entrée, jusqu'à trois fois, puis on rend la main.
+   */
+  private async runCommand(pane: string, command: string) {
+    await this.clearDialog(pane)
+    await sendText(pane, command)
+    for (let i = 0; i < 3; i++) {
+      await sleep(700)
+      const dlg = dialogOnScreen(await capture(pane).catch(() => ''))
+      if (!dlg) break
+      console.log(`[sessions] ${pane} ${command} · confirmation acceptée : ${dlg}`)
+      await sendKey(pane, 'enter')
+    }
+    console.log(`[sessions] ${pane} ← ${command}`)
+  }
 
   /** Un dialogue bloque l'écran ? Échap, puis on vérifie qu'il a disparu. Renvoie le texte du dialogue fermé. */
   private async clearDialog(pane: string): Promise<string | undefined> {

@@ -234,3 +234,11 @@ describe('messages weevils collés (send-keys long → pasted_content)', async (
     fs.rmSync(dir, { recursive: true })
   })
 })
+
+describe('confirmation « Switch model? »', async () => {
+  const { dialogOnScreen } = await import('./mux.ts')
+  it('menu numéroté sans touches indiquées : reconnu', () => {
+    const screen = ['  Switch model?', '  Your next response will be slower and use more tokens', '  ❯ 1. Yes, switch to Sonnet 5.5', '    2. No, go back'].join('\n')
+    expect(dialogOnScreen(screen)).toBe('Switch model?')
+  })
+})

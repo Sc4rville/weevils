@@ -6,6 +6,7 @@ import { Line } from './bits'
 
 const MODELS: Record<Tool, string[]> = { claude: ['fable', 'opus', 'sonnet', 'haiku'], codex: [] }
 const EFFORTS = ['low', 'medium', 'high', 'max']
+const EFFORT_WORD: Record<string, string> = { low: 'bas', medium: 'moyen', high: 'haut', max: 'max' }
 
 /** « claude-opus-4-1 » → « opus » ; un modèle codex est gardé tel quel. */
 export const EFFORT_FR: Record<string, string> = { low: 'effort faible', medium: 'effort moyen', high: 'effort élevé', max: 'effort max' }
@@ -21,6 +22,8 @@ interface Local {
   model?: string
   effort?: string
   fast?: boolean
+  /** Moment du dernier choix fait d'ici : il prime le temps que la session le reflète. */
+  at?: number
 }
 const KEY = (id: string) => `weevils-settings:${id}`
 const load = (id: string): Local => {
@@ -48,20 +51,14 @@ export function useLocalSettings(id: string) {
   return [local, update] as const
 }
 
-function Choice({ label, options, value, onPick, known }: { label: string; options: string[]; value?: string; onPick: (v: string) => void; known: boolean }) {
+function Choice({ label, options, value, onPick, words }: { label: string; options: string[]; value?: string; onPick: (v: string) => void; known: boolean; words?: Record<string, string> }) {
   return (
-    <div className="in settings-row">
-      <span className="meta settings-label">
-        {label}
-        {value && !known && <span className="settings-hint"> · réglé d’ici</span>}
-      </span>
-      <div className="opts" role="group" aria-label={label}>
-        {options.map((o) => (
-          <button key={o} className={`opt ${value === o ? 'on' : ''}`} aria-pressed={value === o} onClick={() => onPick(o)}>
-            {o}
-          </button>
-        ))}
-      </div>
+    <div className="in words" role="group" aria-label={label}>
+      {options.map((o) => (
+        <button key={o} className={`word ${value === o ? 'on' : ''}`} aria-pressed={value === o} onClick={() => onPick(o)}>
+          {words?.[o] ?? o}
+        </button>
+      ))}
     </div>
   )
 }
@@ -88,20 +85,17 @@ export function Settings({
   const [confirm, setConfirm] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
-  const send = async (command: string, after?: () => void) => {
+  // Jamais bloquant : le choix s'affiche tout de suite, la commande part en fond.
+  const send = (command: string, after?: () => void) => {
     setErr(null)
+    after?.()
     setBusy(command)
-    try {
-      await run(command)
-      after?.()
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setBusy(null)
-    }
+    void run(command)
+      .catch((e) => setErr((e as Error).message))
+      .finally(() => setBusy(null))
   }
 
-  const model = shortModel(settings?.model) ?? local.model
+  const model = local.model && local.at && Date.now() - local.at < 20_000 ? local.model : (shortModel(settings?.model) ?? local.model)
   const modelKnown = !!settings?.model
   const models = model && !MODELS.claude.includes(model) ? [model, ...MODELS.claude] : MODELS.claude
 
@@ -118,15 +112,15 @@ export function Settings({
       )}
       {tool === 'claude' ? (
         <>
-          <Choice label="modèle" options={models} value={model} known={modelKnown} onPick={(m) => void send(`/model ${m}`, () => setLocal({ model: m }))} />
-          <Choice label="effort" options={EFFORTS} value={settings?.effort ?? local.effort} known={!!settings?.effort} onPick={(e) => void send(`/effort ${e}`, () => setLocal({ effort: e }))} />
+          <Choice label="modèle" options={models} value={model} known={modelKnown} onPick={(m) => void send(`/model ${m}`, () => setLocal({ model: m, at: Date.now() }))} />
+          <Choice label="effort" options={EFFORTS} value={local.effort && local.at && Date.now() - local.at < 20_000 ? local.effort : (settings?.effort ?? local.effort)} known={!!settings?.effort} words={EFFORT_WORD} onPick={(e) => void send(`/effort ${e}`, () => setLocal({ effort: e, at: Date.now() }))} />
           <div className="in settings-row">
             <span className="meta settings-label">
               mode rapide
               {local.fast != null && <span className="settings-hint"> · réglé d’ici</span>}
             </span>
-            <div className="opts" role="group" aria-label="mode rapide">
-              <button className={`opt ${local.fast ? 'on' : ''}`} aria-pressed={!!local.fast} onClick={() => void send('/fast', () => setLocal({ fast: !local.fast }))}>
+            <div className="words" role="group" aria-label="mode rapide">
+              <button className={`word ${local.fast ? 'on' : ''}`} aria-pressed={!!local.fast} onClick={() => void send('/fast', () => setLocal({ fast: !local.fast }))}>
                 {local.fast == null ? 'basculer' : local.fast ? 'activé' : 'désactivé'}
               </button>
             </div>
@@ -136,16 +130,16 @@ export function Settings({
         <>
           <div className="in settings-row">
             <span className="meta settings-label">modèle{settings?.model ? ` · ${settings.model}` : ''}</span>
-            <div className="opts">
-              <button className="opt" onClick={() => void send('/model', onPicker)}>
+            <div className="words">
+              <button className="word" onClick={() => void send('/model', onPicker)}>
                 /model
               </button>
             </div>
           </div>
           <div className="in settings-row">
             <span className="meta settings-label">approvals{settings?.approval ? ` · ${settings.approval}` : ''}</span>
-            <div className="opts">
-              <button className="opt" onClick={() => void send('/approvals', onPicker)}>
+            <div className="words">
+              <button className="word" onClick={() => void send('/approvals', onPicker)}>
                 /approvals
               </button>
             </div>

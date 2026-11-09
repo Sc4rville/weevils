@@ -149,10 +149,12 @@ export function dialogOnScreen(text: string): string | undefined {
     .map((l) => l.replace(/[│╭╮╰╯─┃━]/g, '').trim())
   const yn = lines.slice(-6).find((l) => /[\[(]\s*y(es)?\s*\/\s*n(o)?\s*[\])]\s*:?\s*$/i.test(l))
   if (yn) return yn.slice(0, 180)
-  const cursor = lines.findIndex((l) => /^[❯›]\s*\S/.test(l))
+  const cursor = lines.findLastIndex((l) => /^[❯›]\s*\S/.test(l))
   if (cursor < 0) return undefined
   const keys = /\besc\b|escape|\benter\b|↑|↓|\btab\b|to (select|confirm|cancel|continue|dismiss|skip)/i
-  if (!lines.slice(Math.max(0, cursor - 8)).some((l) => keys.test(l))) return undefined
+  // Un menu numéroté (❯ 1. … / 2. …) est un dialogue même sans touches indiquées (« Switch model? » de Claude Code).
+  const numbered = /^[❯›]\s*\d+[.)]\s+\S/.test(lines[cursor]) && lines.some((l, i) => i !== cursor && /^\d+[.)]\s+\S/.test(l))
+  if (!numbered && !lines.slice(Math.max(0, cursor - 8)).some((l) => keys.test(l))) return undefined
   // Le champ de saisie de Claude Code commence aussi par ❯ : il faut au moins une autre option ou une question au-dessus.
   const others = lines.filter((l, i) => i !== cursor && /^(\d+[.)]\s+\S|[○•]\s+\S|\s*(yes|no)\b)/i.test(l)).length
   const question = lines.slice(Math.max(0, cursor - 8), cursor).find((l) => /\?\s*$|\b(update|compact|would you|do you|choose|select|enable|continue)\b/i.test(l))

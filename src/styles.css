@@ -1399,3 +1399,24 @@ input:focus-visible {
 .voice-err {
   min-height: 1.2em;
 }
+
+/* Réglages : une rangée de mots, le choix actif en gras. Ni boîte, ni fond, ni arrondi. */
+.words {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 18px;
+  min-height: 44px;
+  align-items: center;
+}
+
+.word {
+  font-size: 1.0625rem;
+  font-weight: 400;
+  opacity: 0.6;
+  min-height: 40px;
+}
+
+.word.on {
+  font-weight: 750;
+  opacity: 1;
+}

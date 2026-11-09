@@ -338,7 +338,8 @@ export class Weevils {
     const known = new Set(list.map((s) => s.id))
     for (const p of this.panes) {
       const id = p.sessionId ?? p.name
-      if (!known.has(id)) list.push(this.placeholder(p, now))
+      // L'orchestrateur (dossier sous DATA_DIR) n'est pas une session de projet.
+      if (!known.has(id) && !p.cwd.startsWith(DATA_DIR)) list.push(this.placeholder(p, now))
     }
     // Les sessions ouvertes dans un terminal que weevils ne pilote pas polluent la liste sans servir : cachées (Scarville, 9 nov.).
     return list.filter((s) => s.controllable).sort((a, b) => b.lastActivityAt - a.lastActivityAt)

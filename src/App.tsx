@@ -181,6 +181,13 @@ export default function App() {
 
   const pinchMain = usePinch(() => push({ kind: 'calm' }))
 
+  // (Avant tout return : les hooks.) Ouvrir ou fermer la bande weevboss : tout bascule d'un coup, sans ressort ni état intermédiaire.
+  const prevExpanded = useRef(expanded)
+  const instant = prevExpanded.current !== expanded && (prevExpanded.current === 'agent' || expanded === 'agent')
+  useEffect(() => {
+    prevExpanded.current = expanded
+  }, [expanded])
+
   if (live.authed === false) return <Login onDone={() => live.setAuthed(true)} />
   if (!live.snap) {
     return (
@@ -205,6 +212,7 @@ export default function App() {
     back,
     home,
     expanded,
+    instant,
     setExpanded,
     h24Open,
     setH24Open,

@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import type { Project } from '../../shared/api.ts'
 import { api } from '../api'
 import { tr, useT } from '../i18n'
@@ -12,7 +13,7 @@ import { ensurePush } from '../push'
 import { VoiceLogo } from './voice'
 import { useThreadAsk } from './askthread'
 import { isUnread, useSeen } from './seen'
-import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, authorTone, spring, useAuthors } from './bits'
+import { Appear, Collapse, Composer, INSTANT, Line, Messages, SessionRow, Working, authorTone, spring, useAuthors } from './bits'
 import B from '../i18n/bits'
 import { ago, plain, userText } from './format'
 import { FilledIcon, Icon } from './icons'
@@ -34,12 +35,18 @@ const activity = (list: { status: string }[]) => {
 // weevils, l'orchestrateur : la bande du haut est juste un chat. Lui écrit dans les sessions.
 
 function useStickBottom(ref: React.RefObject<HTMLDivElement | null>, count: number, open: boolean) {
+  // À l'ouverture : déjà en bas avant le premier affichage, sans défilement visible.
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (el && open) el.scrollTop = el.scrollHeight
+  }, [ref, open])
+  // Un nouveau message pendant qu'elle est ouverte : on descend en douceur.
   useEffect(() => {
     const el = ref.current
     if (!el || !open) return
     const t = setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }), 80)
     return () => clearTimeout(t)
-  }, [ref, count, open])
+  }, [ref, count]) // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** L'aperçu vivant du fil, dans la bande réduite : les derniers messages, les récents en bas, les anciens remontent et s'estompent. */
@@ -183,21 +190,29 @@ export function AgentBand() {
           </button>
         )}
         <div className="agent-top">
-          <VoiceLogo
+          {createPortal(
+            <div className="main-voice">
+              <VoiceLogo
             take={() => { if (onSel) return ''; const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }}
             onText={(x) => { if (onSel) return th.a.voiceText(x); heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }}
             onSend={() => (onSel ? th.a.voiceSend() : form.current?.requestSubmit())}
             replyKey={th.a.replyKey ?? mainReply?.id}
             replyText={th.a.replyKey ? th.a.shown : mainReply?.text}
             working={snap.mainWorking || th.a.waiting}
-          />
+              />
+            </div>,
+            document.body,
+          )}
           <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={toggleDevil} aria-pressed={!!devilOn} aria-label={devilOn ? td.on : td.off}>
             <FilledIcon name="devil" />
           </button>
         </div>
-        {!open && <Peek onOpen={() => setExpanded('agent')} />}
+        {/* L'aperçu et le fil restent rendus : ouvrir ou fermer ne fait que les montrer ou les cacher (immédiat). */}
+        <div className="peek-wrap" hidden={open}>
+          <Peek onOpen={() => setExpanded('agent')} />
+        </div>
       </div>
-      <Collapse open={open} id="agent-body">
+      <div id="agent-body" hidden={!open}>
         <motion.div
           ref={body}
           className="chat"
@@ -216,7 +231,7 @@ export function AgentBand() {
           {snap.mainWorking && <Working author="weevboss" />}
           {snap.devil?.working && <Working author="devil" />}
         </motion.div>
-      </Collapse>
+      </div>
 
       {/* Écrire ici n'ouvre pas la conversation : elle s'ouvre à l'envoi, pour lire la réponse. */}
       <Composer placeholder={t.agentPlaceholder} label={t.agentLabel} onSend={send} onAttach={attach} anyFile voice draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="chevron" dir="right" />} />
@@ -245,7 +260,8 @@ function saveCollapsed(id: string, v: boolean) {
 
 export function ProjectBand({ project }: { project: Project }) {
   const t = useT(M)
-  const { snap, expanded, setExpanded, push, now, colors, setH24Open } = useApp()
+  const { snap, expanded, setExpanded, push, now, colors, setH24Open, instant } = useApp()
+  const tx = instant ? INSTANT : spring
   const [showDone, setShowDone] = useState(false)
   const mode = expanded === null ? 'normal' : expanded === project.id ? 'open' : 'mini'
   const sessions = snap.sessions.filter((s) => s.projectId === project.id)
@@ -287,16 +303,17 @@ export function ProjectBand({ project }: { project: Project }) {
     active.length ? activity(active) : sessions.length ? t.nothingRunning : null,
     att.length ? t.yours(att.length) : null,
     convCount ? t.conversations(convCount) : null,
-    !active.length ? ago(now - project.lastActivityAt) : null,
+    // Sans activité connue (projet épinglé jamais lancé, horodatage 0) : rien, pas « il y a 20766 jours ».
+    !active.length && project.lastActivityAt > 0 ? ago(now - project.lastActivityAt) : null,
   ]
     .filter(Boolean)
     .join(' · ')
 
   return (
-    <motion.section layout="position" transition={spring} className={`band ${busy ? 'busy' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={t.projectBand(project.name)} data-project={project.id}>
-      <motion.div className="in head" initial={false} animate={{ minHeight: shown === 'mini' ? 50 : 64, paddingTop: shown === 'mini' ? 0 : 8 }} transition={spring}>
+    <motion.section layout="position" transition={tx} className={`band ${busy ? 'busy' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={t.projectBand(project.name)} data-project={project.id}>
+      <motion.div className="in head" initial={false} animate={{ minHeight: shown === 'mini' ? 50 : 64, paddingTop: shown === 'mini' ? 0 : 8 }} transition={tx}>
         <button className="head-name" onClick={toggle} aria-expanded={mode === 'open'} aria-controls={`more-${project.id}`}>
-          <motion.span className="name" initial={false} animate={{ fontSize: NAME_SIZE[shown] }} transition={spring}>
+          <motion.span className="name" initial={false} animate={{ fontSize: NAME_SIZE[shown] }} transition={tx}>
             {project.name}
             {unread && <span className="dot" aria-label={t.unread} />}
             {active.some((s) => s.status === 'working') && (
@@ -307,7 +324,7 @@ export function ProjectBand({ project }: { project: Project }) {
           </motion.span>
           <AnimatePresence initial={false}>
             {shown === 'mini' && (
-              <motion.span key="s" className="meta" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <motion.span key="s" className="meta" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={tx}>
                 {summary}
               </motion.span>
             )}
@@ -351,7 +368,7 @@ export function ProjectBand({ project }: { project: Project }) {
         )}
       </motion.div>
 
-      <Collapse open={shown !== 'mini'}>
+      <Collapse open={shown !== 'mini'} transition={tx}>
         <AnimatePresence initial={false}>
           {active.map((s) => (
             <Appear key={s.id}>
@@ -359,7 +376,7 @@ export function ProjectBand({ project }: { project: Project }) {
             </Appear>
           ))}
         </AnimatePresence>
-        {active.length === 0 && sessions.length > 0 && <div className="in meta empty">{t.idleSince(ago(now - project.lastActivityAt))}</div>}
+        {active.length === 0 && sessions.length > 0 && project.lastActivityAt > 0 && <div className="in meta empty">{t.idleSince(ago(now - project.lastActivityAt))}</div>}
         {sessions.length === 0 && mode === 'normal' && convs.slice(0, 3).map((c) => <ConvLine key={c.id} c={c} />)}
         {done.length > 0 && (
           <>

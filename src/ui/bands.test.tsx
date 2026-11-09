@@ -127,7 +127,7 @@ describe('bande de weevboss : envoyer ne l’ouvre jamais en plein écran', () =
 
   it('au logo vocal', async () => {
     render(snap([]))
-    await act(async () => host.querySelector<HTMLButtonElement>('[data-testid=logo]')!.click())
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-testid=logo]')!.click())
     await flush()
     expect(sent.main).toEqual(['dicté au logo'])
     expect(expanded).not.toContain('agent')
@@ -164,7 +164,8 @@ describe('bande de weevboss : envoyer ne l’ouvre jamais en plein écran', () =
     const peek = host.querySelector('.peek')!
     expect(peek.textContent).toContain('fais le point')
     expect(peek.textContent).toContain('Tout tourne, deux sessions travaillent.')
-    expect(host.querySelector('.chat')).toBeNull()
+    // Le fil est déjà rendu mais caché : l'ouvrir est immédiat.
+    expect(host.querySelector<HTMLElement>('#agent-body')!.hidden).toBe(true)
     // Le tap simple, lui, ouvre la conversation.
     await act(async () => (peek as HTMLElement).click())
     expect(expanded).toEqual(['agent'])

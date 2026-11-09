@@ -35,6 +35,8 @@ export interface AppCtx {
   /** Ferme toutes les pages : retour au fil. */
   home: () => void
   expanded: string | null
+  /** Ce rendu ouvre ou ferme la bande weevboss : les bandes projets changent sans animation (bascule immédiate). */
+  instant?: boolean
   setExpanded: (id: string | null) => void
   h24Open: boolean
   setH24Open: (open: boolean) => void

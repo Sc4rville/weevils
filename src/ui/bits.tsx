@@ -16,18 +16,24 @@ import { G, Icon } from './icons'
 export const spring: Transition = { type: 'spring', stiffness: 420, damping: 32, mass: 0.9 }
 
 /** Dépliage en hauteur : ce qui est en dessous est poussé en douceur. */
-export function Collapse({ open, children, id }: { open: boolean; children: ReactNode; id?: string }) {
+/** Sans animation : une bascule qui doit être immédiate. */
+export const INSTANT: Transition = { duration: 0 }
+
+export function Collapse({ open, children, id, transition = spring }: { open: boolean; children: ReactNode; id?: string; transition?: Transition }) {
   return (
-    <AnimatePresence initial={false}>
+    // La sortie reçoit la transition du rendu qui ferme (via custom) : un élément qui sort garde sinon ses anciennes props.
+    <AnimatePresence initial={false} custom={transition}>
       {open && (
         <motion.div
           key="c"
           id={id}
           className="clip"
+          custom={transition}
+          variants={{ exit: (t: Transition) => ({ height: 0, opacity: 0, transition: t }) }}
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
-          transition={spring}
+          exit="exit"
+          transition={transition}
         >
           {children}
         </motion.div>

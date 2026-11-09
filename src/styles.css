@@ -718,10 +718,10 @@ button:disabled {
   z-index: 19;
 }
 
-/* Démo : bande de fin qui remplit l'espace restant, au-dessus du rail H24. */
+/* Démo : bande de fin qui remplit l'espace restant, au-dessus du rail H24 et du logo posé en bas. */
 .demo {
   flex: 1;
-  padding-bottom: calc(var(--rail) + var(--safe-b) + 28px);
+  padding-bottom: calc(var(--rail) + var(--safe-b) + 28px + 62px);
 }
 
 @media (min-width: 700px) {
@@ -1484,7 +1484,7 @@ button.copy.done {
   min-height: 0;
 }
 
-/* Le logo et le diablotin, tout en haut, posés sur la même ligne de base. */
+/* Le diablotin, tout en haut à droite (le logo, lui, est en bas sous le pouce : .main-voice). */
 .agent-top {
   width: 100%;
   max-width: 760px;
@@ -1492,8 +1492,58 @@ button.copy.done {
   padding: 8px var(--pad) 6px;
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex: none;
+}
+
+/* L'aperçu du fil remplit l'espace de la bande réduite ; caché (pas démonté) quand elle est ouverte. */
+.peek-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.peek-wrap[hidden] {
+  display: none;
+}
+
+/* Le logo de weevboss dans la vue principale : posé en bas de l'écran, juste au-dessus du rail H24, à portée du pouce
+   (à droite, ou à gauche avec le réglage « main »). Jamais en haut. Caché quand une page est ouverte (elle a le sien)
+   et pendant la saisie au clavier (il ne recouvre jamais le champ). */
+.main-voice {
+  position: fixed;
+  right: calc(var(--pad) - 6px);
+  bottom: calc(var(--rail) + var(--safe-b) + 10px);
+  z-index: 18;
+}
+
+[data-hand='left'] .main-voice {
+  right: auto;
+  left: calc(var(--pad) - 6px);
+}
+
+.main-voice .voice-logo {
+  height: 52px;
+  min-height: 0;
+}
+
+html[data-page] .main-voice,
+html:has(.stack textarea:focus, .stack input:focus) .main-voice {
+  display: none;
+}
+
+/* En bas à droite, la bulle de pensée sort à gauche de la tête ; en bas à gauche, à droite. */
+.main-voice .voice-err {
+  left: auto;
+  right: 90%;
+  transform-origin: right bottom;
+}
+
+[data-hand='left'] .main-voice .voice-err {
+  left: 90%;
+  right: auto;
+  transform-origin: left bottom;
 }
 
 /* Aligné à gauche sur le texte du champ : même marge que le « > » du composer. */

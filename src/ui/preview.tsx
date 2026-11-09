@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { Message, Project, Session } from '../../shared/api.ts'
+import { useT } from '../i18n'
+import M from '../i18n/preview'
 import { Icon } from './icons'
 
 /** Où vivent les serveurs de preview (WEEVILS_EXPOSE_DOMAIN : <nom>.<domaine>) et l'app elle-même : lus dans la config du serveur. */
@@ -78,6 +80,7 @@ const normalize = (raw: string) => {
 
 /** Le navigateur intégré : une barre d'adresse et la page, pour voir en live ce que l'agent construit. */
 export function Preview({ url, suggestions, onUrl, onClose }: { url: string; suggestions: string[]; onUrl: (u: string) => void; onClose: () => void }) {
+  const t = useT(M)
   const [draft, setDraft] = useState(url)
   const [gen, setGen] = useState(0)
   useEffect(() => setDraft(url), [url])
@@ -94,25 +97,25 @@ export function Preview({ url, suggestions, onUrl, onClose }: { url: string; sug
   return (
     <div className="preview">
       <form className="preview-bar" onSubmit={go}>
-        <button type="button" className="key" onClick={onClose} aria-label="fermer le navigateur">
+        <button type="button" className="key" onClick={onClose} aria-label={t.close}>
           <Icon name="close" />
         </button>
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="https://"
-          aria-label="adresse à afficher"
+          aria-label={t.address}
           inputMode="url"
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
           enterKeyHint="go"
         />
-        <button type="submit" className="key" aria-label="recharger">
+        <button type="submit" className="key" aria-label={t.reload}>
           <Icon name="reload" />
         </button>
         {url && (
-          <a className="key" href={url} target="_blank" rel="noreferrer" aria-label="ouvrir dans un onglet">
+          <a className="key" href={url} target="_blank" rel="noreferrer" aria-label={t.openTab}>
             <Icon name="external" />
           </a>
         )}
@@ -133,7 +136,7 @@ export function Preview({ url, suggestions, onUrl, onClose }: { url: string; sug
             key={`${url}#${gen}`}
             className="preview-frame"
             src={url}
-            title="aperçu de l’application"
+            title={t.frame}
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
             allow="clipboard-write; fullscreen"
             referrerPolicy="no-referrer"

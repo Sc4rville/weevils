@@ -124,6 +124,9 @@ export function ProjectBand({ project }: { project: Project }) {
     if (mode !== 'open') for (const r of project.repos) prefetchRepo(r, project.where[r] ?? 'vps')
     setExpanded(mode === 'open' ? null : project.id)
   }
+  // Rien ne tourne : une seule ligne (nom et actions), le détail n'apparaît qu'au tap sur le nom.
+  const compact = active.length === 0 && mode === 'normal'
+  const doneOpen = showDone || (mode === 'open' && active.length === 0)
 
   const busy = active.some((s) => s.status === 'working')
   const summary = [
@@ -137,9 +140,9 @@ export function ProjectBand({ project }: { project: Project }) {
 
   return (
     <motion.section layout="position" transition={spring} className={`band ${busy ? 'busy' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={`projet ${project.name}`} data-project={project.id}>
-      <motion.div className="in head" initial={false} animate={{ minHeight: mode === 'mini' ? 50 : 64, paddingTop: mode === 'mini' ? 0 : 8 }} transition={spring}>
+      <motion.div className="in head" initial={false} animate={{ minHeight: mode === 'mini' ? 50 : compact ? 56 : 64, paddingTop: mode === 'mini' || compact ? 0 : 8 }} transition={spring}>
         <button className="head-name" onClick={toggle} aria-expanded={mode === 'open'} aria-controls={`more-${project.id}`}>
-          <motion.span className="name" initial={false} animate={{ fontSize: NAME_SIZE[mode] }} transition={spring}>
+          <motion.span className="name" initial={false} animate={{ fontSize: compact ? '1.75rem' : NAME_SIZE[mode] }} transition={spring}>
             {project.name}
             {active.some((s) => s.status === 'working') && (
               <span className="fluo" aria-hidden>
@@ -192,7 +195,7 @@ export function ProjectBand({ project }: { project: Project }) {
         )}
       </motion.div>
 
-      <Collapse open={mode !== 'mini'}>
+      <Collapse open={mode !== 'mini' && !compact}>
         {project.kind === 'invented' && (
           <div className="in meta" style={{ paddingBottom: 6 }}>
             catégorie inventée par weevils · hors repo
@@ -209,10 +212,10 @@ export function ProjectBand({ project }: { project: Project }) {
         {sessions.length === 0 && mode === 'normal' && convs.slice(0, 3).map((c) => <ConvLine key={c.id} c={c} />)}
         {done.length > 0 && (
           <>
-            <Line ch="✓" go={showDone ? '↑' : '↓'} onClick={() => setShowDone((v) => !v)} label={`${done.length} sessions terminées`}>
+            <Line ch="✓" go={doneOpen ? '↑' : '↓'} onClick={() => setShowDone(!doneOpen)} label={`${done.length} sessions terminées`}>
               <span className="meta">{plural(done.length, 'session terminée', 'sessions terminées')}</span>
             </Line>
-            <Collapse open={showDone}>
+            <Collapse open={doneOpen}>
               {done.slice(0, 6).map((s) => (
                 <SessionRow key={s.id} session={s} />
               ))}

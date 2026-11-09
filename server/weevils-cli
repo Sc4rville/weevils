@@ -9,7 +9,7 @@ base="http://127.0.0.1:${WEEVILS_PORT:-4179}"
 from=${WEEVILS_FROM:-weevils}
 py=python3
 
-json() { "$py" -c "import json,sys; d=json.load(sys.stdin); $1"; }
+json() { local code=$1; shift; "$py" -c "import json,sys; d=json.load(sys.stdin); $code" "$@"; }
 
 resolve() {
   # Id complet à partir d'un préfixe (8 caractères suffisent).
@@ -44,9 +44,12 @@ for p in d['projects']:
     n=${3:-12}
     curl -sf -m 8 "$base/api/sessions/$id" | json "
 s=d['session']; print(f\"# {s['title']} · {s['tool']} · {s['status']}\" + (' · '+s['now'] if s.get('now') else ''))
-for m in d['messages'][-int(sys.argv[1]):]:
-    who={'user':'Scarville','assistant':s['tool'],'orchestrator':'weevils','event':'→'}[m['role']]
-    t=' '.join(m['text'].split())
+n=max(1,int(sys.argv[1])) if len(sys.argv)>1 else 12
+msgs=d.get('messages') or []
+if not msgs: print('(aucun message)')
+for m in msgs[-n:]:
+    who={'user':'Scarville','assistant':s['tool'],'orchestrator':'weevils','event':'→'}.get(m.get('role'),m.get('role','?'))
+    t=' '.join((m.get('text') or '').split())
     print(f\"{who}: {t[:600]}\")
 " "$n" ;;
   send)

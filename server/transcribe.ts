@@ -54,10 +54,11 @@ export async function speak(text: string): Promise<Buffer> {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 1500)
+  const oral = await toOral(input, key).catch(() => input.slice(0, 300))
   const res = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'gpt-4o-mini-tts', voice: 'sage', input, response_format: 'mp3', instructions: 'Parle en français, voix calme et chaleureuse, débit naturel.' }),
+    body: JSON.stringify({ model: 'gpt-4o-mini-tts', voice: 'sage', input: oral, speed: 1.25, response_format: 'mp3', instructions: 'Parle en français, voix décontractée et chaleureuse, comme un pote, débit vif.' }),
     signal: AbortSignal.timeout(60_000),
   })
   if (!res.ok) {
@@ -65,4 +66,30 @@ export async function speak(text: string): Promise<Buffer> {
     throw new Error(err.error?.message ?? `voix : erreur ${res.status}`)
   }
   return Buffer.from(await res.arrayBuffer())
+}
+
+/**
+ * La version à dire : une ou deux phrases, comme à un pote, sans ids, chemins, fichiers ni listes.
+ * Faite par un modèle rapide (claude haiku en ligne de commande, sinon le mini d'OpenAI).
+ */
+async function toOral(text: string, key: string): Promise<string> {
+  const ask = `Résume ce message pour le dire à voix haute à Scarville, en une ou deux phrases courtes en français, parlé, comme un pote. Aucun identifiant, chemin, nom de fichier, commande, chiffre technique ni liste. Réponds seulement avec la phrase à dire.\n\n${text}`
+  try {
+    const { execFile } = await import('node:child_process')
+    const out = await new Promise<string>((resolve, reject) => {
+      const c = execFile('claude', ['-p', '--model', 'haiku', ask], { timeout: 20_000, maxBuffer: 1 << 20, cwd: '/tmp' }, (err, stdout) => (err ? reject(err) : resolve(stdout.toString())))
+      c.stdin?.end()
+    })
+    if (out.trim()) return out.trim().slice(0, 400)
+  } catch {
+    /* claude indisponible : OpenAI */
+  }
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: ask }], max_tokens: 120 }),
+    signal: AbortSignal.timeout(15_000),
+  })
+  const j = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+  return (j.choices?.[0]?.message?.content ?? '').trim().slice(0, 400) || text.slice(0, 300)
 }

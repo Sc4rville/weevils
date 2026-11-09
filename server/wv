@@ -12,6 +12,25 @@
 # Sans demande de permission (comme d'habitude) ; WV_SAFE=1 wv … pour garder les confirmations.
 set -euo pipefail
 
+# Langue des messages : celle de l'app (prefs.json de weevilsd), sinon WEEVILS_LANG (env ou ~/.config/weevils/env),
+# LC_ALL, LANG ; anglais par défaut. Même ordre que weevilsd (server/i18n.ts).
+wv_lang() {
+  local c cfg=${WEEVILS_CONFIG:-$HOME/.config/weevils/env}
+  for c in "$(sed -n 's/.*"lang" *: *"\([a-z]*\)".*/\1/p' ~/.local/share/weevils/prefs.json 2>/dev/null)" \
+    "${WEEVILS_LANG:-$(sed -n 's/^[[:space:]]*WEEVILS_LANG[[:space:]]*=[[:space:]]*["'\'']\{0,1\}\([A-Za-z_.-]*\).*/\1/p' "$cfg" 2>/dev/null | tail -1)}" \
+    "${LC_ALL:-}" "${LANG:-}"; do
+    case "$c" in fr|fr[-_.]*|FR*) echo fr; return ;; en|en[-_.]*|EN*) echo en; return ;; esac
+  done
+  echo en
+}
+if [ "$(wv_lang)" = fr ]; then
+  m_none="aucune session wv" # i18n-ignore : messages français, l'anglais est juste en dessous
+  m_title="nouvelle session" # i18n-ignore
+else
+  m_none="no wv sessions"
+  m_title="new session"
+fi
+
 if [ "${WV_SAFE:-}" = 1 ]; then claude_flags=(); codex_flags=()
 else claude_flags=(--dangerously-skip-permissions); codex_flags=(--dangerously-bypass-approvals-and-sandbox); fi
 
@@ -27,11 +46,11 @@ fi
 tool=claude
 case "${1:-}" in
   ls)
-    tmux list-sessions -F '#{session_name}  #{@wv_tool}  #{@wv_cwd}' 2>/dev/null | grep '^wv-' || echo "aucune session wv"
+    tmux list-sessions -F '#{session_name}  #{@wv_tool}  #{@wv_cwd}' 2>/dev/null | grep '^wv-' || echo "$m_none"
     exit 0 ;;
   a|attach)
     name=${2:-$(tmux list-sessions -F '#{session_created} #{session_name}' 2>/dev/null | grep ' wv-' | sort -n | tail -1 | cut -d' ' -f2)}
-    [ -n "$name" ] || { echo "aucune session wv"; exit 1; }
+    [ -n "$name" ] || { echo "$m_none"; exit 1; }
     if [ -n "${TMUX:-}" ]; then exec tmux switch-client -t "=$name"; else exec tmux attach -t "=$name"; fi ;;
   claude|codex)
     tool=$1; shift ;;
@@ -40,7 +59,7 @@ esac
 dir=$(basename "$PWD")
 short=$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')
 name="wv-${dir:0:18}-$short"
-title=${1:-nouvelle session}
+title=${1:-$m_title}
 
 # Rien ne doit interrompre la session (mise à jour, conseils, télémétrie) : mêmes variables que weevilsd.
 quiet=(-e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -e DISABLE_AUTOUPDATER=1 -e DISABLE_BUG_COMMAND=1 -e DISABLE_ERROR_REPORTING=1 -e DISABLE_TELEMETRY=1 -e DISABLE_COST_WARNINGS=1 -e DISABLE_TIPS=1)

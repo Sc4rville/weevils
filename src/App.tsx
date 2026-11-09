@@ -251,7 +251,6 @@ export default function App() {
         <div inert={stack.length > 0}>
           <H24Rail />
         </div>
-        {/* Le coin infrastructure flotte en haut à droite du fil, sous la barre d'état, sans prendre de place. */}
         <AnimatePresence>
           {stack.map((p, i) => (
             <PageView key={`${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : ''}`} page={p} />

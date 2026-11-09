@@ -352,7 +352,7 @@ button:disabled {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .spin {
+  .spin:not(.fluo) {
     animation: none;
   }
 }
@@ -832,12 +832,7 @@ input:focus-visible {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .fluo,
-  .spin.fluo {
-    animation: none;
-  }
-}
+/* L'étoile verte qui travaille reste animée même en « réduire les animations » : elle est le seul signe de vie, petite et lente. */
 
 /* ---------- Agent principal : où envoyer, en puces qui défilent horizontalement ---------- */
 

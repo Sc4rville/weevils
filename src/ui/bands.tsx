@@ -61,6 +61,11 @@ export function AgentBand() {
           <span className="in">
             <span className="stack-text">
               <span className="ellipsis">
+                {snap.mainWorking && (
+                  <span className="spin fluo" aria-hidden>
+                    *{' '}
+                  </span>
+                )}
                 <span className="strong">{last.role === 'event' ? '→ ' : 'weevboss · '}</span>
                 {last.role === 'event' ? step(last.text) : plain(last.text).split('\n')[0]}
               </span>
@@ -76,7 +81,7 @@ export function AgentBand() {
       </Collapse>
 
       {/* Écrire ici n'ouvre pas la conversation : elle s'ouvre à l'envoi, pour lire la réponse. */}
-      <Composer placeholder="dis à weevboss quoi faire" label="message à weevboss" onSend={send} onAttach={attach} anyFile voice />
+      <Composer placeholder="dis à weevboss quoi faire" label="message à weevboss" onSend={send} onAttach={attach} anyFile voice prompt={snap.mainWorking ? <span className="spin fluo">*</span> : '>'} />
     </section>
   )
 }
@@ -123,9 +128,9 @@ export function ProjectBand({ project }: { project: Project }) {
             {project.name}
             {unread && <span className="dot" aria-label="a répondu, pas encore lu" />}
             {active.some((s) => s.status === 'working') && (
-              <span className="fluo" aria-hidden>
+              <span aria-hidden>
                 {' '}
-                *
+                <span className="spin fluo">*</span>
               </span>
             )}
           </motion.span>

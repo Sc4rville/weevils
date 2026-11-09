@@ -204,7 +204,7 @@ export function Composer({
   onSend,
   onAttach,
   onFocus,
-  prompt = '>',
+  prompt = '>' as ReactNode,
   className = 'tone',
   disabled,
   voice = false,
@@ -216,7 +216,7 @@ export function Composer({
   /** Envoi avec des photos ; sans lui, pas de bouton photo. */
   onAttach?: (text: string, files: Attachment[]) => void | Promise<void>
   onFocus?: () => void
-  prompt?: string
+  prompt?: ReactNode
   className?: string
   disabled?: boolean
   /** Dictée : un appui pour enregistrer, un appui pour transcrire dans le champ. */

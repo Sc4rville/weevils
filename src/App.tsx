@@ -8,6 +8,7 @@ import { H24Rail } from './ui/h24'
 import { Login } from './ui/login'
 import { Onboarding } from './ui/onboarding'
 import { Tips } from './ui/tips'
+import { HintBubble, loadHints } from './ui/hints'
 import { InfraCorner } from './ui/infra'
 import { PageView } from './ui/pages'
 import { usePinch } from './ui/calm'
@@ -51,6 +52,7 @@ export default function App() {
   // Autorisation déjà donnée : l'appareil se ré-abonne à chaque lancement (clé changée, serveur réinstallé…).
   useEffect(() => {
     if (live.authed) void ensurePush().catch(() => undefined)
+    if (live.authed) void loadHints()
   }, [live.authed])
 
   const setTheme = useCallback((t: Theme) => {
@@ -259,6 +261,7 @@ export default function App() {
         </AnimatePresence>
         <Tips paused={stack.length > 0} />
         <Onboarding />
+        <HintBubble />
       </MotionConfig>
     </Ctx.Provider>
   )

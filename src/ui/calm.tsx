@@ -12,6 +12,7 @@ import { Settings } from './settings'
 import { usePageChrome } from './shell'
 import { markSeen } from './seen'
 import { Icon } from './icons'
+import { useViewHint } from './hints'
 
 // Le mode conversation : pincer le fil → une grille de conversations, un tap → l'immersion. Rien d'autre que les messages.
 
@@ -67,6 +68,7 @@ export function CalmGrid() {
   const page = useRef<HTMLDivElement>(null)
   usePageChrome('calm', page)
   const pinch = usePinch(home)
+  useViewHint('calm')
   const rank = (s: { status: string }) => (s.status === 'needs_user' ? 0 : s.status === 'working' ? 1 : s.status === 'idle' ? 2 : 3)
   const sessions = useMemo(() => [...snap.sessions].sort((a, b) => rank(a) - rank(b) || b.lastActivityAt - a.lastActivityAt), [snap.sessions])
   const last = snap.main.filter((m) => m.role !== 'event').at(-1)

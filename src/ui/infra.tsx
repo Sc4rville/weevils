@@ -11,6 +11,7 @@ import { Icon } from './icons'
 import { Shell } from './shell'
 import { copyText } from './copy'
 import './infra.css'
+import { tapHint } from './hints'
 
 /**
  * Le coin infrastructure, en haut à droite du fil : les machines (une icône chacune, empilées, avec CPU et mémoire),
@@ -113,17 +114,17 @@ export function InfraCorner({ hidden }: { hidden?: boolean }) {
             key={m.id}
             className={`mx lv-text-${m.online ? m.level : 'off'} ${i ? 'behind' : ''}`}
             style={{ zIndex: machines.length - i, transform: i ? `translateY(${-Math.min(i, 3) * 3}px)` : undefined } as CSSProperties}
-            onClick={() => push({ kind: 'infra', machine: m.id })}
+            onClick={(e) => tapHint('machine', e.currentTarget) || push({ kind: 'infra', machine: m.id })}
             aria-label={t.machineAria(m.name, m.cpu, m.mem, m.online)}
           >
             <Solid d={MACHINE} />
           </button>
         ))}
       </div>
-      <button className="ix" onClick={() => push({ kind: 'fs', machine: machines[0]?.id ?? '', path: '/' })} aria-label={t.filesAria}>
+      <button className="ix" onClick={(e) => tapHint('fs', e.currentTarget) || push({ kind: 'fs', machine: machines[0]?.id ?? '', path: '/' })} aria-label={t.filesAria}>
         <Icon name="slash" />
       </button>
-      <button className={`ix lv-text-${c?.ok ? quotaLevel(top) : 'off'}`} onClick={() => push({ kind: 'usage' })} aria-label={t.quotaAria(parts || t.unavailable)}>
+      <button className={`ix lv-text-${c?.ok ? quotaLevel(top) : 'off'}`} onClick={(e) => tapHint('quota', e.currentTarget) || push({ kind: 'usage' })} aria-label={t.quotaAria(parts || t.unavailable)}>
         <BrainFill pct={c?.ok ? top : 0} />
       </button>
     </div>

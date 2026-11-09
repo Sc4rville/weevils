@@ -17,6 +17,7 @@ import B from '../i18n/bits'
 import { ago, plain, userText } from './format'
 import { FilledIcon, Icon } from './icons'
 import { PrefLines } from './prefs'
+import { tapHint } from './hints'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
@@ -122,7 +123,7 @@ function Peek({ onOpen }: { onOpen: () => void }) {
           {working && (
             <motion.div key="working" layout="position" className="peek-item" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={soft}>
               <div className="in">
-                <span className="spin fluo">
+                <span className="spin fluo" onClick={(e) => tapHint('star', e.currentTarget) && e.stopPropagation()}>
                   <Icon name="star" />
                 </span>
               </div>
@@ -197,7 +198,7 @@ export function AgentBand() {
             replyText={th.a.replyKey ? th.a.shown : mainReply?.text}
             working={snap.mainWorking || th.a.waiting}
           />
-          <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={toggleDevil} aria-pressed={!!devilOn} aria-label={devilOn ? td.on : td.off}>
+          <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={(e) => tapHint('devil', e.currentTarget, snap.devil?.enabled === false ? 'devilOff' : 'devil') || toggleDevil()} aria-pressed={!!devilOn} aria-label={devilOn ? td.on : td.off}>
             <FilledIcon name="devil" />
           </button>
         </div>
@@ -311,7 +312,7 @@ export function ProjectBand({ project }: { project: Project }) {
             {project.name}
             {unread && <span className="dot" aria-label={t.unread} />}
             {active.some((s) => s.status === 'working') && (
-              <span aria-hidden>
+              <span aria-hidden onClick={(e) => tapHint('star', e.currentTarget) && e.stopPropagation()}>
                 <span className="spin fluo"><Icon name="star" /></span>
               </span>
             )}
@@ -338,7 +339,7 @@ export function ProjectBand({ project }: { project: Project }) {
               className={`ch ${att.length ? '' : 'off'}`}
               disabled={!att.length}
               aria-label={att.length ? t.waiting(att.length) : t.nothingWaiting}
-              onClick={() => att[0] && push({ kind: 'session', id: att[0].id })}
+              onClick={(e) => tapHint('attention', e.currentTarget) || (att[0] && push({ kind: 'session', id: att[0].id }))}
             >
               <span>
                 <Icon name="bang" />
@@ -354,7 +355,7 @@ export function ProjectBand({ project }: { project: Project }) {
               </button>
             )}
             {project.kind === 'repo' || project.repos.length > 0 ? (
-              <button className="ch" aria-label={t.newSessionIn(project.name)} onClick={() => push({ kind: 'new', projectId: project.id })}>
+              <button className="ch" aria-label={t.newSessionIn(project.name)} onClick={(e) => tapHint('newSession', e.currentTarget) || push({ kind: 'new', projectId: project.id })}>
                 <Icon name="plus" />
               </button>
             ) : null}

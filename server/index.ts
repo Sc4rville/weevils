@@ -16,6 +16,7 @@ import M from './i18n/api.ts'
 import P from './i18n/push.ts'
 import V from './i18n/voice.ts'
 import { tipRoutes } from './tips.ts'
+import { Hints, hintRoutes } from './hints.ts'
 import { normalizeFrom } from './authors.ts'
 import { startMailBridge } from './mailbridge.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
@@ -389,6 +390,7 @@ const routes: [string, RegExp, Handler][] = [
     json(res, 200, { rows: [...rows, ...far.flat()].sort((a, b) => b.weight - a.weight) })
   }],
   ...tipRoutes(w, json, readBody, () => !!openaiKey()),
+  ...hintRoutes(new Hints(DATA_DIR), json, readBody),
   ['POST', /^\/api\/github\/pin$/, async (req, res) => {
     const body = await readBody(req)
     w.pinRepo(String(body.repo ?? ''), !!body.pinned)

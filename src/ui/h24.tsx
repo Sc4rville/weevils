@@ -7,6 +7,7 @@ import { ago, durLong } from './format'
 import { Icon } from './icons'
 import { useT } from '../i18n'
 import M from '../i18n/h24'
+import { tapHint } from './hints'
 
 /** Bande H24 collée en bas : on la tire vers le haut (ou on la touche) pour voir les activités permanentes. */
 export function H24Rail() {
@@ -78,11 +79,12 @@ export function H24Rail() {
             dragged.current = false
             controls.start(e)
           }}
-          onClick={() => {
+          onClick={(e) => {
             if (dragged.current) {
               dragged.current = false
               return
             }
+            if (!open && tapHint('h24', e.currentTarget)) return
             setOpen(!open)
           }}
           aria-expanded={open}

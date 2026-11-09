@@ -6,6 +6,7 @@ import M from '../i18n/repos'
 import { useApp } from './app-context'
 import { Shell } from './shell'
 import { Icon } from './icons'
+import { useViewHint } from './hints'
 
 /** Couleur par position : un pas de 7 sur les 16 teintes, donc deux rectangles voisins (à côté ou dessous) n'ont jamais une teinte proche. */
 const tint = (i: number) => ({ '--c': `var(--p${(i * 7) % 16})` }) as CSSProperties
@@ -19,6 +20,7 @@ export function ReposPage() {
   const [desc, setDesc] = useState('')
   const [busy, setBusy] = useState(false)
   const pinned = new Set(snap.pinnedRepos)
+  useViewHint('repos')
 
   // Les phrases s'écrivent en fond côté serveur : on relit tant qu'il en manque.
   useEffect(() => {

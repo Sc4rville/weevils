@@ -1,10 +1,11 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { api } from '../api'
 import { WeevbossLogo } from './logo'
 import { Icon } from './icons'
 import { getLang, tr, useLang, useT } from '../i18n'
 import M from '../i18n/voice'
+import { tapHint } from './hints'
 
 /**
  * Le logo de weevboss est le bouton vocal, en trois taps qui s'enchaînent vite :
@@ -232,7 +233,8 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
     onSend()
     take()
   }
-  const tap = () => {
+  const tap = (e: MouseEvent<HTMLButtonElement>) => {
+    if (phase === 'idle' && !speaking && tapHint('voice', e.currentTarget)) return
     unlockAudio()
     // La voix se tait dès que l'utilisateur reprend la parole (le tap enchaîne sur l'enregistrement).
     if (speaking) {

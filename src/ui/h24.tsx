@@ -5,10 +5,13 @@ import { useApp } from './app-context'
 import { spring } from './bits'
 import { ago, durLong } from './format'
 import { Icon } from './icons'
+import { useT } from '../i18n'
+import M from '../i18n/h24'
 
 /** Bande H24 collée en bas : on la tire vers le haut (ou on la touche) pour voir les activités permanentes. */
 export function H24Rail() {
   const { snap, now, refresh, h24Open: open, setH24Open: setOpen } = useApp()
+  const t = useT(M)
   const list = snap.h24
   const stats = { running: list.filter((a) => a.runState === 'running').length, total: list.length }
   const y = useMotionValue(0)
@@ -43,7 +46,7 @@ export function H24Rail() {
     return () => ctrl.stop()
   }, [open, closedY, y])
 
-  const summary = stats.total ? `${stats.running} en cours · ${stats.total - stats.running} récents` : 'rien ne tourne en continu'
+  const summary = stats.total ? t.summary(stats.running, stats.total - stats.running) : t.nothing
 
   return (
     <>
@@ -66,7 +69,7 @@ export function H24Rail() {
           setOpen(next)
         }}
         role="region"
-        aria-label="activités h24"
+        aria-label={t.region}
       >
         <div ref={probe} className="h24-probe" />
         <button
@@ -84,13 +87,13 @@ export function H24Rail() {
           }}
           aria-expanded={open}
           aria-controls="h24-body"
-          aria-label={`h24 : ${summary}. ${open ? 'replier' : 'déplier'}`}
+          aria-label={t.head(summary, open)}
         >
           <span className="h24-grip" aria-hidden>
             <Icon name="grip" />
           </span>
           <span className="in" aria-hidden>
-            <span className="h2">h24</span>
+            <span className="h2">{t.title}</span>
             <span className="meta" style={{ flex: 1 }}>
               {summary}
             </span>
@@ -117,9 +120,9 @@ export function H24Rail() {
                     <div className="meta">
                       {a.kind === 'job'
                         ? running
-                          ? `en cours${a.runStartedAt ? ` depuis ${durLong(now - a.runStartedAt)}` : ''}`
-                          : `terminé ${a.runStartedAt ? ago(now - a.runStartedAt) : ''}`
-                        : `${paused ? 'en pause' : 'planifié'} · ${a.schedule}`}
+                          ? t.running(a.runStartedAt ? durLong(now - a.runStartedAt) : null)
+                          : t.finished(a.runStartedAt ? ago(now - a.runStartedAt) : '')
+                        : `${paused ? t.paused : t.scheduled} · ${a.schedule}`}
                     </div>
                     <div className="small ellipsis">{a.lastEvent}</div>
                   </div>
@@ -127,7 +130,7 @@ export function H24Rail() {
                     <button
                       className="ch"
                       onClick={() => void api.toggleH24(a.id).then(refresh)}
-                      aria-label={paused ? `reprendre ${a.title}` : `mettre en pause ${a.title}`}
+                      aria-label={paused ? t.resume(a.title) : t.pause(a.title)}
                     >
                       <Icon name={paused ? 'play' : 'pause'} />
                     </button>
@@ -136,7 +139,7 @@ export function H24Rail() {
               </div>
             )
           })}
-          {list.length === 0 && <div className="in meta empty">rien</div>}
+          {list.length === 0 && <div className="in meta empty">{t.empty}</div>}
           <div style={{ height: 14 }} />
         </div>
       </motion.div>

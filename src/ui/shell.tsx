@@ -3,6 +3,8 @@ import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react'
 import { useApp } from './app-context'
 import { spring } from './bits'
 import { Icon } from './icons'
+import { useT } from '../i18n'
+import M from '../i18n/shell'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
@@ -60,6 +62,7 @@ export function Shell({
   side?: ReactNode
 }) {
   const { back } = useApp()
+  const t = useT(M)
   const heading = useRef<HTMLHeadingElement>(null)
   const page = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -89,7 +92,7 @@ export function Shell({
     >
       <div className="page-head band tone">
         <div className="in">
-          <button className="back" onClick={back} aria-label={`retour · ${kicker}`}>
+          <button className="back" onClick={back} aria-label={t.back(kicker)}>
             <span aria-hidden>
               <Icon name="chevron" dir="left" />
             </span>

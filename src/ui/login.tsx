@@ -1,9 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { api } from '../api'
 import { Icon } from './icons'
+import { useT } from '../i18n'
+import M from '../i18n/login'
 
 /** Connexion : un code d'accès (ou le lien QR « #k=… »). Une fois par appareil. */
 export function Login({ onDone }: { onDone: () => void }) {
+  const t = useT(M)
   const [code, setCode] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -27,7 +30,7 @@ export function Login({ onDone }: { onDone: () => void }) {
         <div className="in head">
           <span className="name">weevils</span>
         </div>
-        <div className="in meta summary">connexion à ton VPS</div>
+        <div className="in meta summary">{t.summary}</div>
         <form className="composer band tone" onSubmit={submit}>
           <div className="in">
             <span className="prompt" aria-hidden>
@@ -36,14 +39,14 @@ export function Login({ onDone }: { onDone: () => void }) {
             <input
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="code d’accès"
-              aria-label="code d’accès"
+              placeholder={t.code}
+              aria-label={t.code}
               autoComplete="current-password"
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
             />
-            <button className="send" type="submit" disabled={!code.trim() || busy} aria-label="se connecter">
+            <button className="send" type="submit" disabled={!code.trim() || busy} aria-label={t.signIn}>
               <Icon name="arrow" dir="right" />
             </button>
           </div>

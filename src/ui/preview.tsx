@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { Message, Project, Session } from '../../shared/api.ts'
+import { Icon } from './icons'
 
 /** Domaine qui porte les ports exposés depuis le VPS (`expose <nom> <port>` → https://<nom>.scarville.tech). */
 const EXPOSE_DOMAIN = 'scarville.tech'
@@ -91,7 +92,7 @@ export function Preview({ url, suggestions, onUrl, onClose }: { url: string; sug
     <div className="preview">
       <form className="preview-bar" onSubmit={go}>
         <button type="button" className="key" onClick={onClose} aria-label="fermer le navigateur">
-          ×
+          <Icon name="close" />
         </button>
         <input
           value={draft}
@@ -105,11 +106,11 @@ export function Preview({ url, suggestions, onUrl, onClose }: { url: string; sug
           enterKeyHint="go"
         />
         <button type="submit" className="key" aria-label="recharger">
-          ↻
+          <Icon name="reload" />
         </button>
         {url && (
           <a className="key" href={url} target="_blank" rel="noreferrer" aria-label="ouvrir dans un onglet">
-            ↗
+            <Icon name="external" />
           </a>
         )}
       </form>

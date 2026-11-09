@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { api } from '../api'
+import { Icon } from './icons'
 
 /** Connexion : un code d'accès (ou le lien QR « #k=… »). Une fois par appareil. */
 export function Login({ onDone }: { onDone: () => void }) {
@@ -30,7 +31,7 @@ export function Login({ onDone }: { onDone: () => void }) {
         <form className="composer band tone" onSubmit={submit}>
           <div className="in">
             <span className="prompt" aria-hidden>
-              {busy ? <span className="spin">*</span> : '#'}
+              {busy ? <span className="spin"><Icon name="star" /></span> : <Icon name="hash" />}
             </span>
             <input
               value={code}
@@ -43,7 +44,7 @@ export function Login({ onDone }: { onDone: () => void }) {
               spellCheck={false}
             />
             <button className="send" type="submit" disabled={!code.trim() || busy} aria-label="se connecter">
-              →
+              <Icon name="arrow" dir="right" />
             </button>
           </div>
         </form>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Message, SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
@@ -11,6 +11,7 @@ import { CalmConv, CalmGrid } from './calm'
 import { markSeen } from './seen'
 import { Shell } from './shell'
 import { ago, dur, durLong, plural, status } from './format'
+import { Icon } from './icons'
 
 /** Garde la fin du fil visible quand un message arrive. */
 function useStickToBottom(count: number) {
@@ -74,13 +75,13 @@ function ErrorBand({ text }: { text: string }) {
 // ---------------------------------------------------------------------------
 // Session : le fil, l'écran du terminal, les touches.
 
-const KEYS: [string, string, string][] = [
+const KEYS: [string, ReactNode, string][] = [
   ['1', '1', 'choix 1'],
   ['2', '2', 'choix 2'],
   ['3', '3', 'choix 3'],
-  ['up', '↑', 'flèche haut'],
-  ['down', '↓', 'flèche bas'],
-  ['enter', '⏎', 'entrée'],
+  ['up', <Icon key="u" name="arrow" />, 'flèche haut'],
+  ['down', <Icon key="d" name="arrow" dir="down" />, 'flèche bas'],
+  ['enter', <Icon key="e" name="enter" />, 'entrée'],
   ['esc', 'esc', 'échap'],
   ['tab', 'tab', 'tabulation'],
 ]
@@ -236,7 +237,7 @@ function SessionPage({ id }: { id: string }) {
             {s.subagents.map((a) => (
               <div key={a.id} className="in" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', paddingBlock: 8 }}>
                 <span className="h2" style={{ width: 22, textAlign: 'center', lineHeight: 1.2 }} aria-hidden>
-                  {a.status === 'working' ? <span className="spin fluo">*</span> : '✓'}
+                  {a.status === 'working' ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="check" />}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="ellipsis">

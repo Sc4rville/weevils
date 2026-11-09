@@ -5,6 +5,7 @@ import type { Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
 import { dur, plain, segments, status, step, userText } from './format'
 import { isUnread, useSeen } from './seen'
+import { G, Icon } from './icons'
 
 /** Ressort commun : léger dépassement, pour que les bandes aient de l'inertie. */
 export const spring: Transition = { type: 'spring', stiffness: 420, damping: 32, mass: 0.9 }
@@ -40,7 +41,11 @@ export function Appear({ children }: { children: ReactNode }) {
 }
 
 export function StatusChar({ s }: { s: Session['status'] }) {
-  return <span className={s === 'working' ? 'spin fluo' : undefined}>{status[s].ch}</span>
+  return (
+    <span className={s === 'working' ? 'spin fluo' : undefined}>
+      <G c={status[s].ch} />
+    </span>
+  )
 }
 
 /** Long message de Scarville : replié au-delà de quelques lignes, un geste pour tout lire. */
@@ -52,7 +57,7 @@ function Clamp({ text }: { text: string }) {
       <div className={`text ${long && !open ? 'clamp' : ''}`}>{text}</div>
       {long && (
         <button className="link small" onClick={() => setOpen((v) => !v)}>
-          {open ? '− replier' : '+ tout lire'}
+          {open ? 'replier' : 'tout lire'}
         </button>
       )}
     </>
@@ -135,7 +140,7 @@ export function Line({
       <span className="in">
         {ch != null && (
           <span className="st" aria-hidden>
-            {ch}
+            <G c={ch} />
           </span>
         )}
         <span className="stack-text">
@@ -144,7 +149,7 @@ export function Line({
         </span>
         {go && !disabled && (
           <span className="go" aria-hidden>
-            {go}
+            <G c={go} />
           </span>
         )}
       </span>
@@ -204,7 +209,7 @@ export function Composer({
   onSend,
   onAttach,
   onFocus,
-  prompt = '>' as ReactNode,
+  prompt = <Icon name="chevron" dir="right" />,
   className = 'tone',
   disabled,
   voice = false,
@@ -342,7 +347,7 @@ export function Composer({
       )}
       <div className="in">
         <span className="prompt" aria-hidden>
-          {busy ? <span className="spin">*</span> : prompt}
+          {busy ? <span className="spin"><Icon name="star" /></span> : prompt}
         </span>
         <input
           ref={field}
@@ -359,17 +364,17 @@ export function Composer({
           <>
             <input ref={picker} type="file" accept={anyFile ? undefined : 'image/*'} multiple hidden onChange={(e) => void pick(e.target.files)} />
             <button type="button" className="tool-btn" onClick={() => picker.current?.click()} aria-label={anyFile ? 'joindre un fichier ou une photo' : 'joindre une photo'}>
-              +
+              <Icon name="plus" />
             </button>
           </>
         )}
         {canVoice && !disabled && (
           <button type="button" className={`tool-btn ${rec === 'on' ? 'rec' : ''}`} onClick={() => void toggleRec()} aria-label={rec === 'on' ? 'arrêter et transcrire' : 'dicter'} aria-pressed={rec === 'on'}>
-            {rec === 'wait' ? <span className="spin">*</span> : 'o'}
+            {rec === 'wait' ? <span className="spin"><Icon name="star" /></span> : <Icon name="mic" />}
           </button>
         )}
         <button className="send" type="submit" disabled={(!text.trim() && !files.length) || busy || disabled} aria-label="envoyer">
-          ↑
+          <Icon name="arrow" />
         </button>
       </div>
     </form>
@@ -403,7 +408,7 @@ function Snippet({ code }: { code: string }) {
   return (
     <div className="snippet">
       <button className="link" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        {open ? '−' : '+'} code · {n} {n > 1 ? 'lignes' : 'ligne'}
+        <Icon name={open ? 'minus' : 'plus'} /> code · {n} {n > 1 ? 'lignes' : 'ligne'}
       </button>
       <Collapse open={open}>
         <pre className="code mono small">{code}</pre>
@@ -434,7 +439,9 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
     return (
       <div className="msg band event">
         <div className="in">
-          <div className="text">→ {last}</div>
+          <div className="text">
+            <Icon name="arrow" dir="right" /> {last}
+          </div>
         </div>
       </div>
     )
@@ -443,17 +450,17 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
     <div className="msg band event">
       <button className="in steps-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className="text">
-          {live ? <span className="spin fluo">*</span> : '→'} {steps.length} étapes · <span key={last} className="fade-in">{last}</span>
+          {live ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="arrow" dir="right" />} {steps.length} étapes · <span key={last} className="fade-in">{last}</span>
         </span>
         <span className="go" aria-hidden>
-          {open ? '−' : '+'}
+          <Icon name={open ? 'minus' : 'plus'} />
         </span>
       </button>
       <Collapse open={open}>
         <div className="in steps-list">
           {steps.map((s) => (
             <div key={s.id} className="text">
-              → {step(s.text)}
+              <Icon name="arrow" dir="right" /> {step(s.text)}
             </div>
           ))}
         </div>
@@ -502,11 +509,11 @@ export function Working({ author, since }: { author: string; since?: number | nu
     <motion.div className="msg band working" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={spring}>
       <div className="in">
         <span className="who">
-          <span className="spin fluo">*</span> {author} travaille{since ? ` · ${dur(now - since)}` : ''}
+          <span className="spin fluo"><Icon name="star" /></span> {author} travaille{since ? ` · ${dur(now - since)}` : ''}
           <span className="dots" aria-hidden>
-            <i>·</i>
-            <i>·</i>
-            <i>·</i>
+            <i />
+            <i />
+            <i />
           </span>
         </span>
       </div>

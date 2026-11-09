@@ -4,6 +4,7 @@ import { api } from '../api'
 import { useApp } from './app-context'
 import { Shell } from './shell'
 import { plural } from './format'
+import { Icon } from './icons'
 
 /** Couleur par position : un pas de 7 sur les 16 teintes, donc deux rectangles voisins (à côté ou dessous) n'ont jamais une teinte proche. */
 const tint = (i: number) => ({ '--c': `var(--p${(i * 7) % 16})` }) as CSSProperties
@@ -78,13 +79,13 @@ export function ReposPage() {
       )}
       <form className="band tone" onSubmit={create}>
         <div className="in repo-new">
-          <span className="prompt h2" aria-hidden>
-            +
+          <span className="prompt" aria-hidden>
+            <Icon name="plus" />
           </span>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="nom" aria-label="nom du repo" autoCapitalize="off" autoCorrect="off" spellCheck={false} disabled={busy} />
           <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="une phrase" aria-label="description du repo" enterKeyHint="done" disabled={busy} />
           <button type="submit" className="send" aria-label="créer le repo" disabled={!name.trim() || busy}>
-            {busy ? <span className="spin">*</span> : '↑'}
+            {busy ? <span className="spin"><Icon name="star" /></span> : <Icon name="arrow" />}
           </button>
         </div>
       </form>
@@ -99,7 +100,7 @@ export function ReposPage() {
                 {r.blurb && <span className="repo-blurb">{r.blurb}</span>}
               </button>
               <button className={`repo-pin ${on ? 'on' : ''}`} aria-label={on ? `retirer ${r.name} du fil` : `épingler ${r.name} au fil`} aria-pressed={on} onClick={() => void pin(r.name, !on)}>
-                {on ? '✓' : '+'}
+                <Icon name={on ? 'check' : 'plus'} />
               </button>
             </div>
           )

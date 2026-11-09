@@ -1109,7 +1109,7 @@ input:focus-visible {
   min-height: 36px;
   padding-inline: 12px;
   border: 1.5px solid currentColor;
-  border-radius: 999px;
+  border-radius: 0;
   font-size: 0.9375rem;
   font-weight: 600;
   background: transparent;
@@ -1288,7 +1288,7 @@ input:focus-visible {
 
 .page.calm .composer input {
   background: oklch(from var(--calm) calc(l - 0.035) c h);
-  border-radius: 999px;
+  border-radius: 0;
   padding-inline: 16px;
 }
 
@@ -1304,7 +1304,7 @@ input:focus-visible {
   display: inline-block;
   width: 9px;
   height: 9px;
-  border-radius: 999px;
+  border-radius: 0;
   background: currentColor;
   margin-right: 7px;
   vertical-align: middle;
@@ -1444,4 +1444,56 @@ input:focus-visible {
 .word.on {
   font-weight: 750;
   opacity: 1;
+}
+
+/* ---------- Icônes : un seul jeu, une seule taille, aucun arrondi ---------- */
+
+.ic {
+  width: 20px;
+  height: 20px;
+  display: inline-block;
+  vertical-align: -3px;
+  flex: none;
+  overflow: visible;
+}
+
+.ch .ic,
+.send .ic,
+.tool-btn .ic,
+.key .ic,
+.prompt .ic,
+.go .ic,
+.st .ic,
+.back .ic,
+.agent-close .ic,
+.repo-pin .ic,
+.h24-grip .ic {
+  vertical-align: middle;
+}
+
+/* Une étoile qui tourne garde son centre. */
+.spin {
+  line-height: 0;
+  vertical-align: middle;
+}
+
+.ch sup {
+  margin-left: 2px;
+}
+
+/* Les points qui respirent : de petits carrés, pas des caractères. */
+.dots {
+  gap: 3px;
+  align-items: center;
+}
+
+.dots i {
+  width: 4px;
+  height: 4px;
+  background: currentColor;
+  display: inline-block;
+}
+
+.name .spin {
+  margin-left: 8px;
 }

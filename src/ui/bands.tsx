@@ -10,6 +10,7 @@ import { VoiceLogo } from './voice'
 import { isUnread, useSeen } from './seen'
 import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, spring } from './bits'
 import { ago, plain, plural, step } from './format'
+import { Icon } from './icons'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
@@ -65,7 +66,7 @@ export function AgentBand() {
       <div className="agent-space" onClick={(e) => open && e.target === e.currentTarget && setExpanded(null)}>
         {open && (
           <button className="agent-close" onClick={() => setExpanded(null)} aria-label="réduire la conversation">
-            ⌄
+            <Icon name="chevron" dir="down" />
           </button>
         )}
         <VoiceLogo take={() => { const t = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return t }} onText={(t) => { heard.current = heard.current ? `${heard.current} ${t}` : t; setDraft((d) => ({ text: t, n: d.n + 1, reset: false })) }} onSend={() => { viaLogo.current = true; form.current?.requestSubmit() }} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
@@ -82,7 +83,7 @@ export function AgentBand() {
                     *{' '}
                   </span>
                 )}
-                <span className="strong">{last.role === 'event' ? '→ ' : 'weevboss · '}</span>
+                <span className="strong">{last.role === 'event' ? <Icon name="arrow" dir="right" /> : 'weevboss · '}</span>
                 {last.role === 'event' ? step(last.text) : plain(last.text).split('\n')[0]}
               </span>
             </span>
@@ -108,7 +109,7 @@ export function AgentBand() {
       </Collapse>
 
       {/* Écrire ici n'ouvre pas la conversation : elle s'ouvre à l'envoi, pour lire la réponse. */}
-      <Composer placeholder="dis à weevboss quoi faire" label="message à weevboss" onSend={send} onAttach={attach} anyFile voice draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo">*</span> : '>'} />
+      <Composer placeholder="dis à weevboss quoi faire" label="message à weevboss" onSend={send} onAttach={attach} anyFile voice draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="chevron" dir="right" />} />
     </section>
   )
 }
@@ -156,8 +157,7 @@ export function ProjectBand({ project }: { project: Project }) {
             {unread && <span className="dot" aria-label="a répondu, pas encore lu" />}
             {active.some((s) => s.status === 'working') && (
               <span aria-hidden>
-                {' '}
-                <span className="spin fluo">*</span>
+                <span className="spin fluo"><Icon name="star" /></span>
               </span>
             )}
           </motion.span>
@@ -173,11 +173,11 @@ export function ProjectBand({ project }: { project: Project }) {
           <div className="chars">
             {project.repos.length > 0 && (
               <button className="ch" aria-label={`fichiers de ${project.name}`} onClick={() => push({ kind: 'files', projectId: project.id })}>
-                /
+                <Icon name="slash" />
               </button>
             )}
             <button className="ch" aria-label={`machine de ${project.name}`} onClick={() => push({ kind: 'machine', projectId: project.id })}>
-              @
+              <Icon name="machine" />
             </button>
             <button
               className={`ch ${att.length ? '' : 'off'}`}
@@ -186,19 +186,21 @@ export function ProjectBand({ project }: { project: Project }) {
               onClick={() => att[0] && push({ kind: 'session', id: att[0].id })}
             >
               <span>
-                !{att.length > 0 && <sup>{att.length}</sup>}
+                <Icon name="bang" />
+                {att.length > 0 && <sup>{att.length}</sup>}
               </span>
             </button>
             {convCount > 0 && (
               <button className="ch" aria-label={`${plural(convCount, 'conversation', 'conversations')} de ${project.name}`} onClick={() => push({ kind: 'conversations', projectId: project.id })}>
                 <span>
-                  "<sup>{convCount}</sup>
+                  <Icon name="quote" />
+                  <sup>{convCount}</sup>
                 </span>
               </button>
             )}
             {project.kind === 'repo' || project.repos.length > 0 ? (
               <button className="ch" aria-label={`nouvelle session dans ${project.name}`} onClick={() => push({ kind: 'new', projectId: project.id })}>
-                +
+                <Icon name="plus" />
               </button>
             ) : null}
           </div>
@@ -253,7 +255,7 @@ export function ProjectBand({ project }: { project: Project }) {
           </Line>
           {jobs.length > 0 && <div className="in label">h24</div>}
           {jobs.map((a) => (
-            <Line key={a.id} ch={a.runState === 'running' ? <span className="spin">*</span> : '✓'} meta={a.runState === 'running' ? 'en cours' : a.lastEvent} onClick={() => setH24Open(true)} go="↓">
+            <Line key={a.id} ch={a.runState === 'running' ? <span className="spin"><Icon name="star" /></span> : <Icon name="check" />} meta={a.runState === 'running' ? 'en cours' : a.lastEvent} onClick={() => setH24Open(true)} go="↓">
               {a.title}
             </Line>
           ))}

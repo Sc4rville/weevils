@@ -7,6 +7,7 @@ import { useApp } from './app-context'
 import { Collapse, Composer, Line, Messages } from './bits'
 import { ago, plural } from './format'
 import { Shell } from './shell'
+import { Icon } from './icons'
 
 const SOURCE = { chatgpt: 'chatgpt', claude: 'claude.ai' } as const
 
@@ -230,7 +231,7 @@ export function ImportPage() {
       <label className="row band invert" style={{ display: 'block', cursor: 'pointer' }}>
         <span className="in">
           <span className="st" aria-hidden>
-            {progress != null ? <span className="spin">*</span> : '↑'}
+            {progress != null ? <span className="spin"><Icon name="star" /></span> : <Icon name="arrow" />}
           </span>
           <span className="stack-text">
             <span className="strong">{progress != null ? `envoi… ${Math.round(progress * 100)} %` : 'choisir le fichier d’export (.zip ou .json)'}</span>
@@ -239,7 +240,9 @@ export function ImportPage() {
         </span>
         <input ref={input} type="file" accept=".zip,.json,application/zip,application/json" onChange={(e) => void onFile(e)} style={{ position: 'absolute', opacity: 0, width: 1, height: 1 }} />
       </label>
-      {result && <div className="in meta strong" style={{ paddingBlock: 12 }}>✓ {result}</div>}
+      {result && <div className="in meta strong" style={{ paddingBlock: 12 }}>
+          <Icon name="check" /> {result}
+        </div>}
       {err && <div className="in meta strong" style={{ paddingBlock: 12 }}>! {err}</div>}
       <div className="in meta" style={{ paddingBlock: 10 }}>
         {cl.running ? `Classement en cours · ${cl.queued} restantes.` : cl.lastError ? `Dernier classement interrompu : ${cl.lastError}` : snap.conversationCounts.pending ? `${snap.conversationCounts.pending} à ranger par toi.` : 'Tout est rangé.'}

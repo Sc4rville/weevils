@@ -4,6 +4,7 @@ import { api } from '../api'
 import { useApp } from './app-context'
 import { spring } from './bits'
 import { ago, durLong } from './format'
+import { Icon } from './icons'
 
 /** Bande H24 collée en bas : on la tire vers le haut (ou on la touche) pour voir les activités permanentes. */
 export function H24Rail() {
@@ -86,7 +87,7 @@ export function H24Rail() {
           aria-label={`h24 : ${summary}. ${open ? 'replier' : 'déplier'}`}
         >
           <span className="h24-grip" aria-hidden>
-            ===
+            <Icon name="grip" />
           </span>
           <span className="in" aria-hidden>
             <span className="h2">h24</span>
@@ -94,7 +95,7 @@ export function H24Rail() {
               {summary}
             </span>
             <span className="h2" style={{ fontWeight: 500 }}>
-              {open ? '↓' : '↑'}
+              <Icon name="arrow" dir={open ? 'down' : 'up'} />
             </span>
           </span>
         </button>
@@ -107,7 +108,7 @@ export function H24Rail() {
               <div key={a.id} className="band tone" style={{ marginBottom: 2 }}>
                 <div className="in" style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBlock: 12 }}>
                   <span className="h2" aria-hidden style={{ width: 28, textAlign: 'center' }}>
-                    {running ? <span className="spin">*</span> : paused ? '||' : a.kind === 'job' ? '✓' : '_'}
+                    {running ? <span className="spin"><Icon name="star" /></span> : <Icon name={paused ? 'pause' : a.kind === 'job' ? 'check' : 'idle'} />}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="strong ellipsis" style={{ fontSize: '1.0625rem' }}>
@@ -128,7 +129,7 @@ export function H24Rail() {
                       onClick={() => void api.toggleH24(a.id).then(refresh)}
                       aria-label={paused ? `reprendre ${a.title}` : `mettre en pause ${a.title}`}
                     >
-                      {paused ? '>' : '||'}
+                      <Icon name={paused ? 'play' : 'pause'} />
                     </button>
                   )}
                 </div>

@@ -9,6 +9,7 @@ import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './pre
 import { Settings } from './settings'
 import { usePageChrome } from './shell'
 import { markSeen } from './seen'
+import { Icon } from './icons'
 
 // Le mode conversation : pincer le fil → une grille de conversations, un tap → l'immersion. Rien d'autre que les messages.
 
@@ -72,7 +73,7 @@ export function CalmGrid() {
     <motion.div ref={page} className="page calm" {...pinch} initial={{ opacity: 0, scale: 0.985 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.985 }} transition={soft} role="dialog" aria-modal="true" aria-label="conversations">
       <div className="calm-top">
         <button className="ch" onClick={home} aria-label="retour au fil">
-          &lt;
+          <Icon name="chevron" dir="left" />
         </button>
       </div>
       <div className="page-body" data-scroll>
@@ -182,10 +183,10 @@ export function CalmConv({ id }: { id: string }) {
     >
       <div className="calm-top">
         <button className="ch" onClick={back} aria-label="retour">
-          &lt;
+          <Icon name="chevron" dir="left" />
         </button>
         <button className="ch" onClick={() => setMore((v) => !v)} aria-label="options" aria-expanded={more}>
-          ···
+          <Icon name="more" />
         </button>
       </div>
       <Collapse open={more}>

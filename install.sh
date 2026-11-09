@@ -9,9 +9,14 @@
 #          --machine <id>  --no-update  --help
 set -euo pipefail
 
+# Where this script lives when it runs from a clone (empty when piped from curl). Read here: inside a function,
+# bash reports "bash" for a script that comes from stdin.
+WEEVILS_SELF=${BASH_SOURCE[0]:-}
+
+# The whole installer is one function, called on the last line: a download cut short runs nothing at all.
+weevils_install() {
 REPO_URL=${WEEVILS_REPO:-https://github.com/Sc4rville/weevils.git}
-# Where this script lives when it runs from a clone (empty when piped from curl).
-SELF=${BASH_SOURCE[0]:-}
+SELF=$WEEVILS_SELF
 ARGS=("$@")
 
 # ---------------------------------------------------------------- messages (English, French)
@@ -117,6 +122,10 @@ EN[secondary_next]="its sessions show up in the app of the main machine. Start o
 FR[secondary_next]="ses sessions apparaissent dans l'app de la machine principale. Lances-en une ici avec : wv"
 EN[ssh_fail]="can't reach the main machine without a password. Set up an SSH key, then run me again:"
 FR[ssh_fail]="impossible de joindre la machine principale sans mot de passe. Mets une clé SSH en place, puis relance-moi :"
+EN[bad_opt]="invalid value:"
+FR[bad_opt]="valeur invalide :"
+EN[node_shadow]="an older node comes first in your PATH; weevils uses the new one in /usr/bin. Remove the old one if you can:"
+FR[node_shadow]="un node plus ancien passe en premier dans ton PATH ; weevils prend le nouveau dans /usr/bin. Enlève l'ancien si tu peux :"
 EN[yes]="Y/n"
 FR[yes]="O/n"
 
@@ -139,9 +148,21 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+# Values checked before anything runs. A domain may come as a URL: only the host is kept.
+DOMAIN=${DOMAIN#http://}; DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN%%/*}
+BAD_VAL=''
+case "$LANG_OPT" in '' | en | fr) ;; *) BAD_VAL="--lang $LANG_OPT (en, fr)" ;; esac
+case "$PORT" in '') ;; *[!0-9]*) BAD_VAL="--port $PORT" ;; *) [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || BAD_VAL="--port $PORT" ;; esac
+[ -z "$DOMAIN" ] || [[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || BAD_VAL="--domain $DOMAIN"
+[[ "$SECONDARY" != -* ]] || BAD_VAL="--secondary $SECONDARY"
 
+# Language: --lang, else the one already in your settings (a re-run speaks like the first run), else the locale.
+CONF_FILE=${XDG_CONFIG_HOME:-$HOME/.config}/weevils/env
 if [ -n "$LANG_OPT" ]; then L=$LANG_OPT
-else case "${LC_ALL:-${LANG:-}}" in fr*) L=fr ;; *) L=en ;; esac; fi
+else
+  L=$(sed -n "s/^[[:space:]]*WEEVILS_LANG[[:space:]]*=[[:space:]]*[\"']\{0,1\}\([a-z]*\).*/\1/p" "$CONF_FILE" 2>/dev/null | head -1 || true)
+  [ -n "$L" ] || case "${LC_ALL:-${LANG:-}}" in fr*) L=fr ;; *) L=en ;; esac
+fi
 [ "$L" = fr ] || L=en
 t() { if [ "$L" = fr ]; then printf '%s' "${FR[$1]}"; else printf '%s' "${EN[$1]}"; fi; }
 
@@ -174,6 +195,8 @@ ask() { # ask "question" default → answer on stdout
 SUDO=''
 PM=''
 APT_UPDATED=0
+# An existing config file (a Caddyfile already there…) is always kept, never asked about.
+APT_KEEP='-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold'
 # quiet cmd… — runs a noisy command, shows its output only when it fails.
 quiet() {
   local log; log=$(mktemp)
@@ -184,7 +207,7 @@ pkg_install() { # pkg_install pkg… (names for the detected package manager)
   case "$PM" in
     apt)
       if [ "$APT_UPDATED" = 0 ]; then quiet $SUDO env DEBIAN_FRONTEND=noninteractive apt-get update -qq; APT_UPDATED=1; fi
-      quiet $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends "$@" ;;
+      quiet $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $APT_KEEP --no-install-recommends "$@" ;;
     dnf) quiet $SUDO dnf install -y -q "$@" ;;
     pacman) quiet $SUDO pacman -Sy --noconfirm --needed "$@" ;;
   esac
@@ -245,16 +268,24 @@ check_system() {
     if [ "$PM" = apt ] || [ "$PM" = dnf ] || [ "$PM" = pacman ]; then
       [ "$SUDO" != none ] || die "$(t no_sudo)"
       confirm "$(t ask_node)" || die "$(t node_hint)"
+      # The setup script goes through a private temp file (a fixed name in /tmp could be planted by another user).
+      local ns; ns=$(mktemp)
       case "$PM" in
-        apt) curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
-          quiet $SUDO bash /tmp/nodesource_setup.sh
-          quiet $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nodejs ;;
-        dnf) curl -fsSL https://rpm.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
-          quiet $SUDO bash /tmp/nodesource_setup.sh
+        apt) curl -fsSL https://deb.nodesource.com/setup_22.x -o "$ns"
+          quiet $SUDO bash "$ns"
+          quiet $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $APT_KEEP nodejs ;;
+        dnf) curl -fsSL https://rpm.nodesource.com/setup_22.x -o "$ns"
+          quiet $SUDO bash "$ns"
           quiet $SUDO dnf install -y -q nodejs ;;
         pacman) pkg_install nodejs npm ;;
       esac
+      rm -f "$ns"
       hash -r
+      # An older node elsewhere (a tarball in /usr/local/bin…) may still come first: use the new one from /usr/bin.
+      if ! node_ok && [ -x /usr/bin/node ] && PATH=/usr/bin:$PATH node_ok; then
+        warn "$(t node_shadow) $(command -v node)"
+        PATH=/usr/bin:$PATH; export PATH; hash -r
+      fi
       node_ok || die "$(t node_hint)"
     else die "$(t node_hint)"; fi
   fi
@@ -325,7 +356,11 @@ configure() {
   if [ -n "$LANG_OPT" ]; then cfg set WEEVILS_LANG "$L"; else cfg default WEEVILS_LANG "$L"; fi
   if [ -n "$PORT" ]; then cfg set WEEVILS_PORT "$PORT"; else cfg default WEEVILS_PORT 4179; fi
   cfg default WEEVILS_HOOK_PORT 4180
-  if [ -z "$SECONDARY" ] && [ -z "$DOMAIN" ] && [ -z "$(cfg get WEEVILS_PUBLIC_URL)" ]; then DOMAIN=$(ask "$(t ask_domain)" ""); fi
+  if [ -z "$SECONDARY" ] && [ -z "$DOMAIN" ] && [ -z "$(cfg get WEEVILS_PUBLIC_URL)" ]; then
+    DOMAIN=$(ask "$(t ask_domain)" ""); DOMAIN=${DOMAIN#http://}; DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN%%/*}
+    [ -z "$DOMAIN" ] || [[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || { warn "$(t bad_opt) $DOMAIN"; DOMAIN=''; }
+  fi
+  PREV_PUBLIC_URL=$(cfg get WEEVILS_PUBLIC_URL)
   [ -z "$DOMAIN" ] || cfg set WEEVILS_PUBLIC_URL "https://$DOMAIN"
   # The machine id: only on a new config (an older one keeps the id it already had), or when --machine is given.
   local host; host=$(slug "$(hostname -s 2>/dev/null || cat /etc/hostname)")
@@ -402,15 +437,17 @@ https() {
   fi
   ok "$(caddy version 2>/dev/null | awk '{print "caddy " $1}')"
   # Our site in its own file; the Caddyfile only imports it. An existing Caddyfile keeps all its sites.
-  local site=/etc/caddy/weevils.caddy cf=/etc/caddy/Caddyfile tls=''
+  # Both files are saved first and put back together if Caddy rejects the result: a rejected run leaves the
+  # config exactly as it was (a half-changed one would break every site at the next Caddy restart).
+  local site=/etc/caddy/weevils.caddy cf=/etc/caddy/Caddyfile tls='' undo
   [ "${WEEVILS_CADDY_TLS:-}" = internal ] && tls=$'\n\ttls internal'
   $SUDO mkdir -p /etc/caddy
+  undo=$($SUDO mktemp -d)
+  [ ! -f "$cf" ] || $SUDO cp -p "$cf" "$undo/Caddyfile"
+  [ ! -f "$site" ] || $SUDO cp -p "$site" "$undo/weevils.caddy"
+  # The Caddyfile as it was before weevils ever touched it, kept once.
+  [ ! -f "$cf" ] || [ -f "$cf.bak-weevils" ] || $SUDO cp -p "$cf" "$cf.bak-weevils"
   printf '# weevils — written by install.sh\n%s {%s\n\treverse_proxy 127.0.0.1:%s\n}\n' "$DOMAIN" "$tls" "$port" | $SUDO tee "$site" >/dev/null
-  local backup=''
-  if [ -f "$cf" ]; then
-    backup=$cf.bak-weevils
-    $SUDO cp "$cf" "$backup"
-  fi
   if [ ! -f "$cf" ] || grep -q 'The Caddyfile is an easy way to practice' "$cf"; then
     # No Caddyfile, or the untouched placeholder of the package: ours replaces it (backup kept).
     printf 'import %s\n' "$site" | $SUDO tee "$cf" >/dev/null
@@ -418,11 +455,17 @@ https() {
     printf '\nimport %s\n' "$site" | $SUDO tee -a "$cf" >/dev/null
   fi
   if ! $SUDO caddy validate --config "$cf" --adapter caddyfile >/dev/null 2>&1; then
-    if [ -n "$backup" ]; then $SUDO cp "$backup" "$cf"; else $SUDO rm -f "$cf"; fi
+    local f
+    for f in Caddyfile weevils.caddy; do
+      if $SUDO test -f "$undo/$f"; then $SUDO cp -p "$undo/$f" "/etc/caddy/$f"; else $SUDO rm -f "/etc/caddy/$f"; fi
+    done
+    $SUDO rm -rf "$undo"
+    "$DIR/server/weevils-service" config set WEEVILS_PUBLIC_URL "$PREV_PUBLIC_URL"
     warn "$(t caddy_bad)"
     DOMAIN=''
     return 0
   fi
+  $SUDO rm -rf "$undo"
   if [ -d /run/systemd/system ]; then
     $SUDO systemctl enable caddy >/dev/null 2>&1 || true
     $SUDO systemctl reload-or-restart caddy
@@ -464,8 +507,9 @@ finish() {
   printf '  %s : %s\n\n' "$(t link)" "$url/#k=$code"
   if command -v qrencode >/dev/null; then qrencode -t ANSIUTF8 -m 2 "$url/#k=$code" | sed 's/^/  /'; echo; fi
   if [ "$url" = "http://localhost:$port" ]; then
+    local ip; ip=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
     info "$(t tunnel)"
-    info "ssh -L $port:127.0.0.1:$port ${USER:-$(id -un)}@$(hostname -I 2>/dev/null | awk '{print $1}')"
+    info "ssh -L $port:127.0.0.1:$port ${USER:-$(id -un)}@${ip:-<this-machine>}"
     info "$(t tunnel2)"
   fi
   info "$(t next)"
@@ -474,6 +518,7 @@ finish() {
 
 main() {
   [ -z "${HELP:-}" ] || { echo "$(t usage)"; exit 0; }
+  [ -z "$BAD_VAL" ] || { echo "$(t bad_opt) $BAD_VAL" >&2; BAD=1; }
   [ -z "${BAD:-}" ] || { echo "$(t usage)" >&2; exit 2; }
   printf '%s weevils %s %s\n' "$Y$B" "$R" "$(t title)"
   check_system
@@ -485,5 +530,8 @@ main() {
   finish
 }
 
-# Everything above is only definitions: nothing runs before the whole script is downloaded and parsed.
 main
+}
+
+# Everything above is one function definition: nothing runs before the whole script is downloaded and parsed.
+weevils_install "$@"

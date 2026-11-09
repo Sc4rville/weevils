@@ -31,7 +31,7 @@ const norm = (t: string) =>
     .trim()} `
 
 /** Mots trop courants pour désigner un projet à eux seuls. */
-const STOP = new Set(['ok', 'oss', 'app', 'web', 'api', 'test', 'demo', 'site', 'new', 'the', 'les', 'des', 'pour', 'dev', 'main', 'general', 'divers', 'life', 'maman', 'obs'])
+const STOP = new Set(['ok', 'oss', 'app', 'web', 'api', 'test', 'demo', 'site', 'new', 'the', 'les', 'des', 'pour', 'dev', 'main', 'general', 'divers', 'life', 'maman', 'obs']) // i18n-ignore : mots-outils pour reconnaître un projet, pas du texte affiché
 
 export function ruleMatch(text: string, catalog: CatalogEntry[]): { id: string; confidence: number; reason: string } | null {
   const n = norm(text)

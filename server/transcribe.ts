@@ -3,8 +3,10 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { CONFIG_DIR, HOME, USER } from './config.ts'
+import { CONFIG_DIR, HOME } from './config.ts'
 import { haiku, tts } from './fast.ts'
+import { lang, tr, user } from './i18n.ts'
+import V from './i18n/voice.ts'
 
 /** Clé lue dans ~/.config/weevils/env, sinon dans la config de la dictée du PC. Jamais dans le code ni dans les logs. */
 export function openaiKey(): string | undefined {
@@ -24,12 +26,12 @@ const EXT: Record<string, string> = { 'audio/mp4': 'm4a', 'audio/mpeg': 'mp3', '
 
 export async function transcribe(data: Buffer, mime: string): Promise<string> {
   const key = openaiKey()
-  if (!key) throw new Error('transcription non configurée sur le serveur')
+  if (!key) throw new Error(tr(V).transcriptionOff)
   const type = mime.split(';')[0].trim() || 'audio/mp4'
   const form = new FormData()
   form.append('file', new Blob([data], { type }), `voix.${EXT[type] ?? 'm4a'}`)
   form.append('model', 'gpt-4o-mini-transcribe')
-  form.append('language', 'fr')
+  form.append('language', lang())
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
     headers: { authorization: `Bearer ${key}` },
@@ -38,7 +40,7 @@ export async function transcribe(data: Buffer, mime: string): Promise<string> {
   })
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: { message?: string } }
-    throw new Error(err.error?.message ?? `transcription : erreur ${res.status}`)
+    throw new Error(err.error?.message ?? tr(V).transcriptionError(res.status))
   }
   const out = (await res.json()) as { text?: string }
   return (out.text ?? '').trim()
@@ -47,7 +49,7 @@ export async function transcribe(data: Buffer, mime: string): Promise<string> {
 /** Voix de weevboss : version orale courte (haiku, abonnement), lue par edge-tts (gratuit). MP3. */
 /** Le texte prêt à dire (version orale courte si besoin). */
 export async function speakable(text: string, oral = false): Promise<string> {
-  const input = text.replace(/```[\s\S]*?```/g, ' ').replace(/[`*_#>]/g, '').replace(/https?:\/\/\S+/g, 'un lien').replace(/\s+/g, ' ').trim().slice(0, 1500)
+  const input = text.replace(/```[\s\S]*?```/g, ' ').replace(/[`*_#>]/g, '').replace(/https?:\/\/\S+/g, tr(V).aLink).replace(/\s+/g, ' ').trim().slice(0, 1500)
   return oral ? input : await toOral(input).catch(() => input.slice(0, 300))
 }
 
@@ -55,7 +57,7 @@ export async function speak(text: string, oral = false): Promise<Buffer> {
   const input = text
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/[`*_#>]/g, '')
-    .replace(/https?:\/\/\S+/g, 'un lien')
+    .replace(/https?:\/\/\S+/g, tr(V).aLink)
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 1500)
@@ -66,7 +68,7 @@ export async function speak(text: string, oral = false): Promise<Buffer> {
 /** La version à dire : une ou deux phrases, comme à un pote, sans ids, chemins, fichiers ni listes. */
 async function toOral(text: string): Promise<string> {
   const key = openaiKey()
-  const ask = `Résume ce message pour le dire à voix haute à ${USER}, en une ou deux phrases courtes en français, parlé, comme un pote. Aucun identifiant, chemin, nom de fichier, commande ni liste. Réponds seulement avec la phrase à dire.\n\n${text}`
+  const ask = `${tr(V).oral(user())}\n\n${text}`
   if (key) {
     try {
       const t0 = Date.now()

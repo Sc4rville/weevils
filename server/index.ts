@@ -8,12 +8,13 @@ import path from 'node:path'
 import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, PORT } from './config.ts'
 import { openaiKey, speak, speakable, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
-import { cartesia, cartesiaStream, frenchVoices } from './fast.ts'
+import { cartesia, cartesiaStream, cartesiaVoices } from './fast.ts'
 import { Readable } from 'node:stream'
 import { Weevils } from './core.ts'
 import { setLang, tr } from './i18n.ts'
 import M from './i18n/api.ts'
 import P from './i18n/push.ts'
+import V from './i18n/voice.ts'
 import { tipRoutes } from './tips.ts'
 
 const w = new Weevils()
@@ -174,7 +175,7 @@ const routes: [string, RegExp, Handler][] = [
     const files = Array.isArray(body.files) ? body.files.filter((f: any) => typeof f?.data === 'string').map((f: any) => ({ name: String(f.name ?? 'photo'), type: String(f.type ?? 'image/jpeg'), data: String(f.data) })) : []
     json(res, 200, await w.attach(decodeURIComponent(id), String(body.text ?? ''), files))
   }],
-  ['GET', /^\/api\/voices$/, async (_req, res) => json(res, 200, cartesia() ? { enabled: true, voices: await frenchVoices(), current: w.voiceId } : { enabled: false, voices: [] })],
+  ['GET', /^\/api\/voices$/, async (_req, res) => json(res, 200, cartesia() ? { enabled: true, voices: await cartesiaVoices(), current: w.voiceId } : { enabled: false, voices: [] })],
   ['POST', /^\/api\/voices$/, async (req, res) => {
     w.setVoice(String((await readBody(req)).id ?? '') || undefined)
     json(res, 200, { ok: true })
@@ -227,7 +228,7 @@ const routes: [string, RegExp, Handler][] = [
   ['GET', /^\/api\/transcribe$/, (_req, res) => json(res, 200, { enabled: !!openaiKey() })],
   ['POST', /^\/api\/transcribe$/, async (req, res) => {
     const body = await readBody(req, 24 << 20)
-    if (typeof body.data !== 'string' || !body.data) return json(res, 400, { error: 'audio manquant' })
+    if (typeof body.data !== 'string' || !body.data) return json(res, 400, { error: tr(V).missingAudio })
     json(res, 200, { text: await transcribe(Buffer.from(body.data, 'base64'), String(body.type ?? 'audio/mp4')) })
   }],
   ['POST', /^\/api\/sessions\/([^/]+)\/key$/, async (req, res, _u, [id]) => {

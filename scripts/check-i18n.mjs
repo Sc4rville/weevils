@@ -14,7 +14,7 @@
 //   jsx-expr   chaîne littérale dans une expression enfant JSX ({ok ? 'oui' : 'non'}), hors comparaisons
 //   prop       chaîne littérale d'une propriété affichée ({ label: '…', title: '…', error: '…' })
 //   call       argument d'un appel affiché (new Error('…'), plural(n, '…', '…'), alert('…')…)
-// Jamais signalé : imports, console.*(…), regex, commentaires ; comparaisons et clés id/kind/type sauf accents.
+// Jamais signalé : imports, console.*(…) et log(…), regex, commentaires ; comparaisons et clés id/kind/type sauf accents.
 //   fr         chaîne (ou texte echo/printf, ligne markdown) avec des caractères ou des mots français
 // --unflagged liste en plus les chaînes non signalées, pour régler les heuristiques.
 // Une ligne est ignorée si elle (ou la ligne précédente) contient un commentaire « i18n-ignore ».
@@ -205,8 +205,9 @@ function lexTs(src, jsx) {
       }
       if (c === '(') {
         const h = hist
-        const log = h[h.length - 2] === '.' && h[h.length - 3] === 'console'
         const p = h[h.length - 1]
+        // console.*(…), ou un raccourci local log(…) (journal pour les développeurs).
+        const log = (h[h.length - 2] === '.' && h[h.length - 3] === 'console') || (p === 'log' && h[h.length - 2] !== '.')
         parens.push({ log, callee: p && /^[A-Za-z_$][\w$]*$/.test(p) && !['if', 'while', 'for', 'switch', 'return', 'typeof', 'catch'].includes(p) ? p : null })
       } else if (c === '[') parens.push({})
       else if (c === ')' || c === ']') parens.pop()

@@ -10,9 +10,11 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import type http from 'node:http'
 import path from 'node:path'
-import { DATA_DIR, PUBLIC_URL, USER } from './config.ts'
+import { DATA_DIR, PUBLIC_URL } from './config.ts'
 import { cartesia, cartesiaStream, tts } from './fast.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
+import { lang, tr, user } from './i18n.ts'
+import V from './i18n/voice.ts'
 
 const log = (s: string) => console.log(`[voix] ${s}`)
 
@@ -22,15 +24,13 @@ const clean = (text: string) =>
   text
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/[`*_#>]/g, '')
-    .replace(/https?:\/\/\S+/g, 'un lien')
+    .replace(/https?:\/\/\S+/g, tr(V).aLink)
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 1500)
 
 /** Déjà dicible : court, sans chemin, sans identifiant ni code. Pas besoin de résumé. */
 export const sayable = (text: string) => text.length <= 220 && !/[/\\]\w|\b[0-9a-f]{7,}\b|\w+\.(ts|tsx|js|md|json|sh|py)\b|\n[-*] /i.test(text)
-
-const ORAL = `Résume ce message pour le dire à voix haute à ${USER}, en une ou deux phrases courtes en français, parlé, comme un pote. Dis ce qui a été fait ou ce qui se passe. Aucun identifiant, chemin, nom de fichier, commande ni liste. Réponds seulement avec la phrase à dire.`
 
 /** Résumé oral en flux : la première phrase est rendue dès qu'elle est complète, puis le reste. */
 async function* oralStream(text: string): AsyncGenerator<string> {
@@ -43,7 +43,7 @@ async function* oralStream(text: string): AsyncGenerator<string> {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'gpt-4o-mini', stream: true, max_tokens: 120, temperature: 0.4, messages: [{ role: 'user', content: `${ORAL}\n\n${text}` }] }),
+    body: JSON.stringify({ model: 'gpt-4o-mini', stream: true, max_tokens: 120, temperature: 0.4, messages: [{ role: 'user', content: `${tr(V).oral(user())}\n\n${text}` }] }),
     signal: AbortSignal.timeout(10_000),
   })
   if (!res.ok || !res.body) {
@@ -143,17 +143,19 @@ async function synth(text: string, voice?: string): Promise<Buffer> {
 
 // ---------------------------------------------------------------- accroches en cache
 
-const CUES = ['Ok.', 'Je regarde.', 'Ça marche.', 'Je m’en occupe.']
+/** Accroches de la langue courante (une par ligne dans le catalogue). */
+const cues = () => tr(V).cues.split('\n')
 const cueDir = path.join(DATA_DIR, 'voice-cache')
 
 /** Une accroche courte, déjà générée avec la voix choisie : jouée dès l'envoi, sans attendre personne. */
-export async function cue(voice: string | undefined, n = Math.floor(Math.random() * CUES.length)): Promise<Buffer> {
+export async function cue(voice: string | undefined, n = Math.floor(Math.random() * cues().length)): Promise<Buffer> {
   fs.mkdirSync(cueDir, { recursive: true })
-  const file = path.join(cueDir, `${(voice ?? 'defaut').replace(/[^\w-]/g, '')}-${n}.mp3`)
+  const l = lang()
+  const file = path.join(cueDir, `${l === 'fr' ? '' : `${l}-`}${(voice ?? 'defaut').replace(/[^\w-]/g, '')}-${n}.mp3`)
   try {
     return fs.readFileSync(file)
   } catch {
-    const mp3 = await synth(CUES[n], voice)
+    const mp3 = await synth(cues()[n] ?? cues()[0], voice)
     fs.writeFileSync(file, mp3)
     return mp3
   }
@@ -162,7 +164,7 @@ export async function cue(voice: string | undefined, n = Math.floor(Math.random(
 /** Prépare toutes les accroches d'une voix (au choix de la voix, au démarrage). */
 export function warmCues(voice: string | undefined) {
   void (async () => {
-    for (let n = 0; n < CUES.length; n++) await cue(voice, n).catch(() => undefined)
+    for (let n = 0; n < cues().length; n++) await cue(voice, n).catch(() => undefined)
   })()
 }
 
@@ -171,7 +173,7 @@ export function warmCues(voice: string | undefined) {
 const uploads = new Map<string, { type: string; parts: Buffer[]; at: number }>()
 
 export function addChunk(id: string, seq: number, type: string, data: string) {
-  if (!/^[\w-]{6,64}$/.test(id)) throw new Error('enregistrement invalide')
+  if (!/^[\w-]{6,64}$/.test(id)) throw new Error(tr(V).badRecording)
   const u = uploads.get(id) ?? { type, parts: [], at: Date.now() }
   u.parts[seq] = Buffer.from(data, 'base64')
   uploads.set(id, u)
@@ -180,7 +182,7 @@ export function addChunk(id: string, seq: number, type: string, data: string) {
 
 export async function finishUpload(id: string): Promise<string> {
   const u = uploads.get(id)
-  if (!u) throw new Error('enregistrement introuvable')
+  if (!u) throw new Error(tr(V).recordingNotFound)
   uploads.delete(id)
   const audio = Buffer.concat(u.parts.filter(Boolean))
   const t0 = Date.now()
@@ -254,13 +256,13 @@ export async function voiceTurn(w: Orchestrator, input: { text?: string; audio?:
   const t0 = Date.now()
   let text = (input.text ?? '').trim()
   if (!text && input.audio) text = await transcribe(Buffer.from(input.audio, 'base64'), input.type ?? 'audio/mp4')
-  if (!text) throw new Error('rien entendu')
-  if (/^(stop|arrête|c’est bon|c'est bon|merci)[.!]?$/i.test(text)) return { done: true, say: 'À plus.', text }
+  if (!text) throw new Error(tr(V).nothingHeard)
+  if (/^(stop|arrête|c’est bon|c'est bon|merci|thanks?( you)?|that’s it|that's it|bye)[.!]?$/i.test(text)) return { done: true, say: tr(V).bye, text }
   const since = Date.now()
   await w.sendMain(text)
   const reply = await w.waitMainReply(since, 100_000)
   log(`Siri · weevboss a répondu en ${Date.now() - since} ms`)
-  const said = reply ? (sayable(clean(reply)) ? clean(reply) : await collect(oralStream(clean(reply)))) : 'C’est parti, il y travaille encore.'
+  const said = reply ? (sayable(clean(reply)) ? clean(reply) : await collect(oralStream(clean(reply)))) : tr(V).stillWorking
   const id = crypto.randomBytes(9).toString('base64url')
   clips.set(id, { mp3: await synth(said, w.voiceId), at: Date.now() })
   for (const [k, v] of clips) if (Date.now() - v.at > 15 * 60_000) clips.delete(k)

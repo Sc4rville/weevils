@@ -6,8 +6,9 @@
 #   wv codex [msg]      codex
 #   wv ls               sessions wv en cours
 #   wv a [nom]          s'y rattacher (la plus récente par défaut)
-#   wv vps <repo> [...]  depuis le PC : la même chose, mais sur le VPS (~/projects/<repo>)
-#   wv vps a | wv vps ls se rattacher / lister sur le VPS
+#   wv @<hôte> <repo> [...]  la même chose sur une autre machine, par ssh (~/projects/<repo>)
+#   wv @<hôte> a | ls        s'y rattacher / lister là-bas
+#   wv main …                pareil sur la machine principale (machine secondaire installée avec --secondary)
 #
 # Sans demande de permission (comme d'habitude) ; WV_SAFE=1 wv … pour garder les confirmations.
 set -euo pipefail
@@ -34,13 +35,20 @@ fi
 if [ "${WV_SAFE:-}" = 1 ]; then claude_flags=(); codex_flags=()
 else claude_flags=(--dangerously-skip-permissions); codex_flags=(--dangerously-bypass-approvals-and-sandbox); fi
 
-if [ "${1:-}" = vps ]; then
+host=''
+case "${1:-}" in
+  @?*) host=${1#@} ;;
+  main) host=$(sed -n "s/^WEEVILS_MAIN_HOST=//p" ~/.config/weevils/service.conf 2>/dev/null | tr -d "'\"")
+    [ -n "$host" ] || { echo "pas de machine principale (installe avec --secondary <hôte>, ou wv @<hôte>)"; exit 1; } ;;
+  vps) host=vps ;; # ancien nom, gardé
+esac
+if [ -n "$host" ]; then
   shift
   case "${1:-}" in
-    ''|a|attach|ls) exec ssh -t vps "wv ${1:-a} ${2:-}" ;;
+    ''|a|attach|ls) exec ssh -t "$host" "bash -lc 'wv ${1:-a} ${2:-}'" ;;
   esac
   repo=$1; shift
-  exec ssh -t vps "cd ~/projects/$(printf '%q' "$repo") && wv $(printf '%q ' "$@")"
+  exec ssh -t "$host" "cd ~/projects/$(printf '%q' "$repo") && bash -lc $(printf '%q' "wv $(printf '%q ' "$@")")"
 fi
 
 tool=claude

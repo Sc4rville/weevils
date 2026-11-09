@@ -13,7 +13,7 @@ import path from 'node:path'
 
 /** At most this many ids kept (the catalog is a few dozen; ids are short). */
 const MAX = 200
-const ID = /^[a-z][a-z0-9-]{0,39}$/
+const ID = /^[A-Za-z][A-Za-z0-9-]{0,39}$/
 
 export interface HintsState {
   seen: string[]

@@ -26,10 +26,10 @@ describe('hints', () => {
 
   it('remembers seen ids across restarts, once each, and drops junk', () => {
     const d = tmp()
-    new Hints(d).mark(['devil', 'devil', 'quota', 'Bad Id', 42, '../x'])
+    new Hints(d).mark(['devil', 'devil', 'quota', 'Bad Id', 42, '../x', 'newSession'])
     const again = new Hints(d)
-    expect(again.get()).toEqual({ seen: ['devil', 'quota'], touched: true })
-    expect(again.mark(['voice']).seen).toEqual(['devil', 'quota', 'voice'])
+    expect(again.get()).toEqual({ seen: ['devil', 'quota', 'newSession'], touched: true })
+    expect(again.mark(['voice']).seen).toEqual(['devil', 'quota', 'newSession', 'voice'])
   })
 
   it('an empty write only marks the store as touched; reset forgets everything', () => {

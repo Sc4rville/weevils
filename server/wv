@@ -27,9 +27,11 @@ wv_lang() {
 if [ "$(wv_lang)" = fr ]; then
   m_none="aucune session wv" # i18n-ignore : messages français, l'anglais est juste en dessous
   m_title="nouvelle session" # i18n-ignore
+  m_nomain="pas de machine principale : installe avec --secondary <hôte>, ou wv @<hôte>" # i18n-ignore
 else
   m_none="no wv sessions"
   m_title="new session"
+  m_nomain="no main machine: install with --secondary <host>, or use wv @<host>"
 fi
 
 if [ "${WV_SAFE:-}" = 1 ]; then claude_flags=(); codex_flags=()
@@ -39,7 +41,7 @@ host=''
 case "${1:-}" in
   @?*) host=${1#@} ;;
   main) host=$(sed -n "s/^WEEVILS_MAIN_HOST=//p" ~/.config/weevils/service.conf 2>/dev/null | tr -d "'\"")
-    [ -n "$host" ] || { echo "pas de machine principale (installe avec --secondary <hôte>, ou wv @<hôte>)"; exit 1; } ;;
+    [ -n "$host" ] || { echo "$m_nomain" >&2; exit 1; } ;;
   vps) host=vps ;; # ancien nom, gardé
 esac
 if [ -n "$host" ]; then

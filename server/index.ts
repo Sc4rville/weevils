@@ -10,7 +10,9 @@ import { openaiKey, speak, speakable, transcribe } from './transcribe.ts'
 import { cartesia, cartesiaStream, frenchVoices } from './fast.ts'
 import { Readable } from 'node:stream'
 import { Weevils } from './core.ts'
-import { setLang } from './i18n.ts'
+import { setLang, tr } from './i18n.ts'
+import M from './i18n/api.ts'
+import P from './i18n/push.ts'
 import { tipRoutes } from './tips.ts'
 
 const w = new Weevils()
@@ -62,7 +64,7 @@ const readBody = (req: http.IncomingMessage, limit = 1 << 20) =>
     req.on('data', (c) => {
       data += c
       if (data.length > limit) {
-        reject(new Error('corps trop grand'))
+        reject(new Error(tr(M).bodyTooLarge))
         req.destroy()
       }
     })
@@ -70,7 +72,7 @@ const readBody = (req: http.IncomingMessage, limit = 1 << 20) =>
       try {
         resolve(data ? JSON.parse(data) : {})
       } catch {
-        reject(new Error('JSON invalide'))
+        reject(new Error(tr(M).badJson))
       }
     })
     req.on('error', reject)
@@ -90,7 +92,7 @@ const MIME: Record<string, string> = {
 function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string) {
   let file = path.join(DIST_DIR, pathname === '/' ? 'index.html' : pathname)
   if (!file.startsWith(DIST_DIR) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(DIST_DIR, 'index.html')
-  if (!fs.existsSync(file)) return json(res, 503, { error: 'app non construite : npm run build' })
+  if (!fs.existsSync(file)) return json(res, 503, { error: tr(M).notBuilt })
   const ext = path.extname(file)
   res.writeHead(200, {
     'content-type': MIME[ext] ?? 'application/octet-stream',
@@ -119,7 +121,7 @@ const routes: [string, RegExp, Handler][] = [
     const body = await readBody(req)
     if (typeof body.secret !== 'string' || !sameCode(body.secret, SECRET)) {
       await new Promise((r) => setTimeout(r, 800))
-      return json(res, 401, { error: 'code incorrect' })
+      return json(res, 401, { error: tr(M).wrongCode })
     }
     const t = crypto.randomBytes(24).toString('base64url')
     tokens.add(t)
@@ -142,6 +144,8 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/prefs$/, async (req, res) => {
     const body = await readBody(req)
     setLang(body.lang)
+    // Les autres machines suivent : leurs erreurs et leurs écrans remontent dans l'app.
+    for (const r of w.remotes) if (r.online) void r.call('POST', '/api/prefs', { lang: body.lang }).catch(() => undefined)
     json(res, 200, { ok: true })
   }],
   ['GET', /^\/api\/snapshot$/, (_req, res) => json(res, 200, w.snapshot())],
@@ -153,7 +157,7 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ['GET', /^\/api\/sessions\/([^/]+)$/, async (_req, res, _u, [id]) => {
     const d = await w.detailAny(decodeURIComponent(id))
-    d ? json(res, 200, d) : json(res, 404, { error: 'session introuvable' })
+    d ? json(res, 200, d) : json(res, 404, { error: tr(M).sessionNotFound })
   }],
   ['GET', /^\/api\/sessions\/([^/]+)\/screen$/, async (_req, res, _u, [id]) => json(res, 200, { screen: await w.screen(decodeURIComponent(id)) })],
   ['POST', /^\/api\/sessions\/([^/]+)\/send$/, async (req, res, _u, [id]) => {
@@ -230,7 +234,7 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ['POST', /^\/api\/main\/attach$/, async (req, res) => {
     const body = await readBody(req, 48 << 20)
-    const files = Array.isArray(body.files) ? body.files.filter((f: any) => typeof f?.data === 'string').map((f: any) => ({ name: String(f.name ?? 'fichier'), type: String(f.type ?? ''), data: String(f.data) })) : []
+    const files = Array.isArray(body.files) ? body.files.filter((f: any) => typeof f?.data === 'string').map((f: any) => ({ name: String(f.name ?? ''), type: String(f.type ?? ''), data: String(f.data) })) : []
     json(res, 200, await w.attachMain(String(body.text ?? '').trim(), files))
   }],
   ['POST', /^\/api\/import$/, (req, res) => receiveImport(req, res)],
@@ -240,14 +244,14 @@ const routes: [string, RegExp, Handler][] = [
     json(res, 200, { ok: true, devices: w.push.count })
   }],
   ['POST', /^\/api\/push\/test$/, async (_req, res) => {
-    await w.push.send({ title: 'weevboss', body: 'Les notifications marchent. Je te préviens quand une session t’attend ou a fini.', url: '/', tag: 'test' })
+    await w.push.send({ title: 'weevboss', body: tr(P).testBody, url: '/', tag: 'test' })
     json(res, 200, { ok: true })
   }],
   ['GET', /^\/api\/conversations$/, (_req, res, url) =>
     json(res, 200, { conversations: w.conversationList({ projectId: url.searchParams.get('project') ?? undefined, q: url.searchParams.get('q') ?? undefined }) })],
   ['GET', /^\/api\/conversations\/([^/]+)$/, (_req, res, _u, [id]) => {
     const d = w.conversationDetail(decodeURIComponent(id))
-    d ? json(res, 200, d) : json(res, 404, { error: 'conversation introuvable' })
+    d ? json(res, 200, d) : json(res, 404, { error: tr(M).conversationNotFound })
   }],
   ['POST', /^\/api\/conversations\/([^/]+)\/classify$/, async (req, res, _u, [id]) => {
     const body = await readBody(req)
@@ -307,7 +311,7 @@ async function receiveImport(req: http.IncomingMessage, res: http.ServerResponse
       size += c.length
       if (size > 1 << 30) {
         req.destroy()
-        reject(new Error('fichier trop gros (1 Go max)'))
+        reject(new Error(tr(M).fileTooLarge))
       }
     })
     req.pipe(out)
@@ -325,12 +329,12 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://local')
   try {
     if (!url.pathname.startsWith('/api/')) return serveStatic(req, res, url.pathname)
-    if (!PUBLIC.has(url.pathname) && !authed(req)) return json(res, 401, { error: 'connexion requise' })
+    if (!PUBLIC.has(url.pathname) && !authed(req)) return json(res, 401, { error: tr(M).signInRequired })
     for (const [method, re, handler] of routes) {
       const m = re.exec(url.pathname)
       if (m && req.method === method) return await handler(req, res, url, m.slice(1))
     }
-    json(res, 404, { error: 'route inconnue' })
+    json(res, 404, { error: tr(M).unknownRoute })
   } catch (e) {
     json(res, 400, { error: (e as Error).message })
   }

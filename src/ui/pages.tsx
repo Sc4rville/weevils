@@ -325,7 +325,7 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
   const t = useT(M)
   const project = snap.projects.find((p) => p.id === projectId) ?? (repo ? { id: projectId, name: repo, kind: 'repo' as const, repos: [repo], where: {}, lastActivityAt: 0 } : undefined)
   const theRepo = repo ?? (project?.repos.length === 1 ? project.repos[0] : undefined)
-  const machine = (theRepo && project?.where[theRepo]) || 'vps'
+  const machine = (theRepo && project?.where[theRepo]) || (snap.machines[0]?.id ?? '')
   const [files, setFiles] = useState<string[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
   useEffect(() => {
@@ -398,7 +398,7 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
 function FilePage({ projectId, repo, path }: { projectId: string; repo: string; path: string }) {
   const { colors, snap } = useApp()
   const t = useT(M)
-  const machine = snap.projects.find((p) => p.id === projectId)?.where[repo] ?? 'vps'
+  const machine = snap.projects.find((p) => p.id === projectId)?.where[repo] ?? snap.machines[0]?.id ?? ''
   const [file, setFile] = useState<FileContent | null>(null)
   const [err, setErr] = useState<string | null>(null)
   useEffect(() => {
@@ -454,7 +454,7 @@ function NewSessionPage({ projectId }: { projectId: string }) {
   const { snap, replace, colors } = useApp()
   const t = useT(M)
   const any = projectId === '__any'
-  const [machine, setMachine] = useState(snap.machines[0]?.id ?? 'vps')
+  const [machine, setMachine] = useState(snap.machines[0]?.id ?? '')
   const [allRepos, setAllRepos] = useState<string[] | null>(null)
   const project = any
     ? { id: '__any', name: t.newSession, kind: 'repo' as const, repos: allRepos ?? [], where: Object.fromEntries((allRepos ?? []).map((r) => [r, machine])), lastActivityAt: 0 }

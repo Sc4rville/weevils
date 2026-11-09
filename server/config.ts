@@ -39,9 +39,39 @@ export const LOGS_DIR = path.join(HOME, 'logs')
 export const DATA_DIR = path.join(HOME, '.local', 'share', 'weevils')
 export const DIST_DIR = path.resolve(import.meta.dirname, '..', 'dist')
 
+/** Nom d'hôte réduit comme le fait install.sh (slug) : minuscules, [a-z0-9-], 20 caractères. */
+export const hostSlug = (host: string) =>
+  host.split('.')[0].toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '').slice(0, 20) || 'main'
+
+/**
+ * Identifiant de cette machine : WEEVILS_MACHINE (install.sh l'écrit), sinon le nom d'hôte, retenu au premier lancement
+ * (DATA_DIR/machine-id) pour rester stable. Une installation d'avant ce choix (données déjà là, sans machine-id)
+ * garde son ancien nom « vps » : ses projets et la mémoire de weevboss le citent.
+ */
+function machineId(): string {
+  const env = process.env.WEEVILS_MACHINE?.trim()
+  if (env) return env
+  const file = path.join(DATA_DIR, 'machine-id')
+  try {
+    const saved = fs.readFileSync(file, 'utf8').trim()
+    if (saved) return saved
+  } catch {
+    /* pas encore choisi */
+  }
+  if (fs.existsSync(path.join(DATA_DIR, 'state.json'))) return 'vps'
+  const id = hostSlug(os.hostname())
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true })
+    fs.writeFileSync(file, id + '\n')
+  } catch {
+    /* lecture seule : le nom d'hôte sera recalculé au prochain lancement */
+  }
+  return id
+}
+const machine = machineId()
 export const MACHINE = {
-  id: process.env.WEEVILS_MACHINE || 'vps',
-  name: process.env.WEEVILS_MACHINE_NAME || process.env.WEEVILS_MACHINE || 'vps',
+  id: machine,
+  name: process.env.WEEVILS_MACHINE_NAME || process.env.WEEVILS_MACHINE || machine,
 }
 
 /** L'orchestrateur (la bande du haut) tourne sur une seule machine : celle qui sert l'app. */

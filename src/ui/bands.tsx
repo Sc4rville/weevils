@@ -189,7 +189,7 @@ export function ProjectBand({ project }: { project: Project }) {
       return
     }
     if (collapsed) {
-      for (const r of project.repos) prefetchRepo(r, project.where[r] ?? 'vps')
+      for (const r of project.repos) prefetchRepo(r, project.where[r] ?? snap.machines[0]?.id ?? '')
       remember(false)
       if (active.length === 0) setExpanded(project.id)
       return
@@ -309,7 +309,7 @@ export function ProjectBand({ project }: { project: Project }) {
           )}
           {project.repos.length > 0 && <div className="in label">{t.reposLabel}</div>}
           {project.repos.map((r) => (
-            <Line key={r} ch="/" meta={project.where[r] ?? 'vps'} onClick={() => push({ kind: 'files', projectId: project.id, repo: r })}>
+            <Line key={r} ch="/" meta={project.where[r] ?? snap.machines[0]?.id ?? ''} onClick={() => push({ kind: 'files', projectId: project.id, repo: r })}>
               {r}
             </Line>
           ))}

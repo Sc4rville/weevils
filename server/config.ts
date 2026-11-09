@@ -29,7 +29,7 @@ export const HOST = process.env.WEEVILS_HOST?.trim() || '127.0.0.1'
 /** Hooks Claude Code : écoute locale uniquement, jamais exposée par Caddy. */
 export const HOOK_PORT = Number(process.env.WEEVILS_HOOK_PORT || 4180)
 /** Racines des projets de cette machine, séparées par « : » (ex. ~/projects:~/Documents/projects). */
-export const PROJECT_ROOTS = (process.env.WEEVILS_PROJECTS ?? path.join(HOME, 'projects')).split(':').filter(Boolean)
+export const PROJECT_ROOTS = (process.env.WEEVILS_PROJECTS || path.join(HOME, 'projects')).split(':').filter(Boolean)
 export const PROJECTS_DIR = PROJECT_ROOTS[0]
 /** Autres weevilsd à fédérer : « pc=http://127.0.0.1:4192 ». */
 export const REMOTES = process.env.WEEVILS_REMOTES
@@ -40,12 +40,12 @@ export const DATA_DIR = path.join(HOME, '.local', 'share', 'weevils')
 export const DIST_DIR = path.resolve(import.meta.dirname, '..', 'dist')
 
 export const MACHINE = {
-  id: process.env.WEEVILS_MACHINE ?? 'vps',
-  name: process.env.WEEVILS_MACHINE_NAME ?? process.env.WEEVILS_MACHINE ?? 'vps',
+  id: process.env.WEEVILS_MACHINE || 'vps',
+  name: process.env.WEEVILS_MACHINE_NAME || process.env.WEEVILS_MACHINE || 'vps',
 }
 
 /** L'orchestrateur (la bande du haut) tourne sur une seule machine : celle qui sert l'app. */
-export const ORCHESTRATOR = (process.env.WEEVILS_ORCHESTRATOR ?? (process.env.WEEVILS_MACHINE ? '0' : '1')) === '1'
+export const ORCHESTRATOR = (process.env.WEEVILS_ORCHESTRATOR || (process.env.WEEVILS_MACHINE ? '0' : '1')) === '1'
 export const ORCH_DIR = path.join(DATA_DIR, 'orchestrateur')
 
 /** Sessions plus anciennes : ignorées (on ne relit pas tout l'historique). */

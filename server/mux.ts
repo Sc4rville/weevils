@@ -72,6 +72,9 @@ export async function spawnWv(name: string, cwd: string, tool: Tool, title: stri
 
 export const setOpt = (name: string, key: string, value: string) => tmux(['set-option', '-t', `=${name}:`, key, value]).then(() => undefined)
 
+/** Ferme proprement une session tmux wv-* (l'agent reçoit SIGHUP et s'arrête ; son transcript reste, --resume le reprend). */
+export const killWv = (name: string) => tmux(['kill-session', '-t', `=${name}:`]).then(() => undefined)
+
 /** Écrit un message puis Entrée. Les retours à la ligne enverraient trop tôt : on les aplatit. */
 export async function sendText(name: string, text: string): Promise<void> {
   const flat = text.replace(/\s*\n\s*/g, ' ').trim()

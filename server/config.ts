@@ -31,3 +31,6 @@ export const ORCH_DIR = path.join(DATA_DIR, 'orchestrateur')
 export const RECENT_MS = 3 * 24 * 3600_000
 /** Sans signe de vie depuis ce délai, une session sans processus connu est considérée terminée. */
 export const STALE_MS = 30 * 60_000
+/** Session weevils sans activité : terminée dans l'app après 30 min, processus fermé après 2 h (lui écrire la rouvre avec --resume). */
+export const DONE_AFTER_MS = Number(process.env.WEEVILS_DONE_AFTER_MIN ?? 30) * 60_000
+export const KILL_AFTER_MS = Number(process.env.WEEVILS_KILL_AFTER_MIN ?? 120) * 60_000

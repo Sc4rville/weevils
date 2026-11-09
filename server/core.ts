@@ -5,7 +5,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { ConversationDetail, ConversationSummary, H24Activity, Message, Project, Session, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
-import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, HOME, LOGS_DIR, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, DONE_AFTER_MS, HOME, KILL_AFTER_MS, LOGS_DIR, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
 import { llmClassify, ruleMatch } from './classify.ts'
@@ -18,7 +18,7 @@ import { llmTitles, needsTitle, shortNow } from './titles.ts'
 import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
 import type { WvSession } from './mux.ts'
-import { capture, dialogOnScreen, flatScreen, listWv, sendKey, sendText, setOpt, spawnWv } from './mux.ts'
+import { capture, dialogOnScreen, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv } from './mux.ts'
 
 interface HookState {
   event: string
@@ -220,6 +220,7 @@ export class Weevils {
       this.linkCodexPanes()
     }, 1500)
     setInterval(() => void this.watchPanes(), 2500)
+    setInterval(() => void this.reapPanes(), 60_000)
     setInterval(() => void this.watchImports(), 30_000)
     setInterval(() => void this.classify(), 60_000)
     setTimeout(() => void this.classify(), 5000)
@@ -349,6 +350,28 @@ export class Weevils {
     return this.panes.find((p) => p.sessionId === id) ?? this.panes.find((p) => p.name === id)
   }
 
+  private isOrchestratorPane(p: ManagedPane) {
+    return p.cwd.startsWith(DATA_DIR) || (!!this.orchestratorId && p.sessionId === this.orchestratorId)
+  }
+
+  /** Une pane weevils inactive depuis 2 h est fermée : la machine respire, la session reste reprenable par --resume. */
+  private async reapPanes() {
+    const now = Date.now()
+    for (const p of this.panes) {
+      if (this.isOrchestratorPane(p)) continue
+      const t = p.sessionId ? this.store.get(p.sessionId) : undefined
+      const last = Math.max(t?.lastActivityAt ?? 0, this.hooks.get(p.sessionId ?? '')?.at ?? 0, p.createdAt)
+      if (now - last < KILL_AFTER_MS) continue
+      if (t?.phase === 'working' && now - t.lastActivityAt < 10 * 60_000) continue
+      try {
+        await killWv(p.name)
+        console.log(`[sessions] ${p.name} fermée après ${Math.round((now - last) / 60_000)} min sans activité`)
+      } catch (e) {
+        console.error(`[sessions] fermeture de ${p.name} : ${(e as Error).message}`)
+      }
+    }
+  }
+
   // ---------------------------------------------------------------- sessions
 
   /** Rattachement par le contenu, quand le dossier de travail n'est pas un repo (session lancée depuis ~/Documents, /tmp…). */
@@ -399,6 +422,8 @@ export class Weevils {
     } else if (hook && hookAlive && hook.at >= t.lastActivityAt - 2000 && ['UserPromptSubmit', 'PostToolUse'].includes(hook.event)) status = 'working'
     else if (hook?.event === 'Stop' && hook.at >= t.lastActivityAt - 2000) status = 'idle'
     else if (t.phase === 'working' && now - t.lastActivityAt < 10 * 60_000) status = 'working'
+    // Une pane weevils qui n'a rien fait depuis 30 min rejoint les sessions terminées (lui écrire la réveille, son contexte est là).
+    if (status === 'idle' && pane && !this.isOrchestratorPane(pane) && now - t.lastActivityAt > DONE_AFTER_MS) status = 'done'
 
     // Ouverte dans un terminal que weevils ne pilote pas : on ne peut ni lui écrire ni la reprendre sans risque.
     const unmanagedLive = live && !pane
@@ -439,12 +464,12 @@ export class Weevils {
       machineId: MACHINE.id,
       tool: p.tool,
       title: p.title,
-      status: p.screenAttention ? 'needs_user' : 'working',
+      status: p.screenAttention ? 'needs_user' : now - p.createdAt > DONE_AFTER_MS ? 'done' : 'working',
       attention: p.screenAttention,
       cwd: p.cwd,
       openedAt: p.createdAt,
       lastActivityAt: p.createdAt,
-      workStartedAt: p.screenAttention ? null : p.createdAt,
+      workStartedAt: p.screenAttention || now - p.createdAt > DONE_AFTER_MS ? null : p.createdAt,
       origin: 'weevils',
       controllable: true,
       live: true,

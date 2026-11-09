@@ -9,12 +9,10 @@ import { plural } from './format'
 const tint = (i: number) => `var(--p${(i * 7) % 16})`
 
 function RepoIcon({ color }: { color: string }) {
-  // Une grande icône de repo, plate, pleine de sa couleur : le dos arrondi, la tranche, le marque-page.
+  // La silhouette d'un dossier : un rectangle avec son onglet en haut à gauche, en un seul aplat.
   return (
     <svg className="repo-big" viewBox="0 0 96 96" aria-hidden focusable="false">
-      <path fill={color} d="M20 12a12 12 0 0 1 12-12h46a6 6 0 0 1 6 6v74a6 6 0 0 1-6 6H32a12 12 0 0 1-12-12Z" />
-      <path fill="var(--ink)" opacity="0.22" d="M32 70h46v4H32a6 6 0 0 0 0 12h46v4H32a10 10 0 0 1 0-20Z" />
-      <path fill="var(--ink)" opacity="0.22" d="M58 0h12v30l-6-4-6 4Z" />
+      <path fill={color} d="M8 18a6 6 0 0 1 6-6h24l10 10h34a6 6 0 0 1 6 6v50a6 6 0 0 1-6 6H14a6 6 0 0 1-6-6Z" />
     </svg>
   )
 }

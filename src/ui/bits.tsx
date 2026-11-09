@@ -38,7 +38,32 @@ export function Appear({ children }: { children: ReactNode }) {
 }
 
 export function StatusChar({ s }: { s: Session['status'] }) {
-  return <span className={s === 'working' ? 'spin' : undefined}>{status[s].ch}</span>
+  return <span className={s === 'working' ? 'spin fluo' : undefined}>{status[s].ch}</span>
+}
+
+/** Barre fine qui balaie en vert fluo : l'agent travaille, là, maintenant. */
+export function Pulse({ on }: { on: boolean }) {
+  return (
+    <AnimatePresence initial={false}>
+      {on && <motion.div key="p" className="pulse" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} aria-hidden />}
+    </AnimatePresence>
+  )
+}
+
+/** Long message de Scarville : replié au-delà de quelques lignes, un geste pour tout lire. */
+function Clamp({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  const long = text.length > 420
+  return (
+    <>
+      <div className={`text ${long && !open ? 'clamp' : ''}`}>{text}</div>
+      {long && (
+        <button className="link small" onClick={() => setOpen((v) => !v)}>
+          {open ? '− replier' : '+ tout lire'}
+        </button>
+      )}
+    </>
+  )
 }
 
 export function SessionRow({ session }: { session: Session }) {
@@ -238,7 +263,7 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
     <div className="msg band event">
       <button className="in steps-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className="text">
-          {live ? <span className="spin">*</span> : '→'} {steps.length} étapes · {last}
+          {live ? <span className="spin fluo">*</span> : '→'} {steps.length} étapes · <span key={last} className="fade-in">{last}</span>
         </span>
         <span className="go" aria-hidden>
           {open ? '−' : '+'}
@@ -257,10 +282,19 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
   )
 }
 
+const WINDOW = 60
+
 export function Messages({ messages, author, working = false }: { messages: Message[]; author: string; working?: boolean }) {
-  const groups = useMemo(() => group(messages), [messages])
+  const [all, setAll] = useState(false)
+  const hidden = all ? 0 : Math.max(0, messages.length - WINDOW)
+  const groups = useMemo(() => group(messages.slice(hidden)), [messages, hidden])
   return (
     <AnimatePresence initial={false}>
+      {hidden > 0 && (
+        <Line key="older" ch="↑" go={null} onClick={() => setAll(true)}>
+          <span className="meta">{hidden} messages plus anciens</span>
+        </Line>
+      )}
       {groups.map((g, i) =>
         g.kind === 'steps' ? (
           <Appear key={g.id}>
@@ -271,7 +305,7 @@ export function Messages({ messages, author, working = false }: { messages: Mess
             <div className={`msg band ${g.m.role === 'user' ? 'tone' : ''}`}>
               <div className="in">
                 <span className="who">{g.m.role === 'user' ? 'toi' : author}</span>
-                {g.m.role === 'user' ? <div className="text">{userText(g.m.text)}</div> : <Prose text={g.m.text} />}
+                {g.m.role === 'user' ? <Clamp text={userText(g.m.text)} /> : <Prose text={g.m.text} />}
               </div>
             </div>
           </Appear>
@@ -285,10 +319,15 @@ export function Messages({ messages, author, working = false }: { messages: Mess
 export function Working({ author, since }: { author: string; since?: number | null }) {
   const { now } = useApp()
   return (
-    <motion.div className="msg band working" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+    <motion.div className="msg band working" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={spring}>
       <div className="in">
         <span className="who">
-          <span className="spin">*</span> {author} travaille{since ? ` · ${dur(now - since)}` : ''}
+          <span className="spin fluo">*</span> {author} travaille{since ? ` · ${dur(now - since)}` : ''}
+          <span className="dots" aria-hidden>
+            <i>·</i>
+            <i>·</i>
+            <i>·</i>
+          </span>
         </span>
       </div>
     </motion.div>

@@ -166,6 +166,7 @@ function SessionPage({ id }: { id: string }) {
       slot={colors[s.projectId] ?? 'agent'}
       kicker={project?.name ?? s.projectId}
       title={s.title}
+      working={s.status === 'working'}
       meta={
         <>
           {s.now && (

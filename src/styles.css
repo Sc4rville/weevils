@@ -766,3 +766,106 @@ input:focus-visible {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ---------- Ça travaille : barre qui balaie, points qui respirent, dernier pas qui apparaît ---------- */
+
+.page-head {
+  position: relative;
+}
+
+.pulse {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--fluo) 18%, transparent);
+}
+
+.pulse::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 38%;
+  background: var(--fluo);
+  animation: sweep 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes sweep {
+  from {
+    left: -40%;
+  }
+  to {
+    left: 102%;
+  }
+}
+
+.dots {
+  display: inline-flex;
+  gap: 1px;
+  margin-left: 4px;
+  color: var(--fluo);
+  font-weight: 700;
+}
+
+.dots i {
+  font-style: normal;
+  animation: breathe 1.2s ease-in-out infinite;
+}
+
+.dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.fade-in {
+  animation: fadein 0.35s ease-out;
+}
+
+@keyframes fadein {
+  from {
+    opacity: 0;
+    transform: translateX(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.text.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.link.small {
+  min-height: 36px;
+  font-size: 0.875rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse::after,
+  .dots i,
+  .fade-in {
+    animation: none;
+  }
+}

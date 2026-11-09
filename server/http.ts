@@ -17,10 +17,18 @@ const header = (req: http.IncomingMessage, name: string) => {
 /** Host d'une adresse de bouclage, sur n'importe quel port (la fédération arrive par un tunnel sur un autre port). */
 const loopbackHost = (host: string | undefined) => LOOPBACK_HOST_RE.test(host ?? '')
 
-const loopbackOrigin = (origin: string) => {
+/** Port d'un Host « hôte:port » (vide si absent : le port par défaut du schéma). */
+const hostPort = (host: string) => /:(\d{1,5})$/.exec(host)?.[1] ?? ''
+
+/**
+ * Origin de bouclage ET même port que le Host : la page vient de ce serveur-ci (ou du serveur de dev de Vite, qui
+ * relaie avec son propre Host, changeOrigin: false). Une page d'un autre serveur local (le vite d'un projet sur 4173,
+ * l'aperçu d'un repo cloné) a un autre port : refusée.
+ */
+const loopbackOrigin = (origin: string, host: string) => {
   try {
     const u = new URL(origin)
-    return (u.protocol === 'http:' || u.protocol === 'https:') && LOOPBACK_HOSTS.has(u.hostname)
+    return (u.protocol === 'http:' || u.protocol === 'https:') && LOOPBACK_HOSTS.has(u.hostname) && u.port === hostPort(host)
   } catch {
     return false // « null » (iframe isolée, file://) ou valeur illisible
   }
@@ -29,12 +37,13 @@ const loopbackOrigin = (origin: string) => {
 /**
  * Contrôles côté navigateur : Host de bouclage (bloque le DNS rebinding), pas d'Origin étrangère, et pas de requête
  * cross-site sans Origin de bouclage (bloque une page web ouverte sur cette machine qui viserait 127.0.0.1).
- * Le proxy de Vite en dev transmet l'Origin http://127.0.0.1:4178 : acceptée.
+ * Le proxy de Vite en dev transmet l'Origin et le Host http://127.0.0.1:4178 : acceptée.
  */
 export function browserSafe(req: http.IncomingMessage): boolean {
-  if (!loopbackHost(header(req, 'host'))) return false
+  const host = header(req, 'host') ?? ''
+  if (!loopbackHost(host)) return false
   const origin = header(req, 'origin')
-  if (origin !== undefined && !loopbackOrigin(origin)) return false
+  if (origin !== undefined && !loopbackOrigin(origin, host)) return false
   const site = header(req, 'sec-fetch-site')
   if ((site === 'cross-site' || site === 'same-site') && origin === undefined) return false
   return true

@@ -38,9 +38,16 @@ describe('isLocal', () => {
     expect(isLocal(req({ 'sec-fetch-site': 'same-site' }))).toBe(false)
   })
 
-  it('the Vite dev proxy forwards a loopback Origin: local', () => {
-    expect(isLocal(req({ origin: 'http://127.0.0.1:4178', 'sec-fetch-site': 'same-origin' }))).toBe(true)
-    expect(isLocal(req({ origin: 'http://localhost:4178', 'sec-fetch-site': 'same-site' }))).toBe(true)
+  it('the Vite dev proxy forwards its own Origin and Host (changeOrigin: false): local', () => {
+    expect(isLocal(req({ host: '127.0.0.1:4178', origin: 'http://127.0.0.1:4178', 'sec-fetch-site': 'same-origin' }))).toBe(true)
+    expect(isLocal(req({ host: '127.0.0.1:4178', origin: 'http://localhost:4178', 'sec-fetch-site': 'same-site' }))).toBe(true)
+    expect(isLocal(req({ origin: 'http://127.0.0.1:4179' }))).toBe(true)
+  })
+
+  it("a page from another local server (a project's dev server, a cloned repo's preview) is not local", () => {
+    expect(isLocal(req({ origin: 'http://localhost:4173', 'sec-fetch-site': 'same-site' }))).toBe(false)
+    expect(isLocal(req({ origin: 'http://127.0.0.1:8080' }))).toBe(false)
+    expect(isLocal(req({ origin: 'http://127.0.0.1' }))).toBe(false)
   })
 
   it('federation through the reverse tunnel: Host on another loopback port is local', () => {

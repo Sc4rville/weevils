@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-describe.skipIf(!process.env.WEEVILS_LIVE_TEST)('routes repos (daemon local)', () => {
+describe.skipIf(process.env.WEEVILS_LIVE_TEST !== '1')('routes repos (daemon local)', () => {
   const base = process.env.WEEVILS_LIVE_URL || 'http://127.0.0.1:4179'
   const secret = () => fs.readFileSync(path.join(os.userInfo().homedir, '.config', 'weevils', 'secret'), 'utf8').trim()
 

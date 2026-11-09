@@ -22,7 +22,6 @@ export type Page =
   | { kind: 'repos' }
   | { kind: 'calm' }
   | { kind: 'calmconv'; id: string }
-  | { kind: 'infra'; machine?: string }
   | { kind: 'fs'; machine: string; path: string }
   | { kind: 'fsfile'; machine: string; path: string }
   | { kind: 'usage' }

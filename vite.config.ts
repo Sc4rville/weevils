@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import os from 'node:os'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 // Domaine public (HTTPS devant le serveur local) : active le HMR à travers le proxy. Lu dans la config de l'utilisateur.
@@ -30,5 +30,6 @@ export default defineConfig({
   // Tests en mode développement de React (act), même si le shell a NODE_ENV=production.
   // setup-env : HOME jetable et WEEVILS_* fixés avant tout import, jamais la vraie config du développeur.
   // test/live (contre un vrai weevilsd) est trouvé comme les autres mais sauté sans WEEVILS_LIVE_TEST=1.
-  test: { environment: 'node', env: { NODE_ENV: 'test' }, setupFiles: ['test/setup-env.ts'] },
+  // .claude/ : worktrees d'agents (ignorés par git), jamais testés depuis ici.
+  test: { environment: 'node', env: { NODE_ENV: 'test' }, setupFiles: ['test/setup-env.ts'], globalSetup: ['test/global-setup.ts'], exclude: [...configDefaults.exclude, '.claude/**'] },
 })

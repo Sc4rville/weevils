@@ -1,5 +1,5 @@
-// First-tap hints: the app shows a short bubble the first time someone taps an element (the devil, the machines
-// corner, the voice logo…). Which ones were already seen lives here, on the main weevilsd, so every device of the
+// First-tap hints: the app shows a short bubble the first time someone taps an element (the voice logo, the star,
+// a project's +…). Which ones were already seen lives here, on the main weevilsd, so every device of the
 // user shares it and a phone change does not replay them. DATA_DIR/hints.json.
 //
 // Also the install id (DATA_DIR/install-id): a random id born with the data directory. The app keeps it on the

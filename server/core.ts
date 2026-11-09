@@ -944,6 +944,8 @@ export class Weevils {
     // Signé par un auteur (weevboss, un agent externe) : le fil le montre comme son message, pas celui de l'utilisateur.
     // Signé ici, avant un éventuel relais : l'autre machine n'a pas besoin de connaître l'auteur.
     const author = normalizeFrom(from)
+    // Vide avant la signature : « [from:weevboss] » seul n'est pas un message.
+    if (!text.trim()) throw new Error(tr(M).emptyMessage)
     if (author) text = signAs(author, text)
     const remote = this.remoteFor(id)
     if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/send`, { text })
@@ -954,7 +956,6 @@ export class Weevils {
       const t = this.store.get(real)
       throw new Error(t && !this.toSession(t, Date.now()).controllable ? tr(M).unmanaged : tr(M).sessionNotFound)
     }
-    if (!text.trim()) throw new Error(tr(M).emptyMessage)
     const pane = this.paneFor(real)
     if (pane) {
       console.log(`[sessions] ${pane.name} ← message${author ? ` (${author})` : ''} · ${text.replace(/\s+/g, ' ').slice(0, 60)}`)
@@ -1177,7 +1178,7 @@ export class Weevils {
         const hook = this.hooks.get(sessionId)
         if (hook && hook.at > before && hook.event === 'UserPromptSubmit') return true
         const t = this.store.get(sessionId)
-        if (t?.messages.slice(-6).some((m) => (m.role === 'user' || m.role === 'orchestrator') && m.at >= before - 1500 && flatScreen(m.text).includes(tmark))) return true
+        if (tmark && t?.messages.slice(-6).some((m) => (m.role === 'user' || m.role === 'orchestrator') && m.at >= before - 1500 && flatScreen(m.text).includes(tmark))) return true
       }
       // Toutes les secondes : l'écran. Le texte y est (envoyé, ou en file pendant que l'agent travaille) et aucun dialogue ne le recouvre.
       if (Math.round((Date.now() - before) / 300) % 3 === 0) {
@@ -1233,7 +1234,7 @@ export class Weevils {
 
   // ---------------------------------------------------------------- H24
 
-  /** Jobs longs (~/logs) et timers systemd « wv-* ». */
+  /** Jobs longs (LOGS_DIR, WEEVILS_LOGS_DIR) et timers systemd « wv-* ». */
   refreshH24() {
     const now = Date.now()
     const out: H24Activity[] = []
@@ -1278,7 +1279,7 @@ export class Weevils {
         })
       }
     } catch {
-      /* pas de ~/logs */
+      /* pas de dossier de jobs */
     }
     execFile('systemctl', ['--user', 'list-timers', '--all', '--output=json'], { timeout: 4000 }, (err, stdout) => {
       const t = tr(M)

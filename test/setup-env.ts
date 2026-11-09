@@ -6,7 +6,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll } from 'vitest'
 
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-test-home-'))
+const root = process.env.WEEVILS_TEST_ROOT || os.tmpdir()
+const home = fs.mkdtempSync(path.join(root, 'home-'))
+// Rien de l'environnement du développeur : une session lancée par weevils hérite de toute sa config (WEEVILS_*, clés).
+for (const k of Object.keys(process.env))
+  if ((/^WEEVILS_/.test(k) && !/^WEEVILS_(LIVE_|TEST_ROOT)/.test(k)) || /^(OPENAI_API_KEY|CARTESIA_|DEVIL_|ANTHROPIC_)/.test(k)) delete process.env[k]
 Object.assign(process.env, {
   HOME: home,
   WEEVILS_CONFIG: '/dev/null',
@@ -17,4 +21,5 @@ Object.assign(process.env, {
 delete process.env.CODEX_HOME
 delete process.env.WEEVILS_PROJECTS
 // Le HOME jetable part avec le fichier de test.
-afterAll(() => fs.rmSync(home, { recursive: true, force: true }))
+const clean = () => fs.rmSync(home, { recursive: true, force: true })
+afterAll(clean)

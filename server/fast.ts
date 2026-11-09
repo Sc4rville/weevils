@@ -39,7 +39,7 @@ export function tts(text: string, voice = 'fr-FR-RemyMultilingualNeural'): Promi
 // ---------------------------------------------------------------- Cartesia (Sonic, streaming)
 
 /** Clé et réglages lus dans l'environnement du service (EnvironmentFile ~/.config/weevils/env). */
-export const cartesia = () => (process.env.CARTESIA_API_KEY ? { key: process.env.CARTESIA_API_KEY, model: process.env.CARTESIA_MODEL ?? 'sonic-2', voice: process.env.CARTESIA_VOICE_ID } : null)
+export const cartesia = () => (process.env.CARTESIA_API_KEY ? { key: process.env.CARTESIA_API_KEY, model: process.env.CARTESIA_MODEL ?? 'sonic-latest', voice: process.env.CARTESIA_VOICE_ID } : null)
 
 let frVoice: string | undefined
 async function frenchVoice(key: string): Promise<string> {

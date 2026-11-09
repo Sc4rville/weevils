@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
-import { createPortal } from 'react-dom'
 import type { Project } from '../../shared/api.ts'
 import { api } from '../api'
 import { tr, useT } from '../i18n'
@@ -190,19 +189,14 @@ export function AgentBand() {
           </button>
         )}
         <div className="agent-top">
-          {createPortal(
-            <div className="main-voice">
-              <VoiceLogo
+          <VoiceLogo
             take={() => { if (onSel) return ''; const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }}
             onText={(x) => { if (onSel) return th.a.voiceText(x); heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }}
             onSend={() => (onSel ? th.a.voiceSend() : form.current?.requestSubmit())}
             replyKey={th.a.replyKey ?? mainReply?.id}
             replyText={th.a.replyKey ? th.a.shown : mainReply?.text}
             working={snap.mainWorking || th.a.waiting}
-              />
-            </div>,
-            document.body,
-          )}
+          />
           <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={toggleDevil} aria-pressed={!!devilOn} aria-label={devilOn ? td.on : td.off}>
             <FilledIcon name="devil" />
           </button>

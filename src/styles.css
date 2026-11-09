@@ -1484,7 +1484,7 @@ button.copy.done {
   min-height: 0;
 }
 
-/* Le diablotin, tout en haut à droite (le logo, lui, est en bas sous le pouce : .main-voice). */
+/* Le logo et le diablotin, tout en haut, posés sur la même ligne de base. */
 .agent-top {
   width: 100%;
   max-width: 760px;
@@ -1492,7 +1492,7 @@ button.copy.done {
   padding: 8px var(--pad) 6px;
   display: flex;
   align-items: flex-end;
-  justify-content: flex-end;
+  justify-content: space-between;
   flex: none;
 }
 
@@ -1505,26 +1505,6 @@ button.copy.done {
 }
 
 .peek-wrap[hidden] {
-  display: none;
-}
-
-/* Le logo de weevboss dans la vue principale : il flotte par-dessus le contenu (fixed, sans place dans la mise en page),
-   en bas à gauche à portée du pouce, juste au-dessus du rail H24. Jamais en haut. Caché quand une page est ouverte
-   (elle a le sien) et pendant la saisie au clavier (il ne masque jamais le champ). */
-.main-voice {
-  position: fixed;
-  left: calc(var(--pad) - 6px);
-  bottom: calc(var(--rail) + var(--safe-b) + 10px);
-  z-index: 18;
-}
-
-.main-voice .voice-logo {
-  height: 52px;
-  min-height: 0;
-}
-
-html[data-page] .main-voice,
-html:has(.stack textarea:focus, .stack input:focus) .main-voice {
   display: none;
 }
 

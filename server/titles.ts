@@ -48,6 +48,15 @@ const clean = (s: string, max: number) => {
   return t.length > max ? `${t.slice(0, max - 1)}…` : t
 }
 
+/** Raccourci au mot entier (pas de phrase coupée en plein milieu) : une ligne de téléphone, ~40 caractères. */
+export const shortNow = (s: string, max = 40) => {
+  const t = s.replace(/\s+/g, ' ').replace(/[.。]\s*$/, '').trim()
+  if (t.length <= max) return t
+  const cut = t.slice(0, max + 1)
+  const sp = cut.lastIndexOf(' ')
+  return (sp > max / 2 ? cut.slice(0, sp) : t.slice(0, max)).replace(/[\s,;:·–-]+$/, '')
+}
+
 export async function llmTitles(items: TitleInput[], workdir: string): Promise<{ id: string; title: string; now: string }[]> {
   fs.mkdirSync(workdir, { recursive: true })
   const schemaFile = path.join(workdir, 'schema.json')
@@ -58,7 +67,7 @@ export async function llmTitles(items: TitleInput[], workdir: string): Promise<{
     '',
     'Pour chaque session, à partir de son début et de ses derniers échanges :',
     '- title : le THÈME de la session, ce sur quoi on bosse dedans, en français, 2 à 5 mots, très court, style note perso (ex. « UX de weevils », « code d’accès iPhone », « perf du jeu », « mails prospects »). Sans point final, sans guillemets, sans « session » ni « conversation », jamais le premier message mot pour mot. Un titre stable : si le thème général n’a pas changé, garde le même esprit.',
-    '- now : la dernière chose faite ou en cours, ≤ 7 mots, en français, au présent, sans sujet (ex. « corrige le détecteur d’écran », « déploie sur le VPS »).',
+    '- now : la dernière chose faite ou en cours, ≤ 5 mots et ≤ 40 caractères (elle doit tenir sur une ligne de téléphone), en français, au présent, sans sujet (ex. « corrige le détecteur d’écran », « déploie sur le VPS »).',
     'Si les derniers échanges partent sur un autre thème que le début, c’est le nouveau thème qui compte.',
     '',
     'Sessions :',
@@ -75,7 +84,7 @@ export async function llmTitles(items: TitleInput[], workdir: string): Promise<{
   })
   const raw = JSON.parse(fs.readFileSync(outFile, 'utf8')) as { items: { id: string; title: string; now: string }[] }
   fs.rmSync(outFile, { force: true })
-  return raw.items.filter((x) => x.title?.trim()).map((x) => ({ id: x.id, title: clean(x.title, 42), now: clean(x.now ?? '', 60) }))
+  return raw.items.filter((x) => x.title?.trim()).map((x) => ({ id: x.id, title: clean(x.title, 42), now: shortNow(x.now ?? '') }))
 }
 
 /** Faut-il (re)nommer cette session ? Un nouveau titre quand le fil a avancé, pas à chaque message. */

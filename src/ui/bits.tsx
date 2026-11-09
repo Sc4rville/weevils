@@ -79,14 +79,16 @@ export function SessionRow({ session }: { session: Session }) {
   const st = status[session.status]
   const waiting = session.status === 'needs_user'
   const ref = session.status === 'working' && session.workStartedAt ? session.workStartedAt : session.lastActivityAt
-  // À droite : ce que la session fait (question qui t'attend, sinon son activité), puis la durée.
-  const act = waiting && session.attention ? session.attention : (session.now ?? st.label)
+  // Un seul texte, en entier : la question qui t'attend, sinon l'activité en cours quand ça travaille, sinon le titre.
+  const act = waiting && session.attention ? session.attention : session.status === 'working' ? session.now : undefined
+  const text = act || session.title
   const when = dur(now - (session.status === 'done' ? session.lastActivityAt : ref))
   return (
     <button
       className={`row ${waiting ? 'tone' : ''} ${session.status === 'working' ? 'live' : ''}`}
       onClick={() => push({ kind: 'session', id: session.id })}
       aria-label={`${session.tool}, ${session.title}, ${st.label}${act ? ` : ${act}` : ''}, ${when}`}
+      title={act ? session.title : undefined}
     >
       <span className="in line" aria-hidden>
         <span className="st">
@@ -95,10 +97,8 @@ export function SessionRow({ session }: { session: Session }) {
         <span className="tool-ic">
           <ToolIcon tool={session.tool} />
         </span>
-        <span className="title">{session.title}</span>
-        <span className="act">
-          {act} · {when}
-        </span>
+        <span className="title wrap">{text}</span>
+        <span className="act">{when}</span>
       </span>
     </button>
   )

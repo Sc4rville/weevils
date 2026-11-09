@@ -151,3 +151,12 @@ describe('commandes de réglage', async () => {
     for (const c of ['/model opus; rm -rf', 'bonjour', '/clear\nrm', '/exit', '/model a b']) expect(() => checkCommand(c)).toThrow()
   })
 })
+
+describe('activité courte (« now »)', async () => {
+  const { shortNow } = await import('./titles.ts')
+  it('coupe au mot entier, jamais au milieu, et tient en 40 caractères', () => {
+    expect(shortNow('ajuste les boutons et les logos officiels de la liste des sessions')).toBe('ajuste les boutons et les logos')
+    expect(shortNow('déploie sur le VPS.')).toBe('déploie sur le VPS')
+    expect(shortNow('termine et pousse tout sur main, puis redémarre le daemon').length).toBeLessThanOrEqual(40)
+  })
+})

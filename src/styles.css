@@ -1013,20 +1013,27 @@ input:focus-visible {
 }
 
 
-.row .line .title {
-  flex: 1 1 38%;
+/* Le texte en entier : deux lignes plutôt qu'une coupure. */
+.row .line .title.wrap {
+  flex: 1 1 auto;
   min-width: 0;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: clip;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.25;
+  padding-block: 6px;
 }
 
 .row .act {
-  flex: 0 1 50%;
-  min-width: 0;
+  flex: none;
   text-align: right;
   font-size: 0.875rem;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  opacity: 0.92;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
 }
 
 .row.tone .act {

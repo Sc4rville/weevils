@@ -13,7 +13,7 @@ import { Push } from './push.ts'
 import type { CatalogEntry } from './classify.ts'
 import { familyOf, place } from './projects.ts'
 import { ORCH_PREFIX, TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
-import { llmTitles, needsTitle } from './titles.ts'
+import { llmTitles, needsTitle, shortNow } from './titles.ts'
 import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
 import type { WvSession } from './mux.ts'
@@ -356,7 +356,7 @@ export class Weevils {
       tool: t.tool,
       // Le titre choisi par Scarville dans l'outil prime ; sinon celui du renommeur (ce dont la session parle maintenant) ; sinon le début.
       title: t.customTitle ? titleOf(t) : (this.titles.get(t.id)?.title ?? titleOf(t)),
-      now: this.titles.get(t.id)?.now || undefined,
+      now: shortNow(this.titles.get(t.id)?.now ?? '') || undefined,
       status,
       attention,
       cwd: t.cwd,

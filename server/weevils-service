@@ -8,7 +8,8 @@
 #   weevils-service mode                      systemd or background
 set -euo pipefail
 
-CONFIG_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/weevils
+# Always ~/.config/weevils (not XDG_CONFIG_HOME): the server and the systemd unit read it there.
+CONFIG_DIR=$HOME/.config/weevils
 CONFIG_FILE=${WEEVILS_CONFIG:-$CONFIG_DIR/env}
 SERVICE_CONF=$CONFIG_DIR/service.conf
 RUN_DIR=$HOME/.local/share/weevils/run

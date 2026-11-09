@@ -6,11 +6,13 @@
 #   wv codex [msg]      codex
 #   wv ls               sessions wv en cours
 #   wv a [nom]          s'y rattacher (la plus récente par défaut)
-#   wv @<hôte> <repo> [...]  la même chose sur une autre machine, par ssh (~/projects/<repo>)
+#   wv @<hôte> <repo> [...]  la même chose sur une autre machine, par ssh (<premier dossier de WEEVILS_PROJECTS
+#                            là-bas>/<repo>, ~/projects par défaut)
 #   wv @<hôte> a | ls        s'y rattacher / lister là-bas
 #   wv main …                pareil sur la machine principale (machine secondaire installée avec --secondary)
 #
-# Sans demande de permission (comme d'habitude) ; WV_SAFE=1 wv … pour garder les confirmations.
+# Sans demande de permission (comme d'habitude) ; WV_SAFE=1 wv … (ou WEEVILS_SAFE=1 dans ~/.config/weevils/env)
+# pour garder les confirmations.
 set -euo pipefail
 
 # Langue des messages : celle de l'app (prefs.json de weevilsd), sinon WEEVILS_LANG (env ou ~/.config/weevils/env),
@@ -34,6 +36,8 @@ else
   m_nomain="no main machine (install with --secondary <host>, or use wv @<host>)"
 fi
 
+# WV_SAFE gagne ; sinon WEEVILS_SAFE du fichier de config, comme weevilsd : les deux interrupteurs disent la même chose.
+WV_SAFE=${WV_SAFE:-$(sed -n 's/^[[:space:]]*WEEVILS_SAFE[[:space:]]*=[[:space:]]*["'\'']\{0,1\}\([0-9]*\).*/\1/p' "${WEEVILS_CONFIG:-$HOME/.config/weevils/env}" 2>/dev/null | head -1)}
 if [ "${WV_SAFE:-}" = 1 ]; then claude_flags=(); codex_flags=()
 else claude_flags=(--dangerously-skip-permissions); codex_flags=(--dangerously-bypass-approvals-and-sandbox); fi
 
@@ -42,7 +46,6 @@ case "${1:-}" in
   @?*) host=${1#@} ;;
   main) host=$(sed -n "s/^WEEVILS_MAIN_HOST=//p" ~/.config/weevils/service.conf 2>/dev/null | tr -d "'\"")
     [ -n "$host" ] || { echo "$m_nomain" >&2; exit 1; } ;;
-  vps) host=vps ;; # ancien nom, gardé
 esac
 if [ -n "$host" ]; then
   shift
@@ -50,7 +53,9 @@ if [ -n "$host" ]; then
     ''|a|attach|ls) exec ssh -t "$host" "bash -lc 'wv ${1:-a} ${2:-}'" ;;
   esac
   repo=$1; shift
-  exec ssh -t "$host" "cd ~/projects/$(printf '%q' "$repo") && bash -lc $(printf '%q' "wv $(printf '%q ' "$@")")"
+  # Le dépôt est cherché dans le premier dossier de WEEVILS_PROJECTS de la machine distante (~/projects sinon).
+  roots='r=$(sed -n "s/^[[:space:]]*WEEVILS_PROJECTS[[:space:]]*=[[:space:]]*//p" ~/.config/weevils/env 2>/dev/null | head -1 | tr -d "\"'"'"'" | cut -d: -f1)'
+  exec ssh -t "$host" "$roots; cd \"\${r:-\$HOME/projects}\"/$(printf '%q' "$repo") && bash -lc $(printf '%q' "wv $(printf '%q ' "$@")")"
 fi
 
 tool=claude

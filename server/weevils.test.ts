@@ -247,28 +247,3 @@ describe('confirmation « Switch model? »', async () => {
     expect(dialogOnScreen(screen)).toBe('Switch model?')
   })
 })
-
-describe('routes repos (daemon local)', () => {
-  // Contre le weevilsd qui tourne (127.0.0.1:4179) : sauté s'il n'est pas lancé.
-  const base = 'http://127.0.0.1:4179'
-  let tok = ''
-  const up = async () => {
-    const fs = await import('node:fs')
-    const os = await import('node:os')
-    try {
-      tok = fs.readFileSync(`${os.homedir()}/.config/weevils/secret`, 'utf8').trim()
-    } catch {
-      return false
-    }
-    return await fetch(`${base}/api/me`).then(() => true).catch(() => false)
-  }
-  it('GET /api/github/repos renvoie la liste, et un repo non cloné se lit sur GitHub', async () => {
-    if (!(await up())) return console.warn('weevilsd absent : test sauté')
-    const h = { authorization: `Bearer ${tok}` }
-    const r = (await (await fetch(`${base}/api/github/repos`, { headers: h })).json()) as any
-    expect(r.error).toBeUndefined()
-    expect(Array.isArray(r.repos) && r.repos.length > 0).toBe(true)
-    const files = (await (await fetch(`${base}/api/repos/${r.repos[0].name}/files`, { headers: h })).json()) as any
-    expect(Array.isArray(files.files)).toBe(true)
-  }, 30_000)
-})

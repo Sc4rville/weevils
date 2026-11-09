@@ -28,5 +28,7 @@ export default defineConfig({
     proxy: { '/api': { target: 'http://127.0.0.1:4179', changeOrigin: false } },
   },
   // Tests en mode développement de React (act), même si le shell a NODE_ENV=production.
-  test: { environment: 'node', env: { NODE_ENV: 'test' } },
+  // setup-env : HOME jetable et WEEVILS_* fixés avant tout import, jamais la vraie config du développeur.
+  // test/live (contre un vrai weevilsd) est trouvé comme les autres mais sauté sans WEEVILS_LIVE_TEST=1.
+  test: { environment: 'node', env: { NODE_ENV: 'test' }, setupFiles: ['test/setup-env.ts'] },
 })

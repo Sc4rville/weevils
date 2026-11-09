@@ -10,8 +10,10 @@ import { ReposPage } from './repos'
 import { CalmConv, CalmGrid } from './calm'
 import { markSeen } from './seen'
 import { Shell } from './shell'
-import { ago, dur, durLong, plural, status } from './format'
+import { ago, dur, durLong, status } from './format'
 import { Icon } from './icons'
+import { useT } from '../i18n'
+import M from '../i18n/pages'
 
 /** Garde la fin du fil visible quand un message arrive. */
 function useStickToBottom(count: number) {
@@ -54,10 +56,11 @@ export function PageView({ page }: { page: Page }) {
   }
 }
 
-function Missing({ text = 'introuvable' }: { text?: string }) {
+function Missing({ text }: { text?: string }) {
+  const t = useT(M)
   return (
-    <Shell slot="agent" kicker="weevils" title="introuvable">
-      <div className="in meta empty">{text}</div>
+    <Shell slot="agent" kicker="weevils" title={t.notFound}>
+      <div className="in meta empty">{text ?? t.notFound}</div>
     </Shell>
   )
 }
@@ -75,22 +78,23 @@ function ErrorBand({ text }: { text: string }) {
 // ---------------------------------------------------------------------------
 // Session : le fil, l'écran du terminal, les touches.
 
-const KEYS: [string, ReactNode, string][] = [
-  ['1', '1', 'choix 1'],
-  ['2', '2', 'choix 2'],
-  ['3', '3', 'choix 3'],
-  ['up', <Icon key="u" name="arrow" />, 'flèche haut'],
-  ['down', <Icon key="d" name="arrow" dir="down" />, 'flèche bas'],
-  ['enter', <Icon key="e" name="enter" />, 'entrée'],
-  ['esc', 'esc', 'échap'],
-  ['tab', 'tab', 'tabulation'],
+const KEYS: [string, ReactNode][] = [
+  ['1', '1'],
+  ['2', '2'],
+  ['3', '3'],
+  ['up', <Icon key="u" name="arrow" />],
+  ['down', <Icon key="d" name="arrow" dir="down" />],
+  ['enter', <Icon key="e" name="enter" />],
+  ['esc', 'esc'],
+  ['tab', 'tab'],
 ]
 
 function Keys({ id, onError }: { id: string; onError: (m: string) => void }) {
+  const t = useT(M)
   return (
     <div className="in keys">
-      {KEYS.map(([k, label, aria]) => (
-        <button key={k} className="key" aria-label={aria} onClick={() => void api.key(id, k).catch((e) => onError((e as Error).message))}>
+      {KEYS.map(([k, label]) => (
+        <button key={k} className="key" aria-label={t.keyAria(k)} onClick={() => void api.key(id, k).catch((e) => onError((e as Error).message))}>
           {label}
         </button>
       ))}
@@ -100,6 +104,7 @@ function Keys({ id, onError }: { id: string; onError: (m: string) => void }) {
 
 function SessionPage({ id }: { id: string }) {
   const { snap, now, replace, colors } = useApp()
+  const t = useT(M)
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [missing, setMissing] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -169,7 +174,7 @@ function SessionPage({ id }: { id: string }) {
 
   const send = async (text: string, files: Attachment[] = []) => {
     setErr(null)
-    const shown = files.length ? `${text ? `${text} ` : ''}(${files.length > 1 ? `${files.length} photos` : 'photo'})` : text
+    const shown = files.length ? `${text ? `${text} ` : ''}(${t.photos(files.length)})` : text
     const tmp: Message = { id: `pending-${Date.now()}`, role: 'user', text: shown, at: Date.now() }
     setPending((p) => [...p, tmp])
     try {
@@ -196,29 +201,29 @@ function SessionPage({ id }: { id: string }) {
             </>
           )}
           {s.tool}{' '}
-          <button className="link inline" onClick={() => setShowSettings(true)} aria-label="changer le modèle ou l’effort" aria-controls="session-settings">
-            {[shortModel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || 'modèle'}
+          <button className="link inline" onClick={() => setShowSettings(true)} aria-label={t.changeModel} aria-controls="session-settings">
+            {[shortModel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
           </button>
           {' '}· <StatusChar s={s.status} /> {st.label}
-          {s.queued > 0 && <span className="strong"> · {s.queued} en attente</span>}
-          {s.status === 'working' && s.workStartedAt != null ? <> depuis {durLong(now - s.workStartedAt)}</> : <> · {ago(now - s.lastActivityAt)}</>}
+          {s.queued > 0 && <span className="strong"> · {t.queued(s.queued)}</span>}
+          {s.status === 'working' && s.workStartedAt != null ? <>{t.since(durLong(now - s.workStartedAt))}</> : <> · {ago(now - s.lastActivityAt)}</>}
           {' · '}
           {s.machineId}
           {' · '}
           <button className="link" onClick={() => setPreview({ open: !preview.open })} aria-pressed={!!preview.open}>
-            {preview.open ? 'fermer le navigateur' : 'navigateur'}
+            {preview.open ? t.closeBrowser : t.browser}
           </button>
           {' · '}
           <button className="link" onClick={() => setShowSettings((v) => !v)} aria-pressed={showSettings} aria-controls="session-settings">
-            réglages
+            {t.settings}
           </button>
         </>
       }
       side={preview.open ? <Preview url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false })} /> : undefined}
       foot={
         <Composer
-          placeholder={s.controllable ? (s.live ? `écris à ${s.tool}` : `reprendre avec ${s.tool}`) : 'lecture seule'}
-          label={`message à la session ${s.title}`}
+          placeholder={s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly}
+          label={t.composerLabel(s.title)}
           onSend={send}
           onAttach={send}
           voice
@@ -230,8 +235,8 @@ function SessionPage({ id }: { id: string }) {
 
       {s.subagents.length > 0 && (
         <div className="band tone">
-          <Line ch="&" go={showSubs ? '−' : '+'} onClick={() => setShowSubs((v) => !v)} label={`sous-agents : ${active} actifs`}>
-            <span className="strong">sous-agents</span> · {active} {active > 1 ? 'actifs' : 'actif'} · {s.subagents.length - active} terminés
+          <Line ch="&" go={showSubs ? '−' : '+'} onClick={() => setShowSubs((v) => !v)} label={t.subagentsLabel(active)}>
+            <span className="strong">{t.subagents}</span> · {t.active(active)} · {t.finished(s.subagents.length - active)}
           </Line>
           <Collapse open={showSubs}>
             {s.subagents.map((a) => (
@@ -244,7 +249,7 @@ function SessionPage({ id }: { id: string }) {
                     <span className="strong">{a.activity}</span>
                   </div>
                   <div className="meta">
-                    {a.label} · {a.status === 'working' ? 'travaille' : 'terminé'} · {dur((a.endedAt ?? now) - a.startedAt)}
+                    {a.label} · {a.status === 'working' ? t.working : t.done} · {dur((a.endedAt ?? now) - a.startedAt)}
                   </div>
                 </div>
               </div>
@@ -259,8 +264,8 @@ function SessionPage({ id }: { id: string }) {
       {s.status === 'needs_user' && (
         <div className="msg band tone ask">
           <div className="in">
-            <span className="who">! {s.tool} te demande</span>
-            <div className="text">{s.attention ?? 'la session attend ta réponse'}</div>
+            <span className="who">! {t.asks(s.tool)}</span>
+            <div className="text">{s.attention ?? t.waitingForYou}</div>
             {s.hasScreen && <Keys id={s.id} onError={setErr} />}
           </div>
         </div>
@@ -283,11 +288,11 @@ function SessionPage({ id }: { id: string }) {
 
       {s.hasScreen && (
         <div className="band tone">
-          <Line ch=">_" go={screenOpen ? '−' : '+'} onClick={() => setShowScreen(!screenOpen)} label={screenOpen ? 'masquer l’écran du terminal' : 'voir l’écran du terminal'}>
-            <span className="meta">écran du terminal</span>
+          <Line ch=">_" go={screenOpen ? '−' : '+'} onClick={() => setShowScreen(!screenOpen)} label={screenOpen ? t.hideScreen : t.showScreen}>
+            <span className="meta">{t.terminalScreen}</span>
           </Line>
           <Collapse open={screenOpen}>
-            <pre className="screen">{screenText ?? 'lecture de l’écran…'}</pre>
+            <pre className="screen">{screenText ?? t.readingScreen}</pre>
             <Keys id={s.id} onError={setErr} />
             <div style={{ height: 10 }} />
           </Collapse>
@@ -317,6 +322,7 @@ export const prefetchRepo = (repo: string, machine: string) => void listFiles(re
 
 function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: string; dir?: string }) {
   const { snap, push, colors } = useApp()
+  const t = useT(M)
   const project = snap.projects.find((p) => p.id === projectId) ?? (repo ? { id: projectId, name: repo, kind: 'repo' as const, repos: [repo], where: {}, lastActivityAt: 0 } : undefined)
   const theRepo = repo ?? (project?.repos.length === 1 ? project.repos[0] : undefined)
   const machine = (theRepo && project?.where[theRepo]) || 'vps'
@@ -353,7 +359,7 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
 
   if (!theRepo) {
     return (
-      <Shell slot={slot} kicker={project.name} title="/ repos" meta={plural(project.repos.length, 'repo', 'repos')}>
+      <Shell slot={slot} kicker={project.name} title="/ repos" meta={t.repos(project.repos.length)}>
         {project.repos.map((r) => (
           <Line key={r} ch="/" meta={project.where[r]} onClick={() => push({ kind: 'files', projectId, repo: r })}>
             {r}
@@ -368,11 +374,11 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
       slot={slot}
       kicker={dir ? `${theRepo}/${dir.split('/').slice(0, -1).join('/')}` : project.name}
       title={dir ? `/${dir.split('/').pop()}` : `/ ${theRepo}`}
-      meta={`${machine} · ${files ? plural(files.length, 'fichier', 'fichiers') : 'lecture du repo…'}`}
+      meta={`${machine} · ${files ? t.files(files.length) : t.readingRepo}`}
     >
       {err && <ErrorBand text={err} />}
       {entries?.folders.map(([name, count]) => (
-        <Line key={name} ch="/" meta={plural(count, 'fichier', 'fichiers')} onClick={() => push({ kind: 'files', projectId, repo: theRepo, dir: dir ? `${dir}/${name}` : name })}>
+        <Line key={name} ch="/" meta={t.files(count)} onClick={() => push({ kind: 'files', projectId, repo: theRepo, dir: dir ? `${dir}/${name}` : name })}>
           <span className="strong">{name}/</span>
         </Line>
       ))}
@@ -384,15 +390,14 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
           </Line>
         )
       })}
-      {entries && entries.folders.length + entries.leaves.length === 0 && <div className="in meta empty">Dossier vide.</div>}
+      {entries && entries.folders.length + entries.leaves.length === 0 && <div className="in meta empty">{t.emptyDir}</div>}
     </Shell>
   )
 }
 
-const kb = (n: number) => (n < 1024 ? `${n} o` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} ko` : `${(n / 1024 / 1024).toFixed(1)} Mo`)
-
 function FilePage({ projectId, repo, path }: { projectId: string; repo: string; path: string }) {
   const { colors, snap } = useApp()
+  const t = useT(M)
   const machine = snap.projects.find((p) => p.id === projectId)?.where[repo] ?? 'vps'
   const [file, setFile] = useState<FileContent | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -411,10 +416,10 @@ function FilePage({ projectId, repo, path }: { projectId: string; repo: string; 
       slot={colors[projectId] ?? 'agent'}
       kicker={`${repo}/${path.split('/').slice(0, -1).join('/')}`}
       title={path.split('/').pop()}
-      meta={file ? `${kb(file.size)}${file.truncated ? ' · tronqué' : ''}` : 'lecture…'}
+      meta={file ? `${t.size(file.size)}${file.truncated ? t.truncated : ''}` : t.reading}
     >
       {err && <ErrorBand text={err} />}
-      {file?.binary && <div className="in meta empty">binaire</div>}
+      {file?.binary && <div className="in meta empty">{t.binary}</div>}
       {file && !file.binary && <pre className={`in ${prose ? 'code' : 'code mono'}`}>{file.content}</pre>}
     </Shell>
   )
@@ -424,15 +429,16 @@ function FilePage({ projectId, repo, path }: { projectId: string; repo: string; 
 
 function MachinePage({ projectId }: { projectId: string }) {
   const { snap, colors } = useApp()
+  const t = useT(M)
   return (
-    <Shell slot={colors[projectId] ?? 'agent'} kicker={snap.projects.find((p) => p.id === projectId)?.name ?? 'weevils'} title="machines" meta={plural(snap.machines.length, 'machine', 'machines')}>
+    <Shell slot={colors[projectId] ?? 'agent'} kicker={snap.projects.find((p) => p.id === projectId)?.name ?? 'weevils'} title={t.machinesTitle} meta={t.machines(snap.machines.length)}>
       {snap.machines.map((machine) => {
         const live = snap.sessions.filter((s) => s.machineId === machine.id && s.status !== 'done')
         return (
           <div key={machine.id}>
             {/* Rien d'écrit à la main : le nom, l'état, le nombre de sessions, puis les sessions au format de partout. */}
             <div className="in label">
-              {machine.name} · {machine.online === false ? 'hors ligne' : 'en ligne'} · {plural(live.length, 'session', 'sessions')}
+              {machine.name} · {machine.online === false ? t.offline : t.online} · {t.sessions(live.length)}
             </div>
             {live.map((s) => (
               <SessionRow key={s.id} session={s} />
@@ -446,11 +452,12 @@ function MachinePage({ projectId }: { projectId: string }) {
 
 function NewSessionPage({ projectId }: { projectId: string }) {
   const { snap, replace, colors } = useApp()
+  const t = useT(M)
   const any = projectId === '__any'
   const [machine, setMachine] = useState(snap.machines[0]?.id ?? 'vps')
   const [allRepos, setAllRepos] = useState<string[] | null>(null)
   const project = any
-    ? { id: '__any', name: 'nouvelle session', kind: 'repo' as const, repos: allRepos ?? [], where: Object.fromEntries((allRepos ?? []).map((r) => [r, machine])), lastActivityAt: 0 }
+    ? { id: '__any', name: t.newSession, kind: 'repo' as const, repos: allRepos ?? [], where: Object.fromEntries((allRepos ?? []).map((r) => [r, machine])), lastActivityAt: 0 }
     : snap.projects.find((p) => p.id === projectId)
   const [tool, setTool] = useState<Tool>('claude')
   const [repo, setRepo] = useState<string | undefined>(any ? undefined : project?.repos[0])
@@ -468,7 +475,7 @@ function NewSessionPage({ projectId }: { projectId: string }) {
   const create = async (text: string) => {
     if (created.current) return
     if (any && !repo) {
-      setErr('choisis d’abord un repo')
+      setErr(t.pickRepoFirst)
       throw new Error('repo')
     }
     created.current = true
@@ -486,19 +493,19 @@ function NewSessionPage({ projectId }: { projectId: string }) {
     <Shell
       slot={colors[projectId] ?? 'agent'}
       kicker={project.name}
-      title="+ nouvelle session"
-      foot={<Composer placeholder="premier message" label="premier message de la session" onSend={create} />}
+      title={t.newSessionTitle}
+      foot={<Composer placeholder={t.firstMessage} label={t.firstMessageLabel} onSend={create} />}
     >
       {err && <ErrorBand text={err} />}
-      <div className="in label">outil</div>
-      {(['claude', 'codex'] as Tool[]).map((t) => (
-        <Line key={t} className={tool === t ? 'invert' : ''} ch={tool === t ? '>' : ' '} go={null} onClick={() => setTool(t)} label={`${t}${tool === t ? ', choisi' : ''}`}>
-          {t}
+      <div className="in label">{t.tool}</div>
+      {(['claude', 'codex'] as Tool[]).map((x) => (
+        <Line key={x} className={tool === x ? 'invert' : ''} ch={tool === x ? '>' : ' '} go={null} onClick={() => setTool(x)} label={`${x}${tool === x ? t.chosen : ''}`}>
+          {x}
         </Line>
       ))}
       {any && snap.machines.length > 1 && (
         <>
-          <div className="in label">machine</div>
+          <div className="in label">{t.machine}</div>
           {snap.machines.map((m) => (
             <Line
               key={m.id}
@@ -506,7 +513,7 @@ function NewSessionPage({ projectId }: { projectId: string }) {
               ch={machine === m.id ? '>' : '@'}
               go={null}
               disabled={m.online === false}
-              meta={m.online === false ? 'hors ligne' : undefined}
+              meta={m.online === false ? t.offline : undefined}
               onClick={() => {
                 setMachine(m.id)
                 setRepo(undefined)
@@ -519,7 +526,7 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       )}
       {(project.repos.length > 1 || any) && (
         <>
-          <div className="in label">repo</div>
+          <div className="in label">{t.repo}</div>
           {any && !allRepos && <div className="in meta empty">…</div>}
           {project.repos.map((r) => (
             <Line key={r} className={repo === r ? 'invert' : ''} ch={repo === r ? '>' : '/'} go={null} meta={any ? undefined : project.where[r]} onClick={() => setRepo(r)}>

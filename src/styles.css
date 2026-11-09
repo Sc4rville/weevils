@@ -461,6 +461,11 @@ button:disabled {
   flex-direction: column;
 }
 
+/* Les messages ne doivent jamais se tasser : un enfant avec overflow hidden a un min-height de 0 dans une colonne flex. */
+.page-body > * {
+  flex: none;
+}
+
 .page-body > .fill {
   flex: 1;
 }

@@ -98,3 +98,12 @@ export function step(text: string): string {
   const d = detail.replace(/\/home\/[a-z0-9_-]+\//g, '~/')
   return d ? `${verb} · ${d}` : verb
 }
+
+/** Ce que Scarville a écrit, sans les balises techniques du collage ni les marqueurs d'images. */
+export function userText(text: string): string {
+  return text
+    .replace(/<\/?pasted_content[^>]*>/g, '')
+    .replace(/\[Image #\d+\]/g, '(image)')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}

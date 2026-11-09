@@ -2,7 +2,7 @@ import { AnimatePresence, motion, type Transition } from 'motion/react'
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import type { Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
-import { dur, plain, segments, status, step } from './format'
+import { dur, plain, segments, status, step, userText } from './format'
 
 /** Ressort commun : léger dépassement, pour que les bandes aient de l'inertie. */
 export const spring: Transition = { type: 'spring', stiffness: 420, damping: 32, mass: 0.9 }
@@ -271,7 +271,7 @@ export function Messages({ messages, author, working = false }: { messages: Mess
             <div className={`msg band ${g.m.role === 'user' ? 'tone' : ''}`}>
               <div className="in">
                 <span className="who">{g.m.role === 'user' ? 'toi' : author}</span>
-                {g.m.role === 'user' ? <div className="text">{g.m.text}</div> : <Prose text={g.m.text} />}
+                {g.m.role === 'user' ? <div className="text">{userText(g.m.text)}</div> : <Prose text={g.m.text} />}
               </div>
             </div>
           </Appear>

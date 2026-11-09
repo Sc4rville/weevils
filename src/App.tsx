@@ -9,7 +9,6 @@ import { Login } from './ui/login'
 import { Onboarding } from './ui/onboarding'
 import { Tips } from './ui/tips'
 import { HintBubble, loadHints } from './ui/hints'
-import { InfraCorner } from './ui/infra'
 import { PageView } from './ui/pages'
 import { usePinch } from './ui/calm'
 import { adoptUnknown } from './ui/seen'
@@ -253,7 +252,6 @@ export default function App() {
           <H24Rail />
         </div>
         {/* Le coin infrastructure flotte en haut à droite du fil, sous la barre d'état, sans prendre de place. */}
-        <InfraCorner hidden={stack.length > 0} />
         <AnimatePresence>
           {stack.map((p, i) => (
             <PageView key={`${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : ''}`} page={p} />

@@ -15,7 +15,7 @@ import { isUnread, useSeen } from './seen'
 import { Appear, Collapse, Composer, INSTANT, Line, Messages, SessionRow, Working, authorTone, spring, useAuthors } from './bits'
 import B from '../i18n/bits'
 import { ago, plain, userText } from './format'
-import { FilledIcon, Icon } from './icons'
+import { Icon } from './icons'
 import { PrefLines } from './prefs'
 import { tapHint } from './hints'
 
@@ -137,11 +137,10 @@ function Peek({ onOpen }: { onOpen: () => void }) {
 
 export function AgentBand() {
   const t = useT(M)
-  const td = useT(D)
   const { snap, expanded, setExpanded } = useApp()
   const open = expanded === 'agent'
   // Devil mode : mémorisé sur l'appareil ; les messages vont à l'autre modèle, la bande passe en orange.
-  const [devil, setDevilState] = useState(() => {
+  const [devil] = useState(() => {
     try {
       return localStorage.getItem('weevils-devil') === '1'
     } catch {
@@ -149,15 +148,6 @@ export function AgentBand() {
     }
   })
   const devilOn = devil
-  const toggleDevil = () => {
-    const next = !devil
-    setDevilState(next)
-    try {
-      localStorage.setItem('weevils-devil', next ? '1' : '0')
-    } catch {
-      /* stockage indisponible */
-    }
-  }
   const body = useRef<HTMLDivElement>(null)
   const form = useRef<HTMLFormElement>(null)
   const swipe = useRef<{ y: number; top: number } | null>(null)
@@ -198,9 +188,6 @@ export function AgentBand() {
             replyText={th.a.replyKey ? th.a.shown : mainReply?.text}
             working={snap.mainWorking || th.a.waiting}
           />
-          <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={(e) => tapHint('devil', e.currentTarget, snap.devil?.enabled === false ? 'devilOff' : 'devil') || toggleDevil()} aria-pressed={!!devilOn} aria-label={devilOn ? td.on : td.off}>
-            <FilledIcon name="devil" />
-          </button>
         </div>
         {/* L'aperçu et le fil restent rendus : ouvrir ou fermer ne fait que les montrer ou les cacher (immédiat). */}
         <div className="peek-wrap" hidden={open}>

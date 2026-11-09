@@ -24,6 +24,18 @@ jq --arg cmd "$HOME/.local/bin/weevils-hook" '
     else .hooks[$e] = ((.hooks[$e] // []) + [{"hooks":[{"type":"command","command":$cmd}]}]) end)
 ' "$settings" > "$tmp" && mv "$tmp" "$settings"
 
+# Zéro interruption dans les sessions : pas de mise à jour auto ni de conseils (variables lues par Claude Code),
+# et un hook dont le script n'existe plus est retiré (il faisait échouer chaque Stop).
+tmp=$(mktemp)
+jq '.env //= {} | .env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1" | .env.DISABLE_AUTOUPDATER = "1" | .env.DISABLE_TIPS = "1"' "$settings" > "$tmp" && mv "$tmp" "$settings"
+# Les scripts de hooks qui n'existent pas sur le disque sont retirés.
+for f in $(jq -r '.hooks[][]?.hooks[]?.command // empty' "$settings" | awk '{print $1}' | sort -u); do
+  case "$f" in /*) [ -x "$f" ] || { tmp=$(mktemp); jq --arg f "$f" '.hooks |= with_entries(.value |= map(.hooks |= map(select((.command // "") | split(" ")[0] != $f)) | select(.hooks | length > 0)))' "$settings" > "$tmp" && mv "$tmp" "$settings"; echo "hook retiré (script absent) : $f"; } ;; esac
+done
+# Autocompact activé d'office : Claude Code ne propose plus de l'activer en plein travail.
+cfg=~/.claude.json
+[ -f "$cfg" ] && { tmp=$(mktemp); jq '.autoCompactEnabled = true' "$cfg" > "$tmp" && mv "$tmp" "$cfg"; }
+
 if [ "$role" = pc ]; then
   cat > "$units/weevilsd.service" <<EOF
 [Unit]

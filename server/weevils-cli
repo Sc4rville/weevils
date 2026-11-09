@@ -55,9 +55,11 @@ for m in msgs[-n:]:
   send)
     id=$(resolve "${2:?id de session}")
     text=${3:?message}
-    "$py" -c 'import json,sys; print(json.dumps({"text":sys.argv[1],"from":sys.argv[2]}))' "$text" "$from" \
-      | curl -sf -m 20 -H 'content-type: application/json' --data-binary @- "$base/api/sessions/$id/send" >/dev/null
-    echo "envoyé à ${id:0:8}" ;;
+    out=$("$py" -c 'import json,sys; print(json.dumps({"text":sys.argv[1],"from":sys.argv[2]}))' "$text" "$from" \
+      | curl -s -m 40 -w '\n%{http_code}' -H 'content-type: application/json' --data-binary @- "$base/api/sessions/$id/send")
+    code=${out##*$'\n'}
+    if [ "$code" = 200 ]; then echo "reçu par ${id:0:8}"
+    else echo "NON reçu par ${id:0:8} : $(printf '%s' "${out%$'\n'*}" | "$py" -c 'import json,sys; print(json.load(sys.stdin).get("error","erreur"))' 2>/dev/null || echo "erreur $code")" >&2; exit 1; fi ;;
   new)
     project=${2:?projet}
     text=${3:?premier message}

@@ -49,9 +49,21 @@ export async function listWv(): Promise<WvSession[]> {
     })
 }
 
+/** Rien ne doit interrompre une session pilotée : pas de mise à jour auto, pas de télémétrie ni de conseils, pas de dialogue connu. */
+export const QUIET_ENV: Record<string, string> = {
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+  DISABLE_AUTOUPDATER: '1',
+  DISABLE_BUG_COMMAND: '1',
+  DISABLE_ERROR_REPORTING: '1',
+  DISABLE_TELEMETRY: '1',
+  DISABLE_COST_WARNINGS: '1',
+  DISABLE_TIPS: '1',
+}
+
 export async function spawnWv(name: string, cwd: string, tool: Tool, title: string, command: string[], sessionId?: string) {
   // Plusieurs arguments : tmux lance la commande directement, sans shell (pas d'injection possible).
-  await tmux(['new-session', '-d', '-s', name, '-x', '120', '-y', '40', '-c', cwd, ...command], cwd)
+  const env = Object.entries(QUIET_ENV).flatMap(([k, v]) => ['-e', `${k}=${v}`])
+  await tmux(['new-session', '-d', '-s', name, '-x', '120', '-y', '40', '-c', cwd, ...env, ...command], cwd)
   await setOpt(name, '@wv_tool', tool)
   await setOpt(name, '@wv_title', title)
   await setOpt(name, '@wv_cwd', cwd)
@@ -119,3 +131,31 @@ export function attentionFromScreen(text: string): string | undefined {
   const line = lines.slice(from, at).find((l) => !skip(l) && l.length > 12)
   return (line ?? 'un choix t’attend').slice(0, 180)
 }
+
+/**
+ * Dialogue ou menu qui bloque l'écran, même sans pied de dialogue classique : un menu avec un curseur ❯ sur une
+ * option et une touche indiquée (esc, enter, ↑/↓, y/n) dans les dernières lignes, ou une question « [y/n] » en fin de ligne.
+ * Sert à repérer qu'une session est coincée (autocompact proposé, mise à jour, choix…), pas seulement les permissions.
+ */
+export function dialogOnScreen(text: string): string | undefined {
+  const strict = attentionFromScreen(text)
+  if (strict) return strict
+  const lines = text
+    .split('\n')
+    .slice(-18)
+    .map((l) => l.replace(/[│╭╮╰╯─┃━]/g, '').trim())
+  const yn = lines.slice(-6).find((l) => /[\[(]\s*y(es)?\s*\/\s*n(o)?\s*[\])]\s*:?\s*$/i.test(l))
+  if (yn) return yn.slice(0, 180)
+  const cursor = lines.findIndex((l) => /^[❯›]\s*\S/.test(l))
+  if (cursor < 0) return undefined
+  const keys = /\besc\b|escape|\benter\b|↑|↓|\btab\b|to (select|confirm|cancel|continue|dismiss|skip)/i
+  if (!lines.slice(Math.max(0, cursor - 8)).some((l) => keys.test(l))) return undefined
+  // Le champ de saisie de Claude Code commence aussi par ❯ : il faut au moins une autre option ou une question au-dessus.
+  const others = lines.filter((l, i) => i !== cursor && /^(\d+[.)]\s+\S|[○•]\s+\S|\s*(yes|no)\b)/i.test(l)).length
+  const question = lines.slice(Math.max(0, cursor - 8), cursor).find((l) => /\?\s*$|\b(update|compact|would you|do you|choose|select|enable|continue)\b/i.test(l))
+  if (!others && !question) return undefined
+  return (question ?? lines[cursor]).slice(0, 180)
+}
+
+/** Ce qui est écrit à l'écran, aplati, pour y retrouver un message qu'on vient d'envoyer. */
+export const flatScreen = (text: string) => text.replace(/[│╭╮╰╯─┃━>❯›]/g, ' ').replace(/\s+/g, ' ').toLowerCase()

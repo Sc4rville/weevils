@@ -160,3 +160,20 @@ describe('activité courte (« now »)', async () => {
     expect(shortNow('termine et pousse tout sur main, puis redémarre le daemon').length).toBeLessThanOrEqual(40)
   })
 })
+
+describe('écran bloqué par un dialogue (dialogOnScreen)', async () => {
+  const { dialogOnScreen } = await import('./mux.ts')
+  it('menu avec curseur ❯ et touches indiquées (proposition d’autocompact, mise à jour…)', () => {
+    const screen = ['', '  Your context is at 400k tokens. Enable auto-compact?', '', '  ❯ 1. Yes, enable auto-compact', '    2. Not now', '', '  Enter to select · Esc to dismiss'].join('\n')
+    expect(dialogOnScreen(screen)).toMatch(/auto-compact/)
+    const update = ['  A new version is available. Update now?', '  ❯ Yes', '    No', '  esc to skip'].join('\n')
+    expect(dialogOnScreen(update)).toMatch(/Update now/)
+  })
+  it('question [y/n] en fin de ligne', () => {
+    expect(dialogOnScreen('Compacting conversation…\nContinue? [y/n]: ')).toMatch(/Continue/)
+  })
+  it('champ de saisie normal de Claude Code (❯ seul) : rien', () => {
+    expect(dialogOnScreen('● Terminé.\n\n❯ \n  ? for shortcuts')).toBeUndefined()
+    expect(dialogOnScreen('› Ask Codex to do anything\n  ← for agents')).toBeUndefined()
+  })
+})

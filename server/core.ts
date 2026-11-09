@@ -17,7 +17,7 @@ import { llmTitles, needsTitle, shortNow } from './titles.ts'
 import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
 import type { WvSession } from './mux.ts'
-import { attentionFromScreen, capture, listWv, sendKey, sendText, setOpt, spawnWv } from './mux.ts'
+import { capture, dialogOnScreen, flatScreen, listWv, sendKey, sendText, setOpt, spawnWv } from './mux.ts'
 
 interface HookState {
   event: string
@@ -39,6 +39,7 @@ interface Persisted {
 }
 
 const STATE_FILE = path.join(DATA_DIR, 'state.json')
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 /** Comme Scarville les lance d'habitude : sans demande de permission. WEEVILS_SAFE=1 pour revenir aux confirmations. */
 const SAFE = process.env.WEEVILS_SAFE === '1'
@@ -263,7 +264,7 @@ export class Weevils {
       const prev = this.panes.find((x) => x.name === p.name)
       let screenAttention = prev?.screenAttention
       try {
-        screenAttention = attentionFromScreen(await capture(p.name))
+        screenAttention = dialogOnScreen(await capture(p.name))
       } catch {
         /* écran illisible un instant */
       }
@@ -727,7 +728,7 @@ export class Weevils {
     if (!text.trim()) throw new Error('message vide')
     const pane = this.paneFor(real)
     if (pane) {
-      await sendText(pane.name, text)
+      await this.deliver(pane.name, real, text)
       return { id: real }
     }
     if (!s.controllable) {
@@ -841,6 +842,7 @@ export class Weevils {
     if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/command`, { command })
     const pane = this.paneFor(this.resolveId(id))
     if (!pane) throw new Error('réglable seulement quand la session tourne dans une pane weevils (wv)')
+    await this.clearDialog(pane.name)
     await sendText(pane.name, checkCommand(command))
     return { ok: true }
   }
@@ -849,9 +851,64 @@ export class Weevils {
   async commandMain(command: string): Promise<{ ok: true }> {
     const pane = this.orchestratorPane()
     if (!pane) throw new Error('l’orchestrateur ne tourne pas : envoie-lui d’abord un message')
+    await this.clearDialog(pane.name)
     await sendText(pane.name, checkCommand(command))
     this.bump()
     return { ok: true }
+  }
+
+  // ---------------------------------------------------------------- livraison vérifiée
+
+  /** Un dialogue bloque l'écran ? Échap, puis on vérifie qu'il a disparu. Renvoie le texte du dialogue fermé. */
+  private async clearDialog(pane: string): Promise<string | undefined> {
+    const dlg = dialogOnScreen(await capture(pane).catch(() => ''))
+    if (!dlg) return undefined
+    await sendKey(pane, 'esc')
+    await sleep(600)
+    return dlg
+  }
+
+  /**
+   * Écrit le message dans la pane et attend la preuve qu'il est arrivé : hook UserPromptSubmit de la session (claude),
+   * message de Scarville dans le transcript, ou le texte visible à l'écran (saisi ou en file d'attente) sans dialogue par-dessus.
+   * Sinon : écran capturé, Échap si un menu/dialogue est là, un seul nouvel essai, et une erreur à l'appelant.
+   */
+  private async deliver(pane: string, sessionId: string | undefined, text: string): Promise<void> {
+    const attempt = async (): Promise<string | undefined> => {
+      const before = Date.now()
+      await sendText(pane, text)
+      if (await this.confirmDelivery(pane, sessionId, text, before)) return undefined
+      return dialogOnScreen(await capture(pane).catch(() => '')) ?? 'rien ne confirme la réception'
+    }
+    const blocked = await this.clearDialog(pane)
+    const first = await attempt()
+    if (!first) return
+    // Un dialogue a pu apparaître entre-temps (ou avaler l'Entrée) : on le ferme et on réessaie une fois.
+    const dlg = await this.clearDialog(pane)
+    const second = await attempt()
+    if (!second) return
+    const why = dlg ?? blocked ?? first
+    throw new Error(`message non reçu par la session · ${why}`)
+  }
+
+  private async confirmDelivery(pane: string, sessionId: string | undefined, text: string, before: number): Promise<boolean> {
+    const mark = flatScreen(text).slice(0, 48).trim()
+    const deadline = before + 6000
+    while (Date.now() < deadline) {
+      await sleep(300)
+      if (sessionId) {
+        const hook = this.hooks.get(sessionId)
+        if (hook && hook.at > before && hook.event === 'UserPromptSubmit') return true
+        const t = this.store.get(sessionId)
+        if (t?.messages.slice(-6).some((m) => (m.role === 'user' || m.role === 'orchestrator') && m.at >= before - 1500 && flatScreen(m.text).includes(mark.slice(0, 32)))) return true
+      }
+      // Toutes les secondes : l'écran. Le texte y est (envoyé, ou en file pendant que l'agent travaille) et aucun dialogue ne le recouvre.
+      if (Math.round((Date.now() - before) / 300) % 3 === 0) {
+        const screen = await capture(pane).catch(() => '')
+        if (screen && !dialogOnScreen(screen) && mark.length >= 8 && flatScreen(screen).includes(mark)) return true
+      }
+    }
+    return false
   }
 
   private orchestratorMessages(): Message[] {
@@ -879,7 +936,7 @@ export class Weevils {
     this.prepareOrchestrator()
     const pane = this.orchestratorPane()
     if (pane) {
-      await sendText(pane.name, text)
+      await this.deliver(pane.name, this.orchestratorId!, text)
       this.bump()
       return { id: this.orchestratorId! }
     }

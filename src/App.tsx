@@ -217,7 +217,7 @@ export default function App() {
   return (
     <Ctx.Provider value={ctx}>
       <MotionConfig reducedMotion="user" transition={spring}>
-        <div className="status-cover" aria-hidden style={live.snap && (() => { try { return localStorage.getItem('weevils-devil') === '1' && live.snap.devil?.enabled } catch { return false } })() ? ({ ['--status-c' as string]: 'var(--devil)' }) : undefined} />
+        <div className="status-cover" aria-hidden style={live.snap && (() => { try { return localStorage.getItem('weevils-devil') === '1' } catch { return false } })() ? ({ ['--status-c' as string]: 'var(--devil)' }) : undefined} />
         <motion.main
           {...pinchMain}
           className="stack"

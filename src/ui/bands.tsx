@@ -53,14 +53,8 @@ export function AgentBand() {
       return false
     }
   })
-  const [devilNote, setDevilNote] = useState<string | null>(null)
-  const devilOn = devil && snap.devil?.enabled
+  const devilOn = devil
   const toggleDevil = () => {
-    if (!snap.devil?.enabled) {
-      setDevilNote(td.notConnected)
-      setTimeout(() => setDevilNote(null), 2200)
-      return
-    }
     const next = !devil
     setDevilState(next)
     try {
@@ -103,7 +97,6 @@ export function AgentBand() {
         <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={toggleDevil} aria-pressed={!!devilOn} aria-label={devilOn ? td.on : td.off}>
           <FilledIcon name="devil" />
         </button>
-        {devilNote && <span className="devil-note meta">{devilNote}</span>}
         <VoiceLogo take={() => { const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }} onText={(x) => { heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }} onSend={() => { viaLogo.current = true; form.current?.requestSubmit() }} replyKey={snap.main.filter((m) => m.role === 'assistant').at(-1)?.id} replyText={snap.main.filter((m) => m.role === 'assistant').at(-1)?.text} working={snap.mainWorking} />
       </div>
 

@@ -42,7 +42,6 @@ function save() {
 /** Le texte part au modèle avec l'historique récent du fil ; la réponse arrive en flux et s'écrit au fur et à mesure. */
 export async function devilSend(text: string, history: Message[], bump: () => void): Promise<{ id: string }> {
   const cfg = devilConfig()
-  if (!cfg) throw new Error(tr(M).notConnected)
   const t = text.trim()
   if (!t) throw new Error(tr(M).empty)
   if (working) throw new Error(tr(M).busy)
@@ -56,6 +55,14 @@ export async function devilSend(text: string, history: Message[], bump: () => vo
     .filter((m) => m.role === 'user' || m.role === 'assistant')
     .slice(-20)
     .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.text.slice(0, 4000) }))
+  if (!cfg) {
+    // Pas de modèle configuré : le fil le dit, en vert, à la place de la réponse.
+    reply.text = tr(M).notReady
+    working = false
+    save()
+    bump()
+    return { id: reply.id }
+  }
   void (async () => {
     const t0 = Date.now()
     try {
@@ -89,7 +96,9 @@ export async function devilSend(text: string, history: Message[], bump: () => vo
       }
       console.log(`[devil] réponse en ${Date.now() - t0} ms`)
     } catch (e) {
-      reply.text = reply.text || tr(M).failed((e as Error).message)
+      // Injoignable (PC éteint, adresse vide) : une phrase simple dans le fil, pas l'erreur brute.
+      const unreachable = /fetch failed|ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT|timeout/i.test(`${(e as Error).message} ${String((e as { cause?: unknown }).cause ?? '')}`)
+      reply.text = reply.text || (unreachable ? tr(M).notReady : tr(M).failed((e as Error).message))
       console.error(`[devil] ${(e as Error).message}`)
     } finally {
       working = false

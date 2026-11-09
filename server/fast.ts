@@ -52,8 +52,33 @@ async function frenchVoice(key: string): Promise<string> {
   return frVoice
 }
 
+/** Voix choisie par Scarville dans l'app (persistée par le daemon). */
+let chosenVoice: string | undefined
+export const setCartesiaVoice = (id: string | undefined) => (chosenVoice = id)
+
+export interface VoiceChoice {
+  id: string
+  name: string
+  gender?: string
+}
+
+/** 6 à 8 voix françaises variées : on alterne femmes et hommes, dans l'ordre de l'API. */
+export async function frenchVoices(): Promise<VoiceChoice[]> {
+  const c = cartesia()
+  if (!c) throw new Error('clé Cartesia absente')
+  const res = await fetch('https://api.cartesia.ai/voices?language=fr&limit=100', { headers: { 'X-API-Key': c.key, 'Cartesia-Version': '2025-04-16' } })
+  if (!res.ok) throw new Error(`cartesia : ${res.status}`)
+  const j = (await res.json()) as any
+  const all = ((Array.isArray(j) ? j : (j.data ?? [])) as any[]).filter((v) => !v.language || v.language === 'fr')
+  const pick = (g: string) => all.filter((v) => (v.gender ?? '').toLowerCase().startsWith(g))
+  const f = pick('f'), m = pick('m'), other = all.filter((v) => !f.includes(v) && !m.includes(v))
+  const out: any[] = []
+  for (let i = 0; out.length < 8 && (i < f.length || i < m.length || i < other.length); i++) for (const list of [f, m, other]) if (list[i] && out.length < 8) out.push(list[i])
+  return out.map((v) => ({ id: v.id, name: String(v.name ?? v.id).split(/[-–(]/)[0].trim(), gender: v.gender }))
+}
+
 /** Flux MP3 de Cartesia : les premiers octets arrivent en quelques centaines de ms, on les relaie tels quels. */
-export async function cartesiaStream(text: string): Promise<ReadableStream<Uint8Array>> {
+export async function cartesiaStream(text: string, voiceId?: string): Promise<ReadableStream<Uint8Array>> {
   const c = cartesia()
   if (!c) throw new Error('CARTESIA_API_KEY absente')
   const t0 = Date.now()
@@ -63,7 +88,7 @@ export async function cartesiaStream(text: string): Promise<ReadableStream<Uint8
     body: JSON.stringify({
       model_id: c.model,
       transcript: text,
-      voice: { mode: 'id', id: c.voice ?? (await frenchVoice(c.key)) },
+      voice: { mode: 'id', id: voiceId ?? chosenVoice ?? c.voice ?? (await frenchVoice(c.key)) },
       language: 'fr',
       output_format: { container: 'mp3', sample_rate: 44100, bit_rate: 128000 },
     }),

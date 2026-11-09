@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { SessionSettings, Tool } from '../../shared/api.ts'
 import { Line } from './bits'
+import { VoicePicker } from './voice'
 
 /** Réglages manuels d'une session : ils partent en commandes slash (/model, /effort, /fast, /compact, /clear, /approvals). */
 
@@ -105,6 +106,7 @@ export function Settings({
 
   return (
     <div className="settings">
+      {id === '__main' && <VoicePicker />}
       {err && (
         <div className="in meta" role="alert">
           ! {err}

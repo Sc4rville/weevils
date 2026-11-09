@@ -7,7 +7,7 @@ import http from 'node:http'
 import path from 'node:path'
 import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, PORT } from './config.ts'
 import { openaiKey, speak, speakable, transcribe } from './transcribe.ts'
-import { cartesia, cartesiaStream } from './fast.ts'
+import { cartesia, cartesiaStream, frenchVoices } from './fast.ts'
 import { Readable } from 'node:stream'
 import { Weevils } from './core.ts'
 
@@ -158,12 +158,17 @@ const routes: [string, RegExp, Handler][] = [
     const files = Array.isArray(body.files) ? body.files.filter((f: any) => typeof f?.data === 'string').map((f: any) => ({ name: String(f.name ?? 'photo'), type: String(f.type ?? 'image/jpeg'), data: String(f.data) })) : []
     json(res, 200, await w.attach(decodeURIComponent(id), String(body.text ?? ''), files))
   }],
+  ['GET', /^\/api\/voices$/, async (_req, res) => json(res, 200, cartesia() ? { enabled: true, voices: await frenchVoices(), current: w.voiceId } : { enabled: false, voices: [] })],
+  ['POST', /^\/api\/voices$/, async (req, res) => {
+    w.setVoice(String((await readBody(req)).id ?? '') || undefined)
+    json(res, 200, { ok: true })
+  }],
   ['POST', /^\/api\/voice$/, async (req, res) => json(res, 200, await w.voice(String((await readBody(req)).text ?? '')))],
   ['POST', /^\/api\/speak$/, async (req, res) => {
     const body = await readBody(req)
     if (cartesia()) {
       try {
-        const stream = await cartesiaStream(await speakable(String(body.text ?? ''), !!body.oral))
+        const stream = await cartesiaStream(await speakable(String(body.text ?? ''), !!body.oral), body.voice ? String(body.voice) : undefined)
         res.writeHead(200, { 'content-type': 'audio/mpeg', 'cache-control': 'no-store' })
         Readable.fromWeb(stream as any).pipe(res)
         return

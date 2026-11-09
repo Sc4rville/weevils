@@ -13,6 +13,7 @@ import { Push } from './push.ts'
 import type { CatalogEntry } from './classify.ts'
 import { familyOf, place } from './projects.ts'
 import { voiceTurn } from './voice.ts'
+import { setCartesiaVoice } from './fast.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { ORCH_PREFIX, TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
 import { llmTitles, needsTitle, shortNow } from './titles.ts'
@@ -39,6 +40,7 @@ interface Persisted {
   /** Id de la session Claude de l'orchestrateur (stable : on la reprend après un redémarrage). */
   orchestratorId?: string
   pinnedRepos?: string[]
+  voiceId?: string
 }
 
 const STATE_FILE = path.join(DATA_DIR, 'state.json')
@@ -161,6 +163,12 @@ export class Weevils {
   remotes: Remote[] = []
   convs = new ConversationStore(DATA_DIR)
   pinnedRepos: string[] = []
+  voiceId: string | undefined
+  setVoice(id: string | undefined) {
+    this.voiceId = id
+    setCartesiaVoice(id)
+    this.persist()
+  }
   /** Échanges vocaux rapides (question → réponse immédiate), mêlés au fil de weevboss. */
   private voiceLog: Message[] = []
 
@@ -256,6 +264,8 @@ export class Weevils {
       this.titles = new Map(p.titles ?? [])
       this.orchestratorId = p.orchestratorId ?? null
       this.pinnedRepos = p.pinnedRepos ?? []
+      this.voiceId = p.voiceId
+      setCartesiaVoice(this.voiceId)
     } catch {
       /* premier démarrage */
     }
@@ -338,7 +348,7 @@ export class Weevils {
       // Les hooks des trois derniers jours suffisent (pid des sessions encore ouvertes).
       const hooks = [...this.hooks].filter(([, h]) => Date.now() - h.at < RECENT_MS)
       const titles = [...this.titles].filter(([, t]) => Date.now() - t.at < 14 * 86400_000)
-      const data: Persisted = { hooks, titles, orchestratorId: this.orchestratorId ?? undefined, pinnedRepos: this.pinnedRepos }
+      const data: Persisted = { hooks, titles, orchestratorId: this.orchestratorId ?? undefined, pinnedRepos: this.pinnedRepos, voiceId: this.voiceId }
       fs.writeFileSync(STATE_FILE, JSON.stringify(data, null, 1))
     } catch {
       /* disque plein ? on continue en mémoire */

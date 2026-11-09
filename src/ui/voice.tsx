@@ -30,10 +30,10 @@ export function unlockAudio() {
   void player.play().catch(() => undefined)
 }
 
-export async function say(text: string, onEnd: () => void, oral = false) {
+export async function say(text: string, onEnd: () => void, oral = false, voice?: string) {
   if (!player) return onEnd()
   try {
-    const res = await fetch('/api/speak', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, oral }), credentials: 'same-origin' })
+    const res = await fetch('/api/speak', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, oral, voice }), credentials: 'same-origin' })
     if (!res.ok) throw new Error('voix')
     const url = URL.createObjectURL(await res.blob())
     player.src = url
@@ -184,6 +184,37 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
         <WeevbossLogo className="voice-svg" />
       </button>
       {err && <div className="meta voice-err">! {err}</div>}
+    </div>
+  )
+}
+
+/** Les voix de weevboss : un tap fait dire une phrase d'essai et garde la voix. */
+export function VoicePicker() {
+  const [list, setList] = useState<{ id: string; name: string }[] | null>(null)
+  const [cur, setCur] = useState<string | undefined>()
+  useEffect(() => {
+    api
+      .voices()
+      .then((r) => {
+        setList(r.voices)
+        setCur(r.current)
+      })
+      .catch(() => setList([]))
+  }, [])
+  if (!list?.length) return null
+  const pick = (id: string) => {
+    unlockAudio()
+    setCur(id)
+    void api.setVoice(id).catch(() => undefined)
+    void say('Salut Scarville, c’est moi, weevboss.', () => undefined, true, id)
+  }
+  return (
+    <div className="in words" role="group" aria-label="voix">
+      {list.map((v) => (
+        <button key={v.id} className={`word ${cur === v.id ? 'on' : ''}`} aria-pressed={cur === v.id} onClick={() => pick(v.id)}>
+          {v.name}
+        </button>
+      ))}
     </div>
   )
 }

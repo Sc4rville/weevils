@@ -14,7 +14,9 @@ Run it again any time: it updates (git pull, npm ci and build only when somethin
 
 1. Checks the system and installs what is missing (with sudo, after asking): git, curl, tmux, jq, python3,
    Node.js >= 22.18 (NodeSource), plus `dbus-user-session` on systemd machines and `qrencode` for the QR code.
-   Claude Code / Codex are only checked: if neither is there it tells you how to install them.
+   An older Node (18, 20) is upgraded; if an old one in `/usr/local/bin` still comes first in your PATH, weevils
+   uses the new one in `/usr/bin` and tells you. Claude Code / Codex are only checked: if neither is there it tells
+   you how to install them.
 2. Clones weevils into `--dir` (default `~/weevils`) when piped from curl, or uses the clone it runs from.
 3. Writes your settings to `~/.config/weevils/env` from `weevils.env.example`. Values already there are kept;
    a flag you pass (`--name`, `--lang`, `--port`, `--domain`, `--machine`) updates its key.
@@ -23,7 +25,8 @@ Run it again any time: it updates (git pull, npm ci and build only when somethin
    Code hooks, and the service — a `systemd --user` unit with linger (survives logout and reboot), or a background
    process where there is no systemd (containers, WSL), controlled with `weevils-service start|stop|status|logs`.
 6. With `--domain`: Caddy (official apt repo) and a site in `/etc/caddy/weevils.caddy`, imported from your
-   Caddyfile (an existing Caddyfile keeps its sites; a backup is kept in `Caddyfile.bak-weevils`).
+   Caddyfile (an existing Caddyfile keeps its sites; the original is kept in `Caddyfile.bak-weevils`). If Caddy
+   rejects the result (say the domain is already a site there), both files go back exactly as they were.
 7. Prints the address, the access code, the login link (`…/#k=<code>`) and its QR code.
 
 ## Options
@@ -32,13 +35,18 @@ Run it again any time: it updates (git pull, npm ci and build only when somethin
 |---|---|
 | `--yes` | no questions, defaults everywhere |
 | `--name <first name>` | how the agents call you |
-| `--lang en\|fr` | language of the installer and of the server (default: your locale) |
+| `--lang en\|fr` | language of the installer and of the server (default: the one in your settings, else your locale) |
 | `--domain <host>` | HTTPS through Caddy; the domain must point to the machine, ports 80/443 open |
 | `--port <n>` | port of weevilsd on 127.0.0.1 (default 4179) |
 | `--dir <path>` | install directory when piped from curl (default `~/weevils`) |
 | `--secondary <ssh-host>` | a second machine: see below |
 | `--machine <id>` | id and name of this machine (default: hostname) |
 | `--no-update` | no git pull |
+
+Bad values (`--port abc`, `--lang de`, a domain with spaces) stop the script before it changes anything; a domain
+given as a URL (`https://host/`) is cut down to its host. `WEEVILS_REPO=<git url>` clones from another repo (a fork,
+a mirror, a local `file://` path). The script is one function called on its last line, so a download cut short
+runs nothing.
 
 Without `--domain`, weevilsd listens on 127.0.0.1 only. Reach it with an SSH tunnel
 (`ssh -L 4179:127.0.0.1:4179 you@server`, then http://localhost:4179), or set `WEEVILS_HOST=0.0.0.0` in the env file
@@ -64,4 +72,9 @@ test/docker/run.sh          # all scenarios, ends with PASS or FAIL
 
 It installs the HEAD commit in blank `ubuntu:24.04` containers: a systemd "VPS" (install from a clone as a sudo
 user, service + linger, login over http, idempotent re-run, `--domain` with Caddy, a `--secondary` machine federated
-over SSH, reboot), and a plain container without systemd (piped install as root, background fallback).
+over SSH, reboot), a plain container without systemd (piped install as root, background fallback), and the hard
+cases (`test/docker/run.sh edge`): truncated downloads, a user without sudo and without tmux, Node 20 from NodeSource
+and Node 18 from Ubuntu upgraded, a Node 20 tarball shadowing the new one, `cat install.sh | bash -s` as a sudo user
+with a `file://` repo and `--dir`, a re-run after editing the config by hand (every value kept, API key never
+printed), `--lang fr` without a single English line, and a Caddy that already serves another site (kept, and left
+untouched when Caddy rejects the new domain).

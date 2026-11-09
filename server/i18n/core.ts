@@ -31,6 +31,7 @@ export default defineMessages({
     dirNotFound: (dir: string) => `dossier introuvable : ${dir}`,
     onlyInPane: 'réglable seulement quand la session tourne dans une pane weevils (wv)',
     orchNotRunning: 'l’orchestrateur ne tourne pas : envoie-lui d’abord un message',
+    orchNotHere: 'l’orchestrateur ne tourne pas sur cette machine',
     noConfirmation: 'rien ne confirme la réception',
     notReceived: (why: string) => `message non reçu par la session · ${why}`,
     /** First message of the top band, before the user ever wrote to weevboss. */
@@ -76,6 +77,7 @@ export default defineMessages({
     dirNotFound: (dir: string) => `folder not found: ${dir}`,
     onlyInPane: 'only adjustable when the session runs in a weevils pane (wv)',
     orchNotRunning: 'the orchestrator isn’t running: send it a message first',
+    orchNotHere: 'the orchestrator doesn’t run on this machine',
     noConfirmation: 'nothing confirms it arrived',
     notReceived: (why: string) => `the session didn’t get the message · ${why}`,
     hello: 'Tell me what to do: I read your sessions, write in them, and sum things up for you. The details are in the bands below if you want to follow along.',

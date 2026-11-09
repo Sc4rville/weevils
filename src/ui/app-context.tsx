@@ -41,7 +41,7 @@ export const Ctx = createContext<AppCtx | null>(null)
 
 export function useApp(): AppCtx {
   const v = useContext(Ctx)
-  if (!v) throw new Error('useApp hors du fournisseur')
+  if (!v) throw new Error('useApp outside AppProvider') // i18n-ignore : erreur de développement
   return v
 }
 

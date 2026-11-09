@@ -1169,8 +1169,8 @@ export class Weevils {
 
   /** L'utilisateur parle à weevboss : le message part dans la session Claude de l'orchestrateur (lancée ou reprise au besoin). */
   async sendMain(text: string) {
-    if (!ORCHESTRATOR) throw new Error('l’orchestrateur ne tourne pas sur cette machine')
-    if (!text.trim()) throw new Error('message vide')
+    if (!ORCHESTRATOR) throw new Error(tr(M).orchNotHere)
+    if (!text.trim()) throw new Error(tr(M).emptyMessage)
     this.prepareOrchestrator()
     // Mesure : temps de réponse complet de weevboss, au journal.
     const since = Date.now()

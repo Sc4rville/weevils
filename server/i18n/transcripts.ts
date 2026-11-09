@@ -5,6 +5,8 @@ export default defineMessages({
   fr: {
     subagent: 'sous-agent',
     task: 'tâche',
+    /** Codex tool call without a name, in the session's event lines. */
+    tool: 'outil',
     newSession: 'nouvelle session',
     userLabel: 'utilisateur',
     said: (who: string, text: string) => `${who} : ${text}`,
@@ -12,6 +14,7 @@ export default defineMessages({
   en: {
     subagent: 'subagent',
     task: 'task',
+    tool: 'tool',
     newSession: 'new session',
     userLabel: 'user',
     said: (who: string, text: string) => `${who}: ${text}`,

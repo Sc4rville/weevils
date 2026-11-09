@@ -65,7 +65,7 @@ export default defineMessages({
     starting: 'starting…',
     newSession: 'new session',
     missingProject: 'missing project',
-    oldUnsorted: 'old, not sorted',
+    oldUnsorted: 'old, unsorted',
     conversationNotFound: 'conversation not found',
     unknownMachine: (id: string) => `unknown machine: ${id}`,
     sessionNotFound: 'session not found',
@@ -85,7 +85,7 @@ export default defineMessages({
     continuePrompt: (source: string, title: string, context: string, text: string) =>
       `Context: this continues my ${source} conversation “${title}” (end of the exchange below).\n\n${context}---\n${text}`,
 
-    manualJob: 'job started by hand',
+    manualJob: 'job started manually',
     nextRun: (when: string) => `next: ${when}`,
     scheduled: 'scheduled',
     lastRun: (when: string) => `last: ${when}`,

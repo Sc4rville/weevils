@@ -269,7 +269,7 @@ function codexLine(t: Transcript, o: any) {
     if (Array.isArray(input.command)) input.command = input.command.join(' ')
     if (Array.isArray(input.cmd)) input.command = input.cmd.join(' ')
     else if (typeof input.cmd === 'string') input.command = input.cmd
-    push(t, { id: p.call_id ?? `${t.id}-${at}-f`, role: 'event', text: toolSummary(p.name ?? 'outil', input), at })
+    push(t, { id: p.call_id ?? `${t.id}-${at}-f`, role: 'event', text: toolSummary(p.name ?? tr(M).tool, input), at })
   }
 }
 

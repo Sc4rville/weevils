@@ -12,6 +12,8 @@ export default defineMessages({
     fileTooLarge: 'fichier trop gros (1 Go max)',
     signInRequired: 'connexion requise',
     unknownRoute: 'route inconnue',
+    /** Siri asked for a voice clip that is no longer kept. */
+    clipExpired: 'son expiré',
   },
   en: {
     bodyTooLarge: 'request too large',
@@ -23,5 +25,6 @@ export default defineMessages({
     fileTooLarge: 'file too large (1 GB max)',
     signInRequired: 'sign-in required',
     unknownRoute: 'unknown route',
+    clipExpired: 'clip expired',
   },
 })

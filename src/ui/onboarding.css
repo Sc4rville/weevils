@@ -9,7 +9,9 @@
   color: var(--ink);
   --ob-top: calc(var(--safe-t) + 66px);
   --ob-bot: calc(var(--safe-b) + 84px);
-  touch-action: pan-y;
+  /* Rien ne défile ici : un glissé vertical ne doit pas faire défiler le fil en dessous (iOS). */
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 
 .ob .ic {
@@ -506,6 +508,42 @@
   }
   .ob-title {
     font-size: 2.125rem;
+  }
+}
+
+/* Très petits écrans (iPhone SE 1re gen.) : le visuel rétrécit encore, et s'efface quand la commande s'affiche. */
+@media (max-height: 620px) {
+  .ob-boss {
+    width: 200px;
+    height: 120px;
+  }
+  .ob-logo {
+    width: 44%;
+  }
+  .ob-bubble.me {
+    width: 76px;
+    height: 34px;
+  }
+  .ob-bubble.it {
+    bottom: 0;
+    width: 70px;
+    height: 38px;
+  }
+  .ob-screen {
+    width: min(240px, 70vw);
+  }
+  .ob-screen-bar {
+    height: 34px;
+  }
+  .ob-row {
+    height: 12px;
+    margin-top: 10px;
+  }
+  .ob-visual.small {
+    display: none;
+  }
+  .ob-visual.small + .ob-text {
+    margin-top: auto;
   }
 }
 

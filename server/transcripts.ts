@@ -69,6 +69,16 @@ function claudeLine(t: Transcript, o: any) {
   if (o.type === 'custom-title' && o.customTitle) t.customTitle = o.customTitle
   if (o.isSidechain) return
 
+  // Message envoyé pendant que l'agent travaillait : Claude Code ne l'écrit pas comme « user » mais comme pièce jointe absorbée.
+  if (o.type === 'attachment' && o.attachment?.type === 'queued_command' && typeof o.attachment.prompt === 'string') {
+    const text = o.attachment.prompt
+    if (isNoise(text)) return
+    touch(t, at)
+    t.firstPrompt ??= text
+    push(t, userMsg(o.uuid ?? `${t.id}-${at}-q`, text, at))
+    return
+  }
+
   if (o.type === 'user') {
     touch(t, at)
     const c = o.message?.content

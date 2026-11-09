@@ -5,7 +5,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { ConversationDetail, ConversationSummary, H24Activity, Message, Project, Session, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
-import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, LOGS_DIR, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, LOGS_DIR, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
 import { llmClassify, ruleMatch } from './classify.ts'
@@ -974,10 +974,10 @@ export class Weevils {
     return this.send(id, withFiles(text, saveInbox(path.join(DATA_DIR, 'inbox'), files)))
   }
 
-  /** Fichiers (photos, PDF, zip…) pour l'orchestrateur : déposés dans ~/inbox/<date>-<nom>, le message dit « (fichier : /chemin) ». */
+  /** Fichiers (photos, PDF, zip…) pour l'orchestrateur : déposés dans INBOX_DIR/<date>-<nom>, le message dit « (fichier : /chemin) ». */
   async attachMain(text: string, files: { name: string; type: string; data: string }[]) {
     if (!files.length) return this.sendMain(text)
-    return this.sendMain(withFiles(text, saveInbox(path.join(HOME, 'inbox'), files)))
+    return this.sendMain(withFiles(text, saveInbox(INBOX_DIR, files)))
   }
 
   async key(id: string, key: string) {

@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { Consumer, DaySummary, Episode, FsListing, InfraDetail, InfraPoint, Level, Offer, ServerProc } from '../shared/infra.ts'
 import { facts, offer } from './discover.ts'
-import { DATA_DIR, EXPOSE_DOMAIN, HOME, MACHINE, ORCH_DIR, ORCHESTRATOR } from './config.ts'
+import { DATA_DIR, EXPOSE_DOMAIN, EXPOSE_SITES_DIR, HOME, MACHINE, ORCH_DIR, ORCHESTRATOR } from './config.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/infra.ts'
 
@@ -438,10 +438,11 @@ export function advice({ points, eps, days, mem: m, disk: d, cores, offer: o }: 
 
 // ---------------------------------------------------------------- serveurs à l'écoute
 
+/** Ports exposés en https://<nom>.<EXPOSE_DOMAIN> : un <nom>.caddy par site dans EXPOSE_SITES_DIR. */
 function exposed(): Map<number, string> {
   const out = new Map<number, string>()
-  const dir = '/etc/caddy/sites'
-  if (!EXPOSE_DOMAIN) return out
+  const dir = EXPOSE_SITES_DIR
+  if (!EXPOSE_DOMAIN || !dir) return out
   try {
     for (const f of fs.readdirSync(dir)) {
       const port = /localhost:(\d+)/.exec(read(path.join(dir, f)))?.[1]

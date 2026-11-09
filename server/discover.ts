@@ -3,6 +3,8 @@
 // alias SSH vus par les autres machines), l'offre probable chez le fournisseur et le palier au-dessus (recherche web
 // de claude sur le site du fournisseur, null pour tout ce qui n'y est pas vérifié). Rien n'est supposé : un fait
 // introuvable reste absent.
+// WEEVILS_DISCOVER (config.ts) : 1 = tout, appels sortants compris (ipinfo.io, reverse DNS, recherche web) ;
+// facts (défaut) = faits locaux seulement, aucun appel sortant ; 0 = l'essentiel (nom, OS, CPU, alias SSH), rien de sondé.
 
 import { execFile } from 'node:child_process'
 import dns from 'node:dns/promises'
@@ -10,7 +12,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { MachineFacts, Offer, SshTarget } from '../shared/infra.ts'
-import { CONFIG_DIR, DATA_DIR, HOME } from './config.ts'
+import { CONFIG_DIR, DATA_DIR, DISCOVER, HOME } from './config.ts'
 
 const DIR = path.join(DATA_DIR, 'infra')
 const read = (f: string) => {
@@ -115,8 +117,10 @@ let factsCache: { at: number; v: MachineFacts } | null = null
 
 export async function facts(): Promise<MachineFacts> {
   if (factsCache && Date.now() - factsCache.at < 3600_000) return factsCache.v
-  const dmi = (k: string) => read(`/sys/class/dmi/id/${k}`)
-  const virtRaw = (await run('systemd-detect-virt', [])) || (fs.existsSync('/.dockerenv') ? 'docker' : '')
+  const local = DISCOVER !== '0'
+  const online = DISCOVER === '1'
+  const dmi = (k: string) => (local ? read(`/sys/class/dmi/id/${k}`) : '')
+  const virtRaw = local ? (await run('systemd-detect-virt', [])) || (fs.existsSync('/.dockerenv') ? 'docker' : '') : ''
   const virt = virtRaw && virtRaw !== 'none' ? virtRaw : undefined
   const vendor = dmi('sys_vendor')
   const product = dmi('product_name')
@@ -124,10 +128,11 @@ export async function facts(): Promise<MachineFacts> {
   const hardware = !virt && meaningful(vendor) ? [vendor, meaningful(product) ? product : ''].filter(Boolean).join(' ') : undefined
   const chassis = Number(dmi('chassis_type')) || undefined
   const osName = /^PRETTY_NAME="?([^"\n]+)"?/m.exec(read('/etc/os-release'))?.[1] ?? (process.platform === 'darwin' ? `macOS ${await run('sw_vers', ['-productVersion'])}` : undefined) // i18n-ignore : nom de commande
-  const info = await ipinfo()
-  const ip = interfaceIp() ?? info?.ip
+  const info = online ? await ipinfo() : null
+  const ifIp = local ? interfaceIp() : undefined
+  const ip = ifIp ?? info?.ip
   let rdns: string | undefined
-  if (ip) rdns = (await dns.reverse(ip).catch(() => []))[0] ?? info?.hostname
+  if (ip && online) rdns = (await dns.reverse(ip).catch(() => []))[0] ?? info?.hostname
   const org = info?.org ? company(info.org) : undefined
   const v: MachineFacts = {
     hostname: os.hostname(),
@@ -140,17 +145,17 @@ export async function facts(): Promise<MachineFacts> {
     hardware,
     laptop: chassis ? [8, 9, 10, 14, 31, 32].includes(chassis) : undefined,
     ip,
-    publicIp: !!interfaceIp(),
+    publicIp: !!ifIp,
     rdns,
     asn: /^AS\d+/.exec(info?.org ?? '')?.[0],
     // Hébergée (virtualisée, IP publique sur l'interface) : l'ASN est l'hébergeur. Sinon c'est le réseau (box, FAI).
-    provider: virt && interfaceIp() ? org : undefined,
-    network: virt && interfaceIp() ? undefined : org,
+    provider: virt && ifIp ? org : undefined,
+    network: virt && ifIp ? undefined : org,
     city: info?.city,
     region: info?.region,
     country: info?.country,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    sshPort: sshdPort(),
+    sshPort: local ? sshdPort() : undefined,
     ssh: sshTargets(),
   }
   factsCache = { at: Date.now(), v }
@@ -167,7 +172,7 @@ let offerRunning = false
  * rien n'est cherché.
  */
 export function offer(f: MachineFacts, cores: number, memTotal: number, diskTotal: number): Offer | null {
-  if (!f.provider) return null
+  if (DISCOVER !== '1' || !f.provider) return null
   const key = `offer-${[f.provider, cores, Math.round(memTotal / 1024 ** 3), Math.round(diskTotal / 1024 ** 3)].join('-').replace(/[^\w.-]+/g, '_')}.json`
   const hit = cached<Offer>(key, 7 * 86400_000)
   if (hit || offerRunning) return hit

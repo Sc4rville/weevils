@@ -3,27 +3,30 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import type { ConversationDetail, ConversationSummary, Tool } from '../../shared/api.ts'
 import { api } from '../api'
+import { intlLocale, tr, useT } from '../i18n'
+import M from '../i18n/convs'
 import { useApp } from './app-context'
 import { Collapse, Composer, Line, Messages } from './bits'
-import { ago, plural } from './format'
+import { ago } from './format'
 import { Shell } from './shell'
 import { Icon } from './icons'
 
 const SOURCE = { chatgpt: 'chatgpt', claude: 'claude.ai' } as const
 
 export function statusLabel(c: ConversationSummary, name: (id: string) => string) {
+  const t = tr(M)
   switch (c.status) {
     case 'auto':
-      return `rangée dans ${name(c.projectId!)} par weevboss`
+      return t.filedBy(name(c.projectId!))
     case 'accepted':
     case 'corrected':
-      return `rangée dans ${name(c.projectId!)}`
+      return t.filed(name(c.projectId!))
     case 'pending':
-      return c.suggestedProjectId ? `à ranger · ${name(c.suggestedProjectId)} ?` : 'à ranger'
+      return c.suggestedProjectId ? t.toFileSuggest(name(c.suggestedProjectId)) : t.toFile
     case 'none':
-      return 'non classée'
+      return t.unfiled
     default:
-      return 'classement en attente'
+      return t.filingPending
   }
 }
 
@@ -33,6 +36,7 @@ export function useProjectName() {
 }
 
 export function ConvLine({ c }: { c: ConversationSummary }) {
+  useT(M) // re-rendu au changement de langue (statusLabel lit le catalogue à l'appel)
   const { push, now } = useApp()
   const name = useProjectName()
   return (
@@ -44,6 +48,7 @@ export function ConvLine({ c }: { c: ConversationSummary }) {
 
 /** Choisir où ranger : un des projets. */
 export function Chooser({ c, onDone }: { c: ConversationSummary; onDone: () => void }) {
+  const t = useT(M)
   const { snap, refresh } = useApp()
   const [err, setErr] = useState<string | null>(null)
   const go = async (target: { projectId?: string }) => {
@@ -61,7 +66,7 @@ export function Chooser({ c, onDone }: { c: ConversationSummary; onDone: () => v
       {snap.projects
         .filter((p) => p.id !== c.projectId && p.id !== 'divers' && p.id !== 'general')
         .map((p) => (
-          <Line key={p.id} ch="→" go={null} meta={p.kind === 'invented' ? 'catégorie' : undefined} onClick={() => void go({ projectId: p.id })}>
+          <Line key={p.id} ch="→" go={null} meta={p.kind === 'invented' ? t.category : undefined} onClick={() => void go({ projectId: p.id })}>
             {p.name}
           </Line>
         ))}
@@ -70,6 +75,7 @@ export function Chooser({ c, onDone }: { c: ConversationSummary; onDone: () => v
 }
 
 export function ConversationsPage({ projectId }: { projectId?: string }) {
+  const t = useT(M)
   const { snap, colors } = useApp()
   const [list, setList] = useState<ConversationSummary[] | null>(null)
   const [q, setQ] = useState('')
@@ -77,7 +83,7 @@ export function ConversationsPage({ projectId }: { projectId?: string }) {
 
   useEffect(() => {
     let off = false
-    const t = setTimeout(
+    const timer = setTimeout(
       () =>
         api
           .conversations(q.trim() ? { q: q.trim() } : projectId ? { project: projectId } : {})
@@ -87,7 +93,7 @@ export function ConversationsPage({ projectId }: { projectId?: string }) {
     )
     return () => {
       off = true
-      clearTimeout(t)
+      clearTimeout(timer)
     }
   }, [q, projectId, snap.version])
 
@@ -95,26 +101,27 @@ export function ConversationsPage({ projectId }: { projectId?: string }) {
     <Shell
       slot={projectId ? (colors[projectId] ?? 'agent') : 'agent'}
       kicker={project?.name ?? 'weevils'}
-      title='" conversations'
-      meta={list ? plural(list.length, 'conversation', 'conversations') : 'lecture…'}
+      title={t.title}
+      meta={list ? t.count(list.length) : t.reading}
     >
       <div className="band tone composer">
         <div className="in">
           <span className="prompt" aria-hidden>
             ?
           </span>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="chercher dans les titres" aria-label="chercher une conversation" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search} aria-label={t.searchLabel} />
         </div>
       </div>
       {list?.map((c) => <ConvLine key={c.id} c={c} />)}
       {list && list.length === 0 && (
-        <div className="in meta empty">{q ? 'Rien trouvé.' : snap.conversationCounts.total ? 'Aucune conversation rangée ici.' : 'Aucune conversation importée pour l’instant.'}</div>
+        <div className="in meta empty">{q ? t.nothingFound : snap.conversationCounts.total ? t.noneHere : t.noneYet}</div>
       )}
     </Shell>
   )
 }
 
 export function ConversationPage({ id }: { id: string }) {
+  const t = useT(M)
   const { colors, replace, refresh } = useApp()
   const name = useProjectName()
   const [d, setD] = useState<ConversationDetail | null>(null)
@@ -135,7 +142,7 @@ export function ConversationPage({ id }: { id: string }) {
     }
   }, [id, snap.version])
 
-  if (!d) return <Shell slot="agent" kicker="conversations" title={missing ? 'introuvable' : '…'}>{null}</Shell>
+  if (!d) return <Shell slot="agent" kicker={t.conversations} title={missing ? t.notFound : '…'}>{null}</Shell>
   const c = d.conversation
 
   const accept = async () => {
@@ -156,10 +163,10 @@ export function ConversationPage({ id }: { id: string }) {
   return (
     <Shell
       slot={c.projectId ? (colors[c.projectId] ?? 'agent') : 'agent'}
-      kicker={c.projectId ? name(c.projectId) : 'à ranger'}
+      kicker={c.projectId ? name(c.projectId) : t.toFile}
       title={c.title}
-      meta={`${SOURCE[c.source]} · ${plural(c.messageCount, 'message', 'messages')} · ${new Date(c.updatedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}`}
-      foot={<Composer placeholder={`continuer avec ${tool} (nouvelle session)`} label="continuer cette conversation avec un agent" onSend={cont} />}
+      meta={`${SOURCE[c.source]} · ${t.messages(c.messageCount)} · ${new Date(c.updatedAt).toLocaleDateString(intlLocale(), { day: 'numeric', month: 'long', year: 'numeric' })}`}
+      foot={<Composer placeholder={t.continueWithTool(tool)} label={t.continueLabel} onSend={cont} />}
     >
       {err && (
         <div className="band invert" role="alert">
@@ -175,11 +182,11 @@ export function ConversationPage({ id }: { id: string }) {
           <div className="inline-actions">
             {c.status === 'pending' && c.suggestedProjectId && (
               <button className="link" onClick={() => void accept()}>
-                ranger dans {name(c.suggestedProjectId)}
+                {t.fileIn(name(c.suggestedProjectId))}
               </button>
             )}
             <button className="link" onClick={() => setChoosing((v) => !v)} aria-expanded={choosing}>
-              {c.projectId ? 'changer' : 'ailleurs…'}
+              {c.projectId ? t.change : t.elsewhere}
             </button>
           </div>
         </div>
@@ -189,10 +196,10 @@ export function ConversationPage({ id }: { id: string }) {
       </Collapse>
       <Messages messages={d.messages} author={SOURCE[c.source]} />
       <div className="band tone">
-        <div className="in label">continuer avec</div>
-        {(['claude', 'codex'] as Tool[]).map((t) => (
-          <Line key={t} className={tool === t ? 'invert' : ''} ch={tool === t ? '>' : ' '} go={null} onClick={() => setTool(t)}>
-            {t}
+        <div className="in label">{t.continueWith}</div>
+        {(['claude', 'codex'] as Tool[]).map((x) => (
+          <Line key={x} className={tool === x ? 'invert' : ''} ch={tool === x ? '>' : ' '} go={null} onClick={() => setTool(x)}>
+            {x}
           </Line>
         ))}
       </div>
@@ -201,9 +208,10 @@ export function ConversationPage({ id }: { id: string }) {
 }
 
 export function ImportPage() {
+  const t = useT(M)
   const { snap, refresh } = useApp()
   const [progress, setProgress] = useState<number | null>(null)
-  const [result, setResult] = useState<string | null>(null)
+  const [result, setResult] = useState<{ total: number; added: number; updated: number } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)
 
@@ -215,7 +223,7 @@ export function ImportPage() {
     setProgress(0)
     try {
       const r = await api.importExport(file, setProgress)
-      setResult(`${plural(r.total, 'conversation lue', 'conversations lues')} · ${r.added} nouvelles · ${r.updated} mises à jour`)
+      setResult({ total: r.total, added: r.added, updated: r.updated })
       refresh()
     } catch (e) {
       setErr((e as Error).message)
@@ -227,25 +235,25 @@ export function ImportPage() {
 
   const cl = snap.classifier
   return (
-    <Shell slot="agent" kicker="weevils" title="importer des conversations" meta={plural(snap.conversationCounts.total, 'conversation importée', 'conversations importées')}>
+    <Shell slot="agent" kicker="weevils" title={t.importTitle} meta={t.importedCount(snap.conversationCounts.total)}>
       <label className="row band invert" style={{ display: 'block', cursor: 'pointer' }}>
         <span className="in">
           <span className="st" aria-hidden>
             {progress != null ? <span className="spin"><Icon name="star" /></span> : <Icon name="arrow" />}
           </span>
           <span className="stack-text">
-            <span className="strong">{progress != null ? `envoi… ${Math.round(progress * 100)} %` : 'choisir le fichier d’export (.zip ou .json)'}</span>
-            <span className="meta">ChatGPT ou Claude.ai, weevils reconnaît le format</span>
+            <span className="strong">{progress != null ? t.uploading(Math.round(progress * 100)) : t.pickFile}</span>
+            <span className="meta">{t.formats}</span>
           </span>
         </span>
         <input ref={input} type="file" accept=".zip,.json,application/zip,application/json" onChange={(e) => void onFile(e)} style={{ position: 'absolute', opacity: 0, width: 1, height: 1 }} />
       </label>
       {result && <div className="in meta strong" style={{ paddingBlock: 12 }}>
-          <Icon name="check" /> {result}
+          <Icon name="check" /> {t.imported(result.total, result.added, result.updated)}
         </div>}
       {err && <div className="in meta strong" style={{ paddingBlock: 12 }}>! {err}</div>}
       <div className="in meta" style={{ paddingBlock: 10 }}>
-        {cl.running ? `Classement en cours · ${cl.queued} restantes.` : cl.lastError ? `Dernier classement interrompu : ${cl.lastError}` : snap.conversationCounts.pending ? `${snap.conversationCounts.pending} à ranger par toi.` : 'Tout est rangé.'}
+        {cl.running ? t.filing(cl.queued) : cl.lastError ? t.filingFailed(cl.lastError) : snap.conversationCounts.pending ? t.toFileByYou(snap.conversationCounts.pending) : t.allFiled}
       </div>
     </Shell>
   )

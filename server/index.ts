@@ -7,6 +7,7 @@ import http from 'node:http'
 import path from 'node:path'
 import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, PORT } from './config.ts'
 import { openaiKey, speak, speakable, transcribe } from './transcribe.ts'
+import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaStream, frenchVoices } from './fast.ts'
 import { Readable } from 'node:stream'
 import { Weevils } from './core.ts'
@@ -193,6 +194,33 @@ const routes: [string, RegExp, Handler][] = [
     res.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': mp3.length, 'cache-control': 'no-store' })
     res.end(mp3)
   }],
+  // ---- Voix rapide : son en flux, accroches en cache, enregistrement envoyé en morceaux, mesures.
+  ['GET', /^\/api\/speak\/stream$/, async (_req, res, url) => speakStream(res, url.searchParams.get('text') ?? '', url.searchParams.get('oral') === '1', url.searchParams.get('voice') || undefined)],
+  ['GET', /^\/api\/voice\/cue$/, async (_req, res) => {
+    const mp3 = await cue(w.voiceId)
+    res.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': mp3.length, 'cache-control': 'no-store' })
+    res.end(mp3)
+  }],
+  ['POST', /^\/api\/voice\/chunk$/, async (req, res) => {
+    const b = await readBody(req, 8 << 20)
+    addChunk(String(b.id), Number(b.seq), String(b.type ?? 'audio/mp4'), String(b.data ?? ''))
+    json(res, 200, { ok: true })
+  }],
+  ['POST', /^\/api\/voice\/finish$/, async (req, res) => json(res, 200, { text: await finishUpload(String((await readBody(req)).id)) })],
+  ['POST', /^\/api\/voice\/marks$/, async (req, res) => {
+    logMarks((await readBody(req)) as Record<string, number>)
+    json(res, 200, { ok: true })
+  }],
+  // ---- Siri / bouton Action : jeton personnel, un tour de parole complet avec le vrai weevboss.
+  ['GET', /^\/api\/voice\/shortcut$/, (_req, res) => json(res, 200, { token: shortcutToken(), url: process.env.WEEVILS_SHORTCUT_URL ?? '' })],
+  ['POST', /^\/api\/voice\/shortcut$/, (_req, res) => json(res, 200, { token: newShortcutToken(), url: process.env.WEEVILS_SHORTCUT_URL ?? '' })],
+  ['POST', /^\/api\/voice\/turn$/, async (req, res) => json(res, 200, await voiceTurn(w, await readBody(req, 16 << 20)))],
+  ['GET', /^\/api\/voice\/clip\/([\w-]+)\.mp3$/, (_req, res, _u, [id]) => {
+    const mp3 = clip(id)
+    if (!mp3) return json(res, 404, { error: 'son expiré' })
+    res.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': mp3.length, 'cache-control': 'no-store' })
+    res.end(mp3)
+  }],
   ['GET', /^\/api\/transcribe$/, (_req, res) => json(res, 200, { enabled: !!openaiKey() })],
   ['POST', /^\/api\/transcribe$/, async (req, res) => {
     const body = await readBody(req, 24 << 20)
@@ -329,7 +357,9 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://local')
   try {
     if (!url.pathname.startsWith('/api/')) return serveStatic(req, res, url.pathname)
-    if (!PUBLIC.has(url.pathname) && !authed(req)) return json(res, 401, { error: tr(M).signInRequired })
+    // Le Raccourci Siri n'a pas de cookie : son jeton personnel n'ouvre que le tour de parole et le son qui va avec.
+    const viaShortcut = /^\/api\/voice\/(turn|clip\/)/.test(url.pathname) && shortcutAuthed(req, url)
+    if (!PUBLIC.has(url.pathname) && !viaShortcut && !authed(req)) return json(res, 401, { error: tr(M).signInRequired })
     for (const [method, re, handler] of routes) {
       const m = re.exec(url.pathname)
       if (m && req.method === method) return await handler(req, res, url, m.slice(1))

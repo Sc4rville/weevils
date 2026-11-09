@@ -28,23 +28,58 @@ export function unlockAudio() {
   player = new Audio()
   player.src = SILENCE
   void player.play().catch(() => undefined)
+  void loadCue()
 }
 
+// ---- Mesures d'un tour de parole (fin de parole, texte, envoi, accroche, réponse, début du son), envoyées au journal.
+const marks: Record<string, number> = {}
+const mark = (k: string) => (marks[k] = Date.now())
+function reportMarks() {
+  if (!marks.stop || !marks.play) return
+  void fetch('/api/voice/marks', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(marks), credentials: 'same-origin' }).catch(() => undefined)
+  for (const k of Object.keys(marks)) delete marks[k]
+}
+
+/** Le son arrive en flux : l'élément audio commence à jouer au premier morceau, sans attendre le fichier entier. */
 export async function say(text: string, onEnd: () => void, oral = false, voice?: string) {
   if (!player) return onEnd()
+  const p = player
   try {
-    const res = await fetch('/api/speak', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, oral, voice }), credentials: 'same-origin' })
-    if (!res.ok) throw new Error('voix')
-    const url = URL.createObjectURL(await res.blob())
-    player.src = url
-    player.onended = () => {
-      URL.revokeObjectURL(url)
-      onEnd()
+    const q = new URLSearchParams({ text: text.slice(0, 1500), oral: oral ? '1' : '0', ...(voice ? { voice } : {}) })
+    p.src = `/api/speak/stream?${q}`
+    p.onplaying = () => {
+      mark('play')
+      reportMarks()
+      p.onplaying = null
     }
-    await player.play()
+    p.onended = () => onEnd()
+    p.onerror = () => onEnd()
+    await p.play()
   } catch {
     onEnd()
   }
+}
+
+/** Accroche immédiate (« ok », « je regarde »), déjà générée avec la voix choisie, gardée en mémoire. */
+let cueUrl: string | null = null
+async function loadCue() {
+  try {
+    const r = await fetch('/api/voice/cue', { credentials: 'same-origin' })
+    if (r.ok) {
+      if (cueUrl) URL.revokeObjectURL(cueUrl)
+      cueUrl = URL.createObjectURL(await r.blob())
+    }
+  } catch {
+    /* pas d'accroche : tant pis */
+  }
+}
+function playCue() {
+  if (!player || !cueUrl) return
+  player.src = cueUrl
+  player.onplaying = () => mark('cue')
+  player.onended = null
+  void player.play().catch(() => undefined)
+  void loadCue() // une autre accroche pour la prochaine fois
 }
 const hush = () => {
   if (player) {
@@ -64,7 +99,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
   const chunks = useRef<Blob[]>([])
   const sendAfter = useRef(false)
   const lastReply = useRef(replyKey)
-  // Jamais de voix pendant que l'utilisateur parle : une seule réponse en attente (la dernière), lue 1 s après l'arrêt du micro.
+  // Jamais de voix pendant que l'utilisateur parle : une seule réponse en attente (la dernière), lue dès que le micro est coupé.
   const phaseRef = useRef<Phase>('idle')
   phaseRef.current = phase
   const micStopped = useRef(0)
@@ -74,9 +109,9 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
     clearTimeout(flushTimer.current)
     const p = pending.current
     if (!p) return
-    const quiet = Date.now() - micStopped.current
-    if (phaseRef.current === 'rec' || phaseRef.current === 'wait' || quiet < 1000) {
-      flushTimer.current = setTimeout(flush, Math.max(250, 1000 - quiet))
+    // Seul un enregistrement en cours retient la voix ; une réponse unique est lue tout de suite.
+    if (phaseRef.current === 'rec') {
+      flushTimer.current = setTimeout(flush, 250)
       return
     }
     pending.current = null
@@ -100,6 +135,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
     requestAnimationFrame(() => setReply(true))
     if (spoken.current && replyText) {
       spoken.current = false
+      mark('reply')
       queueSay(replyText, false)
       return
     }
@@ -115,13 +151,30 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
       const type = MIME.find((t) => MediaRecorder.isTypeSupported(t))
       const r = new MediaRecorder(stream, type ? { mimeType: type } : undefined)
       chunks.current = []
-      r.ondataavailable = (ev) => ev.data.size && chunks.current.push(ev.data)
+      // Chaque tranche part au serveur pendant que l'utilisateur parle : à l'arrêt, il ne reste presque rien à envoyer.
+      const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+      const mime = r.mimeType || type || 'audio/mp4'
+      let seq = 0
+      let uploaded: Promise<unknown> = Promise.resolve()
+      let uploadOk = true
+      r.ondataavailable = (ev) => {
+        if (!ev.data.size) return
+        chunks.current.push(ev.data)
+        const n = seq++
+        const data = ev.data
+        uploaded = uploaded.then(async () => {
+          if (!uploadOk) return
+          await api.voiceChunk(id, n, mime, await blobToB64(data)).catch(() => (uploadOk = false))
+        })
+      }
       r.onstop = async () => {
         stream.getTracks().forEach((tr) => tr.stop())
         try {
-          const blob = new Blob(chunks.current, { type: r.mimeType || type || 'audio/mp4' })
+          const blob = new Blob(chunks.current, { type: mime })
           if (blob.size < 800) throw new Error('rien entendu')
-          const { text } = await api.transcribe(blob.type, await blobToB64(blob))
+          await uploaded
+          const { text } = uploadOk ? await api.voiceFinish(id) : await api.transcribe(blob.type, await blobToB64(blob))
+          mark('text')
           if (!text.trim()) throw new Error('rien entendu')
           onText(text.trim())
           if (sendAfter.current) {
@@ -144,10 +197,11 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
     }
   }
 
-  // Envoi vocal : la couche rapide répond tout de suite à voix haute ; une action part aussi à weevboss.
   // Le message part à weevboss comme un message écrit ; sa vraie réponse sera résumée à l'oral puis lue.
   const send = () => {
     spoken.current = true
+    mark('send')
+    playCue()
     onSend()
     take()
   }
@@ -164,6 +218,8 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
     else if (phase === 'rec') {
       setPhase('wait')
       micStopped.current = Date.now()
+      for (const k of Object.keys(marks)) delete marks[k]
+      mark('stop')
       rec.current?.stop()
     } else if (phase === 'wait') sendAfter.current = true
     else {

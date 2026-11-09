@@ -16,6 +16,7 @@ import { locale } from '../shared/i18n.ts'
 import M from './i18n/core.ts'
 import P from './i18n/push.ts'
 import { setCartesiaVoice } from './fast.ts'
+import { keepWarm, warmCues } from './voicepipe.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { ORCH_PREFIX, TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
 import { llmTitles, needsTitle, shortNow } from './titles.ts'
@@ -185,6 +186,22 @@ export class Weevils {
     this.voiceId = id
     setCartesiaVoice(id)
     this.persist()
+    warmCues(id)
+  }
+
+  /** Attend la réponse écrite de weevboss à un message envoyé à `since` : terminée quand il ne travaille plus. */
+  async waitMainReply(since: number, timeoutMs: number): Promise<string | null> {
+    const end = Date.now() + timeoutMs
+    let calm = 0
+    while (Date.now() < end) {
+      await sleep(500)
+      const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
+      const replies = t?.messages.filter((m) => m.role === 'assistant' && m.at >= since - 500) ?? []
+      calm = replies.length && !this.orchestratorWorking(Date.now()) ? calm + 1 : 0
+      if (calm >= 3) return replies.map((m) => m.text).join('\n\n')
+    }
+    const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
+    return t?.messages.filter((m) => m.role === 'assistant' && m.at >= since - 500).map((m) => m.text).join('\n\n') || null
   }
   pinRepo(repo: string, pinned: boolean) {
     if (!/^[\w.@+-]+$/.test(repo)) throw new Error(tr(M).badRepo)
@@ -250,6 +267,7 @@ export class Weevils {
       this.refreshH24()
       this.bump()
     })
+    keepWarm()
     // Tous les repos connus sont de confiance d'avance.
     try {
       if (trustDirs(this.allRepos().map((r) => this.repoDir(r)))) console.log('[sessions] dossiers de ~/projects marqués de confiance pour Claude Code')
@@ -264,6 +282,7 @@ export class Weevils {
       this.pinnedRepos = p.pinnedRepos ?? []
       this.voiceId = p.voiceId
       setCartesiaVoice(this.voiceId)
+      warmCues(this.voiceId)
     } catch {
       /* premier démarrage */
     }
@@ -1145,6 +1164,9 @@ export class Weevils {
     if (!ORCHESTRATOR) throw new Error('l’orchestrateur ne tourne pas sur cette machine')
     if (!text.trim()) throw new Error('message vide')
     this.prepareOrchestrator()
+    // Mesure : temps de réponse complet de weevboss, au journal.
+    const since = Date.now()
+    void this.waitMainReply(since, 300_000).then((r) => r && console.log(`[voix] weevboss a répondu en ${Date.now() - since} ms`))
     const pane = this.orchestratorPane()
     if (pane) {
       await this.deliver(pane.name, this.orchestratorId!, text)

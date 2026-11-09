@@ -1021,7 +1021,15 @@ input:focus-visible {
 
 /* Message de l'orchestrateur dans le fil d'une session : signé weevils, bulle d'une teinte légèrement différente (son violet), rien d'autre. */
 .msg.orch {
-  background: oklch(from var(--agent) calc(l + var(--dl) * 1.8) calc(c * 1.1) h);
+  background: oklch(from var(--who-c, var(--agent)) calc(l + var(--dl) * 1.8) calc(c * 1.1) h);
+}
+
+/* Agent externe (géométrie, instinct…) : même bulle, sa couleur (config du serveur). En sombre, la même teinte assombrie comme la palette. */
+.msg.orch.ext {
+  --who-c: var(--who);
+}
+[data-theme='dark'] .msg.orch.ext {
+  --who-c: oklch(from var(--who) 0.44 calc(c * 0.95) h);
 }
 
 /* ---------- Ligne de session : une seule ligne, l'activité à droite ---------- */

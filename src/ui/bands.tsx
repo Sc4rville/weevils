@@ -11,7 +11,7 @@ import { useApp } from './app-context'
 import { ensurePush } from '../push'
 import { VoiceLogo } from './voice'
 import { isUnread, useSeen } from './seen'
-import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, spring } from './bits'
+import { Appear, Collapse, Composer, Line, Messages, SessionRow, Working, spring, useAuthors } from './bits'
 import { ago, plain, step } from './format'
 import { FilledIcon, Icon } from './icons'
 import { PrefLines } from './prefs'
@@ -43,6 +43,7 @@ function useStickBottom(ref: React.RefObject<HTMLDivElement | null>, count: numb
 export function AgentBand() {
   const t = useT(M)
   const td = useT(D)
+  const authorOf = useAuthors()
   const { snap, expanded, setExpanded } = useApp()
   const open = expanded === 'agent'
   // Devil mode : mémorisé sur l'appareil ; les messages vont à l'autre modèle, la bande passe en orange.
@@ -111,7 +112,7 @@ export function AgentBand() {
                     *{' '}
                   </span>
                 )}
-                <span className="strong">{last.role === 'event' ? <Icon name="arrow" dir="right" /> : `${last.devil && last.role === 'assistant' ? td.devil : 'weevboss'} · `}</span>
+                <span className="strong">{last.role === 'event' ? <Icon name="arrow" dir="right" /> : `${last.devil && last.role === 'assistant' ? td.devil : last.role === 'orchestrator' ? authorOf(last.author).name : 'weevboss'} · `}</span>
                 {last.role === 'event' ? step(last.text) : plain(last.text).split('\n')[0]}
               </span>
             </span>

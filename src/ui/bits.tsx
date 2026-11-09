@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, type Transition } from 'motion/react'
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { api } from '../api'
-import type { Message, Session } from '../../shared/api.ts'
+import type { Author, Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
 import { dur, plain, segments, status, step, userText } from './format'
 import { tr, useT } from '../i18n'
@@ -479,12 +479,26 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
 
 const WINDOW = 60
 
+/** Auteur d'un message signé (weevboss par défaut) : nom affiché et couleur, d'après la config du serveur. */
+export function useAuthors() {
+  const { snap } = useApp()
+  const list = snap.config.authors
+  return useMemo(() => {
+    const byId = new Map((list ?? []).map((a) => [a.id, a]))
+    return (id?: string): Author => byId.get(id ?? 'weevboss') ?? { id: id ?? 'weevboss', name: id ?? 'weevboss', color: '' }
+  }, [list])
+}
+
+/** Classe et style d'une bulle signée : le violet de weevboss, ou la couleur de l'agent externe. */
+export const authorTone = (a: Author) => (a.color ? { className: 'tone orch ext', style: { '--who': a.color } as React.CSSProperties } : { className: 'tone orch', style: undefined })
+
 export function Messages({ messages, author, working = false }: { messages: Message[]; author: string; working?: boolean }) {
   const t = useT(M)
   const td = useT(D)
   const [all, setAll] = useState(false)
   const hidden = all ? 0 : Math.max(0, messages.length - WINDOW)
   const groups = useMemo(() => group(messages.slice(hidden)), [messages, hidden])
+  const authorOf = useAuthors()
   return (
     <AnimatePresence initial={false}>
       {hidden > 0 && (
@@ -499,9 +513,9 @@ export function Messages({ messages, author, working = false }: { messages: Mess
           </Appear>
         ) : (
           <Appear key={g.m.id}>
-            <div className={`msg band ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? 'tone orch' : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''}`}>
+            <div className={`msg band ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''}`} style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}>
               <div className="in">
-                <span className="who">{g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? 'weevboss' : g.m.devil ? td.devil : author}</span>
+                <span className="who">{g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}</span>
                 {g.m.role === 'user' ? <Clamp text={userText(g.m.text)} /> : g.m.role === 'orchestrator' ? <Clamp text={g.m.text} /> : <Prose text={g.m.text} />}
               </div>
             </div>

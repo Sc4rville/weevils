@@ -21,6 +21,17 @@ iPhone (app web installée) ──HTTPS + SSE──▶ Caddy ──▶ weevilsd 
 - **wv** lance claude ou codex dans une session tmux que weevils voit et pilote : `wv`, `wv "message"`, `wv codex`, `wv ls`, `wv a`.
 - **Classement** : dossier → repo → projet (familles `lws-*`, `mygame-*`…) pour les sessions ; pour les conversations, règles puis `codex exec` éphémère sur l'abonnement, avec tes corrections en exemples. Rien de sûr : c'est toi qui ranges.
 
+## Pont e-mail (agents externes)
+
+D'autres agents que weevboss peuvent écrire dans les sessions par e-mail : gepetto (ChatGPT), instinct… Chacun est un **auteur** déclaré dans `~/.config/weevils/env` (`WEEVILS_AUTHOR_<ID>=nom | couleur | e-mail | secret`) ; ses messages s'affichent dans les fils signés de son nom, dans sa couleur.
+
+- **Adresse** : une boîte dédiée (`WEEVILS_MAIL_ADDRESS` / `WEEVILS_MAIL_PASSWORD`), qui reçoit et qui répond. Gmail par défaut (IMAP + mot de passe d'application).
+- **Objet = cible** : `[mygame]` session disponible du projet (sinon une nouvelle) · `[session:2cbb0bbd]` cette session · `[weevboss]` l'orchestrateur · `[new:projet]` (ou `[new:projet:codex]`) une nouvelle session. **Corps** = le message.
+- **Réponse** : renvoyée à l'expéditeur, dans le même fil (In-Reply-To) ; répondre à ce mail continue la même session.
+- **Réception** : IMAP IDLE (push, quelques dizaines de ms), relancé toutes les 30 s (sondage de secours), reconnexion automatique, déduplication par Message-ID. Journal : `journalctl --user -u weevilsd | grep '\[mail\]'`.
+- **Sécurité** : seuls les expéditeurs déclarés passent, avec SPF ou DKIM aligné sur leur domaine (Authentication-Results du serveur de réception) ou le secret de l'auteur (`[key:…]` dans l'objet, ou une ligne `key: …` dans le corps). Chaque agent écrit depuis sa propre adresse. Limite de débit par auteur. Tout le reste est ignoré, journalisé, et laissé non lu.
+- **Anti-boucle** : rien de l'adresse du pont, rien d'automatique (Auto-Submitted, X-Autoreply, Precedence: bulk, X-Weevils) ; chaque envoi part à l'expéditeur seul et porte `Auto-Submitted: auto-replied` et `X-Weevils`.
+
 ## Installer
 
 ## Configurer

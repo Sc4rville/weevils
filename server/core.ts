@@ -19,7 +19,7 @@ import { setCartesiaVoice } from './fast.ts'
 import { keepWarm, warmCues } from './voicepipe.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
-import { ORCH_PREFIX, TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
+import { TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
 import { llmTitles, needsTitle, shortNow } from './titles.ts'
 import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
@@ -27,6 +27,7 @@ import type { WvSession } from './mux.ts'
 import { capture, dialogOnScreen, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv } from './mux.ts'
 import { lang, onLangChange, tr, user } from './i18n.ts'
 import TipsM from './i18n/tips.ts'
+import { normalizeFrom, publicAuthors, signAs } from './authors.ts'
 
 interface HookState {
   event: string
@@ -209,6 +210,26 @@ export class Weevils {
     const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
     return t?.messages.filter((m) => m.role === 'assistant' && m.at >= since - 500).map((m) => m.text).join('\n\n') || null
   }
+  /** Attend la réponse d'une session (locale ou d'une autre machine) à un message envoyé à `since` : terminée quand elle ne travaille plus. */
+  async waitReply(id: string, since: number, timeoutMs: number): Promise<{ id: string; text: string; done: boolean; attention?: string }> {
+    const end = Date.now() + timeoutMs
+    let calm = 0
+    let real = id
+    let replies: Message[] = []
+    let attention: string | undefined
+    while (Date.now() < end) {
+      await sleep(1500)
+      const d = await this.detailAny(this.resolveId(id)).catch(() => undefined)
+      if (!d) continue
+      real = d.session.id
+      replies = d.messages.filter((m) => m.role === 'assistant' && m.at >= since - 500)
+      attention = d.session.status === 'needs_user' ? (d.session.attention ?? '') : undefined
+      calm = replies.length && d.session.status !== 'working' ? calm + 1 : 0
+      if (calm >= 3) return { id: real, text: replies.map((m) => m.text).join('\n\n'), done: true, attention }
+    }
+    return { id: real, text: replies.map((m) => m.text).join('\n\n'), done: false, attention }
+  }
+
   pinRepo(repo: string, pinned: boolean) {
     if (!/^[\w.@+-]+$/.test(repo)) throw new Error(tr(M).badRepo)
     const has = this.pinnedRepos.includes(repo)
@@ -665,7 +686,7 @@ export class Weevils {
       mainQueued: this.orchestratorQueued(now),
       devil: { enabled: !!devilConfig(), working: devilWorking() },
       pinnedRepos: this.pinnedRepos,
-      config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '' },
+      config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors() },
     }
     return this.snap
   }
@@ -909,17 +930,19 @@ export class Weevils {
 
   /** Écrit dans la session ; si elle n'a plus de processus, la rouvre dans une pane weevils. */
   async send(id: string, text: string, from?: string): Promise<{ id: string }> {
+    // Signé par un auteur (weevboss, un agent externe) : le fil le montre comme son message, pas celui de l'utilisateur.
+    // Signé ici, avant un éventuel relais : l'autre machine n'a pas besoin de connaître l'auteur.
+    const author = normalizeFrom(from)
+    if (author) text = signAs(author, text)
     const remote = this.remoteFor(id)
-    if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/send`, { text, from })
-    // Signé weevils : le fil de la session le montre comme un message de l'orchestrateur, pas de l'utilisateur.
-    if (from === 'weevils' && !text.startsWith(ORCH_PREFIX)) text = ORCH_PREFIX + text
+    if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/send`, { text })
     const real = this.resolveId(id)
     const s = this.snapshot().sessions.find((x) => x.id === real)
     if (!s) throw new Error(tr(M).sessionNotFound)
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
     const pane = this.paneFor(real)
     if (pane) {
-      console.log(`[sessions] ${pane.name} ← message${from === 'weevils' ? ' (weevils)' : ''} · ${text.replace(/\s+/g, ' ').slice(0, 60)}`)
+      console.log(`[sessions] ${pane.name} ← message${author ? ` (${author})` : ''} · ${text.replace(/\s+/g, ' ').slice(0, 60)}`)
       await this.deliver(pane.name, real, text)
       return { id: real }
     }
@@ -965,12 +988,13 @@ export class Weevils {
   }
 
   async create(input: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string; from?: string }): Promise<{ id: string }> {
-    if (input.from === 'weevils' && input.text && !input.text.startsWith(ORCH_PREFIX)) input = { ...input, text: ORCH_PREFIX + input.text }
+    const author = normalizeFrom(input.from)
+    if (author && input.text) input = { ...input, text: signAs(author, input.text) }
     const project = this.snapshot().projects.find((p) => p.id === input.projectId)
     const repoGuess = input.repo ?? project?.repos[0]
     const machineId = input.machineId ?? (repoGuess ? project?.where[repoGuess] : undefined)
     const remote = this.remoteById(machineId)
-    if (remote) return remote.call('POST', '/api/sessions', { ...input, repo: repoGuess, machineId: remote.snap?.machines[0]?.id })
+    if (remote) return remote.call('POST', '/api/sessions', { ...input, from: undefined, repo: repoGuess, machineId: remote.snap?.machines[0]?.id })
     const repo = repoGuess ?? (this.repoRoot(input.projectId) ? input.projectId : undefined)
     const cwd = repo ? path.join(this.repoRoot(repo) ?? PROJECTS_DIR, repo) : PROJECTS_DIR
     if (!fs.existsSync(cwd)) throw new Error(tr(M).dirNotFound(cwd))

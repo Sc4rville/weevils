@@ -6,6 +6,7 @@ import path from 'node:path'
 import type { Message, Subagent, Tool } from '../shared/api.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/transcripts.ts'
+import { authorName, parseSigned } from './authors.ts'
 
 export interface Transcript {
   id: string
@@ -41,13 +42,13 @@ export interface Transcript {
 }
 
 const MAX_MESSAGES = 400
-/** Préfixe posé par le serveur quand c'est l'orchestrateur qui écrit dans une session. */
-export const ORCH_PREFIX = '[weevils] '
 /** Un texte dicté ou collé arrive enveloppé dans <pasted_content id="…">…</pasted_content> : on garde le dedans. */
 export const unwrapPasted = (text: string) => text.replace(/<pasted_content\b[^>]*>/g, '').replace(/<\/pasted_content>/g, '').trim()
 const userMsg = (id: string, raw: string, at: number): Message => {
   const text = unwrapPasted(raw)
-  return text.startsWith(ORCH_PREFIX) ? { id, role: 'orchestrator', text: text.slice(ORCH_PREFIX.length).trim(), at } : { id, role: 'user', text, at }
+  // Signé « [from:<id>] » (ou l'ancien « [weevils] ») : écrit par weevboss ou un agent externe, pas par l'utilisateur.
+  const signed = parseSigned(text)
+  return signed ? { id, role: 'orchestrator', author: signed.author, text: signed.text, at } : { id, role: 'user', text, at }
 }
 const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
@@ -405,12 +406,13 @@ export class TranscriptStore {
   }
 }
 
-export const titleOf = (t: Transcript) => short(oneLine(t.customTitle || t.title || t.firstPrompt || tr(M).newSession).replace(/^[#>*\s-]+/, ''), 60)
+const unsigned = (s: string | undefined) => (s ? (parseSigned(s)?.text ?? s) : s)
+export const titleOf = (t: Transcript) => short(oneLine(t.customTitle || t.title || unsigned(t.firstPrompt) || tr(M).newSession).replace(/^[#>*\s-]+/, ''), 60)
 /** Matière pour le renommeur : début de la session et ses derniers échanges, compacts. */
 export const digestOf = (t: Transcript, lastN = 10) => {
   const s = tr(M)
-  const recent = t.messages.slice(-lastN).map((m) => s.said(m.role === 'user' ? s.userLabel : m.role === 'orchestrator' ? 'weevboss' : m.role === 'assistant' ? 'agent' : '→', short(oneLine(m.text), m.role === 'event' ? 80 : 320)))
-  return { debut: short(oneLine(t.firstPrompt ?? ''), 200), recents: recent }
+  const recent = t.messages.slice(-lastN).map((m) => s.said(m.role === 'user' ? s.userLabel : m.role === 'orchestrator' ? authorName(m.author) : m.role === 'assistant' ? 'agent' : '→', short(oneLine(m.text), m.role === 'event' ? 80 : 320)))
+  return { debut: short(oneLine(unsigned(t.firstPrompt) ?? ''), 200), recents: recent }
 }
 export const lastMessageOf = (t: Transcript) => {
   const m = [...t.messages].reverse().find((x) => x.role !== 'event')

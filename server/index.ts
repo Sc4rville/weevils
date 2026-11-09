@@ -5,7 +5,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, PORT } from './config.ts'
+import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, ORCHESTRATOR, PORT } from './config.ts'
 import { openaiKey, speak, speakable, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaStream, cartesiaVoices } from './fast.ts'
@@ -16,9 +16,13 @@ import M from './i18n/api.ts'
 import P from './i18n/push.ts'
 import V from './i18n/voice.ts'
 import { tipRoutes } from './tips.ts'
+import { normalizeFrom } from './authors.ts'
+import { startMailBridge } from './mailbridge.ts'
 
 const w = new Weevils()
 w.start()
+// Pont e-mail (agents externes) : sur la machine de l'orchestrateur, seulement si WEEVILS_MAIL_ADDRESS / _PASSWORD sont remplis.
+if (ORCHESTRATOR) startMailBridge(w, DATA_DIR)
 
 // ---------------------------------------------------------------- secret partagé (ce soir) → passkey (demain)
 
@@ -166,8 +170,8 @@ const routes: [string, RegExp, Handler][] = [
   ['GET', /^\/api\/sessions\/([^/]+)\/screen$/, async (_req, res, _u, [id]) => json(res, 200, { screen: await w.screen(decodeURIComponent(id)) })],
   ['POST', /^\/api\/sessions\/([^/]+)\/send$/, async (req, res, _u, [id]) => {
     const body = await readBody(req)
-    // « from: weevils » n'est accepté que d'une requête locale (l'orchestrateur, la commande weevils), jamais du téléphone.
-    const from = body.from === 'weevils' && isLocal(req) ? 'weevils' : undefined
+    // « from » (weevils, ou un auteur déclaré) n'est accepté que d'une requête locale (l'orchestrateur, la commande weevils), jamais du téléphone.
+    const from = isLocal(req) ? normalizeFrom(body.from) : undefined
     json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), from))
   }],
   ['POST', /^\/api\/sessions\/([^/]+)\/attach$/, async (req, res, _u, [id]) => {
@@ -248,7 +252,7 @@ const routes: [string, RegExp, Handler][] = [
         tool,
         text: String(body.text ?? ''),
         machineId: body.machineId ? String(body.machineId) : undefined,
-        from: body.from === 'weevils' && isLocal(req) ? 'weevils' : undefined,
+        from: isLocal(req) ? normalizeFrom(body.from) : undefined,
       }),
     )
   }],

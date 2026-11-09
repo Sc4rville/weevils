@@ -5,12 +5,22 @@ export type SessionStatus = 'working' | 'needs_user' | 'idle' | 'done'
 
 export interface Message {
   id: string
-  /** orchestrator : message écrit par weevils (la bande du haut) dans cette session. */
+  /** orchestrator : message signé par un autre auteur que l'utilisateur (weevboss, ou un agent externe : voir author). */
   role: 'user' | 'assistant' | 'orchestrator' | 'event'
+  /** role orchestrator : id de l'auteur (Snapshot.config.authors) ; absent = weevboss. */
+  author?: string
   text: string
   at: number
   /** Échange du devil mode (autre modèle, même fil que weevboss). */
   devil?: boolean
+}
+
+/** Qui peut signer un message dans une session, à part l'utilisateur : weevboss et les agents externes (config du serveur). */
+export interface Author {
+  id: string
+  name: string
+  /** Couleur CSS de ses messages ; vide = le violet de weevboss. */
+  color: string
 }
 
 export interface Subagent {
@@ -152,7 +162,7 @@ export interface Snapshot {
   /** Repos épinglés au fil des projets (présents même sans session). */
   pinnedRepos: string[]
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */
-  config: { userName: string; exposeDomain: string; publicHost: string }
+  config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[] }
 }
 
 export interface SessionDetail {

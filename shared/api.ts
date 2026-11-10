@@ -3,7 +3,15 @@ import type { Tour } from './tour.ts'
 // Contrat entre weevilsd (VPS) et l'app. Horodatages en millisecondes, compteurs toujours dérivés côté app.
 
 export type Tool = 'claude' | 'codex'
-export type SessionStatus = 'working' | 'needs_user' | 'idle' | 'done'
+/** interrupted : coupée en plein travail (processus mort, pane fermée, erreur d'API ou quota), jamais confondue avec done. */
+export type SessionStatus = 'working' | 'needs_user' | 'idle' | 'done' | 'interrupted'
+
+/**
+ * Pourquoi une session est « interrupted » : died (processus ou pane disparus en plein tour, ou avec du travail
+ * d'arrière-plan en cours), dirty (arrêtée sans fin propre avec du travail non commité), quota (limite d'usage),
+ * auth (connexion expirée), api (autre erreur d'API ou de compaction qui a arrêté le tour).
+ */
+export type InterruptReason = 'died' | 'dirty' | 'quota' | 'auth' | 'api'
 
 export interface Message {
   id: string
@@ -78,6 +86,8 @@ export interface Session {
   status: SessionStatus
   /** Ce qui t'attend (permission, question), quand status = needs_user. */
   attention?: string
+  /** status = interrupted : quand et pourquoi (detail : le message d'erreur de l'outil, s'il y en a un). */
+  interrupted?: { at: number; reason: InterruptReason; detail?: string }
   cwd: string
   branch?: string
   openedAt: number

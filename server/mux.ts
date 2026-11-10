@@ -11,14 +11,26 @@ import M from './i18n/mux.ts'
 // weevils est celui de TMUX_TMPDIR (ou le défaut), jamais celui du terminal d'où il part. Sous systemd : sans effet.
 delete process.env.TMUX
 
-function tmux(args: string[], cwd?: string): Promise<string> {
+/**
+ * Serveur tmux dédié (« tmux -L weevils ») : un « tmux kill-server » ou « tmux kill-session -a » lancé par un agent,
+ * dans sa pane ou ailleurs, vise le serveur par défaut et ne touche plus aux sessions de weevils (le 10/11 à 03:48,
+ * un kill-server a fermé six sessions au travail). WEEVILS_TMUX_SOCKET pour un autre nom (tests, deuxième instance).
+ */
+export const SOCKET = process.env.WEEVILS_TMUX_SOCKET?.trim() || 'weevils'
+/** Où vit chaque session wv-* (lu par listWv) : le serveur dédié, ou l'ancien serveur par défaut (sessions d'avant). */
+const legacy = new Set<string>()
+const sockArgs = (name?: string) => (name && legacy.has(name) ? [] : ['-L', SOCKET])
+
+function tmux(args: string[], cwd?: string, socket: string[] = ['-L', SOCKET]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile('tmux', args, { cwd, timeout: 8000, maxBuffer: 4 << 20 }, (err, stdout, stderr) => {
+    execFile('tmux', [...socket, ...args], { cwd, timeout: 8000, maxBuffer: 4 << 20 }, (err, stdout, stderr) => {
       if (err) reject(new Error(stderr?.toString().trim() || err.message))
       else resolve(stdout.toString())
     })
   })
 }
+/** Commande qui vise une session : sur le serveur où elle vit. */
+const on = (name: string, args: string[]) => tmux(args, undefined, sockArgs(name))
 
 export interface WvSession {
   /** Nom tmux, sert aussi d'identifiant provisoire. */
@@ -37,13 +49,9 @@ const SEP = '\u001f'
 /** Le séparateur tel que tmux le rend : brut, ou échappé en octal par tmux 3.4. */
 const SEP_OUT = /\u001f|\\037/
 
-export async function listWv(): Promise<WvSession[]> {
-  let out = ''
-  try {
-    out = await tmux(['list-sessions', '-F', ['#{session_name}', '#{@wv_tool}', '#{@wv_session_id}', '#{@wv_title}', '#{@wv_cwd}', '#{pane_current_path}', '#{session_created}', '#{pane_pid}'].join(SEP)])
-  } catch {
-    return [] // pas de serveur tmux = aucune session
-  }
+const FORMAT = ['#{session_name}', '#{@wv_tool}', '#{@wv_session_id}', '#{@wv_title}', '#{@wv_cwd}', '#{pane_current_path}', '#{session_created}', '#{pane_pid}'].join(SEP)
+
+function parse(out: string): WvSession[] {
   return out
     .split('\n')
     .filter((l) => l.startsWith('wv-'))
@@ -61,6 +69,16 @@ export async function listWv(): Promise<WvSession[]> {
       if (Number(pid) > 0) s.pid = Number(pid)
       return s
     })
+}
+
+/** Sessions wv-* du serveur dédié, puis celles lancées avant lui sur le serveur par défaut (elles y finissent leur vie). */
+export async function listWv(): Promise<WvSession[]> {
+  const read = (socket: string[]) => tmux(['list-sessions', '-F', FORMAT], undefined, socket).then(parse, () => [] as WvSession[]) // pas de serveur = aucune session
+  const [own, old] = await Promise.all([read(['-L', SOCKET]), read([])])
+  const seen = new Set(own.map((s) => s.name))
+  legacy.clear()
+  for (const s of old) if (!seen.has(s.name)) legacy.add(s.name)
+  return [...own, ...old.filter((s) => legacy.has(s.name))]
 }
 
 /** Rien ne doit interrompre une session pilotée : pas de mise à jour auto, pas de télémétrie ni de conseils, pas de dialogue connu. */
@@ -91,17 +109,17 @@ export async function spawnWv(name: string, cwd: string, tool: Tool, title: stri
   if (sessionId) await setOpt(name, '@wv_session_id', sessionId)
 }
 
-export const setOpt = (name: string, key: string, value: string) => tmux(['set-option', '-t', `=${name}:`, key, value]).then(() => undefined)
+export const setOpt = (name: string, key: string, value: string) => on(name, ['set-option', '-t', `=${name}:`, key, value]).then(() => undefined)
 
 /** Ferme proprement une session tmux wv-* (l'agent reçoit SIGHUP et s'arrête ; son transcript reste, --resume le reprend). */
-export const killWv = (name: string) => tmux(['kill-session', '-t', `=${name}:`]).then(() => undefined)
+export const killWv = (name: string) => on(name, ['kill-session', '-t', `=${name}:`]).then(() => undefined)
 
 /** Écrit un message puis Entrée. Les retours à la ligne enverraient trop tôt : on les aplatit. */
 export async function sendText(name: string, text: string): Promise<void> {
   const flat = text.replace(/\s*\n\s*/g, ' ').trim()
-  await tmux(['send-keys', '-t', `=${name}:`, '-l', flat])
+  await on(name, ['send-keys', '-t', `=${name}:`, '-l', flat])
   await new Promise((r) => setTimeout(r, 150))
-  await tmux(['send-keys', '-t', `=${name}:`, 'Enter'])
+  await on(name, ['send-keys', '-t', `=${name}:`, 'Enter'])
 }
 
 const KEYS: Record<string, string> = {
@@ -117,13 +135,13 @@ const KEYS: Record<string, string> = {
 
 /** Touches autorisées : flèches, Entrée, Échap, Tab, chiffres 1–9, y/n. Rien d'autre. */
 export async function sendKey(name: string, key: string): Promise<void> {
-  if (KEYS[key]) return void (await tmux(['send-keys', '-t', `=${name}:`, KEYS[key]]))
-  if (/^[1-9yn]$/.test(key)) return void (await tmux(['send-keys', '-t', `=${name}:`, '-l', key]))
+  if (KEYS[key]) return void (await on(name, ['send-keys', '-t', `=${name}:`, KEYS[key]]))
+  if (/^[1-9yn]$/.test(key)) return void (await on(name, ['send-keys', '-t', `=${name}:`, '-l', key]))
   throw new Error(tr(M).keyRefused(key))
 }
 
 export async function capture(name: string): Promise<string> {
-  const out = await tmux(['capture-pane', '-p', '-J', '-t', `=${name}:`])
+  const out = await on(name, ['capture-pane', '-p', '-J', '-t', `=${name}:`])
   return out.replace(/\s+$/g, '')
 }
 

@@ -54,7 +54,7 @@ export function Appear({ children }: { children: ReactNode }) {
 
 export function StatusChar({ s }: { s: Session['status'] }) {
   return (
-    <span className={s === 'working' ? 'spin fluo' : undefined}>
+    <span className={s === 'working' ? 'spin fluo' : s === 'interrupted' ? 'alert' : undefined}>
       <G c={status[s].ch} />
     </span>
   )
@@ -106,10 +106,11 @@ export function SessionRow({ session }: { session: Session }) {
   // Un seul texte, en entier : la question qui t'attend, sinon l'activité en cours quand ça travaille, sinon le titre.
   const act = waiting && session.attention ? session.attention : session.status === 'working' ? session.now : undefined
   const text = act || session.title
-  const when = dur(now - (session.status === 'done' ? session.lastActivityAt : ref))
-  return (
+  const cut = session.status === 'interrupted'
+  const when = dur(now - (cut ? (session.interrupted?.at ?? session.lastActivityAt) : session.status === 'done' ? session.lastActivityAt : ref))
+  const row = (
     <button
-      className={`row ${waiting ? 'tone' : ''} ${session.status === 'working' ? 'live' : ''} ${unread ? 'unread' : ''}`}
+      className={`row ${waiting ? 'tone' : ''} ${cut ? 'cut' : ''} ${session.status === 'working' ? 'live' : ''} ${unread ? 'unread' : ''}`}
       onClick={() => push({ kind: 'session', id: session.id })}
       aria-label={t.rowAria(session.tool, session.title, st.label, act, session.background > 0 ? `${when}, ${t.background(session.background)}` : when)}
       title={act ? session.title : undefined}
@@ -128,6 +129,41 @@ export function SessionRow({ session }: { session: Session }) {
         </span>
         <span className="act">{when}</span>
       </span>
+    </button>
+  )
+  if (!cut) return row
+  // Coupée en plein travail : la ligne en couleur d'alerte et, à côté, la reprise en un geste.
+  return (
+    <div className="cut-wrap">
+      {row}
+      <ResumeButton session={session} />
+    </div>
+  )
+}
+
+/** Relance une session coupée (--resume et un message qui la renvoie à son travail), puis ouvre son fil. */
+export function ResumeButton({ session, onError, stay }: { session: Session; onError?: (e: string) => void; stay?: boolean }) {
+  const { push } = useApp()
+  const t = useT(M)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const go = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      const r = await api.resume(session.id)
+      if (!stay) push({ kind: 'session', id: r.id })
+    } catch (e) {
+      const m = (e as Error).message
+      setErr(m)
+      onError?.(m)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <button className="resume" onClick={() => void go()} disabled={busy} aria-label={err ?? t.resumeAria(session.title)} title={err ?? undefined}>
+      {busy ? <span className="spin"><Icon name="star" /></span> : err ? <G c="!" /> : null} {t.resume}
     </button>
   )
 }

@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { ConversationDetail, ConversationSummary, H24Activity, Message, Project, Session, SessionDetail, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
+import type { ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, Session, SessionDetail, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
 import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, LOGS_DIRS, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
@@ -40,6 +40,21 @@ interface HookState {
   at: number
   message?: string
   pid?: number
+  /** SessionEnd : pourquoi la session s'est fermée (prompt_input_exit, clear, logout, other…). */
+  reason?: string
+}
+
+type Cut = { at: number; reason: InterruptReason }
+/** Fins propres d'une session (SessionEnd) : /exit, /clear, /logout. Sans raison (ancien hook) : propre aussi. */
+const CLEAN_END = new Set(['prompt_input_exit', 'clear', 'logout'])
+/** Une coupure plus ancienne que ça, découverte après coup (redémarrage, déploiement), n'est pas annoncée : seulement montrée. */
+const ANNOUNCE_WITHIN_MS = 6 * 3600_000
+
+/** Le dossier a du travail non commité (fichiers modifiés ou nouveaux) ; pas un dépôt git, ou git muet : non. */
+export function gitDirty(cwd: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile('git', ['-C', cwd, 'status', '--porcelain'], { timeout: 5000, maxBuffer: 4 << 20 }, (err, stdout) => resolve(!err && stdout.trim().length > 0))
+  })
 }
 
 /** Session tmux wv-* vue au dernier passage, avec ce qu'on lit à son écran. */
@@ -54,6 +69,11 @@ interface Persisted {
   orchestratorId?: string
   pinnedRepos?: string[]
   voiceId?: string
+  /** Coupures vues au passage, reprises ou laissées, coupures déjà annoncées. */
+  cuts?: [string, Cut][]
+  cleared?: [string, number][]
+  announced?: string[]
+  closedByUs?: [string, number][]
 }
 
 const STATE_FILE = path.join(DATA_DIR, 'state.json')
@@ -304,6 +324,16 @@ export class Weevils {
   private snap: Snapshot | null = null
   private persistTimer: NodeJS.Timeout | null = null
   private retitleSoon: NodeJS.Timeout | undefined
+  /** Sessions vues mourir en plein travail (ou avec du travail non commité) : id → quand, pourquoi. */
+  cuts = new Map<string, Cut>()
+  /** Reprise ou « laisser » : une coupure antérieure à cette date est réglée. */
+  cleared = new Map<string, number>()
+  /** Coupures déjà annoncées (push, fil de weevboss), « id@quand ». */
+  private announced = new Set<string>()
+  /** Fermées par weevils (bouton fermer, ménage des panes) : leur fin n'est pas une coupure. */
+  private closedByUs = new Map<string, number>()
+  /** Dernier passage de watchCuts : la session vivait-elle, et dans quel état. */
+  private lastSeen = new Map<string, { alive: boolean; status: Session['status'] }>()
 
   constructor() {
     // Preuves de vie de l'arrière-plan d'une session : le processus claude de sa pane, sinon celui que ses hooks ont donné.
@@ -333,6 +363,10 @@ export class Weevils {
       this.orchestratorId = p.orchestratorId ?? null
       this.pinnedRepos = p.pinnedRepos ?? []
       this.voiceId = p.voiceId
+      this.cuts = new Map(p.cuts ?? [])
+      this.cleared = new Map(p.cleared ?? [])
+      this.announced = new Set(p.announced ?? [])
+      this.closedByUs = new Map(p.closedByUs ?? [])
       setCartesiaVoice(this.voiceId)
       warmCues(this.voiceId)
     } catch {
@@ -352,7 +386,7 @@ export class Weevils {
       if (this.store.scan(Date.now())) this.bump()
       this.linkCodexPanes()
     }, 1500)
-    setInterval(() => void this.watchPanes(), 2500)
+    setInterval(() => void this.watchPanes().then(() => this.watchCuts()), 2500)
     setInterval(() => void this.reapPanes(), 60_000)
     setInterval(() => void this.watchImports(), 30_000)
     setInterval(() => void this.classify(), 60_000)
@@ -378,6 +412,7 @@ export class Weevils {
       this.snap = null
       for (const fn of this.listeners) fn()
       this.notifyTransitions()
+      this.announceCuts()
     }, 200)
   }
 
@@ -417,7 +452,18 @@ export class Weevils {
       // Les hooks des trois derniers jours suffisent (pid des sessions encore ouvertes).
       const hooks = [...this.hooks].filter(([, h]) => Date.now() - h.at < RECENT_MS)
       const titles = [...this.titles].filter(([, t]) => Date.now() - t.at < 14 * 86400_000)
-      const data: Persisted = { hooks, titles, orchestratorId: this.orchestratorId ?? undefined, pinnedRepos: this.pinnedRepos, voiceId: this.voiceId }
+      const recent = (at: number) => Date.now() - at < RECENT_MS
+      const data: Persisted = {
+        hooks,
+        titles,
+        orchestratorId: this.orchestratorId ?? undefined,
+        pinnedRepos: this.pinnedRepos,
+        voiceId: this.voiceId,
+        cuts: [...this.cuts].filter(([, c]) => recent(c.at)),
+        cleared: [...this.cleared].filter(([, at]) => recent(at)),
+        announced: [...this.announced].slice(-300),
+        closedByUs: [...this.closedByUs].filter(([, at]) => recent(at)),
+      }
       fs.writeFileSync(STATE_FILE, JSON.stringify(data, null, 1))
     } catch {
       /* disque plein ? on continue en mémoire */
@@ -431,7 +477,7 @@ export class Weevils {
     if (!id) return
     const prev = this.hooks.get(id)
     const pid = pidHeader ? (findClaudePid(Number(pidHeader)) ?? prev?.pid) : prev?.pid
-    this.hooks.set(id, { event: body.hook_event_name ?? 'unknown', at: Date.now(), message: body.message, pid })
+    this.hooks.set(id, { event: body.hook_event_name ?? 'unknown', at: Date.now(), message: body.message, pid, ...(typeof body.reason === 'string' ? { reason: body.reason } : {}) })
     // Nouveau message : l'activité précédente ne vaut plus, on l'efface et on la réécrit dès que possible.
     if (body.hook_event_name === 'UserPromptSubmit') {
       const t = this.titles.get(id)
@@ -512,6 +558,8 @@ export class Weevils {
       // Des sous-agents, un workflow ou une commande tournent encore : fermer la pane les tuerait.
       if (t && this.toSession(t, now).background > 0) continue
       try {
+        if (p.sessionId) this.closedByUs.set(p.sessionId, now)
+        this.persist()
         await killWv(p.name)
         console.log(`[sessions] ${p.name} fermée après ${Math.round((now - last) / 60_000)} min sans activité`)
       } catch (e) {
@@ -550,13 +598,94 @@ export class Weevils {
     return where
   }
 
-  private toSession(t: Transcript, now: number): Session {
-    let where = place(t.cwd, PROJECT_ROOTS)
-    if (where.kind === 'invented') where = this.inferPlace(t) ?? where
+  /** Ce qu'on sait de la vie d'une session : sa pane, son dernier hook, son processus. alive : vivante et pas fermée (SessionEnd). */
+  private lifeOf(t: Transcript, now: number) {
     const pane = this.paneFor(t.id)
     const hook = this.hooks.get(t.id)
     const hookAlive = hook?.pid ? pidAlive(hook.pid) : undefined
     const live = !!pane || hookAlive === true || (hookAlive === undefined && now - t.lastActivityAt < STALE_MS && t.originator !== 'codex_exec')
+    return { pane, hook, hookAlive, live, alive: live && hook?.event !== 'SessionEnd' }
+  }
+
+  /** Fin voulue : /exit, /clear, /logout (SessionEnd), ou pane fermée par weevils (bouton, ménage). */
+  private endedCleanly(id: string, hook: HookState | undefined) {
+    if (hook?.event === 'SessionEnd' && (!hook.reason || CLEAN_END.has(hook.reason))) return true
+    return this.closedByUs.has(id)
+  }
+
+  /**
+   * Session coupée en plein travail, tant que personne ne l'a reprise ni laissée : tour arrêté par une erreur (limite
+   * d'usage, connexion, API, compaction), processus disparu au milieu d'un tour ou de son arrière-plan, ou mort vue au
+   * passage (watchCuts : elle travaillait, ou laissait du travail non commité). Une fin voulue n'en est jamais une.
+   */
+  private cutOf(t: Transcript, alive: boolean, hook: HookState | undefined, bgRunning: boolean): Session['interrupted'] {
+    // Appels ponctuels (claude -p, codex exec) : un script les attend, pas une personne.
+    if (t.headless || t.originator === 'codex_exec') return undefined
+    const settled = this.cleared.get(t.id) ?? 0
+    const clean = !alive && this.endedCleanly(t.id, hook)
+    if (t.stopError && t.stopError.at > settled && !clean) return { at: t.stopError.at, reason: t.stopError.reason, detail: t.stopError.text || undefined }
+    if (alive || clean) return undefined
+    const seen = this.cuts.get(t.id)
+    // Une activité après la coupure : elle a été reprise (message écrit, --resume), cette coupure-là est réglée.
+    if (seen && seen.at > settled && t.lastActivityAt <= seen.at) return { ...seen }
+    const at = Math.max(t.lastActivityAt, hook?.at ?? 0)
+    if ((t.phase === 'working' || bgRunning) && at > settled) return { at, reason: 'died' } // i18n-ignore : code de raison, pas un texte affiché
+    return undefined
+  }
+
+  /**
+   * Toutes les 2,5 s, après la relecture des panes : une session qui vivait et ne vit plus, sans fin voulue, est coupée si
+   * elle travaillait (ou attendait une réponse), ou si son dossier garde du travail non commité.
+   */
+  private async watchCuts(now = Date.now()) {
+    const seen = new Map<string, { alive: boolean; status: Session['status'] }>()
+    const died: { id: string; cwd: string; status: Session['status'] }[] = []
+    for (const s of this.sessions(now)) {
+      const t = this.store.get(s.id)
+      if (!t) continue
+      const { alive, hook } = this.lifeOf(t, now)
+      const prev = this.lastSeen.get(s.id)
+      seen.set(s.id, { alive, status: s.status })
+      if (prev?.alive && !alive && !this.endedCleanly(s.id, hook)) died.push({ id: s.id, cwd: s.cwd, status: prev.status })
+    }
+    this.lastSeen = seen
+    for (const d of died) {
+      const working = d.status === 'working' || d.status === 'needs_user'
+      const reason: InterruptReason | null = working ? 'died' : d.cwd && (await gitDirty(d.cwd)) ? 'dirty' : null
+      console.log(`[sessions] ${d.id.slice(0, 8)} arrêtée sans fin voulue (était ${d.status})${reason ? ` · coupée : ${reason}` : ''}`)
+      if (!reason) continue
+      this.cuts.set(d.id, { at: now, reason })
+      this.persist()
+      this.bump()
+    }
+  }
+
+  /** Une coupure nouvelle : notification push et message dans le fil de weevboss, une fois. Celles découvertes tard : montrées seulement. */
+  private announceCuts() {
+    const snap = this.snapshot()
+    const now = Date.now()
+    let changed = false
+    for (const s of snap.sessions) {
+      if (s.status !== 'interrupted' || !s.interrupted) continue
+      const key = `${s.id}@${s.interrupted.at}`
+      if (this.announced.has(key)) continue
+      this.announced.add(key)
+      changed = true
+      if (now - s.interrupted.at > ANNOUNCE_WITHIN_MS) continue
+      const project = snap.projects.find((p) => p.id === s.projectId)?.name ?? s.projectId
+      const why = tr(M).cutWhy(s.interrupted.reason)
+      console.log(`[sessions] ${s.id.slice(0, 8)} coupée en plein travail (${s.interrupted.reason}) · « ${s.title} »`)
+      if (this.push.enabled) void this.push.send({ title: tr(P).cutTitle(project), body: `${s.title} · ${why}`.replace(/\s+/g, ' ').slice(0, 180), url: `/#s=${encodeURIComponent(s.id)}`, tag: `cut-${s.id}` })
+      // Le fil de weevboss (machine principale) ; ailleurs, personne ne le lit : sans effet.
+      this.setup?.say(tr(M).cutSaid(s.title, project, why))
+    }
+    if (changed) this.persist()
+  }
+
+  private toSession(t: Transcript, now: number): Session {
+    let where = place(t.cwd, PROJECT_ROOTS)
+    if (where.kind === 'invented') where = this.inferPlace(t) ?? where
+    const { pane, hook, hookAlive, live, alive } = this.lifeOf(t, now)
 
     let status: Session['status'] = 'idle'
     let attention: string | undefined
@@ -576,12 +705,14 @@ export class Weevils {
     const turnWorking = status === 'working'
 
     // Arrière-plan (sous-agents, étapes de workflow, commandes) : il meurt avec le processus claude, jamais de « working » fantôme.
-    const alive = live && hook?.event !== 'SessionEnd'
     const lastSeen = Math.max(t.lastActivityAt, hook?.at ?? 0)
     const subagents = alive ? t.subagents : t.subagents.map((s) => (s.status === 'working' ? { ...s, status: 'stopped' as const, endedAt: Math.max(s.startedAt, lastSeen) } : s))
     const running = subagents.filter((s) => s.status === 'working')
     // Tant qu'il tourne, la session travaille : ni « idle », ni « done » après 30 min, ni « a fini » (notifyTransitions).
     if (running.length && status !== 'needs_user') status = 'working'
+    // Coupée en plein travail : ni « terminée », ni « travaille » ; elle attend une reprise.
+    const interrupted = this.cutOf(t, alive, hook, t.subagents.some((x) => x.status === 'working'))
+    if (interrupted) status = 'interrupted'
 
     // Ouverte dans un terminal que weevils ne pilote pas : on ne peut ni lui écrire ni la reprendre sans risque.
     const unmanagedLive = live && !pane
@@ -596,7 +727,8 @@ export class Weevils {
       // En attendant l'activité réécrite : le dernier pas de l'agent (outil) plutôt que l'ancienne tâche.
       now: shortNow(this.titles.get(t.id)?.now || (t.phase === 'working' ? stepOf(t) : '')) || undefined,
       status,
-      attention,
+      attention: status === 'needs_user' ? attention : undefined,
+      ...(interrupted ? { interrupted } : {}),
       cwd: t.cwd,
       branch: t.branch,
       openedAt: t.openedAt,
@@ -1011,8 +1143,46 @@ export class Weevils {
     }
     const cwd = s.cwd && fs.existsSync(s.cwd) ? s.cwd : HOME
     const command = s.tool === 'claude' ? [...CLAUDE, '--resume', s.id, text] : ['codex', 'resume', ...CODEX_FLAGS, s.id, text]
+    const at = Date.now()
     await this.spawn(s.tool, cwd, s.title, command, s.id)
+    // Rouverte : une coupure d'avant est réglée (une nouvelle, plus tard, comptera).
+    this.cleared.set(real, at)
+    this.closedByUs.delete(real)
+    this.persist()
     return { id: real }
+  }
+
+  /**
+   * Reprise en un geste d'une session coupée : relancée avec --resume (ou, encore ouverte après une erreur d'API, dans sa
+   * pane) et un message signé weevboss qui lui dit de repartir de son travail sur disque.
+   */
+  async resume(id: string): Promise<{ id: string }> {
+    const remote = this.remoteFor(id)
+    if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/resume`, {})
+    const real = this.resolveId(id)
+    const s = this.snapshot().sessions.find((x) => x.id === real && x.machineId === MACHINE.id)
+    if (!s) throw new Error(tr(M).sessionNotFound)
+    const at = Date.now()
+    const t = tr(M)
+    const r = await this.send(real, t.resumePrompt(t.cutWhy(s.interrupted?.reason ?? 'died'), s.cwd), 'weevboss')
+    this.cleared.set(real, at)
+    this.cuts.delete(real)
+    console.log(`[sessions] ${real.slice(0, 8)} reprise après coupure (${s.interrupted?.reason ?? s.status})`)
+    this.persist()
+    this.bump()
+    return r
+  }
+
+  /** « Laisser » : la coupure est vue, la session redevient une session terminée (lui écrire la reprend toujours). */
+  async dismiss(id: string): Promise<{ ok: true }> {
+    const remote = this.remoteFor(id)
+    if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/dismiss`, {})
+    const real = this.resolveId(id)
+    this.cleared.set(real, Date.now())
+    this.cuts.delete(real)
+    this.persist()
+    this.bump()
+    return { ok: true }
   }
 
   /** Message avec des photos : les fichiers sont posés sur la machine de la session, l'agent reçoit leur chemin et va les regarder. */
@@ -1146,6 +1316,8 @@ export class Weevils {
     if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/close`, {})
     const pane = this.paneFor(this.resolveId(id))
     if (!pane || this.isOrchestratorPane(pane)) throw new Error(tr(TipsM).notClosable)
+    if (pane.sessionId) this.closedByUs.set(pane.sessionId, Date.now())
+    this.persist()
     await killWv(pane.name)
     console.log(`[sessions] ${pane.name} fermée depuis l'app`)
     this.panes = this.panes.filter((p) => p.name !== pane.name)

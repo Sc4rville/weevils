@@ -178,7 +178,7 @@ export default function App() {
     if (!snap) return []
     const rank = (id: string) => {
       const ss = snap.sessions.filter((s) => s.projectId === id)
-      if (ss.some((s) => s.status === 'needs_user')) return 0
+      if (ss.some((s) => s.status === 'needs_user' || s.status === 'interrupted')) return 0
       if (ss.some((s) => s.status === 'working')) return 1
       if (ss.some((s) => s.status === 'idle')) return 2
       return 3

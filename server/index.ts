@@ -498,6 +498,9 @@ const routes: [string, RegExp, Handler][] = [
     json(res, 200, await w.newRepo(String(body.name ?? '').trim(), String(body.description ?? '')))
   }],
   ['POST', /^\/api\/sessions\/([^/]+)\/close$/, async (_req, res, _u, [id]) => json(res, 200, await w.close(decodeURIComponent(id)))],
+  // Session coupée en plein travail : la reprendre (--resume + message de reprise) ou la laisser.
+  ['POST', /^\/api\/sessions\/([^/]+)\/resume$/, async (_req, res, _u, [id]) => json(res, 200, await w.resume(decodeURIComponent(id)))],
+  ['POST', /^\/api\/sessions\/([^/]+)\/dismiss$/, async (_req, res, _u, [id]) => json(res, 200, await w.dismiss(decodeURIComponent(id)))],
   // ---- Coin infrastructure : machines, système de fichiers complet, abonnements.
   ['GET', /^\/api\/infra\/brief$/, async (_req, res, url) => {
     const here = brief()

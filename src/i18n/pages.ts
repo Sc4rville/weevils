@@ -36,6 +36,11 @@ export default defineMessages({
     subAria: (label: string, state: string, d: string, open: boolean) => `${label}, ${state}, ${d}, ${open ? 'replier' : 'déplier'}`,
     asks: (tool: string) => `${tool} te demande`,
     waitingForYou: 'la session attend ta réponse',
+    /** Session coupée en plein travail : pourquoi, et les deux gestes. */
+    cutWhy: (reason: string) =>
+      ({ died: 'processus arrêté', dirty: 'arrêtée avec du travail non commité', quota: 'limite d’usage atteinte', auth: 'connexion expirée', api: 'erreur de l’API' })[reason] ?? 'arrêtée',
+    resume: 'reprendre',
+    dismiss: 'laisser',
     showScreen: 'voir l’écran du terminal',
     hideScreen: 'masquer l’écran du terminal',
     terminalScreen: 'écran du terminal',
@@ -91,6 +96,10 @@ export default defineMessages({
     subAria: (label: string, state: string, d: string, open: boolean) => `${label}, ${state}, ${d}, ${open ? 'collapse' : 'expand'}`,
     asks: (tool: string) => `${tool} is asking`,
     waitingForYou: 'the session is waiting for your answer',
+    cutWhy: (reason: string) =>
+      ({ died: 'process stopped', dirty: 'stopped with uncommitted work', quota: 'usage limit reached', auth: 'login expired', api: 'API error' })[reason] ?? 'stopped',
+    resume: 'resume',
+    dismiss: 'dismiss',
     showScreen: 'show the terminal screen',
     hideScreen: 'hide the terminal screen',
     terminalScreen: 'terminal screen',

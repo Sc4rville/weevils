@@ -3,6 +3,7 @@
 # Elle appelle le weevilsd local : une requête née sur la machine est de confiance, pas de code à fournir.
 #
 #   weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
+#   weevils resume <id>                  relance une session coupée en plein travail (état « interrupted »)
 #   weevils new <projet> "message" [codex]   weevils projects
 #   weevils setup [install | ask <brique> | mark <id>]      weevils config set <CLÉ> <valeur>
 #   weevils tour open|close                                 rouvre ou ferme les premiers pas dans l'app
@@ -25,24 +26,26 @@ wv_lang() {
 if [ "$(wv_lang)" = fr ]; then
   # i18n-ignore : messages français, l'anglais est juste en dessous (même chose dans la branche else)
   usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
-weevils new <projet> "message" [codex]   weevils projects
+weevils resume <id>                  weevils new <projet> "message" [codex]   weevils projects
 weevils setup [install | ask <brique> | mark <id>]   weevils config set <CLÉ> <valeur>
 weevils tour open|close' # i18n-ignore
   a_id='id de session' a_msg='message' a_project='projet' a_first='premier message' # i18n-ignore
   export WVM_NOT_FOUND='session introuvable : ' WVM_AMBIGUOUS='plusieurs sessions commencent par {} : {}' # i18n-ignore
   export WVM_NO_SESSIONS='aucune session ouverte' WVM_NO_MESSAGES='(aucun message)' WVM_USER='utilisateur' # i18n-ignore
   export WVM_ERROR='erreur' WVM_NEW='nouvelle session ' WVM_BACKGROUND='en arrière-plan' # i18n-ignore
-  m_sent='reçu par %s' m_not_sent='NON reçu par %s : %s' # i18n-ignore
+  m_sent='reçu par %s' m_not_sent='NON reçu par %s : %s' m_resumed='%s relancée' # i18n-ignore
+  export WVM_CUT='coupée en plein travail' # i18n-ignore
 else
   usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
-weevils new <project> "message" [codex]  weevils projects
+weevils resume <id>                  weevils new <project> "message" [codex]  weevils projects
 weevils setup [install | ask <brick> | mark <id>]   weevils config set <KEY> <value>
 weevils tour open|close'
   a_id='session id' a_msg='message' a_project='project' a_first='first message'
   export WVM_NOT_FOUND='no such session: ' WVM_AMBIGUOUS='several sessions start with {}: {}'
   export WVM_NO_SESSIONS='no open sessions' WVM_NO_MESSAGES='(no messages)' WVM_USER='user'
   export WVM_ERROR='error' WVM_NEW='new session ' WVM_BACKGROUND='in background'
-  m_sent='received by %s' m_not_sent='NOT received by %s: %s'
+  m_sent='received by %s' m_not_sent='NOT received by %s: %s' m_resumed='%s restarted'
+  export WVM_CUT='cut off mid-work'
 fi
 
 json() { local code=$1; shift; "$py" -c "import json,sys,os; E=os.environ; d=json.load(sys.stdin); $code" "$@"; }
@@ -65,12 +68,15 @@ case "${1:-}" in
     curl -sf -m 8 "$base/api/snapshot" | json "
 names={p['id']:p['name'] for p in d['projects']}
 # Une session dont des sous-agents, un workflow ou des commandes tournent encore est « working » : elle reste listée.
+# Une session coupée en plein travail (« interrupted ») est listée en premier : elle attend une reprise (weevils resume).
 rows=[s for s in d['sessions'] if s['status']!='done' or s.get('background')]
+rows.sort(key=lambda s: s['status']!='interrupted')
 if not rows: print(E['WVM_NO_SESSIONS'])
 for s in rows:
     now=(' · '+s['now']) if s.get('now') else ''
     bg=(f\" · {s['background']} {E['WVM_BACKGROUND']}\") if s.get('background') else ''
-    print(f\"{s['id'][:8]}  {names.get(s['projectId'],s['projectId']):<14} {s['tool']:<6} @{s['machineId']:<4} {s['status']:<10} {s['title']}{now}{bg}\")
+    cut=(f\" · {E['WVM_CUT']} ({s['interrupted']['reason']})\") if s.get('interrupted') else ''
+    print(f\"{s['id'][:8]}  {names.get(s['projectId'],s['projectId']):<14} {s['tool']:<6} @{s['machineId']:<4} {s['status']:<11} {s['title']}{now}{bg}{cut}\")
 " ;;
   projects)
     curl -sf -m 8 "$base/api/snapshot" | json "
@@ -98,6 +104,12 @@ for m in msgs[-n:]:
       | curl -s -m 40 -w '\n%{http_code}' -H 'content-type: application/json' --data-binary @- "$base/api/sessions/$id/send")
     code=${out##*$'\n'}
     if [ "$code" = 200 ]; then printf "$m_sent\n" "${id:0:8}"
+    else printf "$m_not_sent\n" "${id:0:8}" "$(printf '%s' "${out%$'\n'*}" | "$py" -c 'import json,sys,os; print(json.load(sys.stdin).get("error",os.environ["WVM_ERROR"]))' 2>/dev/null || echo "$WVM_ERROR $code")" >&2; exit 1; fi ;;
+  resume)
+    id=$(resolve "${2:?$a_id}")
+    out=$(curl -s -m 40 -w '\n%{http_code}' -X POST -H 'content-type: application/json' --data-binary '{}' "$base/api/sessions/$id/resume")
+    code=${out##*$'\n'}
+    if [ "$code" = 200 ]; then printf "$m_resumed\n" "${id:0:8}"
     else printf "$m_not_sent\n" "${id:0:8}" "$(printf '%s' "${out%$'\n'*}" | "$py" -c 'import json,sys,os; print(json.load(sys.stdin).get("error",os.environ["WVM_ERROR"]))' 2>/dev/null || echo "$WVM_ERROR $code")" >&2; exit 1; fi ;;
   new)
     project=${2:?$a_project}

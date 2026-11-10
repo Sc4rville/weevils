@@ -6,7 +6,7 @@ import { useT } from '../i18n'
 import M from '../i18n/calm'
 import { useApp } from './app-context'
 import { Collapse, Composer, Messages, Working, type Attachment } from './bits'
-import { ago, plain } from './format'
+import { ago, plain, status } from './format'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Settings } from './settings'
 import { usePageChrome } from './shell'
@@ -69,7 +69,7 @@ export function CalmGrid() {
   usePageChrome('calm', page)
   const pinch = usePinch(home)
   useViewHint('calm')
-  const rank = (s: { status: string }) => (s.status === 'needs_user' ? 0 : s.status === 'working' ? 1 : s.status === 'idle' ? 2 : 3)
+  const rank = (s: { status: string }) => (s.status === 'needs_user' || s.status === 'interrupted' ? 0 : s.status === 'working' ? 1 : s.status === 'idle' ? 2 : 3)
   const sessions = useMemo(() => [...snap.sessions].sort((a, b) => rank(a) - rank(b) || b.lastActivityAt - a.lastActivityAt), [snap.sessions])
   const last = snap.main.filter((m) => m.role !== 'event').at(-1)
   const names = new Map(snap.projects.map((p) => [p.id, p.name]))
@@ -91,7 +91,7 @@ export function CalmGrid() {
             <button key={s.id} className="calm-cell" style={color(colors[s.projectId] ?? 'p0')} onClick={() => push({ kind: 'calmconv', id: s.id })}>
               <span className="calm-title">{s.title}</span>
               <span className="meta">
-                {names.get(s.projectId) ?? s.projectId} · {s.status === 'working' ? (s.now ?? t.working) : s.status === 'needs_user' ? t.yourTurn : ago(now - s.lastActivityAt)}
+                {names.get(s.projectId) ?? s.projectId} · {s.status === 'working' ? (s.now ?? t.working) : s.status === 'needs_user' ? t.yourTurn : s.status === 'interrupted' ? <span className="alert-pill">× {status.interrupted.label}</span> : ago(now - s.lastActivityAt)}
                 {s.background > 0 && <span className="strong"> · {t.background(s.background)}</span>}
               </span>
             </button>

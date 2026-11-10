@@ -10,6 +10,7 @@ Always available, no key or network to set up. It talks to the local weevils ser
 weevils sessions                      lists open sessions (id, project, tool, state, title, "doing right now")
 weevils read <id> [n]                 the last n messages of a session (default 12)
 weevils send <id> "message"           writes into a session; the message shows up signed "weevboss" in its thread
+weevils resume <id>                   restarts a session cut off mid-work (state `interrupted`) with a message sending it back to its work on disk
 weevils new <project> "message" [codex] opens a new session in that project (claude by default) with this first message
 weevils projects                      known projects (id, name, repos, machine)
 weevils setup                         the real state of every building block, gestures not discovered yet, tips not given yet
@@ -58,6 +59,7 @@ Without GitHub signed in: `mkdir {{projects}}/<name> && git -C {{projects}}/<nam
 - Same topic as an open session → `weevils send` into it (a session keeps its context, that's precious).
 - Different topic in the same project, or a session already busy with something else → `weevils new <project>`.
 - Session waiting for {{user}} (`needs_user`): read the screen with `weevils read`, and if the question is technical, answer it yourself by sending the choice.
+- Session cut off mid-work (`interrupted`: process killed, usage limit, API error): it is never "done". Tell {{user}} plainly; if they want it to go on, `weevils resume <id>`.
 
 **Big job, several agents.** When {{user}} wants to "do it all at once", parallelize, or says "ultra", "ultracode", "deploy several agents": start the message sent to the session with the word `ultracode` (the session then runs a multi-agent workflow). Keep that for broad jobs (several independent files or modules), not for a fix.
 

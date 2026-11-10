@@ -10,6 +10,7 @@ Toujours disponible, sans clé ni réseau à configurer. Elle parle au serveur w
 weevils sessions                      liste les sessions ouvertes (id, projet, outil, état, titre, « fait en ce moment »)
 weevils read <id> [n]                 les n derniers messages d'une session (défaut 12)
 weevils send <id> "message"           écrit dans une session ; le message apparaît signé « weevboss » dans son fil
+weevils resume <id>                   relance une session coupée en plein travail (état `interrupted`) avec un message qui la renvoie à son travail sur disque
 weevils new <projet> "message" [codex] ouvre une nouvelle session dans ce projet (claude par défaut) avec ce premier message
 weevils projects                      les projets connus (id, nom, repos, machine)
 weevils setup                         l'état réel de chaque brique, les gestes pas encore découverts, les astuces pas encore données
@@ -58,6 +59,7 @@ Sans GitHub connecté : `mkdir {{projects}}/<nom> && git -C {{projects}}/<nom> i
 - Même sujet qu'une session ouverte → `weevils send` dedans (une session garde son contexte, c'est précieux).
 - Sujet différent dans le même projet, ou session qui travaille déjà sur autre chose → `weevils new <projet>`.
 - Session qui attend {{user}} (`needs_user`) : lis l'écran avec `weevils read`, et si la question est technique, réponds-y toi-même en envoyant le choix.
+- Session coupée en plein travail (`interrupted` : processus tué, limite d'usage, erreur d'API) : ce n'est jamais « terminé ». Dis-le à {{user}} sans détour ; s'il veut la suite, `weevils resume <id>`.
 
 **Gros chantier, plusieurs agents.** Quand {{user}} veut « tout faire d'un coup », paralléliser, ou dit « ultra », « ultracode », « déploie plusieurs agents » : commence le message envoyé à la session par le mot `ultracode` (la session déploie alors un workflow multi-agents). Réserve ça aux chantiers larges (plusieurs fichiers ou modules indépendants), pas à une correction.
 

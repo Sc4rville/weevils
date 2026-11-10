@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } 
 import type { SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
-import { Collapse, Composer, Line, Messages, StatusChar, Working, type Attachment } from './bits'
+import { Collapse, Composer, Line, Messages, ResumeButton, StatusChar, Working, type Attachment } from './bits'
 import { Background } from './subagents'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
@@ -264,6 +264,24 @@ function SessionPage({ id }: { id: string }) {
       )}
 
       {s.status === 'working' && <Working author={s.tool} since={s.workStartedAt} />}
+
+      {s.status === 'interrupted' && (
+        <div className="msg band cut-band">
+          <div className="in">
+            <span className="who">
+              × {st.label}
+              {s.interrupted ? ` · ${t.cutWhy(s.interrupted.reason)}` : ''}
+            </span>
+            {s.interrupted?.detail && <div className="text">{s.interrupted.detail}</div>}
+            <div className="cut-actions">
+              <ResumeButton session={s} stay onError={setErr} />
+              <button className="link" onClick={() => void api.dismiss(s.id).catch((e) => setErr((e as Error).message))}>
+                {t.dismiss}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Collapse open={showSettings} id="session-settings">
         <div className="band tone">

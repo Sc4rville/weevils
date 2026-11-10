@@ -53,6 +53,9 @@ export const api = {
   subagent: (id: string, subId: string) => call<SubagentDetail>('GET', `/api/sessions/${enc(id)}/subagents/${enc(subId)}`),
   screen: (id: string) => call<{ screen: string | null }>('GET', `/api/sessions/${enc(id)}/screen`),
   send: (id: string, text: string) => call<{ id: string }>('POST', `/api/sessions/${enc(id)}/send`, { text }),
+  /** Session coupée en plein travail : relancée (--resume + message de reprise), ou laissée. */
+  resume: (id: string) => call<{ id: string }>('POST', `/api/sessions/${enc(id)}/resume`, {}),
+  dismiss: (id: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/dismiss`, {}),
   attach: (id: string, text: string, files: { name: string; type: string; data: string }[]) => call<{ id: string }>('POST', `/api/sessions/${enc(id)}/attach`, { text, files }),
   transcribeInfo: () => call<{ enabled: boolean }>('GET', '/api/transcribe'),
   transcribe: (type: string, data: string, lang: string) => call<{ text: string }>('POST', '/api/transcribe', { type, data, lang }),

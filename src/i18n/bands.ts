@@ -7,6 +7,9 @@ export default defineMessages({
     open: (n: number) => `${n} ${n > 1 ? 'ouvertes' : 'ouverte'}`,
     nothingRunning: 'rien ne tourne',
     yours: (n: number) => `${n} à toi`,
+    /** Sessions coupées en plein travail. */
+    cut: (n: number) => `${n} ${n > 1 ? 'interrompues' : 'interrompue'}`,
+    cutAria: (n: number) => `${n} ${n > 1 ? 'sessions coupées' : 'session coupée'} en plein travail`,
     conversations: (n: number) => `${n} conversation${n > 1 ? 's' : ''}`,
 
     // Bande de l'orchestrateur
@@ -59,6 +62,8 @@ export default defineMessages({
     open: (n: number) => `${n} open`,
     nothingRunning: 'nothing running',
     yours: (n: number) => `${n} need${n === 1 ? 's' : ''} you`,
+    cut: (n: number) => `${n} interrupted`,
+    cutAria: (n: number) => `${n} ${n === 1 ? 'session' : 'sessions'} cut off mid-work`,
     conversations: (n: number) => `${n} conversation${n === 1 ? '' : 's'}`,
 
     agentBand: 'weevboss, the orchestrator',

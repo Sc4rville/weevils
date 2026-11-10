@@ -21,11 +21,16 @@ export interface Transcript {
   customTitle?: string
   firstPrompt?: string
   originator?: string
+  /** claude -p (entrypoint sdk-*) : un appel ponctuel d'un script, pas une session de travail. */
+  headless?: boolean
   openedAt: number
   lastActivityAt: number
   workStartedAt: number | null
   /** Dernier état lu dans le fil. */
   phase: 'working' | 'idle'
+  /** Le dernier tour s'est arrêté sur une erreur (limite d'usage, connexion expirée, erreur d'API, compaction ratée) :
+   *  la session n'a pas fini son travail. Effacé dès que le fil repart (nouveau message, nouvelle réponse). */
+  stopError?: StopError
   messages: Message[]
   /** Sous-agents, étapes de workflow et commandes d'arrière-plan (server/background.ts), récents et finis compris. */
   subagents: Subagent[]
@@ -43,6 +48,23 @@ export interface Transcript {
   effort?: string
   /** Messages mis en file pendant que l'agent travaille, pas encore repris comme messages de l'utilisateur. */
   queued: { key: string; at: number }[]
+}
+
+export interface StopError {
+  at: number
+  reason: 'quota' | 'auth' | 'api'
+  text: string
+}
+
+/** Classe une erreur qui arrête un tour : limite d'usage, connexion, ou le reste. */
+export function stopErrorOf(at: number, kind: unknown, text: string): StopError {
+  const k = typeof kind === 'string' ? kind : ''
+  const reason = /rate_limit|quota|usage|billing/i.test(k) || /usage limit|limit reached|rate.?limit|quota|out of (extra )?usage|credit balance/i.test(text)
+    ? 'quota'
+    : /auth|permission/i.test(k) || /authenticat|\/login|oauth|logged out|login expired/i.test(text)
+      ? 'auth'
+      : 'api'
+  return { at, reason, text: text.replace(/\s+/g, ' ').trim().slice(0, 200) }
 }
 
 const MAX_MESSAGES = 400
@@ -115,6 +137,7 @@ function claudeLine(t: Transcript, o: any) {
   const at = o.timestamp ? Date.parse(o.timestamp) : 0
   bgLine((t.bg ??= emptyBg()), o, at)
   if (o.cwd) t.cwd = o.cwd
+  if (typeof o.entrypoint === 'string') t.headless = o.entrypoint.startsWith('sdk')
   if (o.gitBranch && o.gitBranch !== 'HEAD') t.branch = o.gitBranch
   if (o.type === 'ai-title' && o.aiTitle) t.title = o.aiTitle
   if (o.type === 'custom-title' && o.customTitle) t.customTitle = o.customTitle
@@ -156,6 +179,7 @@ function claudeLine(t: Transcript, o: any) {
       t.firstPrompt ??= c
       t.phase = 'working'
       t.workStartedAt = at
+      t.stopError = undefined
       if (!dequeue(t, c)) push(t, userMsg(o.uuid ?? `${t.id}-${at}`, c, at))
       return
     }
@@ -165,6 +189,7 @@ function claudeLine(t: Transcript, o: any) {
           t.firstPrompt ??= part.text
           t.phase = 'working'
           t.workStartedAt = at
+          t.stopError = undefined
           if (dequeue(t, String(part.text))) continue
           push(t, userMsg(`${o.uuid}-t`, String(part.text), at))
         } else if (part?.type === 'tool_result') {
@@ -190,8 +215,25 @@ function claudeLine(t: Transcript, o: any) {
         t.lastAssistantId = undefined
       }
     }
+    // Réponse synthétique de Claude Code quand l'API a refusé (limite d'usage, connexion expirée, surcharge…) : le tour
+    // s'arrête là, sans end_turn. Ce n'est pas du travail en cours, c'est du travail interrompu.
+    if (o.isApiErrorMessage) {
+      const text = (msg.content ?? []).map((p: any) => (p?.type === 'text' ? p.text : '')).join(' ')
+      t.stopError = stopErrorOf(at, o.error, text)
+      t.phase = 'idle'
+      t.workStartedAt = null
+      return
+    }
+    t.stopError = undefined
     t.phase = msg.stop_reason === 'end_turn' ? 'idle' : 'working'
     if (t.phase === 'idle') t.workStartedAt = null
+  }
+  // Compaction ratée (« Error during compaction… ») : le tour ne repart pas tout seul.
+  if (o.type === 'system' && o.level === 'error' && /compact/i.test(String(o.content ?? ''))) {
+    touch(t, at)
+    t.stopError = stopErrorOf(at, o.subtype, String(o.content))
+    t.phase = 'idle'
+    t.workStartedAt = null
   }
 }
 
@@ -218,6 +260,13 @@ function codexLine(t: Transcript, o: any) {
     if (p.type === 'task_started') {
       t.phase = 'working'
       t.workStartedAt = at
+      t.stopError = undefined
+      touch(t, at)
+    } else if (p.type === 'error') {
+      // Erreur qui arrête le tour (limite d'usage, connexion, API) : comme côté Claude, du travail interrompu.
+      t.stopError = stopErrorOf(at, p.codex_error_info ?? p.kind, String(p.message ?? ''))
+      t.phase = 'idle'
+      t.workStartedAt = null
       touch(t, at)
     } else if (p.type === 'task_complete' || p.type === 'turn_aborted') {
       t.phase = 'idle'

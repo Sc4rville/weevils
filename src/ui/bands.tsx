@@ -15,7 +15,7 @@ import { isUnread, useSeen } from './seen'
 import { Appear, Collapse, Composer, INSTANT, Line, Messages, SessionRow, Working, authorTone, spring, useAuthors } from './bits'
 import B from '../i18n/bits'
 import { ago, plain, userText } from './format'
-import { FilledIcon, Icon } from './icons'
+import { FilledIcon, G, Icon } from './icons'
 import { PrefLines } from './prefs'
 import { setDevil, useDevil } from './devil'
 import { markSeen, tapHint } from './hints'
@@ -324,6 +324,7 @@ export function ProjectBand({ project }: { project: Project }) {
   const active = sessions.filter((s) => s.status !== 'done')
   const done = sessions.filter((s) => s.status === 'done')
   const att = active.filter((s) => s.status === 'needs_user')
+  const cut = active.filter((s) => s.status === 'interrupted')
   const jobs = snap.h24.filter((a) => a.projectId === project.id)
   const convCount = snap.conversationCounts.byProject[project.id] ?? 0
   const convs = snap.conversations.filter((c) => c.projectId === project.id)
@@ -364,7 +365,7 @@ export function ProjectBand({ project }: { project: Project }) {
   useSeen()
   const unread = sessions.some(isUnread)
   const summary = [
-    active.length ? activity(active) : sessions.length ? t.nothingRunning : null,
+    active.length > cut.length ? activity(active.filter((s) => s.status !== 'interrupted')) : sessions.length && !cut.length ? t.nothingRunning : null,
     att.length ? t.yours(att.length) : null,
     convCount ? t.conversations(convCount) : null,
     // Sans activité connue (projet épinglé jamais lancé, horodatage 0) : rien, pas « il y a 20766 jours ».
@@ -374,7 +375,7 @@ export function ProjectBand({ project }: { project: Project }) {
     .join(' · ')
 
   return (
-    <motion.section layout="position" transition={tx} className={`band ${busy ? 'busy' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={t.projectBand(project.name)} data-project={project.id}>
+    <motion.section layout="position" transition={tx} className={`band ${busy ? 'busy' : ''} ${cut.length ? 'has-cut' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={t.projectBand(project.name)} data-project={project.id}>
       <motion.div className="in head" initial={false} animate={{ minHeight: shown === 'mini' ? 50 : 64, paddingTop: shown === 'mini' ? 0 : 8 }} transition={tx}>
         <button className="head-name" onClick={toggle} aria-expanded={mode === 'open'} aria-controls={`more-${project.id}`}>
           <motion.span className="name" initial={false} animate={{ fontSize: NAME_SIZE[shown] }} transition={tx}>
@@ -389,6 +390,8 @@ export function ProjectBand({ project }: { project: Project }) {
           <AnimatePresence initial={false}>
             {shown === 'mini' && (
               <motion.span key="s" className="meta" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={tx}>
+                {cut.length > 0 && <span className="alert-pill">× {t.cut(cut.length)}</span>}
+                {cut.length > 0 && summary ? ' ' : ''}
                 {summary}
               </motion.span>
             )}
@@ -404,6 +407,14 @@ export function ProjectBand({ project }: { project: Project }) {
             <button className="ch" aria-label={t.machineOf(project.name)} onClick={() => push({ kind: 'machine', projectId: project.id })}>
               <Icon name="machine" />
             </button>
+            {cut.length > 0 && (
+              <button className="ch alert-ch" aria-label={t.cutAria(cut.length)} onClick={() => push({ kind: 'session', id: cut[0].id })}>
+                <span>
+                  <G c="×" />
+                  <sup>{cut.length}</sup>
+                </span>
+              </button>
+            )}
             <button
               className={`ch ${att.length ? '' : 'off'}`}
               disabled={!att.length}

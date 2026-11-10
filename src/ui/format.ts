@@ -29,8 +29,8 @@ export function ago(ms: number): string {
 }
 
 /** Caractère et libellé de chaque état ; le libellé suit la langue (lu à chaque accès). */
-const statusKey = { working: 'working', needs_user: 'needsUser', idle: 'idle', done: 'done' } as const
-const statusCh: Record<SessionStatus, string> = { working: '*', needs_user: '!', idle: '_', done: '✓' }
+const statusKey = { working: 'working', needs_user: 'needsUser', idle: 'idle', done: 'done', interrupted: 'interrupted' } as const
+const statusCh: Record<SessionStatus, string> = { working: '*', needs_user: '!', idle: '_', done: '✓', interrupted: '×' }
 export const status = Object.fromEntries(
   (Object.keys(statusCh) as SessionStatus[]).map((s) => [
     s,

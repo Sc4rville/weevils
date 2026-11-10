@@ -2,12 +2,16 @@
 // et le registre des sessions wv-* partagé avec le lanceur server/wv. tmux est simulé : on regarde les arguments.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const sh = vi.hoisted(() => ({ calls: [] as string[][], out: '', fail: false }))
+// calls : les arguments sans le choix du serveur ; sockets : le serveur visé (« -L <nom> », sinon « default »).
+const sh = vi.hoisted(() => ({ calls: [] as string[][], sockets: [] as string[], out: '', by: {} as Record<string, string | null>, fail: false }))
 vi.mock('node:child_process', () => ({
   execFile: (_cmd: string, args: string[], _opts: unknown, cb: (err: Error | null, stdout: string, stderr: string) => void) => {
-    sh.calls.push(args)
-    if (sh.fail) cb(new Error('no server running'), '', 'no server running on /tmp/tmux-1000/default')
-    else cb(null, sh.out, '')
+    const socket = args[0] === '-L' ? args[1] : 'default'
+    sh.calls.push(args[0] === '-L' ? args.slice(2) : args)
+    sh.sockets.push(socket)
+    const out = socket in sh.by ? sh.by[socket] : sh.out
+    if (sh.fail || out === null) cb(new Error('no server running'), '', 'no server running on /tmp/tmux-1000/default')
+    else cb(null, out, '')
   },
 }))
 
@@ -15,6 +19,8 @@ const mux = await import('./mux.ts')
 
 beforeEach(() => {
   sh.calls.length = 0
+  sh.sockets.length = 0
+  sh.by = {}
   sh.out = ''
   sh.fail = false
 })
@@ -164,5 +170,34 @@ describe('cibles', () => {
   it('une erreur tmux remonte avec son message', async () => {
     sh.fail = true
     await expect(mux.killWv('wv-x')).rejects.toThrow(/no server running/)
+  })
+})
+
+describe('serveur tmux dédié (garde-fou contre « tmux kill-server »)', () => {
+  const row = (name: string) => [name, 'claude', 'id', 't', '/d', '/d', '1', '42'].join('\u001f')
+
+  it('les sessions sont lancées et réglées sur « tmux -L weevils », jamais sur le serveur par défaut', async () => {
+    expect(mux.SOCKET).toBe('weevils')
+    await mux.spawnWv('wv-new-000000', '/d', 'claude', 't', ['claude'], 'u')
+    expect(sh.sockets.every((x) => x === 'weevils')).toBe(true)
+    await mux.sendText('wv-new-000000', 'hi').catch(() => undefined)
+    await mux.killWv('wv-new-000000')
+    expect(sh.sockets.every((x) => x === 'weevils')).toBe(true)
+  })
+
+  it('relecture : le serveur dédié, puis les sessions d’avant restées sur le serveur par défaut (pilotées là où elles vivent)', async () => {
+    sh.by = { weevils: row('wv-new-000000') + '\n', default: [row('wv-old-111111'), row('wv-new-000000'), 'perso: 1 windows'].join('\n') + '\n' }
+    const list = await mux.listWv()
+    expect(list.map((s) => s.name)).toEqual(['wv-new-000000', 'wv-old-111111'])
+    expect(sh.sockets).toEqual(['weevils', 'default'])
+    sh.calls.length = sh.sockets.length = 0
+    await mux.capture('wv-old-111111')
+    await mux.capture('wv-new-000000')
+    expect(sh.sockets).toEqual(['default', 'weevils'])
+  })
+
+  it('pas encore de serveur dédié : les anciennes sessions restent visibles', async () => {
+    sh.by = { weevils: null, default: row('wv-old-111111') + '\n' }
+    expect((await mux.listWv()).map((s) => s.name)).toEqual(['wv-old-111111'])
   })
 })

@@ -2,6 +2,20 @@
 
 A short summary of what changed after the first working version.
 
+## 2026-11-10
+
+### Sessions cut off mid-work
+- A session that dies while it was working (process or pane gone, tmux killed, crash), that stops on an API error
+  (usage limit, expired login, failed compaction) or that stops without a clean end and leaves uncommitted work is now
+  **interrupted**: a red row with a one-tap **resume**, a red counter in its project band (also when folded), a red
+  band in its thread (resume / dismiss). Never shown as done, never with the green star.
+- Each new interruption sends a push notification and posts a line in weevboss' thread; `weevils sessions` lists
+  them first. Resume (`POST /api/sessions/:id/resume`, `weevils resume <id>`) restarts it with `--resume` and a message
+  pointing it to its work on disk. A clean end (`/exit`, `/clear`, closed from the app, idle cleanup) is never one.
+- Agent sessions now live on their own tmux server (`tmux -L weevils`; `WEEVILS_TMUX_SOCKET` to rename it): a
+  `tmux kill-server` run by an agent no longer closes them. Sessions started before stay on the default server
+  until they end; `wv ls` / `wv a` see both.
+
 ## 2026-11-09
 
 ### Open source

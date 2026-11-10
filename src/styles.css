@@ -2048,3 +2048,112 @@ button.copy.done {
   padding-block: 2px;
   opacity: 0.85;
 }
+
+/* ---------- Session coupée en plein travail : couleur d'alerte, jamais confondue avec « terminée » ---------- */
+
+:root {
+  --alert: #e0201b;
+  --alert-ink: #fff;
+}
+
+[data-theme='dark'] {
+  --alert: #ff3b30;
+}
+
+:root[data-theme='zen'] {
+  --alert: oklch(0.55 0.17 27);
+}
+
+.alert {
+  color: var(--alert);
+}
+
+/* La ligne entière en rouge, la reprise à droite. */
+.cut-wrap {
+  position: relative;
+}
+
+.row.cut {
+  background: var(--alert);
+  color: var(--alert-ink);
+}
+
+.row.cut .tool-svg,
+.row.cut .alert {
+  color: var(--alert-ink);
+}
+
+.row.cut .title {
+  font-weight: 650;
+}
+
+.cut-wrap .row.cut > .in {
+  padding-right: calc(var(--pad) + 104px);
+}
+
+.cut-wrap .row.cut .act {
+  display: none;
+}
+
+.resume {
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--alert-ink);
+  color: var(--alert);
+  font-weight: 700;
+  font-size: 0.9375rem;
+  white-space: nowrap;
+}
+
+.resume:disabled {
+  opacity: 0.7;
+}
+
+.cut-wrap .resume {
+  position: absolute;
+  right: var(--pad);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Fil de la session : la bande d'alerte, puis reprendre / laisser. */
+.msg.band.cut-band {
+  background: var(--alert);
+  color: var(--alert-ink);
+}
+
+.cut-band .cut-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 10px;
+}
+
+.cut-band .link {
+  color: var(--alert-ink);
+}
+
+/* Bande projet : le compteur des sessions coupées, en pastille rouge (visible même repliée). */
+.ch.alert-ch > span,
+.alert-pill {
+  background: var(--alert);
+  color: var(--alert-ink);
+  border-radius: 999px;
+}
+
+.ch.alert-ch > span {
+  padding: 4px 9px 2px;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.ch.alert-ch sup {
+  top: -0.2em;
+}
+
+.alert-pill {
+  display: inline-block;
+  padding: 0 8px;
+  font-weight: 700;
+}

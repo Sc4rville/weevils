@@ -24,6 +24,9 @@ export default defineMessages({
     you: 'toi',
     /** Ligne de session : sous-agents, étapes de workflow et commandes qui tournent encore. */
     background: (n: number) => `${n} en arrière-plan`,
+    /** Session coupée en plein travail : la relancer d'un geste. */
+    resume: 'reprendre',
+    resumeAria: (title: string) => `reprendre la session ${title}`,
     demo: 'démo',
     working: (author: string) => `${author} travaille`,
     /** Lecteur d'écran, ligne de session : outil, titre, état, activité, durée. */
@@ -50,6 +53,8 @@ export default defineMessages({
     older: (n: number) => `${n} older message${n === 1 ? '' : 's'}`,
     you: 'you',
     background: (n: number) => `${n} in background`,
+    resume: 'resume',
+    resumeAria: (title: string) => `resume the session ${title}`,
     demo: 'demo',
     working: (author: string) => `${author} is working`,
     rowAria: (tool: string, title: string, state: string, act: string | undefined, when: string) => `${tool}, ${title}, ${state}${act ? `: ${act}` : ''}, ${when}`,

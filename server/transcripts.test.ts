@@ -253,3 +253,57 @@ describe('claude : sous-agents', () => {
     expect(one().subagents).toEqual([{ id: 'x', kind: 'agent', label: 'scan', activity: 'Grep · TODO', status: 'working', startedAt: now - 1500, endedAt: undefined }])
   })
 })
+
+describe('tour arrêté par une erreur (session coupée)', () => {
+  const apiError = (text: string, error: string, at: number) => ({
+    ...assistant([{ type: 'text', text }], at, { model: '<synthetic>', stop_reason: 'stop_sequence' }),
+    isApiErrorMessage: true,
+    error,
+  })
+
+  it('claude : réponse synthétique d’erreur → idle + stopError classée (quota, connexion, API) ; effacée par le message suivant', () => {
+    const now = Date.now()
+    const f = claudeFile()
+    write(f, [user('build it', now - 5000), apiError('Claude AI usage limit reached|1794200000', 'rate_limit', now - 4000)])
+    store.scan(now)
+    expect(one()).toMatchObject({ phase: 'idle', workStartedAt: null, stopError: { at: now - 4000, reason: 'quota' } })
+    append(f, [apiError('Failed to authenticate: OAuth session expired and could not be refreshed', 'authentication_failed', now - 3000)])
+    store.scan(now)
+    expect(one().stopError?.reason).toBe('auth')
+    append(f, [apiError('API Error: 529 overloaded', 'unknown', now - 2500)])
+    store.scan(now)
+    expect(one().stopError).toMatchObject({ reason: 'api', text: 'API Error: 529 overloaded' })
+    append(f, [user('try again', now - 2000)])
+    store.scan(now)
+    expect(one()).toMatchObject({ phase: 'working', stopError: undefined })
+    expect(one().headless).toBeUndefined()
+    append(f, [user('say ok', now - 1000, { entrypoint: 'sdk-cli' })])
+    store.scan(now)
+    expect(one().headless).toBe(true)
+  })
+
+  it('claude : une vraie réponse efface l’erreur ; compaction ratée → stopError', () => {
+    const now = Date.now()
+    const f = claudeFile()
+    write(f, [user('go', now - 5000), apiError('API Error: 500', 'api_error', now - 4000), assistant([{ type: 'text', text: 'ok' }], now - 3000, { stop_reason: 'end_turn' })])
+    store.scan(now)
+    expect(one().stopError).toBeUndefined()
+    append(f, [{ type: 'system', subtype: 'compact_error', level: 'error', content: 'Error during compaction: Conversation too long', timestamp: iso(now - 1000) }])
+    store.scan(now)
+    expect(one()).toMatchObject({ phase: 'idle', stopError: { reason: 'api' } })
+  })
+
+  it('codex : event_msg error → idle + stopError ; task_started l’efface', () => {
+    const now = Date.now()
+    const cf = codexFile(now)
+    write(cf, [
+      { type: 'event_msg', timestamp: iso(now - 3000), payload: { type: 'task_started' } },
+      { type: 'event_msg', timestamp: iso(now - 2000), payload: { type: 'error', message: 'You have hit your usage limit.' } },
+    ])
+    store.scan(now)
+    expect(one()).toMatchObject({ phase: 'idle', stopError: { reason: 'quota' } })
+    append(cf, [{ type: 'event_msg', timestamp: iso(now - 1000), payload: { type: 'task_started' } }])
+    store.scan(now)
+    expect(one()).toMatchObject({ phase: 'working', stopError: undefined })
+  })
+})

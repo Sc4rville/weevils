@@ -3,6 +3,9 @@
 **Watch and drive your Claude Code and Codex sessions from your phone**, on your own machine, with the subscriptions
 you already have.
 
+*An AI agent installing this for someone? Clone it and follow [AGENTS.md](AGENTS.md): it installs everything
+without asking them anything first.*
+
 <img src="docs/first-run.gif" width="280" alt="weevils on a fresh install: the 3-card intro, the empty home, the first hint">
 
 - **Every session, sorted by project**: what each agent is doing right now, and the full thread.
@@ -21,12 +24,12 @@ Paste this into Claude Code or Codex, on the machine that will run weevils:
 install https://github.com/Sc4rville/weevils
 ```
 
-It clones the repo, runs the installer without questions, sets up how your phone reaches the machine and hands
-you the link. The steps it follows are in [AGENTS.md](AGENTS.md).
+It clones the repo, runs the installer without asking you anything first, sets up how your phone reaches the machine
+and hands you the link. The steps it follows are in [AGENTS.md](AGENTS.md).
 
 ## Install
 
-AI agents: follow [AGENTS.md](AGENTS.md) instead of this section.
+**AI agents: don't use this section and don't ask the user for these answers: follow [AGENTS.md](AGENTS.md).**
 
 You need a Linux machine (a VPS, a home server, WSL2) with **Claude Code** installed and logged in as a regular user
 (not root). Codex is optional.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { H24Activity, Optimizer, Project } from '../../shared/api.ts'
-import { DRAWER_SLOT, autoList, autoOfSession, bandColors, failedLine, fromActivity, fromOptimizer, hueGap, progressOf, short, triggerText, windowStart, type Trigger } from './auto-model'
+import { DRAWER_SLOT, PROP_PALETTE, autoList, autoOfSession, bandColors, propColors, failedLine, fromActivity, fromOptimizer, hueGap, progressOf, short, triggerText, windowStart, type Trigger } from './auto-model'
 
 const NOW = 1_800_000_000_000
 const MIN = 60_000
@@ -180,5 +180,23 @@ describe('progress: the span the fill covers', () => {
   it('paused: the span it had (its last run to one period later)', () => {
     const x = fromOptimizer(opt({ paused: true, every: 6 * H, runs: [{ at: NOW - 2 * H, startedAt: NOW - 2 * H - MIN, ok: true }] }))!
     expect(progressOf(x, NOW)).toEqual({ from: NOW - 2 * H, to: NOW + 4 * H })
+  })
+})
+
+describe('side-by-side colours (« pour toi »)', () => {
+  it('far from the head amber and the band below, apart from each other, kept while they stay', () => {
+    const first = propColors(['a', 'b', 'c'], new Map(), null)
+    expect([...first.values()]).toEqual(PROP_PALETTE.slice(0, 3))
+    for (let i = 0; i < 16; i++) {
+      const c = [...propColors(['a', 'b', 'c'], new Map(), `p${i}`).values()]
+      for (const x of c) expect(Math.min(hueGap(x, `p${i}`), hueGap(x, DRAWER_SLOT)), `${x} on p${i}`).toBeGreaterThanOrEqual(3)
+      for (const [j, x] of c.entries()) for (const y of c.slice(j + 1)) expect(hueGap(x, y), `${x} by ${y}`).toBeGreaterThanOrEqual(2)
+    }
+    const below = propColors(['a', 'b', 'c'], first, first.get('a')!)
+    expect(below.get('a')).not.toBe(first.get('a'))
+    expect(below.get('b')).toBe(first.get('b'))
+    const next = propColors(['b', 'c', 'd'], below, null)
+    expect(next.get('c')).toBe(first.get('c'))
+    expect(new Set(next.values()).size).toBe(3)
   })
 })

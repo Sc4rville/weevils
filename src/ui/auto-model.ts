@@ -360,3 +360,29 @@ export function bandColors(ids: string[], kept: ReadonlyMap<string, string>, hea
   return out
 }
 
+/** Slots for side-by-side cards (« pour toi »'s proposals): far from the amber and the band below, 2 steps apart. */
+export const PROP_PALETTE = ['p9', 'p13', 'p0', 'p6', 'p8', 'p11']
+const SIDE_GAP = 2
+
+/**
+ * Colours for cards side by side under the drawer's amber (and above `below`, when there is one): each one at least
+ * 3 steps from both, 2 from its neighbours, kept while it stays. Used by « pour toi » (foryou-store) since the drawer's
+ * own proposals became bands (bandColors).
+ */
+export function propColors(ids: string[], kept: ReadonlyMap<string, string>, below: string | null): Map<string, string> {
+  const bands = below ? [DRAWER_SLOT, below] : [DRAWER_SLOT]
+  const ok = (p: string) => bands.every((x) => hueGap(p, x) >= BAND_GAP)
+  const apart = (p: string, used: Iterable<string>) => [...used].every((u) => hueGap(p, u) >= SIDE_GAP)
+  const out = new Map<string, string>()
+  for (const id of ids) {
+    const p = kept.get(id)
+    if (p && ok(p) && apart(p, out.values())) out.set(id, p)
+  }
+  for (const id of ids) {
+    if (out.has(id)) continue
+    const used = [...out.values()]
+    const free = PROP_PALETTE.filter((p) => !used.includes(p))
+    out.set(id, free.find((p) => ok(p) && apart(p, used)) ?? free.find(ok) ?? free[0] ?? PROP_PALETTE[0])
+  }
+  return out
+}

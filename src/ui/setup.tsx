@@ -199,10 +199,13 @@ export function SetupComposer() {
     // La réponse est prise : la question suivante s'éclaire un instant (sinon le libellé change sur place, sans signe).
     if (f && f.step > 0) flash(form.current)
   }, [f?.brick, f?.step]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Une question à choix n'a pas de champ : la dictée y est ignorée (sinon le 3e tap enverrait un texte libre comme choix).
+  const typed = useRef(false)
+  typed.current = !!q && q.kind !== 'choice'
   useEffect(() => {
     flowInput = {
-      add: (x) => setText((cur) => (cur.trim() ? `${cur.replace(/\s+$/, '')} ${x}` : x)),
-      send: () => form.current?.requestSubmit(),
+      add: (x) => typed.current && setText((cur) => (cur.trim() ? `${cur.replace(/\s+$/, '')} ${x}` : x)),
+      send: () => typed.current && form.current?.requestSubmit(),
     }
     return () => void (flowInput = null)
   }, [])

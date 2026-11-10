@@ -34,7 +34,8 @@ function onScreen(r: DOMRect | undefined): DOMRect | null {
   if (!r || !r.width) return null
   const rail = document.documentElement.dataset.page ? undefined : document.querySelector('.h24-head')?.getBoundingClientRect().top
   const top = Math.max(r.top, 0)
-  const bottom = Math.min(r.bottom, rail && rail > top ? rail : window.innerHeight)
+  // Sous le rail (qui le recouvre) : rien de visible, pas de doigt.
+  const bottom = Math.min(r.bottom, rail && rail > 0 ? rail : window.innerHeight)
   return bottom > top ? new DOMRect(r.left, top, r.width, bottom - top) : null
 }
 

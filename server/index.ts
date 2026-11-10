@@ -448,6 +448,12 @@ const routes: [string, RegExp, Handler][] = [
     await setup.welcome(asDevice((await readBody(req)).device))
     json(res, 200, { ok: true })
   }],
+  ['POST', /^\/api\/setup\/provider$/, async (req, res) => {
+    const b = await readBody(req)
+    if (b.tool !== 'claude' && b.tool !== 'codex') return json(res, 400, { error: tr(S).badBrick })
+    const flow = await setup.chooseProvider(b.tool, b.device ? asDevice(b.device) : undefined)
+    json(res, 200, { ok: true, flow, said: setup.lastSaid ?? undefined })
+  }],
   ['POST', /^\/api\/setup\/ask$/, async (req, res) => {
     const b = await readBody(req)
     if (!isBrick(b.brick)) return json(res, 400, { error: tr(S).badBrick })

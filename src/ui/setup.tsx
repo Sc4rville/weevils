@@ -72,10 +72,10 @@ export const flowVoice = { add: (x: string) => flowInput?.add(x), send: () => fl
 
 /** Lance une brique : weevboss poste son explication (et fait ce qui se fait seul), puis, s'il le dit, le champ du bas
  * pose les questions. Rejette si le serveur ne répond pas. opened : le champ est déjà ouvert (openFlow, au tap). */
-export async function startSetup(brick: Brick, opened = false) {
+export async function startSetup(brick: Brick, opened = false, primary = false) {
   // Le fil de weevboss s'ouvre en haut de l'écran tout de suite (d'une page, du bas du flux) : sa réponse y arrive sous les yeux.
   focusBoss({ flash: false })
-  const r = await api.setupAsk(brick, device()).catch((e: unknown) => {
+  const r = await (primary && (brick === 'claude' || brick === 'codex') ? api.setupProvider(brick, device()) : api.setupAsk(brick, device())).catch((e: unknown) => {
     if (opened && flow?.brick === brick && flow.step === 0) setFlow(null)
     throw e
   })
@@ -154,7 +154,7 @@ export function PhoneLink() {
 /** Lance le branchement d'une brique, d'où qu'on le demande (puce sous un message, premiers pas) : les questions du
  * champ du bas, une action sur place (notifications, adresse Siri), ou la marche à suivre postée par weevboss.
  * Renvoie une note à montrer en cas d'échec. */
-export async function runBrick(brick: Brick): Promise<{ ok: boolean; note?: string }> {
+export async function runBrick(brick: Brick, primary = false): Promise<{ ok: boolean; note?: string }> {
   try {
     if (brick === 'push') {
       if (!(await ensurePush({ ask: true, test: true }))) return { ok: false, note: tr(M).pushDenied }
@@ -166,8 +166,8 @@ export async function runBrick(brick: Brick): Promise<{ ok: boolean; note?: stri
       if (r.url) location.href = r.url
     } else {
       // Le parcours de cette brique est déjà ouvert (second tap) : le champ reprend le focus, rien n'est reposté.
-      if (flow?.brick === brick) composerInput()?.focus()
-      else await startSetup(brick, openFlow(brick))
+      if (flow?.brick === brick && !primary) composerInput()?.focus()
+      else await startSetup(brick, openFlow(brick), primary)
     }
     return { ok: true }
   } catch {

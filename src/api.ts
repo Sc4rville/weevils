@@ -78,6 +78,7 @@ export const api = {
   newRepo: (name: string, description: string) => call<{ name: string }>('POST', '/api/github/repos', { name, description }),
   devil: (text: string) => call<{ id: string }>('POST', '/api/devil', { text }),
   setupWelcome: (device: Device) => call<{ ok: true }>('POST', '/api/setup/welcome', { device }),
+  setupProvider: (tool: 'claude' | 'codex', device: Device) => call<AskResult>('POST', '/api/setup/provider', { tool, device }),
   setupAsk: (brick: Brick, device: Device) => call<AskResult>('POST', '/api/setup/ask', { brick, device }),
   setupApply: (brick: Brick, values: Record<string, string>) => call<{ ok: true }>('POST', '/api/setup/apply', { brick, values }),
   /** Un secret demandé par un agent ([[setup:key:NOM]]) : la valeur part au serveur, rien ne revient. */

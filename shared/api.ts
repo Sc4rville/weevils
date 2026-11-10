@@ -439,7 +439,7 @@ export interface Snapshot {
   /** Devil mode : modèle branché (DEVIL_API_URL) et réponse en cours. */
   devil: { enabled: boolean; working: boolean }
   /** Ce qui est branché (server/setup.ts) : les bulles renvoient vers weevboss quand un réglage manque. */
-  setup?: { claude: boolean; voice: boolean; dictation: boolean; github: boolean; welcomed: boolean }
+  setup?: { provider?: Tool; ready?: boolean; codex?: boolean; providers?: { claude: boolean; codex: boolean }; claude: boolean; voice: boolean; dictation: boolean; github: boolean; welcomed: boolean }
   /** Premiers pas (shared/tour.ts, server/tour.ts). */
   tour?: Tour
   /** Repos épinglés au fil des projets (présents même sans session). */

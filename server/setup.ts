@@ -21,11 +21,12 @@ import dns from 'node:dns/promises'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { Message } from '../shared/api.ts'
+import type { Message, Tool } from '../shared/api.ts'
+import { preferredTool, providerStatus, providerReady, codexLogged } from './provider.ts'
 import type { MachineFacts } from '../shared/infra.ts'
 import { CONTEXT_BLOCK, FIELDS, isSecretName, type Brick, type Device } from '../shared/setup.ts'
 import { BOSS, resetAuthors, authors } from './authors.ts'
-import { CODEX_DIR, CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL } from './config.ts'
+import { CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL } from './config.ts'
 import { devilConfig } from './devil.ts'
 import { facts } from './discover.ts'
 import { cartesia, edgeTts } from './fast.ts'
@@ -542,6 +543,8 @@ export class Setup {
   /** « claude auth login » qui attend le code de la page de connexion. */
   private claudeLogin: { proc: ChildProcess; url: string; at: number; out: string } | null = null
   private codexLogin: ChildProcess | null = null
+  private codexLoginStarting: Promise<boolean> | null = null
+  private codexLoginShown = false
   /** La dernière explication postée par une puce : un second tap ne la répète pas. */
   private lastAsk: { brick: Brick; id: string; text: string } | null = null
   /** Le dernier message écrit (ou retrouvé) au nom de weevboss : l'app l'amène sous les yeux après une puce. */
@@ -574,8 +577,20 @@ export class Setup {
   }
 
   /** Ce que l'app doit savoir pour ses bulles (renvoyer vers weevboss quand un réglage manque). Rapide : pas de sous-processus. */
+  providers() {
+    return { claude: providerStatus('claude').installed || !!which('curl'), codex: providerStatus('codex').installed || !!which('npm') }
+  }
+
+  async chooseProvider(tool: Tool, device?: Device) {
+    if (!this.providers()[tool]) throw new Error(tr(M).providerUnavailable(tool === 'codex' ? 'Codex' : 'Claude Code'))
+    writeConfig({ WEEVILS_PROVIDER: tool })
+    this.cache = null
+    this.deps.bump()
+    return this.ask(tool, device)
+  }
+
   flags() {
-    return { claude: claudeLogged(), voice: !!(cartesia() || edgeTts()), dictation: !!process.env.OPENAI_API_KEY?.trim(), github: ghCache?.v.logged ?? true, welcomed: !!this.p.welcomed }
+    return { provider: preferredTool(), ready: providerReady(), providers: this.providers(), codex: codexLogged(), claude: claudeLogged(), voice: !!(cartesia() || edgeTts()), dictation: !!process.env.OPENAI_API_KEY?.trim(), github: ghCache?.v.logged ?? true, welcomed: !!this.p.welcomed }
   }
 
   /** Les messages écrits au nom de weevboss (et les réponses des parcours), à mêler à son fil. */
@@ -649,7 +664,7 @@ export class Setup {
       port: PORT,
       clone: CLONE.startsWith(HOME + path.sep) ? '~' + CLONE.slice(HOME.length) : CLONE,
       claude: { installed: !!which('claude'), logged: claudeLogged() },
-      codex: { installed: !!which('codex'), logged: fs.existsSync(path.join(path.dirname(CODEX_DIR), 'auth.json')) },
+      codex: providerStatus('codex'),
       github: gh,
       voice: { spoken: cartesia() ? 'cartesia' : edgeTts() ? 'edge' : null, openai: !!process.env.OPENAI_API_KEY?.trim(), https: https || reach === 'local' },
       devil: { plugged: !!dv, model: dv?.model },
@@ -689,7 +704,7 @@ export class Setup {
     const t = tr(M)
     this.say(s.github.logged ? t.claudeReady : `${t.claudeReady} ${t.githubPitch} [[setup:github]]`)
     const job = this.p.pending
-    if (job) {
+    if (job && providerReady()) {
       this.p.pending = undefined
       this.save()
       await this.deps.handoff(job.text, job.brief).catch((e) => console.log(`[setup] travail confié à weevboss : échec (${short(e)})`))
@@ -698,13 +713,13 @@ export class Setup {
 
   /** Un travail qui demande un terminal : confié à weevboss, ou gardé jusqu'à ce que Claude Code soit connecté. */
   private async handoff(text: string, brief: string) {
-    if (claudeLogged()) {
+    if (providerReady()) {
       await this.deps.handoff(text, brief)
       return
     }
     this.p.pending = { text, brief }
     this.save()
-    this.say(chip(tr(M).machineLater, 'claude'))
+    this.say(chip(tr(M).providerLater(preferredTool() === 'codex' ? 'Codex' : 'Claude Code'), preferredTool()))
   }
 
   /** Installe un outil dans le dossier de l'utilisateur (ou par le gestionnaire de paquets si sudo marche sans mot de
@@ -762,13 +777,22 @@ export class Setup {
   }
 
   /** Codex : connexion par code (une page OpenAI, un code à y taper) ; weevboss confirme quand c'est fait. */
-  private async startCodexLogin(): Promise<boolean> {
+  private startCodexLogin(): Promise<boolean> {
+    if (this.codexLogin && this.codexLogin.exitCode === null && this.codexLoginShown) return Promise.resolve(true)
+    if (this.codexLoginStarting) return this.codexLoginStarting
+    const job = this.launchCodexLogin()
+    this.codexLoginStarting = job
+    return job.finally(() => { if (this.codexLoginStarting === job) this.codexLoginStarting = null })
+  }
+
+  private async launchCodexLogin(): Promise<boolean> {
     const t = tr(M)
     if (this.codexLogin && this.codexLogin.exitCode === null) this.codexLogin.kill()
     const bin = which('codex') ?? 'codex'
     return new Promise((resolve) => {
       const proc = spawn(bin, ['login', '--device-auth'], { env: shellEnv(), stdio: ['ignore', 'pipe', 'pipe'] })
       this.codexLogin = proc
+      this.codexLoginShown = false
       let out = ''
       let shown = false
       const timer = setTimeout(() => resolve(false), 25_000)
@@ -780,6 +804,7 @@ export class Setup {
         if (url && code && !shown) {
           shown = true
           clearTimeout(timer)
+          this.codexLoginShown = true
           this.say(t.codexCode(url, code))
           resolve(true)
         }
@@ -792,7 +817,7 @@ export class Setup {
         if (this.codexLogin === proc) this.codexLogin = null
         this.cache = null
         if (!shown) return resolve(false)
-        if (code === 0) this.say(t.codexReady)
+        if (code === 0 && codexLogged()) void this.codexReady()
         else if (code !== null) this.say(chip(t.codexFail(lastLine(out) || t.noAnswer), 'codex'))
       })
     })
@@ -849,7 +874,7 @@ export class Setup {
       case 'reach': {
         if (s.reach === 'public' && s.https) return post(t.reachAsk(s)), false
         const http = s.reach === 'public'
-        if (!s.claude.logged) return post(`${t.reachAsk(s)} ${chip(t.needClaude, 'claude')}`), false
+        if (!providerReady()) return post(`${t.reachAsk(s)} ${chip(t.providerLater(preferredTool() === 'codex' ? 'Codex' : 'Claude Code'), preferredTool())}`), false
         if (s.sudo !== 'yes') return post(`${t.reachAsk(s)} ${chip(t.needSudo, 'machine')}`), false
         post(`${t.reachAsk(s)} ${t.reachPrompt(http)}`)
         return true
@@ -920,13 +945,24 @@ export class Setup {
   /** Codex : installé s'il manque, puis la connexion par code. */
   private async askCodex(s: SetupState) {
     const t = tr(M)
-    if (s.codex.installed && s.codex.logged) return this.say(t.codexReady)
+    if (s.codex.installed && s.codex.logged) return this.codexReady()
     if (!s.codex.installed) {
       this.say(t.codexInstalling(s.machine.host))
       const r = await this.install('codex', s)
       if (!r.ok) return this.say(chip(t.codexInstallFail(r.why), 'codex'))
     }
     if (!(await this.startCodexLogin())) this.say(chip(t.codexFail(t.noAnswer), 'codex'))
+  }
+
+  private async codexReady() {
+    const primary = preferredTool() === 'codex'
+    this.say(primary ? tr(M).codexPrimaryReady : tr(M).codexReady)
+    const job = this.p.pending
+    if (primary && providerReady() && job) {
+      this.p.pending = undefined
+      this.save()
+      await this.deps.handoff(job.text, job.brief).catch((e) => console.log(`[setup] ${short(e)}`))
+    }
   }
 
   /** Claude Code pas encore connecté : weevboss ne peut pas réfléchir, mais il sait déjà répondre aux questions de
@@ -940,17 +976,19 @@ export class Setup {
     this.userSays(text)
     const brick = guessBrick(text)
     const t = tr(M)
-    if (brick && brick !== 'claude') {
+    if (brick && brick !== preferredTool()) {
       // La réponse de la brique, avec son bouton (le champ du bas s'ouvre au tap), puis ce qui manque pour le reste.
       if ((await this.ask(brick)) && this.lastAsk && this.p.log.at(-1)?.id === this.lastAsk.id) {
         const last = this.p.log.at(-1)!
         last.text = chip(last.text, brick)
         this.save()
       }
-      this.say(chip(t.notLoggedShort, 'claude'))
+      this.say(chip(t.providerLater(preferredTool() === 'codex' ? 'Codex' : 'Claude Code'), preferredTool()))
     } else {
       const s = await this.detect()
-      this.say(chip(s.claude.installed ? t.claudeLogin : t.claudeMissing(s.machine), 'claude'))
+      this.say(preferredTool() === 'codex'
+        ? chip(t.providerLater('Codex'), 'codex')
+        : chip(s.claude.installed ? t.claudeLogin : t.claudeMissing(s.machine), 'claude'))
     }
   }
 

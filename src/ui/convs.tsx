@@ -125,14 +125,13 @@ export function ConversationsPage({ projectId }: { projectId?: string }) {
 
 export function ConversationPage({ id }: { id: string }) {
   const t = useT(M)
-  const { colors, replace, refresh } = useApp()
+  const { colors, replace, refresh, snap } = useApp()
   const name = useProjectName()
   const [d, setD] = useState<ConversationDetail | null>(null)
   const [missing, setMissing] = useState(false)
   const [choosing, setChoosing] = useState(false)
-  const [tool, setTool] = useState<Tool>('claude')
+  const [tool, setTool] = useState<Tool>(snap.setup?.provider ?? 'claude')
   const [err, setErr] = useState<string | null>(null)
-  const { snap } = useApp()
 
   useEffect(() => {
     let off = false

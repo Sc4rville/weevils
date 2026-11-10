@@ -18,7 +18,7 @@ import './tour.css'
 // Premiers pas (contrat : shared/tour.ts, serveur : server/tour.ts). On apprend en faisant :
 // - TourIntro, au tout premier lancement : ce qui est déjà là se coche tout seul (« déjà prêt »), puis une vraie
 //   demande à weevboss, en un tap (une suggestion), à la voix ou au clavier. Si Claude Code manque, c'est le seul
-//   bouton : sans lui, rien ne pense.
+//   parcours proposé par un ancien serveur ; les serveurs récents exposent le choix réel Claude/Codex.
 // - TourBand, sous la bande de weevboss : la progression (un carré par étape), puis la suite, une étape à la fois.
 //   Pendant la première demande, elle la suit en direct (envoyé, il répond, une session s'ouvre, l'agent travaille…).
 //   Chaque usage se joue d'abord (démo marquée « démo », retirée dès que la vraie brique est branchée), puis se
@@ -235,8 +235,10 @@ export function TourIntro() {
   const [phase, setPhase] = useState<'scan' | 'first'>('scan')
   const [gone, setGone] = useState(false)
   const shown = !!tour && tour.open && !tour.intro && !gone
-  const base = tour?.steps.filter((s) => groupOf(s.id) === 'base' && (s.state !== 'todo' || s.id === 'claude')) ?? []
-  const claudeOk = !!tour?.steps.find((s) => s.id === 'claude' && s.state !== 'todo')
+  const chosen = snap.setup?.provider ?? 'claude'
+  const base = tour?.steps.filter((s) => (groupOf(s.id) === 'base' || s.id === chosen) && (s.state !== 'todo' || s.id === chosen)) ?? []
+  const brainReady = snap.setup?.ready ?? !!tour?.steps.find((s) => s.id === 'claude' && s.state !== 'todo')
+  const providers = snap.setup?.providers
 
   // Les premiers pas déjà vus sur un autre appareil : celui-ci n'a pas à les revoir.
   useEffect(() => {
@@ -290,7 +292,7 @@ export function TourIntro() {
             <AnimatePresence>
               {phase === 'first' && (
                 <motion.div className="tr-first" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 380, damping: 32 }}>
-                  {claudeOk ? (
+                  {brainReady ? (
                     <>
                       <h2 className="tr-title">{t.firstTitle}</h2>
                       <p className="tr-line">{t.firstLine}</p>
@@ -333,18 +335,25 @@ export function TourIntro() {
                     </>
                   ) : (
                     <>
-                      <h2 className="tr-title">{t.claudeFirst}</h2>
+                      <h2 className="tr-title">{providers ? t.providerFirst : t.claudeFirst}</h2>
+                      {providers && <p className="tr-line">{t.providerSubscription}</p>}
                       <div className="tr-actions">
                         <button
                           type="button"
                           className="tr-big"
+                          disabled={providers?.claude === false}
                           onClick={() => {
                             finish()
-                            void runBrick('claude')
+                            void runBrick('claude', !!providers)
                           }}
                         >
                           <span>{t.plugClaude}</span> <Icon name="arrow" dir="right" />
                         </button>
+                        {providers?.codex && (
+                          <button type="button" className="tr-big" onClick={() => { finish(); void runBrick('codex', true) }}>
+                            <span>{t.plugCodex}</span> <Icon name="arrow" dir="right" />
+                          </button>
+                        )}
                       </div>
                     </>
                   )}
@@ -432,7 +441,8 @@ export function TourBand() {
   const [cheer, setCheer] = useState(false)
   const prevDone = useRef<number | null>(null)
 
-  const steps = tour?.steps ?? []
+  // Un compte Codex choisi remplace Claude dans le parcours principal, sans feindre sa connexion.
+  const steps = (tour?.steps ?? []).filter(s => !(snap.setup?.provider === 'codex' && s.id === 'claude' && s.state === 'todo'))
   const n = steps.filter((s) => s.state === 'ready' || s.state === 'done').length
   const later = steps.filter((s) => s.state === 'skip').length
   const track = f && snap.tour ? milestones(snap, f) : null

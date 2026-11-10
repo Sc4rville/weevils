@@ -477,7 +477,7 @@ function NewSessionPage({ projectId }: { projectId: string }) {
   const project = any
     ? { id: '__any', name: t.newSession, kind: 'repo' as const, repos: allRepos ?? [], where: Object.fromEntries((allRepos ?? []).map((r) => [r, machine])), lastActivityAt: 0 }
     : snap.projects.find((p) => p.id === projectId)
-  const [tool, setTool] = useState<Tool>('claude')
+  const [tool, setTool] = useState<Tool>(snap.setup?.provider ?? 'claude')
   const [repo, setRepo] = useState<string | undefined>(any ? undefined : project?.repos[0])
   const [err, setErr] = useState<string | null>(null)
   const created = useRef(false)

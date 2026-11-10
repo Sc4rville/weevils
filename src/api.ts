@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AskResult, Brick, Device } from '../shared/setup.ts'
+import type { Tour, TourId } from '../shared/tour.ts'
 import { tr } from './i18n'
 import M from './i18n/app'
 import type { FsListing, InfraDetail, UsageInfo, UsageToday } from '../shared/infra.ts'
@@ -68,6 +69,9 @@ export const api = {
   setupAsk: (brick: Brick, device: Device) => call<AskResult>('POST', '/api/setup/ask', { brick, device }),
   setupApply: (brick: Brick, values: Record<string, string>) => call<{ ok: true }>('POST', '/api/setup/apply', { brick, values }),
   setupDone: (brick: Brick) => call<{ ok: true }>('POST', '/api/setup/done', { brick }),
+  tour: (mobile: boolean) => call<Tour>('GET', `/api/tour${mobile ? '?mobile=1' : ''}`),
+  tourAct: (action: 'skip' | 'unskip' | 'done' | 'close' | 'open' | 'intro', id?: TourId) => call<Tour>('POST', '/api/tour', { action, id }),
+  tourDemo: (id: TourId) => call<{ text?: string; audio?: string }>('POST', '/api/tour/demo', { id }),
   setupLink: () => call<{ link: string }>('GET', '/api/setup/link'),
   voiceChunk: (id: string, seq: number, type: string, data: string) => call<{ ok: true }>('POST', '/api/voice/chunk', { id, seq, type, data }),
   voiceFinish: (id: string, lang: string) => call<{ text: string }>('POST', '/api/voice/finish', { id, lang }),

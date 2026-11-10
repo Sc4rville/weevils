@@ -5,6 +5,7 @@
 #   weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
 #   weevils new <projet> "message" [codex]   weevils projects
 #   weevils setup [install | ask <brique> | mark <id>]      weevils config set <CLÉ> <valeur>
+#   weevils tour open|close                                 rouvre ou ferme les premiers pas dans l'app
 set -euo pipefail
 base="http://127.0.0.1:${WEEVILS_PORT:-4179}"
 from=${WEEVILS_FROM:-weevils}
@@ -25,7 +26,8 @@ if [ "$(wv_lang)" = fr ]; then
   # i18n-ignore : messages français, l'anglais est juste en dessous (même chose dans la branche else)
   usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
 weevils new <projet> "message" [codex]   weevils projects
-weevils setup [install | ask <brique> | mark <id>]   weevils config set <CLÉ> <valeur>' # i18n-ignore
+weevils setup [install | ask <brique> | mark <id>]   weevils config set <CLÉ> <valeur>
+weevils tour open|close' # i18n-ignore
   a_id='id de session' a_msg='message' a_project='projet' a_first='premier message' # i18n-ignore
   export WVM_NOT_FOUND='session introuvable : ' WVM_AMBIGUOUS='plusieurs sessions commencent par {} : {}' # i18n-ignore
   export WVM_NO_SESSIONS='aucune session ouverte' WVM_NO_MESSAGES='(aucun message)' WVM_USER='utilisateur' # i18n-ignore
@@ -34,7 +36,8 @@ weevils setup [install | ask <brique> | mark <id>]   weevils config set <CLÉ> <
 else
   usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
 weevils new <project> "message" [codex]  weevils projects
-weevils setup [install | ask <brick> | mark <id>]   weevils config set <KEY> <value>'
+weevils setup [install | ask <brick> | mark <id>]   weevils config set <KEY> <value>
+weevils tour open|close'
   a_id='session id' a_msg='message' a_project='project' a_first='first message'
   export WVM_NOT_FOUND='no such session: ' WVM_AMBIGUOUS='several sessions start with {}: {}'
   export WVM_NO_SESSIONS='no open sessions' WVM_NO_MESSAGES='(no messages)' WVM_USER='user'
@@ -112,6 +115,14 @@ for m in msgs[-n:]:
         key=brick; [ "$2" = mark ] && key=id
         "$py" -c 'import json,sys; print(json.dumps({sys.argv[1]:sys.argv[2]}))' "$key" "${3:?}" \
           | curl -sf -m 30 -H 'content-type: application/json' --data-binary @- "$base/api/setup/$2" >/dev/null && echo ok ;;
+      *) echo "$usage"; exit 1 ;;
+    esac ;;
+  tour)
+    # Premiers pas : les rouvrir dans l'app (« reprends le tour »), ou les fermer.
+    case "${2:-}" in
+      open|close)
+        "$py" -c 'import json,sys; print(json.dumps({"action":sys.argv[1]}))' "$2" \
+          | curl -sf -m 30 -H 'content-type: application/json' --data-binary @- "$base/api/tour" >/dev/null && echo ok ;;
       *) echo "$usage"; exit 1 ;;
     esac ;;
   config)

@@ -21,6 +21,7 @@ import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
 import { splitChips } from '../shared/setup.ts'
+import { isDemoJob, type TourKeeper } from './tour.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
 import { emptyBg, subagentSteps } from './background.ts'
@@ -177,6 +178,8 @@ export class Weevils {
   pinnedRepos: string[] = []
   /** Accueil et branchements (server/setup.ts), posé par index.ts : ses messages se mêlent au fil de weevboss. */
   setup: Setup | null = null
+  /** Premiers pas (server/tour.ts), posé par index.ts. */
+  tour: TourKeeper | null = null
   private githubCache: Map<string, number> = new Map()
 
   // ---------------------------------------------------------------- repos GitHub
@@ -720,6 +723,7 @@ export class Weevils {
       mainQueued: this.orchestratorQueued(now),
       devil: { enabled: !!devilConfig(), working: devilWorking() },
       setup: this.setup?.flags(),
+      tour: this.tour?.current() ?? undefined,
       pinnedRepos: this.pinnedRepos,
       config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors() },
     }
@@ -1335,6 +1339,7 @@ export class Weevils {
           runStartedAt: running ? st.birthtimeMs || null : st.mtimeMs,
           lastEvent: last.slice(0, 160) || '—',
           canToggle: false,
+          ...(isDemoJob(name) ? { demo: true } : {}),
         })
       }
     } catch {

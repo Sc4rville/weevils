@@ -6,7 +6,7 @@ import { AgentBand, FootBand, ProjectBand } from './ui/bands'
 import { spring } from './ui/bits'
 import { H24Rail } from './ui/h24'
 import { Login } from './ui/login'
-import { Onboarding } from './ui/onboarding'
+import { TourBand, TourIntro } from './ui/tour'
 import { Tips } from './ui/tips'
 import { HintBubble, loadHints } from './ui/hints'
 import { GestureCoach } from './ui/coach'
@@ -246,6 +246,7 @@ export default function App() {
           }}
         >
           <AgentBand />
+          <TourBand />
           {ordered.map((p) => (
             <ProjectBand key={p.id} project={p} />
           ))}
@@ -260,7 +261,7 @@ export default function App() {
           ))}
         </AnimatePresence>
         <Tips paused={stack.length > 0} />
-        <Onboarding />
+        <TourIntro />
         <HintBubble />
         <GestureCoach />
       </MotionConfig>

@@ -1,3 +1,5 @@
+import type { Tour } from './tour.ts'
+
 // Contrat entre weevilsd (VPS) et l'app. Horodatages en millisecondes, compteurs toujours dérivés côté app.
 
 export type Tool = 'claude' | 'codex'
@@ -15,6 +17,8 @@ export interface Message {
   devil?: boolean
   /** Fil de weevboss : les puces de branchement de ce message ([[setup:x]], retirées du texte), montrées en boutons. */
   chips?: string[]
+  /** Premiers pas : message de démo (l'usage qu'il montre), marqué comme tel, retiré dès que la vraie brique est branchée. */
+  demo?: string
 }
 
 /** Qui peut signer un message dans une session, à part l'utilisateur : weevboss et les agents externes (config du serveur). */
@@ -141,6 +145,8 @@ export interface H24Activity {
   runStartedAt: number | null
   lastEvent: string
   canToggle: boolean
+  /** Job de démo des premiers pas (server/tour.ts) : marqué comme tel, jamais confondu avec un vrai. */
+  demo?: boolean
 }
 
 /** Conversation ChatGPT / Claude.ai importée (sans ses messages). */
@@ -187,6 +193,8 @@ export interface Snapshot {
   devil: { enabled: boolean; working: boolean }
   /** Ce qui est branché (server/setup.ts) : les bulles renvoient vers weevboss quand un réglage manque. */
   setup?: { claude: boolean; voice: boolean; dictation: boolean; github: boolean; welcomed: boolean }
+  /** Premiers pas (shared/tour.ts, server/tour.ts). */
+  tour?: Tour
   /** Repos épinglés au fil des projets (présents même sans session). */
   pinnedRepos: string[]
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */

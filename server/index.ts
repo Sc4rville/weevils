@@ -26,6 +26,8 @@ import { quotas, today as usageToday } from './usage.ts'
 import type { InfraDetail, MachineBrief, MachineFacts, Reach, UsageRow } from '../shared/infra.ts'
 import { facts } from './discover.ts'
 import { Setup, installPlan, writeConfig } from './setup.ts'
+import { TourKeeper } from './tour.ts'
+import { DEMOS, isTourId } from '../shared/tour.ts'
 import { isBrick, isSetupKey, type Device } from '../shared/setup.ts'
 
 const w = new Weevils()
@@ -76,6 +78,15 @@ const setup = new Setup({
   handoff: (text, brief) => w.sendMain(text, brief),
 })
 w.setup = setup
+const tour = new TourKeeper({
+  setup,
+  seen: () => hints.get().seen,
+  snapshot: () => w.snapshot(),
+  // Une installation existante : weevboss a déjà servi, ou des bulles et gestes ont déjà été vus.
+  veteran: () => w.snapshot().main.some((m) => m.role === 'user' && !m.id.startsWith('setup-')) || hints.get().seen.length > 2,
+  bump: () => w.bump(),
+})
+w.tour = tour
 const asDevice = (d: any): Device => ({
   os: ['ios', 'android', 'mac', 'windows', 'linux'].includes(d?.os) ? d.os : 'other',
   mobile: !!d?.mobile,
@@ -229,7 +240,23 @@ const routes: [string, RegExp, Handler][] = [
   // ---- Accueil et branchements : weevboss guide dans son fil (server/setup.ts, src/ui/setup.tsx).
   ['GET', /^\/api\/setup$/, async (_req, res) => {
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' })
-    res.end((await setup.report()) + '\n')
+    res.end((await setup.report()) + '\n' + tour.report() + '\n')
+  }],
+  // ---- Premiers pas (server/tour.ts, src/ui/tour.tsx).
+  ['GET', /^\/api\/tour$/, async (req, res) => {
+    tour.seenFrom(new URL(req.url ?? '/', 'http://x').searchParams.get('mobile') === '1')
+    json(res, 200, await tour.refresh(false, true))
+  }],
+  ['POST', /^\/api\/tour$/, async (req, res) => {
+    const b = await readBody(req)
+    const action = String(b.action ?? '')
+    if (!['skip', 'unskip', 'done', 'close', 'open', 'intro'].includes(action) || (b.id !== undefined && !isTourId(b.id))) return json(res, 400, { error: tr(S).badBrick })
+    json(res, 200, await tour.act(action, b.id, !!b.mobile))
+  }],
+  ['POST', /^\/api\/tour\/demo$/, async (req, res) => {
+    const b = await readBody(req)
+    if (!isTourId(b.id) || !DEMOS.has(b.id)) return json(res, 400, { error: tr(S).badBrick })
+    json(res, 200, await tour.demo(b.id))
   }],
   ['GET', /^\/api\/setup\/install$/, async (_req, res) => {
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' })

@@ -135,6 +135,23 @@ describe('claude : phases et messages', () => {
     expect(one().lastActivityAt).toBe(now - 1000)
   })
 
+  it('modèle changé (/model) : celui de la dernière requête du fil principal, avant même sa première réponse', () => {
+    const now = Date.now()
+    const req = (model: string, at: number, querySource = 'repl_main_thread') => ({ type: 'api-request', timestamp: iso(at), querySource, params: { model } })
+    const f = claudeFile()
+    write(f, [user('go', now - 6000), assistant([{ type: 'text', text: 'ok' }], now - 5000, { model: 'claude-opus-5-5', stop_reason: 'end_turn' })])
+    store.scan(now)
+    expect(one().model).toBe('claude-opus-5-5')
+    // Fable choisi : la requête part, la réponse n'est pas encore là.
+    append(f, [user('next', now - 4000), req('claude-fable-5-1', now - 3900)])
+    store.scan(now)
+    expect(one().model).toBe('claude-fable-5-1')
+    // Un sous-agent sur haiku, un message synthétique de Claude Code : le modèle de la session ne bouge pas.
+    append(f, [req('claude-haiku-5-5', now - 3000, 'agent:custom'), assistant([{ type: 'text', text: 'x' }], now - 2500, { model: '<synthetic>' })])
+    store.scan(now)
+    expect(one().model).toBe('claude-fable-5-1')
+  })
+
   it('appel d’outil : un événement « outil · détail »', () => {
     const now = Date.now()
     write(claudeFile(), [user('go', now - 3000), assistant([{ type: 'tool_use', id: 'tu1', name: 'Bash', input: { description: 'Build', command: 'npm run build' } }], now - 2000, { stop_reason: 'tool_use' })])

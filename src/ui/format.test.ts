@@ -96,3 +96,17 @@ describe('inline : liens et commandes du fil', () => {
     expect(plain(t)).not.toMatch(/via \./)
   })
 })
+
+describe('modèle dans l’en-tête de session', async () => {
+  const { modelLabel } = await import('./settings')
+  it('montre le modèle avec sa version exacte', () => {
+    expect(modelLabel('claude-fable-5-1')).toBe('fable 5.1')
+    expect(modelLabel('claude-opus-5-5')).toBe('opus 5.5')
+    expect(modelLabel('claude-opus-5-5[1m]')).toBe('opus 5.5')
+    expect(modelLabel('claude-haiku-4-5-20251001')).toBe('haiku 4.5')
+    expect(modelLabel('claude-sonnet-5')).toBe('sonnet 5')
+    expect(modelLabel('claude-3-5-sonnet-20241022')).toBe('sonnet 3.5')
+    expect(modelLabel('gpt-5.1-codex')).toBe('gpt-5.1-codex')
+    expect(modelLabel(undefined)).toBeUndefined()
+  })
+})

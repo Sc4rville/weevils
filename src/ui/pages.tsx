@@ -6,7 +6,7 @@ import { Collapse, Composer, Line, Messages, ResumeButton, StatusChar, Working, 
 import { Background } from './subagents'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
-import { Settings, effortLabel, shortModel } from './settings'
+import { Settings, effortLabel, modelLabel } from './settings'
 import { ReposPage } from './repos'
 import { SoftwarePage, SoftwaresPage } from './softwares'
 import { CalmConv, CalmGrid } from './calm'
@@ -240,7 +240,7 @@ function SessionPage({ id }: { id: string }) {
           )}
           {s.tool}{' '}
           <button className="link inline" onClick={() => setShowSettings(true)} aria-label={t.changeModel} aria-controls="session-settings">
-            {[shortModel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
+            {[modelLabel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
           </button>
           {' '}· <StatusChar s={s.status} /> {st.label}
           {s.background > 0 && <span className="strong"> · {t.background(s.background)}</span>}

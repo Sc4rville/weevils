@@ -5,6 +5,7 @@ import { intlLocale, useT } from '../i18n'
 import M from '../i18n/infra'
 import { useApp } from './app-context'
 import { Line, SessionRow } from './bits'
+import { modelLabel } from './settings'
 import { CodeFile } from './codeview'
 import { durLong } from './format'
 import { Icon } from './icons'
@@ -450,10 +451,7 @@ export function UsageLine() {
 }
 
 /** « claude-opus-5-5 » → « opus 5.5 » ; les autres noms tels quels. */
-const modelName = (m: string) => {
-  const x = /^claude-([a-z]+)-(\d+)-(\d+)/.exec(m)
-  return x ? `${x[1]} ${x[2]}.${x[3]}` : m
-}
+const modelName = (m: string) => modelLabel(m) ?? m
 
 export function UsagePage() {
   const { snap, push, colors } = useApp()

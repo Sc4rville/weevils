@@ -162,6 +162,15 @@ function claudeLine(t: Transcript, o: any) {
     push(t, userMsg(o.uuid ?? `${t.id}-${at}-q`, text, at))
     return
   }
+  // La requête envoyée au modèle porte le modèle exact (params.model) dès l'envoi : un /model se voit tout de suite, sans
+  // attendre la première réponse (une longue réflexion du nouveau modèle laissait l'ancien dans l'en-tête). Seulement le
+  // fil principal : un sous-agent ou une tâche annexe (titre, compaction) tourne souvent sur un autre modèle.
+  if (o.type === 'api-request') {
+    const model = o.params?.model
+    const main = o.querySource === undefined || o.querySource === 'repl_main_thread' || o.querySource === 'sdk'
+    if (main && typeof model === 'string' && model) t.model = model
+    return
+  }
   if (o.type === 'api-request-blob') {
     const effort = o.message?.output_config?.effort
     if (typeof effort === 'string' && effort) t.effort = effort
@@ -203,7 +212,8 @@ function claudeLine(t: Transcript, o: any) {
   if (o.type === 'assistant') {
     touch(t, at)
     const msg = o.message ?? {}
-    if (typeof msg.model === 'string' && msg.model) t.model = msg.model
+    // « <synthetic> » : un message écrit par Claude Code lui-même (interruption, erreur), pas par un modèle.
+    if (typeof msg.model === 'string' && msg.model && msg.model !== '<synthetic>' && !o.isSidechain) t.model = msg.model
     for (const part of msg.content ?? []) {
       if (part?.type === 'text' && part.text?.trim()) {
         const prev = t.messages[t.messages.length - 1]

@@ -349,6 +349,8 @@ export interface Sys {
   worktree: (repo: string, dir: string, branch: string) => Promise<void>
   /** Tries the jail (bwrap <args> true): true when it holds, false without bwrap on this machine; throws if it fails. */
   jail: (args: string[]) => Promise<boolean>
+  /** git -C <dir> rev-parse HEAD: where a run starts from (undefined outside git). */
+  head: (dir: string) => Promise<string | undefined>
 }
 const gitWorktree = (repo: string, dir: string, branch: string) =>
   new Promise<void>((resolve, reject) =>
@@ -360,9 +362,13 @@ const tryJail = (args: string[]) =>
       !e ? resolve(true) : (e as NodeJS.ErrnoException).code === 'ENOENT' ? resolve(false) : reject(new Error(String(err || e.message).trim().split('\n').pop())),
     ),
   )
-const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: () => os.freemem(), logged: claudeLogged, worktree: gitWorktree, jail: tryJail }
+const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: () => os.freemem(), logged: claudeLogged, worktree: gitWorktree, jail: tryJail, head: headOf }
 
 // ---------------------------------------------------------------- pure helpers (tested)
+
+/** The runs as the app reads them: newest first (stored oldest first), an older line ({ at, ok, note }) starting when
+ *  it ended. */
+export const newestFirst = (runs: AutoRun[]): AutoRun[] => runs.map((r) => (typeof r.startedAt === 'number' ? r : { ...r, startedAt: r.at })).reverse()
 
 /** A rewrite from the model, checked: null clears a condition (as soon as possible, any time, just once). */
 export interface Patch {
@@ -621,6 +627,7 @@ export class Optimizers {
       logged: () => (sys.logged ?? realSys.logged)(),
       worktree: (repo, dir, branch) => (sys.worktree ?? realSys.worktree)(repo, dir, branch),
       jail: (args) => (sys.jail ?? realSys.jail)(args),
+      head: (d) => (sys.head ?? realSys.head)(d),
     }
     this.s = (() => {
       try {
@@ -700,7 +707,7 @@ export class Optimizers {
     const at = o.state === 'queued' ? this.timeAt(o, now) : now
     const out: Optimizer = at > now ? { ...v, startAt: at } : { ...v }
     // Stored oldest first (older files read the same); the app reads the newest first.
-    if (o.runs) out.runs = [...o.runs].reverse()
+    if (o.runs) out.runs = newestFirst(o.runs)
     // Agreed while it runs, for its next run: shown under its row (the brief itself stays here).
     if (o.pending) out.next = { title: o.pending.title ?? o.title }
     return out
@@ -1165,7 +1172,7 @@ export class Optimizers {
    *  images (copied), then the file count on its summary. */
   private async writeRun(o: Stored, run: AutoRun, x: { cwd: string; base?: string; report?: string; reportFile: string; message?: string; keep: number[] }) {
     try {
-      const files = (x.base && fs.existsSync(x.cwd) ? await gitFiles(x.cwd, x.base) : null) ?? mtimeFiles(x.cwd, run.startedAt, run.at, [x.reportFile])
+      const files = (x.base && fs.existsSync(x.cwd) ? await gitFiles(x.cwd, x.base, run.startedAt) : null) ?? mtimeFiles(x.cwd, run.startedAt, run.at, [x.reportFile])
       const images = this.archive.copyImages(o.id, run.startedAt, files)
       const detail: AutoRunDetail = { run: { ...run, ...(files.length ? { files: files.length } : {}) }, ...(x.report ? { report: x.report } : {}), ...(x.message ? { message: x.message } : {}), files, links: extractLinks(x.report, x.message), images }
       this.archive.write(o.id, detail)
@@ -1186,7 +1193,7 @@ export class Optimizers {
   detail(id: string): AutoDetail | null {
     const o = this.get(id)
     if (!o || o.state === 'refused') return null
-    const out: AutoDetail = { id, runs: [...(o.runs ?? [])].reverse(), machine: MACHINE.id }
+    const out: AutoDetail = { id, runs: newestFirst(o.runs ?? []), machine: MACHINE.id }
     if (o.state === 'running' && o.sessionId) {
       const t = this.w.store?.get(o.sessionId)
       out.liveTokens = t?.file ? sessionTokens(t.file, t.tool) : 0
@@ -1198,7 +1205,7 @@ export class Optimizers {
    *  its summary. null: no such run. */
   runDetail(id: string, at: number): AutoRunDetail | null {
     const o = this.get(id)
-    const run = o?.state === 'refused' ? undefined : o?.runs?.find((r) => r.at === at)
+    const run = o?.state === 'refused' ? undefined : newestFirst(o?.runs ?? []).find((r) => r.at === at)
     if (!o || !run) return null
     const d = this.archive.read(id, run.startedAt)
     return d ? { ...d, run: { ...d.run, ...run } } : { run, files: [], links: [], images: [] }
@@ -1358,7 +1365,7 @@ export class Optimizers {
       } else fs.mkdirSync(cwd, { recursive: true })
       if (o.repo) {
         o.branch = branch
-        o.baseCommit = await headOf(cwd)
+        o.baseCommit = await this.sys.head(cwd)
       }
       const writesReport = !o.repo || o.kind === 'watch' || o.kind === 'content' || o.kind === 'explore'
       const brief = tr(O).brief({
@@ -1495,6 +1502,14 @@ export interface H24Auto {
 export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h24?: H24Auto): [string, RegExp, Handler][] {
   const isH24 = (id: string) => /^(timer|job):/.test(id)
   const missing = (res: http.ServerResponse) => json(res, 404, { error: tr(O).notFound })
+  // A malformed escape is no id (404, not a 500).
+  const decode = (raw: string) => {
+    try {
+      return decodeURIComponent(raw)
+    } catch {
+      return ''
+    }
+  }
   return [
     ['POST', /^\/api\/optimizers\/([\w-]+)\/accept$/, async (req, res, _u, [id]) => {
       const body = await readBody(req).catch(() => ({}))
@@ -1522,17 +1537,17 @@ export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h
       json(res, ok ? 200 : 404, { ok })
     }],
     ['GET', /^\/api\/auto\/([^/]+)$/, async (_req, res, _u, [raw]) => {
-      const id = decodeURIComponent(raw)
+      const id = decode(raw)
       const d = isH24(id) ? await h24?.detail(id) : o.detail(id)
       return d ? json(res, 200, d) : missing(res)
     }],
     ['GET', /^\/api\/auto\/([^/]+)\/runs\/(\d+)$/, async (_req, res, _u, [raw, at]) => {
-      const id = decodeURIComponent(raw)
+      const id = decode(raw)
       const d = isH24(id) ? await h24?.run(id, Number(at)) : o.runDetail(id, Number(at))
       return d ? json(res, 200, d) : missing(res)
     }],
     ['GET', /^\/api\/auto\/([^/]+)\/blob$/, (_req, res, url, [raw]) => {
-      const id = decodeURIComponent(raw)
+      const id = decode(raw)
       const b = isH24(id) ? null : o.blob(id, url.searchParams.get('path'))
       if (!b) return missing(res)
       let size: number

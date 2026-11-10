@@ -8,7 +8,7 @@ import M from './i18n/app'
 import type { FsListing, InfraDetail, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
 import type { ProgressFix, Software, SoftwareList } from '../shared/softwares.ts'
 import type { ForYouFeed } from '../shared/foryou.ts'
-import type { ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, SessionDetail, Snapshot, SubagentDetail, Tool, WeevilQuestion, WeevilReply } from '../shared/api.ts'
+import type { ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, OptimizerTalkReply, SessionDetail, Snapshot, SubagentDetail, Tool, WeevilQuestion, WeevilReply } from '../shared/api.ts'
 
 export class ApiError extends Error {
   status: number
@@ -106,7 +106,10 @@ export const api = {
   foryouAct: (id: string, action: string, card?: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/act${inLang()}`, { action, card }),
   foryouReply: (id: string, text: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/reply${inLang()}`, { text }),
   foryouMore: (id: string) => call<{ text: string }>('POST', `/api/foryou/${enc(id)}/more${inLang()}`, {}),
-  acceptOptimizer: (id: string) => call<{ ok: true }>('POST', `/api/optimizers/${enc(id)}/accept`, {}),
+  /** rev : la version à l'écran (le serveur refuse, 409, si la tâche a été réécrite depuis). */
+  acceptOptimizer: (id: string, rev?: number) => call<{ ok: true }>('POST', `/api/optimizers/${enc(id)}/accept`, rev === undefined ? {} : { rev }),
+  /** Une question sur une tâche (écrite ou dite) : la réponse, la tâche réécrite. tz : où se lisent les heures dites. */
+  talkOptimizer: (id: string, text: string) => call<OptimizerTalkReply>('POST', `/api/optimizers/${enc(id)}/talk`, { text, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }),
   refuseOptimizer: (id: string) => call<{ ok: true }>('POST', `/api/optimizers/${enc(id)}/refuse`, {}),
   toggleH24: (id: string) => call<{ ok: true }>('POST', `/api/h24/${enc(id)}/toggle`, {}),
   conversations: (opts: { project?: string; q?: string }) => call<{ conversations: ConversationSummary[] }>('GET', `/api/conversations?${new URLSearchParams(opts)}`),

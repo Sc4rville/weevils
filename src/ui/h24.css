@@ -170,6 +170,47 @@
 .auto-prop .i {
   margin-top: auto;
   padding-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px 10px;
+}
+
+/* Le repo d'une carte dépliée, après son genre. */
+.auto-repo {
+  margin-left: 4px;
+  padding-left: 7px;
+  border-left: 2px solid currentColor;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Conditions : pas avant, fenêtre, fréquence — des chiffres en gras sur un aplat léger. */
+.auto-conds {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.auto-cond {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  background: color-mix(in oklab, var(--ink) 13%, transparent);
+}
+
+.auto-cond .ic {
+  width: 0.8rem;
+  height: 0.8rem;
 }
 
 .auto-prop .acts {
@@ -180,10 +221,27 @@
 }
 
 .auto-prop .ok,
-.auto-prop .no {
+.auto-prop .no,
+.auto-prop .talk {
   height: 48px;
   display: inline-grid;
   place-items: center;
+}
+
+.auto-prop .ok:disabled {
+  opacity: 0.3;
+}
+
+/* La bulle : ouvre le champ sous la carte ; ouverte, en aplat d'encre. */
+.auto-prop .talk {
+  min-width: 48px;
+  font-size: 1.375rem;
+}
+
+.auto-prop .talk.on,
+.auto-talk-ic.on {
+  background: var(--ink);
+  color: var(--c, var(--bg));
 }
 
 .auto-prop .ok {
@@ -464,4 +522,253 @@
 
 .h24 .h24-grip {
   top: 3px;
+}
+
+/* ---------- Parler d'une tâche : l'échange dans la carte (ou sous la ligne), le champ dessous ---------- */
+
+.auto-lines {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  font-size: 0.875rem;
+  line-height: 1.3;
+}
+
+.auto-line {
+  margin: 0;
+  overflow-wrap: anywhere;
+  animation: auto-in 0.22s ease-out;
+}
+
+.auto-line.auto {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+/* La dernière réponse : celle qu'on lit. */
+.auto-line.auto.last {
+  font-weight: 750;
+  opacity: 1;
+}
+
+.auto-line.user {
+  justify-self: end;
+  max-width: 88%;
+  text-align: right;
+  font-weight: 650;
+  opacity: 0.6;
+}
+
+.auto-line.sending {
+  opacity: 0.45;
+}
+
+.auto-line.note {
+  font-weight: 750;
+}
+
+.auto-line-wait {
+  justify-self: start;
+  font-size: 1rem;
+}
+
+.auto-more {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  background: color-mix(in oklab, var(--ink) 13%, transparent);
+}
+
+.auto-more .ic {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+@keyframes auto-in {
+  from { opacity: 0; transform: translateY(3px); }
+}
+
+/* Le champ sous une carte : dans sa couleur, le logo vocal et la question côte à côte. */
+.auto-prop-say {
+  background: var(--c);
+  color: var(--ink);
+  padding: 2px 12px 10px;
+}
+
+.auto-say {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auto-say .voice-logo {
+  height: 44px;
+  min-height: 0;
+}
+
+.auto-form {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  border-bottom: 3px solid var(--ink);
+  font-size: 1rem;
+}
+
+.auto-form input {
+  flex: 1;
+  min-width: 0;
+  font-weight: 650;
+}
+
+.auto-send {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 44px;
+}
+
+.auto-send:disabled {
+  opacity: 0.3;
+}
+
+/* Ce que la dernière réécriture a changé : un éclair d'encre, à plat. */
+.auto-chg {
+  animation: auto-chg 1.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes auto-chg {
+  0%, 30% {
+    background: var(--ink);
+    color: var(--c, var(--bg));
+    outline: 3px solid var(--ink);
+  }
+  100% {
+    background: transparent;
+    outline: 3px solid transparent;
+  }
+}
+
+/* ---------- Sous une tâche acceptée : d'où elle vient, ses passages, le champ ---------- */
+
+.auto-row-main {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.auto-talk-ic {
+  font-size: 1.125rem;
+  margin-right: -6px;
+}
+
+.auto-row > .ch + .auto-talk-ic {
+  margin-left: -10px;
+}
+
+.auto-hist {
+  padding-left: calc(var(--pad) + 32px);
+  padding-bottom: 10px;
+  margin-top: -4px;
+}
+
+.auto-hist .auto-lines {
+  margin-top: 0;
+}
+
+.auto-hist .auto-say {
+  padding-top: 6px;
+}
+
+.auto-hist-one {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 28px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.auto-hist-one > .ic {
+  flex: none;
+  width: 0.85rem;
+  height: 0.85rem;
+  opacity: 0.6;
+}
+
+.auto-hist-one > span {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+
+.auto-hist-one > b {
+  flex: none;
+  font-weight: 800;
+}
+
+.auto-runs {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  font-size: 0.8125rem;
+}
+
+.auto-runs li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.auto-runs li .ic {
+  flex: none;
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.auto-runs li.bad .ic {
+  color: var(--st-failed);
+}
+
+.auto-runs li > b {
+  flex: none;
+  font-weight: 750;
+}
+
+.auto-runs li > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auto-line {
+    animation: none;
+  }
+
+  .auto-chg {
+    animation-duration: 0.01s;
+  }
 }

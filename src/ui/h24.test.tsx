@@ -7,9 +7,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H24Activity, Optimizer, Snapshot } from '../../shared/api.ts'
 
 const calls = vi.hoisted(() => [] as string[])
+/** The pending answer of a talk turn: the test releases it. */
+const talk = vi.hoisted(() => ({ release: null as null | ((r: unknown) => void) }))
 vi.mock('../api', () => ({
   api: {
-    acceptOptimizer: async (id: string) => void calls.push(`accept ${id}`),
+    acceptOptimizer: async (id: string, rev?: number) => void calls.push(rev === undefined ? `accept ${id}` : `accept ${id} rev ${rev}`),
+    talkOptimizer: (id: string, text: string) => {
+      calls.push(`talk ${id} ${text}`)
+      return new Promise((r) => (talk.release = r))
+    },
     refuseOptimizer: async (id: string) => void calls.push(`refuse ${id}`),
     toggleH24: async (id: string) => void calls.push(`toggle ${id}`),
   },
@@ -105,7 +111,7 @@ describe('auto band', () => {
     await click(label(/^run "Harden tests"/)!)
     await click(label(/^refuse "Watch fairs"/)!)
     await flush()
-    expect(calls).toEqual(['accept a', 'refuse b'])
+    expect(calls).toEqual(['accept a rev 0', 'refuse b'])
     expect([...host.querySelectorAll('.auto-prop .t')].map((n) => n.textContent)).toEqual(['Draft page'])
   })
 
@@ -127,7 +133,7 @@ describe('auto band', () => {
     clock += 500
     await click(label(/^run "Harden the save parser tests"/)!)
     await flush()
-    expect(calls).toEqual(['accept a'])
+    expect(calls).toEqual(['accept a rev 0'])
     expect(state()).toEqual(['-', '-'])
     await click(host.querySelector('.auto-prop:last-child .auto-prop-body'))
     expect(state()).toEqual(['slim', 'open'])
@@ -135,14 +141,14 @@ describe('auto band', () => {
     expect(state()).toEqual(['open', 'slim'])
     clock += 100
     await click(label(/^refuse "Watch fairs"/)!)
-    expect(calls).toEqual(['accept a'])
+    expect(calls).toEqual(['accept a rev 0'])
     // A tap on the open column folds it back.
     await click(host.querySelector('.auto-prop.open .auto-prop-body'))
     expect(state()).toEqual(['-', '-'])
     clock += 500
     await click(label(/^refuse "Watch fairs"/)!)
     await flush()
-    expect(calls).toEqual(['accept a', 'refuse b'])
+    expect(calls).toEqual(['accept a rev 0', 'refuse b'])
     now.mockRestore()
   })
 
@@ -192,5 +198,65 @@ describe('auto band', () => {
     expect(timer.getAttribute('aria-label')).toContain('every 6h')
     await click(label(/^pause sync/)!)
     expect(calls).toEqual(['toggle timer:wv-sync.timer'])
+  })
+
+  it('talks a proposal over: the bubble opens a field under the card, the reply shows in it, the card is rewritten, ✓ waits then takes that version', async () => {
+    let clock = 10_000
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+    const p = opt({ id: 'a', title: 'Harden tests', why: 'ship it', priority: 2, est: 40 })
+    render(snap([p, opt({ id: 'b', title: 'Watch fairs', kind: 'watch' })]))
+    // Folded: no bubble; unfolded: one.
+    expect(label(/^talk about "Harden tests"/)).toBeUndefined()
+    await click(host.querySelector('.auto-prop .auto-prop-body'))
+    await click(label(/^talk about "Harden tests"/)!)
+    const input = host.querySelector<HTMLInputElement>('.auto-prop-say input')!
+    expect(input.getAttribute('aria-label')).toBe('your question about "Harden tests"')
+    expect(host.querySelector('.auto-prop-say .voice-logo')).not.toBeNull()
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+      set.call(input, 'at night, weekly, e2e only')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => void host.querySelector<HTMLFormElement>('.auto-prop-say form')!.requestSubmit())
+    expect(calls).toEqual(['talk a at night, weekly, e2e only'])
+    // In flight: the question shows in the card, ✓ is off.
+    expect(host.querySelector('.auto-prop.open .auto-line.user')!.textContent).toBe('at night, weekly, e2e only')
+    clock += 1000
+    expect(label(/^"Harden tests" is being rewritten/)!.hasAttribute('disabled')).toBe(true)
+    const item = { ...p, title: 'E2E tests', est: 50, window: { from: 60, to: 360 }, every: 7 * 86_400_000, rev: 1, changed: { at: NOW, fields: ['title', 'est', 'window', 'every'] }, talk: [{ who: 'user', text: 'at night, weekly, e2e only', at: NOW }, { who: 'auto', text: 'Done: nights, every week, e2e only.', at: NOW, changed: ['title'] }] }
+    await act(async () => talk.release!({ reply: 'Done: nights, every week, e2e only.', item, changed: ['title', 'est', 'window', 'every'] }))
+    await flush()
+    const card = host.querySelector('.auto-prop.open')!
+    expect(card.querySelector('.t')!.textContent).toBe('E2E tests')
+    expect(card.querySelector('.t')!.classList.contains('auto-chg')).toBe(true)
+    expect(card.querySelector('.auto-line.auto.last')!.textContent).toBe('Done: nights, every week, e2e only.')
+    expect([...card.querySelectorAll('.auto-cond')].map((n) => n.textContent)).toEqual(['night 01:00–06:00', '/7d'])
+    await click(label(/^run "E2E tests"/)!)
+    await flush()
+    expect(calls).toEqual(['talk a at night, weekly, e2e only', 'accept a rev 1'])
+    now.mockRestore()
+  })
+
+  it('an accepted task keeps where it came from: one line under its row, unfolded with a tap; its bubble opens the field there', async () => {
+    const lines = [
+      { who: 'user' as const, text: 'only e2e', at: NOW },
+      { who: 'auto' as const, text: 'Only the e2e tests now.', at: NOW, changed: ['prompt' as const] },
+      { who: 'user' as const, text: 'at night', at: NOW },
+      { who: 'auto' as const, text: 'Nights it is, 01:00 to 06:00.', at: NOW, changed: ['window' as const] },
+    ]
+    render(snap([opt({ id: 'q', state: 'queued', waiting: 'time', startAt: NOW + 14 * 60_000, window: { from: 60, to: 360 }, every: 86_400_000, repo: 'mygame', title: 'E2E tests', talk: lines })]))
+    const row = label(/^E2E tests, scheduled/)!
+    expect(row.getAttribute('aria-label')).toContain('next in 14m')
+    expect(row.getAttribute('aria-label')).toContain('every day between 01:00 and 06:00')
+    expect(row.getAttribute('aria-label')).toContain('every 1d')
+    const one = label(/^where "E2E tests" comes from: 4 lines/)!
+    expect(one.textContent).toContain('Nights it is, 01:00 to 06:00.')
+    await click(one)
+    expect([...host.querySelectorAll('.auto-hist .auto-line')].map((n) => n.textContent)).toEqual(lines.map((l) => l.text))
+    await click(label(/^fold the exchange/)!)
+    expect(host.querySelectorAll('.auto-hist .auto-line')).toHaveLength(0)
+    await click(label(/^talk about "E2E tests"/)!)
+    expect(host.querySelector('.auto-hist input')).not.toBeNull()
+    expect(host.querySelectorAll('.auto-hist .auto-line')).toHaveLength(2)
   })
 })

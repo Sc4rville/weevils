@@ -13,6 +13,9 @@ describe('auto tree', () => {
     expect(fromOptimizer(opt({ waiting: 'queue' }))!.state).toBe('queued')
     expect(fromOptimizer(opt({ state: 'proposed' }))).toBeNull()
     expect(fromOptimizer(opt({ state: 'refused' }))).toBeNull()
+    // Held by its own time (negotiated: not before, a window, its next run): planned, with when and how often.
+    expect(fromOptimizer(opt({ waiting: 'time', startAt: NOW + 3600_000, every: 7 * 86_400_000, window: { from: 60, to: 360 } }))).toMatchObject({ state: 'scheduled', nextAt: NOW + 3600_000, every: 7 * 86_400_000, window: { from: 60, to: 360 } })
+    expect(fromOptimizer(opt({ waiting: 'later', retryAt: NOW + 60_000 }))).toMatchObject({ state: 'waiting', nextAt: NOW + 60_000 })
     expect(fromActivity(act({ kind: 'timer', runState: 'waiting', nextRunAt: NOW + 60_000 }))).toMatchObject({ state: 'scheduled', nextAt: NOW + 60_000 })
     expect(fromActivity(act({ kind: 'timer', runState: 'paused', nextRunAt: NOW }))).toMatchObject({ state: 'paused', nextAt: null })
     expect(fromActivity(act({ runState: 'waiting', lastRunAt: NOW - 1 }))).toMatchObject({ state: 'done', endedAt: NOW - 1 })

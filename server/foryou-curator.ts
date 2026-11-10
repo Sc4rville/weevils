@@ -430,9 +430,14 @@ export class Curator implements ForYouCurator {
 
   /** The loop: a timer of its own, never a request. */
   start() {
-    const run = () => void this.tick().catch((e) => console.error(`[foryou] curateur : ${(e as Error).message}`))
-    setTimeout(run, 30_000).unref?.()
-    setInterval(run, TICK_MS).unref?.()
+    const run = () => {
+      void this.tick().catch((e) => console.error(`[foryou] curateur : ${(e as Error).message}`))
+      // Re-arm from the recorded publication time. A fixed interval can arrive a few milliseconds early
+      // after a delayed pass and wrongly skip a whole slot. Never await model generation here.
+      const remaining = this.reservoir.last + TICK_MS - this.now()
+      setTimeout(run, (remaining > 0 ? remaining : TICK_MS) + 10).unref?.()
+    }
+    setTimeout(run, TICK_MS).unref?.()
   }
 
   private save() {

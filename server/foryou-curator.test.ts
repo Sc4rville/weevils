@@ -881,3 +881,29 @@ it('does not reset exhausted relay or lean daily budgets on restart', () => {
   expect(c.lineCalls()).toBe(16)
   expect(c.mode()).toBe(null)
 })
+
+it('re-arms publication from its recorded time instead of skipping an early interval', async () => {
+  vi.useFakeTimers()
+  try {
+    vi.setSystemTime(T0)
+    now = T0
+    looked()
+    logged = false
+    const file = path.join(dir, 'curator.json.reservoir.json')
+    const { Reservoir } = await import('./foryou-reservoir.ts')
+    const q = new Reservoir(file)
+    q.add([
+      { title: 'A silent scene', format: 'idea', text: 'Try a silent storyboard where an avatar loses its shadow.', sources: ['goals'] },
+      { title: 'Your first player', format: 'question', text: 'Which friend would you ask to try the first level of mygame?', sources: ['goals'] },
+    ], new Set(['goals']), [], T0, 'en')
+    q.last = T0 + 40
+    q.save()
+    makeCurator({ reservoir: true, now: () => Date.now() }).start()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(stored().filter(i => i.id.startsWith('r:'))).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(50)
+    expect(stored().filter(i => i.id.startsWith('r:'))).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(30_010)
+    expect(stored().filter(i => i.id.startsWith('r:'))).toHaveLength(2)
+  } finally { vi.clearAllTimers(); vi.useRealTimers() }
+})

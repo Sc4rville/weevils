@@ -61,45 +61,134 @@ const KINDS = ['tests', 'watch', 'content', 'explore', 'other'] as const
 
 /**
  * What an unattended task may never do, enforced by Claude Code itself (deny rules hold even without permission
- * prompts): push, anything through gh, publish a package or an image, expose a port, POST/PUT/DELETE with curl, reach
- * another machine, sudo, read keys and secrets. The brief says it too; this is the layer a prompt injection can't talk away.
+ * prompts): push, anything through gh, publish a package or an image, expose a port, send data with curl or wget,
+ * reach another machine, sudo, kill weevils' tmux, delete outside its folder, read keys and secrets, edit the user's
+ * configuration. Rules are wildcards checked on each part of a compound command (`cd x && git push`), wrappers
+ * (`timeout`, `VAR=…`) removed; `bash -c "…"` or a script's own HTTP call still pass them: the environment barriers
+ * below (guardEnv) are the layer that holds. The brief says it too.
  */
+const curlSends = ['-X', '--request', '-d', '--data', '--json', '-F', '--form', '-T', '--upload-file'].flatMap((f) => [`Bash(curl ${f}*)`, `Bash(curl * ${f}*)`])
 export const DENY = [
-  'Bash(git push:*)',
-  'Bash(gh:*)',
-  'Bash(npm publish:*)',
-  'Bash(pnpm publish:*)',
-  'Bash(yarn publish:*)',
-  'Bash(yarn npm publish:*)',
-  'Bash(cargo publish:*)',
-  'Bash(twine upload:*)',
-  'Bash(docker push:*)',
-  'Bash(expose:*)',
-  'Bash(curl -X POST:*)',
-  'Bash(curl -X PUT:*)',
-  'Bash(curl -X PATCH:*)',
-  'Bash(curl -X DELETE:*)',
-  'Bash(curl -d:*)',
-  'Bash(curl --data:*)',
-  'Bash(curl -F:*)',
-  'Bash(curl --form:*)',
-  'Bash(wget --post-data:*)',
-  'Bash(ssh:*)',
-  'Bash(scp:*)',
-  'Bash(sudo:*)',
-  'Bash(crontab:*)',
-  'Bash(systemctl:*)',
+  'Bash(git push*)',
+  'Bash(git -C * push*)',
+  'Bash(git -c * push*)',
+  'Bash(git --git-dir* push*)',
+  'Bash(git --work-tree* push*)',
+  'Bash(git send-email*)',
+  'Bash(git config --global*)',
+  'Bash(gh)',
+  'Bash(gh *)',
+  'Bash(*/gh *)',
+  'Bash(* publish)',
+  'Bash(* publish *)',
+  'Bash(twine upload*)',
+  'Bash(docker push*)',
+  'Bash(docker * push*)',
+  'Bash(docker login*)',
+  'Bash(podman push*)',
+  'Bash(expose*)',
+  'Bash(*/expose *)',
+  'Bash(runpodctl *)',
+  ...curlSends,
+  'Bash(wget *--post*)',
+  'Bash(wget *--method*)',
+  'Bash(wget *--body*)',
+  'Bash(ssh *)',
+  'Bash(scp *)',
+  'Bash(sftp *)',
+  'Bash(rsync *)',
+  'Bash(sudo *)',
+  'Bash(su *)',
+  'Bash(pkexec *)',
+  'Bash(crontab *)',
+  'Bash(systemctl *)',
+  'Bash(tmux *kill-server*)',
+  'Bash(pkill *)',
+  'Bash(killall *)',
+  'Bash(rm * ~*)',
+  'Bash(rm * $HOME*)',
+  'Bash(rm * /)',
+  'Bash(rm * ..*)',
+  'Bash(*.config/gh*)',
+  'Bash(*.ssh/*)',
+  'Bash(*.credentials.json*)',
   'Read(~/.ssh/**)',
   'Read(~/.aws/**)',
   'Read(~/.config/gh/**)',
   'Read(~/.config/weevils/**)',
   'Read(~/.claude.json)',
   'Read(~/.claude/.credentials.json)',
+  'Read(~/.netrc)',
+  'Read(~/.git-credentials)',
+  'Read(~/.npmrc)',
+  'Read(~/.docker/config.json)',
   'Read(**/.env)',
   'Read(**/.env.*)',
+  'Edit(~/.ssh/**)',
+  'Edit(~/.claude/**)',
+  'Edit(~/.claude.json)',
+  'Edit(~/.config/**)',
+  'Edit(~/.local/share/weevils/**)',
+  'Edit(~/.bashrc)',
+  'Edit(~/.profile)',
+  'Edit(~/.gitconfig)',
 ]
-/** The extra arguments of an optimizer's claude session: the deny list as flag settings. */
-export const SAFETY_ARGS = ['--settings', JSON.stringify({ permissions: { deny: DENY } })]
+/**
+ * The extra arguments of an optimizer's claude session: the deny list as flag settings, and no MCP server at all (the
+ * user's claude.ai connectors and plugins can send mail, publish or spend credits; an empty --mcp-config with
+ * --strict-mcp-config leaves none).
+ */
+export const SAFETY_ARGS = ['--settings', JSON.stringify({ permissions: { deny: DENY } }), '--strict-mcp-config', `--mcp-config=${JSON.stringify({ mcpServers: {} })}`]
+
+/** A push URL weevils rewrites every remote to: no such git transport, so a push fails at once, before any network. */
+export const NO_PUSH_URL = 'weevils-no-push://'
+/** The URL starts a push may take (pushInsteadOf rewrites them all to NO_PUSH_URL; fetch is untouched). */
+const PUSH_PREFIXES = ['https://', 'http://', 'ssh://', 'git://', 'git@', 'file://', '/']
+/** Variables that hand out a login or a paid key (plus any …TOKEN, …SECRET, …API_KEY in weevils' own environment). */
+const SECRET_VARS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'SSH_AUTH_SOCK', 'NPM_TOKEN', 'NODE_AUTH_TOKEN', 'CARGO_REGISTRY_TOKEN', 'TWINE_PASSWORD', 'DOCKER_AUTH_CONFIG']
+const SECRET_NAME = /(TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|ACCESS_KEY|CREDENTIALS?)$/i
+/** Claude's own login (an OAuth token or an API key may be how it runs) and weevils' hooks keep theirs. */
+const KEEP_NAME = /^(ANTHROPIC_|CLAUDE_|WEEVILS_)/
+
+/**
+ * The environment of an optimizer's session (only theirs: the user's own sessions keep everything). These hold even when
+ * a command slips past the deny list (`bash -c`, a script, an alias):
+ * - gh has no account: an empty config dir of its own, no token variable → every gh call (and gh's git credential
+ *   helper) runs logged out;
+ * - git never pushes: every push URL is rewritten to an unknown transport (a remote, an explicit URL, git -C …), ssh
+ *   refuses to run for git, no credential helper, no prompt, no askpass; fetch and clone over https still work;
+ * - no ssh agent, no docker login, no publishing token, no paid-API key from weevils' environment, no claude.ai connector.
+ * `guard` is a folder of weevils' (emptied before each task): gh/ and docker/ inside are the empty configs.
+ */
+export function guardEnv(guard: string, env: NodeJS.ProcessEnv = process.env): { set: Record<string, string>; unset: string[] } {
+  const git: [string, string][] = [
+    ['remote.pushDefault', NO_PUSH_URL],
+    ...PUSH_PREFIXES.map((p): [string, string] => [`url.${NO_PUSH_URL}.pushInsteadOf`, p]),
+    // An empty helper empties the list, global and per-URL ones (gh sets credential.https://github.com.helper).
+    ['credential.helper', ''],
+    ['credential.https://github.com.helper', ''],
+    ['credential.https://gist.github.com.helper', ''],
+  ]
+  const set: Record<string, string> = {
+    GH_CONFIG_DIR: path.join(guard, 'gh'),
+    GH_PROMPT_DISABLED: '1',
+    DOCKER_CONFIG: path.join(guard, 'docker'),
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_ASKPASS: '/bin/false',
+    SSH_ASKPASS: '/bin/false',
+    SSH_ASKPASS_REQUIRE: 'never',
+    GCM_INTERACTIVE: 'never',
+    GIT_SSH_COMMAND: '/bin/false',
+    GIT_CONFIG_COUNT: String(git.length),
+    ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+  }
+  git.forEach(([k, v], i) => {
+    set[`GIT_CONFIG_KEY_${i}`] = k
+    set[`GIT_CONFIG_VALUE_${i}`] = v
+  })
+  const found = Object.keys(env).filter((k) => SECRET_NAME.test(k) && !KEEP_NAME.test(k) && !(k in set))
+  return { set, unset: [...new Set([...SECRET_VARS, ...found])] }
+}
 
 type Stored = Optimizer & {
   /** The agent's brief, as the model wrote it (the safety rules are added at launch). */
@@ -449,6 +538,16 @@ export class Optimizers {
     return o.repo ? path.join(path.dirname(this.w.repoDir(o.repo)), '.auto', o.repo, o.id) : path.join(this.dir, `.${o.id}`)
   }
 
+  /** The guard folder of guardEnv, emptied before each task (a task may have written in gh's or docker's config). */
+  guard(): string {
+    const dir = path.join(this.dir, '.guard')
+    for (const sub of ['gh', 'docker']) {
+      fs.rmSync(path.join(dir, sub), { recursive: true, force: true })
+      fs.mkdirSync(path.join(dir, sub), { recursive: true, mode: 0o700 })
+    }
+    return dir
+  }
+
   /** Starts a task in a Claude session: in its own worktree of its repo (on a fresh local branch), or in its workspace. */
   private async launch(o: Stored, now: number) {
     this.launching = true
@@ -484,7 +583,7 @@ export class Optimizers {
         heavy: o.heavy,
         prompt: o.prompt,
       })
-      const { id } = await this.w.createIn(cwd, o.title, text, SAFETY_ARGS)
+      const { id } = await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, guardEnv(this.guard()))
       o.sessionId = id
       o.seenAt = Date.now()
       console.log(`[auto] lancée : ${o.title} (${cwd})`)

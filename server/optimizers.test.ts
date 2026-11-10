@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session, Snapshot } from '../shared/api.ts'
 import { smart } from './fast.ts'
 import { Memory } from './memory.ts'
-import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_RUN_MS, MAX_TRIES, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, VANISH_MS, Optimizers, freeReason, isRepeat, isStall, parseProposals, slug, type Sys } from './optimizers.ts'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_RUN_MS, MAX_TRIES, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, VANISH_MS, Optimizers, freeReason, guardEnv, isRepeat, isStall, parseProposals, slug, stallKind, type Sys } from './optimizers.ts'
 
 // Hermetic: no claude CLI, no login check, the language fixed in memory.
 vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn() }))
@@ -211,7 +212,7 @@ describe('auto — the runner', () => {
     o.tick(T0 + IDLE_MS)
     await flush()
     expect(createIn).toHaveBeenCalledTimes(1)
-    const [cwd, title, text, args] = createIn.mock.calls[0]
+    const [cwd, title, text, args, env] = createIn.mock.calls[0]
     const id = o.list()[0].id
     // Its own worktree beside the repo, on a fresh branch, made by weevils before the session starts.
     expect(cwd).toBe(path.join(dir, 'p', '.auto', 'mygame', id))
@@ -225,7 +226,13 @@ describe('auto — the runner', () => {
     expect(text).toContain('Add tests for the jump physics')
     // The rules are enforced by Claude Code too, not only written in the brief.
     expect(args).toEqual(SAFETY_ARGS)
-    expect(JSON.parse(args[1]).permissions.deny).toEqual(expect.arrayContaining(['Bash(git push:*)', 'Bash(gh:*)', 'Bash(npm publish:*)', 'Read(~/.ssh/**)']))
+    expect(JSON.parse(args[1]).permissions.deny).toEqual(expect.arrayContaining(['Bash(git push*)', 'Bash(git -C * push*)', 'Bash(gh *)', 'Bash(* publish)', 'Bash(curl * --json*)', 'Read(~/.ssh/**)']))
+    expect(args).toEqual(expect.arrayContaining(['--strict-mcp-config', '--mcp-config={"mcpServers":{}}']))
+    // …and by its environment: gh logged out in an empty config of weevils', git unable to push.
+    expect(env.set.GH_CONFIG_DIR).toBe(path.join(dir, 'optimizers', '.guard', 'gh'))
+    expect(fs.readdirSync(env.set.GH_CONFIG_DIR)).toEqual([])
+    expect(env.set.GIT_SSH_COMMAND).toBe('/bin/false')
+    expect(env.unset).toEqual(expect.arrayContaining(['GH_TOKEN', 'GITHUB_TOKEN', 'SSH_AUTH_SOCK']))
     let [run, next] = o.list()
     expect(run).toMatchObject({ state: 'running', sessionId: 'sess-1' })
     expect(next).toMatchObject({ state: 'queued', waiting: 'queue' })
@@ -387,7 +394,12 @@ describe('auto — the runner', () => {
       expect(isStall(m), m).toBe(true)
     for (const m of ['Added a rate limit test to mygame; the branch awaits review.', 'Done. Usage limits are documented in report.md.', ''])
       expect(isStall(m), m).toBe(false)
-    expect(DENY.every((r) => /^(Bash|Read)\(.+\)$/.test(r))).toBe(true)
+    expect(DENY.every((r) => /^(Bash|Read|Edit)\(.+\)$/.test(r))).toBe(true)
+    // A trailing « :* » is Claude Code's old prefix syntax: every rule uses wildcards.
+    expect(DENY.filter((r) => r.endsWith(':*)'))).toEqual([])
+    expect(["You've hit your limit · resets 3am", 'Credit balance is too low'].map(stallKind)).toEqual(['limit', 'limit'])
+    expect(['Failed to authenticate: OAuth session expired', 'Login expired · Please run /login'].map(stallKind)).toEqual(['login', 'login'])
+    expect(stallKind('API Error: 529 Overloaded')).toBe('api')
   })
 
   it('persists across restarts; finished ones leave the app after 3 days', async () => {
@@ -409,5 +421,73 @@ describe('auto — the runner', () => {
     expect(o.refuse(id)).toBe(true)
     expect(o.list()).toEqual([])
     expect(o.accept('nope')).toBe(false)
+  })
+})
+
+describe('auto — the environment barriers', () => {
+  const git = (env: NodeJS.ProcessEnv, cwd: string, ...args: string[]) => spawnSync('git', args, { cwd, env, encoding: 'utf8', timeout: 15_000 })
+
+  it('drops tokens and paid keys from the environment, keeps Claude and weevils own', () => {
+    const { set, unset } = guardEnv('/g', { PATH: '/bin', FOO_API_KEY: 'x', HF_TOKEN: 'x', AWS_SECRET_ACCESS_KEY: 'x', ANTHROPIC_API_KEY: 'k', CLAUDE_CODE_OAUTH_TOKEN: 't', WEEVILS_SECRET: 's' })
+    expect(unset).toEqual(expect.arrayContaining(['GH_TOKEN', 'GITHUB_TOKEN', 'SSH_AUTH_SOCK', 'NPM_TOKEN', 'FOO_API_KEY', 'HF_TOKEN', 'AWS_SECRET_ACCESS_KEY']))
+    expect(unset).not.toEqual(expect.arrayContaining(['ANTHROPIC_API_KEY']))
+    expect(unset).not.toContain('CLAUDE_CODE_OAUTH_TOKEN')
+    expect(unset).not.toContain('WEEVILS_SECRET')
+    expect(unset).not.toContain('PATH')
+    expect(set).toMatchObject({ GH_CONFIG_DIR: '/g/gh', DOCKER_CONFIG: '/g/docker', GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: '/bin/false', ENABLE_CLAUDEAI_MCP_SERVERS: 'false' })
+    expect(Number(set.GIT_CONFIG_COUNT)).toBeGreaterThan(5)
+  })
+
+  it('git cannot push anywhere (a remote, git -C, an explicit URL, ssh), fails at once, and still reads', () => {
+    const repo = path.join(dir, 'r')
+    fs.mkdirSync(repo)
+    const plain = { ...process.env, GIT_CONFIG_NOSYSTEM: '1', HOME: dir }
+    git(plain, repo, 'init', '-q')
+    git(plain, repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'x')
+    git(plain, repo, 'remote', 'add', 'origin', 'https://github.com/example/never-pushed.git')
+    git(plain, repo, 'remote', 'add', 'gh', 'git@github.com:example/never-pushed.git')
+    git(plain, repo, 'remote', 'add', 'sshpush', 'https://github.com/example/a.git')
+    git(plain, repo, 'config', 'remote.sshpush.pushurl', 'ssh://git@github.com/example/never-pushed.git')
+    git(plain, repo, 'branch', '-u', 'origin/main')
+    const local = path.join(dir, 'bare.git')
+    git(plain, dir, 'init', '-q', '--bare', local)
+    const { set, unset } = guardEnv(path.join(dir, 'guard'), plain)
+    const env: NodeJS.ProcessEnv = { ...plain, ...set }
+    for (const k of unset) delete env[k]
+    const tries = [
+      ['push'],
+      ['-C', repo, 'push'],
+      ['push', 'origin', 'HEAD'],
+      ['push', 'gh', 'HEAD:main'],
+      ['push', 'https://github.com/example/never-pushed.git', 'HEAD'],
+      ['push', 'git@github.com:example/never-pushed.git', 'HEAD'],
+      ['push', local, 'HEAD:main'],
+      ['push', `file://${local}`, 'HEAD:main'],
+      ['push', 'sshpush', 'HEAD'],
+    ]
+    for (const args of tries) {
+      const at = Date.now()
+      const r = git(env, repo, ...args)
+      expect(r.status, `git ${args.join(' ')}: ${r.stderr}`).not.toBe(0)
+      expect(Date.now() - at, args.join(' ')).toBeLessThan(5000)
+      // Rewritten to the unknown transport, or ssh refused: never on the network.
+      expect(r.stderr, args.join(' ')).toMatch(/weevils-no-push|Could not read from remote/)
+    }
+    expect(git(plain, local, 'rev-parse', '--verify', '-q', 'main').status).not.toBe(0)
+    // Reading still works: the fetch URL is untouched, no helper is left.
+    expect(git(env, repo, 'remote', 'get-url', 'origin').stdout.trim()).toBe('https://github.com/example/never-pushed.git')
+    expect(git(env, repo, 'config', '--get-all', 'credential.https://github.com.helper').stdout.trim()).toBe('')
+    expect(git(env, repo, 'log', '--oneline').status).toBe(0)
+  })
+
+  it.skipIf(spawnSync('gh', ['--version']).status !== 0)('gh runs logged out', () => {
+    const o = make()
+    const { set, unset } = guardEnv(o.guard(), process.env)
+    const env: NodeJS.ProcessEnv = { ...process.env, ...set }
+    for (const k of unset) delete env[k]
+    const r = spawnSync('gh', ['auth', 'status'], { env, encoding: 'utf8', timeout: 15_000 })
+    expect(r.status).not.toBe(0)
+    expect(`${r.stdout}${r.stderr}`).toMatch(/not logged in/i)
+    expect(execFileSync('ls', ['-A', set.GH_CONFIG_DIR], { encoding: 'utf8' }).trim()).toBe('')
   })
 })

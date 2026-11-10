@@ -13,8 +13,7 @@ color. weevboss is told which author wrote what.
 
 ## Setup (Gmail)
 
-1. Pick an alias of your inbox, e.g. `you+weevils@gmail.com`. Create a Gmail filter "to: you+weevils@gmail.com" →
-   apply the label `weevils`, skip the inbox.
+1. Pick an alias of your inbox, e.g. `you+weevils@gmail.com`. No Gmail filter is needed.
 2. Create an app password (Google account → Security → App passwords).
 3. In `~/.config/weevils/env`:
    ```sh
@@ -26,8 +25,10 @@ color. weevboss is told which author wrote what.
 Other providers work too: set `WEEVILS_MAIL_IMAP`, `WEEVILS_MAIL_SMTP` and `WEEVILS_MAIL_AUTHSERV` (see
 [`.env.example`](../.env.example)).
 
-The bridge only watches the `weevils` label (never INBOX), only handles mail sent to the alias, and never reads,
-marks, moves or deletes any other mail.
+The bridge listens to INBOX (IMAP IDLE), but the IMAP server itself searches for mail addressed to the alias (`To`,
+`Cc` or `Delivered-To`): only those are fetched (`BODY.PEEK`), and no other mail is ever read, marked, moved or
+deleted. A `weevils` label (from an older setup with a Gmail filter) is read too if it exists and holds mail, with the
+same search; `WEEVILS_MAIL_LABEL` names another one, `none` turns it off.
 
 ## Writing to a session
 

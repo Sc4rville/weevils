@@ -145,9 +145,9 @@ export default defineMessages({
     devilFail: (why: string): string => `Je n’arrive pas à joindre le modèle (${why}). Vérifie l’adresse (elle finit souvent par /v1) et que sa machine est allumée, puis réessaie :`,
     // ---- e-mail
     mailPitch: 'Tu veux me parler depuis ChatGPT, un autre agent ou n’importe quel outil qui envoie des mails ? Branche le pont e-mail : chaque expéditeur que tu autorises m’écrit, signé à son nom et dans sa couleur, et je lui réponds dans le même fil.',
-    mailAsk: 'Il faut une boîte Gmail avec la validation en deux étapes (myaccount.google.com/signinoptions/twosv). Crée un mot de passe d’application nommé « weevils » sur myaccount.google.com/apppasswords et garde-le sous la main : je te demande ton adresse Gmail, puis ce mot de passe. Je m’occupe de l’alias +weevils et du libellé.',
+    mailAsk: 'Il faut une boîte Gmail avec la validation en deux étapes (myaccount.google.com/signinoptions/twosv). Crée un mot de passe d’application nommé « weevils » sur myaccount.google.com/apppasswords et garde-le sous la main : je te demande ton adresse Gmail, puis ce mot de passe. Je m’occupe de l’alias +weevils, sans filtre à créer.',
     mailOk: (alias: string): string =>
-      `Pont branché : ${alias}. Dernière étape côté Gmail, un filtre pour que ces mails ne passent pas par ta boîte de réception : mail.google.com/mail/u/0/#settings/filters → « Créer un filtre », À : ${alias} → « Appliquer le libellé : weevils » et « Ignorer la boîte de réception ». Ensuite, dis-moi qui a le droit de m’écrire :`,
+      `Pont branché : ${alias}. Rien à régler dans Gmail : les mails envoyés à cette adresse m’arrivent directement, et je ne lis jamais le reste de ta boîte. Dis-moi maintenant qui a le droit de m’écrire :`,
     mailFail: (why: string): string => `Gmail refuse la connexion (${why}). Vérifie l’adresse et le mot de passe d’application (16 lettres), puis réessaie :`,
     authorAsk: 'Qui a le droit de m’écrire ? Donne-moi son nom (affiché sur ses messages), l’adresse d’où il écrit, et une couleur si tu veux (sinon j’en choisis une).',
     authorOk: (name: string, email: string, alias: string): string =>
@@ -327,9 +327,9 @@ export default defineMessages({
     devilNoModel: (model: string, list: string): string => `The server answers, but it has no “${model}”. It offers: ${list}. Try again with one of them:`,
     devilFail: (why: string): string => `I can’t reach the model (${why}). Check the address (it often ends in /v1) and that its machine is on, then try again:`,
     mailPitch: 'Want to talk to me from ChatGPT, another agent, or any tool that sends e-mail? Plug in the e-mail bridge: every sender you allow writes to me, signed with their name and color, and I answer them in the same thread.',
-    mailAsk: 'You need a Gmail inbox with 2-step verification (myaccount.google.com/signinoptions/twosv). Create an app password named “weevils” at myaccount.google.com/apppasswords and keep it handy: I’ll ask for your Gmail address, then that password. I take care of the +weevils alias and the label.',
+    mailAsk: 'You need a Gmail inbox with 2-step verification (myaccount.google.com/signinoptions/twosv). Create an app password named “weevils” at myaccount.google.com/apppasswords and keep it handy: I’ll ask for your Gmail address, then that password. I take care of the +weevils alias, no filter to create.',
     mailOk: (alias: string): string =>
-      `Bridge plugged in: ${alias}. One last step in Gmail, a filter so these mails skip your inbox: mail.google.com/mail/u/0/#settings/filters → “Create a new filter”, To: ${alias} → “Apply the label: weevils” and “Skip the Inbox”. Then tell me who may write to me:`,
+      `Bridge plugged in: ${alias}. Nothing to set up in Gmail: mail sent to this address reaches me directly, and I never read the rest of your inbox. Now tell me who may write to me:`,
     mailFail: (why: string): string => `Gmail refuses the connection (${why}). Check the address and the app password (16 letters), then try again:`,
     authorAsk: 'Who may write to me? Give me their name (shown on their messages), the address they write from, and a color if you like (otherwise I’ll pick one).',
     authorOk: (name: string, email: string, alias: string): string =>

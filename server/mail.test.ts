@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadAuthors, parseSigned, signAs } from './authors.ts'
-import { splitUnits } from './imap.ts'
+import { Imap, splitUnits } from './imap.ts'
 import { buildMail, decodeWords, parseMail, stripQuoted } from './mime.ts'
 
 const sent: { to: string; data: string }[] = []
@@ -122,15 +122,56 @@ describe('imap', () => {
   })
 })
 
+describe('INBOX sans filtre Gmail', () => {
+  it('la recherche des mails à l’alias est faite par le serveur IMAP (To, Cc, Delivered-To), après le dernier UID vu', async () => {
+    const c = new Imap({ host: 'h', port: 993, user: 'u', pass: 'p' })
+    const sent: string[] = []
+    ;(c as unknown as { cmd: (s: string) => Promise<unknown> }).cmd = async (s: string) => (sent.push(s), [{ line: '* SEARCH 41 52 57', literals: [] }])
+    expect(await c.uidsTo('alex+weevils@gmail.com', 52)).toEqual([57])
+    expect(sent).toEqual(['UID SEARCH UID 53:* OR OR TO "alex+weevils@gmail.com" CC "alex+weevils@gmail.com" HEADER Delivered-To "alex+weevils@gmail.com"'])
+  })
+
+  it('ne récupère (BODY.PEEK) et ne marque que les UID trouvés par la recherche ; jamais un autre mail ; libellé absent sans erreur', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-mail-scan-'))
+    const cfg = { ...CFG, password: 'x', label: 'weevils', imap: { host: 'h', port: 993 }, smtp: { host: 'h', port: 465 }, perMinute: 5, perHour: 30, replyTimeoutMs: 1000 }
+    const noop = async () => ({ id: 'x' })
+    const deps = { snapshot: () => ({ sessions: [], projects: [] }) as any, send: noop, create: noop, sendMain: noop, waitMainReply: async () => null, waitReply: async () => ({ id: 'x', text: '', done: true }) }
+    const b = new MailBridge(cfg, deps, dir)
+    ;(b as unknown as { reply: () => Promise<void> }).reply = async () => undefined
+    const log: string[] = []
+    // INBOX : 1000 mails, dont un seul (UID 1003) adressé à l'alias, de gepetto depuis le compte du pont.
+    const alias = ['From: <alex@gmail.com>', 'To: <alex+weevils@gmail.com>', 'Subject: [gepetto] [weevboss] coucou', 'Message-ID: <g1@x>', 'Content-Type: text/plain; charset=utf-8', '', 'Salut.'].join('\r\n')
+    const c = {
+      select: async (name: string) => {
+        log.push(`select ${name}`)
+        if (name !== 'INBOX') throw new Error('IMAP: NO [NONEXISTENT] Unknown Mailbox')
+        return { uidValidity: 1, uidNext: log.filter((l) => l === 'select INBOX').length > 1 ? 1005 : 1001, exists: 1004 }
+      },
+      uidsTo: async (address: string, after: number) => (log.push(`search ${address} >${after}`), [1003].filter((u) => u > after)),
+      fetch: async (uid: number) => (log.push(`peek ${uid}`), Buffer.from(alias)),
+      gmLabels: async (uid: number) => (log.push(`labels ${uid}`), ['\\Sent', '\\Inbox']),
+      markSeen: async (uid: number) => (log.push(`seen ${uid}`), []),
+    }
+    await b.scan(c as any, 'weevils', true) // libellé absent : passé
+    await b.scan(c as any, 'INBOX') // découverte : on part de maintenant, rien n'est rejoué
+    await b.scan(c as any, 'INBOX') // un nouveau mail à l'alias
+    expect(log).toEqual(['select weevils', 'select INBOX', 'select INBOX', 'search alex+weevils@gmail.com >1000', 'peek 1003', 'labels 1003', 'seen 1003'])
+    // Déjà vu : la recherche suivante part après lui.
+    await b.scan(c as any, 'INBOX')
+    expect(log.slice(-2)).toEqual(['select INBOX', 'search alex+weevils@gmail.com >1003'])
+  })
+})
+
 describe('sécurité du pont', () => {
   it('accepte un expéditeur déclaré dont le DKIM / SPF est aligné', () => {
     expect(authCheck(mail({}), 'mx.google.com').pass).toBe(true)
     expect(screen(mail({}), CFG, AUTHORS)).toMatchObject({ ok: true, author: { id: 'gepetto' } })
   })
-  it('alias Gmail : connexion au compte sans « +weevils », seul le libellé est surveillé, jamais INBOX', () => {
+  it('alias Gmail : connexion au compte sans « +weevils », INBOX surveillée, le libellé weevils en plus (désactivable)', () => {
     const c = mailConfig({ WEEVILS_MAIL_ADDRESS: 'Alex+weevils@gmail.com', WEEVILS_MAIL_PASSWORD: 'abcd efgh ijkl mnop' })
     expect(c).toMatchObject({ address: 'alex+weevils@gmail.com', login: 'alex@gmail.com', password: 'abcdefghijklmnop', label: 'weevils', imap: { host: 'imap.gmail.com' }, smtp: { host: 'smtp.gmail.com' }, authserv: 'mx.google.com' })
-    expect(mailConfig({ WEEVILS_MAIL_ADDRESS: 'y+w@gmail.com', WEEVILS_MAIL_PASSWORD: 'x', WEEVILS_MAIL_LABEL: 'INBOX' })).toBeNull()
+    expect(mailConfig({ WEEVILS_MAIL_ADDRESS: 'y+w@gmail.com', WEEVILS_MAIL_PASSWORD: 'x', WEEVILS_MAIL_LABEL: 'none' })?.label).toBeNull()
+    expect(mailConfig({ WEEVILS_MAIL_ADDRESS: 'y+w@gmail.com', WEEVILS_MAIL_PASSWORD: 'x', WEEVILS_MAIL_LABEL: 'INBOX' })?.label).toBeNull()
   })
   it('ne traite que les mails adressés à l’alias du pont (To, Cc ou Delivered-To)', () => {
     expect(screen(mail({ to: 'alex@gmail.com' }), CFG, AUTHORS)).toMatchObject({ ok: false })

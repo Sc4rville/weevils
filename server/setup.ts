@@ -1202,8 +1202,6 @@ export class Setup {
     try {
       await imap.connect(15_000)
       await imap.login()
-      // Le libellé que le pont surveille : créé s'il n'existe pas.
-      await imap.cmd('CREATE "weevils"').catch(() => undefined)
     } catch (e) {
       imap.close()
       return this.say(chip(t.mailFail(short(e).replace(/^IMAP:\s*/, '')), 'mail'))

@@ -1,13 +1,15 @@
 // Le pont e-mail : des agents externes (un bot de CI, un autre agent IA…) écrivent dans les sessions weevils par e-mail.
 //
-//   Adresse         un alias de la boîte perso (moi+weevils@gmail.com) ; un filtre Gmail range ces mails sous le libellé « weevils »
-//                   hors boîte de réception. Le pont ne surveille que ce libellé : aucun autre mail n'est lu, marqué ou déplacé.
+//   Adresse         un alias de la boîte perso (moi+weevils@gmail.com), sans filtre à créer. Le pont surveille INBOX, mais
+//                   le serveur IMAP cherche lui-même les mails adressés à l'alias (To, Cc ou Delivered-To) : seuls ceux-là
+//                   sont récupérés (BODY.PEEK), et aucun autre mail n'est lu, marqué, déplacé ni supprimé. Le libellé
+//                   « weevils » (ancien filtre Gmail), s'il existe et contient des mails, est lu aussi, avec la même recherche.
 //   Objet           « [shop] … » session disponible du projet (sinon une nouvelle) · « [session:2cbb0bbd] » cette session
 //                   « [weevboss] » l'orchestrateur · « [new:projet] » (ou « [new:projet:codex] ») une nouvelle session
 //   Corps           le message (citation du mail précédent et signature retirées)
 //   Réponse         renvoyée à l'expéditeur dans le même fil (In-Reply-To / References) ; répondre à ce mail continue la même session.
 //
-// Réception : IMAP IDLE (push, quasi instantané), relancé toutes les 30 s, ce qui sert aussi de sondage de secours ;
+// Réception : IMAP IDLE sur INBOX (push, quasi instantané), relancé toutes les 30 s, ce qui sert aussi de sondage de secours ;
 // reconnexion automatique avec attente croissante ; déduplication par Message-ID ; tout est journalisé « [mail] ».
 // Sécurité : seuls les expéditeurs déclarés (WEEVILS_AUTHOR_*) passent, et seulement si le serveur de réception atteste
 // SPF ou DKIM aligné sur le domaine de l'expéditeur (Authentication-Results), ou si le secret partagé est présent.
@@ -36,8 +38,8 @@ export interface MailConfig {
   /** Compte qui se connecte (IMAP / SMTP) : l'adresse sans « +alias », sauf WEEVILS_MAIL_LOGIN. */
   login: string
   password: string
-  /** Le seul dossier surveillé : le libellé Gmail posé par le filtre « à : +weevils ». Jamais INBOX. */
-  label: string
+  /** Un dossier lu en plus d'INBOX s'il existe et contient des mails (le libellé d'un ancien filtre Gmail) ; null : aucun. */
+  label: string | null
   imap: { host: string; port: number }
   smtp: { host: string; port: number }
   /** Serveur dont on croit l'en-tête Authentication-Results (le premier du message). */
@@ -60,13 +62,12 @@ export function mailConfig(env: Record<string, string | undefined> = process.env
   if (!address || !password) return null
   const gmail = /@(gmail|googlemail)\.com$/.test(address)
   const label = env.WEEVILS_MAIL_LABEL?.trim() || 'weevils'
-  // Jamais la boîte de réception : le pont ne doit voir que les mails rangés sous son libellé.
-  if (/^inbox$/i.test(label)) return null
   return {
     address,
     login: env.WEEVILS_MAIL_LOGIN?.trim().toLowerCase() || address.replace(/\+[^@]*@/, '@'),
     password,
-    label,
+    // INBOX est toujours surveillée ; « none » : pas de libellé en plus.
+    label: /^(inbox|none|-)$/i.test(label) ? null : label,
     imap: hostPort(env.WEEVILS_MAIL_IMAP, gmail ? 'imap.gmail.com' : `imap.${address.split('@')[1]}`, 993),
     smtp: hostPort(env.WEEVILS_MAIL_SMTP, gmail ? 'smtp.gmail.com' : `smtp.${address.split('@')[1]}`, 465),
     authserv: (env.WEEVILS_MAIL_AUTHSERV?.trim() || (gmail ? 'mx.google.com' : '')).toLowerCase(),
@@ -255,9 +256,14 @@ export interface BridgeDeps {
   waitReply(id: string, since: number, timeoutMs: number): Promise<{ id: string; text: string; done: boolean; attention?: string }>
 }
 
-interface State {
+interface Box {
   uidValidity: number
   lastUid: number
+}
+
+interface State {
+  /** Par dossier (INBOX, le libellé) : où on en est. */
+  boxes: Record<string, Box>
   /** Message-ID déjà traités (les plus récents). */
   seen: string[]
   /** Message-ID d'un fil (reçus et envoyés) → cible : « weevboss » ou l'id de session. */
@@ -287,7 +293,10 @@ export class MailBridge {
     } catch {
       /* premier lancement */
     }
-    this.state = { uidValidity: s.uidValidity ?? 0, lastUid: s.lastUid ?? 0, seen: s.seen ?? [], threads: s.threads ?? {} }
+    // Avant 2026-11-10, un seul dossier : le libellé.
+    const old = s as Partial<State> & Partial<Box>
+    const boxes = s.boxes ?? (old.uidValidity ? { [cfg.label ?? 'weevils']: { uidValidity: old.uidValidity, lastUid: old.lastUid ?? 0 } } : {})
+    this.state = { boxes, seen: s.seen ?? [], threads: s.threads ?? {} }
   }
 
   private persist() {
@@ -304,7 +313,7 @@ export class MailBridge {
 
   start() {
     const ext = authors().filter((a) => a.id !== BOSS)
-    console.log('[mail]', `pont actif · ${this.cfg.address} · IMAP ${this.cfg.imap.host} « ${this.cfg.label} » · auteurs : ${ext.map((a) => `${a.id} (${a.emails.length ? a.emails.join(', ') : 'aucune adresse'}${a.secret ? ', secret' : ''})`).join(' · ') || 'aucun'}`)
+    console.log('[mail]', `pont actif · ${this.cfg.address} · IMAP ${this.cfg.imap.host} INBOX${this.cfg.label ? ` + « ${this.cfg.label} »` : ''} (seulement les mails à l'alias) · auteurs : ${ext.map((a) => `${a.id} (${a.emails.length ? a.emails.join(', ') : 'aucune adresse'}${a.secret ? ', secret' : ''})`).join(' · ') || 'aucun'}`)
     void this.run()
   }
 
@@ -321,23 +330,20 @@ export class MailBridge {
       try {
         await c.connect()
         await c.login()
-        // Seulement le libellé du pont (absent : erreur et nouvel essai, jamais de repli sur INBOX).
-        const box = await c.select(this.cfg.label)
-        if (box.uidValidity !== this.state.uidValidity) {
-          // Première connexion (ou boîte recréée) : on part de maintenant, l'historique n'est pas rejoué.
-          console.log('[mail]', `boîte ${this.state.uidValidity ? 'recréée' : 'découverte'} : on part du message ${box.uidNext}`)
-          this.state.uidValidity = box.uidValidity
-          this.state.lastUid = Math.max(0, box.uidNext - 1)
-          this.persist()
-        }
-        console.log('[mail]', `connecté · IDLE`)
+        console.log('[mail]', `connecté · IDLE sur INBOX`)
         backoff = 2000
         let dirty = true
+        let labelAt = 0
         c.on('exists', () => (dirty = true))
         while (!this.stopped && !c.closed) {
           if (dirty) {
             dirty = false
-            await this.check(c)
+            // Le libellé (s'il existe), de temps en temps ; INBOX en dernier, c'est elle qu'on écoute en IDLE.
+            if (this.cfg.label && Date.now() - labelAt > 5 * 60_000) {
+              labelAt = Date.now()
+              await this.scan(c, this.cfg.label, true)
+            }
+            await this.scan(c, 'INBOX')
             continue
           }
           // Push : l'IDLE rend la main dès qu'un message arrive ; sinon au bout de 30 s, et on revérifie (sondage de secours).
@@ -359,11 +365,28 @@ export class MailBridge {
     }
   }
 
-  private async check(c: Imap) {
-    const uids = await c.uidsAfter(this.state.lastUid)
-    for (const uid of uids) {
+  /** Un dossier : ses nouveaux mails adressés à l'alias, cherchés par le serveur ; rien d'autre n'est récupéré ni touché.
+   * optional : un dossier absent ou vide est passé sans erreur (le libellé d'un ancien filtre). */
+  async scan(c: Pick<Imap, 'select' | 'uidsTo' | 'fetch' | 'gmLabels' | 'markSeen'>, name: string, optional = false) {
+    let box: { uidValidity: number; uidNext: number; exists: number }
+    try {
+      box = await c.select(name)
+    } catch (e) {
+      if (optional) return
+      throw e
+    }
+    const known = this.state.boxes[name]
+    if (!known || box.uidValidity !== known.uidValidity) {
+      // Première fois (ou dossier recréé) : on part de maintenant, l'historique n'est pas rejoué.
+      console.log('[mail]', `${name} ${known ? 'recréé' : 'découvert'} : on part du message ${box.uidNext}`)
+      this.state.boxes[name] = { uidValidity: box.uidValidity, lastUid: Math.max(0, box.uidNext - 1) }
+      this.persist()
+      return
+    }
+    if (optional && !box.exists) return
+    for (const uid of await c.uidsTo(this.cfg.address, known.lastUid)) {
       const raw = await c.fetch(uid)
-      this.state.lastUid = uid
+      known.lastUid = uid
       this.persist()
       if (!raw) continue
       let accepted = false
@@ -371,7 +394,7 @@ export class MailBridge {
         const mail = parseMail(raw)
         // Du compte du pont : le libellé \Sent prouve qu'il a été envoyé depuis ce compte (Gmail seulement).
         const sent = mail.from === this.cfg.login || mail.from === this.cfg.address ? (await c.gmLabels(uid).catch(() => [] as string[])).some((l) => /^\\?\\Sent$/i.test(l)) : false
-        accepted = this.handle(mail, uid, sent)
+        accepted = this.handle(mail, uid, sent, `${box.uidValidity}-${name}`)
       } catch (e) {
         console.log('[mail]', `message ${uid} illisible : ${(e as Error).message}`)
       }
@@ -381,8 +404,8 @@ export class MailBridge {
   }
 
   /** Un message reçu : vérifié, dédupliqué, limité, routé. true s'il est pris en compte. */
-  handle(mail: Mail, uid = 0, sent = false): boolean {
-    const mid = mail.messageId ?? `<uid-${this.state.uidValidity}-${uid}@weevils>`
+  handle(mail: Mail, uid = 0, sent = false, box = '0'): boolean {
+    const mid = mail.messageId ?? `<uid-${box}-${uid}@weevils>`
     const what = `${mail.from ?? '?'} · « ${oneLine(mail.subject.replace(KEY_SUBJECT, '[key:…]'), 60)} » · ${mid}`
     if (this.state.seen.includes(mid)) {
       console.log('[mail]', `doublon ignoré · ${what}`)

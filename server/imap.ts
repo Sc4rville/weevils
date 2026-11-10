@@ -157,15 +157,18 @@ export class Imap extends EventEmitter {
     return this.cmd(`LOGIN ${quote(this.user)} ${quote(this.pass)}`)
   }
 
-  /** SELECT : UIDVALIDITY et UIDNEXT de la boîte. */
-  async select(box: string): Promise<{ uidValidity: number; uidNext: number }> {
+  /** SELECT : UIDVALIDITY, UIDNEXT et nombre de messages de la boîte. */
+  async select(box: string): Promise<{ uidValidity: number; uidNext: number; exists: number }> {
     const u = await this.cmd(`SELECT ${quote(box)}`)
     const num = (re: RegExp) => Number(u.map((x) => re.exec(x.line)?.[1]).find(Boolean) ?? 0)
-    return { uidValidity: num(/UIDVALIDITY (\d+)/i), uidNext: num(/UIDNEXT (\d+)/i) }
+    return { uidValidity: num(/UIDVALIDITY (\d+)/i), uidNext: num(/UIDNEXT (\d+)/i), exists: num(/^\* (\d+) EXISTS/i) }
   }
 
-  async uidsAfter(uid: number): Promise<number[]> {
-    const u = await this.cmd(`UID SEARCH UID ${uid + 1}:*`)
+  /** Les UID après `uid` des seuls messages adressés à `address` (To, Cc ou Delivered-To), cherchés par le serveur :
+   * les autres mails de la boîte ne sont jamais récupérés, même pas leurs en-têtes. */
+  async uidsTo(address: string, uid: number): Promise<number[]> {
+    const a = quote(address)
+    const u = await this.cmd(`UID SEARCH UID ${uid + 1}:* OR OR TO ${a} CC ${a} HEADER Delivered-To ${a}`)
     const line = u.find((x) => /^\* SEARCH/i.test(x.line))?.line ?? ''
     // « n:* » rend toujours au moins le dernier message, même s'il est avant n.
     return line.replace(/^\* SEARCH/i, '').trim().split(/\s+/).filter(Boolean).map(Number).filter((n) => n > uid).sort((a, b) => a - b)

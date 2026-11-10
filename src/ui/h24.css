@@ -38,6 +38,18 @@
 .st-done { --st: var(--st-done); }
 .st-failed { --st: var(--st-failed); }
 
+/* Sur une bande de couleur, ce qui tourne et les délais sont à l'encre de la bande, en gras, sans clignoter : un vert
+   ou un bleu s'y perdrait (vert sur orange sombre, bleu clair sur bleu). La couleur de l'état reste à part, en aplat :
+   le liseré de la tâche, les mini-barres. Graphite garde son bleu, seul sur des gris. */
+:root:not([data-theme='graphite']) .h24 .spin.fluo {
+  color: var(--ink);
+  animation: spin 2.6s linear infinite;
+}
+
+.h24 .fluo .ic-halo {
+  display: none;
+}
+
 /* En-tête fermé : les compteurs. */
 .auto-sum {
   flex: 1;
@@ -347,11 +359,6 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  color: var(--st-scheduled);
-}
-
-.st-paused .auto-next {
-  color: inherit;
 }
 
 .auto-next .ic {

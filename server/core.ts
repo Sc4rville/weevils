@@ -1,3 +1,4 @@
+import { CodexBridge } from './codex-bridge.ts'
 import { preferredTool, providerReady, providerUnavailable } from './provider.ts'
 import { noticeKey } from '../shared/notices.ts'
 // Le cœur de weevilsd : transcripts + hooks + panes zellij → sessions, projets, H24, agent principal.
@@ -376,6 +377,7 @@ export class Weevils {
   /** Titres écrits par le renommeur, par session. */
   private directCodexBoss?: { pane?: string; sessionId?: string; since: number }
   titles = new Map<string, Titled>()
+  private codexBridge = new CodexBridge(process.env.WEEVILS_CODEX_SOCKET ?? '', undefined, () => this.bump())
   private titling = false
   private titleRetry = new TitleRetry()
   private catalogCache: { at: number; list: CatalogEntry[] } | null = null
@@ -443,6 +445,8 @@ export class Weevils {
   // ---------------------------------------------------------------- boucle
 
   start() {
+    void this.codexBridge.refresh()
+    setInterval(() => void this.codexBridge.refresh(), 10_000)
     void this.push.init()
     this.remotes = parseRemotes(REMOTES).map(([id, url]) => new Remote(id, url, () => this.bump()))
     for (const r of this.remotes) r.start()
@@ -854,7 +858,7 @@ export class Weevils {
       lastActivityAt: t.lastActivityAt,
       workStartedAt: status === 'working' ? (t.workStartedAt ?? (running.length ? Math.min(...running.map((s) => s.startedAt)) : t.lastActivityAt)) : null,
       origin: pane ? 'weevils' : t.originator === 'codex_exec' ? 'headless' : 'terminal',
-      controllable: !unmanagedLive,
+      controllable: !unmanagedLive || (t.tool === 'codex' && this.codexBridge.can(t.id)),
       live,
       hasScreen: !!pane,
       subagents,
@@ -1298,6 +1302,13 @@ export class Weevils {
       const t = this.store.get(real)
       throw new Error(t && !this.toSession(t, Date.now()).controllable ? tr(M).unmanaged : tr(M).sessionNotFound)
     }
+    if (s.tool === 'codex' && !this.paneFor(real) && this.codexBridge.can(real)) {
+      await this.codexBridge.send(real, text)
+      this.foryou?.resolveSession(s)
+      return { id: real }
+    }
+    const external = this.store.get(real)
+    if (!this.paneFor(real) && external?.originator === 'codex-tui' && external.delegationSources?.size) throw new Error(tr(M).unmanaged)
     if (!s.controllable) throw new Error(tr(M).unmanaged)
     const pane = this.paneFor(real)
     if (pane) {

@@ -738,3 +738,25 @@ it('shows an existing app-server thread reached by the bridge without resuming i
  await expect(w.send('s1','continue')).rejects.toThrow()
  expect(mux.spawnWv).not.toHaveBeenCalled()
 })
+
+it('routes a connected app-server thread through its existing bridge without spawning a terminal', async () => {
+  add(transcript({ tool: 'codex', originator: 'codex-tui', delegationSources: new Map([['brief', 'boss']]) }))
+  const send = vi.fn(async () => {})
+  ;(w as any).codexBridge = { can: (id: string) => id === 's1', send }
+  w.bump()
+  expect(one()).toMatchObject({ id: 's1', controllable: true, hasScreen: false })
+  await w.send('s1', 'My direct answer')
+  expect(send).toHaveBeenCalledWith('s1', 'My direct answer')
+  expect(mux.spawnWv).not.toHaveBeenCalled()
+})
+
+it('never falls back to resume when an app-server connection disappears after the snapshot', async () => {
+  add(transcript({ tool: 'codex', originator: 'codex-tui', delegationSources: new Map([['brief', 'boss']]) }))
+  let connected = true
+  ;(w as any).codexBridge = { can: () => connected, send: vi.fn() }
+  w.bump()
+  expect(one()!.controllable).toBe(true)
+  connected = false
+  await expect(w.send('s1', 'answer')).rejects.toThrow()
+  expect(mux.spawnWv).not.toHaveBeenCalled()
+})

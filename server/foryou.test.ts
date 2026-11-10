@@ -471,6 +471,18 @@ describe('posts', () => {
     await expect(fy.reply(id, '  ')).rejects.toThrow(M.en.emptyText)
   })
 
+  it('does not offer an unsendable reply while the session channel is unavailable', async () => {
+    const s = session({ controllable: false })
+    snap.sessions = [s]
+    threads.s1 = [says('The preview is ready.')]
+    const fy = make()
+    fy.sessionTurn(s, 'result')
+    await flush()
+    expect(find(fy, 's:s1')?.reply).toBeUndefined()
+    s.controllable = true
+    expect(find(fy, 's:s1')?.reply).toBe('session')
+  })
+
   it('a reply under a session item goes to that session, as the user', async () => {
     const fy = make()
     threads.s1 = [says('Done.')]

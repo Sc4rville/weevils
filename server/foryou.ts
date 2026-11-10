@@ -840,7 +840,7 @@ export class ForYou {
     if (i.title) out.title = i.title
     if (i.body) out.body = i.body
     if (i.open) out.open = i.open
-    if (i.reply) out.reply = i.reply
+    if (i.reply && (i.reply !== 'session' || snap.sessions.some(s => s.id === i.sessionId && s.controllable))) out.reply = i.reply
     if (i.more) out.more = true
     if (i.moreText) out.moreText = i.moreText
     if (i.gauges?.length) out.gauges = i.gauges

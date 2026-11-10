@@ -6,7 +6,7 @@ import type { Snapshot } from '../shared/api.ts'
 import { smart } from './fast.ts'
 import { claudeLogged } from './setup.ts'
 import { Memory } from './memory.ts'
-import { BACKOFF_MS, Flyers, MAX_AGE_MS, MAX_MISSES, angleFor, followups, isRepeat, looksSecret, readHistory, redact, tidyQuestion } from './weevil.ts'
+import { BACKOFF_MS, Flyers, MAX_AGE_MS, MAX_MISSES, angleFor, angleTurn, followups, isRepeat, looksSecret, readHistory, redact, tidyQuestion } from './weevil.ts'
 
 // Hermetic: no claude CLI, no login check, the language switched in memory only.
 vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn() }))
@@ -247,6 +247,16 @@ describe('weevil — helpers', () => {
     const later = new Set(Array.from({ length: 14 }, (_, i) => angleFor(i, 10, true)))
     expect(later.has('followup') && later.has('project') && later.has('suggest')).toBe(true)
     expect(Array.from({ length: 14 }, (_, i) => angleFor(i, 10, false))).not.toContain('project')
+  })
+
+  it('angles keep turning once the asked list is full (it is capped, its length stops moving)', () => {
+    // A full list (400) that slides by one per new question: the angle still varies.
+    const ids = Array.from({ length: 420 }, (_, i) => ({ id: (0x1a2b3c + i * 7919).toString(16).padStart(10, '0') }))
+    const seen = new Set(Array.from({ length: 20 }, (_, i) => angleFor(angleTurn(ids.slice(i, i + 400), 0), 10, true)))
+    expect(seen.size).toBeGreaterThan(3)
+    // A failed try moves to another angle; an empty list starts at the first one.
+    expect(angleFor(angleTurn([{ id: 'a0' }], 1), 10, true)).not.toBe(angleFor(angleTurn([{ id: 'a0' }], 0), 10, true))
+    expect(angleTurn([], 0)).toBe(0)
   })
 
   it('reads the exchange and counts follow-ups', () => {

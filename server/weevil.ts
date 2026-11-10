@@ -109,10 +109,17 @@ export const redact = (s: string) =>
     // i18n-ignore : vocabulaire des secrets (détection, jamais affiché)
     .replace(/\b(password|passwd|passcode|passphrase|mot de passe|mdp|api[ _-]?key|cl[ée] (?:api|secr[èe]te|priv[ée]e)|token|jeton|iban|pin code|code pin)(\s*(?:[:=]|is|est|c'est)?\s*)[^\s,;]+/gi, '$1$2•••')
 
-/** Which angle the next question takes: rotates with the number of questions asked, broad while little is known. */
-export function angleFor(askedCount: number, known: number, hasProjects: boolean): Angle {
+/** Which angle the next question takes: turns with `turn`, broad while little is known. */
+export function angleFor(turn: number, known: number, hasProjects: boolean): Angle {
   const list = known < 3 ? BROAD : ANGLES.filter((a) => (a === 'project' ? hasProjects : true))
-  return list[askedCount % list.length]
+  return list[Math.abs(Math.trunc(turn)) % list.length]
+}
+
+/** The turn of the angle rotation: moves with every new question (from the last one's random id, since the asked
+ * list is capped and its length stops moving) and with every failed try (so a retry takes another angle). */
+export function angleTurn(asked: { id: string }[], fails: number): number {
+  const last = asked.at(-1)
+  return (last ? parseInt(last.id.slice(0, 8), 16) || 0 : 0) + fails
 }
 
 /** Follow-ups the weevil already asked in this exchange (its lines after the question). */
@@ -183,7 +190,7 @@ export class Flyers {
     const l = lang()
     const weekday = new Intl.DateTimeFormat(l === 'fr' ? 'fr-FR' : 'en-US', { weekday: 'long' }).format(now)
     const projects = this.projectsText()
-    const angle = angleFor(this.memory.asked().length, this.memory.count, !!projects)
+    const angle = angleFor(angleTurn(this.memory.asked(), this.fails), this.memory.count, !!projects)
     return t.question(user(), t.moment(weekday, now.getHours()), projects, this.memory.asText(), this.memory.askedText(), t[`angle_${angle}`])
   }
 

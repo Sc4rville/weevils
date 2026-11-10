@@ -309,7 +309,7 @@ describe('notifications', () => {
     w.hook({ session_id: 's1', hook_event_name: 'Notification', message: 'Claude needs your permission to use Bash' })
     await settle()
     expect(send).toHaveBeenCalledTimes(1)
-    expect(send).toHaveBeenCalledWith({ title: tr(P).waitingTitle('demo'), body: 'Claude needs your permission to use Bash', url: '/#s=s1', tag: 's1' })
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ title: `${tr(P).waitingTitle('demo')} · earlier`, category: 'question', body: 'Claude needs your permission to use Bash', url: '/#s=s1', tag: 's1' }))
     w.hook({ session_id: 's1', hook_event_name: 'Stop' })
     await settle()
     w.hook({ session_id: 's1', hook_event_name: 'Notification', message: 'Claude needs your permission to use Bash' })
@@ -328,7 +328,7 @@ describe('notifications', () => {
     w.hook({ session_id: 's1', hook_event_name: 'Stop' })
     await settle()
     expect(send).toHaveBeenCalledTimes(1)
-    expect(send).toHaveBeenCalledWith(expect.objectContaining({ title: tr(P).doneTitle('demo'), body: 'All three buttons are in.' }))
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ title: `${tr(P).doneTitle('demo')} · earlier`, category: 'result', body: 'All three buttons are in.' }))
   })
 
   it('un tour qui finit sur une question : notification « à toi » avec la question, même si des sous-agents tournent', async () => {
@@ -343,7 +343,7 @@ describe('notifications', () => {
     w.hook({ session_id: 's1', hook_event_name: 'Stop' })
     await settle()
     expect(one()).toMatchObject({ status: 'needs_user', ask: { kind: 'link', url: 'https://www.runpod.io/console/billing' } })
-    expect(send).toHaveBeenCalledWith(expect.objectContaining({ title: tr(P).waitingTitle('demo'), body: 'Ouvre ce lien pour valider la facturation : https://www.runpod.io/console/billing', url: '/#s=s1' }))
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ title: `${tr(P).waitingTitle('demo')} · earlier`, category: 'question', body: 'Ouvre ce lien pour valider la facturation : https://www.runpod.io/console/billing', url: '/#s=s1' }))
   })
 
   it('un tour court (moins de 15 s) ne notifie pas', async () => {
@@ -440,10 +440,12 @@ describe('arrière-plan (sous-agents, workflow, commandes)', () => {
     expect(one()?.status).toBe('working')
     expect(send).not.toHaveBeenCalled()
     t.subagents = [sub({ status: 'done', endedAt: Date.now() })]
+    t.messages.push({ id: 'result', role: 'assistant', text: 'The generated video is ready.', at: Date.now() })
+    t.lastActivityAt = Date.now()
     w.bump()
     await vi.advanceTimersByTimeAsync(250)
     expect(send).toHaveBeenCalledTimes(1)
-    expect(send).toHaveBeenCalledWith(expect.objectContaining({ title: tr(P).doneTitle('demo') }))
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ title: `${tr(P).doneTitle('demo')} · earlier`, category: 'result', body: 'The generated video is ready.' }))
   })
 
   it('L20 pont e-mail : la réponse part dès la fin du tour principal, sans attendre l’arrière-plan qu’il a lancé', async () => {

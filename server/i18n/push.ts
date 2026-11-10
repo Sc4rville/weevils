@@ -4,6 +4,7 @@ import { defineMessages } from '../i18n.ts'
 export default defineMessages({
   fr: {
     badSubscription: 'abonnement invalide',
+    relayPlansBody: (names: string) => `Valide ou refuse la reprise de ces travaux : ${names}.`,
     /** A session started waiting for the user. */
     waitingTitle: (project: string) => `${project} t’attend`,
     waitingBody: 'attend ta réponse',
@@ -15,6 +16,7 @@ export default defineMessages({
   },
   en: {
     badSubscription: 'invalid subscription',
+    relayPlansBody: (names: string) => `Approve or decline resuming these tasks: ${names}.`,
     waitingTitle: (project: string) => `${project} needs you`,
     waitingBody: 'waiting for your answer',
     doneTitle: (project: string) => `${project} is done`,

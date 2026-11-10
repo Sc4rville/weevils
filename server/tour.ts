@@ -44,6 +44,8 @@ export interface TourDeps {
   /** Le fil de weevboss a déjà servi : une installation existante, pas un nouveau venu. */
   veteran: () => boolean
   bump: () => void
+  /** Relit le 24/7 tout de suite (le job de démo y apparaît sans attendre). */
+  refreshH24: () => void
 }
 
 const readJson = <T>(f: string): T | null => {
@@ -327,6 +329,7 @@ export class TourKeeper {
     } catch {
       return
     }
+    this.deps.refreshH24()
     const repos: string[] = []
     for (const root of PROJECT_ROOTS) {
       try {
@@ -340,6 +343,7 @@ export class TourKeeper {
     const tick = () => {
       if (Date.now() - started > 90_000) {
         fs.appendFileSync(log, `${t.jobEnd(repos.length)}\n`)
+        this.deps.refreshH24()
         this.demoTimer = setTimeout(() => this.stopDemoJob(), 10 * 60_000)
         return
       }
@@ -356,6 +360,7 @@ export class TourKeeper {
         } catch {
           /* journal parti */
         }
+        this.deps.refreshH24()
         this.demoTimer = setTimeout(tick, 6000)
       })
     }
@@ -366,6 +371,7 @@ export class TourKeeper {
     if (this.demoTimer) clearTimeout(this.demoTimer)
     this.demoTimer = null
     fs.rmSync(path.join(LOGS_DIR, `${DEMO_JOB}.log`), { force: true })
+    this.deps.refreshH24()
   }
 
   /** L'app ouverte sur un téléphone : l'étape du téléphone est faite. */

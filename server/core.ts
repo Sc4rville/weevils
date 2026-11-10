@@ -22,6 +22,7 @@ import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
 import { splitChips } from '../shared/setup.ts'
 import { isDemoJob, type TourKeeper } from './tour.ts'
+import TM from './i18n/tour.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
 import { emptyBg, subagentSteps } from './background.ts'
@@ -1330,7 +1331,7 @@ export class Weevils {
         const name = f.replace(/\.log$/, '')
         out.push({
           id: `job:${name}`,
-          title: name,
+          title: isDemoJob(name) ? tr(TM).jobTitle : name,
           kind: 'job',
           projectId: familyOf(name),
           schedule: tr(M).manualJob,

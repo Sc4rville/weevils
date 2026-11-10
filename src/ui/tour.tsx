@@ -91,7 +91,8 @@ function milestones(snap: Snapshot, f: First): { list: Milestone[]; reached: num
     reached = 3
     if (!snap.mainWorking) reached = 4
   }
-  return { list, reached, over: reached >= list.length }
+  // Réussi dès que l'agent travaille sous nos yeux (ou que weevboss a fini de répondre) : la suite peut venir.
+  return { list, reached, over: reached >= list.length - 1 }
 }
 
 // ---------------------------------------------------------------- actions communes
@@ -128,13 +129,15 @@ function suggestions(snap: Snapshot): string[] {
 }
 
 /** Joue la démo d'un usage. */
-async function playDemo(id: TourId, snap: Snapshot, ui: { setH24Open: (o: boolean) => void; caption: (s: string | null) => void }) {
+async function playDemo(id: TourId, snap: Snapshot, ui: { setH24Open: (o: boolean) => void; caption: (s: string | null) => void; openThread: () => void }) {
   if (id === 'github') return ask(snap, tr(M).sugNotes)
   const r = await api.tourDemo(id).catch(() => null)
   if (!r) return
   if (id === 'voice' && r.text) {
     ui.caption(r.text)
-    const end = () => ui.caption(null)
+    // La légende reste au moins le temps de la lire, même si la voix finit (ou échoue) avant.
+    const shown = Date.now()
+    const end = () => window.setTimeout(() => ui.caption(null), Math.max(0, r.text!.length * 55 - (Date.now() - shown)))
     if (r.audio) {
       const a = new Audio(`data:audio/mpeg;base64,${r.audio}`)
       a.onended = end
@@ -142,6 +145,8 @@ async function playDemo(id: TourId, snap: Snapshot, ui: { setH24Open: (o: boolea
     } else speak(r.text, end)
   }
   if (id === 'devil') window.dispatchEvent(new Event('weevils:devil-flash'))
+  // Le pont : l'échange se lit en entier, fil ouvert (les deux bulles, celle de l'agent à sa couleur).
+  if (id === 'mail') window.setTimeout(() => ui.openThread(), 400)
   if (id === 'h24') window.setTimeout(() => ui.setH24Open(true), 1200)
 }
 
@@ -365,7 +370,7 @@ export function TourBand() {
   useEffect(() => {
     if (!track?.over) return
     if (firstStep?.state === 'todo') void api.tourAct('done', 'first').catch(() => undefined)
-    const id = window.setTimeout(() => setFirst(null), 4000)
+    const id = window.setTimeout(() => setFirst(null), 7000)
     return () => window.clearTimeout(id)
   }, [track?.over, firstStep?.state])
   // Une étape cochée pendant qu'on regarde : un petit éclat.
@@ -401,7 +406,7 @@ export function TourBand() {
     if (s.id === 'first') return talk()
     setBusy(s.id)
     try {
-      if (what === 'try') await playDemo(s.id, snap, { setH24Open, caption: setCaption })
+      if (what === 'try') await playDemo(s.id, snap, { setH24Open, caption: setCaption, openThread: () => setExpanded('agent') })
       else if (s.id === 'h24') prefill(t.h24Example)
       else {
         const b = BRICK_OF[s.id]

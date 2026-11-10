@@ -417,5 +417,6 @@
 
 .msg.demo,
 .peek-item.demo {
-  background-image: repeating-linear-gradient(-45deg, transparent 0 9px, color-mix(in srgb, var(--ink) 9%, transparent) 9px 18px);
+  /* Par-dessus la couleur de l'auteur (bulles signées) : la hachure doit toujours se voir. */
+  background-image: repeating-linear-gradient(-45deg, transparent 0 9px, color-mix(in srgb, var(--ink) 9%, transparent) 9px 18px) !important;
 }

@@ -11,7 +11,8 @@ export default defineMessages({
         working || waiting
           ? `${working ? `${working} session${working > 1 ? 's' : ''} travaille${working > 1 ? 'nt' : ''}` : ''}${working && waiting ? ', ' : ''}${waiting ? `${waiting} t’attend${waiting > 1 ? 'ent' : ''}` : ''}`
           : 'rien ne tourne en ce moment'
-      const where = projects ? ` Tes projets : ${list(names, 'et')}${projects > names.length ? ` et ${projects - names.length} autre${projects - names.length > 1 ? 's' : ''}` : ''}.` : sessions ? ` J’ai retrouvé ${sessions} session${sessions > 1 ? 's' : ''} Claude Code sur cette machine.` : ''
+      const more = projects - names.length
+      const where = projects ? ` Tes projets : ${more > 0 ? `${names.join(', ')} et ${more} autre${more > 1 ? 's' : ''}` : list(names, 'et')}.` : sessions ? ` J’ai retrouvé ${sessions} session${sessions > 1 ? 's' : ''} Claude Code sur cette machine.` : ''
       return `${now.charAt(0).toUpperCase()}${now.slice(1)}.${where}`
     },
     voiceDemo: (summary: string): string => `Salut ! Voilà comment je te parle quand tu marches. ${summary} Dis-moi ce que tu veux, je m’en occupe.`,
@@ -19,6 +20,7 @@ export default defineMessages({
     mailDemoReply: (summary: string): string => `Bien reçu, ChatGPT. ${summary} Je te réponds par e-mail dès qu’il y a du nouveau.`,
     devilDemo:
       'Ici, c’est ton modèle à toi qui répondrait : Ollama ou LM Studio sur ton PC, un modèle ouvert chez OpenRouter… Même fil que weevboss, sans ses limites ; un tap sur le diablotin pour basculer.',
+    jobTitle: 'veille de tes repos',
     jobStart: 'démo : je passe sur tes repos toutes les 6 secondes',
     jobRepo: (repo: string, n: number): string => (n < 0 ? `${repo} : illisible` : n ? `${repo} : ${n} fichier${n > 1 ? 's' : ''} modifié${n > 1 ? 's' : ''}` : `${repo} : rien de neuf`),
     jobTick: (i: number): string => `tour ${i + 1} : rien à surveiller pour l’instant`,
@@ -30,7 +32,8 @@ export default defineMessages({
         working || waiting
           ? `${working ? `${working} session${working > 1 ? 's are' : ' is'} working` : ''}${working && waiting ? ', ' : ''}${waiting ? `${waiting} waiting for you` : ''}`
           : 'nothing is running right now'
-      const where = projects ? ` Your projects: ${list(names, 'and')}${projects > names.length ? ` and ${projects - names.length} more` : ''}.` : sessions ? ` I found ${sessions} Claude Code session${sessions > 1 ? 's' : ''} on this machine.` : ''
+      const more = projects - names.length
+      const where = projects ? ` Your projects: ${more > 0 ? `${names.join(', ')} and ${more} more` : list(names, 'and')}.` : sessions ? ` I found ${sessions} Claude Code session${sessions > 1 ? 's' : ''} on this machine.` : ''
       return `${now.charAt(0).toUpperCase()}${now.slice(1)}.${where}`
     },
     voiceDemo: (summary: string): string => `Hi! This is how I talk to you while you walk. ${summary} Tell me what you need, I'll handle it.`,
@@ -38,6 +41,7 @@ export default defineMessages({
     mailDemoReply: (summary: string): string => `Got it, ChatGPT. ${summary} I'll e-mail you as soon as there's news.`,
     devilDemo:
       'This is where your own model would answer: Ollama or LM Studio on your PC, an open model on OpenRouter… Same thread as weevboss, without its limits; one tap on the little devil to switch.',
+    jobTitle: 'watching your repos',
     jobStart: 'demo: going over your repos every 6 seconds',
     jobRepo: (repo: string, n: number): string => (n < 0 ? `${repo}: unreadable` : n ? `${repo}: ${n} file${n > 1 ? 's' : ''} changed` : `${repo}: nothing new`),
     jobTick: (i: number): string => `round ${i + 1}: nothing to watch yet`,

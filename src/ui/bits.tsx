@@ -619,7 +619,9 @@ export function useAuthors() {
   const list = snap.config.authors
   return useMemo(() => {
     const byId = new Map((list ?? []).map((a) => [a.id, a]))
-    return (id?: string): Author => byId.get(id ?? 'weevboss') ?? { id: id ?? 'weevboss', name: id ?? 'weevboss', color: '' }
+    // Un auteur inconnu de la config (agent externe retiré, démo du pont e-mail) : une couleur stable de la palette.
+    const tint = (id: string) => `var(--p${[...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 16})`
+    return (id?: string): Author => byId.get(id ?? 'weevboss') ?? { id: id ?? 'weevboss', name: id ?? 'weevboss', color: id && id !== 'weevboss' ? tint(id) : '' }
   }, [list])
 }
 

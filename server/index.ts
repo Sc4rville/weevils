@@ -85,6 +85,7 @@ const tour = new TourKeeper({
   // Une installation existante : weevboss a déjà servi, ou des bulles et gestes ont déjà été vus.
   veteran: () => w.snapshot().main.some((m) => m.role === 'user' && !m.id.startsWith('setup-')) || hints.get().seen.length > 2,
   bump: () => w.bump(),
+  refreshH24: () => w.refreshH24(),
 })
 w.tour = tour
 const asDevice = (d: any): Device => ({

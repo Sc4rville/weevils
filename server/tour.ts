@@ -170,7 +170,9 @@ export class TourKeeper {
     }
     // Les démos d'avant un redémarrage : le job de démo ne tourne plus, son journal part.
     fs.rmSync(path.join(LOGS_DIR, `${DEMO_JOB}.log`), { force: true })
-    setInterval(() => void this.refresh(), 5000).unref()
+    // Tant que la bande est ouverte : une connexion faite ailleurs (terminal, autre appareil) se coche toute seule.
+    // Fermée, rien ne tourne : l'état est recalculé à la demande (GET /api/tour, réglages, weevils setup).
+    setInterval(() => this.p.open && !this.last?.finished && void this.refresh(), 5000).unref()
   }
 
   private save() {

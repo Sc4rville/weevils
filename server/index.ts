@@ -241,6 +241,7 @@ const routes: [string, RegExp, Handler][] = [
   // ---- Accueil et branchements : weevboss guide dans son fil (server/setup.ts, src/ui/setup.tsx).
   ['GET', /^\/api\/setup$/, async (_req, res) => {
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' })
+    await tour.refresh(true)
     res.end((await setup.report()) + '\n' + tour.report() + '\n')
   }],
   // ---- Premiers pas (server/tour.ts, src/ui/tour.tsx).

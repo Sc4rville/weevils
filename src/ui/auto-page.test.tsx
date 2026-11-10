@@ -211,11 +211,47 @@ describe('automation page', () => {
     }
   })
 
+  it('reads an async archive again when its file count arrives, even when the diff is empty', async () => {
+    const run = { at: NOW, startedAt: NOW - 3 * MIN, ok: true }
+    fixtures.detail.set('d', { id: 'd', runs: [run], machine: 'srv' })
+    fixtures.runs.set(`d@${run.at}`, { run, files: [], links: [], images: [] })
+    const done = { ...daily, state: 'done' as const, runs: [run], runCount: 1 }
+    render(snap([done]), <AutoPage id="d" />)
+    await flush()
+    expect(host.querySelector('.auto-report')).toBeNull()
+    const ready = { ...run, files: 0 }
+    fixtures.detail.set('d', { id: 'd', runs: [ready], machine: 'srv' })
+    fixtures.runs.set(`d@${run.at}`, { run: ready, report: 'The report is ready.', files: [], links: [], images: [] })
+    render(snap([{ ...done, runs: [ready] }]), <AutoPage id="d" />)
+    await flush()
+    expect(host.querySelector('.auto-report')!.textContent).toContain('The report is ready.')
+  })
+
+  it('the first completed run lands in the runs strip, including when there was no history', () => {
+    const frame = vi.spyOn(globalThis, 'requestAnimationFrame').mockReturnValue(1)
+    try {
+      render(snap([{ ...daily, state: 'running', startedAt: NOW - MIN, runs: [], runCount: 0 }]), <AutoPage id="d" />)
+      expect(host.querySelector('.auto-land')).toBeNull()
+      const first = { at: NOW, startedAt: NOW - MIN, ok: true }
+      render(snap([{ ...daily, runs: [first], runCount: 1 }]), <AutoPage id="d" />)
+      expect(host.querySelector('.auto-land')).not.toBeNull()
+    } finally {
+      frame.mockRestore()
+    }
+  })
+
   it('a scheduled task: pause and run now', async () => {
     render(snap([daily]), <AutoPage id="d" />)
     await click(label(/^run "Daily digest" now/))
+    expect(label(/^run "Daily digest" now/)).toBeUndefined()
     await click(host.querySelector('[aria-label="pause Daily digest"]'))
     expect(calls).toEqual(['run d', 'pause d true'])
+  })
+
+  it('a run already requested stays hidden after reopening the page', () => {
+    render(snap([{ ...daily, runRequested: true }]), <AutoPage id="d" />)
+    expect(label(/^run "Daily digest" now/)).toBeUndefined()
+    expect(label(/^pause Daily digest/)).toBeDefined()
   })
 
   it('a proposal: ✓ takes the version on screen then back; × refuses then back; the talk is there', async () => {

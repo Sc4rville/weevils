@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { H24Activity, Optimizer, Project } from '../../shared/api.ts'
-import { DRAWER_SLOT, PROP_PALETTE, autoList, autoOfSession, bandColors, propColors, failedLine, fromActivity, fromOptimizer, hueGap, progressOf, short, triggerText, windowStart, type Trigger } from './auto-model'
+import { DRAWER_SLOT, PROP_PALETTE, at, autoList, autoOfSession, bandColors, propColors, failedLine, fromActivity, fromOptimizer, hueGap, progressOf, short, triggerText, windowStart, type Trigger } from './auto-model'
 
 const NOW = 1_800_000_000_000
 const MIN = 60_000
@@ -200,5 +200,15 @@ describe('side-by-side colours (« pour toi »)', () => {
     const next = propColors(['b', 'c', 'd'], below, null)
     expect(next.get('c')).toBe(first.get('c'))
     expect(new Set(next.values()).size).toBe(3)
+  })
+})
+
+
+describe('automation time', () => {
+  it('keeps the weekday across midnight even when the next run is only hours away', () => {
+    const now = new Date(2026, 10, 10, 15).getTime()
+    expect(at(new Date(2026, 10, 10, 19).getTime(), now, 'fr')).toBe('19:00')
+    expect(at(new Date(2026, 10, 11, 0).getTime(), now, 'fr')).toBe('mer. 00:00')
+    expect(at(new Date(2026, 10, 11, 0).getTime(), now, 'en')).toBe('Wed 00:00')
   })
 })

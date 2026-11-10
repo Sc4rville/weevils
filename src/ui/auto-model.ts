@@ -253,11 +253,11 @@ export function short(ms: number, coarse = false): string {
   return tr(F).days(Math.round(h / 24))
 }
 
-/** « 01:00 » today or within 20 h, « mer. 08:00 » within the week, else the date. */
+/** « 01:00 » today, « mer. 08:00 » on another day within the week, else the date. */
 export function at(ts: number, now: number, lang: Lang = getLang()): string {
   const loc = locale(lang)
   const time = new Intl.DateTimeFormat(loc, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ts)
-  if (ts - now < 20 * 3600_000) return time
+  if (new Date(ts).toDateString() === new Date(now).toDateString()) return time
   if (ts - now < 6 * DAY) return `${new Intl.DateTimeFormat(loc, { weekday: 'short' }).format(ts)} ${time}`
   return `${new Intl.DateTimeFormat(loc, { day: 'numeric', month: 'short' }).format(ts)} ${time}`
 }

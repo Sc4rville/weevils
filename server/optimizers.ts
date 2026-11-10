@@ -706,6 +706,7 @@ export class Optimizers {
     const { prompt: _p, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, ...v } = o
     const at = o.state === 'queued' ? this.timeAt(o, now) : now
     const out: Optimizer = at > now ? { ...v, startAt: at } : { ...v }
+    if (o.runNow) out.runRequested = true
     // Stored oldest first (older files read the same); the app reads the newest first.
     if (o.runs) out.runs = newestFirst(o.runs)
     // Agreed while it runs, for its next run: shown under its row (the brief itself stays here).
@@ -1187,7 +1188,8 @@ export class Optimizers {
       this.archive.write(o.id, detail)
       this.archive.prune(o.id, x.keep)
       const r = this.get(o.id)?.runs?.find((y) => y.startedAt === run.startedAt)
-      if (r && files.length) {
+      // Even an empty diff marks the archive ready; the open page must read its report after the async git read.
+      if (r) {
         r.files = files.length
         this.changed()
       }

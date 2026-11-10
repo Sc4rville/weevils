@@ -167,7 +167,7 @@ const foryou = ORCHESTRATOR
   ? new ForYou(w, {
       shelf: new MediaShelf({ file: path.join(DATA_DIR, 'foryou-media.json'), roots: [...PROJECT_ROOTS, INBOX_DIR, DATA_DIR] }),
       isTestBrief,
-      optimizers: () => optimizers,
+      optimizers: () => ({ accept: (id) => optimizers.accept(id) === true, refuse: (id) => optimizers.refuse(id) }),
       tips: (snap, now) => {
         if (now - tipLoad.at > 5 * 60_000) tipLoad = { at: now, loads: [new LoadSampler().local()] }
         return { snap, now, loads: tipLoad.loads, dictation: !!openaiKey(), reapMs: KILL_AFTER_MS }

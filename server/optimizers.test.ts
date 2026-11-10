@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session, Snapshot } from '../shared/api.ts'
 import { smart } from './fast.ts'
+import { headOf } from './auto-runs.ts'
 import O from './i18n/optimizers.ts'
 import { Memory } from './memory.ts'
 import { execFileSync, spawnSync } from 'node:child_process'
@@ -777,7 +778,7 @@ describe('auto — talking a task over (the negotiation)', () => {
     let v = o.list(start + 20 * MIN)[0]
     // Next run: a day after it was due (accepted at T0), not after it could start (5 min later, the machine was busy).
     expect(v).toMatchObject({ state: 'queued', waiting: 'time', lastEvent: 'Done: 4 new tests.', startAt: T0 + 24 * 60 * MIN })
-    expect(v.runs).toEqual([{ at: start + 20 * MIN, startedAt: start, ok: true, note: 'Done: 4 new tests.', sessionId: 'sess-1' }])
+    expect(v.runs).toEqual([{ at: start + 20 * MIN, startedAt: start, ok: true, note: 'Done: 4 new tests.', sessionId: 'sess-1', files: 0 }])
     expect(v.runCount).toBe(1)
     // Next day: it starts again in the same worktree, on the same branch.
     const day2 = T0 + 24 * 60 * MIN
@@ -1082,6 +1083,49 @@ describe('auto — runs, their outputs, the automation page', () => {
     expect(o.detail('nope')).toBeNull()
   })
 
+  it('records a repo run through the real worktree and private git admin path, preserving the original checkout', async () => {
+    const repo = path.join(dir, 'p', 'mygame')
+    fs.mkdirSync(repo, { recursive: true })
+    const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' }).trim()
+    git(repo, 'init', '-q')
+    git(repo, 'config', 'user.name', 'Auto test')
+    git(repo, 'config', 'user.email', 'auto@example.test')
+    fs.writeFileSync(path.join(repo, 'old.txt'), 'before\n')
+    git(repo, 'add', '.')
+    git(repo, 'commit', '-qm', 'initial')
+    const base = git(repo, 'rev-parse', 'HEAD')
+    sys.worktree = async (r, cwd, branch) => {
+      fs.mkdirSync(path.dirname(cwd), { recursive: true })
+      git(r, 'worktree', 'add', '-qb', branch, cwd)
+    }
+    sys.head = headOf
+    const o = seed({ repo: 'mygame', kind: 'tests' })
+    const start = T0 + IDLE_MS
+    o.tick(start)
+    await vi.waitFor(() => expect(createIn).toHaveBeenCalledOnce())
+    const cwd = createIn.mock.calls[0][0] as string
+    expect(cwd).toBe(path.join(dir, 'p', '.auto', 'mygame', 'a1b2c3'))
+    fs.writeFileSync(path.join(cwd, 'old.txt'), 'after\n')
+    fs.writeFileSync(path.join(cwd, 'new.txt'), 'one\ntwo\n')
+    git(cwd, 'add', '.')
+    git(cwd, 'commit', '-qm', 'automated changes')
+    store.set('sess-1', { phase: 'idle', lastActivityAt: start + MIN, file: transcript(), tool: 'claude' } as never)
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Two files updated.' })]
+    const end = start + 10 * MIN
+    o.tick(end)
+    await o.settled()
+    expect(o.list(end)[0]).toMatchObject({ state: 'done', runCount: 1, tokens: 2000 })
+    expect(bump).toHaveBeenCalled()
+    expect(o.list(end)[0].runs![0].files).toBe(2)
+    expect(o.runDetail('a1b2c3', end)!.files.map(({ path, status, add, del }) => ({ path, status, add, del }))).toEqual([
+      { path: 'new.txt', status: 'A', add: 2, del: 0 },
+      { path: 'old.txt', status: 'M', add: 1, del: 1 },
+    ])
+    expect(git(repo, 'rev-parse', 'HEAD')).toBe(base)
+    expect(git(repo, 'status', '--porcelain')).toBe('')
+    expect(fs.readFileSync(path.join(repo, 'old.txt'), 'utf8')).toBe('before\n')
+  })
+
   it('the tokens of a run in progress; a recurring task counts every run, keeps the last 30 and their archives, newest first', async () => {
     const old = Array.from({ length: MAX_RUNS }, (_, i) => ({ at: T0 - (40 - i) * DAY + 10 * MIN, ok: true, note: `run ${i}`, ...(i % 2 ? { startedAt: T0 - (40 - i) * DAY } : {}) }))
     const o = seed({ every: DAY, notBefore: T0, runs: old })
@@ -1172,6 +1216,8 @@ describe('auto — runs, their outputs, the automation page', () => {
     o.tick(T0 + MIN)
     expect(o.list(T0 + MIN)[0]).toMatchObject({ waiting: 'time', startAt: T0 + DAY / 2 })
     expect(o.runNow('a1b2c3')).toBe(true)
+    expect(o.list()[0].runRequested).toBe(true)
+    expect(make().list()[0].runRequested).toBe(true)
     // Still waits for the machine.
     snap.sessions = [session({ id: 'other', status: 'working' })]
     o.tick(T0 + 2 * MIN)
@@ -1180,6 +1226,7 @@ describe('auto — runs, their outputs, the automation page', () => {
     o.tick(T0 + 2 * MIN + IDLE_MS)
     await flush()
     expect(o.list()[0].state).toBe('running')
+    expect(o.list()[0].runRequested).toBeUndefined()
     snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'ok' })]
     const end = T0 + 2 * MIN + IDLE_MS + 20 * MIN
     o.tick(end)

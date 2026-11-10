@@ -327,6 +327,8 @@ export interface Optimizer {
   tokens?: number
   /** Mise en pause par l'utilisateur : le runner la saute (waiting 'paused'). */
   paused?: boolean
+  /** Départ immédiat demandé : attend seulement la machine, sans répéter le bouton de départ. */
+  runRequested?: boolean
   /** Validée à cet instant (début du remplissage de la page auto). */
   acceptedAt?: number
 }

@@ -50,7 +50,7 @@ const LIVE_EVERY_MS = 20_000
 function useDetail(id: string, item: AutoItem | null): AutoDetail | null {
   const [d, setD] = useState<AutoDetail | null>(null)
   const running = item?.state === 'running'
-  const key = `${item?.state}:${item?.runCount}:${item?.lastRun?.at}`
+  const key = `${item?.state}:${item?.runCount}:${item?.lastRun?.at}:${item?.lastRun?.files}`
   useEffect(() => {
     let off = false
     const read = () =>
@@ -68,7 +68,7 @@ function useDetail(id: string, item: AutoItem | null): AutoDetail | null {
   return d
 }
 
-function useRunDetail(id: string, at: number | undefined): AutoRunDetail | null {
+function useRunDetail(id: string, at: number | undefined, files?: number): AutoRunDetail | null {
   const [d, setD] = useState<AutoRunDetail | null>(null)
   useEffect(() => {
     setD(null)
@@ -81,7 +81,7 @@ function useRunDetail(id: string, at: number | undefined): AutoRunDetail | null 
     return () => {
       off = true
     }
-  }, [id, at])
+  }, [id, at, files])
   return d
 }
 
@@ -116,9 +116,10 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
   const k = useTalk()
   const detail = useDetail(x.id, x)
   const runs = detail?.runs?.length ? detail.runs : x.runs
-  const newest = useRunDetail(x.id, runs[0]?.at)
+  const newest = useRunDetail(x.id, runs[0]?.at, runs[0]?.files)
   const proposed = x.state === 'proposed'
   const [err, setErr] = useState<string | null>(null)
+  const [runPending, setRunPending] = useState(false)
   const [draft, setDraft] = useState<{ text: string; n: number; reset?: boolean }>()
   const n = useRef(0)
   const form = useRef<HTMLFormElement>(null)
@@ -129,6 +130,16 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
   const where = [...new Set([project, x.repo].filter(Boolean))].join(' · ')
 
   const act = (p: Promise<unknown>) => void p.then(refresh).catch((e) => setErr((e as Error).message))
+  useEffect(() => {
+    if (x.state === 'running' || x.state === 'paused') setRunPending(false)
+  }, [x.state])
+  const runNow = () => {
+    setRunPending(true)
+    void api.runOptimizer(x.id).then(refresh).catch((e) => {
+      setRunPending(false)
+      setErr((e as Error).message)
+    })
+  }
   const actions: ReactNode[] = []
   if (opt && !proposed && !x.state.match(/^(done|failed)$/)) {
     const paused = x.state === 'paused' || !!opt.paused
@@ -137,9 +148,9 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
         <Icon name={paused ? 'play' : 'pause'} />
       </button>,
     )
-    if (x.state !== 'running')
+    if (x.state !== 'running' && !runPending && !opt.runRequested)
       actions.push(
-        <button key="run" className="ch" onClick={() => act(api.runOptimizer(x.id))} aria-label={t.runNow(x.title)}>
+        <button key="run" className="ch" onClick={runNow} aria-label={t.runNow(x.title)}>
           <Icon name="arrow" dir="right" />
         </button>,
       )
@@ -300,7 +311,7 @@ function Flow({ x, runs, next, onTicks }: { x: AutoItem; runs: AutoRun[]; next?:
   const seenTop = useRef(top)
   const [landing, setLanding] = useState<number | null>(null)
   useLayoutEffect(() => {
-    if (top && top !== seenTop.current && seenTop.current !== undefined && Date.now() - ranAt.current < 60_000) setLanding(top)
+    if (top && top !== seenTop.current && ranAt.current > 0 && Date.now() - ranAt.current < 60_000) setLanding(top)
     seenTop.current = top
   }, [top])
   useEffect(() => {

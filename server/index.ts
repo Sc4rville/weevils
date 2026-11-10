@@ -36,6 +36,7 @@ import { Memory, memoryRoutes } from './memory.ts'
 import { Flyers, weevilRoutes } from './weevil.ts'
 import { Optimizers, optimizerRoutes } from './optimizers.ts'
 import { ForYou, foryouRoutes, type MachineState } from './foryou.ts'
+import { serveAttachment } from './attachments.ts'
 import { MediaShelf } from './foryou-media.ts'
 import { Curator } from './foryou-curator.ts'
 import { Voices, voiceParam } from './foryou-voice.ts'
@@ -566,6 +567,9 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/main\/command$/, async (req, res) => {
     const body = await readBody(req)
     json(res, 200, await w.commandMain(String(body.command ?? '')))
+  }],
+  ['GET', /^\/api\/attachments$/, (_req, res, url) => {
+    serveAttachment(res, url.searchParams.get('path') ?? '', [INBOX_DIR, path.join(DATA_DIR, 'inbox')])
   }],
   ['POST', /^\/api\/main\/attach$/, async (req, res) => {
     const body = await readBody(req, 48 << 20)

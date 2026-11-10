@@ -206,8 +206,20 @@ export function activityText(text: string): string {
 /** Ce que l'utilisateur a écrit, sans les balises techniques du collage ni les marqueurs d'images. */
 export function userText(text: string): string {
   return text
+    // Display only: the transcript and the prompt sent to the model keep their context.
+    // A terminal excerpt can end inside the injected block, before its closing bracket.
+    .replace(/\s*⟦weevils\b[^⟧]*(?:⟧|$)/g, '')
     .replace(/<\/?pasted_content[^>]*>/g, '')
     .replace(/\[Image #\d+\]/g, '(image)')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+}
+
+/** Photo annotations are transport metadata; use their paths only for authenticated previews. */
+export function userPhotos(text: string): string[] {
+  return [...userText(text).matchAll(/\(photo\s*:\s*(\/[^)\n]+)\)/g)].map((m) => m[1].trim())
+}
+
+export function userCaption(text: string): string {
+  return userText(text).replace(/\(photo\s*:\s*\/[^)\n]+\)/g, '').trim()
 }

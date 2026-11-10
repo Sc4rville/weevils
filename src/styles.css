@@ -2516,7 +2516,7 @@ button.copy.done {
   display: flex;
   flex-direction: column;
 }
-.agent.open #agent-body > .chat { flex: 1; min-height: 0; }
+.agent.open #agent-body > .chat { flex: 1; min-height: 0; max-height: none; }
 .choice-band {
   display: block;
   width: 100%;
@@ -2570,3 +2570,7 @@ html[data-keyboard] .agent:not(.open) .fyt-words {
   height: 48px;
   opacity: 1;
 }
+
+/* A user's attached photo stays in their thread, with access to the full image. */
+.user-photo { display: block; margin-top: 12px; width: fit-content; max-width: 100%; }
+.user-photo img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; }

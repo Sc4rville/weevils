@@ -26,3 +26,23 @@ it('keeps navigation below the iOS status bar as the keyboard shrinks and pans t
   stop()
   expect(root.style.getPropertyValue('--safe-t')).toBe('')
 })
+
+it('resamples after keyboard dismissal and page restore even without a viewport event', () => {
+  vi.useFakeTimers()
+  const vv = Object.assign(new EventTarget(), { height: 350, offsetTop: 120 })
+  vi.stubGlobal('visualViewport', vv)
+  vi.stubGlobal('innerHeight', 844)
+  const stop = trackViewport()!
+  document.dispatchEvent(new Event('focusout'))
+  vv.height = 844
+  vv.offsetTop = 0
+  vi.advanceTimersByTime(350)
+  expect(document.documentElement.style.getPropertyValue('--vvh')).toBe('844px')
+  expect(document.documentElement.style.getPropertyValue('--vvt')).toBe('0px')
+  expect(document.documentElement.hasAttribute('data-keyboard')).toBe(false)
+  vv.height = 700
+  window.dispatchEvent(new Event('pageshow'))
+  expect(document.documentElement.style.getPropertyValue('--vvh')).toBe('700px')
+  stop()
+  vi.useRealTimers()
+})

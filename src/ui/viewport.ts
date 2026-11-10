@@ -19,7 +19,24 @@ export function trackViewport() {
   update()
   vv.addEventListener('resize', update)
   vv.addEventListener('scroll', update)
+  // Safari may restore its viewport after focusout or a page-cache restore without
+  // delivering another visualViewport event. Sample again after the keyboard animation.
+  let settle: ReturnType<typeof setTimeout> | undefined
+  const resample = () => {
+    update()
+    clearTimeout(settle)
+    settle = setTimeout(update, 350)
+  }
+  window.addEventListener('resize', resample)
+  window.addEventListener('pageshow', resample)
+  document.addEventListener('focusout', resample)
+  document.addEventListener('visibilitychange', resample)
   return () => {
+    clearTimeout(settle)
+    window.removeEventListener('resize', resample)
+    window.removeEventListener('pageshow', resample)
+    document.removeEventListener('focusout', resample)
+    document.removeEventListener('visibilitychange', resample)
     vv.removeEventListener('resize', update)
     vv.removeEventListener('scroll', update)
     probe.remove()

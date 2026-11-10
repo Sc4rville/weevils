@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type F
 import { api } from '../api'
 import type { Author, Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
-import { chipLabel, chipLabels, type ChipId, dur, inline, isCommand, plain, segments, status, step, userText } from './format'
+import { chipLabel, chipLabels, type ChipId, dur, inline, isCommand, plain, segments, status, step, userText, userPhotos, userCaption } from './format'
 import { copyText, useLongPress } from './copy'
 import { markSeen } from './hints'
 import { flash, reveal } from './follow'
@@ -799,7 +799,14 @@ export function Messages({
               mid={g.m.id}
             >
               {g.m.role === 'user' ? (
-                <Clamp text={userText(g.m.text)} />
+                <>
+                  <Clamp text={userCaption(g.m.text)} />
+                  {userPhotos(g.m.text).map((file) => (
+                    <a key={file} className="user-photo" href={`/api/attachments?path=${encodeURIComponent(file)}`} target="_blank" rel="noopener noreferrer">
+                      <img src={`/api/attachments?path=${encodeURIComponent(file)}`} alt={file.split('/').at(-1) ?? ''} loading="lazy" />
+                    </a>
+                  ))}
+                </>
               ) : g.m.role === 'orchestrator' ? (
                 <Clamp text={g.m.text} />
               ) : (

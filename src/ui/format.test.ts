@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { setLang } from '../i18n'
-import { ago, chipLabels, dur, durLong, inline, isCommand, plain, status, step } from './format'
+import { ago, chipLabels, dur, durLong, inline, isCommand, plain, status, step, userText, userPhotos, userCaption } from './format'
 import B from '../i18n/bits'
 import H from '../i18n/h24'
 
@@ -126,3 +126,18 @@ describe('puce de secret', () => {
   })
 })
 
+
+ it('hides injected context in complete and terminal-truncated user messages without changing photo markers', () => {
+   const typed = 'regarde (photo : /home/alex/inbox/photo.jpg)'
+   expect(userText(`${typed} ⟦weevils — what weevils remembers: private⟧`)).toBe(typed)
+   expect(userText(`${typed} ⟦weevils — what weevils remembers: pri…`)).toBe(typed)
+   expect(userText('oui ⟦weevils — one⟧ ⟦weevils — two⟧')).toBe('oui')
+   expect(userText('⟦une citation⟧')).toBe('⟦une citation⟧')
+ })
+
+it('separates photo previews from the caption without reading paths from injected context', () => {
+  const raw = 'Regarde (photo : /home/alex/inbox/a.jpg) (photo : /home/alex/inbox/b.png) ⟦weevils — private (photo : /secret.jpg)⟧'
+  expect(userPhotos(raw)).toEqual(['/home/alex/inbox/a.jpg', '/home/alex/inbox/b.png'])
+  expect(userCaption(raw)).toBe('Regarde')
+  expect(raw).toContain('⟦weevils') // parsing is display-only
+})

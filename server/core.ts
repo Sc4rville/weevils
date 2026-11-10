@@ -868,7 +868,7 @@ export class Weevils {
       setup: this.setup?.flags(),
       tour: this.tour?.current() ?? undefined,
       pinnedRepos: this.pinnedRepos,
-      memoryCount: this.memory?.count ?? 0,
+      memoryCount: this.memory?.count,
       optimizers: this.optimizers?.list() ?? [],
       config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey },
     }

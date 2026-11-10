@@ -261,7 +261,7 @@ export interface Snapshot {
   tour?: Tour
   /** Repos épinglés au fil des projets (présents même sans session). */
   pinnedRepos: string[]
-  /** Nombre de souvenirs (server/memory.ts) ; la liste se lit avec GET /api/memory. */
+  /** Nombre de souvenirs (server/memory.ts) ; la liste se lit avec GET /api/memory. Absent hors machine principale (pas de mémoire). */
   memoryCount?: number
   /** Tâches du h24 proposées, en attente, en cours ou finies récemment (server/optimizers.ts). Les refusées n'y sont pas. */
   optimizers?: Optimizer[]

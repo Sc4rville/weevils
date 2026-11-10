@@ -1641,8 +1641,9 @@ export class Weevils {
     // pour weevboss (ce qu'il n'a pas vu passer) ne s'affiche jamais.
     // Pendant la limite de Claude, Codex répond à sa place : ses échanges sont dans le même fil. Un message qui n'est
     // que du contexte (la reprise d'un message resté sans réponse) ne s'affiche pas.
+    // Incoming agent coordination belongs to the recipient transcript, not the user-facing boss chat.
     const own = this.bossTranscripts()
-      .flatMap((t) => t.messages.filter((m) => m.role !== 'event' && (t.tool === 'claude' || m.at >= (boss?.since ?? 0) - 60_000)))
+      .flatMap((t) => t.messages.filter((m) => m.role !== 'event' && m.role !== 'orchestrator' && (t.tool === 'claude' || m.at >= (boss?.since ?? 0) - 60_000)))
       .map((m) => (m.role === 'user' ? { ...m, text: withoutContext(m.text).trim() } : m))
       .filter((m) => m.text)
     const msgs = [...own, ...devilMessages(), ...(this.setup?.messages() ?? [])]

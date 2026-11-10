@@ -177,32 +177,28 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
         </>
       }
       actions={actions.length ? actions : undefined}
-      dock={
-        talkOn ? (
-          <div className="page-voice">
-            <VoiceLogo
-            take={() => ''}
-            onText={(said) => {
-              heard.current = heard.current ? `${heard.current} ${said}` : said
-              setDraft({ text: said, n: ++n.current })
-            }}
-            onSend={() => {
-              const q = heard.current.trim()
-              heard.current = ''
-              if (!q) return
-              setDraft({ text: '', n: ++n.current, reset: true })
-              void k.send(x.id, q, true)
-            }}
-            replyKey={k.reply.key}
-            replyText={k.reply.text}
-              working={busy}
-            />
-          </div>
-        ) : undefined
-      }
       foot={
         talkOn ? (
           <>
+            <div className="band tone auto-voice">
+              <VoiceLogo
+                take={() => ''}
+                onText={(said) => {
+                  heard.current = heard.current ? `${heard.current} ${said}` : said
+                  setDraft({ text: said, n: ++n.current })
+                }}
+                onSend={() => {
+                  const q = heard.current.trim()
+                  heard.current = ''
+                  if (!q) return
+                  setDraft({ text: '', n: ++n.current, reset: true })
+                  void k.send(x.id, q, true)
+                }}
+                replyKey={k.reply.key}
+                replyText={k.reply.text}
+                working={busy}
+              />
+            </div>
             <FootError text={k.notes.get(x.id) ?? err} />
             <Composer
               placeholder={t.talkPlaceholder}

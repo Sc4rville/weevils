@@ -381,6 +381,19 @@
   opacity: 0.5;
 }
 
+/* ---------- The page: the voice, in the foot (the field's own colour), its own strip above the field: never over a line ---------- */
+
+.auto-voice {
+  display: flex;
+  align-items: flex-end;
+  padding: 6px calc(var(--pad) - 6px) 8px;
+}
+
+.auto-voice .voice-logo {
+  height: 48px;
+  min-height: 0;
+}
+
 /* ---------- The page: outputs ---------- */
 
 /* Screenshots: edge to edge, no frame. */

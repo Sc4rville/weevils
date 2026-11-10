@@ -176,6 +176,33 @@ function SessionPage({ id }: { id: string }) {
   const hold = th.selected || th.a.asking || th.a.waiting || !!th.a.shown
   const follow = useFollow(body, messages.length > 0, 80, `${messages.length}:${last?.id}:${last?.text.length}:${s?.status}`, hold)
   const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
+  // Suivi suspendu (hold) sans relire plus haut : ce qui arrive en bas pendant ce temps est signalé par le même bouton
+  // (useFollow ne le signale que quand on relit), et le suivi reprend en douceur au relâché au lieu de sauter au prochain message.
+  const [heldNew, setHeldNew] = useState(false)
+  const far = () => {
+    const el = body.current
+    return !!el && el.scrollHeight - el.scrollTop - el.clientHeight > 80
+  }
+  useEffect(() => {
+    if (hold && !follow.reading.current && far()) setHeldNew(true)
+  }, [messages.length, last?.id, last?.text.length, s?.status]) // eslint-disable-line react-hooks/exhaustive-deps
+  const wasHeld = useRef(hold)
+  useEffect(() => {
+    if (wasHeld.current && !hold && !follow.reading.current && far()) follow.toEnd()
+    wasHeld.current = hold
+    if (!hold) setHeldNew(false)
+  }, [hold]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const el = body.current
+    if (!heldNew || !el) return
+    const near = () => !far() && setHeldNew(false)
+    el.addEventListener('scroll', near, { passive: true })
+    return () => el.removeEventListener('scroll', near)
+  }, [heldNew]) // eslint-disable-line react-hooks/exhaustive-deps
+  const toEnd = () => {
+    setHeldNew(false)
+    follow.toEnd()
+  }
 
   // Réglages ouverts (en bas du fil) : amenés sous les yeux une fois dépliés, même si on relisait plus haut.
   useEffect(() => {
@@ -209,7 +236,7 @@ function SessionPage({ id }: { id: string }) {
     const shown = files.length ? `${text ? `${text} ` : ''}(${t.photos(files.length)})` : text
     const tmp: Pending = { id: `pending-${Date.now()}`, role: 'user', text: shown, at: Date.now(), typed: text, after: detail?.messages.at(-1)?.id }
     setPending((p) => [...p, tmp])
-    follow.toEnd()
+    toEnd()
     try {
       const r = files.length ? await api.attach(s.id, text, files) : await api.send(s.id, text)
       if (r.id !== id) replace({ kind: 'session', id: r.id })
@@ -254,7 +281,7 @@ function SessionPage({ id }: { id: string }) {
         </>
       }
       dock={th.voice}
-      float={<FollowDown show={follow.behind} urgent={s.status === 'needs_user'} body={body} toEnd={follow.toEnd} />}
+      float={<FollowDown show={follow.behind || heldNew} urgent={s.status === 'needs_user'} body={body} toEnd={toEnd} />}
       bodyRef={body}
       side={preview.open ? <Preview url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false, full: false })} full={preview.full} onFull={(full) => setPreview({ full })} /> : undefined}
       foot={
@@ -272,8 +299,12 @@ function SessionPage({ id }: { id: string }) {
       }
     >
       <div ref={th.ref} className="ask-thread">
-        {/* Monté avec le fil chargé : la session s'ouvre posée sur son dernier message, sans tout dérouler. */}
-        {(detail || missing) && <Messages messages={messages} author={s.tool} working={s.status === 'working'} after={th.after} />}
+        {/* Monté avec le fil chargé : la session s'ouvre posée sur son dernier message, sans tout dérouler. Avant, seulement
+            s'il y a déjà une bulle (premier message d'une session lancée) ; remonté au chargement pour que le lot arrive sans
+            se dérouler lui non plus. */}
+        {(detail || missing || pending.length > 0) && (
+          <Messages key={detail || missing ? 'loaded' : 'early'} messages={messages} author={s.tool} working={s.status === 'working'} after={th.after} />
+        )}
       </div>
 
       <Background session={s} />

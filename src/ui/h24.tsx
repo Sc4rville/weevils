@@ -159,16 +159,30 @@ export function H24Rail() {
 // L'icône d'un genre n'est jamais ✓ ni × : elles se confondraient avec les boutons.
 
 const KIND_ICON: Record<Optimizer['kind'], IconName> = { tests: 'terminal', watch: 'quote', content: 'file', explore: 'slash', other: 'star' }
+/** Après un dépliage, ✓ et × attendent ce délai : le doigt qui vient de déplier ne lance ni ne refuse rien. */
+export const SETTLE_MS = 450
 
+/**
+ * Une colonne touchée se déplie : elle prend presque toute la largeur, titre et raison en entier ; les autres
+ * deviennent de fines bandes de couleur (les toucher les déplie à leur tour). Retouchée, elle se replie.
+ */
 function Proposals({ list, below }: { list: Optimizer[]; below: string }) {
   const t = useT(M)
   const { refresh } = useApp()
   const [gone, setGone] = useState<Set<string>>(new Set())
+  const [wide, setWide] = useState<string | null>(null)
+  const movedAt = useRef(-Infinity)
   // Une couleur par proposition, gardée tant qu'elle est là : celle qui part n'en fait pas changer les autres.
   const slots = useRef(new Map<string, string>())
   const shown = list.filter((o) => !gone.has(o.id)).slice(0, 3)
   slots.current = propColors(shown.map((o) => o.id), slots.current, below)
+  const open = shown.some((o) => o.id === wide) ? wide : null
+  const expand = (id: string | null) => {
+    movedAt.current = performance.now()
+    setWide(id)
+  }
   const answer = (o: Optimizer, yes: boolean) => {
+    if (performance.now() - movedAt.current < SETTLE_MS) return
     setGone((g) => new Set(g).add(o.id))
     void (yes ? api.acceptOptimizer(o.id) : api.refuseOptimizer(o.id))
       .catch(() =>
@@ -184,38 +198,44 @@ function Proposals({ list, below }: { list: Optimizer[]; below: string }) {
   return (
     <div className="auto-props" role="list" aria-label={t.proposals}>
       <AnimatePresence initial={false}>
-        {shown.map((o) => (
-          <motion.div
-            key={o.id}
-            role="listitem"
-            className="auto-prop"
-            style={color(slots.current.get(o.id) ?? 'p9')}
-            initial={{ flexGrow: 0, opacity: 0 }}
-            animate={{ flexGrow: 1, opacity: 1 }}
-            exit={{ flexGrow: 0, opacity: 0 }}
-            transition={spring}
-          >
-            <div className="auto-prop-in">
-              <div className="k" aria-hidden>
-                <Icon name={KIND_ICON[o.kind]} />
-                <span>{t[`kind_${o.kind}`]}</span>
-              </div>
-              <div className="t">{o.title}</div>
-              {o.why && <div className="w">{o.why}</div>}
-              <div className="i" aria-hidden>
-                <Intensity priority={o.priority} est={o.est} heavy={o.heavy} />
-              </div>
-              <div className="acts">
-                <button className="ok" onClick={() => answer(o, true)} aria-label={t.accept(o.title)}>
-                  <Icon name="check" />
+        {shown.map((o) => {
+          const slim = open !== null && open !== o.id
+          return (
+            <motion.div
+              key={o.id}
+              role="listitem"
+              className={`auto-prop${slim ? ' slim' : ''}${open === o.id ? ' open' : ''}`}
+              style={color(slots.current.get(o.id) ?? 'p9')}
+              initial={{ flexGrow: 0, minWidth: 0, opacity: 0 }}
+              animate={{ flexGrow: slim ? 0 : 1, minWidth: 22, opacity: 1 }}
+              exit={{ flexGrow: 0, minWidth: 0, opacity: 0 }}
+              transition={spring}
+            >
+              <motion.div className="auto-prop-in" inert={slim} animate={{ opacity: slim ? 0 : 1 }} transition={spring}>
+                <button className="auto-prop-body" onClick={() => expand(open === o.id ? null : o.id)} aria-expanded={open === o.id}>
+                  <span className="k" aria-hidden>
+                    <Icon name={KIND_ICON[o.kind]} />
+                    <span>{t[`kind_${o.kind}`]}</span>
+                  </span>
+                  <span className="t">{o.title}</span>
+                  {o.why && <span className="w">{o.why}</span>}
+                  <span className="i" aria-hidden>
+                    <Intensity priority={o.priority} est={o.est} heavy={o.heavy} />
+                  </span>
                 </button>
-                <button className="no" onClick={() => answer(o, false)} aria-label={t.refuse(o.title)}>
-                  <Icon name="close" />
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        ))}
+                <div className="acts">
+                  <button className="ok" onClick={() => answer(o, true)} aria-label={t.accept(o.title)}>
+                    <Icon name="check" />
+                  </button>
+                  <button className="no" onClick={() => answer(o, false)} aria-label={t.refuse(o.title)}>
+                    <Icon name="close" />
+                  </button>
+                </div>
+              </motion.div>
+              {slim && <button className="auto-prop-strip" onClick={() => expand(o.id)} aria-expanded={false} aria-label={o.title} />}
+            </motion.div>
+          )
+        })}
       </AnimatePresence>
     </div>
   )

@@ -109,6 +109,43 @@ describe('auto band', () => {
     expect([...host.querySelectorAll('.auto-prop .t')].map((n) => n.textContent)).toEqual(['Draft page'])
   })
 
+  it('a tap on a column unfolds it (others become strips), never accepts; ✓ waits for the finger to settle', async () => {
+    let clock = 10_000
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+    render(snap([opt({ id: 'a', title: 'Harden the save parser tests', why: 'broken saves cost you hours' }), opt({ id: 'b', title: 'Watch fairs', kind: 'watch' }), opt({ id: 'c', title: 'Draft page', kind: 'content' })]))
+    const state = () => [...host.querySelectorAll('.auto-prop')].map((n) => (n.classList.contains('open') ? 'open' : n.classList.contains('slim') ? 'slim' : '-'))
+    expect(host.querySelector('.auto-prop-strip')).toBeNull()
+    await click(host.querySelector('.auto-prop .auto-prop-body'))
+    expect(state()).toEqual(['open', 'slim', 'slim'])
+    expect(host.querySelector('.auto-prop.open .auto-prop-body')!.getAttribute('aria-expanded')).toBe('true')
+    expect(host.querySelector('.auto-prop.open .w')!.textContent).toBe('broken saves cost you hours')
+    // The slim ones: their ✓ and × are out of reach; a tap on the strip unfolds that one.
+    expect(host.querySelector('.auto-prop.slim .auto-prop-in')!.hasAttribute('inert')).toBe(true)
+    // A second tap right away (the finger that unfolded) does nothing.
+    await click(label(/^run "Harden the save parser tests"/)!)
+    expect(calls).toEqual([])
+    clock += 500
+    await click(label(/^run "Harden the save parser tests"/)!)
+    await flush()
+    expect(calls).toEqual(['accept a'])
+    expect(state()).toEqual(['-', '-'])
+    await click(host.querySelector('.auto-prop:last-child .auto-prop-body'))
+    expect(state()).toEqual(['slim', 'open'])
+    await click(label(/^Watch fairs$/)!)
+    expect(state()).toEqual(['open', 'slim'])
+    clock += 100
+    await click(label(/^refuse "Watch fairs"/)!)
+    expect(calls).toEqual(['accept a'])
+    // A tap on the open column folds it back.
+    await click(host.querySelector('.auto-prop.open .auto-prop-body'))
+    expect(state()).toEqual(['-', '-'])
+    clock += 500
+    await click(label(/^refuse "Watch fairs"/)!)
+    await flush()
+    expect(calls).toEqual(['accept a', 'refuse b'])
+    now.mockRestore()
+  })
+
   it('the « tests » kind never wears the accept ✓', () => {
     render(snap([opt({ id: 'a', title: 'Harden tests' })]))
     const d = (sel: string) => host.querySelector(`${sel} path:last-child`)!.getAttribute('d')

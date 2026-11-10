@@ -110,3 +110,17 @@ describe('modèle dans l’en-tête de session', async () => {
     expect(modelLabel(undefined)).toBeUndefined()
   })
 })
+
+describe('puce de secret', () => {
+  it('[[setup:key:NOM]] devient un bouton à sa place ; un nom hors liste reste du texte', () => {
+    setLang('fr')
+    expect(inline('Colle-la ici : [[setup:key:RUNPOD_API_KEY]]. Merci.')).toEqual([
+      { kind: 'text', s: 'Colle-la ici : ' },
+      { kind: 'chip', brick: 'key:RUNPOD_API_KEY' },
+      { kind: 'text', s: '. Merci.' },
+    ])
+    expect(plain('via [[setup:key:HF_TOKEN]].')).toBe('via coller HF_TOKEN.')
+    expect(inline('[[setup:key:WEEVILS_X_TOKEN]]')).toEqual([{ kind: 'text', s: '[[setup:key:WEEVILS_X_TOKEN]]' }])
+  })
+})
+

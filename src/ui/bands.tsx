@@ -15,7 +15,7 @@ import { useThreadAsk } from './askthread'
 import { isUnread, useSeen } from './seen'
 import { Collapse, Composer, INSTANT, Line, Messages, SessionRow, Working, authorTone, spring, useAuthors } from './bits'
 import B from '../i18n/bits'
-import { ago, plain, userText } from './format'
+import { ago, plain, userText, type ChipId } from './format'
 import { FilledIcon, G, Icon } from './icons'
 import { PrefLines } from './prefs'
 import { UsageLine } from './infra'
@@ -24,7 +24,7 @@ import { setDevil, useDevil } from './devil'
 import { markSeen, tapHint } from './hints'
 import { flash, keepInPlace, reveal, useFollow } from './follow'
 import { mergePending, type Pending } from './pending'
-import { Chip, SetupChips, SetupComposer, askSetup, flowVoice, useFlow, useWelcome } from './setup'
+import { Chip, KeyChip, SetupChips, SetupComposer, askSetup, flowVoice, useFlow, useWelcome } from './setup'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
@@ -245,7 +245,8 @@ export function AgentBand() {
     const list = (m?.chips ?? []).filter((c) => lastWith.get(c) === id && !m?.text.includes(`[[setup:${c}]]`))
     return list.length ? <SetupChips chips={list} /> : null
   }
-  const chipIn = (b: Brick, id: string) => (lastWith.get(b) === id ? <Chip brick={b} inline /> : null)
+  // Un secret demandé ([[setup:key:NOM]]) : toujours un bouton (le recoller remplace l'ancienne valeur).
+  const chipIn = (b: ChipId, id: string) => (b.startsWith('key:') ? <KeyChip name={b.slice(4)} /> : lastWith.get(b) === id ? <Chip brick={b as Brick} inline /> : null)
 
   return (
     <section className={`band agent tone ${devilOn || devilFlash ? 'devil-on' : ''} ${open ? 'open' : ''}`} style={color(devilOn || devilFlash ? 'devil' : 'agent')} aria-label={t.agentBand}>

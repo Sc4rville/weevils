@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { flushSync } from 'react-dom'
-import { FIELDS, isBrick, type ApplyResult, type Brick, type Device } from '../../shared/setup.ts'
+import { FIELDS, isBrick, isSecretName, type ApplyResult, type Brick, type Device, type SetupField } from '../../shared/setup.ts'
 import { api } from '../api'
 import { ensurePush } from '../push'
 import { tr, useT } from '../i18n'
@@ -43,10 +43,14 @@ export function device(): Device {
 // ---------------------------------------------------------------- le parcours en cours (champ du bas)
 
 interface Flow {
-  brick: Brick
+  /** « key » : un secret demandé par un agent, nommé dans `key`. */
+  brick: Brick | 'key'
   step: number
   values: Record<string, string>
+  /** Un secret demandé par un agent ([[setup:key:NOM]]) : son nom ; une seule question, masquée. */
+  key?: string
 }
+const KEY_FIELDS: SetupField[] = [{ name: 'value', secret: true }]
 let flow: Flow | null = null
 const listeners = new Set<() => void>()
 const emit = () => listeners.forEach((l) => l())
@@ -193,6 +197,23 @@ export function Chip({ brick, inline = false }: { brick: Brick; inline?: boolean
   )
 }
 
+/** [[setup:key:NOM]] : le champ masqué s'ouvre et prend le focus dans le geste même (clavier de l'iPhone). */
+export function openKey(name: string) {
+  if (!isSecretName(name)) return
+  if (flow?.key !== name) flushSync(() => setFlow({ brick: 'key', step: 0, values: {}, key: name }))
+  document.querySelector<HTMLInputElement>('.setup-form input')?.focus({ preventScroll: true })
+}
+
+/** Le bouton d'un secret demandé, à sa place dans la phrase de weevboss. */
+export function KeyChip({ name }: { name: string }) {
+  const t = useT(M)
+  return (
+    <button type="button" className="setup-chip inline" onClick={() => openKey(name)}>
+      <Icon name="hash" /> {t.keyChip(name)}
+    </button>
+  )
+}
+
 /** Sous un message de weevboss : ses puces, en boutons (le QR de connexion s'affiche tel quel). */
 export function SetupChips({ chips }: { chips: string[] }) {
   const list = chips.filter(isBrick)
@@ -216,7 +237,7 @@ export function SetupComposer() {
   const [err, setErr] = useState<string | null>(null)
   const field = useRef<HTMLInputElement>(null)
   const form = useRef<HTMLFormElement>(null)
-  const fields = f ? (FIELDS[f.brick] ?? []) : []
+  const fields = f ? (f.brick === 'key' ? KEY_FIELDS : (FIELDS[f.brick] ?? [])) : []
   const q = f ? fields[f.step] : undefined
   useEffect(() => {
     setText('')
@@ -224,10 +245,11 @@ export function SetupComposer() {
     field.current?.focus({ preventScroll: true })
     // La réponse est prise : la question suivante s'éclaire un instant (sinon le libellé change sur place, sans signe).
     if (f && f.step > 0) flash(form.current)
-  }, [f?.brick, f?.step]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [f?.brick, f?.step, f?.key]) // eslint-disable-line react-hooks/exhaustive-deps
   // Une question à choix n'a pas de champ : la dictée y est ignorée (sinon le 3e tap enverrait un texte libre comme choix).
   const typed = useRef(false)
-  typed.current = !!q && q.kind !== 'choice'
+  // Un secret ne se dicte pas (l'audio partirait à la transcription).
+  typed.current = !!q && q.kind !== 'choice' && !q.secret
   useEffect(() => {
     flowInput = {
       add: (x) => typed.current && setText((cur) => (cur.trim() ? `${cur.replace(/\s+$/, '')} ${x}` : x)),
@@ -247,7 +269,7 @@ export function SetupComposer() {
     setErr(null)
     ;(document.activeElement as HTMLElement | null)?.blur?.()
     try {
-      const r = (await api.setupApply(f.brick, values)) as ApplyResult
+      const r = (f.brick === 'key' ? await api.setupKey(f.key ?? '', v) : await api.setupApply(f.brick, values)) as ApplyResult
       setFlow(null)
       // Le résultat (ou le même message, déjà là, d'un nouvel essai) est mis en avant dans le fil.
       focusBossSoon({ mid: r.said })
@@ -263,7 +285,7 @@ export function SetupComposer() {
     e.preventDefault()
     void answer(text.trim())
   }
-  const label = t[`q_${key}` as `q_devil_url`]
+  const label = f.key ? t.q_key(f.key) : t[`q_${key}` as `q_devil_url`]
   return (
     <form ref={form} className="composer band tone setup-form" onSubmit={submit} noValidate>
       <div className="in meta attach-line">
@@ -294,7 +316,7 @@ export function SetupComposer() {
           ref={field}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={t[`p_${key}` as `p_devil_url`]}
+          placeholder={f.key ? t.p_key : t[`p_${key}` as `p_devil_url`]}
           aria-label={label}
           // Secret : masqué par le CSS plutôt que type=password là où c'est possible. Un champ mot de passe fait surgir le
           // gestionnaire de mots de passe d'iOS (« mot de passe fort » qui remplit le champ à ta place, trousseau) au

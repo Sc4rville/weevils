@@ -23,7 +23,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { Message } from '../shared/api.ts'
 import type { MachineFacts } from '../shared/infra.ts'
-import { CONTEXT_BLOCK, FIELDS, type Brick, type Device } from '../shared/setup.ts'
+import { CONTEXT_BLOCK, FIELDS, isSecretName, type Brick, type Device } from '../shared/setup.ts'
 import { BOSS, resetAuthors, authors } from './authors.ts'
 import { CODEX_DIR, CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL } from './config.ts'
 import { devilConfig } from './devil.ts'
@@ -602,6 +602,18 @@ export class Setup {
   }
   say = (text: string, once = false) => this.add('assistant', text, once)
   userSays = (text: string) => this.add('user', text)
+
+  /** Un secret demandé par un agent ([[setup:key:NOM]]) : écrit dans la config, jamais montré (pas même la fin) ni
+   * journalisé ; le fil dit seulement qu'il est enregistré. */
+  saveKey(name: string, value: string) {
+    const v = value.trim()
+    if (!isSecretName(name) || !v || v.length > 4096 || /[\r\n]/.test(v)) throw new Error(tr(M).badSecret)
+    writeConfig({ [name]: v })
+    this.userSays(`${name} : ••••`)
+    this.say(tr(M).keySaved(name))
+    console.log(`[setup] secret enregistré : ${name}`)
+    this.deps.bump()
+  }
 
   /** Un message de démo (premiers pas, server/tour.ts) : marqué démo dans l'app, jamais envoyé à weevboss. */
   demoSay(role: 'assistant' | 'orchestrator', text: string, demo: string, author?: string, devil?: boolean) {

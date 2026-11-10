@@ -2,12 +2,18 @@ import type { SessionStatus } from '../../shared/api.ts'
 import { tr } from '../i18n'
 import M from '../i18n/format'
 import S from '../i18n/setup'
-import { CHIP, isBrick, type Brick } from '../../shared/setup.ts'
+import { isBrick, isSecretName, type Brick } from '../../shared/setup.ts'
+
+/** Une puce : « [[setup:mail]] » (une brique) ou « [[setup:key:RUNPOD_API_KEY]] » (un secret demandé). */
+const ANY_CHIP = /\[\[setup:(?:key:([A-Z][A-Z0-9_]{1,63})|([a-z]+))\]\]/g
+/** Une puce dans la phrase : une brique, ou « key:NOM ». */
+export type ChipId = Brick | `key:${string}`
 
 /** Une puce de branchement écrite dans le texte de weevboss (« [[setup:mail]] »), par son libellé : « brancher le pont e-mail ». */
-export const chipLabel = (b: Brick): string => tr(S)[`chip_${b}`]
+export const chipLabel = (c: ChipId): string => (c.startsWith('key:') ? tr(S).keyChip(c.slice(4)) : tr(S)[`chip_${c as Brick}`])
 /** Le texte avec ses puces lues comme leur libellé (aperçus, copie) : la phrase reste lisible, jamais « via . ». */
-export const chipLabels = (text: string): string => text.replace(CHIP, (m, b: string) => (isBrick(b) ? chipLabel(b) : m))
+export const chipLabels = (text: string): string => text.replace(ANY_CHIP, (m, k: string | undefined, b: string | undefined) => chipOf(k, b) ? chipLabel(chipOf(k, b)!) : m)
+const chipOf = (k: string | undefined, b: string | undefined): ChipId | null => (k ? (isSecretName(k) ? `key:${k}` : null) : isBrick(b) ? b : null)
 
 /** Durée compacte, façon croquis : 12m, 1h36, 14h01, 2j (2d en anglais). */
 export function dur(ms: number): string {
@@ -65,7 +71,7 @@ export function plain(text: string, keep = false): string {
 }
 
 /** Morceau d'une ligne de texte : prose, lien, ou commande entre accents graves. */
-export type Inline = { kind: 'text'; s: string } | { kind: 'url'; href: string; label: string } | { kind: 'cmd'; s: string } | { kind: 'chip'; brick: Brick }
+export type Inline = { kind: 'text'; s: string } | { kind: 'url'; href: string; label: string } | { kind: 'cmd'; s: string } | { kind: 'chip'; brick: ChipId }
 
 /** Domaines nus reconnus sans https:// (« myaccount.google.com/… ») : seulement des extensions courantes, pour ne pas prendre « core.ts » pour un site. */
 const TLD = 'com|org|net|io|dev|app|tech|fr|ai|co|me|gg|xyz|eu|uk|de|be|ch|ca|us|tv|ly|cloud|site|page'
@@ -86,10 +92,11 @@ export function inline(text: string, code = true): Inline[] {
   // Les puces de branchement (« [[setup:mail]] ») d'abord, à leur place dans la phrase ; le reste comme avant.
   const out: Inline[] = []
   let last = 0
-  for (const m of text.matchAll(CHIP)) {
-    if (!isBrick(m[1])) continue
+  for (const m of text.matchAll(ANY_CHIP)) {
+    const c = chipOf(m[1], m[2])
+    if (!c) continue
     const i = m.index ?? 0
-    out.push(...inlineText(text.slice(last, i), code), { kind: 'chip', brick: m[1] })
+    out.push(...inlineText(text.slice(last, i), code), { kind: 'chip', brick: c })
     last = i + m[0].length
   }
   if (!last) return inlineText(text, code)

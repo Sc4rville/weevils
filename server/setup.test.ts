@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { chipsInPlace, splitChips } from '../shared/setup.ts'
 
 // Accueil et branchements (server/setup.ts) : puces, bloc de contexte, fichier de config, marche à suivre.
@@ -202,5 +202,47 @@ describe('test sessions never reach the real weevboss thread', async () => {
     // Tapé à la main dans un terminal pour vérifier que Claude répond : une vraie session, qui prévient.
     expect(isTestBrief('TEST')).toBe(false)
     expect(isTestBrief('[from:weevboss] TESTÉ hier, à reprendre')).toBe(false)
+  })
+})
+
+describe('[[setup:key:NOM]] : un secret demandé par un agent', async () => {
+  const { Setup } = await import('./setup.ts')
+  const { isSecretName } = await import('../shared/setup.ts')
+  const setup = new Setup({
+    bump: () => undefined,
+    feed: () => ({ machines: [{ id: 'box', name: 'box' }], projects: 0 }),
+    remoteFacts: async () => [],
+    devices: () => 1,
+    push: () => 0,
+    shortcut: () => false,
+    seen: () => [],
+    hasHistory: () => true,
+    startMail: () => undefined,
+    handoff: async () => undefined,
+  })
+  it('seulement des clés et des jetons, jamais un réglage de weevils', () => {
+    for (const ok of ['RUNPOD_API_KEY', 'STRIPE_API_KEY', 'HF_TOKEN', 'GITHUB_TOKEN']) expect(isSecretName(ok), ok).toBe(true)
+    for (const no of ['WEEVILS_MAIL_TOKEN', 'PATH', 'runpod_api_key', 'RUNPOD_KEY', 'LD_PRELOAD', 'X_API_KEY\nY', 'A'.repeat(60) + '_TOKEN']) expect(isSecretName(no), no).toBe(false)
+  })
+  it('la valeur va dans la config, jamais dans le fil ni dans le journal ; le fil confirme', () => {
+    const logs: string[] = []
+    const spy = vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => void logs.push(a.join(' ')))
+    const secret = 'rpa_S3CRETvalue0123456789'
+    setup.saveKey('RUNPOD_API_KEY', `  ${secret}  `)
+    spy.mockRestore()
+    expect(fs.readFileSync(cfg, 'utf8')).toContain(`RUNPOD_API_KEY=${secret}\n`)
+    expect(process.env.RUNPOD_API_KEY).toBe(secret)
+    const shown = setup.messages().map((m) => m.text).join('\n')
+    expect(shown).toContain('RUNPOD_API_KEY : ••••')
+    expect(shown).not.toContain(secret.slice(-4))
+    expect(logs.join('\n')).not.toContain(secret.slice(-4))
+    expect(logs.join('\n')).toContain('RUNPOD_API_KEY')
+  })
+  it('refuse un nom hors liste, une valeur vide ou sur plusieurs lignes', () => {
+    expect(() => setup.saveKey('WEEVILS_PORT_TOKEN', 'x')).toThrow()
+    expect(() => setup.saveKey('PATH', '/tmp')).toThrow()
+    expect(() => setup.saveKey('HF_TOKEN', '  ')).toThrow()
+    expect(() => setup.saveKey('HF_TOKEN', 'a\nEVIL=1')).toThrow()
+    expect(fs.readFileSync(cfg, 'utf8')).not.toMatch(/^(PATH|EVIL|HF_TOKEN)=/m)
   })
 })

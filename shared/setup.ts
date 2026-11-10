@@ -86,6 +86,12 @@ export type SetupKey = (typeof SETUP_KEYS)[number]
 export const isSetupKey = (s: unknown): s is SetupKey => typeof s === 'string' && ((SETUP_KEYS as readonly string[]).includes(s) || /^WEEVILS_AUTHOR_[A-Z0-9_]{1,32}$/.test(s))
 export const SECRET_KEYS: ReadonlySet<string> = new Set(['DEVIL_API_KEY', 'OPENAI_API_KEY', 'CARTESIA_API_KEY', 'WEEVILS_MAIL_PASSWORD'])
 
+/** « [[setup:key:RUNPOD_API_KEY]] » : un agent demande un secret à l'utilisateur. Un champ masqué s'ouvre ; la valeur va
+ * droit dans ~/.config/weevils/env, jamais dans le fil, le modèle ou les journaux. */
+export const KEY_CHIP = /\[\[setup:key:([A-Z][A-Z0-9_]{1,63})\]\]/g
+/** Seulement des clés et des jetons (…_API_KEY, …_TOKEN), jamais un réglage de weevils lui-même. */
+export const isSecretName = (s: unknown): s is string => typeof s === 'string' && s.length <= 64 && /^[A-Z][A-Z0-9_]*_(API_KEY|TOKEN)$/.test(s) && !s.startsWith('WEEVILS_')
+
 /** L'appareil d'où l'app est ouverte : l'accueil s'y adapte (QR sur ordinateur, écran d'accueil sur téléphone). */
 export interface Device {
   os: 'ios' | 'android' | 'mac' | 'windows' | 'linux' | 'other'

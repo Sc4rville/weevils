@@ -30,7 +30,7 @@ import { facts } from './discover.ts'
 import { Setup, installPlan, writeConfig } from './setup.ts'
 import { TourKeeper } from './tour.ts'
 import { DEMOS, isTourId } from '../shared/tour.ts'
-import { isBrick, isSetupKey, type Device } from '../shared/setup.ts'
+import { isBrick, isSecretName, isSetupKey, type Device } from '../shared/setup.ts'
 import { Memory, memoryRoutes } from './memory.ts'
 import { Flyers, weevilRoutes } from './weevil.ts'
 import { Optimizers, optimizerRoutes } from './optimizers.ts'
@@ -390,6 +390,13 @@ const routes: [string, RegExp, Handler][] = [
     if (!isBrick(b.brick) || typeof b.values !== 'object' || !b.values) return json(res, 400, { error: tr(S).badBrick })
     await setup.apply(b.brick, Object.fromEntries(Object.entries(b.values as Record<string, unknown>).map(([k, v]) => [k, String(v ?? '')])))
     json(res, 200, { ok: true, said: setup.lastSaid ?? undefined })
+  }],
+  // Un secret demandé par un agent : la valeur ne fait que passer (jamais renvoyée, jamais journalisée).
+  ['POST', /^\/api\/setup\/key$/, async (req, res) => {
+    const b = await readBody(req, 16 << 10)
+    if (!isSecretName(b.name) || typeof b.value !== 'string') return json(res, 400, { error: tr(S).badKey })
+    setup.saveKey(b.name, b.value)
+    json(res, 200, { ok: true })
   }],
   ['POST', /^\/api\/setup\/done$/, async (req, res) => {
     const b = await readBody(req)

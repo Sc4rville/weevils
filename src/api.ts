@@ -72,6 +72,8 @@ export const api = {
   setupWelcome: (device: Device) => call<{ ok: true }>('POST', '/api/setup/welcome', { device }),
   setupAsk: (brick: Brick, device: Device) => call<AskResult>('POST', '/api/setup/ask', { brick, device }),
   setupApply: (brick: Brick, values: Record<string, string>) => call<{ ok: true }>('POST', '/api/setup/apply', { brick, values }),
+  /** Un secret demandé par un agent ([[setup:key:NOM]]) : la valeur part au serveur, rien ne revient. */
+  setupKey: (name: string, value: string) => call<{ ok: true }>('POST', '/api/setup/key', { name, value }),
   setupDone: (brick: Brick) => call<{ ok: true }>('POST', '/api/setup/done', { brick }),
   tour: (mobile: boolean) => call<Tour>('GET', `/api/tour${mobile ? '?mobile=1' : ''}`),
   tourAct: (action: 'skip' | 'unskip' | 'done' | 'close' | 'open' | 'intro', id?: TourId) => call<Tour>('POST', '/api/tour', { action, id }),

@@ -3,8 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type F
 import { api } from '../api'
 import type { Author, Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
-import { chipLabel, chipLabels, dur, inline, isCommand, plain, segments, status, step, userText } from './format'
-import type { Brick } from '../../shared/setup.ts'
+import { chipLabel, chipLabels, type ChipId, dur, inline, isCommand, plain, segments, status, step, userText } from './format'
 import { copyText, useLongPress } from './copy'
 import { markSeen } from './hints'
 import { flash, reveal } from './follow'
@@ -545,9 +544,9 @@ export function CopyButton({ text }: { text: string }) {
 /** Texte de message : les URL deviennent des liens (navigateur), les `commandes` ont leur bouton copier. */
 /** Ce qu'une puce de branchement écrite dans un message devient à sa place : un bouton (fourni par le fil de weevboss),
  * sinon (null, ou hors de ce fil) son libellé, pour que la phrase reste lisible. */
-export const ChipSlot = createContext<((b: Brick) => ReactNode) | null>(null)
+export const ChipSlot = createContext<((b: ChipId) => ReactNode) | null>(null)
 
-function InlineChip({ brick }: { brick: Brick }) {
+function InlineChip({ brick }: { brick: ChipId }) {
   const slot = useContext(ChipSlot)
   return slot?.(brick) ?? <span className="chip-label">{chipLabel(brick)}</span>
 }
@@ -715,7 +714,7 @@ export function Messages({
   working?: boolean
   after?: (id: string) => ReactNode
   /** Une puce de branchement écrite dans le message id : son bouton, à sa place dans la phrase (null : son libellé). */
-  chip?: (brick: Brick, id: string) => ReactNode
+  chip?: (brick: ChipId, id: string) => ReactNode
   pendingLabel?: string
 }) {
   const t = useT(M)

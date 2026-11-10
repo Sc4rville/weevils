@@ -33,6 +33,7 @@ import { lang, tr } from './i18n.ts'
 import M from './i18n/setup.ts'
 import { Imap } from './imap.ts'
 import { mailConfig } from './mailbridge.ts'
+import type { Memory } from './memory.ts'
 import { quotas } from './usage.ts'
 
 const FILE = path.join(DATA_DIR, 'setup.json')
@@ -104,6 +105,10 @@ export interface SetupDeps {
   /** Confie un travail à weevboss : « text » s'affiche dans son fil comme venant de l'utilisateur, « brief » (la marche
    * à suivre exacte) l'accompagne dans le bloc ⟦weevils …⟧, jamais affiché. */
   handoff: (text: string, brief: string) => Promise<unknown>
+  /** Ce que weevils retient de l'utilisateur (server/memory.ts) : null sur une machine secondaire. */
+  memory?: () => Memory | null
+  /** La conversation de weevboss en cours (id de sa session Claude) : une nouvelle conversation reçoit le résumé de la mémoire. */
+  bossId?: () => string | null
 }
 
 interface Persisted {
@@ -118,6 +123,8 @@ interface Persisted {
   githubLogged?: boolean
   /** Un travail pour weevboss qui attend que Claude Code soit connecté (un VPS branché avant la connexion). */
   pending?: { text: string; brief: string }
+  /** La mémoire telle que weevboss l'a reçue en dernier (signature) et dans quelle conversation. */
+  memorySeen?: { sig: string; boss: string | null }
 }
 
 // ---------------------------------------------------------------- détection
@@ -539,7 +546,7 @@ export class Setup {
     this.p = (() => {
       try {
         const raw = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Partial<Persisted>
-        return { log: raw.log ?? [], marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, githubLogged: raw.githubLogged, pending: raw.pending }
+        return { log: raw.log ?? [], marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, githubLogged: raw.githubLogged, pending: raw.pending, memorySeen: raw.memorySeen }
       } catch {
         return { log: [], marks: {}, bossSeenAt: 0 }
       }
@@ -1196,6 +1203,7 @@ export class Setup {
   contextFor(brief?: string): string {
     const fresh = this.p.log.filter((m) => m.at > this.p.bossSeenAt && !m.demo)
     this.p.bossSeenAt = Date.now()
+    const memory = this.memoryNote()
     this.save()
     const parts: string[] = []
     if (fresh.length) {
@@ -1203,7 +1211,27 @@ export class Setup {
       parts.push(`shown in your thread since your last reply (written by weevils in your name, or the user's answers to a setup flow; secrets never shown): ${lines.join(' | ').slice(0, 2400)}`)
     }
     if (brief) parts.push(`the user tapped a setup button, here is exactly what to do: ${brief}`)
+    if (memory) parts.push(memory)
     return parts.length ? ` ⟦weevils — ${parts.join(' — ').replace(/⟧/g, ']')}⟧` : ''
+  }
+
+  /**
+   * Le résumé de la mémoire, au début d'une conversation de weevboss et quand elle a changé depuis qu'il l'a reçue ;
+   * rien sinon (pas à chaque message). La liste complète reste à portée : `weevils memory`.
+   */
+  private memoryNote(): string {
+    const m = this.deps.memory?.()
+    if (!m) return ''
+    const sig = m.signature()
+    const boss = this.deps.bossId?.() ?? null
+    const seen = this.p.memorySeen
+    // Une conversation dont on connaît l'id remplacée par une autre : il repart sans rien savoir.
+    const newConversation = !!(seen?.boss && boss && seen.boss !== boss)
+    this.p.memorySeen = { sig, boss: boss ?? seen?.boss ?? null }
+    if (!newConversation && seen && seen.sig === sig) return ''
+    const digest = m.digest()
+    if (!digest) return seen?.sig ? 'what weevils remembers about the user: nothing anymore (they cleared it)' : ''
+    return `what weevils remembers about the user (newest first; use it naturally when it helps, never recite it; full list with ids: weevils memory): ${digest.replace(/\n/g, ' ')}`
   }
 
   /** « weevils setup » : l'état de chaque brique, les gestes pas encore découverts, les astuces pas encore données. */

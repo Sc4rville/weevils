@@ -80,6 +80,8 @@ const setup = new Setup({
     mailBridge = ORCHESTRATOR ? startMailBridge(w, DATA_DIR) : null
   },
   handoff: (text, brief) => w.sendMain(text, brief),
+  memory: () => w.memory,
+  bossId: () => w.orchestratorId,
 })
 w.setup = setup
 const tour = new TourKeeper({

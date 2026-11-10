@@ -1,3 +1,4 @@
+import { NoticeClose } from './notice'
 // The top band's two words, « weevboss · pour toi », and the preview of the stream shown under them (docs/foryou.md §4.1).
 // Both only exist when the server sends snap.foryou: on an older server or a secondary machine the band is unchanged.
 import { AnimatePresence, motion } from 'motion/react'
@@ -92,7 +93,7 @@ const soft = { type: 'spring', stiffness: 160, damping: 26, mass: 1 } as const
 export function ForYouPeek() {
   const t = useT(M)
   const { snap, colors, push } = useApp()
-  const { items } = useForYou()
+  const { items, dismiss } = useForYou()
   const authorOf = useAuthors()
   const shown = items.slice(0, PEEK_ITEMS)
   const open = () => push({ kind: 'foryou' })
@@ -138,7 +139,7 @@ export function ForYouPeek() {
       className={scrolled ? 'fyt-peek fyt-scrolled' : 'fyt-peek'}
       style={fit ? { flex: 'none', height: fit } : undefined}
       onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 2 && e.currentTarget.scrollTop + e.currentTarget.clientHeight < e.currentTarget.scrollHeight - 2)}
-      role="button" tabIndex={0} aria-label={t.forYouOpen} onClick={open} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && open()}>
+      role="region" aria-label={t.forYouOpen} onClick={open}>
       <div ref={list} className="fyt-list">
         <AnimatePresence initial={false} mode="popLayout">
           {shown.map((item) => {
@@ -149,7 +150,7 @@ export function ForYouPeek() {
               <motion.div
                 key={item.id}
                 layout="position"
-                className={`fyt-item ${item.kind === 'alert' ? 'fyt-alert' : ''} ${item.seen ? '' : 'fyt-new'}`}
+                className={`fyt-item notice-shell ${item.kind === 'alert' ? 'fyt-alert' : ''} ${item.seen ? '' : 'fyt-new'}`}
                 data-fy={item.id}
                 style={itemSlot(item, colors, authorOf)}
                 initial={{ opacity: 0, y: -14 }}
@@ -157,7 +158,9 @@ export function ForYouPeek() {
                 exit={{ opacity: 0 }}
                 transition={soft}
               >
+                <NoticeClose about={item.title ?? item.text} onClose={() => void dismiss(item.id)} />
                 <div className="in">
+                  <button type="button" className="fyt-open" onClick={(e) => { e.stopPropagation(); open() }} aria-label={t.forYouOpen}>
                   {media &&
                     (media.type === 'image' ? (
                       <img className="fyt-thumb" src={media.url} alt="" loading="lazy" draggable={false} />
@@ -178,12 +181,13 @@ export function ForYouPeek() {
                     <span className="strong">{who}</span> {cards > 0 && <span className="fyt-n">+ {cards} </span>}
                     {lineOf(item)}
                   </span>
+                  </button>
                 </div>
               </motion.div>
             )
           })}
         </AnimatePresence>
-        {shown.length === 0 && <div className="in fyt-empty">{t.forYouEmpty}</div>}
+        {shown.length === 0 && <button type="button" className="in fyt-empty" onClick={open}>{t.forYouEmpty}</button>}
       </div>
     </motion.div>
   )

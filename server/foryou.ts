@@ -1,3 +1,4 @@
+import { canonicalAlertId, feedNoticeKey, quotaReset } from '../shared/notices.ts'
 // « For you »: the stream next to weevboss (docs/foryou.md, contract in shared/foryou.ts). Main machine only.
 //
 // Two sorts of items:
@@ -295,6 +296,7 @@ interface Stored {
   who: string
   projectId?: string
   sessionId?: string
+  eventId?: string
   tool?: Session['tool']
   title?: string
   text: string
@@ -499,7 +501,7 @@ export class ForYou {
   }
 
   private sessionItem(s: Session, over: Pick<Stored, 'tone' | 'text' | 'at'> & Partial<Stored>): Stored {
-    return { id: `s:${s.id}`, kind: 'session', who: 'session', projectId: s.projectId, sessionId: s.id, tool: s.tool, title: cleanTitle(s.title), reply: 'session', open: { page: 'session', id: s.id }, rec: this.now(), ...over }
+    return { id: `s:${s.id}`, kind: 'session', who: 'session', projectId: s.projectId, sessionId: s.id, tool: s.tool, ...(s.noticeId ? { eventId: s.noticeId } : {}), title: cleanTitle(s.title), reply: 'session', open: { page: 'session', id: s.id }, rec: this.now(), ...over }
   }
 
   /**
@@ -522,12 +524,12 @@ export class ForYou {
     const now = this.now()
     if (what === 'question') {
       const text = clip(collapse(s.attention ?? ''), TEXT_MAX)
-      if (cur?.tone === 'question' && cur.text === text) return false
+      if (cur?.tone === 'question' && cur.text === text && cur.eventId === s.noticeId) return false
       this.put(this.sessionItem(s, { tone: 'question', text, at: fromCore ? now : Math.min(now, s.lastActivityAt || now) }))
       return true
     }
     // The same episode while the session did nothing since it was written (its time may have been refined).
-    if (cur?.tone === 'alert' && s.lastActivityAt <= (cur.rec ?? cur.at) + 30_000) return false
+    if (cur?.tone === 'alert' && cur.eventId === s.noticeId && s.lastActivityAt <= (cur.rec ?? cur.at) + 30_000) return false
     this.put(this.sessionItem(s, { tone: 'alert', text: '', cut: s.interrupted?.reason ?? 'died', at: Math.min(now, s.interrupted?.at ?? now) }))
     return true
   }
@@ -806,6 +808,7 @@ export class ForYou {
     const out: ForYouItem = { id: i.id, kind: i.kind, tone: i.tone, at: i.at, who: i.who, text: i.text }
     if (i.projectId) out.projectId = i.projectId
     if (i.sessionId) out.sessionId = i.sessionId
+    if (i.eventId) out.eventId = i.eventId
     if (i.tool) out.tool = i.tool
     if (i.title) out.title = i.title
     if (i.body) out.body = i.body
@@ -901,7 +904,7 @@ export class ForYou {
       const other = tool === 'claude' ? 'codex' : 'claude'
       const o = this.usage?.[other]
       const spare = o?.ok && o.windows.length && o.windows.every((w) => w.percent < USAGE_ALERT) ? (other === 'claude' ? 'Claude' : 'Codex') : ''
-      raise(`usage:${tool}:${top.kind}:${top.label ?? ''}:${top.resetsAt ?? 0}`, t.usage(top.kind === 'model' ? '' : tool === 'claude' ? 'Claude' : 'Codex', name.trim(), Math.round(top.percent), spare), { page: 'usage' })
+      raise(`usage:${tool}:${top.kind}:${top.label ?? ''}:${quotaReset(top.resetsAt ?? 0)}`, t.usage(top.kind === 'model' ? '' : tool === 'claude' ? 'Claude' : 'Codex', name.trim(), Math.round(top.percent), spare), { page: 'usage' })
     }
     for (const m of this.machines) {
       if ((this.hot.get(m.id) ?? 0) >= HOT_SAMPLES) raise(`machine:${m.id}`, t.saturated(m.name), { page: 'machine' })
@@ -946,6 +949,11 @@ export class ForYou {
     if (cards.length) items.push({ id: 'proposals', kind: 'proposals', tone: 'neutral', at: 0, who: 'weevils', text: tr(M).proposals(cards.length), cards, live: true })
     const out: ForYouItem[] = []
     for (const i of items) {
+      // Migrate earlier raw API reset timestamps: a few milliseconds must never revive a closed quota event.
+      if (!this.s.live[i.id] && i.id.startsWith('alert:usage:')) {
+        const old = Object.keys(this.s.live).find((key) => key !== i.id && canonicalAlertId(key) === i.id)
+        if (old) { this.s.live[i.id] = this.s.live[old]; delete this.s.live[old] }
+      }
       const st = (this.s.live[i.id] ??= { at: now, last: now })
       st.last = now
       if (i.cards) {
@@ -1083,9 +1091,14 @@ export class ForYou {
     if (any) this.changed()
   }
 
-  dismiss(id: string): boolean {
+  dismiss(id: string, eventId?: string): boolean {
     const i = this.get(id)
     const st = this.s.live[id]
+    if (eventId) {
+      const current = i ? this.view({ ...i, gone: false }, this.w.snapshot(), true) : this.live(this.w.snapshot(), this.now()).find((item) => item.id === id)
+      // A late click on yesterday's notification must not dismiss a newer turn of that session.
+      if (current && feedNoticeKey(current) !== eventId) return true
+    }
     if (i) i.gone = true
     else if (st) st.gone = true
     else return false
@@ -1226,8 +1239,9 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
       if (!fy.shelf) return json(res, 404, { error: tr(M).noMedia })
       fy.shelf.serve(req, res, mid)
     }]),
-    ['POST', /^\/api\/foryou\/([^/]+)\/dismiss$/, (_req, res, _u, [raw]) => {
-      const ok = fy.dismiss(id(raw))
+    ['POST', /^\/api\/foryou\/([^/]+)\/dismiss$/, async (req, res, _u, [raw]) => {
+      const b = await readBody(req)
+      const ok = fy.dismiss(id(raw), typeof b?.eventId === 'string' ? b.eventId : undefined)
       json(res, ok ? 200 : 404, ok ? { ok } : { error: tr(M).notFound })
     }],
     ['POST', /^\/api\/foryou\/([^/]+)\/act$/, async (req, res, url, [raw]) => {

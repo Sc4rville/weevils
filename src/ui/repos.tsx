@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import type { GithubRepo } from '../../shared/api.ts'
 import { api } from '../api'
@@ -125,11 +127,11 @@ export function ReposPage() {
         </Line>
       )}
       {err && (
-        <div ref={errBand} className="band invert" role="alert">
+        <Notice eventId={noticeKey('error:repos', location.pathname, location.hash, err)} ref={errBand} className="band invert" role="alert">
           <div className="in meta" style={{ paddingBlock: 12 }}>
             ! {err}
           </div>
-        </div>
+        </Notice>
       )}
       <form className="band tone" onSubmit={create}>
         <div className="in repo-new">

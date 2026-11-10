@@ -214,3 +214,8 @@
     animation: none;
   }
 }
+
+.fyt-open { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; text-align: left; font: inherit; }
+.fyt-item.notice-shell { min-height: 44px; }
+.fyt-item.notice-shell > .in { min-height: 44px; }
+.fyt-item .notice-close { top: 0; }

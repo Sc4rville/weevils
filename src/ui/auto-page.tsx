@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 // The page of one automation: a band that fills until it fires (and through its run), the same six facts for every
 // automation, what it produced (newest first, the newest unfolded), and the talk that defines it. And the page of one
 // run: everything that run wrote and left.
@@ -244,7 +246,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
       }
     >
       {proposed && opt && !opt.draft && (
-        <div className="band invert auto-decide">
+        <Notice eventId={noticeKey("proposal", opt.id)} className="band invert auto-decide">
           <Line
             ch="✓"
             go={null}
@@ -259,7 +261,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
           <Line ch="×" go={null} label={t.refuse(x.title)} onClick={() => k.answer(opt, false) && back()}>
             {t.refuseIt}
           </Line>
-        </div>
+        </Notice>
       )}
 
       {!opt?.draft && (

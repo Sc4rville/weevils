@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice, useNotice } from './notice'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { api } from '../api'
@@ -305,6 +307,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
     }
   }
 
+  const { hidden: errorHidden } = useNotice(noticeKey('error:voice', err))
   const label = phase === 'idle' ? t.dictate : phase === 'rec' ? t.stopAndTranscribe : phase === 'wait' ? t.sendWhenReady : t.send
   return (
     <div className="voice">
@@ -312,8 +315,8 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
         <WeevbossLogo className="voice-svg" />
       </button>
       <AnimatePresence>
-        {err && (
-          <motion.span
+        {err && !errorHidden && (
+          <motion.div
             key={err}
             className="voice-err"
             role="status"
@@ -322,9 +325,8 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
             exit={{ opacity: 0, rotate: -8, y: -4 }}
             transition={{ duration: 0.35, ease: 'easeOut' }}
           >
-            <span aria-hidden>! </span>
-            {err}
-          </motion.span>
+            <Notice eventId={noticeKey("error:voice", err)} className="voice-error-notice" role="status"><span aria-hidden>! </span>{err}</Notice>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 import { useEffect, useState } from 'react'
 import type { SessionSettings, Tool } from '../../shared/api.ts'
 import { tr, useT } from '../i18n'
@@ -122,9 +124,9 @@ export function Settings({
     <div className="settings">
       {id === '__main' && <VoicePicker userName={userName ?? ''} />}
       {err && (
-        <div className="in meta" role="alert">
+        <Notice eventId={noticeKey('error:settings', location.pathname, location.hash, err)} className="in meta" role="alert">
           ! {err}
-        </div>
+        </Notice>
       )}
       {tool === 'claude' ? (
         <>

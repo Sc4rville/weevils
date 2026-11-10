@@ -1,3 +1,6 @@
+import { noticeKey, quotaReset } from '../../shared/notices.ts'
+import { Notice, useNotices } from './notice'
+import { isNoticeDismissed } from './notice-store'
 import { useEffect, useState } from 'react'
 import type { RelayMode, RelayPlan, Session } from '../../shared/api.ts'
 import { api } from '../api'
@@ -47,7 +50,7 @@ export function RelayBand() {
   const coming = r.plans.filter((p) => p.state === 'preparing').length
   if (!status && !todo && !coming) return null
   return (
-    <section className="band relay-band" aria-label={t.title}>
+    <Notice eventId={noticeKey("relay", r.limit?.since, r.limit?.window, quotaReset(r.limit?.until ?? 0), r.limit ? null : r.plans.map((p) => [p.sessionId, p.at]))} className="band relay-band" aria-label={t.title}>
       <button className="relay-band-row" onClick={() => push({ kind: 'relay' })}>
         <span className="in">
           <span aria-hidden>⇄</span>
@@ -55,7 +58,7 @@ export function RelayBand() {
           <span aria-hidden>→</span>
         </span>
       </button>
-    </section>
+    </Notice>
   )
 }
 
@@ -86,7 +89,7 @@ export function PlanCard({ plan, bare, onError }: { plan: RelayPlan; bare?: bool
   const decidable = canDecide && (plan.state === 'ready' || plan.state === 'failed' || plan.state === 'preparing')
   const project = snap.projects.find((p) => p.id === plan.projectId)?.name ?? plan.projectId
   return (
-    <div className="msg band relay-plan" role="group" aria-label={t.planAria(plan.title)}>
+    <Notice eventId={noticeKey("relay-plan", plan.sessionId, plan.at)} className="msg band relay-plan" role="group" aria-label={t.planAria(plan.title)}>
       <div className="in">
         {!bare && (
           <button className="link relay-plan-title" onClick={() => push({ kind: 'session', id: plan.sessionId })}>
@@ -105,7 +108,7 @@ export function PlanCard({ plan, bare, onError }: { plan: RelayPlan; bare?: bool
             <Prose text={plan.text} />
           </div>
         )}
-        {(err ?? plan.error) && <div className="text meta">{err ?? plan.error}</div>}
+        {(err ?? plan.error) && <Notice eventId={noticeKey("error:relay-plan", plan.sessionId, err ?? plan.error)} className="text meta" role="alert">{err ?? plan.error}</Notice>}
         {decidable && (
           <div className="cut-actions">
             <button className="resume" disabled={!!busy || plan.state === 'preparing'} onClick={() => act('go')}>
@@ -148,14 +151,15 @@ export function PlanCard({ plan, bare, onError }: { plan: RelayPlan; bare?: bool
           </div>
         )}
       </div>
-    </div>
+    </Notice>
   )
 }
 
 /** The plans that wait for a decision, under weevboss' thread. */
 export function ThreadPlans() {
+  useNotices()
   const { snap } = useApp()
-  const list = open(snap.relay?.plans ?? [])
+  const list = open(snap.relay?.plans ?? []).filter((p) => !isNoticeDismissed(noticeKey("relay-plan", p.sessionId, p.at)))
   if (snap.relay?.mode !== 'ask' || !list.length) return null
   return (
     <div className="relay-thread">
@@ -168,10 +172,11 @@ export function ThreadPlans() {
 }
 
 function AllActions({ plans }: { plans: RelayPlan[] }) {
+  useNotices()
   const { snap } = useApp()
   const t = useT(M)
   const [busy, setBusy] = useState(false)
-  const ready = plans.filter((p) => p.state === 'ready' || p.state === 'failed')
+  const ready = plans.filter((p) => !isNoticeDismissed(noticeKey('relay-plan', p.sessionId, p.at)) && (p.state === 'ready' || p.state === 'failed'))
   if (snap.relay?.mode !== 'ask' || ready.length < 2) return null
   const all = (action: 'go' | 'wait') => {
     setBusy(true)
@@ -208,7 +213,7 @@ export function RelayPage() {
       <div className="ipage relay-page">
         <div className="in relay-status">{status ?? t.idle}</div>
         {r && !r.codex && <div className="in meta">{t.noCodex}</div>}
-        {err && <div className="in meta">{err}</div>}
+        {err && <Notice eventId={noticeKey("error:relay-setting", err)} className="in meta" role="alert">{err}</Notice>}
         {plans.length > 0 && <div className="in label">{t.plans}</div>}
         <AllActions plans={plans} />
         {plans.map((p) => (

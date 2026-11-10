@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { FsListing, InfraDetail, InfraPoint, Level, QuotaInfo, QuotaWindow, UsageInfo, UsageToday } from '../../shared/infra.ts'
 import { api, type FileContent } from '../api'
@@ -161,11 +163,11 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
           </div>
         )}
         {err && (!x || stale) && (
-          <div className="band invert" role="alert">
+          <Notice eventId={noticeKey('error:infra', location.pathname, location.hash, err)} className="band invert" role="alert">
             <div className="in meta" style={{ paddingBlock: 12 }}>
               ! {err}
             </div>
-          </div>
+          </Notice>
         )}
         {x && f && !(stale && err) && (
           <div className={`mx-detail ${stale ? 'stale' : ''}`} aria-busy={stale}>
@@ -314,11 +316,11 @@ export function FsPage({ machine, path }: { machine: string; path: string }) {
           </div>
         )}
         {(err || l?.error) && (
-          <div className="band invert" role="alert">
+          <Notice eventId={noticeKey('error:infra', location.pathname, location.hash, err ?? l?.error)} className="band invert" role="alert">
             <div className="in meta" style={{ paddingBlock: 12 }}>
               ! {err ?? l?.error}
             </div>
-          </div>
+          </Notice>
         )}
         {l && here === '/' && (
           <Line ch="/" meta={l.home} onClick={() => push({ kind: 'fs', machine, path: l.home })}>
@@ -380,7 +382,7 @@ function Quota({ name, q }: { name: string; q: QuotaInfo | undefined }) {
         {q?.plan ? ` · ${q.plan}` : ''}
       </div>
       {!q && <div className="in meta empty">…</div>}
-      {q && !q.ok && <div className="in meta empty">! {q.error ?? t.unavailable}</div>}
+      {q && !q.ok && <Notice eventId={noticeKey("error:usage", q.error ?? t.unavailable)} className="in meta empty" role="alert">! {q.error ?? t.unavailable}</Notice>}
       {q?.windows.map((w) => (
         <div key={`${w.kind}${w.label ?? ''}`} className={`in stat ${w.kind === 'model' ? 'minor' : ''}`}>
           <div className="stat-h">

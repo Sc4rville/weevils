@@ -1,3 +1,5 @@
+import { sessionNoticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 import { useEffect, useState } from 'react'
 import type { Session } from '../../shared/api.ts'
 import { api } from '../api'
@@ -18,7 +20,7 @@ export function SessionQuestion({ session: s, onError }: { session: Session; onE
     catch (e) { setBusy(false); onError((e as Error).message) }
   }
   return (
-    <div className="msg band tone ask">
+    <Notice eventId={sessionNoticeKey(s)} about={s.title} className="msg band tone ask">
       <div className="in">
         <span className="who">! {t.asks(s.tool)}</span>
         <div className="text">{s.ask?.text ?? s.attention ?? t.waitingForYou}</div>
@@ -26,6 +28,6 @@ export function SessionQuestion({ session: s, onError }: { session: Session; onE
           <button key={choice.id} disabled={busy} className="choice-band" onClick={() => void choose(choice.id)}>{choice.label}</button>
         ))}
       </div>
-    </div>
+    </Notice>
   )
 }

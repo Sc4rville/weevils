@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 import { useReducedMotion } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent, type RefObject } from 'react'
 import type { Phase, Progress, Software } from '../../shared/softwares.ts'
@@ -255,11 +257,11 @@ function PhaseFix({ progress, onFix, onReset }: { progress: Progress; onFix: (p:
 
 function ErrorBand({ text }: { text: string }) {
   return (
-    <div className="band invert" role="alert">
+    <Notice eventId={noticeKey('error:softwares', location.pathname, location.hash, text)} className="band invert" role="alert">
       <div className="in meta" style={{ paddingBlock: 12 }}>
         ! {text}
       </div>
-    </div>
+    </Notice>
   )
 }
 

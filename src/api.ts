@@ -102,7 +102,7 @@ export const api = {
   /** « Pour toi » (shared/foryou.ts) : le flux, puis ce qu'on y fait. */
   foryou: () => call<ForYouFeed>('GET', `/api/foryou${inLang()}`),
   foryouSeen: (ids: string[]) => call<{ ok: true }>('POST', '/api/foryou/seen', { ids }),
-  foryouDismiss: (id: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/dismiss`, {}),
+  foryouDismiss: (id: string, eventId?: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/dismiss`, { eventId }),
   foryouAct: (id: string, action: string, card?: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/act${inLang()}`, { action, card }),
   foryouReply: (id: string, text: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/reply${inLang()}`, { text }),
   foryouMore: (id: string) => call<{ text: string }>('POST', `/api/foryou/${enc(id)}/more${inLang()}`, {}),

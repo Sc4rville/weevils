@@ -200,7 +200,7 @@ describe('for you store', () => {
     expect(fy.leaving('p')).toBe(1)
   })
 
-  it('dismiss: gone at once and for good; back with the error on failure', async () => {
+  it('dismiss: stays hidden locally even if the server is temporarily unreachable', async () => {
     await serve(1, [item({ id: 'a' }), item({ id: 'b' })])
     await act(() => fy.dismiss('a'))
     expect(srv.calls).toContain('dismiss a')
@@ -210,8 +210,18 @@ describe('for you store', () => {
     expect(ids()).toEqual(['b'])
     srv.fail = 'dismiss'
     await act(() => fy.dismiss('b'))
-    expect(ids()).toEqual(['b'])
+    expect(ids()).toEqual([])
     expect(fy.error('b')).toBe('nope')
+  })
+
+  it('a closed event stays closed on reconnect; a new event of the same session is visible', async () => {
+    await serve(1, [item({ id: 's:one', eventId: 'question-one' })])
+    await act(() => fy.dismiss('s:one'))
+    expect(ids()).toEqual([])
+    await serve(2, [item({ id: 's:one', eventId: 'question-one', text: 'refined wording' })])
+    expect(ids()).toEqual([])
+    await serve(3, [item({ id: 's:one', eventId: 'question-two' })])
+    expect(ids()).toEqual(['s:one'])
   })
 
   it('says which way a leaving item goes and what was done: launched or sent to the right, refused or dismissed to the left', async () => {

@@ -1,3 +1,5 @@
+import { feedNoticeKey, noticeKey } from '../../shared/notices.ts'
+import { Notice, NoticeClose, useNotice } from './notice'
 // « Pour toi » : the stream next to weevboss, full screen. Every item is a full-width band in its own colour
 // (project, author, weevboss, or the colour of what it says: done, asks, cut), one renderer per kind (docs/foryou.md §2.1).
 import { AnimatePresence, motion, useIsPresent, useReducedMotion, type PanInfo, type Variants } from 'motion/react'
@@ -314,9 +316,9 @@ function ReplyLine({ item, who, fy }: { item: ForYouItem; who: string; fy: ForYo
         </button>
       </div>
       {err && (
-        <div className="in meta fy-reply-err" role="alert">
+        <Notice eventId={noticeKey('error:foryou', location.pathname, location.hash, err)} className="in meta fy-reply-err" role="alert">
           ! {err}
-        </div>
+        </Notice>
       )}
     </form>
   )
@@ -622,15 +624,10 @@ function SessionItem({ item, who, project, fy }: KindProps) {
 // Improve (the one place colour goes wild), alert (sober), insight (a page you learn from), milestone, stat.
 
 function ImproveItem({ item, who, fy }: KindProps) {
-  const t = useT(M)
   return (
     <>
       <div className="in fy-pad">
-        <Who item={item} who={who}>
-          <button className="fy-x" onClick={() => void fy.dismiss(item.id)} aria-label={t.dismiss(item.title ?? item.text.slice(0, 60))}>
-            <Icon name="close" />
-          </button>
-        </Who>
+        <Who item={item} who={who} />
         {item.title && <div className="fy-title">{item.title}</div>}
         <div className="fy-text fy-lead">{item.text}</div>
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
@@ -711,9 +708,9 @@ function InsightItem({ item, who, project, fy }: KindProps) {
         </button>
       )}
       {err && (
-        <div className="meta" role="alert">
+        <Notice eventId={noticeKey('error:foryou', location.pathname, location.hash, err)} className="meta" role="alert">
           ! {err}
-        </div>
+        </Notice>
       )}
     </div>
   )
@@ -766,6 +763,7 @@ const oneLine = (item: ForYouItem) => (item.kind === 'proposals' ? (item.cards?.
 /** One item of the stream. compact: a thin strip (speaker · one line), nothing to tap inside. */
 export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: boolean }) {
   const fy = useForYou()
+  const { hidden, dismiss } = useNotice(feedNoticeKey(item))
   const { colors, snap } = useApp()
   const authors = useAuthors()
   const project = item.projectId ? snap.projects.find((p) => p.id === item.projectId)?.name : undefined
@@ -781,9 +779,11 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
     return () => clearTimeout(timer)
   }, [compact, item.id, item.seen, inView, markSeen])
 
+  if (hidden) return null
   if (compact) {
     return (
-      <div className={`${bandClass(item)} fy-strip`} style={style} data-fy={item.id}>
+      <div className={`${bandClass(item)} fy-strip notice-shell`} style={style} data-fy={item.id}>
+        <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />
         <div className="in fy-strip-in">
           <span className="dot fy-dot" aria-hidden />
           {item.kind === 'proposals' && (
@@ -800,12 +800,13 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
   const Kind = KINDS[item.kind]
   const err = fy.error(item.id)
   return (
-    <article ref={band} className={`${bandClass(item)} fy-item${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-kind={item.kind}>
+    <article ref={band} className={`${bandClass(item)} fy-item notice-shell${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-kind={item.kind}>
+      <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />
       {Kind && <Kind item={item} who={who} project={project} inView={inView} fy={fy} />}
       {err && (
-        <div className="fy-err" role="alert">
+        <Notice eventId={noticeKey('error:foryou', location.pathname, location.hash, err)} className="fy-err" role="alert">
           <div className="in meta">! {err}</div>
-        </div>
+        </Notice>
       )}
     </article>
   )
@@ -1050,6 +1051,7 @@ export function ForYouPage({ who }: { who?: string }) {
       <div ref={body} className="page-body fy-body" data-scroll onScroll={(e) => setReading(e.currentTarget.scrollTop > 48)}>
         <AnimatePresence initial={false}>
           {fy.fresh > 0 && (
+            <Notice key="fresh-notice" eventId={noticeKey('fresh-items', fy.feed?.items.map(feedNoticeKey))}>
             <motion.button
               key="fresh"
               className="band invert fy-fresh"
@@ -1066,6 +1068,7 @@ export function ForYouPage({ who }: { who?: string }) {
                 <Icon name="arrow" /> {t.fresh(fy.fresh)}
               </span>
             </motion.button>
+            </Notice>
           )}
         </AnimatePresence>
         {fy.feed && <ForYouPulse pulse={fy.feed.pulse} />}

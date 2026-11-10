@@ -1,3 +1,4 @@
+import { feedNoticeKey } from '../shared/notices.ts'
 // The « for you » stream: the store (cap, age, one item per session, what never enters), mail privacy, posts and their
 // buttons, replies, media, live alerts and proposals, seen / dismissed across a restart, the order (arrange) and who
 // may post. No server, no model: the host (Weevils) is a plain object.
@@ -1012,5 +1013,55 @@ describe('useful spoken ideas', () => {
     snap.optimizers = []
     expect(find(fy, 'auto:proposed:o1')).toBeUndefined()
     expect(find(make(), 'auto:proposed:draft')).toBeUndefined()
+  })
+})
+
+describe('dismissed notification events', () => {
+  it('a late close of the previous question cannot hide a new question of the same session', () => {
+    const fy = make()
+    const first = session({ status: 'needs_user', noticeId: 'question-one', attention: 'First?' })
+    snap.sessions = [first]
+    fy.sessionTurn(first, 'question')
+    const old = find(fy, 's:s1')!
+    const second = { ...first, noticeId: 'question-two', attention: 'Second?' }
+    snap.sessions = [second]
+    fy.sessionTurn(second, 'question')
+    expect(fy.dismiss('s:s1', feedNoticeKey(old))).toBe(true)
+    expect(find(fy, 's:s1')).toMatchObject({ eventId: 'question-two', text: 'Second?' })
+    fy.dismiss('s:s1', 'question-two')
+    fy.sessionTurn({ ...second, lastActivityAt: now + 1000 }, 'question')
+    expect(find(fy, 's:s1')).toBeUndefined()
+    const again = make()
+    expect(find(again, 's:s1')).toBeUndefined()
+    const third = { ...second, noticeId: 'question-three', attention: 'Second?' }
+    snap.sessions = [third]
+    again.sessionTurn(third, 'question')
+    expect(find(again, 's:s1')).toMatchObject({ eventId: 'question-three' })
+    expect(host.send).not.toHaveBeenCalled()
+    expect(host.close).not.toHaveBeenCalled()
+    expect(host.resume).not.toHaveBeenCalled()
+  })
+  it('quota dismissal survives API timestamp jitter and restart; a genuinely new window can notify', async () => {
+    const u: UsageInfo = { claude: { ok: true, source: 'test', at: now, windows: [{ kind: 'week', percent: 98, resetsAt: T0 + HOUR - 12 }] }, codex: { ok: false, source: 'test', at: now, windows: [] } }
+    const fy = make({ quotas: async () => u })
+    fy.feed(); await flush()
+    const first = fy.feed().items.find((i) => i.kind === 'alert')!
+    fy.dismiss(first.id, feedNoticeKey(first))
+    u.claude.windows[0].resetsAt! += 31
+    now += REFRESH_MS + 1
+    fy.feed(); await flush()
+    expect(fy.feed().items.filter((i) => i.kind === 'alert')).toEqual([])
+    // A dismissal written by an older server used the raw (jittering) timestamp in its id.
+    const saved = JSON.parse(fs.readFileSync(fy.file, 'utf8'))
+    saved.live[first.id.replace(/:\d+$/, `:${T0 + HOUR + 19}`)] = saved.live[first.id]
+    delete saved.live[first.id]
+    fs.writeFileSync(fy.file, JSON.stringify(saved))
+    const again = make({ quotas: async () => u })
+    again.feed(); await flush()
+    expect(again.feed().items.filter((i) => i.kind === 'alert')).toEqual([])
+    u.claude.windows[0].resetsAt! += 7 * 24 * HOUR
+    now += REFRESH_MS + 1
+    again.feed(); await flush()
+    expect(again.feed().items.filter((i) => i.kind === 'alert')).toHaveLength(1)
   })
 })

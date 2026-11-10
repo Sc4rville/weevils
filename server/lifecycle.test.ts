@@ -670,3 +670,18 @@ describe('unknown foreign panes and live composers', () => {
     expect(mux.sendKey).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('stable question notification identity', () => {
+  it('background activity and wording refinement keep one event, a new user turn creates another', () => {
+    const t = add(transcript({ messages: [{ id: 'u1', role: 'user', text: 'work', at: NOW - MIN }, { id: 'a1', role: 'assistant', text: 'Which color?', at: NOW - MIN }] }))
+    w.panes = [pane()]
+    const first = one()!
+    expect(first.status).toBe('needs_user')
+    expect(first.noticeId).toBeTruthy()
+    t.lastActivityAt = NOW
+    t.messages[1].text = 'Which color would you prefer?'
+    expect(one()?.noticeId).toBe(first.noticeId)
+    t.messages.push({ id: 'u2', role: 'user', text: 'another task', at: NOW }, { id: 'a2', role: 'assistant', text: 'Which color?', at: NOW })
+    expect(one()?.noticeId).not.toBe(first.noticeId)
+  })
+})

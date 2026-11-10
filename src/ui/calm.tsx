@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 import { motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type TouchEvent } from 'react'
 import type { Message, SessionDetail } from '../../shared/api.ts'
@@ -207,9 +209,9 @@ export function CalmConv({ id }: { id: string }) {
         <div className="page-main">
           <div ref={body} className="page-body" data-scroll>
             {err && (
-              <div className="in meta" role="alert">
+              <Notice eventId={noticeKey('error:calm', location.pathname, location.hash, err)} className="in meta" role="alert">
                 ! {err}
-              </div>
+              </Notice>
             )}
             <Messages messages={messages} author={author} working={!!working} />
             {working && <Working author={author} since={s?.workStartedAt} />}

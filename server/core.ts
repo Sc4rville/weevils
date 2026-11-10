@@ -1,3 +1,4 @@
+import { noticeKey } from '../shared/notices.ts'
 // Le cœur de weevilsd : transcripts + hooks + panes zellij → sessions, projets, H24, agent principal.
 
 import { execFile } from 'node:child_process'
@@ -814,6 +815,10 @@ export class Weevils {
     const relayOf = t.tool === 'codex' ? this.relay?.relayOf(t.id, pane?.name) : undefined
     const relayedBy = t.tool === 'claude' ? this.relay?.relayedBy(t.id) : undefined
     const relayTitle = relayOf && !t.customTitle ? (this.titles.get(relayOf)?.title ?? (this.store.get(relayOf) ? titleOf(this.store.get(relayOf)!) : undefined)) : undefined
+    const userTurn = t.messages.findLast((m) => m.role === 'user' || m.role === 'orchestrator')?.id ?? t.openedAt
+    const source = pane?.screenDialog ? t.messages.findLast((m) => m.role === 'event')?.id : t.messages.findLast((m) => m.role === 'assistant')?.id
+    const noticeId = status === 'needs_user' ? noticeKey('question', t.id, userTurn, source ?? [attention, pane?.screenDialog?.options.map((o) => o.id)])
+      : status === 'interrupted' ? noticeKey('cut', t.id, userTurn) : undefined
     return {
       id: t.id,
       projectId: where.projectId,
@@ -825,6 +830,7 @@ export class Weevils {
       // En attendant l'activité réécrite : le dernier pas de l'agent (outil) plutôt que l'ancienne tâche.
       now: shortNow(this.titles.get(t.id)?.now || (t.phase === 'working' || pane?.screenWorking ? stepOf(t) : '')) || undefined,
       status,
+      ...(noticeId ? { noticeId } : {}),
       attention: status === 'needs_user' ? attention : undefined,
       ...(status === 'needs_user' && pane?.screenDialog ? { choices: pane.screenDialog.options } : {}),
       ...(ask && status === 'needs_user' ? { ask } : {}),

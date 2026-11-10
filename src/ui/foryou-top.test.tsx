@@ -17,6 +17,7 @@ vi.mock('../api', () => ({
       return net.feed
     },
     foryouSeen: async () => ({ ok: true }),
+    foryouDismiss: async () => ({ ok: true }),
     setupKey: async () => ({ ok: true, said: 'm1' }),
   },
 }))
@@ -86,9 +87,11 @@ function render(s: Snapshot, node: React.ReactNode) {
 const flush = () => act(() => new Promise((r) => setTimeout(r, 20)))
 
 // Strips come and go: without Web Animations, motion plays them in JS (happy-dom rejects the cancelled ones).
+const { MotionGlobalConfig } = await import('motion/react')
+const previousSkip = MotionGlobalConfig.skipAnimations
 const animate = Element.prototype.animate
-beforeAll(() => void ((Element.prototype as { animate?: unknown }).animate = undefined))
-afterAll(() => void (Element.prototype.animate = animate))
+beforeAll(() => { (Element.prototype as { animate?: unknown }).animate = undefined; MotionGlobalConfig.skipAnimations = true })
+afterAll(() => { Element.prototype.animate = animate; MotionGlobalConfig.skipAnimations = previousSkip })
 
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -241,16 +244,18 @@ describe('l’aperçu de « pour toi »', () => {
     expect(img.classList.contains('fyt-alert')).toBe(false)
   })
 
-  it('un tap n’importe où ouvre le flux en plein écran', async () => {
-    net.feed = feedOf([item('a')])
-    render(snap({ rev: 1, unseen: 1 }), <ForYouPeek />)
+  it('each strip opens the stream; its independent close does not navigate', async () => {
+    net.feed = feedOf([item('a'), item('b')])
+    render(snap({ rev: 1, unseen: 2 }), <ForYouPeek />)
     await flush()
-    await act(async () => host.querySelector<HTMLElement>('.fyt-item')!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('.fyt-open')!.click())
     expect(pushed).toEqual([{ kind: 'foryou' }])
-    const box = host.querySelector<HTMLElement>('.fyt-peek')!
-    expect(box.getAttribute('role')).toBe('button')
-    await act(async () => void box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
-    expect(pushed.length).toBe(2)
+    await act(async () => host.querySelector<HTMLButtonElement>('.notice-close')!.click())
+    await flush()
+    expect(pushed).toHaveLength(1)
+    expect(host.querySelector('[data-fy="a"]')).toBeNull()
+    expect(host.querySelector('[data-fy="b"]')).not.toBeNull()
+    expect(host.querySelector('.fyt-peek')?.getAttribute('role')).toBe('region')
   })
 
   it('un nouvel item arrive en tête sans démonter ceux qui sont là', async () => {

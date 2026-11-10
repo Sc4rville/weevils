@@ -1,3 +1,5 @@
+import { noticeKey, sessionNoticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
@@ -88,11 +90,11 @@ function Missing({ text }: { text?: string }) {
 
 function ErrorBand({ text }: { text: string }) {
   return (
-    <div className="band invert" role="alert">
+    <Notice eventId={noticeKey("page-error", location.pathname, text)} className="band invert" role="alert">
       <div className="in meta" style={{ paddingBlock: 12 }}>
         ! {text}
       </div>
-    </div>
+    </Notice>
   )
 }
 
@@ -287,7 +289,7 @@ function SessionPage({ id }: { id: string }) {
         <SessionRelay session={s} onError={setErr} />
 
         {s.status === 'interrupted' && (
-          <div className="msg band cut-band">
+          <Notice eventId={sessionNoticeKey(s)} about={s.title} className="msg band cut-band">
             <div className="in">
               <span className="who">
                 × {st.label}
@@ -301,7 +303,7 @@ function SessionPage({ id }: { id: string }) {
                 </button>
               </div>
             </div>
-          </div>
+          </Notice>
         )}
         </>
       )}

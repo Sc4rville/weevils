@@ -1,3 +1,5 @@
+import { feedNoticeKey } from '../../shared/notices.ts'
+import { dismissNotice, isNoticeDismissed, subscribeNotices, resetNotices } from './notice-store'
 // « Pour toi » : one store for the whole app (the top band's preview and the full-screen page read the same stream,
 // fetched once). It refetches GET /api/foryou when the snapshot's revision changes, and never calls the api when the
 // snapshot has no « foryou » mark (older server, secondary machine, tests of other components).
@@ -57,6 +59,7 @@ let held = new Set<string>()
 /** When each shown item was last news (its time when it took its place). */
 const shownAt = new Map<string, number>()
 const gone = new Set<string>()
+const dismissedEvents = new Map<string, string>()
 const goneCards = new Set<string>()
 const seen = new Set<string>()
 const seenQueue = new Set<string>()
@@ -81,7 +84,7 @@ const listeners = new Set<() => void>()
 /** The server's items minus what just left here, with what this device already knows (seen, « more » text). */
 function current(): ForYouItem[] {
   return (feed?.items ?? []).flatMap((it) => {
-    if (gone.has(it.id)) return []
+    if (gone.has(it.id) || isNoticeDismissed(feedNoticeKey(it))) return []
     let x = it
     if (it.cards) {
       const cards = it.cards.filter((c) => !goneCards.has(c.id))
@@ -108,6 +111,10 @@ function adopt(f: ForYouFeed) {
   feed = f
   const ids = f.items.map((i) => i.id)
   const by = new Map(f.items.map((i) => [i.id, i]))
+  for (const [id, event] of dismissedEvents) {
+    const item = by.get(id)
+    if (!item || feedNoticeKey(item) !== event) { gone.delete(id); dismissedEvents.delete(id) }
+  }
   // What the server has caught up with is forgotten here.
   for (const id of gone) if (!by.has(id)) gone.delete(id)
   const cards = new Set(f.items.flatMap((i) => i.cards?.map((c) => c.id) ?? []))
@@ -173,6 +180,8 @@ function sync(mark: ForYouMark | undefined, authors: Author[] | undefined, appLa
   void load()
 }
 
+subscribeNotices(() => rebuild())
+
 const message = (e: unknown) => (e instanceof Error && e.message ? e.message : tr(M).failed)
 
 async function act(id: string, action: string, card?: string) {
@@ -196,13 +205,16 @@ async function act(id: string, action: string, card?: string) {
 }
 
 async function dismiss(id: string) {
+  const item = feed?.items.find((i) => i.id === id)
+  const eventId = item ? feedNoticeKey(item) : undefined
+  if (eventId) { dismissedEvents.set(id, eventId); dismissNotice(eventId) }
   errors.delete(id)
   gone.add(id)
   dirs.set(id, -1)
   lefts.set(id, 'dismissed')
   rebuild()
   try {
-    await api.foryouDismiss(id)
+    await api.foryouDismiss(id, eventId)
   } catch (e) {
     gone.delete(id)
     errors.set(id, message(e))
@@ -291,6 +303,8 @@ export function useForYou(): ForYouStore {
 
 /** Tests only: a blank store. */
 export function resetForYou() {
+  resetNotices()
+  dismissedEvents.clear()
   feed = null
   order = []
   held = new Set()

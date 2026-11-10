@@ -69,6 +69,8 @@ export type ForYouOpen =
   | { page: 'machine' }
 
 export interface ForYouItem {
+  /** Same event identity as the session page, when applicable. */
+  eventId?: string
   id: string
   kind: ForYouKind
   tone: ForYouTone

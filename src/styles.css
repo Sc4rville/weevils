@@ -2574,3 +2574,24 @@ html[data-keyboard] .agent:not(.open) .fyt-words {
 /* A user's attached photo stays in their thread, with access to the full image. */
 .user-photo { display: block; margin-top: 12px; width: fit-content; max-width: 100%; }
 .user-photo img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; }
+/* Every notification can be hidden independently of the session or action behind it. */
+.notice-shell { position: relative; }
+.notice-close {
+  position: absolute;
+  top: 4px;
+  right: max(4px, calc((100% - 760px) / 2 + 6px));
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 10px;
+  color: inherit;
+}
+.notice-close svg { width: 22px; height: 22px; }
+.notice-close:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
+.notice-close:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
+.notice-shell > .in, .notice-shell.in,
+.notice-shell > button:not(.notice-close) > .in { padding-right: calc(var(--pad) + 44px); }
+.notice-shell:not(.band, .fy-item) { min-height: 48px; padding-right: 48px; }
+.voice-error-notice { min-width: 120px; }

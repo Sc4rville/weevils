@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { FileContent } from '../api'
 import { useApp } from './app-context'
@@ -239,11 +241,11 @@ export function CodeFile({ projectId, repo, path, machine, line, file, err, kick
       dock={file && !file.binary ? <AskVoice a={a} /> : undefined}
     >
       {err && (
-        <div className="band invert" role="alert">
+        <Notice eventId={noticeKey('error:codeview', location.pathname, location.hash, err)} className="band invert" role="alert">
           <div className="in meta" style={{ paddingBlock: 12 }}>
             ! {err}
           </div>
-        </div>
+        </Notice>
       )}
       {file?.binary && <div className="in meta empty">{t.binary}</div>}
       {file && !file.binary && (

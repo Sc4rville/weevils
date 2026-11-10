@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 // Le travail d'arrière-plan d'une session, dans son fil : une ligne par sous-agent, étape de workflow ou commande
 // lancée en arrière-plan (nom, ce qu'il fait, état, durée), dépliable pour voir ses derniers pas.
 
@@ -102,7 +104,7 @@ function SubDetailView({ sessionId, a, onFirst }: { sessionId: string; a: Subage
 
   return (
     <div className="in sub-detail" data-testid="sub-detail">
-      {err && !detail && <div className="meta">! {err}</div>}
+      {err && !detail && <Notice eventId={noticeKey("error:subagent", err)} className="meta" role="alert">! {err}</Notice>}
       {!detail && !err && <div className="meta">…</div>}
       {detail?.steps.map((s, i) =>
         s.role === 'assistant' ? (

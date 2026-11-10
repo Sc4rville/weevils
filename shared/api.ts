@@ -88,6 +88,8 @@ export interface Session {
   status: SessionStatus
   /** Ce qui t'attend (permission, question), quand status = needs_user. */
   attention?: string
+  /** Stable notification event, independent of screen refreshes and background activity. */
+  noticeId?: string
   /** Live selector options; ids are validated against the current screen before choosing. */
   choices?: { id: string; label: string }[]
   /** status = needs_user sans dialogue : le tour fini sur une question ou une demande (shared/asks.ts), pour l'action rapide. */

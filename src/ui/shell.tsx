@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 import { AnimatePresence, motion, useReducedMotion, type Variants } from 'motion/react'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { THEME_COLOR, useApp, type Theme } from './app-context'
@@ -66,11 +68,11 @@ export function FootError({ text }: { text: string | null }) {
   }, [text])
   return (
     <Collapse open={!!text}>
-      <div ref={band} className="band invert" role="alert">
+      <Notice eventId={noticeKey("foot-error", location.pathname, location.hash, text)} ref={band} className="band invert" role="alert">
         <div className="in meta" style={{ paddingBlock: 12 }}>
           ! {last.current}
         </div>
-      </div>
+      </Notice>
     </Collapse>
   )
 }

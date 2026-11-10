@@ -1,3 +1,4 @@
+import { resetNotices } from './notice-store'
 // @vitest-environment happy-dom
 // Relais Codex pendant la limite de Claude : la bande d'alerte du flux, la vue groupée des plans (valider, ajuster,
 // attendre Claude, un par un ou d'un coup), le réglage, le signe « relais » sur la ligne d'une session Codex.
@@ -62,6 +63,7 @@ const button = (label: string, within: Element = host) => [...within.querySelect
 
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  resetNotices()
   calls.decide = []
   calls.set = []
   calls.request = []
@@ -100,6 +102,29 @@ describe('relais Codex', () => {
     expect([...host.querySelectorAll('button')].filter((b) => /^(valider|ajuster|attendre Claude|tout valider|tout laisser à Claude)$/.test(text(b)))).toEqual([])
     expect(button('automatique').getAttribute('aria-pressed')).toBe('true')
     expect(calls.decide).toEqual([])
+  })
+
+  it('closing the quota banner persists through percentage/reset updates and never changes relay mode', async () => {
+    const r = relay()
+    render(<RelayBand />, snap(r))
+    await act(async () => host.querySelector<HTMLButtonElement>('.notice-close')!.click())
+    expect(host.querySelector('.relay-band')).toBeNull()
+    render(<RelayBand />, snap({ ...r, limit: { ...r.limit!, percent: 100, until: r.limit!.until! + 19 } }))
+    expect(host.querySelector('.relay-band')).toBeNull()
+    expect(calls.decide).toEqual([])
+    expect(calls.set).toEqual([])
+    render(<RelayBand />, snap({ ...r, limit: { ...r.limit!, since: NOW + 60_000 } }))
+    expect(host.querySelector('.relay-band')).not.toBeNull()
+  })
+  it('closing a session relay notification does not approve or refuse the plan', async () => {
+    const r = relay()
+    render(<ThreadPlans />, snap(r))
+    await act(async () => host.querySelector<HTMLButtonElement>('.relay-plan .notice-close')!.click())
+    expect(host.querySelectorAll('.relay-plan')).toHaveLength(1)
+    expect(host.querySelector('.relay-all')).toBeNull()
+    expect(calls.decide).toEqual([])
+    render(<ThreadPlans />, snap(r))
+    expect(host.querySelectorAll('.relay-plan')).toHaveLength(1)
   })
 
   it('vue groupée : chaque plan avec valider / ajuster / attendre Claude, et tout valider d’un coup', async () => {

@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 import { useEffect, useRef, useState } from 'react'
 import type { ExplainReply, ExplainRequest, Message, UsageHit } from '../../shared/api.ts'
 import { api } from '../api'
@@ -211,7 +213,7 @@ export function AskPanel({
               <Icon name="star" />
             </span>
           )}
-          {answer.err && <div className="strong">! {answer.err}</div>}
+          {answer.err && <Notice eventId={noticeKey("error:answer", answer.err)} className="strong" role="alert">! {answer.err}</Notice>}
           {a.shown && <p className="qa-text">{a.shown}</p>}
           {answer.reply?.hits && (
             <div className="qa-hits">

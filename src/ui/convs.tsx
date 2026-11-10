@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 // Conversations ChatGPT / Claude.ai : liste, lecture, rangement, import, « continuer ici ».
 
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
@@ -63,7 +65,7 @@ export function Chooser({ c, onDone }: { c: ConversationSummary; onDone: () => v
   }
   return (
     <div className="band tone">
-      {err && <div className="in meta">! {err}</div>}
+      {err && <Notice eventId={noticeKey("error:conversations", location.pathname, err)} className="in meta" role="alert">! {err}</Notice>}
       {snap.projects
         .filter((p) => p.id !== c.projectId && p.id !== 'divers' && p.id !== 'general')
         .map((p) => (
@@ -257,7 +259,7 @@ export function ImportPage() {
       {result && <div className="in meta strong" style={{ paddingBlock: 12 }}>
           <Icon name="check" /> {t.imported(result.total, result.added, result.updated)}
         </div>}
-      {err && <div className="in meta strong" style={{ paddingBlock: 12 }}>! {err}</div>}
+      {err && <Notice eventId={noticeKey("error:import", err)} className="in meta strong" style={{ paddingBlock: 12 }} role="alert">! {err}</Notice>}
       <div className="in meta" style={{ paddingBlock: 10 }}>
         {cl.running ? t.filing(cl.queued) : cl.lastError ? t.filingFailed(cl.lastError) : snap.conversationCounts.pending ? t.toFileByYou(snap.conversationCounts.pending) : t.allFiled}
       </div>

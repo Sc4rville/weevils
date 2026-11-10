@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { MemoryItem, WeevilQuestion } from '../../shared/api.ts'
@@ -280,7 +282,7 @@ function Sheet({ f, reduce, onLeave, onAnswered }: { f: Flight; reduce: boolean;
                   <Icon name="star" />
                 </span>
               )}
-              {err && <p className="weevil-err">! {err}</p>}
+              {err && <Notice eventId={noticeKey("error:weevil", err)} className="weevil-err" role="alert">! {err}</Notice>}
             </div>
           )}
           <div className={done ? 'weevil-say done' : 'weevil-say'} inert={done}>

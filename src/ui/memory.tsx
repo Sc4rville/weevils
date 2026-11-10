@@ -1,3 +1,5 @@
+import { noticeKey } from '../../shared/notices.ts'
+import { Notice } from './notice'
 // The memory page (bottom of the machines band): what weevils remembers about the user. Browse, add, select to
 // understand, edit, delete. Nothing else: no help text, no dialog.
 //
@@ -28,9 +30,9 @@ const NOTE_MS = 3200
 function Note({ text }: { text: string | null }) {
   return (
     <Collapse open={!!text}>
-      <div className="band invert" role="alert">
+      <Notice eventId={noticeKey('error:memory', location.pathname, location.hash, text)} className="band invert" role="alert">
         <div className="in meta mem-note">! {text}</div>
-      </div>
+      </Notice>
     </Collapse>
   )
 }
@@ -328,11 +330,11 @@ export function MemoryPage() {
   return (
     <Shell slot={colors.__foot ?? 'p3'} kicker="weevils" title={t.title} meta={list ? (list.length ? t.count(list.length) : t.empty) : '…'} dock={<AskVoice a={a} />}>
       {err && (
-        <div className="band invert" role="alert">
+        <Notice eventId={noticeKey('error:memory', location.pathname, location.hash, err)} className="band invert" role="alert">
           <div className="in meta" style={{ paddingBlock: 12 }}>
             ! {err}
           </div>
-        </div>
+        </Notice>
       )}
       <AddLine onAdd={add} />
       <Note text={note?.at === 'add' ? note.text : null} />

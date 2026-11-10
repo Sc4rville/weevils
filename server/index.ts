@@ -590,7 +590,8 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ...tipRoutes(w, json, readBody, () => !!openaiKey()),
   ...hintRoutes(hints, json, readBody),
-  ...memoryRoutes(memory, json, readBody),
+  // La mémoire vit sur la machine principale seulement (404 ailleurs, comme weevils memory le dit).
+  ...(ORCHESTRATOR ? memoryRoutes(memory, json, readBody) : []),
   ...weevilRoutes(flyers, json, readBody),
   ...optimizerRoutes(optimizers, json, readBody),
   // ---- Mes logiciels : détectés sur chaque machine, aperçu vivant, lancés d'un tap (server/softwares.ts).

@@ -155,7 +155,7 @@ for m in msgs[-n:]:
     # The memory lives on the main machine only (404 elsewhere).
     mem_get() {
       local out code
-      out=$(curl -s -m 10 -w '\n%{http_code}' "$base/api/memory")
+      out=$(curl -s -m 10 -w '\n%{http_code}' "$base/api/memory") || true
       code=${out##*$'\n'}
       if [ "$code" = 404 ]; then echo "$WVM_NO_MEMORY_HERE" >&2; exit 1; fi
       [ "$code" = 200 ] || { echo "$WVM_ERROR $code" >&2; exit 1; }
@@ -163,19 +163,25 @@ for m in msgs[-n:]:
     }
     case "${2:-}" in
       '')
-        mem_get | json "
+        list=$(mem_get) || exit 1
+        printf '%s' "$list" | json "
 items=d.get('items') or []
 if not items: print(E['WVM_NO_MEMORY'])
 for m in items: print(f\"{m['id']}  {m['text']}\")
 " ;;
       add)
         text=${3:?$a_memory}
-        "$py" -c 'import json,sys; print(json.dumps({"text":sys.argv[1]}))' "$text" \
-          | curl -sf -m 10 -H 'content-type: application/json' --data-binary @- "$base/api/memory" \
-          | json "print(E['WVM_MEM_ADDED']+d['item']['id'])" ;;
+        out=$("$py" -c 'import json,sys; print(json.dumps({"text":sys.argv[1]}))' "$text" \
+          | curl -s -m 10 -w '\n%{http_code}' -H 'content-type: application/json' --data-binary @- "$base/api/memory") || true
+        code=${out##*$'\n'} body=${out%$'\n'*}
+        if [ "$code" = 404 ]; then echo "$WVM_NO_MEMORY_HERE" >&2; exit 1; fi
+        # Refusé (souvenir vide…) : le message du serveur, sinon le code.
+        [ "$code" = 200 ] || { printf '%s' "$body" | json "print(d.get('error') or '')" 2>/dev/null | grep . >&2 || echo "$WVM_ERROR $code" >&2; exit 1; }
+        printf '%s' "$body" | json "print(E['WVM_MEM_ADDED']+d['item']['id'])" ;;
       rm)
         want=${3:?$a_memory_id}
-        id=$(mem_get | json "
+        list=$(mem_get) || exit 1
+        id=$(printf '%s' "$list" | json "
 want=sys.argv[1]; hits=[m['id'] for m in d.get('items') or [] if m['id'].startswith(want)]
 if len(hits)==1: print(hits[0])
 else: print(E['WVM_MEM_NOT_FOUND']+want, file=sys.stderr); sys.exit(1)

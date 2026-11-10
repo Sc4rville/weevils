@@ -55,7 +55,8 @@ export class Memory {
     this.s = (() => {
       try {
         const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<Stored>
-        return { items: Array.isArray(raw.items) ? raw.items : [], asked: Array.isArray(raw.asked) ? raw.asked : [] }
+        const items = (Array.isArray(raw.items) ? raw.items : []).filter((m) => m && typeof m.id === 'string' && typeof m.text === 'string')
+        return { items, asked: Array.isArray(raw.asked) ? raw.asked : [] }
       } catch {
         return { items: [], asked: [] }
       }
@@ -69,10 +70,14 @@ export class Memory {
   }
 
   private save() {
+    // Caps kept in memory too (the oldest go first): what is counted and listed is what is on disk.
+    if (this.s.items.length > MAX_ITEMS) this.s.items = this.s.items.slice(-MAX_ITEMS)
+    if (this.s.asked.length > MAX_ASKED) this.s.asked = this.s.asked.slice(-MAX_ASKED)
     try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true })
+      fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 })
       const tmp = `${this.file}.tmp`
-      fs.writeFileSync(tmp, JSON.stringify({ items: this.s.items.slice(-MAX_ITEMS), asked: this.s.asked.slice(-MAX_ASKED) }, null, 1), { mode: 0o600 })
+      fs.writeFileSync(tmp, JSON.stringify({ items: this.s.items, asked: this.s.asked }, null, 1), { mode: 0o600 })
+      fs.chmodSync(tmp, 0o600)
       fs.renameSync(tmp, this.file)
     } catch (e) {
       console.error(`[mémoire] écriture : ${(e as Error).message}`)
@@ -135,6 +140,26 @@ export class Memory {
       .slice(0, max)
       .map((m) => `- [${m.id}] ${m.text}`)
       .join('\n')
+  }
+
+  /**
+   * A short digest for weevboss's context (newest first, no ids: `weevils memory` gives them). Empty when nothing is
+   * known yet.
+   */
+  digest(max = 12, chars = 1500): string {
+    let out = ''
+    for (const m of this.list().slice(0, max)) {
+      const line = `- ${m.text}\n`
+      if (out.length + line.length > chars) break
+      out += line
+    }
+    return out.trimEnd()
+  }
+
+  /** Changes whenever an item is added, edited or removed (weevboss gets the digest again only then). */
+  signature(): string {
+    if (!this.s.items.length) return ''
+    return crypto.createHash('sha1').update(this.s.items.map((m) => `${m.id}:${m.updatedAt}`).join(',')).digest('hex').slice(0, 16)
   }
 
   // ---------------------------------------------------------------- questions des weevils

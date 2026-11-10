@@ -346,8 +346,8 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
     expect(words().map((w) => w.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
     // Entre la ligne du logo et l'aperçu, dans l'espace de la bande.
     const kids = [...document.querySelector('.agent-space')!.children].map((e) => e.className.split(' ')[0])
-    expect(kids.indexOf('fyt-words')).toBeGreaterThan(kids.indexOf('agent-top'))
-    expect(kids.indexOf('fyt-words')).toBeLessThan(kids.indexOf('peek-wrap'))
+    expect(kids.indexOf('agent-nav')).toBeGreaterThan(kids.indexOf('agent-top'))
+    expect(kids.indexOf('agent-nav')).toBeLessThan(kids.indexOf('peek-wrap'))
     expect(peekWrap().hidden).toBe(false)
     expect(fyWrap().hidden).toBe(true)
     expect(document.querySelector('.peek')!.textContent).toContain('salut')

@@ -2636,53 +2636,58 @@ html[data-keyboard] .agent:not(.open) .fyt-words {
   color: var(--c);
 }
 
-/* Home's shared axes: mascot / input prompt / automation glyph on the left;
-   token count / stream square / send button on the right. The mascot and square share a row. */
-.agent:not(.open).has-foryou .agent-top {
+/* The reference drawing: keep the square attached to « for you »; the small pixel
+   cat shares its horizontal row, directly below the token counter. The large voice logo stays left. */
+.agent-nav {
   position: relative;
-  height: 80px;
-  padding-block: 0;
+  flex: none;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
 }
-.agent:not(.open).has-foryou .agent-top .voice {
-  position: absolute;
-  top: 32px;
-  left: calc(var(--pad) - 11px);
+.agent:not(.open).has-foryou .agent-nav .fyt-words {
+  height: 44px;
+  padding-right: calc(var(--pad) + 52px);
 }
-.agent:not(.open).has-foryou .voice-logo {
-  width: 44px;
-  height: 48px;
-  min-height: 0;
-}
-.agent:not(.open).has-foryou .agent-top .devil-btn {
+.agent-nav .devil-btn {
   position: absolute;
   top: 0;
-  right: calc(var(--pad) + 44px);
+  right: var(--pad);
+  width: 44px;
+  height: 44px;
+  place-items: center;
 }
 .agent:not(.open).has-foryou .token-meter {
   top: var(--safe-t);
   right: max(calc((100% - 760px) / 2 + var(--pad)), var(--pad));
-  min-width: 44px;
   width: 44px;
+  min-width: 44px;
   height: 32px;
   padding: 0;
   text-align: center;
 }
-.agent:not(.open).has-foryou .fyt-words {
-  position: relative;
-  height: 48px;
-  margin-top: -48px;
-  padding-left: calc(var(--pad) + 40px);
-  padding-right: calc(var(--pad) + 50px);
-}
-.agent:not(.open).has-foryou .fyt-dot {
-  position: absolute;
-  top: 50%;
-  right: calc(var(--pad) + 22px);
-  margin-left: 0;
-  transform: translate(50%, -50%);
-}
-html[data-keyboard] .agent:not(.open).has-foryou .fyt-words {
+html[data-keyboard] .agent:not(.open).has-foryou .agent-nav {
   position: fixed;
   top: calc(var(--vvt, 0px) + var(--safe-t));
-  margin-top: 0;
+  inset-inline: 0;
+  z-index: 26;
+  background: var(--c);
+}
+html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
+  position: static;
+  top: auto;
+}
+/* Text fields always match :focus-visible on iOS, even after a touch. Never give
+   the integrated editor the global rectangular outline; desktop keyboard focus gets a quiet underline. */
+.composer textarea.horizontal-editor:focus,
+.composer textarea.horizontal-editor:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+  caret-color: var(--ink);
+}
+@media (hover: hover) and (pointer: fine) {
+  .composer textarea.horizontal-editor:focus-visible {
+    border-bottom: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+  }
 }

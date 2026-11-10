@@ -297,13 +297,18 @@ export function AgentBand() {
             replyText={th.a.replyKey ? th.a.shown : mainReply?.text}
             working={snap.mainWorking || th.a.waiting}
           />
-          <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={(e) => tapDevil(e.currentTarget)} aria-pressed={devilOn} aria-label={devilOn ? td.on : td.off}>
-            <FilledIcon name="devil" />
-          </button>
+
         </div>
         {/* L'aperçu et le fil restent rendus : ouvrir ou fermer ne fait que les montrer ou les cacher (immédiat). */}
         {/* Les deux mots, sous la ligne du logo ; ils restent quand le fil est ouvert (weevboss y est le mot actif). */}
-        <TopWords active={open ? 'boss' : top} onPick={pickTop} />
+        <div className="agent-nav">
+          <TopWords active={open ? 'boss' : top} onPick={pickTop} />
+          {!open && (
+          <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={(e) => tapDevil(e.currentTarget)} aria-pressed={devilOn} aria-label={devilOn ? td.on : td.off}>
+            <FilledIcon name="devil" />
+          </button>
+          )}
+        </div>
         <div className="peek-wrap" hidden={open || top !== 'boss'}>
           <Peek onOpen={() => setExpanded('agent')} visible={!open && top === 'boss'} sent={sent} messages={main} pendingLabel={pendingLabel} />
         </div>

@@ -11,6 +11,7 @@ export default defineMessages({
     oneFile: 'Voici un fichier.',
     someFiles: 'Voici des fichiers.',
     attached: (image: boolean, path: string) => `(${image ? 'photo' : 'fichier'} : ${path})`,
+    longMessage: (path: string) => `[message trop long pour le terminal, la suite et le texte intégral sont dans ${path} : lis-le en entier avant de répondre]`,
     commandRefused: (c: string) => `commande refusée : ${c}`,
 
     badRepo: 'repo invalide',
@@ -65,6 +66,7 @@ export default defineMessages({
     oneFile: 'Here is a file.',
     someFiles: 'Here are some files.',
     attached: (image: boolean, path: string) => `(${image ? 'photo' : 'file'}: ${path})`,
+    longMessage: (path: string) => `[message too long for the terminal, the rest and the full text are in ${path}: read all of it before answering]`,
     commandRefused: (c: string) => `command not allowed: ${c}`,
 
     badRepo: 'invalid repo',

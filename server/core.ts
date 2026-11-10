@@ -187,6 +187,22 @@ export function checkCommand(command: string): string {
 }
 
 /** Le message tel que l'agent le reçoit : le texte, puis « (photo : /chemin) » ou « (fichier : /chemin) » pour chaque pièce. */
+/** Au-delà, un message ne passe plus par tmux (« command too long » : une commande tmux tient en 16 Ko, arguments
+ * compris) : un mail de manifeste, un long collage. */
+export const TERMINAL_MAX = 6000
+
+/** Un message trop long pour le terminal : le texte intégral va dans l'inbox (fichier .md), l'agent reçoit son début
+ * (signature « [from:x] » comprise) et le chemin du fichier. Un message court passe tel quel. */
+export function fitTerminal(text: string, dir = INBOX_DIR): string {
+  if (Buffer.byteLength(text) <= TERMINAL_MAX) return text
+  fs.mkdirSync(dir, { recursive: true })
+  const file = path.join(dir, `${new Date().toISOString().slice(0, 10)}-message-${crypto.randomBytes(3).toString('hex')}.md`)
+  fs.writeFileSync(file, text)
+  const cut = text.slice(0, 1500)
+  const head = cut.slice(0, Math.max(cut.lastIndexOf(' '), 1000)).trimEnd()
+  return `${head}… ${tr(M).longMessage(file)}`
+}
+
 export function withFiles(text: string, saved: { path: string; image: boolean }[]): string {
   const n = saved.length
   const allImages = saved.every((s) => s.image)
@@ -1263,6 +1279,8 @@ export class Weevils {
     const name = wvName(path.basename(cwd), short)
     // Jamais de dialogue de confiance au lancement : le dossier est marqué sûr avant.
     if (tool === 'claude') trustDirs([cwd])
+    // Le message de départ (dernier argument) passe lui aussi par tmux.
+    command = command.map((a) => fitTerminal(a))
     try {
       await spawnWv(name, cwd, tool, title.slice(0, 60), command, sessionId)
     } catch (e) {
@@ -1396,6 +1414,7 @@ export class Weevils {
       if (await this.confirmDelivery(pane, sessionId, text, before)) return undefined
       return dialogOnScreen(await capture(pane).catch(() => '')) ?? tr(M).noConfirmation
     }
+    text = fitTerminal(text)
     const blocked = await this.clearDialog(pane)
     const first = await attempt()
     if (!first) return

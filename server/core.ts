@@ -1503,12 +1503,13 @@ export class Weevils {
   private codexBoss() {
     const b = preferredTool() === 'codex' ? this.directCodexBoss ?? this.relay?.boss : this.relay?.boss ?? this.directCodexBoss
     if (!b) return undefined
-    const pane = (b.pane ? this.panes.find((p) => p.name === b.pane) : undefined) ?? (b.sessionId ? this.paneFor(b.sessionId) : undefined)
-    if (pane?.sessionId && pane.sessionId !== b.sessionId) {
+    const named = b.pane ? this.panes.find((p) => p.name === b.pane) : undefined
+    const pane = (named && (!b.sessionId || named.sessionId === b.sessionId) ? named : undefined) ?? (b.sessionId ? this.paneFor(b.sessionId) : undefined)
+    if (pane?.sessionId && !b.sessionId) {
       if (b === this.directCodexBoss) { this.directCodexBoss = { ...b, sessionId: pane.sessionId }; this.persist() }
       else this.relay?.setBoss({ ...b, sessionId: pane.sessionId })
     }
-    const id = pane?.sessionId ?? b.sessionId
+    const id = b.sessionId ?? pane?.sessionId
     return { since: b.since, pane, id, t: id ? this.store.get(id) : undefined }
   }
 

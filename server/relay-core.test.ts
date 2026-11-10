@@ -234,3 +234,18 @@ it('does not spawn a competing boss client when an existing bridge thread is tem
  await expect(w.sendMain('réponse')).rejects.toThrow()
  expect(mux.spawnWv).not.toHaveBeenCalled()
 })
+
+it('keeps the persisted owner when a terminal name now points at another thread', async () => {
+ const r = fakeRelay({boss:{pane:'wv-orchestrateur-old',sessionId:'owner',since:NOW-MIN}})
+ w.relay = r as never
+ add(transcript({id:'owner',tool:'codex',cwd:ORCH_DIR}))
+ w.panes = [{name:'wv-orchestrateur-old',tool:'codex',sessionId:'unrelated',title:'other',cwd:ORCH_DIR,createdAt:NOW}]
+ const send = vi.fn(async () => {})
+ ;(w as any).codexBridge = {can:(id:string)=>id==='owner',send}
+ expect(w.bossConversation()).toBe('owner')
+ await w.sendMain('continue ici')
+ expect((send.mock.calls[0] as unknown[])[0]).toBe('owner')
+ expect(r.boss.sessionId).toBe('owner')
+ expect(mux.spawnWv).not.toHaveBeenCalled()
+ expect(mux.sendText).not.toHaveBeenCalled()
+})

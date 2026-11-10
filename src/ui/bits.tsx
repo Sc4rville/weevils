@@ -1,3 +1,4 @@
+import { withoutMachinePrefix } from '../../shared/machine-prefix.ts'
 import { SessionMenu } from './session-archive'
 import { sessionNoticeKey } from '../../shared/notices.ts'
 import { dismissNotice } from './notice-store'
@@ -848,7 +849,7 @@ export function Messages({
               className={`msg band ${session ? 'session-message' : ''} ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.demo ? 'demo' : ''}`}
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
               who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}${g.m.demo ? ` · ${t.demo}` : ''}${pendingLabel && g.m.id.startsWith('pending-') ? ` · ${pendingLabel}` : ''}`}
-              copy={g.m.role === 'user' ? userText(g.m.text) : chipLabels(g.m.text)}
+              copy={g.m.role === 'user' ? userText(g.m.text) : chipLabels(withoutMachinePrefix(g.m.text))}
               mid={g.m.id}
             >
               {g.m.role === 'user' ? (
@@ -861,10 +862,10 @@ export function Messages({
                   ))}
                 </>
               ) : g.m.role === 'orchestrator' ? (
-                <Clamp text={g.m.text} full={session} />
+                <Clamp text={withoutMachinePrefix(g.m.text)} full={session} />
               ) : (
                 <ChipSlot.Provider value={chip ? (b) => chip(b, g.m.id) : null}>
-                  <Prose text={g.m.text} />
+                  <Prose text={withoutMachinePrefix(g.m.text)} />
                 </ChipSlot.Provider>
               )}
             </Bubble>

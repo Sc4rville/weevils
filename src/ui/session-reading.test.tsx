@@ -56,3 +56,12 @@ it('does not open contextual actions on an ordinary tap, but opens them after a 
  expect(host.querySelector('[data-actions]')).not.toBeNull()
  vi.restoreAllMocks()
 })
+it('hides leading agent machine tags without rewriting user words or stored messages', async () => {
+ const msgs = [message('u', 'user', '[PC] ma question'), message('a', 'assistant', '[VPS] Résultat prêt.'), message('b', 'orchestrator', '[GPU] Le GPU est arrêté.', { author: 'weevboss' })]
+ await act(async () => root.render(<Messages session messages={msgs} author="codex" />))
+ expect(host.querySelector('[data-mid="u"]')!.textContent).toContain('[PC] ma question')
+ expect(host.querySelector('[data-mid="a"]')!.textContent).not.toContain('[VPS]')
+ expect(host.querySelector('[data-mid="b"]')!.textContent).toContain('Le GPU est arrêté.')
+ expect(host.querySelector('[data-mid="b"]')!.textContent).not.toContain('[GPU]')
+ expect(msgs[1].text).toBe('[VPS] Résultat prêt.')
+})

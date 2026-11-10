@@ -34,3 +34,14 @@ it('filters administrative refusals of agent handoffs without hiding real user q
   expect(acknowledgementOnly('Quelle licence veux-tu utiliser pour le projet ?')).toBe(false)
   expect(acknowledgementOnly('La publication est bloquée : le dépôt contient encore une clé privée.')).toBe(false)
 })
+
+it('removes only leading machine tags from presentation and spoken feed text', () => {
+  expect(humanFeedText('[VPS] [GPU] Le rendu est prêt.')).toBe('Le rendu est prêt.')
+  expect(humanFeedText('Le GPU coûte 0,50 €/h.')).toBe('Le GPU coûte 0,50 €/h.')
+  expect(humanFeedText('Exemple : [VPS] résultat')).toBe('Exemple : [VPS] résultat')
+  expect(humanFeedText('[INFO] Résultat')).toBe('[INFO] Résultat')
+})
+
+it('keeps a genuine consent question even when it asks for direct confirmation', () => {
+  expect(acknowledgementOnly('Je ne publie pas sans confirmation directe : veux-tu publier ce résultat ?')).toBe(false)
+})

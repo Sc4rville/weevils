@@ -1,3 +1,4 @@
+import { withoutMachinePrefix } from '../../shared/machine-prefix.ts'
 import { noticeKey } from '../../shared/notices.ts'
 import { Notice, useNotice } from './notice'
 import { AnimatePresence, motion } from 'motion/react'
@@ -191,7 +192,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
     pending.current = null
     setSpeaking(true)
     setReply(true)
-    void say(p.text, () => {
+    void say(withoutMachinePrefix(p.text), () => {
       setSpeaking(false)
       setReply(false)
     }, p.oral)

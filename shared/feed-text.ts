@@ -1,3 +1,4 @@
+import { withoutMachinePrefix } from './machine-prefix.ts'
 import type { ForYouItem } from './foryou.ts'
 
 /** Retired per-commit announcements, including older posts with an ordinary post/digest id. */
@@ -9,6 +10,7 @@ export function rawEngineeringNotice(id: string, text = ''): boolean {
 
 /** Keep the human result in the feed; technical evidence stays in the session itself. */
 export function humanFeedText(text: string): string {
+  text = withoutMachinePrefix(text)
   const urls: string[] = []
   text = text.replace(/https?:\/\/[^\s<>"']+/g, (url) => `§LINK${urls.push(url) - 1}§`)
   return text
@@ -44,7 +46,7 @@ export function acknowledgementOnly(text: string): boolean {
   const prose = humanFeedText(text).replace(/\*\*|__/g, '').replace(/\[(?:PC|VPS)\]/gi, '').trim()
   // Administrative handoffs refusing another agent's message are not a user-facing outcome.
   // A real question or a product blocker without these handoff markers stays visible.
-  const handoff = /(?:transmission d['’]agent|autorisation relayée|confirmation directe|audit en lecture seule|consigne.{0,50}lecture seule)/i.test(prose)
+  const handoff = /(?:transmission d['’]agent|autorisation relayée|audit en lecture seule|consigne.{0,50}lecture seule)/i.test(prose)
   const refusal = /(?:fichiers inchangés|aucune (?:publication|modification)|je ne (?:modifie|publie|change)|incompatible avec cette restriction|ne (?:sera|seront) (?:copié|modifié)|ne modifie pas)/i.test(prose)
   if (handoff && refusal) return true
   const acknowledgement = /^(?:compris|bien (?:reçu|noté)|reçu|noté|ok(?:ay)?|d['’]accord|merci|aucun (?:conflit|chevauchement|travail en cours)|coordination confirmée|réception confirmée|understood|got it|noted|acknowledged|no (?:conflict|overlap)|état git et transcript relus)(?=$|[\s.!,:])/i.test(prose)

@@ -1,3 +1,4 @@
+import { withoutMachinePrefix } from '../../shared/machine-prefix.ts'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { Message } from '../../shared/api.ts'
 import { useApp } from './app-context'
@@ -46,7 +47,7 @@ const highlights = (): { reg: Highlights; H: new (...r: Range[]) => unknown } | 
 }
 
 const who = (m: Message, tool: string, me: string) => (m.role === 'user' ? me : m.role === 'assistant' ? tool : m.role === 'event' ? '→' : (m.author ?? 'weevboss'))
-const body = (m: Message) => (m.role === 'user' ? userText(m.text) : m.role === 'event' ? step(m.text) : m.text)
+const body = (m: Message) => (m.role === 'user' ? userText(m.text) : m.role === 'event' ? step(m.text) : withoutMachinePrefix(m.text))
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 export function useThreadAsk(messages: Message[], info: ThreadInfo) {

@@ -581,6 +581,7 @@ export class Weevils {
       try {
         const screen = await capture(p.name)
         dialog = screenDialog(screen)
+        if (dialog?.kind === 'settings') dialog = undefined
         screenAttention = dialog?.question
         screenWorking = workingOnScreen(screen)
         screenQueued = (screen.split('Queued follow-up inputs')[1]?.split(/^[›❯>]/m)[0].match(/^\s*↳/gm) ?? []).length

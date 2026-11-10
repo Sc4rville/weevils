@@ -1,7 +1,7 @@
 import { defineMessages } from './index'
 export default defineMessages({
   fr: {
-    imageUnavailable: 'L’image ne s’est pas chargée. Ouvre-la en grand pour réessayer.',
+    imageUnavailable: 'L’image ne s’est pas chargée.', retryImage: 'Recharger l’image', clipUnavailable: 'Le clip ne s’est pas chargé.', retryClip: 'Recharger le clip',
     title: 'Essayer de vrais formats', intro: 'Des exemples TLO à regarder à ton rythme. Choisis le format à garder ; seul le bouton de transmission d’une proposition envoie une consigne.',
     result: '01 · Résultat visuel', resultTitle: 'Une alcôve pour se poser', resultText: 'TLO · Deux fauteuils, une petite table et une lumière chaude sous la voûte. Ce rendu existant permet de juger l’atmosphère de ce lieu de rencontre.',
     story: '02 · Parcours en images', storyTitle: 'Du café au couloir', storyText: 'Trois moments du même déplacement existant. Regarde comment le rideau fait passer de la salle chaleureuse aux arches de pierre.',
@@ -11,7 +11,7 @@ export default defineMessages({
     keep: 'Garder ce format', kept: 'Format retenu sur cet appareil', preference: 'Ton choix de format est conservé sur cet appareil. Tu peux le changer.', missing: 'Cet exemple n’est pas disponible dans le flux actuel.',
   },
   en: {
-    imageUnavailable: 'The image did not load. Open the full image to try again.',
+    imageUnavailable: 'The image did not load.', retryImage: 'Reload image', clipUnavailable: 'The clip did not load.', retryClip: 'Reload clip',
     title: 'Try real formats', intro: 'TLO examples to explore at your own pace. Pick a format to keep; only a proposal’s send button transmits instructions.',
     result: '01 · Visual result', resultTitle: 'An alcove to settle into', resultText: 'TLO · Two armchairs, a small table and warm light beneath the vault. This existing render lets you assess the atmosphere of this meeting place.',
     story: '02 · Picture journey', storyTitle: 'From café to corridor', storyText: 'Three moments from the same existing movement. See how the curtain leads from the warm room into the stone arches.',

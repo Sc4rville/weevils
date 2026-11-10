@@ -32,3 +32,6 @@
   .formats-contact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .formats-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.formats-media-error { width: 100%; padding: 16px; border: 1px solid currentColor; }
+.formats-media-error button { text-decoration: underline; }

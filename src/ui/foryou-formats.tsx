@@ -10,25 +10,48 @@ import M from '../i18n/foryou-formats'
 import './foryou-formats.css'
 
 const tone = (slot: string) => ({ '--c': `var(--${slot})`, background: `var(--${slot})` }) as CSSProperties
+/** Retry same-origin media with a fresh URL; never alter signed third-party URLs. */
+function mediaAttempt(url: string, attempt: number) {
+  if (!attempt) return url
+  try {
+    const parsed = new URL(url, location.href)
+    if (parsed.origin !== location.origin) return url
+    parsed.searchParams.set('retry', String(attempt))
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  } catch { return url }
+}
 export function FullImage({ media, description }: { media: ForYouMedia; description: string }) {
   const { push } = useApp()
   const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
   const t = useT(M)
+  useEffect(() => { setFailed(false); setAttempt(0) }, [media.id, media.url])
+  if (failed) return <div className="formats-media-error"><p role="alert">{t.imageUnavailable}</p><button type="button" onClick={() => { setAttempt(n => n + 1); setFailed(false) }}>{t.retryImage}</button></div>
   return <button type="button" className="formats-image" onClick={() => push({ kind: 'media', url: media.url, type: 'image', name: description })} aria-label={`${t.open} · ${description}`}>
-    {failed ? <p>{t.imageUnavailable}</p> : <img src={media.url} alt={description} loading="lazy" onError={() => setFailed(true)} />}<span>{t.open}</span>
+    <img key={`${media.id}:${media.url}:${attempt}`} src={mediaAttempt(media.url, attempt)} alt={description} loading="lazy" onError={() => setFailed(true)} /><span>{t.open}</span>
   </button>
+}
+
+export function PreviewClip({ media, poster, title }: { media: ForYouMedia; poster?: string; title: string }) {
+  const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const t = useT(M)
+  useEffect(() => { setFailed(false); setAttempt(0) }, [media.id, media.url])
+  if (failed) return <div className="formats-media-error"><p role="alert">{t.clipUnavailable}</p><button type="button" onClick={() => { setAttempt(n => n + 1); setFailed(false) }}>{t.retryClip}</button></div>
+  return <video key={`${media.id}:${media.url}:${attempt}`} controls playsInline preload="none" poster={poster} aria-label={title} src={mediaAttempt(media.url, attempt)} onError={() => setFailed(true)} />
 }
 
 export function PictureJourney({ media, frames }: { media: ForYouMedia[]; frames: VisualProposal['frames'] }) {
   const [at, setAt] = useState(0)
   const t = useT(M)
-  const index = Math.min(at, media.length - 1)
-  if (!media.length || !frames[index]) return <p>{t.missing}</p>
+  const count = Math.min(media.length, frames.length)
+  const index = Math.min(at, count - 1)
+  if (!count) return <p>{t.missing}</p>
   return <div className="formats-journey">
     <div className="formats-story-copy">
-      <nav className="formats-steps" aria-label={t.storyTitle}>{frames.map((f, n) => <button type="button" key={n} aria-current={n === index ? 'step' : undefined} onClick={() => setAt(n)}>{n + 1} · {f.title}</button>)}</nav>
-      <div aria-live="polite"><p className="meta">{t.step(index + 1, media.length)}</p><h3>{frames[index].title}</h3><p>{frames[index].description}</p></div>
-      <div className="formats-nav"><button type="button" disabled={index === 0} onClick={() => setAt(index - 1)}>{t.previous}</button><button type="button" disabled={index === media.length - 1} onClick={() => setAt(index + 1)}>{t.next}</button></div>
+      <nav className="formats-steps" aria-label={t.storyTitle}>{frames.slice(0, count).map((f, n) => <button type="button" key={n} aria-current={n === index ? 'step' : undefined} onClick={() => setAt(n)}>{n + 1} · {f.title}</button>)}</nav>
+      <div aria-live="polite"><p className="meta">{t.step(index + 1, count)}</p><h3>{frames[index].title}</h3><p>{frames[index].description}</p></div>
+      <div className="formats-nav"><button type="button" disabled={index === 0} onClick={() => setAt(index - 1)}>{t.previous}</button><button type="button" disabled={index === count - 1} onClick={() => setAt(index + 1)}>{t.next}</button></div>
     </div>
     <FullImage key={media[index].id} media={media[index]} description={frames[index].description} />
   </div>
@@ -38,6 +61,7 @@ export function ProposalView({ item, fy }: { item: ForYouItem; fy: ForYouStore }
   const t = useT(M)
   const [choice, setChoice] = useState(item.visualProposal?.selected ?? '')
   const p = item.visualProposal
+  useEffect(() => setChoice(item.visualProposal?.selected ?? ''), [item.id, item.visualProposal?.selected])
   if (!p) return null
   const selected = p.options.find(o => o.id === choice)
   const pending = fy.acting(item.id)
@@ -82,7 +106,7 @@ export function FormatsPage() {
       </div></section>
       <section className="band formats-section" style={tone('p10')}><div className="in">
         <p className="meta">{t.clip}</p><h2>{t.clipTitle}</h2><p>{t.clipText}</p>
-        {clip ? <video controls playsInline preload="none" poster={media.find(m => m.id === '341ba5be815fb245')?.url} aria-label={t.clipTitle} src={clip.url} /> : <p>{t.missing}</p>}{pick('clip')}
+        {clip ? <PreviewClip media={clip} poster={media.find(m => m.id === '341ba5be815fb245')?.url} title={t.clipTitle} /> : <p>{t.missing}</p>}{pick('clip')}
       </div></section>
       <section className="band formats-section" style={tone('agent')}><p className="in meta">{t.proposal}</p>{proposal ? <ProposalView item={proposal} fy={fy} /> : <p className="in">{t.missing}</p>}<div className="in">{pick('proposal')}</div></section>
     </div>

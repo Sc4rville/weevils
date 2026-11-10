@@ -10,13 +10,14 @@ const sent: { to: string; data: string }[] = []
 vi.mock('./smtp.ts', () => ({ smtpSend: async (o: { to: string; data: string }) => void sent.push({ to: o.to, data: o.data }) }))
 vi.mock('./authors.ts', async (orig) => {
   const real = await orig<typeof import('./authors.ts')>()
+  // Les deux écrivent aussi depuis le compte du pont (alex@gmail.com).
   const list = real.loadAuthors({
-    WEEVILS_AUTHOR_GEPETTO: 'gepetto | #4fb3ff | gepetto@example.com',
-    WEEVILS_AUTHOR_INSTINCT: 'instinct | #ff6f91 | instinct@agents.example.org | s3cret',
+    WEEVILS_AUTHOR_GEPETTO: 'gepetto | #4fb3ff | gepetto@example.com, alex@gmail.com',
+    WEEVILS_AUTHOR_INSTINCT: 'instinct | #ff6f91 | instinct@agents.example.org, alex@gmail.com | s3cret',
   })
   return { ...real, authors: () => list }
 })
-const { MailBridge, authCheck, isAutomatic, mailConfig, parseTarget, RateLimiter, screen, messageText } = await import('./mailbridge.ts')
+const { MailBridge, authCheck, dropMarker, isAutomatic, mailConfig, parseTarget, RateLimiter, screen, messageText } = await import('./mailbridge.ts')
 
 const AR_OK = 'mx.google.com; dkim=pass header.i=@example.com header.s=s1 header.b=abc; spf=pass (google.com: domain of gepetto@example.com designates 1.2.3.4 as permitted sender) smtp.mailfrom=gepetto@example.com; dmarc=pass (p=REJECT) header.from=example.com'
 const mail = (o: { from?: string; subject?: string; body?: string; headers?: string[]; id?: string; to?: string }) =>
@@ -33,6 +34,9 @@ const mail = (o: { from?: string; subject?: string; body?: string; headers?: str
     ].join('\r\n'),
   )
 const CFG = { address: 'alex+weevils@gmail.com', login: 'alex@gmail.com', authserv: 'mx.google.com' }
+const AR_GMAIL = 'mx.google.com; dkim=pass header.i=@gmail.com header.s=20230601 header.b=abc; spf=pass (google.com: domain of alex@gmail.com designates 2a00::1 as permitted sender) smtp.mailfrom=alex@gmail.com; dmarc=pass (p=NONE) header.from=gmail.com'
+/** gepetto et instinct écrivent depuis le compte du pont (ChatGPT et son connecteur Gmail, un agent). */
+const SHARED = loadAuthors({ WEEVILS_AUTHOR_GEPETTO: 'gepetto | #3fc1f0 | alex@gmail.com', WEEVILS_AUTHOR_INSTINCT: 'instinct | #ff6b8a | alex@gmail.com' })
 const AUTHORS = loadAuthors({
   WEEVILS_AUTHOR_GEPETTO: 'gepetto | #4fb3ff | gepetto@example.com',
   WEEVILS_AUTHOR_INSTINCT: 'instinct | #ff6f91 | instinct@agents.example.org | s3cret',
@@ -134,7 +138,7 @@ describe('sécurité du pont', () => {
     expect(screen(mail({ to: 'alex@gmail.com', headers: [`Authentication-Results: ${AR_OK}`, 'Delivered-To: alex+weevils@gmail.com'] }), CFG, AUTHORS).ok).toBe(true)
     expect(screen(mail({ to: 'a@b.c, "W" <alex+weevils@gmail.com>' }), CFG, AUTHORS).ok).toBe(true)
   })
-  it('refuse un inconnu, l’adresse du pont, et tout mail automatique', () => {
+  it('refuse un inconnu, le compte du pont non authentifié, et tout mail automatique', () => {
     expect(screen(mail({ from: 'alex@gmail.com' }), CFG, AUTHORS).ok).toBe(false)
     expect(screen(mail({ from: 'x@evil.com' }), CFG, AUTHORS).ok).toBe(false)
     expect(screen(mail({ from: 'alex+weevils@gmail.com' }), CFG, AUTHORS)).toMatchObject({ ok: false })
@@ -161,6 +165,33 @@ describe('sécurité du pont', () => {
     expect(screen(inBody, CFG, AUTHORS).ok).toBe(true)
     expect(messageText(inBody)).toBe('Fais le menu.')
     expect(screen(mail({ from: 'instinct@agents.example.org', subject: '[mygame] [key:nope] go' }), CFG, AUTHORS)).toMatchObject({ ok: false })
+  })
+  it('compte du pont : authentifié (DKIM gmail ou libellé \\Sent), l’étiquette dit qui signe, sinon c’est l’utilisateur', () => {
+    const own = (o: { subject?: string; body?: string; headers?: string[]; id?: string }) => mail({ from: 'alex@gmail.com', headers: [`Authentication-Results: ${AR_GMAIL}`], ...o })
+    expect(screen(own({}), CFG, SHARED)).toMatchObject({ ok: true, author: { id: '' }, how: 'dkim=pass' })
+    expect(screen(own({ subject: '[GePeTTo] [mygame] go' }), CFG, SHARED)).toMatchObject({ ok: true, author: { id: 'gepetto' } })
+    expect(screen(own({ subject: 'idée', body: 'from: instinct\nFais le menu.' }), CFG, SHARED)).toMatchObject({ ok: true, author: { id: 'instinct' } })
+    expect(screen(own({ subject: 'idée', body: 'Fais le menu.\n\n— Instinct' }), CFG, SHARED)).toMatchObject({ ok: true, author: { id: 'instinct' } })
+    expect(screen(own({ subject: 'idée', body: '[from:gepetto] Fais le menu.' }), CFG, SHARED)).toMatchObject({ ok: true, author: { id: 'gepetto' } })
+    // Le nom dans une phrase ne signe pas.
+    expect(screen(own({ subject: 'parle à gepetto', body: 'dis à instinct de venir' }), CFG, SHARED)).toMatchObject({ ok: true, author: { id: '' } })
+    // Sans DKIM/SPF, le libellé \Sent suffit (seul le compte a pu l'envoyer) ; sans rien, refusé.
+    expect(screen(own({ headers: ['X-Nothing: 1'] }), CFG, SHARED).ok).toBe(false)
+    expect(screen(own({ headers: ['X-Nothing: 1'], subject: '[instinct] go' }), CFG, SHARED, true)).toMatchObject({ ok: true, author: { id: 'instinct' }, how: 'gmail \\Sent' })
+    // Un usurpateur venu d'ailleurs avec l'adresse du compte : ni DKIM aligné ni \Sent.
+    expect(screen(own({ headers: ['Authentication-Results: mx.google.com; spf=fail smtp.mailfrom=alex@gmail.com; dmarc=fail header.from=gmail.com'], subject: '[gepetto] go' }), CFG, SHARED).ok).toBe(false)
+    // Nos propres envois ne reviennent jamais, quelle que soit l'adresse.
+    expect(screen(own({ headers: [`Authentication-Results: ${AR_GMAIL}`, 'X-Weevils: author=gepetto'] }), CFG, SHARED, true).ok).toBe(false)
+    expect(screen(own({ id: '<weevils-1234@gmail.com>' }), CFG, SHARED, true).ok).toBe(false)
+  })
+  it('adresse partagée hors du compte : étiquette obligatoire (ou secret) ; l’étiquette sort de l’objet et du corps', () => {
+    const two = loadAuthors({ WEEVILS_AUTHOR_A: 'alpha | #111 | bots@example.com', WEEVILS_AUTHOR_B: 'beta | #222 | bots@example.com' })
+    expect(screen(mail({ from: 'bots@example.com' }), CFG, two)).toMatchObject({ ok: false })
+    expect(screen(mail({ from: 'bots@example.com', subject: '[mygame] go', body: 'Fais-le.\n-- beta' }), CFG, two)).toMatchObject({ ok: true, author: { id: 'b' } })
+    const g = SHARED[1]
+    expect(parseTarget(dropMarker('[gepetto] [mygame] go', g, 'subject'))).toEqual({ kind: 'project', id: 'mygame' })
+    expect(parseTarget(dropMarker('[gepetto] go', g, 'subject'))).toBeNull()
+    expect(dropMarker('from: gepetto\nFais le menu.\n\n— gepetto', g, 'body')).toBe('Fais le menu.')
   })
   it('limite le débit par auteur', () => {
     const r = new RateLimiter(2, 3)
@@ -241,5 +272,17 @@ describe('le pont, de bout en bout (SMTP simulé)', () => {
     expect(sent.map((s) => s.to)).toEqual(['gepetto@example.com', 'gepetto@example.com', 'gepetto@example.com'])
     // La déduplication survit au redémarrage.
     expect(new MailBridge(cfg, deps, dir).handle(mail({ id: '<n@x>', subject: '[new:mygame] idée' }))).toBe(false)
+  })
+  it('compte du pont : sans cible, l’utilisateur parle à weevboss (non signé) ; un auteur étiqueté est signé ; la réponse revient au compte', async () => {
+    const b = new MailBridge(cfg, deps, dir)
+    const own = (o: { id: string; subject: string; body?: string }) => mail({ from: 'alex@gmail.com', headers: ['X-Nothing: 1'], ...o })
+    expect(b.handle(own({ id: '<o1@x>', subject: 'une question' }), 0, true)).toBe(true)
+    expect(b.handle(own({ id: '<o2@x>', subject: '[gepetto] [weevboss] coucou', body: 'Salut.\n\n— gepetto' }), 0, true)).toBe(true)
+    expect(b.handle(own({ id: '<o3@x>', subject: '[instinct] [mygame] go' }), 0, true)).toBe(true)
+    await settle()
+    expect(calls).toEqual(['main Fais le menu.', 'main [from:gepetto] Salut.', 'send aaaa0000-2222 instinct Fais le menu.'])
+    expect(sent.map((s) => s.to)).toEqual(['alex@gmail.com', 'alex@gmail.com', 'alex@gmail.com'])
+    // La réponse du pont, si elle repassait par la boîte, est reconnue et ignorée.
+    expect(b.handle(parseMail(sent[0].data), 0, true)).toBe(false)
   })
 })

@@ -6,7 +6,17 @@ import { isLang, locale, pickLang, type Lang, type Messages, type Msg } from '..
 
 export { defineMessages, LANGS, LANG_NAMES, type Lang } from '../../shared/i18n.ts'
 
-const KEY = 'weevils-lang'
+// The language picked in the settings. The old key was written by a language line that switched on a single tap: a
+// stray tap left the app in the other language for good. Its value is not a choice anyone made on
+// purpose, so it is dropped once and the app follows the browser again until a language is really picked.
+const KEY = 'weevils-language'
+const LEGACY_KEY = 'weevils-lang'
+
+try {
+  localStorage.removeItem(LEGACY_KEY)
+} catch {
+  /* storage unavailable */
+}
 
 function stored(): Lang | null {
   try {
@@ -17,7 +27,7 @@ function stored(): Lang | null {
   }
 }
 
-const browserLang = (): Lang => pickLang(typeof navigator === 'undefined' ? [] : navigator.languages?.length ? navigator.languages : [navigator.language])
+export const browserLang = (): Lang => pickLang(typeof navigator === 'undefined' ? [] : navigator.languages?.length ? navigator.languages : [navigator.language])
 
 let current: Lang = stored() ?? browserLang()
 const listeners = new Set<() => void>()
@@ -45,12 +55,13 @@ export function setLang(lang: Lang | null) {
   for (const l of listeners) l()
 }
 
-/** weevilsd keeps the user's language for what it writes itself (agent prompts, push notifications, errors). */
+/** weevilsd keeps the user's language for what it writes itself (agent prompts, push notifications, errors). It only
+ * changes it for a language picked here; the browser's language just sets it the first time (server/i18n.ts). */
 export function syncServer() {
   void fetch('/api/prefs', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ lang: current }),
+    body: JSON.stringify({ lang: current, chosen: langIsChosen() }),
     credentials: 'same-origin',
   }).catch(() => undefined)
 }

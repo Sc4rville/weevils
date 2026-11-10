@@ -107,5 +107,14 @@ export function splitChips(text: string): { text: string; chips: Brick[] } {
   return { text: chips.length ? clean.replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim() : text, chips }
 }
 
+/** Le texte tel que l'app l'affiche : chaque puce reste à sa place dans la phrase (l'app en fait un bouton, ou son libellé
+ * sur un message plus ancien), sauf le QR du téléphone, montré sous le message. Les briques désignées, comme splitChips. */
+export function chipsInPlace(text: string): { text: string; chips: Brick[] } {
+  const { chips } = splitChips(text)
+  if (!chips.length) return { text, chips }
+  const clean = text.replace(CHIP, (m, b: string) => (isBrick(b) && b !== 'phone' ? m : ''))
+  return { text: clean.replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim(), chips }
+}
+
 /** Le bloc de contexte ajouté à un message envoyé à weevboss (ce que weevilsd a écrit en son nom) : jamais affiché. */
 export const CONTEXT_BLOCK = /\s*⟦weevils[^⟧]*⟧\s*$/

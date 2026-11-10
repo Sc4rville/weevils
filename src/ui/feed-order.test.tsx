@@ -10,7 +10,7 @@ import type { Project, Session, Snapshot } from '../../shared/api.ts'
 vi.mock('../api', () => ({ api: {} }))
 vi.mock('../push', () => ({ ensurePush: async () => {} }))
 
-localStorage.setItem('weevils-lang', 'fr')
+localStorage.setItem('weevils-language', 'fr')
 for (let p: object | null = HTMLElement.prototype; p; p = Object.getPrototypeOf(p)) if (Object.hasOwn(p, 'animate')) delete (p as { animate?: unknown }).animate
 
 const { ProjectBand } = await import('./bands')

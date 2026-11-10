@@ -20,7 +20,7 @@ import { keepWarm, warmCues } from './voicepipe.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
-import { splitChips } from '../shared/setup.ts'
+import { chipsInPlace } from '../shared/setup.ts'
 import { isDemoJob, type TourKeeper } from './tour.ts'
 import TM from './i18n/tour.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
@@ -1429,7 +1429,8 @@ export class Weevils {
       .slice(-40)
       .map((m) => {
         if (m.role !== 'assistant' || m.devil) return m
-        const { text, chips } = splitChips(m.text)
+        // Les puces restent à leur place dans la phrase : l'app en fait un bouton (« … via [bouton]. »), pas un trou.
+        const { text, chips } = chipsInPlace(m.text)
         return chips.length ? { ...m, text, chips } : m
       })
     if (!msgs.length && ORCHESTRATOR) {

@@ -2282,4 +2282,38 @@ button.copy.done {
 
 .stack .tone > .row.wv-flash:not(.cut) {
   background: inherit;
+
+/* Une puce de branchement à sa place dans la phrase de weevboss (« … via [brancher le pont e-mail]. ») : le même aplat,
+   à la hauteur du texte, qui passe à la ligne avec lui. Sur un message plus ancien, son libellé seul, en gras. */
+.text .setup-chip.inline {
+  min-height: 0;
+  padding: 2px 8px;
+  margin: 0 2px;
+  gap: 6px;
+  vertical-align: baseline;
+  font: inherit;
+  font-weight: 750;
+  line-height: 1.35;
+  white-space: normal;
+  text-align: left;
+}
+
+.text .setup-chip.inline .ic {
+  width: 0.85em;
+  height: 0.85em;
+  flex: none;
+}
+
+.chip-label {
+  font-weight: 750;
+}
+
+/* Le choix de la langue (src/ui/prefs.tsx) : ouvert d'un tap, la langue ne change qu'au tap sur l'une d'elles. */
+.lang-pick .row {
+  padding-left: calc(var(--pad) + 18px);
+}
+
+/* Un secret du parcours de branchement (src/ui/setup.tsx) : masqué sans être un champ mot de passe. */
+.setup-form input.masked {
+  -webkit-text-security: disc;
 }

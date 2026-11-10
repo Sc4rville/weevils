@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { setLang } from '../i18n'
-import { ago, dur, durLong, inline, isCommand, plain, status, step } from './format'
+import { ago, chipLabels, dur, durLong, inline, isCommand, plain, status, step } from './format'
 import B from '../i18n/bits'
 import H from '../i18n/h24'
 
@@ -81,5 +81,18 @@ describe('inline : liens et commandes du fil', () => {
   it('plain(keep) garde liens et accents graves ; plain seul les retire', () => {
     expect(plain('**voir** `ls -la` et [doc](https://x.io)', true)).toBe('voir `ls -la` et [doc](https://x.io)')
     expect(plain('**voir** `ls -la` et [doc](https://x.io)')).toBe('voir ls -la et doc')
+  })
+
+  it('reads a setup chip in the middle of a sentence as a button at its place, its label in plain text', () => {
+    setLang('fr')
+    const t = 'le mot de passe Gmail de 16 lettres via [[setup:mail]]. Le pont démarrera alors tout seul.'
+    expect(inline(t)).toEqual([
+      { kind: 'text', s: 'le mot de passe Gmail de 16 lettres via ' },
+      { kind: 'chip', brick: 'mail' },
+      { kind: 'text', s: '. Le pont démarrera alors tout seul.' },
+    ])
+    expect(plain(t)).toBe('le mot de passe Gmail de 16 lettres via brancher le pont e-mail. Le pont démarrera alors tout seul.')
+    expect(chipLabels('[[setup:nope]] [[setup:github]]')).toBe('[[setup:nope]] brancher github')
+    expect(plain(t)).not.toMatch(/via \./)
   })
 })

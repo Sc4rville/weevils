@@ -1,9 +1,10 @@
 import { AnimatePresence, motion, type Transition } from 'motion/react'
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { api } from '../api'
 import type { Author, Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
-import { dur, inline, isCommand, plain, segments, status, step, userText } from './format'
+import { chipLabel, chipLabels, dur, inline, isCommand, plain, segments, status, step, userText } from './format'
+import type { Brick } from '../../shared/setup.ts'
 import { copyText, useLongPress } from './copy'
 import { markSeen } from './hints'
 import { flash, reveal } from './follow'
@@ -542,6 +543,15 @@ export function CopyButton({ text }: { text: string }) {
 }
 
 /** Texte de message : les URL deviennent des liens (navigateur), les `commandes` ont leur bouton copier. */
+/** Ce qu'une puce de branchement écrite dans un message devient à sa place : un bouton (fourni par le fil de weevboss),
+ * sinon (null, ou hors de ce fil) son libellé, pour que la phrase reste lisible. */
+export const ChipSlot = createContext<((b: Brick) => ReactNode) | null>(null)
+
+function InlineChip({ brick }: { brick: Brick }) {
+  const slot = useContext(ChipSlot)
+  return slot?.(brick) ?? <span className="chip-label">{chipLabel(brick)}</span>
+}
+
 export function Rich({ text, code = true }: { text: string; code?: boolean }) {
   const parts = useMemo(() => inline(text, code), [text, code])
   return (
@@ -549,6 +559,8 @@ export function Rich({ text, code = true }: { text: string; code?: boolean }) {
       {parts.map((p, i) =>
         p.kind === 'text' ? (
           p.s
+        ) : p.kind === 'chip' ? (
+          <InlineChip key={i} brick={p.brick} />
         ) : p.kind === 'url' ? (
           <a key={i} className="url" href={p.href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
             {p.label}
@@ -690,7 +702,22 @@ export const authorTone = (a: Author) => (a.color ? { className: 'tone orch ext'
 
 /** after(id) : ce qui s'affiche sous un message (la barre de questions d'askthread.tsx), id = data-mid du message. */
 /** pendingLabel : la mention des bulles envoyées pas encore arrivées dans le fil (ids « pending-… », src/ui/pending.ts). */
-export function Messages({ messages, author, working = false, after, pendingLabel }: { messages: Message[]; author: string; working?: boolean; after?: (id: string) => ReactNode; pendingLabel?: string }) {
+export function Messages({
+  messages,
+  author,
+  working = false,
+  after,
+  chip,
+  pendingLabel,
+}: {
+  messages: Message[]
+  author: string
+  working?: boolean
+  after?: (id: string) => ReactNode
+  /** Une puce de branchement écrite dans le message id : son bouton, à sa place dans la phrase (null : son libellé). */
+  chip?: (brick: Brick, id: string) => ReactNode
+  pendingLabel?: string
+}) {
   const t = useT(M)
   const td = useT(D)
   const [all, setAll] = useState(false)
@@ -716,10 +743,18 @@ export function Messages({ messages, author, working = false, after, pendingLabe
               className={`msg band ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.demo ? 'demo' : ''}`}
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
               who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}${g.m.demo ? ` · ${t.demo}` : ''}${pendingLabel && g.m.id.startsWith('pending-') ? ` · ${pendingLabel}` : ''}`}
-              copy={g.m.role === 'user' ? userText(g.m.text) : g.m.text}
+              copy={g.m.role === 'user' ? userText(g.m.text) : chipLabels(g.m.text)}
               mid={g.m.id}
             >
-              {g.m.role === 'user' ? <Clamp text={userText(g.m.text)} /> : g.m.role === 'orchestrator' ? <Clamp text={g.m.text} /> : <Prose text={g.m.text} />}
+              {g.m.role === 'user' ? (
+                <Clamp text={userText(g.m.text)} />
+              ) : g.m.role === 'orchestrator' ? (
+                <Clamp text={g.m.text} />
+              ) : (
+                <ChipSlot.Provider value={chip ? (b) => chip(b, g.m.id) : null}>
+                  <Prose text={g.m.text} />
+                </ChipSlot.Provider>
+              )}
             </Bubble>
             {after?.(g.m.id)}
           </Appear>

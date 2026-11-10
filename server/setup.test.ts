@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { splitChips } from '../shared/setup.ts'
+import { chipsInPlace, splitChips } from '../shared/setup.ts'
 
 // Accueil et branchements (server/setup.ts) : puces, bloc de contexte, fichier de config, marche à suivre.
 const cfg = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'setup-')), 'env')
@@ -18,6 +18,13 @@ describe('chips', () => {
   it('leaves a text without chips untouched', () => {
     const t = 'two  spaces\n\n- a list'
     expect(splitChips(t)).toEqual({ text: t, chips: [] })
+  })
+  it('keeps a chip in the middle of a sentence where it was written, for the app to show as a button (never « via . »)', () => {
+    const t = 'Colle le mot de passe Gmail de 16 lettres via [[setup:mail]]. Le pont démarrera alors tout seul.'
+    expect(chipsInPlace(t)).toEqual({ text: t, chips: ['mail'] })
+  })
+  it('takes out the phone QR (shown under the message) and unknown bricks, keeps the others in place', () => {
+    expect(chipsInPlace('Scan it [[setup:phone]] then [[setup:nope]] push [[setup:push]]')).toEqual({ text: 'Scan it then push [[setup:push]]', chips: ['phone', 'push'] })
   })
 })
 
@@ -50,7 +57,7 @@ describe('installPlan', () => {
     machine: { kind: 'vps', mac: false, os: 'Ubuntu 24.04', cpus: 2, ramGb: 4, uptimeDays: 3, alwaysOn: true, host: 'box', user: 'me', sshTarget: 'me@box', agents: 2, others: [], othersAlwaysOn: false },
     reach: 'public', url: 'https://x', https: true, port: 4179, clone: '~/weevils',
     claude: { installed: true, logged: true }, codex: { installed: true, logged: true }, github: { installed: true, logged: true },
-    voice: { spoken: 'edge', openai: false, https: true }, devil: { plugged: false }, mail: { on: false, authors: 0 },
+    voice: { spoken: 'edge', openai: false, https: true }, devil: { plugged: false }, mail: { on: false, authors: 0, pending: [] },
     phone: { devices: 1, push: 0 }, shortcut: false, security: { safe: false, https: true, exposedHttp: false }, quota: [],
     pkg: 'apt', sudo: 'yes', tools: { git: true, tmux: true, curl: true, python3: true, qrencode: true, pipx: true, uv: false, node: 22 }, projects: 0,
   } as const
@@ -102,7 +109,7 @@ describe('never a command for the user to type', () => {
     machine: { kind: 'vps', mac: false, os: 'Ubuntu 24.04', cpus: 2, ramGb: 4, uptimeDays: 3, alwaysOn: true, host: 'box', user: 'me', sshTarget: 'me@box', agents: 2, others: [], othersAlwaysOn: false },
     reach: 'local', url: 'http://127.0.0.1:4179', https: false, port: 4179, clone: '~/weevils',
     claude: { installed: false, logged: false }, codex: { installed: false, logged: false }, github: { installed: false, logged: false },
-    voice: { spoken: null, openai: false, https: false }, devil: { plugged: false }, mail: { on: false, authors: 0 },
+    voice: { spoken: null, openai: false, https: false }, devil: { plugged: false }, mail: { on: false, authors: 0, pending: [] },
     phone: { devices: 1, push: 0 }, shortcut: false, security: { safe: false, https: false, exposedHttp: true }, quota: [],
     pkg: 'apt', sudo: 'no', tools: { git: true, tmux: true, curl: true, python3: true, qrencode: true, pipx: false, uv: false, node: 22 }, projects: 0,
   } as any

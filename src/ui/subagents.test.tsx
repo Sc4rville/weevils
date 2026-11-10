@@ -20,7 +20,7 @@ vi.mock('../api', () => ({
   },
 }))
 
-localStorage.setItem('weevils-lang', 'fr')
+localStorage.setItem('weevils-language', 'fr')
 // happy-dom rejette chaque animation native annulée (AbortError non rattrapé) : motion repasse alors par ses animations JS.
 for (let p: object | null = HTMLElement.prototype; p; p = Object.getPrototypeOf(p)) if (Object.hasOwn(p, 'animate')) delete (p as { animate?: unknown }).animate
 globalThis.fetch = (async () => new Response('{}')) as typeof fetch

@@ -1,6 +1,13 @@
 import type { SessionStatus } from '../../shared/api.ts'
 import { tr } from '../i18n'
 import M from '../i18n/format'
+import S from '../i18n/setup'
+import { CHIP, isBrick, type Brick } from '../../shared/setup.ts'
+
+/** Une puce de branchement écrite dans le texte de weevboss (« [[setup:mail]] »), par son libellé : « brancher le pont e-mail ». */
+export const chipLabel = (b: Brick): string => tr(S)[`chip_${b}`]
+/** Le texte avec ses puces lues comme leur libellé (aperçus, copie) : la phrase reste lisible, jamais « via . ». */
+export const chipLabels = (text: string): string => text.replace(CHIP, (m, b: string) => (isBrick(b) ? chipLabel(b) : m))
 
 /** Durée compacte, façon croquis : 12m, 1h36, 14h01, 2j (2d en anglais). */
 export function dur(ms: number): string {
@@ -46,7 +53,7 @@ export const status = Object.fromEntries(
 /** Texte d'agent simplifié : on enlève la mise en forme markdown qui n'apporte rien sur le téléphone.
  *  `keep` garde les liens et les `commandes`, que le fil rend cliquables et copiables. */
 export function plain(text: string, keep = false): string {
-  const t = keep ? text : text.replace(/`([^`\n]+)`/g, '$1').replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '$1')
+  const t = keep ? text : chipLabels(text).replace(/`([^`\n]+)`/g, '$1').replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '$1')
   return t
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/\*\*(.+?)\*\*/g, '$1')
@@ -58,7 +65,7 @@ export function plain(text: string, keep = false): string {
 }
 
 /** Morceau d'une ligne de texte : prose, lien, ou commande entre accents graves. */
-export type Inline = { kind: 'text'; s: string } | { kind: 'url'; href: string; label: string } | { kind: 'cmd'; s: string }
+export type Inline = { kind: 'text'; s: string } | { kind: 'url'; href: string; label: string } | { kind: 'cmd'; s: string } | { kind: 'chip'; brick: Brick }
 
 /** Domaines nus reconnus sans https:// (« myaccount.google.com/… ») : seulement des extensions courantes, pour ne pas prendre « core.ts » pour un site. */
 const TLD = 'com|org|net|io|dev|app|tech|fr|ai|co|me|gg|xyz|eu|uk|de|be|ch|ca|us|tv|ly|cloud|site|page'
@@ -76,6 +83,21 @@ function trimUrl(u: string): string {
 
 /** Repère les liens (nus ou markdown) et, si `code`, les commandes `…` ; le reste reste du texte. */
 export function inline(text: string, code = true): Inline[] {
+  // Les puces de branchement (« [[setup:mail]] ») d'abord, à leur place dans la phrase ; le reste comme avant.
+  const out: Inline[] = []
+  let last = 0
+  for (const m of text.matchAll(CHIP)) {
+    if (!isBrick(m[1])) continue
+    const i = m.index ?? 0
+    out.push(...inlineText(text.slice(last, i), code), { kind: 'chip', brick: m[1] })
+    last = i + m[0].length
+  }
+  if (!last) return inlineText(text, code)
+  out.push(...inlineText(text.slice(last), code))
+  return out
+}
+
+function inlineText(text: string, code: boolean): Inline[] {
   const out: Inline[] = []
   let last = 0
   const push = (s: string) => {

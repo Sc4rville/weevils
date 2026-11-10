@@ -21,7 +21,7 @@ color. weevboss is told which author wrote what.
    WEEVILS_MAIL_ADDRESS=you+weevils@gmail.com
    WEEVILS_MAIL_PASSWORD=<the app password>
    ```
-   then `weevils-service restart`.
+   The bridge picks the change up by itself within a few seconds (no restart).
 
 Other providers work too: set `WEEVILS_MAIL_IMAP`, `WEEVILS_MAIL_SMTP` and `WEEVILS_MAIL_AUTHSERV` (see
 [`.env.example`](../.env.example)).
@@ -37,14 +37,24 @@ marks, moves or deletes any other mail.
 - **Body** = the message.
 - **Reply**: sent back to the sender in the same thread; answering it continues the same session.
 
+## Several authors on one address
+
+Agents that write from **your own account** (ChatGPT with its Gmail connector, an agent using your mailbox) share
+your address. Declare them with it (`WEEVILS_AUTHOR_GPT=gpt | #3fc1f0 | you@gmail.com`; weevboss does it for you) and
+let them name themselves in each mail, case-insensitive: `[gpt]` in the subject, `[from:gpt]` or `from: gpt` at the
+start of the body, or `— gpt` as a signature. A mail from your account with no such name is you, and goes to weevboss
+when it has no target. Two authors sharing another address need the same naming (or their secret).
+
 ## Security
 
-- Only declared senders get through, and only when their mail is authenticated: SPF or DKIM aligned on their domain
-  (the receiving server's `Authentication-Results`), or the author's secret (`[key:…]` in the subject, or a
-  `key: …` line in the body). Everything else is ignored, logged, and left unread.
+- Only declared senders (and your own account) get through, and only when their mail is authenticated: SPF or DKIM
+  aligned on their domain (the receiving server's `Authentication-Results`), Gmail's `\Sent` label for mail sent
+  from your own account, or the author's secret (`[key:…]` in the subject, or a `key: …` line in the body).
+  Everything else is ignored, logged, and left unread.
 - Rate limit per author (`WEEVILS_MAIL_PER_MINUTE`, `WEEVILS_MAIL_PER_HOUR`).
-- No loops: nothing from the bridge's own address and nothing automatic (`Auto-Submitted`, `X-Autoreply`,
-  `Precedence: bulk`); every reply goes to the sender only and carries `Auto-Submitted: auto-replied`.
+- No loops: the bridge's own mails are recognized by their headers (`X-Weevils`, its `Message-ID`), never by the
+  address; nothing automatic (`Auto-Submitted`, `X-Autoreply`, `Precedence: bulk`); every reply goes to the sender
+  only (never to the alias) and carries `Auto-Submitted: auto-replied`.
 
 ## Delivery
 

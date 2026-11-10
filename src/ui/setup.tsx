@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { flushSync } from 'react-dom'
 import { FIELDS, isBrick, type ApplyResult, type Brick, type Device } from '../../shared/setup.ts'
 import { api } from '../api'
 import { ensurePush } from '../push'
@@ -65,14 +66,32 @@ let flowInput: { add: (x: string) => void; send: () => void } | null = null
 export const flowVoice = { add: (x: string) => flowInput?.add(x), send: () => flowInput?.send() }
 
 /** Lance une brique : weevboss poste son explication (et fait ce qui se fait seul), puis, s'il le dit, le champ du bas
- * pose les questions. Rejette si le serveur ne répond pas. */
-export async function startSetup(brick: Brick) {
+ * pose les questions. Rejette si le serveur ne répond pas. opened : le champ est déjà ouvert (openFlow, au tap). */
+export async function startSetup(brick: Brick, opened = false) {
   // Le fil de weevboss s'ouvre en haut de l'écran tout de suite (d'une page, du bas du flux) : sa réponse y arrive sous les yeux.
   focusBoss({ flash: false })
-  const r = await api.setupAsk(brick, device())
-  // La réponse (nouvelle, ou l'explication déjà là si on relance) est mise en avant, une fois.
+  const r = await api.setupAsk(brick, device()).catch((e: unknown) => {
+    if (opened && flow?.brick === brick && flow.step === 0) setFlow(null)
+    throw e
+  })
+  // La réponse (nouvelle, ou l'explication déjà là si on relance) est mise en avant, une fois ; une page ouverte entre-temps
+  // n'est pas refermée : ce sera au retour.
   focusBossSoon({ mid: r.said })
-  if (r.flow && FIELDS[brick]) setFlow({ brick, step: 0, values: {} })
+  if (r.flow && FIELDS[brick]) {
+    if (flow?.brick !== brick) setFlow({ brick, step: 0, values: {} })
+  } else if (opened && flow?.brick === brick && flow.step === 0) setFlow(null)
+}
+
+const composerInput = () => document.querySelector<HTMLInputElement>('.setup-form input')
+
+/** Au tap, dans le geste même : le champ du bas s'ouvre et prend le focus tout de suite. Sur iPhone, le clavier ne
+ * s'ouvre que pour un focus donné pendant le geste : ouvert après la réponse du serveur, le champ restait inerte et le
+ * bouton semblait ne rien faire. Le serveur confirme ensuite (startSetup) ; s'il n'y a pas de questions, il se referme. */
+function openFlow(brick: Brick): boolean {
+  if (!FIELDS[brick]) return false
+  if (flow?.brick !== brick) flushSync(() => setFlow({ brick, step: 0, values: {} }))
+  composerInput()?.focus({ preventScroll: true })
+  return true
 }
 /** Pareil, sans attendre ni signaler d'erreur (bulles, diablotin). */
 export const askSetup = (brick: Brick) => void startSetup(brick).catch(() => undefined)
@@ -140,14 +159,19 @@ export async function runBrick(brick: Brick): Promise<{ ok: boolean; note?: stri
       await copyText(`${location.origin}/api/voice/turn?k=${r.token}`)
       await api.setupDone('shortcut')
       if (r.url) location.href = r.url
-    } else await startSetup(brick)
+    } else {
+      // Le parcours de cette brique est déjà ouvert (second tap) : le champ reprend le focus, rien n'est reposté.
+      if (flow?.brick === brick) composerInput()?.focus()
+      else await startSetup(brick, openFlow(brick))
+    }
     return { ok: true }
   } catch {
     return { ok: false }
   }
 }
 
-function Chip({ brick }: { brick: Brick }) {
+/** Le bouton d'une puce : sous un message, ou à sa place dans la phrase de weevboss (inline). */
+export function Chip({ brick, inline = false }: { brick: Brick; inline?: boolean }) {
   const t = useT(M)
   const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle')
   const [note, setNote] = useState<string | null>(null)
@@ -161,8 +185,8 @@ function Chip({ brick }: { brick: Brick }) {
   }
   return (
     <>
-      <button type="button" className={`setup-chip ${state}`} onClick={() => void go()} disabled={state === 'busy'}>
-        {state === 'busy' ? <span className="spin"><Icon name="star" /></span> : <Icon name={state === 'done' ? 'check' : state === 'error' ? 'bang' : 'arrow'} dir="right" />} {t[`chip_${brick}`]}
+      <button type="button" className={`setup-chip ${inline ? 'inline' : ''} ${state}`} onClick={() => void go()} disabled={state === 'busy'}>
+        {state === 'busy' ? <span className="spin"><Icon name="star" /></span> : state === 'done' ? <Icon name="check" /> : state === 'error' ? <Icon name="bang" /> : <Icon name="arrow" dir="right" />} {t[`chip_${brick}`]}
       </button>
       {note && <span className="meta setup-note">{note}</span>}
     </>
@@ -181,6 +205,8 @@ export function SetupChips({ chips }: { chips: string[] }) {
 }
 
 // ---------------------------------------------------------------- le champ du bas pendant un parcours
+
+const maskByCss = typeof CSS !== 'undefined' && CSS.supports?.('-webkit-text-security', 'disc')
 
 export function SetupComposer() {
   const t = useT(M)
@@ -270,9 +296,15 @@ export function SetupComposer() {
           onChange={(e) => setText(e.target.value)}
           placeholder={t[`p_${key}` as `p_devil_url`]}
           aria-label={label}
-          type={q.secret ? 'password' : q.kind === 'email' ? 'email' : 'text'}
+          // Secret : masqué par le CSS plutôt que type=password là où c'est possible. Un champ mot de passe fait surgir le
+          // gestionnaire de mots de passe d'iOS (« mot de passe fort » qui remplit le champ à ta place, trousseau) au
+          // lieu du clavier, alors qu'on colle ici un mot de passe d'application ou un jeton, jamais à retenir.
+          type={q.secret ? (maskByCss ? 'text' : 'password') : q.kind === 'email' ? 'email' : 'text'}
+          className={q.secret && maskByCss ? 'masked' : undefined}
           inputMode={q.kind === 'email' ? 'email' : q.kind === 'url' ? 'url' : undefined}
-          autoComplete={q.secret ? 'new-password' : 'off'}
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}

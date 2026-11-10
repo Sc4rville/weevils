@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Message, Project } from '../../shared/api.ts'
+import type { Brick } from '../../shared/setup.ts'
 import { api } from '../api'
 import { tr, useT } from '../i18n'
 import M from '../i18n/bands'
@@ -23,7 +24,7 @@ import { setDevil, useDevil } from './devil'
 import { markSeen, tapHint } from './hints'
 import { flash, keepInPlace, reveal, useFollow } from './follow'
 import { mergePending, type Pending } from './pending'
-import { SetupChips, SetupComposer, askSetup, flowVoice, useFlow, useWelcome } from './setup'
+import { Chip, SetupChips, SetupComposer, askSetup, flowVoice, useFlow, useWelcome } from './setup'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
@@ -234,15 +235,17 @@ export function AgentBand() {
   const send = (text: string) => sending(text, text, () => (devilOn ? api.devil(text) : api.main(text)))
   const attach = (text: string, files: { name: string; type: string; data: string }[]) =>
     sending(text, `${text ? `${text} ` : ''}${t.withFiles(files.length)}`, () => api.mainAttach(text, files))
-  // Les puces de branchement d'un message de weevboss ([[setup:x]]) : en boutons dessous, sur le dernier message qui
-  // les porte seulement (les anciens restent lisibles, sans boutons qui doublonnent).
+  // Les puces de branchement d'un message de weevboss ([[setup:x]]) : un bouton à leur place dans la phrase, sur le
+  // dernier message qui les porte seulement (les anciens gardent le libellé, lisible, sans boutons qui doublonnent).
+  // Le QR du téléphone, retiré du texte, s'affiche sous le message.
   const lastWith = new Map<string, string>()
   for (const m of main) for (const c of m.chips ?? []) lastWith.set(c, m.id)
   const chipsOf = (id: string) => {
     const m = main.find((x) => x.id === id)
-    const list = (m?.chips ?? []).filter((c) => lastWith.get(c) === id)
+    const list = (m?.chips ?? []).filter((c) => lastWith.get(c) === id && !m?.text.includes(`[[setup:${c}]]`))
     return list.length ? <SetupChips chips={list} /> : null
   }
+  const chipIn = (b: Brick, id: string) => (lastWith.get(b) === id ? <Chip brick={b} inline /> : null)
 
   return (
     <section className={`band agent tone ${devilOn || devilFlash ? 'devil-on' : ''} ${open ? 'open' : ''}`} style={color(devilOn || devilFlash ? 'devil' : 'agent')} aria-label={t.agentBand}>
@@ -291,7 +294,7 @@ export function AgentBand() {
           }}
         >
           <div ref={th.ref} className="ask-thread">
-            <Messages messages={main} author="weevboss" working={snap.mainWorking || !!snap.devil?.working} pendingLabel={pendingLabel} after={(id) => <>{qa(th.after(id), `${th.a.asking}:${!!th.a.shown}:${th.a.waiting}`)}{chipsOf(id)}</>} />
+            <Messages messages={main} author="weevboss" working={snap.mainWorking || !!snap.devil?.working} pendingLabel={pendingLabel} after={(id) => <>{qa(th.after(id), `${th.a.asking}:${!!th.a.shown}:${th.a.waiting}`)}{chipsOf(id)}</>} chip={chipIn} />
           </div>
           {snap.mainWorking && <Working author="weevboss" />}
           {snap.devil?.working && <Working author="devil" />}

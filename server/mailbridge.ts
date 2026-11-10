@@ -11,8 +11,14 @@
 // reconnexion automatique avec attente croissante ; déduplication par Message-ID ; tout est journalisé « [mail] ».
 // Sécurité : seuls les expéditeurs déclarés (WEEVILS_AUTHOR_*) passent, et seulement si le serveur de réception atteste
 // SPF ou DKIM aligné sur le domaine de l'expéditeur (Authentication-Results), ou si le secret partagé est présent.
-// Anti-boucle : rien de l'adresse du pont, rien d'automatique (Auto-Submitted, X-Autoreply, Precedence: bulk…) ;
-// chaque envoi porte Auto-Submitted: auto-replied et X-Weevils, à l'expéditeur seul, jamais au pont.
+// Adresse partagée : plusieurs auteurs peuvent écrire depuis la même adresse (typiquement celle du compte du pont :
+// ChatGPT avec son connecteur Gmail, un agent…). L'auteur se reconnaît alors à une étiquette : « [gepetto] » dans l'objet,
+// « [from:gepetto] » ou « from: gepetto » en début de corps, « — gepetto » en signature (casse indifférente). Sans
+// étiquette, un mail du compte du pont vient de l'utilisateur lui-même, pour weevboss par défaut.
+// Un mail du compte du pont est authentifié par SPF/DKIM, ou par le libellé Gmail \Sent (seul le compte peut l'avoir envoyé).
+// Anti-boucle : nos propres envois sont reconnus à leurs en-têtes (X-Weevils, Auto-Submitted, Message-ID <weevils-…>),
+// pas à l'adresse ; rien d'automatique (Auto-Submitted, X-Autoreply, Precedence: bulk…) ;
+// chaque envoi porte Auto-Submitted: auto-replied et X-Weevils, à l'expéditeur seul, jamais à l'alias du pont.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -126,26 +132,71 @@ const sameSecret = (a: string, b: string) => {
   return crypto.timingSafeEqual(x, y)
 }
 
+/** L'utilisateur lui-même (un mail de son propre compte, sans étiquette d'auteur) : ses messages ne sont pas signés. */
+export const OWNER: AuthorConfig = { id: '', name: '', color: '', emails: [] }
+
 export type Screen = { ok: true; author: AuthorConfig; how: string } | { ok: false; reason: string }
 
-/** Qui écrit, et a-t-il le droit : expéditeur déclaré + (SPF/DKIM alignés ou secret partagé). */
-export function screen(mail: Mail, cfg: Pick<MailConfig, 'address' | 'login' | 'authserv'>, list: AuthorConfig[]): Screen {
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** Les façons de signer un mail au nom d'un auteur (objet ou corps), pour son id et son nom affiché. */
+function markers(a: AuthorConfig): { subject: RegExp; body: RegExp } {
+  const n = [...new Set([a.id, a.name.toLowerCase()].filter(Boolean))].map(esc).join('|')
+  return {
+    subject: new RegExp(`\\[\\s*(?:from\\s*:\\s*)?(?:${n})\\s*\\]`, 'i'),
+    // i18n-ignore : motif de reconnaissance (« de : », « par : »), jamais affiché
+    body: new RegExp(`^[ \\t>]*(?:\\[\\s*(?:from\\s*:\\s*)?(?:${n})\\s*\\]|(?:from|de|par)\\s*:\\s*(?:${n})\\b|(?:—|–|--?)\\s*(?:${n})[ \\t]*[.!]?[ \\t]*$)`, 'im'),
+  }
+}
+
+/** L'auteur qui signe le mail parmi ceux qui partagent l'adresse : la première étiquette trouvée (objet, puis corps). */
+export function signedBy(mail: Mail, candidates: AuthorConfig[]): AuthorConfig | undefined {
+  let best: { a: AuthorConfig; at: number } | undefined
+  for (const a of candidates) {
+    const m = markers(a)
+    const s = m.subject.exec(mail.subject)
+    const b = s ? null : m.body.exec(mail.text)
+    const at = s ? s.index : b ? 10_000 + b.index : -1
+    if (at >= 0 && (!best || at < best.at)) best = { a, at }
+  }
+  return best?.a
+}
+
+/** Retire l'étiquette d'auteur de l'objet (pour lire la cible) ou du corps (pour le message transmis). */
+export function dropMarker(text: string, a: AuthorConfig, where: 'subject' | 'body'): string {
+  if (!a.id) return text
+  const m = markers(a)
+  return where === 'subject' ? text.replace(m.subject, ' ').replace(/\s{2,}/g, ' ').trim() : text.replace(new RegExp(m.body.source, 'gim'), '').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+/** Un de nos propres envois (réponse du pont) : jamais retraité, quelle que soit l'adresse. */
+export const fromBridge = (mail: Mail, cfg: Pick<MailConfig, 'address'>) =>
+  mail.get('x-weevils') !== undefined || (!!mail.messageId && mail.messageId.startsWith('<weevils-') && mail.messageId.endsWith(`@${cfg.address.split('@')[1]}>`))
+
+/**
+ * Qui écrit, et a-t-il le droit : expéditeur déclaré + (SPF/DKIM alignés ou secret partagé). Le compte du pont
+ * (login ou alias) vaut l'utilisateur ; il est aussi authentifié par `sent` (le libellé Gmail \Sent du message).
+ */
+export function screen(mail: Mail, cfg: Pick<MailConfig, 'address' | 'login' | 'authserv'>, list: AuthorConfig[], sent = false): Screen {
   if (!mail.from) return { ok: false, reason: tr(M).noSender }
-  if (mail.from === cfg.address || mail.from === cfg.login) return { ok: false, reason: tr(M).fromBridge }
+  if (fromBridge(mail, cfg)) return { ok: false, reason: tr(M).fromBridge }
   if (!addressedTo(mail, cfg.address)) return { ok: false, reason: tr(M).notToBridge }
   const auto = isAutomatic(mail)
   if (auto) return { ok: false, reason: tr(M).automatic(auto) }
+  const own = mail.from === cfg.login || mail.from === cfg.address
   const candidates = list.filter((a) => a.id !== BOSS && a.emails.includes(mail.from!))
-  if (!candidates.length) return { ok: false, reason: tr(M).unknownSender }
+  if (!candidates.length && !own) return { ok: false, reason: tr(M).unknownSender }
   const given = KEY_SUBJECT.exec(mail.subject)?.[1] ?? KEY_BODY.exec(mail.text)?.[1]
   if (given) {
     const byKey = candidates.find((a) => a.secret && sameSecret(a.secret, given))
     if (byKey) return { ok: true, author: byKey, how: 'secret' }
     return { ok: false, reason: tr(M).wrongSecret }
   }
-  if (candidates.length > 1) return { ok: false, reason: tr(M).sharedAddress(candidates.map((a) => a.id).join(', ')) }
+  // Plusieurs auteurs sur cette adresse, ou celle du compte du pont : l'étiquette dit qui signe.
+  const author = candidates.length > 1 || own ? (signedBy(mail, candidates) ?? (own ? OWNER : undefined)) : candidates[0]
+  if (!author) return { ok: false, reason: tr(M).sharedAddress(candidates.map((a) => a.id).join(', ')) }
+  if (own && sent) return { ok: true, author, how: 'gmail \\Sent' }
   const auth = authCheck(mail, cfg.authserv)
-  return auth.pass ? { ok: true, author: candidates[0], how: auth.detail } : { ok: false, reason: tr(M).authFailed(auth.detail) }
+  return auth.pass ? { ok: true, author, how: auth.detail } : { ok: false, reason: tr(M).authFailed(auth.detail) }
 }
 
 export type Target = { kind: 'boss' } | { kind: 'session'; id: string } | { kind: 'project'; id: string } | { kind: 'new'; project: string; tool: Tool }
@@ -317,7 +368,10 @@ export class MailBridge {
       if (!raw) continue
       let accepted = false
       try {
-        accepted = this.handle(parseMail(raw), uid)
+        const mail = parseMail(raw)
+        // Du compte du pont : le libellé \Sent prouve qu'il a été envoyé depuis ce compte (Gmail seulement).
+        const sent = mail.from === this.cfg.login || mail.from === this.cfg.address ? (await c.gmLabels(uid).catch(() => [] as string[])).some((l) => /^\\?\\Sent$/i.test(l)) : false
+        accepted = this.handle(mail, uid, sent)
       } catch (e) {
         console.log('[mail]', `message ${uid} illisible : ${(e as Error).message}`)
       }
@@ -327,7 +381,7 @@ export class MailBridge {
   }
 
   /** Un message reçu : vérifié, dédupliqué, limité, routé. true s'il est pris en compte. */
-  handle(mail: Mail, uid = 0): boolean {
+  handle(mail: Mail, uid = 0, sent = false): boolean {
     const mid = mail.messageId ?? `<uid-${this.state.uidValidity}-${uid}@weevils>`
     const what = `${mail.from ?? '?'} · « ${oneLine(mail.subject.replace(KEY_SUBJECT, '[key:…]'), 60)} » · ${mid}`
     if (this.state.seen.includes(mid)) {
@@ -336,16 +390,17 @@ export class MailBridge {
     }
     this.state.seen.push(mid)
     this.persist()
-    const v = screen(mail, this.cfg, authors())
+    const v = screen(mail, this.cfg, authors(), sent)
     if (!v.ok) {
       console.log('[mail]', `ignoré · ${v.reason} · ${what}`)
       return false
     }
-    if (!this.limiter.allow(v.author.id)) {
-      console.log('[mail]', `ignoré · limite de débit de ${v.author.id} (${this.cfg.perMinute}/min, ${this.cfg.perHour}/h) · ${what}`)
+    const who = v.author.id || 'owner'
+    if (!this.limiter.allow(who)) {
+      console.log('[mail]', `ignoré · limite de débit de ${who} (${this.cfg.perMinute}/min, ${this.cfg.perHour}/h) · ${what}`)
       return false
     }
-    console.log('[mail]', `reçu de ${v.author.id} (${v.how}) · ${what}`)
+    console.log('[mail]', `reçu de ${who} (${v.how}) · ${what}`)
     void this.dispatch(mail, mid, v.author).catch((e) => console.log('[mail]', `échec · ${(e as Error).message} · ${what}`))
     return true
   }
@@ -360,16 +415,18 @@ export class MailBridge {
 
   private async dispatch(mail: Mail, mid: string, author: AuthorConfig) {
     // Réponse dans un fil connu : même cible (une étiquette héritée « [new:x] » ne rouvre pas une session à chaque fois).
-    const target = this.threadTarget(mail) ?? parseTarget(mail.subject)
-    const text = messageText(mail)
+    // L'utilisateur lui-même, sans cible : weevboss.
+    const target = this.threadTarget(mail) ?? parseTarget(dropMarker(mail.subject, author, 'subject')) ?? (author.id ? null : ({ kind: 'boss' } as const))
+    const text = dropMarker(messageText(mail), author, 'body')
+    const from = author.id || undefined
     if (!target) return this.reply(mail, mid, author, null, tr(M).noTarget)
     if (!text) return this.reply(mail, mid, author, null, tr(M).emptyMessage)
     const since = Date.now()
 
     if (target.kind === 'boss') {
       this.state.threads[mid] = BOSS
-      await this.deps.sendMain(signAs(author.id, text))
-      console.log('[mail]', `→ weevboss · de ${author.id}`)
+      await this.deps.sendMain(from ? signAs(from, text) : text)
+      console.log('[mail]', `→ weevboss · de ${from ?? 'owner'}`)
       const r = await this.deps.waitMainReply(since, this.cfg.replyTimeoutMs)
       return this.reply(mail, mid, author, BOSS, r ?? tr(M).bossStillWorking)
     }
@@ -379,7 +436,7 @@ export class MailBridge {
     if (target.kind === 'session') {
       const hits = snap.sessions.filter((s) => s.id.toLowerCase().startsWith(target.id))
       if (hits.length !== 1) return this.reply(mail, mid, author, null, hits.length ? tr(M).ambiguousSession(target.id) : tr(M).noSession(target.id))
-      sessionId = (await this.deps.send(hits[0].id, text, author.id)).id
+      sessionId = (await this.deps.send(hits[0].id, text, from)).id
     } else if (target.kind === 'project') {
       const p = snap.projects.find((x) => x.id.toLowerCase() === target.id.toLowerCase() || x.repos.some((r) => r.toLowerCase() === target.id.toLowerCase()))
       if (!p) return this.reply(mail, mid, author, null, tr(M).unknownProject(target.id, snap.projects.map((x) => x.id).join(', ')))
@@ -387,13 +444,13 @@ export class MailBridge {
       const free = snap.sessions
         .filter((s) => s.projectId === p.id && s.controllable && s.status === 'idle')
         .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0]
-      sessionId = free ? (await this.deps.send(free.id, text, author.id)).id : (await this.deps.create({ projectId: p.id, tool: 'claude', text, from: author.id })).id
+      sessionId = free ? (await this.deps.send(free.id, text, from)).id : (await this.deps.create({ projectId: p.id, tool: 'claude', text, from })).id
     } else {
-      sessionId = (await this.deps.create({ projectId: target.project, tool: target.tool, text, from: author.id })).id
+      sessionId = (await this.deps.create({ projectId: target.project, tool: target.tool, text, from })).id
     }
     this.state.threads[mid] = sessionId
     this.persist()
-    console.log('[mail]', `→ session ${sessionId.slice(0, 8)} · de ${author.id}`)
+    console.log('[mail]', `→ session ${sessionId.slice(0, 8)} · de ${from ?? 'owner'}`)
     const r = await this.deps.waitReply(sessionId, since, this.cfg.replyTimeoutMs)
     // Une session codex toute neuve est d'abord connue par le nom de sa pane : le fil retient le vrai id.
     this.state.threads[mid] = r.id
@@ -408,7 +465,9 @@ export class MailBridge {
   /** Répond à l'expéditeur seul, dans le même fil. `target` null : message d'erreur, le fil ne mène nulle part. */
   private async reply(mail: Mail, mid: string, author: AuthorConfig, target: string | null, text: string, sessionId?: string) {
     const to = mail.from!
-    if (to === this.cfg.address || to === this.cfg.login) return console.log('[mail]', 'réponse annulée : destinataire = adresse du pont')
+    // Au compte du pont (l'utilisateur, ou un agent qui écrit depuis son compte) : oui, la réponse va dans sa boîte, pas
+    // sous le libellé (elle n'est pas adressée à l'alias) et porte X-Weevils. À l'alias lui-même : jamais.
+    if (to === this.cfg.address) return console.log('[mail]', 'réponse annulée : destinataire = adresse du pont')
     const domain = this.cfg.address.split('@')[1]
     const messageId = `<weevils-${crypto.randomUUID()}@${domain}>`
     const footer = sessionId ? `\n\n${tr(M).footer(sessionId.slice(0, 8))}` : ''
@@ -425,7 +484,7 @@ export class MailBridge {
       extraHeaders: {
         'Auto-Submitted': 'auto-replied',
         'X-Auto-Response-Suppress': 'All',
-        'X-Weevils': `author=${author.id}; target=${target ?? 'none'}`,
+        'X-Weevils': `author=${author.id || 'owner'}; target=${target ?? 'none'}`,
       },
     })
     if (target) this.state.threads[messageId] = target

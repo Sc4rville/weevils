@@ -20,9 +20,11 @@ const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 export function H24Rail() {
   const { snap, colors, h24Open: open, setH24Open: setOpen, h24Focus } = useApp()
   const t = useT(M)
-  const opts = snap.optimizers ?? []
+  const talks = useTalks()
+  // Une tâche réécrite à l'instant : sa nouvelle version, avant que le snapshot ne suive.
+  const opts = (snap.optimizers ?? []).map(talks.item)
   const proposed = opts.filter((o) => o.state === 'proposed')
-  const tree = autoTree(snap)
+  const tree = autoTree({ ...snap, optimizers: opts })
   const all = tree.flatMap(tasksOf)
   const c = counts(all)
   // La bande juste sous les propositions : la ligne machine (sur le fond du tiroir), sinon la première catégorie.
@@ -33,7 +35,6 @@ export function H24Rail() {
   const dragged = useRef(false)
   const controls = useDragControls()
   const [closedY, setClosedY] = useState(0)
-  const talks = useTalks()
 
   const measure = useCallback(() => {
     const h = drawer.current?.offsetHeight ?? 0

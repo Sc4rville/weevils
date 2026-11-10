@@ -174,6 +174,8 @@ export function headline(text: string, max = HEADLINE_MAX): string {
   if (heading) line = heading[1]
   line = line
     .replace(/\(\s*[,;]?\s*\)/g, '')
+    // What stayed of « (branche `x`) » once the code left.
+    .replace(/\(\s*\p{L}+\s*\)/gu, '')
     .replace(/\s+([,.;:!?…])/g, '$1')
     .replace(/[\s,;:(–—-]+$/u, '')
     .replace(/\s{2,}/g, ' ')
@@ -382,6 +384,12 @@ export class ForYou {
       try {
         const raw = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<State>
         const items = (Array.isArray(raw.items) ? raw.items : []).filter((i) => i && typeof i.id === 'string' && typeof i.kind === 'string' && typeof i.text === 'string' && typeof i.at === 'number')
+        // Results written before they had a line said in passing: the whole words move to the body.
+        for (const i of items) {
+          if (i.kind !== 'session' || i.tone !== 'result' || i.body) continue
+          const line = headline(i.text)
+          if (line && line !== collapse(i.text)) Object.assign(i, { body: i.text, text: line })
+        }
         const obj = <T>(v: unknown): Record<string, T> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, T>) : {})
         return {
           rev: Number(raw.rev) || 0,

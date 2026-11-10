@@ -419,10 +419,12 @@ export class Curator implements ForYouCurator {
     return this.s.calls.day === dayKey(now) ? this.s.calls.n : 0
   }
 
-  /** A usage window of Claude is nearly full, by the last figures known (none known: not held back). */
+  /** A usage window of Claude is nearly full, by the last figures known. None known yet (a start): held back too — a
+   *  call made blind at 90 % of the week is exactly what this gate is for. */
   private hot(): boolean {
     const q = (this.deps.usage ? this.deps.usage() : this.fy.usageKnown())?.claude
-    return !!q?.ok && q.windows.some((w) => w.percent >= USAGE_ALERT)
+    if (!q?.ok) return true
+    return q.windows.some((w) => w.percent >= USAGE_ALERT)
   }
 
   private logged(): boolean {

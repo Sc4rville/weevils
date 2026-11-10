@@ -222,7 +222,7 @@ describe('the budget', () => {
     expect(model).toHaveBeenCalledTimes(1)
   })
 
-  it('nothing without Claude logged in, nor while a usage window of Claude is at 85 % or more; unknown figures do not hold it', async () => {
+  it('nothing without Claude logged in, nor while a usage window of Claude is at 85 % or more, nor before the figures are known', async () => {
     const c = makeCurator()
     await deliver('s1', 'The double jump is in.')
     looked()
@@ -234,10 +234,13 @@ describe('the budget', () => {
     await c.tick(now)
     expect(model).not.toHaveBeenCalled()
     expect(c.can(now)).toBe(false)
-    // A read that failed says nothing about the windows.
+    // Not known yet (a start) or a read that failed: no call made blind.
     known = usage(99, false)
-    expect(c.can(now)).toBe(true)
+    expect(c.can(now)).toBe(false)
     known = null
+    await c.tick(now)
+    expect(model).not.toHaveBeenCalled()
+    known = usage(40)
     await c.tick(now)
     expect(model).toHaveBeenCalledTimes(1)
   })

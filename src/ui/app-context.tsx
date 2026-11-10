@@ -27,6 +27,7 @@ export type Page =
   | { kind: 'fs'; machine: string; path: string }
   | { kind: 'fsfile'; machine: string; path: string }
   | { kind: 'usage' }
+  | { kind: 'memory' }
 
 export interface AppCtx {
   snap: Snapshot

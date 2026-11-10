@@ -30,6 +30,9 @@ import { Setup, installPlan, writeConfig } from './setup.ts'
 import { TourKeeper } from './tour.ts'
 import { DEMOS, isTourId } from '../shared/tour.ts'
 import { isBrick, isSetupKey, type Device } from '../shared/setup.ts'
+import { Memory, memoryRoutes } from './memory.ts'
+import { Flyers, weevilRoutes } from './weevil.ts'
+import { Optimizers, optimizerRoutes } from './optimizers.ts'
 
 const w = new Weevils()
 w.start()
@@ -89,6 +92,18 @@ const tour = new TourKeeper({
   refreshH24: () => w.refreshH24(),
 })
 w.tour = tour
+
+// ---------------------------------------------------------------- mémoire, weevils volants, h24 (machine principale)
+
+const memory = new Memory()
+memory.onChange(() => w.bump())
+const flyers = new Flyers(w, memory)
+const optimizers = new Optimizers(w, memory)
+if (ORCHESTRATOR) {
+  w.memory = memory
+  w.optimizers = optimizers
+  optimizers.start()
+}
 const asDevice = (d: any): Device => ({
   os: ['ios', 'android', 'mac', 'windows', 'linux'].includes(d?.os) ? d.os : 'other',
   mobile: !!d?.mobile,
@@ -573,6 +588,9 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ...tipRoutes(w, json, readBody, () => !!openaiKey()),
   ...hintRoutes(hints, json, readBody),
+  ...memoryRoutes(memory, json, readBody),
+  ...weevilRoutes(flyers, json, readBody),
+  ...optimizerRoutes(optimizers, json, readBody),
   // ---- Mes logiciels : détectés sur chaque machine, aperçu vivant, lancés d'un tap (server/softwares.ts).
   ...softwareRoutes(w, json, readBody),
   ['POST', /^\/api\/github\/pin$/, async (req, res) => {

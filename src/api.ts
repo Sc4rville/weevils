@@ -7,7 +7,7 @@ import { tr } from './i18n'
 import M from './i18n/app'
 import type { FsListing, InfraDetail, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
 import type { ProgressFix, Software, SoftwareList } from '../shared/softwares.ts'
-import type { ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, SessionDetail, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
+import type { ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, SessionDetail, Snapshot, SubagentDetail, Tool, WeevilQuestion, WeevilReply } from '../shared/api.ts'
 
 export class ApiError extends Error {
   status: number
@@ -83,6 +83,15 @@ export const api = {
   voices: () => call<{ enabled: boolean; voices: { id: string; name: string; gender?: string }[]; current?: string }>('GET', '/api/voices'),
   setVoice: (id: string) => call<{ ok: true }>('POST', '/api/voices', { id }),
   mainAttach: (text: string, files: { name: string; type: string; data: string }[]) => call<{ id: string }>('POST', '/api/main/attach', { text, files }),
+  memory: () => call<{ items: MemoryItem[] }>('GET', '/api/memory'),
+  addMemory: (text: string) => call<{ item: MemoryItem }>('POST', '/api/memory', { text }),
+  editMemory: (id: string, text: string) => call<{ item: MemoryItem }>('PUT', `/api/memory/${enc(id)}`, { text }),
+  deleteMemory: (id: string) => call<{ ok: true }>('DELETE', `/api/memory/${enc(id)}`),
+  weevil: () => call<{ question: WeevilQuestion | null }>('GET', '/api/weevil'),
+  weevilMissed: (id: string) => call<{ ok: true }>('POST', `/api/weevil/${enc(id)}/missed`, {}),
+  weevilAnswer: (id: string, text: string, history: { role: 'weevil' | 'user'; text: string }[]) => call<WeevilReply>('POST', `/api/weevil/${enc(id)}/answer`, { text, history }),
+  acceptOptimizer: (id: string) => call<{ ok: true }>('POST', `/api/optimizers/${enc(id)}/accept`, {}),
+  refuseOptimizer: (id: string) => call<{ ok: true }>('POST', `/api/optimizers/${enc(id)}/refuse`, {}),
   toggleH24: (id: string) => call<{ ok: true }>('POST', `/api/h24/${enc(id)}/toggle`, {}),
   conversations: (opts: { project?: string; q?: string }) => call<{ conversations: ConversationSummary[] }>('GET', `/api/conversations?${new URLSearchParams(opts)}`),
   conversation: (id: string) => call<ConversationDetail>('GET', `/api/conversations/${enc(id)}`),

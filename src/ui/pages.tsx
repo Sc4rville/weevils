@@ -21,6 +21,7 @@ import { ago, durLong, status } from './format'
 import { Icon } from './icons'
 import { useT } from '../i18n'
 import M from '../i18n/pages'
+import { MemoryPage } from './memory'
 
 /** Garde la fin du fil visible : à l'ouverture (directement sur le dernier message) et quand un message arrive. */
 function useStickToBottom(count: number, ref: RefObject<HTMLElement | null>) {
@@ -72,6 +73,8 @@ export function PageView({ page }: { page: Page }) {
       return <CalmGrid />
     case 'calmconv':
       return <CalmConv id={page.id} />
+    case 'memory':
+      return <MemoryPage />
   }
 }
 

@@ -181,6 +181,60 @@ export interface ConversationDetail {
 }
 
 
+// ---------------------------------------------------------------- mémoire, weevils volants, h24 qui ne dort jamais
+
+/** Ce que weevils retient de l'utilisateur : ~/.config/weevils/memory.json (hors de tout repo, envoyé seulement au modèle). */
+export interface MemoryItem {
+  id: string
+  /** Le souvenir, en une phrase courte (« veut lancer un jeu mobile cette année »). */
+  text: string
+  /** answer : tiré d'une réponse à un weevil volant ; manual : ajouté ou corrigé à la main. */
+  source: 'answer' | 'manual'
+  /** source answer : la question portée par le weevil et la réponse d'où vient ce souvenir. */
+  q?: string
+  a?: string
+  at: number
+  updatedAt: number
+}
+
+/** La petite question portée par un weevil volant. */
+export interface WeevilQuestion {
+  id: string
+  text: string
+}
+
+/** Réponse du weevil à ce qu'on lui a dit : une phrase de relance (ou de clôture) et ce qui a été retenu. */
+export interface WeevilReply {
+  reply: string
+  /** Souvenirs ajoutés ou mis à jour par cette réponse. */
+  learned: MemoryItem[]
+  /** true : l'échange est fini (le weevil repart) ; false : sa phrase invite à répondre encore. */
+  done: boolean
+}
+
+/** Une tâche du h24 (« optimiseur ») : proposée à partir de la mémoire et des projets, lancée quand la machine est libre. */
+export interface Optimizer {
+  id: string
+  /** Ce que la tâche fait, très court (« muscler les tests de mon-app »). */
+  title: string
+  /** Pourquoi elle est proposée, une phrase (le lien avec un souvenir ou un projet). */
+  why: string
+  /** Repo où elle tourne (null : dans son propre dossier de travail, hors repo). */
+  repo: string | null
+  kind: 'tests' | 'watch' | 'content' | 'explore' | 'other'
+  /** Builds, tests, installs : lancés via heavy quand il existe. */
+  heavy: boolean
+  /** proposed : attend un oui ou un non ; queued : acceptée, attend une machine libre ; running ; done ; failed ; refused. */
+  state: 'proposed' | 'queued' | 'running' | 'done' | 'failed' | 'refused'
+  /** Session de l'agent qui la fait tourner (visible dans son projet). */
+  sessionId?: string
+  createdAt: number
+  startedAt?: number
+  endedAt?: number
+  /** Dernière nouvelle (fin de la réponse de l'agent, raison d'attente…). */
+  lastEvent?: string
+}
+
 export interface Snapshot {
   version: number
   now: number
@@ -207,6 +261,10 @@ export interface Snapshot {
   tour?: Tour
   /** Repos épinglés au fil des projets (présents même sans session). */
   pinnedRepos: string[]
+  /** Nombre de souvenirs (server/memory.ts) ; la liste se lit avec GET /api/memory. */
+  memoryCount?: number
+  /** Tâches du h24 proposées, en attente, en cours ou finies récemment (server/optimizers.ts). Les refusées n'y sont pas. */
+  optimizers?: Optimizer[]
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */
   /** siteKey : clé des pages statiques des repos (/api/site/<clé>/<repo>/), pour le navigateur intégré sans domaine de preview. */
   config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[]; siteKey?: string }

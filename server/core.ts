@@ -20,6 +20,8 @@ import { keepWarm, warmCues } from './voicepipe.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
+import type { Memory } from './memory.ts'
+import type { Optimizers } from './optimizers.ts'
 import { splitChips } from '../shared/setup.ts'
 import { isDemoJob, type TourKeeper } from './tour.ts'
 import TM from './i18n/tour.ts'
@@ -203,6 +205,10 @@ export class Weevils {
   tour: TourKeeper | null = null
   /** Clé des pages statiques des repos (index.ts, dérivée du code d'accès). */
   siteKey = ''
+  /** What weevils remembers about the user (server/memory.ts), on the main machine. */
+  memory: Memory | null = null
+  /** The h24 background tasks (server/optimizers.ts), on the main machine. */
+  optimizers: Optimizers | null = null
   private githubCache: Map<string, number> = new Map()
 
   // ---------------------------------------------------------------- repos GitHub
@@ -862,6 +868,8 @@ export class Weevils {
       setup: this.setup?.flags(),
       tour: this.tour?.current() ?? undefined,
       pinnedRepos: this.pinnedRepos,
+      memoryCount: this.memory?.count ?? 0,
+      optimizers: this.optimizers?.list() ?? [],
       config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey },
     }
     return this.snap

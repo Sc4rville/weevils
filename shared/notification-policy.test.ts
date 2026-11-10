@@ -16,3 +16,7 @@ it('keeps genuine questions and actionable alerts, without elevating neutral pro
  expect(notificationEligible(item({kind:'alert',tone:'alert',text:'La connexion a expiré.',open:{page:'machine'}}))).toBe(true)
  expect(notificationEligible(item({tone:'neutral'}))).toBe(false)
 })
+
+it('keeps the useful outcome after an acknowledgement without carrying that acknowledgement into the notification', () => {
+ expect(notificationText('Compris, le bouton fonctionne.')).toBe('le bouton fonctionne.')
+})

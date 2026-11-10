@@ -5,7 +5,7 @@ import { acknowledgementOnly, humanFeedText, rawEngineeringNotice } from './feed
 /** A notification needs an understandable completed outcome, not a transcript fragment. */
 export function notificationText(raw: string): string {
   if (acknowledgementOnly(raw) || rawEngineeringNotice('', raw)) return ''
-  const clean = humanFeedText(raw).replace(/\*\*|__/g, '').trim()
+  const clean = humanFeedText(raw).replace(/\*\*|__/g, '').trim().replace(/^(?:compris|bien reçu|got it|ok)[.!,:]\s*/i, '')
   const lines = clean.split(/\n+|(?<=[.!?])\s+/).map(s => s.replace(/^[-*]\s*/, '').trim())
   const outcome = /\b(?:corrigee?s?|reparee?s?|livree?s?|terminee?s?|achevee?s?|ajoutee?s?|creee?s?|supprimee?s?|disponibles?|fonctionne(?:nt)?|pret(?:e)?s?|ready|fixed|works|shipped|completed|available|created|added|removed)\b|\ben ligne\b|\bare in\b/i
   const progress = /^(?:je vais|je (?:vérifie|prépare|continue|lance|regarde)|en cours|prochaine étape|i(?:'ll| will)|checking|working on|next step)/i

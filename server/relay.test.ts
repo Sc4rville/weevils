@@ -281,6 +281,36 @@ describe('filet de sécurité', () => {
     expect(x.settled.sort()).toEqual(['s1', 's2'])
   })
 
+  it('durable automatic authorization releases a waiting plan, survives restart and handles future plans once', async () => {
+    const { x, relay, host, deps, file } = world()
+    x.sessions = [cut('usage limit reached · resets 6pm')]
+    await run(relay, NOW)
+    await run(relay, NOW + 5000)
+    await relay.decide('s1', 'wait')
+    expect(relay.view(NOW).plans[0].state).toBe('waiting')
+    relay.set({ mode: 'auto' })
+    await run(relay, NOW + 10_000)
+    expect(x.opened).toHaveLength(1)
+    expect(relay.view(NOW).plans[0].state).toBe('running')
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).mode).toBe('auto')
+    const again = new Relay(host, deps, file)
+    clocks.set(again, x)
+    expect(again.mode).toBe('auto')
+    x.sessions.push(cut('usage limit reached · resets 6pm', { id: 's2', cwd: '/work/tests' }))
+    await run(again, NOW + 15_000)
+    await run(again, NOW + 20_000)
+    expect(x.opened.map((o) => o.cwd).sort()).toEqual(['/work/demo', '/work/tests'])
+    await run(again, NOW + 25_000)
+    expect(x.opened).toHaveLength(2)
+    x.sessions = []
+    x.probeOk = true
+    x.quota = windows(10)
+    await run(again, NOW + 5 * H)
+    expect(again.bossOn()).toBe(false)
+    expect(again.autoOnCodex()).toBe(false)
+    expect(again.mode).toBe('auto')
+  })
+
   it('R5 plusieurs plans : tout valider d’un coup ; ajuster réécrit le plan avec la note ; attendre Claude reprend la session à l’heure de reset', async () => {
     const { x, relay } = world()
     const limit = 'usage limit reached · resets 6pm (Europe/Paris)'

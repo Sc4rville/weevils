@@ -440,7 +440,14 @@ export class Relay {
   // ---------------------------------------------------------------- settings and decisions
 
   set(o: { mode?: unknown; switchAt?: unknown; tz?: unknown }) {
-    if (isMode(o.mode)) this.s.mode = o.mode
+    if (isMode(o.mode)) {
+      if (o.mode === 'auto' && this.s.mode !== 'auto') {
+        // A durable authorization also releases plans previously left waiting for Claude.
+        // Already launched plans keep their relayTo and can never be launched a second time.
+        for (const p of this.s.plans) if (p.phase === 'wait') p.phase = 'open'
+      }
+      this.s.mode = o.mode
+    }
     const at = Number(o.switchAt)
     if (o.switchAt !== undefined && at >= 50 && at <= 100) this.s.switchAt = Math.round(at)
     if (typeof o.tz === 'string' && validTz(o.tz)) this.s.tz = o.tz

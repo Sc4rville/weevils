@@ -42,7 +42,7 @@ export function RelayBand() {
   const t = useT(M)
   const status = useStatus()
   const r = snap.relay
-  if (!r || r.mode === 'never') return null
+  if (!r || r.mode !== 'ask') return null
   const todo = r.plans.filter((p) => p.state === 'ready' || p.state === 'failed').length
   const coming = r.plans.filter((p) => p.state === 'preparing').length
   if (!status && !todo && !coming) return null
@@ -82,7 +82,8 @@ export function PlanCard({ plan, bare, onError }: { plan: RelayPlan; bare?: bool
       })
       .finally(() => setBusy(null))
   }
-  const decidable = plan.state === 'ready' || plan.state === 'failed' || plan.state === 'preparing'
+  const canDecide = snap.relay?.mode === 'ask'
+  const decidable = canDecide && (plan.state === 'ready' || plan.state === 'failed' || plan.state === 'preparing')
   const project = snap.projects.find((p) => p.id === plan.projectId)?.name ?? plan.projectId
   return (
     <div className="msg band relay-plan" role="group" aria-label={t.planAria(plan.title)}>
@@ -132,7 +133,7 @@ export function PlanCard({ plan, bare, onError }: { plan: RelayPlan; bare?: bool
             </button>
           </form>
         )}
-        {plan.state === 'waiting' && (
+        {canDecide && plan.state === 'waiting' && (
           <div className="cut-actions">
             <button className="link" disabled={!!busy} onClick={() => act('go')}>
               {t.go}
@@ -155,7 +156,7 @@ export function PlanCard({ plan, bare, onError }: { plan: RelayPlan; bare?: bool
 export function ThreadPlans() {
   const { snap } = useApp()
   const list = open(snap.relay?.plans ?? [])
-  if (!list.length) return null
+  if (snap.relay?.mode !== 'ask' || !list.length) return null
   return (
     <div className="relay-thread">
       <AllActions plans={list} />
@@ -167,10 +168,11 @@ export function ThreadPlans() {
 }
 
 function AllActions({ plans }: { plans: RelayPlan[] }) {
+  const { snap } = useApp()
   const t = useT(M)
   const [busy, setBusy] = useState(false)
   const ready = plans.filter((p) => p.state === 'ready' || p.state === 'failed')
-  if (ready.length < 2) return null
+  if (snap.relay?.mode !== 'ask' || ready.length < 2) return null
   const all = (action: 'go' | 'wait') => {
     setBusy(true)
     void api

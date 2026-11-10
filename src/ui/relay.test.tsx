@@ -89,6 +89,19 @@ describe('relais Codex', () => {
     expect(text(host.querySelector('.relay-band'))).toBe('⇄Claude à 97 % de sa limite · weevboss répond par Codex · 1 plan en préparation→')
   })
 
+  it('automatic relay never asks for approval in the feed, thread or plan page', () => {
+    const automatic = snap(relay({ mode: 'auto', limit: { kind: 'near', since: NOW, until: null, percent: 97, window: 'week' }, plans: [plan(), plan({ sessionId: 's2', state: 'preparing', text: undefined }), plan({ sessionId: 's3', state: 'waiting' })] }))
+    render(<RelayBand />, automatic)
+    expect(host.querySelector('.relay-band')).toBeNull()
+    render(<ThreadPlans />, automatic)
+    expect(host.querySelector('.relay-thread')).toBeNull()
+    render(<RelayPage />, automatic)
+    expect(host.querySelectorAll('.relay-plan')).toHaveLength(3)
+    expect([...host.querySelectorAll('button')].filter((b) => /^(valider|ajuster|attendre Claude|tout valider|tout laisser à Claude)$/.test(text(b)))).toEqual([])
+    expect(button('automatique').getAttribute('aria-pressed')).toBe('true')
+    expect(calls.decide).toEqual([])
+  })
+
   it('vue groupée : chaque plan avec valider / ajuster / attendre Claude, et tout valider d’un coup', async () => {
     render(<RelayPage />, snap(relay()))
     const cards = [...host.querySelectorAll('.relay-plan')]

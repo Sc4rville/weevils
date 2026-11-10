@@ -873,6 +873,9 @@ export class ForYou {
       const q = this.usage?.[tool]
       const top = q?.ok ? [...q.windows].sort((a, b) => b.percent - a.percent)[0] : undefined
       if (!top || top.percent < USAGE_ALERT) continue
+      // An authorized, available relay handles Claude's shared quota without a user decision.
+      // Keep model-specific warnings and the other tool's own quota alerts actionable.
+      if (tool === 'claude' && top.kind !== 'model' && snap.relay?.mode === 'auto' && snap.relay.codex) continue
       const name = top.kind === 'session' ? t.window_session : top.kind === 'week' ? t.window_week : t.window_model(top.label ?? '')
       // The window's reset is in the id: the next window is another alert.
       // The other tool, when it has room: said as the plan B it is (the relay hands work to it at the limit).

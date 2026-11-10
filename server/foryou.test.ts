@@ -570,6 +570,38 @@ describe('alerts', () => {
     expect(fy.feed().items).toEqual([])
   })
 
+  it('automatic relay removes the current Claude quota warning and keeps it gone across reset jitter and restart', async () => {
+    const u = usage(97)
+    const fy = make({ quotas: async () => u })
+    fy.feed()
+    await flush()
+    expect(fy.feed().items.some((i) => i.id.startsWith('alert:usage:claude:'))).toBe(true)
+    snap.relay = { mode: 'auto', codex: true, switchAt: 97, plans: [] }
+    expect(fy.feed().items.some((i) => i.id.startsWith('alert:usage:claude:'))).toBe(false)
+    u.claude.windows[0].resetsAt! += 17
+    now += REFRESH_MS + 1
+    fy.feed()
+    await flush()
+    expect(fy.feed().items.some((i) => i.id.startsWith('alert:usage:claude:'))).toBe(false)
+    const again = make({ quotas: async () => u })
+    again.feed()
+    await flush()
+    expect(again.feed().items.some((i) => i.id.startsWith('alert:usage:claude:'))).toBe(false)
+    snap.relay.codex = false
+    expect(again.feed().items.some((i) => i.id.startsWith('alert:usage:claude:'))).toBe(true)
+  })
+
+  it('automatic relay preserves Codex quota warnings and model-specific Claude warnings', async () => {
+    const u = usage(97)
+    u.claude.windows = [{ kind: 'model', label: 'Fable', percent: 100, resetsAt: T0 + HOUR }]
+    u.codex = { ok: true, source: 't', at: T0, windows: [{ kind: 'week', percent: 98, resetsAt: T0 + HOUR }] }
+    snap.relay = { mode: 'auto', codex: true, switchAt: 97, plans: [] }
+    const fy = make({ quotas: async () => u })
+    fy.feed()
+    await flush()
+    expect(fy.feed().items.filter((i) => i.kind === 'alert')).toHaveLength(2)
+  })
+
   it('a machine saturated twice in a row, a full disk, a machine offline for two minutes, a failed auto task', async () => {
     let states: MachineState[] = [{ id: 'test', name: 'vps', level: 'crit', disk: 93 }]
     const fy = make({ machines: async () => states })

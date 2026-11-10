@@ -4,6 +4,7 @@
 // The code and cookie stay in memory and are never printed. No provider or model is called.
 import fs from 'node:fs'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 const [origin, secretFile] = process.argv.slice(2)
 if (!origin || !secretFile) throw new Error('Usage: check-fresh-entry.mjs ORIGIN ACCESS_CODE_FILE')
 const base = new URL(origin)
@@ -18,7 +19,7 @@ async function request(path, body, signed = false) {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(15000),
   })
-  return { response, data: await response.json() }
+  return { response, data: await response.json().catch(() => null) }
 }
 const checks = {}
 assert.equal((await request('/api/me')).data.authed, false)
@@ -47,8 +48,19 @@ try {
   checks.blankSessionsProjectsMemory = true
   checks.personalizedUserNameAbsent = true
   const build = await request('/build.json')
-  assert.equal(build.response.status, 200)
-  checks.commit = build.data.commit
+  if (build.response.ok && build.data?.commit) checks.commit = build.data.commit
+  else {
+    // Source archives and Docker copies may omit .git, so Vite cannot emit build.json.
+    const html = await (await fetch(base, { signal: AbortSignal.timeout(15000) })).text()
+    const asset = /src="(\/assets\/[^"]+\.js)"/.exec(html)?.[1]
+    assert.ok(asset, 'No application entry bundle found')
+    const bundle = await fetch(new URL(asset, base), { signal: AbortSignal.timeout(15000) })
+    assert.equal(bundle.status, 200)
+    assert.match(bundle.headers.get('content-type') ?? '', /javascript/)
+    checks.entryAsset = asset
+    checks.entrySha256 = createHash('sha256').update(Buffer.from(await bundle.arrayBuffer())).digest('hex')
+    checks.commitMetadataAvailable = false
+  }
 } finally {
   const logout = await request('/api/logout', {}, true)
   assert.equal(logout.response.status, 200)

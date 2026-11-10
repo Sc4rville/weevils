@@ -137,7 +137,10 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    let touching = false
+    // Le doigt (touch*) et le pointeur suivis à part : pointercancel arrive dès qu'un glissé devient un défilement, le doigt
+    // encore posé ; seul touchend dit qu'il est levé.
+    const held = { pointer: false, touch: false }
+    const touching = () => held.pointer || held.touch
     let still = true
     let timer = 0
     const set = (v: boolean) => {
@@ -147,21 +150,22 @@ export default function App() {
     }
     const later = () => {
       clearTimeout(timer)
-      timer = window.setTimeout(() => !touching && set(true), 1200)
+      timer = window.setTimeout(() => !touching() && set(true), 1200)
     }
     const down = (e: Event) => {
-      touching = true
+      held[e.type === 'touchstart' ? 'touch' : 'pointer'] = true
       clearTimeout(timer)
       set(false)
       if (e.type === 'pointerdown') lastTap.current = { el: (e.target as Element | null)?.closest?.<HTMLElement>('button, [role="button"], a') ?? null, at: Date.now() }
     }
-    const up = () => {
-      touching = false
-      later()
+    const up = (e: Event) => {
+      if (e.type.startsWith('touch')) held.touch = ((e as TouchEvent).touches?.length ?? 0) > 0
+      else held.pointer = false
+      if (!touching()) later()
     }
     const moving = () => {
       set(false)
-      if (!touching) later()
+      if (!touching()) later()
     }
     const opts = { capture: true, passive: true }
     const downs = ['pointerdown', 'touchstart'] as const
@@ -239,6 +243,10 @@ export default function App() {
       const band = o.key ? document.querySelector<HTMLElement>(`[data-project="${CSS.escape(o.key)}"] .head`) : null
       const el = o.el?.isConnected ? o.el : band
       if (!el) return
+      // Dans un fil qui suit sa fin (celui de weevboss, le corps d'une page) : il a défilé de lui-même pendant l'absence ;
+      // le ramener en arrière jusqu'à l'ancien bouton se battrait avec son suivi (useFollow) et la fenêtre n'y est pour
+      // rien. Le focus seul, comme avant.
+      if (el.closest('.chat, [data-scroll]')) return void setTimeout(() => el.focus?.({ preventScroll: true }), 60)
       let moved = el !== o.el
       if (w === 0 && !moved) {
         const d = el.getBoundingClientRect().top - o.top

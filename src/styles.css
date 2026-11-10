@@ -2241,12 +2241,13 @@ button.copy.done {
 }
 
 /* Une ligne ou un nom de bande du flux mis en avant (retour d'une page, bande qui a dû bouger) : sans fond à lui, seul son
-   texte s'éclairerait ; il prend le temps de l'éclat la couleur de sa bande (ou de sa sous-bande). */
+   texte s'éclairerait ; il prend le temps de l'éclat la couleur de sa bande (ou de sa sous-bande). Une ligne qui a son
+   propre fond (en attente : .tone ; interrompue : .cut, en rouge) le garde. */
 .stack .head.wv-flash,
-.stack .row.wv-flash:not(.tone) {
+.stack .row.wv-flash:not(.tone, .cut) {
   background-color: var(--c);
 }
 
-.stack .tone > .row.wv-flash {
+.stack .tone > .row.wv-flash:not(.cut) {
   background: inherit;
 }

@@ -15,7 +15,8 @@
 // answer; a failed round backs off 1 h (doubling), never a loop.
 //
 // Never pushed, published or paid without the user: the brief says so, Claude Code's deny list (DENY) blocks the plain
-// commands, and the session's environment (guardEnv) leaves gh logged out, git unable to push and no MCP connector.
+// commands, the session's environment (guardEnv) leaves gh logged out, git unable to push and no MCP connector, and the
+// session runs in a jail (jailArgs, bwrap) where the keys and logins are gone and the user's files read-only.
 
 import { execFile } from 'node:child_process'
 import crypto from 'node:crypto'
@@ -24,7 +25,7 @@ import type http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import type { AutoMachine, Optimizer, Session } from '../shared/api.ts'
-import { DATA_DIR, MACHINE, PROJECTS_DIR } from './config.ts'
+import { DATA_DIR, MACHINE, PROJECT_ROOTS, PROJECTS_DIR } from './config.ts'
 import type { Weevils } from './core.ts'
 import { parseJson, smart } from './fast.ts'
 import { lang, tr, user } from './i18n.ts'
@@ -68,8 +69,8 @@ const KINDS = ['tests', 'watch', 'content', 'explore', 'other'] as const
  * prompts): push, anything through gh, publish a package or an image, expose a port, send data with curl or wget,
  * reach another machine, sudo, kill weevils' tmux, delete outside its folder, read keys and secrets, edit the user's
  * configuration. Rules are wildcards checked on each part of a compound command (`cd x && git push`), wrappers
- * (`timeout`, `VAR=…`) removed; `bash -c "…"` or a script's own HTTP call still pass them: the environment barriers
- * below (guardEnv) are the layer that holds. The brief says it too.
+ * (`timeout`, `VAR=…`, `env`) removed; `bash -c "…"`, `eval` or a script still pass them: the environment barriers
+ * (guardEnv) stop the plain commands those run, the jail (jailArgs) what a task does on purpose. The brief says it too.
  */
 const curlSends = ['-X', '--request', '-d', '--data', '--json', '-F', '--form', '-T', '--upload-file'].flatMap((f) => [`Bash(curl ${f}*)`, `Bash(curl * ${f}*)`])
 export const DENY = [
@@ -106,7 +107,19 @@ export const DENY = [
   'Bash(pkexec *)',
   'Bash(crontab *)',
   'Bash(systemctl *)',
-  'Bash(tmux *kill-server*)',
+  // Every way out of the session: tmux and systemd start commands outside it (no barriers, no jail), weevils' own CLI
+  // starts or messages a full session, claude and codex start an agent without this list.
+  'Bash(tmux)',
+  'Bash(tmux *)',
+  'Bash(*/tmux *)',
+  'Bash(systemd-run *)',
+  'Bash(weevils*)',
+  'Bash(*/weevils *)',
+  'Bash(wv *)',
+  'Bash(claude *)',
+  'Bash(*/claude *)',
+  'Bash(codex *)',
+  'Bash(*/codex *)',
   'Bash(pkill *)',
   'Bash(killall *)',
   'Bash(rm * ~*)',
@@ -136,13 +149,17 @@ export const DENY = [
   'Edit(~/.bashrc)',
   'Edit(~/.profile)',
   'Edit(~/.gitconfig)',
+  // Claude Code's own ways to reach another session or a cloud agent (which has GitHub write access of its own).
+  'SendMessage',
+  'ListAgents',
+  'RemoteTrigger',
 ]
 /**
  * The extra arguments of an optimizer's claude session: the deny list as flag settings, and no MCP server at all (the
  * user's claude.ai connectors and plugins can send mail, publish or spend credits; an empty --mcp-config with
  * --strict-mcp-config leaves none).
  */
-export const SAFETY_ARGS = ['--settings', JSON.stringify({ permissions: { deny: DENY } }), '--strict-mcp-config', `--mcp-config=${JSON.stringify({ mcpServers: {} })}`]
+export const SAFETY_ARGS = ['--settings', JSON.stringify({ permissions: { deny: DENY }, disableClaudeAiConnectors: true }), '--strict-mcp-config', `--mcp-config=${JSON.stringify({ mcpServers: {} })}`]
 
 /** A push URL weevils rewrites every remote to: no such git transport, so a push fails at once, before any network. */
 export const NO_PUSH_URL = 'weevils-no-push://'
@@ -185,6 +202,8 @@ export function guardEnv(guard: string, env: NodeJS.ProcessEnv = process.env): {
     GIT_SSH_COMMAND: '/bin/false',
     GIT_CONFIG_COUNT: String(git.length),
     ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+    // weevils' CLI (weevils new, send…) talks to weevilsd on WEEVILS_PORT: a port where nothing listens.
+    WEEVILS_PORT: '1',
   }
   git.forEach(([k, v], i) => {
     set[`GIT_CONFIG_KEY_${i}`] = k
@@ -192,6 +211,55 @@ export function guardEnv(guard: string, env: NodeJS.ProcessEnv = process.env): {
   })
   const found = Object.keys(env).filter((k) => SECRET_NAME.test(k) && !KEEP_NAME.test(k) && !(k in set))
   return { set, unset: [...new Set([...SECRET_VARS, ...found])] }
+}
+
+/** Hidden in the jail (an empty folder there): keys, logins, weevils' own config, the user's sockets. */
+const JAIL_HIDE = ['.ssh', '.config/gh', '.config/hub', '.codex', '.config/weevils', '.aws', '.azure', '.config/gcloud', '.kube', '.docker', '.gnupg', '.password-store', '.runpod']
+/** Hidden files (/dev/null there): logins kept in one file. */
+const JAIL_HIDE_FILES = ['.netrc', '.git-credentials', '.npmrc', '.pypirc', '.cargo/credentials', '.cargo/credentials.toml']
+/** Read-only in the jail: what runs later in the user's own sessions, unjailed (shell start files, ~/.local/bin, git and
+ *  Claude Code's settings, hooks, skills and plugins, systemd user units). */
+const JAIL_RO = ['.bashrc', '.bash_profile', '.bash_login', '.profile', '.zshrc', '.zshenv', '.zprofile', '.config/fish', '.config/environment.d', '.gitconfig', '.config/git', '.local/bin', '.config/systemd', '.config/autostart', '.claude/settings.json', '.claude/settings.local.json', '.claude/CLAUDE.md', '.claude/hooks', '.claude/commands', '.claude/agents', '.claude/skills', '.claude/plugins']
+
+/**
+ * The jail of an optimizer's session (bwrap's arguments, the command follows): the same files and network, minus what
+ * lets a task act as the user beyond its folder. The environment barriers (guardEnv) stop a plain `git push` or `gh`,
+ * but the task can undo them (`bash -c 'GH_CONFIG_DIR=~/.config/gh gh …'`); these it can't:
+ * - hidden: ssh keys, gh / cloud / registry logins, weevils' data and config, the user's runtime sockets (ssh agent, dbus
+ *   and systemd → no systemd-run, other Claude sessions), the tmux and zellij servers (no command started outside the
+ *   jail), docker's socket (root in all but name);
+ * - read-only: every project root except the task's own folder (worktree and report) and its repo's .git (commits),
+ *   whose config and hooks stay read-only (a core.fsmonitor or a hook would run in the user's next git command), and
+ *   the files listed in JAIL_RO;
+ * - no new privileges: sudo, su, pkexec, crontab and at raise nothing.
+ * Not covered: the network (a script can still send what it reads), Claude Code's own login and ~/.claude.json, the
+ * loopback ports (weevils' API: its CLI is denied and pointed at a dead port, not walled off).
+ */
+export function jailArgs(o: { home: string; hide: string[]; roots: string[]; rw: string[]; git?: string }, exists: (p: string) => boolean = fs.existsSync): string[] {
+  const real = (p: string) => {
+    try {
+      return fs.realpathSync(p)
+    } catch {
+      return p
+    }
+  }
+  const pick = (list: string[]) => [...new Set(list.filter((p) => exists(p)).map(real))]
+  const home = (list: string[]) => list.map((p) => path.join(o.home, p))
+  const hide = pick([...home(JAIL_HIDE), ...o.hide])
+  const files = pick([...home(JAIL_HIDE_FILES), '/run/docker.sock', '/var/run/docker.sock', '/run/podman/podman.sock'])
+  const ro = pick([...home(JAIL_RO), ...o.roots])
+  const rw = pick([...o.rw, ...(o.git ? [o.git] : [])])
+  const gitRo = o.git ? pick([path.join(o.git, 'config'), path.join(o.git, 'hooks')]) : []
+  return [
+    '--dev-bind', '/', '/',
+    ...hide.flatMap((p) => ['--tmpfs', p]),
+    ...files.flatMap((p) => ['--ro-bind', '/dev/null', p]),
+    ...ro.flatMap((p) => ['--ro-bind', p, p]),
+    ...rw.flatMap((p) => ['--bind', p, p]),
+    ...gitRo.flatMap((p) => ['--ro-bind', p, p]),
+    '--die-with-parent',
+    '--',
+  ]
 }
 
 type Stored = Optimizer & {
@@ -233,12 +301,20 @@ export interface Sys {
   logged: () => boolean
   /** git -C <repo> worktree add <dir> -b <branch> (from the checkout's HEAD). */
   worktree: (repo: string, dir: string, branch: string) => Promise<void>
+  /** Tries the jail (bwrap <args> true): true when it holds, false without bwrap on this machine; throws if it fails. */
+  jail: (args: string[]) => Promise<boolean>
 }
 const gitWorktree = (repo: string, dir: string, branch: string) =>
   new Promise<void>((resolve, reject) =>
     execFile('git', ['-C', repo, 'worktree', 'add', dir, '-b', branch], { timeout: 60_000 }, (e, _out, err) => (e ? reject(new Error(String(err || e.message).trim().split('\n').pop())) : resolve())),
   )
-const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: () => os.freemem(), logged: claudeLogged, worktree: gitWorktree }
+const tryJail = (args: string[]) =>
+  new Promise<boolean>((resolve, reject) =>
+    execFile('bwrap', [...args, 'true'], { timeout: 15_000 }, (e, _out, err) =>
+      !e ? resolve(true) : (e as NodeJS.ErrnoException).code === 'ENOENT' ? resolve(false) : reject(new Error(String(err || e.message).trim().split('\n').pop())),
+    ),
+  )
+const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: () => os.freemem(), logged: claudeLogged, worktree: gitWorktree, jail: tryJail }
 
 // ---------------------------------------------------------------- pure helpers (tested)
 
@@ -362,6 +438,7 @@ export class Optimizers {
   private memChangedAt = 0
   private rounding: Promise<void> | null = null
   private launching = false
+  private noJailSaid = false
   private auto = false
 
   constructor(w: Weevils, memory: Memory, opts: { file?: string; /** default <projects>/.auto */ dir?: string; sys?: Partial<Sys> } = {}) {
@@ -376,6 +453,7 @@ export class Optimizers {
       free: () => (sys.free ?? realSys.free)(),
       logged: () => (sys.logged ?? realSys.logged)(),
       worktree: (repo, dir, branch) => (sys.worktree ?? realSys.worktree)(repo, dir, branch),
+      jail: (args) => (sys.jail ?? realSys.jail)(args),
     }
     this.s = (() => {
       try {
@@ -562,6 +640,29 @@ export class Optimizers {
     return dir
   }
 
+  /**
+   * The jail of a task (jailArgs), tried before the session starts: bwrap's command prefix, or [] on a machine without
+   * bwrap (macOS…), where the environment barriers and the deny list are all there is. A jail that fails stops the task.
+   */
+  private async jail(o: Stored, cwd: string, guard: string): Promise<string[]> {
+    const uid = os.userInfo().uid
+    const runtime = process.env.XDG_RUNTIME_DIR || `/run/user/${uid}`
+    const tmp = process.env.TMUX_TMPDIR || '/tmp'
+    const repoGit = o.repo ? path.join(this.w.repoDir(o.repo), '.git') : undefined
+    const args = jailArgs({
+      home: os.homedir(),
+      hide: [DATA_DIR, runtime, path.join(tmp, `tmux-${uid}`), path.join(os.tmpdir(), `zellij-${uid}`)],
+      roots: PROJECT_ROOTS,
+      // The task's folder: its worktree and the report beside it, or its workspace; the guard's empty configs.
+      rw: [o.repo ? path.dirname(cwd) : cwd, guard],
+      git: repoGit && fs.statSync(repoGit, { throwIfNoEntry: false })?.isDirectory() ? repoGit : undefined,
+    })
+    if (await this.sys.jail(args)) return ['bwrap', ...args]
+    if (!this.noJailSaid) console.log("[auto] bwrap absent : les tâches tournent sans prison (barrières d'environnement et interdits seuls)")
+    this.noJailSaid = true
+    return []
+  }
+
   /** Starts a task in a Claude session: in its own worktree of its repo (on a fresh local branch), or in its workspace. */
   private async launch(o: Stored, now: number) {
     this.launching = true
@@ -574,7 +675,7 @@ export class Optimizers {
     delete o.seenAt
     delete o.sessionId
     this.changed()
-    let step: 'branch' | 'start' = 'start'
+    let step: 'branch' | 'jail' | 'start' = 'start'
     try {
       const cwd = this.workspace(o)
       const branch = `auto/${slug(o.title)}-${o.id.slice(0, 4)}`
@@ -597,7 +698,11 @@ export class Optimizers {
         heavy: o.heavy,
         prompt: o.prompt,
       })
-      const { id } = await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, guardEnv(this.guard()))
+      const guard = this.guard()
+      step = 'jail'
+      const wrap = await this.jail(o, cwd, guard)
+      step = 'start'
+      const { id } = await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard), wrap })
       o.sessionId = id
       o.seenAt = Date.now()
       console.log(`[auto] lancée : ${o.title} (${cwd})`)

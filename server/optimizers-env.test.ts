@@ -50,6 +50,15 @@ describe('auto — the task session environment', () => {
     expect(command.at(-1)).toBe('the brief')
   })
 
+  it('the jail comes first, then env, then claude', async () => {
+    const w = new Weevils()
+    const g = guardEnv(path.join(tmp, 'guard'), {})
+    await w.createIn(tmp, 'Jailed', 'the brief', SAFETY_ARGS, { ...g, wrap: ['bwrap', '--dev-bind', '/', '/', '--'] })
+    const command = mux.spawnWv.mock.calls[0][4] as string[]
+    expect(command.slice(0, 6)).toEqual(['bwrap', '--dev-bind', '/', '/', '--', 'env'])
+    expect(command.indexOf('claude')).toBeGreaterThan(5)
+  })
+
   it('a session started without env keeps the plain command (the user’s own sessions are untouched)', async () => {
     const w = new Weevils()
     await w.createIn(tmp, 'Plain', 'hello')

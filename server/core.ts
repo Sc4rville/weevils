@@ -1605,13 +1605,14 @@ export class Weevils {
   /** Session Claude locale lancée dans un dossier donné, avec son titre (tâches de fond de la bande auto, server/optimizers.ts).
    *  args : arguments de plus pour claude (les interdits de la tâche, --settings). env : variables posées (set) ou retirées
    *  (unset) pour cette session seulement (les barrières de la tâche : gh sans compte, git qui ne pousse pas…), par
-   *  « env » devant claude : tmux lance la commande sans shell, une valeur n'est jamais interprétée. */
-  async createIn(cwd: string, title: string, text: string, args: string[] = [], env: { set?: Record<string, string>; unset?: string[] } = {}): Promise<{ id: string }> {
+   *  « env » devant claude : tmux lance la commande sans shell, une valeur n'est jamais interprétée. wrap : une commande
+   *  devant tout le reste (la prison bwrap de la tâche). */
+  async createIn(cwd: string, title: string, text: string, args: string[] = [], env: { set?: Record<string, string>; unset?: string[]; wrap?: string[] } = {}): Promise<{ id: string }> {
     const id = crypto.randomUUID()
     const unset = (env.unset ?? []).filter((k) => /^[A-Za-z_]\w*$/.test(k)).flatMap((k) => ['-u', k])
     const set = Object.entries(env.set ?? {}).filter(([k]) => /^[A-Za-z_]\w*$/.test(k)).map(([k, v]) => `${k}=${v}`)
     const prefix = unset.length || set.length ? ['env', ...unset, ...set] : []
-    await this.spawn('claude', cwd, title, [...prefix, ...CLAUDE, ...args, '--session-id', id, text], id)
+    await this.spawn('claude', cwd, title, [...(env.wrap ?? []), ...prefix, ...CLAUDE, ...args, '--session-id', id, text], id)
     return { id }
   }
 

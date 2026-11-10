@@ -7,7 +7,7 @@ import { smart } from './fast.ts'
 import O from './i18n/optimizers.ts'
 import { Memory } from './memory.ts'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_RUN_MS, MAX_TRIES, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, VANISH_MS, Optimizers, freeReason, guardEnv, isRepeat, isStall, parseProposals, slug, stallKind, tidy, type Sys } from './optimizers.ts'
+import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_RUN_MS, MAX_TRIES, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, VANISH_MS, Optimizers, freeReason, guardEnv, isRepeat, jailArgs, isStall, parseProposals, slug, stallKind, tidy, type Sys } from './optimizers.ts'
 
 // Hermetic: no claude CLI, no login check, the language fixed in memory.
 vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn() }))
@@ -55,7 +55,7 @@ beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'optimizers-'))
   memory = new Memory(path.join(dir, 'memory.json'))
   snap = { projects: [{ id: 'mygame', name: 'mygame', kind: 'repo', repos: ['mygame', 'mygame-site'], where: {}, lastActivityAt: T0 }], sessions: [], mainWorking: false } as unknown as Snapshot
-  sys = { load: () => 0.2, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true, worktree: vi.fn(async (_repo: string, d: string) => void fs.mkdirSync(d, { recursive: true })) }
+  sys = { load: () => 0.2, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true, worktree: vi.fn(async (_repo: string, d: string) => void fs.mkdirSync(d, { recursive: true })), jail: vi.fn(async () => true) }
   store = new Map()
   hooks = new Map()
   createIn = vi.fn(async () => ({ id: 'sess-1' }))
@@ -274,6 +274,11 @@ describe('auto — the runner', () => {
     expect(env.set.GH_CONFIG_DIR).toBe(path.join(dir, 'optimizers', '.guard', 'gh'))
     expect(fs.readdirSync(env.set.GH_CONFIG_DIR)).toEqual([])
     expect(env.set.GIT_SSH_COMMAND).toBe('/bin/false')
+    // …and in a jail (bwrap), tried first: its folder writable, the rest of the projects read-only.
+    expect(env.wrap[0]).toBe('bwrap')
+    expect(env.wrap.at(-1)).toBe('--')
+    expect(sys.jail).toHaveBeenCalledWith(env.wrap.slice(1))
+    expect(env.wrap.join(' ')).toContain(`--bind ${path.dirname(cwd)} ${path.dirname(cwd)}`)
     expect(env.unset).toEqual(expect.arrayContaining(['GH_TOKEN', 'GITHUB_TOKEN', 'SSH_AUTH_SOCK']))
     let [run, next] = o.list()
     expect(run).toMatchObject({ state: 'running', sessionId: 'sess-1' })
@@ -338,6 +343,27 @@ describe('auto — the runner', () => {
     o.tick(T0 + IDLE_MS)
     await flush()
     expect(o.list()[0]).toMatchObject({ state: 'failed', lastEvent: 'could not make its branch' })
+
+    // A jail that does not hold stops the task; no bwrap at all (macOS) runs it with the other barriers only.
+    fs.rmSync(path.join(dir, 'optimizers.json'))
+    fs.rmSync(path.join(dir, 'p'), { recursive: true, force: true })
+    vi.mocked(sys.jail).mockRejectedValueOnce(new Error('bwrap: Creating new namespace failed'))
+    createIn.mockClear()
+    o = await accepted()
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    expect(o.list()[0]).toMatchObject({ state: 'failed', lastEvent: 'could not start' })
+    expect(createIn).not.toHaveBeenCalled()
+    expect(vi.mocked(console.error).mock.calls.flat().join(' ')).toContain('(jail)')
+
+    fs.rmSync(path.join(dir, 'optimizers.json'))
+    fs.rmSync(path.join(dir, 'p'), { recursive: true, force: true })
+    vi.mocked(sys.jail).mockResolvedValueOnce(false)
+    o = await accepted()
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    expect(o.list()[0].state).toBe('running')
+    expect(createIn.mock.calls[0][4].wrap).toEqual([])
   })
 
   it('blocked on a question (needs_user) it keeps running and holds the slot; ended without any answer → failed', async () => {
@@ -436,7 +462,7 @@ describe('auto — the runner', () => {
       expect(isStall(m), m).toBe(true)
     for (const m of ['Added a rate limit test to mygame; the branch awaits review.', 'Done. Usage limits are documented in report.md.', ''])
       expect(isStall(m), m).toBe(false)
-    expect(DENY.every((r) => /^(Bash|Read|Edit)\(.+\)$/.test(r))).toBe(true)
+    expect(DENY.every((r) => /^(Bash|Read|Edit)\(.+\)$/.test(r) || ['SendMessage', 'ListAgents', 'RemoteTrigger'].includes(r))).toBe(true)
     // A trailing « :* » is Claude Code's old prefix syntax: every rule uses wildcards.
     expect(DENY.filter((r) => r.endsWith(':*)'))).toEqual([])
     expect(["You've hit your limit · resets 3am", 'Credit balance is too low'].map(stallKind)).toEqual(['limit', 'limit'])
@@ -520,6 +546,51 @@ describe('auto — the environment barriers', () => {
     expect(git(env, repo, 'remote', 'get-url', 'origin').stdout.trim()).toBe('https://github.com/example/never-pushed.git')
     expect(git(env, repo, 'config', '--get-all', 'credential.https://github.com.helper').stdout.trim()).toBe('')
     expect(git(env, repo, 'log', '--oneline').status).toBe(0)
+  })
+
+  it('the jail: hidden first, then read-only, then the task folder writable, its repo config and hooks read-only last', () => {
+    const exists = (p: string) => !p.includes('missing')
+    const args = jailArgs({ home: '/h', hide: ['/run/user/1', '/h/missing-data'], roots: ['/p'], rw: ['/p/.auto/r', '/p/.auto/.guard'], git: '/p/r/.git' }, exists)
+    const at = (a: string[]) => args.findIndex((_, i) => a.every((x, j) => args[i + j] === x))
+    expect(args.slice(0, 3)).toEqual(['--dev-bind', '/', '/'])
+    expect(args.slice(-2)).toEqual(['--die-with-parent', '--'])
+    for (const p of ['/h/.ssh', '/h/.config/gh', '/h/.codex', '/h/.config/weevils', '/run/user/1']) expect(at(['--tmpfs', p]), p).toBeGreaterThan(0)
+    expect(args).not.toContain('/h/missing-data')
+    expect(at(['--ro-bind', '/dev/null', '/h/.netrc'])).toBeGreaterThan(0)
+    expect(at(['--ro-bind', '/h/.bashrc', '/h/.bashrc'])).toBeGreaterThan(0)
+    expect(at(['--ro-bind', '/h/.claude/settings.json', '/h/.claude/settings.json'])).toBeGreaterThan(0)
+    const roRoot = at(['--ro-bind', '/p', '/p'])
+    const rwTask = at(['--bind', '/p/.auto/r', '/p/.auto/r'])
+    const rwGit = at(['--bind', '/p/r/.git', '/p/r/.git'])
+    const roConfig = at(['--ro-bind', '/p/r/.git/config', '/p/r/.git/config'])
+    expect(at(['--tmpfs', '/h/.ssh'])).toBeLessThan(roRoot)
+    expect(roRoot).toBeLessThan(rwTask)
+    expect(rwTask).toBeLessThan(rwGit)
+    expect(rwGit).toBeLessThan(roConfig)
+    expect(at(['--ro-bind', '/p/r/.git/hooks', '/p/r/.git/hooks'])).toBeGreaterThan(rwGit)
+  })
+
+  it.skipIf(process.platform !== 'linux' || spawnSync('bwrap', ['--dev-bind', '/', '/', 'true']).status !== 0)('the jail holds: keys gone, the user’s files and the repo config read-only, the task folder writable, no sudo', () => {
+    const home = path.join(dir, 'home')
+    const p = path.join(dir, 'p')
+    fs.mkdirSync(path.join(home, '.ssh'), { recursive: true })
+    fs.writeFileSync(path.join(home, '.ssh', 'id_ed25519'), 'secret')
+    fs.writeFileSync(path.join(home, '.bashrc'), '# rc\n')
+    fs.writeFileSync(path.join(home, '.netrc'), 'machine x password y\n')
+    fs.mkdirSync(path.join(p, '.auto', 'r'), { recursive: true })
+    const plain = { ...process.env, GIT_CONFIG_NOSYSTEM: '1', HOME: dir }
+    git(plain, p, 'init', '-q', 'r')
+    const args = jailArgs({ home, hide: [], roots: [p], rw: [path.join(p, '.auto', 'r')], git: path.join(p, 'r', '.git') })
+    const run = (sh: string) => spawnSync('bwrap', [...args, 'sh', '-c', sh], { encoding: 'utf8', timeout: 15_000, env: plain })
+    expect(run(`ls -A ${home}/.ssh; cat ${home}/.netrc`).stdout).toBe('')
+    expect(run(`echo x >> ${home}/.bashrc`).status).not.toBe(0)
+    expect(run(`echo x > ${p}/r/README`).status).not.toBe(0)
+    expect(run(`git -C ${p}/r config core.fsmonitor 'touch ${dir}/pwn'`).status).not.toBe(0)
+    expect(run(`echo x > ${p}/r/.git/hooks/post-commit`).status).not.toBe(0)
+    expect(run(`echo ok > ${p}/.auto/r/report.md && git -C ${p}/r -c user.name=t -c user.email=t@t commit -q --allow-empty -m t`).status).toBe(0)
+    expect(run('grep NoNewPrivs /proc/self/status').stdout).toMatch(/NoNewPrivs:\s+1/)
+    expect(fs.readFileSync(path.join(home, '.bashrc'), 'utf8')).toBe('# rc\n')
+    expect(fs.existsSync(path.join(dir, 'pwn'))).toBe(false)
   })
 
   it.skipIf(spawnSync('gh', ['--version']).status !== 0)('gh runs logged out', () => {

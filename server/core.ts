@@ -1224,8 +1224,9 @@ export class Weevils {
     return t.phase === 'working' && now - t.lastActivityAt < 10 * 60_000
   }
 
-  /** L'utilisateur parle à weevboss : le message part dans la session Claude de l'orchestrateur (lancée ou reprise au besoin). */
-  async sendMain(text: string) {
+  /** L'utilisateur parle à weevboss : le message part dans la session Claude de l'orchestrateur (lancée ou reprise au besoin).
+   * « brief » : la marche à suivre d'un bouton de branchement, jointe au bloc ⟦weevils …⟧ (jamais affichée). */
+  async sendMain(text: string, brief?: string) {
     if (!ORCHESTRATOR) throw new Error(tr(M).orchNotHere)
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
     // Claude Code pas connecté sur cette machine : weevboss ne peut pas répondre. Le message reste dans le fil, et la marche
@@ -1236,7 +1237,7 @@ export class Weevils {
     }
     this.prepareOrchestrator()
     // Ce que weevilsd a écrit en son nom depuis sa dernière réponse (accueil, branchements) : joint au message.
-    text = text + (this.setup?.contextFor() ?? '')
+    text = text + (this.setup?.contextFor(brief) ?? '')
     // Mesure : temps de réponse complet de weevboss, au journal.
     const since = Date.now()
     void this.waitMainReply(since, 300_000).then((r) => r && console.log(`[voix] weevboss a répondu en ${Date.now() - since} ms`))

@@ -73,6 +73,7 @@ const setup = new Setup({
     mailBridge?.stop()
     mailBridge = ORCHESTRATOR ? startMailBridge(w, DATA_DIR) : null
   },
+  handoff: (text, brief) => w.sendMain(text, brief),
 })
 w.setup = setup
 const asDevice = (d: any): Device => ({
@@ -237,8 +238,8 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/setup\/ask$/, async (req, res) => {
     const b = await readBody(req)
     if (!isBrick(b.brick)) return json(res, 400, { error: tr(S).badBrick })
-    await setup.ask(b.brick, b.device ? asDevice(b.device) : undefined)
-    json(res, 200, { ok: true })
+    const flow = await setup.ask(b.brick, b.device ? asDevice(b.device) : undefined)
+    json(res, 200, { ok: true, flow })
   }],
   ['POST', /^\/api\/setup\/apply$/, async (req, res) => {
     const b = await readBody(req, 64 << 10)

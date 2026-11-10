@@ -1,7 +1,7 @@
 // Client de weevilsd : appels REST + flux temps réel (SSE). Aucune donnée fictive.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Brick, Device } from '../shared/setup.ts'
+import type { AskResult, Brick, Device } from '../shared/setup.ts'
 import { tr } from './i18n'
 import M from './i18n/app'
 import type { FsListing, InfraDetail, UsageInfo, UsageToday } from '../shared/infra.ts'
@@ -63,7 +63,7 @@ export const api = {
   newRepo: (name: string, description: string) => call<{ name: string }>('POST', '/api/github/repos', { name, description }),
   devil: (text: string) => call<{ id: string }>('POST', '/api/devil', { text }),
   setupWelcome: (device: Device) => call<{ ok: true }>('POST', '/api/setup/welcome', { device }),
-  setupAsk: (brick: Brick, device: Device) => call<{ ok: true }>('POST', '/api/setup/ask', { brick, device }),
+  setupAsk: (brick: Brick, device: Device) => call<AskResult>('POST', '/api/setup/ask', { brick, device }),
   setupApply: (brick: Brick, values: Record<string, string>) => call<{ ok: true }>('POST', '/api/setup/apply', { brick, values }),
   setupDone: (brick: Brick) => call<{ ok: true }>('POST', '/api/setup/done', { brick }),
   setupLink: () => call<{ link: string }>('GET', '/api/setup/link'),

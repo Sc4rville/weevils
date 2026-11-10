@@ -1,12 +1,12 @@
 // Accueil et branchements (server/setup.ts) : ce que weevboss écrit lui-même dans son fil, composé à partir de l'état
 // réel de la machine. Court, tutoiement en français, une idée par message. Les puces [[setup:x]] deviennent des boutons.
+// Jamais de commande à taper : ce qui s'installe, weevilsd l'installe ; le reste, weevboss s'en charge.
 import { defineMessages } from '../i18n.ts'
 import type { MachineInfo, SetupState } from '../setup.ts'
 
-const REPO = 'https://raw.githubusercontent.com/Sc4rville/weevils/main/install.sh'
-/** Une commande d'une ligne : en ligne, avec son bouton copier ; plusieurs lignes : un bloc. */
-const code = (c: string) => (c.includes('\n') ? '```sh\n' + c + '\n```' : '`' + c + '`')
 const gb = (n: number) => (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10)
+/** Créer un jeton GitHub avec les bons droits, pré-rempli. */
+const GH_TOKEN_URL = 'https://github.com/settings/tokens/new?scopes=repo,read:org,workflow&description=weevils'
 
 const kindFr = (m: MachineInfo) =>
   ({
@@ -28,10 +28,7 @@ const kindEn = (m: MachineInfo) =>
     desktop: m.mac ? 'on your Mac' : 'on your desktop PC',
     wsl: 'on WSL, on Windows',
   })[m.kind]
-
-/** Ce qui se tape pour arriver sur la machine depuis un ordinateur : rien si on y est déjà. */
-const onMachineFr = (m: MachineInfo) => (['vps', 'server', 'container', 'vm'].includes(m.kind) ? ` (depuis ton ordi : \`ssh ${m.sshTarget}\`)` : '')
-const onMachineEn = (m: MachineInfo) => (['vps', 'server', 'container', 'vm'].includes(m.kind) ? ` (from your computer: \`ssh ${m.sshTarget}\`)` : '')
+const local = (m: MachineInfo) => ['laptop', 'desktop', 'wsl'].includes(m.kind) && !m.othersAlwaysOn
 
 export default defineMessages({
   fr: {
@@ -54,10 +51,13 @@ export default defineMessages({
       s.reach === 'public'
         ? s.https
           ? `Je suis joignable de partout, en https : ${s.url}. Rien à faire de ce côté.`
-          : `Je suis joignable de partout (${s.url}), mais en http : le code d’accès circule en clair et le micro du téléphone refuse de marcher. Passe en https avec un nom de domaine qui pointe sur la machine :\n${code(`${s.clone}/install.sh --domain weevils.ton-domaine.fr`)}`
-        : s.reach === 'lan'
-          ? `Je ne suis joignable que sur ton réseau local (${s.url}). Pour me joindre de partout : Tailscale (gratuit) sur cette machine et sur ton téléphone (tailscale.com/download), puis\n${code(`sudo tailscale serve --bg ${s.port}`)}\nou un nom de domaine qui pointe sur la machine :\n${code(`${s.clone}/install.sh --domain weevils.ton-domaine.fr`)}`
-          : `Je n’écoute que sur ${s.machine.host} (127.0.0.1) : ton téléphone ne peut pas me joindre tel quel. Trois chemins, du plus simple au plus propre :\n\n1. Tailscale (gratuit) : installe-le sur cette machine et sur ton téléphone (tailscale.com/download), même compte, puis\n${code(`sudo tailscale serve --bg ${s.port}`)}\n2. Même Wi-Fi seulement :\n${code(`${s.clone}/install.sh --lan`)}\n3. Un nom de domaine qui pointe sur la machine (https automatique) :\n${code(`${s.clone}/install.sh --domain weevils.ton-domaine.fr`)}\nDis-moi lequel tu prends, je te guide.`,
+          : `Je suis joignable de partout (${s.url}), mais en http : le code d’accès circule en clair et le micro du téléphone refuse de marcher. Pour passer en https, il me faut un nom de domaine qui pointe sur cette machine.`
+        : `${s.reach === 'lan' ? `Je ne suis joignable que sur ton réseau local (${s.url})` : `Je n’écoute que sur ${s.machine.host}`} : ton téléphone ne peut pas me joindre de dehors. Deux chemins : un nom de domaine qui pointe sur la machine (https automatique), ou Tailscale (gratuit : une app sur ton téléphone, rien à acheter).`,
+    reachPrompt: (http: boolean): string => (http ? 'Donne-moi ton domaine en bas, je m’occupe du reste.' : 'Tape ton domaine en bas, ou laisse vide et je pars sur Tailscale. Je m’occupe du reste.'),
+    reachDns: (domain: string, ip: string, seen: string): string =>
+      `« ${domain} » ne pointe pas encore sur cette machine (${seen ? `il pointe sur ${seen}` : 'il ne pointe nulle part'}). Chez ton fournisseur de domaine, ajoute un enregistrement A « ${domain} » vers ${ip}, attends quelques minutes, puis réessaie :`,
+    reachDomainDo: (domain: string): string => `Passe-moi en https sur ${domain}.`,
+    reachTailscaleDo: 'Rends-moi joignable de partout avec Tailscale.',
     // ---- machine
     machine: (m: MachineInfo): string => {
       const spec = `${m.os}, ${m.cpus} cœur${m.cpus > 1 ? 's' : ''}, ${gb(m.ramGb)} Go`
@@ -69,56 +69,69 @@ export default defineMessages({
       if (m.kind === 'laptop' || m.kind === 'desktop') return `Tu tournes ${kindFr(m)} (${spec})${room}, et ${m.others.join(', ')} reste allumé pour la nuit : bon combo.`
       const always = m.kind === 'container' ? 'tant que le conteneur tourne, tes agents bossent' : 'il reste allumé : tes agents bossent même quand ton téléphone dort'
       const small = m.agents <= 1 ? ` Avec ${gb(m.ramGb)} Go, un agent à la fois ; pour en faire tourner plusieurs, le palier au-dessus (4 Go et plus).` : ''
-      const second = m.others.length ? ` ${m.others.join(', ')} est branché en seconde machine.` : ' Branche aussi ton PC en seconde machine, pour le navigateur et les apps locales. [[setup:machine]]'
+      const second = m.others.length ? ` ${m.others.join(', ')} est branché en seconde machine.` : ''
       return `Tu tournes ${kindFr(m)} (${spec})${room} ; ${always}.${small}${second}`
     },
-    machineAsk: (s: SetupState): string => {
-      const m = s.machine
-      if (['laptop', 'desktop', 'wsl'].includes(m.kind) && !m.othersAlwaysOn)
-        return `Le plan, en trois étapes :\n\n1. Prends un petit VPS sous Ubuntu (2 vCPU, 4 Go) chez l’hébergeur de ton choix (Hetzner, OVH, Hostinger, Scaleway…), avec ta clé SSH.\n2. Sur le VPS, installe weevils en principal (avec un nom de domaine qui pointe dessus, sinon enlève --domain et passe par Tailscale) :\n${code(`curl -fsSL ${REPO} | bash -s -- --domain weevils.ton-domaine.fr`)}\n3. Sur ${m.host}, branche-le en seconde machine (il faut que \`ssh <ton-vps>\` marche sans mot de passe) :\n${code(`curl -fsSL ${REPO} | bash -s -- --secondary <ton-vps>`)}\nTes agents tourneront sur le VPS jour et nuit ; ${m.host} servira au navigateur et aux apps locales. Dis-moi quand le VPS est prêt, on fait la suite ensemble.`
-      return `Pour brancher ton PC (ou un Mac) en seconde machine : sur lui, \`ssh ${m.sshTarget}\` doit marcher sans mot de passe (\`ssh-copy-id ${m.sshTarget}\` si besoin), puis :\n${code(`curl -fsSL ${REPO} | bash -s -- --secondary ${m.sshTarget}`)}\nSes sessions apparaîtront ici, et je pourrai y lancer ce qui a besoin d’un écran (navigateur, apps). Dis-moi quand c’est fait.`
-    },
+    machineAsk: (s: SetupState): string =>
+      local(s.machine)
+        ? 'Le plus simple : un petit VPS sous Ubuntu (2 vCPU, 4 Go, quelques euros par mois), allumé jour et nuit. Choisis ton hébergeur en bas, ou « j’en ai pas » et je t’aide à en choisir un. Ensuite son adresse et le mot de passe qu’il t’a envoyé : je m’occupe du reste.'
+        : 'Pour brancher une autre machine (un VPS, un serveur) : choisis l’hébergeur en bas, puis son adresse et le mot de passe qu’il t’a envoyé. Je m’occupe du reste.',
+    machineNone:
+      'Pour weevils, 2 vCPU et 4 Go de mémoire sous Ubuntu 24.04 suffisent, pour quelques euros par mois. Trois bons choix :\n\n- [Hetzner](https://www.hetzner.com/cloud) : le moins cher, en Europe.\n- [OVHcloud](https://www.ovhcloud.com/fr/vps/) : en France, support en français.\n- [Hostinger](https://www.hostinger.com/fr/vps) : le plus simple à prendre en main.\n\nPrends Ubuntu 24.04 et garde l’adresse IP et le mot de passe qu’ils t’envoient. Quand c’est fait, touche le bouton :',
+    machineTrying: (target: string): string => `Je me connecte à ${target}…`,
+    machineBadHost: (host: string): string => `Je ne reconnais pas cette adresse (${host}). Il me faut l’adresse IP du VPS (quatre nombres, comme 203.0.113.7) ou son nom. Réessaie :`,
+    machineRefused: (target: string, why: string, provider: string, key: string): string =>
+      `Je n’arrive pas à entrer sur ${target} (${why}). Réessaie avec le mot de passe que ${provider} t’a envoyé, ou ajoute cette clé dans son panneau (rubrique « Clés SSH »), puis retouche le bouton :\n\`${key}\``,
+    machineIn: (target: string, about: string): string =>
+      `Je suis entré sur ${target}${about ? ` (${about})` : ''}. J’y ai posé ma clé : le mot de passe n’est gardé nulle part.`,
+    sshWhy: (raw: string): string =>
+      /permission denied/i.test(raw) ? 'mot de passe ou clé refusés' : /timed out|no route|unreachable/i.test(raw) ? 'la machine ne répond pas' : /could not resolve|name or service/i.test(raw) ? 'adresse introuvable' : /connection refused/i.test(raw) ? 'SSH fermé sur cette machine' : /host key/i.test(raw) ? 'la machine a changé d’identité depuis la dernière fois' : raw.replace(/^[^\s:]*@[^\s:]*:\s*/, '') || 'pas de réponse',
+    machineNoSsh: 'Il me manque SSH sur cette machine pour joindre la nouvelle.',
+    machineDo: (target: string, provider: string): string => `Branche ${target}${provider ? ` (${provider})` : ''} sur weevils.`,
+    machineLater: 'Connecte Claude Code et je finis le branchement tout seul :',
     // ---- Claude Code
-    claudeMissing: (m: MachineInfo): string =>
-      `Pour que je te réponde, il me faut Claude Code sur ${m.host}. Dans un terminal de cette machine${onMachineFr(m)} :\n${code('curl -fsSL https://claude.ai/install.sh | bash\nclaude')}\nconnecte-toi avec ton compte Claude (Pro ou Max), et je te fais signe dès que c’est bon.`,
-    claudeLogin: (m: MachineInfo): string =>
-      `Pour que je te réponde, connecte Claude Code sur ${m.host} : dans un terminal de cette machine${onMachineFr(m)}, lance\n${code('claude')}\net suis le lien de connexion (compte Claude Pro ou Max). Je te fais signe dès que c’est bon.`,
+    claudeMissing: (m: MachineInfo): string => `Pour que je te réponde, il me faut Claude Code sur ${m.host}, connecté à ton compte Claude (Pro ou Max). Un tap, je l’installe et je te donne le lien :`,
+    claudeLogin: 'Pour que je te réponde, il me faut Claude Code connecté à ton compte Claude (Pro ou Max). Un tap :',
+    claudeInstalling: (host: string): string => `J’installe Claude Code sur ${host}, une minute…`,
+    claudeInstallFail: (why: string): string => `L’installation de Claude Code a échoué (${why}). Réessaie :`,
+    claudeLink: (url: string): string => `Ouvre [la page de connexion de Claude](${url}), accepte, puis colle en bas le code qu’elle affiche.`,
+    claudeFail: (why: string): string => `Claude n’accepte pas ce code (${why}). On recommence avec un nouveau lien :`,
     claudeReady: 'Claude Code est connecté : je suis prêt. Dis-moi ce que tu veux faire, par exemple « crée un repo pour mon idée de… » ou « où en est mon projet ? ».',
     claudeOk: 'Claude Code est connecté sur cette machine.',
     notLoggedShort: 'Pour tout le reste, il me faut Claude Code connecté sur cette machine.',
     // ---- Codex
-    codexAsk: (s: SetupState): string =>
-      !s.codex.installed
-        ? `Codex (OpenAI) est l’autre agent que je pilote : un second avis, ou le relais quand ton quota Claude est à sec. Il marche avec un abonnement ChatGPT. Sur ${s.machine.host} :\n${code(`npm i -g @openai/codex${s.sudo === 'yes' ? '' : ' --prefix ~/.local'}\ncodex`)}\net connecte-toi. Ensuite dis « avec codex » et j’ouvre la session dedans.`
-        : !s.codex.logged
-          ? `Codex est installé mais pas connecté : lance \`codex\` une fois sur ${s.machine.host} et connecte-toi avec ton compte ChatGPT.`
-          : 'Codex est prêt : dis « avec codex » et j’ouvre la session dedans.',
+    codexReady: 'Codex est prêt : dis « avec codex » et j’ouvre la session dedans.',
+    codexInstalling: (host: string): string => `J’installe Codex sur ${host}…`,
+    codexInstallFail: (why: string): string => `L’installation de Codex a échoué (${why}). Réessaie :`,
+    codexCode: (url: string, code: string): string =>
+      `Pour connecter Codex à ton compte ChatGPT : ouvre [cette page](${url}), connecte-toi et tape le code ${code} (valable 15 minutes). Je te fais signe dès que c’est bon.`,
+    codexFail: (why: string): string => `La connexion de Codex n’a pas abouti (${why}). Réessaie :`,
     // ---- GitHub
     githubPitch: 'Branche GitHub : je verrai tous tes repos (glisse le fil vers la gauche), j’en créerai pour tes nouvelles idées et je rangerai les sessions par projet.',
-    githubAsk: (s: SetupState, install: string): string =>
+    githubAsk: (s: SetupState): string =>
       s.github.logged
         ? `GitHub est branché${s.github.login ? ` (${s.github.login})` : ''}. Glisse le fil vers la gauche pour voir tes repos ; le + en met un dans le fil.`
-        : !s.github.installed
-          ? `Avec GitHub branché, je vois tous tes repos, j’en crée pour tes idées et je range les sessions par projet. Il me faut la commande gh sur ${s.machine.host}${onMachineFr(s.machine)} :\n${code(install)}\npuis \`gh auth login\` (ou colle un jeton ici dès que gh est là). Je te fais signe quand je le vois.`
-          : `Avec GitHub branché, je vois tous tes repos, j’en crée pour tes idées et je range les sessions par projet. Le plus rapide : crée un jeton sur github.com/settings/tokens/new?scopes=repo,read:org,workflow&description=weevils (« Generate token »), copie-le, et colle-le ici. Ou lance \`gh auth login\` sur ${s.machine.host}.`,
+        : `Avec GitHub branché, je vois tous tes repos, j’en crée pour tes idées et je range les sessions par projet. Crée un jeton sur [cette page GitHub](${GH_TOKEN_URL}) (« Generate token » en bas), copie-le et colle-le en bas.`,
     githubOk: (login: string): string => `GitHub branché : ${login}. Glisse le fil vers la gauche pour voir tes repos ; le + en met un dans le fil, et je peux en créer pour tes idées.`,
     githubFail: (why: string): string => `GitHub refuse ce jeton (${why}). Vérifie qu’il a les droits repo et read:org, puis réessaie :`,
-    githubNoCli: 'gh n’est pas encore installé sur la machine : installe-le d’abord (je t’ai mis la commande), puis recolle le jeton.',
+    githubNoCli: (why: string): string => `J’ai gardé le jeton, mais l’outil GitHub ne s’installe pas sur la machine (${why}) : demande-moi de réessayer.`,
     // ---- voix
-    voiceAsk: (s: SetupState, edge: string): string => {
+    voiceAsk: (s: SetupState): string => {
       const spoken =
         s.voice.spoken === 'cartesia'
           ? 'Ma voix passe par Cartesia, la plus naturelle.'
           : s.voice.spoken === 'edge'
-            ? 'Je te réponds déjà à voix haute (voix gratuite). Pour une voix plus naturelle, colle une clé Cartesia (play.cartesia.ai/keys, offre gratuite pour commencer).'
-            : `Pour que je te réponde à voix haute, gratuitement, installe edge-tts sur ${s.machine.host} :\n${code(edge)}\nou, pour une voix plus naturelle, colle une clé Cartesia (play.cartesia.ai/keys).`
+            ? 'Je te réponds déjà à voix haute (voix gratuite). Pour une voix plus naturelle, colle une clé Cartesia en bas ([play.cartesia.ai/keys](https://play.cartesia.ai/keys), offre gratuite pour commencer).'
+            : 'Je n’ai pas encore de voix : j’installe la voix gratuite. Pour une voix plus naturelle, colle une clé Cartesia en bas ([play.cartesia.ai/keys](https://play.cartesia.ai/keys)).'
       const dict = s.voice.openai
         ? s.voice.https
           ? ' La dictée est branchée : tape le logo pour me parler.'
           : ' La dictée est branchée, mais le micro du téléphone exige une adresse en https. [[setup:reach]]'
-        : ' Pour me dicter tes messages, il me faut une clé OpenAI (quelques centimes par jour) : platform.openai.com/api-keys.'
+        : ' Pour me dicter tes messages, il me faut une clé OpenAI (quelques centimes par jour, [platform.openai.com/api-keys](https://platform.openai.com/api-keys)).'
       return `${spoken}${dict}`
     },
+    voiceFreeOk: 'La voix gratuite est installée : je te réponds à voix haute.',
+    voiceFreeFail: (why: string): string => `La voix gratuite ne s’installe pas (${why}). Une clé Cartesia marche sans rien installer :`,
     voiceOk: (what: string[]): string => `Enregistré et vérifié : ${what.join(', ')}. Tape le logo pour me parler : un tap pour parler, un pour arrêter, un pour envoyer.`,
     voiceFail: (who: string, why: string): string => `${who} refuse cette clé (${why}). Réessaie :`,
     voiceNothing: 'Rien de changé.',
@@ -151,25 +164,27 @@ export default defineMessages({
     securityAsk: (s: SetupState): string =>
       [
         'Ton code d’accès vaut un accès au terminal : quiconque l’a peut taper dans tes agents. Ne l’envoie à personne.',
-        s.security.exposedHttp
-          ? `Attention : je suis joignable en http, le code circule en clair. Passe en https avec un nom de domaine :\n${code(`${s.clone}/install.sh --domain weevils.ton-domaine.fr`)}`
-          : s.security.https
-            ? 'L’adresse est en https : bien.'
-            : 'Je n’écoute que sur cette machine : rien n’est exposé.',
-        s.security.safe ? 'Tes agents demandent la permission avant d’agir (WEEVILS_SAFE=1).' : 'Tes agents tournent sans demander de permission : rapide, mais c’est une raison de plus de garder le code pour toi.',
-        `Pour changer de code et déconnecter tous les appareils :\n${code('rm ~/.config/weevils/secret ~/.local/share/weevils/tokens.json && weevils-service restart')}`,
+        s.security.exposedHttp ? 'Attention : je suis joignable en http, le code circule en clair. Passe en https : [[setup:reach]]' : s.security.https ? 'L’adresse est en https : bien.' : 'Je n’écoute que sur cette machine : rien n’est exposé.',
+        s.security.safe ? 'Tes agents demandent la permission avant d’agir.' : 'Tes agents tournent sans demander de permission : rapide, mais c’est une raison de plus de garder le code pour toi.',
+        'Pour changer de code et déconnecter tous les appareils, demande-le-moi.',
       ].join(' '),
     // ---- Siri
     shortcutAsk:
       'Sur iPhone, un Raccourci te laisse me parler sans ouvrir l’app : « Dis Siri, weevboss », ou le bouton Action. Touche le bouton : je copie ton adresse personnelle, puis dans l’app Raccourcis, + et ces actions :\n\n1. « Dicter le texte »\n2. « Obtenir le contenu de l’URL » : colle l’adresse, Méthode POST, Corps de la requête JSON, champ text = Texte dicté\n3. « Obtenir la valeur du dictionnaire » : clé say\n4. « Énoncer le texte »\n\nNomme-le « weevboss » : Siri le trouve tout seul.',
     shortcutOk: 'Adresse copiée : colle-la dans l’action « Obtenir le contenu de l’URL ».',
     // ---- installer
+    installHave: (os: string, have: string[]): string => `Sur ${os}, déjà là : ${have.join(', ')}.`,
+    installMissing: (missing: string[]): string => `Il manque ${missing.join(', ')} : un tap sur chacun, je l’installe et je le connecte.`,
+    installAll: 'Tout l’essentiel est là.',
+    // Pour weevboss seul (« weevils setup install ») : jamais montré à l'utilisateur.
     installIntro: (os: string, missing: boolean): string =>
-      missing ? `Sur ${os}, voici tout ce qu’il manque, dans l’ordre (copie-colle bloc par bloc) :` : `Sur ${os}, tout l’essentiel est déjà là.`,
+      missing ? `Sur ${os}, voici ce qui manque, dans l’ordre. Lance ces commandes toi-même, ne les donne jamais à l’utilisateur :` : `Sur ${os}, tout l’essentiel est déjà là.`,
     installDone: 'Déjà installé :',
-    installLogins: 'Puis les connexions (une fois chacune) :',
-    installNoSudo: 'Tu n’as pas sudo ici : ces commandes s’installent dans ton dossier. Pour le reste, demande à l’admin de la machine.',
-    installAfter: 'Dis-moi quand c’est fait, je vérifie.',
+    installLogins: 'Puis les connexions : propose la puce [[setup:claude]], [[setup:github]] ou [[setup:codex]], jamais une commande.',
+    installNoSudo: 'Pas de sudo ici : ces commandes s’installent dans le dossier de l’utilisateur.',
+    needClaude: 'Connecte d’abord Claude Code : c’est moi qui m’en occuperai ensuite.',
+    needSudo: 'Pour ça il me faut les droits administrateur sur cette machine, et je ne les ai pas ici. Demande-les à la personne qui la gère, ou branche un VPS à toi :',
+    working: 'Je m’en occupe.',
     // ---- divers
     saved: 'enregistré',
     masked: (tail: string): string => `••••${tail}`,
@@ -191,6 +206,17 @@ export default defineMessages({
     field_name: 'nom',
     field_email: 'e-mail',
     field_color: 'couleur',
+    field_code: 'code',
+    field_provider: 'hébergeur',
+    field_host: 'adresse',
+    field_user: 'utilisateur',
+    field_domain: 'domaine',
+    voiceName: 'la voix',
+    gb: (n: number): string => `${n} Go`,
+    prov_none: 'j’en ai pas',
+    prov_other: 'autre',
+    otherHost: 'ton hébergeur',
+    noAnswer: 'pas de réponse',
   },
   en: {
     hello: (name: string): string =>
@@ -211,10 +237,13 @@ export default defineMessages({
       s.reach === 'public'
         ? s.https
           ? `I’m reachable from anywhere, over https: ${s.url}. Nothing to do here.`
-          : `I’m reachable from anywhere (${s.url}), but over http: the access code travels in clear text and the phone’s microphone won’t work. Switch to https with a domain name pointing at the machine:\n${code(`${s.clone}/install.sh --domain weevils.your-domain.com`)}`
-        : s.reach === 'lan'
-          ? `I’m only reachable on your local network (${s.url}). To reach me from anywhere: Tailscale (free) on this machine and on your phone (tailscale.com/download), then\n${code(`sudo tailscale serve --bg ${s.port}`)}\nor a domain name pointing at the machine:\n${code(`${s.clone}/install.sh --domain weevils.your-domain.com`)}`
-          : `I only listen on ${s.machine.host} (127.0.0.1): your phone can’t reach me as is. Three ways, simplest first:\n\n1. Tailscale (free): install it on this machine and on your phone (tailscale.com/download), same account, then\n${code(`sudo tailscale serve --bg ${s.port}`)}\n2. Same Wi-Fi only:\n${code(`${s.clone}/install.sh --lan`)}\n3. A domain name pointing at the machine (automatic https):\n${code(`${s.clone}/install.sh --domain weevils.your-domain.com`)}\nTell me which one you pick, I’ll walk you through it.`,
+          : `I’m reachable from anywhere (${s.url}), but over http: the access code travels in clear text and the phone’s microphone won’t work. To switch to https I need a domain name pointing at this machine.`
+        : `${s.reach === 'lan' ? `I’m only reachable on your local network (${s.url})` : `I only listen on ${s.machine.host}`}: your phone can’t reach me from outside. Two ways: a domain name pointing at the machine (automatic https), or Tailscale (free: an app on your phone, nothing to buy).`,
+    reachPrompt: (http: boolean): string => (http ? 'Give me your domain below, I’ll take care of the rest.' : 'Type your domain below, or leave it empty and I’ll go with Tailscale. I’ll take care of the rest.'),
+    reachDns: (domain: string, ip: string, seen: string): string =>
+      `“${domain}” doesn’t point at this machine yet (${seen ? `it points at ${seen}` : 'it points nowhere'}). At your domain provider, add an A record “${domain}” to ${ip}, wait a few minutes, then try again:`,
+    reachDomainDo: (domain: string): string => `Switch me to https on ${domain}.`,
+    reachTailscaleDo: 'Make me reachable from anywhere with Tailscale.',
     machine: (m: MachineInfo): string => {
       const spec = `${m.os}, ${m.cpus} core${m.cpus > 1 ? 's' : ''}, ${gb(m.ramGb)} GB`
       const room = m.agents > 1 ? `: room for ${m.agents} agents at once` : ''
@@ -225,52 +254,64 @@ export default defineMessages({
       if (m.kind === 'laptop' || m.kind === 'desktop') return `You’re running ${kindEn(m)} (${spec})${room}, and ${m.others.join(', ')} stays on overnight: good combo.`
       const always = m.kind === 'container' ? 'as long as the container runs, your agents keep working' : 'it stays on: your agents keep working while your phone sleeps'
       const small = m.agents <= 1 ? ` With ${gb(m.ramGb)} GB, one agent at a time; to run several, the next tier up (4 GB or more).` : ''
-      const second = m.others.length ? ` ${m.others.join(', ')} is plugged in as a second machine.` : ' Plug your computer in as a second machine too, for the browser and local apps. [[setup:machine]]'
+      const second = m.others.length ? ` ${m.others.join(', ')} is plugged in as a second machine.` : ''
       return `You’re running ${kindEn(m)} (${spec})${room}; ${always}.${small}${second}`
     },
-    machineAsk: (s: SetupState): string => {
-      const m = s.machine
-      if (['laptop', 'desktop', 'wsl'].includes(m.kind) && !m.othersAlwaysOn)
-        return `The plan, in three steps:\n\n1. Get a small Ubuntu VPS (2 vCPU, 4 GB) from any host (Hetzner, OVH, DigitalOcean, Hostinger…), with your SSH key.\n2. On the VPS, install weevils as the main machine (with a domain name pointing at it; otherwise drop --domain and use Tailscale):\n${code(`curl -fsSL ${REPO} | bash -s -- --domain weevils.your-domain.com`)}\n3. On ${m.host}, plug it in as a second machine (\`ssh <your-vps>\` must work without a password):\n${code(`curl -fsSL ${REPO} | bash -s -- --secondary <your-vps>`)}\nYour agents will run on the VPS day and night; ${m.host} will handle the browser and local apps. Tell me when the VPS is ready, we’ll do the rest together.`
-      return `To plug your computer (or a Mac) in as a second machine: on it, \`ssh ${m.sshTarget}\` must work without a password (\`ssh-copy-id ${m.sshTarget}\` if needed), then:\n${code(`curl -fsSL ${REPO} | bash -s -- --secondary ${m.sshTarget}`)}\nIts sessions will show up here, and I can run there whatever needs a screen (browser, apps). Tell me when it’s done.`
-    },
-    claudeMissing: (m: MachineInfo): string =>
-      `For me to answer, I need Claude Code on ${m.host}. In a terminal on that machine${onMachineEn(m)}:\n${code('curl -fsSL https://claude.ai/install.sh | bash\nclaude')}\nsign in with your Claude account (Pro or Max), and I’ll let you know as soon as it’s done.`,
-    claudeLogin: (m: MachineInfo): string =>
-      `For me to answer, sign Claude Code in on ${m.host}: in a terminal on that machine${onMachineEn(m)}, run\n${code('claude')}\nand follow the sign-in link (Claude Pro or Max account). I’ll let you know as soon as it’s done.`,
+    machineAsk: (s: SetupState): string =>
+      local(s.machine)
+        ? 'Simplest: a small Ubuntu VPS (2 vCPU, 4 GB, a few dollars a month), on day and night. Pick your host below, or “I don’t have one” and I’ll help you choose. Then its address and the password it sent you: I’ll take care of the rest.'
+        : 'To plug in another machine (a VPS, a server): pick the host below, then its address and the password it sent you. I’ll take care of the rest.',
+    machineNone:
+      'For weevils, 2 vCPU and 4 GB of memory on Ubuntu 24.04 are enough, for a few dollars a month. Three good picks:\n\n- [Hetzner](https://www.hetzner.com/cloud): the cheapest, in Europe.\n- [DigitalOcean](https://www.digitalocean.com/products/droplets): data centers worldwide.\n- [Hostinger](https://www.hostinger.com/vps-hosting): the easiest to get started with.\n\nPick Ubuntu 24.04 and keep the IP address and password they send you. Once it’s done, tap the button:',
+    machineTrying: (target: string): string => `Connecting to ${target}…`,
+    machineBadHost: (host: string): string => `I don’t recognize this address (${host}). I need the VPS’s IP address (four numbers, like 203.0.113.7) or its name. Try again:`,
+    machineRefused: (target: string, why: string, provider: string, key: string): string =>
+      `I can’t get into ${target} (${why}). Try again with the password ${provider} sent you, or add this key in its panel (the “SSH keys” section), then tap the button again:\n\`${key}\``,
+    machineIn: (target: string, about: string): string => `I’m in ${target}${about ? ` (${about})` : ''}. I left my key there: the password isn’t kept anywhere.`,
+    sshWhy: (raw: string): string =>
+      /permission denied/i.test(raw) ? 'password or key refused' : /timed out|no route|unreachable/i.test(raw) ? 'the machine doesn’t answer' : /could not resolve|name or service/i.test(raw) ? 'address not found' : /connection refused/i.test(raw) ? 'SSH is closed on that machine' : /host key/i.test(raw) ? 'the machine changed identity since last time' : raw.replace(/^[^\s:]*@[^\s:]*:\s*/, '') || 'no answer',
+    machineNoSsh: 'This machine has no SSH to reach the new one.',
+    machineDo: (target: string, provider: string): string => `Plug ${target}${provider ? ` (${provider})` : ''} into weevils.`,
+    machineLater: 'Sign Claude Code in and I’ll finish plugging it in on my own:',
+    claudeMissing: (m: MachineInfo): string => `For me to answer, I need Claude Code on ${m.host}, signed in to your Claude account (Pro or Max). One tap, I install it and give you the link:`,
+    claudeLogin: 'For me to answer, I need Claude Code signed in to your Claude account (Pro or Max). One tap:',
+    claudeInstalling: (host: string): string => `Installing Claude Code on ${host}, one minute…`,
+    claudeInstallFail: (why: string): string => `Installing Claude Code failed (${why}). Try again:`,
+    claudeLink: (url: string): string => `Open [Claude’s sign-in page](${url}), accept, then paste the code it shows below.`,
+    claudeFail: (why: string): string => `Claude doesn’t accept this code (${why}). Let’s start over with a new link:`,
     claudeReady: 'Claude Code is signed in: I’m ready. Tell me what you want to do, like “create a repo for my idea about…” or “where’s my project at?”.',
     claudeOk: 'Claude Code is signed in on this machine.',
     notLoggedShort: 'For everything else, I need Claude Code signed in on this machine.',
-    codexAsk: (s: SetupState): string =>
-      !s.codex.installed
-        ? `Codex (OpenAI) is the other agent I run: a second opinion, or the backup when your Claude quota runs dry. It works with a ChatGPT plan. On ${s.machine.host}:\n${code(`npm i -g @openai/codex${s.sudo === 'yes' ? '' : ' --prefix ~/.local'}\ncodex`)}\nand sign in. Then say “with codex” and I’ll open the session in it.`
-        : !s.codex.logged
-          ? `Codex is installed but not signed in: run \`codex\` once on ${s.machine.host} and sign in with your ChatGPT account.`
-          : 'Codex is ready: say “with codex” and I’ll open the session in it.',
+    codexReady: 'Codex is ready: say “with codex” and I’ll open the session in it.',
+    codexInstalling: (host: string): string => `Installing Codex on ${host}…`,
+    codexInstallFail: (why: string): string => `Installing Codex failed (${why}). Try again:`,
+    codexCode: (url: string, code: string): string =>
+      `To sign Codex in to your ChatGPT account: open [this page](${url}), sign in and type the code ${code} (valid 15 minutes). I’ll let you know as soon as it’s done.`,
+    codexFail: (why: string): string => `Codex didn’t sign in (${why}). Try again:`,
     githubPitch: 'Plug in GitHub: I’ll see all your repos (swipe the feed left), create new ones for your ideas, and sort sessions by project.',
-    githubAsk: (s: SetupState, install: string): string =>
+    githubAsk: (s: SetupState): string =>
       s.github.logged
         ? `GitHub is plugged in${s.github.login ? ` (${s.github.login})` : ''}. Swipe the feed left to see your repos; the + puts one in the feed.`
-        : !s.github.installed
-          ? `With GitHub plugged in, I see all your repos, create new ones for your ideas, and sort sessions by project. I need the gh command on ${s.machine.host}${onMachineEn(s.machine)}:\n${code(install)}\nthen \`gh auth login\` (or paste a token here once gh is there). I’ll let you know when I see it.`
-          : `With GitHub plugged in, I see all your repos, create new ones for your ideas, and sort sessions by project. Quickest: create a token at github.com/settings/tokens/new?scopes=repo,read:org,workflow&description=weevils (“Generate token”), copy it, and paste it here. Or run \`gh auth login\` on ${s.machine.host}.`,
+        : `With GitHub plugged in, I see all your repos, create new ones for your ideas, and sort sessions by project. Create a token on [this GitHub page](${GH_TOKEN_URL}) (“Generate token” at the bottom), copy it, and paste it below.`,
     githubOk: (login: string): string => `GitHub plugged in: ${login}. Swipe the feed left to see your repos; the + puts one in the feed, and I can create new ones for your ideas.`,
     githubFail: (why: string): string => `GitHub rejects this token (${why}). Check it has the repo and read:org scopes, then try again:`,
-    githubNoCli: 'gh isn’t installed on the machine yet: install it first (the command is above), then paste the token again.',
-    voiceAsk: (s: SetupState, edge: string): string => {
+    githubNoCli: (why: string): string => `I kept the token, but the GitHub tool won’t install on the machine (${why}): ask me to try again.`,
+    voiceAsk: (s: SetupState): string => {
       const spoken =
         s.voice.spoken === 'cartesia'
           ? 'My voice goes through Cartesia, the most natural one.'
           : s.voice.spoken === 'edge'
-            ? 'I already answer out loud (free voice). For a more natural voice, paste a Cartesia key (play.cartesia.ai/keys, free tier to start).'
-            : `For me to answer out loud, for free, install edge-tts on ${s.machine.host}:\n${code(edge)}\nor, for a more natural voice, paste a Cartesia key (play.cartesia.ai/keys).`
+            ? 'I already answer out loud (free voice). For a more natural voice, paste a Cartesia key below ([play.cartesia.ai/keys](https://play.cartesia.ai/keys), free tier to start).'
+            : 'I don’t have a voice yet: I’m installing the free one. For a more natural voice, paste a Cartesia key below ([play.cartesia.ai/keys](https://play.cartesia.ai/keys)).'
       const dict = s.voice.openai
         ? s.voice.https
           ? ' Dictation is on: tap the logo to talk to me.'
           : ' Dictation is on, but the phone’s microphone needs an https address. [[setup:reach]]'
-        : ' To dictate your messages, I need an OpenAI key (a few cents a day): platform.openai.com/api-keys.'
+        : ' To dictate your messages, I need an OpenAI key (a few cents a day, [platform.openai.com/api-keys](https://platform.openai.com/api-keys)).'
       return `${spoken}${dict}`
     },
+    voiceFreeOk: 'The free voice is installed: I answer out loud.',
+    voiceFreeFail: (why: string): string => `The free voice won’t install (${why}). A Cartesia key works with nothing to install:`,
     voiceOk: (what: string[]): string => `Saved and checked: ${what.join(', ')}. Tap the logo to talk to me: once to talk, once to stop, once to send.`,
     voiceFail: (who: string, why: string): string => `${who} rejects this key (${why}). Try again:`,
     voiceNothing: 'Nothing changed.',
@@ -299,22 +340,24 @@ export default defineMessages({
     securityAsk: (s: SetupState): string =>
       [
         'Your access code is terminal access: anyone who has it can type into your agents. Never send it to anyone.',
-        s.security.exposedHttp
-          ? `Careful: I’m reachable over http, the code travels in clear text. Switch to https with a domain name:\n${code(`${s.clone}/install.sh --domain weevils.your-domain.com`)}`
-          : s.security.https
-            ? 'The address is https: good.'
-            : 'I only listen on this machine: nothing is exposed.',
-        s.security.safe ? 'Your agents ask for permission before acting (WEEVILS_SAFE=1).' : 'Your agents run without asking for permission: fast, and one more reason to keep the code to yourself.',
-        `To change the code and sign every device out:\n${code('rm ~/.config/weevils/secret ~/.local/share/weevils/tokens.json && weevils-service restart')}`,
+        s.security.exposedHttp ? 'Careful: I’m reachable over http, the code travels in clear text. Switch to https: [[setup:reach]]' : s.security.https ? 'The address is https: good.' : 'I only listen on this machine: nothing is exposed.',
+        s.security.safe ? 'Your agents ask for permission before acting.' : 'Your agents run without asking for permission: fast, and one more reason to keep the code to yourself.',
+        'To change the code and sign every device out, just ask me.',
       ].join(' '),
     shortcutAsk:
       'On iPhone, a Shortcut lets you talk to me without opening the app: “Hey Siri, weevboss”, or the Action button. Tap the button: I copy your personal address, then in the Shortcuts app, + and these actions:\n\n1. “Dictate Text”\n2. “Get Contents of URL”: paste the address, Method POST, Request Body JSON, field text = Dictated Text\n3. “Get Dictionary Value”: key say\n4. “Speak Text”\n\nName it “weevboss”: Siri finds it on its own.',
     shortcutOk: 'Address copied: paste it in the “Get Contents of URL” action.',
-    installIntro: (os: string, missing: boolean): string => (missing ? `On ${os}, here’s everything missing, in order (copy-paste block by block):` : `On ${os}, all the essentials are already there.`),
+    installHave: (os: string, have: string[]): string => `On ${os}, already there: ${have.join(', ')}.`,
+    installMissing: (missing: string[]): string => `Missing: ${missing.join(', ')}. One tap on each, I install it and sign it in.`,
+    installAll: 'All the essentials are there.',
+    installIntro: (os: string, missing: boolean): string =>
+      missing ? `On ${os}, here’s what’s missing, in order. Run these commands yourself, never hand them to the user:` : `On ${os}, all the essentials are already there.`,
     installDone: 'Already installed:',
-    installLogins: 'Then the sign-ins (once each):',
-    installNoSudo: 'You don’t have sudo here: these commands install into your home folder. For the rest, ask the machine’s admin.',
-    installAfter: 'Tell me when it’s done, I’ll check.',
+    installLogins: 'Then the sign-ins: offer the chip [[setup:claude]], [[setup:github]] or [[setup:codex]], never a command.',
+    installNoSudo: 'No sudo here: these commands install into the user’s home folder.',
+    needClaude: 'Sign Claude Code in first: I’ll take care of it after that.',
+    needSudo: 'For that I need admin rights on this machine, and I don’t have them here. Ask whoever runs it, or plug in a VPS of your own:',
+    working: 'On it.',
     saved: 'saved',
     masked: (tail: string): string => `••••${tail}`,
     detected: 'I see it: it’s plugged in.',
@@ -334,5 +377,16 @@ export default defineMessages({
     field_name: 'name',
     field_email: 'e-mail',
     field_color: 'color',
+    field_code: 'code',
+    field_provider: 'host',
+    field_host: 'address',
+    field_user: 'user',
+    field_domain: 'domain',
+    voiceName: 'the voice',
+    gb: (n: number): string => `${n} GB`,
+    prov_none: 'I don’t have one',
+    prov_other: 'other',
+    otherHost: 'your host',
+    noAnswer: 'no answer',
   },
 })

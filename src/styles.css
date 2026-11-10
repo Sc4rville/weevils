@@ -1808,6 +1808,19 @@ button.copy.done {
   gap: 12px;
 }
 
+/* Une question à choix (l'hébergeur d'un VPS) : des boutons à la place du champ, qui passent à la ligne. */
+.setup-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-block: 8px 12px;
+}
+
+.setup-choices .tool-btn {
+  margin-left: auto;
+}
+
 /* ---------- Aperçu vivant du fil (bande réduite) ---------- */
 
 /* Les récents en bas ; vers le haut, les anciens s'estompent ; un léger fondu en bas aussi : de la profondeur, sans ombre. */

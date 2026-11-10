@@ -10,8 +10,14 @@
 // - apply() reçoit les réponses d'un parcours (champ du bas, src/ui/setup.tsx), vérifie pour de vrai (le modèle répond,
 //   GitHub accepte le jeton, Gmail accepte le mot de passe…), écrit ~/.config/weevils/env et répond dans le fil.
 //   Les secrets ne passent ni par le modèle ni par les journaux : le fil n'en montre que les 4 derniers caractères.
+// - Jamais de commande à taper pour l'utilisateur. Ce qui s'installe dans son dossier, weevilsd l'installe lui-même
+//   (Claude Code, gh, la voix gratuite, Codex) ; Claude Code et Codex se connectent par un lien (et un code collé en
+//   bas pour Claude) ; un VPS se branche avec son adresse et son mot de passe (weevilsd y pose sa clé SSH). Ce qui
+//   demande un vrai travail (domaine, Tailscale, installer weevils sur la nouvelle machine) part chez weevboss :
+//   une phrase visible dans son fil, la marche à suivre exacte dans le bloc ⟦weevils …⟧ qui l'accompagne.
 
-import { execFile, spawn } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import dns from 'node:dns/promises'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -95,6 +101,9 @@ export interface SetupDeps {
   hasHistory: () => boolean
   /** Le pont e-mail vient d'être configuré : le lancer. */
   startMail: () => void
+  /** Confie un travail à weevboss : « text » s'affiche dans son fil comme venant de l'utilisateur, « brief » (la marche
+   * à suivre exacte) l'accompagne dans le bloc ⟦weevils …⟧, jamais affiché. */
+  handoff: (text: string, brief: string) => Promise<unknown>
 }
 
 interface Persisted {
@@ -107,6 +116,8 @@ interface Persisted {
   welcomed?: boolean
   claudeLogged?: boolean
   githubLogged?: boolean
+  /** Un travail pour weevboss qui attend que Claude Code soit connecté (un VPS branché avant la connexion). */
+  pending?: { text: string; brief: string }
 }
 
 // ---------------------------------------------------------------- détection
@@ -118,6 +129,15 @@ const read = (f: string) => {
     return ''
   }
 }
+/** L'environnement des installations : ~/.local/bin d'abord, là où elles posent leurs outils sans sudo. */
+const shellEnv = (): NodeJS.ProcessEnv => ({ ...process.env, PATH: [path.join(HOME, '.local', 'bin'), path.join(HOME, '.npm-global', 'bin'), process.env.PATH ?? ''].join(path.delimiter) })
+const ANSI = /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07/g
+/** La dernière ligne utile d'une sortie (la raison d'un échec, en clair). */
+const lastLine = (out: string) => out.replace(ANSI, '').split('\n').map((l) => l.trim()).filter(Boolean).pop()?.slice(0, 140) ?? ''
+const sh = (cmd: string, timeout = 600_000) =>
+  new Promise<{ ok: boolean; out: string }>((resolve) =>
+    execFile('bash', ['-c', cmd], { timeout, env: shellEnv(), maxBuffer: 8 << 20 }, (err, out, errOut) => resolve({ ok: !err, out: `${String(out ?? '')}\n${String(errOut ?? '')}`.trim() })),
+  )
 const run = (cmd: string, args: string[], timeout = 6000, env?: NodeJS.ProcessEnv) =>
   new Promise<{ ok: boolean; out: string }>((resolve) =>
     execFile(cmd, args, { timeout, env: env ?? process.env }, (err, out) => resolve({ ok: !err, out: String(out ?? '').trim() })),
@@ -306,7 +326,6 @@ export const TIPS: [id: string, what: string][] = [
   ['files', "explore any machine's files: bottom band, the machine, then /"],
   ['photo', 'the + in the composer: send me a photo, a screenshot or a file'],
   ['ultracode', 'say “ultracode” for a big job: the session deploys several agents in parallel'],
-  ['wv', 'in a terminal on the machine: `wv` opens a session the app sees (`wv codex`, `wv ls`, `wv a`)'],
   ['model', 'ask me “opus”, “max effort”, “fast” or “compact” for a session: I type the right slash command'],
   ['newRepo', 'tell me an idea that fits no repo: I create the repo and open a session in it'],
   ['settings', 'bottom band: language, theme, the intro again, tips'],
@@ -321,7 +340,7 @@ function ghNoSudo(): string {
 
 export function ghInstall(s: SetupState): string {
   if (s.pkg === 'brew') return 'brew install gh'
-  if (s.sudo === 'no' || !s.pkg) return ghNoSudo()
+  if (s.sudo !== 'yes' || !s.pkg) return ghNoSudo()
   return { apt: 'sudo apt update && sudo apt install -y gh', dnf: 'sudo dnf install -y gh', pacman: 'sudo pacman -S --noconfirm github-cli' }[s.pkg]
 }
 
@@ -329,13 +348,36 @@ export function edgeInstall(s: SetupState): string {
   if (s.tools.pipx) return 'pipx install edge-tts'
   if (s.pkg === 'brew') return 'brew install pipx && pipx install edge-tts'
   if (s.tools.uv) return 'uv tool install edge-tts'
-  if (s.sudo !== 'no' && s.pkg === 'apt') return 'sudo apt install -y pipx && pipx ensurepath && pipx install edge-tts'
-  if (s.sudo !== 'no' && s.pkg === 'dnf') return 'sudo dnf install -y pipx && pipx ensurepath && pipx install edge-tts'
-  if (s.sudo !== 'no' && s.pkg === 'pacman') return 'sudo pacman -S --noconfirm python-pipx && pipx ensurepath && pipx install edge-tts'
+  if (s.sudo === 'yes' && s.pkg === 'apt') return 'sudo apt install -y pipx && pipx ensurepath && pipx install edge-tts'
+  if (s.sudo === 'yes' && s.pkg === 'dnf') return 'sudo dnf install -y pipx && pipx ensurepath && pipx install edge-tts'
+  if (s.sudo === 'yes' && s.pkg === 'pacman') return 'sudo pacman -S --noconfirm python-pipx && pipx ensurepath && pipx install edge-tts'
   return 'curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uv tool install edge-tts'
 }
 
-/** Tout ce qui manque sur cette machine, dans l'ordre, en commandes à copier ; puis les connexions. */
+/** Ce que weevilsd installe lui-même, sans sudo interactif (rien à taper pour l'utilisateur). */
+export function installCommand(what: 'claude' | 'gh' | 'edge' | 'codex', s: SetupState): string {
+  if (what === 'claude') return 'curl -fsSL https://claude.ai/install.sh | bash'
+  if (what === 'gh') return ghInstall(s)
+  if (what === 'edge') return edgeInstall(s)
+  return s.pkg === 'brew' ? 'npm i -g @openai/codex' : 'npm i -g --prefix ~/.local @openai/codex'
+}
+
+/** Ce qui est là et ce qui manque, en clair, avec un bouton par brique manquante (l'app, jamais de commande). */
+export function installStatus(s: SetupState): string {
+  const t = tr(M)
+  const have: string[] = []
+  const missing: [string, Brick][] = []
+  const add = (ok: boolean, name: string, brick: Brick) => (ok ? have.push(name) : missing.push([name, brick]))
+  add(s.claude.installed && s.claude.logged, 'Claude Code', 'claude')
+  add(s.github.logged, 'GitHub', 'github')
+  add(!!s.voice.spoken, t.voiceName, 'voice')
+  add(s.codex.installed && s.codex.logged, 'Codex', 'codex')
+  const parts = [have.length ? t.installHave(s.machine.os, have) : '']
+  parts.push(missing.length ? `${t.installMissing(missing.map(([n]) => n))} ${missing.map(([, b]) => `[[setup:${b}]]`).join(' ')}` : t.installAll)
+  return parts.filter(Boolean).join(' ')
+}
+
+/** Pour weevboss seul (« weevils setup install ») : tout ce qui manque, dans l'ordre, en commandes qu'il lance lui-même. */
 export function installPlan(s: SetupState): string {
   const t = tr(M)
   const blocks: string[] = []
@@ -360,19 +402,15 @@ export function installPlan(s: SetupState): string {
   else have.push('gh')
   if (s.voice.spoken !== 'edge' && s.voice.spoken !== 'cartesia') blocks.push(edgeInstall(s))
   else if (s.voice.spoken === 'edge') have.push('edge-tts')
-  if (!s.codex.installed) blocks.push(`npm i -g @openai/codex${can && s.pkg !== 'brew' ? '' : ' --prefix ~/.local'}`)
+  if (!s.codex.installed) blocks.push(installCommand('codex', s))
   else have.push('codex')
-  const logins: string[] = []
-  if (!s.claude.logged) logins.push('claude')
-  if (!s.github.logged) logins.push('gh auth login')
-  if (!s.codex.logged) logins.push('codex')
+  const logins = [!s.claude.logged, !s.github.logged, !s.codex.logged].filter(Boolean)
   const fence = (c: string) => (c.includes('\n') ? '```sh\n' + c + '\n```' : '`' + c + '`')
   const parts = [t.installIntro(s.machine.os, blocks.length > 0)]
   if (!can && blocks.length) parts.push(t.installNoSudo)
   parts.push(...blocks.map(fence))
   if (have.length) parts.push(`${t.installDone} ${have.join(', ')}.`)
-  if (logins.length) parts.push(t.installLogins, fence(logins.join('\n')))
-  if (blocks.length || logins.length) parts.push(t.installAfter)
+  if (logins.length) parts.push(t.installLogins)
   return parts.join('\n\n')
 }
 
@@ -399,6 +437,57 @@ export const guessBrick = (text: string): Brick | null => GUESS.find(([, re]) =>
 
 // ---------------------------------------------------------------- le module
 
+/** Le nom d'un hébergeur, tel qu'on le dit. */
+const providerName = (p: string) => ({ hetzner: 'Hetzner', ovh: 'OVHcloud', hostinger: 'Hostinger', scaleway: 'Scaleway', digitalocean: 'DigitalOcean' })[p] ?? ''
+
+/** La clé SSH de cette machine (créée si besoin), à poser sur la nouvelle : sa ligne publique. */
+export async function sshKey(): Promise<string> {
+  const key = path.join(HOME, '.ssh', 'id_ed25519')
+  if (!fs.existsSync(`${key}.pub`)) {
+    fs.mkdirSync(path.dirname(key), { recursive: true, mode: 0o700 })
+    if (!fs.existsSync(key)) await run('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', `weevils@${os.hostname()}`, '-f', key], 15_000)
+    else await run('sh', ['-c', `ssh-keygen -y -f "${key}" > "${key}.pub"`], 15_000)
+  }
+  return read(`${key}.pub`).trim()
+}
+
+const SSH_OPTS = ['-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=5', '-o', 'ServerAliveCountMax=2']
+
+/** Entrer sur la machine avec la clé, sans rien demander ; la réponse décrit la machine (OS, cœurs, mémoire). En cas
+ * d'échec, « out » porte la raison donnée par ssh. */
+export const sshProbe = (user: string, host: string, port: number) =>
+  new Promise<{ ok: boolean; out: string }>((resolve) =>
+    execFile(
+      'ssh',
+      [...SSH_OPTS, '-o', 'BatchMode=yes', '-i', path.join(HOME, '.ssh', 'id_ed25519'), '-p', String(port), `${user}@${host}`, '. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-$(uname -s)}"; nproc 2>/dev/null; free -m 2>/dev/null | awk \'/^Mem/{print $2}\''],
+      { timeout: 25_000 },
+      (err, out, errOut) => resolve(err ? { ok: false, out: String(errOut ?? '') || err.message } : { ok: true, out: String(out ?? '').trim() }),
+    ),
+  )
+
+/** Poser la clé avec le mot de passe de l'hébergeur, une fois. Le mot de passe passe par l'environnement d'un petit
+ * script SSH_ASKPASS (jamais sur la ligne de commande, jamais écrit sur disque ni gardé). */
+export async function sshCopyKey(user: string, host: string, port: number, password: string, pub: string): Promise<{ ok: boolean; out: string }> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'weevils-askpass-'))
+  const askpass = path.join(dir, 'askpass')
+  fs.writeFileSync(askpass, `#!/bin/sh\nprintf '%s\\n' "$WEEVILS_ASKPASS"\n`, { mode: 0o700 })
+  try {
+    return await new Promise((resolve) => {
+      const env = { ...process.env, SSH_ASKPASS: askpass, SSH_ASKPASS_REQUIRE: 'force', DISPLAY: process.env.DISPLAY || ':0', WEEVILS_ASKPASS: password }
+      const cmd = `umask 077; mkdir -p ~/.ssh; k='${pub.replace(/'/g, '')}'; grep -qxF "$k" ~/.ssh/authorized_keys 2>/dev/null || echo "$k" >> ~/.ssh/authorized_keys`
+      const p = spawn('ssh', [...SSH_OPTS, '-o', 'PubkeyAuthentication=no', '-o', 'PreferredAuthentications=password,keyboard-interactive', '-o', 'NumberOfPasswordPrompts=1', '-p', String(port), `${user}@${host}`, cmd], { env, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
+      let out = ''
+      p.stdout.on('data', (d) => (out += d))
+      p.stderr.on('data', (d) => (out += d))
+      const timer = setTimeout(() => p.kill('SIGKILL'), 30_000)
+      p.on('error', (e) => (clearTimeout(timer), resolve({ ok: false, out: e.message })))
+      p.on('exit', (code) => (clearTimeout(timer), resolve({ ok: code === 0, out })))
+    })
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 const PALETTE = ['#ff6b8a', '#3fc1f0', '#f5a524', '#7c5cff', '#22c55e', '#ff7a1a', '#e64980', '#14b8a6']
 /** Un message suivi de la puce d'une brique (un bouton dessous, dans l'app). */
 const chip = (text: string, brick: Brick) => `${text} [[setup:${brick}]]`
@@ -408,17 +497,49 @@ const short = (e: unknown) => {
   return (err.cause?.code ?? err.message ?? String(e)).slice(0, 120)
 }
 
+// ---------------------------------------------------------------- ce que weevboss reçoit (jamais affiché)
+
+/** Brancher une machine où weevilsd vient de poser sa clé. Pour weevboss, en anglais (comme le reste de son outillage). */
+function machineBrief(o: { target: string; user: string; host: string; port: number; provider: string; about: string; here: SetupState }): string {
+  const ssh = `ssh${o.port !== 22 ? ` -p ${o.port}` : ''} ${o.user}@${o.host}`
+  const m = o.here.machine
+  const notReachable = ['laptop', 'desktop', 'wsl'].includes(m.kind) || o.here.reach === 'local'
+  return [
+    `Setup button: plug a machine into weevils${o.provider ? ` (a ${o.provider} VPS)` : ''}. Do every step yourself, never ask the user to type a command.`,
+    which('ssh') ? `SSH from this machine already works without a password: \`${ssh}\` (key ~/.ssh/id_ed25519)${o.about ? `; it runs ${o.about}` : ''}.` : `This machine has no ssh client yet: install it first (openssh-client), then reach \`${ssh}\` (the user gave its address in the setup flow; if a password is needed, put the [[setup:machine]] chip so they type it in the masked field).`,
+    notReachable
+      ? `This machine (${m.host}, ${m.kind}) is not always on or not reachable from the internet, so the new machine should become the main one: install weevils there as the main machine (README / docs/install.md in ${o.here.clone}), make this machine its secondary, then give the user the new app address with its sign-in link.`
+      : `Install weevils on it as a secondary machine of this one (${m.host}), following "Several machines" in ${o.here.clone}/docs/install.md: it needs to ssh back to this machine without a password, so authorize its key here. Check it shows up under \"other machines\" in \`weevils setup\`.`,
+    'Then tell the user in two short sentences what changed.',
+  ].join(' ')
+}
+
+/** Rendre weevils joignable de partout : un domaine vérifié, ou Tailscale. */
+function reachBrief(s: SetupState, domain: string): string {
+  const never = 'Do every step yourself, never ask the user to type a command.'
+  if (domain)
+    return `Setup button: switch weevils to https on ${domain}, which already resolves to this machine. ${never} Run \`${s.clone}/install.sh --yes --domain ${domain}\` (it sets up Caddy and the certificate; sudo works here without a password), check that https://${domain}/api/me answers, then tell the user the new address and put the [[setup:phone]] chip so they get its sign-in code and link.`
+  return `Setup button: make weevils reachable from anywhere with Tailscale. ${never} Install Tailscale on this machine (https://tailscale.com/install.sh; sudo works here without a password), run \`sudo tailscale up\` in the background and give the user the sign-in link it prints, as a link. Once it is signed in, run \`sudo tailscale serve --bg ${s.port}\`, set WEEVILS_PUBLIC_URL in ~/.config/weevils/env to the https://….ts.net address it serves, and restart weevils (weevils-service restart). Then tell the user to install the Tailscale app on their phone with the same account, and put the [[setup:phone]] chip for the sign-in link.`
+}
+
 export class Setup {
   private p: Persisted
   private cache: { at: number; v: SetupState } | null = null
   private deps: SetupDeps
+  /** Les installations en cours (un double tap n'en lance pas deux). */
+  private jobs = new Map<string, Promise<{ ok: boolean; why: string }>>()
+  /** « claude auth login » qui attend le code de la page de connexion. */
+  private claudeLogin: { proc: ChildProcess; url: string; at: number; out: string } | null = null
+  private codexLogin: ChildProcess | null = null
+  /** La dernière explication postée par une puce : un second tap ne la répète pas. */
+  private lastAsk: { brick: Brick; id: string; text: string } | null = null
 
   constructor(deps: SetupDeps) {
     this.deps = deps
     this.p = (() => {
       try {
         const raw = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Partial<Persisted>
-        return { log: raw.log ?? [], marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, githubLogged: raw.githubLogged }
+        return { log: raw.log ?? [], marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, githubLogged: raw.githubLogged, pending: raw.pending }
       } catch {
         return { log: [], marks: {}, bossSeenAt: 0 }
       }
@@ -459,6 +580,7 @@ export class Setup {
     this.p.log.push({ id, role, text, at: Math.max(Date.now(), last + 1) })
     this.save()
     this.deps.bump()
+    return id
   }
   say = (text: string) => this.add('assistant', text)
   userSays = (text: string) => this.add('user', text)
@@ -519,8 +641,8 @@ export class Setup {
     else if (!device.standalone) out.push(device.os === 'ios' ? t.phoneIos : t.phoneAndroid)
     else if (!s.phone.push) out.push(`${t.phoneInstalled} [[setup:push]]`)
     out.push(t.machine(s.machine))
-    if (!s.claude.installed) out.push(t.claudeMissing(s.machine))
-    else if (!s.claude.logged) out.push(t.claudeLogin(s.machine))
+    if (!s.claude.installed) out.push(chip(t.claudeMissing(s.machine), 'claude'))
+    else if (!s.claude.logged) out.push(chip(t.claudeLogin, 'claude'))
     else if (!s.github.logged) out.push(`${t.githubPitch} [[setup:github]]`)
     else out.push(t.claudeReady)
     this.p.claudeLogged = s.claude.logged
@@ -535,6 +657,116 @@ export class Setup {
     })
   }
 
+  /** Claude Code vient d'être connecté : weevboss le dit, propose GitHub s'il manque, et reprend le travail en attente. */
+  private async claudeReady() {
+    const s = await this.detect(true)
+    const t = tr(M)
+    this.say(s.github.logged ? t.claudeReady : `${t.claudeReady} ${t.githubPitch} [[setup:github]]`)
+    const job = this.p.pending
+    if (job) {
+      this.p.pending = undefined
+      this.save()
+      await this.deps.handoff(job.text, job.brief).catch((e) => console.log(`[setup] travail confié à weevboss : échec (${short(e)})`))
+    }
+  }
+
+  /** Un travail qui demande un terminal : confié à weevboss, ou gardé jusqu'à ce que Claude Code soit connecté. */
+  private async handoff(text: string, brief: string) {
+    if (claudeLogged()) {
+      await this.deps.handoff(text, brief)
+      return
+    }
+    this.p.pending = { text, brief }
+    this.save()
+    this.say(chip(tr(M).machineLater, 'claude'))
+  }
+
+  /** Installe un outil dans le dossier de l'utilisateur (ou par le gestionnaire de paquets si sudo marche sans mot de
+   * passe). Une seule fois à la fois ; la raison d'un échec en une ligne. */
+  private install(what: 'claude' | 'gh' | 'edge' | 'codex', s: SetupState) {
+    const running = this.jobs.get(what)
+    if (running) return running
+    const job = (async () => {
+      const r = await sh(installCommand(what, s))
+      const bin = { claude: 'claude', gh: 'gh', edge: 'edge-tts', codex: 'codex' }[what]
+      const ok = !!which(bin)
+      console.log(`[setup] installation de ${what} : ${ok ? 'ok' : `échec (${lastLine(r.out)})`}`)
+      this.cache = null
+      ghCache = null
+      return { ok, why: ok ? '' : lastLine(r.out) || tr(M).noAnswer }
+    })().finally(() => this.jobs.delete(what))
+    this.jobs.set(what, job)
+    return job
+  }
+
+  /** Lance « claude auth login » (ou reprend celui qui attend encore) : l'adresse de la page de connexion. */
+  private startClaudeLogin(): Promise<string> {
+    const cur = this.claudeLogin
+    if (cur && cur.proc.exitCode === null && Date.now() - cur.at < 8 * 60_000) return Promise.resolve(cur.url)
+    cur?.proc.kill()
+    this.claudeLogin = null
+    const bin = which('claude') ?? 'claude'
+    return new Promise((resolve) => {
+      const proc = spawn(bin, ['auth', 'login', '--claudeai'], { env: { ...shellEnv(), BROWSER: 'true' }, stdio: ['pipe', 'pipe', 'pipe'] })
+      const state = { proc, url: '', at: Date.now(), out: '' }
+      const timer = setTimeout(() => resolve(''), 25_000)
+      const onData = (d: Buffer) => {
+        state.out += d.toString()
+        const m = /https:\/\/\S*oauth\S*/.exec(state.out.replace(ANSI, ''))
+        if (m && !state.url) {
+          state.url = m[0]
+          this.claudeLogin = state
+          clearTimeout(timer)
+          resolve(state.url)
+        }
+      }
+      proc.stdout.on('data', onData)
+      proc.stderr.on('data', onData)
+      proc.on('error', () => (clearTimeout(timer), resolve('')))
+      proc.on('exit', () => {
+        clearTimeout(timer)
+        if (!state.url) resolve('')
+      })
+    })
+  }
+
+  /** Codex : connexion par code (une page OpenAI, un code à y taper) ; weevboss confirme quand c'est fait. */
+  private async startCodexLogin(): Promise<boolean> {
+    const t = tr(M)
+    if (this.codexLogin && this.codexLogin.exitCode === null) this.codexLogin.kill()
+    const bin = which('codex') ?? 'codex'
+    return new Promise((resolve) => {
+      const proc = spawn(bin, ['login', '--device-auth'], { env: shellEnv(), stdio: ['ignore', 'pipe', 'pipe'] })
+      this.codexLogin = proc
+      let out = ''
+      let shown = false
+      const timer = setTimeout(() => resolve(false), 25_000)
+      const onData = (d: Buffer) => {
+        out += d.toString()
+        const clean = out.replace(ANSI, '')
+        const url = /https:\/\/\S+/.exec(clean)?.[0]
+        const code = /\b([A-Z0-9]{4}-[A-Z0-9]{4,})\b/.exec(clean)?.[1]
+        if (url && code && !shown) {
+          shown = true
+          clearTimeout(timer)
+          this.say(t.codexCode(url, code))
+          resolve(true)
+        }
+      }
+      proc.stdout.on('data', onData)
+      proc.stderr.on('data', onData)
+      proc.on('error', () => (clearTimeout(timer), resolve(false)))
+      proc.on('exit', (code) => {
+        clearTimeout(timer)
+        if (this.codexLogin === proc) this.codexLogin = null
+        this.cache = null
+        if (!shown) return resolve(false)
+        if (code === 0) this.say(t.codexReady)
+        else if (code !== null) this.say(chip(t.codexFail(lastLine(out) || t.noAnswer), 'codex'))
+      })
+    })
+  }
+
   /** Ce qui a changé tout seul (une connexion faite dans un terminal) : dit une fois. */
   private async watch() {
     if (!this.p.welcomed) return
@@ -542,8 +774,7 @@ export class Setup {
     if (!this.p.claudeLogged && claudeLogged()) {
       this.p.claudeLogged = true
       changed = true
-      const s = await this.detect(true)
-      this.say(s.github.logged ? tr(M).claudeReady : `${tr(M).claudeReady} ${tr(M).githubPitch} [[setup:github]]`)
+      await this.claudeReady()
     }
     if (!this.p.githubLogged && which('gh')) {
       const gh = await github()
@@ -558,47 +789,104 @@ export class Setup {
 
   // ---------------------------------------------------------------- briques
 
-  /** Une puce tapée (ou weevboss qui propose) : la marche à suivre de cette brique, à partir de l'état réel. */
-  async ask(brick: Brick, device?: Device) {
+  /** Une puce tapée (ou weevboss qui propose) : weevboss dit ce que la brique apporte, à partir de l'état réel, et fait
+   * ce qui se fait sans rien demander (installer, lancer une connexion). Vrai : le champ du bas pose maintenant les
+   * questions de la brique. */
+  async ask(brick: Brick, device?: Device): Promise<boolean> {
     const s = await this.detect(true)
     const t = tr(M)
     const d = device ?? this.p.device
     this.mark(brick)
-    const text = ((): string => {
-      switch (brick) {
-        case 'phone':
-          return `${t.phoneAsk(s)} [[setup:phone]]`
-        case 'push':
-          return `${t.pushAsk(d?.os === 'ios', !!d?.standalone)}${d?.os === 'ios' && !d.standalone ? '' : ' [[setup:push]]'}`
-        case 'reach':
-          return t.reachAsk(s)
-        case 'machine':
-          return `${t.machine(s.machine).replace(/\s*\[\[setup:machine\]\]/, '')}\n\n${t.machineAsk(s)}`
-        case 'claude':
-          return !s.claude.installed ? t.claudeMissing(s.machine) : !s.claude.logged ? t.claudeLogin(s.machine) : t.claudeOk
-        case 'codex':
-          return t.codexAsk(s)
-        case 'github':
-          return `${t.githubAsk(s, ghInstall(s))}${s.github.installed && !s.github.logged ? ' [[setup:github]]' : ''}`
-        case 'voice':
-          return `${t.voiceAsk(s, edgeInstall(s))} [[setup:voice]]`
-        case 'devil':
-          return `${t.devilAsk(s.devil.plugged, s.devil.model ?? '')} [[setup:devil]]`
-        case 'mail':
-          return s.mail.on ? `${t.mailOk(s.mail.address ?? '').replace(/:$/, '.')} [[setup:author]]` : `${t.mailPitch}\n\n${t.mailAsk} [[setup:mail]]`
-        case 'author':
-          return `${t.authorAsk} [[setup:author]]`
-        case 'quota':
-          return t.quotaAsk(s.quota)
-        case 'security':
-          return t.securityAsk(s)
-        case 'shortcut':
-          return `${t.shortcutAsk} [[setup:shortcut]]`
-        case 'install':
-          return installPlan(s)
+    // Un second tap sur la même puce : l'explication est déjà là, juste au-dessus.
+    const post = (text: string) => {
+      const last = this.lastAsk
+      if (last && last.brick === brick && last.text === text && this.p.log.at(-1)?.id === last.id) return
+      this.lastAsk = { brick, id: this.say(text), text }
+    }
+    switch (brick) {
+      case 'phone':
+        post(`${t.phoneAsk(s)} [[setup:phone]]`)
+        return false
+      case 'push':
+        post(`${t.pushAsk(d?.os === 'ios', !!d?.standalone)}${d?.os === 'ios' && !d.standalone ? '' : ' [[setup:push]]'}`)
+        return false
+      case 'reach': {
+        if (s.reach === 'public' && s.https) return post(t.reachAsk(s)), false
+        const http = s.reach === 'public'
+        if (!s.claude.logged) return post(`${t.reachAsk(s)} ${chip(t.needClaude, 'claude')}`), false
+        if (s.sudo !== 'yes') return post(`${t.reachAsk(s)} ${chip(t.needSudo, 'machine')}`), false
+        post(`${t.reachAsk(s)} ${t.reachPrompt(http)}`)
+        return true
       }
-    })()
-    this.say(text)
+      case 'machine':
+        post(`${t.machine(s.machine).replace(/\s*\[\[setup:machine\]\]/, '')}\n\n${t.machineAsk(s)}`)
+        return true
+      case 'claude':
+        return this.askClaude(s)
+      case 'codex':
+        await this.askCodex(s)
+        return false
+      case 'github':
+        post(t.githubAsk(s))
+        return !s.github.logged
+      case 'voice':
+        post(t.voiceAsk(s))
+        if (!s.voice.spoken)
+          void this.install('edge', s).then((r) => {
+            if (r.ok) this.say(t.voiceFreeOk)
+            else if (!cartesia()) this.say(chip(t.voiceFreeFail(r.why), 'voice'))
+          })
+        return true
+      case 'devil':
+        post(t.devilAsk(s.devil.plugged, s.devil.model ?? ''))
+        return true
+      case 'mail':
+        if (s.mail.on) return post(`${t.mailOk(s.mail.address ?? '').replace(/:$/, '.')} [[setup:author]]`), false
+        post(`${t.mailPitch}\n\n${t.mailAsk}`)
+        return true
+      case 'author':
+        post(t.authorAsk)
+        return true
+      case 'quota':
+        post(t.quotaAsk(s.quota))
+        return false
+      case 'security':
+        post(t.securityAsk(s))
+        return false
+      case 'shortcut':
+        post(`${t.shortcutAsk} [[setup:shortcut]]`)
+        return false
+      case 'install':
+        post(installStatus(s))
+        return false
+    }
+  }
+
+  /** Claude Code : installé s'il manque, puis « claude auth login » ; le lien arrive dans le fil, le code se colle en bas. */
+  private async askClaude(s: SetupState): Promise<boolean> {
+    const t = tr(M)
+    if (s.claude.logged) return this.say(t.claudeOk), false
+    if (!s.claude.installed) {
+      this.say(t.claudeInstalling(s.machine.host))
+      const r = await this.install('claude', s)
+      if (!r.ok) return this.say(chip(t.claudeInstallFail(r.why), 'claude')), false
+    }
+    const url = await this.startClaudeLogin()
+    if (!url) return this.say(chip(t.claudeInstallFail(lastLine(this.claudeLogin?.out ?? '') || t.noAnswer), 'claude')), false
+    if (this.p.log.at(-1)?.text !== t.claudeLink(url)) this.say(t.claudeLink(url))
+    return true
+  }
+
+  /** Codex : installé s'il manque, puis la connexion par code. */
+  private async askCodex(s: SetupState) {
+    const t = tr(M)
+    if (s.codex.installed && s.codex.logged) return this.say(t.codexReady)
+    if (!s.codex.installed) {
+      this.say(t.codexInstalling(s.machine.host))
+      const r = await this.install('codex', s)
+      if (!r.ok) return this.say(chip(t.codexInstallFail(r.why), 'codex'))
+    }
+    if (!(await this.startCodexLogin())) this.say(chip(t.codexFail(t.noAnswer), 'codex'))
   }
 
   /** Claude Code pas encore connecté : weevboss ne peut pas réfléchir, mais il sait déjà répondre aux questions de
@@ -607,10 +895,19 @@ export class Setup {
   async offline(text: string) {
     this.userSays(text)
     const brick = guessBrick(text)
+    const t = tr(M)
     if (brick && brick !== 'claude') {
-      await this.ask(brick)
-      this.say(chip(tr(M).notLoggedShort, 'claude'))
-    } else await this.ask('claude')
+      // La réponse de la brique, avec son bouton (le champ du bas s'ouvre au tap), puis ce qui manque pour le reste.
+      if ((await this.ask(brick)) && this.lastAsk && this.p.log.at(-1)?.id === this.lastAsk.id) {
+        const last = this.p.log.at(-1)!
+        last.text = chip(last.text, brick)
+        this.save()
+      }
+      this.say(chip(t.notLoggedShort, 'claude'))
+    } else {
+      const s = await this.detect()
+      this.say(chip(s.claude.installed ? t.claudeLogin : t.claudeMissing(s.machine), 'claude'))
+    }
   }
 
   mark(id: string) {
@@ -632,16 +929,20 @@ export class Setup {
     if (!fields) throw new Error(tr(M).badBrick)
     const t = tr(M)
     const v: Record<string, string> = {}
-    for (const f of fields) {
+    // Un choix qui termine le parcours (« j'en ai pas ») : les questions suivantes n'ont pas été posées.
+    const stop = fields.findIndex((f) => f.stop?.includes(String(values[f.name] ?? '')))
+    for (const f of stop >= 0 ? fields.slice(0, stop + 1) : fields) {
       const x = String(values[f.name] ?? '').trim()
       if (!x && !f.optional) throw new Error(t.badValue(t[`field_${f.name}` as keyof typeof t] as string))
+      if (f.options && x && !f.options.includes(x)) throw new Error(t.badValue(t[`field_${f.name}` as keyof typeof t] as string))
       v[f.name] = x
     }
+    const shown = (name: string, x: string) => (name === 'provider' ? providerName(x) || (x === 'none' ? t.prov_none : t.prov_other) : x)
     // La bulle de l'utilisateur : ce qu'il a répondu, les secrets réduits à leurs 4 derniers caractères.
     this.userSays(
       fields
         .filter((f) => v[f.name])
-        .map((f) => `${t[`field_${f.name}` as keyof typeof t] as string} : ${f.secret ? tail(v[f.name]) : v[f.name]}`)
+        .map((f) => `${t[`field_${f.name}` as keyof typeof t] as string} : ${f.secret ? tail(v[f.name]) : shown(f.name, v[f.name])}`)
         .join(' · ') || '—',
     )
     const before = this.p.log.length
@@ -651,6 +952,9 @@ export class Setup {
       else if (brick === 'github') await this.applyGithub(v)
       else if (brick === 'mail') await this.applyMail(v)
       else if (brick === 'author') this.applyAuthor(v)
+      else if (brick === 'claude') await this.applyClaude(v)
+      else if (brick === 'machine') await this.applyMachine(v)
+      else if (brick === 'reach') await this.applyReach(v)
     } finally {
       // Branché (la réponse ne repropose pas la puce) : les anciens boutons de cette brique disparaissent du fil.
       const reply = this.p.log.slice(before).at(-1)
@@ -661,6 +965,83 @@ export class Setup {
       this.cache = null
       this.deps.bump()
     }
+  }
+
+  /** Le code de la page de connexion de Claude : donné à « claude auth login », qui enregistre la connexion. */
+  private async applyClaude(v: Record<string, string>) {
+    const t = tr(M)
+    const cur = this.claudeLogin
+    if (!cur || cur.proc.exitCode !== null) return this.say(chip(t.claudeFail(t.noAnswer), 'claude'))
+    const from = cur.out.length
+    const code = await new Promise<number | null>((resolve) => {
+      const timer = setTimeout(() => (cur.proc.kill(), resolve(null)), 45_000)
+      cur.proc.on('exit', (c) => (clearTimeout(timer), resolve(c)))
+      cur.proc.stdin?.write(v.code.replace(/\s+/g, '') + '\n')
+    })
+    this.claudeLogin = null
+    this.cache = null
+    if (code === 0 && claudeLogged()) {
+      this.p.claudeLogged = true
+      this.save()
+      console.log('[setup] Claude Code connecté')
+      return this.claudeReady()
+    }
+    this.say(chip(t.claudeFail(lastLine(cur.out.slice(from)).replace(/^Login failed:\s*/i, '') || t.noAnswer), 'claude'))
+  }
+
+  /** Un VPS (ou toute machine joignable en SSH) : weevilsd y entre avec le mot de passe de l'hébergeur, une fois, y pose
+   * sa clé, puis confie l'installation de weevils à weevboss. Pas encore de VPS : de quoi en choisir un. */
+  private async applyMachine(v: Record<string, string>) {
+    const t = tr(M)
+    if (v.provider === 'none') return this.say(chip(t.machineNone, 'machine'))
+    const pname = providerName(v.provider)
+    const m = /^(?:([^@\s/]+)@)?(\[[0-9a-f:.]+\]|[a-z0-9][a-z0-9.-]*)(?::(\d{1,5}))?$/i.exec(v.host.trim().replace(/^ssh\s+/, '').replace(/^[a-z]+:\/\//i, '').replace(/\/.*$/, ''))
+    if (!m) return this.say(chip(t.machineBadHost(v.host), 'machine'))
+    const user = v.user || m[1] || 'root'
+    const host = m[2].replace(/^\[|\]$/g, '')
+    const port = Number(m[3] ?? 22)
+    const target = `${user}@${host}${port !== 22 ? `:${port}` : ''}`
+    const s = await this.detect()
+    const brief = (about: string) => machineBrief({ target, user, host, port, provider: pname, about, here: s })
+    if (!which('ssh')) {
+      this.say(t.machineNoSsh)
+      return this.handoff(t.machineDo(target, pname), brief(''))
+    }
+    this.say(t.machineTrying(target))
+    const pub = await sshKey().catch(() => '')
+    let r = await sshProbe(user, host, port)
+    let why = lastLine(r.out)
+    if (!r.ok && v.password && pub) {
+      const c = await sshCopyKey(user, host, port, v.password, pub)
+      if (!c.ok) why = lastLine(c.out) || why
+      r = await sshProbe(user, host, port)
+      if (!r.ok) why = lastLine(r.out) || why
+    }
+    if (!r.ok) {
+      console.log(`[setup] machine ${target} : accès refusé (${why})`)
+      return this.say(chip(t.machineRefused(target, t.sshWhy(why), pname || t.otherHost, pub), 'machine'))
+    }
+    const [osName = '', cores = '', mem = ''] = r.out.split('\n').map((l) => l.trim())
+    const about = [osName, cores && `${cores} CPU`, mem && t.gb(Math.round(Number(mem) / 1024))].filter(Boolean).join(', ')
+    console.log(`[setup] machine ${target} : clé posée (${about})`)
+    this.say(t.machineIn(target, about))
+    await this.handoff(t.machineDo(target, pname), brief(about))
+  }
+
+  /** Joignable de partout : un domaine (vérifié : il pointe bien ici) ou Tailscale. weevboss fait le travail. */
+  private async applyReach(v: Record<string, string>) {
+    const t = tr(M)
+    const s = await this.detect()
+    const domain = v.domain.toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/\/.*$/, '').trim()
+    if (!domain) return this.handoff(t.reachTailscaleDo, reachBrief(s, ''))
+    const f = await facts().catch(() => null)
+    const ip = f?.publicIp ? (f.ip ?? '') : ''
+    const seen = await dns
+      .lookup(domain, { all: true })
+      .then((a) => a.map((x) => x.address))
+      .catch(() => [] as string[])
+    if (ip && !seen.includes(ip)) return this.say(chip(t.reachDns(domain, ip, seen.join(', ')), 'reach'))
+    await this.handoff(t.reachDomainDo(domain), reachBrief(s, domain))
   }
 
   private async applyDevil(v: Record<string, string>) {
@@ -749,7 +1130,13 @@ export class Setup {
     } catch (e) {
       return this.say(chip(t.githubFail(short(e)), 'github'))
     }
-    const gh = which('gh')
+    let gh = which('gh')
+    let why = ''
+    if (!gh) {
+      const r = await this.install('gh', await this.detect())
+      gh = which('gh')
+      why = r.why
+    }
     if (gh) {
       // gh garde le jeton dans sa propre config (~/.config/gh), comme après « gh auth login ».
       const ok = await new Promise<boolean>((resolve) => {
@@ -768,7 +1155,7 @@ export class Setup {
     ghCache = null
     this.p.githubLogged = true
     console.log(`[setup] GitHub branché (${login})`)
-    this.say(gh ? t.githubOk(login) : `${t.githubOk(login)} ${t.githubNoCli}`)
+    this.say(gh ? t.githubOk(login) : `${t.githubOk(login)} ${t.githubNoCli(why)}`)
   }
 
   private async applyMail(v: Record<string, string>) {
@@ -813,13 +1200,17 @@ export class Setup {
   // ---------------------------------------------------------------- vers weevboss
 
   /** Ce que weevilsd a écrit au nom de weevboss depuis sa dernière réponse : un bloc à joindre au message (jamais affiché). */
-  contextFor(): string {
+  contextFor(brief?: string): string {
     const fresh = this.p.log.filter((m) => m.at > this.p.bossSeenAt)
     this.p.bossSeenAt = Date.now()
     this.save()
-    if (!fresh.length) return ''
-    const lines = fresh.map((m) => `${m.role === 'user' ? 'user' : 'you'}: ${m.text.replace(/```[a-z]*\n?/g, '`').replace(/\s+/g, ' ').slice(0, 400)}`)
-    return ` ⟦weevils — shown in your thread since your last reply (written by weevils in your name, or the user's answers to a setup flow; secrets never shown): ${lines.join(' | ').slice(0, 2400).replace(/⟧/g, ']')}⟧`
+    const parts: string[] = []
+    if (fresh.length) {
+      const lines = fresh.map((m) => `${m.role === 'user' ? 'user' : 'you'}: ${m.text.replace(/```[a-z]*\n?/g, '`').replace(/\s+/g, ' ').slice(0, 400)}`)
+      parts.push(`shown in your thread since your last reply (written by weevils in your name, or the user's answers to a setup flow; secrets never shown): ${lines.join(' | ').slice(0, 2400)}`)
+    }
+    if (brief) parts.push(`the user tapped a setup button, here is exactly what to do: ${brief}`)
+    return parts.length ? ` ⟦weevils — ${parts.join(' — ').replace(/⟧/g, ']')}⟧` : ''
   }
 
   /** « weevils setup » : l'état de chaque brique, les gestes pas encore découverts, les astuces pas encore données. */

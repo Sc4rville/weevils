@@ -6,7 +6,7 @@ import type { Snapshot } from '../shared/api.ts'
 import { smart } from './fast.ts'
 import { claudeLogged } from './setup.ts'
 import { Memory } from './memory.ts'
-import { BACKOFF_MS, Flyers, MAX_AGE_MS, MAX_MISSES, angleFor, angleTurn, followups, isRepeat, looksSecret, readHistory, redact, tidyQuestion } from './weevil.ts'
+import { BACKOFF_MS, Flyers, MAX_AGE_MS, MAX_MISSES, angleFor, angleTurn, followups, isRepeat, readHistory, tidyQuestion } from './weevil.ts'
 
 // Hermetic: no claude CLI, no login check, the language switched in memory only.
 vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn() }))
@@ -233,12 +233,6 @@ describe('weevil — helpers', () => {
     expect(tidyQuestion('  "What  next?" 🚀 ')).toBe('What next?')
     expect(tidyQuestion('x'.repeat(200))).toBeNull()
     expect(tidyQuestion(3)).toBeNull()
-  })
-
-  it('secrets', () => {
-    for (const s of ['reach me at a.b@c.io', '+33 6 12 34 56 78', 'ghp_abcdefghijklmnopqrstuvwxyz', 'mot de passe : azerty', 'token 1234', 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4']) expect(looksSecret(s), s).toBe(true)
-    for (const s of ['wants to launch a game in 2027', 'aime le jeu de go', 'runs a 10k every Sunday']) expect(looksSecret(s), s).toBe(false)
-    expect(redact('my password is hunter2, mail a@b.co')).toBe('my password is •••, mail •••')
   })
 
   it('angles: broad while little is known, every angle later', () => {

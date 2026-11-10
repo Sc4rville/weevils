@@ -18,6 +18,7 @@ import M from './i18n/memory.ts'
 const MAX_ITEMS = 300
 const MAX_TEXT = 400
 const MAX_ASKED = 400
+const MAX_ANSWER = 1200
 
 /** A question carried by a flying weevil, and what became of it. */
 export interface Asked {
@@ -44,6 +45,45 @@ const clean = (s: unknown) =>
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, MAX_TEXT)
+
+// ---------------------------------------------------------------- secrets
+
+// Never kept, whoever writes (the « + » and edits on the memory page, `weevils memory add`, weevboss, a weevil's
+// answer): keys, tokens, passwords, e-mails, phone numbers. The memory goes into prompts and sits in a plain file.
+const SECRET: RegExp[] = [
+  // e-mail
+  /[\w.+-]+@[\w-]+\.[\w.-]+/,
+  // phone numbers (06 12 34 56 78, +33 6 12 34 56 78, 0612345678) and any long run of digits
+  /(?:\+\d{1,3}[\s.]?)?(?<!\d)0?\d(?:[\s.-]?\d{2}){4}(?!\d)/,
+  /\d{9,}/,
+  // API keys and tokens with a known prefix
+  /\b(?:sk|pk|rk|ghp|gho|ghu|ghs|github_pat|xox[abpr]|AKIA|AIza|glpat)[-_]?[A-Za-z0-9_-]{8,}/,
+  // a long run mixing letters and digits (keys, hashes, tokens)
+  /(?=[A-Za-z0-9_+/=-]*\d)(?=[A-Za-z0-9_+/=-]*[A-Za-z])[A-Za-z0-9_+/=-]{24,}/,
+  // i18n-ignore : vocabulaire des secrets (détection, jamais affiché)
+  /\b(?:password|passwd|passcode|passphrase|mot de passe|mdp|api[ _-]?key|cl[ée] (?:api|secr[èe]te|priv[ée]e)|token|jeton|iban|pin code|code pin)\b/i,
+]
+
+/** Looks like a secret, a contact or a credential: never remembered. */
+export const looksSecret = (s: string) => SECRET.some((r) => r.test(s))
+
+/** The same text with anything secret-looking masked (the raw answer kept next to a memory). */
+export const redact = (s: string) =>
+  SECRET.slice(0, 5)
+    .reduce((t, r) => t.replace(new RegExp(r.source, 'g'), '•••'), s)
+    // i18n-ignore : vocabulaire des secrets (détection, jamais affiché)
+    .replace(/\b(password|passwd|passcode|passphrase|mot de passe|mdp|api[ _-]?key|cl[ée] (?:api|secr[èe]te|priv[ée]e)|token|jeton|iban|pin code|code pin)(\s*(?:[:=]|is|est|c'est)?\s*)[^\s,;]+/gi, '$1$2•••')
+
+/** The raw answer kept next to a memory: secrets masked, capped. */
+const answer = (s: unknown) => redact(String(s ?? '').trim()).slice(0, MAX_ANSWER)
+
+/** The text of a memory, ready to keep: one line, capped. Throws on an empty text or a secret. */
+function checked(text: unknown): string {
+  const t = clean(text)
+  if (!t) throw new Error(tr(M).empty)
+  if (looksSecret(t)) throw new Error(tr(M).secret)
+  return t
+}
 
 export class Memory {
   readonly file: string
@@ -100,13 +140,13 @@ export class Memory {
     return this.s.items.find((m) => m.id === id)
   }
 
+  /** A new memory. Throws (catalog message) on an empty text or one that looks like a secret. */
   add(text: string, from: { source?: MemoryItem['source']; q?: string; a?: string } = {}): MemoryItem {
-    const t = clean(text)
-    if (!t) throw new Error(tr(M).empty)
+    const t = checked(text)
     const now = Date.now()
     const item: MemoryItem = { id: crypto.randomBytes(5).toString('hex'), text: t, source: from.source ?? 'manual', at: now, updatedAt: now }
-    if (from.q) item.q = clean(from.q)
-    if (from.a) item.a = String(from.a).trim().slice(0, 1200)
+    if (from.q) item.q = redact(clean(from.q))
+    if (from.a) item.a = answer(from.a)
     this.s.items.push(item)
     this.save()
     return item
@@ -116,12 +156,11 @@ export class Memory {
   update(id: string, text: string, from?: { q?: string; a?: string }): MemoryItem {
     const item = this.get(id)
     if (!item) throw new Error(tr(M).notFound)
-    const t = clean(text)
-    if (!t) throw new Error(tr(M).empty)
+    const t = checked(text)
     item.text = t
     item.updatedAt = Date.now()
-    if (from?.q) item.q = clean(from.q)
-    if (from?.a) item.a = String(from.a).trim().slice(0, 1200)
+    if (from?.q) item.q = redact(clean(from.q))
+    if (from?.a) item.a = answer(from.a)
     this.save()
     return item
   }
@@ -205,14 +244,21 @@ export function memoryRoutes(m: Memory, json: Json, readBody: ReadBody): [string
     ['GET', /^\/api\/memory$/, (_req, res) => json(res, 200, { items: m.list() })],
     ['POST', /^\/api\/memory$/, async (req, res) => {
       const body = await readBody(req)
-      if (!clean(body.text)) return json(res, 400, { error: tr(M).empty })
-      json(res, 200, { item: m.add(body.text) })
+      // Refused (empty, a secret): 400 with the short reason, shown as is by the app and the CLI.
+      try {
+        json(res, 200, { item: m.add(body?.text) })
+      } catch (e) {
+        json(res, 400, { error: (e as Error).message })
+      }
     }],
     ['PUT', /^\/api\/memory\/([\w-]+)$/, async (req, res, _u, [id]) => {
       const body = await readBody(req)
       if (!m.get(id)) return json(res, 404, { error: tr(M).notFound })
-      if (!clean(body.text)) return json(res, 400, { error: tr(M).empty })
-      json(res, 200, { item: m.update(id, body.text) })
+      try {
+        json(res, 200, { item: m.update(id, body?.text) })
+      } catch (e) {
+        json(res, 400, { error: (e as Error).message })
+      }
     }],
     ['DELETE', /^\/api\/memory\/([\w-]+)$/, (_req, res, _u, [id]) => {
       m.remove(id)

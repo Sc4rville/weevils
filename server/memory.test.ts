@@ -2,7 +2,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { Memory, memoryRoutes } from './memory.ts'
+import { tr } from './i18n.ts'
+import M from './i18n/memory.ts'
+import { Memory, looksSecret, memoryRoutes, redact } from './memory.ts'
 
 // What weevils remembers about the user (server/memory.ts): a temp file, never the real ~/.config/weevils/memory.json.
 const fresh = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mem-')), 'sub', 'memory.json')
@@ -39,6 +41,23 @@ describe('Memory store', () => {
     expect(() => m.update('nope', 'x')).toThrow()
     const a = m.add('x')
     expect(() => m.update(a.id, ' ')).toThrow()
+  })
+
+  it('never keeps a secret, whoever writes: refused with a short reason, masked in the kept question and answer', () => {
+    const file = fresh()
+    const m = new Memory(file)
+    for (const s of ['my api key is sk-abcdefghijklmnop1234', 'password: hunter2', 'mail me at sam@example.com', 'call 06 12 34 56 78', 'token ghp_abcdefghijklmnopqrstuvwxyz']) {
+      expect(() => m.add(s), s).toThrow(tr(M).secret)
+    }
+    const a = m.add('plays the piano')
+    expect(() => m.update(a.id, 'plays the piano, code pin 1234')).toThrow(tr(M).secret)
+    expect(m.get(a.id)?.text).toBe('plays the piano')
+    const b = m.add('building a recipe app', { source: 'answer', q: 'what are you building?', a: 'a recipe app · my key is sk-abcdefghijklmnop1234' })
+    expect(b.a).toBe('a recipe app · my key is •••')
+    m.update(b.id, 'building a recipe app for friends', { q: 'and who for?', a: 'friends, write to sam@example.com' })
+    expect(m.get(b.id)?.a).toBe('friends, write to •••')
+    expect(m.count).toBe(2)
+    expect(fs.readFileSync(file, 'utf8')).not.toMatch(/sk-abc|sam@example|hunter2/)
   })
 
   it('caps the text length and the number of items (the oldest go), in memory and on disk', () => {
@@ -135,6 +154,15 @@ describe('memory routes', () => {
     }
     throw new Error(`no route ${method} ${url}`)
   }
+  it('a secret is refused with 400 and its reason, on add and on edit', async () => {
+    const m = new Memory(fresh())
+    expect(await call(m, 'POST', '/api/memory', { text: 'my api key is sk-abcdefghijklmnop1234' })).toEqual({ status: 400, out: { error: tr(M).secret } })
+    const id = (await call(m, 'POST', '/api/memory', { text: 'plays the piano' })).out.item.id
+    expect(await call(m, 'PUT', `/api/memory/${id}`, { text: 'mdp: azerty' })).toEqual({ status: 400, out: { error: tr(M).secret } })
+    expect(await call(m, 'POST', '/api/memory', {})).toEqual({ status: 400, out: { error: tr(M).empty } })
+    expect(m.list().map((x) => x.text)).toEqual(['plays the piano'])
+  })
+
   it('list, add, edit, delete, with 400 on empty and 404 on unknown', async () => {
     const m = new Memory(fresh())
     expect((await call(m, 'POST', '/api/memory', { text: '  ' })).status).toBe(400)
@@ -147,5 +175,13 @@ describe('memory routes', () => {
     expect((await call(m, 'PUT', `/api/memory/${id}`, { text: '' })).status).toBe(400)
     expect((await call(m, 'DELETE', `/api/memory/${id}`)).out).toEqual({ ok: true })
     expect(m.count).toBe(0)
+  })
+})
+
+describe('secret filter', () => {
+  it('spots keys, tokens, passwords, e-mails and phone numbers, and masks them', () => {
+    for (const s of ['reach me at a.b@c.io', '+33 6 12 34 56 78', 'ghp_abcdefghijklmnopqrstuvwxyz', 'mot de passe : azerty', 'token 1234', 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4']) expect(looksSecret(s), s).toBe(true)
+    for (const s of ['wants to launch a game in 2027', 'aime le jeu de go', 'runs a 10k every Sunday']) expect(looksSecret(s), s).toBe(false)
+    expect(redact('my password is hunter2, mail a@b.co')).toBe('my password is •••, mail •••')
   })
 })

@@ -14,8 +14,11 @@ import type { Weevils } from './core.ts'
 import { parseJson, smart } from './fast.ts'
 import { lang, onLangChange, tr, user, withLang, type Lang } from './i18n.ts'
 import W from './i18n/weevil.ts'
-import type { Asked, Memory } from './memory.ts'
+import { looksSecret, redact, type Asked, type Memory } from './memory.ts'
 import { claudeLogged } from './setup.ts'
+
+// The secret filter lives with the store (server/memory.ts): every write goes through it, by hand or from a weevil.
+export { looksSecret, redact }
 
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void> | void
 type Json = (res: http.ServerResponse, status: number, body: unknown) => void
@@ -84,30 +87,6 @@ export function tidyQuestion(raw: unknown): string | null {
   if (t.length < 4 || t.length > MAX_QUESTION) return null
   return t
 }
-
-const SECRET: RegExp[] = [
-  // e-mail
-  /[\w.+-]+@[\w-]+\.[\w.-]+/,
-  // phone numbers (06 12 34 56 78, +33 6 12 34 56 78, 0612345678) and any long run of digits
-  /(?:\+\d{1,3}[\s.]?)?(?<!\d)0?\d(?:[\s.-]?\d{2}){4}(?!\d)/,
-  /\d{9,}/,
-  // API keys and tokens with a known prefix
-  /\b(?:sk|pk|rk|ghp|gho|ghu|ghs|github_pat|xox[abpr]|AKIA|AIza|glpat)[-_]?[A-Za-z0-9_-]{8,}/,
-  // a long run mixing letters and digits (keys, hashes, tokens)
-  /(?=[A-Za-z0-9_+/=-]*\d)(?=[A-Za-z0-9_+/=-]*[A-Za-z])[A-Za-z0-9_+/=-]{24,}/,
-  // i18n-ignore : vocabulaire des secrets (détection, jamais affiché)
-  /\b(?:password|passwd|passcode|passphrase|mot de passe|mdp|api[ _-]?key|cl[ée] (?:api|secr[èe]te|priv[ée]e)|token|jeton|iban|pin code|code pin)\b/i,
-]
-
-/** Looks like a secret, a contact or a credential: never remembered. */
-export const looksSecret = (s: string) => SECRET.some((r) => r.test(s))
-
-/** The same text with anything secret-looking masked (the raw answer kept next to a memory). */
-export const redact = (s: string) =>
-  SECRET.slice(0, 5)
-    .reduce((t, r) => t.replace(new RegExp(r.source, 'g'), '•••'), s)
-    // i18n-ignore : vocabulaire des secrets (détection, jamais affiché)
-    .replace(/\b(password|passwd|passcode|passphrase|mot de passe|mdp|api[ _-]?key|cl[ée] (?:api|secr[èe]te|priv[ée]e)|token|jeton|iban|pin code|code pin)(\s*(?:[:=]|is|est|c'est)?\s*)[^\s,;]+/gi, '$1$2•••')
 
 /** Which angle the next question takes: turns with `turn`, broad while little is known. */
 export function angleFor(turn: number, known: number, hasProjects: boolean): Angle {
@@ -290,10 +269,11 @@ export class Flyers {
     return { reply, learned, done }
   }
 
-  /** The model's memory changes, checked: known ids only, no secret, no duplicate, a few at most. */
+  /** The model's memory changes, checked: known ids only, no secret, no duplicate, a few at most (the store masks
+   * secrets in the kept answer). */
   private apply(ops: Op[], q: string, a: string): MemoryItem[] {
     const learned: MemoryItem[] = []
-    const from = { q, a: redact(a) }
+    const from = { q, a }
     for (const op of ops.slice(0, 3 * MAX_OPS)) {
       if (learned.length >= MAX_OPS) break
       const text = typeof op?.text === 'string' ? op.text.replace(/\s+/g, ' ').trim() : ''

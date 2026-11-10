@@ -5,6 +5,7 @@ import { defineMessages } from '../i18n.ts'
 
 export default defineMessages({
   fr: {
+    invalidVisual: 'proposition visuelle invalide ou destination indisponible',
     // ---- refused requests (shown as is by the app and by « weevils post / show »)
     notFound: 'ce n’est plus dans le flux',
     localOnly: 'réservé à cette machine',
@@ -48,6 +49,7 @@ export default defineMessages({
     replyBrief: (post: string) => `réponds au message ci-dessus : l'utilisateur l'a écrit dans son flux « pour toi », en réponse à ton mot « ${post} »`,
   },
   en: {
+    invalidVisual: 'invalid visual proposal or unavailable destination',
     notFound: 'this is no longer in the stream',
     localOnly: 'only from this machine',
     emptyText: 'nothing to say',

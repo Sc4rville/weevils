@@ -23,6 +23,7 @@ export function notificationQuestion(text: string): string {
 
 /** Editorial content remains in the voluntarily opened feed, never in intrusive previews. */
 export function notificationEligible(item: ForYouItem): boolean {
+  if (item.visualProposal) return false
   if (/^(?:r:|d:|commit:|deploy:)/.test(item.id)) return false
   if (['boss', 'insight', 'improve', 'stat', 'proposals', 'mail'].includes(item.kind)) return false
   if (item.kind === 'alert') return !!(item.open || item.reply || item.actions?.length)

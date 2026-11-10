@@ -343,6 +343,11 @@ export default function App() {
   useEffect(() => {
     if (!ready) return
     const open = (url: string) => {
+      if (/#formats\b/.test(url)) {
+        history.replaceState(history.state, '', location.pathname)
+        if (stackRef.current.at(-1)?.kind !== 'formats') push({ kind: 'formats' })
+        return
+      }
       // « /#relay » : la vue des plans de reprise Codex (notification du relais).
       if (/#relay\b/.test(url)) {
         history.replaceState(history.state, '', location.pathname)

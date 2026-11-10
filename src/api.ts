@@ -61,6 +61,7 @@ export const api = {
   me: () => call<{ authed: boolean }>('GET', '/api/me'),
   login: (secret: string) => call<{ ok: true }>('POST', '/api/login', { secret }),
   logout: () => call<{ ok: true }>('POST', '/api/logout', {}),
+  foryouFormats: () => call<{ proposal: import('../shared/foryou').ForYouItem | null }>('GET', '/api/foryou/formats'),
   snapshot: () => call<Snapshot>('GET', '/api/snapshot'),
   session: (id: string) => call<SessionDetail>('GET', `/api/sessions/${enc(id)}`),
   /** Détail d'un sous-agent, d'une étape de workflow ou d'une commande d'arrière-plan (ses derniers pas). */

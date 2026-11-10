@@ -68,7 +68,18 @@ export type ForYouOpen =
   | { page: 'usage' }
   | { page: 'machine' }
 
+export interface VisualProposal {
+  selected?: string
+  frames: { title: string; description: string }[]
+  question: string
+  recommendation: string
+  caveat: string
+  options: { id: string; label: string; description: string; instruction: string; recommended?: boolean }[]
+}
+
 export interface ForYouItem {
+  visualProposal?: VisualProposal
+
   /** Same event identity as the session page, when applicable. */
   eventId?: string
   id: string

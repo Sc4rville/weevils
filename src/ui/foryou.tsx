@@ -1,3 +1,4 @@
+import { ProposalView } from './foryou-formats'
 import { OutboxStatus } from './outbox-status'
 import { rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
@@ -412,6 +413,7 @@ function MediaStrip({ media }: { media: ForYouMedia[] }) {
 }
 
 function MediaItem({ item, who, fy }: KindProps) {
+  if (item.visualProposal) return <ProposalView item={item} fy={fy} />
   return (
     <>
       <div className="tone fy-cap">
@@ -1023,7 +1025,7 @@ function lookTime(at: number): string {
 const feedScroll = new Map<string, number>()
 export function ForYouPage({ who }: { who?: string }) {
   const t = useT(M)
-  const { back, home } = useApp()
+  const { back, home, push } = useApp()
   const fy = useForYou()
   const page = useRef<HTMLDivElement>(null)
   const body = useRef<HTMLDivElement>(null)
@@ -1077,6 +1079,7 @@ export function ForYouPage({ who }: { who?: string }) {
           </div>
           <button type="button" className="link fy-projects" onClick={home} aria-label={t.backToProjects}>{t.projects}</button>
         </div>
+        <button type="button" className="in formats-entry" onClick={() => push({ kind: 'formats' })}>{t.formats}</button>
         <OutboxStatus scope="/api/foryou/" />
         <Participants list={people} sel={sel} onPick={pick} />
       </div>

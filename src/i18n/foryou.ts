@@ -3,6 +3,7 @@ import { defineMessages } from './index'
 // src/ui/foryou.tsx, src/ui/foryou-store.ts: the « for you » stream next to weevboss (full-screen page, items, media viewer).
 export default defineMessages({
   fr: {
+    formats: 'Essayer les formats visuels',
     title: 'pour toi',
     projects: 'projets',
     backToProjects: 'revenir aux projets',
@@ -66,6 +67,7 @@ export default defineMessages({
     dismissed: 'écarté',
   },
   en: {
+    formats: 'Try visual formats',
     title: 'for you',
     projects: 'projects',
     backToProjects: 'back to projects',

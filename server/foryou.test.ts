@@ -1188,3 +1188,38 @@ it('retires reservoir cards across reloads and does not voice generated summarie
   expect(find(fy, 'd:summary')?.voice).toBeUndefined()
   expect(fy.post('Here is a useful personal message.').voice).toBe('default')
 })
+
+describe('explicit visual proposals', () => {
+  const input = () => ({ key: 'cafe-corridor', sessionId: 's1', title: 'Café to corridor', text: 'Three existing views to choose the pace.', proposal: { question: 'Which pace?', recommendation: 'A slower threshold', caveat: 'Existing blur remains.', frames: [0, 1, 2].map(n => ({ path: `/frames/${n}.png`, title: `View ${n}`, description: `Existing view ${n}` })), options: [{ id: 'A', label: 'Keep', description: 'Keep pace', instruction: 'Keep existing pace.' }, { id: 'B', label: 'Slower', description: 'Read more slowly', instruction: 'Adjust private preview only; no rendering or publication.', recommended: true }] } })
+  const prepare = () => { snap.sessions = [session()]; [0, 1, 2].forEach(n => shelf.known.add(`/frames/${n}.png`)); return make({ voiceOf: () => 'voice' }) }
+  it('publishes once without voice, preserves frames, sends only the selected instruction to its session', async () => {
+    const fy = prepare()
+    const item = fy.publishVisualProposal(input())!
+    expect(item.media).toHaveLength(3)
+    expect(item.voice).toBeUndefined()
+    expect(item.visualProposal?.frames[1].description).toBe('Existing view 1')
+    expect(host.send).not.toHaveBeenCalled()
+    expect(fy.publishVisualProposal(input())!.id).toBe(item.id)
+    await expect(fy.act(item.id, 'choice:bad')).rejects.toThrow()
+    expect(host.send).not.toHaveBeenCalled()
+    await Promise.all([fy.act(item.id, 'choice:B'), fy.act(item.id, 'choice:B')])
+    expect(host.send).toHaveBeenCalledTimes(1)
+    expect(host.send).toHaveBeenCalledWith('s1', expect.stringContaining('Adjust private preview only'))
+    expect(host.sendMain).not.toHaveBeenCalled()
+    expect(find(fy, item.id)).toBeUndefined()
+    const loaded = make()
+    expect(loaded.visualExample()?.visualProposal?.selected).toBe('B')
+    expect(loaded.publishVisualProposal(input())).toBeNull()
+    await expect(loaded.act(item.id, 'choice:A')).rejects.toThrow()
+  })
+  it('keeps a failed dispatch available for retry and rejects absent destinations', async () => {
+    const fy = prepare()
+    const item = fy.publishVisualProposal(input())!
+    host.send.mockRejectedValueOnce(new Error('offline'))
+    await expect(fy.act(item.id, 'choice:A')).rejects.toThrow('offline')
+    expect(find(fy, item.id)?.visualProposal?.selected).toBeUndefined()
+    snap.sessions = []
+    await expect(fy.act(item.id, 'choice:A')).rejects.toThrow()
+    expect(() => fy.publishVisualProposal({ ...input(), key: 'other' })).toThrow()
+  })
+})

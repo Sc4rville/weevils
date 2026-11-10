@@ -300,6 +300,7 @@ export interface ForYouDeps {
 
 /** A recorded item. Everything the app may read is copied field by field in view(): the rest never leaves. */
 interface Stored {
+  visualProposal?: ForYouItem['visualProposal']
   /** session question: what a model read in the session's last message (asked: false — not really a question). */
   q?: { ask?: boolean; title?: string; question?: string; options?: string[] }
   id: string
@@ -694,6 +695,38 @@ export class ForYou {
     return this.view(item, snap)!
   }
 
+  visualExample(): ForYouItem | null {
+    const item = this.s.items.find(i => i.visualProposal)
+    return item ? this.view({ ...item, gone: false }, this.w.snapshot()) : null
+  }
+
+  /** Explicit local publication only; never called by the curator or historical ingestion. */
+  publishVisualProposal(raw: unknown): ForYouItem | null {
+    const b = raw as Record<string, any>
+    const str = (v: unknown, max = 1600): v is string => typeof v === 'string' && !!v.trim() && v.length <= max
+    if (!b || !str(b.key, 80) || !/^[a-z0-9-]+$/.test(b.key) || !str(b.title, 160) || !str(b.text) || !str(b.sessionId)) throw new Error(tr(M).invalidVisual)
+    const session = this.w.snapshot().sessions.find(s => s.id === b.sessionId && s.controllable)
+    if (!session || !this.shelf) throw new Error(tr(M).invalidVisual)
+    const p = b.proposal
+    if (!p || !str(p.question) || !str(p.recommendation) || !str(p.caveat) || !Array.isArray(p.frames) || p.frames.length !== 3 || !Array.isArray(p.options) || p.options.length !== 2) throw new Error(tr(M).invalidVisual)
+    if (!p.frames.every((f: any) => f && str(f.path) && str(f.title, 160) && str(f.description))) throw new Error(tr(M).invalidVisual)
+    if (!p.options.every((o: any) => o && str(o.id, 20) && str(o.label, 160) && str(o.description) && str(o.instruction, 4000)) || new Set(p.options.map((o: any) => o.id)).size !== 2) throw new Error(tr(M).invalidVisual)
+    const id = `visual:${b.key}`
+    const previous = this.get(id)
+    if (previous) return this.view(previous, this.w.snapshot()) // repeat publication cannot revive a completed choice
+    const media = p.frames.map((f: any) => this.shelf!.add(f.path))
+    if (media.some((e: any) => e.type !== 'image')) throw new Error(tr(M).invalidVisual)
+    const visualProposal: ForYouItem['visualProposal'] = {
+      frames: p.frames.map((f: any) => ({ title: f.title, description: f.description })),
+      question: p.question, recommendation: p.recommendation, caveat: p.caveat,
+      options: p.options.map((o: any) => ({ id: o.id, label: o.label, description: o.description, instruction: o.instruction, recommended: o.recommended === true })),
+    }
+    const item: Stored = { id, kind: 'media', tone: 'neutral', at: this.now(), who: 'session', projectId: session.projectId, sessionId: session.id, title: b.title, text: b.text, mediaIds: media.map((e: any) => e.id), visualProposal }
+    this.put(item)
+    this.changed()
+    return this.view(item, this.w.snapshot())
+  }
+
   /**
    * The seam for generated items (the curator): written as given, replacing an item of the same id (fresh and unseen
    * again; one the user dismissed stays dismissed).
@@ -834,6 +867,7 @@ export class ForYou {
       if (!idea || idea.draft) return null
     }
     const out: ForYouItem = { id: i.id, kind: i.kind, tone: i.tone, at: i.at, who: i.who, text: i.text }
+    if (i.visualProposal) out.visualProposal = i.visualProposal
     if (i.projectId) out.projectId = i.projectId
     if (i.sessionId) out.sessionId = i.sessionId
     if (i.eventId) out.eventId = i.eventId
@@ -1177,7 +1211,12 @@ export class ForYou {
     }
     const i = this.get(id)
     if (!i || i.gone) throw new Error(t.notFound)
-    if (i.kind === 'session' && action === 'resume' && i.sessionId) await this.w.resume(i.sessionId)
+    if (i.visualProposal && i.sessionId) {
+      const choice = i.visualProposal.options.find(o => action === `choice:${o.id}`)
+      if (!choice || !this.w.snapshot().sessions.some(s => s.id === i.sessionId && s.controllable)) throw new Error(t.noAction)
+      await this.w.send(i.sessionId, `${i.title}\n${choice.label}\n\n${choice.instruction}`)
+      i.visualProposal.selected = choice.id
+    } else if (i.kind === 'session' && action === 'resume' && i.sessionId) await this.w.resume(i.sessionId)
     else if (i.kind === 'session' && action.startsWith('opt:') && i.sessionId) {
       // An option of a question card: said to the session as the user's answer.
       const session = this.w.snapshot().sessions.find((s) => s.id === i.sessionId)
@@ -1272,6 +1311,12 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
       await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, b)) }))
+    }],
+    ['GET', /^\/api\/foryou\/formats$/, (_req, res) => json(res, 200, { proposal: fy.visualExample() })],
+    ['POST', /^\/api\/foryou\/visual-proposal$/, async (req, res) => {
+      const b = await readBody(req)
+      if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
+      await run(res, true, () => ({ item: fy.publishVisualProposal(b) }))
     }],
     ['POST', /^\/api\/foryou\/media$/, async (req, res) => {
       const b = await readBody(req)

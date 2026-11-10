@@ -31,6 +31,7 @@ export type Page =
   | { kind: 'relay' }
   | { kind: 'memory' }
   /** « Pour toi » en plein écran ; who : le participant isolé à l'ouverture. */
+  | { kind: 'formats' }
   | { kind: 'foryou'; who?: string }
   /** Un média du flux, seul, en grand. */
   | { kind: 'media'; url: string; type: 'image' | 'video'; name: string }

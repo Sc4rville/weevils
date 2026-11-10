@@ -1,3 +1,4 @@
+import { FormatsPage } from './foryou-formats'
 import { RemoteProgress } from './remote-progress'
 import { OutboxStatus } from './outbox-status'
 import { noticeKey, sessionNoticeKey } from '../../shared/notices.ts'
@@ -75,6 +76,8 @@ export function PageView({ page }: { page: Page }) {
       return <CalmConv id={page.id} />
     case 'memory':
       return <MemoryPage />
+    case 'formats':
+      return <FormatsPage />
     case 'foryou':
       return <ForYouPage who={page.who} />
     case 'media':

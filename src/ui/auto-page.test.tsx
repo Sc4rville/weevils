@@ -146,7 +146,7 @@ describe('automation page', () => {
     await flush()
     expect(kpis()).toMatchObject({ when: 'started by hand', next: 'now', state: 'running', cost: '0', where: 'mygame' })
     expect(host.querySelector('.composer')).toBeNull()
-    expect(host.querySelector('.auto-flow .auto-front')).not.toBeNull()
+    expect(host.querySelector('.auto-flow .auto-rail.run')).not.toBeNull()
   })
 
   it('outputs, newest first, the newest unfolded: its report, files, links, screenshots', async () => {

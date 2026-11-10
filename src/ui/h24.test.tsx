@@ -129,7 +129,9 @@ describe('auto drawer', () => {
   it('the head says what runs (AutoMark, its title, +N), else what waits for a yes, else the next trigger', () => {
     render(snap([running(), running({ id: 'r2', title: 'A second one' }), opt({ id: 'p' })]))
     expect(head().querySelector('.auto-sum .auto-mark')).not.toBeNull()
-    expect(head().querySelector('.auto-sum')!.textContent).toBe(`${names()[1]} +1`)
+    expect(head().querySelector('.auto-sum .txt')!.textContent).toBe(names()[1])
+    // The count is never the part that gets cut.
+    expect(head().querySelector('.auto-sum .more')!.textContent).toBe('+1')
     render(snap([opt({ id: 'p' }), opt({ id: 'p2' })], [timer]))
     expect(head().querySelector('.auto-sum')!.textContent).toBe('2 to approve')
     expect(head().getAttribute('aria-label')).toContain('2 to approve')
@@ -153,7 +155,8 @@ describe('auto drawer', () => {
     expect(host.querySelector('[data-h24="r"] .st .auto-mark')).not.toBeNull()
     expect(host.querySelector('[data-h24="q"] .st .auto-mark')).toBeNull()
     expect(host.querySelector('[data-h24="r"] .act')!.textContent).toBe('5m')
-    expect(host.querySelector('[data-h24="r"] .auto-front')).not.toBeNull()
+    // Its rail runs along the bottom edge, magenta; nothing crosses the name.
+    expect(host.querySelector('[data-h24="r"] .auto-rail.run')).not.toBeNull()
     await click(host.querySelector('[data-h24="q"] .auto-hit'))
     expect(pushed).toEqual([{ kind: 'auto', id: 'q' }])
     expect(drawer).toEqual([])
@@ -167,7 +170,7 @@ describe('auto drawer', () => {
     render(snap([running(), opt({ id: 'a', title: 'Harden tests', why: 'ship it', rev: 3, window: { from: 60, to: 360 }, every: 7 * 86_400_000 }), opt({ id: 'b', title: 'Watch fairs', kind: 'watch' })]))
     expect(names()).toEqual(['Harden tests', 'Watch fairs', 'Profile loader'])
     expect(host.querySelector('[data-h24="a"] .why')!.textContent).toBe('ship it')
-    expect(host.querySelector('[data-h24="a"] .meta.ellipsis')!.textContent).toMatch(/^every \w+day, at night$/)
+    expect(host.querySelector('[data-h24="a"] .meta.terms')!.textContent).toMatch(/^every \w+day, at night$/)
     await click(host.querySelector('[data-h24="b"] .auto-hit'))
     expect(pushed).toEqual([{ kind: 'auto', id: 'b' }])
     await click(label(/^run "Harden tests"/)!)

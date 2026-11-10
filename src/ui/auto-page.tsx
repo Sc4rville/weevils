@@ -309,7 +309,7 @@ function Flow({ x, runs, next, onTicks }: { x: AutoItem; runs: AutoRun[]; next?:
   const longest = Math.max(1, ...ticks.map((r) => r.at - r.startedAt))
   return (
     <div className={`band auto-flow st-${x.state}`}>
-      {x.state !== 'proposed' && <Fill x={x} front={4} sweep />}
+      {x.state !== 'proposed' && <Fill x={x} />}
       {landing !== null && <motion.span layoutId={`run-${landing}`} className="auto-fill auto-land" aria-hidden />}
       <div className="in">
         <div className="name">{big}</div>

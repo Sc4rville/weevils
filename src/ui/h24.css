@@ -34,8 +34,13 @@
 
 .auto-sum .auto-mark {
   flex: none;
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
+}
+
+/* « +1 »: never the part that gets cut. */
+.auto-sum > .more {
+  flex: none;
 }
 
 /* ---------- A band: one automation (or a proposal), one tap ---------- */
@@ -113,11 +118,28 @@
   text-overflow: ellipsis;
 }
 
+/* A proposal: its name over the whole width, its reason on one line (all of it on its page), its terms with ✓ and ×. */
+.auto-prop .auto-name {
+  grid-column: 2 / 4;
+}
+
 .auto-band .sub.why {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auto-prop .sub.terms {
+  grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auto-prop > .in > .chars {
+  grid-column: 3;
+  margin-block: -12px -13px;
 }
 
 .auto-band.paused > .in {
@@ -156,27 +178,34 @@
   opacity: 0.35;
 }
 
-/* The fill is fed: a block of a deeper tone keeps travelling through it toward its edge. */
-.auto-sweep {
+/* Along the bottom edge, as long as the fill: the rail. A block of a deeper tone keeps travelling through it toward
+   its edge (the fill is fed); magenta while it runs. Never behind the text. */
+.auto-rail {
   position: absolute;
-  top: 0;
-  bottom: 0;
   left: 0;
-  z-index: 0;
+  bottom: 0;
+  height: 3px;
+  z-index: 1;
   overflow: hidden;
   pointer-events: none;
+  background: oklch(from var(--c) calc(l + var(--dl) * 2.6) calc(c * 1.12) h);
 }
 
-.auto-sweep > i {
+.auto-rail > i {
   position: absolute;
   top: 0;
   bottom: 0;
   width: 34%;
-  background: oklch(from var(--c) calc(l + var(--dl) * 2.6) calc(c * 1.12) h);
+  background: var(--ink);
+  opacity: 0.35;
   animation: auto-sweep 3.3s linear infinite;
 }
 
-.auto-sweep.fast > i {
+.auto-rail.run {
+  background: var(--auto-fluo);
+}
+
+.auto-rail.run > i {
   animation-duration: 1.9s;
 }
 
@@ -190,25 +219,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .auto-sweep {
+  .auto-rail > i {
     display: none;
   }
 }
 
-/* Running: the magenta edge of the fill. */
-.auto-front {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  z-index: 0;
-  width: 3px;
-  margin-left: -3px;
-  background: var(--auto-fluo);
-  pointer-events: none;
-}
-
-/* Past its usual length: the edge breathes. */
-.auto-front.over {
+/* Past its usual length: the rail breathes. */
+.auto-rail.over {
   animation: auto-over 1.2s ease-in-out infinite;
 }
 
@@ -260,9 +277,8 @@
   margin-top: 4px;
 }
 
-.auto-flow .auto-front {
-  width: 4px;
-  margin-left: -4px;
+.auto-flow .auto-rail {
+  height: 5px;
 }
 
 /* A run that just ended: the full fill, shrinking into its tick. */

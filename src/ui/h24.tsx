@@ -130,10 +130,8 @@ export function H24Rail() {
   const summary: ReactNode = running.length ? (
     <>
       <AutoMark />
-      <span className="txt">
-        {running[0].title}
-        {running.length > 1 ? ` +${running.length - 1}` : ''}
-      </span>
+      <span className="txt">{running[0].title}</span>
+      {running.length > 1 && <span className="more">+{running.length - 1}</span>}
     </>
   ) : proposals.length ? (
     <span className="txt">{t.toValidateN(proposals.length)}</span>
@@ -306,22 +304,27 @@ export function useAutoFill(x: AutoItem | null): { scale: MotionValue<number>; d
   return { scale, dip, over: state === 'running' && !!span && now > span.to }
 }
 
-/** The flat fill layer (and, while it runs, the magenta front riding its edge). sweep: a flat block of a deeper tone
- *  keeps travelling through the filled part toward its edge (fast while it runs, slow while it waits for its time):
- *  the fill is fed, even when its edge moves a pixel a minute. */
-export function Fill({ x, front = 3, sweep = false }: { x: AutoItem; front?: number; sweep?: boolean }) {
+/** Under this much of the band, the fill does not show yet. */
+const MIN_FILL = 0.04
+
+/** The flat fill layer, and under the text, along the band's bottom edge, a rail as long as the fill: magenta while it
+ *  runs, the fill's deeper tone while it waits for its time, a block travelling through it toward its edge (it is fed,
+ *  even when its edge moves a pixel a minute). Nothing crosses the text: no line, no block behind the name. */
+export function Fill({ x }: { x: AutoItem }) {
   const { scale, dip, over } = useAutoFill(x)
-  const left = useTransform(scale, (v) => `${v * 100}%`)
-  const flowing = sweep && (x.state === 'running' || x.state === 'scheduled')
+  const width = useTransform(scale, (v) => `${v * 100}%`)
+  // A sliver at the left edge would read as a stripe: nothing shows before it has some width.
+  const seen = useTransform([scale, dip], ([v, d]: number[]) => (v < MIN_FILL ? 0 : d))
+  const running = x.state === 'running'
+  const flowing = running || x.state === 'scheduled'
   return (
     <>
-      <motion.span className={`auto-fill${x.state === 'paused' ? ' paused' : ''}`} style={{ scaleX: scale, opacity: x.state === 'paused' ? undefined : dip }} aria-hidden />
+      <motion.span className={`auto-fill${x.state === 'paused' ? ' paused' : ''}`} style={{ scaleX: scale, opacity: x.state === 'paused' ? undefined : seen }} aria-hidden />
       {flowing && (
-        <motion.span className={`auto-sweep${x.state === 'running' ? ' fast' : ''}`} style={{ width: left }} aria-hidden>
+        <motion.span className={`auto-rail${running ? ' run' : ''}${over ? ' over' : ''}`} style={{ width, opacity: seen }} aria-hidden>
           <i />
         </motion.span>
       )}
-      {x.state === 'running' && <motion.span className={`auto-front${over ? ' over' : ''}`} style={{ left, width: front, marginLeft: -front }} aria-hidden />}
     </>
   )
 }
@@ -361,6 +364,14 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
           <span className={chg(f.includes('title'), 'auto-name')} aria-hidden>
             {o.title}
           </span>
+          {o.why && (
+            <span className={chg(f.includes('why'), 'meta sub why')} aria-hidden>
+              {o.why}
+            </span>
+          )}
+          <span className={chg(f.some((c) => c === 'every' || c === 'window' || c === 'notBefore' || c === 'repo'), 'meta sub terms')} aria-hidden>
+            {[triggerText(x.trigger, now), project].filter(Boolean).join(' · ')}
+          </span>
           <span className="chars">
             <button className="ch" onClick={() => k.answer(o, true)} disabled={busy || k.isStale(o)} aria-label={busy ? t.acceptBusy(o.title) : t.accept(o.title)}>
               <Icon name="check" />
@@ -368,14 +379,6 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
             <button className="ch" onClick={() => k.answer(o, false)} aria-label={t.refuse(o.title)}>
               <Icon name="close" />
             </button>
-          </span>
-          {o.why && (
-            <span className={chg(f.includes('why'), 'meta sub why')} aria-hidden>
-              {o.why}
-            </span>
-          )}
-          <span className={chg(f.some((c) => c === 'every' || c === 'window' || c === 'notBefore' || c === 'repo'), 'meta sub ellipsis')} aria-hidden>
-            {[triggerText(x.trigger, now), project].filter(Boolean).join(' · ')}
           </span>
           {k.notes.get(o.id) && (
             <span className="meta sub" role="status">
@@ -389,7 +392,7 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
   const right = x.state === 'running' && x.startedAt ? short(now - x.startedAt) : x.nextAt && x.state !== 'paused' ? at(x.nextAt, now) : ''
   return (
     <motion.section layout="position" className={`band auto-band${x.state === 'paused' ? ' paused' : ''}`} style={color(slot)} data-h24={x.id} {...drop}>
-      <Fill x={x} sweep={x.state === 'running'} />
+      <Fill x={x} />
       <button className="auto-hit" onClick={open} aria-label={t.taskLabel(x.title, t[`state_${x.state}`], [meta, right].filter(Boolean).join(', '))} />
       <div className="in" aria-hidden>
         <span className="st">

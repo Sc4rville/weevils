@@ -43,7 +43,7 @@ run_heavy() { if command -v heavy >/dev/null; then heavy "$@"; else "$@"; fi; }
 
 build() {
   local work; work=$(mktemp -d)
-  trap 'rm -rf "$work"' RETURN
+  trap 'rm -rf "$work"; trap - RETURN' RETURN
   # A clone of the committed HEAD, like a user's "git clone": no uncommitted file, no node_modules, no dist.
   git clone -q "$root" "$work/weevils"
   git -C "$work/weevils" remote set-url origin "$(git -C "$root" remote get-url origin 2>/dev/null || echo "$root")"

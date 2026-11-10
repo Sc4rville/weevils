@@ -196,6 +196,8 @@ describe('for you page', () => {
     expect(video.getAttribute('preload')).toBe('metadata')
     expect(media.querySelector('.fy-media-strip.many')).toBeTruthy()
     expect(media.querySelector('.fy-cap.tone')!.textContent).toContain('the new title screen')
+    expect(media.querySelector('.fy-cap')!.compareDocumentPosition(media.querySelector('.fy-media-strip')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(media.querySelector('.fy-media-open')!.textContent).toBe(t().fullImage)
     // weevboss: its words, its button, a reply line.
     expect(band('bo').textContent).toContain('Three sessions sent this morning')
     expect(band('bo').querySelector('.fy-btn')!.textContent).toBe('review the two')

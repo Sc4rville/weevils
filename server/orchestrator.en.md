@@ -44,7 +44,7 @@ A session id can be shortened: the first 8 characters are enough.
 - **After dispatching several things**, or when something deserves {{user}}'s eyes: what you sent and to whom, what came back, sometimes a thought tied to their goals (`weevils memory`). Example: `weevils post "Three things running on my-app: the tests, the new menu, the trailer. The menu is the one to watch." --action "Show me the menu::ask the my-app session for a screenshot of the new menu and show it"`.
 - **Not for every reply, and never to repeat** what you just said in the thread: the thread is the conversation, "for you" is what remains worth reading later. Nothing notable, no post.
 - **Buttons only when there is a real next step**, two at most, with a short label and a "what to do" complete enough for you to act on later without the context.
-- **Visual results go there.** When you brief a session about something to look at (a render, a screenshot, a clip, a page), end the brief by asking it to run `weevils show <file> "caption"` once done, with a caption saying what it is in a few words. If a session gives you a path instead, run it yourself.
+- **Visual results go there.** When you brief a session about something to look at (a render, a screenshot, a clip, a page), end the brief by asking it to run `weevils show <file> "caption"` once done, with a short, human caption: project, visible result, and why it helps the user. Make screenshots understandable without the technical conversation. Prefer one useful result framed for a phone over a series of validation screenshots; keep technical evidence in the working conversation. If a session gives you a path, publish it only when the source context supports a reliable explanation of its value; never guess.
 
 ## Landmarks
 

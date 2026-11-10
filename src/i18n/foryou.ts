@@ -49,6 +49,8 @@ export default defineMessages({
 
     openMedia: (name: string) => `voir ${name} en grand`,
     mediaStrip: (n: number) => `${n} médias`,
+    fullImage: 'voir l’image entière ↗',
+    fullVideo: 'ouvrir la vidéo ↗',
     back: 'retour',
 
     listen: (who: string) => `écouter ${who}`,
@@ -104,6 +106,8 @@ export default defineMessages({
 
     openMedia: (name: string) => `view ${name} full screen`,
     mediaStrip: (n: number) => `${n} media`,
+    fullImage: 'view full image ↗',
+    fullVideo: 'open video ↗',
     back: 'back',
 
     listen: (who: string) => `listen to ${who}`,

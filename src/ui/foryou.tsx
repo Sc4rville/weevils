@@ -346,12 +346,12 @@ function MediaTile({ m, many }: { m: ForYouMedia; many: boolean }) {
   const tile = useRef<HTMLButtonElement>(null)
   const video = useRef<HTMLVideoElement>(null)
   const inView = useInView(tile, 0.6)
-  const [fit, setFit] = useState<'cover' | 'contain'>('cover')
+  const [fit, setFit] = useState<'cover' | 'contain' | 'crop'>('cover')
   const sized = (w: number, h: number) => {
     const el = tile.current
     if (!el) return
     const cap = MEDIA_CAP * (window.innerHeight || 0)
-    setFit(mediaFit(w, h, el.clientWidth, many ? Math.min(cap, 0.96 * (window.innerWidth || 0)) : cap, many))
+    setFit(m.type === 'image' && h / w > 1.6 ? 'crop' : mediaFit(w, h, el.clientWidth, many ? Math.min(cap, 0.96 * (window.innerWidth || 0)) : cap, many))
   }
   // Muted, and only while it is under the eyes.
   useEffect(() => {
@@ -371,6 +371,7 @@ function MediaTile({ m, many }: { m: ForYouMedia; many: boolean }) {
       ) : (
         <img src={m.url} alt="" loading="lazy" decoding="async" draggable={false} onLoad={(e) => sized(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)} />
       )}
+      <span className="fy-media-open">{m.type === 'image' ? t.fullImage : t.fullVideo}</span>
       {m.type === 'video' && (
         <span className="fy-media-mark" aria-hidden>
           <Icon name="play" />
@@ -397,7 +398,6 @@ function MediaStrip({ media }: { media: ForYouMedia[] }) {
 function MediaItem({ item, who, fy }: KindProps) {
   return (
     <>
-      {!!item.media?.length && <MediaStrip media={item.media} />}
       <div className="tone fy-cap">
         <div className="in">
           <Who item={item} who={who}>
@@ -408,6 +408,7 @@ function MediaItem({ item, who, fy }: KindProps) {
           {!!item.gauges?.length && <Gauges list={item.gauges} />}
         </div>
       </div>
+      {!!item.media?.length && <MediaStrip media={item.media} />}
       <Actions item={item} fy={fy} />
       {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
     </>

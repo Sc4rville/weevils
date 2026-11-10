@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // Le flux ne bouge pas sous le doigt : deux sessions (ou deux projets) qui écrivent tour à tour ne permutent pas, seul
 // un changement de rang (ce qui t'attend) réordonne, et rien ne bouge pendant un geste. Les « terminées » se replient
-// même quand elles sont ouvertes d'office (bande ouverte sans session active).
+// par défaut, même dans une bande ouverte sans session active.
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -190,21 +190,22 @@ describe('bande projet', () => {
     setSettledNow(false)
     render([{ ...a, status: 'working' }, { ...b, status: 'idle' }])
     expect(order()).toBe('beta alpha')
-    setSettledNow(true)
-    render([{ ...a, status: 'working' }, { ...b, status: 'idle' }])
+    // Releasing the gesture must apply the deferred order without another server snapshot.
+    act(() => setSettledNow(true))
     expect(order()).toBe('alpha beta')
   })
 
-  it('« terminées » ouvertes d’office (bande ouverte, rien d’actif) : un tap les replie', () => {
+  it('« terminées » restent repliées, même dans une bande ouverte, jusqu’au choix explicite', () => {
     const d = session('fini', { status: 'done', live: false, workStartedAt: null })
     render([d], 'p')
     const line = () => Array.from(host.querySelectorAll<HTMLButtonElement>('.row')).find((r) => (r.textContent ?? '').includes('termin'))!
     const arrow = () => line().querySelector('.go')!.innerHTML
-    const open = arrow()
+    const closed = arrow()
+    expect(host.querySelectorAll('.session-item')).toHaveLength(0)
     act(() => line().click())
-    // Avant : le tap passait showDone à false, mais l'ouverture d'office l'emportait ; la flèche restait « ↑ ».
-    expect(arrow()).not.toBe(open)
+    expect(arrow()).not.toBe(closed)
+    expect(host.querySelectorAll('.session-item')).toHaveLength(1)
     act(() => line().click())
-    expect(arrow()).toBe(open)
+    expect(arrow()).toBe(closed) // the closing animation may still retain its DOM
   })
 })

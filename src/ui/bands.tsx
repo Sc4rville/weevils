@@ -10,7 +10,7 @@ import NM from '../i18n/notices'
 import D from '../i18n/devil'
 import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
-import { THEMES, isSettled, stableOrder, useApp } from './app-context'
+import { THEMES, stableOrder, useApp, useSettled } from './app-context'
 import { ensurePush } from '../push'
 import { VoiceLogo } from './voice'
 import { useThreadAsk } from './askthread'
@@ -390,6 +390,7 @@ function RowSlot({ children }: { children: ReactNode }) {
 const sessionRank = (s: { status: string }) => s.status === 'working' ? 0 : s.status === 'needs_user' || s.status === 'interrupted' ? 1 : 2
 
 export function ProjectBand({ project }: { project: Project }) {
+  const settled = useSettled()
   const t = useT(M)
   const { snap, expanded, setExpanded, push, now, colors, instant } = useApp()
   const tx = instant ? INSTANT : spring
@@ -400,7 +401,7 @@ export function ProjectBand({ project }: { project: Project }) {
   // Une ligne ne change pas de place parce qu'une autre session écrit (le serveur les range par activité) : ce qui
   // travaille en tête, puis l'ordre déjà affiché, une nouvelle session en tête des siennes. Rien ne bouge sous le doigt.
   const shownRows = useRef<string[]>([])
-  const active = stableOrder(sessions.filter((s) => s.status !== 'done'), (s) => s.id, sessionRank, (a, b) => b.openedAt - a.openedAt, shownRows.current, !isSettled())
+  const active = stableOrder(sessions.filter((s) => s.status !== 'done'), (s) => s.id, sessionRank, (a, b) => b.openedAt - a.openedAt, shownRows.current, !settled)
   const rowKey = active.map((s) => s.id).join('|')
   useLayoutEffect(() => {
     shownRows.current = rowKey ? rowKey.split('|') : []
@@ -465,7 +466,7 @@ export function ProjectBand({ project }: { project: Project }) {
   }, [mode, collapsed])
   // Réduit : une ligne, au format de la vue « mini » (nom, étoile verte, résumé).
   const shown = collapsed ? 'mini' : mode
-  const doneOpen = doneSet?.mode === mode ? doneSet.v : mode === 'open' && active.length === 0
+  const doneOpen = doneSet?.mode === mode ? doneSet.v : false
   const toggleDone = () => {
     setDoneSet({ v: !doneOpen, mode })
     // Les terminées s'ouvrent souvent sous le bas de l'écran : la dernière y est amenée, le dépliage fini.

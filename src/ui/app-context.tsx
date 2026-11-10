@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useSyncExternalStore } from 'react'
 import type { Snapshot } from '../../shared/api.ts'
 
 export type Theme = 'light' | 'dark' | 'zen' | 'graphite'
@@ -122,8 +122,14 @@ export function colorSlots(ids: string[]): Record<string, string> {
   return out
 }
 
-/** Doigt posé, défilement, molette (App.tsx) : rien ne se réordonne sous le doigt. Lu au rendu, sans abonnement : basculer
- * à chaque geste ne re-rend pas toute l'app ; l'ordre en attente s'applique au prochain instantané du serveur. */
+/** Freeze during a gesture; release subscribers only when a deferred order can safely be applied. */
 let settledNow = true
+const settledListeners = new Set<() => void>()
 export const isSettled = () => settledNow
-export const setSettledNow = (v: boolean) => void (settledNow = v)
+export function setSettledNow(v: boolean) {
+  if (settledNow === v) return
+  settledNow = v
+  if (v) for (const listener of settledListeners) listener()
+}
+const subscribeSettled = (listener: () => void) => { settledListeners.add(listener); return () => { settledListeners.delete(listener) } }
+export const useSettled = () => useSyncExternalStore(subscribeSettled, isSettled, isSettled)

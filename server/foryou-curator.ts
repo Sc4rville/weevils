@@ -1,3 +1,4 @@
+import { preferredTool, providerReady } from './provider.ts'
 // The curator of the « for you » stream (docs/foryou.md §3.5): everything in the stream that is written or counted
 // rather than recorded. One loop, one spender.
 //
@@ -450,6 +451,11 @@ export class Curator implements ForYouCurator {
   /** How the next call goes: full (Claude has room: sonnet and haiku), relay (Claude nearly full, Codex has room:
    *  everything through Codex), lean (neither: haiku only, up to LINES_CEIL), or nothing. */
   mode(now = this.now()): 'full' | 'relay' | 'lean' | null {
+    if (preferredTool() === 'codex') {
+      const q = (this.deps.usage ? this.deps.usage() : this.fy.usageKnown())?.codex
+      const count = this.s.relay?.day === dayKey(now) ? this.s.relay.n : 0
+      return providerReady() && q?.ok && q.windows.length > 0 && q.windows.every(w => w.percent < USAGE_ALERT) && count < RELAY_CAP && now >= this.s.failUntil ? 'relay' : null
+    }
     if (this.can(now)) return 'full'
     const u = this.deps.usage ? this.deps.usage() : this.fy.usageKnown()
     const cx = u?.codex

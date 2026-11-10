@@ -1,3 +1,4 @@
+import { preferredTool, providerReady } from './provider.ts'
 // The « auto » band that never sleeps: from the memory and the real projects, weevils proposes background tasks
 // (« optimizers »: harden a repo's tests, watch a topic the user cares about, prepare content, explore an idea they
 // mentioned). Each one is accepted or refused with one tap. Accepted ones run in a normal Claude session (visible in
@@ -362,7 +363,7 @@ const tryJail = (args: string[]) =>
       !e ? resolve(true) : (e as NodeJS.ErrnoException).code === 'ENOENT' ? resolve(false) : reject(new Error(String(err || e.message).trim().split('\n').pop())),
     ),
   )
-const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: () => os.freemem(), logged: claudeLogged, worktree: gitWorktree, jail: tryJail, head: headOf }
+const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: () => os.freemem(), logged: () => preferredTool() === 'codex' ? providerReady() : claudeLogged(), worktree: gitWorktree, jail: tryJail, head: headOf }
 
 // ---------------------------------------------------------------- pure helpers (tested)
 
@@ -860,7 +861,7 @@ export class Optimizers {
     if (!said) return { reply: '', item: this.view(o), changed: [] }
     if (this.talking.has(id)) return note('talkBusy')
     const held = !!this.w.relay?.holdUntil()
-    const onCodex = held && !!this.w.relay?.autoOnCodex()
+    const onCodex = preferredTool() === 'codex' ? providerReady() : held && !!this.w.relay?.autoOnCodex()
     if (Date.now() < (this.talkFailUntil.get(id) ?? 0) || (held && !onCodex) || (!onCodex && !this.sys.logged())) return note('talkFailed')
     const zone = validTz(tz) ?? o.tz ?? serverTz()
     this.talking.add(id)
@@ -1065,7 +1066,7 @@ export class Optimizers {
     // task waits for the reset time.
     const hold = this.w.relay?.holdUntil(now) ?? 0
     // Codex has no deny list: only on a machine where the jail holds (probed once), otherwise the tasks wait too.
-    if (hold && this.bwrap === undefined && !this.probingJail) {
+    if ((hold || preferredTool() === 'codex') && this.bwrap === undefined && !this.probingJail) {
       this.probingJail = true
       void this.sys
         .jail(['--dev-bind', '/', '/', '--'])
@@ -1075,7 +1076,7 @@ export class Optimizers {
           this.probingJail = false
         })
     }
-    const codex = !!hold && !!this.w.relay?.autoOnCodex() && this.bwrap === true
+    const codex = (preferredTool() === 'codex' ? providerReady() : !!hold && !!this.w.relay?.autoOnCodex()) && this.bwrap === true
     if (hold && !codex)
       for (const o of queue)
         if (!o.held || (o.retryAt ?? 0) < hold) {
@@ -1398,7 +1399,7 @@ export class Optimizers {
 
   /** Starts a task in a Claude session: in its own worktree of its repo (on a fresh local branch), or in its workspace. */
   private async launch(o: Stored, now: number, on: { tool?: 'claude' | 'codex'; /** the approved takeover plan, first in the brief */ relay?: string } = {}) {
-    const tool = on.tool ?? 'claude'
+    const tool = on.tool ?? preferredTool()
     this.launching = true
     o.state = 'running'
     o.startedAt = now
@@ -1454,7 +1455,7 @@ export class Optimizers {
       const wrap = await this.jail(o, cwd, guard, tool === 'codex' ? ['.codex'] : [])
       if (tool === 'codex' && !wrap.length) throw new Error(tr(O).noJail)
       step = 'start'
-      const { id } = tool === 'codex' ? await this.w.createIn(cwd, o.title, text, [], { ...guardEnv(guard), wrap }, 'codex') : await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard), wrap })
+      const { id } = tool === 'codex' ? await this.w.createIn(cwd, o.title, text, [], { ...guardEnv(guard), wrap }, 'codex') : await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard), wrap }, 'claude')
       o.sessionId = id
       o.seenAt = Date.now()
       console.log(`[auto] lancée : ${o.title} (${cwd})${tool === 'codex' ? ' · sur Codex (Claude à sa limite)' : ''}`)

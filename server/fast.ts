@@ -1,3 +1,4 @@
+import { preferredTool, providerStatus } from './provider.ts'
 // Modèle rapide et voix, sans API payante : claude -p --model haiku sur l'abonnement, edge-tts pour la voix.
 
 import { execFile } from 'node:child_process'
@@ -12,6 +13,11 @@ import { TTS_RATE, TTS_VOICE } from './config.ts'
 
 /** Une réponse courte de haiku : sans outils, sans session gardée. ~1,6 s mesuré sur le VPS. */
 export function haiku(prompt: string, timeout = 20_000): Promise<string> {
+  if (preferredTool() === 'codex') {
+    const status = providerStatus('codex')
+    if (!status.installed || !status.logged) return Promise.reject(new Error('Codex is not connected'))
+    return relay(prompt, timeout)
+  }
   const t0 = Date.now()
   return new Promise((resolve, reject) => {
     const c = execFile('claude', ['-p', '--model', 'haiku', '--tools', '', '--no-session-persistence', prompt], { timeout, maxBuffer: 1 << 20, cwd: os.tmpdir() }, (err, stdout) => {
@@ -29,6 +35,11 @@ export function haiku(prompt: string, timeout = 20_000): Promise<string> {
  * Never the OpenAI key: what is said about the user only goes to the model the user already runs.
  */
 export function smart(prompt: string, timeout = 90_000): Promise<string> {
+  if (preferredTool() === 'codex') {
+    const status = providerStatus('codex')
+    if (!status.installed || !status.logged) return Promise.reject(new Error('Codex is not connected'))
+    return relay(prompt, timeout)
+  }
   const t0 = Date.now()
   const model = process.env.WEEVILS_SMART_MODEL?.trim() || 'sonnet'
   return new Promise((resolve, reject) => {
@@ -87,6 +98,7 @@ export function parseJson<T>(text: string): T | null {
  * Pour les questions posées depuis l'app, où l'on attend la réponse des yeux.
  */
 export async function quick(prompt: string, maxTokens = 260): Promise<string> {
+  if (preferredTool() === 'codex') return haiku(prompt, 120_000)
   const key = openaiKey()
   if (key) {
     const t0 = Date.now()

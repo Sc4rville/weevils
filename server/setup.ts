@@ -1191,8 +1191,13 @@ export class Setup {
     writeConfig({ [`WEEVILS_AUTHOR_${id}`]: `${v.name.replace(/\|/g, ' ')} | ${color} | ${emails}${prev?.secret ? ` | ${prev.secret}` : ''}` })
     resetAuthors()
     console.log(`[setup] auteur ajouté (${id.toLowerCase()})`)
-    const alias = mailConfig()?.address ?? ''
-    this.say(chip(t.authorOk(v.name, email, alias), alias ? 'author' : 'mail'))
+    const cfg = mailConfig()
+    const alias = cfg?.address ?? ''
+    // Il écrit depuis le compte du pont (ChatGPT avec le connecteur Gmail, un agent sur ce compte) : rien à régler de
+    // plus, il signe en se nommant ; le pont le distingue de l'utilisateur et des autres auteurs à cette étiquette.
+    const shared = !!cfg && (email === cfg.login || email === cfg.address)
+    const ok = t.authorOk(v.name, email, alias)
+    this.say(chip(shared ? `${ok} ${t.authorShared(id.toLowerCase())}` : ok, alias ? 'author' : 'mail'))
   }
 
   // ---------------------------------------------------------------- vers weevboss

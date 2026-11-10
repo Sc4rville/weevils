@@ -6,7 +6,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, MACHINE, ORCHESTRATOR, PORT, PUBLIC_URL } from './config.ts'
+import { CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, MACHINE, ORCHESTRATOR, PORT, PUBLIC_URL } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices } from './fast.ts'
@@ -21,6 +21,7 @@ import { Hints, hintRoutes } from './hints.ts'
 import { softwareRoutes } from './softwares.ts'
 import { browserSafe, isLocal, trustedFrom } from './http.ts'
 import { startMailBridge } from './mailbridge.ts'
+import { resetAuthors } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
 import { quotas, rate as tokenRate, today as usageToday } from './usage.ts'
@@ -36,6 +37,40 @@ w.start()
 startInfra()
 // Pont e-mail (agents externes) : sur la machine de l'orchestrateur, seulement si WEEVILS_MAIL_ADDRESS / _PASSWORD sont remplis.
 let mailBridge = ORCHESTRATOR ? startMailBridge(w, DATA_DIR) : null
+const restartMail = () => {
+  mailBridge?.stop()
+  mailBridge = ORCHESTRATOR ? startMailBridge(w, DATA_DIR) : null
+  mailSeen = mailKeys()
+}
+// Le pont et les auteurs suivent le fichier de config à chaud : un mot de passe ou un auteur saisi (dans l'app, par
+// « weevils config set » ou à la main) les met en route sans redémarrer weevils.
+const MAIL_KEY = /^\s*(WEEVILS_(?:MAIL|AUTHOR)_[A-Z0-9_]*)\s*=\s*(.*?)\s*$/
+const mailKeys = () => JSON.stringify(Object.entries(process.env).filter(([k]) => /^WEEVILS_(MAIL|AUTHOR)_/.test(k)).sort())
+let mailSeen = mailKeys()
+let mailFileKeys = new Set<string>()
+const readMailKeys = () => {
+  const fresh = new Map<string, string>()
+  try {
+    for (const line of fs.readFileSync(CONFIG_FILE, 'utf8').split('\n')) {
+      const m = MAIL_KEY.exec(line)
+      if (m) fresh.set(m[1], m[2].replace(/^["']|["']$/g, ''))
+    }
+  } catch {
+    return
+  }
+  for (const k of mailFileKeys) if (!fresh.has(k)) delete process.env[k]
+  for (const [k, v] of fresh) process.env[k] = v
+  mailFileKeys = new Set(fresh.keys())
+}
+readMailKeys()
+mailSeen = mailKeys()
+fs.watchFile(CONFIG_FILE, { interval: 3000 }, () => {
+  readMailKeys()
+  if (mailKeys() === mailSeen) return
+  resetAuthors()
+  console.log('[mail]', 'config changée : pont relu')
+  restartMail()
+})
 
 // ---------------------------------------------------------------- secret partagé (ce soir) → passkey (demain)
 
@@ -72,10 +107,7 @@ const setup = new Setup({
   shortcut: () => !!shortcutToken(),
   seen: () => hints.get().seen,
   hasHistory: () => w.snapshot().main.some((m) => m.role === 'user'),
-  startMail: () => {
-    mailBridge?.stop()
-    mailBridge = ORCHESTRATOR ? startMailBridge(w, DATA_DIR) : null
-  },
+  startMail: restartMail,
   handoff: (text, brief) => w.sendMain(text, brief),
 })
 w.setup = setup

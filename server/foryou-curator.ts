@@ -558,8 +558,8 @@ export class Curator implements ForYouCurator {
       this.milestones(now)
       if (!this.fy.wanted(now)) return Promise.resolve()
       this.stat(now)
-      if (this.deps.reservoir !== false) this.reservoir.ingest(new Set(this.storySources().map(s => s.id)), this.fy.recent(['boss', 'insight', 'improve'], 80).map(i => i.text), now, lang())
-      if (this.deps.reservoir !== false) this.reservoir.publish(now, new Set(this.storySources().map(s => s.id)), lang(), s => { this.fy.add({ id: s.id, kind: 'boss', who: 'weevboss', title: s.title, text: s.text, lang: lang() }) })
+      if (this.deps.reservoir === true) this.reservoir.ingest(new Set(this.storySources().map(s => s.id)), this.fy.recent(['boss', 'insight', 'improve'], 80).map(i => i.text), now, lang())
+      if (this.deps.reservoir === true) this.reservoir.publish(now, new Set(this.storySources().map(s => s.id)), lang(), s => { this.fy.add({ id: s.id, kind: 'boss', who: 'weevboss', title: s.title, text: s.text, lang: lang() }) })
     } catch (e) {
       console.error(`[foryou] curateur : ${(e as Error).message}`)
     }
@@ -623,7 +623,7 @@ export class Curator implements ForYouCurator {
   }
 
   private batchJob(now: number, force = false): Job | null {
-    if (this.deps.reservoir === false || (!force && (this.reservoir.queue.filter(s => s.lang === lang()).length > 24 || now - this.reservoir.filled < 2 * 60_000))) return null
+    if (this.deps.reservoir !== true || (!force && (this.reservoir.queue.filter(s => s.lang === lang()).length > 24 || now - this.reservoir.filled < 2 * 60_000))) return null
     const sources = this.storySources()
     if (!sources.length) return null
     const known = this.fy.recent(['boss', 'insight', 'improve'], 80).map(i => i.text)

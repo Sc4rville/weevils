@@ -1023,16 +1023,16 @@ describe('retired technical events', () => {
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).items.map((i: { id: string }) => i.id)).toEqual(['d:useful'])
     const restarted = make({ voiceOf: () => 'default' })
     expect(ids(restarted).some((id) => /^(commit|deploy):/.test(id))).toBe(false)
-    expect(find(restarted, 'd:useful')?.voice).toBe('default')
+    expect(find(restarted, 'd:useful')?.voice).toBeUndefined()
   })
 })
 
 
 describe('useful spoken ideas', () => {
-  it('keeps real proposals voiced and linked, but never announces a draft or a missing idea', () => {
+  it('keeps real proposals linked without automatic voice, but never announces a draft or a missing idea', () => {
     snap.optimizers = [optimizer(), optimizer({ id: 'draft', draft: true })]
     const fy = make({ voiceOf: () => 'default' })
-    expect(find(fy, 'auto:proposed:o1')).toMatchObject({ voice: 'default', open: { page: 'auto', id: 'o1' } })
+    expect(find(fy, 'auto:proposed:o1')).toMatchObject({ open: { page: 'auto', id: 'o1' } })
     expect(find(fy, 'auto:proposed:draft')).toBeUndefined()
     fy.add({ id: 'auto:proposed:missing', kind: 'boss', text: 'An idea that does not exist' })
     expect(find(fy, 'auto:proposed:missing')).toBeUndefined()
@@ -1141,7 +1141,7 @@ it('retires raw announcements hidden behind post/digest ids and refuses their re
   expect(ids(make({ voiceOf: () => 'default' }))).toEqual(['d:human'])
   const useful = fy.add({ id: 'd:useful', kind: 'boss', text: 'Le thème est en ligne (commit 2d5496f, poussé sur main).' })!
   expect(useful.text).toBe('Le thème est en ligne.')
-  expect(useful.voice).toBe('default')
+  expect(useful.voice).toBeUndefined()
 })
 
 it('coalesces concurrent actions on the same card before delivery is acknowledged', async () => {
@@ -1176,4 +1176,15 @@ describe('acknowledgements are not deliveries', () => {
     expect(find(fy, 's:s1')?.text).toContain('réparé')
     expect(make().deliveredToday().n).toBe(1)
   })
+})
+
+
+it('retires reservoir cards across reloads and does not voice generated summaries', () => {
+  const fy = make({ voiceOf: () => 'default' })
+  fy.add({ id: 'r:retired', kind: 'boss', text: 'A proposed sketch about an avatar.' })
+  fy.add({ id: 'd:summary', kind: 'boss', text: 'The checkout is fixed.' })
+  expect(find(fy, 'r:retired')).toBeUndefined()
+  expect(find(make({ voiceOf: () => 'default' }), 'r:retired')).toBeUndefined()
+  expect(find(fy, 'd:summary')?.voice).toBeUndefined()
+  expect(fy.post('Here is a useful personal message.').voice).toBe('default')
 })

@@ -145,6 +145,12 @@ sessions it briefs to `weevils show` their visual results.
 
 ### 3.5 The curator (`server/foryou-curator.ts`) — generated content, on a budget
 
+**Current user override:** the timed editorial reservoir is disabled by default after complaints about repetitive
+voice cards. Existing `r:` cards are hidden even on reload. Generated summaries, mail and automatic proposals are
+not automatically voiced; explicit personal posts retain voice. The queue remains private history, not publication.
+The reservoir mechanics below describe the retired experiment, not an active two-items-per-minute promise.
+
+
 One single-flight loop spends the model budget; publication has its own persistent queue:
 
 - While the app has requested the feed within 30 minutes, a 30-second timer publishes at most one queued story.

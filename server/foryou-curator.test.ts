@@ -970,3 +970,14 @@ it('a failed explicit probe preserves the previous backoff and is not retried on
   await c.tick()
   expect(model).toHaveBeenCalledTimes(1)
 })
+
+
+it('does not generate or publish reservoir stories by default', async () => {
+  const { Reservoir } = await import('./foryou-reservoir.ts')
+  new Reservoir(path.join(dir, 'curator.json.reservoir.json')).add([{title:'A sketch',format:'idea',text:'Try a silent storyboard where an avatar loses its shadow.',sources:['goals']}], new Set(['goals']), [], now, 'en')
+  looked()
+  logged = false
+  await makeCurator({ reservoir: undefined }).tick()
+  expect(stored().filter(i => i.id.startsWith('r:'))).toHaveLength(0)
+  expect(model).not.toHaveBeenCalled()
+})

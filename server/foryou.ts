@@ -827,7 +827,7 @@ export class ForYou {
 
   /** What the app may read of a recorded item, or null when it has nothing to show right now. */
   private view(i: Stored, snap: Snapshot, any = false): ForYouItem | null {
-    if (i.gone || technicalEvent(i.id, i.text)) return null
+    if (i.gone || i.id.startsWith('r:') || technicalEvent(i.id, i.text)) return null
     if (i.kind === 'session' && i.tone === 'result' && !i.mediaIds?.length && acknowledgementOnly(i.body || i.text)) return null
     if (i.id.startsWith('auto:proposed:')) {
       const idea = snap.optimizers?.find((o) => i.id === `auto:proposed:${o.id}`)
@@ -846,7 +846,7 @@ export class ForYou {
     if (i.moreText) out.moreText = i.moreText
     if (i.gauges?.length) out.gauges = i.gauges
     // Words of weevboss or of an outside author can be listened to, each in its own voice.
-    const voice = (i.kind === 'boss' || i.kind === 'mail') && i.text ? this.deps.voiceOf?.(i.who) : undefined
+    const voice = i.kind === 'boss' && i.id.startsWith('b:') && i.text ? this.deps.voiceOf?.(i.who) : undefined
     if (voice) out.voice = voice
     if (i.seen) out.seen = true
     if (i.actions?.length) out.actions = i.actions.map(({ id, label }): ForYouAction => ({ id, label }))

@@ -497,7 +497,7 @@ describe('for you: voice messages', () => {
     expect(transcript.open).toBe(false)
     expect(transcript.querySelector('summary')!.textContent).toContain(t().readTranscript)
     expect(transcript.querySelector('.fy-listen')).toBeNull()
-    expect(band('b2').querySelector<HTMLDetailsElement>('.fy-transcript')!.open).toBe(false)
+    expect(band('b2').querySelector('.fy-transcript')).toBeNull()
     expect(band('b2').querySelector('.fy-text')!.textContent).toBeTruthy()
     await click(listen('bo'))
     await fire('onplaying')
@@ -511,19 +511,15 @@ describe('for you: voice messages', () => {
     expect(listen('bo').classList.contains('fy-v-playing')).toBe(true)
   })
 
-  it('keeps the summary and transcript node stable when a voice arrives', async () => {
+  it('shows unvoiced content as readable text without a fake audio card', async () => {
     const item: ForYouItem = { ...base, id: 'arrival', kind: 'boss', who: 'weevboss', text: 'A useful result. More detail about the result.' }
     render(<ForYouItemView item={item} />)
-    const transcript = host.querySelector<HTMLDetailsElement>('details.fy-transcript')!
-    const summary = host.querySelector('.fy-title')!.textContent
-    expect(transcript.open).toBe(false)
-    expect(host.querySelector('.fy-boss-audio')).toBeTruthy()
+    expect(host.querySelector('details.fy-transcript')).toBeNull()
+    expect(host.querySelector('.fy-boss-audio')).toBeNull()
     expect(host.querySelector('.fy-listen')).toBeNull()
-    transcript.open = true
+    expect(host.querySelector('.fy-text')!.textContent).toBe(item.text)
     render(<ForYouItemView item={{ ...item, voice: 'nova' }} />)
-    expect(host.querySelector('details.fy-transcript')).toBe(transcript)
-    expect(transcript.open).toBe(true)
-    expect(host.querySelector('.fy-title')!.textContent).toBe(summary)
+    expect(host.querySelector<HTMLDetailsElement>('details.fy-transcript')!.open).toBe(false)
     expect(host.querySelector('.fy-listen')).toBeTruthy()
   })
 

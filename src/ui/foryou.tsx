@@ -444,9 +444,9 @@ function BossItem({ item, who, fy }: KindProps) {
       <div className="in fy-pad">
         <Who item={item} who={who} />
         {/* Audio stays mounted and independent of the optional transcript. */}
-        <div className="fy-boss-audio"><Listen item={item} who={who} /></div>
-        {summary && <div className="fy-title">{summary}</div>}
-        {item.text ? (
+        {item.voice && <div className="fy-boss-audio"><Listen item={item} who={who} /></div>}
+        {summary && (item.voice || item.title) && <div className="fy-title">{summary}</div>}
+        {item.text && item.voice ? (
           <details className="fy-transcript" key={item.id}>
             <summary>
               <span className="fy-transcript-read">{t.readTranscript}</span>

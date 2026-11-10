@@ -23,6 +23,7 @@ export async function executeOutbox(task: OutboxTask, routes: [string, RegExp, H
   } as unknown as http.ServerResponse
   await route[2](req, res, url, route[1].exec(url.pathname)!.slice(1))
   // A handler may report an error after injecting into a terminal: 400 alone does not prove rejection.
+  if (status === 404) throw new OutboxError(404, typeof result?.error === 'string' ? result.error : tr(M).missing)
   if (!ended || status >= 400) throw new Error(tr(M).uncertain)
   return result
 }

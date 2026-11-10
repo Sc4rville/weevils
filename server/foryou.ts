@@ -1,3 +1,4 @@
+import { OutboxError } from './outbox.ts'
 import { acknowledgementOnly, humanFeedItem, humanFeedText, rawEngineeringNotice } from '../shared/feed-text.ts'
 import { canonicalAlertId, feedNoticeKey, isRequestNotice, quotaReset, sessionNoticeKey } from '../shared/notices.ts'
 // « For you »: the stream next to weevboss (docs/foryou.md, contract in shared/foryou.ts). Main machine only.
@@ -1255,6 +1256,7 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
     try {
       json(res, 200, (await fn()) ?? { ok: true })
     } catch (e) {
+      if (e instanceof OutboxError) throw e
       json(res, 400, { error: (e as Error).message })
     }
   }

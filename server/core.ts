@@ -1308,7 +1308,7 @@ export class Weevils {
     if (!s) {
       // Absente de la liste parce qu'ouverte dans un terminal que weevils ne pilote pas : le dire, plutôt que « introuvable ».
       const t = this.store.get(real)
-      throw new Error(t && !this.toSession(t, Date.now()).controllable ? tr(M).unmanaged : tr(M).sessionNotFound)
+      throw new OutboxError(t ? 409 : 404, t && !this.toSession(t, Date.now()).controllable ? tr(M).unmanaged : tr(M).sessionNotFound)
     }
     if (s.tool === 'codex' && this.codexBridge.can(real)) {
       await this.codexBridge.send(real, text)

@@ -97,6 +97,11 @@
   color: var(--c);
 }
 
+/* A refused write's reason, under its field. */
+.mem-note {
+  padding-block: 12px;
+}
+
 /* No frame around the fields, as for every input: the band is enough, the caret shows where one writes. */
 .mem-add textarea:focus-visible,
 .mem-edit textarea:focus-visible {

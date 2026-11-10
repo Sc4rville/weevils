@@ -4,6 +4,8 @@
 // - « + » at the top: type, Enter keeps it.
 // - Tap a memory: it opens in place, big; its text is editable (Enter or leaving the field saves, Esc cancels), its
 //   origin (the weevil question, or « by hand ») and its date sit underneath, « forget » takes two taps.
+// - A write refused by the server (a secret, an empty text…): its short reason shows a moment as an inverted band
+//   right under the field (« + » or the open memory), then goes; the text typed in « + » stays to be fixed.
 // - Select a word or a passage of an open memory: the same question bar as everywhere else (ask.tsx), answered with the
 //   memory as context (server/explain.ts, kind memory). The weevboss logo at the bottom listens with the same context.
 
@@ -18,6 +20,20 @@ import { Shell } from './shell'
 import { getLang, useT } from '../i18n'
 import M from '../i18n/memory'
 import './memory.css'
+
+/** How long a refused write's reason stays on screen. */
+const NOTE_MS = 3200
+
+/** A refused write's reason, a moment, under the field it concerns. */
+function Note({ text }: { text: string | null }) {
+  return (
+    <Collapse open={!!text}>
+      <div className="band invert" role="alert">
+        <div className="in meta mem-note">! {text}</div>
+      </div>
+    </Collapse>
+  )
+}
 
 /** A textarea that grows with its text (and never scrolls inside). */
 function useAutosize(ref: React.RefObject<HTMLTextAreaElement | null>, value: string) {
@@ -176,9 +192,10 @@ function Forget({ onForget }: { onForget: () => void }) {
   )
 }
 
-function Item({ m, open, sel, a, onOpen, onClose, onSave, onSelect, onForget }: {
+function Item({ m, open, sel, a, note, onOpen, onClose, onSave, onSelect, onForget }: {
   m: MemoryItem
   open: boolean
+  note: string | null
   sel: string
   a: Ask
   onOpen: () => void
@@ -202,6 +219,7 @@ function Item({ m, open, sel, a, onOpen, onClose, onSave, onSelect, onForget }: 
           </span>
         </button>
       )}
+      <Note text={open ? note : null} />
       <Collapse open={open}>
         {(sel || a.asking || a.answer) && (
           <div className="in">
@@ -226,6 +244,13 @@ export function MemoryPage() {
   const [err, setErr] = useState<string | null>(null)
   const [open, setOpen] = useState<string | null>(null)
   const [sel, setSel] = useState('')
+  // A refused write: where (« add » or a memory id) and why, for a moment.
+  const [note, setNote] = useState<{ at: string; text: string } | null>(null)
+  useEffect(() => {
+    if (!note) return
+    const tm = setTimeout(() => setNote(null), NOTE_MS)
+    return () => clearTimeout(tm)
+  }, [note])
   const last = useRef(0)
 
   const load = useCallback(
@@ -278,16 +303,17 @@ export function MemoryPage() {
     if (open && items && !items.some((m) => m.id === open)) setOpen(null)
   }, [open, items])
 
-  const fail = (e: unknown) => {
-    setErr((e as Error).message)
+  // A refused write (a secret, an empty text, the server gone…): its reason a moment, next to the field.
+  const fail = (at: string) => (e: unknown) => {
+    setNote({ at, text: (e as Error).message })
     throw e
   }
   const add = async (text: string) => {
-    const r = await api.addMemory(text).catch(fail)
+    const r = await api.addMemory(text).catch(fail('add'))
     setItems((l) => [r.item, ...(l ?? []).filter((m) => m.id !== r.item.id)])
   }
   const save = (id: string) => async (text: string) => {
-    const r = await api.editMemory(id, text).catch(fail)
+    const r = await api.editMemory(id, text).catch(fail(id))
     setItems((l) => l?.map((m) => (m.id === id ? r.item : m)) ?? null)
   }
   const forget = (id: string) => () =>
@@ -297,7 +323,7 @@ export function MemoryPage() {
         setItems((l) => l?.filter((m) => m.id !== id) ?? null)
         toggle(null)
       })
-      .catch((e) => setErr((e as Error).message))
+      .catch((e) => setNote({ at: id, text: (e as Error).message }))
 
   return (
     <Shell slot={colors.__foot ?? 'p3'} kicker="weevils" title={t.title} meta={list ? (list.length ? t.count(list.length) : t.empty) : '…'} dock={<AskVoice a={a} />}>
@@ -309,6 +335,7 @@ export function MemoryPage() {
         </div>
       )}
       <AddLine onAdd={add} />
+      <Note text={note?.at === 'add' ? note.text : null} />
       {!item && (a.asking || a.answer) && (
         <div className="band qa-band">
           <div className="in">
@@ -323,6 +350,7 @@ export function MemoryPage() {
           open={m.id === open}
           sel={m.id === open ? sel : ''}
           a={a}
+          note={note?.at === m.id ? note.text : null}
           onOpen={() => toggle(m.id)}
           onClose={() => toggle(null)}
           onSave={save(m.id)}

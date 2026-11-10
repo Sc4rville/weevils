@@ -13,12 +13,14 @@ vi.mock('../api', () => ({
     memory: async () => ({ items: db.items.map((m) => ({ ...m })) }),
     addMemory: async (text: string) => {
       db.calls.push(`add ${text}`)
+      if (text.includes('sk-')) throw new Error('looks like a secret: not kept')
       const item: MemoryItem = { id: `n${db.items.length}`, text, source: 'manual', at: 9e12, updatedAt: 9e12 }
       db.items.push(item)
       return { item }
     },
     editMemory: async (id: string, text: string) => {
       db.calls.push(`edit ${id} ${text}`)
+      if (text.includes('sk-')) throw new Error('looks like a secret: not kept')
       const m = db.items.find((x) => x.id === id)!
       m.text = text
       return { item: { ...m } }
@@ -165,6 +167,42 @@ describe('memory page', () => {
     expect(closed).not.toHaveBeenCalled()
     expect(db.calls).toHaveLength(1)
     expect(field.value).toBe('wants to ship two games')
+  })
+
+  it('a refused write shows its reason a moment under its field, then it goes', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const tick = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)))
+    const notes = () => [...host.querySelectorAll('[role="alert"]')].map((n) => n.textContent)
+    try {
+      render(2)
+      await tick(30)
+      const field = host.querySelector<HTMLTextAreaElement>('.mem-add textarea')!
+      await setValue(field, 'my key is sk-abcdefghijklmnop')
+      await key(field, 'Enter')
+      await tick(30)
+      expect(notes()).toEqual(['! looks like a secret: not kept'])
+      // Right under « + », and what was typed stays to be fixed.
+      expect(host.querySelector('.mem-add')!.nextElementSibling!.textContent).toBe('! looks like a secret: not kept')
+      expect(field.value).toBe('my key is sk-abcdefghijklmnop')
+      expect(rows()).toHaveLength(2)
+      await tick(4000)
+      expect(notes()).toEqual([])
+
+      // An edit: under the open memory, which keeps its words.
+      await click(host.querySelector('.mem-row')!)
+      await tick(30)
+      const edit = host.querySelector<HTMLTextAreaElement>('.mem-edit textarea')!
+      act(() => edit.focus())
+      await setValue(edit, 'ships with sk-abcdefghijklmnop')
+      await key(edit, 'Enter')
+      await tick(30)
+      expect(host.querySelector('.mem-item.open [role="alert"]')!.textContent).toBe('! looks like a secret: not kept')
+      expect(edit.value).toBe('wants to ship a mobile game')
+      await tick(4000)
+      expect(notes()).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('forgets on the second tap only', async () => {

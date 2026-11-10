@@ -157,6 +157,13 @@ export interface H24Activity {
   canToggle: boolean
   /** Job de démo des premiers pas (server/tour.ts) : marqué comme tel, jamais confondu avec un vrai. */
   demo?: boolean
+  /** Bande auto, d'un coup d'œil : prochaine exécution, période (lue dans le planning), dernière exécution, depuis quand
+   *  la tâche existe, et la famille de son nom (projet probable, pour la ranger). */
+  nextRunAt?: number | null
+  everyMs?: number | null
+  lastRunAt?: number | null
+  since?: number | null
+  group?: string
 }
 
 /** Conversation ChatGPT / Claude.ai importée (sans ses messages). */
@@ -233,6 +240,20 @@ export interface Optimizer {
   endedAt?: number
   /** Dernière nouvelle (fin de la réponse de l'agent, raison d'attente…). */
   lastEvent?: string
+  /** 1 forte … 3 faible. */
+  priority?: 1 | 2 | 3
+  /** Durée estimée, en minutes. */
+  est?: number
+  /** queued : ce qu'elle attend (busy : un agent travaille ; load : machine chargée ; ram : mémoire ; queue : une autre tâche d'abord). */
+  waiting?: 'busy' | 'load' | 'ram' | 'queue'
+}
+
+/** La machine vue par la bande auto : charge, mémoire libre, et ce qui retient une tâche acceptée (null : libre). */
+export interface AutoMachine {
+  load: number
+  cpus: number
+  freeGb: number
+  wait: 'busy' | 'load' | 'ram' | null
 }
 
 export interface Snapshot {
@@ -265,6 +286,8 @@ export interface Snapshot {
   memoryCount?: number
   /** Tâches du h24 proposées, en attente, en cours ou finies récemment (server/optimizers.ts). Les refusées n'y sont pas. */
   optimizers?: Optimizer[]
+  /** La machine vue par la bande auto (server/optimizers.ts), sur la machine principale. */
+  autoMachine?: AutoMachine
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */
   /** siteKey : clé des pages statiques des repos (/api/site/<clé>/<repo>/), pour le navigateur intégré sans domaine de preview. */
   config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[]; siteKey?: string }

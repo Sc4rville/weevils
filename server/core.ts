@@ -22,6 +22,7 @@ import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
 import type { Memory } from './memory.ts'
 import type { Optimizers } from './optimizers.ts'
+import { parseTimerShow } from './schedule.ts'
 import { splitChips } from '../shared/setup.ts'
 import { isDemoJob, type TourKeeper } from './tour.ts'
 import TM from './i18n/tour.ts'
@@ -870,6 +871,7 @@ export class Weevils {
       pinnedRepos: this.pinnedRepos,
       memoryCount: this.memory?.count,
       optimizers: this.optimizers?.list() ?? [],
+      autoMachine: this.optimizers?.machine(),
       config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey },
     }
     return this.snap
@@ -1535,6 +1537,9 @@ export class Weevils {
           lastEvent: last.slice(0, 160) || '—',
           canToggle: false,
           ...(isDemoJob(name) ? { demo: true } : {}),
+          since: st.birthtimeMs || null,
+          lastRunAt: st.mtimeMs,
+          group: familyOf(name),
         })
       }
     } catch {
@@ -1558,19 +1563,50 @@ export class Weevils {
               runStartedAt: null,
               lastEvent: x.last ? t.lastRun(when(x.last)) : t.neverRun,
               canToggle: true,
+              nextRunAt: x.next ? Math.round(x.next / 1000) : null,
+              lastRunAt: x.last ? Math.round(x.last / 1000) : null,
+              since: unitSince(x.unit),
+              group: familyOf(x.unit.replace(/^wv-/, '')),
             })
           }
         } catch {
           /* format inattendu */
         }
       }
-      out.sort((a, b) => Number(b.runState === 'running') - Number(a.runState === 'running') || a.title.localeCompare(b.title))
-      out.splice(16)
-      if (JSON.stringify(out) !== JSON.stringify(this.h24)) {
-        this.h24 = out
-        this.bump()
+      // La période de chaque timer, lue dans son planning (OnCalendar, OnUnitActiveSec) : « / 6 h » dans la bande auto.
+      // Relue toutes les 10 min (ou quand la liste change), pas à chaque passage.
+      const timers = out.filter((a) => a.kind === 'timer').map((a) => a.id.replace(/^timer:/, ''))
+      const apply = (every: Map<string, number | null>) => {
+        for (const a of out) if (a.kind === 'timer') a.everyMs = every.get(a.id.replace(/^timer:/, '')) ?? (a.nextRunAt && a.lastRunAt && a.nextRunAt > a.lastRunAt ? a.nextRunAt - a.lastRunAt : null)
+        this.publishH24(out)
       }
+      const key = timers.join(' ')
+      const cached = this.timerEvery
+      if (!timers.length || (cached && cached.key === key && now - cached.at < 600_000)) return apply(cached?.map ?? new Map())
+      execFile('systemctl', ['--user', 'show', ...timers, '-p', 'Id', '-p', 'TimersCalendar', '-p', 'TimersMonotonic'], { timeout: 4000 }, (e2, show) => {
+        const map = e2 ? new Map<string, number | null>() : parseTimerShow(show)
+        this.timerEvery = { at: now, key, map }
+        apply(map)
+      })
     })
+  }
+
+  private timerEvery: { at: number; key: string; map: Map<string, number | null> } | null = null
+
+  private publishH24(out: H24Activity[]) {
+    out.sort((a, b) => Number(b.runState === 'running') - Number(a.runState === 'running') || a.title.localeCompare(b.title))
+    out.splice(16)
+    if (JSON.stringify(out) !== JSON.stringify(this.h24)) {
+      this.h24 = out
+      this.bump()
+    }
+  }
+
+  /** Session Claude locale lancée dans un dossier donné, avec son titre (tâches de fond de la bande auto, server/optimizers.ts). */
+  async createIn(cwd: string, title: string, text: string): Promise<{ id: string }> {
+    const id = crypto.randomUUID()
+    await this.spawn('claude', cwd, title, [...CLAUDE, '--session-id', id, text], id)
+    return { id }
   }
 
   async toggleH24(id: string) {
@@ -1652,5 +1688,15 @@ export class Weevils {
     fs.closeSync(fd)
     const binary = buf.subarray(0, 8000).includes(0)
     return { path: rel, size: st.size, binary, content: binary ? '' : buf.toString('utf8'), truncated: st.size > max }
+  }
+}
+
+/** Depuis quand un timer systemd existe : la date de son fichier d'unité (bande auto). */
+function unitSince(unit: string): number | null {
+  try {
+    const st = fs.statSync(path.join(HOME, '.config', 'systemd', 'user', unit))
+    return Math.round(st.birthtimeMs || st.mtimeMs) || null
+  } catch {
+    return null
   }
 }

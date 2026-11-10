@@ -1,3 +1,4 @@
+import { OutboxStatus } from './outbox-status'
 import { rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
 import { Notice, NoticeClose, useNotice } from './notice'
@@ -1076,6 +1077,7 @@ export function ForYouPage({ who }: { who?: string }) {
           </div>
           <button type="button" className="link fy-projects" onClick={home} aria-label={t.backToProjects}>{t.projects}</button>
         </div>
+        <OutboxStatus scope="/api/foryou/" />
         <Participants list={people} sel={sel} onPick={pick} />
       </div>
       <div ref={body} className="page-body fy-body" data-scroll onScroll={(e) => { feedScroll.set(sel, e.currentTarget.scrollTop); setReading(e.currentTarget.scrollTop > 48) }}>

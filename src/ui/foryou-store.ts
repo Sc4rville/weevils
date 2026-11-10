@@ -1,3 +1,4 @@
+import { outboxSnapshot, subscribeOutbox } from '../outbox'
 import { humanFeedItem, humanFeedText, rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { retainVoice } from './foryou-voice'
 import { feedNoticeKey, isRequestNotice, noticeKey } from '../../shared/notices.ts'
@@ -190,10 +191,11 @@ subscribeNotices(() => rebuild())
 const message = (e: unknown) => (e instanceof Error && e.message ? e.message : tr(M).failed)
 
 const actionFlights = new Set<string>()
-const acting = (id: string, card?: string) => actionFlights.has(card ?? id)
+const acting = (id: string, card?: string) => actionFlights.has(card ?? id) || outboxSnapshot().some(r => r.url.split('?')[0] === `/api/foryou/${encodeURIComponent(id)}/act` && r.card === card && (!r.eventId || r.eventId === feedNoticeKey(feed?.items.find(i => i.id === id) ?? { id } as ForYouItem)) && !['failed', 'delivered'].includes(r.status))
+subscribeOutbox(() => rebuild(), false)
 async function act(id: string, action: string, card?: string) {
   const key = card ?? id
-  if (actionFlights.has(key) || (card ? goneCards.has(card) : gone.has(id))) return
+  if (acting(id, card) || (card ? goneCards.has(card) : gone.has(id))) return
   actionFlights.add(key)
   const event = feed?.items.find((i) => i.id === id)
   const eventId = event ? feedNoticeKey(event) : undefined
@@ -202,7 +204,7 @@ async function act(id: string, action: string, card?: string) {
   errors.delete(id)
   rebuild()
   try {
-    await api.foryouAct(id, action, card)
+    await api.foryouAct(id, action, card, eventId)
     if (card) goneCards.add(card)
     else { gone.add(id); if (eventId) dismissedEvents.set(id, eventId) }
     dirs.set(id, dir)

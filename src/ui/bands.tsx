@@ -1,3 +1,4 @@
+import { OutboxStatus } from './outbox-status'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
@@ -369,6 +370,7 @@ export function AgentBand() {
 
       {/* Écrire ici n'ouvre pas la conversation : elle s'ouvre à l'envoi, pour lire la réponse. Pendant un branchement,
           le champ pose les questions du parcours, une à la fois (src/ui/setup.tsx). */}
+      <OutboxStatus scope="/api/main" />
       {flow ? <SetupComposer /> : <Composer placeholder={t.agentPlaceholder} label={t.agentLabel} onSend={send} onAttach={attach} anyFile voice sayErrors horizontal captureSuggestions draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="chevron" dir="right" />} />}
     </section>
   )

@@ -1,5 +1,7 @@
 // Client de weevilsd : appels REST + flux temps réel (SSE). Aucune donnée fictive.
 
+import { deliver, awaitDelivery } from './outbox'
+import OM from './i18n/outbox'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AskResult, Brick, Device } from '../shared/setup.ts'
 import type { Tour, TourId } from '../shared/tour.ts'
@@ -20,10 +22,11 @@ export class ApiError extends Error {
 
 let onUnauthorized: (() => void) | null = null
 
-async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
+async function call<T>(method: string, url: string, body?: unknown, messageId?: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, {
     method,
-    headers: body !== undefined ? { 'content-type': 'application/json' } : undefined,
+    headers: { ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(messageId ? { 'Idempotency-Key': messageId } : {}) },
+    signal,
     body: body !== undefined ? JSON.stringify(body) : undefined,
     credentials: 'same-origin',
   })
@@ -33,6 +36,13 @@ async function call<T>(method: string, url: string, body?: unknown): Promise<T> 
     throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText)
   }
   return data as T
+}
+
+async function send<T>(url: string, body: unknown, target?: string): Promise<T> {
+  let r = await deliver(url, body, (messageId, signal) => call<any>('POST', url, body, messageId, signal))
+  if (/\/foryou\/[^/]+\/act(?:\?|$)/.test(url) && r?.messageId) r = await awaitDelivery(r)
+  if (r?.status === 'failed' || r?.status === 'uncertain') throw new Error(r.error || tr(OM)[r.status as 'failed' | 'uncertain'])
+  return (r?.messageId ? { ok: true, id: r.result?.id ?? r.id ?? target, ...r.result, delivery: r } : r) as T
 }
 
 const enc = encodeURIComponent
@@ -57,7 +67,7 @@ export const api = {
   subagent: (id: string, subId: string) => call<SubagentDetail>('GET', `/api/sessions/${enc(id)}/subagents/${enc(subId)}`),
   screen: (id: string) => call<{ screen: string | null }>('GET', `/api/sessions/${enc(id)}/screen`),
   archive: (id: string, archived: boolean) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/archive`, { archived }),
-  send: (id: string, text: string) => call<{ id: string }>('POST', `/api/sessions/${enc(id)}/send`, { text }),
+  send: (id: string, text: string) => send<{ id: string }>(`/api/sessions/${enc(id)}/send`, { text }, id),
   /** Session coupée en plein travail : relancée (--resume + message de reprise), ou laissée. */
   resume: (id: string) => call<{ id: string }>('POST', `/api/sessions/${enc(id)}/resume`, {}),
   dismiss: (id: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/dismiss`, {}),
@@ -65,12 +75,12 @@ export const api = {
   relaySet: (o: { mode?: string; switchAt?: number; tz?: string }) => call<{ ok: true }>('POST', '/api/relay', o),
   relayRequest: (id: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/relay`, {}),
   relayDecide: (id: string, action: 'go' | 'adjust' | 'wait', text?: string) => call<{ ok: true }>('POST', `/api/relay/plans/${enc(id)}`, { action, text }),
-  attach: (id: string, text: string, files: { name: string; type: string; data: string }[]) => call<{ id: string }>('POST', `/api/sessions/${enc(id)}/attach`, { text, files }),
+  attach: (id: string, text: string, files: { name: string; type: string; data: string }[]) => send<{ id: string }>(`/api/sessions/${enc(id)}/attach`, { text, files }, id),
   transcribeInfo: () => call<{ enabled: boolean }>('GET', '/api/transcribe'),
   transcribe: (type: string, data: string, lang: string) => call<{ text: string }>('POST', '/api/transcribe', { type, data, lang }),
   key: (id: string, key: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/key`, { key }),
   create: (body: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string }) => call<{ id: string }>('POST', '/api/sessions', body),
-  main: (text: string) => call<{ id: string }>('POST', '/api/main', { text }),
+  main: (text: string) => send<{ id: string }>('/api/main', { text }),
   command: (id: string, command: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/command`, { command }),
   mainCommand: (command: string) => call<{ ok: true }>('POST', '/api/main/command', { command }),
   githubRepos: (fresh = false) => call<{ repos: GithubRepo[] }>('GET', `/api/github/repos${fresh ? '?fresh' : ''}`),
@@ -93,7 +103,7 @@ export const api = {
   shortcut: (fresh: boolean) => call<{ token: string; url: string }>(fresh ? 'POST' : 'GET', '/api/voice/shortcut', fresh ? {} : undefined),
   voices: () => call<{ enabled: boolean; voices: { id: string; name: string; gender?: string }[]; current?: string }>('GET', '/api/voices'),
   setVoice: (id: string) => call<{ ok: true }>('POST', '/api/voices', { id }),
-  mainAttach: (text: string, files: { name: string; type: string; data: string }[]) => call<{ id: string }>('POST', '/api/main/attach', { text, files }),
+  mainAttach: (text: string, files: { name: string; type: string; data: string }[]) => send<{ id: string }>('/api/main/attach', { text, files }),
   memory: () => call<{ items: MemoryItem[] }>('GET', '/api/memory'),
   addMemory: (text: string) => call<{ item: MemoryItem }>('POST', '/api/memory', { text }),
   editMemory: (id: string, text: string) => call<{ item: MemoryItem }>('PUT', `/api/memory/${enc(id)}`, { text }),
@@ -105,8 +115,8 @@ export const api = {
   foryou: () => call<ForYouFeed>('GET', `/api/foryou${inLang()}`),
   foryouSeen: (ids: string[]) => call<{ ok: true }>('POST', '/api/foryou/seen', { ids }),
   foryouDismiss: (id: string, eventId?: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/dismiss`, { eventId }),
-  foryouAct: (id: string, action: string, card?: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/act${inLang()}`, { action, card }),
-  foryouReply: (id: string, text: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/reply${inLang()}`, { text }),
+  foryouAct: (id: string, action: string, card?: string, eventId?: string) => send<{ ok: true }>(`/api/foryou/${enc(id)}/act${inLang()}`, { action, card, eventId }),
+  foryouReply: (id: string, text: string) => send<{ ok: true }>(`/api/foryou/${enc(id)}/reply${inLang()}`, { text }),
   foryouMore: (id: string) => call<{ text: string }>('POST', `/api/foryou/${enc(id)}/more${inLang()}`, {}),
   createOptimizer: () => call<{ item: Optimizer }>('POST', '/api/optimizers', {}),
   /** rev : la version à l'écran (le serveur refuse, 409, si la tâche a été réécrite depuis). */

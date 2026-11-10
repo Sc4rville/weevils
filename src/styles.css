@@ -2737,3 +2737,7 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .session-page .page-dock { height: 56px; }
 .session-page .page-main:has(> .page-dock) > .page-body > .fill { min-height: 12px; }
 .session-page .session-heading .h2 { font-size: 1.25rem; }
+
+.outbox-status { flex: none; font-size: .8125rem; line-height: 1.35; padding-block: 6px; }
+.outbox-status > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.outbox-status .link { min-height: 28px; }

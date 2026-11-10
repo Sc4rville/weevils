@@ -46,7 +46,7 @@ export default defineMessages({
     replyTo: (who: string) => `répondre à ${who}`,
     replyLabel: (who: string, what: string) => `réponse à ${who} · ${what}`,
     send: 'envoyer',
-    sent: 'envoyé',
+    sent: 'accepté',
     sending: 'envoi…',
     failed: 'ça n’a pas marché, réessaie',
 
@@ -109,7 +109,7 @@ export default defineMessages({
     replyTo: (who: string) => `reply to ${who}`,
     replyLabel: (who: string, what: string) => `reply to ${who} · ${what}`,
     send: 'send',
-    sent: 'sent',
+    sent: 'accepted',
     sending: 'sending…',
     failed: 'that didn’t work, try again',
 

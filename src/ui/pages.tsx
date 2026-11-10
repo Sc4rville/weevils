@@ -1,3 +1,4 @@
+import { OutboxStatus } from './outbox-status'
 import { noticeKey, sessionNoticeKey } from '../../shared/notices.ts'
 import { dismissNotice } from './notice-store'
 import { Notice } from './notice'
@@ -278,6 +279,7 @@ function SessionPage({ id }: { id: string }) {
       side={preview.open ? <Preview url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false, full: false })} full={preview.full} onFull={(full) => setPreview({ full })} /> : undefined}
       foot={
         <>
+          <OutboxStatus scope={`/api/sessions/${encodeURIComponent(id)}/`} />
           <FootError text={err} />
           <Composer
             placeholder={s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly}

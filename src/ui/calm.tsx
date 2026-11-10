@@ -1,4 +1,5 @@
-import { noticeKey } from '../../shared/notices.ts'
+import { dismissNotice } from './notice-store'
+import { noticeKey, sessionNoticeKey } from '../../shared/notices.ts'
 import { Notice } from './notice'
 import { motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type TouchEvent } from 'react'
@@ -157,6 +158,7 @@ export function CalmConv({ id }: { id: string }) {
         else await api.main(text)
       } else if (s) {
         const r = files.length ? await api.attach(s.id, text, files) : await api.send(s.id, text)
+        if (s.status === 'needs_user' || s.status === 'interrupted') dismissNotice(sessionNoticeKey(s))
         if (r.id !== id) replace({ kind: 'calmconv', id: r.id })
       }
     } catch (e) {

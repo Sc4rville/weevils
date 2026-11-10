@@ -7,10 +7,10 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RelayPlan, RelayView, Session, Snapshot } from '../../shared/api.ts'
 
-const calls = vi.hoisted(() => ({ decide: [] as unknown[][], set: [] as unknown[], request: [] as string[], pushed: [] as unknown[] }))
+const calls = vi.hoisted(() => ({ fail: false, decide: [] as unknown[][], set: [] as unknown[], request: [] as string[], pushed: [] as unknown[] }))
 vi.mock('../api', () => ({
   api: {
-    relayDecide: async (...a: unknown[]) => (calls.decide.push(a), { ok: true }),
+    relayDecide: async (...a: unknown[]) => { calls.decide.push(a); if (calls.fail) throw new Error('network down'); return { ok: true } },
     relaySet: async (o: unknown) => (calls.set.push(o), { ok: true }),
     relayRequest: async (id: string) => (calls.request.push(id), { ok: true }),
     session: async () => Promise.reject(new Error('absent')),
@@ -64,6 +64,7 @@ const button = (label: string, within: Element = host) => [...within.querySelect
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   resetNotices()
+  calls.fail = false
   calls.decide = []
   calls.set = []
   calls.request = []
@@ -116,15 +117,11 @@ describe('relais Codex', () => {
     render(<RelayBand />, snap({ ...r, limit: { ...r.limit!, since: NOW + 60_000 } }))
     expect(host.querySelector('.relay-band')).not.toBeNull()
   })
-  it('closing a session relay notification does not approve or refuse the plan', async () => {
-    const r = relay()
-    render(<ThreadPlans />, snap(r))
-    await act(async () => host.querySelector<HTMLButtonElement>('.relay-plan .notice-close')!.click())
-    expect(host.querySelectorAll('.relay-plan')).toHaveLength(1)
-    expect(host.querySelector('.relay-all')).toBeNull()
+  it('plans use their decisions, without a cross on every request', () => {
+    render(<ThreadPlans />, snap(relay()))
+    expect(host.querySelectorAll('.relay-plan')).toHaveLength(2)
+    expect(host.querySelector('.relay-plan .notice-close')).toBeNull()
     expect(calls.decide).toEqual([])
-    render(<ThreadPlans />, snap(r))
-    expect(host.querySelectorAll('.relay-plan')).toHaveLength(1)
   })
 
   it('vue groupée : chaque plan avec valider / ajuster / attendre Claude, et tout valider d’un coup', async () => {
@@ -147,15 +144,34 @@ describe('relais Codex', () => {
     act(() => button('envoyer', cards[1]).click())
     await flush()
     expect(calls.decide.at(-1)).toEqual(['s2', 'adjust', 'ne touche pas au CI'])
-    act(() => button('attendre Claude', cards[1]).click())
-    await flush()
-    expect(calls.decide.at(-1)).toEqual(['s2', 'wait', undefined])
+    expect(host.querySelectorAll('.relay-plan')).toHaveLength(0)
+    render(<RelayPage />, snap(relay()))
+    expect(host.querySelectorAll('.relay-plan')).toHaveLength(0)
+    // A new request, even for the same session, can notify again.
+    render(<RelayPage />, snap(relay({ plans: [plan({ at: NOW + 1 }), plan({ sessionId: 's2', at: NOW + 1 })] })))
     act(() => button('tout valider').click())
     await flush()
     expect(calls.decide.at(-1)).toEqual(['all', 'go'])
-    act(() => button('tout laisser à Claude').click())
-    await flush()
+    expect(host.querySelectorAll('.relay-plan')).toHaveLength(0)
+  })
+
+  it('failed individual and grouped decisions retain the cards, show the error and allow retry', async () => {
+    calls.fail = true
+    const snapshot = snap(relay())
+    render(<RelayPage />, snapshot)
+    await act(async () => button('valider', host.querySelector('.relay-plan')!).click())
+    expect(host.querySelectorAll('.relay-plan')).toHaveLength(2)
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('network down')
+    expect(button('valider', host.querySelector('.relay-plan')!).disabled).toBe(false)
+    await act(async () => button('tout valider').click())
+    expect(host.querySelectorAll('.relay-plan')).toHaveLength(2)
+    expect(host.querySelector('.relay-all [role="alert"]')?.textContent).toContain('network down')
+    calls.fail = false
+    await act(async () => button('tout laisser à Claude').click())
     expect(calls.decide.at(-1)).toEqual(['all', 'wait'])
+    expect(host.querySelectorAll('.relay-plan')).toHaveLength(0)
+    render(<RelayPage />, snapshot)
+    expect(host.querySelectorAll('.relay-plan')).toHaveLength(0)
   })
 
   it('réglage : automatique / proposer un plan / jamais, et le seuil de bascule', async () => {

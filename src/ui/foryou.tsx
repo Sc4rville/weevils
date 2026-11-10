@@ -1,4 +1,4 @@
-import { feedNoticeKey, noticeKey } from '../../shared/notices.ts'
+import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
 import { Notice, NoticeClose, useNotice } from './notice'
 // « Pour toi » : the stream next to weevboss, full screen. Every item is a full-width band in its own colour
 // (project, author, weevboss, or the colour of what it says: done, asks, cut), one renderer per kind (docs/foryou.md §2.1).
@@ -779,11 +779,12 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
     return () => clearTimeout(timer)
   }, [compact, item.id, item.seen, inView, markSeen])
 
+  const closable = closableFeedNotice(item)
   if (hidden) return null
   if (compact) {
     return (
-      <div className={`${bandClass(item)} fy-strip notice-shell`} style={style} data-fy={item.id}>
-        <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />
+      <div className={`${bandClass(item)} fy-strip${closable ? ' notice-shell' : ''}`} style={style} data-fy={item.id}>
+        {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
         <div className="in fy-strip-in">
           <span className="dot fy-dot" aria-hidden />
           {item.kind === 'proposals' && (
@@ -800,8 +801,8 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
   const Kind = KINDS[item.kind]
   const err = fy.error(item.id)
   return (
-    <article ref={band} className={`${bandClass(item)} fy-item notice-shell${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-kind={item.kind}>
-      <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />
+    <article ref={band} className={`${bandClass(item)} fy-item${closable ? ' notice-shell' : ''}${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-kind={item.kind}>
+      {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
       {Kind && <Kind item={item} who={who} project={project} inView={inView} fy={fy} />}
       {err && (
         <Notice eventId={noticeKey('error:foryou', location.pathname, location.hash, err)} className="fy-err" role="alert">

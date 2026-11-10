@@ -1,4 +1,4 @@
-import { feedNoticeKey } from '../../shared/notices.ts'
+import { feedNoticeKey, isRequestNotice, noticeKey } from '../../shared/notices.ts'
 import { dismissNotice, isNoticeDismissed, subscribeNotices, resetNotices } from './notice-store'
 // « Pour toi » : one store for the whole app (the top band's preview and the full-screen page read the same stream,
 // fetched once). It refetches GET /api/foryou when the snapshot's revision changes, and never calls the api when the
@@ -87,7 +87,7 @@ function current(): ForYouItem[] {
     if (gone.has(it.id) || isNoticeDismissed(feedNoticeKey(it))) return []
     let x = it
     if (it.cards) {
-      const cards = it.cards.filter((c) => !goneCards.has(c.id))
+      const cards = it.cards.filter((c) => !goneCards.has(c.id) && !isNoticeDismissed(noticeKey('proposal-card', c.id)))
       if (!cards.length) return []
       if (cards.length !== it.cards.length) x = { ...x, cards }
     }
@@ -185,20 +185,24 @@ subscribeNotices(() => rebuild())
 const message = (e: unknown) => (e instanceof Error && e.message ? e.message : tr(M).failed)
 
 async function act(id: string, action: string, card?: string) {
+  const event = feed?.items.find((i) => i.id === id)
+  const eventId = event ? feedNoticeKey(event) : undefined
   const dir = action === 'refuse' ? -1 : 1
   const left: Left = action === 'refuse' ? 'dismissed' : action === 'accept' || action === 'resume' ? 'launched' : 'sent'
   errors.delete(id)
   if (card) goneCards.add(card)
-  else gone.add(id)
+  else { gone.add(id); if (eventId) dismissedEvents.set(id, eventId) }
   dirs.set(id, dir)
   lefts.set(id, left)
   if (card) dirs.set(card, dir)
   rebuild()
   try {
     await api.foryouAct(id, action, card)
+    if (card) dismissNotice(noticeKey('proposal-card', card))
+    else if (eventId) { dismissedEvents.set(id, eventId); dismissNotice(eventId) }
   } catch (e) {
     if (card) goneCards.delete(card)
-    else gone.delete(id)
+    else { gone.delete(id); dismissedEvents.delete(id) }
     errors.set(id, message(e))
     rebuild()
   }
@@ -223,7 +227,12 @@ async function dismiss(id: string) {
 }
 
 async function reply(id: string, text: string) {
+  const event = feed?.items.find((i) => i.id === id)
   await api.foryouReply(id, text)
+  if (event && isRequestNotice(event)) {
+    const eventId = feedNoticeKey(event)
+    dismissNotice(eventId)
+  }
 }
 
 function flushSeen() {

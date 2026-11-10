@@ -2,6 +2,8 @@
 // reply, the task as rewritten before the snapshot follows, what changed (it flashes), and ✓ / × answered once for both.
 import { createContext, createElement, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Optimizer, OptimizerField } from '../../shared/api.ts'
+import { noticeKey } from '../../shared/notices.ts'
+import { dismissNotice } from './notice-store'
 import { api, ApiError } from '../api'
 import { tr } from '../i18n'
 import M from '../i18n/h24'
@@ -43,7 +45,7 @@ export interface Talks {
    *  ones fold away. */
   decided: ReadonlyMap<string, 'yes' | 'no'>
   /** ✓ (the version on screen, its rev) or ×. False when the tap came too soon after a rewrite or during one. */
-  answer: (o: Optimizer, yes: boolean) => boolean
+  answer: (o: Optimizer, yes: boolean, onSuccess?: () => void) => boolean
 }
 
 export const TalkCtx = createContext<Talks | null>(null)
@@ -153,11 +155,16 @@ export function useTalks(optimizers: Optimizer[] | undefined): Talks {
     const s = stales.get(o.id)
     return !!s && (s.o.rev ?? 0) === (o.rev ?? 0) && Date.now() - s.at < STALE_MS
   }
-  const answer = (o: Optimizer, yes: boolean) => {
+  const answer = (o: Optimizer, yes: boolean, onSuccess?: () => void) => {
     // Just rewritten (the card changed under the finger), or being rewritten: the tap was not meant for ✓ or ×.
     if ((yes && o.draft) || performance.now() - (landed.current.get(o.id) ?? -Infinity) < SETTLE_MS || (yes && (inflight.current.has(o.id) || isStale(o)))) return false
     setDecided((m) => new Map(m).set(o.id, yes ? 'yes' : 'no'))
     void (yes ? api.acceptOptimizer(o.id, o.rev ?? 0) : api.refuseOptimizer(o.id))
+      .then(() => {
+        dismissNotice(noticeKey('proposal', o.id))
+        dismissNotice(noticeKey('proposal-card', `o:${o.id}`))
+        onSuccess?.()
+      })
       .catch((e) => {
         setDecided((m) => without(m, o.id))
         // Rewritten elsewhere (another screen) or being rewritten: it comes back, what changed flashes once the new

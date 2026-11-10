@@ -11,7 +11,7 @@ let root: Root
 let host: HTMLDivElement
 beforeEach(() => {
   resetNotices()
-  calls.key.mockClear()
+  calls.key.mockReset()
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
@@ -34,15 +34,25 @@ it('working sessions and ordinary composers never produce an attention band', as
   }
 })
 
-it('closing a session question neither answers it nor closes the session; only a new request notifies again', async () => {
-  const s = session('codex', { noticeId: 'request-one' })
-  await act(async () => root.render(<SessionQuestion session={s} onError={() => {}} />))
-  await act(async () => host.querySelector<HTMLButtonElement>('.notice-close')!.click())
-  expect(host.textContent).toBe('')
-  expect(s.status).toBe('needs_user')
+it('a real question shows its answers without an extra dismissal cross', async () => {
+  await act(async () => root.render(<SessionQuestion session={session('codex')} onError={() => {}} />))
+  expect(host.querySelector('.notice-close')).toBeNull()
+  expect(host.querySelectorAll('.choice-band')).toHaveLength(2)
   expect(calls.key).not.toHaveBeenCalled()
-  await act(async () => root.render(<SessionQuestion session={{ ...s, lastActivityAt: Date.now(), attention: 'same question refined' }} onError={() => {}} />))
-  expect(host.textContent).toBe('')
-  await act(async () => root.render(<SessionQuestion session={{ ...s, noticeId: 'request-two' }} onError={() => {}} />))
+})
+
+it.each(['claude', 'codex'] as const)('%s answers retire only after success; failure is retryable and the next question still appears', async (tool) => {
+  const s = session(tool, { noticeId: 'one' }), errors: string[] = []
+  const render = async (value = s) => act(async () => root.render(<SessionQuestion session={value} onError={e => errors.push(e)} />))
+  await render()
+  calls.key.mockRejectedValueOnce(new Error('offline'))
+  await act(async () => host.querySelector<HTMLButtonElement>('.choice-band')!.click())
+  expect(errors.filter(Boolean)).toEqual(['offline'])
+  expect(host.querySelector<HTMLButtonElement>('.choice-band')!.disabled).toBe(false)
+  await act(async () => host.querySelector<HTMLButtonElement>('.choice-band')!.click())
+  expect(host.querySelector('.ask')).toBeNull()
+  await render()
+  expect(host.querySelector('.ask')).toBeNull()
+  await render({ ...s, noticeId: 'two' })
   expect(host.querySelector('.ask')).not.toBeNull()
 })

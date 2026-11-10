@@ -278,6 +278,7 @@ describe('session results', () => {
     transcripts.set('h1', { headless: true })
     transcripts.set('c1', { originator: 'codex_exec' })
     const out = [
+      session({ id: 'archived-case', archived: true }),
       session({ id: 't1' }),
       session({ id: 't2', title: '[test] remote probe', machineId: 'pc' }),
       session({ id: 'h1' }),
@@ -864,13 +865,15 @@ describe('routes', () => {
     expect(fy.lastWanted).toBe(T0)
     expect(await call(fy, 'POST', '/api/foryou/seen', { ids: [id] })).toEqual({ status: 200, body: { ok: true } })
     expect(find(fy, id)?.seen).toBe(true)
-    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(id)}/reply`, { text: 'ok' })).toEqual({ status: 200, body: { ok: true } })
-    expect(host.sendMain).toHaveBeenCalledWith('ok', expect.any(String))
     expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(id)}/reply`, { text: '' })).toEqual({ status: 400, body: { error: M.en.emptyText } })
     expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(id)}/more`)).toEqual({ status: 400, body: { error: M.en.noMore } })
     expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(id)}/act?lang=fr`, { action: 'nope' })).toEqual({ status: 400, body: { error: M.fr.noAction } })
-    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(id)}/act`, { action: 'a1' })).toEqual({ status: 200, body: { ok: true } })
-    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(id)}/act`, { action: 'a1' })).toEqual({ status: 404, body: { error: M.en.notFound } })
+    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(id)}/reply`, { text: 'ok' })).toEqual({ status: 200, body: { ok: true } })
+    expect(host.sendMain).toHaveBeenCalledWith('ok', expect.any(String))
+    expect(find(fy, id)).toBeUndefined()
+    const actionable = fy.post('Another request.', [{ label: 'Go', brief: 'do it' }]).id
+    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(actionable)}/act`, { action: 'a1' })).toEqual({ status: 200, body: { ok: true } })
+    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(actionable)}/act`, { action: 'a1' })).toEqual({ status: 404, body: { error: M.en.notFound } })
     expect(await call(fy, 'POST', '/api/foryou/b%3Anope/dismiss')).toEqual({ status: 404, body: { error: M.en.notFound } })
     // Ids with colons travel encoded.
     snap.optimizers = [optimizer({ id: 'bad', state: 'failed', endedAt: T0 })]
@@ -1063,5 +1066,38 @@ describe('dismissed notification events', () => {
     now += REFRESH_MS + 1
     again.feed(); await flush()
     expect(again.feed().items.filter((i) => i.kind === 'alert')).toHaveLength(1)
+  })
+})
+
+
+describe('answered request persistence', () => {
+  it('keeps failed questions, persists a successful reply over restart/refinement and accepts a new event', async () => {
+    const fy = make()
+    const q = session({ status: 'needs_user', noticeId: 'q-one', attention: 'Go?' })
+    snap.sessions = [q]
+    fy.sessionTurn(q, 'question')
+    host.send.mockRejectedValueOnce(new Error('offline'))
+    await expect(fy.reply('s:s1', 'yes')).rejects.toThrow('offline')
+    expect(find(fy, 's:s1')).toBeDefined()
+    await fy.reply('s:s1', 'yes')
+    expect(find(fy, 's:s1')).toBeUndefined()
+    const again = make()
+    again.sessionTurn({ ...q, attention: 'Go, refined?' }, 'question')
+    expect(find(again, 's:s1')).toBeUndefined()
+    snap.sessions = [{ ...q, noticeId: 'q-two' }]
+    again.sessionTurn(snap.sessions[0], 'question')
+    expect(find(again, 's:s1')).toMatchObject({ eventId: 'q-two' })
+  })
+  it('a successful direct session response resolves only the request it answered', () => {
+    const fy = make()
+    const old = session({ status: 'needs_user', noticeId: 'old', attention: 'Old?' })
+    const next = { ...old, noticeId: 'new', attention: 'New?' }
+    snap.sessions = [next]
+    fy.sessionTurn(next, 'question')
+    fy.resolveSession(old)
+    expect(find(fy, 's:s1')).toMatchObject({ eventId: 'new' })
+    fy.resolveSession(next)
+    expect(find(fy, 's:s1')).toBeUndefined()
+    expect(find(make(), 's:s1')).toBeUndefined()
   })
 })

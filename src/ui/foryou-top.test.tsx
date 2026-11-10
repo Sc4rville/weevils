@@ -245,9 +245,10 @@ describe('l’aperçu de « pour toi »', () => {
   })
 
   it('each strip opens the stream; its independent close does not navigate', async () => {
-    net.feed = feedOf([item('a'), item('b')])
+    net.feed = feedOf([item('a', { kind: 'alert', live: true }), item('b')])
     render(snap({ rev: 1, unseen: 2 }), <ForYouPeek />)
     await flush()
+    expect(host.querySelector('[data-fy="b"] .notice-close')).toBeNull()
     await act(async () => host.querySelector<HTMLButtonElement>('.fyt-open')!.click())
     expect(pushed).toEqual([{ kind: 'foryou' }])
     await act(async () => host.querySelector<HTMLButtonElement>('.notice-close')!.click())

@@ -14,8 +14,8 @@ export function NoticeClose({ onClose, about }: { onClose: () => void; about?: s
   return <button type="button" className="notice-close" aria-label={about ? t.closeAbout(about.slice(0, 100)) : t.close} title={t.close} onKeyDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose() }}><Icon name="close" /></button>
 }
 /** Closing changes presentation only. No session action is called here. */
-export const Notice = forwardRef<HTMLDivElement, ComponentProps<'div'> & { eventId: string; about?: string }>(function Notice({ eventId, about, children, className = '', ...props }, ref) {
+export const Notice = forwardRef<HTMLDivElement, ComponentProps<'div'> & { eventId: string; about?: string; closable?: boolean }>(function Notice({ eventId, about, closable = true, children, className = '', ...props }, ref) {
   const { hidden, dismiss } = useNotice(eventId)
   if (hidden) return null
-  return <div {...props} ref={ref} className={`notice-shell ${className}`}><NoticeClose onClose={dismiss} about={about} />{children}</div>
+  return <div {...props} ref={ref} className={`${closable ? 'notice-shell' : ''} ${className}`}>{closable && <NoticeClose onClose={dismiss} about={about} />}{children}</div>
 })

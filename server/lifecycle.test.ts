@@ -685,3 +685,36 @@ describe('stable question notification identity', () => {
     expect(one()?.noticeId).not.toBe(first.noticeId)
   })
 })
+
+
+describe('session archive', () => {
+  it('persists a reversible archive without touching the agent process or transcript', () => {
+    add(transcript({ phase: 'working' }))
+    w.panes = [pane()]
+    w.archive('s1', true)
+    expect(w.snapshot().sessions.find((s) => s.id === 's1')).toMatchObject({ archived: true, status: 'working' })
+    expect(mux.killWv).not.toHaveBeenCalled()
+    expect(mux.sendText).not.toHaveBeenCalled()
+    expect(mux.sendKey).not.toHaveBeenCalled()
+    const again = new Weevils()
+    again.store.byFile.set('/nowhere/s1.jsonl', transcript({ phase: 'working' }))
+    again.panes = [pane()]
+    expect(again.snapshot().sessions.find((s) => s.id === 's1')?.archived).toBe(true)
+    again.archive('s1', false)
+    expect(again.snapshot().sessions.find((s) => s.id === 's1')?.archived).toBeUndefined()
+    expect(again.panes).toHaveLength(1)
+    expect(again.store.get('s1')).toBeDefined()
+    expect(mux.killWv).not.toHaveBeenCalled()
+  })
+})
+
+it('keeps a newly archived Codex pane archived when its transcript gets linked', () => {
+  w.panes = [pane({ tool: 'codex', sessionId: undefined })]
+  w.archive(PANE, true)
+  add(transcript({ id: 'linked', tool: 'codex', openedAt: NOW - MIN }))
+  ;(w as unknown as { linkCodexPanes(): void }).linkCodexPanes()
+  expect(w.snapshot().sessions.find((s) => s.id === 'linked')?.archived).toBe(true)
+  w.archive('linked', false)
+  expect(w.snapshot().sessions.find((s) => s.id === 'linked')?.archived).toBeUndefined()
+  expect(mux.killWv).not.toHaveBeenCalled()
+})

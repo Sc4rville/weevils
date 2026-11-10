@@ -139,6 +139,7 @@ interface Episode {
   probedAt?: number
 }
 interface Plan {
+  resolved?: boolean
   sessionId: string
   title: string
   projectId: string
@@ -424,6 +425,7 @@ export class Relay {
         ...(p.text && (p.gen === 'todo' || p.gen === 'running') ? { refreshing: true } : {}),
         ...(p.error ? { error: p.error } : {}),
         at: p.at,
+        ...(p.resolved ? { resolved: true } : {}),
         ...(p.auto ? { auto: true } : {}),
         ...(p.relayTo ? { relayTo: this.host.resolve(p.relayTo) } : {}),
       }))
@@ -458,7 +460,7 @@ export class Relay {
   /** go: approved (all: every plan on the table); adjust: the plan is rewritten with the user's note; wait: Claude will do it. */
   async decide(id: string, action: string, text?: string): Promise<{ ok: true }> {
     const t = tr(R)
-    const list = id === 'all' ? this.s.plans.filter((p) => p.phase === 'open') : this.s.plans.filter((p) => p.sessionId === id && (p.phase === 'open' || p.phase === 'wait'))
+    const list = id === 'all' ? this.s.plans.filter((p) => p.phase === 'open' && !p.resolved) : this.s.plans.filter((p) => p.sessionId === id && (p.phase === 'open' || p.phase === 'wait'))
     if (!list.length) throw new Error(t.noPlan)
     if (action !== 'wait' && !this.deps.codexReady()) throw new Error(t.noCodex)
     for (const p of list) {
@@ -474,8 +476,9 @@ export class Relay {
         if (this.s.episode) p.phase = 'wait'
         else await this.backToClaude(p)
       }
+      p.resolved = true
+      this.changed()
     }
-    this.changed()
     void this.tick()
     return { ok: true }
   }
@@ -762,6 +765,7 @@ export class Relay {
 
   private open(p: Plan, s: Session, now: number) {
     p.phase = 'open'
+    delete p.resolved
     p.episode = this.s.episode?.since ?? now
     p.at = now
     p.said = false
@@ -812,9 +816,11 @@ export class Relay {
           // Dated from the start of the reading: what the session did meanwhile is not in the plan.
           p.textAt = now
           p.gen = 'idle'
+          if (p.resolved && p.phase === 'open') { delete p.resolved; p.at = Math.max(this.now(), p.at + 1) }
           delete p.error
           console.log(`[relais] plan écrit par Codex pour ${p.sessionId.slice(0, 8)} (${p.text.length} caractères)`)
         } catch (e) {
+          if (p.resolved) { delete p.resolved; p.at = Math.max(this.now(), p.at + 1) }
           p.gen = 'failed'
           p.failedAt = now
           p.error = tr(R).planFailed
@@ -846,6 +852,8 @@ export class Relay {
           console.log(`[relais] ${p.sessionId.slice(0, 8)} → Codex (${to}) · « ${p.title} »`)
         } catch (e) {
           p.phase = 'open'
+          delete p.resolved
+          p.at = Math.max(this.now(), p.at + 1)
           p.error = (e as Error).message
           console.error(`[relais] lancement du relais de ${p.sessionId.slice(0, 8)} : ${(e as Error).message}`)
         } finally {
@@ -891,7 +899,7 @@ export class Relay {
       this.changed()
     }
     if (this.s.mode !== 'ask') return
-    const open = this.s.plans.filter((p) => p.phase === 'open')
+    const open = this.s.plans.filter((p) => p.phase === 'open' && !p.resolved)
     if (!open.length || open.some((p) => p.gen === 'todo' || p.gen === 'running') || open.every((p) => p.said)) return
     const fresh = open.filter((p) => !p.said && p.text)
     for (const p of open) p.said = true

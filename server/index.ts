@@ -626,6 +626,10 @@ const routes: [string, RegExp, Handler][] = [
     const body = await readBody(req)
     json(res, 200, await w.newRepo(String(body.name ?? '').trim(), String(body.description ?? '')))
   }],
+  ['POST', /^\/api\/sessions\/([^/]+)\/archive$/, async (req, res, _u, [id]) => {
+    const body = await readBody(req)
+    json(res, 200, w.archive(decodeURIComponent(id), body.archived !== false))
+  }],
   ['POST', /^\/api\/sessions\/([^/]+)\/close$/, async (_req, res, _u, [id]) => json(res, 200, await w.close(decodeURIComponent(id)))],
   // Session coupée en plein travail : la reprendre (--resume + message de reprise) ou la laisser.
   ['POST', /^\/api\/sessions\/([^/]+)\/resume$/, async (_req, res, _u, [id]) => json(res, 200, await w.resume(decodeURIComponent(id)))],
@@ -648,9 +652,15 @@ const routes: [string, RegExp, Handler][] = [
     const body = await readBody(req)
     const call = { action: String(body.action ?? ''), text: typeof body.text === 'string' ? body.text : undefined }
     if (id === 'all') {
-      // Tout valider (ou tout laisser à Claude) : ici et sur chaque machine, celles qui n'ont aucun plan ne disent rien.
-      if (!isLocal(req)) for (const r of w.remotes) if (r.online) void r.call('POST', '/api/relay/plans/all', call).catch(() => undefined)
-      return json(res, 200, await relay.decide('all', call.action, call.text).catch((e) => (w.remotes.length ? { ok: true } : Promise.reject(e))))
+      // A successful reply means every participating machine accepted its decision.
+      // Skip machines with no request; never disguise a real failure as success.
+      const pending = (plans: ReturnType<typeof relay.view>['plans']) => plans.some((p) => !p.resolved && (p.state === 'ready' || p.state === 'failed' || p.state === 'preparing'))
+      const decisions: Promise<unknown>[] = []
+      if (pending(relay.view().plans)) decisions.push(relay.decide('all', call.action, call.text))
+      if (!isLocal(req)) for (const r of w.remotes) if (r.online && pending(r.snap?.relay?.plans ?? [])) decisions.push(r.call('POST', '/api/relay/plans/all', call))
+      if (!decisions.length) decisions.push(relay.decide('all', call.action, call.text))
+      await Promise.all(decisions)
+      return json(res, 200, { ok: true })
     }
     const remote = w.remoteFor(id)
     json(res, 200, remote ? await remote.call('POST', `/api/relay/plans/${encodeURIComponent(id)}`, call) : await relay.decide(id, call.action, call.text))

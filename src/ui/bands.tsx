@@ -6,6 +6,7 @@ import type { Brick } from '../../shared/setup.ts'
 import { api } from '../api'
 import { tr, useT } from '../i18n'
 import M from '../i18n/bands'
+import NM from '../i18n/notices'
 import D from '../i18n/devil'
 import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
@@ -395,7 +396,7 @@ export function ProjectBand({ project }: { project: Project }) {
   const mode = expanded === null ? 'normal' : expanded === project.id ? 'open' : 'mini'
   // Les « terminées » : ouvertes ou fermées à la main, pour la vue en cours (un changement de vue rend la règle par défaut).
   const [doneSet, setDoneSet] = useState<{ v: boolean; mode: string } | null>(null)
-  const sessions = snap.sessions.filter((s) => s.projectId === project.id)
+  const sessions = snap.sessions.filter((s) => !s.archived && s.projectId === project.id)
   // Une ligne ne change pas de place parce qu'une autre session écrit (le serveur les range par activité) : ce qui
   // travaille en tête, puis l'ordre déjà affiché, une nouvelle session en tête des siennes. Rien ne bouge sous le doigt.
   const shownRows = useRef<string[]>([])
@@ -663,6 +664,7 @@ function NotifyLine() {
 }
 
 export function FootBand() {
+  const nt = useT(NM)
   const t = useT(M)
   const { snap, theme, setTheme, offline, colors, logout, push } = useApp()
   return (
@@ -679,6 +681,7 @@ export function FootBand() {
         </Line>
       ))}
       <UsageLine />
+      {snap.sessions.some((s) => s.archived) && <Line ch="↓" onClick={() => push({ kind: 'archived' })}>{nt.archived}</Line>}
       <Line ch="+" onClick={() => push({ kind: 'new', projectId: '__any' })}>
         {t.newSessionElsewhere}
       </Line>

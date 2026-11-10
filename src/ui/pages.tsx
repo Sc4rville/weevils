@@ -1,4 +1,5 @@
 import { noticeKey, sessionNoticeKey } from '../../shared/notices.ts'
+import { dismissNotice } from './notice-store'
 import { Notice } from './notice'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionDetail, Tool } from '../../shared/api.ts'
@@ -6,6 +7,8 @@ import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
 import { Collapse, Composer, Line, Messages, ResumeButton, StatusChar, Working, type Attachment } from './bits'
 import { Background } from './subagents'
+import { SessionArchiveAction } from './session-archive'
+import NM from '../i18n/notices'
 import { SessionQuestion } from './session-question'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
@@ -32,6 +35,8 @@ import { AutoPage, AutoRunPage } from './auto-page'
 
 export function PageView({ page }: { page: Page }) {
   switch (page.kind) {
+    case 'archived':
+      return <ArchivedSessions />
     case 'session':
       return <SessionPage id={page.id} />
     case 'files':
@@ -77,6 +82,20 @@ export function PageView({ page }: { page: Page }) {
     case 'autorun':
       return <AutoRunPage id={page.id} at={page.at} />
   }
+}
+
+function ArchivedSessions() {
+  const { snap, push } = useApp()
+  const t = useT(NM)
+  const list = snap.sessions.filter((s) => s.archived)
+  return <Shell slot="agent" kicker="weevils" title={t.archived}>
+    {!list.length && <div className="in meta empty">{t.empty}</div>}
+    {list.map((s) => <div key={s.id} className="in archive-entry">
+      <button type="button" className="link" onClick={() => push({ kind: 'session', id: s.id })}>{s.title}</button>
+      <div className="meta">{s.tool} · {status[s.status].label}</div>
+      <SessionArchiveAction session={s} />
+    </div>)}
+  </Shell>
 }
 
 function Missing({ text }: { text?: string }) {
@@ -208,6 +227,7 @@ function SessionPage({ id }: { id: string }) {
     toEnd()
     try {
       const r = files.length ? await api.attach(s.id, text, files) : await api.send(s.id, text)
+      if (s.status === 'needs_user' || s.status === 'interrupted') dismissNotice(sessionNoticeKey(s))
       if (r.id !== id) replace({ kind: 'session', id: r.id })
     } catch (e) {
       setPending((p) => p.filter((x) => x.id !== tmp.id))
@@ -247,6 +267,7 @@ function SessionPage({ id }: { id: string }) {
           <button className="link" onClick={() => setShowSettings((v) => !v)} aria-pressed={showSettings} aria-controls="session-settings">
             {t.settings}
           </button>
+          {' · '}<SessionArchiveAction key={s.id} session={s} />
         </>
       }
       dock={th.voice}
@@ -289,7 +310,7 @@ function SessionPage({ id }: { id: string }) {
         <SessionRelay session={s} onError={setErr} />
 
         {s.status === 'interrupted' && (
-          <Notice eventId={sessionNoticeKey(s)} about={s.title} className="msg band cut-band">
+          <Notice closable={false} eventId={sessionNoticeKey(s)} about={s.title} className="msg band cut-band">
             <div className="in">
               <span className="who">
                 × {st.label}
@@ -298,7 +319,7 @@ function SessionPage({ id }: { id: string }) {
               {s.interrupted?.detail && <div className="text">{s.interrupted.detail}</div>}
               <div className="cut-actions">
                 <ResumeButton session={s} stay onError={setErr} />
-                <button className="link" onClick={() => void api.dismiss(s.id).catch((e) => setErr((e as Error).message))}>
+                <button className="link" onClick={() => void api.dismiss(s.id).then(() => dismissNotice(sessionNoticeKey(s))).catch((e) => setErr((e as Error).message))}>
                   {t.dismiss}
                 </button>
               </div>

@@ -485,3 +485,39 @@ it('remembers each switch across alternating quota episodes and restart', async 
   }
   expect(x.notes.filter(n => n.title.startsWith('Claude à'))).toHaveLength(2)
 })
+
+
+describe('resolved relay requests', () => {
+  it('persists an answered plan across restart and reopens a distinct request on launch failure', async () => {
+    const { x, relay, host, deps, file } = world()
+    x.sessions = [cut('usage limit reached · resets 6pm')]
+    await run(relay, NOW)
+    await run(relay, NOW + 5000)
+    const first = relay.view().plans[0]
+    await relay.decide('s1', 'wait')
+    expect(relay.view().plans[0]).toMatchObject({ resolved: true, state: 'waiting' })
+    const again = new Relay(host, deps, file)
+    expect(again.view().plans[0]).toMatchObject({ resolved: true, state: 'waiting' })
+    host.openCodex = async () => { throw new Error('launch failed') }
+    await again.decide('s1', 'go')
+    await settle()
+    const failed = again.view().plans[0]
+    expect(failed.resolved).toBeUndefined()
+    expect(failed.error).toBe('launch failed')
+    expect(failed.at).toBeGreaterThan(first.at)
+    expect(new Relay(host, deps, file).view().plans[0]).toMatchObject({ error: 'launch failed' })
+  })
+  it('a revised plan becomes a new request only when its rewrite finishes', async () => {
+    const { x, relay } = world()
+    x.sessions = [cut('usage limit reached · resets 6pm')]
+    await run(relay, NOW)
+    await run(relay, NOW + 5000)
+    const first = relay.view().plans[0]
+    await relay.decide('s1', 'adjust', 'add tests')
+    await settle()
+    const revised = relay.view().plans[0]
+    expect(revised.resolved).toBeUndefined()
+    expect(revised.at).toBeGreaterThan(first.at)
+    expect(revised.state).toBe('ready')
+  })
+})

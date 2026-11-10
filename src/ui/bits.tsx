@@ -1,3 +1,6 @@
+import { SessionMenu } from './session-archive'
+import { sessionNoticeKey } from '../../shared/notices.ts'
+import { dismissNotice } from './notice-store'
 import { AnimatePresence, motion, type Transition } from 'motion/react'
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { api } from '../api'
@@ -151,22 +154,11 @@ export function SessionRow({ session }: { session: Session }) {
       </span>
     </button>
   )
-  // Elle t'attend (question, lien, valeur à coller) : l'action rapide à côté, sans ouvrir la conversation.
-  if (waiting && session.ask)
-    return (
-      <div className="cut-wrap ask-wrap">
-        {row}
-        <AskButton session={session} />
-      </div>
-    )
-  if (!cut) return row
-  // Coupée en plein travail : la ligne en couleur d'alerte et, à côté, la reprise en un geste.
-  return (
-    <div className="cut-wrap">
-      {row}
-      <ResumeButton session={session} />
-    </div>
-  )
+  return <div className="session-item">
+    {waiting && session.ask ? <div className="cut-wrap ask-wrap">{row}<AskButton session={session} /></div>
+      : cut ? <div className="cut-wrap">{row}<ResumeButton session={session} /></div> : row}
+    <SessionMenu session={session} />
+  </div>
 }
 
 /** L'action rapide d'une session qui attend : ouvrir son lien, lui coller le presse-papiers, ou lui répondre. */
@@ -187,6 +179,7 @@ export function AskButton({ session }: { session: Session }) {
       const text = (await navigator.clipboard.readText()).trim()
       if (!text) throw new Error(t.clipboardEmpty)
       const r = await api.send(session.id, text)
+      dismissNotice(sessionNoticeKey(session))
       push({ kind: 'session', id: r.id })
     } catch (e) {
       // Presse-papiers refusé ou vide : la conversation s'ouvre, on y colle soi-même.
@@ -212,8 +205,10 @@ export function ResumeButton({ session, onError, stay }: { session: Session; onE
   const go = async () => {
     setBusy(true)
     setErr(null)
+    onError?.('')
     try {
       const r = await api.resume(session.id)
+      dismissNotice(sessionNoticeKey(session))
       if (!stay) push({ kind: 'session', id: r.id })
     } catch (e) {
       const m = (e as Error).message

@@ -152,7 +152,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
   const actions: ReactNode[] = []
   if (opt?.draft)
     actions.push(
-      <button key="discard" className="ch" onClick={() => k.answer(opt, false) && back()} aria-label={t.discard}>
+      <button key="discard" className="ch" onClick={() => k.answer(opt, false, back)} aria-label={t.discard}>
         <Icon name="close" />
       </button>,
     )
@@ -246,19 +246,19 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
       }
     >
       {proposed && opt && !opt.draft && (
-        <Notice eventId={noticeKey("proposal", opt.id)} className="band invert auto-decide">
+        <Notice closable={false} eventId={noticeKey("proposal", opt.id)} className="band invert auto-decide">
           <Line
             ch="✓"
             go={null}
             disabled={busy || k.isStale(opt)}
             label={busy ? t.acceptBusy(x.title) : t.accept(x.title)}
             onClick={() => {
-              if (k.answer(opt, true)) back()
+              k.answer(opt, true, back)
             }}
           >
             {t.acceptVersion}
           </Line>
-          <Line ch="×" go={null} label={t.refuse(x.title)} onClick={() => k.answer(opt, false) && back()}>
+          <Line ch="×" go={null} label={t.refuse(x.title)} onClick={() => k.answer(opt, false, back)}>
             {t.refuseIt}
           </Line>
         </Notice>

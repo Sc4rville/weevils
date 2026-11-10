@@ -16,3 +16,9 @@ export function sessionNoticeKey(s: Session): string {
 export function feedNoticeKey(i: ForYouItem): string {
   return i.eventId ?? noticeKey('feed', canonicalAlertId(i.id), i.live ? (i.cards?.map((c) => c.id).sort() ?? null) : i.at)
 }
+
+/** A notification whose request is fulfilled by its answer (information stays available). */
+export const isRequestNotice = (i: ForYouItem) => i.tone === 'question' || i.tone === 'alert' || !!i.actions?.length
+export const relayPlanNoticeKey = (p: { sessionId: string; at: number }) => noticeKey('relay-plan', p.sessionId, p.at)
+
+export const closableFeedNotice = (i: ForYouItem) => i.kind === 'alert' && !!i.live

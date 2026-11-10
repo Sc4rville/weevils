@@ -8,7 +8,8 @@ import { vi } from 'vitest'
 import type { AutoDetail, AutoRunDetail, H24Activity, Optimizer, OptimizerTalkReply, Snapshot } from '../../shared/api.ts'
 
 const calls = vi.hoisted(() => [] as string[])
-const fixtures = vi.hoisted(() => ({ detail: new Map<string, AutoDetail>(), runs: new Map<string, AutoRunDetail>(), reads: 0, talk: undefined as OptimizerTalkReply | undefined }))
+const fixtures = vi.hoisted(() => ({
+  acceptFail: false, detail: new Map<string, AutoDetail>(), runs: new Map<string, AutoRunDetail>(), reads: 0, talk: undefined as OptimizerTalkReply | undefined }))
 vi.mock('../api', () => ({
   ApiError: class extends Error {},
   api: {
@@ -24,7 +25,7 @@ vi.mock('../api', () => ({
       return d
     },
     autoBlob: (id: string, path: string) => `/api/auto/${id}/blob?path=${path}`,
-    acceptOptimizer: async (id: string, rev?: number) => void calls.push(`accept ${id} rev ${rev}`),
+    acceptOptimizer: async (id: string, rev?: number) => { calls.push(`accept ${id} rev ${rev}`); if (fixtures.acceptFail) throw new Error('offline') },
     refuseOptimizer: async (id: string) => void calls.push(`refuse ${id}`),
     talkOptimizer: async (id: string, text: string) => {
       calls.push(`talk ${id} ${text}`)
@@ -111,6 +112,7 @@ beforeEach(() => {
   fixtures.runs.clear()
   fixtures.talk = undefined
   pushed = []
+  fixtures.acceptFail = false
   backs = 0
   host = document.createElement('div')
   document.body.appendChild(host)
@@ -335,4 +337,20 @@ describe('automation page', () => {
     await click([...host.querySelectorAll('.row')].at(-1))
     expect(pushed).toEqual([{ kind: 'session', id: 's1' }])
   })
+})
+
+it('a failed proposal validation stays on the page with its error until a successful retry', async () => {
+  const p = opt({ id: 'retry', state: 'proposed', title: 'Retry tests', rev: 2 })
+  render(snap([p]), <AutoPage id="retry" />)
+  fixtures.acceptFail = true
+  await click(label(/^run "Retry tests"/))
+  await flush()
+  expect(backs).toBe(0)
+  expect(host.querySelector('.auto-decide')).not.toBeNull()
+  expect(host.textContent).toContain('offline')
+  fixtures.acceptFail = false
+  await click(label(/^run "Retry tests"/))
+  await flush()
+  expect(backs).toBe(1)
+  expect(host.querySelector('.auto-decide')).toBeNull()
 })

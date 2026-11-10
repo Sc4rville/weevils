@@ -95,6 +95,7 @@ interface Persisted {
   cuts?: [string, Cut][]
   cleared?: [string, number][]
   announced?: (string | [string, number])[]
+  archived?: string[]
   closedByUs?: [string, number][]
 }
 
@@ -387,6 +388,7 @@ export class Weevils {
   /** Coupures déjà annoncées (push, fil de weevboss) : id → quand. Une par épisode, même si son heure se précise ensuite. */
   private announced = new Map<string, number>()
   /** Fermées par weevils (bouton fermer, ménage des panes) : leur fin n'est pas une coupure. */
+  private archived = new Set<string>()
   private closedByUs = new Map<string, number>()
   /** Dernier passage de watchCuts : la session vivait-elle, et dans quel état. */
   private lastSeen = new Map<string, { alive: boolean; status: Session['status'] }>()
@@ -423,6 +425,7 @@ export class Weevils {
       this.cleared = new Map(p.cleared ?? [])
       // Premier format (« id@quand ») : relu tel quel.
       this.announced = new Map((p.announced ?? []).map((a): [string, number] => (typeof a === 'string' ? [a.split('@')[0], Number(a.split('@')[1]) || 0] : a)))
+      this.archived = new Set(p.archived ?? [])
       this.closedByUs = new Map(p.closedByUs ?? [])
       setCartesiaVoice(this.voiceId)
       warmCues(this.voiceId)
@@ -485,7 +488,7 @@ export class Weevils {
       const prev = this.prevStatus.get(s.id)
       const entry = prev && prev.status === s.status ? prev : { status: s.status, since: now, notifiedAt: prev?.notifiedAt }
       next.set(s.id, entry)
-      if (first || !prev || prev.status === s.status) continue
+      if (s.archived || first || !prev || prev.status === s.status) continue
       const rested = (s.status === 'idle' || s.status === 'done') && !!s.lastMessage
       const ended = prev.status === 'working' && rested
       // Le flux « pour toi » retient chaque question et chaque fin de tour (un item par session : ni délai, ni seuil),
@@ -528,6 +531,7 @@ export class Weevils {
         cuts: [...this.cuts].filter(([, c]) => recent(c.at)),
         cleared: [...this.cleared].filter(([, at]) => recent(at)),
         announced: [...this.announced].filter(([, at]) => recent(at)),
+        archived: [...this.archived],
         closedByUs: [...this.closedByUs].filter(([, at]) => recent(at)),
       }
       fs.writeFileSync(STATE_FILE, JSON.stringify(data, null, 1))
@@ -605,6 +609,7 @@ export class Weevils {
         .sort((a, b) => a.openedAt - b.openedAt)[0]
       if (t) {
         p.sessionId = t.id
+        if (this.archived.delete(p.name)) { this.archived.add(t.id); this.persist() }
         void setOpt(p.name, '@wv_session_id', t.id).catch(() => undefined)
         this.bump()
       }
@@ -741,7 +746,7 @@ export class Weevils {
     const now = Date.now()
     let changed = false
     for (const s of snap.sessions) {
-      if (s.status !== 'interrupted' || !s.interrupted) continue
+      if (s.archived || s.status !== 'interrupted' || !s.interrupted) continue
       // Déjà annoncée, et pas reprise depuis (ni rouverte, ni réglée) : le même épisode, dont l'heure a pu se préciser.
       const last = this.announced.get(s.id)
       if (last !== undefined && (this.cleared.get(s.id) ?? 0) <= last && s.lastActivityAt <= last + 30_000) continue
@@ -899,7 +904,7 @@ export class Weevils {
       if (!known.has(id) && !p.cwd.startsWith(DATA_DIR)) list.push(this.placeholder(p, now))
     }
     // Les sessions ouvertes dans un terminal que weevils ne pilote pas polluent la liste sans servir : cachées.
-    return list.filter((s) => s.controllable).sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    return list.filter((s) => s.controllable).map((s) => this.archived.has(s.id) ? { ...s, archived: true } : s).sort((a, b) => b.lastActivityAt - a.lastActivityAt)
   }
 
   /** Projets de cette machine seule (chaque weevilsd les calcule pour ses sessions). */
@@ -946,7 +951,7 @@ export class Weevils {
     if (this.snap) return this.snap
     const now = Date.now()
     const remote = this.remotes.filter((r) => r.online && r.snap && r.snap.machines[0]?.id !== MACHINE.id)
-    const sessions = [...new Map([...remote.flatMap((r) => r.snap!.sessions.filter((s) => s.machineId === r.snap!.machines[0]?.id)), ...this.sessions(now)].map((s) => [s.id, s])).values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    const sessions = [...new Map([...remote.flatMap((r) => r.snap!.sessions.filter((s) => s.machineId === r.snap!.machines[0]?.id)), ...this.sessions(now)].map((s) => [s.id, this.archived.has(s.id) ? { ...s, archived: true } : s])).values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
     this.snap = {
       version: this.version,
       now,
@@ -1247,6 +1252,16 @@ export class Weevils {
 
   // ---------------------------------------------------------------- actions
 
+  /** Archive presentation only: no key, signal, close, or file deletion. Also works for an offline peer. */
+  archive(id: string, archived: boolean): { ok: true } {
+    const real = this.resolveId(id)
+    if (archived) this.archived.add(real)
+    else this.archived.delete(real)
+    this.persist()
+    this.bump()
+    return { ok: true }
+  }
+
   /** Écrit dans la session ; si elle n'a plus de processus, la rouvre dans une pane weevils. */
   async send(id: string, text: string, from?: string): Promise<{ id: string }> {
     // Signé par un auteur (weevboss, un agent externe) : le fil le montre comme son message, pas celui de l'utilisateur.
@@ -1256,7 +1271,12 @@ export class Weevils {
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
     if (author) text = signAs(author, text)
     const remote = this.remoteFor(id)
-    if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/send`, { text })
+    if (remote) {
+      const s = this.snapshot().sessions.find((x) => x.id === id)
+      const result = await remote.call<{ id: string }>('POST', `/api/sessions/${encodeURIComponent(id)}/send`, { text })
+      if (s) this.foryou?.resolveSession(s)
+      return result
+    }
     const real = this.resolveId(id)
     const s = this.snapshot().sessions.find((x) => x.id === real)
     if (!s) {
@@ -1268,6 +1288,7 @@ export class Weevils {
     if (pane) {
       console.log(`[sessions] ${pane.name} ← message${author ? ` (${author})` : ''} · ${text.replace(/\s+/g, ' ').slice(0, 60)}`)
       await this.deliver(pane.name, real, text)
+      this.foryou?.resolveSession(s)
       return { id: real }
     }
     const cwd = s.cwd && fs.existsSync(s.cwd) ? s.cwd : HOME
@@ -1277,6 +1298,7 @@ export class Weevils {
     // Rouverte : une coupure d'avant est réglée (une nouvelle, plus tard, comptera).
     this.cleared.set(real, at)
     this.closedByUs.delete(real)
+    this.foryou?.resolveSession(s)
     this.persist()
     return { id: real }
   }
@@ -1330,8 +1352,15 @@ export class Weevils {
 
   async key(id: string, key: string) {
     const remote = this.remoteFor(id)
-    if (remote) return void (await remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/key`, { key }))
-    const pane = this.paneFor(this.resolveId(id))
+    if (remote) {
+      const s = this.snapshot().sessions.find((x) => x.id === id)
+      await remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/key`, { key })
+      if (s && key.startsWith('choice:')) this.foryou?.resolveSession(s)
+      return
+    }
+    const real = this.resolveId(id)
+    const s = this.snapshot().sessions.find((x) => x.id === real)
+    const pane = this.paneFor(real)
     if (!pane) throw new Error(tr(M).noScreen)
     if (key === 'esc' && /trust|confiance/i.test(pane.screenAttention ?? '')) throw new Error(tr(M).escWouldClose)
     if (key.startsWith('choice:')) {
@@ -1340,11 +1369,13 @@ export class Weevils {
       if (!dialog || index < 0) throw new Error(tr(M).noScreen)
       if (dialog.selected < 0) {
         await sendKey(pane.name, key.endsWith(':y') ? 'y' : 'n')
+        if (s) this.foryou?.resolveSession(s)
         this.bump()
         return
       }
       for (let n = Math.abs(index - dialog.selected); n > 0; n--) await sendKey(pane.name, index < dialog.selected ? 'up' : 'down')
       await sendKey(pane.name, 'enter')
+      if (s) this.foryou?.resolveSession(s)
       this.bump()
       return
     }

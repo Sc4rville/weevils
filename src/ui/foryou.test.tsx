@@ -224,8 +224,8 @@ describe('for you page', () => {
     expect(band('im').classList.contains('fy-k-improve')).toBe(true)
     expect(band('im').querySelector('.fy-btn')!.textContent).toBe('do it')
     expect(band('im').querySelector('form.fy-reply')).toBeTruthy()
-    expect(band('im').querySelector('.notice-close')).toBeTruthy()
-    for (const item of ITEMS) expect(band(item.id).querySelector('.notice-close')?.getAttribute('aria-label')).toMatch(/notification/)
+    expect(band('im').querySelector('.notice-close')).toBeNull()
+    for (const item of ITEMS) expect(!!band(item.id).querySelector('.notice-close')).toBe(item.kind === 'alert' && !!item.live)
     // alert: one sober inverted line that opens where it is solved.
     expect(band('al').classList.contains('invert')).toBe(true)
     expect(band('al').querySelector('.fy-alert')!.textContent).toBe('the usage window is at 92 %')
@@ -281,10 +281,11 @@ describe('for you page', () => {
     await flush()
     expect(srv.calls).toContain('act bo go')
     expect(host.querySelector('[data-fy="bo"]')).toBeNull()
-    await click(band('im').querySelector('.notice-close'))
+    expect(band('im').querySelector('.notice-close')).toBeNull()
+    await click(band('al').querySelector('.notice-close'))
     await flush()
-    expect(srv.calls).toContain('dismiss im')
-    expect(host.querySelector('[data-fy="im"]')).toBeNull()
+    expect(srv.calls).toContain('dismiss al')
+    expect(host.querySelector('[data-fy="al"]')).toBeNull()
   })
 
   it('a reply goes to the reply route and says « sent » at once; each reply field has its own label', async () => {
@@ -613,7 +614,7 @@ describe('for you: strips and the media viewer', () => {
     const strips = [...host.querySelectorAll('.fy-strip')]
     expect(strips.map((s) => s.textContent)).toEqual(['weevbossThree sessions sent this morning, two are back.', 'weevilsHarden the tests'])
     expect(strips[1].querySelector('.fy-plus svg')).toBeTruthy()
-    expect(host.querySelectorAll('button.notice-close')).toHaveLength(2)
+    expect(host.querySelectorAll('button.notice-close')).toHaveLength(0)
     expect(host.querySelectorAll('input, form, button:not(.notice-close)')).toHaveLength(0)
   })
 

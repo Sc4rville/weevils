@@ -1,4 +1,4 @@
-import { canonicalAlertId, feedNoticeKey, quotaReset } from '../shared/notices.ts'
+import { canonicalAlertId, feedNoticeKey, isRequestNotice, quotaReset, sessionNoticeKey } from '../shared/notices.ts'
 // « For you »: the stream next to weevboss (docs/foryou.md, contract in shared/foryou.ts). Main machine only.
 //
 // Two sorts of items:
@@ -491,6 +491,7 @@ export class ForYou {
 
   /** A session of work the user follows: not a test, not a one-shot call of a script, not weevils' own, not weevboss. */
   eligible(s: Session): boolean {
+    if (s.archived) return false
     if (s.origin === 'headless' || s.id === this.w.orchestratorId) return false
     if (s.cwd && (s.cwd === this.dataDir || s.cwd.startsWith(this.dataDir + path.sep))) return false
     const t = this.w.store?.get(s.id)
@@ -525,7 +526,7 @@ export class ForYou {
     if (what === 'question') {
       const text = clip(collapse(s.attention ?? ''), TEXT_MAX)
       if (cur?.tone === 'question' && cur.text === text && cur.eventId === s.noticeId) return false
-      this.put(this.sessionItem(s, { tone: 'question', text, at: fromCore ? now : Math.min(now, s.lastActivityAt || now) }))
+      this.put(this.sessionItem(s, { ...(cur?.eventId && cur.eventId === s.noticeId ? { gone: cur.gone, seen: cur.seen } : {}), tone: 'question', text, at: fromCore ? now : Math.min(now, s.lastActivityAt || now) }))
       return true
     }
     // The same episode while the session did nothing since it was written (its time may have been refined).
@@ -838,6 +839,7 @@ export class ForYou {
       // The line follows the latest rules (an item stored earlier gets them too); the curator's line wins.
       if (i.tone === 'result') out.text = i.sum?.text || (i.body && headline(i.body)) || i.text
       const cur = snap.sessions.find((s) => s.id === i.sessionId)
+      if (cur?.archived) return null
       if (cur) out.title = cleanTitle(cur.title)
       const t = tr(M)
       if (i.tone === 'question') {
@@ -1091,6 +1093,10 @@ export class ForYou {
     if (any) this.changed()
   }
 
+  resolveSession(s: Session) {
+    if (s.status === 'needs_user' || s.status === 'interrupted') this.dismiss(`s:${s.id}`, sessionNoticeKey(s))
+  }
+
   dismiss(id: string, eventId?: string): boolean {
     const i = this.get(id)
     const st = this.s.live[id]
@@ -1168,10 +1174,10 @@ export class ForYou {
     } else if (i.reply === 'session' && i.sessionId) await this.w.send(i.sessionId, body)
     else if (i.reply === 'boss') await this.w.sendMain(body, t.replyBrief(clip(collapse(i.text || i.title || ''), 400)))
     else throw new Error(t.noReply)
-    if (!i.seen) {
-      i.seen = true
-      this.changed()
-    }
+    i.seen = true
+    const rendered = this.view({ ...i, gone: false }, this.w.snapshot(), true)
+    if (rendered && isRequestNotice(rendered)) this.dismiss(i.id, feedNoticeKey(rendered))
+    else this.changed()
   }
 
   /** « Learn more »: the longer answer, kept in the item. Written by the curator; until it exists, only what is kept. */

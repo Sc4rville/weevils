@@ -392,3 +392,23 @@ describe('for you: colours and speakers', () => {
     expect(only('ideas')).toEqual(['5'])
   })
 })
+
+
+describe('resolved requests', () => {
+  it('successful actions and question replies persist by event; failed replies stay visible', async () => {
+    const q = item({ id: 'q', eventId: 'q-one', kind: 'session', tone: 'question', reply: 'session' })
+    const a = item({ id: 'a', eventId: 'a-one', actions: [{ id: 'go', label: 'go' }] })
+    await serve(1, [q, a])
+    srv.fail = 'reply'
+    await act(async () => { await expect(fy.reply('q', 'yes')).rejects.toThrow('nope') })
+    expect(ids()).toEqual(['q', 'a'])
+    srv.fail = ''
+    await act(() => fy.reply('q', 'yes'))
+    await act(() => fy.act('a', 'go'))
+    expect(ids()).toEqual([])
+    await serve(2, [{ ...q, text: 'same refined' }, a])
+    expect(ids()).toEqual([])
+    await serve(3, [{ ...q, eventId: 'q-two', at: NOW + 1 }, a])
+    expect(ids()).toEqual(['q'])
+  })
+})

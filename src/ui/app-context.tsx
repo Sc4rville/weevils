@@ -12,6 +12,7 @@ export const THEME_COLOR: Record<Theme, string> = { light: '#B39BFF', dark: '#55
 
 export type Page =
   | { kind: 'session'; id: string }
+  | { kind: 'archived' }
   | { kind: 'files'; projectId: string; repo?: string; dir?: string }
   | { kind: 'file'; projectId: string; repo: string; path: string; line?: number }
   | { kind: 'machine'; projectId: string }

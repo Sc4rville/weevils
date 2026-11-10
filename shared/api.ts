@@ -77,6 +77,8 @@ export interface SessionSettings {
 }
 
 export interface Session {
+  /** Hidden from the ordinary list; the agent keeps running and can be restored. */
+  archived?: boolean
   id: string
   projectId: string
   repo: string | null
@@ -137,6 +139,8 @@ export type RelayMode = 'auto' | 'ask' | 'never'
  * running : validé, une session Codex (relayTo) fait le travail ; waiting : on attend le retour de Claude.
  */
 export interface RelayPlan {
+  /** This request has been answered; a rewritten or failed plan opens a new request. */
+  resolved?: boolean
   sessionId: string
   title: string
   projectId: string

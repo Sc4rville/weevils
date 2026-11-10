@@ -1,4 +1,5 @@
 import { sessionNoticeKey } from '../../shared/notices.ts'
+import { dismissNotice } from './notice-store'
 import { Notice } from './notice'
 import { useEffect, useState } from 'react'
 import type { Session } from '../../shared/api.ts'
@@ -16,11 +17,12 @@ export function SessionQuestion({ session: s, onError }: { session: Session; onE
   const choose = async (id: string) => {
     if (busy) return
     setBusy(true)
-    try { await api.key(s.id, `choice:${id}`) }
+    onError('')
+    try { await api.key(s.id, `choice:${id}`); dismissNotice(sessionNoticeKey(s)) }
     catch (e) { setBusy(false); onError((e as Error).message) }
   }
   return (
-    <Notice eventId={sessionNoticeKey(s)} about={s.title} className="msg band tone ask">
+    <Notice closable={false} eventId={sessionNoticeKey(s)} about={s.title} className="msg band tone ask">
       <div className="in">
         <span className="who">! {t.asks(s.tool)}</span>
         <div className="text">{s.ask?.text ?? s.attention ?? t.waitingForYou}</div>

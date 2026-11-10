@@ -1,3 +1,4 @@
+import { closableFeedNotice } from '../../shared/notices.ts'
 import { NoticeClose } from './notice'
 // The top band's two words, « weevboss · pour toi », and the preview of the stream shown under them (docs/foryou.md §4.1).
 // Both only exist when the server sends snap.foryou: on an older server or a secondary machine the band is unchanged.
@@ -150,7 +151,7 @@ export function ForYouPeek() {
               <motion.div
                 key={item.id}
                 layout="position"
-                className={`fyt-item notice-shell ${item.kind === 'alert' ? 'fyt-alert' : ''} ${item.seen ? '' : 'fyt-new'}`}
+                className={`fyt-item ${closableFeedNotice(item) ? 'notice-shell' : ''} ${item.kind === 'alert' ? 'fyt-alert' : ''} ${item.seen ? '' : 'fyt-new'}`}
                 data-fy={item.id}
                 style={itemSlot(item, colors, authorOf)}
                 initial={{ opacity: 0, y: -14 }}
@@ -158,7 +159,7 @@ export function ForYouPeek() {
                 exit={{ opacity: 0 }}
                 transition={soft}
               >
-                <NoticeClose about={item.title ?? item.text} onClose={() => void dismiss(item.id)} />
+                {closableFeedNotice(item) && <NoticeClose about={item.title ?? item.text} onClose={() => void dismiss(item.id)} />}
                 <div className="in">
                   <button type="button" className="fyt-open" onClick={(e) => { e.stopPropagation(); open() }} aria-label={t.forYouOpen}>
                   {media &&

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 // Session coupée en plein travail : couleur d'alerte sur sa ligne et dans la bande du projet (même repliée), jamais
 // l'étoile verte ni « terminée » ; reprise en un geste depuis la ligne et depuis son fil ; « laisser » dans le fil.
+import { resetNotices } from './notice-store'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -104,6 +105,7 @@ const flush = () => act(() => new Promise((r) => setTimeout(r, 20)))
 const text = (el: Element | null) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim()
 
 beforeEach(() => {
+  resetNotices()
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   calls.resume = []
   calls.dismiss = []
@@ -168,8 +170,12 @@ describe('session coupée en plein travail', () => {
     await flush()
     expect(calls.resume).toEqual(['s1'])
     expect(calls.pushed).toEqual([])
-    await act(async () => band.querySelector<HTMLButtonElement>('.cut-actions .link')!.click())
+    expect(host.querySelector('.cut-band')).toBeNull()
+    render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ noticeId: 'another-cut' })])
+    await flush()
+    await act(async () => host.querySelector<HTMLButtonElement>('.cut-band .cut-actions .link')!.click())
     await flush()
     expect(calls.dismiss).toEqual(['s1'])
+    expect(host.querySelector('.cut-band')).toBeNull()
   })
 })

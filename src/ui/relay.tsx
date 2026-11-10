@@ -1,6 +1,6 @@
-import { noticeKey, quotaReset } from '../../shared/notices.ts'
+import { noticeKey, quotaReset, relayPlanNoticeKey } from '../../shared/notices.ts'
 import { Notice, useNotices } from './notice'
-import { isNoticeDismissed } from './notice-store'
+import { dismissNotice, isNoticeDismissed } from './notice-store'
 import { useEffect, useState } from 'react'
 import type { RelayMode, RelayPlan, Session } from '../../shared/api.ts'
 import { api } from '../api'
@@ -37,17 +37,18 @@ function useStatus() {
   return [t.limit(r.limit.kind, r.limit.percent), r.limit.until ? t.until(clock(r.limit.until, now)) : '', r.boss ? t.boss : ''].filter(Boolean).join(' · ')
 }
 
-const open = (plans: RelayPlan[]) => plans.filter((p) => p.state === 'ready' || p.state === 'failed' || p.state === 'preparing')
+const open = (plans: RelayPlan[]) => plans.filter((p) => !p.resolved && (p.state === 'ready' || p.state === 'failed' || p.state === 'preparing'))
 
 /** In the feed, above the projects: shown only while Claude is unavailable or plans wait for a decision. */
 export function RelayBand() {
+  useNotices()
   const { snap, push } = useApp()
   const t = useT(M)
   const status = useStatus()
   const r = snap.relay
   if (!r || r.mode !== 'ask') return null
-  const todo = r.plans.filter((p) => p.state === 'ready' || p.state === 'failed').length
-  const coming = r.plans.filter((p) => p.state === 'preparing').length
+  const todo = r.plans.filter((p) => !p.resolved && !isNoticeDismissed(relayPlanNoticeKey(p)) && (p.state === 'ready' || p.state === 'failed')).length
+  const coming = r.plans.filter((p) => !p.resolved && p.state === 'preparing').length
   if (!status && !todo && !coming) return null
   return (
     <Notice eventId={noticeKey("relay", r.limit?.since, r.limit?.window, quotaReset(r.limit?.until ?? 0), r.limit ? null : r.plans.map((p) => [p.sessionId, p.at]))} className="band relay-band" aria-label={t.title}>
@@ -73,9 +74,11 @@ export function PlanCard({ plan, bare, onError }: { plan: RelayPlan; bare?: bool
   const act = (action: 'go' | 'adjust' | 'wait', text?: string) => {
     setBusy(action)
     setErr(null)
+    onError?.('')
     void api
       .relayDecide(plan.sessionId, action, text)
       .then(() => {
+        dismissNotice(relayPlanNoticeKey(plan))
         setAdjusting(false)
         setNote('')
       })
@@ -85,11 +88,12 @@ export function PlanCard({ plan, bare, onError }: { plan: RelayPlan; bare?: bool
       })
       .finally(() => setBusy(null))
   }
+  if (plan.resolved) return null
   const canDecide = snap.relay?.mode === 'ask'
   const decidable = canDecide && (plan.state === 'ready' || plan.state === 'failed' || plan.state === 'preparing')
   const project = snap.projects.find((p) => p.id === plan.projectId)?.name ?? plan.projectId
   return (
-    <Notice eventId={noticeKey("relay-plan", plan.sessionId, plan.at)} className="msg band relay-plan" role="group" aria-label={t.planAria(plan.title)}>
+    <Notice closable={false} eventId={relayPlanNoticeKey(plan)} className="msg band relay-plan" role="group" aria-label={t.planAria(plan.title)}>
       <div className="in">
         {!bare && (
           <button className="link relay-plan-title" onClick={() => push({ kind: 'session', id: plan.sessionId })}>
@@ -159,7 +163,7 @@ export function PlanCard({ plan, bare, onError }: { plan: RelayPlan; bare?: bool
 export function ThreadPlans() {
   useNotices()
   const { snap } = useApp()
-  const list = open(snap.relay?.plans ?? []).filter((p) => !isNoticeDismissed(noticeKey("relay-plan", p.sessionId, p.at)))
+  const list = open(snap.relay?.plans ?? []).filter((p) => !isNoticeDismissed(relayPlanNoticeKey(p)))
   if (snap.relay?.mode !== 'ask' || !list.length) return null
   return (
     <div className="relay-thread">
@@ -176,17 +180,22 @@ function AllActions({ plans }: { plans: RelayPlan[] }) {
   const { snap } = useApp()
   const t = useT(M)
   const [busy, setBusy] = useState(false)
-  const ready = plans.filter((p) => !isNoticeDismissed(noticeKey('relay-plan', p.sessionId, p.at)) && (p.state === 'ready' || p.state === 'failed'))
-  if (snap.relay?.mode !== 'ask' || ready.length < 2) return null
+  const [err, setErr] = useState<string | null>(null)
+  const ready = plans.filter((p) => !p.resolved && !isNoticeDismissed(relayPlanNoticeKey(p)) && (p.state === 'ready' || p.state === 'failed'))
+  if (snap.relay?.mode !== 'ask') return null
+  if (ready.length < 2) return err ? <Notice eventId={noticeKey('error:relay-all', err)} role="alert" className="in">{err}</Notice> : null
   const all = (action: 'go' | 'wait') => {
     setBusy(true)
+    setErr(null)
     void api
       .relayDecide('all', action)
-      .catch(() => undefined)
+      .then(() => { for (const p of ready) dismissNotice(relayPlanNoticeKey(p)) })
+      .catch((e) => setErr((e as Error).message))
       .finally(() => setBusy(false))
   }
   return (
     <div className="in cut-actions relay-all">
+      {err && <Notice eventId={noticeKey("error:relay-all", err)} role="alert">{err}</Notice>}
       <button className="resume" disabled={busy} onClick={() => all('go')}>
         {t.all}
       </button>
@@ -199,6 +208,7 @@ function AllActions({ plans }: { plans: RelayPlan[] }) {
 
 /** The grouped view: where Claude stands, every plan, the setting. */
 export function RelayPage() {
+  useNotices()
   const { snap } = useApp()
   const t = useT(M)
   const status = useStatus()
@@ -207,7 +217,7 @@ export function RelayPage() {
   const set = (o: { mode?: RelayMode; switchAt?: number }) => void api.relaySet(o).catch((e) => setErr((e as Error).message))
   // Ce qui attend une décision d'abord, puis ce qui attend Claude, puis ce que Codex a déjà repris.
   const rank = { ready: 0, failed: 0, preparing: 0, waiting: 1, running: 2 } as const
-  const plans = [...(r?.plans ?? [])].sort((a, b) => rank[a.state] - rank[b.state] || a.at - b.at)
+  const plans = (r?.plans ?? []).filter((p) => !p.resolved && !isNoticeDismissed(relayPlanNoticeKey(p))).sort((a, b) => rank[a.state] - rank[b.state] || a.at - b.at)
   return (
     <Shell slot="agent" kicker="weevils" title={t.title}>
       <div className="ipage relay-page">

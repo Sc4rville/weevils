@@ -1,4 +1,4 @@
-import { preferredTool, providerStatus } from './provider.ts'
+import { preferredTool, providerStatus, providerUnavailable } from './provider.ts'
 // Modèle rapide et voix, sans API payante : claude -p --model haiku sur l'abonnement, edge-tts pour la voix.
 
 import { execFile } from 'node:child_process'
@@ -15,7 +15,7 @@ import { TTS_RATE, TTS_VOICE } from './config.ts'
 export function haiku(prompt: string, timeout = 20_000): Promise<string> {
   if (preferredTool() === 'codex') {
     const status = providerStatus('codex')
-    if (!status.installed || !status.logged) return Promise.reject(new Error('Codex is not connected'))
+    if (!status.installed || !status.logged) return Promise.reject(new Error(providerUnavailable('codex')))
     return relay(prompt, timeout)
   }
   const t0 = Date.now()
@@ -37,7 +37,7 @@ export function haiku(prompt: string, timeout = 20_000): Promise<string> {
 export function smart(prompt: string, timeout = 90_000): Promise<string> {
   if (preferredTool() === 'codex') {
     const status = providerStatus('codex')
-    if (!status.installed || !status.logged) return Promise.reject(new Error('Codex is not connected'))
+    if (!status.installed || !status.logged) return Promise.reject(new Error(providerUnavailable('codex')))
     return relay(prompt, timeout)
   }
   const t0 = Date.now()

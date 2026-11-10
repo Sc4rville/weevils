@@ -1,4 +1,4 @@
-import { preferredTool, providerStatus } from './provider.ts'
+import { preferredTool, providerStatus, providerUnavailable } from './provider.ts'
 // Renommage des sessions : le sujet reste stable ; seule l’activité suit les étapes du travail.
 // Juge LLM sur l'abonnement (codex exec éphémère, comme le classement), par lots, sans coût d'API.
 
@@ -78,7 +78,7 @@ export async function llmTitles(items: TitleInput[], workdir: string): Promise<{
     return (raw.items ?? []).filter((x) => x.title?.trim()).map((x) => ({ id: x.id, title: clean(x.title, 42), topicChanged: x.topicChanged === true, now: shortNow(x.now ?? '') }))
   }
   const selected = providerStatus('codex')
-  if (!selected.installed || !selected.logged) throw new Error('Codex is not connected')
+  if (!selected.installed || !selected.logged) throw new Error(providerUnavailable('codex'))
   await new Promise<void>((resolve, reject) => {
     const child = execFile(
       'codex',

@@ -1,4 +1,4 @@
-import { preferredTool, providerReady } from './provider.ts'
+import { preferredTool, providerReady, providerUnavailable } from './provider.ts'
 import { noticeKey } from '../shared/notices.ts'
 // Le cœur de weevilsd : transcripts + hooks + panes zellij → sessions, projets, H24, agent principal.
 
@@ -1698,7 +1698,7 @@ export class Weevils {
     // Claude à sa limite (ou tout près) : weevboss répond par Codex, même dossier, mêmes consignes (server/relay.ts).
     if (preferredTool() === 'codex' && !providerReady()) {
       if (this.setup) { await this.setup.offline(text); return { id: 'setup' } }
-      throw new Error('Codex is not connected')
+      throw new Error(providerUnavailable('codex'))
     }
     if (preferredTool() === 'codex' || this.relay?.bossOn()) {
       const since = Date.now()

@@ -1,3 +1,5 @@
+import { tr } from './i18n.ts'
+import P from './i18n/provider.ts'
 /** Local provider choice and credential presence; never logs in or calls an AI. */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -16,3 +18,5 @@ export function providerStatus(tool: Tool = preferredTool()): { installed: boole
  return {installed,logged}
 }
 export const providerReady = () => { const s=providerStatus();return s.installed && s.logged }
+
+export const providerUnavailable = (tool: Tool = preferredTool()) => tr(P).unavailable(tool === 'codex' ? 'Codex' : 'Claude')

@@ -479,6 +479,7 @@ export class Curator implements ForYouCurator {
 
   /** The short lines may be written now even though the bigger calls wait: figures known, no window past LINES_CEIL. */
   lean(now = this.now()): boolean {
+    if (preferredTool() === 'codex') return false
     const q = (this.deps.usage ? this.deps.usage() : this.fy.usageKnown())?.claude
     if (!q?.ok || q.windows.some((w) => w.percent >= LINES_CEIL)) return false
     return this.logged() && this.lineCalls(now) < LINES_CAP && now >= this.s.failUntil
@@ -503,6 +504,7 @@ export class Curator implements ForYouCurator {
 
   /** A model call may start now: logged in, under the day's cap, no window nearly full (and, for the loop, no back-off). */
   can(now = this.now(), loop = true): boolean {
+    if (preferredTool() === 'codex') return false
     return this.logged() && this.calls(now) < DAILY_CAP && !(loop && now < this.s.failUntil) && !this.hot()
   }
 

@@ -1,4 +1,6 @@
+import { execFile } from 'node:child_process'
 import fs from 'node:fs'
+import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -183,5 +185,52 @@ describe('secret filter', () => {
     for (const s of ['reach me at a.b@c.io', '+33 6 12 34 56 78', 'ghp_abcdefghijklmnopqrstuvwxyz', 'mot de passe : azerty', 'token 1234', 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4']) expect(looksSecret(s), s).toBe(true)
     for (const s of ['wants to launch a game in 2027', 'aime le jeu de go', 'runs a 10k every Sunday']) expect(looksSecret(s), s).toBe(false)
     expect(redact('my password is hunter2, mail a@b.co')).toBe('my password is •••, mail •••')
+  })
+})
+
+describe('weevils memory (the CLI)', () => {
+  // The real script against a throwaway server on a free port: a temp HOME, English, nothing else from this shell.
+  const cli = (port: number, ...args: string[]) =>
+    new Promise<{ rc: number; out: string; err: string }>((done) => {
+      const env = { HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'cli-')), PATH: process.env.PATH ?? '', WEEVILS_LANG: 'en', WEEVILS_PORT: String(port) }
+      execFile('bash', [path.join(import.meta.dirname, 'weevils-cli'), 'memory', ...args], { env }, (e, out, err) =>
+        done({ rc: e ? Number((e as { code?: number }).code ?? 1) : 0, out: String(out), err: String(err) }),
+      )
+    })
+
+  it('nothing to add or remove: one clean line, rc 1; a secret: the server reason, rc 1', async () => {
+    const m = new Memory(fresh())
+    const routes = memoryRoutes(
+      m,
+      (res, status, body) => res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body)),
+      (req) => new Promise((ok) => {
+        let b = ''
+        req.on('data', (c) => (b += c)).on('end', () => ok(JSON.parse(b || '{}')))
+      }),
+    )
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url ?? '/', 'http://x')
+      for (const [verb, re, h] of routes) {
+        const hit = verb === req.method && re.exec(url.pathname)
+        if (hit) return void h(req, res, url, hit.slice(1))
+      }
+      res.writeHead(404).end('{}')
+    })
+    await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok))
+    const port = (server.address() as { port: number }).port
+    try {
+      for (const args of [['add', ''], ['add'], ['add', '   ']]) {
+        expect(await cli(port, ...args), args.join(' ')).toEqual({ rc: 1, out: '', err: 'empty memory: weevils memory add "memory"\n' })
+      }
+      expect(await cli(port, 'rm')).toEqual({ rc: 1, out: '', err: 'which memory? weevils memory rm <id>\n' })
+      const secret = await cli(port, 'add', 'my api key is sk-abcdefghijklmnop1234')
+      expect(secret).toMatchObject({ rc: 1, out: '' })
+      expect(secret.err.trim()).toBe(tr(M).secret)
+      const ok = await cli(port, 'add', 'plays the piano')
+      expect(ok.rc).toBe(0)
+      expect(m.list().map((x) => x.text)).toEqual(['plays the piano'])
+    } finally {
+      server.close()
+    }
   })
 })

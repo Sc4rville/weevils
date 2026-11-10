@@ -37,9 +37,9 @@ weevils memory [add "souvenir" | rm <id>]' # i18n-ignore
   export WVM_ERROR='erreur' WVM_NEW='nouvelle session ' WVM_BACKGROUND='en arrière-plan' # i18n-ignore
   m_sent='reçu par %s' m_not_sent='NON reçu par %s : %s' m_resumed='%s relancée' # i18n-ignore
   export WVM_CUT='coupée en plein travail' # i18n-ignore
-  a_memory='souvenir' a_memory_id='id du souvenir' # i18n-ignore
   export WVM_NO_MEMORY='(rien en mémoire)' WVM_NO_MEMORY_HERE='pas de mémoire sur cette machine (elle vit sur la machine principale)' # i18n-ignore
   export WVM_MEM_NOT_FOUND='souvenir introuvable : ' WVM_MEM_ADDED='retenu ' WVM_MEM_REMOVED='oublié ' # i18n-ignore
+  m_mem_empty='souvenir vide : weevils memory add "souvenir"' m_mem_no_id='quel souvenir ? weevils memory rm <id>' # i18n-ignore
 else
   usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
 weevils resume <id>                  weevils new <project> "message" [codex]  weevils projects
@@ -52,9 +52,9 @@ weevils memory [add "memory" | rm <id>]'
   export WVM_ERROR='error' WVM_NEW='new session ' WVM_BACKGROUND='in background'
   m_sent='received by %s' m_not_sent='NOT received by %s: %s' m_resumed='%s restarted'
   export WVM_CUT='cut off mid-work'
-  a_memory='memory' a_memory_id='memory id'
   export WVM_NO_MEMORY='(nothing remembered yet)' WVM_NO_MEMORY_HERE='no memory on this machine (it lives on the main machine)'
   export WVM_MEM_NOT_FOUND='no such memory: ' WVM_MEM_ADDED='remembered ' WVM_MEM_REMOVED='forgotten '
+  m_mem_empty='empty memory: weevils memory add "memory"' m_mem_no_id='which memory? weevils memory rm <id>'
 fi
 
 json() { local code=$1; shift; "$py" -c "import json,sys,os; E=os.environ; d=json.load(sys.stdin); $code" "$@"; }
@@ -170,7 +170,9 @@ if not items: print(E['WVM_NO_MEMORY'])
 for m in items: print(f\"{m['id']}  {m['text']}\")
 " ;;
       add)
-        text=${3:?$a_memory}
+        # Nothing (or only blanks) to remember: one clean line, not bash's « line N: 3: … ».
+        text=${3-}
+        [ -n "${text//[[:space:]]/}" ] || { echo "$m_mem_empty" >&2; exit 1; }
         out=$("$py" -c 'import json,sys; print(json.dumps({"text":sys.argv[1]}))' "$text" \
           | curl -s -m 10 -w '\n%{http_code}' -H 'content-type: application/json' --data-binary @- "$base/api/memory") || true
         code=${out##*$'\n'} body=${out%$'\n'*}
@@ -179,7 +181,8 @@ for m in items: print(f\"{m['id']}  {m['text']}\")
         [ "$code" = 200 ] || { printf '%s' "$body" | json "print(d.get('error') or '')" 2>/dev/null | grep . >&2 || echo "$WVM_ERROR $code" >&2; exit 1; }
         printf '%s' "$body" | json "print(E['WVM_MEM_ADDED']+d['item']['id'])" ;;
       rm)
-        want=${3:?$a_memory_id}
+        want=${3-}
+        [ -n "${want//[[:space:]]/}" ] || { echo "$m_mem_no_id" >&2; exit 1; }
         list=$(mem_get) || exit 1
         id=$(printf '%s' "$list" | json "
 want=sys.argv[1]; hits=[m['id'] for m in d.get('items') or [] if m['id'].startswith(want)]

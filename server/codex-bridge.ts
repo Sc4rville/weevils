@@ -45,6 +45,7 @@ const connect: Connect = async (socket, run) => {
 
 export class CodexBridge {
   private loaded = new Set<string>()
+  private activity = new Map<string, { type: 'active' | 'idle'; waiting: boolean; at: number }>()
   private checked = 0
   private busy = false
   private socket: string
@@ -52,6 +53,10 @@ export class CodexBridge {
   private changed: () => void
   constructor(socket = '', transport: Connect = connect, changed = () => {}) { this.socket = socket; this.transport = transport; this.changed = changed }
   can(id: string) { return !!this.socket && Date.now() - this.checked < 20_000 && this.loaded.has(id) }
+  activityOf(id: string) {
+    const state = this.activity.get(id)
+    return this.can(id) && state && Date.now()-state.at < 20_000 ? state : undefined
+  }
   private async ids(rpc: Rpc) {
     const ids = new Set<string>(); let cursor: string | undefined
     do {
@@ -64,7 +69,9 @@ export class CodexBridge {
   /** Native durable queue survives both disconnects and weevils restarts. */
   private async drain(rpc: Rpc, id: string) {
     const state = await rpc('thread/read', { threadId: id, includeTurns: false })
-    if (state.thread?.status?.type !== 'idle') return
+    const status = state.thread?.status
+    if (status?.type === 'active' || status?.type === 'idle') this.activity.set(id, { type: status.type, waiting: Array.isArray(status.activeFlags) && status.activeFlags.some((f: string) => f === 'waitingOnApproval' || f === 'waitingOnUserInput'), at: Date.now() })
+    if (status?.type !== 'idle') return
     const queue = await rpc('thread/queue/list', { threadId: id })
     const first = queue.data?.[0]
     if (!first?.clientUserMessageId?.startsWith('weevils:')) return
@@ -79,6 +86,7 @@ export class CodexBridge {
         for (const id of this.loaded) {
           try { await this.drain(rpc, id) } catch { /* One busy or unloaded thread must not disable the other channels. */ }
         }
+        this.changed()
       })
     } catch { this.loaded.clear(); this.checked = 0; this.changed() }
     finally { this.busy = false }

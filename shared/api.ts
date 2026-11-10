@@ -78,7 +78,21 @@ export interface SessionSettings {
   effort?: string
 }
 
+export interface SessionProgress {
+  source: 'remote'
+  label: string
+  state: 'working' | 'waiting' | 'done' | 'error'
+  updatedAt: number
+  staleAfterMs: number
+  completed?: number
+  total?: number
+  detail?: string
+  /** Observed counter change, never inferred from the observer heartbeat. */
+  lastProgressAt?: number
+}
+
 export interface Session {
+  progress?: SessionProgress
   /** Hidden from the ordinary list; the agent keeps running and can be restored. */
   archived?: boolean
   id: string

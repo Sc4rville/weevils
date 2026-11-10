@@ -762,3 +762,12 @@ it('never falls back to resume when an app-server connection disappears after th
   await expect(w.send('s1', 'answer')).rejects.toThrow()
   expect(mux.spawnWv).not.toHaveBeenCalled()
 })
+it('uses current daemon activity instead of an old working terminal screen', () => {
+ add(transcript({tool:'codex',phase:'working',originator:'codex-tui',delegationSources:new Map([['brief','boss']])}))
+ let type = 'idle'
+ ;(w as any).codexBridge = {can:()=>true,activityOf:()=>({type,waiting:false,at:NOW})}
+ w.bump()
+ expect(one()).toMatchObject({status:'idle',turnWorking:false,live:true})
+ type='active';w.bump()
+ expect(one()).toMatchObject({status:'working',turnWorking:true})
+})

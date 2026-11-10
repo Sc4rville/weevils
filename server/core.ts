@@ -1,3 +1,4 @@
+import { SessionProgressReader } from './session-progress.ts'
 import { deliveryContext, OutboxError } from './outbox.ts'
 import { CodexBridge } from './codex-bridge.ts'
 import { preferredTool, providerReady, providerUnavailable } from './provider.ts'
@@ -381,6 +382,7 @@ export class Weevils {
   private directCodexBoss?: { pane?: string; sessionId?: string; since: number }
   titles = new Map<string, Titled>()
   private codexBridge = new CodexBridge(process.env.WEEVILS_CODEX_SOCKET ?? '', undefined, () => this.bump())
+  private progressReader = new SessionProgressReader()
   private titling = false
   private titleRetry = new TitleRetry()
   private catalogCache: { at: number; list: CatalogEntry[] } | null = null
@@ -703,7 +705,7 @@ export class Weevils {
     const pane = this.paneFor(t.id)
     const hook = this.hooks.get(t.id)
     const hookAlive = hook?.pid ? pidAlive(hook.pid) : undefined
-    const live = !!pane || hookAlive === true || (hookAlive === undefined && now - t.lastActivityAt < STALE_MS && t.originator !== 'codex_exec')
+    const live = !!this.codexBridge.activityOf?.(t.id) || !!pane || hookAlive === true || (hookAlive === undefined && now - t.lastActivityAt < STALE_MS && t.originator !== 'codex_exec')
     return { pane, hook, hookAlive, live, alive: live && hook?.event !== 'SessionEnd' }
   }
 
@@ -794,9 +796,12 @@ export class Weevils {
     if (where.kind === 'invented') where = this.inferPlace(t) ?? where
     const { pane, hook, hookAlive, live, alive } = this.lifeOf(t, now)
 
+    const daemon = t.tool === 'codex' ? this.codexBridge.activityOf?.(t.id) : undefined
     let status: Session['status'] = 'idle'
     let attention: string | undefined
     if (!live || hook?.event === 'SessionEnd') status = 'done'
+    else if (daemon?.type === 'active' && !daemon.waiting) status = 'working'
+    else if (daemon?.type === 'idle') status = 'idle'
     else if (pane?.screenAttention) {
       status = 'needs_user'
       attention = pane.screenAttention
@@ -872,6 +877,7 @@ export class Weevils {
       subagents,
       background: running.length,
       turnWorking,
+      ...(!relayedBy ? { progress: this.progressReader.read(t.cwd, now) } : {}),
       lastMessage: lastMessageOf(t),
       messageCount: t.messages.length,
       settings: t.model || t.approval || t.effort ? { model: t.model, approval: t.approval, effort: t.effort } : undefined,
@@ -1699,6 +1705,9 @@ export class Weevils {
   }
 
   private orchestratorWorking(now: number) {
+    const owner = this.codexBoss()?.id
+    const daemon = owner ? this.codexBridge.activityOf?.(owner) : undefined
+    if (daemon) return daemon.type === 'active' && !daemon.waiting
     const codex = this.codexBoss()?.t
     if (codex?.phase === 'working' && now - codex.lastActivityAt < 10 * 60_000) return true
     const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined

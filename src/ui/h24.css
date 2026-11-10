@@ -258,6 +258,15 @@
   padding-top: 18px;
 }
 
+/* No run yet (a proposal, a first wait): no strip to make room for, the band is as tall as its words. */
+.auto-flow.still {
+  height: auto;
+}
+
+.auto-flow.still > .in {
+  padding-bottom: 22px;
+}
+
 .auto-flow .name {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -327,13 +336,16 @@
   background: var(--auto-fluo);
 }
 
-/* ---------- The page: the same eight facts for every automation ---------- */
+/* ---------- The page: the same six facts for every automation ---------- */
 
+/* Always the text column's width: the facts start at the page's left edge, whatever their length. */
 .auto-kpis {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   column-gap: 18px;
-  padding-block: 4px 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding-block: 6px 10px;
 }
 
 .auto-kpi {
@@ -342,7 +354,7 @@
   align-items: stretch;
   justify-content: flex-start;
   min-width: 0;
-  padding: 12px 0;
+  padding: 8px 0;
   text-align: left;
 }
 
@@ -358,23 +370,17 @@
   vertical-align: middle;
 }
 
+/* One step under a band's name: the facts read as one quiet block. Two lines at most, never cut mid-phrase. */
 .auto-kpi .v {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  overflow-wrap: anywhere;
-  margin-top: 2px;
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  line-height: 1.15;
-}
-
-.auto-kpi .v .small {
-  font-weight: 400;
-  margin-left: 6px;
-  letter-spacing: 0;
+  overflow-wrap: break-word;
+  margin-top: 1px;
+  font-size: 1.125rem;
+  font-weight: 650;
+  line-height: 1.25;
 }
 
 .auto-kpi .v.dim {

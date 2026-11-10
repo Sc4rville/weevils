@@ -1,4 +1,4 @@
-// The page of one automation: a band that fills until it fires (and through its run), the same eight facts for every
+// The page of one automation: a band that fills until it fires (and through its run), the same six facts for every
 // automation, what it produced (newest first, the newest unfolded), and the talk that defines it. And the page of one
 // run: everything that run wrote and left.
 import { motion } from 'motion/react'
@@ -13,7 +13,7 @@ import { at, autoList, longAt, fromActivity, fromOptimizer, projectOfRepo, short
 import { TalkCtx, useTalk } from './auto-talk'
 import { durLong, plain } from './format'
 import { reveal } from './follow'
-import { Fill, Glyph, chg, glyphOf } from './h24'
+import { Fill, chg } from './h24'
 import { AutoMark, Icon } from './icons'
 import { mergePending, type Pending } from './pending'
 import { FootError, Shell } from './shell'
@@ -152,7 +152,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
     )
 
   // A fact tapped: the field opens with « quand : » typed in, you say what you want.
-  const ask = (field: 'when' | 'next' | 'length' | 'cost' | 'where' | 'state') => {
+  const ask = (field: Asked) => {
     setDraft({ text: t[`askAbout_${field}`], n: ++n.current, reset: false })
     requestAnimationFrame(() => form.current?.querySelector('input')?.focus())
   }
@@ -265,10 +265,11 @@ function Flow({ x, runs, next, onTicks }: { x: AutoItem; runs: AutoRun[]; next?:
   const { now } = useApp()
   const typ = typicalMs(x)
   let big: ReactNode
-  let line = ''
-  const last = runs[0] ? t.lastAgo(short(now - runs[0].at, true)) : ''
+  // Under the big value: the state in a word, unless the big value already is it; nothing a fact below repeats.
+  let line: string = t[`state_${x.state}`]
   if (x.state === 'proposed') {
     big = triggerText(x.trigger, now)
+    line = ''
   } else if (x.state === 'running' && x.startedAt) {
     big = (
       <>
@@ -276,22 +277,20 @@ function Flow({ x, runs, next, onTicks }: { x: AutoItem; runs: AutoRun[]; next?:
         {typ && <span className="of">/ {durLong(typ)}</span>}
       </>
     )
-    line = next ? t.nextScopeLabel(next) : last
+    if (next) line = `${line} · ${t.nextScopeLabel(next)}`
   } else if (x.state === 'paused') {
     big = t.paused
-    line = last
+    line = ''
   } else if (x.state === 'done' || x.state === 'failed') {
     big = t.endedAgo(short(now - (x.endedAt ?? runs[0]?.at ?? now), true))
-    line = triggerText(x.trigger, now)
   } else if (x.state === 'waiting' && x.waiting && x.waiting !== 'queue') {
     big = t[`wait_${x.waiting}`]
-    line = x.nextAt ? t.nextAt(at(x.nextAt, now)) : last
+    line = ''
   } else if (x.nextAt && x.nextAt > now) {
     big = t.inTime(durLong(x.nextAt - now))
-    line = t.nextAt(at(x.nextAt, now))
   } else {
     big = t.whenIdle
-    line = x.place ? `#${x.place}` : last
+    if (x.place) line = `${line} · #${x.place}`
   }
 
   // A run that just ended: the full fill shrinks into its tick (shared layoutId), then fills again toward the next.
@@ -313,14 +312,14 @@ function Flow({ x, runs, next, onTicks }: { x: AutoItem; runs: AutoRun[]; next?:
   const ticks = runs.slice(0, MAX_TICKS).reverse()
   const longest = Math.max(1, ...ticks.map((r) => r.at - r.startedAt))
   return (
-    <div className={`band auto-flow st-${x.state}`}>
+    <div className={`band auto-flow st-${x.state}${ticks.length > 0 || x.state === 'running' ? '' : ' still'}`}>
       {x.state !== 'proposed' && <Fill x={x} />}
       {landing !== null && <motion.span layoutId={`run-${landing}`} className="auto-fill auto-land" aria-hidden />}
       <div className="in">
         <div className="name">{big}</div>
         {line && <div className="meta">{line}</div>}
       </div>
-      {(ticks.length > 0 || x.nextAt || x.state === 'running' || x.state === 'proposed') && (
+      {(ticks.length > 0 || x.state === 'running') && (
         <button className="auto-ticks" onClick={onTicks} aria-label={t.runsStrip(x.runCount || runs.length)}>
           {ticks.map((r) =>
             r.at === landing ? null : (
@@ -339,39 +338,51 @@ function Flow({ x, runs, next, onTicks }: { x: AutoItem; runs: AutoRun[]; next?:
 }
 
 // ---------------------------------------------------------------------------
-// The same eight facts for every automation.
+// The same six facts for every automation.
 
-type Field = 'when' | 'next' | 'last' | 'length' | 'runs' | 'cost' | 'state' | 'where'
-const FLASHED: Partial<Record<Field, OptimizerField[]>> = { when: ['every', 'window', 'notBefore'], next: ['every', 'window', 'notBefore'], length: ['est'], where: ['repo'] }
+type Field = 'when' | 'next' | 'last' | 'length' | 'runs' | 'cost'
+/** The facts that open the talk when tapped (« quand : » typed in). */
+type Asked = 'when' | 'next' | 'length' | 'cost'
+const FLASHED: Partial<Record<Field, OptimizerField[]>> = { when: ['every', 'window', 'notBefore'], next: ['every', 'window', 'notBefore'], length: ['est'] }
 
-function Kpis({ x, runs, detail, flash, ask, onLast, onRuns }: { x: AutoItem; runs: AutoRun[]; detail: AutoDetail | null; flash: OptimizerField[]; ask?: (f: 'when' | 'next' | 'length' | 'cost' | 'where' | 'state') => void; onLast: () => void; onRuns: () => void }) {
+/**
+ * The same facts for every automation, one quiet block: when it fires, the next time, the last run, how long it runs,
+ * how many runs, what they cost. What it is for is the head's line, where it runs the head's bold word, what it is doing
+ * the flow band's: never said twice. A proposal has no past yet: its trigger is the flow band, here its next time and
+ * its length.
+ */
+function Kpis({ x, runs, detail, flash, ask, onLast, onRuns }: { x: AutoItem; runs: AutoRun[]; detail: AutoDetail | null; flash: OptimizerField[]; ask?: (f: Asked) => void; onLast: () => void; onRuns: () => void }) {
   const t = useT(M)
-  const { snap, now } = useApp()
+  const { now } = useApp()
   const last = runs[0] ?? x.lastRun
   const typ = typicalMs({ runs, est: x.est })
   const measured = runs.some((r) => r.at > r.startedAt)
   const total = (x.tokens ?? runs.reduce((s, r) => s + (r.tokens ?? 0), 0)) + (x.state === 'running' ? (detail?.liveTokens ?? 0) : 0)
+  // While it runs: the run after this one (its own next trigger), never « now ».
+  const following = x.nextAt && x.nextAt > now ? x.nextAt : x.state === 'running' && x.startedAt && x.trigger.every ? x.startedAt + x.trigger.every : null
   const next =
-    x.state === 'proposed' && x.trigger.at ? at(x.trigger.at, now) : x.state === 'running' ? t.now : x.state === 'paused' ? t.paused : x.nextAt ? at(x.nextAt, now) : (x.state === 'waiting' || x.state === 'queued') && x.waiting && x.waiting !== 'queue' ? t[`wait_${x.waiting}`] : x.state === 'done' || x.state === 'failed' ? t.never : t.whenIdle
-  const cells: { f: Field; icon: ReactNode; value: ReactNode; dim?: boolean }[] = [
+    x.state === 'proposed'
+      ? x.trigger.at
+        ? at(x.trigger.at, now)
+        : t.whenIdle
+      : x.state === 'paused' || x.state === 'done' || x.state === 'failed'
+        ? t.never
+        : following
+          ? at(following, now)
+          : x.state === 'running'
+            ? t.never
+            : (x.state === 'waiting' || x.state === 'queued') && x.waiting && x.waiting !== 'queue'
+              ? t[`wait_${x.waiting}`]
+              : t.whenIdle
+  const all: { f: Field; icon: ReactNode; value: ReactNode; dim?: boolean }[] = [
     { f: 'when', icon: x.trigger.kind === 'every' ? <Icon name="cycle" /> : <Icon name="arrow" dir="right" />, value: triggerText(x.trigger, now) },
     { f: 'next', icon: <Icon name="arrow" dir="right" />, value: next },
     { f: 'last', icon: <Icon name={last && !last.ok ? 'close' : 'check'} />, value: last ? t.endedAgo(short(now - last.at, true)) : t.never },
     { f: 'length', icon: <Icon name="minus" />, value: typ ? durLong(typ) : '0', dim: !measured && !!typ },
     { f: 'runs', icon: <Icon name="hash" />, value: String(x.runCount || runs.length) },
-    {
-      f: 'cost',
-      icon: <Icon name="more" />,
-      value: (
-        <>
-          {tokens(total)}
-          {last?.tokens ? <span className="small">{tokens(last.tokens)}</span> : null}
-        </>
-      ),
-    },
-    { f: 'state', icon: <Glyph {...glyphOf(x)} />, value: t[`state_${x.state}`] },
-    { f: 'where', icon: <Icon name="slash" />, value: x.repo ?? projectName(snap, x) ?? detail?.machine ?? snap.machines[0]?.name ?? '0' },
+    { f: 'cost', icon: <Icon name="agents" />, value: tokens(total) },
   ]
+  const cells = x.state === 'proposed' ? all.filter((c) => c.f === 'next' || c.f === 'length') : all
   const tap = (c: Field) => (c === 'last' ? onLast : c === 'runs' ? onRuns : ask ? () => ask(c) : undefined)
   return (
     <div className="in auto-kpis">
@@ -450,7 +461,7 @@ function Produced({ id, d, machine, short: brief = false }: { id: string; d: Aut
         </Line>
       )}
       {d.files.map((file) => (
-        <Line key={file.path} ch="·" meta={file.status === 'D' ? '−' : file.add || file.del ? `+${file.add} −${file.del}` : undefined} onClick={file.status === 'D' ? undefined : () => push({ kind: 'fsfile', machine: on, path: file.abs })} go={file.status === 'D' ? null : '→'}>
+        <Line key={file.path} ch="·" meta={file.status === 'D' ? '−' : [file.add ? `+${file.add}` : '', file.del ? `−${file.del}` : ''].filter(Boolean).join(' ') || undefined} onClick={file.status === 'D' ? undefined : () => push({ kind: 'fsfile', machine: on, path: file.abs })} go={file.status === 'D' ? null : '→'}>
           {file.path}
         </Line>
       ))}

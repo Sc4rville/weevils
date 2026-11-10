@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// The page of an automation: the same eight facts for a task, a timer and a job; the newest run unfolded (report,
+// The page of an automation: the same six facts for a task, a timer and a job; the newest run unfolded (report,
 // files, links, screenshots); the talk only for a task; a proposal's ✓ / × from the page, then back.
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -121,31 +121,34 @@ afterEach(() => {
 })
 
 describe('automation page', () => {
-  it('the same eight facts for a task; tapping one prefills the talk', async () => {
+  it('the same six facts for a task (its state is the flow band, where it runs the head); tapping one prefills the talk', async () => {
     render(snap([daily]), <AutoPage id="d" />)
     await flush()
     const k = kpis()
-    expect(Object.keys(k)).toEqual(['when', 'next', 'last', 'length', 'runs', 'cost', 'state', 'where'])
-    expect(k).toMatchObject({ when: 'every day 07:00–08:00', last: '1d ago', length: '9 min', runs: '23', state: 'scheduled', where: 'mygame' })
-    expect(k.cost).toBe('412K12K')
-    expect(host.querySelectorAll('button.auto-kpi')).toHaveLength(8)
+    expect(Object.keys(k)).toEqual(['when', 'next', 'last', 'length', 'runs', 'cost'])
+    expect(k).toMatchObject({ when: 'every day 07:00–08:00', last: '1d ago', length: '9 min', runs: '23', cost: '412K' })
+    expect(host.querySelector('.auto-flow .meta')!.textContent).toBe('scheduled')
+    expect(host.querySelector('.page-head .strong')!.textContent).toBe('mygame')
+    expect(host.querySelectorAll('button.auto-kpi')).toHaveLength(6)
     await click(host.querySelector('button.auto-kpi'))
     await act(() => new Promise((r) => requestAnimationFrame(() => r(null))))
     expect(host.querySelector<HTMLInputElement>('.composer input')!.value).toBe('when: ')
   })
 
-  it('a timer and a job: the same eight facts, not tappable, no talk', async () => {
+  it('a timer and a job: the same six facts, not tappable, no talk', async () => {
     render(snap([], [timer]), <AutoPage id="timer:wv-backup.timer" />)
     await flush()
-    expect(Object.keys(kpis())).toHaveLength(8)
+    expect(Object.keys(kpis())).toHaveLength(6)
     expect(kpis().when).toMatch(/^every day \d\d:\d\d$/)
-    expect(kpis()).toMatchObject({ runs: '60', cost: '0', length: '6 min', state: 'scheduled' })
+    expect(kpis()).toMatchObject({ runs: '60', cost: '0', length: '6 min' })
     expect(host.querySelectorAll('button.auto-kpi')).toHaveLength(2) // last → its run, runs → the outputs
     expect(host.querySelector('.composer')).toBeNull()
     expect(host.querySelector('[aria-label="pause Backup"]')).not.toBeNull()
     render(snap([], [job]), <AutoPage id="job:render" />)
     await flush()
-    expect(kpis()).toMatchObject({ when: 'started by hand', next: 'now', state: 'running', cost: '0', where: 'mygame' })
+    // A job runs once: no next run, never « now ».
+    expect(kpis()).toMatchObject({ when: 'started by hand', next: 'never', cost: '0' })
+    expect(host.querySelector('.auto-flow .meta')!.textContent).toBe('running')
     expect(host.querySelector('.composer')).toBeNull()
     expect(host.querySelector('.auto-flow .auto-rail.run')).not.toBeNull()
   })
@@ -173,9 +176,11 @@ describe('automation page', () => {
   })
 
   it('a running task: AutoMark on the live line, one tap into its session; pause, no run-now', async () => {
-    render(snap([opt({ id: 'r', title: 'Clean deps', state: 'running', startedAt: NOW - 12 * MIN, est: 45, sessionId: 's9' })]), <AutoPage id="r" />)
+    render(snap([opt({ id: 'r', title: 'Clean deps', state: 'running', startedAt: NOW - 12 * MIN, est: 45, sessionId: 's9', every: 6 * 3600_000 })]), <AutoPage id="r" />)
     await flush()
     expect(host.querySelector('.auto-flow .name')!.textContent).toBe('12 min/ 45 min')
+    // Next: the run after this one, never « now ».
+    expect(kpis().next).toMatch(/^\d\d:\d\d$/)
     const live = host.querySelector('.page-body .row .st .auto-mark')!.closest('button')!
     await click(live)
     expect(pushed).toEqual([{ kind: 'session', id: 's9' }])
@@ -217,6 +222,9 @@ describe('automation page', () => {
     const p = opt({ id: 'p', state: 'proposed', title: 'Harden tests', rev: 4, talk: [{ who: 'user', text: 'at night', at: NOW - MIN }, { who: 'auto', text: 'Nights it is.', at: NOW }] })
     render(snap([p]), <AutoPage id="p" />)
     expect(host.querySelector('.auto-decide')).not.toBeNull()
+    // No past yet: no runs strip, no « last / runs / cost », its trigger only once (the flow band's big value).
+    expect(host.querySelector('.auto-ticks')).toBeNull()
+    expect(Object.keys(kpis())).toEqual(['next', 'length'])
     expect([...host.querySelectorAll('.auto-talk .msg .text')].map((n) => n.textContent)).toEqual(['at night', 'Nights it is.'])
     expect(host.querySelector('.composer')).not.toBeNull()
     await click(label(/^run "Harden tests"/))

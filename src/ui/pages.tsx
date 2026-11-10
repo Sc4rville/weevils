@@ -1,3 +1,4 @@
+import { RemoteProgress } from './remote-progress'
 import { OutboxStatus } from './outbox-status'
 import { noticeKey, sessionNoticeKey } from '../../shared/notices.ts'
 import { dismissNotice } from './notice-store'
@@ -188,7 +189,7 @@ function SessionPage({ id }: { id: string }) {
   // Un mot sélectionné (ou une question dictée) et sa réponse sous un message : le suivi attend, rien ne les pousse hors de l'écran.
   const last = messages.at(-1)
   const hold = th.hold
-  const follow = useFollow(body, messages.length > 0, 80, `${messages.length}:${last?.id}:${last?.text.length}:${s?.status}`, hold)
+  const follow = useFollow(body, messages.length > 0, 80, `${messages.length}:${last?.id}:${last?.text.length}:${s?.status}:${s?.progress?.state}:${s?.progress?.completed}:${s?.progress?.label}:${s?.progress?.detail}`, hold)
   const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
   // Ce qui arrive pendant qu'une sélection tient le fil est signalé (behind) et rejoint en glissant au relâché (useFollow).
   const toEnd = follow.toEnd
@@ -297,7 +298,7 @@ function SessionPage({ id }: { id: string }) {
             s'il y a déjà une bulle (premier message d'une session lancée) ; remonté au chargement pour que le lot arrive sans
             se dérouler lui non plus. */}
         {(detail || missing || pending.length > 0) && (
-          <Messages session key={detail || missing ? 'loaded' : 'early'} messages={messages} author={s.tool} working={s.status === 'working'} after={th.after} />
+          <Messages session key={detail || missing ? 'loaded' : 'early'} messages={messages} author={s.tool} working={s.turnWorking ?? (s.status === 'working' && !s.background)} after={th.after} />
         )}
       </div>
 
@@ -305,11 +306,13 @@ function SessionPage({ id }: { id: string }) {
           seraient ensuite repoussées d'un coup vers le bas par les messages (ouverture depuis une notification). */}
       {(detail || missing) && (
         <>
+        {s.progress && <RemoteProgress progress={s.progress} agentWorking={s.turnWorking} />}
+
         <Background session={s} />
 
         <SessionQuestion session={s} onError={setErr} />
 
-        {s.status === 'working' && <Working author={s.tool} since={s.workStartedAt} />}
+        {(s.turnWorking ?? (s.status === 'working' && !s.background)) && <Working author={s.tool} since={s.workStartedAt} />}
 
         <SessionRelay session={s} onError={setErr} />
 

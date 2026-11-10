@@ -2741,3 +2741,9 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .outbox-status { flex: none; font-size: .8125rem; line-height: 1.35; padding-block: 6px; }
 .outbox-status > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
 .outbox-status .link { min-height: 28px; }
+
+.remote-progress { padding-block: 12px; font-size: .9375rem; line-height: 1.45; }
+.remote-progress-title { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
+.remote-progress-source, .remote-progress .meta { opacity: .72; }
+.remote-progress-state { margin-block: 4px; }
+.remote-progress progress { display: block; width: min(100%, 24rem); height: 6px; margin-block: 8px; accent-color: currentColor; }

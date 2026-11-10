@@ -70,6 +70,8 @@ export const FIELDS: Partial<Record<Brick, SetupField[]>> = {
 export interface AskResult {
   ok: true
   flow: boolean
+  /** Le message de weevboss qui répond (nouveau, ou le même déjà posté juste avant) : l'app l'amène sous les yeux. */
+  said?: string
 }
 
 /** Les seules clés que « weevils config set » peut écrire ; le reste du fichier de config ne bouge pas. */

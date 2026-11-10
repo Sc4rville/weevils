@@ -105,7 +105,7 @@ const money = (n: number, cur: string | null) => `${Math.round(n * 100) / 100} $
 const dayName = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(intlLocale(), { weekday: 'short' })
 
 export function InfraPage({ machine, projectId }: { machine?: string; projectId?: string }) {
-  const { snap, push, home, setExpanded } = useApp()
+  const { snap, push } = useApp()
   const t = useT(M)
   const fromProject = projectId ? snap.sessions.find((s) => s.projectId === projectId)?.machineId : undefined
   const [id, setId] = useState(machine ?? fromProject ?? snap.machines[0]?.id ?? '')
@@ -249,11 +249,7 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
           ch="+"
           go="→"
           meta={t.addMeta}
-          onClick={() => {
-            home()
-            setExpanded('agent')
-            askSetup('machine')
-          }}
+          onClick={() => askSetup('machine')}
         >
           <span className="strong">{t.addLine}</span>
         </Line>

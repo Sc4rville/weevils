@@ -7,6 +7,7 @@ import M from '../i18n/setup'
 import { useApp } from './app-context'
 import { copyText } from './copy'
 import { Icon } from './icons'
+import { focusBoss } from './follow'
 
 // Accueil et branchements, côté app (contrat : shared/setup.ts, serveur : server/setup.ts).
 // - useWelcome : au premier lancement (intro terminée), weevilsd écrit l'accueil de weevboss dans son fil, adapté à
@@ -14,7 +15,8 @@ import { Icon } from './icons'
 // - SetupChips : les boutons sous un message de weevboss. Un tap lance le branchement : une action sur place
 //   (notifications, adresse Siri), ou weevboss dit ce que ça apporte (et installe ce qui manque) puis le champ du bas
 //   pose les questions. Jamais de commande à taper.
-// - startSetup : la même chose depuis n'importe où (page machine, bulles, cartes) : le fil de weevboss s'ouvre.
+// - startSetup : la même chose depuis n'importe où (page machine, bulles, cartes) : le fil de weevboss s'ouvre en haut de
+//   l'écran (focusBoss, src/ui/follow.ts), et sa réponse est mise en avant.
 // - SetupComposer : le champ du bas pendant un parcours, une question à la fois ; les secrets sont masqués et partent
 //   droit au serveur avec les autres réponses, à la fin. Jamais au modèle.
 
@@ -60,7 +62,11 @@ const setFlow = (f: Flow | null) => {
 /** Lance une brique : weevboss poste son explication (et fait ce qui se fait seul), puis, s'il le dit, le champ du bas
  * pose les questions. Rejette si le serveur ne répond pas. */
 export async function startSetup(brick: Brick) {
+  // Le fil de weevboss s'ouvre en haut de l'écran tout de suite (d'une page, du bas du flux) : sa réponse y arrive sous les yeux.
+  focusBoss()
   const r = await api.setupAsk(brick, device())
+  // Déjà dit juste avant (second tap, parcours relancé) : rien de nouveau n'arrive, l'explication existante est remise en avant.
+  if (r.said) focusBoss(r.said)
   if (r.flow && FIELDS[brick]) setFlow({ brick, step: 0, values: {} })
 }
 /** Pareil, sans attendre ni signaler d'erreur (bulles, diablotin). */

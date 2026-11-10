@@ -36,6 +36,8 @@ import { mailConfig } from './mailbridge.ts'
 import { quotas } from './usage.ts'
 
 const FILE = path.join(DATA_DIR, 'setup.json')
+/** En deçà, un message automatique identique n'est pas reposté (voir Setup.add). */
+const REPEAT_MS = 30 * 60_000
 /** Le clone de weevils qui tourne (install.sh, changer l'interface en direct). */
 const CLONE = path.resolve(import.meta.dirname, '..')
 
@@ -533,6 +535,8 @@ export class Setup {
   private codexLogin: ChildProcess | null = null
   /** La dernière explication postée par une puce : un second tap ne la répète pas. */
   private lastAsk: { brick: Brick; id: string; text: string } | null = null
+  /** Le dernier message écrit (ou retrouvé) au nom de weevboss : l'app l'amène sous les yeux après une puce. */
+  lastSaid: string | null = null
 
   constructor(deps: SetupDeps) {
     this.deps = deps
@@ -568,12 +572,20 @@ export class Setup {
   messages = () => this.p.log.filter((m) => !m.demo || Date.now() - m.at < 20 * 60_000)
   welcomed = () => !!this.p.welcomed
 
+  /** Le seul passage des messages automatiques de weevboss (parcours, confirmations, coupures) et de leurs réponses :
+   * un texte identique déjà posté il y a peu n'est pas répété. On renvoie l'id du message existant, que l'app ramène
+   * sous les yeux (un second tap sur une puce, un parcours relancé, une détection qui se répète). */
   private add(role: 'user' | 'assistant', text: string, id = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`) {
+    const same = this.p.log.slice(-12).findLast((m) => m.role === role && !m.demo && m.text === text && Date.now() - m.at < REPEAT_MS)
+    if (same) {
+      this.deps.bump()
+      return (this.lastSaid = same.id)
+    }
     const last = this.p.log.at(-1)?.at ?? 0
     this.p.log.push({ id, role, text, at: Math.max(Date.now(), last + 1) })
     this.save()
     this.deps.bump()
-    return id
+    return (this.lastSaid = id)
   }
   say = (text: string) => this.add('assistant', text)
   userSays = (text: string) => this.add('user', text)
@@ -789,7 +801,12 @@ export class Setup {
     // Un second tap sur la même puce : l'explication est déjà là, juste au-dessus.
     const post = (text: string) => {
       const last = this.lastAsk
-      if (last && last.brick === brick && last.text === text && this.p.log.at(-1)?.id === last.id) return
+      // (Même si le texte a un peu changé : le statut de la machine n'est plus répété, par exemple.) L'app le remet en avant.
+      const tail = this.p.log.at(-1)
+      if (last && last.brick === brick && tail?.id === last.id && Date.now() - tail.at < REPEAT_MS) {
+        this.lastSaid = last.id
+        return this.deps.bump()
+      }
       this.lastAsk = { brick, id: this.say(text), text }
     }
     switch (brick) {
@@ -810,7 +827,7 @@ export class Setup {
       case 'machine': {
         // L'état de la machine vient d'être dit (accueil) : pas deux fois de suite.
         const status = t.machine(s.machine).replace(/\s*\[\[setup:machine\]\]/, '')
-        const said = this.p.log.slice(-8).some((m) => m.text.replace(/\s*\[\[setup:machine\]\]/, '') === status)
+        const said = this.p.log.slice(-8).some((m) => m.text.replace(/\s*\[\[setup:machine\]\]/, '').includes(status))
         post(said ? t.machineAsk(s) : `${status}\n\n${t.machineAsk(s)}`)
         return true
       }

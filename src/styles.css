@@ -2157,3 +2157,44 @@ button.copy.done {
   padding: 0 8px;
   font-weight: 700;
 }
+
+/* ---------- « C'est ici » : ce qu'une action vient d'amener sous les yeux s'éclaire un instant (src/ui/follow.ts) ---------- */
+
+@keyframes wv-flash {
+  0% {
+    filter: none;
+  }
+  22% {
+    filter: brightness(1.18) saturate(1.15);
+  }
+  100% {
+    filter: none;
+  }
+}
+
+.wv-flash {
+  animation: wv-flash 1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-theme='dark'] .wv-flash,
+[data-theme='graphite'] .wv-flash {
+  animation-name: wv-flash-dark;
+}
+
+@keyframes wv-flash-dark {
+  0% {
+    filter: none;
+  }
+  22% {
+    filter: brightness(1.5) saturate(1.1);
+  }
+  100% {
+    filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wv-flash {
+    animation: none;
+  }
+}

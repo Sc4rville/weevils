@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Project } from '../../shared/api.ts'
 import { api } from '../api'
 import { tr, useT } from '../i18n'
@@ -21,6 +21,7 @@ import { UsageLine } from './infra'
 import { TokenMeter } from './rate'
 import { setDevil, useDevil } from './devil'
 import { markSeen, tapHint } from './hints'
+import { useFollow } from './follow'
 import { SetupChips, SetupComposer, askSetup, useFlow, useWelcome } from './setup'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
@@ -38,54 +39,6 @@ const activity = (list: { status: string }[]) => {
 // ---------------------------------------------------------------------------
 // weevils, l'orchestrateur : la bande du haut est juste un chat. Lui écrit dans les sessions.
 
-/** Au plus près du bas (px) : le fil ouvert suit une réponse qui s'écrit ; plus haut, l'utilisateur relit et on le laisse. */
-const CHAT_STICK = 80
-
-/**
- * `grow` change quand le dernier message s'allonge (réponse du diable ou de weevboss qui s'écrit en direct, indicateur
- * de travail) : le nombre de messages, lui, ne bouge pas pendant ce temps.
- */
-function useStickBottom(ref: React.RefObject<HTMLDivElement | null>, count: number, open: boolean, grow: string) {
-  const reading = useRef(false)
-  /** Fin estimée de notre propre défilement doux : ses positions intermédiaires ne disent pas que l'utilisateur relit. */
-  const gliding = useRef(0)
-  // À l'ouverture : déjà en bas avant le premier affichage, sans défilement visible.
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (el && open) {
-      el.scrollTop = el.scrollHeight
-      reading.current = false
-    }
-  }, [ref, open])
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const on = () => {
-      if (Date.now() < gliding.current) return
-      reading.current = el.scrollHeight - el.scrollTop - el.clientHeight > CHAT_STICK
-    }
-    el.addEventListener('scroll', on, { passive: true })
-    return () => el.removeEventListener('scroll', on)
-  }, [ref])
-  // Un nouveau message pendant qu'elle est ouverte : on descend en douceur.
-  useEffect(() => {
-    const el = ref.current
-    if (!el || !open) return
-    const t = setTimeout(() => {
-      reading.current = false
-      gliding.current = Date.now() + 700
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-    }, 80)
-    return () => clearTimeout(t)
-  }, [ref, count]) // eslint-disable-line react-hooks/exhaustive-deps
-  // La réponse s'allonge : on suit, sans animation (un défilement doux serait sans cesse rattrapé), sauf si on relit plus haut.
-  useEffect(() => {
-    const el = ref.current
-    if (!el || !open || reading.current) return
-    el.scrollTop = el.scrollHeight
-  }, [ref, grow]) // eslint-disable-line react-hooks/exhaustive-deps
-}
-
 /** L'aperçu vivant du fil, dans la bande réduite : les derniers messages, les récents en bas, les anciens remontent et s'estompent. */
 /** Au plus près du bas (px) : l'aperçu suit les nouveaux messages ; plus haut, l'utilisateur remonte l'historique et on le laisse lire. */
 const PEEK_STICK = 48
@@ -94,7 +47,7 @@ const PEEK_STICK = 48
  * L'aperçu vivant du fil, dans la bande réduite : les récents en bas, les anciens remontent et s'estompent.
  * Il défile au doigt pour remonter l'historique (sans entraîner la page) ; un tap simple ouvre la conversation.
  */
-function Peek({ onOpen }: { onOpen: () => void }) {
+function Peek({ onOpen, visible, sent }: { onOpen: () => void; visible: boolean; sent: number }) {
   const t = useT(M)
   const tb = useT(B)
   const td = useT(D)
@@ -105,19 +58,13 @@ function Peek({ onOpen }: { onOpen: () => void }) {
   const working = snap.mainWorking || !!snap.devil?.working
   const soft = { type: 'spring', stiffness: 160, damping: 26, mass: 1 } as const
   const box = useRef<HTMLDivElement>(null)
-  const reading = useRef(false)
-  const lastItem = items[items.length - 1]
-  // Au montage : en bas, sans animation.
-  useLayoutEffect(() => {
-    const el = box.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [])
-  // Nouveau message, réponse qui s'allonge, étoile qui apparaît : on redescend, sauf si l'utilisateur remonte.
+  // Suit la fin de l'aperçu (nouveau message, réponse qui s'écrit, étoile) ; remonter au doigt pour relire décroche.
+  const last = items.at(-1)
+  const follow = useFollow(box, visible, PEEK_STICK, `${items.length}:${last?.id}:${last?.text.length}:${working}`)
+  // Un envoi : on redescend, même si on relisait plus haut, pour voir partir le message et arriver la réponse.
   useEffect(() => {
-    const el = box.current
-    if (!el || reading.current) return
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-  }, [items.length, lastItem?.id, lastItem?.text.length, working])
+    if (sent) follow.toEnd()
+  }, [sent]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <motion.div
       ref={box}
@@ -128,10 +75,6 @@ function Peek({ onOpen }: { onOpen: () => void }) {
       aria-label={t.openChat}
       onClick={onOpen}
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}
-      onScroll={(e) => {
-        const el = e.currentTarget
-        reading.current = el.scrollHeight - el.scrollTop - el.clientHeight > PEEK_STICK
-      }}
     >
       <div className="peek-list">
         <AnimatePresence initial={false} mode="popLayout">
@@ -200,7 +143,6 @@ export function AgentBand() {
   useWelcome()
   const tapDevil = (el: Element) => {
     if (!snap.devil?.enabled) {
-      setExpanded('agent')
       void askSetup('devil')
       return
     }
@@ -213,7 +155,9 @@ export function AgentBand() {
   const [draft, setDraft] = useState({ text: '', n: 0, reset: false })
   const heard = useRef('')
   const tail = snap.main.at(-1)
-  useStickBottom(body, snap.main.length, open, `${tail?.id}:${tail?.text.length}:${snap.mainWorking}:${!!snap.devil?.working}`)
+  const chat = useFollow(body, open, 80, `${snap.main.length}:${tail?.id}:${tail?.text.length}:${snap.mainWorking}:${!!snap.devil?.working}`)
+  // Chaque envoi (clavier, logo, pièce jointe) : l'aperçu et le fil redescendent pour montrer le message et sa réponse.
+  const [sent, setSent] = useState(0)
   // Le fil ouvert s'interroge comme un fichier ; avec une sélection, le logo pose sa question dessus (réponse sur place).
   const th = useThreadAsk(snap.main, { title: 'weevboss', tool: 'weevboss' })
   const onSel = open && th.selected
@@ -221,12 +165,18 @@ export function AgentBand() {
 
   // Envoyer (clavier, logo vocal, pièce jointe) n'ouvre jamais le plein écran : le message et la réponse s'affichent dans l'aperçu.
   // Garanti par bands.test.tsx (déjà régressé deux fois).
+  const sentNow = () => {
+    setSent((n) => n + 1)
+    if (open) chat.toEnd()
+  }
   const send = async (text: string) => {
     if (devilOn) await api.devil(text)
     else await api.main(text)
+    sentNow()
   }
   const attach = async (text: string, files: { name: string; type: string; data: string }[]) => {
     await api.mainAttach(text, files)
+    sentNow()
   }
   // Les puces de branchement d'un message de weevboss ([[setup:x]]) : en boutons dessous, sur le dernier message qui
   // les porte seulement (les anciens restent lisibles, sans boutons qui doublonnent).
@@ -264,7 +214,7 @@ export function AgentBand() {
         </div>
         {/* L'aperçu et le fil restent rendus : ouvrir ou fermer ne fait que les montrer ou les cacher (immédiat). */}
         <div className="peek-wrap" hidden={open}>
-          <Peek onOpen={() => setExpanded('agent')} />
+          <Peek onOpen={() => setExpanded('agent')} visible={!open} sent={sent} />
         </div>
       </div>
       <div id="agent-body" hidden={!open}>

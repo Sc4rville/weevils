@@ -14,6 +14,7 @@ import { PageView } from './ui/pages'
 import { usePinch } from './ui/calm'
 import { adoptUnknown } from './ui/seen'
 import { useDevil } from './ui/devil'
+import { FOCUS_BOSS, flashBossMessage, toTop, when } from './ui/follow'
 import { ensurePush } from './push'
 import { syncServer, useT } from './i18n'
 import M from './i18n/app'
@@ -41,6 +42,8 @@ export default function App() {
   const [stack, setStack] = useState<Page[]>([])
   const stackRef = useRef<Page[]>([])
   const openers = useRef<(HTMLElement | null)[]>([])
+  /** À faire une fois toutes les pages refermées (focusBoss depuis une page). */
+  const afterPop = useRef<(() => void) | null>(null)
 
   // Horloge commune à toutes les durées affichées.
   useEffect(() => {
@@ -131,7 +134,10 @@ export default function App() {
       if (w >= stackRef.current.length) return
       const opener = openers.current[w]
       setPages(stackRef.current.slice(0, w))
-      setTimeout(() => opener?.focus?.({ preventScroll: true }), 60)
+      const then = w === 0 ? afterPop.current : null
+      afterPop.current = null
+      if (then) requestAnimationFrame(then)
+      else setTimeout(() => opener?.focus?.({ preventScroll: true }), 60)
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -147,6 +153,30 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [back, h24Open])
+
+  // Un parcours (branchement) ou une action qui répond dans le fil de weevboss, lancé d'où que ce soit (une page, le bas
+  // du flux) : les pages se referment, le flux remonte en douceur jusqu'en haut, puis le fil s'ouvre (ouvrir d'abord
+  // replierait les bandes et ferait sauter l'écran) et sa réponse est mise en avant (src/ui/follow.ts).
+  useEffect(() => {
+    const on = (e: Event) => {
+      const mid = (e as CustomEvent<string | undefined>).detail
+      const open = () => {
+        const go = () => {
+          setExpanded('agent')
+          flashBossMessage(mid)
+        }
+        if (window.scrollY < 4) return go()
+        toTop()
+        when(() => window.scrollY < 4, go, 900)
+      }
+      if (stackRef.current.length) {
+        afterPop.current = open
+        history.go(-stackRef.current.length)
+      } else open()
+    }
+    window.addEventListener(FOCUS_BOSS, on)
+    return () => window.removeEventListener(FOCUS_BOSS, on)
+  }, [])
 
   // Notification touchée : « /#s=<id> » au lancement, ou message du service worker si l'app est déjà ouverte.
   const ready = !!live.snap

@@ -125,3 +125,55 @@ describe('never a command for the user to type', () => {
     })
   }
 })
+
+describe('weevboss automatic messages are never posted twice', async () => {
+  const { Setup } = await import('./setup.ts')
+  let bumps = 0
+  const setup = new Setup({
+    bump: () => void bumps++,
+    feed: () => ({ machines: [{ id: 'box', name: 'box' }], projects: 0 }),
+    remoteFacts: async () => [],
+    devices: () => 1,
+    push: () => 0,
+    shortcut: () => false,
+    seen: () => [],
+    hasHistory: () => true,
+    startMail: () => undefined,
+    handoff: async () => undefined,
+  })
+  it('the same text again (a detection that repeats, a flow started twice) returns the message already there', () => {
+    const before = setup.messages().length
+    const a = setup.say('The session “x” was cut mid-work: process stopped.')
+    const b = setup.say('The session “x” was cut mid-work: process stopped.')
+    expect(b).toBe(a)
+    expect(setup.lastSaid).toBe(a)
+    expect(setup.messages().length).toBe(before + 1)
+    // Still a refresh: the app brings the existing message back into view.
+    expect(bumps).toBeGreaterThan(0)
+  })
+  it('a different text, or the same one long after, is posted', () => {
+    const before = setup.messages().length
+    setup.say('one')
+    setup.say('two')
+    expect(setup.messages().length).toBe(before + 2)
+  })
+  it('the machine flow started twice does not repeat the machine status', async () => {
+    await setup.ask('machine')
+    const n = setup.messages().length
+    await setup.ask('machine')
+    expect(setup.messages().length).toBe(n)
+  })
+})
+
+describe('test sessions never reach the real weevboss thread', async () => {
+  const { isTestBrief } = await import('./core.ts')
+  it('a brief starting with TEST (after an optional signature) is a test', () => {
+    expect(isTestBrief('[from:weevboss] TEST COUPURE (à ignorer) : lance sleep 75')).toBe(true)
+    expect(isTestBrief('TEST: cut detection')).toBe(true)
+  })
+  it('an ordinary brief is not, even about tests', () => {
+    expect(isTestBrief('Test du paiement en staging')).toBe(false)
+    expect(isTestBrief('[from:weevboss] ajoute des tests e2e')).toBe(false)
+    expect(isTestBrief(undefined)).toBe(false)
+  })
+})

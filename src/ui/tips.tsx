@@ -139,7 +139,7 @@ const iconOf = (tip: TipCard): [IconName, Dir?] => {
 
 /** Mounted once on the feed. `paused`: a page is open. */
 export function Tips({ paused }: { paused: boolean }) {
-  const { h24Open, push, refresh, colors, snap, home, setExpanded } = useApp()
+  const { h24Open, push, refresh, colors, snap } = useApp()
   const t = useT(M)
   const off = useTipsOff()
   const [shown, setShown] = useState<Shown | null>(null)
@@ -235,8 +235,7 @@ export function Tips({ paused }: { paused: boolean }) {
     }
     if (a.kind === 'setup') {
       hide()
-      home()
-      setExpanded('agent')
+      // askSetup ferme les pages, remonte en haut et ouvre le fil de weevboss (focusBoss).
       return askSetup(a.brick)
     }
     setBusy(true)

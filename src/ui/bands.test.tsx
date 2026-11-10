@@ -221,14 +221,32 @@ describe('fil de weevboss ouvert : il suit la réponse qui s’écrit', () => {
     }
   })
 
+  it('notre propre défilement doux ne décroche pas le suivi (aperçu réduit)', async () => {
+    let s = snap([msg('u', 'user', 'fais le point', 1)])
+    render(s)
+    const peek = host.querySelector<HTMLElement>('.peek')!
+    let h = 800
+    fake(peek, () => h)
+    // Une position intermédiaire d'un défilement animé, loin du bas, sans geste : ce n'est pas l'utilisateur qui relit.
+    peek.scrollTop = 100
+    await act(async () => void peek.dispatchEvent(new Event('scroll')))
+    h = 1100
+    s = { ...s, main: [...s.main, msg('r', 'assistant', 'Tout tourne.', 2)] }
+    render(s)
+    expect(peek.scrollTop).toBe(1100)
+  })
+
   it('pas quand on relit plus haut', async () => {
     let s = { ...snap([msg('u', 'user', 'et toi ?', 1), devil('')]), devil: { enabled: true, working: true } }
     render(s, true)
     await flush()
     const chat = host.querySelector<HTMLElement>('.chat')!
     fake(chat, () => 3000)
+    // Un geste de l'utilisateur (le doigt remonte) : seul un geste décroche le suivi, pas un défilement du programme.
+    await act(async () => void chat.dispatchEvent(new Event('touchstart')))
     chat.scrollTop = 200
     await act(async () => void chat.dispatchEvent(new Event('scroll')))
+    await act(async () => void chat.dispatchEvent(new Event('touchend')))
     s = { ...s, main: [s.main[0], devil('Moi je pense')] }
     render(s, true)
     expect(chat.scrollTop).toBe(200)

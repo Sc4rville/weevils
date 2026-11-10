@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
@@ -20,23 +20,8 @@ import { useThreadAsk } from './askthread'
 import { ago, durLong, status } from './format'
 import { Icon } from './icons'
 import { useT } from '../i18n'
+import { useFollow } from './follow'
 import M from '../i18n/pages'
-
-/** Garde la fin du fil visible : à l'ouverture (directement sur le dernier message) et quand un message arrive. */
-function useStickToBottom(count: number, ref: RefObject<HTMLElement | null>) {
-  const first = useRef(true)
-  useEffect(() => {
-    const el = ref.current
-    if (!el || count === 0) return
-    const go = (smooth: boolean) => el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
-    const smooth = !first.current
-    go(smooth)
-    // Les messages finissent de se poser (polices, images, animation d'entrée) : on redescend une fois.
-    const t = setTimeout(() => go(smooth), 420)
-    first.current = false
-    return () => clearTimeout(t)
-  }, [count, ref])
-}
 
 export function PageView({ page }: { page: Page }) {
   switch (page.kind) {
@@ -177,7 +162,9 @@ function SessionPage({ id }: { id: string }) {
 
   const messages = useMemo(() => mergePending(detail?.messages ?? [], pending), [detail, pending])
   const body = useRef<HTMLDivElement>(null)
-  useStickToBottom(messages.length, body)
+  // La fin du fil : déjà là à l'ouverture, suivie pendant que la réponse s'écrit, sauf si on remonte relire (src/ui/follow.ts).
+  const last = messages.at(-1)
+  const follow = useFollow(body, messages.length > 0, 80, `${messages.length}:${last?.id}:${last?.text.length}:${s?.status}`)
   const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
   const sp = snap.projects.find((p) => p.id === s?.projectId)
   const th = useThreadAsk(messages, { title: s?.title ?? '', tool: s?.tool ?? 'claude', project: sp?.name, projectId: s?.projectId, repo: s?.repo ?? undefined, machine: s?.machineId })
@@ -193,6 +180,7 @@ function SessionPage({ id }: { id: string }) {
     const shown = files.length ? `${text ? `${text} ` : ''}(${t.photos(files.length)})` : text
     const tmp: Pending = { id: `pending-${Date.now()}`, role: 'user', text: shown, at: Date.now(), typed: text, after: detail?.messages.at(-1)?.id }
     setPending((p) => [...p, tmp])
+    follow.toEnd()
     try {
       const r = files.length ? await api.attach(s.id, text, files) : await api.send(s.id, text)
       if (r.id !== id) replace({ kind: 'session', id: r.id })

@@ -214,7 +214,7 @@ export function useTour(): Tour | null {
 
 export function TourIntro() {
   const tour = useTour()
-  const { snap, setExpanded } = useApp()
+  const { snap } = useApp()
   const t = useT(M)
   const reduce = useReducedMotion()
   const [phase, setPhase] = useState<'scan' | 'first'>('scan')
@@ -322,7 +322,6 @@ export function TourIntro() {
                           className="tr-big"
                           onClick={() => {
                             finish()
-                            setExpanded('agent')
                             void runBrick('claude')
                           }}
                         >
@@ -438,10 +437,8 @@ export function TourBand() {
       else {
         const b = s.id === 'phone' && s.facts?.reach === 'local' ? 'reach' : BRICK_OF[s.id]
         if (!b) return
-        if (b !== 'push') {
-          openedThread.current = true
-          setExpanded('agent')
-        }
+        // runBrick ouvre le fil de weevboss en haut de l'écran (focusBoss), sauf les notifications (rien à y lire).
+        if (b !== 'push') openedThread.current = true
         const r = await runBrick(b)
         if (r.note || !r.ok) setNote(r.note ?? t.failed)
       }

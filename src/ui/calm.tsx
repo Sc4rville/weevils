@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type TouchEve
 import type { Message, SessionDetail } from '../../shared/api.ts'
 import { api } from '../api'
 import { useT } from '../i18n'
+import { useFollow } from './follow'
 import M from '../i18n/calm'
 import { useApp } from './app-context'
 import { Collapse, Composer, Messages, Working, type Attachment } from './bits'
@@ -42,19 +43,6 @@ export function usePinch(onPinch: () => void) {
       start.current = null
     },
   }
-}
-
-function useStickToBottom(count: number, ref: React.RefObject<HTMLElement | null>) {
-  const first = useRef(true)
-  useEffect(() => {
-    const el = ref.current
-    if (!el || count === 0) return
-    const go = (smooth: boolean) => el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
-    go(!first.current)
-    const t = setTimeout(() => go(!first.current), 420)
-    first.current = false
-    return () => clearTimeout(t)
-  }, [count, ref])
 }
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
@@ -146,10 +134,12 @@ export function CalmConv({ id }: { id: string }) {
   const title = main ? 'weevboss' : (s?.title ?? '')
   const settings = main ? snap.mainSettings : s?.settings
   const canCommand = main ? snap.mainHasScreen : !!s?.hasScreen
-  useStickToBottom(messages.length, body)
+  const last = messages.at(-1)
+  const follow = useFollow(body, messages.length > 0, 80, `${messages.length}:${last?.id}:${last?.text.length}:${working}`)
 
   const send = async (text: string, files: Attachment[] = []) => {
     setErr(null)
+    follow.toEnd()
     try {
       if (main) {
         if (files.length) await api.mainAttach(text, files)

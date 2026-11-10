@@ -68,6 +68,8 @@ describe('autoList: what runs without asking', () => {
   it('finds the automation a session runs for', () => {
     expect(autoOfSession({ optimizers: [opt({ id: 'a', state: 'running', sessionId: 's1' })] }, 's1')).toBe('a')
     expect(autoOfSession({ optimizers: [opt({ id: 'a' })] }, 's1')).toBeNull()
+    // Its run over (done, or queued for the next one), the session is yours again: the green star, not the loop.
+    expect(autoOfSession({ optimizers: [opt({ id: 'a', state: 'done', sessionId: 's1' }), opt({ id: 'b', state: 'queued', sessionId: 's1' })] }, 's1')).toBeNull()
   })
 
   it('a finished job whose last line says it failed is failed; a running one, a clean end or a timer is not', () => {

@@ -209,8 +209,9 @@ export function autoRank(x: AutoItem): number {
 const byOrder = (a: AutoItem, b: AutoItem) =>
   autoRank(a) - autoRank(b) || (a.nextAt ?? Infinity) - (b.nextAt ?? Infinity) || (a.place ?? 0) - (b.place ?? 0) || (b.endedAt ?? 0) - (a.endedAt ?? 0) || a.title.localeCompare(b.title)
 
-/** The automation a session runs for (an optimizer's run): its id, else null. Its row shows AutoMark, not the star. */
-export const autoOfSession = (snap: Pick<Snapshot, 'optimizers'>, sessionId: string): string | null => (snap.optimizers ?? []).find((o) => o.sessionId === sessionId)?.id ?? null
+/** The automation a session runs for (an optimizer's run in progress): its id, else null. Its row shows AutoMark, not the
+ *  star; the run over, the session is the user's again. */
+export const autoOfSession = (snap: Pick<Snapshot, 'optimizers'>, sessionId: string): string | null => (snap.optimizers ?? []).find((o) => o.state === 'running' && o.sessionId === sessionId)?.id ?? null
 
 export const projectOfRepo = (projects: Snapshot['projects'], repo: string | null) => (repo ? (projects.find((p) => p.repos.includes(repo))?.id ?? null) : null)
 
@@ -358,3 +359,4 @@ export function bandColors(ids: string[], kept: ReadonlyMap<string, string>, hea
   })
   return out
 }
+

@@ -542,9 +542,14 @@ function SessionItem({ item, who, project, fy }: KindProps) {
   const t = useT(M)
   const { now } = useApp()
   const open = useOpen(item)
+  const [unfold, setUnfold] = useState(false)
   const said = item.tone === 'result' ? t.toneResult : item.tone === 'question' ? t.toneQuestion : item.tone === 'alert' ? t.toneAlert : null
   const name = project ?? who
   const label = item.title ? `${name} · ${item.title}` : name
+  // A result says what was done in one line; the whole report and the reply wait behind a tap. A question or a cut
+  // keeps its reply line in sight: answering is the point.
+  const result = item.tone === 'result'
+  const fold = !!item.body || (result && !!item.reply)
   return (
     <>
       <button className="fy-head" onClick={open} disabled={!open} aria-label={t.openSession(label)}>
@@ -570,13 +575,35 @@ function SessionItem({ item, who, project, fy }: KindProps) {
           </span>
           <Listen item={item} who={name} small />
         </div>
-        <div className="fy-text">{item.text}</div>
+        {fold ? (
+          <button className="fy-line fy-line-btn" onClick={() => setUnfold((v) => !v)} aria-expanded={unfold}>
+            <span>{item.text}</span>
+            <span className="fy-line-more" aria-hidden>
+              {' '}
+              <Icon name="chevron" dir={unfold ? 'up' : 'down'} />
+            </span>
+          </button>
+        ) : (
+          <div className="fy-line">{item.text}</div>
+        )}
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
       {!!item.media?.length && <MediaStrip media={item.media} />}
       <Actions item={item} fy={fy} />
+      {fold && (
+        <Collapse open={unfold}>
+          {item.body && (
+            <div className="tone">
+              <div className="in fy-mail-body">
+                <div className="fy-text">{item.body}</div>
+              </div>
+            </div>
+          )}
+          {result && item.reply && <ReplyLine item={item} who={name} fy={fy} />}
+        </Collapse>
+      )}
       {/* The project is enough here: the title sits just above, and with it the placeholder was cut mid-word on a phone. */}
-      {item.reply && <ReplyLine item={item} who={name} fy={fy} />}
+      {!result && item.reply && <ReplyLine item={item} who={name} fy={fy} />}
     </>
   )
 }

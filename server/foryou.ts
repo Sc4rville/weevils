@@ -40,6 +40,13 @@ export const MAX_FEED = 60
 export const TEXT_MAX = 600
 export const POST_MAX = 1200
 export const MAIL_LINE_MAX = 140
+/** A session's line in the stream: what it did, said in passing. The whole closing words unfold under it. */
+export const HEADLINE_MAX = 110
+/** The closing words kept for the unfold. */
+export const BODY_MAX = 4000
+/** Turns that ended before the stream heard of them (first start, restart): picked up when this recent, this many at a time. */
+export const BACKFILL_MS = 24 * 3600_000
+export const BACKFILL_MAX = 16
 export const MAIL_BODY_MAX = 12_000
 export const MAX_ACTIONS = 2
 /** Files shown by the same session within this delay join one item, up to MAX_MEDIA. */
@@ -66,96 +73,20 @@ export const LIVE_FORGET_MS = 6 * 3600_000
 /** The transcript may trail the end of the turn by a scan: the result is read again after this. */
 export const REFINE_MS = 4000
 
-// ---------------------------------------------------------------- order and pace (plan §2.3)
-
-/** Weight of each sort of item: what needs the user first, then what was delivered, then what can wait. */
-export const WEIGHT = { alert: 10, question: 8, cut: 7, mail: 5, result: 4, boss: 3.5, proposals: 3, media: 2.5, improve: 2, insight: 1.5, milestone: 1.5, stat: 1.5 } as const
-/** Freshness halves every six hours. */
-export const HALF_LIFE_MS = 6 * 3600_000
-/** A question or a cut is still current while its item is shown: no decay for a day. */
-export const PIN_MS = 24 * 3600_000
-/** An item already seen counts for this share of its score: unseen first, but a fresh seen item beats a stale unseen one. */
-export const SEEN_FACTOR = 0.35
-/** An unseen media younger than this opens the stream (after the alerts). */
-export const FRESH_MEDIA_MS = 2 * 3600_000
-/** The proposals sit at this index of the stream below the alerts: third place. */
-export const PROPOSALS_SLOT = 2
-/** One insight, milestone or stat after this many other items. */
-export const DEEP_GAP = 4
-
-const isDeep = (i: ForYouItem) => i.kind === 'insight' || i.kind === 'milestone' || i.kind === 'stat'
-const waits = (i: ForYouItem) => i.kind === 'session' && (i.tone === 'question' || i.tone === 'alert')
-
-/** Score of an item: weight × freshness, lowered once seen. */
-export function score(i: ForYouItem, now: number): number {
-  const w = i.kind === 'session' ? (i.tone === 'question' ? WEIGHT.question : i.tone === 'alert' ? WEIGHT.cut : WEIGHT.result) : WEIGHT[i.kind]
-  const age = Math.max(0, now - i.at)
-  const fresh = i.kind === 'alert' || (waits(i) && age < PIN_MS) ? 1 : 0.5 ** (age / HALF_LIFE_MS)
-  return w * fresh * (i.seen ? SEEN_FACTOR : 1)
-}
-
-const pairs = (list: ForYouItem[]) => list.reduce((n, x, i) => n + (i > 0 && list[i - 1].kind === x.kind ? 1 : 0), 0)
+// ---------------------------------------------------------------- order
 
 /**
- * The body of the stream (everything but the alerts), best score first, paced: never two items of the same kind in a
- * row when another order avoids it (a kind that fills more than half of what is left goes now), the proposals at
- * their slot, an insight or a milestone only every DEEP_GAP items.
- */
-function pace(sorted: ForYouItem[], lead?: ForYouItem): ForYouItem[] {
-  let proposals = sorted.find((i) => i.kind === 'proposals')
-  const rest = sorted.filter((i) => i !== proposals)
-  const out: ForYouItem[] = []
-  let sinceDeep = 0
-  const take = (x: ForYouItem) => {
-    rest.splice(rest.indexOf(x), 1)
-    out.push(x)
-    sinceDeep = isDeep(x) ? 0 : sinceDeep + 1
-  }
-  if (lead) take(lead)
-  while (rest.length || proposals) {
-    if (proposals && (out.length === PROPOSALS_SLOT || !rest.length)) {
-      out.push(proposals)
-      proposals = undefined
-      sinceDeep++
-      continue
-    }
-    const prev = out[out.length - 1]?.kind
-    const plain = rest.filter((x) => !isDeep(x))
-    const due = sinceDeep >= DEEP_GAP || !plain.length
-    const open = due ? rest : plain
-    const differ = open.filter((x) => x.kind !== prev)
-    if (!differ.length) {
-      take(open[0])
-      continue
-    }
-    const counts = new Map<ForYouKind, number>()
-    for (const x of open) counts.set(x.kind, (counts.get(x.kind) ?? 0) + 1)
-    const crowded = [...counts].find(([k, n]) => n * 2 > open.length && k !== prev)?.[0]
-    const deep = due ? differ.find(isDeep) : undefined
-    take(crowded ? open.find((x) => x.kind === crowded)! : (deep ?? differ[0]))
-  }
-  return out
-}
-
-/**
- * The order of the stream. Pure and deterministic: alerts on top, then a fresh unseen media when there is one (unless
- * leading with it would put two items of a kind side by side that another order keeps apart), then the rest by score,
- * paced (see pace()). Equal scores: newest first, then by id.
+ * The order of the stream: newest first, so news always comes in at the top; the system alerts (a state that blocks,
+ * not news) above.
  */
 /** A session found waiting or cut without an item (first start, restart) only gets one when that is recent. */
 export const CATCH_UP_MS = 12 * 3600_000
 
-export function arrange(items: ForYouItem[], now: number): ForYouItem[] {
-  const scored = items.map((item) => ({ item, s: score(item, now) }))
-  scored.sort((a, b) => b.s - a.s || b.item.at - a.item.at || (a.item.id < b.item.id ? -1 : a.item.id > b.item.id ? 1 : 0))
-  const sorted = scored.map((x) => x.item)
-  const head = sorted.filter((i) => i.kind === 'alert')
-  const body = sorted.filter((i) => i.kind !== 'alert')
-  const lead = body.find((i) => i.kind === 'media' && !i.seen && now - i.at < FRESH_MEDIA_MS)
-  const plain = pace(body)
-  if (!lead) return [...head, ...plain]
-  const led = pace(body, lead)
-  return [...head, ...(pairs(led) <= pairs(plain) ? led : plain)]
+export function arrange(items: ForYouItem[], _now: number): ForYouItem[] {
+  // One rule the eye can learn: what is new comes in at the top. Only what blocks right now (the system alerts, a
+  // state, not news) sits above, and leaves once solved.
+  const newest = (a: ForYouItem, b: ForYouItem) => b.at - a.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  return [...items.filter((i) => i.kind === 'alert').sort(newest), ...items.filter((i) => i.kind !== 'alert').sort(newest)]
 }
 
 // ---------------------------------------------------------------- texts
@@ -212,6 +143,44 @@ export function withoutPaths(text: string, files: string[]): string {
     .replace(/[,;]([.!?])/g, '$1')
     .replace(/\s*[:：]\s*$/, '.')
     .trim()
+}
+
+/** Inline code that is code (a path, a call, a flag), not a word put in backticks. */
+const CODEY = /[/\\_=<>{}()$#@|]|\.[a-z0-9]{1,5}\b|--|^[\w.-]+$/i
+
+/**
+ * What a session did, in one short line said in passing (« La page des commandes passe à 240 ms »), from the closing
+ * words of its turn: no markdown, no paths, no commands, no machine tag, the first sentence, and when it opens with a
+ * heading before a colon (« Cause trouvée : … »), that heading. The whole words stay in the item's body.
+ */
+export function headline(text: string, max = HEADLINE_MAX): string {
+  const plain = text
+    .replace(/```[\s\S]*?```/g, '\n\n')
+    .replace(/^\s*#{1,6}\s+(.*)$/gm, '$1\n\n')
+    .replace(/\*\*|__/g, '')
+    .replace(/^\s*(?:[-*•>]|\d+[.)])\s+/gm, '\n\n')
+    .replace(/^\s*\[(?:VPS|PC|GPU|test)\]\s*/gim, '')
+    .replace(/`([^`\n]*)`/g, (_m, c: string) => (CODEY.test(c) ? '' : c))
+    .replace(/\[([^\]\n]*)\]\([^)\n]*\)/g, '$1')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/(?<![\w/])(?:~|\.{1,2})?\/[\w.@~+-]+(?:\/[\w.@~+-]*)*/g, '')
+    .replace(/(?<![\w/])[\w.-]+(?:\/[\w.@~+-]+)+\.[a-z0-9]{1,5}\b/gi, '')
+    .replace(/\bPID\s*\d+\b/gi, '')
+  const lines = plain.split(/\n\s*\n/).map(collapse).filter((l) => /\p{L}{2}/u.test(l) && !GREETING.test(l))
+  let line = lines[0] ?? ''
+  const sentence = /^(.+?[.!?…])(?:\s|$)/u.exec(line)
+  if (sentence && sentence[1].length >= 12) line = sentence[1]
+  const heading = /^(.{8,80}?)\s*[:：—–]\s/u.exec(line)
+  if (heading) line = heading[1]
+  line = line
+    .replace(/\(\s*[,;]?\s*\)/g, '')
+    .replace(/\s+([,.;:!?…])/g, '$1')
+    .replace(/[\s,;:(–—-]+$/u, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+  if (line.length <= max) return line
+  const cut = line.slice(0, max - 1)
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), max * 0.6)).replace(/[\s,;:–—-]+$/u, '')}…`
 }
 
 /** First line of a mail that says something: not a greeting, not a quote, not a separator. */
@@ -522,7 +491,7 @@ export class ForYou {
   }
 
   /** The words that end the turn (the transcript, here or on the session's machine), and the files they cite. */
-  private async result(s: Session, first: boolean) {
+  private async result(s: Session, first: boolean, back = false) {
     const cur0 = this.get(`s:${s.id}`)
     // Read again later: only to complete the result written a moment ago.
     if (!first && cur0?.tone !== 'result') return
@@ -533,8 +502,10 @@ export class ForYou {
     const mediaIds = cited.map((e) => e.id)
     // The files are shown under the words: their raw paths leave the words (unless nothing else was said).
     const said = cited.length ? collapse(withoutPaths(raw, cited.map((e) => e.path))) : ''
-    const text = clip(said || collapse(raw || (first ? (s.lastMessage ?? '') : '')), TEXT_MAX)
+    const whole = (said || raw || (first ? (s.lastMessage ?? '') : '')).trim()
+    const text = headline(whole) || clip(collapse(whole), HEADLINE_MAX)
     if (!text) return
+    const body = collapse(whole) === text ? undefined : clip(whole.replace(/\n{3,}/g, '\n\n'), BODY_MAX)
     const cur = this.get(`s:${s.id}`)
     const same = cur?.tone === 'result' && cur.text === text && (cur.mediaIds ?? []).join() === mediaIds.join()
     if (same) return
@@ -542,12 +513,17 @@ export class ForYou {
       // Same turn, better words: the item keeps its place and its seen state.
       if (cur?.tone !== 'result') return
       cur.text = text
+      if (body) cur.body = body
+      else delete cur.body
+      delete cur.sum
       if (mediaIds.length) cur.mediaIds = mediaIds
       else delete cur.mediaIds
       return this.changed()
     }
     const now = this.now()
-    this.put(this.sessionItem(s, { tone: 'result', text, at: now, ...(mediaIds.length ? { mediaIds } : {}) }))
+    this.put(this.sessionItem(s, { tone: 'result', text, at: back ? Math.min(now, s.lastActivityAt || now) : now, ...(body ? { body } : {}), ...(mediaIds.length ? { mediaIds } : {}) }))
+    // Picked up late: already counted, or from another day.
+    if (back) return this.changed()
     const d = day(now)
     const today = this.s.delivered.day === d ? this.s.delivered : { day: d, n: 0, by: {} }
     const by = { ...today.by }
@@ -695,6 +671,26 @@ export class ForYou {
       .map((i) => ({ id: i.id, who: i.who, subject: i.title ?? '', text: i.body! }))
   }
 
+  /** Session results still in their raw closing words (no line said in passing yet), never seen: for the curator. */
+  rawResults(max = 6): { id: string; project: string; title: string; text: string }[] {
+    const snap = this.w.snapshot()
+    return this.s.items
+      .filter((i) => i.kind === 'session' && i.tone === 'result' && !i.gone && !i.seen && !i.sum && !!i.body)
+      .sort((a, b) => b.at - a.at)
+      .slice(0, max)
+      .map((i) => ({ id: i.id, project: snap.projects.find((p) => p.id === i.projectId)?.name ?? i.projectId ?? '', title: i.title ?? '', text: i.body! }))
+  }
+
+  /** The curator's line for a session result (null: it kept nothing, the headline stays). */
+  resultLine(id: string, line: string | null, l?: Lang) {
+    const i = this.get(id)
+    if (!i || i.kind !== 'session') return
+    const text = line ? clip(collapse(line), HEADLINE_MAX) : ''
+    i.sum = text ? { text, lang: l } : {}
+    if (text) this.changed()
+    else this.save()
+  }
+
   /** The curator's line for a mail (null: it tried and kept nothing, the first line stays). The whole mail stays in body. */
   mailLine(id: string, line: string | null, l?: Lang) {
     const i = this.get(id)
@@ -765,6 +761,7 @@ export class ForYou {
       else delete out.reply
     }
     if (i.kind === 'session') {
+      if (i.tone === 'result' && i.sum?.text) out.text = i.sum.text
       const cur = snap.sessions.find((s) => s.id === i.sessionId)
       if (cur) out.title = cleanTitle(cur.title)
       const t = tr(M)
@@ -882,6 +879,20 @@ export class ForYou {
 
   // ---------------------------------------------------------------- reading: the whole
 
+  /** Turns that ended while the stream did not listen (first start, restart): the recent ones get their item, once. */
+  private backfill(snap: Snapshot, now: number) {
+    const due = snap.sessions
+      .filter((s) => (s.status === 'done' || s.status === 'idle') && s.messageCount > 2 && now - s.lastActivityAt < BACKFILL_MS)
+      .filter((s) => !this.tried.has(s.id) && !this.has(`s:${s.id}`) && this.eligible(s))
+      .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+      .slice(0, BACKFILL_MAX)
+    for (const s of due) {
+      this.tried.add(s.id)
+      void this.result(s, true, true).catch(() => undefined)
+    }
+  }
+  private tried = new Set<string>()
+
   /**
    * Everything visible now, before the language filter. Also: a session that waits or was cut without an item saying
    * so gets one (after a restart, core's first pass is silent), and the revision moves when the visible set changed.
@@ -895,6 +906,7 @@ export class ForYou {
       if (this.eligible(s) && this.waiting(s, s.status === 'needs_user' ? 'question' : 'cut')) wrote = true
     }
     if (wrote) this.changed(false)
+    this.backfill(snap, now)
     const out: { item: ForYouItem; lang?: Lang }[] = []
     for (const i of this.s.items) {
       const item = this.view(i, snap)

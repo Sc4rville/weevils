@@ -10,8 +10,8 @@ import type { Message, Optimizer, Session, Snapshot } from '../shared/api.ts'
 import type { ForYouItem, ForYouKind } from '../shared/foryou.ts'
 import type { UsageInfo } from '../shared/infra.ts'
 import {
-  DEEP_GAP, FRESH_MEDIA_MS, ForYou, KEEP_MS, MAX_CARDS, MAX_FEED, MAX_ITEMS, MAX_MEDIA, MEDIA_JOIN_MS, OFFLINE_AFTER_MS, PROPOSALS_SLOT, REFRESH_MS, TEXT_MAX,
-  arrange, cleanTitle, firstLine, foryouRoutes, lastWords, score, withoutPaths, type ForYouDeps, type MachineState,
+  ForYou, KEEP_MS, MAX_CARDS, MAX_FEED, MAX_ITEMS, MAX_MEDIA, MEDIA_JOIN_MS, OFFLINE_AFTER_MS, REFRESH_MS,
+  HEADLINE_MAX, arrange, cleanTitle, headline, firstLine, foryouRoutes, lastWords, withoutPaths, type ForYouDeps, type MachineState,
 } from './foryou.ts'
 import M from './i18n/foryou.ts'
 import TM from './i18n/tips.ts'
@@ -173,9 +173,11 @@ describe('session results', () => {
     threads.s1 = [says('x'.repeat(2000))]
     fy.sessionTurn(session(), 'result')
     await flush()
-    const text = find(fy, 's:s1')!.text
-    expect(text).toHaveLength(TEXT_MAX)
-    expect(text.endsWith('…')).toBe(true)
+    // One line said in passing; the whole words unfold under it.
+    const it1 = find(fy, 's:s1')!
+    expect(it1.text.length).toBeLessThanOrEqual(HEADLINE_MAX)
+    expect(it1.text.endsWith('…')).toBe(true)
+    expect(it1.body).toHaveLength(2000)
     // A session of another machine whose thread cannot be read: what the snapshot says.
     fy.sessionTurn(session({ id: 'far', machineId: 'pc', lastMessage: 'done over there' }), 'result')
     await flush()
@@ -217,7 +219,7 @@ describe('session results', () => {
     threads.s1 = [says('The menu is in, here are the renders:\n- out/menu.png\n- out/clip.mp4\n\nTests are green.')]
     fy.sessionTurn(session(), 'result')
     await flush()
-    expect(find(fy, 's:s1')).toMatchObject({ text: 'The menu is in, here are the renders. Tests are green.', media: [{ name: 'menu.png' }, { name: 'clip.mp4' }] })
+    expect(find(fy, 's:s1')).toMatchObject({ text: 'The menu is in, here are the renders.', body: 'The menu is in, here are the renders. Tests are green.', media: [{ name: 'menu.png' }, { name: 'clip.mp4' }] })
     threads.s1 = [says('Rendu du menu : /home/u/projects/mygame/out/menu.png')]
     fy.sessionTurn(session(), 'result')
     await flush()
@@ -226,7 +228,8 @@ describe('session results', () => {
     threads.s1 = [says('See out/menu.png and out/missing.png, then data-menu.png.')]
     fy.sessionTurn(session(), 'result')
     await flush()
-    expect(find(fy, 's:s1')?.text).toBe('See and out/missing.png, then data-menu.png.')
+    expect(find(fy, 's:s1')?.body).toBe('See and out/missing.png, then data-menu.png.')
+    expect(find(fy, 's:s1')?.text).toBe('See and, then data-menu.png.')
     threads.s1 = [says('out/menu.png')]
     fy.sessionTurn(session(), 'result')
     await flush()
@@ -298,6 +301,19 @@ describe('session results', () => {
     fy.sessionTurn(auto, 'result')
     await flush()
     expect(ids(fy)).toEqual(['s:a1'])
+  })
+})
+
+describe('headline', () => {
+  it('a line said in passing: no markdown, no path, no command, no machine tag, the heading before a colon', () => {
+    expect(headline('[VPS] Cause trouvée : l’instance de test PID 3999499 a exécuté `reapPanes()` et fermé les cinq sessions.')).toBe('Cause trouvée')
+    expect(headline('« Pour toi » est en ligne : les deux mots en haut, l’aperçu dans la bande.')).toBe('« Pour toi » est en ligne')
+    expect(headline('## Fait\n\nLa page passe de 1,8 s à 240 ms, mesuré sur `/api/orders`. Les tests passent.')).toBe('Fait')
+    expect(headline('Index posé sur (boutique, jour) dans ~/projects/comptoir/db/schema.sql, et la page est rapide.')).toBe('Index posé sur (boutique, jour) dans, et la page est rapide.')
+    expect(headline('- out/menu.png\n- ok')).toBe('ok')
+    const long = headline('Le menu mobile glisse maintenant depuis la gauche avec un ressort plus doux et il se referme quand on touche ailleurs sur la page entière.')
+    expect(long.length).toBeLessThanOrEqual(HEADLINE_MAX)
+    expect(long).toMatch(/\S…$/)
   })
 })
 
@@ -641,7 +657,7 @@ describe('proposals', () => {
     expect(host.close.mock.calls.map((c) => c[0]).sort()).toEqual(['i1', 'i2'])
     await fy.act('proposals', 'refuse', asking.id)
     expect(host.sendMain).not.toHaveBeenCalled()
-    expect(fy.feed().items).toEqual([])
+    expect(fy.feed().items.filter((x) => x.kind !== 'session')).toEqual([])
     // Another situation, another card: accepted, weevboss gets the prepared message.
     snap.sessions.push(session({ id: 'u2', controllable: false, status: 'idle', lastActivityAt: T0 - 20 * HOUR }))
     const next = fy.feed().items[0].cards!.find((c) => c.kind === 'idle-unmanaged')!
@@ -656,7 +672,7 @@ describe('proposals', () => {
     fy.feed()
     fy.seen(['proposals'])
     fy.dismiss('proposals')
-    expect(fy.feed().items).toEqual([])
+    expect(fy.feed().items.filter((x) => x.kind !== 'session')).toEqual([])
     now = T0 + HOUR
     snap.optimizers.push(optimizer({ id: 'o2' }))
     const [p] = fy.feed().items
@@ -738,90 +754,30 @@ describe('the mark in the snapshot', () => {
 describe('arrange', () => {
   let n = 0
   const item = (kind: ForYouKind, over: Partial<ForYouItem> = {}): ForYouItem => ({ id: `${kind}-${n++}`, kind, tone: 'neutral', at: T0 - MIN, who: 'x', text: '', ...over })
-  const kinds = (list: ForYouItem[]) => list.map((i) => i.kind)
-  const pairs = (list: ForYouItem[]) => list.filter((x, i) => i > 0 && list[i - 1].kind === x.kind).length
-  /** Deterministic pseudo-random numbers (the property tests must not flake). */
-  const rng = (seed: number) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32)
 
-  it('scores: what needs the user first, freshness halves every six hours, seen counts for less', () => {
-    const order = [item('alert'), item('session', { tone: 'question' }), item('session', { tone: 'alert' }), item('mail'), item('session', { tone: 'result' }), item('boss'), item('proposals'), item('media'), item('improve'), item('insight')]
-    const scores = order.map((i) => score(i, T0))
-    expect([...scores].sort((a, b) => b - a)).toEqual(scores)
-    const mail = item('mail', { at: T0 })
-    expect(score({ ...mail, at: T0 - 6 * HOUR }, T0)).toBeCloseTo(score(mail, T0) / 2)
-    expect(score({ ...mail, seen: true }, T0)).toBeLessThan(score(mail, T0))
-    // A question still waiting does not fade for a day.
-    const q = item('session', { tone: 'question', at: T0 - 20 * HOUR })
-    expect(score(q, T0)).toBe(score({ ...q, at: T0 }, T0))
+  it('newest first, whatever the kind, seen or not: news always comes in at the top', () => {
+    const list = [
+      item('insight', { at: T0 - 5 * MIN }),
+      item('session', { tone: 'result', at: T0 - MIN, seen: true }),
+      item('mail', { at: T0 - 3 * MIN }),
+      item('proposals', { at: T0 - 2 * MIN }),
+      item('session', { tone: 'question', at: T0 - 9 * MIN }),
+    ]
+    expect(arrange(list, T0).map((i) => i.at)).toEqual([T0 - MIN, T0 - 2 * MIN, T0 - 3 * MIN, T0 - 5 * MIN, T0 - 9 * MIN])
   })
 
-  it('alerts first, then a fresh unseen media, the proposals around third place', () => {
-    const list = [item('session', { tone: 'result' }), item('mail'), item('boss'), item('proposals'), item('media', { at: T0 - 10 * MIN }), item('alert', { at: T0 - HOUR }), item('alert', { at: T0 }), item('session', { tone: 'question' })]
-    const out = arrange(list, T0)
-    expect(kinds(out).slice(0, 3)).toEqual(['alert', 'alert', 'media'])
-    expect(out.findIndex((i) => i.kind === 'proposals')).toBe(2 + PROPOSALS_SLOT)
-    expect(out[3]).toMatchObject({ kind: 'session', tone: 'question' })
-    expect(out).toHaveLength(list.length)
-    // Seen, or older than two hours: the media takes its place by score.
-    const seen = arrange(list.map((i) => (i.kind === 'media' ? { ...i, seen: true } : i)), T0)
-    expect(seen[2].kind).not.toBe('media')
-    const old = arrange(list.map((i) => (i.kind === 'media' ? { ...i, at: T0 - FRESH_MEDIA_MS - 1 } : i)), T0)
-    expect(old[2].kind).not.toBe('media')
-    // With few items the proposals still show, at the end.
-    expect(kinds(arrange([item('proposals'), item('mail')], T0))).toEqual(['mail', 'proposals'])
+  it('the system alerts sit above, newest first among them', () => {
+    const a1 = item('alert', { at: T0 - 60 * MIN })
+    const a2 = item('alert', { at: T0 - 30 * MIN })
+    const fresh = item('media', { at: T0 })
+    expect(arrange([fresh, a1, a2], T0).map((i) => i.id)).toEqual([a2.id, a1.id, fresh.id])
   })
 
-  it('unseen before seen within reason: a fresh seen item still beats a stale unseen one', () => {
-    const a = item('boss', { at: T0 - MIN, seen: true })
-    const b = item('boss', { at: T0 - 2 * MIN })
-    const stale = item('boss', { at: T0 - 30 * HOUR })
-    expect(arrange([a, b, stale], T0).map((i) => i.id)).toEqual([b.id, a.id, stale.id])
-  })
-
-  it('never two of a kind in a row when another order avoids it', () => {
-    const random = rng(7)
-    const pool: ForYouKind[] = ['session', 'mail', 'boss', 'media', 'improve']
-    for (let round = 0; round < 300; round++) {
-      const size = 1 + Math.floor(random() * 14)
-      const skew = random()
-      const list = Array.from({ length: size }, () =>
-        item(random() < skew ? 'session' : pool[Math.floor(random() * pool.length)], { at: T0 - Math.floor(random() * 40 * HOUR), seen: random() < 0.3 }),
-      )
-      const out = arrange(list, T0)
-      expect(out.map((i) => i.id).sort()).toEqual(list.map((i) => i.id).sort())
-      const top = Math.max(...pool.map((k) => list.filter((i) => i.kind === k).length))
-      // The fewest pairs any order can reach: what the most frequent kind forces.
-      expect(pairs(out)).toBe(Math.max(0, 2 * top - size - 1))
-    }
-  })
-
-  it('a fresh media does not lead when that would put two of a kind side by side', () => {
-    const list = [item('media', { at: T0 - MIN }), item('media', { at: T0 - 3 * HOUR }), item('session', { at: T0 }), item('session', { at: T0 - MIN }), item('session', { at: T0 - 2 * MIN })]
-    const out = arrange(list, T0)
-    expect(kinds(out)).toEqual(['session', 'media', 'session', 'media', 'session'])
-  })
-
-  it('an insight, a milestone or a stat only every few items, the rest at the end', () => {
-    const deep = [item('insight', { at: T0 }), item('milestone', { at: T0 }), item('stat', { at: T0 })]
-    const plain = Array.from({ length: 9 }, (_, i) => item(i % 2 ? 'mail' : 'boss', { at: T0 - i * MIN }))
-    const out = kinds(arrange([...deep, ...plain], T0))
-    const at = out.map((k, i) => (k === 'insight' || k === 'milestone' || k === 'stat' ? i : -1)).filter((i) => i >= 0)
-    expect(at).toEqual([DEEP_GAP, 2 * DEEP_GAP + 1, 11])
-    // Nothing else to show: they come anyway.
-    expect(kinds(arrange([deep[0], deep[1]], T0)).sort()).toEqual(['insight', 'milestone'])
-  })
-
-  it('same input, same order, whatever the order it came in', () => {
-    const random = rng(3)
-    const list = Array.from({ length: 30 }, (_, i) => item((['session', 'mail', 'boss', 'media', 'insight', 'alert'] as ForYouKind[])[i % 6], { at: T0 - (i % 4) * HOUR, seen: i % 5 === 0 }))
-    list.push(item('proposals'))
-    const want = arrange(list, T0).map((i) => i.id)
-    expect(arrange(list, T0).map((i) => i.id)).toEqual(want)
-    for (let round = 0; round < 10; round++) {
-      const shuffled = [...list].sort(() => random() - 0.5)
-      expect(arrange(shuffled, T0).map((i) => i.id)).toEqual(want)
-    }
-    expect(list.map((i) => i.id)).toEqual([...list].map((i) => i.id))
+  it('stable for equal times, and leaves its input alone', () => {
+    const list = [item('boss', { id: 'b' }), item('boss', { id: 'a' }), item('mail', { id: 'c' })]
+    const ids = list.map((i) => i.id)
+    expect(arrange(list, T0).map((i) => i.id)).toEqual(['a', 'b', 'c'])
+    expect(list.map((i) => i.id)).toEqual(ids)
   })
 })
 

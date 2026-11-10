@@ -72,9 +72,10 @@ export default defineMessages({
 
     // ---------------------------------------------------------------- mail lines
     mailItem: (n: number, from: string, subject: string, text: string) => `### ${n}\nDe : ${from}\nObjet : ${subject || '(sans objet)'}\n${text}`,
+    resultItem: (n: number, project: string, title: string, text: string) => `### ${n}\nDe : l'agent de code du projet ${project} (sa tâche : ${title || 'sans titre'})\nSon compte rendu de fin de tour :\n${text}`,
     mailLines: (mails: string) =>
-      `Voici des mails reçus par l'utilisateur d'une app qui pilote des agents de code. Pour chacun, écris UNE ligne très courte (90 caractères au plus) qui dit ce que l'expéditeur a fait, annonce ou demande, comme il le dirait lui-même en passant (par exemple : j'ai fini le menu, il reste les tests). ` +
-      `Pas de salutation, pas de guillemets, pas d'emoji, rien qui n'est pas dans le mail ; dans la langue du mail.\n\n${mails}\n\n` +
+      `Voici des messages reçus par l'utilisateur d'une app qui pilote des agents de code (des mails, des comptes rendus d'agents). Pour chacun, écris UNE ligne très courte (90 caractères au plus) qui dit ce que l'expéditeur a fait, annonce ou demande, à la première personne, comme il le dirait lui-même en passant à un humain (par exemple : j'ai fini le menu, il reste les tests ; j'ai trouvé pourquoi les sessions se fermaient, c'est réparé). ` +
+      `Pas de salutation, pas de guillemets, pas d'emoji, aucun chemin de fichier, aucune commande, aucun nom de fonction ni jargon technique inutile, rien qui n'est pas dans le message ; dans la langue du message.\n\n${mails}\n\n` +
       `Réponds uniquement en JSON, une liste : [{"n": 1, "line": "…"}]`,
 
     // ---------------------------------------------------------------- milestones (no model)
@@ -152,9 +153,10 @@ export default defineMessages({
       `Only well-established facts; no figure or date you are not certain of. Plain text: no heading, no list, no markdown, no emoji. In English.`,
 
     mailItem: (n: number, from: string, subject: string, text: string) => `### ${n}\nFrom: ${from}\nSubject: ${subject || '(no subject)'}\n${text}`,
+    resultItem: (n: number, project: string, title: string, text: string) => `### ${n}\nFrom: the coding agent of project ${project} (its task: ${title || 'untitled'})\nIts end-of-turn report:\n${text}`,
     mailLines: (mails: string) =>
-      `Here are mails received by the user of an app that drives coding agents. For each one, write ONE very short line (90 characters at most) saying what the sender did, announces or asks, as they would say it themselves in passing (for example: I finished the menu, the tests are left). ` +
-      `No greeting, no quotes, no emoji, nothing that is not in the mail; in the language of the mail.\n\n${mails}\n\n` +
+      `Here are messages received by the user of an app that drives coding agents (mails, agents' reports). For each one, write ONE very short line (90 characters at most) saying what the sender did, announces or asks, in the first person, as they would say it in passing to a human (for example: I finished the menu, the tests are left; I found why sessions were closing, it's fixed). ` +
+      `No greeting, no quotes, no emoji, no file path, no command, no function name or needless jargon, nothing that is not in the message; in the language of the message.\n\n${mails}\n\n` +
       `Answer only in JSON, a list: [{"n": 1, "line": "…"}]`,
 
     msTurns: (n: number) => `${n} turns delivered today`,

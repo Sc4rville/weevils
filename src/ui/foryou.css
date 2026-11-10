@@ -1130,3 +1130,35 @@
     transform: none;
   }
 }
+
+/* A session's line said in passing: big enough to read while scrolling, the whole report behind a tap. */
+.fy-line {
+  display: block;
+  font-size: 1.3125rem;
+  font-weight: 700;
+  line-height: 1.24;
+  letter-spacing: -0.012em;
+  overflow-wrap: anywhere;
+}
+.fy-line-btn {
+  appearance: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 1.3125rem;
+  font-weight: 700;
+  line-height: 1.24;
+  text-align: left;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  cursor: pointer;
+}
+.fy-line-more {
+  white-space: nowrap;
+  opacity: 0.55;
+  font-size: 0.8em;
+}
+.fy-line-more svg {
+  vertical-align: -0.1em;
+}

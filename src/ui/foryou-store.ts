@@ -54,6 +54,8 @@ let feed: ForYouFeed | null = null
 /** Ids shown, in the order shown. */
 let order: string[] = []
 let held = new Set<string>()
+/** When each shown item was last news (its time when it took its place). */
+const shownAt = new Map<string, number>()
 const gone = new Set<string>()
 const goneCards = new Set<string>()
 const seen = new Set<string>()
@@ -120,22 +122,18 @@ function adopt(f: ForYouFeed) {
   } else {
     const known = new Set(order)
     const next = order.filter((id) => by.has(id))
-    const news = ids.filter((id) => !known.has(id))
-    // Finger down, stream moving, or reading further down: nothing is pushed, the newcomers wait behind « n new ».
+    // New, or an item that came back with news (a session's next turn): it belongs at the top.
+    const news = ids.filter((id) => !known.has(id) || (by.get(id)!.at ?? 0) > (shownAt.get(id) ?? 0))
+    // Finger down, stream moving, or reading further down: nothing moves, the newcomers wait behind « n new » at the top.
     if (reading || !isSettled()) held = new Set(news)
     else {
+      // At the top and still: the server's order (newest first), so news always comes in from the top.
       held = new Set()
-      const placed = new Set(next)
-      for (const id of news) {
-        // Where the server put it: right before the next item already on screen.
-        const after = ids.slice(ids.indexOf(id) + 1).find((x) => placed.has(x))
-        if (after) next.splice(next.indexOf(after), 0, id)
-        else next.push(id)
-        placed.add(id)
-      }
+      next.splice(0, next.length, ...ids)
     }
     order = next
   }
+  for (const id of order) if (!held.has(id)) shownAt.set(id, by.get(id)?.at ?? 0)
   rebuild()
 }
 

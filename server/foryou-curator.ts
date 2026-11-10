@@ -613,12 +613,18 @@ export class Curator implements ForYouCurator {
   private mailJob(now: number): Job | null {
     if (now - this.s.mailAt < MAIL_EVERY_MS) return null
     const mails = this.fy.rawMails(MAIL_BATCH)
-    if (!mails.length) return null
+    // Sessions' closing words too: the stream says « did this » in a line, never the whole report.
+    const results = this.fy.rawResults(Math.max(0, MAIL_BATCH - mails.length))
+    if (!mails.length && !results.length) return null
     const t = tr(P)
     const l = lang()
     const snap = this.fy.w.snapshot()
     const name = (id: string) => snap.config?.authors?.find((a) => a.id === id)?.name ?? id
-    const prompt = t.mailLines(mails.map((m, i) => t.mailItem(i + 1, name(m.who), m.subject, m.text.slice(0, 1500))).join('\n\n'))
+    const items = [
+      ...mails.map((m, i) => t.mailItem(i + 1, name(m.who), m.subject, m.text.slice(0, 1500))),
+      ...results.map((r, i) => t.resultItem(mails.length + i + 1, r.project, r.title, r.text.slice(0, 1500))),
+    ]
+    const prompt = t.mailLines(items.join('\n\n'))
     return async () => {
       this.spend(now)
       this.s.mailAt = now
@@ -626,11 +632,16 @@ export class Curator implements ForYouCurator {
       try {
         lines = parseLines(this.json(await haiku(prompt, 60_000)), mails.length)
       } catch (e) {
-        // These mails keep their first line: the same batch is never sent twice.
+        // These keep their first line: the same batch is never sent twice.
         for (const m of mails) this.fy.mailLine(m.id, null)
+        for (const r of results) this.fy.resultLine(r.id, null)
         throw e
       }
       mails.forEach((m, i) => this.fy.mailLine(m.id, lines.get(i + 1) ?? null, detectLang(lines.get(i + 1) ?? '') ?? l))
+      results.forEach((r, i) => {
+        const line = lines.get(mails.length + i + 1) ?? null
+        this.fy.resultLine(r.id, line, detectLang(line ?? '') ?? l)
+      })
     }
   }
 

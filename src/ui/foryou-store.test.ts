@@ -263,11 +263,10 @@ describe('for you store', () => {
     await expect(fy.reply('a', 'again')).rejects.toThrow('nope')
   })
 
-  it('keeps the order shown: a newcomer takes its place, what is on screen never swaps', async () => {
+  it('at the top and still, takes the server order (newest first): news comes in at the top', async () => {
     await serve(1, [item({ id: 'a' }), item({ id: 'b' }), item({ id: 'c' })])
-    // The server re-ranks (b was seen) and adds n before c.
-    await serve(2, [item({ id: 'a' }), item({ id: 'n' }), item({ id: 'c' }), item({ id: 'b', seen: true })])
-    expect(ids()).toEqual(['a', 'b', 'n', 'c'])
+    await serve(2, [item({ id: 'n' }), item({ id: 'a' }), item({ id: 'b' }), item({ id: 'c' })])
+    expect(ids()).toEqual(['n', 'a', 'b', 'c'])
     expect(fy.fresh).toBe(0)
   })
 

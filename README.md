@@ -13,7 +13,20 @@ you already have.
 
 No API cost: weevils drives the official `claude` and `codex` commands you are already logged in to.
 
+## Install it with your AI agent
+
+Paste this into Claude Code or Codex, on the machine that will run weevils:
+
+```text
+install https://github.com/Sc4rville/weevils
+```
+
+It clones the repo, runs the installer without questions, sets up how your phone reaches the machine and hands
+you the link. The steps it follows are in [AGENTS.md](AGENTS.md).
+
 ## Install
+
+AI agents: follow [AGENTS.md](AGENTS.md) instead of this section.
 
 You need a Linux machine (a VPS, a home server, WSL2) with **Claude Code** installed and logged in as a regular user
 (not root). Codex is optional.
@@ -32,9 +45,10 @@ How the phone reaches the machine:
 |---|---|
 | `--domain weevils.example.com` | **recommended**: HTTPS with an automatic certificate (the domain must point to the machine, ports 80/443 open). Needed for the installed app, notifications and the mic. |
 | `--lan` | same Wi-Fi, plain http: fine to try at home, never on a VPS |
-| neither | the app stays on 127.0.0.1: use an SSH tunnel from a computer, or [Tailscale](https://tailscale.com) (`tailscale serve`) |
+| neither | the app stays on 127.0.0.1: use an SSH tunnel from a computer, or [Tailscale](https://tailscale.com) (`tailscale serve --bg 4179`, then `./install.sh --url https://<machine>.<tailnet>.ts.net`) |
 
-Other options: `--yes` (no questions), `--name`, `--lang en|fr`, `--port`, `--secondary <ssh host>` (add a second
+Other options: `--yes` (no questions), `--agent` (for an AI agent: no questions, a machine-readable summary at the
+end), `--url <https://…>` (HTTPS already served by something else, like `tailscale serve`), `--name`, `--lang en|fr`, `--port`, `--secondary <ssh host>` (add a second
 machine), `--uninstall` (`--purge` also deletes settings and data). Everything the script does:
 [docs/install.md](docs/install.md).
 

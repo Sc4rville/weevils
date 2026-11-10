@@ -5,7 +5,6 @@ dist/
 build/
 .DS_Store
 .claude/
-CLAUDE.md
 steps/
 # le kit est décompressé dans harness-interface-kit/ ; le zip d'origine reste en local
 *.zip

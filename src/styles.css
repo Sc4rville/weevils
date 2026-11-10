@@ -2662,6 +2662,7 @@ html[data-keyboard] .agent:not(.open) .fyt-words {
   top: var(--safe-t);
   right: max(calc((100% - 760px) / 2 + var(--pad)), var(--pad));
   min-width: 44px;
+  width: 44px;
   height: 32px;
   padding: 0;
   text-align: center;

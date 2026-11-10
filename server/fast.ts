@@ -80,17 +80,15 @@ export function smart(prompt: string, timeout = 90_000, schema?: object): Promis
  */
 export function relay(prompt: string, timeout = 120_000, schema?: object): Promise<string> {
   const t0 = Date.now()
-  let dir: string
-  try { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-relay-')) } catch {
-    const base = path.join(os.homedir(), '.cache', 'weevils')
-    fs.mkdirSync(base, { recursive: true, mode: 0o700 })
-    dir = fs.mkdtempSync(path.join(base, 'relay-'))
-  }
+  // A private disk-backed scratch directory avoids per-user /tmp quotas and exposes no result in shared /tmp.
+  const base = path.join(os.homedir(), '.cache', 'weevils')
+  fs.mkdirSync(base, { recursive: true, mode: 0o700 })
+  const dir = fs.mkdtempSync(path.join(base, 'relay-'))
   const out = path.join(dir, 'answer.txt')
   return new Promise((resolve, reject) => {
     const schemaFile = out + '.schema.json'
     if (schema) fs.writeFileSync(schemaFile, JSON.stringify(schema), { mode: 0o600 })
-    const c = execFile('codex', ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-o', out, '-c', 'model_reasoning_effort="low"', ...(schema ? ['--output-schema', schemaFile] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
+    const c = execFile('codex', ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-o', out, '-c', 'model_reasoning_effort="low"', ...(schema ? ['--output-schema', schemaFile] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: dir, env: { ...process.env, TMPDIR: dir } }, (err, stdout, stderr) => {
       let text = ''
       try {
         text = fs.readFileSync(out, 'utf8').trim()

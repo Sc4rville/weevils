@@ -816,7 +816,7 @@ export class Weevils {
     if (interrupted) status = 'interrupted'
 
     // Ouverte dans un terminal que weevils ne pilote pas : on ne peut ni lui écrire ni la reprendre sans risque.
-    const unmanagedLive = live && !pane
+    const unmanagedLive = (live || (t.originator === 'codex-tui' && !!t.delegationSources?.size)) && !pane
     // Relais Codex (server/relay.ts) : la session Codex porte le titre de la session Claude qu'elle reprend.
     const relayOf = t.tool === 'codex' ? this.relay?.relayOf(t.id, pane?.name) : undefined
     const relayedBy = t.tool === 'claude' ? this.relay?.relayedBy(t.id) : undefined
@@ -905,7 +905,7 @@ export class Weevils {
       if (!known.has(id) && !p.cwd.startsWith(DATA_DIR)) list.push(this.placeholder(p, now))
     }
     // Les sessions ouvertes dans un terminal que weevils ne pilote pas polluent la liste sans servir : cachées.
-    return list.filter((s) => s.controllable).map((s) => this.archived.has(s.id) ? { ...s, archived: true } : s).sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    return list.filter((s) => s.controllable || (this.store.get(s.id)?.originator === 'codex-tui' && !!this.store.get(s.id)?.delegationSources?.size)).map((s) => this.archived.has(s.id) ? { ...s, archived: true } : s).sort((a, b) => b.lastActivityAt - a.lastActivityAt)
   }
 
   /** Projets de cette machine seule (chaque weevilsd les calcule pour ses sessions). */
@@ -1285,6 +1285,7 @@ export class Weevils {
       const t = this.store.get(real)
       throw new Error(t && !this.toSession(t, Date.now()).controllable ? tr(M).unmanaged : tr(M).sessionNotFound)
     }
+    if (!s.controllable) throw new Error(tr(M).unmanaged)
     const pane = this.paneFor(real)
     if (pane) {
       console.log(`[sessions] ${pane.name} ← message${author ? ` (${author})` : ''} · ${text.replace(/\s+/g, ' ').slice(0, 60)}`)

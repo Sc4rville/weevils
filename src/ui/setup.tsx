@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
-import { FIELDS, isBrick, type Brick, type Device } from '../../shared/setup.ts'
+import { FIELDS, isBrick, type ApplyResult, type Brick, type Device } from '../../shared/setup.ts'
 import { api } from '../api'
 import { ensurePush } from '../push'
 import { tr, useT } from '../i18n'
@@ -7,7 +7,7 @@ import M from '../i18n/setup'
 import { useApp } from './app-context'
 import { copyText } from './copy'
 import { Icon } from './icons'
-import { focusBoss } from './follow'
+import { flash, focusBoss } from './follow'
 
 // Accueil et branchements, côté app (contrat : shared/setup.ts, serveur : server/setup.ts).
 // - useWelcome : au premier lancement (intro terminée), weevilsd écrit l'accueil de weevboss dans son fil, adapté à
@@ -58,6 +58,11 @@ const setFlow = (f: Flow | null) => {
   flow = f
   emit()
 }
+
+/** Le logo de weevboss pendant un parcours : ce qu'il entend va dans le champ de la question, son 3e tap y répond
+ * (le champ normal, démonté pendant le parcours, ne le recevrait pas). */
+let flowInput: { add: (x: string) => void; send: () => void } | null = null
+export const flowVoice = { add: (x: string) => flowInput?.add(x), send: () => flowInput?.send() }
 
 /** Lance une brique : weevboss poste son explication (et fait ce qui se fait seul), puis, s'il le dit, le champ du bas
  * pose les questions. Rejette si le serveur ne répond pas. */
@@ -182,13 +187,25 @@ export function SetupComposer() {
   const f = useFlow()
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
   const field = useRef<HTMLInputElement>(null)
+  const form = useRef<HTMLFormElement>(null)
   const fields = f ? (FIELDS[f.brick] ?? []) : []
   const q = f ? fields[f.step] : undefined
   useEffect(() => {
     setText('')
+    setErr(null)
     field.current?.focus({ preventScroll: true })
-  }, [f?.brick, f?.step])
+    // La réponse est prise : la question suivante s'éclaire un instant (sinon le libellé change sur place, sans signe).
+    if (f && f.step > 0) flash(form.current)
+  }, [f?.brick, f?.step]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    flowInput = {
+      add: (x) => setText((cur) => (cur.trim() ? `${cur.replace(/\s+$/, '')} ${x}` : x)),
+      send: () => form.current?.requestSubmit(),
+    }
+    return () => void (flowInput = null)
+  }, [])
   // La réponse vide d'une question facultative a un sens (« vide : root », « vide : Tailscale ») : le bouton reste actif.
   if (!f || !q) return null
   const key = `${f.brick}_${q.name}` as const
@@ -198,12 +215,19 @@ export function SetupComposer() {
     const values = { ...f.values, [q.name]: v }
     if (f.step + 1 < fields.length && !q.stop?.includes(v)) return setFlow({ ...f, step: f.step + 1, values })
     setBusy(true)
+    setErr(null)
     ;(document.activeElement as HTMLElement | null)?.blur?.()
     try {
-      await api.setupApply(f.brick, values)
+      const r = (await api.setupApply(f.brick, values)) as ApplyResult
+      setFlow(null)
+      // Le résultat (ou le même message, déjà là, d'un nouvel essai) est mis en avant dans le fil.
+      focusBoss({ mid: r.said })
+    } catch (e) {
+      // Refusé (valeur, serveur injoignable) : on reste sur la question, la réponse dans le champ, et on dit pourquoi.
+      setErr((e as Error).message || t.failed)
+      flash(form.current)
     } finally {
       setBusy(false)
-      setFlow(null)
     }
   }
   const submit = (e: FormEvent) => {
@@ -212,13 +236,14 @@ export function SetupComposer() {
   }
   const label = t[`q_${key}` as `q_devil_url`]
   return (
-    <form className="composer band tone setup-form" onSubmit={submit} noValidate>
+    <form ref={form} className="composer band tone setup-form" onSubmit={submit} noValidate>
       <div className="in meta attach-line">
         <span className="strong">{label}</span>
         <span>
           {t.step(f.step + 1, fields.length)}
           {q.secret ? ` · ${t.secretNote}` : ''}
         </span>
+        {err && <span>! {err}</span>}
       </div>
       {q.kind === 'choice' ? (
         <div className="in setup-choices" role="group" aria-label={label}>

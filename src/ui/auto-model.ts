@@ -170,7 +170,8 @@ export function fromOptimizer(o: Optimizer, projectId: string | null = null, now
 export function fromActivity(a: H24Activity, projectId: string | null = a.projectId): AutoItem {
   const failed = a.kind === 'job' ? failedLine(a.lastEvent) : a.lastOk === false
   const state: AutoState = a.runState === 'running' ? 'running' : a.runState === 'paused' ? 'paused' : a.kind === 'timer' ? 'scheduled' : failed ? 'failed' : 'done'
-  const lastAt = a.kind === 'job' && a.runState !== 'running' ? (a.lastRunAt ?? a.runStartedAt) : a.lastRunAt
+  // A job's one run is its log, from its start to its last line: while it runs, that run is the live one, not a last.
+  const lastAt = a.kind === 'job' ? (a.runState !== 'running' ? (a.lastRunAt ?? a.runStartedAt) : undefined) : a.lastRunAt
   const lastRun: AutoRun | undefined = lastAt ? { at: lastAt, startedAt: lastAt - (a.lastDurMs ?? 0), ok: !failed } : undefined
   const nextAt = a.kind === 'timer' && a.runState !== 'paused' ? (a.nextRunAt ?? null) : null
   return withProgress({

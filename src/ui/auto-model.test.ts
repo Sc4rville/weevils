@@ -41,6 +41,8 @@ describe('autoList: what runs without asking', () => {
     expect(fromOptimizer(opt({ notBefore: NOW + H }))!.trigger.kind).toBe('time')
     expect(fromActivity(act({ kind: 'timer', nextRunAt: NOW + MIN, everyMs: 6 * H }))).toMatchObject({ state: 'scheduled', trigger: { kind: 'every', every: 6 * H } })
     expect(fromActivity(act({ kind: 'timer', nextRunAt: NOW + MIN }))!.trigger.kind).toBe('time')
+    // A job that runs: its run is the live one, there is no « last » yet.
+    expect(fromActivity(act({ kind: 'job', runState: 'running', runStartedAt: NOW - MIN, lastRunAt: NOW }))).toMatchObject({ runCount: 0, runs: [], lastRun: undefined })
     expect(fromActivity(act({ kind: 'timer', runState: 'paused', nextRunAt: NOW }))).toMatchObject({ state: 'paused', nextAt: null })
     expect(fromActivity(act({ runState: 'running', runStartedAt: NOW }))).toMatchObject({ state: 'running', trigger: { kind: 'manual' } })
   })

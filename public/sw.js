@@ -45,22 +45,52 @@ async function reloadStale() {
   )
 }
 
-self.addEventListener('push', (e) => {
+const notificationKinds = new Set(['result', 'milestone', 'warning', 'question', 'test'])
+const notificationNoise = (n) => /^(?:r:|d:|commit:|deploy:)/.test(n.tag || '') || n.tag === 'relay'
+  || /^(?:compris|bien reçu|coordination confirmée|je vais|je vérifie|got it|understood)(?=$|[.! ,])/i.test(n.body || '')
+  || /^(?:corrigé|fait|done|fixed)[.! ]*$/i.test(n.body || '')
+
+function requestResolved(n, state) {
+  const data = n.data || n
+  const id = data.sessionId || (n.tag || '').replace(/^cut-/, '')
+  const sessions = state.sessions || []
+  const session = sessions.find(s => s.id === id)
+  const question = data.category === 'question' || /t[’']attend|needs you/i.test(n.title || '')
+  const cut = data.category === 'warning' && data.sessionId || (n.tag || '').startsWith('cut-')
+  if (question && n.tag !== 'relay-plans') return !session || session.archived || session.status !== 'needs_user'
+  if (cut) return !session || session.archived || session.status !== 'interrupted'
+  if (n.tag === 'relay-plans' && typeof state.relayNeedsApproval === 'boolean') return !state.relayNeedsApproval
+  return false
+}
+
+// Foreground snapshots remove old noise and questions already answered, without sending a silent push.
+self.addEventListener('message', e => {
+  if (e.data?.type !== 'notification-state') return
+  e.waitUntil(self.registration.getNotifications().then(list => {
+    for (const n of list) if (notificationNoise(n) || requestResolved(n, e.data)) n.close()
+  }))
+})
+
+self.addEventListener('push', e => {
   let d = {}
-  try {
-    d = e.data ? e.data.json() : {}
-  } catch {
-    d = { body: e.data ? e.data.text() : '' }
-  }
-  e.waitUntil(
-    self.registration.showNotification(d.title || 'weevboss', {
-      body: d.body || '',
-      tag: d.tag,
-      data: { url: d.url || '/' },
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-    }),
-  )
+  try { d = e.data ? e.data.json() : {} } catch { return }
+  e.waitUntil((async () => {
+    if (!d.category && /^(?:cut-)/.test(d.tag || '')) { d.category = 'warning'; d.sessionId = d.tag.slice(4) }
+    if (!d.category && /t[’']attend|needs you/i.test(d.title || '')) { d.category = 'question'; d.sessionId = d.tag }
+    if (!d.category && d.tag === 'relay-plans') d.category = 'question'
+    if (!notificationKinds.has(d.category) || notificationNoise(d)) return
+    if (d.sessionId && (d.category === 'question' || d.category === 'warning')) {
+      try {
+        const res = await fetch('/api/snapshot', { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(3000) })
+        if (res.ok && requestResolved(d, await res.json())) return
+      } catch { /* an unavailable snapshot does not prove a real alert is resolved */ }
+    }
+    await self.registration.showNotification(d.title || 'weevboss', {
+      body: d.body || '', tag: d.tag, renotify: false,
+      data: { url: d.url || '/', category: d.category, sessionId: d.sessionId, eventAt: d.eventAt },
+      icon: '/icon-192.png', badge: '/icon-192.png',
+    })
+  })())
 })
 
 self.addEventListener('notificationclick', (e) => {

@@ -2,6 +2,9 @@
 // web-push est chargé à la demande : sur le PC (relais sans dépendances), le push est simplement désactivé.
 
 import fs from 'node:fs'
+import crypto from 'node:crypto'
+import { acknowledgementOnly, humanFeedText } from '../shared/feed-text.ts'
+import { notificationText } from '../shared/notification-policy.ts'
 import path from 'node:path'
 import { CONFIG_DIR, DATA_DIR, PUBLIC_URL } from './config.ts'
 import { tr } from './i18n.ts'
@@ -17,6 +20,9 @@ export interface PushPayload {
   body: string
   url: string
   tag: string
+  category?: 'question' | 'result' | 'milestone' | 'warning' | 'test'
+  sessionId?: string
+  eventAt?: number
 }
 
 const SUBS_FILE = path.join(DATA_DIR, 'push.json')
@@ -25,6 +31,13 @@ export class Push {
   private wp: any = null
   private subs: Subscription[] = []
   publicKey = ''
+  private sent: Record<string, number> = {}
+  private pending = new Set<string>()
+  private readonly sentFile: string
+  constructor(sentFile = path.join(DATA_DIR, 'push-sent.json')) {
+    this.sentFile = sentFile
+    try { this.sent = JSON.parse(fs.readFileSync(sentFile, 'utf8')) } catch { /* no previous sends */ }
+  }
 
   async init() {
     try {
@@ -66,9 +79,28 @@ export class Push {
     if (fresh) console.log(`[push] nouvel appareil abonné (${this.subs.length} au total)`)
   }
 
-  async send(p: PushPayload) {
+  async send(input: PushPayload) {
+    const p = { ...input }
+    // Automatic relay progress and editorial cards never interrupt the user.
+    if (/^(?:r:|d:|commit:|deploy:)/.test(p.tag) || p.tag === 'relay') return
+    if (p.tag === 'relay-warn') {
+      if (!/pas de relais prêt|no relay ready/i.test(p.body)) return
+      p.category = 'warning'
+    }
+    if (p.tag === 'relay-plans') { p.category = 'question'; p.body = tr(M).relayPlansBody(p.body) }
+    if (p.tag.startsWith('cut-')) { p.category = 'warning'; p.sessionId = p.tag.slice(4); p.tag = p.sessionId }
+    if (p.tag === 'test') p.category = 'test'
+    if (!p.category || acknowledgementOnly(p.body)) return
+    if ((p.category === 'result' || p.category === 'milestone') && !notificationText(p.body)) return
+    p.title = humanFeedText(p.title)
+    p.body = humanFeedText(p.body)
+    if (!p.title || !p.body) return
     if (!this.wp) return console.log(`[push] module web-push absent · « ${p.title} » non envoyée`)
     if (!this.subs.length) return console.log(`[push] aucun appareil abonné · « ${p.title} » non envoyée`)
+    const now = Date.now()
+    const key = crypto.createHash('sha256').update(JSON.stringify([p.tag, p.category, p.body, p.category === 'question' || p.category === 'warning' ? (p.eventAt ?? Math.floor(now / 60_000)) : null])).digest('hex')
+    if ((this.sent[key] && now - this.sent[key] < 24 * 3600_000) || this.pending.has(key)) return
+    this.pending.add(key)
     const dead: string[] = []
     let ok = 0
     await Promise.all(
@@ -82,6 +114,16 @@ export class Push {
           }),
       ),
     )
+    this.pending.delete(key)
+    if (ok) {
+      this.sent = Object.fromEntries(Object.entries(this.sent).filter(([, at]) => now - at < 24 * 3600_000).slice(-999))
+      this.sent[key] = now
+      try {
+        fs.mkdirSync(path.dirname(this.sentFile), { recursive: true })
+        fs.writeFileSync(this.sentFile + '.tmp', JSON.stringify(this.sent), { mode: 0o600 })
+        fs.renameSync(this.sentFile + '.tmp', this.sentFile)
+      } catch { console.error('[push] deduplication persistence unavailable') }
+    }
     console.log(`[push] « ${p.title} » → ${ok}/${this.subs.length} appareils`)
     if (dead.length) {
       this.subs = this.subs.filter((s) => !dead.includes(s.endpoint))

@@ -1,5 +1,7 @@
 import { CodexBridge } from './codex-bridge.ts'
 import { preferredTool, providerReady, providerUnavailable } from './provider.ts'
+import { notificationText, notificationQuestion } from '../shared/notification-policy.ts'
+import { humanFeedText } from '../shared/feed-text.ts'
 import { noticeKey } from '../shared/notices.ts'
 // Le cœur de weevilsd : transcripts + hooks + panes zellij → sessions, projets, H24, agent principal.
 
@@ -510,17 +512,22 @@ export class Weevils {
       const project = snap.projects.find((p) => p.id === s.projectId)?.name ?? s.projectId
       let title: string | null = null
       let body: string | null = null
+      let category: 'question' | 'result' | undefined
       if (s.status === 'needs_user') {
+        const question = notificationQuestion(s.attention || s.lastMessage || '')
+        if (!question) continue
+        category = 'question'
         title = tr(P).waitingTitle(project)
-        body = s.attention ?? tr(P).waitingBody
+        body = question
       } else if (ended && now - prev.since > 15_000) {
+        category = 'result'
         title = tr(P).doneTitle(project)
-        body = s.lastMessage ?? null
+        body = notificationText(s.lastMessage ?? '')
       }
       if (!title || !body) continue
       if (isTestBrief(this.store.get(s.id)?.firstPrompt)) continue
       entry.notifiedAt = now
-      void this.push.send({ title, body: body.replace(/\s+/g, ' ').slice(0, 180), url: `/#s=${encodeURIComponent(s.id)}`, tag: s.id })
+      void this.push.send({ title: `${title} · ${humanFeedText(s.title || '')}`.slice(0, 160), body: body.replace(/\s+/g, ' ').slice(0, 220), url: `/#s=${encodeURIComponent(s.id)}`, tag: s.id, category, sessionId: s.id, eventAt: s.lastActivityAt })
     }
     this.prevStatus = next
   }

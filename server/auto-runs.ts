@@ -101,17 +101,29 @@ const git = (cwd: string, args: string[]) =>
 export const headOf = (cwd: string) => git(cwd, ['rev-parse', 'HEAD']).then((s) => s.trim() || undefined, () => undefined)
 
 /**
- * What a run changed in its worktree: everything since `base` (its commits and what it left uncommitted), plus the
- * new files git does not track yet. null when git cannot tell (not a repo, base gone).
+ * What a run changed in its worktree: its commits since `base`, plus what it left uncommitted and the new files git
+ * does not track yet, those only when written during the run (`since` on: a recurring task's worktree keeps what an
+ * earlier run left lying there, never shown again as this run's). null when git cannot tell (not a repo, base gone).
  */
-export async function gitFiles(cwd: string, base: string): Promise<AutoOutputFile[] | null> {
+export async function gitFiles(cwd: string, base: string, since = 0): Promise<AutoOutputFile[] | null> {
   try {
     const diff = ['diff', '-z', '-M', '--no-ext-diff', '--no-textconv']
-    const [num, names, others] = await Promise.all([git(cwd, [...diff, '--numstat', base]), git(cwd, [...diff, '--name-status', base]), git(cwd, ['ls-files', '-z', '--others', '--exclude-standard'])])
-    const out = parseDiff(num, names, cwd)
+    const [num, names, others, committed] = await Promise.all([
+      git(cwd, [...diff, '--numstat', base]),
+      git(cwd, [...diff, '--name-status', base]),
+      git(cwd, ['ls-files', '-z', '--others', '--exclude-standard']),
+      git(cwd, ['diff', '-z', '--no-ext-diff', '--no-textconv', '--name-only', base, 'HEAD']),
+    ])
+    const inCommits = new Set(committed.split('\0').filter(Boolean))
+    const fresh = (abs: string) => {
+      const st = fs.lstatSync(abs, { throwIfNoEntry: false })
+      return !!st && st.mtimeMs >= since - 2000
+    }
+    const out = parseDiff(num, names, cwd).filter((f) => !since || inCommits.has(f.path) || fresh(f.abs))
     for (const p of others.split('\0').filter(Boolean)) {
       if (out.length >= MAX_FILES) break
       const abs = path.join(cwd, p)
+      if (since && !fresh(abs)) continue
       out.push({ path: p, abs, status: 'A', add: lineCount(abs), del: 0 })
     }
     return out

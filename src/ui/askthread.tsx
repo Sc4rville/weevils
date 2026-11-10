@@ -18,6 +18,8 @@ import { markSeen } from './hints'
 
 export interface ThreadInfo {
   title: string
+  /** Session reading: actions require a deliberate text selection, not a tap. */
+  selectionOnly?: boolean
   /** claude, codex, weevboss… */
   tool: string
   project?: string
@@ -95,8 +97,8 @@ export function useThreadAsk(messages: Message[], info: ThreadInfo) {
     },
     { onVoice: () => !sel && !spot && setSpot(spotId()) },
   )
-  const live = useRef({ a, sel })
-  live.current = { a, sel }
+  const live = useRef({ a, sel, selectionOnly: info.selectionOnly })
+  live.current = { a, sel, selectionOnly: info.selectionOnly }
 
   /** Au lâcher, le message touché reste à sa place à l'écran pendant que la barre change de message (recalé après le rendu). */
   const settle = useRef<(() => void) | null>(null)
@@ -204,6 +206,7 @@ export function useThreadAsk(messages: Message[], info: ThreadInfo) {
           }
         }
         if (was.mode !== 'pending' || Date.now() - was.t > LONG) return // appui long : la bulle a copié le message
+        if (live.current.selectionOnly) return choose(null)
         const cur = live.current.sel
         const w = was.word
         if (!was.root || !w || (cur && cur.mid === was.root.dataset.mid && cur.s === w[0] && cur.e === w[1])) return choose(null)

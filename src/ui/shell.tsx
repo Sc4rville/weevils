@@ -134,6 +134,7 @@ export function Shell({
   onSwipeLeft,
   actions,
   scrollHeading = false,
+  sessionLayout = false,
 }: {
   slot: string
   kicker: string
@@ -155,6 +156,7 @@ export function Shell({
   actions?: ReactNode
   /** Keep only navigation fixed; long session context scrolls with its messages. */
   scrollHeading?: boolean
+  sessionLayout?: boolean
 }) {
   const { back } = useApp()
   const t = useT(M)
@@ -176,7 +178,7 @@ export function Shell({
   return (
     <motion.div
       ref={page}
-      className={split ? 'page split' : 'page'}
+      className={`${split ? 'page split' : 'page'}${sessionLayout ? ' session-page' : ''}`}
       style={color(slot)}
       variants={slide}
       initial="enter"
@@ -208,6 +210,7 @@ export function Shell({
           ) : (
             <BackButton kicker={kicker} onClick={back} label={t.back(kicker)} />
           )}
+          {sessionLayout && <button className="session-context" title={typeof title === 'string' ? title : undefined} onClick={() => { bodyRef?.current?.scrollTo({ top: 0, behavior: 'smooth' }); heading.current?.focus({ preventScroll: true }) }}>{title}</button>}
           {!scrollHeading && details}
         </div>
       </div>

@@ -2720,3 +2720,20 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 @media (hover: none) and (pointer: coarse) {
   .head-name:focus-visible { outline: none; }
 }
+
+/* A session is a continuous reading surface. Technical details stay optional. */
+.session-thread .msg.band,
+.session-thread .msg.band.tone,
+.session-thread .msg.band.orch { background: transparent; color: inherit; }
+.session-thread .msg > .in { padding-block: 12px; }
+.session-thread .msg .text { font-size: 1rem; line-height: 1.5; }
+.session-thread .msg .who { opacity: .72; margin-bottom: 4px; }
+.session-thread .msg.event .text { font-size: .875rem; }
+.session-coordination > summary { cursor: pointer; font-size: .875rem; opacity: .75; padding-block: 12px; }
+.session-coordination > summary::marker { font-size: .75em; }
+.session-coordination[open] { border-inline-start: 2px solid color-mix(in oklab, currentColor 22%, transparent); }
+.session-context { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: .875rem; min-height: 32px; opacity: .8; }
+/* Reserve a real row for voice and the latest-message control: neither covers text. */
+.session-page .page-dock { height: 56px; }
+.session-page .page-main:has(> .page-dock) > .page-body > .fill { min-height: 12px; }
+.session-page .session-heading .h2 { font-size: 1.25rem; }

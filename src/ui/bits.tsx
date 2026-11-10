@@ -70,11 +70,11 @@ export function StatusChar({ s, auto = false }: { s: Session['status']; auto?: b
 }
 
 /** Long message de l'utilisateur : replié au-delà de quelques lignes, un geste pour tout lire. */
-function Clamp({ text }: { text: string }) {
+function Clamp({ text, full = false }: { text: string; full?: boolean }) {
   const t = useT(M)
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
-  const long = text.length > 420
+  const long = !full && text.length > 420
   return (
     <>
       <div ref={box} className={`text ${long && !open ? 'clamp' : ''}`}>
@@ -777,6 +777,13 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
   )
 }
 
+/** Provenance from the bridge, never inferred from the content of a human message. */
+function Coordination({ folded, author, children }: { folded: boolean; author: string; children: ReactNode }) {
+  const t = useT(M)
+  if (!folded) return children
+  return <details className="session-coordination"><summary className="in">{t.coordination(author)}</summary>{children}</details>
+}
+
 const WINDOW = 60
 
 /** Auteur d'un message signé (weevboss par défaut) : nom affiché et couleur, d'après la config du serveur. */
@@ -803,6 +810,7 @@ export function Messages({
   after,
   chip,
   pendingLabel,
+  session = false,
 }: {
   messages: Message[]
   author: string
@@ -811,6 +819,8 @@ export function Messages({
   /** Une puce de branchement écrite dans le message id : son bouton, à sa place dans la phrase (null : son libellé). */
   chip?: (brick: ChipId, id: string) => ReactNode
   pendingLabel?: string
+  /** Full session reading: continuous prose and optional technical coordination. */
+  session?: boolean
 }) {
   const t = useT(M)
   const td = useT(D)
@@ -833,8 +843,9 @@ export function Messages({
           </Appear>
         ) : (
           <Appear key={g.m.id}>
+            <Coordination folded={session && !!g.m.coordination && g.m.author !== 'weevboss'} author={authorOf(g.m.author).name}>
             <Bubble
-              className={`msg band ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.demo ? 'demo' : ''}`}
+              className={`msg band ${session ? 'session-message' : ''} ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.demo ? 'demo' : ''}`}
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
               who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}${g.m.demo ? ` · ${t.demo}` : ''}${pendingLabel && g.m.id.startsWith('pending-') ? ` · ${pendingLabel}` : ''}`}
               copy={g.m.role === 'user' ? userText(g.m.text) : chipLabels(g.m.text)}
@@ -842,7 +853,7 @@ export function Messages({
             >
               {g.m.role === 'user' ? (
                 <>
-                  <Clamp text={userCaption(g.m.text)} />
+                  <Clamp text={userCaption(g.m.text)} full={session} />
                   {userPhotos(g.m.text).map((file) => (
                     <a key={file} className="user-photo" href={`/api/attachments?path=${encodeURIComponent(file)}`} target="_blank" rel="noopener noreferrer">
                       <img src={`/api/attachments?path=${encodeURIComponent(file)}`} alt={file.split('/').at(-1) ?? ''} loading="lazy" />
@@ -850,7 +861,7 @@ export function Messages({
                   ))}
                 </>
               ) : g.m.role === 'orchestrator' ? (
-                <Clamp text={g.m.text} />
+                <Clamp text={g.m.text} full={session} />
               ) : (
                 <ChipSlot.Provider value={chip ? (b) => chip(b, g.m.id) : null}>
                   <Prose text={g.m.text} />
@@ -858,6 +869,7 @@ export function Messages({
               )}
             </Bubble>
             {after?.(g.m.id)}
+            </Coordination>
           </Appear>
         ),
       )}

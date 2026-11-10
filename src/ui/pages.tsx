@@ -182,7 +182,7 @@ function SessionPage({ id }: { id: string }) {
   const messages = useMemo(() => mergePending(detail?.messages ?? [], pending), [detail, pending])
   const body = useRef<HTMLDivElement>(null)
   const sp = snap.projects.find((p) => p.id === s?.projectId)
-  const th = useThreadAsk(messages, { title: s?.title ?? '', tool: s?.tool ?? 'claude', project: sp?.name, projectId: s?.projectId, repo: s?.repo ?? undefined, machine: s?.machineId })
+  const th = useThreadAsk(messages, { selectionOnly: true, title: s?.title ?? '', tool: s?.tool ?? 'claude', project: sp?.name, projectId: s?.projectId, repo: s?.repo ?? undefined, machine: s?.machineId })
   // La fin du fil : déjà là à l'ouverture, suivie pendant que la réponse s'écrit, sauf si on remonte relire (src/ui/follow.ts).
   // Un mot sélectionné (ou une question dictée) et sa réponse sous un message : le suivi attend, rien ne les pousse hors de l'écran.
   const last = messages.at(-1)
@@ -242,6 +242,7 @@ function SessionPage({ id }: { id: string }) {
       kicker={project?.name ?? s.projectId}
       title={s.title}
       scrollHeading
+      sessionLayout
       meta={
         <>
           {s.now && (
@@ -289,12 +290,12 @@ function SessionPage({ id }: { id: string }) {
         </>
       }
     >
-      <div ref={th.ref} className="ask-thread">
+      <div ref={th.ref} className="ask-thread session-thread">
         {/* Monté avec le fil chargé : la session s'ouvre posée sur son dernier message, sans tout dérouler. Avant, seulement
             s'il y a déjà une bulle (premier message d'une session lancée) ; remonté au chargement pour que le lot arrive sans
             se dérouler lui non plus. */}
         {(detail || missing || pending.length > 0) && (
-          <Messages key={detail || missing ? 'loaded' : 'early'} messages={messages} author={s.tool} working={s.status === 'working'} after={th.after} />
+          <Messages session key={detail || missing ? 'loaded' : 'early'} messages={messages} author={s.tool} working={s.status === 'working'} after={th.after} />
         )}
       </div>
 

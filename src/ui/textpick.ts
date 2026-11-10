@@ -106,9 +106,11 @@ export function pathAt(text: string, col: number): [number, number] | null {
 /** Le chemin d'abord (pour « ouvre le fichier »), sinon le mot. */
 export const pathOrWord = (text: string, col: number) => pathAt(text, col) ?? wordAt(text, col)
 
-/** Le premier conteneur qui défile au-dessus de `el` ; null : c'est la fenêtre. */
+/** Le premier conteneur qui défile au-dessus de `el` ; null : c'est la fenêtre. Le corps d'une page ([data-scroll])
+ * arrête la recherche même s'il ne déborde pas : la fenêtre, dessous, porte le flux caché, qu'on ne doit pas bouger. */
 function scrollerOf(el: Element): Element | null {
   for (let p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+    if (p.hasAttribute('data-scroll')) return p
     if (/(auto|scroll)/.test(getComputedStyle(p).overflowY) && p.scrollHeight > p.clientHeight) return p
   }
   return null

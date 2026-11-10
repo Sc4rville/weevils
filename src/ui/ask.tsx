@@ -145,7 +145,7 @@ export function AskPanel({
     const f = requestAnimationFrame(() => {
       const el = box.current
       if (!el) return
-      const sc = el.closest('[data-scroll]')
+      const sc = el.closest('[data-scroll], .chat')
       const tall = el.getBoundingClientRect().height > (sc ? sc.clientHeight : window.innerHeight) - 80
       reveal(el, { block: tall ? 'start' : 'nearest', flash: false })
     })

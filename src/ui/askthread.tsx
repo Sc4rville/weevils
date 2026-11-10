@@ -241,11 +241,16 @@ export function useThreadAsk(messages: Message[], info: ThreadInfo) {
     else h.reg.delete(HL)
   })
   useEffect(() => () => highlights()?.reg.delete(HL), [])
-  // Le message a disparu du fil (fenêtre glissante) : la sélection tombe ; une réponse affichée reste, sous le premier
-  // message encore là.
+  // Le message a disparu du fil (fenêtre glissante : retiré de `messages`, ou sorti des messages affichés, Messages
+  // n'en montre que les derniers) : la sélection tombe ; une réponse affichée reste, sous le premier message encore
+  // affiché (sinon elle disparaîtrait avec lui, et `hold` resterait vrai sans rien à l'écran).
   useEffect(() => {
-    const gone = (id: string) => !messages.some((m) => m.id === id)
-    const keep = live.current.a.answer && messages[0] ? messages[0].id : null
+    if (!sel && !spot) return
+    const ids = new Set(messages.map((m) => m.id))
+    const root = box.current
+    const shown = root ? [...root.querySelectorAll<HTMLElement>('[data-mid]')].map((n) => n.dataset.mid!).filter((id) => ids.has(id)) : [...ids]
+    const gone = (id: string) => !shown.includes(id)
+    const keep = live.current.a.answer ? (shown[0] ?? null) : null
     if (sel && gone(sel.mid)) {
       setSel(null)
       setSelText('')
@@ -299,6 +304,6 @@ export function useThreadAsk(messages: Message[], info: ThreadInfo) {
     voice: <AskVoice a={a} />,
     selected: !!sel,
     /** Une barre ou une réponse ouverte sous un message : le fil ne doit pas la pousser hors de l'écran (useFollow `hold`). */
-    hold: !!sel || !!spot || dragging,
+    hold: !!sel || dragging || (!!spot && (a.asking || !!a.answer)),
   }
 }

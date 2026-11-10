@@ -87,4 +87,20 @@ describe('anchorRow : la ligne touchée garde sa place', () => {
     expect(by).toHaveBeenCalledWith(0, -320)
     row.remove()
   })
+
+  it('dans une page, c’est son corps qui défile, jamais la fenêtre (le flux caché dessous)', () => {
+    const body = document.createElement('div')
+    body.setAttribute('data-scroll', '')
+    const row = document.createElement('div')
+    body.appendChild(row)
+    document.body.appendChild(body)
+    let top = 300
+    vi.spyOn(row, 'getBoundingClientRect').mockImplementation(() => rect(top, 20))
+    const by = vi.spyOn(window, 'scrollBy').mockImplementation(() => {})
+    const fix = anchorRow(row)
+    top = 200
+    fix()
+    expect(by).not.toHaveBeenCalled()
+    body.remove()
+  })
 })

@@ -9,7 +9,7 @@ import { Icon } from './icons'
 import { Line } from './bits'
 import { markSeen, useViewHint } from './hints'
 import { askSetup, device } from './setup'
-import { bossOnReturn, reveal } from './follow'
+import { bossOnReturn, reveal, takeBossOnReturn } from './follow'
 
 /** Couleur par position : un pas de 7 sur les 16 teintes, donc deux rectangles voisins (à côté ou dessous) n'ont jamais une teinte proche. */
 const tint = (i: number) => ({ '--c': `var(--p${(i * 7) % 16})` }) as CSSProperties
@@ -111,7 +111,13 @@ export function ReposPage() {
   return (
     <Shell slot="agent" kicker="weevils" title={t.title} meta={repos ? t.count(repos.length) : '…'} onSwipeLeft={toSoftwares}>
       {off && (
-        <Line ch="+" onClick={() => askSetup('github')}>
+        <Line
+          ch="+"
+          onClick={() => {
+            takeBossOnReturn() // le parcours ouvre le fil lui-même : pas de seconde mise en avant au retour
+            askSetup('github')
+          }}
+        >
           <span className="strong">{t.plugGithub}</span>
         </Line>
       )}

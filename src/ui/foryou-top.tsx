@@ -1,13 +1,14 @@
 // The top band's two words, « weevboss · pour toi », and the preview of the stream shown under them (docs/foryou.md §4.1).
 // Both only exist when the server sends snap.foryou: on an older server or a secondary machine the band is unchanged.
 import { AnimatePresence, motion } from 'motion/react'
-import { useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ForYouItem } from '../../shared/foryou.ts'
 import { useT } from '../i18n'
 import M from '../i18n/bands'
 import { useApp } from './app-context'
 import { useAuthors } from './bits'
 import { itemSlot, itemWho, useForYou } from './foryou-store'
+import { stopVoice, useVoiceId } from './foryou-voice'
 import { Icon } from './icons'
 import './foryou-top.css'
 
@@ -95,9 +96,50 @@ export function ForYouPeek() {
   const authorOf = useAuthors()
   const shown = items.slice(0, PEEK_ITEMS)
   const open = () => push({ kind: 'foryou' })
+  // A voice message being read aloud: its strip shows it. It stops when its item leaves the stream.
+  const speaking = useVoiceId()
+  const stillThere = !speaking || items.some((i) => i.id === speaking)
+  useEffect(() => {
+    if (!stillThere) stopVoice()
+  }, [stillThere])
+  // At rest the box ends exactly under the last strip that fits whole: no strip is cut, and nothing fades. Scrolled
+  // (there is more below than fits), the bottom fades as the thread preview does.
+  const peek = useRef<HTMLDivElement>(null)
+  const list = useRef<HTMLDivElement>(null)
+  const [fit, setFit] = useState<number | undefined>(undefined)
+  const [scrolled, setScrolled] = useState(false)
+  useLayoutEffect(() => {
+    const box = peek.current?.parentElement
+    const rows = list.current
+    if (!box || !rows) return
+    const measure = () => {
+      const room = box.clientHeight
+      if (!room) return // hidden (the other word is chosen): the last measure holds
+      let h = 0
+      for (const el of rows.children) {
+        const next = h + (el as HTMLElement).offsetHeight
+        if (next > room + 0.5) break
+        h = next
+      }
+      // Not even one fits whole (a very small band): the box keeps its room and the first strip shows what it can.
+      setFit(h > 0 && h < rows.scrollHeight ? h : undefined)
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(box)
+    ro.observe(rows)
+    return () => ro.disconnect()
+  }, [shown.map((i) => i.id).join()]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <motion.div layoutScroll className="fyt-peek" role="button" tabIndex={0} aria-label={t.forYouOpen} onClick={open} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && open()}>
-      <div className="fyt-list">
+    <motion.div
+      ref={peek}
+      layoutScroll
+      className={scrolled ? 'fyt-peek fyt-scrolled' : 'fyt-peek'}
+      style={fit ? { flex: 'none', height: fit } : undefined}
+      onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 2 && e.currentTarget.scrollTop + e.currentTarget.clientHeight < e.currentTarget.scrollHeight - 2)}
+      role="button" tabIndex={0} aria-label={t.forYouOpen} onClick={open} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && open()}>
+      <div ref={list} className="fyt-list">
         <AnimatePresence initial={false} mode="popLayout">
           {shown.map((item) => {
             const who = itemWho(item, authorOf, snap.projects.find((p) => p.id === item.projectId)?.name)
@@ -108,6 +150,7 @@ export function ForYouPeek() {
                 key={item.id}
                 layout="position"
                 className={`fyt-item ${item.kind === 'alert' ? 'fyt-alert' : ''} ${item.seen ? '' : 'fyt-new'}`}
+                data-fy={item.id}
                 style={itemSlot(item, colors, authorOf)}
                 initial={{ opacity: 0, y: -14 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -123,6 +166,14 @@ export function ForYouPeek() {
                         <Icon name="play" />
                       </span>
                     ))}
+                  {item.voice && !media && (
+                    <span className={speaking === item.id ? 'fyt-wave on' : 'fyt-wave'} role={speaking === item.id ? 'img' : undefined} aria-label={speaking === item.id ? t.forYouSpeaking : undefined} aria-hidden={speaking === item.id ? undefined : true}>
+                      <i />
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  )}
                   <span className="fyt-txt">
                     <span className="strong">{who}</span> {cards > 0 && <span className="fyt-n">+ {cards} </span>}
                     {lineOf(item)}

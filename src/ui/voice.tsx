@@ -8,6 +8,7 @@ import M from '../i18n/voice'
 import { tapHint } from './hints'
 import { askSetup } from './setup'
 import { useApp } from './app-context'
+import { ITEM_SAYS, LOGO_SAYS } from './foryou-voice'
 
 /**
  * Le logo de weevboss est le bouton vocal, en trois taps qui s'enchaînent vite :
@@ -50,10 +51,24 @@ function reportMarks() {
   for (const k of Object.keys(marks)) delete marks[k]
 }
 
+/** Le logo va parler : les messages vocaux de « pour toi » (src/ui/foryou-voice.ts, leur propre élément audio) se taisent. */
+const announce = () => window.dispatchEvent(new Event(LOGO_SAYS))
+
+/** Un message vocal de « pour toi » démarre : le logo se tait, et sa lecture en cours se termine proprement (son état suit). */
+function quietLogo() {
+  if (!player || player.paused) return
+  player.pause()
+  const end = player.onended
+  player.onended = null
+  end?.call(player, new Event('ended'))
+}
+if (typeof window !== 'undefined') window.addEventListener(ITEM_SAYS, quietLogo)
+
 /** Le son arrive en flux : l'élément audio commence à jouer au premier morceau, sans attendre le fichier entier. */
 export async function say(text: string, onEnd: () => void, oral = false, voice?: string) {
   if (!player) return onEnd()
   const p = player
+  announce()
   try {
     const q = new URLSearchParams({ text: text.slice(0, 1500), oral: oral ? '1' : '0', ...(voice ? { voice } : {}) })
     p.src = `/api/speak/stream?${q}`
@@ -85,6 +100,7 @@ async function loadCue() {
 }
 function playCue() {
   if (!player || !cueUrl) return
+  announce()
   player.src = cueUrl
   player.onplaying = () => mark('cue')
   player.onended = null

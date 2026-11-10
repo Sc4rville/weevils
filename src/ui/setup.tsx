@@ -9,6 +9,7 @@ import { useApp } from './app-context'
 import { copyText } from './copy'
 import { Icon } from './icons'
 import { flash, focusBoss, focusBossSoon } from './follow'
+import { setTop } from './foryou-top'
 
 // Accueil et branchements, côté app (contrat : shared/setup.ts, serveur : server/setup.ts).
 // - useWelcome : au premier lancement (intro terminée), weevilsd écrit l'accueil de weevboss dans son fil, adapté à
@@ -264,6 +265,8 @@ export function SetupComposer() {
   const answer = async (v: string) => {
     if ((!v && !q.optional) || busy) return
     const values = { ...f.values, [q.name]: v }
+    // Répondu depuis « pour toi » : l'aperçu revient sur le fil de weevboss, où la suite s'affiche (comme à l'envoi d'un message).
+    setTop('boss')
     if (f.step + 1 < fields.length && !q.stop?.includes(v)) return setFlow({ ...f, step: f.step + 1, values })
     setBusy(true)
     setErr(null)

@@ -17,6 +17,7 @@ vi.mock('../api', () => ({
       return net.feed
     },
     foryouSeen: async () => ({ ok: true }),
+    setupKey: async () => ({ ok: true, said: 'm1' }),
   },
 }))
 
@@ -160,6 +161,26 @@ describe('les deux mots « weevboss · pour toi »', () => {
   })
 })
 
+describe('répondre à une question de branchement depuis « pour toi »', () => {
+  it('l’aperçu revient sur le fil de weevboss, où la suite s’affiche', async () => {
+    const { SetupComposer, openKey } = await import('./setup')
+    setTop('foryou')
+    render(snap({ rev: 1, unseen: 0 }), <><Words /><SetupComposer /></>)
+    await act(async () => openKey('OPENAI_API_KEY'))
+    const form = host.querySelector<HTMLFormElement>('form.setup-form')!
+    const field = form.querySelector<HTMLInputElement>('input')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')!.set!.call(field, 'sk-test')
+      field.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(localStorage.getItem('weevils-top')).toBe('foryou')
+    await act(async () => void form.requestSubmit())
+    await flush()
+    expect(localStorage.getItem('weevils-top')).toBe('boss')
+    expect(host.querySelector('.fyt-word.on')!.textContent).toBe('weevboss')
+  })
+})
+
 describe('l’aperçu de « pour toi »', () => {
   it('vide : une ligne discrète', async () => {
     render(snap({ rev: 1, unseen: 0 }), <ForYouPeek />)
@@ -243,5 +264,46 @@ describe('l’aperçu de « pour toi »', () => {
     const strips = [...host.querySelectorAll<HTMLElement>('.fyt-item')]
     expect(strips.map((s) => s.textContent)).toEqual([expect.stringContaining('tout frais'), expect.stringContaining('mot a'), expect.stringContaining('mot b')])
     expect(strips[1]).toBe(before)
+  })
+
+  it('un mot qui s’écoute porte quatre barres ; elles ne bougent que pendant sa lecture', async () => {
+    const made: { paused: boolean }[] = []
+    class FakeAudio {
+      constructor() {
+        made.push(this)
+      }
+      src = ''
+      preload = ''
+      currentTime = 0
+      paused = true
+      onplaying: (() => void) | null = null
+      play() {
+        this.paused = false
+        return Promise.resolve()
+      }
+      pause() {
+        this.paused = true
+      }
+    }
+    vi.stubGlobal('Audio', FakeAudio)
+    const { toggleVoice, resetVoice } = await import('./foryou-voice')
+    net.feed = feedOf([item('a', { kind: 'boss', who: 'weevboss', text: 'trois choses en route', voice: 'nova' }), item('b', { kind: 'boss', who: 'weevboss', text: 'sans voix' })])
+    render(snap({ rev: 1, unseen: 2 }), <ForYouPeek />)
+    await flush()
+    const strip = (id: string) => host.querySelector(`.fyt-item[data-fy="${id}"]`)!
+    expect(strip('a').querySelector('.fyt-wave')).toBeTruthy()
+    expect(strip('a').querySelector('.fyt-wave.on')).toBeNull()
+    expect(strip('b').querySelector('.fyt-wave')).toBeNull()
+    await act(async () => toggleVoice('a', 'trois choses en route', 'nova'))
+    expect(strip('a').querySelector('.fyt-wave.on')!.getAttribute('aria-label')).toBe(tr(BM).forYouSpeaking)
+    // Son item quitte le flux : la lecture s'arrête.
+    net.feed = feedOf([item('b', { kind: 'boss', who: 'weevboss', text: 'sans voix' })], 2)
+    render(snap({ rev: 2, unseen: 1 }), <ForYouPeek />)
+    await flush()
+    expect(made).toHaveLength(1)
+    expect(made[0].paused).toBe(true)
+    expect(strip('b').querySelector('.fyt-wave')).toBeNull()
+    resetVoice()
+    vi.unstubAllGlobals()
   })
 })

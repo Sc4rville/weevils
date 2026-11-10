@@ -1,6 +1,6 @@
 // « Pour toi » : the stream next to weevboss, full screen. Every item is a full-width band in its own colour
 // (project, author, weevboss, or the colour of what it says: done, asks, cut), one renderer per kind (docs/foryou.md §2.1).
-import { AnimatePresence, motion, type PanInfo, type Variants } from 'motion/react'
+import { AnimatePresence, motion, useIsPresent, useReducedMotion, type PanInfo, type Variants } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react'
 import type { ForYouCard, ForYouGauge, ForYouItem, ForYouMedia, ForYouPulse } from '../../shared/foryou.ts'
 import { useApp } from './app-context'
@@ -8,6 +8,7 @@ import { Collapse, spring, useAuthors } from './bits'
 import { flash, focusBoss } from './follow'
 import { ago } from './format'
 import { cardSlots, itemSlot, itemWho, matchesWho, participants, useForYou, WHO_ALL, type ForYouStore } from './foryou-store'
+import { toggleVoice, useVoice } from './foryou-voice'
 import { markSeen as gestureSeen } from './hints'
 import { Icon } from './icons'
 import { usePageChrome } from './shell'
@@ -15,7 +16,8 @@ import { intlLocale, useT } from '../i18n'
 import M from '../i18n/foryou'
 import './foryou.css'
 
-const slot = (name: string) => ({ '--c': `var(--${name})` }) as CSSProperties
+const cssVar = (name: string) => `var(--${name})`
+const slot = (name: string) => ({ '--c': cssVar(name) }) as CSSProperties
 /** The left edge stays with the page's back gesture (same width as the code viewer's). */
 const EDGE = 22
 const WHO_KEY = 'weevils-foryou-who'
@@ -142,67 +144,85 @@ function Who({ item, who, extra, children }: { item: ForYouItem; who: string; ex
   )
 }
 
-/** One voice at a time, started by a tap (iOS plays nothing without one). Nothing is synthesised before. */
-let voice: HTMLAudioElement | null = null
-let voiceOff: (() => void) | null = null
+const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)
 
-function Listen({ item, who }: { item: ForYouItem; who: string }) {
+/** The bars of a voice message: always the same for the same item (drawn from its id), between a quarter and full height. */
+export function waveOf(id: string, n: number): number[] {
+  let h = hash(id) || 1
+  return Array.from({ length: n }, (_, i) => {
+    h = (Math.imul(h, 1664525) + 1013904223) >>> 0
+    // Fuller in the middle, like a sentence: a bell under the noise.
+    const bell = 0.55 + 0.45 * Math.sin((Math.PI * (i + 0.5)) / n)
+    return Math.round((0.25 + 0.75 * (h / 0xffffffff) * bell) * 100) / 100
+  })
+}
+
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+
+/** A voice message: the play square and a wave of bars. A tap reads the item aloud in its speaker's voice (one at a
+ * time for the whole stream, src/ui/foryou-voice.ts); the bars only move while it speaks. small: inside a thin line. */
+function Listen({ item, who, small }: { item: ForYouItem; who: string; small?: boolean }) {
   const t = useT(M)
-  const [on, setOn] = useState(false)
-  const mine = useRef<(() => void) | null>(null)
-  const stop = () => {
-    if (voiceOff && voiceOff === mine.current) {
-      voice?.pause()
-      voiceOff()
-    }
-  }
-  useEffect(() => stop, [])
-  const toggle = () => {
-    if (on) return stop()
-    voice?.pause()
-    voiceOff?.()
-    const a = (voice ??= new Audio())
-    const end = () => {
-      setOn(false)
-      if (voiceOff === end) voiceOff = null
-    }
-    mine.current = end
-    voiceOff = end
-    a.onended = end
-    a.onerror = end
-    a.src = `/api/speak/stream?${new URLSearchParams({ text: item.text.slice(0, 1500), oral: '0', voice: item.voice ?? '' })}`
-    setOn(true)
-    void a.play().catch(end)
-  }
+  const v = useVoice(item.id)
+  const bars = useMemo(() => waveOf(item.id, small ? 7 : 26), [item.id, small])
+  if (!item.voice || !item.text) return null
+  const on = v.phase === 'playing' || v.phase === 'loading'
   return (
-    <button className={on ? 'fy-listen on' : 'fy-listen'} onClick={toggle} aria-label={on ? t.stop : t.listen(who)} aria-pressed={on}>
-      <Icon name={on ? 'pause' : 'play'} />
+    <button
+      type="button"
+      className={`fy-listen fy-v-${v.phase}${small ? ' small' : ''}`}
+      onClick={() => toggleVoice(item.id, item.text, item.voice ?? '')}
+      aria-label={on ? t.stop : t.listen(who)}
+      aria-pressed={on}
+    >
+      <span className="fy-listen-mark" aria-hidden>
+        <Icon name={on ? 'pause' : 'play'} />
+      </span>
       <span className="fy-wave" aria-hidden>
-        <i />
-        <i />
-        <i />
-        <i />
-        <i />
+        {bars.map((h, i) => (
+          <i key={i} style={{ '--h': h, '--d': `${-((i * 0.137) % 0.9).toFixed(3)}s` } as CSSProperties} />
+        ))}
+      </span>
+      <span className="fy-listen-note tab" role="status">
+        {v.phase === 'error' ? t.voiceFailed : v.phase === 'playing' ? clock(v.seconds) : ''}
       </span>
     </button>
   )
 }
 
-/** Where things stand, as bars; they fill when they come under the eyes. */
-function Gauges({ list, inView }: { list: ForYouGauge[]; inView: boolean }) {
+/** Where things stand, as flat bars: the label and the figure, the bar under them. They fill from nothing the first
+ * time they come under the eyes (once; no animation when motion is reduced, foryou.css). A project's bar takes its
+ * colour, a bar close to a limit the alert colour, the others the ink. */
+function Gauges({ list }: { list: ForYouGauge[] }) {
   const { colors } = useApp()
+  const box = useRef<HTMLDivElement>(null)
+  const inView = useInView(box, 0.35)
+  const [filled, setFilled] = useState(false)
+  useEffect(() => {
+    if (inView) setFilled(true)
+  }, [inView])
   return (
-    <div className="fy-gauges">
+    <div ref={box} className={filled ? 'fy-gauges fy-filled' : 'fy-gauges'}>
       {list.map((g, i) => {
         const pct = g.max > 0 ? Math.max(0, Math.min(100, (g.value / g.max) * 100)) : 0
-        const own = g.projectId && colors[g.projectId] ? ({ '--g': `var(--${colors[g.projectId]})` } as CSSProperties) : undefined
+        const own = !g.hot && g.projectId && colors[g.projectId] ? cssVar(colors[g.projectId]) : undefined
         return (
-          <div key={i} className={`fy-gauge${g.hot ? ' hot' : ''}${own ? ' own' : ''}`} style={own} role="meter" aria-label={g.label} aria-valuemin={0} aria-valuemax={g.max} aria-valuenow={g.value} aria-valuetext={g.shown}>
+          <div
+            key={i}
+            className={`fy-gauge${g.hot ? ' hot' : ''}${own ? ' own' : ''}`}
+            style={{ '--v': `${pct}%`, '--i': i, ...(own ? { '--g': own } : {}) } as CSSProperties}
+            role="meter"
+            aria-label={g.label}
+            aria-valuemin={0}
+            aria-valuemax={g.max}
+            aria-valuenow={g.value}
+            aria-valuetext={g.shown}
+          >
             <span className="fy-gauge-label ellipsis">{g.label}</span>
-            <span className="fy-gauge-bar" aria-hidden>
-              <i style={{ width: inView ? `${pct}%` : 0 }} />
-            </span>
             <span className="fy-gauge-shown tab">{g.shown}</span>
+            <span className="fy-gauge-bar" aria-hidden>
+              <i />
+            </span>
           </div>
         )
       })}
@@ -305,12 +325,35 @@ function ReplyLine({ item, who, fy }: { item: ForYouItem; who: string; fy: ForYo
 // ---------------------------------------------------------------------------
 // Media: edge to edge, the video plays muted while it is under the eyes, a tap opens it alone, with sound.
 
-function MediaTile({ m }: { m: ForYouMedia }) {
+/** How much of a media the stream may cut to fill its box: a little. Beyond, it is shown whole on the band's tone. */
+const CROP_MAX = 0.12
+/** The tallest a media gets in the stream, as a share of the screen (foryou.css: 62dvh). */
+const MEDIA_CAP = 0.62
+
+/** cover: it fills its box (at most CROP_MAX of it is cut) · contain: whole, on the tone, in a box of the capped height. */
+export function mediaFit(w: number, h: number, boxW: number, boxH: number, fixed: boolean): 'cover' | 'contain' {
+  if (!(w > 0 && h > 0 && boxW > 0 && boxH > 0)) return 'cover'
+  const natural = (boxW * h) / w // its height at the box's width
+  // A box that follows the media (one media alone): only what goes over the cap is cut.
+  if (!fixed) return natural > boxH * (1 + CROP_MAX) ? 'contain' : 'cover'
+  const kept = Math.min(natural / boxH, boxH / natural)
+  return kept < 1 - CROP_MAX ? 'contain' : 'cover'
+}
+
+function MediaTile({ m, many }: { m: ForYouMedia; many: boolean }) {
   const t = useT(M)
   const { push } = useApp()
   const tile = useRef<HTMLButtonElement>(null)
   const video = useRef<HTMLVideoElement>(null)
   const inView = useInView(tile, 0.6)
+  const [fit, setFit] = useState<'cover' | 'contain'>('cover')
+  const sized = (w: number, h: number) => {
+    const el = tile.current
+    if (!el) return
+    const cap = MEDIA_CAP * (window.innerHeight || 0)
+    setFit(mediaFit(w, h, el.clientWidth, many ? Math.min(cap, 0.96 * (window.innerWidth || 0)) : cap, many))
+  }
+  // Muted, and only while it is under the eyes.
   useEffect(() => {
     const v = video.current
     if (!v) return
@@ -322,8 +365,12 @@ function MediaTile({ m }: { m: ForYouMedia }) {
     }
   }, [inView])
   return (
-    <button ref={tile} className={inView ? 'fy-media fy-inview' : 'fy-media'} onClick={() => push({ kind: 'media', url: m.url, type: m.type, name: m.name })} aria-label={t.openMedia(m.name)}>
-      {m.type === 'video' ? <video ref={video} src={m.url} playsInline muted loop preload="metadata" /> : <img src={m.url} alt="" loading="lazy" decoding="async" draggable={false} />}
+    <button ref={tile} className={`fy-media ${fit}${inView ? ' fy-inview' : ''}`} onClick={() => push({ kind: 'media', url: m.url, type: m.type, name: m.name })} aria-label={t.openMedia(m.name)}>
+      {m.type === 'video' ? (
+        <video ref={video} src={m.url} playsInline muted loop preload="metadata" onLoadedMetadata={(e) => sized(e.currentTarget.videoWidth, e.currentTarget.videoHeight)} />
+      ) : (
+        <img src={m.url} alt="" loading="lazy" decoding="async" draggable={false} onLoad={(e) => sized(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)} />
+      )}
       {m.type === 'video' && (
         <span className="fy-media-mark" aria-hidden>
           <Icon name="play" />
@@ -341,24 +388,24 @@ function MediaStrip({ media }: { media: ForYouMedia[] }) {
   return (
     <div ref={strip} className={many ? 'fy-media-strip many' : 'fy-media-strip'} role={many ? 'group' : undefined} aria-label={many ? t.mediaStrip(media.length) : undefined}>
       {media.map((m) => (
-        <MediaTile key={m.id} m={m} />
+        <MediaTile key={m.id} m={m} many={many} />
       ))}
     </div>
   )
 }
 
-function MediaItem({ item, who, fy, inView }: KindProps) {
+function MediaItem({ item, who, fy }: KindProps) {
   return (
     <>
       {!!item.media?.length && <MediaStrip media={item.media} />}
       <div className="tone fy-cap">
         <div className="in">
           <Who item={item} who={who}>
-            {item.voice && <Listen item={item} who={who} />}
+            <Listen item={item} who={who} small />
           </Who>
           {item.title && <div className="fy-title">{item.title}</div>}
           {item.text && item.text !== item.title && <div className="fy-text">{item.text}</div>}
-          {!!item.gauges?.length && <Gauges list={item.gauges} inView={inView} />}
+          {!!item.gauges?.length && <Gauges list={item.gauges} />}
         </div>
       </div>
       <Actions item={item} fy={fy} />
@@ -370,16 +417,16 @@ function MediaItem({ item, who, fy, inView }: KindProps) {
 // ---------------------------------------------------------------------------
 // weevboss, mail.
 
-function BossItem({ item, who, fy, inView }: KindProps) {
+function BossItem({ item, who, fy }: KindProps) {
   return (
     <>
       <div className="in fy-pad">
-        <Who item={item} who={who}>
-          {item.voice && <Listen item={item} who={who} />}
-        </Who>
+        <Who item={item} who={who} />
+        {/* A word that can be listened to: the wave leads, the text sits under it. */}
+        <Listen item={item} who={who} />
         {item.title && <div className="fy-title">{item.title}</div>}
         <div className="fy-text">{item.text}</div>
-        {!!item.gauges?.length && <Gauges list={item.gauges} inView={inView} />}
+        {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
       {!!item.media?.length && <MediaStrip media={item.media} />}
       <Actions item={item} fy={fy} />
@@ -394,8 +441,9 @@ function MailItem({ item, who, fy }: KindProps) {
   const more = !!item.body || !!item.reply
   return (
     <>
-      <button className="fy-mail" onClick={() => setOpen((v) => !v)} aria-expanded={open} disabled={!more}>
-        <span className="in fy-mail-in">
+      <div className="in fy-mail-in">
+        <Listen item={item} who={who} small />
+        <button className="fy-mail" onClick={() => setOpen((v) => !v)} aria-expanded={open} disabled={!more}>
           <span className="dot fy-dot" aria-hidden />
           <span className="fy-who-name">{who}</span>
           <span className="fy-mail-sum ellipsis">{item.text}</span>
@@ -404,14 +452,13 @@ function MailItem({ item, who, fy }: KindProps) {
               <Icon name="chevron" dir={open ? 'up' : 'down'} />
             </span>
           )}
-        </span>
-      </button>
+        </button>
+      </div>
       <Collapse open={open}>
         <div className="tone">
           <div className="in fy-mail-body">
             {item.title && <div className="fy-title">{item.title}</div>}
             <div className="fy-text">{item.body ?? item.text}</div>
-            {item.voice && <Listen item={item} who={who} />}
           </div>
         </div>
         {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
@@ -436,7 +483,8 @@ function Proposals({ item, who, fy }: KindProps) {
     cards.map((c) => c.id),
     slots.current,
   )
-  const basis = cards.length <= 1 ? '100%' : cards.length === 2 ? '50%' : '44%'
+  // Two share the width; from three on, each takes most of it and the next one clearly shows its edge (it snaps).
+  const basis = cards.length <= 1 ? '100%' : cards.length === 2 ? '50%' : '78%'
   const answer = (c: ForYouCard, yes: boolean) => {
     if (yes) buzz()
     void fy.act(item.id, yes ? 'accept' : 'refuse', c.id)
@@ -490,7 +538,7 @@ function Proposals({ item, who, fy }: KindProps) {
 // ---------------------------------------------------------------------------
 // A session: project · title (a tap opens the real conversation), what it did / asks / why it stopped.
 
-function SessionItem({ item, who, project, fy, inView }: KindProps) {
+function SessionItem({ item, who, project, fy }: KindProps) {
   const t = useT(M)
   const { now } = useApp()
   const open = useOpen(item)
@@ -520,10 +568,10 @@ function SessionItem({ item, who, project, fy, inView }: KindProps) {
             {said ? ' · ' : ''}
             {ago(Math.max(0, now - item.at))}
           </span>
-          {item.voice && <Listen item={item} who={name} />}
+          <Listen item={item} who={name} small />
         </div>
         <div className="fy-text">{item.text}</div>
-        {!!item.gauges?.length && <Gauges list={item.gauges} inView={inView} />}
+        {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
       {!!item.media?.length && <MediaStrip media={item.media} />}
       <Actions item={item} fy={fy} />
@@ -536,7 +584,7 @@ function SessionItem({ item, who, project, fy, inView }: KindProps) {
 // ---------------------------------------------------------------------------
 // Improve (the one place colour goes wild), alert (sober), insight (a page you learn from), milestone, stat.
 
-function ImproveItem({ item, who, fy, inView }: KindProps) {
+function ImproveItem({ item, who, fy }: KindProps) {
   const t = useT(M)
   return (
     <>
@@ -548,7 +596,7 @@ function ImproveItem({ item, who, fy, inView }: KindProps) {
         </Who>
         {item.title && <div className="fy-title">{item.title}</div>}
         <div className="fy-text fy-lead">{item.text}</div>
-        {!!item.gauges?.length && <Gauges list={item.gauges} inView={inView} />}
+        {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
       <Actions item={item} fy={fy} />
       {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
@@ -634,25 +682,25 @@ function InsightItem({ item, who, project, fy }: KindProps) {
   )
 }
 
-function MilestoneItem({ item, who, project, inView }: KindProps) {
+function MilestoneItem({ item, who, project }: KindProps) {
   return (
     <div className="in fy-pad">
       <Who item={item} who={project ?? who} />
       {item.title && <div className="fy-title">{item.title}</div>}
       <div className="fy-shift">{item.text}</div>
-      {!!item.gauges?.length && <Gauges list={item.gauges} inView={inView} />}
+      {!!item.gauges?.length && <Gauges list={item.gauges} />}
     </div>
   )
 }
 
-function StatItem({ item, who, project, fy, inView }: KindProps) {
+function StatItem({ item, who, project, fy }: KindProps) {
   return (
     <>
       <div className="in fy-pad">
         <Who item={item} who={project ?? who} />
         {item.title && <div className="fy-title">{item.title}</div>}
         {item.text && <div className="fy-text">{item.text}</div>}
-        {!!item.gauges?.length && <Gauges list={item.gauges} inView={inView} />}
+        {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
       <Actions item={item} fy={fy} />
     </>
@@ -754,13 +802,33 @@ function usePageMotion() {
   }
 }
 
-/** The line: what is turning right now. The only thing always alive. */
+/** A figure of the line: when it changes, the old number rolls out upwards and the new one rolls in from below. */
+function Tick({ text }: { text: string }) {
+  const m = /^(\d+)([\s\S]*)$/.exec(text)
+  if (!m) return <span className="fy-tick">{text}</span>
+  return (
+    <span className="fy-tick">
+      <span className="fy-tick-n tab">
+        <AnimatePresence initial={false} mode="popLayout">
+          <motion.span key={m[1]} initial={{ y: '85%', opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: '-85%', opacity: 0 }} transition={spring}>
+            {m[1]}
+          </motion.span>
+        </AnimatePresence>
+      </span>
+      {m[2]}
+    </span>
+  )
+}
+
+/** The line: what is turning right now. The only thing always alive: a star spins per working agent, figures roll when they change. */
 function ForYouPulse({ pulse }: { pulse: ForYouPulse }) {
   const t = useT(M)
   const stars = Math.min(pulse.working, 6)
-  const parts = [pulse.working > 0 && t.pulseWorking(pulse.working), pulse.delivered > 0 && t.pulseDelivered(pulse.delivered), pulse.waiting > 0 && t.pulseWaiting(pulse.waiting), pulse.auto > 0 && t.pulseAuto(pulse.auto)].filter(
-    (p): p is string => !!p,
-  )
+  const parts: [string, string][] = []
+  if (pulse.working > 0) parts.push(['working', t.pulseWorking(pulse.working)])
+  if (pulse.delivered > 0) parts.push(['delivered', t.pulseDelivered(pulse.delivered)])
+  if (pulse.waiting > 0) parts.push(['waiting', t.pulseWaiting(pulse.waiting)])
+  if (pulse.auto > 0) parts.push(['auto', t.pulseAuto(pulse.auto)])
   return (
     <div className="band fy-pulse" role="group" aria-label={t.pulseLabel}>
       <div className="in fy-pulse-in">
@@ -773,7 +841,16 @@ function ForYouPulse({ pulse }: { pulse: ForYouPulse }) {
             ))}
           </span>
         )}
-        <span className="fy-pulse-text">{parts.length ? parts.join(' · ') : t.pulseQuiet}</span>
+        <span className="fy-pulse-text">
+          {parts.length
+            ? parts.map(([key, text], i) => (
+                <span key={key} className="fy-pulse-part">
+                  <Tick text={text} />
+                  {i < parts.length - 1 && ' · '}
+                </span>
+              ))
+            : t.pulseQuiet}
+        </span>
       </div>
     </div>
   )
@@ -796,26 +873,46 @@ function Participants({ list, sel, onPick }: { list: string[]; sel: string; onPi
   )
 }
 
-/** An item's place in the stream: it comes in with the house spring, and leaves sideways when acted on (the next ones close the gap). */
-function Slot({ item, index, opening }: { item: ForYouItem; index: number; opening: boolean }) {
-  const { leaving } = useForYou()
+/** How long the word flashed where an acted item was stays, before the next ones close the gap (seconds). */
+const LEFT_HOLD = 0.62
+
+/** An item's place in the stream. It comes in once with the house spring. Acted on, it leaves sideways (launched, sent:
+ * to the right; refused, dismissed: to the left), a word flashes where it was, then the next ones close the gap. */
+function Slot({ item, index, opening: atOpening }: { item: ForYouItem; index: number; opening: boolean }) {
+  const t = useT(M)
+  // Decided once, when it comes in: a slot that came in with the page keeps that entrance for good (were its target to
+  // change at the next render, Motion would send « y » back to where it started and every band would sit 22 px low).
+  const [opening] = useState(atOpening)
+  const { leaving, leftAs } = useForYou()
+  const calm = useReducedMotion()
+  const present = useIsPresent()
   const id = item.id
-  const variants = useMemo<Variants>(
+  const variants = useMemo<{ slot: Variants; body: Variants }>(
     () => ({
-      gone: () => {
-        const d = leaving(id)
-        if (!d) return { opacity: 0, height: 0 }
-        return { x: d > 0 ? '100%' : '-100%', opacity: 0, height: 0, transition: { default: spring, opacity: { duration: 0.22 }, height: { ...spring, delay: 0.16 } } }
+      slot: {
+        gone: () =>
+          leaving(id)
+            ? { height: 0, transition: { height: calm ? { duration: 0, delay: LEFT_HOLD } : { ...spring, delay: LEFT_HOLD } } }
+            : { opacity: 0, height: 0 },
+      },
+      body: {
+        gone: () => {
+          const d = leaving(id)
+          if (!d) return {}
+          // Reduced motion: it fades where it is. Otherwise a spring a little softer than the house one: the way out is seen.
+          return calm ? { opacity: 0, transition: { duration: 0.18 } } : { x: d > 0 ? '100%' : '-100%', transition: { type: 'spring', stiffness: 240, damping: 30, mass: 0.9 } }
+        },
       },
     }),
-    [id, leaving],
+    [id, leaving, calm],
   )
+  const left = present ? undefined : leftAs(id)
   // Opening the page: the first six come in one after the other, the next ones as they reach the screen (once).
   const later = opening && index >= 6
   return (
     <motion.div
       className="clip fy-slot"
-      variants={variants}
+      variants={variants.slot}
       initial={opening ? { opacity: 0, y: 22 } : { opacity: 0, height: 0 }}
       animate={later ? undefined : opening ? { opacity: 1, y: 0 } : { opacity: 1, height: 'auto' }}
       whileInView={later ? { opacity: 1, y: 0 } : undefined}
@@ -823,7 +920,16 @@ function Slot({ item, index, opening }: { item: ForYouItem; index: number; openi
       exit="gone"
       transition={opening && !later ? { ...spring, delay: index * 0.04 } : spring}
     >
-      <ForYouItemView item={item} />
+      {left && (
+        <div className={`band invert fy-left fy-left-${leaving(id) < 0 ? 'l' : 'r'}`} role="status">
+          <div className="in fy-left-in">
+            <Icon name={left === 'dismissed' ? 'close' : 'check'} /> {left === 'launched' ? t.launched : left === 'sent' ? t.sent : t.dismissed}
+          </div>
+        </div>
+      )}
+      <motion.div className="fy-slot-body" variants={variants.body}>
+        <ForYouItemView item={item} />
+      </motion.div>
     </motion.div>
   )
 }
@@ -962,7 +1068,7 @@ export function MediaPage({ url, type, name }: { url: string; type: 'image' | 'v
         </button>
         <span className="meta ellipsis">{name}</span>
       </div>
-      <div className="fy-stage">{type === 'video' ? <video ref={video} src={url} controls autoPlay playsInline loop /> : <img src={url} alt={name} draggable={false} />}</div>
+      <div className="fy-stage">{type === 'video' ? <video ref={video} src={url} controls autoPlay playsInline loop aria-label={name} /> : <img src={url} alt={name} draggable={false} />}</div>
     </motion.div>
   )
 }

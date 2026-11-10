@@ -53,6 +53,9 @@ export default defineMessages({
 
     listen: (who: string) => `écouter ${who}`,
     stop: 'arrêter la lecture',
+    voiceFailed: 'pas de son pour l’instant',
+    launched: 'lancé',
+    dismissed: 'écarté',
   },
   en: {
     title: 'for you',
@@ -105,5 +108,8 @@ export default defineMessages({
 
     listen: (who: string) => `listen to ${who}`,
     stop: 'stop playing',
+    voiceFailed: 'no sound right now',
+    launched: 'launched',
+    dismissed: 'dismissed',
   },
 })

@@ -39,6 +39,7 @@ vi.mock('../api', () => {
 
 const { Ctx, setSettledNow } = await import('./app-context')
 const { useForYou, resetForYou, itemSlot, itemWho, participants, matchesWho, WHO_ALL } = await import('./foryou-store')
+const { setLang } = await import('../i18n')
 type Store = ReturnType<typeof useForYou>
 
 const NOW = Date.now()
@@ -211,6 +212,47 @@ describe('for you store', () => {
     await act(() => fy.dismiss('b'))
     expect(ids()).toEqual(['b'])
     expect(fy.error('b')).toBe('nope')
+  })
+
+  it('says which way a leaving item goes and what was done: launched or sent to the right, refused or dismissed to the left', async () => {
+    await serve(1, [item({ id: 'a' }), item({ id: 'b' }), item({ id: 'c' }), item({ id: 'd' }), item({ id: 'e' })])
+    expect(fy.leftAs('a')).toBeUndefined()
+    await act(() => fy.act('a', 'accept'))
+    await act(() => fy.act('b', 'resume'))
+    await act(() => fy.act('c', 'a1'))
+    await act(() => fy.act('d', 'refuse'))
+    await act(() => fy.dismiss('e'))
+    expect(['a', 'b', 'c', 'd', 'e'].map((id) => [fy.leaving(id), fy.leftAs(id)])).toEqual([
+      [1, 'launched'],
+      [1, 'launched'],
+      [1, 'sent'],
+      [-1, 'dismissed'],
+      [-1, 'dismissed'],
+    ])
+    // The server caught up: nothing is remembered of them.
+    await serve(2, [])
+    expect([fy.leaving('a'), fy.leftAs('a'), fy.leaving('e'), fy.leftAs('e')]).toEqual([0, undefined, 0, undefined])
+  })
+
+  it('asks for the stream again when the app changes language (the server writes it per language), not otherwise', async () => {
+    // (setLang also tells the server, over the network: not here.)
+    vi.stubGlobal('fetch', async () => new Response('{}'))
+    setLang('fr')
+    await serve(1, [item({ id: 'a', text: 'bonjour' })])
+    expect(fetches()).toBe(1)
+    srv.feed = feed(1, [item({ id: 'a', text: 'hello' })])
+    await act(async () => setLang('en'))
+    await flush()
+    expect(fetches()).toBe(2)
+    expect(fy.items[0].text).toBe('hello')
+    // Same language, same revision: nothing more.
+    render(snap({ rev: 1, unseen: 1 }, 2))
+    await flush()
+    expect(fetches()).toBe(2)
+    await act(async () => setLang('fr'))
+    await flush()
+    expect(fetches()).toBe(3)
+    vi.unstubAllGlobals()
   })
 
   it('reply rejects when the server refuses (the caller puts the text back)', async () => {

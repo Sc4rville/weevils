@@ -7,7 +7,7 @@ import type { Author } from '../../shared/api.ts'
 import type { ForYouFeed, ForYouItem, ForYouMark } from '../../shared/foryou.ts'
 import { isSettled, useApp } from './app-context'
 import { propColors } from './h24-tree'
-import { tr } from '../i18n'
+import { tr, useLang } from '../i18n'
 import M from '../i18n/foryou'
 
 export interface ForYouStore {
@@ -29,11 +29,16 @@ export interface ForYouStore {
   refresh(): void
   /** The last failed action on this item, in the user's words. */
   error(id: string): string | undefined
-  /** Which way an item or a card that just left should slide: 1 right (done), -1 left (refused), 0 it left by itself. */
+  /** Which way an item or a card that just left should slide: 1 right (accepted, launched, sent), -1 left (refused, dismissed), 0 it left by itself. */
   leaving(id: string): 1 | -1 | 0
+  /** What was done to the item that just left, for the word flashed where it was (undefined: it left by itself). */
+  leftAs(id: string): Left | undefined
   /** The page tells it is scrolled away from the top: newcomers wait instead of pushing what is being read. */
   setReading(reading: boolean): void
 }
+
+/** What the user did to an item that leaves. */
+export type Left = 'launched' | 'sent' | 'dismissed'
 
 interface View {
   feed: ForYouFeed | null
@@ -57,6 +62,9 @@ const moreTexts = new Map<string, string>()
 const moreFlights = new Map<string, Promise<string>>()
 const errors = new Map<string, string>()
 const dirs = new Map<string, 1 | -1>()
+const lefts = new Map<string, Left>()
+/** The language the stream was last asked in: the server's texts depend on it. */
+let lang: string | undefined
 let reading = false
 let enabled = false
 let markUnseen = 0
@@ -104,6 +112,7 @@ function adopt(f: ForYouFeed) {
   for (const id of goneCards) if (!cards.has(id)) goneCards.delete(id)
   for (const id of seen) if (!by.has(id) || by.get(id)!.seen) seen.delete(id)
   for (const id of dirs.keys()) if (!gone.has(id) && !goneCards.has(id)) dirs.delete(id)
+  for (const id of lefts.keys()) if (!dirs.has(id)) lefts.delete(id)
   for (const id of moreTexts.keys()) if (!by.has(id) || by.get(id)!.moreText) moreTexts.delete(id)
   if (first || !order.length) {
     order = ids
@@ -146,10 +155,17 @@ async function load() {
   }
 }
 
-function sync(mark: ForYouMark | undefined, authors: Author[] | undefined) {
+function sync(mark: ForYouMark | undefined, authors: Author[] | undefined, appLang?: string) {
   authorColors = new Map((authors ?? []).map((a) => [a.id, a.color]))
   enabled = !!mark
+  // The app changed language: the stream is asked again (titles, digests, alerts are written per language).
+  const turned = lang !== undefined && appLang !== undefined && appLang !== lang
+  if (appLang !== undefined) lang = appLang
   if (!mark) return
+  if (turned) {
+    wanted = mark.rev
+    return void load()
+  }
   if (markUnseen !== mark.unseen) {
     markUnseen = mark.unseen
     if (!feed) rebuild()
@@ -163,10 +179,12 @@ const message = (e: unknown) => (e instanceof Error && e.message ? e.message : t
 
 async function act(id: string, action: string, card?: string) {
   const dir = action === 'refuse' ? -1 : 1
+  const left: Left = action === 'refuse' ? 'dismissed' : action === 'accept' || action === 'resume' ? 'launched' : 'sent'
   errors.delete(id)
   if (card) goneCards.add(card)
   else gone.add(id)
   dirs.set(id, dir)
+  lefts.set(id, left)
   if (card) dirs.set(card, dir)
   rebuild()
   try {
@@ -182,7 +200,8 @@ async function act(id: string, action: string, card?: string) {
 async function dismiss(id: string) {
   errors.delete(id)
   gone.add(id)
-  dirs.set(id, 1)
+  dirs.set(id, -1)
+  lefts.set(id, 'dismissed')
   rebuild()
   try {
     await api.foryouDismiss(id)
@@ -253,6 +272,7 @@ function showFresh() {
 
 const error = (id: string) => errors.get(id)
 const leaving = (id: string): 1 | -1 | 0 => dirs.get(id) ?? 0
+const leftAs = (id: string): Left | undefined => lefts.get(id)
 const setReading = (v: boolean) => void (reading = v)
 
 const subscribe = (l: () => void) => {
@@ -265,9 +285,10 @@ export function useForYou(): ForYouStore {
   const { snap } = useApp()
   const mark = snap.foryou
   const authors = snap.config.authors
-  useEffect(() => sync(mark, authors), [mark, mark?.rev, mark?.unseen, authors, snap.version])
+  const appLang = useLang()
+  useEffect(() => sync(mark, authors, appLang), [mark, mark?.rev, mark?.unseen, authors, snap.version, appLang])
   const v = useSyncExternalStore(subscribe, getView, getView)
-  return useMemo(() => ({ ...v, showFresh, act, dismiss, reply, markSeen, more, refresh, error, leaving, setReading }), [v])
+  return useMemo(() => ({ ...v, showFresh, act, dismiss, reply, markSeen, more, refresh, error, leaving, leftAs, setReading }), [v])
 }
 
 /** Tests only: a blank store. */
@@ -276,7 +297,8 @@ export function resetForYou() {
   order = []
   held = new Set()
   for (const s of [gone, goneCards, seen, seenQueue]) s.clear()
-  for (const m of [moreTexts, moreFlights, errors, dirs]) m.clear()
+  for (const m of [moreTexts, moreFlights, errors, dirs, lefts]) m.clear()
+  lang = undefined
   reading = false
   enabled = false
   markUnseen = 0

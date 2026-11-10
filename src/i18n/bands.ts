@@ -30,6 +30,7 @@ export default defineMessages({
     forYouOpen: 'ouvrir « pour toi » en grand',
     forYouEmpty: 'rien de neuf pour l’instant',
     forYouUnseen: (n: number) => `${n} pas encore ${n > 1 ? 'vus' : 'vu'}`,
+    forYouSpeaking: 'en cours de lecture',
 
     // Bande projet
     projectBand: (name: string) => `projet ${name}`,
@@ -94,6 +95,7 @@ export default defineMessages({
     forYouOpen: 'open “for you” full screen',
     forYouEmpty: 'nothing new for now',
     forYouUnseen: (n: number) => `${n} not seen yet`,
+    forYouSpeaking: 'playing',
 
     projectBand: (name: string) => `project ${name}`,
     unread: 'replied, not read yet',

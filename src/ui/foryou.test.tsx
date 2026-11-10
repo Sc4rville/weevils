@@ -28,7 +28,8 @@ vi.mock('../api', () => {
 
 const { MotionGlobalConfig } = await import('motion/react')
 MotionGlobalConfig.skipAnimations = true
-const { ForYouPage, ForYouItemView, MediaPage } = await import('./foryou')
+const { ForYouPage, ForYouItemView, MediaPage, mediaFit, waveOf } = await import('./foryou')
+const { resetVoice, LOGO_SAYS, ITEM_SAYS } = await import('./foryou-voice')
 const { resetForYou } = await import('./foryou-store')
 const { Ctx, setSettledNow } = await import('./app-context')
 const { FOCUS_BOSS } = await import('./follow')
@@ -150,6 +151,7 @@ beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   localStorage.clear()
   resetForYou()
+  resetVoice()
   setSettledNow(true)
   srv.calls.length = 0
   srv.fail = ''
@@ -406,6 +408,192 @@ describe('for you page', () => {
     expect(srv.calls).toEqual([])
     expect(host.querySelector('.page')).toBeTruthy()
     expect(host.querySelectorAll('[data-fy]')).toHaveLength(0)
+  })
+})
+
+/** The one audio element of the stream, as the browser would give it: what it was asked to play, and whether it plays. */
+class FakeAudio {
+  static made: FakeAudio[] = []
+  static refuse = false
+  src = ''
+  preload = ''
+  currentTime = 0
+  paused = true
+  onplaying: (() => void) | null = null
+  ontimeupdate: (() => void) | null = null
+  onended: (() => void) | null = null
+  onerror: (() => void) | null = null
+  constructor() {
+    FakeAudio.made.push(this)
+  }
+  play() {
+    if (FakeAudio.refuse) return Promise.reject(new Error('no speech here'))
+    this.paused = false
+    return Promise.resolve()
+  }
+  pause() {
+    this.paused = true
+  }
+}
+
+describe('for you: voice messages', () => {
+  const VOICED: ForYouItem[] = [
+    { ...base, id: 'bo', kind: 'boss', who: 'weevboss', text: 'Three sessions sent this morning.', voice: 'nova' },
+    { ...base, id: 'ma', kind: 'mail', who: 'juno', title: 'Re: invoices', text: 'sent the March invoices', body: 'Hello,\nall done.', reply: 'mail', voice: 'alloy' },
+    { ...base, id: 'b2', kind: 'boss', who: 'weevboss', text: 'No voice on this one.' },
+  ]
+  const listen = (id: string) => band(id).querySelector<HTMLButtonElement>('.fy-listen')!
+  const audio = () => FakeAudio.made[0]
+  const fire = (what: 'onplaying' | 'ontimeupdate' | 'onended' | 'onerror') => act(async () => audio()[what]?.())
+
+  beforeEach(() => {
+    FakeAudio.made = []
+    FakeAudio.refuse = false
+    vi.stubGlobal('Audio', FakeAudio)
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('only an item with a voice carries the play glyph and its bars, still until it is played', async () => {
+    await open(VOICED)
+    expect(listen('bo').getAttribute('aria-label')).toBe(t().listen('weevboss'))
+    expect(listen('bo').querySelectorAll('.fy-wave i').length).toBeGreaterThan(12)
+    expect(listen('bo').classList.contains('fy-v-idle')).toBe(true)
+    expect(listen('ma').classList.contains('small')).toBe(true)
+    expect(band('b2').querySelector('.fy-listen')).toBeNull()
+    // Nothing is synthesised before a tap.
+    expect(FakeAudio.made).toHaveLength(0)
+    // The mail's play button is not inside the line that unfolds it.
+    expect(band('ma').querySelector('.fy-mail .fy-listen')).toBeNull()
+  })
+
+  it('a tap streams the item’s words in its speaker’s voice; a second tap stops', async () => {
+    await open(VOICED)
+    await click(listen('bo'))
+    const q = new URL(audio().src, 'http://x')
+    expect(q.pathname).toBe('/api/speak/stream')
+    expect(q.searchParams.get('text')).toBe('Three sessions sent this morning.')
+    expect(q.searchParams.get('voice')).toBe('nova')
+    expect(listen('bo').classList.contains('fy-v-loading')).toBe(true)
+    expect(listen('bo').getAttribute('aria-pressed')).toBe('true')
+    await fire('onplaying')
+    expect(listen('bo').classList.contains('fy-v-playing')).toBe(true)
+    expect(listen('bo').getAttribute('aria-label')).toBe(t().stop)
+    audio().currentTime = 7.4
+    await fire('ontimeupdate')
+    expect(listen('bo').querySelector('.fy-listen-note')!.textContent).toBe('0:07')
+    await click(listen('bo'))
+    expect(audio().paused).toBe(true)
+    expect(listen('bo').classList.contains('fy-v-idle')).toBe(true)
+  })
+
+  it('one element for the whole stream: starting another item stops the first; the end brings the bars to rest', async () => {
+    await open(VOICED)
+    await click(listen('bo'))
+    await fire('onplaying')
+    await click(listen('ma'))
+    expect(FakeAudio.made).toHaveLength(1)
+    expect(new URL(audio().src, 'http://x').searchParams.get('voice')).toBe('alloy')
+    expect(listen('bo').classList.contains('fy-v-idle')).toBe(true)
+    await fire('onplaying')
+    expect(host.querySelectorAll('.fy-v-playing')).toHaveLength(1)
+    expect(listen('ma').classList.contains('fy-v-playing')).toBe(true)
+    await fire('onended')
+    expect(host.querySelectorAll('.fy-v-playing, .fy-v-loading')).toHaveLength(0)
+  })
+
+  it('no sound: said quietly in place, and a new tap tries again', async () => {
+    await open(VOICED)
+    FakeAudio.refuse = true
+    await click(listen('bo'))
+    await flush()
+    expect(listen('bo').classList.contains('fy-v-error')).toBe(true)
+    expect(listen('bo').querySelector('[role=status]')!.textContent).toBe(t().voiceFailed)
+    FakeAudio.refuse = false
+    await click(listen('bo'))
+    await fire('onplaying')
+    expect(listen('bo').classList.contains('fy-v-playing')).toBe(true)
+    // The element itself fails later (the stream breaks): same quiet word.
+    await fire('onerror')
+    expect(listen('bo').classList.contains('fy-v-error')).toBe(true)
+  })
+
+  it('weevboss’s logo and a voice message never speak together', async () => {
+    await open(VOICED)
+    let asked = 0
+    const onItem = () => void asked++
+    window.addEventListener(ITEM_SAYS, onItem)
+    await click(listen('bo'))
+    await fire('onplaying')
+    window.removeEventListener(ITEM_SAYS, onItem)
+    // The message told the logo to be quiet when it started.
+    expect(asked).toBe(1)
+    // The logo speaks: the message stops.
+    await act(async () => void window.dispatchEvent(new Event(LOGO_SAYS)))
+    expect(audio().paused).toBe(true)
+    expect(listen('bo').classList.contains('fy-v-idle')).toBe(true)
+  })
+
+  it('the bars of an item are always the same, between a quarter and full height', () => {
+    expect(waveOf('b:1', 26)).toEqual(waveOf('b:1', 26))
+    expect(waveOf('b:1', 26)).not.toEqual(waveOf('b:2', 26))
+    for (const h of waveOf('b:1', 26)) expect(h >= 0.25 && h <= 1).toBe(true)
+  })
+})
+
+describe('for you: figures, the line, media fit', () => {
+  it('bars: label, figure, bar; a project’s colour, the alert colour when hot, the ink otherwise; also under a result', async () => {
+    const result: ForYouItem = { ...base, id: 're', kind: 'session', tone: 'result', who: 'session', projectId: 'mygame', title: 'layout', text: 'twelve weeks laid out', gauges: [{ label: 'weeks', value: 12, max: 52, shown: '12 of 52', projectId: 'mygame' }, { label: 'tests', value: 48, max: 48, shown: '48 of 48' }, { label: 'hot project', value: 9, max: 10, shown: '9 of 10', projectId: 'mygame', hot: true }] }
+    await open([result, ITEMS[9]])
+    const bars = [...band('re').querySelectorAll<HTMLElement>('.fy-gauge')]
+    expect(bars.map((b) => [b.querySelector('.fy-gauge-label')!.textContent, b.querySelector('.fy-gauge-shown')!.textContent])).toEqual([
+      ['weeks', '12 of 52'],
+      ['tests', '48 of 48'],
+      ['hot project', '9 of 10'],
+    ])
+    expect(bars.map((b) => b.style.getPropertyValue('--v'))).toEqual([`${(12 / 52) * 100}%`, '100%', '90%'])
+    expect(bars[0].classList.contains('own')).toBe(true)
+    expect(bars[0].style.getPropertyValue('--g')).toBe('var(--p4)')
+    expect(bars[1].className).toBe('fy-gauge')
+    // Hot wins over the project's colour.
+    expect(bars[2].className).toBe('fy-gauge hot')
+    // A stat: a short title and its bars.
+    expect(band('st').querySelector('.fy-title')!.textContent).toBe('this week')
+    expect(band('st').querySelectorAll('.fy-gauge')).toHaveLength(2)
+  })
+
+  it('the line: a star per working agent, each count as its own figure', async () => {
+    await open()
+    const line = host.querySelector('.fy-pulse')!
+    expect(line.querySelectorAll('.fy-stars .spin')).toHaveLength(2)
+    expect([...line.querySelectorAll('.fy-tick-n')].map((n) => n.textContent)).toEqual(['2', '7', '1', '3'])
+    expect(line.querySelector('.fy-pulse-text')!.textContent).toBe([t().pulseWorking(2), t().pulseDelivered(7), t().pulseWaiting(1), t().pulseAuto(3)].join(' · '))
+  })
+
+  it('three proposals or more: each takes most of the width so the next one shows its edge; two share it', async () => {
+    await open()
+    const strip = band('pr').querySelector('.fy-props')!
+    expect(strip.classList.contains('scroll')).toBe(true)
+    expect([...strip.querySelectorAll<HTMLElement>('.fy-card')].map((c) => c.style.flexBasis)).toEqual(['78%', '78%', '78%'])
+    await click(labelled(t().refuse('Draft the page'), band('pr')))
+    await flush()
+    expect(strip.classList.contains('scroll')).toBe(false)
+    expect([...strip.querySelectorAll<HTMLElement>('.fy-card')].map((c) => c.style.flexBasis)).toEqual(['50%', '50%'])
+  })
+
+  it('a media is never cut by more than a little: beyond, it is shown whole', () => {
+    // One media alone on a phone (390 wide, cap 523): landscape and near-square fill, a portrait clip is shown whole.
+    expect(mediaFit(1280, 720, 390, 523, false)).toBe('cover')
+    expect(mediaFit(1170, 1560, 390, 523, false)).toBe('cover')
+    expect(mediaFit(1000, 1480, 390, 523, false)).toBe('cover') // 577 high: 9 % over the cap
+    expect(mediaFit(720, 1280, 390, 523, false)).toBe('contain')
+    // Wide screen, in the 760 column (cap 496): the portrait clip would lose two thirds.
+    expect(mediaFit(720, 1280, 760, 496, false)).toBe('contain')
+    expect(mediaFit(1280, 720, 760, 496, false)).toBe('cover')
+    // Several side by side: the box is fixed, so both ways count.
+    expect(mediaFit(1280, 720, 335, 374, true)).toBe('contain')
+    expect(mediaFit(1000, 1100, 335, 374, true)).toBe('cover')
+    // Not known yet.
+    expect(mediaFit(0, 0, 390, 523, false)).toBe('cover')
   })
 })
 

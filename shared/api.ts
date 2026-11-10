@@ -1,5 +1,6 @@
 import type { Ask } from './asks.ts'
 import type { Tour } from './tour.ts'
+import type { ForYouMark } from './foryou.ts'
 
 // Contrat entre weevilsd (VPS) et l'app. Horodatages en millisecondes, compteurs toujours dérivés côté app.
 
@@ -294,6 +295,8 @@ export interface Snapshot {
   optimizers?: Optimizer[]
   /** La machine vue par la bande auto (server/optimizers.ts), sur la machine principale. */
   autoMachine?: AutoMachine
+  /** « Pour toi » (server/foryou.ts), sur la machine principale : révision du flux et nombre d'items pas encore vus. Le flux se lit avec GET /api/foryou. */
+  foryou?: ForYouMark
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */
   /** siteKey : clé des pages statiques des repos (/api/site/<clé>/<repo>/), pour le navigateur intégré sans domaine de preview. */
   config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[]; siteKey?: string }

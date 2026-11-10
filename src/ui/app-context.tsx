@@ -28,6 +28,10 @@ export type Page =
   | { kind: 'fsfile'; machine: string; path: string }
   | { kind: 'usage' }
   | { kind: 'memory' }
+  /** « Pour toi » en plein écran ; who : le participant isolé à l'ouverture. */
+  | { kind: 'foryou'; who?: string }
+  /** Un média du flux, seul, en grand. */
+  | { kind: 'media'; url: string; type: 'image' | 'video'; name: string }
 
 export interface AppCtx {
   snap: Snapshot

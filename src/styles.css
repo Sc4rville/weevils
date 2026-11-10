@@ -1812,17 +1812,10 @@ button.copy.done {
   line-height: 1.35;
 }
 
-/* Deux lignes au plus (trois pour le dernier) : la coupe se fait sur le texte, pas sur la marge. */
+/* Chaque message en entier, jamais coupé : l'aperçu défile s'il le faut. */
 .peek-item .txt {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  display: block;
   overflow-wrap: anywhere;
-}
-
-.peek-item:last-child .txt {
-  -webkit-line-clamp: 3;
 }
 
 /* Mêmes couleurs que le fil : weevboss sur la couleur de base, toi sur le ton de la bande. */

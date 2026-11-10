@@ -1,5 +1,5 @@
-/* Flying weevils (src/ui/weevil.tsx): a small ink weevil towing its question on a flat pop label, then the exchange
-   in a band that rises from the bottom. Sharp corners, thick ink borders, no shadow. */
+/* Flying weevils (src/ui/weevil.tsx): a small ink weevil towing its question on a pop label (ink-edged, so it reads
+   over any band), then the exchange in a flat band that rises from the bottom. Sharp corners, no shadow. */
 
 /* The flight: only the weevil and its label catch the finger, the rest of the screen stays usable. */
 .weevil-fly {
@@ -99,7 +99,6 @@
   overscroll-behavior: contain;
   background: var(--c);
   color: var(--ink);
-  border-top: 3px solid var(--ink);
   padding: 14px var(--pad) calc(var(--safe-b) + 10px);
   font-family: var(--font);
 }

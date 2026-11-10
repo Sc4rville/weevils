@@ -57,8 +57,8 @@ const saveState = (s: ReturnType<typeof parseState>) => {
 }
 const isDebug = () => /(^|[#&])weevil($|&)/.test(location.hash.slice(1)) || read(DEBUG) === '1'
 const typing = (el: Element | null) => !!el && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || (el as HTMLElement).isContentEditable)
-/** The intro (or not finished yet), a tip card, a hint bubble, the gesture coach. */
-const overlay = () => read('weevils-onboarded') !== '1' || !!document.querySelector('.ob, .tip, .hint, .coach-ghost')
+/** On screen now: the first-steps intro (TourIntro) or band (TourBand), a tip card (Tips), a hint bubble (HintBubble), the gesture coach (GestureCoach). */
+const overlay = () => !!document.querySelector('.tr-intro, .tr-band, .tip, .hint, .coach-ghost')
 const slotOf = (id: string) => SLOTS[[...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % SLOTS.length]
 
 /** Mounted once, next to the tips. `paused`: a page is open. */

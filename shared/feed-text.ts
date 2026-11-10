@@ -37,3 +37,14 @@ export function humanFeedItem(item: ForYouItem): ForYouItem {
     ...(item.moreText ? { moreText: humanFeedText(item.moreText) } : {}),
   }
 }
+
+
+/** Coordination acknowledgements are not product outcomes. No minimum length: short facts survive. */
+export function acknowledgementOnly(text: string): boolean {
+  const prose = humanFeedText(text).replace(/\*\*|__/g, '').replace(/\[(?:PC|VPS)\]/gi, '').trim()
+  const acknowledgement = /^(?:compris|bien (?:reçu|noté)|reçu|noté|ok(?:ay)?|d['’]accord|merci|aucun (?:conflit|chevauchement|travail en cours)|coordination confirmée|réception confirmée|understood|got it|noted|acknowledged|no (?:conflict|overlap)|état git et transcript relus)(?=$|[\s.!,:])/i.test(prose)
+    || /^(?:depuis weevils|pont codex) ok[.!\s]*$/i.test(prose)
+  if (!acknowledgement) return false
+  const outcome = /https?:\/\/|\b(?:corrigée?s?|livrée?s?|déployée?s?|ajoutée?s?|supprimée?s?|retirée?s?|créée?s?|réparée?s?|en ligne|fonctionne|fixed|deployed|shipped|removed|created|works)(?=$|[^\p{L}])/iu.test(prose)
+  return !outcome
+}

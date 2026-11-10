@@ -698,17 +698,17 @@ describe('milestones', () => {
     await deliver('s10', 'Turn 10 done.', { projectId: 'site' })
     await c.tick(now)
     await c.tick(now)
-    expect(kinds('milestone').map((i) => i.text)).toEqual(["10 turns delivered today, we're on a roll!"])
+    expect(kinds('milestone').map((i) => i.text)).toEqual(["10 sessions shared a result today"])
     await deliver('s11', 'Turn 11 done.', { projectId: 'notes' })
     snap.optimizers = [{ id: 'o1', state: 'done', title: 't', endedAt: now }] as Optimizer[]
     await c.tick(now)
-    expect(kinds('milestone').map((i) => i.text).sort()).toEqual(["10 turns delivered today, we're on a roll!", '3 projects moved today, good day.', 'First auto task wrapped up on its own while you were doing something else.'])
+    expect(kinds('milestone').map((i) => i.text).sort()).toEqual(["10 sessions shared a result today", '3 projects moved today, good day.', 'First auto task wrapped up on its own while you were doing something else.'])
     for (let n = 12; n <= 26; n++) await deliver(`s${n}`, `Turn ${n} done.`)
     const again = makeCurator()
     await again.tick(now)
     await again.tick(now)
     expect(kinds('milestone')).toHaveLength(4)
-    expect(fy.feed(now).items.find((i) => i.id === `ms:turns:${dayKey(now)}:25`)).toMatchObject({ kind: 'milestone', tone: 'magic', text: "25 turns delivered today, we're on a roll!" })
+    expect(fy.feed(now).items.find((i) => i.id === `ms:turns:${dayKey(now)}:25`)).toMatchObject({ kind: 'milestone', tone: 'magic', text: "25 sessions shared a result today" })
     expect(model).not.toHaveBeenCalled()
     expect(cheap).not.toHaveBeenCalled()
   })
@@ -717,7 +717,7 @@ describe('milestones', () => {
     const c = makeCurator()
     for (let n = 1; n <= 26; n++) await deliver(`s${n}`, `Turn ${n} done.`)
     await c.tick(now)
-    expect(kinds('milestone').map((i) => i.text)).toEqual(["25 turns delivered today, we're on a roll!"])
+    expect(kinds('milestone').map((i) => i.text)).toEqual(["25 sessions shared a result today"])
     fy.dismiss(`ms:turns:${dayKey(now)}:25`)
     await makeCurator().tick(now)
     expect(fy.feed(now).items.filter((i) => i.kind === 'milestone')).toEqual([])
@@ -756,7 +756,7 @@ describe('where the day stands', () => {
     await c.tick(now)
     const id = `stat:${dayKey(now)}`
     const item = fy.feed(now).items.find((i) => i.id === id)!
-    expect(item).toMatchObject({ kind: 'stat', who: 'weevils', text: 'Your day so far: 3 turns delivered', open: { page: 'usage' } })
+    expect(item).toMatchObject({ kind: 'stat', who: 'weevils', text: 'Your day so far: 3 sessions with a result', open: { page: 'usage' } })
     expect(item.gauges).toEqual([
       { label: 'Claude · 5 h window', value: 12, max: 100, shown: '12%' },
       { label: 'Claude · week', value: 71, max: 100, shown: '71%' },

@@ -92,13 +92,13 @@ export default defineMessages({
       `Réponds uniquement en JSON, une liste : [{"n": 1, "line": "…"}]`,
 
     // ---------------------------------------------------------------- milestones (no model)
-    msTurns: (n: number) => `${n} tours livrés aujourd’hui, ça carbure !`,
+    msTurns: (n: number) => `${n} sessions ont partagé un résultat aujourd’hui`,
     msProjects: (n: number) => `${n} projets ont bougé aujourd’hui, belle journée.`,
     msAutoFirst: 'Première tâche auto bouclée toute seule pendant que tu faisais autre chose.',
     msStreak: (n: number) => `${n} jours d’affilée que ça livre, on lâche rien.`,
 
     // ---------------------------------------------------------------- where the day stands (no model)
-    statText: (n: number) => (n > 0 ? `Ta journée pour l’instant : ${n} tour${n > 1 ? 's' : ''} livré${n > 1 ? 's' : ''}` : 'Ta journée pour l’instant'),
+    statText: (n: number) => (n > 0 ? `Ta journée pour l’instant : ${n} session${n > 1 ? 's' : ''} avec résultat` : 'Ta journée pour l’instant'),
     statUsage: (window: string) => `Claude · ${window}`,
     percent: (n: number) => `${n} %`,
     statTurns: (n: number, total: number) => `${n} sur ${total}`,
@@ -185,12 +185,12 @@ export default defineMessages({
       `${mails}\n\n` +
       `Answer only in JSON, a list: [{"n": 1, "line": "…"}]`,
 
-    msTurns: (n: number) => `${n} turns delivered today, we're on a roll!`,
+    msTurns: (n: number) => `${n} sessions shared a result today`,
     msProjects: (n: number) => `${n} projects moved today, good day.`,
     msAutoFirst: 'First auto task wrapped up on its own while you were doing something else.',
     msStreak: (n: number) => `${n} days in a row of shipping, keep it going.`,
 
-    statText: (n: number) => (n > 0 ? `Your day so far: ${n} turn${n === 1 ? '' : 's'} delivered` : 'Your day so far'),
+    statText: (n: number) => (n > 0 ? `Your day so far: ${n} session${n === 1 ? '' : 's'} with a result` : 'Your day so far'),
     statUsage: (window: string) => `Claude · ${window}`,
     percent: (n: number) => `${n}%`,
     statTurns: (n: number, total: number) => `${n} of ${total}`,

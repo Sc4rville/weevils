@@ -1,4 +1,4 @@
-import { humanFeedItem, humanFeedText, rawEngineeringNotice } from '../shared/feed-text.ts'
+import { acknowledgementOnly, humanFeedItem, humanFeedText, rawEngineeringNotice } from '../shared/feed-text.ts'
 import { canonicalAlertId, feedNoticeKey, isRequestNotice, quotaReset, sessionNoticeKey } from '../shared/notices.ts'
 // « For you »: the stream next to weevboss (docs/foryou.md, contract in shared/foryou.ts). Main machine only.
 //
@@ -445,11 +445,19 @@ export class ForYou {
       }
     })()
     // Retire the old raw Git/build stream permanently, including already stored history.
-    const kept = this.s.items.filter((i) => !technicalEvent(i.id, i.text))
+    const kept = this.s.items.filter((i) => !technicalEvent(i.id, i.text) && !(i.kind === 'session' && i.tone === 'result' && !i.mediaIds?.length && acknowledgementOnly(i.body || i.text)))
     if (kept.length !== this.s.items.length) {
       this.s.items = kept
       this.s.rev++
       this.save()
+    }
+    if (this.s.delivered.day === day(this.now())) {
+      const actual = this.deliveredToday()
+      if (actual.n !== this.s.delivered.n) {
+        this.s.delivered = { day: day(this.now()), ...actual }
+        this.s.rev++
+        this.save()
+      }
     }
   }
 
@@ -561,7 +569,7 @@ export class ForYou {
     const said = cited.length ? collapse(withoutPaths(raw, cited.map((e) => e.path))) : ''
     const whole = (said || raw || (first ? (s.lastMessage ?? '') : '')).trim()
     const text = headline(whole) || clip(collapse(whole), HEADLINE_MAX)
-    if (!text) return
+    if (!text || (!mediaIds.length && acknowledgementOnly(whole))) return
     const body = collapse(whole) === text ? undefined : clip(whole.replace(/\n{3,}/g, '\n\n'), BODY_MAX)
     const cur = this.get(`s:${s.id}`)
     const same = cur?.tone === 'result' && cur.text === text && (cur.mediaIds ?? []).join() === mediaIds.join()
@@ -581,11 +589,7 @@ export class ForYou {
     this.put(this.sessionItem(s, { tone: 'result', text, at: back ? Math.min(now, s.lastActivityAt || now) : now, ...(body ? { body } : {}), ...(mediaIds.length ? { mediaIds } : {}) }))
     // Picked up late: already counted, or from another day.
     if (back) return this.changed()
-    const d = day(now)
-    const today = this.s.delivered.day === d ? this.s.delivered : { day: d, n: 0, by: {} }
-    const by = { ...today.by }
-    if (s.projectId) by[s.projectId] = (by[s.projectId] ?? 0) + 1
-    this.s.delivered = { day: d, n: today.n + 1, by }
+    this.s.delivered = { day: day(now), ...this.deliveredToday(now) }
     this.changed()
   }
 
@@ -789,9 +793,12 @@ export class ForYou {
     return this.usage
   }
 
-  /** Turns delivered today, in all and per project. Does not count as a look at the stream. */
+  /** Distinct sessions with a concrete result today, reconstructed from source records, not turn counts. */
   deliveredToday(now = this.now()): { n: number; by: Record<string, number> } {
-    return this.s.delivered.day === day(now) ? { n: this.s.delivered.n, by: { ...this.s.delivered.by } } : { n: 0, by: {} }
+    const by: Record<string, number> = {}
+    const results = this.s.items.filter((i) => i.kind === 'session' && i.tone === 'result' && day(i.at) === day(now) && !technicalEvent(i.id, i.text) && (i.mediaIds?.length || !acknowledgementOnly(i.body || i.text)))
+    for (const i of results) if (i.projectId) by[i.projectId] = (by[i.projectId] ?? 0) + 1
+    return { n: results.length, by }
   }
 
   /** Recorded items of these kinds, newest first, as the app would read them (for the curator: what was already said). */
@@ -815,6 +822,7 @@ export class ForYou {
   /** What the app may read of a recorded item, or null when it has nothing to show right now. */
   private view(i: Stored, snap: Snapshot, any = false): ForYouItem | null {
     if (i.gone || technicalEvent(i.id, i.text)) return null
+    if (i.kind === 'session' && i.tone === 'result' && !i.mediaIds?.length && acknowledgementOnly(i.body || i.text)) return null
     if (i.id.startsWith('auto:proposed:')) {
       const idea = snap.optimizers?.find((o) => i.id === `auto:proposed:${o.id}`)
       if (!idea || idea.draft) return null
@@ -1063,7 +1071,7 @@ export class ForYou {
     return {
       working: mine.filter((s) => s.status === 'working').length,
       waiting: mine.filter((s) => s.status === 'needs_user' || s.status === 'interrupted').length,
-      delivered: this.s.delivered.day === day(now) ? this.s.delivered.n : 0,
+      delivered: this.deliveredToday(now).n,
       auto: (snap.optimizers ?? []).filter((o) => o.state === 'running' || o.state === 'queued').length,
     }
   }

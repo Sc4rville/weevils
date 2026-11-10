@@ -164,7 +164,7 @@ describe('session results', () => {
     expect(items).toHaveLength(1)
     expect(items[0]).toMatchObject({ id: 's:s1', text: 'Double jump added.', at: T0 + 10 * MIN })
     expect(items[0].seen).toBeUndefined()
-    expect(fy.feed().pulse.delivered).toBe(2)
+    expect(fy.feed().pulse.delivered).toBe(1)
   })
 
   it('skips a compaction preamble, caps at 600 characters, falls back to the snapshot line', async () => {
@@ -1143,4 +1143,25 @@ it('coalesces concurrent actions on the same card before delivery is acknowledge
   resolve()
   await Promise.all([first, second])
   expect(fy.feed().items).toEqual([])
+})
+
+
+describe('acknowledgements are not deliveries', () => {
+  it('filters old coordination cards and recomputes the count from concrete session results', async () => {
+    const file = path.join(dir, 'foryou.json')
+    fs.writeFileSync(file, JSON.stringify({ delivered: { day: '2026-11-10', n: 76 }, items: [{ id: 's:ack', kind: 'session', tone: 'result', text: 'Compris', body: 'Compris : bêtas inchangées, suivi dans la PR.', at: now }] }))
+    const fy = make()
+    expect(ids(fy)).not.toContain('s:ack')
+    expect(fy.deliveredToday().n).toBe(0)
+    threads.s1 = [says('OK, le bouton est réparé.')]
+    fy.sessionTurn(session(), 'result')
+    await flush()
+    expect(fy.deliveredToday().n).toBe(1)
+    threads.s1 = [says('Compris. Aucun conflit.')]
+    fy.sessionTurn(session(), 'result')
+    await flush()
+    expect(fy.deliveredToday().n).toBe(1)
+    expect(find(fy, 's:s1')?.text).toContain('réparé')
+    expect(make().deliveredToday().n).toBe(1)
+  })
 })

@@ -15,7 +15,7 @@ export default defineMessages({
 
     pulseLabel: 'en ce moment',
     pulseWorking: (n: number) => (n > 1 ? `${n} agents travaillent` : `1 agent travaille`),
-    pulseDelivered: (n: number) => (n > 1 ? `${n} livrés aujourd’hui` : `1 livré aujourd’hui`),
+    pulseDelivered: (n: number) => (n > 1 ? `${n} sessions avec résultat aujourd’hui` : `1 session avec résultat aujourd’hui`),
     pulseWaiting: (n: number) => (n > 1 ? `${n} t’attendent` : `1 t’attend`),
     pulseAuto: (n: number) => `${n} en auto`,
     pulseQuiet: 'tout est calme',
@@ -78,7 +78,7 @@ export default defineMessages({
 
     pulseLabel: 'right now',
     pulseWorking: (n: number) => (n > 1 ? `${n} agents working` : `1 agent working`),
-    pulseDelivered: (n: number) => (n > 1 ? `${n} delivered today` : `1 delivered today`),
+    pulseDelivered: (n: number) => (n > 1 ? `${n} sessions with results today` : `1 session with a result today`),
     pulseWaiting: (n: number) => (n > 1 ? `${n} waiting for you` : `1 waiting for you`),
     pulseAuto: (n: number) => `${n} on auto`,
     pulseQuiet: 'all quiet',

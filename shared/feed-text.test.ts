@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { humanFeedText, rawEngineeringNotice } from './feed-text.ts'
+import { acknowledgementOnly, humanFeedText, rawEngineeringNotice } from './feed-text.ts'
 
 describe('human outcomes in the feed', () => {
   it.each([
@@ -20,4 +20,10 @@ describe('human outcomes in the feed', () => {
     expect(humanFeedText('Node.js fonctionne.')).toBe('Node.js fonctionne.')
     expect(humanFeedText('Dépense actuelle : 0 $/h.')).toBe('Dépense actuelle : 0 $/h.')
   })
+})
+
+
+describe('acknowledgements versus outcomes', () => {
+  it.each(['Compris.', 'Bien reçu, aucun conflit.', 'OK, je garde la clé telle quelle.', 'Coordination confirmée : aucune modification de mon côté.', 'Compris : bêtas inchangées, suivi dans la PR. Je remonterai uniquement un livrable important ou un blocage.'])('excludes coordination: %s', (text) => expect(acknowledgementOnly(text)).toBe(true))
+  it.each(['Corrigé.', 'OK, le bouton est réparé.', 'Bien reçu. Les notifications sont corrigées.', '0 erreur.', 'Le serveur fonctionne.', 'Compris. Voici le résultat : https://example.com/demo'])('keeps short concrete results: %s', (text) => expect(acknowledgementOnly(text)).toBe(false))
 })

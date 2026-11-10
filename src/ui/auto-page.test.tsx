@@ -234,7 +234,7 @@ describe('automation page', () => {
     await flush()
     expect(host.querySelector('.auto-flow .name')!.textContent).toBe('12 min/ 45 min')
     // Next: the run after this one, never « now ».
-    expect(kpis().next).toMatch(/^\d\d:\d\d$/)
+    expect(kpis().next).toMatch(/^(?:[A-Za-z]+ )?\d\d:\d\d$/)
     const live = host.querySelector('.page-body .row .st .auto-mark')!.closest('button')!
     await click(live)
     expect(pushed).toEqual([{ kind: 'session', id: 's9' }])

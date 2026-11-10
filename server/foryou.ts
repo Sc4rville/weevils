@@ -94,7 +94,18 @@ export function arrange(items: ForYouItem[], _now: number): ForYouItem[] {
   // state, not news) sits above, and leaves once solved. Then the pace: never twice the same sort of item in a row
   // when a neighbour a few places down can step up (the order stays newest first to within those few places).
   const newest = (a: ForYouItem, b: ForYouItem) => b.at - a.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-  return [...items.filter((i) => i.kind === 'alert').sort(newest), ...pace(items.filter((i) => i.kind !== 'alert').sort(newest))]
+  const ranked = items.filter((i) => i.kind !== 'alert').sort(newest)
+  // Keep genuinely new arrivals first. For two hours, one unread result or idea can
+  // resurface just below them; the client holds this order while the user reads.
+  const candidates = ranked.filter((i) => !i.seen && _now - i.at > 10 * 60_000 && _now - i.at < 2 * 3600_000 &&
+    (i.kind === 'media' || i.kind === 'insight' || i.kind === 'improve' || i.kind === 'proposals'))
+  const retained = candidates[Math.floor(_now / (10 * 60_000)) % Math.max(1, candidates.length)]
+  if (retained) {
+    const index = ranked.indexOf(retained)
+    const slot = Math.max(2, ranked.filter((i) => _now - i.at <= 10 * 60_000).length)
+    if (index > slot) ranked.splice(slot, 0, ...ranked.splice(index, 1))
+  }
+  return [...items.filter((i) => i.kind === 'alert').sort(newest), ...pace(ranked)]
 }
 
 /** The sort of an item, for the pace: a session's result, question and cut read as three different things. */

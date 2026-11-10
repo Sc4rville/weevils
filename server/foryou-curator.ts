@@ -9,10 +9,10 @@
 // - while the app looks, Claude is logged in, no usage window of Claude is at 85 % or more (the last figures the
 //   stream already has: never asked here), no back-off is running and fewer than DAILY_CAP calls were made today: at
 //   most ONE model call, the first that is due among
-//     1. the digest (smart): weevboss's recap, at most one per 3 h and only when something happened since the last;
+//     1. the digest (smart): weevboss's recap, at most one per 5 min and only when something happened since the last;
 //     2. the mail lines (haiku): one short « did this » line per mail still raw and unseen, up to 6 in one call;
-//     3. improve (smart): one way weevils could serve this user better, at most one per 12 h, from counted patterns;
-//     4. the insight (smart): one « did you know » on a repo active today, at most one per 2 h, one per repo and week.
+//     3. improve (smart): one way weevils could serve this user better, at most one per 20 min, from goals, results and usage;
+//     4. the insight (smart): one « did you know » on a repo active today, at most one per 10 min, one per repo and day.
 // A call that fails (the model, or an answer that is not JSON) backs every producer off 1 h, doubling to 12 h, kept
 // across restarts with the day's counter (DATA_DIR/foryou-curator.json). An answer that parses but is empty, too
 // thin or says again what an earlier item said is dropped and its producer waits for its next turn.
@@ -46,16 +46,16 @@ import { claudeLogged } from './setup.ts'
 
 // ---------------------------------------------------------------- budget and cadence
 
-export const TICK_MS = 4 * 60_000
+export const TICK_MS = 60_000
 /** Model calls a day, « more » included. */
-export const DAILY_CAP = 12
+export const DAILY_CAP = 60
 export const BACKOFF_MS = 3600_000
 export const BACKOFF_MAX_MS = 12 * 3600_000
-export const DIGEST_EVERY_MS = 2 * 3600_000
+export const DIGEST_EVERY_MS = 5 * 60_000
 /** A first digest (or one after a long silence) looks this far back at most. */
 export const DIGEST_SPAN_MS = 12 * 3600_000
-export const IMPROVE_EVERY_MS = 6 * 3600_000
-export const INSIGHT_EVERY_MS = 45 * 60_000
+export const IMPROVE_EVERY_MS = 20 * 60_000
+export const INSIGHT_EVERY_MS = 10 * 60_000
 export const STAT_EVERY_MS = 4 * 3600_000
 /** Mails are batched: a call at most this often. */
 export const MAIL_EVERY_MS = 10 * 60_000
@@ -65,7 +65,7 @@ export const MAIL_BATCH = 6
 export const LINES_CEIL = 98
 export const LINES_CAP = 16
 /** Calls a day through Codex while Claude's usage is nearly full (its own subscription, which stays almost unused). */
-export const RELAY_CAP = 30
+export const RELAY_CAP = 120
 export const TURN_STEPS = [10, 25, 50, 100]
 export const STREAK_STEPS = [3, 7, 14, 30, 60, 100]
 export const PROJECTS_STEP = 3
@@ -347,7 +347,7 @@ interface State {
   insightAt: number
   mailAt: number
   statAt: number
-  /** « repo:week » → when it was looked at, and the item written (none: nothing worth saying, or nothing to read). */
+  /** « repo:day » → when it was looked at, and the item written (none: nothing worth saying, or nothing to read). */
   insights: Record<string, { at: number; repo: string; id?: string }>
   /** Milestones already emitted: id → when. */
   done: Record<string, number>
@@ -685,7 +685,7 @@ export class Curator implements ForYouCurator {
     return async () => {
       if (!this.reserve()) return
       const d = parseDigest(this.json(await this.ask('smart', prompt, 120_000)), earlier)
-      // Answered, kept or not: the next one in three hours.
+      // Answered, kept or not: the next one after DIGEST_EVERY_MS.
       this.s.digestAt = now
       if (!d) return void console.log('[foryou] curateur : point de weevboss écarté (vide ou déjà dit)')
       this.fy.add({ id: `d:${now.toString(36)}`, kind: 'boss', who: 'weevboss', text: d.thought ? `${d.text}\n\n${d.thought}` : d.text, actions: d.actions, lang: l })
@@ -764,6 +764,8 @@ export class Curator implements ForYouCurator {
     const t = tr(P)
     const l = lang()
     const lines = [
+      this.deps.memory?.()?.digest(10, 1600) ?? '',
+      ...this.fy.recent(['session', 'media'], 12).map((i) => [i.projectId, i.title, i.text].filter(Boolean).join(' · ').slice(0, 350)),
       p.projects.length ? t.patProjects(p.projects.map(([n, c]) => `${n} ${c}`).join(', ')) : '',
       p.sessions ? t.patHours(p.hours) : '',
       t.patCuts(p.cuts, p.cutWhy.join(', ')),
@@ -813,29 +815,29 @@ export class Curator implements ForYouCurator {
   private insightJob(now: number): Job | null {
     if (now - this.s.insightAt < INSIGHT_EVERY_MS) return null
     const today = dayKey(now)
-    const week = isoWeek(now)
+    const day = dayKey(now)
     const snap = this.fy.w.snapshot()
     const s = snap.sessions
       .filter((x) => x.repo && dayKey(x.lastActivityAt) === today && this.fy.eligible(x))
       .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
-      .find((x) => !this.s.insights[`${x.repo}:${week}`])
+      .find((x) => !this.s.insights[`${x.repo}:${day}`])
     if (!s?.repo) return null
     const repo = s.repo
-    const key = `${repo}:${week}`
+    const key = `${repo}:${day}`
     const t = tr(P)
     const l = lang()
     const known = this.fy.recent(['insight'], 30).map((i) => i.text)
     const last = this.fy.recent(['session'], 80).find((i) => i.tone === 'result' && i.projectId === s.projectId)
     return async () => {
       const f = await this.facts(repo)
-      // Looked at for this week either way: a repo with nothing to read is not read again at every tick.
+      // Looked at for this day either way: a repo with nothing to read is not read again at every tick.
       this.s.insights[key] = { at: now, repo }
       if (!f) return
       if (!this.reserve()) return
       const got = parseInsight(this.json(await this.ask('smart', t.insight({ repo, facts: this.factsText(t, f, last), earlier: known.slice(0, 12).map((x) => `- ${x}`).join('\n') }), 120_000)), known)
       this.s.insightAt = now
       if (!got) return void console.log(`[foryou] curateur : rien de sûr à dire sur ${repo}`)
-      const item = this.fy.add({ id: `i:${repo}:${week}`, kind: 'insight', projectId: s.projectId, text: got.text, more: true, lang: l })
+      const item = this.fy.add({ id: `i:${repo}:${day}`, kind: 'insight', projectId: s.projectId, text: got.text, more: true, lang: l })
       if (item) this.s.insights[key].id = item.id
     }
   }

@@ -267,6 +267,7 @@ describe('the budget', () => {
     await c.tick(now)
     expect(calls()).toBe(3)
     expect(kinds('improve')).toHaveLength(1)
+    expect(model.mock.calls[1][0]).toContain('wants to ship mygame this year')
     await c.tick(now)
     expect(calls()).toBe(4)
     expect(kinds('insight')).toHaveLength(1)
@@ -577,8 +578,8 @@ describe('insight', () => {
     expect(prompt).toContain('- Add the jump physics')
     expect(prompt).toContain('What an agent just did there: Jump physics: The double jump is in.')
     const item = fy.feed(now).items.find((i) => i.kind === 'insight')!
-    expect(item).toMatchObject({ id: `i:mygame:${isoWeek(now)}`, projectId: 'mygame', more: true, who: 'weevils' })
-    // Same repo, same week: never again, even two hours later.
+    expect(item).toMatchObject({ id: `i:mygame:${dayKey(now)}`, projectId: 'mygame', more: true, who: 'weevils' })
+    // Same repo, same day: never again, even two hours later.
     now += INSIGHT_EVERY_MS
     await deliver('s1', 'The double jump is tuned.')
     looked()
@@ -625,7 +626,7 @@ describe('insight', () => {
     model.mockResolvedValue(INSIGHT)
     await next.tick(now)
     expect(model).toHaveBeenCalledTimes(2)
-    expect(kinds('insight')).toMatchObject([{ id: `i:notes:${isoWeek(now)}` }])
+    expect(kinds('insight')).toMatchObject([{ id: `i:notes:${dayKey(now)}` }])
   })
 
   it('« more » answers nothing when the day is spent, a window is nearly full or Claude is logged out', async () => {

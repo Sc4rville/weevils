@@ -807,6 +807,17 @@ describe('arrange', () => {
     expect(arrange(list, T0).map((i) => i.at)).toEqual([T0 - MIN, T0 - 2 * MIN, T0 - 3 * MIN, T0 - 5 * MIN, T0 - 9 * MIN])
   })
 
+  it('temporarily resurfaces unread useful items below arrivals, then lets them expire', () => {
+    const rows = Array.from({ length: 8 }, (_, n) => item(n % 2 ? 'mail' : 'boss', { at: T0 - (n + 1) * 12 * MIN }))
+    const useful = item('media', { id: 'useful', at: T0 - 100 * MIN })
+    const news = item('session', { id: 'new', at: T0 })
+    const list = [useful, ...rows, news]
+    expect(arrange(list, T0)[0].id).toBe('new')
+    expect(arrange(list, T0).findIndex((i) => i.id === 'useful')).toBeLessThan(5)
+    expect(arrange(list, T0 + 2 * HOUR).at(-1)?.id).toBe('useful')
+    expect(arrange([{ ...useful, seen: true }, ...rows, news], T0).at(-1)?.id).toBe('useful')
+  })
+
   it('the system alerts sit above, newest first among them', () => {
     const a1 = item('alert', { at: T0 - 60 * MIN })
     const a2 = item('alert', { at: T0 - 30 * MIN })

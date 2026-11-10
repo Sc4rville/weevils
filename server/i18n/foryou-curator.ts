@@ -50,7 +50,7 @@ export default defineMessages({
       `Tu regardes comment ${o.user} se sert de weevils (l'app d'où il suit et pilote ses agents de code Claude Code et Codex depuis son téléphone, avec weevboss qui dispatche pour lui) et tu lui proposes UNE façon concrète pour que weevils le serve mieux.\n\n` +
       `Ce qui a été mesuré (rien d'autre n'est su) :\n${o.patterns}\n\n` +
       `Déjà proposé (ne repropose ni la même idée ni une proche) :\n${o.earlier || '(rien)'}\n\n` +
-      `Une seule idée, tirée d'un chiffre ci-dessus et qui le cite : une habitude à prendre avec weevboss, un réglage, une brique à brancher, une routine à lui confier. Rien de générique, rien qui demande un outil que weevils n'a pas, rien de payant. Si rien ne ressort vraiment des chiffres, réponds {}.\n\n` +
+      `Une seule idée, liée à un objectif mémorisé, un résultat réel ou un usage observé ci-dessus : une habitude à prendre avec weevboss, un réglage, une brique à brancher, une routine à lui confier. Rien de générique, rien qui demande un outil que weevils n'a pas, rien de payant. Propose aussi de petits pas concrets pour ses projets créatifs. Présente une idée comme une proposition à préparer, jamais comme une automatisation déjà créée. Aucun objet ou événement inventé. Si rien de nouveau ne ressort, réponds {}.\n\n` +
       `Réponds uniquement en JSON, en français : {"title": "5 mots au plus, sans guillemets", "text": "deux phrases au plus, au tutoiement : ce que tu as vu, ce que tu proposes", "action": {"label": "le bouton, 4 mots au plus", "brief": "la consigne complète pour weevboss s'il accepte : quoi mettre en place, où, comment vérifier"}}`,
 
     // ---------------------------------------------------------------- insight
@@ -146,7 +146,7 @@ export default defineMessages({
       `You look at how ${o.user} uses weevils (the app from which they watch and drive their Claude Code and Codex coding agents from their phone, with weevboss dispatching for them) and you suggest ONE concrete way for weevils to serve them better.\n\n` +
       `What was measured (nothing else is known):\n${o.patterns}\n\n` +
       `Already suggested (never suggest the same idea again, nor a close one):\n${o.earlier || '(nothing)'}\n\n` +
-      `One idea only, drawn from a figure above and quoting it: a habit to take with weevboss, a setting, a part to set up, a routine to hand over. Nothing generic, nothing that needs a tool weevils does not have, nothing paid. If nothing really stands out from the figures, answer {}.\n\n` +
+      `One idea only, tied to a remembered goal, a real result or an observed usage above: a habit to take with weevboss, a setting, a part to set up, a routine to hand over. Nothing generic, nothing that needs a tool weevils does not have, nothing paid. Include small concrete steps for creative projects. Describe an idea as a proposal to prepare, never an automation already created. Never invent an object or event. If nothing new stands out, answer {}.\n\n` +
       `Answer only in JSON, in English: {"title": "5 words at most, no quotes", "text": "two sentences at most, speaking to them as you: what you saw, what you suggest", "action": {"label": "the button, 4 words at most", "brief": "the full instruction for weevboss if they accept: what to set up, where, how to check"}}`,
 
     factsDeps: (list: string) => `Declared dependencies: ${list}`,

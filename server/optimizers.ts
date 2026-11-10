@@ -11,7 +11,11 @@
 //
 // Stored in DATA_DIR/optimizers.json (outside every repo). Proposal rounds only on the main machine with Claude
 // logged in: a few minutes after start, then every 6 h at most, sooner when the memory changed (30 min apart at
-// least), only while fewer than 3 proposals wait for an answer; a failed round backs off 1 h (doubling), never a loop.
+// least, or as soon as it settles after a round that proposed nothing), only while fewer than 3 proposals wait for an
+// answer; a failed round backs off 1 h (doubling), never a loop.
+//
+// Never pushed, published or paid without the user: the brief says so, Claude Code's deny list (DENY) blocks the plain
+// commands, and the session's environment (guardEnv) leaves gh logged out, git unable to push and no MCP connector.
 
 import { execFile } from 'node:child_process'
 import crypto from 'node:crypto'
@@ -204,6 +208,8 @@ type Stored = Optimizer & {
 interface State {
   items: Stored[]
   lastRoundAt: number
+  /** The last round proposed nothing (a blank install): the next memory change is not held 30 min. */
+  lastEmpty?: boolean
   fails: number
   failUntil: number
 }
@@ -367,7 +373,7 @@ export class Optimizers {
       try {
         const raw = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<State>
         const items = (Array.isArray(raw.items) ? raw.items : []).filter((o) => o && typeof o.id === 'string' && typeof o.title === 'string' && typeof o.state === 'string')
-        return { items, lastRoundAt: Number(raw.lastRoundAt) || 0, fails: Number(raw.fails) || 0, failUntil: Number(raw.failUntil) || 0 }
+        return { items, lastRoundAt: Number(raw.lastRoundAt) || 0, lastEmpty: raw.lastEmpty === true, fails: Number(raw.fails) || 0, failUntil: Number(raw.failUntil) || 0 }
       } catch {
         return { items: [], lastRoundAt: 0, fails: 0, failUntil: 0 }
       }
@@ -605,13 +611,17 @@ export class Optimizers {
     return this.s.items.filter((o) => o.state === 'proposed').length
   }
 
-  /** A round is due: first one a few minutes after start, then every 6 h, sooner after a memory change. */
+  /** A round is due: first one a few minutes after start, then every 6 h, sooner after a memory change (2 min after
+   *  it settles when the last round proposed nothing, else 30 min after the last round at least). */
   roundDue(now = Date.now()): boolean {
     if (this.rounding || now < this.s.failUntil || this.waiting() >= MAX_WAITING || !this.sys.logged()) return false
     if (!this.s.lastRoundAt) return now - this.bootAt >= FIRST_ROUND_MS
     const since = now - this.s.lastRoundAt
     if (since >= ROUND_EVERY_MS) return true
-    return this.memChangedAt > this.s.lastRoundAt && since >= ROUND_MEMORY_MS && now - this.memChangedAt >= MEMORY_SETTLE_MS
+    // After an empty round there is nothing to crowd: the first new memory is worth a round as soon as it settles. It
+    // takes a memory change after that round to come back, so never a loop.
+    const gap = this.s.lastEmpty ? MEMORY_SETTLE_MS : ROUND_MEMORY_MS
+    return this.memChangedAt > this.s.lastRoundAt && since >= gap && now - this.memChangedAt >= MEMORY_SETTLE_MS
   }
 
   /** The real projects as prompt lines: name, repos, the latest sessions' titles. */
@@ -657,6 +667,7 @@ export class Optimizers {
         const props = parseProposals(raw, this.w.allRepos(), this.s.items, max)
         for (const p of props) this.s.items.push({ ...p, id: crypto.randomBytes(5).toString('hex'), state: 'proposed', createdAt: Date.now() })
         this.s.lastRoundAt = now
+        this.s.lastEmpty = props.length === 0
         this.s.fails = 0
         this.s.failUntil = 0
         console.log(`[auto] ${props.length} proposition(s) (${lang()})`)

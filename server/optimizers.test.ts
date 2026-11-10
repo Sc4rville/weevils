@@ -136,6 +136,33 @@ describe('auto — rounds', () => {
     expect(o.roundDue(T0 + ROUND_EVERY_MS - MIN)).toBe(true)
   })
 
+  it('a round that proposed nothing does not hold the next memory 30 min: a round once it settles, never a loop', async () => {
+    const o = make()
+    model.mockResolvedValue('[]')
+    await o.round(T0)
+    expect(o.list()).toEqual([])
+    // Nothing new: nothing before the 6 h.
+    expect(o.roundDue(T0 + 2 * 3600_000)).toBe(false)
+    vi.setSystemTime(T0 + 5 * MIN)
+    memory.add('wants to ship mygame this year')
+    expect(o.roundDue(T0 + 6 * MIN)).toBe(false)
+    expect(o.roundDue(T0 + 7 * MIN)).toBe(true)
+    // Kept across a restart.
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'optimizers.json'), 'utf8')).lastEmpty).toBe(true)
+    // Empty again: the same memory does not bring another round.
+    await o.round(T0 + 7 * MIN)
+    expect(o.roundDue(T0 + 20 * MIN)).toBe(false)
+    // A round that proposed something: the 30 min hold is back.
+    model.mockResolvedValue(props(1))
+    vi.setSystemTime(T0 + 20 * MIN)
+    memory.add('loves board games')
+    await o.round(T0 + 25 * MIN)
+    vi.setSystemTime(T0 + 30 * MIN)
+    memory.add('plays chess')
+    expect(o.roundDue(T0 + 35 * MIN)).toBe(false)
+    expect(o.roundDue(T0 + 25 * MIN + ROUND_MEMORY_MS)).toBe(true)
+  })
+
   it('a failed round backs off an hour at least, doubling', async () => {
     const o = make()
     model.mockRejectedValue(new Error('not logged'))

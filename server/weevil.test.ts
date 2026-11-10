@@ -6,7 +6,7 @@ import type { Snapshot } from '../shared/api.ts'
 import { smart } from './fast.ts'
 import { claudeLogged } from './setup.ts'
 import { Memory } from './memory.ts'
-import { BACKOFF_MS, Flyers, MAX_AGE_MS, MAX_MISSES, angleFor, angleTurn, followups, isRepeat, readHistory, tidyQuestion } from './weevil.ts'
+import { BACKOFF_MS, Flyers, MAX_AGE_MS, MAX_FOLLOWUPS, MAX_MISSES, angleFor, angleTurn, followups, isRepeat, readHistory, tidyQuestion } from './weevil.ts'
 
 // Hermetic: no claude CLI, no login check, the language switched in memory only.
 vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn() }))
@@ -196,18 +196,19 @@ describe('weevil — answers', () => {
     expect(memory.list()[0].a).not.toContain('sk-abcdefghijklmnop1234')
   })
 
-  it('at most two follow-ups, then it closes', async () => {
+  it('at most one follow-up, then it closes', async () => {
+    expect(MAX_FOLLOWUPS).toBe(1)
     const q = memory.ask('What would you like right now?')
     model.mockResolvedValue('{"reply": "And then?", "done": false, "memory": []}')
     expect((await f.answer(q.id, 'a nap', [{ role: 'weevil', text: q.text }])).done).toBe(false)
-    const long = [
+    expect(model.mock.calls[0][0]).toContain('ONE small follow-up')
+    const after = [
       { role: 'weevil' as const, text: q.text },
       { role: 'user' as const, text: 'a nap' },
       { role: 'weevil' as const, text: 'Where?' },
-      { role: 'user' as const, text: 'in the sun' },
-      { role: 'weevil' as const, text: 'How long?' },
     ]
-    expect((await f.answer(q.id, 'an hour', long)).done).toBe(true)
+    // The model asks again anyway: the exchange closes all the same.
+    expect((await f.answer(q.id, 'in the sun', after)).done).toBe(true)
     expect(model.mock.calls[1][0]).toContain('no new question')
   })
 

@@ -27,8 +27,8 @@ type Line = { role: 'weevil' | 'user'; text: string }
 
 /** Flights of one question before it is retired (the first one included). */
 export const MAX_MISSES = 3
-/** Follow-up questions the weevil may ask in one exchange. */
-export const MAX_FOLLOWUPS = 2
+/** Follow-up questions the weevil may ask in one exchange (« maybe one »). */
+export const MAX_FOLLOWUPS = 1
 /** A ready question older than this is not flown any more (the moment it was written for has passed). */
 export const MAX_AGE_MS = 8 * 3600_000
 /** First wait after a failed model call; doubles up to BACKOFF_MAX_MS. */

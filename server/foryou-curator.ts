@@ -27,6 +27,7 @@ import { preferredTool, providerReady } from './provider.ts'
 //
 // Every generated item carries the language it was written in (hidden while the app reads another one).
 
+import { Reservoir } from './foryou-reservoir.ts'
 import { asksUser } from '../shared/asks.ts'
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
@@ -48,7 +49,7 @@ import { claudeLogged } from './setup.ts'
 
 // ---------------------------------------------------------------- budget and cadence
 
-export const TICK_MS = 60_000
+export const TICK_MS = 30_000
 /** Model calls a day, « more » included. */
 export const DAILY_CAP = 60
 export const BACKOFF_MS = 3600_000
@@ -317,6 +318,7 @@ export function usagePatterns(items: ForYouItem[], snap: Snapshot, now: number, 
 // ---------------------------------------------------------------- the curator
 
 export interface CuratorDeps {
+  reservoir?: boolean
   /** Default DATA_DIR/foryou-curator.json. */
   file?: string
   now?: () => number
@@ -382,6 +384,7 @@ export function parseAsks(raw: unknown): Map<number, { ask: boolean; title?: str
 export class Curator implements ForYouCurator {
   readonly fy: ForYou
   readonly file: string
+  private reservoir: Reservoir
   private deps: CuratorDeps
   private s: State
   private now: () => number
@@ -397,6 +400,7 @@ export class Curator implements ForYouCurator {
     this.deps = deps
     this.file = deps.file ?? path.join(DATA_DIR, 'foryou-curator.json')
     this.now = deps.now ?? Date.now
+    this.reservoir = new Reservoir(this.file + ".reservoir.json")
     this.s = (() => {
       const e = EMPTY()
       try {
@@ -405,6 +409,8 @@ export class Curator implements ForYouCurator {
         const obj = <T>(v: unknown): Record<string, T> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, T>) : {})
         return {
           calls: raw.calls && typeof raw.calls.day === 'string' ? { day: raw.calls.day, n: num(raw.calls.n) } : e.calls,
+          lines: raw.lines && typeof raw.lines.day === 'string' ? { day: raw.lines.day, n: Math.max(0, num(raw.lines.n)) } : e.lines,
+          relay: raw.relay && typeof raw.relay.day === 'string' ? { day: raw.relay.day, n: Math.max(0, num(raw.relay.n)) } : e.relay,
           fails: num(raw.fails),
           failUntil: num(raw.failUntil),
           digestAt: num(raw.digestAt),
@@ -538,6 +544,7 @@ export class Curator implements ForYouCurator {
       this.milestones(now)
       if (!this.fy.wanted(now)) return Promise.resolve()
       this.stat(now)
+      if (this.deps.reservoir !== false) this.reservoir.publish(now, new Set(this.storySources().map(s => s.id)), lang(), s => { this.fy.add({ id: s.id, kind: 'boss', who: 'weevboss', title: s.title, text: s.text, lang: lang() }) })
     } catch (e) {
       console.error(`[foryou] curateur : ${(e as Error).message}`)
     }
@@ -549,8 +556,8 @@ export class Curator implements ForYouCurator {
     // A question waiting for its clear wording first, then the lines said in passing, then the rest.
     const job =
       m === 'full'
-        ? (this.askJob(now) ?? this.digestJob(now) ?? this.mailJob(now) ?? this.improveJob(now) ?? this.insightJob(now))
-        : (this.askJob(now) ?? this.mailJob(now) ?? this.digestJob(now) ?? this.insightJob(now) ?? this.improveJob(now))
+        ? (this.askJob(now) ?? this.batchJob(now) ?? this.digestJob(now) ?? this.mailJob(now) ?? this.improveJob(now) ?? this.insightJob(now))
+        : (this.askJob(now) ?? this.batchJob(now) ?? this.mailJob(now) ?? this.digestJob(now) ?? this.insightJob(now) ?? this.improveJob(now))
     if (!job) return Promise.resolve()
     this.running = (async () => {
       this.spent = false
@@ -571,6 +578,28 @@ export class Curator implements ForYouCurator {
       }
     })().finally(() => (this.running = null))
     return this.running
+  }
+
+  private storySources() {
+    const goals = this.deps.memory?.()?.digest(30, 6000) ?? ''
+    return [
+      ...(goals ? [{ id: 'goals', text: goals }] : []),
+      ...this.fy.recent(['session', 'media', 'insight'], 35).filter(i => i.kind !== 'session' || i.tone === 'result').map(i => ({ id: i.id, text: [i.projectId, i.title, i.body || i.text].filter(Boolean).join(' · ').slice(0, 1200) })),
+    ]
+  }
+
+  private batchJob(now: number): Job | null {
+    if (this.deps.reservoir === false || this.reservoir.queue.length > 8 || now - this.reservoir.filled < 2 * 60_000) return null
+    const sources = this.storySources()
+    if (!sources.length) return null
+    const known = this.fy.recent(['boss', 'insight', 'improve'], 80).map(i => i.text)
+    const language = lang()
+    return async () => {
+      if (!this.reserve()) return
+      const prompt = tr(P).batch(JSON.stringify(sources), JSON.stringify({ earlier: [...known, ...this.reservoir.history.map(s => s.text), ...this.reservoir.queue.map(s => s.text)], signals: this.fy.editorialSignals() }))
+      const raw = this.json(await this.ask('smart', prompt, 120_000)) as { items?: unknown }
+      this.reservoir.add(raw?.items, new Set(sources.map(s => s.id)), known, this.now(), language)
+    }
   }
 
   private json(text: string): unknown {

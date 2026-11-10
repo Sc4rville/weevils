@@ -812,6 +812,11 @@ export class ForYou {
       .filter((i): i is ForYouItem => !!i)
   }
 
+  /** Observed exposure and explicit removal only: neither is a satisfaction score. */
+  editorialSignals() {
+    return this.s.items.filter(i => i.id.startsWith('r:')).slice(-40).map(i => ({ title: i.title, text: i.text, seen: !!i.seen, dismissed: !!i.gone }))
+  }
+
   /** The app looked at the stream in the last half hour. */
   wanted(now = this.now()): boolean {
     return this.lastWanted > 0 && now - this.lastWanted < WANTED_MS

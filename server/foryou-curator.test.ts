@@ -52,6 +52,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0))
 const makeStore = () => new ForYou(host, { file: path.join(dir, 'foryou.json'), now: () => now, dataDir: '/home/u/.local/share/weevils', machineId: 'test', later: () => undefined })
 const makeCurator = (deps: CuratorDeps = {}) =>
   new Curator(fy, {
+    reservoir: false,
     file: path.join(dir, 'curator.json'),
     now: () => now,
     logged: () => logged,
@@ -850,4 +851,33 @@ describe('last available budget slot', () => {
     expect(model).toHaveBeenCalledTimes(1)
     expect(c.calls()).toBe(DAILY_CAP)
   })
+})
+
+it('fills a persistent batch with one budgeted call and publishes while generation is blocked', async () => {
+  looked()
+  model.mockResolvedValueOnce(JSON.stringify({ items: [
+    { title: 'A silent scene', format: 'idea', text: 'Try a silent storyboard where an avatar loses its shadow.', sources: ['goals'] },
+    { title: 'Your first player', format: 'question', text: 'Which friend would you ask to try the first level of mygame?', sources: ['goals'] },
+  ] }))
+  const c = makeCurator({ reservoir: true })
+  await c.tick()
+  expect(model).toHaveBeenCalledTimes(1)
+  expect(c.calls()).toBe(1)
+  expect(stored().filter(i => i.id.startsWith('r:'))).toHaveLength(0)
+  logged = false
+  now += 30_000
+  await makeCurator({ reservoir: true }).tick()
+  expect(stored().filter(i => i.id.startsWith('r:'))).toHaveLength(1)
+  now += 30_000
+  await makeCurator({ reservoir: true }).tick()
+  expect(stored().filter(i => i.id.startsWith('r:'))).toHaveLength(2)
+  expect(model).toHaveBeenCalledTimes(1)
+})
+
+it('does not reset exhausted relay or lean daily budgets on restart', () => {
+  fs.writeFileSync(path.join(dir, 'curator.json'), JSON.stringify({ calls: { day: dayKey(now), n: DAILY_CAP }, relay: { day: dayKey(now), n: 120 }, lines: { day: dayKey(now), n: 16 } }))
+  known = { ...usage(90), codex: { ok: true, windows: [{ kind: 'session', percent: 15, resetsAt: null }], source: 'test', at: now } }
+  const c = makeCurator({ reservoir: true })
+  expect(c.lineCalls()).toBe(16)
+  expect(c.mode()).toBe(null)
 })

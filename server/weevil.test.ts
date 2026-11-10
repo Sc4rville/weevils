@@ -6,7 +6,7 @@ import type { Snapshot } from '../shared/api.ts'
 import { smart } from './fast.ts'
 import { claudeLogged } from './setup.ts'
 import { Memory } from './memory.ts'
-import { BACKOFF_MS, Flyers, MAX_AGE_MS, MAX_FOLLOWUPS, MAX_MISSES, angleFor, angleTurn, followups, isRepeat, readHistory, tidyQuestion } from './weevil.ts'
+import { BACKOFF_MS, Flyers, MAX_AGE_MS, MAX_FOLLOWUPS, MAX_MISSES, angleFor, angleTurn, answers, followups, isRepeat, readHistory, tidyQuestion } from './weevil.ts'
 
 // Hermetic: no claude CLI, no login check, the language switched in memory only.
 vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn() }))
@@ -212,6 +212,21 @@ describe('weevil — answers', () => {
     expect(model.mock.calls[1][0]).toContain('no new question')
   })
 
+  it('a memory from a follow-up keeps the opening question and every answer of the exchange', async () => {
+    const old = memory.add('likes naps')
+    const q = memory.ask('What would you like right now?')
+    model.mockResolvedValue(JSON.stringify({ reply: 'Lovely.', done: true, memory: [{ op: 'update', id: old.id, text: 'likes naps in the sun' }, { op: 'add', text: 'loves sunny afternoons' }] }))
+    const history = [
+      { role: 'weevil' as const, text: q.text },
+      { role: 'user' as const, text: 'a nap' },
+      { role: 'weevil' as const, text: 'Where?' },
+    ]
+    const r = await f.answer(q.id, ' in the  sun ', history)
+    expect(r.learned).toHaveLength(2)
+    for (const m of r.learned) expect(m).toMatchObject({ q: 'What would you like right now?', a: 'a nap · in the sun' })
+    expect(memory.get(old.id)).toMatchObject({ source: 'manual', q: 'What would you like right now?', a: 'a nap · in the sun' })
+  })
+
   it('model down: a kind reply in the language of the answer, nothing stored', async () => {
     const q = memory.ask('Qu’est-ce qui te ferait plaisir, là ?')
     model.mockRejectedValue(new Error('down'))
@@ -252,6 +267,14 @@ describe('weevil — helpers', () => {
     // A failed try moves to another angle; an empty list starts at the first one.
     expect(angleFor(angleTurn([{ id: 'a0' }], 1), 10, true)).not.toBe(angleFor(angleTurn([{ id: 'a0' }], 0), 10, true))
     expect(angleTurn([], 0)).toBe(0)
+  })
+
+  it('joins the answers of an exchange, each with its share of the room', () => {
+    expect(answers([], 'just this')).toBe('just this')
+    expect(answers([{ role: 'weevil', text: 'q' }, { role: 'user', text: 'first\n answer' }, { role: 'weevil', text: 'f' }], 'second')).toBe('first answer · second')
+    const long = answers([{ role: 'user', text: 'x'.repeat(1000) }], 'y'.repeat(1000))
+    expect(long.length).toBeLessThanOrEqual(1200)
+    expect(long).toMatch(/^x+… · y+…$/)
   })
 
   it('reads the exchange and counts follow-ups', () => {

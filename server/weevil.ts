@@ -37,6 +37,8 @@ export const BACKOFF_MAX_MS = 4 * 3600_000
 /** Hard cap on a question (the model aims at 70 characters). */
 const MAX_QUESTION = 140
 const MAX_FACT = 240
+/** The answers kept next to a memory (the store's cap on them). */
+const MAX_ANSWERS = 1200
 /** At most this many memory changes from one answer. */
 const MAX_OPS = 4
 /** Background check: a question is written ahead only if the app asked for one recently. */
@@ -103,6 +105,16 @@ export function angleTurn(asked: { id: string }[], fails: number): number {
 
 /** Follow-ups the weevil already asked in this exchange (its lines after the question). */
 export const followups = (history: Line[]) => Math.max(0, history.filter((l) => l.role === 'weevil').length - 1)
+
+/**
+ * Every answer of the exchange, in order, the latest included: what a memory keeps next to the opening question. Each
+ * gets an equal share of MAX_ANSWERS, so a long first answer never pushes the latest one out.
+ */
+export function answers(history: Line[], said: string): string {
+  const all = [...history.filter((l) => l.role === 'user').map((l) => l.text), said].map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean)
+  const share = Math.floor((MAX_ANSWERS - 3 * (all.length - 1)) / Math.max(1, all.length))
+  return all.map((t) => (t.length > share ? `${t.slice(0, share - 1).trimEnd()}…` : t)).join(' · ')
+}
 
 /** Sanitized exchange from the client. */
 export function readHistory(raw: unknown): Line[] {
@@ -263,14 +275,17 @@ export class Flyers {
       void this.prepare()
       return fallback()
     }
-    const learned = this.apply(Array.isArray(out.memory) ? (out.memory as Op[]) : [], question, said)
+    const learned = this.apply(Array.isArray(out.memory) ? (out.memory as Op[]) : [], question, answers(lines, said))
     const done = !canFollow || out.done !== false
     if (done) void this.prepare()
     return { reply, learned, done }
   }
 
-  /** The model's memory changes, checked: known ids only, no secret, no duplicate, a few at most (the store masks
-   * secrets in the kept answer). */
+  /**
+   * The model's memory changes, checked: known ids only, no secret, no duplicate, a few at most. Each one keeps where
+   * it came from as a matching pair: the question that opened the exchange and every answer given in it (the store
+   * masks secrets in them).
+   */
   private apply(ops: Op[], q: string, a: string): MemoryItem[] {
     const learned: MemoryItem[] = []
     const from = { q, a }

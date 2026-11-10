@@ -131,12 +131,27 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
   const busyKey = useRef({})
   useEffect(() => {
     const k = busyKey.current
-    if (phase !== 'idle' || speaking) busyLogos.add(k)
+    // « ready » (dictée transcrite, en attente d'un tap pour l'envoyer) n'écoute ni ne parle : souvent envoyée autrement.
+    if (phase === 'rec' || phase === 'wait' || speaking) busyLogos.add(k)
     else busyLogos.delete(k)
     return () => void busyLogos.delete(k)
   }, [phase, speaking])
   const [reply, setReply] = useState(false)
   const rec = useRef<MediaRecorder | null>(null)
+  // Démonté en pleine écoute (feuille fermée) : le micro se coupe et plus rien ne part au serveur.
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+      const r = rec.current
+      if (!r || r.state === 'inactive') return
+      r.ondataavailable = null
+      r.onstop = null
+      r.stop()
+      r.stream.getTracks().forEach((tr) => tr.stop())
+    }
+  }, [])
   const chunks = useRef<Blob[]>([])
   const sendAfter = useRef(false)
   const lastReply = useRef(replyKey)
@@ -189,6 +204,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
     sendAfter.current = false
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if (!alive.current) return void stream.getTracks().forEach((tr) => tr.stop())
       const type = MIME.find((t) => MediaRecorder.isTypeSupported(t))
       const r = new MediaRecorder(stream, type ? { mimeType: type } : undefined)
       chunks.current = []

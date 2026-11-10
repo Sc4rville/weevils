@@ -37,3 +37,17 @@ export function mergePending(real: Message[], pending: Pending[]): Message[] {
   })
   return [...real, ...left]
 }
+
+/** Le premier message d'une session qu'on vient de lancer (nouvelle session, conversation reprise) : sa bulle est sous les
+ * yeux dès l'ouverture de la session, sans attendre que le transcript soit écrit. */
+const seeds = new Map<string, Pending>()
+export function seedPending(id: string, text: string) {
+  const at = Date.now()
+  seeds.set(id, { id: `pending-${at}`, role: 'user', text, at, typed: text })
+}
+/** Lu à l'ouverture (sans le retirer : un rendu peut être rejoué) ; dropSeed une fois la page montée. */
+export const peekSeed = (id: string): Pending[] => {
+  const p = seeds.get(id)
+  return p ? [p] : []
+}
+export const dropSeed = (id: string) => void seeds.delete(id)

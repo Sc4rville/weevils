@@ -11,8 +11,8 @@ import { ReposPage } from './repos'
 import { SoftwarePage, SoftwaresPage } from './softwares'
 import { CalmConv, CalmGrid } from './calm'
 import { markSeen } from './seen'
-import { mergePending, type Pending } from './pending'
-import { Shell } from './shell'
+import { dropSeed, mergePending, peekSeed, seedPending, type Pending } from './pending'
+import { FootError, Shell, swapPage } from './shell'
 import { CodeFile } from './codeview'
 import { FsFilePage, FsPage, InfraPage, UsagePage } from './infra'
 import { listFiles } from './repofiles'
@@ -20,7 +20,8 @@ import { useThreadAsk } from './askthread'
 import { ago, durLong, status } from './format'
 import { Icon } from './icons'
 import { useT } from '../i18n'
-import { useFollow } from './follow'
+import { reveal, useFollow } from './follow'
+import { FollowDown } from './followdown'
 import M from '../i18n/pages'
 
 export function PageView({ page }: { page: Page }) {
@@ -112,11 +113,16 @@ function SessionPage({ id }: { id: string }) {
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [missing, setMissing] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  const [pending, setPending] = useState<Pending[]>([])
+  // Le premier message d'une session qu'on vient de lancer est déjà là (pending.ts : seedPending).
+  const [pending, setPending] = useState<Pending[]>(() => peekSeed(id))
+  useEffect(() => dropSeed(id), [id])
   const [screenText, setScreenText] = useState<string | null>(null)
   const [showScreen, setShowScreen] = useState<boolean | null>(null)
   const [preview, setPreview] = usePreviewState(id)
   const [showSettings, setShowSettings] = useState(false)
+  const screenBand = useRef<HTMLDivElement>(null)
+  /** L'écran du terminal ouvert par une commande (/model, /approvals) : il est amené sous les yeux et mis en avant. */
+  const screenAsked = useRef(false)
 
   // Le détail suit chaque nouvelle version annoncée par le serveur.
   useEffect(() => {
@@ -162,14 +168,37 @@ function SessionPage({ id }: { id: string }) {
 
   const messages = useMemo(() => mergePending(detail?.messages ?? [], pending), [detail, pending])
   const body = useRef<HTMLDivElement>(null)
-  // La fin du fil : déjà là à l'ouverture, suivie pendant que la réponse s'écrit, sauf si on remonte relire (src/ui/follow.ts).
-  const last = messages.at(-1)
-  const follow = useFollow(body, messages.length > 0, 80, `${messages.length}:${last?.id}:${last?.text.length}:${s?.status}`)
-  const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
   const sp = snap.projects.find((p) => p.id === s?.projectId)
   const th = useThreadAsk(messages, { title: s?.title ?? '', tool: s?.tool ?? 'claude', project: sp?.name, projectId: s?.projectId, repo: s?.repo ?? undefined, machine: s?.machineId })
+  // La fin du fil : déjà là à l'ouverture, suivie pendant que la réponse s'écrit, sauf si on remonte relire (src/ui/follow.ts).
+  // Un mot sélectionné (ou une question dictée) et sa réponse sous un message : le suivi attend, rien ne les pousse hors de l'écran.
+  const last = messages.at(-1)
+  const hold = th.selected || th.a.asking || th.a.waiting || !!th.a.shown
+  const follow = useFollow(body, messages.length > 0, 80, `${messages.length}:${last?.id}:${last?.text.length}:${s?.status}`, hold)
+  const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
 
-  if (!s) return missing ? <Missing /> : <Shell slot="agent" kicker="weevils" title="…" bodyRef={body}>{null}</Shell>
+  // Réglages ouverts (en bas du fil) : amenés sous les yeux une fois dépliés, même si on relisait plus haut.
+  useEffect(() => {
+    if (!showSettings) return
+    const t = window.setTimeout(() => reveal(document.getElementById('session-settings'), { block: 'nearest' }), 380)
+    return () => window.clearTimeout(t)
+  }, [showSettings])
+  // L'écran du terminal déplié : il s'ouvre vers le bas, on l'amène sous les yeux (mis en avant s'il vient d'une commande).
+  useEffect(() => {
+    if (!screenOpen) return
+    const lit = screenAsked.current
+    screenAsked.current = false
+    const t = window.setTimeout(() => reveal(screenBand.current, { block: 'nearest', flash: lit }), 380)
+    return () => window.clearTimeout(t)
+  }, [screenOpen])
+
+  // Introuvable : le même cadre (le conteneur suivi reste le même s'il apparaît ensuite).
+  if (!s)
+    return (
+      <Shell slot="agent" kicker="weevils" title={missing ? t.notFound : '…'} bodyRef={body}>
+        {missing && <div className="in meta empty">{t.notFound}</div>}
+      </Shell>
+    )
 
   const project = snap.projects.find((p) => p.id === s.projectId)
   const st = status[s.status]
@@ -225,23 +254,26 @@ function SessionPage({ id }: { id: string }) {
         </>
       }
       dock={th.voice}
+      float={<FollowDown show={follow.behind} urgent={s.status === 'needs_user'} body={body} toEnd={follow.toEnd} />}
       bodyRef={body}
       side={preview.open ? <Preview url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false, full: false })} full={preview.full} onFull={(full) => setPreview({ full })} /> : undefined}
       foot={
-        <Composer
-          placeholder={s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly}
-          label={t.composerLabel(s.title)}
-          onSend={send}
-          onAttach={send}
-          voice
-          disabled={!s.controllable}
-        />
+        <>
+          <FootError text={err} />
+          <Composer
+            placeholder={s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly}
+            label={t.composerLabel(s.title)}
+            onSend={send}
+            onAttach={send}
+            voice
+            disabled={!s.controllable}
+          />
+        </>
       }
     >
-      {err && <ErrorBand text={err} />}
-
       <div ref={th.ref} className="ask-thread">
-        <Messages messages={messages} author={s.tool} working={s.status === 'working'} after={th.after} />
+        {/* Monté avec le fil chargé : la session s'ouvre posée sur son dernier message, sans tout dérouler. */}
+        {(detail || missing) && <Messages messages={messages} author={s.tool} working={s.status === 'working'} after={th.after} />}
       </div>
 
       <Background session={s} />
@@ -284,13 +316,16 @@ function SessionPage({ id }: { id: string }) {
             settings={s.settings}
             canCommand={s.hasScreen}
             run={(c) => api.command(s.id, c)}
-            onPicker={() => setShowScreen(true)}
+            onPicker={() => {
+              screenAsked.current = true
+              setShowScreen(true)
+            }}
           />
         </div>
       </Collapse>
 
       {s.hasScreen && (
-        <div className="band tone">
+        <div ref={screenBand} className="band tone">
           <Line ch=">_" go={screenOpen ? '−' : '+'} onClick={() => setShowScreen(!screenOpen)} label={screenOpen ? t.hideScreen : t.showScreen}>
             <span className="meta">{t.terminalScreen}</span>
           </Line>
@@ -387,6 +422,7 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
           </Line>
         )
       })}
+      {entries && entries.leaves.length > 500 && <div className="in meta empty">{t.moreFiles(entries.leaves.length - 500)}</div>}
       {entries && entries.folders.length + entries.leaves.length === 0 && <div className="in meta empty">{t.emptyDir}</div>}
     </Shell>
   )
@@ -424,6 +460,7 @@ function NewSessionPage({ projectId }: { projectId: string }) {
   const [repo, setRepo] = useState<string | undefined>(any ? undefined : project?.repos[0])
   const [err, setErr] = useState<string | null>(null)
   const created = useRef(false)
+  const repoLabel = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!any) return
     setAllRepos(null)
@@ -437,12 +474,16 @@ function NewSessionPage({ projectId }: { projectId: string }) {
     if (created.current) return
     if (any && !repo) {
       setErr(t.pickRepoFirst)
+      // Le choix qui manque est amené sous les yeux.
+      reveal(repoLabel.current, { block: 'start' })
       throw new Error('repo')
     }
     created.current = true
     setErr(null)
     try {
       const r = await api.create({ projectId: any ? (repo ?? '') : projectId, repo, tool, text, machineId: repo ? project.where[repo] : undefined })
+      seedPending(r.id, text)
+      swapPage()
       replace({ kind: 'session', id: r.id })
     } catch (e) {
       created.current = false
@@ -455,9 +496,13 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       slot={colors[projectId] ?? 'agent'}
       kicker={project.name}
       title={t.newSessionTitle}
-      foot={<Composer placeholder={t.firstMessage} label={t.firstMessageLabel} onSend={create} />}
+      foot={
+        <>
+          <FootError text={err} />
+          <Composer placeholder={t.firstMessage} label={t.firstMessageLabel} onSend={create} />
+        </>
+      }
     >
-      {err && <ErrorBand text={err} />}
       <div className="in label">{t.tool}</div>
       {(['claude', 'codex'] as Tool[]).map((x) => (
         <Line key={x} className={tool === x ? 'invert' : ''} ch={tool === x ? '>' : ' '} go={null} onClick={() => setTool(x)} label={`${x}${tool === x ? t.chosen : ''}`}>
@@ -487,7 +532,9 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       )}
       {(project.repos.length > 1 || any) && (
         <>
-          <div className="in label">{t.repo}</div>
+          <div ref={repoLabel} className="in label">
+            {t.repo}
+          </div>
           {any && !allRepos && <div className="in meta empty">…</div>}
           {project.repos.map((r) => (
             <Line key={r} className={repo === r ? 'invert' : ''} ch={repo === r ? '>' : '/'} go={null} meta={any ? undefined : project.where[r]} onClick={() => setRepo(r)}>

@@ -608,6 +608,38 @@ button:disabled {
   padding-bottom: var(--safe-b);
 }
 
+/* « Du nouveau en bas » (src/ui/followdown.tsx) : flotte en bas à droite du fil, juste au-dessus de la saisie, sans prendre
+   de place (ancre sans hauteur, comme le logo de weevboss à gauche). */
+.page-float {
+  flex: none;
+  position: relative;
+  height: 0;
+  z-index: 5;
+}
+
+.follow-down {
+  position: absolute;
+  right: calc(var(--pad) - 6px);
+  bottom: 8px;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  font-size: 1.375rem;
+  font-weight: 800;
+  background: var(--ink);
+  color: var(--c);
+}
+
+.page-float.no-foot .follow-down {
+  bottom: calc(8px + var(--safe-b));
+}
+
+.follow-down .ic {
+  width: 22px;
+  height: 22px;
+}
+
 /* Page partagée en deux : le fil d'un côté, le navigateur intégré de l'autre (dessous sur téléphone, à droite sur grand écran). */
 .page-cols,
 .page-main {

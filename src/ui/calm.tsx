@@ -10,7 +10,8 @@ import { Collapse, Composer, Messages, Working, type Attachment } from './bits'
 import { ago, plain, status } from './format'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Settings } from './settings'
-import { usePageChrome } from './shell'
+import { SidePane, usePageChrome, useSplit } from './shell'
+import { FollowDown } from './followdown'
 import { markSeen } from './seen'
 import { Icon } from './icons'
 import { useViewHint } from './hints'
@@ -143,6 +144,7 @@ export function CalmConv({ id }: { id: string }) {
   const canCommand = main ? snap.mainHasScreen : !!s?.hasScreen
   const last = messages.at(-1)
   const follow = useFollow(body, messages.length > 0, 80, `${messages.length}:${last?.id}:${last?.text.length}:${working}`)
+  const [split, unsplit] = useSplit(!!preview.open)
 
   const send = async (text: string, files: Attachment[] = []) => {
     setErr(null)
@@ -167,7 +169,7 @@ export function CalmConv({ id }: { id: string }) {
   return (
     <motion.div
       ref={page}
-      className={preview.open ? 'page calm split' : 'page calm'}
+      className={split ? 'page calm split' : 'page calm'}
       {...pinch}
       initial={{ opacity: 0, scale: 0.985 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -213,15 +215,17 @@ export function CalmConv({ id }: { id: string }) {
             {working && <Working author={author} since={s?.workStartedAt} />}
             <div className="fill" />
           </div>
+          <div className="page-float">
+            <FollowDown show={follow.behind} urgent={s?.status === 'needs_user'} body={body} toEnd={follow.toEnd} />
+          </div>
           <div className="page-foot">
             <Composer placeholder={t.writeTo(author)} label={t.messageTo(title)} onSend={send} onAttach={send} voice anyFile={main} disabled={!main && s ? !s.controllable : false} />
           </div>
         </div>
-        {preview.open && (
-          <aside className="page-side">
-            <Preview url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false })} />
-          </aside>
-        )}
+        <SidePane
+          side={preview.open ? <Preview url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false })} /> : undefined}
+          onGone={unsplit}
+        />
       </div>
     </motion.div>
   )

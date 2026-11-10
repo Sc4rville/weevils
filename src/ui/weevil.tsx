@@ -148,9 +148,14 @@ export function FlyingWeevil({ paused }: { paused: boolean }) {
     if (interrupted && flight) missed(flight.q.id)
   }, [interrupted, flight, missed])
 
-  /** Sheet closed: answered, it just leaves; set free without a word, its question will come back. */
+  /** Sheet closed: answered, it just leaves; set free without a word, its question will come back. Once per flight:
+   * the sheet stays mounted while it slides out, so a second Esc or scrim tap must not count a second miss (a missed
+   * question flies again later with the same id, as a new flight). */
+  const freed = useRef<Flight | null>(null)
   const setFree = (answered: boolean) => {
-    if (!answered && flight) void api.weevilMissed(flight.q.id).catch(() => undefined)
+    if (!flight || freed.current === flight) return
+    freed.current = flight
+    if (!answered) void api.weevilMissed(flight.q.id).catch(() => undefined)
     setPhase('away')
   }
 

@@ -18,7 +18,7 @@ vi.mock('../api', () => ({
 }))
 vi.mock('../push', () => ({ ensurePush: async () => {} }))
 
-localStorage.setItem('weevils-lang', 'fr')
+localStorage.setItem('weevils-language', 'fr')
 for (let p: object | null = HTMLElement.prototype; p; p = Object.getPrototypeOf(p)) if (Object.hasOwn(p, 'animate')) delete (p as { animate?: unknown }).animate
 globalThis.fetch = (async () => new Response('{}')) as typeof fetch
 

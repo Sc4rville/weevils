@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { splitChips } from '../shared/setup.ts'
+import { chipsInPlace, splitChips } from '../shared/setup.ts'
 
 // Accueil et branchements (server/setup.ts) : puces, bloc de contexte, fichier de config, marche à suivre.
 const cfg = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'setup-')), 'env')
@@ -18,6 +18,13 @@ describe('chips', () => {
   it('leaves a text without chips untouched', () => {
     const t = 'two  spaces\n\n- a list'
     expect(splitChips(t)).toEqual({ text: t, chips: [] })
+  })
+  it('keeps a chip in the middle of a sentence where it was written, for the app to show as a button (never « via . »)', () => {
+    const t = 'Colle le mot de passe Gmail de 16 lettres via [[setup:mail]]. Le pont démarrera alors tout seul.'
+    expect(chipsInPlace(t)).toEqual({ text: t, chips: ['mail'] })
+  })
+  it('takes out the phone QR (shown under the message) and unknown bricks, keeps the others in place', () => {
+    expect(chipsInPlace('Scan it [[setup:phone]] then [[setup:nope]] push [[setup:push]]')).toEqual({ text: 'Scan it then push [[setup:push]]', chips: ['phone', 'push'] })
   })
 })
 

@@ -294,8 +294,10 @@ const routes: [string, RegExp, Handler][] = [
     // Les autres machines suivent : leurs erreurs et leurs écrans remontent dans l'app. Relayé quand l'app parle
     // (passe par le proxy) ou quand la langue change : deux machines qui se lisent l'une l'autre ne se renvoient
     // pas la requête sans fin (le relais arrive en local et ne change plus rien).
-    const changed = setLang(body.lang)
-    if (changed || !isLocal(req)) for (const r of w.remotes) if (r.online) void r.call('POST', '/api/prefs', { lang: body.lang }).catch(() => undefined)
+    // chosen : langue choisie dans les réglages de l'app ; sinon celle du navigateur, qui ne fixe la langue qu'une fois.
+    const chosen = body.chosen === true
+    const changed = setLang(body.lang, chosen)
+    if (changed || !isLocal(req)) for (const r of w.remotes) if (r.online) void r.call('POST', '/api/prefs', { lang: body.lang, chosen }).catch(() => undefined)
     json(res, 200, { ok: true })
   }],
   ['GET', /^\/api\/snapshot$/, (_req, res) => json(res, 200, w.snapshot())],

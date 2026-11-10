@@ -189,6 +189,13 @@ export function isStall(msg: string): boolean {
   return /^(api error\b|you['’]ve (hit|reached) your|claude (ai )?usage limit|usage limit|\d+-hour limit|weekly limit|limit reached|failed to authenticate|login expired|oauth|invalid api key|credit balance|request timed out|overloaded|please run \/login)/i.test(m)
 }
 
+/** Which stop it was, for a short note in the app (the raw message stays in the log). */
+export function stallKind(msg: string): 'limit' | 'login' | 'api' {
+  if (/limit|credit/i.test(msg)) return 'limit'
+  if (/auth|login|oauth|api key|\/login/i.test(msg)) return 'login'
+  return 'api'
+}
+
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
 
 /**
@@ -423,16 +430,17 @@ export class Optimizers {
   /** Stopped by a limit, a login or an API error: no work was done, it goes back to the queue for later (a few tries). */
   private later(o: Stored, now: number, why: string): boolean {
     o.tries = (o.tries ?? 0) + 1
-    o.lastEvent = oneLine(why, 160)
+    o.lastEvent = tr(O)[`stall_${stallKind(why)}`]
     if (o.tries >= MAX_TRIES) {
       o.state = 'failed'
       o.endedAt = now
+      console.log(`[auto] « ${o.title} » abandonnée après ${o.tries} essais (${oneLine(why, 160)})`)
       return true
     }
     o.state = 'queued'
     o.retryAt = now + RETRY_MS
     o.waiting = 'later'
-    console.log(`[auto] « ${o.title} » arrêtée (${o.lastEvent}) · nouvel essai dans ${Math.round(RETRY_MS / 60_000)} min`)
+    console.log(`[auto] « ${o.title} » arrêtée (${oneLine(why, 160)}) · nouvel essai dans ${Math.round(RETRY_MS / 60_000)} min`)
     return true
   }
 
@@ -453,13 +461,16 @@ export class Optimizers {
     delete o.seenAt
     delete o.sessionId
     this.changed()
+    let step: 'branch' | 'start' = 'start'
     try {
       const cwd = this.workspace(o)
       const branch = `auto/${slug(o.title)}-${o.id.slice(0, 4)}`
       // A retry finds its worktree already there (same branch).
       if (o.repo && !fs.existsSync(cwd)) {
+        step = 'branch'
         fs.mkdirSync(path.dirname(cwd), { recursive: true })
         await this.sys.worktree(this.w.repoDir(o.repo), cwd, branch)
+        step = 'start'
       } else fs.mkdirSync(cwd, { recursive: true })
       const writesReport = !o.repo || o.kind === 'watch' || o.kind === 'content' || o.kind === 'explore'
       const text = tr(O).brief({
@@ -478,10 +489,11 @@ export class Optimizers {
       o.seenAt = Date.now()
       console.log(`[auto] lancée : ${o.title} (${cwd})`)
     } catch (e) {
+      // The app shows a short note; the raw error (tmux, git) stays in the log.
       o.state = 'failed'
       o.endedAt = Date.now()
-      o.lastEvent = tr(O).startFailed(oneLine((e as Error).message, 120))
-      console.error(`[auto] lancement de « ${o.title} » : ${(e as Error).message}`)
+      o.lastEvent = step === 'branch' ? tr(O).branchFailed : tr(O).startFailed
+      console.error(`[auto] lancement de « ${o.title} » (${step}) : ${(e as Error).message}`)
     } finally {
       this.launching = false
       this.changed()

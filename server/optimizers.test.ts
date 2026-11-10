@@ -279,7 +279,16 @@ describe('auto — the runner', () => {
     o = await accepted()
     o.tick(T0 + IDLE_MS)
     await flush()
-    expect(o.list()[0]).toMatchObject({ state: 'failed', lastEvent: 'could not start: tmux missing' })
+    // A short note in the app, the raw error in the log only.
+    expect(o.list()[0]).toMatchObject({ state: 'failed', lastEvent: 'could not start' })
+    expect(vi.mocked(console.error).mock.calls.flat().join(' ')).toContain('tmux missing')
+
+    fs.rmSync(path.join(dir, 'optimizers.json'))
+    vi.mocked(sys.worktree).mockRejectedValueOnce(new Error("fatal: a branch named 'auto/x' already exists"))
+    o = await accepted()
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    expect(o.list()[0]).toMatchObject({ state: 'failed', lastEvent: 'could not make its branch' })
   })
 
   it('blocked on a question (needs_user) it keeps running and holds the slot; ended without any answer → failed', async () => {
@@ -337,7 +346,7 @@ describe('auto — the runner', () => {
     await flush()
     let held = o.list().find((x) => x.id === first.id)!
     expect(held).toMatchObject({ state: 'queued', waiting: 'later', retryAt: now + RETRY_MS })
-    expect(held.lastEvent).toMatch(/hit your limit/)
+    expect(held.lastEvent).toBe('usage limit reached')
     // The other accepted task does not wait behind it.
     expect(createIn).toHaveBeenCalledTimes(2)
     expect(o.list()[0]).toMatchObject({ state: 'running', sessionId: 'sess-2', title: 'Watch indie game fairs' })
@@ -370,7 +379,7 @@ describe('auto — the runner', () => {
         await flush()
       }
     }
-    expect(o.get(first.id)).toMatchObject({ state: 'failed', lastEvent: 'API Error: 529 Overloaded' })
+    expect(o.get(first.id)).toMatchObject({ state: 'failed', lastEvent: 'Claude API error' })
   })
 
   it('tells a stall from a summary', () => {

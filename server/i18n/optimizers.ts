@@ -52,11 +52,16 @@ export default defineMessages({
       `- reste dans le cadre : une heure de travail au plus ; ce qui demande une décision attend la validation de l'utilisateur.\n\n` +
       `La consigne :\n${o.prompt}\n\n` +
       `Termine par un résumé de deux phrases : ce qui a été fait, et ce qui attend sa validation.`,
-    /** Notes shown on a task that stopped without finishing. */
+    /** Notes shown on a task that stopped without finishing (the raw error stays in the server log). */
     vanished: 'la session a disparu',
     timedOut: 'arrêtée au bout de 2 h',
-    startFailed: (why: string) => `lancement impossible : ${why}`,
+    startFailed: 'lancement impossible',
+    branchFailed: 'branche impossible à créer',
     noWork: 'finie sans rien rendre',
+    /** Stopped by Claude itself, back to the queue for later (or failed after a few tries). */
+    stall_limit: "limite d'usage atteinte",
+    stall_login: 'connexion à Claude à refaire',
+    stall_api: "erreur de l'API Claude",
   },
   en: {
     propose: (user: string, max: number, memory: string, projects: string, repos: string, machine: string, history: string) =>
@@ -100,7 +105,11 @@ export default defineMessages({
       `End with a two-sentence summary: what was done, and what awaits their validation.`,
     vanished: 'the session vanished',
     timedOut: 'stopped after 2 h',
-    startFailed: (why: string) => `could not start: ${why}`,
+    startFailed: 'could not start',
+    branchFailed: 'could not make its branch',
     noWork: 'ended without any answer',
+    stall_limit: 'usage limit reached',
+    stall_login: 'Claude login needed',
+    stall_api: 'Claude API error',
   },
 })

@@ -130,7 +130,7 @@ describe('auto drawer', () => {
   const head = () => host.querySelector('.h24-head')!
   const names = () => [...host.querySelectorAll('.auto-band .auto-name')].map((n) => n.textContent)
 
-  it('collapsed automated is only its title/activity and language, with creation inside the hidden body', async () => {
+  it('collapsed automated keeps title/activity only, with language in settings and creation inside the hidden body', async () => {
     render(snap([opt({ id: 'draft', draft: true, title: 'new automation' })]), false)
     expect(head().querySelector('.h24-title')?.textContent).toBe('automated')
     expect(head().querySelector('.h24-activity')).not.toBeNull()
@@ -138,7 +138,7 @@ describe('auto drawer', () => {
     expect(host.querySelector('.h24-top .h24-heading .h2')).toBeNull()
     expect(host.querySelector('#h24-body')?.hasAttribute('hidden')).toBe(true)
     expect(host.querySelector('#h24-body')?.hasAttribute('inert')).toBe(true)
-    expect(host.querySelector('.h24-top .language-trigger')?.textContent).toBe('EN')
+    expect(host.querySelector('.h24-top .language-trigger')).toBeNull()
     expect(host.querySelector('#h24-body .h24-create')).not.toBeNull()
     await click(head())
     expect(drawer).toEqual([true])

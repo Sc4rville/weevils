@@ -1827,6 +1827,8 @@ export class Weevils {
           since: st.birthtimeMs || null,
           lastRunAt: st.mtimeMs,
           group: familyOf(name),
+          // Over: its one run, from the log's birth to its last write.
+          ...(running ? {} : { lastDurMs: Math.max(0, st.mtimeMs - (st.birthtimeMs || st.mtimeMs)), runCount: 1 }),
         })
       }
     } catch {
@@ -1926,7 +1928,8 @@ export class Weevils {
   /** The log file of a job (job:<name>), in the first logs folder that has it. */
   private jobFile(id: string): string | null {
     const name = id.replace(/^job:/, '')
-    if (!name || name.includes('/') || name.includes('\\') || name.startsWith('.')) return null
+    // Its own logs never (refreshH24 leaves them out too): they are not a job.
+    if (!name || name.includes('/') || name.includes('\\') || name.startsWith('.') || name === 'weevils' || name === 'weevilsd') return null
     for (const dir of LOGS_DIRS) {
       const f = path.join(dir, `${name}.log`)
       if (fs.existsSync(f)) return f

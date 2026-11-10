@@ -1,0 +1,421 @@
+/* La bande « auto » (src/ui/h24.tsx) : propositions en colonnes collées, puis catégorie → groupe → tâche.
+   Plat, gras, angles vifs ; l'état d'une tâche est une couleur (liseré à gauche, mini-barres). */
+
+.h24 {
+  --st-running: var(--fluo);
+  --st-waiting: #c25e00;
+  --st-queued: color-mix(in oklab, var(--ink) 45%, transparent);
+  --st-scheduled: #1f4fff;
+  --st-paused: color-mix(in oklab, var(--ink) 22%, transparent);
+  --st-done: var(--ink);
+  --st-failed: #d8001c;
+}
+
+[data-theme='dark'] .h24 {
+  --st-waiting: #ffa53a;
+  --st-scheduled: #8fb0ff;
+  --st-failed: #ff5a4d;
+}
+
+:root[data-theme='zen'] .h24 {
+  --st-waiting: oklch(0.55 0.11 60);
+  --st-scheduled: oklch(0.5 0.09 250);
+  --st-failed: oklch(0.5 0.13 25);
+}
+
+/* Graphite : un seul bleu pour ce qui bouge ; le reste en nuances, l'icône dit l'état. */
+:root[data-theme='graphite'] .h24 {
+  --st-waiting: #6b6b6b;
+  --st-scheduled: #3a3a3a;
+  --st-failed: #141414;
+}
+
+.st-running { --st: var(--st-running); }
+.st-waiting { --st: var(--st-waiting); }
+.st-queued { --st: var(--st-queued); }
+.st-scheduled { --st: var(--st-scheduled); }
+.st-paused { --st: var(--st-paused); }
+.st-done { --st: var(--st-done); }
+.st-failed { --st: var(--st-failed); }
+
+/* En-tête fermé : les compteurs. */
+.auto-sum {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.auto-wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 750;
+  margin-left: 4px;
+}
+
+.auto-sum .spin {
+  font-size: 1.125rem;
+}
+
+/* ---------- Propositions : colonnes collées, aucun espace, une couleur chacune ---------- */
+
+.auto-props {
+  display: flex;
+  align-items: stretch;
+}
+
+.auto-prop {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--c);
+  color: var(--ink);
+}
+
+.auto-prop-in {
+  height: 100%;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 12px 0;
+  min-width: 108px;
+}
+
+.auto-prop .k {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.auto-prop .k .ic {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+
+.auto-prop .t {
+  margin-top: 8px;
+  font-size: 1.0625rem;
+  font-weight: 750;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.auto-prop .w {
+  margin-top: 5px;
+  font-size: 0.75rem;
+  line-height: 1.28;
+  opacity: 0.78;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.auto-prop .i {
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.auto-prop .acts {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 6px;
+}
+
+.auto-prop .ok,
+.auto-prop .no {
+  height: 48px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.auto-prop .ok {
+  font-size: 1.75rem;
+  min-width: 48px;
+  margin-left: -8px;
+}
+
+.auto-prop .no {
+  font-size: 1.125rem;
+  min-width: 40px;
+  margin-right: -8px;
+  opacity: 0.6;
+}
+
+/* ---------- La machine : jauge de charge, mémoire libre ---------- */
+
+.auto-machine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  font-size: 0.875rem;
+}
+
+.auto-machine > .ic {
+  font-size: 1.125rem;
+}
+
+.auto-gauge {
+  position: relative;
+  width: 64px;
+  height: 6px;
+  background: color-mix(in oklab, var(--ink) 18%, transparent);
+}
+
+.auto-gauge > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--ink);
+}
+
+.auto-gauge > .hot {
+  background: var(--st-waiting);
+}
+
+.auto-dim {
+  opacity: 0.55;
+}
+
+.auto-tag {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 0.75rem;
+  font-weight: 750;
+  line-height: 1.35;
+  background: var(--st);
+  color: var(--c, #fff);
+}
+
+[data-theme='light'] .auto-tag,
+:root[data-theme='zen'] .auto-tag {
+  color: #fff;
+}
+
+[data-theme='dark'] .auto-tag {
+  color: #000;
+}
+
+:root[data-theme='graphite'] .auto-tag {
+  color: #fff;
+}
+
+/* ---------- Niveaux : catégorie (gros nom), groupe (étiquette), tâche (ligne) ---------- */
+
+.auto-cat-head,
+.auto-grp-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.auto-cat-head {
+  min-height: 52px;
+}
+
+.auto-cat-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auto-grp-head {
+  min-height: 38px;
+}
+
+.auto-grp-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.auto-chev {
+  font-size: 1rem;
+  opacity: 0.7;
+}
+
+.auto-agg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9375rem;
+}
+
+.auto-agg .spin {
+  font-size: 1rem;
+}
+
+/* Mini-barre : la part de chaque état, bout à bout. */
+.auto-mini {
+  display: inline-flex;
+  width: 44px;
+  height: 6px;
+  background: color-mix(in oklab, var(--ink) 15%, transparent);
+}
+
+.auto-mini > span {
+  background: var(--st);
+}
+
+/* ---------- Tâche ---------- */
+
+.auto-task + .auto-task {
+  border-top: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
+}
+
+.auto-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 54px;
+  padding-block: 7px;
+  position: relative;
+}
+
+/* Le liseré d'état, collé au bord gauche du contenu. */
+.auto-st {
+  position: absolute;
+  left: calc(var(--pad) - 10px);
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  background: var(--st);
+}
+
+.auto-ic {
+  width: 22px;
+  flex: none;
+  text-align: center;
+  font-size: 1.125rem;
+}
+
+.auto-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.auto-title {
+  font-size: 1rem;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auto-facts {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.auto-facts b {
+  font-weight: 750;
+}
+
+.auto-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--st-scheduled);
+}
+
+.st-paused .auto-next {
+  color: inherit;
+}
+
+.auto-next .ic {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.auto-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.7;
+}
+
+.auto-progress {
+  position: relative;
+  width: 40px;
+  height: 5px;
+  background: color-mix(in oklab, var(--ink) 15%, transparent);
+}
+
+.auto-progress > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--ink);
+}
+
+.st-done .auto-title,
+.st-paused .auto-title {
+  opacity: 0.75;
+}
+
+/* Intensité : lourde (pavé plein), priorité (trois barres montantes), durée estimée. */
+.auto-int {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 6px;
+  flex: none;
+  font-size: 0.8125rem;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.auto-heavy {
+  width: 9px;
+  height: 13px;
+  background: var(--ink);
+}
+
+.auto-prio {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.auto-prio > span {
+  width: 4px;
+  background: color-mix(in oklab, var(--ink) 22%, transparent);
+}
+
+.auto-prio > .on {
+  background: var(--ink);
+}
+
+.auto-row > .ch {
+  margin-right: -6px;
+}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { FsListing, InfraDetail, InfraPoint, Level, QuotaInfo, QuotaWindow, UsageInfo, UsageToday } from '../../shared/infra.ts'
 import { api, type FileContent } from '../api'
 import { intlLocale, useT } from '../i18n'
@@ -105,7 +105,7 @@ const money = (n: number, cur: string | null) => `${Math.round(n * 100) / 100} $
 const dayName = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(intlLocale(), { weekday: 'short' })
 
 export function InfraPage({ machine, projectId }: { machine?: string; projectId?: string }) {
-  const { snap, push, home, setExpanded } = useApp()
+  const { snap, push } = useApp()
   const t = useT(M)
   const fromProject = projectId ? snap.sessions.find((s) => s.projectId === projectId)?.machineId : undefined
   const [id, setId] = useState(machine ?? fromProject ?? snap.machines[0]?.id ?? '')
@@ -124,7 +124,11 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
     }
   }, [id])
   const m = snap.machines.find((x) => x.id === id)
-  const x = d?.id === id ? d : null
+  // Changement de machine : la fiche précédente reste affichée, en retrait, jusqu'à l'arrivée de la nouvelle (pas de
+  // page vide puis tout d'un coup).
+  const x = d
+  const stale = !!d && d.id !== id
+  const page = useRef<HTMLDivElement>(null)
   const f = x?.facts
   const sessions = snap.sessions.filter((s) => s.machineId === id && s.status !== 'done')
   const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0)
@@ -133,28 +137,37 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
   const direct = f?.ip && f.publicIp && f.sshPort ? `ssh ${f.sshPort !== 22 ? `-p ${f.sshPort} ` : ''}${f.user}@${f.ip}` : ''
   const offer = x?.offer
   // La première ligne sous le titre : qui l'héberge (ou quel matériel), l'offre, où.
-  const headline = f ? [f.provider ?? f.hardware, offer?.plan, place].filter(Boolean).join(' · ') : ''
+  const headline = f && !stale ? [f.provider ?? f.hardware, offer?.plan, place].filter(Boolean).join(' · ') : ''
+  // Une relecture (toutes les 20 s) qui échoue alors que la fiche est là : un mot dans l'en-tête, pas une bande en haut
+  // de page, hors de vue si on a défilé.
+  const failed = err && x && !stale ? `! ${t.notFresh}` : ''
   return (
-    <Shell slot="agent" kicker="weevils" title={m?.name ?? id} meta={headline || (m?.online === false ? t.offline : undefined)}>
-      <div className="ipage">
+    <Shell slot="agent" kicker="weevils" title={m?.name ?? id} meta={[headline || (m?.online === false ? t.offline : ''), failed].filter(Boolean).join(' · ') || undefined}>
+      <div ref={page} className="ipage">
         {snap.machines.length > 1 && (
           <div className="in mx-tabs">
             {snap.machines.map((y) => (
-              <button key={y.id} className={`mx-tab ${y.id === id ? 'on' : ''} ${y.online === false ? 'off' : ''}`} onClick={() => setId(y.id)} aria-pressed={y.id === id}>
+              <button key={y.id} className={`mx-tab ${y.id === id ? 'on' : ''} ${y.online === false ? 'off' : ''}`} onClick={() => {
+                  if (y.id === id) return
+                  setId(y.id)
+                  const sc = page.current?.closest('[data-scroll]')
+                  if (sc && sc.scrollTop > 0) sc.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+                }}
+                aria-pressed={y.id === id}>
                 {y.name}
               </button>
             ))}
           </div>
         )}
-        {err && (
+        {err && (!x || stale) && (
           <div className="band invert" role="alert">
             <div className="in meta" style={{ paddingBlock: 12 }}>
               ! {err}
             </div>
           </div>
         )}
-        {x && f && (
-          <>
+        {x && f && !(stale && err) && (
+          <div className={`mx-detail ${stale ? 'stale' : ''}`} aria-busy={stale}>
             <div className="in label">{t.machineLabel}</div>
             <Kv k={f.provider ? t.host : t.hardware} v={f.provider ?? f.hardware} />
             <Kv k={t.offer} v={offer?.plan ? `${offer.plan}${offer.price != null ? ` · ${t.perMonth(money(offer.price, offer.currency))}` : ''}` : null} onClick={offer?.url ? () => window.open(offer.url!, '_blank', 'noopener') : undefined} />
@@ -223,7 +236,7 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
                 {a}
               </div>
             ))}
-          </>
+          </div>
         )}
 
         {sessions.length > 0 && <div className="in label">{t.sessions}</div>}
@@ -231,8 +244,8 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
           <SessionRow key={s.id} session={s} />
         ))}
 
-        {x && x.servers.length > 0 && <div className="in label">{t.servers}</div>}
-        {x?.servers.map((s) =>
+        {x && !stale && x.servers.length > 0 && <div className="in label">{t.servers}</div>}
+        {!stale && x?.servers.map((s) =>
           s.url ? (
             <Line key={s.port} ch="#" meta={s.url.replace(/^https:\/\//, '')} onClick={() => window.open(s.url, '_blank', 'noopener')} go="↑">
               <span className="strong">{s.port}</span> {s.name} {s.dir}
@@ -249,11 +262,7 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
           ch="+"
           go="→"
           meta={t.addMeta}
-          onClick={() => {
-            home()
-            setExpanded('agent')
-            askSetup('machine')
-          }}
+          onClick={() => askSetup('machine')}
         >
           <span className="strong">{t.addLine}</span>
         </Line>

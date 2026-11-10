@@ -28,18 +28,21 @@ interface Ctx {
   mainCount: number
 }
 
-/** Le dernier élément qui correspond, s'il est à l'écran. */
-const rect = (sel: string) => {
-  const el = [...document.querySelectorAll<HTMLElement>(sel)].at(-1)
-  if (!el) return null
-  const r = el.getBoundingClientRect()
-  return r.width && r.height && r.bottom > 0 && r.top < window.innerHeight ? r : null
+/** La partie d'un élément vraiment à l'écran (sous le haut de la fenêtre, au-dessus du rail 24/7) : un grand élément
+ * défilé (le flux, main.stack) a son haut bien au-dessus de l'écran, le doigt mimerait hors de la vue. */
+function onScreen(r: DOMRect | undefined): DOMRect | null {
+  if (!r || !r.width) return null
+  const rail = document.documentElement.dataset.page ? undefined : document.querySelector('.h24-head')?.getBoundingClientRect().top
+  const top = Math.max(r.top, 0)
+  // Sous le rail (qui le recouvre) : rien de visible, pas de doigt.
+  const bottom = Math.min(r.bottom, rail && rail > 0 ? rail : window.innerHeight)
+  return bottom > top ? new DOMRect(r.left, top, r.width, bottom - top) : null
 }
 
-const firstRect = (sel: string) => {
-  const r = document.querySelector<HTMLElement>(sel)?.getBoundingClientRect()
-  return r && r.width && r.bottom > 0 && r.top < window.innerHeight ? r : null
-}
+/** Le dernier élément qui correspond, s'il est à l'écran (sa partie visible). */
+const rect = (sel: string) => onScreen([...document.querySelectorAll<HTMLElement>(sel)].at(-1)?.getBoundingClientRect())
+
+const firstRect = (sel: string) => onScreen(document.querySelector<HTMLElement>(sel)?.getBoundingClientRect())
 
 /** La page du dessus, si elle contient cet élément (les pages n'ont pas d'autre marque que leur contenu). */
 const topPage = (inner: string) => {

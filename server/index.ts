@@ -6,7 +6,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CONFIG_DIR, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, MACHINE, ORCHESTRATOR, PORT, PUBLIC_URL } from './config.ts'
+import { CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, MACHINE, ORCHESTRATOR, PORT, PUBLIC_URL } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices } from './fast.ts'
@@ -21,6 +21,7 @@ import { Hints, hintRoutes } from './hints.ts'
 import { softwareRoutes } from './softwares.ts'
 import { browserSafe, isLocal, trustedFrom } from './http.ts'
 import { startMailBridge } from './mailbridge.ts'
+import { resetAuthors } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
 import { quotas, rate as tokenRate, today as usageToday } from './usage.ts'
@@ -39,6 +40,40 @@ w.start()
 startInfra()
 // Pont e-mail (agents externes) : sur la machine de l'orchestrateur, seulement si WEEVILS_MAIL_ADDRESS / _PASSWORD sont remplis.
 let mailBridge = ORCHESTRATOR ? startMailBridge(w, DATA_DIR) : null
+const restartMail = () => {
+  mailBridge?.stop()
+  mailBridge = ORCHESTRATOR ? startMailBridge(w, DATA_DIR) : null
+  mailSeen = mailKeys()
+}
+// Le pont et les auteurs suivent le fichier de config à chaud : un mot de passe ou un auteur saisi (dans l'app, par
+// « weevils config set » ou à la main) les met en route sans redémarrer weevils.
+const MAIL_KEY = /^\s*(WEEVILS_(?:MAIL|AUTHOR)_[A-Z0-9_]*)\s*=\s*(.*?)\s*$/
+const mailKeys = () => JSON.stringify(Object.entries(process.env).filter(([k]) => /^WEEVILS_(MAIL|AUTHOR)_/.test(k)).sort())
+let mailSeen = mailKeys()
+let mailFileKeys = new Set<string>()
+const readMailKeys = () => {
+  const fresh = new Map<string, string>()
+  try {
+    for (const line of fs.readFileSync(CONFIG_FILE, 'utf8').split('\n')) {
+      const m = MAIL_KEY.exec(line)
+      if (m) fresh.set(m[1], m[2].replace(/^["']|["']$/g, ''))
+    }
+  } catch {
+    return
+  }
+  for (const k of mailFileKeys) if (!fresh.has(k)) delete process.env[k]
+  for (const [k, v] of fresh) process.env[k] = v
+  mailFileKeys = new Set(fresh.keys())
+}
+readMailKeys()
+mailSeen = mailKeys()
+fs.watchFile(CONFIG_FILE, { interval: 3000 }, () => {
+  readMailKeys()
+  if (mailKeys() === mailSeen) return
+  resetAuthors()
+  console.log('[mail]', 'config changée : pont relu')
+  restartMail()
+})
 
 // ---------------------------------------------------------------- secret partagé (ce soir) → passkey (demain)
 
@@ -75,10 +110,7 @@ const setup = new Setup({
   shortcut: () => !!shortcutToken(),
   seen: () => hints.get().seen,
   hasHistory: () => w.snapshot().main.some((m) => m.role === 'user'),
-  startMail: () => {
-    mailBridge?.stop()
-    mailBridge = ORCHESTRATOR ? startMailBridge(w, DATA_DIR) : null
-  },
+  startMail: restartMail,
   handoff: (text, brief) => w.sendMain(text, brief),
   memory: () => w.memory,
   bossId: () => w.bossConversation(),
@@ -279,8 +311,10 @@ const routes: [string, RegExp, Handler][] = [
     // Les autres machines suivent : leurs erreurs et leurs écrans remontent dans l'app. Relayé quand l'app parle
     // (passe par le proxy) ou quand la langue change : deux machines qui se lisent l'une l'autre ne se renvoient
     // pas la requête sans fin (le relais arrive en local et ne change plus rien).
-    const changed = setLang(body.lang)
-    if (changed || !isLocal(req)) for (const r of w.remotes) if (r.online) void r.call('POST', '/api/prefs', { lang: body.lang }).catch(() => undefined)
+    // chosen : langue choisie dans les réglages de l'app ; sinon celle du navigateur, qui ne fixe la langue qu'une fois.
+    const chosen = body.chosen === true
+    const changed = setLang(body.lang, chosen)
+    if (changed || !isLocal(req)) for (const r of w.remotes) if (r.online) void r.call('POST', '/api/prefs', { lang: body.lang, chosen }).catch(() => undefined)
     json(res, 200, { ok: true })
   }],
   ['GET', /^\/api\/snapshot$/, (_req, res) => json(res, 200, w.snapshot())],
@@ -349,13 +383,13 @@ const routes: [string, RegExp, Handler][] = [
     const b = await readBody(req)
     if (!isBrick(b.brick)) return json(res, 400, { error: tr(S).badBrick })
     const flow = await setup.ask(b.brick, b.device ? asDevice(b.device) : undefined)
-    json(res, 200, { ok: true, flow })
+    json(res, 200, { ok: true, flow, said: setup.lastSaid ?? undefined })
   }],
   ['POST', /^\/api\/setup\/apply$/, async (req, res) => {
     const b = await readBody(req, 64 << 10)
     if (!isBrick(b.brick) || typeof b.values !== 'object' || !b.values) return json(res, 400, { error: tr(S).badBrick })
     await setup.apply(b.brick, Object.fromEntries(Object.entries(b.values as Record<string, unknown>).map(([k, v]) => [k, String(v ?? '')])))
-    json(res, 200, { ok: true })
+    json(res, 200, { ok: true, said: setup.lastSaid ?? undefined })
   }],
   ['POST', /^\/api\/setup\/done$/, async (req, res) => {
     const b = await readBody(req)

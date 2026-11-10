@@ -69,6 +69,12 @@ export default defineMessages({
     chosen: ', choisi',
     machine: 'machine',
     repo: 'repo',
+    /** Bouton flottant (lecteur d'écran) : du nouveau est arrivé en bas du fil pendant qu'on relisait plus haut. */
+    newBelow: 'du nouveau en bas : y aller',
+    /** Idem, quand la session attend une réponse. */
+    waitsBelow: 'la session attend ta réponse, en bas : y aller',
+    /** Dossier trop long : la liste s'arrête, le reste est compté. */
+    moreFiles: (n: number) => `+ ${n} ${n > 1 ? 'autres fichiers non affichés' : 'autre fichier non affiché'}`,
   },
   en: {
     notFound: 'not found',
@@ -125,5 +131,8 @@ export default defineMessages({
     chosen: ', selected',
     machine: 'machine',
     repo: 'repo',
+    newBelow: 'new below: go there',
+    waitsBelow: 'the session is waiting for your answer, below: go there',
+    moreFiles: (n: number) => `+ ${n} more ${n === 1 ? 'file' : 'files'} not shown`,
   },
 })

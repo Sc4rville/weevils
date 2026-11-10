@@ -2,15 +2,20 @@
 // Envoyer à weevboss (clavier, logo vocal, pièce jointe) n'ouvre jamais le plein écran : tout reste réduit,
 // le message et la réponse s'affichent dans l'aperçu. Régressé deux fois : ce test le garde.
 import { act } from 'react'
+import { MotionGlobalConfig } from 'motion/react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message, Snapshot } from '../../shared/api.ts'
 
-const sent = vi.hoisted(() => ({ main: [] as string[], devil: [] as string[], attach: [] as string[] }))
+const sent = vi.hoisted(() => ({ main: [] as string[], devil: [] as string[], attach: [] as string[], gate: null as Promise<void> | null, fail: '' }))
 
 vi.mock('../api', () => ({
   api: {
-    main: async (text: string) => void sent.main.push(text),
+    main: async (text: string) => {
+      sent.main.push(text)
+      if (sent.gate) await sent.gate
+      if (sent.fail) throw new Error(sent.fail)
+    },
     devil: async (text: string) => void sent.devil.push(text),
     mainAttach: async (text: string, files: { name: string }[]) => void sent.attach.push(`${text}|${files.map((f) => f.name).join(',')}`),
     usageRate: async () => ({ step: 15_000, end: Date.now(), buckets: [] }),
@@ -33,6 +38,8 @@ vi.mock('./voice', () => ({
 const { AgentBand } = await import('./bands')
 const { Ctx } = await import('./app-context')
 const { setDevil } = await import('./devil')
+const { tr } = await import('../i18n')
+const { default: BM } = await import('../i18n/bands')
 
 const msg = (id: string, role: Message['role'], text: string, at: number): Message => ({ id, role, text, at })
 
@@ -100,11 +107,19 @@ const type = async (text: string) => {
 
 const submit = () => act(async () => void host.querySelector('form')!.requestSubmit())
 
+// Des bulles apparaissent et partent (envoi en cours, réponse) : sans Web Animations, motion les joue en JS (happy-dom
+// rejette celles qu'on annule).
+const animate = Element.prototype.animate
+beforeAll(() => void ((Element.prototype as { animate?: unknown }).animate = undefined))
+afterAll(() => void (Element.prototype.animate = animate))
+
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   sent.main = []
   sent.devil = []
   sent.attach = []
+  sent.gate = null
+  sent.fail = ''
   expanded = []
   localStorage.clear()
   host = document.createElement('div')
@@ -195,10 +210,6 @@ describe('bande de weevboss : envoyer ne l’ouvre jamais en plein écran', () =
 })
 
 describe('fil de weevboss ouvert : il suit la réponse qui s’écrit', () => {
-  // Bande ouverte = animations : sans Web Animations, motion les joue en JS (happy-dom rejette celles qu'on annule).
-  const animate = Element.prototype.animate
-  beforeAll(() => void ((Element.prototype as { animate?: unknown }).animate = undefined))
-  afterAll(() => void (Element.prototype.animate = animate))
   // happy-dom ne calcule pas de mise en page : la hauteur du fil suit la longueur du dernier message.
   const fake = (el: HTMLElement, height: () => number) => {
     Object.defineProperty(el, 'scrollHeight', { configurable: true, get: height })
@@ -221,16 +232,76 @@ describe('fil de weevboss ouvert : il suit la réponse qui s’écrit', () => {
     }
   })
 
+  it('notre propre défilement doux ne décroche pas le suivi (aperçu réduit)', async () => {
+    let s = snap([msg('u', 'user', 'fais le point', 1)])
+    render(s)
+    const peek = host.querySelector<HTMLElement>('.peek')!
+    let h = 800
+    fake(peek, () => h)
+    // Une position intermédiaire d'un défilement animé, loin du bas, sans geste : ce n'est pas l'utilisateur qui relit.
+    peek.scrollTop = 100
+    await act(async () => void peek.dispatchEvent(new Event('scroll')))
+    h = 1100
+    s = { ...s, main: [...s.main, msg('r', 'assistant', 'Tout tourne.', 2)] }
+    render(s)
+    expect(peek.scrollTop).toBe(1100)
+  })
+
   it('pas quand on relit plus haut', async () => {
     let s = { ...snap([msg('u', 'user', 'et toi ?', 1), devil('')]), devil: { enabled: true, working: true } }
     render(s, true)
     await flush()
     const chat = host.querySelector<HTMLElement>('.chat')!
     fake(chat, () => 3000)
+    // Un geste de l'utilisateur (le doigt remonte) : seul un geste décroche le suivi, pas un défilement du programme.
+    await act(async () => void chat.dispatchEvent(new Event('touchstart')))
     chat.scrollTop = 200
     await act(async () => void chat.dispatchEvent(new Event('scroll')))
+    await act(async () => void chat.dispatchEvent(new Event('touchend')))
     s = { ...s, main: [s.main[0], devil('Moi je pense')] }
     render(s, true)
     expect(chat.scrollTop).toBe(200)
+  })
+})
+
+describe('le message envoyé se voit tout de suite', () => {
+  // Ce qui part de l'aperçu part tout de suite (sans l'animation de sortie) : on lit l'état final.
+  beforeAll(() => void (MotionGlobalConfig.skipAnimations = true))
+  afterAll(() => void (MotionGlobalConfig.skipAnimations = false))
+  it('une bulle « envoi… » dans l’aperçu dès le tap, remplacée par la vraie à son arrivée', async () => {
+    let open = () => {}
+    sent.gate = new Promise((r) => (open = r))
+    const s = snap([msg('a', 'assistant', 'salut', 1)])
+    render(s)
+    await type('fais le point')
+    await submit()
+    const peek = host.querySelector('.peek')!
+    expect(peek.textContent).toContain('fais le point')
+    expect(peek.textContent).toContain(tr(BM).sending)
+    // Claude Code l'a écrit dans son transcript : une seule bulle, la vraie.
+    render({ ...s, main: [...s.main, msg('u', 'user', 'fais le point', 2)] })
+    await act(async () => open())
+    await flush()
+    expect(peek.textContent).not.toContain(tr(BM).sending)
+    expect(peek.textContent!.split('fais le point').length - 1).toBe(1)
+  })
+
+  it('un envoi refusé retire la bulle, rend le texte et dit pourquoi', async () => {
+    sent.fail = 'weevboss est occupé'
+    render(snap([msg('a', 'assistant', 'salut', 1)]))
+    await type('fais le point')
+    await submit()
+    await flush()
+    expect(host.querySelector('.peek')!.textContent).not.toContain('fais le point')
+    expect(host.querySelector<HTMLInputElement>('form input:not([type=file])')!.value).toBe('fais le point')
+    expect(host.querySelector('.attach-line')?.textContent).toContain('weevboss est occupé')
+  })
+
+  it('le dernier message de l’aperçu montre sa fin, pas son début coupé', () => {
+    const long = `${'début '.repeat(80)}la toute fin de la réponse`
+    render(snap([msg('a', 'assistant', long, 1)]))
+    const last = host.querySelector('.peek-item.last')!
+    expect(last.textContent).toContain('la toute fin de la réponse')
+    expect(last.textContent!.length).toBeLessThan(long.length)
   })
 })

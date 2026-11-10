@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { splitChips } from '../shared/setup.ts'
+import { chipsInPlace, splitChips } from '../shared/setup.ts'
 
 // Accueil et branchements (server/setup.ts) : puces, bloc de contexte, fichier de config, marche à suivre.
 const cfg = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'setup-')), 'env')
@@ -18,6 +18,13 @@ describe('chips', () => {
   it('leaves a text without chips untouched', () => {
     const t = 'two  spaces\n\n- a list'
     expect(splitChips(t)).toEqual({ text: t, chips: [] })
+  })
+  it('keeps a chip in the middle of a sentence where it was written, for the app to show as a button (never « via . »)', () => {
+    const t = 'Colle le mot de passe Gmail de 16 lettres via [[setup:mail]]. Le pont démarrera alors tout seul.'
+    expect(chipsInPlace(t)).toEqual({ text: t, chips: ['mail'] })
+  })
+  it('takes out the phone QR (shown under the message) and unknown bricks, keeps the others in place', () => {
+    expect(chipsInPlace('Scan it [[setup:phone]] then [[setup:nope]] push [[setup:push]]')).toEqual({ text: 'Scan it then push [[setup:push]]', chips: ['phone', 'push'] })
   })
 })
 
@@ -50,7 +57,7 @@ describe('installPlan', () => {
     machine: { kind: 'vps', mac: false, os: 'Ubuntu 24.04', cpus: 2, ramGb: 4, uptimeDays: 3, alwaysOn: true, host: 'box', user: 'me', sshTarget: 'me@box', agents: 2, others: [], othersAlwaysOn: false },
     reach: 'public', url: 'https://x', https: true, port: 4179, clone: '~/weevils',
     claude: { installed: true, logged: true }, codex: { installed: true, logged: true }, github: { installed: true, logged: true },
-    voice: { spoken: 'edge', openai: false, https: true }, devil: { plugged: false }, mail: { on: false, authors: 0 },
+    voice: { spoken: 'edge', openai: false, https: true }, devil: { plugged: false }, mail: { on: false, authors: 0, pending: [] },
     phone: { devices: 1, push: 0 }, shortcut: false, security: { safe: false, https: true, exposedHttp: false }, quota: [],
     pkg: 'apt', sudo: 'yes', tools: { git: true, tmux: true, curl: true, python3: true, qrencode: true, pipx: true, uv: false, node: 22 }, projects: 0,
   } as const
@@ -102,7 +109,7 @@ describe('never a command for the user to type', () => {
     machine: { kind: 'vps', mac: false, os: 'Ubuntu 24.04', cpus: 2, ramGb: 4, uptimeDays: 3, alwaysOn: true, host: 'box', user: 'me', sshTarget: 'me@box', agents: 2, others: [], othersAlwaysOn: false },
     reach: 'local', url: 'http://127.0.0.1:4179', https: false, port: 4179, clone: '~/weevils',
     claude: { installed: false, logged: false }, codex: { installed: false, logged: false }, github: { installed: false, logged: false },
-    voice: { spoken: null, openai: false, https: false }, devil: { plugged: false }, mail: { on: false, authors: 0 },
+    voice: { spoken: null, openai: false, https: false }, devil: { plugged: false }, mail: { on: false, authors: 0, pending: [] },
     phone: { devices: 1, push: 0 }, shortcut: false, security: { safe: false, https: false, exposedHttp: true }, quota: [],
     pkg: 'apt', sudo: 'no', tools: { git: true, tmux: true, curl: true, python3: true, qrencode: true, pipx: false, uv: false, node: 22 }, projects: 0,
   } as any
@@ -124,4 +131,76 @@ describe('never a command for the user to type', () => {
       for (const x of texts) expect(x, x).not.toMatch(COMMAND)
     })
   }
+})
+
+describe('weevboss automatic messages are never posted twice', async () => {
+  const { Setup } = await import('./setup.ts')
+  let bumps = 0
+  const setup = new Setup({
+    bump: () => void bumps++,
+    feed: () => ({ machines: [{ id: 'box', name: 'box' }], projects: 0 }),
+    remoteFacts: async () => [],
+    devices: () => 1,
+    push: () => 0,
+    shortcut: () => false,
+    seen: () => [],
+    hasHistory: () => true,
+    startMail: () => undefined,
+    handoff: async () => undefined,
+  })
+  it('a brick explanation said again (a flow started twice) returns the message already there', () => {
+    const before = setup.messages().length
+    const a = setup.say('Pick your host below.', true)
+    const b = setup.say('Pick your host below.', true)
+    expect(b).toBe(a)
+    expect(setup.lastSaid).toBe(a)
+    expect(setup.messages().length).toBe(before + 1)
+    // Still a refresh: the app brings the existing message back into view.
+    expect(bumps).toBeGreaterThan(0)
+  })
+  it('a new event with the same text (a second cut after a resume, a retry that fails the same way) is posted again', () => {
+    const before = setup.messages().length
+    setup.say('The session “x” was cut mid-work: process stopped.')
+    setup.say('The session “x” was cut mid-work: process stopped.')
+    expect(setup.messages().length).toBe(before + 2)
+  })
+  it('a different text, or the same one long after, is posted', () => {
+    const before = setup.messages().length
+    setup.say('one')
+    setup.say('two')
+    expect(setup.messages().length).toBe(before + 2)
+  })
+  it('the machine flow started twice does not repeat the machine status', async () => {
+    await setup.ask('machine')
+    const n = setup.messages().length
+    await setup.ask('machine')
+    expect(setup.messages().length).toBe(n)
+  })
+  it('a flow retried with the same answers posts its answer and its result again, at the bottom', async () => {
+    const n = setup.messages().length
+    await setup.apply('author', { name: 'Ana', email: 'not-an-address' })
+    const first = setup.lastSaid
+    await setup.apply('author', { name: 'Ana', email: 'not-an-address' })
+    const log = setup.messages()
+    expect(log.length).toBe(n + 4)
+    expect(log.at(-2)?.role).toBe('user')
+    expect(setup.lastSaid).toBe(log.at(-1)?.id)
+    expect(setup.lastSaid).not.toBe(first)
+  })
+})
+
+describe('test sessions never reach the real weevboss thread', async () => {
+  const { isTestBrief } = await import('./core.ts')
+  it('a brief starting with TEST (after an optional signature) is a test', () => {
+    expect(isTestBrief('[from:weevboss] TEST COUPURE (à ignorer) : lance sleep 75')).toBe(true)
+    expect(isTestBrief('[test] cut detection')).toBe(true)
+  })
+  it('an ordinary brief is not, even about tests', () => {
+    expect(isTestBrief('Test du paiement en staging')).toBe(false)
+    expect(isTestBrief('[from:weevboss] ajoute des tests e2e')).toBe(false)
+    expect(isTestBrief(undefined)).toBe(false)
+    // Tapé à la main dans un terminal pour vérifier que Claude répond : une vraie session, qui prévient.
+    expect(isTestBrief('TEST')).toBe(false)
+    expect(isTestBrief('[from:weevboss] TESTÉ hier, à reprendre')).toBe(false)
+  })
 })

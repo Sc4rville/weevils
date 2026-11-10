@@ -23,7 +23,7 @@ import { claudeLogged, withoutContext, type Setup } from './setup.ts'
 import type { Memory } from './memory.ts'
 import type { Optimizers } from './optimizers.ts'
 import { parseTimerShow } from './schedule.ts'
-import { splitChips } from '../shared/setup.ts'
+import { chipsInPlace } from '../shared/setup.ts'
 import { isDemoJob, type TourKeeper } from './tour.ts'
 import TM from './i18n/tour.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
@@ -52,6 +52,10 @@ type Cut = { at: number; reason: InterruptReason }
 const CLEAN_END = new Set(['prompt_input_exit', 'clear', 'logout'])
 /** Une coupure plus ancienne que ça, découverte après coup (redémarrage, déploiement), n'est pas annoncée : seulement montrée. */
 const ANNOUNCE_WITHIN_MS = 6 * 3600_000
+/** Une session lancée pour un test (son brief commence par « [test] », ou par « TEST » en majuscules juste après la
+ * signature d'un agent [from:…] : jamais un simple « TEST » tapé dans un terminal) : elle reste visible dans l'app, mais ne prévient jamais (ni notification, ni message dans le fil de weevboss).
+ * Les tests de weevils lui-même tournent sur un serveur jetable (CONTRIBUTING.md) ; ceci protège le vrai fil des autres. */
+export const isTestBrief = (p?: string) => !!p && /^\s*(?:\[test\]|\[from:[^\]]*\]\s*TEST(?![\p{L}\p{N}_]))/u.test(p)
 
 /** Le dossier a du travail non commité (fichiers modifiés ou nouveaux) ; pas un dépôt git, ou git muet : non. */
 export function gitDirty(cwd: string): Promise<boolean> {
@@ -448,6 +452,7 @@ export class Weevils {
         body = s.lastMessage
       }
       if (!title || !body) continue
+      if (isTestBrief(this.store.get(s.id)?.firstPrompt)) continue
       entry.notifiedAt = now
       void this.push.send({ title, body: body.replace(/\s+/g, ' ').slice(0, 180), url: `/#s=${encodeURIComponent(s.id)}`, tag: s.id })
     }
@@ -681,6 +686,8 @@ export class Weevils {
       this.announced.set(s.id, now)
       changed = true
       if (now - s.interrupted.at > ANNOUNCE_WITHIN_MS) continue
+      // Une session de test (vérifier la détection elle-même) : montrée, jamais annoncée dans le vrai fil.
+      if (isTestBrief(this.store.get(s.id)?.firstPrompt)) continue
       const project = snap.projects.find((p) => p.id === s.projectId)?.name ?? s.projectId
       const why = tr(M).cutWhy(s.interrupted.reason)
       console.log(`[sessions] ${s.id.slice(0, 8)} coupée en plein travail (${s.interrupted.reason}) · « ${s.title} »`)
@@ -1434,7 +1441,8 @@ export class Weevils {
       .slice(-40)
       .map((m) => {
         if (m.role !== 'assistant' || m.devil) return m
-        const { text, chips } = splitChips(m.text)
+        // Les puces restent à leur place dans la phrase : l'app en fait un bouton (« … via [bouton]. »), pas un trou.
+        const { text, chips } = chipsInPlace(m.text)
         return chips.length ? { ...m, text, chips } : m
       })
     if (!msgs.length && ORCHESTRATOR) {

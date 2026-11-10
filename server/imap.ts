@@ -178,6 +178,14 @@ export class Imap extends EventEmitter {
     return hit ? hit.literals[0] : null
   }
 
+  /** Libellés Gmail du message (X-GM-LABELS, ex. « \\Sent ») ; erreur sur un serveur qui ne les connaît pas. */
+  async gmLabels(uid: number): Promise<string[]> {
+    const u = await this.cmd(`UID FETCH ${uid} (X-GM-LABELS)`)
+    const line = u.find((x) => /X-GM-LABELS/i.test(x.line))?.line ?? ''
+    const inner = /X-GM-LABELS \(([^)]*)\)/i.exec(line)?.[1] ?? ''
+    return [...inner.matchAll(/"((?:[^"\\]|\\.)*)"|(\S+)/g)].map((m) => (m[1] != null ? m[1].replace(/\\(.)/g, '$1') : m[2]))
+  }
+
   markSeen(uid: number) {
     return this.cmd(`UID STORE ${uid} +FLAGS.SILENT (\\Seen)`)
   }

@@ -177,6 +177,16 @@ body {
 
 /* Une page est ouverte : la fenêtre entière est de sa couleur (sous le clavier iOS, au rebond), opaque,
    et le fil principal n'est plus peint du tout : rien de lui ne peut transparaître dans la zone que le clavier décale. */
+/* Ce qu'une action amène sous les yeux (scrollIntoView, src/ui/follow.ts) s'arrête sous la barre d'état et au-dessus du rail. */
+html {
+  scroll-padding-top: var(--safe-t);
+  scroll-padding-bottom: calc(var(--rail) + var(--safe-b) + 8px);
+}
+
+html[data-page] {
+  scroll-padding-bottom: var(--safe-b);
+}
+
 html[data-page] {
   background: var(--page-c);
 }
@@ -596,6 +606,38 @@ button:disabled {
 .page-foot {
   flex: none;
   padding-bottom: var(--safe-b);
+}
+
+/* « Du nouveau en bas » (src/ui/followdown.tsx) : flotte en bas à droite du fil, juste au-dessus de la saisie, sans prendre
+   de place (ancre sans hauteur, comme le logo de weevboss à gauche). */
+.page-float {
+  flex: none;
+  position: relative;
+  height: 0;
+  z-index: 5;
+}
+
+.follow-down {
+  position: absolute;
+  right: calc(var(--pad) - 6px);
+  bottom: 8px;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  font-size: 1.375rem;
+  font-weight: 800;
+  background: var(--ink);
+  color: var(--c);
+}
+
+.page-float.no-foot .follow-down {
+  bottom: calc(8px + var(--safe-b));
+}
+
+.follow-down .ic {
+  width: 22px;
+  height: 22px;
 }
 
 /* Page partagée en deux : le fil d'un côté, le navigateur intégré de l'autre (dessous sur téléphone, à droite sur grand écran). */
@@ -1524,6 +1566,30 @@ button.copy.done {
   text-align: center;
 }
 
+/* Fil ouvert : un « ↓ » flottant quand du nouveau est arrivé en bas pendant qu'on relit plus haut. */
+#agent-body {
+  position: relative;
+}
+
+.agent-behind {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  z-index: 2;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  color: var(--c);
+  font-size: 1.375rem;
+}
+
+/* La barre de questions sous un message (askthread) : son enveloppe ne compte pas dans la mise en page. */
+.qa-in-view {
+  display: contents;
+}
+
 .agent-space {
   position: relative;
   height: 34dvh;
@@ -1892,6 +1958,13 @@ button.copy.done {
   -webkit-line-clamp: 3;
 }
 
+/* Le dernier message : sa fin entière (Peek n'en garde que les derniers caractères), la réponse qui s'écrit se lit. */
+.peek-item.last .txt {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
 /* Mêmes couleurs que le fil : weevboss sur la couleur de base, toi sur le ton de la bande. */
 .peek-item.base {
   background: var(--c);
@@ -2156,4 +2229,91 @@ button.copy.done {
   display: inline-block;
   padding: 0 8px;
   font-weight: 700;
+}
+
+/* ---------- « C'est ici » : ce qu'une action vient d'amener sous les yeux s'éclaire un instant (src/ui/follow.ts) ---------- */
+
+@keyframes wv-flash {
+  0% {
+    filter: none;
+  }
+  22% {
+    filter: brightness(1.18) saturate(1.15);
+  }
+  100% {
+    filter: none;
+  }
+}
+
+.wv-flash {
+  animation: wv-flash 1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-theme='dark'] .wv-flash,
+[data-theme='graphite'] .wv-flash {
+  animation-name: wv-flash-dark;
+}
+
+@keyframes wv-flash-dark {
+  0% {
+    filter: none;
+  }
+  22% {
+    filter: brightness(1.5) saturate(1.1);
+  }
+  100% {
+    filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wv-flash {
+    animation: none;
+  }
+}
+
+/* Une ligne ou un nom de bande du flux mis en avant (retour d'une page, bande qui a dû bouger) : sans fond à lui, seul son
+   texte s'éclairerait ; il prend le temps de l'éclat la couleur de sa bande (ou de sa sous-bande). Une ligne qui a son
+   propre fond (en attente : .tone ; interrompue : .cut, en rouge) le garde. */
+.stack .head.wv-flash,
+.stack .row.wv-flash:not(.tone, .cut) {
+  background-color: var(--c);
+}
+
+.stack .tone > .row.wv-flash:not(.cut) {
+  background: inherit;
+
+/* Une puce de branchement à sa place dans la phrase de weevboss (« … via [brancher le pont e-mail]. ») : le même aplat,
+   à la hauteur du texte, qui passe à la ligne avec lui. Sur un message plus ancien, son libellé seul, en gras. */
+.text .setup-chip.inline {
+  min-height: 0;
+  padding: 2px 8px;
+  margin: 0 2px;
+  gap: 6px;
+  vertical-align: baseline;
+  font: inherit;
+  font-weight: 750;
+  line-height: 1.35;
+  white-space: normal;
+  text-align: left;
+}
+
+.text .setup-chip.inline .ic {
+  width: 0.85em;
+  height: 0.85em;
+  flex: none;
+}
+
+.chip-label {
+  font-weight: 750;
+}
+
+/* Le choix de la langue (src/ui/prefs.tsx) : ouvert d'un tap, la langue ne change qu'au tap sur l'une d'elles. */
+.lang-pick .row {
+  padding-left: calc(var(--pad) + 18px);
+}
+
+/* Un secret du parcours de branchement (src/ui/setup.tsx) : masqué sans être un champ mot de passe. */
+.setup-form input.masked {
+  -webkit-text-security: disc;
 }

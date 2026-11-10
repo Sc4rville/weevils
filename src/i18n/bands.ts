@@ -18,6 +18,12 @@ export default defineMessages({
     openChat: 'ouvrir la conversation avec weevboss',
     agentPlaceholder: 'dis-moi quoi faire',
     agentLabel: 'message à weevboss',
+    /** Bulle envoyée, pas encore dans le fil : en route, ou en file derrière la réponse en cours. */
+    sending: 'envoi…',
+    queued: 'en attente',
+    withFiles: (n: number) => `(${n} fichier${n > 1 ? 's' : ''})`,
+    /** Bouton flottant « ↓ » du fil ouvert : du nouveau en bas pendant qu'on relit. */
+    toEnd: 'du nouveau en bas : y descendre',
 
     // Bande projet
     projectBand: (name: string) => `projet ${name}`,
@@ -73,6 +79,10 @@ export default defineMessages({
     openChat: 'open the conversation with weevboss',
     agentPlaceholder: 'tell me what to do',
     agentLabel: 'message to weevboss',
+    sending: 'sending…',
+    queued: 'queued',
+    withFiles: (n: number) => `(${n} file${n === 1 ? '' : 's'})`,
+    toEnd: 'new messages below: scroll down',
 
     projectBand: (name: string) => `project ${name}`,
     unread: 'replied, not read yet',

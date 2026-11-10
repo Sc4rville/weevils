@@ -45,11 +45,34 @@ export interface AppCtx {
   instant?: boolean
   setExpanded: (id: string | null) => void
   h24Open: boolean
-  setH24Open: (open: boolean) => void
+  /** `focus` : l'activité touchée (une ligne 24/7 d'une bande projet), amenée sous les yeux dans le tiroir. */
+  setH24Open: (open: boolean, focus?: string) => void
+  /** L'activité à montrer à l'ouverture du tiroir 24/7. */
+  h24Focus?: string | null
   theme: Theme
   setTheme: (t: Theme) => void
   refresh: () => void
   logout: () => void
+}
+
+/**
+ * Ordre stable d'une liste vivante : `rank` d'abord (ce qui t'attend remonte), puis l'ordre déjà affiché (`prev`, ids) ;
+ * l'activité seule ne fait jamais bouger une ligne. Les nouveaux venus se placent en tête de leur rang, entre eux par
+ * `fresh`. `frozen` (doigt posé, défilement) : rien ne bouge, les nouveaux venus vont à la fin, sous le regard.
+ */
+export function stableOrder<T>(items: readonly T[], id: (x: T) => string, rank: (x: T) => number, fresh: (a: T, b: T) => number, prev: readonly string[], frozen = false): T[] {
+  const at = new Map(prev.map((k, i) => [k, i]))
+  const idx = (x: T) => at.get(id(x))
+  if (frozen) {
+    const known = items.filter((x) => idx(x) !== undefined).sort((a, b) => idx(a)! - idx(b)!)
+    const news = items.filter((x) => idx(x) === undefined).sort((a, b) => rank(a) - rank(b) || fresh(a, b))
+    return [...known, ...news]
+  }
+  return [...items].sort((a, b) => {
+    const ia = idx(a)
+    const ib = idx(b)
+    return rank(a) - rank(b) || (ia === undefined ? (ib === undefined ? fresh(a, b) : -1) : ib === undefined ? 1 : ia - ib)
+  })
 }
 
 export const Ctx = createContext<AppCtx | null>(null)
@@ -89,3 +112,9 @@ export function colorSlots(ids: string[]): Record<string, string> {
   out.__foot = `p${(last + 5) % SLOTS}`
   return out
 }
+
+/** Doigt posé, défilement, molette (App.tsx) : rien ne se réordonne sous le doigt. Lu au rendu, sans abonnement : basculer
+ * à chaque geste ne re-rend pas toute l'app ; l'ordre en attente s'applique au prochain instantané du serveur. */
+let settledNow = true
+export const isSettled = () => settledNow
+export const setSettledNow = (v: boolean) => void (settledNow = v)

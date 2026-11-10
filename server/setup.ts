@@ -24,7 +24,7 @@ import path from 'node:path'
 import type { Message } from '../shared/api.ts'
 import type { MachineFacts } from '../shared/infra.ts'
 import { CONTEXT_BLOCK, FIELDS, type Brick, type Device } from '../shared/setup.ts'
-import { resetAuthors, authors } from './authors.ts'
+import { BOSS, resetAuthors, authors } from './authors.ts'
 import { CODEX_DIR, CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL } from './config.ts'
 import { devilConfig } from './devil.ts'
 import { facts } from './discover.ts'
@@ -37,6 +37,8 @@ import type { Memory } from './memory.ts'
 import { quotas } from './usage.ts'
 
 const FILE = path.join(DATA_DIR, 'setup.json')
+/** En deçà, un message automatique identique n'est pas reposté (voir Setup.add). */
+const REPEAT_MS = 30 * 60_000
 /** Le clone de weevils qui tourne (install.sh, changer l'interface en direct). */
 const CLONE = path.resolve(import.meta.dirname, '..')
 
@@ -76,7 +78,8 @@ export interface SetupState {
   github: { installed: boolean; logged: boolean; login?: string }
   voice: { spoken: 'cartesia' | 'edge' | null; openai: boolean; https: boolean }
   devil: { plugged: boolean; model?: string }
-  mail: { on: boolean; address?: string; authors: number }
+  /** pending : auteurs déclarés sans adresse e-mail (ils ne peuvent pas encore écrire). */
+  mail: { on: boolean; address?: string; authors: number; pending: string[] }
   phone: { devices: number; push: number }
   shortcut: boolean
   security: { safe: boolean; https: boolean; exposedHttp: boolean }
@@ -541,6 +544,10 @@ export class Setup {
   private codexLogin: ChildProcess | null = null
   /** La dernière explication postée par une puce : un second tap ne la répète pas. */
   private lastAsk: { brick: Brick; id: string; text: string } | null = null
+  /** Le dernier message écrit (ou retrouvé) au nom de weevboss : l'app l'amène sous les yeux après une puce. */
+  lastSaid: string | null = null
+  /** « claude auth login » en train de démarrer : deux demandes coup sur coup partagent le même (une seule adresse). */
+  private loginStarting: Promise<string> | null = null
 
   constructor(deps: SetupDeps) {
     this.deps = deps
@@ -576,14 +583,24 @@ export class Setup {
   messages = () => this.p.log.filter((m) => !m.demo || Date.now() - m.at < 20 * 60_000)
   welcomed = () => !!this.p.welcomed
 
-  private add(role: 'user' | 'assistant', text: string, id = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`) {
+  /** Le seul passage des messages automatiques de weevboss (parcours, confirmations, coupures) et de leurs réponses.
+   * `once` (les explications d'une brique, ask()) : un texte identique posté il y a peu n'est pas répété ; on renvoie l'id
+   * du message existant, que l'app ramène sous les yeux (une brique relancée). Jamais pour le reste : un nouvel essai, une
+   * nouvelle coupure, ce que dit l'utilisateur ont leur bulle, en bas du fil (les détections ont leur propre garde). */
+  private add(role: 'user' | 'assistant', text: string, once = false) {
+    const id = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    const same = once ? this.p.log.slice(-12).findLast((m) => m.role === role && !m.demo && m.text === text && Date.now() - m.at < REPEAT_MS) : undefined
+    if (same) {
+      this.deps.bump()
+      return (this.lastSaid = same.id)
+    }
     const last = this.p.log.at(-1)?.at ?? 0
     this.p.log.push({ id, role, text, at: Math.max(Date.now(), last + 1) })
     this.save()
     this.deps.bump()
-    return id
+    return (this.lastSaid = id)
   }
-  say = (text: string) => this.add('assistant', text)
+  say = (text: string, once = false) => this.add('assistant', text, once)
   userSays = (text: string) => this.add('user', text)
 
   /** Un message de démo (premiers pas, server/tour.ts) : marqué démo dans l'app, jamais envoyé à weevboss. */
@@ -624,7 +641,7 @@ export class Setup {
       github: gh,
       voice: { spoken: cartesia() ? 'cartesia' : edgeTts() ? 'edge' : null, openai: !!process.env.OPENAI_API_KEY?.trim(), https: https || reach === 'local' },
       devil: { plugged: !!dv, model: dv?.model },
-      mail: { on: !!mail, address: mail?.address, authors: authors().filter((a) => a.emails.length).length },
+      mail: { on: !!mail, address: mail?.address, authors: authors().filter((a) => a.emails.length).length, pending: authors().filter((a) => a.id !== BOSS && !a.emails.length).map((a) => a.name) },
       phone: { devices: this.deps.devices(), push: this.deps.push() },
       shortcut: this.deps.shortcut(),
       security: { safe: process.env.WEEVILS_SAFE === '1', https, exposedHttp: (reach === 'lan' || (reach === 'public' && !https)) && m.kind !== 'container' },
@@ -696,8 +713,13 @@ export class Setup {
     return job
   }
 
-  /** Lance « claude auth login » (ou reprend celui qui attend encore) : l'adresse de la page de connexion. */
+  /** Lance « claude auth login » (ou reprend celui qui attend encore) : l'adresse de la page de connexion. Deux demandes
+   * pendant le démarrage (double tap) attendent le même processus : sinon deux liens, et le code du premier part au second. */
   private startClaudeLogin(): Promise<string> {
+    return (this.loginStarting ??= this.spawnClaudeLogin().finally(() => (this.loginStarting = null)))
+  }
+
+  private spawnClaudeLogin(): Promise<string> {
     const cur = this.claudeLogin
     if (cur && cur.proc.exitCode === null && Date.now() - cur.at < 8 * 60_000) return Promise.resolve(cur.url)
     cur?.proc.kill()
@@ -797,8 +819,13 @@ export class Setup {
     // Un second tap sur la même puce : l'explication est déjà là, juste au-dessus.
     const post = (text: string) => {
       const last = this.lastAsk
-      if (last && last.brick === brick && last.text === text && this.p.log.at(-1)?.id === last.id) return
-      this.lastAsk = { brick, id: this.say(text), text }
+      // (La machine : même si le texte a changé, son statut n'étant plus répété.) L'app remet l'explication en avant.
+      const tail = this.p.log.at(-1)
+      if (last && last.brick === brick && (last.text === text || brick === 'machine') && tail?.id === last.id && Date.now() - tail.at < REPEAT_MS) {
+        this.lastSaid = last.id
+        return this.deps.bump()
+      }
+      this.lastAsk = { brick, id: this.say(text, true), text }
     }
     switch (brick) {
       case 'phone':
@@ -818,7 +845,7 @@ export class Setup {
       case 'machine': {
         // L'état de la machine vient d'être dit (accueil) : pas deux fois de suite.
         const status = t.machine(s.machine).replace(/\s*\[\[setup:machine\]\]/, '')
-        const said = this.p.log.slice(-8).some((m) => m.text.replace(/\s*\[\[setup:machine\]\]/, '') === status)
+        const said = this.p.log.slice(-8).some((m) => m.text.replace(/\s*\[\[setup:machine\]\]/, '').includes(status))
         post(said ? t.machineAsk(s) : `${status}\n\n${t.machineAsk(s)}`)
         return true
       }
@@ -846,7 +873,7 @@ export class Setup {
         post(`${t.mailPitch}\n\n${t.mailAsk}`)
         return true
       case 'author':
-        post(t.authorAsk)
+        post(s.mail.pending.length ? `${t.authorPending(s.mail.pending)} ${t.authorAsk}` : t.authorAsk)
         return true
       case 'quota':
         post(t.quotaAsk(s.quota))
@@ -894,6 +921,10 @@ export class Setup {
    * branchement (« qu'est-ce que je dois installer ? », « comment je branche github ? ») à partir de l'état réel. Le
    * reste reçoit la marche à suivre pour connecter Claude Code. */
   async offline(text: string) {
+    await this.offlineReply(text)
+  }
+
+  private async offlineReply(text: string) {
     this.userSays(text)
     const brick = guessBrick(text)
     const t = tr(M)
@@ -1181,7 +1212,8 @@ export class Setup {
     writeConfig({ WEEVILS_MAIL_ADDRESS: alias, WEEVILS_MAIL_PASSWORD: pass })
     console.log('[setup] pont e-mail branché')
     this.deps.startMail()
-    this.say(chip(t.mailOk(alias), 'author'))
+    const pending = authors().filter((a) => a.id !== BOSS && !a.emails.length).map((a) => a.name)
+    this.say(chip(pending.length ? `${t.mailOk(alias)} ${t.authorPending(pending)}` : t.mailOk(alias), 'author'))
   }
 
   private applyAuthor(v: Record<string, string>) {
@@ -1190,12 +1222,20 @@ export class Setup {
     const id = v.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32)
     if (!id || !/^[^@\s]+@[^@\s]+\.[a-z]+$/i.test(email)) return this.say(chip(t.authorBad, 'author'))
     const n = authors().length
-    const color = /^#[0-9a-f]{3,8}$/i.test(v.color) ? v.color : /^[0-9a-f]{6}$/i.test(v.color) ? `#${v.color}` : PALETTE[n % PALETTE.length]
-    writeConfig({ [`WEEVILS_AUTHOR_${id}`]: `${v.name.replace(/\|/g, ' ')} | ${color} | ${email}` })
+    // Un auteur déjà déclaré (sans adresse, ou qui en change) garde sa couleur, ses autres adresses et son secret.
+    const prev = authors().find((a) => a.id === id.toLowerCase())
+    const color = /^#[0-9a-f]{3,8}$/i.test(v.color) ? v.color : /^[0-9a-f]{6}$/i.test(v.color) ? `#${v.color}` : prev?.color || PALETTE[n % PALETTE.length]
+    const emails = [...new Set([...(prev?.emails ?? []), email])].join(', ')
+    writeConfig({ [`WEEVILS_AUTHOR_${id}`]: `${v.name.replace(/\|/g, ' ')} | ${color} | ${emails}${prev?.secret ? ` | ${prev.secret}` : ''}` })
     resetAuthors()
     console.log(`[setup] auteur ajouté (${id.toLowerCase()})`)
-    const alias = mailConfig()?.address ?? ''
-    this.say(chip(t.authorOk(v.name, email, alias), alias ? 'author' : 'mail'))
+    const cfg = mailConfig()
+    const alias = cfg?.address ?? ''
+    // Il écrit depuis le compte du pont (ChatGPT avec le connecteur Gmail, un agent sur ce compte) : rien à régler de
+    // plus, il signe en se nommant ; le pont le distingue de l'utilisateur et des autres auteurs à cette étiquette.
+    const shared = !!cfg && (email === cfg.login || email === cfg.address)
+    const ok = t.authorOk(v.name, email, alias)
+    this.say(chip(shared ? `${ok} ${t.authorShared(id.toLowerCase())}` : ok, alias ? 'author' : 'mail'))
   }
 
   // ---------------------------------------------------------------- vers weevboss
@@ -1261,7 +1301,7 @@ export class Setup {
       `github: gh installed ${yes(s.github.installed)} · signed in ${yes(s.github.logged)}${s.github.login ? ` (${s.github.login})` : ''}`,
       `voice: spoken ${s.voice.spoken ?? 'none'} · dictation (OpenAI key) ${yes(s.voice.openai)} · https for the mic ${yes(s.voice.https)}`,
       `devil: plugged ${yes(s.devil.plugged)}${s.devil.model ? ` (${s.devil.model})` : ''}`,
-      `e-mail bridge: ${s.mail.on ? s.mail.address : 'off'} · allowed authors ${s.mail.authors}`,
+      `e-mail bridge: ${s.mail.on ? s.mail.address : 'off'} · allowed authors ${s.mail.authors}${s.mail.pending.length ? ` · declared without an e-mail address, cannot write yet: ${s.mail.pending.join(', ')}` : ''}`,
       `quota: ${s.quota.join(' · ') || 'unknown'}`,
       `security: agents ask permission ${yes(s.security.safe)} · exposed over plain http ${yes(s.security.exposedHttp)}`,
       `tools: ${Object.entries(s.tools).map(([k, x]) => (k === 'node' ? `node ${x}` : `${k} ${yes(!!x)}`)).join(', ')} · package manager ${s.pkg ?? 'none'} · sudo ${s.sudo}`,

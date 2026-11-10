@@ -9,6 +9,7 @@ import { useApp } from './app-context'
 import { Line } from './bits'
 import { Icon, type Dir, type IconName } from './icons'
 import { askSetup } from './setup'
+import { flash, toTop, when } from './follow'
 import { openTour } from './tour'
 import { CHECK_MS, EMPTY_RETRY_MS, SHOW_MS, markShown, parseState, pick, ready, type TipsState } from './tips-schedule'
 import './tips.css'
@@ -139,7 +140,7 @@ const iconOf = (tip: TipCard): [IconName, Dir?] => {
 
 /** Mounted once on the feed. `paused`: a page is open. */
 export function Tips({ paused }: { paused: boolean }) {
-  const { h24Open, push, refresh, colors, snap, home, setExpanded } = useApp()
+  const { h24Open, push, refresh, colors, snap } = useApp()
   const t = useT(M)
   const off = useTipsOff()
   const [shown, setShown] = useState<Shown | null>(null)
@@ -235,13 +236,19 @@ export function Tips({ paused }: { paused: boolean }) {
     }
     if (a.kind === 'setup') {
       hide()
-      home()
-      setExpanded('agent')
+      // askSetup ferme les pages, remonte en haut et ouvre le fil de weevboss (focusBoss).
       return askSetup(a.brick)
     }
     setBusy(true)
     try {
       if (a.kind === 'boss') {
+        // La réponse arrive dans l'aperçu de weevboss, tout en haut du flux : on y remonte en douceur et il s'éclaire
+        // (sans ouvrir le fil : envoyer ne l'ouvre jamais).
+        const boss = () => document.querySelector('.band.agent .peek-wrap:not([hidden])') ?? document.querySelector('.band.agent .chat')
+        if (window.scrollY > 4) {
+          toTop()
+          when(() => window.scrollY < 4, () => flash(boss()), 900)
+        } else flash(boss())
         await api.main(a.text)
         setFeedback({ text: t.sentToBoss, ok: true })
       } else if (a.kind === 'server') {

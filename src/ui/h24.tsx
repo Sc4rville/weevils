@@ -11,12 +11,13 @@ import B from '../i18n/bits'
 import { tapHint } from './hints'
 import { DRAWER_SLOT, STATES, autoTree, counts, openByDefault, propColors, short, tasksOf, type AutoCategory, type AutoGroup, type AutoTask, type TaskState } from './h24-tree'
 import './h24.css'
+import { flash, when } from './follow'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
 /** Bande « auto » collée en bas : on la tire vers le haut (ou on la touche) pour voir ce qui tourne tout seul. */
 export function H24Rail() {
-  const { snap, colors, h24Open: open, setH24Open: setOpen } = useApp()
+  const { snap, colors, h24Open: open, setH24Open: setOpen, h24Focus } = useApp()
   const t = useT(M)
   const opts = snap.optimizers ?? []
   const proposed = opts.filter((o) => o.state === 'proposed')
@@ -56,6 +57,33 @@ export function H24Rail() {
     const ctrl = animate(y, target, spring)
     return () => ctrl.stop()
   }, [open, closedY, y])
+
+  // Ouvert depuis une ligne 24/7 d'une bande projet : le tiroir monté, cette activité est amenée sous les yeux dans la
+  // liste (seule la liste défile : le tiroir est fixe) et s'éclaire un instant. Sa catégorie et son groupe se déplient
+  // d'office (useFold).
+  useEffect(() => {
+    if (!open || !h24Focus) return
+    let off = false
+    when(
+      () => off || y.get() < 4,
+      () => {
+        const body = drawer.current?.querySelector<HTMLElement>('.h24-body')
+        const row = body?.querySelector<HTMLElement>(`[data-h24="${CSS.escape(h24Focus)}"]`)
+        if (off || !body || !row) return
+        const r = row.getBoundingClientRect()
+        const b = body.getBoundingClientRect()
+        if (r.top < b.top || r.bottom > b.bottom) {
+          const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
+          body.scrollTo({ top: body.scrollTop + r.top - b.top - 8, behavior: smooth ? 'smooth' : 'auto' })
+        }
+        flash(row)
+      },
+      900,
+    )
+    return () => {
+      off = true
+    }
+  }, [open, h24Focus, y])
 
   // En-tête : ce qui tourne, ce qui attend un oui, ce qui attend la machine ; sinon l'ancien résumé.
   const parts: [string, string][] = []
@@ -284,8 +312,11 @@ function readFolds(): Record<string, boolean> {
   }
 }
 function useFold(id: string, tasks: AutoTask[]): [boolean, () => void] {
+  const { h24Focus } = useApp()
   const [pref, setPref] = useState<boolean | undefined>(() => readFolds()[id])
-  const open = pref ?? openByDefault(tasks)
+  // L'activité touchée dans une bande projet est toujours visible, même dans un niveau replié.
+  const focused = !!h24Focus && tasks.some((x) => x.id === h24Focus)
+  const open = focused || (pref ?? openByDefault(tasks))
   const toggle = () => {
     setPref(!open)
     try {
@@ -487,7 +518,7 @@ function TaskRow({ task: x }: { task: AutoTask }) {
     </>
   )
   return (
-    <div className={`auto-task st-${x.state}`}>
+    <div className={`auto-task st-${x.state}`} data-h24={x.id}>
       {openSession ? (
         <button className="in auto-row" onClick={openSession} aria-label={label}>
           {body}

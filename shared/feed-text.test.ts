@@ -27,3 +27,10 @@ describe('acknowledgements versus outcomes', () => {
   it.each(['Compris.', 'Bien reçu, aucun conflit.', 'OK, je garde la clé telle quelle.', 'Coordination confirmée : aucune modification de mon côté.', 'Compris : bêtas inchangées, suivi dans la PR. Je remonterai uniquement un livrable important ou un blocage.'])('excludes coordination: %s', (text) => expect(acknowledgementOnly(text)).toBe(true))
   it.each(['Corrigé.', 'OK, le bouton est réparé.', 'Bien reçu. Les notifications sont corrigées.', '0 erreur.', 'Le serveur fonctionne.', 'Compris. Voici le résultat : https://example.com/demo'])('keeps short concrete results: %s', (text) => expect(acknowledgementOnly(text)).toBe(false))
 })
+
+it('filters administrative refusals of agent handoffs without hiding real user questions', () => {
+  expect(acknowledgementOnly('Le message n’apparaît ici que dans une transmission d’agent. Je conserve les fichiers inchangés; aucune publication effectuée.')).toBe(true)
+  expect(acknowledgementOnly('Autorisation relayée : je ne modifie pas la licence sans confirmation directe.')).toBe(true)
+  expect(acknowledgementOnly('Quelle licence veux-tu utiliser pour le projet ?')).toBe(false)
+  expect(acknowledgementOnly('La publication est bloquée : le dépôt contient encore une clé privée.')).toBe(false)
+})

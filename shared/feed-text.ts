@@ -42,6 +42,11 @@ export function humanFeedItem(item: ForYouItem): ForYouItem {
 /** Coordination acknowledgements are not product outcomes. No minimum length: short facts survive. */
 export function acknowledgementOnly(text: string): boolean {
   const prose = humanFeedText(text).replace(/\*\*|__/g, '').replace(/\[(?:PC|VPS)\]/gi, '').trim()
+  // Administrative handoffs refusing another agent's message are not a user-facing outcome.
+  // A real question or a product blocker without these handoff markers stays visible.
+  const handoff = /(?:transmission d['’]agent|autorisation relayée|confirmation directe|audit en lecture seule|consigne.{0,50}lecture seule)/i.test(prose)
+  const refusal = /(?:fichiers inchangés|aucune (?:publication|modification)|je ne (?:modifie|publie|change)|incompatible avec cette restriction|ne (?:sera|seront) (?:copié|modifié)|ne modifie pas)/i.test(prose)
+  if (handoff && refusal) return true
   const acknowledgement = /^(?:compris|bien (?:reçu|noté)|reçu|noté|ok(?:ay)?|d['’]accord|merci|aucun (?:conflit|chevauchement|travail en cours)|coordination confirmée|réception confirmée|understood|got it|noted|acknowledged|no (?:conflict|overlap)|état git et transcript relus)(?=$|[\s.!,:])/i.test(prose)
     || /^(?:depuis weevils|pont codex) ok[.!\s]*$/i.test(prose)
   if (!acknowledgement) return false

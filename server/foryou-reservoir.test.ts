@@ -60,3 +60,17 @@ it('alternates available formats and caps stored candidates', () => {
   q.publish(now + RELEASE_MS, refs, 'en', s => formats.push(s.format))
   expect(formats).toEqual(['idea', 'question'])
 })
+
+it('imports a private editorial batch once, preserving deduplication and source validation', () => {
+  const q = new Reservoir(file)
+  const incoming = file + '.incoming.json'
+  const items = [idea('A paper theatre can illustrate the difference between an idea and a film.'), { ...idea('This item has no reliable source.'), sources: ['absent'] }]
+  fs.writeFileSync(incoming, JSON.stringify({ lang: 'fr', items }), { mode: 0o600 })
+  q.ingest(refs, [], now, 'fr')
+  expect(q.queue).toHaveLength(1)
+  expect(fs.existsSync(incoming)).toBe(false)
+  fs.writeFileSync(incoming, JSON.stringify({ lang: 'fr', items }))
+  const restored = new Reservoir(file)
+  restored.ingest(refs, [], now, 'fr')
+  expect(restored.queue).toHaveLength(1)
+})

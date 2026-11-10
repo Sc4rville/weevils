@@ -27,7 +27,7 @@ import { preferredTool, providerReady } from './provider.ts'
 //
 // Every generated item carries the language it was written in (hidden while the app reads another one).
 
-import { Reservoir } from './foryou-reservoir.ts'
+import { Reservoir, BATCH_SCHEMA } from './foryou-reservoir.ts'
 import { asksUser } from '../shared/asks.ts'
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
@@ -37,7 +37,7 @@ import { detectLang } from '../shared/detect-lang.ts'
 import type { ForYouGauge, ForYouItem } from '../shared/foryou.ts'
 import type { UsageInfo } from '../shared/infra.ts'
 import { DATA_DIR } from './config.ts'
-import { haiku, parseJson, relay, smart } from './fast.ts'
+import { ModelError, haiku, parseJson, relay, smart } from './fast.ts'
 import { USAGE_ALERT, lastWords, type ForYou, type ForYouCurator } from './foryou.ts'
 import { lang, tr, user, withLang, type Lang } from './i18n.ts'
 import CM from './i18n/core.ts'
@@ -52,6 +52,8 @@ import { claudeLogged } from './setup.ts'
 export const TICK_MS = 30_000
 /** Model calls a day, « more » included. */
 export const DAILY_CAP = 60
+export const CONTENT_BACKOFF_MS = 5 * 60_000
+class ContentError extends Error {}
 export const BACKOFF_MS = 3600_000
 export const BACKOFF_MAX_MS = 12 * 3600_000
 export const DIGEST_EVERY_MS = 5 * 60_000
@@ -328,7 +330,7 @@ export interface CuratorDeps {
   /** weevils' memory (main machine), for the digest's thought. */
   memory?: () => { digest(max?: number, chars?: number): string } | null | undefined
   /** Codex call (tests). Default: relay() of fast.ts. */
-  relay?: (prompt: string, timeout: number) => Promise<string>
+  relay?: (prompt: string, timeout: number, schema?: object) => Promise<string>
   /** Build identity actually served by this server. */
   deployment?: () => { commit: string; at: number } | null
   /** Folder of a repo on this machine (undefined or a throw: not here). */
@@ -344,6 +346,9 @@ interface State {
   lines?: { day: string; n: number }
   /** Codex calls today (relay). */
   relay?: { day: string; n: number }
+  probeFor?: number
+  batch?: { at: number; via: string; received: number; accepted: number; stock: number }
+  failure?: { at: number; message: string }
   fails: number
   failUntil: number
   digestAt: number
@@ -392,6 +397,7 @@ export class Curator implements ForYouCurator {
   private running: Promise<void> | null = null
   /** The running job really called the model (a job may find nothing to ask). */
   private spent = false
+  private probing = false
   /** « More » asked twice for the same item: one call. */
   private asking = new Map<string, Promise<string>>()
 
@@ -411,6 +417,9 @@ export class Curator implements ForYouCurator {
           calls: raw.calls && typeof raw.calls.day === 'string' ? { day: raw.calls.day, n: num(raw.calls.n) } : e.calls,
           lines: raw.lines && typeof raw.lines.day === 'string' ? { day: raw.lines.day, n: Math.max(0, num(raw.lines.n)) } : e.lines,
           relay: raw.relay && typeof raw.relay.day === 'string' ? { day: raw.relay.day, n: Math.max(0, num(raw.relay.n)) } : e.relay,
+          probeFor: num(raw.probeFor),
+          batch: raw.batch,
+          failure: raw.failure,
           fails: num(raw.fails),
           failUntil: num(raw.failUntil),
           digestAt: num(raw.digestAt),
@@ -461,26 +470,26 @@ export class Curator implements ForYouCurator {
 
   /** How the next call goes: full (Claude has room: sonnet and haiku), relay (Claude nearly full, Codex has room:
    *  everything through Codex), lean (neither: haiku only, up to LINES_CEIL), or nothing. */
-  mode(now = this.now()): 'full' | 'relay' | 'lean' | null {
+  mode(now = this.now(), probe = false): 'full' | 'relay' | 'lean' | null {
     if (preferredTool() === 'codex') {
       const q = (this.deps.usage ? this.deps.usage() : this.fy.usageKnown())?.codex
       const count = this.s.relay?.day === dayKey(now) ? this.s.relay.n : 0
-      return providerReady() && q?.ok && q.windows.length > 0 && q.windows.every(w => w.percent < USAGE_ALERT) && count < RELAY_CAP && now >= this.s.failUntil ? 'relay' : null
+      return providerReady() && q?.ok && q.windows.length > 0 && q.windows.every(w => w.percent < USAGE_ALERT) && count < RELAY_CAP && (probe || now >= this.s.failUntil) ? 'relay' : null
     }
-    if (this.can(now)) return 'full'
+    if (this.can(now, !probe)) return 'full'
     const u = this.deps.usage ? this.deps.usage() : this.fy.usageKnown()
     const cx = u?.codex
     const relayDay = this.s.relay?.day === dayKey(now) ? this.s.relay.n : 0
-    if (cx?.ok && cx.windows.length && cx.windows.every((w) => w.percent < USAGE_ALERT) && relayDay < RELAY_CAP && now >= this.s.failUntil) return 'relay'
-    return this.lean(now) ? 'lean' : null
+    if (cx?.ok && cx.windows.length && cx.windows.every((w) => w.percent < USAGE_ALERT) && relayDay < RELAY_CAP && (probe || now >= this.s.failUntil)) return 'relay'
+    return this.lean(now, probe) ? 'lean' : null
   }
   /** The mode of the call being made. */
   private via: 'full' | 'relay' | 'lean' = 'full'
 
   /** A model answer by the current mode: Codex in relay, haiku in lean, else the model asked for. */
-  private ask(kind: 'smart' | 'haiku', prompt: string, timeout: number, via = this.via): Promise<string> {
-    if (via === 'relay') return (this.deps.relay ?? relay)(prompt, Math.max(timeout, 120_000))
-    return via === 'lean' || kind === 'haiku' ? haiku(prompt, Math.min(timeout, 60_000)) : smart(prompt, timeout)
+  private ask(kind: 'smart' | 'haiku', prompt: string, timeout: number, via = this.via, schema?: object): Promise<string> {
+    if (via === 'relay') return (this.deps.relay ?? relay)(prompt, Math.max(timeout, 120_000), schema)
+    return via === 'lean' || kind === 'haiku' ? haiku(prompt, Math.min(timeout, 60_000), schema) : smart(prompt, timeout, schema)
   }
 
   /** Haiku calls of the short lines made today. */
@@ -489,11 +498,11 @@ export class Curator implements ForYouCurator {
   }
 
   /** The short lines may be written now even though the bigger calls wait: figures known, no window past LINES_CEIL. */
-  lean(now = this.now()): boolean {
+  lean(now = this.now(), probe = false): boolean {
     if (preferredTool() === 'codex') return false
     const q = (this.deps.usage ? this.deps.usage() : this.fy.usageKnown())?.claude
     if (!q?.ok || q.windows.some((w) => w.percent >= LINES_CEIL)) return false
-    return this.logged() && this.lineCalls(now) < LINES_CAP && now >= this.s.failUntil
+    return this.logged() && this.lineCalls(now) < LINES_CAP && (probe || now >= this.s.failUntil)
   }
 
   /** Model calls made today. */
@@ -531,7 +540,7 @@ export class Curator implements ForYouCurator {
 
   /** Reserve against current usage after any asynchronous preparation. */
   private reserve(): boolean {
-    const mode = this.mode(this.now())
+    const mode = this.mode(this.now(), this.probing)
     if (!mode) return false
     this.via = mode
     this.spend(this.now(), mode)
@@ -549,21 +558,35 @@ export class Curator implements ForYouCurator {
       this.milestones(now)
       if (!this.fy.wanted(now)) return Promise.resolve()
       this.stat(now)
+      if (this.deps.reservoir !== false) this.reservoir.ingest(new Set(this.storySources().map(s => s.id)), this.fy.recent(['boss', 'insight', 'improve'], 80).map(i => i.text), now, lang())
       if (this.deps.reservoir !== false) this.reservoir.publish(now, new Set(this.storySources().map(s => s.id)), lang(), s => { this.fy.add({ id: s.id, kind: 'boss', who: 'weevboss', title: s.title, text: s.text, lang: lang() }) })
     } catch (e) {
       console.error(`[foryou] curateur : ${(e as Error).message}`)
     }
     if (this.running) return this.running
     if (!this.fy.wanted(now)) return Promise.resolve()
-    const m = this.mode(now)
+    const probeFile = this.file + '.retry-once.json'
+    let probe = false
+    try {
+      const request = JSON.parse(fs.readFileSync(probeFile, 'utf8'))
+      probe = request.expectedFailUntil === this.s.failUntil && this.s.failUntil > now && this.s.probeFor !== this.s.failUntil
+    } catch { /* no explicit local recovery request */ }
+    const m = this.mode(now, probe)
     if (!m) return Promise.resolve()
+    if (probe) {
+      this.s.probeFor = this.s.failUntil
+      this.save()
+      fs.unlinkSync(probeFile)
+    }
+    this.probing = probe
+    const oldBackoff = this.s.failUntil
     this.via = m
     // A question waiting for its clear wording first, then the lines said in passing, then the rest.
-    const job =
+    const job = probe ? this.batchJob(now, true) :
       m === 'full'
         ? (this.askJob(now) ?? this.batchJob(now) ?? this.digestJob(now) ?? this.mailJob(now) ?? this.improveJob(now) ?? this.insightJob(now))
         : (this.askJob(now) ?? this.batchJob(now) ?? this.mailJob(now) ?? this.digestJob(now) ?? this.insightJob(now) ?? this.improveJob(now))
-    if (!job) return Promise.resolve()
+    if (!job) { this.probing = false; return Promise.resolve() }
     this.running = (async () => {
       this.spent = false
       try {
@@ -574,11 +597,17 @@ export class Curator implements ForYouCurator {
           this.s.failUntil = 0
         }
       } catch (e) {
+        this.s.failure = { at: now, message: (e as Error).message.slice(0, 200) }
         this.s.fails++
-        const wait = Math.min(BACKOFF_MAX_MS, BACKOFF_MS * 2 ** (this.s.fails - 1))
-        this.s.failUntil = now + wait
+        const content = e instanceof ContentError
+        const wait = Math.min(content ? 3600_000 : BACKOFF_MAX_MS, (content ? CONTENT_BACKOFF_MS : BACKOFF_MS) * 2 ** (this.s.fails - 1))
+        this.s.failUntil = Math.max(probe ? oldBackoff : 0, now + wait)
+        if (e instanceof ModelError) {
+          try { fs.writeFileSync(this.file + '.provider-error.json', JSON.stringify({ at: now, via: this.via, kind: e.kind, detail: e.detail }), { mode: 0o600 }) } catch { /* never skip backoff for a diagnostic write failure */ }
+        }
         console.error(`[foryou] curateur : ${(e as Error).message} · nouvel essai dans ${Math.round(wait / 60_000)} min`)
       } finally {
+        this.probing = false
         this.save()
       }
     })().finally(() => (this.running = null))
@@ -593,8 +622,8 @@ export class Curator implements ForYouCurator {
     ]
   }
 
-  private batchJob(now: number): Job | null {
-    if (this.deps.reservoir === false || this.reservoir.queue.length > 8 || now - this.reservoir.filled < 2 * 60_000) return null
+  private batchJob(now: number, force = false): Job | null {
+    if (this.deps.reservoir === false || (!force && (this.reservoir.queue.filter(s => s.lang === lang()).length > 24 || now - this.reservoir.filled < 2 * 60_000))) return null
     const sources = this.storySources()
     if (!sources.length) return null
     const known = this.fy.recent(['boss', 'insight', 'improve'], 80).map(i => i.text)
@@ -602,15 +631,26 @@ export class Curator implements ForYouCurator {
     return async () => {
       if (!this.reserve()) return
       const prompt = tr(P).batch(JSON.stringify(sources), JSON.stringify({ earlier: [...known, ...this.reservoir.history.map(s => s.text), ...this.reservoir.queue.map(s => s.text)], signals: this.fy.editorialSignals() }))
-      const raw = this.json(await this.ask('smart', prompt, 120_000)) as { items?: unknown }
-      this.reservoir.add(raw?.items, new Set(sources.map(s => s.id)), known, this.now(), language)
+      const raw = this.json(await this.ask('smart', prompt, 120_000, this.via, BATCH_SCHEMA)) as { items?: unknown }
+      if (!raw || !Array.isArray(raw.items)) throw new ContentError('batch schema: items array missing')
+      const before = this.reservoir.queue.length
+      this.reservoir.add(raw.items, new Set(sources.map(s => s.id)), known, this.now(), language)
+      this.s.batch = { at: this.now(), via: this.via, received: raw.items.length, accepted: this.reservoir.queue.length - before, stock: this.reservoir.queue.length }
     }
   }
 
   private json(text: string): unknown {
     const raw = parseJson<unknown>(text)
     // i18n-ignore : raison de l'échec, seulement dans le journal
-    if (raw === null) throw new Error('no JSON')
+    if (raw === null) {
+      fs.mkdirSync(path.dirname(this.file), { recursive: true })
+      fs.writeFileSync(this.file + '.invalid-response.json', JSON.stringify({ at: this.now(), via: this.via, response: text.slice(0, 12000) }), { mode: 0o600 })
+      const failure = new ModelError(undefined, text)
+      if (failure.kind === 'quota' || failure.kind === 'auth') throw failure
+      if (/[[{]/.test(text)) throw new ContentError('malformed JSON')
+      // i18n-ignore : internal format diagnostic
+      throw new Error('no JSON')
+    }
     return raw
   }
 

@@ -907,3 +907,66 @@ it('re-arms publication from its recorded time instead of skipping an early inte
     expect(stored().filter(i => i.id.startsWith('r:'))).toHaveLength(2)
   } finally { vi.clearAllTimers(); vi.useRealTimers() }
 })
+
+it('repairs complete malformed JSON locally, but records truncated output with a bounded technical backoff', async () => {
+  looked()
+  model.mockResolvedValueOnce('{"items":[{"title":"A scene","format":"idea","text":"Let the avatar forget its own shadow.","sources":["goals"],},],}')
+  const c = makeCurator({ reservoir: true })
+  await c.tick()
+  expect(state().batch).toMatchObject({ received: 1, accepted: 1 })
+  expect(model).toHaveBeenCalledTimes(1)
+  now += 3 * MIN
+  looked()
+  model.mockResolvedValueOnce('{"items":[{"title":"truncated"}')
+  await c.tick()
+  expect(state().failUntil).toBe(now + 5 * MIN)
+  expect(fs.statSync(path.join(dir, 'curator.json.invalid-response.json')).mode & 0o777).toBe(0o600)
+  const restored = makeCurator({ reservoir: true })
+  expect(restored.mode(now + MIN)).toBe(null)
+})
+
+it('allows one explicit budgeted recovery probe through Codex while keeping Claude quota protected', async () => {
+  const until = now + HOUR
+  fs.writeFileSync(path.join(dir, 'curator.json'), JSON.stringify({ calls: { day: dayKey(now), n: 1 }, relay: { day: dayKey(now), n: 7 }, fails: 2, failUntil: until }))
+  const request = path.join(dir, 'curator.json.retry-once.json')
+  fs.writeFileSync(request, JSON.stringify({ expectedFailUntil: until }))
+  known = usage(100)
+  known.codex = { ok: true, windows: [{ kind: 'week', percent: 36, resetsAt: null }], source: 'test', at: now }
+  const relay = vi.fn(async () => JSON.stringify({ items: [{ title: 'A scene', format: 'idea', text: 'Let the avatar forget its own shadow.', sources: ['goals'] }] }))
+  looked()
+  await makeCurator({ reservoir: true, relay }).tick()
+  expect(relay).toHaveBeenCalledTimes(1)
+  expect(model).not.toHaveBeenCalled()
+  expect(state()).toMatchObject({ calls: { n: 1 }, relay: { n: 8 }, failUntil: 0, batch: { accepted: 1 }, probeFor: until })
+  expect(fs.existsSync(request)).toBe(false)
+})
+
+it.each(['quota', 'budget', 'auth'])('an explicit recovery probe cannot bypass %s', async (blocked) => {
+  const until = now + HOUR
+  fs.writeFileSync(path.join(dir, 'curator.json'), JSON.stringify({ calls: { day: dayKey(now), n: 1 }, relay: { day: dayKey(now), n: blocked === 'budget' ? 120 : 7 }, fails: 2, failUntil: until }))
+  fs.writeFileSync(path.join(dir, 'curator.json.retry-once.json'), JSON.stringify({ expectedFailUntil: until }))
+  known = usage(100)
+  known.codex = { ok: blocked !== 'auth', windows: [{ kind: 'week', percent: blocked === 'quota' ? 100 : 36, resetsAt: null }], source: 'test', at: now }
+  const relay = vi.fn()
+  looked()
+  await makeCurator({ reservoir: true, relay }).tick()
+  expect(relay).not.toHaveBeenCalled()
+  expect(model).not.toHaveBeenCalled()
+  expect(state().failUntil).toBe(until)
+})
+
+it('a failed explicit probe preserves the previous backoff and is not retried on the next tick', async () => {
+  const until = now + 3 * HOUR
+  fs.writeFileSync(path.join(dir, 'curator.json'), JSON.stringify({ calls: { day: dayKey(now), n: 1 }, fails: 2, failUntil: until }))
+  const request = path.join(dir, 'curator.json.retry-once.json')
+  fs.writeFileSync(request, JSON.stringify({ expectedFailUntil: until }))
+  looked()
+  model.mockResolvedValueOnce('{"items":[')
+  const c = makeCurator({ reservoir: true })
+  await c.tick()
+  expect(state().failUntil).toBe(until)
+  expect(fs.existsSync(request)).toBe(false)
+  now += MIN
+  await c.tick()
+  expect(model).toHaveBeenCalledTimes(1)
+})

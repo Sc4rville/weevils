@@ -149,9 +149,9 @@ One single-flight loop spends the model budget; publication has its own persiste
 
 - While the app has requested the feed within 30 minutes, a 30-second timer publishes at most one queued story.
   It never catches up with a burst after downtime. No model call is needed to publish an accepted story.
-- `foryou-curator.json.reservoir.json` holds up to 24 stories, publication time, last refill time and the last
+- `foryou-curator.json.reservoir.json` holds up to 72 stories, publication time, last refill time and the last
   300 published texts. Atomic private writes and stable item ids preserve the queue across restarts.
-- At eight stories or fewer, a batch can prepare up to 12 candidates, no more often than every two minutes.
+- At 24 stories or fewer, a batch can prepare up to 24 candidates, no more often than every two minutes.
   Candidates require a short title, a supported format, text of at most 600 characters and existing source ids.
   Sources are the user's saved goals and recorded results/media/insights. Unknown sources, ACKs, engineering
   notices and lexical duplicates are rejected. The prompt also forbids semantic repeats and invented events.
@@ -165,6 +165,15 @@ One single-flight loop spends the model budget; publication has its own persiste
 - Model calls still obey the existing quota gates and daily budgets: 60 full-mode calls, 120 relay calls and 16
   lean-mode calls, including other curator work. All counters survive restarts. Failures back off one hour,
   doubling up to twelve hours. Questions needing clear wording have priority over refill work.
+- Generation requests use a provider JSON schema. Balanced JSON extraction and trailing-comma repair are local;
+  truncated payloads are rejected. A proven malformed JSON/schema response waits five minutes, doubling to one
+  hour; quota/auth/transport failures keep the longer backoff. Private bounded diagnostics retain failures without
+  putting prompts or provider errors in the feed.
+- A private `.incoming.json` beside the queue accepts an explicitly authored batch through the same source and
+  deduplication gates. It is consumed once; it is not a public endpoint or an automatic source of filler.
+- An operator-authorized `.retry-once.json` beside curator state can name the exact `expectedFailUntil` to probe
+  after a repair. It is consumed once, spends the normal daily budget and still checks real quotas/authentication.
+  Failure preserves the previous backoff; ordinary restarts do not clear it.
 - Other producers keep their cadence: digest at most every five minutes after changes, improvement every twenty
   minutes, insight every ten minutes and at most one per repo/day, plus batched mail summaries.
 - Prompts live in `server/i18n/foryou-curator.ts` (French and English). Generated items keep their language.

@@ -5,10 +5,17 @@ import { acknowledgementOnly, rawEngineeringNotice } from '../shared/feed-text.t
 import { isRepeat } from './optimizers.ts'
 
 export const RELEASE_MS = 30_000
-export const BATCH_SIZE = 12
-const MAX_QUEUE = 24
+export const BATCH_SIZE = 24
+export const MAX_QUEUE = 72
 const MAX_AGE = 6 * 3600_000
 const FORMATS = ['idea', 'story', 'question', 'observation', 'before-after', 'discovery'] as const
+export const BATCH_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['items'],
+  properties: { items: { type: 'array', maxItems: BATCH_SIZE, items: {
+    type: 'object', additionalProperties: false, required: ['title', 'format', 'text', 'sources'],
+    properties: { title: { type: 'string', minLength: 1, maxLength: 100 }, format: { type: 'string', enum: [...FORMATS] }, text: { type: 'string', minLength: 1, maxLength: 600 }, sources: { type: 'array', minItems: 1, items: { type: 'string' } } },
+  } } },
+}
 export interface Story { id: string; title: string; format: string; text: string; sources: string[]; at: number; lang: string }
 /** Durable, bounded queue. Stable ids prevent duplicate cards after a crash. */
 export class Reservoir {
@@ -47,6 +54,16 @@ export class Reservoir {
       this.queue.push({ id: 'r:' + crypto.createHash('sha256').update(text).digest('hex').slice(0, 20), title, format: v.format, text, sources: refs, at: now, lang })
     }
     this.save()
+  }
+
+  /** Private editorial intake, validated through the same gates as generated candidates. */
+  ingest(sources: Set<string>, known: string[], now: number, lang: string) {
+    const incoming = this.file + ".incoming.json"
+    if (!fs.existsSync(incoming) || this.queue.length > MAX_QUEUE - BATCH_SIZE) return
+    const raw = JSON.parse(fs.readFileSync(incoming, "utf8"))
+    if (raw.lang !== lang || !Array.isArray(raw.items) || raw.items.length > BATCH_SIZE) return
+    this.add(raw.items, sources, known, now, lang)
+    fs.unlinkSync(incoming)
   }
 
   publish(now: number, sources: Set<string>, lang: string, send: (story: Story) => void) {

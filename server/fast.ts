@@ -11,19 +11,41 @@ import V from './i18n/voice.ts'
 import { openaiKey } from './transcribe.ts'
 import { TTS_RATE, TTS_VOICE } from './config.ts'
 
+/** Provider failures stay distinct from a malformed content payload. No prompt in error messages. */
+export class ModelError extends Error {
+  readonly kind: 'quota' | 'auth' | 'io' | 'provider'
+  readonly detail: string
+  constructor(error: unknown, stdout = '', stderr = '') {
+    const e = error as { code?: unknown; message?: string }
+    const detail = (stdout + '\n' + stderr).trim().slice(0, 4000)
+    const kind = /rate.?limit|usage.?limit|quota|out of.*(?:usage|credits)|hit your.*limit/i.test(detail) ? 'quota'
+      : /unauth|not logged|authentication|login required|sign in|\b401\b/i.test(detail) ? 'auth'
+      : /ENOSPC|EDQUOT|disk quota|no space left|EACCES|ENOENT/i.test(detail + String(e?.code)) ? 'io' : 'provider'
+    super(`model ${kind} failure${e?.code !== undefined ? ` (${e.code})` : ''}`)
+    this.kind = kind
+    this.detail = detail
+  }
+}
+const modelText = (stdout: string, schema?: object): string => {
+  if (!schema) return stdout.trim()
+  const result = parseJson<{ structured_output?: unknown; is_error?: boolean; result?: string }>(stdout)
+  if (result?.is_error) throw new ModelError({}, result.result ?? '')
+  return result?.structured_output ? JSON.stringify(result.structured_output) : stdout.trim()
+}
+
 /** Une réponse courte de haiku : sans outils, sans session gardée. ~1,6 s mesuré sur le VPS. */
-export function haiku(prompt: string, timeout = 20_000): Promise<string> {
+export function haiku(prompt: string, timeout = 20_000, schema?: object): Promise<string> {
   if (preferredTool() === 'codex') {
     const status = providerStatus('codex')
     if (!status.installed || !status.logged) return Promise.reject(new Error(providerUnavailable('codex')))
-    return relay(prompt, timeout)
+    return relay(prompt, timeout, schema)
   }
   const t0 = Date.now()
   return new Promise((resolve, reject) => {
-    const c = execFile('claude', ['-p', '--model', 'haiku', '--tools', '', '--no-session-persistence', prompt], { timeout, maxBuffer: 1 << 20, cwd: os.tmpdir() }, (err, stdout) => {
+    const c = execFile('claude', ['-p', '--model', 'haiku', '--tools', '', '--no-session-persistence', ...(schema ? ['--json-schema', JSON.stringify(schema), '--output-format', 'json'] : []), prompt], { timeout, maxBuffer: 1 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
       console.log(`[rapide] haiku ${Date.now() - t0} ms${err ? ' · échec' : ''}`)
-      if (err) reject(err)
-      else resolve(stdout.toString().trim())
+      if (err) reject(new ModelError(err, String(stdout ?? ''), String(stderr ?? '')))
+      else { try { resolve(modelText(String(stdout ?? ''), schema)) } catch (e) { reject(e) } }
     })
     c.stdin?.end()
   })
@@ -34,19 +56,19 @@ export function haiku(prompt: string, timeout = 20_000): Promise<string> {
  * questions, what to remember from an answer, the h24 proposals. Model: WEEVILS_SMART_MODEL (sonnet by default).
  * Never the OpenAI key: what is said about the user only goes to the model the user already runs.
  */
-export function smart(prompt: string, timeout = 90_000): Promise<string> {
+export function smart(prompt: string, timeout = 90_000, schema?: object): Promise<string> {
   if (preferredTool() === 'codex') {
     const status = providerStatus('codex')
     if (!status.installed || !status.logged) return Promise.reject(new Error(providerUnavailable('codex')))
-    return relay(prompt, timeout)
+    return relay(prompt, timeout, schema)
   }
   const t0 = Date.now()
   const model = process.env.WEEVILS_SMART_MODEL?.trim() || 'sonnet'
   return new Promise((resolve, reject) => {
-    const c = execFile('claude', ['-p', '--model', model, '--tools', '', '--no-session-persistence', prompt], { timeout, maxBuffer: 4 << 20, cwd: os.tmpdir() }, (err, stdout) => {
+    const c = execFile('claude', ['-p', '--model', model, '--tools', '', '--no-session-persistence', ...(schema ? ['--json-schema', JSON.stringify(schema), '--output-format', 'json'] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
       console.log(`[rapide] ${model} ${Date.now() - t0} ms${err ? ' · échec' : ''}`)
-      if (err) reject(err)
-      else resolve(stdout.toString().trim())
+      if (err) reject(new ModelError(err, String(stdout ?? ''), String(stderr ?? '')))
+      else { try { resolve(modelText(String(stdout ?? ''), schema)) } catch (e) { reject(e) } }
     })
     c.stdin?.end()
   })
@@ -56,11 +78,19 @@ export function smart(prompt: string, timeout = 90_000): Promise<string> {
  * The same kind of answer from Codex (codex exec, ephemeral, read-only, low effort), on the user's other subscription:
  * what the « for you » stream writes while Claude's usage is nearly full.
  */
-export function relay(prompt: string, timeout = 120_000): Promise<string> {
+export function relay(prompt: string, timeout = 120_000, schema?: object): Promise<string> {
   const t0 = Date.now()
-  const out = path.join(os.tmpdir(), `wv-relay-${process.pid}-${t0.toString(36)}-${Math.floor(Math.random() * 1e6)}.txt`)
+  let dir: string
+  try { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-relay-')) } catch {
+    const base = path.join(os.homedir(), '.cache', 'weevils')
+    fs.mkdirSync(base, { recursive: true, mode: 0o700 })
+    dir = fs.mkdtempSync(path.join(base, 'relay-'))
+  }
+  const out = path.join(dir, 'answer.txt')
   return new Promise((resolve, reject) => {
-    const c = execFile('codex', ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-o', out, '-c', 'model_reasoning_effort="low"', prompt], { timeout, maxBuffer: 4 << 20, cwd: os.tmpdir() }, (err) => {
+    const schemaFile = out + '.schema.json'
+    if (schema) fs.writeFileSync(schemaFile, JSON.stringify(schema), { mode: 0o600 })
+    const c = execFile('codex', ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-o', out, '-c', 'model_reasoning_effort="low"', ...(schema ? ['--output-schema', schemaFile] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
       let text = ''
       try {
         text = fs.readFileSync(out, 'utf8').trim()
@@ -68,8 +98,10 @@ export function relay(prompt: string, timeout = 120_000): Promise<string> {
         /* nothing written */
       }
       fs.rmSync(out, { force: true })
-      console.log(`[rapide] codex ${Date.now() - t0} ms${err && !text ? ' · échec' : ''}`)
-      if (err && !text) reject(err)
+      fs.rmSync(schemaFile, { force: true })
+      fs.rmSync(dir, { recursive: true, force: true })
+      console.log(`[rapide] codex ${Date.now() - t0} ms${err || !text ? ' · échec' : ''}`)
+      if (err || !text) reject(new ModelError(err, text || String(stdout ?? ''), String(stderr ?? '')))
       else resolve(text)
     })
     c.stdin?.end()
@@ -78,19 +110,30 @@ export function relay(prompt: string, timeout = 120_000): Promise<string> {
 
 /** The first JSON object or array in a model's answer (it sometimes wraps it in a code fence or a sentence). */
 export function parseJson<T>(text: string): T | null {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)
-  const body = fenced ? fenced[1] : text
-  const start = body.search(/[[{]/)
-  if (start < 0) return null
-  const open = body[start]
-  const close = open === '{' ? '}' : ']'
-  const end = body.lastIndexOf(close)
-  if (end <= start) return null
-  try {
-    return JSON.parse(body.slice(start, end + 1)) as T
-  } catch {
-    return null
+  // Scan balanced candidates, respecting quoted brackets. A preamble or a second JSON block must not
+  // make a complete first payload unparsable. Never invent missing values or close truncated JSON.
+  for (let start = 0; start < text.length; start++) {
+    if (text[start] !== '{' && text[start] !== '[') continue
+    const stack: string[] = []
+    let quoted = false, escaped = false
+    for (let end = start; end < text.length; end++) {
+      const c = text[end]
+      if (quoted) { if (escaped) escaped = false; else if (c === '\\') escaped = true; else if (c === '"') quoted = false; continue }
+      if (c === '"') { quoted = true; continue }
+      if (c === '{' || c === '[') stack.push(c)
+      else if (c === '}' || c === ']') {
+        if (stack.pop() !== (c === '}' ? '{' : '[')) break
+        if (!stack.length) {
+          const candidate = text.slice(start, end + 1)
+          try { return JSON.parse(candidate) as T } catch { /* try a conservative trailing-comma repair */ }
+          const repaired = candidate.replace(/"(?:\\.|[^"\\])*"|(,)\s*(?=[}\]])/g, (match, comma) => comma ? '' : match)
+          try { return JSON.parse(repaired) as T } catch { start = end; break }
+        }
+      }
+    }
+    if (stack.length) return null
   }
+  return null
 }
 
 /**

@@ -43,7 +43,7 @@ export function PrefLines() {
 }
 
 /** Always discoverable in the existing bottom rail, with no overlay on the composer. */
-export function LanguageButton() {
+export function LanguageButton({ compact = false }: { compact?: boolean }) {
   const t = useT(M)
   const lang = useLang()
   const id = useId()
@@ -57,7 +57,7 @@ export function LanguageButton() {
   }, [open])
   const pick = (value: Lang | null) => { setLang(value); dialog.current?.close() }
   return <>
-    <button type="button" className="language-trigger" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-controls={id} aria-expanded={open} aria-label={`${t.language} · ${LANG_NAMES[lang]}`}>{LANG_NAMES[lang]}</button>
+    <button type="button" className="language-trigger" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-controls={id} aria-expanded={open} aria-label={`${t.language} · ${LANG_NAMES[lang]}`}>{compact ? lang.toUpperCase() : LANG_NAMES[lang]}</button>
     <dialog ref={dialog} id={id} className="language-dialog band" aria-labelledby={`${id}-title`} onClose={() => setOpen(false)} onClick={(e) => {
       if (e.target !== e.currentTarget) return
       const box = e.currentTarget.getBoundingClientRect()

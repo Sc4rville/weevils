@@ -7,45 +7,30 @@
   --st-failed: var(--alert);
 }
 
-/* ---------- Drawer head: the title, then one plain line ---------- */
-
-.h24-top {
-  flex: none;
-}
-.h24-top > .in {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.h24-top .h24-head {
-  flex: 1;
-  min-width: 0;
-  width: auto;
-}
-.h24-heading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: var(--rail);
-  padding-top: 12px;
-}
-.h24-create {
-  flex: none;
-  margin-right: -10px;
-}
-
-.h24 .h24-grip {
-  top: 3px;
-}
-
-.auto-sum {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
+/* ---------- A large word, a fine activity line, then the drawer ---------- */
+:root[data-theme] { --rail: clamp(96px, calc(12vw + 48px), 152px); }
+:root[data-theme='light'] { --automated-ink: #ce005f; }
+:root[data-theme='dark'] { --automated-ink: #ceff39; }
+:root[data-theme='zen'] { --automated-ink: #9223d8; }
+:root[data-theme='graphite'] { --automated-ink: #165cdb; }
+.h24.band { overflow: hidden; }
+.h24-top { flex: none; }
+.h24-top > .in { display: flex; align-items: center; gap: 6px; }
+.h24-top .h24-head { flex: 1; min-width: 0; width: auto; }
+.h24-heading { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 4px; height: var(--rail); padding: 10px 0 4px; }
+.h24-title { flex: none; color: var(--automated-ink, #ce005f); font-size: clamp(2.65rem, 14vw, 6.75rem); font-weight: 900; letter-spacing: -0.065em; line-height: 1; white-space: nowrap; }
+.h24 .h24-grip { top: 5px; width: 24px; height: 2px; background: currentColor; opacity: 0.3; }
+.h24 .auto-sum { flex: none; height: 16px; display: flex; align-items: center; gap: 5px; overflow: hidden; white-space: nowrap; font-size: 0.75rem; line-height: 1; }
+.h24-activity { flex: none; height: 2px; display: block; position: relative; overflow: hidden; background: color-mix(in srgb, var(--automated-ink) 20%, transparent); }
+.h24-activity i { display: block; width: 25%; height: 100%; background: var(--automated-ink); opacity: 0; }
+.h24-activity[data-busy='true'] i { opacity: 1; animation: automated-progress 2s linear infinite; }
+@keyframes automated-progress { from { transform: translateX(-100%); } to { transform: translateX(400%); } }
+@media (prefers-reduced-motion: reduce) { .h24-activity[data-busy='true'] i { animation: none; } }
+.h24-body[hidden] { display: none; }
+.h24-tools { padding-block: 8px; }
+.h24-create { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 1rem; }
+.h24-create .ic, .h24-create .auto-mark { width: 22px; height: 22px; }
+.h24 .language-trigger { padding-inline: 0; font-size: 0.75rem; }
 
 .auto-sum > .txt {
   min-width: 0;
@@ -55,8 +40,8 @@
 
 .auto-sum .auto-mark {
   flex: none;
-  width: 22px;
-  height: 22px;
+  width: 12px;
+  height: 12px;
 }
 
 /* « +1 »: never the part that gets cut. */

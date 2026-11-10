@@ -76,7 +76,7 @@ let host: HTMLElement
 let pushed: unknown[]
 let drawer: boolean[]
 
-function render(s: Snapshot) {
+function render(s: Snapshot, open = true) {
   const ctx = {
     snap: s,
     now: NOW,
@@ -88,7 +88,7 @@ function render(s: Snapshot) {
     home: () => {},
     expanded: null,
     setExpanded: () => {},
-    h24Open: true,
+    h24Open: open,
     setH24Open: (v: boolean) => drawer.push(v),
     theme: 'light' as const,
     setTheme: () => {},
@@ -129,6 +129,23 @@ describe('auto drawer', () => {
   const timer: H24Activity = { id: 'timer:wv-sync.timer', title: 'sync', kind: 'timer', projectId: null, schedule: '', enabled: true, runState: 'waiting', runStartedAt: null, lastEvent: '', canToggle: true, nextRunAt: NOW + 14 * 60_000, everyMs: 6 * 3600_000 }
   const head = () => host.querySelector('.h24-head')!
   const names = () => [...host.querySelectorAll('.auto-band .auto-name')].map((n) => n.textContent)
+
+  it('collapsed automated is only its title/activity and language, with creation inside the hidden body', async () => {
+    render(snap([opt({ id: 'draft', draft: true, title: 'new automation' })]), false)
+    expect(head().querySelector('.h24-title')?.textContent).toBe('automated')
+    expect(head().querySelector('.h24-activity')).not.toBeNull()
+    expect(host.querySelector('.h24-top .h24-create')).toBeNull()
+    expect(host.querySelector('.h24-top .h24-heading .h2')).toBeNull()
+    expect(host.querySelector('#h24-body')?.hasAttribute('hidden')).toBe(true)
+    expect(host.querySelector('#h24-body')?.hasAttribute('inert')).toBe(true)
+    expect(host.querySelector('.h24-top .language-trigger')?.textContent).toBe('EN')
+    expect(host.querySelector('#h24-body .h24-create')).not.toBeNull()
+    await click(head())
+    expect(drawer).toEqual([true])
+    render(snap([]), true)
+    expect(host.querySelector('#h24-body')?.hasAttribute('hidden')).toBe(false)
+    expect(host.querySelector('#h24-body')?.hasAttribute('inert')).toBe(false)
+  })
 
   it('the + opens a fresh creation conversation directly, without a form or a model round', async () => {
     render(snap([]))

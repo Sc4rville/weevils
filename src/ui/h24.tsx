@@ -6,7 +6,6 @@ import { Collapse, Line, spring } from './bits'
 import { AutoMark, Icon, type Dir, type IconName } from './icons'
 import { useT } from '../i18n'
 import M from '../i18n/h24'
-import { tapHint } from './hints'
 import { at, autoList, autoRank, bandColors, fromOptimizer, isFinished, projectOfRepo, short, triggerText, type AutoItem } from './auto-model'
 import { TalkCtx, useTalk } from './auto-talk'
 import './h24.css'
@@ -73,7 +72,10 @@ export function H24Rail() {
   useLayoutEffect(() => {
     measure()
     window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    if (drawer.current) observer?.observe(drawer.current)
+    if (probe.current) observer?.observe(probe.current)
+    return () => { window.removeEventListener('resize', measure); observer?.disconnect() }
   }, [measure])
 
   // Position initiale sans animation, puis ressort à chaque ouverture/fermeture.
@@ -168,6 +170,7 @@ export function H24Rail() {
       <motion.div
         ref={drawer}
         className="h24 band"
+        data-open={open}
         style={{ y }}
         drag="y"
         dragListener={false}
@@ -194,37 +197,32 @@ export function H24Rail() {
                 dragged.current = false
                 controls.start(e)
               }}
-              onClick={(e) => {
+              onClick={() => {
                 if (dragged.current) {
                   dragged.current = false
                   return
                 }
-                if (!open && tapHint('h24', e.currentTarget)) return
                 setOpen(!open)
               }}
               aria-expanded={open}
               aria-controls="h24-body"
               aria-label={t.head(said, open)}
             >
-              <span className="h24-grip" aria-hidden>
-                <Icon name="grip" />
-              </span>
+              <span className="h24-grip" aria-hidden />
               <span className="h24-heading" aria-hidden>
-                <span className="h2">{t.title}</span>
+                <span className="h24-title">{t.title}</span>
                 <span className="meta auto-sum">{summary}</span>
-                <span className="h2" style={{ fontWeight: 500 }}>
-                  <Icon name="arrow" dir={open ? 'down' : 'up'} />
-                </span>
+                <span className="h24-activity" data-busy={running.length > 0 || rounding} aria-hidden><i /></span>
               </span>
             </button>
-            <LanguageButton />
-            <button className="ch h24-create" aria-label={creating ? t.creating : t.create} disabled={creating} onClick={() => void create()}>
-              {creating ? <AutoMark /> : <Icon name="plus" />}
-            </button>
+            <LanguageButton compact />
           </div>
         </div>
 
-        <div id="h24-body" className="h24-body" inert={!open}>
+        <div id="h24-body" className="h24-body" inert={!open} hidden={!open}>
+          <div className="in h24-tools"><button type="button" className="h24-create" aria-label={creating ? t.creating : t.create} disabled={creating} onClick={() => void create()}>
+            {creating ? <AutoMark /> : <Icon name="plus" />}<span>{creating ? t.creating : t.create}</span>
+          </button></div>
           {createError && (
             <div className="in meta" role="alert">{createError}</div>
           )}

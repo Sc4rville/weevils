@@ -1,3 +1,4 @@
+import { deliveryContext } from './outbox.ts'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
 import WebSocket from 'ws'
@@ -84,7 +85,7 @@ export class CodexBridge {
     if (!this.socket) throw new Error(tr(M).unavailable)
     await this.transport(this.socket, async rpc => {
       if (!(await this.ids(rpc)).has(id)) throw new Error(tr(M).unavailable)
-      const key = `weevils:${crypto.randomUUID()}`
+      const key = `weevils:${deliveryContext.getStore()?.messageId ?? crypto.randomUUID()}`
       const out = await rpc('thread/queue/add', { threadId: id, clientUserMessageId: key, input: [{ type: 'text', text, text_elements: [] }] })
       if (out.queuedSubmission?.clientUserMessageId !== key) throw new Error(tr(M).uncertain)
       // The queue acknowledgement is delivery. Failure to start must never trigger a resend.

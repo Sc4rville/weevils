@@ -1,3 +1,6 @@
+import { Outbox, OutboxError } from './outbox.ts'
+import { executeOutbox, outboxRoute } from './outbox-http.ts'
+import OM from './i18n/outbox.ts'
 import { rawEngineeringNotice } from '../shared/feed-text.ts'
 import FY from './i18n/foryou.ts'
 // weevilsd : API + flux temps réel pour l'app, et récepteur local des hooks Claude Code.
@@ -807,6 +810,9 @@ async function receiveImport(req: http.IncomingMessage, res: http.ServerResponse
   }
 }
 
+const outbox = new Outbox(path.join(DATA_DIR, 'outbox'), task => executeOutbox(task, routes))
+outbox.start()
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://local')
   try {
@@ -816,13 +822,33 @@ const server = http.createServer(async (req, res) => {
     // Le Raccourci Siri n'a pas de cookie : son jeton personnel n'ouvre que le tour de parole et le son qui va avec.
     const viaShortcut = /^\/api\/voice\/(turn|clip\/)/.test(url.pathname) && shortcutAuthed(req, url)
     if (!PUBLIC.has(url.pathname) && !viaShortcut && !authed(req)) return json(res, 401, { error: tr(M).signInRequired })
+    if (req.method === 'GET' && url.pathname === '/api/outbox/capabilities') return json(res, 200, { enabled: true, version: 1 })
+    const receipt = /^\/api\/outbox\/([a-zA-Z0-9_-]{16,120})$/.exec(url.pathname)
+    if (req.method === 'GET' && receipt) {
+      const found = outbox.get(receipt[1])
+      return json(res, found ? 200 : 404, found ?? { error: tr(OM).missing })
+    }
+    if (req.method === 'POST' && outboxRoute(url.pathname) && req.headers['idempotency-key']) {
+      const key = req.headers['idempotency-key']
+      if (typeof key !== 'string') throw new OutboxError(400, tr(OM).invalid)
+      const body = await readBody(req, /\/attach$/.test(url.pathname) ? 48 << 20 : 1 << 20)
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new OutboxError(400, tr(OM).invalid)
+      if (!/\/act$/.test(url.pathname) && !String(body.text ?? '').trim() && !(Array.isArray(body.files) && body.files.length)) throw new OutboxError(400, tr(OM).invalid)
+      const from = trustedFrom(req, body)
+      delete body.from
+      if (from) body.from = from
+      const session = /^\/api\/sessions\/([^/]+)\//.exec(url.pathname)
+      const id = session ? decodeURIComponent(session[1]) : url.pathname.startsWith('/api/main') ? w.bossConversation() ?? undefined : undefined
+      const lane = id ?? (url.pathname.startsWith('/api/main') ? 'main' : url.pathname)
+      return json(res, 202, outbox.accept(key, { url: url.pathname + url.search, body, lane }, id))
+    }
     for (const [method, re, handler] of routes) {
       const m = re.exec(url.pathname)
       if (m && req.method === method) return await handler(req, res, url, m.slice(1))
     }
     json(res, 404, { error: tr(M).unknownRoute })
   } catch (e) {
-    json(res, 400, { error: (e as Error).message })
+    json(res, e instanceof OutboxError ? e.status : 400, { error: (e as Error).message })
   }
 })
 

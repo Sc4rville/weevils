@@ -311,6 +311,8 @@ export interface Optimizer {
   changed?: { at: number; fields: OptimizerField[] }
   /** Version : +1 à chaque réécriture ; ✓ valide celle-ci (accept { rev }). */
   rev?: number
+  /** Tâche récurrente en cours : la portée convenue pour son prochain passage (son titre alors), si elle change. */
+  next?: { title: string }
   /** Tâche récurrente : ses passages précédents (le plus récent en dernier). */
   runs?: { at: number; ok: boolean; note?: string }[]
 }
@@ -323,7 +325,8 @@ export interface OptimizerLine {
   changed?: OptimizerField[]
 }
 
-export type OptimizerField = 'title' | 'why' | 'est' | 'priority' | 'heavy' | 'kind' | 'repo' | 'prompt' | 'notBefore' | 'window' | 'every'
+/** next : la portée du prochain passage (convenue pendant qu'elle tourne). */
+export type OptimizerField = 'title' | 'why' | 'est' | 'priority' | 'heavy' | 'kind' | 'repo' | 'prompt' | 'notBefore' | 'window' | 'every' | 'next'
 
 /** Réponse de POST /api/optimizers/:id/talk : la réponse à afficher (et lire), la tâche telle qu'elle est maintenant. */
 export interface OptimizerTalkReply {

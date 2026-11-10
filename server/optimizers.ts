@@ -299,6 +299,11 @@ type Stored = Optimizer & {
   held?: boolean
   /** The agent of the current (or last) run: Codex while Claude is at its limit. */
   tool?: 'claude' | 'codex'
+  /** When the run in progress was due (its slot: not before, its window's opening, its acceptance), whatever delayed
+   *  its start; a recurring task's next run steps from it, so a late start never pushes the following ones. */
+  slotAt?: number
+  /** How long the run in progress may last, fixed when it starts (an estimate rewritten meanwhile is for the next run). */
+  limitMs?: number
   /** Its local branch, fixed at the first start (a later run or a retry finds the same worktree). */
   branch?: string
   /** A change of scope agreed while it was running: applied when it comes back for its next run. */
@@ -455,7 +460,11 @@ export function parseProposals(raw: unknown, repos: string[], known: { title: st
   return out
 }
 
-const isNull = (v: unknown) => v === null || (typeof v === 'string' && /^(null|none|never|once|aucune?|jamais|une fois|)$/i.test(v.trim()))
+/** A short question and nothing else (« c'est quoi ? », « what did it find? »): no request for a change. */
+export const bareQuestion = (said: string) => /\?\s*$/.test(said) && !/[,;:]/.test(said) && said.trim().split(/\s+/).length <= 6
+
+/** A field cleared on purpose: null, or a word that says so (an empty string is no answer: ignored). */
+const isNull = (v: unknown) => v === null || (typeof v === 'string' && /^(null|none|never|once|aucune?|jamais|une fois)$/i.test(v.trim()))
 
 /**
  * The model's rewrite of a task, every field checked (never trusted): a title and a why that read well, a known kind,
@@ -617,7 +626,13 @@ export class Optimizers {
   }
 
   private save() {
-    if (this.s.items.length > MAX_STORED) this.s.items = [...this.s.items].sort((a, b) => b.createdAt - a.createdAt).slice(0, MAX_STORED)
+    // Too many: the oldest refused or finished ones go; a task still waiting, queued (a recurring one lives on) or
+    // running is never dropped.
+    if (this.s.items.length > MAX_STORED) {
+      const live = (o: Stored) => o.state === 'proposed' || o.state === 'queued' || o.state === 'running'
+      const keep = new Set([...this.s.items.filter(live), ...this.s.items.filter((o) => !live(o)).sort((a, b) => (b.endedAt ?? b.createdAt) - (a.endedAt ?? a.createdAt))].slice(0, MAX_STORED))
+      this.s.items = this.s.items.filter((o) => keep.has(o))
+    }
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true })
       const tmp = `${this.file}.tmp`
@@ -644,11 +659,15 @@ export class Optimizers {
       .map((o) => this.view(o, now))
   }
 
-  /** A task as the app sees it: without the brief and the runner's bookkeeping; when it may start, if its time holds it. */
+  /** A task as the app sees it: without the brief and the runner's bookkeeping; when it may start, if its time holds
+   *  it; what its next run will be, when that was rewritten while it runs. */
   view(o: Stored, now = Date.now()): Optimizer {
-    const { prompt: _p, acceptedAt: _a, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, ...v } = o
+    const { prompt: _p, acceptedAt: _a, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, ...v } = o
     const at = o.state === 'queued' ? this.timeAt(o, now) : now
-    return at > now ? { ...v, startAt: at } : v
+    const out: Optimizer = at > now ? { ...v, startAt: at } : v
+    // Agreed while it runs, for its next run: shown under its row (the brief itself stays here).
+    if (o.pending) out.next = { title: o.pending.title ?? o.title }
+    return out
   }
 
   /** When its conditions let a task start (now when it has none). */
@@ -708,8 +727,9 @@ export class Optimizers {
     const o = this.get(id)
     if (!o || o.state === 'refused') return null
     const said = text.replace(/\s+/g, ' ').trim().slice(0, TALK_CHARS)
+    const was = o.state
     const replyLang: Lang = detectLang(said) ?? lang()
-    const note = (k: 'talkFailed' | 'talkBusy'): OptimizerTalkReply => ({ reply: withLang(replyLang, () => tr(O)[k]), item: this.view(o), changed: [], failed: true })
+    const note = (k: 'talkFailed' | 'talkBusy' | 'talkMoved' | 'talkHeld'): OptimizerTalkReply => ({ reply: withLang(replyLang, () => tr(O)[k]), item: this.view(o), changed: [], failed: true })
     if (!said) return { reply: '', item: this.view(o), changed: [] }
     if (this.talking.has(id)) return note('talkBusy')
     if (Date.now() < (this.talkFailUntil.get(id) ?? 0) || !this.sys.logged()) return note('talkFailed')
@@ -717,8 +737,11 @@ export class Optimizers {
     this.talking.add(id)
     try {
       let out: { reply?: unknown; patch?: unknown } | null = null
+      let untrusted = false
       try {
-        out = parseJson(await smart(this.talkPrompt(o, said, zone, replyLang), TALK_TIMEOUT_MS))
+        const turn = this.talkTurn(o, said, zone, replyLang)
+        untrusted = turn.untrusted
+        out = parseJson(await smart(turn.prompt, TALK_TIMEOUT_MS))
       } catch (e) {
         // Never the message itself: claude's command line holds the whole prompt (the memory).
         const err = e as NodeJS.ErrnoException & { killed?: boolean }
@@ -730,9 +753,20 @@ export class Optimizers {
         return note('talkFailed')
       }
       this.talkFailUntil.delete(id)
-      // The task may have moved on while the model thought (accepted, started, ended): the rules of its state now.
+      // The task moved on while the model thought (a run ended, came back, was stopped): its answer was written for
+      // the old state and may say a change was made that this state no longer takes. Nothing changes, nothing is kept.
+      // (The runner never starts a task during a turn: tick() leaves it for the next one.)
+      if (o.state !== was) return note('talkMoved')
       const now = Date.now()
-      const changed = this.patch(o, parsePatch(out?.patch, { repos: this.w.allRepos(), tz: zone, now }))
+      const p = parsePatch(out?.patch, { repos: this.w.allRepos(), tz: zone, now })
+      // The prompt carried what an agent wrote (its report, its last words: maybe a web page's text). A short bare
+      // question never rewrites the task then, nor does a move to a repo the user did not name: such a rewrite comes
+      // from that text, not from them. Nothing changes, nothing is kept, and the reply says so.
+      if (untrusted && (o.state === 'queued' || o.state === 'running') && this.differs(o, p) && (bareQuestion(said) || (p.repo && p.repo !== o.repo && !norm(said).includes(norm(p.repo))))) {
+        console.log(`[auto] « ${o.title} » : réécriture écartée (pas demandée)`)
+        return note('talkHeld')
+      }
+      const changed = this.patch(o, p)
       if (validTz(tz)) o.tz = zone
       o.talk = capTalk([...(o.talk ?? []), { who: 'user', text: said, at: now }, { who: 'auto', text: reply, at: Date.now(), ...(changed.length ? { changed } : {}) }])
       if (changed.length) {
@@ -759,22 +793,48 @@ export class Optimizers {
       else (o as unknown as Record<string, unknown>)[k] = p[k]
       changed.push(k)
     }
+    let next = false
     for (const k of SCOPE) {
-      if (!(k in p) || same(o[k], p[k])) continue
-      // Running: its session already has its brief; the new scope waits for its next run.
-      if (o.state === 'running') o.pending = { ...o.pending, [k]: p[k] }
-      else {
-        ;(o as unknown as Record<string, unknown>)[k] = p[k]
-        changed.push(k)
+      if (!(k in p)) continue
+      if (o.state === 'running') {
+        // Its session already has its brief: the new scope waits for its next run, and only a task that comes back
+        // has one (the model is told so: rules_running_once).
+        if (!o.every) continue
+        const was = o.pending && k in o.pending ? o.pending[k] : o[k]
+        if (same(was, p[k])) continue
+        const pending: Record<string, unknown> = { ...o.pending }
+        if (same(o[k], p[k])) delete pending[k]
+        else pending[k] = p[k]
+        o.pending = pending as Stored['pending']
+        next = true
+        continue
       }
+      // Set now: an older agreement for the next run no longer holds.
+      if (o.pending) delete o.pending[k]
+      if (same(o[k], p[k])) continue
+      ;(o as unknown as Record<string, unknown>)[k] = p[k]
+      changed.push(k)
     }
+    if (o.pending && !Object.keys(o.pending).length) delete o.pending
+    if (next) changed.push('next')
     // A new scope before the first start: a fresh branch name follows the new title.
     if (o.state !== 'running' && (changed.includes('title') || changed.includes('repo')) && !o.startedAt) delete o.branch
     return changed
   }
 
+  /** A rewrite that would change something on this task (a field the task does not already have). */
+  private differs(o: Stored, p: Patch): boolean {
+    const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+    return ([...TERMS, ...SCOPE] as const).some((k) => k in p && !same(o[k], p[k]))
+  }
+
   /** The prompt of one exchange turn (also read by the tests). */
   talkPrompt(o: Stored, said: string, tz: string, replyLang: Lang, now = Date.now()): string {
+    return this.talkTurn(o, said, tz, replyLang, now).prompt
+  }
+
+  /** The prompt, and whether it carries what an agent wrote (untrusted: see talk()). */
+  private talkTurn(o: Stored, said: string, tz: string, replyLang: Lang, now = Date.now()): { prompt: string; untrusted: boolean } {
     const t = tr(O)
     const name = user()
     const when = [o.notBefore && o.notBefore > now ? t.whenNotBefore(fmtLocal(o.notBefore, tz)) : '', o.window ? t.whenWindow(windowText(o.window)) : ''].filter(Boolean).join(', ') || t.whenAsap
@@ -794,13 +854,14 @@ export class Optimizers {
     const weekday = new Intl.DateTimeFormat(lang() === 'fr' ? 'fr-FR' : 'en-US', { weekday: 'long', timeZone: tz }).format(now)
     const repos = this.w.allRepos().slice(0, 80).join(', ')
     const machine = t.machine(this.sys.cpus(), Math.round(os.totalmem() / 1024 ** 3), `${os.platform()} ${os.arch()}`)
-    const rules = o.state === 'proposed' ? t.rules_proposed : o.state === 'queued' ? t.rules_queued : o.state === 'running' ? t.rules_running : t.rules_ended
-    return t.talk({
+    const rules = o.state === 'proposed' ? t.rules_proposed : o.state === 'queued' ? t.rules_queued : o.state === 'running' ? (o.every ? t.rules_running : t.rules_running_once) : t.rules_ended
+    const live = this.liveText(o, now, tz)
+    const prompt = t.talk({
       user: name,
       state: t[`state_${o.state}`],
       rules,
       item,
-      live: this.liveText(o, now, tz),
+      live: live.text,
       memory: this.memory.asText(),
       projects: this.projectsText(),
       repos,
@@ -811,12 +872,22 @@ export class Optimizers {
       replyLang: t.langName(replyLang),
       appLang: t.langName(lang()),
     })
+    return { prompt, untrusted: live.untrusted }
   }
 
-  /** What a started task did: the agent's last words (running), its last news and report (over), its past runs. */
-  private liveText(o: Stored, now: number, tz: string): string {
+  /**
+   * What a started task did: the agent's last words (running), its last news and report (over), its past runs. What
+   * an agent wrote is fenced as data (a nonce the text cannot close), never as instructions; untrusted: there is some.
+   */
+  private liveText(o: Stored, now: number, tz: string): { text: string; untrusted: boolean } {
     const t = tr(O)
     const out: string[] = []
+    const nonce = crypto.randomBytes(4).toString('hex')
+    let untrusted = false
+    const fence = (text: string) => {
+      untrusted = true
+      return t.untrusted(nonce, text.replaceAll(nonce, ''))
+    }
     if (o.state === 'running') {
       const d = o.sessionId ? this.w.detail?.(o.sessionId) : undefined
       let said = (d?.messages ?? [])
@@ -827,19 +898,19 @@ export class Optimizers {
         const s = o.sessionId ? this.w.snapshot().sessions.find((x) => x.id === o.sessionId) : undefined
         if (s?.lastMessage) said = [s.lastMessage.slice(0, 900)]
       }
-      out.push(t.liveRunning(Math.round((now - (o.startedAt ?? now)) / 60_000), said.join('\n')))
-    } else if (o.state === 'done' || o.state === 'failed') out.push(t.liveEnded(t[`state_${o.state}`], o.lastEvent ?? ''))
+      out.push(t.liveRunning(Math.round((now - (o.startedAt ?? now)) / 60_000), said.length ? fence(said.join('\n')) : ''))
+    } else if (o.state === 'done' || o.state === 'failed') out.push(t.liveEnded(t[`state_${o.state}`], o.lastEvent ? fence(o.lastEvent) : ''))
     if (o.state !== 'proposed') {
       const report = this.reportFile(o)
       try {
         const text = fs.readFileSync(report, 'utf8').trim().slice(0, 1500)
-        if (text) out.push(t.liveReport(text))
+        if (text) out.push(t.liveReport(fence(text)))
       } catch {
         /* no report (yet) */
       }
     }
-    if (o.runs?.length) out.push(t.liveRuns(o.runs.slice(-4).map((r) => t.runLine(fmtLocal(r.at, tz), r.ok, r.note ?? '')).join('\n')))
-    return out.join('\n\n')
+    if (o.runs?.length) out.push(t.liveRuns(fence(o.runs.slice(-4).map((r) => t.runLine(fmtLocal(r.at, tz), r.ok, r.note ?? '')).join('\n'))))
+    return { text: out.join('\n\n'), untrusted }
   }
 
   /** Where a task writes its report (beside its worktree, or in its workspace). */
@@ -897,7 +968,9 @@ export class Optimizers {
     })
     if (dirty) this.changed()
     // Never without Claude logged in: the session would open on a login screen and sit there.
-    if (!running && !this.launching && !reason && ready[0] && (codex || this.sys.logged())) void this.launch(ready[0], now, codex ? { tool: 'codex' } : undefined)
+    // Nor while it is being talked over: its rewrite would land on a running session and be lost. It keeps its turn,
+    // the next tick takes it.
+    if (!running && !this.launching && !reason && ready[0] && !this.talking.has(ready[0].id) && (codex || this.sys.logged())) void this.launch(ready[0], now, codex ? { tool: 'codex' } : undefined)
     if (this.roundDue(now)) void this.round(now)
   }
 
@@ -912,7 +985,7 @@ export class Optimizers {
     if (!o || this.launching) return false
     const t = tr(O)
     const end = (state: 'done' | 'failed', note: string) => this.finish(o, now, state === 'done', note)
-    const limit = runLimit(o.est)
+    const limit = o.limitMs ?? runLimit(o.est)
     if (now - (o.startedAt ?? now) > limit) return end('failed', t.timedOut(Math.round(limit / 3600_000)))
     const sid = o.sessionId ? (this.w.sessionIdOf?.(o.sessionId) ?? o.sessionId) : undefined
     const s = sid ? this.w.snapshot().sessions.find((x) => x.id === sid) : undefined
@@ -949,7 +1022,8 @@ export class Optimizers {
 
   /**
    * A run is over. A one-off task ends there (done or failed). A recurring one keeps the run's line and goes back to
-   * the queue for its next occurrence (with the scope agreed while it ran), unless its last runs all failed.
+   * the queue for its next occurrence (one period after the slot it was due at, with the scope agreed while it ran),
+   * unless its last runs all failed.
    */
   private finish(o: Stored, now: number, ok: boolean, note: string): true {
     o.endedAt = now
@@ -958,10 +1032,10 @@ export class Optimizers {
       o.runs = [...(o.runs ?? []), { at: now, ok, ...(note ? { note } : {}) }].slice(-MAX_RUNS)
       const streak = o.runs.slice(-MAX_FAILED_RUNS)
       if (ok || streak.length < MAX_FAILED_RUNS || streak.some((r) => r.ok)) {
-        Object.assign(o, o.pending ?? {})
-        delete o.pending
+        this.takePending(o)
         o.state = 'queued'
-        o.notBefore = Math.max(nextRun(o.startedAt ?? now, o.every, now), o.notBefore ?? 0)
+        // From the slot it was due at, not from when it could start: a busy evening never drifts the next nights.
+        o.notBefore = Math.max(nextRun(o.slotAt ?? o.startedAt ?? now, o.every, now), o.notBefore ?? 0)
         delete o.waiting
         delete o.retryAt
         delete o.tries
@@ -976,6 +1050,12 @@ export class Optimizers {
     return true
   }
 
+  /** Back to the queue: the scope agreed while it ran becomes its scope. */
+  private takePending(o: Stored) {
+    Object.assign(o, o.pending ?? {})
+    delete o.pending
+  }
+
   /** Stopped by a limit, a login or an API error: no work was done, it goes back to the queue for later (a few tries). */
   private later(o: Stored, now: number, why: string): boolean {
     o.tries = (o.tries ?? 0) + 1
@@ -984,6 +1064,7 @@ export class Optimizers {
       console.log(`[auto] « ${o.title} » abandonnée après ${o.tries} essais (${oneLine(why, 160)})`)
       return this.finish(o, now, false, o.lastEvent)
     }
+    this.takePending(o)
     o.state = 'queued'
     // A usage limit with a known reset time: back then, not in an hour.
     const hold = stallKind(why) === 'limit' && o.tool !== 'codex' ? (this.w.relay?.holdUntil(now) ?? 0) : 0
@@ -1081,6 +1162,8 @@ export class Optimizers {
     o.state = 'running'
     o.startedAt = now
     o.tool = tool
+    o.limitMs = runLimit(o.est)
+    o.slotAt = Math.min(now, this.timeAt(o, o.notBefore ?? o.acceptedAt ?? now))
     delete o.waiting
     delete o.lastEvent
     delete o.retryAt

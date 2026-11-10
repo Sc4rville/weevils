@@ -124,9 +124,9 @@ export function nextStart(o: { notBefore?: number; window?: Window }, now: numbe
   return t
 }
 
-/** The next occurrence of a recurring task: one period after the last start, never in the past. */
-export function nextRun(startedAt: number, every: number, now: number): number {
-  let t = startedAt + every
+/** The next occurrence of a recurring task: one period after the last one was due (as many as it takes to pass now). */
+export function nextRun(from: number, every: number, now: number): number {
+  let t = from + every
   if (t <= now) t += Math.ceil((now - t + 1) / every) * every
   return t
 }

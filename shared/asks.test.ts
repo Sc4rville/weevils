@@ -16,3 +16,18 @@ describe('une session qui attend l’utilisateur', () => {
     expect(asksUser('Corrigé :\n```js\nconst a = b ? c : d\n```\nC’est en ligne.')).toBeNull()
   })
 })
+
+
+describe('declarative reports never ask for an answer', () => {
+  it.each([
+    '[VPS] TLO repris par Codex à 16 h 32 : session liée et lecture des fichiers confirmées.\nClaude était bloqué derrière un panneau ; les six workflows ont fini en erreur de quota.\nPod supprimé par le watchdog à 16 h 22, dépense actuelle 0 $/h ; weevboss informé, aucune nouvelle dépense ni publication autorisée.',
+    'RunPod confirme qu’il ne reste aucun pod actif et aucune dépense horaire.',
+    'Je confirme la mise en ligne, aucune confirmation attendue.',
+    'Les autorisations et interdictions sont documentées. La validation est terminée.',
+    'The logs confirm the deployment. No approval is needed.',
+    'La consigne était de coller le code, elle a été exécutée.',
+    'The agent asked: Should I push?',
+    '« Tu préfères laquelle ? » était la question précédente. Tout est réglé.',
+  ])('%s', (text) => expect(asksUser(text)).toBeNull())
+  it.each(['Confirme ce choix.', 'Please confirm the deployment.', 'Valide le plan avant de continuer.', 'J’ai besoin que tu choisisses une option.', 'Peux-tu choisir entre A et B ?', 'Can you approve this command?'])('keeps a direct request: %s', (text) => expect(asksUser(text)).not.toBeNull())
+})

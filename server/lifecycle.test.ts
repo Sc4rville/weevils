@@ -718,3 +718,16 @@ it('keeps a newly archived Codex pane archived when its transcript gets linked',
   expect(w.snapshot().sessions.find((s) => s.id === 'linked')?.archived).toBeUndefined()
   expect(mux.killWv).not.toHaveBeenCalled()
 })
+
+it.each(['claude', 'codex'] as const)('%s completion reports with confirmations are idle; a real question still asks', (tool) => {
+  const t = add(transcript({ tool, messages: [
+    { id: 'u', role: 'user', text: 'reprends TLO', at: NOW - MIN },
+    { id: 'report', role: 'assistant', text: '[VPS] TLO repris par Codex à 16 h 32 : session liée et lecture des fichiers confirmées.\nPod supprimé, weevboss informé, aucune nouvelle dépense ni publication autorisée.', at: NOW },
+  ] }))
+  w.panes = [pane({ tool })]
+  expect(one()).toMatchObject({ status: 'idle' })
+  expect(one()?.ask).toBeUndefined()
+  expect(one()?.attention).toBeUndefined()
+  t.messages.push({ id: 'question', role: 'assistant', text: 'Quelle option préfères-tu ?', at: NOW })
+  expect(one()).toMatchObject({ status: 'needs_user', attention: 'Quelle option préfères-tu ?' })
+})

@@ -2434,11 +2434,11 @@ button.copy.done {
 /* Le petit signe d'une session Codex qui a pris le relais d'une session Claude. */
 .relay-sign {
   display: inline-block;
-  margin-left: 8px;
-  padding: 0 7px;
-  border: 1.5px solid currentColor;
+  margin-left: 0;
+  padding: 0;
+  border: 0;
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 500;
   white-space: nowrap;
   vertical-align: 0.1em;
 }
@@ -2707,3 +2707,16 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 
 .fy-top .in.fy-top-in { flex-wrap: wrap; }
 .fy-projects { flex: none; margin-left: auto; min-width: 44px; min-height: 44px; font-size: .875rem; }
+
+/* Session controls share the first title line, independent of secondary text height. */
+.session-item .row > .in.line { align-items: flex-start; }
+.session-item .row .st,
+.session-item .row .tool-ic,
+.session-item .row .act { margin-top: 6px; min-height: 22px; line-height: 22px; }
+.session-item .row .tool-ic { align-items: center; }
+.session-menu summary { top: 2px; }
+.session-name .dot { width: 7px; height: 7px; margin-right: 6px; }
+/* Touch focus must not draw a persistent frame around a whole project name. */
+@media (hover: none) and (pointer: coarse) {
+  .head-name:focus-visible { outline: none; }
+}

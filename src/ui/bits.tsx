@@ -141,8 +141,7 @@ export function SessionRow({ session }: { session: Session }) {
           <ToolIcon tool={session.tool} />
         </span>
         <span className="title wrap">
-          {unread && <span className="dot" aria-hidden />}
-          <span className="session-name">{text}</span>
+          <span className="session-name">{unread && <span className="dot" aria-hidden />}{text}</span>
           {act && act !== text && <span className="session-activity meta">{act}</span>}
           {session.background > 0 && <span className="bg strong"> · {t.background(session.background)}</span>}
           {/* Session Codex ouverte en relais d'une session Claude arrêtée par sa limite d'usage. */}

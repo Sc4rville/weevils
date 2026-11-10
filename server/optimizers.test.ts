@@ -1106,6 +1106,23 @@ describe('auto — runs, their outputs, the automation page', () => {
     expect(o.runDetail('a1b2c3', old[5].at)).toEqual({ run: v.runs!.find((r) => r.at === old[5].at), files: [], links: [], images: [] })
   })
 
+  it('a task whose repo left the machine fails its run (never stuck « running »); its page and image route still answer', async () => {
+    fs.writeFileSync(path.join(dir, 'optimizers.json'), JSON.stringify({ items: [{ id: 'g0n3', title: 'Gone repo task', why: 'w', kind: 'tests', repo: 'gone', heavy: false, priority: 1, est: 20, prompt: 'Fix the tests of a repo that was moved away.', state: 'queued', createdAt: T0 - DAY, acceptedAt: T0 - DAY }], lastRoundAt: T0, fails: 0, failUntil: 0 }))
+    const repoDir = (r: string) => {
+      if (r === 'gone') throw new Error('unknown repo gone')
+      return path.join(dir, 'p', r)
+    }
+    const o = new Optimizers({ snapshot: () => snap, allRepos: () => ['mygame'], repoDir, createIn, bump, store, hooks, detail, send, key, command } as never, memory, { file: path.join(dir, 'optimizers.json'), dir: path.join(dir, 'optimizers'), sys })
+    o.tick(T0 + IDLE_MS)
+    await o.settled()
+    const v = o.list(T0 + IDLE_MS)[0]
+    expect(v.state).toBe('failed')
+    expect(v.runCount).toBe(1)
+    expect(createIn).not.toHaveBeenCalled()
+    expect(o.detail('g0n3')!.runs).toHaveLength(1)
+    expect(o.blob('g0n3', path.join(dir, 'x.png'))).toBeNull()
+  })
+
   it('an archive goes when its run is no longer kept', async () => {
     const o = seed({ every: DAY, notBefore: T0 })
     // The archive of a run the task no longer keeps (dropped from its last 30) goes at the next run.

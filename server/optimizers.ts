@@ -1112,7 +1112,14 @@ export class Optimizers {
   private finish(o: Stored, now: number, ok: boolean, note: string): true {
     o.endedAt = now
     o.lastEvent = note
-    const runs = this.record(o, now, ok, note)
+    // Whatever recording meets, the task leaves « running »: a runner wedged on one task would start no other.
+    let runs: AutoRun[]
+    try {
+      runs = this.record(o, now, ok, note)
+    } catch (e) {
+      console.error(`[auto] passage de « ${o.title} » non enregistré : ${(e as Error).message}`)
+      runs = o.runs ?? []
+    }
     if (o.every) {
       const streak = runs.slice(-MAX_FAILED_RUNS)
       if (ok || streak.length < MAX_FAILED_RUNS || streak.some((r) => r.ok)) {
@@ -1153,16 +1160,18 @@ export class Optimizers {
     o.runs = runs
     // Read now, before the next run overwrites them: the report (beside the worktree, rewritten every run) and the
     // agent's last words.
-    const reportFile = this.reportFile(o)
+    // Its repo gone (renamed, deleted, out of the roots): no report, no files, the run is still recorded.
+    const place = this.place(o)
+    const reportFile = place ? this.reportFile(o) : undefined
     let report: string | undefined
     try {
-      if (fs.statSync(reportFile).mtimeMs >= startedAt - 2000) report = fs.readFileSync(reportFile, 'utf8').slice(0, MAX_REPORT).trim() || undefined
+      if (reportFile && fs.statSync(reportFile).mtimeMs >= startedAt - 2000) report = fs.readFileSync(reportFile, 'utf8').slice(0, MAX_REPORT).trim() || undefined
     } catch {
       /* no report this run */
     }
     const said = sessionId ? this.w.detail?.(sessionId)?.messages.filter((m) => m.role === 'assistant' && m.text.trim()).at(-1)?.text : undefined
     const message = (said ?? (sessionId ? this.w.snapshot().sessions.find((x) => x.id === sessionId)?.lastMessage : undefined) ?? '').trim().slice(0, 4000) || undefined
-    const job = this.writeRun(o, run, { cwd: this.workspace(o), repoDir: o.repo ? this.w.repoDir(o.repo) : undefined, base: o.baseCommit, report, reportFile, message, keep: runs.map((r) => r.startedAt) })
+    const job = this.writeRun(o, run, { cwd: place?.cwd, repoDir: place?.repoDir, base: o.baseCommit, report, reportFile, message, keep: runs.map((r) => r.startedAt) })
     this.writing.add(job)
     void job.finally(() => this.writing.delete(job))
     return runs
@@ -1170,9 +1179,9 @@ export class Optimizers {
 
   /** The archive of one run: its files (git diff from where it started, or what it wrote in its workspace), links,
    *  images (copied), then the file count on its summary. */
-  private async writeRun(o: Stored, run: AutoRun, x: { cwd: string; repoDir?: string; base?: string; report?: string; reportFile: string; message?: string; keep: number[] }) {
+  private async writeRun(o: Stored, run: AutoRun, x: { cwd?: string; repoDir?: string; base?: string; report?: string; reportFile?: string; message?: string; keep: number[] }) {
     try {
-      const files = (x.base && x.repoDir ? await gitFiles(x.repoDir, x.cwd, x.base, run.startedAt) : null) ?? mtimeFiles(x.cwd, run.startedAt, run.at, [x.reportFile])
+      const files = !x.cwd ? [] : ((x.base && x.repoDir ? await gitFiles(x.repoDir, x.cwd, x.base, run.startedAt) : null) ?? mtimeFiles(x.cwd, run.startedAt, run.at, x.reportFile ? [x.reportFile] : []))
       const images = this.archive.copyImages(o.id, run.startedAt, files)
       const detail: AutoRunDetail = { run: { ...run, ...(files.length ? { files: files.length } : {}) }, ...(x.report ? { report: x.report } : {}), ...(x.message ? { message: x.message } : {}), files, links: extractLinks(x.report, x.message), images }
       this.archive.write(o.id, detail)
@@ -1221,7 +1230,7 @@ export class Optimizers {
     } catch {
       return null
     }
-    const file = blobPath(p, [this.workspace(o), home])
+    const file = blobPath(p, [this.place(o)?.cwd, home].filter((x) => x !== undefined))
     return file ? { file, type: IMAGE_MIME[path.extname(file).toLowerCase()] } : null
   }
 
@@ -1289,6 +1298,15 @@ export class Optimizers {
     await this.launch(o, Date.now(), { tool: 'codex', relay: text })
     if (o.state !== 'running' || !o.sessionId) throw new Error(o.lastEvent || tr(O).startFailed)
     return o.sessionId
+  }
+
+  /** Its workspace and repo, or null when its repo is no longer on the machine (workspace() would throw). */
+  private place(o: Stored): { cwd: string; repoDir?: string } | null {
+    try {
+      return { cwd: this.workspace(o), ...(o.repo ? { repoDir: this.w.repoDir(o.repo) } : {}) }
+    } catch {
+      return null
+    }
   }
 
   /** Where a task works: its own git worktree beside its repo, or a hidden folder of its own (see the top of the file). */

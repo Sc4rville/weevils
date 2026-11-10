@@ -173,6 +173,41 @@ export function short(ms: number, coarse = false): string {
   return tr(F).days(Math.round(h / 24))
 }
 
+/** The proposals' colours, flush columns side by side under the drawer's head: never a hue close to the head's amber
+ * or to the band right below them (a project, or the drawer again), nor next to each other — they would read as one
+ * block. A proposal keeps its colour while it stays (one leaving doesn't repaint the others), unless the band below
+ * turns to its hue. The palette is chosen so that three such colours exist whatever the band below (tested). */
+export const PROP_PALETTE = ['p9', 'p13', 'p0', 'p6', 'p8', 'p11']
+/** The drawer's own colour (--h24, amber), as the nearest palette slot. */
+export const DRAWER_SLOT = 'p3'
+const SLOTS = 16
+const slotHue = (slot: string) => Number(slot.replace(/^p/, '')) || 0
+/** Steps between two palette slots around the wheel (16 hues, 22.5° apart). */
+export function hueGap(a: string, b: string): number {
+  const d = Math.abs(slotHue(a) - slotHue(b)) % SLOTS
+  return Math.min(d, SLOTS - d)
+}
+/** Against a band above or below: at least 3 steps; between two columns: at least 2. */
+const BAND_GAP = 3
+const SIDE_GAP = 2
+export function propColors(ids: string[], kept: ReadonlyMap<string, string>, below: string | null): Map<string, string> {
+  const bands = below ? [DRAWER_SLOT, below] : [DRAWER_SLOT]
+  const ok = (p: string) => bands.every((x) => hueGap(p, x) >= BAND_GAP)
+  const apart = (p: string, used: Iterable<string>) => [...used].every((u) => hueGap(p, u) >= SIDE_GAP)
+  const out = new Map<string, string>()
+  for (const id of ids) {
+    const p = kept.get(id)
+    if (p && ok(p) && apart(p, out.values())) out.set(id, p)
+  }
+  for (const id of ids) {
+    if (out.has(id)) continue
+    const used = [...out.values()]
+    const free = PROP_PALETTE.filter((p) => !used.includes(p))
+    out.set(id, free.find((p) => ok(p) && apart(p, used)) ?? free.find(ok) ?? free[0] ?? PROP_PALETTE[0])
+  }
+  return out
+}
+
 /** Folded or not, remembered per category and group; by default open when it holds something active or little. */
 export function openByDefault(tasks: AutoTask[]): boolean {
   return tasks.some((t) => ACTIVE.has(t.state)) || tasks.length <= 3

@@ -1,6 +1,6 @@
 import { AnimatePresence, animate, motion, useDragControls, useMotionValue } from 'motion/react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import type { Optimizer } from '../../shared/api.ts'
+import type { Optimizer, Snapshot } from '../../shared/api.ts'
 import { api } from '../api'
 import { useApp } from './app-context'
 import { Collapse, spring } from './bits'
@@ -9,20 +9,22 @@ import { useT } from '../i18n'
 import M from '../i18n/h24'
 import B from '../i18n/bits'
 import { tapHint } from './hints'
-import { STATES, autoTree, counts, openByDefault, short, tasksOf, type AutoCategory, type AutoGroup, type AutoTask, type TaskState } from './h24-tree'
+import { DRAWER_SLOT, STATES, autoTree, counts, openByDefault, propColors, short, tasksOf, type AutoCategory, type AutoGroup, type AutoTask, type TaskState } from './h24-tree'
 import './h24.css'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
 /** Bande « auto » collée en bas : on la tire vers le haut (ou on la touche) pour voir ce qui tourne tout seul. */
 export function H24Rail() {
-  const { snap, h24Open: open, setH24Open: setOpen } = useApp()
+  const { snap, colors, h24Open: open, setH24Open: setOpen } = useApp()
   const t = useT(M)
   const opts = snap.optimizers ?? []
   const proposed = opts.filter((o) => o.state === 'proposed')
   const tree = autoTree(snap)
   const all = tree.flatMap(tasksOf)
   const c = counts(all)
+  // La bande juste sous les propositions : la ligne machine (sur le fond du tiroir), sinon la première catégorie.
+  const below = machineShown(snap) || !tree.length ? DRAWER_SLOT : catSlot(tree[0], colors)
   const y = useMotionValue(0)
   const drawer = useRef<HTMLDivElement>(null)
   const probe = useRef<HTMLDivElement>(null)
@@ -139,7 +141,7 @@ export function H24Rail() {
         </button>
 
         <div id="h24-body" className="h24-body" inert={!open}>
-          <Proposals list={proposed} />
+          <Proposals list={proposed} below={below} />
           <MachineLine />
           {tree.map((cat) => (
             <Category key={cat.id} cat={cat} />
@@ -156,22 +158,16 @@ export function H24Rail() {
 // En haut : les propositions, en colonnes collées, une couleur chacune. ✓ lance quand la machine est libre, × refuse.
 // L'icône d'un genre n'est jamais ✓ ni × : elles se confondraient avec les boutons.
 
-const PALETTE = ['p2', 'p9', 'p13', 'p5', 'p0', 'p11']
 const KIND_ICON: Record<Optimizer['kind'], IconName> = { tests: 'terminal', watch: 'quote', content: 'file', explore: 'slash', other: 'star' }
 
-function Proposals({ list }: { list: Optimizer[] }) {
+function Proposals({ list, below }: { list: Optimizer[]; below: string }) {
   const t = useT(M)
   const { refresh } = useApp()
   const [gone, setGone] = useState<Set<string>>(new Set())
   // Une couleur par proposition, gardée tant qu'elle est là : celle qui part n'en fait pas changer les autres.
   const slots = useRef(new Map<string, string>())
   const shown = list.filter((o) => !gone.has(o.id)).slice(0, 3)
-  for (const id of [...slots.current.keys()]) if (!list.some((o) => o.id === id)) slots.current.delete(id)
-  for (const o of shown) {
-    if (slots.current.has(o.id)) continue
-    const used = new Set(shown.map((x) => slots.current.get(x.id)))
-    slots.current.set(o.id, PALETTE.find((p) => !used.has(p)) ?? PALETTE[0])
-  }
+  slots.current = propColors(shown.map((o) => o.id), slots.current, below)
   const answer = (o: Optimizer, yes: boolean) => {
     setGone((g) => new Set(g).add(o.id))
     void (yes ? api.acceptOptimizer(o.id) : api.refuseOptimizer(o.id))
@@ -193,7 +189,7 @@ function Proposals({ list }: { list: Optimizer[] }) {
             key={o.id}
             role="listitem"
             className="auto-prop"
-            style={color(slots.current.get(o.id) ?? PALETTE[0])}
+            style={color(slots.current.get(o.id) ?? 'p9')}
             initial={{ flexGrow: 0, opacity: 0 }}
             animate={{ flexGrow: 1, opacity: 1 }}
             exit={{ flexGrow: 0, opacity: 0 }}
@@ -228,12 +224,14 @@ function Proposals({ list }: { list: Optimizer[] }) {
 // ---------------------------------------------------------------------------
 // La machine : charge et mémoire libre, et ce qui retient une tâche acceptée.
 
+const machineShown = (snap: Snapshot) => !!snap.autoMachine && (snap.optimizers ?? []).some((o) => o.state !== 'proposed')
+
 function MachineLine() {
   const t = useT(M)
   const { snap } = useApp()
   const m = snap.autoMachine
   const held = (snap.optimizers ?? []).some((o) => o.state === 'queued')
-  if (!m || !(snap.optimizers ?? []).some((o) => o.state !== 'proposed')) return null
+  if (!m || !machineShown(snap)) return null
   const ratio = Math.min(1, m.load / (1.5 * m.cpus))
   return (
     <div className="in auto-machine" role="img" aria-label={t.load(m.load.toFixed(1), m.cpus, m.freeGb.toFixed(1))}>
@@ -306,13 +304,15 @@ function Aggregate({ tasks }: { tasks: AutoTask[] }) {
   )
 }
 
+const catSlot = (cat: AutoCategory, colors: Record<string, string>) => (cat.projectId ? (colors[cat.projectId] ?? 'p0') : (colors.__foot ?? 'p3'))
+
 function Category({ cat }: { cat: AutoCategory }) {
   const t = useT(M)
   const { snap, colors } = useApp()
   const tasks = tasksOf(cat)
   const [open, toggle] = useFold(cat.id, tasks)
   const name = cat.projectId ? (snap.projects.find((p) => p.id === cat.projectId)?.name ?? cat.projectId) : t.machine
-  const slot = cat.projectId ? (colors[cat.projectId] ?? 'p0') : (colors.__foot ?? 'p3')
+  const slot = catSlot(cat, colors)
   const running = tasks.filter((x) => x.state === 'running').length
   return (
     <section className="band auto-cat" style={color(slot)}>

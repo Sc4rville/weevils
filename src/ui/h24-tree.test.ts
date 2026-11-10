@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { H24Activity, Optimizer, Project } from '../../shared/api.ts'
-import { autoTree, counts, failedLine, fromActivity, fromOptimizer, openByDefault, short, tasksOf } from './h24-tree'
+import { DRAWER_SLOT, PROP_PALETTE, autoTree, counts, failedLine, fromActivity, fromOptimizer, hueGap, openByDefault, propColors, short, tasksOf } from './h24-tree'
 
 const NOW = 1_800_000_000_000
 const project = (id: string, repos: string[]): Project => ({ id, name: id, kind: 'repo', repos, where: {}, lastActivityAt: 0 })
@@ -70,4 +70,27 @@ describe('auto tree', () => {
     expect(fromActivity(act({ kind: 'timer', runState: 'waiting', lastEvent: 'failed' })).state).toBe('scheduled')
   })
 
+  it('proposal colours: far from the head amber and the band below, apart from each other, kept while they stay', () => {
+    expect(hueGap('p2', 'p3')).toBe(1)
+    expect(hueGap('p0', 'p15')).toBe(1)
+    expect(hueGap('p1', 'p14')).toBe(3)
+    const first = propColors(['a', 'b', 'c'], new Map(), null)
+    expect([...first.values()]).toEqual(PROP_PALETTE.slice(0, 3))
+    // Whatever band sits below: three colours, none close to it nor to the drawer, none next to another.
+    for (let i = 0; i < 16; i++) {
+      const c = [...propColors(['a', 'b', 'c'], new Map(), `p${i}`).values()]
+      for (const x of c) expect(Math.min(hueGap(x, `p${i}`), hueGap(x, DRAWER_SLOT)), `${x} on p${i}`).toBeGreaterThanOrEqual(3)
+      for (const [j, x] of c.entries()) for (const y of c.slice(j + 1)) expect(hueGap(x, y), `${x} by ${y}`).toBeGreaterThanOrEqual(2)
+    }
+    // The band below turns to the first column's hue: that one changes, the others stay.
+    const below = propColors(['a', 'b', 'c'], first, first.get('a')!)
+    expect(below.get('a')).not.toBe(first.get('a'))
+    expect(below.get('b')).toBe(first.get('b'))
+    expect(below.get('c')).toBe(first.get('c'))
+    // One leaves: the others keep their colour, the newcomer takes a free one.
+    const next = propColors(['b', 'c', 'd'], below, null)
+    expect(next.get('b')).toBe(first.get('b'))
+    expect(next.get('c')).toBe(first.get('c'))
+    expect(new Set(next.values()).size).toBe(3)
+  })
 })

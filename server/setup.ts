@@ -24,7 +24,7 @@ import path from 'node:path'
 import type { Message } from '../shared/api.ts'
 import type { MachineFacts } from '../shared/infra.ts'
 import { CONTEXT_BLOCK, FIELDS, type Brick, type Device } from '../shared/setup.ts'
-import { resetAuthors, authors } from './authors.ts'
+import { BOSS, resetAuthors, authors } from './authors.ts'
 import { CODEX_DIR, CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL } from './config.ts'
 import { devilConfig } from './devil.ts'
 import { facts } from './discover.ts'
@@ -75,7 +75,8 @@ export interface SetupState {
   github: { installed: boolean; logged: boolean; login?: string }
   voice: { spoken: 'cartesia' | 'edge' | null; openai: boolean; https: boolean }
   devil: { plugged: boolean; model?: string }
-  mail: { on: boolean; address?: string; authors: number }
+  /** pending : auteurs déclarés sans adresse e-mail (ils ne peuvent pas encore écrire). */
+  mail: { on: boolean; address?: string; authors: number; pending: string[] }
   phone: { devices: number; push: number }
   shortcut: boolean
   security: { safe: boolean; https: boolean; exposedHttp: boolean }
@@ -616,7 +617,7 @@ export class Setup {
       github: gh,
       voice: { spoken: cartesia() ? 'cartesia' : edgeTts() ? 'edge' : null, openai: !!process.env.OPENAI_API_KEY?.trim(), https: https || reach === 'local' },
       devil: { plugged: !!dv, model: dv?.model },
-      mail: { on: !!mail, address: mail?.address, authors: authors().filter((a) => a.emails.length).length },
+      mail: { on: !!mail, address: mail?.address, authors: authors().filter((a) => a.emails.length).length, pending: authors().filter((a) => a.id !== BOSS && !a.emails.length).map((a) => a.name) },
       phone: { devices: this.deps.devices(), push: this.deps.push() },
       shortcut: this.deps.shortcut(),
       security: { safe: process.env.WEEVILS_SAFE === '1', https, exposedHttp: (reach === 'lan' || (reach === 'public' && !https)) && m.kind !== 'container' },
@@ -838,7 +839,7 @@ export class Setup {
         post(`${t.mailPitch}\n\n${t.mailAsk}`)
         return true
       case 'author':
-        post(t.authorAsk)
+        post(s.mail.pending.length ? `${t.authorPending(s.mail.pending)} ${t.authorAsk}` : t.authorAsk)
         return true
       case 'quota':
         post(t.quotaAsk(s.quota))
@@ -1173,7 +1174,8 @@ export class Setup {
     writeConfig({ WEEVILS_MAIL_ADDRESS: alias, WEEVILS_MAIL_PASSWORD: pass })
     console.log('[setup] pont e-mail branché')
     this.deps.startMail()
-    this.say(chip(t.mailOk(alias), 'author'))
+    const pending = authors().filter((a) => a.id !== BOSS && !a.emails.length).map((a) => a.name)
+    this.say(chip(pending.length ? `${t.mailOk(alias)} ${t.authorPending(pending)}` : t.mailOk(alias), 'author'))
   }
 
   private applyAuthor(v: Record<string, string>) {
@@ -1182,8 +1184,11 @@ export class Setup {
     const id = v.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32)
     if (!id || !/^[^@\s]+@[^@\s]+\.[a-z]+$/i.test(email)) return this.say(chip(t.authorBad, 'author'))
     const n = authors().length
-    const color = /^#[0-9a-f]{3,8}$/i.test(v.color) ? v.color : /^[0-9a-f]{6}$/i.test(v.color) ? `#${v.color}` : PALETTE[n % PALETTE.length]
-    writeConfig({ [`WEEVILS_AUTHOR_${id}`]: `${v.name.replace(/\|/g, ' ')} | ${color} | ${email}` })
+    // Un auteur déjà déclaré (sans adresse, ou qui en change) garde sa couleur, ses autres adresses et son secret.
+    const prev = authors().find((a) => a.id === id.toLowerCase())
+    const color = /^#[0-9a-f]{3,8}$/i.test(v.color) ? v.color : /^[0-9a-f]{6}$/i.test(v.color) ? `#${v.color}` : prev?.color || PALETTE[n % PALETTE.length]
+    const emails = [...new Set([...(prev?.emails ?? []), email])].join(', ')
+    writeConfig({ [`WEEVILS_AUTHOR_${id}`]: `${v.name.replace(/\|/g, ' ')} | ${color} | ${emails}${prev?.secret ? ` | ${prev.secret}` : ''}` })
     resetAuthors()
     console.log(`[setup] auteur ajouté (${id.toLowerCase()})`)
     const alias = mailConfig()?.address ?? ''
@@ -1224,7 +1229,7 @@ export class Setup {
       `github: gh installed ${yes(s.github.installed)} · signed in ${yes(s.github.logged)}${s.github.login ? ` (${s.github.login})` : ''}`,
       `voice: spoken ${s.voice.spoken ?? 'none'} · dictation (OpenAI key) ${yes(s.voice.openai)} · https for the mic ${yes(s.voice.https)}`,
       `devil: plugged ${yes(s.devil.plugged)}${s.devil.model ? ` (${s.devil.model})` : ''}`,
-      `e-mail bridge: ${s.mail.on ? s.mail.address : 'off'} · allowed authors ${s.mail.authors}`,
+      `e-mail bridge: ${s.mail.on ? s.mail.address : 'off'} · allowed authors ${s.mail.authors}${s.mail.pending.length ? ` · declared without an e-mail address, cannot write yet: ${s.mail.pending.join(', ')}` : ''}`,
       `quota: ${s.quota.join(' · ') || 'unknown'}`,
       `security: agents ask permission ${yes(s.security.safe)} · exposed over plain http ${yes(s.security.exposedHttp)}`,
       `tools: ${Object.entries(s.tools).map(([k, x]) => (k === 'node' ? `node ${x}` : `${k} ${yes(!!x)}`)).join(', ')} · package manager ${s.pkg ?? 'none'} · sudo ${s.sudo}`,

@@ -153,6 +153,8 @@ export default defineMessages({
     authorOk: (name: string, email: string, alias: string): string =>
       alias ? `${name} peut m’écrire depuis ${email} à ${alias} : ses messages arrivent signés à son nom. Un autre ?` : `${name} pourra m’écrire depuis ${email} dès que le pont e-mail sera branché :`,
     authorBad: 'Il me faut un nom et une adresse e-mail valide. Réessaie :',
+    authorPending: (names: string[]): string =>
+      `${names.join(' et ')} ${names.length > 1 ? 'sont déclarés' : 'est déclaré'} sans adresse e-mail : ${names.length > 1 ? 'ils ne peuvent' : 'il ne peut'} pas encore m’écrire. Donne-moi d’abord ${names.length > 1 ? 'leurs adresses' : 'son adresse'} (même nom, la couleur reste).`,
     // ---- quota
     quotaAsk: (lines: string[]): string =>
       lines.length
@@ -331,6 +333,8 @@ export default defineMessages({
     authorOk: (name: string, email: string, alias: string): string =>
       alias ? `${name} may write to me from ${email} at ${alias}: their messages come signed with their name. Another one?` : `${name} will be able to write to me from ${email} once the e-mail bridge is plugged in:`,
     authorBad: 'I need a name and a valid e-mail address. Try again:',
+    authorPending: (names: string[]): string =>
+      `${names.join(' and ')} ${names.length > 1 ? 'are' : 'is'} declared without an e-mail address, so ${names.length > 1 ? 'they' : 'it'} can’t write to me yet. Give me ${names.length > 1 ? 'their addresses' : 'its address'} first (same name, the color stays).`,
     quotaAsk: (lines: string[]): string =>
       lines.length
         ? `Your plan: ${lines.join(' · ')}. When a quota gets close to its limit, I hand the work to the other agent if you have both. [[setup:codex]]`

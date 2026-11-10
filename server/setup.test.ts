@@ -50,7 +50,7 @@ describe('installPlan', () => {
     machine: { kind: 'vps', mac: false, os: 'Ubuntu 24.04', cpus: 2, ramGb: 4, uptimeDays: 3, alwaysOn: true, host: 'box', user: 'me', sshTarget: 'me@box', agents: 2, others: [], othersAlwaysOn: false },
     reach: 'public', url: 'https://x', https: true, port: 4179, clone: '~/weevils',
     claude: { installed: true, logged: true }, codex: { installed: true, logged: true }, github: { installed: true, logged: true },
-    voice: { spoken: 'edge', openai: false, https: true }, devil: { plugged: false }, mail: { on: false, authors: 0 },
+    voice: { spoken: 'edge', openai: false, https: true }, devil: { plugged: false }, mail: { on: false, authors: 0, pending: [] },
     phone: { devices: 1, push: 0 }, shortcut: false, security: { safe: false, https: true, exposedHttp: false }, quota: [],
     pkg: 'apt', sudo: 'yes', tools: { git: true, tmux: true, curl: true, python3: true, qrencode: true, pipx: true, uv: false, node: 22 }, projects: 0,
   } as const
@@ -102,7 +102,7 @@ describe('never a command for the user to type', () => {
     machine: { kind: 'vps', mac: false, os: 'Ubuntu 24.04', cpus: 2, ramGb: 4, uptimeDays: 3, alwaysOn: true, host: 'box', user: 'me', sshTarget: 'me@box', agents: 2, others: [], othersAlwaysOn: false },
     reach: 'local', url: 'http://127.0.0.1:4179', https: false, port: 4179, clone: '~/weevils',
     claude: { installed: false, logged: false }, codex: { installed: false, logged: false }, github: { installed: false, logged: false },
-    voice: { spoken: null, openai: false, https: false }, devil: { plugged: false }, mail: { on: false, authors: 0 },
+    voice: { spoken: null, openai: false, https: false }, devil: { plugged: false }, mail: { on: false, authors: 0, pending: [] },
     phone: { devices: 1, push: 0 }, shortcut: false, security: { safe: false, https: false, exposedHttp: true }, quota: [],
     pkg: 'apt', sudo: 'no', tools: { git: true, tmux: true, curl: true, python3: true, qrencode: true, pipx: false, uv: false, node: 22 }, projects: 0,
   } as any

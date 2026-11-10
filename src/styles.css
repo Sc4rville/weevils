@@ -2239,3 +2239,14 @@ button.copy.done {
     animation: none;
   }
 }
+
+/* Une ligne ou un nom de bande du flux mis en avant (retour d'une page, bande qui a dû bouger) : sans fond à lui, seul son
+   texte s'éclairerait ; il prend le temps de l'éclat la couleur de sa bande (ou de sa sous-bande). */
+.stack .head.wv-flash,
+.stack .row.wv-flash:not(.tone) {
+  background-color: var(--c);
+}
+
+.stack .tone > .row.wv-flash {
+  background: inherit;
+}

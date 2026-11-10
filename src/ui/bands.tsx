@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Message, Project } from '../../shared/api.ts'
 import { api } from '../api'
 import { tr, useT } from '../i18n'
@@ -7,12 +7,12 @@ import M from '../i18n/bands'
 import D from '../i18n/devil'
 import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
-import { THEMES, useApp } from './app-context'
+import { THEMES, stableOrder, useApp } from './app-context'
 import { ensurePush } from '../push'
 import { VoiceLogo } from './voice'
 import { useThreadAsk } from './askthread'
 import { isUnread, useSeen } from './seen'
-import { Appear, Collapse, Composer, INSTANT, Line, Messages, SessionRow, Working, authorTone, spring, useAuthors } from './bits'
+import { Collapse, Composer, INSTANT, Line, Messages, SessionRow, Working, authorTone, spring, useAuthors } from './bits'
 import B from '../i18n/bits'
 import { ago, plain, userText } from './format'
 import { FilledIcon, G, Icon } from './icons'
@@ -21,7 +21,7 @@ import { UsageLine } from './infra'
 import { TokenMeter } from './rate'
 import { setDevil, useDevil } from './devil'
 import { markSeen, tapHint } from './hints'
-import { flash, reveal, useFollow } from './follow'
+import { flash, keepInPlace, reveal, useFollow } from './follow'
 import { mergePending, type Pending } from './pending'
 import { SetupChips, SetupComposer, askSetup, flowVoice, useFlow, useWelcome } from './setup'
 
@@ -332,14 +332,33 @@ function saveCollapsed(id: string, v: boolean) {
   }
 }
 
+/** Une ligne de session dans sa bande : apparaît comme Appear (bits.tsx) et glisse quand elle change de place. */
+function RowSlot({ children }: { children: ReactNode }) {
+  return (
+    <motion.div layout="position" className="clip" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={spring}>
+      {children}
+    </motion.div>
+  )
+}
+
+const urgent = (s: { status: string }) => (s.status === 'needs_user' || s.status === 'interrupted' ? 0 : 1)
+
 export function ProjectBand({ project }: { project: Project }) {
   const t = useT(M)
-  const { snap, expanded, setExpanded, push, now, colors, setH24Open, instant } = useApp()
+  const { snap, expanded, setExpanded, push, now, colors, setH24Open, instant, settled = true } = useApp()
   const tx = instant ? INSTANT : spring
-  const [showDone, setShowDone] = useState(false)
   const mode = expanded === null ? 'normal' : expanded === project.id ? 'open' : 'mini'
+  // Les « terminées » : ouvertes ou fermées à la main, pour la vue en cours (un changement de vue rend la règle par défaut).
+  const [doneSet, setDoneSet] = useState<{ v: boolean; mode: string } | null>(null)
   const sessions = snap.sessions.filter((s) => s.projectId === project.id)
-  const active = sessions.filter((s) => s.status !== 'done')
+  // Une ligne ne change pas de place parce qu'une autre session écrit (le serveur les range par activité) : ce qui
+  // t'attend en tête, puis l'ordre déjà affiché, une nouvelle session en tête des siennes. Rien ne bouge sous le doigt.
+  const shownRows = useRef<string[]>([])
+  const active = stableOrder(sessions.filter((s) => s.status !== 'done'), (s) => s.id, urgent, (a, b) => b.openedAt - a.openedAt, shownRows.current, !settled)
+  const rowKey = active.map((s) => s.id).join('|')
+  useLayoutEffect(() => {
+    shownRows.current = rowKey ? rowKey.split('|') : []
+  }, [rowKey])
   const done = sessions.filter((s) => s.status === 'done')
   const att = active.filter((s) => s.status === 'needs_user')
   const cut = active.filter((s) => s.status === 'interrupted')
@@ -353,8 +372,17 @@ export function ProjectBand({ project }: { project: Project }) {
     setPref(v)
     saveCollapsed(project.id, v)
   }
+  // Un tap sur le nom : la bande reste sous le doigt pendant que les autres se replient ou se déplient autour
+  // (keepInPlace) ; ce qui s'ouvre sous le bas de l'écran y est amené ; si elle a dû bouger malgré tout (haut du flux,
+  // fil de weevboss qui se referme d'un coup), elle s'éclaire un instant.
+  const sec = useRef<HTMLElement>(null)
+  const head = useRef<HTMLDivElement>(null)
+  const doneBox = useRef<HTMLDivElement>(null)
+  const pin = useRef<{ fix: () => void; top: number; grow: boolean; at: number } | null>(null)
   const toggle = () => {
     markSeen('g-fold')
+    const grow = mode === 'mini' || (mode === 'normal' && collapsed)
+    pin.current = { fix: keepInPlace(head.current, 480), top: head.current?.getBoundingClientRect().top ?? 0, grow, at: Date.now() }
     // Une autre bande est ouverte (le fil de weevboss en grand, un autre projet) : un tap saute directement ici.
     if (mode === 'mini') {
       for (const r of project.repos) prefetchRepo(r, project.where[r] ?? snap.machines[0]?.id ?? '')
@@ -375,9 +403,28 @@ export function ProjectBand({ project }: { project: Project }) {
     }
     remember(true)
   }
+  useLayoutEffect(() => {
+    const p = pin.current
+    pin.current = null
+    if (!p || Date.now() - p.at > 400) return
+    p.fix() // avant l'affichage : une bascule instantanée ne se voit pas
+    const timer = window.setTimeout(() => {
+      const h = head.current
+      const s = sec.current
+      if (!h || !s) return
+      if (Math.abs(h.getBoundingClientRect().top - p.top) > 24) flash(h)
+      if (p.grow) reveal(s, { block: s.offsetHeight > window.innerHeight * 0.8 ? 'start' : 'nearest', flash: false })
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [mode, collapsed])
   // Réduit : une ligne, au format de la vue « mini » (nom, étoile verte, résumé).
   const shown = collapsed ? 'mini' : mode
-  const doneOpen = showDone || (mode === 'open' && active.length === 0)
+  const doneOpen = doneSet?.mode === mode ? doneSet.v : mode === 'open' && active.length === 0
+  const toggleDone = () => {
+    setDoneSet({ v: !doneOpen, mode })
+    // Les terminées s'ouvrent souvent sous le bas de l'écran : la dernière y est amenée, le dépliage fini.
+    if (!doneOpen) window.setTimeout(() => reveal(doneBox.current?.lastElementChild, { block: 'nearest', flash: false }), 380)
+  }
 
   const busy = active.some((s) => s.status === 'working')
   useSeen()
@@ -393,8 +440,8 @@ export function ProjectBand({ project }: { project: Project }) {
     .join(' · ')
 
   return (
-    <motion.section layout="position" transition={tx} className={`band ${busy ? 'busy' : ''} ${cut.length ? 'has-cut' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={t.projectBand(project.name)} data-project={project.id}>
-      <motion.div className="in head" initial={false} animate={{ minHeight: shown === 'mini' ? 50 : 64, paddingTop: shown === 'mini' ? 0 : 8 }} transition={tx}>
+    <motion.section ref={sec} layout="position" transition={tx} className={`band ${busy ? 'busy' : ''} ${cut.length ? 'has-cut' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={t.projectBand(project.name)} data-project={project.id}>
+      <motion.div ref={head} className="in head" initial={false} animate={{ minHeight: shown === 'mini' ? 50 : 64, paddingTop: shown === 'mini' ? 0 : 8 }} transition={tx}>
         <button className="head-name" onClick={toggle} aria-expanded={mode === 'open'} aria-controls={`more-${project.id}`}>
           <motion.span className="name" initial={false} animate={{ fontSize: NAME_SIZE[shown] }} transition={tx}>
             {project.name}
@@ -467,22 +514,24 @@ export function ProjectBand({ project }: { project: Project }) {
       <Collapse open={shown !== 'mini'} transition={tx}>
         <AnimatePresence initial={false}>
           {active.map((s) => (
-            <Appear key={s.id}>
+            <RowSlot key={s.id}>
               <SessionRow session={s} />
-            </Appear>
+            </RowSlot>
           ))}
         </AnimatePresence>
         {active.length === 0 && sessions.length > 0 && project.lastActivityAt > 0 && <div className="in meta empty">{t.idleSince(ago(now - project.lastActivityAt))}</div>}
         {sessions.length === 0 && mode === 'normal' && convs.slice(0, 3).map((c) => <ConvLine key={c.id} c={c} />)}
         {done.length > 0 && (
           <>
-            <Line ch="✓" go={doneOpen ? '↑' : '↓'} onClick={() => setShowDone(!doneOpen)} label={t.done(done.length)}>
+            <Line ch="✓" go={doneOpen ? '↑' : '↓'} onClick={toggleDone} label={t.done(done.length)}>
               <span className="meta">{t.done(done.length)}</span>
             </Line>
             <Collapse open={doneOpen}>
-              {done.slice(0, 6).map((s) => (
-                <SessionRow key={s.id} session={s} />
-              ))}
+              <div ref={doneBox}>
+                {done.slice(0, 6).map((s) => (
+                  <SessionRow key={s.id} session={s} />
+                ))}
+              </div>
             </Collapse>
           </>
         )}
@@ -512,7 +561,7 @@ export function ProjectBand({ project }: { project: Project }) {
           </Line>
           {jobs.length > 0 && <div className="in label">{t.h24Label}</div>}
           {jobs.map((a) => (
-            <Line key={a.id} ch={a.runState === 'running' ? <span className="spin"><Icon name="star" /></span> : <Icon name="check" />} meta={a.runState === 'running' ? t.running : a.lastEvent} onClick={() => setH24Open(true)} go="↓">
+            <Line key={a.id} ch={a.runState === 'running' ? <span className="spin"><Icon name="star" /></span> : <Icon name="check" />} meta={a.runState === 'running' ? t.running : a.lastEvent} onClick={() => setH24Open(true, a.id)} go="↓">
               {a.title}
             </Line>
           ))}

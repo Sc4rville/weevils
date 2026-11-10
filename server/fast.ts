@@ -41,6 +41,30 @@ export function smart(prompt: string, timeout = 90_000): Promise<string> {
   })
 }
 
+/**
+ * The same kind of answer from Codex (codex exec, ephemeral, read-only, low effort), on the user's other subscription:
+ * what the « for you » stream writes while Claude's usage is nearly full.
+ */
+export function relay(prompt: string, timeout = 120_000): Promise<string> {
+  const t0 = Date.now()
+  const out = path.join(os.tmpdir(), `wv-relay-${process.pid}-${t0.toString(36)}-${Math.floor(Math.random() * 1e6)}.txt`)
+  return new Promise((resolve, reject) => {
+    const c = execFile('codex', ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-o', out, '-c', 'model_reasoning_effort="low"', prompt], { timeout, maxBuffer: 4 << 20, cwd: os.tmpdir() }, (err) => {
+      let text = ''
+      try {
+        text = fs.readFileSync(out, 'utf8').trim()
+      } catch {
+        /* nothing written */
+      }
+      fs.rmSync(out, { force: true })
+      console.log(`[rapide] codex ${Date.now() - t0} ms${err && !text ? ' · échec' : ''}`)
+      if (err && !text) reject(err)
+      else resolve(text)
+    })
+    c.stdin?.end()
+  })
+}
+
 /** The first JSON object or array in a model's answer (it sometimes wraps it in a code fence or a sentence). */
 export function parseJson<T>(text: string): T | null {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)

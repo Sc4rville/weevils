@@ -259,6 +259,19 @@ leaving the carousel shows no word; no per-author voice override; a session's `w
 the stream is main-machine only (media of a secondary machine cannot be shown); the demo world of
 `weevils-content` is not seeded with a stream yet.
 
+### Handover (November 10, 2026, Claude at its weekly limit — Codex takes over)
+
+Done and live: human tone (curator prompts, alerts, figures, milestones), question cards read by a light model
+(title + clear question + option buttons sent to the session; « not really a question » becomes a result), pace
+(never twice the same sort in a row, newest first within 4 places), history of 4 days (backfill 40 per pass,
+stream up to 160), auto tasks started / finished as items, curator modes: full (Claude < 85 %), relay (everything
+through `codex exec`, `relay()` in `server/fast.ts`, 30 calls a day), lean (haiku only up to 98 %, 16 a day).
+
+Left: commits and deploys as items (git log of active repos, free); new proposals as an event; the weevboss band
+asked by Scarville — logo a little higher and a taller thread preview when folded, and weevboss full screen must be the
+same frame as « pour toi » full screen (same head « weevboss · pour toi », whole screen, no jump when switching):
+today the open band is smaller than the page. Check with iPhone screenshots (folded, full screen, switching).
+
 ## 6. Checks
 
 - `npm run check` (typecheck app + server, i18n, shell lint, tests) before every merge.

@@ -1162,3 +1162,17 @@
 .fy-line-more svg {
   vertical-align: -0.1em;
 }
+
+/* A question card: the short title in bold, the question at reading size, semi-bold. */
+.fy-q-lead {
+  font-size: 1.125rem;
+  font-weight: 750;
+  line-height: 1.25;
+  margin-bottom: 4px;
+}
+.fy-q {
+  font-size: 1.0625rem;
+  font-weight: 560;
+  line-height: 1.38;
+  overflow-wrap: anywhere;
+}

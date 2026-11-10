@@ -36,7 +36,7 @@ type ReadBody = (req: http.IncomingMessage) => Promise<any>
 export const MAX_ITEMS = 400
 export const KEEP_MS = 14 * 24 * 3600_000
 /** What GET /api/foryou returns at most. */
-export const MAX_FEED = 60
+export const MAX_FEED = 160
 export const TEXT_MAX = 600
 export const POST_MAX = 1200
 export const MAIL_LINE_MAX = 140
@@ -47,8 +47,8 @@ export const LINE_MAX = 240
 /** The closing words kept for the unfold. */
 export const BODY_MAX = 4000
 /** Turns that ended before the stream heard of them (first start, restart): picked up when this recent, this many at a time. */
-export const BACKFILL_MS = 24 * 3600_000
-export const BACKFILL_MAX = 16
+export const BACKFILL_MS = 4 * 24 * 3600_000
+export const BACKFILL_MAX = 40
 export const MAIL_BODY_MAX = 12_000
 export const MAX_ACTIONS = 2
 /** Files shown by the same session within this delay join one item, up to MAX_MEDIA. */
@@ -86,9 +86,25 @@ export const CATCH_UP_MS = 12 * 3600_000
 
 export function arrange(items: ForYouItem[], _now: number): ForYouItem[] {
   // One rule the eye can learn: what is new comes in at the top. Only what blocks right now (the system alerts, a
-  // state, not news) sits above, and leaves once solved.
+  // state, not news) sits above, and leaves once solved. Then the pace: never twice the same sort of item in a row
+  // when a neighbour a few places down can step up (the order stays newest first to within those few places).
   const newest = (a: ForYouItem, b: ForYouItem) => b.at - a.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-  return [...items.filter((i) => i.kind === 'alert').sort(newest), ...items.filter((i) => i.kind !== 'alert').sort(newest)]
+  return [...items.filter((i) => i.kind === 'alert').sort(newest), ...pace(items.filter((i) => i.kind !== 'alert').sort(newest))]
+}
+
+/** The sort of an item, for the pace: a session's result, question and cut read as three different things. */
+const sortOf = (i: ForYouItem) => (i.kind === 'session' ? `session:${i.tone}` : i.kind)
+/** How far down the pace may fetch an item to break a run. */
+export const PACE_REACH = 4
+
+export function pace(list: ForYouItem[]): ForYouItem[] {
+  const out = [...list]
+  for (let k = 1; k < out.length; k++) {
+    if (sortOf(out[k]) !== sortOf(out[k - 1])) continue
+    const j = out.findIndex((x, n) => n > k && n <= k + PACE_REACH && sortOf(x) !== sortOf(out[k - 1]))
+    if (j > 0) out.splice(k, 0, ...out.splice(j, 1))
+  }
+  return out
 }
 
 // ---------------------------------------------------------------- texts
@@ -267,6 +283,8 @@ export interface ForYouDeps {
 
 /** A recorded item. Everything the app may read is copied field by field in view(): the rest never leaves. */
 interface Stored {
+  /** session question: what a model read in the session's last message (asked: false — not really a question). */
+  q?: { ask?: boolean; title?: string; question?: string; options?: string[] }
   id: string
   kind: ForYouKind
   tone: ForYouTone
@@ -681,6 +699,25 @@ export class ForYou {
       .map((i) => ({ id: i.id, who: i.who, subject: i.title ?? '', text: i.body! }))
   }
 
+  /** Questions of sessions still waiting that no model has read yet: for the curator. */
+  rawAsks(max = 4): { id: string; sessionId: string; project: string; title: string; attention: string }[] {
+    const snap = this.w.snapshot()
+    return this.s.items
+      .filter((i) => i.kind === 'session' && i.tone === 'question' && !i.gone && !i.q && !!i.sessionId)
+      .filter((i) => snap.sessions.find((s) => s.id === i.sessionId)?.status === 'needs_user')
+      .sort((a, b) => b.at - a.at)
+      .slice(0, max)
+      .map((i) => ({ id: i.id, sessionId: i.sessionId!, project: snap.projects.find((p) => p.id === i.projectId)?.name ?? i.projectId ?? '', title: i.title ?? '', attention: i.text }))
+  }
+
+  /** What the curator read in a question (null: it could not; the raw line stays). */
+  askRead(id: string, q: Stored['q'] | null) {
+    const i = this.get(id)
+    if (!i || i.kind !== 'session' || i.tone !== 'question') return
+    i.q = q ?? {}
+    this.changed()
+  }
+
   /** Session results still in their raw closing words (no line said in passing yet), never seen: for the curator. */
   rawResults(max = 6): { id: string; project: string; title: string; asked: string; askedAt: number; text: string }[] {
     const snap = this.w.snapshot()
@@ -785,6 +822,15 @@ export class ForYou {
         // Answered since (or gone from the list): no longer a question.
         if (!any && cur?.status !== 'needs_user') return null
         out.text = i.text || t.waiting
+        if (i.q?.ask === false && i.q.question) {
+          // Not really a question: said as what the session did, no « asks you » card.
+          out.tone = 'result'
+          out.text = i.q.question
+        } else if (i.q?.ask && i.q.question) {
+          out.text = i.q.question
+          if (i.q.title) out.lead = i.q.title
+          if (i.q.options?.length) out.actions = i.q.options.map((label, n) => ({ id: `opt:${n}`, label }))
+        }
       } else if (i.tone === 'alert') {
         if (!any && cur?.status !== 'interrupted') return null
         out.text = t.cut(tr(CM).cutWhy(i.cut ?? 'died'))
@@ -913,6 +959,19 @@ export class ForYou {
   }
   private tried = new Set<string>()
 
+  /** An auto task that starts or ends is news, said once each (free: read from the snapshot). */
+  private autoEvents(snap: Snapshot) {
+    const t = tr(M)
+    for (const o of snap.optimizers ?? []) {
+      const ev = o.state === 'running' && o.startedAt ? { id: `auto:go:${o.id}`, at: o.startedAt, text: t.autoGo(o.title), tone: 'neutral' as const }
+        : o.state === 'done' && o.endedAt ? { id: `auto:done:${o.id}`, at: o.endedAt, text: t.autoDone(o.title, o.lastEvent ?? ''), tone: 'result' as const }
+        : null
+      if (!ev || this.has(ev.id) || this.now() - ev.at > BACKFILL_MS) continue
+      this.put({ id: ev.id, kind: 'boss', tone: ev.tone, at: ev.at, who: 'weevils', text: ev.text, open: { page: 'auto', id: o.id }, reply: 'boss', rec: this.now(), lang: lang() })
+      this.changed(false)
+    }
+  }
+
   /**
    * Everything visible now, before the language filter. Also: a session that waits or was cut without an item saying
    * so gets one (after a restart, core's first pass is silent), and the revision moves when the visible set changed.
@@ -927,6 +986,7 @@ export class ForYou {
     }
     if (wrote) this.changed(false)
     this.backfill(snap, now)
+    this.autoEvents(snap)
     const out: { item: ForYouItem; lang?: Lang }[] = []
     for (const i of this.s.items) {
       const item = this.view(i, snap)
@@ -1035,7 +1095,12 @@ export class ForYou {
     const i = this.get(id)
     if (!i || i.gone) throw new Error(t.notFound)
     if (i.kind === 'session' && action === 'resume' && i.sessionId) await this.w.resume(i.sessionId)
-    else {
+    else if (i.kind === 'session' && action.startsWith('opt:') && i.sessionId) {
+      // An option of a question card: said to the session as the user's answer.
+      const label = i.q?.options?.[Number(action.slice(4))]
+      if (!label) throw new Error(t.noAction)
+      await this.w.send(i.sessionId, label)
+    } else {
       const a = i.actions?.find((x) => x.id === action)
       if (!a) throw new Error(t.noAction)
       await this.w.sendMain(t.go(a.label), t.actBrief(clip(collapse(i.text), 300), a.brief))

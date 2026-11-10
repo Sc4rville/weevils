@@ -71,6 +71,13 @@ export default defineMessages({
       `Uniquement des faits bien établis ; aucun chiffre ni date dont tu n'es pas certain. Du texte simple : pas de titre, pas de liste, pas de markdown, pas d'emoji. En français.`,
 
     // ---------------------------------------------------------------- mail lines
+    askItem: (n: number, project: string, title: string, text: string) => `### ${n}\nSession du projet ${project}${title ? ` (« ${title} »)` : ''}, son dernier message :\n${text}`,
+    asks: (items: string, user: string) =>
+      `Des agents de code de ${user || "l'utilisateur"} ont fini leur tour et l'attendent. Pour chacun, lis son dernier message et dis si c'est vraiment une question ou une demande qui attend sa réponse. ` +
+      `Si oui (ask: true) : title = un titre très court (5 mots au plus) ; question = une vraie question claire et autonome, compréhensible sans rien d'autre (ce que l'agent demande, pourquoi, et quels choix il a), au tutoiement, comme un collègue, 220 caractères au plus, sans jargon ni chemin de fichier ; options = les réponses possibles en boutons quand il y en a (2 ou 3, très courtes, à la première personne de ${user || "l'utilisateur"} : « oui, continue », « non, arrête »), sinon []. ` +
+      `Si ce n'est pas vraiment une question (un compte rendu, une phrase de politesse comme « dis-moi » ou « tu me dis ») : ask: false et question = une phrase humaine qui dit ce que l'agent a fait, à la première personne, comme dans un chat. ` +
+      `Rien d'inventé ; en français.\n\n${items}\n\n` +
+      `Réponds uniquement en JSON, une liste : [{"n": 1, "ask": true, "title": "…", "question": "…", "options": ["…"]}]`,
     mailItem: (n: number, from: string, subject: string, text: string) => `### ${n}\nDe : ${from}\nObjet : ${subject || '(sans objet)'}\n${text}`,
     resultItem: (n: number, project: string, asked: string, minutes: number, text: string) =>
       `### ${n}\nDe : l'agent de code du projet ${project}\nCe que l'utilisateur lui avait demandé, il y a ${minutes < 90 ? `${minutes} min` : `${Math.round(minutes / 60)} h`} : ${asked || '(inconnu)'}\nSon compte rendu de fin de tour :\n${text}`,
@@ -158,6 +165,13 @@ export default defineMessages({
       `Explain it to them in one paragraph (900 characters at most), speaking to them as you, simply: what it is, why it matters in this repo, and what they can ask their agents to make the most of it. ` +
       `Only well-established facts; no figure or date you are not certain of. Plain text: no heading, no list, no markdown, no emoji. In English.`,
 
+    askItem: (n: number, project: string, title: string, text: string) => `### ${n}\nSession of project ${project}${title ? ` ("${title}")` : ''}, its last message:\n${text}`,
+    asks: (items: string, user: string) =>
+      `Coding agents of ${user || 'the user'} ended their turn and are waiting. For each, read its last message and say whether it is really a question or a request waiting for their answer. ` +
+      `If so (ask: true): title = a very short title (5 words at most); question = a real, clear, self-contained question, understandable on its own (what the agent asks, why, and what the choices are), casual, like a colleague, 220 characters at most, no jargon or file path; options = the possible answers as buttons when there are some (2 or 3, very short, in ${user || 'the user'}'s first person: "yes, go on", "no, stop"), else []. ` +
+      `If it is not really a question (a report, a polite line such as "let me know"): ask: false and question = a human sentence saying what the agent did, in the first person, as in a chat. ` +
+      `Nothing made up; in English.\n\n${items}\n\n` +
+      `Answer only in JSON, a list: [{"n": 1, "ask": true, "title": "…", "question": "…", "options": ["…"]}]`,
     mailItem: (n: number, from: string, subject: string, text: string) => `### ${n}\nFrom: ${from}\nSubject: ${subject || '(no subject)'}\n${text}`,
     resultItem: (n: number, project: string, asked: string, minutes: number, text: string) =>
       `### ${n}\nFrom: the coding agent of project ${project}\nWhat the user had asked it, ${minutes < 90 ? `${minutes} min` : `${Math.round(minutes / 60)} h`} ago: ${asked || '(unknown)'}\nIts end-of-turn report:\n${text}`,

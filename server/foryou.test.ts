@@ -773,10 +773,10 @@ describe('arrange', () => {
     expect(arrange([fresh, a1, a2], T0).map((i) => i.id)).toEqual([a2.id, a1.id, fresh.id])
   })
 
-  it('stable for equal times, and leaves its input alone', () => {
+  it('stable for equal times, never twice the same sort in a row when a neighbour can step up, leaves its input alone', () => {
     const list = [item('boss', { id: 'b' }), item('boss', { id: 'a' }), item('mail', { id: 'c' })]
     const ids = list.map((i) => i.id)
-    expect(arrange(list, T0).map((i) => i.id)).toEqual(['a', 'b', 'c'])
+    expect(arrange(list, T0).map((i) => i.id)).toEqual(['a', 'c', 'b'])
     expect(list.map((i) => i.id)).toEqual(ids)
   })
 })

@@ -34,8 +34,8 @@ import { detectLang } from '../shared/detect-lang.ts'
 import type { ForYouGauge, ForYouItem } from '../shared/foryou.ts'
 import type { UsageInfo } from '../shared/infra.ts'
 import { DATA_DIR } from './config.ts'
-import { haiku, parseJson, smart } from './fast.ts'
-import { USAGE_ALERT, type ForYou, type ForYouCurator } from './foryou.ts'
+import { haiku, parseJson, relay, smart } from './fast.ts'
+import { USAGE_ALERT, lastWords, type ForYou, type ForYouCurator } from './foryou.ts'
 import { lang, tr, user, withLang, type Lang } from './i18n.ts'
 import CM from './i18n/core.ts'
 import P from './i18n/foryou-curator.ts'
@@ -51,11 +51,11 @@ export const TICK_MS = 4 * 60_000
 export const DAILY_CAP = 12
 export const BACKOFF_MS = 3600_000
 export const BACKOFF_MAX_MS = 12 * 3600_000
-export const DIGEST_EVERY_MS = 3 * 3600_000
+export const DIGEST_EVERY_MS = 2 * 3600_000
 /** A first digest (or one after a long silence) looks this far back at most. */
 export const DIGEST_SPAN_MS = 12 * 3600_000
-export const IMPROVE_EVERY_MS = 12 * 3600_000
-export const INSIGHT_EVERY_MS = 2 * 3600_000
+export const IMPROVE_EVERY_MS = 6 * 3600_000
+export const INSIGHT_EVERY_MS = 45 * 60_000
 export const STAT_EVERY_MS = 4 * 3600_000
 /** Mails are batched: a call at most this often. */
 export const MAIL_EVERY_MS = 10 * 60_000
@@ -63,7 +63,9 @@ export const MAIL_BATCH = 6
 /** The short lines (haiku, cheap) keep going past the 85 % gate, up to this share of a window, this many calls a day:
  *  a robotic report in the stream is worse than a few haiku calls. */
 export const LINES_CEIL = 98
-export const LINES_CAP = 10
+export const LINES_CAP = 16
+/** Calls a day through Codex while Claude's usage is nearly full (its own subscription, which stays almost unused). */
+export const RELAY_CAP = 30
 export const TURN_STEPS = [10, 25, 50, 100]
 export const STREAK_STEPS = [3, 7, 14, 30, 60, 100]
 export const PROJECTS_STEP = 3
@@ -321,6 +323,8 @@ export interface CuratorDeps {
   usage?: () => UsageInfo | null
   /** weevils' memory (main machine), for the digest's thought. */
   memory?: () => { digest(max?: number, chars?: number): string } | null | undefined
+  /** Codex call (tests). Default: relay() of fast.ts. */
+  relay?: (prompt: string, timeout: number) => Promise<string>
   /** Folder of a repo on this machine (undefined or a throw: not here). */
   repoDir?: (repo: string) => string | undefined
   facts?: (dir: string) => Promise<RepoFacts>
@@ -332,6 +336,8 @@ interface State {
   calls: { day: string; n: number }
   /** Haiku calls of the short lines today (their own small allowance, see LINES_CAP). */
   lines?: { day: string; n: number }
+  /** Codex calls today (relay). */
+  relay?: { day: string; n: number }
   fails: number
   failUntil: number
   digestAt: number
@@ -350,6 +356,24 @@ interface State {
 const EMPTY = (): State => ({ calls: { day: '', n: 0 }, fails: 0, failUntil: 0, digestAt: 0, improveAt: 0, insightAt: 0, mailAt: 0, statAt: 0, insights: {}, done: {}, days: {} })
 
 type Job = () => Promise<void>
+
+/** The question cards a model wrote: [{n, ask, title, question, options}], checked and capped. */
+export function parseAsks(raw: unknown): Map<number, { ask: boolean; title?: string; question?: string; options?: string[] }> {
+  const out = new Map<number, { ask: boolean; title?: string; question?: string; options?: string[] }>()
+  if (!Array.isArray(raw)) return out
+  const str = (v: unknown, n: number) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n) : '')
+  for (const x of raw) {
+    if (!x || typeof x !== 'object') continue
+    const o = x as Record<string, unknown>
+    const n = Number(o.n)
+    const question = str(o.question, 320)
+    if (!Number.isInteger(n) || !question) continue
+    const options = Array.isArray(o.options) ? o.options.map((v) => str(v, 40)).filter(Boolean).slice(0, 3) : []
+    const ask = o.ask !== false
+    out.set(n, ask ? { ask, title: str(o.title, 60) || undefined, question, options } : { ask, question })
+  }
+  return out
+}
 
 export class Curator implements ForYouCurator {
   readonly fy: ForYou
@@ -420,6 +444,25 @@ export class Curator implements ForYouCurator {
 
   // ---------------------------------------------------------------- budget
 
+  /** How the next call goes: full (Claude has room: sonnet and haiku), relay (Claude nearly full, Codex has room:
+   *  everything through Codex), lean (neither: haiku only, up to LINES_CEIL), or nothing. */
+  mode(now = this.now()): 'full' | 'relay' | 'lean' | null {
+    if (this.can(now)) return 'full'
+    const u = this.deps.usage ? this.deps.usage() : this.fy.usageKnown()
+    const cx = u?.codex
+    const relayDay = this.s.relay?.day === dayKey(now) ? this.s.relay.n : 0
+    if (cx?.ok && cx.windows.length && cx.windows.every((w) => w.percent < USAGE_ALERT) && relayDay < RELAY_CAP && now >= this.s.failUntil) return 'relay'
+    return this.lean(now) ? 'lean' : null
+  }
+  /** The mode of the call being made. */
+  private via: 'full' | 'relay' | 'lean' = 'full'
+
+  /** A model answer by the current mode: Codex in relay, haiku in lean, else the model asked for. */
+  private ask(kind: 'smart' | 'haiku', prompt: string, timeout: number): Promise<string> {
+    if (this.via === 'relay') return (this.deps.relay ?? relay)(prompt, Math.max(timeout, 120_000))
+    return this.via === 'lean' || kind === 'haiku' ? haiku(prompt, Math.min(timeout, 60_000)) : smart(prompt, timeout)
+  }
+
   /** Haiku calls of the short lines made today. */
   lineCalls(now = this.now()): number {
     return this.s.lines?.day === dayKey(now) ? this.s.lines.n : 0
@@ -454,15 +497,12 @@ export class Curator implements ForYouCurator {
     return this.logged() && this.calls(now) < DAILY_CAP && !(loop && now < this.s.failUntil) && !this.hot()
   }
 
-  private spendLine(now: number) {
-    this.s.lines = { day: dayKey(now), n: this.lineCalls(now) + 1 }
-    this.spent = true
-    this.save()
-  }
-
-  /** Counted when the call starts, kept at once: a crash or a restart never gives the call back. */
+  /** Counted when the call starts, kept at once: a crash or a restart never gives the call back. Each mode has its count. */
   private spend(now: number) {
-    this.s.calls = { day: dayKey(now), n: this.calls(now) + 1 }
+    const d = dayKey(now)
+    if (this.via === 'relay') this.s.relay = { day: d, n: (this.s.relay?.day === d ? this.s.relay.n : 0) + 1 }
+    else if (this.via === 'lean') this.s.lines = { day: d, n: this.lineCalls(now) + 1 }
+    else this.s.calls = { day: d, n: this.calls(now) + 1 }
     this.spent = true
     this.save()
   }
@@ -483,9 +523,14 @@ export class Curator implements ForYouCurator {
     }
     if (this.running) return this.running
     if (!this.fy.wanted(now)) return Promise.resolve()
-    const full = this.can(now)
-    if (!full && !this.lean(now)) return Promise.resolve()
-    const job = full ? (this.digestJob(now) ?? this.mailJob(now) ?? this.improveJob(now) ?? this.insightJob(now)) : this.mailJob(now)
+    const m = this.mode(now)
+    if (!m) return Promise.resolve()
+    this.via = m
+    // A question waiting for its clear wording first, then the lines said in passing, then the rest.
+    const job =
+      m === 'full'
+        ? (this.askJob(now) ?? this.digestJob(now) ?? this.mailJob(now) ?? this.improveJob(now) ?? this.insightJob(now))
+        : (this.askJob(now) ?? this.mailJob(now) ?? this.digestJob(now) ?? this.insightJob(now) ?? this.improveJob(now))
     if (!job) return Promise.resolve()
     this.running = (async () => {
       this.spent = false
@@ -628,11 +673,35 @@ export class Curator implements ForYouCurator {
     })
     return async () => {
       this.spend(now)
-      const d = parseDigest(this.json(await smart(prompt, 120_000)), earlier)
+      const d = parseDigest(this.json(await this.ask('smart', prompt, 120_000)), earlier)
       // Answered, kept or not: the next one in three hours.
       this.s.digestAt = now
       if (!d) return void console.log('[foryou] curateur : point de weevboss écarté (vide ou déjà dit)')
       this.fy.add({ id: `d:${now.toString(36)}`, kind: 'boss', who: 'weevboss', text: d.thought ? `${d.text}\n\n${d.thought}` : d.text, actions: d.actions, lang: l })
+    }
+  }
+
+  // ---------------------------------------------------------------- question cards
+
+  /** A session waiting on the user: its last message read by a light model into a clear question with its options. */
+  private askJob(now: number): Job | null {
+    const qs = this.fy.rawAsks(4)
+    if (!qs.length) return null
+    const t = tr(P)
+    const l = lang()
+    return async () => {
+      const said = await Promise.all(qs.map((q) => this.fy.w.detailAny(q.sessionId).then((d) => (d && lastWords(d.messages)) ?? '').catch(() => '')))
+      const items = qs.map((q, i) => t.askItem(i + 1, q.project, q.title, (said[i] || q.attention).slice(-2500)))
+      this.spend(now)
+      let got: Map<number, { ask: boolean; title?: string; question?: string; options?: string[] }>
+      try {
+        got = parseAsks(this.json(await this.ask('haiku', t.asks(items.join('\n\n'), this.fy.w.snapshot().config?.userName || ''), 60_000)))
+      } catch (e) {
+        for (const q of qs) this.fy.askRead(q.id, null)
+        throw e
+      }
+      qs.forEach((q, i) => this.fy.askRead(q.id, got.get(i + 1) ?? null))
+      void l
     }
   }
 
@@ -654,11 +723,11 @@ export class Curator implements ForYouCurator {
     ]
     const prompt = t.mailLines(items.join('\n\n'), this.fy.w.snapshot().config?.userName || '', this.deps.memory?.()?.digest(8, 700) ?? '')
     return async () => {
-      this.spendLine(now)
+      this.spend(now)
       this.s.mailAt = now
       let lines: Map<number, string>
       try {
-        lines = parseLines(this.json(await haiku(prompt, 60_000)), mails.length)
+        lines = parseLines(this.json(await this.ask('haiku', prompt, 60_000)), mails.length)
       } catch (e) {
         // These keep their first line: the same batch is never sent twice.
         for (const m of mails) this.fy.mailLine(m.id, null)
@@ -698,7 +767,7 @@ export class Curator implements ForYouCurator {
       const advice = ((await this.deps.advice?.().catch(() => [])) ?? []).filter((a) => typeof a === 'string' && a.trim()).slice(0, 5)
       if (advice.length) lines.push(t.patAdvice(advice.map((a) => `- ${a.replace(/\s+/g, ' ').slice(0, 240)}`).join('\n')))
       this.spend(now)
-      const got = parseImprove(this.json(await smart(t.improve({ user: who, patterns: lines.join('\n'), earlier }), 120_000)), known.flatMap((i) => [i.text, ...(i.title ? [i.title] : [])]))
+      const got = parseImprove(this.json(await this.ask('smart', t.improve({ user: who, patterns: lines.join('\n'), earlier }), 120_000)), known.flatMap((i) => [i.text, ...(i.title ? [i.title] : [])]))
       this.s.improveAt = now
       if (!got) return void console.log('[foryou] curateur : idée écartée (vide ou déjà dite)')
       this.fy.add({ kind: 'improve', tone: 'magic', title: got.title, text: got.text, actions: [got.action], lang: l })
@@ -752,7 +821,7 @@ export class Curator implements ForYouCurator {
       this.s.insights[key] = { at: now, repo }
       if (!f) return
       this.spend(now)
-      const got = parseInsight(this.json(await smart(t.insight({ repo, facts: this.factsText(t, f, last), earlier: known.slice(0, 12).map((x) => `- ${x}`).join('\n') }), 120_000)), known)
+      const got = parseInsight(this.json(await this.ask('smart', t.insight({ repo, facts: this.factsText(t, f, last), earlier: known.slice(0, 12).map((x) => `- ${x}`).join('\n') }), 120_000)), known)
       this.s.insightAt = now
       if (!got) return void console.log(`[foryou] curateur : rien de sûr à dire sur ${repo}`)
       const item = this.fy.add({ id: `i:${repo}:${week}`, kind: 'insight', projectId: s.projectId, text: got.text, more: true, lang: l })
@@ -768,17 +837,20 @@ export class Curator implements ForYouCurator {
     const flying = this.asking.get(item.id)
     if (flying) return flying
     const now = this.now()
-    if (item.kind !== 'insight' || !this.can(now, false)) return Promise.resolve('')
+    // A tap: any mode with room will do (a back-off of the loop does not hold it).
+    const m = this.can(now, false) ? 'full' : this.mode(now)
+    if (item.kind !== 'insight' || !m) return Promise.resolve('')
     const l: Lang = detectLang(item.text) ?? lang()
     const t = withLang(l, () => tr(P))
     const repo = Object.values(this.s.insights).find((x) => x.id === item.id)?.repo ?? item.projectId ?? ''
     const p = (async () => {
       const f = repo ? await this.facts(repo) : null
       // Asked again while the facts were read: the cap may have been reached meanwhile.
-      if (!this.can(this.now(), false)) return ''
+      if (!(this.can(this.now(), false) || this.mode(this.now()))) return ''
+      this.via = m
       this.spend(this.now())
       try {
-        return fit(plain(await smart(t.more({ repo: repo || '?', text: item.text, facts: f ? this.factsText(t, f) : '' }), 120_000)), MORE_MAX)
+        return fit(plain(await this.ask('smart', t.more({ repo: repo || '?', text: item.text, facts: f ? this.factsText(t, f) : '' }), 120_000)), MORE_MAX)
       } catch (e) {
         console.error(`[foryou] curateur, « plus » : ${(e as Error).message}`)
         return ''

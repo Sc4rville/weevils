@@ -575,7 +575,13 @@ function SessionItem({ item, who, project, fy }: KindProps) {
           </span>
           <Listen item={item} who={name} small />
         </div>
-        {fold ? (
+        {item.tone === 'question' ? (
+          // A question card: only the short title in bold, the question itself at reading size.
+          <>
+            {item.lead && <div className="fy-q-lead">{item.lead}</div>}
+            <div className="fy-q">{item.text}</div>
+          </>
+        ) : fold ? (
           <button className="fy-line fy-line-btn" onClick={() => setUnfold((v) => !v)} aria-expanded={unfold}>
             <span>{item.text}</span>
             <span className="fy-line-more" aria-hidden>

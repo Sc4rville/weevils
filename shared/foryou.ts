@@ -82,6 +82,8 @@ export interface ForYouItem {
   title?: string
   /** The words of the item, short (a result, a thought, a summary). Plain text. */
   text: string
+  /** A question card: its short title, in bold above the question (the question itself is the text). */
+  lead?: string
   /** mail: the whole message, unfolded in place on a tap. */
   body?: string
   media?: ForYouMedia[]

@@ -32,6 +32,8 @@ export default defineMessages({
     offline: (machine: string) => `Je n’arrive plus à joindre ${machine}.`,
     autoFailed: (title: string, note: string) => `La tâche auto « ${title} » s’est plantée${note ? ` (${note})` : ''}. On retente ou on laisse tomber ?`,
     // ---- proposals
+    autoGo: (title: string) => `J’ai lancé la tâche auto « ${title} » pendant que la machine souffle un peu.`,
+    autoDone: (title: string, note: string) => `La tâche auto « ${title} » est bouclée${note ? ` : ${note}` : '.'}`,
     proposals: (n: number) => (n > 1 ? `J’ai ${n} idées pour toi` : 'J’ai une idée pour toi'),
     // ---- what weevboss receives
     /** The visible message of a tapped button under a post. */
@@ -63,6 +65,8 @@ export default defineMessages({
     diskFull: (machine: string, percent: number) => `${machine}'s disk is ${percent}% full, time for a little cleanup.`,
     offline: (machine: string) => `I can't reach ${machine} anymore.`,
     autoFailed: (title: string, note: string) => `The auto task "${title}" crashed${note ? ` (${note})` : ''}. Retry or drop it?`,
+    autoGo: (title: string) => `I started the auto task "${title}" while the machine catches its breath.`,
+    autoDone: (title: string, note: string) => `The auto task "${title}" is wrapped up${note ? `: ${note}` : '.'}`,
     proposals: (n: number) => (n === 1 ? 'I have an idea for you' : `I have ${n} ideas for you`),
     go: (label: string) => `Go ahead: ${label}`,
     actBrief: (post: string, brief: string) => `the user tapped this button under your post in their "for you" stream ("${post}"). To do: ${brief}`,

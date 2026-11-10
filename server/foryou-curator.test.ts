@@ -231,9 +231,13 @@ describe('the budget', () => {
     await c.tick(now)
     logged = true
     known = usage(85)
+    // Past 85 %: no sonnet call, only haiku (lean) until LINES_CEIL.
+    expect(c.can(now)).toBe(false)
+    expect(c.mode(now)).toBe('lean')
+    known = usage(98)
+    expect(c.mode(now)).toBe(null)
     await c.tick(now)
     expect(model).not.toHaveBeenCalled()
-    expect(c.can(now)).toBe(false)
     // Not known yet (a start) or a read that failed: no call made blind.
     known = usage(99, false)
     expect(c.can(now)).toBe(false)

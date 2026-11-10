@@ -298,6 +298,12 @@ describe('auto band', () => {
     now.mockRestore()
   })
 
+  it('a running task shows the scope agreed for its next run', () => {
+    render(snap([opt({ id: 'r', state: 'running', startedAt: NOW, every: 7 * 86_400_000, title: 'Harden tests', next: { title: 'E2E tests only' } })]))
+    expect(label(/^Harden tests, running/)!.getAttribute('aria-label')).toContain('next run: E2E tests only')
+    expect(host.querySelector('.auto-nextrun')!.textContent).toBe('nextE2E tests only')
+  })
+
   it('an accepted task keeps where it came from: one line under its row, unfolded with a tap; its bubble opens the field there', async () => {
     const lines = [
       { who: 'user' as const, text: 'only e2e', at: NOW },

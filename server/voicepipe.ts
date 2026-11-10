@@ -13,7 +13,7 @@ import type http from 'node:http'
 import path from 'node:path'
 import { DATA_DIR, PUBLIC_URL } from './config.ts'
 import { cartesia, cartesiaStream, tts } from './fast.ts'
-import { openaiKey, transcribe } from './transcribe.ts'
+import { ARCHIVE_DIR, openaiKey, transcribe } from './transcribe.ts'
 import { lang, tr, user, type Lang } from './i18n.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import V from './i18n/voice.ts'
@@ -211,24 +211,55 @@ export function warmCues(voice: string | undefined, l: Lang = lang()) {
 
 // ---------------------------------------------------------------- enregistrement envoyé en morceaux
 
+// Chaque morceau est aussi écrit sur disque (voice-archive/partial/<id>) dès qu'il arrive : un redémarrage de weevilsd
+// en pleine dictée ne perd rien, la fin la reprend. Un enregistrement n'est oublié qu'après 30 min SANS nouveau morceau
+// (avant le 2026-11-10 : 10 min après son début, ce qui effaçait une dictée de plus de 10 min pendant qu'on parlait).
 const uploads = new Map<string, { type: string; parts: Buffer[]; at: number }>()
+const IDLE_MS = 30 * 60_000
+const partialDir = (id: string) => path.join(ARCHIVE_DIR, 'partial', id)
 
 export function addChunk(id: string, seq: number, type: string, data: string) {
-  if (!/^[\w-]{6,64}$/.test(id)) throw new Error(tr(V).badRecording)
+  if (!/^[\w-]{6,64}$/.test(id) || !Number.isInteger(seq) || seq < 0 || seq > 1_000_000) throw new Error(tr(V).badRecording)
+  for (const [k, v] of uploads) if (k !== id && Date.now() - v.at > IDLE_MS) uploads.delete(k)
   const u = uploads.get(id) ?? { type, parts: [], at: Date.now() }
+  u.at = Date.now()
   u.parts[seq] = Buffer.from(data, 'base64')
   uploads.set(id, u)
-  for (const [k, v] of uploads) if (Date.now() - v.at > 10 * 60_000) uploads.delete(k)
+  const dir = partialDir(id)
+  fs.mkdirSync(dir, { recursive: true })
+  if (seq === 0) fs.writeFileSync(path.join(dir, 'type'), type)
+  fs.writeFileSync(path.join(dir, String(seq).padStart(7, '0')), u.parts[seq])
+}
+
+/** Les morceaux d'un enregistrement : en mémoire, sinon relus sur disque (weevilsd a redémarré pendant la dictée). */
+function partsOf(id: string): { type: string; audio: Buffer } | null {
+  const u = uploads.get(id)
+  if (u) return { type: u.type, audio: Buffer.concat(u.parts.filter(Boolean)) }
+  const dir = partialDir(id)
+  try {
+    const files = fs.readdirSync(dir).filter((f) => /^\d+$/.test(f)).sort()
+    if (!files.length) return null
+    const type = fs.existsSync(path.join(dir, 'type')) ? fs.readFileSync(path.join(dir, 'type'), 'utf8') : 'audio/mp4'
+    return { type, audio: Buffer.concat(files.map((f) => fs.readFileSync(path.join(dir, f)))) }
+  } catch {
+    return null
+  }
 }
 
 export async function finishUpload(id: string, l?: unknown): Promise<string> {
-  const u = uploads.get(id)
-  if (!u) throw new Error(tr(V).recordingNotFound)
-  uploads.delete(id)
-  const audio = Buffer.concat(u.parts.filter(Boolean))
+  if (!/^[\w-]{6,64}$/.test(id)) throw new Error(tr(V).badRecording)
+  const got = partsOf(id)
+  if (!got) throw new Error(tr(V).recordingNotFound)
   const t0 = Date.now()
-  const text = await transcribe(audio, u.type, l)
-  log(`transcription ${Date.now() - t0} ms (${Math.round(audio.length / 1024)} Ko déjà reçus pendant la parole)`)
+  let text: string
+  try {
+    text = await transcribe(got.audio, got.type, l)
+  } finally {
+    // transcribe() a gardé l'audio entier dans l'archive avant tout : les morceaux peuvent partir, même sur un échec.
+    uploads.delete(id)
+    fs.rmSync(partialDir(id), { recursive: true, force: true })
+  }
+  log(`transcription ${Date.now() - t0} ms (${Math.round(got.audio.length / 1024)} Ko déjà reçus pendant la parole)`)
   return text
 }
 

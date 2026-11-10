@@ -7,7 +7,7 @@
 //
 // - From PREPARE_AT % of a window, Codex writes a takeover plan for every Claude session at work, read-only and in the
 //   background (`codex exec --sandbox read-only --ephemeral`), so the plans are there the second the limit hits. One
-//   line tells the user (« 92 % de la fenêtre 5 h, relais Codex prêt »).
+//   line tells the user, once per window (« t'es à 90 % de ta semaine, je garde Codex au chaud »).
 // - At switchAt % (97 by default: the limit has no grace period), the switch is made before the cut: weevboss answers
 //   through Codex, and every working session is told to finish its step and stop. A limit seen after the fact (a
 //   transcript message, a quota at 100 %, errors piling up) opens the same episode: the safety net.
@@ -178,8 +178,13 @@ interface State {
   episode?: Episode
   lastEnd?: number
   plans: Plan[]
-  /** Window (reset time) already announced as « relay ready ». */
-  warned?: number
+  /**
+   * The quota window being prepared for: which one, until when, and its key (the plans written ahead carry it). The
+   * API's reset time moves by a few milliseconds from one read to the next: it is read once, never compared again.
+   */
+  prep?: { window: 'session' | 'week'; until: number; key: number; warned?: boolean }
+  /** The window whose switch was already announced (one notice per window, even if the episode ends and reopens). */
+  switched?: { window: 'session' | 'week' | 'none'; until: number }
   boss?: Boss
   /** The stop error of weevboss on Claude already handed to Codex. */
   bossCutAt?: number
@@ -298,6 +303,13 @@ export class Relay {
     try {
       const p = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<State>
       this.s = { ...this.s, ...p, mode: isMode(p.mode) ? p.mode : 'ask', plans: (p.plans ?? []).map((x) => (x.gen === 'running' ? { ...x, gen: 'todo' as const } : x)) }
+      // State written before « one line per window »: the window already announced stays announced, its plans stay its plans.
+      const old = (p as { warned?: number }).warned
+      if (typeof old === 'number' && !this.s.prep) {
+        this.s.prep = { window: old - Date.now() > 6 * 3600_000 ? 'week' : 'session', until: old, key: old, warned: true }
+        for (const x of this.s.plans) if (x.phase === 'draft' && x.window) x.window = old
+      }
+      delete (this.s as { warned?: number }).warned
     } catch {
       /* first start */
     }
@@ -658,8 +670,13 @@ export class Relay {
   private prepare(now: number, sessions: Session[]) {
     const hot = hottest(this.q, now)
     if (!hot || hot.percent < Math.min(PREPARE_AT, this.s.switchAt - 1)) return
-    const key = hot.resetsAt ?? 0
     let dirty = false
+    let prep = this.s.prep
+    if (!prep || prep.window !== hot.window || now >= prep.until) {
+      prep = this.s.prep = { window: hot.window, until: hot.resetsAt ?? now + (hot.window === 'week' ? 7 * 24 : 5) * 3600_000, key: now }
+      dirty = true
+    }
+    const key = prep.key
     for (const s of sessions.filter(atWork)) {
       const p = this.ensure(s, now)
       if (p.phase !== 'draft' || p.window === key) continue
@@ -674,8 +691,9 @@ export class Relay {
         p.gen = 'todo'
         dirty = true
       }
-    if (this.s.warned !== key && !drafts.some((p) => p.gen === 'todo' || p.gen === 'running')) {
-      this.s.warned = key
+    // One line when the threshold is crossed, none for the points that follow.
+    if (!prep.warned && !drafts.some((p) => p.gen === 'todo' || p.gen === 'running')) {
+      prep.warned = true
       dirty = true
       const t = tr(R)
       // « Ready » only when Codex really answered: every plan failing means there is no relay to count on.
@@ -842,6 +860,11 @@ export class Relay {
     const t = tr(R)
     if (e && !e.announced) {
       e.announced = true
+      // Already said for this window (the episode closed and reopened around the threshold): not twice.
+      const win = e.window ?? 'none'
+      const same = this.s.switched && this.s.switched.window === win && now < this.s.switched.until && e.kind !== 'down'
+      this.s.switched = { window: win, until: e.until ?? now + UNKNOWN_RESET_MS }
+      if (same) return this.changed()
       const title = e.kind === 'limit' ? t.limitTitle : e.kind === 'near' ? t.nearTitle(e.percent ?? this.s.switchAt, e.window) : t.downTitle
       const body = this.s.mode === 'auto' ? t.takesOver(this.untilText(now)) : t.plansToCome(this.untilText(now))
       this.host.notify(title, body, '/#relay', 'relay') // i18n-ignore : étiquette de notification

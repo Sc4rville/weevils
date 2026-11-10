@@ -24,8 +24,8 @@ A short summary of what changed after the first working version.
   (with its reset time), sessions that stop dead or API errors piling up, and the subscription quota read live (5-hour
   and weekly windows, the figures of the usage page).
 - From 90 % of a window, Codex writes a **takeover plan** for every Claude session at work, read-only and in the
-  background (`codex exec --sandbox read-only --ephemeral`), and one line says so (“92% of the 5-hour window, Codex
-  relay ready”). At 97 % (the limit has no grace period; the threshold is a setting, `WEEVILS_RELAY_AT` before any
+  background (`codex exec --sandbox read-only --ephemeral`), and one line says so, once per window (“you're at 90% of your week,
+  I'm keeping Codex warm”); the next message is the switch, nothing in between. At 97 % (the limit has no grace period; the threshold is a setting, `WEEVILS_RELAY_AT` before any
   choice in the app) the switch is made ahead of the cut: weevboss answers through Codex (same folder, `AGENTS.md` =
   its instructions, same `weevils` command) and every working session is told to finish its step and stop. A limit
   seen after the fact opens the same episode.

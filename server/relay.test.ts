@@ -149,8 +149,8 @@ describe('anticipation', () => {
     expect(x.written[0].prompt).toContain('refais le panier')
     expect(x.written[0].prompt).toContain('M panier.ts')
     expect(x.written[0].prompt).toContain('Tu ne modifies RIEN')
-    expect(x.notes).toEqual([{ title: 'Claude approche de sa limite', body: '92 % de la fenêtre 5 h, relais Codex prêt', url: '/#relay' }])
-    expect(x.said).toEqual(['92 % de la fenêtre 5 h, relais Codex prêt.'])
+    expect(x.notes).toEqual([{ title: 'Claude approche de sa limite', body: "t'es à 92 % de ta fenêtre 5 h, je garde Codex au chaud", url: '/#relay' }])
+    expect(x.said).toEqual(["T'es à 92 % de ta fenêtre 5 h, je garde Codex au chaud."])
     // Écrit d'avance, pas encore montré ; aucun épisode, weevboss reste sur Claude.
     expect(relay.view(NOW).plans).toEqual([])
     expect(relay.view(NOW).limit).toBeUndefined()
@@ -193,6 +193,46 @@ describe('anticipation', () => {
     expect(x.sent).toHaveLength(1)
     // Aucun appel à Claude dans toute la chaîne.
     expect(x.probes).toBe(0)
+  })
+})
+
+describe('un seul message par seuil', () => {
+  it('R1b le quota monte point par point et son heure de reset bouge de quelques millisecondes : un message à 90 %, un à la bascule, aucun plan réécrit, jamais de doublon', async () => {
+    const { x, relay } = world()
+    x.sessions = [session()]
+    const week = (percent: number, jitter: number): QuotaInfo => ({ ok: true, source: 'test', at: NOW, windows: [{ kind: 'week', percent, resetsAt: NOW + 3 * 24 * H + jitter }] })
+    let at = NOW
+    for (const [percent, jitter] of [[90, 494], [91, -326], [91, 12], [92, 494], [93, 495], [94, -1], [94, 733], [95, 2], [96, 494]] as const) {
+      x.quota = week(percent, jitter)
+      await run(relay, at)
+      await run(relay, at + 5000)
+      at += 2 * MIN
+    }
+    expect(x.notes).toEqual([{ title: 'Claude approche de sa limite', body: "t'es à 90 % de ta semaine, je garde Codex au chaud", url: '/#relay' }])
+    expect(x.said).toEqual(["T'es à 90 % de ta semaine, je garde Codex au chaud."])
+    expect(x.written).toHaveLength(1)
+    // La bascule : un second message, un seul, même si l'épisode se referme et se rouvre autour du seuil.
+    for (const percent of [97, 98, 91, 97, 99]) {
+      x.quota = week(percent, percent)
+      await run(relay, at)
+      await run(relay, at + 5000)
+      at += 2 * MIN
+    }
+    expect(x.said).toHaveLength(2)
+    expect(x.said[1]).toMatch(/^Claude à 97 % de sa semaine, Codex prépare les plans de reprise jusqu'à /)
+    expect(x.notes).toHaveLength(2)
+    // Un redémarrage de weevilsd ne redit rien.
+    const again = world()
+    fs.copyFileSync((relay as unknown as { file: string }).file, (again.relay as unknown as { file: string }).file)
+    const { Relay: R2 } = await import('./relay.ts')
+    const r2 = new R2(again.host, again.deps, (again.relay as unknown as { file: string }).file)
+    again.x.sessions = [session()]
+    again.x.quota = week(99, 5)
+    again.x.now = at
+    await r2.tick(at)
+    await settle()
+    expect(again.x.said).toEqual([])
+    expect(again.x.notes).toEqual([])
   })
 })
 

@@ -1,11 +1,11 @@
 import { motion } from 'motion/react'
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type TouchEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type TouchEvent } from 'react'
 import type { Message, SessionDetail } from '../../shared/api.ts'
 import { api } from '../api'
 import { useT } from '../i18n'
 import { useFollow } from './follow'
 import M from '../i18n/calm'
-import { useApp } from './app-context'
+import { stableOrder, useApp } from './app-context'
 import { Collapse, Composer, Messages, Working, type Attachment } from './bits'
 import { ago, plain, status } from './format'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
@@ -52,13 +52,20 @@ const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
 export function CalmGrid() {
   const t = useT(M)
-  const { snap, push, home, colors, now } = useApp()
+  const { snap, push, home, colors, now, settled = true } = useApp()
   const page = useRef<HTMLDivElement>(null)
   usePageChrome('calm', page)
   const pinch = usePinch(home)
   useViewHint('calm')
   const rank = (s: { status: string }) => (s.status === 'needs_user' || s.status === 'interrupted' ? 0 : s.status === 'working' ? 1 : s.status === 'idle' ? 2 : 3)
-  const sessions = useMemo(() => [...snap.sessions].sort((a, b) => rank(a) - rank(b) || b.lastActivityAt - a.lastActivityAt), [snap.sessions])
+  // Une case ne change pas de place parce qu'une autre conversation écrit : le rang d'abord, puis l'ordre déjà affiché ;
+  // seule une nouvelle se place par activité. Rien ne bouge sous le doigt ; un changement de rang glisse (layout).
+  const shown = useRef<string[]>([])
+  const sessions = useMemo(() => stableOrder(snap.sessions, (s) => s.id, rank, (a, b) => b.lastActivityAt - a.lastActivityAt, shown.current, !settled), [snap.sessions, settled])
+  const order = sessions.map((s) => s.id).join('|')
+  useLayoutEffect(() => {
+    shown.current = order ? order.split('|') : []
+  }, [order])
   const last = snap.main.filter((m) => m.role !== 'event').at(-1)
   const names = new Map(snap.projects.map((p) => [p.id, p.name]))
 
@@ -76,13 +83,13 @@ export function CalmGrid() {
             <span className="meta">{snap.mainWorking ? t.working : last ? plain(last.text).split('\n')[0] : ''}</span>
           </button>
           {sessions.map((s) => (
-            <button key={s.id} className="calm-cell" style={color(colors[s.projectId] ?? 'p0')} onClick={() => push({ kind: 'calmconv', id: s.id })}>
+            <motion.button layout="position" transition={soft} key={s.id} className="calm-cell" style={color(colors[s.projectId] ?? 'p0')} onClick={() => push({ kind: 'calmconv', id: s.id })}>
               <span className="calm-title">{s.title}</span>
               <span className="meta">
                 {names.get(s.projectId) ?? s.projectId} · {s.status === 'working' ? (s.now ?? t.working) : s.status === 'needs_user' ? t.yourTurn : s.status === 'interrupted' ? <span className="alert-pill">× {status.interrupted.label}</span> : ago(now - s.lastActivityAt)}
                 {s.background > 0 && <span className="strong"> · {t.background(s.background)}</span>}
               </span>
-            </button>
+            </motion.button>
           ))}
         </div>
         <div className="fill" />

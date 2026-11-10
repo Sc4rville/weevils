@@ -9,10 +9,11 @@ import { useT } from '../i18n'
 import M from '../i18n/h24'
 import B from '../i18n/bits'
 import { tapHint } from './hints'
+import { flash, when } from './follow'
 
 /** Bande H24 collée en bas : on la tire vers le haut (ou on la touche) pour voir les activités permanentes. */
 export function H24Rail() {
-  const { snap, now, refresh, h24Open: open, setH24Open: setOpen } = useApp()
+  const { snap, now, refresh, h24Open: open, setH24Open: setOpen, h24Focus } = useApp()
   const t = useT(M)
   const tb = useT(B)
   const list = snap.h24
@@ -48,6 +49,32 @@ export function H24Rail() {
     const ctrl = animate(y, target, spring)
     return () => ctrl.stop()
   }, [open, closedY, y])
+
+  // Ouvert depuis une ligne 24/7 d'une bande projet : le tiroir monté, cette activité est amenée sous les yeux dans la
+  // liste (seule la liste défile : le tiroir est fixe) et s'éclaire un instant.
+  useEffect(() => {
+    if (!open || !h24Focus) return
+    let off = false
+    when(
+      () => off || y.get() < 4,
+      () => {
+        const body = drawer.current?.querySelector<HTMLElement>('.h24-body')
+        const row = body?.querySelector<HTMLElement>(`[data-h24="${CSS.escape(h24Focus)}"]`)
+        if (off || !body || !row) return
+        const r = row.getBoundingClientRect()
+        const b = body.getBoundingClientRect()
+        if (r.top < b.top || r.bottom > b.bottom) {
+          const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
+          body.scrollTo({ top: body.scrollTop + r.top - b.top - 8, behavior: smooth ? 'smooth' : 'auto' })
+        }
+        flash(row)
+      },
+      900,
+    )
+    return () => {
+      off = true
+    }
+  }, [open, h24Focus, y])
 
   const summary = stats.total ? t.summary(stats.running, stats.total - stats.running) : t.nothing
 
@@ -112,7 +139,7 @@ export function H24Rail() {
             const running = a.runState === 'running'
             const paused = a.runState === 'paused'
             return (
-              <div key={a.id} className="band tone" style={{ marginBottom: 2 }}>
+              <div key={a.id} className="band tone" style={{ marginBottom: 2 }} data-h24={a.id}>
                 <div className="in" style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBlock: 12 }}>
                   <span className="h2" aria-hidden style={{ width: 28, textAlign: 'center' }}>
                     {running ? <span className="spin"><Icon name="star" /></span> : <Icon name={paused ? 'pause' : a.kind === 'job' ? 'check' : 'idle'} />}

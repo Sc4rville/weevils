@@ -419,3 +419,12 @@
 .auto-row > .ch {
   margin-right: -6px;
 }
+
+/* La poignée au-dessus de la ligne de texte, jamais sur les compteurs. */
+.h24 > .h24-head > .in {
+  padding-top: 12px;
+}
+
+.h24 .h24-grip {
+  top: 3px;
+}

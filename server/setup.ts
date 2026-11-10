@@ -818,9 +818,13 @@ export class Setup {
         post(`${t.reachAsk(s)} ${t.reachPrompt(http)}`)
         return true
       }
-      case 'machine':
-        post(`${t.machine(s.machine).replace(/\s*\[\[setup:machine\]\]/, '')}\n\n${t.machineAsk(s)}`)
+      case 'machine': {
+        // L'état de la machine vient d'être dit (accueil) : pas deux fois de suite.
+        const status = t.machine(s.machine).replace(/\s*\[\[setup:machine\]\]/, '')
+        const said = this.p.log.slice(-8).some((m) => m.text.replace(/\s*\[\[setup:machine\]\]/, '') === status)
+        post(said ? t.machineAsk(s) : `${status}\n\n${t.machineAsk(s)}`)
         return true
+      }
       case 'claude':
         return this.askClaude(s)
       case 'codex':

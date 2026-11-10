@@ -220,7 +220,7 @@ export function SetupComposer() {
   }
   const label = t[`q_${key}` as `q_devil_url`]
   return (
-    <form className="composer band tone setup-form" onSubmit={submit}>
+    <form className="composer band tone setup-form" onSubmit={submit} noValidate>
       <div className="in meta attach-line">
         <span className="strong">{label}</span>
         <span>
@@ -250,7 +250,7 @@ export function SetupComposer() {
           onChange={(e) => setText(e.target.value)}
           placeholder={t[`p_${key}` as `p_devil_url`]}
           aria-label={label}
-          type={q.secret ? 'password' : q.kind === 'email' ? 'email' : q.kind === 'url' ? 'url' : 'text'}
+          type={q.secret ? 'password' : q.kind === 'email' ? 'email' : 'text'}
           inputMode={q.kind === 'email' ? 'email' : q.kind === 'url' ? 'url' : undefined}
           autoComplete={q.secret ? 'new-password' : 'off'}
           autoCapitalize="off"

@@ -67,6 +67,18 @@ describe('weevboss gets the memory digest', () => {
     expect(s.contextFor()).toBe('')
   })
 
+  it('again after /clear (same pane, same id, an empty conversation)', () => {
+    const m = tmpMemory()
+    m.add('wants to ship a mobile game this summer')
+    const boss = { id: 'conv-1' as string | null }
+    const s = setup(m, boss)
+    expect(s.contextFor()).toContain('- wants to ship a mobile game this summer')
+    expect(s.contextFor()).toBe('')
+    s.bossReset()
+    expect(s.contextFor()).toContain('- wants to ship a mobile game this summer')
+    expect(s.contextFor()).toBe('')
+  })
+
   it('a new conversation with an empty memory is told nothing', () => {
     const m = tmpMemory()
     const a = m.add('likes tea')

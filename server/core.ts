@@ -1340,6 +1340,8 @@ export class Weevils {
     const pane = this.orchestratorPane()
     if (!pane) throw new Error(tr(M).orchNotRunning)
     await this.runCommand(pane.name, checkCommand(command))
+    // /clear ou /new : même pane, même id pour weevils, mais weevboss repart de zéro ; il doit recevoir la mémoire à nouveau.
+    if (/^\/(clear|new)\b/.test(command.trim())) this.setup?.bossReset()
     this.bump()
     return { ok: true }
   }

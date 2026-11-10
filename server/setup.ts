@@ -1216,6 +1216,13 @@ export class Setup {
     return parts.length ? ` ⟦weevils — ${parts.join(' — ').replace(/⟧/g, ']')}⟧` : ''
   }
 
+  /** weevboss repart d'une conversation vide dans la même pane (/clear, /new) : son prochain message reçoit la mémoire. */
+  bossReset() {
+    if (!this.p.memorySeen) return
+    this.p.memorySeen = undefined
+    this.save()
+  }
+
   /**
    * Le résumé de la mémoire, au début d'une conversation de weevboss et quand elle a changé depuis qu'il l'a reçue ;
    * rien sinon (pas à chaque message). La liste complète reste à portée : `weevils memory`.

@@ -324,3 +324,49 @@ describe('tour arrêté par une erreur (session coupée)', () => {
     expect(one()).toMatchObject({ phase: 'working', stopError: undefined })
   })
 })
+
+describe('codex : messages entrants du relais', () => {
+  const event = (type: string, payload: unknown, at: number) => ({ type, payload, timestamp: iso(at) })
+  const incoming = (id: string, text: string, source = UUID) => ({ type: 'function_call_output', id, namespace: 'codex_tui', name: 'send_message_to_thread', output: `<codex_delegation>\n<source_thread_id>${source}</source_thread_id>\n<input>${text}</input>\n</codex_delegation>` })
+  it('affiche les envois CLI et bridge une seule fois, dans leur ordre, avec leur auteur', () => {
+    const now = Date.now(), file = codexFile(now)
+    const first = incoming('fco-one', 'Vérifie le résultat &amp; reprends.')
+    write(file, [
+      event('response_item', { type: 'message', role: 'user', content: [{ type: 'input_text', text: '[from:weevboss] Premier brief' }] }, now - 4000),
+      event('response_item', first, now - 3000),
+      event('event_msg', { type: 'item_completed', item: { ...first, type: 'FunctionCallOutput' } }, now - 2999),
+      event('response_item', { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Je vérifie.' }] }, now - 2000),
+      event('event_msg', { type: 'item_completed', item: { ...incoming('fco-two', '[from:alice] Autre point'), type: 'FunctionCallOutput' } }, now - 1000),
+    ])
+    store.authorOfThread = (id) => id === UUID ? 'weevboss' : undefined
+    store.scan(now)
+    expect(one().messages.map(({ role, author, text }) => ({ role, author, text }))).toEqual([
+      { role: 'orchestrator', author: 'weevboss', text: 'Premier brief' },
+      { role: 'orchestrator', author: 'weevboss', text: 'Vérifie le résultat & reprends.' },
+      { role: 'assistant', author: undefined, text: 'Je vérifie.' },
+      { role: 'orchestrator', author: 'alice', text: 'Autre point' },
+    ])
+    expect(store.scan(now)).toBe(false)
+    append(file, [event('response_item', incoming('fco-three', 'Vérifie le résultat &amp; reprends.'), now)])
+    store.scan(now)
+    expect(one().messages).toHaveLength(5) // A separate intentional message is kept.
+    const reread = new TranscriptStore(claudeDir, codexDir, 3 * DAY)
+    reread.authorOfThread = store.authorOfThread
+    reread.scan(now)
+    expect(reread.get(CODEX_UUID)?.messages).toEqual(one().messages)
+  })
+  it('ignore les sorties ordinaires, le contexte système et les enveloppes mal formées', () => {
+    const now = Date.now()
+    write(codexFile(now), [
+      event('response_item', { ...incoming('wrong-tool', 'Secret'), namespace: 'exec' }, now - 4000),
+      event('response_item', { ...incoming('malformed', 'Secret'), output: '<codex_delegation>system</codex_delegation>' }, now - 3000),
+      event('response_item', { type: 'message', role: 'system', content: [{ text: 'Internal context' }] }, now - 2000),
+      event('response_item', incoming('good', 'Message humain', CODEX_UUID), now - 1000),
+    ])
+    store.scan(now)
+    expect(one().messages).toMatchObject([{ id: 'good', author: 'codex', text: 'Message humain' }])
+    store.authorOfThread = () => 'weevboss'
+    expect(store.scan(now)).toBe(true)
+    expect(one().messages[0].author).toBe('weevboss')
+  })
+})

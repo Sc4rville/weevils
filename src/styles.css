@@ -2678,16 +2678,11 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
   top: auto;
 }
 /* Text fields always match :focus-visible on iOS, even after a touch. Never give
-   the integrated editor the global rectangular outline; desktop keyboard focus gets a quiet underline. */
+   the integrated editor the global rectangular outline; keep its native caret visible. */
 .composer textarea.horizontal-editor:focus,
 .composer textarea.horizontal-editor:focus-visible {
   outline: none;
   border: 0;
   box-shadow: none;
   caret-color: var(--ink);
-}
-@media (hover: hover) and (pointer: fine) {
-  .composer textarea.horizontal-editor:focus-visible {
-    border-bottom: 1px solid color-mix(in srgb, currentColor 45%, transparent);
-  }
 }

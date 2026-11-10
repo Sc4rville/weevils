@@ -9,7 +9,6 @@ import M from '../i18n/h24'
 import { at, autoList, autoRank, bandColors, fromOptimizer, isFinished, projectOfRepo, short, triggerText, type AutoItem } from './auto-model'
 import { TalkCtx, useTalk } from './auto-talk'
 import './h24.css'
-import { LanguageButton } from './prefs'
 import { flash, when } from './follow'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
@@ -211,11 +210,9 @@ export function H24Rail() {
               <span className="h24-grip" aria-hidden />
               <span className="h24-heading" aria-hidden>
                 <span className="h24-title">{t.title}</span>
-                <span className="meta auto-sum">{summary}</span>
-                <span className="h24-activity" data-busy={running.length > 0 || rounding} aria-hidden><i /></span>
+                <span className="h24-status"><span className="h24-activity" data-busy={running.length > 0 || rounding} aria-hidden><i /></span><span className="meta auto-sum">{summary}</span></span>
               </span>
             </button>
-            <LanguageButton compact />
           </div>
         </div>
 

@@ -32,6 +32,8 @@ export interface Transcript {
    *  la session n'a pas fini son travail. Effacé dès que le fil repart (nouveau message, nouvelle réponse). */
   stopError?: StopError
   messages: Message[]
+  /** Incoming bridge message IDs to source threads, for attribution after every source has been scanned. */
+  delegationSources?: Map<string, string>
   /** Sous-agents, étapes de workflow et commandes d'arrière-plan (server/background.ts), récents et finis compris. */
   subagents: Subagent[]
   /** claude : ce que le fil dit du travail d'arrière-plan (lancements, fins annoncées, bilans de fin de tour). */
@@ -84,6 +86,30 @@ const userMsg = (id: string, raw: string, at: number): Message => {
   // Signé « [from:<id>] » (ou l'ancien « [weevils] ») : écrit par weevboss ou un agent externe, pas par l'utilisateur.
   const signed = parseSigned(text)
   return signed ? { id, role: 'orchestrator', author: signed.author, text: signed.text, at } : { id, role: 'user', text, at }
+}
+/** Only the bridge's deliberate human input, never arbitrary tool output or system context. */
+export function delegationInput(raw: unknown): { source: string; text: string } | null {
+  if (typeof raw !== 'string') return null
+  const match = /^\s*<codex_delegation>\s*<source_thread_id>([a-zA-Z0-9_-]{1,100})<\/source_thread_id>\s*<input>([\s\S]*)<\/input>\s*<\/codex_delegation>\s*$/.exec(raw)
+  if (!match) return null
+  const text = match[2].replace(/&(?:lt|gt|amp|quot|apos);/g, (v) => ({ '&lt;': '<', '&gt;': '>', '&amp;': '&', '&quot;': '"', '&apos;': "'" })[v]!).trim()
+  return text ? { source: match[1], text } : null
+}
+function delegatedMessage(t: Transcript, item: any, at: number): boolean {
+  const bridge = item?.namespace === 'codex_tui' && item?.name === 'send_message_to_thread'
+    || ['codex_tui.send_message_to_thread', 'mcp__codex_tui__send_message_to_thread'].includes(item?.name)
+  if (!bridge) return false
+  const input = delegationInput(item.output)
+  if (!input) return false
+  const id = item.id ?? item.call_id ?? `delegation-${input.source}-${at}`
+  // Codex persists both response_item and item_completed for the same incoming message.
+  if (t.messages.some((m) => m.id === id)) return true
+  const signed = parseSigned(unwrapPasted(input.text))
+  touch(t, at)
+  t.firstPrompt ??= input.text
+  push(t, { id, role: 'orchestrator', author: signed?.author ?? 'codex', text: signed?.text ?? unwrapPasted(input.text), at })
+  if (!signed) (t.delegationSources ??= new Map()).set(id, input.source)
+  return true
 }
 const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
@@ -267,6 +293,10 @@ function codexLine(t: Transcript, o: any) {
     if (typeof p.approval_policy === 'string') t.approval = p.approval_policy
   }
   if (o.type === 'event_msg') {
+    if (p.type === 'item_completed' && ['FunctionCallOutput', 'functionCallOutput', 'function_call_output'].includes(p.item?.type)) {
+      delegatedMessage(t, p.item, at)
+      return
+    }
     if (p.type === 'task_started') {
       t.phase = 'working'
       t.workStartedAt = at
@@ -286,6 +316,7 @@ function codexLine(t: Transcript, o: any) {
     return
   }
   if (o.type !== 'response_item') return
+  if (p.type === 'function_call_output') { delegatedMessage(t, p, at); return }
   if (p.type === 'message') {
     const text = (p.content ?? [])
       .map((c: any) => c?.text ?? '')
@@ -325,7 +356,7 @@ function codexLine(t: Transcript, o: any) {
 function emptyTranscript(file: string, tool: Tool): Transcript {
   const base = path.basename(file, '.jsonl')
   const id = tool === 'claude' ? base : (base.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)?.[0] ?? base)
-  return { id, tool, file, cwd: '', openedAt: 0, lastActivityAt: 0, workStartedAt: null, phase: 'idle', messages: [], subagents: [], bg: tool === 'claude' ? emptyBg() : undefined, offset: 0, partial: '', queued: [] }
+  return { id, tool, file, cwd: '', openedAt: 0, lastActivityAt: 0, workStartedAt: null, phase: 'idle', messages: [], delegationSources: new Map(), subagents: [], bg: tool === 'claude' ? emptyBg() : undefined, offset: 0, partial: '', queued: [] }
 }
 
 /** Lit la suite du fichier ; renvoie true si quelque chose a changé. */
@@ -401,6 +432,8 @@ export class TranscriptStore {
   recentMs: number
   /** Pid du processus claude d'une session (pane tmux, sinon hook), pour les preuves de vie de son arrière-plan. */
   pidOf?: (id: string) => number | undefined
+  /** The owning app knows which source thread is weevboss, including its Codex relay. */
+  authorOfThread?: (id: string) => string | undefined
 
   constructor(claudeDir: string, codexDir: string, recentMs: number) {
     this.claudeDir = claudeDir
@@ -445,6 +478,18 @@ export class TranscriptStore {
           t.subagents = subs
           changed = true
         }
+      }
+    }
+    const authors = new Map<string, string>()
+    for (const t of this.byFile.values()) {
+      if (!t.delegationSources?.size) continue
+      const byId = new Map(t.messages.map((m) => [m.id, m]))
+      for (const [id, source] of t.delegationSources) {
+        const message = byId.get(id)
+        if (!message) { t.delegationSources.delete(id); continue }
+        if (!authors.has(source)) authors.set(source, this.authorOfThread?.(source) ?? 'codex')
+        const author = authors.get(source)!
+        if (message.author !== author) { message.author = author; changed = true }
       }
     }
     return changed

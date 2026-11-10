@@ -396,6 +396,7 @@ export class Weevils {
   constructor() {
     // Preuves de vie de l'arrière-plan d'une session : le processus claude de sa pane, sinon celui que ses hooks ont donné.
     this.store.pidOf = (id) => this.paneFor(id)?.pid ?? this.hooks.get(id)?.pid
+    this.store.authorOfThread = (id) => id === this.orchestratorId || id === this.relay?.boss?.sessionId || this.store.get(id)?.cwd === ORCH_DIR ? 'weevboss' : undefined
     this.migrateCategories()
     if (ORCHESTRATOR) {
       this.prepareOrchestrator()

@@ -18,19 +18,19 @@
 .h24-top > .in { display: flex; align-items: center; gap: 6px; }
 .h24-top .h24-head { flex: 1; min-width: 0; width: auto; }
 .h24-heading { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 4px; height: var(--rail); padding: 10px 0 4px; }
-.h24-title { flex: none; color: var(--automated-ink, #ce005f); font-size: var(--automated-size); font-weight: 900; letter-spacing: -0.065em; line-height: 1; white-space: nowrap; }
+.h24-title { flex: none; color: var(--automated-ink, #ce005f); font-size: var(--automated-size); font-weight: 500; letter-spacing: -0.045em; line-height: 1; white-space: nowrap; }
 .h24 .h24-grip { top: 5px; width: 24px; height: 2px; background: currentColor; opacity: 0.3; }
 .h24 .auto-sum { flex: none; height: 16px; display: flex; align-items: center; gap: 5px; overflow: hidden; white-space: nowrap; font-size: 0.75rem; line-height: 1; }
-.h24-activity { flex: none; height: 2px; display: block; position: relative; overflow: hidden; background: color-mix(in srgb, var(--automated-ink) 20%, transparent); }
-.h24-activity i { display: block; width: 25%; height: 100%; background: var(--automated-ink); opacity: 0; }
-.h24-activity[data-busy='true'] i { opacity: 1; animation: automated-progress 2s linear infinite; }
-@keyframes automated-progress { from { transform: translateX(-100%); } to { transform: translateX(400%); } }
+.h24-status { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.h24-activity { flex: none; width: 4px; height: 4px; display: block; }
+.h24-activity i { display: block; width: 100%; height: 100%; background: var(--automated-ink); opacity: 0.35; }
+.h24-activity[data-busy='true'] i { animation: automated-progress 1.6s ease-in-out infinite; }
+@keyframes automated-progress { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .h24-activity[data-busy='true'] i { animation: none; } }
 .h24-body[hidden] { display: none; }
 .h24-tools { padding-block: 8px; }
 .h24-create { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 1rem; }
 .h24-create .ic, .h24-create .auto-mark { width: 22px; height: 22px; }
-.h24 .language-trigger { padding-inline: 0; font-size: 0.75rem; }
 
 .auto-sum > .txt {
   min-width: 0;

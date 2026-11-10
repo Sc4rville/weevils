@@ -52,7 +52,10 @@ describe('AutoMark outside the drawer', () => {
     expect(host.querySelector('.st .spin.fluo')).not.toBeNull()
   })
 
-  it("the project's name wears AutoMark only when an automation works there; its job lines open the automation page", async () => {
+  it("the project's name: the star when one of yours works, else AutoMark; its job lines open the automation page", async () => {
+    render(<ProjectBand project={project} />, [session({ id: 'sa' }), session({ id: 'mine' })], 'p')
+    expect(host.querySelector('.name .spin.fluo')).not.toBeNull()
+    expect(host.querySelector('.name .auto-mark')).toBeNull()
     render(<ProjectBand project={project} />, [session({ id: 'sa' })], 'p')
     expect(host.querySelector('.name .auto-mark')).not.toBeNull()
     expect(host.querySelector('.name .spin.fluo')).toBeNull()

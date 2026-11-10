@@ -486,12 +486,14 @@ export function ProjectBand({ project }: { project: Project }) {
           <motion.span className="name" initial={false} animate={{ fontSize: NAME_SIZE[shown] }} transition={tx}>
             {project.name}
             {unread && <span className="dot" aria-label={t.unread} />}
-            {active.some((s) => s.status === 'working' && !autoOfSession(snap, s.id)) && (
+            {/* One sign by the name: the green star when one of yours works, else AutoMark when only automations do. */}
+            {active.some((s) => s.status === 'working' && !autoOfSession(snap, s.id)) ? (
               <span aria-hidden onClick={(e) => tapHint('star', e.currentTarget) && e.stopPropagation()}>
                 <span className="spin fluo"><Icon name="star" /></span>
               </span>
+            ) : (
+              active.some((s) => s.status === 'working') && <AutoMark />
             )}
-            {active.some((s) => s.status === 'working' && autoOfSession(snap, s.id)) && <AutoMark />}
           </motion.span>
           <AnimatePresence initial={false}>
             {shown === 'mini' && (

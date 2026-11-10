@@ -163,6 +163,17 @@ describe('weevboss automatic messages are never posted twice', async () => {
     await setup.ask('machine')
     expect(setup.messages().length).toBe(n)
   })
+  it('a flow retried with the same answers posts its answer and its result again, at the bottom', async () => {
+    const n = setup.messages().length
+    await setup.apply('author', { name: 'Ana', email: 'not-an-address' })
+    const first = setup.lastSaid
+    await setup.apply('author', { name: 'Ana', email: 'not-an-address' })
+    const log = setup.messages()
+    expect(log.length).toBe(n + 4)
+    expect(log.at(-2)?.role).toBe('user')
+    expect(setup.lastSaid).toBe(log.at(-1)?.id)
+    expect(setup.lastSaid).not.toBe(first)
+  })
 })
 
 describe('test sessions never reach the real weevboss thread', async () => {

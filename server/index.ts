@@ -338,7 +338,7 @@ const routes: [string, RegExp, Handler][] = [
     const b = await readBody(req, 64 << 10)
     if (!isBrick(b.brick) || typeof b.values !== 'object' || !b.values) return json(res, 400, { error: tr(S).badBrick })
     await setup.apply(b.brick, Object.fromEntries(Object.entries(b.values as Record<string, unknown>).map(([k, v]) => [k, String(v ?? '')])))
-    json(res, 200, { ok: true })
+    json(res, 200, { ok: true, said: setup.lastSaid ?? undefined })
   }],
   ['POST', /^\/api\/setup\/done$/, async (req, res) => {
     const b = await readBody(req)

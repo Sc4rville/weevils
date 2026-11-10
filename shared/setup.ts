@@ -74,6 +74,12 @@ export interface AskResult {
   said?: string
 }
 
+/** POST /api/setup/apply : `said`, le dernier message posté (ou retrouvé) par le parcours, à mettre en avant. */
+export interface ApplyResult {
+  ok: true
+  said?: string
+}
+
 /** Les seules clés que « weevils config set » peut écrire ; le reste du fichier de config ne bouge pas. */
 export const SETUP_KEYS = ['DEVIL_API_URL', 'DEVIL_MODEL', 'DEVIL_API_KEY', 'OPENAI_API_KEY', 'CARTESIA_API_KEY', 'CARTESIA_VOICE_ID', 'WEEVILS_MAIL_ADDRESS', 'WEEVILS_MAIL_PASSWORD', 'WEEVILS_USER_NAME', 'WEEVILS_GH_OWNER'] as const
 export type SetupKey = (typeof SETUP_KEYS)[number]

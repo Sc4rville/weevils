@@ -537,6 +537,11 @@ export class Setup {
   private lastAsk: { brick: Brick; id: string; text: string } | null = null
   /** Le dernier message écrit (ou retrouvé) au nom de weevboss : l'app l'amène sous les yeux après une puce. */
   lastSaid: string | null = null
+  /** > 0 : une réponse de l'utilisateur est en cours de traitement (parcours, message sans Claude) : tout ce qui est dit
+   * est un nouveau résultat, posté même si un texte identique l'a déjà été (un nouvel essai qui échoue pareil). */
+  private fresh = 0
+  /** « claude auth login » en train de démarrer : deux demandes coup sur coup partagent le même (une seule adresse). */
+  private loginStarting: Promise<string> | null = null
 
   constructor(deps: SetupDeps) {
     this.deps = deps
@@ -574,9 +579,10 @@ export class Setup {
 
   /** Le seul passage des messages automatiques de weevboss (parcours, confirmations, coupures) et de leurs réponses :
    * un texte identique déjà posté il y a peu n'est pas répété. On renvoie l'id du message existant, que l'app ramène
-   * sous les yeux (un second tap sur une puce, un parcours relancé, une détection qui se répète). */
+   * sous les yeux (un second tap sur une puce, une détection qui se répète). Jamais pour ce que dit l'utilisateur, ni
+   * pour la réponse à ce qu'il vient de dire (fresh) : un nouvel essai a sa bulle et son résultat, en bas du fil. */
   private add(role: 'user' | 'assistant', text: string, id = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`) {
-    const same = this.p.log.slice(-12).findLast((m) => m.role === role && !m.demo && m.text === text && Date.now() - m.at < REPEAT_MS)
+    const same = role === 'user' || this.fresh ? undefined : this.p.log.slice(-12).findLast((m) => m.role === role && !m.demo && m.text === text && Date.now() - m.at < REPEAT_MS)
     if (same) {
       this.deps.bump()
       return (this.lastSaid = same.id)
@@ -700,8 +706,13 @@ export class Setup {
     return job
   }
 
-  /** Lance « claude auth login » (ou reprend celui qui attend encore) : l'adresse de la page de connexion. */
+  /** Lance « claude auth login » (ou reprend celui qui attend encore) : l'adresse de la page de connexion. Deux demandes
+   * pendant le démarrage (double tap) attendent le même processus : sinon deux liens, et le code du premier part au second. */
   private startClaudeLogin(): Promise<string> {
+    return (this.loginStarting ??= this.spawnClaudeLogin().finally(() => (this.loginStarting = null)))
+  }
+
+  private spawnClaudeLogin(): Promise<string> {
     const cur = this.claudeLogin
     if (cur && cur.proc.exitCode === null && Date.now() - cur.at < 8 * 60_000) return Promise.resolve(cur.url)
     cur?.proc.kill()
@@ -903,6 +914,15 @@ export class Setup {
    * branchement (« qu'est-ce que je dois installer ? », « comment je branche github ? ») à partir de l'état réel. Le
    * reste reçoit la marche à suivre pour connecter Claude Code. */
   async offline(text: string) {
+    this.fresh++
+    try {
+      await this.offlineReply(text)
+    } finally {
+      this.fresh--
+    }
+  }
+
+  private async offlineReply(text: string) {
     this.userSays(text)
     const brick = guessBrick(text)
     const t = tr(M)
@@ -956,6 +976,7 @@ export class Setup {
         .join(' · ') || '—',
     )
     const before = this.p.log.length
+    this.fresh++
     try {
       if (brick === 'devil') await this.applyDevil(v)
       else if (brick === 'voice') await this.applyVoice(v)
@@ -966,6 +987,7 @@ export class Setup {
       else if (brick === 'machine') await this.applyMachine(v)
       else if (brick === 'reach') await this.applyReach(v)
     } finally {
+      this.fresh--
       // Branché (la réponse ne repropose pas la puce) : les anciens boutons de cette brique disparaissent du fil.
       const reply = this.p.log.slice(before).at(-1)
       if (reply && !reply.text.includes(`[[setup:${brick}]]`)) {

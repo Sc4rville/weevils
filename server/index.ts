@@ -127,7 +127,7 @@ const tour = new TourKeeper({
 })
 w.tour = tour
 
-// ---------------------------------------------------------------- mémoire, weevils volants, h24 (machine principale)
+// ---------------------------------------------------------------- mémoire, questions du weevil, auto (machine principale)
 
 const memory = new Memory()
 memory.onChange(() => w.bump())

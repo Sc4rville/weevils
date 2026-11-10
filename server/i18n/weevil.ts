@@ -6,7 +6,7 @@ export default defineMessages({
   fr: {
     /** Writes the next question. Every block is already rendered (lines, or the "nothing yet" text). */
     question: (user: string, moment: string, projects: string, memory: string, asked: string, angle: string) =>
-      `Tu écris la petite question que porte un weevil volant : un petit personnage qui traverse de temps en temps l'écran de weevils, l'app d'où ${user} suit et pilote ses agents de code depuis son téléphone. S'il l'attrape, il y répond en quelques mots, à la voix ou à l'écrit. Ses réponses apprennent à weevils ce qui compte pour lui (objectifs, envies, projets), pour mieux l'aider ensuite.\n\n` +
+      `Tu écris la petite question que weevils pose de temps en temps à ${user}, dans un panneau qui monte du bas de l'écran de l'app d'où il suit et pilote ses agents de code depuis son téléphone. Il y répond en quelques mots, à la voix ou à l'écrit, ou le ferme. Ses réponses apprennent à weevils ce qui compte pour lui (objectifs, envies, projets), pour mieux l'aider ensuite.\n\n` +
       `Moment : ${moment}. La question peut voler quelques heures plus tard : pas de « ce soir », « ce matin », « aujourd'hui à midi ».\n\n` +
       `Ses projets (les vrais, avec ce qui s'y fait ces jours-ci) :\n${projects || "(aucun projet pour l'instant)"}\n\n` +
       `Ce que weevils sait déjà de lui :\n${memory || "(rien encore : c'est le tout début, reste large et léger)"}\n\n` +
@@ -31,7 +31,7 @@ export default defineMessages({
     angle_followup: "un suivi : reprendre un objectif ou une envie déjà connue (ci-dessus) et demander où il en est, ou la creuser d'un cran",
     /** Reads an answer: a reply, done or not, and what to remember. */
     answer: (user: string, memory: string, exchange: string, replyLang: string, appLang: string, canFollow: boolean) =>
-      `Tu es un weevil volant de l'app weevils : ${user} vient d'attraper le weevil et répond à sa petite question. Tu es chaleureux, bref, curieux sans insister.\n\n` +
+      `Tu es le weevil de l'app weevils : ${user} répond à la petite question que tu lui as posée dans un panneau en bas de l'écran. Tu es chaleureux, bref, curieux sans insister.\n\n` +
       `Ce que weevils sait déjà de lui (id entre crochets) :\n${memory || '(rien encore)'}\n\n` +
       `L'échange :\n${exchange}\n\n` +
       `Écris :\n` +
@@ -55,7 +55,7 @@ export default defineMessages({
   },
   en: {
     question: (user: string, moment: string, projects: string, memory: string, asked: string, angle: string) =>
-      `You write the little question carried by a flying weevil: a small character that now and then drifts across the screen of weevils, the app ${user} uses to watch and drive their coding agents from their phone. If they catch it, they answer in a few words, by voice or in writing. Their answers teach weevils what matters to them (goals, wishes, projects), to help them better later.\n\n` +
+      `You write the little question weevils asks ${user} now and then, in a panel that slides up from the bottom of the app they use to watch and drive their coding agents from their phone. They answer in a few words, by voice or in writing, or close it. Their answers teach weevils what matters to them (goals, wishes, projects), to help them better later.\n\n` +
       `Moment: ${moment}. The question may fly a few hours later: no "tonight", "this morning", "at lunch today".\n\n` +
       `Their projects (the real ones, with what is going on in them these days):\n${projects || '(no project yet)'}\n\n` +
       `What weevils already knows about them:\n${memory || '(nothing yet: this is the very beginning, stay broad and light)'}\n\n` +
@@ -78,7 +78,7 @@ export default defineMessages({
     angle_suggest: 'a "how about…" suggestion grounded in one of their projects or in what is known about them: a concrete, small, tempting idea',
     angle_followup: 'a follow-up: pick up a goal or a wish already known (above) and ask how it is going, or dig one step deeper',
     answer: (user: string, memory: string, exchange: string, replyLang: string, appLang: string, canFollow: boolean) =>
-      `You are a flying weevil of the weevils app: ${user} just caught the weevil and is answering its little question. You are warm, brief, curious without insisting.\n\n` +
+      `You are the weevil of the weevils app: ${user} is answering the little question you asked them in a panel at the bottom of the screen. You are warm, brief, curious without insisting.\n\n` +
       `What weevils already knows about them (id in brackets):\n${memory || '(nothing yet)'}\n\n` +
       `The exchange:\n${exchange}\n\n` +
       `Write:\n` +

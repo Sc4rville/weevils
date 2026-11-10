@@ -1,9 +1,9 @@
-// Flying weevils: now and then a small weevil drifts across the app carrying a short question about the user's goals,
-// wishes and projects. Caught (tapped), it opens a short exchange; each answer feeds the memory (server/memory.ts).
+// The weevil's questions: now and then a panel slides up from the bottom of the app with a short question about the
+// user's goals, wishes and projects, answered in a short exchange; each answer feeds the memory (server/memory.ts).
 // Questions are written by the model from the memory and the real projects: no fixed list, never twice the same.
 //
 // One question is kept ready (written ahead, in the background), stored with the questions already asked in the memory
-// file so a restart costs nothing. Missed (it flew by uncaught), it comes back up to MAX_MISSES - 1 more times, then a
+// file so a restart costs nothing. Missed (closed without an answer), it comes back up to MAX_MISSES - 1 more times, then a
 // new one is written. Only on the main machine (w.memory set) with Claude logged in; a failed model call waits
 // BACKOFF_MS (doubling) before the next try, so nothing ever loops on the subscription.
 

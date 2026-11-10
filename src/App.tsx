@@ -9,7 +9,7 @@ import { H24Rail } from './ui/h24'
 import { Login } from './ui/login'
 import { TourBand, TourIntro } from './ui/tour'
 import { Tips } from './ui/tips'
-import { FlyingWeevil } from './ui/weevil'
+import { WeevilQuestions } from './ui/weevil'
 import { HintBubble, loadHints } from './ui/hints'
 import { GestureCoach } from './ui/coach'
 import { PageView } from './ui/pages'
@@ -450,7 +450,7 @@ export default function App() {
           ))}
         </AnimatePresence>
         <Tips paused={stack.length > 0} />
-        <FlyingWeevil paused={stack.length > 0} />
+        <WeevilQuestions paused={stack.length > 0} />
         <TourIntro />
         <HintBubble />
         <GestureCoach />

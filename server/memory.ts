@@ -1,4 +1,4 @@
-// What weevils remembers about the user: goals, wishes, projects, tastes. Fed by the answers given to the flying weevils
+// What weevils remembers about the user: goals, wishes, projects, tastes. Fed by the answers given to the weevil's questions
 // (server/weevil.ts) and edited by hand in the app (memory page, bottom of the machines band).
 //
 // Stored in ~/.config/weevils/memory.json (mode 600): outside every repo, never committed, never sent anywhere but to
@@ -20,7 +20,7 @@ const MAX_TEXT = 400
 const MAX_ASKED = 400
 const MAX_ANSWER = 1200
 
-/** A question carried by a flying weevil, and what became of it. */
+/** A question asked by the weevil, and what became of it. */
 export interface Asked {
   id: string
   text: string

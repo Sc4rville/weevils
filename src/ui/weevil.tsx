@@ -1,44 +1,39 @@
-import { AnimatePresence, MotionConfig, animate, motion, useMotionValue, useReducedMotion, type AnimationPlaybackControls } from 'motion/react'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { AnimatePresence, MotionConfig, motion, useReducedMotion } from 'motion/react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { MemoryItem, WeevilQuestion } from '../../shared/api.ts'
 import { api } from '../api'
 import { useT } from '../i18n'
 import M from '../i18n/weevil'
 import { useApp } from './app-context'
 import { Icon } from './icons'
-import { WeevbossLogo } from './logo'
 import { VoiceLogo, voiceBusy } from './voice'
 import { DEBUG_MS, RETRY_MS, RETURN_MS, TICK_MS, calm, gap, markFlown, nextAt, parseState, type Calm } from './weevil-schedule'
 import './weevil.css'
 
-// Flying weevils: now and then a small weevil crosses the home screen towing a little question (server/weevil.ts
-// writes it from the memory and the real projects). Tapped, it opens a short exchange, answered by voice (the same
-// voice logo as everywhere) or in writing; each answer feeds the memory. Uncaught, it leaves and comes back later.
-// When it may fly: src/ui/weevil-schedule.ts.
+// The weevil's questions: now and then, at a calm moment, a full colour panel slides up from the bottom with a short
+// question (server/weevil.ts writes it from the memory and the real projects), the logo and a field. Answered by voice
+// (the same voice logo as everywhere) or in writing, each answer feeds the memory; closed with ×, its question comes
+// back later. Nothing drifts across the screen. When it may show: src/ui/weevil-schedule.ts.
 //
-// Test hook (QA, screenshots): « #weevil » in the URL, or localStorage « weevils-weevil-now » = « 1 », sends a weevil
-// ~3 s after the app opens (and again ~3 s after each flight), daily cap and gaps ignored. Calm is still required.
+// Test hook (QA, screenshots): « #weevil » in the URL, or localStorage « weevils-weevil-now » = « 1 », shows a question
+// ~3 s after the app opens (and again ~3 s after each one), daily cap and gaps ignored. Calm is still required.
 
 const KEY = 'weevils-weevil'
 const DEBUG = 'weevils-weevil-now'
 /** Pop palette slots for the label and the sheet (picked from the question id). */
 const SLOTS = ['p0', 'p2', 'p4', 'p9', 'p11', 'p13']
-/** After the last reply: the weevil leaves after this pause (longer once its reply has been spoken). */
+/** After the last reply: the panel leaves after this pause (shorter once its reply has been spoken). */
 const DONE_MS = 1800
 const SPOKEN_MS = 700
 
 type Line = { role: 'weevil' | 'user'; text: string }
-type Phase = 'fly' | 'caught' | 'talk' | 'away'
 interface Flight {
   q: WeevilQuestion
-  /** 1: enters on the left and flies right; -1: the other way. */
-  dir: 1 | -1
-  /** Height of its path, in px from the top. */
-  y: number
-  /** Seconds to cross. */
-  dur: number
   slot: string
 }
+/** Short and soft, in and out (no bounce). */
+const SLIDE_IN = { duration: 0.32, ease: [0.22, 1, 0.36, 1] } as const
+const SLIDE_OUT = { duration: 0.24, ease: [0.4, 0, 1, 1] } as const
 
 const read = (k: string) => {
   try {
@@ -62,10 +57,10 @@ const overlay = () => !!document.querySelector('.tr-intro, .tr-band, .tip, .hint
 const slotOf = (id: string) => SLOTS[[...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % SLOTS.length]
 
 /** Mounted once, next to the tips. `paused`: a page is open. */
-export function FlyingWeevil({ paused }: { paused: boolean }) {
+export function WeevilQuestions({ paused }: { paused: boolean }) {
   const { h24Open, expanded } = useApp()
   const [flight, setFlight] = useState<Flight | null>(null)
-  const [phase, setPhase] = useState<Phase>('fly')
+  const [shown, setShown] = useState(false)
   const reduce = !!useReducedMotion()
   const opened = useRef(Date.now())
   const target = useRef(0)
@@ -106,10 +101,8 @@ export function FlyingWeevil({ paused }: { paused: boolean }) {
         if (!question) return void (target.current = Date.now() + (debug ? DEBUG_MS : gap()))
         if (!calm(moment())) return void (target.current = Date.now() + (debug ? DEBUG_MS : RETRY_MS))
         saveState(markFlown(loadState(), Date.now()))
-        const dir = Math.random() < 0.5 ? 1 : -1
-        const h = window.innerHeight
-        setPhase('fly')
-        setFlight({ q: question, dir, y: Math.round(h * (0.28 + Math.random() * 0.34)), dur: 16 + Math.random() * 6, slot: slotOf(question.id) })
+        setFlight({ q: question, slot: slotOf(question.id) })
+        setShown(true)
       } catch {
         target.current = Date.now() + (debug ? DEBUG_MS : gap())
       } finally {
@@ -128,117 +121,46 @@ export function FlyingWeevil({ paused }: { paused: boolean }) {
     }
   }, [])
 
-  /** The weevil is gone (flown off, or set free): the next one is scheduled. */
+  /** The panel is gone (slid down): the next question is scheduled. */
   const gone = useCallback(() => {
     setFlight(null)
-    setPhase('fly')
     target.current = nextAt(loadState(), opened.current, Date.now(), isDebug())
   }, [])
-  const missed = useCallback(
-    (id: string) => {
-      void api.weevilMissed(id).catch(() => undefined)
-      gone()
+
+  /** Panel closed: answered, it just slides down; closed without a word, its question will come back. Once per
+   * question shown: the panel stays mounted while it slides out, so a second Esc or scrim tap must not count a second
+   * miss (a missed question comes back later with the same id). */
+  const freed = useRef<Flight | null>(null)
+  const answeredNow = useRef(false)
+  const setFree = useCallback(
+    (answered: boolean) => {
+      if (!flight || freed.current === flight) return
+      freed.current = flight
+      if (!answered) void api.weevilMissed(flight.q.id).catch(() => undefined)
+      setShown(false)
     },
-    [gone],
+    [flight],
   )
 
-  // A page, the drawer or weevboss opens while it flies: it slips away (it will come back with the same question).
-  const interrupted = flight && phase === 'fly' && (paused || h24Open || expanded === 'agent')
+  // A page, the drawer or weevboss opens over it (a notification, a gesture): it slides away, its question comes back.
+  const interrupted = !!flight && shown && (paused || h24Open || expanded === 'agent')
   useEffect(() => {
-    if (interrupted && flight) missed(flight.q.id)
-  }, [interrupted, flight, missed])
-
-  /** Sheet closed: answered, it just leaves; set free without a word, its question will come back. Once per flight:
-   * the sheet stays mounted while it slides out, so a second Esc or scrim tap must not count a second miss (a missed
-   * question flies again later with the same id, as a new flight). */
-  const freed = useRef<Flight | null>(null)
-  const setFree = (answered: boolean) => {
-    if (!flight || freed.current === flight) return
-    freed.current = flight
-    if (!answered) void api.weevilMissed(flight.q.id).catch(() => undefined)
-    setPhase('away')
-  }
+    if (interrupted) setFree(answeredNow.current)
+  }, [interrupted, setFree])
 
   if (!flight) return null
   return (
     <MotionConfig reducedMotion="never">
-      <Flier key={flight.q.id} f={flight} phase={phase} reduce={reduce} onCatch={() => setPhase('caught')} onCaught={() => setPhase('talk')} onPassed={() => missed(flight.q.id)} onAway={gone} />
-      <AnimatePresence>{phase === 'talk' && <Sheet key="sheet" f={flight} reduce={reduce} onLeave={setFree} />}</AnimatePresence>
+      <AnimatePresence onExitComplete={gone}>
+        {shown && <Sheet key={flight.q.id} f={flight} reduce={reduce} onLeave={setFree} onAnswered={() => (answeredNow.current = true)} />}
+      </AnimatePresence>
     </MotionConfig>
-  )
-}
-
-// ---------------------------------------------------------------- the weevil in flight
-
-function Flier({ f, phase, reduce, onCatch, onCaught, onPassed, onAway }: { f: Flight; phase: Phase; reduce: boolean; onCatch: () => void; onCaught: () => void; onPassed: () => void; onAway: () => void }) {
-  const t = useT(M)
-  const ref = useRef<HTMLButtonElement>(null)
-  const x = useMotionValue(-1000)
-  const lift = useMotionValue(0)
-  const run = useRef<AnimationPlaybackControls | null>(null)
-  const live = useRef({ onPassed, onAway, onCaught })
-  live.current = { onPassed, onAway, onCaught }
-
-  // The crossing: from just outside one edge to just outside the other, at a steady pace.
-  useLayoutEffect(() => {
-    const w = window.innerWidth
-    const size = ref.current?.offsetWidth ?? 240
-    const from = f.dir > 0 ? -size - 8 : w + 8
-    const to = f.dir > 0 ? w + 8 : -size - 8
-    x.set(from)
-    run.current = animate(x, to, { duration: reduce ? f.dur * 1.4 : f.dur, ease: 'linear', onComplete: () => live.current.onPassed() })
-    return () => run.current?.stop()
-  }, [])
-
-  // Caught: it stops dead and hops; then the sheet. Set free: it flies off the way it was going, up and away.
-  useEffect(() => {
-    if (phase === 'caught') {
-      run.current?.stop()
-      const id = setTimeout(() => live.current.onCaught(), reduce ? 120 : 420)
-      return () => clearTimeout(id)
-    }
-    if (phase === 'away') {
-      const size = ref.current?.offsetWidth ?? 240
-      const to = f.dir > 0 ? window.innerWidth + 8 : -size - 8
-      run.current = animate(x, to, { duration: reduce ? 1.6 : 1.1, ease: [0.5, 0, 0.9, 0.6], onComplete: () => live.current.onAway() })
-      const up = reduce ? null : animate(lift, -140, { duration: 1.1, ease: 'easeIn' })
-      return () => {
-        run.current?.stop()
-        up?.stop()
-      }
-    }
-  }, [phase])
-
-  const bob = reduce
-    ? {}
-    : phase === 'caught'
-      ? { animate: { scale: [1, 1.35, 0.85, 1.1], rotate: [0, -14 * f.dir, 10 * f.dir, 0], y: 0 }, transition: { duration: 0.4 } }
-      : phase === 'away'
-        ? { animate: { rotate: -18 * f.dir, scale: 1, y: 0 }, transition: { duration: 0.5 } }
-        : { animate: { y: [0, -7, 0, 5, 0], rotate: [-3, 4, -3] }, transition: { y: { duration: 3.4, repeat: Infinity, ease: 'easeInOut' as const }, rotate: { duration: 2.6, repeat: Infinity, ease: 'easeInOut' as const } } }
-
-  return (
-    <motion.div className="weevil-fly" style={{ x, y: lift, top: f.y, '--c': `var(--${f.slot})` } as unknown as CSSProperties} animate={{ opacity: phase === 'talk' ? 0 : 1 }} initial={{ opacity: 0 }} transition={{ duration: 0.3 }}>
-      <motion.div className="weevil-bob" {...bob}>
-        <button
-          ref={ref}
-          className={`weevil-catch ${f.dir > 0 ? 'right' : 'left'}`}
-          onClick={() => phase === 'fly' && onCatch()}
-          aria-label={t.catch(f.q.text)}
-          tabIndex={phase === 'fly' ? 0 : -1}
-        >
-          <span className="weevil-label">{f.q.text}</span>
-          <span className="weevil-tow" aria-hidden />
-          <WeevbossLogo className="weevil-svg" />
-        </button>
-      </motion.div>
-    </motion.div>
   )
 }
 
 // ---------------------------------------------------------------- the exchange
 
-function Sheet({ f, reduce, onLeave }: { f: Flight; reduce: boolean; onLeave: (answered: boolean) => void }) {
+function Sheet({ f, reduce, onLeave, onAnswered }: { f: Flight; reduce: boolean; onLeave: (answered: boolean) => void; onAnswered: () => void }) {
   const t = useT(M)
   const [lines, setLines] = useState<Line[]>([{ role: 'weevil', text: f.q.text }])
   const [learned, setLearned] = useState<MemoryItem[]>([])
@@ -265,7 +187,7 @@ function Sheet({ f, reduce, onLeave }: { f: Flight; reduce: boolean; onLeave: (a
     return () => window.removeEventListener('keydown', onKey)
   }, [leave])
 
-  // Finished: a short pause (its reply read out first, when it is spoken), then it flies away.
+  // Finished: a short pause (its reply read out first, when it is spoken), then it slides down.
   useEffect(() => {
     if (!done) return
     let left = false
@@ -293,6 +215,7 @@ function Sheet({ f, reduce, onLeave }: { f: Flight; reduce: boolean; onLeave: (a
     try {
       const r = await api.weevilAnswer(f.q.id, said, history)
       answered.current = true
+      onAnswered()
       if (r.reply) setLines((l) => [...l, { role: 'weevil', text: r.reply }])
       if (r.learned.length) setLearned((l) => [...l, ...r.learned.filter((m) => !l.some((x) => x.id === m.id))])
       setReply(voice && r.reply ? { key: String(++seq.current), text: r.reply } : {})
@@ -315,10 +238,12 @@ function Sheet({ f, reduce, onLeave }: { f: Flight; reduce: boolean; onLeave: (a
     if (q) void send(q, true)
   }
 
-  const slide = reduce ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } } : { initial: { y: '100%' }, animate: { y: 0 }, exit: { y: '100%' } }
+  const slide = reduce
+    ? { initial: { opacity: 0 }, animate: { opacity: 1, transition: SLIDE_IN }, exit: { opacity: 0, transition: SLIDE_OUT } }
+    : { initial: { y: '100%' }, animate: { y: 0, transition: SLIDE_IN }, exit: { y: '100%', transition: SLIDE_OUT } }
   return (
     <>
-      <motion.div className="weevil-scrim" onClick={leave} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} aria-hidden />
+      <motion.div className="weevil-scrim" onClick={leave} initial={{ opacity: 0 }} animate={{ opacity: 1, transition: SLIDE_IN }} exit={{ opacity: 0, transition: SLIDE_OUT }} aria-hidden />
       <div className="weevil-dock">
         <motion.section
           className="weevil-sheet"
@@ -326,7 +251,6 @@ function Sheet({ f, reduce, onLeave }: { f: Flight; reduce: boolean; onLeave: (a
           aria-label={f.q.text}
           style={{ '--c': `var(--${f.slot})` } as CSSProperties}
           {...slide}
-          transition={{ type: 'spring', stiffness: 420, damping: 36 }}
         >
           <div className="weevil-head">
             <h2 className="weevil-q">{f.q.text}</h2>

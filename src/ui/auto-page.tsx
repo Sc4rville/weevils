@@ -122,7 +122,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
   const act = (p: Promise<unknown>) => void p.then(refresh).catch((e) => setErr((e as Error).message))
   const actions: ReactNode[] = []
   if (opt && !proposed && !x.state.match(/^(done|failed)$/)) {
-    const paused = x.state === 'paused'
+    const paused = x.state === 'paused' || !!opt.paused
     actions.push(
       <button key="pause" className="ch" onClick={() => act(api.pauseOptimizer(x.id, !paused))} aria-label={paused ? t.resume(x.title) : t.pause(x.title)}>
         <Icon name={paused ? 'play' : 'pause'} />

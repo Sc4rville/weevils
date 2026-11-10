@@ -319,7 +319,6 @@ export interface Optimizer {
   rev?: number
   /** Tâche récurrente en cours : la portée convenue pour son prochain passage (son titre alors), si elle change. */
   next?: { title: string }
-  /** Tâche récurrente : ses passages précédents (le plus récent en dernier). */
   /** Chaque passage (le plus récent en premier, 30 au plus) : unique ou récurrente. Les anciens { at, ok, note } restent lisibles. */
   runs?: AutoRun[]
   /** Nombre total de passages (jamais plafonné). */

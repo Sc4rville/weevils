@@ -57,6 +57,9 @@ type Cut = { at: number; reason: InterruptReason }
 const CLEAN_END = new Set(['prompt_input_exit', 'clear', 'logout'])
 /** Une coupure plus ancienne que ça, découverte après coup (redémarrage, déploiement), n'est pas annoncée : seulement montrée. */
 const ANNOUNCE_WITHIN_MS = 6 * 3600_000
+/** A timer's journal: the fields its runs are read from (journalRuns), and how many of its newest entries. */
+const JOURNAL_FIELDS = '_SYSTEMD_INVOCATION_ID,USER_INVOCATION_ID,INVOCATION_ID,MESSAGE,EXIT_STATUS,UNIT_RESULT,JOB_RESULT'
+const JOURNAL_LINES = 20_000
 /** Une session lancée pour un test (son brief commence par « [test] », ou par « TEST » en majuscules juste après la
  * signature d'un agent [from:…] : jamais un simple « TEST » tapé dans un terminal) : elle reste visible dans l'app, mais ne prévient jamais (ni notification, ni message dans le fil de weevboss).
  * Les tests de weevils lui-même tournent sur un serveur jetable (CONTRIBUTING.md) ; ceci protège le vrai fil des autres. */
@@ -1916,12 +1919,17 @@ export class Weevils {
     const loading = this.timerRunsLoading.get(unit)
     if (loading) return loading
     const svc = this.timerSvc.get(unit) ?? unit.replace(/\.timer$/, '.service')
+    // Only the fields a run is read from, and only the newest entries (still oldest first): a chatty service never
+    // fills the buffer with its oldest weeks, nor holds the event loop on a huge parse.
+    const args = ['--user', '-u', svc, '-o', 'json', `--output-fields=${JOURNAL_FIELDS}`, '--since', '-30d', '-n', String(JOURNAL_LINES), '--no-pager', '-q']
     const p = new Promise<{ runs: JournalRun[]; fresh: boolean }>((resolve) =>
-      execFile('journalctl', ['--user', '-u', svc, '-o', 'json', '--since', '-30d', '--no-pager', '-q'], { timeout: 10_000, maxBuffer: 64 << 20 }, (err, stdout) => {
+      execFile('journalctl', args, { timeout: 10_000, maxBuffer: 32 << 20 }, (err, stdout) => {
+        // Cut short (too big anyway): what it gave is the oldest part, never read as the last runs; what was known stays.
+        const cut = (err as NodeJS.ErrnoException | null)?.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
         // No journal for this user: no runs, kept as such until it runs again (never a loop).
-        const runs = err && !stdout ? [] : journalRuns(stdout)
+        const runs = cut ? (c?.runs ?? []) : err && !stdout ? [] : journalRuns(stdout)
         this.timerRunsCache.set(unit, { key, at: Date.now(), runs })
-        resolve({ runs, fresh: true })
+        resolve({ runs, fresh: !cut })
       }),
     ).finally(() => this.timerRunsLoading.delete(unit))
     this.timerRunsLoading.set(unit, p)

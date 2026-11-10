@@ -29,7 +29,7 @@ const { Ctx } = await import('./app-context')
 const { tr } = await import('../i18n')
 const { default: BM } = await import('../i18n/bands')
 
-const item = (id: string, over: Partial<ForYouItem> = {}): ForYouItem => ({ id, kind: 'boss', tone: 'neutral', at: 1, who: 'weevboss', text: `mot ${id}`, ...over })
+const item = (id: string, over: Partial<ForYouItem> = {}): ForYouItem => ({ id, kind: 'session', tone: 'result', at: 1, who: 'weevboss', text: `mot ${id} prêt à consulter.`, ...over })
 const feedOf = (items: ForYouItem[], rev = 1): ForYouFeed => ({ rev, items, pulse: { working: 0, waiting: 0, delivered: 0, auto: 0 } })
 
 const snap = (foryou?: Snapshot['foryou']): Snapshot => ({
@@ -194,9 +194,9 @@ describe('l’aperçu de « pour toi »', () => {
 
   it('les premiers items seulement, dans l’ordre du flux, chacun avec qui parle et une ligne', async () => {
     net.feed = feedOf([
-      item('b1', { text: 'Trois   sessions\nlancées.' }),
-      item('s1', { kind: 'session', tone: 'result', who: 'session', projectId: 'p', title: 'refonte', text: 'Les tests passent.' }),
-      item('m1', { kind: 'mail', who: 'instinct', text: 'J’ai relu le devis.' }),
+      item('b1', { text: 'La page est prête.' }),
+      item('s1', { kind: 'session', tone: 'result', who: 'session', projectId: 'p', title: 'refonte', text: 'La navigation fonctionne.' }),
+      item('m1', { kind: 'session', who: 'instinct', text: 'Le devis est prêt.' }),
       ...Array.from({ length: 9 }, (_, i) => item(`x${i}`)),
     ])
     render(snap({ rev: 1, unseen: 12 }), <ForYouPeek />)
@@ -204,10 +204,10 @@ describe('l’aperçu de « pour toi »', () => {
     const strips = [...host.querySelectorAll<HTMLElement>('.fyt-item')]
     expect(strips.length).toBe(PEEK_ITEMS)
     expect(strips[0].querySelector('.strong')!.textContent).toBe('weevboss')
-    expect(strips[0].textContent).toContain('Trois sessions lancées.')
+    expect(strips[0].textContent).toContain('La page est prête.')
     // Une session parle au nom de son projet ; un auteur extérieur sous son nom.
     expect(strips[1].querySelector('.strong')!.textContent).toBe('atelier')
-    expect(strips[1].textContent).toContain('Les tests passent.')
+    expect(strips[1].textContent).toContain('La navigation fonctionne.')
     expect(strips[2].querySelector('.strong')!.textContent).toBe('Instinct')
     // Chaque bande a sa couleur.
     for (const s of strips) expect(s.style.getPropertyValue('--c')).not.toBe('')
@@ -215,10 +215,10 @@ describe('l’aperçu de « pour toi »', () => {
     expect(host.textContent).not.toMatch(/\b(session|mail|boss|proposals|media)\b/)
   })
 
-  it('un média montre une vignette (image : le fichier ; vidéo : un signe lecture), des propositions « + n »', async () => {
+  it('les médias achevés gardent leurs vignettes, les propositions ne deviennent pas des notifications', async () => {
     net.feed = feedOf([
-      item('i', { kind: 'media', who: 'session', projectId: 'p', text: 'le rendu', media: [{ id: 'm1', type: 'image', url: '/api/foryou/media/m1', name: 'rendu.png', bytes: 10 }] }),
-      item('v', { kind: 'media', who: 'session', projectId: 'p', text: '', media: [{ id: 'm2', type: 'video', url: '/api/foryou/media/m2', name: 'clip.mp4', bytes: 10 }] }),
+      item('i', { kind: 'media', who: 'session', projectId: 'p', text: 'Le rendu est prêt.', media: [{ id: 'm1', type: 'image', url: '/api/foryou/media/m1', name: 'rendu.png', bytes: 10 }] }),
+      item('v', { kind: 'media', who: 'session', projectId: 'p', text: 'La vidéo est prête.', media: [{ id: 'm2', type: 'video', url: '/api/foryou/media/m2', name: 'clip.mp4', bytes: 10 }] }),
       item('p', {
         kind: 'proposals',
         who: 'weevils',
@@ -228,24 +228,23 @@ describe('l’aperçu de « pour toi »', () => {
           { id: 'c2', title: 'Explorer', why: '', source: 'optimizer', kind: 'explore' },
         ],
       }),
-      item('a', { kind: 'alert', tone: 'alert', who: 'weevils', text: 'Une session t’attend.' }),
+      item('a', { kind: 'alert', tone: 'alert', who: 'weevils', text: 'Une session t’attend.', open: { page: 'session', id: 's1' } }),
     ])
     render(snap({ rev: 1, unseen: 4 }), <ForYouPeek />)
     await flush()
-    const [img, vid, prop, alert] = [...host.querySelectorAll<HTMLElement>('.fyt-item')]
+    const [img, vid, alert] = [...host.querySelectorAll<HTMLElement>('.fyt-item')]
     expect(img.querySelector<HTMLImageElement>('img.fyt-thumb')!.getAttribute('src')).toBe('/api/foryou/media/m1')
     expect(vid.querySelector('img')).toBeNull()
     expect(vid.querySelector('.fyt-thumb.fyt-play svg')).not.toBeNull()
     // Sans légende, le nom du fichier.
-    expect(vid.textContent).toContain('clip.mp4')
-    expect(prop.querySelector('.fyt-n')!.textContent!.trim()).toBe('+ 2')
-    expect(prop.textContent).toContain('Surveiller les tests')
+    expect(vid.textContent).toContain('La vidéo est prête.')
+    expect(host.querySelector('[data-fy="p"]')).toBeNull()
     expect(alert.classList.contains('fyt-alert')).toBe(true)
     expect(img.classList.contains('fyt-alert')).toBe(false)
   })
 
   it('each strip opens the stream; its independent close does not navigate', async () => {
-    net.feed = feedOf([item('a', { kind: 'alert', live: true }), item('b')])
+    net.feed = feedOf([item('a', { kind: 'alert', live: true, open: { page: 'session', id: 's1' } }), item('b')])
     render(snap({ rev: 1, unseen: 2 }), <ForYouPeek />)
     await flush()
     expect(host.querySelector('[data-fy="b"] .notice-close')).toBeNull()
@@ -264,7 +263,7 @@ describe('l’aperçu de « pour toi »', () => {
     render(snap({ rev: 1, unseen: 2 }), <ForYouPeek />)
     await flush()
     const before = host.querySelector<HTMLElement>('.fyt-item')!
-    net.feed = feedOf([item('n', { text: 'tout frais' }), item('a'), item('b')], 2)
+    net.feed = feedOf([item('n', { text: 'tout frais prêt à consulter' }), item('a'), item('b')], 2)
     render(snap({ rev: 2, unseen: 3 }), <ForYouPeek />)
     await flush()
     const strips = [...host.querySelectorAll<HTMLElement>('.fyt-item')]
@@ -293,7 +292,7 @@ describe('l’aperçu de « pour toi »', () => {
     }
     vi.stubGlobal('Audio', FakeAudio)
     const { toggleVoice, resetVoice } = await import('./foryou-voice')
-    net.feed = feedOf([item('a', { kind: 'boss', who: 'weevboss', text: 'trois choses en route', voice: 'nova' }), item('b', { kind: 'boss', who: 'weevboss', text: 'sans voix' })])
+    net.feed = feedOf([item('a', { kind: 'session', who: 'weevboss', text: 'La page est prête.', voice: 'nova' }), item('b', { kind: 'session', who: 'weevboss', text: 'Le rendu est prêt.' })])
     render(snap({ rev: 1, unseen: 2 }), <ForYouPeek />)
     await flush()
     const strip = (id: string) => host.querySelector(`.fyt-item[data-fy="${id}"]`)!
@@ -303,7 +302,7 @@ describe('l’aperçu de « pour toi »', () => {
     await act(async () => toggleVoice('a', 'trois choses en route', 'nova'))
     expect(strip('a').querySelector('.fyt-wave.on')!.getAttribute('aria-label')).toBe(tr(BM).forYouSpeaking)
     // Son item quitte le flux : la lecture s'arrête.
-    net.feed = feedOf([item('b', { kind: 'boss', who: 'weevboss', text: 'sans voix' })], 2)
+    net.feed = feedOf([item('b', { kind: 'session', who: 'weevboss', text: 'Le rendu est prêt.' })], 2)
     render(snap({ rev: 2, unseen: 1 }), <ForYouPeek />)
     await flush()
     expect(made).toHaveLength(1)
@@ -312,4 +311,18 @@ describe('l’aperçu de « pour toi »', () => {
     resetVoice()
     vi.unstubAllGlobals()
   })
+})
+
+it('keeps editorial, acknowledgements and progress out of the preview and its unread badge', async () => {
+  net.feed = feedOf([
+    item('r:story', { kind: 'boss', text: 'La page est prête.' }),
+    item('ack', { text: 'Bien reçu, merci.' }),
+    item('progress', { text: 'Je prépare le prochain rendu.' }),
+    item('done', { text: 'Le montage est prêt à regarder.' }),
+    item('question', { tone: 'question', text: 'Veux-tu publier cette version ?' }),
+  ])
+  render(snap({ rev: 1, unseen: 5 }), <><Words /><ForYouPeek /></>)
+  await flush()
+  expect([...host.querySelectorAll('[data-fy]')].map(n => n.getAttribute('data-fy'))).toEqual(['done', 'question'])
+  expect(host.querySelector('.fyt-dot')?.getAttribute('aria-label')).toBe(tr(BM).forYouUnseen(2))
 })

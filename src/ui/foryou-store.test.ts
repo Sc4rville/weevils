@@ -43,7 +43,7 @@ const { setLang } = await import('../i18n')
 type Store = ReturnType<typeof useForYou>
 
 const NOW = Date.now()
-const item = (o: Partial<ForYouItem> & { id: string }): ForYouItem => ({ kind: 'boss', tone: 'neutral', at: NOW, who: 'weevboss', text: o.id, ...o })
+const item = (o: Partial<ForYouItem> & { id: string }): ForYouItem => ({ kind: 'session', tone: o.kind ? 'neutral' : 'result', at: NOW, who: 'weevboss', text: `${o.id} is ready to view`, ...o })
 const feed = (rev: number, items: ForYouItem[]): ForYouFeed => ({ rev, items, pulse: { working: 0, waiting: 0, delivered: 0, auto: 0 } })
 
 const snap = (foryou?: ForYouMark, version = 1): Snapshot => ({
@@ -158,12 +158,12 @@ describe('for you store', () => {
     expect(ids()).toEqual(['a', 'b', 'c'])
   })
 
-  it('shows the snapshot count before the stream is there, and tries again after a failed fetch', async () => {
+  it('waits for eligible items before showing a count, and retries a failed fetch', async () => {
     srv.fail = 'feed'
     render(snap({ rev: 1, unseen: 4 }))
     await flush()
     expect(fy.feed).toBeNull()
-    expect(fy.unseen).toBe(4)
+    expect(fy.unseen).toBe(0)
     srv.fail = ''
     srv.feed = feed(1, [item({ id: 'a' })])
     render(snap({ rev: 1, unseen: 4 }, 2))
@@ -375,14 +375,14 @@ describe('for you: colours and speakers', () => {
 
   it('lists who is present and filters on one', () => {
     const items = [
-      item({ id: '1' }),
+      item({ id: '1', kind: 'boss' }),
       item({ id: '2', kind: 'mail', who: 'juno' }),
       item({ id: '3', kind: 'session', who: 'session' }),
       item({ id: '4', kind: 'media', who: 'session' }),
       item({ id: '5', kind: 'insight', who: 'weevils' }),
     ]
     expect(participants(items)).toEqual([WHO_ALL, 'weevboss', 'juno', 'session', 'media', 'ideas'])
-    expect(participants([item({ id: '1' })])).toEqual([WHO_ALL, 'weevboss'])
+    expect(participants([item({ id: '1', kind: 'boss' })])).toEqual([WHO_ALL, 'weevboss'])
     const only = (w: string) => items.filter((i) => matchesWho(i, w)).map((i) => i.id)
     expect(only(WHO_ALL)).toHaveLength(5)
     expect(only('weevboss')).toEqual(['1'])
@@ -423,4 +423,14 @@ it('filters old-server commit cards and sanitizes text before a cached item can 
   expect(fy.items[0].text).toBe('Le thème est en ligne.')
   await serve(2, srv.feed ? (srv.feed as ForYouFeed).items : [])
   expect(ids()).toEqual(['human'])
+})
+
+it('keeps editorial items available in the opened feed without an intrusive unread badge', async () => {
+  await serve(1, [item({id:'old',seen:true})])
+  act(() => fy.setReading(true))
+  await serve(2, [item({id:'r:story',kind:'boss',text:'Le montage est disponible.'}),item({id:'old',seen:true})])
+  expect(fy.fresh).toBe(1)
+  expect(fy.unseen).toBe(0)
+  act(() => fy.showFresh())
+  expect(ids()).toContain('r:story')
 })

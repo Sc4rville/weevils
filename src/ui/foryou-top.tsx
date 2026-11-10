@@ -1,3 +1,4 @@
+import { notificationEligible } from '../../shared/notification-policy'
 import { closableFeedNotice } from '../../shared/notices.ts'
 import { NoticeClose } from './notice'
 // The top band's two words, « weevboss · pour toi », and the preview of the stream shown under them (docs/foryou.md §4.1).
@@ -96,7 +97,7 @@ export function ForYouPeek() {
   const { snap, colors, push } = useApp()
   const { items, dismiss } = useForYou()
   const authorOf = useAuthors()
-  const shown = items.slice(0, PEEK_ITEMS)
+  const shown = items.filter(notificationEligible).slice(0, PEEK_ITEMS)
   const open = () => push({ kind: 'foryou' })
   // A voice message being read aloud: its strip shows it. It stops when its item leaves the stream.
   const speaking = useVoiceId()

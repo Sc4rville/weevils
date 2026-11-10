@@ -1,3 +1,4 @@
+import { notificationEligible } from '../../shared/notification-policy'
 import { outboxSnapshot, subscribeOutbox } from '../outbox'
 import { humanFeedItem, humanFeedText, rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { retainVoice } from './foryou-voice'
@@ -106,7 +107,7 @@ function rebuild() {
   const all = current()
   const by = new Map(all.map((i) => [i.id, i]))
   const items = order.flatMap((id) => by.get(id) ?? [])
-  view = { feed, items, unseen: feed ? all.filter((i) => !i.seen).length : markUnseen, fresh: all.filter((i) => held.has(i.id)).length }
+  view = { feed, items, unseen: all.filter((i) => !i.seen && notificationEligible(i)).length, fresh: all.filter((i) => held.has(i.id)).length }
   for (const l of listeners) l()
 }
 

@@ -321,7 +321,7 @@ describe('le message envoyé se voit tout de suite', () => {
 })
 
 describe('« weevboss · pour toi » dans la bande du haut', () => {
-  const fy = (id: string, text: string, over: Partial<ForYouItem> = {}): ForYouItem => ({ id, kind: 'boss', tone: 'neutral', at: 1, who: 'weevboss', text, ...over })
+  const fy = (id: string, text: string, over: Partial<ForYouItem> = {}): ForYouItem => ({ id, kind: 'session', tone: 'result', at: 1, who: 'weevboss', text, ...over })
   const withStream = (main: Message[], unseen = 0): Snapshot => ({ ...snap(main), foryou: { rev: 1, unseen } })
   const words = () => [...document.querySelectorAll<HTMLButtonElement>('.fyt-word')]
   const peekWrap = () => document.querySelector<HTMLElement>('.band.agent .peek-wrap')!
@@ -356,7 +356,7 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
   })
 
   it('« pour toi » montre l’aperçu du flux et cache celui du fil sans le démonter', async () => {
-    sent.feed = [fy('p1', 'Deux sessions lancées ce matin.')]
+    sent.feed = [fy('p1', 'Le rendu est prêt à regarder.')]
     render(withStream([msg('a', 'assistant', 'salut', 1)]))
     await flush()
     const peek = document.querySelector('.peek')!
@@ -364,7 +364,7 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
     expect(words().map((w) => w.getAttribute('aria-pressed'))).toEqual(['false', 'true'])
     expect(peekWrap().hidden).toBe(true)
     expect(fyWrap().hidden).toBe(false)
-    expect(fyWrap().textContent).toContain('Deux sessions lancées ce matin.')
+    expect(fyWrap().textContent).toContain('Le rendu est prêt à regarder.')
     // Le même aperçu du fil, toujours monté, avec ses messages.
     expect(document.querySelector('.peek')).toBe(peek)
     expect(peek.textContent).toContain('salut')
@@ -381,7 +381,7 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
 
   it('un tap sur l’aperçu de « pour toi » ouvre le flux en plein écran, pas le fil', async () => {
     localStorage.setItem('weevils-top', 'foryou')
-    sent.feed = [fy('p1', 'Deux sessions lancées ce matin.')]
+    sent.feed = [fy('p1', 'Le rendu est prêt à regarder.')]
     render(withStream([]))
     await flush()
     await act(async () => document.querySelector<HTMLElement>('.fyt-peek')!.click())
@@ -456,7 +456,7 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
   })
 
   it('un point sur « pour toi » quand il reste du non vu', async () => {
-    sent.feed = [fy('p1', 'Du neuf.'), fy('p2', 'Déjà lu.', { seen: true })]
+    sent.feed = [fy('p1', 'Le résultat est disponible.'), fy('p2', 'Déjà lu.', { seen: true })]
     render(withStream([], 1))
     await flush()
     expect(words()[1].querySelector('.fyt-dot')).not.toBeNull()

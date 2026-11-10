@@ -107,7 +107,10 @@ export default function App() {
   }, [])
   useEffect(() => {
     if (live.snap) setNow(Date.now())
-    if (live.snap) adoptUnknown(live.snap.sessions)
+    if (live.snap) {
+      adoptUnknown(live.snap.sessions)
+      navigator.serviceWorker?.controller?.postMessage({ type: 'notification-state', sessions: live.snap.sessions.map(s => ({ id: s.id, status: s.status, archived: s.archived })), relayNeedsApproval: live.snap.relay?.plans?.some(p => !p.resolved && (p.state === 'ready' || p.state === 'failed')) ?? false })
+    }
   }, [live.snap])
   // Autorisation déjà donnée : l'appareil se ré-abonne à chaque lancement (clé changée, serveur réinstallé…).
   useEffect(() => {

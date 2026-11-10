@@ -84,14 +84,15 @@
 .mem-del {
   flex: none;
   min-height: 44px;
-  padding-inline: 10px;
-  margin-right: -10px;
+  /* Its words end on the right text margin; nothing ever runs past it. */
+  padding-inline: 10px 0;
   font-size: 0.9375rem;
   font-weight: 700;
 }
 
-/* Armed: one more tap forgets. */
+/* Armed: one more tap forgets. The black box ends on the margin, its words inside it. */
 .mem-del.on {
+  padding-inline: 10px;
   background: var(--ink);
   color: var(--c);
 }

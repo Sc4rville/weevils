@@ -741,6 +741,10 @@ describe('auto — talking a task over (the negotiation)', () => {
     expect(text).toContain('never push')
     expect(o.list()[0].talk).toHaveLength(2)
     expect(agreedDigest(undefined, { user: (s) => s, auto: (s) => s })).toBe('')
+    // Questions alone are no agreement.
+    const q = [{ who: 'user' as const, text: 'what is it?', at: T0 }, { who: 'auto' as const, text: 'Tests.', at: T0 }]
+    expect(agreedDigest(q, { user: (s) => s, auto: (s) => s })).toBe('')
+    expect(agreedDigest([...q, { who: 'user', text: 'nightly', at: T0 }, { who: 'auto', text: 'Nightly now.', at: T0, changed: ['window'] }], { user: (s) => `U ${s}`, auto: (s) => `A ${s}` })).toBe('U nightly\nA Nightly now.')
   })
 
   it('holds a task until its time: not before, its window (in the user zone); then it starts', async () => {

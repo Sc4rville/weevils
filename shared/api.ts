@@ -319,6 +319,8 @@ export interface OptimizerLine {
   who: 'user' | 'auto'
   text: string
   at: number
+  /** Réponse qui a réécrit la tâche : les champs changés. */
+  changed?: OptimizerField[]
 }
 
 export type OptimizerField = 'title' | 'why' | 'est' | 'priority' | 'heavy' | 'kind' | 'repo' | 'prompt' | 'notBefore' | 'window' | 'every'

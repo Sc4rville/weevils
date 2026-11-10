@@ -524,14 +524,15 @@ export function capTalk(lines: OptimizerLine[], max = MAX_TALK): OptimizerLine[]
 }
 
 /**
- * What the agent reads at launch about the negotiation: the user's last requests and the last answer kept, 2 to 4
- * lines (empty when the task was accepted as proposed).
+ * What the agent reads at launch about the negotiation: the requests that rewrote the task and the last answer that
+ * did, 2 to 4 lines. Empty when nothing was changed (questions only, or accepted as proposed).
  */
 export function agreedDigest(talk: OptimizerLine[] | undefined, line: { user: (s: string) => string; auto: (s: string) => string }): string {
-  if (!talk?.some((l) => l.who === 'user')) return ''
-  const asked = talk.filter((l) => l.who === 'user').slice(-3).map((l) => line.user(oneLine(l.text, 180)))
-  const last = [...talk].reverse().find((l) => l.who === 'auto')
-  return [...asked, ...(last ? [line.auto(oneLine(last.text, 240))] : [])].join('\n')
+  const lines = talk ?? []
+  const turns = lines.flatMap((l, i) => (l.who === 'auto' && l.changed?.length && lines[i - 1]?.who === 'user' ? [{ asked: lines[i - 1].text, answer: l.text }] : []))
+  if (!turns.length) return ''
+  const cut = (s: string, n: number) => (s.length > n ? `${oneLine(s, n - 1)}…` : oneLine(s, n))
+  return [...turns.slice(-3).map((x) => line.user(cut(x.asked, 200))), line.auto(cut(turns.at(-1)!.answer, 320))].join('\n')
 }
 
 /** How long a task may run: 2 h, or 1.5 × its estimate when longer, 6 h at most. */
@@ -719,7 +720,9 @@ export class Optimizers {
       try {
         out = parseJson(await smart(this.talkPrompt(o, said, zone, replyLang), TALK_TIMEOUT_MS))
       } catch (e) {
-        console.error(`[auto] échange sur « ${o.title} » : ${(e as Error).message}`)
+        // Never the message itself: claude's command line holds the whole prompt (the memory).
+        const err = e as NodeJS.ErrnoException & { killed?: boolean }
+        console.error(`[auto] échange sur « ${o.title} » : ${err.killed ? 'délai dépassé' : `échec (${err.code ?? '?'})`}`)
       }
       const reply = typeof out?.reply === 'string' ? oneLine(out.reply, 700) : ''
       if (!reply) {
@@ -731,7 +734,7 @@ export class Optimizers {
       const now = Date.now()
       const changed = this.patch(o, parsePatch(out?.patch, { repos: this.w.allRepos(), tz: zone, now }))
       if (validTz(tz)) o.tz = zone
-      o.talk = capTalk([...(o.talk ?? []), { who: 'user', text: said, at: now }, { who: 'auto', text: reply, at: Date.now() }])
+      o.talk = capTalk([...(o.talk ?? []), { who: 'user', text: said, at: now }, { who: 'auto', text: reply, at: Date.now(), ...(changed.length ? { changed } : {}) }])
       if (changed.length) {
         o.changed = { at: now, fields: changed }
         o.rev = (o.rev ?? 0) + 1

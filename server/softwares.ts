@@ -1606,7 +1606,7 @@ export class Softwares {
     const talk = talkSignals(e.sessions.flatMap((s) => [s.title, ...s.texts]))
     return {
       ...emptySignals(),
-      ...(r ? { commits: r.commits, firstAt: r.firstAt, lastAt: r.lastAt, recent: r.recent, authors: r.authors, tests: r.tests, readme: r.readme, usage: r.usage, todoDone: r.todoDone, todoTotal: r.todoTotal, version: r.version, tags: r.tags } : {}),
+      ...(r ? { commits: r.commits, firstAt: r.firstAt, lastAt: r.lastAt, recent: r.recent, authors: r.authors, tests: r.tests, readme: r.readme, usage: r.usage, todoDone: r.todoDone, todoTotal: r.todoTotal, version: r.tags > 0 || r.version.replace(/^v/, '') !== '1.0.0' ? r.version : '', tags: r.tags } : {}),
       // En ligne pour de vrai : un service actif, un conteneur qui tourne, ou une adresse que weevils n'a pas publiée lui-même
       // pour un essai lancé d'un tap.
       deployed: (!!e.sw.url && /^https?:/.test(e.sw.url) && e.sw.url !== this.selfUrl(e)) || e.units.some((u) => u.active) || e.containers.some((c) => c.running),

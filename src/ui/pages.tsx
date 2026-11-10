@@ -173,7 +173,7 @@ function SessionPage({ id }: { id: string }) {
   // La fin du fil : déjà là à l'ouverture, suivie pendant que la réponse s'écrit, sauf si on remonte relire (src/ui/follow.ts).
   // Un mot sélectionné (ou une question dictée) et sa réponse sous un message : le suivi attend, rien ne les pousse hors de l'écran.
   const last = messages.at(-1)
-  const hold = th.selected || th.a.asking || th.a.waiting || !!th.a.shown
+  const hold = th.hold
   const follow = useFollow(body, messages.length > 0, 80, `${messages.length}:${last?.id}:${last?.text.length}:${s?.status}`, hold)
   const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
   // Suivi suspendu (hold) sans relire plus haut : ce qui arrive en bas pendant ce temps est signalé par le même bouton

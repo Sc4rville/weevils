@@ -198,7 +198,7 @@ export function AgentBand() {
   const th = useThreadAsk(main, { title: 'weevboss', tool: 'weevboss' })
   const onSel = open && th.selected
   // Un mot sélectionné et sa réponse, sous un message : le suivi ne les pousse pas hors de l'écran.
-  const chat = useFollow(body, open, 80, `${main.length}:${tail?.id}:${tail?.text.length}:${snap.mainWorking}:${!!snap.devil?.working}`, onSel)
+  const chat = useFollow(body, open, 80, `${main.length}:${tail?.id}:${tail?.text.length}:${snap.mainWorking}:${!!snap.devil?.working}`, open && th.hold)
   // Chaque envoi (clavier, logo, pièce jointe) : l'aperçu et le fil redescendent pour montrer le message et sa réponse.
   const [sent, setSent] = useState(0)
   const mainReply = snap.main.filter((m) => m.role === 'assistant').at(-1)

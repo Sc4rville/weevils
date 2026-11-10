@@ -1855,8 +1855,13 @@ button.copy.done {
   display: inline-block;
 }
 
-.name .spin {
+.name .spin,
+.name .auto-mark {
   margin-left: 8px;
+}
+
+.name .auto-mark {
+  vertical-align: middle;
 }
 
 /* ---------- Devil mode ---------- */

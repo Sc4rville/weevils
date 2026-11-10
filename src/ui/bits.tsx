@@ -13,7 +13,8 @@ import M from '../i18n/bits'
 import D from '../i18n/devil'
 import RM from '../i18n/relay'
 import { isUnread, useSeen } from './seen'
-import { G, Icon } from './icons'
+import { AutoMark, G, Icon } from './icons'
+import { autoOfSession } from './auto-model'
 
 /** Ressort commun : léger dépassement, pour que les bandes aient de l'inertie. */
 export const spring: Transition = { type: 'spring', stiffness: 420, damping: 32, mass: 0.9 }
@@ -54,7 +55,9 @@ export function Appear({ children }: { children: ReactNode }) {
   )
 }
 
-export function StatusChar({ s }: { s: Session['status'] }) {
+/** auto: the session runs for an automation; working, it shows AutoMark instead of the green star. */
+export function StatusChar({ s, auto = false }: { s: Session['status']; auto?: boolean }) {
+  if (auto && s === 'working') return <AutoMark />
   return (
     <span className={s === 'working' ? 'spin fluo' : s === 'interrupted' ? 'alert' : undefined}>
       <G c={status[s].ch} />
@@ -106,7 +109,7 @@ export function ToolIcon({ tool, size = 15 }: { tool: string; size?: number }) {
 }
 
 export function SessionRow({ session }: { session: Session }) {
-  const { push, now } = useApp()
+  const { push, now, snap } = useApp()
   const t = useT(M) // libellé d'état et durée suivent la langue
   const rt = useT(RM)
   useSeen()
@@ -128,7 +131,7 @@ export function SessionRow({ session }: { session: Session }) {
     >
       <span className="in line" aria-hidden>
         <span className="st">
-          <StatusChar s={session.status} />
+          <StatusChar s={session.status} auto={!!autoOfSession(snap, session.id)} />
         </span>
         <span className="tool-ic">
           <ToolIcon tool={session.tool} />

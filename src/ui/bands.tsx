@@ -16,7 +16,8 @@ import { isUnread, useSeen } from './seen'
 import { Collapse, Composer, INSTANT, Line, Messages, SessionRow, Working, authorTone, spring, useAuthors } from './bits'
 import B from '../i18n/bits'
 import { ago, plain, userText, type ChipId } from './format'
-import { FilledIcon, G, Icon } from './icons'
+import { AutoMark, FilledIcon, G, Icon } from './icons'
+import { autoOfSession } from './auto-model'
 import { PrefLines } from './prefs'
 import { RelayPrefLine, ThreadPlans } from './relay'
 import { UsageLine } from './infra'
@@ -384,7 +385,7 @@ const urgent = (s: { status: string }) => (s.status === 'needs_user' || s.status
 
 export function ProjectBand({ project }: { project: Project }) {
   const t = useT(M)
-  const { snap, expanded, setExpanded, push, now, colors, setH24Open, instant } = useApp()
+  const { snap, expanded, setExpanded, push, now, colors, instant } = useApp()
   const tx = instant ? INSTANT : spring
   const mode = expanded === null ? 'normal' : expanded === project.id ? 'open' : 'mini'
   // Les « terminées » : ouvertes ou fermées à la main, pour la vue en cours (un changement de vue rend la règle par défaut).
@@ -485,11 +486,12 @@ export function ProjectBand({ project }: { project: Project }) {
           <motion.span className="name" initial={false} animate={{ fontSize: NAME_SIZE[shown] }} transition={tx}>
             {project.name}
             {unread && <span className="dot" aria-label={t.unread} />}
-            {active.some((s) => s.status === 'working') && (
+            {active.some((s) => s.status === 'working' && !autoOfSession(snap, s.id)) && (
               <span aria-hidden onClick={(e) => tapHint('star', e.currentTarget) && e.stopPropagation()}>
                 <span className="spin fluo"><Icon name="star" /></span>
               </span>
             )}
+            {active.some((s) => s.status === 'working' && autoOfSession(snap, s.id)) && <AutoMark />}
           </motion.span>
           <AnimatePresence initial={false}>
             {shown === 'mini' && (
@@ -600,7 +602,7 @@ export function ProjectBand({ project }: { project: Project }) {
           </Line>
           {jobs.length > 0 && <div className="in label">{t.h24Label}</div>}
           {jobs.map((a) => (
-            <Line key={a.id} ch={a.runState === 'running' ? <span className="spin"><Icon name="star" /></span> : <Icon name="check" />} meta={a.runState === 'running' ? t.running : a.lastEvent} onClick={() => setH24Open(true, a.id)} go="↓">
+            <Line key={a.id} ch={a.runState === 'running' ? <AutoMark /> : <Icon name="cycle" />} meta={a.runState === 'running' ? t.running : a.lastEvent} onClick={() => push({ kind: 'auto', id: a.id })}>
               {a.title}
             </Line>
           ))}

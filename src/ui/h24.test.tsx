@@ -9,9 +9,24 @@ import type { H24Activity, Optimizer, Snapshot } from '../../shared/api.ts'
 const calls = vi.hoisted(() => [] as string[])
 /** The pending answer of a talk turn: the test releases it. */
 const talk = vi.hoisted(() => ({ release: null as null | ((r: unknown) => void) }))
+const ApiError = vi.hoisted(
+  () =>
+    class ApiError extends Error {
+      status: number
+      constructor(status: number, message: string) {
+        super(message)
+        this.status = status
+      }
+    },
+)
 vi.mock('../api', () => ({
+  ApiError,
   api: {
-    acceptOptimizer: async (id: string, rev?: number) => void calls.push(rev === undefined ? `accept ${id}` : `accept ${id} rev ${rev}`),
+    acceptOptimizer: async (id: string, rev?: number) => {
+      calls.push(rev === undefined ? `accept ${id}` : `accept ${id} rev ${rev}`)
+      // Rewritten from another screen since this one drew it.
+      if (id === 'old') throw new ApiError(409, 'conflict')
+    },
     talkOptimizer: (id: string, text: string) => {
       calls.push(`talk ${id} ${text}`)
       return new Promise((r) => (talk.release = r))
@@ -231,9 +246,55 @@ describe('auto band', () => {
     expect(card.querySelector('.t')!.classList.contains('auto-chg')).toBe(true)
     expect(card.querySelector('.auto-line.auto.last')!.textContent).toBe('Done: nights, every week, e2e only.')
     expect([...card.querySelectorAll('.auto-cond')].map((n) => n.textContent)).toEqual(['night 01:00–06:00', '/7d'])
+    // The reply sits under ✓ and ×: they never move under a finger. A tap at once is not meant for ✓.
+    const acts = card.querySelector('.acts')!
+    expect(acts.compareDocumentPosition(card.querySelector('.auto-lines')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await click(label(/^run "E2E tests"/)!)
+    expect(calls).toEqual(['talk a at night, weekly, e2e only'])
+    clock += 500
     await click(label(/^run "E2E tests"/)!)
     await flush()
     expect(calls).toEqual(['talk a at night, weekly, e2e only', 'accept a rev 1'])
+    now.mockRestore()
+  })
+
+  it('a ✓ refused because the card changed elsewhere: it stays, says so, flashes what changed, then ✓ works again', async () => {
+    let clock = 10_000
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+    const p = opt({ id: 'old', title: 'Harden tests', est: 40, priority: 2 })
+    render(snap([p]))
+    await click(host.querySelector('.auto-prop .auto-prop-body'))
+    clock += 1000
+    await click(label(/^run "Harden tests"/)!)
+    await flush()
+    expect(calls).toEqual(['accept old rev 0'])
+    const card = host.querySelector('.auto-prop.open')!
+    expect(card.querySelector('.auto-line.note')!.textContent).toContain('It changed in the meantime')
+    expect(label(/^run "Harden tests"/)!.hasAttribute('disabled')).toBe(true)
+    // The newer version arrives: its changed fields flash, ✓ is back (after a beat).
+    render(snap([{ ...p, title: 'E2E tests', est: 60, rev: 1 }]))
+    await flush()
+    const t = host.querySelector('.auto-prop.open .t')!
+    expect(t.textContent).toBe('E2E tests')
+    expect(t.classList.contains('auto-chg')).toBe(true)
+    expect(label(/^run "E2E tests"/)!.hasAttribute('disabled')).toBe(false)
+    now.mockRestore()
+  })
+
+  it('an accepted task that has not started can be taken back from its open field (a recurring one stops coming back)', async () => {
+    let clock = 10_000
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+    render(snap([opt({ id: 'q', state: 'queued', waiting: 'time', startAt: NOW + 60_000, every: 86_400_000, title: 'Nightly' }), opt({ id: 'r', state: 'running', startedAt: NOW, title: 'Running one' })]))
+    // No × until its field is open; never on a running one.
+    expect(label(/^remove "Nightly"/)).toBeUndefined()
+    await click(label(/^talk about "Nightly"/)!)
+    await click(label(/^remove "Nightly"/)!)
+    expect(calls).toEqual([])
+    clock += 1000
+    await click(label(/^remove "Nightly"/)!)
+    expect(calls).toEqual(['refuse q'])
+    await click(label(/^talk about "Running one"/)!)
+    expect(label(/^remove "Running one"/)).toBeUndefined()
     now.mockRestore()
   })
 

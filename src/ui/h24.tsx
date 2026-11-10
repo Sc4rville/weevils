@@ -1,7 +1,7 @@
 import { AnimatePresence, animate, motion, useDragControls, useMotionValue } from 'motion/react'
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Optimizer, OptimizerField, Snapshot } from '../../shared/api.ts'
-import { api } from '../api'
+import { api, ApiError } from '../api'
 import { useApp } from './app-context'
 import { Collapse, spring } from './bits'
 import { Icon, type IconName } from './icons'
@@ -20,7 +20,7 @@ const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 export function H24Rail() {
   const { snap, colors, h24Open: open, setH24Open: setOpen, h24Focus } = useApp()
   const t = useT(M)
-  const talks = useTalks()
+  const talks = useTalks(snap.optimizers)
   // Une tâche réécrite à l'instant : sa nouvelle version, avant que le snapshot ne suive.
   const opts = (snap.optimizers ?? []).map(talks.item)
   const proposed = opts.filter((o) => o.state === 'proposed')
@@ -229,17 +229,24 @@ function Proposals({ list, below }: { list: Optimizer[]; below: string }) {
     if (k.open && k.open !== id && shown.some((o) => o.id === k.open)) k.setOpen(null)
   }
   const answer = (o: Optimizer, yes: boolean) => {
-    if (performance.now() - movedAt.current < SETTLE_MS || (yes && k.busy.has(o.id))) return
+    // Just unfolded, or just rewritten (the card changed under the finger): the tap was not meant for ✓ or ×.
+    if (performance.now() - Math.max(movedAt.current, k.landedAt(o.id)) < SETTLE_MS || (yes && k.busy.has(o.id))) return
     setGone((g) => new Set(g).add(o.id))
     if (k.open === o.id) k.setOpen(null)
     void (yes ? api.acceptOptimizer(o.id, o.rev ?? 0) : api.refuseOptimizer(o.id))
-      .catch(() =>
+      .catch((e) => {
         setGone((g) => {
           const n = new Set(g)
           n.delete(o.id)
           return n
-        }),
-      )
+        })
+        // Rewritten elsewhere (another screen) or being rewritten: it comes back unfolded, what changed flashes once
+        // the new version is here, and ✓ waits for it.
+        if (yes && e instanceof ApiError && e.status === 409) {
+          k.stale(o, t.stale)
+          expand(o.id)
+        }
+      })
       .finally(refresh)
   }
   if (!shown.length) return null
@@ -273,7 +280,6 @@ function Proposals({ list, below }: { list: Optimizer[]; below: string }) {
                     <span className={chg(f.includes('title'), 't')}>{o.title}</span>
                     {o.why && <span className={chg(f.includes('why'), 'w')}>{o.why}</span>}
                   </button>
-                  {isOpen && <TalkLines o={o} />}
                   <span className="i" aria-hidden onClick={() => expand(isOpen ? null : o.id)}>
                     <Conds o={o} f={f} />
                     <span className={chg(f.includes('est') || f.includes('priority') || f.includes('heavy'))}>
@@ -281,18 +287,20 @@ function Proposals({ list, below }: { list: Optimizer[]; below: string }) {
                     </span>
                   </span>
                   <div className="acts">
-                    <button className="ok" onClick={() => answer(o, true)} disabled={busy} aria-label={busy ? t.acceptBusy(o.title) : t.accept(o.title)}>
+                    <button className="ok" onClick={() => answer(o, true)} disabled={busy || k.isStale(o)} aria-label={busy ? t.acceptBusy(o.title) : t.accept(o.title)}>
                       <Icon name="check" />
                     </button>
                     {isOpen && (
                       <button className={`talk${talking === o.id ? ' on' : ''}`} onClick={() => k.setOpen(talking === o.id ? null : o.id)} aria-expanded={talking === o.id} aria-label={t.talk(o.title)}>
-                        <Icon name="quote" />
+                        <Icon name="bubble" />
                       </button>
                     )}
                     <button className="no" onClick={() => answer(o, false)} aria-label={t.refuse(o.title)}>
                       <Icon name="close" />
                     </button>
                   </div>
+                  {/* Under ✓ and ×, never above: a reply that grows the card never moves them under a finger. */}
+                  {isOpen && <TalkLines o={o} />}
                 </motion.div>
                 {slim && <button className="auto-prop-strip" onClick={() => expand(o.id)} aria-expanded={false} aria-label={o.title} />}
               </motion.div>
@@ -316,7 +324,11 @@ function Proposals({ list, below }: { list: Optimizer[]; below: string }) {
 // réécrite (les champs changés clignotent). Un seul champ ouvert à la fois dans le tiroir.
 
 /** Ce qu'une réponse peut réécrire, et l'échange : la version reçue avec la réponse, avant que le snapshot ne suive. */
-const TALKED = ['title', 'why', 'kind', 'repo', 'est', 'priority', 'heavy', 'notBefore', 'window', 'every', 'talk', 'changed', 'rev'] as const
+const TALKED = ['title', 'why', 'kind', 'repo', 'est', 'priority', 'heavy', 'notBefore', 'window', 'every', 'next', 'talk', 'changed', 'rev'] as const
+/** What a reader compares between two versions of a task (the fields that flash). */
+const SHOWN = ['title', 'why', 'kind', 'repo', 'est', 'priority', 'heavy', 'notBefore', 'window', 'every'] as const
+/** ✓ refused because the version on screen was old, and no newer one comes: ✓ works again after this. */
+const STALE_MS = 30_000
 const FLASH_MS = 1700
 
 interface Talks {
@@ -333,6 +345,12 @@ interface Talks {
   reply: { key?: string; text?: string }
   item: (o: Optimizer) => Optimizer
   send: (id: string, text: string, voice?: boolean) => Promise<boolean>
+  /** Quand la dernière réponse sur cette tâche est arrivée, quand un champ a été ouvert (performance.now()). */
+  landedAt: (id: string) => number
+  openedAt: () => number
+  /** ✓ refusé (409) : la version à l'écran était ancienne ; la note s'affiche, ✓ attend la nouvelle. */
+  stale: (o: Optimizer, note: string) => void
+  isStale: (o: Optimizer) => boolean
 }
 const TalkCtx = createContext<Talks | null>(null)
 
@@ -342,7 +360,7 @@ function without<V>(m: ReadonlyMap<string, V>, k: string): Map<string, V> {
   return n
 }
 
-function useTalks(): Talks {
+function useTalks(optimizers: Optimizer[] | undefined): Talks {
   const { refresh } = useApp()
   const [open, setOpenState] = useState<string | null>(null)
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
@@ -351,12 +369,33 @@ function useTalks(): Talks {
   const [flashes, setFlashes] = useState<ReadonlyMap<string, OptimizerField[]>>(new Map())
   const [local, setLocal] = useState<ReadonlyMap<string, Optimizer>>(new Map())
   const [reply, setReply] = useState<{ key?: string; text?: string }>({})
+  const [stales, setStales] = useState<ReadonlyMap<string, { o: Optimizer; at: number }>>(new Map())
   const seq = useRef(0)
   const inflight = useRef(new Set<string>())
+  const landed = useRef(new Map<string, number>())
+  const opened = useRef(-Infinity)
   const setOpen = useCallback((id: string | null) => {
+    opened.current = performance.now()
     setOpenState(id)
     setReply({})
   }, [])
+  const mark = useCallback((id: string, fields: OptimizerField[]) => {
+    setFlashes((m) => new Map(m).set(id, fields))
+    window.setTimeout(() => setFlashes((m) => (m.get(id) === fields ? without(m, id) : m)), FLASH_MS)
+  }, [])
+  // The newer version after a refused ✓ is here: what differs from the one that was on screen flashes, ✓ waits a beat.
+  useEffect(() => {
+    if (!stales.size) return
+    for (const [id, { o: was }] of stales) {
+      const now = optimizers?.find((x) => x.id === id)
+      if (!now || (now.rev ?? 0) === (was.rev ?? 0)) continue
+      const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+      const fields = SHOWN.filter((f) => !same(was[f], now[f]))
+      if (fields.length) mark(id, [...fields])
+      landed.current.set(id, performance.now())
+      setStales((m) => without(m, id))
+    }
+  }, [optimizers, stales, mark])
   const item = (o: Optimizer): Optimizer => {
     const l = local.get(o.id)
     if (!l || ((l.rev ?? 0) <= (o.rev ?? 0) && (l.talk?.length ?? 0) <= (o.talk?.length ?? 0))) return o
@@ -375,17 +414,14 @@ function useTalks(): Talks {
       const r = await api.talkOptimizer(id, said)
       if (r.item && !r.failed) setLocal((m) => new Map(m).set(id, r.item!))
       if (r.failed) setNotes((n) => new Map(n).set(id, r.reply))
-      if (r.changed.length) {
-        const mark = r.changed
-        setFlashes((m) => new Map(m).set(id, mark))
-        window.setTimeout(() => setFlashes((m) => (m.get(id) === mark ? without(m, id) : m)), FLASH_MS)
-      }
+      if (r.changed.length) mark(id, r.changed)
       setReply(voice && r.reply ? { key: String(++seq.current), text: r.reply } : {})
       return !r.failed
     } catch (e) {
       setNotes((n) => new Map(n).set(id, (e as Error).message))
       return false
     } finally {
+      landed.current.set(id, performance.now())
       inflight.current.delete(id)
       setBusy((b) => {
         const n = new Set(b)
@@ -396,7 +432,15 @@ function useTalks(): Talks {
       refresh()
     }
   }
-  return { open, setOpen, busy, asking, notes, flash: flashes, reply, item, send }
+  const stale = useCallback((o: Optimizer, note: string) => {
+    setStales((m) => new Map(m).set(o.id, { o, at: Date.now() }))
+    setNotes((n) => new Map(n).set(o.id, note))
+  }, [])
+  const isStale = (o: Optimizer) => {
+    const s = stales.get(o.id)
+    return !!s && (s.o.rev ?? 0) === (o.rev ?? 0) && Date.now() - s.at < STALE_MS
+  }
+  return { open, setOpen, busy, asking, notes, flash: flashes, reply, item, send, landedAt: (id) => landed.current.get(id) ?? -Infinity, openedAt: () => opened.current, stale, isStale }
 }
 
 /** Le champ sous une carte ou une ligne : le logo vocal et la question écrite, côte à côte sous le pouce. */
@@ -765,6 +809,7 @@ function TaskRow({ task: x }: { task: AutoTask }) {
   if (x.priority) said.push(t.priority(x.priority))
   if (x.est) said.push(t.est(x.est))
   if (x.heavy) said.push(t.heavy)
+  if (opt?.next) said.push(t.nextScopeLabel(opt.next.title))
   // Une tâche récurrente qui attend son prochain passage garde la nouvelle du dernier.
   const note = (x.state === 'done' || x.state === 'failed' || x.kind === 'job' || !!opt?.runs?.length) && x.note && x.note !== '—' ? x.note : ''
   const label = t.taskLabel(x.title, t[`state_${x.state}`], said.join(', '))
@@ -797,6 +842,12 @@ function TaskRow({ task: x }: { task: AutoTask }) {
             {note && <span className="auto-note">{note}</span>}
           </span>
         )}
+        {opt?.next && (
+          <span className={chg(f.includes('next'), 'auto-nextrun')}>
+            <b>{t.nextScope}</b>
+            <span>{opt.next.title}</span>
+          </span>
+        )}
       </span>
       <span className={chg(f.includes('est') || f.includes('priority') || f.includes('heavy'))}>
         <Intensity priority={x.priority} est={x.state === 'running' ? undefined : x.est} heavy={x.heavy} />
@@ -822,7 +873,22 @@ function TaskRow({ task: x }: { task: AutoTask }) {
         )}
         {opt && k && (
           <button className={`ch auto-talk-ic${talkOpen ? ' on' : ''}`} onClick={() => k.setOpen(talkOpen ? null : x.id)} aria-expanded={talkOpen} aria-label={t.talk(x.title)}>
-            <Icon name="quote" />
+            <Icon name="bubble" />
+          </button>
+        )}
+        {/* Its field open, an accepted task that has not started can be taken back (a recurring one stops coming
+            back), without the model: never a tap that was meant to open the field. */}
+        {opt && k && talkOpen && opt.state === 'queued' && (
+          <button
+            className="ch auto-stop"
+            onClick={() => {
+              if (performance.now() - k.openedAt() < SETTLE_MS) return
+              k.setOpen(null)
+              void api.refuseOptimizer(x.id).finally(refresh)
+            }}
+            aria-label={t.stop(x.title)}
+          >
+            <Icon name="close" />
           </button>
         )}
       </div>
@@ -864,7 +930,7 @@ function TaskTalk({ o, open }: { o: Optimizer; open: boolean }) {
         </>
       ) : (
         <button className="auto-hist-one" onClick={() => setMore(true)} aria-expanded={false} aria-label={t.history(o.title, lines.length)}>
-          <Icon name="quote" />
+          <Icon name="bubble" />
           <span aria-hidden>{lines.at(-1)?.text}</span>
           {lines.length > 1 && <b aria-hidden>+{lines.length - 1}</b>}
         </button>

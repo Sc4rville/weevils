@@ -431,12 +431,42 @@
 
 .auto-facts {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 9px;
+  gap: 2px 9px;
   font-size: 0.8125rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
+}
+
+/* Une condition ne se coupe jamais (« /7j » entier) : la ligne passe dessous. */
+.auto-facts > * {
+  flex: none;
+}
+
+.auto-facts > .auto-note {
+  flex: 0 1 auto;
+}
+
+/* La portée convenue pour le prochain passage d'une tâche qui tourne. */
+.auto-nextrun {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.auto-nextrun > b {
+  flex: none;
+  font-weight: 800;
+}
+
+.auto-nextrun > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .auto-facts b {
@@ -676,6 +706,11 @@
 
 .auto-row > .ch + .auto-talk-ic {
   margin-left: -10px;
+}
+
+.auto-row > .auto-talk-ic + .auto-stop {
+  margin-left: -4px;
+  font-size: 1rem;
 }
 
 .auto-hist {

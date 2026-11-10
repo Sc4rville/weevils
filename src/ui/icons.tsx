@@ -22,6 +22,8 @@ const PATHS = {
   bang: 'M12 4v10M12 18.5v1.5',
   slash: 'M16 3L8 21',
   quote: 'M8.5 5v6M15.5 5v6',
+  // Bulle de parole : un rectangle, sa pointe en bas à gauche.
+  bubble: 'M3 4h18v12H11l-5 4v-4H3z',
   machine: 'M3 4h18v12H3zM8 20h8',
   more: 'M5 12h1M11.5 12h1M18 12h1',
   mic: 'M9 3h6v10H9zM5 10v6h14v-6M12 16v5M8 21h8',

@@ -70,6 +70,13 @@ export default defineMessages({
     fewer: 'replier l’échange',
     history: (title: string, n: number) => `d’où vient « ${title} » : ${n} ligne${n > 1 ? 's' : ''} d’échange`,
     acceptBusy: (title: string) => `« ${title} » se réécrit, un instant`,
+    /** ✓ refused: the task was rewritten elsewhere since it was on screen (shown in the card). */
+    stale: 'Elle a changé entre-temps : relis-la.',
+    /** A recurring or queued task taken back (×, under its open row). */
+    stop: (title: string) => `retirer « ${title} »`,
+    /** The scope agreed for a running task's next run. */
+    nextScope: 'ensuite',
+    nextScopeLabel: (title: string) => `au prochain passage : ${title}`,
     /** Conditions of a task (chips). */
     night: 'nuit',
     notBefore: (at: string) => `pas avant ${at}`,
@@ -138,6 +145,10 @@ export default defineMessages({
     fewer: 'fold the exchange',
     history: (title: string, n: number) => `where "${title}" comes from: ${n} line${n > 1 ? 's' : ''} of exchange`,
     acceptBusy: (title: string) => `"${title}" is being rewritten, one moment`,
+    stale: 'It changed in the meantime: read it again.',
+    stop: (title: string) => `remove "${title}"`,
+    nextScope: 'next',
+    nextScopeLabel: (title: string) => `next run: ${title}`,
     night: 'night',
     notBefore: (at: string) => `not before ${at}`,
     window: (from: string, to: string) => `every day between ${from} and ${to}`,

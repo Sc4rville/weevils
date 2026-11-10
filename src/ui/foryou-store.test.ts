@@ -412,3 +412,15 @@ describe('resolved requests', () => {
     expect(ids()).toEqual(['q'])
   })
 })
+
+it('filters old-server commit cards and sanitizes text before a cached item can be shown or read', async () => {
+  await serve(1, [
+    item({ id: 'commit:repo:435cf0d', voice: 'default' }),
+    item({ id: 'b:legacy', voice: 'default', text: 'weevils a un nouveau commit (435cf0d) : fix(auto): old subject' }),
+    item({ id: 'human', voice: 'default', text: 'Le thème est en ligne (commit 2d5496f, poussé sur main).' }),
+  ])
+  expect(ids()).toEqual(['human'])
+  expect(fy.items[0].text).toBe('Le thème est en ligne.')
+  await serve(2, srv.feed ? (srv.feed as ForYouFeed).items : [])
+  expect(ids()).toEqual(['human'])
+})

@@ -1,3 +1,4 @@
+import { humanFeedItem, humanFeedText, rawEngineeringNotice } from '../shared/feed-text.ts'
 import { canonicalAlertId, feedNoticeKey, isRequestNotice, quotaReset, sessionNoticeKey } from '../shared/notices.ts'
 // « For you »: the stream next to weevboss (docs/foryou.md, contract in shared/foryou.ts). Main machine only.
 //
@@ -35,7 +36,7 @@ type ReadBody = (req: http.IncomingMessage) => Promise<any>
 // ---------------------------------------------------------------- limits
 
 // Raw engineering events belong to project history, never the user's feed or voice queue.
-const technicalEvent = (id: string) => /^(commit|deploy):/.test(id)
+const technicalEvent = rawEngineeringNotice
 
 export const MAX_ITEMS = 400
 export const KEEP_MS = 14 * 24 * 3600_000
@@ -433,7 +434,7 @@ export class ForYou {
       }
     })()
     // Retire the old raw Git/build stream permanently, including already stored history.
-    const kept = this.s.items.filter((i) => !technicalEvent(i.id))
+    const kept = this.s.items.filter((i) => !technicalEvent(i.id, i.text))
     if (kept.length !== this.s.items.length) {
       this.s.items = kept
       this.s.rev++
@@ -625,6 +626,7 @@ export class ForYou {
   post(text: unknown, actions?: unknown, from?: string): ForYouItem {
     const body = typeof text === 'string' ? text.trim() : ''
     if (!body) throw new Error(tr(M).emptyText)
+    if (technicalEvent('', body)) throw new Error(tr(M).technicalPost)
     const item: Stored = { id: newId('b'), kind: 'boss', tone: 'neutral', at: this.now(), who: from || 'weevboss', text: clip(body, POST_MAX), actions: this.buttons(actions), reply: 'boss', open: { page: 'boss' } }
     this.put(item)
     this.changed()
@@ -681,7 +683,7 @@ export class ForYou {
    * again; one the user dismissed stays dismissed).
    */
   add(n: NewItem): ForYouItem | null {
-    if (n.id && technicalEvent(n.id)) return null
+    if (technicalEvent(n.id ?? '', n.text)) return null
     const text = clip(n.text.trim(), POST_MAX)
     if (!text) return null
     const boss = n.kind === 'boss'
@@ -801,7 +803,7 @@ export class ForYou {
 
   /** What the app may read of a recorded item, or null when it has nothing to show right now. */
   private view(i: Stored, snap: Snapshot, any = false): ForYouItem | null {
-    if (i.gone || technicalEvent(i.id)) return null
+    if (i.gone || technicalEvent(i.id, i.text)) return null
     if (i.id.startsWith('auto:proposed:')) {
       const idea = snap.optimizers?.find((o) => i.id === `auto:proposed:${o.id}`)
       if (!idea || idea.draft) return null
@@ -861,7 +863,7 @@ export class ForYou {
         out.actions = [{ id: 'resume', label: t.resume }]
       }
     }
-    return out
+    return humanFeedItem(out)
   }
 
   // ---------------------------------------------------------------- reading: live items
@@ -1062,7 +1064,7 @@ export class ForYou {
     this.refresh(now, snap)
     return withLang(l, () => {
       const cur = lang()
-      const items = this.all(snap, now, false).filter((x) => !x.lang || x.lang === cur).map((x) => x.item)
+      const items = this.all(snap, now, false).filter((x) => !x.lang || x.lang === cur).map((x) => x.item).filter((i) => !technicalEvent(i.id, i.text)).map(humanFeedItem)
       return { rev: this.s.rev, items: arrange(items, now).slice(0, MAX_FEED), pulse: this.pulse(snap, now) }
     })
   }
@@ -1185,10 +1187,10 @@ export class ForYou {
     const t = withLang(l, () => tr(M))
     const i = this.get(id)
     if (!i || i.gone) throw new Error(t.notFound)
-    if (i.moreText) return i.moreText
+    if (i.moreText) return humanFeedText(i.moreText)
     const item = i.more && this.curator ? this.view(i, this.w.snapshot(), true) : null
     if (!item) throw new Error(t.noMore)
-    const text = (await this.curator!.more(item)).trim()
+    const text = humanFeedText(await this.curator!.more(item))
     if (!text) throw new Error(t.noMore)
     i.moreText = text.slice(0, MAIL_BODY_MAX)
     this.changed()

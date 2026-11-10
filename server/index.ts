@@ -1,3 +1,5 @@
+import { rawEngineeringNotice } from '../shared/feed-text.ts'
+import FY from './i18n/foryou.ts'
 // weevilsd : API + flux temps réel pour l'app, et récepteur local des hooks Claude Code.
 // Lancer : node server/index.ts (Node 22, TypeScript natif).
 
@@ -500,7 +502,11 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ['GET', /^\/api\/setup\/link$/, async (req, res) => json(res, 200, { link: loginLink(req) })],
   // ---- Voix rapide : son en flux, accroches en cache, enregistrement envoyé en morceaux, mesures.
-  ['GET', /^\/api\/speak\/stream$/, async (_req, res, url) => speakStream(res, url.searchParams.get('text') ?? '', url.searchParams.get('oral') === '1', voiceParam(url.searchParams.get('voice')))],
+  ['GET', /^\/api\/speak\/stream$/, async (_req, res, url) => {
+    const text = url.searchParams.get('text') ?? ''
+    if (rawEngineeringNotice('', text)) return json(res, 400, { error: tr(FY).technicalPost })
+    return speakStream(res, text, url.searchParams.get('oral') === '1', voiceParam(url.searchParams.get('voice')))
+  }],
   ['GET', /^\/api\/voice\/cue$/, async (_req, res) => {
     const mp3 = await cue(w.voiceId, w.speakerLang())
     res.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': mp3.length, 'cache-control': 'no-store' })

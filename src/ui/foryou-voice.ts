@@ -1,3 +1,4 @@
+import { humanFeedText, rawEngineeringNotice } from '../../shared/feed-text.ts'
 // « Pour toi » : voice messages. ONE audio element for the whole stream: starting an item stops the one that was
 // playing. Nothing is synthesised before the tap (GET /api/speak/stream starts with it; iOS plays nothing without one).
 // weevboss's logo has its own element (src/ui/voice.tsx): the two never speak together, whoever starts last wins.
@@ -56,8 +57,13 @@ export function stopVoice(id?: string) {
   set(null, IDLE)
 }
 
+export function retainVoice(ids: ReadonlySet<string>) { if (current && !ids.has(current)) stopVoice() }
+
 /** A tap on a voice message: it starts (whatever was playing stops), or stops when it was the one playing. */
 export function toggleVoice(id: string, text: string, voice: string) {
+  if (rawEngineeringNotice(id, text)) return stopVoice()
+  text = humanFeedText(text)
+  if (!text) return stopVoice()
   clearTimeout(errTimer)
   if (current === id && (state.phase === 'playing' || state.phase === 'loading')) return stopVoice(id)
   window.dispatchEvent(new Event(ITEM_SAYS))

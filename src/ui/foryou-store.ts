@@ -1,3 +1,5 @@
+import { humanFeedItem, humanFeedText, rawEngineeringNotice } from '../../shared/feed-text.ts'
+import { retainVoice } from './foryou-voice'
 import { feedNoticeKey, isRequestNotice, noticeKey } from '../../shared/notices.ts'
 import { dismissNotice, isNoticeDismissed, subscribeNotices, resetNotices } from './notice-store'
 // « Pour toi » : one store for the whole app (the top band's preview and the full-screen page read the same stream,
@@ -107,6 +109,8 @@ function rebuild() {
 }
 
 function adopt(f: ForYouFeed) {
+  f = { ...f, items: f.items.filter((i) => !rawEngineeringNotice(i.id, i.text)).map(humanFeedItem) }
+  retainVoice(new Set(f.items.map((i) => i.id)))
   const first = !feed
   feed = f
   const ids = f.items.map((i) => i.id)
@@ -269,9 +273,10 @@ function more(id: string): Promise<string> {
   const p = api
     .foryouMore(id)
     .then((r) => {
-      moreTexts.set(id, r.text)
+      const text = humanFeedText(r.text)
+      moreTexts.set(id, text)
       rebuild()
-      return r.text
+      return text
     })
     .finally(() => moreFlights.delete(id))
   moreFlights.set(id, p)

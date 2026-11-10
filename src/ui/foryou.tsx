@@ -1,3 +1,4 @@
+import { rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
 import { Notice, NoticeClose, useNotice } from './notice'
 // « Pour toi » : the stream next to weevboss, full screen. Every item is a full-width band in its own colour
@@ -780,7 +781,7 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
   }, [compact, item.id, item.seen, inView, markSeen])
 
   const closable = closableFeedNotice(item)
-  if (hidden) return null
+  if (hidden || rawEngineeringNotice(item.id, item.text)) return null
   if (compact) {
     return (
       <div className={`${bandClass(item)} fy-strip${closable ? ' notice-shell' : ''}`} style={style} data-fy={item.id}>

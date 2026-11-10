@@ -29,7 +29,7 @@ vi.mock('../api', () => {
 const { MotionGlobalConfig } = await import('motion/react')
 MotionGlobalConfig.skipAnimations = true
 const { ForYouPage, ForYouItemView, MediaPage, mediaFit, waveOf } = await import('./foryou')
-const { resetVoice, LOGO_SAYS, ITEM_SAYS } = await import('./foryou-voice')
+const { resetVoice, toggleVoice, LOGO_SAYS, ITEM_SAYS } = await import('./foryou-voice')
 const { resetForYou } = await import('./foryou-store')
 const { Ctx, setSettledNow } = await import('./app-context')
 const { FOCUS_BOSS } = await import('./follow')
@@ -519,6 +519,25 @@ describe('for you: voice messages', () => {
     // The element itself fails later (the stream breaks): same quiet word.
     await fire('onerror')
     expect(listen('bo').classList.contains('fy-v-error')).toBe(true)
+  })
+
+  it('removing an old technical card stops its audio and raw commit text can never start another stream', async () => {
+    await open(VOICED)
+    await click(listen('bo'))
+    expect(audio().paused).toBe(false)
+    const raw = 'weevils a un nouveau commit (435cf0d) : fix(auto): propColors kept (auto-model.ts)'
+    srv.feed = feed([{ ...base, id: 'b:old', kind: 'boss', who: 'weevils', text: raw, voice: 'nova' }], 2)
+    render(<ForYouPage />, snap(2))
+    await flush()
+    expect(audio().paused).toBe(true)
+    expect(host.querySelector('[data-fy="b:old"]')).toBeNull()
+    const oldUrl = audio().src
+    await act(async () => toggleVoice('b:old', raw, 'nova'))
+    expect(audio().src).toBe(oldUrl)
+    expect(audio().paused).toBe(true)
+    expect(FakeAudio.made).toHaveLength(1)
+    await act(async () => toggleVoice('human', 'Le thème est en ligne (commit 2d5496f, poussé sur main).', 'nova'))
+    expect(new URL(audio().src, 'http://x').searchParams.get('text')).toBe('Le thème est en ligne.')
   })
 
   it('weevboss’s logo and a voice message never speak together', async () => {

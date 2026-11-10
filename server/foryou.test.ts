@@ -1101,3 +1101,22 @@ describe('answered request persistence', () => {
     expect(find(make(), 's:s1')).toBeUndefined()
   })
 })
+
+it('retires raw announcements hidden behind post/digest ids and refuses their regeneration or voice', () => {
+  const file = path.join(dir, 'foryou.json')
+  const raw = 'weevils a un nouveau commit (435cf0d) : fix(auto): propColors kept (auto-model.ts)'
+  fs.writeFileSync(file, JSON.stringify({ rev: 3, items: [
+    { id: 'b:legacy', kind: 'boss', who: 'weevils', text: raw, at: now },
+    { id: 'd:legacy', kind: 'boss', who: 'weevboss', text: raw, at: now },
+    { id: 'd:human', kind: 'boss', who: 'weevboss', text: 'Le thème et les notifications sont prêts.', at: now },
+  ] }))
+  const fy = make({ voiceOf: () => 'default' })
+  expect(ids(fy)).toEqual(['d:human'])
+  expect(JSON.parse(fs.readFileSync(file, 'utf8')).items).toHaveLength(1)
+  expect(fy.add({ id: 'd:again', kind: 'boss', text: raw })).toBeNull()
+  expect(() => fy.post(raw)).toThrow(M.en.technicalPost)
+  expect(ids(make({ voiceOf: () => 'default' }))).toEqual(['d:human'])
+  const useful = fy.add({ id: 'd:useful', kind: 'boss', text: 'Le thème est en ligne (commit 2d5496f, poussé sur main).' })!
+  expect(useful.text).toBe('Le thème est en ligne.')
+  expect(useful.voice).toBe('default')
+})

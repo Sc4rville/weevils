@@ -212,6 +212,12 @@ export interface H24Activity {
   lastRunAt?: number | null
   since?: number | null
   group?: string
+  /** Timer : la Description= de son unité (à quoi il sert). */
+  description?: string
+  /** Dernier passage : durée et issue ; nombre de passages connus (journal). */
+  lastDurMs?: number | null
+  lastOk?: boolean | null
+  runCount?: number | null
 }
 
 /** Conversation ChatGPT / Claude.ai importée (sans ses messages). */
@@ -294,7 +300,7 @@ export interface Optimizer {
   est?: number
   /** queued : ce qu'elle attend (busy : un agent travaille ; load : machine chargée ; ram : mémoire ; queue : une autre tâche d'abord ;
    *  later : arrêtée par une limite d'usage ou une erreur, nouvel essai à retryAt ; time : son heure, à startAt). */
-  waiting?: 'busy' | 'load' | 'ram' | 'queue' | 'later' | 'time'
+  waiting?: 'busy' | 'load' | 'ram' | 'queue' | 'later' | 'time' | 'paused'
   /** waiting later : quand elle sera relancée. */
   retryAt?: number
   /** Conditions négociées : pas avant (instant), chaque jour dans une fenêtre (minutes après minuit, heure de tz), toutes les every ms. */
@@ -314,7 +320,55 @@ export interface Optimizer {
   /** Tâche récurrente en cours : la portée convenue pour son prochain passage (son titre alors), si elle change. */
   next?: { title: string }
   /** Tâche récurrente : ses passages précédents (le plus récent en dernier). */
-  runs?: { at: number; ok: boolean; note?: string }[]
+  /** Chaque passage (le plus récent en premier, 30 au plus) : unique ou récurrente. Les anciens { at, ok, note } restent lisibles. */
+  runs?: AutoRun[]
+  /** Nombre total de passages (jamais plafonné). */
+  runCount?: number
+  /** Jetons consommés, tous passages confondus. */
+  tokens?: number
+  /** Mise en pause par l'utilisateur : le runner la saute (waiting 'paused'). */
+  paused?: boolean
+  /** Validée à cet instant (début du remplissage de la page auto). */
+  acceptedAt?: number
+}
+
+/** Un passage d'une automatisation : at = fin, startedAt = début. */
+export interface AutoRun {
+  at: number
+  startedAt: number
+  ok: boolean
+  note?: string
+  tokens?: number
+  files?: number
+  sessionId?: string
+}
+/** Un fichier produit ou modifié par un passage. abs : chemin absolu sur la machine (page fichier). */
+export interface AutoOutputFile {
+  path: string
+  abs: string
+  status: 'A' | 'M' | 'D' | 'R'
+  add: number
+  del: number
+}
+/** GET /api/auto/:id/runs/:at — ce qu'un passage a fait et produit. images : chemins servis par /api/auto/:id/blob?path=. */
+export interface AutoRunDetail {
+  run: AutoRun
+  report?: string
+  message?: string
+  files: AutoOutputFile[]
+  links: string[]
+  images: string[]
+  /** Timer ou job : les lignes de journal du passage. */
+  log?: string
+}
+/** GET /api/auto/:id — l'historique d'une automatisation (tâche, timer ou job). */
+export interface AutoDetail {
+  id: string
+  /** Le plus récent en premier. */
+  runs: AutoRun[]
+  /** Jetons du passage en cours. */
+  liveTokens?: number
+  machine: string
 }
 
 export interface OptimizerLine {
@@ -381,6 +435,8 @@ export interface Snapshot {
   foryou?: ForYouMark
   /** Relais Codex pendant la limite d'usage de Claude (server/relay.ts). */
   relay?: RelayView
+  /** Un tour de propositions est en cours (la bande auto montre une place qui se remplit). */
+  autoRound?: { busy: boolean }
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */
   /** siteKey : clé des pages statiques des repos (/api/site/<clé>/<repo>/), pour le navigateur intégré sans domaine de preview. */
   config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[]; siteKey?: string }

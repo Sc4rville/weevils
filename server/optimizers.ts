@@ -1029,8 +1029,9 @@ export class Optimizers {
     o.endedAt = now
     o.lastEvent = note
     if (o.every) {
-      o.runs = [...(o.runs ?? []), { at: now, ok, ...(note ? { note } : {}) }].slice(-MAX_RUNS)
-      const streak = o.runs.slice(-MAX_FAILED_RUNS)
+      const runs = [...(o.runs ?? []), { at: now, startedAt: o.startedAt ?? now, ok, ...(note ? { note } : {}) }].slice(-MAX_RUNS)
+      o.runs = runs
+      const streak = runs.slice(-MAX_FAILED_RUNS)
       if (ok || streak.length < MAX_FAILED_RUNS || streak.some((r) => r.ok)) {
         this.takePending(o)
         o.state = 'queued'

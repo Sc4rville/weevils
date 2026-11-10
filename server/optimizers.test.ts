@@ -776,7 +776,7 @@ describe('auto — talking a task over (the negotiation)', () => {
     let v = o.list(start + 20 * MIN)[0]
     // Next run: a day after it was due (accepted at T0), not after it could start (5 min later, the machine was busy).
     expect(v).toMatchObject({ state: 'queued', waiting: 'time', lastEvent: 'Done: 4 new tests.', startAt: T0 + 24 * 60 * MIN })
-    expect(v.runs).toEqual([{ at: start + 20 * MIN, ok: true, note: 'Done: 4 new tests.' }])
+    expect(v.runs).toEqual([{ at: start + 20 * MIN, startedAt: start, ok: true, note: 'Done: 4 new tests.' }])
     // Next day: it starts again in the same worktree, on the same branch.
     const day2 = T0 + 24 * 60 * MIN
     o.tick(day2)

@@ -1048,6 +1048,57 @@ button.copy.done {
 }
 
 /* L'étoile verte qui travaille reste animée même en « réduire les animations » : elle est le seul signe de vie, petite et lente. */
+/* Pareil pour AutoMark (une automatisation au travail) : son segment qui fait le tour de la boucle ne s'arrête jamais. */
+
+/* ---------- AutoMark : ce qui tourne tout seul, en magenta, un segment qui fait le tour de la boucle ---------- */
+
+:root {
+  --auto-fluo: #ff3df2;
+}
+
+[data-theme='light'] {
+  --auto-fluo: #e600c4;
+}
+
+:root[data-theme='zen'] {
+  --auto-fluo: oklch(0.52 0.17 335);
+}
+
+/* Graphite : son seul bleu pour ce qui bouge ; c'est la forme qui le distingue de l'étoile. */
+:root[data-theme='graphite'] {
+  --auto-fluo: #0040f0;
+}
+
+.auto-mark {
+  color: var(--auto-fluo);
+}
+
+.auto-mark .track {
+  opacity: 0.3;
+}
+
+.auto-mark .run {
+  stroke-dasharray: 28 72;
+  animation: auto-run 1.1s linear infinite;
+}
+
+/* Contour d'encre sous le segment et la pointe, seulement quand le texte du thème est noir (comme l'étoile). */
+.auto-mark .halo {
+  display: none;
+}
+
+[data-theme='light'] .auto-mark .halo {
+  display: inline;
+  stroke: #000;
+  stroke-width: 4.5;
+}
+
+@keyframes auto-run {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
 
 /* ---------- Agent principal : où envoyer, en puces qui défilent horizontalement ---------- */
 

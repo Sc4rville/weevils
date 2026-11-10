@@ -1,0 +1,338 @@
+// The « auto » drawer's content: one flat list of automations (everything that runs without asking), the words that
+// say when each one fires, and the colours of its bands. Pure: built from the snapshot, tested in auto-model.test.ts.
+import type { AutoRun, H24Activity, Optimizer, Snapshot } from '../../shared/api.ts'
+import { locale, type Lang } from '../../shared/i18n.ts'
+import { getLang, tr } from '../i18n'
+import F from '../i18n/format'
+import M from '../i18n/h24'
+
+/** What an automation is doing. waiting: held by the machine (agents at work, load, memory); queued: behind another
+ *  one; scheduled: held by its own time; proposed: not accepted yet (proposal bands and page only). */
+export type AutoState = 'running' | 'waiting' | 'queued' | 'scheduled' | 'paused' | 'done' | 'failed' | 'proposed'
+export type AutoSrc = 'optimizer' | 'timer' | 'job'
+/** every: recurring; window: once, inside a daily window; time: once, at a time; idle: as soon as nothing else runs;
+ *  manual: a job someone started. */
+export type TriggerKind = 'every' | 'window' | 'time' | 'idle' | 'manual'
+
+export interface Trigger {
+  kind: TriggerKind
+  every?: number
+  /** Minutes after local midnight. */
+  window?: { from: number; to: number }
+  /** The next (or only) time it fires. */
+  at?: number
+}
+
+export interface Span {
+  from: number
+  to: number
+}
+
+export interface AutoItem {
+  id: string
+  src: AutoSrc
+  title: string
+  state: AutoState
+  /** waiting / queued: what holds it (busy, load, ram, queue, later, time, paused). */
+  waiting?: Optimizer['waiting']
+  /** queued: its place in the line (2 = next after the running one). */
+  place?: number
+  nextAt: number | null
+  startedAt: number | null
+  endedAt: number | null
+  since: number | null
+  acceptedAt?: number
+  est?: number
+  sessionId?: string
+  /** A timer: paused or resumed with one tap. */
+  toggle?: boolean
+  demo?: boolean
+  note?: string
+  trigger: Trigger
+  projectId: string | null
+  repo: string | null
+  /** What it is for: the optimizer's reason, the timer's Description=. */
+  why: string
+  runCount: number
+  /** Newest first. */
+  runs: AutoRun[]
+  lastRun?: AutoRun
+  tokens?: number
+  /** The span the fill covers now (null: nothing fills, it waits for the machine or for nothing else to run). */
+  progress: (now: number) => Span | null
+}
+
+const DAY = 86_400_000
+const WEEK = 7 * DAY
+/** A finished job stays in the finished fold this long. */
+const JOB_KEEP_MS = 3 * 3600_000
+/** A run with no estimate and no history: the fill heads for this. */
+const DEFAULT_RUN_MS = 15 * 60_000
+
+/** A finished job's last line that says it failed: ✗, npm ERR!, a non-zero exit, error / failed / fatal… (not « 0 errors »). */
+const FAIL =
+  /[✗✘❌]|\bERR!|\bexit(?:ed)?(?: with)?(?: (?:code|status))?\s*[:=]?\s*[1-9]\d*|\bnon-?zero exit|(?<!\b(?:0|no|zero)\s+)\b(?:errors?|fail(?:ed|s|ures?)?|fatal|panic|traceback|abort(?:ed)?)\b(?!\s*[:=]?\s*0\b)/i
+
+export const failedLine = (line: string | undefined): boolean => !!line && FAIL.test(line)
+
+const median = (xs: number[]): number | null => {
+  if (!xs.length) return null
+  const s = [...xs].sort((a, b) => a - b)
+  const m = s.length >> 1
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+}
+
+/** How long a run usually lasts: the median of the recorded ones, else the estimate (null: nothing known). */
+export function typicalMs(x: Pick<AutoItem, 'runs' | 'est'>): number | null {
+  return median(x.runs.map((r) => r.at - r.startedAt).filter((d) => d > 0)) ?? (x.est ? x.est * 60_000 : null)
+}
+
+/** The span the fill covers: a run heading for its usual length; a wait from the last run (or the acceptance) to the
+ *  next trigger; a paused one keeps the span it had. Null when nothing fills. */
+export function progressOf(x: Omit<AutoItem, 'progress'>, _now: number): Span | null {
+  if (x.state === 'running' && x.startedAt) return { from: x.startedAt, to: x.startedAt + (typicalMs(x) ?? DEFAULT_RUN_MS) }
+  const every = x.trigger.every
+  let to = x.state === 'scheduled' || x.state === 'paused' ? x.nextAt : null
+  if (!to && x.state === 'paused' && x.lastRun && every) to = x.lastRun.at + every
+  if (!to) return null
+  let from = x.lastRun?.at ?? x.acceptedAt ?? x.since ?? to - (every ?? 3600_000)
+  if (every && to - from > every) from = to - every
+  if (from >= to) from = to - (every ?? 3600_000)
+  return { from, to }
+}
+
+const withProgress = (x: Omit<AutoItem, 'progress'>): AutoItem => {
+  const item = x as AutoItem
+  item.progress = (now) => progressOf(x, now)
+  return item
+}
+
+const newestFirst = (runs: AutoRun[] | undefined) => [...(runs ?? [])].map((r) => ({ ...r, startedAt: r.startedAt ?? r.at })).sort((a, b) => b.at - a.at)
+
+export function optimizerTrigger(o: Pick<Optimizer, 'every' | 'window' | 'notBefore' | 'startAt'>): Trigger {
+  const at = o.startAt ?? o.notBefore
+  if (o.every) return { kind: 'every', every: o.every, window: o.window, at }
+  if (o.window) return { kind: 'window', window: o.window, at }
+  if (o.notBefore) return { kind: 'time', at }
+  return { kind: 'idle' }
+}
+
+export function fromOptimizer(o: Optimizer, projectId: string | null = null): AutoItem | null {
+  if (o.state === 'refused') return null
+  const paused = o.paused || o.waiting === 'paused'
+  const state: AutoState =
+    o.state === 'queued'
+      ? paused
+        ? 'paused'
+        : o.waiting === 'time' || o.waiting === 'later'
+          ? 'scheduled'
+          : o.waiting === 'queue' || !o.waiting
+            ? 'queued'
+            : 'waiting'
+      : o.state
+  const runs = newestFirst(o.runs)
+  return withProgress({
+    id: o.id,
+    src: 'optimizer',
+    title: o.title,
+    state,
+    waiting: o.waiting,
+    startedAt: o.startedAt ?? null,
+    endedAt: o.endedAt ?? null,
+    since: o.createdAt,
+    acceptedAt: o.acceptedAt,
+    est: o.est,
+    sessionId: o.sessionId,
+    note: o.lastEvent,
+    // Stopped by a limit or an error, or held by its time: when it starts again.
+    nextAt: o.state === 'queued' && !paused ? (o.retryAt && o.retryAt > (o.startAt ?? 0) ? o.retryAt : (o.startAt ?? o.retryAt ?? null)) : null,
+    trigger: optimizerTrigger(o),
+    projectId,
+    repo: o.repo,
+    why: o.why,
+    runCount: o.runCount ?? runs.length,
+    runs,
+    lastRun: runs[0],
+    tokens: o.tokens,
+  })
+}
+
+export function fromActivity(a: H24Activity, projectId: string | null = a.projectId): AutoItem {
+  const failed = a.kind === 'job' ? failedLine(a.lastEvent) : a.lastOk === false
+  const state: AutoState = a.runState === 'running' ? 'running' : a.runState === 'paused' ? 'paused' : a.kind === 'timer' ? 'scheduled' : failed ? 'failed' : 'done'
+  const lastAt = a.kind === 'job' && a.runState !== 'running' ? (a.lastRunAt ?? a.runStartedAt) : a.lastRunAt
+  const lastRun: AutoRun | undefined = lastAt ? { at: lastAt, startedAt: lastAt - (a.lastDurMs ?? 0), ok: !failed } : undefined
+  const nextAt = a.kind === 'timer' && a.runState !== 'paused' ? (a.nextRunAt ?? null) : null
+  return withProgress({
+    id: a.id,
+    src: a.kind,
+    title: a.title,
+    state,
+    nextAt,
+    startedAt: a.runState === 'running' ? a.runStartedAt : null,
+    endedAt: a.kind === 'job' && a.runState !== 'running' ? (lastAt ?? null) : null,
+    since: a.since ?? null,
+    toggle: a.canToggle,
+    demo: a.demo,
+    note: a.lastEvent,
+    trigger: a.kind === 'job' ? { kind: 'manual' } : a.everyMs ? { kind: 'every', every: a.everyMs, at: a.nextRunAt ?? undefined } : { kind: 'time', at: a.nextRunAt ?? undefined },
+    projectId,
+    repo: null,
+    why: a.description ?? '',
+    runCount: a.runCount ?? (lastRun ? 1 : 0),
+    runs: lastRun && lastRun.at > lastRun.startedAt ? [lastRun] : [],
+    lastRun,
+  })
+}
+
+export const isFinished = (x: Pick<AutoItem, 'state'>) => x.state === 'done' || x.state === 'failed'
+
+/** The drawer's order: running, then the soonest trigger, then held by the machine, then paused; finished last (newest
+ *  first). */
+export function autoRank(x: AutoItem): number {
+  if (x.state === 'running') return 0
+  if (x.state === 'scheduled') return 1
+  if (x.state === 'waiting' || x.state === 'queued') return 2
+  if (x.state === 'paused') return 3
+  return 4
+}
+const byOrder = (a: AutoItem, b: AutoItem) =>
+  autoRank(a) - autoRank(b) || (a.nextAt ?? Infinity) - (b.nextAt ?? Infinity) || (a.place ?? 0) - (b.place ?? 0) || (b.endedAt ?? 0) - (a.endedAt ?? 0) || a.title.localeCompare(b.title)
+
+export const projectOfRepo = (projects: Snapshot['projects'], repo: string | null) => (repo ? (projects.find((p) => p.repos.includes(repo))?.id ?? null) : null)
+
+/** Everything that runs without asking, flat: accepted tasks, timers, running jobs; finished ones (one-off tasks, jobs
+ *  ended under 3 h) last. Proposals are not in it. */
+export function autoList(snap: Pick<Snapshot, 'projects' | 'h24' | 'optimizers' | 'now'>): AutoItem[] {
+  const known = new Set(snap.projects.map((p) => p.id))
+  const opts = snap.optimizers ?? []
+  // A task held by its time or by a retry delay is not in the line: the others go before it.
+  const line = opts.filter((o) => o.state === 'queued' && !o.paused && o.waiting !== 'time' && o.waiting !== 'later' && o.waiting !== 'paused')
+  const running = opts.some((o) => o.state === 'running')
+  const out: AutoItem[] = []
+  for (const o of opts) {
+    if (o.state === 'proposed') continue
+    const x = fromOptimizer(o, projectOfRepo(snap.projects, o.repo))
+    if (!x) continue
+    if (line.includes(o)) x.place = line.indexOf(o) + 1 + Number(running)
+    out.push(x)
+  }
+  for (const a of snap.h24) {
+    const pid = a.projectId && known.has(a.projectId) ? a.projectId : a.group && known.has(a.group) ? a.group : null
+    const x = fromActivity(a, pid)
+    if (x.src === 'job' && isFinished(x) && snap.now - (x.endedAt ?? 0) > JOB_KEEP_MS) continue
+    out.push(x)
+  }
+  return out.sort(byOrder)
+}
+
+// ---------------------------------------------------------------- words
+
+/** Compact duration for bold numbers: 14m, 2h, 1h30, 3j (3d); coarse: whole hours (« 6h ago », not « 6h01 »). */
+export function short(ms: number, coarse = false): string {
+  const m = Math.max(0, Math.round(ms / 60_000))
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  const r = m % 60
+  if (h < 24) return r && h < 10 && !coarse ? `${h}h${String(r).padStart(2, '0')}` : `${h}h`
+  return tr(F).days(Math.round(h / 24))
+}
+
+/** « 01:00 » today or within 20 h, « mer. 08:00 » within the week, else the date. */
+export function at(ts: number, now: number, lang: Lang = getLang()): string {
+  const loc = locale(lang)
+  const time = new Intl.DateTimeFormat(loc, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ts)
+  if (ts - now < 20 * 3600_000) return time
+  if (ts - now < 6 * DAY) return `${new Intl.DateTimeFormat(loc, { weekday: 'short' }).format(ts)} ${time}`
+  return `${new Intl.DateTimeFormat(loc, { day: 'numeric', month: 'short' }).format(ts)} ${time}`
+}
+
+export const hm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+/** A night window (it starts in the evening or deep in the night, ends in the morning). */
+export const isNight = (w: { from: number; to: number }) => (w.from >= 20 * 60 || w.from < 5 * 60) && w.to <= 9 * 60
+const clock = (ts: number, lang: Lang) => new Intl.DateTimeFormat(locale(lang), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ts)
+
+/** When it fires, in one short phrase: « toutes les 6h », « chaque jour 07:00–08:00 », « chaque lundi, la nuit »,
+ *  « quand rien ne tourne », « lancé à la main ». */
+export function triggerText(tg: Trigger, now: number, lang: Lang = getLang()): string {
+  const t = M[lang]
+  const w = tg.window
+  const range = w ? `${hm(w.from)}–${hm(w.to)}` : ''
+  const night = !!w && isNight(w)
+  switch (tg.kind) {
+    case 'idle':
+      return t.whenIdle
+    case 'manual':
+      return t.manual
+    case 'time':
+      return tg.at ? t.atTime(at(tg.at, now, lang)) : t.whenIdle
+    case 'window':
+      return night ? t.night(range) : t.between(range)
+    case 'every': {
+      const every = tg.every ?? DAY
+      if (every === DAY) return w ? (night ? t.nightly(range) : t.daily(range)) : t.daily(tg.at ? clock(tg.at, lang) : '')
+      const head =
+        every === WEEK
+          ? t.weekly(new Intl.DateTimeFormat(locale(lang), { weekday: 'long' }).format(tg.at ?? now))
+          : every % DAY === 0
+            ? t.everyDays(every / DAY)
+            : t.every(spanIn(every, lang))
+      if (w) return night ? `${head}, ${t.night('')}` : `${head} ${range}`
+      return every === WEEK && tg.at ? `${head} ${clock(tg.at, lang)}` : head
+    }
+  }
+}
+
+/** A period under a day: « 6 h », « 1 h 30 », « 45 min » (fr); « 6h », « 1h30 », « 45 min » (en). */
+function spanIn(ms: number, lang: Lang): string {
+  const m = Math.max(1, Math.round(ms / 60_000))
+  if (m < 60) return F[lang].minutes(m)
+  const h = Math.floor(m / 60)
+  const r = m % 60
+  const sep = lang === 'fr' ? ' ' : ''
+  return r ? `${h}${sep}h${sep}${String(r).padStart(2, '0')}` : `${h}${sep}h`
+}
+
+// ---------------------------------------------------------------- colours
+
+/** The drawer's own colour (--h24, amber), as the nearest palette slot. */
+export const DRAWER_SLOT = 'p3'
+const SLOTS = 16
+const slotHue = (slot: string) => Number(slot.replace(/^p/, '')) || 0
+/** Steps between two palette slots around the wheel (16 hues, 22.5° apart). */
+export function hueGap(a: string, b: string): number {
+  const d = Math.abs(slotHue(a) - slotHue(b)) % SLOTS
+  return Math.min(d, SLOTS - d)
+}
+/** Against the band above (or the drawer's head for the first one): at least 3 steps. */
+export const BAND_GAP = 3
+const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)
+
+/** The slot each band last had, for the page it opens (AutoPage reads it). */
+const lastSlots = new Map<string, string>()
+export const slotOf = (id: string) => lastSlots.get(id) ?? 'p9'
+
+/**
+ * A colour per band of the drawer, in display order (proposals, then automations): a stable slot drawn from the id,
+ * never within 3 steps of the band above (the amber head for the first one). A band keeps its slot while it stays and
+ * its neighbour above allows it; otherwise the nearest slot after its own that does.
+ */
+export function bandColors(ids: string[], kept: ReadonlyMap<string, string>, head = DRAWER_SLOT): Map<string, string> {
+  const out = new Map<string, string>()
+  let above = head
+  for (const id of ids) {
+    const mine = kept.get(id)
+    let slot = mine && hueGap(mine, above) >= BAND_GAP ? mine : null
+    if (!slot) {
+      const start = hash(id) % SLOTS
+      for (let i = 0; i < SLOTS && !slot; i++) {
+        const p = `p${(start + i) % SLOTS}`
+        if (hueGap(p, above) >= BAND_GAP) slot = p
+      }
+    }
+    out.set(id, slot!)
+    lastSlots.set(id, slot!)
+    above = slot!
+  }
+  return out
+}

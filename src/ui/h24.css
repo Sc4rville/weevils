@@ -1,559 +1,14 @@
-/* La bande « auto » (src/ui/h24.tsx) : propositions en colonnes collées, puis catégorie → groupe → tâche.
-   Plat, gras, angles vifs ; l'état d'une tâche est une couleur (liseré à gauche, mini-barres). */
+/* « auto » (src/ui/h24.tsx, src/ui/auto-page.tsx): the drawer and the page of an automation, made of the feed's own
+   bands. Inside a band nothing has a background, a border or a tag; the only layer is the flat fill that says how far
+   it is to the next trigger (or through the run). */
 
 .h24 {
-  --st-running: var(--fluo);
-  --st-waiting: #c25e00;
-  --st-queued: color-mix(in oklab, var(--ink) 45%, transparent);
-  --st-scheduled: #1f4fff;
-  --st-paused: color-mix(in oklab, var(--ink) 22%, transparent);
-  --st-done: var(--ink);
-  --st-failed: #d8001c;
+  --st-paused: color-mix(in oklab, var(--ink) 55%, transparent);
+  --st-failed: var(--alert);
 }
 
-[data-theme='dark'] .h24 {
-  --st-waiting: #ffa53a;
-  --st-scheduled: #8fb0ff;
-  --st-failed: #ff5a4d;
-}
-
-:root[data-theme='zen'] .h24 {
-  --st-waiting: oklch(0.55 0.11 60);
-  --st-scheduled: oklch(0.5 0.09 250);
-  --st-failed: oklch(0.5 0.13 25);
-}
-
-/* Graphite : un seul bleu pour ce qui bouge ; le reste en nuances, l'icône dit l'état. */
-:root[data-theme='graphite'] .h24 {
-  --st-waiting: #6b6b6b;
-  --st-scheduled: #3a3a3a;
-  --st-failed: #141414;
-}
-
-.st-running { --st: var(--st-running); }
-.st-waiting { --st: var(--st-waiting); }
-.st-queued { --st: var(--st-queued); }
-.st-scheduled { --st: var(--st-scheduled); }
-.st-paused { --st: var(--st-paused); }
-.st-done { --st: var(--st-done); }
-.st-failed { --st: var(--st-failed); }
-
-/* Sur une bande de couleur, ce qui tourne et les délais sont à l'encre de la bande, en gras, sans clignoter : un vert
-   ou un bleu s'y perdrait (vert sur orange sombre, bleu clair sur bleu). La couleur de l'état reste à part, en aplat :
-   le liseré de la tâche, les mini-barres. Graphite garde son bleu, seul sur des gris. */
-:root:not([data-theme='graphite']) .h24 .spin.fluo {
-  color: var(--ink);
-  animation: spin 2.6s linear infinite;
-}
-
-/* Sans le contour noir du thème clair ([data-theme='light'] .fluo .ic-halo), inutile à l'encre. */
-:root .h24 .spin.fluo .ic-halo {
-  display: none;
-}
-
-/* En-tête fermé : les compteurs. */
-.auto-sum {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.auto-wait {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-weight: 750;
-  margin-left: 4px;
-}
-
-.auto-sum .spin {
-  font-size: 1.125rem;
-}
-
-/* ---------- Propositions : colonnes collées, aucun espace, une couleur chacune ---------- */
-
-.auto-props {
-  display: flex;
-  align-items: stretch;
-}
-
-.auto-prop {
-  position: relative;
-  flex: 1 1 0;
-  min-width: 0;
-  overflow: hidden;
-  background: var(--c);
-  color: var(--ink);
-}
-
-.auto-prop-in {
-  height: 100%;
-  min-height: 150px;
-  display: flex;
-  flex-direction: column;
-  padding: 12px 12px 0;
-  min-width: 108px;
-}
-
-/* Une colonne repliée en bande ne donne pas sa hauteur (son texte caché, serré dans 22 px, serait très haut) : la
-   carte dépliée a la sienne, sans vide au-dessus de ✓ et ×, et une réponse qui s'écrit dessous ne les déplace pas. */
-.auto-prop.slim .auto-prop-in {
-  position: absolute;
-  inset: 0 auto 0 0;
-  height: auto;
-}
-
-/* Le texte d'une colonne : le toucher la déplie (ou la replie). */
-.auto-prop-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-}
-
-/* Une colonne repliée en fine bande : la toucher la déplie, jamais ✓ ni ×. */
-.auto-prop-strip {
-  position: absolute;
-  inset: 0;
-}
-
-.auto-prop .k {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
-.auto-prop .k .ic {
-  width: 0.9rem;
-  height: 0.9rem;
-}
-
-
-.auto-prop .t {
-  margin-top: 8px;
-  font-size: 1.0625rem;
-  font-weight: 750;
-  line-height: 1.12;
-  letter-spacing: -0.015em;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.auto-prop .w {
-  margin-top: 5px;
-  font-size: 0.75rem;
-  line-height: 1.28;
-  opacity: 0.78;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-/* Dépliée : titre et raison en entier. */
-.auto-prop.open .t,
-.auto-prop.open .w {
-  display: block;
-  -webkit-line-clamp: unset;
-}
-
-.auto-prop.open .w {
-  margin-top: 8px;
-  font-size: 0.9375rem;
-  line-height: 1.35;
-  opacity: 0.85;
-}
-
-.auto-prop .i {
-  margin-top: auto;
-  padding-top: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 6px 10px;
-}
-
-/* Le repo d'une carte dépliée, après son genre. */
-.auto-repo {
-  margin-left: 4px;
-  padding-left: 7px;
-  border-left: 2px solid currentColor;
-  font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Conditions : pas avant, fenêtre, fréquence — des chiffres en gras sur un aplat léger. */
-.auto-conds {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  min-width: 0;
-}
-
-.auto-cond {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 6px;
-  font-size: 0.8125rem;
-  font-weight: 800;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  background: color-mix(in oklab, var(--ink) 13%, transparent);
-}
-
-.auto-cond .ic {
-  width: 0.8rem;
-  height: 0.8rem;
-}
-
-.auto-prop .acts {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 6px;
-}
-
-.auto-prop .ok,
-.auto-prop .no,
-.auto-prop .talk {
-  height: 48px;
-  display: inline-grid;
-  place-items: center;
-}
-
-.auto-prop .ok:disabled {
-  opacity: 0.3;
-}
-
-/* La bulle : ouvre le champ sous la carte ; ouverte, en aplat d'encre. */
-.auto-prop .talk {
-  min-width: 48px;
-  font-size: 1.375rem;
-}
-
-.auto-prop .talk.on,
-.auto-talk-ic.on {
-  background: var(--ink);
-  color: var(--c, var(--bg));
-}
-
-.auto-prop .ok {
-  font-size: 1.75rem;
-  min-width: 48px;
-  margin-left: -8px;
-}
-
-.auto-prop .no {
-  font-size: 1.125rem;
-  min-width: 40px;
-  margin-right: -8px;
-  opacity: 0.6;
-}
-
-/* ---------- La machine : jauge de charge, mémoire libre ---------- */
-
-.auto-machine {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 40px;
-  font-size: 0.875rem;
-}
-
-.auto-machine > .ic {
-  font-size: 1.125rem;
-}
-
-.auto-gauge {
-  position: relative;
-  width: 64px;
-  height: 6px;
-  background: color-mix(in oklab, var(--ink) 18%, transparent);
-}
-
-.auto-gauge > span {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: var(--ink);
-}
-
-.auto-gauge > .hot {
-  background: var(--st-waiting);
-}
-
-.auto-dim {
-  opacity: 0.55;
-}
-
-.auto-tag {
-  display: inline-block;
-  padding: 1px 5px;
-  font-size: 0.75rem;
-  font-weight: 750;
-  line-height: 1.35;
-  background: var(--st);
-  color: var(--c, #fff);
-}
-
-[data-theme='light'] .auto-tag,
-:root[data-theme='zen'] .auto-tag {
-  color: #fff;
-}
-
-[data-theme='dark'] .auto-tag {
-  color: #000;
-}
-
-:root[data-theme='graphite'] .auto-tag {
-  color: #fff;
-}
-
-/* ---------- Niveaux : catégorie (gros nom), groupe (étiquette), tâche (ligne) ---------- */
-
-.auto-cat-head,
-.auto-grp-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-}
-
-.auto-cat-head {
-  min-height: 52px;
-}
-
-.auto-cat-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 1.375rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.auto-grp-head {
-  min-height: 38px;
-}
-
-.auto-grp-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 0.8125rem;
-  font-weight: 750;
-  letter-spacing: 0.04em;
-}
-
-.auto-chev {
-  font-size: 1rem;
-  opacity: 0.7;
-}
-
-.auto-agg {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.9375rem;
-}
-
-.auto-agg .spin {
-  font-size: 1rem;
-}
-
-/* Mini-barre : la part de chaque état, bout à bout. */
-.auto-mini {
-  display: inline-flex;
-  width: 44px;
-  height: 6px;
-  background: color-mix(in oklab, var(--ink) 15%, transparent);
-}
-
-.auto-mini > span {
-  background: var(--st);
-}
-
-/* ---------- Tâche ---------- */
-
-.auto-task + .auto-task {
-  border-top: 1px solid color-mix(in oklab, var(--ink) 10%, transparent);
-}
-
-.auto-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 54px;
-  padding-block: 7px;
-  position: relative;
-}
-
-/* Le liseré d'état, collé au bord gauche du contenu. */
-.auto-st {
-  position: absolute;
-  left: calc(var(--pad) - 10px);
-  top: 8px;
-  bottom: 8px;
-  width: 4px;
-  background: var(--st);
-}
-
-.auto-ic {
-  width: 22px;
-  flex: none;
-  text-align: center;
-  font-size: 1.125rem;
-}
-
-.auto-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.auto-title {
-  font-size: 1rem;
-  font-weight: 650;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.auto-facts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 9px;
-  font-size: 0.8125rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-/* Une condition ne se coupe jamais (« /7j » entier) : la ligne passe dessous. */
-.auto-facts > * {
-  flex: none;
-}
-
-.auto-facts > .auto-note {
-  flex: 0 1 auto;
-}
-
-/* La portée convenue pour le prochain passage d'une tâche qui tourne. */
-.auto-nextrun {
-  display: flex;
-  gap: 6px;
-  min-width: 0;
-  font-size: 0.8125rem;
-  white-space: nowrap;
-}
-
-.auto-nextrun > b {
-  flex: none;
-  font-weight: 800;
-}
-
-.auto-nextrun > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.auto-facts b {
-  font-weight: 750;
-}
-
-.auto-next {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.auto-next .ic {
-  width: 0.85rem;
-  height: 0.85rem;
-}
-
-.auto-note {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  opacity: 0.7;
-}
-
-.auto-progress {
-  position: relative;
-  width: 40px;
-  height: 5px;
-  background: color-mix(in oklab, var(--ink) 15%, transparent);
-}
-
-.auto-progress > span {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: var(--ink);
-}
-
-.st-done .auto-title,
-.st-paused .auto-title {
-  opacity: 0.75;
-}
-
-/* Intensité : lourde (pavé plein), priorité (trois barres montantes), durée estimée. */
-.auto-int {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 6px;
-  flex: none;
-  font-size: 0.8125rem;
-  font-weight: 750;
-  line-height: 1;
-}
-
-.auto-heavy {
-  width: 9px;
-  height: 13px;
-  background: var(--ink);
-}
-
-.auto-prio {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 2px;
-}
-
-.auto-prio > span {
-  width: 4px;
-  background: color-mix(in oklab, var(--ink) 22%, transparent);
-}
-
-.auto-prio > .on {
-  background: var(--ink);
-}
-
-.auto-row > .ch {
-  margin-right: -6px;
-}
+/* ---------- Drawer head: the title, then one plain line ---------- */
 
-/* La poignée au-dessus de la ligne de texte, jamais sur les compteurs. */
 .h24 > .h24-head > .in {
   padding-top: 12px;
 }
@@ -562,129 +17,308 @@
   top: 3px;
 }
 
-/* ---------- Parler d'une tâche : l'échange dans la carte (ou sous la ligne), le champ dessous ---------- */
+.auto-sum {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
 
-.auto-lines {
+.auto-sum > .txt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auto-sum .auto-mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+/* ---------- A band: one automation (or a proposal), one tap ---------- */
+
+.auto-band {
+  overflow: hidden;
+}
+
+/* The whole band is the button; ✓ and × sit above it. */
+.auto-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+}
+
+.auto-band > .in {
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
   display: grid;
-  gap: 5px;
-  margin-top: 10px;
-  font-size: 0.875rem;
-  line-height: 1.3;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  min-height: 52px;
+  padding-block: 12px 13px;
 }
 
-.auto-line {
-  margin: 0;
+.auto-band .chars {
+  pointer-events: auto;
+  margin-block: -8px;
+  margin-right: -10px;
+}
+
+.auto-band .st {
+  grid-row: 1;
+  width: 22px;
+  text-align: center;
+  font-size: 1.375rem;
+  line-height: 1;
+}
+
+.auto-band .st > * {
+  vertical-align: middle;
+}
+
+.auto-name {
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
   overflow-wrap: anywhere;
-  animation: auto-in 0.22s ease-out;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.auto-line.auto {
-  font-weight: 600;
-  opacity: 0.85;
+.auto-band .act {
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-/* La dernière réponse : celle qu'on lit. */
-.auto-line.auto.last {
-  font-weight: 750;
-  opacity: 1;
+/* Lines under the name: in the text column, out to the right edge. */
+.auto-band .sub {
+  grid-column: 2 / 4;
+  min-width: 0;
+  margin-top: 3px;
 }
 
-.auto-line.user {
-  justify-self: end;
-  max-width: 88%;
-  text-align: right;
-  font-weight: 650;
+.auto-band .sub.ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auto-band .sub.why {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.auto-band.paused > .in {
+  opacity: 0.55;
+}
+
+/* The proposal's glyph turns into the automation's when it is accepted (one slide). */
+.auto-glyph {
+  display: inline-grid;
+  place-items: center;
+}
+
+/* ---------- The fill: a flat, darker (lighter in the dark) layer of the band's colour, from the left ---------- */
+
+.auto-fill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  transform-origin: left center;
+  background: oklch(from var(--c) calc(l + var(--dl) * 1.6) calc(c * 1.08) h);
+  pointer-events: none;
+}
+
+.auto-fill.paused {
+  opacity: 0.35;
+}
+
+/* Running: the magenta edge of the fill. */
+.auto-front {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 0;
+  width: 3px;
+  margin-left: -3px;
+  background: var(--auto-fluo);
+  pointer-events: none;
+}
+
+/* Past its usual length: the edge breathes. */
+.auto-front.over {
+  animation: auto-over 1.2s ease-in-out infinite;
+}
+
+@keyframes auto-over {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* While a proposal round runs: a band that fills itself, no text. */
+.auto-round .dots {
+  color: var(--auto-fluo);
+}
+
+/* ---------- The page: the flow band ---------- */
+
+.auto-flow {
+  height: 172px;
+  overflow: hidden;
+  flex: none;
+}
+
+.auto-flow > .in {
+  position: relative;
+  z-index: 1;
+  padding-top: 18px;
+}
+
+.auto-flow .name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auto-flow .name .of {
+  font-size: 1.5rem;
+  font-weight: 400;
   opacity: 0.6;
 }
 
-.auto-line.sending {
-  opacity: 0.45;
+.auto-flow .meta {
+  margin-top: 4px;
 }
 
-.auto-line.note {
-  font-weight: 750;
+.auto-flow .auto-front {
+  width: 4px;
+  margin-left: -4px;
 }
 
-.auto-line-wait {
-  justify-self: start;
-  font-size: 1rem;
-}
-
-.auto-more {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 8px;
-  font-size: 0.8125rem;
-  font-weight: 800;
-  background: color-mix(in oklab, var(--ink) 13%, transparent);
-}
-
-.auto-more .ic {
-  width: 0.9rem;
-  height: 0.9rem;
-}
-
-@keyframes auto-in {
-  from { opacity: 0; transform: translateY(3px); }
-}
-
-/* Le champ sous une carte : dans sa couleur, le logo vocal et la question côte à côte. */
-.auto-prop-say {
-  background: var(--c);
-  color: var(--ink);
-  padding: 2px 12px 10px;
-}
-
-.auto-say {
+/* The runs, oldest left: one tick each, its height its length; red when it failed; the next one faint. */
+.auto-ticks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  height: 62px;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 0 var(--pad) 14px;
 }
 
-.auto-say .voice-logo {
-  height: 44px;
-  min-height: 0;
-}
-
-.auto-form {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 48px;
-  border-bottom: 3px solid var(--ink);
-  font-size: 1rem;
-}
-
-.auto-form input {
-  flex: 1;
-  min-width: 0;
-  font-weight: 650;
-}
-
-.auto-send {
+.auto-ticks > span {
   flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 44px;
+  width: 6px;
+  background: var(--ink);
 }
 
-.auto-send:disabled {
+.auto-ticks > .bad {
+  background: var(--alert);
+}
+
+.auto-ticks > .next {
+  height: 6px;
   opacity: 0.3;
 }
 
-/* Ce que la dernière réécriture a changé : un éclair d'encre, à plat. */
+/* ---------- The page: the same eight facts for every automation ---------- */
+
+.auto-kpis {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 18px;
+  padding-block: 4px 8px;
+}
+
+.auto-kpi {
+  display: block;
+  min-width: 0;
+  padding: 12px 0;
+  text-align: left;
+}
+
+.auto-kpi .k {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.auto-kpi .k .ic {
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+}
+
+.auto-kpi .v {
+  display: block;
+  margin-top: 2px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auto-kpi .v .small {
+  font-weight: 400;
+  margin-left: 6px;
+  letter-spacing: 0;
+}
+
+.auto-kpi .v.dim {
+  opacity: 0.5;
+}
+
+/* ---------- The page: outputs ---------- */
+
+/* Screenshots: edge to edge, no frame. */
+.auto-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.auto-shot + .auto-shot {
+  margin-top: 3px;
+}
+
+/* ---------- What the last rewrite changed: a flash of ink, flat ---------- */
+
 .auto-chg {
   animation: auto-chg 1.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes auto-chg {
-  0%, 30% {
+  0%,
+  30% {
     background: var(--ink);
     color: var(--c, var(--bg));
     outline: 3px solid var(--ink);
@@ -695,122 +329,7 @@
   }
 }
 
-/* ---------- Sous une tâche acceptée : d'où elle vient, ses passages, le champ ---------- */
-
-.auto-row-main {
-  flex: 1;
-  min-width: 0;
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-align: left;
-}
-
-.auto-talk-ic {
-  font-size: 1.125rem;
-  margin-right: -6px;
-}
-
-.auto-row > .ch + .auto-talk-ic {
-  margin-left: -10px;
-}
-
-.auto-row > .auto-talk-ic + .auto-stop {
-  margin-left: -4px;
-  font-size: 1rem;
-}
-
-.auto-hist {
-  padding-left: calc(var(--pad) + 32px);
-  padding-bottom: 10px;
-  margin-top: -4px;
-}
-
-.auto-hist .auto-lines {
-  margin-top: 0;
-}
-
-.auto-hist .auto-say {
-  padding-top: 6px;
-}
-
-.auto-hist-one {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-height: 28px;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  text-align: left;
-}
-
-.auto-hist-one > .ic {
-  flex: none;
-  width: 0.85rem;
-  height: 0.85rem;
-  opacity: 0.6;
-}
-
-.auto-hist-one > span {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  opacity: 0.8;
-}
-
-.auto-hist-one > b {
-  flex: none;
-  font-weight: 800;
-}
-
-.auto-runs {
-  list-style: none;
-  margin: 0 0 8px;
-  padding: 0;
-  display: grid;
-  gap: 3px;
-  font-size: 0.8125rem;
-}
-
-.auto-runs li {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  white-space: nowrap;
-}
-
-.auto-runs li .ic {
-  flex: none;
-  width: 0.85rem;
-  height: 0.85rem;
-}
-
-.auto-runs li.bad .ic {
-  color: var(--st-failed);
-}
-
-.auto-runs li > b {
-  flex: none;
-  font-weight: 750;
-}
-
-.auto-runs li > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  opacity: 0.75;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .auto-line {
-    animation: none;
-  }
-
   .auto-chg {
     animation-duration: 0.01s;
   }

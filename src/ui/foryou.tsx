@@ -1036,6 +1036,7 @@ export function ForYouPage({ who }: { who?: string }) {
             <button className="word" onClick={() => focusBoss({ flash: false })} aria-label={t.openBoss}>
               weevboss
             </button>
+            <span className="fyt-sep" aria-hidden>·</span>
             <h1 ref={heading} tabIndex={-1} className="word on">
               {t.title}
             </h1>

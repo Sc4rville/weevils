@@ -183,6 +183,9 @@ w.foryou = foryou
 // seule boucle, sur son propre minuteur, jamais sur le chemin d'une requête (server/foryou-curator.ts).
 if (foryou) {
   const curator = new Curator(foryou, {
+    deployment: () => {
+      try { return JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '../dist/build.json'), 'utf8')) } catch { return null }
+    },
     memory: () => w.memory,
     repoDir: (repo) => w.repoDir(repo),
     advice: async () => (await infraDetail()).advice,

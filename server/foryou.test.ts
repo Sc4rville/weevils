@@ -646,18 +646,18 @@ describe('proposals', () => {
 
   it('one item: proposed auto tasks first, then the tips that act on the server or through weevboss; four cards at most', () => {
     const fy = make({ tips })
-    expect(fy.feed().items).toEqual([])
+    expect(fy.feed().items.filter((i) => !i.id.startsWith('auto:proposed:'))).toEqual([])
     snap.optimizers = [optimizer(), optimizer({ id: 'o2', title: 'Watch fairs', kind: 'watch' }), optimizer({ id: 'run', state: 'running' }), optimizer({ id: 'q', state: 'queued' })]
     snap.sessions = [unmanaged(), session({ id: 'i1', status: 'done', lastActivityAt: T0 - 13 * HOUR })]
-    const [p] = fy.feed().items
+    const p = fy.feed().items.find((i) => i.id === 'proposals')!
     expect(p).toMatchObject({ id: 'proposals', kind: 'proposals', who: 'weevils', live: true, text: 'I have 4 ideas for you', at: T0 })
     // Tips that only open a page of the app (no dictation, one machine) stay in the app.
     expect(p.cards?.map((c) => [c.id.slice(0, 2), c.source, c.kind])).toEqual([['o:', 'optimizer', 'tests'], ['o:', 'optimizer', 'watch'], ['t:', 'tip', 'idle-sessions'], ['t:', 'tip', 'idle-unmanaged']])
     expect(p.cards?.[2]).toMatchObject({ title: TM.en.idleSessions(1, true), accept: TM.en.closeThem(1) })
     expect(fy.feed().pulse.auto).toBe(2)
     snap.optimizers.push(optimizer({ id: 'o3' }), optimizer({ id: 'o4' }), optimizer({ id: 'o5' }))
-    expect(fy.feed().items[0].cards).toHaveLength(MAX_CARDS)
-    expect(fy.feed(now, 'fr').items[0].text).toBe('J’ai 4 idées pour toi')
+    expect(fy.feed().items.find((i) => i.id === 'proposals')!.cards).toHaveLength(MAX_CARDS)
+    expect(fy.feed(now, 'fr').items.find((i) => i.id === 'proposals')!.text).toBe('J’ai 4 idées pour toi')
   })
 
   it('accept / refuse go through the auto band; an answered card never comes back, even after a restart', async () => {
@@ -667,11 +667,11 @@ describe('proposals', () => {
     await fy.act('proposals', 'accept', 'o:o1')
     expect(auto.accept).toHaveBeenCalledWith('o1')
     // The band still says « proposed » until its next tick: the card is already gone.
-    expect(fy.feed().items[0].cards?.map((c) => c.id)).toEqual(['o:o2'])
+    expect(fy.feed().items.find((i) => i.id === 'proposals')!.cards?.map((c) => c.id)).toEqual(['o:o2'])
     await fy.act('proposals', 'refuse', 'o:o2')
     expect(auto.refuse).toHaveBeenCalledWith('o2')
-    expect(fy.feed().items).toEqual([])
-    expect(make({ tips }).feed().items).toEqual([])
+    expect(fy.feed().items.filter((i) => !i.id.startsWith('auto:proposed:'))).toEqual([])
+    expect(make({ tips }).feed().items.filter((i) => !i.id.startsWith('auto:proposed:'))).toEqual([])
     await expect(fy.act('proposals', 'accept', 'o:o1')).rejects.toThrow(M.en.cardGone)
     auto.accept.mockReturnValueOnce(false)
     snap.optimizers = [optimizer({ id: 'o9' })]
@@ -682,17 +682,17 @@ describe('proposals', () => {
   it('a tip accepted runs on the server or goes to weevboss; refused, it is only remembered', async () => {
     const fy = make({ tips })
     snap.sessions = [unmanaged(), session({ id: 'i1', status: 'done', lastActivityAt: T0 - 13 * HOUR }), session({ id: 'i2', status: 'idle', lastActivityAt: T0 - 14 * HOUR })]
-    const cards = fy.feed().items[0].cards!
+    const cards = fy.feed().items.find((i) => i.id === 'proposals')!.cards!
     const closing = cards.find((c) => c.kind === 'idle-sessions')!
     const asking = cards.find((c) => c.kind === 'idle-unmanaged')!
     await fy.act('proposals', 'accept', closing.id)
     expect(host.close.mock.calls.map((c) => c[0]).sort()).toEqual(['i1', 'i2'])
     await fy.act('proposals', 'refuse', asking.id)
     expect(host.sendMain).not.toHaveBeenCalled()
-    expect(fy.feed().items.filter((x) => x.kind !== 'session')).toEqual([])
+    expect(fy.feed().items.filter((x) => x.kind !== 'session' && !x.id.startsWith('auto:proposed:'))).toEqual([])
     // Another situation, another card: accepted, weevboss gets the prepared message.
     snap.sessions.push(session({ id: 'u2', controllable: false, status: 'idle', lastActivityAt: T0 - 20 * HOUR }))
-    const next = fy.feed().items[0].cards!.find((c) => c.kind === 'idle-unmanaged')!
+    const next = fy.feed().items.find((i) => i.id === 'proposals')!.cards!.find((c) => c.kind === 'idle-unmanaged')!
     await fy.act('proposals', 'accept', next.id)
     expect(host.sendMain).toHaveBeenCalledTimes(1)
     expect(host.sendMain.mock.calls[0][0]).toContain('left open')
@@ -704,10 +704,10 @@ describe('proposals', () => {
     fy.feed()
     fy.seen(['proposals'])
     fy.dismiss('proposals')
-    expect(fy.feed().items.filter((x) => x.kind !== 'session')).toEqual([])
+    expect(fy.feed().items.filter((x) => x.kind !== 'session' && !x.id.startsWith('auto:proposed:'))).toEqual([])
     now = T0 + HOUR
     snap.optimizers.push(optimizer({ id: 'o2' }))
-    const [p] = fy.feed().items
+    const p = fy.feed().items.find((i) => i.id === 'proposals')!
     expect(p).toMatchObject({ id: 'proposals', at: T0 + HOUR })
     expect(p.seen).toBeUndefined()
   })
@@ -727,10 +727,10 @@ describe('the mark in the snapshot', () => {
     // A live item comes, then leaves: each time one revision, counted while the snapshot is built (no bump from there).
     host.bump.mockClear()
     snap.optimizers = [optimizer()]
-    expect(fy.mark(snap)).toEqual({ rev: r1 + 1, unseen: 2 })
+    expect(fy.mark(snap)).toEqual({ rev: r1 + 1, unseen: 3 })
     expect(fy.mark(snap).rev).toBe(r1 + 1)
     snap.optimizers = []
-    expect(fy.mark(snap)).toEqual({ rev: r1 + 2, unseen: 1 })
+    expect(fy.mark(snap)).toEqual({ rev: r1 + 2, unseen: 2 })
     expect(host.bump).not.toHaveBeenCalled()
     // Found while answering the app instead: the snapshot is asked to follow.
     snap.optimizers = [optimizer()]
@@ -951,5 +951,28 @@ describe('wired into core', async () => {
     w.mailed({ author: 'gepetto', subject: 'done', text: 'The page is built.', target: 'weevboss', mid: '<m@x>', address: 'g@example.com' })
     expect(fy.feed().items.map((i) => i.kind).sort()).toEqual(['mail', 'session'])
     expect(JSON.stringify(fy.feed())).not.toContain('g@example.com')
+  })
+})
+
+
+describe('question option routing', () => {
+  it('sends to its session and refuses an outdated question', async () => {
+    const fy = make()
+    const q = session({ status: 'needs_user', attention: 'Which colour should I use?' })
+    snap.sessions = [q]
+    fy.sessionTurn(q, 'question')
+    fy.askRead('s:s1', { ask: true, question: 'Which colour?', options: ['Blue', 'Green'] })
+    const oldChoice = find(fy, 's:s1')!.actions![1].id
+    await fy.act('s:s1', oldChoice)
+    expect(host.send).toHaveBeenCalledWith('s1', 'Green')
+    expect(host.sendMain).not.toHaveBeenCalled()
+    q.attention = 'Which size should I use?'
+    fy.sessionTurn(q, 'question')
+    fy.askRead('s:s1', { ask: true, question: 'Which size?', options: ['Small', 'Large'] })
+    await expect(fy.act('s:s1', oldChoice)).rejects.toThrow()
+    const nextChoice = find(fy, 's:s1')!.actions![0].id
+    q.status = 'working'
+    await expect(fy.act('s:s1', nextChoice)).rejects.toThrow()
+    expect(host.send).toHaveBeenCalledTimes(1)
   })
 })

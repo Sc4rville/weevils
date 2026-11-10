@@ -349,6 +349,8 @@ interface State {
 
 /** What the curator may add: a generated item, in the language it was written in. */
 export interface NewItem {
+  /** Recorded event time; generated text defaults to now. */
+  at?: number
   /** Stable id to replace an earlier item of the same subject (else a new one). */
   id?: string
   kind: 'boss' | 'improve' | 'insight' | 'milestone' | 'stat'
@@ -363,6 +365,8 @@ export interface NewItem {
   actions?: { label: string; brief: string }[]
   lang?: Lang
 }
+
+const questionKey = (i: Stored) => crypto.createHash('sha256').update(JSON.stringify([i.at, i.text, i.q])).digest('hex').slice(0, 12)
 
 const day = (at: number) => {
   const d = new Date(at)
@@ -672,7 +676,7 @@ export class ForYou {
       id: n.id ?? newId(n.kind[0]),
       kind: n.kind,
       tone: n.tone ?? (n.kind === 'improve' || n.kind === 'milestone' ? 'magic' : 'neutral'),
-      at: this.now(),
+      at: n.at ?? this.now(),
       who: n.who ?? (boss ? 'weevboss' : 'weevils'),
       projectId: n.projectId,
       title: n.title ? clip(collapse(n.title), 160) : undefined,
@@ -711,9 +715,9 @@ export class ForYou {
   }
 
   /** What the curator read in a question (null: it could not; the raw line stays). */
-  askRead(id: string, q: Stored['q'] | null) {
+  askRead(id: string, q: Stored['q'] | null, expected?: string) {
     const i = this.get(id)
-    if (!i || i.kind !== 'session' || i.tone !== 'question') return
+    if (!i || i.kind !== 'session' || i.tone !== 'question' || (expected !== undefined && i.text !== expected)) return
     i.q = q ?? {}
     this.changed()
   }
@@ -747,7 +751,7 @@ export class ForYou {
   mailLine(id: string, line: string | null, l?: Lang) {
     const i = this.get(id)
     if (!i || i.kind !== 'mail') return
-    const text = line ? clip(collapse(line), MAIL_LINE_MAX) : ''
+    const text = line ? clip(collapse(line), LINE_MAX) : ''
     i.sum = text ? { text, lang: l } : {}
     if (text) this.changed()
     else this.save()
@@ -829,7 +833,7 @@ export class ForYou {
         } else if (i.q?.ask && i.q.question) {
           out.text = i.q.question
           if (i.q.title) out.lead = i.q.title
-          if (i.q.options?.length) out.actions = i.q.options.map((label, n) => ({ id: `opt:${n}`, label }))
+          if (i.q.options?.length) out.actions = i.q.options.map((label, n) => ({ id: `opt:${n}:${questionKey(i)}`, label }))
         }
       } else if (i.tone === 'alert') {
         if (!any && cur?.status !== 'interrupted') return null
@@ -966,6 +970,11 @@ export class ForYou {
   private autoEvents(snap: Snapshot) {
     const t = tr(M)
     for (const o of snap.optimizers ?? []) {
+      const proposed = { id: `auto:proposed:${o.id}`, at: o.createdAt, text: t.autoProposed(o.title), tone: 'neutral' as const }
+      if (o.state === 'proposed' && !this.has(proposed.id) && this.now() - proposed.at <= BACKFILL_MS) {
+        this.put({ ...proposed, kind: 'boss', who: 'weevils', open: { page: 'auto', id: o.id }, reply: 'boss', rec: this.now(), lang: lang() })
+        this.changed(false)
+      }
       const ev = o.state === 'running' && o.startedAt ? { id: `auto:go:${o.id}`, at: o.startedAt, text: t.autoGo(o.title), tone: 'neutral' as const }
         : o.state === 'done' && o.endedAt ? { id: `auto:done:${o.id}`, at: o.endedAt, text: t.autoDone(o.title, o.lastEvent ?? ''), tone: 'result' as const }
         : null
@@ -1100,7 +1109,11 @@ export class ForYou {
     if (i.kind === 'session' && action === 'resume' && i.sessionId) await this.w.resume(i.sessionId)
     else if (i.kind === 'session' && action.startsWith('opt:') && i.sessionId) {
       // An option of a question card: said to the session as the user's answer.
-      const label = i.q?.options?.[Number(action.slice(4))]
+      const session = this.w.snapshot().sessions.find((s) => s.id === i.sessionId)
+      if (i.tone !== 'question' || session?.status !== 'needs_user' || clip(collapse(session.attention ?? ''), TEXT_MAX) !== i.text) throw new Error(t.cardGone)
+      const [index, version] = action.slice(4).split(':')
+      if (version !== questionKey(i)) throw new Error(t.cardGone)
+      const label = /^(0|[1-9]\d*)$/.test(index) ? i.q?.options?.[Number(index)] : undefined
       if (!label) throw new Error(t.noAction)
       await this.w.send(i.sessionId, label)
     } else {

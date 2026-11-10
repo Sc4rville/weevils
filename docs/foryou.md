@@ -296,3 +296,35 @@ today the open band is smaller than the page. Check with iPhone screenshots (fol
 - **Height of the top band** when switching words: both previews share the same box, so nothing below moves.
 - **A running weevboss conversation** only learns the new verbs at its next conversation; the digest does not
   depend on it.
+
+### Codex continuation — November 10, 2026
+
+This section supersedes the earlier “left / untested” notes where explicitly covered below.
+
+- Mixed mail/result batches now parse the entire batch, including batches containing only session results.
+  Generated lines retain up to 220 characters, matching the prompt, rather than cutting them at 120.
+- Model-written question buttons carry a fingerprint of their question and choices. A stale button is refused
+  even if the same session is waiting on a different question. Late model answers cannot annotate a newer question.
+  Choices still go only to that session; no live user session was answered during verification.
+- Model budget is reserved after asynchronous preparation. “More” rechecks the current route after reading repo
+  facts, uses its own mode rather than mutating the loop's mode, and shares each mode's persisted daily cap.
+- Recent Git commits enter without a model: at most 12 commits per active local repo, 12 repos per pass, four-day
+  horizon, every four minutes. Commit identities persist across restarts. Newly proposed auto tasks leave a
+  history event as well as their live accept/refuse card.
+- Vite writes `dist/build.json` with the commit and build time. The running server records that served build once
+  per commit as a deployment event. This covers this weevils instance; deployments of other projects are not
+  inferred from a commit message or an unverified session claim.
+- The folded preview is 42dvh (formerly 34dvh), with less padding above the logo. The open boss thread uses a
+  portal outside the transformed home stack, the same viewport and word row geometry as the for-you page.
+  The composer retains voice input while the large logo is hidden in full screen. The stream overlays the thread
+  when switching, and returning to the boss closes the stream.
+
+Verification: full `npm run check`; regression cases for zero-mail and mixed batches, relay routing and persisted
+counts, route changes during fact loading, competing requests for the last budget slot, stale questions and session
+routing, and deployment identity across restart. Real Codex generations were reviewed against two recent session
+reports and two real attention messages: one trust question with two choices, one non-question. Generated lines
+were checked again after the 220-character fix. These were read-only probes, not replies to those sessions.
+Chromium desktop (1280×800) and mobile (390×844) checks run against an isolated demo server with its own HOME,
+tmux socket and ports (4291/4292), without production credentials. Screenshots and frame checks cover folded,
+boss full screen, stream full screen and both switches; no JavaScript errors. Actual iPhone/Safari audio,
+keyboard and swipe behaviour still require a device check. Review artifacts are temporary under `/tmp/foryou/`.

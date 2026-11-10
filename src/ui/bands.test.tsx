@@ -107,7 +107,7 @@ function render(s: Snapshot, open = false) {
 const flush = () => act(() => new Promise((r) => setTimeout(r, 20)))
 
 const type = async (text: string) => {
-  const field = host.querySelector<HTMLInputElement | HTMLTextAreaElement>('form input:not([type=file]), form textarea')!
+  const field = document.querySelector<HTMLInputElement | HTMLTextAreaElement>('form input:not([type=file]), form textarea')!
   await act(async () => {
     const proto = Object.getPrototypeOf(field)
     Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(field, text)
@@ -115,7 +115,7 @@ const type = async (text: string) => {
   })
 }
 
-const submit = () => act(async () => void host.querySelector('form')!.requestSubmit())
+const submit = () => act(async () => void document.querySelector('form')!.requestSubmit())
 
 // Des bulles apparaissent et partent (envoi en cours, réponse) : sans Web Animations, motion les joue en JS (happy-dom
 // rejette celles qu'on annule).
@@ -166,7 +166,7 @@ describe('bande de weevboss : envoyer ne l’ouvre jamais en plein écran', () =
 
   it('avec une pièce jointe', async () => {
     render(snap([]))
-    const input = host.querySelector<HTMLInputElement>('input[type=file]')!
+    const input = document.querySelector<HTMLInputElement>('input[type=file]')!
     const file = new File(['%PDF-1.4'], 'devis.pdf', { type: 'application/pdf' })
     await act(async () => {
       Object.defineProperty(input, 'files', { value: [file], configurable: true })
@@ -193,7 +193,7 @@ describe('bande de weevboss : envoyer ne l’ouvre jamais en plein écran', () =
   it('devil mode resté allumé sur l’appareil, mais plus de modèle branché : weevboss reçoit', async () => {
     localStorage.setItem('weevils-devil', '1')
     render(snap([]))
-    expect(host.querySelector('.devil-on')).toBeNull()
+    expect(document.querySelector('.devil-on')).toBeNull()
     await type('dis un truc')
     await submit()
     await flush()
@@ -203,20 +203,20 @@ describe('bande de weevboss : envoyer ne l’ouvre jamais en plein écran', () =
 
   it('le réglage du devil mode s’applique tout de suite à la bande', async () => {
     render({ ...snap([]), devil: { enabled: true, working: false } })
-    expect(host.querySelector('.devil-on')).toBeNull()
+    expect(document.querySelector('.devil-on')).toBeNull()
     act(() => setDevil(true))
-    expect(host.querySelector('.devil-on')).not.toBeNull()
+    expect(document.querySelector('.devil-on')).not.toBeNull()
     act(() => setDevil(false))
-    expect(host.querySelector('.devil-on')).toBeNull()
+    expect(document.querySelector('.devil-on')).toBeNull()
   })
 
   it('le message envoyé et la réponse apparaissent dans l’aperçu, bande réduite', async () => {
     render(snap([msg('u', 'user', 'fais le point', 1), msg('r', 'assistant', 'Tout tourne, deux sessions travaillent.', 2)]))
-    const peek = host.querySelector('.peek')!
+    const peek = document.querySelector('.peek')!
     expect(peek.textContent).toContain('fais le point')
     expect(peek.textContent).toContain('Tout tourne, deux sessions travaillent.')
     // Le fil est déjà rendu mais caché : l'ouvrir est immédiat.
-    expect(host.querySelector<HTMLElement>('#agent-body')!.hidden).toBe(true)
+    expect(document.querySelector<HTMLElement>('#agent-body')!.hidden).toBe(true)
     // Le tap simple, lui, ouvre la conversation.
     await act(async () => (peek as HTMLElement).click())
     expect(expanded).toEqual(['agent'])
@@ -234,7 +234,7 @@ describe('fil de weevboss ouvert : il suit la réponse qui s’écrit', () => {
   it('une réponse du diable en direct garde la fin visible', async () => {
     let s = { ...snap([msg('u', 'user', 'et toi ?', 1), devil('')]), devil: { enabled: true, working: true } }
     render(s, true)
-    const chat = host.querySelector<HTMLElement>('.chat')!
+    const chat = document.querySelector<HTMLElement>('.chat')!
     let h = 1000
     fake(chat, () => h)
     chat.scrollTop = 700
@@ -249,7 +249,7 @@ describe('fil de weevboss ouvert : il suit la réponse qui s’écrit', () => {
   it('notre propre défilement doux ne décroche pas le suivi (aperçu réduit)', async () => {
     let s = snap([msg('u', 'user', 'fais le point', 1)])
     render(s)
-    const peek = host.querySelector<HTMLElement>('.peek')!
+    const peek = document.querySelector<HTMLElement>('.peek')!
     let h = 800
     fake(peek, () => h)
     // Une position intermédiaire d'un défilement animé, loin du bas, sans geste : ce n'est pas l'utilisateur qui relit.
@@ -265,7 +265,7 @@ describe('fil de weevboss ouvert : il suit la réponse qui s’écrit', () => {
     let s = { ...snap([msg('u', 'user', 'et toi ?', 1), devil('')]), devil: { enabled: true, working: true } }
     render(s, true)
     await flush()
-    const chat = host.querySelector<HTMLElement>('.chat')!
+    const chat = document.querySelector<HTMLElement>('.chat')!
     fake(chat, () => 3000)
     // Un geste de l'utilisateur (le doigt remonte) : seul un geste décroche le suivi, pas un défilement du programme.
     await act(async () => void chat.dispatchEvent(new Event('touchstart')))
@@ -289,7 +289,7 @@ describe('le message envoyé se voit tout de suite', () => {
     render(s)
     await type('fais le point')
     await submit()
-    const peek = host.querySelector('.peek')!
+    const peek = document.querySelector('.peek')!
     expect(peek.textContent).toContain('fais le point')
     expect(peek.textContent).toContain(tr(BM).sending)
     // Claude Code l'a écrit dans son transcript : une seule bulle, la vraie.
@@ -306,15 +306,15 @@ describe('le message envoyé se voit tout de suite', () => {
     await type('fais le point')
     await submit()
     await flush()
-    expect(host.querySelector('.peek')!.textContent).not.toContain('fais le point')
-    expect(host.querySelector<HTMLInputElement>('form input:not([type=file])')!.value).toBe('fais le point')
-    expect(host.querySelector('.attach-line')?.textContent).toContain('weevboss est occupé')
+    expect(document.querySelector('.peek')!.textContent).not.toContain('fais le point')
+    expect(document.querySelector<HTMLInputElement>('form input:not([type=file])')!.value).toBe('fais le point')
+    expect(document.querySelector('.attach-line')?.textContent).toContain('weevboss est occupé')
   })
 
   it('le dernier message de l’aperçu montre sa fin, pas son début coupé', () => {
     const long = `${'début '.repeat(80)}la toute fin de la réponse`
     render(snap([msg('a', 'assistant', long, 1)]))
-    const last = host.querySelector('.peek-item.last')!
+    const last = document.querySelector('.peek-item.last')!
     expect(last.textContent).toContain('la toute fin de la réponse')
     expect(last.textContent!.length).toBeLessThan(long.length)
   })
@@ -323,20 +323,20 @@ describe('le message envoyé se voit tout de suite', () => {
 describe('« weevboss · pour toi » dans la bande du haut', () => {
   const fy = (id: string, text: string, over: Partial<ForYouItem> = {}): ForYouItem => ({ id, kind: 'boss', tone: 'neutral', at: 1, who: 'weevboss', text, ...over })
   const withStream = (main: Message[], unseen = 0): Snapshot => ({ ...snap(main), foryou: { rev: 1, unseen } })
-  const words = () => [...host.querySelectorAll<HTMLButtonElement>('.fyt-word')]
-  const peekWrap = () => host.querySelector<HTMLElement>('.band.agent .peek-wrap')!
-  const fyWrap = () => host.querySelector<HTMLElement>('.band.agent .fyt-wrap')!
+  const words = () => [...document.querySelectorAll<HTMLButtonElement>('.fyt-word')]
+  const peekWrap = () => document.querySelector<HTMLElement>('.band.agent .peek-wrap')!
+  const fyWrap = () => document.querySelector<HTMLElement>('.band.agent .fyt-wrap')!
 
   it('sans flux sur ce serveur : ni mots, ni aperçu, ni appel, même si l’appareil se souvient de « pour toi »', async () => {
     localStorage.setItem('weevils-top', 'foryou')
     render(snap([msg('a', 'assistant', 'salut', 1)]))
     await flush()
     expect(words()).toEqual([])
-    expect(host.querySelector('.fyt-wrap')).toBeNull()
+    expect(document.querySelector('.fyt-wrap')).toBeNull()
     expect(sent.foryou).toBe(0)
     // L'aperçu du fil est là, comme avant.
     expect(peekWrap().hidden).toBe(false)
-    expect(host.querySelector('.band.agent .peek-wrap:not([hidden]) .peek')!.textContent).toContain('salut')
+    expect(document.querySelector('.band.agent .peek-wrap:not([hidden]) .peek')!.textContent).toContain('salut')
   })
 
   it('avec un flux : les deux mots, weevboss actif par défaut, l’aperçu du fil inchangé', async () => {
@@ -345,28 +345,28 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
     expect(words().map((w) => w.textContent)).toEqual(['weevboss', tr(BM).forYou])
     expect(words().map((w) => w.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
     // Entre la ligne du logo et l'aperçu, dans l'espace de la bande.
-    const kids = [...host.querySelector('.agent-space')!.children].map((e) => e.className.split(' ')[0])
+    const kids = [...document.querySelector('.agent-space')!.children].map((e) => e.className.split(' ')[0])
     expect(kids.indexOf('fyt-words')).toBeGreaterThan(kids.indexOf('agent-top'))
     expect(kids.indexOf('fyt-words')).toBeLessThan(kids.indexOf('peek-wrap'))
     expect(peekWrap().hidden).toBe(false)
     expect(fyWrap().hidden).toBe(true)
-    expect(host.querySelector('.peek')!.textContent).toContain('salut')
+    expect(document.querySelector('.peek')!.textContent).toContain('salut')
   })
 
   it('« pour toi » montre l’aperçu du flux et cache celui du fil sans le démonter', async () => {
     sent.feed = [fy('p1', 'Deux sessions lancées ce matin.')]
     render(withStream([msg('a', 'assistant', 'salut', 1)]))
     await flush()
-    const peek = host.querySelector('.peek')!
+    const peek = document.querySelector('.peek')!
     await act(async () => words()[1].click())
     expect(words().map((w) => w.getAttribute('aria-pressed'))).toEqual(['false', 'true'])
     expect(peekWrap().hidden).toBe(true)
     expect(fyWrap().hidden).toBe(false)
     expect(fyWrap().textContent).toContain('Deux sessions lancées ce matin.')
     // Le même aperçu du fil, toujours monté, avec ses messages.
-    expect(host.querySelector('.peek')).toBe(peek)
+    expect(document.querySelector('.peek')).toBe(peek)
     expect(peek.textContent).toContain('salut')
-    expect(host.querySelector('.band.agent .peek-wrap:not([hidden])')).toBeNull()
+    expect(document.querySelector('.band.agent .peek-wrap:not([hidden])')).toBeNull()
     expect(localStorage.getItem('weevils-top')).toBe('foryou')
     // Changer de mot n'ouvre rien.
     expect(expanded).toEqual([])
@@ -382,7 +382,7 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
     sent.feed = [fy('p1', 'Deux sessions lancées ce matin.')]
     render(withStream([]))
     await flush()
-    await act(async () => host.querySelector<HTMLElement>('.fyt-peek')!.click())
+    await act(async () => document.querySelector<HTMLElement>('.fyt-peek')!.click())
     expect(pushed).toEqual([{ kind: 'foryou' }])
     expect(expanded).toEqual([])
     // Le mot déjà actif, touché de nouveau : pareil.
@@ -405,7 +405,7 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
     expect(peekWrap().hidden).toBe(false)
     expect(fyWrap().hidden).toBe(true)
     expect(words().map((w) => w.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
-    const shown = host.querySelector('.band.agent .peek-wrap:not([hidden]) .peek')!
+    const shown = document.querySelector('.band.agent .peek-wrap:not([hidden]) .peek')!
     expect(shown.textContent).toContain('fais le point')
     expect(shown.textContent).toContain(tr(BM).sending)
     await act(async () => open())
@@ -423,7 +423,7 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
     expect(peekWrap().hidden).toBe(false)
     await act(async () => words()[1].click())
     expect(peekWrap().hidden).toBe(true)
-    const input = host.querySelector<HTMLInputElement>('input[type=file]')!
+    const input = document.querySelector<HTMLInputElement>('input[type=file]')!
     await act(async () => {
       Object.defineProperty(input, 'files', { value: [new File(['x'], 'devis.pdf', { type: 'application/pdf' })], configurable: true })
       input.dispatchEvent(new Event('change', { bubbles: true }))
@@ -444,13 +444,13 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
     expect(words().map((w) => w.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
     expect(peekWrap().hidden).toBe(true)
     expect(fyWrap().hidden).toBe(true)
-    expect(host.querySelector<HTMLElement>('#agent-body')!.hidden).toBe(false)
+    expect(document.querySelector<HTMLElement>('#agent-body')!.hidden).toBe(false)
     await act(async () => words()[1].click())
     expect(pushed).toEqual([{ kind: 'foryou' }])
     // Ni refermé, ni changé de mot mémorisé.
     expect(expanded).toEqual([])
     expect(localStorage.getItem('weevils-top')).toBe('foryou')
-    expect(host.querySelector('#agent-body .chat')).not.toBeNull()
+    expect(document.querySelector('#agent-body .chat')).not.toBeNull()
   })
 
   it('un point sur « pour toi » quand il reste du non vu', async () => {
@@ -464,6 +464,6 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
   it('sans rien à voir : pas de point', async () => {
     render(withStream([], 0))
     await flush()
-    expect(host.querySelector('.fyt-dot')).toBeNull()
+    expect(document.querySelector('.fyt-dot')).toBeNull()
   })
 })

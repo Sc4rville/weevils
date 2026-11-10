@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Message, Project } from '../../shared/api.ts'
@@ -262,14 +263,14 @@ export function AgentBand() {
   // Un secret demandé ([[setup:key:NOM]]) : toujours un bouton (le recoller remplace l'ancienne valeur).
   const chipIn = (b: ChipId, id: string) => (b.startsWith('key:') ? <KeyChip name={b.slice(4)} /> : lastWith.get(b) === id ? <Chip brick={b as Brick} inline /> : null)
 
-  return (
-    <section className={`band agent tone ${devilOn || devilFlash ? 'devil-on' : ''} ${open ? 'open' : ''}`} style={color(devilOn || devilFlash ? 'devil' : 'agent')} aria-label={t.agentBand}>
+  const band = (
+    <section className={`band agent tone ${snap.foryou ? 'has-foryou' : ''} ${devilOn || devilFlash ? 'devil-on' : ''} ${open ? 'open' : ''}`} style={color(devilOn || devilFlash ? 'devil' : 'agent')} aria-label={t.agentBand}>
       {/* En haut : le logo (dicter), sous la barre d'état. Réduite : l'aperçu vivant du fil ; un tap l'ouvre.
           Ouverte : un tap dans l'espace vide, le chevron, ou glisser vers le bas la réduit. */}
       <div className="agent-space" onClick={(e) => open && e.target === e.currentTarget && setExpanded(null)}>
         {open && (
           <button className="agent-close" onClick={() => setExpanded(null)} aria-label={t.collapseChat}>
-            <Icon name="chevron" dir="down" />
+            <Icon name="chevron" dir="left" />
           </button>
         )}
         <TokenMeter />
@@ -351,6 +352,8 @@ export function AgentBand() {
       {flow ? <SetupComposer /> : <Composer placeholder={t.agentPlaceholder} label={t.agentLabel} onSend={send} onAttach={attach} anyFile voice sayErrors draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="chevron" dir="right" />} />}
     </section>
   )
+  // Escape the draggable home stack: its transform makes fixed descendants smaller than the viewport.
+  return open ? createPortal(band, document.body) : band
 }
 
 // ---------------------------------------------------------------------------

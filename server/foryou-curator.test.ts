@@ -443,6 +443,17 @@ describe('the digest', () => {
 // ---------------------------------------------------------------- mail lines
 
 describe('mail lines', () => {
+  it.each([0, 1])('rewrites session results in a batch with %i mails', async (count) => {
+    fs.writeFileSync(path.join(dir, 'curator.json'), JSON.stringify({ digestAt: now, improveAt: now, insightAt: now }))
+    await deliver('s1', 'I finished the double jump.\n\n' + 'I checked the landing behaviour in the game. '.repeat(8))
+    if (count) fy.mail({ author: 'gepetto', subject: 'menu', text: 'Hello,\n\nThe menu is finished and ready for review.', target: 'weevboss', mid: '<mixed@x>', address: 'g@example.com' })
+    cheap.mockResolvedValue(JSON.stringify(Array.from({ length: count + 1 }, (_, i) => ({ n: i + 1, line: i === count ? 'I tuned the double jump; try landing twice.' : 'The menu is ready for your look.' }))))
+    looked()
+    await makeCurator().tick(now)
+    expect(fy.feed(now).items.find((i) => i.id === 's:s1')?.text).toBe('I tuned the double jump; try landing twice.')
+    expect(cheap).toHaveBeenCalledTimes(1)
+  })
+
   const mail = (n: number, text = `Hello,\n\nMail ${n} says the menu is in.\nAnd much more below, with details.`) => fy.mail({ author: 'gepetto', subject: `subject ${n}`, text, target: 'weevboss', mid: `<m${n}@x>`, address: 'g@example.com' })
 
   it('one haiku call for up to six mails still raw and unseen; the whole mail stays, the first line is the fallback', async () => {
@@ -740,5 +751,67 @@ describe('where the day stands', () => {
     looked()
     await c.tick(now)
     expect(kinds('stat')).toHaveLength(0)
+  })
+})
+
+
+describe('relay and concurrent more requests', () => {
+  it('uses Codex when Claude is full and persists the relay budget', async () => {
+    known = usage(99)
+    known.codex = { ok: true, windows: [{ kind: 'week', percent: 9, resetsAt: null }], source: 'test', at: now }
+    const relay = vi.fn(async () => 'Here is a longer explanation about this repo and its tests.')
+    const c = makeCurator({ relay })
+    const item = fy.add({ kind: 'insight', projectId: 'mygame', text: 'Vitest checks the landing behaviour.', more: true })!
+    expect(c.mode()).toBe('relay')
+    await c.more(item)
+    expect(relay).toHaveBeenCalledTimes(1)
+    expect(model).not.toHaveBeenCalled()
+    expect(state().relay.n).toBe(1)
+    expect(makeCurator({ relay }).mode()).toBe('relay')
+    expect(c.calls()).toBe(0)
+  })
+
+  it('rechecks the route after repo facts arrive, without spending an exhausted Claude budget', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    const relay = vi.fn(async () => 'The answer uses the available Codex subscription instead.')
+    const c = makeCurator({ relay, facts: async () => { await gate; return { deps: ['vitest'], files: [], commits: [] } } })
+    const item = fy.add({ kind: 'insight', projectId: 'mygame', text: 'Vitest checks the landing behaviour.', more: true })!
+    const pending = c.more(item)
+    known = usage(99)
+    known.codex = { ok: true, windows: [{ kind: 'week', percent: 9, resetsAt: null }], source: 'test', at: now }
+    release()
+    await pending
+    expect(relay).toHaveBeenCalledTimes(1)
+    expect(c.calls()).toBe(0)
+    expect(state().relay.n).toBe(1)
+  })
+
+  it('records the served build once across restarts with its original date', async () => {
+    const deployment = () => ({ commit: 'a'.repeat(40), at: now - MIN })
+    await makeCurator({ deployment }).tick(now)
+    await makeCurator({ deployment }).tick(now)
+    const events = fy.feed().items.filter((i) => i.id.startsWith('deploy:'))
+    expect(events).toHaveLength(1)
+    expect(events[0].at).toBe(now - MIN)
+  })
+})
+
+
+describe('last available budget slot', () => {
+  it('reserves only one slot when two different insights finish reading facts together', async () => {
+    fs.writeFileSync(path.join(dir, 'curator.json'), JSON.stringify({ calls: { day: dayKey(now), n: DAILY_CAP - 1 }, lines: { day: dayKey(now), n: 16 } }))
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    const c = makeCurator({ facts: async () => { await gate; return { deps: ['vitest'], files: [], commits: [] } } })
+    const a = fy.add({ id: 'i:a', kind: 'insight', projectId: 'mygame', text: 'Vitest checks the game.', more: true })!
+    const b = fy.add({ id: 'i:b', kind: 'insight', projectId: 'mygame', text: 'React renders the game.', more: true })!
+    model.mockResolvedValue('Here is a longer answer about the tests and the game.')
+    const first = c.more(a), second = c.more(b)
+    release()
+    const answers = await Promise.all([first, second])
+    expect(answers.filter(Boolean)).toHaveLength(1)
+    expect(model).toHaveBeenCalledTimes(1)
+    expect(c.calls()).toBe(DAILY_CAP)
   })
 })

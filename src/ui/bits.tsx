@@ -5,6 +5,7 @@ import type { Author, Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
 import { dur, inline, isCommand, plain, segments, status, step, userText } from './format'
 import { copyText, useLongPress } from './copy'
+import { markSeen } from './hints'
 import C from '../i18n/copy'
 import { getLang, tr, useT } from '../i18n'
 import M from '../i18n/bits'
@@ -495,6 +496,7 @@ function Bubble({ className, style, who, copy, mid, children }: { className: str
   const press = useLongPress(async () => {
     const ok = await copyText(copy)
     if (ok) {
+      markSeen('g-copy')
       setCopied(true)
       navigator.vibrate?.(12)
       window.clearTimeout(timer.current)

@@ -1485,7 +1485,7 @@ button.copy.done {
   min-height: 0;
 }
 
-/* Le logo, tout en haut, posé sur la ligne de base. */
+/* Le logo et le diablotin, tout en haut, posés sur la même ligne de base. */
 .agent-top {
   width: 100%;
   max-width: 760px;
@@ -1680,8 +1680,91 @@ button.copy.done {
 
 /* ---------- Devil mode ---------- */
 
+/* Le diablotin, toujours là, à droite du logo, sur sa ligne de base ; pâle quand il dort. */
+.devil-btn {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: end center;
+  opacity: 0.55;
+  flex: none;
+}
+
+.devil-btn .ic {
+  width: 16px;
+  height: 16px;
+}
+
+.devil-btn.on {
+  opacity: 1;
+}
+
 .msg.devil {
   background: var(--devil-reply);
+}
+
+/* ---------- Branchements (src/ui/setup.tsx) : boutons sous les messages de weevboss ---------- */
+
+.setup-chips {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--pad) 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Un aplat de l'encre sur le fond de la bande, gras, angles vifs. */
+.setup-chip {
+  min-height: 40px;
+  padding: 8px 14px;
+  background: var(--ink);
+  color: var(--c, var(--agent));
+  font-weight: 750;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setup-chip .ic {
+  width: 16px;
+  height: 16px;
+}
+
+.setup-chip.done {
+  opacity: 0.55;
+}
+
+.setup-chip:disabled {
+  opacity: 0.7;
+}
+
+.setup-note {
+  flex-basis: 100%;
+}
+
+/* Le QR de connexion : noir sur blanc quel que soit le thème (il doit se scanner), carré, sans arrondi. */
+.setup-qr {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.setup-qr img {
+  width: 168px;
+  height: 168px;
+  background: #fff;
+  padding: 8px;
+  image-rendering: pixelated;
+}
+
+.setup-form .attach-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 /* ---------- Aperçu vivant du fil (bande réduite) ---------- */

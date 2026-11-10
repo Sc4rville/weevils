@@ -72,7 +72,7 @@ interface Persisted {
   /** Coupures vues au passage, reprises ou laissées, coupures déjà annoncées. */
   cuts?: [string, Cut][]
   cleared?: [string, number][]
-  announced?: string[]
+  announced?: [string, number][]
   closedByUs?: [string, number][]
 }
 
@@ -328,8 +328,8 @@ export class Weevils {
   cuts = new Map<string, Cut>()
   /** Reprise ou « laisser » : une coupure antérieure à cette date est réglée. */
   cleared = new Map<string, number>()
-  /** Coupures déjà annoncées (push, fil de weevboss), « id@quand ». */
-  private announced = new Set<string>()
+  /** Coupures déjà annoncées (push, fil de weevboss) : id → quand. Une par épisode, même si son heure se précise ensuite. */
+  private announced = new Map<string, number>()
   /** Fermées par weevils (bouton fermer, ménage des panes) : leur fin n'est pas une coupure. */
   private closedByUs = new Map<string, number>()
   /** Dernier passage de watchCuts : la session vivait-elle, et dans quel état. */
@@ -365,7 +365,8 @@ export class Weevils {
       this.voiceId = p.voiceId
       this.cuts = new Map(p.cuts ?? [])
       this.cleared = new Map(p.cleared ?? [])
-      this.announced = new Set(p.announced ?? [])
+      // Premier format (« id@quand ») : relu tel quel.
+      this.announced = new Map((p.announced ?? []).map((a): [string, number] => (typeof a === 'string' ? [a.split('@')[0], Number(a.split('@')[1]) || 0] : a)))
       this.closedByUs = new Map(p.closedByUs ?? [])
       setCartesiaVoice(this.voiceId)
       warmCues(this.voiceId)
@@ -461,7 +462,7 @@ export class Weevils {
         voiceId: this.voiceId,
         cuts: [...this.cuts].filter(([, c]) => recent(c.at)),
         cleared: [...this.cleared].filter(([, at]) => recent(at)),
-        announced: [...this.announced].slice(-300),
+        announced: [...this.announced].filter(([, at]) => recent(at)),
         closedByUs: [...this.closedByUs].filter(([, at]) => recent(at)),
       }
       fs.writeFileSync(STATE_FILE, JSON.stringify(data, null, 1))
@@ -667,9 +668,10 @@ export class Weevils {
     let changed = false
     for (const s of snap.sessions) {
       if (s.status !== 'interrupted' || !s.interrupted) continue
-      const key = `${s.id}@${s.interrupted.at}`
-      if (this.announced.has(key)) continue
-      this.announced.add(key)
+      // Déjà annoncée, et pas reprise depuis (ni rouverte, ni réglée) : le même épisode, dont l'heure a pu se préciser.
+      const last = this.announced.get(s.id)
+      if (last !== undefined && (this.cleared.get(s.id) ?? 0) <= last && s.lastActivityAt <= last + 30_000) continue
+      this.announced.set(s.id, now)
       changed = true
       if (now - s.interrupted.at > ANNOUNCE_WITHIN_MS) continue
       const project = snap.projects.find((p) => p.id === s.projectId)?.name ?? s.projectId

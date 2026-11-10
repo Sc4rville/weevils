@@ -581,9 +581,23 @@ describe('session coupée en plein travail', () => {
     const title = one()!.title
     expect(send).toHaveBeenCalledWith({ title: tr(P).cutTitle('demo'), body: `${title} · ${tr(CO).cutWhy('died')}`, url: '/#s=s1', tag: 'cut-s1' })
     expect(say.mock.calls).toEqual([[tr(CO).cutSaid(title, 'demo', tr(CO).cutWhy('died'))]])
+    // L'heure de la coupure se précise (SessionEnd arrivé après, puis vue au passage) : toujours le même épisode.
+    w.hooks.set('s1', { event: 'SessionEnd', at: NOW, pid: DEAD, reason: 'other' })
+    w.cuts.set('s1', { at: NOW + 1000, reason: 'died' })
     w.bump()
     await vi.advanceTimersByTimeAsync(250)
     expect(send).toHaveBeenCalledTimes(1)
+    expect(say).toHaveBeenCalledTimes(1)
     expect(one('old')?.status).toBe('interrupted')
+    // Reprise, puis nouvelle coupure : annoncée de nouveau.
+    await w.resume('s1')
+    vi.advanceTimersByTime(2 * MIN)
+    const t = w.store.get('s1')!
+    t.lastActivityAt = Date.now()
+    w.panes = []
+    w.bump()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(one()?.status).toBe('interrupted')
+    expect(send).toHaveBeenCalledTimes(2)
   })
 })

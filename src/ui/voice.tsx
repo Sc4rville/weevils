@@ -98,6 +98,10 @@ const hush = () => {
   }
 }
 
+/** Logos qui écoutent, transcrivent ou parlent : tant qu'il y en a un, les weevils volants attendent (src/ui/weevil.tsx). */
+const busyLogos = new Set<object>()
+export const voiceBusy = () => busyLogos.size > 0
+
 /** Durée d'affichage d'un message d'état du logo, avant son fondu (0,35 s) : moins de 3 s en tout. */
 const NOTE_MS = 2200
 
@@ -124,6 +128,13 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
     const t = setTimeout(() => setErr(null), NOTE_MS)
     return () => clearTimeout(t)
   }, [err])
+  const busyKey = useRef({})
+  useEffect(() => {
+    const k = busyKey.current
+    if (phase !== 'idle' || speaking) busyLogos.add(k)
+    else busyLogos.delete(k)
+    return () => void busyLogos.delete(k)
+  }, [phase, speaking])
   const [reply, setReply] = useState(false)
   const rec = useRef<MediaRecorder | null>(null)
   const chunks = useRef<Blob[]>([])

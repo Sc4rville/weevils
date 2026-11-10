@@ -428,10 +428,19 @@ function BossItem({ item, who, fy }: KindProps) {
     <>
       <div className="in fy-pad">
         <Who item={item} who={who} />
-        {/* A word that can be listened to: the wave leads, the text sits under it. */}
+        {/* Audio stays mounted and independent of the optional transcript. */}
         <Listen item={item} who={who} />
         {item.title && <div className="fy-title">{item.title}</div>}
-        <div className="fy-text">{item.text}</div>
+        {item.voice && item.text ? (
+          <details className="fy-transcript" key={item.id}>
+            <summary>
+              <span className="fy-transcript-read">{t.readTranscript}</span>
+              <span className="fy-transcript-hide">{t.hideTranscript}</span>
+              <Icon name="chevron" dir="down" />
+            </summary>
+            <div className="fy-text">{item.text}</div>
+          </details>
+        ) : <div className="fy-text">{item.text}</div>}
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
       {!!item.media?.length && <MediaStrip media={item.media} />}

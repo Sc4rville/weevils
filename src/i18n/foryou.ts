@@ -51,6 +51,8 @@ export default defineMessages({
     mediaStrip: (n: number) => `${n} médias`,
     fullImage: 'voir l’image entière ↗',
     openIdea: 'voir cette idée',
+    readTranscript: 'Lire la transcription',
+    hideTranscript: 'Masquer la transcription',
     fullVideo: 'ouvrir la vidéo ↗',
     back: 'retour',
 
@@ -109,6 +111,8 @@ export default defineMessages({
     mediaStrip: (n: number) => `${n} media`,
     fullImage: 'view full image ↗',
     openIdea: 'view this idea',
+    readTranscript: 'Read transcript',
+    hideTranscript: 'Hide transcript',
     fullVideo: 'open video ↗',
     back: 'back',
 

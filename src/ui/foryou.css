@@ -1195,3 +1195,23 @@
 }
 /* Screenshots should stay still so their text remains readable. */
 .fy-media.fy-inview img { transform: none; }
+
+/* Native disclosure: keyboard/touch accessible; audio never sits inside the collapsed text. */
+.fy-transcript summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 14px;
+  font-weight: 500;
+}
+.fy-transcript summary::-webkit-details-marker { display: none; }
+.fy-transcript summary .ic { width: 14px; height: 14px; }
+.fy-transcript[open] summary .ic { transform: rotate(180deg); }
+.fy-transcript .fy-transcript-hide,
+.fy-transcript[open] .fy-transcript-read { display: none; }
+.fy-transcript[open] .fy-transcript-hide { display: inline; }
+.fy-transcript .fy-text { padding-top: 4px; }

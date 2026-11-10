@@ -470,6 +470,26 @@ describe('for you: voice messages', () => {
     expect(band('ma').querySelector('.fy-mail .fy-listen')).toBeNull()
   })
 
+  it('starts transcripts folded and keeps audio playing when the text opens or closes', async () => {
+    await open(VOICED)
+    const transcript = band('bo').querySelector<HTMLDetailsElement>('details.fy-transcript')!
+    expect(transcript.open).toBe(false)
+    expect(transcript.querySelector('summary')!.textContent).toContain(t().readTranscript)
+    expect(transcript.querySelector('.fy-listen')).toBeNull()
+    expect(band('b2').querySelector('.fy-transcript')).toBeNull()
+    expect(band('b2').querySelector('.fy-text')!.textContent).toBeTruthy()
+    await click(listen('bo'))
+    await fire('onplaying')
+    const playing = audio()
+    transcript.open = true
+    await flush()
+    transcript.open = false
+    await flush()
+    expect(audio()).toBe(playing)
+    expect(playing.paused).toBe(false)
+    expect(listen('bo').classList.contains('fy-v-playing')).toBe(true)
+  })
+
   it('a tap streams the item’s words in its speaker’s voice; a second tap stops', async () => {
     await open(VOICED)
     await click(listen('bo'))

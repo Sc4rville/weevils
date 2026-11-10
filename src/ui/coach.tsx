@@ -41,6 +41,14 @@ const firstRect = (sel: string) => {
   return r && r.width && r.bottom > 0 && r.top < window.innerHeight ? r : null
 }
 
+/** La page du dessus, si elle contient cet élément (les pages n'ont pas d'autre marque que leur contenu). */
+const topPage = (inner: string) => {
+  const page = [...document.querySelectorAll<HTMLElement>('.page')].at(-1)
+  if (!page?.querySelector(inner)) return null
+  const r = page.getBoundingClientRect()
+  return r.width && r.height ? r : null
+}
+
 /** Le premier mot d'au moins 5 lettres du dernier message de weevboss visible : là où taper pour demander. */
 function wordRect(): DOMRect | null {
   const bubbles = [...document.querySelectorAll<HTMLElement>('.band.agent .ask-thread [data-mid] .text')].reverse()
@@ -63,6 +71,8 @@ function wordRect(): DOMRect | null {
 
 /** Par ordre de priorité : le premier utile dans le contexte du moment est mimé. */
 const GESTURES: Gesture[] = [
+  // La page des repos : les logiciels sont à un glissé de plus vers la gauche.
+  { done: 'softwares', move: 'swipe-left', where: (c) => (c.page ? topPage('.repo-grid') : null) },
   // Une page ouverte : on revient en glissant depuis le bord gauche.
   { done: 'g-back', move: 'swipe-right', where: (c) => (c.page ? rect('.page') : null) },
   // Le fil de weevboss ouvert : un mot se tape pour l'expliquer ; on le referme en tirant vers le bas.

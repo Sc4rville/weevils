@@ -6,7 +6,7 @@ import M from '../i18n/repos'
 import { useApp } from './app-context'
 import { Shell } from './shell'
 import { Icon } from './icons'
-import { useViewHint } from './hints'
+import { markSeen, useViewHint } from './hints'
 import { device } from './setup'
 
 /** Couleur par position : un pas de 7 sur les 16 teintes, donc deux rectangles voisins (à côté ou dessous) n'ont jamais une teinte proche. */
@@ -57,6 +57,12 @@ export function ReposPage() {
     }
   }
 
+  // Un glissé de plus vers la gauche : les logiciels.
+  const toSoftwares = () => {
+    markSeen('softwares')
+    push({ kind: 'softwares' })
+  }
+
   const create = async (e: FormEvent) => {
     e.preventDefault()
     const n = name.trim()
@@ -77,7 +83,7 @@ export function ReposPage() {
   }
 
   return (
-    <Shell slot="agent" kicker="weevils" title={t.title} meta={repos ? t.count(repos.length) : '…'}>
+    <Shell slot="agent" kicker="weevils" title={t.title} meta={repos ? t.count(repos.length) : '…'} onSwipeLeft={toSoftwares}>
       {err && (
         <div className="band invert" role="alert">
           <div className="in meta" style={{ paddingBlock: 12 }}>

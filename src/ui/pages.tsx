@@ -8,6 +8,7 @@ import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Settings, effortLabel, shortModel } from './settings'
 import { ReposPage } from './repos'
+import { SoftwarePage, SoftwaresPage } from './softwares'
 import { CalmConv, CalmGrid } from './calm'
 import { markSeen } from './seen'
 import { mergePending, type Pending } from './pending'
@@ -63,6 +64,10 @@ export function PageView({ page }: { page: Page }) {
       return <ImportPage />
     case 'repos':
       return <ReposPage />
+    case 'softwares':
+      return <SoftwaresPage />
+    case 'software':
+      return <SoftwarePage id={page.id} />
     case 'calm':
       return <CalmGrid />
     case 'calmconv':

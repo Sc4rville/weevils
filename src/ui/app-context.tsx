@@ -20,6 +20,8 @@ export type Page =
   | { kind: 'conversation'; id: string }
   | { kind: 'import' }
   | { kind: 'repos' }
+  | { kind: 'softwares' }
+  | { kind: 'software'; id: string }
   | { kind: 'calm' }
   | { kind: 'calmconv'; id: string }
   | { kind: 'fs'; machine: string; path: string }

@@ -43,7 +43,7 @@ export function usePageChrome(slot: string, page: React.RefObject<HTMLElement | 
   }, [slot, theme, page])
 }
 
-/** Page plein écran dans la couleur du projet. Glisser vers la droite = retour. */
+/** Page plein écran dans la couleur du projet. Glisser vers la droite = retour ; vers la gauche = la page suivante, s'il y en a une (onSwipeLeft). */
 export function Shell({
   slot,
   kicker,
@@ -54,6 +54,7 @@ export function Shell({
   side,
   dock,
   bodyRef,
+  onSwipeLeft,
 }: {
   slot: string
   kicker: string
@@ -67,6 +68,8 @@ export function Shell({
   dock?: ReactNode
   /** Le conteneur qui défile (le fil), pour qui doit le garder en bas. */
   bodyRef?: RefObject<HTMLDivElement | null>
+  /** La page suivante de la suite des glissés (fil → repos → logiciels) : sans elle, rien ne bouge vers la gauche. */
+  onSwipeLeft?: () => void
 }) {
   const { back } = useApp()
   const t = useT(M)
@@ -88,13 +91,13 @@ export function Shell({
       drag="x"
       dragDirectionLock
       dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={{ left: 0, right: 0.9 }}
+      dragElastic={{ left: onSwipeLeft ? 0.18 : 0, right: 0.9 }}
       dragSnapToOrigin
       onDragEnd={(_, info) => {
         if (info.offset.x > 110 || info.velocity.x > 600) {
           markSeen('g-back')
           back()
-        }
+        } else if (onSwipeLeft && (info.offset.x < -90 || info.velocity.x < -600)) onSwipeLeft()
       }}
       role="dialog"
       aria-modal="true"

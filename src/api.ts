@@ -6,6 +6,7 @@ import type { Tour, TourId } from '../shared/tour.ts'
 import { tr } from './i18n'
 import M from './i18n/app'
 import type { FsListing, InfraDetail, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
+import type { ProgressFix, Software, SoftwareList } from '../shared/softwares.ts'
 import type { ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, SessionDetail, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
 
 export class ApiError extends Error {
@@ -119,7 +120,15 @@ export const api = {
   usageToday: () => call<UsageToday>('GET', '/api/usage/today'),
   usageRate: () => call<TokenRate>('GET', '/api/usage/rate'),
   file: (repo: string, path: string, machine: string) => call<FileContent>('GET', `/api/repos/${enc(repo)}/file?path=${enc(path)}&machine=${enc(machine)}`),
+  softwares: () => call<SoftwareList>('GET', '/api/softwares'),
+  software: (id: string) => call<Software>('GET', `/api/softwares/${enc(id)}`),
+  openSoftware: (id: string) => call<Software>('POST', `/api/softwares/${enc(id)}/open`, {}),
+  stopSoftware: (id: string) => call<Software>('POST', `/api/softwares/${enc(id)}/stop`, {}),
+  fixProgress: (id: string, fix: ProgressFix) => call<Software>('POST', `/api/softwares/${enc(id)}/progress`, fix),
 }
+
+/** Capture d'écran d'un logiciel (la version dans l'adresse : une nouvelle capture n'est jamais masquée par le cache). */
+export const softwareShot = (id: string, shot: number) => `/api/softwares/${enc(id)}/shot?v=${shot}`
 
 /** Connexion + instantané tenu à jour par le flux SSE (le serveur annonce une version, on recharge). */
 export function useLive() {

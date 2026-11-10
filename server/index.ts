@@ -18,6 +18,7 @@ import V from './i18n/voice.ts'
 import S from './i18n/setup.ts'
 import { tipRoutes } from './tips.ts'
 import { Hints, hintRoutes } from './hints.ts'
+import { softwareRoutes } from './softwares.ts'
 import { browserSafe, isLocal, trustedFrom } from './http.ts'
 import { startMailBridge } from './mailbridge.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
@@ -572,6 +573,8 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ...tipRoutes(w, json, readBody, () => !!openaiKey()),
   ...hintRoutes(hints, json, readBody),
+  // ---- Mes logiciels : détectés sur chaque machine, aperçu vivant, lancés d'un tap (server/softwares.ts).
+  ...softwareRoutes(w, json, readBody),
   ['POST', /^\/api\/github\/pin$/, async (req, res) => {
     const body = await readBody(req)
     w.pinRepo(String(body.repo ?? ''), !!body.pinned)

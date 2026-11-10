@@ -4,6 +4,8 @@ import { defineMessages } from './index'
 export default defineMessages({
   fr: {
     title: 'pour toi',
+    projects: 'projets',
+    backToProjects: 'revenir aux projets',
     participants: 'qui parle',
     whoAll: 'tout',
     whoSessions: 'sessions',
@@ -65,6 +67,8 @@ export default defineMessages({
   },
   en: {
     title: 'for you',
+    projects: 'projects',
+    backToProjects: 'back to projects',
     participants: 'who is speaking',
     whoAll: 'everything',
     whoSessions: 'sessions',

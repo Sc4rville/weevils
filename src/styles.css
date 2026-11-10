@@ -2563,6 +2563,7 @@ html[data-keyboard] .agent:not(.open) .fyt-words {
   min-height: 48px;
 }
 .agent.open .agent-close {
+  z-index: 2; /* Above the full-width tab bar, including its padded hit area. */
   left: max(calc((100vw - 760px) / 2 + var(--pad) - 10px), calc(var(--pad) - 10px));
   top: var(--safe-t);
   transform: none;
@@ -2703,3 +2704,6 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 }
 .page-body { min-height: 0; }
 .session-heading { flex: none; padding-block: 12px; }
+
+.fy-top .in.fy-top-in { flex-wrap: wrap; }
+.fy-projects { flex: none; margin-left: auto; min-width: 44px; min-height: 44px; font-size: .875rem; }

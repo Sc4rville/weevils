@@ -1017,9 +1017,10 @@ function lookTime(at: number): string {
 }
 
 /** « Pour toi » in full screen. who: the participant isolated at opening (else the one chosen last time). */
+const feedScroll = new Map<string, number>()
 export function ForYouPage({ who }: { who?: string }) {
   const t = useT(M)
-  const { back } = useApp()
+  const { back, home } = useApp()
   const fy = useForYou()
   const page = useRef<HTMLDivElement>(null)
   const body = useRef<HTMLDivElement>(null)
@@ -1034,6 +1035,9 @@ export function ForYouPage({ who }: { who?: string }) {
     showFresh()
     heading.current?.focus({ preventScroll: true })
     write(LOOK_KEY, String(Date.now()))
+    const y = feedScroll.get(sel) ?? 0
+    if (body.current) body.current.scrollTop = y
+    setReading(y > 48)
     return () => setReading(false)
   }, [showFresh, setReading])
 
@@ -1068,10 +1072,11 @@ export function ForYouPage({ who }: { who?: string }) {
               {t.title}
             </h1>
           </div>
+          <button type="button" className="link fy-projects" onClick={home} aria-label={t.backToProjects}>{t.projects}</button>
         </div>
         <Participants list={people} sel={sel} onPick={pick} />
       </div>
-      <div ref={body} className="page-body fy-body" data-scroll onScroll={(e) => setReading(e.currentTarget.scrollTop > 48)}>
+      <div ref={body} className="page-body fy-body" data-scroll onScroll={(e) => { feedScroll.set(sel, e.currentTarget.scrollTop); setReading(e.currentTarget.scrollTop > 48) }}>
         <AnimatePresence initial={false}>
           {fy.fresh > 0 && (
             <Notice key="fresh-notice" eventId={noticeKey('fresh-items', fy.feed?.items.map(feedNoticeKey))}>

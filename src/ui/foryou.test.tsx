@@ -114,7 +114,7 @@ function render(node: React.ReactNode, s = snap()) {
     push: (p: unknown) => pushed.push(p),
     replace: () => {},
     back: () => pushed.push('back'),
-    home: () => {},
+    home: () => pushed.push('home'),
     expanded: null,
     setExpanded: () => {},
     h24Open: false,
@@ -459,6 +459,24 @@ describe('for you: voice messages', () => {
     vi.stubGlobal('Audio', FakeAudio)
   })
   afterEach(() => vi.unstubAllGlobals())
+
+  it('projects is an explicit exit; leaving and reopening the feed keeps its scroll and active audio', async () => {
+    await open(VOICED)
+    await click(listen('bo'))
+    await fire('onplaying')
+    const body = host.querySelector<HTMLElement>('.fy-body')!
+    body.scrollTop = 480
+    act(() => body.dispatchEvent(new Event('scroll', { bubbles: true })))
+    await click(labelled(t().backToProjects))
+    expect(pushed.at(-1)).toBe('home')
+    render(null)
+    expect(audio().paused).toBe(false)
+    render(<ForYouPage />)
+    await flush()
+    expect(host.querySelector('.fy-body')!.scrollTop).toBe(480)
+    expect(audio().paused).toBe(false)
+    expect(FakeAudio.made).toHaveLength(1)
+  })
 
   it('only an item with a voice carries the play glyph and its bars, still until it is played', async () => {
     await open(VOICED)

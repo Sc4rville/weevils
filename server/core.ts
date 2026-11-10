@@ -1101,7 +1101,7 @@ export class Weevils {
         return { id: t.id, previousTitle: this.titles.get(t.id)?.title, tool: t.tool, where: where.repo ?? t.cwd.replace(HOME, '~'), ...digestOf(t) }
       })
       const out = await llmTitles(items, path.join(DATA_DIR, 'titles'))
-      if (!out.some(r => todo.some(t => t.id === r.id))) throw new Error('empty title result')
+      if (!out.some(r => todo.some(t => t.id === r.id))) throw new Error('empty title result') // i18n-ignore: internal diagnostic, never returned to the user
       this.titleRetry.succeeded()
       for (const r of out) {
         const t = todo.find((x) => x.id === r.id)

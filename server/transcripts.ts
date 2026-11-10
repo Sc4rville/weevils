@@ -1,3 +1,4 @@
+import { codexToolLabel } from './codex-tool-label.ts'
 // Lecture incrémentale des transcripts Claude Code (~/.claude/projects) et Codex (~/.codex/sessions).
 // Formats non documentés : on lit ce qui est utile et on ignore le reste sans jamais planter.
 
@@ -107,7 +108,7 @@ function delegatedMessage(t: Transcript, item: any, at: number): boolean {
   const signed = parseSigned(unwrapPasted(input.text))
   touch(t, at)
   t.firstPrompt ??= input.text
-  push(t, { id, role: 'orchestrator', author: signed?.author ?? 'codex', text: signed?.text ?? unwrapPasted(input.text), at })
+  push(t, { ...{ coordination: true }, id, role: 'orchestrator', author: signed?.author ?? 'codex', text: signed?.text ?? unwrapPasted(input.text), at })
   if (!signed) (t.delegationSources ??= new Map()).set(id, input.source)
   return true
 }
@@ -337,16 +338,11 @@ function codexLine(t: Transcript, o: any) {
     t.phase = 'working'
     t.workStartedAt ??= at
     touch(t, at)
-    let input: any = {}
-    try {
-      input = typeof p.arguments === 'string' ? JSON.parse(p.arguments) : (p.arguments ?? p.action ?? {})
-    } catch {
-      input = { command: String(p.arguments ?? '') }
+    let input: unknown = p.arguments ?? p.input ?? p.action ?? {}
+    if (typeof input === 'string') {
+      try { input = JSON.parse(input) } catch { /* Free-form code stays opaque; never evaluated. */ }
     }
-    if (Array.isArray(input.command)) input.command = input.command.join(' ')
-    if (Array.isArray(input.cmd)) input.command = input.cmd.join(' ')
-    else if (typeof input.cmd === 'string') input.command = input.cmd
-    push(t, { id: p.call_id ?? `${t.id}-${at}-f`, role: 'event', text: toolSummary(p.name ?? tr(M).tool, input), at })
+    push(t, { id: p.call_id ?? `${t.id}-${at}-f`, role: 'event', text: codexToolLabel(p.name ?? 'local_shell_call', input), at })
   }
 }
 

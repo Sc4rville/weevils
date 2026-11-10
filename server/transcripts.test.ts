@@ -1,3 +1,5 @@
+import { tr } from './i18n.ts'
+import Tools from './i18n/codex-tools.ts'
 // Lecture des transcripts Claude Code et Codex : découverte des sessions, lecture incrémentale, état (phase, file,
 // sous-agents) qui pilote le statut et la confirmation de livraison. Vrais fichiers dans un dossier temporaire.
 import fs from 'node:fs'
@@ -239,7 +241,7 @@ describe('codex', () => {
     expect(t).toMatchObject({ tool: 'codex', branch: 'main', model: 'gpt-x', approval: 'never', phase: 'working', workStartedAt: now - 5000 })
     expect(t.messages.map((m) => [m.role, m.text])).toEqual([
       ['user', 'list files'],
-      ['event', 'shell · ls -la'],
+      ['event', tr(Tools).read],
     ])
     append(f, [ev('response_item', { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'two files' }] }, now - 3000), ev('event_msg', { type: 'task_complete' }, now - 2000)])
     store.scan(now)
@@ -247,6 +249,16 @@ describe('codex', () => {
     expect(t.phase).toBe('idle')
     expect(t.workStartedAt).toBeNull()
     expect(t.messages.at(-1)).toMatchObject({ role: 'assistant', text: 'two files' })
+  })
+
+  it('labels free-form exec input without leaking code or changing user messages', () => {
+    const now = Date.now()
+    write(codexFile(now), [
+      ev('response_item', { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Continue mon travail' }] }, now - 2000),
+      ev('response_item', { type: 'custom_tool_call', name: 'exec', input: 'await tools.exec_command({cmd:"curl https://secret:password@host"})', call_id: 'private-call' }, now - 1000),
+    ])
+    store.scan(now)
+    expect(one().messages.map(m => m.text)).toEqual(['Continue mon travail', tr(Tools).command])
   })
 
   it('consignes AGENTS.md injectées : pas un message de l’utilisateur', () => {
@@ -346,6 +358,9 @@ describe('codex : messages entrants du relais', () => {
       { role: 'assistant', author: undefined, text: 'Je vérifie.' },
       { role: 'orchestrator', author: 'alice', text: 'Autre point' },
     ])
+    expect(one().messages[0]).not.toHaveProperty('coordination')
+    expect(one().messages[1]).toMatchObject({ coordination: true, author: 'weevboss' })
+    expect(one().messages[3]).toMatchObject({ coordination: true })
     expect(store.scan(now)).toBe(false)
     append(file, [event('response_item', incoming('fco-three', 'Vérifie le résultat &amp; reprends.'), now)])
     store.scan(now)

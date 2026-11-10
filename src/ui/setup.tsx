@@ -63,10 +63,10 @@ const setFlow = (f: Flow | null) => {
  * pose les questions. Rejette si le serveur ne répond pas. */
 export async function startSetup(brick: Brick) {
   // Le fil de weevboss s'ouvre en haut de l'écran tout de suite (d'une page, du bas du flux) : sa réponse y arrive sous les yeux.
-  focusBoss()
+  focusBoss({ flash: false })
   const r = await api.setupAsk(brick, device())
-  // Déjà dit juste avant (second tap, parcours relancé) : rien de nouveau n'arrive, l'explication existante est remise en avant.
-  if (r.said) focusBoss(r.said)
+  // La réponse (nouvelle, ou l'explication déjà là si on relance) est mise en avant, une fois.
+  focusBoss({ mid: r.said })
   if (r.flow && FIELDS[brick]) setFlow({ brick, step: 0, values: {} })
 }
 /** Pareil, sans attendre ni signaler d'erreur (bulles, diablotin). */

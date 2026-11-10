@@ -177,6 +177,16 @@ body {
 
 /* Une page est ouverte : la fenêtre entière est de sa couleur (sous le clavier iOS, au rebond), opaque,
    et le fil principal n'est plus peint du tout : rien de lui ne peut transparaître dans la zone que le clavier décale. */
+/* Ce qu'une action amène sous les yeux (scrollIntoView, src/ui/follow.ts) s'arrête sous la barre d'état et au-dessus du rail. */
+html {
+  scroll-padding-top: var(--safe-t);
+  scroll-padding-bottom: calc(var(--rail) + var(--safe-b) + 8px);
+}
+
+html[data-page] {
+  scroll-padding-bottom: var(--safe-b);
+}
+
 html[data-page] {
   background: var(--page-c);
 }

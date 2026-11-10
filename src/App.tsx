@@ -14,7 +14,7 @@ import { PageView } from './ui/pages'
 import { usePinch } from './ui/calm'
 import { adoptUnknown } from './ui/seen'
 import { useDevil } from './ui/devil'
-import { FOCUS_BOSS, flashBossMessage, toTop, when } from './ui/follow'
+import { FOCUS_BOSS, flashBossMessage, toTop, when, type FocusBoss } from './ui/follow'
 import { ensurePush } from './push'
 import { syncServer, useT } from './i18n'
 import M from './i18n/app'
@@ -159,19 +159,21 @@ export default function App() {
   // replierait les bandes et ferait sauter l'écran) et sa réponse est mise en avant (src/ui/follow.ts).
   useEffect(() => {
     const on = (e: Event) => {
-      const mid = (e as CustomEvent<string | undefined>).detail
+      const o = (e as CustomEvent<FocusBoss>).detail ?? {}
       const open = () => {
         const go = () => {
           setExpanded('agent')
-          flashBossMessage(mid)
+          if (o.flash !== false) flashBossMessage(o.mid)
         }
         if (window.scrollY < 4) return go()
         toTop()
         when(() => window.scrollY < 4, go, 900)
       }
       if (stackRef.current.length) {
+        // Déjà en route vers l'accueil (deux appels coup sur coup) : on remplace seulement ce qui suivra.
+        const going = !!afterPop.current
         afterPop.current = open
-        history.go(-stackRef.current.length)
+        if (!going) history.go(-stackRef.current.length)
       } else open()
     }
     window.addEventListener(FOCUS_BOSS, on)

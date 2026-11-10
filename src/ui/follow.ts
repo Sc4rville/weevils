@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
 // Le regard suit l'action : trois outils partagés par toute l'app.
 // - useFollow : un fil qui défile garde sa fin sous les yeux pendant qu'elle s'écrit, sauf si l'utilisateur remonte lire.
@@ -11,21 +11,36 @@ const behavior = (): ScrollBehavior => (reduced() ? 'auto' : 'smooth')
 
 /**
  * Garde la fin d'un fil visible. `open` : le fil est affiché (à l'ouverture, on y est déjà, sans défilement visible).
- * On suit tout ce qui allonge le contenu (nouveau message qui se déplie, réponse qui s'écrit, indicateur de travail),
- * image par image : le mouvement suit l'animation du contenu, sans saut. Seul un geste de l'utilisateur (doigt,
- * molette, clavier) peut décrocher le suivi, quand il remonte à plus de `stick` px du bas ; revenir en bas le raccroche.
- * `grow` : une clé qui change quand le contenu s'allonge (suivi immédiat au rendu, en plus de l'observateur de taille).
- * Renvoie `reading` (vrai pendant qu'il relit plus haut) et `toEnd()` (redescendre en douceur, ex. après un envoi).
+ * On suit tout ce qui allonge le contenu (nouveau message qui se déplie, réponse qui s'écrit, indicateur de travail) et
+ * ce qui raccourcit le conteneur (clavier qui s'ouvre, navigateur intégré dessous), image par image : le mouvement suit
+ * l'animation du contenu, sans saut. Seul un geste de l'utilisateur (doigt, molette, clavier) peut décrocher le suivi,
+ * quand il remonte à plus de `stick` px du bas ; revenir en bas le raccroche.
+ * - `grow` : une clé qui change quand le contenu s'allonge (suivi immédiat au rendu, en plus de l'observateur de taille).
+ * - `hold` : suivi suspendu (un mot sélectionné et sa réponse sous un message : on ne les pousse pas hors de l'écran).
+ * - Un tap dans le fil qui déplie quelque chose (« lire tout », code, étapes) : le bloc s'ouvre vers le bas, on ne le
+ *   repousse pas vers le haut pendant qu'il se déplie.
+ * Renvoie `reading` (il relit plus haut), `behind` (état React : du nouveau est arrivé en bas pendant qu'il relisait)
+ * et `toEnd()` (redescendre en douceur, ex. après un envoi : un glissé, jamais un saut).
  */
-export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick = 80, grow?: unknown) {
+export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick = 80, grow?: unknown, hold = false) {
   const reading = useRef(false)
-  const user = useRef({ touching: false, until: 0 })
+  const held = useRef(hold)
+  held.current = hold
+  const [behind, setBehind] = useState(false)
+  const behindRef = useRef(false)
+  const setB = (v: boolean) => {
+    if (behindRef.current === v) return
+    behindRef.current = v
+    setBehind(v)
+  }
+  const user = useRef({ touching: false, until: 0, tapAt: 0, glide: 0 })
   useLayoutEffect(() => {
     const el = ref.current
     if (!el || !open) return
     el.scrollTop = el.scrollHeight
     reading.current = false
-  }, [ref, open])
+    setB(false)
+  }, [ref, open]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const el = ref.current
     if (!el) return
@@ -39,22 +54,40 @@ export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick
     const wheel = mark(400)
     const key = mark(600)
     const onScroll = () => {
+      const far = el.scrollHeight - el.scrollTop - el.clientHeight > stick
+      if (!far && reading.current) {
+        reading.current = false
+        setB(false)
+      }
       if (!u.touching && Date.now() > u.until) return // notre propre défilement, ou le contenu qui bouge
-      reading.current = el.scrollHeight - el.scrollTop - el.clientHeight > stick
+      reading.current = far
     }
-    const pin = () => {
-      if (!reading.current && el.isConnected && el.clientHeight > 0) el.scrollTop = el.scrollHeight
+    // Un tap sur un bouton du fil (déplier, « lire tout », étapes, code) : ce qui s'ouvre s'ouvre vers le bas.
+    const tap = (e: Event) => {
+      const t = e.target as Element | null
+      if (t?.closest?.('button, [role="button"], summary, a')) u.tapAt = Date.now()
     }
-    // Le contenu grandit (message qui se déplie, texte qui arrive) : on suit, à chaque changement de taille.
-    const ro = new ResizeObserver(pin)
+    const pin = (fromSize: boolean) => {
+      if (!el.isConnected || el.clientHeight === 0) return
+      if (reading.current || held.current) {
+        if (reading.current && fromSize && el.scrollHeight - el.scrollTop - el.clientHeight > stick) setB(true)
+        return
+      }
+      if (fromSize && Date.now() - u.tapAt < 900) return
+      if (Date.now() < u.glide) el.scrollTo({ top: el.scrollHeight, behavior: behavior() })
+      else el.scrollTop = el.scrollHeight
+    }
+    // Le contenu grandit, ou le fil raccourcit (clavier, panneau dessous) : on suit, à chaque changement de taille.
+    const ro = new ResizeObserver(() => pin(true))
     const watch = () => {
       ro.disconnect()
+      ro.observe(el)
       for (const c of Array.from(el.children)) ro.observe(c)
     }
     watch()
     const mo = new MutationObserver(() => {
       watch()
-      pin()
+      pin(true)
     })
     mo.observe(el, { childList: true })
     el.addEventListener('touchstart', down, { passive: true })
@@ -64,6 +97,7 @@ export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick
     el.addEventListener('pointerup', up, { passive: true })
     el.addEventListener('wheel', wheel, { passive: true })
     el.addEventListener('keydown', key)
+    el.addEventListener('click', tap, true)
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => {
       ro.disconnect()
@@ -75,38 +109,96 @@ export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick
       el.removeEventListener('pointerup', up)
       el.removeEventListener('wheel', wheel)
       el.removeEventListener('keydown', key)
+      el.removeEventListener('click', tap, true)
       el.removeEventListener('scroll', onScroll)
     }
-  }, [ref])
+  }, [ref]) // eslint-disable-line react-hooks/exhaustive-deps
   // Ce qui allonge le contenu, connu de l'appelant (dernier message, indicateur de travail) : on suit aussi au rendu,
   // sans attendre l'observateur de taille.
   useEffect(() => {
     const el = ref.current
-    if (el && open && !reading.current) el.scrollTop = el.scrollHeight
-  }, [ref, open, grow])
+    if (!el || !open) return
+    if (reading.current) {
+      if (grow !== undefined && el.scrollHeight - el.scrollTop - el.clientHeight > stick) setB(true)
+      return
+    }
+    if (held.current) return
+    if (Date.now() < user.current.glide) el.scrollTo({ top: el.scrollHeight, behavior: behavior() })
+    else el.scrollTop = el.scrollHeight
+  }, [ref, open, grow]) // eslint-disable-line react-hooks/exhaustive-deps
   return {
     reading,
-    /** Redescendre en douceur et reprendre le suivi (après un envoi : sa réponse arrive en bas). */
+    behind,
+    /** Redescendre en douceur et reprendre le suivi (après un envoi : sa réponse arrive en bas). Pendant le glissé,
+     * ce qui arrive prolonge le même mouvement doux au lieu de sauter. */
     toEnd: () => {
       const el = ref.current
       reading.current = false
-      el?.scrollTo({ top: el.scrollHeight, behavior: behavior() })
+      setB(false)
+      user.current.glide = Date.now() + 700
+      requestAnimationFrame(() => el?.scrollTo({ top: el.scrollHeight, behavior: behavior() }))
     },
   }
 }
 
-/** L'élément est-il entièrement visible, dans la fenêtre et dans ses conteneurs qui défilent ? */
+/** Les bords réellement libres de l'écran : sous la barre d'état (status-cover), au-dessus du rail 24/7 (sauf page
+ * ouverte, qui le recouvre) et du clavier (visualViewport). */
+function viewBounds() {
+  const vv = window.visualViewport
+  const vTop = vv?.offsetTop ?? 0
+  const top = Math.max(vTop, document.querySelector('.status-cover')?.getBoundingClientRect().bottom ?? 0)
+  let bottom = vTop + (vv?.height ?? window.innerHeight)
+  if (!document.documentElement.dataset.page) {
+    const rail = document.querySelector('.h24-head')?.getBoundingClientRect().top
+    if (rail && rail > top) bottom = Math.min(bottom, rail)
+  }
+  return { top, bottom }
+}
+
+/** L'élément est-il entièrement visible, dans la fenêtre (bords libres) et dans ses conteneurs qui défilent ?
+ * Sa marge `scroll-margin-bottom` compte (un bouton flottant posé dessus, comme le logo des pages). */
 function inView(el: Element) {
   const r = el.getBoundingClientRect()
-  const vh = window.visualViewport?.height ?? window.innerHeight
-  if (r.top < 0 || r.bottom > vh) return false
+  const mb = parseFloat(getComputedStyle(el).scrollMarginBottom) || 0
+  const v = viewBounds()
+  if (r.top < v.top || r.bottom + mb > v.bottom) return false
   for (let p = el.parentElement; p; p = p.parentElement) {
     const s = getComputedStyle(p)
     if (!/(auto|scroll|hidden)/.test(s.overflowY)) continue
     const b = p.getBoundingClientRect()
-    if (r.top < b.top - 1 || r.bottom > b.bottom + 1) return false
+    if (r.top < b.top - 1 || r.bottom + mb > b.bottom + 1) return false
   }
   return true
+}
+
+/**
+ * Garde un élément à la même place à l'écran pendant que la mise en page bouge autour (une bande au-dessus qui se
+ * replie, l'ordre qui change) : la fenêtre défile d'autant, image par image, pendant `ms`. Un geste de l'utilisateur
+ * l'arrête. Renvoie `fix()`, à appeler aussi juste après le rendu (avant l'affichage) pour un changement instantané.
+ */
+export function keepInPlace(el: Element | null | undefined, ms = 650): () => void {
+  if (!el) return () => undefined
+  const top0 = el.getBoundingClientRect().top
+  const end = Date.now() + ms
+  let stop = false
+  const off = () => (stop = true)
+  window.addEventListener('touchstart', off, { once: true, passive: true })
+  window.addEventListener('wheel', off, { once: true, passive: true })
+  const fix = () => {
+    if (stop || !el.isConnected) return
+    const d = el.getBoundingClientRect().top - top0
+    if (Math.abs(d) >= 1) window.scrollBy(0, d)
+  }
+  const tick = () => {
+    fix()
+    if (!stop && Date.now() < end) requestAnimationFrame(tick)
+    else {
+      window.removeEventListener('touchstart', off)
+      window.removeEventListener('wheel', off)
+    }
+  }
+  requestAnimationFrame(tick)
+  return fix
 }
 
 /**
@@ -131,7 +223,22 @@ export function flash(el: Element | null | undefined) {
 /** Le fil de weevboss, ouvert en haut de l'écran, d'où qu'on soit (App.tsx l'écoute). `mid` : le message à mettre en
  * avant (sinon, le prochain qui arrive). */
 export const FOCUS_BOSS = 'weevils:focus-boss'
-export const focusBoss = (mid?: string) => window.dispatchEvent(new CustomEvent<string | undefined>(FOCUS_BOSS, { detail: mid }))
+export interface FocusBoss {
+  /** Le message à mettre en avant ; sans : le prochain qui arrive. */
+  mid?: string
+  /** false : ouvrir seulement, sans mise en avant (un tap sur l'aperçu). */
+  flash?: boolean
+}
+export const focusBoss = (o: FocusBoss = {}) => window.dispatchEvent(new CustomEvent<FocusBoss>(FOCUS_BOSS, { detail: o }))
+
+/** Une réponse de weevboss arrivée pendant qu'une page le cachait : elle est mise sous les yeux au retour (App.tsx). */
+let onReturn: FocusBoss | null = null
+export const bossOnReturn = (o: FocusBoss = {}) => void (onReturn = o)
+export const takeBossOnReturn = () => {
+  const o = onReturn
+  onReturn = null
+  return o
+}
 
 /** Attend qu'une condition soit vraie (image par image), au plus `ms`, puis appelle `then` (même si elle ne l'est pas). */
 export function when(ok: () => boolean, then: () => void, ms = 800) {

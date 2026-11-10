@@ -10,9 +10,9 @@ import type { Tool } from './api.ts'
  * mail: a message received from an outside actor (mail bridge author) · proposals: one or more suggested actions ·
  * session: what a session just did, asks, or why it stopped · improve: a way for weevils to work better for this user ·
  * alert: something that needs the user now · insight: something worth knowing about what the agents touch ·
- * milestone: a big number or a first time.
+ * milestone: a big number or a first time · stat: where things stand, as bars (a usage window, today's work per project…).
  */
-export type ForYouKind = 'media' | 'boss' | 'mail' | 'proposals' | 'session' | 'improve' | 'alert' | 'insight' | 'milestone'
+export type ForYouKind = 'media' | 'boss' | 'mail' | 'proposals' | 'session' | 'improve' | 'alert' | 'insight' | 'milestone' | 'stat'
 
 /** Picks the colour family: result (green), question (amber), alert (the alert red), neutral (the speaker's own colour), magic (gradient). */
 export type ForYouTone = 'result' | 'question' | 'alert' | 'neutral' | 'magic'
@@ -25,6 +25,18 @@ export interface ForYouMedia {
   /** File name, for the accessible label. */
   name: string
   bytes: number
+}
+
+/** A bar of a « stat » item (or under any item): where something stands. value/max draw the bar; shown is the figure in words (« 71 % », « 12 sur 18 »). */
+export interface ForYouGauge {
+  label: string
+  value: number
+  max: number
+  shown: string
+  /** Colour of the bar when it speaks of a project. */
+  projectId?: string
+  /** The bar is close to a limit: drawn in the alert colour. */
+  hot?: boolean
 }
 
 /** One suggested action inside a « proposals » item. */
@@ -81,6 +93,11 @@ export interface ForYouItem {
   /** « Learn more » exists: POST /api/foryou/<id>/more answers { text }, kept in moreText. */
   more?: boolean
   moreText?: string
+  /** Bars: the item shows figures (a stat, or a result with its progress). */
+  gauges?: ForYouGauge[]
+  /** The item can be listened to, as a voice message in its speaker's own voice: the voice id for GET /api/speak/stream?text=…&voice=…
+   *  (absent: no speech on this server). Each speaker keeps the same voice. */
+  voice?: string
   /** Already under the user's eyes once (any device). */
   seen?: boolean
   /** Computed from the current state (an alert, pending proposals): it leaves on its own when the state does. */
@@ -110,4 +127,4 @@ export interface ForYouMark {
   unseen: number
 }
 
-export const FORYOU_KINDS: ForYouKind[] = ['media', 'boss', 'mail', 'proposals', 'session', 'improve', 'alert', 'insight', 'milestone']
+export const FORYOU_KINDS: ForYouKind[] = ['media', 'boss', 'mail', 'proposals', 'session', 'improve', 'alert', 'insight', 'milestone', 'stat']

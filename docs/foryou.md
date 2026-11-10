@@ -58,9 +58,21 @@ actions?, reply?, open?, more?, seen?, live? }`. `who` is the speaker (weevboss,
 | `alert` | what needs the user now, sober | live state: sessions waiting or cut, a usage window nearly full, a saturated machine, a failed auto task | open the place where it is solved; it leaves by itself once solved |
 | `insight` | bold text, like a page you learn from: something true about the stack or the tools the agents are using | generated per repo from what is really in it (dependencies, languages, recent commits), cached | « more »: a longer answer unfolds in place |
 | `milestone` | a big number or a first time, in colour-shifting type | deterministic counters (turns delivered today, commits, first auto task done…) | — |
+| `stat` | where things stand, as bars: a usage window, today's turns per project, the auto queue, a machine | plain counters from the snapshot, usage and infra (no model) | open the place it speaks of |
 
-Sketch → kinds: 1 media · 2 boss · 3 mail · 4 proposals · 5 session · new idea: improve · 6 alert · 7 insight
-and milestone.
+Sketch → kinds: 1 media · 2 boss · 3 mail · 4 proposals · 5 session · new idea: improve · 6 alert · 7 insight,
+milestone and stat.
+
+Added by the user while step 1 was being built:
+
+- **Voice messages.** A word from weevboss or from an outside actor can be listened to: the item carries a play
+  glyph and a moving wave, a tap reads it aloud. Every speaker has **its own voice**, always the same one (weevboss
+  keeps the app's voice; each author gets one from the available voices, by a stable pick, overridable in its
+  declaration). It reuses `GET /api/speak/stream?text=…&voice=…`; nothing is synthesised before the tap. Some items
+  are voice-first (the digest's thought, a short mail): the wave leads and the text sits under it.
+- **Figures as shapes.** Bars and small gauges, as their own item (`stat`) and under other items when they say
+  « we are here » (a usage window at 71 %, 12 turns delivered of 18 started, the auto queue, a project's share of
+  the day). `ForYouGauge { label, value, max, shown, projectId?, hot? }`. They fill when they come into view.
 
 ### 2.2 Not slop
 

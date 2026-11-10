@@ -47,6 +47,9 @@ fake_claude() {
   fi
 }
 QR='█|▀|▄'
+# The key=value lines of the summary an agent parses; valid when it is the last thing printed and every line is key=value.
+summary_lines() { sed -n '/^--- weevils summary ---$/,/^--- end ---$/p' "$1" | sed '1d;$d'; }
+summary_valid() { [ "$(tail -1 "$1")" = '--- end ---' ] && [ -n "$(summary_lines "$1")" ] && ! summary_lines "$1" | grep -qvE '^[a-z_]+='; }
 check() { # check "description" command… (runs on the host; use inside/as_test for the container)
   local d=$1; shift
   if "$@" >"$work/out" 2>&1; then passes=$((passes + 1)); printf '  \e[32mok\e[0m   %s\n' "$d"
@@ -93,6 +96,9 @@ run_systemd() {
   check "end screen shows the login link" grep -q "localhost:4179/#k=" "$work/install1.log"
   check "no domain: no QR code, the ways in explained instead" bash -c "! grep -qE '$QR' '$work/install1.log' && grep -q -- '--domain <host>' '$work/install1.log' && grep -q 'tailscale serve --bg 4179' '$work/install1.log' && grep -q -- 'install.sh --lan' '$work/install1.log' && grep -q 'ssh -L 4179:127.0.0.1:4179' '$work/install1.log'"
   check "Claude Code logged in: 'weevils is ready', permission prompts announced" bash -c "grep -q 'weevils is ready' '$work/install1.log' && grep -q 'without permission prompts' '$work/install1.log'"
+  check "end screen ends on the first thing to try (no project yet: a notes app)" bash -c "tail -4 '$work/install1.log' | grep -q 'first thing to try: .*make me a small notes app'"
+  check "hand-off file: install.json v1, by=script, local, Claude ready" as_test 'jq -e ".v == 1 and (.at | type) == \"number\" and .by == \"script\" and .agent == \"\" and .url == \"http://localhost:4179\" and .mode == \"local\" and .phoneLink == false and .lang == \"en\" and .ready == {\"claude\": true, \"codex\": false, \"gh\": false} and .projects == 0 and .repos == 0" ~/.local/share/weevils/install.json && [ "$(stat -c %a ~/.local/share/weevils/install.json)" = 600 ]'
+  check "--yes without a terminal: no summary block" bash -c "! grep -q -- '--- weevils summary ---' '$work/install1.log'"
   check "Claude settings: hooks and the bypass dialog pre-accepted, no global env" as_test 'jq -e ".skipDangerousModePermissionPrompt == true and .env == null" ~/.claude/settings.json && test -f ~/.claude/settings.json.bak-weevils && ! grep -q "^WEEVILS_SAFE=1" ~/.config/weevils/env'
   # Login from "outside" (x-forwarded-for: not a local request), over plain http.
   check "login with the code works over http, cookie without Secure" as_test '
@@ -112,6 +118,18 @@ run_systemd() {
   as_test 'sha256sum ~/.config/weevils/env ~/.config/weevils/secret ~/.claude/settings.json ~/.config/systemd/user/weevilsd.service' >"$work/sum2"
   check "config, code, hooks and unit unchanged" diff "$work/sum1" "$work/sum2"
   check "no rebuild when nothing changed" grep -q "already built" "$work/install2.log"
+  say "systemd: run by an agent (--agent, then detected from CLAUDECODE=1 without a terminal)"
+  as_test 'mkdir -p ~/projects/app1/.git ~/projects/app2/.git ~/.claude/projects/-home-test-projects-app1 && touch ~/.claude/projects/-home-test-projects-app1/s1.jsonl'
+  check "install.sh --agent exits 0" as_test 'cd weevils && ./install.sh --agent'
+  cp "$work/out" "$work/agent1.log"; sed -n '/--- weevils summary ---/,$p' "$work/agent1.log" | sed 's/^/  │ /'
+  check "summary block last, every line key=value" summary_valid "$work/agent1.log"
+  check "summary: status ok, local link, Claude logged in, 1 project, 2 repos" bash -c "grep -qx status=ok '$work/agent1.log' && grep -qx mode=local '$work/agent1.log' && grep -q '^link=http://localhost:4179/#k=' '$work/agent1.log' && grep -qx claude_logged=yes '$work/agent1.log' && grep -qx projects=1 '$work/agent1.log' && grep -qx repos=2 '$work/agent1.log'"
+  check "no colours, no QR code" bash -c "! grep -q \$'\\e\\[' '$work/agent1.log' && ! grep -qE '$QR' '$work/agent1.log'"
+  check "end screen: the project already in the app, what to ask" grep -q 'already in the app: your Claude Code project.*' "$work/agent1.log"
+  check "install.json: by=agent, one project, two repos" as_test 'jq -e ".by == \"agent\" and .projects == 1 and .repos == 2" ~/.local/share/weevils/install.json'
+  check "CLAUDECODE=1 without a terminal acts as --agent" as_test 'cd weevils && CLAUDECODE=1 ./install.sh </dev/null >/tmp/cc.log 2>&1; grep -qx agent=claude /tmp/cc.log && jq -e ".by == \"agent\" and .agent == \"claude\"" ~/.local/share/weevils/install.json'
+  check "a bad option still ends with a summary (status=failed)" as_test 'cd weevils && ./install.sh --agent --port abc >/tmp/bad.log 2>&1; [ $? = 2 ] && grep -qx status=failed /tmp/bad.log'
+  as_test 'rm -rf ~/projects ~/.claude/projects'
   check "still active, one weevilsd" as_test 'systemctl --user is-active weevilsd && [ "$(systemctl --user show weevilsd -p NMainPID --value 2>/dev/null || echo 1)" != 0 ] && curl -sf http://127.0.0.1:4179/api/me'
 
   say "systemd: --domain with Caddy (tls internal for the test)"
@@ -127,6 +145,7 @@ run_systemd() {
     grep -i "^set-cookie: wv=" /tmp/h3 | grep -qi secure'
   check "WEEVILS_PUBLIC_URL set from --domain, name kept" as_test 'grep -qx WEEVILS_PUBLIC_URL=https://weevils.test ~/.config/weevils/env && grep -qx WEEVILS_USER_NAME=Test ~/.config/weevils/env'
   check "end screen shows the https link" grep -q "https://weevils.test/#k=" "$work/install3.log"
+  check "install.json: public, phoneLink" as_test 'jq -e ".mode == \"public\" and .phoneLink == true and .url == \"https://weevils.test\"" ~/.local/share/weevils/install.json'
   check "a domain that does not resolve is said at once" grep -q "weevils.test does not resolve yet" "$work/install3.log"
 
   say "systemd: re-run with another port: the Caddy site follows"

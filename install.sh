@@ -56,6 +56,8 @@ EN[no_sudo]="installing packages needs root: run as root, or install sudo."
 FR[no_sudo]="installer des paquets demande root : lance en root, ou installe sudo."
 EN[sudo_pw]="this step needs root and sudo asks for a password, which can't be typed here. Run the same command once in a terminal (it asks for the password), or install these first:"
 FR[sudo_pw]="cette étape demande root et sudo veut un mot de passe, impossible à taper ici. Lance la même commande une fois dans un terminal (elle demandera le mot de passe), ou installe d'abord :"
+EN[agent_next]="for the agent: now read AGENTS.md in this folder, steps 6 and 7, and end with the short message it describes, in the user's language (no commands, no technical notes):"
+FR[agent_next]="pour l'agent : lis maintenant AGENTS.md dans ce dossier, étapes 6 et 7, et termine par le court message qu'il décrit, dans la langue de l'utilisateur (pas de commandes, pas de notes techniques) :"
 EN[agent_mode]="run by an agent: no questions, no colours, a summary at the end"
 FR[agent_mode]="lancé par un agent : pas de questions, pas de couleurs, un résumé à la fin"
 EN[no_pm]="no supported package manager (apt, dnf, pacman). Install these by hand, then run me again:"
@@ -943,12 +945,14 @@ finish() {
   [ "${url#https://}" = "$url" ] || [ -z "$("$svc" config get OPENAI_API_KEY)" ] || try=try_voice
   star "$(t "$try") $(t "$it")"
   echo
+  [ "$AGENT" = 0 ] || info "$(t agent_next) $DIR/AGENTS.md"
 
   kv role main; kv url "$url"; kv code "$code"; kv link "$url/#k=$code"; kv mode "$mode"
   kv https "$([ "${url#https://}" != "$url" ] && echo yes || echo no)"; kv port "$port"
   kv ready "$([ "$title" = ready ] && echo yes || echo no)"
   sum_found
   kv qrencode "$(yn command -v qrencode)"; kv handoff "$HANDOFF"
+  kv next "read $DIR/AGENTS.md steps 6 and 7, then write the final message"
   summary ok
 }
 
@@ -1025,7 +1029,7 @@ uninstall() {
 main() {
   [ -z "${HELP:-}" ] || { echo "$(t usage)"; exit 0; }
   [ -z "$BAD_VAL" ] || { echo "$(t bad_opt) $BAD_VAL" >&2; BAD=1; }
-  [ -z "${BAD:-}" ] || { echo "$(t usage)" >&2; exit 2; }
+  [ -z "${BAD:-}" ] || { echo "$(t usage)" >&2; summary failed "$(t usage)"; exit 2; }
   printf '%s weevils %s %s\n' "$Y$B" "$R" "$(t title)"
   if [ "$UNINSTALL" = 1 ]; then uninstall; exit 0; fi
   # An agent always gets its summary, even when a command fails on the way (set -e).

@@ -143,6 +143,7 @@ name=Ana
 dir=/home/ana/weevils
 qrencode=yes
 handoff=/home/ana/.local/share/weevils/install.json
+next=read /home/ana/weevils/AGENTS.md steps 6 and 7, then write the final message
 lang=en
 agent=claude                   # claude | codex | (empty)
 --- end ---

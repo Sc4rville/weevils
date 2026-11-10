@@ -2,7 +2,8 @@
 
 You are an AI agent (Claude Code, Codex…) and your user asked you to install weevils, for example
 "install https://github.com/Sc4rville/weevils". Follow these steps in order. Everything runs without questions;
-your user hears from you once, at the end, unless a step below says to ask.
+your user hears from you once, at the end, unless a step below says to ask. Got this file through a web fetch or a
+summary? Clone first (step 2), then read `AGENTS.md` from the clone in full: step 7 matters as much as the install.
 
 (Asked to work on weevils' code instead? Skip this file and read [CONTRIBUTING.md](CONTRIBUTING.md).)
 
@@ -33,8 +34,11 @@ If `~/weevils` already exists, `cd ~/weevils`: the installer updates it. Use `gi
 - How the phone reaches the machine, at most one, only when you know it applies:
   - `--domain <host>`: the user told you about a domain that points to this machine (HTTPS through Caddy; needs sudo
     and ports 80/443 open).
-  - `--url <https://…>`: something else already serves HTTPS to this machine and forwards to weevils' port
+  - `--url <https://…>`: something else already serves HTTPS to this machine and forwards to weevils' port, 4179
     (Tailscale serve, their own reverse proxy).
+  - The user gave you an `https://` address and you can't tell which? `curl -sI <address>`: if it already answers,
+    even with an error like 502, something serves HTTPS there: `--url`. If the name points to this machine and
+    nothing answers yet: `--domain`.
   - `--lan`: the user wants plain http on their home Wi-Fi. Never on a VPS.
   - none: fine, step 6 decides.
 - A re-run keeps the earlier settings: pass only what changes.
@@ -74,6 +78,7 @@ The summary is `key=value` lines between `--- weevils summary ---` and `--- end 
 | `qrencode` | `yes` when you can draw a QR code (step 7) |
 | `needs`, `retry` | with `needs_sudo` only: what needs root, and the command that does it all from a terminal |
 | `handoff` | the file the app reads to start its tour where you stopped (`~/.local/share/weevils/install.json`) |
+| `next` | what to do now: steps 6 and 7 below |
 
 - `status=needs_sudo`: sudo wants a password you can't type. Ask the user, in one sentence, to run the `retry`
   command once in a terminal of their own (it asks for their password and finishes the install), then tell you.
@@ -100,46 +105,60 @@ From `mode`:
   1. `tailscale_name` is set: run `sudo -n tailscale serve --bg <port>` (or `tailscale serve --bg <port>` if the user
      is the Tailscale operator), then step 4 again with `--url https://<tailscale_name>`. The phone needs the
      Tailscale app, logged in to the same account.
-  2. Otherwise ask the user one plain question, no commands, for example: "To open it on your phone, weevils needs a
+  2. Otherwise ask the user exactly one plain question, and nothing else: "To open it on your phone, weevils needs a
      way in: do you have a domain name pointing to this machine, or should I set up Tailscale (free: a private link
-     between your phone and this machine)?" Then do the work yourself if they agree:
+     between your phone and this machine)?" Don't offer the other ways in printed by the installer (home Wi-Fi, SSH
+     tunnel): they are for people at a terminal. When the user answers, do the work yourself:
      - a domain: step 4 again with `--domain <host>` (HTTPS is set up for them).
      - Tailscale: `curl -fsSL https://tailscale.com/install.sh | sh` and `sudo tailscale up` (both need sudo without
        a password; otherwise this is a `retry`-style command for the user). `tailscale up` prints a login link: give
        it to the user, wait until they say it's done, then do 1. If `tailscale serve` prints a link to enable HTTPS
        on their tailnet, give them that link too.
-  3. Nobody to ask (a one-shot run): set nothing up. End with the local link and that one sentence.
+  3. Nobody to answer (a one-shot run): set nothing up, end with that question.
 
 ## 7. The final message
 
-In the user's language, in plain human words: no jargon, no command for them to run. Short:
+Your user may not be technical: write it like a friend who just set something up for them, in their language,
+short (about 6 lines plus the link), in this order:
 
-1. It's installed (or, if `ready=no`, what one thing is left).
-2. The link to open on the phone: `link` from the summary. It contains the access code, which logs them in: treat it
-   like a password.
+1. It's installed (if `ready=no`, the one thing left, step 5).
+2. The link to open on the phone, `link` from the summary, on its own line. It contains their access code: say it
+   works like a password, in a few words.
 3. A QR code, when `mode` is `public` or `lan` and `qrencode=yes`: run `qrencode -t UTF8 -m 2 '<link>'` and paste
    its output unchanged in a code block. Never draw or retype a QR code yourself.
 4. Add it to the home screen: iPhone: Share → Add to Home Screen; Android: ⋮ → Install app.
-5. What's already there and the first thing to try: open the app and write to weevboss in the field at the top,
-   "what are my projects up to?" when `projects` > 0, otherwise "make me a small notes app".
-6. `mode=local`: the one-sentence explanation from step 6 instead of 2–4, with the link for a browser on this machine.
+5. What's already there, when `projects` > 0 ("your 12 Claude Code projects are already in it"), and the first thing
+   to try: open the app and write to weevboss, in the field at the top, "what are my projects up to?" when
+   `projects` > 0, otherwise "make me a small notes app".
+
+With `mode=local`, 2 to 4 become the question from step 6, then "once that's done, I'll give you the link for your
+phone"; still give the link, as one that already works in a browser on this machine, and keep 5.
+
+Never in this message: commands, file paths, port numbers, IP addresses, settings names (`WEEVILS_*`), options,
+"localhost" or "127.0.0.1" explanations, the installer's technical notes (PATH, permission prompts, SSH tunnels).
+weevboss explains the rest inside the app.
 
 Template (English, public):
 
-> weevils is installed. On your phone, open this link (it contains your access code, so keep it to yourself):
+> weevils is installed! On your phone, open this link (it logs you in, so keep it to yourself like a password):
+>
 > https://weevils.example.com/#k=AbC123xyz
+>
 > *(QR code)*
+>
 > Then add it to your home screen (iPhone: Share → Add to Home Screen; Android: ⋮ → Install app).
 > Your 12 Claude Code projects are already in it. To start, write to weevboss at the top: "what are my projects up to?"
 
 Template (French, local):
 
-> C'est installé, mais ton téléphone ne peut pas encore l'ouvrir : pour l'instant weevils n'est joignable que depuis
-> cette machine (http://localhost:4179/#k=AbC123xyz dans un navigateur ici). Il lui faut un chemin : tu as un nom de
-> domaine qui pointe vers cette machine, ou je mets en place Tailscale (gratuit : un lien privé entre ton téléphone
-> et cette machine) ? Dis-moi et je m'en occupe.
-> Ensuite, sur ton téléphone : ouvre le lien, ajoute-le à l'écran d'accueil (iPhone : Partager → Sur l'écran
-> d'accueil ; Android : ⋮ → Installer l'application), et écris à weevboss en haut : « fais-moi une petite app de notes ».
+> C'est installé ! Il reste une chose pour l'ouvrir sur ton téléphone : weevils a besoin d'un chemin jusqu'à cette
+> machine. Tu as un nom de domaine qui pointe vers elle, ou je mets en place Tailscale (gratuit : un lien privé entre
+> ton téléphone et cette machine) ?
+>
+> Dès que c'est fait, je te donne le lien pour ton téléphone. En attendant, il marche déjà dans un navigateur sur
+> cette machine (il te connecte, garde-le pour toi comme un mot de passe) : http://localhost:4179/#k=AbC123xyz
+>
+> Pour commencer, écris à weevboss en haut : « fais-moi une petite app de notes ».
 
 ## Don't
 

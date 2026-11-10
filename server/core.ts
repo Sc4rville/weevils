@@ -36,7 +36,7 @@ import TM from './i18n/tour.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
 import { emptyBg, subagentSteps } from './background.ts'
-import { llmTitles, needsTitle, shortNow, stableTitle } from './titles.ts'
+import { llmTitles, needsTitle, shortNow, stableTitle, TitleRetry } from './titles.ts'
 import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
 import type { WvSession } from './mux.ts'
@@ -377,6 +377,7 @@ export class Weevils {
   private directCodexBoss?: { pane?: string; sessionId?: string; since: number }
   titles = new Map<string, Titled>()
   private titling = false
+  private titleRetry = new TitleRetry()
   private catalogCache: { at: number; list: CatalogEntry[] } | null = null
   version = 1
   private listeners = new Set<() => void>()
@@ -1085,6 +1086,7 @@ export class Weevils {
   async retitle() {
     if (this.titling) return
     const now = Date.now()
+    if (!this.titleRetry.ready(now)) return
     const todo = this.store
       .all()
       .filter((t) => now - t.lastActivityAt < RECENT_MS && !t.customTitle && !t.cwd.startsWith(DATA_DIR) && t.originator !== 'codex_exec')
@@ -1099,6 +1101,8 @@ export class Weevils {
         return { id: t.id, previousTitle: this.titles.get(t.id)?.title, tool: t.tool, where: where.repo ?? t.cwd.replace(HOME, '~'), ...digestOf(t) }
       })
       const out = await llmTitles(items, path.join(DATA_DIR, 'titles'))
+      if (!out.some(r => todo.some(t => t.id === r.id))) throw new Error('empty title result')
+      this.titleRetry.succeeded()
       for (const r of out) {
         const t = todo.find((x) => x.id === r.id)
         if (t) this.titles.set(r.id, { title: stableTitle(this.titles.get(r.id)?.title, r.title, r.topicChanged), now: r.now, at: now, messageCount: t.messages.length })
@@ -1106,7 +1110,10 @@ export class Weevils {
       this.persist()
       this.bump()
     } catch (e) {
-      console.error(`[titres] ${(e as Error).message}`)
+      this.titleRetry.failed(Date.now())
+      // exec errors include the entire private prompt: log only the process code here.
+      const code = (e as NodeJS.ErrnoException).code
+      console.error(`[titres] failed; retry delayed; code=${code ?? 'unknown'}`)
       // On note le passage pour ne pas réessayer en boucle sur la même matière.
       for (const t of todo) this.titles.set(t.id, this.titles.get(t.id) ?? { title: titleOf(t), now: '', at: now, messageCount: t.messages.length })
     } finally {

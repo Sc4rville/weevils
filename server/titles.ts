@@ -110,3 +110,15 @@ export function needsTitle(prev: Titled | undefined, messageCount: number, live:
 
 /** Micro-actions never rename the topic; only an explicit switch of subject does. */
 export const stableTitle = (previous: string | undefined, proposed: string, topicChanged = false) => previous && !topicChanged ? previous : proposed
+
+/** Failed metadata calls must not be retried by every incoming transcript event. */
+export class TitleRetry {
+  private failures = 0
+  private until = 0
+  ready(now: number) { return now >= this.until }
+  failed(now: number) {
+    this.failures = Math.min(this.failures + 1, 5)
+    this.until = now + Math.min(60 * 60_000, 5 * 60_000 * 2 ** (this.failures - 1))
+  }
+  succeeded() { this.failures = 0; this.until = 0 }
+}

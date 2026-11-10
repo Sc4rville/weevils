@@ -21,9 +21,9 @@ describe('Memory store', () => {
     expect(m.list().map((x) => x.id)).toEqual([b.id, a.id])
     expect(fs.statSync(file).mode & 0o777).toBe(0o600)
 
-    // A hand edit makes the item manual; a model rewrite (with its answer) keeps the source.
+    // A hand edit changes the words only: the item keeps where it came from (its weevil question and answer).
     const edited = m.update(b.id, 'runs on tea now')
-    expect(edited.source).toBe('manual')
+    expect(edited).toMatchObject({ text: 'runs on tea now', source: 'answer', q: 'what keeps you going?', a: 'coffee, mostly' })
     const again = m.update(a.id, 'ships the game in June', { q: 'and the game?', a: 'June' })
     expect(again).toMatchObject({ source: 'manual', q: 'and the game?', a: 'June' })
 

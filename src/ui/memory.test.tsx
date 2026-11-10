@@ -21,7 +21,6 @@ vi.mock('../api', () => ({
       db.calls.push(`edit ${id} ${text}`)
       const m = db.items.find((x) => x.id === id)!
       m.text = text
-      m.source = 'manual'
       return { item: { ...m } }
     },
     deleteMemory: async (id: string) => {
@@ -152,6 +151,8 @@ describe('memory page', () => {
     await key(field, 'Enter')
     await flush()
     expect(db.calls).toEqual(['edit b wants to ship two games'])
+    // A hand edit keeps where the memory came from.
+    expect(host.querySelector('.mem-from')!.textContent).toContain('“and in ten years?”')
 
     // Esc cancels the edit and stays on the page (App closes the page on an Esc reaching the window).
     const closed = vi.fn()

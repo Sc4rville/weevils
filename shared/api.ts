@@ -188,7 +188,7 @@ export interface MemoryItem {
   id: string
   /** Le souvenir, en une phrase courte (« veut lancer un jeu mobile cette année »). */
   text: string
-  /** answer : tiré d'une réponse à un weevil volant ; manual : ajouté ou corrigé à la main. */
+  /** answer : tiré d'une réponse à un weevil volant (le reste même corrigé à la main) ; manual : ajouté à la main. */
   source: 'answer' | 'manual'
   /** source answer : la question portée par le weevil et la réponse d'où vient ce souvenir. */
   q?: string

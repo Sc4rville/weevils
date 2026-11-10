@@ -112,7 +112,7 @@ export class Memory {
     return item
   }
 
-  /** Text changed by hand (source becomes manual) or rewritten by the model from a newer answer (source kept). */
+  /** Text changed by hand or rewritten by the model from a newer answer (then q/a follow it); the source always stays. */
   update(id: string, text: string, from?: { q?: string; a?: string }): MemoryItem {
     const item = this.get(id)
     if (!item) throw new Error(tr(M).notFound)
@@ -120,10 +120,8 @@ export class Memory {
     if (!t) throw new Error(tr(M).empty)
     item.text = t
     item.updatedAt = Date.now()
-    if (from) {
-      if (from.q) item.q = clean(from.q)
-      if (from.a) item.a = String(from.a).trim().slice(0, 1200)
-    } else item.source = 'manual'
+    if (from?.q) item.q = clean(from.q)
+    if (from?.a) item.a = String(from.a).trim().slice(0, 1200)
     this.save()
     return item
   }
@@ -159,7 +157,7 @@ export class Memory {
   /** Changes whenever an item is added, edited or removed (weevboss gets the digest again only then). */
   signature(): string {
     if (!this.s.items.length) return ''
-    return crypto.createHash('sha1').update(this.s.items.map((m) => `${m.id}:${m.updatedAt}`).join(',')).digest('hex').slice(0, 16)
+    return crypto.createHash('sha1').update(this.s.items.map((m) => `${m.id}:${m.updatedAt}:${m.text}`).join('\n')).digest('hex').slice(0, 16)
   }
 
   // ---------------------------------------------------------------- questions des weevils

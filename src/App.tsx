@@ -1,7 +1,8 @@
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { api, useLive } from './api'
-import { Ctx, THEME_COLOR, colorSlots, isTheme, type AppCtx, type Page, type Theme } from './ui/app-context'
+import { Ctx, THEME_COLOR, colorSlots, isTheme, stableOrder, type AppCtx, type Page, type Theme } from './ui/app-context'
 import { AgentBand, FootBand, ProjectBand } from './ui/bands'
 import { spring } from './ui/bits'
 import { H24Rail } from './ui/h24'
@@ -14,12 +15,48 @@ import { PageView } from './ui/pages'
 import { usePinch } from './ui/calm'
 import { adoptUnknown } from './ui/seen'
 import { useDevil } from './ui/devil'
-import { FOCUS_BOSS, flashBossMessage, toTop, when, type FocusBoss } from './ui/follow'
+import { FOCUS_BOSS, flash, flashBossMessage, focusBoss, keepInPlace, reveal, takeBossOnReturn, toTop, when, type FocusBoss } from './ui/follow'
 import { ensurePush } from './push'
 import { syncServer, useT } from './i18n'
 import M from './i18n/app'
 
 const THEME_KEY = 'weevils-theme'
+
+/** D'où une page a été ouverte : l'élément touché, sa bande, sa place à l'écran (pour l'y retrouver au retour). */
+interface Opener {
+  el: HTMLElement | null
+  key?: string
+  top: number
+}
+
+/**
+ * Juste avant que l'ordre des bandes change dans le DOM (getSnapshotBeforeUpdate : avant toute mutation), la bande sous
+ * les yeux est retenue à sa place pendant que les autres glissent autour (keepInPlace) ; corrigé une première fois avant
+ * l'affichage (componentDidUpdate).
+ */
+class KeepOrder extends Component<{ order: string; active: boolean }> {
+  pin: (() => void) | null = null
+  until = 0
+  getSnapshotBeforeUpdate(prev: { order: string }) {
+    if (prev.order && prev.order !== this.props.order && this.props.active && window.scrollY > 0 && Date.now() > this.until) {
+      const el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 3)?.closest('[data-project]')
+      if (el) {
+        this.pin = keepInPlace(el)
+        this.until = Date.now() + 650
+      }
+    }
+    return null
+  }
+  componentDidUpdate() {
+    this.pin?.()
+    this.pin = null
+  }
+  render() {
+    return null
+  }
+}
+
+const smooth = (): ScrollBehavior => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth')
 
 function initialTheme(): Theme {
   try {
@@ -39,9 +76,14 @@ export default function App() {
   const [now, setNow] = useState(() => Date.now())
   const [expanded, setExpanded] = useState<string | null>(null)
   const [h24Open, setH24Open] = useState(false)
+  const [h24Focus, setH24Focus] = useState<string | null>(null)
   const [stack, setStack] = useState<Page[]>([])
   const stackRef = useRef<Page[]>([])
-  const openers = useRef<(HTMLElement | null)[]>([])
+  const openers = useRef<(Opener | undefined)[]>([])
+  /** Le dernier élément touché : sur iPhone, un bouton touché ne prend pas le focus (activeElement reste <body>). */
+  const lastTap = useRef<{ el: HTMLElement | null; at: number }>({ el: null, at: 0 })
+  // Doigt posé, défilement, molette : les bandes ne se réordonnent pas sous le doigt (1,2 s de grâce après).
+  const [settled, setSettled] = useState(true)
   /** À faire une fois toutes les pages refermées (focusBoss depuis une page). */
   const afterPop = useRef<(() => void) | null>(null)
 
@@ -94,6 +136,50 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    let touching = false
+    let still = true
+    let timer = 0
+    const set = (v: boolean) => {
+      if (still === v) return
+      still = v
+      setSettled(v)
+    }
+    const later = () => {
+      clearTimeout(timer)
+      timer = window.setTimeout(() => !touching && set(true), 1200)
+    }
+    const down = (e: Event) => {
+      touching = true
+      clearTimeout(timer)
+      set(false)
+      if (e.type === 'pointerdown') lastTap.current = { el: (e.target as Element | null)?.closest?.<HTMLElement>('button, [role="button"], a') ?? null, at: Date.now() }
+    }
+    const up = () => {
+      touching = false
+      later()
+    }
+    const moving = () => {
+      set(false)
+      if (!touching) later()
+    }
+    const opts = { capture: true, passive: true }
+    const downs = ['pointerdown', 'touchstart'] as const
+    const ups = ['pointerup', 'pointercancel', 'touchend', 'touchcancel'] as const
+    for (const n of downs) window.addEventListener(n, down, opts)
+    for (const n of ups) window.addEventListener(n, up, opts)
+    // Le défilement du flux seul (pas celui des fils qui suivent leur réponse) ; la molette, d'où qu'elle vienne.
+    window.addEventListener('scroll', moving, { passive: true })
+    window.addEventListener('wheel', moving, opts)
+    return () => {
+      clearTimeout(timer)
+      for (const n of downs) window.removeEventListener(n, down, opts)
+      for (const n of ups) window.removeEventListener(n, up, opts)
+      window.removeEventListener('scroll', moving)
+      window.removeEventListener('wheel', moving, opts)
+    }
+  }, [])
+
   // ---- Navigation par pages, branchée sur l'historique (bouton retour du navigateur).
   const setPages = useCallback((next: Page[]) => {
     stackRef.current = next
@@ -103,7 +189,10 @@ export default function App() {
 
   const push = useCallback(
     (p: Page) => {
-      openers.current[stackRef.current.length] = document.activeElement as HTMLElement | null
+      const a = document.activeElement
+      const tap = Date.now() - lastTap.current.at < 1500 ? lastTap.current.el : null
+      const el = tap ?? (a && a !== document.body ? (a as HTMLElement) : null)
+      openers.current[stackRef.current.length] = { el, key: el?.closest<HTMLElement>('[data-project]')?.dataset.project, top: el?.getBoundingClientRect().top ?? 0 }
       const next = [...stackRef.current, p]
       setPages(next)
       history.pushState({ w: next.length }, '')
@@ -129,15 +218,37 @@ export default function App() {
 
   useEffect(() => {
     history.replaceState({ w: 0 }, '')
+    // Le navigateur ne remet pas le flux là où il croit : le retour (ci-dessous) et focusBoss s'en chargent.
+    history.scrollRestoration = 'manual'
     const onPop = (e: PopStateEvent) => {
       const w = (e.state as { w?: number } | null)?.w ?? 0
       if (w >= stackRef.current.length) return
-      const opener = openers.current[w]
-      setPages(stackRef.current.slice(0, w))
+      const o = openers.current[w]
+      // Rendu tout de suite : le flux est à jour avant que la page sortante le découvre.
+      flushSync(() => setPages(stackRef.current.slice(0, w)))
       const then = w === 0 ? afterPop.current : null
       afterPop.current = null
-      if (then) requestAnimationFrame(then)
-      else setTimeout(() => opener?.focus?.({ preventScroll: true }), 60)
+      // Une réponse de weevboss arrivée pendant que la page le cachait : elle passe avant l'élément d'où l'on venait.
+      const boss = w === 0 ? takeBossOnReturn() : null
+      if (then) return void requestAnimationFrame(then)
+      if (boss) return void requestAnimationFrame(() => focusBoss(boss))
+      if (!o) return
+      // Retour au flux : la ligne d'où l'on venait a pu bouger (sa bande remontée, les lignes réordonnées). Elle est remise
+      // à la même place à l'écran pendant que la page la recouvre encore (rien de visible), puis amenée sous les yeux et
+      // mise en avant si elle a bougé. Disparue : sa bande la remplace.
+      const band = o.key ? document.querySelector<HTMLElement>(`[data-project="${CSS.escape(o.key)}"] .head`) : null
+      const el = o.el?.isConnected ? o.el : band
+      if (!el) return
+      let moved = el !== o.el
+      if (w === 0 && !moved) {
+        const d = el.getBoundingClientRect().top - o.top
+        if (Math.abs(d) > 8) {
+          window.scrollBy(0, d)
+          moved = true
+        }
+      }
+      if (el === o.el) setTimeout(() => el.focus?.({ preventScroll: true }), 60)
+      setTimeout(() => reveal(el, { block: 'nearest', flash: moved }), 300)
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -148,11 +259,26 @@ export default function App() {
       if (e.key !== 'Escape') return
       if (stackRef.current.length) back()
       else if (h24Open) setH24Open(false)
-      else setExpanded(null)
+      else {
+        // La bande ouverte se referme sans glisser sous les yeux (celles du dessus se redéplient).
+        if (expanded && expanded !== 'agent') keepInPlace(document.querySelector(`[data-project="${CSS.escape(expanded)}"]`))
+        setExpanded(null)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [back, h24Open])
+  }, [back, h24Open, expanded])
+
+  // Ouvrir le fil de weevboss (l'aperçu touché, une démo) avec le flux un peu défilé : il remonte d'abord en douceur,
+  // puis le fil s'ouvre en haut de l'écran (le chemin de focusBoss, sans mise en avant).
+  const expand = useCallback((id: string | null) => {
+    if (id === 'agent' && window.scrollY > 4 && !stackRef.current.length) focusBoss({ flash: false })
+    else setExpanded(id)
+  }, [])
+  const openH24 = useCallback((open: boolean, focus?: string) => {
+    setH24Focus(open ? (focus ?? null) : null)
+    setH24Open(open)
+  }, [])
 
   // Un parcours (branchement) ou une action qui répond dans le fil de weevboss, lancé d'où que ce soit (une page, le bas
   // du flux) : les pages se referment, le flux remonte en douceur jusqu'en haut, puis le fil s'ouvre (ouvrir d'abord
@@ -186,10 +312,17 @@ export default function App() {
     if (!ready) return
     const open = (url: string) => {
       const m = /#s=([^&]+)/.exec(url)
-      if (m) {
-        history.replaceState(history.state, '', location.pathname)
-        push({ kind: 'session', id: decodeURIComponent(m[1]) })
-      }
+      if (!m) return
+      history.replaceState(history.state, '', location.pathname)
+      const id = decodeURIComponent(m[1])
+      const top = stackRef.current.at(-1)
+      if (top?.kind !== 'session' || top.id !== id) return push({ kind: 'session', id })
+      // Déjà ouverte : pas de seconde copie par-dessus ; le fil redescend en douceur et son dernier message est mis en avant.
+      const pages = document.querySelectorAll<HTMLElement>('.page')
+      const page = pages[pages.length - 1]
+      const body = page?.querySelector<HTMLElement>('.page-body[data-scroll]')
+      body?.scrollTo({ top: body.scrollHeight, behavior: smooth() })
+      setTimeout(() => flash(Array.from(page?.querySelectorAll('[data-mid]') ?? []).at(-1)), 400)
     }
     open(location.hash)
     const onMsg = (e: MessageEvent) => e.data?.type === 'open' && open(String(e.data.url))
@@ -204,7 +337,10 @@ export default function App() {
   // Couleurs stables (ordre alphabétique des projets), quel que soit l'ordre d'affichage.
   const projectIds = live.snap?.projects.map((p) => p.id).sort().join('|') ?? ''
   const colors = useMemo(() => colorSlots(projectIds ? projectIds.split('|') : []), [projectIds])
-  // Ordre vivant : ce qui t'attend, puis ce qui travaille, puis ce qui est ouvert, puis le reste par activité.
+  // Ordre vivant : ce qui t'attend, puis ce qui travaille, puis ce qui est ouvert, puis le reste. Dans un même rang, l'ordre
+  // affiché tient (l'activité seule ne fait pas permuter deux bandes) ; seul un nouveau projet se place par activité. Rien
+  // ne bouge sous le doigt ni pendant un défilement : l'ordre en attente s'applique ensuite (src/ui/app-context.tsx).
+  const shownOrder = useRef<string[]>([])
   const ordered = useMemo(() => {
     const snap = live.snap
     if (!snap) return []
@@ -215,8 +351,12 @@ export default function App() {
       if (ss.some((s) => s.status === 'idle')) return 2
       return 3
     }
-    return [...snap.projects].sort((a, b) => rank(a.id) - rank(b.id) || b.lastActivityAt - a.lastActivityAt)
-  }, [live.snap])
+    return stableOrder(snap.projects, (p) => p.id, (p) => rank(p.id), (a, b) => b.lastActivityAt - a.lastActivityAt, shownOrder.current, !settled)
+  }, [live.snap, settled])
+  const orderKey = ordered.map((p) => p.id).join('|')
+  useLayoutEffect(() => {
+    shownOrder.current = orderKey ? orderKey.split('|') : []
+  }, [orderKey])
 
   const pinchMain = usePinch(() => push({ kind: 'calm' }))
 
@@ -252,9 +392,11 @@ export default function App() {
     home,
     expanded,
     instant,
-    setExpanded,
+    setExpanded: expand,
     h24Open,
-    setH24Open,
+    setH24Open: openH24,
+    h24Focus,
+    settled,
     theme,
     setTheme,
     refresh: live.refresh,
@@ -279,6 +421,7 @@ export default function App() {
             if (info.offset.x < -90 || info.velocity.x < -600) push({ kind: 'repos' })
           }}
         >
+          <KeepOrder order={orderKey} active={stack.length === 0} />
           <AgentBand />
           <TourBand />
           {ordered.map((p) => (

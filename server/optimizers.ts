@@ -349,8 +349,8 @@ export interface Sys {
   worktree: (repo: string, dir: string, branch: string) => Promise<void>
   /** Tries the jail (bwrap <args> true): true when it holds, false without bwrap on this machine; throws if it fails. */
   jail: (args: string[]) => Promise<boolean>
-  /** git -C <dir> rev-parse HEAD: where a run starts from (undefined outside git). */
-  head: (dir: string) => Promise<string | undefined>
+  /** HEAD of the task's worktree <dir> of <repo>: where a run starts from (undefined outside git). */
+  head: (repo: string, dir: string) => Promise<string | undefined>
 }
 const gitWorktree = (repo: string, dir: string, branch: string) =>
   new Promise<void>((resolve, reject) =>
@@ -627,7 +627,7 @@ export class Optimizers {
       logged: () => (sys.logged ?? realSys.logged)(),
       worktree: (repo, dir, branch) => (sys.worktree ?? realSys.worktree)(repo, dir, branch),
       jail: (args) => (sys.jail ?? realSys.jail)(args),
-      head: (d) => (sys.head ?? realSys.head)(d),
+      head: (repo, d) => (sys.head ?? realSys.head)(repo, d),
     }
     this.s = (() => {
       try {
@@ -1162,7 +1162,7 @@ export class Optimizers {
     }
     const said = sessionId ? this.w.detail?.(sessionId)?.messages.filter((m) => m.role === 'assistant' && m.text.trim()).at(-1)?.text : undefined
     const message = (said ?? (sessionId ? this.w.snapshot().sessions.find((x) => x.id === sessionId)?.lastMessage : undefined) ?? '').trim().slice(0, 4000) || undefined
-    const job = this.writeRun(o, run, { cwd: this.workspace(o), base: o.baseCommit, report, reportFile, message, keep: runs.map((r) => r.startedAt) })
+    const job = this.writeRun(o, run, { cwd: this.workspace(o), repoDir: o.repo ? this.w.repoDir(o.repo) : undefined, base: o.baseCommit, report, reportFile, message, keep: runs.map((r) => r.startedAt) })
     this.writing.add(job)
     void job.finally(() => this.writing.delete(job))
     return runs
@@ -1170,9 +1170,9 @@ export class Optimizers {
 
   /** The archive of one run: its files (git diff from where it started, or what it wrote in its workspace), links,
    *  images (copied), then the file count on its summary. */
-  private async writeRun(o: Stored, run: AutoRun, x: { cwd: string; base?: string; report?: string; reportFile: string; message?: string; keep: number[] }) {
+  private async writeRun(o: Stored, run: AutoRun, x: { cwd: string; repoDir?: string; base?: string; report?: string; reportFile: string; message?: string; keep: number[] }) {
     try {
-      const files = (x.base && fs.existsSync(x.cwd) ? await gitFiles(x.cwd, x.base, run.startedAt) : null) ?? mtimeFiles(x.cwd, run.startedAt, run.at, [x.reportFile])
+      const files = (x.base && x.repoDir ? await gitFiles(x.repoDir, x.cwd, x.base, run.startedAt) : null) ?? mtimeFiles(x.cwd, run.startedAt, run.at, [x.reportFile])
       const images = this.archive.copyImages(o.id, run.startedAt, files)
       const detail: AutoRunDetail = { run: { ...run, ...(files.length ? { files: files.length } : {}) }, ...(x.report ? { report: x.report } : {}), ...(x.message ? { message: x.message } : {}), files, links: extractLinks(x.report, x.message), images }
       this.archive.write(o.id, detail)
@@ -1365,7 +1365,7 @@ export class Optimizers {
       } else fs.mkdirSync(cwd, { recursive: true })
       if (o.repo) {
         o.branch = branch
-        o.baseCommit = await this.sys.head(cwd)
+        o.baseCommit = await this.sys.head(this.w.repoDir(o.repo), cwd)
       }
       const writesReport = !o.repo || o.kind === 'watch' || o.kind === 'content' || o.kind === 'explore'
       const brief = tr(O).brief({

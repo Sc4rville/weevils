@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { RunArchive, blobPath, extractLinks, gitFiles, journalRuns, mtimeFiles, parseDiff, unitDescriptions } from './auto-runs.ts'
+import { RunArchive, blobPath, extractLinks, gitFiles, headOf, journalRuns, mtimeFiles, parseDiff, unitDescriptions } from './auto-runs.ts'
 
 let dir: string
 beforeEach(() => {
@@ -35,34 +35,73 @@ describe('auto runs — what a run left', () => {
     ])
   })
 
+  /** A repo with one commit, and a task's worktree of it (git worktree add): what the runner diffs. */
+  const repoAndWorktree = () => {
+    const repo = path.join(dir, 'repo')
+    const wt = path.join(dir, '.auto', 'repo', 'task1')
+    const g = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', '-C', cwd, ...a], { stdio: 'pipe' }).toString().trim()
+    fs.mkdirSync(repo, { recursive: true })
+    g(repo, 'init', '-q')
+    write(path.join(repo, 'a.ts'), 'one\n')
+    write(path.join(repo, 'old.ts'), 'old\n')
+    g(repo, 'add', '.')
+    g(repo, 'commit', '-qm', 'base')
+    fs.mkdirSync(path.dirname(wt), { recursive: true })
+    g(repo, 'worktree', 'add', '-q', wt, '-b', 'auto/t')
+    return { repo, wt, g, base: g(wt, 'rev-parse', 'HEAD') }
+  }
+
   it('the files of a run in a worktree: its commits and what it wrote since it started, not what an earlier run left', async () => {
-    const g = (...a: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', '-C', dir, ...a], { stdio: 'pipe' }).toString().trim()
-    g('init', '-q')
-    write(path.join(dir, 'a.ts'), 'one\n')
-    write(path.join(dir, 'old.ts'), 'old\n')
-    g('add', '.')
-    g('commit', '-qm', 'base')
-    const base = g('rev-parse', 'HEAD')
+    const { repo, wt, g, base } = repoAndWorktree()
+    expect(await headOf(repo, wt)).toBe(base)
     const before = Date.now() - 3600_000
     // Left by an earlier run: an uncommitted change and an untracked file, both older than this run.
-    write(path.join(dir, 'old.ts'), 'old\nchanged\n', before)
-    write(path.join(dir, 'stale.md'), 'stale\n', before)
+    write(path.join(wt, 'old.ts'), 'old\nchanged\n', before)
+    write(path.join(wt, 'stale.md'), 'stale\n', before)
     const start = Date.now() - 60_000
     // This run: a commit, an uncommitted change, a new file.
-    write(path.join(dir, 'a.ts'), 'one\ntwo\nthree\n')
-    g('commit', '-qm', 'run', 'a.ts')
-    write(path.join(dir, 'b.ts'), 'b\nb\n')
-    write(path.join(dir, 'shot.png'), 'PNG')
-    const files = await gitFiles(dir, base, start)
+    write(path.join(wt, 'a.ts'), 'one\ntwo\nthree\n')
+    g(wt, 'commit', '-qm', 'run', 'a.ts')
+    write(path.join(wt, 'b.ts'), 'b\nb\n')
+    write(path.join(wt, 'shot.png'), 'PNG')
+    const files = await gitFiles(repo, wt, base, start)
     expect(files!.map((f) => [f.path, f.status, f.add, f.del])).toEqual([
       ['a.ts', 'M', 2, 0],
       ['b.ts', 'A', 2, 0],
       ['shot.png', 'A', 1, 0],
     ])
-    expect(files![0].abs).toBe(path.join(dir, 'a.ts'))
+    expect(files![0].abs).toBe(path.join(wt, 'a.ts'))
     // Without a start, everything since the base.
-    expect((await gitFiles(dir, base))!.map((f) => f.path).sort()).toEqual(['a.ts', 'b.ts', 'old.ts', 'shot.png', 'stale.md'])
-    expect(await gitFiles(path.join(dir, 'nope'), base)).toBeNull()
+    expect((await gitFiles(repo, wt, base))!.map((f) => f.path).sort()).toEqual(['a.ts', 'b.ts', 'old.ts', 'shot.png', 'stale.md'])
+    // Not a worktree of that repo: git is not asked.
+    expect(await gitFiles(repo, path.join(dir, 'nope'), base)).toBeNull()
+    expect(await gitFiles(path.join(dir, 'nope'), wt, base)).toBeNull()
+  })
+
+  it('a worktree that points git at a config of its own: the server never runs its filter (nor its fsmonitor)', async () => {
+    const { repo, wt, base } = repoAndWorktree()
+    const pwned = path.join(dir, 'pwned')
+    const evil = path.join(wt, 'evil')
+    // What a jailed agent can write: the worktree's .git file, the admin dir's commondir, attributes.
+    fs.mkdirSync(evil)
+    execFileSync('git', ['init', '-q', '--bare', evil])
+    execFileSync('git', ['--git-dir', evil, 'config', 'core.bare', 'false'])
+    fs.writeFileSync(path.join(evil, 'objects', 'info', 'alternates'), path.join(repo, '.git', 'objects'))
+    const cmd = `touch ${pwned}`
+    fs.appendFileSync(path.join(evil, 'config'), `[filter "e"]\n\tclean = ${cmd} && cat\n[core]\n\tfsmonitor = ${cmd}\n`)
+    const admin = fs.readFileSync(path.join(wt, '.git'), 'utf8').replace(/^gitdir:\s*/, '').trim()
+    fs.writeFileSync(path.join(admin, 'commondir'), evil)
+    fs.copyFileSync(path.join(admin, 'index'), path.join(evil, 'index'))
+    fs.writeFileSync(path.join(wt, '.git'), `gitdir: ${evil}\n`)
+    write(path.join(wt, '.gitattributes'), '* filter=e\n')
+    write(path.join(wt, 'a.ts'), 'one\nchanged\n')
+    await headOf(repo, wt)
+    const files = await gitFiles(repo, wt, base)
+    expect(fs.existsSync(pwned)).toBe(false)
+    expect(files?.map((f) => f.path)).toContain('a.ts')
+    // The trap is armed: git left to find its own dirs from the worktree runs it.
+    execFileSync('git', ['-c', 'core.fsmonitor=false', '-C', wt, 'diff', '-z', '--no-ext-diff', '--no-textconv', '--numstat', base], { stdio: 'pipe' })
+    expect(fs.existsSync(pwned)).toBe(true)
   })
 
   it('the files of a run without a repo: written during the run, hidden ones and the report left out', () => {

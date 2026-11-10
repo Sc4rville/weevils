@@ -6,6 +6,7 @@
 
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import type { AutoOutputFile, AutoRun, AutoRunDetail } from '../shared/api.ts'
 
@@ -91,28 +92,109 @@ function lineCount(file: string): number {
   }
 }
 
-const git = (cwd: string, args: string[]) =>
+/**
+ * The git dirs of a task's worktree, fixed by the server, never read from the worktree: a jailed agent can rewrite the
+ * worktree's `.git` file and everything under `<repo>/.git` but its `config` and `hooks` (jailArgs), so letting git find
+ * its dirs from there would let it point them at a config of its own, whose clean filter or fsmonitor git would then
+ * run here, unjailed. So git gets a private admin dir made here (privateGitDir): the worktree's HEAD and index copied
+ * as data, its `commondir` the repo's `.git`, whose config is read-only in the jail. null: not a worktree of that repo.
+ */
+export interface WorktreeGit {
+  cwd: string
+  /** <repo>/.git/worktrees/<name>: where its HEAD and index are read (as data only). */
+  adminDir: string
+  commonDir: string
+  /** Its HEAD: a ref under refs/ or a commit id, nothing else. */
+  head: string
+}
+
+const isDir = (p: string) => fs.lstatSync(p, { throwIfNoEntry: false })?.isDirectory() ?? false
+
+export function worktreeGit(repoDir: string, cwd: string): WorktreeGit | null {
+  const commonDir = path.join(repoDir, '.git')
+  if (!isDir(commonDir) || !isDir(cwd)) return null
+  const admin = path.join(commonDir, 'worktrees')
+  let names: string[]
+  try {
+    names = fs.readdirSync(admin)
+  } catch {
+    return null
+  }
+  // The admin dir whose gitdir names this worktree; else the one git gives by default (the folder's name).
+  const own = path.join(cwd, '.git')
+  const named = names.find((n) => {
+    try {
+      return path.resolve(fs.readFileSync(path.join(admin, n, 'gitdir'), 'utf8').trim()) === own
+    } catch {
+      return false
+    }
+  })
+  const name = named ?? (names.includes(path.basename(cwd)) ? path.basename(cwd) : undefined)
+  if (!name || !isDir(path.join(admin, name))) return null
+  const head = adminFile(path.join(admin, name), 'HEAD', 4096)?.toString('utf8').trim() ?? ''
+  if (!/^(ref: refs\/[\w./-]+|[0-9a-f]{40}|[0-9a-f]{64})$/.test(head) || head.includes('..')) return null
+  return { cwd, adminDir: path.join(admin, name), commonDir, head }
+}
+
+/** An index past this size is not copied (git then sees no index: the diff is still right, only slower). */
+const MAX_INDEX = 64 << 20
+
+/** A regular file of the admin dir (never a link, never too big), or undefined. */
+function adminFile(dir: string, name: string, max: number): Buffer | undefined {
+  const f = path.join(dir, name)
+  const st = fs.lstatSync(f, { throwIfNoEntry: false })
+  return st?.isFile() && st.size <= max ? fs.readFileSync(f) : undefined
+}
+
+/** Runs `use` with git's environment pointed at a private admin dir (see WorktreeGit), removed after. */
+async function withGit<T>(w: WorktreeGit, use: (env: NodeJS.ProcessEnv) => Promise<T>): Promise<T> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'weevils-git-'))
+  try {
+    fs.writeFileSync(path.join(dir, 'HEAD'), `${w.head}\n`)
+    fs.writeFileSync(path.join(dir, 'commondir'), `${w.commonDir}\n`)
+    const index = adminFile(w.adminDir, 'index', MAX_INDEX)
+    if (index) fs.writeFileSync(path.join(dir, 'index'), index)
+    const env: NodeJS.ProcessEnv = {}
+    for (const [k, v] of Object.entries(process.env)) if (!k.startsWith('GIT_')) env[k] = v
+    return await use({ ...env, GIT_DIR: dir, GIT_COMMON_DIR: w.commonDir, GIT_WORK_TREE: w.cwd, GIT_ATTR_NOSYSTEM: '1' })
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+const git = (w: WorktreeGit, env: NodeJS.ProcessEnv, args: string[]) =>
   new Promise<string>((resolve, reject) =>
-    // Never an external diff or a textconv driver (a task wrote the worktree's attributes), never its fsmonitor.
-    execFile('git', ['-c', 'core.fsmonitor=false', '-C', cwd, ...args], { timeout: 20_000, maxBuffer: 16 << 20 }, (e, out) => (e ? reject(e) : resolve(out))),
+    // Never an external diff or a textconv driver (a task wrote the worktree's attributes), never an fsmonitor.
+    execFile('git', ['-c', 'core.fsmonitor=false', ...args], { cwd: w.cwd, env, timeout: 20_000, maxBuffer: 16 << 20 }, (e, out) => (e ? reject(e) : resolve(out))),
   )
 
-/** HEAD of a worktree (where a run starts from), or undefined outside git. */
-export const headOf = (cwd: string) => git(cwd, ['rev-parse', 'HEAD']).then((s) => s.trim() || undefined, () => undefined)
+/** HEAD of a task's worktree (where a run starts from), or undefined when it is none (worktreeGit). */
+export async function headOf(repoDir: string, cwd: string): Promise<string | undefined> {
+  const w = worktreeGit(repoDir, cwd)
+  if (!w) return undefined
+  try {
+    return (await withGit(w, (env) => git(w, env, ['rev-parse', 'HEAD']))).trim() || undefined
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * What a run changed in its worktree: its commits since `base`, plus what it left uncommitted and the new files git
  * does not track yet, those only when written during the run (`since` on: a recurring task's worktree keeps what an
  * earlier run left lying there, never shown again as this run's). null when git cannot tell (not a repo, base gone).
  */
-export async function gitFiles(cwd: string, base: string, since = 0): Promise<AutoOutputFile[] | null> {
+export async function gitFiles(repoDir: string, cwd: string, base: string, since = 0): Promise<AutoOutputFile[] | null> {
+  const w = worktreeGit(repoDir, cwd)
+  if (!w) return null
   try {
     const diff = ['diff', '-z', '-M', '--no-ext-diff', '--no-textconv']
-    const [num, names, others, committed] = await Promise.all([
-      git(cwd, [...diff, '--numstat', base]),
-      git(cwd, [...diff, '--name-status', base]),
-      git(cwd, ['ls-files', '-z', '--others', '--exclude-standard']),
-      git(cwd, ['diff', '-z', '--no-ext-diff', '--no-textconv', '--name-only', base, 'HEAD']),
+    // One after the other: they share the private index (git refreshes it).
+    const [num, names, others, committed] = await withGit(w, async (env) => [
+      await git(w, env, [...diff, '--numstat', base]),
+      await git(w, env, [...diff, '--name-status', base]),
+      await git(w, env, ['ls-files', '-z', '--others', '--exclude-standard']),
+      await git(w, env, ['diff', '-z', '--no-ext-diff', '--no-textconv', '--name-only', base, 'HEAD']),
     ])
     const inCommits = new Set(committed.split('\0').filter(Boolean))
     const fresh = (abs: string) => {

@@ -64,6 +64,9 @@ export const isTestBrief = (p?: string) => !!p && /^\s*(?:\[test\]|\[from:[^\]]*
 
 /** Le dossier a du travail non commité (fichiers modifiés ou nouveaux) ; pas un dépôt git, ou git muet : non. */
 export function gitDirty(cwd: string): Promise<boolean> {
+  // Never in an « auto » task's folder: its jailed agent could have pointed git at a config of its own (an fsmonitor run
+  // here, unjailed). Its runs are read by server/auto-runs.ts, with git's dirs pinned.
+  if (cwd.split(path.sep).includes('.auto')) return Promise.resolve(false)
   return new Promise((resolve) => {
     execFile('git', ['-C', cwd, 'status', '--porcelain'], { timeout: 5000, maxBuffer: 4 << 20 }, (err, stdout) => resolve(!err && stdout.trim().length > 0))
   })

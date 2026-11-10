@@ -104,6 +104,19 @@ export function SidePane({ side, onGone }: { side?: ReactNode; onGone: () => voi
   )
 }
 
+function BackButton({ kicker, onClick, label }: { kicker: string; onClick: () => void; label: string }) {
+  return (
+    <button className="back" onClick={onClick} aria-label={label}>
+      <span aria-hidden>
+        <Icon name="chevron" dir="left" />
+      </span>
+      <span className="meta" aria-hidden>
+        {kicker}
+      </span>
+    </button>
+  )
+}
+
 /** Page plein écran dans la couleur du projet. Glisser vers la droite = retour ; vers la gauche = la page suivante, s'il y en a une (onSwipeLeft). */
 export function Shell({
   slot,
@@ -117,6 +130,7 @@ export function Shell({
   float,
   bodyRef,
   onSwipeLeft,
+  actions,
 }: {
   slot: string
   kicker: string
@@ -134,6 +148,8 @@ export function Shell({
   bodyRef?: RefObject<HTMLDivElement | null>
   /** La page suivante de la suite des glissés (fil → repos → logiciels) : sans elle, rien ne bouge vers la gauche. */
   onSwipeLeft?: () => void
+  /** Icon buttons at the right of the back-button row (pause, run now…). */
+  actions?: ReactNode
 }) {
   const { back } = useApp()
   const t = useT(M)
@@ -171,14 +187,14 @@ export function Shell({
     >
       <div className="page-head band tone">
         <div className="in">
-          <button className="back" onClick={back} aria-label={t.back(kicker)}>
-            <span aria-hidden>
-              <Icon name="chevron" dir="left" />
-            </span>
-            <span className="meta" aria-hidden>
-              {kicker}
-            </span>
-          </button>
+          {actions ? (
+            <div className="page-acts">
+              <BackButton kicker={kicker} onClick={back} label={t.back(kicker)} />
+              <div className="chars">{actions}</div>
+            </div>
+          ) : (
+            <BackButton kicker={kicker} onClick={back} label={t.back(kicker)} />
+          )}
           <h1 ref={heading} tabIndex={-1} className="h2" style={{ margin: 0 }}>
             {title}
           </h1>

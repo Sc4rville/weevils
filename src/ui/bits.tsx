@@ -814,14 +814,15 @@ export function Messages({
 }
 
 /** L'agent travaille : une ligne vivante en bas du fil. */
-export function Working({ author, since }: { author: string; since?: number | null }) {
+/** mark: the sign of life in place of the green star (AutoMark for an automation). */
+export function Working({ author, since, mark }: { author: string; since?: number | null; mark?: ReactNode }) {
   const { now } = useApp()
   const t = useT(M)
   return (
     <motion.div className="msg band working" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={spring}>
       <div className="in">
         <span className="who">
-          <span className="spin fluo"><Icon name="star" /></span> {t.working(author)}{since ? ` · ${dur(now - since)}` : ''}
+          {mark ?? <span className="spin fluo"><Icon name="star" /></span>} {t.working(author)}{since ? ` · ${dur(now - since)}` : ''}
           <span className="dots" aria-hidden>
             <i />
             <i />

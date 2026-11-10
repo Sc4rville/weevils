@@ -585,6 +585,16 @@ button:disabled {
   font-weight: 650;
 }
 
+/* Back on the left, the page's own actions (pause, run now…) on the right of the same row. */
+.page-acts {
+  display: flex;
+  align-items: center;
+}
+
+.page-acts > .chars {
+  margin-right: -10px;
+}
+
 .page-body {
   flex: 1;
   overflow-y: auto;

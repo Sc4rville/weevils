@@ -8,7 +8,7 @@ import M from './i18n/app'
 import type { FsListing, InfraDetail, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
 import type { ProgressFix, Software, SoftwareList } from '../shared/softwares.ts'
 import type { ForYouFeed } from '../shared/foryou.ts'
-import type { ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, OptimizerTalkReply, SessionDetail, Snapshot, SubagentDetail, Tool, WeevilQuestion, WeevilReply } from '../shared/api.ts'
+import type { AutoDetail, AutoRunDetail, ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, OptimizerTalkReply, SessionDetail, Snapshot, SubagentDetail, Tool, WeevilQuestion, WeevilReply } from '../shared/api.ts'
 
 export class ApiError extends Error {
   status: number
@@ -112,6 +112,15 @@ export const api = {
   talkOptimizer: (id: string, text: string) => call<OptimizerTalkReply>('POST', `/api/optimizers/${enc(id)}/talk`, { text, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }),
   refuseOptimizer: (id: string) => call<{ ok: true }>('POST', `/api/optimizers/${enc(id)}/refuse`, {}),
   toggleH24: (id: string) => call<{ ok: true }>('POST', `/api/h24/${enc(id)}/toggle`, {}),
+  /** Une automatisation (tâche, timer, job) : ses passages, le plus récent en premier. */
+  auto: (id: string) => call<AutoDetail>('GET', `/api/auto/${enc(id)}`),
+  /** Ce qu'un passage (fini à `at`) a fait et produit. */
+  autoRun: (id: string, at: number) => call<AutoRunDetail>('GET', `/api/auto/${enc(id)}/runs/${at}`),
+  /** L'adresse d'une capture produite par une automatisation (pour <img src>). */
+  autoBlob: (id: string, path: string) => `/api/auto/${enc(id)}/blob?path=${enc(path)}`,
+  pauseOptimizer: (id: string, paused: boolean) => call<{ ok: boolean }>('POST', `/api/optimizers/${enc(id)}/pause`, { paused }),
+  /** Maintenant, dès que la machine est libre. */
+  runOptimizer: (id: string) => call<{ ok: boolean }>('POST', `/api/optimizers/${enc(id)}/run`, {}),
   conversations: (opts: { project?: string; q?: string }) => call<{ conversations: ConversationSummary[] }>('GET', `/api/conversations?${new URLSearchParams(opts)}`),
   conversation: (id: string) => call<ConversationDetail>('GET', `/api/conversations/${enc(id)}`),
   classify: (id: string, target: { projectId?: string }) => call<{ ok: true }>('POST', `/api/conversations/${enc(id)}/classify`, target),

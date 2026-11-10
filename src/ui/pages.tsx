@@ -26,6 +26,7 @@ import { FollowDown } from './followdown'
 import M from '../i18n/pages'
 import { MemoryPage } from './memory'
 import { ForYouPage, MediaPage } from './foryou'
+import { AutoPage, AutoRunPage } from './auto-page'
 
 export function PageView({ page }: { page: Page }) {
   switch (page.kind) {
@@ -69,6 +70,10 @@ export function PageView({ page }: { page: Page }) {
       return <ForYouPage who={page.who} />
     case 'media':
       return <MediaPage url={page.url} type={page.type} name={page.name} />
+    case 'auto':
+      return <AutoPage id={page.id} />
+    case 'autorun':
+      return <AutoRunPage id={page.id} at={page.at} />
   }
 }
 

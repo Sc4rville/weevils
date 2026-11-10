@@ -7,6 +7,7 @@ import { Ctx, THEME_COLOR, colorSlots, isTheme, isSettled, setSettledNow, stable
 import { AgentBand, FootBand, ProjectBand } from './ui/bands'
 import { spring } from './ui/bits'
 import { H24Rail } from './ui/h24'
+import { TalkProvider } from './ui/auto-talk'
 import { Login } from './ui/login'
 import { TourBand, TourIntro } from './ui/tour'
 import { RelayBand } from './ui/relay'
@@ -435,14 +436,18 @@ export default function App() {
           ))}
           <FootBand />
         </motion.main>
-        <div inert={stack.length > 0}>
-          <H24Rail />
-        </div>
-        <AnimatePresence>
-          {stack.map((p, i) => (
-            <PageView key={`${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : p.kind === 'software' ? p.id : p.kind === 'media' ? p.url : ''}`} page={p} />
-          ))}
-        </AnimatePresence>
+        {/* One negotiation state for the drawer and the automation pages: a question in flight, a rewritten task, a ✓
+            given on one shows on the other. */}
+        <TalkProvider>
+          <div inert={stack.length > 0}>
+            <H24Rail />
+          </div>
+          <AnimatePresence>
+            {stack.map((p, i) => (
+              <PageView key={`${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : p.kind === 'software' || p.kind === 'auto' ? p.id : p.kind === 'autorun' ? `${p.id}@${p.at}` : p.kind === 'media' ? p.url : ''}`} page={p} />
+            ))}
+          </AnimatePresence>
+        </TalkProvider>
         <Tips paused={stack.length > 0} />
         <WeevilQuestions paused={stack.length > 0} />
         <TourIntro />

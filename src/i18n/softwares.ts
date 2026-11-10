@@ -2,6 +2,9 @@ import { defineMessages } from './index'
 
 export default defineMessages({
   fr: {
+    noPreview: 'Aperçu visuel indisponible',
+    noVisualInterface: 'Sans interface visuelle',
+    phaseName: (phase: number): string => phase === 1 ? 'Première version en préparation' : phase === 2 ? 'Version utilisable' : 'Avec des utilisateurs',
     title: 'logiciels',
     kicker: 'logiciels',
     count: (n: number) => `${n} logiciel${n > 1 ? 's' : ''}`,
@@ -21,6 +24,9 @@ export default defineMessages({
     notFound: 'introuvable',
   },
   en: {
+    noPreview: 'Visual preview unavailable',
+    noVisualInterface: 'No visual interface',
+    phaseName: (phase: number): string => phase === 1 ? 'First version in preparation' : phase === 2 ? 'Usable version' : 'Used by people',
     title: 'software',
     kicker: 'software',
     count: (n: number) => `${n} app${n === 1 ? '' : 's'}`,

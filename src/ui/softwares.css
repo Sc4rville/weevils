@@ -33,19 +33,19 @@
 
 .sw-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 @media (min-width: 700px) {
   .sw-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 .sw {
   position: relative;
   min-width: 0;
-  aspect-ratio: 4 / 5;
+  align-self: start;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -59,11 +59,11 @@
 /* L'aperçu : la capture, ou la sortie qui se tape. Encadré par la couleur du rectangle, pour que deux terminaux voisins ne se fondent pas. */
 .sw-view {
   position: relative;
-  flex: 1;
+  flex: none;
   min-height: 0;
   display: block;
   overflow: hidden;
-  background: var(--ink);
+  background: transparent;
 }
 
 .sw-view img {
@@ -71,7 +71,7 @@
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: top;
   background: var(--c);
 }
@@ -288,3 +288,17 @@ button.sw-mark {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Real interface images only; unavailable previews remain a quiet text row. */
+.sw { padding: 16px var(--pad); gap: 6px; }
+.sw-view.has-shot { aspect-ratio: 16 / 10; }
+.sw-view.no-shot { order: 3; }
+.sw-empty, .sw-state, .sw-progress-label, .sw-blurb { font-size: .875rem; line-height: 1.4; overflow-wrap: anywhere; }
+.sw-empty { display: block; opacity: .7; }
+.sw-name { white-space: normal; overflow-wrap: anywhere; padding: 0; font-size: 1.375rem; }
+.sw-state { order: 2; }
+.sw-blurb { order: 1; }
+.sw-progress-label { order: 4; margin-top: 6px; }
+.sw > .sw-phase { order: 5; height: 3px; }
+.sw-empty-detail { padding-block: 20px; }
+@media (min-width: 1100px) { .sw-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

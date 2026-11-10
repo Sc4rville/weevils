@@ -1,7 +1,6 @@
 import { noticeKey } from '../../shared/notices.ts'
 import { Notice } from './notice'
-import { useReducedMotion } from 'motion/react'
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent, type RefObject } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
 import type { Phase, Progress, Software } from '../../shared/softwares.ts'
 import { api, ApiError, softwareShot } from '../api'
 import { useT } from '../i18n'
@@ -111,44 +110,6 @@ export function sameOrigin(url: string, origin: string): boolean {
 
 // ---------------------------------------------------------------------------
 // Petits morceaux.
-
-/** Vrai tant que l'élément est à l'écran (ou presque) : seuls ceux-là s'animent, le téléphone reste froid. */
-function useOnScreen(ref: RefObject<Element | null>): boolean {
-  const [on, setOn] = useState(false)
-  useEffect(() => {
-    const el = ref.current
-    if (!el || typeof IntersectionObserver === 'undefined') return setOn(true)
-    const io = new IntersectionObserver(([e]) => setOn(e.isIntersecting), { rootMargin: '60px' })
-    io.observe(el)
-    return () => io.disconnect()
-  }, [ref])
-  return on
-}
-
-/** La vraie sortie qui se tape ligne après ligne, en boucle ; immobile (dernières lignes) si les animations sont réduites. */
-function TerminalAnim({ lines, active, rows = 16 }: { lines: string[]; active: boolean; rows?: number }) {
-  const reduce = useReducedMotion()
-  const [s, setS] = useState<Typing>(TYPING0)
-  const linesRef = useRef(lines)
-  linesRef.current = lines
-  const animate = active && !reduce && lines.length > 0
-  useEffect(() => {
-    if (!animate) return
-    const id = window.setInterval(() => setS((x) => step(x, linesRef.current)), 70)
-    return () => window.clearInterval(id)
-  }, [animate])
-  const f = animate ? frame(lines, s, rows) : { lines: lines.slice(-rows), typing: false }
-  return (
-    <span className="sw-term" aria-hidden>
-      {f.lines.map((l, i) => (
-        <span key={i} className="sw-term-line">
-          {l}
-          {f.typing && i === f.lines.length - 1 && <span className="sw-cursor" />}
-        </span>
-      ))}
-    </span>
-  )
-}
 
 /** Tourne : un carré plein vert fluo ; démarre : le même qui clignote ; en échec : un « ! » d'encre. Aucun mot. */
 function RunMark({ run }: { run: Software['run'] }) {
@@ -268,24 +229,26 @@ function ErrorBand({ text }: { text: string }) {
 // ---------------------------------------------------------------------------
 // La grille.
 
-function Tile({ sw, slot, top, onOpen }: { sw: Software; slot: number; top: boolean; onOpen: () => void }) {
+export function Tile({ sw, slot, onOpen }: { sw: Software; slot: number; top: boolean; onOpen: () => void }) {
   const t = useT(M)
   const ref = useRef<HTMLButtonElement>(null)
-  const seen = useOnScreen(ref)
   /** La capture qui n'a pas pu se charger : la suivante (autre horodatage) retente. */
   const [broken, setBroken] = useState<number | null>(null)
-  const shot = sw.kind === 'web' && sw.shot != null && broken !== sw.shot
+  const shot = sw.shot != null && broken !== sw.shot
   return (
     <button ref={ref} className="sw" style={tint(slot)} aria-label={`${sw.name}, ${t.progress(sw.progress.phase, sw.progress.percent)}`} onClick={onOpen}>
-      <span className="sw-view">
+      <span className={`sw-view ${shot ? 'has-shot' : 'no-shot'}`}>
         {shot ? (
           <img src={softwareShot(sw.id, sw.shot!)} alt="" loading="lazy" decoding="async" onError={() => setBroken(sw.shot!)} />
         ) : (
-          <TerminalAnim lines={termLines(sw)} active={seen && top} />
+          <span className="sw-empty">{sw.kind === 'web' ? t.noPreview : t.noVisualInterface}</span>
         )}
-        <RunMark run={sw.run} />
+        {shot && <RunMark run={sw.run} />}
       </span>
       <span className="sw-name">{sw.name}</span>
+      {sw.blurb && <span className="sw-blurb">{sw.blurb}</span>}
+      <span className="sw-state">{t[sw.run]}</span>
+      <span className="sw-progress-label">{t.phaseName(sw.progress.phase)}</span>
       <PhaseBar progress={sw.progress} />
     </button>
   )
@@ -368,26 +331,12 @@ export function SoftwaresPage() {
 // ---------------------------------------------------------------------------
 // La page d'un logiciel : son interface en direct, ou son état et sa sortie en direct.
 
-/** La sortie en direct, toute la largeur, toujours collée à la dernière ligne. */
-function LiveTerm({ lines, label }: { lines: string[]; label: string }) {
-  const ref = useRef<HTMLPreElement>(null)
-  const last = lines.at(-1)
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [lines.length, last])
-  return (
-    <pre ref={ref} className="sw-live" aria-label={label} aria-live="polite" tabIndex={0}>
-      {lines.join('\n')}
-    </pre>
-  )
-}
-
 export function SoftwarePage({ id }: { id: string }) {
   const t = useT(M)
   const { snap, colors } = useApp()
   const [sw, setSw] = useState<Software | null>(() => known.get(id) ?? null)
   const [missing, setMissing] = useState(false)
+  const [brokenShot, setBrokenShot] = useState<number | null>(null)
   const [err, setErr] = useState<string | null>(null)
   /** Corrections en vol : la relecture ne remet pas l'ancienne barre sous le doigt. */
   const fixing = useRef(0)
@@ -477,7 +426,6 @@ export function SoftwarePage({ id }: { id: string }) {
   // Seul ce que weevils a lancé lui-même s'arrête d'ici : pas ce qu'un service ou un conteneur fait tourner en permanence.
   const canStop = live && !!sw.owned
   const frame = !!sw.url && !!sw.embeddable && sw.run !== 'starting' && !sameOrigin(sw.url, location.origin)
-  const lines = termLines(sw)
   const meta = [sw.machine, sw.port ? `:${sw.port}` : '', t[sw.run], sw.blurb].filter(Boolean).join(' · ')
 
   return (
@@ -511,12 +459,12 @@ export function SoftwarePage({ id }: { id: string }) {
           />
         </div>
       )}
-      {!frame && sw.url && sw.run !== 'starting' && sw.shot != null && (
+      {!frame && sw.url && sw.run !== 'starting' && sw.shot != null && brokenShot !== sw.shot && (
         <a className="sw-shot" href={sw.url} target="_blank" rel="noreferrer" aria-label={t.openTab}>
-          <img src={softwareShot(sw.id, sw.shot)} alt={t.shot(sw.name)} />
+          <img src={softwareShot(sw.id, sw.shot)} alt={t.shot(sw.name)} onError={() => setBrokenShot(sw.shot!)} />
         </a>
       )}
-      {(lines.length > 0 || !frame) && <LiveTerm lines={lines} label={t.terminal(sw.name)} />}
+      {!frame && (sw.shot == null || brokenShot === sw.shot) && <div className="in sw-empty-detail">{sw.kind === 'web' ? t.noPreview : t.noVisualInterface}</div>}
     </Shell>
   )
 }

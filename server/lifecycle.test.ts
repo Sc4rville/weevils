@@ -331,6 +331,21 @@ describe('notifications', () => {
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ title: tr(P).doneTitle('demo'), body: 'All three buttons are in.' }))
   })
 
+  it('un tour qui finit sur une question : notification « à toi » avec la question, même si des sous-agents tournent', async () => {
+    w.bump()
+    await settle()
+    const t = w.store.get('s1')!
+    w.hook({ session_id: 's1', hook_event_name: 'UserPromptSubmit' })
+    await settle()
+    t.messages.push({ id: 'q', role: 'assistant', text: 'Le pod est prêt. Ouvre ce lien pour valider la facturation : https://www.runpod.io/console/billing', at: Date.now() })
+    t.subagents = [{ id: 'b1', kind: 'agent', label: 'search', activity: 'WebSearch', status: 'working', startedAt: Date.now() }]
+    t.lastActivityAt = Date.now()
+    w.hook({ session_id: 's1', hook_event_name: 'Stop' })
+    await settle()
+    expect(one()).toMatchObject({ status: 'needs_user', ask: { kind: 'link', url: 'https://www.runpod.io/console/billing' } })
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ title: tr(P).waitingTitle('demo'), body: 'Ouvre ce lien pour valider la facturation : https://www.runpod.io/console/billing', url: '/#s=s1' }))
+  })
+
   it('un tour court (moins de 15 s) ne notifie pas', async () => {
     w.hook({ session_id: 's1', hook_event_name: 'UserPromptSubmit' })
     await settle()
@@ -372,6 +387,28 @@ describe('arrière-plan (sous-agents, workflow, commandes)', () => {
     add(transcript({ subagents: [sub()] }))
     w.panes = [pane({ screenAttention: 'Do you want to proceed?' })]
     expect(one()).toMatchObject({ status: 'needs_user', background: 1 })
+  })
+
+  it('L16b TLO : le tour finit sur une demande (valider RunPod, coller une adresse) avec 6 agents en arrière-plan → « à toi », action « coller », pas « travaille » ; une réponse de l’utilisateur lève l’attente', () => {
+    const ask = 'J’ai lancé six agents sur la recherche.\n\nValide la facturation RunPod, puis colle-moi l’adresse du pod ici.'
+    add(transcript({ lastActivityAt: NOW - 40 * MIN, messages: [{ id: 'u', role: 'user', text: 'go', at: NOW - 50 * MIN }, { id: 'a', role: 'assistant', text: ask, at: NOW - 40 * MIN }], subagents: Array.from({ length: 6 }, (_, i) => sub({ id: `a${i}` })) }))
+    w.panes = [pane({ createdAt: NOW - 60 * MIN })]
+    w.hooks.set('s1', { event: 'Stop', at: NOW - 40 * MIN, pid: ALIVE })
+    expect(one()).toMatchObject({ status: 'needs_user', background: 6, attention: 'Valide la facturation RunPod, puis colle-moi l’adresse du pod ici.', ask: { kind: 'paste' } })
+    // Scarville répond : l'agent reprend, plus d'attente.
+    const t = w.store.get('s1')!
+    t.messages.push({ id: 'u2', role: 'user', text: 'https://pod.example', at: NOW })
+    t.lastActivityAt = NOW
+    w.hooks.set('s1', { event: 'UserPromptSubmit', at: NOW, pid: ALIVE })
+    expect(one()).toMatchObject({ status: 'working' })
+    expect(one()?.ask).toBeUndefined()
+  })
+
+  it('L16c un compte rendu sans demande, arrière-plan en cours : « travaille » comme avant', () => {
+    add(transcript({ messages: [{ id: 'a', role: 'assistant', text: 'Lancé : six agents cherchent, je fais la synthèse quand ils ont fini.', at: NOW - MIN }], subagents: [sub()] }))
+    w.panes = [pane()]
+    w.hooks.set('s1', { event: 'Stop', at: NOW - MIN, pid: ALIVE })
+    expect(one()).toMatchObject({ status: 'working' })
   })
 
   it('L17 ménage : une pane sans activité depuis 2 h mais avec un arrière-plan qui tourne n’est pas fermée', async () => {

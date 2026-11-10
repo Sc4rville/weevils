@@ -28,6 +28,11 @@ export default defineMessages({
     /** Session coupée en plein travail : la relancer d'un geste. */
     resume: 'reprendre',
     resumeAria: (title: string) => `reprendre la session ${title}`,
+    askLink: 'ouvrir le lien',
+    askPaste: 'coller',
+    askReply: 'répondre',
+    clipboardEmpty: 'presse-papiers vide',
+    askAria: (action: string, title: string) => `${action} · ${title}`,
     demo: 'démo',
     working: (author: string) => `${author} travaille`,
     /** Lecteur d'écran, ligne de session : outil, titre, état, activité, durée. */
@@ -57,6 +62,11 @@ export default defineMessages({
     background: (n: number) => `${n} in background`,
     resume: 'resume',
     resumeAria: (title: string) => `resume the session ${title}`,
+    askLink: 'open the link',
+    askPaste: 'paste',
+    askReply: 'reply',
+    clipboardEmpty: 'clipboard is empty',
+    askAria: (action: string, title: string) => `${action} · ${title}`,
     demo: 'demo',
     working: (author: string) => `${author} is working`,
     rowAria: (tool: string, title: string, state: string, act: string | undefined, when: string) => `${tool}, ${title}, ${state}${act ? `: ${act}` : ''}, ${when}`,

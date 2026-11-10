@@ -2317,3 +2317,17 @@ button.copy.done {
 .setup-form input.masked {
   -webkit-text-security: disc;
 }
+
+/* Une session qui t'attend (src/ui/bits.tsx, AskButton) : l'action rapide sur la ligne, dans les couleurs de la ligne. */
+.ask-wrap .row > .in {
+  padding-right: calc(var(--pad) + 120px);
+}
+
+.ask-wrap .row .act {
+  display: none;
+}
+
+.resume.ask {
+  background: var(--ink);
+  color: var(--c, var(--agent));
+}

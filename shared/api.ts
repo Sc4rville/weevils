@@ -1,3 +1,4 @@
+import type { Ask } from './asks.ts'
 import type { Tour } from './tour.ts'
 
 // Contrat entre weevilsd (VPS) et l'app. Horodatages en millisecondes, compteurs toujours dérivés côté app.
@@ -86,6 +87,8 @@ export interface Session {
   status: SessionStatus
   /** Ce qui t'attend (permission, question), quand status = needs_user. */
   attention?: string
+  /** status = needs_user sans dialogue : le tour fini sur une question ou une demande (shared/asks.ts), pour l'action rapide. */
+  ask?: Ask
   /** status = interrupted : quand et pourquoi (detail : le message d'erreur de l'outil, s'il y en a un). */
   interrupted?: { at: number; reason: InterruptReason; detail?: string }
   cwd: string

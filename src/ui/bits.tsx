@@ -140,6 +140,14 @@ export function SessionRow({ session }: { session: Session }) {
       </span>
     </button>
   )
+  // Elle t'attend (question, lien, valeur à coller) : l'action rapide à côté, sans ouvrir la conversation.
+  if (waiting && session.ask)
+    return (
+      <div className="cut-wrap ask-wrap">
+        {row}
+        <AskButton session={session} />
+      </div>
+    )
   if (!cut) return row
   // Coupée en plein travail : la ligne en couleur d'alerte et, à côté, la reprise en un geste.
   return (
@@ -147,6 +155,40 @@ export function SessionRow({ session }: { session: Session }) {
       {row}
       <ResumeButton session={session} />
     </div>
+  )
+}
+
+/** L'action rapide d'une session qui attend : ouvrir son lien, lui coller le presse-papiers, ou lui répondre. */
+export function AskButton({ session }: { session: Session }) {
+  const { push } = useApp()
+  const t = useT(M)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const ask = session.ask!
+  const label = ask.kind === 'link' ? t.askLink : ask.kind === 'paste' ? t.askPaste : t.askReply
+  const go = async () => {
+    setErr(null)
+    if (ask.kind === 'link' && ask.url) return void window.open(ask.url, '_blank', 'noopener')
+    if (ask.kind !== 'paste') return push({ kind: 'session', id: session.id })
+    setBusy(true)
+    try {
+      // Dans le geste : iOS propose « Coller », rien n'est lu sans l'accord de l'utilisateur.
+      const text = (await navigator.clipboard.readText()).trim()
+      if (!text) throw new Error(t.clipboardEmpty)
+      const r = await api.send(session.id, text)
+      push({ kind: 'session', id: r.id })
+    } catch (e) {
+      // Presse-papiers refusé ou vide : la conversation s'ouvre, on y colle soi-même.
+      setErr((e as Error).message)
+      push({ kind: 'session', id: session.id })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <button className="resume ask" onClick={() => void go()} disabled={busy} aria-label={err ?? t.askAria(label, ask.text)} title={err ?? ask.text}>
+      {label}
+    </button>
   )
 }
 

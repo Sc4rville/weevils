@@ -24,6 +24,7 @@ import type { Memory } from './memory.ts'
 import type { Optimizers } from './optimizers.ts'
 import { parseTimerShow } from './schedule.ts'
 import { chipsInPlace } from '../shared/setup.ts'
+import { asksUser, type Ask } from '../shared/asks.ts'
 import { isDemoJob, type TourKeeper } from './tour.ts'
 import TM from './i18n/tour.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
@@ -731,6 +732,18 @@ export class Weevils {
     } else if (hook && hookAlive && hook.at >= t.lastActivityAt - 2000 && ['UserPromptSubmit', 'PostToolUse'].includes(hook.event)) status = 'working'
     else if (hook?.event === 'Stop' && hook.at >= t.lastActivityAt - 2000) status = 'idle'
     else if (t.phase === 'working' && now - t.lastActivityAt < 10 * 60_000) status = 'working'
+    // Tour fini sur une question ou une demande (lien, valeur à coller, choix), sans réponse depuis : la session attend
+    // l'utilisateur, même si ses sous-agents tournent encore (sinon elle passait pour « travaille »).
+    let ask: Ask | undefined
+    // Avant la règle des 30 min : une question sans réponse attend, elle ne devient pas « terminée ».
+    if (status === 'idle' && live && !(pane && this.isOrchestratorPane(pane))) {
+      const last = t.messages.findLast((m) => m.role !== 'event')
+      ask = last?.role === 'assistant' ? (asksUser(last.text) ?? undefined) : undefined
+      if (ask) {
+        status = 'needs_user'
+        attention = ask.text
+      }
+    }
     // Une pane weevils qui n'a rien fait depuis 30 min rejoint les sessions terminées (lui écrire la réveille, son contexte est là).
     if (status === 'idle' && pane && !this.isOrchestratorPane(pane) && now - t.lastActivityAt > DONE_AFTER_MS) status = 'done'
     // Le tour principal, sans l'arrière-plan : la file d'attente de Claude Code ne vit que pendant un tour.
@@ -760,6 +773,7 @@ export class Weevils {
       now: shortNow(this.titles.get(t.id)?.now || (t.phase === 'working' ? stepOf(t) : '')) || undefined,
       status,
       attention: status === 'needs_user' ? attention : undefined,
+      ...(ask && status === 'needs_user' ? { ask } : {}),
       ...(interrupted ? { interrupted } : {}),
       cwd: t.cwd,
       branch: t.branch,

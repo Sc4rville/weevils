@@ -30,7 +30,7 @@ export class Remote {
         // A reverse tunnel can accidentally lead back to us. Never ingest our own aggregate.
         if (!owner || owner.id === MACHINE.id) {
           this.snap = null
-          throw new Error('remote is this machine')
+          throw new Error('remote is this machine') // i18n-ignore: internal guard, caught locally and never displayed
         }
         // A peer may federate other machines too: only ingest the peer's own records, once.
         const sessions = [...new Map(s.sessions.filter((x) => x.machineId === owner.id).map((x) => [x.id, x])).values()]

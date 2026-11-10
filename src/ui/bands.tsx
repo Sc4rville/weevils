@@ -248,6 +248,7 @@ export function AgentBand() {
             <Icon name="chevron" dir="down" />
           </button>
         )}
+        <TokenMeter />
         <div className="agent-top">
           <VoiceLogo
             take={() => { if (onSel) return ''; const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }}
@@ -257,12 +258,9 @@ export function AgentBand() {
             replyText={th.a.replyKey ? th.a.shown : mainReply?.text}
             working={snap.mainWorking || th.a.waiting}
           />
-          <div className="agent-top-right">
-            <TokenMeter />
-            <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={(e) => tapDevil(e.currentTarget)} aria-pressed={devilOn} aria-label={devilOn ? td.on : td.off}>
-              <FilledIcon name="devil" />
-            </button>
-          </div>
+          <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={(e) => tapDevil(e.currentTarget)} aria-pressed={devilOn} aria-label={devilOn ? td.on : td.off}>
+            <FilledIcon name="devil" />
+          </button>
         </div>
         {/* L'aperçu et le fil restent rendus : ouvrir ou fermer ne fait que les montrer ou les cacher (immédiat). */}
         <div className="peek-wrap" hidden={open}>

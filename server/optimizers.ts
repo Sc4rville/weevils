@@ -251,6 +251,14 @@ const oneLine = (s: unknown, max: number) =>
     .slice(0, max)
     .trim()
 
+/**
+ * A title or a why line as the app shows it: one line, no quotes around words (« mygame », "the site" → mygame, the
+ * site); apostrophes stay.
+ */
+export function tidy(s: unknown, max: number): string {
+  return oneLine(String(s ?? '').replace(/[«»“”„‟"]/g, ' ').replace(/\s+([,.)])/g, '$1').replace(/\(\s+/g, '('), max)
+}
+
 const norm = (s: string) =>
   s
     .toLowerCase()
@@ -305,7 +313,7 @@ export function parseProposals(raw: unknown, repos: string[], known: { title: st
   for (const x of list as Record<string, unknown>[]) {
     if (out.length >= max) break
     if (!x || typeof x !== 'object') continue
-    const title = oneLine(x.title, 80)
+    const title = tidy(x.title, 80)
     const prompt = String(x.prompt ?? '').trim().slice(0, 6000)
     if (title.length < 3 || prompt.length < 20) continue
     if (isRepeat(title, [...known, ...out])) continue
@@ -313,7 +321,7 @@ export function parseProposals(raw: unknown, repos: string[], known: { title: st
     const repo = want ? (repos.find((n) => n === want) ?? repos.find((n) => n.toLowerCase() === want.toLowerCase()) ?? null) : null
     out.push({
       title,
-      why: oneLine(x.why, 220),
+      why: tidy(x.why, 220),
       repo,
       kind: (KINDS as readonly string[]).includes(String(x.kind)) ? (x.kind as Optimizer['kind']) : 'other',
       heavy: x.heavy === true,

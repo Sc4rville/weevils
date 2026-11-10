@@ -20,8 +20,9 @@ export default defineMessages({
       `- d'un de ces genres : tests (muscler les tests, corriger un test cassé d'un repo), watch (veille sur un sujet qui l'intéresse, en lisant le web), content (préparer un brouillon : texte, page, doc), explore (prototyper ou étudier une idée qu'il a évoquée), other.\n` +
       `repo : seulement si la tâche doit lire ou changer le code de ce repo précis (sinon null) ; ne devine pas un repo à partir de son seul nom.\n` +
       `La consigne (prompt) ne choisit ni branche, ni worktree, ni fichier de sortie : weevils les fixe lui-même (branche locale à part, rapport dans un fichier donné) ; dis seulement quoi faire, quand s'arrêter et ce qu'il faut rendre.\n` +
-      `S'il n'y a rien de vraiment utile, propose moins, ou rien.\n\n` +
-      `Réponds uniquement en JSON, une liste : [{"title": "très court, 5 mots au plus, en français", "why": "une phrase en français qui la relie à un souvenir ou un projet", "repo": "nom exact d'un repo ci-dessus, ou null", "kind": "tests|watch|content|explore|other", "heavy": true si builds, tests lourds ou installs, "priority": 1 (forte) à 3 (faible), "est": minutes environ, "prompt": "la consigne complète pour l'agent, en français : contexte, quoi faire, où, quand s'arrêter, ce qu'il rend"}]`,
+      `S'il n'y a rien de vraiment utile, propose moins, ou rien.\n` +
+      `Il lit title et why sur son téléphone : why lui parle directement, au tutoiement (par exemple : tu veux sortir mygame cette année), jamais à la troisième personne ; ni guillemets ni emoji dans title et why.\n\n` +
+      `Réponds uniquement en JSON, une liste : [{"title": "très court, 5 mots au plus, en français, sans guillemets", "why": "une phrase en français qui la relie à un souvenir ou un projet, en lui parlant directement au tutoiement (tu, ton, tes ; jamais il, elle ni l'utilisateur), sans guillemets", "repo": "nom exact d'un repo ci-dessus, ou null", "kind": "tests|watch|content|explore|other", "heavy": true si builds, tests lourds ou installs, "priority": 1 (forte) à 3 (faible), "est": minutes environ, "prompt": "la consigne complète pour l'agent, en français : contexte, quoi faire, où, quand s'arrêter, ce qu'il rend"}]`,
     /** Machine facts for the prompt. */
     machine: (cpus: number, ramGb: number, os: string) => `${cpus} cœurs, ${ramGb} Go de RAM, ${os}`,
     /** One line of what was already proposed. */
@@ -79,8 +80,9 @@ export default defineMessages({
       `- of one of these kinds: tests (harden a repo's tests, fix a broken test), watch (keep an eye on a topic they care about, reading the web), content (prepare a draft: text, page, doc), explore (prototype or study an idea they mentioned), other.\n` +
       `repo: only when the task must read or change the code of that very repo (else null); never guess a repo from its name alone.\n` +
       `The brief (prompt) picks no branch, worktree nor output file: weevils sets those itself (a separate local branch, a report in a given file); only say what to do, when to stop and what to hand back.\n` +
-      `If nothing is really useful, propose fewer, or none.\n\n` +
-      `Answer only in JSON, a list: [{"title": "very short, 5 words at most, in English", "why": "one sentence in English tying it to a memory or a project", "repo": "exact name of a repo above, or null", "kind": "tests|watch|content|explore|other", "heavy": true if builds, heavy tests or installs, "priority": 1 (high) to 3 (low), "est": rough minutes, "prompt": "the full brief for the agent, in English: context, what to do, where, when to stop, what it hands back"}]`,
+      `If nothing is really useful, propose fewer, or none.\n` +
+      `They read title and why on their phone: why speaks to them directly as you (for example: you want to ship mygame this year), never in the third person; no quotes and no emoji in title and why.\n\n` +
+      `Answer only in JSON, a list: [{"title": "very short, 5 words at most, in English, no quotes", "why": "one sentence in English tying it to a memory or a project, speaking to them directly as you (you, your; never they, he, she or the user), no quotes", "repo": "exact name of a repo above, or null", "kind": "tests|watch|content|explore|other", "heavy": true if builds, heavy tests or installs, "priority": 1 (high) to 3 (low), "est": rough minutes, "prompt": "the full brief for the agent, in English: context, what to do, where, when to stop, what it hands back"}]`,
     machine: (cpus: number, ramGb: number, os: string) => `${cpus} cores, ${ramGb} GB RAM, ${os}`,
     historyLine: (title: string, state: string, why: string) => `- [${state}] ${title}${why ? ` (${why})` : ''}`,
     state_proposed: 'proposed',

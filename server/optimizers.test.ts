@@ -4,9 +4,10 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session, Snapshot } from '../shared/api.ts'
 import { smart } from './fast.ts'
+import O from './i18n/optimizers.ts'
 import { Memory } from './memory.ts'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_RUN_MS, MAX_TRIES, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, VANISH_MS, Optimizers, freeReason, guardEnv, isRepeat, isStall, parseProposals, slug, stallKind, type Sys } from './optimizers.ts'
+import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_RUN_MS, MAX_TRIES, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, VANISH_MS, Optimizers, freeReason, guardEnv, isRepeat, isStall, parseProposals, slug, stallKind, tidy, type Sys } from './optimizers.ts'
 
 // Hermetic: no claude CLI, no login check, the language fixed in memory.
 vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn() }))
@@ -42,8 +43,8 @@ const flush = () => new Promise((r) => setTimeout(r, 0))
 const props = (n = 3) =>
   JSON.stringify(
     [
-      { title: 'Harden mygame tests', why: 'they want to ship mygame', repo: 'mygame', kind: 'tests', heavy: true, priority: 1, est: 40, prompt: 'Add tests for the jump physics of mygame, stop at one hour.' },
-      { title: 'Watch indie game fairs', why: 'they want to show the game', repo: null, kind: 'watch', heavy: false, priority: 2, est: 20, prompt: 'Find the indie game fairs of the next six months and list them.' },
+      { title: 'Harden mygame tests', why: 'you want to ship mygame', repo: 'mygame', kind: 'tests', heavy: true, priority: 1, est: 40, prompt: 'Add tests for the jump physics of mygame, stop at one hour.' },
+      { title: 'Watch indie game fairs', why: 'you want to show the game', repo: null, kind: 'watch', heavy: false, priority: 2, est: 20, prompt: 'Find the indie game fairs of the next six months and list them.' },
       { title: 'Draft the landing page', why: 'mygame-site is empty', repo: 'mygame-site', kind: 'content', heavy: false, priority: 3, est: 30, prompt: 'Draft a landing page text for mygame in the repo mygame-site.' },
     ].slice(0, n),
   )
@@ -161,6 +162,20 @@ describe('auto — rounds', () => {
     memory.add('plays chess')
     expect(o.roundDue(T0 + 35 * MIN)).toBe(false)
     expect(o.roundDue(T0 + 25 * MIN + ROUND_MEMORY_MS)).toBe(true)
+  })
+
+  it('titles and why lines are tidy and talk to the user', async () => {
+    expect(tidy('Préparer la page « mygame »', 80)).toBe('Préparer la page mygame')
+    expect(tidy('"Watch" the “indie” fairs , now', 80)).toBe('Watch the indie fairs, now')
+    expect(tidy("Tu veux l'écrire « bientôt » ?", 80)).toBe("Tu veux l'écrire bientôt ?")
+    const out = parseProposals([{ title: '« Muscler » les tests', why: 'Tu veux sortir « mygame » cette année.', prompt: 'Add tests for the jump physics of mygame.' }], [], [])
+    expect(out[0]).toMatchObject({ title: 'Muscler les tests', why: 'Tu veux sortir mygame cette année.' })
+    const o = make()
+    expect(o.proposalPrompt()).toMatch(/why speaks to them directly as you/)
+    expect(o.proposalPrompt()).toMatch(/speaking to them directly as you .*never they, he, she or the user/)
+    const fr = O.fr.propose('Sam', 3, '', '', '', '', '')
+    expect(fr).toContain('au tutoiement')
+    expect(fr).toContain('sans guillemets')
   })
 
   it('a failed round backs off an hour at least, doubling', async () => {

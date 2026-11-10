@@ -73,3 +73,11 @@ it('uses the real Unix WebSocket transport and acknowledges a queued user messag
     fs.rmSync(dir, { recursive: true, force: true })
   }
 })
+
+it('keeps other loaded threads writable when one queued delivery cannot start yet', async () => {
+ const f = fixture()
+ const transport = async <T>(_s: string, run: (rpc: any) => Promise<T>) => run((m: string, p: any) => m === 'thread/read' ? Promise.reject(new Error('thread changed')) : f.rpc(m, p))
+ const bridge = new CodexBridge('/test/socket', transport)
+ await bridge.refresh()
+ expect(bridge.can('existing')).toBe(true)
+})

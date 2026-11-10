@@ -76,7 +76,9 @@ export class CodexBridge {
     try {
       await this.transport(this.socket, async rpc => {
         this.loaded = await this.ids(rpc); this.checked = Date.now(); this.changed()
-        for (const id of this.loaded) await this.drain(rpc, id)
+        for (const id of this.loaded) {
+          try { await this.drain(rpc, id) } catch { /* One busy or unloaded thread must not disable the other channels. */ }
+        }
       })
     } catch { this.loaded.clear(); this.checked = 0; this.changed() }
     finally { this.busy = false }

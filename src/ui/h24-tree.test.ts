@@ -50,6 +50,18 @@ describe('auto tree', () => {
     expect(tasks.find((t) => t.id === 'q2')!.place).toBe(3)
   })
 
+  it('a task held by its time (or a retry) is not in the line: the one-off behind it is next', () => {
+    const tree = autoTree({
+      projects: [],
+      optimizers: [opt({ id: 'daily', waiting: 'time', every: 86_400_000 }), opt({ id: 'late', waiting: 'later' }), opt({ id: 'now', waiting: undefined })],
+      h24: [],
+    })
+    const tasks = tasksOf(tree[0])
+    expect(tasks.find((t) => t.id === 'now')!.place).toBe(1)
+    expect(tasks.find((t) => t.id === 'daily')!.place).toBeUndefined()
+    expect(tasks.find((t) => t.id === 'late')!.place).toBeUndefined()
+  })
+
   it('counts, default folding and compact durations', () => {
     const tasks = [fromOptimizer(opt({ state: 'done' }))!, fromOptimizer(opt({ state: 'done' }))!, fromOptimizer(opt({ state: 'done' }))!, fromOptimizer(opt({ state: 'failed' }))!]
     expect(counts(tasks)).toMatchObject({ done: 3, failed: 1, running: 0 })

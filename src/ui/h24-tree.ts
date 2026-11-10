@@ -128,12 +128,13 @@ export function autoTree(snap: Pick<Snapshot, 'projects' | 'h24' | 'optimizers'>
     if (!g) c.groups.push((g = { id: `${c.id}:${t.kind}`, kind: t.kind, tasks: [] }))
     g.tasks.push(t)
   }
-  // Accepted tasks: their place in the line (the running one is first).
-  const line = (snap.optimizers ?? []).filter((o) => o.state === 'queued')
+  // Accepted tasks: their place in the line (the running one is first). One held by its time or by a retry delay is
+  // not in the line: the others go before it.
+  const line = (snap.optimizers ?? []).filter((o) => o.state === 'queued' && o.waiting !== 'time' && o.waiting !== 'later')
   for (const o of snap.optimizers ?? []) {
     const t = fromOptimizer(o)
     if (!t) continue
-    if (o.state === 'queued') t.place = line.indexOf(o) + 1 + Number((snap.optimizers ?? []).some((x) => x.state === 'running'))
+    if (o.state === 'queued' && line.includes(o)) t.place = line.indexOf(o) + 1 + Number((snap.optimizers ?? []).some((x) => x.state === 'running'))
     add(projectOfRepo(o.repo), t)
   }
   for (const a of snap.h24) {

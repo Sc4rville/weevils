@@ -137,8 +137,9 @@ export function buildSteps(now: Partial<Record<TourId, boolean>>, p: Pick<Persis
   const out: TourStep[] = []
   for (const id of TOUR_IDS) {
     const ok = id === 'first' ? p.done.includes('first') || p.ready.includes('first') : !!now[id]
-    // Ce qui n'existe pas ici ne s'affiche pas : pas d'installation notée, rien de déjà fait avant weevils.
-    if ((id === 'install' || id === 'history') && !ok) continue
+    // Ce qui était déjà là au premier lancement (installation notée, historique) : affiché seulement dans ce cas, pour
+    // que le total ne bouge pas en route (le premier projet créé n'est pas « de l'historique »).
+    if ((id === 'install' || id === 'history') && !p.ready.includes(id)) continue
     let state: TourState
     if (ok) state = p.ready.includes(id) ? 'ready' : 'done'
     else state = p.skip.includes(id) ? 'skip' : 'todo'
@@ -343,12 +344,13 @@ export class TourKeeper {
       }
     }
     const started = Date.now()
+    const changed = new Set<string>()
     let i = 0
     const tick = () => {
       if (Date.now() - started > 90_000) {
-        fs.appendFileSync(log, `${t.jobEnd(repos.length)}\n`)
+        fs.appendFileSync(log, `${t.jobEnd(repos.length, changed.size, [...changed].slice(0, 2))}\n`)
         this.deps.refreshH24()
-        this.demoTimer = setTimeout(() => this.stopDemoJob(), 10 * 60_000)
+        this.demoTimer = setTimeout(() => this.stopDemoJob(), 3 * 60_000)
         return
       }
       const repo = repos.length ? repos[i++ % repos.length] : ''
@@ -359,6 +361,7 @@ export class TourKeeper {
       }
       execFile('git', ['-C', repo, 'status', '--porcelain'], { timeout: 4000 }, (err, out) => {
         const n = err ? -1 : String(out).split('\n').filter(Boolean).length
+        if (n > 0) changed.add(path.basename(repo))
         try {
           fs.appendFileSync(log, `${t.jobRepo(path.basename(repo), n)}\n`)
         } catch {

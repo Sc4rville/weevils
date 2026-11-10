@@ -181,6 +181,8 @@ export class Weevils {
   setup: Setup | null = null
   /** Premiers pas (server/tour.ts), posé par index.ts. */
   tour: TourKeeper | null = null
+  /** Clé des pages statiques des repos (index.ts, dérivée du code d'accès). */
+  siteKey = ''
   private githubCache: Map<string, number> = new Map()
 
   // ---------------------------------------------------------------- repos GitHub
@@ -726,7 +728,7 @@ export class Weevils {
       setup: this.setup?.flags(),
       tour: this.tour?.current() ?? undefined,
       pinnedRepos: this.pinnedRepos,
-      config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors() },
+      config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey },
     }
     return this.snap
   }

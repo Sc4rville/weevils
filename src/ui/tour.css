@@ -420,3 +420,29 @@
   /* Par-dessus la couleur de l'auteur (bulles signées) : la hachure doit toujours se voir. */
   background-image: repeating-linear-gradient(-45deg, transparent 0 9px, color-mix(in srgb, var(--ink) 9%, transparent) 9px 18px) !important;
 }
+
+/* ---- la fin, et « la suite » pendant le suivi */
+
+.tr-end {
+  display: flex;
+  flex-direction: column;
+  padding-block: 6px 4px;
+}
+
+.tr-end-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.tr-onward {
+  opacity: 1;
+  margin-left: auto;
+}
+
+.tr-caption .spin .ic,
+.tr-caption > .ic {
+  width: 16px;
+  height: 16px;
+  vertical-align: -2px;
+}

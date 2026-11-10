@@ -198,7 +198,8 @@ export interface Snapshot {
   /** Repos épinglés au fil des projets (présents même sans session). */
   pinnedRepos: string[]
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */
-  config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[] }
+  /** siteKey : clé des pages statiques des repos (/api/site/<clé>/<repo>/), pour le navigateur intégré sans domaine de preview. */
+  config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[]; siteKey?: string }
 }
 
 export interface SessionDetail {

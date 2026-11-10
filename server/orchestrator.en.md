@@ -50,6 +50,9 @@ gh repo create {{owner}}/<name> --private --clone --description "<one sentence>"
 weevils new <name> "<first message: the full brief>"
 ```
 Repo name: short, lowercase, dashes. Tell {{user}} the chosen name in one line.
+Without GitHub signed in: `mkdir {{projects}}/<name> && git -C {{projects}}/<name> init`, the session works locally, and offer GitHub in one sentence (`[[setup:github]]`).
+
+**A small app to look at.** When the result is a page or a small app and no preview domain is set (`weevils setup` says how the app is reached), put in the brief: a static page (`index.html` at the repo root, relative paths, no server to start, nothing to install), state kept in memory. It then opens in the app, in the session's built-in browser. Never send {{user}} a localhost address, a command to run or a session id: they see the session in the app.
 
 **New session or existing session?**
 - Same topic as an open session → `weevils send` into it (a session keeps its context, that's precious).

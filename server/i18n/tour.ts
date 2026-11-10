@@ -24,7 +24,8 @@ export default defineMessages({
     jobStart: 'démo : je passe sur tes repos toutes les 6 secondes',
     jobRepo: (repo: string, n: number): string => (n < 0 ? `${repo} : illisible` : n ? `${repo} : ${n} fichier${n > 1 ? 's' : ''} modifié${n > 1 ? 's' : ''}` : `${repo} : rien de neuf`),
     jobTick: (i: number): string => `tour ${i + 1} : rien à surveiller pour l’instant`,
-    jobEnd: (n: number): string => `démo finie : ${n} repo${n > 1 ? 's' : ''} surveillé${n > 1 ? 's' : ''}. Pour de vrai, ça tourne toute la nuit.`,
+    jobEnd: (n: number, changed: number, names: string[]): string =>
+      n ? `rapport : ${n} repo${n > 1 ? 's' : ''} surveillé${n > 1 ? 's' : ''}${changed ? `, des changements dans ${names.join(' et ')}${changed > names.length ? '…' : ''}` : ', rien à signaler'}. Pour de vrai, chaque nuit.` : 'rapport : pas encore de repo à surveiller. Pour de vrai, chaque nuit.',
   },
   en: {
     summary: (working: number, waiting: number, projects: number, names: string[], sessions: number): string => {
@@ -45,6 +46,7 @@ export default defineMessages({
     jobStart: 'demo: going over your repos every 6 seconds',
     jobRepo: (repo: string, n: number): string => (n < 0 ? `${repo}: unreadable` : n ? `${repo}: ${n} file${n > 1 ? 's' : ''} changed` : `${repo}: nothing new`),
     jobTick: (i: number): string => `round ${i + 1}: nothing to watch yet`,
-    jobEnd: (n: number): string => `demo done: ${n} repo${n === 1 ? '' : 's'} watched. For real, it runs all night.`,
+    jobEnd: (n: number, changed: number, names: string[]): string =>
+      n ? `report: ${n} repo${n === 1 ? '' : 's'} watched${changed ? `, changes in ${names.join(' and ')}${changed > names.length ? '…' : ''}` : ', nothing to report'}. For real, every night.` : 'report: no repo to watch yet. For real, every night.',
   },
 })

@@ -564,7 +564,8 @@ export class Setup {
   }
 
   /** Les messages écrits au nom de weevboss (et les réponses des parcours), à mêler à son fil. */
-  messages = () => this.p.log
+  /** Les démos des premiers pas s'effacent d'elles-mêmes au bout de 20 min : le fil reste le vrai. */
+  messages = () => this.p.log.filter((m) => !m.demo || Date.now() - m.at < 20 * 60_000)
   welcomed = () => !!this.p.welcomed
 
   private add(role: 'user' | 'assistant', text: string, id = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`) {

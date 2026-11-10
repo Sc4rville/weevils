@@ -10,7 +10,8 @@ import { Line } from './bits'
 import { markSeen } from './hints'
 import { Icon } from './icons'
 import { WeevbossLogo } from './logo'
-import { PhoneLink, device, runBrick } from './setup'
+import { PhoneLink, device, runBrick, useFlow } from './setup'
+import { openPreviewOf } from './preview'
 import './tour.css'
 
 // Premiers pas (contrat : shared/tour.ts, serveur : server/tour.ts). On apprend en faisant :
@@ -73,7 +74,7 @@ const useFirst = () =>
 type Milestone = 'mSent' | 'mThinking' | 'mReply' | 'mSession' | 'mWorking' | 'mDone'
 
 /** Où en est la première demande, d'après le fil et les sessions. */
-function milestones(snap: Snapshot, f: First): { list: Milestone[]; reached: number; over: boolean } {
+function milestones(snap: Snapshot, f: First): { list: Milestone[]; reached: number; over: boolean; stale: boolean; session?: string } {
   const mine = snap.main.find((m) => m.role === 'user' && m.at >= f.at - 2000 && !m.demo)
   const reply = mine && snap.main.find((m) => m.role === 'assistant' && m.at > mine.at && !m.demo && !m.id.startsWith('setup-'))
   const fresh = snap.sessions.filter((s) => !f.before.includes(s.id) && s.openedAt >= f.at - 5000)
@@ -91,8 +92,8 @@ function milestones(snap: Snapshot, f: First): { list: Milestone[]; reached: num
     reached = 3
     if (!snap.mainWorking) reached = 4
   }
-  // Réussi dès que l'agent travaille sous nos yeux (ou que weevboss a fini de répondre) : la suite peut venir.
-  return { list, reached, over: reached >= list.length - 1 }
+  // Fini quand le travail l'est ; « parler » ou « écrire » sans rien envoyer en 3 min : le suivi s'efface.
+  return { list, reached, over: reached >= list.length, stale: !mine && Date.now() - f.at > 3 * 60_000, session: fresh[0]?.id }
 }
 
 // ---------------------------------------------------------------- actions communes
@@ -113,6 +114,9 @@ function prefill(text: string) {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(el, text)
   el.dispatchEvent(new Event('input', { bubbles: true }))
   el.focus()
+  // Le début de la phrase à l'écran (sinon le champ montre la fin, coupée).
+  el.setSelectionRange(0, 0)
+  el.scrollLeft = 0
 }
 
 /** Parler à weevboss tout de suite : le logo, sans sa bulle d'explication (le geste est appris en le faisant). */
@@ -129,7 +133,7 @@ function suggestions(snap: Snapshot): string[] {
 }
 
 /** Joue la démo d'un usage. */
-async function playDemo(id: TourId, snap: Snapshot, ui: { setH24Open: (o: boolean) => void; caption: (s: string | null) => void; openThread: () => void }) {
+async function playDemo(id: TourId, snap: Snapshot, ui: { caption: (s: string | null) => void; openThread: () => void }) {
   if (id === 'github') return ask(snap, tr(M).sugNotes)
   const r = await api.tourDemo(id).catch(() => null)
   if (!r) return
@@ -147,7 +151,6 @@ async function playDemo(id: TourId, snap: Snapshot, ui: { setH24Open: (o: boolea
   if (id === 'devil') window.dispatchEvent(new Event('weevils:devil-flash'))
   // Le pont : l'échange se lit en entier, fil ouvert (les deux bulles, celle de l'agent à sa couleur).
   if (id === 'mail') window.setTimeout(() => ui.openThread(), 400)
-  if (id === 'h24') window.setTimeout(() => ui.setH24Open(true), 1200)
 }
 
 /** La voix du navigateur, quand le serveur n'en a pas encore. */
@@ -254,7 +257,7 @@ export function TourIntro() {
               </button>
             </div>
             <h1 className="tr-hello">{t.hello(snap.config.userName)}</h1>
-            <p className="tr-sub">{t.scanning}</p>
+            <p className="tr-sub">{phase === 'scan' ? t.scanning : t.scanned}</p>
             <ul className="tr-scan">
               {base.map((s, i) => (
                 <motion.li key={s.id} className={`tr-row ${s.state === 'todo' ? 'todo' : ''}`} initial={reduce ? false : { opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: reduce ? 0 : 0.25 + i * 0.3, type: 'spring', stiffness: 420, damping: 30 }}>
@@ -338,11 +341,14 @@ export function TourIntro() {
 
 // ---------------------------------------------------------------- la bande
 
-/** Un carré par étape : plein = fait ou déjà là, rayé = passé, vide = à faire ; celui en cours bat. */
+/** Un carré par étape, rempli de gauche à droite : plein = fait ou déjà là, rayé = pour plus tard, vide = à faire ;
+ * celui en cours bat. */
+const RANK: Record<TourStep['state'], number> = { ready: 0, done: 1, skip: 3, todo: 2 }
 function Bar({ steps, current }: { steps: TourStep[]; current?: TourId }) {
+  const sorted = [...steps].sort((a, b) => RANK[a.state] - RANK[b.state] || Number(b.id === current) - Number(a.id === current))
   return (
     <span className="tr-bar" aria-hidden>
-      {steps.map((s) => (
+      {sorted.map((s) => (
         <motion.i key={s.id} className={`${s.state} ${s.id === current ? 'now' : ''}`} layout initial={false} animate={s.state === 'done' ? { scale: [1.6, 1] } : { scale: 1 }} />
       ))}
     </span>
@@ -351,7 +357,22 @@ function Bar({ steps, current }: { steps: TourStep[]; current?: TourId }) {
 
 export function TourBand() {
   const tour = useTour()
-  const { snap, setExpanded, setH24Open, push } = useApp()
+  const { snap, setExpanded, push } = useApp()
+  const flow = useFlow()
+  /** La bande a ouvert le fil pour un branchement : il se referme quand les questions sont finies ou annulées. */
+  const openedThread = useRef(false)
+  const hadFlow = useRef(false)
+  useEffect(() => {
+    if (flow) hadFlow.current = true
+    else if (hadFlow.current) {
+      hadFlow.current = false
+      if (!openedThread.current) return
+      openedThread.current = false
+      const id = window.setTimeout(() => setExpanded(null), 1800)
+      return () => window.clearTimeout(id)
+    }
+  }, [flow, setExpanded])
+  const demoJob = snap.h24.find((a) => a.demo)
   const t = useT(M)
   const f = useFirst()
   const [open, setOpen] = useState(false)
@@ -362,17 +383,20 @@ export function TourBand() {
   const prevDone = useRef<number | null>(null)
 
   const steps = tour?.steps ?? []
-  const n = steps.filter((s) => s.state !== 'todo').length
+  const n = steps.filter((s) => s.state === 'ready' || s.state === 'done').length
+  const later = steps.filter((s) => s.state === 'skip').length
   const track = f && snap.tour ? milestones(snap, f) : null
   const firstStep = steps.find((s) => s.id === 'first')
 
   // La première demande aboutie : l'étape se coche, le suivi s'efface un peu après.
   useEffect(() => {
+    if (track?.stale) return setFirst(null)
+    // L'agent travaille (ou weevboss a répondu) : c'est réussi, l'étape se coche ; le suivi reste jusqu'au bout.
+    if (track && track.reached >= track.list.length - 1 && firstStep?.state === 'todo') void api.tourAct('done', 'first').catch(() => undefined)
     if (!track?.over) return
-    if (firstStep?.state === 'todo') void api.tourAct('done', 'first').catch(() => undefined)
-    const id = window.setTimeout(() => setFirst(null), 7000)
+    const id = window.setTimeout(() => setFirst(null), track.session ? 40_000 : 7000)
     return () => window.clearTimeout(id)
-  }, [track?.over, firstStep?.state])
+  }, [track?.over, track?.stale, track?.reached, track?.list.length, firstStep?.state]) // eslint-disable-line react-hooks/exhaustive-deps
   // Une étape cochée pendant qu'on regarde : un petit éclat.
   useEffect(() => {
     if (prevDone.current !== null && n > prevDone.current) {
@@ -386,7 +410,7 @@ export function TourBand() {
   // Tout est fait : la bande le dit, puis s'en va.
   useEffect(() => {
     if (!tour?.finished || !tour.open) return
-    const id = window.setTimeout(() => void api.tourAct('close').catch(() => undefined), 5000)
+    const id = window.setTimeout(() => void api.tourAct('close').catch(() => undefined), 9000)
     return () => window.clearTimeout(id)
   }, [tour?.finished, tour?.open])
 
@@ -406,14 +430,17 @@ export function TourBand() {
     if (s.id === 'first') return talk()
     setBusy(s.id)
     try {
-      if (what === 'try') await playDemo(s.id, snap, { setH24Open, caption: setCaption, openThread: () => setExpanded('agent') })
+      if (what === 'try') await playDemo(s.id, snap, { caption: setCaption, openThread: () => setExpanded('agent') })
       else if (s.id === 'h24') prefill(t.h24Example)
       else {
         const b = s.id === 'phone' && s.facts?.reach === 'local' ? 'reach' : BRICK_OF[s.id]
         if (!b) return
-        if (b !== 'push') setExpanded('agent')
+        if (b !== 'push') {
+          openedThread.current = true
+          setExpanded('agent')
+        }
         const r = await runBrick(b)
-        if (r.note) setNote(r.note)
+        if (r.note || !r.ok) setNote(r.note ?? t.failed)
       }
     } finally {
       setBusy(null)
@@ -482,7 +509,7 @@ export function TourBand() {
     <section className={`band tr-band ${cheer ? 'cheer' : ''}`} aria-label={t.dialog}>
       <div className="in tr-top">
         <button type="button" className="tr-toggle" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-          <span className="tr-label">{tour.finished ? t.allSet : t.dialog}</span>
+          <span className="tr-label">{t.dialog}</span>
           <span className="tr-count" aria-label={t.progressLabel(n, steps.length)}>
             {t.progress(n, steps.length)}
           </span>
@@ -500,6 +527,11 @@ export function TourBand() {
           <span className="tr-tag">{t.demo}</span> {caption}
         </div>
       )}
+      {demoJob && !caption && (
+        <div className="in tr-caption">
+          <span className="tr-tag">{t.demo}</span> {demoJob.runState === 'running' ? <span className="spin"><Icon name="star" /></span> : <Icon name="check" />} {demoJob.lastEvent}
+        </div>
+      )}
       {note && <div className="in tr-caption">{note}</div>}
       <AnimatePresence mode="popLayout" initial={false}>
         {track && !open ? (
@@ -510,6 +542,28 @@ export function TourBand() {
                 {t[m]}
               </li>
             ))}
+            {track.over && track.session && (
+              <li className="tr-onward">
+                <button
+                  type="button"
+                  className="tr-btn"
+                  onClick={() => {
+                    openPreviewOf(track.session!)
+                    push({ kind: 'session', id: track.session! })
+                    setFirst(null)
+                  }}
+                >
+                  {t.see} <Icon name="arrow" dir="right" />
+                </button>
+              </li>
+            )}
+            {track.reached >= 3 && !track.over && (
+              <li className="tr-onward">
+                <button type="button" className="tr-btn quiet" onClick={() => setFirst(null)}>
+                  {t.onward} <Icon name="arrow" dir="right" />
+                </button>
+              </li>
+            )}
           </motion.ol>
         ) : open ? (
           <motion.div key="all" className="tr-list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
@@ -517,7 +571,12 @@ export function TourBand() {
           </motion.div>
         ) : next ? (
           card(next, true)
-        ) : null}
+        ) : (
+          <motion.div key="end" className="in tr-end" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+            <span className="tr-end-title">{t.endTitle}</span>
+            <span className="tr-facts">{t.endLine(n, later)}</span>
+          </motion.div>
+        )}
       </AnimatePresence>
     </section>
   )
@@ -529,7 +588,7 @@ export function TourLine() {
   const tour = useTour()
   const t = useT(M)
   if (!tour) return null
-  const n = tour.steps.filter((s) => s.state !== 'todo').length
+  const n = tour.steps.filter((s) => s.state === 'ready' || s.state === 'done').length
   return (
     <Line ch="*" go={null} meta={t.progress(n, tour.steps.length)} onClick={() => void api.tourAct('open').catch(() => undefined)}>
       {t.dialog}

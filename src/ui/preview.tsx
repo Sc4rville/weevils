@@ -8,6 +8,8 @@ import { Icon } from './icons'
 export interface PreviewConfig {
   exposeDomain: string
   publicHost: string
+  /** Pages statiques des repos servies par weevilsd (/api/site/<clé>/<repo>/), quand il n'y a pas de domaine de preview. */
+  siteKey?: string
 }
 const KEY = (id: string) => `weevils-preview:${id}`
 
@@ -30,12 +32,14 @@ export function urlsInMessages(messages: Message[], cfg: PreviewConfig): string[
   return out.sort((a, b) => rank(a) - rank(b))
 }
 
-/** URL proposée : celle citée dans la conversation, sinon https://<repo>.<domaine configuré>. */
+/** URL proposée : celle citée dans la conversation (sauf une adresse locale, que le téléphone ne joint pas, quand weevilsd
+ * sert le repo lui-même), sinon https://<repo>.<domaine configuré>, sinon la page statique du repo servie par weevilsd. */
 export function guessPreviewUrl(messages: Message[], session: Session, project: Project | undefined, cfg: PreviewConfig): string {
-  const found = urlsInMessages(messages, cfg)[0]
-  if (found) return found
   const repo = session.repo ?? project?.repos[0]
-  return repo && cfg.exposeDomain ? `https://${repo}.${cfg.exposeDomain}` : ''
+  const site = repo && !cfg.exposeDomain && cfg.siteKey ? `${location.origin}/api/site/${cfg.siteKey}/${repo}/` : ''
+  const found = urlsInMessages(messages, cfg).find((u) => !(site && /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)[:/]/.test(u)))
+  if (found) return found
+  return repo && cfg.exposeDomain ? `https://${repo}.${cfg.exposeDomain}` : site
 }
 
 interface Saved {
@@ -58,6 +62,9 @@ function save(id: string, v: Saved) {
     /* stockage indisponible */
   }
 }
+
+/** Ouvre le navigateur intégré d'une session à sa prochaine ouverture (premiers pas : « voir le résultat »). */
+export const openPreviewOf = (id: string) => save(id, { ...load(id), open: true })
 
 /** Choix mémorisés par session : volet ouvert ou non, URL réglée à la main. */
 export function usePreviewState(id: string) {

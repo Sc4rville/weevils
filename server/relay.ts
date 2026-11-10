@@ -185,6 +185,8 @@ interface State {
   prep?: { window: 'session' | 'week'; until: number; key: number; warned?: boolean }
   /** The window whose switch was already announced (one notice per window, even if the episode ends and reopens). */
   switched?: { window: 'session' | 'week' | 'none'; until: number }
+  preparations?: Partial<Record<'session' | 'week', NonNullable<State['prep']>>>
+  switches?: Partial<Record<'session' | 'week' | 'none', NonNullable<State['switched']>>>
   boss?: Boss
   /** The stop error of weevboss on Claude already handed to Codex. */
   bossCutAt?: number
@@ -310,6 +312,10 @@ export class Relay {
         for (const x of this.s.plans) if (x.phase === 'draft' && x.window) x.window = old
       }
       delete (this.s as { warned?: number }).warned
+      this.s.preparations ??= {}
+      if (this.s.prep) this.s.preparations[this.s.prep.window] ??= this.s.prep
+      this.s.switches ??= {}
+      if (this.s.switched) this.s.switches[this.s.switched.window] ??= this.s.switched
     } catch {
       /* first start */
     }
@@ -671,17 +677,21 @@ export class Relay {
     const hot = hottest(this.q, now)
     if (!hot || hot.percent < Math.min(PREPARE_AT, this.s.switchAt - 1)) return
     let dirty = false
-    let prep = this.s.prep
-    if (!prep || prep.window !== hot.window || now >= prep.until) {
-      prep = this.s.prep = { window: hot.window, until: hot.resetsAt ?? now + (hot.window === 'week' ? 7 * 24 : 5) * 3600_000, key: now }
+    const preparations = (this.s.preparations ??= {})
+    let prep = preparations[hot.window]
+    if (!prep || now >= prep.until) {
+      prep = preparations[hot.window] = { window: hot.window, until: hot.resetsAt ?? now + (hot.window === 'week' ? 7 * 24 : 5) * 3600_000, key: now }
       dirty = true
     }
+    this.s.prep = prep
     const key = prep.key
     for (const s of sessions.filter(atWork)) {
       const p = this.ensure(s, now)
       if (p.phase !== 'draft' || p.window === key) continue
+      // A draft made for another still-running quota window is already ready for this handover.
+      const current = Object.values(preparations).some((w) => w?.key === p.window && now < w.until)
       p.window = key
-      p.gen = 'todo'
+      if (!current) p.gen = 'todo'
       dirty = true
     }
     const drafts = this.s.plans.filter((p) => p.phase === 'draft' && p.window === key)
@@ -862,8 +872,10 @@ export class Relay {
       e.announced = true
       // Already said for this window (the episode closed and reopened around the threshold): not twice.
       const win = e.window ?? 'none'
-      const same = this.s.switched && this.s.switched.window === win && now < this.s.switched.until && e.kind !== 'down'
-      this.s.switched = { window: win, until: e.until ?? now + UNKNOWN_RESET_MS }
+      const switches = (this.s.switches ??= {})
+      const previous = switches[win]
+      const same = previous && now < previous.until && e.kind !== 'down'
+      this.s.switched = switches[win] = { window: win, until: e.until ?? now + UNKNOWN_RESET_MS }
       if (same) return this.changed()
       const title = e.kind === 'limit' ? t.limitTitle : e.kind === 'near' ? t.nearTitle(e.percent ?? this.s.switchAt, e.window) : t.downTitle
       const body = this.s.mode === 'auto' ? t.takesOver(this.untilText(now)) : t.plansToCome(this.untilText(now))

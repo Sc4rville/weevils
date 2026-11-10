@@ -403,3 +403,55 @@ describe('réglage', () => {
     expect(x.bossCuts).toBe(1)
   })
 })
+
+
+describe('quota window history', () => {
+  it('keeps preparation announcements across week / five-hour alternation and restart', async () => {
+    const { x, relay, file, host, deps } = world()
+    x.sessions = [session()]
+    let active = relay
+    for (const [i, q] of [windows(91, 92), windows(94, 92), windows(91, 95), windows(96, 95), windows(91, 96)].entries()) {
+      x.quota = q
+      const at = NOW + i * 6 * MIN
+      x.now = at
+      await active.tick(at)
+      await settle()
+      active = new Relay(host, deps, file)
+    }
+    expect(x.notes).toHaveLength(2)
+    expect(x.written).toHaveLength(1)
+  })
+  it('announces a fresh window after the previous reset', async () => {
+    const { x, relay } = world()
+    x.quota = windows(92)
+    await run(relay, NOW)
+    x.quota = { ...windows(92), windows: [{ kind: 'session', percent: 92, resetsAt: NOW + 8 * H }] }
+    await run(relay, NOW + 4 * H)
+    expect(x.notes).toHaveLength(2)
+  })
+  it('migrates the old warning without repeating it and preserves auto mode', async () => {
+    const { x, file, host, deps } = world({ mode: 'auto' })
+    fs.writeFileSync(file, JSON.stringify({ mode: 'auto', warned: NOW + 3 * H, plans: [] }))
+    const relay = new Relay(host, deps, file)
+    x.quota = windows(92)
+    await relay.tick(NOW)
+    await settle()
+    expect(x.notes).toEqual([])
+    expect(relay.view(NOW).mode).toBe('auto')
+  })
+})
+
+
+it('remembers each switch across alternating quota episodes and restart', async () => {
+  const { x, relay, file, host, deps } = world({ mode: 'auto' })
+  let active = relay
+  for (const [i, q] of [windows(90, 97), windows(10, 10), windows(98, 90), windows(10, 10), windows(90, 98)].entries()) {
+    const at = NOW + i * 6 * MIN
+    x.quota = { ...q, at }
+    x.now = at
+    await active.tick(at)
+    await settle()
+    active = new Relay(host, deps, file)
+  }
+  expect(x.notes.filter(n => n.title.startsWith('Claude à'))).toHaveLength(2)
+})

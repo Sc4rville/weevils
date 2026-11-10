@@ -722,7 +722,8 @@ const routes: [string, RegExp, Handler][] = [
   // La mémoire vit sur la machine principale seulement (404 ailleurs, comme weevils memory le dit).
   ...(ORCHESTRATOR ? memoryRoutes(memory, json, readBody) : []),
   ...weevilRoutes(flyers, json, readBody),
-  ...optimizerRoutes(optimizers, json, readBody),
+  // The automation page reads the timers and jobs here too (GET /api/auto/timer:…, job:…).
+  ...optimizerRoutes(optimizers, json, readBody, { detail: (id) => w.h24Detail(id), run: (id, at) => w.h24Run(id, at) }),
   // Le flux « pour toi » vit sur la machine principale seulement.
   ...(foryou ? foryouRoutes(foryou, json, readBody) : []),
   // ---- Mes logiciels : détectés sur chaque machine, aperçu vivant, lancés d'un tap (server/softwares.ts).

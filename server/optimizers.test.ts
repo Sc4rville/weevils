@@ -7,7 +7,8 @@ import { smart } from './fast.ts'
 import O from './i18n/optimizers.ts'
 import { Memory } from './memory.ts'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_FAILED_RUNS, MAX_RUN_MS, MAX_TALK, MAX_TRIES, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, TALK_BACKOFF_MS, TALK_CHARS, VANISH_MS, Optimizers, agreedDigest, freeReason, guardEnv, isRepeat, jailArgs, isStall, parsePatch, parseProposals, runLimit, slug, stallKind, tidy, type Sys } from './optimizers.ts'
+import { Writable } from 'node:stream'
+import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_FAILED_RUNS, MAX_RUN_MS, MAX_RUNS, MAX_TALK, MAX_TRIES, MAX_WAITING, REFILL_GAP_MS, optimizerRoutes, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, TALK_BACKOFF_MS, TALK_CHARS, VANISH_MS, Optimizers, agreedDigest, freeReason, guardEnv, isRepeat, jailArgs, isStall, parsePatch, parseProposals, runLimit, slug, stallKind, tidy, type Sys } from './optimizers.ts'
 
 // Hermetic: no claude CLI, no login check, the language fixed in memory.
 vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn() }))
@@ -61,7 +62,7 @@ beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'optimizers-'))
   memory = new Memory(path.join(dir, 'memory.json'))
   snap = { projects: [{ id: 'mygame', name: 'mygame', kind: 'repo', repos: ['mygame', 'mygame-site'], where: {}, lastActivityAt: T0 }], sessions: [], mainWorking: false } as unknown as Snapshot
-  sys = { load: () => 0.2, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true, worktree: vi.fn(async (_repo: string, d: string) => void fs.mkdirSync(d, { recursive: true })), jail: vi.fn(async () => true) }
+  sys = { load: () => 0.2, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true, worktree: vi.fn(async (_repo: string, d: string) => void fs.mkdirSync(d, { recursive: true })), jail: vi.fn(async () => true), head: vi.fn(async () => undefined) }
   store = new Map()
   hooks = new Map()
   createIn = vi.fn(async () => ({ id: 'sess-1' }))
@@ -776,7 +777,8 @@ describe('auto — talking a task over (the negotiation)', () => {
     let v = o.list(start + 20 * MIN)[0]
     // Next run: a day after it was due (accepted at T0), not after it could start (5 min later, the machine was busy).
     expect(v).toMatchObject({ state: 'queued', waiting: 'time', lastEvent: 'Done: 4 new tests.', startAt: T0 + 24 * 60 * MIN })
-    expect(v.runs).toEqual([{ at: start + 20 * MIN, startedAt: start, ok: true, note: 'Done: 4 new tests.' }])
+    expect(v.runs).toEqual([{ at: start + 20 * MIN, startedAt: start, ok: true, note: 'Done: 4 new tests.', sessionId: 'sess-1' }])
+    expect(v.runCount).toBe(1)
     // Next day: it starts again in the same worktree, on the same branch.
     const day2 = T0 + 24 * 60 * MIN
     o.tick(day2)
@@ -799,7 +801,9 @@ describe('auto — talking a task over (the negotiation)', () => {
       }
     }
     expect(v.state).toBe('failed')
-    expect(v.runs!.map((r) => r.ok)).toEqual([true, false, false, false])
+    // Newest first in the app (stored oldest first).
+    expect(v.runs!.map((r) => r.ok)).toEqual([false, false, false, true])
+    expect(v.runCount).toBe(4)
   })
 
   it('talking to a running task never touches its session: conditions now, a new scope at its next run', async () => {
@@ -1012,5 +1016,260 @@ describe('auto — talking a task over (the negotiation)', () => {
     const ctx = { repos: ['mygame', 'notes'], tz: P, now: T0 }
     expect(parsePatch({ repo: '', window: '', every: '  ', notBefore: '' }, ctx)).toEqual({})
     expect(parsePatch({ every: 'once', window: 'none' }, ctx)).toEqual({ every: null, window: null })
+  })
+})
+
+describe('auto — runs, their outputs, the automation page', () => {
+  const DAY = 24 * 60 * MIN
+  /** A task already accepted, as stored (no repo: its workspace is <dir>/optimizers/.<id>). */
+  const seed = (over: Record<string, unknown> = {}) => {
+    const t = { id: 'a1b2c3', title: 'Nightly digest', why: 'you read it at breakfast', kind: 'watch', repo: null, heavy: false, priority: 1, est: 20, prompt: 'Write the digest of the day.', state: 'queued', createdAt: T0 - DAY, acceptedAt: T0 - DAY, ...over }
+    fs.writeFileSync(path.join(dir, 'optimizers.json'), JSON.stringify({ items: [t], lastRoundAt: T0, fails: 0, failUntil: 0 }))
+    return make()
+  }
+  const ws = () => path.join(dir, 'optimizers', '.a1b2c3')
+  const at = (f: string, t: number) => fs.utimesSync(f, t / 1000, t / 1000)
+  /** A claude transcript: two responses, the first one written on two lines (counted once). */
+  const transcript = () => {
+    const f = path.join(dir, 'sess-1.jsonl')
+    const line = (id: string, inp: number, out: number) => JSON.stringify({ type: 'assistant', sessionId: 'sess-1', timestamp: T0, message: { id, model: 'claude-sonnet', usage: { input_tokens: inp, output_tokens: out } } })
+    fs.writeFileSync(f, `${line('m1', 1000, 200)}\n${line('m1', 1000, 200)}\n${line('m2', 300, 500)}\n`)
+    return f
+  }
+  /** One run of the seeded task, from its start to « done », leaving a report, a note and a screenshot. */
+  const oneRun = async (o: Optimizers, start: number, end: number) => {
+    o.tick(start)
+    await flush()
+    expect(o.list(start)[0].state).toBe('running')
+    const w = ws()
+    fs.writeFileSync(path.join(w, 'report.md'), '# 3 fairs found\nSee https://indiefair.example/2027 and https://x.example/b.\n')
+    fs.writeFileSync(path.join(w, 'fairs.md'), 'a\nb\nc\n')
+    fs.mkdirSync(path.join(w, 'shots'), { recursive: true })
+    fs.writeFileSync(path.join(w, 'shots', 'home.png'), 'PNG')
+    for (const f of ['report.md', 'fairs.md', 'shots/home.png']) at(path.join(w, f), start + 5 * MIN)
+    store.set('sess-1', { phase: 'idle', lastActivityAt: start + 10 * MIN, file: transcript(), tool: 'claude' } as never)
+    detail.mockReturnValue({ messages: [{ role: 'assistant', text: 'Done. Details: https://indiefair.example/2027', at: start }] })
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: 3 fairs.', projectId: null as never, repo: null as never })]
+    o.tick(end)
+    await o.settled()
+  }
+
+  it('a one-off run is recorded with its session, tokens (each message once) and an archive: report, last words, files, links, images', async () => {
+    const o = seed()
+    const start = T0 + IDLE_MS
+    const end = start + 20 * MIN
+    await oneRun(o, start, end)
+    const v = o.list(end)[0]
+    expect(v).toMatchObject({ state: 'done', runCount: 1, tokens: 1200 + 800, acceptedAt: T0 - DAY })
+    expect(v.runs).toEqual([{ at: end, startedAt: start, ok: true, note: 'Done: 3 fairs.', tokens: 2000, sessionId: 'sess-1', files: 2 }])
+    // The archive, beside the store: DATA_DIR/auto/<id>/<startedAt>.json, the images copied in <startedAt>/.
+    const file = path.join(dir, 'auto', 'a1b2c3', `${start}.json`)
+    expect(fs.existsSync(file)).toBe(true)
+    const d = o.runDetail('a1b2c3', end)!
+    expect(d.report).toContain('# 3 fairs found')
+    expect(d.message).toBe('Done. Details: https://indiefair.example/2027')
+    expect(d.links).toEqual(['https://indiefair.example/2027', 'https://x.example/b'])
+    expect(d.files.map((f) => [f.path, f.status, f.add])).toEqual([
+      ['fairs.md', 'A', 3],
+      ['shots/home.png', 'A', 1],
+    ])
+    expect(d.images).toEqual([path.join(dir, 'auto', 'a1b2c3', String(start), '0-home.png')])
+    // The report is rewritten by the next run: the archive keeps this one's.
+    fs.writeFileSync(path.join(ws(), 'report.md'), 'next run')
+    expect(o.runDetail('a1b2c3', end)!.report).toContain('3 fairs')
+    expect(o.detail('a1b2c3')).toEqual({ id: 'a1b2c3', runs: v.runs, machine: expect.any(String) })
+    expect(o.runDetail('a1b2c3', end + 1)).toBeNull()
+    expect(o.detail('nope')).toBeNull()
+  })
+
+  it('the tokens of a run in progress; a recurring task counts every run, keeps the last 30 and their archives, newest first', async () => {
+    const old = Array.from({ length: MAX_RUNS }, (_, i) => ({ at: T0 - (40 - i) * DAY + 10 * MIN, ok: true, note: `run ${i}`, ...(i % 2 ? { startedAt: T0 - (40 - i) * DAY } : {}) }))
+    const o = seed({ every: DAY, notBefore: T0, runs: old })
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    store.set('sess-1', { phase: 'working', lastActivityAt: T0 + IDLE_MS, file: transcript(), tool: 'claude' } as never)
+    expect(o.detail('a1b2c3')!.liveTokens).toBe(2000)
+    store.delete('sess-1')
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'ok' })]
+    o.tick(T0 + IDLE_MS + 20 * MIN)
+    await o.settled()
+    const v = o.list(T0 + IDLE_MS + 20 * MIN)[0]
+    // Older files: 30 runs stored without a count, the oldest without a start; still read.
+    expect(v.state).toBe('queued')
+    expect(v.runCount).toBe(MAX_RUNS + 1)
+    expect(v.runs).toHaveLength(MAX_RUNS)
+    expect(v.runs![0]).toMatchObject({ at: T0 + IDLE_MS + 20 * MIN, ok: true })
+    expect(v.runs!.at(-1)!.note).toBe('run 1')
+    expect(v.runs!.every((r) => typeof r.startedAt === 'number')).toBe(true)
+    expect(o.detail('a1b2c3')!.runs[0].at).toBe(T0 + IDLE_MS + 20 * MIN)
+    // An old run without an archive: only its summary.
+    expect(o.runDetail('a1b2c3', old[5].at)).toEqual({ run: v.runs!.find((r) => r.at === old[5].at), files: [], links: [], images: [] })
+  })
+
+  it('an archive goes when its run is no longer kept', async () => {
+    const o = seed({ every: DAY, notBefore: T0 })
+    // The archive of a run the task no longer keeps (dropped from its last 30) goes at the next run.
+    fs.mkdirSync(path.join(dir, 'auto', 'a1b2c3'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'auto', 'a1b2c3', '1.json'), '{}')
+    let t = T0
+    for (let i = 0; i < 2; i++) {
+      o.tick(t + IDLE_MS)
+      await flush()
+      snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'ok' })]
+      o.tick(t + IDLE_MS + 20 * MIN)
+      await o.settled()
+      t = o.list(t + IDLE_MS + 20 * MIN)[0].startAt!
+      snap.sessions = []
+    }
+    expect(fs.readdirSync(path.join(dir, 'auto', 'a1b2c3')).sort()).toEqual([`${T0 + IDLE_MS}.json`, `${T0 + DAY + IDLE_MS}.json`].sort())
+    expect(o.list()[0].runCount).toBe(2)
+  })
+
+  it('pause: the runner skips it and it waits as « paused »; play: back to its turn', () => {
+    const o = seed()
+    expect(o.pause('a1b2c3', true)).toBe(true)
+    o.tick(T0 + IDLE_MS)
+    expect(createIn).not.toHaveBeenCalled()
+    expect(o.list()[0]).toMatchObject({ state: 'queued', paused: true, waiting: 'paused' })
+    expect(o.pause('a1b2c3', false)).toBe(true)
+    expect(o.list()[0].paused).toBeUndefined()
+    o.tick(T0 + IDLE_MS)
+    expect(o.list()[0].state).toBe('running')
+    expect(o.pause('nope', true)).toBe(false)
+  })
+
+  it('a recurring task paused while it runs ends its run, then waits paused', async () => {
+    const o = seed({ every: DAY, notBefore: T0 })
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    o.pause('a1b2c3', true)
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'ok' })]
+    o.tick(T0 + IDLE_MS + 20 * MIN)
+    o.tick(T0 + 2 * DAY)
+    expect(o.list(T0 + 2 * DAY)[0]).toMatchObject({ state: 'queued', paused: true, waiting: 'paused', runCount: 1 })
+    expect(createIn).toHaveBeenCalledTimes(1)
+  })
+
+  it('run now: starts as soon as the machine is free, whatever its time; a recurring one keeps its schedule', async () => {
+    const o = seed({ every: DAY, notBefore: T0 + DAY / 2 })
+    o.tick(T0 + MIN)
+    expect(o.list(T0 + MIN)[0]).toMatchObject({ waiting: 'time', startAt: T0 + DAY / 2 })
+    expect(o.runNow('a1b2c3')).toBe(true)
+    // Still waits for the machine.
+    snap.sessions = [session({ id: 'other', status: 'working' })]
+    o.tick(T0 + 2 * MIN)
+    expect(o.list(T0 + 2 * MIN)[0]).toMatchObject({ state: 'queued', waiting: 'busy' })
+    snap.sessions = []
+    o.tick(T0 + 2 * MIN + IDLE_MS)
+    await flush()
+    expect(o.list()[0].state).toBe('running')
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'ok' })]
+    const end = T0 + 2 * MIN + IDLE_MS + 20 * MIN
+    o.tick(end)
+    expect(o.list(end)[0]).toMatchObject({ state: 'queued', startAt: T0 + DAY / 2, runCount: 1 })
+    expect(o.runNow('nope')).toBe(false)
+  })
+
+  it('a proposal answered refills the list: one round, 10 min after the last one at least; the snapshot says a round runs', async () => {
+    const o = make()
+    model.mockResolvedValue(props(MAX_WAITING))
+    await o.round(T0)
+    const [a, b] = o.list().map((x) => x.id)
+    expect(o.roundDue(T0 + REFILL_GAP_MS)).toBe(false)
+    vi.setSystemTime(T0 + MIN)
+    o.accept(a)
+    expect(o.roundDue(T0 + REFILL_GAP_MS - 1)).toBe(false)
+    expect(o.roundDue(T0 + REFILL_GAP_MS)).toBe(true)
+    let release!: (v: string) => void
+    model.mockReturnValueOnce(new Promise((r) => (release = r)))
+    const round = o.round(T0 + REFILL_GAP_MS)
+    expect(o.roundBusy).toBe(true)
+    release('[]')
+    await round
+    expect(o.roundBusy).toBe(false)
+    expect(o.roundDue(T0 + 2 * REFILL_GAP_MS)).toBe(false)
+    // A refusal refills too.
+    vi.setSystemTime(T0 + REFILL_GAP_MS + MIN)
+    o.refuse(b)
+    expect(o.roundDue(T0 + REFILL_GAP_MS + 5 * MIN)).toBe(false)
+    expect(o.roundDue(T0 + 2 * REFILL_GAP_MS)).toBe(true)
+  })
+
+  describe('the routes', () => {
+    class Res extends Writable {
+      status = 0
+      headers: Record<string, unknown> = {}
+      body = Buffer.alloc(0)
+      writeHead(s: number, h: Record<string, unknown> = {}) {
+        this.status = s
+        this.headers = h
+        return this
+      }
+      _write(c: Buffer, _e: string, cb: () => void) {
+        this.body = Buffer.concat([this.body, c])
+        cb()
+      }
+    }
+    const call = async (o: Optimizers, method: string, url: string, body?: unknown, h24?: Parameters<typeof optimizerRoutes>[3]) => {
+      const res = new Res()
+      const json = (r: Res, status: number, b: unknown) => {
+        r.status = status
+        r.body = Buffer.from(JSON.stringify(b))
+        r.end()
+      }
+      const u = new URL(url, 'http://x')
+      for (const [m, re, h] of optimizerRoutes(o, json as never, async () => body, h24)) {
+        const p = m === method ? re.exec(u.pathname) : null
+        if (!p) continue
+        const done = new Promise((r) => res.on('finish', r))
+        await h({} as never, res as never, u, p.slice(1))
+        await done
+        const type = String(res.headers['content-type'] ?? 'application/json')
+        return { status: res.status, type, body: type.startsWith('image/') ? res.body.toString() : JSON.parse(res.body.toString()) }
+      }
+      throw new Error(`no route ${method} ${url}`)
+    }
+
+    it('pause and run', async () => {
+      const o = seed()
+      expect(await call(o, 'POST', '/api/optimizers/a1b2c3/pause', { paused: true })).toMatchObject({ status: 200, body: { ok: true } })
+      expect(o.list()[0].paused).toBe(true)
+      expect((await call(o, 'POST', '/api/optimizers/a1b2c3/pause', { paused: 'yes' })).status).toBe(400)
+      expect((await call(o, 'POST', '/api/optimizers/nope/pause', { paused: false })).status).toBe(404)
+      expect(await call(o, 'POST', '/api/optimizers/a1b2c3/run')).toMatchObject({ status: 200, body: { ok: true } })
+      expect(o.list()[0].paused).toBeUndefined()
+      expect((await call(o, 'POST', '/api/optimizers/nope/run')).status).toBe(404)
+    })
+
+    it('the page reads: runs, one run, an image (never a path out of its workspace or archive)', async () => {
+      const o = seed()
+      const start = T0 + IDLE_MS
+      const end = start + 20 * MIN
+      await oneRun(o, start, end)
+      const d = await call(o, 'GET', '/api/auto/a1b2c3')
+      expect(d).toMatchObject({ status: 200, body: { id: 'a1b2c3', runs: [{ at: end, files: 2 }] } })
+      expect(await call(o, 'GET', `/api/auto/a1b2c3/runs/${end}`)).toMatchObject({ status: 200, body: { report: expect.stringContaining('fairs'), files: [{ path: 'fairs.md' }, { path: 'shots/home.png' }] } })
+      expect((await call(o, 'GET', `/api/auto/a1b2c3/runs/${end + 1}`)).status).toBe(404)
+      expect((await call(o, 'GET', '/api/auto/nope')).status).toBe(404)
+      expect((await call(o, 'GET', '/api/auto/%E0%A4%A')).status).toBe(404)
+      const img = (await call(o, 'GET', `/api/auto/a1b2c3/runs/${end}`)).body.images[0]
+      for (const p of [img, 'shots/home.png', path.join(ws(), 'shots', 'home.png')]) expect(await call(o, 'GET', `/api/auto/a1b2c3/blob?path=${encodeURIComponent(p)}`)).toEqual({ status: 200, type: 'image/png', body: 'PNG' })
+      // Out of bounds: « .. », a path elsewhere, a link out, a file that is no image, another task.
+      const secret = path.join(dir, 'secret.png')
+      fs.writeFileSync(secret, 'SECRET')
+      fs.symlinkSync(secret, path.join(ws(), 'out.png'))
+      for (const p of ['../secret.png', 'shots/../../../secret.png', secret, 'out.png', 'fairs.md', 'report.md', '']) expect((await call(o, 'GET', `/api/auto/a1b2c3/blob?path=${encodeURIComponent(p)}`)).status).toBe(404)
+      expect((await call(o, 'GET', `/api/auto/nope/blob?path=${encodeURIComponent(img)}`)).status).toBe(404)
+      expect((await call(o, 'GET', `/api/auto/timer:wv-x.timer/blob?path=${encodeURIComponent(img)}`)).status).toBe(404)
+    })
+
+    it('a timer or a job goes to core (h24)', async () => {
+      const o = seed()
+      const h24 = { detail: vi.fn(async (id: string) => ({ id, runs: [], machine: 'test' })), run: vi.fn(async () => null) }
+      expect(await call(o, 'GET', '/api/auto/timer%3Awv-digest.timer', undefined, h24)).toMatchObject({ status: 200, body: { id: 'timer:wv-digest.timer' } })
+      expect(h24.detail).toHaveBeenCalledWith('timer:wv-digest.timer')
+      expect((await call(o, 'GET', '/api/auto/job:render/runs/5', undefined, h24)).status).toBe(404)
+      expect(h24.run).toHaveBeenCalledWith('job:render', 5)
+    })
   })
 })

@@ -198,6 +198,45 @@ let files = new Map<string, FileState>()
 
 const modelFactor = (m: string) => (/haiku/i.test(m) ? 1 / 3 : /opus|fable/i.test(m) ? 5 / 3 : 1)
 
+/** Ce qu'une ligne de transcript a consommé : jetons, poids (≈ coût relatif), modèle, et l'id du message (claude : une
+ *  réponse est écrite sur plusieurs lignes avec le même usage, à ne compter qu'une fois). null : pas une ligne d'usage. */
+export interface LineUsage {
+  id?: string
+  at: number
+  tokens: number
+  weight: number
+  model?: string
+  sid?: string
+  cwd?: string
+}
+export function usageOfLine(o: any, tool: 'claude' | 'codex'): LineUsage | null {
+  const at = time(o?.timestamp) ?? 0
+  if (tool === 'claude') {
+    const u = o?.message?.usage
+    if (!u || o.type !== 'assistant') return null
+    const inp = Number(u.input_tokens ?? 0)
+    const out = Number(u.output_tokens ?? 0)
+    const cw = Number(u.cache_creation_input_tokens ?? 0)
+    const cr = Number(u.cache_read_input_tokens ?? 0)
+    const model = String(o.message?.model ?? '')
+    return {
+      id: o.message?.id ?? o.uuid,
+      at,
+      tokens: inp + out + cw + cr,
+      weight: (inp + 5 * out + 1.25 * cw + 0.1 * cr) * modelFactor(model),
+      model,
+      ...(o.sessionId ? { sid: String(o.sessionId) } : {}),
+      cwd: String(o.cwd ?? ''),
+    }
+  }
+  const u = o?.payload?.info?.last_token_usage
+  if (!u) return null
+  const inp = Number(u.input_tokens ?? 0)
+  const cached = Number(u.cached_input_tokens ?? 0)
+  const out = Number(u.output_tokens ?? 0)
+  return { at, tokens: Number(u.total_tokens ?? inp + out), weight: inp - cached + 0.1 * cached + 5 * out }
+}
+
 function scan(file: string, tool: 'claude' | 'codex') {
   let st: fs.Stats
   try {
@@ -239,39 +278,16 @@ function scan(file: string, tool: 'claude' | 'codex') {
     } catch {
       continue
     }
-    const at = time(o.timestamp) ?? 0
-    if (at < dayStart) continue
-    let sid: string
-    let weight: number
-    let tokens: number
-    let cwd: string
-    let model: string
-    if (tool === 'claude') {
-      const u = o.message?.usage
-      const id = o.message?.id ?? o.uuid
-      if (!u || o.type !== 'assistant' || s.seen.has(id)) continue
-      s.seen.add(id)
-      sid = String(o.sessionId ?? path.basename(file, '.jsonl'))
-      cwd = String(o.cwd ?? '')
-      model = String(o.message?.model ?? '')
-      const inp = Number(u.input_tokens ?? 0)
-      const out = Number(u.output_tokens ?? 0)
-      const cw = Number(u.cache_creation_input_tokens ?? 0)
-      const cr = Number(u.cache_read_input_tokens ?? 0)
-      tokens = inp + out + cw + cr
-      weight = (inp + 5 * out + 1.25 * cw + 0.1 * cr) * modelFactor(String(o.message?.model ?? ''))
-    } else {
-      const u = o.payload?.info?.last_token_usage
-      if (!u) continue
-      sid = s.sid ?? path.basename(file, '.jsonl').slice(-36)
-      cwd = s.cwd ?? ''
-      model = s.model ?? ''
-      const inp = Number(u.input_tokens ?? 0)
-      const cached = Number(u.cached_input_tokens ?? 0)
-      const out = Number(u.output_tokens ?? 0)
-      tokens = Number(u.total_tokens ?? inp + out)
-      weight = inp - cached + 0.1 * cached + 5 * out
+    const u = usageOfLine(o, tool)
+    if (!u || u.at < dayStart) continue
+    if (u.id !== undefined) {
+      if (s.seen.has(u.id)) continue
+      s.seen.add(u.id)
     }
+    const { at, tokens, weight } = u
+    const sid = tool === 'claude' ? (u.sid ?? path.basename(file, '.jsonl')) : (s.sid ?? path.basename(file, '.jsonl').slice(-36))
+    const cwd = tool === 'claude' ? (u.cwd ?? '') : (s.cwd ?? '')
+    const model = tool === 'claude' ? (u.model ?? '') : (s.model ?? '')
     const a = s.agg.get(sid) ?? { tool, cwd, weight: 0, tokens: 0, last: 0 }
     a.weight += weight
     a.tokens += tokens
@@ -287,6 +303,49 @@ function scan(file: string, tool: 'claude' | 'codex') {
       s.models.set(k, m)
     }
   }
+}
+
+/** Jetons d'une session entière (tous les jours), lus dans son transcript : une tâche auto, un passage. Incrémental
+ *  (relit seulement la fin depuis le dernier appel) ; 0 sans fichier lisible. */
+const totals = new Map<string, { offset: number; seen: Set<string>; tokens: number }>()
+export function sessionTokens(file: string, tool: 'claude' | 'codex' = 'claude'): number {
+  let size: number
+  try {
+    size = fs.statSync(file).size
+  } catch {
+    return 0
+  }
+  let s = totals.get(file)
+  if (!s || size < s.offset) totals.set(file, (s = { offset: 0, seen: new Set(), tokens: 0 }))
+  if (size > s.offset) {
+    const fd = fs.openSync(file, 'r')
+    const buf = Buffer.alloc(size - s.offset)
+    fs.readSync(fd, buf, 0, buf.length, s.offset)
+    fs.closeSync(fd)
+    const text = buf.toString('utf8')
+    const end = text.lastIndexOf('\n')
+    if (end >= 0) {
+      s.offset += Buffer.byteLength(text.slice(0, end + 1))
+      for (const line of text.slice(0, end).split('\n')) {
+        if (tool === 'claude' ? !line.includes('"usage"') : !line.includes('"token_count"')) continue
+        let o: any
+        try {
+          o = JSON.parse(line)
+        } catch {
+          continue
+        }
+        const u = usageOfLine(o, tool)
+        if (!u) continue
+        if (u.id !== undefined) {
+          if (s.seen.has(u.id)) continue
+          s.seen.add(u.id)
+        }
+        s.tokens += u.tokens
+      }
+    }
+  }
+  if (totals.size > 64) for (const k of [...totals.keys()].slice(0, totals.size - 64)) if (k !== file) totals.delete(k)
+  return s.tokens
 }
 
 function listJsonl(dir: string, depth: number, out: string[]) {

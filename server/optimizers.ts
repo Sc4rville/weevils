@@ -30,8 +30,9 @@ import fs from 'node:fs'
 import type http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import type { AutoMachine, Optimizer, OptimizerField, OptimizerLine, OptimizerTalkReply, Session } from '../shared/api.ts'
+import type { AutoDetail, AutoMachine, AutoRun, AutoRunDetail, Optimizer, OptimizerField, OptimizerLine, OptimizerTalkReply, Session } from '../shared/api.ts'
 import { detectLang } from '../shared/detect-lang.ts'
+import { RunArchive, blobPath, extractLinks, gitFiles, headOf, mtimeFiles, IMAGE_MIME, MAX_REPORT } from './auto-runs.ts'
 import { fmtLocal, nextRun, nextStart, parseEvery, parseLocal, parseWindow, serverTz, validTz, windowText, MAX_AHEAD_MS, type Window } from './auto-time.ts'
 import { DATA_DIR, MACHINE, PROJECT_ROOTS, PROJECTS_DIR } from './config.ts'
 import type { Weevils } from './core.ts'
@@ -40,6 +41,7 @@ import { lang, tr, user, withLang, type Lang } from './i18n.ts'
 import O from './i18n/optimizers.ts'
 import type { Memory } from './memory.ts'
 import { claudeLogged } from './setup.ts'
+import { sessionTokens } from './usage.ts'
 
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void> | void
 type Json = (res: http.ServerResponse, status: number, body: unknown) => void
@@ -47,6 +49,8 @@ type ReadBody = (req: http.IncomingMessage) => Promise<any>
 
 /** Proposals waiting for an answer: no new round past this. */
 export const MAX_WAITING = 3
+/** A proposal answered (accepted or refused) brings a round to refill the list, never closer than this to the last one. */
+export const REFILL_GAP_MS = 10 * 60_000
 export const FIRST_ROUND_MS = 4 * 60_000
 export const ROUND_EVERY_MS = 6 * 3600_000
 /** A memory change brings the next round forward, but never closer than this to the previous one. */
@@ -80,8 +84,8 @@ export const TALK_CHARS = 500
 const TALK_TIMEOUT_MS = 120_000
 /** After a failed turn, the same task waits this long before the model is asked again (never a loop). */
 export const TALK_BACKOFF_MS = 20_000
-/** A recurring task keeps this many runs; this many failures in a row and it stops coming back. */
-const MAX_RUNS = 10
+/** A task keeps this many runs (and their archives); this many failures in a row and a recurring one stops coming back. */
+export const MAX_RUNS = 30
 export const MAX_FAILED_RUNS = 3
 /** What a rewrite may change, in the order the app shows them. */
 const SCOPE = ['title', 'why', 'kind', 'repo', 'prompt'] as const
@@ -308,6 +312,10 @@ type Stored = Optimizer & {
   branch?: string
   /** A change of scope agreed while it was running: applied when it comes back for its next run. */
   pending?: Partial<Pick<Stored, (typeof SCOPE)[number]>>
+  /** HEAD of its worktree when the run in progress started: what it changed is diffed from there. */
+  baseCommit?: string
+  /** « Run now » (POST …/run): it starts as soon as the machine is free, its schedule unchanged. */
+  runNow?: boolean
 }
 interface State {
   items: Stored[]
@@ -316,6 +324,8 @@ interface State {
   lastEmpty?: boolean
   fails: number
   failUntil: number
+  /** A proposal was answered at this time: a round may refill the list (REFILL_GAP_MS after the last one). */
+  refillAt?: number
 }
 
 export interface Proposal {
@@ -339,6 +349,8 @@ export interface Sys {
   worktree: (repo: string, dir: string, branch: string) => Promise<void>
   /** Tries the jail (bwrap <args> true): true when it holds, false without bwrap on this machine; throws if it fails. */
   jail: (args: string[]) => Promise<boolean>
+  /** git -C <dir> rev-parse HEAD: where a run starts from (undefined outside git). */
+  head: (dir: string) => Promise<string | undefined>
 }
 const gitWorktree = (repo: string, dir: string, branch: string) =>
   new Promise<void>((resolve, reject) =>
@@ -350,9 +362,13 @@ const tryJail = (args: string[]) =>
       !e ? resolve(true) : (e as NodeJS.ErrnoException).code === 'ENOENT' ? resolve(false) : reject(new Error(String(err || e.message).trim().split('\n').pop())),
     ),
   )
-const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: () => os.freemem(), logged: claudeLogged, worktree: gitWorktree, jail: tryJail }
+const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: () => os.freemem(), logged: claudeLogged, worktree: gitWorktree, jail: tryJail, head: headOf }
 
 // ---------------------------------------------------------------- pure helpers (tested)
+
+/** The runs as the app reads them: newest first (stored oldest first), an older line ({ at, ok, note }) starting when
+ *  it ended. */
+export const newestFirst = (runs: AutoRun[]): AutoRun[] => runs.map((r) => (typeof r.startedAt === 'number' ? r : { ...r, startedAt: r.at })).reverse()
 
 /** A rewrite from the model, checked: null clears a condition (as soon as possible, any time, just once). */
 export interface Patch {
@@ -576,6 +592,8 @@ export class Optimizers {
   readonly file: string
   /** <projects>/.auto: the workspaces of the tasks without a repo (<projects>/.auto/.<id>). */
   readonly dir: string
+  /** What each run left (DATA_DIR/auto/<id>/<startedAt>.json): its report, last words, files, links, images. */
+  readonly archive: RunArchive
   private s: State
   private sys: Sys
   private bootAt = Date.now()
@@ -592,12 +610,15 @@ export class Optimizers {
   /** Tasks with an exchange turn in flight (one at a time each), and those waiting after a failed one. */
   private talking = new Set<string>()
   private talkFailUntil = new Map<string, number>()
+  /** Archives being written (the git diff of a run that just ended): settled() waits for them. */
+  private writing = new Set<Promise<void>>()
 
-  constructor(w: Weevils, memory: Memory, opts: { file?: string; /** default <projects>/.auto */ dir?: string; sys?: Partial<Sys> } = {}) {
+  constructor(w: Weevils, memory: Memory, opts: { file?: string; /** default <projects>/.auto */ dir?: string; /** default auto/ beside file */ archive?: string; sys?: Partial<Sys> } = {}) {
     this.w = w
     this.memory = memory
     this.file = opts.file ?? path.join(DATA_DIR, 'optimizers.json')
     this.dir = opts.dir ?? path.join(PROJECTS_DIR, '.auto')
+    this.archive = new RunArchive(opts.archive ?? path.join(path.dirname(this.file), 'auto'))
     const sys = opts.sys ?? {}
     this.sys = {
       load: () => (sys.load ?? realSys.load)(),
@@ -606,12 +627,13 @@ export class Optimizers {
       logged: () => (sys.logged ?? realSys.logged)(),
       worktree: (repo, dir, branch) => (sys.worktree ?? realSys.worktree)(repo, dir, branch),
       jail: (args) => (sys.jail ?? realSys.jail)(args),
+      head: (d) => (sys.head ?? realSys.head)(d),
     }
     this.s = (() => {
       try {
         const raw = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<State>
         const items = (Array.isArray(raw.items) ? raw.items : []).filter((o) => o && typeof o.id === 'string' && typeof o.title === 'string' && typeof o.state === 'string')
-        return { items, lastRoundAt: Number(raw.lastRoundAt) || 0, lastEmpty: raw.lastEmpty === true, fails: Number(raw.fails) || 0, failUntil: Number(raw.failUntil) || 0 }
+        return { items, lastRoundAt: Number(raw.lastRoundAt) || 0, lastEmpty: raw.lastEmpty === true, fails: Number(raw.fails) || 0, failUntil: Number(raw.failUntil) || 0, refillAt: Number(raw.refillAt) || 0 }
       } catch {
         return { items: [], lastRoundAt: 0, fails: 0, failUntil: 0 }
       }
@@ -631,6 +653,7 @@ export class Optimizers {
     if (this.s.items.length > MAX_STORED) {
       const live = (o: Stored) => o.state === 'proposed' || o.state === 'queued' || o.state === 'running'
       const keep = new Set([...this.s.items.filter(live), ...this.s.items.filter((o) => !live(o)).sort((a, b) => (b.endedAt ?? b.createdAt) - (a.endedAt ?? a.createdAt))].slice(0, MAX_STORED))
+      for (const o of this.s.items) if (!keep.has(o)) this.dropArchive(o.id)
       this.s.items = this.s.items.filter((o) => keep.has(o))
     }
     try {
@@ -648,6 +671,24 @@ export class Optimizers {
     this.w.bump()
   }
 
+  private dropArchive(id: string) {
+    try {
+      this.archive.drop(id)
+    } catch {
+      /* never written */
+    }
+  }
+
+  /** A proposal round is running (the drawer shows a band filling in its place). */
+  get roundBusy(): boolean {
+    return this.rounding !== null
+  }
+
+  /** The archives still being written (tests, and a clean stop). */
+  async settled(): Promise<void> {
+    while (this.writing.size) await Promise.all([...this.writing])
+  }
+
   // ---------------------------------------------------------------- what the app sees
 
   /** For the snapshot: proposed, queued, running and finished in the last 3 days (never the refused ones). */
@@ -662,17 +703,19 @@ export class Optimizers {
   /** A task as the app sees it: without the brief and the runner's bookkeeping; when it may start, if its time holds
    *  it; what its next run will be, when that was rewritten while it runs. */
   view(o: Stored, now = Date.now()): Optimizer {
-    const { prompt: _p, acceptedAt: _a, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, ...v } = o
+    const { prompt: _p, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, ...v } = o
     const at = o.state === 'queued' ? this.timeAt(o, now) : now
-    const out: Optimizer = at > now ? { ...v, startAt: at } : v
+    const out: Optimizer = at > now ? { ...v, startAt: at } : { ...v }
+    // Stored oldest first (older files read the same); the app reads the newest first.
+    if (o.runs) out.runs = newestFirst(o.runs)
     // Agreed while it runs, for its next run: shown under its row (the brief itself stays here).
     if (o.pending) out.next = { title: o.pending.title ?? o.title }
     return out
   }
 
-  /** When its conditions let a task start (now when it has none). */
+  /** When its conditions let a task start (now when it has none, or when it was asked to run now). */
   private timeAt(o: Stored, now: number): number {
-    return o.notBefore || o.window ? nextStart(o, now, o.tz ?? serverTz()) : now
+    return !o.runNow && (o.notBefore || o.window) ? nextStart(o, now, o.tz ?? serverTz()) : now
   }
 
   /** The machine as the runner sees it (snapshot). */
@@ -697,6 +740,7 @@ export class Optimizers {
     if (this.talking.has(id) || (rev !== undefined && rev !== (o.rev ?? 0))) return 'busy'
     o.state = 'queued'
     o.acceptedAt = Date.now()
+    this.s.refillAt = o.acceptedAt
     this.changed()
     if (this.auto) setTimeout(() => this.tick(), 1000).unref?.()
     return true
@@ -706,11 +750,50 @@ export class Optimizers {
   refuse(id: string): boolean {
     const o = this.get(id)
     if (!o || (o.state !== 'proposed' && o.state !== 'queued')) return false
+    if (o.state === 'proposed') this.s.refillAt = Date.now()
     o.state = 'refused'
     o.endedAt = Date.now()
     delete o.waiting
     delete o.retryAt
+    delete o.paused
+    delete o.runNow
     this.changed()
+    return true
+  }
+
+  /**
+   * Paused by the user (an accepted task, queued or running): the runner skips it, it waits as « paused ». A running
+   * one ends its run and then waits. Played again: back to its turn and its time. false: no such task, or not accepted.
+   */
+  pause(id: string, paused: boolean): boolean {
+    const o = this.get(id)
+    if (!o || (o.state !== 'queued' && o.state !== 'running')) return false
+    if (paused) {
+      o.paused = true
+      delete o.runNow
+      if (o.state === 'queued') o.waiting = 'paused'
+    } else {
+      delete o.paused
+      if (o.waiting === 'paused') delete o.waiting
+    }
+    this.changed()
+    if (this.auto) setTimeout(() => this.tick(), 1000).unref?.()
+    return true
+  }
+
+  /**
+   * « Run now »: a queued task starts as soon as the machine is free, whatever its time, its retry or its pause; a
+   * recurring one keeps its schedule (its next run stays where it was). false: no such task, or not waiting in the queue.
+   */
+  runNow(id: string): boolean {
+    const o = this.get(id)
+    if (!o || o.state !== 'queued') return false
+    o.runNow = true
+    delete o.paused
+    delete o.retryAt
+    if (o.waiting === 'paused' || o.waiting === 'later' || o.waiting === 'time') delete o.waiting
+    this.changed()
+    if (this.auto) setTimeout(() => this.tick(), 1000).unref?.()
     return true
   }
 
@@ -955,11 +1038,12 @@ export class Optimizers {
         }
     // Stopped by a limit or an error: it waits for its retry time, the others go first. Same for one held by its
     // conditions (not before, its window, its next run).
+    // Paused by the user: skipped until played again. Asked to run now: first in line, whatever its time.
     const later = (o: Stored) => !!o.retryAt && o.retryAt > now
-    const ready = queue.filter((o) => !later(o) && this.timeAt(o, now) <= now)
+    const ready = queue.filter((o) => !o.paused && !later(o) && this.timeAt(o, now) <= now).sort((a, b) => Number(!!b.runNow) - Number(!!a.runNow))
     queue.forEach((o) => {
       const i = ready.indexOf(o)
-      const wait = i < 0 ? (later(o) ? 'later' : 'time') : running || this.launching || i > 0 ? 'queue' : (reason ?? undefined)
+      const wait = o.paused ? 'paused' : i < 0 ? (later(o) ? 'later' : 'time') : running || this.launching || i > 0 ? 'queue' : (reason ?? undefined)
       if (o.waiting !== wait) {
         if (wait) o.waiting = wait
         else delete o.waiting
@@ -1028,9 +1112,8 @@ export class Optimizers {
   private finish(o: Stored, now: number, ok: boolean, note: string): true {
     o.endedAt = now
     o.lastEvent = note
+    const runs = this.record(o, now, ok, note)
     if (o.every) {
-      const runs = [...(o.runs ?? []), { at: now, startedAt: o.startedAt ?? now, ok, ...(note ? { note } : {}) }].slice(-MAX_RUNS)
-      o.runs = runs
       const streak = runs.slice(-MAX_FAILED_RUNS)
       if (ok || streak.length < MAX_FAILED_RUNS || streak.some((r) => r.ok)) {
         this.takePending(o)
@@ -1047,8 +1130,99 @@ export class Optimizers {
       }
     }
     delete o.pending
+    delete o.paused
+    delete o.runNow
     o.state = ok ? 'done' : 'failed'
     return true
+  }
+
+  /**
+   * Every run is recorded, one-off or recurring: its summary on the task (the last MAX_RUNS, oldest first; the count and
+   * the tokens never capped), and what it left in the archive (written in the background: the git diff).
+   */
+  private record(o: Stored, now: number, ok: boolean, note: string): AutoRun[] {
+    const startedAt = o.startedAt ?? now
+    const sessionId = o.sessionId
+    const t = sessionId ? this.w.store?.get(sessionId) : undefined
+    const tokens = t?.file ? sessionTokens(t.file, t.tool) : 0
+    const run: AutoRun = { at: now, startedAt, ok, ...(note ? { note } : {}), ...(tokens ? { tokens } : {}), ...(sessionId ? { sessionId } : {}) }
+    const before = o.runs ?? []
+    o.runCount = (o.runCount ?? before.length) + 1
+    if (tokens) o.tokens = (o.tokens ?? 0) + tokens
+    const runs = [...before.filter((r) => r.startedAt !== startedAt), run].slice(-MAX_RUNS)
+    o.runs = runs
+    // Read now, before the next run overwrites them: the report (beside the worktree, rewritten every run) and the
+    // agent's last words.
+    const reportFile = this.reportFile(o)
+    let report: string | undefined
+    try {
+      if (fs.statSync(reportFile).mtimeMs >= startedAt - 2000) report = fs.readFileSync(reportFile, 'utf8').slice(0, MAX_REPORT).trim() || undefined
+    } catch {
+      /* no report this run */
+    }
+    const said = sessionId ? this.w.detail?.(sessionId)?.messages.filter((m) => m.role === 'assistant' && m.text.trim()).at(-1)?.text : undefined
+    const message = (said ?? (sessionId ? this.w.snapshot().sessions.find((x) => x.id === sessionId)?.lastMessage : undefined) ?? '').trim().slice(0, 4000) || undefined
+    const job = this.writeRun(o, run, { cwd: this.workspace(o), base: o.baseCommit, report, reportFile, message, keep: runs.map((r) => r.startedAt) })
+    this.writing.add(job)
+    void job.finally(() => this.writing.delete(job))
+    return runs
+  }
+
+  /** The archive of one run: its files (git diff from where it started, or what it wrote in its workspace), links,
+   *  images (copied), then the file count on its summary. */
+  private async writeRun(o: Stored, run: AutoRun, x: { cwd: string; base?: string; report?: string; reportFile: string; message?: string; keep: number[] }) {
+    try {
+      const files = (x.base && fs.existsSync(x.cwd) ? await gitFiles(x.cwd, x.base, run.startedAt) : null) ?? mtimeFiles(x.cwd, run.startedAt, run.at, [x.reportFile])
+      const images = this.archive.copyImages(o.id, run.startedAt, files)
+      const detail: AutoRunDetail = { run: { ...run, ...(files.length ? { files: files.length } : {}) }, ...(x.report ? { report: x.report } : {}), ...(x.message ? { message: x.message } : {}), files, links: extractLinks(x.report, x.message), images }
+      this.archive.write(o.id, detail)
+      this.archive.prune(o.id, x.keep)
+      const r = this.get(o.id)?.runs?.find((y) => y.startedAt === run.startedAt)
+      if (r && files.length) {
+        r.files = files.length
+        this.changed()
+      }
+    } catch (e) {
+      console.error(`[auto] archive de « ${o.title} » : ${(e as Error).message}`)
+    }
+  }
+
+  // ---------------------------------------------------------------- what the automation page reads
+
+  /** GET /api/auto/:id for a task: its runs, newest first; the tokens of the run in progress. null: no such task. */
+  detail(id: string): AutoDetail | null {
+    const o = this.get(id)
+    if (!o || o.state === 'refused') return null
+    const out: AutoDetail = { id, runs: newestFirst(o.runs ?? []), machine: MACHINE.id }
+    if (o.state === 'running' && o.sessionId) {
+      const t = this.w.store?.get(o.sessionId)
+      out.liveTokens = t?.file ? sessionTokens(t.file, t.tool) : 0
+    }
+    return out
+  }
+
+  /** GET /api/auto/:id/runs/:at: what that run (ended at `at`) did and left; a run older than its archive has only
+   *  its summary. null: no such run. */
+  runDetail(id: string, at: number): AutoRunDetail | null {
+    const o = this.get(id)
+    const run = o?.state === 'refused' ? undefined : newestFirst(o?.runs ?? []).find((r) => r.at === at)
+    if (!o || !run) return null
+    const d = this.archive.read(id, run.startedAt)
+    return d ? { ...d, run: { ...d.run, ...run } } : { run, files: [], links: [], images: [] }
+  }
+
+  /** GET /api/auto/:id/blob?path=: an image of the task, from its archive or its workspace (blobPath). */
+  blob(id: string, p: unknown): { file: string; type: string } | null {
+    const o = this.get(id)
+    if (!o || o.state === 'refused') return null
+    let home: string
+    try {
+      home = this.archive.home(id)
+    } catch {
+      return null
+    }
+    const file = blobPath(p, [this.workspace(o), home])
+    return file ? { file, type: IMAGE_MIME[path.extname(file).toLowerCase()] } : null
   }
 
   /** Back to the queue: the scope agreed while it ran becomes its scope. */
@@ -1164,7 +1338,11 @@ export class Optimizers {
     o.startedAt = now
     o.tool = tool
     o.limitMs = runLimit(o.est)
-    o.slotAt = Math.min(now, this.timeAt(o, o.notBefore ?? o.acceptedAt ?? now))
+    // Asked to run now, a recurring task keeps its schedule: its slot is the one before the run it was waiting for.
+    o.slotAt = o.runNow && o.every && o.notBefore && o.notBefore > now ? o.notBefore - o.every : Math.min(now, this.timeAt(o, o.notBefore ?? o.acceptedAt ?? now))
+    if (o.runNow && !o.every) delete o.notBefore
+    delete o.runNow
+    delete o.baseCommit
     delete o.waiting
     delete o.lastEvent
     delete o.retryAt
@@ -1185,7 +1363,10 @@ export class Optimizers {
         await this.sys.worktree(this.w.repoDir(o.repo), cwd, branch)
         step = 'start'
       } else fs.mkdirSync(cwd, { recursive: true })
-      if (o.repo) o.branch = branch
+      if (o.repo) {
+        o.branch = branch
+        o.baseCommit = await this.sys.head(cwd)
+      }
       const writesReport = !o.repo || o.kind === 'watch' || o.kind === 'content' || o.kind === 'explore'
       const brief = tr(O).brief({
         title: o.title,
@@ -1234,6 +1415,8 @@ export class Optimizers {
     if (!this.s.lastRoundAt) return now - this.bootAt >= FIRST_ROUND_MS
     const since = now - this.s.lastRoundAt
     if (since >= ROUND_EVERY_MS) return true
+    // A proposal was answered: the list is refilled (one round, 10 min after the last one at least).
+    if ((this.s.refillAt ?? 0) > this.s.lastRoundAt && since >= REFILL_GAP_MS) return true
     // After an empty round there is nothing to crowd: the first new memory is worth a round as soon as it settles. It
     // takes a memory change after that round to come back, so never a loop.
     const gap = this.s.lastEmpty ? MEMORY_SETTLE_MS : ROUND_MEMORY_MS
@@ -1293,15 +1476,40 @@ export class Optimizers {
         this.s.failUntil = now + wait
         console.error(`[auto] propositions : ${(e as Error).message} · nouvel essai dans ${Math.round(wait / 60_000)} min`)
       } finally {
-        this.changed()
+        this.save()
       }
-    })().finally(() => (this.rounding = null))
+    })().finally(() => {
+      this.rounding = null
+      this.w.bump()
+    })
+    // The drawer shows the round as it runs (snapshot.autoRound).
+    this.w.bump()
     return this.rounding
   }
 }
 
-/** POST /api/optimizers/:id/accept { rev? } · POST /api/optimizers/:id/refuse · POST /api/optimizers/:id/talk { text, tz? } → OptimizerTalkReply */
-export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody): [string, RegExp, Handler][] {
+/** The timers' and jobs' side of the automation page (core.ts): their runs and one run's log. */
+export interface H24Auto {
+  detail: (id: string) => Promise<AutoDetail | null>
+  run: (id: string, at: number) => Promise<AutoRunDetail | null>
+}
+
+/**
+ * POST /api/optimizers/:id/accept { rev? } · …/refuse · …/talk { text, tz? } → OptimizerTalkReply · …/pause { paused }
+ * · …/run (now, as soon as the machine is free) · GET /api/auto/:id → AutoDetail · GET /api/auto/:id/runs/:at →
+ * AutoRunDetail · GET /api/auto/:id/blob?path= → an image. An :id of a timer or a job (timer:…, job:…) goes to `h24`.
+ */
+export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h24?: H24Auto): [string, RegExp, Handler][] {
+  const isH24 = (id: string) => /^(timer|job):/.test(id)
+  const missing = (res: http.ServerResponse) => json(res, 404, { error: tr(O).notFound })
+  // A malformed escape is no id (404, not a 500).
+  const decode = (raw: string) => {
+    try {
+      return decodeURIComponent(raw)
+    } catch {
+      return ''
+    }
+  }
   return [
     ['POST', /^\/api\/optimizers\/([\w-]+)\/accept$/, async (req, res, _u, [id]) => {
       const body = await readBody(req).catch(() => ({}))
@@ -1317,6 +1525,39 @@ export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody): 
     ['POST', /^\/api\/optimizers\/([\w-]+)\/refuse$/, (_req, res, _u, [id]) => {
       const ok = o.refuse(id)
       json(res, ok ? 200 : 404, { ok })
+    }],
+    ['POST', /^\/api\/optimizers\/([\w-]+)\/pause$/, async (req, res, _u, [id]) => {
+      const body = await readBody(req).catch(() => ({}))
+      if (typeof body?.paused !== 'boolean') return json(res, 400, { ok: false })
+      const ok = o.pause(id, body.paused)
+      json(res, ok ? 200 : 404, { ok })
+    }],
+    ['POST', /^\/api\/optimizers\/([\w-]+)\/run$/, (_req, res, _u, [id]) => {
+      const ok = o.runNow(id)
+      json(res, ok ? 200 : 404, { ok })
+    }],
+    ['GET', /^\/api\/auto\/([^/]+)$/, async (_req, res, _u, [raw]) => {
+      const id = decode(raw)
+      const d = isH24(id) ? await h24?.detail(id) : o.detail(id)
+      return d ? json(res, 200, d) : missing(res)
+    }],
+    ['GET', /^\/api\/auto\/([^/]+)\/runs\/(\d+)$/, async (_req, res, _u, [raw, at]) => {
+      const id = decode(raw)
+      const d = isH24(id) ? await h24?.run(id, Number(at)) : o.runDetail(id, Number(at))
+      return d ? json(res, 200, d) : missing(res)
+    }],
+    ['GET', /^\/api\/auto\/([^/]+)\/blob$/, (_req, res, url, [raw]) => {
+      const id = decode(raw)
+      const b = isH24(id) ? null : o.blob(id, url.searchParams.get('path'))
+      if (!b) return missing(res)
+      let size: number
+      try {
+        size = fs.statSync(b.file).size
+      } catch {
+        return missing(res)
+      }
+      res.writeHead(200, { 'content-type': b.type, 'content-length': size, 'cache-control': 'private, max-age=300', 'x-content-type-options': 'nosniff' })
+      fs.createReadStream(b.file).on('error', () => res.destroy()).pipe(res)
     }],
   ]
 }

@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, Session, SessionDetail, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
+import type { AutoDetail, AutoRun, AutoRunDetail, ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, Session, SessionDetail, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
 import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, LOGS_DIRS, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
@@ -26,6 +26,7 @@ import type { ForYou, MailIn } from './foryou.ts'
 import { PLAN_MARKER, clockOf, type Relay, type RelayHost } from './relay.ts'
 import R from './i18n/relay.ts'
 import { parseTimerShow } from './schedule.ts'
+import { extractLinks, journalRuns, tailLines, unitDescriptions, type JournalRun } from './auto-runs.ts'
 import { chipsInPlace } from '../shared/setup.ts'
 import { asksUser, type Ask } from '../shared/asks.ts'
 import { isDemoJob, type TourKeeper } from './tour.ts'
@@ -961,6 +962,7 @@ export class Weevils {
       optimizers: this.optimizers?.list() ?? [],
       autoMachine: this.optimizers?.machine(),
       relay: this.relayView(now, remote.flatMap((r) => r.snap!.relay?.plans ?? [])),
+      ...(this.optimizers ? { autoRound: { busy: this.optimizers.roundBusy } } : {}),
       config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey },
     }
     // « Pour toi » : sa marque (révision, non vus) se calcule sur le snapshot qu'on vient de poser, sans rappeler snapshot().
@@ -1825,6 +1827,8 @@ export class Weevils {
           since: st.birthtimeMs || null,
           lastRunAt: st.mtimeMs,
           group: familyOf(name),
+          // Over: its one run, from the log's birth to its last write.
+          ...(running ? {} : { lastDurMs: Math.max(0, st.mtimeMs - (st.birthtimeMs || st.mtimeMs)), runCount: 1 }),
         })
       }
     } catch {
@@ -1837,6 +1841,7 @@ export class Weevils {
         try {
           for (const x of JSON.parse(stdout) as { unit: string; next?: number; last?: number; activates: string }[]) {
             if (!x.unit.startsWith('wv-')) continue
+            if (x.activates) this.timerSvc.set(x.unit, x.activates)
             out.push({
               id: `timer:${x.unit}`,
               title: x.unit.replace(/^wv-/, '').replace(/\.timer$/, ''),
@@ -1861,22 +1866,117 @@ export class Weevils {
       // La période de chaque timer, lue dans son planning (OnCalendar, OnUnitActiveSec) : « / 6 h » dans la bande auto.
       // Relue toutes les 10 min (ou quand la liste change), pas à chaque passage.
       const timers = out.filter((a) => a.kind === 'timer').map((a) => a.id.replace(/^timer:/, ''))
-      const apply = (every: Map<string, number | null>) => {
-        for (const a of out) if (a.kind === 'timer') a.everyMs = every.get(a.id.replace(/^timer:/, '')) ?? (a.nextRunAt && a.lastRunAt && a.nextRunAt > a.lastRunAt ? a.nextRunAt - a.lastRunAt : null)
+      // Plus what it is for (its service's Description=, else the timer's) and its runs in the journal (last one's
+      // length and outcome, how many in 30 days), re-read when it ran again.
+      const apply = (every: Map<string, number | null>, desc: Map<string, string>) => {
+        for (const a of out) {
+          if (a.kind !== 'timer') continue
+          const unit = a.id.replace(/^timer:/, '')
+          a.everyMs = every.get(unit) ?? (a.nextRunAt && a.lastRunAt && a.nextRunAt > a.lastRunAt ? a.nextRunAt - a.lastRunAt : null)
+          const d = desc.get(this.timerSvc.get(unit) ?? '') ?? desc.get(unit)
+          if (d) a.description = d
+          const runs = this.timerRunsCache.get(unit)
+          if (!runs || runs.key !== String(a.lastRunAt ?? '') || now - runs.at > 600_000) void this.timerRuns(unit, String(a.lastRunAt ?? '')).then((r) => r.fresh && this.refreshH24())
+          const last = runs?.runs.at(-1)
+          if (last) {
+            a.lastDurMs = last.at - last.startedAt
+            a.lastOk = last.ok
+          }
+          if (runs) a.runCount = runs.runs.length
+        }
         this.publishH24(out)
       }
       const key = timers.join(' ')
       const cached = this.timerEvery
-      if (!timers.length || (cached && cached.key === key && now - cached.at < 600_000)) return apply(cached?.map ?? new Map())
-      execFile('systemctl', ['--user', 'show', ...timers, '-p', 'Id', '-p', 'TimersCalendar', '-p', 'TimersMonotonic'], { timeout: 4000 }, (e2, show) => {
+      if (!timers.length || (cached && cached.key === key && now - cached.at < 600_000)) return apply(cached?.map ?? new Map(), cached?.desc ?? new Map())
+      const services = timers.map((u) => this.timerSvc.get(u)).filter((u): u is string => !!u)
+      execFile('systemctl', ['--user', 'show', ...timers, ...services, '-p', 'Id', '-p', 'TimersCalendar', '-p', 'TimersMonotonic', '-p', 'Description'], { timeout: 4000 }, (e2, show) => {
         const map = e2 ? new Map<string, number | null>() : parseTimerShow(show)
-        this.timerEvery = { at: now, key, map }
-        apply(map)
+        const desc = e2 ? new Map<string, string>() : unitDescriptions(show)
+        this.timerEvery = { at: now, key, map, desc }
+        apply(map, desc)
       })
     })
   }
 
-  private timerEvery: { at: number; key: string; map: Map<string, number | null> } | null = null
+  private timerEvery: { at: number; key: string; map: Map<string, number | null>; desc: Map<string, string> } | null = null
+  /** The service each wv-* timer starts (list-timers' « activates »). */
+  private timerSvc = new Map<string, string>()
+  /** A timer's runs read in the journal (30 days), and for which last run (key: its lastRunAt). */
+  private timerRunsCache = new Map<string, { key: string; at: number; runs: JournalRun[] }>()
+  private timerRunsLoading = new Map<string, Promise<{ runs: JournalRun[]; fresh: boolean }>>()
+
+  /** A timer's runs from the user journal (one per invocation of its service, oldest first); cached until it runs again. */
+  private timerRuns(unit: string, key: string, maxAgeMs = 600_000): Promise<{ runs: JournalRun[]; fresh: boolean }> {
+    const c = this.timerRunsCache.get(unit)
+    if (c && c.key === key && Date.now() - c.at < maxAgeMs) return Promise.resolve({ runs: c.runs, fresh: false })
+    const loading = this.timerRunsLoading.get(unit)
+    if (loading) return loading
+    const svc = this.timerSvc.get(unit) ?? unit.replace(/\.timer$/, '.service')
+    const p = new Promise<{ runs: JournalRun[]; fresh: boolean }>((resolve) =>
+      execFile('journalctl', ['--user', '-u', svc, '-o', 'json', '--since', '-30d', '--no-pager', '-q'], { timeout: 10_000, maxBuffer: 64 << 20 }, (err, stdout) => {
+        // No journal for this user: no runs, kept as such until it runs again (never a loop).
+        const runs = err && !stdout ? [] : journalRuns(stdout)
+        this.timerRunsCache.set(unit, { key, at: Date.now(), runs })
+        resolve({ runs, fresh: true })
+      }),
+    ).finally(() => this.timerRunsLoading.delete(unit))
+    this.timerRunsLoading.set(unit, p)
+    return p
+  }
+
+  /** The log file of a job (job:<name>), in the first logs folder that has it. */
+  private jobFile(id: string): string | null {
+    const name = id.replace(/^job:/, '')
+    // Its own logs never (refreshH24 leaves them out too): they are not a job.
+    if (!name || name.includes('/') || name.includes('\\') || name.startsWith('.') || name === 'weevils' || name === 'weevilsd') return null
+    for (const dir of LOGS_DIRS) {
+      const f = path.join(dir, `${name}.log`)
+      if (fs.existsSync(f)) return f
+    }
+    return null
+  }
+
+  /** A job's one run (its log's birth → last write), once it is over (a running one is live, not a run yet). */
+  private jobRun(file: string): AutoRun | null {
+    const st = fs.statSync(file, { throwIfNoEntry: false })
+    if (!st || Date.now() - st.mtimeMs < 120_000) return null
+    const at = Math.round(st.mtimeMs)
+    return { at, startedAt: Math.min(at, Math.round(st.birthtimeMs || st.mtimeMs)), ok: true }
+  }
+
+  /** GET /api/auto/:id for a timer (its runs in the journal, newest first) or a job (one run). Local ones only. */
+  async h24Detail(id: string): Promise<AutoDetail | null> {
+    if (id.startsWith('timer:')) {
+      const a = this.h24.find((x) => x.id === id)
+      if (!a) return null
+      const { runs } = await this.timerRuns(id.slice(6), String(a.lastRunAt ?? ''), 60_000)
+      return { id, runs: runs.slice(-30).reverse().map(({ inv: _i, lines: _l, ...r }) => r), machine: MACHINE.id }
+    }
+    const f = id.startsWith('job:') ? this.jobFile(id) : null
+    if (!f) return null
+    const run = this.jobRun(f)
+    return { id, runs: run ? [run] : [], machine: MACHINE.id }
+  }
+
+  /** GET /api/auto/:id/runs/:at for a timer (that invocation's journal lines) or a job (its log's last lines). */
+  async h24Run(id: string, at: number): Promise<AutoRunDetail | null> {
+    if (id.startsWith('timer:')) {
+      const a = this.h24.find((x) => x.id === id)
+      if (!a) return null
+      const { runs } = await this.timerRuns(id.slice(6), String(a.lastRunAt ?? ''), 60_000)
+      const r = runs.find((x) => x.at === at)
+      if (!r) return null
+      const { inv: _i, lines, ...run } = r
+      const log = lines.join('\n')
+      return { run, files: [], links: extractLinks(log), images: [], log }
+    }
+    const f = id.startsWith('job:') ? this.jobFile(id) : null
+    const run = f ? this.jobRun(f) : null
+    if (!f || !run) return null
+    const log = tailLines(f)
+    return { run, files: [], links: extractLinks(log), images: [], log }
+  }
 
   private publishH24(out: H24Activity[]) {
     out.sort((a, b) => Number(b.runState === 'running') - Number(a.runState === 'running') || a.title.localeCompare(b.title))

@@ -117,7 +117,7 @@ function render(node: React.ReactNode, s = snap()) {
     expanded: null,
     setExpanded: () => {},
     h24Open: false,
-    setH24Open: () => {},
+    setH24Open: (_open: boolean, id?: string) => pushed.push({ kind: 'auto', id }),
     theme: 'light' as const,
     setTheme: () => {},
     refresh: () => {},
@@ -625,5 +625,16 @@ describe('for you: strips and the media viewer', () => {
     const video = host.querySelector<HTMLVideoElement>('.fy-stage video')!
     expect(video.controls).toBe(true)
     expect(video.getAttribute('src')).toBe('/api/foryou/media/m2')
+  })
+})
+
+
+describe('spoken proposals', () => {
+  it('offers a visible button that opens the announced idea itself', async () => {
+    render(<ForYouItemView item={{ id: 'auto:proposed:real', kind: 'boss', tone: 'neutral', at: NOW, who: 'weevils', text: 'A useful idea', voice: 'default', open: { page: 'auto', id: 'real' } }} />)
+    const button = [...host.querySelectorAll('button')].find((el) => el.textContent === t().openIdea)
+    expect(button).toBeTruthy()
+    await click(button)
+    expect(pushed).toContainEqual({ kind: 'auto', id: 'real' })
   })
 })

@@ -33,6 +33,9 @@ type ReadBody = (req: http.IncomingMessage) => Promise<any>
 
 // ---------------------------------------------------------------- limits
 
+// Raw engineering events belong to project history, never the user's feed or voice queue.
+const technicalEvent = (id: string) => /^(commit|deploy):/.test(id)
+
 export const MAX_ITEMS = 400
 export const KEEP_MS = 14 * 24 * 3600_000
 /** What GET /api/foryou returns at most. */
@@ -427,6 +430,13 @@ export class ForYou {
         return empty
       }
     })()
+    // Retire the old raw Git/build stream permanently, including already stored history.
+    const kept = this.s.items.filter((i) => !technicalEvent(i.id))
+    if (kept.length !== this.s.items.length) {
+      this.s.items = kept
+      this.s.rev++
+      this.save()
+    }
   }
 
   get shelf() {
@@ -668,6 +678,7 @@ export class ForYou {
    * again; one the user dismissed stays dismissed).
    */
   add(n: NewItem): ForYouItem | null {
+    if (n.id && technicalEvent(n.id)) return null
     const text = clip(n.text.trim(), POST_MAX)
     if (!text) return null
     const boss = n.kind === 'boss'
@@ -787,7 +798,11 @@ export class ForYou {
 
   /** What the app may read of a recorded item, or null when it has nothing to show right now. */
   private view(i: Stored, snap: Snapshot, any = false): ForYouItem | null {
-    if (i.gone) return null
+    if (i.gone || technicalEvent(i.id)) return null
+    if (i.id.startsWith('auto:proposed:')) {
+      const idea = snap.optimizers?.find((o) => i.id === `auto:proposed:${o.id}`)
+      if (!idea || idea.draft) return null
+    }
     const out: ForYouItem = { id: i.id, kind: i.kind, tone: i.tone, at: i.at, who: i.who, text: i.text }
     if (i.projectId) out.projectId = i.projectId
     if (i.sessionId) out.sessionId = i.sessionId
@@ -971,7 +986,7 @@ export class ForYou {
     const t = tr(M)
     for (const o of snap.optimizers ?? []) {
       const proposed = { id: `auto:proposed:${o.id}`, at: o.createdAt, text: t.autoProposed(o.title), tone: 'neutral' as const }
-      if (o.state === 'proposed' && !this.has(proposed.id) && this.now() - proposed.at <= BACKFILL_MS) {
+      if (o.state === 'proposed' && !o.draft && !this.has(proposed.id) && this.now() - proposed.at <= BACKFILL_MS) {
         this.put({ ...proposed, kind: 'boss', who: 'weevils', open: { page: 'auto', id: o.id }, reply: 'boss', rec: this.now(), lang: lang() })
         this.changed(false)
       }

@@ -526,9 +526,7 @@ export class Curator implements ForYouCurator {
    */
   tick(now = this.now()): Promise<void> {
     try {
-      this.deploymentEvent(now)
       this.milestones(now)
-      void this.gitEvents(now).catch((e) => console.error(`[foryou] git: ${String(e)}`))
       if (!this.fy.wanted(now)) return Promise.resolve()
       this.stat(now)
     } catch (e) {
@@ -564,51 +562,6 @@ export class Curator implements ForYouCurator {
       }
     })().finally(() => (this.running = null))
     return this.running
-  }
-
-  private deploymentEvent(now: number) {
-    const build = this.deps.deployment?.()
-    if (!build || !/^[a-f0-9]{40,64}$/.test(build.commit) || !Number.isFinite(build.at) || build.at > now) return
-    const id = `deploy:${build.commit}`
-    if (this.s.done[id]) return
-    this.fy.add({ id, kind: 'boss', tone: 'result', who: 'weevils', text: tr(M).deployed(build.commit.slice(0, 7)), at: build.at, lang: lang() })
-    this.s.done[id] = build.at
-    this.save()
-  }
-
-  private gitAt = 0
-  private gitRunning = false
-
-  /** Recent commits in active local repos, no model and no repeated event after a restart. */
-  private async gitEvents(now: number) {
-    if (this.gitRunning || now - this.gitAt < TICK_MS || !this.deps.repoDir) return
-    this.gitAt = now
-    this.gitRunning = true
-    try {
-      const sessions = this.fy.w.snapshot().sessions.filter((s) => s.repo && this.fy.eligible(s) && now - s.lastActivityAt < 4 * 86_400_000)
-      const repos = [...new Set(sessions.map((s) => s.repo!))].slice(0, 12)
-      for (const repo of repos) {
-        const dir = this.deps.repoDir(repo)
-        if (!dir) continue
-        const rows = await new Promise<string>((resolve) => {
-          execFile('git', ['-C', dir, 'log', '-12', '--since=4 days ago', '--no-merges', '--format=%H%x09%ct%x09%s'], { timeout: 5000, maxBuffer: 65536, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }, (err, out) => resolve(err ? '' : out))
-        })
-        for (const row of rows.trim().split('\n').reverse()) {
-          const [hash, stamp, ...subject] = row.split('\t')
-          const at = Number(stamp) * 1000
-          if (!/^[a-f0-9]{40,64}$/.test(hash) || !Number.isFinite(at) || at > now || now - at > 4 * 86_400_000) continue
-          const id = `commit:${repo}:${hash}`
-          if (this.s.done[id]) continue
-          const text = tr(M).commit(repo, hash.slice(0, 7), redact(subject.join(' ')).slice(0, 180))
-          this.fy.add({ id, kind: 'boss', tone: 'result', who: 'weevils', projectId: sessions.find((s) => s.repo === repo)?.projectId, text, at, lang: lang() })
-          this.s.done[id] = at
-        }
-      }
-      for (const [id, at] of Object.entries(this.s.done)) if (id.startsWith('commit:') && now - at > 5 * 86_400_000) delete this.s.done[id]
-      this.save()
-    } finally {
-      this.gitRunning = false
-    }
   }
 
   private json(text: string): unknown {

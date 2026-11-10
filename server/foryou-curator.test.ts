@@ -787,13 +787,12 @@ describe('relay and concurrent more requests', () => {
     expect(state().relay.n).toBe(1)
   })
 
-  it('records the served build once across restarts with its original date', async () => {
+  it('never turns builds or Git history into feed cards, including after restart', async () => {
     const deployment = () => ({ commit: 'a'.repeat(40), at: now - MIN })
     await makeCurator({ deployment }).tick(now)
     await makeCurator({ deployment }).tick(now)
     const events = fy.feed().items.filter((i) => i.id.startsWith('deploy:'))
-    expect(events).toHaveLength(1)
-    expect(events[0].at).toBe(now - MIN)
+    expect(events).toHaveLength(0)
   })
 })
 

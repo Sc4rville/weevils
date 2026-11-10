@@ -50,6 +50,7 @@ export default defineMessages({
     openMedia: (name: string) => `voir ${name} en grand`,
     mediaStrip: (n: number) => `${n} médias`,
     fullImage: 'voir l’image entière ↗',
+    openIdea: 'voir cette idée',
     fullVideo: 'ouvrir la vidéo ↗',
     back: 'retour',
 
@@ -107,6 +108,7 @@ export default defineMessages({
     openMedia: (name: string) => `view ${name} full screen`,
     mediaStrip: (n: number) => `${n} media`,
     fullImage: 'view full image ↗',
+    openIdea: 'view this idea',
     fullVideo: 'open video ↗',
     back: 'back',
 

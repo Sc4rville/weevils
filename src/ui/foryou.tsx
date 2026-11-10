@@ -419,6 +419,8 @@ function MediaItem({ item, who, fy }: KindProps) {
 // weevboss, mail.
 
 function BossItem({ item, who, fy }: KindProps) {
+  const t = useT(M)
+  const open = useOpen(item)
   return (
     <>
       <div className="in fy-pad">
@@ -430,6 +432,7 @@ function BossItem({ item, who, fy }: KindProps) {
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
       {!!item.media?.length && <MediaStrip media={item.media} />}
+      {item.id.startsWith('auto:proposed:') && open && <div className="in fy-pad-b"><button className="fy-btn" onClick={open}>{t.openIdea}</button></div>}
       <Actions item={item} fy={fy} />
       {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
     </>

@@ -737,7 +737,7 @@ describe('the mark in the snapshot', () => {
     expect(fy.mark(snap)).toEqual({ rev: r1 + 1, unseen: 3 })
     expect(fy.mark(snap).rev).toBe(r1 + 1)
     snap.optimizers = []
-    expect(fy.mark(snap)).toEqual({ rev: r1 + 2, unseen: 2 })
+    expect(fy.mark(snap)).toEqual({ rev: r1 + 2, unseen: 1 })
     expect(host.bump).not.toHaveBeenCalled()
     // Found while answering the app instead: the snapshot is asked to follow.
     snap.optimizers = [optimizer()]
@@ -981,5 +981,36 @@ describe('question option routing', () => {
     q.status = 'working'
     await expect(fy.act('s:s1', nextChoice)).rejects.toThrow()
     expect(host.send).toHaveBeenCalledTimes(1)
+  })
+})
+
+
+describe('retired technical events', () => {
+  it('cleans persisted commit/build cards and rejects their recreation across restarts', () => {
+    const file = path.join(dir, 'foryou.json')
+    const old = ['commit:mygame:abc', 'deploy:abc'].map((id) => ({ id, kind: 'boss', who: 'weevils', text: 'raw engineering log', at: now }))
+    fs.writeFileSync(file, JSON.stringify({ rev: 3, items: [...old, { id: 'd:useful', kind: 'boss', who: 'weevboss', text: 'Your application is ready to use.', at: now }] }))
+    const fy = make({ voiceOf: () => 'default' })
+    expect(ids(fy)).toContain('d:useful')
+    for (const item of old) expect(fy.add({ ...item, kind: 'boss' })).toBeNull()
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).items.map((i: { id: string }) => i.id)).toEqual(['d:useful'])
+    const restarted = make({ voiceOf: () => 'default' })
+    expect(ids(restarted).some((id) => /^(commit|deploy):/.test(id))).toBe(false)
+    expect(find(restarted, 'd:useful')?.voice).toBe('default')
+  })
+})
+
+
+describe('useful spoken ideas', () => {
+  it('keeps real proposals voiced and linked, but never announces a draft or a missing idea', () => {
+    snap.optimizers = [optimizer(), optimizer({ id: 'draft', draft: true })]
+    const fy = make({ voiceOf: () => 'default' })
+    expect(find(fy, 'auto:proposed:o1')).toMatchObject({ voice: 'default', open: { page: 'auto', id: 'o1' } })
+    expect(find(fy, 'auto:proposed:draft')).toBeUndefined()
+    fy.add({ id: 'auto:proposed:missing', kind: 'boss', text: 'An idea that does not exist' })
+    expect(find(fy, 'auto:proposed:missing')).toBeUndefined()
+    snap.optimizers = []
+    expect(find(fy, 'auto:proposed:o1')).toBeUndefined()
+    expect(find(make(), 'auto:proposed:draft')).toBeUndefined()
   })
 })

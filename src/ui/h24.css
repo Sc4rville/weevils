@@ -46,7 +46,8 @@
   animation: spin 2.6s linear infinite;
 }
 
-.h24 .fluo .ic-halo {
+/* Sans le contour noir du thème clair ([data-theme='light'] .fluo .ic-halo), inutile à l'encre. */
+:root .h24 .spin.fluo .ic-halo {
   display: none;
 }
 

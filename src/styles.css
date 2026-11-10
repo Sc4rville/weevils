@@ -687,6 +687,19 @@ button:disabled {
   min-height: 45%;
 }
 
+/* Page vue en grand (téléphone) : le fil de la session se cache, l'en-tête reste pour revenir. */
+@media (max-width: 899px) {
+  .page.split:has(.preview.full) .page-main {
+    display: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .preview-full {
+    display: none;
+  }
+}
+
 .code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

@@ -45,6 +45,8 @@ export function guessPreviewUrl(messages: Message[], session: Session, project: 
 interface Saved {
   url?: string
   open?: boolean
+  /** Sur téléphone, la page vue prend tout l'écran (le fil de la session se cache). */
+  full?: boolean
 }
 
 function load(id: string): Saved {
@@ -64,7 +66,7 @@ function save(id: string, v: Saved) {
 }
 
 /** Ouvre le navigateur intégré d'une session à sa prochaine ouverture (premiers pas : « voir le résultat »). */
-export const openPreviewOf = (id: string) => save(id, { ...load(id), open: true })
+export const openPreviewOf = (id: string) => save(id, { ...load(id), open: true, full: true })
 
 /** Choix mémorisés par session : volet ouvert ou non, URL réglée à la main. */
 export function usePreviewState(id: string) {
@@ -86,7 +88,7 @@ const normalize = (raw: string) => {
 }
 
 /** Le navigateur intégré : une barre d'adresse et la page, pour voir en live ce que l'agent construit. */
-export function Preview({ url, suggestions, onUrl, onClose }: { url: string; suggestions: string[]; onUrl: (u: string) => void; onClose: () => void }) {
+export function Preview({ url, suggestions, onUrl, onClose, full, onFull }: { url: string; suggestions: string[]; onUrl: (u: string) => void; onClose: () => void; full?: boolean; onFull?: (full: boolean) => void }) {
   const t = useT(M)
   const [draft, setDraft] = useState(url)
   const [gen, setGen] = useState(0)
@@ -102,7 +104,7 @@ export function Preview({ url, suggestions, onUrl, onClose }: { url: string; sug
   }
 
   return (
-    <div className="preview">
+    <div className={full ? 'preview full' : 'preview'}>
       <form className="preview-bar" onSubmit={go}>
         <button type="button" className="key" onClick={onClose} aria-label={t.close}>
           <Icon name="close" />
@@ -121,6 +123,11 @@ export function Preview({ url, suggestions, onUrl, onClose }: { url: string; sug
         <button type="submit" className="key" aria-label={t.reload}>
           <Icon name="reload" />
         </button>
+        {onFull && (
+          <button type="button" className="key preview-full" onClick={() => onFull(!full)} aria-label={full ? t.shrink : t.grow} aria-pressed={!!full}>
+            <Icon name="chevron" dir={full ? 'down' : 'up'} />
+          </button>
+        )}
         {url && (
           <a className="key" href={url} target="_blank" rel="noreferrer" aria-label={t.openTab}>
             <Icon name="external" />

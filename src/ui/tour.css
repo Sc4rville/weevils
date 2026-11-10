@@ -201,7 +201,8 @@
 /* ---- la bande */
 
 .tr-band {
-  --c: var(--p9);
+  /* Hors de la palette des projets (et du pied) : jamais deux bandes de la même couleur collées. */
+  --c: var(--calm);
   padding-block: 4px 12px;
 }
 
@@ -252,9 +253,10 @@
   animation: tr-now 1.1s steps(2, jump-none) infinite;
 }
 
+/* L'étape en cours bat à mi-teinte : jamais confondue avec une étape faite. */
 @keyframes tr-now {
   50% {
-    background: var(--ink);
+    background: color-mix(in srgb, var(--ink) 30%, transparent);
   }
 }
 

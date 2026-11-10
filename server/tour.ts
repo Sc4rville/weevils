@@ -118,7 +118,8 @@ export function satisfied(s: SetupState, extra: { seen: Set<string>; h24: H24Act
     history: extra.history.projects + extra.history.repos > 0,
     phone: extra.phone || s.phone.push > 0,
     github: s.github.logged,
-    voice: !!s.voice.spoken,
+    // Parler en marchant : la dictée (clé OpenAI) et une voix pour répondre.
+    voice: !!s.voice.spoken && s.voice.openai,
     push: s.phone.push > 0,
     h24: extra.h24.some((a) => !a.demo),
     mail: s.mail.on,
@@ -350,7 +351,7 @@ export class TourKeeper {
       if (Date.now() - started > 90_000) {
         fs.appendFileSync(log, `${t.jobEnd(repos.length, changed.size, [...changed].slice(0, 2))}\n`)
         this.deps.refreshH24()
-        this.demoTimer = setTimeout(() => this.stopDemoJob(), 3 * 60_000)
+        this.demoTimer = setTimeout(() => this.stopDemoJob(), 45_000)
         return
       }
       const repo = repos.length ? repos[i++ % repos.length] : ''

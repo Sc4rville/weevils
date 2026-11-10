@@ -65,7 +65,8 @@ function Peek({ onOpen }: { onOpen: () => void }) {
   const td = useT(D)
   const authorOf = useAuthors()
   const { snap } = useApp()
-  const items = snap.main.filter((m) => m.role !== 'event' && m.text.trim()).slice(-60)
+  // Les démos des premiers pas passent dans l'aperçu le temps d'être vues, puis restent seulement dans le fil.
+  const items = snap.main.filter((m) => m.role !== 'event' && m.text.trim() && (!m.demo || snap.now - m.at < 2 * 60_000)).slice(-60)
   const working = snap.mainWorking || !!snap.devil?.working
   const soft = { type: 'spring', stiffness: 160, damping: 26, mass: 1 } as const
   const box = useRef<HTMLDivElement>(null)

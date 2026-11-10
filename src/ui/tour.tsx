@@ -286,17 +286,19 @@ export function TourIntro() {
                           </button>
                         ))}
                         <div className="tr-pair">
-                          <button
-                            type="button"
-                            className="tr-alt"
-                            onClick={() => {
-                              finish()
-                              setFirst({ at: Date.now(), before: snap.sessions.map((s) => s.id) })
-                              talk()
-                            }}
-                          >
-                            <Icon name="mic" /> {t.talk}
-                          </button>
+                          {snap.setup?.dictation !== false && (
+                            <button
+                              type="button"
+                              className="tr-alt"
+                              onClick={() => {
+                                finish()
+                                setFirst({ at: Date.now(), before: snap.sessions.map((s) => s.id) })
+                                talk()
+                              }}
+                            >
+                              <Icon name="mic" /> {t.talk}
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="tr-alt"
@@ -372,7 +374,8 @@ export function TourBand() {
       return () => window.clearTimeout(id)
     }
   }, [flow, setExpanded])
-  const demoJob = snap.h24.find((a) => a.demo)
+  // Le job de démo : suivi dans la bande tant qu'il tourne, puis son rapport une demi-minute.
+  const demoJob = snap.h24.find((a) => a.demo && (a.runState === 'running' || Date.now() - (a.runStartedAt ?? 0) < 30_000))
   const t = useT(M)
   const f = useFirst()
   const [open, setOpen] = useState(false)
@@ -466,9 +469,11 @@ export function TourBand() {
                   {t.q(x)}
                 </button>
               ))}
-            <button type="button" className="tr-btn ghost" onClick={() => void act(s, 'try')}>
-              <Icon name="mic" /> {t.talk}
-            </button>
+            {snap.setup?.dictation !== false && (
+              <button type="button" className="tr-btn ghost" onClick={() => void act(s, 'try')}>
+                <Icon name="mic" /> {t.talk}
+              </button>
+            )}
           </>
         )}
         {g === 'use' && DEMOS.has(s.id) && !s.played && !(s.id === 'github' && firstStep?.state !== 'todo') && (
@@ -559,7 +564,7 @@ export function TourBand() {
             )}
             {track.reached >= 3 && !track.over && (
               <li className="tr-onward">
-                <button type="button" className="tr-btn quiet" onClick={() => setFirst(null)}>
+                <button type="button" className="tr-btn ghost" onClick={() => setFirst(null)}>
                   {t.onward} <Icon name="arrow" dir="right" />
                 </button>
               </li>

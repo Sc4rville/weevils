@@ -66,6 +66,8 @@ export function fromOptimizer(o: Optimizer): AutoTask | null {
     heavy: o.heavy,
     sessionId: o.sessionId,
     note: o.lastEvent,
+    // Stopped by a limit or an error: when it starts again.
+    nextAt: o.state === 'queued' && o.retryAt ? o.retryAt : null,
   }
 }
 

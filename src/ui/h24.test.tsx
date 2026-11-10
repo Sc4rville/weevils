@@ -22,6 +22,10 @@ const ApiError = vi.hoisted(
 vi.mock('../api', () => ({
   ApiError,
   api: {
+    createOptimizer: async () => {
+      calls.push('create')
+      return { item: { id: 'new-one', title: 'new automation', state: 'proposed', draft: true, talk: [] } }
+    },
     acceptOptimizer: async (id: string, rev?: number) => {
       calls.push(rev === undefined ? `accept ${id}` : `accept ${id} rev ${rev}`)
       // Rewritten from another screen since this one drew it.
@@ -125,6 +129,29 @@ describe('auto drawer', () => {
   const timer: H24Activity = { id: 'timer:wv-sync.timer', title: 'sync', kind: 'timer', projectId: null, schedule: '', enabled: true, runState: 'waiting', runStartedAt: null, lastEvent: '', canToggle: true, nextRunAt: NOW + 14 * 60_000, everyMs: 6 * 3600_000 }
   const head = () => host.querySelector('.h24-head')!
   const names = () => [...host.querySelectorAll('.auto-band .auto-name')].map((n) => n.textContent)
+
+  it('the + opens a fresh creation conversation directly, without a form or a model round', async () => {
+    render(snap([]))
+    const plus = label(/^create an automation$/)!
+    expect(plus.closest('[inert]')).toBeNull()
+    expect(plus.querySelector('svg')).not.toBeNull()
+    await click(plus)
+    await flush()
+    expect(calls).toEqual(['create'])
+    expect(pushed).toEqual([{ kind: 'auto', id: 'new-one' }])
+  })
+
+  it('keeps personal proposals visible even when three automatic suggestions already wait', () => {
+    render(snap([...['a', 'b', 'c'].map((id) => opt({ id, title: id })), opt({ id: 'personal', title: 'My own idea', userCreated: true })]))
+    expect(names()).toEqual(['My own idea', 'a', 'b', 'c'])
+  })
+
+  it('an unfinished conversation stays available without a validation button', () => {
+    render(snap([opt({ id: 'draft', title: 'new automation', draft: true, talk: [{ who: 'auto', text: 'What do you want to automate?', at: NOW }] })]))
+    expect(host.querySelector('[data-h24="draft"]')!.textContent).toContain('What do you want to automate?')
+    expect(host.querySelector('[data-h24="draft"] .chars')).toBeNull()
+    expect(head().querySelector('.auto-sum')!.textContent).not.toContain('to approve')
+  })
 
   it('the head says what runs (AutoMark, its title, +N), else what waits for a yes, else the next trigger', () => {
     render(snap([running(), running({ id: 'r2', title: 'A second one' }), opt({ id: 'p' })]))

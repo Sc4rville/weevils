@@ -287,6 +287,10 @@ export interface Optimizer {
   heavy: boolean
   /** proposed : attend un oui ou un non ; queued : acceptée, attend une machine libre ; running ; done ; failed ; refused. */
   state: 'proposed' | 'queued' | 'running' | 'done' | 'failed' | 'refused'
+  /** Conversation de création encore à préciser : aucune exécution ni validation tant que true. */
+  draft?: boolean
+  /** Créée à l'initiative de l'utilisateur (+), distincte des suggestions automatiques plafonnées. */
+  userCreated?: boolean
   /** Session de l'agent qui la fait tourner (visible dans son projet). */
   sessionId?: string
   createdAt: number

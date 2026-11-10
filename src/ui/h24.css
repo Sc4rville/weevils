@@ -9,8 +9,29 @@
 
 /* ---------- Drawer head: the title, then one plain line ---------- */
 
-.h24 > .h24-head > .in {
+.h24-top {
+  flex: none;
+}
+.h24-top > .in {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.h24-top .h24-head {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.h24-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--rail);
   padding-top: 12px;
+}
+.h24-create {
+  flex: none;
+  margin-right: -10px;
 }
 
 .h24 .h24-grip {

@@ -12,7 +12,7 @@ import { Composer, Line, Messages, Prose, Working } from './bits'
 import { at, autoList, longAt, fromActivity, fromOptimizer, projectOfRepo, short, slotOf, triggerText, typicalMs, type AutoItem } from './auto-model'
 import { TalkCtx, useTalk } from './auto-talk'
 import { durLong, plain } from './format'
-import { reveal } from './follow'
+import { reveal, useFollow } from './follow'
 import { Fill, chg } from './h24'
 import { AutoMark, Icon } from './icons'
 import { mergePending, type Pending } from './pending'
@@ -31,7 +31,7 @@ const MAX_SHOTS = 3
 function useAutoItem(id: string): { item: AutoItem | null; opt: Optimizer | null } {
   const { snap, now } = useApp()
   const k = useTalk()
-  const raw = snap.optimizers?.find((o) => o.id === id)
+  const raw = snap.optimizers?.find((o) => o.id === id) ?? k.find(id)
   if (raw) {
     const o = k.item(raw)
     const opt = o.state === 'proposed' && k.decided.get(id) === 'yes' ? ({ ...o, state: 'queued', acceptedAt: o.acceptedAt ?? now } as Optimizer) : o
@@ -124,6 +124,13 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
   const n = useRef(0)
   const form = useRef<HTMLFormElement>(null)
   const outputs = useRef<HTMLDivElement>(null)
+  const body = useRef<HTMLDivElement>(null)
+  const follow = useFollow(body, !!opt?.draft, 80, `${opt?.talk?.length}:${k.busy.has(x.id)}`)
+  const wasDraft = useRef(!!opt?.draft)
+  useLayoutEffect(() => {
+    if (wasDraft.current && !opt?.draft) body.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    wasDraft.current = !!opt?.draft
+  }, [opt?.draft])
   const heard = useRef('')
   const f = k.flash.get(x.id) ?? []
   const project = projectName(snap, x)
@@ -141,6 +148,12 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
     })
   }
   const actions: ReactNode[] = []
+  if (opt?.draft)
+    actions.push(
+      <button key="discard" className="ch" onClick={() => k.answer(opt, false) && back()} aria-label={t.discard}>
+        <Icon name="close" />
+      </button>,
+    )
   if (opt && !proposed && !x.state.match(/^(done|failed)$/)) {
     const paused = x.state === 'paused' || !!opt.paused
     actions.push(
@@ -174,6 +187,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
   return (
     <Shell
       slot={slotOf(x.id)}
+      bodyRef={body}
       kicker={t.title}
       title={<span className={chg(f.includes('title'))}>{x.title}</span>}
       meta={
@@ -219,6 +233,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
               formRef={form}
               prompt={busy ? <AutoMark /> : undefined}
               onSend={async (said) => {
+                if (opt?.draft) follow.toEnd()
                 if (!(await k.send(x.id, said))) throw new Error(t.talkPlaceholder)
               }}
             />
@@ -228,7 +243,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
         ) : undefined
       }
     >
-      {proposed && opt && (
+      {proposed && opt && !opt.draft && (
         <div className="band invert auto-decide">
           <Line
             ch="✓"
@@ -247,21 +262,24 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
         </div>
       )}
 
-      <Flow x={x} runs={runs} next={opt?.next?.title} onTicks={toOutputs} />
+      {!opt?.draft && (
+        <>
+          <Flow x={x} runs={runs} next={opt?.next?.title} onTicks={toOutputs} />
 
-      <Kpis x={x} runs={runs} detail={detail} flash={f} ask={talkOn ? ask : undefined} onLast={() => runs[0] && push({ kind: 'autorun', id: x.id, at: runs[0].at })} onRuns={toOutputs} />
+          <Kpis x={x} runs={runs} detail={detail} flash={f} ask={talkOn ? ask : undefined} onLast={() => runs[0] && push({ kind: 'autorun', id: x.id, at: runs[0].at })} onRuns={toOutputs} />
 
-      <div ref={outputs}>
-        {(runs.length > 0 || x.state === 'running') && <div className="in label">{t.outputs}</div>}
-        {x.state === 'running' && <LiveRun x={x} />}
-        {runs.map((r, i) => (
-          <Fragment key={r.at}>
-            <RunLine id={x.id} r={r} head={i === 0 ? headline(newest, r) : r.note} />
-            {i === 0 && newest && <Produced id={x.id} d={newest} machine={detail?.machine} short />}
-          </Fragment>
-        ))}
-      </div>
-
+          <div ref={outputs}>
+            {(runs.length > 0 || x.state === 'running') && <div className="in label">{t.outputs}</div>}
+            {x.state === 'running' && <LiveRun x={x} />}
+            {runs.map((r, i) => (
+              <Fragment key={r.at}>
+                <RunLine id={x.id} r={r} head={i === 0 ? headline(newest, r) : r.note} />
+                {i === 0 && newest && <Produced id={x.id} d={newest} machine={detail?.machine} short />}
+              </Fragment>
+            ))}
+          </div>
+        </>
+      )}
       {opt && <Talk o={opt} />}
     </Shell>
   )

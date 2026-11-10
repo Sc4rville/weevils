@@ -4,6 +4,9 @@ import { defineMessages } from '../i18n.ts'
 
 export default defineMessages({
   fr: {
+    newTitle: 'nouvelle automatisation',
+    newQuestion: 'Qu’est-ce que tu veux automatiser ?',
+    rules_draft: "c'est une nouvelle automatisation à construire avec lui, pas encore une tâche définie. Réponds à son idée en langage naturel. Si le résultat attendu ou le sujet est encore flou, pose une seule question claire et garde prompt absent du patch. Dès que le besoin est concret, propose une tâche bornée avec title, why et prompt complets, et les conditions qu'il a demandées ; ne devine ni projet ni fréquence. Récapitule ce qu'elle fera et quand, puis laisse-le valider avec le bouton de l'app. Ne prétends jamais qu'elle est lancée.",
     /** Proposes up to `max` background tasks. Every block is already rendered (lines, or the "nothing yet" text). */
     propose: (user: string, max: number, memory: string, projects: string, repos: string, machine: string, history: string) =>
       `Tu proposes des tâches de fond à ${user}, l'utilisateur de weevils (l'app d'où il suit et pilote ses agents de code Claude Code et Codex depuis son téléphone). ` +
@@ -133,6 +136,9 @@ export default defineMessages({
     notFound: 'introuvable',
   },
   en: {
+    newTitle: 'new automation',
+    newQuestion: 'What do you want to automate?',
+    rules_draft: "this is a new automation to build with them, not a defined task yet. Respond to their idea in natural language. If the intended result or subject is unclear, ask one clear question and leave prompt out of the patch. Once the need is concrete, propose a bounded task with complete title, why and prompt, and the conditions they requested; never guess a project or frequency. Sum up what it will do and when, then let them approve with the app's button. Never claim it has started.",
     propose: (user: string, max: number, memory: string, projects: string, repos: string, machine: string, history: string) =>
       `You propose background tasks to ${user}, the user of weevils (the app from which they watch and drive their Claude Code and Codex coding agents from their phone). ` +
       `When their agents are not working, the machine sleeps: a task they accept with one tap then runs on its own, in a Claude Code session visible in the app, one at a time, when the machine is free.\n\n` +

@@ -25,7 +25,7 @@ const OLD_FOLDS = 'weevils-auto-folds'
 
 /** Bande « auto » collée en bas : on la tire vers le haut (ou on la touche) pour voir ce qui tourne tout seul. */
 export function H24Rail() {
-  const { snap, now, h24Open: open, setH24Open: setOpen, h24Focus } = useApp()
+  const { snap, now, push, h24Open: open, setH24Open: setOpen, h24Focus } = useApp()
   const t = useT(M)
   const k = useTalk()
   const y = useMotionValue(0)
@@ -33,6 +33,25 @@ export function H24Rail() {
   const probe = useRef<HTMLDivElement>(null)
   const dragged = useRef(false)
   const controls = useDragControls()
+  const creatingRef = useRef(false)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const create = async () => {
+    if (creatingRef.current) return
+    creatingRef.current = true
+    setCreating(true)
+    setCreateError(null)
+    try {
+      const item = await k.create()
+      push({ kind: 'auto', id: item.id })
+    } catch (e) {
+      setCreateError((e as Error).message)
+      setOpen(true)
+    } finally {
+      creatingRef.current = false
+      setCreating(false)
+    }
+  }
   const [closedY, setClosedY] = useState(0)
   const [doneOpen, setDoneOpen] = useState(false)
 
@@ -98,7 +117,9 @@ export function H24Rail() {
   // A task rewritten a moment ago: its new version, before the snapshot follows. One given ✓ here or on its page: an
   // automation already (it slides into its place), one given ×: gone (it folds away).
   const opts = (snap.optimizers ?? []).map(k.item)
-  const proposals = opts.filter((o) => o.state === 'proposed' && !k.decided.has(o.id)).slice(0, 3)
+  const drafts = opts.filter((o) => o.state === 'proposed' && o.draft && !k.decided.has(o.id))
+  const ready = opts.filter((o) => o.state === 'proposed' && !o.draft && !k.decided.has(o.id))
+  const proposals = [...ready.filter((o) => o.userCreated), ...ready.filter((o) => !o.userCreated).slice(0, 3)]
   const accepted = opts.map((o) => (o.state === 'proposed' && k.decided.get(o.id) === 'yes' ? ({ ...o, state: 'queued', acceptedAt: now } as Optimizer) : o))
   const all = autoList({ ...snap, optimizers: accepted })
   // Nothing moves under the finger: running first, then the soonest trigger, then the machine, then paused; a band
@@ -120,7 +141,7 @@ export function H24Rail() {
   const rounding = !!snap.autoRound?.busy
   // A colour per band, in display order: each one far from the one above it (the amber head for the first).
   const kept = useRef(new Map<string, string>())
-  kept.current = bandColors([...proposals.map((o) => o.id), ...(rounding ? ['__round'] : []), ...live.map((x) => x.id)], kept.current)
+  kept.current = bandColors([...drafts.map((o) => o.id), ...proposals.map((o) => o.id), ...(rounding ? ['__round'] : []), ...live.map((x) => x.id)], kept.current)
   const keptDone = useRef(new Map<string, string>())
   keptDone.current = bandColors(finished.map((x) => x.id), keptDone.current)
 
@@ -164,39 +185,61 @@ export function H24Rail() {
         aria-label={t.region}
       >
         <div ref={probe} className="h24-probe" />
-        <button
-          className="h24-head"
-          onPointerDown={(e) => {
-            dragged.current = false
-            controls.start(e)
-          }}
-          onClick={(e) => {
-            if (dragged.current) {
-              dragged.current = false
-              return
-            }
-            if (!open && tapHint('h24', e.currentTarget)) return
-            setOpen(!open)
-          }}
-          aria-expanded={open}
-          aria-controls="h24-body"
-          aria-label={t.head(said, open)}
-        >
-          <span className="h24-grip" aria-hidden>
-            <Icon name="grip" />
-          </span>
-          <span className="in" aria-hidden>
-            <span className="h2">{t.title}</span>
-            <span className="meta auto-sum">{summary}</span>
-            <span className="h2" style={{ fontWeight: 500 }}>
-              <Icon name="arrow" dir={open ? 'down' : 'up'} />
-            </span>
-          </span>
-        </button>
+        <div className="h24-top">
+          <div className="in">
+            <button
+              className="h24-head"
+              onPointerDown={(e) => {
+                dragged.current = false
+                controls.start(e)
+              }}
+              onClick={(e) => {
+                if (dragged.current) {
+                  dragged.current = false
+                  return
+                }
+                if (!open && tapHint('h24', e.currentTarget)) return
+                setOpen(!open)
+              }}
+              aria-expanded={open}
+              aria-controls="h24-body"
+              aria-label={t.head(said, open)}
+            >
+              <span className="h24-grip" aria-hidden>
+                <Icon name="grip" />
+              </span>
+              <span className="h24-heading" aria-hidden>
+                <span className="h2">{t.title}</span>
+                <span className="meta auto-sum">{summary}</span>
+                <span className="h2" style={{ fontWeight: 500 }}>
+                  <Icon name="arrow" dir={open ? 'down' : 'up'} />
+                </span>
+              </span>
+            </button>
+            <button className="ch h24-create" aria-label={creating ? t.creating : t.create} disabled={creating} onClick={() => void create()}>
+              {creating ? <AutoMark /> : <Icon name="plus" />}
+            </button>
+          </div>
+        </div>
 
         <div id="h24-body" className="h24-body" inert={!open}>
+          {createError && (
+            <div className="in meta" role="alert">{createError}</div>
+          )}
           <TalkCtx.Provider value={k}>
             <AnimatePresence initial={false}>
+              {drafts.map((o) => (
+                <motion.section key={o.id} layout="position" className="band auto-band" style={color(kept.current.get(o.id) ?? 'p9')} data-h24={o.id} {...drop}>
+                  <button className="auto-hit" onClick={() => push({ kind: 'auto', id: o.id })} aria-label={o.title} />
+                  <div className="in" aria-hidden>
+                    <span className="st">
+                      <Icon name="bubble" />
+                    </span>
+                    <span className="auto-name">{o.title}</span>
+                    <span className="meta sub ellipsis">{o.talk?.at(-1)?.text}</span>
+                  </div>
+                </motion.section>
+              ))}
               {proposals.map((o) => (
                 <AutoBand key={o.id} x={fromOptimizer(o, projectOfRepo(snap.projects, o.repo))!} proposal={o} slot={kept.current.get(o.id) ?? 'p9'} />
               ))}
@@ -233,7 +276,7 @@ export function H24Rail() {
               </>
             )}
           </TalkCtx.Provider>
-          {all.length === 0 && proposals.length === 0 && !rounding && <div className="in meta empty">{t.empty}</div>}
+          {all.length === 0 && proposals.length === 0 && drafts.length === 0 && !rounding && <div className="in meta empty">{t.empty}</div>}
           <div style={{ height: 14 }} />
         </div>
       </motion.div>

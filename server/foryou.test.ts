@@ -641,6 +641,13 @@ describe('alerts', () => {
 })
 
 describe('proposals', () => {
+  it('never offers an incomplete creation conversation for approval', async () => {
+    snap.optimizers = [optimizer({ draft: true })]
+    const fy = make()
+    expect(fy.feed().items.find((i) => i.id === 'proposals')).toBeUndefined()
+    await expect(fy.act('proposals', 'accept', 'o:o1')).rejects.toThrow(M.en.cardGone)
+  })
+
   const unmanaged = () => session({ id: 'u1', title: 'left open', controllable: false, status: 'idle', lastActivityAt: T0 - 13 * HOUR })
   const tips: ForYouDeps['tips'] = (s, at) => ({ snap: s, now: at, loads: [], dictation: false, reapMs: 24 * HOUR })
 

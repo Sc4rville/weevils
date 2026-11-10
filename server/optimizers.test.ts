@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session, Snapshot } from '../shared/api.ts'
-import { smart } from './fast.ts'
+import { smart, relay as relayAnswer } from './fast.ts'
 import { headOf } from './auto-runs.ts'
 import O from './i18n/optimizers.ts'
 import { Memory } from './memory.ts'
@@ -12,7 +12,7 @@ import { Writable } from 'node:stream'
 import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_FAILED_RUNS, MAX_RUN_MS, MAX_RUNS, MAX_TALK, MAX_TRIES, MAX_WAITING, REFILL_GAP_MS, optimizerRoutes, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, TALK_BACKOFF_MS, TALK_CHARS, VANISH_MS, Optimizers, agreedDigest, freeReason, guardEnv, isRepeat, jailArgs, isStall, parsePatch, parseProposals, runLimit, slug, stallKind, tidy, type Sys } from './optimizers.ts'
 
 // Hermetic: no claude CLI, no login check, the language fixed in memory.
-vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn() }))
+vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn(), relay: vi.fn() }))
 vi.mock('./setup.ts', () => ({ claudeLogged: vi.fn(() => true) }))
 vi.mock('./i18n.ts', async (orig) => {
   const real = await orig<typeof import('./i18n.ts')>()
@@ -41,9 +41,9 @@ let detail: ReturnType<typeof vi.fn>
 let send: ReturnType<typeof vi.fn>
 let key: ReturnType<typeof vi.fn>
 let command: ReturnType<typeof vi.fn>
-const make = () =>
+const make = (extra: Record<string, unknown> = {}) =>
   new Optimizers(
-    { snapshot: () => snap, allRepos: () => ['mygame', 'mygame-site', 'notes'], repoDir: (r: string) => path.join(dir, 'p', r), createIn, bump, store, hooks, detail, send, key, command } as never,
+    { snapshot: () => snap, allRepos: () => ['mygame', 'mygame-site', 'notes'], repoDir: (r: string) => path.join(dir, 'p', r), createIn, bump, store, hooks, detail, send, key, command, ...extra } as never,
     memory,
     { file: path.join(dir, 'optimizers.json'), dir: path.join(dir, 'optimizers'), sys },
   )
@@ -73,6 +73,7 @@ beforeEach(() => {
   command = vi.fn()
   bump = vi.fn()
   model.mockReset()
+  vi.mocked(relayAnswer).mockReset()
   vi.spyOn(console, 'log').mockImplementation(() => undefined)
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
 })
@@ -626,6 +627,75 @@ describe('auto — talking a task over (the negotiation)', () => {
     return { o, id: o.list()[0].id }
   }
   const answer = (reply: string, patch: Record<string, unknown> = {}) => model.mockResolvedValueOnce(JSON.stringify({ reply, patch }))
+
+  it('creates a durable conversation without a model, clarifies the idea, then validates the negotiated version', async () => {
+    const o = make()
+    const draft = o.create()
+    expect(draft).toMatchObject({ state: 'proposed', draft: true, title: O.en.newTitle, talk: [{ who: 'auto', text: O.en.newQuestion }] })
+    expect(model).not.toHaveBeenCalled()
+    expect(draft).not.toHaveProperty('prompt')
+    expect(make().list()[0]).toEqual(draft)
+    expect(o.accept(draft.id)).toBe('busy')
+    expect(o.runNow(draft.id)).toBe(false)
+    sys.logged = () => false
+    o.tick(T0 + IDLE_MS)
+    expect(createIn).not.toHaveBeenCalled()
+    sys.logged = () => true
+    answer('Which project should I check?')
+    const question = await o.talk(draft.id, 'Check my tests.', P)
+    expect(question!.item!.draft).toBe(true)
+    expect(o.accept(draft.id)).toBe('busy')
+    expect(model.mock.calls[0][0]).toContain(O.en.rules_draft)
+    answer('Every night I will check mygame and leave a report for you to read.', { title: 'Check mygame tests', why: 'you want a daily check', prompt: 'Run the tests of mygame, summarize failures and stop after fifteen minutes.', repo: 'mygame', kind: 'tests', est: 15, every: '1d', window: '01:00-06:00' })
+    const ready = await o.talk(draft.id, 'mygame, every night for fifteen minutes', P)
+    expect(ready!.item).toMatchObject({ state: 'proposed', title: 'Check mygame tests', repo: 'mygame', every: 24 * 60 * MIN, est: 15, rev: 1 })
+    expect(ready!.item!.draft).toBeUndefined()
+    expect(ready!.item!.talk).toHaveLength(5)
+    expect(make().list()[0]).toEqual(ready!.item)
+    expect(createIn).not.toHaveBeenCalled()
+    expect(o.accept(draft.id, 0)).toBe('busy')
+    expect(o.accept(draft.id, ready!.item!.rev)).toBe(true)
+    expect(o.list()[0].state).toBe('queued')
+  })
+
+  it('personal creation conversations do not consume the three automatic suggestion slots', async () => {
+    const o = make()
+    for (let i = 0; i < 4; i++) o.create()
+    expect(o.roundDue(T0 + FIRST_ROUND_MS)).toBe(true)
+    model.mockResolvedValueOnce(props(MAX_WAITING))
+    await o.round(T0 + FIRST_ROUND_MS)
+    expect(o.list().filter((x) => !x.userCreated)).toHaveLength(MAX_WAITING)
+    expect(o.list().filter((x) => x.draft)).toHaveLength(4)
+  })
+
+  it('a failed creation exchange retains the question and cannot turn an incomplete draft into a runnable task', async () => {
+    const o = make()
+    const draft = o.create()
+    model.mockRejectedValueOnce(new Error('offline'))
+    expect((await o.talk(draft.id, 'watch my project', P))!.failed).toBe(true)
+    expect(o.list()[0]).toMatchObject({ draft: true, talk: [{ text: O.en.newQuestion }] })
+    expect(o.accept(draft.id)).toBe('busy')
+    expect(o.refuse(draft.id)).toBe(true)
+    expect(o.list()).toEqual([])
+  })
+
+  it('a held quota without an authorized relay makes no model call', async () => {
+    const o = make({ relay: { holdUntil: () => T0 + MIN, autoOnCodex: () => false } })
+    const draft = o.create()
+    expect((await o.talk(draft.id, 'prepare a report', P))!.failed).toBe(true)
+    expect(model).not.toHaveBeenCalled()
+    expect(relayAnswer).not.toHaveBeenCalled()
+  })
+
+  it('creation exchanges use the authorized quota relay when Claude is held', async () => {
+    sys.logged = () => false
+    const o = make({ relay: { holdUntil: () => T0 + MIN, autoOnCodex: () => true } })
+    const draft = o.create()
+    vi.mocked(relayAnswer).mockResolvedValueOnce(JSON.stringify({ reply: 'What should the report cover?', patch: {} }))
+    expect((await o.talk(draft.id, 'prepare a report', P))!.failed).toBeUndefined()
+    expect(relayAnswer).toHaveBeenCalledOnce()
+    expect(model).not.toHaveBeenCalled()
+  })
 
   it('every field of a rewrite is checked and clamped, never trusted', () => {
     const ctx = { repos: ['mygame', 'notes'], tz: P, now: T0 }
@@ -1293,6 +1363,14 @@ describe('auto — runs, their outputs, the automation page', () => {
       }
       throw new Error(`no route ${method} ${url}`)
     }
+
+    it('opens a creation conversation and refuses to accept it before it has a brief', async () => {
+      const o = make()
+      const r = await call(o, 'POST', '/api/optimizers', {})
+      expect(r).toMatchObject({ status: 201, body: { item: { draft: true, state: 'proposed' } } })
+      expect((await call(o, 'POST', `/api/optimizers/${r.body.item.id}/accept`, {})).status).toBe(409)
+      expect(model).not.toHaveBeenCalled()
+    })
 
     it('pause and run', async () => {
       const o = seed()

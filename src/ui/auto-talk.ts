@@ -8,7 +8,7 @@ import M from '../i18n/h24'
 import { useApp } from './app-context'
 
 /** What a reply can rewrite, and the exchange: the version received with the reply, before the snapshot follows. */
-const TALKED = ['title', 'why', 'kind', 'repo', 'est', 'priority', 'heavy', 'notBefore', 'window', 'every', 'next', 'talk', 'changed', 'rev'] as const
+const TALKED = ['draft', 'title', 'why', 'kind', 'repo', 'est', 'priority', 'heavy', 'notBefore', 'window', 'every', 'next', 'talk', 'changed', 'rev'] as const
 /** What a reader compares between two versions of a task (the fields that flash). */
 const SHOWN = ['title', 'why', 'kind', 'repo', 'est', 'priority', 'heavy', 'notBefore', 'window', 'every'] as const
 /** ✓ refused because the version on screen was old, and no newer one comes: ✓ works again after this. */
@@ -18,6 +18,8 @@ const FLASH_MS = 1700
 export const SETTLE_MS = 450
 
 export interface Talks {
+  create: () => Promise<Optimizer>
+  find: (id: string) => Optimizer | undefined
   /** The task whose field is open (kept for callers that fold one open at a time). */
   open: string | null
   setOpen: (id: string | null) => void
@@ -63,6 +65,10 @@ export function useTalks(optimizers: Optimizer[] | undefined): Talks {
   const [reply, setReply] = useState<{ key?: string; text?: string }>({})
   const [stales, setStales] = useState<ReadonlyMap<string, { o: Optimizer; at: number }>>(new Map())
   const [decided, setDecided] = useState<ReadonlyMap<string, 'yes' | 'no'>>(new Map())
+  const created = useRef(new Map<string, Optimizer>())
+  useEffect(() => {
+    for (const o of optimizers ?? []) created.current.delete(o.id)
+  }, [optimizers])
   const seq = useRef(0)
   const inflight = useRef(new Set<string>())
   const landed = useRef(new Map<string, number>())
@@ -102,6 +108,14 @@ export function useTalks(optimizers: Optimizer[] | undefined): Talks {
     for (const key of TALKED) out[key] = l[key]
     return out as unknown as Optimizer
   }
+  const create = async () => {
+    const { item } = await api.createOptimizer()
+    created.current.set(item.id, item)
+    setLocal((m) => new Map(m).set(item.id, item))
+    refresh()
+    return item
+  }
+  const find = (id: string) => optimizers?.find((o) => o.id === id) ?? created.current.get(id)
   const send = async (id: string, text: string, voice = false) => {
     const said = text.trim()
     if (!said || inflight.current.has(id)) return false
@@ -141,7 +155,7 @@ export function useTalks(optimizers: Optimizer[] | undefined): Talks {
   }
   const answer = (o: Optimizer, yes: boolean) => {
     // Just rewritten (the card changed under the finger), or being rewritten: the tap was not meant for ✓ or ×.
-    if (performance.now() - (landed.current.get(o.id) ?? -Infinity) < SETTLE_MS || (yes && (inflight.current.has(o.id) || isStale(o)))) return false
+    if ((yes && o.draft) || performance.now() - (landed.current.get(o.id) ?? -Infinity) < SETTLE_MS || (yes && (inflight.current.has(o.id) || isStale(o)))) return false
     setDecided((m) => new Map(m).set(o.id, yes ? 'yes' : 'no'))
     void (yes ? api.acceptOptimizer(o.id, o.rev ?? 0) : api.refuseOptimizer(o.id))
       .catch((e) => {
@@ -154,7 +168,7 @@ export function useTalks(optimizers: Optimizer[] | undefined): Talks {
       .finally(refresh)
     return true
   }
-  return { open, setOpen, busy, asking, notes, flash: flashes, reply, item, send, landedAt: (id) => landed.current.get(id) ?? -Infinity, openedAt: () => opened.current, stale, isStale, decided, answer }
+  return { create, find, open, setOpen, busy, asking, notes, flash: flashes, reply, item, send, landedAt: (id) => landed.current.get(id) ?? -Infinity, openedAt: () => opened.current, stale, isStale, decided, answer }
 }
 
 /** One negotiation state for the drawer and the pages (App wraps both). */

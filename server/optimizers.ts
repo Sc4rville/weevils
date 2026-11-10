@@ -36,7 +36,7 @@ import { RunArchive, blobPath, extractLinks, gitFiles, headOf, mtimeFiles, IMAGE
 import { fmtLocal, nextRun, nextStart, parseEvery, parseLocal, parseWindow, serverTz, validTz, windowText, MAX_AHEAD_MS, type Window } from './auto-time.ts'
 import { DATA_DIR, MACHINE, PROJECT_ROOTS, PROJECTS_DIR } from './config.ts'
 import type { Weevils } from './core.ts'
-import { parseJson, smart } from './fast.ts'
+import { parseJson, smart, relay as relayAnswer } from './fast.ts'
 import { lang, tr, user, withLang, type Lang } from './i18n.ts'
 import O from './i18n/optimizers.ts'
 import type { Memory } from './memory.ts'
@@ -731,6 +731,16 @@ export class Optimizers {
     return this.s.items.find((o) => o.id === id)
   }
 
+  /** A fresh creation conversation, without a model call or an executable brief. */
+  create(): Optimizer {
+    const t = tr(O)
+    const now = Date.now()
+    const o: Stored = { id: crypto.randomBytes(5).toString('hex'), title: t.newTitle, why: '', repo: null, kind: 'other', heavy: false, state: 'proposed', draft: true, userCreated: true, prompt: '', createdAt: now, talk: [{ who: 'auto', text: t.newQuestion, at: now }] }
+    this.s.items.push(o)
+    this.changed()
+    return this.view(o)
+  }
+
   /**
    * One tap: the proposal, as it stands after the exchange (the version on screen: `rev`, when given, must match),
    * waits for a free machine and its time. Never while the model is rewriting it.
@@ -738,7 +748,7 @@ export class Optimizers {
   accept(id: string, rev?: number): boolean | 'busy' {
     const o = this.get(id)
     if (!o || o.state !== 'proposed') return false
-    if (this.talking.has(id) || (rev !== undefined && rev !== (o.rev ?? 0))) return 'busy'
+    if (o.draft || this.talking.has(id) || (rev !== undefined && rev !== (o.rev ?? 0))) return 'busy'
     o.state = 'queued'
     o.acceptedAt = Date.now()
     this.s.refillAt = o.acceptedAt
@@ -816,7 +826,9 @@ export class Optimizers {
     const note = (k: 'talkFailed' | 'talkBusy' | 'talkMoved' | 'talkHeld'): OptimizerTalkReply => ({ reply: withLang(replyLang, () => tr(O)[k]), item: this.view(o), changed: [], failed: true })
     if (!said) return { reply: '', item: this.view(o), changed: [] }
     if (this.talking.has(id)) return note('talkBusy')
-    if (Date.now() < (this.talkFailUntil.get(id) ?? 0) || !this.sys.logged()) return note('talkFailed')
+    const held = !!this.w.relay?.holdUntil()
+    const onCodex = held && !!this.w.relay?.autoOnCodex()
+    if (Date.now() < (this.talkFailUntil.get(id) ?? 0) || (held && !onCodex) || (!onCodex && !this.sys.logged())) return note('talkFailed')
     const zone = validTz(tz) ?? o.tz ?? serverTz()
     this.talking.add(id)
     try {
@@ -825,7 +837,7 @@ export class Optimizers {
       try {
         const turn = this.talkTurn(o, said, zone, replyLang)
         untrusted = turn.untrusted
-        out = parseJson(await smart(turn.prompt, TALK_TIMEOUT_MS))
+        out = parseJson(await (onCodex ? relayAnswer : smart)(turn.prompt, TALK_TIMEOUT_MS))
       } catch (e) {
         // Never the message itself: claude's command line holds the whole prompt (the memory).
         const err = e as NodeJS.ErrnoException & { killed?: boolean }
@@ -851,6 +863,7 @@ export class Optimizers {
         return note('talkHeld')
       }
       const changed = this.patch(o, p)
+      if (o.draft && p.title && p.prompt) delete o.draft
       if (validTz(tz)) o.tz = zone
       o.talk = capTalk([...(o.talk ?? []), { who: 'user', text: said, at: now }, { who: 'auto', text: reply, at: Date.now(), ...(changed.length ? { changed } : {}) }])
       if (changed.length) {
@@ -938,7 +951,7 @@ export class Optimizers {
     const weekday = new Intl.DateTimeFormat(lang() === 'fr' ? 'fr-FR' : 'en-US', { weekday: 'long', timeZone: tz }).format(now)
     const repos = this.w.allRepos().slice(0, 80).join(', ')
     const machine = t.machine(this.sys.cpus(), Math.round(os.totalmem() / 1024 ** 3), `${os.platform()} ${os.arch()}`)
-    const rules = o.state === 'proposed' ? t.rules_proposed : o.state === 'queued' ? t.rules_queued : o.state === 'running' ? (o.every ? t.rules_running : t.rules_running_once) : t.rules_ended
+    const rules = o.draft ? t.rules_draft : o.state === 'proposed' ? t.rules_proposed : o.state === 'queued' ? t.rules_queued : o.state === 'running' ? (o.every ? t.rules_running : t.rules_running_once) : t.rules_ended
     const live = this.liveText(o, now, tz)
     const prompt = t.talk({
       user: name,
@@ -1425,7 +1438,7 @@ export class Optimizers {
   // ---------------------------------------------------------------- proposal rounds
 
   private waiting() {
-    return this.s.items.filter((o) => o.state === 'proposed').length
+    return this.s.items.filter((o) => o.state === 'proposed' && !o.draft && !o.userCreated).length
   }
 
   /** A round is due: first one a few minutes after start, then every 6 h, sooner after a memory change (2 min after
@@ -1531,6 +1544,7 @@ export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h
     }
   }
   return [
+    ['POST', /^\/api\/optimizers$/, (_req, res) => json(res, 201, { item: o.create() })],
     ['POST', /^\/api\/optimizers\/([\w-]+)\/accept$/, async (req, res, _u, [id]) => {
       const body = await readBody(req).catch(() => ({}))
       const rev = Number.isInteger(body?.rev) ? Number(body.rev) : undefined

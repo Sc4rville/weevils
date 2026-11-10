@@ -5,6 +5,9 @@ import { defineMessages } from './index'
 export default defineMessages({
   fr: {
     title: 'auto',
+    create: 'créer une automatisation',
+    creating: 'ouverture de la conversation',
+    discard: 'abandonner ce brouillon',
     region: 'auto : ce qui tourne tout seul',
     nothing: 'rien ne tourne tout seul',
     head: (summary: string, open: boolean) => `auto : ${summary}. ${open ? 'replier' : 'déplier'}`,
@@ -91,6 +94,9 @@ export default defineMessages({
   },
   en: {
     title: 'auto',
+    create: 'create an automation',
+    creating: 'opening the conversation',
+    discard: 'discard this draft',
     region: 'auto: what runs on its own',
     nothing: 'nothing runs on its own',
     head: (summary: string, open: boolean) => `auto: ${summary}. ${open ? 'collapse' : 'expand'}`,

@@ -5,10 +5,10 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { vi } from 'vitest'
-import type { AutoDetail, AutoRunDetail, H24Activity, Optimizer, Snapshot } from '../../shared/api.ts'
+import type { AutoDetail, AutoRunDetail, H24Activity, Optimizer, OptimizerTalkReply, Snapshot } from '../../shared/api.ts'
 
 const calls = vi.hoisted(() => [] as string[])
-const fixtures = vi.hoisted(() => ({ detail: new Map<string, AutoDetail>(), runs: new Map<string, AutoRunDetail>(), reads: 0 }))
+const fixtures = vi.hoisted(() => ({ detail: new Map<string, AutoDetail>(), runs: new Map<string, AutoRunDetail>(), reads: 0, talk: undefined as OptimizerTalkReply | undefined }))
 vi.mock('../api', () => ({
   ApiError: class extends Error {},
   api: {
@@ -28,7 +28,7 @@ vi.mock('../api', () => ({
     refuseOptimizer: async (id: string) => void calls.push(`refuse ${id}`),
     talkOptimizer: async (id: string, text: string) => {
       calls.push(`talk ${id} ${text}`)
-      return { reply: 'ok', changed: [] }
+      return fixtures.talk ?? { reply: 'ok', changed: [] }
     },
     pauseOptimizer: async (id: string, paused: boolean) => void calls.push(`pause ${id} ${paused}`),
     runOptimizer: async (id: string) => void calls.push(`run ${id}`),
@@ -109,6 +109,7 @@ beforeEach(() => {
   calls.length = 0
   fixtures.detail.clear()
   fixtures.runs.clear()
+  fixtures.talk = undefined
   pushed = []
   backs = 0
   host = document.createElement('div')
@@ -121,6 +122,29 @@ afterEach(() => {
 })
 
 describe('automation page', () => {
+  it('a new conversation starts with one clear question and turns into the existing proposal after a natural-language reply', async () => {
+    const draft = opt({ id: 'new', state: 'proposed', title: 'new automation', draft: true, talk: [{ who: 'auto', text: 'What do you want to automate?', at: NOW }] })
+    render(snap([draft]), <AutoPage id="new" />)
+    expect(host.querySelector('.auto-talk')!.textContent).toContain('What do you want to automate?')
+    expect(host.querySelector('.auto-decide')).toBeNull()
+    expect(host.querySelector('.auto-kpis')).toBeNull()
+    expect(host.querySelectorAll('input')).toHaveLength(1)
+    const ready = { ...draft, draft: undefined, title: 'Daily test report', rev: 1, every: DAY, talk: [...draft.talk!, { who: 'user' as const, text: 'Check mygame every day.', at: NOW }, { who: 'auto' as const, text: 'A daily report of mygame tests, ready to approve.', at: NOW }] }
+    fixtures.talk = { reply: 'A daily report of mygame tests, ready to approve.', item: ready, changed: ['title', 'prompt', 'every'] }
+    const field = host.querySelector<HTMLInputElement>('.composer input')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, 'Check mygame every day.')
+      field.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => void host.querySelector<HTMLFormElement>('.composer')!.requestSubmit())
+    await flush()
+    expect(calls).toContain('talk new Check mygame every day.')
+    expect(host.querySelector('h1')!.textContent).toBe('Daily test report')
+    expect(host.querySelector('.auto-decide')).not.toBeNull()
+    expect(host.querySelector('.auto-talk')!.textContent).toContain('ready to approve')
+    expect(calls.some((c) => c.startsWith('accept'))).toBe(false)
+  })
+
   it('the same six facts for a task (its state is the flow band, where it runs the head); tapping one prefills the talk', async () => {
     render(snap([daily]), <AutoPage id="d" />)
     await flush()

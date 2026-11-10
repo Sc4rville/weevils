@@ -35,7 +35,7 @@ export default defineMessages({
     reposLabel: 'repos',
     machinesLabel: 'machines',
     openSessions: (n: number) => `${n} session${n > 1 ? 's ouvertes' : ' ouverte'}`,
-    h24Label: 'h24',
+    h24Label: 'auto',
     running: 'en cours',
 
     // Notifications
@@ -89,7 +89,7 @@ export default defineMessages({
     reposLabel: 'repos',
     machinesLabel: 'machines',
     openSessions: (n: number) => `${n} open session${n === 1 ? '' : 's'}`,
-    h24Label: '24/7',
+    h24Label: 'auto',
     running: 'running',
 
     testSent: 'test notification sent',

@@ -325,7 +325,7 @@ export const GESTURES: [id: string, seen: string, what: string][] = [
   ['fold', 'g-fold', 'tap a project name: fold or unfold it'],
   ['newSession', 'newSession', 'the + of a project: a new claude or codex session there'],
   ['devil', 'devil', 'the little devil next to the logo: switch this thread to the other model'],
-  ['h24', 'h24', 'the 24/7 band: what runs around the clock'],
+  ['h24', 'h24', 'the auto band at the bottom: what runs on its own, and background tasks to accept with one tap'],
 ]
 
 /** Astuces d'usage, données une fois chacune au bon moment. */

@@ -58,6 +58,10 @@
 .gauge.none > span {
   width: 0 !important;
 }
+.usage-line .meta .gauge {
+  height: 4px;
+  margin-top: 5px;
+}
 .gauge.big {
   height: 8px;
   margin-top: 6px;

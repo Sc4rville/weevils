@@ -216,6 +216,17 @@ export interface UsageRow {
   last: number
 }
 
+/** Consommation du jour d'un modèle (même pondération que UsageRow). */
+export interface UsageModel {
+  tool: 'claude' | 'codex'
+  model: string
+  machine: string
+  weight: number
+  tokens: number
+}
+
 export interface UsageToday {
   rows: UsageRow[]
+  /** Absent quand une machine distante a une version plus ancienne. */
+  models?: UsageModel[]
 }

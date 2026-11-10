@@ -6,12 +6,12 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import type { QuotaInfo, QuotaWindow, UsageRow } from '../shared/infra.ts'
+import type { QuotaInfo, QuotaWindow, UsageModel, UsageRow } from '../shared/infra.ts'
 import { CLAUDE_DIR, CODEX_DIR, HOME, MACHINE, ORCH_DIR, PROJECT_ROOTS } from './config.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/infra.ts'
 
-const CACHE_MS = 180_000
+const CACHE_MS = 90_000
 const CODEX_HOME = process.env.CODEX_HOME ?? path.join(HOME, '.codex')
 
 const readJson = (f: string): any => {
@@ -175,8 +175,11 @@ interface FileState {
   offset: number
   seen: Set<string>
   agg: Map<string, Agg>
+  /** Par modèle : clé « outil:modèle ». */
+  models: Map<string, UsageModel>
   sid?: string
   cwd?: string
+  model?: string
 }
 
 let dayStart = 0
@@ -192,7 +195,7 @@ function scan(file: string, tool: 'claude' | 'codex') {
     return
   }
   if (st.mtimeMs < dayStart) return
-  const s: FileState = files.get(file) ?? { offset: 0, seen: new Set(), agg: new Map() }
+  const s: FileState = files.get(file) ?? { offset: 0, seen: new Set(), agg: new Map(), models: new Map() }
   files.set(file, s)
   if (st.size <= s.offset) return
   const fd = fs.openSync(file, 'r')
@@ -204,11 +207,15 @@ function scan(file: string, tool: 'claude' | 'codex') {
   if (end < 0) return
   s.offset += Buffer.byteLength(text.slice(0, end + 1))
   for (const line of text.slice(0, end).split('\n')) {
-    if (tool === 'codex' && line.includes('"session_meta"')) {
+    if (tool === 'codex' && (line.includes('"session_meta"') || line.includes('"turn_context"'))) {
       try {
-        const p = JSON.parse(line).payload
-        s.sid = p?.id ?? s.sid
-        s.cwd = p?.cwd ?? s.cwd
+        const o = JSON.parse(line)
+        const p = o.payload
+        if (o.type === 'session_meta') {
+          s.sid = p?.id ?? s.sid
+          s.cwd = p?.cwd ?? s.cwd
+        }
+        s.model = p?.model ?? s.model
       } catch {
         /* ignorée */
       }
@@ -227,6 +234,7 @@ function scan(file: string, tool: 'claude' | 'codex') {
     let weight: number
     let tokens: number
     let cwd: string
+    let model: string
     if (tool === 'claude') {
       const u = o.message?.usage
       const id = o.message?.id ?? o.uuid
@@ -234,6 +242,7 @@ function scan(file: string, tool: 'claude' | 'codex') {
       s.seen.add(id)
       sid = String(o.sessionId ?? path.basename(file, '.jsonl'))
       cwd = String(o.cwd ?? '')
+      model = String(o.message?.model ?? '')
       const inp = Number(u.input_tokens ?? 0)
       const out = Number(u.output_tokens ?? 0)
       const cw = Number(u.cache_creation_input_tokens ?? 0)
@@ -245,6 +254,7 @@ function scan(file: string, tool: 'claude' | 'codex') {
       if (!u) continue
       sid = s.sid ?? path.basename(file, '.jsonl').slice(-36)
       cwd = s.cwd ?? ''
+      model = s.model ?? ''
       const inp = Number(u.input_tokens ?? 0)
       const cached = Number(u.cached_input_tokens ?? 0)
       const out = Number(u.output_tokens ?? 0)
@@ -257,6 +267,13 @@ function scan(file: string, tool: 'claude' | 'codex') {
     a.last = Math.max(a.last, at)
     if (cwd) a.cwd = cwd
     s.agg.set(sid, a)
+    if (model && !model.startsWith('<')) {
+      const k = `${tool}:${model}`
+      const m = s.models.get(k) ?? { tool, model, machine: MACHINE.id, weight: 0, tokens: 0 }
+      m.weight += weight
+      m.tokens += tokens
+      s.models.set(k, m)
+    }
   }
 }
 
@@ -288,7 +305,7 @@ const repoOf = (cwd: string) => {
   return path.basename(cwd) || '?'
 }
 
-export function today(lookup: (id: string) => { title: string; projectId: string } | undefined): UsageRow[] {
+export function today(lookup: (id: string) => { title: string; projectId: string } | undefined): { rows: UsageRow[]; models: UsageModel[] } {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
   if (d.getTime() !== dayStart) {
@@ -312,7 +329,17 @@ export function today(lookup: (id: string) => { title: string; projectId: string
         cur.last = Math.max(cur.last, a.last)
       }
     }
-  return [...by]
+  const models = new Map<string, UsageModel>()
+  for (const s of files.values())
+    for (const [k, m] of s.models) {
+      const cur = models.get(k)
+      if (!cur) models.set(k, { ...m })
+      else {
+        cur.weight += m.weight
+        cur.tokens += m.tokens
+      }
+    }
+  const rows = [...by]
     .map(([id, a]) => {
       const known = lookup(id)
       const repo = repoOf(a.cwd)
@@ -320,4 +347,5 @@ export function today(lookup: (id: string) => { title: string; projectId: string
     })
     .filter((r) => r.weight > 0)
     .sort((a, b) => b.weight - a.weight)
+  return { rows, models: [...models.values()].map((m) => ({ ...m, weight: Math.round(m.weight) })).filter((m) => m.weight > 0) }
 }

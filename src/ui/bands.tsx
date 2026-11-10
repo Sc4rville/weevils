@@ -17,6 +17,7 @@ import B from '../i18n/bits'
 import { ago, plain, userText } from './format'
 import { FilledIcon, G, Icon } from './icons'
 import { PrefLines } from './prefs'
+import { UsageLine } from './infra'
 import { setDevil, useDevil } from './devil'
 import { markSeen, tapHint } from './hints'
 import { SetupChips, SetupComposer, askSetup, useFlow, useWelcome } from './setup'
@@ -562,6 +563,7 @@ export function FootBand() {
           {m.name}
         </Line>
       ))}
+      <UsageLine />
       <Line ch="+" onClick={() => push({ kind: 'new', projectId: '__any' })}>
         {t.newSessionElsewhere}
       </Line>

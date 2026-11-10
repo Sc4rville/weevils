@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { FsListing, InfraDetail, InfraPoint, Level, QuotaInfo, QuotaWindow, UsageInfo, UsageRow } from '../../shared/infra.ts'
+import type { FsListing, InfraDetail, InfraPoint, Level, QuotaInfo, QuotaWindow, UsageInfo, UsageToday } from '../../shared/infra.ts'
 import { api, type FileContent } from '../api'
 import { intlLocale, useT } from '../i18n'
 import M from '../i18n/infra'
@@ -226,16 +226,6 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
           </>
         )}
 
-        {/* L'abonnement (quotas Claude et Codex, ce qui consomme) : sur la machine principale, celle qui sert l'app. */}
-        {id === snap.machines[0]?.id && (
-          <>
-            <div className="in label">{t.usageTitle}</div>
-            <Line ch="%" meta={t.usageMeta} onClick={() => push({ kind: 'usage' })}>
-              {t.usageLine}
-            </Line>
-          </>
-        )}
-
         {sessions.length > 0 && <div className="in label">{t.sessions}</div>}
         {sessions.map((s) => (
           <SessionRow key={s.id} session={s} />
@@ -396,22 +386,90 @@ function Quota({ name, q }: { name: string; q: QuotaInfo | undefined }) {
   )
 }
 
+/** Quotas Claude et Codex, relus toutes les minutes tant que la page est ouverte (le serveur garde 90 s en cache). */
+function useQuotas() {
+  const [u, setU] = useState<UsageInfo | null>(null)
+  useEffect(() => {
+    const load = () => {
+      if (document.visibilityState === 'visible') void api.usage().then(setU).catch(() => undefined)
+    }
+    load()
+    const iv = setInterval(load, 60_000)
+    document.addEventListener('visibilitychange', load)
+    return () => {
+      clearInterval(iv)
+      document.removeEventListener('visibilitychange', load)
+    }
+  }, [])
+  return u
+}
+
+const pick = (q: QuotaInfo | undefined, kind: QuotaWindow['kind']) => (q?.ok ? q.windows.find((w) => w.kind === kind)?.percent : undefined)
+
+/** L'entrée « abonnement » de la bande du bas : semaine et 5 h de Claude, Codex, et une barre pour le plus proche de la limite. */
+export function UsageLine() {
+  const t = useT(M)
+  const { push } = useApp()
+  const u = useQuotas()
+  const cw = pick(u?.claude, 'week')
+  const c5 = pick(u?.claude, 'session')
+  const xw = pick(u?.codex, 'week') ?? pick(u?.codex, 'session')
+  const parts = [
+    cw != null || c5 != null ? ['claude', cw != null ? t.weekBrief(cw) : '', c5 != null ? t.fiveBrief(c5) : ''].filter(Boolean).join(' ') : '',
+    xw != null ? `codex ${t.pct(xw)}` : '',
+  ].filter(Boolean)
+  const top = Math.max(-1, ...[u?.claude, u?.codex].flatMap((q) => (q?.ok ? q.windows.filter((w) => w.kind !== 'model').map((w) => w.percent) : [])))
+  return (
+    <Line
+      ch="%"
+      className="usage-line"
+      meta={
+        u ? (
+          <>
+            {parts.join(' · ') || '!'}
+            {top >= 0 && <Gauge pct={top} level={quotaLevel(top)} />}
+          </>
+        ) : (
+          '…'
+        )
+      }
+      onClick={() => push({ kind: 'usage' })}
+    >
+      {t.usageTitle}
+    </Line>
+  )
+}
+
+/** « claude-opus-5-5 » → « opus 5.5 » ; les autres noms tels quels. */
+const modelName = (m: string) => {
+  const x = /^claude-([a-z]+)-(\d+)-(\d+)/.exec(m)
+  return x ? `${x[1]} ${x[2]}.${x[3]}` : m
+}
+
 export function UsagePage() {
   const { snap, push, colors } = useApp()
   const t = useT(M)
-  const [u, setU] = useState<UsageInfo | null>(null)
-  const [rows, setRows] = useState<UsageRow[] | null>(null)
+  const u = useQuotas()
+  const [today, setToday] = useState<UsageToday | null>(null)
   useEffect(() => {
-    void api
-      .usage()
-      .then(setU)
-      .catch(() => undefined)
-    void api
-      .usageToday()
-      .then((r) => setRows(r.rows))
-      .catch(() => setRows([]))
+    const load = () => void api.usageToday().then(setToday).catch(() => setToday((d) => d ?? { rows: [] }))
+    load()
+    const iv = setInterval(load, 60_000)
+    return () => clearInterval(iv)
   }, [])
+  const rows = today?.rows ?? null
   const total = rows?.reduce((s, r) => s + r.weight, 0) ?? 0
+  const byModel = useMemo(() => {
+    const m = new Map<string, { tool: string; weight: number; tokens: number }>()
+    for (const r of today?.models ?? []) {
+      const k = `${r.tool}:${modelName(r.model)}`
+      const p = m.get(k) ?? { tool: r.tool, weight: 0, tokens: 0 }
+      p.weight += r.weight
+      p.tokens += r.tokens
+      m.set(k, p)
+    }
+    return [...m].sort((a, b) => b[1].weight - a[1].weight)
+  }, [today])
   const byProject = useMemo(() => {
     const m = new Map<string, { weight: number; tokens: number }>()
     for (const r of rows ?? []) {
@@ -430,6 +488,19 @@ export function UsagePage() {
       <div className="ipage">
         <Quota name="Claude" q={u?.claude} />
         <Quota name="Codex" q={u?.codex} />
+
+        {byModel.length > 0 && <div className="in label">{t.byModel}</div>}
+        {byModel.map(([k, p]) => (
+          <div key={k} className="in stat share">
+            <div className="stat-h">
+              <span className="strong">{k.slice(k.indexOf(':') + 1)}</span>
+              <span className="meta">
+                {p.tool} · {t.share(share(p.weight), p.tokens)}
+              </span>
+            </div>
+            <Gauge pct={share(p.weight)} level="ok" className="big" />
+          </div>
+        ))}
 
         <div className="in label">{t.byProject}</div>
         {!rows && <div className="in meta empty">{t.reading}</div>}

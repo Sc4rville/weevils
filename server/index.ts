@@ -23,7 +23,7 @@ import { startMailBridge } from './mailbridge.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
 import { quotas, today as usageToday } from './usage.ts'
-import type { InfraDetail, MachineBrief, MachineFacts, Reach, UsageRow } from '../shared/infra.ts'
+import type { InfraDetail, MachineBrief, MachineFacts, Reach, UsageToday } from '../shared/infra.ts'
 import { facts } from './discover.ts'
 import { Setup, installPlan, writeConfig } from './setup.ts'
 import { TourKeeper } from './tour.ts'
@@ -547,10 +547,13 @@ const routes: [string, RegExp, Handler][] = [
   ['GET', /^\/api\/usage$/, async (_req, res) => json(res, 200, await quotas())],
   ['GET', /^\/api\/usage\/today$/, async (_req, res, url) => {
     const sessions = new Map(w.snapshot().sessions.map((s) => [s.id, s]))
-    const rows = usageToday((id) => sessions.get(id))
-    if (url.searchParams.has('local')) return json(res, 200, { rows })
-    const far = await Promise.all(w.remotes.filter((r) => r.online).map((r) => r.call<{ rows: UsageRow[] }>('GET', '/api/usage/today?local=1').then((d) => d.rows).catch(() => [])))
-    json(res, 200, { rows: [...rows, ...far.flat()].sort((a, b) => b.weight - a.weight) })
+    const { rows, models } = usageToday((id) => sessions.get(id))
+    if (url.searchParams.has('local')) return json(res, 200, { rows, models })
+    const far = await Promise.all(w.remotes.filter((r) => r.online).map((r) => r.call<UsageToday>('GET', '/api/usage/today?local=1').catch(() => ({ rows: [] }) as UsageToday)))
+    json(res, 200, {
+      rows: [...rows, ...far.flatMap((d) => d.rows)].sort((a, b) => b.weight - a.weight),
+      models: [...models, ...far.flatMap((d) => d.models ?? [])],
+    })
   }],
   ...tipRoutes(w, json, readBody, () => !!openaiKey()),
   ...hintRoutes(hints, json, readBody),

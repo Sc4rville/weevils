@@ -6,10 +6,12 @@
 //                   « weevils » (ancien filtre Gmail), s'il existe et contient des mails, est lu aussi, avec la même recherche.
 //   Objet           « [shop] … » session disponible du projet (sinon une nouvelle) · « [session:2cbb0bbd] » cette session
 //                   « [weevboss] » l'orchestrateur · « [new:projet] » (ou « [new:projet:codex] ») une nouvelle session
+//                   · sans cible : weevboss, qui répond ou transmet
 //   Corps           le message (citation du mail précédent et signature retirées)
 //   Réponse         renvoyée à l'expéditeur dans le même fil (In-Reply-To / References) ; répondre à ce mail continue la même session.
 //
 // Réception : IMAP IDLE sur INBOX (push, quasi instantané), relancé toutes les 30 s, ce qui sert aussi de sondage de secours ;
+// reprise au dernier UID traité (persisté) ; un dossier jamais vu reprend les mails à l'alias des dernières 24 h ;
 // reconnexion automatique avec attente croissante ; déduplication par Message-ID ; tout est journalisé « [mail] ».
 // Sécurité : seuls les expéditeurs déclarés (WEEVILS_AUTHOR_*) passent, et seulement si le serveur de réception atteste
 // SPF ou DKIM aligné sur le domaine de l'expéditeur (Authentication-Results), ou si le secret partagé est présent.
@@ -270,6 +272,8 @@ interface State {
   threads: Record<string, string>
 }
 
+/** Rattrapage d'un dossier jamais vu : les mails à l'alias de cette période. */
+const CATCH_UP_MS = 24 * 3600_000
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const oneLine = (s: string, n = 80) => s.replace(/\s+/g, ' ').trim().slice(0, n)
 
@@ -375,23 +379,29 @@ export class MailBridge {
       if (optional) return
       throw e
     }
-    const known = this.state.boxes[name]
+    let known = this.state.boxes[name]
+    // Jamais « à partir de maintenant » : on reprend au dernier UID traité. Un dossier jamais vu (premier lancement,
+    // dossier ajouté) ou recréé (UIDVALIDITY changé) : les mails à l'alias des dernières 24 h, dédoublonnés par
+    // Message-ID — un mail arrivé pendant un redémarrage n'est jamais sauté.
+    let since: Date | undefined
     if (!known || box.uidValidity !== known.uidValidity) {
-      // Première fois (ou dossier recréé) : on part de maintenant, l'historique n'est pas rejoué.
-      console.log('[mail]', `${name} ${known ? 'recréé' : 'découvert'} : on part du message ${box.uidNext}`)
-      this.state.boxes[name] = { uidValidity: box.uidValidity, lastUid: Math.max(0, box.uidNext - 1) }
+      console.log('[mail]', `${name} ${known ? 'recréé' : 'découvert'} : reprise des mails à l'alias des dernières 24 h`)
+      known = this.state.boxes[name] = { uidValidity: box.uidValidity, lastUid: 0 }
+      since = new Date(Date.now() - CATCH_UP_MS)
       this.persist()
-      return
     }
     if (optional && !box.exists) return
-    for (const uid of await c.uidsTo(this.cfg.address, known.lastUid)) {
+    for (const uid of await c.uidsTo(this.cfg.address, known.lastUid, since)) {
       const raw = await c.fetch(uid)
-      known.lastUid = uid
+      known.lastUid = Math.max(known.lastUid, uid)
       this.persist()
       if (!raw) continue
       let accepted = false
       try {
         const mail = parseMail(raw)
+        // Rattrapage : SINCE est à la journée près ; au-delà de 24 h, laissé tel quel.
+        const at = Date.parse(mail.get('date') ?? '')
+        if (since && at && at < since.getTime()) continue
         // Du compte du pont : le libellé \Sent prouve qu'il a été envoyé depuis ce compte (Gmail seulement).
         const sent = mail.from === this.cfg.login || mail.from === this.cfg.address ? (await c.gmLabels(uid).catch(() => [] as string[])).some((l) => /^\\?\\Sent$/i.test(l)) : false
         accepted = this.handle(mail, uid, sent, `${box.uidValidity}-${name}`)
@@ -439,10 +449,9 @@ export class MailBridge {
   private async dispatch(mail: Mail, mid: string, author: AuthorConfig) {
     // Réponse dans un fil connu : même cible (une étiquette héritée « [new:x] » ne rouvre pas une session à chaque fois).
     // L'utilisateur lui-même, sans cible : weevboss.
-    const target = this.threadTarget(mail) ?? parseTarget(dropMarker(mail.subject, author, 'subject')) ?? (author.id ? null : ({ kind: 'boss' } as const))
+    const target = this.threadTarget(mail) ?? parseTarget(dropMarker(mail.subject, author, 'subject')) ?? ({ kind: 'boss' } as const)
     const text = dropMarker(messageText(mail), author, 'body')
     const from = author.id || undefined
-    if (!target) return this.reply(mail, mid, author, null, tr(M).noTarget)
     if (!text) return this.reply(mail, mid, author, null, tr(M).emptyMessage)
     const since = Date.now()
 
@@ -494,7 +503,9 @@ export class MailBridge {
     const domain = this.cfg.address.split('@')[1]
     const messageId = `<weevils-${crypto.randomUUID()}@${domain}>`
     const footer = sessionId ? `\n\n${tr(M).footer(sessionId.slice(0, 8))}` : ''
-    const subject = mail.subject.replace(KEY_SUBJECT, '').replace(/\s{2,}/g, ' ').trim()
+    // Sans l'étiquette de l'auteur ni [weevboss] : l'agent qui lit sa boîte ne reprend pas la réponse pour une demande à
+    // transmettre (boucle). Le fil suit In-Reply-To, la cible n'a pas besoin de l'objet.
+    const subject = dropMarker(mail.subject.replace(KEY_SUBJECT, ''), author, 'subject').replace(/\[(weevboss|boss)\]/gi, ' ').replace(/\s{2,}/g, ' ').trim()
     const data = buildMail({
       from: this.cfg.address,
       fromName: 'weevils',

@@ -131,34 +131,53 @@ describe('INBOX sans filtre Gmail', () => {
     expect(sent).toEqual(['UID SEARCH UID 53:* OR OR TO "alex+weevils@gmail.com" CC "alex+weevils@gmail.com" HEADER Delivered-To "alex+weevils@gmail.com"'])
   })
 
-  it('ne récupère (BODY.PEEK) et ne marque que les UID trouvés par la recherche ; jamais un autre mail ; libellé absent sans erreur', async () => {
+  it('ne récupère (BODY.PEEK) et ne marque que les UID trouvés par la recherche ; reprend au dernier UID après un redémarrage, jamais « à partir de maintenant »', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-mail-scan-'))
-    const cfg = { ...CFG, password: 'x', label: 'weevils', imap: { host: 'h', port: 993 }, smtp: { host: 'h', port: 465 }, perMinute: 5, perHour: 30, replyTimeoutMs: 1000 }
-    const noop = async () => ({ id: 'x' })
-    const deps = { snapshot: () => ({ sessions: [], projects: [] }) as any, send: noop, create: noop, sendMain: noop, waitMainReply: async () => null, waitReply: async () => ({ id: 'x', text: '', done: true }) }
-    const b = new MailBridge(cfg, deps, dir)
-    ;(b as unknown as { reply: () => Promise<void> }).reply = async () => undefined
+    const cfg = { ...CFG, password: 'x', label: 'weevils', imap: { host: 'h', port: 993 }, smtp: { host: 'h', port: 465 }, perMinute: 50, perHour: 300, replyTimeoutMs: 1000 }
+    const routed: string[] = []
+    const deps = {
+      snapshot: () => ({ sessions: [], projects: [] }) as any,
+      send: async () => ({ id: 'x' }),
+      create: async () => ({ id: 'x' }),
+      sendMain: async (text: string) => (routed.push(text), { id: 'boss' }),
+      waitMainReply: async () => 'ok',
+      waitReply: async () => ({ id: 'x', text: '', done: true }),
+    }
+    const bridge = () => {
+      const b = new MailBridge(cfg, deps, dir)
+      ;(b as unknown as { reply: () => Promise<void> }).reply = async () => undefined
+      return b
+    }
+    const raw = (id: string, subject: string, ageMs = 60_000) =>
+      ['From: <alex@gmail.com>', 'To: <alex+weevils@gmail.com>', `Date: ${new Date(Date.now() - ageMs).toUTCString()}`, `Subject: ${subject}`, `Message-ID: <${id}@x>`, 'Content-Type: text/plain; charset=utf-8', '', `texte ${id}`].join('\r\n')
+    // INBOX : des milliers de mails, dont quatre adressés à l'alias (UID 990 : d'il y a deux jours).
+    const box: Record<number, string> = { 990: raw('vieux', '[gepetto] vieux', 48 * 3600_000), 1003: raw('a', '[gepetto] premier'), 1007: raw('b', '[gepetto] TLO manifeste') }
     const log: string[] = []
-    // INBOX : 1000 mails, dont un seul (UID 1003) adressé à l'alias, de gepetto depuis le compte du pont.
-    const alias = ['From: <alex@gmail.com>', 'To: <alex+weevils@gmail.com>', 'Subject: [gepetto] [weevboss] coucou', 'Message-ID: <g1@x>', 'Content-Type: text/plain; charset=utf-8', '', 'Salut.'].join('\r\n')
     const c = {
       select: async (name: string) => {
         log.push(`select ${name}`)
         if (name !== 'INBOX') throw new Error('IMAP: NO [NONEXISTENT] Unknown Mailbox')
-        return { uidValidity: 1, uidNext: log.filter((l) => l === 'select INBOX').length > 1 ? 1005 : 1001, exists: 1004 }
+        return { uidValidity: 1, uidNext: Math.max(...Object.keys(box).map(Number)) + 1, exists: 5000 }
       },
-      uidsTo: async (address: string, after: number) => (log.push(`search ${address} >${after}`), [1003].filter((u) => u > after)),
-      fetch: async (uid: number) => (log.push(`peek ${uid}`), Buffer.from(alias)),
+      uidsTo: async (address: string, after: number, since?: Date) => (log.push(`search ${address} >${after}${since ? ' since' : ''}`), Object.keys(box).map(Number).filter((u) => u > after)),
+      fetch: async (uid: number) => (log.push(`peek ${uid}`), Buffer.from(box[uid])),
       gmLabels: async (uid: number) => (log.push(`labels ${uid}`), ['\\Sent', '\\Inbox']),
       markSeen: async (uid: number) => (log.push(`seen ${uid}`), []),
     }
-    await b.scan(c as any, 'weevils', true) // libellé absent : passé
-    await b.scan(c as any, 'INBOX') // découverte : on part de maintenant, rien n'est rejoué
-    await b.scan(c as any, 'INBOX') // un nouveau mail à l'alias
-    expect(log).toEqual(['select weevils', 'select INBOX', 'select INBOX', 'search alex+weevils@gmail.com >1000', 'peek 1003', 'labels 1003', 'seen 1003'])
-    // Déjà vu : la recherche suivante part après lui.
-    await b.scan(c as any, 'INBOX')
-    expect(log.slice(-2)).toEqual(['select INBOX', 'search alex+weevils@gmail.com >1003'])
+    // Premier lancement : le libellé absent est passé ; INBOX reprend les mails à l'alias des dernières 24 h.
+    await bridge().scan(c as any, 'weevils', true)
+    await bridge().scan(c as any, 'INBOX')
+    await new Promise((r) => setTimeout(r, 20))
+    expect(log).toEqual(['select weevils', 'select INBOX', 'search alex+weevils@gmail.com >0 since', 'peek 990', 'peek 1003', 'labels 1003', 'seen 1003', 'peek 1007', 'labels 1007', 'seen 1007'])
+    // Sans cible, l'auteur étiqueté va à weevboss.
+    expect(routed).toEqual(['[from:gepetto] texte a', '[from:gepetto] texte b'])
+    // Un mail arrive pendant un redémarrage : le nouveau pont reprend après le dernier UID traité et le traite.
+    box[1012] = raw('c', '[gepetto] pendant le redémarrage')
+    log.length = 0
+    await bridge().scan(c as any, 'INBOX')
+    expect(log).toEqual(['select INBOX', 'search alex+weevils@gmail.com >1007', 'peek 1012', 'labels 1012', 'seen 1012'])
+    // Le même mail revu (libellé et INBOX à la fois, ou dossier recréé) : traité une seule fois, par Message-ID.
+    expect(bridge().handle(parseMail(box[1007]), 1007, true)).toBe(false)
   })
 })
 
@@ -323,6 +342,8 @@ describe('le pont, de bout en bout (SMTP simulé)', () => {
     await settle()
     expect(calls).toEqual(['main Fais le menu.', 'main [from:gepetto] Salut.', 'send aaaa0000-2222 instinct Fais le menu.'])
     expect(sent.map((s) => s.to)).toEqual(['alex@gmail.com', 'alex@gmail.com', 'alex@gmail.com'])
+    // L'objet de la réponse perd l'étiquette de l'auteur et [weevboss] (l'agent ne la reprend pas pour une demande).
+    expect(sent.map((s) => parseMail(s.data).subject)).toEqual(['Re: une question', 'Re: coucou', 'Re: [mygame] go'])
     // La réponse du pont, si elle repassait par la boîte, est reconnue et ignorée.
     expect(b.handle(parseMail(sent[0].data), 0, true)).toBe(false)
   })

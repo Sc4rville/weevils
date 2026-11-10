@@ -18,6 +18,7 @@ interface Pending {
   onContinue?: () => void
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const quote = (s: string) => `"${s.replace(/["\\]/g, '\\$&')}"`
 
 /** Découpe ce qui est arrivé en réponses complètes ; renvoie les unités et le reste non terminé. */
@@ -166,9 +167,11 @@ export class Imap extends EventEmitter {
 
   /** Les UID après `uid` des seuls messages adressés à `address` (To, Cc ou Delivered-To), cherchés par le serveur :
    * les autres mails de la boîte ne sont jamais récupérés, même pas leurs en-têtes. */
-  async uidsTo(address: string, uid: number): Promise<number[]> {
+  async uidsTo(address: string, uid: number, since?: Date): Promise<number[]> {
     const a = quote(address)
-    const u = await this.cmd(`UID SEARCH UID ${uid + 1}:* OR OR TO ${a} CC ${a} HEADER Delivered-To ${a}`)
+    // SINCE : à la journée près (date de réception, fuseau du serveur).
+    const day = since ? ` SINCE ${since.getUTCDate()}-${MONTHS[since.getUTCMonth()]}-${since.getUTCFullYear()}` : ''
+    const u = await this.cmd(`UID SEARCH UID ${uid + 1}:*${day} OR OR TO ${a} CC ${a} HEADER Delivered-To ${a}`)
     const line = u.find((x) => /^\* SEARCH/i.test(x.line))?.line ?? ''
     // « n:* » rend toujours au moins le dernier message, même s'il est avant n.
     return line.replace(/^\* SEARCH/i, '').trim().split(/\s+/).filter(Boolean).map(Number).filter((n) => n > uid).sort((a, b) => a - b)

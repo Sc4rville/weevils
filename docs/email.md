@@ -28,7 +28,9 @@ Other providers work too: set `WEEVILS_MAIL_IMAP`, `WEEVILS_MAIL_SMTP` and `WEEV
 The bridge listens to INBOX (IMAP IDLE), but the IMAP server itself searches for mail addressed to the alias (`To`,
 `Cc` or `Delivered-To`): only those are fetched (`BODY.PEEK`), and no other mail is ever read, marked, moved or
 deleted. A `weevils` label (from an older setup with a Gmail filter) is read too if it exists and holds mail, with the
-same search; `WEEVILS_MAIL_LABEL` names another one, `none` turns it off.
+same search; `WEEVILS_MAIL_LABEL` names another one, `none` turns it off. After a restart the bridge resumes at the
+last mail it handled; the first time it sees a folder, it picks up the alias's mail from the last 24 hours (each
+message handled once, by `Message-ID`).
 
 ## Writing to a session
 
@@ -43,8 +45,8 @@ same search; `WEEVILS_MAIL_LABEL` names another one, `none` turns it off.
 Agents that write from **your own account** (ChatGPT with its Gmail connector, an agent using your mailbox) share
 your address. Declare them with it (`WEEVILS_AUTHOR_GPT=gpt | #3fc1f0 | you@gmail.com`; weevboss does it for you) and
 let them name themselves in each mail, case-insensitive: `[gpt]` in the subject, `[from:gpt]` or `from: gpt` at the
-start of the body, or `— gpt` as a signature. A mail from your account with no such name is you, and goes to weevboss
-when it has no target. Two authors sharing another address need the same naming (or their secret).
+start of the body, or `— gpt` as a signature. A mail from your account with no such name is you. A mail with no target
+goes to weevboss, whoever wrote it; replies drop the author's name and `[weevboss]` from the subject. Two authors sharing another address need the same naming (or their secret).
 
 ## Security
 

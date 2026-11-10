@@ -41,7 +41,7 @@ export const getLang = (): Lang => current
 /** True when the user picked a language; false while the app follows the browser. */
 export const langIsChosen = (): boolean => stored() !== null
 
-/** Changes the language (null: follow the browser again). Tells weevilsd so its agents and notifications follow. */
+/** Changes this device only (null: follow the browser); shared agent prompts are never rewritten. */
 export function setLang(lang: Lang | null) {
   try {
     if (lang) localStorage.setItem(KEY, lang)
@@ -51,20 +51,16 @@ export function setLang(lang: Lang | null) {
   }
   current = lang ?? browserLang()
   apply()
-  syncServer()
   for (const l of listeners) l()
 }
 
-/** weevilsd keeps the user's language for what it writes itself (agent prompts, push notifications, errors). It only
- * changes it for a language picked here; the browser's language just sets it the first time (server/i18n.ts). */
-export function syncServer() {
-  void fetch('/api/prefs', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ lang: current, chosen: langIsChosen() }),
-    credentials: 'same-origin',
-  }).catch(() => undefined)
-}
+// Another tab of this device follows its stored preference; other browser profiles stay independent.
+if (typeof window !== 'undefined') window.addEventListener('storage', (e) => {
+  if (e.key !== KEY && e.key !== null) return
+  current = stored() ?? browserLang()
+  apply()
+  for (const listener of listeners) listener()
+})
 
 const subscribe = (l: () => void) => {
   listeners.add(l)

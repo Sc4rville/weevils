@@ -1,20 +1,17 @@
-import { useEffect, useState } from 'react'
-import { LANGS, LANG_NAMES, browserLang, langIsChosen, setLang, syncServer, useLang, useT, type Lang } from '../i18n'
+import { useEffect, useId, useRef, useState } from 'react'
+import { LANGS, LANG_NAMES, browserLang, langIsChosen, setLang, useLang, useT, type Lang } from '../i18n'
 import M from '../i18n/prefs'
 import { Line } from './bits'
 import { TourLine } from './tour'
 import { TipsLine } from './tips'
+import { Icon } from './icons'
+import './prefs.css'
 
 /** App-wide preferences shown in the bottom band: language, intro, tips (devil mode: the devil next to the logo). */
 export function PrefLines() {
   const t = useT(M)
   const lang = useLang()
   const [picking, setPicking] = useState(false)
-  // weevilsd follows a language explicitly chosen here (agents, voice, notifications). An app that merely follows its
-  // browser never pushes it: any browser in another language (a test, a borrowed phone) would switch the server for everyone.
-  useEffect(() => {
-    if (langIsChosen()) syncServer()
-  }, [])
   const chosen = langIsChosen()
   // Never switched by a single tap (a stray tap in the bottom band once left the whole app in English): the line opens
   // the choices, and only a tap on one of them changes the language.
@@ -43,4 +40,34 @@ export function PrefLines() {
       <TipsLine />
     </>
   )
+}
+
+/** Always discoverable in the existing bottom rail, with no overlay on the composer. */
+export function LanguageButton() {
+  const t = useT(M)
+  const lang = useLang()
+  const id = useId()
+  const dialog = useRef<HTMLDialogElement>(null)
+  const [open, setOpen] = useState(false)
+  const chosen = langIsChosen()
+  useEffect(() => {
+    if (!open) return
+    dialog.current?.showModal()
+    dialog.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus()
+  }, [open])
+  const pick = (value: Lang | null) => { setLang(value); dialog.current?.close() }
+  return <>
+    <button type="button" className="language-trigger" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-controls={id} aria-expanded={open} aria-label={`${t.language} · ${LANG_NAMES[lang]}`}>{LANG_NAMES[lang]}</button>
+    <dialog ref={dialog} id={id} className="language-dialog band" aria-labelledby={`${id}-title`} onClose={() => setOpen(false)} onClick={(e) => {
+      if (e.target !== e.currentTarget) return
+      const box = e.currentTarget.getBoundingClientRect()
+      if (e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom) e.currentTarget.close()
+    }}>
+      <div className="language-dialog-head"><h2 id={`${id}-title`}>{t.language}</h2><button type="button" className="ch" aria-label={t.closeLanguage} onClick={() => dialog.current?.close()}><Icon name="close" /></button></div>
+      <div className="language-options" role="group" aria-label={t.language}>
+        <button type="button" aria-pressed={!chosen} onClick={() => pick(null)}>{t.followBrowser(LANG_NAMES[browserLang()])}</button>
+        {LANGS.map((value) => <button key={value} type="button" aria-pressed={chosen && value === lang} onClick={() => pick(value)}><span lang={value}>{LANG_NAMES[value]}</span></button>)}
+      </div>
+    </dialog>
+  </>
 }

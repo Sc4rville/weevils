@@ -245,7 +245,7 @@ describe('for you store', () => {
   })
 
   it('asks for the stream again when the app changes language (the server writes it per language), not otherwise', async () => {
-    // (setLang also tells the server, over the network: not here.)
+    // The choice stays local; the stream is requested in that language.
     vi.stubGlobal('fetch', async () => new Response('{}'))
     setLang('fr')
     await serve(1, [item({ id: 'a', text: 'bonjour' })])

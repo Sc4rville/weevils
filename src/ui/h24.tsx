@@ -10,6 +10,7 @@ import { tapHint } from './hints'
 import { at, autoList, autoRank, bandColors, fromOptimizer, isFinished, projectOfRepo, short, triggerText, type AutoItem } from './auto-model'
 import { TalkCtx, useTalk } from './auto-talk'
 import './h24.css'
+import { LanguageButton } from './prefs'
 import { flash, when } from './follow'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
@@ -216,6 +217,7 @@ export function H24Rail() {
                 </span>
               </span>
             </button>
+            <LanguageButton />
             <button className="ch h24-create" aria-label={creating ? t.creating : t.create} disabled={creating} onClick={() => void create()}>
               {creating ? <AutoMark /> : <Icon name="plus" />}
             </button>

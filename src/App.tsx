@@ -21,7 +21,7 @@ import { adoptUnknown } from './ui/seen'
 import { useDevil } from './ui/devil'
 import { FOCUS_BOSS, flash, flashBossMessage, focusBoss, keepInPlace, reveal, takeBossOnReturn, toTop, when, type FocusBoss } from './ui/follow'
 import { ensurePush } from './push'
-import { syncServer, useT } from './i18n'
+import { useT } from './i18n'
 import M from './i18n/app'
 
 const THEME_KEY = 'weevils-theme'
@@ -102,8 +102,6 @@ export default function App() {
   useEffect(() => {
     if (live.authed) void ensurePush().catch(() => undefined)
     if (live.authed) void loadHints()
-    // Ce que weevilsd écrit lui-même (weevboss, démos, notifications) suit la langue de l'app dès l'ouverture.
-    if (live.authed) syncServer()
   }, [live.authed])
 
   const setTheme = useCallback((t: Theme) => {

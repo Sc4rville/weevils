@@ -19,8 +19,8 @@ globalThis.fetch = (async (_u: string, init?: RequestInit) => {
   return new Response('{}')
 }) as typeof fetch
 
-const { getLang, langIsChosen, setLang, syncServer, tr } = await import('../i18n')
-const { PrefLines } = await import('./prefs')
+const { getLang, langIsChosen, setLang, tr } = await import('../i18n')
+const { PrefLines, LanguageButton } = await import('./prefs')
 const { default: B } = await import('../i18n/bands')
 const { default: S } = await import('../i18n/setup')
 const { default: H } = await import('../i18n/h24')
@@ -54,9 +54,8 @@ describe("la langue de l'utilisateur", () => {
     expect(tr(H).nothing).not.toMatch(/nothing running/)
     expect(tr(S).chip_mail).toBe('brancher le pont e-mail')
     expect(tr(S).q_mail_gmail).toBe('ton adresse Gmail')
-    // weevilsd est prévenu de la langue du navigateur, sans qu'elle passe pour un choix.
-    syncServer()
-    expect(posted).toEqual([{ lang: 'fr', chosen: false }])
+    // This device never changes the shared server's language.
+    expect(posted).toEqual([])
   })
 
   it('un tap sur la ligne « langue » ouvre le choix sans rien changer', () => {
@@ -73,18 +72,62 @@ describe("la langue de l'utilisateur", () => {
     expect(getLang()).toBe('fr')
   })
 
-  it('seule une langue tapée la change, et weevilsd la reçoit comme un choix ; « comme le navigateur » revient au français', () => {
+  it('seule une langue tapée la change localement sans requête au serveur ; « comme le navigateur » revient au français', () => {
     act(() => root.render(<PrefLines />))
     tap(rows()[0])
     tap(rows().find((r) => r.textContent === 'English')!)
     expect(getLang()).toBe('en')
     expect(langIsChosen()).toBe(true)
-    expect(posted.at(-1)).toEqual({ lang: 'en', chosen: true })
+    expect(posted).toEqual([])
+    expect(localStorage.getItem('weevils-language')).toBe('en')
     tap(rows()[0])
     tap(rows().find((r) => r.textContent?.startsWith('same as the browser ('))!)
     expect(getLang()).toBe('fr')
     expect(langIsChosen()).toBe(false)
-    expect(posted.at(-1)).toEqual({ lang: 'fr', chosen: false })
+    expect(posted).toEqual([])
+    expect(localStorage.getItem('weevils-language')).toBeNull()
     setLang(null)
+  })
+})
+
+
+describe('bottom language button', () => {
+  beforeEach(() => {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', '') }
+    HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new Event('close')) }
+    setLang(null)
+  })
+  it('opens the real supported choices without switching; choosing is immediate, local and persistent', async () => {
+    await act(async () => root.render(<LanguageButton />))
+    const trigger = el.querySelector<HTMLButtonElement>('.language-trigger')!
+    expect(trigger.textContent).toBe('Français')
+    await act(async () => trigger.click())
+    expect(el.querySelector('dialog')?.hasAttribute('open')).toBe(true)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    const options = [...el.querySelectorAll<HTMLButtonElement>('.language-options button')]
+    expect(options.map(b => b.textContent)).toEqual(['comme le navigateur (Français)', 'English', 'Français'])
+    expect(getLang()).toBe('fr')
+    expect(document.activeElement?.getAttribute('aria-pressed')).toBe('true')
+    await act(async () => options[1].click())
+    expect(trigger.textContent).toBe('English')
+    expect(getLang()).toBe('en')
+    expect(document.documentElement.lang).toBe('en')
+    expect(localStorage.getItem('weevils-language')).toBe('en')
+    expect(el.querySelector('dialog')?.hasAttribute('open')).toBe(false)
+    expect(posted).toEqual([])
+    await act(async () => root.render(<LanguageButton key="remount" />))
+    expect(el.querySelector('.language-trigger')?.textContent).toBe('English')
+  })
+  it('closing preserves the current language; another tab follows only this device storage', async () => {
+    await act(async () => root.render(<LanguageButton />))
+    await act(async () => el.querySelector<HTMLButtonElement>('.language-trigger')!.click())
+    await act(async () => el.querySelector<HTMLButtonElement>('.language-dialog-head button')!.click())
+    expect(getLang()).toBe('fr')
+    await act(async () => {
+      localStorage.setItem('weevils-language', 'en')
+      window.dispatchEvent(new StorageEvent('storage', { key: 'weevils-language', newValue: 'en' }))
+    })
+    expect(el.querySelector('.language-trigger')?.textContent).toBe('English')
+    expect(posted).toEqual([])
   })
 })

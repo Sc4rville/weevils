@@ -1,5 +1,6 @@
 // Bulles « envoi en cours » d'une session : affichées sous le fil jusqu'à ce que le transcript montre le message.
 import type { Message } from '../../shared/api.ts'
+import { userText } from './format'
 
 export interface Pending extends Message {
   /** Le texte tapé, sans les pièces jointes : l'agent reçoit « texte (photo : /chemin) », la bulle montre « texte (photo) ». */
@@ -32,10 +33,10 @@ export function mergePending(real: Message[], pending: Pending[]): Message[] {
       const m = real[i]
       if (used.has(i) || (m.role !== 'user' && m.role !== 'orchestrator')) continue
       if (p.seed) {
-        if (m.role !== 'user' || !norm(m.text).includes(typed)) continue
+        if (m.role !== 'user' || !norm(userText(m.text)).includes(typed)) continue
       } else {
         if (from === 0 && m.at < p.at - SLACK_MS) continue // un « ok » plus ancien n'efface pas la bulle
-        if (!norm(m.text).startsWith(typed)) continue
+        if (!norm(userText(m.text)).startsWith(typed)) continue
       }
       used.add(i)
       return false

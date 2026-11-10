@@ -59,3 +59,8 @@ describe('mergePending', () => {
     expect(texts(mergePending([old, { ...msg('b', 'ok'), at: at + 2000 }], [{ ...pend('ok', 'gone'), at }]))).toEqual(['ok', 'ok'])
   })
 })
+
+it('reconciles an acknowledged prompt wrapped in injected metadata without a duplicate bubble', () => {
+  const real = [msg('new', '⟦weevils — what weevils remembers: context⟧\nhello')]
+  expect(mergePending(real, [pend('hello')])).toEqual(real)
+})

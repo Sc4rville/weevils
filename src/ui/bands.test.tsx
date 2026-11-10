@@ -3,7 +3,7 @@
 // le message et la réponse s'affichent dans l'aperçu. Régressé deux fois : ce test le garde.
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message, Snapshot } from '../../shared/api.ts'
 
 const sent = vi.hoisted(() => ({ main: [] as string[], devil: [] as string[], attach: [] as string[] }))
@@ -58,7 +58,7 @@ let root: Root
 let host: HTMLElement
 let expanded: (string | null)[]
 
-function render(s: Snapshot) {
+function render(s: Snapshot, open = false) {
   const ctx = {
     snap: s,
     now: Date.now(),
@@ -68,7 +68,7 @@ function render(s: Snapshot) {
     replace: () => {},
     back: () => {},
     home: () => {},
-    expanded: null,
+    expanded: open ? 'agent' : null,
     setExpanded: (id: string | null) => void expanded.push(id),
     h24Open: false,
     setH24Open: () => {},
@@ -190,5 +190,46 @@ describe('bande de weevboss : envoyer ne l’ouvre jamais en plein écran', () =
     // Le tap simple, lui, ouvre la conversation.
     await act(async () => (peek as HTMLElement).click())
     expect(expanded).toEqual(['agent'])
+  })
+})
+
+describe('fil de weevboss ouvert : il suit la réponse qui s’écrit', () => {
+  // Bande ouverte = animations : sans Web Animations, motion les joue en JS (happy-dom rejette celles qu'on annule).
+  const animate = Element.prototype.animate
+  beforeAll(() => void ((Element.prototype as { animate?: unknown }).animate = undefined))
+  afterAll(() => void (Element.prototype.animate = animate))
+  // happy-dom ne calcule pas de mise en page : la hauteur du fil suit la longueur du dernier message.
+  const fake = (el: HTMLElement, height: () => number) => {
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, get: height })
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => 300 })
+  }
+  const devil = (text: string) => ({ ...msg('d', 'assistant', text, 2), devil: true })
+
+  it('une réponse du diable en direct garde la fin visible', async () => {
+    let s = { ...snap([msg('u', 'user', 'et toi ?', 1), devil('')]), devil: { enabled: true, working: true } }
+    render(s, true)
+    const chat = host.querySelector<HTMLElement>('.chat')!
+    let h = 1000
+    fake(chat, () => h)
+    chat.scrollTop = 700
+    for (const text of ['Moi', 'Moi je pense', 'Moi je pense que non, et voici pourquoi.']) {
+      h += 200
+      s = { ...s, main: [s.main[0], devil(text)] }
+      render(s, true)
+      expect(chat.scrollTop).toBe(h)
+    }
+  })
+
+  it('pas quand on relit plus haut', async () => {
+    let s = { ...snap([msg('u', 'user', 'et toi ?', 1), devil('')]), devil: { enabled: true, working: true } }
+    render(s, true)
+    await flush()
+    const chat = host.querySelector<HTMLElement>('.chat')!
+    fake(chat, () => 3000)
+    chat.scrollTop = 200
+    await act(async () => void chat.dispatchEvent(new Event('scroll')))
+    s = { ...s, main: [s.main[0], devil('Moi je pense')] }
+    render(s, true)
+    expect(chat.scrollTop).toBe(200)
   })
 })

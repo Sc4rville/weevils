@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import type { SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
@@ -21,18 +21,20 @@ import { Icon } from './icons'
 import { useT } from '../i18n'
 import M from '../i18n/pages'
 
-/** Garde la fin du fil visible quand un message arrive. */
-function useStickToBottom(count: number) {
+/** Garde la fin du fil visible : à l'ouverture (directement sur le dernier message) et quand un message arrive. */
+function useStickToBottom(count: number, ref: RefObject<HTMLElement | null>) {
   const first = useRef(true)
   useEffect(() => {
-    const el = document.querySelector<HTMLElement>('.page:last-of-type [data-scroll]')
+    const el = ref.current
     if (!el || count === 0) return
     const go = (smooth: boolean) => el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
-    go(!first.current)
-    const t = setTimeout(() => go(!first.current), 420)
+    const smooth = !first.current
+    go(smooth)
+    // Les messages finissent de se poser (polices, images, animation d'entrée) : on redescend une fois.
+    const t = setTimeout(() => go(smooth), 420)
     first.current = false
     return () => clearTimeout(t)
-  }, [count])
+  }, [count, ref])
 }
 
 export function PageView({ page }: { page: Page }) {
@@ -169,12 +171,13 @@ function SessionPage({ id }: { id: string }) {
   }, [id, s?.hasScreen, screenOpen])
 
   const messages = useMemo(() => mergePending(detail?.messages ?? [], pending), [detail, pending])
-  useStickToBottom(messages.length)
+  const body = useRef<HTMLDivElement>(null)
+  useStickToBottom(messages.length, body)
   const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
   const sp = snap.projects.find((p) => p.id === s?.projectId)
   const th = useThreadAsk(messages, { title: s?.title ?? '', tool: s?.tool ?? 'claude', project: sp?.name, projectId: s?.projectId, repo: s?.repo ?? undefined, machine: s?.machineId })
 
-  if (!s) return missing ? <Missing /> : <Shell slot="agent" kicker="weevils" title="…">{null}</Shell>
+  if (!s) return missing ? <Missing /> : <Shell slot="agent" kicker="weevils" title="…" bodyRef={body}>{null}</Shell>
 
   const project = snap.projects.find((p) => p.id === s.projectId)
   const st = status[s.status]
@@ -229,6 +232,7 @@ function SessionPage({ id }: { id: string }) {
         </>
       }
       dock={th.voice}
+      bodyRef={body}
       side={preview.open ? <Preview url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false, full: false })} full={preview.full} onFull={(full) => setPreview({ full })} /> : undefined}
       foot={
         <Composer

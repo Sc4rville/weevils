@@ -43,7 +43,7 @@ export default defineMessages({
     continuePrompt: (source: string, title: string, context: string, text: string) =>
       `Contexte : suite de ma conversation ${source} « ${title} » (fin de l'échange ci-dessous).\n\n${context}---\n${text}`,
 
-    // 24/7 band: long jobs (WEEVILS_LOGS_DIR) and systemd timers.
+    // 24/7 band: long jobs (WEEVILS_LOGS_DIR, else ~/logs and weevils' own folder) and systemd timers.
     manualJob: 'job lancé à la main',
     nextRun: (when: string) => `prochaine : ${when}`,
     scheduled: 'planifié',

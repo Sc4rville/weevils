@@ -36,19 +36,52 @@ const activity = (list: { status: string }[]) => {
 // ---------------------------------------------------------------------------
 // weevils, l'orchestrateur : la bande du haut est juste un chat. Lui écrit dans les sessions.
 
-function useStickBottom(ref: React.RefObject<HTMLDivElement | null>, count: number, open: boolean) {
+/** Au plus près du bas (px) : le fil ouvert suit une réponse qui s'écrit ; plus haut, l'utilisateur relit et on le laisse. */
+const CHAT_STICK = 80
+
+/**
+ * `grow` change quand le dernier message s'allonge (réponse du diable ou de weevboss qui s'écrit en direct, indicateur
+ * de travail) : le nombre de messages, lui, ne bouge pas pendant ce temps.
+ */
+function useStickBottom(ref: React.RefObject<HTMLDivElement | null>, count: number, open: boolean, grow: string) {
+  const reading = useRef(false)
+  /** Fin estimée de notre propre défilement doux : ses positions intermédiaires ne disent pas que l'utilisateur relit. */
+  const gliding = useRef(0)
   // À l'ouverture : déjà en bas avant le premier affichage, sans défilement visible.
   useLayoutEffect(() => {
     const el = ref.current
-    if (el && open) el.scrollTop = el.scrollHeight
+    if (el && open) {
+      el.scrollTop = el.scrollHeight
+      reading.current = false
+    }
   }, [ref, open])
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const on = () => {
+      if (Date.now() < gliding.current) return
+      reading.current = el.scrollHeight - el.scrollTop - el.clientHeight > CHAT_STICK
+    }
+    el.addEventListener('scroll', on, { passive: true })
+    return () => el.removeEventListener('scroll', on)
+  }, [ref])
   // Un nouveau message pendant qu'elle est ouverte : on descend en douceur.
   useEffect(() => {
     const el = ref.current
     if (!el || !open) return
-    const t = setTimeout(() => el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }), 80)
+    const t = setTimeout(() => {
+      reading.current = false
+      gliding.current = Date.now() + 700
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    }, 80)
     return () => clearTimeout(t)
   }, [ref, count]) // eslint-disable-line react-hooks/exhaustive-deps
+  // La réponse s'allonge : on suit, sans animation (un défilement doux serait sans cesse rattrapé), sauf si on relit plus haut.
+  useEffect(() => {
+    const el = ref.current
+    if (!el || !open || reading.current) return
+    el.scrollTop = el.scrollHeight
+  }, [ref, grow]) // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** L'aperçu vivant du fil, dans la bande réduite : les derniers messages, les récents en bas, les anciens remontent et s'estompent. */
@@ -177,7 +210,8 @@ export function AgentBand() {
   const swipe = useRef<{ y: number; top: number } | null>(null)
   const [draft, setDraft] = useState({ text: '', n: 0, reset: false })
   const heard = useRef('')
-  useStickBottom(body, snap.main.length, open)
+  const tail = snap.main.at(-1)
+  useStickBottom(body, snap.main.length, open, `${tail?.id}:${tail?.text.length}:${snap.mainWorking}:${!!snap.devil?.working}`)
   // Le fil ouvert s'interroge comme un fichier ; avec une sélection, le logo pose sa question dessus (réponse sur place).
   const th = useThreadAsk(snap.main, { title: 'weevboss', tool: 'weevboss' })
   const onSel = open && th.selected

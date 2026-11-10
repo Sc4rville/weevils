@@ -1,5 +1,5 @@
 import { motion } from 'motion/react'
-import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { THEME_COLOR, useApp, type Theme } from './app-context'
 import { spring } from './bits'
 import { Icon } from './icons'
@@ -53,6 +53,7 @@ export function Shell({
   foot,
   side,
   dock,
+  bodyRef,
 }: {
   slot: string
   kicker: string
@@ -64,6 +65,8 @@ export function Shell({
   side?: ReactNode
   /** Le logo de weevboss : il flotte en bas à gauche de la page, au-dessus de la saisie, sans prendre de place (jamais en haut à droite). */
   dock?: ReactNode
+  /** Le conteneur qui défile (le fil), pour qui doit le garder en bas. */
+  bodyRef?: RefObject<HTMLDivElement | null>
 }) {
   const { back } = useApp()
   const t = useT(M)
@@ -119,7 +122,7 @@ export function Shell({
       </div>
       <div className="page-cols">
         <div className={dock && !foot ? 'page-main no-foot' : 'page-main'}>
-          <div className="page-body" data-scroll>
+          <div ref={bodyRef} className="page-body" data-scroll>
             {children}
             <div className="fill" />
           </div>

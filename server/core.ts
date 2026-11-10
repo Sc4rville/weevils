@@ -5,7 +5,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { ConversationDetail, ConversationSummary, H24Activity, Message, Project, Session, SessionDetail, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
-import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, LOGS_DIR, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, LOGS_DIRS, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
 import { llmClassify, ruleMatch } from './classify.ts'
@@ -1300,14 +1300,15 @@ export class Weevils {
 
   // ---------------------------------------------------------------- H24
 
-  /** Jobs longs (LOGS_DIR, WEEVILS_LOGS_DIR) et timers systemd « wv-* ». */
+  /** Jobs longs (LOGS_DIRS : WEEVILS_LOGS_DIR, sinon ~/logs et le dossier de weevils) et timers systemd « wv-* ». */
   refreshH24() {
     const now = Date.now()
     const out: H24Activity[] = []
-    try {
-      for (const f of fs.readdirSync(LOGS_DIR)) {
+    for (const dir of LOGS_DIRS) try {
+      for (const f of fs.readdirSync(dir)) {
         if (!f.endsWith('.log') || f === 'weevils.log' || f === 'weevilsd.log') continue
-        const file = path.join(LOGS_DIR, f)
+        if (out.some((a) => a.id === `job:${f.replace(/\.log$/, '')}`)) continue
+        const file = path.join(dir, f)
         const st = fs.statSync(file)
         const running = now - st.mtimeMs < 120_000
         // Ce qui tourne, plus ce qui a fini dans les 3 dernières heures.

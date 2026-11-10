@@ -583,6 +583,9 @@ export function FootBand() {
       <Line ch="x" go={null} onClick={logout}>
         {t.logout}
       </Line>
+      <Line ch="#" meta={t.memories(snap.memoryCount ?? 0)} onClick={() => push({ kind: 'memory' })}>
+        {t.memory}
+      </Line>
     </section>
   )
 }

@@ -56,6 +56,8 @@ export default defineMessages({
     importConversations: 'importer des conversations',
     theme: (theme: string) => `thème ${theme === 'dark' ? 'sombre' : theme === 'zen' ? 'zen' : theme === 'graphite' ? 'graphite' : 'clair'}`,
     logout: 'se déconnecter',
+    memory: 'mémoire',
+    memories: (n: number) => `${n} souvenir${n > 1 ? 's' : ''}`,
   },
   en: {
     working: (n: number) => `${n} working`,
@@ -106,5 +108,7 @@ export default defineMessages({
     importConversations: 'import conversations',
     theme: (theme: string) => `${theme === 'dark' ? 'dark' : theme === 'zen' ? 'zen' : theme === 'graphite' ? 'graphite' : 'light'} theme`,
     logout: 'log out',
+    memory: 'memory',
+    memories: (n: number) => `${n} ${n === 1 ? 'memory' : 'memories'}`,
   },
 })

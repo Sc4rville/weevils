@@ -118,8 +118,9 @@ From `mode`:
 
 ## 7. The final message
 
-This message is your whole final reply: no preamble ("here is the message"), no separators, no recap of the steps
-you ran. Your user may not be technical: write it like a friend who just set something up for them, in their
+This message is your whole final reply, from its first line ("It's installed!") to its last: no status line or
+preamble before it ("the install worked, here is the message"), no `---` separators, no recap of the steps you ran.
+Your user may not be technical: write it like a friend who just set something up for them, in their
 language, short (about 6 lines plus the link), in this order:
 
 1. It's installed (if `ready=no`, the one thing left, step 5).

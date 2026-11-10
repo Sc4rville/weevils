@@ -6,8 +6,10 @@ import { MotionGlobalConfig } from 'motion/react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message, Snapshot } from '../../shared/api.ts'
+import type { ForYouItem } from '../../shared/foryou.ts'
+import type { Page } from './app-context'
 
-const sent = vi.hoisted(() => ({ main: [] as string[], devil: [] as string[], attach: [] as string[], gate: null as Promise<void> | null, fail: '' }))
+const sent = vi.hoisted(() => ({ main: [] as string[], devil: [] as string[], attach: [] as string[], gate: null as Promise<void> | null, fail: '', foryou: 0, feed: [] as unknown[] }))
 
 vi.mock('../api', () => ({
   api: {
@@ -19,6 +21,12 @@ vi.mock('../api', () => ({
     devil: async (text: string) => void sent.devil.push(text),
     mainAttach: async (text: string, files: { name: string }[]) => void sent.attach.push(`${text}|${files.map((f) => f.name).join(',')}`),
     usageRate: async () => ({ step: 15_000, end: Date.now(), buckets: [] }),
+    // « Pour toi » : compté, pour vérifier que la bande ne l'appelle jamais sans flux côté serveur.
+    foryou: async () => {
+      sent.foryou++
+      return { rev: 1, items: sent.feed, pulse: { working: 0, waiting: 0, delivered: 0, auto: 0 } }
+    },
+    foryouSeen: async () => ({ ok: true }),
   },
 }))
 vi.mock('../push', () => ({ ensurePush: async () => {} }))
@@ -38,6 +46,7 @@ vi.mock('./voice', () => ({
 const { AgentBand } = await import('./bands')
 const { Ctx } = await import('./app-context')
 const { setDevil } = await import('./devil')
+const { resetForYou } = await import('./foryou-store')
 const { tr } = await import('../i18n')
 const { default: BM } = await import('../i18n/bands')
 
@@ -65,6 +74,7 @@ const snap = (main: Message[], working = false): Snapshot => ({
 let root: Root
 let host: HTMLElement
 let expanded: (string | null)[]
+let pushed: Page[]
 
 function render(s: Snapshot, open = false) {
   const ctx = {
@@ -72,7 +82,7 @@ function render(s: Snapshot, open = false) {
     now: Date.now(),
     offline: false,
     colors: {},
-    push: () => {},
+    push: (p: Page) => void pushed.push(p),
     replace: () => {},
     back: () => {},
     home: () => {},
@@ -120,8 +130,12 @@ beforeEach(() => {
   sent.attach = []
   sent.gate = null
   sent.fail = ''
+  sent.foryou = 0
+  sent.feed = []
   expanded = []
+  pushed = []
   localStorage.clear()
+  resetForYou()
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
@@ -303,5 +317,153 @@ describe('le message envoyé se voit tout de suite', () => {
     const last = host.querySelector('.peek-item.last')!
     expect(last.textContent).toContain('la toute fin de la réponse')
     expect(last.textContent!.length).toBeLessThan(long.length)
+  })
+})
+
+describe('« weevboss · pour toi » dans la bande du haut', () => {
+  const fy = (id: string, text: string, over: Partial<ForYouItem> = {}): ForYouItem => ({ id, kind: 'boss', tone: 'neutral', at: 1, who: 'weevboss', text, ...over })
+  const withStream = (main: Message[], unseen = 0): Snapshot => ({ ...snap(main), foryou: { rev: 1, unseen } })
+  const words = () => [...host.querySelectorAll<HTMLButtonElement>('.fyt-word')]
+  const peekWrap = () => host.querySelector<HTMLElement>('.band.agent .peek-wrap')!
+  const fyWrap = () => host.querySelector<HTMLElement>('.band.agent .fyt-wrap')!
+
+  it('sans flux sur ce serveur : ni mots, ni aperçu, ni appel, même si l’appareil se souvient de « pour toi »', async () => {
+    localStorage.setItem('weevils-top', 'foryou')
+    render(snap([msg('a', 'assistant', 'salut', 1)]))
+    await flush()
+    expect(words()).toEqual([])
+    expect(host.querySelector('.fyt-wrap')).toBeNull()
+    expect(sent.foryou).toBe(0)
+    // L'aperçu du fil est là, comme avant.
+    expect(peekWrap().hidden).toBe(false)
+    expect(host.querySelector('.band.agent .peek-wrap:not([hidden]) .peek')!.textContent).toContain('salut')
+  })
+
+  it('avec un flux : les deux mots, weevboss actif par défaut, l’aperçu du fil inchangé', async () => {
+    render(withStream([msg('a', 'assistant', 'salut', 1)]))
+    await flush()
+    expect(words().map((w) => w.textContent)).toEqual(['weevboss', tr(BM).forYou])
+    expect(words().map((w) => w.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
+    // Entre la ligne du logo et l'aperçu, dans l'espace de la bande.
+    const kids = [...host.querySelector('.agent-space')!.children].map((e) => e.className.split(' ')[0])
+    expect(kids.indexOf('fyt-words')).toBeGreaterThan(kids.indexOf('agent-top'))
+    expect(kids.indexOf('fyt-words')).toBeLessThan(kids.indexOf('peek-wrap'))
+    expect(peekWrap().hidden).toBe(false)
+    expect(fyWrap().hidden).toBe(true)
+    expect(host.querySelector('.peek')!.textContent).toContain('salut')
+  })
+
+  it('« pour toi » montre l’aperçu du flux et cache celui du fil sans le démonter', async () => {
+    sent.feed = [fy('p1', 'Deux sessions lancées ce matin.')]
+    render(withStream([msg('a', 'assistant', 'salut', 1)]))
+    await flush()
+    const peek = host.querySelector('.peek')!
+    await act(async () => words()[1].click())
+    expect(words().map((w) => w.getAttribute('aria-pressed'))).toEqual(['false', 'true'])
+    expect(peekWrap().hidden).toBe(true)
+    expect(fyWrap().hidden).toBe(false)
+    expect(fyWrap().textContent).toContain('Deux sessions lancées ce matin.')
+    // Le même aperçu du fil, toujours monté, avec ses messages.
+    expect(host.querySelector('.peek')).toBe(peek)
+    expect(peek.textContent).toContain('salut')
+    expect(host.querySelector('.band.agent .peek-wrap:not([hidden])')).toBeNull()
+    expect(localStorage.getItem('weevils-top')).toBe('foryou')
+    // Changer de mot n'ouvre rien.
+    expect(expanded).toEqual([])
+    expect(pushed).toEqual([])
+    // Et retour.
+    await act(async () => words()[0].click())
+    expect(peekWrap().hidden).toBe(false)
+    expect(fyWrap().hidden).toBe(true)
+  })
+
+  it('un tap sur l’aperçu de « pour toi » ouvre le flux en plein écran, pas le fil', async () => {
+    localStorage.setItem('weevils-top', 'foryou')
+    sent.feed = [fy('p1', 'Deux sessions lancées ce matin.')]
+    render(withStream([]))
+    await flush()
+    await act(async () => host.querySelector<HTMLElement>('.fyt-peek')!.click())
+    expect(pushed).toEqual([{ kind: 'foryou' }])
+    expect(expanded).toEqual([])
+    // Le mot déjà actif, touché de nouveau : pareil.
+    await act(async () => words()[1].click())
+    expect(pushed).toEqual([{ kind: 'foryou' }, { kind: 'foryou' }])
+  })
+
+  it('envoyer depuis « pour toi » n’ouvre pas la bande et ramène l’aperçu sur weevboss, où la bulle se voit', async () => {
+    let open = () => {}
+    sent.gate = new Promise((r) => (open = r))
+    localStorage.setItem('weevils-top', 'foryou')
+    render(withStream([msg('a', 'assistant', 'salut', 1)]))
+    await flush()
+    expect(peekWrap().hidden).toBe(true)
+    await type('fais le point')
+    await submit()
+    expect(sent.main).toEqual(['fais le point'])
+    expect(expanded).not.toContain('agent')
+    expect(pushed).toEqual([])
+    expect(peekWrap().hidden).toBe(false)
+    expect(fyWrap().hidden).toBe(true)
+    expect(words().map((w) => w.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
+    const shown = host.querySelector('.band.agent .peek-wrap:not([hidden]) .peek')!
+    expect(shown.textContent).toContain('fais le point')
+    expect(shown.textContent).toContain(tr(BM).sending)
+    await act(async () => open())
+    await flush()
+    expect(expanded).not.toContain('agent')
+  })
+
+  it('au logo vocal et avec une pièce jointe depuis « pour toi » : pareil', async () => {
+    localStorage.setItem('weevils-top', 'foryou')
+    render(withStream([]))
+    await flush()
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-testid=logo]')!.click())
+    await flush()
+    expect(sent.main).toEqual(['dicté au logo'])
+    expect(peekWrap().hidden).toBe(false)
+    await act(async () => words()[1].click())
+    expect(peekWrap().hidden).toBe(true)
+    const input = host.querySelector<HTMLInputElement>('input[type=file]')!
+    await act(async () => {
+      Object.defineProperty(input, 'files', { value: [new File(['x'], 'devis.pdf', { type: 'application/pdf' })], configurable: true })
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await flush()
+    await type('regarde ça')
+    await submit()
+    await flush()
+    expect(sent.attach).toEqual(['regarde ça|devis.pdf'])
+    expect(peekWrap().hidden).toBe(false)
+    expect(expanded).not.toContain('agent')
+  })
+
+  it('fil ouvert : les mots restent, weevboss actif ; « pour toi » ouvre le flux et laisse le fil tel quel', async () => {
+    localStorage.setItem('weevils-top', 'foryou')
+    render(withStream([msg('a', 'assistant', 'salut', 1)]), true)
+    await flush()
+    expect(words().map((w) => w.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
+    expect(peekWrap().hidden).toBe(true)
+    expect(fyWrap().hidden).toBe(true)
+    expect(host.querySelector<HTMLElement>('#agent-body')!.hidden).toBe(false)
+    await act(async () => words()[1].click())
+    expect(pushed).toEqual([{ kind: 'foryou' }])
+    // Ni refermé, ni changé de mot mémorisé.
+    expect(expanded).toEqual([])
+    expect(localStorage.getItem('weevils-top')).toBe('foryou')
+    expect(host.querySelector('#agent-body .chat')).not.toBeNull()
+  })
+
+  it('un point sur « pour toi » quand il reste du non vu', async () => {
+    sent.feed = [fy('p1', 'Du neuf.'), fy('p2', 'Déjà lu.', { seen: true })]
+    render(withStream([], 1))
+    await flush()
+    expect(words()[1].querySelector('.fyt-dot')).not.toBeNull()
+    expect(words()[0].querySelector('.fyt-dot')).toBeNull()
+  })
+
+  it('sans rien à voir : pas de point', async () => {
+    render(withStream([], 0))
+    await flush()
+    expect(host.querySelector('.fyt-dot')).toBeNull()
   })
 })

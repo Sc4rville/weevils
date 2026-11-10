@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AskResult, Brick, Device } from '../shared/setup.ts'
 import type { Tour, TourId } from '../shared/tour.ts'
-import { tr } from './i18n'
+import { getLang, tr } from './i18n'
 import M from './i18n/app'
 import type { FsListing, InfraDetail, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
 import type { ProgressFix, Software, SoftwareList } from '../shared/softwares.ts'
@@ -36,6 +36,8 @@ async function call<T>(method: string, url: string, body?: unknown): Promise<T> 
 }
 
 const enc = encodeURIComponent
+/** The app's language, for what the server writes for this reader (the stream's texts, its refusals), as GET /api/tips does. */
+const inLang = () => `?lang=${getLang()}`
 
 export interface FileContent {
   path: string
@@ -94,12 +96,12 @@ export const api = {
   weevilMissed: (id: string) => call<{ ok: true }>('POST', `/api/weevil/${enc(id)}/missed`, {}),
   weevilAnswer: (id: string, text: string, history: { role: 'weevil' | 'user'; text: string }[]) => call<WeevilReply>('POST', `/api/weevil/${enc(id)}/answer`, { text, history }),
   /** « Pour toi » (shared/foryou.ts) : le flux, puis ce qu'on y fait. */
-  foryou: () => call<ForYouFeed>('GET', '/api/foryou'),
+  foryou: () => call<ForYouFeed>('GET', `/api/foryou${inLang()}`),
   foryouSeen: (ids: string[]) => call<{ ok: true }>('POST', '/api/foryou/seen', { ids }),
   foryouDismiss: (id: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/dismiss`, {}),
-  foryouAct: (id: string, action: string, card?: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/act`, { action, card }),
-  foryouReply: (id: string, text: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/reply`, { text }),
-  foryouMore: (id: string) => call<{ text: string }>('POST', `/api/foryou/${enc(id)}/more`, {}),
+  foryouAct: (id: string, action: string, card?: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/act${inLang()}`, { action, card }),
+  foryouReply: (id: string, text: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/reply${inLang()}`, { text }),
+  foryouMore: (id: string) => call<{ text: string }>('POST', `/api/foryou/${enc(id)}/more${inLang()}`, {}),
   acceptOptimizer: (id: string) => call<{ ok: true }>('POST', `/api/optimizers/${enc(id)}/accept`, {}),
   refuseOptimizer: (id: string) => call<{ ok: true }>('POST', `/api/optimizers/${enc(id)}/refuse`, {}),
   toggleH24: (id: string) => call<{ ok: true }>('POST', `/api/h24/${enc(id)}/toggle`, {}),

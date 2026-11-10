@@ -446,7 +446,7 @@ export default function App() {
         </div>
         <AnimatePresence>
           {stack.map((p, i) => (
-            <PageView key={`${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : p.kind === 'software' ? p.id : ''}`} page={p} />
+            <PageView key={`${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : p.kind === 'software' ? p.id : p.kind === 'media' ? p.url : ''}`} page={p} />
           ))}
         </AnimatePresence>
         <Tips paused={stack.length > 0} />

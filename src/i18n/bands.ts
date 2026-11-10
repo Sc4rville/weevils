@@ -25,6 +25,12 @@ export default defineMessages({
     /** Bouton flottant « ↓ » du fil ouvert : du nouveau en bas pendant qu'on relit. */
     toEnd: 'du nouveau en bas : y descendre',
 
+    // Les deux mots sous le logo (src/ui/foryou-top.tsx) : « weevboss · pour toi », et l'aperçu du flux.
+    forYou: 'pour toi',
+    forYouOpen: 'ouvrir « pour toi » en grand',
+    forYouEmpty: 'rien de neuf pour l’instant',
+    forYouUnseen: (n: number) => `${n} pas encore ${n > 1 ? 'vus' : 'vu'}`,
+
     // Bande projet
     projectBand: (name: string) => `projet ${name}`,
     unread: 'a répondu, pas encore lu',
@@ -83,6 +89,11 @@ export default defineMessages({
     queued: 'queued',
     withFiles: (n: number) => `(${n} file${n === 1 ? '' : 's'})`,
     toEnd: 'new messages below: scroll down',
+
+    forYou: 'for you',
+    forYouOpen: 'open “for you” full screen',
+    forYouEmpty: 'nothing new for now',
+    forYouUnseen: (n: number) => `${n} not seen yet`,
 
     projectBand: (name: string) => `project ${name}`,
     unread: 'replied, not read yet',

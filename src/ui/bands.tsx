@@ -25,6 +25,7 @@ import { markSeen, tapHint } from './hints'
 import { flash, keepInPlace, reveal, useFollow } from './follow'
 import { mergePending, type Pending } from './pending'
 import { Chip, KeyChip, SetupChips, SetupComposer, askSetup, flowVoice, useFlow, useWelcome } from './setup'
+import { ForYouPeek, TopWords, useTop, type Top } from './foryou-top'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
@@ -159,8 +160,16 @@ const qa = (node: ReactNode, k: string) => (node ? <QaInView k={k}>{node}</QaInV
 export function AgentBand() {
   const t = useT(M)
   const td = useT(D)
-  const { snap, expanded, setExpanded } = useApp()
+  const { snap, expanded, setExpanded, push } = useApp()
   const open = expanded === 'agent'
+  // « weevboss · pour toi » : ce que montre l'aperçu de la bande réduite, mémorisé sur l'appareil. Sans flux côté
+  // serveur (snap.foryou absent), c'est toujours weevboss et les mots n'existent pas.
+  const [top, setTop] = useTop()
+  const pickTop = (x: Top) => {
+    // Fil ouvert, ou « pour toi » déjà choisi : le mot ouvre le flux en plein écran (le fil reste tel quel dessous).
+    if (x === 'foryou' && (open || top === 'foryou')) return push({ kind: 'foryou' })
+    if (!open) setTop(x)
+  }
   // Devil mode : le diablotin, toujours là à droite du logo. Branché, un tap bascule (bande orange, réponses en vert,
   // même fil) ; pas branché, un tap demande à weevboss de proposer le branchement, dans son fil.
   const devilOn = useDevil(!!snap.devil?.enabled)
@@ -224,6 +233,9 @@ export function AgentBand() {
     const tmp: Pending = { id: `pending-${Date.now()}`, role: 'user', text: shown, at: Date.now(), typed: text, after: snap.main.at(-1)?.id, ...(devilOn ? { devil: true } : {}) }
     setPending((p) => [...p, tmp])
     setSent((n) => n + 1)
+    // Le champ écrit toujours à weevboss : envoyé depuis « pour toi », l'aperçu revient sur son fil, où la bulle et la
+    // réponse se voient. Jamais setExpanded('agent').
+    if (top === 'foryou') setTop('boss')
     if (open) chat.toEnd()
     try {
       await go()
@@ -274,9 +286,17 @@ export function AgentBand() {
           </button>
         </div>
         {/* L'aperçu et le fil restent rendus : ouvrir ou fermer ne fait que les montrer ou les cacher (immédiat). */}
-        <div className="peek-wrap" hidden={open}>
-          <Peek onOpen={() => setExpanded('agent')} visible={!open} sent={sent} messages={main} pendingLabel={pendingLabel} />
+        {/* Les deux mots, sous la ligne du logo ; ils restent quand le fil est ouvert (weevboss y est le mot actif). */}
+        <TopWords active={open ? 'boss' : top} onPick={pickTop} />
+        <div className="peek-wrap" hidden={open || top !== 'boss'}>
+          <Peek onOpen={() => setExpanded('agent')} visible={!open && top === 'boss'} sent={sent} messages={main} pendingLabel={pendingLabel} />
         </div>
+        {/* L'aperçu de « pour toi » : à côté de celui du fil, dans la même boîte ; l'un ou l'autre est caché, aucun démonté. */}
+        {snap.foryou && (
+          <div className="fyt-wrap" hidden={open || top !== 'foryou'}>
+            <ForYouPeek />
+          </div>
+        )}
       </div>
       <div id="agent-body" hidden={!open}>
         <motion.div

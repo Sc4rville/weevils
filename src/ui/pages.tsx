@@ -24,6 +24,7 @@ import { reveal, useFollow } from './follow'
 import { FollowDown } from './followdown'
 import M from '../i18n/pages'
 import { MemoryPage } from './memory'
+import { ForYouPage, MediaPage } from './foryou'
 
 export function PageView({ page }: { page: Page }) {
   switch (page.kind) {
@@ -61,6 +62,10 @@ export function PageView({ page }: { page: Page }) {
       return <CalmConv id={page.id} />
     case 'memory':
       return <MemoryPage />
+    case 'foryou':
+      return <ForYouPage who={page.who} />
+    case 'media':
+      return <MediaPage url={page.url} type={page.type} name={page.name} />
   }
 }
 

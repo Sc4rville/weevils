@@ -11,6 +11,7 @@ import { Icon, type Dir, type IconName } from './icons'
 import { askSetup } from './setup'
 import { flash, toTop, when } from './follow'
 import { openTour } from './tour'
+import { setTop } from './foryou-top'
 import { CHECK_MS, EMPTY_RETRY_MS, SHOW_MS, markShown, parseState, pick, ready, type TipsState } from './tips-schedule'
 import './tips.css'
 
@@ -244,6 +245,8 @@ export function Tips({ paused }: { paused: boolean }) {
       if (a.kind === 'boss') {
         // La réponse arrive dans l'aperçu de weevboss, tout en haut du flux : on y remonte en douceur et il s'éclaire
         // (sans ouvrir le fil : envoyer ne l'ouvre jamais).
+        // Sur « pour toi », l'aperçu revient sur le fil de weevboss : c'est là que la réponse se verra.
+        setTop('boss')
         const boss = () => document.querySelector('.band.agent .peek-wrap:not([hidden])') ?? document.querySelector('.band.agent .chat')
         if (window.scrollY > 4) {
           toTop()

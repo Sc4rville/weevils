@@ -72,7 +72,7 @@ interface Persisted {
   /** Coupures vues au passage, reprises ou laissées, coupures déjà annoncées. */
   cuts?: [string, Cut][]
   cleared?: [string, number][]
-  announced?: [string, number][]
+  announced?: (string | [string, number])[]
   closedByUs?: [string, number][]
 }
 

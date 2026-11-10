@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session, Snapshot } from '../shared/api.ts'
 import { smart } from './fast.ts'
 import { Memory } from './memory.ts'
-import { BACKOFF_MS, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_RUN_MS, MIN_FREE_BYTES, ROUND_EVERY_MS, ROUND_MEMORY_MS, VANISH_MS, Optimizers, freeReason, isRepeat, parseProposals, slug, type Sys } from './optimizers.ts'
+import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_RUN_MS, MAX_TRIES, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, VANISH_MS, Optimizers, freeReason, isRepeat, isStall, parseProposals, slug, type Sys } from './optimizers.ts'
 
 // Hermetic: no claude CLI, no login check, the language fixed in memory.
 vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn() }))
@@ -20,7 +20,7 @@ const T0 = new Date('2026-11-10T09:00:00Z').getTime()
 const MIN = 60_000
 
 const session = (over: Partial<Session>): Session =>
-  ({ id: 'x', projectId: 'mygame', repo: 'mygame', machineId: 'test', tool: 'claude', title: 't', status: 'idle', lastActivityAt: T0, ...over }) as Session
+  ({ id: 'x', projectId: 'mygame', repo: 'mygame', machineId: 'test', tool: 'claude', title: 't', status: 'idle', lastActivityAt: T0, messageCount: 6, live: true, ...over }) as Session
 
 let dir: string
 let memory: Memory
@@ -28,9 +28,12 @@ let snap: Snapshot
 let sys: Sys
 let createIn: ReturnType<typeof vi.fn>
 let bump: ReturnType<typeof vi.fn>
+/** What the session's transcript and hooks say (turn still open, Stop received). */
+let store: Map<string, { phase: 'working' | 'idle'; lastActivityAt: number }>
+let hooks: Map<string, { event: string; at: number }>
 const make = () =>
   new Optimizers(
-    { snapshot: () => snap, allRepos: () => ['mygame', 'mygame-site', 'notes'], repoDir: (r: string) => `/p/${r}`, createIn, bump } as never,
+    { snapshot: () => snap, allRepos: () => ['mygame', 'mygame-site', 'notes'], repoDir: (r: string) => path.join(dir, 'p', r), createIn, bump, store, hooks } as never,
     memory,
     { file: path.join(dir, 'optimizers.json'), dir: path.join(dir, 'optimizers'), sys },
   )
@@ -50,7 +53,9 @@ beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'optimizers-'))
   memory = new Memory(path.join(dir, 'memory.json'))
   snap = { projects: [{ id: 'mygame', name: 'mygame', kind: 'repo', repos: ['mygame', 'mygame-site'], where: {}, lastActivityAt: T0 }], sessions: [], mainWorking: false } as unknown as Snapshot
-  sys = { load: () => 0.2, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true }
+  sys = { load: () => 0.2, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true, worktree: vi.fn(async (_repo: string, d: string) => void fs.mkdirSync(d, { recursive: true })) }
+  store = new Map()
+  hooks = new Map()
   createIn = vi.fn(async () => ({ id: 'sess-1' }))
   bump = vi.fn()
   model.mockReset()
@@ -206,13 +211,21 @@ describe('auto — the runner', () => {
     o.tick(T0 + IDLE_MS)
     await flush()
     expect(createIn).toHaveBeenCalledTimes(1)
-    const [cwd, title, text] = createIn.mock.calls[0]
-    expect(cwd).toBe('/p/mygame')
+    const [cwd, title, text, args] = createIn.mock.calls[0]
+    const id = o.list()[0].id
+    // Its own worktree beside the repo, on a fresh branch, made by weevils before the session starts.
+    expect(cwd).toBe(path.join(dir, 'p', '.auto', 'mygame', id))
+    expect(sys.worktree).toHaveBeenCalledWith(path.join(dir, 'p', 'mygame'), cwd, expect.stringMatching(/^auto\/harden-mygame-tests-\w{4}$/))
     expect(title).toBe('Harden mygame tests')
-    expect(text).toMatch(/git worktree add .*optimizers\/\w+\/wt -b auto\/harden-mygame-tests-/)
+    expect(text).toMatch(/on the local branch auto\/harden-mygame-tests-\w{4} made for you/)
+    expect(text).toContain(`never touch the folder ${path.join(dir, 'p', 'mygame')}`)
+    expect(text).not.toContain('git worktree add')
     expect(text).toContain('never push')
     expect(text).toContain('`heavy`')
     expect(text).toContain('Add tests for the jump physics')
+    // The rules are enforced by Claude Code too, not only written in the brief.
+    expect(args).toEqual(SAFETY_ARGS)
+    expect(JSON.parse(args[1]).permissions.deny).toEqual(expect.arrayContaining(['Bash(git push:*)', 'Bash(gh:*)', 'Bash(npm publish:*)', 'Read(~/.ssh/**)']))
     let [run, next] = o.list()
     expect(run).toMatchObject({ state: 'running', sessionId: 'sess-1' })
     expect(next).toMatchObject({ state: 'queued', waiting: 'queue' })
@@ -238,8 +251,9 @@ describe('auto — the runner', () => {
     o.tick(T0 + IDLE_MS)
     await flush()
     const [cwd, , text] = createIn.mock.calls[0]
-    expect(cwd).toBe(path.join(dir, 'optimizers', o.list()[0].id))
+    expect(cwd).toBe(path.join(dir, 'optimizers', `.${o.list()[0].id}`))
     expect(fs.existsSync(cwd)).toBe(true)
+    expect(sys.worktree).not.toHaveBeenCalled()
     expect(text).toContain(path.join(cwd, 'report.md'))
     expect(text).not.toContain('git worktree')
   })
@@ -266,6 +280,105 @@ describe('auto — the runner', () => {
     o.tick(T0 + IDLE_MS)
     await flush()
     expect(o.list()[0]).toMatchObject({ state: 'failed', lastEvent: 'could not start: tmux missing' })
+  })
+
+  it('blocked on a question (needs_user) it keeps running and holds the slot; ended without any answer → failed', async () => {
+    const o = await accepted(2)
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'working' })]
+    o.tick(T0 + IDLE_MS + MIN)
+    snap.sessions = [session({ id: 'sess-1', status: 'needs_user', attention: 'Do you want to proceed?' })]
+    o.tick(T0 + IDLE_MS + 20 * MIN)
+    await flush()
+    expect(o.list()[0]).toMatchObject({ state: 'running' })
+    expect(createIn).toHaveBeenCalledTimes(1)
+    // The process went away with only the brief in its transcript: nothing was done.
+    snap.sessions = [session({ id: 'sess-1', status: 'done', live: false, messageCount: 1, lastMessage: 'Background task…' })]
+    o.tick(T0 + IDLE_MS + 30 * MIN)
+    expect(o.list().find((x) => x.title === 'Harden mygame tests')).toMatchObject({ state: 'failed', lastEvent: 'ended without any answer' })
+  })
+
+  it('a long silent command reads idle, but the turn is still open: not done until it ends', async () => {
+    const o = await accepted()
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'working' })]
+    o.tick(T0 + IDLE_MS + MIN)
+    // `heavy npm test` for 12 min: the transcript waits for the tool's result, the last hook is a PostToolUse.
+    store.set('sess-1', { phase: 'working', lastActivityAt: T0 + IDLE_MS + 2 * MIN })
+    hooks.set('sess-1', { event: 'PostToolUse', at: T0 + IDLE_MS + 2 * MIN })
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Running the tests.' })]
+    o.tick(T0 + IDLE_MS + 15 * MIN)
+    expect(o.list()[0].state).toBe('running')
+    // Same, the pane went past 30 min of silence (« done » for the app) while the command runs.
+    snap.sessions = [session({ id: 'sess-1', status: 'done', lastMessage: 'Running the tests.' })]
+    o.tick(T0 + IDLE_MS + 40 * MIN)
+    expect(o.list()[0].state).toBe('running')
+    // The agent answers: a Stop hook after its last entry closes the turn, even if the transcript did not say so yet.
+    store.set('sess-1', { phase: 'working', lastActivityAt: T0 + IDLE_MS + 41 * MIN })
+    hooks.set('sess-1', { event: 'Stop', at: T0 + IDLE_MS + 41 * MIN })
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: '40 tests added on auto/x, all green.' })]
+    o.tick(T0 + IDLE_MS + 42 * MIN)
+    expect(o.list()[0]).toMatchObject({ state: 'done', lastEvent: '40 tests added on auto/x, all green.' })
+  })
+
+  it('a usage limit or an API error is not « done »: back to the queue for later, the next task may go first, a few tries', async () => {
+    const o = await accepted(2)
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    const first = o.list()[0]
+    snap.sessions = [session({ id: 'sess-1', status: 'working' })]
+    o.tick(T0 + IDLE_MS + MIN)
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', messageCount: 2, lastMessage: "You've hit your limit · resets 3am (Europe/Paris)" })]
+    let now = T0 + IDLE_MS + 2 * MIN
+    createIn.mockResolvedValueOnce({ id: 'sess-2' })
+    o.tick(now)
+    await flush()
+    let held = o.list().find((x) => x.id === first.id)!
+    expect(held).toMatchObject({ state: 'queued', waiting: 'later', retryAt: now + RETRY_MS })
+    expect(held.lastEvent).toMatch(/hit your limit/)
+    // The other accepted task does not wait behind it.
+    expect(createIn).toHaveBeenCalledTimes(2)
+    expect(o.list()[0]).toMatchObject({ state: 'running', sessionId: 'sess-2', title: 'Watch indie game fairs' })
+    snap.sessions = [session({ id: 'sess-2', status: 'idle', lastMessage: 'Report written.' })]
+    now += 10 * MIN
+    o.tick(now)
+    expect(o.list().find((x) => x.sessionId === 'sess-2')!.state).toBe('done')
+    // Not before its time; then again, in its worktree already there.
+    o.tick(now + MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(2)
+    createIn.mockResolvedValue({ id: 'sess-3' })
+    now = held.retryAt! + MIN
+    o.tick(now)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(3)
+    expect(sys.worktree).toHaveBeenCalledTimes(1)
+    held = o.list().find((x) => x.id === first.id)!
+    expect(held).toMatchObject({ state: 'running', sessionId: 'sess-3' })
+    expect(held.retryAt).toBeUndefined()
+    // After MAX_TRIES stops in a row: failed, with the reason.
+    for (let i = 1; i < MAX_TRIES; i++) {
+      snap.sessions = [session({ id: o.get(first.id)!.sessionId!, status: 'idle', messageCount: 2, lastMessage: 'API Error: 529 Overloaded' })]
+      now += VANISH_MS + MIN
+      o.tick(now)
+      await flush()
+      if (o.get(first.id)!.state === 'queued') {
+        now = o.get(first.id)!.retryAt! + MIN
+        o.tick(now)
+        await flush()
+      }
+    }
+    expect(o.get(first.id)).toMatchObject({ state: 'failed', lastEvent: 'API Error: 529 Overloaded' })
+  })
+
+  it('tells a stall from a summary', () => {
+    for (const m of ["You've hit your limit · resets 3am", 'Claude AI usage limit reached|1762000000', '5-hour limit reached ∙ resets 2pm', 'API Error: 500 {"type":"error"}', 'Failed to authenticate: OAuth session expired', 'Login expired · Please run /login'])
+      expect(isStall(m), m).toBe(true)
+    for (const m of ['Added a rate limit test to mygame; the branch awaits review.', 'Done. Usage limits are documented in report.md.', ''])
+      expect(isStall(m), m).toBe(false)
+    expect(DENY.every((r) => /^(Bash|Read)\(.+\)$/.test(r))).toBe(true)
   })
 
   it('persists across restarts; finished ones leave the app after 3 days', async () => {

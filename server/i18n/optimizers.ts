@@ -33,14 +33,16 @@ export default defineMessages({
     state_failed: 'échouée',
     state_refused: 'refusée',
     /**
-     * First message of the agent session that runs an accepted task: the rules, then the brief. `report` is the file
-     * where watch/content/explore write their result; `workspace` the task's own folder.
+     * First message of the agent session that runs an accepted task: the rules, then the brief. In a repo the session
+     * already works in its own git worktree on `branch` (weevils made it); `checkout` is the user's own checkout, never
+     * to touch. `report` is the file where watch/content/explore write their result. The technical deny list
+     * (optimizers.ts DENY) backs these rules.
      */
-    brief: (o: { title: string; branch: string; worktree: string; report: string; inRepo: boolean; writesReport: boolean; heavy: boolean; prompt: string }) =>
+    brief: (o: { title: string; branch: string; checkout: string; report: string; inRepo: boolean; writesReport: boolean; heavy: boolean; prompt: string }) =>
       `Tâche de fond lancée par weevils pendant que la machine est libre : « ${o.title} ». Personne ne te répond en direct : avance seul jusqu'au bout.\n\n` +
       `Règles, sans exception :\n` +
       (o.inRepo
-        ? `- ne change jamais la branche de ce dossier (il peut être en cours d'utilisation) : crée ta branche locale dans un worktree à part, \`git worktree add ${o.worktree} -b ${o.branch}\`, puis travaille uniquement dans ${o.worktree} ; jamais sur la branche principale ;\n`
+        ? `- tu es dans ton propre worktree git, sur la branche locale ${o.branch} faite pour toi : travaille et committe uniquement ici, ne change pas de branche, jamais sur la branche principale ; ne touche pas au dossier ${o.checkout} (l'utilisateur s'en sert) ;\n`
         : `- travaille dans ce dossier seulement ;\n`) +
       `- ne pousse jamais, n'ouvre aucune PR, ne publie, ne poste et n'envoie rien (ni e-mail, ni message, ni déploiement) ;\n` +
       `- ne dépense rien : aucun achat, aucune API payante ;\n` +
@@ -54,6 +56,7 @@ export default defineMessages({
     vanished: 'la session a disparu',
     timedOut: 'arrêtée au bout de 2 h',
     startFailed: (why: string) => `lancement impossible : ${why}`,
+    noWork: 'finie sans rien rendre',
   },
   en: {
     propose: (user: string, max: number, memory: string, projects: string, repos: string, machine: string, history: string) =>
@@ -81,11 +84,11 @@ export default defineMessages({
     state_done: 'done',
     state_failed: 'failed',
     state_refused: 'refused',
-    brief: (o: { title: string; branch: string; worktree: string; report: string; inRepo: boolean; writesReport: boolean; heavy: boolean; prompt: string }) =>
+    brief: (o: { title: string; branch: string; checkout: string; report: string; inRepo: boolean; writesReport: boolean; heavy: boolean; prompt: string }) =>
       `Background task started by weevils while the machine is free: "${o.title}". Nobody answers you live: carry on alone to the end.\n\n` +
       `Rules, no exception:\n` +
       (o.inRepo
-        ? `- never switch the branch of this folder (it may be in use): create your local branch in a separate worktree, \`git worktree add ${o.worktree} -b ${o.branch}\`, then work only in ${o.worktree}; never on the main branch;\n`
+        ? `- you are in your own git worktree, on the local branch ${o.branch} made for you: work and commit only here, never switch branch, never on the main branch; never touch the folder ${o.checkout} (the user works in it);\n`
         : `- work in this folder only;\n`) +
       `- never push, never open a PR, never publish, post or send anything (no e-mail, no message, no deploy);\n` +
       `- never spend money: no purchase, no paid API;\n` +
@@ -98,5 +101,6 @@ export default defineMessages({
     vanished: 'the session vanished',
     timedOut: 'stopped after 2 h',
     startFailed: (why: string) => `could not start: ${why}`,
+    noWork: 'ended without any answer',
   },
 })

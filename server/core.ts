@@ -1602,10 +1602,11 @@ export class Weevils {
     }
   }
 
-  /** Session Claude locale lancée dans un dossier donné, avec son titre (tâches de fond de la bande auto, server/optimizers.ts). */
-  async createIn(cwd: string, title: string, text: string): Promise<{ id: string }> {
+  /** Session Claude locale lancée dans un dossier donné, avec son titre (tâches de fond de la bande auto, server/optimizers.ts).
+   *  args : arguments de plus pour claude (les interdits de la tâche, --settings). */
+  async createIn(cwd: string, title: string, text: string, args: string[] = []): Promise<{ id: string }> {
     const id = crypto.randomUUID()
-    await this.spawn('claude', cwd, title, [...CLAUDE, '--session-id', id, text], id)
+    await this.spawn('claude', cwd, title, [...CLAUDE, ...args, '--session-id', id, text], id)
     return { id }
   }
 

@@ -4,17 +4,23 @@
 // its project) when the machine is free — no agent working for 5 min, load and memory under the `heavy` thresholds —
 // one at a time, on a local branch in its own git worktree, never destructive, paid or published without the user's go.
 //
+// Where a task works: never under DATA_DIR (weevils hides every session there, it is weevboss's). A repo task gets a git
+// worktree that weevils makes itself, <root>/.auto/<repo>/<id> on branch auto/<slug>-<id>: place() skips the hidden
+// folder and files the session under the repo's project, and the user's own checkout is never touched. A task without a
+// repo works in <projects>/.auto/.<id> (all hidden: the session goes to the misc project, or where its talk points).
+//
 // Stored in DATA_DIR/optimizers.json (outside every repo). Proposal rounds only on the main machine with Claude
 // logged in: a few minutes after start, then every 6 h at most, sooner when the memory changed (30 min apart at
 // least), only while fewer than 3 proposals wait for an answer; a failed round backs off 1 h (doubling), never a loop.
 
+import { execFile } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import type http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import type { AutoMachine, Optimizer } from '../shared/api.ts'
-import { DATA_DIR, MACHINE } from './config.ts'
+import type { AutoMachine, Optimizer, Session } from '../shared/api.ts'
+import { DATA_DIR, MACHINE, PROJECTS_DIR } from './config.ts'
 import type { Weevils } from './core.ts'
 import { parseJson, smart } from './fast.ts'
 import { lang, tr, user } from './i18n.ts'
@@ -44,11 +50,56 @@ export const MIN_FREE_BYTES = 2 * 1024 ** 3
 /** A running task whose session is gone this long, or that runs longer than MAX_RUN_MS, has failed. */
 export const VANISH_MS = 3 * 60_000
 export const MAX_RUN_MS = 2 * 3600_000
+/** A task stopped by a usage limit, an expired login or an API error goes back to the queue this long, this many tries. */
+export const RETRY_MS = 3600_000
+export const MAX_TRIES = 3
 /** Finished tasks stay in the band this long. */
 export const KEEP_MS = 3 * 24 * 3600_000
 const TICK_MS = 60_000
 const MAX_STORED = 200
 const KINDS = ['tests', 'watch', 'content', 'explore', 'other'] as const
+
+/**
+ * What an unattended task may never do, enforced by Claude Code itself (deny rules hold even without permission
+ * prompts): push, anything through gh, publish a package or an image, expose a port, POST/PUT/DELETE with curl, reach
+ * another machine, sudo, read keys and secrets. The brief says it too; this is the layer a prompt injection can't talk away.
+ */
+export const DENY = [
+  'Bash(git push:*)',
+  'Bash(gh:*)',
+  'Bash(npm publish:*)',
+  'Bash(pnpm publish:*)',
+  'Bash(yarn publish:*)',
+  'Bash(yarn npm publish:*)',
+  'Bash(cargo publish:*)',
+  'Bash(twine upload:*)',
+  'Bash(docker push:*)',
+  'Bash(expose:*)',
+  'Bash(curl -X POST:*)',
+  'Bash(curl -X PUT:*)',
+  'Bash(curl -X PATCH:*)',
+  'Bash(curl -X DELETE:*)',
+  'Bash(curl -d:*)',
+  'Bash(curl --data:*)',
+  'Bash(curl -F:*)',
+  'Bash(curl --form:*)',
+  'Bash(wget --post-data:*)',
+  'Bash(ssh:*)',
+  'Bash(scp:*)',
+  'Bash(sudo:*)',
+  'Bash(crontab:*)',
+  'Bash(systemctl:*)',
+  'Read(~/.ssh/**)',
+  'Read(~/.aws/**)',
+  'Read(~/.config/gh/**)',
+  'Read(~/.config/weevils/**)',
+  'Read(~/.claude.json)',
+  'Read(~/.claude/.credentials.json)',
+  'Read(**/.env)',
+  'Read(**/.env.*)',
+]
+/** The extra arguments of an optimizer's claude session: the deny list as flag settings. */
+export const SAFETY_ARGS = ['--settings', JSON.stringify({ permissions: { deny: DENY } })]
 
 type Stored = Optimizer & {
   /** The agent's brief, as the model wrote it (the safety rules are added at launch). */
@@ -58,6 +109,8 @@ type Stored = Optimizer & {
   seenWorking?: boolean
   /** Last time the session was seen in the snapshot. */
   seenAt?: number
+  /** Starts stopped by a usage limit, a login or an API error. */
+  tries?: number
 }
 interface State {
   items: Stored[]
@@ -83,8 +136,14 @@ export interface Sys {
   cpus: () => number
   free: () => number
   logged: () => boolean
+  /** git -C <repo> worktree add <dir> -b <branch> (from the checkout's HEAD). */
+  worktree: (repo: string, dir: string, branch: string) => Promise<void>
 }
-const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: () => os.freemem(), logged: claudeLogged }
+const gitWorktree = (repo: string, dir: string, branch: string) =>
+  new Promise<void>((resolve, reject) =>
+    execFile('git', ['-C', repo, 'worktree', 'add', dir, '-b', branch], { timeout: 60_000 }, (e, _out, err) => (e ? reject(new Error(String(err || e.message).trim().split('\n').pop())) : resolve())),
+  )
+const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: () => os.freemem(), logged: claudeLogged, worktree: gitWorktree }
 
 // ---------------------------------------------------------------- pure helpers (tested)
 
@@ -118,6 +177,16 @@ export function isRepeat(title: string, known: { title: string }[]): boolean {
     for (const w of a) if (b.has(w)) both++
     return both / (a.size + b.size - both) >= 0.6
   })
+}
+
+/**
+ * A reply that is not work: a usage limit, an expired login, an API error. Claude Code writes them as the agent's
+ * answer, short; a real summary that mentions a limit is longer than this and does not start like one.
+ */
+export function isStall(msg: string): boolean {
+  const m = msg.trim()
+  if (!m || m.length > 200) return false
+  return /^(api error\b|you['’]ve (hit|reached) your|claude (ai )?usage limit|usage limit|\d+-hour limit|weekly limit|limit reached|failed to authenticate|login expired|oauth|invalid api key|credit balance|request timed out|overloaded|please run \/login)/i.test(m)
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
@@ -173,7 +242,7 @@ export class Optimizers {
   readonly w: Weevils
   readonly memory: Memory
   readonly file: string
-  /** DATA_DIR/optimizers/<id>/: each task's workspace (its report, its git worktree). */
+  /** <projects>/.auto: the workspaces of the tasks without a repo (<projects>/.auto/.<id>). */
   readonly dir: string
   private s: State
   private sys: Sys
@@ -185,13 +254,19 @@ export class Optimizers {
   private launching = false
   private auto = false
 
-  constructor(w: Weevils, memory: Memory, opts: { file?: string; dir?: string; sys?: Partial<Sys> } = {}) {
+  constructor(w: Weevils, memory: Memory, opts: { file?: string; /** default <projects>/.auto */ dir?: string; sys?: Partial<Sys> } = {}) {
     this.w = w
     this.memory = memory
     this.file = opts.file ?? path.join(DATA_DIR, 'optimizers.json')
-    this.dir = opts.dir ?? path.join(DATA_DIR, 'optimizers')
+    this.dir = opts.dir ?? path.join(PROJECTS_DIR, '.auto')
     const sys = opts.sys ?? {}
-    this.sys = { load: () => (sys.load ?? realSys.load)(), cpus: () => (sys.cpus ?? realSys.cpus)(), free: () => (sys.free ?? realSys.free)(), logged: () => (sys.logged ?? realSys.logged)() }
+    this.sys = {
+      load: () => (sys.load ?? realSys.load)(),
+      cpus: () => (sys.cpus ?? realSys.cpus)(),
+      free: () => (sys.free ?? realSys.free)(),
+      logged: () => (sys.logged ?? realSys.logged)(),
+      worktree: (repo, dir, branch) => (sys.worktree ?? realSys.worktree)(repo, dir, branch),
+    }
     this.s = (() => {
       try {
         const raw = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<State>
@@ -235,7 +310,7 @@ export class Optimizers {
     return this.s.items
       .filter((o) => o.state !== 'refused' && (o.state === 'proposed' || o.state === 'queued' || o.state === 'running' || now - (o.endedAt ?? o.createdAt) < KEEP_MS))
       .sort((a, b) => rank[a.state] - rank[b.state] || (a.state === 'proposed' ? (a.priority ?? 2) - (b.priority ?? 2) || a.createdAt - b.createdAt : 0) || (b.endedAt ?? 0) - (a.endedAt ?? 0) || (a.acceptedAt ?? 0) - (b.acceptedAt ?? 0))
-      .map(({ prompt: _p, acceptedAt: _a, seenWorking: _w, seenAt: _s, ...o }) => o)
+      .map(({ prompt: _p, acceptedAt: _a, seenWorking: _w, seenAt: _s, tries: _t, ...o }) => o)
   }
 
   /** The machine as the runner sees it (snapshot). */
@@ -268,6 +343,7 @@ export class Optimizers {
     o.state = 'refused'
     o.endedAt = Date.now()
     delete o.waiting
+    delete o.retryAt
     this.changed()
     return true
   }
@@ -284,8 +360,11 @@ export class Optimizers {
     if (busy) this.lastBusyAt = now
     const reason = this.machine(now).wait
     const queue = this.s.items.filter((o) => o.state === 'queued').sort((a, b) => (a.acceptedAt ?? a.createdAt) - (b.acceptedAt ?? b.createdAt))
-    queue.forEach((o, i) => {
-      const wait = running || this.launching || i > 0 ? 'queue' : (reason ?? undefined)
+    // Stopped by a limit or an error: it waits for its retry time, the others go first.
+    const ready = queue.filter((o) => !(o.retryAt && o.retryAt > now))
+    queue.forEach((o) => {
+      const i = ready.indexOf(o)
+      const wait = i < 0 ? 'later' : running || this.launching || i > 0 ? 'queue' : (reason ?? undefined)
       if (o.waiting !== wait) {
         if (wait) o.waiting = wait
         else delete o.waiting
@@ -294,11 +373,16 @@ export class Optimizers {
     })
     if (dirty) this.changed()
     // Never without Claude logged in: the session would open on a login screen and sit there.
-    if (!running && !this.launching && !reason && queue[0] && this.sys.logged()) void this.launch(queue[0], now)
+    if (!running && !this.launching && !reason && ready[0] && this.sys.logged()) void this.launch(ready[0], now)
     if (this.roundDue(now)) void this.round(now)
   }
 
-  /** The running task's session: working → still running; back to rest after working → done; gone or too long → failed. */
+  /**
+   * The running task's session. Working, or blocked on a question (needs_user: it keeps the one-at-a-time slot) → still
+   * running. At rest: a limit or API error → back to the queue for later; a turn still open (a long silent command reads
+   * as idle after 10 min) → still running; ended with a real reply → done; ended without one → failed. Gone or too long
+   * → failed.
+   */
   private follow(now: number): boolean {
     const o = this.s.items.find((x) => x.state === 'running')
     if (!o || this.launching) return false
@@ -313,42 +397,86 @@ export class Optimizers {
     const s = o.sessionId ? this.w.snapshot().sessions.find((x) => x.id === o.sessionId) : undefined
     if (!s) return now - Math.max(o.seenAt ?? o.startedAt ?? now, this.bootAt) > VANISH_MS ? end('failed', t.vanished) : false
     o.seenAt = now
-    if (s.status === 'working') {
-      if (o.seenWorking) return false
+    if (s.status === 'working' || s.status === 'needs_user') {
+      if (o.seenWorking || s.status !== 'working') return false
       o.seenWorking = true
       return true
     }
-    // A short task can start and finish between two looks: past the start-up delay, at rest means done.
-    if (o.seenWorking || now - (o.startedAt ?? now) > VANISH_MS) return end('done', oneLine(s.lastMessage ?? '', 160))
-    return false
+    const last = s.lastMessage ?? ''
+    if (isStall(last)) return this.later(o, now, last)
+    if (this.turnOpen(s)) return false
+    // A short task can start and finish between two looks: past the start-up delay, at rest means it ended.
+    if (!o.seenWorking && now - (o.startedAt ?? now) <= VANISH_MS) return false
+    if (s.messageCount < 2) return end('failed', t.noWork)
+    return end('done', oneLine(last, 160))
   }
 
-  /** Starts a task in a Claude session: in its repo (on a branch, in its own worktree) or in its workspace. */
+  /** The agent's turn has not ended: its transcript waits for a tool's result and no Stop hook came since. */
+  private turnOpen(s: Session): boolean {
+    if (!s.live) return false
+    const tr = this.w.store?.get(s.id)
+    if (tr?.phase !== 'working') return false
+    const h = this.w.hooks?.get(s.id)
+    return !(h && (h.event === 'Stop' || h.event === 'SessionEnd') && h.at >= tr.lastActivityAt - 2000)
+  }
+
+  /** Stopped by a limit, a login or an API error: no work was done, it goes back to the queue for later (a few tries). */
+  private later(o: Stored, now: number, why: string): boolean {
+    o.tries = (o.tries ?? 0) + 1
+    o.lastEvent = oneLine(why, 160)
+    if (o.tries >= MAX_TRIES) {
+      o.state = 'failed'
+      o.endedAt = now
+      return true
+    }
+    o.state = 'queued'
+    o.retryAt = now + RETRY_MS
+    o.waiting = 'later'
+    console.log(`[auto] « ${o.title} » arrêtée (${o.lastEvent}) · nouvel essai dans ${Math.round(RETRY_MS / 60_000)} min`)
+    return true
+  }
+
+  /** Where a task works: its own git worktree beside its repo, or a hidden folder of its own (see the top of the file). */
+  workspace(o: { id: string; repo: string | null }): string {
+    return o.repo ? path.join(path.dirname(this.w.repoDir(o.repo)), '.auto', o.repo, o.id) : path.join(this.dir, `.${o.id}`)
+  }
+
+  /** Starts a task in a Claude session: in its own worktree of its repo (on a fresh local branch), or in its workspace. */
   private async launch(o: Stored, now: number) {
     this.launching = true
     o.state = 'running'
     o.startedAt = now
     delete o.waiting
     delete o.lastEvent
+    delete o.retryAt
+    delete o.seenWorking
+    delete o.seenAt
+    delete o.sessionId
     this.changed()
     try {
-      const work = path.join(this.dir, o.id)
-      fs.mkdirSync(work, { recursive: true })
-      const cwd = o.repo ? this.w.repoDir(o.repo) : work
+      const cwd = this.workspace(o)
+      const branch = `auto/${slug(o.title)}-${o.id.slice(0, 4)}`
+      // A retry finds its worktree already there (same branch).
+      if (o.repo && !fs.existsSync(cwd)) {
+        fs.mkdirSync(path.dirname(cwd), { recursive: true })
+        await this.sys.worktree(this.w.repoDir(o.repo), cwd, branch)
+      } else fs.mkdirSync(cwd, { recursive: true })
+      const writesReport = !o.repo || o.kind === 'watch' || o.kind === 'content' || o.kind === 'explore'
       const text = tr(O).brief({
         title: o.title,
-        branch: `auto/${slug(o.title)}-${o.id.slice(0, 4)}`,
-        worktree: path.join(work, 'wt'),
-        report: path.join(work, 'report.md'),
+        branch,
+        checkout: o.repo ? this.w.repoDir(o.repo) : '',
+        // Beside the worktree, never in it (the branch stays the work itself).
+        report: o.repo ? path.join(path.dirname(cwd), `${o.id}.md`) : path.join(cwd, 'report.md'),
         inRepo: !!o.repo,
-        writesReport: !o.repo || o.kind === 'watch' || o.kind === 'content' || o.kind === 'explore',
+        writesReport,
         heavy: o.heavy,
         prompt: o.prompt,
       })
-      const { id } = await this.w.createIn(cwd, o.title, text)
+      const { id } = await this.w.createIn(cwd, o.title, text, SAFETY_ARGS)
       o.sessionId = id
       o.seenAt = Date.now()
-      console.log(`[auto] lancée : ${o.title} (${o.repo ?? work})`)
+      console.log(`[auto] lancée : ${o.title} (${cwd})`)
     } catch (e) {
       o.state = 'failed'
       o.endedAt = Date.now()

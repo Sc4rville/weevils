@@ -244,8 +244,11 @@ export interface Optimizer {
   priority?: 1 | 2 | 3
   /** Durée estimée, en minutes. */
   est?: number
-  /** queued : ce qu'elle attend (busy : un agent travaille ; load : machine chargée ; ram : mémoire ; queue : une autre tâche d'abord). */
-  waiting?: 'busy' | 'load' | 'ram' | 'queue'
+  /** queued : ce qu'elle attend (busy : un agent travaille ; load : machine chargée ; ram : mémoire ; queue : une autre tâche d'abord ;
+   *  later : arrêtée par une limite d'usage ou une erreur, nouvel essai à retryAt). */
+  waiting?: 'busy' | 'load' | 'ram' | 'queue' | 'later'
+  /** waiting later : quand elle sera relancée. */
+  retryAt?: number
 }
 
 /** La machine vue par la bande auto : charge, mémoire libre, et ce qui retient une tâche acceptée (null : libre). */

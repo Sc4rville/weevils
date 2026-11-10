@@ -59,7 +59,7 @@ export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick
     }
     if (u.gliding) return
     u.gliding = true
-    const end = Date.now() + 1200
+    const end = Date.now() + 1600
     let stop = false
     u.stopGlide = () => void (stop = true)
     const tick = () => {
@@ -70,7 +70,8 @@ export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick
         u.gliding = false
         return
       }
-      el.scrollTop += Math.sign(d) * Math.max(2, Math.abs(d) * 0.2)
+      // Doux au départ comme à l'arrivée : jamais plus de 90 px par image (un long trajet prend quelques images de plus).
+      el.scrollTop += Math.sign(d) * Math.min(90, Math.max(2, Math.abs(d) * 0.18))
       requestAnimationFrame(tick)
     }
     requestAnimationFrame(tick)

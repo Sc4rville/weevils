@@ -6,6 +6,7 @@ import { useApp } from './app-context'
 import { dur, inline, isCommand, plain, segments, status, step, userText } from './format'
 import { copyText, useLongPress } from './copy'
 import { markSeen } from './hints'
+import { flash, reveal } from './follow'
 import C from '../i18n/copy'
 import { getLang, tr, useT } from '../i18n'
 import M from '../i18n/bits'
@@ -64,14 +65,22 @@ export function StatusChar({ s }: { s: Session['status'] }) {
 function Clamp({ text }: { text: string }) {
   const t = useT(M)
   const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
   const long = text.length > 420
   return (
     <>
-      <div className={`text ${long && !open ? 'clamp' : ''}`}>
+      <div ref={box} className={`text ${long && !open ? 'clamp' : ''}`}>
         <Rich text={text} code={false} />
       </div>
       {long && (
-        <button className="link small" onClick={() => setOpen((v) => !v)}>
+        <button
+          className="link small"
+          onClick={() => {
+            setOpen((v) => !v)
+            // Déplié : la suite (ou, replié, le message) sous les yeux, du plus petit défilement.
+            requestAnimationFrame(() => reveal(box.current, { block: 'nearest', flash: false }))
+          }}
+        >
           {open ? t.showLess : t.readAll}
         </button>
       )}
@@ -269,6 +278,7 @@ export function Composer({
   anyFile = false,
   draft,
   formRef,
+  sayErrors = false,
 }: {
   placeholder: string
   label: string
@@ -287,6 +297,8 @@ export function Composer({
   draft?: { text: string; n: number; reset?: boolean }
   /** Pour envoyer depuis l'extérieur (troisième tap sur le logo). */
   formRef?: React.RefObject<HTMLFormElement | null>
+  /** Un envoi refusé dit pourquoi sur la ligne au-dessus du champ (sinon l'appelant l'affiche lui-même). */
+  sayErrors?: boolean
 }) {
   const t = useT(M)
   // Le texte en cours survit à un rechargement (mise à jour automatique de l'app, public/sw.js) : gardé dans l'onglet,
@@ -323,6 +335,7 @@ export function Composer({
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
+    const form = e.currentTarget
     const typed = text.trim()
     if ((!typed && !files.length) || busy) return
     const sent = files
@@ -337,13 +350,17 @@ export function Composer({
       if (field.current) field.current.value = ''
     }
     clear()
-    setTimeout(clear, 0)
+    const later = setTimeout(clear, 0)
     try {
       if (sent.length && onAttach) await onAttach(typed, sent)
       else await onSend(typed)
-    } catch {
+    } catch (e) {
+      clearTimeout(later) // un refus immédiat : le second vidage ne doit pas effacer le texte rendu
       setText(typed) // on rend le texte en cas d'échec, rien n'est perdu
       setFiles(sent)
+      // Et on dit pourquoi (diable occupé, serveur injoignable…), sur la ligne au-dessus du champ.
+      if (sayErrors) setErr((e as Error).message || tr(M).sendFailed)
+      flash(form)
     } finally {
       setBusy(false)
     }
@@ -476,11 +493,18 @@ export function Prose({ text }: { text: string }) {
 function Snippet({ code }: { code: string }) {
   const t = useT(M)
   const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
   const n = code.split('\n').length
+  const toggle = () => {
+    // Le code s'ouvre vers le bas (le fil ne le repousse pas, src/ui/follow.ts) ; une fois déplié, on l'amène sous les
+    // yeux s'il dépasse : son début d'abord quand il est plus grand que le fil.
+    if (!open) window.setTimeout(() => reveal(box.current, { block: 'nearest', flash: false }), 400)
+    setOpen((v) => !v)
+  }
   return (
-    <div className="snippet">
+    <div ref={box} className="snippet">
       <div className="snippet-head">
-        <button className="link" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <button className="link" onClick={toggle} aria-expanded={open}>
           <Icon name={open ? 'minus' : 'plus'} /> {t.code(n)}
         </button>
         <CopyButton text={code} />
@@ -665,7 +689,8 @@ export function useAuthors() {
 export const authorTone = (a: Author) => (a.color ? { className: 'tone orch ext', style: { '--who': a.color } as React.CSSProperties } : { className: 'tone orch', style: undefined })
 
 /** after(id) : ce qui s'affiche sous un message (la barre de questions d'askthread.tsx), id = data-mid du message. */
-export function Messages({ messages, author, working = false, after }: { messages: Message[]; author: string; working?: boolean; after?: (id: string) => ReactNode }) {
+/** pendingLabel : la mention des bulles envoyées pas encore arrivées dans le fil (ids « pending-… », src/ui/pending.ts). */
+export function Messages({ messages, author, working = false, after, pendingLabel }: { messages: Message[]; author: string; working?: boolean; after?: (id: string) => ReactNode; pendingLabel?: string }) {
   const t = useT(M)
   const td = useT(D)
   const [all, setAll] = useState(false)
@@ -690,7 +715,7 @@ export function Messages({ messages, author, working = false, after }: { message
             <Bubble
               className={`msg band ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.demo ? 'demo' : ''}`}
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
-              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}${g.m.demo ? ` · ${t.demo}` : ''}`}
+              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}${g.m.demo ? ` · ${t.demo}` : ''}${pendingLabel && g.m.id.startsWith('pending-') ? ` · ${pendingLabel}` : ''}`}
               copy={g.m.role === 'user' ? userText(g.m.text) : g.m.text}
               mid={g.m.id}
             >

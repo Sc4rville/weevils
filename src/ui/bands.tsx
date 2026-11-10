@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import type { Project } from '../../shared/api.ts'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import type { Message, Project } from '../../shared/api.ts'
 import { api } from '../api'
 import { tr, useT } from '../i18n'
 import M from '../i18n/bands'
@@ -21,8 +21,9 @@ import { UsageLine } from './infra'
 import { TokenMeter } from './rate'
 import { setDevil, useDevil } from './devil'
 import { markSeen, tapHint } from './hints'
-import { useFollow } from './follow'
-import { SetupChips, SetupComposer, askSetup, useFlow, useWelcome } from './setup'
+import { flash, reveal, useFollow } from './follow'
+import { mergePending, type Pending } from './pending'
+import { SetupChips, SetupComposer, askSetup, flowVoice, useFlow, useWelcome } from './setup'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
@@ -42,19 +43,21 @@ const activity = (list: { status: string }[]) => {
 /** L'aperçu vivant du fil, dans la bande réduite : les derniers messages, les récents en bas, les anciens remontent et s'estompent. */
 /** Au plus près du bas (px) : l'aperçu suit les nouveaux messages ; plus haut, l'utilisateur remonte l'historique et on le laisse lire. */
 const PEEK_STICK = 48
+/** Le dernier message de l'aperçu montre sa fin (la réponse qui s'écrit), pas son début coupé : au plus tant de caractères. */
+const PEEK_TAIL = 280
 
 /**
  * L'aperçu vivant du fil, dans la bande réduite : les récents en bas, les anciens remontent et s'estompent.
  * Il défile au doigt pour remonter l'historique (sans entraîner la page) ; un tap simple ouvre la conversation.
  */
-function Peek({ onOpen, visible, sent }: { onOpen: () => void; visible: boolean; sent: number }) {
+function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () => void; visible: boolean; sent: number; messages: Message[]; pendingLabel: string }) {
   const t = useT(M)
   const tb = useT(B)
   const td = useT(D)
   const authorOf = useAuthors()
   const { snap } = useApp()
   // Les démos des premiers pas passent dans l'aperçu le temps d'être vues, puis restent seulement dans le fil.
-  const items = snap.main.filter((m) => m.role !== 'event' && m.text.trim() && (!m.demo || snap.now - m.at < 2 * 60_000)).slice(-60)
+  const items = messages.filter((m) => m.role !== 'event' && m.text.trim() && (!m.demo || snap.now - m.at < 2 * 60_000)).slice(-60)
   const working = snap.mainWorking || !!snap.devil?.working
   const soft = { type: 'spring', stiffness: 160, damping: 26, mass: 1 } as const
   const box = useRef<HTMLDivElement>(null)
@@ -80,13 +83,16 @@ function Peek({ onOpen, visible, sent }: { onOpen: () => void; visible: boolean;
         <AnimatePresence initial={false} mode="popLayout">
           {items.map((m) => {
             const tone = m.role === 'orchestrator' ? authorTone(authorOf(m.author)) : null
-            const who = `${m.role === 'user' ? tb.you : m.role === 'orchestrator' ? authorOf(m.author).name : m.devil ? td.devil : 'weevboss'}${m.demo ? ` · ${tb.demo}` : ''}`
-            const text = (m.role === 'user' ? userText(m.text) : plain(m.text)).replace(/\s+/g, ' ')
+            const who = `${m.role === 'user' ? tb.you : m.role === 'orchestrator' ? authorOf(m.author).name : m.devil ? td.devil : 'weevboss'}${m.demo ? ` · ${tb.demo}` : ''}${m.id.startsWith('pending-') ? ` · ${pendingLabel}` : ''}`
+            const full = (m.role === 'user' ? userText(m.text) : plain(m.text)).replace(/\s+/g, ' ')
+            // Le dernier : sa fin, entière (la réponse qui s'écrit reste lisible, en bas, là où l'aperçu la suit).
+            const isLast = m.id === last?.id
+            const text = isLast && full.length > PEEK_TAIL ? `… ${full.slice(-PEEK_TAIL).replace(/^\S*\s/, '')}` : full
             return (
               <motion.div
                 key={m.id}
                 layout="position"
-                className={`peek-item ${m.role === 'user' ? '' : tone ? tone.className.replace('tone ', '') : m.devil ? 'devil' : 'base'} ${m.demo ? 'demo' : ''}`}
+                className={`peek-item ${m.role === 'user' ? '' : tone ? tone.className.replace('tone ', '') : m.devil ? 'devil' : 'base'} ${m.demo ? 'demo' : ''} ${isLast ? 'last' : ''}`}
                 style={tone?.style}
                 initial={{ opacity: 0, y: 18 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -115,6 +121,26 @@ function Peek({ onOpen, visible, sent }: { onOpen: () => void; visible: boolean;
     </motion.div>
   )
 }
+
+/** La barre de questions et sa réponse, sous un message du fil ouvert : amenées sous les yeux quand elles apparaissent
+ * ou changent d'état (question posée, réponse qui commence, puis finie) ; mises en avant la première fois seulement. */
+function QaInView({ k, children }: { k: string; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null)
+  const first = useRef(true)
+  useEffect(() => {
+    const el = box.current?.firstElementChild
+    if (!el) return
+    const f = first.current
+    first.current = false
+    requestAnimationFrame(() => reveal(el, { block: 'nearest', flash: f }))
+  }, [k])
+  return (
+    <div ref={box} className="qa-in-view">
+      {children}
+    </div>
+  )
+}
+const qa = (node: ReactNode, k: string) => (node ? <QaInView k={k}>{node}</QaInView> : null)
 
 export function AgentBand() {
   const t = useT(M)
@@ -154,36 +180,53 @@ export function AgentBand() {
   const swipe = useRef<{ y: number; top: number } | null>(null)
   const [draft, setDraft] = useState({ text: '', n: 0, reset: false })
   const heard = useRef('')
-  const tail = snap.main.at(-1)
-  const chat = useFollow(body, open, 80, `${snap.main.length}:${tail?.id}:${tail?.text.length}:${snap.mainWorking}:${!!snap.devil?.working}`)
+  // Le message envoyé s'affiche tout de suite (aperçu et fil), avant que Claude Code l'écrive dans son transcript (qui
+  // peut attendre la fin de la réponse en cours) : une bulle « envoi… », remplacée par la vraie quand elle arrive.
+  const [pending, setPending] = useState<Pending[]>([])
+  const main = useMemo(() => mergePending(snap.main, pending), [snap.main, pending])
+  useEffect(() => {
+    // Arrivées (ou perdues depuis longtemps) : on les oublie.
+    setPending((p) => {
+      const left = new Set(mergePending(snap.main, p).map((m) => m.id))
+      const next = p.filter((x) => left.has(x.id) && Date.now() - x.at < 15 * 60_000)
+      return next.length === p.length ? p : next
+    })
+  }, [snap.main])
+  const pendingLabel = snap.mainQueued > 0 ? t.queued : t.sending
+  const tail = main.at(-1)
+  // Le fil ouvert s'interroge comme un fichier ; avec une sélection, le logo pose sa question dessus (réponse sur place).
+  const th = useThreadAsk(main, { title: 'weevboss', tool: 'weevboss' })
+  const onSel = open && th.selected
+  // Un mot sélectionné et sa réponse, sous un message : le suivi ne les pousse pas hors de l'écran.
+  const chat = useFollow(body, open, 80, `${main.length}:${tail?.id}:${tail?.text.length}:${snap.mainWorking}:${!!snap.devil?.working}`, onSel)
   // Chaque envoi (clavier, logo, pièce jointe) : l'aperçu et le fil redescendent pour montrer le message et sa réponse.
   const [sent, setSent] = useState(0)
-  // Le fil ouvert s'interroge comme un fichier ; avec une sélection, le logo pose sa question dessus (réponse sur place).
-  const th = useThreadAsk(snap.main, { title: 'weevboss', tool: 'weevboss' })
-  const onSel = open && th.selected
   const mainReply = snap.main.filter((m) => m.role === 'assistant').at(-1)
 
   // Envoyer (clavier, logo vocal, pièce jointe) n'ouvre jamais le plein écran : le message et la réponse s'affichent dans l'aperçu.
   // Garanti par bands.test.tsx (déjà régressé deux fois).
-  const sentNow = () => {
+  // La bulle et le glissé partent au tap, pas au retour du serveur ; un échec retire la bulle (le champ rend le texte).
+  const sending = async (text: string, shown: string, go: () => Promise<unknown>) => {
+    const tmp: Pending = { id: `pending-${Date.now()}`, role: 'user', text: shown, at: Date.now(), typed: text, after: snap.main.at(-1)?.id, ...(devilOn ? { devil: true } : {}) }
+    setPending((p) => [...p, tmp])
     setSent((n) => n + 1)
     if (open) chat.toEnd()
+    try {
+      await go()
+    } catch (e) {
+      setPending((p) => p.filter((x) => x.id !== tmp.id))
+      throw e
+    }
   }
-  const send = async (text: string) => {
-    if (devilOn) await api.devil(text)
-    else await api.main(text)
-    sentNow()
-  }
-  const attach = async (text: string, files: { name: string; type: string; data: string }[]) => {
-    await api.mainAttach(text, files)
-    sentNow()
-  }
+  const send = (text: string) => sending(text, text, () => (devilOn ? api.devil(text) : api.main(text)))
+  const attach = (text: string, files: { name: string; type: string; data: string }[]) =>
+    sending(text, `${text ? `${text} ` : ''}${t.withFiles(files.length)}`, () => api.mainAttach(text, files))
   // Les puces de branchement d'un message de weevboss ([[setup:x]]) : en boutons dessous, sur le dernier message qui
   // les porte seulement (les anciens restent lisibles, sans boutons qui doublonnent).
   const lastWith = new Map<string, string>()
-  for (const m of snap.main) for (const c of m.chips ?? []) lastWith.set(c, m.id)
+  for (const m of main) for (const c of m.chips ?? []) lastWith.set(c, m.id)
   const chipsOf = (id: string) => {
-    const m = snap.main.find((x) => x.id === id)
+    const m = main.find((x) => x.id === id)
     const list = (m?.chips ?? []).filter((c) => lastWith.get(c) === id)
     return list.length ? <SetupChips chips={list} /> : null
   }
@@ -200,10 +243,11 @@ export function AgentBand() {
         )}
         <TokenMeter />
         <div className="agent-top">
+          {/* Pendant un branchement, la dictée va dans le champ du parcours (src/ui/setup.tsx), et le 3e tap y répond. */}
           <VoiceLogo
-            take={() => { if (onSel) return ''; const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }}
-            onText={(x) => { if (onSel) return th.a.voiceText(x); heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }}
-            onSend={() => (onSel ? th.a.voiceSend() : form.current?.requestSubmit())}
+            take={() => { if (onSel || flow) return ''; const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }}
+            onText={(x) => { if (onSel) return th.a.voiceText(x); if (flow) return flowVoice.add(x); heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }}
+            onSend={() => (onSel ? th.a.voiceSend() : flow ? flowVoice.send() : form.current?.requestSubmit())}
             replyKey={th.a.replyKey ?? mainReply?.id}
             replyText={th.a.replyKey ? th.a.shown : mainReply?.text}
             working={snap.mainWorking || th.a.waiting}
@@ -214,7 +258,7 @@ export function AgentBand() {
         </div>
         {/* L'aperçu et le fil restent rendus : ouvrir ou fermer ne fait que les montrer ou les cacher (immédiat). */}
         <div className="peek-wrap" hidden={open}>
-          <Peek onOpen={() => setExpanded('agent')} visible={!open} sent={sent} />
+          <Peek onOpen={() => setExpanded('agent')} visible={!open} sent={sent} messages={main} pendingLabel={pendingLabel} />
         </div>
       </div>
       <div id="agent-body" hidden={!open}>
@@ -234,16 +278,37 @@ export function AgentBand() {
           }}
         >
           <div ref={th.ref} className="ask-thread">
-            <Messages messages={snap.main} author="weevboss" working={snap.mainWorking || !!snap.devil?.working} after={(id) => <>{th.after(id)}{chipsOf(id)}</>} />
+            <Messages messages={main} author="weevboss" working={snap.mainWorking || !!snap.devil?.working} pendingLabel={pendingLabel} after={(id) => <>{qa(th.after(id), `${th.a.asking}:${!!th.a.shown}:${th.a.waiting}`)}{chipsOf(id)}</>} />
           </div>
           {snap.mainWorking && <Working author="weevboss" />}
           {snap.devil?.working && <Working author="devil" />}
         </motion.div>
+        {/* Du nouveau en bas pendant qu'on relit plus haut : un « ↓ » flottant y redescend en douceur. */}
+        <AnimatePresence>
+          {open && chat.behind && (
+            <motion.button
+              key="behind"
+              type="button"
+              className="agent-behind"
+              aria-label={t.toEnd}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.16 }}
+              onClick={() => {
+                chat.toEnd()
+                window.setTimeout(() => flash([...(body.current?.querySelectorAll('[data-mid]') ?? [])].at(-1)), 450)
+              }}
+            >
+              <Icon name="arrow" dir="down" />
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Écrire ici n'ouvre pas la conversation : elle s'ouvre à l'envoi, pour lire la réponse. Pendant un branchement,
           le champ pose les questions du parcours, une à la fois (src/ui/setup.tsx). */}
-      {flow ? <SetupComposer /> : <Composer placeholder={t.agentPlaceholder} label={t.agentLabel} onSend={send} onAttach={attach} anyFile voice draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="chevron" dir="right" />} />}
+      {flow ? <SetupComposer /> : <Composer placeholder={t.agentPlaceholder} label={t.agentLabel} onSend={send} onAttach={attach} anyFile voice sayErrors draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="chevron" dir="right" />} />}
     </section>
   )
 }

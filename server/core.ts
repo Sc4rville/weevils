@@ -1,3 +1,4 @@
+import { deliveryContext, OutboxError } from './outbox.ts'
 import { CodexBridge } from './codex-bridge.ts'
 import { preferredTool, providerReady, providerUnavailable } from './provider.ts'
 import { noticeKey } from '../shared/notices.ts'
@@ -1302,14 +1303,14 @@ export class Weevils {
       const t = this.store.get(real)
       throw new Error(t && !this.toSession(t, Date.now()).controllable ? tr(M).unmanaged : tr(M).sessionNotFound)
     }
-    if (s.tool === 'codex' && !this.paneFor(real) && this.codexBridge.can(real)) {
+    if (s.tool === 'codex' && this.codexBridge.can(real)) {
       await this.codexBridge.send(real, text)
       this.foryou?.resolveSession(s)
       return { id: real }
     }
     const external = this.store.get(real)
-    if (!this.paneFor(real) && external?.originator === 'codex-tui' && external.delegationSources?.size) throw new Error(tr(M).unmanaged)
-    if (!s.controllable) throw new Error(tr(M).unmanaged)
+    if (!this.paneFor(real) && external?.originator === 'codex-tui' && external.delegationSources?.size) throw new OutboxError(409, tr(M).unmanaged)
+    if (!s.controllable) throw new OutboxError(409, tr(M).unmanaged)
     const pane = this.paneFor(real)
     if (pane) {
       console.log(`[sessions] ${pane.name} ← message${author ? ` (${author})` : ''} · ${text.replace(/\s+/g, ' ').slice(0, 60)}`)
@@ -1612,7 +1613,7 @@ export class Weevils {
     const managed = this.panes.find((p) => p.name === pane)
     if (managed?.tool === 'codex') {
       const screen = await capture(pane)
-      if (screenDialog(screen)) throw new Error(tr(M).notReceived(screenDialog(screen)!.question))
+      if (screenDialog(screen)) throw new OutboxError(409, tr(M).notReceived(screenDialog(screen)!.question))
       const t = sessionId ? this.store.get(sessionId) : undefined
       const queued = workingOnScreen(screen) || t?.phase === 'working'
       const before = Date.now()
@@ -1634,7 +1635,7 @@ export class Weevils {
     // L'écran montre le texte tel que tapé (signé « [from:x] … ») ; le transcript le garde sans signature (parseSigned).
     const mark = flatScreen(text).slice(0, 48).trim()
     const tmark = flatScreen(parseSigned(text)?.text ?? text).slice(0, 32).trim()
-    const deadline = before + 12000
+    const deadline = before + (deliveryContext.getStore() ? 120_000 : 12_000)
     while (Date.now() < deadline) {
       await sleep(300)
       if (sessionId) {
@@ -1703,14 +1704,21 @@ export class Weevils {
   /** La conversation de weevboss où ira le prochain message (son pane est ouvert ou son transcript connu) ; null : sendMain
    * en ouvrira une nouvelle (Setup.contextFor lui redonne alors la mémoire). */
   bossConversation(): string | null {
-    if (preferredTool() === 'codex') return this.codexBoss()?.id ?? null
+    if (preferredTool() === 'codex' || this.relay?.bossOn()) return this.codexBoss()?.id ?? null
     const id = this.orchestratorId
     return id && (this.orchestratorPane() || this.store.get(id)) ? id : null
   }
 
   /** L'utilisateur parle à weevboss : le message part dans la session Claude de l'orchestrateur (lancée ou reprise au besoin).
    * « brief » : la marche à suivre d'un bouton de branchement, jointe au bloc ⟦weevils …⟧ (jamais affichée). */
-  async sendMain(text: string, brief?: string) {
+  private bossSendLock: Promise<unknown> = Promise.resolve()
+  async sendMain(text: string, brief?: string): Promise<{ id: string }> {
+    const next = this.bossSendLock.catch(() => undefined).then(() => this.sendMainOne(text, brief))
+    this.bossSendLock = next
+    return next
+  }
+
+  private async sendMainOne(text: string, brief?: string) {
     if (!ORCHESTRATOR) throw new Error(tr(M).orchNotHere)
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
     // Claude à sa limite (ou tout près) : weevboss répond par Codex, même dossier, mêmes consignes (server/relay.ts).
@@ -1768,11 +1776,17 @@ export class Weevils {
   private async sendBossCodex(text: string, context = '', unanswered = false): Promise<{ id: string }> {
     this.prepareOrchestrator()
     const boss = this.codexBoss()
+    if (boss?.id && this.codexBridge.can(boss.id)) {
+      await this.codexBridge.send(boss.id, (text + joinContext(context, unanswered ? tr(R).bossUnanswered : '')).trim())
+      this.bump()
+      return { id: boss.id }
+    }
     if (boss?.pane) {
       await this.deliver(boss.pane.name, boss.pane.sessionId, (text + joinContext(context, unanswered ? tr(R).bossUnanswered : '')).trim())
       this.bump()
       return { id: boss.id ?? boss.pane.name }
     }
+    if (boss?.t?.originator === 'codex-tui' && boss.t.delegationSources?.size) throw new OutboxError(409, tr(M).unmanaged)
     const e = this.relay?.episode()
     const t = tr(R)
     const until = e?.until ? t.until(clockOf(e.until, Date.now(), e.tz)) : ''

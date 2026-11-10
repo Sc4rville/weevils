@@ -213,3 +213,24 @@ it('explicit Codex choice starts a real boss without a quota episode and retains
   expect(mux.spawnWv).toHaveBeenCalledTimes(1)
  } finally {vi.unstubAllEnvs()}
 })
+it('uses one existing daemon writer even when several terminal clients show the same boss thread', async () => {
+ const r = fakeRelay({boss:{pane:'wv-orchestrateur-a',sessionId:'cx',since:NOW-MIN}})
+ w.relay = r as never
+ add(transcript({id:'cx',tool:'codex',cwd:ORCH_DIR,originator:'codex-tui',delegationSources:new Map([['brief','boss']])}))
+ w.panes = ['a','b'].map(suffix=>({name:`wv-orchestrateur-${suffix}`,tool:'codex',sessionId:'cx',title:'weevboss',cwd:ORCH_DIR,createdAt:NOW-MIN}))
+ const send = vi.fn(async () => {})
+ ;(w as any).codexBridge = {can:(id:string)=>id==='cx',send}
+ expect(w.bossConversation()).toBe('cx')
+ await Promise.all([w.sendMain('premier'),w.sendMain('second')])
+ expect(send.mock.calls.map((c:any)=>c[0])).toEqual(['cx','cx'])
+ expect(mux.sendText).not.toHaveBeenCalled()
+ expect(mux.spawnWv).not.toHaveBeenCalled()
+ expect(mux.killWv).not.toHaveBeenCalled()
+})
+it('does not spawn a competing boss client when an existing bridge thread is temporarily disconnected', async () => {
+ w.relay = fakeRelay({boss:{sessionId:'cx',since:NOW-MIN}}) as never
+ add(transcript({id:'cx',tool:'codex',cwd:ORCH_DIR,originator:'codex-tui',delegationSources:new Map([['brief','boss']])}))
+ ;(w as any).codexBridge = {can:()=>false}
+ await expect(w.sendMain('réponse')).rejects.toThrow()
+ expect(mux.spawnWv).not.toHaveBeenCalled()
+})

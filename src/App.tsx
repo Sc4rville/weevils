@@ -2,7 +2,7 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { api, useLive } from './api'
-import { Ctx, THEME_COLOR, colorSlots, isTheme, stableOrder, type AppCtx, type Page, type Theme } from './ui/app-context'
+import { Ctx, THEME_COLOR, colorSlots, isTheme, isSettled, setSettledNow, stableOrder, type AppCtx, type Page, type Theme } from './ui/app-context'
 import { AgentBand, FootBand, ProjectBand } from './ui/bands'
 import { spring } from './ui/bits'
 import { H24Rail } from './ui/h24'
@@ -82,8 +82,6 @@ export default function App() {
   const openers = useRef<(Opener | undefined)[]>([])
   /** Le dernier élément touché : sur iPhone, un bouton touché ne prend pas le focus (activeElement reste <body>). */
   const lastTap = useRef<{ el: HTMLElement | null; at: number }>({ el: null, at: 0 })
-  // Doigt posé, défilement, molette : les bandes ne se réordonnent pas sous le doigt (1,2 s de grâce après).
-  const [settled, setSettled] = useState(true)
   /** À faire une fois toutes les pages refermées (focusBoss depuis une page). */
   const afterPop = useRef<(() => void) | null>(null)
 
@@ -146,7 +144,7 @@ export default function App() {
     const set = (v: boolean) => {
       if (still === v) return
       still = v
-      setSettled(v)
+      setSettledNow(v)
     }
     const later = () => {
       clearTimeout(timer)
@@ -234,7 +232,13 @@ export default function App() {
       afterPop.current = null
       // Une réponse de weevboss arrivée pendant que la page le cachait : elle passe avant l'élément d'où l'on venait.
       const boss = w === 0 ? takeBossOnReturn() : null
-      if (then) return void requestAnimationFrame(then)
+      // Le flux est à nouveau celui qu'on voit : les bords libres (le rail) comptent dès maintenant, pas à la fin de la sortie.
+      if (w === 0) delete document.documentElement.dataset.page
+      if (then)
+        return void requestAnimationFrame(() => {
+          then()
+          if (boss && boss.flash !== false) flashBossMessage(boss.mid)
+        })
       if (boss) return void requestAnimationFrame(() => focusBoss(boss))
       if (!o) return
       // Retour au flux : la ligne d'où l'on venait a pu bouger (sa bande remontée, les lignes réordonnées). Elle est remise
@@ -359,8 +363,8 @@ export default function App() {
       if (ss.some((s) => s.status === 'idle')) return 2
       return 3
     }
-    return stableOrder(snap.projects, (p) => p.id, (p) => rank(p.id), (a, b) => b.lastActivityAt - a.lastActivityAt, shownOrder.current, !settled)
-  }, [live.snap, settled])
+    return stableOrder(snap.projects, (p) => p.id, (p) => rank(p.id), (a, b) => b.lastActivityAt - a.lastActivityAt, shownOrder.current, !isSettled())
+  }, [live.snap])
   const orderKey = ordered.map((p) => p.id).join('|')
   useLayoutEffect(() => {
     shownOrder.current = orderKey ? orderKey.split('|') : []
@@ -404,7 +408,6 @@ export default function App() {
     h24Open,
     setH24Open: openH24,
     h24Focus,
-    settled,
     theme,
     setTheme,
     refresh: live.refresh,

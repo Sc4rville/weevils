@@ -31,8 +31,8 @@ If you touch `install.sh` or `server/install.sh`, also run the installer end to 
 
 Tests never touch your real `~/.config`, `~/.claude` or weevils data: they run with a temporary `HOME`. Check a live
 behaviour (a session cut mid-work, a notification) on the throwaway server above, never on the instance someone uses
-every day. If a test session has to run on a real instance anyway, start its brief with `TEST` (in capitals): it shows
-in the app but never notifies and never posts in weevboss's thread. The one test
+every day. If a test session has to run on a real instance anyway, start its brief with `[test]`: it shows in the app
+but never notifies and never posts in weevboss's thread. The one test
 that talks to a live server is opt-in: `WEEVILS_LIVE_TEST=1 npx vitest run test/live`.
 
 ## Layout

@@ -14,7 +14,8 @@ vi.mock('../api', () => ({
       calls.subagent.push(`${id}/${subId}`)
       return calls.detail
     },
-    session: async () => new Promise(() => {}),
+    // Le détail ne vient pas (session distante) : la page s'appuie sur l'instantané ; les bandes d'état s'affichent.
+    session: async () => Promise.reject(new Error('absent')),
     transcribeInfo: async () => ({ enabled: false }),
   },
 }))
@@ -304,9 +305,10 @@ describe('ligne de session : compte d’arrière-plan', () => {
 })
 
 describe('page de session : méta et fil', () => {
-  it('« · 2 en arrière-plan » en gras à côté de l’état, et la bande dans le fil', () => {
+  it('« · 2 en arrière-plan » en gras à côté de l’état, et la bande dans le fil', async () => {
     const s = session([sub('a'), sub('b', { kind: 'shell' })])
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [s])
+    await flush() // la bande d'arrière-plan arrive avec le fil (ici : détail absent)
     const strong = [...host.querySelectorAll('.strong')].map(text)
     expect(strong).toContain('· 2 en arrière-plan')
     expect(rows()).toHaveLength(2)

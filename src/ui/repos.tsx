@@ -28,6 +28,8 @@ export function ReposPage() {
   const [fresh, setFresh] = useState<string | null>(null)
   const pinned = new Set(snap.pinnedRepos)
   const off = snap.setup?.github === false
+  const alive = useRef(true)
+  useEffect(() => () => void (alive.current = false), [])
   // Sans GitHub : weevboss poste son explication dans son fil, sans fermer la page (on peut être juste venu voir, en
   // apprenant le geste) ; au retour sur le flux, son fil s'ouvre sur cette explication (bossOnReturn, App.tsx).
   // Le parcours (les questions) s'ouvre au tap sur « brancher github », en haut de la page.
@@ -36,7 +38,8 @@ export function ReposPage() {
     onOff: () =>
       void api
         .setupAsk('github', device())
-        .then((r) => bossOnReturn({ mid: r.said }))
+        // Seulement si la page est encore là : revenu au flux avant la réponse, elle reste dans l'aperçu, sans rien forcer.
+        .then((r) => alive.current && bossOnReturn({ mid: r.said }))
         .catch(() => undefined),
   })
 

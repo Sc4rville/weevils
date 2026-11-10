@@ -7,6 +7,18 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 're
 //   l'écran, d'où qu'on vienne (une page par-dessus, le bas du flux), et sa prochaine réponse est mise en avant.
 
 const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/** Dernier geste de défilement de l'utilisateur (doigt qui glisse, molette, touches) : un défilement décidé par l'app ne
+ * vient jamais contrarier un défilement qu'il est en train de faire. */
+let scrolledAt = 0
+const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '])
+if (typeof window !== 'undefined') {
+  const mark = () => void (scrolledAt = Date.now())
+  window.addEventListener('touchmove', mark, { capture: true, passive: true })
+  window.addEventListener('wheel', mark, { capture: true, passive: true })
+  window.addEventListener('keydown', (e) => SCROLL_KEYS.has(e.key) && mark(), { capture: true, passive: true })
+}
+const userScrolling = (since = Date.now() - 700) => scrolledAt > since
 const behavior = (): ScrollBehavior => (reduced() ? 'auto' : 'smooth')
 
 /**
@@ -19,7 +31,8 @@ const behavior = (): ScrollBehavior => (reduced() ? 'auto' : 'smooth')
  * - `hold` : suivi suspendu (un mot sélectionné et sa réponse sous un message : on ne les pousse pas hors de l'écran).
  * - Un tap dans le fil qui déplie quelque chose (« lire tout », code, étapes) : le bloc s'ouvre vers le bas, on ne le
  *   repousse pas vers le haut pendant qu'il se déplie.
- * Renvoie `reading` (il relit plus haut), `behind` (état React : du nouveau est arrivé en bas pendant qu'il relisait)
+ * Renvoie `reading` (il relit plus haut), `behind` (état React : du nouveau est arrivé en bas pendant qu'il relisait
+ * ou qu'une sélection tenait le fil)
  * et `toEnd()` (redescendre en douceur, ex. après un envoi : un glissé, jamais un saut).
  */
 export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick = 80, grow?: unknown, hold = false) {
@@ -33,7 +46,46 @@ export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick
     behindRef.current = v
     setBehind(v)
   }
-  const user = useRef({ touching: false, until: 0, tapAt: 0, glide: 0 })
+  const user = useRef({ touching: false, until: 0, tapAt: 0, gliding: false, stopGlide: () => undefined as void })
+  /** Un glissé vers le bas, image par image : la cible (le bas) est relue à chaque image, donc ce qui arrive pendant le
+   * glissé le prolonge au lieu de le relancer (un scrollTo doux relancé à chaque image n'avance presque pas, puis saute). */
+  const glide = () => {
+    const el = ref.current
+    const u = user.current
+    if (!el) return
+    if (reduced()) {
+      el.scrollTop = el.scrollHeight
+      return
+    }
+    if (u.gliding) return
+    u.gliding = true
+    const end = Date.now() + 1200
+    let stop = false
+    u.stopGlide = () => void (stop = true)
+    const tick = () => {
+      const target = el.scrollHeight - el.clientHeight
+      const d = target - el.scrollTop
+      if (stop || !el.isConnected || Math.abs(d) < 1 || Date.now() > end) {
+        if (!stop && el.isConnected) el.scrollTop = target
+        u.gliding = false
+        return
+      }
+      el.scrollTop += Math.sign(d) * Math.max(2, Math.abs(d) * 0.2)
+      requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }
+  const far = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight > stick
+  // La sélection relâchée : ce qui est arrivé pendant qu'elle tenait le fil est rejoint en glissant, pas d'un saut.
+  const wasHeld = useRef(hold)
+  useEffect(() => {
+    const el = ref.current
+    if (wasHeld.current && !hold && el && open && !reading.current && far(el)) {
+      setB(false)
+      glide()
+    }
+    wasHeld.current = hold
+  }, [hold]) // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const el = ref.current
     if (!el || !open) return
@@ -46,21 +98,27 @@ export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick
     if (!el) return
     const u = user.current
     const mark = (ms: number) => () => (u.until = Date.now() + ms)
-    const down = () => (u.touching = true)
+    const down = () => {
+      u.touching = true
+      u.stopGlide()
+    }
     const up = () => {
       u.touching = false
       u.until = Date.now() + 1200 // l'élan du doigt continue de défiler
     }
-    const wheel = mark(400)
+    const wheel = () => {
+      u.stopGlide()
+      mark(400)()
+    }
     const key = mark(600)
     const onScroll = () => {
-      const far = el.scrollHeight - el.scrollTop - el.clientHeight > stick
-      if (!far && reading.current) {
+      const isFar = far(el)
+      if (!isFar) {
         reading.current = false
         setB(false)
       }
-      if (!u.touching && Date.now() > u.until) return // notre propre défilement, ou le contenu qui bouge
-      reading.current = far
+      if (u.gliding || (!u.touching && Date.now() > u.until)) return // notre propre défilement, ou le contenu qui bouge
+      reading.current = isFar
     }
     // Un tap sur un bouton du fil (déplier, « lire tout », étapes, code) : ce qui s'ouvre s'ouvre vers le bas.
     const tap = (e: Event) => {
@@ -70,12 +128,11 @@ export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick
     const pin = (fromSize: boolean) => {
       if (!el.isConnected || el.clientHeight === 0) return
       if (reading.current || held.current) {
-        if (reading.current && fromSize && el.scrollHeight - el.scrollTop - el.clientHeight > stick) setB(true)
+        if (fromSize && far(el)) setB(true)
         return
       }
-      if (fromSize && Date.now() - u.tapAt < 900) return
-      if (Date.now() < u.glide) el.scrollTo({ top: el.scrollHeight, behavior: behavior() })
-      else el.scrollTop = el.scrollHeight
+      if (u.gliding || (fromSize && Date.now() - u.tapAt < 900)) return
+      el.scrollTop = el.scrollHeight
     }
     // Le contenu grandit, ou le fil raccourcit (clavier, panneau dessous) : on suit, à chaque changement de taille.
     const ro = new ResizeObserver(() => pin(true))
@@ -91,6 +148,7 @@ export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick
     })
     mo.observe(el, { childList: true })
     el.addEventListener('touchstart', down, { passive: true })
+    el.addEventListener('touchmove', down, { passive: true })
     el.addEventListener('touchend', up, { passive: true })
     el.addEventListener('touchcancel', up, { passive: true })
     el.addEventListener('pointerdown', down, { passive: true })
@@ -103,6 +161,7 @@ export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick
       ro.disconnect()
       mo.disconnect()
       el.removeEventListener('touchstart', down)
+      el.removeEventListener('touchmove', down)
       el.removeEventListener('touchend', up)
       el.removeEventListener('touchcancel', up)
       el.removeEventListener('pointerdown', down)
@@ -118,13 +177,12 @@ export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick
   useEffect(() => {
     const el = ref.current
     if (!el || !open) return
-    if (reading.current) {
-      if (grow !== undefined && el.scrollHeight - el.scrollTop - el.clientHeight > stick) setB(true)
+    if (reading.current || held.current) {
+      if (grow !== undefined && far(el)) setB(true)
       return
     }
-    if (held.current) return
-    if (Date.now() < user.current.glide) el.scrollTo({ top: el.scrollHeight, behavior: behavior() })
-    else el.scrollTop = el.scrollHeight
+    if (user.current.gliding) return
+    el.scrollTop = el.scrollHeight
   }, [ref, open, grow]) // eslint-disable-line react-hooks/exhaustive-deps
   return {
     reading,
@@ -132,11 +190,9 @@ export function useFollow(ref: RefObject<HTMLElement | null>, open = true, stick
     /** Redescendre en douceur et reprendre le suivi (après un envoi : sa réponse arrive en bas). Pendant le glissé,
      * ce qui arrive prolonge le même mouvement doux au lieu de sauter. */
     toEnd: () => {
-      const el = ref.current
       reading.current = false
       setB(false)
-      user.current.glide = Date.now() + 700
-      requestAnimationFrame(() => el?.scrollTo({ top: el.scrollHeight, behavior: behavior() }))
+      glide()
     },
   }
 }
@@ -179,12 +235,14 @@ function inView(el: Element) {
 export function keepInPlace(el: Element | null | undefined, ms = 650): () => void {
   if (!el) return () => undefined
   const top0 = el.getBoundingClientRect().top
-  const end = Date.now() + ms
+  const start = Date.now()
+  const end = start + ms
   let stop = false
   const off = () => (stop = true)
   window.addEventListener('touchstart', off, { once: true, passive: true })
   window.addEventListener('wheel', off, { once: true, passive: true })
   const fix = () => {
+    if (userScrolling(start)) stop = true
     if (stop || !el.isConnected) return
     const d = el.getBoundingClientRect().top - top0
     if (Math.abs(d) >= 1) window.scrollBy(0, d)
@@ -207,7 +265,8 @@ export function keepInPlace(el: Element | null | undefined, ms = 650): () => voi
  */
 export function reveal(el: Element | null | undefined, opts: { block?: ScrollLogicalPosition; flash?: boolean } = {}) {
   if (!el) return
-  if (!inView(el)) el.scrollIntoView({ behavior: behavior(), block: opts.block ?? 'nearest' })
+  // Il défile lui-même en ce moment (un reveal différé, après une animation) : on ne l'en détourne pas.
+  if (!inView(el) && !userScrolling()) el.scrollIntoView({ behavior: behavior(), block: opts.block ?? 'nearest' })
   if (opts.flash !== false) flash(el)
 }
 
@@ -232,13 +291,18 @@ export interface FocusBoss {
 export const focusBoss = (o: FocusBoss = {}) => window.dispatchEvent(new CustomEvent<FocusBoss>(FOCUS_BOSS, { detail: o }))
 
 /** Une réponse de weevboss arrivée pendant qu'une page le cachait : elle est mise sous les yeux au retour (App.tsx). */
-let onReturn: FocusBoss | null = null
-export const bossOnReturn = (o: FocusBoss = {}) => void (onReturn = o)
+let onReturn: { o: FocusBoss; at: number } | null = null
+export const bossOnReturn = (o: FocusBoss = {}) => void (onReturn = { o, at: Date.now() })
+/** Pris au retour sur le flux ; oublié au bout de 2 min (un retour bien plus tard n'a plus rien à voir). */
 export const takeBossOnReturn = () => {
-  const o = onReturn
+  const r = onReturn
   onReturn = null
-  return o
+  return r && Date.now() - r.at < 120_000 ? r.o : null
 }
+
+/** focusBoss, ou au retour sur le flux si une page est ouverte maintenant : une réponse lente (installation, parcours)
+ * ne ferme jamais une page que l'utilisateur a ouverte entre-temps. */
+export const focusBossSoon = (o: FocusBoss = {}) => (document.documentElement.dataset.page ? bossOnReturn(o) : focusBoss(o))
 
 /** Attend qu'une condition soit vraie (image par image), au plus `ms`, puis appelle `then` (même si elle ne l'est pas). */
 export function when(ok: () => boolean, then: () => void, ms = 800) {

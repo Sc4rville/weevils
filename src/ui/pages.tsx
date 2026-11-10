@@ -176,33 +176,8 @@ function SessionPage({ id }: { id: string }) {
   const hold = th.hold
   const follow = useFollow(body, messages.length > 0, 80, `${messages.length}:${last?.id}:${last?.text.length}:${s?.status}`, hold)
   const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
-  // Suivi suspendu (hold) sans relire plus haut : ce qui arrive en bas pendant ce temps est signalé par le même bouton
-  // (useFollow ne le signale que quand on relit), et le suivi reprend en douceur au relâché au lieu de sauter au prochain message.
-  const [heldNew, setHeldNew] = useState(false)
-  const far = () => {
-    const el = body.current
-    return !!el && el.scrollHeight - el.scrollTop - el.clientHeight > 80
-  }
-  useEffect(() => {
-    if (hold && !follow.reading.current && far()) setHeldNew(true)
-  }, [messages.length, last?.id, last?.text.length, s?.status]) // eslint-disable-line react-hooks/exhaustive-deps
-  const wasHeld = useRef(hold)
-  useEffect(() => {
-    if (wasHeld.current && !hold && !follow.reading.current && far()) follow.toEnd()
-    wasHeld.current = hold
-    if (!hold) setHeldNew(false)
-  }, [hold]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const el = body.current
-    if (!heldNew || !el) return
-    const near = () => !far() && setHeldNew(false)
-    el.addEventListener('scroll', near, { passive: true })
-    return () => el.removeEventListener('scroll', near)
-  }, [heldNew]) // eslint-disable-line react-hooks/exhaustive-deps
-  const toEnd = () => {
-    setHeldNew(false)
-    follow.toEnd()
-  }
+  // Ce qui arrive pendant qu'une sélection tient le fil est signalé (behind) et rejoint en glissant au relâché (useFollow).
+  const toEnd = follow.toEnd
 
   // Réglages ouverts (en bas du fil) : amenés sous les yeux une fois dépliés, même si on relisait plus haut.
   useEffect(() => {
@@ -281,7 +256,7 @@ function SessionPage({ id }: { id: string }) {
         </>
       }
       dock={th.voice}
-      float={<FollowDown show={follow.behind || heldNew} urgent={s.status === 'needs_user'} body={body} toEnd={toEnd} />}
+      float={<FollowDown show={follow.behind} urgent={s.status === 'needs_user'} body={body} toEnd={toEnd} />}
       bodyRef={body}
       side={preview.open ? <Preview url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false, full: false })} full={preview.full} onFull={(full) => setPreview({ full })} /> : undefined}
       foot={
@@ -307,36 +282,42 @@ function SessionPage({ id }: { id: string }) {
         )}
       </div>
 
-      <Background session={s} />
+      {/* Les bandes d'état (question, travail, coupure) arrivent avec le fil : posées avant lui sur une page vide, elles
+          seraient ensuite repoussées d'un coup vers le bas par les messages (ouverture depuis une notification). */}
+      {(detail || missing) && (
+        <>
+        <Background session={s} />
 
-      {s.status === 'needs_user' && (
-        <div className="msg band tone ask">
-          <div className="in">
-            <span className="who">! {t.asks(s.tool)}</span>
-            <div className="text">{s.attention ?? t.waitingForYou}</div>
-            {s.hasScreen && <Keys id={s.id} onError={setErr} />}
-          </div>
-        </div>
-      )}
-
-      {s.status === 'working' && <Working author={s.tool} since={s.workStartedAt} />}
-
-      {s.status === 'interrupted' && (
-        <div className="msg band cut-band">
-          <div className="in">
-            <span className="who">
-              × {st.label}
-              {s.interrupted ? ` · ${t.cutWhy(s.interrupted.reason)}` : ''}
-            </span>
-            {s.interrupted?.detail && <div className="text">{s.interrupted.detail}</div>}
-            <div className="cut-actions">
-              <ResumeButton session={s} stay onError={setErr} />
-              <button className="link" onClick={() => void api.dismiss(s.id).catch((e) => setErr((e as Error).message))}>
-                {t.dismiss}
-              </button>
+        {s.status === 'needs_user' && (
+          <div className="msg band tone ask">
+            <div className="in">
+              <span className="who">! {t.asks(s.tool)}</span>
+              <div className="text">{s.attention ?? t.waitingForYou}</div>
+              {s.hasScreen && <Keys id={s.id} onError={setErr} />}
             </div>
           </div>
-        </div>
+        )}
+
+        {s.status === 'working' && <Working author={s.tool} since={s.workStartedAt} />}
+
+        {s.status === 'interrupted' && (
+          <div className="msg band cut-band">
+            <div className="in">
+              <span className="who">
+                × {st.label}
+                {s.interrupted ? ` · ${t.cutWhy(s.interrupted.reason)}` : ''}
+              </span>
+              {s.interrupted?.detail && <div className="text">{s.interrupted.detail}</div>}
+              <div className="cut-actions">
+                <ResumeButton session={s} stay onError={setErr} />
+                <button className="link" onClick={() => void api.dismiss(s.id).catch((e) => setErr((e as Error).message))}>
+                  {t.dismiss}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       <Collapse open={showSettings} id="session-settings">

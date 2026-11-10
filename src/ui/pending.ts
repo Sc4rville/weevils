@@ -6,6 +6,9 @@ export interface Pending extends Message {
   typed: string
   /** Dernier message réel connu à l'envoi : seuls ceux d'après peuvent être ce message (pas d'horloge à comparer). */
   after?: string
+  /** Premier message d'une session neuve (seedPending) : aucun message plus ancien ne peut s'y tromper, donc pas
+   * d'horloge comparée, et le serveur peut l'avoir précédé d'un contexte (conversation reprise) : il suffit qu'il y figure. */
+  seed?: boolean
 }
 
 const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
@@ -28,8 +31,12 @@ export function mergePending(real: Message[], pending: Pending[]): Message[] {
     for (let i = from; i < real.length; i++) {
       const m = real[i]
       if (used.has(i) || (m.role !== 'user' && m.role !== 'orchestrator')) continue
-      if (from === 0 && m.at < p.at - SLACK_MS) continue // un « ok » plus ancien n'efface pas la bulle
-      if (!norm(m.text).startsWith(typed)) continue
+      if (p.seed) {
+        if (m.role !== 'user' || !norm(m.text).includes(typed)) continue
+      } else {
+        if (from === 0 && m.at < p.at - SLACK_MS) continue // un « ok » plus ancien n'efface pas la bulle
+        if (!norm(m.text).startsWith(typed)) continue
+      }
       used.add(i)
       return false
     }
@@ -43,7 +50,7 @@ export function mergePending(real: Message[], pending: Pending[]): Message[] {
 const seeds = new Map<string, Pending>()
 export function seedPending(id: string, text: string) {
   const at = Date.now()
-  seeds.set(id, { id: `pending-${at}`, role: 'user', text, at, typed: text })
+  seeds.set(id, { id: `pending-${at}`, role: 'user', text, at, typed: text, seed: true })
 }
 /** Lu à l'ouverture (sans le retirer : un rendu peut être rejoué) ; dropSeed une fois la page montée. */
 export const peekSeed = (id: string): Pending[] => {

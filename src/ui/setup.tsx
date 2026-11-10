@@ -7,7 +7,7 @@ import M from '../i18n/setup'
 import { useApp } from './app-context'
 import { copyText } from './copy'
 import { Icon } from './icons'
-import { flash, focusBoss } from './follow'
+import { flash, focusBoss, focusBossSoon } from './follow'
 
 // Accueil et branchements, côté app (contrat : shared/setup.ts, serveur : server/setup.ts).
 // - useWelcome : au premier lancement (intro terminée), weevilsd écrit l'accueil de weevboss dans son fil, adapté à
@@ -71,7 +71,7 @@ export async function startSetup(brick: Brick) {
   focusBoss({ flash: false })
   const r = await api.setupAsk(brick, device())
   // La réponse (nouvelle, ou l'explication déjà là si on relance) est mise en avant, une fois.
-  focusBoss({ mid: r.said })
+  focusBossSoon({ mid: r.said })
   if (r.flow && FIELDS[brick]) setFlow({ brick, step: 0, values: {} })
 }
 /** Pareil, sans attendre ni signaler d'erreur (bulles, diablotin). */
@@ -224,7 +224,7 @@ export function SetupComposer() {
       const r = (await api.setupApply(f.brick, values)) as ApplyResult
       setFlow(null)
       // Le résultat (ou le même message, déjà là, d'un nouvel essai) est mis en avant dans le fil.
-      focusBoss({ mid: r.said })
+      focusBossSoon({ mid: r.said })
     } catch (e) {
       // Refusé (valeur, serveur injoignable) : on reste sur la question, la réponse dans le champ, et on dit pourquoi.
       setErr((e as Error).message || t.failed)

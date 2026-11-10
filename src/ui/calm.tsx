@@ -5,7 +5,7 @@ import { api } from '../api'
 import { useT } from '../i18n'
 import { useFollow } from './follow'
 import M from '../i18n/calm'
-import { stableOrder, useApp } from './app-context'
+import { isSettled, stableOrder, useApp } from './app-context'
 import { Collapse, Composer, Messages, Working, type Attachment } from './bits'
 import { ago, plain, status } from './format'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
@@ -53,7 +53,7 @@ const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
 export function CalmGrid() {
   const t = useT(M)
-  const { snap, push, home, colors, now, settled = true } = useApp()
+  const { snap, push, home, colors, now } = useApp()
   const page = useRef<HTMLDivElement>(null)
   usePageChrome('calm', page)
   const pinch = usePinch(home)
@@ -62,7 +62,7 @@ export function CalmGrid() {
   // Une case ne change pas de place parce qu'une autre conversation écrit : le rang d'abord, puis l'ordre déjà affiché ;
   // seule une nouvelle se place par activité. Rien ne bouge sous le doigt ; un changement de rang glisse (layout).
   const shown = useRef<string[]>([])
-  const sessions = useMemo(() => stableOrder(snap.sessions, (s) => s.id, rank, (a, b) => b.lastActivityAt - a.lastActivityAt, shown.current, !settled), [snap.sessions, settled])
+  const sessions = useMemo(() => stableOrder(snap.sessions, (s) => s.id, rank, (a, b) => b.lastActivityAt - a.lastActivityAt, shown.current, !isSettled()), [snap.sessions])
   const order = sessions.map((s) => s.id).join('|')
   useLayoutEffect(() => {
     shown.current = order ? order.split('|') : []

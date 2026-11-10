@@ -141,15 +141,21 @@ describe('weevboss automatic messages are never posted twice', async () => {
     startMail: () => undefined,
     handoff: async () => undefined,
   })
-  it('the same text again (a detection that repeats, a flow started twice) returns the message already there', () => {
+  it('a brick explanation said again (a flow started twice) returns the message already there', () => {
     const before = setup.messages().length
-    const a = setup.say('The session “x” was cut mid-work: process stopped.')
-    const b = setup.say('The session “x” was cut mid-work: process stopped.')
+    const a = setup.say('Pick your host below.', true)
+    const b = setup.say('Pick your host below.', true)
     expect(b).toBe(a)
     expect(setup.lastSaid).toBe(a)
     expect(setup.messages().length).toBe(before + 1)
     // Still a refresh: the app brings the existing message back into view.
     expect(bumps).toBeGreaterThan(0)
+  })
+  it('a new event with the same text (a second cut after a resume, a retry that fails the same way) is posted again', () => {
+    const before = setup.messages().length
+    setup.say('The session “x” was cut mid-work: process stopped.')
+    setup.say('The session “x” was cut mid-work: process stopped.')
+    expect(setup.messages().length).toBe(before + 2)
   })
   it('a different text, or the same one long after, is posted', () => {
     const before = setup.messages().length
@@ -180,11 +186,14 @@ describe('test sessions never reach the real weevboss thread', async () => {
   const { isTestBrief } = await import('./core.ts')
   it('a brief starting with TEST (after an optional signature) is a test', () => {
     expect(isTestBrief('[from:weevboss] TEST COUPURE (à ignorer) : lance sleep 75')).toBe(true)
-    expect(isTestBrief('TEST: cut detection')).toBe(true)
+    expect(isTestBrief('[test] cut detection')).toBe(true)
   })
   it('an ordinary brief is not, even about tests', () => {
     expect(isTestBrief('Test du paiement en staging')).toBe(false)
     expect(isTestBrief('[from:weevboss] ajoute des tests e2e')).toBe(false)
     expect(isTestBrief(undefined)).toBe(false)
+    // Tapé à la main dans un terminal pour vérifier que Claude répond : une vraie session, qui prévient.
+    expect(isTestBrief('TEST')).toBe(false)
+    expect(isTestBrief('[from:weevboss] TESTÉ hier, à reprendre')).toBe(false)
   })
 })

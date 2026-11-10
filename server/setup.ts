@@ -537,9 +537,6 @@ export class Setup {
   private lastAsk: { brick: Brick; id: string; text: string } | null = null
   /** Le dernier message écrit (ou retrouvé) au nom de weevboss : l'app l'amène sous les yeux après une puce. */
   lastSaid: string | null = null
-  /** > 0 : une réponse de l'utilisateur est en cours de traitement (parcours, message sans Claude) : tout ce qui est dit
-   * est un nouveau résultat, posté même si un texte identique l'a déjà été (un nouvel essai qui échoue pareil). */
-  private fresh = 0
   /** « claude auth login » en train de démarrer : deux demandes coup sur coup partagent le même (une seule adresse). */
   private loginStarting: Promise<string> | null = null
 
@@ -577,12 +574,13 @@ export class Setup {
   messages = () => this.p.log.filter((m) => !m.demo || Date.now() - m.at < 20 * 60_000)
   welcomed = () => !!this.p.welcomed
 
-  /** Le seul passage des messages automatiques de weevboss (parcours, confirmations, coupures) et de leurs réponses :
-   * un texte identique déjà posté il y a peu n'est pas répété. On renvoie l'id du message existant, que l'app ramène
-   * sous les yeux (un second tap sur une puce, une détection qui se répète). Jamais pour ce que dit l'utilisateur, ni
-   * pour la réponse à ce qu'il vient de dire (fresh) : un nouvel essai a sa bulle et son résultat, en bas du fil. */
-  private add(role: 'user' | 'assistant', text: string, id = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`) {
-    const same = role === 'user' || this.fresh ? undefined : this.p.log.slice(-12).findLast((m) => m.role === role && !m.demo && m.text === text && Date.now() - m.at < REPEAT_MS)
+  /** Le seul passage des messages automatiques de weevboss (parcours, confirmations, coupures) et de leurs réponses.
+   * `once` (les explications d'une brique, ask()) : un texte identique posté il y a peu n'est pas répété ; on renvoie l'id
+   * du message existant, que l'app ramène sous les yeux (une brique relancée). Jamais pour le reste : un nouvel essai, une
+   * nouvelle coupure, ce que dit l'utilisateur ont leur bulle, en bas du fil (les détections ont leur propre garde). */
+  private add(role: 'user' | 'assistant', text: string, once = false) {
+    const id = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    const same = once ? this.p.log.slice(-12).findLast((m) => m.role === role && !m.demo && m.text === text && Date.now() - m.at < REPEAT_MS) : undefined
     if (same) {
       this.deps.bump()
       return (this.lastSaid = same.id)
@@ -593,7 +591,7 @@ export class Setup {
     this.deps.bump()
     return (this.lastSaid = id)
   }
-  say = (text: string) => this.add('assistant', text)
+  say = (text: string, once = false) => this.add('assistant', text, once)
   userSays = (text: string) => this.add('user', text)
 
   /** Un message de démo (premiers pas, server/tour.ts) : marqué démo dans l'app, jamais envoyé à weevboss. */
@@ -812,13 +810,13 @@ export class Setup {
     // Un second tap sur la même puce : l'explication est déjà là, juste au-dessus.
     const post = (text: string) => {
       const last = this.lastAsk
-      // (Même si le texte a un peu changé : le statut de la machine n'est plus répété, par exemple.) L'app le remet en avant.
+      // (La machine : même si le texte a changé, son statut n'étant plus répété.) L'app remet l'explication en avant.
       const tail = this.p.log.at(-1)
-      if (last && last.brick === brick && tail?.id === last.id && Date.now() - tail.at < REPEAT_MS) {
+      if (last && last.brick === brick && (last.text === text || brick === 'machine') && tail?.id === last.id && Date.now() - tail.at < REPEAT_MS) {
         this.lastSaid = last.id
         return this.deps.bump()
       }
-      this.lastAsk = { brick, id: this.say(text), text }
+      this.lastAsk = { brick, id: this.say(text, true), text }
     }
     switch (brick) {
       case 'phone':
@@ -914,12 +912,7 @@ export class Setup {
    * branchement (« qu'est-ce que je dois installer ? », « comment je branche github ? ») à partir de l'état réel. Le
    * reste reçoit la marche à suivre pour connecter Claude Code. */
   async offline(text: string) {
-    this.fresh++
-    try {
-      await this.offlineReply(text)
-    } finally {
-      this.fresh--
-    }
+    await this.offlineReply(text)
   }
 
   private async offlineReply(text: string) {
@@ -976,7 +969,6 @@ export class Setup {
         .join(' · ') || '—',
     )
     const before = this.p.log.length
-    this.fresh++
     try {
       if (brick === 'devil') await this.applyDevil(v)
       else if (brick === 'voice') await this.applyVoice(v)
@@ -987,7 +979,6 @@ export class Setup {
       else if (brick === 'machine') await this.applyMachine(v)
       else if (brick === 'reach') await this.applyReach(v)
     } finally {
-      this.fresh--
       // Branché (la réponse ne repropose pas la puce) : les anciens boutons de cette brique disparaissent du fil.
       const reply = this.p.log.slice(before).at(-1)
       if (reply && !reply.text.includes(`[[setup:${brick}]]`)) {

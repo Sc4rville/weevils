@@ -48,9 +48,6 @@ export interface AppCtx {
   setH24Open: (open: boolean, focus?: string) => void
   /** L'activité à montrer à l'ouverture du tiroir 24/7. */
   h24Focus?: string | null
-  /** Faux tant qu'un doigt est posé ou que ça défile (et un instant après) : les listes vivantes ne se réordonnent pas
-   * sous le doigt, l'ordre en attente s'applique ensuite. */
-  settled?: boolean
   theme: Theme
   setTheme: (t: Theme) => void
   refresh: () => void
@@ -114,3 +111,9 @@ export function colorSlots(ids: string[]): Record<string, string> {
   out.__foot = `p${(last + 5) % SLOTS}`
   return out
 }
+
+/** Doigt posé, défilement, molette (App.tsx) : rien ne se réordonne sous le doigt. Lu au rendu, sans abonnement : basculer
+ * à chaque geste ne re-rend pas toute l'app ; l'ordre en attente s'applique au prochain instantané du serveur. */
+let settledNow = true
+export const isSettled = () => settledNow
+export const setSettledNow = (v: boolean) => void (settledNow = v)

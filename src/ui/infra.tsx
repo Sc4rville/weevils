@@ -166,7 +166,7 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
             </div>
           </div>
         )}
-        {x && f && (
+        {x && f && !(stale && err) && (
           <div className={`mx-detail ${stale ? 'stale' : ''}`} aria-busy={stale}>
             <div className="in label">{t.machineLabel}</div>
             <Kv k={f.provider ? t.host : t.hardware} v={f.provider ?? f.hardware} />

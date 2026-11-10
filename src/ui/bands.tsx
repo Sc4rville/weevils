@@ -7,7 +7,7 @@ import M from '../i18n/bands'
 import D from '../i18n/devil'
 import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
-import { THEMES, stableOrder, useApp } from './app-context'
+import { THEMES, isSettled, stableOrder, useApp } from './app-context'
 import { ensurePush } from '../push'
 import { VoiceLogo } from './voice'
 import { useThreadAsk } from './askthread'
@@ -68,6 +68,19 @@ function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () =>
   useEffect(() => {
     if (sent) follow.toEnd()
   }, [sent]) // eslint-disable-line react-hooks/exhaustive-deps
+  // La bulle « envoi… » remplacée par le vrai message : l'une s'efface sans animation et l'autre prend sa place sans entrer,
+  // sinon la sortie de l'une (retirée du flux, popLayout) se dessine par-dessus la réponse qui arrive.
+  const isPending = (m: Message) => m.id.startsWith('pending-')
+  const prev = useRef<{ ids: Set<string>; pending: Message[] }>({ ids: new Set(), pending: [] })
+  const taken = new Set(
+    items
+      .filter((m) => m.role === 'user' && !isPending(m) && !prev.current.ids.has(m.id))
+      .filter((m) => prev.current.pending.some((p) => !items.includes(p) && userText(m.text).startsWith(userText(p.text).slice(0, 40))))
+      .map((m) => m.id),
+  )
+  useEffect(() => {
+    prev.current = { ids: new Set(items.map((m) => m.id)), pending: items.filter(isPending) }
+  })
   return (
     <motion.div
       ref={box}
@@ -94,9 +107,9 @@ function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () =>
                 layout="position"
                 className={`peek-item ${m.role === 'user' ? '' : tone ? tone.className.replace('tone ', '') : m.devil ? 'devil' : 'base'} ${m.demo ? 'demo' : ''} ${isLast ? 'last' : ''}`}
                 style={tone?.style}
-                initial={{ opacity: 0, y: 18 }}
+                initial={taken.has(m.id) ? false : { opacity: 0, y: 18 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -18 }}
+                exit={isPending(m) ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, y: -18 }}
                 transition={soft}
               >
                 <div className="in">
@@ -345,7 +358,7 @@ const urgent = (s: { status: string }) => (s.status === 'needs_user' || s.status
 
 export function ProjectBand({ project }: { project: Project }) {
   const t = useT(M)
-  const { snap, expanded, setExpanded, push, now, colors, setH24Open, instant, settled = true } = useApp()
+  const { snap, expanded, setExpanded, push, now, colors, setH24Open, instant } = useApp()
   const tx = instant ? INSTANT : spring
   const mode = expanded === null ? 'normal' : expanded === project.id ? 'open' : 'mini'
   // Les « terminées » : ouvertes ou fermées à la main, pour la vue en cours (un changement de vue rend la règle par défaut).
@@ -354,7 +367,7 @@ export function ProjectBand({ project }: { project: Project }) {
   // Une ligne ne change pas de place parce qu'une autre session écrit (le serveur les range par activité) : ce qui
   // t'attend en tête, puis l'ordre déjà affiché, une nouvelle session en tête des siennes. Rien ne bouge sous le doigt.
   const shownRows = useRef<string[]>([])
-  const active = stableOrder(sessions.filter((s) => s.status !== 'done'), (s) => s.id, urgent, (a, b) => b.openedAt - a.openedAt, shownRows.current, !settled)
+  const active = stableOrder(sessions.filter((s) => s.status !== 'done'), (s) => s.id, urgent, (a, b) => b.openedAt - a.openedAt, shownRows.current, !isSettled())
   const rowKey = active.map((s) => s.id).join('|')
   useLayoutEffect(() => {
     shownRows.current = rowKey ? rowKey.split('|') : []

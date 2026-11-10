@@ -12,7 +12,8 @@ vi.mock('../api', () => ({
   api: {
     resume: async (id: string) => (calls.resume.push(id), { id }),
     dismiss: async (id: string) => (calls.dismiss.push(id), { ok: true }),
-    session: async () => new Promise(() => {}),
+    // Le détail ne vient pas (session distante) : la page s'appuie sur l'instantané ; les bandes d'état s'affichent.
+    session: async () => Promise.reject(new Error('absent')),
     transcribeInfo: async () => ({ enabled: false }),
   },
 }))
@@ -159,6 +160,7 @@ describe('session coupée en plein travail', () => {
 
   it('fil de la session : bande d’alerte avec la raison, « reprendre » sur place et « laisser »', async () => {
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ interrupted: { at: NOW - MIN, reason: 'quota', detail: 'Claude usage limit reached' } })])
+    await flush() // les bandes d'état arrivent avec le fil (ici : détail absent)
     const band = host.querySelector('.cut-band')!
     expect(text(band.querySelector('.who'))).toBe('× interrompue · limite d’usage atteinte')
     expect(text(band.querySelector('.text'))).toBe('Claude usage limit reached')

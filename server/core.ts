@@ -939,16 +939,16 @@ export class Weevils {
   snapshot(): Snapshot {
     if (this.snap) return this.snap
     const now = Date.now()
-    const remote = this.remotes.filter((r) => r.online && r.snap)
-    const sessions = [...this.sessions(now), ...remote.flatMap((r) => r.snap!.sessions)].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    const remote = this.remotes.filter((r) => r.online && r.snap && r.snap.machines[0]?.id !== MACHINE.id)
+    const sessions = [...new Map([...remote.flatMap((r) => r.snap!.sessions.filter((s) => s.machineId === r.snap!.machines[0]?.id)), ...this.sessions(now)].map((s) => [s.id, s])).values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
     this.snap = {
       version: this.version,
       now,
-      machines: [
+      machines: [...new Map([
         { ...MACHINE, online: true },
         // Une machine distante : seulement ce qui se calcule (nom, en ligne), jamais sa description.
-        ...this.remotes.map((r) => ({ id: r.snap?.machines[0]?.id ?? r.id, name: r.snap?.machines[0]?.name ?? r.id, online: r.online })),
-      ],
+        ...this.remotes.filter((r) => r.snap?.machines[0]?.id !== MACHINE.id).map((r) => ({ id: r.snap?.machines[0]?.id ?? r.id, name: r.snap?.machines[0]?.name ?? r.id, online: r.online })),
+      ].map((m) => [m.id, m])).values()],
       projects: this.withConversationProjects(this.projects(sessions, remote.flatMap((r) => r.snap!.projects)), now),
       sessions,
       h24: [...this.h24, ...remote.flatMap((r) => r.snap!.h24)],

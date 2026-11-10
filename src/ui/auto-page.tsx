@@ -445,7 +445,7 @@ function Produced({ id, d, machine, short: brief = false }: { id: string; d: Aut
         </Line>
       )}
       {d.files.map((file) => (
-        <Line key={file.path} ch="·" meta={file.status === 'D' ? '−' : `+${file.add} −${file.del}`} onClick={file.status === 'D' ? undefined : () => push({ kind: 'fsfile', machine: on, path: file.abs })} go={file.status === 'D' ? null : '→'}>
+        <Line key={file.path} ch="·" meta={file.status === 'D' ? '−' : file.add || file.del ? `+${file.add} −${file.del}` : undefined} onClick={file.status === 'D' ? undefined : () => push({ kind: 'fsfile', machine: on, path: file.abs })} go={file.status === 'D' ? null : '→'}>
           {file.path}
         </Line>
       ))}

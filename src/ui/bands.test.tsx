@@ -307,7 +307,7 @@ describe('le message envoyé se voit tout de suite', () => {
     await submit()
     await flush()
     expect(document.querySelector('.peek')!.textContent).not.toContain('fais le point')
-    expect(document.querySelector<HTMLInputElement>('form input:not([type=file])')!.value).toBe('fais le point')
+    expect(document.querySelector<HTMLTextAreaElement>('form textarea')!.value).toBe('fais le point')
     expect(document.querySelector('.attach-line')?.textContent).toContain('weevboss est occupé')
   })
 

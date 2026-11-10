@@ -4,6 +4,7 @@ import { dismissNotice } from './notice-store'
 import { AnimatePresence, motion, type Transition } from 'motion/react'
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { api } from '../api'
+import { useCaptureSuggestion } from './capture-suggestion'
 import type { Author, Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
 import { chipLabel, chipLabels, type ChipId, dur, inline, isCommand, plain, segments, status, step, userText, userPhotos, userCaption } from './format'
@@ -327,6 +328,8 @@ export function Composer({
   draft,
   formRef,
   sayErrors = false,
+  horizontal = false,
+  captureSuggestions = false,
 }: {
   placeholder: string
   label: string
@@ -347,6 +350,10 @@ export function Composer({
   formRef?: React.RefObject<HTMLFormElement | null>
   /** Un envoi refusé dit pourquoi sur la ligne au-dessus du champ (sinon l'appelant l'affiche lui-même). */
   sayErrors?: boolean
+  /** Native one-line horizontal editor, isolated from page swipe gestures. */
+  horizontal?: boolean
+  /** Offer pasted/authorized clipboard images before attaching them. */
+  captureSuggestions?: boolean
 }) {
   const t = useT(M)
   // Le texte en cours survit à un rechargement (mise à jour automatique de l'app, public/sw.js) : gardé dans l'onglet,
@@ -367,7 +374,7 @@ export function Composer({
       /* stockage indisponible */
     }
   }, [key, text])
-  const field = useRef<HTMLInputElement>(null)
+  const field = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
   const [busy, setBusy] = useState(false)
   const [files, setFiles] = useState<Attachment[]>([])
   const [rec, setRec] = useState<'off' | 'on' | 'wait'>('off')
@@ -375,6 +382,7 @@ export function Composer({
   const recorder = useRef<MediaRecorder | null>(null)
   const chunks = useRef<Blob[]>([])
   const picker = useRef<HTMLInputElement>(null)
+  const capture = useCaptureSuggestion(captureSuggestions && !!onAttach && !disabled)
   const canVoice = voice && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
   useEffect(() => {
     if (draft?.reset) setText('')
@@ -414,7 +422,7 @@ export function Composer({
     }
   }
 
-  const pick = async (list: FileList | null) => {
+  const pick = async (list: FileList | readonly File[] | null) => {
     if (!list?.length) return
     setBusy(true)
     try {
@@ -485,23 +493,64 @@ export function Composer({
         <span className="prompt" aria-hidden>
           {busy ? <span className="spin"><Icon name="star" /></span> : prompt}
         </span>
-        <input
-          ref={field}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onFocus={onFocus}
-          placeholder={rec === 'on' ? t.listening : rec === 'wait' ? t.transcribing : placeholder}
-          aria-label={label}
-          enterKeyHint="send"
-          autoComplete="off"
-          disabled={disabled}
-        />
+        {horizontal ? (
+          <textarea
+            ref={(node) => { field.current = node }}
+            className="horizontal-editor"
+            rows={1}
+            wrap="off"
+            value={text.replace(/\r?\n/g, ' ')}
+            onChange={(e) => setText(e.target.value.replace(/\r?\n/g, ' '))}
+            onFocus={onFocus}
+            onPaste={(e) => {
+              if (!captureSuggestions || !onAttach || disabled) return
+              const file = [...e.clipboardData.files].find((f) => f.type.startsWith('image/'))
+              if (file) { e.preventDefault(); capture.offer(file) }
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return
+              e.preventDefault()
+              if (!e.shiftKey) e.currentTarget.form?.requestSubmit()
+            }}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            placeholder={rec === 'on' ? t.listening : rec === 'wait' ? t.transcribing : placeholder}
+            aria-label={label}
+            enterKeyHint="send"
+            autoComplete="off"
+            disabled={disabled}
+          />
+        ) : (
+          <input
+            ref={(node) => { field.current = node }}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onFocus={onFocus}
+            placeholder={rec === 'on' ? t.listening : rec === 'wait' ? t.transcribing : placeholder}
+            aria-label={label}
+            enterKeyHint="send"
+            autoComplete="off"
+            disabled={disabled}
+          />
+        )}
         {onAttach && !disabled && (
           <>
             <input ref={picker} type="file" accept={anyFile ? undefined : 'image/*'} multiple hidden onChange={(e) => void pick(e.target.files)} />
-            <button type="button" className="tool-btn" onClick={() => picker.current?.click()} aria-label={anyFile ? t.attachAny : t.attachPhoto}>
-              <Icon name="plus" />
-            </button>
+            {capture.candidate ? (
+              <button type="button" className="tool-btn capture-offer" disabled={busy} aria-label={t.attachClipboardImage} onClick={() => {
+                const file = capture.candidate?.file
+                capture.clear()
+                if (file) void pick([file])
+              }}>
+                <img src={capture.candidate.url} alt="" />
+              </button>
+            ) : (
+              <button type="button" className="tool-btn" onClick={() => picker.current?.click()} aria-label={anyFile ? t.attachAny : t.attachPhoto}>
+                <Icon name="plus" />
+              </button>
+            )}
           </>
         )}
         {canVoice && !disabled && (

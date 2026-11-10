@@ -1,40 +1,48 @@
-import { AnimatePresence, animate, motion, useDragControls, useMotionValue } from 'motion/react'
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import type { Optimizer, OptimizerField, Snapshot } from '../../shared/api.ts'
-import { api, ApiError } from '../api'
-import { useApp } from './app-context'
-import { Collapse, spring } from './bits'
-import { Icon, type IconName } from './icons'
-import { intlLocale, useT } from '../i18n'
+import { AnimatePresence, animate, motion, useDragControls, useMotionValue, useTransform, type MotionValue } from 'motion/react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import type { Optimizer } from '../../shared/api.ts'
+import { isSettled, stableOrder, useApp } from './app-context'
+import { Collapse, Line, spring } from './bits'
+import { AutoMark, Icon, type Dir, type IconName } from './icons'
+import { useT } from '../i18n'
 import M from '../i18n/h24'
-import B from '../i18n/bits'
 import { tapHint } from './hints'
-import { DRAWER_SLOT, STATES, autoTree, counts, openByDefault, propColors, short, tasksOf, type AutoCategory, type AutoGroup, type AutoTask, type TaskState } from './h24-tree'
+import { at, autoList, autoRank, bandColors, fromOptimizer, isFinished, projectOfRepo, short, triggerText, type AutoItem } from './auto-model'
+import { TalkCtx, useTalk } from './auto-talk'
 import './h24.css'
 import { flash, when } from './follow'
-import { VoiceLogo } from './voice'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
+/** The kind of a proposal, drawn as its band's glyph (never ✓ nor ×: they would read as the buttons). */
+export const KIND_ICON: Record<Optimizer['kind'], IconName> = { tests: 'terminal', watch: 'external', content: 'file', explore: 'slash', other: 'star' }
+
+/** The fields that flash after a rewrite (auto-chg). */
+export const chg = (on: boolean, base = '') => `${base}${on ? `${base ? ' ' : ''}auto-chg` : ''}`
+
+/** The old fold memory of the drawer's categories: cleared once. */
+const OLD_FOLDS = 'weevils-auto-folds'
+
 /** Bande « auto » collée en bas : on la tire vers le haut (ou on la touche) pour voir ce qui tourne tout seul. */
 export function H24Rail() {
-  const { snap, colors, h24Open: open, setH24Open: setOpen, h24Focus } = useApp()
+  const { snap, now, h24Open: open, setH24Open: setOpen, h24Focus } = useApp()
   const t = useT(M)
-  const talks = useTalks(snap.optimizers)
-  // Une tâche réécrite à l'instant : sa nouvelle version, avant que le snapshot ne suive.
-  const opts = (snap.optimizers ?? []).map(talks.item)
-  const proposed = opts.filter((o) => o.state === 'proposed')
-  const tree = autoTree({ ...snap, optimizers: opts })
-  const all = tree.flatMap(tasksOf)
-  const c = counts(all)
-  // La bande juste sous les propositions : la ligne machine (sur le fond du tiroir), sinon la première catégorie.
-  const below = machineShown(snap) || !tree.length ? DRAWER_SLOT : catSlot(tree[0], colors)
+  const k = useTalk()
   const y = useMotionValue(0)
   const drawer = useRef<HTMLDivElement>(null)
   const probe = useRef<HTMLDivElement>(null)
   const dragged = useRef(false)
   const controls = useDragControls()
   const [closedY, setClosedY] = useState(0)
+  const [doneOpen, setDoneOpen] = useState(false)
+
+  useEffect(() => {
+    try {
+      localStorage.removeItem(OLD_FOLDS)
+    } catch {
+      /* stockage indisponible */
+    }
+  }, [])
 
   const measure = useCallback(() => {
     const h = drawer.current?.offsetHeight ?? 0
@@ -61,15 +69,8 @@ export function H24Rail() {
     return () => ctrl.stop()
   }, [open, closedY, y])
 
-  // Tiroir refermé : le champ ouvert sous une tâche se ferme avec lui.
-  const closeTalk = talks.setOpen
-  useEffect(() => {
-    if (!open) closeTalk(null)
-  }, [open, closeTalk])
-
-  // Ouvert depuis une ligne 24/7 d'une bande projet : le tiroir monté, cette activité est amenée sous les yeux dans la
-  // liste (seule la liste défile : le tiroir est fixe) et s'éclaire un instant. Sa catégorie et son groupe se déplient
-  // d'office (useFold).
+  // Ouvert sur une automatisation précise : le tiroir monté, elle est amenée sous les yeux dans la liste (seule la liste
+  // défile : le tiroir est fixe) et s'éclaire un instant.
   useEffect(() => {
     if (!open || !h24Focus) return
     let off = false
@@ -94,12 +95,52 @@ export function H24Rail() {
     }
   }, [open, h24Focus, y])
 
-  // En-tête : ce qui tourne, ce qui attend un oui, ce qui attend la machine ; sinon l'ancien résumé.
-  const parts: [string, string][] = []
-  if (c.running) parts.push(['run', t.runningN(c.running)])
-  if (proposed.length) parts.push(['ask', t.toValidateN(proposed.length)])
-  if (c.waiting + c.queued) parts.push(['wait', t.queuedN(c.waiting + c.queued)])
-  const summary = parts.length ? parts.map((p) => p[1]).join(' · ') : all.length ? t.summary(0, all.length) : t.nothing
+  // A task rewritten a moment ago: its new version, before the snapshot follows. One given ✓ here or on its page: an
+  // automation already (it slides into its place), one given ×: gone (it folds away).
+  const opts = (snap.optimizers ?? []).map(k.item)
+  const proposals = opts.filter((o) => o.state === 'proposed' && !k.decided.has(o.id)).slice(0, 3)
+  const accepted = opts.map((o) => (o.state === 'proposed' && k.decided.get(o.id) === 'yes' ? ({ ...o, state: 'queued', acceptedAt: now } as Optimizer) : o))
+  const all = autoList({ ...snap, optimizers: accepted })
+  // Nothing moves under the finger: running first, then the soonest trigger, then the machine, then paused; a band
+  // keeps its place within its rank.
+  const shown = useRef<string[]>([])
+  const live = stableOrder(
+    all.filter((x) => !isFinished(x)),
+    (x) => x.id,
+    autoRank,
+    (a, b) => (a.nextAt ?? Infinity) - (b.nextAt ?? Infinity),
+    shown.current,
+    !isSettled(),
+  )
+  const order = live.map((x) => x.id).join('|')
+  useLayoutEffect(() => {
+    shown.current = order ? order.split('|') : []
+  }, [order])
+  const finished = all.filter(isFinished)
+  const rounding = !!snap.autoRound?.busy
+  // A colour per band, in display order: each one far from the one above it (the amber head for the first).
+  const kept = useRef(new Map<string, string>())
+  kept.current = bandColors([...proposals.map((o) => o.id), ...(rounding ? ['__round'] : []), ...live.map((x) => x.id)], kept.current)
+  const keptDone = useRef(new Map<string, string>())
+  keptDone.current = bandColors(finished.map((x) => x.id), keptDone.current)
+
+  // The head: what runs, else what waits for a yes, else the next trigger.
+  const running = live.filter((x) => x.state === 'running')
+  const next = live.filter((x) => x.nextAt && x.state !== 'running').sort((a, b) => a.nextAt! - b.nextAt!)[0]
+  const summary: ReactNode = running.length ? (
+    <>
+      <AutoMark />
+      <span className="txt">
+        {running[0].title}
+        {running.length > 1 ? ` +${running.length - 1}` : ''}
+      </span>
+    </>
+  ) : proposals.length ? (
+    <span className="txt">{t.toValidateN(proposals.length)}</span>
+  ) : next ? (
+    <span className="txt">{t.nextAt(at(next.nextAt!, now))}</span>
+  ) : null
+  const said = running.length ? `${running[0].title}${running.length > 1 ? ` +${running.length - 1}` : ''}` : proposals.length ? t.toValidateN(proposals.length) : next ? t.nextAt(at(next.nextAt!, now)) : t.nothing
 
   return (
     <>
@@ -141,36 +182,14 @@ export function H24Rail() {
           }}
           aria-expanded={open}
           aria-controls="h24-body"
-          aria-label={t.head(summary, open)}
+          aria-label={t.head(said, open)}
         >
           <span className="h24-grip" aria-hidden>
             <Icon name="grip" />
           </span>
           <span className="in" aria-hidden>
             <span className="h2">{t.title}</span>
-            <span className="meta auto-sum">
-              {c.running > 0 && (
-                <span className="spin fluo">
-                  <Icon name="star" />
-                </span>
-              )}
-              {parts.length
-                ? parts.map(([k, s], i) =>
-                    k === 'run' ? (
-                      <span key={k} className="strong tab">
-                        {c.running}
-                      </span>
-                    ) : k === 'wait' ? (
-                      <span key={k} className="auto-wait">
-                        <Icon name="more" />
-                        {c.waiting + c.queued}
-                      </span>
-                    ) : (
-                      <span key={k} className="strong">{i > 0 ? `· ${s}` : s}</span>
-                    ),
-                  )
-                : summary}
-            </span>
+            <span className="meta auto-sum">{summary}</span>
             <span className="h2" style={{ fontWeight: 500 }}>
               <Icon name="arrow" dir={open ? 'down' : 'up'} />
             </span>
@@ -178,14 +197,45 @@ export function H24Rail() {
         </button>
 
         <div id="h24-body" className="h24-body" inert={!open}>
-          <TalkCtx.Provider value={talks}>
-            <Proposals list={proposed} below={below} />
-            <MachineLine />
-            {tree.map((cat) => (
-              <Category key={cat.id} cat={cat} />
-            ))}
+          <TalkCtx.Provider value={k}>
+            <AnimatePresence initial={false}>
+              {proposals.map((o) => (
+                <AutoBand key={o.id} x={fromOptimizer(o, projectOfRepo(snap.projects, o.repo))!} proposal={o} slot={kept.current.get(o.id) ?? 'p9'} />
+              ))}
+              {rounding && (
+                <motion.div key="__round" layout="position" className="band auto-band auto-round" style={color(kept.current.get('__round') ?? 'p9')} {...drop} role="status" aria-label={t.rounding}>
+                  <div className="in">
+                    <span className="st" aria-hidden>
+                      <Icon name="cycle" />
+                    </span>
+                    <span className="dots" aria-hidden>
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  </div>
+                </motion.div>
+              )}
+              {live.map((x) => (
+                <AutoBand key={x.id} x={x} slot={kept.current.get(x.id) ?? 'p9'} />
+              ))}
+            </AnimatePresence>
+            {finished.length > 0 && (
+              <>
+                <Line ch="✓" go={doneOpen ? '↑' : '↓'} onClick={() => setDoneOpen((v) => !v)} label={t.finishedN(finished.length)}>
+                  <span className="meta">{t.finishedN(finished.length)}</span>
+                </Line>
+                <Collapse open={doneOpen || (!!h24Focus && finished.some((x) => x.id === h24Focus))}>
+                  <AnimatePresence initial={false}>
+                    {finished.map((x) => (
+                      <AutoBand key={x.id} x={x} slot={keptDone.current.get(x.id) ?? 'p9'} />
+                    ))}
+                  </AnimatePresence>
+                </Collapse>
+              </>
+            )}
           </TalkCtx.Provider>
-          {all.length === 0 && proposed.length === 0 && <div className="in meta empty">{t.empty}</div>}
+          {all.length === 0 && proposals.length === 0 && !rounding && <div className="in meta empty">{t.empty}</div>}
           <div style={{ height: 14 }} />
         </div>
       </motion.div>
@@ -193,748 +243,162 @@ export function H24Rail() {
   )
 }
 
-// ---------------------------------------------------------------------------
-// En haut : les propositions, en colonnes collées, une couleur chacune. ✓ lance quand la machine est libre, × refuse.
-// L'icône d'un genre n'est jamais ✓ ni × : elles se confondraient avec les boutons.
-
-const KIND_ICON: Record<Optimizer['kind'], IconName> = { tests: 'terminal', watch: 'external', content: 'file', explore: 'slash', other: 'star' }
-/** Après un dépliage, ✓ et × attendent ce délai : le doigt qui vient de déplier ne lance ni ne refuse rien. */
-export const SETTLE_MS = 450
-
-/** Les champs que la dernière réécriture a changés clignotent un instant (classe chg). */
-const chg = (on: boolean, base = '') => `${base}${on ? `${base ? ' ' : ''}auto-chg` : ''}`
-
-/**
- * Une colonne touchée se déplie : elle prend presque toute la largeur, titre et raison en entier ; les autres
- * deviennent de fines bandes de couleur (les toucher les déplie à leur tour). Retouchée, elle se replie. Dépliée, une
- * bulle ouvre un champ juste dessous (écrit ou dit) : la réponse s'écrit dans la carte, la carte se réécrit, ✓ valide
- * ce qui est à l'écran.
- */
-function Proposals({ list, below }: { list: Optimizer[]; below: string }) {
-  const t = useT(M)
-  const { refresh } = useApp()
-  const k = useContext(TalkCtx)!
-  const [gone, setGone] = useState<Set<string>>(new Set())
-  const [wide, setWide] = useState<string | null>(null)
-  const movedAt = useRef(-Infinity)
-  // Une couleur par proposition, gardée tant qu'elle est là : celle qui part n'en fait pas changer les autres.
-  const slots = useRef(new Map<string, string>())
-  const shown = list.filter((o) => !gone.has(o.id)).slice(0, 3).map(k.item)
-  slots.current = propColors(shown.map((o) => o.id), slots.current, below)
-  const open = shown.some((o) => o.id === wide) ? wide : null
-  const talking = open !== null && k.open === open ? open : null
-  const expand = (id: string | null) => {
-    movedAt.current = performance.now()
-    setWide(id)
-    if (k.open && k.open !== id && shown.some((o) => o.id === k.open)) k.setOpen(null)
-  }
-  const answer = (o: Optimizer, yes: boolean) => {
-    // Just unfolded, or just rewritten (the card changed under the finger): the tap was not meant for ✓ or ×.
-    if (performance.now() - Math.max(movedAt.current, k.landedAt(o.id)) < SETTLE_MS || (yes && k.busy.has(o.id))) return
-    setGone((g) => new Set(g).add(o.id))
-    if (k.open === o.id) k.setOpen(null)
-    void (yes ? api.acceptOptimizer(o.id, o.rev ?? 0) : api.refuseOptimizer(o.id))
-      .catch((e) => {
-        setGone((g) => {
-          const n = new Set(g)
-          n.delete(o.id)
-          return n
-        })
-        // Rewritten elsewhere (another screen) or being rewritten: it comes back unfolded, what changed flashes once
-        // the new version is here, and ✓ waits for it.
-        if (yes && e instanceof ApiError && e.status === 409) {
-          k.stale(o, t.stale)
-          expand(o.id)
-        }
-      })
-      .finally(refresh)
-  }
-  if (!shown.length) return null
-  return (
-    <div className="auto-props-wrap">
-      <div className="auto-props" role="list" aria-label={t.proposals}>
-        <AnimatePresence initial={false}>
-          {shown.map((o) => {
-            const slim = open !== null && open !== o.id
-            const isOpen = open === o.id
-            const f = k.flash.get(o.id) ?? []
-            const busy = k.busy.has(o.id)
-            return (
-              <motion.div
-                key={o.id}
-                role="listitem"
-                className={`auto-prop${slim ? ' slim' : ''}${isOpen ? ' open' : ''}`}
-                style={color(slots.current.get(o.id) ?? 'p9')}
-                initial={{ flexGrow: 0, minWidth: 0, opacity: 0 }}
-                animate={{ flexGrow: slim ? 0 : 1, minWidth: 22, opacity: 1 }}
-                exit={{ flexGrow: 0, minWidth: 0, opacity: 0 }}
-                transition={spring}
-              >
-                <motion.div className="auto-prop-in" inert={slim} animate={{ opacity: slim ? 0 : 1 }} transition={spring}>
-                  <button className="auto-prop-body" onClick={() => expand(isOpen ? null : o.id)} aria-expanded={isOpen}>
-                    <span className={chg(f.includes('kind') || f.includes('repo'), 'k')} aria-hidden>
-                      <Icon name={KIND_ICON[o.kind]} />
-                      <span>{t[`kind_${o.kind}`]}</span>
-                      {isOpen && o.repo && <span className="auto-repo">{o.repo}</span>}
-                    </span>
-                    <span className={chg(f.includes('title'), 't')}>{o.title}</span>
-                    {o.why && <span className={chg(f.includes('why'), 'w')}>{o.why}</span>}
-                  </button>
-                  <span className="i" aria-hidden onClick={() => expand(isOpen ? null : o.id)}>
-                    <Conds o={o} f={f} />
-                    <span className={chg(f.includes('est') || f.includes('priority') || f.includes('heavy'))}>
-                      <Intensity priority={o.priority} est={o.est} heavy={o.heavy} />
-                    </span>
-                  </span>
-                  <div className="acts">
-                    <button className="ok" onClick={() => answer(o, true)} disabled={busy || k.isStale(o)} aria-label={busy ? t.acceptBusy(o.title) : t.accept(o.title)}>
-                      <Icon name="check" />
-                    </button>
-                    {isOpen && (
-                      <button className={`talk${talking === o.id ? ' on' : ''}`} onClick={() => k.setOpen(talking === o.id ? null : o.id)} aria-expanded={talking === o.id} aria-label={t.talk(o.title)}>
-                        <Icon name="bubble" />
-                      </button>
-                    )}
-                    <button className="no" onClick={() => answer(o, false)} aria-label={t.refuse(o.title)}>
-                      <Icon name="close" />
-                    </button>
-                  </div>
-                  {/* Under ✓ and ×, never above: a reply that grows the card never moves them under a finger. */}
-                  {isOpen && <TalkLines o={o} />}
-                </motion.div>
-                {slim && <button className="auto-prop-strip" onClick={() => expand(o.id)} aria-expanded={false} aria-label={o.title} />}
-              </motion.div>
-            )
-          })}
-        </AnimatePresence>
-      </div>
-      <Collapse open={!!talking}>
-        {talking && (
-          <div className="auto-prop-say" style={color(slots.current.get(talking) ?? 'p9')}>
-            <TalkField id={talking} title={shown.find((o) => o.id === talking)?.title ?? ''} />
-          </div>
-        )}
-      </Collapse>
-    </div>
-  )
-}
+/** A band that arrives drops in (height from 0), one that leaves folds away (RowSlot in bands.tsx). */
+const drop = {
+  initial: { height: 0, opacity: 0 },
+  animate: { height: 'auto', opacity: 1 },
+  exit: { height: 0, opacity: 0 },
+  transition: spring,
+} as const
 
 // ---------------------------------------------------------------------------
-// Parler d'une tâche : une question écrite ou dite (même logo, même voix que weevboss), la réponse sur place, la tâche
-// réécrite (les champs changés clignotent). Un seul champ ouvert à la fois dans le tiroir.
+// One band per automation: one tap opens its page. The fill behind it is the page's flow, in miniature.
 
-/** Ce qu'une réponse peut réécrire, et l'échange : la version reçue avec la réponse, avant que le snapshot ne suive. */
-const TALKED = ['title', 'why', 'kind', 'repo', 'est', 'priority', 'heavy', 'notBefore', 'window', 'every', 'next', 'talk', 'changed', 'rev'] as const
-/** What a reader compares between two versions of a task (the fields that flash). */
-const SHOWN = ['title', 'why', 'kind', 'repo', 'est', 'priority', 'heavy', 'notBefore', 'window', 'every'] as const
-/** ✓ refused because the version on screen was old, and no newer one comes: ✓ works again after this. */
-const STALE_MS = 30_000
-const FLASH_MS = 1700
-
-interface Talks {
-  /** La tâche dont le champ est ouvert. */
-  open: string | null
-  setOpen: (id: string | null) => void
-  /** Une question en vol (✓ attend), et son texte, montré tout de suite. */
-  busy: ReadonlySet<string>
-  asking: ReadonlyMap<string, string>
-  /** Pas de réponse (modèle, réseau) : la note à montrer, rien n'a changé. */
-  notes: ReadonlyMap<string, string>
-  flash: ReadonlyMap<string, OptimizerField[]>
-  /** La dernière réponse à une question dite : le logo la lit. */
-  reply: { key?: string; text?: string }
-  item: (o: Optimizer) => Optimizer
-  send: (id: string, text: string, voice?: boolean) => Promise<boolean>
-  /** Quand la dernière réponse sur cette tâche est arrivée, quand un champ a été ouvert (performance.now()). */
-  landedAt: (id: string) => number
-  openedAt: () => number
-  /** ✓ refusé (409) : la version à l'écran était ancienne ; la note s'affiche, ✓ attend la nouvelle. */
-  stale: (o: Optimizer, note: string) => void
-  isStale: (o: Optimizer) => boolean
-}
-const TalkCtx = createContext<Talks | null>(null)
-
-function without<V>(m: ReadonlyMap<string, V>, k: string): Map<string, V> {
-  const n = new Map(m)
-  n.delete(k)
-  return n
+/** The glyph of an automation, by what it is doing; the name of the icon for the cross-fade. */
+export function glyphOf(x: Pick<AutoItem, 'state' | 'trigger' | 'lastRun'>): { name: IconName | 'mark'; dir?: Dir; alert?: boolean } {
+  if (x.state === 'running') return { name: 'mark' }
+  if (x.state === 'paused') return { name: 'pause' }
+  if (x.state === 'failed' || (x.lastRun && !x.lastRun.ok && x.state !== 'done')) return { name: 'close', alert: true }
+  if (x.state === 'done') return { name: 'check' }
+  if (x.state === 'waiting' || x.state === 'queued') return { name: 'idle' }
+  if (x.trigger.kind === 'every') return { name: 'cycle' }
+  return { name: 'arrow', dir: 'right' }
 }
 
-function useTalks(optimizers: Optimizer[] | undefined): Talks {
-  const { refresh } = useApp()
-  const [open, setOpenState] = useState<string | null>(null)
-  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
-  const [asking, setAsking] = useState<ReadonlyMap<string, string>>(new Map())
-  const [notes, setNotes] = useState<ReadonlyMap<string, string>>(new Map())
-  const [flashes, setFlashes] = useState<ReadonlyMap<string, OptimizerField[]>>(new Map())
-  const [local, setLocal] = useState<ReadonlyMap<string, Optimizer>>(new Map())
-  const [reply, setReply] = useState<{ key?: string; text?: string }>({})
-  const [stales, setStales] = useState<ReadonlyMap<string, { o: Optimizer; at: number }>>(new Map())
-  const seq = useRef(0)
-  const inflight = useRef(new Set<string>())
-  const landed = useRef(new Map<string, number>())
-  const opened = useRef(-Infinity)
-  const setOpen = useCallback((id: string | null) => {
-    opened.current = performance.now()
-    setOpenState(id)
-    setReply({})
-  }, [])
-  const mark = useCallback((id: string, fields: OptimizerField[]) => {
-    setFlashes((m) => new Map(m).set(id, fields))
-    window.setTimeout(() => setFlashes((m) => (m.get(id) === fields ? without(m, id) : m)), FLASH_MS)
-  }, [])
-  // The newer version after a refused ✓ is here: what differs from the one that was on screen flashes, ✓ waits a beat.
-  useEffect(() => {
-    if (!stales.size) return
-    for (const [id, { o: was }] of stales) {
-      const now = optimizers?.find((x) => x.id === id)
-      if (!now || (now.rev ?? 0) === (was.rev ?? 0)) continue
-      const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
-      const fields = SHOWN.filter((f) => !same(was[f], now[f]))
-      if (fields.length) mark(id, [...fields])
-      landed.current.set(id, performance.now())
-      setStales((m) => without(m, id))
-    }
-  }, [optimizers, stales, mark])
-  const item = (o: Optimizer): Optimizer => {
-    const l = local.get(o.id)
-    if (!l || ((l.rev ?? 0) <= (o.rev ?? 0) && (l.talk?.length ?? 0) <= (o.talk?.length ?? 0))) return o
-    const out: Record<string, unknown> = { ...o }
-    for (const key of TALKED) out[key] = l[key]
-    return out as unknown as Optimizer
-  }
-  const send = async (id: string, text: string, voice = false) => {
-    const said = text.trim()
-    if (!said || inflight.current.has(id)) return false
-    inflight.current.add(id)
-    setBusy((b) => new Set(b).add(id))
-    setAsking((a) => new Map(a).set(id, said))
-    setNotes((n) => without(n, id))
-    try {
-      const r = await api.talkOptimizer(id, said)
-      if (r.item && !r.failed) setLocal((m) => new Map(m).set(id, r.item!))
-      if (r.failed) setNotes((n) => new Map(n).set(id, r.reply))
-      if (r.changed.length) mark(id, r.changed)
-      setReply(voice && r.reply ? { key: String(++seq.current), text: r.reply } : {})
-      return !r.failed
-    } catch (e) {
-      setNotes((n) => new Map(n).set(id, (e as Error).message))
-      return false
-    } finally {
-      landed.current.set(id, performance.now())
-      inflight.current.delete(id)
-      setBusy((b) => {
-        const n = new Set(b)
-        n.delete(id)
-        return n
-      })
-      setAsking((a) => without(a, id))
-      refresh()
-    }
-  }
-  const stale = useCallback((o: Optimizer, note: string) => {
-    setStales((m) => new Map(m).set(o.id, { o, at: Date.now() }))
-    setNotes((n) => new Map(n).set(o.id, note))
-  }, [])
-  const isStale = (o: Optimizer) => {
-    const s = stales.get(o.id)
-    return !!s && (s.o.rev ?? 0) === (o.rev ?? 0) && Date.now() - s.at < STALE_MS
-  }
-  return { open, setOpen, busy, asking, notes, flash: flashes, reply, item, send, landedAt: (id) => landed.current.get(id) ?? -Infinity, openedAt: () => opened.current, stale, isStale }
-}
-
-/** Le champ sous une carte ou une ligne : le logo vocal et la question écrite, côte à côte sous le pouce. */
-function TalkField({ id, title }: { id: string; title: string }) {
-  const t = useT(M)
-  const k = useContext(TalkCtx)!
-  const [draft, setDraft] = useState('')
-  const heard = useRef('')
-  const input = useRef<HTMLInputElement>(null)
-  const waiting = k.busy.has(id)
-  // Sur ordinateur le champ est prêt ; sur téléphone le clavier attend un tap (le logo vocal est juste là).
-  useEffect(() => {
-    if (matchMedia('(pointer: fine)').matches) input.current?.focus({ preventScroll: true })
-  }, [])
-  const go = async (text: string, voice = false) => {
-    const said = text.trim()
-    if (!said || waiting) return
-    setDraft('')
-    if (!(await k.send(id, said, voice))) setDraft((d) => d || said)
-  }
-  const voiceText = (x: string) => {
-    heard.current = heard.current ? `${heard.current} ${x}` : x
-    setDraft(heard.current)
-  }
-  const voiceSend = () => {
-    const q = heard.current.trim()
-    heard.current = ''
-    if (q) void go(q, true)
-  }
+/** A glyph that cross-fades when it changes (a proposal turning into an automation, a run starting). */
+export function Glyph({ name, dir, alert }: { name: IconName | 'mark'; dir?: Dir; alert?: boolean }) {
   return (
-    <div className="auto-say">
-      <VoiceLogo take={() => ''} onText={voiceText} onSend={voiceSend} replyKey={k.reply.key} replyText={k.reply.text} working={waiting} />
-      <form
-        className="auto-form"
-        onSubmit={(e) => {
-          e.preventDefault()
-          heard.current = ''
-          void go(draft)
-        }}
-      >
-        <span className="strong" aria-hidden>
-          <Icon name="chevron" dir="right" />
-        </span>
-        <input
-          ref={input}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === 'Escape' && k.setOpen(null)}
-          aria-label={t.talkInput(title)}
-          enterKeyHint="send"
-          maxLength={500}
-        />
-        <button type="submit" className="auto-send" aria-label={t.send} disabled={!draft.trim() || waiting}>
-          <Icon name="arrow" dir="up" />
-        </button>
-      </form>
-    </div>
+    <span className="auto-glyph">
+      <AnimatePresence initial={false}>
+        <motion.span key={`${name}${dir ?? ''}`} className={alert ? 'alert' : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
+          {name === 'mark' ? <AutoMark /> : <Icon name={name} dir={dir} />}
+        </motion.span>
+      </AnimatePresence>
+    </span>
   )
 }
 
-/** L'échange : les dernières lignes (la réponse la plus récente en gras), les plus anciennes repliées derrière +N. */
-function TalkLines({ o, max = 2, all: allInit = false, onFewer }: { o: Optimizer; max?: number; all?: boolean; onFewer?: () => void }) {
-  const t = useT(M)
-  const k = useContext(TalkCtx)!
-  const [all, setAll] = useState(allInit)
-  const asking = k.asking.get(o.id)
-  const note = k.notes.get(o.id)
-  const waiting = k.busy.has(o.id)
-  const lines = [...(o.talk ?? []), ...(asking ? [{ who: 'user' as const, text: asking, at: 0 }] : [])]
-  if (!lines.length && !note && !waiting) return null
-  const visible = all ? lines : lines.slice(-max)
-  const hidden = lines.length - visible.length
-  let lastAuto = visible.length - 1
-  while (lastAuto >= 0 && visible[lastAuto].who !== 'auto') lastAuto--
-  return (
-    <div className="auto-lines" aria-live="polite">
-      {hidden > 0 && (
-        <button className="auto-more" onClick={() => setAll(true)} aria-label={t.earlier(hidden)}>
-          +{hidden}
-        </button>
-      )}
-      {all && (lines.length > max || onFewer) && (
-        <button className="auto-more" onClick={onFewer ?? (() => setAll(false))} aria-label={t.fewer}>
-          <Icon name="chevron" dir="up" />
-        </button>
-      )}
-      {visible.map((l, i) => (
-        <p key={`${l.at}-${i}`} className={`auto-line ${l.who}${i === lastAuto ? ' last' : ''}${l.at === 0 ? ' sending' : ''}`}>
-          {l.text}
-        </p>
-      ))}
-      {waiting && (
-        <span className="spin fluo auto-line-wait" aria-hidden>
-          <Icon name="star" />
-        </span>
-      )}
-      {note && !waiting && <p className="auto-line note">! {note}</p>}
-    </div>
-  )
-}
-
-/** Heure d'un départ : « 01:00 » aujourd'hui ou dans les 24 h, « mer. 08:00 » dans la semaine, sinon la date. */
-function at(ts: number, now: number): string {
-  const loc = intlLocale()
-  const time = new Intl.DateTimeFormat(loc, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ts)
-  if (ts - now < 20 * 3600_000) return time
-  if (ts - now < 6 * 24 * 3600_000) return `${new Intl.DateTimeFormat(loc, { weekday: 'short' }).format(ts)} ${time}`
-  return `${new Intl.DateTimeFormat(loc, { day: 'numeric', month: 'short' }).format(ts)} ${time}`
-}
-const hm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
-/** Une fenêtre de nuit (elle commence le soir ou au cœur de la nuit, finit au matin) : « nuit » devant ses heures. */
-const isNight = (w: { from: number; to: number }) => (w.from >= 20 * 60 || w.from < 5 * 60) && w.to <= 9 * 60
-
-/** Les conditions d'une tâche en chiffres : pas avant (→ 01:00), sa fenêtre (nuit 01:00–06:00), sa fréquence (/7j). */
-function Conds({ o, f = [] }: { o: Optimizer; f?: OptimizerField[] }) {
-  const t = useT(M)
+/** How far the fill goes, as a scale from the left: set to where it is now, then running on its own to the trigger (or
+ *  to the usual end of the run) as long as it is on screen. Paused: frozen. Starting a run: it snaps back to 0. */
+export function useAutoFill(x: AutoItem | null): { scale: MotionValue<number>; dip: MotionValue<number>; over: boolean } {
+  const scale = useMotionValue(0)
+  const dip = useMotionValue(1)
   const { now } = useApp()
-  const start = o.startAt ?? (o.notBefore && o.notBefore > now ? o.notBefore : undefined)
-  if (!start && !o.window && !o.every) return null
-  return (
-    <span className="auto-conds">
-      {start && (
-        <b className={chg(f.includes('notBefore'), 'auto-cond')}>
-          <Icon name="arrow" dir="right" />
-          {at(start, now)}
-        </b>
-      )}
-      {o.window && (
-        <b className={chg(f.includes('window'), 'auto-cond')}>
-          {isNight(o.window) && `${t.night} `}
-          {hm(o.window.from)}–{hm(o.window.to)}
-        </b>
-      )}
-      {o.every && <b className={chg(f.includes('every'), 'auto-cond')}>/{short(o.every)}</b>}
-    </span>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// La machine : charge et mémoire libre, et ce qui retient une tâche acceptée.
-
-const machineShown = (snap: Snapshot) => !!snap.autoMachine && (snap.optimizers ?? []).some((o) => o.state !== 'proposed')
-
-function MachineLine() {
-  const t = useT(M)
-  const { snap } = useApp()
-  const m = snap.autoMachine
-  // Retenue par la machine (pas par son heure).
-  const held = (snap.optimizers ?? []).some((o) => o.state === 'queued' && o.waiting !== 'time')
-  if (!m || !machineShown(snap)) return null
-  const ratio = Math.min(1, m.load / (1.5 * m.cpus))
-  return (
-    <div className="in auto-machine" role="img" aria-label={t.load(m.load.toFixed(1), m.cpus, m.freeGb.toFixed(1))}>
-      <Icon name="machine" />
-      <span className="auto-gauge" aria-hidden>
-        <span style={{ width: `${Math.round(ratio * 100)}%` }} className={ratio >= 1 ? 'hot' : ''} />
-      </span>
-      <span className="strong tab" aria-hidden>
-        {m.load.toFixed(1)}
-        <span className="auto-dim">/{m.cpus}</span>
-      </span>
-      <span className="strong tab" aria-hidden>
-        {t.gb(m.freeGb.toFixed(1))}
-      </span>
-      {held && m.wait && <span className="auto-tag st-waiting" aria-hidden>{t[`wait_${m.wait}`]}</span>}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// En dessous : catégorie (projet ou machine) → groupe (tâches, planifiés, jobs) → tâche. Un niveau qui n'aurait
-// qu'un enfant s'efface.
-
-const FOLDS = 'weevils-auto-folds'
-function readFolds(): Record<string, boolean> {
-  try {
-    return JSON.parse(localStorage.getItem(FOLDS) ?? '{}') as Record<string, boolean>
-  } catch {
-    return {}
-  }
-}
-function useFold(id: string, tasks: AutoTask[]): [boolean, () => void] {
-  const { h24Focus } = useApp()
-  const [pref, setPref] = useState<boolean | undefined>(() => readFolds()[id])
-  // L'activité touchée dans une bande projet est toujours visible, même dans un niveau replié.
-  const focused = !!h24Focus && tasks.some((x) => x.id === h24Focus)
-  const open = focused || (pref ?? openByDefault(tasks))
-  const toggle = () => {
-    setPref(!open)
-    try {
-      localStorage.setItem(FOLDS, JSON.stringify({ ...readFolds(), [id]: !open }))
-    } catch {
-      /* stockage indisponible */
+  const span = x?.progress(Date.now()) ?? null
+  const state = x?.state
+  const key = span ? `${span.from}:${span.to}:${state}` : `none:${state}`
+  const was = useRef(state)
+  useEffect(() => {
+    const started = was.current !== undefined && was.current !== 'running' && state === 'running'
+    was.current = state
+    if (started) animate(dip, [0, 1], { duration: 0.1 })
+    if (!span) {
+      scale.set(0)
+      return
     }
-  }
-  return [open, toggle]
+    const t = Date.now()
+    const frac = Math.min(1, Math.max(0, (t - span.from) / Math.max(1, span.to - span.from)))
+    scale.set(frac)
+    if (state === 'paused' || frac >= 1) return
+    const ctrl = animate(scale, 1, { duration: (span.to - t) / 1000, ease: 'linear' })
+    return () => ctrl.stop()
+  }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
+  return { scale, dip, over: state === 'running' && !!span && now > span.to }
 }
 
-function MiniBar({ tasks }: { tasks: AutoTask[] }) {
-  const c = counts(tasks)
+/** The flat fill layer (and, while it runs, the magenta front riding its edge). sweep: a flat block of a deeper tone
+ *  keeps travelling through the filled part toward its edge (fast while it runs, slow while it waits for its time):
+ *  the fill is fed, even when its edge moves a pixel a minute. */
+export function Fill({ x, front = 3, sweep = false }: { x: AutoItem; front?: number; sweep?: boolean }) {
+  const { scale, dip, over } = useAutoFill(x)
+  const left = useTransform(scale, (v) => `${v * 100}%`)
+  const flowing = sweep && (x.state === 'running' || x.state === 'scheduled')
   return (
-    <span className="auto-mini" aria-hidden>
-      {STATES.filter((s) => c[s]).map((s) => (
-        <span key={s} className={`st-${s}`} style={{ flexGrow: c[s] }} />
-      ))}
-    </span>
-  )
-}
-
-/** Résumé d'un niveau : nombre en gras, ce qui tourne, la mini-barre des états. */
-function Aggregate({ tasks }: { tasks: AutoTask[] }) {
-  const running = tasks.filter((x) => x.state === 'running').length
-  return (
-    <span className="auto-agg" aria-hidden>
-      {running > 0 && (
-        <span className="spin fluo">
-          <Icon name="star" />
-        </span>
-      )}
-      <span className="strong tab">{tasks.length}</span>
-      <MiniBar tasks={tasks} />
-    </span>
-  )
-}
-
-const catSlot = (cat: AutoCategory, colors: Record<string, string>) => (cat.projectId ? (colors[cat.projectId] ?? 'p0') : (colors.__foot ?? 'p3'))
-
-function Category({ cat }: { cat: AutoCategory }) {
-  const t = useT(M)
-  const { snap, colors } = useApp()
-  const tasks = tasksOf(cat)
-  const [open, toggle] = useFold(cat.id, tasks)
-  const name = cat.projectId ? (snap.projects.find((p) => p.id === cat.projectId)?.name ?? cat.projectId) : t.machine
-  const slot = catSlot(cat, colors)
-  const running = tasks.filter((x) => x.state === 'running').length
-  return (
-    <section className="band auto-cat" style={color(slot)}>
-      <button className="in auto-cat-head" onClick={toggle} aria-expanded={open} aria-label={t.levelLabel(name, tasks.length, running, open)}>
-        <span className="auto-cat-name" aria-hidden>
-          {name}
-        </span>
-        <Aggregate tasks={tasks} />
-        <span className="auto-chev" aria-hidden>
-          <Icon name="chevron" dir={open ? 'up' : 'down'} />
-        </span>
-      </button>
-      <Collapse open={open}>
-        {cat.groups.length === 1 ? <Tasks tasks={cat.groups[0].tasks} /> : cat.groups.map((g) => <Group key={g.id} g={g} />)}
-      </Collapse>
-    </section>
-  )
-}
-
-function Group({ g }: { g: AutoGroup }) {
-  const t = useT(M)
-  const [open, toggle] = useFold(g.id, g.tasks)
-  const label = t[`group_${g.kind}`]
-  const running = g.tasks.filter((x) => x.state === 'running').length
-  return (
-    <div className="auto-grp">
-      <button className="in auto-grp-head" onClick={toggle} aria-expanded={open} aria-label={t.levelLabel(label, g.tasks.length, running, open)}>
-        <span className="auto-grp-name" aria-hidden>
-          {label}
-        </span>
-        <Aggregate tasks={g.tasks} />
-        <span className="auto-chev" aria-hidden>
-          <Icon name="chevron" dir={open ? 'up' : 'down'} />
-        </span>
-      </button>
-      <Collapse open={open}>
-        <Tasks tasks={g.tasks} />
-      </Collapse>
-    </div>
-  )
-}
-
-function Tasks({ tasks }: { tasks: AutoTask[] }) {
-  return (
-    <div className="tone auto-tasks">
-      {tasks.map((x) => (
-        <TaskRow key={x.id} task={x} />
-      ))}
-    </div>
-  )
-}
-
-const STATE_ICON: Record<TaskState, IconName> = { running: 'star', waiting: 'idle', queued: 'more', scheduled: 'arrow', paused: 'pause', done: 'check', failed: 'close' }
-
-/** 1 forte … 3 faible : trois barres montantes, autant de pleines que d'importance. */
-function Intensity({ priority, est, heavy }: { priority?: number; est?: number; heavy?: boolean }) {
-  if (!priority && !est && !heavy) return null
-  const level = priority ? 4 - priority : 0
-  return (
-    <span className="auto-int" aria-hidden>
-      {heavy && <span className="auto-heavy" />}
-      {priority ? (
-        <span className="auto-prio">
-          {[1, 2, 3].map((i) => (
-            <span key={i} className={i <= level ? 'on' : ''} style={{ height: 4 + i * 3 }} />
-          ))}
-        </span>
-      ) : null}
-      {est ? <span className="tab">~{short(est * 60_000)}</span> : null}
-    </span>
-  )
-}
-
-function TaskRow({ task: x }: { task: AutoTask }) {
-  const t = useT(M)
-  const tb = useT(B)
-  const { now, push, refresh, setH24Open, snap } = useApp()
-  const k = useContext(TalkCtx)
-  // Une tâche proposée puis acceptée : on peut encore en parler (une bulle), son échange reste dessous.
-  const found = x.kind === 'optimizer' ? (snap.optimizers ?? []).find((o) => o.id === x.id) : undefined
-  const opt = found && k ? k.item(found) : undefined
-  const talkOpen = !!opt && k?.open === x.id
-  const f = (opt && k?.flash.get(x.id)) ?? []
-  const facts: ReactNode[] = []
-  const said: string[] = []
-  if (x.state === 'running' && x.startedAt) {
-    const ran = now - x.startedAt
-    facts.push(<b key="ran">{short(ran)}</b>)
-    if (x.est) facts.push(<span key="p" className="auto-progress"><span style={{ width: `${Math.min(100, Math.round((ran / (x.est * 60_000)) * 100))}%` }} /></span>)
-    said.push(t.runningFor(short(ran)))
-  }
-  if (x.state === 'waiting' && x.waiting && x.waiting !== 'queue') {
-    facts.push(<span key="w" className="auto-tag st-waiting">{t[`wait_${x.waiting}`]}</span>)
-    said.push(t[`wait_${x.waiting}`])
-  }
-  if (x.state === 'queued' && x.place) {
-    facts.push(<b key="q">#{x.place}</b>)
-    said.push(t.place(x.place))
-  }
-  if (x.nextAt && x.state !== 'running') {
-    const left = Math.max(0, x.nextAt - now)
-    facts.push(
-      <b key="n" className="auto-next">
-        <Icon name="arrow" dir="right" />
-        {short(left)}
-      </b>,
-    )
-    said.push(t.nextIn(short(left)))
-  }
-  if (x.window) {
-    const [from, to] = [hm(x.window.from), hm(x.window.to)]
-    facts.push(
-      <b key="win" className={chg(f.includes('window'), 'auto-dim')}>
-        {isNight(x.window) && `${t.night} `}
-        {from}–{to}
-      </b>,
-    )
-    said.push(t.window(from, to))
-  }
-  if (x.every) {
-    facts.push(<b key="e" className={chg(f.includes('every'), 'auto-dim')}>/{short(x.every)}</b>)
-    said.push(t.every(short(x.every)))
-  }
-  if ((x.state === 'done' || x.state === 'failed') && x.endedAt) {
-    facts.push(<b key="end">{t.endedAgo(short(now - x.endedAt, true))}</b>)
-    said.push(t.endedAgo(short(now - x.endedAt, true)))
-  }
-  if (x.since && (x.state === 'scheduled' || x.state === 'paused')) {
-    facts.push(<span key="s" className="auto-dim">{t.runningFor(short(now - x.since, true))}</span>)
-    said.push(t.since(short(now - x.since, true)))
-  }
-  if (x.priority) said.push(t.priority(x.priority))
-  if (x.est) said.push(t.est(x.est))
-  if (x.heavy) said.push(t.heavy)
-  if (opt?.next) said.push(t.nextScopeLabel(opt.next.title))
-  // Une tâche récurrente qui attend son prochain passage garde la nouvelle du dernier.
-  const note = (x.state === 'done' || x.state === 'failed' || x.kind === 'job' || !!opt?.runs?.length) && x.note && x.note !== '—' ? x.note : ''
-  const label = t.taskLabel(x.title, t[`state_${x.state}`], said.join(', '))
-  const openSession = x.sessionId
-    ? () => {
-        setH24Open(false)
-        push({ kind: 'session', id: x.sessionId! })
-      }
-    : undefined
-  const body = (
     <>
-      <span className="auto-st" aria-hidden />
-      <span className="auto-ic" aria-hidden>
-        {x.state === 'running' ? (
-          <span className="spin fluo">
-            <Icon name="star" />
-          </span>
-        ) : (
-          <Icon name={STATE_ICON[x.state]} dir={x.state === 'scheduled' ? 'right' : 'up'} />
-        )}
-      </span>
-      <span className="auto-main" aria-hidden>
-        <span className={chg(f.includes('title'), 'auto-title')}>
-          {x.title}
-          {x.demo && <span className="tr-tag">{tb.demo}</span>}
-        </span>
-        {(facts.length > 0 || note) && (
-          <span className="auto-facts">
-            {facts}
-            {note && <span className="auto-note">{note}</span>}
-          </span>
-        )}
-        {opt?.next && (
-          <span className={chg(f.includes('next'), 'auto-nextrun')}>
-            <b>{t.nextScope}</b>
-            <span>{opt.next.title}</span>
-          </span>
-        )}
-      </span>
-      <span className={chg(f.includes('est') || f.includes('priority') || f.includes('heavy'))}>
-        <Intensity priority={x.priority} est={x.state === 'running' ? undefined : x.est} heavy={x.heavy} />
-      </span>
+      <motion.span className={`auto-fill${x.state === 'paused' ? ' paused' : ''}`} style={{ scaleX: scale, opacity: x.state === 'paused' ? undefined : dip }} aria-hidden />
+      {flowing && (
+        <motion.span className={`auto-sweep${x.state === 'running' ? ' fast' : ''}`} style={{ width: left }} aria-hidden>
+          <i />
+        </motion.span>
+      )}
+      {x.state === 'running' && <motion.span className={`auto-front${over ? ' over' : ''}`} style={{ left, width: front, marginLeft: -front }} aria-hidden />}
     </>
   )
-  return (
-    <div className={`auto-task st-${x.state}`} data-h24={x.id}>
-      <div className="in auto-row">
-        {openSession ? (
-          <button className="auto-row-main" onClick={openSession} aria-label={label}>
-            {body}
-          </button>
-        ) : (
-          <div className="auto-row-main" role="group" aria-label={label}>
-            {body}
-          </div>
-        )}
-        {x.toggle && (
-          <button className="ch" onClick={() => void api.toggleH24(x.id).then(refresh)} aria-label={x.state === 'paused' ? t.resume(x.title) : t.pause(x.title)}>
-            <Icon name={x.state === 'paused' ? 'play' : 'pause'} />
-          </button>
-        )}
-        {opt && k && (
-          <button className={`ch auto-talk-ic${talkOpen ? ' on' : ''}`} onClick={() => k.setOpen(talkOpen ? null : x.id)} aria-expanded={talkOpen} aria-label={t.talk(x.title)}>
-            <Icon name="bubble" />
-          </button>
-        )}
-        {/* Its field open, an accepted task that has not started can be taken back (a recurring one stops coming
-            back), without the model: never a tap that was meant to open the field. */}
-        {opt && k && talkOpen && opt.state === 'queued' && (
-          <button
-            className="ch auto-stop"
-            onClick={() => {
-              if (performance.now() - k.openedAt() < SETTLE_MS) return
-              k.setOpen(null)
-              void api.refuseOptimizer(x.id).finally(refresh)
-            }}
-            aria-label={t.stop(x.title)}
-          >
-            <Icon name="close" />
-          </button>
-        )}
-      </div>
-      {opt && <TaskTalk o={opt} open={talkOpen} />}
-    </div>
-  )
 }
 
-/**
- * Sous une tâche acceptée : d'où elle vient (l'échange qui l'a réécrite, replié sur une ligne, déplié d'un tap), ses
- * passages précédents si elle revient, et le champ quand sa bulle est ouverte.
- */
-function TaskTalk({ o, open }: { o: Optimizer; open: boolean }) {
+/** The trigger in words, then where it runs; then, when it matters, what holds it or that its last run failed. */
+export function useMetaLine(x: AutoItem): string {
   const t = useT(M)
-  const { now } = useApp()
-  const k = useContext(TalkCtx)!
-  const [more, setMore] = useState(false)
-  const lines = o.talk ?? []
-  const busy = k.busy.has(o.id) || k.notes.has(o.id)
-  if (!open && !more && !lines.length && !busy) return null
-  const runs = o.runs ?? []
-  return (
-    <div className="in auto-hist">
-      {open || more || busy ? (
-        <>
-          {more && runs.length > 0 && (
-            <ul className="auto-runs">
-              {[...runs].reverse().map((r) => (
-                <li key={r.at} className={r.ok ? '' : 'bad'} aria-label={r.ok ? t.runOk(short(now - r.at, true)) : t.runFailed(short(now - r.at, true))}>
-                  <Icon name={r.ok ? 'check' : 'close'} />
-                  <b aria-hidden>{t.endedAgo(short(now - r.at, true))}</b>
-                  {r.note && <span aria-hidden>{r.note}</span>}
-                </li>
-              ))}
-            </ul>
+  const { snap, now } = useApp()
+  const project = x.projectId ? (snap.projects.find((p) => p.id === x.projectId)?.name ?? x.projectId) : x.repo
+  const parts = [triggerText(x.trigger, now), project]
+  if ((x.state === 'waiting' || x.state === 'queued') && x.waiting && x.waiting !== 'time') parts.push(t[`wait_${x.waiting}`])
+  else if (x.state === 'queued' && x.place) parts.push(`#${x.place}`)
+  if (x.lastRun && !x.lastRun.ok && x.state !== 'running') parts.push(t.failedAgo(short(now - x.lastRun.at, true)))
+  else if (x.state === 'done' && x.endedAt) parts.push(t.endedAgo(short(now - x.endedAt, true)))
+  return parts.filter(Boolean).join(' · ')
+}
+
+/** One band, automation or proposal (the same component and key: a proposal given ✓ slides into its place among the
+ *  automations, its glyph turning into theirs). */
+function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposal?: Optimizer }) {
+  const t = useT(M)
+  const { snap, now, push } = useApp()
+  const k = useTalk()
+  const meta = useMetaLine(x)
+  const open = () => push({ kind: 'auto', id: x.id })
+  if (o) {
+    const f = k.flash.get(o.id) ?? []
+    const busy = k.busy.has(o.id)
+    const project = x.projectId ? (snap.projects.find((p) => p.id === x.projectId)?.name ?? x.projectId) : o.repo
+    return (
+      <motion.section layout="position" className="band auto-band auto-prop" style={color(slot)} data-h24={o.id} {...drop}>
+        <button className="auto-hit" onClick={open} aria-label={t.taskLabel(o.title, t.state_proposed, [t[`kind_${o.kind}`], o.why].filter(Boolean).join(', '))} />
+        <div className="in">
+          <span className={chg(f.includes('kind'), 'st')} aria-hidden>
+            <Glyph name={KIND_ICON[o.kind]} />
+          </span>
+          <span className={chg(f.includes('title'), 'auto-name')} aria-hidden>
+            {o.title}
+          </span>
+          <span className="chars">
+            <button className="ch" onClick={() => k.answer(o, true)} disabled={busy || k.isStale(o)} aria-label={busy ? t.acceptBusy(o.title) : t.accept(o.title)}>
+              <Icon name="check" />
+            </button>
+            <button className="ch" onClick={() => k.answer(o, false)} aria-label={t.refuse(o.title)}>
+              <Icon name="close" />
+            </button>
+          </span>
+          {o.why && (
+            <span className={chg(f.includes('why'), 'meta sub why')} aria-hidden>
+              {o.why}
+            </span>
           )}
-          <TalkLines key={more ? 'all' : 'last'} o={o} all={more} onFewer={more ? () => setMore(false) : undefined} />
-          {open && <TalkField id={o.id} title={o.title} />}
-        </>
-      ) : (
-        <button className="auto-hist-one" onClick={() => setMore(true)} aria-expanded={false} aria-label={t.history(o.title, lines.length)}>
-          <Icon name="bubble" />
-          <span aria-hidden>{lines.at(-1)?.text}</span>
-          {lines.length > 1 && <b aria-hidden>+{lines.length - 1}</b>}
-        </button>
-      )}
-    </div>
+          <span className={chg(f.some((c) => c === 'every' || c === 'window' || c === 'notBefore' || c === 'repo'), 'meta sub ellipsis')} aria-hidden>
+            {[triggerText(x.trigger, now), project].filter(Boolean).join(' · ')}
+          </span>
+          {k.notes.get(o.id) && (
+            <span className="meta sub" role="status">
+              ! {k.notes.get(o.id)}
+            </span>
+          )}
+        </div>
+      </motion.section>
+    )
+  }
+  const right = x.state === 'running' && x.startedAt ? short(now - x.startedAt) : x.nextAt && x.state !== 'paused' ? at(x.nextAt, now) : ''
+  return (
+    <motion.section layout="position" className={`band auto-band${x.state === 'paused' ? ' paused' : ''}`} style={color(slot)} data-h24={x.id} {...drop}>
+      <Fill x={x} sweep={x.state === 'running'} />
+      <button className="auto-hit" onClick={open} aria-label={t.taskLabel(x.title, t[`state_${x.state}`], [meta, right].filter(Boolean).join(', '))} />
+      <div className="in" aria-hidden>
+        <span className="st">
+          <Glyph {...glyphOf(x)} />
+        </span>
+        <span className="auto-name">{x.title}</span>
+        <span className="act">{right}</span>
+        <span className="meta sub ellipsis">{meta}</span>
+      </div>
+    </motion.section>
   )
 }

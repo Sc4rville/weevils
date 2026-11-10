@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-// The « auto » band: proposals as flush columns (✓ accepts, × refuses, the column leaves), the closed head counts,
-// categories and groups fold with a tap, a task with a session opens it (drawer closed first), a timer toggles.
+// The « auto » drawer: one band per automation (a tap opens its page), proposals as bands at the top (✓ takes the
+// version on screen, × refuses), a one-line head, nothing of the old machine line.
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -43,6 +43,8 @@ const { Ctx } = await import('./app-context')
 
 const NOW = Date.now()
 const opt = (o: Partial<Optimizer>): Optimizer => ({ id: 'o', title: 't', why: '', repo: null, kind: 'tests', heavy: false, state: 'proposed', createdAt: NOW, ...o })
+/** An accepted task. */
+const task = (o: Partial<Optimizer>): Optimizer => opt({ state: 'queued', ...o })
 
 const snap = (optimizers: Optimizer[], h24: H24Activity[] = []): Snapshot => ({
   version: 1,
@@ -118,212 +120,99 @@ afterEach(() => {
   host.remove()
 })
 
-describe('auto band', () => {
-  it('proposals sit side by side; ✓ accepts, × refuses, and the column leaves', async () => {
-    render(snap([opt({ id: 'a', title: 'Harden tests', why: 'ship it' }), opt({ id: 'b', title: 'Watch fairs', kind: 'watch' }), opt({ id: 'c', title: 'Draft page', kind: 'content' })]))
-    expect([...host.querySelectorAll('.auto-prop .t')].map((n) => n.textContent)).toEqual(['Harden tests', 'Watch fairs', 'Draft page'])
-    expect(host.querySelector('.h24-head')!.getAttribute('aria-label')).toContain('3 to approve')
+describe('auto drawer', () => {
+  const running = (o: Partial<Optimizer> = {}) => opt({ id: 'r', state: 'running', title: 'Profile loader', repo: 'mygame', startedAt: NOW - 5 * 60_000, sessionId: 's1', ...o })
+  const timer: H24Activity = { id: 'timer:wv-sync.timer', title: 'sync', kind: 'timer', projectId: null, schedule: '', enabled: true, runState: 'waiting', runStartedAt: null, lastEvent: '', canToggle: true, nextRunAt: NOW + 14 * 60_000, everyMs: 6 * 3600_000 }
+  const head = () => host.querySelector('.h24-head')!
+  const names = () => [...host.querySelectorAll('.auto-band .auto-name')].map((n) => n.textContent)
+
+  it('the head says what runs (AutoMark, its title, +N), else what waits for a yes, else the next trigger', () => {
+    render(snap([running(), running({ id: 'r2', title: 'A second one' }), opt({ id: 'p' })]))
+    expect(head().querySelector('.auto-sum .auto-mark')).not.toBeNull()
+    expect(head().querySelector('.auto-sum')!.textContent).toBe(`${names()[1]} +1`)
+    render(snap([opt({ id: 'p' }), opt({ id: 'p2' })], [timer]))
+    expect(head().querySelector('.auto-sum')!.textContent).toBe('2 to approve')
+    expect(head().getAttribute('aria-label')).toContain('2 to approve')
+    render(snap([], [timer]))
+    expect(head().querySelector('.auto-sum')!.textContent).toMatch(/^next \d\d:\d\d$/)
+    render(snap([]))
+    expect(head().querySelector('.auto-sum')!.textContent).toBe('')
+    expect(host.querySelector('.empty')!.textContent).toBe('nothing')
+  })
+
+  it('no machine line, no tag, no column', () => {
+    render(snap([running(), task({ id: 'q', waiting: 'load' }), opt({ id: 'p' })], [timer]))
+    for (const sel of ['.auto-machine', '.auto-tag', '.auto-props', '.auto-prop-strip', '.auto-gauge', '.auto-cat', '.auto-grp']) expect(host.querySelector(sel), sel).toBeNull()
+    // Why it waits: a plain word in its meta line.
+    expect(host.querySelector('[data-h24="q"] .meta')!.textContent).toContain('machine busy')
+  })
+
+  it('one band per automation, running first, AutoMark on the running one; a tap opens its page, the drawer stays', async () => {
+    render(snap([task({ id: 'q', waiting: 'time', startAt: NOW + 3600_000, every: 86_400_000, title: 'Nightly' }), running()], [timer]))
+    expect(names()).toEqual(['Profile loader', 'sync', 'Nightly'])
+    expect(host.querySelector('[data-h24="r"] .st .auto-mark')).not.toBeNull()
+    expect(host.querySelector('[data-h24="q"] .st .auto-mark')).toBeNull()
+    expect(host.querySelector('[data-h24="r"] .act')!.textContent).toBe('5m')
+    expect(host.querySelector('[data-h24="r"] .auto-front')).not.toBeNull()
+    await click(host.querySelector('[data-h24="q"] .auto-hit'))
+    expect(pushed).toEqual([{ kind: 'auto', id: 'q' }])
+    expect(drawer).toEqual([])
+    // Every band is one button.
+    for (const b of host.querySelectorAll('.auto-band:not(.auto-round)')) expect(b.querySelector('.auto-hit')).not.toBeNull()
+  })
+
+  it('proposals are bands at the top: ✓ sends the version on screen (rev), × refuses, the band folds away; a tap elsewhere opens its page', async () => {
+    let clock = 10_000
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+    render(snap([running(), opt({ id: 'a', title: 'Harden tests', why: 'ship it', rev: 3, window: { from: 60, to: 360 }, every: 7 * 86_400_000 }), opt({ id: 'b', title: 'Watch fairs', kind: 'watch' })]))
+    expect(names()).toEqual(['Harden tests', 'Watch fairs', 'Profile loader'])
+    expect(host.querySelector('[data-h24="a"] .why')!.textContent).toBe('ship it')
+    expect(host.querySelector('[data-h24="a"] .meta.ellipsis')!.textContent).toMatch(/^every \w+day, at night$/)
+    await click(host.querySelector('[data-h24="b"] .auto-hit'))
+    expect(pushed).toEqual([{ kind: 'auto', id: 'b' }])
     await click(label(/^run "Harden tests"/)!)
     await click(label(/^refuse "Watch fairs"/)!)
     await flush()
-    expect(calls).toEqual(['accept a rev 0', 'refuse b'])
-    expect([...host.querySelectorAll('.auto-prop .t')].map((n) => n.textContent)).toEqual(['Draft page'])
-  })
-
-  it('a tap on a column unfolds it (others become strips), never accepts; ✓ waits for the finger to settle', async () => {
-    let clock = 10_000
-    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
-    render(snap([opt({ id: 'a', title: 'Harden the save parser tests', why: 'broken saves cost you hours' }), opt({ id: 'b', title: 'Watch fairs', kind: 'watch' }), opt({ id: 'c', title: 'Draft page', kind: 'content' })]))
-    const state = () => [...host.querySelectorAll('.auto-prop')].map((n) => (n.classList.contains('open') ? 'open' : n.classList.contains('slim') ? 'slim' : '-'))
-    expect(host.querySelector('.auto-prop-strip')).toBeNull()
-    await click(host.querySelector('.auto-prop .auto-prop-body'))
-    expect(state()).toEqual(['open', 'slim', 'slim'])
-    expect(host.querySelector('.auto-prop.open .auto-prop-body')!.getAttribute('aria-expanded')).toBe('true')
-    expect(host.querySelector('.auto-prop.open .w')!.textContent).toBe('broken saves cost you hours')
-    // The slim ones: their ✓ and × are out of reach; a tap on the strip unfolds that one.
-    expect(host.querySelector('.auto-prop.slim .auto-prop-in')!.hasAttribute('inert')).toBe(true)
-    // A second tap right away (the finger that unfolded) does nothing.
-    await click(label(/^run "Harden the save parser tests"/)!)
-    expect(calls).toEqual([])
-    clock += 500
-    await click(label(/^run "Harden the save parser tests"/)!)
-    await flush()
-    expect(calls).toEqual(['accept a rev 0'])
-    expect(state()).toEqual(['-', '-'])
-    await click(host.querySelector('.auto-prop:last-child .auto-prop-body'))
-    expect(state()).toEqual(['slim', 'open'])
-    await click(label(/^Watch fairs$/)!)
-    expect(state()).toEqual(['open', 'slim'])
-    clock += 100
-    await click(label(/^refuse "Watch fairs"/)!)
-    expect(calls).toEqual(['accept a rev 0'])
-    // A tap on the open column folds it back.
-    await click(host.querySelector('.auto-prop.open .auto-prop-body'))
-    expect(state()).toEqual(['-', '-'])
-    clock += 500
-    await click(label(/^refuse "Watch fairs"/)!)
-    await flush()
-    expect(calls).toEqual(['accept a rev 0', 'refuse b'])
+    expect(calls).toEqual(['accept a rev 3', 'refuse b'])
+    // Accepted: the same band, now among the automations; refused: gone.
+    expect(names()).toEqual(['Profile loader', 'Harden tests'])
+    expect(host.querySelector('[data-h24="a"] .chars')).toBeNull()
     now.mockRestore()
   })
 
-  it('the « tests » kind never wears the accept ✓', () => {
+  it('the kind glyph of a proposal is never ✓ nor ×', () => {
     render(snap([opt({ id: 'a', title: 'Harden tests' })]))
     const d = (sel: string) => host.querySelector(`${sel} path:last-child`)!.getAttribute('d')
-    expect(d('.auto-prop .k')).not.toBe(d('.auto-prop .ok'))
-    expect(d('.auto-prop .k')).not.toBe(d('.auto-prop .no'))
+    expect(d('[data-h24="a"] .st')).not.toBe(d('[data-h24="a"] .ch:first-child'))
+    expect(d('[data-h24="a"] .st')).not.toBe(d('[data-h24="a"] .ch:last-child'))
   })
 
-  it('no proposal: no band at all', () => {
-    render(snap([opt({ id: 'r', state: 'running', repo: 'mygame', startedAt: NOW - 5 * 60_000, sessionId: 's1' })]))
-    expect(host.querySelector('.auto-props')).toBeNull()
-    expect(host.querySelector('.h24-head')!.getAttribute('aria-label')).toContain('1 running')
+  it('while a round runs, a band with the cycle and the breathing squares sits after the proposals', () => {
+    render({ ...snap([opt({ id: 'a' }), running()]), autoRound: { busy: true } })
+    const bands = [...host.querySelectorAll('.h24-body > .band')]
+    expect(bands.map((b) => b.getAttribute('data-h24') ?? (b.classList.contains('auto-round') ? 'round' : '?'))).toEqual(['a', 'round', 'r'])
+    expect(bands[1].querySelector('.dots')).not.toBeNull()
+    expect(bands[1].textContent).toBe('')
   })
 
-  it('folds a category and a group with a tap; a folded level keeps its count', async () => {
-    render(
-      snap(
-        [opt({ id: 'r', state: 'running', repo: 'mygame', title: 'Profile loader', startedAt: NOW, sessionId: 's1' }), opt({ id: 'q', state: 'queued', waiting: 'queue', repo: 'mygame', title: 'Fix save' })],
-        [{ id: 'job:mygame-build', title: 'mygame-build', kind: 'job', projectId: 'mygame', schedule: '', enabled: true, runState: 'running', runStartedAt: NOW, lastEvent: 'linking', canToggle: false }],
-      ),
-    )
-    const titles = () => [...host.querySelectorAll('.auto-title')].map((n) => n.textContent)
-    expect(titles()).toEqual(['Profile loader', 'Fix save', 'mygame-build'])
-    await click(label(/^tasks: 2 tasks, 1 running\. collapse/)!)
+  it('finished ones fold behind one line', async () => {
+    render(snap([running(), opt({ id: 'd', state: 'done', endedAt: NOW - 3600_000, title: 'Old one' })]))
+    expect(names()).toEqual(['Profile loader'])
+    await click(label(/^1 finished$/)!)
     await flush()
-    expect(titles()).toEqual(['mygame-build'])
-    await click(label(/^mygame: 3 tasks, 2 running\. collapse/)!)
-    await flush()
-    expect(titles()).toEqual([])
-    expect(host.querySelector('.auto-cat-head .auto-agg')!.textContent).toContain('3')
+    expect(names()).toEqual(['Profile loader', 'Old one'])
   })
 
-  it('a task with a session opens it, drawer closed first; a timer toggles', async () => {
-    render(
-      snap(
-        [opt({ id: 'r', state: 'running', repo: 'mygame', title: 'Profile loader', startedAt: NOW, sessionId: 's1' })],
-        [{ id: 'timer:wv-sync.timer', title: 'sync', kind: 'timer', projectId: null, schedule: '', enabled: true, runState: 'waiting', runStartedAt: null, lastEvent: '', canToggle: true, nextRunAt: NOW + 14 * 60_000, everyMs: 6 * 3600_000 }],
-      ),
-    )
-    await click(label(/^Profile loader, running/)!)
-    expect(drawer).toEqual([false])
-    expect(pushed).toEqual([{ kind: 'session', id: 's1' }])
-    const timer = label(/^sync, scheduled/)!
-    expect(timer.getAttribute('aria-label')).toContain('next in 14m')
-    expect(timer.getAttribute('aria-label')).toContain('every 6h')
-    await click(label(/^pause sync/)!)
-    expect(calls).toEqual(['toggle timer:wv-sync.timer'])
+  it('a paused one wears the pause glyph; a failed last run the ×, in the alert colour', () => {
+    render(snap([task({ id: 'z', paused: true, waiting: 'paused', title: 'Z' }), task({ id: 'f', waiting: 'time', startAt: NOW + 3600_000, every: 86_400_000, runs: [{ at: NOW - 3600_000, startedAt: NOW - 3700_000, ok: false }], title: 'F' })]))
+    expect(host.querySelector('[data-h24="z"]')!.classList.contains('paused')).toBe(true)
+    expect(host.querySelector('[data-h24="f"] .st .alert')).not.toBeNull()
+    expect(host.querySelector('[data-h24="f"] .meta')!.textContent).toContain('failed 1h ago')
   })
 
-  it('talks a proposal over: the bubble opens a field under the card, the reply shows in it, the card is rewritten, ✓ waits then takes that version', async () => {
-    let clock = 10_000
-    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
-    const p = opt({ id: 'a', title: 'Harden tests', why: 'ship it', priority: 2, est: 40 })
-    render(snap([p, opt({ id: 'b', title: 'Watch fairs', kind: 'watch' })]))
-    // Folded: no bubble; unfolded: one.
-    expect(label(/^talk about "Harden tests"/)).toBeUndefined()
-    await click(host.querySelector('.auto-prop .auto-prop-body'))
-    await click(label(/^talk about "Harden tests"/)!)
-    const input = host.querySelector<HTMLInputElement>('.auto-prop-say input')!
-    expect(input.getAttribute('aria-label')).toBe('your question about "Harden tests"')
-    expect(host.querySelector('.auto-prop-say .voice-logo')).not.toBeNull()
-    await act(async () => {
-      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
-      set.call(input, 'at night, weekly, e2e only')
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await act(async () => void host.querySelector<HTMLFormElement>('.auto-prop-say form')!.requestSubmit())
-    expect(calls).toEqual(['talk a at night, weekly, e2e only'])
-    // In flight: the question shows in the card, ✓ is off.
-    expect(host.querySelector('.auto-prop.open .auto-line.user')!.textContent).toBe('at night, weekly, e2e only')
-    clock += 1000
-    expect(label(/^"Harden tests" is being rewritten/)!.hasAttribute('disabled')).toBe(true)
-    const item = { ...p, title: 'E2E tests', est: 50, window: { from: 60, to: 360 }, every: 7 * 86_400_000, rev: 1, changed: { at: NOW, fields: ['title', 'est', 'window', 'every'] }, talk: [{ who: 'user', text: 'at night, weekly, e2e only', at: NOW }, { who: 'auto', text: 'Done: nights, every week, e2e only.', at: NOW, changed: ['title'] }] }
-    await act(async () => talk.release!({ reply: 'Done: nights, every week, e2e only.', item, changed: ['title', 'est', 'window', 'every'] }))
-    await flush()
-    const card = host.querySelector('.auto-prop.open')!
-    expect(card.querySelector('.t')!.textContent).toBe('E2E tests')
-    expect(card.querySelector('.t')!.classList.contains('auto-chg')).toBe(true)
-    expect(card.querySelector('.auto-line.auto.last')!.textContent).toBe('Done: nights, every week, e2e only.')
-    expect([...card.querySelectorAll('.auto-cond')].map((n) => n.textContent)).toEqual(['night 01:00–06:00', '/7d'])
-    // The reply sits under ✓ and ×: they never move under a finger. A tap at once is not meant for ✓.
-    const acts = card.querySelector('.acts')!
-    expect(acts.compareDocumentPosition(card.querySelector('.auto-lines')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    await click(label(/^run "E2E tests"/)!)
-    expect(calls).toEqual(['talk a at night, weekly, e2e only'])
-    clock += 500
-    await click(label(/^run "E2E tests"/)!)
-    await flush()
-    expect(calls).toEqual(['talk a at night, weekly, e2e only', 'accept a rev 1'])
-    now.mockRestore()
-  })
-
-  it('a ✓ refused because the card changed elsewhere: it stays, says so, flashes what changed, then ✓ works again', async () => {
-    let clock = 10_000
-    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
-    const p = opt({ id: 'old', title: 'Harden tests', est: 40, priority: 2 })
-    render(snap([p]))
-    await click(host.querySelector('.auto-prop .auto-prop-body'))
-    clock += 1000
-    await click(label(/^run "Harden tests"/)!)
-    await flush()
-    expect(calls).toEqual(['accept old rev 0'])
-    const card = host.querySelector('.auto-prop.open')!
-    expect(card.querySelector('.auto-line.note')!.textContent).toContain('It changed in the meantime')
-    expect(label(/^run "Harden tests"/)!.hasAttribute('disabled')).toBe(true)
-    // The newer version arrives: its changed fields flash, ✓ is back (after a beat).
-    render(snap([{ ...p, title: 'E2E tests', est: 60, rev: 1 }]))
-    await flush()
-    const t = host.querySelector('.auto-prop.open .t')!
-    expect(t.textContent).toBe('E2E tests')
-    expect(t.classList.contains('auto-chg')).toBe(true)
-    expect(label(/^run "E2E tests"/)!.hasAttribute('disabled')).toBe(false)
-    now.mockRestore()
-  })
-
-  it('an accepted task that has not started can be taken back from its open field (a recurring one stops coming back)', async () => {
-    let clock = 10_000
-    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
-    render(snap([opt({ id: 'q', state: 'queued', waiting: 'time', startAt: NOW + 60_000, every: 86_400_000, title: 'Nightly' }), opt({ id: 'r', state: 'running', startedAt: NOW, title: 'Running one' })]))
-    // No × until its field is open; never on a running one.
-    expect(label(/^remove "Nightly"/)).toBeUndefined()
-    await click(label(/^talk about "Nightly"/)!)
-    await click(label(/^remove "Nightly"/)!)
-    expect(calls).toEqual([])
-    clock += 1000
-    await click(label(/^remove "Nightly"/)!)
-    expect(calls).toEqual(['refuse q'])
-    await click(label(/^talk about "Running one"/)!)
-    expect(label(/^remove "Running one"/)).toBeUndefined()
-    now.mockRestore()
-  })
-
-  it('a running task shows the scope agreed for its next run', () => {
-    render(snap([opt({ id: 'r', state: 'running', startedAt: NOW, every: 7 * 86_400_000, title: 'Harden tests', next: { title: 'E2E tests only' } })]))
-    expect(label(/^Harden tests, running/)!.getAttribute('aria-label')).toContain('next run: E2E tests only')
-    expect(host.querySelector('.auto-nextrun')!.textContent).toBe('nextE2E tests only')
-  })
-
-  it('an accepted task keeps where it came from: one line under its row, unfolded with a tap; its bubble opens the field there', async () => {
-    const lines = [
-      { who: 'user' as const, text: 'only e2e', at: NOW },
-      { who: 'auto' as const, text: 'Only the e2e tests now.', at: NOW, changed: ['prompt' as const] },
-      { who: 'user' as const, text: 'at night', at: NOW },
-      { who: 'auto' as const, text: 'Nights it is, 01:00 to 06:00.', at: NOW, changed: ['window' as const] },
-    ]
-    render(snap([opt({ id: 'q', state: 'queued', waiting: 'time', startAt: NOW + 14 * 60_000, window: { from: 60, to: 360 }, every: 86_400_000, repo: 'mygame', title: 'E2E tests', talk: lines })]))
-    const row = label(/^E2E tests, scheduled/)!
-    expect(row.getAttribute('aria-label')).toContain('next in 14m')
-    expect(row.getAttribute('aria-label')).toContain('every day between 01:00 and 06:00')
-    expect(row.getAttribute('aria-label')).toContain('every 1d')
-    const one = label(/^where "E2E tests" comes from: 4 lines/)!
-    expect(one.textContent).toContain('Nights it is, 01:00 to 06:00.')
-    await click(one)
-    expect([...host.querySelectorAll('.auto-hist .auto-line')].map((n) => n.textContent)).toEqual(lines.map((l) => l.text))
-    await click(label(/^fold the exchange/)!)
-    expect(host.querySelectorAll('.auto-hist .auto-line')).toHaveLength(0)
-    await click(label(/^talk about "E2E tests"/)!)
-    expect(host.querySelector('.auto-hist input')).not.toBeNull()
-    expect(host.querySelectorAll('.auto-hist .auto-line')).toHaveLength(2)
+  it('clears the old fold memory', () => {
+    localStorage.setItem('weevils-auto-folds', '{}')
+    render(snap([]))
+    expect(localStorage.getItem('weevils-auto-folds')).toBeNull()
   })
 })

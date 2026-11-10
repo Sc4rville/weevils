@@ -109,15 +109,25 @@ const withProgress = (x: Omit<AutoItem, 'progress'>): AutoItem => {
 
 const newestFirst = (runs: AutoRun[] | undefined) => [...(runs ?? [])].map((r) => ({ ...r, startedAt: r.startedAt ?? r.at })).sort((a, b) => b.at - a.at)
 
-export function optimizerTrigger(o: Pick<Optimizer, 'every' | 'window' | 'notBefore' | 'startAt'>): Trigger {
-  const at = o.startAt ?? o.notBefore
+/** The next time a daily window opens (local time), after now. */
+export function windowStart(w: { from: number }, now: number): number {
+  const d = new Date(now)
+  d.setHours(Math.floor(w.from / 60) % 24, w.from % 60, 0, 0)
+  if (d.getTime() <= now) d.setDate(d.getDate() + 1)
+  return d.getTime()
+}
+
+/** now: for a task not scheduled yet (a proposal), when its window would open next. */
+export function optimizerTrigger(o: Pick<Optimizer, 'every' | 'window' | 'notBefore' | 'startAt'>, now?: number): Trigger {
+  const at = o.startAt ?? o.notBefore ?? (o.window && now !== undefined ? windowStart(o.window, now) : undefined)
   if (o.every) return { kind: 'every', every: o.every, window: o.window, at }
   if (o.window) return { kind: 'window', window: o.window, at }
   if (o.notBefore) return { kind: 'time', at }
   return { kind: 'idle' }
 }
 
-export function fromOptimizer(o: Optimizer, projectId: string | null = null): AutoItem | null {
+/** now: when a proposal's window would open next (its words say the right weekday). */
+export function fromOptimizer(o: Optimizer, projectId: string | null = null, now = Date.now()): AutoItem | null {
   if (o.state === 'refused') return null
   const paused = o.paused || o.waiting === 'paused'
   const state: AutoState =
@@ -146,7 +156,7 @@ export function fromOptimizer(o: Optimizer, projectId: string | null = null): Au
     note: o.lastEvent,
     // Stopped by a limit or an error, or held by its time: when it starts again.
     nextAt: o.state === 'queued' && !paused ? (o.retryAt && o.retryAt > (o.startAt ?? 0) ? o.retryAt : (o.startAt ?? o.retryAt ?? null)) : null,
-    trigger: optimizerTrigger(o),
+    trigger: optimizerTrigger(o, o.state === 'proposed' ? now : undefined),
     projectId,
     repo: o.repo,
     why: o.why,
@@ -198,6 +208,9 @@ export function autoRank(x: AutoItem): number {
 }
 const byOrder = (a: AutoItem, b: AutoItem) =>
   autoRank(a) - autoRank(b) || (a.nextAt ?? Infinity) - (b.nextAt ?? Infinity) || (a.place ?? 0) - (b.place ?? 0) || (b.endedAt ?? 0) - (a.endedAt ?? 0) || a.title.localeCompare(b.title)
+
+/** The automation a session runs for (an optimizer's run): its id, else null. Its row shows AutoMark, not the star. */
+export const autoOfSession = (snap: Pick<Snapshot, 'optimizers'>, sessionId: string): string | null => (snap.optimizers ?? []).find((o) => o.sessionId === sessionId)?.id ?? null
 
 export const projectOfRepo = (projects: Snapshot['projects'], repo: string | null) => (repo ? (projects.find((p) => p.repos.includes(repo))?.id ?? null) : null)
 
@@ -283,6 +296,11 @@ export function triggerText(tg: Trigger, now: number, lang: Lang = getLang()): s
   }
 }
 
+/** A run's moment, in full: « lundi 9 novembre 03:00 ». */
+export function longAt(ts: number, lang: Lang = getLang()): string {
+  return new Intl.DateTimeFormat(locale(lang), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(ts)
+}
+
 /** A period under a day: « 6 h », « 1 h 30 », « 45 min » (fr); « 6h », « 1h30 », « 45 min » (en). */
 function spanIn(ms: number, lang: Lang): string {
   const m = Math.max(1, Math.round(ms / 60_000))
@@ -312,27 +330,31 @@ const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >
 const lastSlots = new Map<string, string>()
 export const slotOf = (id: string) => lastSlots.get(id) ?? 'p9'
 
+/** No band anywhere in the drawer within this many steps of its amber: it would read as the drawer itself. */
+const HEAD_GAP = 2
+
 /**
  * A colour per band of the drawer, in display order (proposals, then automations): a stable slot drawn from the id,
- * never within 3 steps of the band above (the amber head for the first one). A band keeps its slot while it stays and
- * its neighbour above allows it; otherwise the nearest slot after its own that does.
+ * never within 3 steps of the band above (the amber head for the first one), never next to the amber. A band keeps
+ * its slot while it stays and its neighbour above allows it; one that must change takes the first slot after its own
+ * that also suits the band below as it is, so one band leaving never repaints the whole list.
  */
 export function bandColors(ids: string[], kept: ReadonlyMap<string, string>, head = DRAWER_SLOT): Map<string, string> {
   const out = new Map<string, string>()
   let above = head
-  for (const id of ids) {
+  const fits = (p: string, up: string) => hueGap(p, up) >= BAND_GAP && hueGap(p, head) >= HEAD_GAP
+  ids.forEach((id, i) => {
     const mine = kept.get(id)
-    let slot = mine && hueGap(mine, above) >= BAND_GAP ? mine : null
+    let slot = mine && fits(mine, above) ? mine : null
     if (!slot) {
+      const below = ids[i + 1] !== undefined ? kept.get(ids[i + 1]) : undefined
       const start = hash(id) % SLOTS
-      for (let i = 0; i < SLOTS && !slot; i++) {
-        const p = `p${(start + i) % SLOTS}`
-        if (hueGap(p, above) >= BAND_GAP) slot = p
-      }
+      const order = Array.from({ length: SLOTS }, (_, k) => `p${(start + k) % SLOTS}`)
+      slot = order.find((p) => fits(p, above) && (!below || hueGap(p, below) >= BAND_GAP)) ?? order.find((p) => fits(p, above)) ?? order.find((p) => hueGap(p, above) >= BAND_GAP)!
     }
-    out.set(id, slot!)
-    lastSlots.set(id, slot!)
-    above = slot!
-  }
+    out.set(id, slot)
+    lastSlots.set(id, slot)
+    above = slot
+  })
   return out
 }

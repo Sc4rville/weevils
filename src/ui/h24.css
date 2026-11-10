@@ -124,10 +124,21 @@
   opacity: 0.55;
 }
 
-/* The proposal's glyph turns into the automation's when it is accepted (one slide). */
+/* The proposal's glyph turns into the automation's when it is accepted (one slide): both in one cell, cross-fading. */
 .auto-glyph {
   display: inline-grid;
   place-items: center;
+  vertical-align: middle;
+}
+
+.auto-glyph > * {
+  grid-area: 1 / 1;
+  line-height: 0;
+}
+
+.auto-glyph .alert,
+.auto-band .st .alert {
+  color: var(--alert);
 }
 
 /* ---------- The fill: a flat, darker (lighter in the dark) layer of the band's colour, from the left ---------- */
@@ -143,6 +154,45 @@
 
 .auto-fill.paused {
   opacity: 0.35;
+}
+
+/* The fill is fed: a block of a deeper tone keeps travelling through it toward its edge. */
+.auto-sweep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.auto-sweep > i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 34%;
+  background: oklch(from var(--c) calc(l + var(--dl) * 2.6) calc(c * 1.12) h);
+  animation: auto-sweep 3.3s linear infinite;
+}
+
+.auto-sweep.fast > i {
+  animation-duration: 1.9s;
+}
+
+@keyframes auto-sweep {
+  from {
+    left: -34%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auto-sweep {
+    display: none;
+  }
 }
 
 /* Running: the magenta edge of the fill. */
@@ -192,15 +242,15 @@
 }
 
 .auto-flow .name {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .auto-flow .name .of {
+  margin-left: 8px;
   font-size: 1.5rem;
   font-weight: 400;
   opacity: 0.6;
@@ -213,6 +263,11 @@
 .auto-flow .auto-front {
   width: 4px;
   margin-left: -4px;
+}
+
+/* A run that just ended: the full fill, shrinking into its tick. */
+.auto-land {
+  z-index: 0;
 }
 
 /* The runs, oldest left: one tick each, its height its length; red when it failed; the next one faint. */
@@ -232,6 +287,10 @@
   padding: 0 var(--pad) 14px;
 }
 
+.auto-ticks {
+  cursor: pointer;
+}
+
 .auto-ticks > span {
   flex: none;
   width: 6px;
@@ -247,6 +306,11 @@
   opacity: 0.3;
 }
 
+/* The run in progress: its tick grows, in the colour of what runs on its own. */
+.auto-ticks > .live {
+  background: var(--auto-fluo);
+}
+
 /* ---------- The page: the same eight facts for every automation ---------- */
 
 .auto-kpis {
@@ -257,7 +321,10 @@
 }
 
 .auto-kpi {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   min-width: 0;
   padding: 12px 0;
   text-align: left;
@@ -276,15 +343,16 @@
 }
 
 .auto-kpi .v {
-  display: block;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
   margin-top: 2px;
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.015em;
   line-height: 1.15;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .auto-kpi .v .small {

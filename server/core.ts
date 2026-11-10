@@ -1584,54 +1584,49 @@ export class Weevils {
     const managed = this.panes.find((p) => p.name === pane)
     if (managed?.tool === 'codex') {
       const screen = await capture(pane)
-      if (screenDialog(screen)) throw new Error(tr(M).noConfirmation)
+      if (screenDialog(screen)) throw new Error(tr(M).notReceived(screenDialog(screen)!.question))
       const t = sessionId ? this.store.get(sessionId) : undefined
       const queued = workingOnScreen(screen) || t?.phase === 'working'
       const before = Date.now()
       await sendText(pane, fitTerminal(text), queued ? 'Tab' : 'Enter')
       // Tab queues in Codex; the transcript is written only at the next turn. No blind resend:
       // an uncertain confirmation must never duplicate a message or interrupt the running turn.
-      if (!await this.confirmDelivery(pane, sessionId, text, before, true)) throw new Error(tr(M).noConfirmation)
+      if (!await this.confirmDelivery(pane, sessionId, text, before, true, screen)) throw new Error(tr(M).noConfirmation)
       return
     }
-    const attempt = async (): Promise<string | undefined> => {
-      const before = Date.now()
-      await sendText(pane, text)
-      if (await this.confirmDelivery(pane, sessionId, text, before)) return undefined
-      return dialogOnScreen(await capture(pane).catch(() => '')) ?? tr(M).noConfirmation
-    }
     text = fitTerminal(text)
-    const blocked = await this.clearDialog(pane)
-    const first = await attempt()
-    if (!first) return
-    // Un dialogue a pu apparaître entre-temps (ou avaler l'Entrée) : on le ferme et on réessaie une fois.
-    const dlg = await this.clearDialog(pane)
-    const second = await attempt()
-    if (!second) return
-    const why = dlg ?? blocked ?? first
-    throw new Error(tr(M).notReceived(why))
+    await this.clearDialog(pane)
+    const before = Date.now()
+    await sendText(pane, text)
+    // No confirmation is not proof of rejection. Never submit a second copy.
+    if (!await this.confirmDelivery(pane, sessionId, text, before)) throw new Error(tr(M).noConfirmation)
   }
 
-  private async confirmDelivery(pane: string, sessionId: string | undefined, text: string, before: number, codex = false): Promise<boolean> {
+  private async confirmDelivery(pane: string, sessionId: string | undefined, text: string, before: number, codex = false, previousScreen = ''): Promise<boolean> {
     // L'écran montre le texte tel que tapé (signé « [from:x] … ») ; le transcript le garde sans signature (parseSigned).
     const mark = flatScreen(text).slice(0, 48).trim()
     const tmark = flatScreen(parseSigned(text)?.text ?? text).slice(0, 32).trim()
-    const deadline = before + 6000
+    const deadline = before + 12000
     while (Date.now() < deadline) {
       await sleep(300)
       if (sessionId) {
         const hook = this.hooks.get(sessionId)
         if (hook && hook.at > before && hook.event === 'UserPromptSubmit') return true
         const t = this.store.get(sessionId)
-        if (tmark && t?.messages.slice(-6).some((m) => (m.role === 'user' || m.role === 'orchestrator') && m.at >= before - 1500 && flatScreen(m.text).includes(tmark))) return true
+        if (tmark && t?.messages.some((m) => (m.role === 'user' || m.role === 'orchestrator') && m.at >= before && (tmark.length < 8 ? flatScreen(m.text).trim() === tmark : flatScreen(m.text).includes(tmark)))) return true
       }
       // Toutes les secondes : l'écran. Le texte y est (envoyé, ou en file pendant que l'agent travaille) et aucun dialogue ne le recouvre.
       if (Math.round((Date.now() - before) / 300) % 3 === 0) {
         const screen = await capture(pane).catch(() => '')
-        if (screen && !dialogOnScreen(screen) && mark.length >= 8 && flatScreen(screen).includes(mark)) {
-          if (!codex) return true
-          const queue = screen.split('Queued follow-up inputs')[1]?.split(/^[›❯>]/m)[0] ?? ''
-          if (flatScreen(queue).includes(mark)) return true
+        if (screen && !dialogOnScreen(screen) && mark && flatScreen(screen).includes(mark)) {
+          if (!codex && mark.length >= 8) return true
+          const queueOf = (value: string) => value.split('Queued follow-up inputs')[1]?.split(/^[›❯>]/m)[0] ?? ''
+          const exactReplies = (value: string) => queueOf(value).split('\n')
+            .filter((line) => flatScreen(line.replace(/^\s*↳\s*/, '')).trim() === mark).length
+          // Short answers need a new complete queue entry, never a substring in the composer.
+          if (codex && (mark.length >= 8
+            ? flatScreen(queueOf(screen)).includes(mark)
+            : exactReplies(screen) > exactReplies(previousScreen))) return true
         }
       }
     }

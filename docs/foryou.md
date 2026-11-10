@@ -145,23 +145,29 @@ sessions it briefs to `weevils show` their visual results.
 
 ### 3.5 The curator (`server/foryou-curator.ts`) — generated content, on a budget
 
-One single-flight loop for everything generated, so the stream is **one** spender:
+One single-flight loop spends the model budget; publication has its own persistent queue:
 
-- runs only when the app asked for the stream in the last 30 minutes and Claude is logged in;
-- skips when a Claude usage window is at 85 % or more (`quotas()`), backs off 1 h doubling to 12 h on failure
-  (persisted), and never exceeds a daily cap (12 calls, one per tick);
-- **digest** (boss, `smart`): at most one per 3 h and only when something happened since the last one (turns
-  finished, things sent by weevboss, alerts). JSON `{ text, thought?, actions?[] }`: the recap in weevboss's voice,
-  sometimes one sentence that makes the user think, tied to a memory item when there is one, sometimes up to two
-  actions;
-- **improve** (`smart`): at most one per 12 h, from usage patterns (when and where sessions run, what gets cut,
-  what waits), machine advice and unused bricks;
-- **insight** (`smart`): at most one per 2 h, one repo at a time among those active today, cached per repo and
-  week; **milestones** are plain counters, no model;
-- **mail summary** and **session result line** (`haiku`, batched): one short « did this » line each; the raw
-  text is the fallback and the stream never waits for them;
-- every prompt lives in `server/i18n/foryou-curator.ts` (fr + en); an item keeps the language it was written in and is
-  hidden when the app's language differs.
+- While the app has requested the feed within 30 minutes, a 30-second timer publishes at most one queued story.
+  It never catches up with a burst after downtime. No model call is needed to publish an accepted story.
+- `foryou-curator.json.reservoir.json` holds up to 24 stories, publication time, last refill time and the last
+  300 published texts. Atomic private writes and stable item ids preserve the queue across restarts.
+- At eight stories or fewer, a batch can prepare up to 12 candidates, no more often than every two minutes.
+  Candidates require a short title, a supported format, text of at most 600 characters and existing source ids.
+  Sources are the user's saved goals and recorded results/media/insights. Unknown sources, ACKs, engineering
+  notices and lexical duplicates are rejected. The prompt also forbids semantic repeats and invented events.
+- Ideas, fictional mini-stories, questions, observations, supported before/after accounts and discoveries alternate
+  where available. No image is fabricated or implied by a text-only story. Titles stay visible; transcripts start
+  collapsed and audio does not change the card identity.
+- A refill receives real exposure/removal signals. Seen means displayed, removed means removed: neither is a
+  satisfaction score. There is no model-weight training, invented engagement metric or claim of learned taste.
+- Stories expire after six hours or when a cited source disappears. An empty queue stays empty until useful
+  candidates are available; two publications per minute is not a promise of unlimited daily output.
+- Model calls still obey the existing quota gates and daily budgets: 60 full-mode calls, 120 relay calls and 16
+  lean-mode calls, including other curator work. All counters survive restarts. Failures back off one hour,
+  doubling up to twelve hours. Questions needing clear wording have priority over refill work.
+- Other producers keep their cadence: digest at most every five minutes after changes, improvement every twenty
+  minutes, insight every ten minutes and at most one per repo/day, plus batched mail summaries.
+- Prompts live in `server/i18n/foryou-curator.ts` (French and English). Generated items keep their language.
 
 ## 4. App
 

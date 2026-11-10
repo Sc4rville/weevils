@@ -11,7 +11,7 @@ import type { ForYouItem, ForYouKind } from '../shared/foryou.ts'
 import type { UsageInfo } from '../shared/infra.ts'
 import {
   DEEP_GAP, FRESH_MEDIA_MS, ForYou, KEEP_MS, MAX_CARDS, MAX_FEED, MAX_ITEMS, MAX_MEDIA, MEDIA_JOIN_MS, OFFLINE_AFTER_MS, PROPOSALS_SLOT, REFRESH_MS, TEXT_MAX,
-  arrange, firstLine, foryouRoutes, lastWords, score, type ForYouDeps, type MachineState,
+  arrange, cleanTitle, firstLine, foryouRoutes, lastWords, score, withoutPaths, type ForYouDeps, type MachineState,
 } from './foryou.ts'
 import M from './i18n/foryou.ts'
 import TM from './i18n/tips.ts'
@@ -211,6 +211,63 @@ describe('session results', () => {
     expect(find(fy, 's:far')?.media).toBeUndefined()
   })
 
+  it('the paths of the files shown under the words leave the words, with the « : » that announced them', async () => {
+    const fy = make()
+    for (const f of ['menu.png', 'clip.mp4']) shelf.known.add(`/home/u/projects/mygame/out/${f}`)
+    threads.s1 = [says('The menu is in, here are the renders:\n- out/menu.png\n- out/clip.mp4\n\nTests are green.')]
+    fy.sessionTurn(session(), 'result')
+    await flush()
+    expect(find(fy, 's:s1')).toMatchObject({ text: 'The menu is in, here are the renders. Tests are green.', media: [{ name: 'menu.png' }, { name: 'clip.mp4' }] })
+    threads.s1 = [says('Rendu du menu : /home/u/projects/mygame/out/menu.png')]
+    fy.sessionTurn(session(), 'result')
+    await flush()
+    expect(find(fy, 's:s1')?.text).toBe('Rendu du menu.')
+    // A file that is not shown keeps its path; words that are only a path stay as they are.
+    threads.s1 = [says('See out/menu.png and out/missing.png, then data-menu.png.')]
+    fy.sessionTurn(session(), 'result')
+    await flush()
+    expect(find(fy, 's:s1')?.text).toBe('See and out/missing.png, then data-menu.png.')
+    threads.s1 = [says('out/menu.png')]
+    fy.sessionTurn(session(), 'result')
+    await flush()
+    expect(find(fy, 's:s1')).toMatchObject({ text: 'out/menu.png', media: [{ name: 'menu.png' }] })
+    expect(withoutPaths('Done:\n- `out/menu.png`\n- ![menu](out/menu.png "the menu")\n', ['/x/out/menu.png'])).toBe('Done.')
+    expect(withoutPaths('Done: ![menu](out/menu.png "the menu"), (out/clip.mp4) and « out/menu.png ».', ['/x/out/menu.png', '/x/out/clip.mp4'])).toBe('Done.')
+    expect(withoutPaths('Nothing shown: out/other.png', ['/x/out/menu.png'])).toBe('Nothing shown: out/other.png')
+  })
+
+  it('a session title never shows the signature of who briefed it', async () => {
+    const fy = make()
+    const s = session({ title: '[from:weevboss] Fix the menu' })
+    snap.sessions = [s]
+    threads.s1 = [says('Menu fixed.')]
+    fy.sessionTurn(s, 'result')
+    await flush()
+    expect(find(fy, 's:s1')?.title).toBe('Fix the menu')
+    expect(JSON.parse(fs.readFileSync(fy.file, 'utf8')).items[0].title).toBe('Fix the menu')
+    snap.sessions = [session({ title: '[from:gepetto]   Menu, second pass', status: 'needs_user', attention: 'Which font?' })]
+    fy.sessionTurn(snap.sessions[0], 'question')
+    expect(find(fy, 's:s1')).toMatchObject({ tone: 'question', title: 'Menu, second pass' })
+    expect(cleanTitle('[weevils] Old prefix')).toBe('Old prefix')
+    expect(cleanTitle('Plain [from:x] title')).toBe('Plain [from:x] title')
+    expect(cleanTitle(undefined)).toBe('')
+  })
+
+  it('counts the turns delivered today, in all and per project, without counting as a look', async () => {
+    const fy = make()
+    for (const [id, projectId] of [['a', 'mygame'], ['b', 'mygame'], ['c', 'site']]) {
+      threads[id] = [says(`done ${id}`)]
+      fy.sessionTurn(session({ id, projectId }), 'result')
+      await flush()
+    }
+    expect(fy.deliveredToday()).toEqual({ n: 3, by: { mygame: 2, site: 1 } })
+    expect(make().deliveredToday()).toEqual({ n: 3, by: { mygame: 2, site: 1 } })
+    expect(fy.wanted()).toBe(false)
+    now += 24 * HOUR
+    expect(fy.deliveredToday()).toEqual({ n: 0, by: {} })
+    expect(fy.usageKnown()).toBeNull()
+  })
+
   it('never takes a test brief, a one-shot call, weevils own folder or weevboss', async () => {
     const fy = make({ isTestBrief: (p) => !!p && p.startsWith('[test]') })
     transcripts.set('t1', { firstPrompt: '[test] probe' })
@@ -322,6 +379,29 @@ describe('mail', () => {
     expect(read).not.toContain('"mail":{')
   })
 
+  it('the curator may give a mail a short line: shown instead of the first line, the whole mail kept; only raw unseen mails are offered', () => {
+    const fy = make()
+    fy.mail(mail)
+    fy.mail({ ...mail, mid: '<m2@example.com>', text: 'One line only.' })
+    const [raw] = fy.rawMails()
+    expect(fy.rawMails()).toHaveLength(1)
+    expect(raw).toEqual({ id: raw.id, who: 'gepetto', subject: 'menu done', text: mail.text.trim() })
+    expect(JSON.stringify(raw)).not.toContain('gepetto@example.com')
+    fy.mailLine(raw.id, '  the menu is in,   three buttons ', 'en')
+    expect(find(fy, raw.id)).toMatchObject({ text: 'the menu is in, three buttons', body: mail.text.trim() })
+    expect(fy.feed(now, 'fr').items.find((i) => i.id === raw.id)?.text).toBe('the menu is in, three buttons')
+    expect(fy.rawMails()).toEqual([])
+    // Tried without a line worth keeping: the first line stays and the mail is not offered again; a seen mail never is.
+    fy.mail({ ...mail, mid: '<m3@example.com>' })
+    const [next] = fy.rawMails()
+    fy.mailLine(next.id, null)
+    expect(find(fy, next.id)?.text).toBe('The menu is in, with the three buttons.')
+    expect(fy.rawMails()).toEqual([])
+    fy.mail({ ...mail, mid: '<m4@example.com>' })
+    fy.seen([fy.rawMails()[0].id])
+    expect(fy.rawMails()).toEqual([])
+  })
+
   it('a reply goes by mail to the author in the same thread; without a bridge the item has no reply', async () => {
     const write = vi.fn(async (_o: { to: string; subject: string; text: string; inReplyTo: string; author: string; target: string }) => true)
     let out: { write: typeof write } | null = null
@@ -343,10 +423,11 @@ describe('mail', () => {
 // ---------------------------------------------------------------- weevboss's posts
 
 describe('posts', () => {
-  it('a post: weevboss by default, capped, three buttons at most, their briefs never sent to the app', () => {
+  it('a post: weevboss by default, capped, two buttons at most, their briefs never sent to the app', () => {
     const fy = make()
     const item = fy.post(`  ${'w'.repeat(1500)}  `, [{ label: 'Ship it', brief: 'merge and deploy' }, { label: 'x', brief: '' }, { label: 'B', brief: 'b' }, { label: 'C', brief: 'c' }, { label: 'D', brief: 'd' }])
-    expect(item).toMatchObject({ kind: 'boss', who: 'weevboss', reply: 'boss', open: { page: 'boss' }, actions: [{ id: 'a1', label: 'Ship it' }, { id: 'a2', label: 'B' }, { id: 'a3', label: 'C' }] })
+    expect(item).toMatchObject({ kind: 'boss', who: 'weevboss', reply: 'boss', open: { page: 'boss' }, actions: [{ id: 'a1', label: 'Ship it' }, { id: 'a2', label: 'B' }] })
+    expect(item.actions).toHaveLength(2)
     expect(item.text).toHaveLength(1200)
     expect(JSON.stringify(fy.feed())).not.toContain('merge and deploy')
     expect(fy.post('from a friend', undefined, 'gepetto').who).toBe('gepetto')
@@ -395,6 +476,20 @@ describe('posts', () => {
     expect(fy.feed(now, 'fr').items[0].moreText).toBe('Longer answer.')
     expect(fy.recent(['insight'])).toHaveLength(1)
     expect(fy.wanted()).toBe(true)
+  })
+
+  it('a generated item written again under the same id is fresh and unseen; dismissed, it stays dismissed', () => {
+    const fy = make()
+    const bars = (value: number) => fy.add({ id: 'stat:today', kind: 'stat', text: 'Where the day stands', gauges: [{ label: 'week', value, max: 100, shown: `${value}%` }] })
+    bars(40)
+    fy.seen(['stat:today'])
+    now += HOUR
+    bars(55)
+    expect(fy.feed().items.filter((i) => i.kind === 'stat')).toMatchObject([{ id: 'stat:today', at: now, gauges: [{ value: 55 }] }])
+    expect(find(fy, 'stat:today')?.seen).toBeUndefined()
+    fy.dismiss('stat:today')
+    expect(bars(70)).toBeNull()
+    expect(find(fy, 'stat:today')).toBeUndefined()
   })
 })
 

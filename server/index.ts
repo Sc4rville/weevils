@@ -36,6 +36,8 @@ import { Flyers, weevilRoutes } from './weevil.ts'
 import { Optimizers, optimizerRoutes } from './optimizers.ts'
 import { ForYou, foryouRoutes, type MachineState } from './foryou.ts'
 import { MediaShelf } from './foryou-media.ts'
+import { Curator } from './foryou-curator.ts'
+import { Voices, voiceParam } from './foryou-voice.ts'
 import type { MachineLoad } from '../shared/tips.ts'
 
 const w = new Weevils()
@@ -158,6 +160,8 @@ const machineStates = async (): Promise<MachineState[]> => {
 }
 // La charge de cette machine telle que GET /api/tips la lit (tips-state.json, écrit chaque minute), relue de temps en temps.
 let tipLoad: { at: number; loads: MachineLoad[] } = { at: 0, loads: [] }
+// La voix de chacun dans le flux : weevboss garde celle de l'app, chaque auteur extérieur a la sienne (server/foryou-voice.ts).
+const voices = new Voices({ bossVoice: () => w.voiceId ?? cartesia()?.voice })
 const foryou = ORCHESTRATOR
   ? new ForYou(w, {
       shelf: new MediaShelf({ file: path.join(DATA_DIR, 'foryou-media.json'), roots: [...PROJECT_ROOTS, INBOX_DIR, DATA_DIR] }),
@@ -170,9 +174,21 @@ const foryou = ORCHESTRATOR
       quotas,
       machines: machineStates,
       mail: () => mailBridge,
+      voiceOf: (who) => voices.of(who),
     })
   : null
 w.foryou = foryou
+// Ce qui est écrit ou compté dans le flux (point de weevboss, idées, « tu savais que », jalons, barres du jour) : une
+// seule boucle, sur son propre minuteur, jamais sur le chemin d'une requête (server/foryou-curator.ts).
+if (foryou) {
+  const curator = new Curator(foryou, {
+    memory: () => w.memory,
+    repoDir: (repo) => w.repoDir(repo),
+    advice: async () => (await infraDetail()).advice,
+  })
+  foryou.curator = curator
+  curator.start()
+}
 
 const asDevice = (d: any): Device => ({
   os: ['ios', 'android', 'mac', 'windows', 'linux'].includes(d?.os) ? d.os : 'other',
@@ -469,7 +485,7 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ['GET', /^\/api\/setup\/link$/, async (req, res) => json(res, 200, { link: loginLink(req) })],
   // ---- Voix rapide : son en flux, accroches en cache, enregistrement envoyé en morceaux, mesures.
-  ['GET', /^\/api\/speak\/stream$/, async (_req, res, url) => speakStream(res, url.searchParams.get('text') ?? '', url.searchParams.get('oral') === '1', url.searchParams.get('voice') || undefined)],
+  ['GET', /^\/api\/speak\/stream$/, async (_req, res, url) => speakStream(res, url.searchParams.get('text') ?? '', url.searchParams.get('oral') === '1', voiceParam(url.searchParams.get('voice')))],
   ['GET', /^\/api\/voice\/cue$/, async (_req, res) => {
     const mp3 = await cue(w.voiceId, w.speakerLang())
     res.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': mp3.length, 'cache-control': 'no-store' })

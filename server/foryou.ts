@@ -41,7 +41,7 @@ export const TEXT_MAX = 600
 export const POST_MAX = 1200
 export const MAIL_LINE_MAX = 140
 export const MAIL_BODY_MAX = 12_000
-export const MAX_ACTIONS = 3
+export const MAX_ACTIONS = 2
 /** Files shown by the same session within this delay join one item, up to MAX_MEDIA. */
 export const MEDIA_JOIN_MS = 2 * 60_000
 export const MAX_MEDIA = 6
@@ -179,6 +179,41 @@ export function lastWords(messages: Message[]): string | undefined {
 
 const GREETING = /^(?:hi|hello|hey|dear|bonjour|bonsoir|salut|coucou|hola)\b[^.!?]{0,40}[,!.]?$/i
 
+/** A session title as shown: without the signature of who briefed it (« [from:weevboss] Fix the menu » → « Fix the menu »). */
+export const cleanTitle = (title: string | undefined): string => (title ?? '').replace(/^\s*(?:\[from:[a-z0-9_-]{1,32}\]|\[weevils\])\s*/i, '')
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * The closing words of a turn without the paths of the files shown next to them (`files`: the attached ones): the
+ * path as it was written (relative or absolute, bare, quoted or in a markdown link) goes, a list of paths with it, and
+ * the « : » that announced them when nothing follows. Text that cites no attached file comes back untouched.
+ */
+export function withoutPaths(text: string, files: string[]): string {
+  const MARK = '\u0000'
+  let out = text
+  for (const base of new Set(files.map((f) => escapeRe(path.basename(f))).filter(Boolean))) {
+    // i18n-ignore : motifs de recherche (guillemets français), jamais affichés
+    const dir = '(?:[^\\s`"“”«»()<>]*/)?' // i18n-ignore
+    out = out.replace(new RegExp(`!?\\[[^\\]\\n]*\\]\\(<?${dir}${base}>?(?:\\s+"[^"\\n]*")?\\)|[\`"“«]\\s?(?:[^\`"“”«»\\n]*/)?${base}\\s?[\`"”»]|(?<![^\\s\`"“”«»()<>])${dir}${base}(?![\\w-])`, 'g'), MARK) // i18n-ignore
+  }
+  if (out === text) return text
+  return out
+    .replace(/\([ \t]*\u0000[ \t]*\)/g, MARK)
+    .replace(/\u0000(?:[ \t]*(?:,|;|\+|&|\bet\b|\band\b|\bpuis\b|\bthen\b)?[ \t]*\u0000)+/g, MARK)
+    .replace(/^[ \t]*(?:[-*•]|\d+[.)])[ \t]*\u0000[ \t]*[.,;]?[ \t]*$\n?/gm, '\u0001')
+    // « Here they are: » followed only by the list that left.
+    .replace(/[ \t]*[:：][ \t]*\n\s*\u0001+/g, '.\n')
+    .replace(/\u0001/g, '')
+    .replace(/[ \t]*[:：][ \t]*\u0000[ \t]*([.!?]?)[ \t]*$/gm, (_m, end: string) => end || '.')
+    .replace(/\u0000/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([,.])/g, '$1')
+    .replace(/[,;]([.!?])/g, '$1')
+    .replace(/\s*[:：]\s*$/, '.')
+    .trim()
+}
+
 /** First line of a mail that says something: not a greeting, not a quote, not a separator. */
 export function firstLine(text: string, max = MAIL_LINE_MAX): string {
   const lines = text.split(/\r?\n/).map(collapse).filter((l) => /\p{L}/u.test(l) && !l.startsWith('>'))
@@ -292,6 +327,9 @@ interface Stored {
   actions?: { id: string; label: string; brief: string }[]
   /** mail: what a reply needs. The address stays here. */
   mail?: { address: string; mid: string; subject: string; target: string }
+  /** mail: the short « did this » line the curator wrote, shown instead of the first line (lang: the language it is
+   *  in); without text: tried, nothing worth keeping. */
+  sum?: { text?: string; lang?: Lang }
 }
 
 interface LiveState {
@@ -314,8 +352,8 @@ interface State {
   cards: Record<string, number>
   /** What was visible at the last read (ids), to notice that a live item came or left. */
   sig: string
-  /** Turns delivered today. */
-  delivered: { day: string; n: number }
+  /** Turns delivered today, and per project. */
+  delivered: { day: string; n: number; by?: Record<string, number> }
 }
 
 /** What the curator may add: a generated item, in the language it was written in. */
@@ -382,7 +420,7 @@ export class ForYou {
           live: obj<LiveState>(raw.live),
           cards: obj<number>(raw.cards),
           sig: typeof raw.sig === 'string' ? raw.sig : '',
-          delivered: raw.delivered && typeof raw.delivered.day === 'string' ? { day: raw.delivered.day, n: Number(raw.delivered.n) || 0 } : empty.delivered,
+          delivered: raw.delivered && typeof raw.delivered.day === 'string' ? { day: raw.delivered.day, n: Number(raw.delivered.n) || 0, by: obj<number>(raw.delivered.by) } : empty.delivered,
         }
       } catch {
         return empty
@@ -450,7 +488,7 @@ export class ForYou {
   }
 
   private sessionItem(s: Session, over: Pick<Stored, 'tone' | 'text' | 'at'> & Partial<Stored>): Stored {
-    return { id: `s:${s.id}`, kind: 'session', who: 'session', projectId: s.projectId, sessionId: s.id, tool: s.tool, title: s.title, reply: 'session', open: { page: 'session', id: s.id }, rec: this.now(), ...over }
+    return { id: `s:${s.id}`, kind: 'session', who: 'session', projectId: s.projectId, sessionId: s.id, tool: s.tool, title: cleanTitle(s.title), reply: 'session', open: { page: 'session', id: s.id }, rec: this.now(), ...over }
   }
 
   /**
@@ -490,10 +528,13 @@ export class ForYou {
     if (!first && cur0?.tone !== 'result') return
     const detail = await this.w.detailAny(s.id).catch(() => undefined)
     const raw = (detail && lastWords(detail.messages)) ?? ''
-    const text = clip(collapse(raw || (first ? (s.lastMessage ?? '') : '')), TEXT_MAX)
-    if (!text) return
     const local = s.machineId === this.machineId
-    const mediaIds = raw && local && this.shelf ? this.shelf.fromText(raw, s.cwd || undefined, CITED_MAX).map((e) => e.id) : []
+    const cited = raw && local && this.shelf ? this.shelf.fromText(raw, s.cwd || undefined, CITED_MAX) : []
+    const mediaIds = cited.map((e) => e.id)
+    // The files are shown under the words: their raw paths leave the words (unless nothing else was said).
+    const said = cited.length ? collapse(withoutPaths(raw, cited.map((e) => e.path))) : ''
+    const text = clip(said || collapse(raw || (first ? (s.lastMessage ?? '') : '')), TEXT_MAX)
+    if (!text) return
     const cur = this.get(`s:${s.id}`)
     const same = cur?.tone === 'result' && cur.text === text && (cur.mediaIds ?? []).join() === mediaIds.join()
     if (same) return
@@ -508,7 +549,10 @@ export class ForYou {
     const now = this.now()
     this.put(this.sessionItem(s, { tone: 'result', text, at: now, ...(mediaIds.length ? { mediaIds } : {}) }))
     const d = day(now)
-    this.s.delivered = { day: d, n: this.s.delivered.day === d ? this.s.delivered.n + 1 : 1 }
+    const today = this.s.delivered.day === d ? this.s.delivered : { day: d, n: 0, by: {} }
+    const by = { ...today.by }
+    if (s.projectId) by[s.projectId] = (by[s.projectId] ?? 0) + 1
+    this.s.delivered = { day: d, n: today.n + 1, by }
     this.changed()
   }
 
@@ -556,7 +600,7 @@ export class ForYou {
     return list.length ? list : undefined
   }
 
-  /** « weevils post »: a word in the stream, from weevboss unless another author signs it, with up to three buttons. */
+  /** « weevils post »: a word in the stream, from weevboss unless another author signs it, with up to two buttons. */
   post(text: unknown, actions?: unknown, from?: string): ForYouItem {
     const body = typeof text === 'string' ? text.trim() : ''
     if (!body) throw new Error(tr(M).emptyText)
@@ -611,11 +655,15 @@ export class ForYou {
     return this.view(item, snap)!
   }
 
-  /** The seam for generated items (the curator): written as given, replacing an item of the same id. */
+  /**
+   * The seam for generated items (the curator): written as given, replacing an item of the same id (fresh and unseen
+   * again; one the user dismissed stays dismissed).
+   */
   add(n: NewItem): ForYouItem | null {
     const text = clip(n.text.trim(), POST_MAX)
     if (!text) return null
     const boss = n.kind === 'boss'
+    const gone = !!n.id && !!this.get(n.id)?.gone
     const item: Stored = {
       id: n.id ?? newId(n.kind[0]),
       kind: n.kind,
@@ -631,10 +679,40 @@ export class ForYou {
       lang: n.lang,
       ...(boss || n.kind === 'improve' ? { reply: 'boss' as const, open: { page: 'boss' as const } } : {}),
       ...(n.open ? { open: n.open } : {}),
+      ...(gone ? { gone } : {}),
     }
     this.put(item)
     this.changed()
     return this.view(item, this.w.snapshot())
+  }
+
+  /** Mails still raw (no « did this » line yet), never under the user's eyes, that say more than their first line: for the curator. */
+  rawMails(max = 6): { id: string; who: string; subject: string; text: string }[] {
+    return this.s.items
+      .filter((i) => i.kind === 'mail' && !i.gone && !i.seen && !i.sum && !!i.body && collapse(i.body) !== i.text)
+      .sort((a, b) => b.at - a.at)
+      .slice(0, max)
+      .map((i) => ({ id: i.id, who: i.who, subject: i.title ?? '', text: i.body! }))
+  }
+
+  /** The curator's line for a mail (null: it tried and kept nothing, the first line stays). The whole mail stays in body. */
+  mailLine(id: string, line: string | null, l?: Lang) {
+    const i = this.get(id)
+    if (!i || i.kind !== 'mail') return
+    const text = line ? clip(collapse(line), MAIL_LINE_MAX) : ''
+    i.sum = text ? { text, lang: l } : {}
+    if (text) this.changed()
+    else this.save()
+  }
+
+  /** The last usage figures the stream asked for in the background (null: none yet). Never asks. */
+  usageKnown(): UsageInfo | null {
+    return this.usage
+  }
+
+  /** Turns delivered today, in all and per project. Does not count as a look at the stream. */
+  deliveredToday(now = this.now()): { n: number; by: Record<string, number> } {
+    return this.s.delivered.day === day(now) ? { n: this.s.delivered.n, by: { ...this.s.delivered.by } } : { n: 0, by: {} }
   }
 
   /** Recorded items of these kinds, newest first, as the app would read them (for the curator: what was already said). */
@@ -680,13 +758,15 @@ export class ForYou {
     }
     if (i.kind === 'media' && !out.media) return null
     if (i.kind === 'mail') {
+      // Written in the mail's own language, like the first line it replaces: shown whatever the app's language.
+      if (i.sum?.text) out.text = i.sum.text
       // Without a bridge to send through, nothing to reply with.
       if (i.mail?.address && this.deps.mail?.()) out.reply = 'mail'
       else delete out.reply
     }
     if (i.kind === 'session') {
       const cur = snap.sessions.find((s) => s.id === i.sessionId)
-      if (cur) out.title = cur.title
+      if (cur) out.title = cleanTitle(cur.title)
       const t = tr(M)
       if (i.tone === 'question') {
         // Answered since (or gone from the list): no longer a question.

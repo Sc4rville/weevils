@@ -13,6 +13,7 @@ import type http from 'node:http'
 import path from 'node:path'
 import { DATA_DIR, PUBLIC_URL } from './config.ts'
 import { cartesia, cartesiaStream, tts } from './fast.ts'
+import { isEdgeVoice } from './foryou-voice.ts'
 import { ARCHIVE_DIR, openaiKey, transcribe } from './transcribe.ts'
 import { lang, tr, user, type Lang } from './i18n.ts'
 import { detectLang } from '../shared/detect-lang.ts'
@@ -114,7 +115,8 @@ async function pipeSentence(out: { write: (b: Uint8Array) => unknown }, sentence
       firstChunk = false
     }
   } else {
-    const mp3 = await tts(sentence)
+    // The free voice: a speaker's own voice (the « for you » stream) when it is an edge-tts name, else the app's.
+    const mp3 = await tts(sentence, undefined, isEdgeVoice(voice) ? voice : undefined)
     out.write(index > 0 ? skipId3(mp3) : mp3)
   }
 }

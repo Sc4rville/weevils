@@ -638,3 +638,35 @@ describe('session coupée en plein travail', () => {
     expect(send).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('unknown foreign panes and live composers', () => {
+  it('never reaps an old pane without a local transcript, including a foreign orchestrator', async () => {
+    w.panes = [pane({ createdAt: NOW - 400 * MIN }), pane({ name: 'wv-foreign-boss', cwd: '/other/home/orchestrateur', createdAt: NOW - 600 * MIN })]
+    await (w as any).reapPanes()
+    expect(mux.killWv).not.toHaveBeenCalled()
+  })
+  it.each(['claude', 'codex'] as const)('a %s composer is never a question; progress remains working', async (tool) => {
+    add(transcript({ tool, phase: 'working' }))
+    mux.listWv.mockResolvedValue([pane({ tool })])
+    mux.capture.mockResolvedValue('Do you want to proceed?\n› nn go\n• Working (36s • esc to interrupt)')
+    await (w as any).watchPanes()
+    expect(one()).toMatchObject({ status: 'working' })
+    expect(one()?.attention).toBeUndefined()
+    expect(one()?.choices).toBeUndefined()
+  })
+  it('returns labeled choices and validates a fresh menu before selecting', async () => {
+    add(transcript({ tool: 'codex' }))
+    const screen = 'Would you like to run this command?\n› 1. Yes, proceed\n2. No, tell Codex what to do differently\nPress enter to confirm or esc to cancel'
+    mux.listWv.mockResolvedValue([pane({ tool: 'codex' })])
+    mux.capture.mockResolvedValue(screen)
+    await (w as any).watchPanes()
+    const s = one()!
+    expect(s.status).toBe('needs_user')
+    expect(s.choices).toHaveLength(2)
+    await w.key('s1', `choice:${s.choices![1].id}`)
+    expect(mux.sendKey.mock.calls).toEqual([[PANE, 'down'], [PANE, 'enter']])
+    mux.capture.mockResolvedValue('› nn go')
+    await expect(w.key('s1', `choice:${s.choices![0].id}`)).rejects.toThrow()
+    expect(mux.sendKey).toHaveBeenCalledTimes(2)
+  })
+})

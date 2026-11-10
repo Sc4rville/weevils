@@ -1994,7 +1994,7 @@ button.copy.done {
 
 .status-cover {
   position: fixed;
-  top: 0;
+  top: var(--vvt, 0px);
   left: 0;
   right: 0;
   height: var(--safe-t);
@@ -2431,4 +2431,39 @@ button.copy.done {
 
 .relay-link .link {
   min-height: 36px;
+}
+
+/* Keep the open conversation inside the visual viewport when iOS pans for the keyboard. */
+.agent.open {
+  position: fixed;
+  inset-inline: 0;
+  top: var(--vvt, 0px);
+  height: var(--vvh, 100dvh);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+}
+.agent.open #agent-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.agent.open #agent-body > .chat { flex: 1; min-height: 0; }
+.choice-band {
+  display: block;
+  width: 100%;
+  padding: 16px 0;
+  text-align: left;
+  border-top: 1px solid currentColor;
+  font-weight: 600;
+}
+
+/* The collapsed main feed can scroll when focusing its composer; keep its two navigation words below iOS chrome. */
+html[data-keyboard] .agent:not(.open) .fyt-words {
+  position: fixed;
+  top: calc(var(--vvt, 0px) + var(--safe-t));
+  inset-inline: 0;
+  z-index: 26;
+  background: var(--c);
 }

@@ -37,7 +37,7 @@ import { llmTitles, needsTitle, shortNow } from './titles.ts'
 import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
 import type { WvSession } from './mux.ts'
-import { capture, dialogOnScreen, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv, wvName } from './mux.ts'
+import { capture, dialogOnScreen, screenDialog, workingOnScreen, type ScreenDialog, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv, wvName } from './mux.ts'
 import { lang, onLangChange, tr, user, type Lang } from './i18n.ts'
 import TipsM from './i18n/tips.ts'
 import { normalizeFrom, parseSigned, publicAuthors, signAs } from './authors.ts'
@@ -71,6 +71,9 @@ export function gitDirty(cwd: string): Promise<boolean> {
 /** Session tmux wv-* vue au dernier passage, avec ce qu'on lit à son écran. */
 interface ManagedPane extends WvSession {
   screenAttention?: string
+  screenDialog?: ScreenDialog
+  screenWorking?: boolean
+  screenQueued?: number
 }
 
 interface Persisted {
@@ -558,13 +561,20 @@ export class Weevils {
     const next: ManagedPane[] = []
     for (const p of found) {
       const prev = this.panes.find((x) => x.name === p.name)
-      let screenAttention = prev?.screenAttention
+      let screenAttention: string | undefined
+      let dialog: ScreenDialog | undefined
+      let screenWorking = false
+      let screenQueued = 0
       try {
-        screenAttention = dialogOnScreen(await capture(p.name))
+        const screen = await capture(p.name)
+        dialog = screenDialog(screen)
+        screenAttention = dialog?.question
+        screenWorking = workingOnScreen(screen)
+        screenQueued = (screen.split('Queued follow-up inputs')[1]?.split(/^[›❯>]/m)[0].match(/^\s*↳/gm) ?? []).length
       } catch {
         /* écran illisible un instant */
       }
-      next.push({ ...p, sessionId: p.sessionId ?? prev?.sessionId, screenAttention })
+      next.push({ ...p, sessionId: p.sessionId ?? prev?.sessionId, screenAttention, screenDialog: dialog, screenWorking, screenQueued })
     }
     for (const old of this.panes) {
       if (next.some((p) => p.name === old.name)) continue
@@ -607,6 +617,8 @@ export class Weevils {
     for (const p of this.panes) {
       if (this.isOrchestratorPane(p)) continue
       const t = p.sessionId ? this.store.get(p.sessionId) : undefined
+      // No local transcript means unknown activity, never permission to destroy a foreign pane.
+      if (!t) continue
       const last = Math.max(t?.lastActivityAt ?? 0, this.hooks.get(p.sessionId ?? '')?.at ?? 0, p.createdAt)
       if (now - last < KILL_AFTER_MS) continue
       if (t?.phase === 'working' && now - t.lastActivityAt < 10 * 60_000) continue
@@ -755,7 +767,8 @@ export class Weevils {
     else if (pane?.screenAttention) {
       status = 'needs_user'
       attention = pane.screenAttention
-    } else if (hook?.event === 'Notification' && hook.at >= t.lastActivityAt - 2000 && !/waiting for your input/i.test(hook.message ?? '')) {
+    } else if (pane?.screenWorking) status = 'working'
+    else if (hook?.event === 'Notification' && hook.at >= t.lastActivityAt - 2000 && !/waiting for your input/i.test(hook.message ?? '')) {
       status = 'needs_user'
       attention = hook.message
     } else if (hook && hookAlive && hook.at >= t.lastActivityAt - 2000 && ['UserPromptSubmit', 'PostToolUse'].includes(hook.event)) status = 'working'
@@ -803,9 +816,10 @@ export class Weevils {
       // Le titre choisi par l'utilisateur dans l'outil prime ; sinon celui du renommeur (ce dont la session parle maintenant) ; sinon le début.
       title: relayTitle ?? (t.customTitle ? titleOf(t) : (this.titles.get(t.id)?.title ?? titleOf(t))),
       // En attendant l'activité réécrite : le dernier pas de l'agent (outil) plutôt que l'ancienne tâche.
-      now: shortNow(this.titles.get(t.id)?.now || (t.phase === 'working' ? stepOf(t) : '')) || undefined,
+      now: shortNow(this.titles.get(t.id)?.now || (t.phase === 'working' || pane?.screenWorking ? stepOf(t) : '')) || undefined,
       status,
       attention: status === 'needs_user' ? attention : undefined,
+      ...(status === 'needs_user' && pane?.screenDialog ? { choices: pane.screenDialog.options } : {}),
       ...(ask && status === 'needs_user' ? { ask } : {}),
       ...(interrupted ? { interrupted } : {}),
       cwd: t.cwd,
@@ -824,7 +838,7 @@ export class Weevils {
       messageCount: t.messages.length,
       settings: t.model || t.approval || t.effort ? { model: t.model, approval: t.approval, effort: t.effort } : undefined,
       // Une file ne survit pas à la fin du tour : si la session ne travaille plus, tout a été traité.
-      queued: turnWorking ? t.queued.length : 0,
+      queued: turnWorking ? Math.max(t.queued.length, pane?.screenQueued ?? 0) : 0,
       ...(relayOf ? { relayOf } : {}),
       ...(relayedBy ? { relayedBy } : {}),
     }
@@ -842,6 +856,7 @@ export class Weevils {
       title: p.title,
       status: p.screenAttention ? 'needs_user' : now - p.createdAt > DONE_AFTER_MS ? 'done' : 'working',
       attention: p.screenAttention,
+      ...(p.screenDialog ? { choices: p.screenDialog.options } : {}),
       cwd: p.cwd,
       openedAt: p.createdAt,
       lastActivityAt: p.createdAt,
@@ -1305,6 +1320,20 @@ export class Weevils {
     const pane = this.paneFor(this.resolveId(id))
     if (!pane) throw new Error(tr(M).noScreen)
     if (key === 'esc' && /trust|confiance/i.test(pane.screenAttention ?? '')) throw new Error(tr(M).escWouldClose)
+    if (key.startsWith('choice:')) {
+      const dialog = screenDialog(await capture(pane.name))
+      const index = dialog?.options.findIndex((o) => o.id === key.slice(7)) ?? -1
+      if (!dialog || index < 0) throw new Error(tr(M).noScreen)
+      if (dialog.selected < 0) {
+        await sendKey(pane.name, key.endsWith(':y') ? 'y' : 'n')
+        this.bump()
+        return
+      }
+      for (let n = Math.abs(index - dialog.selected); n > 0; n--) await sendKey(pane.name, index < dialog.selected ? 'up' : 'down')
+      await sendKey(pane.name, 'enter')
+      this.bump()
+      return
+    }
     console.log(`[sessions] ${pane.name} ← touche ${key}`)
     await sendKey(pane.name, key)
   }
@@ -1496,7 +1525,29 @@ export class Weevils {
    * message de l'utilisateur dans le transcript, ou le texte visible à l'écran (saisi ou en file d'attente) sans dialogue par-dessus.
    * Sinon : écran capturé, Échap si un menu/dialogue est là, un seul nouvel essai, et une erreur à l'appelant.
    */
+  private deliveryLocks = new Map<string, Promise<void>>()
+
   private async deliver(pane: string, sessionId: string | undefined, text: string): Promise<void> {
+    const previous = this.deliveryLocks.get(pane) ?? Promise.resolve()
+    const next = previous.catch(() => undefined).then(() => this.deliverOne(pane, sessionId, text))
+    this.deliveryLocks.set(pane, next)
+    try { await next } finally { if (this.deliveryLocks.get(pane) === next) this.deliveryLocks.delete(pane) }
+  }
+
+  private async deliverOne(pane: string, sessionId: string | undefined, text: string): Promise<void> {
+    const managed = this.panes.find((p) => p.name === pane)
+    if (managed?.tool === 'codex') {
+      const screen = await capture(pane)
+      if (screenDialog(screen)) throw new Error(tr(M).noConfirmation)
+      const t = sessionId ? this.store.get(sessionId) : undefined
+      const queued = workingOnScreen(screen) || t?.phase === 'working'
+      const before = Date.now()
+      await sendText(pane, fitTerminal(text), queued ? 'Tab' : 'Enter')
+      // Tab queues in Codex; the transcript is written only at the next turn. No blind resend:
+      // an uncertain confirmation must never duplicate a message or interrupt the running turn.
+      if (!await this.confirmDelivery(pane, sessionId, text, before, true)) throw new Error(tr(M).noConfirmation)
+      return
+    }
     const attempt = async (): Promise<string | undefined> => {
       const before = Date.now()
       await sendText(pane, text)
@@ -1515,7 +1566,7 @@ export class Weevils {
     throw new Error(tr(M).notReceived(why))
   }
 
-  private async confirmDelivery(pane: string, sessionId: string | undefined, text: string, before: number): Promise<boolean> {
+  private async confirmDelivery(pane: string, sessionId: string | undefined, text: string, before: number, codex = false): Promise<boolean> {
     // L'écran montre le texte tel que tapé (signé « [from:x] … ») ; le transcript le garde sans signature (parseSigned).
     const mark = flatScreen(text).slice(0, 48).trim()
     const tmark = flatScreen(parseSigned(text)?.text ?? text).slice(0, 32).trim()
@@ -1531,7 +1582,11 @@ export class Weevils {
       // Toutes les secondes : l'écran. Le texte y est (envoyé, ou en file pendant que l'agent travaille) et aucun dialogue ne le recouvre.
       if (Math.round((Date.now() - before) / 300) % 3 === 0) {
         const screen = await capture(pane).catch(() => '')
-        if (screen && !dialogOnScreen(screen) && mark.length >= 8 && flatScreen(screen).includes(mark)) return true
+        if (screen && !dialogOnScreen(screen) && mark.length >= 8 && flatScreen(screen).includes(mark)) {
+          if (!codex) return true
+          const queue = screen.split('Queued follow-up inputs')[1]?.split(/^[›❯>]/m)[0] ?? ''
+          if (flatScreen(queue).includes(mark)) return true
+        }
       }
     }
     return false

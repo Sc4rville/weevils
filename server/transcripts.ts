@@ -303,6 +303,8 @@ function codexLine(t: Transcript, o: any) {
     return
   }
   if (p.type === 'function_call' || p.type === 'custom_tool_call' || p.type === 'local_shell_call') {
+    t.phase = 'working'
+    t.workStartedAt ??= at
     touch(t, at)
     let input: any = {}
     try {

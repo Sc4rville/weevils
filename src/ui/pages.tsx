@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
 import { Collapse, Composer, Line, Messages, ResumeButton, StatusChar, Working, type Attachment } from './bits'
 import { Background } from './subagents'
+import { SessionQuestion } from './session-question'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Settings, effortLabel, modelLabel } from './settings'
@@ -19,7 +20,6 @@ import { RelayPage, SessionRelay } from './relay'
 import { listFiles } from './repofiles'
 import { useThreadAsk } from './askthread'
 import { ago, durLong, status } from './format'
-import { Icon } from './icons'
 import { useT } from '../i18n'
 import { reveal, useFollow } from './follow'
 import { FollowDown } from './followdown'
@@ -93,30 +93,6 @@ function ErrorBand({ text }: { text: string }) {
 
 // ---------------------------------------------------------------------------
 // Session : le fil, l'écran du terminal, les touches.
-
-const KEYS: [string, ReactNode][] = [
-  ['1', '1'],
-  ['2', '2'],
-  ['3', '3'],
-  ['up', <Icon key="u" name="arrow" />],
-  ['down', <Icon key="d" name="arrow" dir="down" />],
-  ['enter', <Icon key="e" name="enter" />],
-  ['esc', 'esc'],
-  ['tab', 'tab'],
-]
-
-function Keys({ id, onError }: { id: string; onError: (m: string) => void }) {
-  const t = useT(M)
-  return (
-    <div className="in keys">
-      {KEYS.map(([k, label]) => (
-        <button key={k} className="key" aria-label={t.keyAria(k)} onClick={() => void api.key(id, k).catch((e) => onError((e as Error).message))}>
-          {label}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 function SessionPage({ id }: { id: string }) {
   const { snap, now, replace, colors } = useApp()
@@ -299,15 +275,7 @@ function SessionPage({ id }: { id: string }) {
         <>
         <Background session={s} />
 
-        {s.status === 'needs_user' && (
-          <div className="msg band tone ask">
-            <div className="in">
-              <span className="who">! {t.asks(s.tool)}</span>
-              <div className="text">{s.attention ?? t.waitingForYou}</div>
-              {s.hasScreen && <Keys id={s.id} onError={setErr} />}
-            </div>
-          </div>
-        )}
+        <SessionQuestion session={s} onError={setErr} />
 
         {s.status === 'working' && <Working author={s.tool} since={s.workStartedAt} />}
 
@@ -356,7 +324,6 @@ function SessionPage({ id }: { id: string }) {
           </Line>
           <Collapse open={screenOpen}>
             <pre className="screen">{screenText ?? t.readingScreen}</pre>
-            <Keys id={s.id} onError={setErr} />
             <div style={{ height: 10 }} />
           </Collapse>
         </div>

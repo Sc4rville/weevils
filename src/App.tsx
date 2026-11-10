@@ -1,3 +1,4 @@
+import { trackViewport } from './ui/viewport'
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
@@ -118,23 +119,8 @@ export default function App() {
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme])
   }, [theme])
 
-  // Hauteur visible réelle (clavier iPhone ouvert) pour que la saisie reste au-dessus du clavier.
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-    const root = document.documentElement
-    const update = () => {
-      root.style.setProperty('--vvh', `${vv.height}px`)
-      root.style.setProperty('--vvt', `${vv.offsetTop}px`)
-    }
-    update()
-    vv.addEventListener('resize', update)
-    vv.addEventListener('scroll', update)
-    return () => {
-      vv.removeEventListener('resize', update)
-      vv.removeEventListener('scroll', update)
-    }
-  }, [])
+  // Hauteur visible réelle et zone sûre de la barre d'état, même clavier iPhone ouvert.
+  useEffect(trackViewport, [])
 
   useEffect(() => {
     // Le doigt (touch*) et le pointeur suivis à part : pointercancel arrive dès qu'un glissé devient un défilement, le doigt

@@ -42,20 +42,29 @@ function useAutoItem(id: string): { item: AutoItem | null; opt: Optimizer | null
   return { item: autoList({ ...snap, optimizers: [] }).find((x) => x.id === id) ?? fromActivity(a), opt: null }
 }
 
-/** GET /api/auto/:id, again when a run starts or ends. Null until it answers (or when the server does not know it). */
+/** While it runs, the page reads its tokens again this often (the cost moves with the run). */
+const LIVE_EVERY_MS = 20_000
+
+/** GET /api/auto/:id, again when a run starts or ends, and every LIVE_EVERY_MS while one runs. Null until it answers
+ *  (or when the server does not know it). */
 function useDetail(id: string, item: AutoItem | null): AutoDetail | null {
   const [d, setD] = useState<AutoDetail | null>(null)
+  const running = item?.state === 'running'
   const key = `${item?.state}:${item?.runCount}:${item?.lastRun?.at}`
   useEffect(() => {
     let off = false
-    api
-      .auto(id)
-      .then((r) => !off && setD(r))
-      .catch(() => undefined)
+    const read = () =>
+      api
+        .auto(id)
+        .then((r) => !off && setD(r))
+        .catch(() => undefined)
+    void read()
+    const timer = running ? setInterval(read, LIVE_EVERY_MS) : undefined
     return () => {
       off = true
+      clearInterval(timer)
     }
-  }, [id, key])
+  }, [id, key, running])
   return d
 }
 

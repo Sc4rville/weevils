@@ -8,11 +8,12 @@ import { vi } from 'vitest'
 import type { AutoDetail, AutoRunDetail, H24Activity, Optimizer, Snapshot } from '../../shared/api.ts'
 
 const calls = vi.hoisted(() => [] as string[])
-const fixtures = vi.hoisted(() => ({ detail: new Map<string, AutoDetail>(), runs: new Map<string, AutoRunDetail>() }))
+const fixtures = vi.hoisted(() => ({ detail: new Map<string, AutoDetail>(), runs: new Map<string, AutoRunDetail>(), reads: 0 }))
 vi.mock('../api', () => ({
   ApiError: class extends Error {},
   api: {
     auto: async (id: string) => {
+      fixtures.reads++
       const d = fixtures.detail.get(id)
       if (!d) throw new Error('404')
       return d
@@ -181,6 +182,28 @@ describe('automation page', () => {
     await click(host.querySelector('[aria-label="pause Clean deps"]'))
     expect(calls).toEqual(['pause r true'])
     expect(label(/^run "Clean deps" now/)).toBeUndefined()
+  })
+
+  it('while it runs, the page reads its tokens again (the cost moves with the run), and stops when it leaves', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      fixtures.detail.set('r', { id: 'r', runs: [], liveTokens: 1000, machine: 'srv' })
+      render(snap([opt({ id: 'r', title: 'Clean deps', state: 'running', startedAt: NOW - 12 * MIN, sessionId: 's9' })]), <AutoPage id="r" />)
+      await flush()
+      expect(kpis().cost).toBe('1K')
+      const before = fixtures.reads
+      fixtures.detail.set('r', { id: 'r', runs: [], liveTokens: 52_000, machine: 'srv' })
+      await act(async () => void vi.advanceTimersByTime(20_000))
+      await flush()
+      expect(fixtures.reads).toBe(before + 1)
+      expect(kpis().cost).toBe('52K')
+      render(snap([]), <div />)
+      const after = fixtures.reads
+      await act(async () => void vi.advanceTimersByTime(60_000))
+      expect(fixtures.reads).toBe(after)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('a scheduled task: pause and run now', async () => {

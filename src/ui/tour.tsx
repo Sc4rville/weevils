@@ -409,7 +409,7 @@ export function TourBand() {
       if (what === 'try') await playDemo(s.id, snap, { setH24Open, caption: setCaption, openThread: () => setExpanded('agent') })
       else if (s.id === 'h24') prefill(t.h24Example)
       else {
-        const b = BRICK_OF[s.id]
+        const b = s.id === 'phone' && s.facts?.reach === 'local' ? 'reach' : BRICK_OF[s.id]
         if (!b) return
         if (b !== 'push') setExpanded('agent')
         const r = await runBrick(b)
@@ -449,7 +449,7 @@ export function TourBand() {
             {busy === s.id ? <span className="spin"><Icon name="star" /></span> : <Icon name="play" />} {t.try}
           </button>
         )}
-        {(BRICK_OF[s.id] || s.id === 'h24') && s.id !== 'phone' && (
+        {(BRICK_OF[s.id] || s.id === 'h24') && (s.id !== 'phone' || s.facts?.reach === 'local') && (
           <button type="button" className={`tr-btn ${g === 'use' && DEMOS.has(s.id) && !s.played ? 'ghost' : ''}`} onClick={() => void act(s, 'plug')}>
             <Icon name="plus" /> {t.plug}
           </button>
@@ -472,7 +472,7 @@ export function TourBand() {
           {stateLabel(s) && <span className="tr-tag">{stateLabel(s)}</span>}
         </span>
         <span className="tr-facts">{factsOf(s, Date.now())}</span>
-        {big && s.id === 'phone' && !device().mobile && <PhoneLink />}
+        {big && s.id === 'phone' && !device().mobile && s.facts?.reach !== 'local' && <PhoneLink />}
         {big && actions(s)}
       </span>
     </motion.div>

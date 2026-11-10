@@ -224,6 +224,8 @@ export class TourKeeper {
       machine: { kind: m.kind, os: m.os, cpus: m.cpus, ram: Math.round(m.ramGb), provider: m.provider ?? '', always: m.alwaysOn === true, host: m.host },
       claude: s.claude.logged ? { plan: claudePlan() } : { installed: s.claude.installed },
       history: { projects: hist.projects, sessions: hist.sessions, repos: hist.repos },
+      // Joignable seulement depuis cette machine : le téléphone passe d'abord par « me joindre de partout ».
+      phone: { reach: s.reach },
       github: s.github.login ? { login: s.github.login } : undefined,
       voice: s.voice.spoken ? { voice: s.voice.spoken } : { tts: !!edgeTts() },
       mail: s.mail.address ? { address: s.mail.address } : undefined,

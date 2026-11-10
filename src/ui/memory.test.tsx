@@ -153,10 +153,15 @@ describe('memory page', () => {
     await flush()
     expect(db.calls).toEqual(['edit b wants to ship two games'])
 
+    // Esc cancels the edit and stays on the page (App closes the page on an Esc reaching the window).
+    const closed = vi.fn()
+    window.addEventListener('keydown', closed)
     act(() => field.focus())
     await setValue(field, 'nope')
     await key(field, 'Escape')
     await flush()
+    window.removeEventListener('keydown', closed)
+    expect(closed).not.toHaveBeenCalled()
     expect(db.calls).toHaveLength(1)
     expect(field.value).toBe('wants to ship two games')
   })
@@ -201,6 +206,8 @@ describe('memory page', () => {
     db.items = []
     render(0)
     await flush()
-    expect(host.querySelector('.empty')!.textContent).toBe('nothing yet')
+    // In place of the count, under the title; nothing in the page itself.
+    expect([...host.querySelectorAll('.meta')].map((n) => n.textContent)).toContain('nothing')
+    expect(host.querySelectorAll('.mem-item')).toHaveLength(0)
   })
 })

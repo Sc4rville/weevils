@@ -72,6 +72,8 @@ function AddLine({ onAdd }: { onAdd: (text: string) => Promise<void> }) {
               e.preventDefault()
               void save()
             } else if (e.key === 'Escape') {
+              // Esc empties the field, and only that: the page stays (App closes it on Esc otherwise).
+              e.stopPropagation()
               setV('')
               e.currentTarget.blur()
             }
@@ -144,6 +146,8 @@ function Editor({ m, onSave, onSelect, onClose }: { m: MemoryItem; onSave: (text
             e.preventDefault()
             e.currentTarget.blur()
           } else if (e.key === 'Escape') {
+            // Esc cancels the edit, and only that: the page stays.
+            e.stopPropagation()
             cancel.current = true
             e.currentTarget.blur()
           }
@@ -296,7 +300,7 @@ export function MemoryPage() {
       .catch((e) => setErr((e as Error).message))
 
   return (
-    <Shell slot={colors.__foot ?? 'p3'} kicker="weevils" title={t.title} meta={list ? t.count(list.length) : '…'} dock={<AskVoice a={a} />}>
+    <Shell slot={colors.__foot ?? 'p3'} kicker="weevils" title={t.title} meta={list ? (list.length ? t.count(list.length) : t.empty) : '…'} dock={<AskVoice a={a} />}>
       {err && (
         <div className="band invert" role="alert">
           <div className="in meta" style={{ paddingBlock: 12 }}>
@@ -326,7 +330,6 @@ export function MemoryPage() {
           onForget={forget(m.id)}
         />
       ))}
-      {list && list.length === 0 && <div className="in meta empty">{t.empty}</div>}
       {/* Room for the weevboss logo floating at the bottom: the last memory never ends up under it. */}
       <div style={{ height: 96 }} />
     </Shell>

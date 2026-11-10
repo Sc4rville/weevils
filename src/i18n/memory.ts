@@ -10,10 +10,11 @@ export default defineMessages({
     edit: 'souvenir',
     close: 'refermer',
     byHand: 'à la main',
-    quote: (q: string) => `« ${q} »`,
+    // Espaces insécables : « ? » ne passe jamais seul à la ligne.
+    quote: (q: string) => `«\u00a0${q.replace(/ ([?!:;])/g, '\u00a0$1')}\u00a0»`,
     forget: 'oublier',
     sure: 'vraiment ?',
-    empty: 'rien encore',
+    empty: 'rien',
   },
   en: {
     title: '# memory',
@@ -26,6 +27,6 @@ export default defineMessages({
     quote: (q: string) => `“${q}”`,
     forget: 'forget',
     sure: 'really?',
-    empty: 'nothing yet',
+    empty: 'nothing',
   },
 })

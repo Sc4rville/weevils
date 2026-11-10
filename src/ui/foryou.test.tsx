@@ -497,7 +497,7 @@ describe('for you: voice messages', () => {
     expect(transcript.open).toBe(false)
     expect(transcript.querySelector('summary')!.textContent).toContain(t().readTranscript)
     expect(transcript.querySelector('.fy-listen')).toBeNull()
-    expect(band('b2').querySelector('.fy-transcript')).toBeNull()
+    expect(band('b2').querySelector<HTMLDetailsElement>('.fy-transcript')!.open).toBe(false)
     expect(band('b2').querySelector('.fy-text')!.textContent).toBeTruthy()
     await click(listen('bo'))
     await fire('onplaying')
@@ -509,6 +509,22 @@ describe('for you: voice messages', () => {
     expect(audio()).toBe(playing)
     expect(playing.paused).toBe(false)
     expect(listen('bo').classList.contains('fy-v-playing')).toBe(true)
+  })
+
+  it('keeps the summary and transcript node stable when a voice arrives', async () => {
+    const item: ForYouItem = { ...base, id: 'arrival', kind: 'boss', who: 'weevboss', text: 'A useful result. More detail about the result.' }
+    render(<ForYouItemView item={item} />)
+    const transcript = host.querySelector<HTMLDetailsElement>('details.fy-transcript')!
+    const summary = host.querySelector('.fy-title')!.textContent
+    expect(transcript.open).toBe(false)
+    expect(host.querySelector('.fy-boss-audio')).toBeTruthy()
+    expect(host.querySelector('.fy-listen')).toBeNull()
+    transcript.open = true
+    render(<ForYouItemView item={{ ...item, voice: 'nova' }} />)
+    expect(host.querySelector('details.fy-transcript')).toBe(transcript)
+    expect(transcript.open).toBe(true)
+    expect(host.querySelector('.fy-title')!.textContent).toBe(summary)
+    expect(host.querySelector('.fy-listen')).toBeTruthy()
   })
 
   it('a tap streams the item’s words in its speaker’s voice; a second tap stops', async () => {

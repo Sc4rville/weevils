@@ -1215,3 +1215,6 @@
 .fy-transcript[open] .fy-transcript-read { display: none; }
 .fy-transcript[open] .fy-transcript-hide { display: inline; }
 .fy-transcript .fy-text { padding-top: 4px; }
+
+/* Reserve the player row before the voice arrives; the transcript never moves. */
+.fy-boss-audio { min-height: 58px; display: flow-root; }

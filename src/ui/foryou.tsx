@@ -434,6 +434,8 @@ function MediaItem({ item, who, fy }: KindProps) {
 // weevboss, mail.
 
 function BossItem({ item, who, fy }: KindProps) {
+  const first = item.text.split(/(?<=[.!?])\s|\n/)[0]
+  const summary = item.title || first.slice(0, 160) + (first.length > 160 ? '…' : '')
   const t = useT(M)
   const open = useOpen(item)
   return (
@@ -441,9 +443,9 @@ function BossItem({ item, who, fy }: KindProps) {
       <div className="in fy-pad">
         <Who item={item} who={who} />
         {/* Audio stays mounted and independent of the optional transcript. */}
-        <Listen item={item} who={who} />
-        {item.title && <div className="fy-title">{item.title}</div>}
-        {item.voice && item.text ? (
+        <div className="fy-boss-audio"><Listen item={item} who={who} /></div>
+        {summary && <div className="fy-title">{summary}</div>}
+        {item.text ? (
           <details className="fy-transcript" key={item.id}>
             <summary>
               <span className="fy-transcript-read">{t.readTranscript}</span>

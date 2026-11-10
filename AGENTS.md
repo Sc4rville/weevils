@@ -118,8 +118,9 @@ From `mode`:
 
 ## 7. The final message
 
-Your user may not be technical: write it like a friend who just set something up for them, in their language,
-short (about 6 lines plus the link), in this order:
+This message is your whole final reply: no preamble ("here is the message"), no separators, no recap of the steps
+you ran. Your user may not be technical: write it like a friend who just set something up for them, in their
+language, short (about 6 lines plus the link), in this order:
 
 1. It's installed (if `ready=no`, the one thing left, step 5).
 2. The link to open on the phone, `link` from the summary, on its own line. It contains their access code: say it

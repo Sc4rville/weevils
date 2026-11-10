@@ -252,7 +252,24 @@ export function Composer({
   formRef?: React.RefObject<HTMLFormElement | null>
 }) {
   const t = useT(M)
-  const [text, setText] = useState('')
+  // Le texte en cours survit à un rechargement (mise à jour automatique de l'app, public/sw.js) : gardé dans l'onglet,
+  // par champ (son libellé), effacé à l'envoi.
+  const key = `weevils-draft:${label}`
+  const [text, setText] = useState(() => {
+    try {
+      return sessionStorage.getItem(key) ?? ''
+    } catch {
+      return ''
+    }
+  })
+  useEffect(() => {
+    try {
+      if (text) sessionStorage.setItem(key, text)
+      else sessionStorage.removeItem(key)
+    } catch {
+      /* stockage indisponible */
+    }
+  }, [key, text])
   const field = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [files, setFiles] = useState<Attachment[]>([])

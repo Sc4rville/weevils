@@ -339,10 +339,10 @@ describe('sessions that wait or were cut', () => {
     const items = fy.feed().items
     expect(items.map((i) => [i.id, i.tone, i.text, i.at])).toEqual([
       ['s:s1', 'question', M.en.waiting, T0 - 5 * MIN],
-      ['s:s2', 'alert', 'Cut off mid-work: usage limit reached.', T0 - HOUR],
+      ['s:s2', 'alert', 'Ouch, I got cut off mid-work (usage limit reached). Want me to pick it back up?', T0 - HOUR],
     ])
     expect(items[1].actions).toEqual([{ id: 'resume', label: 'Resume' }])
-    expect(fy.feed('fr' as never, 'fr').items[1]).toMatchObject({ text: 'Coupée en plein travail : limite d’usage atteinte.', actions: [{ id: 'resume', label: 'Reprendre' }] })
+    expect(fy.feed('fr' as never, 'fr').items[1]).toMatchObject({ text: 'Aïe, on m’a coupé en plein travail (limite d’usage atteinte). Tu me relances ?', actions: [{ id: 'resume', label: 'Reprendre' }] })
     // Dismissed: the same question does not come back at the next read.
     fy.dismiss('s:s1')
     expect(ids(fy)).toEqual(['s:s2'])
@@ -560,8 +560,8 @@ describe('alerts', () => {
     await flush()
     expect(host.bump).toHaveBeenCalled()
     const [a] = fy.feed().items
-    expect(a).toMatchObject({ id: `alert:usage:claude:session::${T0 + HOUR}`, kind: 'alert', tone: 'alert', who: 'weevils', text: 'Claude: 5 h window at 92%', open: { page: 'usage' }, live: true, at: T0 })
-    expect(fy.feed(now, 'fr').items[0].text).toBe('Claude : fenêtre de 5 h à 92 %')
+    expect(a).toMatchObject({ id: `alert:usage:claude:session::${T0 + HOUR}`, kind: 'alert', tone: 'alert', who: 'weevils', text: "You're at 92% of your Claude 5 h window. I’m easing off what can wait.", open: { page: 'usage' }, live: true, at: T0 })
+    expect(fy.feed(now, 'fr').items[0].text).toBe('T’es à 92 % de ta fenêtre de 5 h Claude. Je lève le pied sur ce qui peut attendre.')
     expect(JSON.parse(fs.readFileSync(fy.file, 'utf8')).items).toEqual([])
     u = usage(12)
     now = T0 + REFRESH_MS + 1
@@ -579,12 +579,12 @@ describe('alerts', () => {
     await flush()
     // One peak is not an alert; the tunnel may hiccup.
     expect(ids(fy)).toEqual(['alert:disk:test', 'alert:auto:bad'])
-    expect(find(fy, 'alert:auto:bad')).toMatchObject({ text: 'Auto task failed: Harden the tests (stopped after 2 h)', open: { page: 'auto', id: 'bad' }, at: T0 - HOUR })
+    expect(find(fy, 'alert:auto:bad')).toMatchObject({ text: 'The auto task "Harden the tests" crashed (stopped after 2 h). Retry or drop it?', open: { page: 'auto', id: 'bad' }, at: T0 - HOUR })
     now = T0 + REFRESH_MS + 1
     fy.feed()
     await flush()
     expect(ids(fy).sort()).toEqual(['alert:auto:bad', 'alert:disk:test', 'alert:machine:test', 'alert:offline:pc'])
-    expect(find(fy, 'alert:offline:pc')).toMatchObject({ text: 'pc is offline', open: { page: 'machine' }, at: T0 })
+    expect(find(fy, 'alert:offline:pc')).toMatchObject({ text: "I can't reach pc anymore.", open: { page: 'machine' }, at: T0 })
     expect(now - T0).toBeGreaterThanOrEqual(OFFLINE_AFTER_MS)
     states = [{ id: 'test', name: 'vps', level: 'ok', disk: 40 }]
     snap.machines[1].online = true
@@ -618,14 +618,14 @@ describe('proposals', () => {
     snap.optimizers = [optimizer(), optimizer({ id: 'o2', title: 'Watch fairs', kind: 'watch' }), optimizer({ id: 'run', state: 'running' }), optimizer({ id: 'q', state: 'queued' })]
     snap.sessions = [unmanaged(), session({ id: 'i1', status: 'done', lastActivityAt: T0 - 13 * HOUR })]
     const [p] = fy.feed().items
-    expect(p).toMatchObject({ id: 'proposals', kind: 'proposals', who: 'weevils', live: true, text: '4 proposals', at: T0 })
+    expect(p).toMatchObject({ id: 'proposals', kind: 'proposals', who: 'weevils', live: true, text: 'I have 4 ideas for you', at: T0 })
     // Tips that only open a page of the app (no dictation, one machine) stay in the app.
     expect(p.cards?.map((c) => [c.id.slice(0, 2), c.source, c.kind])).toEqual([['o:', 'optimizer', 'tests'], ['o:', 'optimizer', 'watch'], ['t:', 'tip', 'idle-sessions'], ['t:', 'tip', 'idle-unmanaged']])
     expect(p.cards?.[2]).toMatchObject({ title: TM.en.idleSessions(1, true), accept: TM.en.closeThem(1) })
     expect(fy.feed().pulse.auto).toBe(2)
     snap.optimizers.push(optimizer({ id: 'o3' }), optimizer({ id: 'o4' }), optimizer({ id: 'o5' }))
     expect(fy.feed().items[0].cards).toHaveLength(MAX_CARDS)
-    expect(fy.feed(now, 'fr').items[0].text).toBe('4 propositions')
+    expect(fy.feed(now, 'fr').items[0].text).toBe('J’ai 4 idées pour toi')
   })
 
   it('accept / refuse go through the auto band; an answered card never comes back, even after a restart', async () => {
@@ -915,7 +915,7 @@ describe('wired into core', async () => {
     w.hooks.set('s1', { event: 'PostToolUse', at: T0 - MIN, pid: DEAD })
     w.bump()
     await settle()
-    expect(fy.feed().items).toMatchObject([{ id: 's:s1', tone: 'alert', text: 'Cut off mid-work: process stopped.', actions: [{ id: 'resume', label: 'Resume' }] }])
+    expect(fy.feed().items).toMatchObject([{ id: 's:s1', tone: 'alert', text: 'Ouch, I got cut off mid-work (process stopped). Want me to pick it back up?', actions: [{ id: 'resume', label: 'Resume' }] }])
     w.mailed({ author: 'gepetto', subject: 'done', text: 'The page is built.', target: 'weevboss', mid: '<m@x>', address: 'g@example.com' })
     expect(fy.feed().items.map((i) => i.kind).sort()).toEqual(['mail', 'session'])
     expect(JSON.stringify(fy.feed())).not.toContain('g@example.com')

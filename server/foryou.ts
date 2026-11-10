@@ -42,6 +42,8 @@ export const POST_MAX = 1200
 export const MAIL_LINE_MAX = 140
 /** A session's line in the stream: what it did, said in passing. The whole closing words unfold under it. */
 export const HEADLINE_MAX = 110
+/** The curator's line for a result: a colleague's message in a chat, a little longer than the cut headline. */
+export const LINE_MAX = 240
 /** The closing words kept for the unfold. */
 export const BODY_MAX = 4000
 /** Turns that ended before the stream heard of them (first start, restart): picked up when this recent, this many at a time. */
@@ -680,20 +682,25 @@ export class ForYou {
   }
 
   /** Session results still in their raw closing words (no line said in passing yet), never seen: for the curator. */
-  rawResults(max = 6): { id: string; project: string; title: string; text: string }[] {
+  rawResults(max = 6): { id: string; project: string; title: string; asked: string; askedAt: number; text: string }[] {
     const snap = this.w.snapshot()
     return this.s.items
       .filter((i) => i.kind === 'session' && i.tone === 'result' && !i.gone && !i.seen && !i.sum && !!i.body)
       .sort((a, b) => b.at - a.at)
       .slice(0, max)
-      .map((i) => ({ id: i.id, project: snap.projects.find((p) => p.id === i.projectId)?.name ?? i.projectId ?? '', title: i.title ?? '', text: i.body! }))
+      .map((i) => {
+        const s = snap.sessions.find((x) => x.id === i.sessionId)
+        // What the user asked, in their words (the brief, without the signature of who passed it on): the line recalls it.
+        const asked = clip(collapse(cleanTitle(this.w.store?.get(i.sessionId ?? '')?.firstPrompt ?? '')), 400) || (i.title ?? '')
+        return { id: i.id, project: snap.projects.find((p) => p.id === i.projectId)?.name ?? i.projectId ?? '', title: i.title ?? '', asked, askedAt: s?.openedAt ?? i.at, text: i.body! }
+      })
   }
 
   /** The curator's line for a session result (null: it kept nothing, the headline stays). */
   resultLine(id: string, line: string | null, l?: Lang) {
     const i = this.get(id)
     if (!i || i.kind !== 'session') return
-    const text = line ? clip(collapse(line), HEADLINE_MAX) : ''
+    const text = line ? clip(collapse(line), LINE_MAX) : ''
     i.sum = text ? { text, lang: l } : {}
     if (text) this.changed()
     else this.save()
@@ -822,7 +829,11 @@ export class ForYou {
       if (!top || top.percent < USAGE_ALERT) continue
       const name = top.kind === 'session' ? t.window_session : top.kind === 'week' ? t.window_week : t.window_model(top.label ?? '')
       // The window's reset is in the id: the next window is another alert.
-      raise(`usage:${tool}:${top.kind}:${top.label ?? ''}:${top.resetsAt ?? 0}`, t.usage(tool === 'claude' ? 'Claude' : 'Codex', name.trim(), Math.round(top.percent)), { page: 'usage' })
+      // The other tool, when it has room: said as the plan B it is (the relay hands work to it at the limit).
+      const other = tool === 'claude' ? 'codex' : 'claude'
+      const o = this.usage?.[other]
+      const spare = o?.ok && o.windows.length && o.windows.every((w) => w.percent < USAGE_ALERT) ? (other === 'claude' ? 'Claude' : 'Codex') : ''
+      raise(`usage:${tool}:${top.kind}:${top.label ?? ''}:${top.resetsAt ?? 0}`, t.usage(top.kind === 'model' ? '' : tool === 'claude' ? 'Claude' : 'Codex', name.trim(), Math.round(top.percent), spare), { page: 'usage' })
     }
     for (const m of this.machines) {
       if ((this.hot.get(m.id) ?? 0) >= HOT_SAMPLES) raise(`machine:${m.id}`, t.saturated(m.name), { page: 'machine' })

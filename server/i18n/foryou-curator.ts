@@ -30,7 +30,7 @@ export default defineMessages({
       `Ce que tu sais de lui (ses objectifs, ses envies) :\n${o.memory || '(rien encore)'}\n\n` +
       `Tes derniers mots (ne te répète pas, ni sur le fond ni sur la tournure) :\n${o.earlier || '(aucun)'}\n\n` +
       `Écris :\n` +
-      `- text : le point, en deux à quatre phrases, à l'oral, au tutoiement, comme tu lui parlerais (par exemple : ok, X est parti, Y est revenu, Z t'attend). Cite les vrais noms de projets et de sessions ci-dessus. Dis ce qui compte, pas tout : ce qui est livré, ce qui bloque, ce qui l'attend. Aucune formule creuse (pas de « belle progression », « tout avance bien », « n'hésite pas »), pas de liste, pas de titre, pas d'emoji, aucun chiffre qui n'est pas ci-dessus.\n` +
+      `- text : le point, en deux à quatre phrases, à l'oral, au tutoiement, comme un collègue dans un chat, humain, avec un peu d'émotion, relié à ce qu'il avait demandé (par exemple : ok, X est parti, Y est revenu, Z t'attend). Cite les vrais noms de projets et de sessions ci-dessus. Dis ce qui compte, pas tout : ce qui est livré, ce qui bloque, ce qui l'attend. Aucune formule creuse (pas de « belle progression », « tout avance bien », « n'hésite pas »), pas de liste, pas de titre, pas d'emoji, aucun chiffre qui n'est pas ci-dessus.\n` +
       `- thought : une seule phrase qui le fait réfléchir, seulement si tu as quelque chose de vrai à dire à partir de ce qui est ci-dessus, de préférence reliée à un de ses objectifs (par exemple : en fait quand t'y penses…, ou : bon, je pense qu'il y a un souci sur…). Rien de vrai à dire : pas de thought.\n` +
       `- actions : zéro, une ou deux suites utiles qu'il lancerait d'un tap ; label très court (4 mots au plus), brief = la consigne complète que tu recevras s'il tape (quoi faire, sur quelle session ou quel projet). Aucune action évidente : pas d'actions.\n\n` +
       `Réponds uniquement en JSON : {"text": "…", "thought": "…", "actions": [{"label": "…", "brief": "…"}]} (thought et actions facultatifs), en français.`,
@@ -72,20 +72,26 @@ export default defineMessages({
 
     // ---------------------------------------------------------------- mail lines
     mailItem: (n: number, from: string, subject: string, text: string) => `### ${n}\nDe : ${from}\nObjet : ${subject || '(sans objet)'}\n${text}`,
-    resultItem: (n: number, project: string, title: string, text: string) => `### ${n}\nDe : l'agent de code du projet ${project} (sa tâche : ${title || 'sans titre'})\nSon compte rendu de fin de tour :\n${text}`,
-    mailLines: (mails: string) =>
-      `Voici des messages reçus par l'utilisateur d'une app qui pilote des agents de code (des mails, des comptes rendus d'agents). Pour chacun, écris UNE ligne très courte (90 caractères au plus) qui dit ce que l'expéditeur a fait, annonce ou demande, à la première personne, comme il le dirait lui-même en passant à un humain (par exemple : j'ai fini le menu, il reste les tests ; j'ai trouvé pourquoi les sessions se fermaient, c'est réparé). ` +
-      `Pas de salutation, pas de guillemets, pas d'emoji, aucun chemin de fichier, aucune commande, aucun nom de fonction ni jargon technique inutile, rien qui n'est pas dans le message ; dans la langue du message.\n\n${mails}\n\n` +
+    resultItem: (n: number, project: string, asked: string, minutes: number, text: string) =>
+      `### ${n}\nDe : l'agent de code du projet ${project}\nCe que l'utilisateur lui avait demandé, il y a ${minutes < 90 ? `${minutes} min` : `${Math.round(minutes / 60)} h`} : ${asked || '(inconnu)'}\nSon compte rendu de fin de tour :\n${text}`,
+    mailLines: (mails: string, user: string, memory: string) =>
+      `Voici des messages pour ${user || "l'utilisateur"}, qui pilote ses agents de code depuis son téléphone : des mails et des comptes rendus de fin de tour de ses agents. ` +
+      `Pour chacun, réécris-le comme un collègue qui lui parle dans un chat : une ou deux phrases courtes (220 caractères au plus), à la première personne, au tutoiement, humaines, avec un peu d'émotion. ` +
+      `Rappelle ce qu'il avait demandé et quand (tout à l'heure, ce matin, hier…), dis ce que ça change pour lui, et ce qui a été dur ou drôle si le message le montre. ` +
+      `Exemple : « Hey, j'ai fini le truc que tu m'avais demandé tout à l'heure pour le pont mail : c'était chaud, Gmail bloquait tout, mais là ça passe. » ` +
+      `Jamais de ton robotique (« audit terminé », « X activé », « tâche effectuée ») ; aucun chemin de fichier, aucune commande, aucun identifiant ni nom de fonction, pas de jargon ; pas de guillemets autour, pas d'emoji ; rien d'inventé ; en français.\n\n` +
+      (memory ? `Ce qu'on sait de lui (pour relier au contexte, sans le citer mot pour mot) :\n${memory}\n\n` : '') +
+      `${mails}\n\n` +
       `Réponds uniquement en JSON, une liste : [{"n": 1, "line": "…"}]`,
 
     // ---------------------------------------------------------------- milestones (no model)
-    msTurns: (n: number) => `${n} tours livrés aujourd’hui`,
-    msProjects: (n: number) => `${n} projets ont avancé aujourd’hui`,
-    msAutoFirst: 'Première tâche auto finie toute seule',
-    msStreak: (n: number) => `${n} jours d’affilée avec des tours livrés`,
+    msTurns: (n: number) => `${n} tours livrés aujourd’hui, ça carbure !`,
+    msProjects: (n: number) => `${n} projets ont bougé aujourd’hui, belle journée.`,
+    msAutoFirst: 'Première tâche auto bouclée toute seule pendant que tu faisais autre chose.',
+    msStreak: (n: number) => `${n} jours d’affilée que ça livre, on lâche rien.`,
 
     // ---------------------------------------------------------------- where the day stands (no model)
-    statText: (n: number) => (n > 0 ? `Où en est la journée : ${n} tour${n > 1 ? 's' : ''} livré${n > 1 ? 's' : ''}` : 'Où en est la journée'),
+    statText: (n: number) => (n > 0 ? `Ta journée pour l’instant : ${n} tour${n > 1 ? 's' : ''} livré${n > 1 ? 's' : ''}` : 'Ta journée pour l’instant'),
     statUsage: (window: string) => `Claude · ${window}`,
     percent: (n: number) => `${n} %`,
     statTurns: (n: number, total: number) => `${n} sur ${total}`,
@@ -114,7 +120,7 @@ export default defineMessages({
       `What you know about them (goals, wishes):\n${o.memory || '(nothing yet)'}\n\n` +
       `Your last words (do not repeat yourself, in substance or in phrasing):\n${o.earlier || '(none)'}\n\n` +
       `Write:\n` +
-      `- text: the recap, two to four sentences, spoken and casual, as you would say it to them (for example: ok, X is out, Y came back, Z is waiting on you). Quote the real project and session names above. Say what matters, not everything: what was delivered, what is stuck, what waits for them. No filler (no "great progress", "all going well", "feel free to"), no list, no heading, no emoji, no figure that is not above.\n` +
+      `- text: the recap, two to four sentences, spoken and casual, like a colleague in a chat, human, with a bit of feeling, tied to what they had asked (for example: ok, X is out, Y came back, Z is waiting on you). Quote the real project and session names above. Say what matters, not everything: what was delivered, what is stuck, what waits for them. No filler (no "great progress", "all going well", "feel free to"), no list, no heading, no emoji, no figure that is not above.\n` +
       `- thought: a single sentence that makes them think, only if you have something real to say from what is above, ideally tied to one of their goals (for example: actually, when you think about it…, or: honestly, I think something is off with…). Nothing real to say: no thought.\n` +
       `- actions: zero, one or two useful next steps they would start with one tap; label very short (4 words at most), brief = the full instruction you will receive if they tap (what to do, on which session or project). No obvious action: no actions.\n\n` +
       `Answer only in JSON: {"text": "…", "thought": "…", "actions": [{"label": "…", "brief": "…"}]} (thought and actions optional), in English.`,
@@ -153,18 +159,24 @@ export default defineMessages({
       `Only well-established facts; no figure or date you are not certain of. Plain text: no heading, no list, no markdown, no emoji. In English.`,
 
     mailItem: (n: number, from: string, subject: string, text: string) => `### ${n}\nFrom: ${from}\nSubject: ${subject || '(no subject)'}\n${text}`,
-    resultItem: (n: number, project: string, title: string, text: string) => `### ${n}\nFrom: the coding agent of project ${project} (its task: ${title || 'untitled'})\nIts end-of-turn report:\n${text}`,
-    mailLines: (mails: string) =>
-      `Here are messages received by the user of an app that drives coding agents (mails, agents' reports). For each one, write ONE very short line (90 characters at most) saying what the sender did, announces or asks, in the first person, as they would say it in passing to a human (for example: I finished the menu, the tests are left; I found why sessions were closing, it's fixed). ` +
-      `No greeting, no quotes, no emoji, no file path, no command, no function name or needless jargon, nothing that is not in the message; in the language of the message.\n\n${mails}\n\n` +
+    resultItem: (n: number, project: string, asked: string, minutes: number, text: string) =>
+      `### ${n}\nFrom: the coding agent of project ${project}\nWhat the user had asked it, ${minutes < 90 ? `${minutes} min` : `${Math.round(minutes / 60)} h`} ago: ${asked || '(unknown)'}\nIts end-of-turn report:\n${text}`,
+    mailLines: (mails: string, user: string, memory: string) =>
+      `Here are messages for ${user || 'the user'}, who drives their coding agents from their phone: mails and their agents' end-of-turn reports. ` +
+      `Rewrite each one like a colleague talking to them in a chat: one or two short sentences (220 characters at most), first person, casual, human, with a bit of feeling. ` +
+      `Recall what they had asked and when (earlier, this morning, yesterday…), say what it changes for them, and what was hard or funny if the message shows it. ` +
+      `Example: "Hey, I finished that mail bridge thing you asked for earlier: it was rough, Gmail blocked everything, but it goes through now." ` +
+      `Never robotic ("audit complete", "X enabled", "task done"); no file path, no command, no id or function name, no jargon; no surrounding quotes, no emoji; nothing made up; in English.\n\n` +
+      (memory ? `What we know about them (to tie it to their context, without quoting it):\n${memory}\n\n` : '') +
+      `${mails}\n\n` +
       `Answer only in JSON, a list: [{"n": 1, "line": "…"}]`,
 
-    msTurns: (n: number) => `${n} turns delivered today`,
-    msProjects: (n: number) => `${n} projects moved forward today`,
-    msAutoFirst: 'First auto task finished on its own',
-    msStreak: (n: number) => `${n} days in a row with turns delivered`,
+    msTurns: (n: number) => `${n} turns delivered today, we're on a roll!`,
+    msProjects: (n: number) => `${n} projects moved today, good day.`,
+    msAutoFirst: 'First auto task wrapped up on its own while you were doing something else.',
+    msStreak: (n: number) => `${n} days in a row of shipping, keep it going.`,
 
-    statText: (n: number) => (n > 0 ? `Where the day stands: ${n} turn${n === 1 ? '' : 's'} delivered` : 'Where the day stands'),
+    statText: (n: number) => (n > 0 ? `Your day so far: ${n} turn${n === 1 ? '' : 's'} delivered` : 'Your day so far'),
     statUsage: (window: string) => `Claude · ${window}`,
     percent: (n: number) => `${n}%`,
     statTurns: (n: number, total: number) => `${n} of ${total}`,

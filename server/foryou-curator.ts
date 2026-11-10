@@ -60,6 +60,10 @@ export const STAT_EVERY_MS = 4 * 3600_000
 /** Mails are batched: a call at most this often. */
 export const MAIL_EVERY_MS = 10 * 60_000
 export const MAIL_BATCH = 6
+/** The short lines (haiku, cheap) keep going past the 85 % gate, up to this share of a window, this many calls a day:
+ *  a robotic report in the stream is worse than a few haiku calls. */
+export const LINES_CEIL = 98
+export const LINES_CAP = 10
 export const TURN_STEPS = [10, 25, 50, 100]
 export const STREAK_STEPS = [3, 7, 14, 30, 60, 100]
 export const PROJECTS_STEP = 3
@@ -326,6 +330,8 @@ export interface CuratorDeps {
 
 interface State {
   calls: { day: string; n: number }
+  /** Haiku calls of the short lines today (their own small allowance, see LINES_CAP). */
+  lines?: { day: string; n: number }
   fails: number
   failUntil: number
   digestAt: number
@@ -414,6 +420,18 @@ export class Curator implements ForYouCurator {
 
   // ---------------------------------------------------------------- budget
 
+  /** Haiku calls of the short lines made today. */
+  lineCalls(now = this.now()): number {
+    return this.s.lines?.day === dayKey(now) ? this.s.lines.n : 0
+  }
+
+  /** The short lines may be written now even though the bigger calls wait: figures known, no window past LINES_CEIL. */
+  lean(now = this.now()): boolean {
+    const q = (this.deps.usage ? this.deps.usage() : this.fy.usageKnown())?.claude
+    if (!q?.ok || q.windows.some((w) => w.percent >= LINES_CEIL)) return false
+    return this.logged() && this.lineCalls(now) < LINES_CAP && now >= this.s.failUntil
+  }
+
   /** Model calls made today. */
   calls(now = this.now()): number {
     return this.s.calls.day === dayKey(now) ? this.s.calls.n : 0
@@ -434,6 +452,12 @@ export class Curator implements ForYouCurator {
   /** A model call may start now: logged in, under the day's cap, no window nearly full (and, for the loop, no back-off). */
   can(now = this.now(), loop = true): boolean {
     return this.logged() && this.calls(now) < DAILY_CAP && !(loop && now < this.s.failUntil) && !this.hot()
+  }
+
+  private spendLine(now: number) {
+    this.s.lines = { day: dayKey(now), n: this.lineCalls(now) + 1 }
+    this.spent = true
+    this.save()
   }
 
   /** Counted when the call starts, kept at once: a crash or a restart never gives the call back. */
@@ -458,8 +482,10 @@ export class Curator implements ForYouCurator {
       console.error(`[foryou] curateur : ${(e as Error).message}`)
     }
     if (this.running) return this.running
-    if (!this.fy.wanted(now) || !this.can(now)) return Promise.resolve()
-    const job = this.digestJob(now) ?? this.mailJob(now) ?? this.improveJob(now) ?? this.insightJob(now)
+    if (!this.fy.wanted(now)) return Promise.resolve()
+    const full = this.can(now)
+    if (!full && !this.lean(now)) return Promise.resolve()
+    const job = full ? (this.digestJob(now) ?? this.mailJob(now) ?? this.improveJob(now) ?? this.insightJob(now)) : this.mailJob(now)
     if (!job) return Promise.resolve()
     this.running = (async () => {
       this.spent = false
@@ -624,11 +650,11 @@ export class Curator implements ForYouCurator {
     const name = (id: string) => snap.config?.authors?.find((a) => a.id === id)?.name ?? id
     const items = [
       ...mails.map((m, i) => t.mailItem(i + 1, name(m.who), m.subject, m.text.slice(0, 1500))),
-      ...results.map((r, i) => t.resultItem(mails.length + i + 1, r.project, r.title, r.text.slice(0, 1500))),
+      ...results.map((r, i) => t.resultItem(mails.length + i + 1, r.project, r.asked, Math.round((now - r.askedAt) / 60_000), r.text.slice(0, 1500))),
     ]
-    const prompt = t.mailLines(items.join('\n\n'))
+    const prompt = t.mailLines(items.join('\n\n'), this.fy.w.snapshot().config?.userName || '', this.deps.memory?.()?.digest(8, 700) ?? '')
     return async () => {
-      this.spend(now)
+      this.spendLine(now)
       this.s.mailAt = now
       let lines: Map<number, string>
       try {

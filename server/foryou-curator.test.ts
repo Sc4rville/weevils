@@ -268,7 +268,7 @@ describe('the budget', () => {
     expect(kinds('insight')).toHaveLength(1)
     await c.tick(now)
     expect(calls()).toBe(4)
-    expect(c.calls(now)).toBe(4)
+    expect(c.calls(now) + c.lineCalls(now)).toBe(4)
     // Every generated item says which language it was written in.
     for (const i of stored().filter((x) => ['boss', 'improve', 'insight', 'milestone', 'stat'].includes(x.kind))) expect(i.lang).toBe('en')
   })
@@ -477,7 +477,7 @@ describe('mail lines', () => {
     await c.tick(now)
     expect(cheap).toHaveBeenCalledTimes(2)
     expect((cheap.mock.calls[1][0].match(/^### \d/gm) ?? []).length).toBe(1)
-    expect(c.calls(now)).toBe(3)
+    expect(c.calls(now) + c.lineCalls(now)).toBe(3)
   })
 
   it('an answer that cannot be read: the mails keep their first line and are not sent again', async () => {
@@ -580,7 +580,7 @@ describe('insight', () => {
     expect(model.mock.calls[1][0]).toContain(item.text)
     expect(await fy.more(item.id)).toBe(await fy.more(item.id))
     expect(model).toHaveBeenCalledTimes(3)
-    expect(c.calls(now)).toBe(3)
+    expect(c.calls(now) + c.lineCalls(now)).toBe(3)
   })
 
   it('at most one every two hours; a repo with nothing to read costs no call; nothing sure to say is not an item', async () => {
@@ -646,17 +646,17 @@ describe('milestones', () => {
     await deliver('s10', 'Turn 10 done.', { projectId: 'site' })
     await c.tick(now)
     await c.tick(now)
-    expect(kinds('milestone').map((i) => i.text)).toEqual(['10 turns delivered today'])
+    expect(kinds('milestone').map((i) => i.text)).toEqual(["10 turns delivered today, we're on a roll!"])
     await deliver('s11', 'Turn 11 done.', { projectId: 'notes' })
     snap.optimizers = [{ id: 'o1', state: 'done', title: 't', endedAt: now }] as Optimizer[]
     await c.tick(now)
-    expect(kinds('milestone').map((i) => i.text).sort()).toEqual(['10 turns delivered today', '3 projects moved forward today', 'First auto task finished on its own'])
+    expect(kinds('milestone').map((i) => i.text).sort()).toEqual(["10 turns delivered today, we're on a roll!", '3 projects moved today, good day.', 'First auto task wrapped up on its own while you were doing something else.'])
     for (let n = 12; n <= 26; n++) await deliver(`s${n}`, `Turn ${n} done.`)
     const again = makeCurator()
     await again.tick(now)
     await again.tick(now)
     expect(kinds('milestone')).toHaveLength(4)
-    expect(fy.feed(now).items.find((i) => i.id === `ms:turns:${dayKey(now)}:25`)).toMatchObject({ kind: 'milestone', tone: 'magic', text: '25 turns delivered today' })
+    expect(fy.feed(now).items.find((i) => i.id === `ms:turns:${dayKey(now)}:25`)).toMatchObject({ kind: 'milestone', tone: 'magic', text: "25 turns delivered today, we're on a roll!" })
     expect(model).not.toHaveBeenCalled()
     expect(cheap).not.toHaveBeenCalled()
   })
@@ -665,7 +665,7 @@ describe('milestones', () => {
     const c = makeCurator()
     for (let n = 1; n <= 26; n++) await deliver(`s${n}`, `Turn ${n} done.`)
     await c.tick(now)
-    expect(kinds('milestone').map((i) => i.text)).toEqual(['25 turns delivered today'])
+    expect(kinds('milestone').map((i) => i.text)).toEqual(["25 turns delivered today, we're on a roll!"])
     fy.dismiss(`ms:turns:${dayKey(now)}:25`)
     await makeCurator().tick(now)
     expect(fy.feed(now).items.filter((i) => i.kind === 'milestone')).toEqual([])
@@ -678,7 +678,7 @@ describe('milestones', () => {
       await c.tick(now)
       now += 24 * HOUR
     }
-    expect(kinds('milestone').map((i) => i.text)).toEqual(['3 days in a row with turns delivered', '7 days in a row with turns delivered'])
+    expect(kinds('milestone').map((i) => i.text)).toEqual(['3 days in a row of shipping, keep it going.', '7 days in a row of shipping, keep it going.'])
     // A day without anything breaks it.
     now += 24 * HOUR
     for (let d = 0; d < 2; d++) {
@@ -704,7 +704,7 @@ describe('where the day stands', () => {
     await c.tick(now)
     const id = `stat:${dayKey(now)}`
     const item = fy.feed(now).items.find((i) => i.id === id)!
-    expect(item).toMatchObject({ kind: 'stat', who: 'weevils', text: 'Where the day stands: 3 turns delivered', open: { page: 'usage' } })
+    expect(item).toMatchObject({ kind: 'stat', who: 'weevils', text: 'Your day so far: 3 turns delivered', open: { page: 'usage' } })
     expect(item.gauges).toEqual([
       { label: 'Claude · 5 h window', value: 12, max: 100, shown: '12%' },
       { label: 'Claude · week', value: 71, max: 100, shown: '71%' },

@@ -17,21 +17,22 @@ export default defineMessages({
     noMedia: 'les images et vidéos ne sont pas disponibles ici',
     // ---- sessions
     /** A session waits for the user and its tool gave no question. */
-    waiting: 'attend ta réponse',
+    waiting: 'J’ai besoin de toi pour continuer.',
     /** A session cut off mid-work; `why` comes from the core catalog (cutWhy). */
-    cut: (why: string) => `Coupée en plein travail : ${why}.`,
+    cut: (why: string) => `Aïe, on m’a coupé en plein travail (${why}). Tu me relances ?`,
     resume: 'Reprendre',
     // ---- alerts (one sober line each)
-    usage: (tool: string, window: string, percent: number) => `${tool} : ${window} à ${percent} %`,
+    usage: (tool: string, window: string, percent: number, spare: string) =>
+      `T’es à ${percent} % de ta ${window} ${tool}. ${spare ? `Je garde ${spare} au chaud au cas où.` : 'Je lève le pied sur ce qui peut attendre.'}`,
     window_session: 'fenêtre de 5 h',
     window_week: 'semaine',
     window_model: (label: string) => `semaine ${label}`,
-    saturated: (machine: string) => `${machine} est saturée`,
-    diskFull: (machine: string, percent: number) => `Disque de ${machine} plein à ${percent} %`,
-    offline: (machine: string) => `${machine} est hors ligne`,
-    autoFailed: (title: string, note: string) => `Tâche auto échouée : ${title}${note ? ` (${note})` : ''}`,
+    saturated: (machine: string) => `${machine} est à bout de souffle, j’évite de lui en rajouter.`,
+    diskFull: (machine: string, percent: number) => `Le disque de ${machine} est plein à ${percent} %, faudrait faire un peu de ménage.`,
+    offline: (machine: string) => `Je n’arrive plus à joindre ${machine}.`,
+    autoFailed: (title: string, note: string) => `La tâche auto « ${title} » s’est plantée${note ? ` (${note})` : ''}. On retente ou on laisse tomber ?`,
     // ---- proposals
-    proposals: (n: number) => (n > 1 ? `${n} propositions` : 'Une proposition'),
+    proposals: (n: number) => (n > 1 ? `J’ai ${n} idées pour toi` : 'J’ai une idée pour toi'),
     // ---- what weevboss receives
     /** The visible message of a tapped button under a post. */
     go: (label: string) => `Vas-y : ${label}`,
@@ -50,18 +51,19 @@ export default defineMessages({
     mailOff: 'mail is not set up',
     noMore: 'nothing more on this for now',
     noMedia: 'images and videos are not available here',
-    waiting: 'waiting for your answer',
-    cut: (why: string) => `Cut off mid-work: ${why}.`,
+    waiting: 'I need you to keep going.',
+    cut: (why: string) => `Ouch, I got cut off mid-work (${why}). Want me to pick it back up?`,
     resume: 'Resume',
-    usage: (tool: string, window: string, percent: number) => `${tool}: ${window} at ${percent}%`,
+    usage: (tool: string, window: string, percent: number, spare: string) =>
+      `You're at ${percent}% of your ${tool ? `${tool} ` : ''}${window}. ${spare ? `I'm keeping ${spare} warm just in case.` : 'I’m easing off what can wait.'}`,
     window_session: '5 h window',
     window_week: 'week',
     window_model: (label: string) => `${label} week`,
-    saturated: (machine: string) => `${machine} is saturated`,
-    diskFull: (machine: string, percent: number) => `${machine}'s disk is ${percent}% full`,
-    offline: (machine: string) => `${machine} is offline`,
-    autoFailed: (title: string, note: string) => `Auto task failed: ${title}${note ? ` (${note})` : ''}`,
-    proposals: (n: number) => (n === 1 ? 'One proposal' : `${n} proposals`),
+    saturated: (machine: string) => `${machine} is out of breath, I'm not piling more on it.`,
+    diskFull: (machine: string, percent: number) => `${machine}'s disk is ${percent}% full, time for a little cleanup.`,
+    offline: (machine: string) => `I can't reach ${machine} anymore.`,
+    autoFailed: (title: string, note: string) => `The auto task "${title}" crashed${note ? ` (${note})` : ''}. Retry or drop it?`,
+    proposals: (n: number) => (n === 1 ? 'I have an idea for you' : `I have ${n} ideas for you`),
     go: (label: string) => `Go ahead: ${label}`,
     actBrief: (post: string, brief: string) => `the user tapped this button under your post in their "for you" stream ("${post}"). To do: ${brief}`,
     replyBrief: (post: string) => `answer the message above: the user wrote it in their "for you" stream, as a reply to your post "${post}"`,

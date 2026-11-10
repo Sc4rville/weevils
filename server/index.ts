@@ -6,7 +6,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, PORT, PROJECT_ROOTS, PUBLIC_URL } from './config.ts'
+import { CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, PORT, PROJECT_ROOTS, PUBLIC_URL } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices } from './fast.ts'
@@ -24,10 +24,11 @@ import { startMailBridge } from './mailbridge.ts'
 import { resetAuthors } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
-import { quotas, rate as tokenRate, today as usageToday } from './usage.ts'
+import { claudeQuota, quotas, rate as tokenRate, today as usageToday } from './usage.ts'
+import { Relay, defaultDeps } from './relay.ts'
 import type { InfraDetail, MachineBrief, MachineFacts, Reach, TokenRate, UsageToday } from '../shared/infra.ts'
 import { facts } from './discover.ts'
-import { Setup, installPlan, writeConfig } from './setup.ts'
+import { Setup, installPlan, which, writeConfig } from './setup.ts'
 import { TourKeeper } from './tour.ts'
 import { DEMOS, isTourId } from '../shared/tour.ts'
 import { isBrick, isSecretName, isSetupKey, type Device } from '../shared/setup.ts'
@@ -189,6 +190,16 @@ if (foryou) {
   foryou.curator = curator
   curator.start()
 }
+// ---------------------------------------------------------------- relais Codex pendant la limite de Claude (chaque machine, pour ses sessions)
+
+let codexSeen = { at: 0, ok: false }
+const codexReady = () => {
+  if (Date.now() - codexSeen.at > 30_000) codexSeen = { at: Date.now(), ok: !!which('codex') && fs.existsSync(path.join(path.dirname(CODEX_DIR), 'auth.json')) }
+  return codexSeen.ok
+}
+const relay = new Relay(w.relayHost(), defaultDeps(claudeQuota, codexReady))
+w.relay = relay
+relay.start()
 
 const asDevice = (d: any): Device => ({
   os: ['ios', 'android', 'mac', 'windows', 'linux'].includes(d?.os) ? d.os : 'other',
@@ -612,6 +623,31 @@ const routes: [string, RegExp, Handler][] = [
   // Session coupée en plein travail : la reprendre (--resume + message de reprise) ou la laisser.
   ['POST', /^\/api\/sessions\/([^/]+)\/resume$/, async (_req, res, _u, [id]) => json(res, 200, await w.resume(decodeURIComponent(id)))],
   ['POST', /^\/api\/sessions\/([^/]+)\/dismiss$/, async (_req, res, _u, [id]) => json(res, 200, await w.dismiss(decodeURIComponent(id)))],
+  // ---- Relais Codex pendant la limite de Claude (server/relay.ts) : réglage, plan demandé pour une session, décision sur un plan.
+  ['POST', /^\/api\/relay$/, async (req, res) => {
+    const body = await readBody(req)
+    relay.set({ mode: body.mode, switchAt: body.switchAt, tz: body.tz })
+    // Les autres machines suivent le réglage (pas le fuseau : relayé seulement quand l'app parle, jamais en boucle).
+    if (!isLocal(req) && (body.mode !== undefined || body.switchAt !== undefined)) for (const r of w.remotes) if (r.online) void r.call('POST', '/api/relay', { mode: body.mode, switchAt: body.switchAt }).catch(() => undefined)
+    json(res, 200, { ok: true })
+  }],
+  ['POST', /^\/api\/sessions\/([^/]+)\/relay$/, async (_req, res, _u, [raw]) => {
+    const id = decodeURIComponent(raw)
+    const remote = w.remoteFor(id)
+    json(res, 200, remote ? await remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/relay`, {}) : relay.request(id))
+  }],
+  ['POST', /^\/api\/relay\/plans\/([^/]+)$/, async (req, res, _u, [raw]) => {
+    const id = decodeURIComponent(raw)
+    const body = await readBody(req)
+    const call = { action: String(body.action ?? ''), text: typeof body.text === 'string' ? body.text : undefined }
+    if (id === 'all') {
+      // Tout valider (ou tout laisser à Claude) : ici et sur chaque machine, celles qui n'ont aucun plan ne disent rien.
+      if (!isLocal(req)) for (const r of w.remotes) if (r.online) void r.call('POST', '/api/relay/plans/all', call).catch(() => undefined)
+      return json(res, 200, await relay.decide('all', call.action, call.text).catch((e) => (w.remotes.length ? { ok: true } : Promise.reject(e))))
+    }
+    const remote = w.remoteFor(id)
+    json(res, 200, remote ? await remote.call('POST', `/api/relay/plans/${encodeURIComponent(id)}`, call) : await relay.decide(id, call.action, call.text))
+  }],
   // ---- Coin infrastructure : machines, système de fichiers complet, abonnements.
   ['GET', /^\/api\/infra\/brief$/, async (_req, res, url) => {
     const here = brief()

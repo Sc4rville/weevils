@@ -235,7 +235,7 @@ const JAIL_RO = ['.bashrc', '.bash_profile', '.bash_login', '.profile', '.zshrc'
  * Not covered: the network (a script can still send what it reads), Claude Code's own login and ~/.claude.json, the
  * loopback ports (weevils' API: its CLI is denied and pointed at a dead port, not walled off).
  */
-export function jailArgs(o: { home: string; hide: string[]; roots: string[]; rw: string[]; git?: string }, exists: (p: string) => boolean = fs.existsSync): string[] {
+export function jailArgs(o: { home: string; hide: string[]; roots: string[]; rw: string[]; git?: string; /** kept visible among JAIL_HIDE: the login of the agent that runs the task (Codex: .codex) */ show?: string[] }, exists: (p: string) => boolean = fs.existsSync): string[] {
   const real = (p: string) => {
     try {
       return fs.realpathSync(p)
@@ -245,7 +245,7 @@ export function jailArgs(o: { home: string; hide: string[]; roots: string[]; rw:
   }
   const pick = (list: string[]) => [...new Set(list.filter((p) => exists(p)).map(real))]
   const home = (list: string[]) => list.map((p) => path.join(o.home, p))
-  const hide = pick([...home(JAIL_HIDE), ...o.hide])
+  const hide = pick([...home(JAIL_HIDE.filter((p) => !o.show?.includes(p))), ...o.hide])
   const files = pick([...home(JAIL_HIDE_FILES), '/run/docker.sock', '/var/run/docker.sock', '/run/podman/podman.sock'])
   const ro = pick([...home(JAIL_RO), ...o.roots])
   const rw = pick([...o.rw, ...(o.git ? [o.git] : [])])
@@ -272,6 +272,10 @@ type Stored = Optimizer & {
   seenAt?: number
   /** Starts stopped by a usage limit, a login or an API error. */
   tries?: number
+  /** Waits for Claude to be back (server/relay.ts): released as soon as it is. */
+  held?: boolean
+  /** The agent of the current (or last) run: Codex while Claude is at its limit. */
+  tool?: 'claude' | 'codex'
 }
 interface State {
   items: Stored[]
@@ -439,6 +443,9 @@ export class Optimizers {
   private rounding: Promise<void> | null = null
   private launching = false
   private noJailSaid = false
+  /** bwrap works on this machine (asked once, when Claude first hits its limit). */
+  private bwrap: boolean | undefined
+  private probingJail = false
   private auto = false
 
   constructor(w: Weevils, memory: Memory, opts: { file?: string; /** default <projects>/.auto */ dir?: string; sys?: Partial<Sys> } = {}) {
@@ -498,7 +505,7 @@ export class Optimizers {
     return this.s.items
       .filter((o) => o.state !== 'refused' && (o.state === 'proposed' || o.state === 'queued' || o.state === 'running' || now - (o.endedAt ?? o.createdAt) < KEEP_MS))
       .sort((a, b) => rank[a.state] - rank[b.state] || (a.state === 'proposed' ? (a.priority ?? 2) - (b.priority ?? 2) || a.createdAt - b.createdAt : 0) || (b.endedAt ?? 0) - (a.endedAt ?? 0) || (a.acceptedAt ?? 0) - (b.acceptedAt ?? 0))
-      .map(({ prompt: _p, acceptedAt: _a, seenWorking: _w, seenAt: _s, tries: _t, ...o }) => o)
+      .map(({ prompt: _p, acceptedAt: _a, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, ...o }) => o)
   }
 
   /** The machine as the runner sees it (snapshot). */
@@ -548,6 +555,28 @@ export class Optimizers {
     if (busy) this.lastBusyAt = now
     const reason = this.machine(now).wait
     const queue = this.s.items.filter((o) => o.state === 'queued').sort((a, b) => (a.acceptedAt ?? a.createdAt) - (b.acceptedAt ?? b.createdAt))
+    // Claude at its limit (server/relay.ts): new tasks start on Codex when the relay is automatic, otherwise every
+    // task waits for the reset time.
+    const hold = this.w.relay?.holdUntil(now) ?? 0
+    // Codex has no deny list: only on a machine where the jail holds (probed once), otherwise the tasks wait too.
+    if (hold && this.bwrap === undefined && !this.probingJail) {
+      this.probingJail = true
+      void this.sys
+        .jail(['--dev-bind', '/', '/', '--'])
+        .catch(() => false)
+        .then((ok) => {
+          this.bwrap = ok
+          this.probingJail = false
+        })
+    }
+    const codex = !!hold && !!this.w.relay?.autoOnCodex() && this.bwrap === true
+    if (hold && !codex)
+      for (const o of queue)
+        if (!o.held || (o.retryAt ?? 0) < hold) {
+          o.held = true
+          o.retryAt = hold
+          dirty = true
+        }
     // Stopped by a limit or an error: it waits for its retry time, the others go first.
     const ready = queue.filter((o) => !(o.retryAt && o.retryAt > now))
     queue.forEach((o) => {
@@ -561,7 +590,7 @@ export class Optimizers {
     })
     if (dirty) this.changed()
     // Never without Claude logged in: the session would open on a login screen and sit there.
-    if (!running && !this.launching && !reason && ready[0] && this.sys.logged()) void this.launch(ready[0], now)
+    if (!running && !this.launching && !reason && ready[0] && (codex || this.sys.logged())) void this.launch(ready[0], now, codex ? { tool: 'codex' } : undefined)
     if (this.roundDue(now)) void this.round(now)
   }
 
@@ -582,16 +611,23 @@ export class Optimizers {
       return true
     }
     if (now - (o.startedAt ?? now) > MAX_RUN_MS) return end('failed', t.timedOut)
-    const s = o.sessionId ? this.w.snapshot().sessions.find((x) => x.id === o.sessionId) : undefined
+    const sid = o.sessionId ? (this.w.sessionIdOf?.(o.sessionId) ?? o.sessionId) : undefined
+    const s = sid ? this.w.snapshot().sessions.find((x) => x.id === sid) : undefined
     if (!s) return now - Math.max(o.seenAt ?? o.startedAt ?? now, this.bootAt) > VANISH_MS ? end('failed', t.vanished) : false
+    if (o.sessionId !== s.id) o.sessionId = s.id
     o.seenAt = now
     if (s.status === 'working' || s.status === 'needs_user') {
       if (o.seenWorking || s.status !== 'working') return false
       o.seenWorking = true
       return true
     }
+    // Handed over to Codex (told to stop before the limit, or cut by it): it waits for its plan's fate, or for Claude.
+    if (this.w.relay?.holds(s.id)) return this.hold(o, now)
     const last = s.lastMessage ?? ''
     if (isStall(last)) return this.later(o, now, last)
+    // Codex stopped the same way (its own limit, its login, its API).
+    if (s.tool === 'codex' && s.status === 'interrupted' && s.interrupted && s.interrupted.reason !== 'died' && s.interrupted.reason !== 'dirty')
+      return this.later(o, now, s.interrupted.reason === 'quota' ? 'usage limit' : s.interrupted.reason === 'auth' ? 'login expired' : 'api error')
     if (this.turnOpen(s)) return false
     // A short task can start and finish between two looks: past the start-up delay, at rest means it ended.
     if (!o.seenWorking && now - (o.startedAt ?? now) <= VANISH_MS) return false
@@ -619,10 +655,54 @@ export class Optimizers {
       return true
     }
     o.state = 'queued'
-    o.retryAt = now + RETRY_MS
+    // A usage limit with a known reset time: back then, not in an hour.
+    const hold = stallKind(why) === 'limit' && o.tool !== 'codex' ? (this.w.relay?.holdUntil(now) ?? 0) : 0
+    o.retryAt = hold || now + RETRY_MS
+    if (hold) o.held = true
     o.waiting = 'later'
-    console.log(`[auto] « ${o.title} » arrêtée (${oneLine(why, 160)}) · nouvel essai dans ${Math.round(RETRY_MS / 60_000)} min`)
+    console.log(`[auto] « ${o.title} » arrêtée (${oneLine(why, 160)}) · nouvel essai dans ${Math.round((o.retryAt - now) / 60_000)} min`)
     return true
+  }
+
+  /** The task's session is handed over to Codex: back in the queue, its worktree kept, until its plan is approved or Claude is back. */
+  private hold(o: Stored, now: number): boolean {
+    o.state = 'queued'
+    o.held = true
+    o.retryAt = this.w.relay?.holdUntil(now) || now + RETRY_MS
+    o.waiting = 'later'
+    o.lastEvent = tr(O).stall_limit
+    console.log(`[auto] « ${o.title} » attend le relais Codex ou le retour de Claude`)
+    return true
+  }
+
+  /** The session of one of the tasks (its current or last run). */
+  owns(sessionId: string): boolean {
+    return this.s.items.some((o) => !!o.sessionId && (o.sessionId === sessionId || this.w.sessionIdOf?.(o.sessionId) === sessionId))
+  }
+
+  /** Claude is back (or gone): tasks that waited for it are released, and the queue is looked at now. */
+  poke() {
+    if (!(this.w.relay?.holdUntil() ?? 0))
+      for (const o of this.s.items)
+        if (o.held) {
+          delete o.held
+          if (o.state === 'queued') delete o.retryAt
+        }
+    this.changed()
+    if (this.auto) setTimeout(() => this.tick(), 1000).unref?.()
+  }
+
+  /**
+   * The approved takeover plan of a task's session (server/relay.ts): the task restarts on Codex in the same worktree,
+   * behind the same barriers. Returns the new session; throws when it cannot start (the task then waits for Claude).
+   */
+  async relayRun(sessionId: string, text: string): Promise<string> {
+    const o = this.s.items.find((x) => !!x.sessionId && (x.sessionId === sessionId || this.w.sessionIdOf?.(x.sessionId) === sessionId))
+    if (!o || (o.state !== 'queued' && o.state !== 'running')) throw new Error(tr(O).vanished)
+    if (!(await this.sys.jail(['--dev-bind', '/', '/', '--']))) throw new Error(tr(O).noJail)
+    await this.launch(o, Date.now(), { tool: 'codex', relay: text })
+    if (o.state !== 'running' || !o.sessionId) throw new Error(o.lastEvent || tr(O).startFailed)
+    return o.sessionId
   }
 
   /** Where a task works: its own git worktree beside its repo, or a hidden folder of its own (see the top of the file). */
@@ -644,7 +724,7 @@ export class Optimizers {
    * The jail of a task (jailArgs), tried before the session starts: bwrap's command prefix, or [] on a machine without
    * bwrap (macOS…), where the environment barriers and the deny list are all there is. A jail that fails stops the task.
    */
-  private async jail(o: Stored, cwd: string, guard: string): Promise<string[]> {
+  private async jail(o: Stored, cwd: string, guard: string, show: string[] = []): Promise<string[]> {
     const uid = os.userInfo().uid
     const runtime = process.env.XDG_RUNTIME_DIR || `/run/user/${uid}`
     const tmp = process.env.TMUX_TMPDIR || '/tmp'
@@ -656,6 +736,7 @@ export class Optimizers {
       // The task's folder: its worktree and the report beside it, or its workspace; the guard's empty configs.
       rw: [o.repo ? path.dirname(cwd) : cwd, guard],
       git: repoGit && fs.statSync(repoGit, { throwIfNoEntry: false })?.isDirectory() ? repoGit : undefined,
+      show,
     })
     if (await this.sys.jail(args)) return ['bwrap', ...args]
     if (!this.noJailSaid) console.log("[auto] bwrap absent : les tâches tournent sans prison (barrières d'environnement et interdits seuls)")
@@ -664,13 +745,16 @@ export class Optimizers {
   }
 
   /** Starts a task in a Claude session: in its own worktree of its repo (on a fresh local branch), or in its workspace. */
-  private async launch(o: Stored, now: number) {
+  private async launch(o: Stored, now: number, on: { tool?: 'claude' | 'codex'; /** the approved takeover plan, first in the brief */ relay?: string } = {}) {
+    const tool = on.tool ?? 'claude'
     this.launching = true
     o.state = 'running'
     o.startedAt = now
+    o.tool = tool
     delete o.waiting
     delete o.lastEvent
     delete o.retryAt
+    delete o.held
     delete o.seenWorking
     delete o.seenAt
     delete o.sessionId
@@ -687,7 +771,7 @@ export class Optimizers {
         step = 'start'
       } else fs.mkdirSync(cwd, { recursive: true })
       const writesReport = !o.repo || o.kind === 'watch' || o.kind === 'content' || o.kind === 'explore'
-      const text = tr(O).brief({
+      const brief = tr(O).brief({
         title: o.title,
         branch,
         checkout: o.repo ? this.w.repoDir(o.repo) : '',
@@ -698,14 +782,17 @@ export class Optimizers {
         heavy: o.heavy,
         prompt: o.prompt,
       })
+      const text = on.relay ? `${on.relay}\n\n${tr(O).relayRules}\n${brief}` : brief
       const guard = this.guard()
       step = 'jail'
-      const wrap = await this.jail(o, cwd, guard)
+      // Codex has no deny list: its tasks run only inside the jail (which keeps its login, nothing else of the user's).
+      const wrap = await this.jail(o, cwd, guard, tool === 'codex' ? ['.codex'] : [])
+      if (tool === 'codex' && !wrap.length) throw new Error(tr(O).noJail)
       step = 'start'
-      const { id } = await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard), wrap })
+      const { id } = tool === 'codex' ? await this.w.createIn(cwd, o.title, text, [], { ...guardEnv(guard), wrap }, 'codex') : await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard), wrap })
       o.sessionId = id
       o.seenAt = Date.now()
-      console.log(`[auto] lancée : ${o.title} (${cwd})`)
+      console.log(`[auto] lancée : ${o.title} (${cwd})${tool === 'codex' ? ' · sur Codex (Claude à sa limite)' : ''}`)
     } catch (e) {
       // The app shows a short note; the raw error (tmux, git) stays in the log.
       o.state = 'failed'

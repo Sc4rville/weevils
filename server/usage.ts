@@ -62,8 +62,14 @@ export function claudeWindows(d: any): QuotaWindow[] {
 }
 
 let claudeCache: QuotaInfo | null = null
-async function claudeQuota(): Promise<QuotaInfo> {
+export async function claudeQuota(): Promise<QuotaInfo> {
   const now = Date.now()
+  // Simulation (tests of the Codex relay on a throwaway server): a file shaped like the API's answer.
+  const fake = process.env.WEEVILS_FAKE_CLAUDE_USAGE
+  if (fake) {
+    const d = readJson(fake)
+    return d ? { ok: true, plan: 'fake', windows: claudeWindows(d), source: fake, at: now } : { ok: false, windows: [], source: fake, at: now, error: tr(M).noToken }
+  }
   if (claudeCache && now - claudeCache.at < CACHE_MS) return claudeCache
   const source = 'api.anthropic.com/api/oauth/usage'
   const o = readJson(path.join(HOME, '.claude', '.credentials.json'))?.claudeAiOauth

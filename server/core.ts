@@ -23,6 +23,8 @@ import { claudeLogged, withoutContext, type Setup } from './setup.ts'
 import type { Memory } from './memory.ts'
 import type { Optimizers } from './optimizers.ts'
 import type { ForYou, MailIn } from './foryou.ts'
+import { PLAN_MARKER, clockOf, type Relay, type RelayHost } from './relay.ts'
+import R from './i18n/relay.ts'
 import { parseTimerShow } from './schedule.ts'
 import { chipsInPlace } from '../shared/setup.ts'
 import { asksUser, type Ask } from '../shared/asks.ts'
@@ -213,6 +215,13 @@ export function withFiles(text: string, saved: { path: string; image: boolean }[
   return `${lead} ${saved.map((s) => t.attached(s.image, s.path)).join(' ')}`
 }
 
+/** Le bloc de contexte caché d'un message pour weevboss (« ⟦weevils — … ⟧ », un seul, en fin de message), avec une partie de plus. */
+export const joinContext = (block: string, extra: string): string => {
+  const more = extra.replace(/⟧/g, ']').trim()
+  if (!more) return block
+  return block.trim() ? block.replace(/⟧\s*$/, ` — ${more}⟧`) : ` ⟦weevils — ${more}⟧`
+}
+
 export class Weevils {
   store = new TranscriptStore(CLAUDE_DIR, CODEX_DIR, RECENT_MS)
   hooks = new Map<string, HookState>()
@@ -234,6 +243,8 @@ export class Weevils {
   optimizers: Optimizers | null = null
   /** The « for you » stream (server/foryou.ts), on the main machine. */
   foryou: ForYou | null = null
+  /** Codex relay while Claude is at its usage limit (server/relay.ts). */
+  relay: Relay | null = null
   private githubCache: Map<string, number> = new Map()
 
   // ---------------------------------------------------------------- repos GitHub
@@ -275,13 +286,11 @@ export class Weevils {
     let calm = 0
     while (Date.now() < end) {
       await sleep(500)
-      const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
-      const replies = t?.messages.filter((m) => m.role === 'assistant' && m.at >= since - 500) ?? []
+      const replies = this.bossTranscripts().flatMap((t) => t.messages.filter((m) => m.role === 'assistant' && m.at >= since - 500))
       calm = replies.length && !this.orchestratorWorking(Date.now()) ? calm + 1 : 0
       if (calm >= 3) return replies.map((m) => m.text).join('\n\n')
     }
-    const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
-    return t?.messages.filter((m) => m.role === 'assistant' && m.at >= since - 500).map((m) => m.text).join('\n\n') || null
+    return this.bossTranscripts().flatMap((t) => t.messages.filter((m) => m.role === 'assistant' && m.at >= since - 500)).map((m) => m.text).join('\n\n') || null
   }
   /** Attend la réponse d'une session (locale ou d'une autre machine) à un message envoyé à `since` : terminée quand elle ne travaille plus. */
   async waitReply(id: string, since: number, timeoutMs: number): Promise<{ id: string; text: string; done: boolean; attention?: string }> {
@@ -723,6 +732,8 @@ export class Weevils {
       if (now - s.interrupted.at > ANNOUNCE_WITHIN_MS) continue
       // Une session de test (vérifier la détection elle-même) : montrée, jamais annoncée dans le vrai fil.
       if (isTestBrief(this.store.get(s.id)?.firstPrompt)) continue
+      // Arrêtée par la limite de Claude et Codex peut prendre le relais : une seule annonce, celle du relais (server/relay.ts).
+      if (s.machineId === MACHINE.id && this.relay?.covers(s)) continue
       const project = snap.projects.find((p) => p.id === s.projectId)?.name ?? s.projectId
       const why = tr(M).cutWhy(s.interrupted.reason)
       console.log(`[sessions] ${s.id.slice(0, 8)} coupée en plein travail (${s.interrupted.reason}) · « ${s.title} »`)
@@ -779,6 +790,10 @@ export class Weevils {
 
     // Ouverte dans un terminal que weevils ne pilote pas : on ne peut ni lui écrire ni la reprendre sans risque.
     const unmanagedLive = live && !pane
+    // Relais Codex (server/relay.ts) : la session Codex porte le titre de la session Claude qu'elle reprend.
+    const relayOf = t.tool === 'codex' ? this.relay?.relayOf(t.id, pane?.name) : undefined
+    const relayedBy = t.tool === 'claude' ? this.relay?.relayedBy(t.id) : undefined
+    const relayTitle = relayOf && !t.customTitle ? (this.titles.get(relayOf)?.title ?? (this.store.get(relayOf) ? titleOf(this.store.get(relayOf)!) : undefined)) : undefined
     return {
       id: t.id,
       projectId: where.projectId,
@@ -786,7 +801,7 @@ export class Weevils {
       machineId: MACHINE.id,
       tool: t.tool,
       // Le titre choisi par l'utilisateur dans l'outil prime ; sinon celui du renommeur (ce dont la session parle maintenant) ; sinon le début.
-      title: t.customTitle ? titleOf(t) : (this.titles.get(t.id)?.title ?? titleOf(t)),
+      title: relayTitle ?? (t.customTitle ? titleOf(t) : (this.titles.get(t.id)?.title ?? titleOf(t))),
       // En attendant l'activité réécrite : le dernier pas de l'agent (outil) plutôt que l'ancienne tâche.
       now: shortNow(this.titles.get(t.id)?.now || (t.phase === 'working' ? stepOf(t) : '')) || undefined,
       status,
@@ -810,6 +825,8 @@ export class Weevils {
       settings: t.model || t.approval || t.effort ? { model: t.model, approval: t.approval, effort: t.effort } : undefined,
       // Une file ne survit pas à la fin du tour : si la session ne travaille plus, tout a été traité.
       queued: turnWorking ? t.queued.length : 0,
+      ...(relayOf ? { relayOf } : {}),
+      ...(relayedBy ? { relayedBy } : {}),
     }
   }
 
@@ -838,13 +855,14 @@ export class Weevils {
       messageCount: 0,
       queued: 0,
       lastMessage: now - p.createdAt < 60_000 ? tr(M).starting : undefined,
+      ...(p.tool === 'codex' && this.relay?.relayOf(p.sessionId, p.name) ? { relayOf: this.relay.relayOf(p.sessionId, p.name) } : {}),
     }
   }
 
   sessions(now = Date.now()): Session[] {
     const list = this.store
       .all()
-      .filter((t) => now - t.lastActivityAt < RECENT_MS && (t.messages.length > 0 || this.paneFor(t.id)) && !t.cwd.startsWith(DATA_DIR))
+      .filter((t) => now - t.lastActivityAt < RECENT_MS && (t.messages.length > 0 || this.paneFor(t.id)) && !t.cwd.startsWith(DATA_DIR) && !t.firstPrompt?.startsWith(PLAN_MARKER))
       .map((t) => this.toSession(t, now))
     const known = new Set(list.map((s) => s.id))
     for (const p of this.panes) {
@@ -927,6 +945,7 @@ export class Weevils {
       memoryCount: this.memory?.count,
       optimizers: this.optimizers?.list() ?? [],
       autoMachine: this.optimizers?.machine(),
+      relay: this.relayView(now, remote.flatMap((r) => r.snap!.relay?.plans ?? [])),
       config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey },
     }
     // « Pour toi » : sa marque (révision, non vus) se calcule sur le snapshot qu'on vient de poser, sans rappeler snapshot().
@@ -939,6 +958,11 @@ export class Weevils {
       console.error(`[foryou] marque : ${(e as Error).message}`)
     }
     return snap
+  }
+
+  /** L'id d'une session à partir de celui qu'on a reçu à son lancement (Codex : le nom de sa pane, avant son transcript). */
+  sessionIdOf(id: string) {
+    return this.resolveId(id)
   }
 
   private resolveId(id: string) {
@@ -1350,6 +1374,8 @@ export class Weevils {
       const projects = PROJECTS_DIR.startsWith(HOME + path.sep) ? '~' + PROJECTS_DIR.slice(HOME.length) : PROJECTS_DIR
       const text = fs.readFileSync(src, 'utf8').replaceAll('{{user}}', user()).replaceAll('{{owner}}', owner).replaceAll('{{projects}}', projects)
       fs.writeFileSync(path.join(ORCH_DIR, 'CLAUDE.md'), text)
+      // Les mêmes consignes pour Codex, qui répond à la place de Claude pendant sa limite d'usage (server/relay.ts).
+      fs.writeFileSync(path.join(ORCH_DIR, 'AGENTS.md'), text)
     } catch (e) {
       console.error(`[orchestrateur] CLAUDE.md : ${(e as Error).message}`)
     }
@@ -1361,12 +1387,34 @@ export class Weevils {
     }
   }
 
-  private orchestratorPane() {
+  private claudeBossPane() {
     return this.orchestratorId ? this.paneFor(this.orchestratorId) : undefined
   }
 
+  /** weevboss sur Codex pendant que Claude est à sa limite (server/relay.ts) : sa pane, son transcript une fois relié. */
+  private codexBoss() {
+    const b = this.relay?.boss
+    if (!b) return undefined
+    const pane = (b.pane ? this.panes.find((p) => p.name === b.pane) : undefined) ?? (b.sessionId ? this.paneFor(b.sessionId) : undefined)
+    if (pane?.sessionId && pane.sessionId !== b.sessionId) this.relay!.setBoss({ ...b, sessionId: pane.sessionId })
+    const id = pane?.sessionId ?? b.sessionId
+    return { since: b.since, pane, id, t: id ? this.store.get(id) : undefined }
+  }
+
+  /** Les transcripts du fil de weevboss : celui de Claude, et celui de Codex quand il a pris le relais. */
+  private bossTranscripts(): Transcript[] {
+    const claude = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
+    const codex = this.codexBoss()?.t
+    return [claude, codex].filter((t): t is Transcript => !!t)
+  }
+
+  /** La pane où weevboss répond en ce moment : celle de Codex pendant le relais, sinon celle de Claude. */
+  private orchestratorPane() {
+    return (this.relay?.bossOn() ? this.codexBoss()?.pane : undefined) ?? this.claudeBossPane()
+  }
+
   private orchestratorSettings() {
-    const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
+    const t = (this.relay?.bossOn() ? this.codexBoss()?.t : undefined) ?? (this.orchestratorId ? this.store.get(this.orchestratorId) : undefined)
     return t?.model || t?.approval || t?.effort ? { model: t.model, approval: t.approval, effort: t.effort } : undefined
   }
 
@@ -1490,12 +1538,17 @@ export class Weevils {
   }
 
   private orchestratorMessages(): Message[] {
-    const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
+    const boss = this.codexBoss()
     // La bande du haut : tes messages et les réponses de weevils, pas ses appels d'outils.
     // Le devil mode écrit dans le même fil : ses échanges sont mêlés par ordre d'arrivée.
     // L'accueil et les branchements, écrits par weevilsd au nom de weevboss, aussi. Le bloc de contexte joint à un message
     // pour weevboss (ce qu'il n'a pas vu passer) ne s'affiche jamais.
-    const own = (t?.messages.filter((m) => m.role !== 'event') ?? []).map((m) => (m.role === 'user' ? { ...m, text: withoutContext(m.text) } : m))
+    // Pendant la limite de Claude, Codex répond à sa place : ses échanges sont dans le même fil. Un message qui n'est
+    // que du contexte (la reprise d'un message resté sans réponse) ne s'affiche pas.
+    const own = this.bossTranscripts()
+      .flatMap((t) => t.messages.filter((m) => m.role !== 'event' && (t.tool === 'claude' || m.at >= (boss?.since ?? 0) - 60_000)))
+      .map((m) => (m.role === 'user' ? { ...m, text: withoutContext(m.text).trim() } : m))
+      .filter((m) => m.text)
     const msgs = [...own, ...devilMessages(), ...(this.setup?.messages() ?? [])]
       .sort((a, b) => a.at - b.at)
       .slice(-40)
@@ -1512,6 +1565,8 @@ export class Weevils {
   }
 
   private orchestratorWorking(now: number) {
+    const codex = this.codexBoss()?.t
+    if (codex?.phase === 'working' && now - codex.lastActivityAt < 10 * 60_000) return true
     const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
     if (!t) return false
     const hook = this.hooks.get(t.id)
@@ -1532,6 +1587,12 @@ export class Weevils {
   async sendMain(text: string, brief?: string) {
     if (!ORCHESTRATOR) throw new Error(tr(M).orchNotHere)
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
+    // Claude à sa limite (ou tout près) : weevboss répond par Codex, même dossier, mêmes consignes (server/relay.ts).
+    if (this.relay?.bossOn()) {
+      const since = Date.now()
+      void this.waitMainReply(since, 300_000).then((r) => r && console.log(`[voix] weevboss (codex) a répondu en ${Date.now() - since} ms`))
+      return this.sendBossCodex(text, this.setup?.contextFor(brief) ?? '')
+    }
     // Claude Code pas connecté sur cette machine : weevboss ne peut pas répondre. Le message reste dans le fil, et la marche
     // à suivre y arrive à sa place (weevilsd préviendra dès que la connexion est faite).
     if (this.setup && !claudeLogged()) {
@@ -1540,11 +1601,11 @@ export class Weevils {
     }
     this.prepareOrchestrator()
     // Ce que weevilsd a écrit en son nom depuis sa dernière réponse (accueil, branchements) : joint au message.
-    text = text + (this.setup?.contextFor(brief) ?? '')
+    text = text + joinContext(this.setup?.contextFor(brief) ?? '', this.bossBackContext())
     // Mesure : temps de réponse complet de weevboss, au journal.
     const since = Date.now()
     void this.waitMainReply(since, 300_000).then((r) => r && console.log(`[voix] weevboss a répondu en ${Date.now() - since} ms`))
-    const pane = this.orchestratorPane()
+    const pane = this.claudeBossPane()
     if (pane) {
       await this.deliver(pane.name, this.orchestratorId!, text)
       this.bump()
@@ -1557,6 +1618,107 @@ export class Weevils {
     await this.spawn('claude', ORCH_DIR, 'weevboss', command, id)
     this.persist()
     return { id }
+  }
+
+  /** Les derniers échanges du fil, en une ligne, pour celui qui prend (ou reprend) le fil. */
+  private threadDigest(msgs: Message[], max = 3000, me = 'you') {
+    return msgs
+      .filter((m) => m.role !== 'event' && m.text.trim())
+      .map((m) => `${m.role === 'user' ? 'user' : m.role === 'orchestrator' ? (m.author ?? 'agent') : me}: ${m.text.replace(/\s+/g, ' ').slice(0, 400)}`)
+      .join(' | ')
+      .slice(-max)
+      .replace(/⟧/g, ']')
+  }
+
+  /**
+   * weevboss sur Codex : dans sa pane si elle est ouverte, sinon une session Codex dans le dossier de l'orchestrateur
+   * (AGENTS.md = ses consignes), reprise si elle existe déjà. Son premier message porte, caché, les derniers échanges du fil.
+   * unanswered : aucun texte de l'utilisateur, seulement le contexte (son dernier message est resté sans réponse).
+   */
+  private async sendBossCodex(text: string, context = '', unanswered = false): Promise<{ id: string }> {
+    this.prepareOrchestrator()
+    const boss = this.codexBoss()
+    if (boss?.pane) {
+      await this.deliver(boss.pane.name, boss.pane.sessionId, (text + joinContext(context, unanswered ? tr(R).bossUnanswered : '')).trim())
+      this.bump()
+      return { id: boss.id ?? boss.pane.name }
+    }
+    const e = this.relay?.episode()
+    const t = tr(R)
+    const until = e?.until ? t.until(clockOf(e.until, Date.now(), e.tz)) : ''
+    const first = (text + joinContext(context, t.bossIn(t[`bossWhy_${e?.kind ?? 'limit'}`], until, this.threadDigest(this.orchestratorMessages().slice(-12)), unanswered))).trim()
+    const known = boss?.id && boss.t ? boss.id : undefined
+    const command = known ? ['codex', 'resume', ...CODEX_FLAGS, known, first] : ['codex', ...CODEX_FLAGS, first]
+    const name = await this.spawn('codex', ORCH_DIR, 'weevboss', command, known)
+    void this.acceptTrust(name)
+    this.relay?.setBoss({ pane: name, sessionId: known, since: boss?.since ?? Date.now() })
+    console.log(`[relais] weevboss répond par Codex (${name})`)
+    return { id: known ?? name }
+  }
+
+  /** Claude est revenu : ce que Codex a dit à sa place dans le fil, joint (caché) à son prochain message ; la pane de Codex est fermée. */
+  private bossBackContext(): string {
+    const since = this.relay?.takeBossBack()
+    if (since === undefined) return ''
+    const boss = this.codexBoss()
+    if (boss?.pane) {
+      if (boss.pane.sessionId) this.closedByUs.set(boss.pane.sessionId, Date.now())
+      void killWv(boss.pane.name).catch(() => undefined)
+    }
+    const said = (boss?.t?.messages ?? []).filter((m) => m.at >= since - 60_000).map((m) => (m.role === 'user' ? { ...m, text: withoutContext(m.text) } : m))
+    if (!said.some((m) => m.role === 'assistant')) return ''
+    return tr(R).bossBack(this.threadDigest(said, 3000, 'codex'))
+  }
+
+  /** Le relais vu par l'app : celui de cette machine, plus les plans de reprise des autres. */
+  private relayView(now: number, far: NonNullable<Snapshot['relay']>['plans']) {
+    const v = this.relay?.view(now)
+    return v && far.length ? { ...v, plans: [...v.plans, ...far] } : v
+  }
+
+  /**
+   * Une session Codex que weevils lance sans personne devant (relais, weevboss sur Codex, tâche auto) : dans un dossier
+   * qu'il ne connaît pas, Codex demande d'abord « Trust this folder? », et rien n'avance. Le dossier est à l'utilisateur
+   * (comme pour Claude, marqué de confiance d'avance) : on accepte, pendant les premières secondes seulement.
+   */
+  private async acceptTrust(pane: string) {
+    for (let i = 0; i < 14; i++) {
+      await sleep(1500)
+      const dlg = dialogOnScreen(await capture(pane).catch(() => ''))
+      if (dlg && /trust|confiance/i.test(dlg)) {
+        console.log(`[sessions] ${pane} · dossier accepté pour Codex : ${dlg.slice(0, 60)}`)
+        await sendKey(pane, 'enter').catch(() => undefined)
+        return
+      }
+    }
+  }
+
+  /** Ce que le relais Codex (server/relay.ts) demande à weevilsd. */
+  relayHost(): RelayHost {
+    return {
+      sessions: (now) => this.sessions(now),
+      transcript: (id) => this.store.get(id),
+      send: (id, text, from) => this.send(id, text, from),
+      resume: (id) => this.resume(id),
+      settle: (id) => {
+        this.cleared.set(id, Date.now())
+        this.cuts.delete(id)
+        this.persist()
+        this.bump()
+      },
+      openCodex: async (cwd, title, text) => (await this.createIn(cwd, title, text, [], {}, 'codex')).id,
+      resolve: (id) => this.resolveId(id),
+      bossStop: () => (this.orchestratorId ? this.store.get(this.orchestratorId)?.stopError : undefined),
+      bossRelayCut: () => this.sendBossCodex('', '', true),
+      autoOwns: (id) => !!this.optimizers?.owns(id),
+      autoRun: (id, text) => this.optimizers!.relayRun(id, text),
+      autoTick: () => this.optimizers?.poke(),
+      notify: (title, body, url, tag) => {
+        if (this.push.enabled) void this.push.send({ title, body: body.replace(/\s+/g, ' ').slice(0, 180), url, tag })
+      },
+      say: (text) => void this.setup?.say(text),
+      bump: () => this.bump(),
+    }
   }
 
   // ---------------------------------------------------------------- H24
@@ -1675,7 +1837,15 @@ export class Weevils {
    *  (unset) pour cette session seulement (les barrières de la tâche : gh sans compte, git qui ne pousse pas…), par
    *  « env » devant claude : tmux lance la commande sans shell, une valeur n'est jamais interprétée. wrap : une commande
    *  devant tout le reste (la prison bwrap de la tâche). */
-  async createIn(cwd: string, title: string, text: string, args: string[] = [], env: { set?: Record<string, string>; unset?: string[]; wrap?: string[] } = {}): Promise<{ id: string }> {
+  async createIn(cwd: string, title: string, text: string, args: string[] = [], env: { set?: Record<string, string>; unset?: string[]; wrap?: string[] } = {}, tool: Tool = 'claude'): Promise<{ id: string }> {
+    if (tool === 'codex') {
+      const un = (env.unset ?? []).filter((k) => /^[A-Za-z_]\w*$/.test(k)).flatMap((k) => ['-u', k])
+      const st = Object.entries(env.set ?? {}).filter(([k]) => /^[A-Za-z_]\w*$/.test(k)).map(([k, v]) => `${k}=${v}`)
+      // Codex ne laisse pas choisir l'identifiant : c'est le nom de la pane, jusqu'à ce que son transcript apparaisse.
+      const name = await this.spawn('codex', cwd, title, [...(env.wrap ?? []), ...(un.length || st.length ? ['env', ...un, ...st] : []), 'codex', ...CODEX_FLAGS, ...args, text])
+      void this.acceptTrust(name)
+      return { id: name }
+    }
     const id = crypto.randomUUID()
     const unset = (env.unset ?? []).filter((k) => /^[A-Za-z_]\w*$/.test(k)).flatMap((k) => ['-u', k])
     const set = Object.entries(env.set ?? {}).filter(([k]) => /^[A-Za-z_]\w*$/.test(k)).map(([k, v]) => `${k}=${v}`)

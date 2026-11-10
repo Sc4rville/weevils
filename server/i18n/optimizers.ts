@@ -63,6 +63,9 @@ export default defineMessages({
     stall_limit: "limite d'usage atteinte",
     stall_login: 'connexion à Claude à refaire',
     stall_api: "erreur de l'API Claude",
+    noJail: 'pas de prison bwrap sur cette machine : la tâche attend Claude',
+    /** Before the task's own brief, when Codex takes it over with an approved plan. */
+    relayRules: 'Le cadre et la consigne d’origine de la tâche, toujours valables :',
   },
   en: {
     propose: (user: string, max: number, memory: string, projects: string, repos: string, machine: string, history: string) =>
@@ -113,5 +116,7 @@ export default defineMessages({
     stall_limit: 'usage limit reached',
     stall_login: 'Claude login needed',
     stall_api: 'Claude API error',
+    noJail: 'no bwrap jail on this machine: the task waits for Claude',
+    relayRules: 'The frame and the original brief of the task, still valid:',
   },
 })

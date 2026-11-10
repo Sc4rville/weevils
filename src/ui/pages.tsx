@@ -15,6 +15,7 @@ import { dropSeed, mergePending, peekSeed, seedPending, type Pending } from './p
 import { FootError, Shell, swapPage } from './shell'
 import { CodeFile } from './codeview'
 import { FsFilePage, FsPage, InfraPage, UsagePage } from './infra'
+import { RelayPage, SessionRelay } from './relay'
 import { listFiles } from './repofiles'
 import { useThreadAsk } from './askthread'
 import { ago, durLong, status } from './format'
@@ -42,6 +43,8 @@ export function PageView({ page }: { page: Page }) {
       return <FsFilePage machine={page.machine} path={page.path} />
     case 'usage':
       return <UsagePage />
+    case 'relay':
+      return <RelayPage />
     case 'new':
       return <NewSessionPage projectId={page.projectId} />
     case 'conversations':
@@ -307,6 +310,8 @@ function SessionPage({ id }: { id: string }) {
         )}
 
         {s.status === 'working' && <Working author={s.tool} since={s.workStartedAt} />}
+
+        <SessionRelay session={s} onError={setErr} />
 
         {s.status === 'interrupted' && (
           <div className="msg band cut-band">

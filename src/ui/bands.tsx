@@ -18,6 +18,7 @@ import B from '../i18n/bits'
 import { ago, plain, userText, type ChipId } from './format'
 import { FilledIcon, G, Icon } from './icons'
 import { PrefLines } from './prefs'
+import { RelayPrefLine, ThreadPlans } from './relay'
 import { UsageLine } from './infra'
 import { TokenMeter } from './rate'
 import { setDevil, useDevil } from './devil'
@@ -317,6 +318,7 @@ export function AgentBand() {
           <div ref={th.ref} className="ask-thread">
             <Messages messages={main} author="weevboss" working={snap.mainWorking || !!snap.devil?.working} pendingLabel={pendingLabel} after={(id) => <>{qa(th.after(id), `${th.a.asking}:${!!th.a.shown}:${th.a.waiting}`)}{chipsOf(id)}</>} chip={chipIn} />
           </div>
+          <ThreadPlans />
           {snap.mainWorking && <Working author="weevboss" />}
           {snap.devil?.working && <Working author="devil" />}
         </motion.div>
@@ -680,6 +682,7 @@ export function FootBand() {
       <Line ch="~" go={null} onClick={() => setTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length])}>
         {t.theme(theme)}
       </Line>
+      <RelayPrefLine />
       <PrefLines />
       <Line ch="x" go={null} onClick={logout}>
         {t.logout}

@@ -27,6 +27,7 @@ export type Page =
   | { kind: 'fs'; machine: string; path: string }
   | { kind: 'fsfile'; machine: string; path: string }
   | { kind: 'usage' }
+  | { kind: 'relay' }
   | { kind: 'memory' }
   /** « Pour toi » en plein écran ; who : le participant isolé à l'ouverture. */
   | { kind: 'foryou'; who?: string }

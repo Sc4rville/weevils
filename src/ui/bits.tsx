@@ -11,6 +11,7 @@ import C from '../i18n/copy'
 import { getLang, tr, useT } from '../i18n'
 import M from '../i18n/bits'
 import D from '../i18n/devil'
+import RM from '../i18n/relay'
 import { isUnread, useSeen } from './seen'
 import { G, Icon } from './icons'
 
@@ -107,6 +108,7 @@ export function ToolIcon({ tool, size = 15 }: { tool: string; size?: number }) {
 export function SessionRow({ session }: { session: Session }) {
   const { push, now } = useApp()
   const t = useT(M) // libellé d'état et durée suivent la langue
+  const rt = useT(RM)
   useSeen()
   const unread = isUnread(session)
   const st = status[session.status]
@@ -135,6 +137,12 @@ export function SessionRow({ session }: { session: Session }) {
           {unread && <span className="dot" aria-hidden />}
           {text}
           {session.background > 0 && <span className="bg strong"> · {t.background(session.background)}</span>}
+          {/* Session Codex ouverte en relais d'une session Claude arrêtée par sa limite d'usage. */}
+          {session.relayOf && (
+            <span className="relay-sign" title={rt.signAria}>
+              ⇄ {rt.sign}
+            </span>
+          )}
         </span>
         <span className="act">{when}</span>
       </span>

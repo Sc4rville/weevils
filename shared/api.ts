@@ -118,6 +118,48 @@ export interface Session {
   settings?: SessionSettings
   /** Messages reçus pendant que la session travaille, pas encore traités. */
   queued: number
+  /** Session Codex ouverte en relais d'une session Claude arrêtée par la limite d'usage : l'id de cette session (server/relay.ts). */
+  relayOf?: string
+  /** Session Claude dont une session Codex a pris le relais : l'id de cette session Codex. */
+  relayedBy?: string
+}
+
+/** Relais Codex quand Claude atteint sa limite : auto (Codex écrit son plan puis l'exécute), ask (le plan attend un oui), never. */
+export type RelayMode = 'auto' | 'ask' | 'never'
+
+/**
+ * Plan de reprise d'une session arrêtée par la limite d'usage de Claude, écrit par Codex en lecture seule.
+ * preparing : Codex lit le contexte ; ready : le plan attend une décision ; failed : Codex n'a pas pu l'écrire ;
+ * running : validé, une session Codex (relayTo) fait le travail ; waiting : on attend le retour de Claude.
+ */
+export interface RelayPlan {
+  sessionId: string
+  title: string
+  projectId: string
+  state: 'preparing' | 'ready' | 'failed' | 'running' | 'waiting'
+  /** Le plan (fait, reste, risques, ce que Codex compte faire). */
+  text?: string
+  /** Une version plus à jour est en cours d'écriture (plan préparé avant la coupure, ou ajustement demandé). */
+  refreshing?: boolean
+  error?: string
+  at: number
+  /** Tâche de la bande auto. */
+  auto?: boolean
+  relayTo?: string
+}
+
+/** Ce que l'app montre du relais (server/relay.ts). */
+export interface RelayView {
+  mode: RelayMode
+  /** Codex est installé et connecté sur cette machine. */
+  codex: boolean
+  /** Seuil de bascule préventive, en % de la fenêtre (5 h ou semaine). */
+  switchAt: number
+  /** Claude est indisponible ou tout près de sa limite : near (seuil atteint), limit (limite atteinte), down (erreurs d'API répétées). */
+  limit?: { kind: 'near' | 'limit' | 'down'; since: number; until: number | null; percent?: number; window?: 'session' | 'week' }
+  /** weevboss répond par Codex en ce moment. */
+  boss?: boolean
+  plans: RelayPlan[]
 }
 
 export interface Project {
@@ -297,6 +339,8 @@ export interface Snapshot {
   autoMachine?: AutoMachine
   /** « Pour toi » (server/foryou.ts), sur la machine principale : révision du flux et nombre d'items pas encore vus. Le flux se lit avec GET /api/foryou. */
   foryou?: ForYouMark
+  /** Relais Codex pendant la limite d'usage de Claude (server/relay.ts). */
+  relay?: RelayView
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */
   /** siteKey : clé des pages statiques des repos (/api/site/<clé>/<repo>/), pour le navigateur intégré sans domaine de preview. */
   config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[]; siteKey?: string }

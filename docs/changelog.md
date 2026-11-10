@@ -19,6 +19,28 @@ A short summary of what changed after the first working version.
 - **Voice messages**: a word from weevboss or from an outside agent can be listened to, each speaker in its own voice.
 - Generated items (weevboss's digest, ideas, insights) are written by weevilsd on a budget: only while the stream is
   being looked at, never past 85 % of a usage window, 12 model calls a day at most. Plan and state: [foryou.md](foryou.md).
+### Codex relay when Claude hits its usage limit
+- weevilsd watches three signals, in plain code (no model call): the limit message Claude Code writes in a transcript
+  (with its reset time), sessions that stop dead or API errors piling up, and the subscription quota read live (5-hour
+  and weekly windows, the figures of the usage page).
+- From 90 % of a window, Codex writes a **takeover plan** for every Claude session at work, read-only and in the
+  background (`codex exec --sandbox read-only --ephemeral`), and one line says so (“92% of the 5-hour window, Codex
+  relay ready”). At 97 % (the limit has no grace period; the threshold is a setting, `WEEVILS_RELAY_AT` before any
+  choice in the app) the switch is made ahead of the cut: weevboss answers through Codex (same folder, `AGENTS.md` =
+  its instructions, same `weevils` command) and every working session is told to finish its step and stop. A limit
+  seen after the fact opens the same episode.
+- Each stopped session gets its plan (done, left, risks, what Codex intends to do), shown in one grouped view, under
+  weevboss' thread and in the session's page: **approve**, **adjust** (Codex rewrites it with your note) or **wait for
+  Claude**, one by one or all at once. Nothing is touched before the approval; approved, a Codex session opens in the
+  same folder, linked to the Claude one (a small “relay” sign). Setting: propose a plan (default) / automatic / never.
+- Background tasks of the auto band follow the same rule: on Codex only inside the bwrap jail (Codex has no deny
+  list), otherwise they wait. At the reset time everything goes back to Claude: weevboss is told what Codex said in
+  its place, sessions left to Claude are resumed, waiting tasks are released.
+- `POST /api/relay` (mode, switchAt), `POST /api/relay/plans/:id|all` (go, adjust, wait), `POST
+  /api/sessions/:id/relay` (ask for a plan). To try it on a throwaway server: `WEEVILS_FAKE_CLAUDE_USAGE=<file>`
+  (a file shaped like the usage API's answer).
+- Fixed on the way: an unclosed block in `src/styles.css` swallowed every rule written after it (inline setup chips,
+  the language choices, masked secrets).
 
 ### Sessions cut off mid-work
 - A session that dies while it was working (process or pane gone, tmux killed, crash), that stops on an API error

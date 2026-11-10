@@ -8,6 +8,7 @@ import { spring } from './ui/bits'
 import { H24Rail } from './ui/h24'
 import { Login } from './ui/login'
 import { TourBand, TourIntro } from './ui/tour'
+import { RelayBand } from './ui/relay'
 import { Tips } from './ui/tips'
 import { WeevilQuestions } from './ui/weevil'
 import { HintBubble, loadHints } from './ui/hints'
@@ -324,6 +325,12 @@ export default function App() {
   useEffect(() => {
     if (!ready) return
     const open = (url: string) => {
+      // « /#relay » : la vue des plans de reprise Codex (notification du relais).
+      if (/#relay\b/.test(url)) {
+        history.replaceState(history.state, '', location.pathname)
+        if (stackRef.current.at(-1)?.kind !== 'relay') push({ kind: 'relay' })
+        return
+      }
       const m = /#s=([^&]+)/.exec(url)
       if (!m) return
       history.replaceState(history.state, '', location.pathname)
@@ -436,6 +443,7 @@ export default function App() {
           <KeepOrder order={orderKey} active={stack.length === 0} />
           <AgentBand />
           <TourBand />
+          <RelayBand />
           {ordered.map((p) => (
             <ProjectBand key={p.id} project={p} />
           ))}

@@ -144,4 +144,85 @@ describe('auto — the task sessions are real sessions of their project', () => 
     ])
     expect(mux.spawnWv).toHaveBeenCalledTimes(1)
   })
+
+  // Claude at its usage limit (server/relay.ts): the running task is handed over like any session — back in the queue,
+  // its worktree kept, until its Codex plan is approved (then Codex carries on in the same worktree, inside the jail,
+  // with its own login visible) or Claude is back.
+  it('a task cut by the Claude limit waits for its plan; approved, Codex takes it over in the same worktree, jailed', async () => {
+    const held = new Set<string>()
+    let until = T0 + 3 * 60 * MIN
+    let auto = false
+    w.relay = { holdUntil: () => until, autoOnCodex: () => auto, holds: (id: string) => held.has(id), relayOf: () => undefined, relayedBy: () => undefined, covers: () => false, view: () => undefined, bossOn: () => false, boss: undefined } as never
+    until = 0
+    const o = new Optimizers(w, new Memory(path.join(tmp, 'memory.json')), { file: path.join(tmp, 'optimizers.json'), sys: { load: () => 0.1, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true, jail: async () => true } })
+    vi.mocked(smart).mockResolvedValueOnce(JSON.stringify([{ title: 'Harden cart tests', repo: 'mygame', why: 'w', kind: 'tests', heavy: false, priority: 1, est: 30, prompt: 'Do the thing, then stop and summarise.' }]))
+    await o.round(T0)
+    const first = o.list()[0]
+    vi.mocked(smart).mockResolvedValueOnce(JSON.stringify([{ title: 'Draft the press kit', why: 'w', repo: null, kind: 'content', prompt: 'Draft a press kit, then stop and summarise.' }]))
+    await o.round(T0)
+    const second = o.list().find((x) => x.id !== first.id)!
+    o.accept(first.id)
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    const [, cwd, , , , sessionId] = mux.spawnWv.mock.calls[0] as [string, string, string, string, string[], string]
+    w.store.byFile.set('/nowhere/x.jsonl', transcript(sessionId, cwd, { phase: 'working', messages: [{ id: 'm', role: 'user', text: 'brief', at: Date.now() }] }))
+    w.panes = [{ name: mux.spawnWv.mock.calls[0][0] as string, tool: 'claude', sessionId, title: 't', cwd, createdAt: T0 }]
+    o.tick(T0 + IDLE_MS + MIN)
+    expect(o.list()[0]).toMatchObject({ state: 'running' })
+    expect(o.owns(sessionId)).toBe(true)
+
+    // The limit: its turn is stopped by the error, the relay holds the session.
+    until = T0 + 3 * 60 * MIN
+    held.add(sessionId)
+    vi.setSystemTime(T0 + IDLE_MS + 2 * MIN)
+    Object.assign(w.store.get(sessionId)!, { phase: 'idle', stopError: { at: Date.now(), reason: 'quota', text: "You've hit your session limit · resets 6am" } })
+    w.bump()
+    o.tick(Date.now())
+    expect(o.list().find((x) => x.id === first.id)).toMatchObject({ state: 'queued', waiting: 'later', retryAt: until })
+    // Mode « ask »: nothing starts on Claude or on Codex while the limit lasts, not even another accepted task.
+    o.accept(second.id)
+    mux.spawnWv.mockClear()
+    o.tick(Date.now() + 10 * MIN)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(mux.spawnWv).not.toHaveBeenCalled()
+    expect(o.list().find((x) => x.id === second.id)).toMatchObject({ state: 'queued', waiting: 'later', retryAt: until })
+
+    // The plan is approved: Codex, same worktree, inside bwrap, its login kept visible, no Claude argument.
+    const to = await o.relayRun(sessionId, '[from:weevboss] Tu prends le relais. Plan validé : finir les tests.')
+    expect(mux.spawnWv).toHaveBeenCalledTimes(1)
+    const [name, cwd2, tool, , command] = mux.spawnWv.mock.calls[0] as [string, string, string, string, string[]]
+    expect([cwd2, tool, to]).toEqual([cwd, 'codex', name])
+    expect(command[0]).toBe('bwrap')
+    expect(command).toContain('codex')
+    expect(command).toContain('--dangerously-bypass-approvals-and-sandbox')
+    expect(command).not.toContain('--settings')
+    expect(command.join(' ')).not.toContain(`--tmpfs ${path.join(os.homedir(), '.codex')}`)
+    expect(command.at(-1)).toMatch(/^\[from:weevboss\] Tu prends le relais\. Plan validé : finir les tests\.\n\n/)
+    expect(command.at(-1)).toContain('Do the thing, then stop and summarise.')
+    expect(command.at(-1)).toMatch(/never push|ne pousse jamais/)
+    expect(o.list().find((x) => x.id === first.id)).toMatchObject({ state: 'running', sessionId: name })
+    expect(o.owns(name)).toBe(true)
+
+    // Claude is back: what waited for it is released at once.
+    until = 0
+    o.poke()
+    expect(o.list().find((x) => x.id === second.id)?.retryAt).toBeUndefined()
+
+    // Mode « auto »: a queued task starts on Codex during the limit — only where the jail holds.
+    until = T0 + 6 * 60 * MIN
+    auto = true
+    const bare = new Optimizers(w, new Memory(path.join(tmp, 'memory2.json')), { file: path.join(tmp, 'optimizers2.json'), sys: { load: () => 0.1, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true, jail: async () => false } })
+    vi.mocked(smart).mockResolvedValueOnce(JSON.stringify([{ title: 'Watch indie game fairs', why: 'w', repo: null, kind: 'watch', prompt: 'Watch the fairs, then stop and summarise.' }]))
+    await bare.round(T0)
+    bare.accept(bare.list()[0].id)
+    mux.spawnWv.mockClear()
+    w.panes = []
+    for (const t of w.store.all()) t.lastActivityAt = T0
+    bare.tick(Date.now() + 20 * MIN)
+    await new Promise((r) => setTimeout(r, 20))
+    bare.tick(Date.now() + 21 * MIN)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(mux.spawnWv).not.toHaveBeenCalled()
+    expect(bare.list()[0]).toMatchObject({ state: 'queued', waiting: 'later' })
+  })
 })

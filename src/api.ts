@@ -60,6 +60,10 @@ export const api = {
   /** Session coupée en plein travail : relancée (--resume + message de reprise), ou laissée. */
   resume: (id: string) => call<{ id: string }>('POST', `/api/sessions/${enc(id)}/resume`, {}),
   dismiss: (id: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/dismiss`, {}),
+  /** Relais Codex pendant la limite de Claude : réglage, plan demandé pour une session, décision sur un plan (id « all » : tous). */
+  relaySet: (o: { mode?: string; switchAt?: number; tz?: string }) => call<{ ok: true }>('POST', '/api/relay', o),
+  relayRequest: (id: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/relay`, {}),
+  relayDecide: (id: string, action: 'go' | 'adjust' | 'wait', text?: string) => call<{ ok: true }>('POST', `/api/relay/plans/${enc(id)}`, { action, text }),
   attach: (id: string, text: string, files: { name: string; type: string; data: string }[]) => call<{ id: string }>('POST', `/api/sessions/${enc(id)}/attach`, { text, files }),
   transcribeInfo: () => call<{ enabled: boolean }>('GET', '/api/transcribe'),
   transcribe: (type: string, data: string, lang: string) => call<{ text: string }>('POST', '/api/transcribe', { type, data, lang }),

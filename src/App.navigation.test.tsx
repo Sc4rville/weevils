@@ -35,6 +35,7 @@ const flush = () => act(() => new Promise(r => setTimeout(r, 30)))
 const click = async (id: string) => { await act(async () => host.querySelector<HTMLButtonElement>(`#${id}`)!.click()); await flush() }
 const open = () => host.querySelector('section')?.getAttribute('data-open') === 'true'
 beforeEach(async () => {
+  localStorage.clear(); sessionStorage.clear()
   MotionGlobalConfig.skipAnimations = true
   entries = [{ w: 0 }]; cursor = 0; y = 0
   vi.spyOn(history, 'replaceState').mockImplementation(state => { entries[cursor] = state })

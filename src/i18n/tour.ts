@@ -86,6 +86,7 @@ export default defineMessages({
     // les faits
     byAgent: (agent: string, ago: string) => `par ton ${agent === 'codex' ? 'Codex' : 'Claude Code'}, ${ago}`,
     byTerminal: (ago: string) => `depuis le terminal, ${ago}`,
+    byScript: (ago: string) => `par l’installateur, ${ago}`,
     ago: (min: number) => (min < 1 ? 'à l’instant' : min < 60 ? `il y a ${min} min` : min < 1440 ? `il y a ${Math.round(min / 60)} h` : `il y a ${Math.round(min / 1440)} j`),
     kind: (k: string) => ({ vps: 'ton vps', server: 'ton serveur', container: 'ton serveur', vm: 'ton serveur', laptop: 'ton portable', desktop: 'ton ordinateur', wsl: 'ton pc (wsl)' })[k] ?? k,
     machineFacts: (kind: string, cpus: number, ram: number, always: boolean) => `${kind} · ${plural(cpus, 'cœur', 'cœurs')} · ${ram} Go${always ? ' · allumé jour et nuit' : ''}`,
@@ -172,6 +173,7 @@ export default defineMessages({
     'u_g-back': 'on a page, swipe from the left edge.',
     byAgent: (agent: string, ago: string) => `by your ${agent === 'codex' ? 'Codex' : 'Claude Code'}, ${ago}`,
     byTerminal: (ago: string) => `from the terminal, ${ago}`,
+    byScript: (ago: string) => `by the installer, ${ago}`,
     ago: (min: number) => (min < 1 ? 'just now' : min < 60 ? `${min} min ago` : min < 1440 ? `${Math.round(min / 60)} h ago` : `${Math.round(min / 1440)} d ago`),
     kind: (k: string) => ({ vps: 'your vps', server: 'your server', container: 'your server', vm: 'your server', laptop: 'your laptop', desktop: 'your desktop', wsl: 'your pc (wsl)' })[k] ?? k,
     machineFacts: (kind: string, cpus: number, ram: number, always: boolean) => `${kind} · ${plural(cpus, 'core', 'cores')} · ${ram} GB${always ? ' · on day and night' : ''}`,

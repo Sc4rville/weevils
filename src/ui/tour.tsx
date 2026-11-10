@@ -173,7 +173,7 @@ function factsOf(s: TourStep, now: number): string {
   switch (s.id) {
     case 'install': {
       const ago = t.ago(Math.round((now - Number(f.at ?? now)) / 60_000))
-      return f.by === 'agent' ? t.byAgent(String(f.agent ?? ''), ago) : t.byTerminal(ago)
+      return f.by === 'agent' ? t.byAgent(String(f.agent ?? ''), ago) : f.by === 'script' ? t.byScript(ago) : t.byTerminal(ago)
     }
     case 'machine':
       return t.machineFacts(`${t.kind(String(f.kind ?? ''))}${f.provider ? ` ${String(f.provider).toLowerCase()}` : ''}`, Number(f.cpus ?? 1), Number(f.ram ?? 0), !!f.always)

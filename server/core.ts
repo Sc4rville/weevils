@@ -22,6 +22,7 @@ import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
 import type { Memory } from './memory.ts'
 import type { Optimizers } from './optimizers.ts'
+import type { ForYou, MailIn } from './foryou.ts'
 import { parseTimerShow } from './schedule.ts'
 import { chipsInPlace } from '../shared/setup.ts'
 import { asksUser, type Ask } from '../shared/asks.ts'
@@ -231,6 +232,8 @@ export class Weevils {
   memory: Memory | null = null
   /** The h24 background tasks (server/optimizers.ts), on the main machine. */
   optimizers: Optimizers | null = null
+  /** The « for you » stream (server/foryou.ts), on the main machine. */
+  foryou: ForYou | null = null
   private githubCache: Map<string, number> = new Map()
 
   // ---------------------------------------------------------------- repos GitHub
@@ -299,6 +302,11 @@ export class Weevils {
       if (calm >= 3) return { id: real, text: replies.map((m) => m.text).join('\n\n'), done: true, attention }
     }
     return { id: real, text: replies.map((m) => m.text).join('\n\n'), done: false, attention }
+  }
+
+  /** Le pont e-mail a reçu et routé un mail (BridgeDeps.mailed) : le flux « pour toi » le retient. */
+  mailed(m: MailIn) {
+    this.foryou?.mail(m)
   }
 
   pinRepo(repo: string, pinned: boolean) {
@@ -447,7 +455,8 @@ export class Weevils {
 
   /** Notification quand une session se met à t'attendre, ou finit un travail de plus d'une minute. */
   private notifyTransitions() {
-    if (!this.push.enabled) return
+    // Personne à prévenir : ni notifications, ni flux « pour toi ».
+    if (!this.push.enabled && !this.foryou) return
     const snap = this.snapshot()
     const now = Date.now()
     const first = this.prevStatus.size === 0
@@ -457,6 +466,13 @@ export class Weevils {
       const entry = prev && prev.status === s.status ? prev : { status: s.status, since: now, notifiedAt: prev?.notifiedAt }
       next.set(s.id, entry)
       if (first || !prev || prev.status === s.status) continue
+      const rested = (s.status === 'idle' || s.status === 'done') && !!s.lastMessage
+      const ended = prev.status === 'working' && rested
+      // Le flux « pour toi » retient chaque question et chaque fin de tour (un item par session : ni délai, ni seuil),
+      // y compris une question réglée sans que le travail ait été vu reprendre.
+      if (s.status === 'needs_user') this.foryou?.sessionTurn(s, 'question')
+      else if (ended || (prev.status === 'needs_user' && rested)) this.foryou?.sessionTurn(s, 'result')
+      if (!this.push.enabled) continue
       if (prev.notifiedAt && now - prev.notifiedAt < 60_000) continue
       const project = snap.projects.find((p) => p.id === s.projectId)?.name ?? s.projectId
       let title: string | null = null
@@ -464,9 +480,9 @@ export class Weevils {
       if (s.status === 'needs_user') {
         title = tr(P).waitingTitle(project)
         body = s.attention ?? tr(P).waitingBody
-      } else if (prev.status === 'working' && (s.status === 'idle' || s.status === 'done') && now - prev.since > 15_000 && s.lastMessage) {
+      } else if (ended && now - prev.since > 15_000) {
         title = tr(P).doneTitle(project)
-        body = s.lastMessage
+        body = s.lastMessage ?? null
       }
       if (!title || !body) continue
       if (isTestBrief(this.store.get(s.id)?.firstPrompt)) continue
@@ -702,6 +718,8 @@ export class Weevils {
       if (last !== undefined && (this.cleared.get(s.id) ?? 0) <= last && s.lastActivityAt <= last + 30_000) continue
       this.announced.set(s.id, now)
       changed = true
+      // Le flux « pour toi » la montre, même découverte tard (il écarte lui-même les sessions de test).
+      this.foryou?.sessionTurn(s, 'cut')
       if (now - s.interrupted.at > ANNOUNCE_WITHIN_MS) continue
       // Une session de test (vérifier la détection elle-même) : montrée, jamais annoncée dans le vrai fil.
       if (isTestBrief(this.store.get(s.id)?.firstPrompt)) continue
@@ -911,7 +929,16 @@ export class Weevils {
       autoMachine: this.optimizers?.machine(),
       config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey },
     }
-    return this.snap
+    // « Pour toi » : sa marque (révision, non vus) se calcule sur le snapshot qu'on vient de poser, sans rappeler snapshot().
+    // Le flux lui-même n'y est jamais ; une erreur de son côté ne prive personne du snapshot.
+    const snap = this.snap
+    try {
+      const mark = this.foryou?.mark(snap)
+      if (mark) snap.foryou = mark
+    } catch (e) {
+      console.error(`[foryou] marque : ${(e as Error).message}`)
+    }
+    return snap
   }
 
   private resolveId(id: string) {

@@ -256,6 +256,9 @@ export interface BridgeDeps {
   sendMain(text: string): Promise<{ id: string }>
   waitMainReply(since: number, timeoutMs: number): Promise<string | null>
   waitReply(id: string, since: number, timeoutMs: number): Promise<{ id: string; text: string; done: boolean; attention?: string }>
+  /** Un mail accepté vient d'être routé (flux « pour toi », server/foryou.ts). target : « weevboss » ou l'id de la session.
+   *  address reste côté serveur : elle sert à répondre par mail, jamais à l'app. */
+  mailed?(m: { author: string; subject: string; text: string; target: string; mid: string; address: string }): void
 }
 
 interface Box {
@@ -454,11 +457,20 @@ export class MailBridge {
     const from = author.id || undefined
     if (!text) return this.reply(mail, mid, author, null, tr(M).emptyMessage)
     const since = Date.now()
+    // L'objet sans la clé ni l'étiquette de l'auteur, comme dans la réponse.
+    const told = (to: string) => {
+      try {
+        this.deps.mailed?.({ author: author.id, subject: dropMarker(mail.subject.replace(KEY_SUBJECT, ''), author, 'subject').replace(/\s{2,}/g, ' ').trim(), text, target: to, mid, address: mail.from ?? '' })
+      } catch (e) {
+        console.log('[mail]', `flux non prévenu : ${(e as Error).message}`)
+      }
+    }
 
     if (target.kind === 'boss') {
       this.state.threads[mid] = BOSS
       await this.deps.sendMain(from ? signAs(from, text) : text)
       console.log('[mail]', `→ weevboss · de ${from ?? 'owner'}`)
+      told(BOSS)
       const r = await this.deps.waitMainReply(since, this.cfg.replyTimeoutMs)
       return this.reply(mail, mid, author, BOSS, r ?? tr(M).bossStillWorking)
     }
@@ -483,6 +495,7 @@ export class MailBridge {
     this.state.threads[mid] = sessionId
     this.persist()
     console.log('[mail]', `→ session ${sessionId.slice(0, 8)} · de ${from ?? 'owner'}`)
+    told(sessionId)
     const r = await this.deps.waitReply(sessionId, since, this.cfg.replyTimeoutMs)
     // Une session codex toute neuve est d'abord connue par le nom de sa pane : le fil retient le vrai id.
     this.state.threads[mid] = r.id
@@ -525,6 +538,33 @@ export class MailBridge {
     this.persist()
     await smtpSend({ ...this.cfg.smtp, user: this.cfg.login, pass: this.cfg.password, from: this.cfg.address, to, data })
     console.log('[mail]', `réponse envoyée à ${to} · ${!target ? 'erreur' : target === BOSS ? BOSS : `session ${target.slice(0, 8)}`} · ${oneLine(text, 60)}`)
+  }
+
+  /**
+   * Un mail écrit par l'utilisateur depuis l'app (réponse sous un item du flux « pour toi ») à l'auteur d'un mail reçu,
+   * dans le même fil (In-Reply-To). Écrit par une personne : pas marqué « réponse automatique ». La réponse de l'auteur
+   * reviendra à la même cible (weevboss ou la session). false : pas de destinataire (ou l'alias lui-même), rien n'est parti.
+   */
+  async write(o: { to: string; subject: string; text: string; inReplyTo: string; author: string; target: string }): Promise<boolean> {
+    if (!o.to || o.to === this.cfg.address) return false
+    const messageId = `<weevils-${crypto.randomUUID()}@${this.cfg.address.split('@')[1]}>`
+    const subject = o.subject.replace(/\[(weevboss|boss)\]/gi, ' ').replace(/\s{2,}/g, ' ').trim()
+    const data = buildMail({
+      from: this.cfg.address,
+      fromName: 'weevils',
+      to: o.to,
+      subject: /^re:/i.test(subject) ? subject : `Re: ${subject}`,
+      text: o.text,
+      messageId,
+      inReplyTo: o.inReplyTo,
+      references: [o.inReplyTo],
+      extraHeaders: { 'X-Weevils': `author=${o.author || 'owner'}; target=${o.target}; via=foryou` },
+    })
+    this.state.threads[messageId] = o.target
+    this.persist()
+    await smtpSend({ ...this.cfg.smtp, user: this.cfg.login, pass: this.cfg.password, from: this.cfg.address, to: o.to, data })
+    console.log('[mail]', `écrit à ${o.to} depuis le flux · ${oneLine(o.text, 60)}`)
+    return true
   }
 }
 

@@ -347,4 +347,45 @@ describe('le pont, de bout en bout (SMTP simulé)', () => {
     // La réponse du pont, si elle repassait par la boîte, est reconnue et ignorée.
     expect(b.handle(parseMail(sent[0].data), 0, true)).toBe(false)
   })
+  it('flux « pour toi » : chaque mail routé est signalé (auteur, objet sans étiquette d’auteur, texte, cible, adresse) ; un refus ne l’est pas', async () => {
+    const told: unknown[] = []
+    const b = new MailBridge(cfg, { ...deps, mailed: (m: unknown) => void told.push(m) }, dir)
+    b.handle(mail({ subject: '[weevboss] dis   bonjour' }))
+    b.handle(mail({ id: '<p@x>' }))
+    b.handle(mail({ id: '<e@x>', from: 'intrus@evil.com' }))
+    b.handle(mail({ from: 'alex@gmail.com', headers: ['X-Nothing: 1'], id: '<o@x>', subject: 'une question' }), 0, true)
+    await settle()
+    expect(told).toEqual([
+      { author: 'gepetto', subject: '[weevboss] dis bonjour', text: 'Fais le menu.', target: 'weevboss', mid: '<m1@example.com>', address: 'gepetto@example.com' },
+      { author: 'gepetto', subject: '[mygame] salut', text: 'Fais le menu.', target: 'aaaa0000-2222', mid: '<p@x>', address: 'gepetto@example.com' },
+      // L'utilisateur lui-même : auteur vide (le flux ne le retient pas).
+      { author: '', subject: 'une question', text: 'Fais le menu.', target: 'weevboss', mid: '<o@x>', address: 'alex@gmail.com' },
+    ])
+    // Un flux qui plante ne casse pas le pont : la réponse part quand même.
+    sent.length = 0
+    const c = new MailBridge(cfg, { ...deps, mailed: () => { throw new Error('boom') } }, fs.mkdtempSync(path.join(os.tmpdir(), 'wv-mail-')))
+    c.handle(mail({ id: '<z@x>' }))
+    await settle()
+    expect(sent).toHaveLength(1)
+  })
+  it('write : un mail écrit depuis l’app part à l’auteur dans le même fil, sans marque de réponse automatique ; sa réponse revient à la même cible', async () => {
+    const b = new MailBridge(cfg, deps, dir)
+    expect(await b.write({ to: 'gepetto@example.com', subject: '[weevboss] dis bonjour', text: 'Merci, continue.', inReplyTo: '<m1@example.com>', author: 'gepetto', target: 'weevboss' })).toBe(true)
+    expect(sent).toHaveLength(1)
+    const r = parseMail(sent[0].data)
+    expect(sent[0].to).toBe('gepetto@example.com')
+    expect(r.inReplyTo).toBe('<m1@example.com>')
+    expect(r.subject).toBe('Re: dis bonjour')
+    expect(r.text).toContain('Merci, continue.')
+    expect(r.get('auto-submitted')).toBeUndefined()
+    expect(r.get('x-weevils')).toBe('author=gepetto; target=weevboss; via=foryou')
+    // La réponse de l'auteur à ce mail, objet hérité d'un projet : elle suit le fil, vers weevboss.
+    b.handle(mail({ id: '<m9@example.com>', subject: 'Re: [mygame] dis bonjour', headers: [`Authentication-Results: ${AR_OK}`, `In-Reply-To: ${r.messageId}`] }))
+    await settle()
+    expect(calls).toEqual(['main [from:gepetto] Fais le menu.'])
+    // Jamais à l'alias lui-même, ni sans destinataire.
+    expect(await b.write({ to: 'alex+weevils@gmail.com', subject: 'x', text: 'y', inReplyTo: '<a@b>', author: 'gepetto', target: 'weevboss' })).toBe(false)
+    expect(await b.write({ to: '', subject: 'x', text: 'y', inReplyTo: '<a@b>', author: 'gepetto', target: 'weevboss' })).toBe(false)
+    expect(sent).toHaveLength(2)
+  })
 })

@@ -6,17 +6,17 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, MACHINE, ORCHESTRATOR, PORT, PUBLIC_URL } from './config.ts'
+import { CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, PORT, PROJECT_ROOTS, PUBLIC_URL } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices } from './fast.ts'
-import { Weevils } from './core.ts'
+import { Weevils, isTestBrief } from './core.ts'
 import { setLang, tr } from './i18n.ts'
 import M from './i18n/api.ts'
 import P from './i18n/push.ts'
 import V from './i18n/voice.ts'
 import S from './i18n/setup.ts'
-import { tipRoutes } from './tips.ts'
+import { LoadSampler, tipRoutes } from './tips.ts'
 import { Hints, hintRoutes } from './hints.ts'
 import { softwareRoutes } from './softwares.ts'
 import { browserSafe, isLocal, trustedFrom } from './http.ts'
@@ -34,6 +34,9 @@ import { isBrick, isSecretName, isSetupKey, type Device } from '../shared/setup.
 import { Memory, memoryRoutes } from './memory.ts'
 import { Flyers, weevilRoutes } from './weevil.ts'
 import { Optimizers, optimizerRoutes } from './optimizers.ts'
+import { ForYou, foryouRoutes, type MachineState } from './foryou.ts'
+import { MediaShelf } from './foryou-media.ts'
+import type { MachineLoad } from '../shared/tips.ts'
 
 const w = new Weevils()
 w.start()
@@ -138,6 +141,39 @@ if (ORCHESTRATOR) {
   w.optimizers = optimizers
   optimizers.start()
 }
+
+// ---------------------------------------------------------------- « pour toi » (machine principale, server/foryou.ts)
+
+/** Niveau et disque de chaque machine, pour les alertes du flux : demandés en arrière-plan, jamais sur le chemin d'une requête. */
+const machineStates = async (): Promise<MachineState[]> => {
+  const here = brief()
+  const disk = await fs.promises.statfs(DATA_DIR).then((d) => (d.blocks ? Math.round((1 - d.bavail / d.blocks) * 100) : undefined)).catch(() => undefined)
+  const far = await Promise.all(
+    w.remotes.filter((r) => r.online).map(async (r): Promise<MachineState | null> => {
+      const m = await r.call<{ machines: MachineBrief[] }>('GET', '/api/infra/brief?local=1').then((d) => d.machines[0]).catch(() => null)
+      return m ? { id: r.snap?.machines[0]?.id ?? r.id, name: r.snap?.machines[0]?.name ?? r.id, level: m.level } : null
+    }),
+  )
+  return [{ id: here.id, name: here.name, level: here.level, disk }, ...far.filter((m): m is MachineState => !!m)]
+}
+// La charge de cette machine telle que GET /api/tips la lit (tips-state.json, écrit chaque minute), relue de temps en temps.
+let tipLoad: { at: number; loads: MachineLoad[] } = { at: 0, loads: [] }
+const foryou = ORCHESTRATOR
+  ? new ForYou(w, {
+      shelf: new MediaShelf({ file: path.join(DATA_DIR, 'foryou-media.json'), roots: [...PROJECT_ROOTS, INBOX_DIR, DATA_DIR] }),
+      isTestBrief,
+      optimizers: () => optimizers,
+      tips: (snap, now) => {
+        if (now - tipLoad.at > 5 * 60_000) tipLoad = { at: now, loads: [new LoadSampler().local()] }
+        return { snap, now, loads: tipLoad.loads, dictation: !!openaiKey(), reapMs: KILL_AFTER_MS }
+      },
+      quotas,
+      machines: machineStates,
+      mail: () => mailBridge,
+    })
+  : null
+w.foryou = foryou
+
 const asDevice = (d: any): Device => ({
   os: ['ios', 'android', 'mac', 'windows', 'linux'].includes(d?.os) ? d.os : 'other',
   mobile: !!d?.mobile,
@@ -635,6 +671,8 @@ const routes: [string, RegExp, Handler][] = [
   ...(ORCHESTRATOR ? memoryRoutes(memory, json, readBody) : []),
   ...weevilRoutes(flyers, json, readBody),
   ...optimizerRoutes(optimizers, json, readBody),
+  // Le flux « pour toi » vit sur la machine principale seulement.
+  ...(foryou ? foryouRoutes(foryou, json, readBody) : []),
   // ---- Mes logiciels : détectés sur chaque machine, aperçu vivant, lancés d'un tap (server/softwares.ts).
   ...softwareRoutes(w, json, readBody),
   ['POST', /^\/api\/github\/pin$/, async (req, res) => {

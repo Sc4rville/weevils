@@ -81,7 +81,7 @@ const setup = new Setup({
   },
   handoff: (text, brief) => w.sendMain(text, brief),
   memory: () => w.memory,
-  bossId: () => w.orchestratorId,
+  bossId: () => w.bossConversation(),
 })
 w.setup = setup
 const tour = new TourKeeper({

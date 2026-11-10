@@ -107,7 +107,8 @@ export interface SetupDeps {
   handoff: (text: string, brief: string) => Promise<unknown>
   /** Ce que weevils retient de l'utilisateur (server/memory.ts) : null sur une machine secondaire. */
   memory?: () => Memory | null
-  /** La conversation de weevboss en cours (id de sa session Claude) : une nouvelle conversation reçoit le résumé de la mémoire. */
+  /** La conversation de weevboss où ira le prochain message (id de sa session Claude), null quand ce message en ouvrira
+   * une nouvelle : une nouvelle conversation reçoit le résumé de la mémoire. */
   bossId?: () => string | null
 }
 
@@ -1226,11 +1227,12 @@ export class Setup {
     const boss = this.deps.bossId?.() ?? null
     const seen = this.p.memorySeen
     // Une conversation dont on connaît l'id remplacée par une autre : il repart sans rien savoir.
-    const newConversation = !!(seen?.boss && boss && seen.boss !== boss)
-    this.p.memorySeen = { sig, boss: boss ?? seen?.boss ?? null }
+    // Pas de conversation (null) : ce message en ouvre une nouvelle, qui repart elle aussi sans rien savoir.
+    const newConversation = !boss || !!(seen?.boss && seen.boss !== boss)
+    this.p.memorySeen = { sig, boss }
     if (!newConversation && seen && seen.sig === sig) return ''
     const digest = m.digest()
-    if (!digest) return seen?.sig ? 'what weevils remembers about the user: nothing anymore (they cleared it)' : ''
+    if (!digest) return seen?.sig && !newConversation ? 'what weevils remembers about the user: nothing anymore (they cleared it)' : ''
     return `what weevils remembers about the user (newest first; use it naturally when it helps, never recite it; full list with ids: weevils memory): ${digest.replace(/\n/g, ' ')}`
   }
 

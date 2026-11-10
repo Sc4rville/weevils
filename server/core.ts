@@ -1448,6 +1448,13 @@ export class Weevils {
     return t.phase === 'working' && now - t.lastActivityAt < 10 * 60_000
   }
 
+  /** La conversation de weevboss où ira le prochain message (son pane est ouvert ou son transcript connu) ; null : sendMain
+   * en ouvrira une nouvelle (Setup.contextFor lui redonne alors la mémoire). */
+  bossConversation(): string | null {
+    const id = this.orchestratorId
+    return id && (this.orchestratorPane() || this.store.get(id)) ? id : null
+  }
+
   /** L'utilisateur parle à weevboss : le message part dans la session Claude de l'orchestrateur (lancée ou reprise au besoin).
    * « brief » : la marche à suivre d'un bouton de branchement, jointe au bloc ⟦weevils …⟧ (jamais affichée). */
   async sendMain(text: string, brief?: string) {

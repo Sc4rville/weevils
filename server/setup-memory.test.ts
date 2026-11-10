@@ -59,6 +59,23 @@ describe('weevboss gets the memory digest', () => {
     boss.id = 'conv-2'
     expect(s.contextFor()).toContain('- wants to ship a mobile game this summer')
     expect(s.contextFor()).toBe('')
+
+    // His conversation is gone (no pane, no transcript): the next message opens a new one, which gets it again, once.
+    boss.id = null
+    expect(s.contextFor()).toContain('- climbs on Sundays')
+    boss.id = 'conv-3'
+    expect(s.contextFor()).toBe('')
+  })
+
+  it('a new conversation with an empty memory is told nothing', () => {
+    const m = tmpMemory()
+    const a = m.add('likes tea')
+    const boss = { id: 'c' as string | null }
+    const s = setup(m, boss)
+    expect(s.contextFor()).toContain('likes tea')
+    m.remove(a.id)
+    boss.id = null
+    expect(s.contextFor()).toBe('')
   })
 
   it('says once that it was cleared; nothing at all without a memory', () => {

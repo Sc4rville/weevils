@@ -205,6 +205,10 @@ const routes: [string, RegExp, Handler][] = [
     const d = await w.detailAny(decodeURIComponent(id))
     d ? json(res, 200, d) : json(res, 404, { error: tr(M).sessionNotFound })
   }],
+  ['GET', /^\/api\/sessions\/([^/]+)\/subagents\/([^/]+)$/, async (_req, res, _u, [id, subId]) => {
+    const d = await w.subagentAny(decodeURIComponent(id), decodeURIComponent(subId))
+    d ? json(res, 200, d) : json(res, 404, { error: tr(M).subagentNotFound })
+  }],
   ['GET', /^\/api\/sessions\/([^/]+)\/screen$/, async (_req, res, _u, [id]) => json(res, 200, { screen: await w.screen(decodeURIComponent(id)) })],
   ['POST', /^\/api\/sessions\/([^/]+)\/send$/, async (req, res, _u, [id]) => {
     const body = await readBody(req)

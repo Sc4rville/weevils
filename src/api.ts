@@ -5,7 +5,7 @@ import type { AskResult, Brick, Device } from '../shared/setup.ts'
 import { tr } from './i18n'
 import M from './i18n/app'
 import type { FsListing, InfraDetail, UsageInfo, UsageToday } from '../shared/infra.ts'
-import type { ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, SessionDetail, Snapshot, Tool } from '../shared/api.ts'
+import type { ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, SessionDetail, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
 
 export class ApiError extends Error {
   status: number
@@ -48,6 +48,8 @@ export const api = {
   logout: () => call<{ ok: true }>('POST', '/api/logout', {}),
   snapshot: () => call<Snapshot>('GET', '/api/snapshot'),
   session: (id: string) => call<SessionDetail>('GET', `/api/sessions/${enc(id)}`),
+  /** Détail d'un sous-agent, d'une étape de workflow ou d'une commande d'arrière-plan (ses derniers pas). */
+  subagent: (id: string, subId: string) => call<SubagentDetail>('GET', `/api/sessions/${enc(id)}/subagents/${enc(subId)}`),
   screen: (id: string) => call<{ screen: string | null }>('GET', `/api/sessions/${enc(id)}/screen`),
   send: (id: string, text: string) => call<{ id: string }>('POST', `/api/sessions/${enc(id)}/send`, { text }),
   attach: (id: string, text: string, files: { name: string; type: string; data: string }[]) => call<{ id: string }>('POST', `/api/sessions/${enc(id)}/attach`, { text, files }),

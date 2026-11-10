@@ -25,13 +25,31 @@ export interface Author {
   color: string
 }
 
+/**
+ * Travail lancé par une session et qui tourne à côté d'elle : sous-agent (outil Agent/Task), étape d'un workflow
+ * (outil Workflow, un sous-agent par étape) ou commande lancée en arrière-plan (Bash run_in_background).
+ */
 export interface Subagent {
   id: string
+  /** agent : sous-agent Agent/Task ; step : étape d'un workflow ; shell : commande en arrière-plan. */
+  kind: 'agent' | 'step' | 'shell'
+  /** Son nom : description de l'agent, label de l'étape (« build:page »), description de la commande. */
   label: string
+  /** Ce qu'il fait en ce moment (dernier outil utilisé, dernière phrase) ; sa tâche quand il a fini. */
   activity: string
-  status: 'working' | 'done'
+  /** Étapes de workflow : nom du workflow et phase de l'étape. */
+  workflow?: string
+  phase?: string
+  /** working : tourne encore ; done : fini ; failed : fini en erreur ; stopped : coupé avant la fin (processus mort, arrêté). */
+  status: 'working' | 'done' | 'failed' | 'stopped'
   startedAt: number
   endedAt?: number
+}
+
+/** Détail d'un sous-agent, à la demande (GET /api/sessions/:id/subagents/:subId) : ses derniers pas, du plus ancien au plus récent. */
+export interface SubagentDetail {
+  subagent: Subagent
+  steps: { at: number; role: 'assistant' | 'tool' | 'result'; text: string }[]
 }
 
 /** Réglages d'une session tels que l'outil les écrit dans son transcript (inconnus quand absents). */
@@ -71,6 +89,12 @@ export interface Session {
   /** weevils voit son écran (pane zellij pilotée). */
   hasScreen: boolean
   subagents: Subagent[]
+  /** Nombre de sous-agents, étapes de workflow et commandes d'arrière-plan qui tournent encore (0 : rien). Tant qu'il est > 0 et
+   *  que le processus vit, la session est « working » : jamais « idle »/« done », jamais fermée par le ménage des panes. */
+  background: number
+  /** Le tour principal travaille, arrière-plan exclu (le pont e-mail attend la réponse, pas la fin des sous-agents).
+   *  Absent d'un weevilsd plus ancien : status fait foi. */
+  turnWorking?: boolean
   lastMessage?: string
   messageCount: number
   settings?: SessionSettings

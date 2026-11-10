@@ -22,6 +22,8 @@ export default defineMessages({
     steps: (n: number) => `${n} étapes`,
     older: (n: number) => (n > 1 ? `${n} messages plus anciens` : `${n} message plus ancien`),
     you: 'toi',
+    /** Ligne de session : sous-agents, étapes de workflow et commandes qui tournent encore. */
+    background: (n: number) => `${n} en arrière-plan`,
     working: (author: string) => `${author} travaille`,
     /** Lecteur d'écran, ligne de session : outil, titre, état, activité, durée. */
     rowAria: (tool: string, title: string, state: string, act: string | undefined, when: string) => `${tool}, ${title}, ${state}${act ? ` : ${act}` : ''}, ${when}`,
@@ -46,6 +48,7 @@ export default defineMessages({
     steps: (n: number) => `${n} steps`,
     older: (n: number) => `${n} older message${n === 1 ? '' : 's'}`,
     you: 'you',
+    background: (n: number) => `${n} in background`,
     working: (author: string) => `${author} is working`,
     rowAria: (tool: string, title: string, state: string, act: string | undefined, when: string) => `${tool}, ${title}, ${state}${act ? `: ${act}` : ''}, ${when}`,
   },

@@ -31,6 +31,7 @@ const session = (over: Partial<Session> = {}): Session => ({
   live: true,
   hasScreen: true,
   subagents: [],
+  background: 0,
   messageCount: 3,
   queued: 0,
   ...over,

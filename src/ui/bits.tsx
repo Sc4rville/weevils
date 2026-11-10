@@ -111,7 +111,7 @@ export function SessionRow({ session }: { session: Session }) {
     <button
       className={`row ${waiting ? 'tone' : ''} ${session.status === 'working' ? 'live' : ''} ${unread ? 'unread' : ''}`}
       onClick={() => push({ kind: 'session', id: session.id })}
-      aria-label={t.rowAria(session.tool, session.title, st.label, act, when)}
+      aria-label={t.rowAria(session.tool, session.title, st.label, act, session.background > 0 ? `${when}, ${t.background(session.background)}` : when)}
       title={act ? session.title : undefined}
     >
       <span className="in line" aria-hidden>
@@ -124,6 +124,7 @@ export function SessionRow({ session }: { session: Session }) {
         <span className="title wrap">
           {unread && <span className="dot" aria-hidden />}
           {text}
+          {session.background > 0 && <span className="bg strong"> · {t.background(session.background)}</span>}
         </span>
         <span className="act">{when}</span>
       </span>

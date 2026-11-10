@@ -109,6 +109,13 @@ describe('auto band', () => {
     expect([...host.querySelectorAll('.auto-prop .t')].map((n) => n.textContent)).toEqual(['Draft page'])
   })
 
+  it('the « tests » kind never wears the accept ✓', () => {
+    render(snap([opt({ id: 'a', title: 'Harden tests' })]))
+    const d = (sel: string) => host.querySelector(`${sel} path:last-child`)!.getAttribute('d')
+    expect(d('.auto-prop .k')).not.toBe(d('.auto-prop .ok'))
+    expect(d('.auto-prop .k')).not.toBe(d('.auto-prop .no'))
+  })
+
   it('no proposal: no band at all', () => {
     render(snap([opt({ id: 'r', state: 'running', repo: 'mygame', startedAt: NOW - 5 * 60_000, sessionId: 's1' })]))
     expect(host.querySelector('.auto-props')).toBeNull()

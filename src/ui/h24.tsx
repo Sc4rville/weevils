@@ -154,9 +154,10 @@ export function H24Rail() {
 
 // ---------------------------------------------------------------------------
 // En haut : les propositions, en colonnes collées, une couleur chacune. ✓ lance quand la machine est libre, × refuse.
+// L'icône d'un genre n'est jamais ✓ ni × : elles se confondraient avec les boutons.
 
 const PALETTE = ['p2', 'p9', 'p13', 'p5', 'p0', 'p11']
-const KIND_ICON: Record<Optimizer['kind'], IconName> = { tests: 'check', watch: 'quote', content: 'file', explore: 'slash', other: 'star' }
+const KIND_ICON: Record<Optimizer['kind'], IconName> = { tests: 'terminal', watch: 'quote', content: 'file', explore: 'slash', other: 'star' }
 
 function Proposals({ list }: { list: Optimizer[] }) {
   const t = useT(M)

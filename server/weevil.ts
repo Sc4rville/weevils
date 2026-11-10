@@ -147,7 +147,7 @@ export class Flyers {
     setTimeout(() => void this.prepare(), FIRST_DELAY_MS).unref?.()
     setInterval(() => Date.now() - this.lastWanted < WANTED_MS && void this.prepare(), CHECK_MS).unref?.()
     // Another language: the ready question (in the old one) waits, a new one is written in the new language.
-    onLangChange(() => this.lastWanted && setTimeout(() => void this.prepare(), 5000).unref?.())
+    onLangChange(() => setTimeout(() => void this.prepare(), 5000).unref?.())
   }
 
   /** On the main machine, with Claude logged in. */

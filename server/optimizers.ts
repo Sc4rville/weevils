@@ -293,7 +293,8 @@ export class Optimizers {
       }
     })
     if (dirty) this.changed()
-    if (!running && !this.launching && !reason && queue[0]) void this.launch(queue[0], now)
+    // Never without Claude logged in: the session would open on a login screen and sit there.
+    if (!running && !this.launching && !reason && queue[0] && this.sys.logged()) void this.launch(queue[0], now)
     if (this.roundDue(now)) void this.round(now)
   }
 

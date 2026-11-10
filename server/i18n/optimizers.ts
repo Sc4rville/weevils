@@ -18,6 +18,8 @@ export default defineMessages({
       `- bornée : une heure de travail d'agent au plus, avec un résultat clair (une branche locale à relire, ou un rapport) ;\n` +
       `- sûre : rien de destructif, rien de payant, rien de publié, posté ou envoyé ; tout ce qui sort de la machine attend sa validation ;\n` +
       `- d'un de ces genres : tests (muscler les tests, corriger un test cassé d'un repo), watch (veille sur un sujet qui l'intéresse, en lisant le web), content (préparer un brouillon : texte, page, doc), explore (prototyper ou étudier une idée qu'il a évoquée), other.\n` +
+      `repo : seulement si la tâche doit lire ou changer le code de ce repo précis (sinon null) ; ne devine pas un repo à partir de son seul nom.\n` +
+      `La consigne (prompt) ne choisit ni branche, ni worktree, ni fichier de sortie : weevils les fixe lui-même (branche locale à part, rapport dans un fichier donné) ; dis seulement quoi faire, quand s'arrêter et ce qu'il faut rendre.\n` +
       `S'il n'y a rien de vraiment utile, propose moins, ou rien.\n\n` +
       `Réponds uniquement en JSON, une liste : [{"title": "très court, 5 mots au plus, en français", "why": "une phrase en français qui la relie à un souvenir ou un projet", "repo": "nom exact d'un repo ci-dessus, ou null", "kind": "tests|watch|content|explore|other", "heavy": true si builds, tests lourds ou installs, "priority": 1 (forte) à 3 (faible), "est": minutes environ, "prompt": "la consigne complète pour l'agent, en français : contexte, quoi faire, où, quand s'arrêter, ce qu'il rend"}]`,
     /** Machine facts for the prompt. */
@@ -67,6 +69,8 @@ export default defineMessages({
       `- bounded: one hour of agent work at most, with a clear result (a local branch to review, or a report);\n` +
       `- safe: nothing destructive, nothing paid, nothing published, posted or sent; anything leaving the machine waits for their go;\n` +
       `- of one of these kinds: tests (harden a repo's tests, fix a broken test), watch (keep an eye on a topic they care about, reading the web), content (prepare a draft: text, page, doc), explore (prototype or study an idea they mentioned), other.\n` +
+      `repo: only when the task must read or change the code of that very repo (else null); never guess a repo from its name alone.\n` +
+      `The brief (prompt) picks no branch, worktree nor output file: weevils sets those itself (a separate local branch, a report in a given file); only say what to do, when to stop and what to hand back.\n` +
       `If nothing is really useful, propose fewer, or none.\n\n` +
       `Answer only in JSON, a list: [{"title": "very short, 5 words at most, in English", "why": "one sentence in English tying it to a memory or a project", "repo": "exact name of a repo above, or null", "kind": "tests|watch|content|explore|other", "heavy": true if builds, heavy tests or installs, "priority": 1 (high) to 3 (low), "est": rough minutes, "prompt": "the full brief for the agent, in English: context, what to do, where, when to stop, what it hands back"}]`,
     machine: (cpus: number, ramGb: number, os: string) => `${cpus} cores, ${ramGb} GB RAM, ${os}`,

@@ -181,6 +181,11 @@ describe('auto — the runner', () => {
     o.tick(T0 + 10 * MIN + IDLE_MS)
     expect(o.list()[0].waiting).toBe('ram')
     expect(createIn).not.toHaveBeenCalled()
+    sys.free = () => 8 * 1024 ** 3
+    sys.logged = () => false
+    o.tick(T0 + 10 * MIN + IDLE_MS)
+    await flush()
+    expect(createIn).not.toHaveBeenCalled()
     expect(freeReason({ idleFor: IDLE_MS, load: 5.9, cpus: 4, free: MIN_FREE_BYTES })).toBeNull()
   })
 

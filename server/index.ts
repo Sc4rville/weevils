@@ -22,8 +22,8 @@ import { browserSafe, isLocal, trustedFrom } from './http.ts'
 import { startMailBridge } from './mailbridge.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
-import { quotas, today as usageToday } from './usage.ts'
-import type { InfraDetail, MachineBrief, MachineFacts, Reach, UsageToday } from '../shared/infra.ts'
+import { quotas, rate as tokenRate, today as usageToday } from './usage.ts'
+import type { InfraDetail, MachineBrief, MachineFacts, Reach, TokenRate, UsageToday } from '../shared/infra.ts'
 import { facts } from './discover.ts'
 import { Setup, installPlan, writeConfig } from './setup.ts'
 import { TourKeeper } from './tour.ts'
@@ -545,6 +545,21 @@ const routes: [string, RegExp, Handler][] = [
     json(res, 200, remote ? await remote.call('GET', `/api/fs/file?path=${encodeURIComponent(p)}`) : readAny(p))
   }],
   ['GET', /^\/api\/usage$/, async (_req, res) => json(res, 200, await quotas())],
+  ['GET', /^\/api\/usage\/rate$/, async (_req, res, url) => {
+    const r = tokenRate()
+    if (url.searchParams.has('local')) return json(res, 200, r)
+    // Les autres machines s'ajoutent tranche par tranche (alignées sur l'heure de fin).
+    const far = await Promise.all(w.remotes.filter((x) => x.online).map((x) => x.call<TokenRate>('GET', '/api/usage/rate?local=1').catch(() => null)))
+    for (const f of far) {
+      if (!f || f.step !== r.step) continue
+      const shift = Math.round((r.end - f.end) / r.step)
+      f.buckets.forEach((v, i) => {
+        const j = i - shift
+        if (j >= 0 && j < r.buckets.length) r.buckets[j] += v
+      })
+    }
+    json(res, 200, r)
+  }],
   ['GET', /^\/api\/usage\/today$/, async (_req, res, url) => {
     const sessions = new Map(w.snapshot().sessions.map((s) => [s.id, s]))
     const { rows, models } = usageToday((id) => sessions.get(id))

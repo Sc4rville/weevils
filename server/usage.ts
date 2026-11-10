@@ -6,7 +6,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import type { QuotaInfo, QuotaWindow, UsageModel, UsageRow } from '../shared/infra.ts'
+import type { QuotaInfo, QuotaWindow, TokenRate, UsageModel, UsageRow } from '../shared/infra.ts'
 import { CLAUDE_DIR, CODEX_DIR, HOME, MACHINE, ORCH_DIR, PROJECT_ROOTS } from './config.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/infra.ts'
@@ -177,10 +177,15 @@ interface FileState {
   agg: Map<string, Agg>
   /** Par modèle : clé « outil:modèle ». */
   models: Map<string, UsageModel>
+  /** Les réponses des dernières minutes : [heure, tokens], pour le débit en direct. */
+  recent: [number, number][]
   sid?: string
   cwd?: string
   model?: string
 }
+
+const RATE_SPAN = 10 * 60_000
+const RATE_STEP = 15_000
 
 let dayStart = 0
 let files = new Map<string, FileState>()
@@ -195,7 +200,7 @@ function scan(file: string, tool: 'claude' | 'codex') {
     return
   }
   if (st.mtimeMs < dayStart) return
-  const s: FileState = files.get(file) ?? { offset: 0, seen: new Set(), agg: new Map(), models: new Map() }
+  const s: FileState = files.get(file) ?? { offset: 0, seen: new Set(), agg: new Map(), models: new Map(), recent: [] }
   files.set(file, s)
   if (st.size <= s.offset) return
   const fd = fs.openSync(file, 'r')
@@ -267,6 +272,7 @@ function scan(file: string, tool: 'claude' | 'codex') {
     a.last = Math.max(a.last, at)
     if (cwd) a.cwd = cwd
     s.agg.set(sid, a)
+    if (at > Date.now() - RATE_SPAN) s.recent.push([at, tokens])
     if (model && !model.startsWith('<')) {
       const k = `${tool}:${model}`
       const m = s.models.get(k) ?? { tool, model, machine: MACHINE.id, weight: 0, tokens: 0 }
@@ -305,7 +311,12 @@ const repoOf = (cwd: string) => {
   return path.basename(cwd) || '?'
 }
 
-export function today(lookup: (id: string) => { title: string; projectId: string } | undefined): { rows: UsageRow[]; models: UsageModel[] } {
+let lastRefresh = 0
+/** Relit la fin des transcripts du jour (incrémental), au plus une fois toutes les 2 s. */
+function refresh() {
+  const now = Date.now()
+  if (now - lastRefresh < 2000) return
+  lastRefresh = now
   const d = new Date()
   d.setHours(0, 0, 0, 0)
   if (d.getTime() !== dayStart) {
@@ -318,6 +329,25 @@ export function today(lookup: (id: string) => { title: string; projectId: string
   const codex: string[] = []
   listJsonl(CODEX_DIR, 3, codex)
   for (const f of codex) scan(f, 'codex')
+  for (const s of files.values()) if (s.recent.length && s.recent[0][0] < now - RATE_SPAN) s.recent = s.recent.filter(([at]) => at >= now - RATE_SPAN)
+}
+
+/** Le débit en direct, toutes sessions de cette machine : tokens par tranche de 15 s sur les 10 dernières minutes. */
+export function rate(): TokenRate {
+  refresh()
+  const end = Math.floor(Date.now() / RATE_STEP) * RATE_STEP + RATE_STEP
+  const buckets = new Array<number>(RATE_SPAN / RATE_STEP).fill(0)
+  for (const s of files.values())
+    for (const [at, tokens] of s.recent) {
+      const i = buckets.length - 1 - Math.floor((end - 1 - at) / RATE_STEP)
+      if (i >= 0 && i < buckets.length) buckets[i] += tokens
+    }
+  return { step: RATE_STEP, end, buckets }
+}
+
+export function today(lookup: (id: string) => { title: string; projectId: string } | undefined): { rows: UsageRow[]; models: UsageModel[] } {
+  lastRefresh = 0
+  refresh()
   const by = new Map<string, Agg>()
   for (const s of files.values())
     for (const [sid, a] of s.agg) {

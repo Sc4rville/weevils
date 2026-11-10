@@ -225,6 +225,14 @@ export interface UsageModel {
   tokens: number
 }
 
+/** Débit en direct : tokens (entrée, sortie, cache) des réponses écrites dans les transcripts, par tranche. */
+export interface TokenRate {
+  step: number
+  /** Fin de la dernière tranche (ms). */
+  end: number
+  buckets: number[]
+}
+
 export interface UsageToday {
   rows: UsageRow[]
   /** Absent quand une machine distante a une version plus ancienne. */

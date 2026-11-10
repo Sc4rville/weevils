@@ -13,6 +13,7 @@ vi.mock('../api', () => ({
     main: async (text: string) => void sent.main.push(text),
     devil: async (text: string) => void sent.devil.push(text),
     mainAttach: async (text: string, files: { name: string }[]) => void sent.attach.push(`${text}|${files.map((f) => f.name).join(',')}`),
+    usageRate: async () => ({ step: 15_000, end: Date.now(), buckets: [] }),
   },
 }))
 vi.mock('../push', () => ({ ensurePush: async () => {} }))

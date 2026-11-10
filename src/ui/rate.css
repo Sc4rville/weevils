@@ -1,0 +1,83 @@
+.agent-top-right {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+/* Débit de tokens en direct (src/ui/rate.tsx) : en haut à droite de la bande weevboss. */
+.token-meter {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  height: 36px;
+  padding: 0 4px 7px;
+  color: var(--ink);
+  transition: opacity 0.8s ease;
+}
+.token-meter svg {
+  overflow: visible;
+  margin-bottom: 2px;
+}
+.tm-line {
+  fill: none;
+  stroke: var(--fluo);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  transition: stroke 0.8s ease;
+}
+.tm-area {
+  fill: var(--fluo);
+  opacity: 0.16;
+}
+.tm-dot {
+  fill: var(--fluo);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: tm-beat var(--beat, 2s) ease-in-out infinite;
+}
+.tm-val {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+  line-height: 1;
+}
+.tm-num {
+  font-weight: 800;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.tm-unit {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  opacity: 0.6;
+}
+/* Au repos : courbe à plat, encre, plus de battement. */
+.token-meter.idle {
+  opacity: 0.5;
+}
+.token-meter.idle .tm-line {
+  stroke: var(--ink);
+}
+.token-meter.idle .tm-area {
+  opacity: 0;
+}
+.token-meter.idle .tm-dot {
+  animation: none;
+  fill: var(--ink);
+}
+@keyframes tm-beat {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.7);
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tm-dot {
+    animation: none;
+  }
+}

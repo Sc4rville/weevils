@@ -5,7 +5,7 @@ import type { AskResult, Brick, Device } from '../shared/setup.ts'
 import type { Tour, TourId } from '../shared/tour.ts'
 import { tr } from './i18n'
 import M from './i18n/app'
-import type { FsListing, InfraDetail, UsageInfo, UsageToday } from '../shared/infra.ts'
+import type { FsListing, InfraDetail, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
 import type { ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, SessionDetail, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
 
 export class ApiError extends Error {
@@ -117,6 +117,7 @@ export const api = {
   fsFile: (machine: string, path: string) => call<FileContent>('GET', `/api/fs/file?machine=${enc(machine)}&path=${enc(path)}`),
   usage: () => call<UsageInfo>('GET', '/api/usage'),
   usageToday: () => call<UsageToday>('GET', '/api/usage/today'),
+  usageRate: () => call<TokenRate>('GET', '/api/usage/rate'),
   file: (repo: string, path: string, machine: string) => call<FileContent>('GET', `/api/repos/${enc(repo)}/file?path=${enc(path)}&machine=${enc(machine)}`),
 }
 

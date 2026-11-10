@@ -18,6 +18,7 @@ import { ago, plain, userText } from './format'
 import { FilledIcon, G, Icon } from './icons'
 import { PrefLines } from './prefs'
 import { UsageLine } from './infra'
+import { TokenMeter } from './rate'
 import { setDevil, useDevil } from './devil'
 import { markSeen, tapHint } from './hints'
 import { SetupChips, SetupComposer, askSetup, useFlow, useWelcome } from './setup'
@@ -256,9 +257,12 @@ export function AgentBand() {
             replyText={th.a.replyKey ? th.a.shown : mainReply?.text}
             working={snap.mainWorking || th.a.waiting}
           />
-          <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={(e) => tapDevil(e.currentTarget)} aria-pressed={devilOn} aria-label={devilOn ? td.on : td.off}>
-            <FilledIcon name="devil" />
-          </button>
+          <div className="agent-top-right">
+            <TokenMeter />
+            <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={(e) => tapDevil(e.currentTarget)} aria-pressed={devilOn} aria-label={devilOn ? td.on : td.off}>
+              <FilledIcon name="devil" />
+            </button>
+          </div>
         </div>
         {/* L'aperçu et le fil restent rendus : ouvrir ou fermer ne fait que les montrer ou les cacher (immédiat). */}
         <div className="peek-wrap" hidden={open}>

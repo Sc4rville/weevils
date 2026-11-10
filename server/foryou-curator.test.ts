@@ -406,7 +406,7 @@ describe('the digest', () => {
     const c = makeCurator()
     await deliver('s1', 'The capture layout is already live.')
     snap.sessions.push(session({ id: 'q1', status: 'needs_user', attention: 'Which rendering should I start?' }))
-    threads.q1 = [says('Which rendering should I start?'), says('Start the approved production.', 'user')]
+    threads.q1 = [says('Which rendering should I start?'), { ...says('Start the approved production.'), role: 'user' }]
     looked()
     model.mockResolvedValue(DIGEST)
     await c.tick(now)

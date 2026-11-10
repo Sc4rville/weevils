@@ -237,6 +237,13 @@ Built, on `main`:
 - **Step 3, live** (app only): voice messages, bars that fill, the rolling counts of the line, exits over « lancé /
   envoyé / écarté », media kept whole, wide screens, the unread dot in the margin.
 
+Changed after the first look on the phone (same evening): a session's result is **one line said in passing**
+(`headline()`: no markdown, path, command or machine tag; the curator rewrites it in the first person when the budget
+allows), the whole report and the reply unfold under it; the stream is **newest first**, so news always comes in
+at the top (held behind « n new » while reading; only system alerts sit above); turns that ended in the last 24 h
+before the stream listened get their item; the curator makes no call before the usage figures are known (one digest
+was written blind at a start, at 90 % of the week).
+
 Not checked yet, to do on a device or with real traffic:
 
 - the texts the curator writes (no real model call was made while building: the prompts are untested on real

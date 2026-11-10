@@ -376,12 +376,20 @@ export interface AutoDetail {
   machine: string
 }
 
+/** Un choix de conversation : son libellé et le message envoyé quand on le touche. */
+export interface AutoSuggestion {
+  label: string
+  text: string
+}
+
 export interface OptimizerLine {
   who: 'user' | 'auto'
   text: string
   at: number
   /** Réponse qui a réécrit la tâche : les champs changés. */
   changed?: OptimizerField[]
+  /** Suggestions pour répondre à cette question, jamais des commandes de création ou de validation. */
+  suggestions?: AutoSuggestion[]
 }
 
 /** next : la portée du prochain passage (convenue pendant qu'elle tourne). */

@@ -145,6 +145,34 @@ describe('automation page', () => {
     expect(calls.some((c) => c.startsWith('accept'))).toBe(false)
   })
 
+  it('suggestions are reply buttons, progressively replaced by the next choices; they never create or approve a task', async () => {
+    const first = { who: 'auto' as const, text: 'What do you want to automate?', at: NOW, suggestions: [{ label: 'Daily summary of mygame', text: 'I would like a daily summary of mygame.' }, { label: 'Watch a topic', text: 'I would like to watch a topic.' }] }
+    const draft = opt({ id: 'new', title: 'new automation', state: 'proposed', draft: true, talk: [first] })
+    render(snap([draft]), <AutoPage id="new" />)
+    expect(host.querySelectorAll('.auto-suggestions button')).toHaveLength(2)
+    expect(host.querySelector('.composer input')).not.toBeNull()
+    const when = { ...draft, talk: [first, { who: 'user' as const, text: first.suggestions[0].text, at: NOW }, { who: 'auto' as const, text: 'What time?', at: NOW, suggestions: [{ label: 'Every morning at 8', text: 'Every morning at 8' }] }] }
+    fixtures.talk = { reply: 'What time?', item: when, changed: [] }
+    await click(host.querySelector('.auto-suggestions button'))
+    await flush()
+    expect(calls).toEqual(['talk new I would like a daily summary of mygame.'])
+    expect(host.querySelector('.auto-suggestions')!.textContent).toContain('Every morning at 8')
+    expect(host.querySelector('.auto-suggestions')!.textContent).not.toContain('Watch a topic')
+    expect(host.querySelector('.auto-decide')).toBeNull()
+    const where = { ...draft, talk: [...when.talk, { who: 'user' as const, text: 'Every morning at 8', at: NOW }, { who: 'auto' as const, text: 'Where?', at: NOW, suggestions: [{ label: 'In Auto', text: 'In Auto' }] }] }
+    fixtures.talk = { reply: 'Where?', item: where, changed: [] }
+    await click(host.querySelector('.auto-suggestions button'))
+    await flush()
+    expect(host.querySelector('.auto-suggestions')!.textContent).toContain('In Auto')
+    expect(host.querySelector('.auto-decide')).toBeNull()
+    fixtures.talk = { reply: 'Ready for approval.', item: { ...where, draft: undefined, rev: 1, title: 'Daily summary', talk: [...where.talk, { who: 'user', text: 'In Auto', at: NOW }, { who: 'auto', text: 'Ready for approval.', at: NOW }] }, changed: ['title'] }
+    await click(host.querySelector('.auto-suggestions button'))
+    await flush()
+    expect(calls).toEqual(['talk new I would like a daily summary of mygame.', 'talk new Every morning at 8', 'talk new In Auto'])
+    expect(host.querySelector('.auto-suggestions')).toBeNull()
+    expect(host.querySelector('.auto-decide')).not.toBeNull()
+  })
+
   it('the same six facts for a task (its state is the flow band, where it runs the head); tapping one prefills the talk', async () => {
     render(snap([daily]), <AutoPage id="d" />)
     await flush()

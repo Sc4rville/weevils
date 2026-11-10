@@ -458,3 +458,9 @@
     animation-duration: 0.01s;
   }
 }
+
+/* Conversation choices use the same full-width rows as the rest of Auto. */
+.auto-suggestions .stack-text > .ellipsis:first-child {
+  white-space: normal;
+  overflow: visible;
+}

@@ -30,7 +30,7 @@ import fs from 'node:fs'
 import type http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import type { AutoDetail, AutoMachine, AutoRun, AutoRunDetail, Optimizer, OptimizerField, OptimizerLine, OptimizerTalkReply, Session } from '../shared/api.ts'
+import type { AutoDetail, AutoMachine, AutoRun, AutoRunDetail, AutoSuggestion, Optimizer, OptimizerField, OptimizerLine, OptimizerTalkReply, Session } from '../shared/api.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { RunArchive, blobPath, extractLinks, gitFiles, headOf, mtimeFiles, IMAGE_MIME, MAX_REPORT } from './auto-runs.ts'
 import { fmtLocal, nextRun, nextStart, parseEvery, parseLocal, parseWindow, serverTz, validTz, windowText, MAX_AHEAD_MS, type Window } from './auto-time.ts'
@@ -476,6 +476,20 @@ export function parseProposals(raw: unknown, repos: string[], known: { title: st
   return out
 }
 
+/** Short reply choices from the model: bounded plain strings, once each. */
+export function parseSuggestions(raw: unknown): AutoSuggestion[] {
+  if (!Array.isArray(raw)) return []
+  const out: AutoSuggestion[] = []
+  for (const x of raw) {
+    if (typeof x !== 'string') continue
+    const text = tidy(x, 160)
+    if (text.length < 2 || out.some((s) => norm(s.text) === norm(text))) continue
+    out.push({ label: text, text })
+    if (out.length === 4) break
+  }
+  return out
+}
+
 /** A short question and nothing else (« c'est quoi ? », « what did it find? »): no request for a change. */
 export const bareQuestion = (said: string) => /\?\s*$/.test(said) && !/[,;:]/.test(said) && said.trim().split(/\s+/).length <= 6
 
@@ -735,10 +749,29 @@ export class Optimizers {
   create(): Optimizer {
     const t = tr(O)
     const now = Date.now()
-    const o: Stored = { id: crypto.randomBytes(5).toString('hex'), title: t.newTitle, why: '', repo: null, kind: 'other', heavy: false, state: 'proposed', draft: true, userCreated: true, prompt: '', createdAt: now, talk: [{ who: 'auto', text: t.newQuestion, at: now }] }
+    const o: Stored = { id: crypto.randomBytes(5).toString('hex'), title: t.newTitle, why: '', repo: null, kind: 'other', heavy: false, state: 'proposed', draft: true, userCreated: true, prompt: '', createdAt: now, talk: [{ who: 'auto', text: t.newQuestion, at: now, suggestions: this.creationSuggestions() }] }
     this.s.items.push(o)
     this.changed()
     return this.view(o)
+  }
+
+  /** Immediate suggestions from real project activity and prior usage, with useful fallbacks on a blank install. */
+  private creationSuggestions(): AutoSuggestion[] {
+    const t = tr(O)
+    const snap = this.w.snapshot()
+    const known = new Set(this.w.allRepos())
+    const projects = snap.projects.filter((p) => p.kind === 'repo' && p.repos.some((r) => known.has(r)))
+    const activeAt = (p: (typeof projects)[number]) => Math.max(p.lastActivityAt, ...snap.sessions.filter((s) => s.projectId === p.id).map((s) => s.lastActivityAt))
+    const project = [...projects].sort((a, b) => activeAt(b) - activeAt(a))[0]
+    const name = project ? tidy(project.name, 60) : ''
+    const watch = [...this.s.items].filter((o) => o.kind === 'watch' && (o.state === 'queued' || o.state === 'running' || o.state === 'done')).sort((a, b) => (b.endedAt ?? b.startedAt ?? b.createdAt) - (a.endedAt ?? a.startedAt ?? a.createdAt))[0]
+    const topic = watch ? tidy(watch.title, 60) : ''
+    return [
+      { label: t.suggestFollowLabel(name), text: t.suggestFollowText(name) },
+      { label: t.suggestWatchLabel(topic), text: t.suggestWatchText(topic) },
+      { label: t.suggestSummaryLabel(name), text: t.suggestSummaryText(name) },
+      { label: t.suggestReminderLabel, text: t.suggestReminderText },
+    ]
   }
 
   /**
@@ -832,7 +865,7 @@ export class Optimizers {
     const zone = validTz(tz) ?? o.tz ?? serverTz()
     this.talking.add(id)
     try {
-      let out: { reply?: unknown; patch?: unknown } | null = null
+      let out: { reply?: unknown; patch?: unknown; ready?: unknown; suggestions?: unknown } | null = null
       let untrusted = false
       try {
         const turn = this.talkTurn(o, said, zone, replyLang)
@@ -863,9 +896,9 @@ export class Optimizers {
         return note('talkHeld')
       }
       const changed = this.patch(o, p)
-      if (o.draft && p.title && p.prompt) delete o.draft
+      if (o.draft && out?.ready === true && p.title && p.prompt) delete o.draft
       if (validTz(tz)) o.tz = zone
-      o.talk = capTalk([...(o.talk ?? []), { who: 'user', text: said, at: now }, { who: 'auto', text: reply, at: Date.now(), ...(changed.length ? { changed } : {}) }])
+      o.talk = capTalk([...(o.talk ?? []), { who: 'user', text: said, at: now }, { who: 'auto', text: reply, at: Date.now(), ...(o.draft ? { suggestions: parseSuggestions(out?.suggestions) } : {}), ...(changed.length ? { changed } : {}) }])
       if (changed.length) {
         o.changed = { at: now, fields: changed }
         o.rev = (o.rev ?? 0) + 1

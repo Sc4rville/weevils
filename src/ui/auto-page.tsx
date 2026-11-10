@@ -520,10 +520,21 @@ function Talk({ o }: { o: Optimizer }) {
   if (!asking) sent.current = 0
   const pending: Pending[] = asking ? [{ id: `pending-${o.id}`, role: 'user', text: asking, at: sent.current, typed: asking, after: real.at(-1)?.id }] : []
   const messages = mergePending(real, pending)
+  const last = o.talk?.at(-1)
+  const suggestions = o.draft && last?.who === 'auto' ? last.suggestions ?? [] : []
   if (!messages.length && !k.busy.has(o.id)) return null
   return (
     <div className="auto-talk">
       <Messages messages={messages} author={t.title} />
+      {!asking && !k.busy.has(o.id) && suggestions.length > 0 && (
+        <div className="auto-suggestions" role="group" aria-label={t.replySuggestions}>
+          {suggestions.map((s) => (
+            <Line key={s.text} onClick={() => void k.send(o.id, s.text)}>
+              {s.label}
+            </Line>
+          ))}
+        </div>
+      )}
       {k.busy.has(o.id) && <Working author={t.title} mark={<AutoMark />} />}
     </div>
   )

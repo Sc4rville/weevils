@@ -9,7 +9,7 @@ import O from './i18n/optimizers.ts'
 import { Memory } from './memory.ts'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { Writable } from 'node:stream'
-import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_FAILED_RUNS, MAX_RUN_MS, MAX_RUNS, MAX_TALK, MAX_TRIES, MAX_WAITING, REFILL_GAP_MS, optimizerRoutes, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, TALK_BACKOFF_MS, TALK_CHARS, VANISH_MS, Optimizers, agreedDigest, freeReason, guardEnv, isRepeat, jailArgs, isStall, parsePatch, parseProposals, runLimit, slug, stallKind, tidy, type Sys } from './optimizers.ts'
+import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_FAILED_RUNS, MAX_RUN_MS, MAX_RUNS, MAX_TALK, MAX_TRIES, MAX_WAITING, REFILL_GAP_MS, optimizerRoutes, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, TALK_BACKOFF_MS, TALK_CHARS, VANISH_MS, Optimizers, agreedDigest, freeReason, guardEnv, isRepeat, jailArgs, isStall, parsePatch, parseProposals, parseSuggestions, runLimit, slug, stallKind, tidy, type Sys } from './optimizers.ts'
 
 // Hermetic: no claude CLI, no login check, the language fixed in memory.
 vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn(), relay: vi.fn() }))
@@ -626,7 +626,7 @@ describe('auto — talking a task over (the negotiation)', () => {
     await o.round(T0)
     return { o, id: o.list()[0].id }
   }
-  const answer = (reply: string, patch: Record<string, unknown> = {}) => model.mockResolvedValueOnce(JSON.stringify({ reply, patch }))
+  const answer = (reply: string, patch: Record<string, unknown> = {}, ready = false) => model.mockResolvedValueOnce(JSON.stringify({ reply, patch, ready }))
 
   it('creates a durable conversation without a model, clarifies the idea, then validates the negotiated version', async () => {
     const o = make()
@@ -646,8 +646,8 @@ describe('auto — talking a task over (the negotiation)', () => {
     expect(question!.item!.draft).toBe(true)
     expect(o.accept(draft.id)).toBe('busy')
     expect(model.mock.calls[0][0]).toContain(O.en.rules_draft)
-    answer('Every night I will check mygame and leave a report for you to read.', { title: 'Check mygame tests', why: 'you want a daily check', prompt: 'Run the tests of mygame, summarize failures and stop after fifteen minutes.', repo: 'mygame', kind: 'tests', est: 15, every: '1d', window: '01:00-06:00' })
-    const ready = await o.talk(draft.id, 'mygame, every night for fifteen minutes', P)
+    answer('Every night I will check mygame and leave a report for you to read.', { title: 'Check mygame tests', why: 'you want a daily check', prompt: 'Run the tests of mygame, summarize failures and stop after fifteen minutes.', repo: 'mygame', kind: 'tests', est: 15, every: '1d', window: '01:00-06:00' }, true)
+    const ready = await o.talk(draft.id, 'mygame, every night for fifteen minutes, with the report in Auto', P)
     expect(ready!.item).toMatchObject({ state: 'proposed', title: 'Check mygame tests', repo: 'mygame', every: 24 * 60 * MIN, est: 15, rev: 1 })
     expect(ready!.item!.draft).toBeUndefined()
     expect(ready!.item!.talk).toHaveLength(5)
@@ -656,6 +656,66 @@ describe('auto — talking a task over (the negotiation)', () => {
     expect(o.accept(draft.id, 0)).toBe('busy')
     expect(o.accept(draft.id, ready!.item!.rev)).toBe(true)
     expect(o.list()[0].state).toBe('queued')
+  })
+
+  it('offers immediate project and usage suggestions, with recent real activity first and no model call', () => {
+    snap.projects.push({ id: 'notes', name: 'notes', kind: 'repo', repos: ['notes'], where: {}, lastActivityAt: T0 - MIN })
+    snap.projects.push({ id: 'remote', name: 'remote-only', kind: 'repo', repos: ['missing'], where: {}, lastActivityAt: T0 + 10 * MIN })
+    snap.sessions = [session({ projectId: 'notes', lastActivityAt: T0 + MIN })]
+    fs.writeFileSync(path.join(dir, 'optimizers.json'), JSON.stringify({ items: [{ id: 'watch', title: 'Indie fairs', kind: 'watch', state: 'done', createdAt: T0, endedAt: T0 }] }))
+    const o = make()
+    const draft = o.create()
+    const suggestions = draft.talk![0].suggestions!
+    expect(suggestions.map((s) => s.label)).toEqual(['Follow notes', 'Watch: Indie fairs', 'Daily summary of notes', 'A recurring reminder'])
+    expect(suggestions[0].text).toContain('notes')
+    expect(suggestions.some((s) => s.text.includes('remote-only'))).toBe(false)
+    expect(make().get(draft.id)!.talk![0].suggestions).toEqual(suggestions)
+    expect(o.accept(draft.id)).toBe('busy')
+    expect(model).not.toHaveBeenCalled()
+    expect(createIn).not.toHaveBeenCalled()
+  })
+
+  it('offers four useful starters without project context', () => {
+    snap.projects = []
+    snap.sessions = []
+    const choices = make().create().talk![0].suggestions!
+    expect(choices.map((s) => s.label)).toEqual(['Follow a project', 'Watch a topic', 'A daily summary', 'A recurring reminder'])
+    expect(model).not.toHaveBeenCalled()
+  })
+
+  it('keeps asking about time and delivery until the creation is ready, and every choice remains a conversation reply', async () => {
+    const o = make()
+    const draft = o.create()
+    const choice = draft.talk![0].suggestions![2]
+    const patch = { title: 'Daily mygame summary', prompt: 'Summarize the progress of mygame, write a short report and stop after fifteen minutes.', repo: 'mygame', every: '1d' }
+    model.mockResolvedValueOnce(JSON.stringify({ reply: 'What time should I prepare it?', patch, ready: false, suggestions: ['Every morning at 8', 'Every evening at 6'] }))
+    const when = await o.talk(draft.id, choice.text, P)
+    expect(when!.item).toMatchObject({ draft: true, state: 'proposed' })
+    expect(when!.item!.talk!.at(-2)!.text).toBe(choice.text)
+    expect(when!.item!.talk!.at(-1)!.suggestions!.map((s) => s.text)).toEqual(['Every morning at 8', 'Every evening at 6'])
+    expect(o.accept(draft.id)).toBe('busy')
+    model.mockResolvedValueOnce(JSON.stringify({ reply: 'Where would you like to find the result?', patch: { window: '08:00-09:00' }, ready: false, suggestions: ['In Auto', 'In a project file'] }))
+    const where = await o.talk(draft.id, 'Every morning at 8', P)
+    expect(where!.item!.draft).toBe(true)
+    expect(o.accept(draft.id)).toBe('busy')
+    model.mockResolvedValueOnce(JSON.stringify({ reply: 'The summary will be in Auto every morning at 8, ready for your approval.', patch: { ...patch, prompt: patch.prompt + ' Leave the result in Auto.' }, ready: true }))
+    const ready = await o.talk(draft.id, 'In Auto', P)
+    expect(ready!.item!.draft).toBeUndefined()
+    expect(ready!.item!.state).toBe('proposed')
+    expect(ready!.item!.talk!.at(-1)!.suggestions).toBeUndefined()
+    expect(model.mock.calls[0][0]).toContain('where they want to find the result')
+    expect(createIn).not.toHaveBeenCalled()
+    expect(o.accept(draft.id, ready!.item!.rev)).toBe(true)
+  })
+
+  it('filters malformed and repeated model choices, bounded to four short strings', () => {
+    expect(parseSuggestions(null)).toEqual([])
+    expect(parseSuggestions([null, {}, 1, '', 'A', 'In Auto', 'in auto', '  Every day  ', 'x'.repeat(300), 'Later', 'Fifth'])).toEqual([
+      { label: 'In Auto', text: 'In Auto' },
+      { label: 'Every day', text: 'Every day' },
+      { label: 'x'.repeat(160), text: 'x'.repeat(160) },
+      { label: 'Later', text: 'Later' },
+    ])
   })
 
   it('personal creation conversations do not consume the three automatic suggestion slots', async () => {

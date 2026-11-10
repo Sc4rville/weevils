@@ -99,6 +99,11 @@ export const QUIET_ENV: Record<string, string> = {
  */
 export const NO_TMUX = ['env', '-u', 'TMUX', '-u', 'TMUX_PANE']
 
+/** Nom d'une session wv-* pour un dossier. tmux remplace « . » et « : » par « _ » dans un nom de session : sans ce
+ * remplacement fait d'avance, un dossier comme « .ad9651b0c8 » (tâche auto sans repo) ou « mon.site » donnait une
+ * session lancée sous un autre nom que celui retenu, introuvable ensuite (« no such session ») mais au travail. */
+export const wvName = (dir: string, short: string) => `wv-${dir.slice(0, 18).replace(/[.:]/g, '_')}-${short}`
+
 export async function spawnWv(name: string, cwd: string, tool: Tool, title: string, command: string[], sessionId?: string) {
   // Plusieurs arguments : tmux lance la commande directement, sans shell (pas d'injection possible) ; env non plus.
   const env = Object.entries(QUIET_ENV).flatMap(([k, v]) => ['-e', `${k}=${v}`])

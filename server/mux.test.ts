@@ -28,6 +28,15 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+describe('wvName', () => {
+  it('« . » et « : » deviennent « _ » comme tmux le ferait : le nom retenu est celui de la session', () => {
+    expect(mux.wvName('.ad9651b0c8', 'abc123')).toBe('wv-_ad9651b0c8-abc123')
+    expect(mux.wvName('mon.site:v2', 'abc123')).toBe('wv-mon_site_v2-abc123')
+    expect(mux.wvName('tic-tac-toe', 'abc123')).toBe('wv-tic-tac-toe-abc123')
+    expect(mux.wvName('a-very-long-folder-name-indeed', 'f')).toBe('wv-a-very-long-folder-f')
+  })
+})
+
 describe('sendText', () => {
   it('saisie littérale (-l), retours à la ligne aplatis, puis Entrée à part', async () => {
     vi.useFakeTimers()

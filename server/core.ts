@@ -33,7 +33,7 @@ import { llmTitles, needsTitle, shortNow } from './titles.ts'
 import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
 import type { WvSession } from './mux.ts'
-import { capture, dialogOnScreen, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv } from './mux.ts'
+import { capture, dialogOnScreen, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv, wvName } from './mux.ts'
 import { lang, onLangChange, tr, user, type Lang } from './i18n.ts'
 import TipsM from './i18n/tips.ts'
 import { normalizeFrom, parseSigned, publicAuthors, signAs } from './authors.ts'
@@ -1253,7 +1253,7 @@ export class Weevils {
 
   private async spawn(tool: Tool, cwd: string, title: string, command: string[], sessionId?: string): Promise<string> {
     const short = crypto.randomBytes(3).toString('hex')
-    const name = `wv-${path.basename(cwd).slice(0, 18)}-${short}`
+    const name = wvName(path.basename(cwd), short)
     // Jamais de dialogue de confiance au lancement : le dossier est marqué sûr avant.
     if (tool === 'claude') trustDirs([cwd])
     try {

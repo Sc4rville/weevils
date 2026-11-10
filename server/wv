@@ -88,8 +88,10 @@ case "${1:-}" in
 esac
 
 dir=$(basename "$PWD")
+# tmux turns « . » and « : » into « _ » in a session name: done here, the name stays the one we target.
 short=$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')
-name="wv-${dir:0:18}-$short"
+dir=${dir:0:18}
+name="wv-${dir//[.:]/_}-$short"
 title=${1:-$m_title}
 
 # Rien ne doit interrompre la session (mise à jour, conseils, télémétrie) : mêmes variables que weevilsd.

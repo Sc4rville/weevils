@@ -75,6 +75,14 @@ function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () =>
   useEffect(() => {
     if (sent) follow.toEnd()
   }, [sent]) // eslint-disable-line react-hooks/exhaustive-deps
+  // A dictated message may arrive via the voice endpoint / another device rather than this form.
+  // It must release a preview left in reading mode, just like a local submit does.
+  const lastUser = items.filter((m) => m.role === 'user').at(-1)?.id
+  const previousUser = useRef(lastUser)
+  useEffect(() => {
+    if (visible && lastUser && lastUser !== previousUser.current) follow.toEnd()
+    previousUser.current = lastUser
+  }, [lastUser, visible]) // eslint-disable-line react-hooks/exhaustive-deps
   // La bulle « envoi… » remplacée par le vrai message : l'une s'efface sans animation et l'autre prend sa place sans entrer,
   // sinon la sortie de l'une (retirée du flux, popLayout) se dessine par-dessus la réponse qui arrive.
   const isPending = (m: Message) => m.id.startsWith('pending-')
@@ -89,6 +97,7 @@ function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () =>
     prev.current = { ids: new Set(items.map((m) => m.id)), pending: items.filter(isPending) }
   })
   return (
+    <>
     <motion.div
       ref={box}
       layoutScroll
@@ -139,6 +148,8 @@ function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () =>
         </AnimatePresence>
       </div>
     </motion.div>
+    {visible && follow.behind && <button type="button" className="peek-behind" aria-label={t.toEnd} onClick={() => follow.toEnd()}><Icon name="arrow" dir="down" /></button>}
+    </>
   )
 }
 

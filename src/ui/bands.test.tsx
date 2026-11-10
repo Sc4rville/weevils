@@ -467,3 +467,45 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
     expect(document.querySelector('.fyt-dot')).toBeNull()
   })
 })
+
+it('a new dictated user message releases a preview left in history-reading mode', async () => {
+  const media = vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true } as MediaQueryList)
+  render(snap([msg('old', 'user', 'ancien message', 1), msg('reply', 'assistant', 'ancienne réponse', 2)]))
+  const peek = document.querySelector<HTMLElement>('.peek')!
+  Object.defineProperties(peek, { scrollHeight: { value: 2400, configurable: true }, clientHeight: { value: 180, configurable: true } })
+  act(() => {
+    peek.dispatchEvent(new Event('pointerdown'))
+    peek.scrollTop = 0
+    peek.dispatchEvent(new Event('scroll'))
+    peek.dispatchEvent(new Event('pointerup'))
+  })
+  const transcript = `${'Long message dicté. '.repeat(180)}FIN DU MESSAGE`
+  render(snap([msg('old', 'user', 'ancien message', 1), msg('reply', 'assistant', 'ancienne réponse', 2), msg('dictated', 'user', transcript, 3)]))
+  await flush()
+  expect(peek.scrollTop).toBe(2400)
+  expect(peek.textContent).toContain('FIN DU MESSAGE')
+  // The preview is compact, the full message remains intact in the thread.
+  expect(document.querySelector('#agent-body')!.textContent).toContain('Long message dicté.')
+  media.mockRestore()
+})
+
+it('a new reply while reading keeps the position and offers a way to the end', async () => {
+  const media = vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true } as MediaQueryList)
+  render(snap([msg('old', 'user', 'ancien message', 1), msg('reply', 'assistant', 'ancienne réponse', 2)]))
+  const peek = document.querySelector<HTMLElement>('.peek')!
+  Object.defineProperties(peek, { scrollHeight: { value: 2400, configurable: true }, clientHeight: { value: 180, configurable: true } })
+  act(() => {
+    peek.dispatchEvent(new Event('pointerdown'))
+    peek.scrollTop = 0
+    peek.dispatchEvent(new Event('scroll'))
+    peek.dispatchEvent(new Event('pointerup'))
+  })
+  render(snap([msg('old', 'user', 'ancien message', 1), msg('reply', 'assistant', 'ancienne réponse', 2), msg('new-reply', 'assistant', 'nouvelle réponse', 3)]))
+  await flush()
+  expect(peek.scrollTop).toBe(0)
+  const toEnd = document.querySelector<HTMLButtonElement>('.peek-behind')!
+  expect(toEnd).not.toBeNull()
+  act(() => toEnd.click())
+  expect(peek.scrollTop).toBe(2400)
+  media.mockRestore()
+})

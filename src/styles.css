@@ -2620,3 +2620,68 @@ html[data-keyboard] .agent:not(.open) .fyt-words {
 }
 .composer textarea.horizontal-editor::-webkit-scrollbar { display: none; }
 .capture-offer img { width: 40px; height: 40px; display: block; object-fit: cover; }
+
+/* A preview can be deliberately scrolled too: new replies need the same route back to the end. */
+.peek-wrap { position: relative; }
+.peek-behind {
+  position: absolute;
+  bottom: 8px;
+  right: max(calc((100% - 760px) / 2 + var(--pad)), var(--pad));
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  z-index: 2;
+  background: var(--ink);
+  color: var(--c);
+}
+
+/* Home's shared axes: mascot / input prompt / automation glyph on the left;
+   token count / stream square / send button on the right. The mascot and square share a row. */
+.agent:not(.open).has-foryou .agent-top {
+  position: relative;
+  height: 80px;
+  padding-block: 0;
+}
+.agent:not(.open).has-foryou .agent-top .voice {
+  position: absolute;
+  top: 32px;
+  left: calc(var(--pad) - 11px);
+}
+.agent:not(.open).has-foryou .voice-logo {
+  width: 44px;
+  height: 48px;
+  min-height: 0;
+}
+.agent:not(.open).has-foryou .agent-top .devil-btn {
+  position: absolute;
+  top: 0;
+  right: calc(var(--pad) + 44px);
+}
+.agent:not(.open).has-foryou .token-meter {
+  top: var(--safe-t);
+  right: max(calc((100% - 760px) / 2 + var(--pad)), var(--pad));
+  min-width: 44px;
+  height: 32px;
+  padding: 0;
+  text-align: center;
+}
+.agent:not(.open).has-foryou .fyt-words {
+  position: relative;
+  height: 48px;
+  margin-top: -48px;
+  padding-left: calc(var(--pad) + 40px);
+  padding-right: calc(var(--pad) + 50px);
+}
+.agent:not(.open).has-foryou .fyt-dot {
+  position: absolute;
+  top: 50%;
+  right: calc(var(--pad) + 22px);
+  margin-left: 0;
+  transform: translate(50%, -50%);
+}
+html[data-keyboard] .agent:not(.open).has-foryou .fyt-words {
+  position: fixed;
+  top: calc(var(--vvt, 0px) + var(--safe-t));
+  margin-top: 0;
+}

@@ -327,6 +327,8 @@ export function MemoryPage() {
         />
       ))}
       {list && list.length === 0 && <div className="in meta empty">{t.empty}</div>}
+      {/* Room for the weevboss logo floating at the bottom: the last memory never ends up under it. */}
+      <div style={{ height: 96 }} />
     </Shell>
   )
 }

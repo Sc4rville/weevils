@@ -7,12 +7,10 @@
 }
 
 /* A memory, closed: the sentence in full (three lines at most), no arrow (it opens in place). */
-.mem-row > .in {
-  align-items: flex-start;
-}
-
-.mem-row .st {
-  padding-top: 1px;
+.row.mem-row > .in {
+  align-items: baseline;
+  min-height: 0;
+  padding-block: 14px;
 }
 
 .mem-text {
@@ -30,7 +28,7 @@
 }
 
 /* Open: the sentence becomes the title of its band, and its own field. */
-.mem-edit {
+.in.mem-edit {
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -68,7 +66,7 @@
 }
 
 /* Origin and date on the left, « forget » on the right. */
-.mem-foot {
+.in.mem-foot {
   display: flex;
   align-items: center;
   gap: 12px;

@@ -293,10 +293,43 @@ export interface Optimizer {
   /** Durée estimée, en minutes. */
   est?: number
   /** queued : ce qu'elle attend (busy : un agent travaille ; load : machine chargée ; ram : mémoire ; queue : une autre tâche d'abord ;
-   *  later : arrêtée par une limite d'usage ou une erreur, nouvel essai à retryAt). */
-  waiting?: 'busy' | 'load' | 'ram' | 'queue' | 'later'
+   *  later : arrêtée par une limite d'usage ou une erreur, nouvel essai à retryAt ; time : son heure, à startAt). */
+  waiting?: 'busy' | 'load' | 'ram' | 'queue' | 'later' | 'time'
   /** waiting later : quand elle sera relancée. */
   retryAt?: number
+  /** Conditions négociées : pas avant (instant), chaque jour dans une fenêtre (minutes après minuit, heure de tz), toutes les every ms. */
+  notBefore?: number
+  window?: { from: number; to: number }
+  every?: number
+  /** Fuseau de l'utilisateur (envoyé par le téléphone) où se lisent notBefore et window. */
+  tz?: string
+  /** queued, retenue par ses conditions d'heure : quand elle pourra partir. */
+  startAt?: number
+  /** La négociation (POST /api/optimizers/:id/talk), les dernières lignes, gardée après validation : d'où vient la tâche. */
+  talk?: OptimizerLine[]
+  /** Ce que la dernière réécriture a changé (l'app fait clignoter ces champs). */
+  changed?: { at: number; fields: OptimizerField[] }
+  /** Version : +1 à chaque réécriture ; ✓ valide celle-ci (accept { rev }). */
+  rev?: number
+  /** Tâche récurrente : ses passages précédents (le plus récent en dernier). */
+  runs?: { at: number; ok: boolean; note?: string }[]
+}
+
+export interface OptimizerLine {
+  who: 'user' | 'auto'
+  text: string
+  at: number
+}
+
+export type OptimizerField = 'title' | 'why' | 'est' | 'priority' | 'heavy' | 'kind' | 'repo' | 'prompt' | 'notBefore' | 'window' | 'every'
+
+/** Réponse de POST /api/optimizers/:id/talk : la réponse à afficher (et lire), la tâche telle qu'elle est maintenant. */
+export interface OptimizerTalkReply {
+  reply: string
+  item?: Optimizer
+  changed: OptimizerField[]
+  /** Pas de modèle (échec, limite) : rien n'a changé, la question n'est pas gardée. */
+  failed?: boolean
 }
 
 /** La machine vue par la bande auto : charge, mémoire libre, et ce qui retient une tâche acceptée (null : libre). */

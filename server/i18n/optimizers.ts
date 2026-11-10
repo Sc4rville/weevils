@@ -39,7 +39,7 @@ export default defineMessages({
      * to touch. `report` is the file where watch/content/explore write their result. The technical deny list
      * (optimizers.ts DENY) backs these rules.
      */
-    brief: (o: { title: string; branch: string; checkout: string; report: string; inRepo: boolean; writesReport: boolean; heavy: boolean; prompt: string }) =>
+    brief: (o: { title: string; branch: string; checkout: string; report: string; inRepo: boolean; writesReport: boolean; heavy: boolean; prompt: string; minutes: number; agreed: string }) =>
       `Tâche de fond lancée par weevils pendant que la machine est libre : « ${o.title} ». Personne ne te répond en direct : avance seul jusqu'au bout.\n\n` +
       `Règles, sans exception :\n` +
       (o.inRepo
@@ -50,12 +50,67 @@ export default defineMessages({
       `- ne supprime rien en dehors de ta branche ou de ce dossier ; ne touche à aucun secret (clés, .env, identifiants) ;\n` +
       `- si \`command -v heavy\` répond, préfixe par \`heavy\` les commandes lourdes (builds, tests, installs)${o.heavy ? ' : cette tâche en a' : ''} ;\n` +
       (o.writesReport ? `- écris ton résultat dans ${o.report} (court, clair, en français) ;\n` : '') +
-      `- reste dans le cadre : une heure de travail au plus ; ce qui demande une décision attend la validation de l'utilisateur.\n\n` +
+      `- reste dans le cadre : ${o.minutes > 60 ? `environ ${o.minutes} min de travail au plus` : 'une heure de travail au plus'} ; ce qui demande une décision attend la validation de l'utilisateur.\n\n` +
       `La consigne :\n${o.prompt}\n\n` +
+      (o.agreed ? `Ce qui a été convenu avec l'utilisateur avant de la valider (la consigne en tient déjà compte) :\n${o.agreed}\n\n` : '') +
       `Termine par un résumé de deux phrases : ce qui a été fait, et ce qui attend sa validation.`,
+    // ------------------------------------------------------------ the negotiation (POST /api/optimizers/:id/talk)
+    /**
+     * One turn of the exchange about one task: the user asks (« c'est quoi ? », « fais-le plutôt la nuit ») and the
+     * model answers, rewriting the task when asked. Every block is already rendered.
+     */
+    talk: (o: { user: string; state: string; rules: string; item: string; live: string; memory: string; projects: string; repos: string; machine: string; now: string; history: string; said: string; replyLang: string; appLang: string }) =>
+      `Tu es weevils, l'app d'où ${o.user} suit ses agents de code depuis son téléphone. Il discute avec toi d'une tâche de fond (état : ${o.state}). ` +
+      `C'est une négociation : tu réponds à ce qu'il demande et, s'il veut autre chose (quoi, quand, à quelle fréquence, avec quelle intensité, sur quel projet), tu réécris la tâche. C'est lui qui valide, jamais toi.\n\n` +
+      `La tâche :\n${o.item}\n\n` +
+      (o.live ? `${o.live}\n\n` : '') +
+      `Ce que weevils sait de lui :\n${o.memory || '(rien encore)'}\n\n` +
+      `Ses projets :\n${o.projects || '(aucun)'}\n\n` +
+      `Repos présents sur la machine (noms exacts) :\n${o.repos || '(aucun)'}\n\n` +
+      `Machine : ${o.machine}\n` +
+      `Maintenant : ${o.now}\n\n` +
+      (o.history ? `L'échange jusqu'ici :\n${o.history}\n\n` : '') +
+      `Il dit maintenant : ${o.said}\n\n` +
+      `Ce que tu peux changer dans cet état : ${o.rules}\n\n` +
+      `Règles :\n` +
+      `- reply : court (une à trois phrases), direct et concret, en ${o.replyLang}, en lui parlant au tutoiement s'il écrit en français ; « c'est quoi », « pourquoi », « tu ferais quoi exactement » : réponds à partir de la consigne, avec les vraies étapes et ce qu'il aura à la fin ; s'il change quelque chose, dis en une phrase ce qui a changé ; ni liste, ni emoji, ni guillemets autour des mots ;\n` +
+      `- patch : seulement les champs qui changent, {} s'il ne demande aucun changement ; quand la portée change (quoi, sur quel projet), réécris prompt en entier, et title et why s'il le faut ; title, why et prompt restent en ${o.appLang} ;\n` +
+      `- la tâche reste bornée et sûre : rien de destructif, de payant, de publié, posté ou envoyé (weevils ajoute lui-même ces règles au lancement : ne les recopie pas dans prompt) ; s'il demande l'un de ces gestes, dis-lui que la tâche préparera tout et que ce geste attendra son feu vert ;\n` +
+      `- les heures se lisent dans son fuseau (celui de « maintenant ») ; « la nuit » : window "01:00-06:00" ; « chaque jour » : every "1d" ; « chaque semaine » : every "7d" ; « demain matin » : notBefore le lendemain à 08:00 ; « une seule fois » : every null.\n\n` +
+      `Réponds uniquement en JSON : {"reply": "ta réponse", "patch": {"title": "5 mots au plus", "why": "une phrase au tutoiement", "est": minutes (5 à 240), "priority": 1 (forte) à 3 (faible), "heavy": true ou false, "kind": "tests|watch|content|explore|other", "repo": "nom exact d'un repo ci-dessus, ou null", "prompt": "la consigne complète pour l'agent", "notBefore": "AAAA-MM-JJ HH:MM" ou null (dès que possible), "window": "HH:MM-HH:MM" chaque jour ou null (n'importe quand), "every": "12h", "1d", "7d"… ou null (une seule fois)}}`,
+    /** The task as the model reads it. */
+    talkItem: (x: { title: string; why: string; kind: string; repo: string | null; est: number; priority: number; heavy: boolean; when: string; every: string; prompt: string }) =>
+      `- title : ${x.title}\n- why : ${x.why || '(aucun)'}\n- kind : ${x.kind}\n- repo : ${x.repo ?? 'null (dans son propre dossier)'}\n- est : ${x.est} min\n- priority : ${x.priority}\n- heavy : ${x.heavy}\n- quand : ${x.when}\n- fréquence : ${x.every}\n- prompt (la consigne de l'agent) :\n<<<\n${x.prompt}\n>>>`,
+    whenAsap: 'dès que la machine est libre',
+    whenNotBefore: (at: string) => `pas avant ${at}`,
+    whenWindow: (w: string) => `chaque jour entre ${w.replace('-', ' et ')}`,
+    everyOnce: 'une seule fois',
+    everyEvery: (d: string) => `toutes les ${d}`,
+    /** What a running or finished task says, for the model. */
+    liveRunning: (since: number, said: string) => `Elle tourne depuis ${since} min. Ce que l'agent dit en dernier :\n${said || '(rien encore)'}`,
+    liveEnded: (state: string, note: string) => `Elle est ${state}. Sa dernière nouvelle : ${note || '(aucune)'}`,
+    liveReport: (text: string) => `Son rapport (début) :\n${text}`,
+    liveRuns: (lines: string) => `Ses passages précédents :\n${lines}`,
+    runLine: (at: string, ok: boolean, note: string) => `- ${at} : ${ok ? 'faite' : 'échouée'}${note ? ` (${note})` : ''}`,
+    /** What may change in each state (the server enforces it too). */
+    rules_proposed: "tout ; c'est la version à l'écran qu'il validera d'un tap.",
+    rules_queued: "tout : elle n'a pas encore démarré ; la nouvelle version partira à sa place.",
+    rules_running:
+      "elle tourne en ce moment dans sa propre session, que tu ne touches pas : quand, fréquence, intensité (est, priority, heavy) changent pour la suite ; un changement de portée (title, why, prompt, repo, kind) ne vaut que pour la prochaine fois, s'il y en a une (every) : dis-le-lui.",
+    rules_ended: "rien (patch {}) : elle est finie ; réponds sur ce qu'elle a fait, et s'il veut la refaire autrement, dis-lui qu'une proposition reviendra.",
+    /** The exchange, as the model reads it. */
+    lineUser: (name: string, text: string) => `${name} : ${text}`,
+    lineAuto: (text: string) => `toi : ${text}`,
+    langName: (l: string): string => (l === 'en' ? 'anglais' : 'français'),
+    /** What the agent reads at launch about the negotiation. */
+    agreedUser: (text: string) => `- il a demandé : ${text}`,
+    agreedAuto: (text: string) => `- réponse retenue : ${text}`,
+    /** Replies when no model answers. */
+    talkFailed: "Je n'arrive pas à réfléchir à ça pour l'instant. Rien n'a changé, redemande-moi dans un moment.",
+    talkBusy: 'Je réponds déjà à ta question précédente.',
     /** Notes shown on a task that stopped without finishing (the raw error stays in the server log). */
     vanished: 'la session a disparu',
-    timedOut: 'arrêtée au bout de 2 h',
+    timedOut: (h: number) => `arrêtée au bout de ${h} h`,
     startFailed: 'lancement impossible',
     branchFailed: 'branche impossible à créer',
     noWork: 'finie sans rien rendre',
@@ -94,7 +149,7 @@ export default defineMessages({
     state_done: 'done',
     state_failed: 'failed',
     state_refused: 'refused',
-    brief: (o: { title: string; branch: string; checkout: string; report: string; inRepo: boolean; writesReport: boolean; heavy: boolean; prompt: string }) =>
+    brief: (o: { title: string; branch: string; checkout: string; report: string; inRepo: boolean; writesReport: boolean; heavy: boolean; prompt: string; minutes: number; agreed: string }) =>
       `Background task started by weevils while the machine is free: "${o.title}". Nobody answers you live: carry on alone to the end.\n\n` +
       `Rules, no exception:\n` +
       (o.inRepo
@@ -105,11 +160,55 @@ export default defineMessages({
       `- never delete anything outside your branch or this folder; never touch a secret (keys, .env, credentials);\n` +
       `- if \`command -v heavy\` succeeds, prefix heavy commands (builds, tests, installs) with \`heavy\`${o.heavy ? ': this task has some' : ''};\n` +
       (o.writesReport ? `- write your result to ${o.report} (short and clear, in English);\n` : '') +
-      `- stay in scope: one hour of work at most; anything that needs a decision waits for the user's go.\n\n` +
+      `- stay in scope: ${o.minutes > 60 ? `about ${o.minutes} min of work at most` : 'one hour of work at most'}; anything that needs a decision waits for the user's go.\n\n` +
       `The brief:\n${o.prompt}\n\n` +
+      (o.agreed ? `What was agreed with the user before they approved it (the brief already reflects it):\n${o.agreed}\n\n` : '') +
       `End with a two-sentence summary: what was done, and what awaits their validation.`,
+    talk: (o: { user: string; state: string; rules: string; item: string; live: string; memory: string; projects: string; repos: string; machine: string; now: string; history: string; said: string; replyLang: string; appLang: string }) =>
+      `You are weevils, the app from which ${o.user} follows their coding agents on their phone. They are talking with you about a background task (state: ${o.state}). ` +
+      `It is a negotiation: you answer what they ask and, when they want something else (what, when, how often, how intense, on which project), you rewrite the task. They approve it, never you.\n\n` +
+      `The task:\n${o.item}\n\n` +
+      (o.live ? `${o.live}\n\n` : '') +
+      `What weevils knows about them:\n${o.memory || '(nothing yet)'}\n\n` +
+      `Their projects:\n${o.projects || '(none)'}\n\n` +
+      `Repos on the machine (exact names):\n${o.repos || '(none)'}\n\n` +
+      `Machine: ${o.machine}\n` +
+      `Now: ${o.now}\n\n` +
+      (o.history ? `The exchange so far:\n${o.history}\n\n` : '') +
+      `They now say: ${o.said}\n\n` +
+      `What you may change in this state: ${o.rules}\n\n` +
+      `Rules:\n` +
+      `- reply: short (one to three sentences), direct and concrete, in ${o.replyLang}, speaking to them as you; "what is it", "why", "what exactly would you do": answer from the brief, with the real steps and what they get at the end; when something changes, say in one sentence what changed; no list, no emoji, no quotes around words;\n` +
+      `- patch: only the fields that change, {} when they ask for no change; when the scope changes (what, which project), rewrite prompt in full, and title and why if needed; title, why and prompt stay in ${o.appLang};\n` +
+      `- the task stays bounded and safe: nothing destructive, paid, published, posted or sent (weevils adds these rules itself at launch: don't copy them into prompt); if they ask for one of those acts, tell them the task will prepare everything and that act will wait for their go;\n` +
+      `- times are read in their time zone (the one of "now"); "at night": window "01:00-06:00"; "every day": every "1d"; "every week": every "7d"; "tomorrow morning": notBefore the next day at 08:00; "just once": every null.\n\n` +
+      `Answer only in JSON: {"reply": "your answer", "patch": {"title": "5 words at most", "why": "one sentence speaking to them as you", "est": minutes (5 to 240), "priority": 1 (high) to 3 (low), "heavy": true or false, "kind": "tests|watch|content|explore|other", "repo": "exact name of a repo above, or null", "prompt": "the full brief for the agent", "notBefore": "YYYY-MM-DD HH:MM" or null (as soon as possible), "window": "HH:MM-HH:MM" every day or null (any time), "every": "12h", "1d", "7d"… or null (just once)}}`,
+    talkItem: (x: { title: string; why: string; kind: string; repo: string | null; est: number; priority: number; heavy: boolean; when: string; every: string; prompt: string }) =>
+      `- title: ${x.title}\n- why: ${x.why || '(none)'}\n- kind: ${x.kind}\n- repo: ${x.repo ?? 'null (in its own folder)'}\n- est: ${x.est} min\n- priority: ${x.priority}\n- heavy: ${x.heavy}\n- when: ${x.when}\n- how often: ${x.every}\n- prompt (the agent's brief):\n<<<\n${x.prompt}\n>>>`,
+    whenAsap: 'as soon as the machine is free',
+    whenNotBefore: (at: string) => `not before ${at}`,
+    whenWindow: (w: string) => `every day between ${w.replace('-', ' and ')}`,
+    everyOnce: 'just once',
+    everyEvery: (d: string) => `every ${d}`,
+    liveRunning: (since: number, said: string) => `It has been running for ${since} min. What the agent said last:\n${said || '(nothing yet)'}`,
+    liveEnded: (state: string, note: string) => `It is ${state}. Its last news: ${note || '(none)'}`,
+    liveReport: (text: string) => `Its report (start):\n${text}`,
+    liveRuns: (lines: string) => `Its previous runs:\n${lines}`,
+    runLine: (at: string, ok: boolean, note: string) => `- ${at}: ${ok ? 'done' : 'failed'}${note ? ` (${note})` : ''}`,
+    rules_proposed: 'everything; the version on screen is the one they approve with one tap.',
+    rules_queued: 'everything: it has not started yet; the new version goes in its place.',
+    rules_running:
+      'it is running right now in its own session, which you never touch: when, how often and intensity (est, priority, heavy) change for what comes next; a change of scope (title, why, prompt, repo, kind) only applies to the next time, if there is one (every): tell them so.',
+    rules_ended: 'nothing (patch {}): it is over; answer about what it did, and if they want it done differently, tell them a proposal will come back.',
+    lineUser: (name: string, text: string) => `${name}: ${text}`,
+    lineAuto: (text: string) => `you: ${text}`,
+    langName: (l: string) => (l === 'fr' ? 'French' : 'English'),
+    agreedUser: (text: string) => `- they asked: ${text}`,
+    agreedAuto: (text: string) => `- answer kept: ${text}`,
+    talkFailed: "I can't think this through right now. Nothing changed, ask me again in a moment.",
+    talkBusy: 'I am still answering your previous question.',
     vanished: 'the session vanished',
-    timedOut: 'stopped after 2 h',
+    timedOut: (h: number) => `stopped after ${h} h`,
     startFailed: 'could not start',
     branchFailed: 'could not make its branch',
     noWork: 'ended without any answer',

@@ -40,6 +40,7 @@ export default defineMessages({
     wait_load: 'charge',
     wait_ram: 'mémoire',
     wait_later: 'plus tard',
+    wait_time: 'à son heure',
     /** State names, for screen readers. */
     state_running: 'en cours',
     state_waiting: 'attend une machine libre',
@@ -96,6 +97,7 @@ export default defineMessages({
     wait_load: 'load',
     wait_ram: 'memory',
     wait_later: 'later',
+    wait_time: 'at its time',
     state_running: 'running',
     state_waiting: 'waiting for a free machine',
     state_queued: 'queued',

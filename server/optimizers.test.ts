@@ -7,7 +7,7 @@ import { smart } from './fast.ts'
 import O from './i18n/optimizers.ts'
 import { Memory } from './memory.ts'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_RUN_MS, MAX_TRIES, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, VANISH_MS, Optimizers, freeReason, guardEnv, isRepeat, jailArgs, isStall, parseProposals, slug, stallKind, tidy, type Sys } from './optimizers.ts'
+import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_FAILED_RUNS, MAX_RUN_MS, MAX_TALK, MAX_TRIES, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, TALK_BACKOFF_MS, TALK_CHARS, VANISH_MS, Optimizers, agreedDigest, freeReason, guardEnv, isRepeat, jailArgs, isStall, parsePatch, parseProposals, runLimit, slug, stallKind, tidy, type Sys } from './optimizers.ts'
 
 // Hermetic: no claude CLI, no login check, the language fixed in memory.
 vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn() }))
@@ -33,9 +33,15 @@ let bump: ReturnType<typeof vi.fn>
 /** What the session's transcript and hooks say (turn still open, Stop received). */
 let store: Map<string, { phase: 'working' | 'idle'; lastActivityAt: number }>
 let hooks: Map<string, { event: string; at: number }>
+/** The thread of a session (Weevils.detail), for what a running task says. */
+let detail: ReturnType<typeof vi.fn>
+/** What would reach a session: never called by the runner nor by an exchange. */
+let send: ReturnType<typeof vi.fn>
+let key: ReturnType<typeof vi.fn>
+let command: ReturnType<typeof vi.fn>
 const make = () =>
   new Optimizers(
-    { snapshot: () => snap, allRepos: () => ['mygame', 'mygame-site', 'notes'], repoDir: (r: string) => path.join(dir, 'p', r), createIn, bump, store, hooks } as never,
+    { snapshot: () => snap, allRepos: () => ['mygame', 'mygame-site', 'notes'], repoDir: (r: string) => path.join(dir, 'p', r), createIn, bump, store, hooks, detail, send, key, command } as never,
     memory,
     { file: path.join(dir, 'optimizers.json'), dir: path.join(dir, 'optimizers'), sys },
   )
@@ -59,6 +65,10 @@ beforeEach(() => {
   store = new Map()
   hooks = new Map()
   createIn = vi.fn(async () => ({ id: 'sess-1' }))
+  detail = vi.fn(() => undefined)
+  send = vi.fn()
+  key = vi.fn()
+  command = vi.fn()
   bump = vi.fn()
   model.mockReset()
   vi.spyOn(console, 'log').mockImplementation(() => undefined)
@@ -602,5 +612,238 @@ describe('auto — the environment barriers', () => {
     expect(r.status).not.toBe(0)
     expect(`${r.stdout}${r.stderr}`).toMatch(/not logged in/i)
     expect(execFileSync('ls', ['-A', set.GH_CONFIG_DIR], { encoding: 'utf8' }).trim()).toBe('')
+  })
+})
+
+describe('auto — talking a task over (the negotiation)', () => {
+  const P = 'Europe/Paris' // T0 is 10:00 there
+  const proposed = async (n = 1) => {
+    const o = make()
+    model.mockResolvedValueOnce(props(n))
+    await o.round(T0)
+    return { o, id: o.list()[0].id }
+  }
+  const answer = (reply: string, patch: Record<string, unknown> = {}) => model.mockResolvedValueOnce(JSON.stringify({ reply, patch }))
+
+  it('every field of a rewrite is checked and clamped, never trusted', () => {
+    const ctx = { repos: ['mygame', 'notes'], tz: P, now: T0 }
+    expect(parsePatch({ est: 900, priority: 0, heavy: 'yes', kind: 'weird', title: '« Tests » e2e de mygame, la nuit, sans rien casser, avec un titre beaucoup trop long', prompt: 'short' }, ctx)).toEqual({
+      est: 240,
+      priority: 1,
+      title: 'Tests e2e de mygame, la nuit, sans rien casser, avec un titr',
+    })
+    expect(parsePatch({ est: 1, priority: 7, repo: 'MyGame', kind: 'tests' }, ctx)).toEqual({ est: 5, priority: 3, repo: 'mygame', kind: 'tests' })
+    expect(parsePatch({ repo: 'not-a-repo' }, ctx)).toEqual({})
+    expect(parsePatch({ repo: null, every: null, window: null, notBefore: null }, ctx)).toEqual({ repo: null, every: null, window: null, notBefore: null })
+    expect(parsePatch({ every: '7d', window: '01:00-06:00', notBefore: '2026-11-11 08:00' }, ctx)).toEqual({ every: 7 * 24 * 60 * MIN, window: { from: 60, to: 360 }, notBefore: Date.parse('2026-11-11T07:00:00Z') })
+    // A period under an hour, a window of 10 min, a start a year away or unreadable: dropped.
+    expect(parsePatch({ every: '5min', window: '01:00-01:10', notBefore: '2027-12-01 08:00' }, ctx)).toEqual({})
+    expect(parsePatch({ notBefore: 'tonight' }, ctx)).toEqual({})
+    // Already past: as soon as possible.
+    expect(parsePatch({ notBefore: '2026-11-10 09:00' }, ctx)).toEqual({ notBefore: null })
+    expect(parsePatch('nope', ctx)).toEqual({})
+    expect(parsePatch([1, 2], ctx)).toEqual({})
+    // The brief is the model's, the safety rules are added at launch (never part of it).
+    expect(parsePatch({ prompt: '  Run only the e2e tests of mygame, fix flaky ones, stop at one hour.  ' }, ctx).prompt).toBe('Run only the e2e tests of mygame, fix flaky ones, stop at one hour.')
+    expect(runLimit(30)).toBe(MAX_RUN_MS)
+    expect(runLimit(200)).toBe(300 * MIN)
+    expect(runLimit(240)).toBe(360 * MIN)
+  })
+
+  it('answers with the brief, the memory, the projects and the time in the user zone; rewrites the proposal; the history stays', async () => {
+    memory.add('wants to ship mygame this year')
+    const { o, id } = await proposed()
+    answer('It adds tests for the jump physics, on a local branch for you to review.')
+    const r1 = await o.talk(id, 'what is it?', P)
+    expect(r1).toMatchObject({ reply: 'It adds tests for the jump physics, on a local branch for you to review.', changed: [] })
+    const p = model.mock.calls[1][0]
+    expect(p).toContain('Add tests for the jump physics of mygame')
+    expect(p).toContain('wants to ship mygame this year')
+    expect(p).toContain('mygame-site')
+    expect(p).toContain('2026-11-10 10:00 (Europe/Paris)')
+    expect(p).toContain('Sam: what is it?')
+    expect(p).toContain('everything; the version on screen')
+
+    answer('Done: at night, every week, only the e2e tests.', {
+      title: 'E2E tests of mygame',
+      prompt: 'Run and harden only the end-to-end tests of mygame; fix flaky ones; stop after one hour.',
+      window: '01:00-06:00',
+      every: '7d',
+      est: 50,
+      priority: 1, // unchanged: not flashed
+      repo: 'nowhere', // unknown: ignored
+    })
+    const r2 = await o.talk(id, 'do it at night instead, every week, and only the e2e tests', P)
+    expect(r2!.changed.sort()).toEqual(['est', 'every', 'prompt', 'title', 'window'])
+    expect(model.mock.calls[2][0]).toContain('you: It adds tests for the jump physics')
+    const v = o.list().find((x) => x.id === id)!
+    expect(v).toMatchObject({ title: 'E2E tests of mygame', repo: 'mygame', est: 50, every: 7 * 24 * 60 * MIN, window: { from: 60, to: 360 }, tz: P, rev: 1, state: 'proposed' })
+    expect(v.changed!.fields.sort()).toEqual(['est', 'every', 'prompt', 'title', 'window'])
+    expect(v.talk!.map((l) => l.who)).toEqual(['user', 'auto', 'user', 'auto'])
+    expect(v).not.toHaveProperty('prompt')
+    // Persisted.
+    expect(make().list().find((x) => x.id === id)!.talk).toHaveLength(4)
+  })
+
+  it('keeps the last lines of the exchange, each one cut', async () => {
+    const { o, id } = await proposed()
+    for (let i = 0; i < 9; i++) {
+      answer(`reply ${i} ${'x'.repeat(800)}`)
+      await o.talk(id, `question ${i}`, P)
+    }
+    const talk = o.list()[0].talk!
+    expect(talk).toHaveLength(MAX_TALK)
+    expect(talk[0].text).toBe('question 3')
+    expect(Math.max(...talk.map((l) => l.text.length))).toBeLessThanOrEqual(TALK_CHARS)
+  })
+
+  it('a model that fails: a note from the catalog, nothing changes, nothing kept, no loop', async () => {
+    const { o, id } = await proposed()
+    model.mockRejectedValueOnce(new Error('timeout'))
+    const r = await o.talk(id, 'make it nightly', P)
+    expect(r).toMatchObject({ failed: true, changed: [], reply: O.en.talkFailed })
+    expect(o.list()[0].talk).toBeUndefined()
+    expect(o.list()[0].rev).toBeUndefined()
+    // Asked again at once: the model is not called again.
+    const calls = model.mock.calls.length
+    expect((await o.talk(id, 'make it nightly', P))!.failed).toBe(true)
+    expect(model.mock.calls.length).toBe(calls)
+    vi.setSystemTime(T0 + TALK_BACKOFF_MS + 1)
+    model.mockResolvedValueOnce('no json here')
+    expect((await o.talk(id, 'make it nightly', P))!.failed).toBe(true)
+    expect(model.mock.calls.length).toBe(calls + 1)
+    expect(await o.talk('nope', 'hello', P)).toBeNull()
+  })
+
+  it('one turn at a time per task; ✓ waits for it, and takes the version on screen', async () => {
+    const { o, id } = await proposed()
+    let release!: (s: string) => void
+    model.mockImplementationOnce(() => new Promise((r) => (release = r)))
+    const first = o.talk(id, 'only the e2e tests', P)
+    expect((await o.talk(id, 'and at night', P))!.reply).toBe(O.en.talkBusy)
+    expect(o.accept(id)).toBe('busy')
+    release(JSON.stringify({ reply: 'Only the e2e tests now.', patch: { title: 'E2E tests of mygame', prompt: 'Run and harden only the end-to-end tests of mygame, then stop.' } }))
+    await first
+    expect(model).toHaveBeenCalledTimes(2)
+    // The screen still shows the old version (rev 0): refused, the app refreshes.
+    expect(o.accept(id, 0)).toBe('busy')
+    expect(o.accept(id, 1)).toBe(true)
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    const [, title, text] = createIn.mock.calls[0]
+    expect(title).toBe('E2E tests of mygame')
+    expect(text).toContain('Run and harden only the end-to-end tests of mygame')
+    expect(text).not.toContain('jump physics')
+    // The agent knows what was agreed, in a few lines; the safety rules are still there.
+    expect(text).toContain('What was agreed with the user')
+    expect(text).toContain('- they asked: only the e2e tests')
+    expect(text).toContain('- answer kept: Only the e2e tests now.')
+    expect(text).toContain('never push')
+    expect(o.list()[0].talk).toHaveLength(2)
+    expect(agreedDigest(undefined, { user: (s) => s, auto: (s) => s })).toBe('')
+  })
+
+  it('holds a task until its time: not before, its window (in the user zone); then it starts', async () => {
+    const { o, id } = await proposed()
+    answer('Tonight then, between 01:00 and 06:00.', { window: '01:00-06:00' })
+    await o.talk(id, 'at night', P)
+    expect(o.accept(id)).toBe(true)
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    expect(createIn).not.toHaveBeenCalled()
+    const tonight = Date.parse('2026-11-11T00:00:00Z') // 01:00 in Paris
+    expect(o.list(T0 + IDLE_MS)[0]).toMatchObject({ state: 'queued', waiting: 'time', startAt: tonight })
+    o.tick(tonight + 30 * MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(1)
+    expect(o.list(tonight + 30 * MIN)[0].state).toBe('running')
+  })
+
+  it('a recurring task comes back for its next run when one ends, keeping each run line; stops after failures in a row', async () => {
+    const { o, id } = await proposed()
+    answer('Every day.', { every: '1d' })
+    await o.talk(id, 'every day', P)
+    o.accept(id)
+    const start = T0 + IDLE_MS
+    o.tick(start)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: 4 new tests.' })]
+    o.tick(start + 20 * MIN)
+    let v = o.list(start + 20 * MIN)[0]
+    expect(v).toMatchObject({ state: 'queued', waiting: 'time', lastEvent: 'Done: 4 new tests.', startAt: start + 24 * 60 * MIN })
+    expect(v.runs).toEqual([{ at: start + 20 * MIN, ok: true, note: 'Done: 4 new tests.' }])
+    // Next day: it starts again in the same worktree, on the same branch.
+    const day2 = start + 24 * 60 * MIN
+    o.tick(day2)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(2)
+    expect(sys.worktree).toHaveBeenCalledTimes(1)
+    expect(createIn.mock.calls[1][2]).toBe(createIn.mock.calls[0][2])
+    // Fails MAX_FAILED_RUNS times in a row: it stops coming back.
+    let t = day2
+    for (let i = 0; i < MAX_FAILED_RUNS; i++) {
+      snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'x', messageCount: 1 })]
+      o.tick(t + 20 * MIN)
+      v = o.list(t + 20 * MIN)[0]
+      if (i < MAX_FAILED_RUNS - 1) {
+        expect(v.state).toBe('queued')
+        t = v.startAt!
+        o.tick(t)
+        await flush()
+        expect(o.list(t)[0].state).toBe('running')
+      }
+    }
+    expect(v.state).toBe('failed')
+    expect(v.runs!.map((r) => r.ok)).toEqual([true, false, false, false])
+  })
+
+  it('talking to a running task never touches its session: conditions now, a new scope at its next run', async () => {
+    const { o, id } = await proposed()
+    o.accept(id)
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'working', lastMessage: 'Writing the 3rd test.' })]
+    detail.mockReturnValue({ messages: [{ role: 'assistant', text: 'Found 2 flaky tests in physics.spec.ts, fixing them.', at: T0 }] })
+    answer('It is fixing two flaky tests. From the next run it will only do the e2e tests, every week.', {
+      title: 'E2E tests of mygame',
+      prompt: 'Run and harden only the end-to-end tests of mygame, then stop.',
+      every: '7d',
+      priority: 3,
+    })
+    const r = await o.talk(id, 'what are you doing? and from now on only e2e, weekly', P)
+    expect(model.mock.calls[1][0]).toContain('Found 2 flaky tests in physics.spec.ts')
+    expect(model.mock.calls[1][0]).toContain('it is running right now in its own session')
+    expect(r!.changed.sort()).toEqual(['every', 'priority'])
+    let v = o.list()[0]
+    expect(v).toMatchObject({ state: 'running', sessionId: 'sess-1', title: 'Harden mygame tests', priority: 3, every: 7 * 24 * 60 * MIN })
+    // Nothing sent to the session, nothing started.
+    expect(createIn).toHaveBeenCalledTimes(1)
+    expect(send).not.toHaveBeenCalled()
+    expect(key).not.toHaveBeenCalled()
+    expect(command).not.toHaveBeenCalled()
+    // The run ends: back to the queue with the new scope.
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: 2 flaky tests fixed.' })]
+    o.tick(T0 + IDLE_MS + 30 * MIN)
+    v = o.list(T0 + IDLE_MS + 30 * MIN)[0]
+    expect(v).toMatchObject({ state: 'queued', title: 'E2E tests of mygame' })
+    o.tick(v.startAt!)
+    await flush()
+    expect(createIn.mock.calls[1][2]).toContain('Run and harden only the end-to-end tests of mygame')
+  })
+
+  it('a finished task answers about what it did but changes nothing', async () => {
+    const { o, id } = await proposed()
+    o.accept(id)
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: 12 new tests.' })]
+    o.tick(T0 + IDLE_MS + 20 * MIN)
+    answer('It added 12 tests.', { every: '1d', title: 'Again' })
+    const r = await o.talk(id, 'what did it do?', P)
+    expect(model.mock.calls[1][0]).toContain('Done: 12 new tests.')
+    expect(r!.changed).toEqual([])
+    expect(o.list()[0]).toMatchObject({ state: 'done', title: 'Harden mygame tests' })
+    expect(o.list()[0].every).toBeUndefined()
+    expect(o.list()[0].talk).toHaveLength(2)
   })
 })

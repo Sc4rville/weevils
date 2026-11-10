@@ -18,6 +18,8 @@ export interface AutoTask {
   place?: number
   nextAt?: number | null
   every?: number | null
+  /** An accepted task that only starts inside a daily window (minutes after local midnight). */
+  window?: { from: number; to: number } | null
   startedAt?: number | null
   endedAt?: number | null
   since?: number | null
@@ -51,7 +53,8 @@ export const ACTIVE = new Set<TaskState>(['running', 'waiting', 'queued'])
 
 export function fromOptimizer(o: Optimizer): AutoTask | null {
   if (o.state === 'proposed' || o.state === 'refused') return null
-  const state: TaskState = o.state === 'queued' ? (o.waiting === 'queue' || !o.waiting ? 'queued' : 'waiting') : o.state
+  // Held by its own time (not before, its window, its next run): planned, like a timer.
+  const state: TaskState = o.state === 'queued' ? (o.waiting === 'time' ? 'scheduled' : o.waiting === 'queue' || !o.waiting ? 'queued' : 'waiting') : o.state
   return {
     id: o.id,
     kind: 'optimizer',
@@ -66,8 +69,10 @@ export function fromOptimizer(o: Optimizer): AutoTask | null {
     heavy: o.heavy,
     sessionId: o.sessionId,
     note: o.lastEvent,
-    // Stopped by a limit or an error: when it starts again.
-    nextAt: o.state === 'queued' && o.retryAt ? o.retryAt : null,
+    // Stopped by a limit or an error, or held by its time: when it starts again.
+    nextAt: o.state === 'queued' ? (o.retryAt && o.retryAt > (o.startAt ?? 0) ? o.retryAt : (o.startAt ?? o.retryAt ?? null)) : null,
+    every: o.every ?? null,
+    window: o.window ?? null,
   }
 }
 

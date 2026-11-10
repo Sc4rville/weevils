@@ -14,6 +14,12 @@
 // least, or as soon as it settles after a round that proposed nothing), only while fewer than 3 proposals wait for an
 // answer; a failed round backs off 1 h (doubling), never a loop.
 //
+// Each task can be talked over before (and after) it is accepted (talk(), POST /api/optimizers/:id/talk): a short
+// exchange with the model that answers about it and rewrites it when asked (what, when, how often, how intense, on which
+// repo). Every field of the rewrite is checked here, never trusted; the exchange stays on the task (where it came from)
+// and its gist goes into the brief at launch. Conditions: not before a moment, inside a daily window, every N (a
+// recurring task goes back to the queue for its next run when one ends).
+//
 // Never pushed, published or paid without the user: the brief says so, Claude Code's deny list (DENY) blocks the plain
 // commands, the session's environment (guardEnv) leaves gh logged out, git unable to push and no MCP connector, and the
 // session runs in a jail (jailArgs, bwrap) where the keys and logins are gone and the user's files read-only.
@@ -24,11 +30,13 @@ import fs from 'node:fs'
 import type http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import type { AutoMachine, Optimizer, Session } from '../shared/api.ts'
+import type { AutoMachine, Optimizer, OptimizerField, OptimizerLine, OptimizerTalkReply, Session } from '../shared/api.ts'
+import { detectLang } from '../shared/detect-lang.ts'
+import { fmtLocal, nextRun, nextStart, parseEvery, parseLocal, parseWindow, serverTz, validTz, windowText, MAX_AHEAD_MS, type Window } from './auto-time.ts'
 import { DATA_DIR, MACHINE, PROJECT_ROOTS, PROJECTS_DIR } from './config.ts'
 import type { Weevils } from './core.ts'
 import { parseJson, smart } from './fast.ts'
-import { lang, tr, user } from './i18n.ts'
+import { lang, tr, user, withLang, type Lang } from './i18n.ts'
 import O from './i18n/optimizers.ts'
 import type { Memory } from './memory.ts'
 import { claudeLogged } from './setup.ts'
@@ -55,6 +63,8 @@ export const MIN_FREE_BYTES = 2 * 1024 ** 3
 /** A running task whose session is gone this long, or that runs longer than MAX_RUN_MS, has failed. */
 export const VANISH_MS = 3 * 60_000
 export const MAX_RUN_MS = 2 * 3600_000
+/** …or 1.5 × its estimate when that is longer, never past this. */
+export const MAX_RUN_CAP_MS = 6 * 3600_000
 /** A task stopped by a usage limit, an expired login or an API error goes back to the queue this long, this many tries. */
 export const RETRY_MS = 3600_000
 export const MAX_TRIES = 3
@@ -63,6 +73,19 @@ export const KEEP_MS = 3 * 24 * 3600_000
 const TICK_MS = 60_000
 const MAX_STORED = 200
 const KINDS = ['tests', 'watch', 'content', 'explore', 'other'] as const
+/** The exchange kept on a task: its last lines, each one cut to this. */
+export const MAX_TALK = 12
+export const TALK_CHARS = 500
+/** One exchange turn: the model may take its time (it may rewrite the whole brief). */
+const TALK_TIMEOUT_MS = 120_000
+/** After a failed turn, the same task waits this long before the model is asked again (never a loop). */
+export const TALK_BACKOFF_MS = 20_000
+/** A recurring task keeps this many runs; this many failures in a row and it stops coming back. */
+const MAX_RUNS = 10
+export const MAX_FAILED_RUNS = 3
+/** What a rewrite may change, in the order the app shows them. */
+const SCOPE = ['title', 'why', 'kind', 'repo', 'prompt'] as const
+const TERMS = ['est', 'priority', 'heavy', 'notBefore', 'window', 'every'] as const
 
 /**
  * What an unattended task may never do, enforced by Claude Code itself (deny rules hold even without permission
@@ -276,6 +299,10 @@ type Stored = Optimizer & {
   held?: boolean
   /** The agent of the current (or last) run: Codex while Claude is at its limit. */
   tool?: 'claude' | 'codex'
+  /** Its local branch, fixed at the first start (a later run or a retry finds the same worktree). */
+  branch?: string
+  /** A change of scope agreed while it was running: applied when it comes back for its next run. */
+  pending?: Partial<Pick<Stored, (typeof SCOPE)[number]>>
 }
 interface State {
   items: Stored[]
@@ -321,6 +348,21 @@ const tryJail = (args: string[]) =>
 const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: () => os.freemem(), logged: claudeLogged, worktree: gitWorktree, jail: tryJail }
 
 // ---------------------------------------------------------------- pure helpers (tested)
+
+/** A rewrite from the model, checked: null clears a condition (as soon as possible, any time, just once). */
+export interface Patch {
+  title?: string
+  why?: string
+  kind?: Optimizer['kind']
+  repo?: string | null
+  prompt?: string
+  est?: number
+  priority?: 1 | 2 | 3
+  heavy?: boolean
+  notBefore?: number | null
+  window?: Window | null
+  every?: number | null
+}
 
 const oneLine = (s: unknown, max: number) =>
   String(s ?? '')
@@ -413,6 +455,96 @@ export function parseProposals(raw: unknown, repos: string[], known: { title: st
   return out
 }
 
+const isNull = (v: unknown) => v === null || (typeof v === 'string' && /^(null|none|never|once|aucune?|jamais|une fois|)$/i.test(v.trim()))
+
+/**
+ * The model's rewrite of a task, every field checked (never trusted): a title and a why that read well, a known kind,
+ * a repo that really is on the machine (else ignored; null: its own folder), a full brief, an estimate of 5 min to
+ * 4 h, priority 1–3, a start within 60 days (in the user's zone), a daily window of 30 min at least, a period of
+ * 1 h to 90 days. Anything else is dropped, field by field.
+ */
+export function parsePatch(raw: unknown, ctx: { repos: string[]; tz: string; now: number }): Patch {
+  const x = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}
+  const p: Patch = {}
+  if ('title' in x) {
+    const t = tidy(x.title, 60)
+    if (t.length >= 3) p.title = t
+  }
+  if ('why' in x) {
+    const w = tidy(x.why, 220)
+    if (w.length >= 3) p.why = w
+  }
+  if ((KINDS as readonly string[]).includes(String(x.kind))) p.kind = x.kind as Optimizer['kind']
+  if ('repo' in x) {
+    if (isNull(x.repo)) p.repo = null
+    else if (typeof x.repo === 'string') {
+      const want = x.repo.trim()
+      const hit = ctx.repos.find((n) => n === want) ?? ctx.repos.find((n) => n.toLowerCase() === want.toLowerCase())
+      if (hit) p.repo = hit
+    }
+  }
+  if (typeof x.prompt === 'string') {
+    const b = x.prompt.trim().slice(0, 6000)
+    if (b.length >= 20) p.prompt = b
+  }
+  const num = (v: unknown) => (typeof v === 'number' || (typeof v === 'string' && v.trim()) ? Number(v) : NaN)
+  const est = num(x.est)
+  if (Number.isFinite(est)) p.est = clamp(Math.round(est), 5, 240)
+  const pr = num(x.priority)
+  if (Number.isFinite(pr)) p.priority = clamp(Math.round(pr), 1, 3) as 1 | 2 | 3
+  if (typeof x.heavy === 'boolean') p.heavy = x.heavy
+  if ('notBefore' in x) {
+    if (isNull(x.notBefore)) p.notBefore = null
+    else {
+      const at = typeof x.notBefore === 'number' ? x.notBefore : parseLocal(x.notBefore, ctx.tz)
+      // Already past (a few minutes of slack): as soon as possible. Too far or unreadable: ignored.
+      if (at !== null && Number.isFinite(at) && at <= ctx.now + MAX_AHEAD_MS && at > ctx.now - 24 * 3600_000) p.notBefore = at > ctx.now + 60_000 ? at : null
+    }
+  }
+  if ('window' in x) {
+    if (isNull(x.window)) p.window = null
+    else {
+      const w = parseWindow(x.window)
+      if (w) p.window = w
+    }
+  }
+  if ('every' in x) {
+    if (isNull(x.every) || x.every === 0 || x.every === false) p.every = null
+    else {
+      const e = parseEvery(x.every)
+      if (e) p.every = e
+    }
+  }
+  return p
+}
+
+/** The last lines of an exchange, each one cut (what is kept on a task). */
+export function capTalk(lines: OptimizerLine[], max = MAX_TALK): OptimizerLine[] {
+  return lines.slice(-max).map((l) => ({ ...l, text: l.text.length > TALK_CHARS ? `${l.text.slice(0, TALK_CHARS - 1).trimEnd()}…` : l.text }))
+}
+
+/**
+ * What the agent reads at launch about the negotiation: the user's last requests and the last answer kept, 2 to 4
+ * lines (empty when the task was accepted as proposed).
+ */
+export function agreedDigest(talk: OptimizerLine[] | undefined, line: { user: (s: string) => string; auto: (s: string) => string }): string {
+  if (!talk?.some((l) => l.who === 'user')) return ''
+  const asked = talk.filter((l) => l.who === 'user').slice(-3).map((l) => line.user(oneLine(l.text, 180)))
+  const last = [...talk].reverse().find((l) => l.who === 'auto')
+  return [...asked, ...(last ? [line.auto(oneLine(last.text, 240))] : [])].join('\n')
+}
+
+/** How long a task may run: 2 h, or 1.5 × its estimate when longer, 6 h at most. */
+export const runLimit = (est?: number) => clamp(Math.round((est ?? 0) * 1.5) * 60_000, MAX_RUN_MS, MAX_RUN_CAP_MS)
+
+/** A period as the model reads it: « 7d », « 12h », « 90min ». */
+export function fmtSpan(ms: number): string {
+  const h = ms / 3600_000
+  if (h >= 24 && Number.isInteger(h / 24)) return `${h / 24}d`
+  if (h >= 1 && Number.isInteger(h)) return `${h}h`
+  return `${Math.round(ms / 60_000)}min`
+}
+
 /** Branch-safe short name: « Harden the tests of mygame » → « harden-the-tests-of-mygame ». */
 export function slug(title: string): string {
   return norm(title).replace(/ /g, '-').slice(0, 32).replace(/-+$/, '') || 'task'
@@ -447,6 +579,9 @@ export class Optimizers {
   private bwrap: boolean | undefined
   private probingJail = false
   private auto = false
+  /** Tasks with an exchange turn in flight (one at a time each), and those waiting after a failed one. */
+  private talking = new Set<string>()
+  private talkFailUntil = new Map<string, number>()
 
   constructor(w: Weevils, memory: Memory, opts: { file?: string; /** default <projects>/.auto */ dir?: string; sys?: Partial<Sys> } = {}) {
     this.w = w
@@ -505,7 +640,19 @@ export class Optimizers {
     return this.s.items
       .filter((o) => o.state !== 'refused' && (o.state === 'proposed' || o.state === 'queued' || o.state === 'running' || now - (o.endedAt ?? o.createdAt) < KEEP_MS))
       .sort((a, b) => rank[a.state] - rank[b.state] || (a.state === 'proposed' ? (a.priority ?? 2) - (b.priority ?? 2) || a.createdAt - b.createdAt : 0) || (b.endedAt ?? 0) - (a.endedAt ?? 0) || (a.acceptedAt ?? 0) - (b.acceptedAt ?? 0))
-      .map(({ prompt: _p, acceptedAt: _a, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, ...o }) => o)
+      .map((o) => this.view(o, now))
+  }
+
+  /** A task as the app sees it: without the brief and the runner's bookkeeping; when it may start, if its time holds it. */
+  view(o: Stored, now = Date.now()): Optimizer {
+    const { prompt: _p, acceptedAt: _a, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, ...v } = o
+    const at = o.state === 'queued' ? this.timeAt(o, now) : now
+    return at > now ? { ...v, startAt: at } : v
+  }
+
+  /** When its conditions let a task start (now when it has none). */
+  private timeAt(o: Stored, now: number): number {
+    return o.notBefore || o.window ? nextStart(o, now, o.tz ?? serverTz()) : now
   }
 
   /** The machine as the runner sees it (snapshot). */
@@ -520,10 +667,14 @@ export class Optimizers {
     return this.s.items.find((o) => o.id === id)
   }
 
-  /** One tap: the proposal waits for a free machine. */
-  accept(id: string): boolean {
+  /**
+   * One tap: the proposal, as it stands after the exchange (the version on screen: `rev`, when given, must match),
+   * waits for a free machine and its time. Never while the model is rewriting it.
+   */
+  accept(id: string, rev?: number): boolean | 'busy' {
     const o = this.get(id)
     if (!o || o.state !== 'proposed') return false
+    if (this.talking.has(id) || (rev !== undefined && rev !== (o.rev ?? 0))) return 'busy'
     o.state = 'queued'
     o.acceptedAt = Date.now()
     this.changed()
@@ -541,6 +692,157 @@ export class Optimizers {
     delete o.retryAt
     this.changed()
     return true
+  }
+
+  // ---------------------------------------------------------------- the exchange about a task
+
+  /**
+   * One turn of the exchange about a task (typed or spoken, any state but refused): the model answers and may rewrite
+   * it (parsePatch checks every field). What changes depends on the state (patchable): all of it before it starts;
+   * while it runs, its conditions now and its scope at its next run (the running session is never touched); nothing
+   * once it is over. The exchange stays on the task. One turn at a time per task; a model that fails answers with a
+   * note from the catalog, nothing changes and the question is not kept. null: no such task.
+   */
+  async talk(id: string, text: string, tz?: unknown): Promise<OptimizerTalkReply | null> {
+    const o = this.get(id)
+    if (!o || o.state === 'refused') return null
+    const said = text.replace(/\s+/g, ' ').trim().slice(0, TALK_CHARS)
+    const replyLang: Lang = detectLang(said) ?? lang()
+    const note = (k: 'talkFailed' | 'talkBusy'): OptimizerTalkReply => ({ reply: withLang(replyLang, () => tr(O)[k]), item: this.view(o), changed: [], failed: true })
+    if (!said) return { reply: '', item: this.view(o), changed: [] }
+    if (this.talking.has(id)) return note('talkBusy')
+    if (Date.now() < (this.talkFailUntil.get(id) ?? 0) || !this.sys.logged()) return note('talkFailed')
+    const zone = validTz(tz) ?? o.tz ?? serverTz()
+    this.talking.add(id)
+    try {
+      let out: { reply?: unknown; patch?: unknown } | null = null
+      try {
+        out = parseJson(await smart(this.talkPrompt(o, said, zone, replyLang), TALK_TIMEOUT_MS))
+      } catch (e) {
+        console.error(`[auto] échange sur « ${o.title} » : ${(e as Error).message}`)
+      }
+      const reply = typeof out?.reply === 'string' ? oneLine(out.reply, 700) : ''
+      if (!reply) {
+        this.talkFailUntil.set(id, Date.now() + TALK_BACKOFF_MS)
+        return note('talkFailed')
+      }
+      this.talkFailUntil.delete(id)
+      // The task may have moved on while the model thought (accepted, started, ended): the rules of its state now.
+      const now = Date.now()
+      const changed = this.patch(o, parsePatch(out?.patch, { repos: this.w.allRepos(), tz: zone, now }))
+      if (validTz(tz)) o.tz = zone
+      o.talk = capTalk([...(o.talk ?? []), { who: 'user', text: said, at: now }, { who: 'auto', text: reply, at: Date.now() }])
+      if (changed.length) {
+        o.changed = { at: now, fields: changed }
+        o.rev = (o.rev ?? 0) + 1
+        console.log(`[auto] « ${o.title} » réécrite (${changed.join(', ')})`)
+      }
+      this.changed()
+      if (changed.length && this.auto) setTimeout(() => this.tick(), 1000).unref?.()
+      return { reply, item: this.view(o), changed }
+    } finally {
+      this.talking.delete(id)
+    }
+  }
+
+  /** Applies a checked rewrite as the task's state allows; the fields that really changed (what the app flashes). */
+  private patch(o: Stored, p: Patch): OptimizerField[] {
+    if (o.state !== 'proposed' && o.state !== 'queued' && o.state !== 'running') return []
+    const changed: OptimizerField[] = []
+    const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+    for (const k of TERMS) {
+      if (!(k in p) || same(o[k], p[k])) continue
+      if (p[k] === null) delete o[k]
+      else (o as unknown as Record<string, unknown>)[k] = p[k]
+      changed.push(k)
+    }
+    for (const k of SCOPE) {
+      if (!(k in p) || same(o[k], p[k])) continue
+      // Running: its session already has its brief; the new scope waits for its next run.
+      if (o.state === 'running') o.pending = { ...o.pending, [k]: p[k] }
+      else {
+        ;(o as unknown as Record<string, unknown>)[k] = p[k]
+        changed.push(k)
+      }
+    }
+    // A new scope before the first start: a fresh branch name follows the new title.
+    if (o.state !== 'running' && (changed.includes('title') || changed.includes('repo')) && !o.startedAt) delete o.branch
+    return changed
+  }
+
+  /** The prompt of one exchange turn (also read by the tests). */
+  talkPrompt(o: Stored, said: string, tz: string, replyLang: Lang, now = Date.now()): string {
+    const t = tr(O)
+    const name = user()
+    const when = [o.notBefore && o.notBefore > now ? t.whenNotBefore(fmtLocal(o.notBefore, tz)) : '', o.window ? t.whenWindow(windowText(o.window)) : ''].filter(Boolean).join(', ') || t.whenAsap
+    const item = t.talkItem({
+      title: o.title,
+      why: o.why,
+      kind: o.kind,
+      repo: o.repo,
+      est: o.est ?? 30,
+      priority: o.priority ?? 2,
+      heavy: o.heavy,
+      when,
+      every: o.every ? t.everyEvery(fmtSpan(o.every)) : t.everyOnce,
+      prompt: o.prompt,
+    })
+    const history = (o.talk ?? []).map((l) => (l.who === 'user' ? t.lineUser(name, l.text) : t.lineAuto(l.text))).join('\n')
+    const weekday = new Intl.DateTimeFormat(lang() === 'fr' ? 'fr-FR' : 'en-US', { weekday: 'long', timeZone: tz }).format(now)
+    const repos = this.w.allRepos().slice(0, 80).join(', ')
+    const machine = t.machine(this.sys.cpus(), Math.round(os.totalmem() / 1024 ** 3), `${os.platform()} ${os.arch()}`)
+    const rules = o.state === 'proposed' ? t.rules_proposed : o.state === 'queued' ? t.rules_queued : o.state === 'running' ? t.rules_running : t.rules_ended
+    return t.talk({
+      user: name,
+      state: t[`state_${o.state}`],
+      rules,
+      item,
+      live: this.liveText(o, now, tz),
+      memory: this.memory.asText(),
+      projects: this.projectsText(),
+      repos,
+      machine,
+      now: `${weekday} ${fmtLocal(now, tz)} (${tz})`,
+      history,
+      said: t.lineUser(name, said),
+      replyLang: t.langName(replyLang),
+      appLang: t.langName(lang()),
+    })
+  }
+
+  /** What a started task did: the agent's last words (running), its last news and report (over), its past runs. */
+  private liveText(o: Stored, now: number, tz: string): string {
+    const t = tr(O)
+    const out: string[] = []
+    if (o.state === 'running') {
+      const d = o.sessionId ? this.w.detail?.(o.sessionId) : undefined
+      let said = (d?.messages ?? [])
+        .filter((m) => m.role === 'assistant' && m.text.trim())
+        .slice(-2)
+        .map((m) => m.text.replace(/\s+/g, ' ').trim().slice(0, 900))
+      if (!said.length) {
+        const s = o.sessionId ? this.w.snapshot().sessions.find((x) => x.id === o.sessionId) : undefined
+        if (s?.lastMessage) said = [s.lastMessage.slice(0, 900)]
+      }
+      out.push(t.liveRunning(Math.round((now - (o.startedAt ?? now)) / 60_000), said.join('\n')))
+    } else if (o.state === 'done' || o.state === 'failed') out.push(t.liveEnded(t[`state_${o.state}`], o.lastEvent ?? ''))
+    if (o.state !== 'proposed') {
+      const report = this.reportFile(o)
+      try {
+        const text = fs.readFileSync(report, 'utf8').trim().slice(0, 1500)
+        if (text) out.push(t.liveReport(text))
+      } catch {
+        /* no report (yet) */
+      }
+    }
+    if (o.runs?.length) out.push(t.liveRuns(o.runs.slice(-4).map((r) => t.runLine(fmtLocal(r.at, tz), r.ok, r.note ?? '')).join('\n')))
+    return out.join('\n\n')
+  }
+
+  /** Where a task writes its report (beside its worktree, or in its workspace). */
+  private reportFile(o: Stored): string {
+    const cwd = this.workspace(o)
+    return o.repo ? path.join(path.dirname(cwd), `${o.id}.md`) : path.join(cwd, 'report.md')
   }
 
   // ---------------------------------------------------------------- the runner
@@ -577,11 +879,13 @@ export class Optimizers {
           o.retryAt = hold
           dirty = true
         }
-    // Stopped by a limit or an error: it waits for its retry time, the others go first.
-    const ready = queue.filter((o) => !(o.retryAt && o.retryAt > now))
+    // Stopped by a limit or an error: it waits for its retry time, the others go first. Same for one held by its
+    // conditions (not before, its window, its next run).
+    const later = (o: Stored) => !!o.retryAt && o.retryAt > now
+    const ready = queue.filter((o) => !later(o) && this.timeAt(o, now) <= now)
     queue.forEach((o) => {
       const i = ready.indexOf(o)
-      const wait = i < 0 ? 'later' : running || this.launching || i > 0 ? 'queue' : (reason ?? undefined)
+      const wait = i < 0 ? (later(o) ? 'later' : 'time') : running || this.launching || i > 0 ? 'queue' : (reason ?? undefined)
       if (o.waiting !== wait) {
         if (wait) o.waiting = wait
         else delete o.waiting
@@ -604,13 +908,9 @@ export class Optimizers {
     const o = this.s.items.find((x) => x.state === 'running')
     if (!o || this.launching) return false
     const t = tr(O)
-    const end = (state: 'done' | 'failed', note: string) => {
-      o.state = state
-      o.endedAt = now
-      o.lastEvent = note
-      return true
-    }
-    if (now - (o.startedAt ?? now) > MAX_RUN_MS) return end('failed', t.timedOut)
+    const end = (state: 'done' | 'failed', note: string) => this.finish(o, now, state === 'done', note)
+    const limit = runLimit(o.est)
+    if (now - (o.startedAt ?? now) > limit) return end('failed', t.timedOut(Math.round(limit / 3600_000)))
     const sid = o.sessionId ? (this.w.sessionIdOf?.(o.sessionId) ?? o.sessionId) : undefined
     const s = sid ? this.w.snapshot().sessions.find((x) => x.id === sid) : undefined
     if (!s) return now - Math.max(o.seenAt ?? o.startedAt ?? now, this.bootAt) > VANISH_MS ? end('failed', t.vanished) : false
@@ -644,15 +944,42 @@ export class Optimizers {
     return !(h && (h.event === 'Stop' || h.event === 'SessionEnd') && h.at >= tr.lastActivityAt - 2000)
   }
 
+  /**
+   * A run is over. A one-off task ends there (done or failed). A recurring one keeps the run's line and goes back to
+   * the queue for its next occurrence (with the scope agreed while it ran), unless its last runs all failed.
+   */
+  private finish(o: Stored, now: number, ok: boolean, note: string): true {
+    o.endedAt = now
+    o.lastEvent = note
+    if (o.every) {
+      o.runs = [...(o.runs ?? []), { at: now, ok, ...(note ? { note } : {}) }].slice(-MAX_RUNS)
+      const streak = o.runs.slice(-MAX_FAILED_RUNS)
+      if (ok || streak.length < MAX_FAILED_RUNS || streak.some((r) => r.ok)) {
+        Object.assign(o, o.pending ?? {})
+        delete o.pending
+        o.state = 'queued'
+        o.notBefore = Math.max(nextRun(o.startedAt ?? now, o.every, now), o.notBefore ?? 0)
+        delete o.waiting
+        delete o.retryAt
+        delete o.tries
+        delete o.seenWorking
+        delete o.seenAt
+        console.log(`[auto] « ${o.title} » ${ok ? 'faite' : 'échouée'} · prochain passage ${new Date(o.notBefore).toISOString()}`)
+        return true
+      }
+    }
+    delete o.pending
+    o.state = ok ? 'done' : 'failed'
+    return true
+  }
+
   /** Stopped by a limit, a login or an API error: no work was done, it goes back to the queue for later (a few tries). */
   private later(o: Stored, now: number, why: string): boolean {
     o.tries = (o.tries ?? 0) + 1
     o.lastEvent = tr(O)[`stall_${stallKind(why)}`]
     if (o.tries >= MAX_TRIES) {
-      o.state = 'failed'
-      o.endedAt = now
       console.log(`[auto] « ${o.title} » abandonnée après ${o.tries} essais (${oneLine(why, 160)})`)
-      return true
+      return this.finish(o, now, false, o.lastEvent)
     }
     o.state = 'queued'
     // A usage limit with a known reset time: back then, not in an hour.
@@ -762,25 +1089,29 @@ export class Optimizers {
     let step: 'branch' | 'jail' | 'start' = 'start'
     try {
       const cwd = this.workspace(o)
-      const branch = `auto/${slug(o.title)}-${o.id.slice(0, 4)}`
-      // A retry finds its worktree already there (same branch).
-      if (o.repo && !fs.existsSync(cwd)) {
+      // A retry or the next run of a recurring task finds its worktree already there (same branch).
+      const fresh = !!o.repo && !fs.existsSync(cwd)
+      const branch = (!fresh && o.branch) || `auto/${slug(o.title)}-${o.id.slice(0, 4)}`
+      if (o.repo && fresh) {
         step = 'branch'
         fs.mkdirSync(path.dirname(cwd), { recursive: true })
         await this.sys.worktree(this.w.repoDir(o.repo), cwd, branch)
         step = 'start'
       } else fs.mkdirSync(cwd, { recursive: true })
+      if (o.repo) o.branch = branch
       const writesReport = !o.repo || o.kind === 'watch' || o.kind === 'content' || o.kind === 'explore'
       const brief = tr(O).brief({
         title: o.title,
         branch,
         checkout: o.repo ? this.w.repoDir(o.repo) : '',
         // Beside the worktree, never in it (the branch stays the work itself).
-        report: o.repo ? path.join(path.dirname(cwd), `${o.id}.md`) : path.join(cwd, 'report.md'),
+        report: this.reportFile(o),
         inRepo: !!o.repo,
         writesReport,
         heavy: o.heavy,
         prompt: o.prompt,
+        minutes: o.est ?? 60,
+        agreed: agreedDigest(o.talk, { user: tr(O).agreedUser, auto: tr(O).agreedAuto }),
       })
       const text = on.relay ? `${on.relay}\n\n${tr(O).relayRules}\n${brief}` : brief
       const guard = this.guard()
@@ -795,9 +1126,7 @@ export class Optimizers {
       console.log(`[auto] lancée : ${o.title} (${cwd})${tool === 'codex' ? ' · sur Codex (Claude à sa limite)' : ''}`)
     } catch (e) {
       // The app shows a short note; the raw error (tmux, git) stays in the log.
-      o.state = 'failed'
-      o.endedAt = Date.now()
-      o.lastEvent = step === 'branch' ? tr(O).branchFailed : tr(O).startFailed
+      this.finish(o, Date.now(), false, step === 'branch' ? tr(O).branchFailed : tr(O).startFailed)
       console.error(`[auto] lancement de « ${o.title} » (${step}) : ${(e as Error).message}`)
     } finally {
       this.launching = false
@@ -884,12 +1213,19 @@ export class Optimizers {
   }
 }
 
-/** POST /api/optimizers/:id/accept · POST /api/optimizers/:id/refuse */
-export function optimizerRoutes(o: Optimizers, json: Json, _readBody: ReadBody): [string, RegExp, Handler][] {
+/** POST /api/optimizers/:id/accept { rev? } · POST /api/optimizers/:id/refuse · POST /api/optimizers/:id/talk { text, tz? } → OptimizerTalkReply */
+export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody): [string, RegExp, Handler][] {
   return [
-    ['POST', /^\/api\/optimizers\/([\w-]+)\/accept$/, (_req, res, _u, [id]) => {
-      const ok = o.accept(id)
-      json(res, ok ? 200 : 404, { ok })
+    ['POST', /^\/api\/optimizers\/([\w-]+)\/accept$/, async (req, res, _u, [id]) => {
+      const body = await readBody(req).catch(() => ({}))
+      const rev = Number.isInteger(body?.rev) ? Number(body.rev) : undefined
+      const ok = o.accept(id, rev)
+      json(res, ok === true ? 200 : ok === 'busy' ? 409 : 404, { ok: ok === true })
+    }],
+    ['POST', /^\/api\/optimizers\/([\w-]+)\/talk$/, async (req, res, _u, [id]) => {
+      const body = await readBody(req)
+      const r = await o.talk(id, String(body?.text ?? ''), body?.tz)
+      json(res, r ? 200 : 404, r ?? { reply: '', changed: [], failed: true })
     }],
     ['POST', /^\/api\/optimizers\/([\w-]+)\/refuse$/, (_req, res, _u, [id]) => {
       const ok = o.refuse(id)

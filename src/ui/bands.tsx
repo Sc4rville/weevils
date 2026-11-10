@@ -18,6 +18,7 @@ import { Collapse, Composer, INSTANT, Line, Messages, SessionRow, Working, autho
 import B from '../i18n/bits'
 import { ago, plain, userText, type ChipId } from './format'
 import { AutoMark, FilledIcon, G, Icon } from './icons'
+import { KeepSessionOrder } from './session-order'
 import { autoOfSession } from './auto-model'
 import { PrefLines } from './prefs'
 import { RelayPrefLine, ThreadPlans } from './relay'
@@ -384,7 +385,8 @@ function RowSlot({ children }: { children: ReactNode }) {
   )
 }
 
-const urgent = (s: { status: string }) => (s.status === 'needs_user' || s.status === 'interrupted' ? 0 : 1)
+// Actual work first; requests keep their priority over idle and relay sessions.
+const sessionRank = (s: { status: string }) => s.status === 'working' ? 0 : s.status === 'needs_user' || s.status === 'interrupted' ? 1 : 2
 
 export function ProjectBand({ project }: { project: Project }) {
   const t = useT(M)
@@ -395,9 +397,9 @@ export function ProjectBand({ project }: { project: Project }) {
   const [doneSet, setDoneSet] = useState<{ v: boolean; mode: string } | null>(null)
   const sessions = snap.sessions.filter((s) => s.projectId === project.id)
   // Une ligne ne change pas de place parce qu'une autre session écrit (le serveur les range par activité) : ce qui
-  // t'attend en tête, puis l'ordre déjà affiché, une nouvelle session en tête des siennes. Rien ne bouge sous le doigt.
+  // travaille en tête, puis l'ordre déjà affiché, une nouvelle session en tête des siennes. Rien ne bouge sous le doigt.
   const shownRows = useRef<string[]>([])
-  const active = stableOrder(sessions.filter((s) => s.status !== 'done'), (s) => s.id, urgent, (a, b) => b.openedAt - a.openedAt, shownRows.current, !isSettled())
+  const active = stableOrder(sessions.filter((s) => s.status !== 'done'), (s) => s.id, sessionRank, (a, b) => b.openedAt - a.openedAt, shownRows.current, !isSettled())
   const rowKey = active.map((s) => s.id).join('|')
   useLayoutEffect(() => {
     shownRows.current = rowKey ? rowKey.split('|') : []
@@ -484,6 +486,7 @@ export function ProjectBand({ project }: { project: Project }) {
 
   return (
     <motion.section ref={sec} layout="position" transition={tx} className={`band ${busy ? 'busy' : ''} ${cut.length ? 'has-cut' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={t.projectBand(project.name)} data-project={project.id}>
+      <KeepSessionOrder order={rowKey} within={sec} />
       <motion.div ref={head} className="in head" initial={false} animate={{ minHeight: shown === 'mini' ? 50 : 64, paddingTop: shown === 'mini' ? 0 : 8 }} transition={tx}>
         <button className="head-name" onClick={toggle} aria-expanded={mode === 'open'} aria-controls={`more-${project.id}`}>
           <motion.span className="name" initial={false} animate={{ fontSize: NAME_SIZE[shown] }} transition={tx}>

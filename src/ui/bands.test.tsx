@@ -333,6 +333,7 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
     await flush()
     expect(words()).toEqual([])
     expect(document.querySelector('.fyt-wrap')).toBeNull()
+    expect(document.querySelector('.agent-top .devil-btn')).not.toBeNull()
     expect(sent.foryou).toBe(0)
     // L'aperçu du fil est là, comme avant.
     expect(peekWrap().hidden).toBe(false)
@@ -350,6 +351,7 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
     expect(kids.indexOf('agent-nav')).toBeLessThan(kids.indexOf('peek-wrap'))
     expect(peekWrap().hidden).toBe(false)
     expect(fyWrap().hidden).toBe(true)
+    expect(document.querySelector('.agent-nav .devil-btn')).not.toBeNull()
     expect(document.querySelector('.peek')!.textContent).toContain('salut')
   })
 

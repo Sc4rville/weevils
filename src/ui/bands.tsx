@@ -276,6 +276,12 @@ export function AgentBand() {
   // Un secret demandé ([[setup:key:NOM]]) : toujours un bouton (le recoller remplace l'ancienne valeur).
   const chipIn = (b: ChipId, id: string) => (b.startsWith('key:') ? <KeyChip name={b.slice(4)} /> : lastWith.get(b) === id ? <Chip brick={b as Brick} inline /> : null)
 
+  const devilButton = (
+    <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={(e) => tapDevil(e.currentTarget)} aria-pressed={devilOn} aria-label={devilOn ? td.on : td.off}>
+      <FilledIcon name="devil" />
+    </button>
+  )
+
   const band = (
     <section className={`band agent tone ${snap.foryou ? 'has-foryou' : ''} ${devilOn || devilFlash ? 'devil-on' : ''} ${open ? 'open' : ''}`} style={color(devilOn || devilFlash ? 'devil' : 'agent')} aria-label={t.agentBand}>
       {/* En haut : le logo (dicter), sous la barre d'état. Réduite : l'aperçu vivant du fil ; un tap l'ouvre.
@@ -297,17 +303,13 @@ export function AgentBand() {
             replyText={th.a.replyKey ? th.a.shown : mainReply?.text}
             working={snap.mainWorking || th.a.waiting}
           />
-
+          {!snap.foryou && devilButton}
         </div>
         {/* L'aperçu et le fil restent rendus : ouvrir ou fermer ne fait que les montrer ou les cacher (immédiat). */}
         {/* Les deux mots, sous la ligne du logo ; ils restent quand le fil est ouvert (weevboss y est le mot actif). */}
         <div className="agent-nav">
           <TopWords active={open ? 'boss' : top} onPick={pickTop} />
-          {!open && (
-          <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={(e) => tapDevil(e.currentTarget)} aria-pressed={devilOn} aria-label={devilOn ? td.on : td.off}>
-            <FilledIcon name="devil" />
-          </button>
-          )}
+          {snap.foryou && !open && devilButton}
         </div>
         <div className="peek-wrap" hidden={open || top !== 'boss'}>
           <Peek onOpen={() => setExpanded('agent')} visible={!open && top === 'boss'} sent={sent} messages={main} pendingLabel={pendingLabel} />

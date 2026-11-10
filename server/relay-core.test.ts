@@ -191,3 +191,25 @@ it('keeps agent coordination out of main while retaining briefs in their recipie
  ])
  expect(boss.messages.some(m=>m.id==='bridge-return')).toBe(true)
 })
+
+it('explicit Codex choice starts a real boss without a quota episode and retains its registration', async () => {
+ vi.stubEnv('WEEVILS_PROVIDER','codex')
+ const bin=path.join(HOME,'.local','bin');fs.mkdirSync(bin,{recursive:true});fs.writeFileSync(path.join(bin,'codex'),'#!/bin/sh\nexit 0\n',{mode:0o700})
+ const auth=path.join(HOME,'.codex','auth.json');fs.mkdirSync(path.dirname(auth),{recursive:true});fs.writeFileSync(auth,JSON.stringify({tokens:{access_token:'fixture'}}))
+ try {
+  await w.sendMain('bonjour Codex')
+  expect(mux.spawnWv).toHaveBeenCalledTimes(1)
+  const [name,dir,tool,,command]=mux.spawnWv.mock.calls[0] as [string,string,Tool,string,string[]]
+  expect([dir,tool,command[0]]).toEqual([ORCH_DIR,'codex','codex'])
+  expect(command.at(-1)).not.toContain('limite')
+  const persisted=JSON.parse(fs.readFileSync(path.join(DATA_DIR,'state.json'),'utf8'))
+  expect(persisted.directCodexBoss.pane).toBe(name)
+  const second=new Weevils()
+  second.panes=[{name,tool:'codex',sessionId:'direct',cwd:ORCH_DIR,title:'weevboss',createdAt:NOW}]
+  const t=transcript({id:'direct',tool:'codex',cwd:ORCH_DIR})
+  second.store.byFile.set(t.file,t)
+  mux.sendText.mockImplementation(async()=>{t.messages.push({id:'new',role:'user',text:'encore',at:Date.now()})})
+  const sent=second.sendMain('encore');await vi.advanceTimersByTimeAsync(15000);await sent
+  expect(mux.spawnWv).toHaveBeenCalledTimes(1)
+ } finally {vi.unstubAllEnvs()}
+})

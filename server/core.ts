@@ -1,3 +1,4 @@
+import { preferredTool, providerReady } from './provider.ts'
 import { noticeKey } from '../shared/notices.ts'
 // Le cœur de weevilsd : transcripts + hooks + panes zellij → sessions, projets, H24, agent principal.
 
@@ -85,6 +86,7 @@ interface ManagedPane extends WvSession {
 }
 
 interface Persisted {
+  directCodexBoss?: { pane?: string; sessionId?: string; since: number }
   hooks?: [string, HookState][]
   titles?: [string, Titled][]
   /** Id de la session Claude de l'orchestrateur (stable : on la reprend après un redémarrage). */
@@ -372,6 +374,7 @@ export class Weevils {
   private prevStatus = new Map<string, { status: Session['status']; since: number; notifiedAt?: number }>()
   classifier: Snapshot['classifier'] = { running: false, queued: 0 }
   /** Titres écrits par le renommeur, par session. */
+  private directCodexBoss?: { pane?: string; sessionId?: string; since: number }
   titles = new Map<string, Titled>()
   private titling = false
   private catalogCache: { at: number; list: CatalogEntry[] } | null = null
@@ -418,6 +421,7 @@ export class Weevils {
     try {
       const p = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) as Persisted
       this.hooks = new Map(p.hooks ?? [])
+      this.directCodexBoss = p.directCodexBoss
       this.titles = new Map(p.titles ?? [])
       this.orchestratorId = p.orchestratorId ?? null
       this.pinnedRepos = p.pinnedRepos ?? []
@@ -525,6 +529,7 @@ export class Weevils {
       const recent = (at: number) => Date.now() - at < RECENT_MS
       const data: Persisted = {
         hooks,
+        directCodexBoss: this.directCodexBoss,
         titles,
         orchestratorId: this.orchestratorId ?? undefined,
         pinnedRepos: this.pinnedRepos,
@@ -1470,10 +1475,13 @@ export class Weevils {
 
   /** weevboss sur Codex pendant que Claude est à sa limite (server/relay.ts) : sa pane, son transcript une fois relié. */
   private codexBoss() {
-    const b = this.relay?.boss
+    const b = preferredTool() === 'codex' ? this.directCodexBoss ?? this.relay?.boss : this.relay?.boss ?? this.directCodexBoss
     if (!b) return undefined
     const pane = (b.pane ? this.panes.find((p) => p.name === b.pane) : undefined) ?? (b.sessionId ? this.paneFor(b.sessionId) : undefined)
-    if (pane?.sessionId && pane.sessionId !== b.sessionId) this.relay!.setBoss({ ...b, sessionId: pane.sessionId })
+    if (pane?.sessionId && pane.sessionId !== b.sessionId) {
+      if (b === this.directCodexBoss) { this.directCodexBoss = { ...b, sessionId: pane.sessionId }; this.persist() }
+      else this.relay?.setBoss({ ...b, sessionId: pane.sessionId })
+    }
     const id = pane?.sessionId ?? b.sessionId
     return { since: b.since, pane, id, t: id ? this.store.get(id) : undefined }
   }
@@ -1487,11 +1495,11 @@ export class Weevils {
 
   /** La pane où weevboss répond en ce moment : celle de Codex pendant le relais, sinon celle de Claude. */
   private orchestratorPane() {
-    return (this.relay?.bossOn() ? this.codexBoss()?.pane : undefined) ?? this.claudeBossPane()
+    return ((preferredTool() === 'codex' || this.relay?.bossOn()) ? this.codexBoss()?.pane : undefined) ?? this.claudeBossPane()
   }
 
   private orchestratorSettings() {
-    const t = (this.relay?.bossOn() ? this.codexBoss()?.t : undefined) ?? (this.orchestratorId ? this.store.get(this.orchestratorId) : undefined)
+    const t = ((preferredTool() === 'codex' || this.relay?.bossOn()) ? this.codexBoss()?.t : undefined) ?? (this.orchestratorId ? this.store.get(this.orchestratorId) : undefined)
     return t?.model || t?.approval || t?.effort ? { model: t.model, approval: t.approval, effort: t.effort } : undefined
   }
 
@@ -1677,6 +1685,7 @@ export class Weevils {
   /** La conversation de weevboss où ira le prochain message (son pane est ouvert ou son transcript connu) ; null : sendMain
    * en ouvrira une nouvelle (Setup.contextFor lui redonne alors la mémoire). */
   bossConversation(): string | null {
+    if (preferredTool() === 'codex') return this.codexBoss()?.id ?? null
     const id = this.orchestratorId
     return id && (this.orchestratorPane() || this.store.get(id)) ? id : null
   }
@@ -1687,7 +1696,11 @@ export class Weevils {
     if (!ORCHESTRATOR) throw new Error(tr(M).orchNotHere)
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
     // Claude à sa limite (ou tout près) : weevboss répond par Codex, même dossier, mêmes consignes (server/relay.ts).
-    if (this.relay?.bossOn()) {
+    if (preferredTool() === 'codex' && !providerReady()) {
+      if (this.setup) { await this.setup.offline(text); return { id: 'setup' } }
+      throw new Error('Codex is not connected')
+    }
+    if (preferredTool() === 'codex' || this.relay?.bossOn()) {
       const since = Date.now()
       void this.waitMainReply(since, 300_000).then((r) => r && console.log(`[voix] weevboss (codex) a répondu en ${Date.now() - since} ms`))
       return this.sendBossCodex(text, this.setup?.contextFor(brief) ?? '')
@@ -1745,12 +1758,14 @@ export class Weevils {
     const e = this.relay?.episode()
     const t = tr(R)
     const until = e?.until ? t.until(clockOf(e.until, Date.now(), e.tz)) : ''
-    const first = (text + joinContext(context, t.bossIn(t[`bossWhy_${e?.kind ?? 'limit'}`], until, this.threadDigest(this.orchestratorMessages().slice(-12)), unanswered))).trim()
+    const first = (text + joinContext(context, preferredTool() === 'codex' ? this.threadDigest(this.orchestratorMessages().slice(-12)) : t.bossIn(t[`bossWhy_${e?.kind ?? 'limit'}`], until, this.threadDigest(this.orchestratorMessages().slice(-12)), unanswered))).trim()
     const known = boss?.id && boss.t ? boss.id : undefined
     const command = known ? ['codex', 'resume', ...CODEX_FLAGS, known, first] : ['codex', ...CODEX_FLAGS, first]
     const name = await this.spawn('codex', ORCH_DIR, 'weevboss', command, known)
     void this.acceptTrust(name)
-    this.relay?.setBoss({ pane: name, sessionId: known, since: boss?.since ?? Date.now() })
+    const registered = { pane: name, sessionId: known, since: boss?.since ?? Date.now() }
+    if (preferredTool() === 'codex') { this.directCodexBoss = registered; this.persist() }
+    else this.relay?.setBoss(registered)
     console.log(`[relais] weevboss répond par Codex (${name})`)
     return { id: known ?? name }
   }
@@ -2039,7 +2054,7 @@ export class Weevils {
    *  (unset) pour cette session seulement (les barrières de la tâche : gh sans compte, git qui ne pousse pas…), par
    *  « env » devant claude : tmux lance la commande sans shell, une valeur n'est jamais interprétée. wrap : une commande
    *  devant tout le reste (la prison bwrap de la tâche). */
-  async createIn(cwd: string, title: string, text: string, args: string[] = [], env: { set?: Record<string, string>; unset?: string[]; wrap?: string[] } = {}, tool: Tool = 'claude'): Promise<{ id: string }> {
+  async createIn(cwd: string, title: string, text: string, args: string[] = [], env: { set?: Record<string, string>; unset?: string[]; wrap?: string[] } = {}, tool: Tool = preferredTool()): Promise<{ id: string }> {
     if (tool === 'codex') {
       const un = (env.unset ?? []).filter((k) => /^[A-Za-z_]\w*$/.test(k)).flatMap((k) => ['-u', k])
       const st = Object.entries(env.set ?? {}).filter(([k]) => /^[A-Za-z_]\w*$/.test(k)).map(([k, v]) => `${k}=${v}`)

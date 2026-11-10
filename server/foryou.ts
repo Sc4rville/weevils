@@ -769,7 +769,8 @@ export class ForYou {
       else delete out.reply
     }
     if (i.kind === 'session') {
-      if (i.tone === 'result' && i.sum?.text) out.text = i.sum.text
+      // The line follows the latest rules (an item stored earlier gets them too); the curator's line wins.
+      if (i.tone === 'result') out.text = i.sum?.text || (i.body && headline(i.body)) || i.text
       const cur = snap.sessions.find((s) => s.id === i.sessionId)
       if (cur) out.title = cleanTitle(cur.title)
       const t = tr(M)

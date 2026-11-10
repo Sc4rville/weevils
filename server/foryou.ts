@@ -142,6 +142,9 @@ function pace(sorted: ForYouItem[], lead?: ForYouItem): ForYouItem[] {
  * leading with it would put two items of a kind side by side that another order keeps apart), then the rest by score,
  * paced (see pace()). Equal scores: newest first, then by id.
  */
+/** A session found waiting or cut without an item (first start, restart) only gets one when that is recent. */
+export const CATCH_UP_MS = 12 * 3600_000
+
 export function arrange(items: ForYouItem[], now: number): ForYouItem[] {
   const scored = items.map((item) => ({ item, s: score(item, now) }))
   scored.sort((a, b) => b.s - a.s || b.item.at - a.item.at || (a.item.id < b.item.id ? -1 : a.item.id > b.item.id ? 1 : 0))
@@ -807,6 +810,8 @@ export class ForYou {
     let wrote = false
     for (const s of snap.sessions) {
       if (s.status !== 'needs_user' && s.status !== 'interrupted') continue
+      // An old cut or question nobody picked up is history, not news: a first start would otherwise open on a wall of them.
+      if (now - Math.max(s.lastActivityAt, s.interrupted?.at ?? 0) > CATCH_UP_MS) continue
       if (this.eligible(s) && this.waiting(s, s.status === 'needs_user' ? 'question' : 'cut')) wrote = true
     }
     if (wrote) this.changed(false)

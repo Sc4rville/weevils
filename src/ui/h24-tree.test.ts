@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { H24Activity, Optimizer, Project } from '../../shared/api.ts'
-import { autoTree, counts, fromActivity, fromOptimizer, openByDefault, short, tasksOf } from './h24-tree'
+import { autoTree, counts, failedLine, fromActivity, fromOptimizer, openByDefault, short, tasksOf } from './h24-tree'
 
 const NOW = 1_800_000_000_000
 const project = (id: string, repos: string[]): Project => ({ id, name: id, kind: 'repo', repos, where: {}, lastActivityAt: 0 })
@@ -58,4 +58,16 @@ describe('auto tree', () => {
     expect(short(12 * 3600_000)).toBe('12h')
     expect(short(3 * 24 * 3600_000)).toBe('3d')
   })
+
+  it('a finished job whose last line says it failed is failed; a running one, a clean end or a timer is not', () => {
+    for (const line of ['✗ 3 failed — exit 1', 'npm ERR! code ELIFECYCLE', 'Command failed with exit code 2', 'exited with status 127', 'Error: ENOENT', 'FATAL: out of memory', 'Traceback (most recent call last):', 'build aborted'])
+      expect(failedLine(line), line).toBe(true)
+    for (const line of ['✓ 1203 files, 0 errors', 'no errors found', 'exit 0', 'errors: 0', 'Tests 12 passed, 0 failed', 'linking', '—', ''])
+      expect(failedLine(line), line).toBe(false)
+    expect(fromActivity(act({ runState: 'waiting', lastEvent: 'npm ERR! code 1', lastRunAt: NOW })).state).toBe('failed')
+    expect(fromActivity(act({ runState: 'waiting', lastEvent: 'done, 0 errors' })).state).toBe('done')
+    expect(fromActivity(act({ runState: 'running', lastEvent: 'error: retrying' })).state).toBe('running')
+    expect(fromActivity(act({ kind: 'timer', runState: 'waiting', lastEvent: 'failed' })).state).toBe('scheduled')
+  })
+
 })

@@ -4,6 +4,22 @@ A short summary of what changed after the first working version.
 
 ## 2026-11-10
 
+### For you
+- Next to weevboss at the top, a second word: **for you**, a stream of what the agents did, ask and suggest. One
+  full-width band per item: a session's result (green), its question (amber) or why it stopped, a word from weevboss,
+  a mail from an outside agent (unfolds in place), suggested automations as a carousel (✓ / ×), a way for weevils to
+  serve you better, alerts, bold « did you know » about what is really in a repo, milestones, and bars that say where
+  the day stands. Reply under an item, open the real conversation, launch an action: it slides out of the stream.
+- The preview lives in the top band; a tap opens the stream full screen, with a line of participants to isolate
+  weevboss, an outside agent, the sessions, the media or the ideas. The stream ends: « up to date ».
+- **Media on purpose**: `weevils show <file> "caption"` (any session, or weevboss) puts an image or a video in the
+  stream; files named in the last message of a turn join its result. Served by `GET /api/foryou/media/<id>` with
+  `Range`, only for files the stream listed. `weevils post "…" [--action "label::brief"]` lets weevboss say a word
+  there, with buttons.
+- **Voice messages**: a word from weevboss or from an outside agent can be listened to, each speaker in its own voice.
+- Generated items (weevboss's digest, ideas, insights) are written by weevilsd on a budget: only while the stream is
+  being looked at, never past 85 % of a usage window, 12 model calls a day at most. Plan and state: [foryou.md](foryou.md).
+
 ### Sessions cut off mid-work
 - A session that dies while it was working (process or pane gone, tmux killed, crash), that stops on an API error
   (usage limit, expired login, failed compaction) or that stops without a clean end and leaves uncommitted work is now

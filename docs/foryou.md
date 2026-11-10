@@ -149,7 +149,7 @@ One single-flight loop for everything generated, so the stream is **one** spende
 
 - runs only when the app asked for the stream in the last 30 minutes and Claude is logged in;
 - skips when a Claude usage window is at 85 % or more (`quotas()`), backs off 1 h doubling to 12 h on failure
-  (persisted), and never exceeds a daily cap (24 calls);
+  (persisted), and never exceeds a daily cap (12 calls, one per tick);
 - **digest** (boss, `smart`): at most one per 3 h and only when something happened since the last one (turns
   finished, things sent by weevboss, alerts). JSON `{ text, thought?, actions?[] }`: the recap in weevboss's voice,
   sometimes one sentence that makes the user think, tied to a memory item when there is one, sometimes up to two
@@ -160,7 +160,7 @@ One single-flight loop for everything generated, so the stream is **one** spende
   week; **milestones** are plain counters, no model;
 - **mail summary** and **session result line** (`haiku`, batched): one short « did this » line each; the raw
   text is the fallback and the stream never waits for them;
-- every prompt lives in `server/i18n/foryou.ts` (fr + en); an item keeps the language it was written in and is
+- every prompt lives in `server/i18n/foryou-curator.ts` (fr + en); an item keeps the language it was written in and is
   hidden when the app's language differs.
 
 ## 4. App
@@ -221,6 +221,36 @@ insight → the project's colour, 1.375rem / 800 type; milestone → gradient-cl
    world seeded with a stream; screenshots of every kind in light and dark; motion harness on the top-band scenes
    (no jump when switching words). Review by independent readers, fixes. Deploy.
 4. **Close** — changelog, weevboss's prompt live, this plan updated with what was actually built.
+
+## State on November 10, 2026 (evening)
+
+Built, on `main`:
+
+- **Step 1, live**: the store and its routes, the media shelf with `Range`, `weevils post` / `weevils show` and
+  weevboss's prompt, the two words at the top, the preview, the full-screen stream with its participant filter, a
+  renderer per kind, inline replies, actions. Checked on a throwaway server seeded with every kind, then booted on
+  the real transcripts (which showed a wall of old cuts at first start: only those under 12 h now get an item).
+- **Step 2, merged, live at the next restart of weevilsd**: the curator (`server/foryou-curator.ts`: digest,
+  improve, insight and « more », milestones, « where the day stands » bars, one-line mail summaries) on its budget,
+  and a voice per speaker (`server/foryou-voice.ts`). Session results are not summarised by a model: the band
+  already shows project · title above the closing words.
+- **Step 3, live** (app only): voice messages, bars that fill, the rolling counts of the line, exits over « lancé /
+  envoyé / écarté », media kept whole, wide screens, the unread dot in the margin.
+
+Not checked yet, to do on a device or with real traffic:
+
+- the texts the curator writes (no real model call was made while building: the prompts are untested on real
+  data — read the first digests, insights and improve ideas and tune `server/i18n/foryou-curator.ts`);
+- « resume » from the stream and a reply by mail through the real bridge;
+- on an iPhone: the carousel against the page's swipe-back, muted inline video and its pause out of view, the
+  audio of a voice message (unlocking on tap, the logo and an item silencing each other), the tap vibration;
+- a running weevboss conversation only learns `weevils post` / `weevils show` at its next conversation.
+
+Known rough edges: an image has no height until it loads (the server sends no dimensions), so what is below
+shifts once; the « sent » band is white in the dark theme; the line wraps on two lines with four counts; a card
+leaving the carousel shows no word; no per-author voice override; a session's `weevils post` is signed weevboss;
+the stream is main-machine only (media of a secondary machine cannot be shown); the demo world of
+`weevils-content` is not seeded with a stream yet.
 
 ## 6. Checks
 

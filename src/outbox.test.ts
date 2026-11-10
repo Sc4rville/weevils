@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+const payloads = vi.hoisted(() => new Map<string, unknown>())
+vi.mock('./outbox-payload', () => ({ storePayload: async (id: string, body: unknown) => { payloads.set(id, body) }, loadPayload: async (id: string) => payloads.get(id), removePayload: async (id: string) => { payloads.delete(id) } }))
 let fetcher: ReturnType<typeof vi.fn>
-beforeEach(() => { vi.resetModules(); localStorage.clear(); vi.useFakeTimers(); fetcher = vi.fn(async () => new Response(JSON.stringify({ enabled: true }), { status: 200 })); vi.stubGlobal('fetch', fetcher) })
+beforeEach(() => { vi.resetModules(); localStorage.clear(); payloads.clear(); vi.useFakeTimers(); fetcher = vi.fn(async () => new Response(JSON.stringify({ enabled: true }), { status: 200 })); vi.stubGlobal('fetch', fetcher) })
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 const load = () => import('./outbox')
 const accepted = (id: string) => ({ messageId: id, status: 'accepted', acceptedAt: Date.now(), updatedAt: Date.now() })
@@ -93,4 +95,41 @@ it('an action stays idempotent after delivery and reload, while a new event gets
  expect(second.messageId).toBe(first.messageId); expect(submit).toHaveBeenCalledTimes(1)
  const next = await outbox.deliver('/api/foryou/card/act?lang=en',{action:'prepare',eventId:'event2'},submit)
  expect(next.messageId).not.toBe(first.messageId); expect(submit).toHaveBeenCalledTimes(2)
+})
+it('persists an offline first submission and automatically resumes the same payload after reconnecting', async () => {
+ fetcher.mockRejectedValue(new TypeError('offline'))
+ let outbox = await load(); const submit = vi.fn()
+ await expect(outbox.deliver('/api/main', {text:'offline draft'}, submit)).rejects.toThrow()
+ const saved = JSON.parse(localStorage.getItem('weevils-outbox-v1')!)[0]
+ expect(saved.payload).toEqual({text:'offline draft'}); expect(submit).not.toHaveBeenCalled()
+ vi.resetModules(); outbox = await load()
+ fetcher.mockImplementation(async (url: string, init?: RequestInit) => {
+   if (url === '/api/outbox/capabilities') return new Response(JSON.stringify({enabled:true}))
+   if (init?.method === 'POST') return new Response(JSON.stringify(accepted(saved.messageId)), {status:202})
+   return new Response('{}', {status:404})
+ })
+ await outbox.refreshReceipts()
+ const posted = fetcher.mock.calls.find(c => c[1]?.method === 'POST')!
+ expect(posted[1].headers['Idempotency-Key']).toBe(saved.messageId)
+ expect(JSON.parse(posted[1].body)).toEqual({text:'offline draft'})
+ expect(JSON.parse(localStorage.getItem('weevils-outbox-v1')!)[0].status).toBe('accepted')
+})
+it('stores attachments outside localStorage and resumes them without changing identity', async () => {
+ fetcher.mockRejectedValue(new TypeError('offline'))
+ let outbox = await load(); const body = {text:'photo',files:[{name:'image.jpg',type:'image/jpeg',data:'PRIVATE_IMAGE_BASE64'}]}
+ await expect(outbox.deliver('/api/main/attach',body,vi.fn())).rejects.toThrow()
+ const raw = localStorage.getItem('weevils-outbox-v1')!; const saved = JSON.parse(raw)[0]
+ expect(raw).not.toContain('PRIVATE_IMAGE_BASE64'); expect(payloads.get(saved.messageId)).toEqual(body)
+ vi.resetModules(); outbox = await load()
+ fetcher.mockImplementation(async (url: string, init?: RequestInit) => {
+  if (url === '/api/outbox/capabilities') return new Response(JSON.stringify({enabled:true}))
+  if (init?.method === 'POST') return new Response(JSON.stringify({...accepted(saved.messageId),status:'delivered'}))
+  return new Response('{}',{status:404})
+ })
+ await outbox.refreshReceipts()
+ const posted = fetcher.mock.calls.find(c => c[1]?.method === 'POST')!
+ expect(JSON.parse(posted[1].body)).toEqual(body); expect(posted[1].headers['Idempotency-Key']).toBe(saved.messageId)
+ // The old draft may still be on screen after recovery: tapping send acknowledges it, never duplicates it.
+ const submit = vi.fn(); await outbox.deliver('/api/main/attach',body,submit)
+ expect(submit).not.toHaveBeenCalled()
 })

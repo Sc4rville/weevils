@@ -1084,15 +1084,16 @@ button.copy.done {
 }
 
 .auto-mark .track {
-  opacity: 0.3;
+  opacity: 0.55;
 }
 
 .auto-mark .run {
-  stroke-dasharray: 28 72;
+  stroke-dasharray: 34 66;
   animation: auto-run 1.1s linear infinite;
 }
 
-/* Contour d'encre sous le segment et la pointe, seulement quand le texte du thème est noir (comme l'étoile). */
+/* Contour d'encre sous toute la boucle et sa pointe, seulement quand le texte du thème est noir (comme l'étoile) : la
+   forme se lit sur n'importe quelle couleur de bande. */
 .auto-mark .halo {
   display: none;
 }

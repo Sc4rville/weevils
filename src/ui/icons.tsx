@@ -85,14 +85,14 @@ export function Icon({ name, dir = 'up', label, className = '' }: { name: IconNa
 
 /**
  * Le signe de ce qui tourne tout seul (une automatisation au travail) : la boucle « cycle », en magenta (--auto-fluo),
- * où un segment fait le tour comme un tapis roulant. Ni rotation (l'étoile verte), ni clignotement (.fluo) : c'est sa
+ * où un segment plein fait le tour comme un tapis roulant ; la boucle entière reste lisible (piste à mi-teinte, contour
+ * d'encre en thème clair), la pointe soudée à son bout ouvert. Ni rotation (l'étoile verte), ni clignotement (.fluo) : c'est sa
  * forme et son mouvement qui le distinguent. Animé même en « réduire les animations », comme l'étoile : seul signe de vie.
  */
 export function AutoMark({ label, className = '' }: { label?: string; className?: string }) {
   return (
     <svg className={`ic auto-mark ${className}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="square" strokeLinejoin="miter" strokeMiterlimit={10} role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true} focusable="false">
-      <path className="halo" d={CYCLE_HEAD} />
-      <path className="halo run" d={CYCLE_LOOP} pathLength={100} />
+      <path className="halo" d={`${CYCLE_LOOP}${CYCLE_HEAD}`} />
       <path className="track" d={CYCLE_LOOP} />
       <path className="run" d={CYCLE_LOOP} pathLength={100} />
       <path d={CYCLE_HEAD} />

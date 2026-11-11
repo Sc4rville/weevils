@@ -72,3 +72,14 @@ it('accepts faithful written counts without accepting invented or changed counts
  expect(sameNumericFacts('Deux retours.', '2 updates with 2 fixes.')).toBe(false)
  expect(sameNumericFacts('1,4 seconde', '1.4 seconds')).toBe(true)
 })
+
+it('accepts an equivalent whole-hour notation without changing the hour',()=>{
+ expect(sameNumericFacts('Le 9 novembre vers 13 h.', 'Around 13:00 on November 9.')).toBe(true)
+ expect(sameNumericFacts('Le 9 novembre vers 13 h.', 'Around 14:00 on November 9.')).toBe(false)
+})
+it('revalidates actual cached provider candidates after a validator fix, without a provider call',()=>{
+ fs.writeFileSync(file,JSON.stringify({cached:{source:{text:'Deux retours weevils.'},target:'en',protected:['weevils'],failedAt:1,failure:'translation changed numbers',rejected:{text:'2 weevils updates.'}}}))
+ new FeedLocalization(file)
+ const entry=JSON.parse(fs.readFileSync(file,'utf8')).cached
+ expect(entry.variant).toEqual({text:'2 weevils updates.'});expect(entry.rejected).toBeUndefined();expect(entry.failedAt).toBeUndefined()
+})

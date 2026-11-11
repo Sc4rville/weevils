@@ -30,7 +30,7 @@ const occurs = (s: string, word: string) => {
 }
 /** Written counts and numeric counts can be equivalent (Deux → 2); articles are not counted by default. */
 export function sameNumericFacts(source: string, variant: string): boolean {
-  const digits=(s:string)=>s.match(/\d+(?:[.,]\d+)?/g)?.map(n=>String(Number(n.replace(',','.'))))??[]
+  const digits=(s:string)=>s.replace(/(?:à|vers|at|around)\s+(\d{1,2})\s*h\b/giu, '$1:00').match(/\d+(?:[.,]\d+)?/g)?.map(n=>String(Number(n.replace(',','.'))))??[]
   const a=digits(source), b=digits(variant)
   for(let n=a.length-1;n>=0;n--){const at=b.indexOf(a[n]);if(at>=0){a.splice(n,1);b.splice(at,1)}}
   // i18n-ignore: bilingual validation lexicon, never displayed
@@ -45,13 +45,40 @@ export function sameNumericFacts(source: string, variant: string): boolean {
 }
 const protect = (s: string, names: string[]) => [...new Set([...names.filter(n=>n && occurs(s,n)), ...s.matchAll(/«[^»]+»|“[^”]+”|"[^"\n]+"|`[^`]+`|https?:\/\/[^\s]+/g)].map(v=>typeof v==='string'?v:v[0]))]
 
+function validateVariant(entry: Entry, variant: Record<string,string>): void {
+  // i18n-ignore: internal validation code, never presented to the user
+  if(Object.keys(variant).length!==Object.keys(entry.source).length)throw new Error('translation shape')
+        for(const [k,source] of Object.entries(entry.source)){
+          const v=variant[k]
+          // i18n-ignore: internal validation code, never presented to the user
+          if(typeof v!=='string'||!v.trim()||v.length>Math.max(2000,source.length*4))throw new Error('translation field')
+          // i18n-ignore: internal validation code, never presented to the user
+          for(const word of entry.protected)if(occurs(source,word)&&!occurs(v,word))throw new Error('translation changed protected text')
+          // Numeric facts are presentation, never creative copy.
+          // i18n-ignore: internal validation code, never presented to the user
+          if(!sameNumericFacts(source,v))throw new Error('translation changed numbers')
+        }
+        const sample=Object.values(variant).join(' ').replace(/«[^»]+»|“[^”]+”|"[^"\n]+"|`[^`]+`/g,'')
+        const detected=detectLang(sample)
+          // i18n-ignore: internal validation code, never presented to the user
+        if(detected && detected!==entry.target)throw new Error('translation language')
+}
 export class FeedLocalization {
   private entries: Record<string,Entry> = {}
   private wanted = new Set<string>()
   private foreground = new Set<string>()
   private file: string
   private now: () => number
-  constructor(file: string, now = Date.now){this.file=file;this.now=now;try{this.entries=JSON.parse(fs.readFileSync(file,'utf8'))}catch{/* first start */}}
+  constructor(file: string, now = Date.now){
+    this.file=file;this.now=now
+    try{this.entries=JSON.parse(fs.readFileSync(file,'utf8'))}catch{/* first start */}
+    // A corrected validator can accept an actual saved provider answer without another model call.
+    let recovered=false
+    for(const entry of Object.values(this.entries))if(!entry.variant&&entry.rejected){
+      try{validateVariant(entry,entry.rejected);entry.variant=entry.rejected;delete entry.rejected;delete entry.failedAt;delete entry.failure;recovered=true}catch{/* still invalid: keep the original */}
+    }
+    if(recovered)this.save()
+  }
   private save(){fs.mkdirSync(path.dirname(this.file),{recursive:true});fs.writeFileSync(this.file+'.tmp',JSON.stringify(this.entries),{mode:0o600});fs.renameSync(this.file+'.tmp',this.file)}
   project(item: ForYouItem,target: Lang, sourceLang?: Lang | 'unknown', names: string[]=[], foreground = false): ForYouItem {
     const source=presentation(item)
@@ -97,23 +124,8 @@ export class FeedLocalization {
       jobs.forEach(({key,entry},n)=>{
         const candidate=Object.fromEntries(Object.keys(entry.source).map(k=>[k,combined[`${n}/${k}`]]))
         try {
-        const variant:Record<string,string>={}
-        for(const [k,source] of Object.entries(entry.source)){
-          const v=combined[`${n}/${k}`]
-          // i18n-ignore: internal validation code, never presented to the user
-          if(typeof v!=='string'||!v.trim()||v.length>Math.max(2000,source.length*4))throw new Error('translation field')
-          // i18n-ignore: internal validation code, never presented to the user
-          for(const word of entry.protected)if(occurs(source,word)&&!occurs(v,word))throw new Error('translation changed protected text')
-          // Numeric facts are presentation, never creative copy.
-          // i18n-ignore: internal validation code, never presented to the user
-          if(!sameNumericFacts(source,v))throw new Error('translation changed numbers')
-          variant[k]=v
-        }
-        const sample=Object.values(variant).join(' ').replace(/«[^»]+»|“[^”]+”|"[^"\n]+"|`[^`]+`/g,'')
-        const detected=detectLang(sample)
-          // i18n-ignore: internal validation code, never presented to the user
-        if(detected && detected!==entry.target)throw new Error('translation language')
-        entry.variant=variant;delete entry.failedAt;delete entry.failure;delete entry.rejected;this.wanted.delete(key)
+        validateVariant(entry,candidate)
+        entry.variant=candidate;delete entry.failedAt;delete entry.failure;delete entry.rejected;this.wanted.delete(key)
         } catch(e) {entry.failedAt=this.now();entry.failure=(e as Error).message;entry.rejected=candidate}
       })
     }catch(e){jobs.forEach(({entry})=>{entry.failedAt=this.now();entry.failure=(e as Error).message})}

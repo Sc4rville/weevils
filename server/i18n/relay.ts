@@ -1,5 +1,6 @@
 // Codex relay while Claude is at (or near) its usage limit (server/relay.ts): the notices, the brief Codex reads to
 // write its plan, the brief of the session that carries the plan out, and what weevboss on Codex is told.
+import MachineProse from './machine-prose.ts'
 import { defineMessages } from '../i18n.ts'
 
 type Win = 'session' | 'week' | undefined
@@ -39,6 +40,7 @@ export default defineMessages({
     /** What Codex reads, read-only, to write its plan. `marker` first: weevils hides such one-shot runs. */
     plan: (o: { marker: string; why: string; cwd: string; file: string; title: string; ask: string; last: string; replies: string; steps: string; background: string; git: string; auto: boolean; previous?: string; note?: string }) =>
       `${o.marker} Tu prépares la reprise d'une session Claude Code (« ${o.title} »), ${o.why}. Tu ne modifies RIEN pour l'instant : tu es en lecture seule, tu lis le contexte et tu écris un plan que l'utilisateur validera.\n\n` +
+      `${MachineProse.fr.rule}\n\n` +
       `Dossier de travail : ${o.cwd}\n` +
       `Transcript complet de la session (JSONL, un événement par ligne ; la fin compte le plus, par exemple tail -n 200) : ${o.file}\n\n` +
       `Demande d'origine :\n${o.ask}\n\n` +
@@ -58,6 +60,7 @@ export default defineMessages({
       `Ne refais pas ce qui est déjà fait, relance ce qui tournait en arrière-plan si le plan le prévoit, et garde les règles que la session suivait. ` +
       (o.auto ? `C'est une tâche de fond : reste dans ce worktree et sur sa branche, ne pousse rien, ne publie rien, ne dépense rien. ` : '') +
       (o.note ? `Ajustement demandé par l'utilisateur : ${o.note} ` : '') +
+      `${MachineProse.fr.rule}\n\n` +
       `Termine par un résumé de trois lignes.\n\nPlan validé :\n${o.plan || '(aucun plan écrit : fais-le toi-même en lisant le contexte, puis exécute-le)'}`,
     /** Hidden block joined to the first message weevboss on Codex receives. */
     bossIn: (why: string, until: string, thread: string, unanswered: boolean) =>
@@ -102,6 +105,7 @@ export default defineMessages({
     none: '(nothing)',
     plan: (o: { marker: string; why: string; cwd: string; file: string; title: string; ask: string; last: string; replies: string; steps: string; background: string; git: string; auto: boolean; previous?: string; note?: string }) =>
       `${o.marker} You are preparing the takeover of a Claude Code session ("${o.title}"), ${o.why}. You change NOTHING for now: you are read-only, you read the context and write a plan the user will approve.\n\n` +
+      `${MachineProse.en.rule}\n\n` +
       `Working folder: ${o.cwd}\n` +
       `Full transcript of the session (JSONL, one event per line; the end matters most, for example tail -n 200): ${o.file}\n\n` +
       `Original request:\n${o.ask}\n\n` +
@@ -120,6 +124,7 @@ export default defineMessages({
       `Do not redo what is done, restart what was running in the background if the plan says so, and keep the rules the session followed. ` +
       (o.auto ? `This is a background task: stay in this worktree and on its branch, push nothing, publish nothing, spend nothing. ` : '') +
       (o.note ? `Adjustment asked by the user: ${o.note} ` : '') +
+      `${MachineProse.en.rule}\n\n` +
       `End with a three-line summary.\n\nApproved plan:\n${o.plan || '(no plan was written: write it yourself from the context, then carry it out)'}`,
     bossIn: (why: string, until: string, thread: string, unanswered: boolean) =>
       `you are weevboss, on Codex while Claude is unavailable (${why}${until}): same role, same instructions (AGENTS.md of this folder), same weevils command. The last exchanges of the thread, for context: ${thread || '(none)'}` +

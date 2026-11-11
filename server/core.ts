@@ -1,3 +1,4 @@
+import MachineProse from './i18n/machine-prose.ts'
 import { isModelControl, type ModelControls, type ModelSelection } from '../shared/model-controls.ts'
 import ModelM from './i18n/model-controls.ts'
 import { titlePresentation } from './title-presentation.ts'
@@ -1503,7 +1504,7 @@ export class Weevils {
       // demandé à gh) et {{projects}} (premier dossier de WEEVILS_PROJECTS, ~/projects par défaut).
       const owner = process.env.WEEVILS_GH_OWNER?.trim() || '$(gh api user -q .login)'
       const projects = PROJECTS_DIR.startsWith(HOME + path.sep) ? '~' + PROJECTS_DIR.slice(HOME.length) : PROJECTS_DIR
-      const text = fs.readFileSync(src, 'utf8').replaceAll('{{user}}', withLang(installationLang(), user)).replaceAll('{{owner}}', owner).replaceAll('{{projects}}', projects)
+      const text = fs.readFileSync(src, 'utf8').replaceAll('{{user}}', withLang(installationLang(), user)).replaceAll('{{owner}}', owner).replaceAll('{{projects}}', projects).replaceAll('{{machineProse}}', MachineProse[installationLang()].rule)
       fs.writeFileSync(path.join(ORCH_DIR, 'CLAUDE.md'), text)
       // Les mêmes consignes pour Codex, qui répond à la place de Claude pendant sa limite d'usage (server/relay.ts).
       fs.writeFileSync(path.join(ORCH_DIR, 'AGENTS.md'), text)

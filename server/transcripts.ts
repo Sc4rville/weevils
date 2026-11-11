@@ -1,5 +1,5 @@
 import { commandDetails, redactToolText } from './codex-command-details.ts'
-import { codexToolLabel } from './codex-tool-label.ts'
+import { codexToolLabel, codexToolKinds } from './codex-tool-label.ts'
 // Lecture incrémentale des transcripts Claude Code (~/.claude/projects) et Codex (~/.codex/sessions).
 // Formats non documentés : on lit ce qui est utile et on ignore le reste sans jamais planter.
 
@@ -353,7 +353,7 @@ function codexLine(t: Transcript, o: any) {
     if (typeof input === 'string') {
       try { input = JSON.parse(input) } catch { /* Free-form code stays opaque; never evaluated. */ }
     }
-    push(t, { id: p.call_id ?? `${t.id}-${at}-f`, role: 'event', text: codexToolLabel(p.name ?? 'local_shell_call', input), toolDetails: {commands:commandDetails(p.name ?? 'local_shell_call', input)}, at })
+    push(t, { id: p.call_id ?? `${t.id}-${at}-f`, role: 'event', text: codexToolLabel(p.name ?? 'local_shell_call', input), toolDetails: {commands:commandDetails(p.name ?? 'local_shell_call', input), kinds:codexToolKinds(p.name ?? 'local_shell_call', input)}, at })
   }
 }
 

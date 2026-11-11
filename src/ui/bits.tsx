@@ -1,3 +1,4 @@
+import ToolM from '../i18n/codex-tools'
 import { interceptModelControl } from '../model-controls'
 import { withoutMachinePrefix } from '../../shared/machine-prefix.ts'
 import { SessionMenu } from './session-archive'
@@ -745,7 +746,9 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
   const mid = steps[0].id
   const t = useT(M)
   const [open, setOpen] = useState(false)
-  const last = step(steps[steps.length - 1].text)
+  const tools=useT(ToolM)
+  const label=(message:Message)=>message.toolDetails?.kinds?.length ? message.toolDetails.kinds.map(k=>tools[k as keyof typeof tools]??step(message.text)).join(' · ') : step(message.text)
+  const last = label(steps[steps.length - 1])
   if (steps.length === 1 && !steps[0].toolDetails?.commands.length) {
     return (
       <div className="msg band event" data-mid={mid}>
@@ -771,7 +774,7 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
         <div className="in steps-list">
           {steps.map((s) => (
             <div key={s.id} className="text">
-              <Icon name="arrow" dir="right" /> {step(s.text)}
+              <Icon name="arrow" dir="right" /> {label(s)}
               {s.toolDetails?.commands.map((command,i)=><pre key={i} style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{command}</pre>)}
               {s.toolDetails?.output && <pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{s.toolDetails.output}</pre>}
             </div>

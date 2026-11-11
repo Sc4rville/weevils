@@ -34,3 +34,9 @@ export function codexToolLabel(name: string, input: unknown): string {
   }
   return label(name)
 }
+
+/** Stable categories let the client follow its selected locale after a refresh. */
+export function codexToolKinds(name: string, input: unknown): string[] {
+  const catalog=tr(M)
+  return codexToolLabel(name,input).split(' · ').flatMap(label=>Object.entries(catalog).filter(([,value])=>value===label).map(([key])=>key))
+}

@@ -1,4 +1,4 @@
-import { commandDetails, toolOutputDetails } from './codex-command-details.ts'
+import { commandDetails, toolOutputDetails, callDetails, commandSummaries } from './codex-command-details.ts'
 import { codexToolLabel, codexToolKinds } from './codex-tool-label.ts'
 // Lecture incrémentale des transcripts Claude Code (~/.claude/projects) et Codex (~/.codex/sessions).
 // Formats non documentés : on lit ce qui est utile et on ignore le reste sans jamais planter.
@@ -300,6 +300,7 @@ function codexLine(t: Transcript, o: any) {
       return
     }
     if (p.type === 'task_started') {
+      touch(t, at)
       t.phase = 'working'
       t.workStartedAt = at
       t.stopError = undefined
@@ -311,6 +312,7 @@ function codexLine(t: Transcript, o: any) {
       t.workStartedAt = null
       touch(t, at)
     } else if (p.type === 'task_complete' || p.type === 'turn_aborted') {
+      touch(t, at)
       t.phase = 'idle'
       t.workStartedAt = null
       touch(t, at)
@@ -352,7 +354,7 @@ function codexLine(t: Transcript, o: any) {
       try { input = JSON.parse(input) } catch { /* Free-form code stays opaque; never evaluated. */ }
     }
     const commands=commandDetails(p.name ?? 'local_shell_call', input, Infinity)
-    push(t, { id: p.call_id ?? `${t.id}-${at}-f`, role: 'event', text: codexToolLabel(p.name ?? 'local_shell_call', input), toolDetails: {commands:commands.map(c=>c.slice(0,8000)), commandsTruncated:commands.some(c=>c.length>8000), kinds:codexToolKinds(p.name ?? 'local_shell_call', input)}, at })
+    push(t, { id: p.call_id ?? `${t.id}-${at}-f`, role: 'event', text: [codexToolLabel(p.name ?? 'local_shell_call', input), ...commandSummaries(commands)].join(' · '), toolDetails: {calls:callDetails(p.name ?? 'local_shell_call',input), summaryCommands:commandSummaries(commands), commands:commands.map(c=>c.slice(0,8000)), commandsTruncated:commands.some(c=>c.length>8000), kinds:codexToolKinds(p.name ?? 'local_shell_call', input)}, at })
   }
 }
 

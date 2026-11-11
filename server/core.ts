@@ -799,7 +799,9 @@ export class Weevils {
     if (where.kind === 'invented') where = this.inferPlace(t) ?? where
     const { pane, hook, hookAlive, live, alive } = this.lifeOf(t, now)
 
-    const daemon = t.tool === 'codex' ? this.codexBridge.activityOf?.(t.id) : undefined
+    const observedDaemon = t.tool === 'codex' ? this.codexBridge.activityOf?.(t.id) : undefined
+    // A cached runtime sample must not override a newer recorded turn transition.
+    const daemon = observedDaemon && observedDaemon.at >= t.lastActivityAt ? observedDaemon : undefined
     let status: Session['status'] = 'idle'
     let attention: string | undefined
     if (!live || hook?.event === 'SessionEnd') status = 'done'
@@ -1749,8 +1751,8 @@ export class Weevils {
   private orchestratorWorking(now: number) {
     const owner = this.codexBoss()?.id
     const daemon = owner ? this.codexBridge.activityOf?.(owner) : undefined
-    if (daemon) return daemon.type === 'active' && !daemon.waiting
     const codex = this.codexBoss()?.t
+    if (daemon && daemon.at >= (codex?.lastActivityAt ?? 0)) return daemon.type === 'active' && !daemon.waiting
     if (codex?.phase === 'working' && now - codex.lastActivityAt < 10 * 60_000) return true
     const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
     if (!t) return false

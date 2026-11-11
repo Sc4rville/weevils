@@ -1,4 +1,4 @@
-import { nestedCalls } from './codex-command-details.ts'
+import { nestedCalls, commandSummaries } from './codex-command-details.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/codex-tools.ts'
 
@@ -7,7 +7,8 @@ export function codexToolLabel(name: string, input: unknown): string {
   const t = tr(M)
   const value = input && typeof input === 'object' ? input as Record<string, unknown> : {}
   const command = value.cmd ?? value.command
-  const cmd = (Array.isArray(command) ? command.join(' ') : typeof command === 'string' ? command : '').trim()
+  const rawCommand = (Array.isArray(command) ? command.join(' ') : typeof command === 'string' ? command : '').trim()
+  const cmd = commandSummaries([rawCommand])[0] ?? rawCommand
   const shell = () => {
     if (/^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test|check|lint|typecheck)\b/.test(cmd)) return t.test
     if (/^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?build\b/.test(cmd)) return t.build

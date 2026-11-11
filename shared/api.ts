@@ -19,7 +19,7 @@ export interface Message {
   /** Incoming technical coordination from the session bridge; boss briefs remain visible. */
   coordination?: boolean
   /** Sanitized command details, never raw orchestration code. */
-  toolDetails?: { commands: string[]; kinds?: string[]; commandsTruncated?: boolean; output?: string; outputTruncated?: boolean }
+  toolDetails?: { calls?: {name:string;description?:string}[]; summaryCommands?: string[]; commands: string[]; kinds?: string[]; commandsTruncated?: boolean; output?: string; outputTruncated?: boolean }
   id: string
   /** orchestrator : message signé par un autre auteur que l'utilisateur (weevboss, ou un agent externe : voir author). */
   role: 'user' | 'assistant' | 'orchestrator' | 'event'

@@ -277,3 +277,20 @@ it('intercepts bare model controls at normal session send and command entrypoint
  expect(mux.sendText).not.toHaveBeenCalled()
  expect(mux.sendKey).not.toHaveBeenCalled()
 })
+
+it('ships the same product contract to both agents in a fresh profile without importing private memory',()=>{
+ fs.rmSync(ORCH_DIR,{recursive:true,force:true})
+ const privateDir=path.join(HOME,'.claude','projects','private','memory')
+ fs.mkdirSync(privateDir,{recursive:true});fs.writeFileSync(path.join(privateDir,'MEMORY.md'),'PRIVATE_MEMORY_SENTINEL')
+ for(const language of ['en','fr'] as const){
+  setLang(language,true)
+  ;(w as any).prepareOrchestrator()
+  const claude=fs.readFileSync(path.join(ORCH_DIR,'CLAUDE.md'),'utf8')
+  const codex=fs.readFileSync(path.join(ORCH_DIR,'AGENTS.md'),'utf8')
+  expect(codex).toBe(claude)
+  expect(codex).toContain(language==='en'?'Shared product contract':'Contrat produit partagé')
+  expect(codex).not.toContain('PRIVATE_MEMORY_SENTINEL')
+  expect(codex).not.toMatch(/Scarville|scarville\.tech/)
+ }
+ expect(mux.spawnWv).not.toHaveBeenCalled()
+})

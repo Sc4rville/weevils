@@ -771,3 +771,15 @@ it('uses current daemon activity instead of an old working terminal screen', () 
  type='active';w.bump()
  expect(one()).toMatchObject({status:'working',turnWorking:true})
 })
+
+it('prefers a newer turn transition over cached daemon idle/active samples',()=>{
+ const t=add(transcript({tool:'codex',phase:'working',lastActivityAt:NOW,originator:'codex-tui',delegationSources:new Map([['brief','boss']])}))
+ let type='idle'
+ ;(w as any).codexBridge={can:()=>true,activityOf:()=>({type,waiting:false,at:NOW-1000})}
+ w.bump();expect(one()).toMatchObject({status:'working'})
+ type='active';t.phase='idle'
+ w.bump();expect(one()).toMatchObject({status:'idle'})
+ // A command error is just recorded tool output; it is not a session error event.
+ t.messages.push({id:'failed-command',role:'event',text:'Runs tests',at:NOW,toolDetails:{commands:['npm test'],output:'exit code 1'}})
+ w.bump();expect(one()).toMatchObject({status:'idle'})
+})

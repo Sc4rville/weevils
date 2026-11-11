@@ -38,7 +38,7 @@ weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichie
   export WVM_NOT_FOUND='session introuvable : ' WVM_AMBIGUOUS='plusieurs sessions commencent par {} : {}' # i18n-ignore
   export WVM_NO_SESSIONS='aucune session ouverte' WVM_NO_MESSAGES='(aucun message)' WVM_USER='utilisateur' # i18n-ignore
   export WVM_ERROR='erreur' WVM_NEW='nouvelle session ' WVM_BACKGROUND='en arrière-plan' # i18n-ignore
-  m_sent='reçu par %s' m_not_sent='NON reçu par %s : %s' m_resumed='%s relancée' # i18n-ignore
+  m_sent='accepté pour livraison à %s (peut être en file)' m_not_sent='NON reçu par %s : %s' m_resumed='%s relancée' # i18n-ignore
   export WVM_CUT='coupée en plein travail' # i18n-ignore
   export WVM_NO_MEMORY='(rien en mémoire)' WVM_NO_MEMORY_HERE='pas de mémoire sur cette machine (elle vit sur la machine principale)' # i18n-ignore
   export WVM_MEM_NOT_FOUND='souvenir introuvable : ' WVM_MEM_ADDED='retenu ' WVM_MEM_REMOVED='oublié ' # i18n-ignore
@@ -57,7 +57,7 @@ weevils post "text" [--action "label::what to do"]…      weevils show <file> [
   export WVM_NOT_FOUND='no such session: ' WVM_AMBIGUOUS='several sessions start with {}: {}'
   export WVM_NO_SESSIONS='no open sessions' WVM_NO_MESSAGES='(no messages)' WVM_USER='user'
   export WVM_ERROR='error' WVM_NEW='new session ' WVM_BACKGROUND='in background'
-  m_sent='received by %s' m_not_sent='NOT received by %s: %s' m_resumed='%s restarted'
+  m_sent='accepted for delivery to %s (may be queued)' m_not_sent='NOT received by %s: %s' m_resumed='%s restarted'
   export WVM_CUT='cut off mid-work'
   export WVM_NO_MEMORY='(nothing remembered yet)' WVM_NO_MEMORY_HERE='no memory on this machine (it lives on the main machine)'
   export WVM_MEM_NOT_FOUND='no such memory: ' WVM_MEM_ADDED='remembered ' WVM_MEM_REMOVED='forgotten '

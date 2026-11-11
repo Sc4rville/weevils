@@ -241,7 +241,7 @@ describe('codex', () => {
     expect(t).toMatchObject({ tool: 'codex', branch: 'main', model: 'gpt-x', approval: 'never', phase: 'working', workStartedAt: now - 5000 })
     expect(t.messages.map((m) => [m.role, m.text])).toEqual([
       ['user', 'list files'],
-      ['event', tr(Tools).read],
+      ['event', `${tr(Tools).read} · ls`],
     ])
     append(f, [ev('response_item', { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'two files' }] }, now - 3000), ev('event_msg', { type: 'task_complete' }, now - 2000)])
     store.scan(now)
@@ -258,7 +258,7 @@ describe('codex', () => {
       ev('response_item', { type: 'custom_tool_call', name: 'exec', input: 'await tools.exec_command({cmd:"curl https://secret:password@host"})', call_id: 'private-call' }, now - 1000),
     ])
     store.scan(now)
-    expect(one().messages.map(m => m.text)).toEqual(['Continue mon travail', tr(Tools).command])
+    expect(one().messages.map(m => m.text)).toEqual(['Continue mon travail', `${tr(Tools).command} · curl`])
   })
 
   it('links sanitized real command results while preserving boss briefs', () => {
@@ -271,7 +271,7 @@ describe('codex', () => {
     store.scan(now)
     const messages=one().messages
     expect(messages[0]).toMatchObject({author:'weevboss'})
-    expect(messages[1]).toMatchObject({text:tr(Tools).git,toolDetails:{commands:['git status'],output:'Script completed\nclean TOKEN=[redacted]'}})
+    expect(messages[1]).toMatchObject({text:`${tr(Tools).git} · git status`,toolDetails:{commands:['git status'],output:'Script completed\nclean TOKEN=[redacted]'}})
     expect(JSON.stringify(messages)).not.toContain('private')
   })
 

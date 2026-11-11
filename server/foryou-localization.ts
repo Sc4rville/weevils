@@ -33,11 +33,12 @@ const protect = (s: string, names: string[]) => [...new Set([...names.filter(n=>
 export class FeedLocalization {
   private entries: Record<string,Entry> = {}
   private wanted = new Set<string>()
+  private foreground = new Set<string>()
   private file: string
   private now: () => number
   constructor(file: string, now = Date.now){this.file=file;this.now=now;try{this.entries=JSON.parse(fs.readFileSync(file,'utf8'))}catch{/* first start */}}
   private save(){fs.mkdirSync(path.dirname(this.file),{recursive:true});fs.writeFileSync(this.file+'.tmp',JSON.stringify(this.entries),{mode:0o600});fs.renameSync(this.file+'.tmp',this.file)}
-  project(item: ForYouItem,target: Lang, sourceLang?: Lang | 'unknown', names: string[]=[]): ForYouItem {
+  project(item: ForYouItem,target: Lang, sourceLang?: Lang | 'unknown', names: string[]=[], foreground = false): ForYouItem {
     const source=presentation(item)
     const combined = Object.values(source).join('\n')
     const original=sourceLang??(combined.trim().split(/\s+/).length >= 5 || /[éèêàçùœ]|\b(?:le|les|une|des|pour|avec|est|the|your|ready|open|view)\b/i.test(combined) ? detectLang(combined) : null)
@@ -47,7 +48,7 @@ export class FeedLocalization {
     const key=revision+':'+target
     let entry=this.entries[key]
     if(!entry){entry=this.entries[key]={source,target,protected:protectedWords};this.save()}
-    if(!entry.variant) this.wanted.add(key)
+    if(!entry.variant) { this.wanted.add(key); if(foreground)this.foreground.add(key) }
     const result=structuredClone(item)
     result.localization={target,source:original??'unknown',revision,status:entry.variant?'translated':entry.failedAt?'failed':'pending',original:source}
     if(entry.variant)for(const [key,value] of Object.entries(entry.variant)){
@@ -57,15 +58,16 @@ export class FeedLocalization {
     }
     return result
   }
+  private queue(): string[] { return [...this.wanted].sort((a,b)=>Number(this.foreground.has(b))-Number(this.foreground.has(a))) }
   job(): { key:string; entry:Entry } | null {
-    for(const key of this.wanted){const e=this.entries[key];if(!e.variant&&(!e.failedAt||this.now()-e.failedAt>=300_000))return {key,entry:e}}
+    for(const key of this.queue()){const e=this.entries[key];if(!e.variant&&(!e.failedAt||this.now()-e.failedAt>=300_000))return {key,entry:e}}
     return null
   }
   async translate(run:(source:Record<string,string>,target:Lang,protectedWords:string[])=>Promise<Record<string,string>>):Promise<boolean>{
     const job=this.job();if(!job)return false
     const jobs: {key:string;entry:Entry}[]=[]
     let size=0
-    for(const key of this.wanted){
+    for(const key of this.queue()){
       const entry=this.entries[key]
       if(entry.target!==job.entry.target||entry.variant||(entry.failedAt&&this.now()-entry.failedAt<300_000))continue
       const bytes=JSON.stringify(entry.source).length

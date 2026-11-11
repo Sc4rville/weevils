@@ -53,3 +53,13 @@ it('protects a project name only as a name, not inside ordinary words, and accep
  expect(c.project(good,'en','fr',['ants']).localization?.status).toBe('translated')
  expect(c.project(bad,'en','fr').localization?.status).toBe('failed')
 })
+it('translates requested feed cards before background legacy title history',async()=>{
+ const c=new FeedLocalization(file,()=>now)
+ for(let n=0;n<12;n++)c.project({...item(),text:`Le titre du projet ${n}`},'en','fr')
+ const visible={...item(),text:'Le café est prêt pour TLO.'}
+ c.project(visible,'en','fr',[],true)
+ const provider=vi.fn(async(s:Record<string,string>)=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,v.replace('Le titre du projet','The project title').replace('Le café est prêt pour','The café is ready for').replace('Ouvrir le café','Open the café')])))
+ await c.translate(provider)
+ expect(c.project(visible,'en','fr',[],true).localization?.status).toBe('translated')
+ expect(Object.values(provider.mock.calls[0][0])).toContain(visible.text)
+})

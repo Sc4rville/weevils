@@ -701,7 +701,7 @@ export class ForYou {
   visualExample(l?: unknown): ForYouItem | null {
     const item = this.s.items.find(i => i.visualProposal)
     const view = item ? this.view({ ...item, gone: false }, this.w.snapshot()) : null
-    return view ? withLang(l, () => this.localization.project(view, lang(), item?.lang, this.w.snapshot().projects.map(p=>p.name))) : null
+    return view ? withLang(l, () => this.localization.project(view, lang(), item?.lang, this.w.snapshot().projects.map(p=>p.name), true)) : null
   }
 
   /** Explicit local publication only; never called by the curator or historical ingestion. */
@@ -1127,8 +1127,11 @@ export class ForYou {
     this.refresh(now, snap)
     return withLang(l, () => {
       const cur = lang()
-      const items = this.all(snap, now, false).filter(x => !technicalEvent(x.item.id, x.item.text)).map(x => this.localization.project(humanFeedItem(x.item), cur, x.lang, snap.projects.map(p => p.name)))
-      return { rev: this.s.rev, items: arrange(items, now).slice(0, MAX_FEED), pulse: this.pulse(snap, now) }
+      const sources = this.all(snap, now, false).filter(x => !technicalEvent(x.item.id, x.item.text))
+      const languages = new Map(sources.map(x => [x.item.id, x.lang]))
+      const items = arrange(sources.map(x => humanFeedItem(x.item)), now).slice(0, MAX_FEED)
+        .map(item => this.localization.project(item, cur, languages.get(item.id), snap.projects.map(p => p.name), true))
+      return { rev: this.s.rev, items, pulse: this.pulse(snap, now) }
     })
   }
 

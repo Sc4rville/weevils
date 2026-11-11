@@ -6,6 +6,6 @@ it('cleans the observed multiline handoff form without removing meaningful machi
  expect(withoutMachinePrefix('[VPS] [GPU] Ready')).toBe('Ready')
 })
 it('preserves quotations, fenced/indented code, links, reference definitions and IDs',()=>{
- const text='> [VPS] user quotation\n"[PC] quoted"\n`[GPU] code`\n```text\n[VPS] code\n```\n~~~~\n[PC] code\n~~~~\n    [GPU] indented code\n\t[VPS] indented code\n[VPS](https://example.test)\n[VPS]: https://example.test\n[GPU]-job-123\n[VPS] Normal prose'
+ const text='> [VPS] user quotation\n[GPU] quotation continuation\n\n"[PC] quoted"\n`[GPU] code`\n```text\n[VPS] code\n```\n~~~~\n[PC] code\n~~~~\n    [GPU] indented code\n\t[VPS] indented code\n[VPS](https://example.test)\n[VPS]: https://example.test\n[GPU]-job-123\n[VPS] Normal prose'
  expect(withoutMachinePrefix(text)).toBe(text.replace('[VPS] Normal prose','Normal prose'))
 })

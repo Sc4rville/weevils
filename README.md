@@ -1,5 +1,7 @@
 # weevils
 
+<img src="public/branding/weevboss.svg" width="96" alt="weevils">
+
 **Watch and drive your Claude Code and Codex sessions from your phone**, on your own machine, with the subscriptions
 you already have.
 
@@ -7,6 +9,8 @@ you already have.
 without asking them anything first.*
 
 <img src="docs/first-run.gif" width="280" alt="weevils on a fresh install: the 3-card intro, the empty home, the first hint">
+
+*Recorded before the current logo refresh. [Branding status and current assets](docs/branding.md).*
 
 - **Every session, sorted by project**: what each agent is doing right now, and the full thread.
 - **Reply from the phone**: write to a session, answer its questions with one tap, send a photo, dictate, start a
@@ -71,6 +75,8 @@ machine), `--uninstall` (`--purge` also deletes settings and data). Everything t
 Sessions opened in a plain terminal (without `wv`) are hidden: weevils can't write to them safely.
 
 <img src="docs/screenshot.png" alt="weevils with a few sessions running: projects, a session waiting for an answer, weevboss, the machines">
+
+*Historical demo capture; the current logo is shown above.*
 
 ## Voice
 

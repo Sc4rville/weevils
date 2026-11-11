@@ -1,3 +1,4 @@
+import { FeedLocalization } from './foryou-localization.ts'
 import { OutboxError } from './outbox.ts'
 import { acknowledgementOnly, humanFeedItem, humanFeedText, rawEngineeringNotice } from '../shared/feed-text.ts'
 import { canonicalAlertId, feedNoticeKey, isRequestNotice, quotaReset, sessionNoticeKey } from '../shared/notices.ts'
@@ -323,7 +324,7 @@ interface Stored {
   seen?: boolean
   /** Dismissed or acted on: kept (a session's next turn revives its item), never shown. */
   gone?: boolean
-  /** Generated items: the language they were written in (hidden when the app reads another one). */
+  /** Generated items: original language, retained across all presentation locales. */
   lang?: Lang
   /** When it was written (a cut is the same episode while the session did nothing since). */
   rec?: number
@@ -400,6 +401,7 @@ export class ForYou {
   lastWanted = 0
   /** Set by the curator when it exists. */
   curator: ForYouCurator | null = null
+  readonly localization: FeedLocalization
   private deps: ForYouDeps
   private s: State
   private now: () => number
@@ -420,6 +422,7 @@ export class ForYou {
     this.deps = deps
     this.file = deps.file ?? path.join(DATA_DIR, 'foryou.json')
     this.now = deps.now ?? Date.now
+    this.localization = new FeedLocalization(this.file + '.translations.json', this.now)
     this.dataDir = deps.dataDir ?? DATA_DIR
     this.machineId = deps.machineId ?? MACHINE.id
     this.s = (() => {
@@ -695,9 +698,10 @@ export class ForYou {
     return this.view(item, snap)!
   }
 
-  visualExample(): ForYouItem | null {
+  visualExample(l?: unknown): ForYouItem | null {
     const item = this.s.items.find(i => i.visualProposal)
-    return item ? this.view({ ...item, gone: false }, this.w.snapshot()) : null
+    const view = item ? this.view({ ...item, gone: false }, this.w.snapshot()) : null
+    return view ? withLang(l, () => this.localization.project(view, lang(), item?.lang, this.w.snapshot().projects.map(p=>p.name))) : null
   }
 
   /** Explicit local publication only; never called by the curator or historical ingestion. */
@@ -1071,7 +1075,7 @@ export class ForYou {
   }
 
   /**
-   * Everything visible now, before the language filter. Also: a session that waits or was cut without an item saying
+   * Everything visible now, independently of the presentation language. Also: a session that waits or was cut without an item saying
    * so gets one (after a restart, core's first pass is silent), and the revision moves when the visible set changed.
    */
   private all(snap: Snapshot, now: number, inBuild: boolean): { item: ForYouItem; lang?: Lang }[] {
@@ -1123,7 +1127,7 @@ export class ForYou {
     this.refresh(now, snap)
     return withLang(l, () => {
       const cur = lang()
-      const items = this.all(snap, now, false).filter((x) => !x.lang || x.lang === cur).map((x) => x.item).filter((i) => !technicalEvent(i.id, i.text)).map(humanFeedItem)
+      const items = this.all(snap, now, false).filter(x => !technicalEvent(x.item.id, x.item.text)).map(x => this.localization.project(humanFeedItem(x.item), cur, x.lang, snap.projects.map(p => p.name)))
       return { rev: this.s.rev, items: arrange(items, now).slice(0, MAX_FEED), pulse: this.pulse(snap, now) }
     })
   }
@@ -1135,12 +1139,13 @@ export class ForYou {
   mark(snap: Snapshot): ForYouMark {
     const now = this.now()
     this.refresh(now, snap)
-    const cur = lang()
-    const unseen = this.all(snap, now, true).filter((x) => !x.item.seen && (!x.lang || x.lang === cur)).length
+    const unseen = this.all(snap, now, true).filter((x) => !x.item.seen).length
     return { rev: this.s.rev, unseen }
   }
 
   // ---------------------------------------------------------------- what the user does
+
+  translationChanged(): void { this.s.rev++; this.save(); this.w.bump() }
 
   /** Seen on a device: seen everywhere. */
   seen(ids: unknown): void {
@@ -1312,7 +1317,7 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
       await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, b)) }))
     }],
-    ['GET', /^\/api\/foryou\/formats$/, (_req, res) => json(res, 200, { proposal: fy.visualExample() })],
+    ['GET', /^\/api\/foryou\/formats$/, (_req, res, url) => json(res, 200, { proposal: fy.visualExample(langOf(url)) })],
     ['POST', /^\/api\/foryou\/visual-proposal$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })

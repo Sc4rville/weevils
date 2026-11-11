@@ -492,11 +492,11 @@ describe('posts', () => {
     expect(host.send).toHaveBeenCalledWith('s1', 'and the tests?')
   })
 
-  it('the seam for generated items: language kept, hidden from another language, « more » waits for the curator', async () => {
+  it('the seam for generated items: language kept, visible in every language, « more » waits for the curator', async () => {
     const fy = make()
     const item = fy.add({ kind: 'insight', projectId: 'mygame', text: 'Vite pré-bundle les dépendances.', more: true, lang: 'fr' })!
-    expect(fy.feed().items).toEqual([])
-    expect(fy.mark(snap).unseen).toBe(0)
+    expect(fy.feed().items).toMatchObject([{ id: item.id, localization: { status: 'pending', target: 'en' } }])
+    expect(fy.mark(snap).unseen).toBe(1)
     expect(fy.feed(now, 'fr').items).toMatchObject([{ id: item.id, kind: 'insight', more: true }])
     await expect(fy.more(item.id)).rejects.toThrow(M.en.noMore)
     fy.curator = { more: vi.fn(async () => ' Longer answer. ') }
@@ -1221,5 +1221,28 @@ describe('explicit visual proposals', () => {
     snap.sessions = []
     await expect(fy.act(item.id, 'choice:A')).rejects.toThrow()
     expect(() => fy.publishVisualProposal({ ...input(), key: 'other' })).toThrow()
+  })
+})
+
+describe('locale is presentation only', () => {
+  it('keeps populated FR EN FR history, identities, order, seen flags, media, actions and selected choices through reload', async () => {
+    const fy=make()
+    snap.sessions=[session()]
+    shelf.known.add('/shots/scene.png')
+    const media=fy.addMedia({path:'/shots/scene.png',caption:'Le passage vers le café est visible.'})
+    const first=fy.add({kind:'insight',id:'i:locale',text:'Le passage vers le café est prêt.',lang:'fr',actions:[{label:'Ouvrir le café',brief:'Keep this exact authoritative instruction.'}]})!
+    fy.seen([first.id])
+    fy.feed(now,'fr')
+    const raw=fs.readFileSync(path.join(dir,'foryou.json'),'utf8')
+    const shape=(l:'fr'|'en')=>fy.feed(now,l).items.map(i=>({id:i.id,at:i.at,seen:i.seen,media:i.media,actions:i.actions?.map(a=>a.id)}))
+    expect(shape('en')).toEqual(shape('fr'));expect(shape('fr')).toEqual(shape('en'))
+    expect(fs.readFileSync(path.join(dir,'foryou.json'),'utf8')).toBe(raw)
+    const reloaded=make()
+    expect(reloaded.feed(now,'en').items.map(i=>i.id)).toEqual(fy.feed(now,'fr').items.map(i=>i.id))
+    expect(reloaded.feed(now,'en').items.find(i=>i.id===media.id)?.media).toHaveLength(1)
+    expect(host.send).not.toHaveBeenCalled();expect(host.sendMain).not.toHaveBeenCalled()
+  })
+  it('does not generate a placeholder card or model work for an empty feed',()=>{
+    const fy=make();expect(fy.feed(now,'fr').items).toEqual([]);expect(fy.feed(now,'en').items).toEqual([]);expect(fy.localization.job()).toBeNull()
   })
 })

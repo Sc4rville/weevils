@@ -1,3 +1,4 @@
+import { TranslationStatus } from './foryou-localization'
 import { ProposalView } from './foryou-formats'
 import { OutboxStatus } from './outbox-status'
 import { rawEngineeringNotice } from '../../shared/feed-text.ts'
@@ -830,6 +831,7 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
   return (
     <article ref={band} className={`${bandClass(item)} fy-item${closable ? ' notice-shell' : ''}${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-kind={item.kind}>
       {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
+      <TranslationStatus item={item} />
       {Kind && <Kind item={item} who={who} project={project} inView={inView} fy={fy} />}
       {err && (
         <Notice eventId={noticeKey('error:foryou', location.pathname, location.hash, err)} className="fy-err" role="alert">

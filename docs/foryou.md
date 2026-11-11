@@ -349,3 +349,10 @@ Chromium desktop (1280×800) and mobile (390×844) checks run against an isolate
 tmux socket and ports (4291/4292), without production credentials. Screenshots and frame checks cover folded,
 boss full screen, stream full screen and both switches; no JavaScript errors. Actual iPhone/Safari audio,
 keyboard and swipe behaviour still require a device check. Review artifacts are temporary under `/tmp/foryou/`.
+
+
+### Locale preserves the feed (2026-11-11)
+
+The selected app locale changes presentation, never membership. Recorded IDs, timestamps, read/dismissed states, registered media and action destinations remain authoritative and unchanged. Original wording stays in `foryou.json`; `foryou.json.translations.json` keeps source revisions and validated French/English variants. The UI labels pending/unavailable translations and offers original wording. Mail bodies and quoted user words remain originals; project proper names are protected.
+
+Translation work runs through the existing curator budget/provider/backoff, in batches of up to eight cards, without publishing items or synthesizing speech. Changed source text creates a new cache revision; an answer for an earlier source cannot overwrite it. Presentation variants never replace server-side action instructions. Switching locale during an HTTP request discards the stale response and requests the current locale. Existing editorial-notification and no-automatic-voice policies remain in force.

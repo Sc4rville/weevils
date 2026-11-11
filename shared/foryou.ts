@@ -78,6 +78,7 @@ export interface VisualProposal {
 }
 
 export interface ForYouItem {
+  localization?: { target: 'fr' | 'en'; source: 'fr' | 'en' | 'unknown'; revision: string; status: 'pending' | 'failed' | 'translated'; original: Record<string,string> }
   visualProposal?: VisualProposal
 
   /** Same event identity as the session page, when applicable. */

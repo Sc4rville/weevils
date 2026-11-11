@@ -20,3 +20,7 @@ it('keeps genuine questions and actionable alerts, without elevating neutral pro
 it('keeps the useful outcome after an acknowledgement without carrying that acknowledgement into the notification', () => {
  expect(notificationText('Compris, le bouton fonctionne.')).toBe('le bouton fonctionne.')
 })
+
+it('never interrupts for explicitly published visual compositions, even with outcome-like captions',()=>{
+ expect(notificationEligible(item({kind:'media',composition:{layout:'rail',panels:[{mediaId:'a',title:'Ready',text:'The scene is ready.'}]}}))).toBe(false)
+})

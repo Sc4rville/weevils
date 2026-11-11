@@ -302,6 +302,7 @@ export interface ForYouDeps {
 
 /** A recorded item. Everything the app may read is copied field by field in view(): the rest never leaves. */
 interface Stored {
+  composition?: ForYouItem['composition']
   visualProposal?: ForYouItem['visualProposal']
   /** session question: what a model read in the session's last message (asked: false — not really a question). */
   q?: { ask?: boolean; title?: string; question?: string; options?: string[] }
@@ -733,6 +734,29 @@ export class ForYou {
     return this.view(item, this.w.snapshot())
   }
 
+  /** Explicit editorial publication only. Repeating a key never duplicates or revives a card. */
+  publishComposition(raw: unknown): ForYouItem | null {
+    const b = raw as Record<string, any>
+    const str = (v: unknown, max = 600) => typeof v === 'string' && !!v.trim() && v.length <= max
+    if (!b || !this.shelf || !str(b.key, 80) || !/^[a-z0-9-]+$/.test(b.key) || !str(b.title, 200) || !str(b.text, 1200)
+      || !['split', 'rail'].includes(b.layout) || !Array.isArray(b.panels) || b.panels.length < 2 || b.panels.length > 6
+      || !b.panels.every((p: any) => p && str(p.path, 4096) && str(p.title, 160) && str(p.text, 600))) throw new Error(tr(M).invalidVisual)
+    const id = `composition:${b.key}`
+    const previous = this.get(id)
+    if (previous) return this.view(previous, this.w.snapshot())
+    const snap = this.w.snapshot()
+    if (b.projectId && !snap.projects.some(p => p.id === b.projectId)) throw new Error(tr(M).invalidVisual)
+    const media = b.panels.map((p: any) => this.shelf!.add(p.path))
+    if (media.some((m: any) => m.type !== 'image')) throw new Error(tr(M).invalidVisual)
+    const item: Stored = { id, kind: 'media', tone: 'neutral', at: this.now(), who: 'weevboss', title: b.title, text: b.text,
+      lang: lang(), ...(b.projectId ? { projectId: b.projectId } : {}), reply: 'boss', open: { page: 'boss' },
+      mediaIds: [...new Set<string>(media.map((m: any) => m.id))],
+      composition: { layout: b.layout, panels: b.panels.map((p: any, n: number) => ({ mediaId: media[n].id, title: p.title, text: p.text })) } }
+    this.put(item)
+    this.changed()
+    return this.view(item, snap)
+  }
+
   /**
    * The seam for generated items (the curator): written as given, replacing an item of the same id (fresh and unseen
    * again; one the user dismissed stays dismissed).
@@ -874,6 +898,7 @@ export class ForYou {
     }
     const out: ForYouItem = { id: i.id, kind: i.kind, tone: i.tone, at: i.at, who: i.who, text: i.text }
     if (i.visualProposal) out.visualProposal = i.visualProposal
+    if (i.composition) out.composition = i.composition
     if (i.projectId) out.projectId = i.projectId
     if (i.sessionId) out.sessionId = i.sessionId
     if (i.eventId) out.eventId = i.eventId
@@ -894,7 +919,7 @@ export class ForYou {
       const media = i.mediaIds.map((id) => this.shelf!.get(id)).filter((e) => !!e).map((e): ForYouMedia => this.shelf!.view(e!))
       if (media.length) out.media = media
     }
-    if (i.kind === 'media' && !out.media && i.id !== ALCOVE_SOURCE) return null
+    if (i.kind === 'media' && !out.media && i.id !== ALCOVE_SOURCE && !i.composition) return null
     if (i.kind === 'mail') {
       // Written in the mail's own language, like the first line it replaces: shown whatever the app's language.
       if (i.sum?.text) out.text = i.sum.text
@@ -1330,6 +1355,11 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
       await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, b)) }))
     }],
     ['GET', /^\/api\/foryou\/formats$/, (_req, res, url) => json(res, 200, { proposal: fy.visualExample(langOf(url)) })],
+    ['POST', /^\/api\/foryou\/composition$/, async (req, res) => {
+      const b = await readBody(req)
+      if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
+      await run(res, true, () => ({ item: fy.publishComposition(b) }))
+    }],
     ['POST', /^\/api\/foryou\/visual-proposal$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })

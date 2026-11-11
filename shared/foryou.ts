@@ -78,6 +78,8 @@ export interface VisualProposal {
 }
 
 export interface ForYouItem {
+  /** Authored in-card composition; media references never create another event or action. */
+  composition?: { layout: 'split' | 'rail'; panels: { mediaId: string; title: string; text: string }[] }
   /** Read-only projection of verified sources; source records remain independently addressable. */
   resultGroup?: {
     key: 'tlo-alcove'

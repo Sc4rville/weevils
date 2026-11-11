@@ -99,3 +99,15 @@ it('does not mistake an English summary for an entirely English card when its hi
  await c.translate(async s=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,v===mixed.body?'The passage to the café is ready.':v])))
  expect(c.project(mixed,'en','en').body).toBe('The passage to the café is ready.')
 })
+
+it('localizes authored composition copy through the same revision cache without changing layout or media references',async()=>{
+ const c=new FeedLocalization(file,()=>now),s:ForYouItem={...item(),composition:{layout:'split',panels:[{mediaId:'pic',title:'Le café',text:'Le café est prêt pour TLO.'}]}}
+ c.project(s,'en','fr',['TLO'])
+ await c.translate(async fields=>Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,v==='Le café'?'The café':v==='Le café est prêt pour TLO.'?'The café is ready for TLO.':v==='Ouvrir le café'?'Open the café':v])))
+ const en=c.project(s,'en','fr',['TLO'])
+ expect(en.composition).toEqual({layout:'split',panels:[{mediaId:'pic',title:'The café',text:'The café is ready for TLO.'}]})
+ expect(en.media).toEqual(s.media);expect(en.id).toBe(s.id)
+ const changed={...s,composition:{...s.composition!,panels:[{...s.composition!.panels[0],text:'Le café sera prêt demain.'}]}}
+ expect(c.project(changed,'en','fr',['TLO']).localization?.status).toBe('pending')
+ expect(new FeedLocalization(file).project(s,'en','fr',['TLO']).composition).toEqual(en.composition)
+})

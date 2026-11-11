@@ -15,6 +15,7 @@ export function presentation(item: ForYouItem): Record<string,string> {
   // A mail body is an attributed original, never silently rewritten.
   if (item.kind !== 'mail') add('body',item.body)
   item.actions?.forEach((v,n)=>add(`actions.${n}.label`,v.label))
+  item.composition?.panels.forEach((v,n)=>{add(`composition.panels.${n}.title`,v.title);add(`composition.panels.${n}.text`,v.text)})
   item.cards?.forEach((v,n)=>{for(const k of ['title','why','accept'] as const)add(`cards.${n}.${k}`,v[k])})
   item.gauges?.forEach((v,n)=>{add(`gauges.${n}.label`,v.label);add(`gauges.${n}.shown`,v.shown)})
   if(item.visualProposal){

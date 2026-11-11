@@ -1246,3 +1246,29 @@ describe('locale is presentation only', () => {
     const fy=make();expect(fy.feed(now,'fr').items).toEqual([]);expect(fy.feed(now,'en').items).toEqual([]);expect(fy.localization.job()).toBeNull()
   })
 })
+
+describe('explicit editorial compositions', () => {
+  const input = () => ({ key: 'avatar-scene', title: 'One quick look', text: 'A fictional scene with the existing avatar.', layout: 'split', panels: [{path:'/reviewed/office.png',title:'Before',text:'Just one image.'},{path:'/reviewed/phone.png',title:'After',text:'One more detail.'}] })
+  const prepare = () => { shelf.known.add('/reviewed/office.png'); shelf.known.add('/reviewed/phone.png'); return make({ voiceOf: () => 'voice' }) }
+  it('publishes once, preserves identity/read state across repeats and reload, never adds voice', () => {
+    const fy=prepare(), item=fy.publishComposition(input())!
+    expect(item.composition?.layout).toBe('split');expect(item.media).toHaveLength(2);expect(item.voice).toBeUndefined()
+    expect(item.composition?.panels.map(p=>p.mediaId)).toEqual(item.media!.map(m=>m.id))
+    fy.seen([item.id]);now+=1000
+    expect(fy.publishComposition(input())).toMatchObject({id:item.id,at:item.at,seen:true})
+    const loaded=make()
+    expect(find(loaded,item.id)).toMatchObject({id:item.id,seen:true,composition:item.composition})
+    loaded.dismiss(item.id)
+    expect(loaded.publishComposition(input())).toBeNull()
+  })
+  it('keeps missing-media text and refuses malformed or unrelated project input',()=>{
+    const fy=prepare()
+    expect(()=>fy.publishComposition({...input(),projectId:'unknown'})).toThrow()
+    expect(()=>fy.publishComposition({...input(),panels:[]})).toThrow()
+    expect(()=>fy.publishComposition({...input(),layout:'autoplay'})).toThrow()
+    const item=fy.publishComposition(input())!
+    const get=shelf.get;shelf.get=()=>null
+    expect(find(fy,item.id)?.composition?.panels).toHaveLength(2)
+    shelf.get=get
+  })
+})

@@ -889,7 +889,7 @@ export class Weevils {
       messageCount: t.messages.length,
       settings: (t.model || t.approval || t.effort || this.codexBridge.settingsOf?.(t.id) ? { model: t.model, approval: t.approval, effort: t.effort, ...this.codexBridge.settingsOf?.(t.id) } : undefined),
       // Une file ne survit pas à la fin du tour : si la session ne travaille plus, tout a été traité.
-      queued: turnWorking ? Math.max(t.queued.length, pane?.screenQueued ?? 0) : 0,
+      queued: Math.max(this.codexBridge.queuedOf?.(t.id) ?? 0, turnWorking ? Math.max(t.queued.length, pane?.screenQueued ?? 0) : 0),
       ...(relayOf ? { relayOf } : {}),
       ...(relayedBy ? { relayedBy } : {}),
     }
@@ -1554,8 +1554,9 @@ export class Weevils {
   }
 
   private orchestratorQueued(now: number) {
-    const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
-    return t && this.orchestratorWorking(now) ? t.queued.length : 0
+    const owner=this.bossConversation()
+    const t = owner ? this.store.get(owner) : undefined
+    return Math.max(owner ? this.codexBridge.queuedOf?.(owner) ?? 0 : 0, t && this.orchestratorWorking(now) ? t.queued.length : 0)
   }
 
   async modelControls(id: string, selection?: ModelSelection): Promise<ModelControls> {

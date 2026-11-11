@@ -21,12 +21,15 @@ it('queues while active and starts the same durable entry only after idle', asyn
   expect(bridge.can('existing')).toBe(true)
   await bridge.send('existing', 'a user answer')
   expect(f.queue).toHaveLength(1)
+  expect(bridge.queuedOf('existing')).toBe(1)
   expect(f.calls).not.toContain('thread/queue/start')
   const input = f.rpc.mock.calls.find(c => c[0] === 'thread/queue/add')![1].input
   expect(input[0].text).toBe('a user answer')
   f.idle()
   // A fresh weevils instance recovers the queue from the existing daemon.
-  await new CodexBridge('/test/socket', f.transport).refresh()
+  const recovered=new CodexBridge('/test/socket', f.transport)
+  await recovered.refresh()
+  expect(recovered.queuedOf('existing')).toBe(0)
   expect(f.queue).toHaveLength(0)
   expect(f.calls.filter(c => c === 'thread/queue/add')).toHaveLength(1)
   expect(f.calls.some(c => /resume|interrupt|steer|thread\/start/.test(c))).toBe(false)

@@ -48,6 +48,11 @@ const connect: Connect = async (socket, run) => {
 export class CodexBridge {
   private loaded = new Set<string>()
   private activity = new Map<string, { type: 'active' | 'idle'; waiting: boolean; at: number }>()
+  private queued = new Map<string,{count:number;at:number}>()
+  queuedOf(id:string) {
+    const q=this.queued.get(id)
+    return this.can(id) && q && Date.now()-q.at<20_000 ? q.count : undefined
+  }
   private settings = new Map<string, { model?: string; effort?: string; at: number }>()
   settingsOf(id: string) {
     const s = this.settings.get(id)
@@ -82,11 +87,14 @@ export class CodexBridge {
     this.remember(id, state.thread)
     const status = state.thread?.status
     if (status?.type === 'active' || status?.type === 'idle') this.activity.set(id, { type: status.type, waiting: Array.isArray(status.activeFlags) && status.activeFlags.some((f: string) => f === 'waitingOnApproval' || f === 'waitingOnUserInput'), at: Date.now() })
-    if (status?.type !== 'idle') return
     const queue = await rpc('thread/queue/list', { threadId: id })
+    this.queued.set(id,{count:queue.data?.length??0,at:Date.now()})
+    if (status?.type !== 'idle') return
     const first = queue.data?.[0]
     if (!first?.clientUserMessageId?.startsWith('weevils:')) return
+    const remaining=Math.max(0,(queue.data?.length??1)-1)
     await rpc('thread/queue/start', { threadId: id, queuedSubmissionId: first.id })
+    this.queued.set(id,{count:remaining,at:Date.now()})
   }
   async refresh() {
     if (!this.socket || this.busy) return

@@ -133,6 +133,7 @@ export function Shell({
   bodyRef,
   onSwipeLeft,
   actions,
+  headerControls,
   scrollHeading = false,
   sessionLayout = false,
 }: {
@@ -144,7 +145,7 @@ export function Shell({
   foot?: ReactNode
   /** Volet à côté du fil (navigateur intégré) : la page se partage en deux. */
   side?: ReactNode
-  /** Le logo de weevboss : il flotte en bas à gauche de la page, au-dessus de la saisie, sans prendre de place (jamais en haut à droite). */
+  /** Voice control: compact in a session header, otherwise in the existing lower dock. */
   dock?: ReactNode
   /** Bouton qui flotte en bas à droite du fil, au-dessus de la saisie (« du nouveau en bas »). */
   float?: ReactNode
@@ -154,6 +155,8 @@ export function Shell({
   onSwipeLeft?: () => void
   /** Icon buttons at the right of the back-button row (pause, run now…). */
   actions?: ReactNode
+  /** Compact session controls beside the existing back button. */
+  headerControls?: ReactNode
   /** Keep only navigation fixed; long session context scrolls with its messages. */
   scrollHeading?: boolean
   sessionLayout?: boolean
@@ -202,7 +205,13 @@ export function Shell({
     >
       <div className="page-head band tone">
         <div className="in">
-          {actions ? (
+          {sessionLayout ? (
+            <div className="session-header-row">
+              <BackButton kicker={kicker} onClick={back} label={t.back(kicker)} />
+              <div className="session-header-controls">{headerControls}{actions}</div>
+              {dock && <div className="session-header-voice">{dock}</div>}
+            </div>
+          ) : actions ? (
             <div className="page-acts">
               <BackButton kicker={kicker} onClick={back} label={t.back(kicker)} />
               <div className="chars">{actions}</div>
@@ -215,13 +224,13 @@ export function Shell({
         </div>
       </div>
       <div className="page-cols">
-        <div className={dock && !foot ? 'page-main no-foot' : 'page-main'}>
+        <div className={dock && !sessionLayout && !foot ? 'page-main no-foot' : 'page-main'}>
           <div ref={bodyRef} className="page-body" data-scroll>
             {scrollHeading && <div className="in session-heading">{details}</div>}
             {children}
             <div className="fill" />
           </div>
-          {dock && <div className="page-dock">{dock}</div>}
+          {dock && !sessionLayout && <div className="page-dock">{dock}</div>}
           {float && <div className={foot ? 'page-float' : 'page-float no-foot'}>{float}</div>}
           {foot && <div className="page-foot">{foot}</div>}
         </div>

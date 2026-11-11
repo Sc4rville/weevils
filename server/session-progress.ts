@@ -29,7 +29,8 @@ export class SessionProgressReader {
    const fresh = now-updatedAt < STALE
    const moving = fresh && lastProgressAt !== undefined && now-lastProgressAt < 90_000
    const t = tr(M)
-   const result: SessionProgress = {source:'remote',label:done?t.review:error?t.error:moving?t.render:t.waiting,state:done?'done':error?'error':moving?'working':'waiting',updatedAt,staleAfterMs:STALE,completed:count,detail:t.verified(verified),...(lastProgressAt ? {lastProgressAt} : {})}
+   const pauseReason = stage === 'failed-pod-removed' ? 'worker-stopped' : stage === 'account-limit' ? 'capacity' : stage === 'other-pod-no-retry' ? 'retry-stopped' : undefined
+   const result: SessionProgress = {kind:'render', verified, ...(pauseReason ? {pauseReason} : {}), source:'remote',label:done?t.review:error?t.error:moving?t.render:t.waiting,state:done?'done':error?'error':moving?'working':'waiting',updatedAt,staleAfterMs:STALE,completed:count,detail:t.verified(verified),...(lastProgressAt ? {lastProgressAt} : {})}
    this.last.set(cwd, result)
    return result
   } catch { return this.last.get(cwd) }

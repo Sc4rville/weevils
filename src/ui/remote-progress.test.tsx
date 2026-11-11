@@ -16,8 +16,11 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); setLang('en'); con
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); setLang(null) })
 it('distinguishes observed remote work from an idle agent and does not invent a total', async () => {
  await act(async () => root.render(<RemoteProgress progress={progress()} agentWorking={false} />))
- expect(host.textContent).toContain('remote work · agent idle')
- expect(host.textContent).toContain('166 reported frames'); expect(host.textContent).toContain('110 verified frames')
+ expect(host.querySelector('summary')?.textContent).toBe('Rendering')
+ expect(host.querySelector('details')?.open).toBe(false)
+ expect(host.textContent).not.toContain('agent idle')
+ expect(host.querySelector('details')?.textContent).toContain('independently of the conversation')
+ expect(host.textContent).toContain('166 reported frames'); expect(host.textContent).toContain('110 frames verified and downloaded')
  expect(host.querySelector('.spin')).not.toBeNull(); expect(host.querySelector('progress')).toBeNull()
  expect(host.querySelectorAll('time')).toHaveLength(2)
 })
@@ -36,7 +39,7 @@ it('a fresh observer heartbeat alone never proves that the remote job is advanci
 it('disconnect and reconnect update one status block without adding transcript messages', async () => {
  connection.offline = true
  await act(async () => root.render(<RemoteProgress progress={progress()} />))
- expect(host.textContent).toContain('tracking connection interrupted'); expect(host.querySelector('.spin')).toBeNull()
+ expect(host.textContent).toContain('Tracking connection lost'); expect(host.querySelector('.spin')).toBeNull()
  connection.offline = false
  await act(async () => root.render(<RemoteProgress progress={progress({completed:167,updatedAt:NOW+1000,lastProgressAt:NOW+1000})} />))
  expect(host.querySelectorAll('.remote-progress')).toHaveLength(1)
@@ -67,4 +70,24 @@ it('follows real progress at the bottom but preserves rereading until the user r
  height=1400; await act(async () => root.render(<Following count={168} />))
  expect(scroll.scrollTop).toBe(100); expect(host.querySelector('button')).not.toBeNull()
  await act(async () => host.querySelector('button')!.click()); expect(scroll.scrollTop).toBe(1400)
+})
+
+it('shows one actionable paused state, with counters and timestamps folded and fully localized',async()=>{
+ const p=progress({state:'error',label:'Rendu interrompu',detail:'306 images vérifiées et récupérées',completed:306,verified:306,pauseReason:'worker-stopped'})
+ await act(async()=>root.render(<RemoteProgress progress={p} agentWorking={false}/>))
+ expect(host.querySelector('summary')?.textContent).toBe('Render paused')
+ expect(host.querySelector('.remote-progress-reason')?.textContent).toBe('The render worker stopped. Resume with a new worker.')
+ expect(host.querySelector('details')?.open).toBe(false)
+ expect(host.querySelectorAll('[role="status"]')).toHaveLength(1)
+ expect(host.querySelector('summary')?.textContent).not.toContain('306')
+ expect(host.textContent).not.toMatch(/Rendu|images vérifiées|agent idle|error reported/)
+ const details=host.querySelector('details')!;details.open=true
+ await act(async()=>setLang('fr'))
+ expect(host.querySelector('details')).toBe(details);expect(details.open).toBe(true)
+ expect(host.querySelector('summary')?.textContent).toBe('Rendu en pause')
+ expect(host.textContent).toContain('306 images vérifiées et récupérées')
+ expect(host.textContent).not.toMatch(/Render paused|reported frames|Last observation/)
+ await act(async()=>setLang('en'))
+ expect(details.open).toBe(true)
+ expect(host.querySelector('summary')?.textContent).toBe('Render paused')
 })

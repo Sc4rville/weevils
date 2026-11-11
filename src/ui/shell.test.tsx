@@ -20,3 +20,20 @@ it('keeps back navigation fixed while session title, metadata and all messages s
     expect(host.querySelector('.page-foot input')).not.toBeNull()
   } finally { await act(async () => root.unmount()); host.remove() }
 })
+
+it('keeps compact session controls and voice in the header without a dock covering the thread',async()=>{
+ const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
+ const model=vi.fn(),voice=vi.fn()
+ try{
+  await act(async()=>root.render(<Shell slot="agent" kicker="tlo" title="A long complete session title" sessionLayout scrollHeading headerControls={<button onClick={model}>Model and reasoning</button>} dock={<div className="page-voice"><button className="voice-logo" onClick={voice}>Voice</button></div>} foot={<input aria-label="message"/>}><p>Last complete message</p></Shell>))
+  expect(host.querySelector('.page-head .back')).not.toBeNull()
+  expect(host.querySelector('.session-header-controls button')).not.toBeNull()
+  expect(host.querySelectorAll('.voice-logo')).toHaveLength(1)
+  expect(host.querySelector('.session-header-voice .voice-logo')).not.toBeNull()
+  expect(host.querySelector('.page-dock')).toBeNull()
+  expect(host.querySelector('.page-body')?.textContent).toContain('Last complete message')
+  expect(host.querySelector('.page-foot input')).not.toBeNull()
+  await act(async()=>{host.querySelector<HTMLButtonElement>('.session-header-controls button')!.click();host.querySelector<HTMLButtonElement>('.voice-logo')!.click()})
+  expect(model).toHaveBeenCalledOnce();expect(voice).toHaveBeenCalledOnce()
+ }finally{await act(async()=>root.unmount());host.remove()}
+})

@@ -79,6 +79,9 @@ export interface SessionSettings {
 }
 
 export interface SessionProgress {
+  kind?: 'render'
+  pauseReason?: 'worker-stopped' | 'capacity' | 'retry-stopped'
+  verified?: number
   source: 'remote'
   label: string
   state: 'working' | 'waiting' | 'done' | 'error'

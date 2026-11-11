@@ -2733,8 +2733,17 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .session-coordination[open] { border-inline-start: 2px solid color-mix(in oklab, currentColor 22%, transparent); }
 .session-context { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: .875rem; min-height: 32px; opacity: .8; }
 /* Reserve a real row for voice and the latest-message control: neither covers text. */
-.session-page .page-dock { height: 56px; }
-.session-page .page-main:has(> .page-dock) > .page-body > .fill { min-height: 12px; }
+.session-header-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.session-header-row .back { flex: 0 1 auto; max-width: 35%; }
+.session-header-row .back .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-header-controls { flex: 1; min-width: 0; text-align: right; }
+.session-header-controls button { min-height: 44px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; font-size: .8rem; line-height: 1.25; }
+.session-header-voice { flex: none; width: 44px; }
+.session-header-voice .page-voice { position: static; }
+.session-header-voice .voice-logo { width: 44px; height: 44px; min-height: 44px; aspect-ratio: auto; }
+.session-header-voice .voice-svg { width: 38px; height: 28px; }
+.session-header-voice .voice-err { left: auto; right: 0; max-width: min(70vw, 18rem); white-space: normal; }
+.session-page .page-body > .fill { min-height: 12px; }
 .session-page .session-heading .h2 { font-size: 1.25rem; }
 
 .outbox-status { flex: none; font-size: .8125rem; line-height: 1.35; padding-block: 6px; }
@@ -2742,7 +2751,11 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .outbox-status .link { min-height: 28px; }
 
 .remote-progress { padding-block: 12px; font-size: .9375rem; line-height: 1.45; }
-.remote-progress-title { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; }
-.remote-progress-source, .remote-progress .meta { opacity: .72; }
-.remote-progress-state { margin-block: 4px; }
+.remote-progress-title { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; }
+.remote-progress-title::-webkit-details-marker { display: none; }
+.remote-progress-chevron { margin-left: auto; }
+.remote-progress-details[open] .remote-progress-chevron { transform: rotate(180deg); }
+.remote-progress-facts { padding-block: 4px 8px; }
+.remote-progress-reason { margin: 0; font-size: .875rem; }
+.remote-progress .meta { opacity: .72; }
 .remote-progress progress { display: block; width: min(100%, 24rem); height: 6px; margin-block: 8px; accent-color: currentColor; }

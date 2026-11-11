@@ -28,3 +28,12 @@ it('keeps the last heartbeat after a read failure and resets progress on counter
  fs.writeFileSync(file,'partial');expect(r.read(dir,now+90_000)?.updatedAt).toBe(now+20_000)
  write(0,now+100_000);expect(r.read(dir,now+100_000)?.lastProgressAt).toBeUndefined()
 })
+
+it('exposes a stable pause reason and verified count instead of relying on localized prose',()=>{
+ write(306,now,'failed-pod-removed')
+ expect(new SessionProgressReader().read(dir,now)).toMatchObject({kind:'render',state:'error',pauseReason:'worker-stopped',completed:306,verified:10})
+ write(306,now,'account-limit')
+ expect(new SessionProgressReader().read(dir,now)?.pauseReason).toBe('capacity')
+ write(306,now,'other-pod-no-retry')
+ expect(new SessionProgressReader().read(dir,now)?.pauseReason).toBe('retry-stopped')
+})

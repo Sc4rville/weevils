@@ -39,3 +39,13 @@ it('contextual delivery hides completed and older-event receipts without forgett
  expect(host.textContent).toBe('')
  expect(state.rows).toHaveLength(3)
 })
+it.each(['/api/main','/api/foryou/card/reply','/api/sessions/tlo/send'])('never renders a delivered success block in %s, but keeps a recoverable failure',async scope=>{
+ state.rows=[{messageId:'done',url:scope,status:'delivered',result:{id:'tlo'}}]
+ await act(async()=>root.render(<OutboxStatus scope={scope}/>))
+ expect(host.querySelector('.outbox-status')).toBeNull()
+ state.rows.push({messageId:'failed',url:scope,status:'failed',text:'Original message',error:'Not connected'})
+ await act(async()=>root.render(<OutboxStatus scope={scope}/>))
+ expect(host.textContent).toContain('Not connected')
+ expect(host.textContent).not.toMatch(/forwarded to the agent|open conversation|dismiss this status/)
+ expect(host.querySelectorAll('button')).toHaveLength(1)
+})

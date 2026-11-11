@@ -981,3 +981,21 @@ it('does not generate or publish reservoir stories by default', async () => {
   expect(stored().filter(i => i.id.startsWith('r:'))).toHaveLength(0)
   expect(model).not.toHaveBeenCalled()
 })
+
+describe('translation failure isolation',()=>{
+  it('backs off the rejected locale locally without blocking unrelated reader languages',async()=>{
+    const c=makeCurator()
+    fy.add({kind:'insight',text:'Le café est prêt pour une visite.',lang:'fr'})
+    fy.feed(now,'en');looked();cheap.mockResolvedValue('{}')
+    await c.tick(now)
+    expect(fy.feed(now,'en').items.find(i=>i.kind==='insight')?.localization?.status).toBe('failed')
+    expect(state().failUntil).toBe(0)
+    expect(fy.localization.job()).toBeNull()
+  })
+  it('migrates only old translation-validation pauses, preserving every spent call and provider backoff',()=>{
+    fs.writeFileSync(path.join(dir,'curator.json'),JSON.stringify({calls:{day:dayKey(now),n:17},relay:{day:dayKey(now),n:23},failure:{at:now,message:'translation validation'},fails:2,failUntil:now+600000}))
+    const c=makeCurator();expect(c.calls(now)).toBe(17);expect(state().relay.n).toBe(23);expect(state().failUntil).toBe(0)
+    fs.writeFileSync(path.join(dir,'curator.json'),JSON.stringify({...state(),failure:{at:now,message:'model quota failure'},fails:2,failUntil:now+600000}))
+    makeCurator();expect(state().failUntil).toBe(now+600000)
+  })
+})

@@ -1,4 +1,4 @@
-// Messages of server/titles.ts: the prompt that names sessions. Both languages ask for titles in the user's language.
+// Naming follows the explicit catalog locale, independently of the language of the conversation.
 import { defineMessages } from '../i18n.ts'
 
 export default defineMessages({
@@ -12,6 +12,7 @@ export default defineMessages({
         '- now : la dernière chose faite ou en cours, ≤ 5 mots et ≤ 40 caractères (elle doit tenir sur une ligne de téléphone), en français, au présent, sans sujet (ex. « corrige le détecteur d’écran », « déploie sur le VPS »).',
         'Garde previousTitle mot pour mot. topicChanged vaut true UNIQUEMENT si l’utilisateur demande explicitement de passer à un autre sujet global. Une correction, un test, un déploiement ou une étape technique ne changent jamais le sujet. Sans previousTitle, nomme le sujet global selon tout le contexte.',
         '',
+        'Écris un français naturel, pas un calque du chat. La langue du chat ne choisit pas celle du titre. Préserve les noms propres de dépôts et le branding explicitement demandé, y compris les noms d’automatisations ; ne renomme aucun identifiant.',
         'Sessions :',
         sessions,
       ].join('\n'),
@@ -31,6 +32,7 @@ export default defineMessages({
         '- now: the last thing done or in progress, ≤ 5 words and ≤ 40 characters (it must fit on one phone line), in English, present tense, no subject (e.g. "fixes the screen detector", "deploys to the VPS").',
         'Keep previousTitle verbatim. topicChanged is true ONLY when the user explicitly requests a different overall subject. Fixes, tests, deployments and technical steps never change the topic. Without previousTitle, name the overall subject from the full context.',
         '',
+        'Write natural English, not a literal rendering of chat phrasing. Chat language does not select title language. Preserve proper repository names and explicitly requested branding, including automation names; never rename identifiers.',
         'Sessions:',
         sessions,
       ].join('\n'),

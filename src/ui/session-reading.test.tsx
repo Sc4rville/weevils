@@ -147,3 +147,17 @@ it('accepts one submission, exposes activity and its recorded result, then allow
  expect(send).toHaveBeenLastCalledWith('Continue')
  await act(async () => acknowledge())
 })
+
+it('identifies excerpts explicitly in both languages without claiming they are complete', async () => {
+ const event = message('truncated', 'event', 'Runs a command', { toolDetails: { commands: ['safe excerpt'], output: 'partial result', commandsTruncated: true, outputTruncated: true } })
+ await act(async () => root.render(<Messages session messages={[event]} author="codex" />))
+ await act(async () => host.querySelector<HTMLButtonElement>('.steps-head')!.click())
+ const detail = host.querySelector<HTMLDetailsElement>('.step-detail')!
+ await act(async () => { detail.open = true })
+ expect(detail.textContent).toContain('Command truncated')
+ expect(detail.textContent).toContain('Output truncated')
+ await act(async () => setLang('fr'))
+ expect(detail.textContent).toContain('Commande tronquée')
+ expect(detail.textContent).toContain('Sortie tronquée')
+ expect(detail.open).toBe(true)
+})

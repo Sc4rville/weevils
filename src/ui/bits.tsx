@@ -771,7 +771,9 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
               </summary>
               <div className="step-content">
                 {s.toolDetails?.commands.length ? <><div className="meta">{t.recordedCommand}</div>{s.toolDetails.commands.map((command, i) => <pre key={i}>{command}</pre>)}</> : <p className="meta">{t.noRecordedCommand}</p>}
+                {s.toolDetails?.commandsTruncated && <p className="meta">{t.commandTruncated}</p>}
                 {s.toolDetails?.output ? <><div className="meta">{t.recordedOutput}</div><pre>{s.toolDetails.output}</pre></> : <p className="meta">{t.noRecordedOutput}</p>}
+                {s.toolDetails?.outputTruncated && <p className="meta">{t.outputTruncated}</p>}
               </div>
             </details>
           ))}

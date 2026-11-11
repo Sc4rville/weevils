@@ -13,11 +13,12 @@ function lab(value:string):Lab {
  const l=Math.cbrt(.4122214708*r+.5363325363*g+.0514459929*b),m=Math.cbrt(.2119034982*r+.6806995451*g+.1073969566*b),s=Math.cbrt(.0883024619*r+.2817188376*g+.6299787005*b)
  return [.2104542553*l+.793617785*m-.0040720468*s,1.9779984951*l-2.428592205*m+.4505937099*s,.0259040371*l+.7827717662*m-.808675766*s]
 }
-function luminance([L,a,b]:Lab) {
+function linearRGB([L,a,b]:Lab) {
  const l=(L+.3963377774*a+.2158037573*b)**3,m=(L-.1055613458*a-.0638541728*b)**3,s=(L-.0894841775*a-1.291485548*b)**3
  const rgb=[4.0767416621*l-3.3077115913*m+.2309699292*s,-1.2684380046*l+2.6097574011*m-.3413193965*s,-.0041960863*l-.7034186147*m+1.707614701*s].map(v=>Math.max(0,Math.min(1,v)))
- return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2]
+ return rgb
 }
+function luminance(c:Lab){const rgb=linearRGB(c);return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2]}
 it.each(['light','dark','zen','graphite'])('keeps all three logo planes legible on %s main and project bands', theme => {
  const block=css.slice(css.indexOf(`[data-theme='${theme}'] {`)).split('}')[0]
  const vars=Object.fromEntries([...block.matchAll(/--([\w-]+):\s*([^;]+);/g)].map(m=>[m[1],m[2]]))
@@ -34,7 +35,7 @@ it.each(['light','dark','zen','graphite'])('keeps all three logo planes legible 
   return [base,[base[0]+delta,base[1]*1.06,base[2]*1.06] as Lab]
  })
  const logo=fs.readFileSync('src/ui/logo.tsx','utf8')
- const channels=['R','G','B'].map(c=>logo.match(new RegExp('feFunc'+c+' type="discrete" tableValues="([^"]+)"'))![1].split(' ').map(Number))
+ const channels=[...logo.matchAll(/feFunc[RGB][^\n]+ : "([^"]+)"/g)].map(m=>m[1].split(" ").map(Number))
  const apply=(rgb:number[])=>{
   for(const operation of vars['logo-filter'].matchAll(/([a-z]+)\(([\d.]+)\)/g)){
    const n=Number(operation[2]),[r,g,b]=rgb
@@ -55,4 +56,16 @@ it.each(['light','dark','zen','graphite'])('keeps all three logo planes legible 
    expect(ratio,`${theme} ${face} contrast`).toBeGreaterThanOrEqual(3)
   }
  }
+ const recording=lab(vars['anim-rec'] ?? css.match(/:root \{\s*--anim-rec:\s*([^;]+)/)![1])
+ const ink=colour('ink')
+ const mix=Number(css.match(/\.voice-logo\.rec \{[^}]+var\(--anim-rec\) (\d+)%/)![1])/100
+ const base=linearRGB(recording.map((v,i)=>v*mix+ink[i]*(1-mix)) as Lab).map(v=>v<=.0031308?v*12.92:1.055*v**(1/2.4)-.055)
+ for(const shade of [.9,.95,1]) {
+  const [r,g,b]=base.map(v=>linear(v*shade)),foreground=.2126*r+.7152*g+.0722*b
+  for(const bg of backgrounds){
+   const background=luminance(bg),ratio=(Math.max(foreground,background)+.05)/(Math.min(foreground,background)+.05)
+   expect(ratio,`${theme} recording contrast ${shade} ${foreground} ${background} ${base}`).toBeGreaterThanOrEqual(3)
+  }
+ }
+
 })

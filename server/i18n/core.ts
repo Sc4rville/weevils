@@ -4,7 +4,7 @@ import { defineMessages } from '../i18n.ts'
 
 export default defineMessages({
   fr: {
-    appLocale: 'Langue explicite de l’app : français (fr). Écris les libellés, titres générés et publications Pour toi en français. Le chat peut suivre la langue du message utilisateur ; ne déduis jamais la langue de l’app du chat. Préserve les noms propres et les citations utilisateur.',
+    appLocale: 'Langue explicite de l’app : français (fr). Écris les libellés, titres générés de sessions et de projets et publications Pour toi en français naturel. Le chat peut suivre la langue du message utilisateur ; ne déduis jamais la langue de l’app du chat. Préserve les identifiants, noms propres de dépôts, citations et noms de marque explicitement imposés, y compris pour les automatisations. Garde le sujet des titres stable entre les micro-actions. Pour une présentation filmée, respecte le pays cible explicite du brief ; ne déduis aucun pays de la langue du chat ou du code fr.',
 
     // Attached files: what the agent receives.
     fileName: 'fichier',
@@ -62,7 +62,7 @@ export default defineMessages({
       `Ta session a été coupée en plein travail (${why}). Reprends là où tu en étais : ton travail est sur disque dans ${cwd} (git status, git diff, fichiers non commités), relis tes derniers messages et relance ce qui tournait en arrière-plan et a été tué. Puis termine la tâche ; si elle était déjà finie, dis-le en une phrase.`,
   },
   en: {
-    appLocale: 'Explicit app locale: English (en). Write UI labels, generated titles and For you publications in English. Chat replies may follow the user’s message language; never infer the app locale from chat. Preserve proper names and verbatim user quotations.',
+    appLocale: 'Explicit app locale: English (en). Write UI labels, generated session and project titles and For you publications in natural English. Chat replies may follow the user’s message language; never infer the app locale from chat. Preserve identifiers, proper repository names, verbatim user quotations and explicitly specified branding, including automation names. Keep title topics stable across micro-actions. For a screen-recording presentation, follow the explicitly named target country in the brief; never infer a country from chat language or the en locale code.',
 
     fileName: 'file',
     lookPhoto: 'Look at this photo.',

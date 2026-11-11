@@ -45,3 +45,12 @@ it('removes only leading machine tags from presentation and spoken feed text', (
 it('keeps a genuine consent question even when it asks for direct confirmation', () => {
   expect(acknowledgementOnly('Je ne publie pas sans confirmation directe : veux-tu publier ce résultat ?')).toBe(false)
 })
+
+import { internalFeedUpdate, editorialFeedText } from './feed-text.ts'
+describe('product outcomes instead of internal agent chatter',()=>{
+ it.each(['Branche confirmée. Aucun conflit.', 'Branch confirmed.', 'Préparation confirmée : PR privée brouillon, 1216 tests verts.', 'Modèle actif confirmé : GPT-6 Astra. Niveau de raisonnement actuel : Low.', 'TLO: raise the reasoning level to High.', 'The private draft PR can be prepared once the check passes.', 'Côté TLO, le raisonnement est réglé sur Low ; High est recommandé.'])('excludes %s',text=>expect(internalFeedUpdate(text)).toBe(true))
+ it.each(['Le rendu est prêt.', 'Les images se rechargent après erreur : le bouton est réparé.', 'The model picker button is fixed and available in the interface.', 'La publication est bloquée : une clé privée est encore présente.', 'Veux-tu publier cette vidéo ?', 'The render stopped because the GPU budget ran out.'])('preserves useful results or real blockers: %s',text=>expect(internalFeedUpdate(text)).toBe(false))
+ it('keeps the result while removing an adjacent model recommendation',()=>{
+  expect(editorialFeedText('Le rendu est prêt. TLO: raise the reasoning level to High.')).toBe('Le rendu est prêt.')
+ })
+})

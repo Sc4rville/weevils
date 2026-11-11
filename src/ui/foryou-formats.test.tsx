@@ -13,7 +13,7 @@ vi.mock('./outbox-status', () => ({ OutboxStatus: () => null }))
 vi.mock('../api', () => ({ api: { foryouFormats: vi.fn() } }))
 import { api } from '../api'
 import { useForYou } from './foryou-store'
-import { ProposalView, PictureJourney, FullImage, PreviewClip, FormatsPage } from './foryou-formats'
+import { ProposalView, PictureJourney, FullImage, PreviewClip, FormatsPage, InlineMediaFormats } from './foryou-formats'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let host: HTMLDivElement, root: Root
 const item: ForYouItem = { id: 'visual:demo', kind: 'media', tone: 'neutral', at: 1, who: 'session', title: 'A real journey', text: 'Three existing views', media: [0,1,2].map(n => ({id: String(n), type:'image', url:`/image/${n}`,name:`View ${n}`,bytes:1})), visualProposal: {question:'Which pace?', recommendation:'Slower at the threshold',caveat:'Existing blur remains',frames:[0,1,2].map(n=>({title:`View ${n}`,description:`Description ${n}`})),options:[{id:'A',label:'Keep pace',description:'1.4 seconds',instruction:'Keep existing pace'},{id:'B',label:'Slower pace',description:'1.9 seconds',instruction:'Private preview only; no render'}]} }
@@ -151,4 +151,16 @@ it('shows translation progress and original wording without changing the selecte
   }else expect(host.querySelector('[role="status"]')?.textContent).toContain(status==='pending'?'Translation pending':'Translation unavailable')
  }
  expect(state.send).not.toHaveBeenCalled()
+})
+
+it('uses the gallery components directly inside existing feed cards without sending or autoplay',async()=>{
+ const media:ForYouItem={...item,visualProposal:undefined,media:[{id:'341ba5be815fb245',type:'image',url:'/street',name:'street.png',bytes:1},{id:'b3fdac9f32927919',type:'image',url:'/cafe',name:'cafe.png',bytes:1},{id:'video',type:'video',url:'/clip',name:'clip.mp4',bytes:1}]}
+ await act(async()=>root.render(<InlineMediaFormats item={media}/>))
+ expect(host.textContent).toContain('Outside the café')
+ await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Next image')!.click())
+ expect(host.querySelector('img')?.getAttribute('src')).toBe('/cafe')
+ expect(host.querySelector('video')?.controls).toBe(true)
+ expect(host.querySelector('video')?.autoplay).toBe(false)
+ expect(state.send).not.toHaveBeenCalled()
+ expect(host.textContent).not.toContain('Try visual formats')
 })

@@ -34,3 +34,11 @@
 
 .formats-media-error { width: 100%; padding: 16px; border: 1px solid currentColor; }
 .formats-media-error button { text-decoration: underline; }
+
+.formats-inline { padding-block: 16px; min-width: 0; overflow-wrap: anywhere; }
+.formats-inline * { min-width: 0; box-sizing: border-box; }
+.formats-inline button { min-height: 44px; padding: 12px 16px; border-radius: 0; white-space: normal; }
+.formats-inline video { display: block; width: 100%; max-height: 65vh; object-fit: contain; background: var(--ink); }
+.formats-inline .formats-result { grid-template-columns: minmax(0, 1fr); }
+.formats-inline figure { margin: 0; }
+.formats-inline figcaption { padding-block: 12px; line-height: 1.5; }

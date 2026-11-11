@@ -193,18 +193,20 @@ describe('for you page', () => {
 
   it('each kind shows its essentials', async () => {
     await open()
-    // media: the image and the video edge to edge, the video muted, inline, waiting to be in view.
+    // Existing media cards use full-image previews and explicit video playback inside the feed.
     const media = band('me')
     expect(media.querySelector('img')!.getAttribute('src')).toBe('/api/foryou/media/m1')
     const video = media.querySelector('video')!
     expect(video.getAttribute('src')).toBe('/api/foryou/media/m2')
     expect(video.hasAttribute('playsinline')).toBe(true)
-    expect(video.loop).toBe(true)
-    expect(video.getAttribute('preload')).toBe('metadata')
-    expect(media.querySelector('.fy-media-strip.many')).toBeTruthy()
+    expect(video.loop).toBe(false)
+    expect(video.autoplay).toBe(false)
+    expect(video.controls).toBe(true)
+    expect(video.getAttribute('preload')).toBe('none')
+    expect(media.querySelector('.formats-inline')).toBeTruthy()
     expect(media.querySelector('.fy-cap.tone')!.textContent).toContain('the new title screen')
-    expect(media.querySelector('.fy-cap')!.compareDocumentPosition(media.querySelector('.fy-media-strip')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(media.querySelector('.fy-media-open')!.textContent).toBe(t().fullImage)
+    expect(media.querySelector('.fy-cap')!.compareDocumentPosition(media.querySelector('.formats-inline')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(media.querySelector('.formats-image')!.textContent).toContain('Open full image')
     // weevboss: its words, its button, a reply line.
     expect(band('bo').textContent).toContain('Three sessions sent this morning')
     expect(band('bo').querySelector('.fy-btn')!.textContent).toBe('review the two')
@@ -336,8 +338,8 @@ describe('for you page', () => {
     await open()
     await click(band('se').querySelector('.fy-head'))
     expect(pushed).toEqual([{ kind: 'session', id: 's1' }])
-    await click(labelled(t().openMedia('run.mp4')))
-    expect(pushed[1]).toEqual({ kind: 'media', url: '/api/foryou/media/m2', type: 'video', name: 'run.mp4' })
+    await click([...document.querySelectorAll('button')].find(b => b.textContent === 'Open full video')!)
+    expect(pushed[1]).toEqual({ kind: 'media', url: '/api/foryou/media/m2', type: 'video', name: 'the new title screen' })
     await click(band('al').querySelector('.fy-alert'))
     expect(pushed[2]).toEqual({ kind: 'usage' })
   })

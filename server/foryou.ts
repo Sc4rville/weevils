@@ -1,6 +1,6 @@
 import { FeedLocalization } from './foryou-localization.ts'
 import { OutboxError } from './outbox.ts'
-import { acknowledgementOnly, humanFeedItem, humanFeedText, rawEngineeringNotice } from '../shared/feed-text.ts'
+import { internalFeedUpdate, editorialFeedText, acknowledgementOnly, humanFeedItem, humanFeedText, rawEngineeringNotice } from '../shared/feed-text.ts'
 import { canonicalAlertId, feedNoticeKey, isRequestNotice, quotaReset, sessionNoticeKey } from '../shared/notices.ts'
 // « For you »: the stream next to weevboss (docs/foryou.md, contract in shared/foryou.ts). Main machine only.
 //
@@ -575,7 +575,7 @@ export class ForYou {
     const said = cited.length ? collapse(withoutPaths(raw, cited.map((e) => e.path))) : ''
     const whole = (said || raw || (first ? (s.lastMessage ?? '') : '')).trim()
     const text = headline(whole) || clip(collapse(whole), HEADLINE_MAX)
-    if (!text || (!mediaIds.length && acknowledgementOnly(whole))) return
+    if (!text || internalFeedUpdate(whole)) return
     const body = collapse(whole) === text ? undefined : clip(whole.replace(/\n{3,}/g, '\n\n'), BODY_MAX)
     const cur = this.get(`s:${s.id}`)
     const same = cur?.tone === 'result' && cur.text === text && (cur.mediaIds ?? []).join() === mediaIds.join()
@@ -647,7 +647,7 @@ export class ForYou {
   post(text: unknown, actions?: unknown, from?: string): ForYouItem {
     const body = typeof text === 'string' ? text.trim() : ''
     if (!body) throw new Error(tr(M).emptyText)
-    if (technicalEvent('', body)) throw new Error(tr(M).technicalPost)
+    if (technicalEvent('', body) || internalFeedUpdate(body)) throw new Error(tr(M).technicalPost)
     const item: Stored = { id: newId('b'), kind: 'boss', tone: 'neutral', at: this.now(), who: from || 'weevboss', text: clip(body, POST_MAX), actions: this.buttons(actions), reply: 'boss', open: { page: 'boss' } }
     this.put(item)
     this.changed()
@@ -737,7 +737,7 @@ export class ForYou {
    * again; one the user dismissed stays dismissed).
    */
   add(n: NewItem): ForYouItem | null {
-    if (technicalEvent(n.id ?? '', n.text)) return null
+    if (technicalEvent(n.id ?? '', n.text) || internalFeedUpdate(n.text)) return null
     const text = clip(n.text.trim(), POST_MAX)
     if (!text) return null
     const boss = n.kind === 'boss'
@@ -811,7 +811,7 @@ export class ForYou {
   resultLine(id: string, line: string | null, l?: Lang) {
     const i = this.get(id)
     if (!i || i.kind !== 'session') return
-    const text = line ? clip(collapse(line), LINE_MAX) : ''
+    const text = line && !internalFeedUpdate(line) ? clip(collapse(line), LINE_MAX) : ''
     i.sum = text ? { text, lang: l } : {}
     if (text) this.changed()
     else this.save()
@@ -835,7 +835,7 @@ export class ForYou {
   /** Distinct sessions with a concrete result today, reconstructed from source records, not turn counts. */
   deliveredToday(now = this.now()): { n: number; by: Record<string, number> } {
     const by: Record<string, number> = {}
-    const results = this.s.items.filter((i) => i.kind === 'session' && i.tone === 'result' && day(i.at) === day(now) && !technicalEvent(i.id, i.text) && (i.mediaIds?.length || !acknowledgementOnly(i.body || i.text)))
+    const results = this.s.items.filter((i) => i.kind === 'session' && i.tone === 'result' && day(i.at) === day(now) && !technicalEvent(i.id, i.text) && !internalFeedUpdate(i.body || i.text))
     for (const i of results) if (i.projectId) by[i.projectId] = (by[i.projectId] ?? 0) + 1
     return { n: results.length, by }
   }
@@ -866,7 +866,7 @@ export class ForYou {
   /** What the app may read of a recorded item, or null when it has nothing to show right now. */
   private view(i: Stored, snap: Snapshot, any = false): ForYouItem | null {
     if (i.gone || i.id.startsWith('r:') || technicalEvent(i.id, i.text)) return null
-    if (i.kind === 'session' && i.tone === 'result' && !i.mediaIds?.length && acknowledgementOnly(i.body || i.text)) return null
+    if (((i.kind === 'session' && i.tone === 'result') || ['boss', 'improve', 'insight'].includes(i.kind)) && internalFeedUpdate([i.title, i.body || i.text].filter(Boolean).join('\n'))) return null
     if (i.id.startsWith('auto:proposed:')) {
       const idea = snap.optimizers?.find((o) => i.id === `auto:proposed:${o.id}`)
       if (!idea || idea.draft) return null
@@ -903,7 +903,7 @@ export class ForYou {
     }
     if (i.kind === 'session') {
       // The line follows the latest rules (an item stored earlier gets them too); the curator's line wins.
-      if (i.tone === 'result') out.text = i.sum?.text || (i.body && headline(i.body)) || i.text
+      if (i.tone === 'result') out.text = i.sum?.text && !internalFeedUpdate(i.sum.text) ? i.sum.text : headline(editorialFeedText(i.body || i.text)) || i.text
       const cur = snap.sessions.find((s) => s.id === i.sessionId)
       if (cur?.archived) return null
       if (cur) out.title = cleanTitle(cur.title)
@@ -926,6 +926,12 @@ export class ForYou {
         out.text = t.cut(tr(CM).cutWhy(i.cut ?? 'died'))
         out.actions = [{ id: 'resume', label: t.resume }]
       }
+    }
+    if (['boss', 'improve', 'insight'].includes(i.kind)) {
+      const text = editorialFeedText(out.text)
+      if (!text) return null
+      out.text = text
+      if (out.actions) out.actions = out.actions.filter(a => !internalFeedUpdate(a.label))
     }
     return humanFeedItem(out)
   }

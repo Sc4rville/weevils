@@ -1,5 +1,5 @@
 import { TranslationStatus } from './foryou-localization'
-import { ProposalView } from './foryou-formats'
+import { InlineMediaFormats, ProposalView } from './foryou-formats'
 import { OutboxStatus } from './outbox-status'
 import { rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
@@ -432,7 +432,7 @@ function MediaItem({ item, who, fy }: KindProps) {
           {!!item.gauges?.length && <Gauges list={item.gauges} />}
         </div>
       </div>
-      {!!item.media?.length && <MediaStrip media={item.media} />}
+      {!!item.media?.length && <InlineMediaFormats item={item} />}
       <Actions item={item} fy={fy} />
       {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
     </>

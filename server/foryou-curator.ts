@@ -1,3 +1,4 @@
+import { internalFeedUpdate } from '../shared/feed-text.ts'
 import { preferredTool, providerReady } from './provider.ts'
 // The curator of the « for you » stream (docs/foryou.md §3.5): everything in the stream that is written or counted
 // rather than recorded. One loop, one spender.
@@ -763,7 +764,7 @@ export class Curator implements ForYouCurator {
     const snap = this.fy.w.snapshot()
     const project = (id?: string) => snap.projects.find((p) => p.id === id)?.name ?? id ?? '?'
     const mine = snap.sessions.filter((s) => this.fy.eligible(s))
-    const results = this.fy.recent(['session'], 80).filter((i) => i.tone === 'result' && i.at > since)
+    const results = this.fy.recent(['session'], 80).filter((i) => i.tone === 'result' && i.at > since && !internalFeedUpdate(i.body || i.text))
     let waiting = mine.filter((s) => s.status === 'needs_user' || s.status === 'interrupted')
     const boss = this.fy.recent(['boss'], 30)
     const posts = boss.filter((i) => i.at > since && i.who === 'weevboss' && !i.id.startsWith('d:'))

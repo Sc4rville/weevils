@@ -34,15 +34,16 @@ export function FullImage({ media, description }: { media: ForYouMedia; descript
 }
 
 export function PreviewClip({ media, poster, title }: { media: ForYouMedia; poster?: string; title: string }) {
+  const { push } = useApp()
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const t = useT(M)
   useEffect(() => { setFailed(false); setAttempt(0) }, [media.id, media.url])
   if (failed) return <div className="formats-media-error"><p role="alert">{t.clipUnavailable}</p><button type="button" onClick={() => { setAttempt(n => n + 1); setFailed(false) }}>{t.retryClip}</button></div>
-  return <video key={`${media.id}:${media.url}:${attempt}`} controls playsInline preload="none" poster={poster} aria-label={title} src={mediaAttempt(media.url, attempt)} onError={() => setFailed(true)} />
+  return <div className="formats-clip"><video key={`${media.id}:${media.url}:${attempt}`} controls playsInline preload="none" poster={poster} aria-label={title} src={mediaAttempt(media.url, attempt)} onError={() => setFailed(true)} /><button type="button" onClick={() => push({ kind: 'media', url: media.url, type: 'video', name: title })}>{t.openClip}</button></div>
 }
 
-export function PictureJourney({ media, frames }: { media: ForYouMedia[]; frames: VisualProposal['frames'] }) {
+export function PictureJourney({ media, frames, label }: { media: ForYouMedia[]; frames: VisualProposal['frames']; label?: string }) {
   const [at, setAt] = useState(0)
   const t = useT(M)
   const count = Math.min(media.length, frames.length)
@@ -50,7 +51,7 @@ export function PictureJourney({ media, frames }: { media: ForYouMedia[]; frames
   if (!count) return <p>{t.missing}</p>
   return <div className="formats-journey">
     <div className="formats-story-copy">
-      <nav className="formats-steps" aria-label={t.storyTitle}>{frames.slice(0, count).map((f, n) => <button type="button" key={n} aria-current={n === index ? 'step' : undefined} onClick={() => setAt(n)}>{n + 1} · {f.title}</button>)}</nav>
+      <nav className="formats-steps" aria-label={label ?? t.storyTitle}>{frames.slice(0, count).map((f, n) => <button type="button" key={n} aria-current={n === index ? 'step' : undefined} onClick={() => setAt(n)}>{n + 1} · {f.title}</button>)}</nav>
       <div aria-live="polite"><p className="meta">{t.step(index + 1, count)}</p><h3>{frames[index].title}</h3><p>{frames[index].description}</p></div>
       <div className="formats-nav"><button type="button" disabled={index === 0} onClick={() => setAt(index - 1)}>{t.previous}</button><button type="button" disabled={index === count - 1} onClick={() => setAt(index + 1)}>{t.next}</button></div>
     </div>
@@ -81,6 +82,27 @@ export function ProposalView({ item, fy }: { item: ForYouItem; fy: ForYouStore }
     <OutboxStatus scope={`/api/foryou/${encodeURIComponent(item.id)}/act`} />
     {fy.error(item.id) && <p role="alert">{fy.error(item.id)}</p>}
   </section>
+}
+
+/** The same visual components inside existing feed cards; no new post, route or automatic playback. */
+export function InlineMediaFormats({ item }: { item: ForYouItem }) {
+  const t = useT(M)
+  const media = item.media ?? []
+  const images = media.filter(m => m.type === 'image')
+  const captions: Record<string, { title: string; description: string }> = {
+    '341ba5be815fb245': { title: t.streetTitle, description: t.streetText },
+    'b3fdac9f32927919': { title: t.cafeTitle, description: t.cafeText },
+    'b442c5405b86603a': { title: t.alcoveTitle, description: t.alcoveText },
+  }
+  let knownPrefix = 0
+  while (knownPrefix < images.length && captions[images[knownPrefix].id]) knownPrefix++
+  const journey = knownPrefix > 1
+  const rest = journey ? images.slice(knownPrefix) : images
+  return <div className="formats-inline in">
+    {journey && <PictureJourney media={images.slice(0,knownPrefix)} frames={images.slice(0,knownPrefix).map(m=>captions[m.id])} label={t.browseImages} />}
+    <div className={rest.length > 1 ? 'formats-contact' : 'formats-result'}>{rest.map(m=><figure key={m.id}>{captions[m.id] && <figcaption>{captions[m.id].description}</figcaption>}<FullImage media={m} description={captions[m.id]?.description || item.title || item.text || t.step(images.indexOf(m)+1,images.length)} /></figure>)}</div>
+    {media.filter(m=>m.type==='video').map(m=><PreviewClip key={m.id} media={m} title={item.title || item.text || t.clipTitle} />)}
+  </div>
 }
 
 export function FormatsPage() {

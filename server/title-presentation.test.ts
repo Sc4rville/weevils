@@ -22,3 +22,12 @@ it('keeps translated titles stable through activity changes, locale switches and
  expect(titlePresentation('a',source,'en',new FeedLocalization(file),['TLO'])).toEqual(english)
  expect(source.title).toBe('Le café de TLO')
 })
+
+it('queues legacy generated titles with unknown source language instead of silently leaving short French names',async()=>{
+ const cache=new FeedLocalization(path.join(dir,'translations.json'))
+ const source:Titled={title:'Gestion dossiers',now:'',at:1,messageCount:1}
+ expect(titlePresentation('legacy',source,'en',cache).title).toBe('Gestion dossiers')
+ expect(cache.job()).not.toBeNull()
+ await cache.translate(async strings=>Object.fromEntries(Object.keys(strings).map(k=>[k,'Folder management'])))
+ expect(titlePresentation('legacy',source,'en',cache).title).toBe('Folder management')
+})

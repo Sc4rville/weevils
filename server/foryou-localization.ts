@@ -37,7 +37,7 @@ export class FeedLocalization {
   private now: () => number
   constructor(file: string, now = Date.now){this.file=file;this.now=now;try{this.entries=JSON.parse(fs.readFileSync(file,'utf8'))}catch{/* first start */}}
   private save(){fs.mkdirSync(path.dirname(this.file),{recursive:true});fs.writeFileSync(this.file+'.tmp',JSON.stringify(this.entries),{mode:0o600});fs.renameSync(this.file+'.tmp',this.file)}
-  project(item: ForYouItem,target: Lang, sourceLang?: Lang, names: string[]=[]): ForYouItem {
+  project(item: ForYouItem,target: Lang, sourceLang?: Lang | 'unknown', names: string[]=[]): ForYouItem {
     const source=presentation(item)
     const combined = Object.values(source).join('\n')
     const original=sourceLang??(combined.trim().split(/\s+/).length >= 5 || /[éèêàçùœ]|\b(?:le|les|une|des|pour|avec|est|the|your|ready|open|view)\b/i.test(combined) ? detectLang(combined) : null)

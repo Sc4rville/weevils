@@ -7,7 +7,7 @@ export function titlePresentation(id: string, source: Titled, target: Lang, cach
   const project = (field: 'title' | 'now', sourceLang?: Lang) => {
     const text = source[field]
     if (!cache || !text) return text
-    return cache.project({ id: `session-${field}:${id}`, kind: 'session', tone: 'neutral', who: 'session', at: source.at, text }, target, sourceLang, names).text
+    return cache.project({ id: `session-${field}:${id}`, kind: 'session', tone: 'neutral', who: 'session', at: source.at, text }, target, sourceLang ?? 'unknown', names).text
   }
   return { title: project('title', source.titleLang), now: project('now', source.nowLang) }
 }

@@ -1,4 +1,4 @@
-import { commandDetails, toolOutputText } from './codex-command-details.ts'
+import { commandDetails, toolOutputDetails } from './codex-command-details.ts'
 import { codexToolLabel, codexToolKinds } from './codex-tool-label.ts'
 // Lecture incrémentale des transcripts Claude Code (~/.claude/projects) et Codex (~/.codex/sessions).
 // Formats non documentés : on lit ce qui est utile et on ignore le reste sans jamais planter.
@@ -322,8 +322,8 @@ function codexLine(t: Transcript, o: any) {
     delegatedMessage(t, p, at)
     const event=t.messages.find(m=>m.role==='event' && m.id===p.call_id)
     if(event?.toolDetails?.commands.length && !event.toolDetails.commands.includes('[redacted]')) {
-      const output=toolOutputText(p.output)
-      if(output)event.toolDetails.output=output
+      const result=toolOutputDetails(p.output)
+      if(result.output)Object.assign(event.toolDetails,result)
     }
     return
   }
@@ -351,7 +351,8 @@ function codexLine(t: Transcript, o: any) {
     if (typeof input === 'string') {
       try { input = JSON.parse(input) } catch { /* Free-form code stays opaque; never evaluated. */ }
     }
-    push(t, { id: p.call_id ?? `${t.id}-${at}-f`, role: 'event', text: codexToolLabel(p.name ?? 'local_shell_call', input), toolDetails: {commands:commandDetails(p.name ?? 'local_shell_call', input), kinds:codexToolKinds(p.name ?? 'local_shell_call', input)}, at })
+    const commands=commandDetails(p.name ?? 'local_shell_call', input, Infinity)
+    push(t, { id: p.call_id ?? `${t.id}-${at}-f`, role: 'event', text: codexToolLabel(p.name ?? 'local_shell_call', input), toolDetails: {commands:commands.map(c=>c.slice(0,8000)), commandsTruncated:commands.some(c=>c.length>8000), kinds:codexToolKinds(p.name ?? 'local_shell_call', input)}, at })
   }
 }
 

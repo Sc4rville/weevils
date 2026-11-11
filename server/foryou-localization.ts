@@ -28,6 +28,21 @@ const occurs = (s: string, word: string) => {
   const escaped=word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')
   return new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`,'u').test(s)
 }
+/** Written counts and numeric counts can be equivalent (Deux → 2); articles are not counted by default. */
+export function sameNumericFacts(source: string, variant: string): boolean {
+  const digits=(s:string)=>s.match(/\d+(?:[.,]\d+)?/g)?.map(n=>String(Number(n.replace(',','.'))))??[]
+  const a=digits(source), b=digits(variant)
+  for(let n=a.length-1;n>=0;n--){const at=b.indexOf(a[n]);if(at>=0){a.splice(n,1);b.splice(at,1)}}
+  // i18n-ignore: bilingual validation lexicon, never displayed
+  const words=[['zero','zéro'],['one','un','une'],['two','deux'],['three','trois'],['four','quatre'],['five','cinq'],['six'],['seven','sept'],['eight','huit'],['nine','neuf'],['ten','dix'],['eleven','onze'],['twelve','douze'],['thirteen','treize'],['fourteen','quatorze'],['fifteen','quinze'],['sixteen','seize'],['seventeen','dix-sept'],['eighteen','dix-huit'],['nineteen','dix-neuf'],['twenty','vingt']]
+  const canExplain=(missing:string[], text:string)=>missing.every(n=>{
+    const variants=words[Number(n)];if(!variants)return false
+    const re=new RegExp(`(?<![\\p{L}\\p{N}_-])(?:${variants.join('|')})(?![\\p{L}\\p{N}_-])`,'iu')
+    if(!re.test(text))return false
+    text=text.replace(re,'');return true
+  })
+  return canExplain(a,variant)&&canExplain(b,source)
+}
 const protect = (s: string, names: string[]) => [...new Set([...names.filter(n=>n && occurs(s,n)), ...s.matchAll(/«[^»]+»|“[^”]+”|"[^"\n]+"|`[^`]+`|https?:\/\/[^\s]+/g)].map(v=>typeof v==='string'?v:v[0]))]
 
 export class FeedLocalization {
@@ -90,9 +105,8 @@ export class FeedLocalization {
           // i18n-ignore: internal validation code, never presented to the user
           for(const word of entry.protected)if(occurs(source,word)&&!occurs(v,word))throw new Error('translation changed protected text')
           // Numeric facts are presentation, never creative copy.
-          const numbers=(s:string)=>s.match(/\d+(?:[.,]\d+)?/g)?.map(n=>String(Number(n.replace(',','.')))).sort().join('|')??''
           // i18n-ignore: internal validation code, never presented to the user
-          if(numbers(source)!==numbers(v))throw new Error('translation changed numbers')
+          if(!sameNumericFacts(source,v))throw new Error('translation changed numbers')
           variant[k]=v
         }
         const sample=Object.values(variant).join(' ').replace(/«[^»]+»|“[^”]+”|"[^"\n]+"|`[^`]+`/g,'')

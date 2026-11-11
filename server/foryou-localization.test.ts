@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { FeedLocalization } from './foryou-localization.ts'
+import { FeedLocalization, sameNumericFacts } from './foryou-localization.ts'
 import type { ForYouItem } from '../shared/foryou.ts'
 let dir:string, file:string, now:number
 beforeEach(()=>{dir=fs.mkdtempSync(path.join(os.tmpdir(),'feed-loc-'));file=path.join(dir,'translations.json');now=1000})
@@ -62,4 +62,13 @@ it('translates requested feed cards before background legacy title history',asyn
  await c.translate(provider)
  expect(c.project(visible,'en','fr',[],true).localization?.status).toBe('translated')
  expect(Object.values(provider.mock.calls[0][0])).toContain(visible.text)
+})
+
+it('accepts faithful written counts without accepting invented or changed counts',()=>{
+ expect(sameNumericFacts('Deux retours annoncent un correctif.', '2 updates announce a fix.')).toBe(true)
+ expect(sameNumericFacts('Il y a 3 images.', 'There are three images.')).toBe(true)
+ expect(sameNumericFacts('Il y a 3 images.', 'There are four images.')).toBe(false)
+ expect(sameNumericFacts('Le café est prêt.', 'The café has 4 rooms.')).toBe(false)
+ expect(sameNumericFacts('Deux retours.', '2 updates with 2 fixes.')).toBe(false)
+ expect(sameNumericFacts('1,4 seconde', '1.4 seconds')).toBe(true)
 })

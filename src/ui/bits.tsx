@@ -5,7 +5,7 @@ import { SessionMenu } from './session-archive'
 import { sessionNoticeKey } from '../../shared/notices.ts'
 import { dismissNotice } from './notice-store'
 import { AnimatePresence, motion, type Transition } from 'motion/react'
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { api } from '../api'
 import { useCaptureSuggestion } from './capture-suggestion'
 import type { Author, Message, Session } from '../../shared/api.ts'
@@ -744,25 +744,16 @@ function group(messages: Message[]): Group[] {
 
 function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
   const mid = steps[0].id
+  const listId = useId()
   const t = useT(M)
   const [open, setOpen] = useState(false)
   const tools=useT(ToolM)
   const label=(message:Message)=>message.toolDetails?.kinds?.length ? message.toolDetails.kinds.map(k=>tools[k as keyof typeof tools]??step(message.text)).join(' · ') : step(message.text)
   const last = label(steps[steps.length - 1])
-  if (steps.length === 1 && !steps[0].toolDetails?.commands.length) {
-    return (
-      <div className="msg band event" data-mid={mid}>
-        <div className="in">
-          <div className="text">
-            <Icon name="arrow" dir="right" /> {last}
-          </div>
-        </div>
-      </div>
-    )
-  }
+
   return (
     <div className="msg band event" data-mid={mid}>
-      <button className="in steps-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+      <button type="button" className="in steps-head" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={open ? listId : undefined}>
         <span className="text">
           {live ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="arrow" dir="right" />} {t.steps(steps.length)} · <span key={last} className="fade-in">{last}</span>
         </span>
@@ -771,13 +762,18 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
         </span>
       </button>
       <Collapse open={open}>
-        <div className="in steps-list">
+        <div id={listId} className="in steps-list">
           {steps.map((s) => (
-            <div key={s.id} className="text">
-              <Icon name="arrow" dir="right" /> {label(s)}
-              {s.toolDetails?.commands.map((command,i)=><pre key={i} style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{command}</pre>)}
-              {s.toolDetails?.output && <pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{s.toolDetails.output}</pre>}
-            </div>
+            <details key={s.id} className="step-detail">
+              <summary className="step-head">
+                <span className="text">{label(s)}</span>
+                <span className="step-toggle" aria-hidden><span className="step-plus"><Icon name="plus" /></span><span className="step-minus"><Icon name="minus" /></span></span>
+              </summary>
+              <div className="step-content">
+                {s.toolDetails?.commands.length ? <><div className="meta">{t.recordedCommand}</div>{s.toolDetails.commands.map((command, i) => <pre key={i}>{command}</pre>)}</> : <p className="meta">{t.noRecordedCommand}</p>}
+                {s.toolDetails?.output ? <><div className="meta">{t.recordedOutput}</div><pre>{s.toolDetails.output}</pre></> : <p className="meta">{t.noRecordedOutput}</p>}
+              </div>
+            </details>
           ))}
         </div>
       </Collapse>

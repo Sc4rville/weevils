@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { MotionGlobalConfig } from 'motion/react'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import type { Message } from '../../shared/api'
-import { Messages } from './bits'
+import { Composer, Messages } from './bits'
 import { useThreadAsk } from './askthread'
 import { setLang } from '../i18n'
 const state = vi.hoisted(() => ({ word: true }))
@@ -64,4 +64,86 @@ it('hides leading agent machine tags without rewriting user words or stored mess
  expect(host.querySelector('[data-mid="b"]')!.textContent).toContain('Le GPU est arrêté.')
  expect(host.querySelector('[data-mid="b"]')!.textContent).not.toContain('[GPU]')
  expect(msgs[1].text).toBe('[VPS] Résultat prêt.')
+})
+it('opens each recorded step independently and preserves disclosure across results and language changes', async () => {
+ const first = message('t1', 'event', 'Runs a command', { toolDetails: { kinds: ['test'], commands: ['npm test -- --run'], output: '12 tests passed\nTOKEN=[redacted]\n<script>not markup</script>' } })
+ const second = message('t2', 'event', 'Runs a command', { toolDetails: { kinds: ['read'], commands: ['cat README.md'] } })
+ const render = (messages: Message[]) => act(async () => root.render(<Messages session messages={messages} author="codex" working />))
+ await render([first, second])
+ const group = host.querySelector<HTMLButtonElement>('.steps-head')!
+ expect(group.getAttribute('aria-expanded')).toBe('false')
+ expect(host.querySelector('pre')).toBeNull()
+ await act(async () => group.click())
+ const details = host.querySelectorAll<HTMLDetailsElement>('.step-detail')
+ expect(details).toHaveLength(2)
+ expect([...details].every(d => !d.open)).toBe(true)
+ expect(details[0].querySelector('summary')!.textContent).toBe('Runs tests')
+ expect(details[1].querySelector('summary')!.textContent).toBe('Reads files')
+ expect(host.querySelectorAll('.step-plus')).toHaveLength(2)
+ await act(async () => { details[0].open = true })
+ expect(details[0].querySelectorAll('pre')[0].textContent).toBe('npm test -- --run')
+ expect(details[0].querySelectorAll('pre')[1].textContent).toContain('TOKEN=[redacted]')
+ expect(details[0].querySelector('script')).toBeNull()
+ expect(details[1].open).toBe(false)
+ await act(async () => setLang('fr'))
+ expect(details[0].open).toBe(true)
+ expect(details[0].querySelector('summary')!.textContent).toBe('Lance les tests')
+ expect(details[0].textContent).toContain('Sortie enregistrée')
+ await render([first, { ...second, toolDetails: { ...second.toolDetails!, output: 'Actual file content' } }])
+ expect(host.querySelectorAll('.step-detail')[0]).toBe(details[0])
+ expect(details[0].open).toBe(true)
+ expect(details[1].open).toBe(false)
+ expect(details[1].textContent).toContain('Actual file content')
+ await act(async () => setLang('en'))
+ expect(details[0].open).toBe(true)
+ expect(details[0].textContent).toContain('Recorded output')
+})
+it('keeps even a single legacy step inspectable without inventing a command or result', async () => {
+ await act(async () => root.render(<Messages session messages={[message('single', 'event', 'Runs a command')]} author="codex" />))
+ const group = host.querySelector<HTMLButtonElement>('.steps-head')!
+ expect(group.textContent).toContain('1 step')
+ expect(group.getAttribute('aria-expanded')).toBe('false')
+ await act(async () => group.click())
+ const detail = host.querySelector<HTMLDetailsElement>('.step-detail')!
+ expect(detail.open).toBe(false)
+ await act(async () => { detail.open = true })
+ expect(detail.textContent).toContain('No command recorded')
+ expect(detail.textContent).toContain('No output recorded')
+ expect(detail.querySelector('pre')).toBeNull()
+})
+
+it('accepts one submission, exposes activity and its recorded result, then allows a new message without replay', async () => {
+ let acknowledge!: () => void
+ const send = vi.fn(() => new Promise<void>(resolve => { acknowledge = resolve }))
+ const transcript: Message[] = []
+ const render = (working = false, draft = { text: 'Check this', n: 1 }) => act(async () => root.render(<>
+   <Messages session messages={[...transcript]} author="codex" working={working} />
+   <Composer label="acceptance-session" placeholder="Message" onSend={send} draft={draft} />
+ </>))
+ await render()
+ await act(async () => {
+   host.querySelector('form')!.requestSubmit()
+   host.querySelector('form')!.requestSubmit()
+ })
+ expect(send).toHaveBeenCalledTimes(1)
+ transcript.push(message('user', 'user', 'Check this'), message('tool', 'event', 'Runs tests', { toolDetails: { commands: ['npm test'], kinds: ['test'] } }))
+ await act(async () => acknowledge())
+ await render(true)
+ expect(host.querySelector('.steps-head .spin')).not.toBeNull()
+ await act(async () => host.querySelector<HTMLButtonElement>('.steps-head')!.click())
+ const detail = host.querySelector<HTMLDetailsElement>('.step-detail')!
+ await act(async () => { detail.open = true })
+ expect(detail.querySelector('pre')!.textContent).toBe('npm test')
+ transcript[1] = { ...transcript[1], toolDetails: { ...transcript[1].toolDetails!, output: 'Tests passed' } }
+ transcript.push(message('answer', 'assistant', 'Checks passed.'))
+ await render()
+ expect(host.querySelector('.steps-head .spin')).toBeNull()
+ expect(detail.open).toBe(true)
+ expect(detail.textContent).toContain('Tests passed')
+ expect(send).toHaveBeenCalledTimes(1)
+ await render(false, { text: 'Continue', n: 2 })
+ await act(async () => host.querySelector('form')!.requestSubmit())
+ expect(send).toHaveBeenCalledTimes(2)
+ expect(send).toHaveBeenLastCalledWith('Continue')
+ await act(async () => acknowledge())
 })

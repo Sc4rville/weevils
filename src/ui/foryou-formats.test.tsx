@@ -168,9 +168,10 @@ it('uses the gallery components directly inside existing feed cards without send
 it.each(['split','rail'] as const)('renders authored %s panels once, retaining unmatched media and stable video across locale refresh',async layout=>{
  const composed:ForYouItem={...item,visualProposal:undefined,media:[...item.media!,{id:'clip',type:'video',url:'/clip',name:'Existing clip',bytes:1}],composition:{layout,panels:[{mediaId:'0',title:'First panel',text:'Existing source'},{mediaId:'clip',title:'Video panel',text:'Watch at your pace'},{mediaId:'0',title:'Duplicate reference',text:'Not a new source'},{mediaId:'missing',title:'Missing source',text:'Do not invent a media'}]}}
  await act(async()=>root.render(<InlineMediaFormats item={composed}/>))
- expect(host.querySelectorAll('img')).toHaveLength(3)
+ expect(host.querySelectorAll('img')).toHaveLength(4)
  expect(host.querySelectorAll('video')).toHaveLength(1)
- expect(host.textContent).not.toContain('Duplicate reference');expect(host.textContent).not.toContain('Missing source')
+ expect(host.textContent).toContain('Duplicate reference');expect(host.textContent).toContain('Missing source')
+ expect(host.querySelector('[role="status"]')?.textContent).toContain('did not load')
  const video=host.querySelector('video')!;video.currentTime=8
  expect(video.controls).toBe(true);expect(video.autoplay).toBe(false)
  await act(async()=>setLang('fr'))

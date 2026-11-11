@@ -83,11 +83,10 @@ export function InlineMediaFormats({ item }: { item: ForYouItem }) {
   const t = useT(M)
   const allMedia = item.media ?? []
   const used = new Set<string>()
-  const panels = (item.composition?.panels ?? []).flatMap(panel => {
+  const panels = (item.composition?.panels ?? []).map((panel, index) => {
     const media = allMedia.find(m => m.id === panel.mediaId)
-    if (!media || used.has(media.id)) return []
-    used.add(media.id)
-    return [{ id: media.id, label: panel.title || media.name, content: <div className="formats-journey"><div className="formats-story-copy">{panel.title && <h3>{panel.title}</h3>}{panel.text && <p>{panel.text}</p>}</div>{media.type === 'video' ? <PreviewClip media={media} title={panel.title || media.name}/> : <FullImage media={media} description={panel.text || panel.title || media.name}/>}</div> }]
+    if (media) used.add(media.id)
+    return { id: `${panel.mediaId}:${index}`, label: panel.title || media?.name || t.imageUnavailable, content: <div className="formats-journey"><div className="formats-story-copy">{panel.title && <h3>{panel.title}</h3>}{panel.text && <p>{panel.text}</p>}</div>{!media ? <p role="status">{t.imageUnavailable}</p> : media.type === 'video' ? <PreviewClip media={media} title={panel.title || media.name}/> : <FullImage media={media} description={panel.text || panel.title || media.name}/>}</div> }
   })
   const media = allMedia.filter(m => !used.has(m.id))
   const images = media.filter(m => m.type === 'image')

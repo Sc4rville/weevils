@@ -439,7 +439,7 @@ function MediaItem({ item, who, fy }: KindProps) {
           {!!item.gauges?.length && <Gauges list={item.gauges} />}
         </div>
       </div>
-      {!!item.media?.length && <InlineMediaFormats item={item} />}
+      {(!!item.media?.length || !!item.composition) && <InlineMediaFormats item={item} />}
       <Actions item={item} fy={fy} />
       {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
     </>

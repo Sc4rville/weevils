@@ -810,3 +810,11 @@ it('a reply success is brief and stays beside the submitted message',async()=>{
   expect(form.querySelector('.fy-sent')?.textContent).toBe('')
  }finally{vi.useRealTimers()}
 })
+
+it('keeps authored panel text accessible when every source image is missing',async()=>{
+ setLang('en')
+ await open([{...ITEMS.find(i=>i.id==='me')!,media:[],composition:{layout:'split',panels:[{mediaId:'gone',title:'Earlier view',text:'The original context remains available.'}]}}])
+ expect(band('me').textContent).toContain('The original context remains available.')
+ expect(band('me').querySelector('[role="status"]')?.textContent).toContain('did not load')
+ expect(band('me').querySelector('img')).toBeNull()
+})

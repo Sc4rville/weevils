@@ -267,6 +267,11 @@ function ReplyLine({ item, who, fy }: { item: ForYouItem; who: string; fy: ForYo
   useEffect(() => { try { if (text) sessionStorage.setItem(key, text); else sessionStorage.removeItem(key) } catch { /* private storage */ } }, [key, text])
   const submitting = useRef(false)
   const [sent, setSent] = useState(false)
+  useEffect(() => {
+    if (!sent) return
+    const timer = setTimeout(() => setSent(false), 3000)
+    return () => clearTimeout(timer)
+  }, [sent])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const form = useRef<HTMLFormElement>(null)
@@ -833,7 +838,7 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
       {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
       <TranslationStatus item={item} />
       {Kind && <Kind item={item} who={who} project={project} inView={inView} fy={fy} />}
-      <OutboxStatus scope={`/api/foryou/${encodeURIComponent(item.id)}/`} eventId={feedNoticeKey(item)} unresolvedOnly />
+      <OutboxStatus scope={`/api/foryou/${encodeURIComponent(item.id)}/`} eventId={feedNoticeKey(item)} />
       {err && (
         <Notice eventId={noticeKey('error:foryou', location.pathname, location.hash, err)} className="fy-err" role="alert">
           <div className="in meta">! {err}</div>

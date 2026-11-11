@@ -13,7 +13,7 @@ export interface Receipt {
   result?: { id?: string; ok?: boolean }
   error?: string
 }
-export interface LocalReceipt extends Receipt { locale?: Lang; url: string; fingerprint: string; text?: string; trackingLost?: boolean; eventId?: string; card?: string; payload?: unknown; payloadStored?: boolean; recovered?: boolean }
+export interface LocalReceipt extends Receipt { dismissed?: boolean; locale?: Lang; url: string; fingerprint: string; text?: string; trackingLost?: boolean; eventId?: string; card?: string; payload?: unknown; payloadStored?: boolean; recovered?: boolean }
 const KEY = 'weevils-outbox-v1'
 let rows: LocalReceipt[] = []
 try { rows = JSON.parse(localStorage.getItem(KEY) ?? '[]').filter((r: LocalReceipt) => typeof r.messageId === 'string' && typeof r.url === 'string') } catch { /* unavailable storage */ }
@@ -25,6 +25,10 @@ const save = () => {
   listeners.forEach(fn => fn())
 }
 function update(receipt: LocalReceipt) {
+  const current = rows.find(r => r.messageId === receipt.messageId)
+  // A late poll cannot turn a completed operation back into a pending banner.
+  if (current?.status === 'delivered' && receipt.status !== 'delivered') return
+  receipt = { ...receipt, dismissed: current?.dismissed ?? receipt.dismissed }
   if (receipt.status === 'delivered') {
     if (receipt.payloadStored) void removePayload(receipt.messageId).catch(() => undefined)
     receipt = { ...receipt, payload: undefined, payloadStored: false, text: undefined }
@@ -32,7 +36,13 @@ function update(receipt: LocalReceipt) {
   rows = [...rows.filter(r => r.messageId !== receipt.messageId), receipt]
   save()
 }
-export function forgetReceipt(id: string) { rows = rows.filter(r => r.messageId !== id); save() }
+/** Compatibility for an older dismissal action: hide presentation, retain deduplication identity. */
+export function forgetReceipt(id: string) {
+  const row = rows.find(r => r.messageId === id)
+  if (row?.status === 'delivered') update({ ...row, dismissed: true })
+}
+// Only an unsupported old server has no durable receipt to retain.
+function forgetUntrackedReceipt(id: string) { rows = rows.filter(r => r.messageId !== id); save() }
 export const outboxSnapshot = () => rows
 let trackers = 0
 export function subscribeOutbox(fn: () => void, track = true) { listeners.add(fn); if (track) { trackers++; startTracking() } return () => { listeners.delete(fn); if (track) trackers--; if (!trackers && timer) { clearInterval(timer); timer = undefined } } }
@@ -121,7 +131,7 @@ export async function deliver(url: string, body: unknown, submit: Submit, resumi
   try { localStorage.setItem(KEY, JSON.stringify(rows)) } catch { throw new Error(tr(M).storageFailed) }
   let enabled: boolean
   try { enabled = await supported() } catch (error) { update({ ...row, trackingLost: true }); throw error }
-  if (!enabled) { forgetReceipt(row.messageId); return submit() } // no retries against an older server
+  if (!enabled) { forgetUntrackedReceipt(row.messageId); return submit() } // no retries against an older server
   const run = async (): Promise<Receipt> => {
     for (let attempt = 0; attempt < 3; attempt++) {
       const known = rows.find(r => r.messageId === row.messageId)

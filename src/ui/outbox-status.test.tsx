@@ -18,9 +18,8 @@ it('distinguishes acceptance from delivery and scopes the notice to the current 
  expect(host.textContent).toContain('waiting to be forwarded'); expect(host.textContent).not.toContain('forwarded to the agent')
  state.rows = [{...state.rows[0],status:'delivered',result:{id:'target'}}]
  await act(async () => root.render(<OutboxStatus scope="/api/main" />))
- expect(host.textContent).toContain('forwarded to the agent')
- await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent==='open conversation')!.click())
- expect(state.push).toHaveBeenCalledWith({kind:'session',id:'target'})
+ expect(host.textContent).toBe('')
+ expect(host.querySelector('button')).toBeNull()
 })
 it('an uncertain receipt offers recovery, never a button that reinjects the message', async () => {
  state.rows = [{messageId:'a',url:'/api/main',status:'uncertain',text:'original draft'}]
@@ -32,11 +31,11 @@ it('an uncertain receipt offers recovery, never a button that reinjects the mess
 
 it('contextual delivery hides completed and older-event receipts without forgetting their identity',async()=>{
  state.rows=[{messageId:'old',url:'/api/foryou/a/act',status:'accepted',eventId:'previous'}, {messageId:'current',url:'/api/foryou/a/act',status:'accepted',eventId:'current'}, {messageId:'elsewhere',url:'/api/foryou/b/reply',status:'uncertain'}]
- await act(async()=>root.render(<OutboxStatus scope="/api/foryou/a/" eventId="current" unresolvedOnly/>))
+ await act(async()=>root.render(<OutboxStatus scope="/api/foryou/a/" eventId="current"/>))
  expect(host.querySelectorAll('[data-delivery]')).toHaveLength(1)
  expect(host.textContent).toContain('waiting to be forwarded')
  state.rows[1]={...state.rows[1],status:'delivered',result:{id:'target'}}
- await act(async()=>root.render(<OutboxStatus scope="/api/foryou/a/" eventId="current" unresolvedOnly/>))
+ await act(async()=>root.render(<OutboxStatus scope="/api/foryou/a/" eventId="current"/>))
  expect(host.textContent).toBe('')
  expect(state.rows).toHaveLength(3)
 })

@@ -149,3 +149,20 @@ it('persists the original app locale through a switch and retry',async()=>{
  expect((retry.mock.calls[0] as unknown[])[2]).toBe('fr')
  expect((retry.mock.calls[0] as unknown[])[3]).toBe('/api/main')
 })
+it('a late accepted poll cannot revive a delivered and dismissed receipt',async()=>{
+ const box=await load()
+ let complete!: (value:unknown)=>void
+ const submit=vi.fn(()=>new Promise(resolve=>{complete=resolve}))
+ const pending=box.deliver('/api/main',{text:'hello'},submit)
+ await vi.waitFor(()=>expect(submit).toHaveBeenCalledTimes(1))
+ const row=box.outboxSnapshot()[0]
+ let respond!: (response:Response)=>void
+ fetcher.mockImplementationOnce(()=>new Promise<Response>(resolve=>{respond=resolve}))
+ const polling=box.refreshReceipts()
+ complete({...accepted(row.messageId),status:'delivered'})
+ await pending
+ box.forgetReceipt(row.messageId)
+ respond(new Response(JSON.stringify(accepted(row.messageId))))
+ await polling
+ expect(box.outboxSnapshot()[0]).toMatchObject({messageId:row.messageId,status:'delivered',dismissed:true})
+})

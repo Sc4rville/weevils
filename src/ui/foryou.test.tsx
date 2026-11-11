@@ -796,3 +796,15 @@ it('keeps the original header and places only unresolved delivery beside its car
  await click(labelled(t().back));expect(pushed.at(-1)).toBe('back')
  await act(async()=>setLang(locale))
 })
+it('a reply success is brief and stays beside the submitted message',async()=>{
+ await open(ITEMS.map(i=>i.id==='bo'?{...i,actions:undefined}:i))
+ const form=band('bo').querySelector<HTMLFormElement>('form.fy-reply')!
+ vi.useFakeTimers()
+ try{
+  await type(form,'oui');await submit(form)
+  expect(form.querySelector('.fy-sent')?.textContent).toContain(t().sent)
+  expect(host.querySelector('.page-head')?.textContent).not.toContain(t().sent)
+  await act(async()=>vi.advanceTimersByTimeAsync(3001))
+  expect(form.querySelector('.fy-sent')?.textContent).toBe('')
+ }finally{vi.useRealTimers()}
+})

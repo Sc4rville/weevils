@@ -449,6 +449,7 @@ export class ForYou {
         return empty
       }
     })()
+    if (this.localization.recovered) { this.s.rev++; this.save() }
     // Retire the old raw Git/build stream permanently, including already stored history.
     const kept = this.s.items.filter((i) => !technicalEvent(i.id, i.text) && !(i.kind === 'session' && i.tone === 'result' && !i.mediaIds?.length && acknowledgementOnly(i.body || i.text)))
     if (kept.length !== this.s.items.length) {

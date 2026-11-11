@@ -79,7 +79,8 @@ it('accepts an equivalent whole-hour notation without changing the hour',()=>{
 })
 it('revalidates actual cached provider candidates after a validator fix, without a provider call',()=>{
  fs.writeFileSync(file,JSON.stringify({cached:{source:{text:'Deux retours weevils.'},target:'en',protected:['weevils'],failedAt:1,failure:'translation changed numbers',rejected:{text:'2 weevils updates.'}}}))
- new FeedLocalization(file)
+ expect(new FeedLocalization(file).recovered).toBe(1)
+ expect(new FeedLocalization(file).recovered).toBe(0)
  const entry=JSON.parse(fs.readFileSync(file,'utf8')).cached
  expect(entry.variant).toEqual({text:'2 weevils updates.'});expect(entry.rejected).toBeUndefined();expect(entry.failedAt).toBeUndefined()
 })

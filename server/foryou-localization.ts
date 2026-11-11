@@ -70,6 +70,7 @@ function validateVariant(entry: Entry, variant: Record<string,string>): void {
         if(detected && detected!==entry.target)throw new Error('translation language')
 }
 export class FeedLocalization {
+  recovered = 0
   private entries: Record<string,Entry> = {}
   private wanted = new Set<string>()
   private foreground = new Set<string>()
@@ -81,7 +82,7 @@ export class FeedLocalization {
     // A corrected validator can accept an actual saved provider answer without another model call.
     let recovered=false
     for(const entry of Object.values(this.entries))if(!entry.variant&&entry.rejected){
-      try{validateVariant(entry,entry.rejected);entry.variant=entry.rejected;delete entry.rejected;delete entry.failedAt;delete entry.failure;recovered=true}catch{/* still invalid: keep the original */}
+      try{validateVariant(entry,entry.rejected);entry.variant=entry.rejected;delete entry.rejected;delete entry.failedAt;delete entry.failure;recovered=true;this.recovered++}catch{/* still invalid: keep the original */}
     }
     if(recovered)this.save()
   }

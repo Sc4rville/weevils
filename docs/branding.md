@@ -7,6 +7,7 @@ The approved isometric weevil is the shared mark. Its original proportions and f
 | Home, session, full screen, voice, onboarding | `src/ui/logo.tsx`, shared `public/branding/weevboss-cutout.png`, four isolated CSS theme filters |
 | README / reusable content | `public/branding/weevboss.svg`, deterministic export of that component with the light-theme tone |
 | Browser favicon | `public/favicon-32.png`, transparent, 32×32 |
+| Notification badge | `public/badge-96.png`, transparent, 96×96; OS uses the weevil silhouette rather than a solid square |
 | Apple home screen | `public/icon-180.png`, opaque, 180×180 |
 | PWA / notification | `public/icon-192.png`, opaque, 192×192 |
 | Maskable PWA | `public/icon-512.png`, opaque, 512×512; complete mark inside the 40% radius safe circle |

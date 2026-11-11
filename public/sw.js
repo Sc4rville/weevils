@@ -94,7 +94,7 @@ self.addEventListener('push', e => {
     await self.registration.showNotification(d.title || 'weevboss', {
       body: d.body || '', tag: d.tag, renotify: false,
       data: { url: d.url || '/', category: d.category, sessionId: d.sessionId, eventAt: d.eventAt },
-      icon: '/icon-192.png?v=606f8a7c3e3d', badge: '/icon-192.png?v=606f8a7c3e3d',
+      icon: '/icon-192.png?v=606f8a7c3e3d', badge: '/badge-96.png?v=a391e6f73e13',
     })
   })())
 })

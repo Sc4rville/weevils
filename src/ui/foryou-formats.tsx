@@ -1,3 +1,4 @@
+import { FeedRail } from './foryou-rail'
 import { TranslationStatus } from './foryou-localization'
 import { OutboxStatus } from './outbox-status'
 import { api } from '../api'
@@ -44,19 +45,12 @@ export function PreviewClip({ media, poster, title }: { media: ForYouMedia; post
 }
 
 export function PictureJourney({ media, frames, label }: { media: ForYouMedia[]; frames: VisualProposal['frames']; label?: string }) {
-  const [at, setAt] = useState(0)
   const t = useT(M)
   const count = Math.min(media.length, frames.length)
-  const index = Math.min(at, count - 1)
   if (!count) return <p>{t.missing}</p>
-  return <div className="formats-journey">
-    <div className="formats-story-copy">
-      <nav className="formats-steps" aria-label={label ?? t.storyTitle}>{frames.slice(0, count).map((f, n) => <button type="button" key={n} aria-current={n === index ? 'step' : undefined} onClick={() => setAt(n)}>{n + 1} · {f.title}</button>)}</nav>
-      <div aria-live="polite"><p className="meta">{t.step(index + 1, count)}</p><h3>{frames[index].title}</h3><p>{frames[index].description}</p></div>
-      <div className="formats-nav"><button type="button" disabled={index === 0} onClick={() => setAt(index - 1)}>{t.previous}</button><button type="button" disabled={index === count - 1} onClick={() => setAt(index + 1)}>{t.next}</button></div>
-    </div>
-    <FullImage key={media[index].id} media={media[index]} description={frames[index].description} />
-  </div>
+  return <FeedRail label={label ?? t.storyTitle} slides={media.slice(0,count).map((m,n)=>({
+    id:m.id,label:frames[n].title,content:<div className="formats-journey"><div className="formats-story-copy"><h3>{frames[n].title}</h3><p>{frames[n].description}</p></div><FullImage media={m} description={frames[n].description}/></div>
+  }))}/>
 }
 
 export function ProposalView({ item, fy }: { item: ForYouItem; fy: ForYouStore }) {
@@ -87,7 +81,15 @@ export function ProposalView({ item, fy }: { item: ForYouItem; fy: ForYouStore }
 /** The same visual components inside existing feed cards; no new post, route or automatic playback. */
 export function InlineMediaFormats({ item }: { item: ForYouItem }) {
   const t = useT(M)
-  const media = item.media ?? []
+  const allMedia = item.media ?? []
+  const used = new Set<string>()
+  const panels = (item.composition?.panels ?? []).flatMap(panel => {
+    const media = allMedia.find(m => m.id === panel.mediaId)
+    if (!media || used.has(media.id)) return []
+    used.add(media.id)
+    return [{ id: media.id, label: panel.title || media.name, content: <div className="formats-journey"><div className="formats-story-copy">{panel.title && <h3>{panel.title}</h3>}{panel.text && <p>{panel.text}</p>}</div>{media.type === 'video' ? <PreviewClip media={media} title={panel.title || media.name}/> : <FullImage media={media} description={panel.text || panel.title || media.name}/>}</div> }]
+  })
+  const media = allMedia.filter(m => !used.has(m.id))
   const images = media.filter(m => m.type === 'image')
   const captions: Record<string, { title: string; description: string }> = {
     '341ba5be815fb245': { title: t.streetTitle, description: t.streetText },
@@ -99,8 +101,9 @@ export function InlineMediaFormats({ item }: { item: ForYouItem }) {
   const journey = knownPrefix > 1
   const rest = journey ? images.slice(knownPrefix) : images
   return <div className="formats-inline in">
+    {!!panels.length && (item.composition?.layout === 'rail' ? <FeedRail label={item.title || t.browseImages} slides={panels}/> : <div className="formats-composition">{panels.map(panel=><div key={panel.id}>{panel.content}</div>)}</div>)}
     {journey && <PictureJourney media={images.slice(0,knownPrefix)} frames={images.slice(0,knownPrefix).map(m=>captions[m.id])} label={t.browseImages} />}
-    <div className={rest.length > 1 ? 'formats-contact' : 'formats-result'}>{rest.map(m=><figure key={m.id}>{captions[m.id] && <figcaption>{captions[m.id].description}</figcaption>}<FullImage media={m} description={captions[m.id]?.description || item.title || item.text || t.step(images.indexOf(m)+1,images.length)} /></figure>)}</div>
+    {!!rest.length && <FeedRail label={item.title || t.browseImages} slides={rest.map(m=>({id:m.id,label:captions[m.id]?.title || m.name,content:<figure>{captions[m.id] && <figcaption>{captions[m.id].description}</figcaption>}<FullImage media={m} description={captions[m.id]?.description || item.title || item.text || t.step(images.indexOf(m)+1,images.length)} /></figure>}))}/>}
     {media.filter(m=>m.type==='video').map(m=><PreviewClip key={m.id} media={m} title={item.title || item.text || t.clipTitle} />)}
   </div>
 }

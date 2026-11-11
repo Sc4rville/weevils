@@ -38,9 +38,9 @@ it('keeps instructions and explicit transmission separate from selection at phon
 })
 it('opens complete images and changes the story without publishing or dispatching',async()=>{
  await act(async()=>root.render(<PictureJourney media={item.media!} frames={item.visualProposal!.frames}/>))
- await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Next image')!.click())
- expect(host.querySelector('img')?.getAttribute('src')).toBe('/image/1')
- await act(async()=>host.querySelector<HTMLButtonElement>('.formats-image')!.click())
+ await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Next view')!.click())
+ expect(host.querySelector('.fy-rail-slide[aria-current="true"] img')?.getAttribute('src')).toBe('/image/1')
+ await act(async()=>host.querySelector<HTMLButtonElement>('.fy-rail-slide[aria-current="true"] .formats-image')!.click())
  expect(state.push).toHaveBeenCalledWith({kind:'media',url:'/image/1',type:'image',name:'Description 1'})
  expect(state.send).not.toHaveBeenCalled()
 })
@@ -88,8 +88,8 @@ it('retries the clip without starting playback automatically',async()=>{
 })
 it('limits navigation to available frames and images',async()=>{
  await act(async()=>root.render(<PictureJourney media={item.media!.slice(0,1)} frames={item.visualProposal!.frames}/>))
- expect(host.querySelectorAll('nav button')).toHaveLength(1)
- expect([...host.querySelectorAll('button')].find(b=>b.textContent==='Next image')?.disabled).toBe(true)
+ expect(host.querySelectorAll('.fy-rail-slide')).toHaveLength(1)
+ expect(host.querySelector('.fy-rail-controls')).toBeNull()
 })
 it('reflects server confirmation and disables a pending submission',async()=>{
  await act(async()=>root.render(<ProposalView item={item} fy={fy}/>))
@@ -157,10 +157,24 @@ it('uses the gallery components directly inside existing feed cards without send
  const media:ForYouItem={...item,visualProposal:undefined,media:[{id:'341ba5be815fb245',type:'image',url:'/street',name:'street.png',bytes:1},{id:'b3fdac9f32927919',type:'image',url:'/cafe',name:'cafe.png',bytes:1},{id:'video',type:'video',url:'/clip',name:'clip.mp4',bytes:1}]}
  await act(async()=>root.render(<InlineMediaFormats item={media}/>))
  expect(host.textContent).toContain('Outside the café')
- await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Next image')!.click())
- expect(host.querySelector('img')?.getAttribute('src')).toBe('/cafe')
+ await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Next view')!.click())
+ expect(host.querySelector('.fy-rail-slide[aria-current="true"] img')?.getAttribute('src')).toBe('/cafe')
  expect(host.querySelector('video')?.controls).toBe(true)
  expect(host.querySelector('video')?.autoplay).toBe(false)
  expect(state.send).not.toHaveBeenCalled()
  expect(host.textContent).not.toContain('Try visual formats')
+})
+
+it.each(['split','rail'] as const)('renders authored %s panels once, retaining unmatched media and stable video across locale refresh',async layout=>{
+ const composed:ForYouItem={...item,visualProposal:undefined,media:[...item.media!,{id:'clip',type:'video',url:'/clip',name:'Existing clip',bytes:1}],composition:{layout,panels:[{mediaId:'0',title:'First panel',text:'Existing source'},{mediaId:'clip',title:'Video panel',text:'Watch at your pace'},{mediaId:'0',title:'Duplicate reference',text:'Not a new source'},{mediaId:'missing',title:'Missing source',text:'Do not invent a media'}]}}
+ await act(async()=>root.render(<InlineMediaFormats item={composed}/>))
+ expect(host.querySelectorAll('img')).toHaveLength(3)
+ expect(host.querySelectorAll('video')).toHaveLength(1)
+ expect(host.textContent).not.toContain('Duplicate reference');expect(host.textContent).not.toContain('Missing source')
+ const video=host.querySelector('video')!;video.currentTime=8
+ expect(video.controls).toBe(true);expect(video.autoplay).toBe(false)
+ await act(async()=>setLang('fr'))
+ await act(async()=>root.render(<InlineMediaFormats item={{...composed,composition:{layout,panels:composed.composition!.panels.map(p=>({...p,title:'Vue existante'}))}}}/>))
+ expect(host.querySelector('video')).toBe(video);expect(video.currentTime).toBe(8)
+ expect(state.send).not.toHaveBeenCalled()
 })

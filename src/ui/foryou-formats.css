@@ -42,3 +42,8 @@
 .formats-inline .formats-result { grid-template-columns: minmax(0, 1fr); }
 .formats-inline figure { margin: 0; }
 .formats-inline figcaption { padding-block: 12px; line-height: 1.5; }
+
+/* Authored panels inherit their card's project band; narrow screens retain reading order. */
+.formats-composition { display: grid; gap: 24px; min-width: 0; }
+.formats-inline, .formats-inline * { min-width: 0; box-sizing: border-box; }
+.formats-story-copy { overflow-wrap: anywhere; }

@@ -10,7 +10,8 @@ type Entry = { source: Record<string,string>; target: Lang; protected: string[];
 export function presentation(item: ForYouItem): Record<string,string> {
   const out: Record<string,string> = {}
   const add = (key: string, value: unknown) => { if (typeof value === 'string' && value.trim()) out[key] = value }
-  for (const key of ['title','text','lead','moreText'] as const) add(key,item[key])
+  // Session titles have their own canonical source/revision in titlePresentation; never retranslate its projection.
+  for (const key of ['title','text','lead','moreText'] as const) if (key !== 'title' || item.kind !== 'session') add(key,item[key])
   // A mail body is an attributed original, never silently rewritten.
   if (item.kind !== 'mail') add('body',item.body)
   item.actions?.forEach((v,n)=>add(`actions.${n}.label`,v.label))
@@ -41,7 +42,7 @@ export class FeedLocalization {
     const combined = Object.values(source).join('\n')
     const original=sourceLang??(combined.trim().split(/\s+/).length >= 5 || /[éèêàçùœ]|\b(?:le|les|une|des|pour|avec|est|the|your|ready|open|view)\b/i.test(combined) ? detectLang(combined) : null)
     if(!original || original===target || !Object.keys(source).length) return item
-    const protectedWords=protect(Object.values(source).join('\n'),names)
+    const protectedWords=protect(Object.values(source).join('\n'),['weevils','weevboss',...names])
     const revision=crypto.createHash('sha256').update(JSON.stringify([source,protectedWords])).digest('hex')
     const key=revision+':'+target
     let entry=this.entries[key]

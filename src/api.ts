@@ -1,3 +1,4 @@
+import type { ModelControls, ModelSelection } from '../shared/model-controls'
 // Client de weevilsd : appels REST + flux temps réel (SSE). Aucune donnée fictive.
 
 import { deliver, awaitDelivery } from './outbox'
@@ -82,6 +83,8 @@ export const api = {
   key: (id: string, key: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/key`, { key }),
   create: (body: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string }) => call<{ id: string }>('POST', '/api/sessions', body),
   main: (text: string) => send<{ id: string }>('/api/main', { text }),
+  modelControls: (id: string) => call<ModelControls>('GET', id === '__main' ? '/api/main/model-controls' : `/api/sessions/${enc(id)}/model-controls`),
+  setModelControls: (id: string, value: ModelSelection) => call<ModelControls>('POST', id === '__main' ? '/api/main/model-controls' : `/api/sessions/${enc(id)}/model-controls`, value),
   command: (id: string, command: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/command`, { command }),
   mainCommand: (command: string) => call<{ ok: true }>('POST', '/api/main/command', { command }),
   githubRepos: (fresh = false) => call<{ repos: GithubRepo[] }>('GET', `/api/github/repos${fresh ? '?fresh' : ''}`),

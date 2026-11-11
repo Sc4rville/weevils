@@ -1,3 +1,4 @@
+import { commandDetails, redactToolText } from './codex-command-details.ts'
 import { codexToolLabel } from './codex-tool-label.ts'
 // Lecture incrémentale des transcripts Claude Code (~/.claude/projects) et Codex (~/.codex/sessions).
 // Formats non documentés : on lit ce qui est utile et on ignore le reste sans jamais planter.
@@ -317,7 +318,17 @@ function codexLine(t: Transcript, o: any) {
     return
   }
   if (o.type !== 'response_item') return
-  if (p.type === 'function_call_output') { delegatedMessage(t, p, at); return }
+  if (p.type === 'function_call_output' || p.type === 'custom_tool_call_output') {
+    delegatedMessage(t, p, at)
+    const event=t.messages.find(m=>m.role==='event' && m.id===p.call_id)
+    if(event?.toolDetails?.commands.length && !event.toolDetails.commands.includes('[redacted]')) {
+      let output=p.output
+      if(typeof output==='string')try{output=JSON.parse(output)}catch{ /* plain text output */ }
+      if(output && typeof output==='object')output=output.output ?? output.stdout
+      if(typeof output==='string')event.toolDetails.output=redactToolText(output)
+    }
+    return
+  }
   if (p.type === 'message') {
     const text = (p.content ?? [])
       .map((c: any) => c?.text ?? '')
@@ -342,7 +353,7 @@ function codexLine(t: Transcript, o: any) {
     if (typeof input === 'string') {
       try { input = JSON.parse(input) } catch { /* Free-form code stays opaque; never evaluated. */ }
     }
-    push(t, { id: p.call_id ?? `${t.id}-${at}-f`, role: 'event', text: codexToolLabel(p.name ?? 'local_shell_call', input), at })
+    push(t, { id: p.call_id ?? `${t.id}-${at}-f`, role: 'event', text: codexToolLabel(p.name ?? 'local_shell_call', input), toolDetails: {commands:commandDetails(p.name ?? 'local_shell_call', input)}, at })
   }
 }
 

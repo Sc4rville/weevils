@@ -18,6 +18,8 @@ export type InterruptReason = 'died' | 'dirty' | 'quota' | 'auth' | 'api'
 export interface Message {
   /** Incoming technical coordination from the session bridge; boss briefs remain visible. */
   coordination?: boolean
+  /** Sanitized command details, never raw orchestration code. */
+  toolDetails?: { commands: string[]; output?: string }
   id: string
   /** orchestrator : message signé par un autre auteur que l'utilisateur (weevboss, ou un agent externe : voir author). */
   role: 'user' | 'assistant' | 'orchestrator' | 'event'

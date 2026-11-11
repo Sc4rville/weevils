@@ -81,3 +81,29 @@ it('keeps other loaded threads writable when one queued delivery cannot start ye
  await bridge.refresh()
  expect(bridge.can('existing')).toBe(true)
 })
+
+it('changes only future settings on an existing active thread and verifies readback', async()=>{
+ const calls:string[]=[]
+ let selected={model:'real-model',reasoningEffort:'low'}
+ const rpc=async(method:string,p:any)=>{
+  calls.push(method)
+  if(method==='thread/loaded/list')return{data:['existing']}
+  if(method==='model/list')return{data:[{model:'real-model',displayName:'Real model',supportedReasoningEfforts:[{reasoningEffort:'low'},{reasoningEffort:'high'}]}]}
+  if(method==='thread/settings/update'){expect(p).toEqual({threadId:'existing',model:'real-model',effort:'high'});selected={model:p.model,reasoningEffort:p.effort};return{}}
+  if(method==='thread/read')return{thread:{...selected,status:{type:'active'}}}
+  throw new Error('Unexpected operation')
+ }
+ const bridge=new CodexBridge('/test/socket',async(_s,run)=>run(rpc))
+ const result=await bridge.modelControls('existing',{model:'real-model',effort:'high'})
+ expect(result.selected).toEqual({model:'real-model',effort:'high'})
+ expect(result.active).toBe(true)
+ expect(result.appliesTo).toBe('next-turn')
+ expect(calls).toEqual(['thread/loaded/list','model/list','thread/settings/update','thread/read'])
+ await expect(bridge.modelControls('existing',{model:'invented',effort:'high'})).rejects.toThrow()
+ expect(calls.filter(m=>m==='thread/settings/update')).toHaveLength(1)
+})
+it('does not claim success when daemon readback disagrees',async()=>{
+ const rpc=async(method:string)=>method==='thread/loaded/list'?{data:['existing']}:method==='model/list'?{data:[{model:'real',displayName:'Real',supportedReasoningEfforts:[{reasoningEffort:'high'}]}]}:method==='thread/read'?{thread:{model:'real',reasoningEffort:'low'}}:{}
+ const bridge=new CodexBridge('/test/socket',async(_s,run)=>run(rpc))
+ await expect(bridge.modelControls('existing',{model:'real',effort:'high'})).rejects.toThrow()
+})

@@ -9,7 +9,7 @@ it('describes known commands without exposing arguments or credentials', () => {
   expect(codexToolLabel('unknown-secret', { description: 'SECRET', prompt: 'PRIVATE' })).toBe(tr(M).tool)
 })
 it('recognises free-form orchestration without evaluating or displaying code', () => {
-  expect(codexToolLabel('functions.exec', 'text(await tools.exec_command({cmd:"cat SECRET"})); await tools.apply_patch("PRIVATE")')).toBe(`${tr(M).command} · ${tr(M).edit}`)
+  expect(codexToolLabel('functions.exec', 'text(await tools.exec_command({cmd:"cat SECRET"})); await tools.apply_patch("PRIVATE")')).toBe(`${tr(M).read} · ${tr(M).edit}`)
   expect(codexToolLabel('exec', 'await tools.mcp__codex_tui__send_message_to_thread({prompt:"PRIVATE"})')).toBe(tr(M).message)
   expect(codexToolLabel('exec', 'throw new Error("SECRET")')).toBe(tr(M).command)
 })

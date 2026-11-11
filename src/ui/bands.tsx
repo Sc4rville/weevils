@@ -1,3 +1,6 @@
+import { interceptModelControl, openModelControls } from '../model-controls'
+import { effortLabel, modelLabel } from './settings'
+import ModelM from '../i18n/model-controls'
 import { OutboxStatus } from './outbox-status'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'motion/react'
@@ -261,7 +264,7 @@ export function AgentBand() {
       throw e
     }
   }
-  const send = (text: string) => sending(text, text, () => (devilOn ? api.devil(text) : api.main(text)))
+  const send = (text: string) => interceptModelControl('__main',text) ? Promise.resolve() : sending(text, text, () => (devilOn ? api.devil(text) : api.main(text)))
   const attach = (text: string, files: { name: string; type: string; data: string }[]) =>
     sending(text, `${text ? `${text} ` : ''}${t.withFiles(files.length)}`, () => api.mainAttach(text, files))
   // Les puces de branchement d'un message de weevboss ([[setup:x]]) : un bouton à leur place dans la phrase, sur le
@@ -323,6 +326,7 @@ export function AgentBand() {
         )}
       </div>
       <div id="agent-body" hidden={!open}>
+        <div className="in"><MainModelControl model={snap.mainSettings?.model} effort={snap.mainSettings?.effort}/></div>
         <motion.div
           ref={body}
           className="chat"
@@ -728,4 +732,9 @@ export function FootBand() {
       )}
     </section>
   )
+}
+
+function MainModelControl({model,effort}:{model?:string;effort?:string}) {
+ const t=useT(ModelM)
+ return <button type="button" className="link" onClick={()=>openModelControls('__main')} aria-label={t.title}>{[modelLabel(model),effortLabel(effort)].filter(Boolean).join(' · ')||t.title}</button>
 }

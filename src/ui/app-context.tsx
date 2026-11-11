@@ -11,6 +11,7 @@ export const isTheme = (v: unknown): v is Theme => THEMES.includes(v as Theme)
 export const THEME_COLOR: Record<Theme, string> = { light: '#B39BFF', dark: '#5522B5', zen: '#CFC2D5', graphite: '#C4C4C4' }
 
 export type Page =
+  | { kind: 'models'; id: string }
   | { kind: 'session'; id: string }
   | { kind: 'archived' }
   | { kind: 'files'; projectId: string; repo?: string; dir?: string }

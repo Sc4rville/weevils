@@ -1,3 +1,4 @@
+import { ModelPicker } from './model-controls'
 import { noticeKey } from '../../shared/notices.ts'
 import { Notice } from './notice'
 import { useEffect, useState } from 'react'
@@ -83,7 +84,6 @@ export function Settings({
   settings,
   canCommand,
   run,
-  onPicker,
   userName,
 }: {
   id: string
@@ -116,7 +116,7 @@ export function Settings({
   const modelKnown = !!settings?.model
   const models = model && !MODELS.claude.includes(model) ? [model, ...MODELS.claude] : MODELS.claude
 
-  if (!canCommand) {
+  if (!canCommand && tool !== 'codex') {
     return <div className="in meta empty">{t.unavailable}</div>
   }
 
@@ -144,26 +144,7 @@ export function Settings({
             </div>
           </div>
         </>
-      ) : (
-        <>
-          <div className="in settings-row">
-            <span className="meta settings-label">{t.model}{settings?.model ? ` · ${settings.model}` : ''}</span>
-            <div className="words">
-              <button className="word" onClick={() => void send('/model', onPicker)}>
-                {'/model'}
-              </button>
-            </div>
-          </div>
-          <div className="in settings-row">
-            <span className="meta settings-label">{t.approvals}{settings?.approval ? ` · ${settings.approval}` : ''}</span>
-            <div className="words">
-              <button className="word" onClick={() => void send('/approvals', onPicker)}>
-                {'/approvals'}
-              </button>
-            </div>
-          </div>
-        </>
-      )}
+      ) : <ModelPicker key={id} id={id} />}
       <Line ch="⇣" go={null} onClick={() => void send('/compact')} disabled={busy === '/compact'}>
         {'/compact'}
       </Line>

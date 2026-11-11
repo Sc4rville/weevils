@@ -1,3 +1,4 @@
+import { MODEL_CONTROL_EVENT } from './model-controls'
 import { trackViewport } from './ui/viewport'
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -214,6 +215,11 @@ export default function App() {
     [setPages],
   )
 
+  useEffect(()=>{
+    const open=(event:Event)=>{const id=(event as CustomEvent<{id:string}>).detail?.id;if(typeof id==='string'&&id)push({kind:'models',id})}
+    window.addEventListener(MODEL_CONTROL_EVENT,open)
+    return ()=>window.removeEventListener(MODEL_CONTROL_EVENT,open)
+  },[push])
   const back = useCallback(() => {
     if (stackRef.current.length || agentEntry.current) history.back()
   }, [])

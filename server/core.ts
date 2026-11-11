@@ -1,3 +1,5 @@
+import { isModelControl, type ModelControls, type ModelSelection } from '../shared/model-controls.ts'
+import ModelM from './i18n/model-controls.ts'
 import { titlePresentation } from './title-presentation.ts'
 import { SessionProgressReader } from './session-progress.ts'
 import { deliveryContext, OutboxError } from './outbox.ts'
@@ -885,7 +887,7 @@ export class Weevils {
       ...(!relayedBy ? { progress: this.progressReader.read(t.cwd, now) } : {}),
       lastMessage: lastMessageOf(t),
       messageCount: t.messages.length,
-      settings: t.model || t.approval || t.effort ? { model: t.model, approval: t.approval, effort: t.effort } : undefined,
+      settings: (t.model || t.approval || t.effort || this.codexBridge.settingsOf?.(t.id) ? { model: t.model, approval: t.approval, effort: t.effort, ...this.codexBridge.settingsOf?.(t.id) } : undefined),
       // Une file ne survit pas à la fin du tour : si la session ne travaille plus, tout a été traité.
       queued: turnWorking ? Math.max(t.queued.length, pane?.screenQueued ?? 0) : 0,
       ...(relayOf ? { relayOf } : {}),
@@ -1304,7 +1306,9 @@ export class Weevils {
   }
 
   /** Écrit dans la session ; si elle n'a plus de processus, la rouvre dans une pane weevils. */
-  async send(id: string, text: string, from?: string): Promise<{ id: string }> {
+  async send(id: string, text: string, from?: string): Promise<{ id: string; control?: 'model' }> {
+    if (isModelControl(text)) return {id:this.resolveId(id),control:'model'}
+    if (/^\/(?:model|effort)\s+/i.test(text.trim())) { await this.command(id,text);return {id:this.resolveId(id),control:'model'} }
     // Signé par un auteur (weevboss, un agent externe) : le fil le montre comme son message, pas celui de l'utilisateur.
     // Signé ici, avant un éventuel relais : l'autre machine n'a pas besoin de connaître l'auteur.
     const author = normalizeFrom(from)
@@ -1544,6 +1548,8 @@ export class Weevils {
 
   private orchestratorSettings() {
     const t = ((preferredTool() === 'codex' || this.relay?.bossOn()) ? this.codexBoss()?.t : undefined) ?? (this.orchestratorId ? this.store.get(this.orchestratorId) : undefined)
+    const confirmed = t ? this.codexBridge.settingsOf?.(t.id) : undefined
+    if (confirmed) return {approval:t?.approval,...confirmed}
     return t?.model || t?.approval || t?.effort ? { model: t.model, approval: t.approval, effort: t.effort } : undefined
   }
 
@@ -1552,8 +1558,29 @@ export class Weevils {
     return t && this.orchestratorWorking(now) ? t.queued.length : 0
   }
 
+  async modelControls(id: string, selection?: ModelSelection): Promise<ModelControls> {
+    const remote = id === '__main' ? undefined : this.remoteFor(id)
+    if (remote) return remote.call(selection !== undefined ? 'POST' : 'GET', `/api/sessions/${encodeURIComponent(id)}/model-controls`, selection)
+    const real = id === '__main' ? this.bossConversation() : this.resolveId(id)
+    const t = real ? this.store.get(real) : undefined
+    if (!real || t?.tool !== 'codex') throw new Error(tr(ModelM).unavailable)
+    return this.codexBridge.modelControls(real, selection)
+  }
+
   /** Commande slash (/model opus, /effort high, /fast, /compact, /clear, /approvals…) tapée dans la pane de la session : pas un message, pas signée. */
-  async command(id: string, command: string): Promise<{ ok: true }> {
+  async command(id: string, command: string): Promise<{ ok: true; control?: 'model' }> {
+    const c = checkCommand(command)
+    if (isModelControl(c)) return {ok:true,control:'model'}
+    const thread = this.store.get(this.resolveId(id))
+    if (thread?.tool === 'codex' && /^\/(?:model|effort)\s/.test(c)) {
+      const controls=await this.modelControls(id)
+      const [kind,value]=c.split(/\s+/)
+      const model=kind==='/model'?value:controls.selected.model
+      const choice=controls.models.find(m=>m.id===model)
+      const effort=kind==='/effort'?value:(choice?.efforts.includes(controls.selected.effort??'')?controls.selected.effort:choice?.defaultEffort)
+      if(!model || !effort)throw new Error(tr(ModelM).invalid)
+      await this.modelControls(id,{model,effort});return {ok:true}
+    }
     const remote = this.remoteFor(id)
     if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/command`, { command })
     const pane = this.paneFor(this.resolveId(id))
@@ -1581,7 +1608,10 @@ export class Weevils {
   }
 
   /** La même chose pour la session de l'orchestrateur. */
-  async commandMain(command: string): Promise<{ ok: true }> {
+  async commandMain(command: string): Promise<{ ok: true; control?: 'model' }> {
+    const owner=this.bossConversation()
+    if (isModelControl(command)) return {ok:true,control:'model'}
+    if(owner && this.store.get(owner)?.tool==='codex' && /^\/(?:model|effort)\s/.test(command.trim()))return this.command(owner,command)
     const pane = this.orchestratorPane()
     if (!pane) throw new Error(tr(M).orchNotRunning)
     await this.runCommand(pane.name, checkCommand(command))
@@ -1747,6 +1777,8 @@ export class Weevils {
   }
 
   private async sendMainOne(text: string, brief?: string) {
+    if (isModelControl(text)) return {id:this.bossConversation() ?? '__main',control:'model' as const}
+    if (/^\/(?:model|effort)\s+/i.test(text.trim())) { await this.commandMain(text);return {id:this.bossConversation() ?? '__main',control:'model' as const} }
     if (!ORCHESTRATOR) throw new Error(tr(M).orchNotHere)
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
     if (activeRequestLang()) text += joinContext('', tr(M).appLocale)

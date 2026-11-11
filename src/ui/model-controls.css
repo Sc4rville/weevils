@@ -1,0 +1,5 @@
+.model-controls { padding-block: 18px; }
+.model-controls label { display: block; font-weight: 650; margin-block: 16px; }
+.model-controls select { display: block; width: 100%; min-width: 0; max-width: 100%; min-height: 44px; margin-top: 8px; padding: 10px; font: inherit; color: inherit; background: var(--c); border: 1px solid currentColor; border-radius: 0; }
+.model-controls button { min-height: 44px; margin-right: 20px; white-space: normal; }
+.model-controls p { overflow-wrap: anywhere; }

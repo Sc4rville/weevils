@@ -261,6 +261,20 @@ describe('codex', () => {
     expect(one().messages.map(m => m.text)).toEqual(['Continue mon travail', tr(Tools).command])
   })
 
+  it('links sanitized real command results while preserving boss briefs', () => {
+    const now=Date.now()
+    write(codexFile(now), [
+      ev('response_item',{type:'message',role:'user',content:[{type:'input_text',text:'[from:weevboss] Keep the render running'}]},now-3000),
+      ev('response_item',{type:'custom_tool_call',name:'functions.exec',input:'text(await tools.exec_command({cmd:"git status"}))',call_id:'cmd'},now-2000),
+      ev('response_item',{type:'custom_tool_call_output',call_id:'cmd',output:JSON.stringify({output:'clean TOKEN=private'})},now-1000),
+    ])
+    store.scan(now)
+    const messages=one().messages
+    expect(messages[0]).toMatchObject({author:'weevboss'})
+    expect(messages[1]).toMatchObject({text:tr(Tools).git,toolDetails:{commands:['git status'],output:'clean TOKEN=[redacted]'}})
+    expect(JSON.stringify(messages)).not.toContain('private')
+  })
+
   it('consignes AGENTS.md injectées : pas un message de l’utilisateur', () => {
     const now = Date.now()
     write(codexFile(now), [ev('response_item', { type: 'message', role: 'user', content: [{ type: 'input_text', text: '# AGENTS.md instructions for /x' }] }, now - 1000)])

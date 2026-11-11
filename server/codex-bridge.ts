@@ -1,3 +1,5 @@
+import type { AvailableModel, ModelControls, ModelSelection } from '../shared/model-controls.ts'
+import MC from './i18n/model-controls.ts'
 import { deliveryContext } from './outbox.ts'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
@@ -46,6 +48,14 @@ const connect: Connect = async (socket, run) => {
 export class CodexBridge {
   private loaded = new Set<string>()
   private activity = new Map<string, { type: 'active' | 'idle'; waiting: boolean; at: number }>()
+  private settings = new Map<string, { model?: string; effort?: string; at: number }>()
+  settingsOf(id: string) {
+    const s = this.settings.get(id)
+    return this.can(id) && s && Date.now()-s.at < 20_000 ? { model: s.model, effort: s.effort } : undefined
+  }
+  private remember(id: string, thread: any) {
+    this.settings.set(id, {model: typeof thread?.model === 'string' ? thread.model : undefined, effort: typeof thread?.reasoningEffort === 'string' ? thread.reasoningEffort : undefined, at: Date.now()})
+  }
   private checked = 0
   private busy = false
   private socket: string
@@ -69,6 +79,7 @@ export class CodexBridge {
   /** Native durable queue survives both disconnects and weevils restarts. */
   private async drain(rpc: Rpc, id: string) {
     const state = await rpc('thread/read', { threadId: id, includeTurns: false })
+    this.remember(id, state.thread)
     const status = state.thread?.status
     if (status?.type === 'active' || status?.type === 'idle') this.activity.set(id, { type: status.type, waiting: Array.isArray(status.activeFlags) && status.activeFlags.some((f: string) => f === 'waitingOnApproval' || f === 'waitingOnUserInput'), at: Date.now() })
     if (status?.type !== 'idle') return
@@ -90,6 +101,40 @@ export class CodexBridge {
       })
     } catch { this.loaded.clear(); this.checked = 0; this.changed() }
     finally { this.busy = false }
+  }
+  private async catalog(rpc: Rpc): Promise<AvailableModel[]> {
+    const models: AvailableModel[] = []; let cursor: string | undefined
+    const seen = new Set<string>()
+    do {
+      const page = await rpc('model/list', { limit: 100, includeHidden: false, ...(cursor ? {cursor} : {}) })
+      for (const m of page.data ?? []) {
+        if (m.hidden || typeof m.model !== 'string' || typeof m.displayName !== 'string' || !Array.isArray(m.supportedReasoningEfforts)) continue
+        models.push({id:m.model,label:m.displayName,efforts:m.supportedReasoningEfforts.map((e:any)=>e.reasoningEffort).filter((e:unknown)=>typeof e==='string'),defaultEffort:typeof m.defaultReasoningEffort==='string'?m.defaultReasoningEffort:undefined})
+      }
+      cursor=page.nextCursor || undefined
+      if (cursor && seen.has(cursor)) throw new Error(tr(MC).unavailable)
+      if (cursor) seen.add(cursor)
+    } while (cursor)
+    return models
+  }
+  async modelControls(id: string, selection?: ModelSelection): Promise<ModelControls> {
+    if (!this.socket) throw new Error(tr(MC).unavailable)
+    return this.transport(this.socket, async rpc => {
+      if (!(await this.ids(rpc)).has(id)) throw new Error(tr(MC).unavailable)
+      const models = await this.catalog(rpc)
+      if (!models.length) throw new Error(tr(MC).unavailable)
+      if (selection !== undefined) {
+        if (!selection || typeof selection !== 'object' || Object.keys(selection).some(k=>!['model','effort'].includes(k)) || !models.some(m=>m.id===selection.model && m.efforts.includes(selection.effort))) throw new Error(tr(MC).invalid)
+        // Future turns only: no resume, new thread, turn start, steer or interruption.
+        await rpc('thread/settings/update', {threadId:id,model:selection.model,effort:selection.effort})
+      }
+      let state: any
+      try { state=await rpc('thread/read',{threadId:id,includeTurns:false}) } catch(e) { if(selection)throw new Error(tr(MC).unconfirmed);throw e }
+      if (selection && (state.thread?.model!==selection.model || state.thread?.reasoningEffort!==selection.effort)) throw new Error(tr(MC).unconfirmed)
+      this.remember(id,state.thread)
+      this.changed()
+      return {threadId:id,tool:'codex',models,selected:{model:state.thread?.model??undefined,effort:state.thread?.reasoningEffort??undefined},active:state.thread?.status?.type==='active',appliesTo:'next-turn'}
+    })
   }
   async send(id: string, text: string) {
     if (!this.socket) throw new Error(tr(M).unavailable)

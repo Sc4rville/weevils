@@ -1,3 +1,4 @@
+import { interceptModelControl } from '../model-controls'
 import { dismissNotice } from './notice-store'
 import { noticeKey, sessionNoticeKey } from '../../shared/notices.ts'
 import { Notice } from './notice'
@@ -150,6 +151,7 @@ export function CalmConv({ id }: { id: string }) {
   const [split, unsplit] = useSplit(!!preview.open)
 
   const send = async (text: string, files: Attachment[] = []) => {
+    if(interceptModelControl(main?'__main':id,text,files.length))return
     setErr(null)
     follow.toEnd()
     try {

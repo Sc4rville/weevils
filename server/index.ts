@@ -575,6 +575,10 @@ const routes: [string, RegExp, Handler][] = [
     const body = await readBody(req)
     json(res, 200, await w.sendMain(String(body.text ?? '').trim()))
   }],
+  ['GET', /^\/api\/sessions\/([^/]+)\/model-controls$/, async (_req,res,_u,[id]) => json(res,200,await w.modelControls(decodeURIComponent(id)))],
+  ['POST', /^\/api\/sessions\/([^/]+)\/model-controls$/, async (req,res,_u,[id]) => json(res,200,await w.modelControls(decodeURIComponent(id),await readBody(req)))],
+  ['GET', /^\/api\/main\/model-controls$/, async (_req,res) => json(res,200,await w.modelControls('__main'))],
+  ['POST', /^\/api\/main\/model-controls$/, async (req,res) => json(res,200,await w.modelControls('__main',await readBody(req)))],
   ['POST', /^\/api\/sessions\/([^/]+)\/command$/, async (req, res, _u, [id]) => {
     const body = await readBody(req)
     json(res, 200, await w.command(decodeURIComponent(id), String(body.command ?? '')))

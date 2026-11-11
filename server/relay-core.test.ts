@@ -268,3 +268,12 @@ it('a device locale cannot rewrite the shared orchestrator template in another l
  expect(fs.readFileSync(path.join(ORCH_DIR,'AGENTS.md'),'utf8').startsWith(template)).toBe(true)
  setLang('fr',true)
 })
+
+it('intercepts bare model controls at normal session send and command entrypoints without typing into a pane', async()=>{
+ add(transcript({id:'model-target',tool:'codex'}))
+ mux.sendText.mockClear();mux.sendKey.mockClear()
+ expect(await w.send('model-target','/model')).toMatchObject({control:'model'})
+ expect(await w.command('model-target','/effort')).toMatchObject({control:'model'})
+ expect(mux.sendText).not.toHaveBeenCalled()
+ expect(mux.sendKey).not.toHaveBeenCalled()
+})

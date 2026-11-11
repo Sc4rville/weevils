@@ -1,3 +1,4 @@
+import { nestedCalls } from './codex-command-details.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/codex-tools.ts'
 
@@ -28,10 +29,7 @@ export function codexToolLabel(name: string, input: unknown): string {
     return t.tool
   }
   if (name.split('.').at(-1) === 'exec') {
-    const code = typeof input === 'string' ? input : ''
-    // Recognise call names only. Do not evaluate JavaScript or display its literals.
-    const names = [...code.matchAll(/\btools\.([a-zA-Z_][a-zA-Z_0-9]*)\s*\(/g)].map(m => m[1])
-    const labels = [...new Set(names.map(label))]
+    const labels = [...new Set(nestedCalls(input).map(call => call.command ? codexToolLabel(call.name, {cmd:call.command}) : label(call.name)))]
     return labels.length ? labels.slice(0, 3).join(' · ') : t.command
   }
   return label(name)

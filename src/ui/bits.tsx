@@ -1,3 +1,4 @@
+import { interceptModelControl } from '../model-controls'
 import { withoutMachinePrefix } from '../../shared/machine-prefix.ts'
 import { SessionMenu } from './session-archive'
 import { sessionNoticeKey } from '../../shared/notices.ts'
@@ -180,6 +181,7 @@ export function AskButton({ session }: { session: Session }) {
       // Dans le geste : iOS propose « Coller », rien n'est lu sans l'accord de l'utilisateur.
       const text = (await navigator.clipboard.readText()).trim()
       if (!text) throw new Error(t.clipboardEmpty)
+      if (interceptModelControl(session.id, text)) return
       const r = await api.send(session.id, text)
       dismissNotice(sessionNoticeKey(session))
       push({ kind: 'session', id: r.id })
@@ -744,7 +746,7 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
   const t = useT(M)
   const [open, setOpen] = useState(false)
   const last = step(steps[steps.length - 1].text)
-  if (steps.length === 1) {
+  if (steps.length === 1 && !steps[0].toolDetails?.commands.length) {
     return (
       <div className="msg band event" data-mid={mid}>
         <div className="in">
@@ -770,6 +772,8 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
           {steps.map((s) => (
             <div key={s.id} className="text">
               <Icon name="arrow" dir="right" /> {step(s.text)}
+              {s.toolDetails?.commands.map((command,i)=><pre key={i} style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{command}</pre>)}
+              {s.toolDetails?.output && <pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{s.toolDetails.output}</pre>}
             </div>
           ))}
         </div>

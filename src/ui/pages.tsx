@@ -1,3 +1,5 @@
+import { ModelControlsPage } from './model-controls'
+import { interceptModelControl } from '../model-controls'
 import { FormatsPage } from './foryou-formats'
 import { RemoteProgress } from './remote-progress'
 import { OutboxStatus } from './outbox-status'
@@ -38,6 +40,7 @@ import { AutoPage, AutoRunPage } from './auto-page'
 
 export function PageView({ page }: { page: Page }) {
   switch (page.kind) {
+    case 'models': return <ModelControlsPage id={page.id}/>
     case 'archived':
       return <ArchivedSessions />
     case 'session':
@@ -226,6 +229,7 @@ function SessionPage({ id }: { id: string }) {
   const previewUrl = preview.url ?? guessPreviewUrl(messages, s, project, snap.config)
 
   const send = async (text: string, files: Attachment[] = []) => {
+    if(interceptModelControl(id,text,files.length))return
     setErr(null)
     const shown = files.length ? `${text ? `${text} ` : ''}(${t.photos(files.length)})` : text
     const tmp: Pending = { id: `pending-${Date.now()}`, role: 'user', text: shown, at: Date.now(), typed: text, after: detail?.messages.at(-1)?.id, known: (detail?.messages ?? []).filter((m) => m.role === 'user' || m.role === 'orchestrator').map((m) => m.id) }
@@ -249,6 +253,9 @@ function SessionPage({ id }: { id: string }) {
       title={s.title}
       scrollHeading
       sessionLayout
+      headerControls={<button className="link inline" onClick={() => setShowSettings(true)} aria-label={t.changeModel} aria-controls="session-settings">
+            {[modelLabel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
+          </button>}
       meta={
         <>
           {s.now && (
@@ -258,9 +265,6 @@ function SessionPage({ id }: { id: string }) {
             </>
           )}
           {s.tool}{' '}
-          <button className="link inline" onClick={() => setShowSettings(true)} aria-label={t.changeModel} aria-controls="session-settings">
-            {[modelLabel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
-          </button>
           {' '}· <StatusChar s={s.status} /> {st.label}
           {s.background > 0 && <span className="strong"> · {t.background(s.background)}</span>}
           {s.queued > 0 && <span className="strong"> · {t.queued(s.queued)}</span>}

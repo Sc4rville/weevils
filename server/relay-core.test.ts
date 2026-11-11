@@ -264,7 +264,7 @@ it('carries the explicit app locale into a session without treating French chat 
 it('a device locale cannot rewrite the shared orchestrator template in another language',()=>{
  setLang('en',true)
  withLang('fr',()=> (w as any).prepareOrchestrator())
- const template=fs.readFileSync(path.join(import.meta.dirname,'orchestrator.en.md'),'utf8').split('\n')[0]
+ const template=fs.readFileSync(path.join(import.meta.dirname,'orchestrator.en.md'),'utf8').split('{{user}}')[0]
  expect(fs.readFileSync(path.join(ORCH_DIR,'AGENTS.md'),'utf8').startsWith(template)).toBe(true)
  setLang('fr',true)
 })

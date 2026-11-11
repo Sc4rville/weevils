@@ -36,33 +36,38 @@ export function nestedCalls(input: unknown): {name:string; command?:string}[] {
   return calls
 }
 /** Redact before data crosses the API boundary, not just in the renderer. */
-export function redactToolText(text:string):string {
+export function redactToolText(text:string,limit=8000):string {
   return text.replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[redacted]')
     .replace(/\b(Bearer)\s+[^\s"']+/gi,'$1 [redacted]')
     .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi,'$1[redacted]@')
     .replace(/\b(sk-[a-zA-Z0-9_-]{8,}|eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)\b/g,'[redacted]')
     .replace(/([\w-]*(?:token|password|passwd|secret|api[_-]?key|authorization|cookie)[\w-]*["']?\s*[:=]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;&}]+)/gi,'$1[redacted]')
-    .slice(0,8000)
+    .slice(0,limit)
 }
-export function commandDetails(name:string,input:unknown):string[] {
+export function commandDetails(name:string,input:unknown,limit=8000):string[] {
   const obj=input && typeof input==='object'? input as Record<string,unknown>:{}
   const raw=obj.cmd??obj.command
   const commands=name.split('.').at(-1)==='exec'?nestedCalls(input).map(c=>c.command):['exec_command','shell','local_shell','local_shell_call'].includes(name.split('.').at(-1)??'')?[Array.isArray(raw)?raw.join(' '):raw]:[]
-  return commands.filter((c):c is string=>typeof c==='string'&&!!c).map(c=> /(?:\.env\b|credentials|printenv|\/proc\/.*environ|PRIVATE KEY)/i.test(c)?'[redacted]':redactToolText(c))
+  return commands.filter((c):c is string=>typeof c==='string'&&!!c).map(c=> /(?:\.env\b|credentials|printenv|\/proc\/.*environ|PRIVATE KEY)/i.test(c)?'[redacted]':redactToolText(c,limit))
 }
 
 /** Codex persists custom-tool results as input_text blocks, ordinary RPC results as text. */
-export function toolOutputText(value:unknown,depth=0):string {
+function rawToolOutput(value:unknown,depth=0):string {
   if(depth>5)return ''
   if(typeof value==='string') {
-    try { const parsed=JSON.parse(value);if(parsed!==value)return toolOutputText(parsed,depth+1) } catch { /* ordinary tool output */ }
-    return redactToolText(value)
+    try { const parsed=JSON.parse(value);if(parsed!==value)return rawToolOutput(parsed,depth+1) } catch { /* ordinary tool output */ }
+    return value
   }
-  if(Array.isArray(value))return value.map(block=>toolOutputText(block,depth+1)).filter(Boolean).join('\n').slice(0,8000)
+  if(Array.isArray(value))return value.map(block=>rawToolOutput(block,depth+1)).filter(Boolean).join('\n')
   if(value && typeof value==='object') {
     const v=value as Record<string,unknown>
-    if(['text','input_text','output_text'].includes(String(v.type)) && typeof v.text==='string')return toolOutputText(v.text,depth+1)
-    return toolOutputText(v.output??v.stdout??v.content,depth+1)
+    if(['text','input_text','output_text'].includes(String(v.type)) && typeof v.text==='string')return rawToolOutput(v.text,depth+1)
+    return rawToolOutput(v.output??v.stdout??v.content,depth+1)
   }
   return ''
 }
+export function toolOutputDetails(value:unknown):{output:string;outputTruncated:boolean} {
+  const text=redactToolText(rawToolOutput(value),Infinity)
+  return {output:text.slice(0,8000),outputTruncated:text.length>8000}
+}
+export function toolOutputText(value:unknown):string {return toolOutputDetails(value).output}

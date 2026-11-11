@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DATA_DIR } from './config.ts'
-import { lang, setLang, tr, withLang } from './i18n.ts'
+import { lang, requestLang, setLang, tr, withLang } from './i18n.ts'
 import M from './i18n/tips.ts'
 import S from './i18n/setup.ts'
 
@@ -21,7 +21,7 @@ describe('withLang', () => {
     expect(withLang('de', () => lang())).toBe(lang())
   })
 
-  it('covers the synchronous part of an async function', async () => {
+  it('keeps the caller locale unchanged while an async function runs', async () => {
     const before = lang()
     const p = withLang(other, async () => {
       const t = tr(M)
@@ -68,4 +68,22 @@ describe('the user language (prefs.json) is stable', () => {
     expect(setLang('en')).toBe(false)
     expect(lang()).toBe('fr')
   })
+})
+
+it('isolates concurrent request locales across awaits without changing stored preferences',async()=>{
+ const baseline=lang()
+ const before=fs.existsSync(path.join(DATA_DIR,'prefs.json')) ? fs.readFileSync(path.join(DATA_DIR,'prefs.json'),'utf8') : ''
+ const result=await Promise.all(['en','fr'].map(l=>withLang(l,async()=>{
+  await new Promise(resolve=>setTimeout(resolve,l==='en'?10:1))
+  return [lang(),tr(S).mailAsk]
+ })))
+ expect(result).toEqual([['en',S.en.mailAsk],['fr',S.fr.mailAsk]])
+ expect(lang()).toBe(baseline)
+ expect(fs.readFileSync(path.join(DATA_DIR,'prefs.json'),'utf8')).toBe(before)
+})
+
+it('uses only explicit app locale, with legacy query support and no browser/chat inference',()=>{
+ expect(requestLang({headers:{'x-weevils-locale':'en','accept-language':'fr'},url:'/api/main?lang=fr'})).toBe('en')
+ expect(requestLang({headers:{},url:'/api/foryou?lang=fr'})).toBe('fr')
+ expect(withLang('en',()=>requestLang({headers:{'accept-language':'fr'},url:'/api/main?text=bonjour'}))).toBe('en')
 })

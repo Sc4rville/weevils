@@ -9,7 +9,7 @@ import { setLang } from './i18n'
 // Exercise the real authentication hook and login form with empty device storage.
 // No account, CLI state, provider key or model request is available to this client.
 let root: Root, host: HTMLDivElement, authenticated: boolean
-let requests: { path: string; body?: string }[]
+let requests: { path: string; body?: string; locale: string | null }[]
 const snapshot = { version: 1, now: 1, sessions: [], projects: [], machines: [{ id: 'fresh', name: 'fresh' }], main: [{ id: 'hello', role: 'assistant', text: 'server greeting', at: 1 }], config: { userName: '', publicHost: '' } }
 function Entry() {
   const live = useLive()
@@ -24,7 +24,7 @@ beforeEach(() => {
   vi.stubGlobal('EventSource', class extends EventTarget { close() {} })
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options) => {
     const path = String(url)
-    requests.push({ path, body: typeof options?.body === 'string' ? options.body : undefined })
+    requests.push({ path, locale: new Headers(options?.headers).get('X-Weevils-Locale'), body: typeof options?.body === 'string' ? options.body : undefined })
     const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } })
     if (path === '/api/me') return response({ authed: authenticated })
     if (path === '/api/login') {
@@ -68,4 +68,19 @@ it.each([['fresh-access-code', true], ['invalid-code', false]] as const)('consum
   expect(host.querySelector('form') !== null).toBe(!accepted)
   expect(requests.filter(r => r.path === '/api/login')).toHaveLength(1)
   expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toContain(code)
+})
+
+it('normal entry carries selected locale and refreshes FR→EN→FR without replacing its mounted view',async()=>{
+ authenticated=true
+ setLang('fr')
+ await act(async()=>root.render(<Entry/>));await flush()
+ const output=host.querySelector('output')!
+ const french=output.textContent
+ await act(async()=>setLang('en'));await flush()
+ expect(host.querySelector('output')).toBe(output)
+ expect(output.textContent).not.toBe(french)
+ await act(async()=>setLang('fr'));await flush()
+ expect(output.textContent).toBe(french)
+ expect(requests.filter(r=>r.path==='/api/snapshot').map(r=>r.locale)).toEqual(['fr','en','fr'])
+ expect(requests.some(r=>r.path==='/api/prefs')).toBe(false)
 })

@@ -4,7 +4,7 @@ import { dismissNotice, isNoticeDismissed } from './notice-store'
 import { useEffect, useState } from 'react'
 import type { RelayMode, RelayPlan, Session } from '../../shared/api.ts'
 import { api } from '../api'
-import { useT } from '../i18n'
+import { intlLocale, useT } from '../i18n'
 import M from '../i18n/relay'
 import { useApp } from './app-context'
 import { Line, Prose } from './bits'
@@ -23,7 +23,7 @@ function useClock() {
   return (at: number, now: number) => {
     const d = new Date(at)
     const clock = t.clock(d.getHours(), d.getMinutes())
-    return at - now < 20 * 3600_000 ? clock : `${d.toLocaleDateString(undefined, { weekday: 'long' })} ${clock}`
+    return at - now < 20 * 3600_000 ? clock : `${d.toLocaleDateString(intlLocale(), { weekday: 'long' })} ${clock}`
   }
 }
 

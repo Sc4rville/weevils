@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { api } from '../api'
 import { WeevbossLogo } from './logo'
 import { Icon } from './icons'
-import { getLang, tr, useLang, useT } from '../i18n'
+import { localeHeaders, getLang, tr, useLang, useT } from '../i18n'
 import M from '../i18n/voice'
 import { tapHint } from './hints'
 import { askSetup } from './setup'
@@ -50,7 +50,7 @@ const marks: Record<string, number> = {}
 const mark = (k: string) => (marks[k] = Date.now())
 function reportMarks() {
   if (!marks.stop || !marks.play) return
-  void fetch('/api/voice/marks', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(marks), credentials: 'same-origin' }).catch(() => undefined)
+  void fetch('/api/voice/marks', { method: 'POST', headers: { ...localeHeaders(), 'content-type': 'application/json' }, body: JSON.stringify(marks), credentials: 'same-origin' }).catch(() => undefined)
   for (const k of Object.keys(marks)) delete marks[k]
 }
 
@@ -73,7 +73,7 @@ export async function say(text: string, onEnd: () => void, oral = false, voice?:
   const p = player
   announce()
   try {
-    const q = new URLSearchParams({ text: text.slice(0, 1500), oral: oral ? '1' : '0', ...(voice ? { voice } : {}) })
+    const q = new URLSearchParams({ text: text.slice(0, 1500), oral: oral ? '1' : '0', lang: getLang(), ...(voice ? { voice } : {}) })
     p.src = `/api/speak/stream?${q}`
     p.onplaying = () => {
       mark('play')
@@ -91,11 +91,14 @@ export async function say(text: string, onEnd: () => void, oral = false, voice?:
 /** Accroche immédiate (« ok », « je regarde »), déjà générée avec la voix choisie, gardée en mémoire. */
 let cueUrl: string | null = null
 async function loadCue() {
+  const requestedLang = getLang()
   try {
-    const r = await fetch('/api/voice/cue', { credentials: 'same-origin' })
+    const r = await fetch('/api/voice/cue', { credentials: 'same-origin', headers: localeHeaders() })
     if (r.ok) {
+      const blob = await r.blob()
+      if (requestedLang !== getLang()) return
       if (cueUrl) URL.revokeObjectURL(cueUrl)
-      cueUrl = URL.createObjectURL(await r.blob())
+      cueUrl = URL.createObjectURL(blob)
     }
   } catch {
     /* pas d'accroche : tant pis */
@@ -341,23 +344,12 @@ export function VoicePicker({ userName }: { userName: string }) {
   const [list, setList] = useState<{ id: string; name: string }[] | null>(null)
   const [cur, setCur] = useState<string | undefined>()
   // Les voix proposées sont celles de la langue de l'app : relues quand elle change (le serveur suit l'app).
-  const loaded = useRef(false)
   useEffect(() => {
-    const load = () =>
-      api
-        .voices()
-        .then((r) => {
-          setList(r.voices)
-          setCur(r.current)
-        })
-        .catch(() => setList([]))
-    if (!loaded.current) {
-      loaded.current = true
-      void load()
-      return
-    }
-    const timer = setTimeout(() => void load(), 800)
-    return () => clearTimeout(timer)
+    let live = true
+    void api.voices().then(r => {
+      if (live) { setList(r.voices); setCur(r.current) }
+    }).catch(() => { if (live) setList([]) })
+    return () => { live = false }
   }, [lang])
   const [siri, setSiri] = useState<'idle' | 'copied' | 'error'>('idle')
   // Siri / bouton Action : un jeton personnel, l'adresse prête à coller dans le Raccourci (copiée), et le lien d'installation s'il existe.

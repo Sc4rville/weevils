@@ -1,3 +1,4 @@
+import { getLang } from '../i18n'
 import { humanFeedText, rawEngineeringNotice } from '../../shared/feed-text.ts'
 // « Pour toi » : voice messages. ONE audio element for the whole stream: starting an item stops the one that was
 // playing. Nothing is synthesised before the tap (GET /api/speak/stream starts with it; iOS plays nothing without one).
@@ -40,7 +41,7 @@ const subscribe = (l: () => void) => {
 }
 
 /** The address a voice message is read from: the item's words, in its speaker's own voice. */
-export const voiceUrl = (text: string, voice: string) => `/api/speak/stream?${new URLSearchParams({ text: text.slice(0, 1500), voice })}`
+export const voiceUrl = (text: string, voice: string) => `/api/speak/stream?${new URLSearchParams({ text: text.slice(0, 1500), voice, lang: getLang() })}`
 
 function fail(id: string) {
   if (current !== id) return

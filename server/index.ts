@@ -16,7 +16,7 @@ import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices } from './fast.ts'
 import { Weevils, isTestBrief } from './core.ts'
-import { setLang, tr } from './i18n.ts'
+import { lang, requestLang, withLang, setLang, tr } from './i18n.ts'
 import M from './i18n/api.ts'
 import P from './i18n/push.ts'
 import V from './i18n/voice.ts'
@@ -813,7 +813,7 @@ async function receiveImport(req: http.IncomingMessage, res: http.ServerResponse
 const outbox = new Outbox(path.join(DATA_DIR, 'outbox'), task => executeOutbox(task, routes))
 outbox.start()
 
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => withLang(requestLang(req), async () => {
   const url = new URL(req.url ?? '/', 'http://local')
   try {
     if (!url.pathname.startsWith('/api/')) return serveStatic(res, url.pathname)
@@ -840,7 +840,7 @@ const server = http.createServer(async (req, res) => {
       const session = /^\/api\/sessions\/([^/]+)\//.exec(url.pathname)
       const id = session ? decodeURIComponent(session[1]) : url.pathname.startsWith('/api/main') ? w.bossConversation() ?? undefined : undefined
       const lane = id ?? (url.pathname.startsWith('/api/main') ? 'main' : url.pathname)
-      return json(res, 202, outbox.accept(key, { url: url.pathname + url.search, body, lane }, id))
+      return json(res, 202, outbox.accept(key, { url: url.pathname + url.search, body, lane, locale: lang() }, id))
     }
     for (const [method, re, handler] of routes) {
       const m = re.exec(url.pathname)
@@ -850,7 +850,7 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     json(res, e instanceof OutboxError ? e.status : 400, { error: (e as Error).message })
   }
-})
+}))
 
 server.listen(PORT, HOST, () => console.log(`weevilsd → http://${HOST}:${PORT}`))
 

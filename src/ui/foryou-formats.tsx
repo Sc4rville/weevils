@@ -5,7 +5,7 @@ import type { ForYouItem, ForYouMedia, VisualProposal } from '../../shared/foryo
 import { useApp } from './app-context'
 import { Shell } from './shell'
 import { useForYou, type ForYouStore } from './foryou-store'
-import { useT } from '../i18n'
+import { useLang, useT } from '../i18n'
 import M from '../i18n/foryou-formats'
 import './foryou-formats.css'
 
@@ -82,6 +82,7 @@ export function ProposalView({ item, fy }: { item: ForYouItem; fy: ForYouStore }
 }
 
 export function FormatsPage() {
+  const appLang = useLang()
   const t = useT(M)
   const fy = useForYou()
   const items = fy.feed?.items ?? []
@@ -89,7 +90,7 @@ export function FormatsPage() {
   const alcove = media.find(m => m.id === 'b442c5405b86603a')
   const clip = media.find(m => m.id === '241bbd0062433326')
   const [example, setExample] = useState<ForYouItem | null>(null)
-  useEffect(() => { let live = true; void api.foryouFormats().then(r => { if (live) setExample(r.proposal) }).catch(() => {}); return () => { live = false } }, [])
+  useEffect(() => { let live = true; void api.foryouFormats().then(r => { if (live) setExample(r.proposal) }).catch(() => {}); return () => { live = false } }, [appLang])
   const proposal = items.find(i => i.visualProposal) ?? example
   const [kept, setKept] = useState(() => { try { return localStorage.getItem('weevils:format-choice') ?? '' } catch { return '' } })
   const keep = (id: string) => { setKept(id); try { localStorage.setItem('weevils:format-choice', id) } catch { /* storage unavailable */ } }

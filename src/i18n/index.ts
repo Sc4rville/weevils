@@ -29,7 +29,21 @@ function stored(): Lang | null {
 
 export const browserLang = (): Lang => pickLang(typeof navigator === 'undefined' ? [] : navigator.languages?.length ? navigator.languages : [navigator.language])
 
-let current: Lang = stored() ?? browserLang()
+// A language link applies only to the device opening it. Preserve navigation/login hashes.
+function linked(): Lang | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const url = new URL(window.location.href)
+    const selected = url.searchParams.get('appLocale')
+    if (!isLang(selected)) return null
+    localStorage.setItem(KEY, selected)
+    url.searchParams.delete('appLocale')
+    history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`)
+    return selected
+  } catch { return null }
+}
+
+let current: Lang = linked() ?? stored() ?? browserLang()
 const listeners = new Set<() => void>()
 
 function apply() {
@@ -62,12 +76,12 @@ if (typeof window !== 'undefined') window.addEventListener('storage', (e) => {
   for (const listener of listeners) listener()
 })
 
-const subscribe = (l: () => void) => {
+export const subscribeLang = (l: () => void) => {
   listeners.add(l)
   return () => listeners.delete(l)
 }
 
-export const useLang = (): Lang => useSyncExternalStore(subscribe, getLang, getLang)
+export const useLang = (): Lang => useSyncExternalStore(subscribeLang, getLang, getLang)
 
 /** Messages of a catalog in the current language; the component re-renders when the language changes. */
 export function useT<T extends Record<string, Msg>>(m: Messages<T>): Messages<T>['fr'] {
@@ -81,3 +95,6 @@ export function tr<T extends Record<string, Msg>>(m: Messages<T>): T {
 
 /** Intl locale of the current language. */
 export const intlLocale = () => locale(current)
+
+/** Explicit app locale; never infer interface language from chat content. */
+export const localeHeaders = (lang: Lang = getLang()) => ({ 'X-Weevils-Locale': lang })

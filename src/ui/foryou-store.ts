@@ -13,7 +13,7 @@ import type { Author } from '../../shared/api.ts'
 import type { ForYouFeed, ForYouItem, ForYouMark } from '../../shared/foryou.ts'
 import { isSettled, useApp } from './app-context'
 import { propColors } from './h24-tree'
-import { tr, useLang } from '../i18n'
+import { getLang, tr, useLang } from '../i18n'
 import M from '../i18n/foryou'
 
 export interface ForYouStore {
@@ -97,7 +97,7 @@ function current(): ForYouItem[] {
       if (cards.length !== it.cards.length) x = { ...x, cards }
     }
     if (!it.seen && seen.has(it.id)) x = { ...x, seen: true }
-    const more = moreTexts.get(it.id)
+    const more = moreTexts.get(`${getLang()}:${it.id}`)
     if (more && !it.moreText) x = { ...x, moreText: more }
     return [x]
   })
@@ -129,7 +129,7 @@ function adopt(f: ForYouFeed) {
   for (const id of seen) if (!by.has(id) || by.get(id)!.seen) seen.delete(id)
   for (const id of dirs.keys()) if (!gone.has(id) && !goneCards.has(id)) dirs.delete(id)
   for (const id of lefts.keys()) if (!dirs.has(id)) lefts.delete(id)
-  for (const id of moreTexts.keys()) if (!by.has(id) || by.get(id)!.moreText) moreTexts.delete(id)
+  for (const key of moreTexts.keys()) if (!by.has(key.slice(3))) moreTexts.delete(key)
   if (first || !order.length) {
     order = ids
     held = new Set()
@@ -154,8 +154,11 @@ function adopt(f: ForYouFeed) {
 async function load() {
   if (loading) return void (again = true)
   loading = true
+  const requestedLang = getLang()
   try {
-    adopt(await api.foryou())
+    const next = await api.foryou()
+    if (requestedLang === getLang()) adopt(next)
+    else again = true
   } catch {
     wanted = undefined // the next snapshot tries again
   } finally {
@@ -279,20 +282,21 @@ function markSeen(ids: string[]) {
 }
 
 function more(id: string): Promise<string> {
-  const known = feed?.items.find((i) => i.id === id)?.moreText ?? moreTexts.get(id)
+  const key = `${getLang()}:${id}`
+  const known = feed?.items.find((i) => i.id === id)?.moreText ?? moreTexts.get(key)
   if (known) return Promise.resolve(known)
-  const flying = moreFlights.get(id)
+  const flying = moreFlights.get(key)
   if (flying) return flying
   const p = api
     .foryouMore(id)
     .then((r) => {
       const text = humanFeedText(r.text)
-      moreTexts.set(id, text)
+      moreTexts.set(key, text)
       rebuild()
       return text
     })
-    .finally(() => moreFlights.delete(id))
-  moreFlights.set(id, p)
+    .finally(() => moreFlights.delete(key))
+  moreFlights.set(key, p)
   return p
 }
 

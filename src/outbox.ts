@@ -1,6 +1,6 @@
 import { storePayload, loadPayload, removePayload } from './outbox-payload'
 import { useSyncExternalStore } from 'react'
-import { tr } from './i18n'
+import { getLang, localeHeaders, tr, type Lang } from './i18n'
 import M from './i18n/outbox'
 
 export type DeliveryState = 'sending' | 'accepted' | 'delivering' | 'delivered' | 'uncertain' | 'failed'
@@ -13,7 +13,7 @@ export interface Receipt {
   result?: { id?: string; ok?: boolean }
   error?: string
 }
-export interface LocalReceipt extends Receipt { url: string; fingerprint: string; text?: string; trackingLost?: boolean; eventId?: string; card?: string; payload?: unknown; payloadStored?: boolean; recovered?: boolean }
+export interface LocalReceipt extends Receipt { locale?: Lang; url: string; fingerprint: string; text?: string; trackingLost?: boolean; eventId?: string; card?: string; payload?: unknown; payloadStored?: boolean; recovered?: boolean }
 const KEY = 'weevils-outbox-v1'
 let rows: LocalReceipt[] = []
 try { rows = JSON.parse(localStorage.getItem(KEY) ?? '[]').filter((r: LocalReceipt) => typeof r.messageId === 'string' && typeof r.url === 'string') } catch { /* unavailable storage */ }
@@ -55,7 +55,7 @@ export async function refreshReceipts() {
   try {
     for (const row of rows.filter(r => !terminal(r))) {
       try {
-        const response = await fetch(`/api/outbox/${encodeURIComponent(row.messageId)}`, { credentials: 'same-origin', signal: AbortSignal.timeout(10000) })
+        const response = await fetch(`/api/outbox/${encodeURIComponent(row.messageId)}`, { credentials: 'same-origin', headers: localeHeaders(), signal: AbortSignal.timeout(10000) })
         if (response.status === 404 && row.status === 'sending') {
           if (!inflight.has(row.fingerprint) && !resumed.has(row.messageId) && navigator.onLine !== false) {
             resumed.add(row.messageId)
@@ -64,7 +64,7 @@ export async function refreshReceipts() {
             update({ ...row, recovered: true })
             await deliver(row.url, payload, async (messageId, signal) => {
               if (!messageId) throw new Error(tr(M).unconfirmed)
-              const res = await fetch(row.url, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', 'Idempotency-Key': messageId! }, body: JSON.stringify(payload), signal })
+              const res = await fetch(row.url, { method: 'POST', credentials: 'same-origin', headers: { ...localeHeaders(row.locale), 'content-type': 'application/json', 'Idempotency-Key': messageId! }, body: JSON.stringify(payload), signal })
               const data = await res.json()
               if (!res.ok) throw Object.assign(new Error(data.error ?? tr(M).unconfirmed), { status: res.status })
               return data
@@ -87,7 +87,7 @@ function startTracking() {
 }
 let capability: Promise<boolean> | null = null
 async function supported() {
-  capability ??= fetch('/api/outbox/capabilities', { credentials: 'same-origin', signal: AbortSignal.timeout(10000) }).then(async r => {
+  capability ??= fetch('/api/outbox/capabilities', { credentials: 'same-origin', headers: localeHeaders(), signal: AbortSignal.timeout(10000) }).then(async r => {
     if (r.status === 404) return false
     if (!r.ok) throw new Error(tr(M).unconfirmed)
     return (await r.json()).enabled === true
@@ -98,9 +98,10 @@ async function supported() {
   return enabled
 }
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-export type Submit = (messageId?: string, signal?: AbortSignal) => Promise<any>
+export type Submit = (messageId?: string, signal?: AbortSignal, locale?: Lang, originalUrl?: string) => Promise<any>
 /** Transport retries reuse the persisted identity. Once accepted, only GET may run. */
 export async function deliver(url: string, body: unknown, submit: Submit, resuming = false): Promise<any> {
+  const submittedLocale = getLang()
   const bytes = new TextEncoder().encode(`${url.split('?')[0]}\n${JSON.stringify(body)}`)
   const fingerprint = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), x => x.toString(16).padStart(2, '0')).join('')
   const action = /\/foryou\/[^/]+\/act(?:\?|$)/.test(url)
@@ -109,7 +110,7 @@ export async function deliver(url: string, body: unknown, submit: Submit, resumi
   if (previous && ['uncertain', 'failed'].includes(previous.status)) throw new Error(previous.error || tr(M)[previous.status as 'uncertain' | 'failed'])
   if (previous && previous.status !== 'sending') { if (!resuming && previous.recovered) update({ ...previous, recovered: false }); return previous }
   if (inflight.has(fingerprint)) return inflight.get(fingerprint)
-  const row: LocalReceipt = previous ?? { messageId: action ? `action-${fingerprint}-${rows.filter(r => r.fingerprint === fingerprint && r.status === 'failed').length}` : crypto.randomUUID(), status: 'sending', updatedAt: Date.now(), url, fingerprint, eventId: (body as any)?.eventId, card: (body as any)?.card, ...((body as any)?.text ? { text: (body as any).text } : {}) }
+  const row: LocalReceipt = previous ?? { locale: submittedLocale, messageId: action ? `action-${fingerprint}-${rows.filter(r => r.fingerprint === fingerprint && r.status === 'failed').length}` : crypto.randomUUID(), status: 'sending', updatedAt: Date.now(), url, fingerprint, eventId: (body as any)?.eventId, card: (body as any)?.card, ...((body as any)?.text ? { text: (body as any).text } : {}) }
   const prepared = async () => {
   if (!previous) {
     if (Array.isArray((body as any)?.files) && (body as any).files.length) {
@@ -126,7 +127,7 @@ export async function deliver(url: string, body: unknown, submit: Submit, resumi
       const known = rows.find(r => r.messageId === row.messageId)
       if (known && known.status !== 'sending') return known
       try {
-        const response = await submit(row.messageId, AbortSignal.timeout(30000))
+        const response = await submit(row.messageId, AbortSignal.timeout(30000), row.locale ?? submittedLocale, row.url)
         if (response?.messageId !== row.messageId || !['accepted','delivering','delivered','uncertain','failed'].includes(response.status)) throw new TypeError(tr(M).unconfirmed)
         const receipt = response as Receipt
         update({ ...row, ...receipt, trackingLost: false })

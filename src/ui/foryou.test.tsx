@@ -34,7 +34,7 @@ const { resetVoice, toggleVoice, LOGO_SAYS, ITEM_SAYS } = await import('./foryou
 const { resetForYou } = await import('./foryou-store')
 const { Ctx, setSettledNow } = await import('./app-context')
 const { FOCUS_BOSS } = await import('./follow')
-const { tr } = await import('../i18n')
+const { tr, getLang, setLang } = await import('../i18n')
 const { default: M } = await import('../i18n/foryou')
 
 const NOW = Date.now()
@@ -476,6 +476,35 @@ describe('for you: voice messages', () => {
     expect(host.querySelector('.fy-body')!.scrollTop).toBe(480)
     expect(audio().paused).toBe(false)
     expect(FakeAudio.made).toHaveLength(1)
+  })
+
+  it('FR→EN→FR preserves cards, draft, scroll and playing audio without remounting',async()=>{
+    const originalLang=getLang()
+    setLang('fr')
+    await open(VOICED.map(i=>i.id==='bo'?{...i,reply:'boss'}:i))
+    await click(listen('bo'));await fire('onplaying')
+    const playing=audio();playing.currentTime=3.2
+    const body=host.querySelector<HTMLElement>('.fy-body')!
+    body.scrollTop=480
+    act(()=>body.dispatchEvent(new Event('scroll',{bubbles:true})))
+    const form=band('bo').querySelector<HTMLFormElement>('form.fy-reply')!
+    await type(form,'Mon texte reste français')
+    const input=form.querySelector('input')!
+    const ids=()=>[...host.querySelectorAll('[data-fy]')].map(e=>e.getAttribute('data-fy'))
+    const before=ids()
+    for(const locale of ['en','fr'] as const){
+      await act(async()=>setLang(locale));await flush()
+      expect(ids()).toEqual(before)
+      expect(host.querySelector('.fy-body')).toBe(body)
+      expect(body.scrollTop).toBe(480)
+      expect(band('bo').querySelector('input')).toBe(input)
+      expect(input.value).toBe('Mon texte reste français')
+      expect(audio()).toBe(playing)
+      expect(playing.paused).toBe(false)
+      expect(playing.currentTime).toBe(3.2)
+    }
+    expect(srv.calls.some(c=>c.startsWith('reply '))).toBe(false)
+    await act(async()=>setLang(originalLang))
   })
 
   it('only an item with a voice carries the play glyph and its bars, still until it is played', async () => {

@@ -3,11 +3,11 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { OutboxReceipt } from '../shared/outbox.ts'
-import { tr } from './i18n.ts'
+import { tr, type Lang } from './i18n.ts'
 import M from './i18n/outbox.ts'
 
 export const deliveryContext = new AsyncLocalStorage<{ messageId: string }>()
-export interface OutboxTask { url: string; body: Record<string, unknown>; lane: string }
+export interface OutboxTask { locale?: Lang; url: string; body: Record<string, unknown>; lane: string }
 interface Entry extends OutboxReceipt { hash: string; task?: OutboxTask }
 export class OutboxError extends Error {
   status: number

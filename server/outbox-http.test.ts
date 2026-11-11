@@ -1,3 +1,4 @@
+import { lang, withLang } from './i18n.ts'
 import http from 'node:http'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -34,4 +35,14 @@ it.each(['/api/main', '/api/foryou/item/act'])('accepts %s before delayed delive
 it('only wraps the explicit message and request-action routes', () => {
  for(const url of ['/api/main','/api/main/attach','/api/sessions/x/send','/api/sessions/x/attach','/api/foryou/x/reply','/api/foryou/x/act'])expect(outboxRoute(url)).toBe(true)
  for(const url of ['/api/login','/api/config','/api/sessions','/api/outbox/x'])expect(outboxRoute(url)).toBe(false)
+})
+
+it('replays the persisted app locale after await even when the worker uses another locale',async()=>{
+ const routes:Parameters<typeof executeOutbox>[1]=[['POST',/^\/api\/main$/,async(req,res)=>{
+  await Promise.resolve()
+  expect(lang()).toBe('fr')
+  expect(req.headers['x-weevils-locale']).toBe('fr')
+  res.end(JSON.stringify({id:'original'}))
+ }]]
+ await withLang('en',()=>executeOutbox({url:'/api/main',body:{text:'hello'},lane:'main',locale:'fr'},routes))
 })

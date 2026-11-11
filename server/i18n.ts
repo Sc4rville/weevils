@@ -1,10 +1,7 @@
-// Language of what weevilsd writes itself: agent prompts (weevboss, titles, classification), push notifications,
-// API errors. It follows the app (POST /api/prefs, stored in prefs.json), otherwise WEEVILS_LANG, otherwise the
-// system locale, otherwise English. Stable: only a language picked in the app's settings changes it; an app that
-// merely follows its browser sets it the first time, never after (a test browser, a borrowed phone or an old app
-// in another language would otherwise switch weevboss, notifications and every agent prompt for everyone). Catalogs: server/i18n/<area>.ts with defineMessages(); read them with tr(M)
-// at call time so a language change applies at once.
+// Server catalogs use an isolated request locale, falling back to installation preferences.
+// Explicit device preferences never rewrite another reader’s language.
 
+import { AsyncLocalStorage } from 'node:async_hooks'
 import fs from 'node:fs'
 import path from 'node:path'
 import { DATA_DIR, USER_NAME } from './config.ts'
@@ -38,7 +35,16 @@ let current: Lang = (() => {
 })()
 const listeners = new Set<(l: Lang) => void>()
 
-export const lang = (): Lang => current
+const requestLocale = new AsyncLocalStorage<Lang>()
+export const lang = (): Lang => requestLocale.getStore() ?? current
+
+/** Only the explicit app preference/query can select a request locale, never chat text. */
+export function requestLang(req: { headers: Record<string, string | string[] | undefined>; url?: string }): Lang {
+  const header = req.headers['x-weevils-locale']
+  if (isLang(header)) return header
+  const query = new URL(req.url ?? '/', 'http://local').searchParams.get('lang')
+  return isLang(query) ? query : lang()
+}
 
 /** Called when the app tells its language: chosen, picked in its settings (always applied); otherwise the browser's,
  * applied only while no app has set one. Returns true when it changed. */
@@ -63,22 +69,14 @@ export function setLang(l: unknown, chosen = false): boolean {
 /** Runs when the language changes (e.g. re-render the orchestrator's prompt). */
 export const onLangChange = (f: (l: Lang) => void) => listeners.add(f)
 
-/** Runs fn (synchronous part only) with the catalogs in language l — for texts the app shows as-is (tip cards), which
- * follow the app's language even when the user never picked one (the browser's language is not saved server-side). */
+/** Keep the locale across await/timers without mutating shared installation preferences. */
 export function withLang<T>(l: unknown, fn: () => T): T {
-  if (!isLang(l) || l === current) return fn()
-  const saved = current
-  current = l
-  try {
-    return fn()
-  } finally {
-    current = saved
-  }
+  return isLang(l) ? requestLocale.run(l, fn) : fn()
 }
 
 /** Messages of a catalog in the user's language, read at call time. */
 export function tr<T extends Record<string, Msg>>(m: Messages<T>): T {
-  return m[current] as T
+  return m[lang()] as T
 }
 
 /** The user's name (WEEVILS_USER_NAME), else « l'utilisateur » / "the user" in the current language. Read at call time. */

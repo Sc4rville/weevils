@@ -5,7 +5,7 @@ import OM from './i18n/outbox'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AskResult, Brick, Device } from '../shared/setup.ts'
 import type { Tour, TourId } from '../shared/tour.ts'
-import { getLang, tr } from './i18n'
+import { getLang, localeHeaders, subscribeLang, tr, type Lang } from './i18n'
 import M from './i18n/app'
 import type { FsListing, InfraDetail, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
 import type { ProgressFix, Software, SoftwareList } from '../shared/softwares.ts'
@@ -22,10 +22,10 @@ export class ApiError extends Error {
 
 let onUnauthorized: (() => void) | null = null
 
-async function call<T>(method: string, url: string, body?: unknown, messageId?: string, signal?: AbortSignal): Promise<T> {
+async function call<T>(method: string, url: string, body?: unknown, messageId?: string, signal?: AbortSignal, locale: Lang = getLang()): Promise<T> {
   const res = await fetch(url, {
     method,
-    headers: { ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(messageId ? { 'Idempotency-Key': messageId } : {}) },
+    headers: { ...localeHeaders(locale), ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(messageId ? { 'Idempotency-Key': messageId } : {}) },
     signal,
     body: body !== undefined ? JSON.stringify(body) : undefined,
     credentials: 'same-origin',
@@ -39,7 +39,7 @@ async function call<T>(method: string, url: string, body?: unknown, messageId?: 
 }
 
 async function send<T>(url: string, body: unknown, target?: string): Promise<T> {
-  let r = await deliver(url, body, (messageId, signal) => call<any>('POST', url, body, messageId, signal))
+  let r = await deliver(url, body, (messageId, signal, locale, originalUrl) => call<any>('POST', originalUrl ?? url, body, messageId, signal, locale))
   if (/\/foryou\/[^/]+\/act(?:\?|$)/.test(url) && r?.messageId) r = await awaitDelivery(r)
   if (r?.status === 'failed' || r?.status === 'uncertain') throw new Error(r.error || tr(OM)[r.status as 'failed' | 'uncertain'])
   return (r?.messageId ? { ok: true, id: r.result?.id ?? r.id ?? target, ...r.result, delivery: r } : r) as T
@@ -210,8 +210,10 @@ export function useLive() {
     const load = async () => {
       if (inflight) return
       inflight = true
+      const requestedLang = getLang()
       try {
         const s = await api.snapshot()
+        if (stopped || requestedLang !== getLang()) return
         have = s.version
         // The greeting of an empty weevboss thread comes in the server's language: shown in the app's.
         s.main = s.main.map((m) => (m.id === 'hello' ? { ...m, text: tr(M).hello } : m))
@@ -223,11 +225,12 @@ export function useLive() {
         if (!(e instanceof ApiError)) setOffline(true)
       } finally {
         inflight = false
-        if (wanted > have && !stopped) void load()
+        if ((wanted > have || requestedLang !== getLang()) && !stopped) void load()
       }
     }
     loader.current = () => void load()
     void load()
+    const unsubscribeLang = subscribeLang(() => void load())
     const es = new EventSource('/api/events')
     es.addEventListener('version', (e) => {
       wanted = Number((e as MessageEvent).data)
@@ -243,6 +246,7 @@ export function useLive() {
     return () => {
       stopped = true
       es.close()
+      unsubscribeLang()
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [authed])

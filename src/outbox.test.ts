@@ -133,3 +133,19 @@ it('stores attachments outside localStorage and resumes them without changing id
  const submit = vi.fn(); await outbox.deliver('/api/main/attach',body,submit)
  expect(submit).not.toHaveBeenCalled()
 })
+
+it('persists the original app locale through a switch and retry',async()=>{
+ const {setLang}=await import('./i18n')
+ setLang('fr')
+ fetcher.mockRejectedValueOnce(new TypeError('offline'))
+ const {deliver}=await load()
+ await expect(deliver('/api/main',{text:'bonjour'},vi.fn())).rejects.toThrow()
+ const first=JSON.parse(localStorage.getItem('weevils-outbox-v1')!)[0]
+ expect(first.locale).toBe('fr')
+ setLang('en')
+ const retry=vi.fn(async(id?:string)=>accepted(id!))
+ await deliver('/api/main',{text:'bonjour'},retry)
+ expect(retry.mock.calls[0][0]).toBe(first.messageId)
+ expect((retry.mock.calls[0] as unknown[])[2]).toBe('fr')
+ expect((retry.mock.calls[0] as unknown[])[3]).toBe('/api/main')
+})

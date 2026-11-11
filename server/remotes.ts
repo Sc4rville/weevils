@@ -4,7 +4,7 @@ import { MACHINE } from './config.ts'
 // comme un outil local (server/http.ts).
 
 import type { Snapshot } from '../shared/api.ts'
-import { tr } from './i18n.ts'
+import { lang, tr } from './i18n.ts'
 import M from './i18n/remotes.ts'
 
 export class Remote {
@@ -62,7 +62,7 @@ export class Remote {
     if (!this.online) throw new Error(tr(M).offline(this.id))
     const res = await fetch(`${this.url}${path}`, {
       method,
-      headers: body !== undefined ? { 'content-type': 'application/json' } : undefined,
+      headers: { 'X-Weevils-Locale': lang(), ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(15_000),
     })

@@ -11,6 +11,7 @@ const srv = vi.hoisted(() => ({
   feed: null as unknown,
   calls: [] as string[],
   fail: '' as string,
+  deferred: null as Promise<unknown> | null,
 }))
 vi.mock('../api', () => {
   const run = async (what: string) => {
@@ -23,7 +24,7 @@ vi.mock('../api', () => {
       foryou: async () => {
         srv.calls.push('feed')
         if (srv.fail === 'feed') throw new Error('nope')
-        return srv.feed
+        return srv.deferred ?? srv.feed
       },
       foryouSeen: (ids: string[]) => run(`seen ${ids.join(',')}`),
       foryouDismiss: (id: string) => run(`dismiss ${id}`),
@@ -433,4 +434,23 @@ it('keeps editorial items available in the opened feed without an intrusive unre
   expect(fy.unseen).toBe(0)
   act(() => fy.showFresh())
   expect(ids()).toContain('r:story')
+})
+
+it('FR→EN→FR keeps items while rejecting a late response in the previous locale', async () => {
+ setLang('fr')
+ await serve(1,[item({id:'a',text:'bonjour'}),item({id:'b'})])
+ const original=ids()
+ fy.setReading(true)
+ let resolve!: (value: ForYouFeed) => void
+ srv.deferred=new Promise(r=>{resolve=r})
+ await act(async()=>setLang('en'))
+ expect(ids()).toEqual(original)
+ await act(async()=>setLang('fr'))
+ srv.deferred=null
+ srv.feed=feed(1,[item({id:'a',text:'bonjour encore'}),item({id:'b'})])
+ await act(async()=>resolve(feed(1,[item({id:'a',text:'late English response'})])))
+ await flush()
+ expect(ids()).toEqual(original)
+ expect(fy.items[0].text).toBe('bonjour encore')
+ expect(fy.fresh).toBe(0)
 })

@@ -119,3 +119,20 @@ it('renders all four formats and persists a local preference without sending a c
  expect(host.querySelectorAll('.formats-keep')[1].getAttribute('aria-pressed')).toBe('true')
  expect(state.send).not.toHaveBeenCalled()
 })
+
+it('language switches preserve selection, open instructions and the clip element',async()=>{
+ vi.mocked(api.foryouFormats).mockResolvedValue({proposal:item})
+ vi.mocked(useForYou).mockReturnValue({...fy,feed:{items:[item,{...item,id:'clip',visualProposal:undefined,media:[{...item.media![0],id:'241bbd0062433326',type:'video'}]}]}} as ForYouStore)
+ await act(async()=>{setLang('fr');root.render(<FormatsPage/>)})
+ await act(async()=>host.querySelectorAll<HTMLInputElement>('input')[1].click())
+ const video=host.querySelector('video')!
+ const details=host.querySelector('details')!;details.open=true
+ for(const locale of ['en','fr'] as const){
+  await act(async()=>setLang(locale))
+  expect(host.querySelector('video')).toBe(video)
+  expect(host.querySelector('details')).toBe(details)
+  expect(details.open).toBe(true)
+  expect(host.querySelectorAll<HTMLInputElement>('input')[1].checked).toBe(true)
+ }
+ expect(state.send).not.toHaveBeenCalled()
+})

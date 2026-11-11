@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CS
 import type { TipCard } from '../../shared/tips.ts'
 import { api } from '../api'
 import { ensurePush, pushSupported } from '../push'
-import { getLang, tr, useT } from '../i18n'
+import { localeHeaders, getLang, tr, useT } from '../i18n'
 import M from '../i18n/tips'
 import { useApp } from './app-context'
 import { Line } from './bits'
@@ -98,7 +98,7 @@ const typing = (el: Element | null) => !!el && (el instanceof HTMLInputElement |
 const introActive = () => !!document.querySelector('.ob, .tr-band') || read('weevils-onboarded') !== '1'
 
 const getJson = async <T,>(method: string, url: string, body?: unknown): Promise<T> => {
-  const res = await fetch(url, { method, credentials: 'same-origin', headers: body ? { 'content-type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined })
+  const res = await fetch(url, { method, credentials: 'same-origin', headers: { ...localeHeaders(), ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined })
   const data = (await res.json().catch(() => ({}))) as T & { error?: string }
   if (!res.ok) throw new Error(data.error ?? res.statusText)
   return data

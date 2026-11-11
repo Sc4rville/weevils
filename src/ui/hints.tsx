@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type RefObject } from 'react'
-import { useT } from '../i18n'
+import { localeHeaders, useT } from '../i18n'
 import M from '../i18n/hints'
 import { FOCUS_BOSS } from './follow'
 import './hints.css'
@@ -47,7 +47,7 @@ const read = (k: string) => {
   }
 }
 const post = (body: { seen: string[]; reset?: boolean }) =>
-  fetch('/api/hints', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => undefined)
+  fetch('/api/hints', { method: 'POST', credentials: 'same-origin', headers: { ...localeHeaders(), 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => undefined)
 
 /** The first-launch intro is open or not finished: no hint competes with it. */
 const introActive = () => !!document.querySelector('.ob') || read('weevils-onboarded') !== '1'
@@ -65,7 +65,7 @@ function forgetDevice() {
 export async function loadHints() {
   let r: { seen: string[]; touched: boolean; install: string }
   try {
-    const res = await fetch('/api/hints', { credentials: 'same-origin' })
+    const res = await fetch('/api/hints', { credentials: 'same-origin', headers: localeHeaders() })
     if (!res.ok) return
     r = await res.json()
   } catch {

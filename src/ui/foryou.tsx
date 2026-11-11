@@ -1,3 +1,4 @@
+import { ResultCard } from './foryou-result'
 import { TranslationStatus } from './foryou-localization'
 import { InlineMediaFormats, ProposalView } from './foryou-formats'
 import { OutboxStatus } from './outbox-status'
@@ -420,6 +421,12 @@ function MediaStrip({ media }: { media: ForYouMedia[] }) {
 
 function MediaItem({ item, who, fy }: KindProps) {
   if (item.visualProposal) return <ProposalView item={item} fy={fy} />
+  if (item.resultGroup) return <>
+    <div className="in"><Who item={item} who={who} /></div>
+    <ResultCard item={item} sourceControls={source => <><Who item={source} who={who} />{source.id !== item.id && <><Actions item={source} fy={fy} />{source.reply && <ReplyLine item={source} who={who} fy={fy} />}</>}</>} />
+    <Actions item={item} fy={fy} />
+    {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
+  </>
   return (
     <>
       <div className="tone fy-cap">

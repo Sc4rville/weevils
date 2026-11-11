@@ -1,3 +1,4 @@
+import { ALCOVE_SOURCE, alcoveFinal, groupAlcove } from './foryou-results.ts'
 import { FeedLocalization } from './foryou-localization.ts'
 import { OutboxError } from './outbox.ts'
 import { internalFeedUpdate, editorialFeedText, acknowledgementOnly, humanFeedItem, humanFeedText, rawEngineeringNotice } from '../shared/feed-text.ts'
@@ -893,7 +894,7 @@ export class ForYou {
       const media = i.mediaIds.map((id) => this.shelf!.get(id)).filter((e) => !!e).map((e): ForYouMedia => this.shelf!.view(e!))
       if (media.length) out.media = media
     }
-    if (i.kind === 'media' && !out.media) return null
+    if (i.kind === 'media' && !out.media && i.id !== ALCOVE_SOURCE) return null
     if (i.kind === 'mail') {
       // Written in the mail's own language, like the first line it replaces: shown whatever the app's language.
       if (i.sum?.text) out.text = i.sum.text
@@ -1138,7 +1139,8 @@ export class ForYou {
       const languages = new Map(sources.map(x => [x.item.id, x.lang]))
       const items = arrange(sources.map(x => humanFeedItem(x.item)), now).slice(0, MAX_FEED)
         .map(item => this.localization.project(item, cur, languages.get(item.id), snap.projects.map(p => p.name), true))
-      return { rev: this.s.rev, items, pulse: this.pulse(snap, now) }
+      const anchor = this.s.items.find(i => i.id === ALCOVE_SOURCE)
+      return { rev: this.s.rev, items: groupAlcove(items, items.some(i => i.id === ALCOVE_SOURCE) ? alcoveFinal(this.shelf, anchor?.cwd) : undefined), pulse: this.pulse(snap, now) }
     })
   }
 

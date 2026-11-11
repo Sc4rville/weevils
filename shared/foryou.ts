@@ -78,6 +78,15 @@ export interface VisualProposal {
 }
 
 export interface ForYouItem {
+  /** Read-only projection of verified sources; source records remain independently addressable. */
+  resultGroup?: {
+    key: 'tlo-alcove'
+    final?: ForYouMedia
+    finalAt: number
+    history: ForYouItem[]
+    otherMedia: ForYouMedia[]
+    newerUpdate: boolean
+  }
   localization?: { target: 'fr' | 'en'; source: 'fr' | 'en' | 'unknown'; revision: string; status: 'pending' | 'failed' | 'translated'; original: Record<string,string> }
   visualProposal?: VisualProposal
 

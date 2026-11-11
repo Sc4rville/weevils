@@ -34,7 +34,7 @@ export class FeedLocalization {
   project(item: ForYouItem,target: Lang, sourceLang?: Lang, names: string[]=[]): ForYouItem {
     const source=presentation(item)
     const combined = Object.values(source).join('\n')
-    const original=sourceLang??(combined.trim().split(/\s+/).length >= 5 ? detectLang(combined) : null)
+    const original=sourceLang??(combined.trim().split(/\s+/).length >= 5 || /[éèêàçùœ]|\b(?:le|les|une|des|pour|avec|est|the|your|ready|open|view)\b/i.test(combined) ? detectLang(combined) : null)
     if(!original || original===target || !Object.keys(source).length) return item
     const protectedWords=protect(Object.values(source).join('\n'),names)
     const revision=crypto.createHash('sha256').update(JSON.stringify([source,protectedWords])).digest('hex')

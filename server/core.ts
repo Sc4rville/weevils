@@ -394,6 +394,7 @@ export class Weevils {
   private listeners = new Set<() => void>()
   private bumpTimer: NodeJS.Timeout | null = null
   private snap: Snapshot | null = null
+  private snapLang: Lang | null = null
   private persistTimer: NodeJS.Timeout | null = null
   private retitleSoon: NodeJS.Timeout | undefined
   /** Sessions vues mourir en plein travail (ou avec du travail non commité) : id → quand, pourquoi. */
@@ -984,7 +985,8 @@ export class Weevils {
   }
 
   snapshot(): Snapshot {
-    if (this.snap) return this.snap
+    const locale = lang()
+    if (this.snap && this.snapLang === locale) return this.snap
     const now = Date.now()
     const remote = this.remotes.filter((r) => r.online && r.snap && r.snap.machines[0]?.id !== MACHINE.id)
     const sessions = [...new Map([...remote.flatMap((r) => r.snap!.sessions.filter((s) => s.machineId === r.snap!.machines[0]?.id)), ...this.sessions(now)].map((s) => [s.id, this.archived.has(s.id) ? { ...s, archived: true } : s])).values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
@@ -1018,6 +1020,7 @@ export class Weevils {
       ...(this.optimizers ? { autoRound: { busy: this.optimizers.roundBusy } } : {}),
       config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey },
     }
+    this.snapLang = locale
     // « Pour toi » : sa marque (révision, non vus) se calcule sur le snapshot qu'on vient de poser, sans rappeler snapshot().
     // Le flux lui-même n'y est jamais ; une erreur de son côté ne prive personne du snapshot.
     const snap = this.snap

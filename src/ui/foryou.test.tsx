@@ -7,6 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Snapshot } from '../../shared/api.ts'
 import type { ForYouFeed, ForYouItem } from '../../shared/foryou.ts'
 
+const receipts = vi.hoisted(() => ({ rows: [] as any[] }))
+vi.mock('../outbox', async original => ({ ...await original<typeof import('../outbox')>(), useOutbox: () => receipts.rows }))
+
 const srv = vi.hoisted(() => ({ feed: null as unknown, calls: [] as string[], fail: '', gate: null as Promise<void> | null }))
 vi.mock('../api', () => {
   const run = async (what: string) => {
@@ -152,6 +155,7 @@ beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   localStorage.clear()
   sessionStorage.clear()
+  receipts.rows = []
   srv.gate = null
   resetForYou()
   resetVoice()
@@ -460,15 +464,15 @@ describe('for you: voice messages', () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('projects is an explicit exit; leaving and reopening the feed keeps its scroll and active audio', async () => {
+  it('the chevron exits; leaving and reopening the feed keeps its scroll and active audio', async () => {
     await open(VOICED)
     await click(listen('bo'))
     await fire('onplaying')
     const body = host.querySelector<HTMLElement>('.fy-body')!
     body.scrollTop = 480
     act(() => body.dispatchEvent(new Event('scroll', { bubbles: true })))
-    await click(labelled(t().backToProjects))
-    expect(pushed.at(-1)).toBe('home')
+    await click(labelled(t().back))
+    expect(pushed.at(-1)).toBe('back')
     render(null)
     expect(audio().paused).toBe(false)
     render(<ForYouPage />)
@@ -769,4 +773,26 @@ it('an action stays visible and disabled until acknowledged, despite repeated ta
   expect(button.disabled).toBe(true)
   expect(button.textContent).toContain(t().sending)
   await act(async () => resolve())
+})
+
+it('keeps the original header and places only unresolved delivery beside its card through reload',async()=>{
+ const locale=getLang()
+ await act(async()=>setLang('en'))
+ receipts.rows=[{messageId:'done',url:'/api/foryou/bo/reply',status:'delivered'}, {messageId:'pending',url:'/api/foryou/se/reply',status:'accepted'}]
+ await open()
+ const head=host.querySelector('.page-head')!
+ expect(head.querySelector('.back')).not.toBeNull()
+ expect([...head.querySelectorAll('.fy-words .word')].map(n=>n.textContent)).toEqual(['weevboss','for you'])
+ expect(head.textContent).not.toMatch(/projects|Try visual formats|Try new formats|forwarded|dismiss this status/i)
+ expect(head.querySelector('.outbox-status')).toBeNull()
+ expect(band('bo').querySelector('.outbox-status')).toBeNull()
+ expect(band('se').querySelector('.outbox-status')?.textContent).toContain('waiting to be forwarded')
+ render(null);render(<ForYouPage/>);await flush()
+ expect(host.querySelector('.page-head .outbox-status')).toBeNull()
+ expect(band('bo').querySelector('.outbox-status')).toBeNull()
+ receipts.rows[1]={...receipts.rows[1],status:'delivered'}
+ await act(async()=>setLang('fr'))
+ expect(band('se').querySelector('.outbox-status')).toBeNull()
+ await click(labelled(t().back));expect(pushed.at(-1)).toBe('back')
+ await act(async()=>setLang(locale))
 })

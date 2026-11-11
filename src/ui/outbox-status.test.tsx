@@ -29,3 +29,14 @@ it('an uncertain receipt offers recovery, never a button that reinjects the mess
  const buttons = host.querySelectorAll('button'); expect(buttons).toHaveLength(1)
  await act(async () => buttons[0].click()); expect(state.copied).toHaveBeenCalledWith('original draft')
 })
+
+it('contextual delivery hides completed and older-event receipts without forgetting their identity',async()=>{
+ state.rows=[{messageId:'old',url:'/api/foryou/a/act',status:'accepted',eventId:'previous'}, {messageId:'current',url:'/api/foryou/a/act',status:'accepted',eventId:'current'}, {messageId:'elsewhere',url:'/api/foryou/b/reply',status:'uncertain'}]
+ await act(async()=>root.render(<OutboxStatus scope="/api/foryou/a/" eventId="current" unresolvedOnly/>))
+ expect(host.querySelectorAll('[data-delivery]')).toHaveLength(1)
+ expect(host.textContent).toContain('waiting to be forwarded')
+ state.rows[1]={...state.rows[1],status:'delivered',result:{id:'target'}}
+ await act(async()=>root.render(<OutboxStatus scope="/api/foryou/a/" eventId="current" unresolvedOnly/>))
+ expect(host.textContent).toBe('')
+ expect(state.rows).toHaveLength(3)
+})

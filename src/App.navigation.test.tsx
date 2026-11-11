@@ -79,3 +79,22 @@ it('repeated feed taps add one page and an explicit projects exit overrides a qu
   await click('home')
   expect(cursor).toBe(0); expect(open()).toBe(false)
 })
+
+it('the feed chevron returns to fullscreen boss, then closing returns to the normal page',async()=>{
+ await click('open');await click('feed');await click('back')
+ expect(open()).toBe(true)
+ await click('close')
+ expect(open()).toBe(false)
+ expect(host.querySelector('main')!.inert).toBe(false)
+})
+it('reloading from fullscreen leaves a usable normal page and the next feed chevron still returns',async()=>{
+ await click('open');await click('feed')
+ await act(async()=>root.unmount())
+ root=createRoot(host)
+ await act(async()=>root.render(<App/>));await flush()
+ expect(open()).toBe(false)
+ expect(host.querySelector('main')!.inert).toBe(false)
+ await click('feed');await click('back')
+ expect(host.querySelector('.page')).toBeNull()
+ expect(host.querySelector('main')!.inert).toBe(false)
+})

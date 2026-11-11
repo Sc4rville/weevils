@@ -2706,7 +2706,6 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .session-heading { flex: none; padding-block: 12px; }
 
 .fy-top .in.fy-top-in { flex-wrap: wrap; }
-.fy-projects { flex: none; margin-left: auto; min-width: 44px; min-height: 44px; font-size: .875rem; }
 
 /* Session controls share the first title line, independent of secondary text height. */
 .session-item .row > .in.line { align-items: flex-start; }

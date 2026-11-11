@@ -833,6 +833,7 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
       {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
       <TranslationStatus item={item} />
       {Kind && <Kind item={item} who={who} project={project} inView={inView} fy={fy} />}
+      <OutboxStatus scope={`/api/foryou/${encodeURIComponent(item.id)}/`} eventId={feedNoticeKey(item)} unresolvedOnly />
       {err && (
         <Notice eventId={noticeKey('error:foryou', location.pathname, location.hash, err)} className="fy-err" role="alert">
           <div className="in meta">! {err}</div>
@@ -1027,7 +1028,7 @@ function lookTime(at: number): string {
 const feedScroll = new Map<string, number>()
 export function ForYouPage({ who }: { who?: string }) {
   const t = useT(M)
-  const { back, home, push } = useApp()
+  const { back } = useApp()
   const fy = useForYou()
   const page = useRef<HTMLDivElement>(null)
   const body = useRef<HTMLDivElement>(null)
@@ -1079,10 +1080,7 @@ export function ForYouPage({ who }: { who?: string }) {
               {t.title}
             </h1>
           </div>
-          <button type="button" className="link fy-projects" onClick={home} aria-label={t.backToProjects}>{t.projects}</button>
         </div>
-        <button type="button" className="in formats-entry" onClick={() => push({ kind: 'formats' })}>{t.formats}</button>
-        <OutboxStatus scope="/api/foryou/" />
         <Participants list={people} sel={sel} onPick={pick} />
       </div>
       <div ref={body} className="page-body fy-body" data-scroll onScroll={(e) => { feedScroll.set(sel, e.currentTarget.scrollTop); setReading(e.currentTarget.scrollTop > 48) }}>

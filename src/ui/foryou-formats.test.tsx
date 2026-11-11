@@ -136,3 +136,19 @@ it('language switches preserve selection, open instructions and the clip element
  }
  expect(state.send).not.toHaveBeenCalled()
 })
+
+it('shows translation progress and original wording without changing the selected option',async()=>{
+ const localization={target:'en' as const,source:'fr' as const,revision:'same-source',original:{text:'Le texte original reste disponible.'}}
+ for(const status of ['pending','failed','translated'] as const){
+  await act(async()=>root.render(<ProposalView item={{...item,localization:{...localization,status}}} fy={fy}/>))
+  if(status==='pending')await act(async()=>host.querySelectorAll<HTMLInputElement>('input')[1].click())
+  expect(host.querySelectorAll<HTMLInputElement>('input')[1].checked).toBe(true)
+  if(status==='translated'){
+   const original=[...host.querySelectorAll('details')].find(d=>d.querySelector('summary')?.textContent==='View original wording')!
+   expect(original).toBeTruthy()
+   expect(original.open).toBe(false)
+   expect(original.querySelector('[lang="fr"]')?.textContent).toBe(localization.original.text)
+  }else expect(host.querySelector('[role="status"]')?.textContent).toContain(status==='pending'?'Translation pending':'Translation unavailable')
+ }
+ expect(state.send).not.toHaveBeenCalled()
+})

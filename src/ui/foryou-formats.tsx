@@ -1,3 +1,4 @@
+import { TranslationStatus } from './foryou-localization'
 import { OutboxStatus } from './outbox-status'
 import { api } from '../api'
 import { useEffect, useState, type CSSProperties } from 'react'
@@ -69,6 +70,7 @@ export function ProposalView({ item, fy }: { item: ForYouItem; fy: ForYouStore }
   return <section className="formats-proposal in">
     {/* i18n-ignore: project name */}
     <p className="meta">TLO</p><h2>{item.title}</h2><p>{item.text}</p>
+    <TranslationStatus item={item} />
     <div className="formats-contact">{(item.media ?? []).map((m, n) => <figure key={m.id}><figcaption><strong>{n + 1} · {p.frames[n]?.title}</strong><p>{p.frames[n]?.description}</p></figcaption><FullImage media={m} description={p.frames[n]?.description ?? m.name} /></figure>)}</div>
     <fieldset disabled={pending || sent}><legend>{p.question}</legend><p>{p.recommendation}</p>
       <div className="formats-options">{p.options.map(o => <label key={o.id} className={choice === o.id ? 'selected' : ''}><input type="radio" name={`choice-${item.id}`} value={o.id} checked={choice === o.id} onChange={() => setChoice(o.id)} /><span><strong>{o.label}{o.recommended ? ` · ${t.recommended}` : ''}</strong><span>{o.description}</span></span></label>)}</div>

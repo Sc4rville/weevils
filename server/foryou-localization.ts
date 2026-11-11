@@ -5,7 +5,7 @@ import type { ForYouItem } from '../shared/foryou.ts'
 import type { Lang } from '../shared/i18n.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 
-type Entry = { source: Record<string,string>; target: Lang; protected: string[]; variant?: Record<string,string>; failedAt?: number }
+type Entry = { source: Record<string,string>; target: Lang; protected: string[]; variant?: Record<string,string>; failedAt?: number; failure?: string; rejected?: Record<string,string> }
 /** Only presentation fields cross the translation boundary. IDs, action instructions, URLs and state never do. */
 export function presentation(item: ForYouItem): Record<string,string> {
   const out: Record<string,string> = {}
@@ -23,7 +23,12 @@ export function presentation(item: ForYouItem): Record<string,string> {
   }
   return out
 }
-const protect = (s: string, names: string[]) => [...new Set([...names.filter(n=>n && s.includes(n)), ...s.matchAll(/«[^»]+»|“[^”]+”|"[^"\n]+"|`[^`]+`|https?:\/\/[^\s]+/g)].map(v=>typeof v==='string'?v:v[0]))]
+const occurs = (s: string, word: string) => {
+  const escaped=word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')
+  return new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`,'u').test(s)
+}
+const protect = (s: string, names: string[]) => [...new Set([...names.filter(n=>n && occurs(s,n)), ...s.matchAll(/«[^»]+»|“[^”]+”|"[^"\n]+"|`[^`]+`|https?:\/\/[^\s]+/g)].map(v=>typeof v==='string'?v:v[0]))]
+
 export class FeedLocalization {
   private entries: Record<string,Entry> = {}
   private wanted = new Set<string>()
@@ -71,16 +76,18 @@ export class FeedLocalization {
       const combined=await run(source,job.entry.target,[...new Set(jobs.flatMap(j=>j.entry.protected))])
           // i18n-ignore: internal validation code, never presented to the user
       if(!combined||Object.keys(combined).length!==Object.keys(source).length)throw new Error('translation shape')
-      const variants=jobs.map(({entry},n)=>{
+      jobs.forEach(({key,entry},n)=>{
+        const candidate=Object.fromEntries(Object.keys(entry.source).map(k=>[k,combined[`${n}/${k}`]]))
+        try {
         const variant:Record<string,string>={}
         for(const [k,source] of Object.entries(entry.source)){
           const v=combined[`${n}/${k}`]
           // i18n-ignore: internal validation code, never presented to the user
           if(typeof v!=='string'||!v.trim()||v.length>Math.max(2000,source.length*4))throw new Error('translation field')
           // i18n-ignore: internal validation code, never presented to the user
-          for(const word of entry.protected)if(source.includes(word)&&!v.includes(word))throw new Error('translation changed protected text')
+          for(const word of entry.protected)if(occurs(source,word)&&!occurs(v,word))throw new Error('translation changed protected text')
           // Numeric facts are presentation, never creative copy.
-          const numbers=(s:string)=>s.match(/\d+(?:[.,]\d+)?/g)?.map(n=>n.replace(',','.')).sort().join('|')??''
+          const numbers=(s:string)=>s.match(/\d+(?:[.,]\d+)?/g)?.map(n=>String(Number(n.replace(',','.')))).sort().join('|')??''
           // i18n-ignore: internal validation code, never presented to the user
           if(numbers(source)!==numbers(v))throw new Error('translation changed numbers')
           variant[k]=v
@@ -89,10 +96,10 @@ export class FeedLocalization {
         const detected=detectLang(sample)
           // i18n-ignore: internal validation code, never presented to the user
         if(detected && detected!==entry.target)throw new Error('translation language')
-        return variant
+        entry.variant=variant;delete entry.failedAt;delete entry.failure;delete entry.rejected;this.wanted.delete(key)
+        } catch(e) {entry.failedAt=this.now();entry.failure=(e as Error).message;entry.rejected=candidate}
       })
-      jobs.forEach(({key,entry},n)=>{entry.variant=variants[n];delete entry.failedAt;this.wanted.delete(key)})
-    }catch{jobs.forEach(({entry})=>{entry.failedAt=this.now()})}
-    this.save();return jobs.every(j=>!!j.entry.variant)
+    }catch(e){jobs.forEach(({entry})=>{entry.failedAt=this.now();entry.failure=(e as Error).message})}
+    this.save();return jobs.some(j=>!!j.entry.variant)
   }
 }

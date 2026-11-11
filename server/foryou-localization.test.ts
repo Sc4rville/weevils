@@ -44,3 +44,12 @@ it('batches several cards in one budgeted call, without merging their identities
  const provider=vi.fn(async(s:Record<string,string>)=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,v.replace('Le café est prêt pour','The café is ready for').replace('Ouvrir le café','Open the café')])))
  await c.translate(provider);expect(provider).toHaveBeenCalledTimes(1);expect(c.job()).toBeNull()
 })
+it('protects a project name only as a name, not inside ordinary words, and accepts valid peers of a rejected card',async()=>{
+ const c=new FeedLocalization(file,()=>now)
+ const good={...item(),text:'Ces changements sont importants pour le café.'}
+ const bad={...item(),text:'Le café contient 3 images.'}
+ c.project(good,'en','fr',['ants']);c.project(bad,'en','fr')
+ await c.translate(async s=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,v===good.text?'These changes are important for the café.':v===bad.text?'The café has 4 images.':'Open the café'])))
+ expect(c.project(good,'en','fr',['ants']).localization?.status).toBe('translated')
+ expect(c.project(bad,'en','fr').localization?.status).toBe('failed')
+})

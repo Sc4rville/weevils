@@ -1,4 +1,4 @@
-import { commandDetails, redactToolText } from './codex-command-details.ts'
+import { commandDetails, toolOutputText } from './codex-command-details.ts'
 import { codexToolLabel, codexToolKinds } from './codex-tool-label.ts'
 // Lecture incrémentale des transcripts Claude Code (~/.claude/projects) et Codex (~/.codex/sessions).
 // Formats non documentés : on lit ce qui est utile et on ignore le reste sans jamais planter.
@@ -322,10 +322,8 @@ function codexLine(t: Transcript, o: any) {
     delegatedMessage(t, p, at)
     const event=t.messages.find(m=>m.role==='event' && m.id===p.call_id)
     if(event?.toolDetails?.commands.length && !event.toolDetails.commands.includes('[redacted]')) {
-      let output=p.output
-      if(typeof output==='string')try{output=JSON.parse(output)}catch{ /* plain text output */ }
-      if(output && typeof output==='object')output=output.output ?? output.stdout
-      if(typeof output==='string')event.toolDetails.output=redactToolText(output)
+      const output=toolOutputText(p.output)
+      if(output)event.toolDetails.output=output
     }
     return
   }

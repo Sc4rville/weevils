@@ -266,12 +266,12 @@ describe('codex', () => {
     write(codexFile(now), [
       ev('response_item',{type:'message',role:'user',content:[{type:'input_text',text:'[from:weevboss] Keep the render running'}]},now-3000),
       ev('response_item',{type:'custom_tool_call',name:'functions.exec',input:'text(await tools.exec_command({cmd:"git status"}))',call_id:'cmd'},now-2000),
-      ev('response_item',{type:'custom_tool_call_output',call_id:'cmd',output:JSON.stringify({output:'clean TOKEN=private'})},now-1000),
+      ev('response_item',{type:'custom_tool_call_output',call_id:'cmd',output:[{type:'input_text',text:'Script completed'},{type:'input_text',text:JSON.stringify({output:'clean TOKEN=private'})}]},now-1000),
     ])
     store.scan(now)
     const messages=one().messages
     expect(messages[0]).toMatchObject({author:'weevboss'})
-    expect(messages[1]).toMatchObject({text:tr(Tools).git,toolDetails:{commands:['git status'],output:'clean TOKEN=[redacted]'}})
+    expect(messages[1]).toMatchObject({text:tr(Tools).git,toolDetails:{commands:['git status'],output:'Script completed\nclean TOKEN=[redacted]'}})
     expect(JSON.stringify(messages)).not.toContain('private')
   })
 

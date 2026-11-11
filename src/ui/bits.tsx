@@ -748,7 +748,11 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
   const t = useT(M)
   const [open, setOpen] = useState(false)
   const tools=useT(ToolM)
-  const label=(message:Message)=>message.toolDetails?.kinds?.length ? message.toolDetails.kinds.map(k=>tools[k as keyof typeof tools]??step(message.text)).join(' · ') : step(message.text)
+  const label = (message: Message) => {
+    const category = message.toolDetails?.kinds?.length ? message.toolDetails.kinds.map(k => tools[k as keyof typeof tools] ?? step(message.text)).join(' · ') : step(message.text)
+    const commands = message.toolDetails?.summaryCommands?.filter(Boolean).join(', ')
+    return commands ? `${category} · ${commands}` : category
+  }
   const last = label(steps[steps.length - 1])
 
   return (
@@ -770,6 +774,10 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
                 <span className="step-toggle" aria-hidden><span className="step-plus"><Icon name="plus" /></span><span className="step-minus"><Icon name="minus" /></span></span>
               </summary>
               <div className="step-content">
+                {!!s.toolDetails?.calls?.length && <>
+                  <div className="meta">{t.recordedTools}</div>
+                  <ul className="step-calls">{s.toolDetails.calls.map((call, i) => <li key={i}><code>{call.name}</code>{call.description && <p>{call.description}</p>}</li>)}</ul>
+                </>}
                 {s.toolDetails?.commands.length ? <><div className="meta">{t.recordedCommand}</div>{s.toolDetails.commands.map((command, i) => <pre key={i}>{command}</pre>)}</> : <p className="meta">{t.noRecordedCommand}</p>}
                 {s.toolDetails?.commandsTruncated && <p className="meta">{t.commandTruncated}</p>}
                 {s.toolDetails?.output ? <><div className="meta">{t.recordedOutput}</div><pre>{s.toolDetails.output}</pre></> : <p className="meta">{t.noRecordedOutput}</p>}

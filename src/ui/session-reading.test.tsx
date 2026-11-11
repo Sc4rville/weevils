@@ -161,3 +161,28 @@ it('identifies excerpts explicitly in both languages without claiming they are c
  expect(detail.textContent).toContain('Sortie tronquée')
  expect(detail.open).toBe(true)
 })
+it('shows concrete command summaries and literal tool descriptions without inventing per-call results', async () => {
+ const event = message('concrete', 'event', 'Runs a command', { toolDetails: {
+  kinds: ['git'], summaryCommands: ['git status', 'git log'],
+  calls: [{ name: 'exec_command', description: 'Inspecter le dépôt <script>literal</script>' }, { name: 'write_stdin' }],
+  commands: ['git status --short; git log -3 --oneline'], output: 'One recorded wrapper result',
+ } })
+ await act(async () => root.render(<Messages session messages={[event]} author="codex" />))
+ expect(host.querySelector('.steps-head')!.textContent).toContain('Checks the Git repository · git status, git log')
+ expect(host.querySelector('.step-calls')).toBeNull()
+ await act(async () => host.querySelector<HTMLButtonElement>('.steps-head')!.click())
+ const detail = host.querySelector<HTMLDetailsElement>('.step-detail')!
+ expect(detail.open).toBe(false)
+ await act(async () => { detail.open = true })
+ expect(detail.querySelectorAll('.step-calls li')).toHaveLength(2)
+ expect(detail.querySelector('.step-calls')!.textContent).toContain('exec_command')
+ expect(detail.querySelector('.step-calls')!.textContent).toContain('write_stdin')
+ expect(detail.querySelector('.step-calls p')!.textContent).toBe('Inspecter le dépôt <script>literal</script>')
+ expect(detail.querySelector('script')).toBeNull()
+ expect(detail.querySelectorAll('pre')).toHaveLength(2)
+ expect(detail.querySelectorAll('pre')[1].textContent).toBe('One recorded wrapper result')
+ await act(async () => setLang('fr'))
+ expect(detail.querySelector('summary')!.textContent).toContain('Vérifie le dépôt Git · git status, git log')
+ expect(detail.textContent).toContain('Outils de l’appel enregistré')
+ expect(detail.open).toBe(true)
+})

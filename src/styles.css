@@ -937,6 +937,8 @@ input:focus-visible {
 .step-detail[open] > .step-head .step-plus { display: none; }
 .step-detail[open] > .step-head .step-minus { display: inline; }
 .step-content { padding-block: 4px 12px; }
+.step-calls { margin-block: 4px 12px; padding-inline-start: 1.25rem; font-size: .8125rem; overflow-wrap: anywhere; }
+.step-calls p { margin-block: 4px 8px; }
 .step-content pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8125rem; line-height: 1.5; max-height: 24rem; overflow: auto; user-select: text; }
 .step-content .meta { font-size: .8125rem; opacity: .75; }
 .step-head:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

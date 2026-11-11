@@ -65,9 +65,9 @@ export function internalFeedUpdate(text: string): boolean {
   const useful = clauses.some(s => product.test(s) && delivered.test(s) && !/\b(?:pas encore|not yet|aucun resultat|no result|sera|seront|will be|would be|pourrait|could be)\b/.test(s))
     || /(?:voici|voir|essayer|here|view|try).{0,60}(?:resultat|rendu|preview|apercu|demo).{0,60}https?:\/\//.test(plain)
   if (useful) return false
-  const administrative = /\b(?:branche confirmee|branch confirmed|confirmed branch|preparation confirmee|preparation confirmed|coordination|handoff|passation|aucun conflit|no overlap|no conflict|points de revue|review points|cadre.{0,30}(?:pose|defini)|scope.{0,30}(?:defined|confirmed)|nothing left to check|work (?:was )?already finished|task (?:was )?already done|tache (?:etait )?deja terminee|pr privee.{0,20}brouillon|private draft pr)\b/.test(plain)
+  const administrative = /\b(?:relais automatique|autorisation durable|automatic (?:agent )?handoff|persistent handoff authorization|branche confirmee|branch confirmed|confirmed branch|preparation confirmee|preparation confirmed|coordination|handoff|passation|aucun conflit|no overlap|no conflict|points de revue|review points|cadre.{0,30}(?:pose|defini)|scope.{0,30}(?:defined|confirmed)|nothing left to check|work (?:was )?already finished|task (?:was )?already done|tache (?:etait )?deja terminee|pr privee.{0,20}brouillon|private draft pr)\b/.test(plain)
   const configuration = /\b(?:niveau (?:de )?(?:raisonnement|reflexion)|reasoning(?: effort| level)?|raisonnement.{0,40}(?:low|high|regle)|(?:modele|model) (?:actif|active|courant|current|confirme|confirmed)|(?:monter|augmenter|raise|increase).{0,40}(?:effort|reflexion|raisonnement)|(?:gpt[ -]?[0-9]|codex|claude).{0,60}\b(?:low|high|effort))\b/.test(plain)
-  return administrative || configuration || acknowledgementOnly(text)
+  return /^(?:confirme|confirmed)[.!\s]*$/.test(plain.trim()) || administrative || configuration || acknowledgementOnly(text)
 }
 
 /** Remove internal sentences from a mixed editorial recap, keeping the actual useful outcome verbatim. */

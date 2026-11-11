@@ -866,7 +866,7 @@ export class ForYou {
   /** What the app may read of a recorded item, or null when it has nothing to show right now. */
   private view(i: Stored, snap: Snapshot, any = false): ForYouItem | null {
     if (i.gone || i.id.startsWith('r:') || technicalEvent(i.id, i.text)) return null
-    if (((i.kind === 'session' && i.tone === 'result') || ['boss', 'improve', 'insight'].includes(i.kind)) && internalFeedUpdate([i.title, i.body || i.text].filter(Boolean).join('\n'))) return null
+    if (((i.kind === 'session' && i.tone === 'result') || ['boss', 'improve', 'insight'].includes(i.kind)) && (internalFeedUpdate(i.body || i.text) || internalFeedUpdate([i.title, i.body || i.text].filter(Boolean).join('\n')))) return null
     if (i.id.startsWith('auto:proposed:')) {
       const idea = snap.optimizers?.find((o) => i.id === `auto:proposed:${o.id}`)
       if (!idea || idea.draft) return null

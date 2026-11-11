@@ -5,6 +5,15 @@ import { renderToStaticMarkup } from 'react-dom/server'
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom' })
 try {
  const { WeevbossLogo } = await vite.ssrLoadModule('/src/ui/logo.tsx')
+ const css = fs.readFileSync('src/styles.css','utf8')
+ const png = 'data:image/png;base64,' + fs.readFileSync('public/branding/weevboss-cutout.png').toString('base64')
+ for (const theme of ['light','dark','zen','graphite']) {
+  const block = css.slice(css.indexOf(`[data-theme='${theme}'] {`)).split('}')[0]
+  const tokens = [...block.matchAll(/--(ink|agent|logo-top|logo-side|logo-front):\s*([^;]+);/g)].map(m=>`--${m[1]}:${m[2]};`).join('')
+  let svg = renderToStaticMarkup(React.createElement(WeevbossLogo,{title:'weevboss'}),{identifierPrefix:theme+'-asset-'})
+  svg = svg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ').replace('><defs>', `><style>:root{${tokens}}</style><defs>`).replace('/branding/weevboss-cutout.png', png)
+  fs.writeFileSync(`public/branding/weevboss-${theme}.svg`,svg)
+ }
  const escape = s => s.replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;')
  const frames = ['light','dark','zen','graphite'].map(theme => {
   const home = renderToStaticMarkup(React.createElement(WeevbossLogo,{className:'voice-svg',title:'weevboss'}),{identifierPrefix:theme+'-home-'})

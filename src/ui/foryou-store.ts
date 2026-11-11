@@ -382,7 +382,7 @@ export function itemSlot(item: ForYouItem, colors: Record<string, string>, autho
   if (item.kind === 'alert') return own // drawn inverted: ink band, coloured words
   if (item.tone === 'alert') return slot('alert')
   if (item.tone === 'result') return project ? own : { '--c': OK } as CSSProperties
-  if (item.tone === 'question') return slot('h24')
+  if (item.tone === 'question') return project ? own : slot('h24')
   switch (item.kind) {
     case 'boss':
       return slot('agent')

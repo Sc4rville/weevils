@@ -130,7 +130,6 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
-    document.querySelector('#app-favicon')?.setAttribute('href', `/branding/weevboss-${theme}.svg`)
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme])
   }, [theme])
 

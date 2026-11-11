@@ -15,9 +15,7 @@
 [data-theme='light'] {
   color-scheme: light;
   --ink: #000;
-  --logo-top: color-mix(in oklab, var(--agent) 48%, var(--ink));
-  --logo-side: color-mix(in oklab, var(--agent) 28%, var(--ink));
-  --logo-front: color-mix(in oklab, var(--agent) 14%, var(--ink));
+  --logo-filter: brightness(.46);
   --agent: #b39bff;
   /* Devil mode : orange pour la bande, vert pour les réponses du modèle. */
   --devil: #ff9a3c;
@@ -49,9 +47,7 @@
 [data-theme='dark'] {
   color-scheme: dark;
   --ink: #fff;
-  --logo-top: color-mix(in oklab, var(--ink) 95%, var(--agent));
-  --logo-side: color-mix(in oklab, var(--ink) 82%, var(--agent));
-  --logo-front: color-mix(in oklab, var(--ink) 76%, var(--agent));
+  --logo-filter: grayscale(1) brightness(.3) invert(1);
   --agent: #5522b5;
   --devil: #a8470a;
   --devil-reply: #1d6b3f;
@@ -85,9 +81,7 @@
 :root[data-theme='zen'] {
   color-scheme: light;
   --ink: #33302b;
-  --logo-top: color-mix(in oklab, var(--ink) 75%, var(--agent));
-  --logo-side: color-mix(in oklab, var(--ink) 90%, var(--agent));
-  --logo-front: var(--ink);
+  --logo-filter: grayscale(1) sepia(.25) brightness(.6);
   --agent: oklch(0.83 0.03 315);
   --devil: oklch(0.78 0.075 50);
   --devil-reply: oklch(0.86 0.05 150);
@@ -129,9 +123,7 @@
 :root[data-theme='graphite'] {
   color-scheme: light;
   --ink: #141414;
-  --logo-top: color-mix(in oklab, var(--ink) 70%, var(--agent));
-  --logo-side: color-mix(in oklab, var(--ink) 85%, var(--agent));
-  --logo-front: var(--ink);
+  --logo-filter: grayscale(1) brightness(.6);
   --agent: oklch(0.82 0 0);
   --devil: oklch(0.77 0 0);
   --devil-reply: oklch(0.93 0 0);
@@ -1739,7 +1731,7 @@ button.copy.done {
   touch-action: manipulation;
 }
 
-.weevboss-logo { display: block; flex: none; overflow: hidden; }
+.weevboss-logo { display: block; flex: none; overflow: hidden; filter: var(--logo-filter, none); }
 
 .voice-svg {
   width: 100%;

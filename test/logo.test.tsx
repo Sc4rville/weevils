@@ -19,19 +19,21 @@ it('keeps the same cropped geometry and bounded box for all four themes with uni
    expect(logo.getAttribute('width')).toBe('44')
    expect(logo.getAttribute('height')).toBe('44')
    expect(image.getAttribute('href')).toContain('weevboss-cutout.png')
-   expect(logo.querySelectorAll('feFlood')).toHaveLength(3)
+   expect(logo.querySelectorAll('feComponentTransfer')).toHaveLength(1)
+   expect(logo.querySelectorAll('feFlood')).toHaveLength(0)
   }
   expect(new Set([...host.querySelectorAll('filter')].map(el=>el.id)).size).toBe(2)
   expect(logo.getAttribute('aria-label')).toBe('weevboss')
   expect(host.querySelectorAll('svg')[1].getAttribute('aria-hidden')).toBe('true')
  }finally{await act(async()=>root.unmount());host.remove()}
 })
-it('bounds the voice control independently of viewport height and defines face tokens in each theme', () => {
+it('bounds the voice control independently of viewport height and isolates each theme filter to the logo', () => {
  const css=fs.readFileSync('src/styles.css','utf8')
  const rule=css.match(/\.voice-logo \{([^}]+)\}/)![1]
  expect(rule).toContain('width: 56px')
  expect(rule).toContain('height: 56px')
  expect(rule).not.toContain('dvh')
- for(const token of ['logo-top','logo-side','logo-front'])expect(css.match(new RegExp('--'+token+':','g'))).toHaveLength(4)
+ expect(css.match(/--logo-filter:/g)).toHaveLength(4)
+ expect(css).toContain('filter: var(--logo-filter, none)')
  expect(css).toContain('.session-header-voice .voice-logo { width: 44px; height: 44px;')
 })

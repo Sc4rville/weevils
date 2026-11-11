@@ -33,8 +33,23 @@ it.each(['light','dark','zen','graphite'])('keeps all three logo planes legible 
   const base=colour(key),delta=Number(vars.dl ?? css.match(/--dl:\s*([^;]+);/)![1])
   return [base,[base[0]+delta,base[1]*1.06,base[2]*1.06] as Lab]
  })
- for(const face of ['logo-top','logo-side','logo-front']) {
-  const foreground=luminance(colour(face))
+ const logo=fs.readFileSync('src/ui/logo.tsx','utf8')
+ const channels=['R','G','B'].map(c=>logo.match(new RegExp('feFunc'+c+' type="discrete" tableValues="([^"]+)"'))![1].split(' ').map(Number))
+ const apply=(rgb:number[])=>{
+  for(const operation of vars['logo-filter'].matchAll(/([a-z]+)\(([\d.]+)\)/g)){
+   const n=Number(operation[2]),[r,g,b]=rgb
+   if(operation[1]==='brightness')rgb=rgb.map(v=>v*n)
+   if(operation[1]==='invert')rgb=rgb.map(v=>v*(1-n)+(1-v)*n)
+   if(operation[1]==='grayscale'){
+    const gray=.2126*r+.7152*g+.0722*b;rgb=rgb.map(v=>v*(1-n)+gray*n)
+   }
+   if(operation[1]==='sepia')rgb=[.393*r+.769*g+.189*b,.349*r+.686*g+.168*b,.272*r+.534*g+.131*b].map((v,i)=>rgb[i]*(1-n)+v*n)
+   rgb=rgb.map(v=>Math.max(0,Math.min(1,v)))
+  }
+  return rgb.map(linear)
+ }
+ for(const [index,face] of ['front','side','top'].entries()) {
+  const [r,g,b]=apply(channels.map(c=>c[index])),foreground=.2126*r+.7152*g+.0722*b
   for(const bg of backgrounds){
    const background=luminance(bg),ratio=(Math.max(foreground,background)+.05)/(Math.min(foreground,background)+.05)
    expect(ratio,`${theme} ${face} contrast`).toBeGreaterThanOrEqual(3)

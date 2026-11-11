@@ -2755,7 +2755,7 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .session-header-voice { flex: none; width: 44px; }
 .session-header-voice .page-voice { position: static; }
 .session-header-voice .voice-logo { width: 44px; height: 44px; min-height: 44px; aspect-ratio: auto; }
-.session-header-voice .voice-svg { width: 38px; height: 28px; }
+.session-header-voice .voice-svg { width: 44px; height: 44px; }
 .session-header-voice .voice-err { left: auto; right: 0; max-width: min(70vw, 18rem); white-space: normal; }
 .session-page .page-body > .fill { min-height: 12px; }
 .session-page .session-heading .h2 { font-size: 1.25rem; }

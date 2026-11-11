@@ -384,6 +384,15 @@ describe('codex : messages entrants du relais', () => {
     reread.scan(now)
     expect(reread.get(CODEX_UUID)?.messages).toEqual(one().messages)
   })
+  it('keeps explicit boss briefs open while marking CLI agent coordination by its signature',()=>{
+    const now=Date.now()
+    write(codexFile(now), ['weevboss','codex','claude','agent'].map((author,i)=>event('response_item',{type:'message',role:'user',id:`sender-${i}`,content:[{type:'input_text',text:`[from:${author}] Same wording`}]},now-1000+i)))
+    store.scan(now)
+    const messages=one().messages
+    expect(messages[0]).toMatchObject({role:'orchestrator',author:'weevboss'})
+    expect(messages[0].coordination).toBeUndefined()
+    for(const message of messages.slice(1))expect(message).toMatchObject({role:'orchestrator',coordination:true,text:'Same wording'})
+  })
   it('ignore les sorties ordinaires, le contexte système et les enveloppes mal formées', () => {
     const now = Date.now()
     write(codexFile(now), [

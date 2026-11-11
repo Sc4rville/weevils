@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
+import { ORCH_DIR } from './config.ts'
 import type { Tool } from '../shared/api.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/mux.ts'
@@ -116,7 +117,7 @@ export const wvName = (dir: string, short: string) => `wv-${dir.slice(0, 18).rep
 
 export async function spawnWv(name: string, cwd: string, tool: Tool, title: string, command: string[], sessionId?: string) {
   // Plusieurs arguments : tmux lance la commande directement, sans shell (pas d'injection possible) ; env non plus.
-  const env = Object.entries(QUIET_ENV).flatMap(([k, v]) => ['-e', `${k}=${v}`])
+  const env = Object.entries({...QUIET_ENV, WEEVILS_FROM:cwd===ORCH_DIR?'weevboss':tool}).flatMap(([k, v]) => ['-e', `${k}=${v}`])
   await tmux(['new-session', '-d', '-s', name, '-x', '120', '-y', '40', '-c', cwd, ...env, ...NO_TMUX, ...command], cwd)
   await setOpt(name, '@wv_tool', tool)
   await setOpt(name, '@wv_title', title)

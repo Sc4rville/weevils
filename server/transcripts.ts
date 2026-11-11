@@ -87,7 +87,7 @@ const userMsg = (id: string, raw: string, at: number): Message => {
   const text = unwrapPasted(raw)
   // Signé « [from:<id>] » (ou l'ancien « [weevils] ») : écrit par weevboss ou un agent externe, pas par l'utilisateur.
   const signed = parseSigned(text)
-  return signed ? { id, role: 'orchestrator', author: signed.author, text: signed.text, at } : { id, role: 'user', text, at }
+  return signed ? { id, role: 'orchestrator', author: signed.author, text: signed.text, at, ...(['codex','claude','agent'].includes(signed.author) ? {coordination:true} : {}) } : { id, role: 'user', text, at }
 }
 /** Only the bridge's deliberate human input, never arbitrary tool output or system context. */
 export function delegationInput(raw: unknown): { source: string; text: string } | null {

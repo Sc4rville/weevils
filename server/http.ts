@@ -61,6 +61,8 @@ export function isLocal(req: http.IncomingMessage): boolean {
 }
 
 /** « from » (weevboss, un auteur déclaré) n'est accepté que d'une requête locale, jamais du téléphone. */
-export function trustedFrom(req: http.IncomingMessage, body: { from?: unknown } | null | undefined): string | undefined {
-  return isLocal(req) ? normalizeFrom(body?.from) : undefined
+export function trustedFrom(req: http.IncomingMessage, body: { from?: unknown; sourceThread?: unknown } | null | undefined, sourceAuthor?: (id:string)=>string|undefined): string | undefined {
+  if (!isLocal(req)) return undefined
+  if (body?.from === 'agent' && typeof body.sourceThread === 'string') return normalizeFrom(sourceAuthor?.(body.sourceThread)) ?? 'agent'
+  return normalizeFrom(body?.from)
 }

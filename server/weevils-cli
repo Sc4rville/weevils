@@ -13,6 +13,9 @@
 set -euo pipefail
 base="http://127.0.0.1:${WEEVILS_PORT:-4179}"
 from=${WEEVILS_FROM:-weevils}
+# A project agent is not weevboss. Session sends/new resolve an available source thread on the local server.
+sender_from=${WEEVILS_FROM:-agent}
+source_thread=${CODEX_THREAD_ID:-${CODEX_SESSION_ID:-${CLAUDE_SESSION_ID:-}}}
 py=python3
 
 # Langue des messages : celle de l'app (prefs.json de weevilsd), sinon WEEVILS_LANG (env ou ~/.config/weevils/env),
@@ -129,7 +132,7 @@ for m in msgs[-n:]:
   send)
     id=$(resolve "${2:?$a_id}")
     text=${3:?$a_msg}
-    out=$("$py" -c 'import json,sys; print(json.dumps({"text":sys.argv[1],"from":sys.argv[2]}))' "$text" "$from" \
+    out=$("$py" -c 'import json,sys; print(json.dumps({"text":sys.argv[1],"from":sys.argv[2],"sourceThread":sys.argv[3]}))' "$text" "$sender_from" "$source_thread" \
       | curl -s -m 40 -w '\n%{http_code}' -H 'content-type: application/json' --data-binary @- "$base/api/sessions/$id/send")
     code=${out##*$'\n'}
     if [ "$code" = 200 ]; then printf "$m_sent\n" "${id:0:8}"
@@ -144,7 +147,7 @@ for m in msgs[-n:]:
     project=${2:?$a_project}
     text=${3:?$a_first}
     tool=claude; [ "${4:-}" = codex ] && tool=codex
-    "$py" -c 'import json,sys; print(json.dumps({"projectId":sys.argv[1],"tool":sys.argv[2],"text":sys.argv[3],"from":sys.argv[4]}))' "$project" "$tool" "$text" "$from" \
+    "$py" -c 'import json,sys; print(json.dumps({"projectId":sys.argv[1],"tool":sys.argv[2],"text":sys.argv[3],"from":sys.argv[4],"sourceThread":sys.argv[5]}))' "$project" "$tool" "$text" "$sender_from" "$source_thread" \
       | curl -sf -m 30 -H 'content-type: application/json' --data-binary @- "$base/api/sessions" | json "print(E['WVM_NEW']+d['id'][:8])" ;;
   setup)
     # L'état réel de chaque brique (machine, Claude Code, GitHub, voix, diable, e-mail…), la marche à suivre pour

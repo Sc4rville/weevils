@@ -88,3 +88,10 @@ describe('trustedFrom', () => {
     expect(trustedFrom(req({ origin: 'https://evil.com' }), { from: 'weevils' })).toBeUndefined()
   })
 })
+
+it('does not resolve a browser-provided source thread as a trusted author',()=>{
+ let lookedUp=false
+ expect(trustedFrom(req({'x-forwarded-for':'203.0.113.7'}),{from:'agent',sourceThread:'boss'},()=>{lookedUp=true;return 'weevboss'})).toBeUndefined()
+ expect(lookedUp).toBe(false)
+ expect(trustedFrom(req(),{from:'agent',sourceThread:'unknown'},()=>undefined)).toBe('agent')
+})

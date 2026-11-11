@@ -4,6 +4,8 @@ import { defineMessages } from '../i18n.ts'
 
 export default defineMessages({
   fr: {
+    appLocale: 'Langue explicite de l’app : français (fr). Écris les libellés, titres générés et publications Pour toi en français. Le chat peut suivre la langue du message utilisateur ; ne déduis jamais la langue de l’app du chat. Préserve les noms propres et les citations utilisateur.',
+
     // Attached files: what the agent receives.
     fileName: 'fichier',
     lookPhoto: 'Regarde cette photo.',
@@ -60,6 +62,8 @@ export default defineMessages({
       `Ta session a été coupée en plein travail (${why}). Reprends là où tu en étais : ton travail est sur disque dans ${cwd} (git status, git diff, fichiers non commités), relis tes derniers messages et relance ce qui tournait en arrière-plan et a été tué. Puis termine la tâche ; si elle était déjà finie, dis-le en une phrase.`,
   },
   en: {
+    appLocale: 'Explicit app locale: English (en). Write UI labels, generated titles and For you publications in English. Chat replies may follow the user’s message language; never infer the app locale from chat. Preserve proper names and verbatim user quotations.',
+
     fileName: 'file',
     lookPhoto: 'Look at this photo.',
     lookPhotos: 'Look at these photos.',

@@ -28,7 +28,7 @@ import { RelayPage, SessionRelay } from './relay'
 import { listFiles } from './repofiles'
 import { useThreadAsk } from './askthread'
 import { ago, durLong, status } from './format'
-import { useT } from '../i18n'
+import { useLang, useT } from '../i18n'
 import { reveal, useFollow } from './follow'
 import { FollowDown } from './followdown'
 import M from '../i18n/pages'
@@ -126,6 +126,7 @@ function ErrorBand({ text }: { text: string }) {
 // Session : le fil, l'écran du terminal, les touches.
 
 function SessionPage({ id }: { id: string }) {
+  const appLang = useLang()
   const { snap, now, replace, colors } = useApp()
   const t = useT(M)
   const [detail, setDetail] = useState<SessionDetail | null>(null)
@@ -157,7 +158,7 @@ function SessionPage({ id }: { id: string }) {
     return () => {
       off = true
     }
-  }, [id, snap.version, replace])
+  }, [id, snap.version, replace, appLang])
 
   const s = snap.sessions.find((x) => x.id === id) ?? detail?.session
   // Ouverte : tout ce qu'elle a dit jusqu'ici est lu.

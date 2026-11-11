@@ -1,3 +1,4 @@
+import { titlePresentation } from './title-presentation.ts'
 import { SessionProgressReader } from './session-progress.ts'
 import { deliveryContext, OutboxError } from './outbox.ts'
 import { CodexBridge } from './codex-bridge.ts'
@@ -46,7 +47,7 @@ import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
 import type { WvSession } from './mux.ts'
 import { capture, dialogOnScreen, screenDialog, workingOnScreen, type ScreenDialog, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv, wvName } from './mux.ts'
-import { lang, onLangChange, tr, user, type Lang } from './i18n.ts'
+import { activeRequestLang, installationLang, lang, onLangChange, tr, user, withLang, type Lang } from './i18n.ts'
 import TipsM from './i18n/tips.ts'
 import { normalizeFrom, parseSigned, publicAuthors, signAs } from './authors.ts'
 
@@ -844,7 +845,11 @@ export class Weevils {
     // Relais Codex (server/relay.ts) : la session Codex porte le titre de la session Claude qu'elle reprend.
     const relayOf = t.tool === 'codex' ? this.relay?.relayOf(t.id, pane?.name) : undefined
     const relayedBy = t.tool === 'claude' ? this.relay?.relayedBy(t.id) : undefined
-    const relayTitle = relayOf && !t.customTitle ? (this.titles.get(relayOf)?.title ?? (this.store.get(relayOf) ? titleOf(this.store.get(relayOf)!) : undefined)) : undefined
+    const names = [where.repo ?? '', MACHINE.name].filter(Boolean)
+    const titled = this.titles.get(t.id)
+    const presentation = titled ? titlePresentation(t.id, t.customTitle ? { ...titled, title: '' } : titled, lang(), this.foryou?.localization, names) : undefined
+    const relayTitled = relayOf ? this.titles.get(relayOf) : undefined
+    const relayTitle = relayOf && !t.customTitle ? ((relayTitled ? titlePresentation(relayOf, relayTitled, lang(), this.foryou?.localization, names).title : undefined) ?? (this.store.get(relayOf) ? titleOf(this.store.get(relayOf)!) : undefined)) : undefined
     const userTurn = t.messages.findLast((m) => m.role === 'user' || m.role === 'orchestrator')?.id ?? t.openedAt
     const source = pane?.screenDialog ? t.messages.findLast((m) => m.role === 'event')?.id : t.messages.findLast((m) => m.role === 'assistant')?.id
     const noticeId = status === 'needs_user' ? noticeKey('question', t.id, userTurn, source ?? [attention, pane?.screenDialog?.options.map((o) => o.id)])
@@ -856,9 +861,9 @@ export class Weevils {
       machineId: MACHINE.id,
       tool: t.tool,
       // Le titre choisi par l'utilisateur dans l'outil prime ; sinon celui du renommeur (ce dont la session parle maintenant) ; sinon le début.
-      title: relayTitle ?? (t.customTitle ? titleOf(t) : (this.titles.get(t.id)?.title ?? titleOf(t))),
+      title: relayTitle ?? (t.customTitle ? titleOf(t) : (presentation?.title ?? titleOf(t))),
       // En attendant l'activité réécrite : le dernier pas de l'agent (outil) plutôt que l'ancienne tâche.
-      now: shortNow(this.titles.get(t.id)?.now || (t.phase === 'working' || pane?.screenWorking ? stepOf(t) : '')) || undefined,
+      now: shortNow(presentation?.now || (t.phase === 'working' || pane?.screenWorking ? stepOf(t) : '')) || undefined,
       status,
       ...(noticeId ? { noticeId } : {}),
       attention: status === 'needs_user' ? attention : undefined,
@@ -1123,7 +1128,11 @@ export class Weevils {
       this.titleRetry.succeeded()
       for (const r of out) {
         const t = todo.find((x) => x.id === r.id)
-        if (t) this.titles.set(r.id, { title: stableTitle(this.titles.get(r.id)?.title, r.title, r.topicChanged), now: r.now, at: now, messageCount: t.messages.length })
+        if (t) {
+          const previous = this.titles.get(r.id)
+          const title = stableTitle(previous?.title, r.title, r.topicChanged)
+          this.titles.set(r.id, { title, titleLang: title === previous?.title ? previous.titleLang ?? detectLang(title) ?? undefined : lang(), now: r.now, nowLang: lang(), at: now, messageCount: t.messages.length })
+        }
       }
       this.persist()
       this.bump()
@@ -1301,6 +1310,7 @@ export class Weevils {
     const author = normalizeFrom(from)
     // Vide avant la signature : « [from:weevboss] » seul n'est pas un message.
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
+    if (activeRequestLang()) text += joinContext('', tr(M).appLocale)
     if (author) text = signAs(author, text)
     const remote = this.remoteFor(id)
     if (remote) {
@@ -1442,8 +1452,9 @@ export class Weevils {
     const repo = repoGuess ?? (this.repoRoot(input.projectId) ? input.projectId : undefined)
     const cwd = repo ? path.join(this.repoRoot(repo) ?? PROJECTS_DIR, repo) : PROJECTS_DIR
     if (!fs.existsSync(cwd)) throw new Error(tr(M).dirNotFound(cwd))
-    const text = input.text.trim()
+    let text = input.text.trim()
     const title = text ? text.replace(/\s+/g, ' ').slice(0, 60) : tr(M).newSession
+    if (text && activeRequestLang()) text += joinContext('', tr(M).appLocale)
     if (input.tool === 'claude') {
       const id = crypto.randomUUID()
       await this.spawn('claude', cwd, title, [...CLAUDE, '--session-id', id, ...(text ? [text] : [])], id)
@@ -1480,13 +1491,13 @@ export class Weevils {
   private prepareOrchestrator() {
     fs.mkdirSync(ORCH_DIR, { recursive: true })
     // Un gabarit par langue (orchestrator.fr.md, orchestrator.en.md) ; weevboss répond dans la langue où on lui écrit.
-    const src = path.join(import.meta.dirname, `orchestrator.${lang()}.md`)
+    const src = path.join(import.meta.dirname, `orchestrator.${installationLang()}.md`)
     try {
       // Gabarit : {{user}} (prénom configuré, sinon « l'utilisateur » / « the user »), {{owner}} (compte GitHub configuré, sinon
       // demandé à gh) et {{projects}} (premier dossier de WEEVILS_PROJECTS, ~/projects par défaut).
       const owner = process.env.WEEVILS_GH_OWNER?.trim() || '$(gh api user -q .login)'
       const projects = PROJECTS_DIR.startsWith(HOME + path.sep) ? '~' + PROJECTS_DIR.slice(HOME.length) : PROJECTS_DIR
-      const text = fs.readFileSync(src, 'utf8').replaceAll('{{user}}', user()).replaceAll('{{owner}}', owner).replaceAll('{{projects}}', projects)
+      const text = fs.readFileSync(src, 'utf8').replaceAll('{{user}}', withLang(installationLang(), user)).replaceAll('{{owner}}', owner).replaceAll('{{projects}}', projects)
       fs.writeFileSync(path.join(ORCH_DIR, 'CLAUDE.md'), text)
       // Les mêmes consignes pour Codex, qui répond à la place de Claude pendant sa limite d'usage (server/relay.ts).
       fs.writeFileSync(path.join(ORCH_DIR, 'AGENTS.md'), text)
@@ -1738,6 +1749,7 @@ export class Weevils {
   private async sendMainOne(text: string, brief?: string) {
     if (!ORCHESTRATOR) throw new Error(tr(M).orchNotHere)
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
+    if (activeRequestLang()) text += joinContext('', tr(M).appLocale)
     // Claude à sa limite (ou tout près) : weevboss répond par Codex, même dossier, mêmes consignes (server/relay.ts).
     if (preferredTool() === 'codex' && !providerReady()) {
       if (this.setup) { await this.setup.offline(text); return { id: 'setup' } }

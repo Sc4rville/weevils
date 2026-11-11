@@ -24,7 +24,7 @@ vi.mock('./titles.ts', async (orig) => ({ ...(await orig<typeof import('./titles
 
 const { Weevils, joinContext } = await import('./core.ts')
 const { DATA_DIR, HOME, ORCH_DIR } = await import('./config.ts')
-const { setLang } = await import('./i18n.ts')
+const { setLang, withLang } = await import('./i18n.ts')
 type Transcript = import('./transcripts.ts').Transcript
 
 const NOW = Date.parse('2026-11-10T14:00:00Z')
@@ -248,4 +248,23 @@ it('keeps the persisted owner when a terminal name now points at another thread'
  expect(r.boss.sessionId).toBe('owner')
  expect(mux.spawnWv).not.toHaveBeenCalled()
  expect(mux.sendText).not.toHaveBeenCalled()
+})
+
+it('carries the explicit app locale into a session without treating French chat as its preference',async()=>{
+ const t=add(transcript({id:'locale-target',tool:'codex'}))
+ const delivered:string[]=[]
+ ;(w as any).codexBridge={can:()=>true,activityOf:()=>({type:'idle',waiting:false,at:Date.now()}),send:async(_id:string,text:string)=>{delivered.push(text)}}
+ await withLang('en',()=>w.send(t.id,'Bonjour, corrige cette image.'))
+ expect(delivered[0]).toContain('Bonjour, corrige cette image.')
+ expect(delivered[0]).toContain('Explicit app locale: English (en)')
+ expect(delivered[0]).toContain('Chat replies may follow')
+ expect(delivered[0]).toMatch(/⟦weevils[^⟧]+⟧$/)
+})
+
+it('a device locale cannot rewrite the shared orchestrator template in another language',()=>{
+ setLang('en',true)
+ withLang('fr',()=> (w as any).prepareOrchestrator())
+ const template=fs.readFileSync(path.join(import.meta.dirname,'orchestrator.en.md'),'utf8').split('\n')[0]
+ expect(fs.readFileSync(path.join(ORCH_DIR,'AGENTS.md'),'utf8').startsWith(template)).toBe(true)
+ setLang('fr',true)
 })

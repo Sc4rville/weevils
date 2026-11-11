@@ -36,6 +36,8 @@ let current: Lang = (() => {
 const listeners = new Set<(l: Lang) => void>()
 
 const requestLocale = new AsyncLocalStorage<Lang>()
+export const installationLang = (): Lang => current
+export const activeRequestLang = (): Lang | undefined => requestLocale.getStore()
 export const lang = (): Lang => requestLocale.getStore() ?? current
 
 /** Only the explicit app preference/query can select a request locale, never chat text. */

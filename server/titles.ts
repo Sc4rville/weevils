@@ -5,7 +5,7 @@ import { preferredTool, providerStatus, providerUnavailable } from './provider.t
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { tr, user } from './i18n.ts'
+import { tr, user, type Lang } from './i18n.ts'
 import M from './i18n/titles.ts'
 import { haiku } from './fast.ts'
 
@@ -20,6 +20,8 @@ export interface TitleInput {
 }
 
 export interface Titled {
+  titleLang?: Lang
+  nowLang?: Lang
   title: string
   now: string
   /** Quand le titre a été écrit, et sur combien de messages : pour savoir quand renommer à nouveau. */

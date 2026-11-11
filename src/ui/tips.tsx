@@ -187,8 +187,10 @@ export function Tips({ paused }: { paused: boolean }) {
     const tick = async () => {
       if (checking.current || Date.now() < emptyUntil.current || !ready(loadState(), moment())) return
       checking.current = true
+      const requestedLang = getLang()
       try {
         const tip = pick(await candidates(selfRepo.current), loadState())
+        if (requestedLang !== getLang()) return
         // Every card already seen: no new question to weevilsd every few seconds while the feed sits idle.
         if (!tip) emptyUntil.current = Date.now() + (isDebug() ? CHECK_MS : EMPTY_RETRY_MS)
         // Still quiet after the fetch?

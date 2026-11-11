@@ -2748,12 +2748,17 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 }
 
 /* A session is a continuous reading surface. Technical details stay optional. */
-.session-thread .msg.band,
-.session-thread .msg.band.tone,
-.session-thread .msg.band.orch { background: transparent; color: inherit; }
+.session-thread .msg.band:not(.orch) { background: transparent; color: inherit; }
+/* Preserve the signed brief's original author colour in continuous session reading. */
+.session-thread .msg.band.orch {
+  background: oklch(from var(--who-c, var(--agent)) calc(l + var(--dl) * 1.8) calc(c * 1.1) h);
+  color: var(--ink);
+  border-inline-start: 3px solid currentColor;
+}
 .session-thread .msg > .in { padding-block: 12px; }
 .session-thread .msg .text { font-size: 1rem; line-height: 1.5; }
 .session-thread .msg .who { opacity: .72; margin-bottom: 4px; }
+.session-thread .msg.orch .who { opacity: 1; }
 .session-thread .msg.event .text { font-size: .875rem; }
 .session-coordination > summary { cursor: pointer; font-size: .875rem; opacity: .75; padding-block: 12px; }
 .session-coordination > summary::marker { font-size: .75em; }

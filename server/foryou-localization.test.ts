@@ -83,3 +83,18 @@ it('revalidates actual cached provider candidates after a validator fix, without
  const entry=JSON.parse(fs.readFileSync(file,'utf8')).cached
  expect(entry.variant).toEqual({text:'2 weevils updates.'});expect(entry.rejected).toBeUndefined();expect(entry.failedAt).toBeUndefined()
 })
+
+it('compares localized grouping and decimal separators without confusing the quantities',()=>{
+ expect(sameNumericFacts('Il y a 1 216 tests.', 'There are 1,216 tests.')).toBe(true)
+ expect(sameNumericFacts('Il y a 1 216 tests.', 'There are 1,217 tests.')).toBe(false)
+ expect(sameNumericFacts('The 1,216 checks passed.', 'All 1,216 checks passed.')).toBe(true)
+ expect(sameNumericFacts('La mesure est 1,216 seconde.', 'The measurement is 1.216 seconds.')).toBe(true)
+ expect(sameNumericFacts('There are 1,216 tests.', 'Il y a 1 216 tests.', 'fr')).toBe(true)
+})
+it('does not mistake an English summary for an entirely English card when its historical body is French',async()=>{
+ const c=new FeedLocalization(file,()=>now)
+ const mixed={...item(),text:'The café is ready for your visit.',body:'Le passage vers le café est prêt.',actions:undefined}
+ expect(c.project(mixed,'en','en').localization?.status).toBe('pending')
+ await c.translate(async s=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,v===mixed.body?'The passage to the café is ready.':v])))
+ expect(c.project(mixed,'en','en').body).toBe('The passage to the café is ready.')
+})

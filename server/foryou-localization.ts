@@ -29,9 +29,15 @@ const occurs = (s: string, word: string) => {
   return new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`,'u').test(s)
 }
 /** Written counts and numeric counts can be equivalent (Deux → 2); articles are not counted by default. */
-export function sameNumericFacts(source: string, variant: string): boolean {
-  const digits=(s:string)=>s.replace(/(?:à|vers|at|around)\s+(\d{1,2})\s*h\b/giu, '$1:00').match(/\d+(?:[.,]\d+)?/g)?.map(n=>String(Number(n.replace(',','.'))))??[]
-  const a=digits(source), b=digits(variant)
+export function sameNumericFacts(source: string, variant: string, target: Lang = 'en'): boolean {
+  if(source===variant)return true
+  const digits=(s:string, locale:Lang)=>{
+    s=s.replace(/(?:à|vers|at|around)\s+(\d{1,2})\s*h\b/giu, '$1:00')
+      .replace(/\b\d{1,3}(?:[ \u00a0\u202f]\d{3})+\b/g,n=>n.replace(/[ \u00a0\u202f]/g,''))
+    if(locale==='en')s=s.replace(/\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b/g,n=>n.replaceAll(',',''))
+    return s.match(/\d+(?:[.,]\d+)?/g)?.map(n=>String(Number(n.replace(',','.'))))??[]
+  }
+  const a=digits(source,detectLang(source)??(target==='en'?'fr':'en')), b=digits(variant,target)
   for(let n=a.length-1;n>=0;n--){const at=b.indexOf(a[n]);if(at>=0){a.splice(n,1);b.splice(at,1)}}
   // i18n-ignore: bilingual validation lexicon, never displayed
   const words=[['zero','zéro'],['one','un','une'],['two','deux'],['three','trois'],['four','quatre'],['five','cinq'],['six'],['seven','sept'],['eight','huit'],['nine','neuf'],['ten','dix'],['eleven','onze'],['twelve','douze'],['thirteen','treize'],['fourteen','quatorze'],['fifteen','quinze'],['sixteen','seize'],['seventeen','dix-sept'],['eighteen','dix-huit'],['nineteen','dix-neuf'],['twenty','vingt']]
@@ -56,7 +62,7 @@ function validateVariant(entry: Entry, variant: Record<string,string>): void {
           for(const word of entry.protected)if(occurs(source,word)&&!occurs(v,word))throw new Error('translation changed protected text')
           // Numeric facts are presentation, never creative copy.
           // i18n-ignore: internal validation code, never presented to the user
-          if(!sameNumericFacts(source,v))throw new Error('translation changed numbers')
+          if(!sameNumericFacts(source,v,entry.target))throw new Error('translation changed numbers')
         }
         const sample=Object.values(variant).join(' ').replace(/«[^»]+»|“[^”]+”|"[^"\n]+"|`[^`]+`/g,'')
         const detected=detectLang(sample)
@@ -84,7 +90,9 @@ export class FeedLocalization {
     const source=presentation(item)
     const combined = Object.values(source).join('\n')
     const original=sourceLang??(combined.trim().split(/\s+/).length >= 5 || /[éèêàçùœ]|\b(?:le|les|une|des|pour|avec|est|the|your|ready|open|view)\b/i.test(combined) ? detectLang(combined) : null)
-    if(!original || original===target || !Object.keys(source).length) return item
+    const fieldLanguages=Object.values(source).filter(v=>v.trim().split(/\s+/).length>=5).map(detectLang).filter(Boolean)
+    const foreignField=fieldLanguages.some(l=>l!==target)
+    if(((!original || original===target) && !foreignField) || !Object.keys(source).length) return item
     const protectedWords=protect(Object.values(source).join('\n'),['weevils','weevboss',...names])
     const revision=crypto.createHash('sha256').update(JSON.stringify([source,protectedWords])).digest('hex')
     const key=revision+':'+target
@@ -92,7 +100,7 @@ export class FeedLocalization {
     if(!entry){entry=this.entries[key]={source,target,protected:protectedWords};this.save()}
     if(!entry.variant) { this.wanted.add(key); if(foreground)this.foreground.add(key) }
     const result=structuredClone(item)
-    result.localization={target,source:original??'unknown',revision,status:entry.variant?'translated':entry.failedAt?'failed':'pending',original:source}
+    result.localization={target,source:new Set(fieldLanguages).size>1?'unknown':original??'unknown',revision,status:entry.variant?'translated':entry.failedAt?'failed':'pending',original:source}
     if(entry.variant)for(const [key,value] of Object.entries(entry.variant)){
       const bits=key.split('.');let parent:any=result
       for(const bit of bits.slice(0,-1))parent=parent[bit]

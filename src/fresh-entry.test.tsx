@@ -84,3 +84,29 @@ it('normal entry carries selected locale and refreshes FR→EN→FR without repl
  expect(requests.filter(r=>r.path==='/api/snapshot').map(r=>r.locale)).toEqual(['fr','en','fr'])
  expect(requests.some(r=>r.path==='/api/prefs')).toBe(false)
 })
+
+it('refreshes translated titles and activities after an asynchronous source update without remounting', async () => {
+ authenticated = true
+ let events!: EventTarget
+ vi.stubGlobal('EventSource', class extends EventTarget { constructor() { super(); events = this } close() {} })
+ let translated = false
+ const base = vi.mocked(fetch).getMockImplementation()!
+ vi.mocked(fetch).mockImplementation(async (url, options) => {
+  if (String(url) !== '/api/snapshot') return base(url, options)
+  const locale = new Headers(options?.headers).get('X-Weevils-Locale')
+  const en = translated && locale === 'en'
+  return new Response(JSON.stringify({ ...snapshot, version: translated ? 2 : 1, sessions: [{ id: 'stable-session', title: en ? 'Folder management' : 'Gestion dossiers', now: en ? 'Checks files' : 'Vérifie les fichiers' }] }), { headers: { 'content-type': 'application/json' } })
+ })
+ await act(async () => root.render(<Entry />)); await flush()
+ const output = host.querySelector('output')!
+ expect(output.textContent).toContain('Gestion dossiers')
+ translated = true
+ await act(async () => events.dispatchEvent(new MessageEvent('version', { data: '2' }))); await flush()
+ expect(host.querySelector('output')).toBe(output)
+ expect(output.textContent).toContain('Folder management')
+ expect(output.textContent).toContain('Checks files')
+ await act(async () => setLang('fr')); await flush()
+ expect(output.textContent).toContain('Gestion dossiers')
+ expect(output.textContent).toContain('stable-session')
+ expect(host.querySelector('output')).toBe(output)
+})

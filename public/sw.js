@@ -65,10 +65,16 @@ function requestResolved(n, state) {
 
 // Foreground snapshots remove old noise and questions already answered, without sending a silent push.
 self.addEventListener('message', e => {
+  if (e.data?.type === 'check-build') {
+    e.waitUntil(reloadStale())
+    return
+  }
   if (e.data?.type !== 'notification-state') return
-  e.waitUntil(self.registration.getNotifications().then(list => {
+  // Old bundles already send this after a foreground snapshot. Recover even when
+  // activation happened in the background and the worker's retry timer was lost.
+  e.waitUntil(Promise.all([reloadStale(), self.registration.getNotifications().then(list => {
     for (const n of list) if (notificationNoise(n) || requestResolved(n, e.data)) n.close()
-  }))
+  })]))
 })
 
 self.addEventListener('push', e => {

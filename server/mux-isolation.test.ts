@@ -18,6 +18,7 @@ it('an absent test socket directory is created; named and legacy panes survive d
     expect(fs.statSync(tmp).isDirectory()).toBe(true)
     execFileSync('tmux', ['new-session', '-d', '-s', old, 'sleep', '120'], { env })
     run(`${load} await m.spawnWv('${name}', '${home}', 'codex', 'proof', ['sleep', '120']);`)
+    expect(execFileSync('tmux',['-L','restart-proof','show-environment','-t',name,'WEEVILS_FROM'],{env,encoding:'utf8'}).trim()).toBe('WEEVILS_FROM=codex')
     const first = JSON.parse(run(`${load} console.log(JSON.stringify(await m.listWv()));`))
     const afterRestart = JSON.parse(run(`${load} console.log(JSON.stringify(await m.listWv()));`))
     expect(first.map((p: { name: string }) => p.name).sort()).toEqual([old, name].sort())

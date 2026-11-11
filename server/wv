@@ -99,7 +99,7 @@ title=${1:-$m_title}
 # viserait sinon le serveur tmux de weevils et fermerait toutes les sessions. Et ce serveur est dédié (-L) : un simple
 # « tmux kill-server » vise le serveur par défaut.
 notmux=(env -u TMUX -u TMUX_PANE)
-quiet=(-e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -e DISABLE_AUTOUPDATER=1 -e DISABLE_BUG_COMMAND=1 -e DISABLE_ERROR_REPORTING=1 -e DISABLE_TELEMETRY=1 -e DISABLE_COST_WARNINGS=1 -e DISABLE_TIPS=1)
+quiet=(-e "WEEVILS_FROM=$tool" -e CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -e DISABLE_AUTOUPDATER=1 -e DISABLE_BUG_COMMAND=1 -e DISABLE_ERROR_REPORTING=1 -e DISABLE_TELEMETRY=1 -e DISABLE_COST_WARNINGS=1 -e DISABLE_TIPS=1)
 # Pas de dialogue de confiance : le dossier courant est marqué sûr dans ~/.claude.json avant de lancer claude.
 if command -v jq >/dev/null && [ "$tool" = claude ]; then
   cfg=~/.claude.json; [ -f "$cfg" ] || echo '{}' > "$cfg"

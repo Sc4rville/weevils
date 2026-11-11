@@ -161,7 +161,16 @@ describe('spawnWv', () => {
   it('argv exact : env -u TMUX -u TMUX_PANE juste avant la commande, après l’environnement calme (pas de shell)', async () => {
     await mux.spawnWv('wv-x', '/d', 'codex', 't', ['codex', 'resume', 'id', 'go'])
     const quiet = Object.entries(mux.QUIET_ENV).flatMap(([k, v]) => ['-e', `${k}=${v}`])
-    expect(sh.calls[0]).toEqual(['new-session', '-d', '-s', 'wv-x', '-x', '120', '-y', '40', '-c', '/d', ...quiet, 'env', '-u', 'TMUX', '-u', 'TMUX_PANE', 'codex', 'resume', 'id', 'go'])
+    expect(sh.calls[0]).toEqual(['new-session', '-d', '-s', 'wv-x', '-x', '120', '-y', '40', '-c', '/d', ...quiet, '-e', 'WEEVILS_FROM=codex', 'env', '-u', 'TMUX', '-u', 'TMUX_PANE', 'codex', 'resume', 'id', 'go'])
+  })
+
+  it('assigns the orchestrator author at launch for either agent tool', async()=>{
+    const {ORCH_DIR}=await import('./config.ts')
+    for(const tool of ['claude','codex'] as const){
+      sh.calls.length=0
+      await mux.spawnWv('wv-boss',ORCH_DIR,tool,'weevboss',[tool])
+      expect(sh.calls[0]).toContain('WEEVILS_FROM=weevboss')
+    }
   })
 
   it('un texte avec des caractères de shell reste un seul argument', async () => {

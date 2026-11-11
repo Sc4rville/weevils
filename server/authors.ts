@@ -52,7 +52,7 @@ export const publicAuthors = (): Author[] => authors().map(({ id, name, color })
 export function normalizeFrom(from: unknown): string | undefined {
   if (typeof from !== 'string' || !from) return undefined
   const id = from === 'weevils' ? BOSS : from.toLowerCase()
-  return authorById(id) ? id : undefined
+  return ['codex', 'claude', 'agent'].includes(id) || authorById(id) ? id : undefined
 }
 
 /** Le texte signé par l'auteur, sauf s'il l'est déjà. */
@@ -74,3 +74,11 @@ export function parseSigned(text: string): { author: string; text: string } | nu
 
 /** Nom affiché d'un auteur (son id s'il n'est plus déclaré). */
 export const authorName = (id: string | undefined) => authorById(id ?? BOSS)?.name ?? id ?? BOSS
+
+/** Local runtime provenance, not an inference from message wording or the recipient. */
+export function threadAuthor(id:string, lookup:(id:string)=>{tool:string;cwd:string}|undefined, bossId:string|null, orchestratorDir:string):string|undefined {
+  const source=lookup(id)
+  if(!source)return undefined
+  if(id===bossId||source.cwd===orchestratorDir)return BOSS
+  return source.tool==='codex'||source.tool==='claude'?source.tool:'agent'
+}

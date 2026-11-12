@@ -229,7 +229,7 @@ export function CalmConv({ id }: { id: string }) {
           </div>
         </div>
         <SidePane
-          side={preview.open ? <Preview url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false })} /> : undefined}
+          side={preview.open ? <Preview session={s} project={snap.projects.find((p) => p.id === s?.projectId)} url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false })} /> : undefined}
           onGone={unsplit}
         />
       </div>

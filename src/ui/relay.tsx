@@ -280,12 +280,8 @@ export function SessionRelay({ session, onError }: { session: Session; onError: 
   const [asked, setAsked] = useState(false)
   const plan = snap.relay?.plans.find((p) => p.sessionId === session.id)
   const from = session.relayOf ? snap.sessions.find((s) => s.id === session.relayOf) : undefined
-  const actionable = plan && !plan.resolved && (plan.state === 'failed' || (snap.relay?.mode === 'ask' && (plan.state === 'ready' || plan.state === 'preparing')))
-  const history = !!session.relayOf || !!session.relayedBy || !!(plan && !plan.resolved && !actionable)
   return (
     <>
-      {history && <details className="in session-relay-details">
-        <summary className="meta">{t.history}</summary>
       {session.relayOf && (
         <div className="in relay-link">
           <button className="link" onClick={() => push({ kind: 'session', id: session.relayOf! })}>
@@ -300,9 +296,7 @@ export function SessionRelay({ session, onError }: { session: Session; onError: 
           </button>
         </div>
       )}
-      {plan && !actionable && <PlanCard plan={plan} bare onError={onError} />}
-      </details>}
-      {plan && actionable && <PlanCard plan={plan} bare onError={onError} />}
+      {plan && <PlanCard plan={plan} bare onError={onError} />}
       {!plan && session.tool === 'claude' && session.status === 'interrupted' && snap.relay?.codex && (
         <div className="in relay-link">
           <button

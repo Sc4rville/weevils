@@ -6,7 +6,6 @@ type Kind = 'near' | 'limit' | 'down'
 
 export default defineMessages({
   fr: {
-    history: 'Historique du relais',
     title: 'relais Codex',
     /** A session that took over another one. */
     sign: 'relais',
@@ -53,7 +52,6 @@ export default defineMessages({
     pref: 'relais Codex',
   },
   en: {
-    history: 'Handoff history',
     title: 'Codex relay',
     sign: 'relay',
     signAria: 'Codex session taking over a Claude session',

@@ -223,11 +223,11 @@ describe('for you page', () => {
       expect(c.querySelector('.fy-no')).toBeTruthy()
     }
     expect(new Set(cards.map((c) => c.style.getPropertyValue('--c'))).size).toBe(3)
-    // session: project · title, what it asks, in the waiting amber, its button and a reply line.
+    // session: project · title, what it asks, in the project colour, its button and a reply line.
     expect(band('se').querySelector('.fy-head')!.textContent).toBe('mygame · fix the login')
     expect(band('se').textContent).toContain('Should I keep the old cookie?')
     expect(band('se').textContent).toContain(t().toneQuestion)
-    expect(band('se').style.getPropertyValue('--c')).toBe('var(--h24)')
+    expect(band('se').style.getPropertyValue('--c')).toBe('var(--p4)')
     expect(band('se').querySelector('.fy-btn')!.textContent).toBe('resume')
     // improve: the gradient band, « do it », reply, dismiss.
     expect(band('im').classList.contains('fy-k-improve')).toBe(true)

@@ -64,6 +64,7 @@ export const api = {
   logout: () => call<{ ok: true }>('POST', '/api/logout', {}),
   foryouFormats: () => call<{ proposal: import('../shared/foryou').ForYouItem | null }>('GET', '/api/foryou/formats'),
   snapshot: () => call<Snapshot>('GET', '/api/snapshot'),
+  previewTarget: (input: { projectId: string; sessionId?: string; repo?: string }) => call<{ session: import('../shared/api').Session | null }>('GET', `/api/preview/target?${new URLSearchParams(Object.entries(input).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))}`),
   session: (id: string) => call<SessionDetail>('GET', `/api/sessions/${enc(id)}`),
   /** Détail d'un sous-agent, d'une étape de workflow ou d'une commande d'arrière-plan (ses derniers pas). */
   subagent: (id: string, subId: string) => call<SubagentDetail>('GET', `/api/sessions/${enc(id)}/subagents/${enc(subId)}`),

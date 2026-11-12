@@ -4,109 +4,91 @@ import { MotionGlobalConfig } from 'motion/react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { Session } from '../../shared/api'
-const mocks = vi.hoisted(() => ({ session: vi.fn(), send: vi.fn() }))
+const mocks = vi.hoisted(() => ({ session: vi.fn(), attach: vi.fn(), mainAttach: vi.fn(), previewTarget: vi.fn(), capture: vi.fn(), payloads: new Map<string, unknown>(), store: vi.fn() }))
 vi.mock('../api', () => ({ api: mocks }))
-vi.mock('./app-context', () => ({ useApp: () => ({ snap: { setup: {}, config: {}, projects: [], sessions: [] }, push: vi.fn(), colors: {} }) }))
+vi.mock('./preview-capture', () => ({ capturePreview: mocks.capture }))
+vi.mock('../outbox-payload', () => ({ loadPayload: async (key: string) => mocks.payloads.get(key), storePayload: async (key: string, value: unknown) => { mocks.store(); mocks.payloads.set(key, value) }, removePayload: async (key: string) => { mocks.payloads.delete(key) } }))
+vi.mock('./app-context', () => ({ useApp: () => ({ snap: { main: [], setup: {}, config: {}, projects: [], sessions: [] }, push: vi.fn(), colors: {} }) }))
 vi.mock('./outbox-status', () => ({ OutboxStatus: () => null }))
 import { Preview } from './preview'
-import { PreviewChat, previewContextUrl } from './preview-chat'
 import { setLang } from '../i18n'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let host: HTMLDivElement, root: Root
 const session = { id: 'existing', title: 'Website', projectId: 'project', tool: 'codex', controllable: true } as Session
+const capture = { file: { name: 'preview.png', type: 'image/png', data: 'exact-pixels' }, view: { url: 'https://website.example/current#section', title: 'Current page', scrollX: 0, scrollY: 420, width: 390, height: 640 }, capturedAt: 1 }
 beforeEach(() => {
  MotionGlobalConfig.skipAnimations = true
- setLang('en'); sessionStorage.clear(); vi.clearAllMocks()
- mocks.session.mockResolvedValue({ session, messages: [{ id: 'reply', role: 'assistant', text: 'The heading is updated.', at: 1 }] })
- mocks.send.mockResolvedValue({ id: session.id })
+ setLang('en'); sessionStorage.clear(); vi.clearAllMocks(); mocks.payloads.clear(); mocks.store.mockImplementation(() => {})
+ mocks.session.mockResolvedValue({ session, messages: [{ id: 'reply', role: 'assistant', text: 'The heading is updated.', at: 2 }] })
+ mocks.attach.mockResolvedValue({ id: session.id }); mocks.mainAttach.mockResolvedValue({ id: 'boss' })
+ mocks.previewTarget.mockResolvedValue({ session }); mocks.capture.mockResolvedValue(capture)
  host = document.createElement('div'); document.body.append(host); root = createRoot(host)
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); MotionGlobalConfig.skipAnimations = false; setLang(null) })
-const render = (url = 'https://website.example/start') => act(async () => root.render(<Preview url={url} suggestions={[]} onUrl={() => {}} onClose={() => {}} session={session} />))
-const toggle = () => act(async () => host.querySelector<HTMLButtonElement>('.preview-chat-toggle')!.click())
+const render = (url = 'https://website.example/start', full = false) => act(async () => root.render(<Preview full={full} url={url} suggestions={[]} onUrl={() => {}} onClose={() => {}} session={session} />))
 const type = async (text: string) => {
  const field = host.querySelector<HTMLInputElement>('.composer input')!
  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, text); field.dispatchEvent(new Event('input', { bubbles: true })); field.dispatchEvent(new Event('change', { bubbles: true })) })
  return field
 }
-const submit = () => act(async () => host.querySelector('.composer')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
-it('keeps the browsing iframe, draft and replies through collapse, fullscreen and locale changes', async () => {
+const submit = () => act(async () => { host.querySelector('.composer')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); await new Promise(resolve => setTimeout(resolve, 25)) })
+it('uses only the standard composer, keeps iframe/draft through full screen and locale, and sends current captured pixels automatically', async () => {
  await render(); const frame = host.querySelector('iframe')!
- await toggle(); expect(host.textContent).toContain('The heading is updated.')
+ expect(host.querySelector('select')).toBeNull(); expect(host.querySelector('.preview-chat-toggle')).toBeNull()
+ expect(host.textContent).not.toContain('Chat about this preview')
  const field = await type('Make this smaller')
- await toggle(); await toggle()
- expect(host.querySelector('iframe')).toBe(frame); expect(field.value).toBe('Make this smaller')
+ await render('https://website.example/start', true)
  await act(async () => setLang('fr')); expect(field.value).toBe('Make this smaller')
- await act(async () => root.render(<Preview full url="https://website.example/start" suggestions={[]} onUrl={() => {}} onClose={() => {}} session={session}/>))
  expect(host.querySelector('iframe')).toBe(frame)
- await submit(); expect(mocks.send).toHaveBeenCalledExactlyOnceWith('existing', 'Make this smaller')
+ await submit()
+ expect(mocks.previewTarget).toHaveBeenCalledExactlyOnceWith({ projectId: 'project', sessionId: 'existing', repo: undefined })
+ expect(mocks.attach).toHaveBeenCalledOnce()
+ const [id, text, files] = mocks.attach.mock.calls[0]
+ expect(id).toBe('existing'); expect(text).toContain(capture.view.url); expect(text).toContain('scroll: 0, 420')
+ expect(files).toEqual([capture.file])
+ expect(host.textContent).toContain('The heading is updated.')
+ expect(host.querySelector('iframe')).toBe(frame)
 })
-it('never implicitly shares the URL and freezes an opted-in context across failed retry/navigation', async () => {
- await render('https://website.example/one?token=private#secret'); await toggle()
- expect(host.querySelector('.preview-chat-url')?.textContent).toBe('https://website.example/one')
- await act(async () => host.querySelector<HTMLInputElement>('.preview-chat-context input')!.click())
- await type('Fix the layout'); mocks.send.mockRejectedValueOnce(new Error('Disconnected'))
- await submit(); expect(mocks.send).toHaveBeenLastCalledWith('existing', 'Fix the layout\n\nPreview page: https://website.example/one')
- await render('https://website.example/two'); await submit()
- expect(mocks.send.mock.calls[1]).toEqual(mocks.send.mock.calls[0])
- expect(host.textContent).not.toContain('token=private')
+it('does not send anything if exact capture is unavailable and retains the draft across reload', async () => {
+ await render(); await type('Keep my draft')
+ mocks.capture.mockRejectedValueOnce(new Error('Capture unavailable'))
+ await submit()
+ expect(mocks.attach).not.toHaveBeenCalled(); expect(mocks.mainAttach).not.toHaveBeenCalled()
+ expect(host.textContent).toContain('Capture unavailable')
+ await act(async () => root.render(null)); await render()
+ expect(host.querySelector<HTMLInputElement>('.composer input')!.value).toBe('Keep my draft')
 })
-it('requires an explicit existing target and never retargets when the list changes', async () => {
- const other = { ...session, id: 'other', title: 'Other session' }
- const draw = (sessions: Session[]) => act(async () => root.render(<PreviewChat sessions={sessions} project="Project" frame={{ current: null }} url="https://example.com"/>))
- await draw([session, other]); await toggle(); expect(host.querySelector('.composer')).toBeNull()
- await act(async () => { const select = host.querySelector('select')!; select.value = 'existing'; select.dispatchEvent(new Event('change', { bubbles: true })) })
- await type('First draft'); await draw([other, session]); await submit()
- expect(mocks.send).toHaveBeenLastCalledWith('existing', 'First draft')
- await draw([other]); expect(host.querySelector('.composer')).toBeNull()
+it('reuses persisted image, context and destination on retry after reload and navigation, without another capture or routing lookup', async () => {
+ await render(); await type('Fix it'); mocks.attach.mockRejectedValueOnce(new Error('Offline')); await submit()
+ const first = mocks.attach.mock.calls[0]
+ expect(mocks.payloads.size).toBe(1)
+ await act(async () => root.render(null)); await render('https://website.example/elsewhere')
+ mocks.previewTarget.mockResolvedValue({ session: { ...session, id: 'different' } })
+ await submit()
+ expect(mocks.attach.mock.calls[1]).toEqual(first)
+ expect(mocks.capture).toHaveBeenCalledOnce(); expect(mocks.previewTarget).toHaveBeenCalledOnce()
+ expect(mocks.payloads.size).toBe(0)
 })
-it('removes URL credentials/query/hash and excludes static-site capability paths', () => {
- expect(previewContextUrl('https://user:secret@site.test/page?key=secret#token')).toBe('https://site.test/page')
- expect(previewContextUrl('https://app.test/api/site/private-key/repo/')).toBe('')
- expect(previewContextUrl('javascript:alert(1)')).toBe('')
+it('routes unresolved ownership to weevboss without asking for a target or creating a session', async () => {
+ mocks.previewTarget.mockResolvedValue({ session: null })
+ await render(); await type('Fix this page'); await submit()
+ expect(mocks.attach).not.toHaveBeenCalled(); expect(mocks.mainAttach).toHaveBeenCalledOnce()
+ expect(mocks.mainAttach.mock.calls[0][1]).toEqual([capture.file])
+ expect(host.querySelector('select')).toBeNull()
 })
-it('reads same-origin navigation only when accessible and resets permission when the page changes', async () => {
- vi.useFakeTimers()
- await render(); await toggle()
- const frame = host.querySelector('iframe')!
- let href = 'https://website.example/current?private=yes'
- Object.defineProperty(frame, 'contentWindow', { configurable: true, get: () => ({ location: { get href() { return href } } }) })
- await act(async () => vi.advanceTimersByTimeAsync(750))
- expect(host.querySelector('.preview-chat-url')?.textContent).toBe('https://website.example/current')
- const check = host.querySelector<HTMLInputElement>('.preview-chat-context input')!
- await act(async () => check.click()); expect(check.checked).toBe(true)
- href = 'https://website.example/next'
- await act(async () => vi.advanceTimersByTimeAsync(750)); expect(check.checked).toBe(false)
- expect(host.querySelector('.preview-chat-url')?.textContent).toBe('https://website.example/next')
-})
-it('retains a failed contextual draft through unmount without changing its retry payload', async () => {
- await render(); await toggle(); await type('Retry this')
- await act(async () => host.querySelector<HTMLInputElement>('.preview-chat-context input')!.click())
- mocks.send.mockRejectedValueOnce(new Error('Offline')); await submit()
- const original = mocks.send.mock.calls[0]
- await act(async () => root.render(null)); await render('https://website.example/elsewhere'); await toggle()
- expect(host.querySelector<HTMLInputElement>('.composer input')!.value).toBe('Retry this')
- await submit(); expect(mocks.send.mock.calls[1]).toEqual(original)
-})
-it('blocks duplicate submits while acceptance is pending and respects read-only sessions', async () => {
- await render(); await toggle(); await type('Once')
+it('blocks double submission while capture/acceptance is pending', async () => {
+ await render(); await type('Once')
  let release!: (r: unknown) => void
- mocks.send.mockReturnValue(new Promise(resolve => { release = resolve }))
+ mocks.attach.mockReturnValue(new Promise(resolve => { release = resolve }))
  await act(async () => { const form = host.querySelector('.composer')!; for (let i = 0; i < 2; i++) form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })) })
- expect(mocks.send).toHaveBeenCalledTimes(1)
+ await act(async () => vi.waitFor(() => expect(mocks.attach).toHaveBeenCalledOnce()))
+ expect(mocks.capture).toHaveBeenCalledOnce()
  await act(async () => release({ id: session.id }))
- await act(async () => root.render(null))
- mocks.session.mockResolvedValue({ session: { ...session, controllable: false }, messages: [] })
- await render(); await toggle()
- expect(host.querySelector<HTMLInputElement>('.composer input')!.disabled).toBe(true)
 })
-it('shows a subsequent agent reply without remounting the website or stealing transcript scroll', async () => {
- vi.useFakeTimers()
- await render(); await toggle(); const frame = host.querySelector('iframe')!
- await type('Move the heading'); await submit()
- mocks.session.mockResolvedValue({ session, messages: [{ id: 'later', role: 'assistant', text: 'Moved the heading above the image.', at: 2 }] })
- await act(async () => vi.advanceTimersByTimeAsync(3000))
- expect(host.textContent).toContain('Moved the heading above the image.')
- expect(host.querySelector('iframe')).toBe(frame)
- await toggle(); expect(host.querySelector('iframe')).toBe(frame)
+it('does not send an unpersisted capture if storage fails', async () => {
+ await render(); await type('Do not lose this')
+ mocks.store.mockImplementation(() => { throw new Error('Storage full') })
+ await submit()
+ expect(mocks.attach).not.toHaveBeenCalled(); expect(mocks.mainAttach).not.toHaveBeenCalled()
+ expect(host.querySelector<HTMLInputElement>('.composer input')!.value).toBe('Do not lose this')
 })

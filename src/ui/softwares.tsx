@@ -432,7 +432,7 @@ export function SoftwarePage({ id }: { id: string }) {
 
   return (
     <Shell slot={slot} kicker={t.kicker} title={sw.name} meta={meta}
-      foot={sw.url ? <PreviewChat key={sw.id} sessions={snap.sessions.filter(s => !s.archived && s.controllable && (project ? s.projectId === project.id : !!s.repo && names.has(base(s.repo))))} project={project?.name ?? sw.name} frame={previewFrame} url={sw.url} /> : undefined}>
+      foot={sw.url ? <PreviewChat key={sw.id} viewerId={`software:${sw.id}`} projectId={project?.id} repo={sw.repo ? base(sw.repo) : undefined} frame={previewFrame} /> : undefined}>
       {err && <ErrorBand text={err} />}
       <div className="band tone">
         <div className="in sw-tools">

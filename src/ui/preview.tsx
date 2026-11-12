@@ -89,7 +89,7 @@ const normalize = (raw: string) => {
 }
 
 /** Le navigateur intégré : une barre d'adresse et la page, pour voir en live ce que l'agent construit. */
-export function Preview({ url, suggestions, onUrl, onClose, full, onFull, session, project }: { session?: Session; project?: Project; url: string; suggestions: string[]; onUrl: (u: string) => void; onClose: () => void; full?: boolean; onFull?: (full: boolean) => void }) {
+export function Preview({ url, suggestions, onUrl, onClose, full, onFull, session }: { session?: Session; project?: Project; url: string; suggestions: string[]; onUrl: (u: string) => void; onClose: () => void; full?: boolean; onFull?: (full: boolean) => void }) {
   const t = useT(M)
   const [draft, setDraft] = useState(url)
   const [gen, setGen] = useState(0)
@@ -167,7 +167,7 @@ export function Preview({ url, suggestions, onUrl, onClose, full, onFull, sessio
           />
         )}
       </div>
-      {session && <PreviewChat key={session.id} sessions={[session]} project={project?.name ?? session.projectId} frame={frame} url={url} />}
+      {session && <PreviewChat key={session.id} viewerId={`session:${session.id}`} sessionId={session.id} projectId={session.projectId} frame={frame} />}
     </div>
   )
 }

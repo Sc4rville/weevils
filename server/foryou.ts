@@ -2,6 +2,7 @@ import { ALCOVE_SOURCE, alcoveFinal, groupAlcove } from './foryou-results.ts'
 import { FeedLocalization } from './foryou-localization.ts'
 import { OutboxError } from './outbox.ts'
 import { internalFeedUpdate, editorialFeedText, acknowledgementOnly, humanFeedItem, humanFeedText, rawEngineeringNotice } from '../shared/feed-text.ts'
+import { reviewedEditorial } from './foryou-editorial.ts'
 import { canonicalAlertId, feedNoticeKey, isRequestNotice, quotaReset, sessionNoticeKey } from '../shared/notices.ts'
 // « For you »: the stream next to weevboss (docs/foryou.md, contract in shared/foryou.ts). Main machine only.
 //
@@ -959,7 +960,7 @@ export class ForYou {
       out.text = text
       if (out.actions) out.actions = out.actions.filter(a => !internalFeedUpdate(a.label))
     }
-    return humanFeedItem(out)
+    return humanFeedItem(reviewedEditorial(out, i.text))
   }
 
   // ---------------------------------------------------------------- reading: live items

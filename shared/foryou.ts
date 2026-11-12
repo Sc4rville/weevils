@@ -78,6 +78,8 @@ export interface VisualProposal {
 }
 
 export interface ForYouItem {
+  /** Reviewed generated wording. The stored source and its event identity stay intact. */
+  editorial?: { original: { title?: string; text: string } }
   /** Authored in-card composition; media references never create another event or action. */
   composition?: { layout: 'split' | 'rail'; panels: { mediaId: string; title: string; text: string }[] }
   /** Read-only projection of verified sources; source records remain independently addressable. */

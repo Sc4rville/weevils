@@ -11,7 +11,7 @@ import type { Message, Optimizer, Session, Snapshot } from '../shared/api.ts'
 import type { UsageInfo } from '../shared/infra.ts'
 import { haiku, smart } from './fast.ts'
 import {
-  BACKOFF_MAX_MS, BACKOFF_MS, Curator, DAILY_CAP, DIGEST_EVERY_MS, IMPROVE_EVERY_MS, INSIGHT_EVERY_MS, INSIGHT_MAX, MAIL_BATCH, MAIL_EVERY_MS, STAT_EVERY_MS,
+  BACKOFF_MAX_MS, BACKOFF_MS, Curator, DAILY_CAP, DIGEST_EVERY_MS, IMPROVE_EVERY_MS, INSIGHT_EVERY_MS, MAIL_BATCH, MAIL_EVERY_MS, STAT_EVERY_MS,
   dayKey, fit, isoWeek, manifestDeps, parseDigest, parseImprove, parseInsight, parseLines, repoFacts, usagePatterns, type CuratorDeps, type RepoFacts,
 } from './foryou-curator.ts'
 import { ForYou, WANTED_MS } from './foryou.ts'
@@ -107,10 +107,10 @@ afterEach(() => {
 // ---------------------------------------------------------------- what the model may say
 
 describe('what the curator accepts from the model', () => {
-  it('a digest: real words, a thought only when it adds something, two actions with a brief at most', () => {
+  it('a digest: concise words, no appended reflection, two actions with a brief at most', () => {
     const d = parseDigest(JSON.parse(DIGEST))!
     expect(d.text).toMatch(/^Ok, Jump physics/)
-    expect(d.thought).toMatch(/^Actually/)
+    expect(d).not.toHaveProperty('thought')
     expect(d.actions).toEqual([{ label: 'Show me the jump', brief: expect.stringContaining('double jump') }])
     expect(parseDigest({ text: ' "All good 🎉  on   mygame, the menu is in and waits for you." ', actions: [{ label: 'A', brief: 'short' }, { label: 'Go on', brief: 'continue the menu on mygame' }, { label: 'Two', brief: 'a second real brief' }, { label: 'Three', brief: 'a third real brief' }] })).toEqual({
       text: 'All good on mygame, the menu is in and waits for you.',
@@ -120,7 +120,7 @@ describe('what the curator accepts from the model', () => {
     expect(parseDigest({ text: 'The menu of mygame is in and waits for your look.', thought: 'The menu of mygame is in, waits for your look.' })).toEqual({ text: 'The menu of mygame is in and waits for your look.' })
     for (const bad of [null, 'text', [], {}, { text: '' }, { text: 'ok' }, { text: 42 }]) expect(parseDigest(bad)).toBeNull()
     expect(parseDigest({ text: 'Ok, jump physics on mygame is back, the double jump is in; nothing is waiting on you.' }, [d.text])).toBeNull()
-    expect(parseDigest({ text: `${'A long sentence about the day. '.repeat(40)}` })!.text.length).toBeLessThanOrEqual(600)
+    expect(parseDigest({ text: `${'A long sentence about the day. '.repeat(40)}` })).toBeNull()
   })
 
   it('an improvement needs words and one button with its brief; an idea already given is refused', () => {
@@ -134,9 +134,7 @@ describe('what the curator accepts from the model', () => {
   it('an insight holds in 220 characters of full sentences, or is refused', () => {
     expect(parseInsight(JSON.parse(INSIGHT))).toEqual({ about: 'vitest', text: expect.stringMatching(/^Vitest runs/) })
     const long = `${'Vitest shares its config with Vite. '.repeat(4)}${'x'.repeat(200)}`
-    const cut = parseInsight({ text: long })!
-    expect(cut.text.length).toBeLessThanOrEqual(INSIGHT_MAX)
-    expect(cut.text.endsWith('.')).toBe(true)
+    expect(parseInsight({ text: long })).toBeNull()
     expect(parseInsight({ text: 'y'.repeat(400) })).toBeNull()
     expect(parseInsight({})).toBeNull()
     expect(parseInsight(JSON.parse(INSIGHT), ['Vitest runs only the tests touched by a change in watch mode, ask your agents to keep it running'])).toBeNull()
@@ -367,7 +365,7 @@ describe('the budget', () => {
 // ---------------------------------------------------------------- the digest
 
 describe('the digest', () => {
-  it('weevboss speaks: the recap then the thought as its own paragraph, buttons whose briefs stay on the server', async () => {
+  it('weevboss speaks: concise result without an appended thought, button briefs stay on the server', async () => {
     const c = makeCurator({ advice: async () => [] })
     await deliver('s1', 'The double jump is in, with its tests.', { title: '[from:weevboss] Jump physics' })
     snap.sessions.push(session({ id: 'q1', title: 'Menu', status: 'needs_user', attention: 'Which font for the menu?', lastActivityAt: now }))
@@ -383,7 +381,7 @@ describe('the digest', () => {
     expect(prompt).not.toContain('[from:')
     const item = fy.feed(now).items.find((i) => i.kind === 'boss')!
     expect(item).toMatchObject({ who: 'weevboss', tone: 'neutral', reply: 'boss', open: { page: 'boss' }, actions: [{ id: 'a1', label: 'Show me the jump' }] })
-    expect(item.text).toBe('Ok, Jump physics on mygame is back: the double jump is in. Nothing is waiting on you.\n\nActually, when you think about it, the jump is the whole game.')
+    expect(item.text).toBe('Ok, Jump physics on mygame is back: the double jump is in. Nothing is waiting on you.')
     expect(JSON.stringify(item)).not.toContain('ask the mygame session')
     expect(kinds('boss')[0].actions?.[0].brief).toContain('ask the mygame session')
     // The button goes to weevboss with its brief, like one of its own posts.

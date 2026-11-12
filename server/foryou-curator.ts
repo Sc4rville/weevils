@@ -1,3 +1,4 @@
+import { editorialText } from './foryou-editorial.ts'
 import { internalFeedUpdate } from '../shared/feed-text.ts'
 import { preferredTool, providerReady } from './provider.ts'
 // The curator of the « for you » stream (docs/foryou.md §3.5): everything in the stream that is written or counted
@@ -128,7 +129,6 @@ const repeats = (text: string, known: string[]) => isRepeat(text, known.map((tit
 
 export interface Digest {
   text: string
-  thought?: string
   actions?: { label: string; brief: string }[]
 }
 
@@ -138,15 +138,14 @@ const buttons = (raw: unknown, max: number): { label: string; brief: string }[] 
     .filter((a) => a.label.length >= 2 && a.brief.length >= 10)
     .slice(0, max)
 
-/** weevboss's recap as the model wrote it, checked: real words, not said before, a thought only when it adds something, two actions at most. */
+/** One useful outcome, no appended reflection, no duplicate, at most two actions. */
 export function parseDigest(raw: unknown, known: string[] = []): Digest | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const r = raw as Record<string, unknown>
-  const text = fit(plain(r.text), DIGEST_MAX)
+  const text = editorialText(plain(r.text), DIGEST_MAX)
   if (text.length < 20 || repeats(text, known)) return null
-  const thought = fit(plain(r.thought), THOUGHT_MAX, true)
   const actions = buttons(r.actions, 2)
-  return { text, ...(thought.length >= 12 && !repeats(thought, [text, ...known]) ? { thought } : {}), ...(actions.length ? { actions } : {}) }
+  return { text, ...(actions.length ? { actions } : {}) }
 }
 
 export interface Improve {
@@ -159,7 +158,7 @@ export interface Improve {
 export function parseImprove(raw: unknown, known: string[] = []): Improve | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const r = raw as Record<string, unknown>
-  const text = fit(plain(r.text), IMPROVE_MAX)
+  const text = editorialText(plain(r.text), IMPROVE_MAX)
   const title = plain(r.title).slice(0, 60).trim()
   const [action] = buttons(r.action ?? r.actions, 1)
   if (text.length < 20 || !action) return null
@@ -171,7 +170,7 @@ export function parseImprove(raw: unknown, known: string[] = []): Improve | null
 export function parseInsight(raw: unknown, known: string[] = []): { text: string; about?: string } | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const r = raw as Record<string, unknown>
-  const text = fit(plain(r.text), INSIGHT_MAX, true)
+  const text = editorialText(plain(r.text), INSIGHT_MAX)
   if (text.length < 20 || repeats(text, known)) return null
   const about = plain(r.about).slice(0, 60).trim()
   return { text, ...(about ? { about } : {}) }
@@ -184,7 +183,7 @@ export function parseLines(raw: unknown, n: number): Map<number, string> {
   for (const x of list as Record<string, unknown>[]) {
     if (!x || typeof x !== 'object') continue
     const i = Math.round(Number(x.n ?? x.id))
-    const line = fit(plain(x.line), MAIL_LINE)
+    const line = editorialText(plain(x.line), MAIL_LINE)
     if (i >= 1 && i <= n && line.length >= 8 && !out.has(i)) out.set(i, line)
   }
   return out
@@ -793,7 +792,7 @@ export class Curator implements ForYouCurator {
       const l = lang()
       const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s)
       const earlier = boss.filter((i) => i.id.startsWith('d:')).slice(0, 3).map((i) => i.text)
-      const prompt = t.digest({
+      const prompt = t.editorial + t.digest({
         user: user(),
         memory: this.deps.memory?.()?.digest(10, 1200) ?? '',
         done: results.slice(0, 12).map((i) => t.line(project(i.projectId), '', short((i.body || i.text).replace(/\s+/g, ' '), 1000))).join('\n'),
@@ -816,7 +815,7 @@ export class Curator implements ForYouCurator {
       this.s.digestAt = now
       if (signature(this.fy.w.snapshot().sessions) !== before) return
       if (!d) return void console.log('[foryou] curateur : point de weevboss écarté (vide ou déjà dit)')
-      this.fy.add({ id: `d:${now.toString(36)}`, kind: 'boss', who: 'weevboss', text: d.thought ? `${d.text}\n\n${d.thought}` : d.text, actions: d.actions, lang: l })
+      this.fy.add({ id: `d:${now.toString(36)}`, kind: 'boss', who: 'weevboss', text: d.text, actions: d.actions, lang: l })
     }
   }
 
@@ -860,7 +859,7 @@ export class Curator implements ForYouCurator {
       ...mails.map((m, i) => t.mailItem(i + 1, name(m.who), m.subject, m.text.slice(0, 1500))),
       ...results.map((r, i) => t.resultItem(mails.length + i + 1, r.project, r.asked, Math.round((now - r.askedAt) / 60_000), r.text.slice(0, 1500))),
     ]
-    const prompt = t.mailLines(items.join('\n\n'), this.fy.w.snapshot().config?.userName || '', this.deps.memory?.()?.digest(8, 700) ?? '')
+    const prompt = t.editorial + t.mailLines(items.join('\n\n'), this.fy.w.snapshot().config?.userName || '', this.deps.memory?.()?.digest(8, 700) ?? '')
     return async () => {
       if (!this.reserve()) return
       this.s.mailAt = now
@@ -908,7 +907,7 @@ export class Curator implements ForYouCurator {
       const advice = ((await this.deps.advice?.().catch(() => [])) ?? []).filter((a) => typeof a === 'string' && a.trim()).slice(0, 5)
       if (advice.length) lines.push(t.patAdvice(advice.map((a) => `- ${a.replace(/\s+/g, ' ').slice(0, 240)}`).join('\n')))
       if (!this.reserve()) return
-      const got = parseImprove(this.json(await this.ask('smart', t.improve({ user: who, patterns: lines.join('\n'), earlier }), 120_000)), known.flatMap((i) => [i.text, ...(i.title ? [i.title] : [])]))
+      const got = parseImprove(this.json(await this.ask('smart', t.editorial + t.improve({ user: who, patterns: lines.join('\n'), earlier }), 120_000)), known.flatMap((i) => [i.text, ...(i.title ? [i.title] : [])]))
       this.s.improveAt = now
       if (!got) return void console.log('[foryou] curateur : idée écartée (vide ou déjà dite)')
       this.fy.add({ kind: 'improve', tone: 'magic', title: got.title, text: got.text, actions: [got.action], lang: l })
@@ -962,7 +961,7 @@ export class Curator implements ForYouCurator {
       this.s.insights[key] = { at: now, repo }
       if (!f) return
       if (!this.reserve()) return
-      const got = parseInsight(this.json(await this.ask('smart', t.insight({ repo, facts: this.factsText(t, f, last), earlier: known.slice(0, 12).map((x) => `- ${x}`).join('\n') }), 120_000)), known)
+      const got = parseInsight(this.json(await this.ask('smart', t.editorial + t.insight({ repo, facts: this.factsText(t, f, last), earlier: known.slice(0, 12).map((x) => `- ${x}`).join('\n') }), 120_000)), known)
       this.s.insightAt = now
       if (!got) return void console.log(`[foryou] curateur : rien de sûr à dire sur ${repo}`)
       const item = this.fy.add({ id: `i:${repo}:${day}`, kind: 'insight', projectId: s.projectId, text: got.text, more: true, lang: l })

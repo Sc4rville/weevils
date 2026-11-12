@@ -802,6 +802,7 @@ const oneLine = (item: ForYouItem) => (item.kind === 'proposals' ? (item.cards?.
 
 /** One item of the stream. compact: a thin strip (speaker · one line), nothing to tap inside. */
 export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: boolean }) {
+  const t = useT(M)
   const fy = useForYou()
   const { hidden, dismiss } = useNotice(feedNoticeKey(item))
   const { colors, snap } = useApp()
@@ -845,6 +846,13 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
       {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
       <TranslationStatus item={item} />
       {Kind && <Kind item={item} who={who} project={project} inView={inView} fy={fy} />}
+      {item.editorial && (
+        <details className="fy-editorial in">
+          <summary className="meta">{t.editorialOriginal}</summary>
+          {item.editorial.original.title && <div className="fy-text strong">{item.editorial.original.title}</div>}
+          <div className="fy-text">{item.editorial.original.text}</div>
+        </details>
+      )}
       <OutboxStatus scope={`/api/foryou/${encodeURIComponent(item.id)}/`} eventId={feedNoticeKey(item)} />
       {err && (
         <Notice eventId={noticeKey('error:foryou', location.pathname, location.hash, err)} className="fy-err" role="alert">

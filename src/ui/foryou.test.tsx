@@ -818,3 +818,31 @@ it('keeps authored panel text accessible when every source image is missing',asy
  expect(band('me').querySelector('[role="status"]')?.textContent).toContain('did not load')
  expect(band('me').querySelector('img')).toBeNull()
 })
+
+it('keeps editorial source wording folded, verbatim and separate from the revised card across locale changes', async () => {
+  setLang('en')
+  const original = { title: 'Original <title>', text: '> Quoted user wording\n\n```sh\nprintf "<private>"\n```\n' + 'Full source wording. '.repeat(80) }
+  const item: ForYouItem = { ...ITEMS.find(i => i.id === 'bo')!, text: 'The revised result is ready.', editorial: { original } }
+  await open([item])
+  const details = band('bo').querySelector<HTMLDetailsElement>('details.fy-editorial')!
+  expect(details.open).toBe(false)
+  expect(details.querySelector('summary')!.textContent).toBe('Original wording')
+  expect(details.querySelector('.strong')!.textContent).toBe(original.title)
+  expect(details.querySelector('.fy-text:last-child')!.textContent).toBe(original.text)
+  expect(details.querySelector('private')).toBeNull()
+  expect(details.querySelector('.clamp')).toBeNull()
+  expect(host.querySelector('.page-head .fy-editorial')).toBeNull()
+  const actions = [...band('bo').querySelectorAll('.fy-btn')]
+  details.open = true
+  await act(async () => setLang('fr'))
+  expect(band('bo').querySelector('details.fy-editorial')).toBe(details)
+  expect(details.open).toBe(true)
+  expect(details.querySelector('summary')!.textContent).toBe('Texte d’origine')
+  expect(details.querySelector('.fy-text:last-child')!.textContent).toBe(original.text)
+  expect([...band('bo').querySelectorAll('.fy-btn')]).toEqual(actions)
+  expect(srv.calls.some(c => /^(act|reply|dismiss) /.test(c))).toBe(false)
+  render(<ForYouItemView item={item} compact />)
+  expect(host.querySelector('.fy-editorial')).toBeNull()
+  render(<ForYouItemView item={{ ...item, editorial: undefined }} />)
+  expect(host.querySelector('.fy-editorial')).toBeNull()
+})

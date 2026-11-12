@@ -3,6 +3,7 @@ import { defineMessages } from './index'
 // src/ui/foryou.tsx, src/ui/foryou-store.ts: the « for you » stream next to weevboss (full-screen page, items, media viewer).
 export default defineMessages({
   fr: {
+    editorialOriginal: 'Texte d’origine',
     translationPending: 'Traduction en attente · original conservé',
     translationFailed: 'Traduction indisponible · original conservé',
     translationOriginal: 'Voir le texte original',
@@ -70,6 +71,7 @@ export default defineMessages({
     dismissed: 'écarté',
   },
   en: {
+    editorialOriginal: 'Original wording',
     translationPending: 'Translation pending · showing the original',
     translationFailed: 'Translation unavailable · showing the original',
     translationOriginal: 'View original wording',

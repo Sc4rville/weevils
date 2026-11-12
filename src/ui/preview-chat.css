@@ -1,0 +1,14 @@
+.preview-chat { flex: none; min-width: 0; background: var(--c); border-top: 1px solid currentColor; }
+.preview-chat-toggle { display: block; width: 100%; min-height: 44px; padding: 10px 12px; text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-chat [hidden] { display: none; }
+.preview-chat-target { padding: 6px 12px; overflow-wrap: anywhere; }
+.preview-chat-target select { display: block; width: 100%; min-height: 44px; font: inherit; color: inherit; background: var(--c); }
+.preview-chat-messages { max-height: min(calc(var(--vvh, 100dvh) * .26), 280px); overflow-y: auto; overscroll-behavior: contain; }
+.preview-chat-context { display: flex; align-items: center; gap: 8px; padding: 6px 12px; min-height: 44px; }
+.preview-chat-context input { flex: none; width: 20px; height: 20px; }
+.preview-chat-url { display: block; overflow-wrap: anywhere; font-size: .8em; }
+.preview-chat .composer { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+.preview-chat textarea { max-height: 15dvh; font-size: 16px; }
+.preview-chat .outbox-status { max-height: 12dvh; overflow: auto; }
+.preview-chat > div { max-height: calc(var(--vvh, 100dvh) * .65); overflow-y: auto; overscroll-behavior: contain; }
+.preview-chat .composer input { font-size: max(16px, 1em); }

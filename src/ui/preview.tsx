@@ -3,6 +3,7 @@ import type { Message, Project, Session } from '../../shared/api.ts'
 import { useT } from '../i18n'
 import M from '../i18n/preview'
 import { Icon } from './icons'
+import { PreviewChat } from './preview-chat'
 
 /** Où vivent les serveurs de preview (WEEVILS_EXPOSE_DOMAIN : <nom>.<domaine>) et l'app elle-même : lus dans la config du serveur. */
 export interface PreviewConfig {
@@ -88,11 +89,12 @@ const normalize = (raw: string) => {
 }
 
 /** Le navigateur intégré : une barre d'adresse et la page, pour voir en live ce que l'agent construit. */
-export function Preview({ url, suggestions, onUrl, onClose, full, onFull }: { url: string; suggestions: string[]; onUrl: (u: string) => void; onClose: () => void; full?: boolean; onFull?: (full: boolean) => void }) {
+export function Preview({ url, suggestions, onUrl, onClose, full, onFull, session, project }: { session?: Session; project?: Project; url: string; suggestions: string[]; onUrl: (u: string) => void; onClose: () => void; full?: boolean; onFull?: (full: boolean) => void }) {
   const t = useT(M)
   const [draft, setDraft] = useState(url)
   const [gen, setGen] = useState(0)
   const input = useRef<HTMLInputElement>(null)
+  const frame = useRef<HTMLIFrameElement>(null)
   useEffect(() => setDraft(url), [url])
   // Ouvert sans adresse : le champ attend la saisie (rien d'autre à faire dans ce volet).
   useEffect(() => {
@@ -154,6 +156,7 @@ export function Preview({ url, suggestions, onUrl, onClose, full, onFull }: { ur
       <div className="preview-body">
         {url && (
           <iframe
+            ref={frame}
             key={`${url}#${gen}`}
             className="preview-frame"
             src={url}
@@ -164,6 +167,7 @@ export function Preview({ url, suggestions, onUrl, onClose, full, onFull }: { ur
           />
         )}
       </div>
+      {session && <PreviewChat key={session.id} sessions={[session]} project={project?.name ?? session.projectId} frame={frame} url={url} />}
     </div>
   )
 }

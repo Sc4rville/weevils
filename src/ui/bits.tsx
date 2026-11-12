@@ -334,6 +334,7 @@ export function Composer({
   sayErrors = false,
   horizontal = false,
   captureSuggestions = false,
+  draftKey,
 }: {
   placeholder: string
   label: string
@@ -356,13 +357,15 @@ export function Composer({
   sayErrors?: boolean
   /** Native one-line horizontal editor, isolated from page swipe gestures. */
   horizontal?: boolean
+  /** Stable identity for a draft across title and locale changes. */
+  draftKey?: string
   /** Offer pasted/authorized clipboard images before attaching them. */
   captureSuggestions?: boolean
 }) {
   const t = useT(M)
   // Le texte en cours survit à un rechargement (mise à jour automatique de l'app, public/sw.js) : gardé dans l'onglet,
   // par champ (son libellé), effacé à l'envoi.
-  const key = `weevils-draft:${label}`
+  const key = `weevils-draft:${draftKey ?? label}`
   const [text, setText] = useState(() => {
     try {
       return sessionStorage.getItem(key) ?? ''

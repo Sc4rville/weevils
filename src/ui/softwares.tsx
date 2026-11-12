@@ -9,6 +9,7 @@ import { useApp } from './app-context'
 import { Shell } from './shell'
 import { Icon } from './icons'
 import './softwares.css'
+import { PreviewChat } from './preview-chat'
 
 // « Mes logiciels » : tout ce que l'utilisateur construit ou fait tourner, un rectangle de couleur par logiciel (même
 // grille que les repos). Dedans, son interface (capture) ou, sans interface, sa vraie sortie qui se tape comme dans un
@@ -332,6 +333,7 @@ export function SoftwaresPage() {
 // La page d'un logiciel : son interface en direct, ou son état et sa sortie en direct.
 
 export function SoftwarePage({ id }: { id: string }) {
+  const previewFrame = useRef<HTMLIFrameElement>(null)
   const t = useT(M)
   const { snap, colors } = useApp()
   const [sw, setSw] = useState<Software | null>(() => known.get(id) ?? null)
@@ -429,7 +431,8 @@ export function SoftwarePage({ id }: { id: string }) {
   const meta = [sw.machine, sw.port ? `:${sw.port}` : '', t[sw.run], sw.blurb].filter(Boolean).join(' · ')
 
   return (
-    <Shell slot={slot} kicker={t.kicker} title={sw.name} meta={meta}>
+    <Shell slot={slot} kicker={t.kicker} title={sw.name} meta={meta}
+      foot={sw.url ? <PreviewChat key={sw.id} sessions={snap.sessions.filter(s => !s.archived && s.controllable && (project ? s.projectId === project.id : !!s.repo && names.has(base(s.repo))))} project={project?.name ?? sw.name} frame={previewFrame} url={sw.url} /> : undefined}>
       {err && <ErrorBand text={err} />}
       <div className="band tone">
         <div className="in sw-tools">
@@ -450,6 +453,7 @@ export function SoftwarePage({ id }: { id: string }) {
       {frame && (
         <div className="sw-frame">
           <iframe
+            ref={previewFrame}
             key={sw.url}
             src={sw.url}
             title={t.frame}

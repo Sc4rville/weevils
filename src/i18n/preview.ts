@@ -2,6 +2,16 @@ import { defineMessages } from './index'
 
 export default defineMessages({
   fr: {
+    feedback: 'Discuter de cet aperçu',
+    target: 'Session destinataire',
+    chooseSession: 'Choisir une session existante',
+    noSession: 'Aucune session disponible pour ce projet.',
+    writeFeedback: 'Que souhaites-tu modifier ?',
+    includeCurrent: 'Joindre cette page',
+    includeOpened: 'Joindre l’adresse ouverte (navigation interne inaccessible)',
+    pageContext: 'Page de l’aperçu',
+    accepted: 'Envoi pris en charge. La réponse apparaîtra ici.',
+
     close: 'fermer le navigateur',
     address: 'adresse à afficher',
     reload: 'recharger',
@@ -13,6 +23,16 @@ export default defineMessages({
     noUrl: 'aucune adresse trouvée dans la session : tape celle de l’appli',
   },
   en: {
+    feedback: 'Chat about this preview',
+    target: 'Target session',
+    chooseSession: 'Choose an existing session',
+    noSession: 'No session is available for this project.',
+    writeFeedback: 'What would you like to change?',
+    includeCurrent: 'Include this page',
+    includeOpened: 'Include the opened address (navigation inside is unavailable)',
+    pageContext: 'Preview page',
+    accepted: 'Submission accepted. Replies will appear here.',
+
     close: 'close the browser',
     address: 'address to show',
     reload: 'reload',

@@ -23,7 +23,7 @@ localStorage.setItem('weevils-language', 'fr')
 for (let p: object | null = HTMLElement.prototype; p; p = Object.getPrototypeOf(p)) if (Object.hasOwn(p, 'animate')) delete (p as { animate?: unknown }).animate
 globalThis.fetch = (async () => new Response('{}')) as typeof fetch
 
-const { RelayBand, RelayPage, ThreadPlans } = await import('./relay')
+const { RelayBand, RelayPage, ThreadPlans, SessionRelay } = await import('./relay')
 const { SessionRow } = await import('./bits')
 const { Ctx } = await import('./app-context')
 
@@ -204,4 +204,21 @@ describe('relais Codex', () => {
     render(<SessionRow session={session()} />, snap(relay()))
     expect(host.querySelector('.relay-sign')).toBeNull()
   })
+})
+
+
+it('keeps relay origin and automatic plans folded without hiding a real approval request', () => {
+ const current = session({ relayOf: 's1' })
+ render(<SessionRelay session={current} onError={() => {}} />, snap(relay({ mode: 'auto', plans: [] }), [session({ id: 's1' }), current]))
+ const history = host.querySelector<HTMLDetailsElement>('.session-relay-details')!
+ expect(history.open).toBe(false)
+ expect(history.querySelector('button')).not.toBeNull()
+ expect(host.querySelector('.relay-plan')).toBeNull()
+ render(<SessionRelay session={session({ id: 's1' })} onError={() => {}} />, snap(relay({ mode: 'auto', plans: [plan({ state: 'running' })] })))
+ expect(host.querySelector('details .relay-plan')).not.toBeNull()
+ expect(host.querySelector<HTMLDetailsElement>('details')!.open).toBe(false)
+ render(<SessionRelay session={session({ id: 's1' })} onError={() => {}} />, snap(relay({ mode: 'ask', plans: [plan()] })))
+ expect(host.querySelector('details .relay-plan')).toBeNull()
+ expect(host.querySelector('.relay-plan')).not.toBeNull()
+ expect(calls.decide).toEqual([])
 })

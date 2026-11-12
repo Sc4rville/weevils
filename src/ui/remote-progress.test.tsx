@@ -91,3 +91,28 @@ it('shows one actionable paused state, with counters and timestamps folded and f
  expect(details.open).toBe(true)
  expect(host.querySelector('summary')?.textContent).toBe('Render paused')
 })
+
+it('keeps an old completed render as folded metadata while the agent is working, without suggesting user review', async () => {
+ const p = progress({ state: 'done', updatedAt: NOW - 26 * 3600000, lastProgressAt: undefined, completed: 992, verified: 992 })
+ await act(async () => root.render(<RemoteProgress progress={p} agentWorking />))
+ expect(host.querySelector('summary')?.textContent).toBe('Render details')
+ expect(host.querySelector('details')?.open).toBe(false)
+ expect(host.querySelector('[role="status"]')).toBeNull()
+ expect(host.querySelector('.spin')).toBeNull()
+ expect(host.textContent).toContain('Render completed')
+ expect(host.textContent).toContain('Earlier render observation')
+ expect(host.textContent).not.toMatch(/ready to review|human review/)
+ const details = host.querySelector('details')!; details.open = true
+ await act(async () => setLang('fr'))
+ expect(details.open).toBe(true)
+ expect(host.querySelector('summary')?.textContent).toBe('Détails du rendu')
+ expect(host.textContent).toContain('Rendu terminé')
+ expect(host.textContent).not.toContain('Render completed')
+})
+it('keeps a fresh separate render secondary when the conversation itself is working', async () => {
+ await act(async () => root.render(<RemoteProgress progress={progress()} agentWorking />))
+ expect(host.querySelector('summary')?.textContent).toBe('Render details')
+ expect(host.querySelector('[role="status"]')).toBeNull()
+ expect(host.querySelector('.spin')).toBeNull()
+ expect(host.querySelector('details')?.textContent).toContain('Rendering')
+})

@@ -314,13 +314,13 @@ function SessionPage({ id }: { id: string }) {
           seraient ensuite repoussées d'un coup vers le bas par les messages (ouverture depuis une notification). */}
       {(detail || missing) && (
         <>
-        {s.progress && <RemoteProgress progress={s.progress} agentWorking={s.turnWorking} />}
-
         <Background session={s} />
 
         <SessionQuestion session={s} onError={setErr} />
 
         {(s.turnWorking ?? (s.status === 'working' && !s.background)) && <Working author={s.tool} since={s.workStartedAt} />}
+
+        {s.progress && <RemoteProgress progress={s.progress} agentWorking={s.turnWorking ?? (s.status === 'working' && !s.background)} secondary={s.status === 'needs_user' || s.status === 'interrupted'} />}
 
         <SessionRelay session={s} onError={setErr} />
 

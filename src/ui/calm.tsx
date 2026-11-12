@@ -3,24 +3,22 @@ import { dismissNotice } from './notice-store'
 import { noticeKey, sessionNoticeKey } from '../../shared/notices.ts'
 import { Notice } from './notice'
 import { motion } from 'motion/react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type TouchEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react'
 import type { Message, SessionDetail } from '../../shared/api.ts'
 import { api } from '../api'
 import { useT } from '../i18n'
 import { useFollow } from './follow'
 import M from '../i18n/calm'
-import { isSettled, stableOrder, useApp } from './app-context'
+import { useApp } from './app-context'
 import { Collapse, Composer, Messages, Working, type Attachment } from './bits'
-import { ago, plain, status } from './format'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Settings } from './settings'
 import { SidePane, usePageChrome, useSplit } from './shell'
 import { FollowDown } from './followdown'
 import { markSeen } from './seen'
 import { Icon } from './icons'
-import { useViewHint } from './hints'
 
-// Le mode conversation : pincer le fil → une grille de conversations, un tap → l'immersion. Rien d'autre que les messages.
+// Legacy focused conversation routes remain available without the retired overview.
 
 const soft = { type: 'tween', duration: 0.38, ease: [0.22, 1, 0.36, 1] } as const
 
@@ -50,69 +48,26 @@ export function usePinch(onPinch: () => void) {
   }
 }
 
-const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
-
-// ---------------------------------------------------------------------------
-// La grille : l'orchestrateur en premier, puis les conversations actives, puis par activité.
-
+/** Compatibility for a legacy overview already present in an in-memory navigation stack.
+ * No replacement dashboard and no mutation of sessions or their history. */
 export function CalmGrid() {
-  const t = useT(M)
-  const { snap, push, home, colors, now } = useApp()
-  const page = useRef<HTMLDivElement>(null)
-  usePageChrome('calm', page)
-  const pinch = usePinch(home)
-  useViewHint('calm')
-  const rank = (s: { status: string }) => (s.status === 'needs_user' || s.status === 'interrupted' ? 0 : s.status === 'working' ? 1 : s.status === 'idle' ? 2 : 3)
-  // Une case ne change pas de place parce qu'une autre conversation écrit : le rang d'abord, puis l'ordre déjà affiché ;
-  // seule une nouvelle se place par activité. Rien ne bouge sous le doigt ; un changement de rang glisse (layout).
-  const shown = useRef<string[]>([])
-  const sessions = useMemo(() => stableOrder(snap.sessions, (s) => s.id, rank, (a, b) => b.lastActivityAt - a.lastActivityAt, shown.current, !isSettled()), [snap.sessions])
-  const order = sessions.map((s) => s.id).join('|')
-  useLayoutEffect(() => {
-    shown.current = order ? order.split('|') : []
-  }, [order])
-  const last = snap.main.filter((m) => m.role !== 'event').at(-1)
-  const names = new Map(snap.projects.map((p) => [p.id, p.name]))
-
-  return (
-    <motion.div ref={page} className="page calm" {...pinch} initial={{ opacity: 0, scale: 0.985 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.985 }} transition={soft} role="dialog" aria-modal="true" aria-label={t.conversations}>
-      <div className="calm-top">
-        <button className="ch" onClick={home} aria-label={t.backToFeed}>
-          <Icon name="chevron" dir="left" />
-        </button>
-      </div>
-      <div className="page-body" data-scroll>
-        <div className="calm-grid">
-          <button className="calm-cell" style={color('agent')} onClick={() => push({ kind: 'calmconv', id: 'main' })}>
-            <span className="calm-title">weevboss</span>
-            <span className="meta">{snap.mainWorking ? t.working : last ? plain(last.text).split('\n')[0] : ''}</span>
-          </button>
-          {sessions.map((s) => (
-            <motion.button layout="position" transition={soft} key={s.id} className="calm-cell" style={color(colors[s.projectId] ?? 'p0')} onClick={() => push({ kind: 'calmconv', id: s.id })}>
-              <span className="calm-title">{s.title}</span>
-              <span className="meta">
-                {names.get(s.projectId) ?? s.projectId} · {s.status === 'working' ? (s.now ?? t.working) : s.status === 'needs_user' ? t.yourTurn : s.status === 'interrupted' ? <span className="alert-pill">× {status.interrupted.label}</span> : ago(now - s.lastActivityAt)}
-                {s.background > 0 && <span className="strong"> · {t.background(s.background)}</span>}
-              </span>
-            </motion.button>
-          ))}
-        </div>
-        <div className="fill" />
-      </div>
-    </motion.div>
-  )
+  const { back } = useApp()
+  const returned = useRef(false)
+  useEffect(() => {
+    if (returned.current) return
+    returned.current = true
+    back()
+  }, [back])
+  return null
 }
-
-// ---------------------------------------------------------------------------
-// L'immersion : une couleur, les messages, le champ. Retour par la flèche, un pincement ou en tirant vers le bas.
 
 export function CalmConv({ id }: { id: string }) {
   const t = useT(M)
-  const { snap, back, home, replace } = useApp()
+  const { snap, back, replace } = useApp()
   const page = useRef<HTMLDivElement>(null)
   const body = useRef<HTMLDivElement>(null)
   usePageChrome('calm', page)
-  const pinch = usePinch(home)
+  const pinch = usePinch(back)
   const main = id === 'main'
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -187,7 +142,7 @@ export function CalmConv({ id }: { id: string }) {
       dragElastic={{ top: 0, bottom: 0.6 }}
       dragSnapToOrigin
       onDragEnd={(_, info) => {
-        if (info.offset.y > 140 || info.velocity.y > 700) home()
+        if (info.offset.y > 140 || info.velocity.y > 700) back()
       }}
       role="dialog"
       aria-modal="true"

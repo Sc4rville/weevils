@@ -41,12 +41,11 @@ const GENERAL: { key: GeneralKey; icon: IconName; dir?: Dir; when?: (e: Env) => 
   { key: 'swipeBack', icon: 'arrow', dir: 'right', when: (e) => e.touch },
   { key: 'repos', icon: 'arrow', dir: 'left', when: (e) => e.touch },
   { key: 'h24', icon: 'arrow', dir: 'up' },
-  { key: 'calm', icon: 'pause', when: (e) => e.touch },
   { key: 'ultracode', icon: 'agents' },
   { key: 'homeScreen', icon: 'external', when: (e) => e.touch && !e.standalone },
   { key: 'import', icon: 'quote' },
 ]
-type GeneralKey = 'liveUi' | 'dictate' | 'photo' | 'swipeBack' | 'repos' | 'h24' | 'calm' | 'ultracode' | 'homeScreen' | 'import'
+type GeneralKey = 'liveUi' | 'dictate' | 'photo' | 'swipeBack' | 'repos' | 'h24' | 'ultracode' | 'homeScreen' | 'import'
 
 /** Icon of each personalized rule (server/tips.ts, plus the client-side "push" rule). */
 const RULE_ICON: Record<string, [IconName, Dir?]> = {

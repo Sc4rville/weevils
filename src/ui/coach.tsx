@@ -84,11 +84,10 @@ const GESTURES: Gesture[] = [
   { done: 'g-copy', move: 'press', where: (c) => (c.agentOpen && !c.page ? rect('.band.agent .ask-thread [data-mid]') : null) },
   // Le fil des projets : les repos sont à un glissé vers la gauche (surtout quand il est vide).
   { done: 'repos', move: 'swipe-left', where: (c) => (!c.agentOpen && !c.page ? rect('main.stack') : null) },
-  // Des projets : un tap sur le nom les replie ; beaucoup de messages : pincer pour ne garder que la conversation.
+  // Des projets : un tap sur le nom les replie.
   { done: 'g-fold', move: 'tap', where: (c) => (!c.agentOpen && !c.page && c.projects > 0 ? firstRect('.band[data-project] .head-name .name') : null) },
   // Le logo de weevboss : on lui parle d'un tap (la bulle dit la suite au premier tap).
   { done: 'voice', move: 'tap', where: (c) => (!c.page ? firstRect('.voice-logo') : null) },
-  { done: 'calm', move: 'pinch', where: (c) => (!c.agentOpen && !c.page && c.mainCount >= 4 ? rect('main.stack') : null) },
 ]
 
 /** Calme depuis tant de ms avant de mimer, et au plus un geste par tant de ms. */

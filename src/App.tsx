@@ -17,7 +17,6 @@ import { WeevilQuestions } from './ui/weevil'
 import { HintBubble, loadHints } from './ui/hints'
 import { GestureCoach } from './ui/coach'
 import { PageView } from './ui/pages'
-import { usePinch } from './ui/calm'
 import { adoptUnknown } from './ui/seen'
 import { useDevil } from './ui/devil'
 import { FOCUS_BOSS, flash, flashBossMessage, focusBoss, keepInPlace, reveal, takeBossOnReturn, toTop, when, type FocusBoss } from './ui/follow'
@@ -193,6 +192,8 @@ export default function App() {
 
   const push = useCallback(
     (p: Page) => {
+      // Retired overview: stay in the existing origin without adding a history layer.
+      if (p.kind === 'calm') return
       const current = stackRef.current.at(-1)
       if (p.kind === 'foryou' && current?.kind === 'foryou' && p.who === current.who) return
       const a = document.activeElement
@@ -208,6 +209,7 @@ export default function App() {
 
   const replace = useCallback(
     (p: Page) => {
+      if (p.kind === 'calm') return
       const next = [...stackRef.current.slice(0, -1), p]
       setPages(next)
       history.replaceState({ w: next.length, agent: agentEntry.current }, '')
@@ -407,8 +409,6 @@ export default function App() {
     shownOrder.current = orderKey ? orderKey.split('|') : []
   }, [orderKey])
 
-  const pinchMain = usePinch(() => push({ kind: 'calm' }))
-
   // (Avant tout return : les hooks.) Ouvrir ou fermer la bande weevboss : tout bascule d'un coup, sans ressort ni état intermédiaire.
   const prevExpanded = useRef(expanded)
   const instant = prevExpanded.current !== expanded && (prevExpanded.current === 'agent' || expanded === 'agent')
@@ -456,7 +456,6 @@ export default function App() {
       <MotionConfig reducedMotion="user" transition={spring}>
         <div className="status-cover" aria-hidden style={devil ? ({ ['--status-c' as string]: 'var(--devil)' }) : undefined} />
         <motion.main
-          {...pinchMain}
           className="stack"
           aria-hidden={stack.length > 0 || undefined}
           inert={stack.length > 0}

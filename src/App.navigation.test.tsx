@@ -3,7 +3,7 @@ import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MotionGlobalConfig } from 'motion/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { useApp } from './ui/app-context'
+import { useApp, type Page } from './ui/app-context'
 import { focusBoss, bossOnReturn } from './ui/follow'
 const live = vi.hoisted(() => ({ snap: { version: 1, now: 1, sessions: [], projects: [], h24: [], main: [], config: {}, devil: { enabled: false } }, authed: true, refresh: () => {}, setAuthed: () => {} }))
 vi.mock('./api', () => ({ useLive: () => live, api: {} }))
@@ -16,19 +16,18 @@ vi.mock('./ui/tips', () => ({ Tips: () => null }))
 vi.mock('./ui/weevil', () => ({ WeevilQuestions: () => null }))
 vi.mock('./ui/coach', () => ({ GestureCoach: () => null }))
 vi.mock('./ui/auto-talk', () => ({ TalkProvider: ({ children }: { children: React.ReactNode }) => children }))
-vi.mock('./ui/calm', () => ({ usePinch: () => ({}) }))
 vi.mock('./ui/bands', () => ({ AgentBand: () => <Probe />, ProjectBand: () => null, FootBand: () => null }))
-vi.mock('./ui/pages', () => ({ PageView: () => <PageProbe /> }))
+vi.mock('./ui/pages', () => ({ PageView: ({ page }: { page: Page }) => <PageProbe page={page} /> }))
 vi.mock('./ui/follow', async (original) => ({ ...await original<typeof import('./ui/follow')>(), toTop: () => window.scrollTo({ top: 0 }), when: (_: unknown, done: () => void) => done(), reveal: () => {}, flashBossMessage: () => {} }))
 import App from './App'
 function Probe() {
   const c = useApp()
   const [draft, setDraft] = useState('draft preserved')
-  return <section data-open={c.expanded === 'agent'}><input value={draft} onChange={e => setDraft(e.target.value)} /><button id="open" onClick={() => c.setExpanded('agent')}>open</button><button id="close" onClick={() => c.setExpanded(null)}>close</button><button id="feed" onClick={() => c.push({ kind: 'foryou' })}>feed</button></section>
+  return <section data-open={c.expanded === 'agent'}><input value={draft} onChange={e => setDraft(e.target.value)} /><button id="open" onClick={() => c.setExpanded('agent')}>open</button><button id="close" onClick={() => c.setExpanded(null)}>close</button><button id="feed" onClick={() => c.push({ kind: 'foryou' })}>feed</button><button id="overview" onClick={() => c.push({ kind: 'calm' })}>legacy overview</button><button id="conversation" onClick={() => c.push({ kind: 'calmconv', id: 'existing-session' })}>conversation</button></section>
 }
-function PageProbe() {
+function PageProbe({ page }: { page: Page }) {
   const c = useApp()
-  return <div className="page"><button id="back" onClick={c.back}>back</button><button id="home" onClick={c.home}>projects</button><button id="boss" onClick={() => focusBoss({ flash: false })}>boss</button></div>
+  return <div className="page" data-kind={page.kind} data-target={'id' in page ? page.id : undefined}><button id="page-overview" onClick={() => c.push({ kind: 'calm' })}>legacy overview</button><button id="replace-overview" onClick={() => c.replace({ kind: 'calm' })}>replace overview</button><button id="back" onClick={c.back}>back</button><button id="home" onClick={c.home}>projects</button><button id="boss" onClick={() => focusBoss({ flash: false })}>boss</button></div>
 }
 let host: HTMLDivElement, root: Root, entries: unknown[], cursor: number, y: number
 const flush = () => act(() => new Promise(r => setTimeout(r, 30)))
@@ -97,4 +96,50 @@ it('reloading from fullscreen leaves a usable normal page and the next feed chev
  await click('feed');await click('back')
  expect(host.querySelector('.page')).toBeNull()
  expect(host.querySelector('main')!.inert).toBe(false)
+})
+
+
+it('ignores retired overview entrypoints without adding history, hiding the origin or losing its draft/scroll', async () => {
+ y = 420
+ await click('overview')
+ expect(cursor).toBe(0); expect(host.querySelector('.page')).toBeNull(); expect(y).toBe(420)
+ expect(host.querySelector('main')!.inert).toBe(false)
+ expect(host.querySelector('input')!.value).toBe('draft preserved')
+ await click('feed')
+ const page = host.querySelector('.page')
+ await click('page-overview'); await click('replace-overview')
+ expect(cursor).toBe(1); expect(host.querySelector('.page')).toBe(page)
+ await act(async () => history.back()); await flush()
+ expect(cursor).toBe(0); expect(host.querySelector('main')!.inert).toBe(false)
+})
+it('retains a targeted legacy conversation route with a direct back to its original fullscreen context', async () => {
+ await click('open'); await click('conversation')
+ expect(host.querySelector('.page')?.getAttribute('data-kind')).toBe('calmconv')
+ expect(host.querySelector('.page')?.getAttribute('data-target')).toBe('existing-session')
+ expect(cursor).toBe(2)
+ await click('back'); expect(open()).toBe(true); expect(cursor).toBe(1)
+ await click('close'); expect(cursor).toBe(0)
+})
+it('keeps session deep links direct and removes no session data', async () => {
+ const before = JSON.stringify(live.snap)
+ await act(async () => root.unmount())
+ location.hash = '#s=existing-session'
+ root = createRoot(host)
+ await act(async () => root.render(<App />)); await flush()
+ expect(host.querySelector('.page')?.getAttribute('data-kind')).toBe('session')
+ expect(host.querySelector('.page')?.getAttribute('data-target')).toBe('existing-session')
+ expect(cursor).toBe(1)
+ await click('back'); expect(host.querySelector('.page')).toBeNull()
+ expect(JSON.stringify(live.snap)).toBe(before)
+ location.hash = ''
+})
+it('a pinch on the normal page no longer opens a second overview', async () => {
+ const main = host.querySelector('main')!
+ const touch = (type: string, distance: number) => {
+   const event = new Event(type, { bubbles: true })
+   Object.defineProperty(event, 'touches', { value: [{ clientX: 0, clientY: 0 }, { clientX: distance, clientY: 0 }] })
+   main.dispatchEvent(event)
+ }
+ await act(async () => { touch('touchstart', 200); touch('touchmove', 80); touch('touchend', 0) })
+ expect(cursor).toBe(0); expect(host.querySelector('.page')).toBeNull()
 })

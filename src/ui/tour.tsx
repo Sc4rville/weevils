@@ -442,7 +442,7 @@ export function TourBand() {
   const prevDone = useRef<number | null>(null)
 
   // Un compte Codex choisi remplace Claude dans le parcours principal, sans feindre sa connexion.
-  const steps = (tour?.steps ?? []).filter(s => !(snap.setup?.provider === 'codex' && s.id === 'claude' && s.state === 'todo'))
+  const steps = (tour?.steps ?? []).filter(s => s.id !== 'g-calm' && !(snap.setup?.provider === 'codex' && s.id === 'claude' && s.state === 'todo'))
   const n = steps.filter((s) => s.state === 'ready' || s.state === 'done').length
   const later = steps.filter((s) => s.state === 'skip').length
   const track = f && snap.tour ? milestones(snap, f) : null
@@ -482,10 +482,11 @@ export function TourBand() {
   const act = async (s: TourStep, what: 'try' | 'plug' | 'later' | 'show') => {
     setNote(null)
     if (what === 'later') return void api.tourAct('skip', s.id).catch(() => undefined)
+    if (s.id === 'g-calm') return
     if (what === 'show') {
       if (s.id === 'g-back') push({ kind: 'repos' })
       if (s.id === 'g-talk') return talk()
-      window.setTimeout(() => window.dispatchEvent(new CustomEvent('weevils:coach', { detail: s.id === 'g-repos' ? 'repos' : s.id === 'g-calm' ? 'calm' : 'g-back' })), s.id === 'g-back' ? 700 : 0)
+      window.setTimeout(() => window.dispatchEvent(new CustomEvent('weevils:coach', { detail: s.id === 'g-repos' ? 'repos' : 'g-back' })), s.id === 'g-back' ? 700 : 0)
       return
     }
     if (s.id === 'first') return talk()
@@ -651,9 +652,10 @@ export function TourLine() {
   const tour = useTour()
   const t = useT(M)
   if (!tour) return null
-  const n = tour.steps.filter((s) => s.state === 'ready' || s.state === 'done').length
+  const steps = tour.steps.filter(s => s.id !== 'g-calm')
+  const n = steps.filter((s) => s.state === 'ready' || s.state === 'done').length
   return (
-    <Line ch="*" go={null} meta={t.progress(n, tour.steps.length)} onClick={openTour}>
+    <Line ch="*" go={null} meta={t.progress(n, steps.length)} onClick={openTour}>
       {t.dialog}
     </Line>
   )

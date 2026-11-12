@@ -1,3 +1,4 @@
+import { previewTarget } from './preview-target.ts'
 import { Outbox, OutboxError } from './outbox.ts'
 import { executeOutbox, outboxRoute } from './outbox-http.ts'
 import OM from './i18n/outbox.ts'
@@ -355,6 +356,10 @@ setInterval(() => {
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void> | void
 
 const routes: [string, RegExp, Handler][] = [
+  ['GET', /^\/api\/preview\/target$/, (_req,res,url) => {
+    const snapshot = w.snapshot()
+    json(res,200,previewTarget(snapshot.projects,snapshot.sessions,{projectId:url.searchParams.get('projectId') ?? '',repo:url.searchParams.get('repo') || undefined,sessionId:url.searchParams.get('sessionId') || undefined}))
+  }],
   ['POST', /^\/api\/login$/, async (req, res) => {
     const body = await readBody(req)
     if (typeof body.secret !== 'string' || !sameCode(body.secret, SECRET)) {

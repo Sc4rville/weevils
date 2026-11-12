@@ -30,10 +30,11 @@ export async function freezeFeedback(viewer: string, draft: string, target: Prev
   await storePayload(feedbackKey(viewer), value)
   return value
 }
-export async function deliverFeedback(viewer: string, value: FrozenFeedback) {
+export async function deliverFeedback(viewer: string, value: FrozenFeedback, noTarget: string) {
+  // Also reject legacy prepared payloads that used null as a boss fallback. Never retarget a retry.
+  if (!value.target.sessionId) throw new Error(noTarget)
   if (!feedbackDelivered(value)) {
-    if (value.target.sessionId) await api.attach(value.target.sessionId, value.body.text, value.body.files)
-    else await api.mainAttach(value.body.text, value.body.files)
+    await api.attach(value.target.sessionId, value.body.text, value.body.files)
   }
   // Outbox owns its own persisted payload and retry identity after acceptance.
   await removePayload(feedbackKey(viewer)).catch(() => undefined)

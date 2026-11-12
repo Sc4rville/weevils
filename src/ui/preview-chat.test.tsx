@@ -69,11 +69,13 @@ it('reuses persisted image, context and destination on retry after reload and na
  expect(mocks.capture).toHaveBeenCalledOnce(); expect(mocks.previewTarget).toHaveBeenCalledOnce()
  expect(mocks.payloads.size).toBe(0)
 })
-it('routes unresolved ownership to weevboss without asking for a target or creating a session', async () => {
+it('keeps the draft and sends nothing when no existing target matches', async () => {
  mocks.previewTarget.mockResolvedValue({ session: null })
  await render(); await type('Fix this page'); await submit()
- expect(mocks.attach).not.toHaveBeenCalled(); expect(mocks.mainAttach).toHaveBeenCalledOnce()
- expect(mocks.mainAttach.mock.calls[0][1]).toEqual([capture.file])
+ expect(mocks.attach).not.toHaveBeenCalled(); expect(mocks.mainAttach).not.toHaveBeenCalled()
+ expect(host.textContent).toContain('No suitable session')
+ expect(host.querySelector<HTMLInputElement>('.composer input')!.value).toBe('Fix this page')
+ expect(mocks.payloads.size).toBe(0)
  expect(host.querySelector('select')).toBeNull()
 })
 it('blocks double submission while capture/acceptance is pending', async () => {
@@ -91,4 +93,14 @@ it('does not send an unpersisted capture if storage fails', async () => {
  await submit()
  expect(mocks.attach).not.toHaveBeenCalled(); expect(mocks.mainAttach).not.toHaveBeenCalled()
  expect(host.querySelector<HTMLInputElement>('.composer input')!.value).toBe('Do not lose this')
+})
+
+it('refuses a legacy null-target payload on retry without silently moving it to another session', async () => {
+ mocks.payloads.set('preview-feedback:session:existing', { draft: 'Old draft', target: { sessionId: null, title: 'weevboss' }, body: { text: 'Old draft', files: [capture.file] }, fingerprint: 'legacy', at: 1 })
+ await render(); await type('Old draft'); await submit()
+ expect(mocks.attach).not.toHaveBeenCalled(); expect(mocks.mainAttach).not.toHaveBeenCalled()
+ expect(mocks.previewTarget).not.toHaveBeenCalled(); expect(mocks.capture).not.toHaveBeenCalled()
+ expect(host.textContent).toContain('No suitable session')
+ expect(host.querySelector<HTMLInputElement>('.composer input')!.value).toBe('Old draft')
+ expect(mocks.payloads.size).toBe(1)
 })

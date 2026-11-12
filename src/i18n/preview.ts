@@ -2,6 +2,7 @@ import { defineMessages } from './index'
 
 export default defineMessages({
   fr: {
+    noTarget: 'Aucune session disponible pour ce projet. Ouvre sa session depuis la liste des projets, puis réessaie. Aucun message envoyé ; ton brouillon est conservé.',
     message: 'Message',
     pageContext: 'Page de l’aperçu',
     storageUnavailable: 'Le brouillon ne peut pas être sauvegardé. Libère de l’espace dans ce navigateur, puis recharge.',
@@ -22,6 +23,7 @@ export default defineMessages({
     noUrl: 'aucune adresse trouvée dans la session : tape celle de l’appli',
   },
   en: {
+    noTarget: 'No suitable session is available for this project. Open its session from the project list, then retry. Nothing was sent; your draft is kept.',
     message: 'Message',
     pageContext: 'Preview page',
     storageUnavailable: 'The draft cannot be saved. Free up browser storage, then reload.',

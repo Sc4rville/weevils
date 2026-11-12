@@ -68,14 +68,15 @@ export function PreviewChat({ viewerId, projectId, sessionId, repo, frame }: {
       // Start capture from the send gesture; routing cannot turn into a new agent/session.
       const capture = capturePreview(frame.current, { unavailable: t.captureUnavailable, unreadable: t.captureUnreadable, changed: t.captureChanged, failed: t.captureFailed })
       const [image, result] = await Promise.all([capture, api.previewTarget({ projectId: projectId ?? '', sessionId, repo })])
-      const target = result.session ? { sessionId: result.session.id, title: result.session.title } : { sessionId: null, title: 'weevboss' }
+      if (!result.session) throw new Error(t.noTarget)
+      const target = { sessionId: result.session.id, title: result.session.title }
       frozen = await freezeFeedback(viewerId, text, target, image, t.pageContext)
       saved.current = frozen
     }
     const next = { target: frozen.target, at: frozen.at }
     setWatch(next)
     try { sessionStorage.setItem(watchKey, JSON.stringify(next)) } catch { /* Delivery payload is already durable. */ }
-    await deliverFeedback(viewerId, frozen)
+    await deliverFeedback(viewerId, frozen, t.noTarget)
     saved.current = null
   }
   return <section ref={panel} className="preview-chat">

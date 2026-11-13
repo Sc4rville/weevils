@@ -136,7 +136,11 @@ describe('auto drawer', () => {
     const data = snap([task({ id: 'a', title: 'First' }), task({ id: 'b', title: 'Second' })], [timer])
     render(data)
     expect(host.querySelector('[data-h24="timer:wv-sync.timer"] .auto-delete')).toBeNull()
-    await click(host.querySelector('[data-h24="a"] .auto-delete button'))
+    const remove = host.querySelector('[data-h24="a"] .auto-delete button')!
+    expect(remove.getAttribute('aria-label')).toBe('Delete automation')
+    expect(remove.querySelector('svg')).not.toBeNull()
+    expect(remove.textContent).toBe('')
+    await click(remove)
     await flush()
     expect(calls).toEqual(['delete a'])
     expect(pushed).toEqual([])

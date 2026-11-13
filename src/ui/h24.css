@@ -451,6 +451,10 @@
 }
 
 .auto-delete { position: relative; z-index: 2; display: inline-flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.auto-delete button { font-size: .8rem; min-height: 44px; padding: 6px 10px; text-decoration: underline; text-underline-offset: 3px; }
+.auto-delete button { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; padding: 0; text-decoration: none; }
+.auto-delete button .ic { width: 18px; height: 18px; }
 .auto-delete [role="alert"] { color: var(--alert); font-size: .8rem; }
-.auto-band > .auto-delete { display: flex; justify-content: flex-end; padding-inline: var(--pad, 12px); }
+.auto-band > .auto-delete { position: absolute; z-index: 3; inset-inline-end: calc(var(--pad) - 10px); top: 50%; transform: translateY(-50%); }
+.auto-band:has(> .auto-delete) > .in { padding-inline-end: calc(var(--pad) + 44px); }
+.auto-band > .auto-delete:has([role="alert"]) { position: relative; inset: auto; transform: none; display: flex; justify-content: flex-end; padding-inline: var(--pad); }
+.auto-delete-row { text-align: end; }

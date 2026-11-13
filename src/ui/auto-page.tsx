@@ -247,7 +247,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
         ) : undefined
       }
     >
-      {opt && <div className="in"><AutoDeleteAction id={x.id} title={x.title} onDeleted={back} /></div>}
+      {opt && <div className="in auto-delete-row"><AutoDeleteAction id={x.id} title={x.title} onDeleted={back} /></div>}
       {proposed && opt && !opt.draft && (
         <Notice closable={false} eventId={noticeKey("proposal", opt.id)} className="band invert auto-decide">
           <Line

@@ -26,7 +26,7 @@ export class AutomationWorkspaces {
       if(!fs.existsSync(marker)||JSON.parse(fs.readFileSync(marker,'utf8')).id!==id)throw new Error(tr(M).collision)
     }else{
       fs.mkdirSync(path.dirname(dir),{recursive:true})
-      const stage=dir+'.provision-'+crypto.randomUUID()
+      const stage=path.join(path.dirname(dir),'.'+path.basename(dir)+'.provision-'+crypto.randomUUID())
       fs.mkdirSync(stage,{mode:0o700});atomic(path.join(stage,'.weevils-owner.json'),{id})
       try{fs.renameSync(stage,dir)}catch(error){fs.rmSync(stage,{recursive:true,force:true});throw error}
     }

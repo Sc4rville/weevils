@@ -5,6 +5,8 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { vi } from 'vitest'
+import { setLang } from '../i18n'
+import type { Theme } from './app-context'
 import type { AutoDetail, AutoRunDetail, H24Activity, Optimizer, OptimizerTalkReply, Snapshot } from '../../shared/api.ts'
 
 const calls = vi.hoisted(() => [] as string[])
@@ -77,7 +79,7 @@ let host: HTMLElement
 let pushed: unknown[]
 let backs: number
 
-function render(s: Snapshot, page: React.ReactNode) {
+function render(s: Snapshot, page: React.ReactNode, theme: Theme = 'light') {
   const ctx = {
     snap: s,
     now: NOW,
@@ -91,7 +93,7 @@ function render(s: Snapshot, page: React.ReactNode) {
     setExpanded: () => {},
     h24Open: false,
     setH24Open: () => {},
-    theme: 'light' as const,
+    theme,
     setTheme: () => {},
     refresh: () => {},
     logout: () => {},
@@ -125,6 +127,7 @@ afterEach(() => {
   act(() => root.unmount())
   host.remove()
   vi.restoreAllMocks()
+  setLang(null)
 })
 
 describe('automation page', () => {
@@ -387,4 +390,35 @@ it('a failed proposal validation stays on the page with its error until a succes
   await flush()
   expect(backs).toBe(1)
   expect(host.querySelector('.auto-decide')).toBeNull()
+})
+
+describe('draft navigation preserves the original automation', () => {
+  for (const lang of ['en', 'fr'] as const) for (const theme of ['light', 'dark', 'zen', 'graphite'] as const) {
+    it(`keeps history across close/reopen and remount in ${lang}/${theme}`, async () => {
+      setLang(lang)
+      const draft = opt({ id: 'original-draft', state: 'proposed', draft: true, userCreated: true, title: 'Improve interaction quality', talk: [{ who: 'user', text: 'Keep this original request', at: NOW }, { who: 'auto', text: 'Which interaction?', at: NOW + 1 }] })
+      const original = JSON.stringify(draft)
+      render(snap([draft]), <AutoPage id={draft.id} />, theme)
+      await flush()
+      expect(host.querySelector('[aria-label="discard this draft"], [aria-label="abandonner ce brouillon"]')).toBeNull()
+      await click(host.querySelector('button.back'))
+      expect(backs).toBe(1)
+      expect(calls).toEqual([])
+      expect(window.confirm).not.toHaveBeenCalled()
+      act(() => root.unmount())
+      root = createRoot(host)
+      render(snap([JSON.parse(original)]), <AutoPage id={draft.id} />, theme)
+      await flush()
+      expect(host.querySelector('.auto-talk')?.textContent).toContain('Keep this original request')
+      expect(host.querySelector('.auto-talk')?.textContent).toContain('Which interaction?')
+      expect(JSON.stringify(draft)).toBe(original)
+      await click(host.querySelector('.auto-delete button'))
+      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining(draft.title))
+      expect(calls).toEqual([])
+      window.confirm = vi.fn(() => true)
+      await click(host.querySelector('.auto-delete button'))
+      expect(calls).toEqual(['delete original-draft'])
+      expect(backs).toBe(2)
+    })
+  }
 })

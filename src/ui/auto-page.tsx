@@ -153,12 +153,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
     })
   }
   const actions: ReactNode[] = []
-  if (opt?.draft)
-    actions.push(
-      <button key="discard" className="ch" onClick={() => k.answer(opt, false, back)} aria-label={t.discard}>
-        <Icon name="close" />
-      </button>,
-    )
+  // Closing a draft is navigation only. Destruction belongs to the confirmed delete action below.
   if (opt && !proposed && !x.state.match(/^(done|failed)$/)) {
     const paused = x.state === 'paused' || !!opt.paused
     actions.push(

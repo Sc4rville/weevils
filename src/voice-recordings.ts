@@ -77,3 +77,10 @@ export async function recordedChunks(recording: VoiceRecording): Promise<Blob[]>
     tx.onerror = tx.onabort = () => reject(tx.error)
   })
 }
+
+/** Safari may emit one large final blob. Split bytes, never independently encode/decode audio. */
+export function splitVoiceChunk(blob: Blob): Blob[] {
+  const parts: Blob[] = []
+  for (let at = 0; at < blob.size; at += 512 * 1024) parts.push(blob.slice(at, at + 512 * 1024, blob.type))
+  return parts
+}

@@ -4,7 +4,7 @@ import { Notice, useNotice } from './notice'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { api } from '../api'
-import { recordedChunks, saveRecording, saveVoiceChunk, voiceRecordings, volatileVoiceRecordings, type VoiceRecording } from '../voice-recordings'
+import { recordedChunks, saveRecording, saveVoiceChunk, splitVoiceChunk, voiceRecordings, volatileVoiceRecordings, type VoiceRecording } from '../voice-recordings'
 import { WeevbossLogo } from './logo'
 import { Icon } from './icons'
 import { localeHeaders, getLang, tr, useLang, useT } from '../i18n'
@@ -133,7 +133,8 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
   const lang = useLang()
   const snapshot = useApp().snap
   const snapSetup = snapshot.setup
-  const scope = `${snapshot.machines?.[0]?.id ?? 'local'}:${recordingScope ?? location.pathname + location.hash}`
+  // IndexedDB is already isolated by app origin. A late machine snapshot must not move an active recording.
+  const scope = recordingScope ?? `page:${location.pathname}${location.hash}`
   const scopeRef = useRef(scope)
   scopeRef.current = scope
   const [saved, setSaved] = useState<VoiceRecording[]>([])
@@ -316,20 +317,21 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
       let storageError: unknown
       const tracks = stream
       r.ondataavailable = (ev) => {
-        if (!ev.data.size) return
-        const n = parts.length
-        parts.push(ev.data)
-        item = { ...item, count: parts.length }
-        const snapshot = item
-        stored = stored.then(() => saveVoiceChunk(snapshot, n, ev.data)).catch(e => {
-          storageError = e
-          // RAM remains available for export; stop before more unprotected speech is recorded.
-          if (r.state !== 'inactive') r.stop()
-        })
-        uploaded = uploaded.then(async () => {
-          if (uploadError) return
-          try { await api.voiceChunk(id, n, mime, await blobToB64(ev.data)) } catch (e) { uploadError = e }
-        })
+        for (const data of splitVoiceChunk(ev.data)) {
+          const n = parts.length
+          parts.push(data)
+          item = { ...item, count: parts.length }
+          const snapshot = item
+          stored = stored.then(() => saveVoiceChunk(snapshot, n, data)).catch(e => {
+            storageError = e
+            // RAM remains available for export; stop before more unprotected speech is recorded.
+            if (r.state !== 'inactive') r.stop()
+          })
+          uploaded = uploaded.then(async () => {
+            if (uploadError) return
+            try { await api.voiceChunk(id, n, mime, await blobToB64(data)) } catch (e) { uploadError = e }
+          })
+        }
       }
       r.onerror = () => {
         uploadError = new Error(tr(M).recordingInterrupted)

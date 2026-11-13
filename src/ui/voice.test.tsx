@@ -4,7 +4,7 @@ import { MotionGlobalConfig } from 'motion/react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const api=vi.hoisted(()=>({voiceChunk:vi.fn(),voiceFinish:vi.fn(),transcribe:vi.fn()}))
-const journal=vi.hoisted(()=>({volatileVoiceRecordings:new Map(),saveRecording:vi.fn(),saveVoiceChunk:vi.fn(),voiceRecordings:vi.fn(),recordedChunks:vi.fn()}))
+const journal=vi.hoisted(()=>({volatileVoiceRecordings:new Map(),splitVoiceChunk:(blob:Blob)=>blob.size?[blob]:[],saveRecording:vi.fn(),saveVoiceChunk:vi.fn(),voiceRecordings:vi.fn(),recordedChunks:vi.fn()}))
 vi.mock('../voice-recordings',()=>journal)
 vi.mock('../api',()=>({api}))
 vi.mock('./app-context',()=>({useApp:()=>({snap:{setup:{voice:true,dictation:true}}})}))
@@ -126,7 +126,7 @@ it('retains a five-minute recording after a failed finish and retries the same I
 })
 
 it('reloads a saved transcript without inserting or sending it until explicitly requested',async()=>{
- const item={id:'saved-id',scope:'local:/',type:'audio/mp4',lang:'en',startedAt:1000,stoppedAt:301000,count:1,text:'Original transcript'}
+ const item={id:'saved-id',scope:'page:/',type:'audio/mp4',lang:'en',startedAt:1000,stoppedAt:301000,count:1,text:'Original transcript'}
  journal.voiceRecordings.mockResolvedValue([item])
  await render()
  expect(host.textContent).toContain('transcript retained')

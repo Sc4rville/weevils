@@ -16,8 +16,9 @@ try {
   /* pas de config : valeurs par défaut */
 }
 // A Mac: launchd starts a service with a bare PATH. tmux, claude, gh… are found (by us and by the agents we start)
-// only once ~/.local/bin and Homebrew's folders are in it. Linux: unchanged.
-process.env.PATH = servicePath()
+// only once ~/.local/bin and Homebrew's folders are in it. Linux: untouched (an unset PATH must stay unset: an empty
+// one finds nothing, where an unset one still finds /usr/bin).
+if (process.platform === 'darwin') process.env.PATH = servicePath(process.env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin')
 
 /** Prénom de l'utilisateur, pour que les agents s'adressent à lui. Vide : user() (server/i18n.ts) dit « l'utilisateur » / « the user ». */
 export const USER_NAME = process.env.WEEVILS_USER_NAME?.trim() ?? ''

@@ -28,9 +28,9 @@ import { CONTEXT_BLOCK, FIELDS, isSecretName, type Brick, type Device } from '..
 import { BOSS, resetAuthors, authors } from './authors.ts'
 import { CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL } from './config.ts'
 import { claudeLoggedIn } from './claude-credentials.ts'
-import { which as whichIn } from './platform.ts'
+import { servicePath, which as whichIn } from './platform.ts'
 import { devilConfig } from './devil.ts'
-import { facts } from './discover.ts'
+import { facts, macFacts } from './discover.ts'
 import { cartesia, edgeTts } from './fast.ts'
 import { lang, tr } from './i18n.ts'
 import M from './i18n/setup.ts'
@@ -61,7 +61,7 @@ export interface MachineInfo {
   user: string
   /** Comment l'atteindre en SSH depuis un ordinateur : user@ip ou user@nom. */
   sshTarget: string
-  /** Agents qui tiennent à la fois, à la louche (≈ 1 Go chacun, 1,5 Go gardés pour le reste). */
+  /** Agents qui tiennent à la fois, à la louche (≈ 1 Go chacun, 1,5 Go gardés pour le reste ; 4 Go sur un Mac). */
   agents: number
   /** Les autres machines branchées (en ligne). */
   others: string[]
@@ -143,14 +143,21 @@ const read = (f: string) => {
     return ''
   }
 }
-/** L'environnement des installations : ~/.local/bin d'abord, là où elles posent leurs outils sans sudo. */
-const shellEnv = (): NodeJS.ProcessEnv => ({ ...process.env, PATH: [path.join(HOME, '.local', 'bin'), path.join(HOME, '.npm-global', 'bin'), process.env.PATH ?? ''].join(path.delimiter) })
+/** L'environnement des installations et des connexions : ~/.local/bin d'abord, là où elles posent leurs outils sans
+ * sudo. Sur un Mac, les dossiers de Homebrew en plus (launchd n'en donne aucun à un service). */
+export function shellEnv(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env, home = HOME): NodeJS.ProcessEnv {
+  const PATH = [path.join(home, '.local', 'bin'), path.join(home, '.npm-global', 'bin'), env.PATH ?? ''].join(path.delimiter)
+  return { ...env, PATH: servicePath(PATH, platform, home) }
+}
+/** Pour une commande d'installation : en plus, sur un Mac, brew ne pose jamais de question et ne donne pas de conseils. */
+export const installEnv = (platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env, home = HOME): NodeJS.ProcessEnv =>
+  platform === 'darwin' ? { ...shellEnv(platform, env, home), NONINTERACTIVE: '1', HOMEBREW_NO_ENV_HINTS: '1' } : shellEnv(platform, env, home)
 const ANSI = /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07/g
 /** La dernière ligne utile d'une sortie (la raison d'un échec, en clair). */
 const lastLine = (out: string) => out.replace(ANSI, '').split('\n').map((l) => l.trim()).filter(Boolean).pop()?.slice(0, 140) ?? ''
 const sh = (cmd: string, timeout = 600_000) =>
   new Promise<{ ok: boolean; out: string }>((resolve) =>
-    execFile('bash', ['-c', cmd], { timeout, env: shellEnv(), maxBuffer: 8 << 20 }, (err, out, errOut) => resolve({ ok: !err, out: `${String(out ?? '')}\n${String(errOut ?? '')}`.trim() })),
+    execFile('bash', ['-c', cmd], { timeout, env: installEnv(), maxBuffer: 8 << 20 }, (err, out, errOut) => resolve({ ok: !err, out: `${String(out ?? '')}\n${String(errOut ?? '')}`.trim() })),
   )
 const run = (cmd: string, args: string[], timeout = 6000, env?: NodeJS.ProcessEnv) =>
   new Promise<{ ok: boolean; out: string }>((resolve) =>
@@ -177,29 +184,47 @@ async function github(force = false) {
 }
 
 function osName(): string {
+  // (Sur un Mac, machine() préfère « macOS 15.1 », lu par discover.ts.)
   if (process.platform === 'darwin') return 'macOS'
   const pretty = /^PRETTY_NAME="?([^"\n]+)"?/m.exec(read('/etc/os-release'))?.[1]
   return pretty?.replace(/\s+LTS$/, '') || os.type()
 }
 
-async function sudo(): Promise<SetupState['sudo']> {
-  if (process.getuid?.() === 0) return 'yes'
-  if (process.platform === 'darwin') return 'password'
-  if (!which('sudo')) return 'no'
-  if ((await run('sudo', ['-n', 'true'], 3000)).ok) return 'yes'
-  return /\b(sudo|wheel|admin)\b/.test((await run('id', ['-nG'], 3000)).out) ? 'password' : 'no'
+/** Sur un Mac aussi : un compte administrateur donne « password », un compte standard « no ». Rien de ce que fait le
+ * parcours n'y demande les droits administrateur (Homebrew, l'app Tailscale, un agent launchd). */
+export async function sudo(uid = process.getuid?.(), has: (cmd: string) => boolean = (c) => !!which(c), exec: typeof run = run): Promise<SetupState['sudo']> {
+  if (uid === 0) return 'yes'
+  if (!has('sudo')) return 'no'
+  if ((await exec('sudo', ['-n', 'true'], 3000)).ok) return 'yes'
+  return /\b(sudo|wheel|admin)\b/.test((await exec('id', ['-nG'], 3000)).out) ? 'password' : 'no'
 }
 
-function pkg(): SetupState['pkg'] {
-  if (process.platform === 'darwin') return 'brew'
-  if (which('apt-get')) return 'apt'
-  if (which('dnf')) return 'dnf'
-  if (which('pacman')) return 'pacman'
+/** Le gestionnaire de paquets. Sur un Mac : Homebrew s'il est là (install.sh l'installe), sinon aucun. */
+export function pkgManager(platform: NodeJS.Platform = process.platform, has: (cmd: string) => boolean = (c) => !!which(c)): SetupState['pkg'] {
+  if (platform === 'darwin') return has('brew') ? 'brew' : null
+  if (has('apt-get')) return 'apt'
+  if (has('dnf')) return 'dnf'
+  if (has('pacman')) return 'pacman'
   return null
 }
 
 const SERVER_VIRT = /^(kvm|qemu|vmware|xen|microsoft|amazon|google|oracle|bochs|parallels|bhyve|powervm|zvm|acrn|uml|apple|sre)$/
 const CONTAINER_VIRT = /^(docker|podman|lxc|lxc-libvirt|systemd-nspawn|rkt|openvz|container-other|wsl)$/
+
+/** Le type de machine, à partir de ce qui a été détecté. Un Mac est un portable s'il a une batterie (« laptop » vient
+ * alors de `pmset -g batt`, server/discover.ts), sinon un fixe : sa virtualisation ne compte pas. */
+export function machineKind(o: { wsl: boolean; mac: boolean; virt: string; laptop: boolean; publicIp: boolean; provider: boolean }): Kind {
+  if (o.wsl) return 'wsl'
+  if (o.mac) return o.laptop ? 'laptop' : 'desktop'
+  if (CONTAINER_VIRT.test(o.virt)) return 'container'
+  if (SERVER_VIRT.test(o.virt)) return o.publicIp || o.provider ? 'vps' : 'vm'
+  if (o.laptop) return 'laptop'
+  return o.publicIp ? 'server' : 'desktop'
+}
+
+/** Agents qui tiennent à la fois, à la louche : ≈ 1 Go chacun, 1,5 Go gardés pour le système ; 4 Go sur un Mac, où
+ * macOS et les apps ouvertes de son propriétaire en prennent bien plus. */
+export const agentRoom = (ramGb: number, mac: boolean) => Math.max(1, Math.floor(ramGb - (mac ? 4 : 1.5)))
 
 async function machine(deps: SetupDeps): Promise<MachineInfo> {
   const f = await facts().catch(() => null)
@@ -213,16 +238,14 @@ async function machine(deps: SetupDeps): Promise<MachineInfo> {
     }
   })()
   const wsl = virt === 'wsl' || /microsoft/i.test(read('/proc/version'))
-  let kind: Kind
-  if (wsl) kind = 'wsl'
-  else if (mac) kind = /book/i.test((await run('sysctl', ['-n', 'hw.model'], 2000)).out) ? 'laptop' : 'desktop'
-  else if (CONTAINER_VIRT.test(virt)) kind = 'container'
-  else if (SERVER_VIRT.test(virt)) kind = f?.publicIp || f?.provider ? 'vps' : 'vm'
-  else if (f?.laptop || battery) kind = 'laptop'
-  else if (f?.publicIp) kind = 'server'
-  else kind = 'desktop'
+  // (WEEVILS_DISCOVER=0 : discover.ts ne sonde rien ; la batterie d'un Mac se lit quand même, comme /sys ci-dessus.)
+  const laptop = mac ? (f?.laptop ?? (await macFacts()).laptop) : !!f?.laptop || battery
+  const kind = machineKind({ wsl, mac, virt, laptop, publicIp: !!f?.publicIp, provider: !!f?.provider })
   const uptimeDays = os.uptime() / 86400
-  const alwaysOn = kind === 'laptop' || kind === 'wsl' ? false : kind === 'desktop' ? (uptimeDays > 3 ? true : null) : true
+  // Un Mac fixe reste éveillé tant que weevilsd tourne (caffeinate, server/platform.ts) ; sans ça (WEEVILS_KEEP_AWAKE=0),
+  // sa durée d'allumage compte aussi la veille et ne dit rien.
+  const dozes = mac && process.env.WEEVILS_KEEP_AWAKE?.trim() === '0'
+  const alwaysOn = kind === 'laptop' || kind === 'wsl' ? false : kind === 'desktop' ? (uptimeDays > 3 && !dozes ? true : null) : true
   // Dans un conteneur, les limites qui comptent sont celles du cgroup (--cpus, --memory), pas celles de l'hôte.
   const quota = /^(\d+)\s+(\d+)/.exec(read('/sys/fs/cgroup/cpu.max'))
   const memMax = Number(read('/sys/fs/cgroup/memory.max').trim())
@@ -243,7 +266,7 @@ async function machine(deps: SetupDeps): Promise<MachineInfo> {
   return {
     kind,
     mac,
-    os: osName(),
+    os: (mac && f?.os) || osName(),
     cpus,
     ramGb,
     uptimeDays,
@@ -252,7 +275,7 @@ async function machine(deps: SetupDeps): Promise<MachineInfo> {
     host,
     user,
     sshTarget: `${user}@${(f?.publicIp && f.ip) || (kind === 'vps' || kind === 'server' ? publicHost : '') || os.hostname()}`,
-    agents: Math.max(1, Math.floor(ramGb - 1.5)),
+    agents: agentRoom(ramGb, mac),
     others,
     othersAlwaysOn: remote.some((r) => (r.virt && SERVER_VIRT.test(r.virt) && r.publicIp) || !!r.provider || (r.virt && CONTAINER_VIRT.test(r.virt) && r.virt !== 'wsl')),
   }
@@ -327,13 +350,18 @@ export const TIPS: [id: string, what: string][] = [
 
 // ---------------------------------------------------------------- installer : la marche à suivre exacte
 
-function ghNoSudo(): string {
-  const arch = os.arch() === 'arm64' ? 'arm64' : 'amd64'
-  return `mkdir -p ~/.local/bin && curl -fsSL "$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | grep -o 'https://[^"]*linux_${arch}.tar.gz' | head -1)" | tar xz -C /tmp && mv /tmp/gh_*_linux_${arch}/bin/gh ~/.local/bin/`
+/** gh sans gestionnaire de paquets : l'archive officielle, dans ~/.local/bin. Sur un Mac c'est un zip (gh_x_macOS_arm64.zip). */
+export function ghNoSudo(platform: NodeJS.Platform = process.platform, cpu: string = os.arch()): string {
+  const arch = cpu === 'arm64' ? 'arm64' : 'amd64'
+  const latest = (asset: string) => `"$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | grep -o 'https://[^"]*${asset}' | head -1)"`
+  if (platform === 'darwin')
+    return `mkdir -p ~/.local/bin && d=$(mktemp -d) && curl -fsSLo "$d/gh.zip" ${latest(`macOS_${arch}.zip`)} && unzip -qo "$d/gh.zip" -d "$d" && mv "$d"/gh_*_macOS_${arch}/bin/gh ~/.local/bin/ && rm -rf "$d"`
+  return `mkdir -p ~/.local/bin && curl -fsSL ${latest(`linux_${arch}.tar.gz`)} | tar xz -C /tmp && mv /tmp/gh_*_linux_${arch}/bin/gh ~/.local/bin/`
 }
 
 export function ghInstall(s: SetupState): string {
   if (s.pkg === 'brew') return 'brew install gh'
+  if (s.machine.mac) return ghNoSudo('darwin')
   if (s.sudo !== 'yes' || !s.pkg) return ghNoSudo()
   return { apt: 'sudo apt update && sudo apt install -y gh', dnf: 'sudo dnf install -y gh', pacman: 'sudo pacman -S --noconfirm github-cli' }[s.pkg]
 }
@@ -353,7 +381,8 @@ export function installCommand(what: 'claude' | 'gh' | 'edge' | 'codex', s: Setu
   if (what === 'claude') return 'curl -fsSL https://claude.ai/install.sh | bash'
   if (what === 'gh') return ghInstall(s)
   if (what === 'edge') return edgeInstall(s)
-  return s.pkg === 'brew' ? 'npm i -g @openai/codex' : 'npm i -g --prefix ~/.local @openai/codex'
+  // Toujours dans ~/.local/bin, là où weevils le cherche, quel que soit le Node installé (Homebrew, nvm, un paquet).
+  return 'npm i -g --prefix ~/.local @openai/codex'
 }
 
 /** Ce qui est là et ce qui manque, en clair, avec un bouton par brique manquante (l'app, jamais de commande). */
@@ -376,7 +405,9 @@ export function installPlan(s: SetupState): string {
   const t = tr(M)
   const blocks: string[] = []
   const have: string[] = []
-  const can = s.sudo !== 'no'
+  // Homebrew installe sans sudo, avec le compte de l'utilisateur.
+  const can = s.sudo !== 'no' || s.pkg === 'brew'
+  const noBrew = s.machine.mac && !s.pkg
   const base = (['git', 'tmux', 'curl', 'python3', 'qrencode'] as const).filter((x) => !s.tools[x])
   for (const x of ['git', 'tmux', 'curl', 'python3'] as const) if (s.tools[x]) have.push(x)
   if (base.length && can && s.pkg) {
@@ -388,7 +419,7 @@ export function installPlan(s: SetupState): string {
     else if (can && s.pkg === 'apt') blocks.push('curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs')
     else if (can && s.pkg === 'dnf') blocks.push('sudo dnf install -y nodejs22')
     else if (can && s.pkg === 'pacman') blocks.push('sudo pacman -S --noconfirm nodejs npm')
-    else blocks.push('curl -fsSL https://fnm.vercel.app/install | bash && ~/.local/share/fnm/fnm install 22')
+    else if (!noBrew) blocks.push('curl -fsSL https://fnm.vercel.app/install | bash && ~/.local/share/fnm/fnm install 22')
   } else have.push(`node ${s.tools.node}`)
   if (!s.claude.installed) blocks.push('curl -fsSL https://claude.ai/install.sh | bash')
   else have.push('claude')
@@ -400,7 +431,10 @@ export function installPlan(s: SetupState): string {
   else have.push('codex')
   const logins = [!s.claude.logged, !s.github.logged, !s.codex.logged].filter(Boolean)
   const fence = (c: string) => (c.includes('\n') ? '```sh\n' + c + '\n```' : '`' + c + '`')
-  const parts = [t.installIntro(s.machine.os, blocks.length > 0)]
+  // Un Mac sans Homebrew : les outils de base et Node.js passent par l'installateur de weevils, qui l'apporte.
+  const brewFirst = noBrew && (base.length > 0 || s.tools.node < 22)
+  const parts = [t.installIntro(s.machine.os, blocks.length > 0 || brewFirst)]
+  if (brewFirst) parts.push(t.installNoBrew(s.clone))
   if (!can && blocks.length) parts.push(t.installNoSudo)
   parts.push(...blocks.map(fence))
   if (have.length) parts.push(`${t.installDone} ${have.join(', ')}.`)
@@ -494,7 +528,7 @@ const short = (e: unknown) => {
 // ---------------------------------------------------------------- ce que weevboss reçoit (jamais affiché)
 
 /** Brancher une machine où weevilsd vient de poser sa clé. Pour weevboss, en anglais (comme le reste de son outillage). */
-function machineBrief(o: { target: string; user: string; host: string; port: number; provider: string; about: string; here: SetupState }): string {
+export function machineBrief(o: { target: string; user: string; host: string; port: number; provider: string; about: string; here: SetupState }): string {
   const ssh = `ssh${o.port !== 22 ? ` -p ${o.port}` : ''} ${o.user}@${o.host}`
   const m = o.here.machine
   const notReachable = ['laptop', 'desktop', 'wsl'].includes(m.kind) || o.here.reach === 'local'
@@ -504,16 +538,35 @@ function machineBrief(o: { target: string; user: string; host: string; port: num
     notReachable
       ? `This machine (${m.host}, ${m.kind}) is not always on or not reachable from the internet, so the new machine should become the main one: install weevils there as the main machine (README / docs/install.md in ${o.here.clone}), make this machine its secondary, then give the user the new app address with its sign-in link.`
       : `Install weevils on it as a secondary machine of this one (${m.host}), following "Several machines" in ${o.here.clone}/docs/install.md: it needs to ssh back to this machine without a password, so authorize its key here. Check it shows up under \"other machines\" in \`weevils setup\`.`,
+    // Un Mac : jamais systemctl, et personne n'y entre en SSH (« Session à distance » est coupée d'origine).
+    m.mac ? 'This machine is a Mac: weevils runs here as a launchd agent, so use `weevils-service` (start, stop, restart, status, logs), never systemctl, and nothing on it needs admin rights. Do not count on anything reaching this Mac over ssh: Remote Login is off by default, and the user is not to be asked to turn it on.' : '',
     'Then tell the user in two short sentences what changed.',
-  ].join(' ')
+  ].filter(Boolean).join(' ')
 }
 
-/** Rendre weevils joignable de partout : un domaine vérifié, ou Tailscale. */
-function reachBrief(s: SetupState, domain: string): string {
+/** Rendre weevils joignable de partout : un domaine vérifié, ou Tailscale. Sur un Mac : Tailscale seulement (install.sh
+ * y refuse --domain), par son app, sans sudo. */
+export function reachBrief(s: SetupState, domain: string): string {
   const never = 'Do every step yourself, never ask the user to type a command.'
+  if (s.machine.mac) return reachBriefMac(s)
   if (domain)
     return `Setup button: switch weevils to https on ${domain}, which already resolves to this machine. ${never} Run \`${s.clone}/install.sh --yes --domain ${domain}\` (it sets up Caddy and the certificate; sudo works here without a password), check that https://${domain}/api/me answers, then tell the user the new address and put the [[setup:phone]] chip so they get its sign-in code and link.`
   return `Setup button: make weevils reachable from anywhere with Tailscale. ${never} Install Tailscale on this machine (https://tailscale.com/install.sh; sudo works here without a password), run \`sudo tailscale up\` in the background and give the user the sign-in link it prints, as a link. Once it is signed in, run \`sudo tailscale serve --bg ${s.port}\`, set WEEVILS_PUBLIC_URL in ~/.config/weevils/env to the https://….ts.net address it serves, and restart weevils (weevils-service restart). Then tell the user to install the Tailscale app on their phone with the same account, and put the [[setup:phone]] chip for the sign-in link.`
+}
+
+/** Tailscale sur un Mac : l'app (App Store ou tailscale.com), dont la commande marche sans sudo. Elle ne s'installe pas
+ * sans son propriétaire (une extension réseau à autoriser, un compte) : un lien pour lui, jamais une commande. */
+function reachBriefMac(s: SetupState): string {
+  const app = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
+  return [
+    'Setup button: make weevils reachable from anywhere with Tailscale, on this Mac. Run every command yourself, never ask the user to type one; nothing here needs admin rights or a password.',
+    `Find the Tailscale command, written <tailscale> below: \`tailscale\` in the PATH, else \`${app}\` (the app carries it).`,
+    'If neither exists, Tailscale is not installed and you cannot install it for them: give the user this link, as a link, https://tailscale.com/download/mac, ask them to install the app, open it and sign in, and to tell you when it is done. Stop there until they answer, then look again.',
+    'Run `<tailscale> status --json`: when BackendState is not "Running", ask the user to open the Tailscale app on the Mac and sign in (no command), and wait for them.',
+    `Once it is running, run \`<tailscale> serve --bg ${s.port}\`. If it prints a link to turn on HTTPS for their tailnet, give the user that link, wait until they say it is done, and run it again.`,
+    `Read this Mac's name in \`<tailscale> status --json\` (Self.DNSName, without the final dot), then run \`${s.clone}/install.sh --agent --url https://<that name>\` the way step 4 of ${s.clone}/AGENTS.md says (in the background, until its summary): it records the address and restarts weevils, so the app may drop for a few seconds. Check that https://<that name>/api/me answers.`,
+    'Then tell the user to install the Tailscale app on their phone with the same account, and put the [[setup:phone]] chip for the sign-in link.',
+  ].join(' ')
 }
 
 export class Setup {
@@ -527,6 +580,8 @@ export class Setup {
   private codexLogin: ChildProcess | null = null
   private codexLoginStarting: Promise<boolean> | null = null
   private codexLoginShown = false
+  /** Sur un Mac, « joignable de partout » part chez weevboss dès le tap : quand, pour qu'un double tap ne le confie pas deux fois. */
+  private reachAt = 0
   /** La dernière explication postée par une puce : un second tap ne la répète pas. */
   private lastAsk: { brick: Brick; id: string; text: string } | null = null
   /** Le dernier message écrit (ou retrouvé) au nom de weevboss : l'app l'amène sous les yeux après une puce. */
@@ -655,7 +710,7 @@ export class Setup {
       shortcut: this.deps.shortcut(),
       security: { safe: process.env.WEEVILS_SAFE === '1', https, exposedHttp: (reach === 'lan' || (reach === 'public' && !https)) && m.kind !== 'container' },
       quota,
-      pkg: pkg(),
+      pkg: pkgManager(),
       sudo: sd,
       tools: { git: !!which('git'), tmux: !!which('tmux'), curl: !!which('curl'), python3: !!which('python3'), qrencode: !!which('qrencode'), pipx: !!which('pipx'), uv: !!which('uv'), node: nodeMajor },
       projects: this.deps.feed().projects,
@@ -857,6 +912,19 @@ export class Setup {
         if (s.reach === 'public' && s.https) return post(t.reachAsk(s)), false
         const http = s.reach === 'public'
         if (!providerReady()) return post(`${t.reachAsk(s)} ${chip(t.providerLater(preferredTool() === 'codex' ? 'Codex' : 'Claude Code'), preferredTool())}`), false
+        // Un Mac : rien ne demande les droits administrateur, et pas de domaine (install.sh y refuse --domain). Une seule
+        // voie, Tailscale : pas de question à poser, weevboss s'y met tout de suite.
+        if (s.machine.mac) {
+          post(`${t.reachAsk(s)} ${t.reachMacGo}`)
+          if (Date.now() - this.reachAt > 60_000) {
+            this.reachAt = Date.now()
+            await this.handoff(t.reachTailscaleDo, reachBrief(s, '')).catch((e: unknown) => {
+              this.reachAt = 0
+              throw e
+            })
+          }
+          return false
+        }
         if (s.sudo !== 'yes') return post(`${t.reachAsk(s)} ${chip(t.needSudo, 'machine')}`), false
         post(`${t.reachAsk(s)} ${t.reachPrompt(http)}`)
         return true
@@ -1097,6 +1165,8 @@ export class Setup {
     const t = tr(M)
     const s = await this.detect()
     const domain = v.domain.toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/\/.*$/, '').trim()
+    // Un domaine tapé sur un Mac (le champ n'y est pas proposé) : dit clairement, avec le bouton de la seule voie.
+    if (domain && s.machine.mac) return this.say(chip(t.reachMacDomain(domain), 'reach'))
     if (!domain) return this.handoff(t.reachTailscaleDo, reachBrief(s, ''))
     const f = await facts().catch(() => null)
     const ip = f?.publicIp ? (f.ip ?? '') : ''

@@ -18,6 +18,7 @@
 // Coût : appelé à chaque passage du store (1,5 s). Méta, journaux et fins de fichiers sont mis en cache par taille et
 // date ; les fichiers des sous-agents (jusqu'à 10 Mo et plus) ne sont lus que par la fin, jamais en entier.
 
+import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -259,13 +260,102 @@ const childrenByScan = (): Map<number, number[]> => {
   return map
 }
 
+// macOS has no /proc: the same two facts come from one `ps` of every process, shared by all sessions. It is read in
+// the background (never while the store's pass waits for it), at most every PS_EVERY_MS and only while something asks.
+// Until the first one is back, and once the last one is older than PS_KEEP_MS, there is no signal, as before.
+
+/** Every process ps listed: when it started, whether it is a zombie, its command line; and who is whose child. */
+export interface PsTable {
+  rows: Map<number, { startedAt: number; zombie: boolean; cmd: string }>
+  kids: Map<number, number[]>
+}
+/** -ww: whole command lines (without a terminal ps cuts them at 80 columns). One -o per column: read alike by BSD and Linux ps. */
+const PS_ARGS = ['-ax', '-ww', '-o', 'pid=', '-o', 'ppid=', '-o', 'stat=', '-o', 'lstart=', '-o', 'command=']
+/** `ps -ax -ww -o pid= -o ppid= -o stat= -o lstart= -o command=` (LC_ALL=C: lstart is « Fri Nov 13 19:28:34 2026 », local time). */
+export function parsePs(out: string): PsTable {
+  const t: PsTable = { rows: new Map(), kids: new Map() }
+  for (const line of out.split('\n')) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(\w{3}\s+\w{3}\s+\d{1,2}\s+\d\d:\d\d:\d\d\s+\d{4})(?:\s+(.*))?$/.exec(line)
+    if (!m) continue
+    const [pid, ppid] = [Number(m[1]), Number(m[2])]
+    t.rows.set(pid, { startedAt: Date.parse(m[4].replace(/\s+/g, ' ')), zombie: m[3].startsWith('Z'), cmd: m[5] ?? '' })
+    t.kids.set(ppid, [...(t.kids.get(ppid) ?? []), pid])
+  }
+  return t
+}
+/** procInfo's answer out of a ps table: same rules as on Linux (zombie or unknown: null; shells up to three levels down). */
+export function procInfoIn(t: PsTable, pid: number): ProcInfo | null {
+  const me = t.rows.get(pid)
+  if (!me || me.zombie || !Number.isFinite(me.startedAt)) return null
+  const shells: string[] = []
+  let frontier = [pid]
+  for (let depth = 0; depth < 3 && frontier.length; depth++) {
+    const next: number[] = []
+    for (const p of frontier) {
+      for (const c of (t.kids.get(p) ?? []).slice(0, 64)) {
+        const cmd = t.rows.get(c)?.cmd ?? ''
+        if (cmd.includes('shell-snapshots')) shells.push(cmd)
+        else next.push(c)
+      }
+    }
+    frontier = next
+  }
+  return { startedAt: me.startedAt, shells }
+}
+
+/** A new ps at most this often. */
+export const PS_EVERY_MS = 5000
+/** A ps older than this says nothing any more. Under SHELL_GRACE_MS: a command old enough to be judged was already
+ * running when the ps that judges it was taken. */
+export const PS_KEEP_MS = 15_000
+export type PsRun = () => Promise<string>
+const psAll: PsRun = () =>
+  new Promise((resolve, reject) =>
+    execFile('/bin/ps', PS_ARGS, { timeout: 5000, maxBuffer: 32 << 20, env: { ...process.env, LC_ALL: 'C' } }, (err, out) => (err ? reject(err) : resolve(String(out)))),
+  )
+let psLast: { at: number; table: PsTable } | null = null
+let psReading = false
+/** When the last ps was started, whether it worked or not: a ps that fails is not started again on every pass. */
+let psAsked = -Infinity
+/** Tests: forget the last ps. */
+export function forgetPs(): void {
+  psLast = null
+  psReading = false
+  psAsked = -Infinity
+}
+/** procInfo on a Mac: answers from the last ps (null when there is none recent enough) and asks for a new one when it is due. */
+export function psProcInfo(pid: number, run: PsRun = psAll, clock: () => number = Date.now): ProcInfo | null {
+  const now = clock()
+  if (!psReading && now - psAsked >= PS_EVERY_MS) {
+    psReading = true
+    psAsked = now
+    void run()
+      .then(
+        (out) => {
+          const table = parsePs(out)
+          // Nothing readable (another ps, another format): no signal rather than « every process is gone ».
+          psLast = table.rows.size ? { at: clock(), table } : null
+        },
+        () => {
+          psLast = null
+        },
+      )
+      .finally(() => {
+        psReading = false
+      })
+  }
+  return psLast && now - psLast.at < PS_KEEP_MS ? procInfoIn(psLast.table, pid) : null
+}
+
 /**
- * Le processus claude et ses commandes en cours. null sans /proc (macOS) ou processus introuvable : ce signal est
- * alors ignoré. Les serveurs MCP, enfants de claude toujours vivants, ne comptent pas : seuls les bash « shell-snapshots »
- * de l'outil Bash sont des commandes.
+ * Le processus claude et ses commandes en cours. null sans moyen de le lire (ni Linux ni macOS), processus introuvable,
+ * ou sur un Mac tant qu'aucun ps récent n'est revenu : ce signal est alors ignoré. Les serveurs MCP, enfants de claude
+ * toujours vivants, ne comptent pas : seuls les bash « shell-snapshots » de l'outil Bash sont des commandes.
  */
-export function procInfo(pid?: number): ProcInfo | null {
-  if (!pid || process.platform !== 'linux') return null
+export function procInfo(pid?: number, platform: NodeJS.Platform = process.platform): ProcInfo | null {
+  if (!pid) return null
+  if (platform === 'darwin') return psProcInfo(pid)
+  if (platform !== 'linux') return null
   try {
     const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8')
     const f = stat.slice(stat.lastIndexOf(')') + 2).split(' ')

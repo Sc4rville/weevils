@@ -1,4 +1,5 @@
-// La machine se découvre toute seule : matériel ou virtualisation (DMI, systemd-detect-virt), OS, IP publique,
+// La machine se découvre toute seule : matériel ou virtualisation (DMI, systemd-detect-virt ; sur un Mac, son modèle
+// et sa batterie), OS, IP publique,
 // fournisseur et région (ASN de l'IP via ipinfo.io, reverse DNS), comment s'y connecter (utilisateur, port sshd,
 // alias SSH vus par les autres machines), l'offre probable chez le fournisseur et le palier au-dessus (recherche web
 // de claude sur le site du fournisseur, null pour tout ce qui n'y est pas vérifié). Rien n'est supposé : un fait
@@ -9,10 +10,12 @@
 import { execFile } from 'node:child_process'
 import dns from 'node:dns/promises'
 import fs from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import type { MachineFacts, Offer, SshTarget } from '../shared/infra.ts'
 import { CONFIG_DIR, DATA_DIR, DISCOVER, HOME } from './config.ts'
+import { macHasBattery } from './platform.ts'
 
 const DIR = path.join(DATA_DIR, 'infra')
 const read = (f: string) => {
@@ -100,8 +103,20 @@ export function sshTargets(): SshTarget[] {
   return out
 }
 
-function sshdPort(): number | undefined {
-  if (!fs.existsSync('/usr/sbin/sshd') && !fs.existsSync('/usr/bin/sshd')) return undefined
+/** Quelque chose écoute sur ce port de la machine (300 ms au plus). */
+const listening = (port: number) =>
+  new Promise<boolean>((resolve) => {
+    const s = net.connect({ host: '127.0.0.1', port })
+    const done = (ok: boolean) => (s.destroy(), resolve(ok))
+    s.setTimeout(300, () => done(false))
+    s.once('connect', () => done(true))
+    s.once('error', () => done(false))
+  })
+
+/** Le port de sshd. Un Mac a toujours /usr/sbin/sshd, mais « Session à distance » y est coupée d'origine : le port n'est
+ * dit que si quelque chose y écoute. */
+export async function sshdPort(platform: NodeJS.Platform = process.platform, probe: (port: number) => Promise<boolean> = listening, exists: (f: string) => boolean = fs.existsSync): Promise<number | undefined> {
+  if (!exists('/usr/sbin/sshd') && !exists('/usr/bin/sshd')) return undefined
   const conf = [read('/etc/ssh/sshd_config'), ...(() => {
     try {
       return fs.readdirSync('/etc/ssh/sshd_config.d').map((f) => read(path.join('/etc/ssh/sshd_config.d', f)))
@@ -110,7 +125,24 @@ function sshdPort(): number | undefined {
     }
   })()].join('\n')
   const p = /^\s*Port\s+(\d+)/im.exec(conf)?.[1]
-  return p ? Number(p) : 22
+  const port = p ? Number(p) : 22
+  if (platform === 'darwin' && !(await probe(port))) return undefined
+  return port
+}
+
+/** Un Mac portable : une batterie interne (`pmset -g batt`), ou à défaut un nom de modèle en « Book » (ceux d'avant
+ * 2022 ; depuis, un MacBook Air s'appelle « Mac14,2 »). */
+export const macLaptop = (model: string, pmsetBatt: string) => macHasBattery(pmsetBatt) || /book/i.test(model)
+
+let macCache: { hardware?: string; laptop: boolean } | null = null
+/** Sur un Mac, ce que /sys dit ailleurs : le modèle (« Apple Mac14,2 ») et s'il a une batterie. Sondé une fois : ça ne
+ * change pas. */
+export async function macFacts(exec: typeof run = run): Promise<{ hardware?: string; laptop: boolean }> {
+  if (macCache && exec === run) return macCache
+  const [model, batt] = await Promise.all([exec('sysctl', ['-n', 'hw.model'], 2000), exec('pmset', ['-g', 'batt'], 2000)])
+  const v = { hardware: model ? `Apple ${model}` : undefined, laptop: macLaptop(model, batt) }
+  if (model && exec === run) macCache = v
+  return v
 }
 
 let factsCache: { at: number; v: MachineFacts } | null = null
@@ -120,14 +152,15 @@ export async function facts(): Promise<MachineFacts> {
   const local = DISCOVER !== '0'
   const online = DISCOVER === '1'
   const dmi = (k: string) => (local ? read(`/sys/class/dmi/id/${k}`) : '')
-  const virtRaw = local ? (await run('systemd-detect-virt', [])) || (fs.existsSync('/.dockerenv') ? 'docker' : '') : ''
+  const virtRaw = local ? (process.platform === 'darwin' ? '' : await run('systemd-detect-virt', [])) || (fs.existsSync('/.dockerenv') ? 'docker' : '') : ''
   const virt = virtRaw && virtRaw !== 'none' ? virtRaw : undefined
   const vendor = dmi('sys_vendor')
   const product = dmi('product_name')
   // Une VM montre l'émulateur (QEMU, « Standard PC ») : seul le matériel d'une machine physique est dit.
-  const hardware = !virt && meaningful(vendor) ? [vendor, meaningful(product) ? product : ''].filter(Boolean).join(' ') : undefined
+  const mac = local && process.platform === 'darwin' ? await macFacts() : null
+  const hardware = !virt && meaningful(vendor) ? [vendor, meaningful(product) ? product : ''].filter(Boolean).join(' ') : mac?.hardware
   const chassis = Number(dmi('chassis_type')) || undefined
-  const osName = /^PRETTY_NAME="?([^"\n]+)"?/m.exec(read('/etc/os-release'))?.[1] ?? (process.platform === 'darwin' ? `macOS ${await run('sw_vers', ['-productVersion'])}` : undefined) // i18n-ignore : nom de commande
+  const osName = /^PRETTY_NAME="?([^"\n]+)"?/m.exec(read('/etc/os-release'))?.[1] ?? (process.platform === 'darwin' ? `macOS ${await run('sw_vers', ['-productVersion'])}`.trim() : undefined) // i18n-ignore : nom de commande
   const info = online ? await ipinfo() : null
   const ifIp = local ? interfaceIp() : undefined
   const ip = ifIp ?? info?.ip
@@ -143,7 +176,7 @@ export async function facts(): Promise<MachineFacts> {
     cpuModel: os.cpus()[0]?.model.replace(/\s+/g, ' ').trim() || undefined,
     virt,
     hardware,
-    laptop: chassis ? [8, 9, 10, 14, 31, 32].includes(chassis) : undefined,
+    laptop: chassis ? [8, 9, 10, 14, 31, 32].includes(chassis) : mac?.laptop,
     ip,
     publicIp: !!ifIp,
     rdns,
@@ -155,7 +188,7 @@ export async function facts(): Promise<MachineFacts> {
     region: info?.region,
     country: info?.country,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    sshPort: local ? sshdPort() : undefined,
+    sshPort: local ? await sshdPort() : undefined,
     ssh: sshTargets(),
   }
   factsCache = { at: Date.now(), v }

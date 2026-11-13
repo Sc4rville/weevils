@@ -19,7 +19,8 @@ import type { Weevils } from './core.ts'
 import { haiku } from './fast.ts'
 import { loadBlurbs } from './github.ts'
 import { lang, tr, user } from './i18n.ts'
-import { servers } from './infra.ts'
+import { macListeners, servers, type Run } from './infra.ts'
+import { IS_MAC, which as toolPath, type Platform } from './platform.ts'
 import { familyOf } from './projects.ts'
 import type { Remote } from './remotes.ts'
 import M from './i18n/softwares.ts'
@@ -572,10 +573,11 @@ const mtime = (f: string) => {
   }
 }
 const inside = (p: string, dir: string) => p === dir || p.startsWith(dir.endsWith('/') ? dir : dir + '/')
-/** Chemin réel (racines de projets ou dossiers liés par symlink : /proc donne toujours le chemin réel). */
+/** Chemin réel (racines de projets ou dossiers liés par symlink : /proc donne toujours le chemin réel). Sur un Mac, la
+ *  casse du disque aussi (volume insensible à la casse : ~/Projects et ~/projects sont le même dossier, lsof donne la vraie). */
 const real = (p: string) => {
   try {
-    return fs.realpathSync(p)
+    return IS_MAC ? fs.realpathSync.native(p) : fs.realpathSync(p)
   } catch {
     return path.resolve(p)
   }
@@ -583,11 +585,12 @@ const real = (p: string) => {
 const expandHome = (p: string) => p.replace(/^~(?=\/|$)/, HOME).replace(/%h/g, HOME)
 
 const pathCache = new Map<string, string | null>()
-/** Exécutable du PATH (et ~/.local/bin), null s'il n'y est pas. */
+/** Exécutable du PATH (et ~/.local/bin), null s'il n'y est pas. Sur un Mac : le PATH, puis là où Homebrew et les
+ *  installeurs posent les commandes (server/platform.ts). */
 function which(bin: string): string | null {
   if (pathCache.has(bin)) return pathCache.get(bin)!
-  let found: string | null = null
-  for (const d of [...(process.env.PATH ?? '').split(path.delimiter), path.join(HOME, '.local', 'bin')]) {
+  let found: string | null = IS_MAC ? toolPath(bin) : null
+  for (const d of IS_MAC ? [] : [...(process.env.PATH ?? '').split(path.delimiter), path.join(HOME, '.local', 'bin')]) {
     if (!d) continue
     try {
       fs.accessSync(path.join(d, bin), fs.constants.X_OK)
@@ -633,7 +636,21 @@ export function parseListeners(out: string): { port: number; addr: string; pids:
   }
   return res
 }
-const listeners = async () => parseListeners((await sh('ss', ['-ltnpH'], { timeout: 3000 })).out)
+/** La sortie d'une commande d'inspection (3 s au plus), même en erreur. Sur un Mac, en locale C : ps y écrit des dates. */
+const runOut: Run = async (cmd, args) => (await sh(cmd, args, IS_MAC ? { timeout: 3000, env: { ...process.env, LC_ALL: 'C' } } : { timeout: 3000 })).out
+/** Ce qui écoute en TCP : ss sous Linux (tout le monde) ; lsof sur un Mac, qui n'a ni ss ni /proc (les processus de cet
+ *  utilisateur seulement : un port tenu par un autre compte se voit au moment de lancer, quand il répond). */
+export async function listeners(platform: Platform = process.platform, run: Run = runOut): Promise<{ port: number; addr: string; pids: number[] }[]> {
+  if (platform !== 'darwin') return parseListeners(await run('ss', ['-ltnpH']))
+  const by = new Map<string, { port: number; addr: string; pids: number[] }>()
+  for (const l of await macListeners(run)) {
+    const k = `${l.addr} ${l.port}`
+    const e = by.get(k) ?? { port: l.port, addr: l.addr, pids: [] }
+    if (!e.pids.includes(l.pid)) e.pids.push(l.pid)
+    by.set(k, e)
+  }
+  return [...by.values()]
+}
 /** Écoute sur toutes les interfaces (0.0.0.0, ::, *) : joignable de l'extérieur sans passer par Caddy. */
 export const wildcard = (addr: string) => addr === '0.0.0.0' || addr === '::' || addr === '*' || addr === '::0'
 /** Groupe de processus d'un pid (/proc/<pid>/stat, 5e champ). */
@@ -644,6 +661,26 @@ const pgidOf = (pid: number) => {
   } catch {
     return -1
   }
+}
+const PS = '/bin/ps'
+/** `ps -o pid= -o pgid= -p <pids>` : le groupe de chaque processus encore là. */
+export function parsePsPgid(out: string): Map<number, number> {
+  const res = new Map<number, number>()
+  for (const line of out.split('\n')) {
+    const m = /^\s*(\d+)\s+(\d+)\s*$/.exec(line)
+    if (m) res.set(Number(m[1]), Number(m[2]))
+  }
+  return res
+}
+/** Le groupe de processus de chaque pid : /proc sous Linux, un seul ps sur un Mac. */
+export async function pgids(pids: number[], platform: Platform = process.platform, run: Run = runOut): Promise<Map<number, number>> {
+  if (platform !== 'darwin') return new Map(pids.map((p) => [p, pgidOf(p)]))
+  return pids.length ? parsePsPgid(await run(PS, ['-o', 'pid=', '-o', 'pgid=', '-p', pids.join(',')])) : new Map()
+}
+/** Ces ports à l'écoute sont-ils tenus par le groupe de processus `pgid` (un serveur lancé d'ici, ou l'un de ses enfants) ? */
+export async function heldBy(l: { pids: number[] }[], pgid: number, platform: Platform = process.platform, run: Run = runOut): Promise<boolean> {
+  const groups = await pgids([...new Set(l.flatMap((x) => x.pids))], platform, run)
+  return [...groups.values()].includes(pgid)
 }
 /** Un processus du groupe vit encore (le meneur peut être parti avant ses enfants). */
 const groupAlive = (pgid: number) => {
@@ -702,11 +739,19 @@ const startTicks = (pid: number) => {
   const s = read(`/proc/${pid}/stat`, 4096)
   return s ? s.slice(s.lastIndexOf(')') + 2).split(' ')[19] ?? '' : ''
 }
-const alive = (pid: number, ticks: string) => {
+/** Sur un Mac (pas de /proc) : la date de départ que donne ps (`ps -o lstart= -p <pid>`), '' si le processus n'est plus là. */
+export const macStart = async (pid: number, run: Run = runOut) => (await run(PS, ['-o', 'lstart=', '-p', String(pid)])).trim()
+/** Le processus lancé vit encore : ce pid existe, et c'est bien le même (sa date de départ), pas un pid réutilisé. */
+export async function alive(pid: number, ticks: string, platform: Platform = process.platform, run: Run = runOut): Promise<boolean> {
   try {
     process.kill(pid, 0)
   } catch {
     return false
+  }
+  if (platform === 'darwin') {
+    // ps muet (processus parti entre-temps, ps en échec) : on s'en tient au pid, comme sans /proc.
+    const now = ticks ? await macStart(pid, run) : ''
+    return !ticks || !now || now === ticks
   }
   return !ticks || startTicks(pid) === ticks || !exists('/proc')
 }
@@ -714,7 +759,7 @@ const alive = (pid: number, ticks: string) => {
 /** L'environnement d'un logiciel lancé d'un tap : celui de l'utilisateur, sans les secrets ni les réglages de weevilsd. */
 function cleanEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {}
-  for (const [k, v] of Object.entries(process.env)) if (!/^(WEEVILS_|CARTESIA_|DEVIL_|OPENAI_API_KEY$|ANTHROPIC_|NODE_ENV$|PORT$|HOST$|INVOCATION_ID$|JOURNAL_STREAM$)/.test(k)) env[k] = v
+  for (const [k, v] of Object.entries(process.env)) if (!/^(WEEVILS_|CARTESIA_|DEVIL_|OPENAI_API_KEY$|ANTHROPIC_|NODE_ENV$|PORT$|HOST$|INVOCATION_ID$|JOURNAL_STREAM$|XPC_SERVICE_NAME$|XPC_FLAGS$)/.test(k)) env[k] = v
   return { ...env, ...extra }
 }
 
@@ -905,8 +950,10 @@ export function parseUnit(text: string): { workdir?: string; paths: string[] } {
   return { workdir: wd ? expandHome(wd) : undefined, paths }
 }
 
-/** Services systemd --user écrits par l'utilisateur (~/.config/systemd/user), avec leur état. */
-async function userUnits(): Promise<Unit[]> {
+/** Services systemd --user écrits par l'utilisateur (~/.config/systemd/user), avec leur état. Aucun sur un Mac (launchd) :
+ *  rien n'y est lu ni lancé, même si le dossier existe (des réglages copiés d'une autre machine). */
+export async function userUnits(platform: Platform = process.platform): Promise<Unit[]> {
+  if (platform === 'darwin') return []
   const dir = path.join(process.env.XDG_CONFIG_HOME || path.join(HOME, '.config'), 'systemd', 'user')
   let files: string[] = []
   try {
@@ -982,6 +1029,12 @@ function caddySites(): CaddySite[] {
     return []
   }
 }
+
+/** Le cache des navigateurs de Playwright : ~/.cache sous Linux, ~/Library/Caches sur un Mac. */
+export const playwrightCache = (home: string, platform: Platform = process.platform) => path.join(home, ...(platform === 'darwin' ? ['Library', 'Caches'] : ['.cache']), 'ms-playwright')
+/** Les navigateurs d'un Mac qui savent tourner sans écran : des apps, pour tous ou pour cet utilisateur. */
+export const macChromes = (home: string) =>
+  ['/Applications', path.join(home, 'Applications')].flatMap((d) => [path.join(d, 'Google Chrome.app', 'Contents', 'MacOS', 'Google Chrome'), path.join(d, 'Chromium.app', 'Contents', 'MacOS', 'Chromium')])
 
 const siteUrl = (s: CaddySite) => `https://${s.host.includes('.') ? s.host : `${s.name}.${EXPOSE_DOMAIN}`}`
 
@@ -1440,11 +1493,11 @@ export class Softwares {
       // Lancé d'un tap : vivant, en route, ou tombé.
       let own: RunState | null = null
       if (rec?.pid) {
-        const live = alive(rec.pid, rec.ticks ?? '')
+        const live = await alive(rec.pid, rec.ticks ?? '')
         // Après un redémarrage de weevilsd, la surveillance du lancement n'existe plus : on la refait ici.
         if (!readOnly && live && !rec.up && rec.port && !this.watching.has(e.key)) {
           const l = all.filter((x) => x.port === rec.port)
-          if (l.some((x) => x.pids.some((pid) => pgidOf(pid) === rec.pid))) {
+          if (await heldBy(l, rec.pid)) {
             rec.up = true
             writeJson('runs.json', this.runs)
             void this.publish(e, rec.port)
@@ -1806,13 +1859,13 @@ export class Softwares {
     return mtime(this.shotPath(e)) || undefined
   }
 
-  /** Chromium sans écran : PATH, puis le cache de Playwright. */
+  /** Chromium sans écran : PATH, puis le cache de Playwright ; sur un Mac, enfin, les apps (jamais dans le PATH). */
   private chrome(): string | null {
     if (this.chromeBin !== undefined) return this.chromeBin
     let found: string | null = null
     for (const b of ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable', 'chrome-headless-shell', 'chrome']) if (!found) found = which(b)
     if (!found) {
-      const cache = process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(HOME, '.cache', 'ms-playwright')
+      const cache = process.env.PLAYWRIGHT_BROWSERS_PATH || playwrightCache(HOME)
       try {
         const dirs = fs.readdirSync(cache).sort().reverse()
         for (const [prefix, bin] of [['chromium_headless_shell-', 'chrome-headless-shell'], ['chromium-', 'chrome']] as const) {
@@ -1827,6 +1880,7 @@ export class Softwares {
         /* pas de Playwright */
       }
     }
+    if (!found && IS_MAC) found = macChromes(HOME).find(exists) ?? null
     return (this.chromeBin = found)
   }
 
@@ -1995,6 +2049,14 @@ export class Softwares {
       r.exit = code
       writeJson('runs.json', this.runs)
     })
+    // Sur un Mac la date de départ vient de ps (asynchrone) : notée une fois le suivi de sortie en place.
+    if (IS_MAC && pid)
+      void macStart(pid).then((t) => {
+        const r = this.runs[e.key]
+        if (!t || r?.pid !== pid || r.ticks) return
+        r.ticks = t
+        writeJson('runs.json', this.runs)
+      })
     e.logs.unshift({ file: log, at: Date.now() })
     this.watching.add(e.key)
     void (async () => {
@@ -2004,7 +2066,7 @@ export class Softwares {
           if (r?.pid !== pid || r.endedAt || !pid) return
           // Il écoute quand le port est tenu par son groupe à lui, et seulement sur la boucle locale.
           const l = (await listeners()).filter((x) => x.port === port)
-          if (l.some((x) => x.pids.some((p) => pgidOf(p) === pid))) {
+          if (await heldBy(l, pid)) {
             if (l.some((x) => wildcard(x.addr))) {
               this.note(r, tr(M).allInterfaces(port))
               await killGroup(pid)
@@ -2096,7 +2158,7 @@ export class Softwares {
     const rec = this.runs[e.key]
     if (!rec) throw new Error(tr(M).notOurs)
     // Le meneur vérifié (pid et date de départ), puis tout son groupe, enfants restés seuls compris.
-    if (rec.pid && (alive(rec.pid, rec.ticks ?? '') || (!rec.endedAt && groupAlive(rec.pid)))) await killGroup(rec.pid)
+    if (rec.pid && ((await alive(rec.pid, rec.ticks ?? '')) || (!rec.endedAt && groupAlive(rec.pid)))) await killGroup(rec.pid)
     if (rec.unit) await sh('systemctl', ['--user', 'stop', rec.unit], { timeout: 15_000 })
     if (rec.container) await sh('docker', ['stop', rec.container], { timeout: 30_000 })
     if (rec.published) await this.unpublish(rec.published)

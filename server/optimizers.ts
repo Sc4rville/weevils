@@ -42,6 +42,7 @@ import { claudeAvailable, claudeHaiku, parseJson, smart, relay as relayAnswer } 
 import { lang, tr, user, withLang, type Lang } from './i18n.ts'
 import O from './i18n/optimizers.ts'
 import type { Memory } from './memory.ts'
+import { availableMem, type Platform } from './platform.ts'
 import { claudeLogged } from './setup.ts'
 import { sessionTokens } from './usage.ts'
 
@@ -102,7 +103,7 @@ const TERMS = ['est', 'priority', 'heavy', 'notBefore', 'window', 'every'] as co
  * (guardEnv) stop the plain commands those run, the jail (jailArgs) what a task does on purpose. The brief says it too.
  */
 const curlSends = ['-X', '--request', '-d', '--data', '--json', '-F', '--form', '-T', '--upload-file'].flatMap((f) => [`Bash(curl ${f}*)`, `Bash(curl * ${f}*)`])
-export const DENY = [
+const COMMON_DENY = [
   'Bash(git push*)',
   'Bash(git -C * push*)',
   'Bash(git -c * push*)',
@@ -184,6 +185,38 @@ export const DENY = [
   'RemoteTrigger',
 ]
 /**
+ * Added on a Mac, where a task has no jail and the logins are not files: the Keychain holds Claude Code's login, the
+ * token gh keeps there and the passwords git saved, and its command line prints them (security find-generic-password,
+ * dump-keychain, export…), as do `gh auth token` and git's own helper. The same words anywhere in a command are
+ * denied too (`sh -c "security …"`), like *.credentials.json above. launchd starts commands outside the session,
+ * like systemd-run above; a LaunchAgent or a zsh start file would run later in the user's own session.
+ */
+export const MAC_DENY = [
+  'Bash(security)',
+  'Bash(security *)',
+  'Bash(*/security *)',
+  'Bash(*find-generic-password*)',
+  'Bash(*find-internet-password*)',
+  'Bash(*dump-keychain*)',
+  'Bash(*Claude Code-credentials*)',
+  'Bash(*gh auth *)',
+  'Bash(git credential*)',
+  'Bash(git -C * credential*)',
+  'Bash(*git-credential-*)',
+  'Bash(launchctl *)',
+  'Bash(*/launchctl *)',
+  'Read(~/Library/Keychains/**)',
+  'Edit(~/Library/LaunchAgents/**)',
+  'Edit(~/.zshrc)',
+  'Edit(~/.zshenv)',
+  'Edit(~/.zprofile)',
+  'Edit(~/.zlogin)',
+  'Edit(~/.bash_profile)',
+]
+/** The deny list of this machine: the common rules, plus the Mac ones on a Mac. */
+export const denyList = (platform: Platform = process.platform): string[] => (platform === 'darwin' ? [...COMMON_DENY, ...MAC_DENY] : COMMON_DENY)
+export const DENY = denyList()
+/**
  * The extra arguments of an optimizer's claude session: the deny list as flag settings, and no MCP server at all (the
  * user's claude.ai connectors and plugins can send mail, publish or spend credits; an empty --mcp-config with
  * --strict-mcp-config leaves none).
@@ -210,7 +243,9 @@ const KEEP_NAME = /^(ANTHROPIC_|CLAUDE_|WEEVILS_)/
  * - no ssh agent, no docker login, no publishing token, no paid-API key from weevils' environment, no claude.ai connector.
  * `guard` is a folder of weevils' (emptied before each task): gh/ and docker/ inside are the empty configs.
  */
-export function guardEnv(guard: string, env: NodeJS.ProcessEnv = process.env): { set: Record<string, string>; unset: string[] } {
+export function guardEnv(guard: string, env: NodeJS.ProcessEnv = process.env, platform: Platform = process.platform): { set: Record<string, string>; unset: string[] } {
+  // A program that always fails, where the system has it (a Mac has no /bin/false).
+  const no = platform === 'darwin' ? '/usr/bin/false' : '/bin/false'
   const git: [string, string][] = [
     ['remote.pushDefault', NO_PUSH_URL],
     ...PUSH_PREFIXES.map((p): [string, string] => [`url.${NO_PUSH_URL}.pushInsteadOf`, p]),
@@ -224,11 +259,11 @@ export function guardEnv(guard: string, env: NodeJS.ProcessEnv = process.env): {
     GH_PROMPT_DISABLED: '1',
     DOCKER_CONFIG: path.join(guard, 'docker'),
     GIT_TERMINAL_PROMPT: '0',
-    GIT_ASKPASS: '/bin/false',
-    SSH_ASKPASS: '/bin/false',
+    GIT_ASKPASS: no,
+    SSH_ASKPASS: no,
     SSH_ASKPASS_REQUIRE: 'never',
     GCM_INTERACTIVE: 'never',
-    GIT_SSH_COMMAND: '/bin/false',
+    GIT_SSH_COMMAND: no,
     GIT_CONFIG_COUNT: String(git.length),
     ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
     // weevils' CLI (weevils new, send…) talks to weevilsd on WEEVILS_PORT: a port where nothing listens.
@@ -366,13 +401,43 @@ const gitWorktree = (repo: string, dir: string, branch: string) =>
   new Promise<void>((resolve, reject) =>
     execFile('git', ['-C', repo, 'worktree', 'add', dir, '-b', branch], { timeout: 60_000 }, (e, _out, err) => (e ? reject(new Error(String(err || e.message).trim().split('\n').pop())) : resolve())),
   )
-const tryJail = (args: string[]) =>
-  new Promise<boolean>((resolve, reject) =>
-    execFile('bwrap', [...args, 'true'], { timeout: 15_000 }, (e, _out, err) =>
+/** bwrap exists on Linux only: on a Mac the answer is known (no jail), nothing is started to find out. */
+export const tryJail = (args: string[], platform: Platform = process.platform, run: typeof execFile = execFile) =>
+  new Promise<boolean>((resolve, reject) => {
+    if (platform === 'darwin') return resolve(false)
+    run('bwrap', [...args, 'true'], { timeout: 15_000 }, (e, _out, err) =>
       !e ? resolve(true) : (e as NodeJS.ErrnoException).code === 'ENOENT' ? resolve(false) : reject(new Error(String(err || e.message).trim().split('\n').pop())),
-    ),
-  )
-const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: () => os.freemem(), logged: () => preferredTool() === 'codex' ? providerReady() : claudeLogged(), worktree: gitWorktree, jail: tryJail, head: headOf }
+    )
+  })
+/** How often a Mac's available memory is read again (vm_stat, in the background). */
+export const MEM_REFRESH_MS = 20_000
+/**
+ * The memory a task can get, read on the spot (Sys.free is synchronous). Linux: os.freemem(), which is MemAvailable.
+ * macOS: os.freemem() only counts untouched pages (a few hundred MB on an idle Mac: no task would ever start), so the
+ * value comes from vm_stat (availableMem in server/platform.ts), read again in the background from the first call on;
+ * os.freemem() until the first answer arrives.
+ */
+export function memGauge(platform: Platform = process.platform, read: () => Promise<number> = () => availableMem(platform), free: () => number = () => os.freemem(), everyMs = MEM_REFRESH_MS): () => number {
+  if (platform !== 'darwin') return free
+  let last: number | undefined
+  let started = false
+  const refresh = () =>
+    void read().then(
+      (n) => (last = n),
+      () => undefined,
+    )
+  return () => {
+    if (!started) {
+      started = true
+      refresh()
+      setInterval(refresh, everyMs).unref?.()
+    }
+    return last ?? free()
+  }
+}
+/** The note of a queued task that waits for Claude on a Mac, in every language (a task keeps the one it was given). */
+const MAC_NOTES: string[] = [O.fr.noJailMac, O.en.noJailMac]
+const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: memGauge(), logged: () => preferredTool() === 'codex' ? providerReady() : claudeLogged(), worktree: gitWorktree, jail: tryJail, head: headOf }
 
 // ---------------------------------------------------------------- pure helpers (tested)
 
@@ -627,8 +692,9 @@ export class Optimizers {
   private rounding: Promise<void> | null = null
   private launching = false
   private noJailSaid = false
-  /** bwrap works on this machine (asked once, when Claude first hits its limit). */
+  /** bwrap works on this machine (asked once, when Claude first hits its limit); never on a Mac, known without asking. */
   private bwrap: boolean | undefined
+  private platform: Platform
   private probingJail = false
   private auto = false
   readonly software: AutomationWorkspaces
@@ -640,9 +706,11 @@ export class Optimizers {
   /** Archives being written (the git diff of a run that just ended): settled() waits for them. */
   private writing = new Set<Promise<void>>()
 
-  constructor(w: Weevils, memory: Memory, opts: { file?: string; /** default <projects>/.auto */ dir?: string; /** default auto/ beside file */ archive?: string; softwareRoot?:string; sys?: Partial<Sys> } = {}) {
+  constructor(w: Weevils, memory: Memory, opts: { file?: string; /** default <projects>/.auto */ dir?: string; /** default auto/ beside file */ archive?: string; softwareRoot?:string; sys?: Partial<Sys>; platform?: Platform } = {}) {
     this.w = w
     this.memory = memory
+    this.platform = opts.platform ?? process.platform
+    if (this.platform === 'darwin') this.bwrap = false
     this.file = opts.file ?? path.join(DATA_DIR, 'optimizers.json')
     this.dir = opts.dir ?? path.join(PROJECTS_DIR, '.auto')
     this.archive = new RunArchive(opts.archive ?? path.join(path.dirname(this.file), 'auto'))
@@ -1249,6 +1317,15 @@ export class Optimizers {
           o.retryAt = providerHold ? (this.w.relay?.retryAt() ?? now + 60_000) : hold
           dirty = true
         }
+    // On a Mac a task that would run on Codex never starts (no jail there): it says why instead of waiting in silence,
+    // and stops saying it once Claude is the one that runs it.
+    const macNote = this.platform === 'darwin' && (selected !== undefined ? selected === 'codex' : preferredTool() === 'codex') ? tr(O).noJailMac : undefined
+    for (const o of queue)
+      if (macNote ? o.lastEvent !== macNote : MAC_NOTES.includes(o.lastEvent ?? '')) {
+        if (macNote) o.lastEvent = macNote
+        else delete o.lastEvent
+        dirty = true
+      }
     // Stopped by a limit or an error: it waits for its retry time, the others go first. Same for one held by its
     // conditions (not before, its window, its next run).
     // Paused by the user: skipped until played again. Asked to run now: first in line, whatever its time.
@@ -1513,7 +1590,7 @@ export class Optimizers {
     const o = this.s.items.find((x) => !!x.sessionId && (x.sessionId === sessionId || this.w.sessionIdOf?.(x.sessionId) === sessionId))
     if (!o || o.deletedAt || (o.state !== 'queued' && o.state !== 'running')) throw new Error(tr(O).vanished)
     if(o.repo)this.w.assertRepoExecution?.(o.repo)
-    if (!(await this.sys.jail(['--dev-bind', '/', '/', '--']))) throw new Error(tr(O).noJail)
+    if (!(await this.sys.jail(['--dev-bind', '/', '/', '--']))) throw new Error(this.noJail())
     await this.launch(o, Date.now(), { tool, relay: text, sessionId: targetId })
     if (o.state !== 'running' || !o.sessionId) throw new Error(o.lastEvent || tr(O).startFailed)
     return o.sessionId
@@ -1543,6 +1620,11 @@ export class Optimizers {
     return dir
   }
 
+  /** Why a Codex task cannot start here: no jail on this machine (said in the Mac's own words on a Mac). */
+  private noJail(): string {
+    return this.platform === 'darwin' ? tr(O).noJailMac : tr(O).noJail
+  }
+
   /**
    * The jail of a task (jailArgs), tried before the session starts: bwrap's command prefix, or [] on a machine without
    * bwrap (macOS…), where the environment barriers and the deny list are all there is. A jail that fails stops the task.
@@ -1562,7 +1644,7 @@ export class Optimizers {
       show,
     })
     if (await this.sys.jail(args)) return ['bwrap', ...args]
-    if (!this.noJailSaid) console.log("[auto] bwrap absent : les tâches tournent sans prison (barrières d'environnement et interdits seuls)")
+    if (!this.noJailSaid) console.log(`[auto] ${this.platform === 'darwin' ? 'pas de prison sur macOS' : 'bwrap absent'} : les tâches tournent sans prison (barrières d'environnement et interdits seuls)`)
     this.noJailSaid = true
     return []
   }
@@ -1639,10 +1721,10 @@ export class Optimizers {
       // Codex has no deny list: its tasks run only inside the jail (which keeps its login, nothing else of the user's).
       const wrap = await this.jail(o, cwd, guard, tool === 'codex' ? ['.codex'] : [])
       const executionWrap=sourceRunner ? [...wrap,'node',sourceRunner,'--'] : wrap
-      if (tool === 'codex' && !wrap.length) throw new Error(tr(O).noJail)
+      if (tool === 'codex' && !wrap.length) throw new Error(this.noJail())
       step = 'start'
       if(o.deletedAt){o.state='refused';return}
-      const { id } = tool === 'codex' ? await this.w.createIn(cwd, o.title, text, [], { ...guardEnv(guard), wrap:executionWrap }, 'codex') : await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard), wrap:executionWrap }, 'claude', on.sessionId)
+      const { id } = tool === 'codex' ? await this.w.createIn(cwd, o.title, text, [], { ...guardEnv(guard, process.env, this.platform), wrap:executionWrap }, 'codex') : await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard, process.env, this.platform), wrap:executionWrap }, 'claude', on.sessionId)
       o.sessionId = id
       o.seenAt = Date.now()
       console.log(`[auto] lancée : ${o.title} (${cwd})${tool === 'codex' ? ' · sur Codex (Claude à sa limite)' : ''}`)

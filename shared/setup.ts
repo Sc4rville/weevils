@@ -44,6 +44,7 @@ export const FIELDS: Partial<Record<Brick, SetupField[]>> = {
     { name: 'user', optional: true },
     { name: 'password', secret: true, optional: true },
   ],
+  // Vide : Tailscale. Jamais posée sur un Mac (pas de domaine là-bas : weevboss part sur Tailscale dès le tap).
   reach: [{ name: 'domain', kind: 'url', optional: true }],
   devil: [
     { name: 'url', kind: 'url' },

@@ -2,6 +2,22 @@
 
 A short summary of what changed after the first working version.
 
+## 2026-11-13
+
+### macOS
+- weevils installs and runs on a **Mac** (Apple Silicon and Intel) with the same command, by hand or through an AI
+  agent (`AGENTS.md`). The installer runs under the bash 3.2 that macOS ships, never as root, and takes tmux, jq,
+  Node.js and qrencode from **Homebrew** (installed too when it is missing). `--domain` is refused there (Caddy stays
+  Linux only); `--url` and `--lan` work, and Tailscale is the way in for the phone.
+- The service is a **launchd agent** of your session (`~/Library/LaunchAgents/com.github.sc4rville.weevilsd.plist`),
+  started at login and restarted if it stops. `weevils-service start|stop|restart|status|logs` drives it as on Linux;
+  logs in `~/.local/share/weevils/weevilsd.log`. Over SSH with no session open on the Mac's screen, weevilsd runs in
+  the background until the next restart.
+- Claude Code's login is read from the **Keychain**. weevilsd keeps the Mac awake while it is plugged in
+  (`WEEVILS_KEEP_AWAKE=0` turns that off); a closed laptop lid still puts it to sleep.
+- The install summary has two new keys, `os` (`linux` or `macos`) and `arch`. The systemd timers of the auto band and
+  the bwrap jail stay Linux only. Details: [install.md](install.md#macos).
+
 ## 2026-11-10
 
 ### For you

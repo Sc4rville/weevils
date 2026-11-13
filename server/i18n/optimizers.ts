@@ -141,6 +141,8 @@ export default defineMessages({
     stall_login: 'connexion à Claude à refaire',
     stall_api: "erreur de l'API Claude",
     noJail: 'pas de prison bwrap sur cette machine : la tâche attend Claude',
+    /** On a Mac, where no such jail exists: a task never runs on Codex there. */
+    noJailMac: 'sur un Mac, une tâche ne tourne pas avec Codex : elle attend Claude',
     /** Before the task's own brief, when Codex takes it over with an approved plan. */
     relayRules: 'Le cadre et la consigne d’origine de la tâche, toujours valables :',
     /** GET /api/auto/… : no such automation, run or image. */
@@ -261,6 +263,7 @@ export default defineMessages({
     stall_login: 'Claude login needed',
     stall_api: 'Claude API error',
     noJail: 'no bwrap jail on this machine: the task waits for Claude',
+    noJailMac: 'on a Mac, a task does not run with Codex: it waits for Claude',
     relayRules: 'The frame and the original brief of the task, still valid:',
     notFound: 'not found',
   },

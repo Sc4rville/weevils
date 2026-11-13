@@ -27,7 +27,9 @@ npm run check   # typecheck (app + server), i18n check, shell syntax, tests
 ```
 
 If you touch `install.sh` or `server/install.sh`, also run the installer end to end in blank Ubuntu containers
-(needs Docker, takes a while): `test/docker/run.sh`.
+(needs Docker, takes a while): `test/docker/run.sh`. The shell scripts run on a Mac too, under its bash 3.2 and BSD
+tools: `test/macos/run.sh` checks that without a Mac, in a Docker container that stands in for one, and
+`docs/ci/macos.yml` is an optional GitHub Actions workflow for a real Mac.
 
 Tests never touch your real `~/.config`, `~/.claude` or weevils data: they run with a temporary `HOME`. Check a live
 behaviour (a session cut mid-work, a notification) on the throwaway server above, never on the instance someone uses
@@ -41,7 +43,7 @@ that talks to a live server is opt-in: `WEEVILS_LIVE_TEST=1 npx vitest run test/
   transcripts, receives the Claude Code hooks, drives the `wv-*` tmux sessions, and serves the app and the API.
 - `src/`: the app (React, Vite, Motion). `shared/`: types and helpers used by both.
 - `install.sh` (the installer), `server/install.sh` (commands, hooks, service), `server/wv` (the `wv` command).
-- `test/docker/`: installer tests. `scripts/fresh.sh`: a blank install in Docker.
+- `test/docker/`, `test/macos/`: installer tests (Linux, macOS). `scripts/fresh.sh`: a blank install in Docker.
 
 ## Rules of the house
 

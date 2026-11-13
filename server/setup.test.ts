@@ -89,6 +89,124 @@ describe('installPlan', () => {
     expect(installPlan(s)).toContain('sudo apt update && sudo apt install -y tmux')
     expect(installPlan(s)).toContain('sudo apt update && sudo apt install -y gh')
   })
+  // Un Mac : Homebrew, avec le compte de l'utilisateur. Jamais sudo, jamais apt, jamais un binaire Linux.
+  const mac = (over: Record<string, unknown> = {}) => {
+    const s = structuredClone(base) as any
+    Object.assign(s.machine, { kind: 'laptop', mac: true, os: 'macOS 15.1', alwaysOn: false })
+    Object.assign(s, { pkg: 'brew', sudo: 'password', reach: 'local', url: 'http://127.0.0.1:4179', https: false }, over)
+    s.github = { installed: false, logged: false }
+    s.codex = { installed: false, logged: false }
+    s.voice.spoken = null
+    s.tools = { ...s.tools, tmux: false, qrencode: false, pipx: false }
+    return s
+  }
+  it('a Mac with Homebrew: brew for everything, no sudo (not even the « no sudo here » note), no apt', () => {
+    const p = installPlan(mac())
+    expect(p).toContain('`brew install tmux qrencode`')
+    expect(p).toContain('`brew install gh`')
+    expect(p).toContain('`brew install pipx && pipx install edge-tts`')
+    expect(p).toContain('`npm i -g --prefix ~/.local @openai/codex`')
+    expect(p).not.toMatch(/\bsudo\b|\bapt\b|linux_|fnm/i)
+    // A standard account (no admin rights) changes nothing: brew installs as the person.
+    expect(installPlan(mac({ sudo: 'no' }))).toBe(p)
+    const old = mac()
+    old.tools.node = 20
+    expect(installPlan(old)).toContain('`brew install node`')
+  })
+  it('a Mac without Homebrew: the installer brings it; what goes in the home folder is the macOS build', () => {
+    const s = mac({ pkg: null })
+    s.tools.node = 20
+    const p = installPlan(s)
+    expect(p).toContain('Homebrew is missing on this Mac')
+    expect(p).toContain('~/weevils/install.sh --agent')
+    expect(p).toMatch(/macOS_(arm64|amd64)\.zip/)
+    expect(p).toContain('uv tool install edge-tts')
+    expect(p).not.toMatch(/\bsudo\b|\bapt\b|linux_|fnm|brew install/)
+    // Everything from Homebrew is there: nothing to say about it.
+    const full = mac({ pkg: null })
+    full.tools = { ...full.tools, tmux: true, qrencode: true }
+    expect(installPlan(full)).not.toContain('Homebrew')
+  })
+  it('Linux is untouched: the same commands as before, to the letter', async () => {
+    const { ghNoSudo, installCommand } = await import('./setup.ts')
+    expect(ghNoSudo('linux', 'x64')).toBe(
+      `mkdir -p ~/.local/bin && curl -fsSL "$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | grep -o 'https://[^"]*linux_amd64.tar.gz' | head -1)" | tar xz -C /tmp && mv /tmp/gh_*_linux_amd64/bin/gh ~/.local/bin/`,
+    )
+    expect(ghNoSudo('linux', 'arm64')).toContain('linux_arm64.tar.gz')
+    const s = structuredClone(base) as any
+    expect(installCommand('codex', s)).toBe('npm i -g --prefix ~/.local @openai/codex')
+    expect(installCommand('gh', s)).toBe('sudo apt update && sudo apt install -y gh')
+    expect(installCommand('gh', { ...s, sudo: 'password' })).toBe(ghNoSudo('linux'))
+    s.voice.spoken = null
+    s.tools.pipx = false
+    expect(installCommand('edge', s)).toBe('sudo apt install -y pipx && pipx ensurepath && pipx install edge-tts')
+    s.tools.node = 20
+    expect(installPlan({ ...s, sudo: 'no' })).toContain('~/.local/share/fnm/fnm install 22')
+  })
+  it('gh on a Mac without Homebrew: the macOS zip for this processor, in ~/.local/bin', async () => {
+    const { ghNoSudo, installCommand } = await import('./setup.ts')
+    const arm = ghNoSudo('darwin', 'arm64')
+    expect(arm).toContain("grep -o 'https://[^\"]*macOS_arm64.zip'")
+    expect(arm).toContain('unzip -qo')
+    expect(arm).toContain('/gh_*_macOS_arm64/bin/gh ~/.local/bin/')
+    expect(arm).not.toMatch(/linux|tar xz|\bsudo\b/)
+    expect(ghNoSudo('darwin', 'x64')).toContain('macOS_amd64.zip')
+    expect(installCommand('gh', mac({ pkg: null }))).toMatch(/macOS_(arm64|amd64)\.zip/)
+    expect(installCommand('gh', mac())).toBe('brew install gh')
+  })
+})
+
+describe('what the machine is (macOS branches, run on Linux)', async () => {
+  const { pkgManager, sudo, shellEnv, installEnv, machineKind, agentRoom } = await import('./setup.ts')
+  it('package manager: Homebrew on a Mac only when it is there, never guessed', () => {
+    const has = (...cmds: string[]) => (c: string) => cmds.includes(c)
+    expect(pkgManager('darwin', has('brew'))).toBe('brew')
+    expect(pkgManager('darwin', has())).toBeNull()
+    expect(pkgManager('darwin', has('apt-get'))).toBeNull()
+    expect(pkgManager('linux', has('apt-get', 'brew'))).toBe('apt')
+    expect(pkgManager('linux', has('dnf'))).toBe('dnf')
+    expect(pkgManager('linux', has('pacman'))).toBe('pacman')
+    expect(pkgManager('linux', has('brew'))).toBeNull()
+  })
+  it('admin rights: the real checks on a Mac too (an admin account, a standard one)', async () => {
+    const exec = (sudoOk: boolean, groups: string) => async (cmd: string) => (cmd === 'sudo' ? { ok: sudoOk, out: '' } : { ok: true, out: groups })
+    const yes = () => true
+    expect(await sudo(0, yes, exec(false, ''))).toBe('yes')
+    expect(await sudo(501, yes, exec(true, 'staff'))).toBe('yes')
+    expect(await sudo(501, yes, exec(false, 'staff everyone localaccounts admin _appstore'))).toBe('password')
+    expect(await sudo(502, yes, exec(false, 'staff everyone localaccounts _lpoperator'))).toBe('no')
+    expect(await sudo(1000, yes, exec(false, 'me adm sudo docker'))).toBe('password')
+    expect(await sudo(1000, () => false, exec(true, 'sudo'))).toBe('no')
+  })
+  it('the PATH of installs and sign-ins: Homebrew folders on a Mac, nothing new on Linux', () => {
+    const env = { PATH: '/usr/bin:/bin', FOO: '1' }
+    expect(shellEnv('linux', env, '/home/me')).toEqual({ FOO: '1', PATH: '/home/me/.local/bin:/home/me/.npm-global/bin:/usr/bin:/bin' })
+    expect(installEnv('linux', env, '/home/me')).toEqual(shellEnv('linux', env, '/home/me'))
+    const mac = shellEnv('darwin', env, '/Users/me')
+    expect(mac.PATH).toBe('/Users/me/.local/bin:/Users/me/.npm-global/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin')
+    expect(mac.NONINTERACTIVE).toBeUndefined()
+    // An install never waits for an answer from brew.
+    expect(installEnv('darwin', env, '/Users/me')).toMatchObject({ PATH: mac.PATH, NONINTERACTIVE: '1', HOMEBREW_NO_ENV_HINTS: '1', FOO: '1' })
+  })
+  it('machine kind: a Mac is a laptop when it has a battery, whatever it is called or runs in', () => {
+    const k = (o: Partial<Parameters<typeof machineKind>[0]>) => machineKind({ wsl: false, mac: false, virt: '', laptop: false, publicIp: false, provider: false, ...o })
+    expect(k({ mac: true, laptop: true })).toBe('laptop')
+    expect(k({ mac: true })).toBe('desktop')
+    expect(k({ mac: true, virt: 'apple', publicIp: true, provider: true })).toBe('desktop')
+    // Linux, as before.
+    expect(k({ wsl: true, virt: 'wsl', laptop: true })).toBe('wsl')
+    expect(k({ virt: 'docker', publicIp: true })).toBe('container')
+    expect(k({ virt: 'kvm', publicIp: true })).toBe('vps')
+    expect(k({ virt: 'kvm', provider: true })).toBe('vps')
+    expect(k({ virt: 'kvm' })).toBe('vm')
+    expect(k({ laptop: true, publicIp: true })).toBe('laptop')
+    expect(k({ publicIp: true })).toBe('server')
+    expect(k({})).toBe('desktop')
+  })
+  it('room for agents: a Mac keeps 4 GB for macOS and its apps, a server 1.5', () => {
+    expect([2, 4, 8, 15.5].map((gb) => agentRoom(gb, false))).toEqual([1, 2, 6, 14])
+    expect([4, 8, 16, 36].map((gb) => agentRoom(gb, true))).toEqual([1, 4, 12, 32])
+  })
 })
 
 describe('guessBrick (Claude Code not signed in yet)', async () => {
@@ -127,10 +245,59 @@ describe('never a command for the user to type', () => {
         const m = { ...base.machine, kind }
         texts.push(t.machine(m), t.claudeMissing(m), t.machineAsk({ ...base, machine: m }))
       }
+      // Un Mac (portable ou fixe) : les mêmes phrases, plus celles du chemin Tailscale.
+      for (const kind of ['laptop', 'desktop'] as const) {
+        const m = { ...base.machine, kind, mac: true, os: 'macOS 15.1', alwaysOn: false, host: 'MacBook-Air.local' }
+        for (const sudo of ['password', 'no'] as const)
+          for (const pkg of ['brew', null])
+            for (const reach of ['local', 'lan', 'public'] as const) {
+              const s = { ...base, machine: m, sudo, pkg, reach, https: false }
+              const said = [t.reachAsk(s), t.reachMacGo]
+              // Rien n'y demande les droits administrateur, un VPS ou un nom de domaine : le Mac est à son propriétaire.
+              for (const x of said) expect(x, x).not.toMatch(/admin rights|droits administrateur|VPS|\bserver|\bserveur|domain|domaine|sudo/i)
+              expect(said[0]).toContain('Tailscale')
+              texts.push(...said, t.reachMacDomain('weevils.example.com'), t.machine(m), t.claudeMissing(m), t.machineAsk(s), t.voiceAsk(s), t.securityAsk(s), t.githubAsk(s), installStatus(s))
+            }
+      }
       texts.push(t.claudeLogin, t.claudeLink('https://claude.com/x'), t.codexCode('https://auth.openai.com/codex/device', 'ABCD-EFGH'), t.machineNone, t.machineIn('root@203.0.113.7', 'Ubuntu'), t.githubNoCli('404'), t.quotaAsk([]), t.mailAsk, t.devilAsk(false, ''))
       for (const x of texts) expect(x, x).not.toMatch(COMMAND)
     })
   }
+})
+
+describe('what weevboss is handed on a Mac', async () => {
+  const { reachBrief, machineBrief } = await import('./setup.ts')
+  const state = (mac: boolean) =>
+    ({
+      machine: { kind: mac ? 'laptop' : 'vps', mac, os: mac ? 'macOS 15.1' : 'Ubuntu 24.04', cpus: 8, ramGb: 16, uptimeDays: 1, alwaysOn: !mac, host: 'box', user: 'me', sshTarget: 'me@box', agents: 12, others: [], othersAlwaysOn: false },
+      reach: 'local', port: 4179, clone: '~/weevils', sudo: mac ? 'password' : 'yes', pkg: mac ? 'brew' : 'apt',
+    }) as any
+  it('reach: the Tailscale app and its own command, a link when it is missing, then install.sh --url; never sudo, the Linux script or a domain', () => {
+    for (const domain of ['', 'weevils.example.com']) {
+      const b = reachBrief(state(true), domain)
+      expect(b).not.toMatch(/\bsudo\b|tailscale\.com\/install\.sh|--domain|Caddy|systemctl|WEEVILS_PUBLIC_URL/)
+      expect(b).toContain('/Applications/Tailscale.app/Contents/MacOS/Tailscale')
+      expect(b).toContain('https://tailscale.com/download/mac')
+      expect(b).toContain('serve --bg 4179`')
+      expect(b).toContain('`~/weevils/install.sh --agent --url https://')
+      expect(b).toContain('never ask the user to type one')
+      expect(b).toContain('[[setup:phone]]')
+    }
+  })
+  it('reach on Linux: as before', () => {
+    expect(reachBrief(state(false), '')).toContain('`sudo tailscale serve --bg 4179`')
+    expect(reachBrief(state(false), '')).toContain('https://tailscale.com/install.sh')
+    expect(reachBrief(state(false), 'weevils.example.com')).toContain('`~/weevils/install.sh --yes --domain weevils.example.com`')
+  })
+  it('plugging a VPS from a Mac: weevils-service, never systemctl or admin rights, nothing ssh-ing back into the Mac', () => {
+    const o = { target: 'root@203.0.113.7', user: 'root', host: '203.0.113.7', port: 22, provider: 'Hetzner', about: 'Ubuntu 24.04' }
+    const b = machineBrief({ ...o, here: state(true) })
+    expect(b).not.toMatch(/\bsudo\b|ssh back/)
+    expect(b).toContain('weevils-service')
+    expect(b).toContain('never systemctl')
+    expect(b).toContain('make this machine its secondary')
+    expect(machineBrief({ ...o, here: state(false) })).not.toMatch(/\bMac\b|launchd/)
+  })
 })
 
 describe('weevboss automatic messages are never posted twice', async () => {

@@ -6,7 +6,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { STALE_BG_MS, STALE_TOOL_MS, backgroundOf, bgLine, emptyBg, procInfo, subagentSteps, type BgState, type ProcInfo } from './background.ts'
+import { PS_EVERY_MS, PS_KEEP_MS, STALE_BG_MS, STALE_TOOL_MS, backgroundOf, bgLine, emptyBg, forgetPs, parsePs, procInfo, procInfoIn, psProcInfo, subagentSteps, type BgState, type ProcInfo } from './background.ts'
 import { TranscriptStore } from './transcripts.ts'
 
 const MIN = 60_000
@@ -425,6 +425,178 @@ describe('processus et borne de sûreté', () => {
       expect(p.shells.some((c) => c.includes('snapshot-bash-test.sh'))).toBe(true)
       expect(p.shells.every((c) => c.includes('shell-snapshots'))).toBe(true)
       expect(procInfo(999_999_999)).toBeNull()
+    } finally {
+      shell.kill()
+      other.kill()
+    }
+  })
+})
+
+// What `ps -ax -ww -o pid= -o ppid= -o stat= -o lstart= -o command=` prints on a Mac (LC_ALL=C): claude 61002 in a
+// tmux pane, a background command and a foreground one under it (zsh sourcing a shell snapshot), an MCP server, a
+// zombie, an earlier claude (61900) with nothing under it, and paths with spaces.
+const PS_MAC = `    1     0 Ss   Sun Nov  1 09:00:01 2026 /sbin/launchd
+  412     1 Ss   Sun Nov  1 09:00:09 2026 /usr/sbin/cfprefsd agent
+60990     1 Ss   Fri Nov 13 18:02:11 2026 tmux -u -L weevils new-session -d -s wv-site-1b2c3d
+61002 60990 Ss+  Fri Nov 13 19:28:34 2026 claude --dangerously-skip-permissions --session-id 0b6c1d2e-3f40-4a5b-8c6d-7e8f9a0b1c2d
+61040 61002 S+   Fri Nov 13 19:28:36 2026 node /Users/u/Library/Application Support/mcp/server.js --stdio
+61377 61002 S    Fri Nov 13 19:41:02 2026 /bin/zsh -c -l source /Users/u/.claude/shell-snapshots/snapshot-zsh-1794598862000-ab12cd.sh && setopt NO_EXTENDED_GLOB 2>/dev/null || true && eval 'npm run dev' < /dev/null && pwd -P >| /var/folders/zz/zyxvpxvq6csfxvn_n0000000000000/T/claude-7f1a-cwd
+61380 61377 S    Fri Nov 13 19:41:02 2026 npm run dev
+61381 61380 S    Fri Nov 13 19:41:03 2026 node /Users/u/projects/my site/node_modules/.bin/vite
+61502 61002 S    Fri Nov 13 19:55:40 2026 /bin/zsh -c -l source /Users/u/.claude/shell-snapshots/snapshot-zsh-1794598862000-ab12cd.sh && eval 'sleep 600'
+61510 61002 Z    Fri Nov 13 19:56:00 2026 (git)
+61900 60990 Ss+  Fri Nov 13 17:10:00 2026 claude --resume
+61950 61040 S    Fri Nov 13 19:30:00 2026 /bin/zsh -c source /Users/u/.claude/shell-snapshots/snapshot-zsh-1.sh && eval 'true'
+`
+
+describe('processus sur un Mac (ps à la place de /proc)', () => {
+  beforeEach(() => forgetPs())
+
+  it('M1 parsePs : chaque ligne donne son pid, son parent, son démarrage (heure locale) et sa ligne de commande entière', () => {
+    const t = parsePs(PS_MAC)
+    expect(t.rows.size).toBe(12)
+    expect(t.rows.get(61002)).toEqual({ startedAt: new Date(2026, 10, 13, 19, 28, 34).getTime(), zombie: false, cmd: 'claude --dangerously-skip-permissions --session-id 0b6c1d2e-3f40-4a5b-8c6d-7e8f9a0b1c2d' })
+    // Un jour à un chiffre (« Nov  1 », deux espaces) et un chemin avec des espaces.
+    expect(t.rows.get(1)?.startedAt).toBe(new Date(2026, 10, 1, 9, 0, 1).getTime())
+    expect(t.rows.get(61381)?.cmd).toBe('node /Users/u/projects/my site/node_modules/.bin/vite')
+    expect(t.rows.get(61510)?.zombie).toBe(true)
+    expect(t.kids.get(61002)).toEqual([61040, 61377, 61502, 61510])
+    expect(t.kids.get(60990)).toEqual([61002, 61900])
+  })
+
+  it('M2 parsePs : ce qui n’est pas une ligne de ps est ignoré (en-tête, erreur, date dans une autre langue, ligne vide)', () => {
+    const t = parsePs(['  PID  PPID STAT STARTED COMMAND', 'ps: illegal option -- z', '', '  77     1 S    ven. 13 nov. 19:28:34 2026 claude', '   88     1 S    Fri Nov 13 19:28:34 2026 ok', '   89    88 R    Fri Nov 13 19:28:35 2026'].join('\n'))
+    expect([...t.rows.keys()]).toEqual([88, 89])
+    expect(t.rows.get(89)?.cmd).toBe('')
+    expect(parsePs('').rows.size).toBe(0)
+  })
+
+  it('M3 procInfoIn : le démarrage de claude et ses commandes « shell-snapshots », pas ses autres enfants ni ce qu’elles lancent', () => {
+    const t = parsePs(PS_MAC)
+    const p = procInfoIn(t, 61002)!
+    expect(p.startedAt).toBe(new Date(2026, 10, 13, 19, 28, 34).getTime())
+    // Les deux zsh de l'outil Bash, et celui lancé sous le serveur MCP (deux niveaux plus bas) ; ni npm, ni vite, ni le serveur MCP.
+    expect(p.shells).toHaveLength(3)
+    expect(p.shells.every((c) => c.includes('shell-snapshots'))).toBe(true)
+    expect(p.shells.some((c) => c.includes("eval 'npm run dev'"))).toBe(true)
+    expect(procInfoIn(t, 61900)).toEqual({ startedAt: new Date(2026, 10, 13, 17, 10, 0).getTime(), shells: [] })
+  })
+
+  it('M4 procInfoIn : processus absent ou zombie → null (signal ignoré), comme sous Linux', () => {
+    const t = parsePs(PS_MAC)
+    expect(procInfoIn(t, 999_999)).toBeNull()
+    expect(procInfoIn(t, 61510)).toBeNull()
+  })
+
+  it('M5 les règles de backgroundOf avec ce que ps a donné : commande vivante gardée, commande disparue arrêtée, travail d’avant la reprise coupé', () => {
+    const t = parsePs(PS_MAC)
+    const started = new Date(2026, 10, 13, 19, 28, 34).getTime()
+    const launch = (at: number) => [toolUse('t1', 'Bash', { command: 'npm run dev', run_in_background: true }, at), toolResult('t1', 'bg', at, { backgroundTaskId: 'b1' })]
+    // 61002 a une commande en cours : muette depuis une heure, elle tourne encore.
+    const now = started + 90 * MIN
+    expect(backgroundOf(file, stateOf(launch(started + 10 * MIN)), now, () => procInfoIn(t, 61002))[0].status).toBe('working')
+    // 61900 n'en a aucune : sa commande lancée il y a une minute est finie.
+    const old = new Date(2026, 10, 13, 17, 10, 0).getTime()
+    expect(backgroundOf(file, stateOf(launch(old + 60_000)), old + 2 * MIN, () => procInfoIn(t, 61900))[0].status).toBe('stopped')
+    // Lancée avant que ce claude démarre (reprise --resume) : morte avec l'ancien processus.
+    expect(backgroundOf(file, stateOf(launch(started - 30 * MIN)), started + MIN, () => procInfoIn(t, 61002))[0].status).toBe('stopped')
+  })
+
+  it('M6 psProcInfo : rien tant que le premier ps n’est pas revenu, puis sa réponse ; un seul ps pour toutes les sessions', async () => {
+    let now = 1_000_000
+    let runs = 0
+    const run = async () => (runs++, PS_MAC)
+    expect(psProcInfo(61002, run, () => now)).toBeNull()
+    expect(psProcInfo(61900, run, () => now)).toBeNull()
+    expect(runs).toBe(1)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(psProcInfo(61002, run, () => now)?.shells).toHaveLength(3)
+    expect(psProcInfo(61900, run, () => now)?.shells).toEqual([])
+    expect(psProcInfo(42, run, () => now)).toBeNull()
+    expect(runs).toBe(1)
+  })
+
+  it('M7 psProcInfo : un nouveau ps au plus toutes les 5 s, lancé sans attendre (l’ancien répond en attendant)', async () => {
+    let now = 1_000_000
+    let runs = 0
+    let out = PS_MAC
+    const run = async () => (runs++, out)
+    psProcInfo(61002, run, () => now)
+    await new Promise((r) => setTimeout(r, 0))
+    now += PS_EVERY_MS - 1
+    for (let i = 0; i < 20; i++) psProcInfo(61002, run, () => now)
+    expect(runs).toBe(1)
+    // Les commandes sont finies : le ps suivant le dit, mais seulement une fois revenu.
+    out = PS_MAC.split('\n').filter((l) => !l.includes('shell-snapshots')).join('\n')
+    now += 1
+    expect(psProcInfo(61002, run, () => now)?.shells).toHaveLength(3)
+    expect(psProcInfo(61002, run, () => now)?.shells).toHaveLength(3)
+    expect(runs).toBe(2)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(psProcInfo(61002, run, () => now)?.shells).toEqual([])
+    expect(runs).toBe(2)
+  })
+
+  it('M8 psProcInfo : ps en échec, illisible ou trop vieux (15 s) → null, jamais « plus aucune commande »', async () => {
+    let now = 1_000_000
+    const good = async () => PS_MAC
+    psProcInfo(61002, good, () => now)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(psProcInfo(61002, good, () => now)).not.toBeNull()
+    // Un ps qui ne revient pas : la dernière réponse sert 15 s, pas plus.
+    const never = () => new Promise<string>(() => undefined)
+    now += PS_KEEP_MS - 1
+    expect(psProcInfo(61002, never, () => now)).not.toBeNull()
+    now += 1
+    expect(psProcInfo(61002, never, () => now)).toBeNull()
+    forgetPs()
+    let failed = 0
+    const fails = async () => (failed++, Promise.reject(new Error('spawn /bin/ps ENOENT')))
+    expect(psProcInfo(61002, fails, () => now)).toBeNull()
+    await new Promise((r) => setTimeout(r, 0))
+    // Un ps qui échoue n'est pas relancé à chaque passage : au plus toutes les 5 s, comme un ps qui marche.
+    for (let i = 0; i < 10; i++) {
+      expect(psProcInfo(61002, fails, () => now + 100 * i)).toBeNull()
+      await new Promise((r) => setTimeout(r, 0))
+    }
+    expect(failed).toBe(1)
+    expect(psProcInfo(61002, fails, () => now + PS_EVERY_MS)).toBeNull()
+    expect(failed).toBe(2)
+    forgetPs()
+    // Une sortie où rien ne se lit (dates dans une autre langue) n'est pas « tous les processus ont disparu ».
+    const french = async () => '61002 60990 Ss+  ven. 13 nov. 19:28:34 2026 claude\n'
+    psProcInfo(61002, french, () => now)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(psProcInfo(61002, never, () => now + 100)).toBeNull()
+  })
+
+  it('M9 procInfo : sans pid, ou sur un système qui n’est ni Linux ni macOS, null sans rien lancer', () => {
+    expect(procInfo(undefined, 'darwin')).toBeNull()
+    expect(procInfo(0, 'darwin')).toBeNull()
+    expect(procInfo(process.pid, 'freebsd')).toBeNull()
+  })
+
+  it.skipIf(!fs.existsSync('/bin/ps'))('M10 avec le vrai /bin/ps de cette machine : même démarrage que /proc à 2 s près, mêmes commandes', async () => {
+    const shell = spawn('bash', ['-c', 'sleep 30; true', '/home/u/.claude/shell-snapshots/snapshot-bash-test.sh'], { stdio: 'ignore' })
+    const other = spawn('sleep', ['30'], { stdio: 'ignore' })
+    try {
+      await new Promise((r) => setTimeout(r, 150))
+      expect(procInfo(process.pid, 'darwin')).toBeNull() // le premier ps part, rien n'est attendu
+      let p: ProcInfo | null = null
+      for (let i = 0; i < 100 && !p; i++) {
+        await new Promise((r) => setTimeout(r, 100))
+        p = procInfo(process.pid, 'darwin')
+      }
+      expect(p).not.toBeNull()
+      expect(p!.shells.some((c) => c.includes('snapshot-bash-test.sh'))).toBe(true)
+      expect(p!.shells.every((c) => c.includes('shell-snapshots'))).toBe(true)
+      expect(p!.startedAt).toBeLessThan(Date.now())
+      if (process.platform === 'linux') {
+        const viaProc = procInfo(process.pid, 'linux')!
+        expect(Math.abs(viaProc.startedAt - p!.startedAt)).toBeLessThan(2000)
+        expect(p!.shells.length).toBe(viaProc.shells.length)
+      }
+      expect(procInfo(999_999_999, 'darwin')).toBeNull()
     } finally {
       shell.kill()
       other.kill()

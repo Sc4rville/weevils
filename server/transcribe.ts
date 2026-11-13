@@ -16,6 +16,7 @@ import path from 'node:path'
 import { DATA_DIR } from './config.ts' // charge aussi ~/.config/weevils/env dans process.env
 import { lang, tr, withLang, type Lang } from './i18n.ts'
 import { isLang } from '../shared/i18n.ts'
+import { which } from './platform.ts'
 import V from './i18n/voice.ts'
 
 /** Clé OpenAI : l'environnement, où config.ts a déjà chargé ~/.config/weevils/env. Jamais dans le code ni dans les logs. */
@@ -134,6 +135,7 @@ function wav(pcm: Int16Array, rate: number): Buffer {
 const RATE = 16000
 
 /** Décode le clip en PCM 16 kHz mono avec ffmpeg (fichier temporaire : un mp4 d'iPhone ne se lit pas depuis un tube).
+ * ffmpeg : celui du PATH, sinon là où les installateurs le posent (Homebrew sur un Mac, server/platform.ts).
  * Sans ffmpeg ou illisible : null, on ne bloque rien. */
 async function decode(data: Buffer, ext: string): Promise<Int16Array | null> {
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wv-voix-'))
@@ -141,7 +143,7 @@ async function decode(data: Buffer, ext: string): Promise<Int16Array | null> {
   try {
     await fs.promises.writeFile(file, data)
     const pcm = await new Promise<Buffer>((resolve, reject) =>
-      execFile('ffmpeg', ['-v', 'error', '-i', file, '-ac', '1', '-ar', String(RATE), '-f', 's16le', '-'], { encoding: 'buffer', maxBuffer: 1 << 30, timeout: 180_000 }, (err, out) => (err ? reject(err) : resolve(out))), // i18n-ignore : arguments de ffmpeg, pas du texte affiché
+      execFile(which('ffmpeg') ?? 'ffmpeg', ['-v', 'error', '-i', file, '-ac', '1', '-ar', String(RATE), '-f', 's16le', '-'], { encoding: 'buffer', maxBuffer: 1 << 30, timeout: 180_000 }, (err, out) => (err ? reject(err) : resolve(out))), // i18n-ignore : arguments de ffmpeg, pas du texte affiché
     )
     return new Int16Array(pcm.buffer, pcm.byteOffset, Math.floor(pcm.length / 2))
   } catch {

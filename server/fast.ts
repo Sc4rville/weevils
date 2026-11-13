@@ -10,6 +10,7 @@ import { detectLang } from '../shared/detect-lang.ts'
 import V from './i18n/voice.ts'
 import { openaiKey } from './transcribe.ts'
 import { TTS_RATE, TTS_VOICE } from './config.ts'
+import { which } from './platform.ts'
 
 /** Provider failures stay distinct from a malformed content payload. No prompt in error messages. */
 export class ModelError extends Error {
@@ -31,6 +32,16 @@ const modelText = (stdout: string, schema?: object): string => {
   const result = parseJson<{ structured_output?: unknown; is_error?: boolean; result?: string }>(stdout)
   if (result?.is_error) throw new ModelError({}, result.result ?? '')
   return result?.structured_output ? JSON.stringify(result.structured_output) : stdout.trim()
+}
+
+/**
+ * The command to hand to execFile for claude or codex: its bare name while the PATH has it (as always), otherwise
+ * where installers put it (server/platform.ts: the same lookup that says it is installed, so « installed » never ends
+ * in « command not found » under a service's short PATH). Not installed: the bare name, and execFile reports it.
+ */
+export function toolCommand(name: string, pathEnv = process.env.PATH ?? '', find: (cmd: string) => string | null = which): string {
+  const found = find(name)
+  return !found || pathEnv.split(path.delimiter).includes(path.dirname(found)) ? name : found
 }
 
 /** True when Claude itself would run now (logged in, no limit episode, no relay to Codex). */
@@ -59,7 +70,7 @@ export function haiku(prompt: string, timeout = 20_000, schema?: object): Promis
 function runHaiku(prompt: string, timeout: number, schema?: object): Promise<string> {
   const t0 = Date.now()
   return new Promise((resolve, reject) => {
-    const c = execFile('claude', ['-p', '--model', 'haiku', '--tools', '', '--no-session-persistence', ...(schema ? ['--json-schema', JSON.stringify(schema), '--output-format', 'json'] : []), prompt], { timeout, maxBuffer: 1 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
+    const c = execFile(toolCommand('claude'), ['-p', '--model', 'haiku', '--tools', '', '--no-session-persistence', ...(schema ? ['--json-schema', JSON.stringify(schema), '--output-format', 'json'] : []), prompt], { timeout, maxBuffer: 1 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
       console.log(`[rapide] haiku ${Date.now() - t0} ms${err ? ' · échec' : ''}`)
       if (err) reject(new ModelError(err, String(stdout ?? ''), String(stderr ?? '')))
       else { try { resolve(modelText(String(stdout ?? ''), schema)) } catch (e) { reject(e) } }
@@ -82,7 +93,7 @@ export function smart(prompt: string, timeout = 90_000, schema?: object): Promis
   const t0 = Date.now()
   const model = process.env.WEEVILS_SMART_MODEL?.trim() || 'sonnet'
   return new Promise((resolve, reject) => {
-    const c = execFile('claude', ['-p', '--model', model, '--tools', '', '--no-session-persistence', ...(schema ? ['--json-schema', JSON.stringify(schema), '--output-format', 'json'] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
+    const c = execFile(toolCommand('claude'), ['-p', '--model', model, '--tools', '', '--no-session-persistence', ...(schema ? ['--json-schema', JSON.stringify(schema), '--output-format', 'json'] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
       console.log(`[rapide] ${model} ${Date.now() - t0} ms${err ? ' · échec' : ''}`)
       if (err) reject(new ModelError(err, String(stdout ?? ''), String(stderr ?? '')))
       else { try { resolve(modelText(String(stdout ?? ''), schema)) } catch (e) { reject(e) } }
@@ -106,7 +117,7 @@ export function relay(prompt: string, timeout = 120_000, schema?: object): Promi
   return new Promise((resolve, reject) => {
     const schemaFile = out + '.schema.json'
     if (schema) fs.writeFileSync(schemaFile, JSON.stringify(schema), { mode: 0o600 })
-    const c = execFile('codex', ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-o', out, '-c', 'model_reasoning_effort="low"', ...(schema ? ['--output-schema', schemaFile] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: dir, env: { ...process.env, TMPDIR: dir } }, (err, stdout, stderr) => {
+    const c = execFile(toolCommand('codex'), ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-o', out, '-c', 'model_reasoning_effort="low"', ...(schema ? ['--output-schema', schemaFile] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: dir, env: { ...process.env, TMPDIR: dir } }, (err, stdout, stderr) => {
       let text = ''
       try {
         text = fs.readFileSync(out, 'utf8').trim()
@@ -179,19 +190,10 @@ export async function quick(prompt: string, maxTokens = 260): Promise<string> {
   return haiku(prompt)
 }
 
-/** edge-tts : celui du PATH, sinon ~/.local/bin/edge-tts (pipx install edge-tts). null : pas installé. */
+/** edge-tts : celui du PATH, sinon là où les installateurs le posent (~/.local/bin pour pipx, Homebrew sur un Mac :
+ * server/platform.ts). null : pas installé. */
 export function edgeTts(): string | null {
-  const dirs = [...(process.env.PATH ?? '').split(path.delimiter).filter(Boolean), path.join(os.homedir(), '.local', 'bin')]
-  for (const dir of dirs) {
-    const bin = path.join(dir, 'edge-tts')
-    try {
-      fs.accessSync(bin, fs.constants.X_OK)
-      return bin
-    } catch {
-      /* pas ici */
-    }
-  }
-  return null
+  return which('edge-tts')
 }
 
 /** Voix gratuite dans la langue de l'app (voix neuronales Microsoft via edge-tts), débit TTS_RATE (+25 % par défaut). MP3. */

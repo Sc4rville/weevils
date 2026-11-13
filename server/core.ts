@@ -17,7 +17,7 @@ import { humanFeedText } from '../shared/feed-text.ts'
 import { noticeKey } from '../shared/notices.ts'
 // Le cœur de weevilsd : transcripts + hooks + panes zellij → sessions, projets, H24, agent principal.
 
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -162,15 +162,67 @@ const pidAlive = (pid?: number) => {
   }
 }
 
+/** How findClaudePid reads a process: its command line (arguments separated by NUL, as /proc gives them) and its
+ * parent. Both throw when the process can't be read. */
+export interface ProcRead {
+  cmd(pid: number): string
+  ppid(pid: number): number
+}
+/** Linux: /proc. */
+const procFs: ProcRead = {
+  cmd: (pid) => fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8'),
+  ppid: (pid) => {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8')
+    return Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1])
+  },
+}
+
+/** One line of `ps -o ppid= -o command=`: the parent, and the command line with its arguments NUL-separated. */
+export function parsePsParent(out: string): { ppid: number; cmd: string } | null {
+  const m = /^\s*(\d+)\s+(\S.*?)\s*$/m.exec(out)
+  return m ? { ppid: Number(m[1]), cmd: m[2].split(/\s+/).join('\0') } : null
+}
+/** -ww: the whole command line (without a terminal, ps cuts it at 80 columns). */
+const psOne = (pid: number) => execFileSync('/bin/ps', ['-ww', '-o', 'ppid=', '-o', 'command=', '-p', String(pid)], { encoding: 'utf8', timeout: 1000, stdio: ['ignore', 'pipe', 'ignore'] })
+/**
+ * macOS (no /proc): `ps`, one process at a time. Hooks fire several times a second and this runs while they wait, so
+ * what ps said of a process (or that it is gone) is kept keepMs, and at most perSecond ps are started in a second:
+ * beyond that the process counts as unreadable (the session keeps the pid its last hook gave).
+ */
+export function psReader(run: (pid: number) => string = psOne, clock: () => number = Date.now, keepMs = 10_000, perSecond = 8): ProcRead {
+  const seen = new Map<number, { at: number; v: { ppid: number; cmd: string } | null }>()
+  let second = 0
+  let spent = 0
+  const row = (pid: number) => {
+    const now = clock()
+    let c = seen.get(pid)
+    if (!c || now - c.at >= keepMs) {
+      if (now - second >= 1000) [second, spent] = [now, 0]
+      if (++spent > perSecond) throw new Error('ps: too many at once') // i18n-ignore: caught by findClaudePid, never shown
+      let v: { ppid: number; cmd: string } | null = null
+      try {
+        v = parsePsParent(run(pid))
+      } catch {
+        /* no such process */
+      }
+      if (seen.size >= 512) seen.clear()
+      seen.set(pid, (c = { at: now, v }))
+    }
+    if (!c.v) throw new Error('ps: no such process') // i18n-ignore: caught by findClaudePid, never shown
+    return c.v
+  }
+  return { cmd: (pid) => row(pid).cmd, ppid: (pid) => row(pid).ppid }
+}
+const procRead: ProcRead = process.platform === 'darwin' ? psReader() : procFs
+
 /** Remonte les parents d'un hook jusqu'au processus claude. */
-export function findClaudePid(start: number): number | undefined {
+export function findClaudePid(start: number, read: ProcRead = procRead): number | undefined {
   let pid = start
   for (let i = 0; i < 8 && pid > 1; i++) {
     try {
-      const cmd = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8')
+      const cmd = read.cmd(pid)
       if (/(^|\/|\0)claude(\0|$)/.test(cmd) || cmd.includes('claude-code') || /\0claude\0/.test(`\0${cmd}`)) return pid
-      const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8')
-      pid = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1])
+      pid = read.ppid(pid)
     } catch {
       return undefined
     }
@@ -2093,8 +2145,9 @@ export class Weevils {
 
   // ---------------------------------------------------------------- H24
 
-  /** Jobs longs (LOGS_DIRS : WEEVILS_LOGS_DIR, sinon ~/logs et le dossier de weevils) et timers systemd « wv-* ». */
-  refreshH24() {
+  /** Jobs longs (LOGS_DIRS : WEEVILS_LOGS_DIR, sinon ~/logs et le dossier de weevils) et timers systemd « wv-* ».
+   *  Hors Linux (un Mac) : les jobs seulement, sans lancer systemctl. */
+  refreshH24(platform: NodeJS.Platform = process.platform) {
     const now = Date.now()
     const out: H24Activity[] = []
     for (const dir of LOGS_DIRS) try {
@@ -2147,6 +2200,9 @@ export class Weevils {
     } catch {
       /* pas de dossier de jobs */
     }
+    // Timers are systemd's. Anywhere else there is none to list: the jobs are published as they are, and no command
+    // is started only to fail on every pass.
+    if (platform !== 'linux') return this.publishH24(out)
     execFile('systemctl', ['--user', 'list-timers', '--all', '--output=json'], { timeout: 4000 }, (err, stdout) => {
       const t = tr(M)
       const when = (us: number) => new Date(us / 1000).toLocaleString(locale(lang()))
@@ -2189,7 +2245,7 @@ export class Weevils {
           const d = desc.get(this.timerSvc.get(unit) ?? '') ?? desc.get(unit)
           if (d) a.description = d
           const runs = this.timerRunsCache.get(unit)
-          if (!runs || runs.key !== String(a.lastRunAt ?? '') || now - runs.at > 600_000) void this.timerRuns(unit, String(a.lastRunAt ?? '')).then((r) => r.fresh && this.refreshH24())
+          if (!runs || runs.key !== String(a.lastRunAt ?? '') || now - runs.at > 600_000) void this.timerRuns(unit, String(a.lastRunAt ?? '')).then((r) => r.fresh && this.refreshH24(platform))
           const last = runs?.runs.at(-1)
           if (last) {
             a.lastDurMs = last.at - last.startedAt

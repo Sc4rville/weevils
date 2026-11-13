@@ -52,3 +52,66 @@ it('rejects an unavailable provider before changing the configured selection', a
   expect(process.env.WEEVILS_PROVIDER).toBeUndefined()
   expect(auth.spawn).not.toHaveBeenCalled()
 })
+
+// « Joignable de partout » (la brique reach) : sur un Mac rien ne demande les droits administrateur, et il n'y a pas de
+// domaine à taper ; weevboss part sur Tailscale dès le tap. Linux : comme avant.
+const state = (mac: boolean, sudo: 'yes' | 'password' | 'no', reach: 'local' | 'lan' | 'public' = 'local') => ({
+  machine: { kind: mac ? 'laptop' : 'vps', mac, os: mac ? 'macOS 15.1' : 'Ubuntu 24.04', cpus: 8, ramGb: 16, uptimeDays: 1, alwaysOn: !mac, host: 'box', user: 'me', sshTarget: 'me@box', agents: 12, others: [], othersAlwaysOn: false },
+  reach, url: reach === 'local' ? 'http://127.0.0.1:4179' : 'http://192.168.1.20:4179', https: false, port: 4179, clone: '~/weevils', sudo, pkg: mac ? 'brew' : 'apt',
+  claude: { installed: true, logged: true }, codex: { installed: false, logged: false },
+})
+function reachSetup(s: ReturnType<typeof state>) {
+  auth.claude = true
+  const handoff = vi.fn(async (_text: string, _brief: string) => {})
+  const it = new Setup({ bump() {}, feed: () => ({ machines: [], projects: 0 }), remoteFacts: async () => [], devices: () => 0, push: () => 0, shortcut: () => false, seen: () => [], hasHistory: () => false, startMail() {}, handoff } as SetupDeps)
+  vi.spyOn(it, 'detect').mockResolvedValue(s as never)
+  const said = () => it.messages().find((m) => m.id === it.lastSaid)?.text ?? ''
+  return { it, handoff, said }
+}
+it('reach on a Mac: no admin rights asked, no VPS, no domain field; weevboss gets the Tailscale job at the tap, once', async () => {
+  for (const sudo of ['password', 'no'] as const)
+    for (const reach of ['local', 'lan', 'public'] as const) {
+      const { it: s, handoff, said } = reachSetup(state(true, sudo, reach))
+      expect(await s.ask('reach'), `${sudo} ${reach}`).toBe(false)
+      expect(said()).toContain('Tailscale')
+      expect(said()).not.toMatch(/admin rights|VPS|\bserver\b|domain|\[\[setup:machine\]\]/i)
+      expect(handoff).toHaveBeenCalledTimes(1)
+      expect(handoff.mock.calls[0][0]).toBe('Make me reachable from anywhere with Tailscale.')
+      expect(handoff.mock.calls[0][1]).toContain('https://tailscale.com/download/mac')
+      expect(handoff.mock.calls[0][1]).not.toMatch(/\bsudo\b|tailscale\.com\/install\.sh/)
+      // A second tap right after: the same explanation, not a second job.
+      await s.ask('reach')
+      expect(handoff).toHaveBeenCalledTimes(1)
+    }
+})
+it('reach on a Mac before the agent is signed in: nothing is handed over, the sign-in comes first', async () => {
+  const { it: s, handoff, said } = reachSetup(state(true, 'password'))
+  auth.claude = false
+  expect(await s.ask('reach')).toBe(false)
+  expect(handoff).not.toHaveBeenCalled()
+  expect(said()).toContain('[[setup:claude]]')
+})
+it('a domain typed on a Mac (an older app, the API) is answered plainly, with the button of the way that works', async () => {
+  const { it: s, handoff, said } = reachSetup(state(true, 'password'))
+  await s.apply('reach', { domain: 'https://weevils.example.com/' })
+  expect(handoff).not.toHaveBeenCalled()
+  expect(said()).toContain('weevils.example.com')
+  expect(said()).toContain('Tailscale')
+  expect(said()).toContain('[[setup:reach]]')
+  expect(said()).not.toMatch(/admin rights|VPS/)
+})
+it('reach on Linux is unchanged: admin rights needed without passwordless sudo, the domain-or-Tailscale field with it', async () => {
+  const locked = reachSetup(state(false, 'password'))
+  expect(await locked.it.ask('reach')).toBe(false)
+  expect(locked.said()).toContain('I need admin rights on this machine')
+  expect(locked.said()).toContain('[[setup:machine]]')
+  expect(locked.handoff).not.toHaveBeenCalled()
+  const open = reachSetup(state(false, 'yes'))
+  expect(await open.it.ask('reach')).toBe(true)
+  expect(open.said()).toContain('Two ways: a domain name pointing at the machine')
+  expect(open.said()).toContain('Type your domain below, or leave it empty and I’ll go with Tailscale.')
+  expect(open.handoff).not.toHaveBeenCalled()
+  await open.it.apply('reach', { domain: '' })
+  expect(open.handoff).toHaveBeenCalledTimes(1)
+  expect(open.handoff.mock.calls[0][1]).toContain('`sudo tailscale up`')
+})

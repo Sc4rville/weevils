@@ -5,11 +5,14 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // calls : les arguments sans le choix du serveur ; sockets : le serveur visé (« -L <nom> », sinon « default »).
-const sh = vi.hoisted(() => ({ commands: [] as string[], calls: [] as string[][], sockets: [] as string[], out: '', by: {} as Record<string, string | null>, fail: false }))
+// firsts : le tout premier argument de chaque appel à tmux (« -u » : UTF-8 quelle que soit la locale, voir mux.ts).
+const sh = vi.hoisted(() => ({ commands: [] as string[], calls: [] as string[][], sockets: [] as string[], firsts: [] as string[], out: '', by: {} as Record<string, string | null>, fail: false }))
 vi.mock('node:child_process', () => ({
   execFile: (_cmd: string, args: string[], _opts: unknown, cb: (err: Error | null, stdout: string, stderr: string) => void) => {
     sh.commands.push(_cmd)
     if (_cmd === 'systemd-run') args = args.slice(args.indexOf('--') + 2)
+    sh.firsts.push(args[0])
+    if (args[0] === '-u') args = args.slice(1)
     const socket = args[0] === '-L' ? args[1] : 'default'
     sh.calls.push(args[0] === '-L' ? args.slice(2) : args)
     sh.sockets.push(socket)
@@ -25,6 +28,7 @@ beforeEach(() => {
   sh.commands.length = 0
   sh.calls.length = 0
   sh.sockets.length = 0
+  sh.firsts.length = 0
   sh.by = {}
   sh.out = ''
   sh.fail = false
@@ -222,6 +226,33 @@ describe('serveur tmux dédié (garde-fou contre « tmux kill-server »)', () =>
   it('pas encore de serveur dédié : les anciennes sessions restent visibles', async () => {
     sh.by = { weevils: null, default: row('wv-old-111111') + '\n' }
     expect((await mux.listWv()).map((s) => s.name)).toEqual(['wv-old-111111'])
+  })
+})
+
+describe('tmux -u (a launchd service on a Mac has no UTF-8 locale)', () => {
+  const row = (name: string, title: string, sep = '\u001f') => [name, 'claude', 'id', title, '/d', '/d', '1', '42'].join(sep)
+
+  it('every call starts with -u, on the dedicated server and on the default one, before the socket choice', async () => {
+    sh.by = { weevils: row('wv-new-000000', 't') + '\n', default: row('wv-old-111111', 't') + '\n' }
+    await mux.listWv()
+    await mux.spawnWv('wv-more-000000', '/d', 'claude', 't', ['claude'], 'u')
+    await mux.sendKey('wv-new-000000', 'enter')
+    await mux.capture('wv-old-111111')
+    await mux.killWv('wv-new-000000')
+    expect(sh.commands.every((c) => c === 'tmux')).toBe(true)
+    expect(sh.firsts.length).toBeGreaterThan(5)
+    expect(sh.firsts.every((a) => a === '-u')).toBe(true)
+    expect(sh.sockets).toContain('default')
+    expect(sh.sockets).toContain('weevils')
+  })
+
+  it('what -u prevents: without a UTF-8 locale tmux writes « _ » for the separator and the accents, and nothing is read right', async () => {
+    sh.by = { weevils: row('wv-ok-000000', 'Thé glacé') + '\n' + row('wv-bad-111111', 'Th_ glac_', '_') + '\n', default: null }
+    const [ok, bad] = await mux.listWv()
+    expect(ok).toMatchObject({ name: 'wv-ok-000000', title: 'Thé glacé', cwd: '/d', createdAt: 1000, pid: 42 })
+    expect(bad.name).toBe(row('wv-bad-111111', 'Th_ glac_', '_'))
+    expect(bad.cwd).toBeUndefined()
+    expect(Number.isNaN(bad.createdAt)).toBe(true)
   })
 })
 

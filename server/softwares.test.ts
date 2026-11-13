@@ -1,17 +1,25 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  alive,
   allocatePort,
   declaredPort,
   detectKind,
   emptySignals,
   frameEmbeddable,
   groupRepos,
+  heldBy,
   heuristic,
+  listeners,
+  macChromes,
+  macStart,
   normOrigin,
   parseCaddySite,
   parseEstimates,
   parseListeners,
+  parsePsPgid,
   parseUnit,
+  pgids,
+  playwrightCache,
   redact,
   portInCode,
   signalsHash,
@@ -19,6 +27,7 @@ import {
   stripAnsi,
   tailLines,
   talkSignals,
+  userUnits,
   visitorsIn,
   wildcard,
   type KindFacts,
@@ -321,5 +330,80 @@ describe('ports à l’écoute', () => {
       [9000, 'fe80::1', []],
     ])
     expect(l.filter((x) => wildcard(x.addr)).map((x) => x.port)).toEqual([22, 8080])
+  })
+})
+
+// macOS has no ss and no /proc: lsof says what listens, ps the process group and the start time. Run on Linux with the
+// platform and the command runner injected; the outputs are canned (written from the documented formats, not captured
+// on a Mac).
+describe('macOS — a server launched from the app is seen listening', () => {
+  const LSOF = ['p61234', 'cnode', 'f23', 'n127.0.0.1:5173', 'f24', 'n[::1]:5173', 'p61240', 'cnode', 'f23', 'n127.0.0.1:5173', 'p700', 'cPython', 'f3', 'n*:8000', ''].join('\n')
+
+  it('listeners(): lsof, one entry per address and port with every pid that holds it; ss is never started', async () => {
+    const run = vi.fn(async () => LSOF)
+    const l = await listeners('darwin', run)
+    expect(l).toEqual([
+      { port: 5173, addr: '127.0.0.1', pids: [61234, 61240] },
+      { port: 5173, addr: '::1', pids: [61234] },
+      { port: 8000, addr: '*', pids: [700] },
+    ])
+    expect(run.mock.calls).toEqual([['/usr/sbin/lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn']]])
+    // A dev server bound to every interface is still caught (lsof writes the wildcard as *).
+    expect(l.filter((x) => wildcard(x.addr)).map((x) => x.port)).toEqual([8000])
+    expect(await listeners('darwin', async () => '')).toEqual([])
+  })
+
+  it('on Linux listeners() still reads ss', async () => {
+    const run = vi.fn(async () => 'LISTEN 0      511        127.0.0.1:4179  0.0.0.0:* users:(("node",pid=3523328,fd=30))\n')
+    expect(await listeners('linux', run)).toEqual([{ port: 4179, addr: '127.0.0.1', pids: [3523328] }])
+    expect(run.mock.calls).toEqual([['ss', ['-ltnpH']]])
+  })
+
+  it('the process group of each listener comes from one ps call; the port is ours when one of them is in our group', async () => {
+    // `ps -o pid= -o pgid= -p 61234,61240`: right-aligned columns, no header; a pid that is gone has no line.
+    const PS = '61234 61200\n61240 61200\n'
+    expect(parsePsPgid('  412     1\n61234 61200\n\nps: illegal\n')).toEqual(new Map([[412, 1], [61234, 61200]]))
+    const run = vi.fn(async () => PS)
+    expect(await pgids([61234, 61240], 'darwin', run)).toEqual(new Map([[61234, 61200], [61240, 61200]]))
+    expect(run.mock.calls).toEqual([['/bin/ps', ['-o', 'pid=', '-o', 'pgid=', '-p', '61234,61240']]])
+    const mine = (await listeners('darwin', async () => LSOF)).filter((x) => x.port === 5173)
+    // sh -c (pid 61200, the group leader weevils started) → npm → node: the listener is a grandchild, same group.
+    expect(await heldBy(mine, 61200, 'darwin', run)).toBe(true)
+    expect(await heldBy(mine, 999, 'darwin', run)).toBe(false)
+    // Nobody on the port yet: ps is not even started.
+    run.mockClear()
+    expect(await heldBy([], 61200, 'darwin', run)).toBe(false)
+    expect(run).not.toHaveBeenCalled()
+    // ps failing (no output): not ours, the launch keeps waiting.
+    expect(await heldBy(mine, 61200, 'darwin', async () => '')).toBe(false)
+  })
+
+  it('a launched process is the same one while ps gives the same start time; a reused pid is not', async () => {
+    const started = 'Fri Nov 13 19:28:34 2026'
+    const run = vi.fn(async () => `${started}\n`)
+    expect(await macStart(4242, run)).toBe(started)
+    expect(run.mock.calls).toEqual([['/bin/ps', ['-o', 'lstart=', '-p', '4242']]])
+    // This test's own pid exists: alive when the start time matches, or when none was recorded, or when ps says nothing.
+    expect(await alive(process.pid, started, 'darwin', run)).toBe(true)
+    expect(await alive(process.pid, 'Fri Nov 13 08:00:00 2026', 'darwin', run)).toBe(false)
+    expect(await alive(process.pid, '', 'darwin', run)).toBe(true)
+    expect(await alive(process.pid, started, 'darwin', async () => '')).toBe(true)
+    // No such pid: never alive, whatever ps says.
+    expect(await alive(2 ** 30, started, 'darwin', run)).toBe(false)
+  })
+
+  it('no systemd service on a Mac: nothing read, nothing started', async () => {
+    expect(await userUnits('darwin')).toEqual([])
+  })
+
+  it('Chromium for the screenshots: the apps and Playwright’s cache where a Mac keeps them', () => {
+    expect(macChromes('/Users/sam')).toEqual([
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/Users/sam/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Users/sam/Applications/Chromium.app/Contents/MacOS/Chromium',
+    ])
+    expect(playwrightCache('/Users/sam', 'darwin')).toBe('/Users/sam/Library/Caches/ms-playwright')
+    expect(playwrightCache('/home/sam', 'linux')).toBe('/home/sam/.cache/ms-playwright')
   })
 })

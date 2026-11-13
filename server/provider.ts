@@ -25,7 +25,8 @@ export function codexLogged(): boolean {
 export function providerStatus(tool: Tool = preferredTool()): { installed: boolean; logged: boolean } {
  // Same lookup as the setup (Homebrew's folders on a Mac) and the same login check (the Keychain on a Mac).
  const installed = !!which(tool, process.platform, os.homedir())
- const logged = tool === 'codex' ? codexLogged() : claudeLoggedIn()
+ // As before: a key in the environment or Claude's token in the credentials file. On a Mac: the Keychain as well.
+ const logged = tool === 'codex' ? codexLogged() : claudeLoggedIn(undefined, undefined, undefined, true)
  return {installed,logged}
 }
 export const providerReady = () => { const s=providerStatus();return s.installed && s.logged }

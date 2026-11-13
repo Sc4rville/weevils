@@ -122,6 +122,23 @@ describe('what was already on the machine', () => {
     fs.writeFileSync(f, JSON.stringify({ claudeAiOauth: { subscriptionType: '<script>' } }))
     expect(claudePlan()).toBe('')
   })
+  it('on a Mac (no login file): the plan is empty until the Keychain was read once, then the one it gave', async () => {
+    const { claudeOauth, forgetClaudeOauth } = await import('./claude-credentials.ts')
+    fs.rmSync(path.join(home, '.claude', '.credentials.json'), { force: true })
+    forgetClaudeOauth()
+    try {
+      expect(claudePlan()).toBe('')
+      // What the quota read does every few minutes on a Mac: `security` gives the same JSON as the file.
+      await claudeOauth('darwin', async () => JSON.stringify({ claudeAiOauth: { accessToken: 't', subscriptionType: 'Pro' } }) + '\n')
+      expect(claudePlan()).toBe('pro')
+      // On Linux the same call reads no Keychain: nothing to show.
+      forgetClaudeOauth()
+      await claudeOauth('linux', async () => JSON.stringify({ claudeAiOauth: { accessToken: 't', subscriptionType: 'max' } }))
+      expect(claudePlan()).toBe('')
+    } finally {
+      forgetClaudeOauth()
+    }
+  })
 })
 
 describe('demo texts', () => {

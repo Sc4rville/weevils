@@ -28,6 +28,9 @@ const kindEn = (m: MachineInfo) =>
     desktop: m.mac ? 'on your Mac' : 'on your desktop PC',
     wsl: 'on WSL, on Windows',
   })[m.kind]
+/** Sur un Mac, une seule voie pour être joint de partout (pas de domaine : install.sh y refuse --domain). */
+const tailscaleMacFr = 'Tailscale (gratuit : une app sur ton Mac et sur ton téléphone, avec le même compte).'
+const tailscaleMacEn = 'Tailscale (free: an app on your Mac and on your phone, with the same account).'
 const local = (m: MachineInfo) => ['laptop', 'desktop', 'wsl'].includes(m.kind) && !m.othersAlwaysOn
 
 export default defineMessages({
@@ -51,13 +54,16 @@ export default defineMessages({
       s.reach === 'public'
         ? s.https
           ? `Je suis joignable de partout, en https : ${s.url}. Rien à faire de ce côté.`
-          : `Je suis joignable de partout (${s.url}), mais en http : le code d’accès circule en clair et le micro du téléphone refuse de marcher. Pour passer en https, il me faut un nom de domaine qui pointe sur cette machine.`
-        : `${s.reach === 'lan' ? `Je ne suis joignable que sur ton réseau local (${s.url})` : `Je n’écoute que sur ${s.machine.host}`} : ton téléphone ne peut pas me joindre de dehors. Deux chemins : un nom de domaine qui pointe sur la machine (https automatique), ou Tailscale (gratuit : une app sur ton téléphone, rien à acheter).`,
+          : `Je suis joignable de partout (${s.url}), mais en http : le code d’accès circule en clair et le micro du téléphone refuse de marcher. ${s.machine.mac ? `Pour passer en https, le plus simple : ${tailscaleMacFr}` : 'Pour passer en https, il me faut un nom de domaine qui pointe sur cette machine.'}`
+        : `${s.reach === 'lan' ? `Je ne suis joignable que sur ton réseau local (${s.url})` : `Je n’écoute que sur ${s.machine.mac ? 'ce Mac' : s.machine.host}`} : ton téléphone ne peut pas me joindre de dehors. ${s.machine.mac ? `Le plus simple : ${tailscaleMacFr}` : 'Deux chemins : un nom de domaine qui pointe sur la machine (https automatique), ou Tailscale (gratuit : une app sur ton téléphone, rien à acheter).'}`,
     reachPrompt: (http: boolean): string => (http ? 'Donne-moi ton domaine en bas, je m’occupe du reste.' : 'Tape ton domaine en bas, ou laisse vide et je pars sur Tailscale. Je m’occupe du reste.'),
     reachDns: (domain: string, ip: string, seen: string): string =>
       `« ${domain} » ne pointe pas encore sur cette machine (${seen ? `il pointe sur ${seen}` : 'il ne pointe nulle part'}). Chez ton fournisseur de domaine, ajoute un enregistrement A « ${domain} » vers ${ip}, attends quelques minutes, puis réessaie :`,
     reachDomainDo: (domain: string): string => `Passe-moi en https sur ${domain}.`,
     reachTailscaleDo: 'Rends-moi joignable de partout avec Tailscale.',
+    // Sur un Mac : pas de champ, weevboss s'y met dès le tap.
+    reachMacGo: 'Je m’y mets, et je te dis ce qu’il y a à faire de ton côté.',
+    reachMacDomain: (domain: string): string => `Sur un Mac, je ne sais pas me brancher sur un nom de domaine (« ${domain} »). Le chemin qui marche ici, c’est Tailscale :`,
     // ---- machine
     machine: (m: MachineInfo): string => {
       const spec = `${m.os}, ${m.cpus} cœur${m.cpus > 1 ? 's' : ''}, ${gb(m.ramGb)} Go`
@@ -142,7 +148,7 @@ export default defineMessages({
     devilAsk: (plugged: boolean, model: string): string =>
       plugged
         ? `Le diable est branché sur ${model}. Tape-le pour basculer (la bande passe en orange, ses réponses arrivent en vert), encore pour revenir. Pour changer de modèle :`
-        : 'Le diable envoie tes messages à un autre modèle, sans filtre, dans ce même fil : par exemple un modèle « abliterated » que tu fais tourner chez toi (Ollama, LM Studio, vLLM) ou que tu loues (OpenRouter, RunPod…), du moment qu’il parle l’API OpenAI. Il me faut son adresse, son nom et sa clé : je te les demande une par une, ils restent sur ton serveur.',
+        : 'Le diable envoie tes messages à un autre modèle, sans filtre, dans ce même fil : par exemple un modèle « abliterated » que tu fais tourner chez toi (Ollama, LM Studio, vLLM) ou que tu loues (OpenRouter, RunPod…), du moment qu’il parle l’API OpenAI. Il me faut son adresse, son nom et sa clé : je te les demande une par une, ils restent sur ta machine.',
     devilOk: (model: string, ms: number): string => `Branché : ${model} répond (${ms} ms). Tape le diable pour basculer : la bande passe en orange, ses réponses arrivent en vert, dans ce même fil.`,
     devilNoModel: (model: string, list: string): string => `Le serveur répond, mais je ne trouve pas « ${model} » chez lui. Il propose : ${list}. Réessaie avec l’un d’eux :`,
     devilFail: (why: string): string => `Je n’arrive pas à joindre le modèle (${why}). Vérifie l’adresse (elle finit souvent par /v1) et que sa machine est allumée, puis réessaie :`,
@@ -191,6 +197,8 @@ export default defineMessages({
     keySaved: (name: string) => `${name} enregistrée dans ~/.config/weevils/env (jamais affichée). L’agent qui l’a demandée peut la lire là.`,
     badSecret: 'clé ou valeur refusée',
     installNoSudo: 'Pas de sudo ici : ces commandes s’installent dans le dossier de l’utilisateur.',
+    installNoBrew: (clone: string): string =>
+      `Homebrew manque sur ce Mac, et c’est lui qui installe les outils de base et Node.js. Lance toi-même \`${clone}/install.sh --agent\` (étape 4 de ${clone}/AGENTS.md) : il installe Homebrew, ou dit dans son résumé ce que l’utilisateur doit faire s’il faut le mot de passe du Mac.`,
     needClaude: 'Connecte d’abord Claude Code : c’est moi qui m’en occuperai ensuite.',
     needSudo: 'Pour ça il me faut les droits administrateur sur cette machine, et je ne les ai pas ici. Demande-les à la personne qui la gère, ou branche un VPS à toi :',
     working: 'Je m’en occupe.',
@@ -246,13 +254,15 @@ export default defineMessages({
       s.reach === 'public'
         ? s.https
           ? `I’m reachable from anywhere, over https: ${s.url}. Nothing to do here.`
-          : `I’m reachable from anywhere (${s.url}), but over http: the access code travels in clear text and the phone’s microphone won’t work. To switch to https I need a domain name pointing at this machine.`
-        : `${s.reach === 'lan' ? `I’m only reachable on your local network (${s.url})` : `I only listen on ${s.machine.host}`}: your phone can’t reach me from outside. Two ways: a domain name pointing at the machine (automatic https), or Tailscale (free: an app on your phone, nothing to buy).`,
+          : `I’m reachable from anywhere (${s.url}), but over http: the access code travels in clear text and the phone’s microphone won’t work. ${s.machine.mac ? `To switch to https, the simple way: ${tailscaleMacEn}` : 'To switch to https I need a domain name pointing at this machine.'}`
+        : `${s.reach === 'lan' ? `I’m only reachable on your local network (${s.url})` : `I only listen on ${s.machine.mac ? 'this Mac' : s.machine.host}`}: your phone can’t reach me from outside. ${s.machine.mac ? `The simple way: ${tailscaleMacEn}` : 'Two ways: a domain name pointing at the machine (automatic https), or Tailscale (free: an app on your phone, nothing to buy).'}`,
     reachPrompt: (http: boolean): string => (http ? 'Give me your domain below, I’ll take care of the rest.' : 'Type your domain below, or leave it empty and I’ll go with Tailscale. I’ll take care of the rest.'),
     reachDns: (domain: string, ip: string, seen: string): string =>
       `“${domain}” doesn’t point at this machine yet (${seen ? `it points at ${seen}` : 'it points nowhere'}). At your domain provider, add an A record “${domain}” to ${ip}, wait a few minutes, then try again:`,
     reachDomainDo: (domain: string): string => `Switch me to https on ${domain}.`,
     reachTailscaleDo: 'Make me reachable from anywhere with Tailscale.',
+    reachMacGo: 'I’m on it, and I’ll tell you what there is to do on your side.',
+    reachMacDomain: (domain: string): string => `On a Mac I can’t set myself up on a domain name (“${domain}”). The way that works here is Tailscale:`,
     machine: (m: MachineInfo): string => {
       const spec = `${m.os}, ${m.cpus} core${m.cpus > 1 ? 's' : ''}, ${gb(m.ramGb)} GB`
       const room = m.agents > 1 ? `: room for ${m.agents} agents at once` : ''
@@ -330,7 +340,7 @@ export default defineMessages({
     devilAsk: (plugged: boolean, model: string): string =>
       plugged
         ? `The devil is plugged into ${model}. Tap it to switch (the band turns orange, its answers come in green), again to come back. To change the model:`
-        : 'The devil sends your messages to another model, unfiltered, in this same thread: for example an “abliterated” model you run at home (Ollama, LM Studio, vLLM) or rent (OpenRouter, RunPod…), as long as it speaks the OpenAI API. I need its address, its name and its key: I’ll ask one at a time, they stay on your server.',
+        : 'The devil sends your messages to another model, unfiltered, in this same thread: for example an “abliterated” model you run at home (Ollama, LM Studio, vLLM) or rent (OpenRouter, RunPod…), as long as it speaks the OpenAI API. I need its address, its name and its key: I’ll ask one at a time, they stay on your machine.',
     devilOk: (model: string, ms: number): string => `Plugged in: ${model} answers (${ms} ms). Tap the devil to switch: the band turns orange, its answers come in green, in this same thread.`,
     devilNoModel: (model: string, list: string): string => `The server answers, but it has no “${model}”. It offers: ${list}. Try again with one of them:`,
     devilFail: (why: string): string => `I can’t reach the model (${why}). Check the address (it often ends in /v1) and that its machine is on, then try again:`,
@@ -373,6 +383,8 @@ export default defineMessages({
     keySaved: (name: string) => `${name} saved in ~/.config/weevils/env (never shown). The agent that asked for it can read it there.`,
     badSecret: 'key or value refused',
     installNoSudo: 'No sudo here: these commands install into the user’s home folder.',
+    installNoBrew: (clone: string): string =>
+      `Homebrew is missing on this Mac, and it is what installs the base tools and Node.js. Run \`${clone}/install.sh --agent\` yourself (step 4 of ${clone}/AGENTS.md): it installs Homebrew, or says in its summary what the user has to do when it needs the Mac password.`,
     needClaude: 'Sign Claude Code in first: I’ll take care of it after that.',
     needSudo: 'For that I need admin rights on this machine, and I don’t have them here. Ask whoever runs it, or plug in a VPS of your own:',
     working: 'On it.',

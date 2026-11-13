@@ -99,13 +99,19 @@ function accountNoted(): boolean {
 /**
  * Claude Code is logged in: a key in the environment, the credentials file, or on a Mac the Keychain entry (asked at
  * most every 15 s: this is called often) or the account noted in ~/.claude.json. Synchronous.
+ * tokenOnly: the credentials file counts only when it holds Claude's own token (what the provider check always asked).
  */
-export function claudeLoggedIn(platform: Platform = process.platform, has: Probe = probe, now = Date.now()): boolean {
+export function claudeLoggedIn(platform: Platform = process.platform, has: Probe = probe, now = Date.now(), tokenOnly = false): boolean {
   if (process.env.ANTHROPIC_API_KEY?.trim() || process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim()) return true
-  try {
-    if (fs.statSync(credentialsFile()).size > 2) return true
-  } catch {
-    /* no file */
+  // The setup takes any credentials file for a login; the provider check (tokenOnly) wants Claude's token in it.
+  if (tokenOnly) {
+    if (fromFile()?.accessToken) return true
+  } else {
+    try {
+      if (fs.statSync(credentialsFile()).size > 2) return true
+    } catch {
+      /* no file */
+    }
   }
   if (platform !== 'darwin') return false
   if (!logged || now - logged.at > 15_000) logged = { at: now, v: has(SECURITY, ['find-generic-password', '-s', SERVICE]) || accountNoted() }

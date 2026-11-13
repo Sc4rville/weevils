@@ -3,7 +3,16 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sessionTokens, usageOfLine, rate, codexQuota, claudeQuota, resetQuotaSlots, quotaBackoff } from './usage.ts'
+import { forgetClaudeOauth } from './claude-credentials.ts'
 import { CODEX_DIR, DATA_DIR, HOME } from './config.ts'
+
+// A Mac's Keychain, on this Linux host: while a test sets mac.security, the quota reads Claude's login as on a Mac
+// (platform « darwin », that `security` in place of the real one). Otherwise nothing changes: this host, the file.
+const mac = vi.hoisted(() => ({ security: undefined as undefined | ((file: string, args: string[]) => Promise<string>) }))
+vi.mock('./claude-credentials.ts', async (orig) => {
+  const real = await orig<typeof import('./claude-credentials.ts')>()
+  return { ...real, claudeOauth: () => (mac.security ? real.claudeOauth('darwin', mac.security) : real.claudeOauth()) }
+})
 
 let dir: string
 beforeEach(() => {
@@ -184,6 +193,97 @@ describe('usage — the Claude quota under 429', () => {
   it('nothing known yet and a 429: an error, never an empty success', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => tooMany()))
     expect(await claudeQuota()).toMatchObject({ ok: false, windows: [], error: 'HTTP 429' })
+  })
+})
+
+describe('usage — the Claude quota on a Mac (the login is in the Keychain, not in a file)', () => {
+  const answer = { five_hour: { utilization: 42, resets_at: '2026-11-13T15:00:00Z' }, seven_day: { utilization: 61, resets_at: '2026-11-17T08:00:00Z' } }
+  const T0 = Date.parse('2026-11-13T10:00:00Z')
+  const entry = (accessToken: string, more: object = {}) => JSON.stringify({ claudeAiOauth: { accessToken, subscriptionType: 'max', rateLimitTier: 'default_claude_max_5x', expiresAt: T0 + 8 * 3600_000, ...more } }) + '\n'
+  /** Anthropic's side: answers 200 with the figures (or what `reply` says), and notes the token it was sent. */
+  const anthropic = (reply: () => Response = () => new Response(JSON.stringify(answer), { status: 200 })) => {
+    const tokens: string[] = []
+    const fetch = vi.fn(async (_url: string, init?: { headers?: Record<string, string> }) => {
+      tokens.push(init?.headers?.authorization ?? '')
+      return reply()
+    })
+    vi.stubGlobal('fetch', fetch)
+    return { fetch, tokens }
+  }
+  beforeEach(() => {
+    fs.rmSync(path.join(HOME, '.claude', '.credentials.json'), { force: true })
+    fs.rmSync(path.join(DATA_DIR, 'quota-cache.json'), { force: true })
+    resetQuotaSlots()
+    forgetClaudeOauth()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(T0)
+  })
+  afterEach(() => {
+    mac.security = undefined
+    forgetClaudeOauth()
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('no credentials file: the token and the plan come from the Keychain, asked once for several reads', async () => {
+    const security = vi.fn(async (_file: string, _args: string[]) => entry('from-keychain'))
+    mac.security = security
+    const { fetch, tokens } = anthropic()
+    const q = await claudeQuota()
+    expect(q).toMatchObject({ ok: true, plan: 'Max 5x' })
+    expect(q.windows.map((w) => [w.kind, w.percent])).toEqual([['session', 42], ['week', 61]])
+    expect(tokens).toEqual(['Bearer from-keychain'])
+    expect(security).toHaveBeenCalledTimes(1)
+    expect(security.mock.calls[0]).toEqual(['/usr/bin/security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'], 5000])
+    // Six minutes later the quota is read again: the Keychain is not (its answer is kept ten minutes).
+    vi.setSystemTime(T0 + 6 * 60_000)
+    await claudeQuota()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(tokens[1]).toBe('Bearer from-keychain')
+    expect(security).toHaveBeenCalledTimes(1)
+  })
+
+  it('a refused token (401) is forgotten: the next try asks the Keychain again and gets the one Claude Code renewed', async () => {
+    const security = vi.fn(async (_file: string, _args: string[]) => entry('old'))
+    mac.security = security
+    let status = 401
+    const { fetch, tokens } = anthropic(() => (status === 401 ? new Response('{}', { status: 401 }) : new Response(JSON.stringify(answer), { status: 200 })))
+    expect(await claudeQuota()).toMatchObject({ ok: false, error: 'token expired, open claude once' })
+    expect(security).toHaveBeenCalledTimes(1)
+    // Within the back-off (5 min): neither Anthropic nor the Keychain is asked.
+    vi.setSystemTime(T0 + 4 * 60_000)
+    await claudeQuota()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(security).toHaveBeenCalledTimes(1)
+    security.mockImplementation(async () => entry('renewed'))
+    status = 200
+    vi.setSystemTime(T0 + 6 * 60_000)
+    expect(await claudeQuota()).toMatchObject({ ok: true, plan: 'Max 5x' })
+    expect(tokens).toEqual(['Bearer old', 'Bearer renewed'])
+    expect(security).toHaveBeenCalledTimes(2)
+  })
+
+  it('no entry in the Keychain (or a locked one): « not signed in », and Anthropic is never asked', async () => {
+    const security = vi.fn(async (_file: string, _args: string[]): Promise<string> => Promise.reject(new Error('security: exit 44')))
+    mac.security = security
+    const { fetch } = anthropic()
+    expect(await claudeQuota()).toMatchObject({ ok: false, windows: [], error: 'not signed in' })
+    expect(fetch).not.toHaveBeenCalled()
+    // The back-off holds the Keychain too: not one `security` per caller.
+    await Promise.all([claudeQuota(), claudeQuota(), claudeQuota()])
+    expect(security).toHaveBeenCalledTimes(1)
+  })
+
+  it('the file, when there is one, still wins on a Mac: the Keychain is left alone', async () => {
+    fs.mkdirSync(path.join(HOME, '.claude'), { recursive: true })
+    fs.writeFileSync(path.join(HOME, '.claude', '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 'from-file', subscriptionType: 'pro' } }))
+    const security = vi.fn(async (_file: string, _args: string[]) => entry('from-keychain'))
+    mac.security = security
+    const { tokens } = anthropic()
+    expect(await claudeQuota()).toMatchObject({ ok: true, plan: 'Pro' })
+    expect(tokens).toEqual(['Bearer from-file'])
+    expect(security).not.toHaveBeenCalled()
   })
 })
 

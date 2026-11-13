@@ -9,7 +9,8 @@ import O from './i18n/optimizers.ts'
 import { Memory } from './memory.ts'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { Writable } from 'node:stream'
-import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_FAILED_RUNS, MAX_RUN_MS, MAX_RUNS, MAX_TALK, MAX_TRIES, MAX_WAITING, REFILL_GAP_MS, optimizerRoutes, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, TALK_BACKOFF_MS, TALK_CHARS, VANISH_MS, Optimizers, agreedDigest, freeReason, guardEnv, isRepeat, jailArgs, isStall, parsePatch, parseProposals, parseSuggestions, runLimit, slug, stallKind, tidy, type Sys } from './optimizers.ts'
+import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_FAILED_RUNS, MAX_RUN_MS, MAX_RUNS, MAX_TALK, MAX_TRIES, MAX_WAITING, MAC_DENY, MEM_REFRESH_MS, REFILL_GAP_MS, optimizerRoutes, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, TALK_BACKOFF_MS, TALK_CHARS, VANISH_MS, Optimizers, agreedDigest, denyList, freeReason, guardEnv, isRepeat, jailArgs, isStall, memGauge, parsePatch, parseProposals, parseSuggestions, runLimit, slug, stallKind, tidy, tryJail, type Sys } from './optimizers.ts'
+import { availableMem } from './platform.ts'
 
 // Hermetic: no claude CLI, no login check, the language fixed in memory.
 vi.mock('./fast.ts', async (orig) => { const smart = vi.fn(); return { ...(await orig<typeof import('./fast.ts')>()), smart, claudeHaiku: (...a: any[]) => smart(...a), claudeAvailable: () => true, relay: vi.fn() } })
@@ -1798,4 +1799,179 @@ describe('explicit preparation of an existing legacy draft', () => {
   spy.mockRestore()
   expect(o.prepareProposal('existing', 5, T0)?.draft).toBeUndefined()
  })
+})
+
+// macOS has no bwrap and no MemAvailable: the platform and what it would run are injected, the outputs are canned.
+describe('auto — on a Mac', () => {
+  const vmStat = (free: number, inactive: number) =>
+    [
+      'Mach Virtual Memory Statistics: (page size of 16384 bytes)',
+      `Pages free:                            ${free}.`,
+      'Pages active:                        262144.',
+      `Pages inactive:                      ${inactive}.`,
+      'Pages speculative:                     2048.',
+      'Pages throttled:                          0.',
+      'Pages wired down:                    131072.',
+      'Pages purgeable:                       4096.',
+      '"Translation faults":             912345678.',
+      'Pages occupied by compressor:         65536.',
+    ].join('\n')
+  const PAGE = 16384
+  const mac = (extra: Record<string, unknown> = {}) =>
+    new Optimizers(
+      { snapshot: () => snap, allRepos: () => ['mygame', 'mygame-site', 'notes'], repoDir: (r: string) => path.join(dir, 'p', r), createIn, bump, store, hooks, detail, send, key, command, ...extra } as never,
+      memory,
+      { file: path.join(dir, 'optimizers.json'), dir: path.join(dir, 'optimizers'), sys, platform: 'darwin' },
+    )
+  const accept = async (o: Optimizers) => {
+    model.mockResolvedValue(props(1))
+    await o.round(T0)
+    for (const x of o.list()) expect(o.accept(x.id)).toBe(true)
+    return o
+  }
+
+  it('the memory gate reads what vm_stat says is available, never os.freemem() (untouched pages only), and reads it again in the background', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    let out = vmStat(3204, 196608)
+    const run = vi.fn(async () => out)
+    // What os.freemem() gives on a Mac: the free pages alone, 52 MB here.
+    const free = () => 3204 * PAGE
+    const gauge = memGauge('darwin', () => availableMem('darwin', run, free), free)
+    // Nothing read yet: the first look starts vm_stat and answers with what it has.
+    expect(gauge()).toBe(free())
+    await flush()
+    expect(run).toHaveBeenCalledWith('/usr/bin/vm_stat', [], 3000)
+    expect(gauge()).toBe((3204 + 196608 + 2048 + 4096) * PAGE)
+    expect(freeReason({ idleFor: IDLE_MS, load: 0.2, cpus: 8, free: free() })).toBe('ram')
+    expect(freeReason({ idleFor: IDLE_MS, load: 0.2, cpus: 8, free: gauge() })).toBeNull()
+    // Memory really low a moment later: the gate sees it without anyone waiting for vm_stat.
+    out = vmStat(1000, 20000)
+    vi.advanceTimersByTime(MEM_REFRESH_MS)
+    await flush()
+    expect(run).toHaveBeenCalledTimes(2)
+    expect(gauge()).toBe((1000 + 20000 + 2048 + 4096) * PAGE)
+    expect(freeReason({ idleFor: IDLE_MS, load: 0.2, cpus: 8, free: gauge() })).toBe('ram')
+    // vm_stat unreadable: availableMem falls back to os.freemem(), and the gate with it (it holds the task, never frees it wrongly).
+    run.mockRejectedValueOnce(new Error('ENOENT'))
+    vi.advanceTimersByTime(MEM_REFRESH_MS)
+    await flush()
+    expect(gauge()).toBe(free())
+  })
+
+  it('on Linux the gate is os.freemem() itself: nothing else is read', () => {
+    const read = vi.fn(async () => 1)
+    const free = () => 5 * 1024 ** 3
+    const gauge = memGauge('linux', read, free)
+    expect(gauge).toBe(free)
+    expect(gauge()).toBe(5 * 1024 ** 3)
+    expect(read).not.toHaveBeenCalled()
+  })
+
+  it('the deny list also closes the Keychain, gh’s token, git’s saved passwords and launchd, on a Mac only', () => {
+    const mac = denyList('darwin')
+    expect(mac).toEqual(
+      expect.arrayContaining([
+        'Bash(security *)',
+        'Bash(*/security *)',
+        'Bash(*find-generic-password*)',
+        'Bash(*dump-keychain*)',
+        'Bash(*Claude Code-credentials*)',
+        'Bash(*gh auth *)',
+        'Bash(gh *)',
+        'Bash(git credential*)',
+        'Bash(*git-credential-*)',
+        'Bash(launchctl *)',
+        'Read(~/Library/Keychains/**)',
+        'Edit(~/Library/LaunchAgents/**)',
+        'Edit(~/.zshrc)',
+      ]),
+    )
+    // Everything Linux denies is denied on a Mac too, and Linux gets none of the Mac rules.
+    const linux = denyList('linux')
+    expect(mac).toEqual([...linux, ...MAC_DENY])
+    for (const rule of MAC_DENY) expect(linux).not.toContain(rule)
+    expect(linux).toEqual(expect.arrayContaining(['Bash(git push*)', 'Bash(gh *)', 'Bash(systemctl *)', 'Read(~/.claude/.credentials.json)']))
+    expect(DENY).toEqual(denyList(process.platform))
+  })
+
+  it('the environment barriers name a program that exists on a Mac', () => {
+    const { set } = guardEnv('/g', {}, 'darwin')
+    expect(set).toMatchObject({ GIT_ASKPASS: '/usr/bin/false', SSH_ASKPASS: '/usr/bin/false', GIT_SSH_COMMAND: '/usr/bin/false', GH_CONFIG_DIR: '/g/gh' })
+    expect(guardEnv('/g', {}, 'linux').set.GIT_SSH_COMMAND).toBe('/bin/false')
+  })
+
+  it('never starts bwrap on a Mac: no jail there, known without asking', async () => {
+    const run = vi.fn()
+    expect(await tryJail(['--dev-bind', '/', '/', '--'], 'darwin', run as never)).toBe(false)
+    expect(run).not.toHaveBeenCalled()
+    // Linux: asked each time; absent → no jail, a jail that fails → an error.
+    const gone = vi.fn((_f: string, _a: string[], _o: unknown, cb: (e: unknown, out: string, err: string) => void) => cb(Object.assign(new Error('spawn bwrap ENOENT'), { code: 'ENOENT' }), '', ''))
+    expect(await tryJail(['--'], 'linux', gone as never)).toBe(false)
+    expect(gone).toHaveBeenCalledWith('bwrap', ['--', 'true'], expect.anything(), expect.anything())
+    const ok = vi.fn((_f: string, _a: string[], _o: unknown, cb: (e: unknown, out: string, err: string) => void) => cb(null, '', ''))
+    expect(await tryJail(['--'], 'linux', ok as never)).toBe(true)
+    const broken = vi.fn((_f: string, _a: string[], _o: unknown, cb: (e: unknown, out: string, err: string) => void) => cb(new Error('exit 1'), '', 'bwrap: Creating new namespace failed\n'))
+    await expect(tryJail(['--'], 'linux', broken as never)).rejects.toThrow('Creating new namespace failed')
+  })
+
+  it('a Claude task runs without a jail, behind the deny list and the environment barriers; a takeover by Codex is refused in plain words', async () => {
+    sys.jail = vi.fn(async () => false)
+    const o = await accept(mac())
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    expect(o.list()[0]).toMatchObject({ state: 'running', sessionId: 'sess-1' })
+    const [, , , args, env, tool] = createIn.mock.calls[0]
+    expect(tool).toBe('claude')
+    expect(args).toEqual(SAFETY_ARGS)
+    expect(env.wrap).toEqual([])
+    expect(env.set.GIT_SSH_COMMAND).toBe('/usr/bin/false')
+    expect(env.unset).toEqual(expect.arrayContaining(['GH_TOKEN', 'SSH_AUTH_SOCK']))
+    await expect(o.relayRun('sess-1', 'Continue')).rejects.toThrow(O.en.noJailMac)
+    expect(O.en.noJailMac).not.toMatch(/bwrap/)
+    expect(O.fr.noJailMac).not.toMatch(/bwrap/)
+    expect(createIn).toHaveBeenCalledTimes(1)
+  })
+
+  it('a task that would run on Codex waits and says why, the jail never probed; it starts once Claude is the one that runs it', async () => {
+    let route: 'claude' | 'codex' = 'codex'
+    // What the real check answers on a Mac (tryJail, above).
+    sys.jail = vi.fn(async () => false)
+    const relay = { executionTool: () => route, holdUntil: () => 0, autoOnCodex: () => false, retryAt: () => T0 + 60 * MIN }
+    const o = await accept(mac({ relay }))
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    o.tick(T0 + IDLE_MS + MIN)
+    await flush()
+    expect(createIn).not.toHaveBeenCalled()
+    expect(sys.jail).not.toHaveBeenCalled()
+    expect(o.list()[0]).toMatchObject({ state: 'queued', lastEvent: O.en.noJailMac })
+    // Claude runs it again (the provider changed, or Claude is back): the note goes, then the task starts.
+    route = 'claude'
+    snap.mainWorking = true
+    o.tick(T0 + IDLE_MS + 2 * MIN)
+    await flush()
+    expect(o.list()[0]).toMatchObject({ state: 'queued', waiting: 'busy' })
+    expect(o.list()[0].lastEvent).toBeUndefined()
+    snap.mainWorking = false
+    o.tick(T0 + 2 * IDLE_MS + 3 * MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(1)
+    expect(createIn.mock.calls[0][5]).toBe('claude')
+    expect(createIn.mock.calls[0][4].wrap).toEqual([])
+  })
+
+  it('on Linux the same Codex route writes nothing on the task', async () => {
+    const relay = { executionTool: () => 'codex' as const, holdUntil: () => 0, autoOnCodex: () => false, retryAt: () => T0 + 60 * MIN }
+    const o = new Optimizers(
+      { snapshot: () => snap, allRepos: () => ['mygame', 'mygame-site', 'notes'], repoDir: (r: string) => path.join(dir, 'p', r), createIn, bump, store, hooks, detail, send, key, command, relay } as never,
+      memory,
+      { file: path.join(dir, 'optimizers.json'), dir: path.join(dir, 'optimizers'), sys, platform: 'linux' },
+    )
+    await accept(o)
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    expect(createIn).not.toHaveBeenCalled()
+    expect(o.list()[0].state).toBe('queued')
+    expect(o.list()[0].lastEvent).toBeUndefined()
+  })
 })

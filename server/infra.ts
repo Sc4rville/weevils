@@ -1,5 +1,6 @@
 // Coin infrastructure, côté machine : mesures toutes les 15 s, une minute d'historique par ligne (DATA_DIR/infra/<jour>.jsonl),
 // saturations, serveurs à l'écoute, conseils tirés des vraies mesures. Linux d'abord (/proc) ; ailleurs, ce que donne os.
+// macOS : la mémoire vient de vm_stat et les serveurs à l'écoute de lsof ; le détail par processus (/proc) reste vide.
 
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
@@ -10,6 +11,7 @@ import { facts, offer } from './discover.ts'
 import { DATA_DIR, EXPOSE_DOMAIN, EXPOSE_SITES_DIR, HOME, MACHINE, ORCH_DIR, ORCHESTRATOR } from './config.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/infra.ts'
+import { availableMem, type Platform } from './platform.ts'
 
 const DIR = path.join(DATA_DIR, 'infra')
 const TICK = 15_000
@@ -49,11 +51,35 @@ export function effectiveCores(): number {
   return Math.max(1, Math.min(os.cpus().length, Math.round(lim * 10) / 10))
 }
 
+/**
+ * macOS : la mémoire qu'un processus peut vraiment obtenir (vm_stat, voir availableMem), relue avant chaque mesure.
+ * os.freemem() n'y compte que les pages jamais touchées : la machine se lirait pleine à 95 % toute la journée.
+ * null avant la première lecture, et toujours sous Linux (/proc/meminfo).
+ */
+let macAvail: number | null = null
+export async function refreshMem(platform: Platform = process.platform, avail: (p: Platform) => Promise<number> = availableMem): Promise<number | null> {
+  if (platform !== 'darwin') return null
+  try {
+    macAvail = await avail(platform)
+  } catch {
+    /* la dernière valeur reste */
+  }
+  return macAvail
+}
+
+/** Mémoire et swap : /proc/meminfo (texte) quand il existe, sinon le total et le disponible donnés. */
+export function memUsage(txt: string, total: number, avail: number) {
+  const kb = (k: string) => Number(new RegExp(`^${k}:\\s+(\\d+)`, 'm').exec(txt)?.[1] ?? NaN) * 1024
+  if (!txt) return { total, used: Math.max(0, total - avail), swapTotal: 0, swapUsed: 0 }
+  const swapTotal = kb('SwapTotal')
+  return { total: kb('MemTotal'), used: kb('MemTotal') - kb('MemAvailable'), swapTotal, swapUsed: swapTotal - kb('SwapFree') }
+}
+
 function meminfo() {
   const txt = read('/proc/meminfo')
-  const kb = (k: string) => Number(new RegExp(`^${k}:\\s+(\\d+)`, 'm').exec(txt)?.[1] ?? NaN) * 1024
-  let total = txt ? kb('MemTotal') : os.totalmem()
-  let used = total - (txt ? kb('MemAvailable') : os.freemem())
+  const m = memUsage(txt, os.totalmem(), macAvail ?? os.freemem())
+  let total = m.total
+  let used = m.used
   // Limite de mémoire du cgroup (conteneur) : c'est elle, la vraie machine.
   const max = cgNum('memory.max')
   if (max != null && max < total) {
@@ -61,9 +87,7 @@ function meminfo() {
     const inactive = Number(/^inactive_file (\d+)/m.exec(CG ? read(path.join(CG, 'memory.stat')) : '')?.[1] ?? 0)
     used = Math.max(0, (cgNum('memory.current') ?? used) - inactive)
   }
-  const swapTotal = txt ? kb('SwapTotal') : 0
-  const swapUsed = txt ? swapTotal - kb('SwapFree') : 0
-  return { total, used, swapTotal, swapUsed }
+  return { total, used, swapTotal: m.swapTotal, swapUsed: m.swapUsed }
 }
 
 function disk() {
@@ -293,8 +317,10 @@ export function startInfra() {
       flush()
     }
   }
-  tick()
-  setInterval(tick, TICK).unref()
+  // Un Mac lit d'abord sa mémoire (vm_stat, asynchrone), puis mesure ; Linux mesure tout de suite.
+  const step = process.platform === 'darwin' ? () => void refreshMem().then(tick, tick) : tick
+  step()
+  setInterval(step, TICK).unref()
 }
 
 // ---------------------------------------------------------------- ce qu'on montre
@@ -454,8 +480,72 @@ export function exposed(): Map<number, string> {
   return out
 }
 
-/** Ports à l'écoute (ss -ltnpH), avec le processus et son dossier quand il est à cet utilisateur. */
-export function servers(): Promise<ServerProc[]> {
+/** La sortie d'une commande, même quand elle finit en erreur (lsof sort en 1 dès qu'un pid a disparu) ; '' si elle ne se lance pas. */
+export type Run = (file: string, args: string[]) => Promise<string>
+export const stdoutOf: Run = (file, args) => new Promise((resolve) => execFile(file, args, { timeout: 3000, maxBuffer: 8 << 20 }, (_err, stdout) => resolve(String(stdout ?? ''))))
+
+/** lsof sur un Mac : toujours là, hors du PATH réduit d'un service launchd quand il est fixé à la main. */
+const LSOF = '/usr/sbin/lsof'
+
+export interface Listener {
+  port: number
+  addr: string
+  pid: number
+  name: string
+}
+
+/**
+ * `lsof -nP -iTCP -sTCP:LISTEN -F pcn` (macOS) : un bloc par processus, p<pid>, c<commande>, puis une ligne
+ * n<adresse>:<port> par socket à l'écoute (n*:5173, n127.0.0.1:4179, n[::1]:5173). Les autres champs sont ignorés.
+ * Sans root, lsof ne voit que les processus de cet utilisateur.
+ */
+export function parseLsofListeners(out: string): Listener[] {
+  const res: Listener[] = []
+  let pid = 0
+  let name = ''
+  for (const line of out.split('\n')) {
+    const v = line.slice(1).trim()
+    if (line[0] === 'p') {
+      pid = Number(v) || 0
+      name = ''
+    } else if (line[0] === 'c') name = v
+    else if (line[0] === 'n' && pid) {
+      const m = /^(.*):(\d+)$/.exec(v)
+      if (m) res.push({ port: Number(m[2]), addr: m[1].replace(/^\[|\]$/g, '').replace(/%.*$/, ''), pid, name })
+    }
+  }
+  return res
+}
+
+/** `lsof -a -p <pids> -d cwd -Fn` : p<pid>, puis n<son dossier de travail>. */
+export function parseLsofCwd(out: string): Map<number, string> {
+  const res = new Map<number, string>()
+  let pid = 0
+  for (const line of out.split('\n')) {
+    if (line[0] === 'p') pid = Number(line.slice(1)) || 0
+    else if (line[0] === 'n' && pid && line[1] === '/' && !res.has(pid)) res.set(pid, line.slice(1))
+  }
+  return res
+}
+
+/** Ce qui écoute en TCP sur un Mac, processus de cet utilisateur seulement. */
+export const macListeners = async (run: Run = stdoutOf) => parseLsofListeners(await run(LSOF, ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pcn']))
+/** Le dossier de travail de processus de cet utilisateur, sur un Mac (un seul appel pour tous). */
+export const macCwds = async (pids: number[], run: Run = stdoutOf) => (pids.length ? parseLsofCwd(await run(LSOF, ['-a', '-p', pids.join(','), '-d', 'cwd', '-Fn'])) : new Map<number, string>())
+
+async function macServers(run: Run): Promise<ServerProc[]> {
+  const urls = exposed()
+  const byPort = new Map<number, Listener>()
+  for (const l of await macListeners(run)) if (!byPort.has(l.port)) byPort.set(l.port, l)
+  const dirs = await macCwds([...new Set([...byPort.values()].map((l) => l.pid))], run)
+  return [...byPort.values()]
+    .map((l): ServerProc => ({ port: l.port, name: l.name || '?', dir: dirs.get(l.pid)?.replace(HOME, '~'), url: urls.get(l.port) }))
+    .sort((a, b) => a.port - b.port)
+}
+
+/** Ports à l'écoute (ss -ltnpH ; lsof sur un Mac), avec le processus et son dossier quand il est à cet utilisateur. */
+export function servers(platform: Platform = process.platform, run: Run = stdoutOf): Promise<ServerProc[]> {
+  if (platform === 'darwin') return macServers(run)
   return new Promise((resolve) => {
     execFile('ss', ['-ltnpH'], { timeout: 3000 }, (err, stdout) => {
       if (err) return resolve([])
@@ -603,6 +693,7 @@ async function consumers(lookup: (id: string) => { title: string; projectId: str
 }
 
 export async function detail(lookup: (id: string) => { title: string; projectId: string } | undefined = () => undefined): Promise<InfraDetail> {
+  if (process.platform === 'darwin') await refreshMem()
   const m = meminfo()
   const d = disk()
   const cores = effectiveCores()

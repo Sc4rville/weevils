@@ -1,3 +1,4 @@
+import { InstallationIdentity } from './recursive-identity.ts'
 import AgentMessages from './i18n/agent-messages.ts'
 import { MessageOrigins } from './message-origins.ts'
 import CB from './i18n/codex-bridge.ts'
@@ -250,6 +251,11 @@ export const joinContext = (block: string, extra: string): string => {
 }
 
 export class Weevils {
+  private installationIdentity = new InstallationIdentity(path.join(import.meta.dirname,'..'),MACHINE.id)
+  workstreamForRepo(repo:string) {
+    const root=this.repoRoot(repo)
+    return root ? this.installationIdentity.classify(path.join(root,repo),familyOf(repo),repo,'automation-target') : undefined
+  }
   store = new TranscriptStore(CLAUDE_DIR, CODEX_DIR, RECENT_MS)
   private messageOrigins = new MessageOrigins(path.join(DATA_DIR,'message-origins.json'))
   hooks = new Map<string, HookState>()
@@ -877,6 +883,7 @@ export class Weevils {
       : status === 'interrupted' ? noticeKey('cut', t.id, userTurn) : undefined
     return {
       id: t.id,
+      workstream: this.installationIdentity.classify(t.cwd,where.projectId,where.repo),
       projectId: where.projectId,
       repo: where.repo,
       machineId: MACHINE.id,
@@ -973,6 +980,15 @@ export class Weevils {
       p.lastActivityAt = Math.max(p.lastActivityAt, s.lastActivityAt)
       map.set(p.id, p)
     }
+    // Canonical source stays discoverable even when no project session is currently open.
+    for(const repo of this.allRepos()){
+      const identity=this.workstreamForRepo(repo)
+      if(!identity)continue
+      const id=identity.target.projectId
+      const p=map.get(id)??{id,name:projectLabel(id),kind:'repo' as const,repos:[],where:{},lastActivityAt:0}
+      if(!p.repos.includes(repo))p.repos.push(repo)
+      p.where[repo]=MACHINE.id;p.workstream={...identity,evidence:'repository-identity'};map.set(id,p)
+    }
     return [...map.values()]
   }
 
@@ -990,6 +1006,7 @@ export class Weevils {
         if (!cur.repos.includes(r)) cur.repos.push(r)
         cur.where[r] ??= p.where[r]
       }
+      cur.workstream ??= p.workstream
       cur.lastActivityAt = Math.max(cur.lastActivityAt, p.lastActivityAt)
       if (p.kind === 'repo') cur.kind = 'repo'
     }

@@ -778,6 +778,7 @@ export class Optimizers {
     const out: Optimizer = at > now ? { ...v, startAt: at } : { ...v }
     const recovery=o.lifecycle?.findLast(event=>event.action==='restore-draft')
     if(recovery)out.recoveredAt=recovery.at
+    if(o.repo)out.workstream=this.w.workstreamForRepo?.(o.repo)
     if (o.runNow) out.runRequested = true
     // Stored oldest first (older files read the same); the app reads the newest first.
     if (o.runs) out.runs = newestFirst(o.runs)

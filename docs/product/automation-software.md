@@ -183,3 +183,20 @@ work touching one workspace cannot overlap; response loss/restart/relay cannot d
 cancels future/pending work while its active job follows the existing finish policy; source upgrade affects
 only future runs; unresolved legacy provenance is not guessed; reload, EN/FR and theme changes preserve
 IDs, grouping, decisions and activity truth. UI624 owns presentation; scheduler/transport owns these facts.
+
+## Recursive visual identity
+
+`Project`, `Session` and `Optimizer` may expose `workstream` with kind `self-improvement`, a stable
+installation identity, an explicit machine/project/repository target and the evidence type. The server
+compares the target's real Git common directory with the running installation's repository, including
+linked worktrees. An unrelated clone with the same name/remote, a mention in prose or a thematic inferred
+project is not sufficient. A missing verifiable repository identity stays unclassified. Auto uses its
+configured target repository, independently of its own software repository. A targetless task needs a
+separately verified structured intent binding; its title is not a substitute.
+
+This field describes target context, not sender identity, live activity or an improvement already achieved.
+The canonical project may be pinned while idle. Its working animation must still follow the existing
+verified runtime state; absence/stale evidence does not animate. Per-message Automated signatures require
+the request/run provenance contract above. Neither `workstream` nor the optimizer's sessionId authorizes
+labelling all messages in a mixed session. Feed results require actual linked outcomes before describing
+an improvement as delivered. Preserve the existing recursive theme tokens rather than adding a palette.

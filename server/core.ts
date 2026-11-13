@@ -397,7 +397,8 @@ export class Weevils {
   /** Titres écrits par le renommeur, par session. */
   private directCodexBoss?: { pane?: string; sessionId?: string; since: number }
   titles = new Map<string, Titled>()
-  private codexBridge = new CodexBridge(process.env.WEEVILS_CODEX_SOCKET ?? '', undefined, () => this.bump())
+  private codexBridge = new CodexBridge(process.env.WEEVILS_CODEX_SOCKET ?? '', undefined, () => this.bump(), path.join(DATA_DIR,'session-names.json'), () =>
+    this.store.all().filter(t => t.tool === 'codex' && t.originator !== 'codex_exec' && Date.now()-t.lastActivityAt < RECENT_MS).map(t => t.id))
   private progressReader = new SessionProgressReader()
   private titling = false
   private titleRetry = new TitleRetry()
@@ -879,7 +880,8 @@ export class Weevils {
     const relayedBy = t.tool === 'claude' ? this.relay?.relayedBy(t.id) : undefined
     const names = [where.repo ?? '', MACHINE.name].filter(Boolean)
     const titled = this.titles.get(t.id)
-    const presentation = titled ? titlePresentation(t.id, t.customTitle ? { ...titled, title: '' } : titled, lang(), this.foryou?.localization, names) : undefined
+    const explicitTitle = (t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) || t.customTitle
+    const presentation = titled ? titlePresentation(t.id, explicitTitle ? { ...titled, title: '' } : titled, lang(), this.foryou?.localization, names) : undefined
     const relayTitled = relayOf ? this.titles.get(relayOf) : undefined
     const relayTitle = relayOf && !t.customTitle ? ((relayTitled ? titlePresentation(relayOf, relayTitled, lang(), this.foryou?.localization, names).title : undefined) ?? (this.store.get(relayOf) ? titleOf(this.store.get(relayOf)!) : undefined)) : undefined
     const userTurn = t.messages.findLast((m) => m.role === 'user' || m.role === 'orchestrator')?.id ?? t.openedAt
@@ -894,7 +896,7 @@ export class Weevils {
       machineId: MACHINE.id,
       tool: t.tool,
       // Le titre choisi par l'utilisateur dans l'outil prime ; sinon celui du renommeur (ce dont la session parle maintenant) ; sinon le début.
-      title: relayTitle ?? (t.customTitle ? titleOf(t) : ((t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) ?? presentation?.title ?? titleOf(t))),
+      title: explicitTitle || relayTitle || presentation?.title || titleOf(t),
       // En attendant l'activité réécrite : le dernier pas de l'agent (outil) plutôt que l'ancienne tâche.
       now: shortNow(presentation?.now || (t.phase === 'working' || pane?.screenWorking ? stepOf(t) : '')) || undefined,
       status,
@@ -1157,7 +1159,7 @@ export class Weevils {
     if (!this.titleRetry.ready(now)) return
     const todo = this.store
       .all()
-      .filter((t) => now - t.lastActivityAt < RECENT_MS && !t.customTitle && !t.cwd.startsWith(DATA_DIR) && t.originator !== 'codex_exec')
+      .filter((t) => now - t.lastActivityAt < RECENT_MS && !t.cwd.startsWith(DATA_DIR) && t.originator !== 'codex_exec')
       .filter((t) => needsTitle(this.titles.get(t.id), t.messages.length, now - t.lastActivityAt < STALE_MS, now))
       .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
       .slice(0, 8)
@@ -1166,7 +1168,7 @@ export class Weevils {
     try {
       const items = todo.map((t) => {
         const where = place(t.cwd, PROJECT_ROOTS)
-        return { id: t.id, previousTitle: this.titles.get(t.id)?.title, tool: t.tool, where: where.repo ?? t.cwd.replace(HOME, '~'), ...digestOf(t) }
+        return { id: t.id, previousTitle: (t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) || t.customTitle || this.titles.get(t.id)?.title, tool: t.tool, where: where.repo ?? t.cwd.replace(HOME, '~'), ...digestOf(t) }
       })
       const out = await llmTitles(items, path.join(DATA_DIR, 'titles'))
       if (!out.some(r => todo.some(t => t.id === r.id))) throw new Error('empty title result') // i18n-ignore: internal diagnostic, never returned to the user
@@ -1175,7 +1177,7 @@ export class Weevils {
         const t = todo.find((x) => x.id === r.id)
         if (t) {
           const previous = this.titles.get(r.id)
-          const title = stableTitle(previous?.title, r.title, r.topicChanged)
+          const title = (t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) || t.customTitle || stableTitle(previous?.title, r.title, r.topicChanged)
           this.titles.set(r.id, { title, titleLang: title === previous?.title ? previous.titleLang ?? detectLang(title) ?? undefined : lang(), now: r.now, nowLang: lang(), at: now, messageCount: t.messages.length })
         }
       }

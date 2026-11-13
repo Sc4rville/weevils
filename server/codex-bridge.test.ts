@@ -1,4 +1,7 @@
 import { expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { CodexBridge } from './codex-bridge.ts'
 const fixture = (active = false) => {
   const queue: any[] = []
@@ -15,6 +18,33 @@ const fixture = (active = false) => {
   const transport = async <T>(_socket: string, run: (rpc: any) => Promise<T>) => run(rpc)
   return { queue, calls, rpc, transport, idle: () => { active = false } }
 }
+
+it('persists shared names for unloaded threads across restart and outages without starting or queuing work',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'codex-names-')),file=path.join(dir,'names.json')
+ const calls:string[]=[];let name:string|null='Interface and navigation'
+ const transport=async<T>(_socket:string,run:(rpc:any)=>Promise<T>)=>run(async(method:string,p:any)=>{
+  calls.push(method)
+  if(method==='thread/loaded/list')return{data:[]}
+  if(method==='thread/read'){expect(p).toEqual({threadId:'stored-thread',includeTurns:false});return{thread:{name,preview:'Old French first prompt'}}}
+  throw new Error('Unexpected model or queue operation')
+ })
+ try{
+  const bridge=new CodexBridge('/test/socket',transport,()=>{},file,()=>['stored-thread'])
+  await bridge.refresh()
+  expect(bridge.nameOf('stored-thread')).toBe('Interface and navigation')
+  expect(bridge.can('stored-thread')).toBe(false)
+  const offline=new CodexBridge('/test/socket',async()=>{throw new Error('offline')},()=>{},file)
+  expect(offline.nameOf('stored-thread')).toBe('Interface and navigation')
+  await offline.refresh();expect(offline.nameOf('stored-thread')).toBe('Interface and navigation')
+  const again=new CodexBridge('/test/socket',transport,()=>{},file,()=>['stored-thread'])
+  await again.refresh();expect(again.nameOf('stored-thread')).toBe('Interface and navigation')
+  name=null
+  const cleared=new CodexBridge('/test/socket',transport,()=>{},file,()=>['stored-thread'])
+  await cleared.refresh();expect(cleared.nameOf('stored-thread')).toBeUndefined()
+  expect(new CodexBridge('',transport,()=>{},file).nameOf('stored-thread')).toBeUndefined()
+  expect(calls.every(x=>['thread/loaded/list','thread/read'].includes(x))).toBe(true)
+ }finally{fs.rmSync(dir,{recursive:true,force:true})}
+})
 it('queues while active and starts the same durable entry only after idle', async () => {
   const f = fixture(true), bridge = new CodexBridge('/test/socket', f.transport)
   await bridge.refresh()

@@ -11,6 +11,7 @@ This is a product contract shared by Claude and Codex. The FR/EN orchestrator te
 - The compact action combines a translated category with concrete executable/subcommand names when known. Literal descriptions and nested tool names remain inspectable. Do not replace every tool by another generic synonym for “exec”.
 - Extracted wrapper arguments are evidence of the submitted program, not proof that every conditional branch ran. A wrapper's output belongs to its recorded call identifier; do not invent a separate outcome for each nested call. Dynamic arguments are unknown, never evaluated by the parser.
 - Explicit app locale controls generated product text independently of chat language; proper names and identifiers remain intact. No automatic QA cards, raw commit announcements or diagnostic vocals belong in the user feed.
+- An explicit shared thread name (or Claude custom title) is the canonical topic, ahead of generated translations, inherited handoff names and old first prompts. Read names for stored as well as loaded threads without resuming them, and retain confirmed names across daemon outages and weevils restarts. A retitle refresh may update activity separately; it must not overwrite an intentional topic or rewrite the original transcript.
 
 ## Provider limits and handoffs
 

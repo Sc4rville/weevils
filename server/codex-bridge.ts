@@ -2,6 +2,7 @@ import type { AvailableModel, ModelControls, ModelSelection } from '../shared/mo
 import MC from './i18n/model-controls.ts'
 import { deliveryContext } from './outbox.ts'
 import fs from 'node:fs'
+import path from 'node:path'
 import crypto from 'node:crypto'
 import WebSocket from 'ws'
 import { tr } from './i18n.ts'
@@ -54,6 +55,9 @@ export class CodexBridge {
     return this.can(id) && q && Date.now()-q.at<20_000 ? q.count : undefined
   }
   private names = new Map<string,string>()
+  private nameReads = new Map<string,number>()
+  private nameFile: string
+  private knownThreads: () => string[]
   /** Explicit shared daemon metadata outranks generated topic titles. Retain last confirmed name offline. */
   nameOf(id:string) { return this.names.get(id) }
   private settings = new Map<string, { model?: string; effort?: string; at: number }>()
@@ -62,16 +66,34 @@ export class CodexBridge {
     return this.can(id) && s && Date.now()-s.at < 20_000 ? { model: s.model, effort: s.effort } : undefined
   }
   private remember(id: string, thread: any) {
-    if (typeof thread?.name === 'string' && thread.name.trim()) this.names.set(id, thread.name.trim())
-    else if (thread && 'name' in thread) this.names.delete(id)
+    this.rememberName(id, thread)
     this.settings.set(id, {model: typeof thread?.model === 'string' ? thread.model : undefined, effort: typeof thread?.reasoningEffort === 'string' ? thread.reasoningEffort : undefined, at: Date.now()})
+  }
+  private rememberName(id: string, thread: any) {
+    if (!thread || !('name' in thread) || (thread.name !== null && typeof thread.name !== 'string')) return
+    const name = thread.name?.trim() || undefined
+    if (this.names.get(id) === name) return
+    if (name) this.names.set(id, name); else this.names.delete(id)
+    if (this.nameFile) {
+      fs.mkdirSync(path.dirname(this.nameFile), {recursive:true,mode:0o700})
+      const tmp = this.nameFile + '.tmp'
+      fs.writeFileSync(tmp, JSON.stringify([...this.names]), {mode:0o600})
+      const fd=fs.openSync(tmp,'r');try{fs.fsyncSync(fd)}finally{fs.closeSync(fd)}
+      fs.renameSync(tmp,this.nameFile)
+    }
   }
   private checked = 0
   private busy = false
   private socket: string
   private transport: Connect
   private changed: () => void
-  constructor(socket = '', transport: Connect = connect, changed = () => {}) { this.socket = socket; this.transport = transport; this.changed = changed }
+  constructor(socket = '', transport: Connect = connect, changed = () => {}, nameFile = '', knownThreads: () => string[] = () => []) {
+    this.socket = socket; this.transport = transport; this.changed = changed; this.nameFile = nameFile; this.knownThreads = knownThreads
+    if (nameFile) try {
+      const saved = JSON.parse(fs.readFileSync(nameFile,'utf8'))
+      if (Array.isArray(saved)) for (const entry of saved) if (Array.isArray(entry) && typeof entry[0] === 'string' && typeof entry[1] === 'string' && entry[1].trim()) this.names.set(entry[0],entry[1].trim())
+    } catch { /* The daemon remains authoritative; a missing cache cannot create a name. */ }
+  }
   can(id: string) { return !!this.socket && Date.now() - this.checked < 20_000 && this.loaded.has(id) }
   /** Read current capability at dispatch time; a stale poll must not reject a connected owner. */
   async reachable(id:string):Promise<boolean>{
@@ -114,6 +136,13 @@ export class CodexBridge {
         this.loaded = await this.ids(rpc); this.checked = Date.now(); this.changed()
         for (const id of this.loaded) {
           try { await this.drain(rpc, id) } catch { /* One busy or unloaded thread must not disable the other channels. */ }
+        }
+        // Stored/idle threads also own explicit names. Reading metadata never loads, resumes or queues a turn.
+        const now = Date.now()
+        const due = [...new Set(this.knownThreads())].filter(id => !this.loaded.has(id) && now - (this.nameReads.get(id) ?? 0) >= 60_000).slice(0,20)
+        for (const id of due) {
+          this.nameReads.set(id,now)
+          try { const state=await rpc('thread/read',{threadId:id,includeTurns:false});this.rememberName(id,state.thread) } catch { /* Keep the last confirmed shared name offline. */ }
         }
         this.changed()
       })

@@ -5,6 +5,7 @@ export default defineMessages({
     // Résumé d'un projet replié : « 2 travaillent · 1 à toi · 3 conversations ».
     working: (n: number) => `${n} ${n > 1 ? 'travaillent' : 'travaille'}`,
     open: (n: number) => `${n} ${n > 1 ? 'ouvertes' : 'ouverte'}`,
+    improvingWeevils: 'amélioration de weevils en cours',
     nothingRunning: 'rien ne tourne',
     yours: (n: number) => `${n} à toi`,
     /** Sessions coupées en plein travail. */
@@ -75,6 +76,7 @@ export default defineMessages({
   en: {
     working: (n: number) => `${n} working`,
     open: (n: number) => `${n} open`,
+    improvingWeevils: 'Improving weevils',
     nothingRunning: 'nothing running',
     yours: (n: number) => `${n} need${n === 1 ? 's' : ''} you`,
     cut: (n: number) => `${n} interrupted`,

@@ -1,3 +1,4 @@
+import { selfProject, improvingProject } from './recursive-identity'
 import { LostFeaturesLine } from './lost-features'
 import { interceptModelControl, openModelControls } from '../model-controls'
 import { effortLabel, modelLabel } from './settings'
@@ -499,11 +500,13 @@ export function ProjectBand({ project }: { project: Project }) {
     if (!doneOpen) window.setTimeout(() => reveal(doneBox.current?.lastElementChild, { block: 'nearest', flash: false }), 380)
   }
 
+  const recursive = selfProject(project)
+  const improving = improvingProject(project, sessions)
   const busy = active.some((s) => s.status === 'working')
   useSeen()
   const unread = sessions.some(isUnread)
   const summary = [
-    active.length > cut.length ? activity(active.filter((s) => s.status !== 'interrupted')) : sessions.length && !cut.length ? t.nothingRunning : null,
+    improving ? t.improvingWeevils : active.length > cut.length ? activity(active.filter((s) => s.status !== 'interrupted')) : sessions.length && !cut.length ? t.nothingRunning : null,
     att.length ? t.yours(att.length) : null,
     convCount ? t.conversations(convCount) : null,
     // Sans activité connue (projet épinglé jamais lancé, horodatage 0) : rien, pas « il y a 20766 jours ».
@@ -513,11 +516,11 @@ export function ProjectBand({ project }: { project: Project }) {
     .join(' · ')
 
   return (
-    <motion.section ref={sec} layout="position" transition={tx} className={`band ${busy ? 'busy' : ''} ${cut.length ? 'has-cut' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={t.projectBand(project.name)} data-project={project.id}>
+    <motion.section ref={sec} layout="position" transition={tx} className={`band ${recursive ? 'recursive-identity' : ''} ${improving ? 'recursive-active' : ''} ${busy ? 'busy' : ''} ${cut.length ? 'has-cut' : ''}`} style={color(colors[project.id] ?? 'p0')} aria-label={t.projectBand(project.name)} data-project={project.id}>
       <KeepSessionOrder order={rowKey} within={sec} />
       <motion.div ref={head} className="in head" initial={false} animate={{ minHeight: shown === 'mini' ? 50 : 64, paddingTop: shown === 'mini' ? 0 : 8 }} transition={tx}>
         <button className="head-name" onClick={toggle} aria-expanded={mode === 'open'} aria-controls={`more-${project.id}`}>
-          <motion.span className="name" initial={false} animate={{ fontSize: NAME_SIZE[shown] }} transition={tx}>
+          <motion.span className="name" title={improving ? t.improvingWeevils : undefined} initial={false} animate={{ fontSize: NAME_SIZE[shown] }} transition={tx}>
             {project.name}
             {unread && <span className="dot" aria-label={t.unread} />}
             {/* One sign by the name: the green star when one of yours works, else AutoMark when only automations do. */}

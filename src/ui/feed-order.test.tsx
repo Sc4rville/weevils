@@ -110,9 +110,9 @@ describe('stableOrder', () => {
 let root: Root
 let host: HTMLElement
 
-function render(sessions: Session[], expanded: string | null = null) {
+function render(sessions: Session[], expanded: string | null = null, optimizers: Snapshot['optimizers'] = []) {
   const ctx = {
-    snap: snap(sessions),
+    snap: { ...snap(sessions), optimizers },
     now: NOW,
     offline: false,
     colors: {},
@@ -208,4 +208,48 @@ describe('bande projet', () => {
     act(() => line().click())
     expect(arrow()).toBe(closed) // the closing animation may still retain its DOM
   })
+})
+
+it.each(['light','dark','zen','graphite'])('keeps the recursive signature static until verified work and stops it again in %s', async theme=>{
+ const identity={kind:'self-improvement' as const,installationId:'own',target:{machineId:'vps',projectId:'p',repo:'weevils'},evidence:'repository-identity' as const}
+ project.workstream=identity
+ document.documentElement.dataset.theme=theme
+ try {
+  await render([session('s',{status:'idle',workstream:identity})])
+  expect(host.querySelector('.recursive-identity')).not.toBeNull()
+  expect(host.querySelector('.recursive-active')).toBeNull()
+  await render([session('s',{status:'working',workstream:identity})])
+  expect(host.querySelector('.recursive-active')).not.toBeNull()
+  expect(host.querySelector('.recursive-active .spin')).not.toBeNull()
+  await render([session('s',{status:'interrupted',workstream:identity})])
+  expect(host.querySelector('.recursive-active')).toBeNull()
+ } finally {delete project.workstream;delete document.documentElement.dataset.theme}
+})
+
+it('preserves the automation mark while improving, without treating a past run as current',()=>{
+ const identity={kind:'self-improvement' as const,installationId:'own',target:{machineId:'vps',projectId:'p',repo:'weevils'},evidence:'repository-identity' as const}
+ project.workstream=identity
+ try {
+  const run={id:'auto',state:'running',sessionId:'s'} as NonNullable<Snapshot['optimizers']>[number]
+  render([session('s',{workstream:identity})],null,[run])
+  expect(host.querySelector('.recursive-active .name .auto-mark')).not.toBeNull()
+  expect(host.querySelector('.recursive-active .name .spin')).toBeNull()
+  render([session('s',{workstream:identity})],null,[{...run,state:'done'}])
+  expect(host.querySelector('.recursive-active .name .auto-mark')).toBeNull()
+  expect(host.querySelector('.recursive-active .name .spin')).not.toBeNull()
+ } finally {delete project.workstream}
+})
+it('localizes the current activity without changing project identity or claiming work after stop',async()=>{
+ const {setLang}=await import('../i18n')
+ const identity={kind:'self-improvement' as const,installationId:'own',target:{machineId:'vps',projectId:'p',repo:'weevils'},evidence:'repository-identity' as const}
+ project.workstream=identity
+ try {
+  for(const [lang,label] of [['en','Improving weevils'],['fr','amélioration de weevils en cours'],['en','Improving weevils']] as const){
+   act(()=>setLang(lang));render([session('s',{workstream:identity})])
+   expect(host.querySelector('.name')?.getAttribute('title')).toBe(label)
+   expect(host.querySelector('[data-project="p"]')).not.toBeNull()
+  }
+  render([session('s',{status:'idle',workstream:identity})])
+  expect(host.querySelector('.name')?.hasAttribute('title')).toBe(false)
+ }finally{delete project.workstream;act(()=>setLang('fr'))}
 })

@@ -1,3 +1,4 @@
+import { mainProjectRank } from './ui/recursive-identity'
 import { MODEL_CONTROL_EVENT } from './model-controls'
 import { trackViewport } from './ui/viewport'
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
@@ -402,7 +403,7 @@ export default function App() {
       if (ss.some((s) => s.status === 'idle')) return 2
       return 3
     }
-    return stableOrder(snap.projects, (p) => p.id, (p) => rank(p.id), (a, b) => b.lastActivityAt - a.lastActivityAt, shownOrder.current, !isSettled())
+    return stableOrder(snap.projects, (p) => p.id, (p) => mainProjectRank(p, rank(p.id)), (a, b) => b.lastActivityAt - a.lastActivityAt, shownOrder.current, !isSettled())
   }, [live.snap])
   const orderKey = ordered.map((p) => p.id).join('|')
   useLayoutEffect(() => {

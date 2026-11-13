@@ -1218,3 +1218,22 @@
 
 /* Reserve the player row before the voice arrives; the transcript never moves. */
 .fy-boss-audio { min-height: 58px; display: flow-root; }
+
+/* The existing recursive signature, shared with the canonical project. Identity is static;
+   only verified current work may move. Feed projection never pins or invents activity. */
+.recursive-identity {
+  background-image: linear-gradient(115deg, var(--fy-g1), var(--fy-g2), var(--fy-g3), var(--fy-g4), var(--fy-g1));
+  background-size: 420% 100%;
+  background-position: 0% 50%;
+}
+.fy-item.recursive-identity { animation: none; }
+.recursive-identity.recursive-active { animation: fy-drift 16s ease-in-out infinite alternate; }
+.recursive-identity .auto-mark { color: var(--ink); }
+@media (prefers-reduced-motion: reduce) {
+  .recursive-identity.recursive-active,
+  .recursive-identity .spin,
+  .recursive-identity .auto-mark .run { animation: none !important; }
+}
+/* Keep semantic alerts and inverted-card contrast; milestone headings already use this signature. */
+.fy-item.recursive-identity.invert,
+.fy-item.recursive-identity.fy-t-alert { background-image: none; }

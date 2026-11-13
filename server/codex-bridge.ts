@@ -73,6 +73,11 @@ export class CodexBridge {
   private changed: () => void
   constructor(socket = '', transport: Connect = connect, changed = () => {}) { this.socket = socket; this.transport = transport; this.changed = changed }
   can(id: string) { return !!this.socket && Date.now() - this.checked < 20_000 && this.loaded.has(id) }
+  /** Read current capability at dispatch time; a stale poll must not reject a connected owner. */
+  async reachable(id:string):Promise<boolean>{
+    if(!this.socket)return false
+    try{return await this.transport(this.socket,async rpc=>{this.loaded=await this.ids(rpc);this.checked=Date.now();this.changed();return this.loaded.has(id)})}catch{return false}
+  }
   activityOf(id: string) {
     const state = this.activity.get(id)
     return this.can(id) && state && Date.now()-state.at < 20_000 ? state : undefined

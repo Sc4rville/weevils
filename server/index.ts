@@ -17,7 +17,7 @@ import path from 'node:path'
 import { CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECT_ROOTS, PUBLIC_URL } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
-import { cartesia, cartesiaVoices } from './fast.ts'
+import { cartesia, cartesiaVoices, relay as modelRelay } from './fast.ts'
 import { Weevils, isTestBrief } from './core.ts'
 import { lang, requestLang, withLang, setLang, tr } from './i18n.ts'
 import M from './i18n/api.ts'
@@ -365,7 +365,7 @@ const routes: [string, RegExp, Handler][] = [
     if(thinkLayoutBusy)return json(res,429,{error:'think_layout_busy'});
     if(body.revision!==board.revision)return json(res,409,{error:'think_conflict'});
     thinkLayoutBusy=true;
-    try { json(res,200,await proposeThinkLayout(board,body)) } catch { json(res,503,{error:'think_layout_unavailable'}) } finally { thinkLayoutBusy=false }
+    try { json(res,200,await proposeThinkLayout(board,body,relay.autoOnCodex()?modelRelay:undefined)) } catch { json(res,503,{error:'think_layout_unavailable'}) } finally { thinkLayoutBusy=false }
   }],
   ['GET', /^\/api\/think$/, (_req,res) => json(res,200,think.read())],
   ['PUT', /^\/api\/think$/, async (req,res) => {

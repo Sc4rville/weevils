@@ -867,7 +867,7 @@ export class Weevils {
       machineId: MACHINE.id,
       tool: t.tool,
       // Le titre choisi par l'utilisateur dans l'outil prime ; sinon celui du renommeur (ce dont la session parle maintenant) ; sinon le début.
-      title: relayTitle ?? (t.customTitle ? titleOf(t) : (presentation?.title ?? titleOf(t))),
+      title: relayTitle ?? (t.customTitle ? titleOf(t) : ((t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) ?? presentation?.title ?? titleOf(t))),
       // En attendant l'activité réécrite : le dernier pas de l'agent (outil) plutôt que l'ancienne tâche.
       now: shortNow(presentation?.now || (t.phase === 'working' || pane?.screenWorking ? stepOf(t) : '')) || undefined,
       status,

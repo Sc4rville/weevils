@@ -53,12 +53,17 @@ export class CodexBridge {
     const q=this.queued.get(id)
     return this.can(id) && q && Date.now()-q.at<20_000 ? q.count : undefined
   }
+  private names = new Map<string,string>()
+  /** Explicit shared daemon metadata outranks generated topic titles. Retain last confirmed name offline. */
+  nameOf(id:string) { return this.names.get(id) }
   private settings = new Map<string, { model?: string; effort?: string; at: number }>()
   settingsOf(id: string) {
     const s = this.settings.get(id)
     return this.can(id) && s && Date.now()-s.at < 20_000 ? { model: s.model, effort: s.effort } : undefined
   }
   private remember(id: string, thread: any) {
+    if (typeof thread?.name === 'string' && thread.name.trim()) this.names.set(id, thread.name.trim())
+    else if (thread && 'name' in thread) this.names.delete(id)
     this.settings.set(id, {model: typeof thread?.model === 'string' ? thread.model : undefined, effort: typeof thread?.reasoningEffort === 'string' ? thread.reasoningEffort : undefined, at: Date.now()})
   }
   private checked = 0

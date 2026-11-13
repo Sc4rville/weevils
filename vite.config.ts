@@ -1,3 +1,4 @@
+import { privatePreviewWrappers } from './scripts/private-preview-wrappers.ts'
 import fs from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import os from 'node:os'
@@ -45,7 +46,7 @@ const publicUrl = configured('WEEVILS_PUBLIC_URL')
 const publicHost = process.env.WEEVILS_HOST ?? (publicUrl ? new URL(publicUrl).host : undefined)
 
 export default defineConfig({
-  plugins: [react(), swBuild()],
+  plugins: [react(), swBuild(), privatePreviewWrappers()],
   server: {
     host: '127.0.0.1',
     port: 4178,

@@ -88,3 +88,27 @@ new immutable ref in the canonical repository and push it privately. Never force
 Making the existing repository public exposes its other refs/history too; a clean archive or parentless candidate
 does **not** clear the preserved private history. Public visibility and final distribution need explicit owner approval.
 Until then, friends need their own authorized access to the canonical private repository.
+
+## Private preview access wrappers during builds
+
+The canonical installation can register reviewed, token-free HTML wrappers in
+`~/.local/share/weevils/private-previews/wrappers/`. The private
+`build-wrappers.json` registration records their filenames and SHA-256 hashes,
+plus the canonical Git common directory. Neither the wrappers nor this
+registration belongs in Git or in a source export.
+
+Vite emits the registered wrappers as build assets, including for a clean build
+or a staging `--outDir`. The same checkout's worktrees share the registration;
+independent clones, source exports and fresh users do not. Only registered HTML
+is read, never adjacent JSON credentials. A missing, changed or symlinked wrapper
+fails the build before output cleaning, so it cannot silently publish a partial
+set. Review changed wrappers before explicitly registering their new hashes with
+`registerPreviewWrappers` from `scripts/private-preview-wrappers.ts`.
+
+Deployment must copy the complete successful build output. Existing private
+wrapper exclusions may stay in place; on a fresh destination the wrappers must
+also be copied from that build. Do not clean a live `dist` before producing a
+successful staged build, or restore HTML from an older app bundle. The wrapper's
+availability and its target preview's health are separate checks: HTTP 200 on an
+access page does not prove that its destination works. Credentials remain behind
+the authenticated file API and are fetched only by the signed-in browser.

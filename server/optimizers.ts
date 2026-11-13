@@ -291,6 +291,8 @@ export function jailArgs(o: { home: string; hide: string[]; roots: string[]; rw:
 }
 
 type Stored = Optimizer & {
+  /** Durable deletion: keep source/history and finish an already running job once. */
+  deletedAt?: number
   /** The agent's brief, as the model wrote it (the safety rules are added at launch). */
   prompt: string
   acceptedAt?: number
@@ -662,12 +664,13 @@ export class Optimizers {
     setInterval(() => this.tick(), TICK_MS).unref?.()
   }
 
-  private save() {
+  private save(strict = false) {
     // Too many: the oldest refused or finished ones go; a task still waiting, queued (a recurring one lives on) or
     // running is never dropped.
     if (this.s.items.length > MAX_STORED) {
       const live = (o: Stored) => o.state === 'proposed' || o.state === 'queued' || o.state === 'running'
       const keep = new Set([...this.s.items.filter(live), ...this.s.items.filter((o) => !live(o)).sort((a, b) => (b.endedAt ?? b.createdAt) - (a.endedAt ?? a.createdAt))].slice(0, MAX_STORED))
+      for (const o of this.s.items) if (o.deletedAt) keep.add(o)
       for (const o of this.s.items) if (!keep.has(o)) this.dropArchive(o.id)
       this.s.items = this.s.items.filter((o) => keep.has(o))
     }
@@ -678,6 +681,7 @@ export class Optimizers {
       fs.renameSync(tmp, this.file)
     } catch (e) {
       console.error(`[auto] écriture : ${(e as Error).message}`)
+      if (strict) throw e
     }
   }
 
@@ -710,7 +714,7 @@ export class Optimizers {
   list(now = Date.now()): Optimizer[] {
     const rank = { running: 0, queued: 1, proposed: 2, done: 3, failed: 3, refused: 4 } as const
     return this.s.items
-      .filter((o) => o.state !== 'refused' && (o.state === 'proposed' || o.state === 'queued' || o.state === 'running' || now - (o.endedAt ?? o.createdAt) < KEEP_MS))
+      .filter((o) => !o.deletedAt && o.state !== 'refused' && (o.state === 'proposed' || o.state === 'queued' || o.state === 'running' || now - (o.endedAt ?? o.createdAt) < KEEP_MS))
       .sort((a, b) => rank[a.state] - rank[b.state] || (a.state === 'proposed' ? (a.priority ?? 2) - (b.priority ?? 2) || a.createdAt - b.createdAt : 0) || (b.endedAt ?? 0) - (a.endedAt ?? 0) || (a.acceptedAt ?? 0) - (b.acceptedAt ?? 0))
       .map((o) => this.view(o, now))
   }
@@ -743,7 +747,21 @@ export class Optimizers {
   }
 
   get(id: string) {
-    return this.s.items.find((o) => o.id === id)
+    return this.s.items.find((o) => o.id === id && !o.deletedAt)
+  }
+
+  /** Delete the automation, not its files or running job. Persist before acknowledging. */
+  remove(id:string): {ok:true;running:boolean}|null {
+    const o=this.s.items.find(x=>x.id===id)
+    if(!o)return null
+    if(o.deletedAt)return {ok:true,running:o.state==='running'}
+    const previous={...o}
+    o.deletedAt=Date.now()
+    if(o.state!=='running')o.state='refused'
+    delete o.pending; delete o.runNow; delete o.retryAt; delete o.held; delete o.waiting
+    try { this.save(true) } catch(e) { for(const key of Object.keys(o))delete (o as any)[key];Object.assign(o,previous);throw e }
+    this.w.bump()
+    return {ok:true,running:o.state==='running'}
   }
 
   /** A fresh creation conversation, without a model call or an executable brief. */
@@ -886,7 +904,7 @@ export class Optimizers {
       // The task moved on while the model thought (a run ended, came back, was stopped): its answer was written for
       // the old state and may say a change was made that this state no longer takes. Nothing changes, nothing is kept.
       // (The runner never starts a task during a turn: tick() leaves it for the next one.)
-      if (o.state !== was) return note('talkMoved')
+      if (o.state !== was || o.deletedAt) return note('talkMoved')
       const now = Date.now()
       const p = parsePatch(out?.patch, { repos: this.w.allRepos(), tz: zone, now })
       // The prompt carried what an agent wrote (its report, its last words: maybe a web page's text). A short bare
@@ -1061,7 +1079,7 @@ export class Optimizers {
       !!snap.mainWorking || snap.sessions.some((s) => s.machineId === MACHINE.id && s.status === 'working' && s.id !== running?.sessionId)
     if (busy) this.lastBusyAt = now
     const reason = this.machine(now).wait
-    const queue = this.s.items.filter((o) => o.state === 'queued').sort((a, b) => (a.acceptedAt ?? a.createdAt) - (b.acceptedAt ?? b.createdAt))
+    const queue = this.s.items.filter((o) => !o.deletedAt && o.state === 'queued').sort((a, b) => (a.acceptedAt ?? a.createdAt) - (b.acceptedAt ?? b.createdAt))
     // Claude at its limit (server/relay.ts): new tasks start on Codex when the relay is automatic, otherwise every
     // task waits for the reset time.
     const hold = this.w.relay?.holdUntil(now) ?? 0
@@ -1118,7 +1136,7 @@ export class Optimizers {
     const t = tr(O)
     const end = (state: 'done' | 'failed', note: string) => this.finish(o, now, state === 'done', note)
     const limit = o.limitMs ?? runLimit(o.est)
-    if (now - (o.startedAt ?? now) > limit) return end('failed', t.timedOut(Math.round(limit / 3600_000)))
+    if (!o.deletedAt && now - (o.startedAt ?? now) > limit) return end('failed', t.timedOut(Math.round(limit / 3600_000)))
     const sid = o.sessionId ? (this.w.sessionIdOf?.(o.sessionId) ?? o.sessionId) : undefined
     const s = sid ? this.w.snapshot().sessions.find((x) => x.id === sid) : undefined
     if (!s) return now - Math.max(o.seenAt ?? o.startedAt ?? now, this.bootAt) > VANISH_MS ? end('failed', t.vanished) : false
@@ -1168,7 +1186,7 @@ export class Optimizers {
       console.error(`[auto] passage de « ${o.title} » non enregistré : ${(e as Error).message}`)
       runs = o.runs ?? []
     }
-    if (o.every) {
+    if (!o.deletedAt && o.every) {
       const streak = runs.slice(-MAX_FAILED_RUNS)
       if (ok || streak.length < MAX_FAILED_RUNS || streak.some((r) => r.ok)) {
         this.takePending(o)
@@ -1291,6 +1309,7 @@ export class Optimizers {
 
   /** Stopped by a limit, a login or an API error: no work was done, it goes back to the queue for later (a few tries). */
   private later(o: Stored, now: number, why: string): boolean {
+    if(o.deletedAt)return this.finish(o,now,false,why)
     o.tries = (o.tries ?? 0) + 1
     o.lastEvent = tr(O)[`stall_${stallKind(why)}`]
     if (o.tries >= MAX_TRIES) {
@@ -1310,6 +1329,7 @@ export class Optimizers {
 
   /** The task's session is handed over to Codex: back in the queue, its worktree kept, until its plan is approved or Claude is back. */
   private hold(o: Stored, now: number): boolean {
+    if(o.deletedAt)return this.finish(o,now,false,tr(O).stall_limit)
     o.state = 'queued'
     o.held = true
     o.retryAt = this.w.relay?.holdUntil(now) || now + RETRY_MS
@@ -1342,7 +1362,7 @@ export class Optimizers {
    */
   async relayRun(sessionId: string, text: string): Promise<string> {
     const o = this.s.items.find((x) => !!x.sessionId && (x.sessionId === sessionId || this.w.sessionIdOf?.(x.sessionId) === sessionId))
-    if (!o || (o.state !== 'queued' && o.state !== 'running')) throw new Error(tr(O).vanished)
+    if (!o || o.deletedAt || (o.state !== 'queued' && o.state !== 'running')) throw new Error(tr(O).vanished)
     if (!(await this.sys.jail(['--dev-bind', '/', '/', '--']))) throw new Error(tr(O).noJail)
     await this.launch(o, Date.now(), { tool: 'codex', relay: text })
     if (o.state !== 'running' || !o.sessionId) throw new Error(o.lastEvent || tr(O).startFailed)
@@ -1399,6 +1419,7 @@ export class Optimizers {
 
   /** Starts a task in a Claude session: in its own worktree of its repo (on a fresh local branch), or in its workspace. */
   private async launch(o: Stored, now: number, on: { tool?: 'claude' | 'codex'; /** the approved takeover plan, first in the brief */ relay?: string } = {}) {
+    if(o.deletedAt)return
     const tool = on.tool ?? preferredTool()
     this.launching = true
     o.state = 'running'
@@ -1455,6 +1476,7 @@ export class Optimizers {
       const wrap = await this.jail(o, cwd, guard, tool === 'codex' ? ['.codex'] : [])
       if (tool === 'codex' && !wrap.length) throw new Error(tr(O).noJail)
       step = 'start'
+      if(o.deletedAt){o.state='refused';return}
       const { id } = tool === 'codex' ? await this.w.createIn(cwd, o.title, text, [], { ...guardEnv(guard), wrap }, 'codex') : await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard), wrap }, 'claude')
       o.sessionId = id
       o.seenAt = Date.now()
@@ -1578,6 +1600,10 @@ export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h
     }
   }
   return [
+    ['DELETE', /^\/api\/(?:auto|optimizers)\/([\w-]+)$/, (_req,res,_u,[id]) => {
+      const result=o.remove(id)
+      return result ? json(res,200,result) : missing(res)
+    }],
     ['POST', /^\/api\/optimizers$/, (_req, res) => json(res, 201, { item: o.create() })],
     ['POST', /^\/api\/optimizers\/([\w-]+)\/accept$/, async (req, res, _u, [id]) => {
       const body = await readBody(req).catch(() => ({}))

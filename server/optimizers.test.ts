@@ -1475,3 +1475,53 @@ describe('auto — runs, their outputs, the automation page', () => {
     })
   })
 })
+
+describe('delete automation: durable cancellation without deleting work',()=>{
+ const seedDelete=(patch:Record<string,unknown>={})=>{
+  const item={id:'delete-me',title:'Keep source',why:'w',repo:null,kind:'watch',heavy:false,state:'queued',prompt:'Inspect results',createdAt:T0,every:60_000,...patch}
+  fs.writeFileSync(path.join(dir,'optimizers.json'),JSON.stringify({items:[item],lastRoundAt:T0,fails:0,failUntil:0}))
+  return make()
+ }
+ it('removes a queued automation across reload/retry, preserving files and blocking future mutation',()=>{
+  const o=seedDelete();const source=path.join(dir,'source.txt');fs.writeFileSync(source,'keep')
+  expect(o.remove('delete-me')).toEqual({ok:true,running:false})
+  expect(o.list()).toEqual([]);expect(o.detail('delete-me')).toBeNull()
+  const reloaded=make();expect(reloaded.list()).toEqual([])
+  expect(reloaded.remove('delete-me')).toEqual({ok:true,running:false})
+  expect(reloaded.runNow('delete-me')).toBe(false);expect(reloaded.pause('delete-me',false)).toBe(false)
+  reloaded.tick(T0+IDLE_MS+MIN);expect(createIn).not.toHaveBeenCalled()
+  expect(fs.readFileSync(source,'utf8')).toBe('keep')
+ })
+ it('lets an active run finish and archives it, never scheduling a retry or next occurrence',async()=>{
+  const o=seedDelete({state:'running',sessionId:'s',seenWorking:true,startedAt:T0})
+  snap.sessions=[session({id:'s',status:'working'})]
+  expect(o.remove('delete-me')).toEqual({ok:true,running:true});o.tick(T0+MIN)
+  expect(JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items[0].state).toBe('running')
+  snap.sessions=[session({id:'s',status:'idle',lastMessage:'Completed'})]
+  o.tick(T0+2*MIN);await o.settled()
+  const stored=JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items[0]
+  expect(stored.state).toBe('done');expect(stored.runs).toHaveLength(1);expect(stored.deletedAt).toBeTruthy()
+  expect(make().list()).toEqual([]);expect(send).not.toHaveBeenCalled();expect(key).not.toHaveBeenCalled();expect(createIn).not.toHaveBeenCalled()
+ })
+ it('does not retry a deleted run that encounters a quota limit',()=>{
+  const o=seedDelete({state:'running',sessionId:'s',seenWorking:true,startedAt:T0})
+  o.remove('delete-me');snap.sessions=[session({id:'s',status:'idle',lastMessage:'usage limit reached'})];o.tick(T0+MIN)
+  const stored=JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items[0]
+  expect(stored.state).toBe('failed');expect(stored.retryAt).toBeUndefined()
+ })
+ it('cancels a launch still preparing its worktree before it starts an agent',async()=>{
+  let release!:()=>void
+  sys.worktree=vi.fn(async(_repo:string,cwd:string)=>{await new Promise<void>(r=>{release=r});fs.mkdirSync(cwd,{recursive:true})})
+  const o=seedDelete({repo:'mygame'})
+  o.tick(T0+IDLE_MS);await flush()
+  expect(sys.worktree).toHaveBeenCalled()
+  o.remove('delete-me');release();await flush()
+  expect(createIn).not.toHaveBeenCalled();expect(make().list()).toEqual([])
+ })
+ it('reports storage failures and keeps the automation visible for retry',()=>{
+  const o=seedDelete();const original=fs.writeFileSync
+  const spy=vi.spyOn(fs,'writeFileSync').mockImplementation((...args:any[])=>{if(String(args[0])===path.join(dir,'optimizers.json.tmp'))throw new Error('disk full');return (original as any)(...args)})
+  expect(()=>o.remove('delete-me')).toThrow('disk full');expect(o.list()).toHaveLength(1)
+  spy.mockRestore();expect(o.remove('delete-me')).toEqual({ok:true,running:false})
+ })
+})

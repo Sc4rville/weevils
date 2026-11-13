@@ -21,6 +21,8 @@ without typing anything (or, for a computer, by pasting one command in its termi
      still processing) means the VM isn't set up: the page sends the person to hPanel, then to "I already have a VPS".
      The script stays in their account (`weevils-<id>`); its link expires with the setup.
    - Hetzner: the cheapest x86 type of each size near the person, Ubuntu 24.04, a cloud-init that runs the install.
+     Sign-up asks for an ID check (a photo of an ID and a selfie, through iDenfy), then a manual review: the page says
+     so under the option and on the account step, so nobody is surprised.
    **I already have a VPS**: IP, user, password (or private key). One SSH connection starts the install in the
    background, then closes.
    **My computer**: `curl -fsSL https://get.scarville.tech/i/<id> | bash` in its terminal.

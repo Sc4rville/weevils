@@ -68,8 +68,10 @@ const QUOTA_MAX_BACKOFF_MS = 60 * 60_000
 const QUOTA_FILE = () => process.env.WEEVILS_QUOTA_CACHE ?? path.join(DATA_DIR, 'quota-cache.json')
 
 class RetryAfter extends Error {
-  constructor(message: string, readonly ms: number) {
+  ms: number
+  constructor(message: string, ms: number) {
     super(message)
+    this.ms = ms
   }
 }
 const httpError = (res: Response) => {

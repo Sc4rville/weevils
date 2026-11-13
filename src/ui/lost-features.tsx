@@ -14,8 +14,8 @@ function ThinkIcon() {
 export function LostFeaturesLine() {
   const { snap, push } = useApp()
   const t = useT(M)
-  useThinkEnabled(snap) // Persist the one-time migration, even if the menu is never opened.
-  return <Line ch="?" onClick={() => push({ kind: 'lost-features' })}>{t.title}</Line>
+  const [enabled] = useThinkEnabled(snap) // Persist the one-time migration, even if the menu is never opened.
+  return <Line ch="?" meta={t.menuMeta(enabled ? t.enabled : t.disabled)} onClick={() => push({ kind: 'lost-features' })}>{t.title}</Line>
 }
 export function LostFeaturesPage() {
   const { snap, push, colors } = useApp()

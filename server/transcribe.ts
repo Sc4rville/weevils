@@ -53,8 +53,8 @@ const KEEP_MS = 7 * 24 * 3600_000
 export function archive(data: Buffer, ext: string): string {
   fs.mkdirSync(ARCHIVE_DIR, { recursive: true })
   const now = Date.now()
-  const partial = path.join(ARCHIVE_DIR, 'partial')
-  const entries = [...fs.readdirSync(ARCHIVE_DIR).filter((f) => f !== 'partial').map((f) => path.join(ARCHIVE_DIR, f)), ...(fs.existsSync(partial) ? fs.readdirSync(partial).map((f) => path.join(partial, f)) : [])]
+  // Pending uploads and durable receipts have no automatic expiry: recovery owns their lifecycle.
+  const entries = fs.readdirSync(ARCHIVE_DIR).filter((f) => f !== 'partial').map((f) => path.join(ARCHIVE_DIR, f))
   for (const p of entries) {
     try {
       if (now - fs.statSync(p).mtimeMs > KEEP_MS) fs.rmSync(p, { recursive: true, force: true })

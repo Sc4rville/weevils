@@ -433,7 +433,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
           {saved.filter(item => item.count > 0).map(item => (
             <div key={item.id} className="voice-recovery-item">
               <time dateTime={new Date(item.startedAt).toISOString()}>{new Date(item.startedAt).toLocaleString(lang)}</time>
-              <span>{item.text ? t.transcriptSaved : t.audioSaved}</span>
+              <span>{!item.stoppedAt ? t.interruptedAudio : item.text ? t.transcriptSaved : t.audioSaved}</span>
               <button type="button" disabled={phase === 'wait'} onClick={() => void recover(item)}>{item.text ? t.addTranscript : t.retryTranscript}</button>
               <button type="button" onClick={() => void download(item)}>{t.saveAudio}</button>
             </div>

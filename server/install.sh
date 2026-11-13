@@ -99,6 +99,8 @@ if [ "$(uname -s)" = Darwin ]; then
   brew_prefix=${HOMEBREW_PREFIX:-}
   [ -n "$brew_prefix" ] || for b in /opt/homebrew /usr/local; do [ -x "$b/bin/brew" ] && { brew_prefix=$b; break; }; done
   svc_path="$HOME/.local/bin:$(dirname "$node_bin"):$npm_bin${brew_prefix:+:$brew_prefix/bin:$brew_prefix/sbin}:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  # Each folder once (node's and npm's are usually Homebrew's own).
+  svc_path=$(printf '%s' "$svc_path" | tr ':' '\n' | awk 'NF && !seen[$0]++' | paste -sd: -)
 fi
 mkdir -p ~/.config/weevils
 cat >~/.config/weevils/service.conf <<EOF

@@ -188,10 +188,10 @@ FR_lan_public="ATTENTION : cette adresse n'est pas une adresse de réseau privé
 EN_lan_https="over plain http, the phone allows neither the microphone nor notifications: HTTPS (--domain or Tailscale) brings them."
 FR_lan_https="en http simple, le téléphone n'autorise ni le micro ni les notifications : le HTTPS (--domain ou Tailscale) les apporte."
 EN_next="next, on your phone: scan the QR code (or open the link), then iPhone: Share → Add to Home Screen; Android: ⋮ → Install app. weevboss welcomes you there and walks you through the rest."
-EN_next_local="next, on your phone: give it a way in first (one of the four above), then open the link and add it to the home screen (iPhone: Share → Add to Home Screen; Android: ⋮ → Install app). weevboss walks you through the rest."
+EN_next_local="next, on your phone: give it a way in first (one of the ways above), then open the link and add it to the home screen (iPhone: Share → Add to Home Screen; Android: ⋮ → Install app). weevboss walks you through the rest."
 EN_laptop="this is a laptop: your agents stop when it sleeps. weevboss will suggest a small VPS so they work overnight."
 FR_next="ensuite, sur ton téléphone : scanne le QR code (ou ouvre le lien), puis iPhone : Partager → Sur l'écran d'accueil ; Android : ⋮ → Installer l'application. weevboss t'y accueille et te guide pour la suite."
-FR_next_local="ensuite, sur ton téléphone : donne-lui d'abord un chemin (un des quatre ci-dessus), puis ouvre le lien et ajoute-le à l'écran d'accueil (iPhone : Partager → Sur l'écran d'accueil ; Android : ⋮ → Installer l'application). weevboss te guide pour la suite."
+FR_next_local="ensuite, sur ton téléphone : donne-lui d'abord un chemin (un des chemins ci-dessus), puis ouvre le lien et ajoute-le à l'écran d'accueil (iPhone : Partager → Sur l'écran d'accueil ; Android : ⋮ → Installer l'application). weevboss te guide pour la suite."
 FR_laptop="c'est un portable : tes agents s'arrêtent quand il se met en veille. weevboss te proposera un petit VPS pour qu'ils bossent la nuit."
 # The last lines of the end screen: what is already in the app, and the first thing to try ({n}: a number).
 EN_have_projects="already in the app: your {n} Claude Code projects of the last few days, with their sessions"
@@ -263,6 +263,8 @@ EN_brew_hint="install Homebrew first (https://brew.sh), then run this again:"
 FR_brew_hint="installe d'abord Homebrew (https://brew.sh), puis relance :"
 EN_brew_failed="Homebrew did not install (it needs an administrator account on this Mac)."
 FR_brew_failed="Homebrew ne s'est pas installé (il faut un compte administrateur sur ce Mac)."
+EN_mac_intel="Homebrew no longer installs on Intel Macs, and some tools weevils needs are missing here. Install them with MacPorts (https://www.macports.org) or an existing Homebrew (git and python3 also come with Apple's developer tools: xcode-select --install), then run me again. Missing:"
+FR_mac_intel="Homebrew ne s'installe plus sur les Mac Intel, et il manque ici des outils dont weevils a besoin. Installe-les avec MacPorts (https://www.macports.org) ou un Homebrew déjà présent (git et python3 viennent aussi avec les outils de développement d'Apple : xcode-select --install), puis relance-moi. Il manque :"
 EN_mac_bg="no desktop session on this Mac (installed over SSH?): weevilsd runs in the background until the next restart. Log in on the Mac's screen and run this installer again: launchd then starts it at every login."
 FR_mac_bg="pas de session ouverte sur l'écran de ce Mac (installation par SSH ?) : weevilsd tourne en arrière-plan jusqu'au prochain redémarrage. Ouvre une session sur le Mac et relance cette installation : launchd le démarrera alors à chaque ouverture de session."
 EN_mac_awake="on a Mac, weevils runs while your session is open; it keeps the Mac awake while it is plugged in (WEEVILS_KEEP_AWAKE=0 to turn that off). A closed laptop lid still puts it to sleep."
@@ -487,10 +489,21 @@ check_system() {
   # --domain sets up Caddy in /etc: without sudo, stop here, before anything is written.
   [ -z "$DOMAIN" ] || [ -n "$SECONDARY" ] || [ "$SUDO" != none ] || no_root caddy
   if [ "$OS" = Darwin ]; then
-    # Homebrew brings everything on a Mac, as the person (no sudo). Its folder goes first in the PATH for this run.
-    brew_bin >/dev/null || install_brew
-    eval "$("$(brew_bin)" shellenv)"
-    PM=brew
+    # Homebrew brings what is missing on a Mac, as the person (no sudo); its folder goes first in the PATH for this
+    # run. A Mac that already has every tool (MacPorts, nix…) needs no Homebrew. Homebrew's own installer only runs
+    # on Apple Silicon now: an Intel Mac without Homebrew must bring the missing tools itself.
+    if brew_bin >/dev/null; then eval "$("$(brew_bin)" shellenv)"; PM=brew
+    else
+      local miss='' m
+      for m in git curl tmux jq python3; do have "$m" || miss="$miss $m"; done
+      { node_ok && command -v npm >/dev/null; } || miss="$miss node"
+      if [ -n "$miss" ]; then
+        [ "$(uname -m)" = arm64 ] || die "$(t mac_intel)$miss"
+        install_brew
+        eval "$("$(brew_bin)" shellenv)"
+        PM=brew
+      fi
+    fi
   elif command -v apt-get >/dev/null; then PM=apt
   elif command -v dnf >/dev/null; then PM=dnf
   elif command -v pacman >/dev/null; then PM=pacman; fi
@@ -688,7 +701,8 @@ configure() {
     cfg set WEEVILS_PUBLIC_URL "$URL_OPT"
     [ "$(cfg get WEEVILS_HOST)" != 0.0.0.0 ] || cfg set WEEVILS_HOST 127.0.0.1
   fi
-  if [ -z "$SECONDARY" ] && [ -z "$DOMAIN" ] && [ "$LAN" = 0 ] && [ -z "$(cfg get WEEVILS_PUBLIC_URL)" ] && ! site_mine; then
+  # (Never on a Mac: --domain sets up Caddy, which weevils does not do there.)
+  if [ "$OS" != Darwin ] && [ -z "$SECONDARY" ] && [ -z "$DOMAIN" ] && [ "$LAN" = 0 ] && [ -z "$(cfg get WEEVILS_PUBLIC_URL)" ] && ! site_mine; then
     DOMAIN=$(ask "$(t ask_domain)" ""); DOMAIN=${DOMAIN#http://}; DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN%%/*}
     [ -z "$DOMAIN" ] || [[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || { warn "$(t bad_opt) $DOMAIN"; DOMAIN=''; }
   fi
@@ -947,8 +961,11 @@ detect() {
   for root in ${roots[@]+"${roots[@]}"}; do
     for r in "$root"/*/.git; do [ ! -e "$r" ] || N_REPOS=$((N_REPOS + 1)); done
   done
-  HAVE_TS=$(yn command -v tailscale) TS_NAME=''
-  [ "$HAVE_TS" = no ] || TS_NAME=$(limit 5 tailscale status --json 2>/dev/null | jq -r 'select(.BackendState == "Running") | .Self.DNSName // empty' 2>/dev/null | sed 's/\.$//' || true)
+  # A Mac: the Tailscale app's command, when it is not in the PATH (TAILSCALE_BE_CLI: the app then acts as its CLI).
+  local ts=tailscale app=/Applications/Tailscale.app/Contents/MacOS/Tailscale
+  if [ "$OS" = Darwin ] && ! command -v tailscale >/dev/null && [ -x "$app" ]; then ts=$app; fi
+  HAVE_TS=$(yn command -v "$ts") TS_NAME=''
+  [ "$HAVE_TS" = no ] || TS_NAME=$(TAILSCALE_BE_CLI=1 limit 5 "$ts" status --json 2>/dev/null | jq -r 'select(.BackendState == "Running") | .Self.DNSName // empty' 2>/dev/null | sed 's/\.$//' || true)
   LAPTOP=no
   if ls /sys/class/power_supply/BAT* >/dev/null 2>&1; then LAPTOP=yes; fi
   if [ "$OS" = Darwin ] && pmset -g batt 2>/dev/null | grep -q InternalBattery; then LAPTOP=yes; fi
@@ -966,7 +983,8 @@ write_handoff() { # write_handoff url mode
   local by=script agent='' at tmp phone=false
   if [ "$AGENT" = 1 ] && [ -n "$AGENT_NAME" ]; then by=agent agent=$AGENT_NAME; elif [ "$TTY" = 1 ] || [ -t 1 ]; then by=terminal; fi
   [ "$2" = local ] || phone=true
-  at=$(date +%s%3N); [[ "$at" =~ ^[0-9]+$ ]] || at=$(($(date +%s) * 1000))
+  # Milliseconds: GNU date has %N, the BSD date of a Mac does not (seconds × 1000 there).
+  if [ "$OS" = Darwin ]; then at=$(($(date +%s) * 1000)); else at=$(date +%s%3N); [[ "$at" =~ ^[0-9]+$ ]] || at=$(($(date +%s) * 1000)); fi
   mkdir -p "$(dirname "$HANDOFF")"
   tmp=$(mktemp "$HANDOFF.XXXXXX")
   jq -n --argjson at "$at" --arg by "$by" --arg agent "$agent" --arg url "$1" --arg mode "$2" --argjson phone "$phone" \
@@ -991,6 +1009,7 @@ sum_found() {
   kv sudo "$(if [ -z "$SUDO" ] || [ "$SUDO" = 'sudo -n' ]; then echo yes; elif [ "$SUDO_PW" = 1 ]; then echo password; else echo no; fi)"
   kv name "$("$DIR/server/weevils-service" config get WEEVILS_USER_NAME)"
   kv dir "$DIR"
+  kv service "$("$DIR/server/weevils-service" mode 2>/dev/null || echo unknown)"
 }
 
 finish() {
@@ -1123,7 +1142,8 @@ uninstall() {
   rm -f "$HOME/.local/bin/wv" "$HOME/.local/bin/weevils" "$HOME/.local/bin/weevils-service" "$HOME/.local/bin/weevils-hook"
   ok "$(t un_bin)"
 
-  if command -v crontab >/dev/null && crontab -l 2>/dev/null | grep -q 'weevils-service'; then
+  # (Not on a Mac: the install never writes a crontab there, and reading it asks for a privacy permission.)
+  if [ "$OS" != Darwin ] && command -v crontab >/dev/null && crontab -l 2>/dev/null | grep -q 'weevils-service'; then
     { crontab -l 2>/dev/null | grep -v 'weevils-service' || true; } | crontab - && ok "$(t un_cron)"
   fi
 

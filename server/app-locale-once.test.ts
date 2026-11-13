@@ -30,5 +30,9 @@ describe('the app-locale block', () => {
     expect(realTitle('weevils app locale')).toBeUndefined()
     expect(realTitle('Langue de l’app')).toBeUndefined()
     expect(realTitle('weevils usage rate limit')).toBe('weevils usage rate limit')
+    // A slash command first: the title comes from the first real brief.
+    const slash = { firstPrompt: `/effort high${BLOCK}`, messages: [{ id: 'a', role: 'user', text: '/effort high', at: 1 }, { id: 'b', role: 'user', text: `Fix the reply cards${BLOCK}`, at: 2 }] } as any
+    expect(titleOf(slash)).toBe('Fix the reply cards')
+    expect(digestOf(slash).debut).toBe('Fix the reply cards')
   })
 })

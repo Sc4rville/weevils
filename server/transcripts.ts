@@ -556,12 +556,22 @@ export const withoutWeevilsBlock = (s: string) => s.replace(/\s*⟦weevils\b[^�
 export const LOCALE_TITLE = /\bapp[- ]locale\b|\blangue (?:explicite )?de l['’]app\b/i
 export const realTitle = (s: string | undefined) => (s && !LOCALE_TITLE.test(s) ? s : undefined)
 const unsigned = (s: string | undefined) => (s ? withoutWeevilsBlock(parseSigned(s)?.text ?? s) : s)
-export const titleOf = (t: Transcript) => short(oneLine(realTitle(t.customTitle) || realTitle(t.title) || unsigned(t.firstPrompt) || tr(M).newSession).replace(/^[#>*\s-]+/, ''), 60)
+/** The first real brief: a slash command (« /effort high », « /model … ») tells nothing of the subject. */
+const brief = (t: Transcript) => {
+  const first = unsigned(t.firstPrompt)?.trim()
+  if (first && !first.startsWith('/')) return first
+  for (const m of t.messages) if (m.role === 'user' || m.role === 'orchestrator') {
+    const said = unsigned(m.text)?.trim()
+    if (said && !said.startsWith('/')) return said
+  }
+  return undefined
+}
+export const titleOf = (t: Transcript) => short(oneLine(realTitle(t.customTitle) || realTitle(t.title) || brief(t) || tr(M).newSession).replace(/^[#>*\s-]+/, ''), 60)
 /** Matière pour le renommeur : début de la session et ses derniers échanges, compacts. */
 export const digestOf = (t: Transcript, lastN = 10) => {
   const s = tr(M)
   const recent = t.messages.slice(-lastN).map((m) => s.said(m.role === 'user' ? s.userLabel : m.role === 'orchestrator' ? authorName(m.author) : m.role === 'assistant' ? 'agent' : '→', short(oneLine(withoutWeevilsBlock(m.text)), m.role === 'event' ? 80 : 320)))
-  return { debut: short(oneLine(unsigned(t.firstPrompt) ?? ''), 200), recents: recent }
+  return { debut: short(oneLine(brief(t) ?? ''), 200), recents: recent }
 }
 export const lastMessageOf = (t: Transcript) => {
   const m = [...t.messages].reverse().find((x) => x.role !== 'event')

@@ -47,6 +47,12 @@ that talks to a live server is opt-in: `WEEVILS_LIVE_TEST=1 npx vitest run test/
 
 Session controls, delivery and activity must follow the [shared product contract](docs/product/session-contract.md), for both agents and a fresh profile.
 
+All shared improvements also follow the [canonical release workflow](docs/release-workflow.md): implement, test,
+commit and push in `Sc4rville/weevils`; integrate approved workers' contributions into `main` before the next export.
+Keep personal configuration and secrets outside source. RC2 is an immutable historical snapshot, not today's product.
+Generate release candidates from a canonical source SHA with `scripts/release.py`; do not maintain a separate OSS
+feature copy. Always distinguish canonical, candidate, tested and running revisions. No publication is implied.
+
 - **Every user-facing string goes through a catalog**, English and French side by side with the same keys:
   `src/i18n/<area>.ts` for the app, `server/i18n/<area>.ts` for the server. `npm run i18n:check` catches hard-coded
   strings. To add a language, add it to `Lang`, `LANGS` and `LANG_NAMES` in `shared/i18n.ts`, then a block in every

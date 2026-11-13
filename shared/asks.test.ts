@@ -31,3 +31,11 @@ describe('declarative reports never ask for an answer', () => {
   ])('%s', (text) => expect(asksUser(text)).toBeNull())
   it.each(['Confirme ce choix.', 'Please confirm the deployment.', 'Valide le plan avant de continuer.', 'J’ai besoin que tu choisisses une option.', 'Peux-tu choisir entre A et B ?', 'Can you approve this command?'])('keeps a direct request: %s', (text) => expect(asksUser(text)).not.toBeNull())
 })
+
+describe('a recap table is never a question', () => {
+  it('ignores the « ? » of a Markdown table header, keeps a real question after it', () => {
+    const table = 'Done.\n\n| Demande | Visible avant ? | Corrigé |\n|---|---|---|\n| Bande weevils | Non | Oui |\n- tests verts, tout est en ligne.'
+    expect(asksUser(table)).toBeNull()
+    expect(asksUser(`${table}\n\nTu veux que je corrige aussi le reste ?`)?.text).toBe('Tu veux que je corrige aussi le reste ?')
+  })
+})

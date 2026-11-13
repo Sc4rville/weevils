@@ -26,7 +26,8 @@ const PASTE = /\b(colle[sz]?|coller|paste|adresse|address|clé|cle|key|token|jet
 
 /** Les dernières phrases d'un message, sans les blocs de code ni les URL (dont le « ? » n'est pas une question). */
 function tail(text: string): string {
-  const prose = text.replace(/```[\s\S]*?```/g, ' ').trim()
+  // Markdown table rows (« | Request | Visible? | ») are a recap, never a question: a header's « ? » asks nothing.
+  const prose = text.replace(/```[\s\S]*?```/g, ' ').replace(/^[ \t]*\|.*\|[ \t]*$/gm, '').trim()
   const paras = prose.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
   return paras.slice(-2).join('\n')
 }

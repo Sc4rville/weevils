@@ -8,7 +8,7 @@ import type { Message } from '../../shared/api'
 import { OutboxStatus } from './outbox-status'
 import { loadPayload, storePayload, removePayload } from '../outbox-payload'
 import { usePageChrome } from './shell'
-import { emptyBoard, worldPoint, zoomAt, viewportContext, validateBoard, type ThinkBoard, type ThinkCamera, type ThinkObject } from '../../shared/think'
+import { validCamera, emptyBoard, worldPoint, zoomAt, viewportContext, validateBoard, type ThinkBoard, type ThinkCamera, type ThinkObject } from '../../shared/think'
 import './think.css'
 const draftKey=()=>{try{let id=sessionStorage.getItem('think-client');if(!id){id=crypto.randomUUID();sessionStorage.setItem('think-client',id)}return `think-draft-v1:${id}`}catch{return `think-draft-v1:${crypto.randomUUID()}`}}
 export function ThinkPage(){
@@ -17,12 +17,12 @@ export function ThinkPage(){
  const root=useRef<HTMLElement>(null),canvas=useRef<HTMLDivElement>(null);usePageChrome('agent',root)
  const [board,setBoard]=useState<ThinkBoard>(emptyBoard), live=useRef(board)
  const [ready,setReady]=useState(false),[status,setStatus]=useState(''),[error,setError]=useState('')
- const [camera,setCamera]=useState<ThinkCamera>(()=>{try{return JSON.parse(localStorage.getItem('think-camera')||'null')||{x:80,y:80,zoom:1}}catch{return{x:80,y:80,zoom:1}}})
+ const [camera,setCamera]=useState<ThinkCamera>(()=>{try{const value=JSON.parse(localStorage.getItem('think-camera')||'null');return validCamera(value)?value:{x:80,y:80,zoom:1}}catch{return{x:80,y:80,zoom:1}}})
  const cam=useRef(camera);cam.current=camera
  const [selected,setSelected]=useState<string[]>([]),[editing,setEditing]=useState<string|null>(null),[chat,setChat]=useState(false),[target,setTarget]=useState('')
  const [watch,setWatch]=useState<{id:string;at:number}|null>(null),[replies,setReplies]=useState<Message[]>([])
  useEffect(()=>{if(!watch)return;let cancelled=false;const refresh=async()=>{try{const d=await api.session(watch.id);if(!cancelled)setReplies(d.messages.filter(m=>m.at>=watch.at))}catch{}};void refresh();const interval=setInterval(()=>void refresh(),3000);return()=>{cancelled=true;clearInterval(interval)}},[watch])
- useEffect(()=>{void loadPayload(key+':request').then(value=>{const r=value as {target?:string}|undefined;if(r?.target)setTarget(r.target)})},[key])
+ useEffect(()=>{void loadPayload(key+':request').then(value=>{const r=value as {target?:string}|undefined;if(r?.target)setTarget(r.target)}).catch(()=>undefined)},[key])
  const [layoutBusy,setLayoutBusy]=useState(false)
  const [relation,setRelation]=useState('')
  const [proposal,setProposal]=useState<{base:string;objects:ThinkObject[]}|null>(null)
@@ -31,6 +31,7 @@ export function ThinkPage(){
  const dirty=useRef(false),blocked=useRef(false),busy=useRef(false),pendingLocal=useRef(Promise.resolve()),alive=useRef(true)
  const record=(action:string,id?:string)=>{recent.current=[...recent.current.slice(-11),{action,id,at:Date.now()}]}
  const update=(next:ThinkBoard,remember=true)=>{
+  if(!alive.current)return
   if(remember){history.current.push(structuredClone(live.current));future.current=[]}
   live.current=next;dirty.current=true;setBoard(next);setStatus(t.saving)
   pendingLocal.current=pendingLocal.current.then(()=>storePayload(key,next)).then(()=>undefined).catch(()=>{setError(t.error)})
@@ -57,7 +58,7 @@ export function ThinkPage(){
  const change=(id:string,patch:Partial<ThinkObject>,remember=true)=>{update({...live.current,objects:live.current.objects.map(o=>o.id===id?{...o,...patch,updatedAt:Date.now()}:o)},remember)}
  const add=(type:'text'|'image',content='',point={x:160,y:140})=>{const p=worldPoint(point,cam.current),id=crypto.randomUUID();update({...live.current,objects:[...live.current.objects,{id,type,...p,width:280,height:type==='image'?210:150,content,source:'',updatedAt:Date.now()}]});setSelected([id]);if(type==='text')setEditing(id);record('create',id)}
  const undo=(redo=false)=>{const from=redo?future.current:history.current,to=redo?history.current:future.current;const previous=from.pop();if(!previous)return;to.push(structuredClone(live.current));update({...previous,revision:live.current.revision},false);record(redo?'redo':'undo')}
- useEffect(()=>{const keydown=(e:KeyboardEvent)=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!(e.target instanceof HTMLTextAreaElement)&&!(e.target instanceof HTMLInputElement)){e.preventDefault();undo(e.shiftKey)}};window.addEventListener('keydown',keydown);return()=>window.removeEventListener('keydown',keydown)},[])
+ useEffect(()=>{const keydown=(e:KeyboardEvent)=>{if([...document.querySelectorAll('.page,.think-page')].at(-1)!==root.current)return;if((e.metaKey||e.ctrlKey)&&['z','y'].includes(e.key.toLowerCase())&&!(e.target instanceof HTMLTextAreaElement)&&!(e.target instanceof HTMLInputElement)){e.preventDefault();undo(e.shiftKey||e.key.toLowerCase()==='y')}};window.addEventListener('keydown',keydown);return()=>window.removeEventListener('keydown',keydown)},[])
  const pointers=useRef(new Map<number,{x:number;y:number}>()),gesture=useRef<any>(null)
  const relative=(e:{clientX:number;clientY:number})=>{const r=canvas.current!.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
  const down=(e:React.PointerEvent,id?:string)=>{
@@ -70,6 +71,7 @@ export function ThinkPage(){
  const move=(e:React.PointerEvent)=>{
   if(!pointers.current.has(e.pointerId))return;const p=relative(e);pointers.current.set(e.pointerId,p);const g=gesture.current;if(!g)return
   if(g.kind==='pinch'&&pointers.current.size===2){const[a,b]=[...pointers.current.values()];const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};const z=zoomAt(g.camera,g.mid,g.camera.zoom*Math.hypot(a.x-b.x,a.y-b.y)/Math.max(1,g.distance));setCamera({...z,x:z.x+mid.x-g.mid.x,y:z.y+mid.y-g.mid.y});return}
+  if(g.kind==='pinch')return // Wait until all fingers lift before starting another gesture.
   const dx=p.x-g.p.x,dy=p.y-g.p.y;if(Math.hypot(dx,dy)<5&&!g.moved)return;g.moved=true
   if(g.kind==='pan')setCamera({...g.camera,x:g.camera.x+dx,y:g.camera.y+dy})
   if(g.kind==='object'){const next={...live.current,objects:live.current.objects.map(o=>o.id===g.obj.id?{...o,x:g.obj.x+dx/cam.current.zoom,y:g.obj.y+dy/cam.current.zoom}:o)};live.current=next;setBoard(next)}
@@ -82,7 +84,7 @@ export function ThinkPage(){
  }
  useEffect(()=>{const el=canvas.current;if(!el)return;const wheel=(e:WheelEvent)=>{e.preventDefault();if(e.ctrlKey||e.metaKey)setCamera(c=>zoomAt(c,relative(e),c.zoom*Math.exp(-e.deltaY*.01)));else setCamera(c=>({...c,x:c.x-e.deltaX,y:c.y-e.deltaY}))};el.addEventListener('wheel',wheel,{passive:false});return()=>el.removeEventListener('wheel',wheel)},[ready])
  const context=()=>{const r=canvas.current?.getBoundingClientRect();return viewportContext(live.current,cam.current,r?.width??0,r?.height??0,selected,recent.current)}
- const exportBoard=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(live.current,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='think.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+ const exportBoard=()=>{if(!ready)return;const url=URL.createObjectURL(new Blob([JSON.stringify(live.current,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='think.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
  const file=useRef<HTMLInputElement>(null),importFile=useRef<HTMLInputElement>(null)
  const send=async(text:string)=>{
   if(!target)throw Error(t.target)
@@ -96,12 +98,12 @@ export function ThinkPage(){
   if(layoutBusy)return
   if(dirty.current||busy.current){setError(t.aiWait);return}
   setLayoutBusy(true)
-  const base=JSON.stringify(live.current),r=canvas.current!.getBoundingClientRect();setStatus(t.saving)
-  try{const result=await api.thinkLayout({revision:live.current.revision,camera:cam.current,width:r.width,height:r.height,selected});if(JSON.stringify(live.current)!==base){setError(t.stale);return}setProposal({base,objects:live.current.objects.filter(o=>result.positions.some(p=>p.id===o.id)).map(o=>({...o,...result.positions.find(p=>p.id===o.id)!}))});record('layout-proposal');setStatus('')}catch{setError(t.aiFailed)}finally{setLayoutBusy(false)}
+  const base=JSON.stringify(live.current),r=canvas.current!.getBoundingClientRect();setStatus(t.organising)
+  try{const result=await api.thinkLayout({revision:live.current.revision,camera:cam.current,width:r.width,height:r.height,selected});if(JSON.stringify(live.current)!==base){setError(t.stale);return}setProposal({base,objects:live.current.objects.filter(o=>result.positions.some(p=>p.id===o.id)).map(o=>{const p=result.positions.find(p=>p.id===o.id)!;return {...o,x:p.x,y:p.y}})});record('layout-proposal');setStatus('')}catch{setError(t.aiFailed)}finally{setLayoutBusy(false);setStatus(dirty.current?t.saving:t.saved)}
  }
  const preview=()=>{const objects=live.current.objects.filter(o=>!selected.length||selected.includes(o.id));const p=worldPoint({x:60,y:60},cam.current);setProposal({base:JSON.stringify(live.current),objects:objects.map((o,i)=>({...o,x:p.x+(i%3)*340,y:p.y+Math.floor(i/3)*270}))})}
  return <section ref={root} className="think-page tone" style={{'--c':'var(--agent)'} as React.CSSProperties}>
-  <nav className="think-tools"><button onClick={back} aria-label={t.back}>←</button><strong>{t.title}</strong><button aria-label={t.note} disabled={!ready} onClick={()=>add('text')}>＋</button><button onClick={()=>file.current?.click()}>{t.image}</button><button disabled={!history.current.length} onClick={()=>undo()}>{t.undo}</button><button disabled={!future.current.length} onClick={()=>undo(true)}>{t.redo}</button><button onClick={()=>setCamera({x:80,y:80,zoom:1})}>{t.fit}</button><button onClick={exportBoard}>{t.export}</button><button onClick={()=>importFile.current?.click()}>{t.import}</button><button onClick={()=>setChat(!chat)}>{t.chat}</button><span role="status">{status}</span></nav>
+  <nav className="think-tools"><button onClick={back} aria-label={t.back}>←</button><strong>{t.title}</strong><button aria-label={t.note} disabled={!ready} onClick={()=>add('text')}>＋</button><button disabled={!ready} onClick={()=>file.current?.click()}>{t.image}</button><button disabled={!history.current.length} onClick={()=>undo()}>{t.undo}</button><button disabled={!future.current.length} onClick={()=>undo(true)}>{t.redo}</button><button onClick={()=>setCamera({x:80,y:80,zoom:1})}>{t.fit}</button><button onClick={exportBoard}>{t.export}</button><button disabled={!ready} onClick={()=>importFile.current?.click()}>{t.import}</button><button onClick={()=>setChat(!chat)}>{t.chat}</button><span role="status">{status}</span></nav>
   {error&&<div role="alert" className="think-error">{error}<button onClick={exportBoard}>{t.export}</button><button onClick={()=>{void api.think().then(async b=>{await removePayload(key);blocked.current=false;dirty.current=false;live.current=b;setBoard(b);setError('');setReady(true);history.current=[];future.current=[]})}}>{t.reload}</button></div>}
   <div ref={canvas} className="think-canvas" onPointerDown={e=>{if(ready&&!pointers.current.has(e.pointerId)&&!(e.target as HTMLElement).closest('button,input,textarea,a'))down(e)}} onPointerMove={move} onPointerUp={e=>up(e)} onPointerCancel={e=>up(e,true)}>
    {!board.objects.length&&<p className="think-empty">{t.empty}</p>}
@@ -117,9 +119,10 @@ export function ThinkPage(){
    </div>
   </div>
   <footer className="think-tools"><button onClick={()=>setCamera(c=>zoomAt(c,{x:200,y:200},c.zoom/1.25))}>−</button><span>{Math.round(camera.zoom*100)}%</span><button onClick={()=>setCamera(c=>zoomAt(c,{x:200,y:200},c.zoom*1.25))}>＋</button><button onClick={preview}>{t.organise}</button>{selected.length===2&&<><input aria-label={t.relation} placeholder={t.relation} value={relation} onChange={e=>setRelation(e.target.value)}/><button disabled={!relation.trim()} onClick={()=>update({...live.current,edges:[...live.current.edges,{id:crypto.randomUUID(),from:selected[0],to:selected[1],label:relation.trim()}]})}>{t.link}</button></>}</footer>
+  {board.edges.filter(edge=>selected.includes(edge.from)||selected.includes(edge.to)).map(edge=><div key={edge.id} className="think-tools"><input aria-label={t.relation} value={edge.label} onChange={e=>update({...live.current,edges:live.current.edges.map(item=>item.id===edge.id?{...item,label:e.target.value}:item)})}/><button onClick={()=>update({...live.current,edges:live.current.edges.filter(item=>item.id!==edge.id)})}>{t.remove}</button></div>)}
   {proposal&&<div className="think-tools"><span>{t.layout}</span><button onClick={()=>{if(pointers.current.size||JSON.stringify(live.current)!==proposal.base){setError(t.stale);return}update({...live.current,objects:live.current.objects.map(o=>proposal.objects.find(p=>p.id===o.id)??o)});setProposal(null)}}>{t.apply}</button><button onClick={()=>setProposal(null)}>{t.cancel}</button></div>}
   {chat&&<div className="think-chat"><p>{t.privacy}</p><button disabled={layoutBusy} onClick={()=>void aiPreview()}>{t.aiLayout}</button><select aria-label={t.target} value={target} onChange={e=>setTarget(e.target.value)}><option value="">{t.target}</option>{snap.sessions.filter(s=>!s.archived).map(s=><option key={s.id} value={s.id}>{s.title}</option>)}</select><details><summary>{t.context}</summary><pre>{JSON.stringify(context(),null,2)}</pre></details><Messages session messages={replies} author={snap.sessions.find(s=>s.id===watch?.id)?.tool??'codex'}/><Composer label={t.send} placeholder={t.request} onSend={send} disabled={!target} sayErrors draftKey="think-request"/><OutboxStatus scope={target?`/api/sessions/${encodeURIComponent(target)}/`:'/api/think'}/>{target&&<button onClick={()=>push({kind:'session',id:target})}>{t.openConversation}</button>}</div>}
-  <input hidden ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>4e6){setError(t.invalid);return}const r=new FileReader();r.onload=()=>add('image',String(r.result));r.readAsDataURL(f);e.target.value=''}}/>
-  <input hidden ref={importFile} type="file" accept="application/json" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;try{const b=JSON.parse(await f.text());validateBoard(b);update({...b,revision:live.current.revision})}catch{setError(t.badImport)}e.target.value=''}}/>
+  <input hidden ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>4e6||!['image/png','image/jpeg','image/webp','image/gif'].includes(f.type)){setError(t.invalid);return}const r=new FileReader();r.onerror=()=>setError(t.invalid);r.onload=()=>add('image',String(r.result));r.readAsDataURL(f);e.target.value=''}}/>
+  <input hidden ref={importFile} type="file" accept="application/json" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>48*1024*1024){setError(t.badImport);return}try{const b=JSON.parse(await f.text());validateBoard(b);update({...b,revision:live.current.revision})}catch{setError(t.badImport)}e.target.value=''}}/>
  </section>
 }

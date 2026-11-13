@@ -13,5 +13,5 @@ export async function proposeThinkLayout(board:ThinkBoard,input:{camera:ThinkCam
  if(!result||!Array.isArray(result.positions)||result.positions.length!==objects.length)throw Error('Invalid layout') // i18n-ignore: internal validation code, translated at the UI boundary
  const ids=new Set(objects.map(o=>o.id)),seen=new Set<string>()
  for(const p of result.positions){if(!ids.has(p.id)||seen.has(p.id)||![p.x,p.y].every(Number.isFinite)||Math.abs(p.x)>1e7||Math.abs(p.y)>1e7)throw Error('Invalid layout');seen.add(p.id)} // i18n-ignore: internal validation code, translated at the UI boundary
- return {revision:board.revision,positions:result.positions,evidence:objects.map(o=>o.id)}
+ return {revision:board.revision,positions:result.positions.map(({id,x,y})=>({id,x,y})),evidence:objects.map(o=>o.id)}
 }

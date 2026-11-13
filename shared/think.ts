@@ -2,6 +2,10 @@ export interface ThinkObject { id: string; type: 'text' | 'image'; x: number; y:
 export interface ThinkEdge { id: string; from: string; to: string; label: string }
 export interface ThinkBoard { version: 1; revision: number; objects: ThinkObject[]; edges: ThinkEdge[] }
 export interface ThinkCamera { x: number; y: number; zoom: number }
+export const validCamera = (value: unknown): value is ThinkCamera => {
+ const c=value as ThinkCamera
+ return !!c && [c.x,c.y,c.zoom].every(Number.isFinite) && c.zoom>=.1 && c.zoom<=4
+}
 export const emptyBoard = (): ThinkBoard => ({ version: 1, revision: 0, objects: [], edges: [] })
 export const worldPoint = (p: {x:number;y:number}, c: ThinkCamera) => ({ x: (p.x-c.x)/c.zoom, y: (p.y-c.y)/c.zoom })
 export function zoomAt(c: ThinkCamera, p: {x:number;y:number}, zoom: number): ThinkCamera {

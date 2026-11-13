@@ -9,5 +9,5 @@ export function ThinkEditor({value,width,maxHeight,label,onChange,onFinish}:{val
 export function ThinkText({text,width,onHeight,onEdit}:{text:string;width:number;onHeight:(height:number)=>void;onEdit:()=>void}){
  const ref=useRef<HTMLDivElement>(null),report=useRef(onHeight);report.current=onHeight
  useLayoutEffect(()=>{const el=ref.current;if(!el)return;const measure=()=>{if(el.scrollHeight>0)report.current(Math.max(28,Math.ceil(el.scrollHeight)))};measure();const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(measure);observer?.observe(el);return()=>observer?.disconnect()},[text,width])
- return <div ref={ref} className="think-text" onClick={onEdit}>{text||'…'}</div>
+ return <div ref={ref} className="think-text" onClick={onEdit}>{text}</div>
 }

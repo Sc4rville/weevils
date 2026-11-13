@@ -91,7 +91,12 @@ const retryAfter = (v: string | null): number => {
   const t = Date.parse(v)
   return Number.isFinite(t) ? Math.max(0, t - Date.now()) : 0
 }
-export async function claudeQuota(): Promise<QuotaInfo> {
+let claudeInflight: Promise<QuotaInfo> | null = null
+/** One read at a time: callers arriving together share it (two at once made two requests, hence 429s). */
+export function claudeQuota(): Promise<QuotaInfo> {
+  return (claudeInflight ??= readClaudeQuota().finally(() => (claudeInflight = null)))
+}
+async function readClaudeQuota(): Promise<QuotaInfo> {
   const now = Date.now()
   // Simulation (tests of the Codex relay on a throwaway server): a file shaped like the API's answer.
   const fake = process.env.WEEVILS_FAKE_CLAUDE_USAGE
@@ -101,6 +106,7 @@ export async function claudeQuota(): Promise<QuotaInfo> {
   }
   const last = claudeLast()
   if (last && now < claudeNextAt) return last
+  if (!last && now < claudeNextAt) return { ok: false, windows: [], source: 'api.anthropic.com/api/oauth/usage', at: now }
   const source = 'api.anthropic.com/api/oauth/usage'
   const o = readJson(path.join(HOME, '.claude', '.credentials.json'))?.claudeAiOauth
   if (!o?.accessToken) {

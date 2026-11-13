@@ -1568,3 +1568,12 @@ describe('retroactive automation software adoption',()=>{
   expect(stored.runs.at(-1).configRevision).toMatch(/^[a-f0-9]{64}$/)
  })
 })
+
+it('reuses a durable creation request identity after a lost response/reload without another draft or repository',async()=>{
+ const o=make();const first=o.create('request-one')
+ expect(o.create('request-one').id).toBe(first.id)
+ const reload=make();expect(reload.create('request-one').id).toBe(first.id)
+ await reload.adoptAll();expect(reload.adoptionStatus().total).toBe(1)
+ expect(fs.readdirSync(path.join(dir,'automation-workspaces','projects'))).toEqual([`auto-${first.id}`])
+ expect(reload.create('request-two').id).not.toBe(first.id)
+})

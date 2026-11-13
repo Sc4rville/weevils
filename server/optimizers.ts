@@ -292,6 +292,7 @@ export function jailArgs(o: { home: string; hide: string[]; roots: string[]; rw:
 }
 
 type Stored = Optimizer & {
+  creationKey?: string
   runSourceRevision?: string
   runConfigRevision?: string
   /** Durable deletion: keep source/history and finish an already running job once. */
@@ -771,7 +772,7 @@ export class Optimizers {
   /** A task as the app sees it: without the brief and the runner's bookkeeping; when it may start, if its time holds
    *  it; what its next run will be, when that was rewritten while it runs. */
   view(o: Stored, now = Date.now()): Optimizer {
-    const { prompt: _p, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, runSourceRevision: _sr, runConfigRevision: _cr, ...v } = o
+    const { prompt: _p, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, runSourceRevision: _sr, runConfigRevision: _cr, creationKey:_ck, ...v } = o
     const at = o.state === 'queued' ? this.timeAt(o, now) : now
     const out: Optimizer = at > now ? { ...v, startAt: at } : { ...v }
     if (o.runNow) out.runRequested = true
@@ -814,12 +815,18 @@ export class Optimizers {
   }
 
   /** A fresh creation conversation, without a model call or an executable brief. */
-  create(): Optimizer {
+  create(creationKey?:string): Optimizer {
+    if(creationKey){
+      const existing=this.s.items.find(o=>o.creationKey===creationKey)
+      if(existing){if(existing.deletedAt)throw new Error(tr(O).notFound);return this.view(existing)}
+    }
     const t = tr(O)
     const now = Date.now()
     const o: Stored = { id: crypto.randomBytes(5).toString('hex'), title: t.newTitle, why: '', repo: null, kind: 'other', heavy: false, state: 'proposed', draft: true, userCreated: true, prompt: '', createdAt: now, talk: [{ who: 'auto', text: t.newQuestion, at: now, suggestions: this.creationSuggestions() }] }
+    if(creationKey)o.creationKey=creationKey
     this.s.items.push(o)
-    this.changed()
+    try{this.save(true)}catch(e){this.s.items=this.s.items.filter(item=>item!==o);throw e}
+    this.w.bump()
     if(this.auto)void this.adoptAll()
     return this.view(o)
   }
@@ -1497,7 +1504,12 @@ export class Optimizers {
       const sourceRunner=!this.s.adoptionPaused && o.software?.status==='ready' ? this.software.pin(o.software) : undefined
       if(sourceRunner){
         o.runSourceRevision=o.software!.revision
-        o.runConfigRevision=crypto.createHash('sha256').update(JSON.stringify([o.title,o.why,o.prompt,o.repo,o.every,o.notBefore,o.window,o.tz])).digest('hex')
+        const configuration={title:o.title,why:o.why,prompt:o.prompt,repo:o.repo,every:o.every,notBefore:o.notBefore,window:o.window,tz:o.tz}
+        o.runConfigRevision=crypto.createHash('sha256').update(JSON.stringify(configuration)).digest('hex')
+        const configs=path.join(path.dirname(this.file),'automation-configs',o.id)
+        fs.mkdirSync(configs,{recursive:true,mode:0o700})
+        const configFile=path.join(configs,o.runConfigRevision+'.json')
+        if(!fs.existsSync(configFile))fs.writeFileSync(configFile,JSON.stringify(configuration,null,2),{mode:0o600,flag:'wx'})
         this.changed()
       }
       // A retry or the next run of a recurring task finds its worktree already there (same branch).
@@ -1669,7 +1681,11 @@ export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h
       const result=o.remove(id)
       return result ? json(res,200,result) : missing(res)
     }],
-    ['POST', /^\/api\/optimizers$/, (_req, res) => json(res, 201, { item: o.create() })],
+    ['POST', /^\/api\/optimizers$/, (req, res) => {
+      const key=req.headers?.['idempotency-key']
+      if(key && (typeof key!=='string'||key.length>128))return json(res,400,{ok:false})
+      return json(res,201,{item:o.create(typeof key==='string'?key:undefined)})
+    }],
     ['POST', /^\/api\/optimizers\/([\w-]+)\/accept$/, async (req, res, _u, [id]) => {
       const body = await readBody(req).catch(() => ({}))
       const rev = Number.isInteger(body?.rev) ? Number(body.rev) : undefined

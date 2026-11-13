@@ -50,8 +50,7 @@ A running legacy job receives `pending-running` source metadata without scanning
 version, process or schedule. Its old run is never falsely labeled with a source revision. After completion,
 reconciliation marks it ready. Future runs execute the pinned software entrypoint inside the existing
 sandbox and keep the old target/output workspace: source handoff does not require moving live files.
-The run records `softwareId`, `sourceRevision` and a hash of its private configuration; secret values are
-not archived as configuration snapshots. Changing a selected revision affects future runs only.
+The run records `softwareId`, `sourceRevision` and a hash of its private configuration; configuration snapshots stay mode-600 in private installation storage, never in Git or public run details. Changing a selected revision affects future runs only.
 A provider unavailable or sandbox failure continues to follow existing Auto failure/retry rules.
 
 `GET /api/auto/adoption` exposes counts, errors and per-object bindings. This is engineering metadata;

@@ -53,3 +53,29 @@ it('promotes only a committed compatible revision and preserves an already pinne
  expect(manager.select(next,first.revision).revision).toBe(first.revision)
  expect(()=>manager.select(first,'HEAD')).toThrow('full committed')
 })
+
+it('recovers a completed lock record from a crashed provisioning process',()=>{
+ const {manager}=fixture();manager.adopt('a','none',false)
+ fs.writeFileSync(path.join(manager.root,'.provision-lock'),'2147483647')
+ expect(manager.adopt('b','none',false).status).toBe('ready')
+ expect(fs.existsSync(path.join(manager.root,'.provision-lock'))).toBe(false)
+})
+
+it('completes missing scaffold files after interruption without overwriting an existing source file',()=>{
+ const {manager}=fixture();const a=manager.adopt('a','none',false)
+ fs.rmSync(path.join(a.repository,'config.example.json'))
+ fs.writeFileSync(path.join(a.repository,'src/run.mjs'),'// user edit preserved')
+ const retry=manager.adopt('a','none',false)
+ expect(retry.revision).toBe(a.revision)
+ expect(fs.existsSync(path.join(a.repository,'config.example.json'))).toBe(true)
+ expect(fs.readFileSync(path.join(a.repository,'src/run.mjs'),'utf8')).toBe('// user edit preserved')
+})
+
+it('does not commit unrelated user-staged registry files while adopting another automation',()=>{
+ const {manager}=fixture();manager.adopt('a','none',false)
+ const registry=path.join(manager.root,'registry');fs.writeFileSync(path.join(registry,'private-user-file'),'keep staged, not committed')
+ execFileSync('git',['-C',registry,'add','private-user-file'])
+ manager.adopt('b','none',false)
+ expect(execFileSync('git',['-C',registry,'diff','--cached','--name-only'],{encoding:'utf8'})).toContain('private-user-file')
+ expect(execFileSync('git',['-C',registry,'ls-tree','-r','--name-only','HEAD'],{encoding:'utf8'})).not.toContain('private-user-file')
+})

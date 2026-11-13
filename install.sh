@@ -321,6 +321,7 @@ else for v in $(compgen -e); do case "$v" in CODEX_HOME) ;; CODEX_*) AGENT_NAME=
 if [ "$AGENT" = 0 ] && [ -n "$AGENT_NAME" ] && [ ! -t 0 ] && [ ! -t 1 ]; then AGENT=1 YES=1; fi
 
 # Language: --lang, else the one already in your settings (a re-run speaks like the first run), else the locale.
+# The locale only picks the installer's own words: the app's language (WEEVILS_LANG) is --lang, else English.
 # Always ~/.config/weevils (not XDG_CONFIG_HOME): the server and the systemd unit read it there.
 CONF_DIR=$HOME/.config/weevils
 CONF_FILE=$CONF_DIR/env
@@ -680,7 +681,8 @@ configure() {
   local name=$NAME
   if [ -z "$name" ] && [ -z "$(cfg get WEEVILS_USER_NAME)" ]; then name=$(ask "$(t ask_name)" ""); fi
   [ -z "$name" ] || cfg set WEEVILS_USER_NAME "$name"
-  if [ -n "$LANG_OPT" ]; then cfg set WEEVILS_LANG "$L"; else cfg default WEEVILS_LANG "$L"; fi
+  # The app's language: --lang (the get page passes its own), else English; never the machine's locale.
+  if [ -n "$LANG_OPT" ]; then cfg set WEEVILS_LANG "$L"; else cfg default WEEVILS_LANG en; fi
   if [ -n "$PORT" ]; then cfg set WEEVILS_PORT "$PORT"; else cfg default WEEVILS_PORT 4179; fi
   cfg default WEEVILS_HOOK_PORT 4180
   # A new config takes the first free pair of ports (another app, or another user's weevils, may hold 4179/4180).

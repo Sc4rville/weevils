@@ -12,8 +12,8 @@ export { defineMessages, type Lang } from '../shared/i18n.ts'
 
 const PREFS_FILE = path.join(DATA_DIR, 'prefs.json')
 
-/** from: « choice » picked in the app's settings, « browser » the first app's language; absent in files written
- * before 2026-11-10, when any app could switch it (overwritten by the next app that opens). */
+/** from: « choice » picked in an app's settings, the only one that counts. « browser » (the first app's browser
+ * language, 2026-11-10 to 11-13) and files without it (before, when a stray tap could switch it) are not choices. */
 interface Prefs {
   lang?: string
   from?: 'choice' | 'browser'
@@ -27,11 +27,13 @@ function readPrefs(): Prefs {
   }
 }
 
-const fromEnv = (): Lang => pickLang([process.env.WEEVILS_LANG ?? '', process.env.LC_ALL ?? '', process.env.LANG ?? ''].filter(Boolean))
+// The installation's language: picked in an app's settings, else the installer's (WEEVILS_LANG: --lang, which the get
+// page passes from its own language), else English. Never guessed from a browser or from the machine's locale.
+const fromEnv = (): Lang => pickLang([process.env.WEEVILS_LANG ?? ''].filter(Boolean))
 
 let current: Lang = (() => {
-  const p = readPrefs().lang
-  return isLang(p) ? p : fromEnv()
+  const p = readPrefs()
+  return p.from === 'choice' && isLang(p.lang) ? p.lang : fromEnv()
 })()
 const listeners = new Set<(l: Lang) => void>()
 
@@ -48,17 +50,15 @@ export function requestLang(req: { headers: Record<string, string | string[] | u
   return isLang(query) ? query : lang()
 }
 
-/** Called when the app tells its language: chosen, picked in its settings (always applied); otherwise the browser's,
- * applied only while no app has set one. Returns true when it changed. */
+/** Called when an app tells its language. Only a language picked in its settings (chosen) changes the installation's;
+ * a browser's never does: an English weevils opened on a French phone stays English. Returns true when it changed. */
 export function setLang(l: unknown, chosen = false): boolean {
-  if (!isLang(l)) return false
+  if (!chosen || !isLang(l)) return false
   const prefs = readPrefs()
-  if (!chosen && prefs.from && isLang(prefs.lang)) return false
-  const from = chosen ? 'choice' : 'browser'
-  if (l !== current || prefs.from !== from || prefs.lang !== l)
+  if (l !== current || prefs.from !== 'choice' || prefs.lang !== l)
     try {
       fs.mkdirSync(DATA_DIR, { recursive: true })
-      fs.writeFileSync(PREFS_FILE, JSON.stringify({ ...prefs, lang: l, from }))
+      fs.writeFileSync(PREFS_FILE, JSON.stringify({ ...prefs, lang: l, from: 'choice' }))
     } catch {
       /* kept in memory */
     }
@@ -67,6 +67,9 @@ export function setLang(l: unknown, chosen = false): boolean {
   for (const f of listeners) f(l)
   return true
 }
+
+/** The app's page, told this installation's language: a device that has picked none follows it, never its browser. */
+export const withInstallLang = (html: string): string => html.replace(/<html\b/, `<html data-install-lang="${current}"`)
 
 /** Runs when the language changes (e.g. re-render the orchestrator's prompt). */
 export const onLangChange = (f: (l: Lang) => void) => listeners.add(f)

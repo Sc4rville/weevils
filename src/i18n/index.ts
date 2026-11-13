@@ -1,14 +1,16 @@
-// App language: chosen in the settings (stored on the device), otherwise the browser's language.
+// App language: chosen in the settings (stored on the device), otherwise this installation's language, which the server
+// writes in the page (the installer's --lang, the get page's language, or a pick in the settings), English without it.
+// Never the browser's: an English weevils opened on a French phone stays English until someone picks French.
 // Components: `const t = useT(M)` (re-renders when the language changes). Plain functions: `tr(M)`.
 
 import { useSyncExternalStore } from 'react'
-import { isLang, locale, pickLang, type Lang, type Messages, type Msg } from '../../shared/i18n.ts'
+import { DEFAULT_LANG, isLang, locale, type Lang, type Messages, type Msg } from '../../shared/i18n.ts'
 
 export { defineMessages, LANGS, LANG_NAMES, type Lang } from '../../shared/i18n.ts'
 
 // The language picked in the settings. The old key was written by a language line that switched on a single tap: a
 // stray tap left the app in the other language for good. Its value is not a choice anyone made on
-// purpose, so it is dropped once and the app follows the browser again until a language is really picked.
+// purpose, so it is dropped once and the app follows the installation's language until one is really picked.
 const KEY = 'weevils-language'
 const LEGACY_KEY = 'weevils-lang'
 
@@ -27,7 +29,11 @@ function stored(): Lang | null {
   }
 }
 
-export const browserLang = (): Lang => pickLang(typeof navigator === 'undefined' ? [] : navigator.languages?.length ? navigator.languages : [navigator.language])
+/** This installation's language (`data-install-lang`, written by the server in the page); English without it. */
+export const installLang = (): Lang => {
+  const v = typeof document === 'undefined' ? null : document.documentElement.dataset.installLang
+  return isLang(v) ? v : DEFAULT_LANG
+}
 
 // A language link applies only to the device opening it. Preserve navigation/login hashes.
 function linked(): Lang | null {
@@ -43,7 +49,7 @@ function linked(): Lang | null {
   } catch { return null }
 }
 
-let current: Lang = linked() ?? stored() ?? browserLang()
+let current: Lang = linked() ?? stored() ?? installLang()
 const listeners = new Set<() => void>()
 
 function apply() {
@@ -52,10 +58,10 @@ function apply() {
 apply()
 
 export const getLang = (): Lang => current
-/** True when the user picked a language; false while the app follows the browser. */
+/** True when the user picked a language on this device; false while the app follows the installation's. */
 export const langIsChosen = (): boolean => stored() !== null
 
-/** Changes this device only (null: follow the browser); shared agent prompts are never rewritten. */
+/** Changes this device only (null: follow the installation's language); shared agent prompts are never rewritten. */
 export function setLang(lang: Lang | null) {
   try {
     if (lang) localStorage.setItem(KEY, lang)
@@ -63,7 +69,7 @@ export function setLang(lang: Lang | null) {
   } catch {
     /* storage unavailable */
   }
-  current = lang ?? browserLang()
+  current = lang ?? installLang()
   apply()
   for (const l of listeners) l()
 }
@@ -71,7 +77,7 @@ export function setLang(lang: Lang | null) {
 // Another tab of this device follows its stored preference; other browser profiles stay independent.
 if (typeof window !== 'undefined') window.addEventListener('storage', (e) => {
   if (e.key !== KEY && e.key !== null) return
-  current = stored() ?? browserLang()
+  current = stored() ?? installLang()
   apply()
   for (const listener of listeners) listener()
 })

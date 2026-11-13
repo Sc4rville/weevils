@@ -21,7 +21,7 @@ import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices, relay as modelRelay } from './fast.ts'
 import { Weevils, isTestBrief } from './core.ts'
-import { lang, requestLang, withLang, setLang, tr } from './i18n.ts'
+import { lang, requestLang, withLang, setLang, tr, withInstallLang } from './i18n.ts'
 import M from './i18n/api.ts'
 import P from './i18n/push.ts'
 import V from './i18n/voice.ts'
@@ -300,6 +300,8 @@ function serveStatic(res: http.ServerResponse, pathname: string) {
     'content-type': MIME[ext] ?? 'application/octet-stream',
     'cache-control': pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
   })
+  // The app's page carries this installation's language, for the devices that have picked none.
+  if (file === path.join(DIST_DIR, 'index.html')) return void res.end(withInstallLang(fs.readFileSync(file, 'utf8')))
   fs.createReadStream(file).pipe(res)
 }
 
@@ -416,7 +418,8 @@ const routes: [string, RegExp, Handler][] = [
     // Les autres machines suivent : leurs erreurs et leurs écrans remontent dans l'app. Relayé quand l'app parle
     // (passe par le proxy) ou quand la langue change : deux machines qui se lisent l'une l'autre ne se renvoient
     // pas la requête sans fin (le relais arrive en local et ne change plus rien).
-    // chosen : langue choisie dans les réglages de l'app ; sinon celle du navigateur, qui ne fixe la langue qu'une fois.
+    // chosen : langue choisie dans les réglages de l'app, la seule qui change celle de l'installation (jamais celle
+    // d'un navigateur : un weevils installé en anglais reste en anglais ouvert sur un téléphone en français).
     const chosen = body.chosen === true
     const changed = setLang(body.lang, chosen)
     if (changed || !isLocal(req)) for (const r of w.remotes) if (r.online) void r.call('POST', '/api/prefs', { lang: body.lang, chosen }).catch(() => undefined)

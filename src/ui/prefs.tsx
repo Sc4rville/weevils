@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { LANGS, LANG_NAMES, browserLang, langIsChosen, setLang, useLang, useT, type Lang } from '../i18n'
+import { LANGS, LANG_NAMES, installLang, langIsChosen, setLang, useLang, useT, type Lang } from '../i18n'
 import M from '../i18n/prefs'
 import { Line } from './bits'
 import { TourLine } from './tour'
@@ -21,13 +21,13 @@ export function PrefLines() {
   }
   return (
     <>
-      <Line ch="~" go={null} meta={chosen ? t.chosen : t.followsBrowser} onClick={() => setPicking((p) => !p)}>
+      <Line ch="~" go={null} meta={chosen ? t.chosen : t.followsDefault} onClick={() => setPicking((p) => !p)}>
         {t.language} · {LANG_NAMES[lang]}
       </Line>
       {picking && (
         <div className="lang-pick" role="group" aria-label={t.language}>
           <Line ch={chosen ? '' : '✓'} go={null} onClick={() => pick(null)}>
-            {t.followBrowser(LANG_NAMES[browserLang()])}
+            {t.followDefault(LANG_NAMES[installLang()])}
           </Line>
           {LANGS.map((l: Lang) => (
             <Line key={l} ch={chosen && l === lang ? '✓' : ''} go={null} onClick={() => pick(l)}>
@@ -65,7 +65,7 @@ export function LanguageButton({ compact = false }: { compact?: boolean }) {
     }}>
       <div className="language-dialog-head"><h2 id={`${id}-title`}>{t.language}</h2><button type="button" className="ch" aria-label={t.closeLanguage} onClick={() => dialog.current?.close()}><Icon name="close" /></button></div>
       <div className="language-options" role="group" aria-label={t.language}>
-        <button type="button" aria-pressed={!chosen} onClick={() => pick(null)}>{t.followBrowser(LANG_NAMES[browserLang()])}</button>
+        <button type="button" aria-pressed={!chosen} onClick={() => pick(null)}>{t.followDefault(LANG_NAMES[installLang()])}</button>
         {LANGS.map((value) => <button key={value} type="button" aria-pressed={chosen && value === lang} onClick={() => pick(value)}><span lang={value}>{LANG_NAMES[value]}</span></button>)}
       </div>
     </dialog>

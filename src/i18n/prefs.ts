@@ -4,15 +4,15 @@ export default defineMessages({
   fr: {
     language: 'langue',
     closeLanguage: 'fermer le choix de langue',
-    followsBrowser: 'comme le navigateur',
+    followsDefault: 'par défaut',
     chosen: 'choisie ici',
-    followBrowser: (name: string) => `comme le navigateur (${name})`,
+    followDefault: (name: string) => `par défaut (${name})`,
   },
   en: {
     language: 'language',
     closeLanguage: 'close language choices',
-    followsBrowser: 'same as the browser',
+    followsDefault: 'default',
     chosen: 'chosen here',
-    followBrowser: (name: string) => `same as the browser (${name})`,
+    followDefault: (name: string) => `default (${name})`,
   },
 })

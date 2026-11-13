@@ -116,11 +116,12 @@ launchd_status() {
 
 # ---------------------------------------------------------------- background mode (no systemd, no launchd)
 
-# detach cmd… — cmd in its own session, so it outlives the terminal and can be killed with its whole group.
+# detach cmd… & — cmd in its own session, so it outlives the terminal and can be killed with its whole group. Only
+# ever run in the background: it replaces its own (sub)shell, so $! is the command's pid, as the pid files need.
 detach() {
-  if command -v setsid >/dev/null; then setsid "$@"
-  elif command -v perl >/dev/null; then perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or exit 127' "$@"
-  else "$@"; fi
+  if command -v setsid >/dev/null; then exec setsid "$@"
+  elif command -v perl >/dev/null; then exec perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or exit 127' "$@"
+  else exec "$@"; fi
 }
 
 pid_alive() { local f=$RUN_DIR/$1.pid; [ -f "$f" ] && kill -0 "$(cat "$f")" 2>/dev/null; }

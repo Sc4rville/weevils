@@ -123,6 +123,6 @@ describe.skipIf(!hasFfmpeg)('une dictée de 10 minutes', () => {
     now.mockRestore()
     const text = await finishUpload('dictee-longue', 'fr')
     expect(text.split(' ').length).toBe(7 * 147)
-    expect(fs.existsSync(path.join(ARCHIVE_DIR, 'partial', 'dictee-longue'))).toBe(false)
+    expect(fs.existsSync(path.join(ARCHIVE_DIR, 'partial', 'dictee-longue', 'receipt.json'))).toBe(true)
   }, 60_000)
 })

@@ -788,7 +788,7 @@ const KINDS: Record<ForYouItem['kind'], (p: KindProps) => ReactNode> = {
 }
 
 /** The band's extra classes: an alert and a milestone are drawn inverted (ink band, coloured words). */
-const bandClass = (item: ForYouItem) => `band fy-k-${item.kind} fy-t-${item.tone}${item.kind === 'alert' || item.kind === 'milestone' ? ' invert' : ''}${item.seen ? '' : ' fy-unseen'}`
+const bandClass = (item: ForYouItem) => `band fy-k-${item.kind} fy-t-${item.tone}${item.kind === 'alert' || item.kind === 'milestone' ? ' invert' : ''}${item.seen ? '' : ' fy-unseen'}${item.workstream?.kind === 'self-improvement' ? ' recursive-identity' : ''}`
 
 /** One line of an item, for the thin strips of the top band's preview. */
 const oneLine = (item: ForYouItem) => (item.kind === 'proposals' ? (item.cards?.[0]?.title ?? item.text) : item.kind === 'media' ? item.title || item.text : item.text || item.title || '')

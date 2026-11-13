@@ -886,3 +886,16 @@ it('keeps uncertain existing work informational when no destination is known',as
  expect(band('bo').querySelector('.fy-btn')).toBeNull()
  expect(srv.calls.some(c=>c.startsWith('act '))).toBe(false)
 })
+
+it('uses the static recursive signature only for structured identity, including compact history', () => {
+ const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,seen:true,workstream:{kind:'self-improvement',installationId:'here',target:{machineId:'vps',projectId:'weevils',repo:'weevils'},evidence:'repository-identity'}}
+ for(const compact of [false,true]) {
+  render(<ForYouItemView item={item} compact={compact}/> )
+  expect(band(item.id).classList.contains('recursive-identity')).toBe(true)
+  expect(band(item.id).className).not.toMatch(/recursive-working|is-working|fy-drift/)
+  expect(band(item.id).getAttribute('data-fy')).toBe(item.id)
+  render(<ForYouItemView item={{...item,workstream:undefined,text:'weevils improves itself',projectId:'weevils'}} compact={compact}/> )
+  expect(band(item.id).classList.contains('recursive-identity')).toBe(false)
+ }
+ expect(srv.calls.some(c=>/^(act|reply|dismiss) /.test(c))).toBe(false)
+})

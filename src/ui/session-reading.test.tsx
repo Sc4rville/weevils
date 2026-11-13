@@ -3,18 +3,18 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MotionGlobalConfig } from 'motion/react'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
-import type { Message } from '../../shared/api'
+import type { Message, Session } from '../../shared/api'
 import { Composer, Messages } from './bits'
 import { useThreadAsk } from './askthread'
 import { setLang } from '../i18n'
-const state = vi.hoisted(() => ({ word: true }))
-vi.mock('./app-context', () => ({ useApp: () => ({ snap: { config: { authors: [], userName: 'Scarville' }, projects: [], machines: [] }, push: vi.fn() }) }))
+const state = vi.hoisted(() => ({ word: true, sessions: [] as Session[] }))
+vi.mock('./app-context', () => ({ useApp: () => ({ snap: { config: { authors: [], userName: 'Scarville' }, projects: [], machines: [], sessions: state.sessions }, push: vi.fn() }) }))
 vi.mock('./ask', () => ({ useAsk: () => ({ reset() {} }), AskVoice: () => null, AskPanel: () => <div data-actions /> }))
 vi.mock('./textpick', async original => ({ ...await original<typeof import('./textpick')>(), wordUnder: () => state.word ? { col: 0, word: [0, 5] } : null, anchorRow: () => () => {} }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let host: HTMLDivElement, root: Root
 const message = (id: string, role: Message['role'], text: string, extra: Partial<Message> = {}): Message => ({ id, role, text, at: 1, ...extra })
-beforeEach(() => { setLang('en'); MotionGlobalConfig.skipAnimations = true; host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
+beforeEach(() => { state.sessions = []; setLang('en'); MotionGlobalConfig.skipAnimations = true; host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); setLang(null) })
 it('keeps human messages and boss briefs fully readable, folding only bridge coordination', async () => {
  const long = 'A complete paragraph. '.repeat(35)
@@ -185,4 +185,37 @@ it('shows concrete command summaries and literal tool descriptions without inven
  expect(detail.querySelector('summary')!.textContent).toContain('Vérifie le dépôt Git · git status, git log')
  expect(detail.textContent).toContain('Outils de l’appel enregistré')
  expect(detail.open).toBe(true)
+})
+
+it('identifies coordination by exact source session and keeps disclosure open across locale/title refresh', async () => {
+ state.sessions = [{ id: 'source-thread-exact', title: 'Think' }] as Session[]
+ const msgs = [message('coord-source', 'orchestrator', 'Technical exchange', { author: 'codex', coordination: true, sourceThreadId: 'source-thread-exact' })]
+ await act(async () => root.render(<Messages session messages={msgs} author="codex" />))
+ const disclosure = host.querySelector<HTMLDetailsElement>('.session-coordination')!
+ expect(disclosure.open).toBe(false)
+ expect(disclosure.querySelector('summary')!.textContent).toBe('coordination · codex · Think')
+ await act(async () => { disclosure.open = true; setLang('fr') })
+ state.sessions = [{ id: 'source-thread-exact', title: 'Notes de projet' }] as Session[]
+ await act(async () => root.render(<Messages session messages={msgs} author="codex" />))
+ expect(disclosure.open).toBe(true)
+ expect(disclosure.querySelector('summary')!.textContent).toContain('Notes de projet')
+ expect(disclosure.textContent).toContain('Technical exchange')
+})
+it('uses a short id when the source session is absent, never a title guessed from the message', async () => {
+ const msgs = [message('coord-unknown', 'orchestrator', 'From Think — claimed in text only', { author: 'claude', coordination: true, sourceThreadId: '01a1c624-8308-7321-9492-bfc0924fd135' })]
+ await act(async () => root.render(<Messages session messages={msgs} author="claude" />))
+ expect(host.querySelector('.session-coordination summary')?.textContent).toBe('coordination · claude · 01a1c624')
+})
+it('never folds human messages or boss briefs based on source ids or body signatures', async () => {
+ const msgs = [
+  message('human-source', 'user', '[from:codex] literal user quotation', { author: 'codex', sourceThreadId: 'thread-id', coordination: true }),
+  message('boss-default', 'orchestrator', 'Actual boss brief', { sourceThreadId: 'thread-id', coordination: true }),
+  message('boss-signed', 'orchestrator', 'Signed boss brief', { author: 'weevboss', sourceThreadId: 'thread-id', coordination: true }),
+  message('ordinary', 'orchestrator', 'Ordinary agent update', { author: 'codex', sourceThreadId: 'thread-id' }),
+ ]
+ await act(async () => root.render(<Messages session messages={msgs} author="codex" />))
+ expect(host.querySelector('.session-coordination')).toBeNull()
+ expect(host.querySelectorAll('[data-mid]')).toHaveLength(4)
+ expect(host.textContent).toContain('literal user quotation')
+ expect(host.textContent).toContain('Actual boss brief')
 })

@@ -4,6 +4,7 @@ import { defineMessages } from './index'
 export default defineMessages({
   fr: {
     coordination: (author: string) => `coordination · ${author}`,
+    coordinationSource: (author: string, source: string) => `coordination · ${author} · ${source}`,
     showLess: 'replier',
     readAll: 'tout lire',
     tooBig: (name: string) => `${name} dépasse 32 Mo`,
@@ -49,6 +50,7 @@ export default defineMessages({
   },
   en: {
     coordination: (author: string) => `coordination · ${author}`,
+    coordinationSource: (author: string, source: string) => `coordination · ${author} · ${source}`,
     showLess: 'show less',
     readAll: 'read all',
     tooBig: (name: string) => `${name} is over 32 MB`,

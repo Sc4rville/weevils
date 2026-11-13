@@ -795,10 +795,12 @@ function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
 }
 
 /** Provenance from the bridge, never inferred from the content of a human message. */
-function Coordination({ folded, author, children }: { folded: boolean; author: string; children: ReactNode }) {
+function Coordination({ folded, author, sourceThreadId, children }: { folded: boolean; author: string; sourceThreadId?: string; children: ReactNode }) {
   const t = useT(M)
+  const { snap } = useApp()
   if (!folded) return children
-  return <details className="session-coordination"><summary className="in">{t.coordination(author)}</summary>{children}</details>
+  const source = sourceThreadId ? snap.sessions?.find(s => s.id === sourceThreadId)?.title?.trim() || sourceThreadId.slice(0, 8) : null
+  return <details className="session-coordination"><summary className="in">{source ? t.coordinationSource(author, source) : t.coordination(author)}</summary>{children}</details>
 }
 
 const WINDOW = 60
@@ -860,7 +862,7 @@ export function Messages({
           </Appear>
         ) : (
           <Appear key={g.m.id}>
-            <Coordination folded={session && !!g.m.coordination && g.m.author !== 'weevboss'} author={authorOf(g.m.author).name}>
+            <Coordination folded={session && g.m.role === 'orchestrator' && !!g.m.coordination && authorOf(g.m.author).id !== 'weevboss'} author={authorOf(g.m.author).name} sourceThreadId={g.m.sourceThreadId}>
             <Bubble
               className={`msg band ${session ? 'session-message' : ''} ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.demo ? 'demo' : ''}`}
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}

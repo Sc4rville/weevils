@@ -25,7 +25,7 @@ vi.mock('./fast.ts', () => ({ setCartesiaVoice() {} }))
 vi.mock('./titles.ts', async (orig) => ({ ...(await orig<typeof import('./titles.ts')>()), llmTitles: async () => [] }))
 
 const { Weevils, joinContext } = await import('./core.ts')
-const { DATA_DIR, HOME, ORCH_DIR } = await import('./config.ts')
+const { DATA_DIR, HOME, ORCH_DIR, INBOX_DIR } = await import('./config.ts')
 const { setLang, withLang } = await import('./i18n.ts')
 type Transcript = import('./transcripts.ts').Transcript
 
@@ -77,8 +77,69 @@ beforeEach(() => {
   w = new Weevils()
 })
 afterEach(() => {
+  vi.unstubAllEnvs()
   vi.clearAllTimers()
   vi.useRealTimers()
+})
+
+it('keeps a message before transport when both providers are unavailable, without a duplicate writer', async () => {
+  w.relay = fakeRelay({ executionTool: () => null, retryAt: () => NOW + MIN }) as never
+  await expect(w.sendMain('preserve this request and attachment context')).rejects.toMatchObject({ status: 429, retryAt: NOW + MIN })
+  expect(mux.spawnWv).not.toHaveBeenCalled()
+  expect(mux.sendText).not.toHaveBeenCalled()
+  expect(mux.killWv).not.toHaveBeenCalled()
+})
+
+it('defers attachments before saving any copies while quota is blocked, for main and session entrypoints', async () => {
+  w.relay = fakeRelay({ executionTool: () => null, providerReady: () => false, retryAt: () => NOW + MIN, requestReturn: () => {} }) as never
+  const t = add(transcript({ id: 'blocked-codex', tool: 'codex' }))
+  ;(w as any).codexBridge = { can: () => true, activityOf: () => ({ type: 'idle', waiting: false, at: NOW }) }
+  const files = [{ name: 'quota-attachment.png', type: 'image/png', data: Buffer.from('fixture').toString('base64') }]
+  const names = () => [INBOX_DIR, path.join(DATA_DIR, 'inbox')].flatMap(d => fs.existsSync(d) ? fs.readdirSync(d).map(f => path.join(d, f)) : []).sort()
+  const before = names()
+  for (let n = 0; n < 3; n++) {
+    await expect(w.attachMain('keep this screenshot', files)).rejects.toMatchObject({ status: 429 })
+    await expect(w.attach(t.id, 'keep this screenshot', files)).rejects.toMatchObject({ status: 429 })
+  }
+  expect(names()).toEqual(before)
+  expect(files[0].data).toBe(Buffer.from('fixture').toString('base64'))
+  expect(mux.spawnWv).not.toHaveBeenCalled()
+})
+
+it('waits for the real Codex turn to finish before returning main to Claude, preserving its pane', async () => {
+  vi.stubEnv('WEEVILS_PROVIDER', 'codex')
+  const r = fakeRelay({ executionTool: () => 'claude', retryAt: () => NOW + MIN })
+  w.relay = r as never
+  const cx = add(transcript({ id: 'cx-return', tool: 'codex', cwd: ORCH_DIR, phase: 'working', messages: [{ id: 'context', role: 'assistant', text: 'The existing GPU job is still running; monitor it.', at: NOW }] }))
+  ;(w as any).directCodexBoss = { sessionId: cx.id, since: NOW - MIN }
+  await expect(w.sendMain('continue monitoring')).rejects.toMatchObject({ status: 429 })
+  expect(mux.spawnWv).not.toHaveBeenCalled()
+  cx.phase = 'idle'
+  await w.sendMain('continue monitoring')
+  expect(mux.spawnWv).toHaveBeenCalledOnce()
+  const command = (mux.spawnWv.mock.calls[0] as unknown[])[4] as string[]
+  expect(command[0]).toBe('claude')
+  expect(command.at(-1)).toContain('GPU job is still running')
+  expect(mux.killWv).not.toHaveBeenCalled()
+  expect(process.env.WEEVILS_PROVIDER).toBe('codex')
+  const claudeId = w.orchestratorId!
+  const claude = add(transcript({ id: claudeId, cwd: ORCH_DIR, phase: 'working', lastActivityAt: NOW + MIN, messages: [{ id: 'claude-progress', role: 'assistant', text: 'Monitored the existing pod without restarting it.', at: NOW + MIN }] }))
+  ;(w as any).codexBridge = { activityOf: () => ({ type: 'idle', waiting: false, at: NOW + MIN }), settingsOf: () => undefined }
+  expect(w.bossConversation()).toBe(claudeId)
+  expect(w.snapshot().mainWorking).toBe(true)
+  // When the preferred provider returns, reuse its existing owner with the other provider's progress attached.
+  claude.phase = 'idle'; r.executionTool = () => 'codex'
+  const send = vi.fn(async () => {})
+  ;(w as any).codexBridge = { can: () => true, send }
+  // Credentials are irrelevant to this already loaded, explicitly mocked owner.
+  const auth = path.join(HOME, '.codex', 'auth.json'); fs.mkdirSync(path.dirname(auth), { recursive: true }); fs.writeFileSync(auth, JSON.stringify({ tokens: { access_token: 'fixture' } }))
+  const bin = path.join(HOME, 'fixture-bin'); fs.mkdirSync(bin, { recursive: true }); fs.writeFileSync(path.join(bin, 'codex'), '#!/bin/sh\nexit 1\n', { mode: 0o700 }); vi.stubEnv('PATH', bin)
+  await w.sendMain('next status')
+  expect(send).toHaveBeenCalledOnce()
+  const sent = (send.mock.calls[0] as unknown[])[1] as string
+  expect(sent).toMatch(/^next status ⟦weevils — /)
+  expect(sent).toContain('Monitored the existing pod without restarting it.')
+  expect(mux.spawnWv).toHaveBeenCalledOnce()
 })
 
 describe('weevboss pendant la limite de Claude', () => {
@@ -102,7 +163,7 @@ describe('weevboss pendant la limite de Claude', () => {
     expect(fs.readFileSync(path.join(ORCH_DIR, 'AGENTS.md'), 'utf8').length).toBeGreaterThan(200)
   })
 
-  it('K2 le fil mêle Claude et Codex, sans le contexte caché ; au retour, Claude reçoit ce que Codex a dit et la pane de Codex est fermée', async () => {
+  it('K2 le fil mêle Claude et Codex, sans le contexte caché ; au retour, Claude reçoit ce que Codex a dit et la pane de Codex reste intacte', async () => {
     const r = fakeRelay()
     w.relay = r as never
     w.orchestratorId = 'boss'
@@ -118,7 +179,7 @@ describe('weevboss pendant la limite de Claude', () => {
     r.on = false
     r.back = NOW - 5 * MIN
     await w.sendMain('merci')
-    expect(mux.killWv).toHaveBeenCalledWith('wv-orchestrateur-abc')
+    expect(mux.killWv).not.toHaveBeenCalled()
     const command = (mux.spawnWv.mock.calls.at(-1) as unknown[])[4] as string[]
     expect(command.slice(0, 4)).toEqual(['claude', '--dangerously-skip-permissions', '--resume', 'boss'])
     expect(command.at(-1)).toMatch(/^merci ⟦weevils — /)

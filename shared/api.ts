@@ -192,8 +192,10 @@ export interface RelayPlan {
 /** Ce que l'app montre du relais (server/relay.ts). */
 export interface RelayView {
   mode: RelayMode
-  /** Codex est installé et connecté sur cette machine. */
+  /** Codex is installed, connected and has no recorded quota block. Unknown quota is not proof of availability. */
   codex: boolean
+  providers?: Record<Tool, { canAttempt: boolean; observedAt?: number; stopAt?: number; block?: { since: number; resetAt: number | null; source: 'quota' | 'transcript' } }>
+  handoffs?: { sourceId: string; targetId: string; at: number; sourceAt: number; title: string; phase: 'waiting' | 'dispatching' | 'uncertain' | 'done' | 'cancelled'; auto: boolean; main?: boolean }[]
   /** Seuil de bascule préventive, en % de la fenêtre (5 h ou semaine). */
   switchAt: number
   /** Claude est indisponible ou tout près de sa limite : near (seuil atteint), limit (limite atteinte), down (erreurs d'API répétées). */

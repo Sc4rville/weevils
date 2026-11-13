@@ -1,14 +1,28 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { sessionTokens, usageOfLine, rate } from './usage.ts'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { sessionTokens, usageOfLine, rate, codexQuota } from './usage.ts'
+import { CODEX_DIR } from './config.ts'
 
 let dir: string
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'usage-'))
 })
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }))
+
+it('retains the actual rate-limit observation time instead of presenting old rollout headers as fresh quota', async () => {
+  fs.mkdirSync(CODEX_DIR, { recursive: true })
+  const file = path.join(CODEX_DIR, 'quota-evidence.jsonl'), old = Date.now() - 86400000
+  fs.writeFileSync(file, JSON.stringify({ timestamp: new Date(old).toISOString(), payload: { rate_limits: { primary: { window_minutes: 300, used_percent: 100, resets_at: Math.floor(old / 1000) + 3600 } } } }) + '\n')
+  vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline fixture') }))
+  try {
+    const q = await codexQuota()
+    expect(q.source).toBe('codex rollout rate_limits')
+    expect(q.at).toBe(old)
+    expect(q.windows[0].percent).toBe(100)
+  } finally { vi.unstubAllGlobals(); fs.rmSync(file) }
+})
 
 const claude = (id: string, u: Record<string, number>, model = 'claude-sonnet') =>
   JSON.stringify({ type: 'assistant', sessionId: 's1', cwd: '/w', timestamp: '2026-11-10T09:00:00Z', message: { id, model, usage: u } })

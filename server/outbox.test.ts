@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { Outbox, OutboxError, deliveryContext, type OutboxTask } from './outbox.ts'
+import { Outbox, OutboxError, OutboxDeferred, deliveryContext, type OutboxTask } from './outbox.ts'
 let dir: string
 const task: OutboxTask = { url: '/api/main', body: { text: '1' }, lane: 'main' }
 const id = 'test-message-00000001'
@@ -71,6 +71,27 @@ it('distinguishes a proven refusal from uncertainty and never retries either', a
  const fail = new Outbox(dir, async () => { throw new OutboxError(409, 'Approval required') })
  fail.accept('test-message-00000002', task); await tick(); await tick()
  expect(fail.get('test-message-00000002')).toMatchObject({ status: 'failed', error: 'Approval required' })
+})
+
+it('persists pre-dispatch provider waits with the same ID/payload and preserves lane order across reload', async () => {
+ const start = Date.now(), clock = vi.spyOn(Date, 'now').mockReturnValue(start)
+ const run = vi.fn(async () => { throw new OutboxDeferred(start + 60_000, 'Waiting for an available provider') })
+ const box = new Outbox(dir, run)
+ box.accept(id, task); box.accept('test-message-00000002', { ...task, body: { text: 'second' } })
+ await tick(); await tick(); await tick()
+ expect(run).toHaveBeenCalledOnce()
+ expect(box.get(id)).toMatchObject({ messageId: id, status: 'accepted' })
+ box.start(); await tick()
+ expect(run).toHaveBeenCalledOnce()
+ const identities: string[] = [], delivered = vi.fn(async () => { identities.push(deliveryContext.getStore()!.messageId); return { id: 'claude-existing' } })
+ const reload = new Outbox(dir, delivered); reload.start(); await tick()
+ expect(delivered).not.toHaveBeenCalled()
+ clock.mockReturnValue(start + 60001)
+ reload.start(); await tick(); await tick(); await tick()
+ expect(identities).toEqual([id, 'test-message-00000002'])
+ expect(reload.get(id)).toMatchObject({ status: 'delivered', id: 'claude-existing' })
+ expect(reload.get(id)?.error).toBeUndefined()
+ clock.mockRestore()
 })
 
 it('treats language changes as the same intent while preserving the original dispatch language', async () => {

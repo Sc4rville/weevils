@@ -122,17 +122,18 @@ function codexFromRollout(): { windows: QuotaWindow[]; plan?: string; at: number
   }
   walk(CODEX_DIR, 0)
   if (!best) return null
-  const { f, m } = best as { f: string; m: number }
+  const { f } = best as { f: string; m: number }
   const lines = fs.readFileSync(f, 'utf8').split('\n')
   for (let i = lines.length - 1; i >= 0; i--) {
     if (!lines[i].includes('"rate_limits"')) continue
     try {
-      const rl = JSON.parse(lines[i])?.payload?.rate_limits
+      const event = JSON.parse(lines[i])
+      const rl = event?.payload?.rate_limits
       if (!rl) continue
       const windows = [rl.primary, rl.secondary]
         .filter(Boolean)
         .map((w: any) => ({ kind: codexKind(Number(w.window_minutes ?? 0) * 60), percent: Math.round(Number(w.used_percent ?? 0)), resetsAt: time(w.resets_at) }) as QuotaWindow)
-      return { windows, plan: rl.plan_type ?? undefined, at: m }
+      return { windows, plan: rl.plan_type ?? undefined, at: time(event.timestamp) ?? 0 }
     } catch {
       /* ligne coupée */
     }
@@ -141,9 +142,11 @@ function codexFromRollout(): { windows: QuotaWindow[]; plan?: string; at: number
 }
 
 let codexCache: QuotaInfo | null = null
-async function codexQuota(): Promise<QuotaInfo> {
+let codexReadAt = 0
+export async function codexQuota(): Promise<QuotaInfo> {
   const now = Date.now()
-  if (codexCache && now - codexCache.at < CACHE_MS) return codexCache
+  if (codexCache && now - codexReadAt < CACHE_MS) return codexCache
+  codexReadAt = now
   const t = readJson(path.join(CODEX_HOME, 'auth.json'))?.tokens
   try {
     if (!t?.access_token) throw new Error(tr(M).noToken)
@@ -157,7 +160,7 @@ async function codexQuota(): Promise<QuotaInfo> {
   } catch (e) {
     const r = codexFromRollout()
     codexCache = r
-      ? { ok: true, plan: r.plan, windows: r.windows, source: 'codex rollout rate_limits', at: now }
+      ? { ok: true, plan: r.plan, windows: r.windows, source: 'codex rollout rate_limits', at: r.at }
       : { ok: false, windows: [], source: 'codex', at: now, error: (e as Error).message }
   }
   return codexCache

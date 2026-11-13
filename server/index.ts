@@ -35,6 +35,8 @@ import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
 import { claudeQuota, quotas, rate as tokenRate, today as usageToday } from './usage.ts'
 import { Relay, defaultDeps } from './relay.ts'
+import { ProviderHealth } from './provider-health.ts'
+import { providerStatus, setProviderRoute } from './provider.ts'
 import type { InfraDetail, MachineBrief, MachineFacts, Reach, TokenRate, UsageToday } from '../shared/infra.ts'
 import { facts } from './discover.ts'
 import { Setup, installPlan, which, writeConfig } from './setup.ts'
@@ -212,8 +214,13 @@ const codexReady = () => {
   if (Date.now() - codexSeen.at > 30_000) codexSeen = { at: Date.now(), ok: !!which('codex') && fs.existsSync(path.join(path.dirname(CODEX_DIR), 'auth.json')) }
   return codexSeen.ok
 }
-const relay = new Relay(w.relayHost(), defaultDeps(claudeQuota, codexReady))
+const health = new ProviderHealth(path.join(DATA_DIR, 'provider-health.json'), quotas, tool => {
+  const s = providerStatus(tool)
+  return s.installed && s.logged
+})
+const relay = new Relay(w.relayHost(), { ...defaultDeps(claudeQuota, codexReady), health })
 w.relay = relay
+setProviderRoute(tool => relay.executionTool(tool))
 relay.start()
 
 const asDevice = (d: any): Device => ({

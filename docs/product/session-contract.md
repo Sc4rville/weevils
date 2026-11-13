@@ -12,6 +12,24 @@ This is a product contract shared by Claude and Codex. The FR/EN orchestrator te
 - Extracted wrapper arguments are evidence of the submitted program, not proof that every conditional branch ran. A wrapper's output belongs to its recorded call identifier; do not invent a separate outcome for each nested call. Dynamic arguments are unknown, never evaluated by the parser.
 - Explicit app locale controls generated product text independently of chat language; proper names and identifiers remain intact. No automatic QA cards, raw commit announcements or diagnostic vocals belong in the user feed.
 
+## Provider limits and handoffs
+
+Quota evidence is separate from CLI/authentication presence. Fresh account windows and recorded quota stops drive
+temporary routing only when automatic relay is authorized; configured provider, model and effort remain unchanged.
+Old rollout headers retain their observation timestamp. A quota reset is shown only when the source supplies it;
+expiry alone is not proof of availability. The private provider ledger survives daemon restart.
+
+Codex work can pass to Claude after the source turn has stopped. The private handoff ledger preserves source and
+destination IDs, transcript location, user context and existing-job monitoring instructions before dispatch.
+An active turn or genuine question is not interrupted, old historical cuts are not revived, and automation work
+continues through its scheduler's guarded workspace. A lost launch acknowledgement is uncertain: reconcile the
+reserved target if it appears, otherwise never blindly create another worker. Existing panes/jobs remain intact.
+
+If both providers are unavailable, normal send/attachment/action entrypoints retain their original durable outbox
+IDs, payloads, device locale and lane order. A typed pre-dispatch wait can retry after a bounded polling delay;
+an uncertain delivery cannot. No LLM is needed to preserve or inspect the queue, and no new paid provider is selected.
+Main-thread controls/activity follow the effective owner, with cross-provider context carried when it changes.
+
 ## Message authorship
 
 Agent coordination uses the canonical `weevils send` route. The local runtime session ID is resolved against known sessions before dispatch; that identity takes precedence over an inherited `WEEVILS_FROM`. The server signs the actual author and source thread together. Unknown local agent origins remain agents, never the user. Browser/proxied requests cannot claim a source thread. The compatibility file-based adapter in `server/agent-coordinate.mjs` delegates to this route and never calls the daemon directly.

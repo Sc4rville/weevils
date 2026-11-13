@@ -1215,7 +1215,9 @@ export class Optimizers {
     const queue = this.s.items.filter((o) => !o.deletedAt && o.state === 'queued').sort((a, b) => (a.acceptedAt ?? a.createdAt) - (b.acceptedAt ?? b.createdAt))
     // Claude at its limit (server/relay.ts): new tasks start on Codex when the relay is automatic, otherwise every
     // task waits for the reset time.
-    const hold = this.w.relay?.holdUntil(now) ?? 0
+    const selected = this.w.relay?.executionTool?.(preferredTool())
+    const providerHold = selected === null
+    const hold = selected === 'claude' ? 0 : this.w.relay?.holdUntil(now) ?? 0
     // Codex has no deny list: only on a machine where the jail holds (probed once), otherwise the tasks wait too.
     if ((hold || preferredTool() === 'codex') && this.bwrap === undefined && !this.probingJail) {
       this.probingJail = true
@@ -1228,21 +1230,21 @@ export class Optimizers {
           if(this.auto)queueMicrotask(()=>this.tick())
         })
     }
-    const codex = (preferredTool() === 'codex' ? providerReady() : !!hold && !!this.w.relay?.autoOnCodex()) && this.bwrap === true
+    const codex = (selected !== undefined ? selected === 'codex' : preferredTool() === 'codex' ? providerReady() : !!hold && !!this.w.relay?.autoOnCodex()) && this.bwrap === true
     // The asynchronous jail probe may have held these tasks on the previous tick. Once an authorized
     // Codex route is safe (or Claude's hold ended), that provider hold is no longer a scheduled time.
-    if (codex || !hold)
+    if (codex || (!hold && !providerHold))
       for (const o of queue)
         if (o.held) {
           delete o.held
           delete o.retryAt
           dirty = true
         }
-    if (hold && !codex)
+    if ((hold && !codex) || providerHold)
       for (const o of queue)
-        if (!o.held || (o.retryAt ?? 0) < hold) {
+        if (!o.held || (o.retryAt ?? 0) < (providerHold ? now : hold)) {
           o.held = true
-          o.retryAt = hold
+          o.retryAt = providerHold ? (this.w.relay?.retryAt() ?? now + 60_000) : hold
           dirty = true
         }
     // Stopped by a limit or an error: it waits for its retry time, the others go first. Same for one held by its
@@ -1263,7 +1265,8 @@ export class Optimizers {
     // Never without Claude logged in: the session would open on a login screen and sit there.
     // Nor while it is being talked over: its rewrite would land on a running session and be lost. It keeps its turn,
     // the next tick takes it.
-    if (!running && !this.launching && !reason && ready[0] && !this.talking.has(ready[0].id) && (codex || this.sys.logged())) void this.launch(ready[0], now, codex ? { tool: 'codex' } : undefined)
+    const available = selected === null ? false : selected === 'codex' ? codex : codex || this.sys.logged()
+    if (!running && !this.launching && !reason && ready[0] && !this.talking.has(ready[0].id) && available) void this.launch(ready[0], now, { tool: codex ? 'codex' : selected ?? 'claude' })
     if (this.roundDue(now)) void this.round(now)
   }
 
@@ -1503,11 +1506,11 @@ export class Optimizers {
    * The approved takeover plan of a task's session (server/relay.ts): the task restarts on Codex in the same worktree,
    * behind the same barriers. Returns the new session; throws when it cannot start (the task then waits for Claude).
    */
-  async relayRun(sessionId: string, text: string): Promise<string> {
+  async relayRun(sessionId: string, text: string, tool: 'claude' | 'codex' = 'codex', targetId?: string): Promise<string> {
     const o = this.s.items.find((x) => !!x.sessionId && (x.sessionId === sessionId || this.w.sessionIdOf?.(x.sessionId) === sessionId))
     if (!o || o.deletedAt || (o.state !== 'queued' && o.state !== 'running')) throw new Error(tr(O).vanished)
     if (!(await this.sys.jail(['--dev-bind', '/', '/', '--']))) throw new Error(tr(O).noJail)
-    await this.launch(o, Date.now(), { tool: 'codex', relay: text })
+    await this.launch(o, Date.now(), { tool, relay: text, sessionId: targetId })
     if (o.state !== 'running' || !o.sessionId) throw new Error(o.lastEvent || tr(O).startFailed)
     return o.sessionId
   }
@@ -1561,7 +1564,7 @@ export class Optimizers {
   }
 
   /** Starts a task in a Claude session: in its own worktree of its repo (on a fresh local branch), or in its workspace. */
-  private async launch(o: Stored, now: number, on: { tool?: 'claude' | 'codex'; /** the approved takeover plan, first in the brief */ relay?: string } = {}) {
+  private async launch(o: Stored, now: number, on: { tool?: 'claude' | 'codex'; sessionId?: string; /** the approved takeover plan, first in the brief */ relay?: string } = {}) {
     if(o.deletedAt)return
     const tool = on.tool ?? preferredTool()
     this.launching = true
@@ -1633,7 +1636,7 @@ export class Optimizers {
       if (tool === 'codex' && !wrap.length) throw new Error(tr(O).noJail)
       step = 'start'
       if(o.deletedAt){o.state='refused';return}
-      const { id } = tool === 'codex' ? await this.w.createIn(cwd, o.title, text, [], { ...guardEnv(guard), wrap:executionWrap }, 'codex') : await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard), wrap:executionWrap }, 'claude')
+      const { id } = tool === 'codex' ? await this.w.createIn(cwd, o.title, text, [], { ...guardEnv(guard), wrap:executionWrap }, 'codex') : await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard), wrap:executionWrap }, 'claude', on.sessionId)
       o.sessionId = id
       o.seenAt = Date.now()
       console.log(`[auto] lancée : ${o.title} (${cwd})${tool === 'codex' ? ' · sur Codex (Claude à sa limite)' : ''}`)

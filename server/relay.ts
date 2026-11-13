@@ -21,6 +21,8 @@
 
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
+import type { ProviderHealth } from './provider-health.ts'
+import { ReturnRelay } from './return-relay.ts'
 import os from 'node:os'
 import path from 'node:path'
 import type { RelayMode, RelayPlan, RelayView, Session } from '../shared/api.ts'
@@ -162,6 +164,8 @@ interface Plan {
   /** The session was told to finish its step and stop. */
   asked?: number
   relayTo?: string
+  /** Persisted before launch; a lost acknowledgement must never automatically launch another worker. */
+  dispatchedAt?: number
   auto?: boolean
   said?: boolean
 }
@@ -205,6 +209,13 @@ export interface RelayHost {
   settle(id: string): void
   /** Opens a Codex session in a folder; returns its id (the pane's name until its transcript is known). */
   openCodex(cwd: string, title: string, text: string): Promise<string>
+  openClaude?(cwd: string, title: string, text: string, id: string): Promise<string>
+  autoReturn?(id: string, text: string, targetId: string, tool?: 'claude' | 'codex'): Promise<string>
+  resumeCodex?(id: string, text: string, requestId: string): Promise<string>
+  codexBossStop?(): StopError | undefined
+  codexBossSession?(): Session | undefined
+  mainBusy?(): boolean
+  returnMain?(text: string, requestId: string): Promise<string>
   resolve(id: string): string
   /** weevboss on Claude: the error that stopped its turn, if any. */
   bossStop(): StopError | undefined
@@ -220,6 +231,7 @@ export interface RelayHost {
 }
 
 export interface RelayDeps {
+  health?: ProviderHealth
   /** Claude's quota, as the usage page reads it. */
   quota: () => Promise<QuotaInfo>
   codexReady: () => boolean
@@ -286,6 +298,7 @@ const atWork = (s: Session) => s.status === 'working'
 const STOPPED = new Set(['quota', 'api', 'died'])
 
 export class Relay {
+  private returns?: ReturnRelay
   private s: State = { mode: 'ask', switchAt: envSwitch(), plans: [] }
   private q: QuotaInfo | null = null
   private quotaAt = 0
@@ -303,6 +316,11 @@ export class Relay {
     this.host = host
     this.deps = deps
     this.file = file
+    if (host.openClaude && deps.health) this.returns = new ReturnRelay(path.join(path.dirname(file), 'provider-handoffs.json'), {
+      ...host, openClaude: host.openClaude,
+      sessions: () => [...host.sessions(), ...[host.codexBossSession?.()].filter((s): s is Session => !!s)],
+      isMain: id => host.codexBossSession?.()?.id === id,
+    })
     try {
       const p = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<State>
       this.s = { ...this.s, ...p, mode: isMode(p.mode) ? p.mode : 'ask', plans: (p.plans ?? []).map((x) => (x.gen === 'running' ? { ...x, gen: 'todo' as const } : x)) }
@@ -332,10 +350,15 @@ export class Relay {
 
   private save() {
     try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true })
-      fs.writeFileSync(this.file, JSON.stringify(this.s, null, 1))
+      fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 })
+      const tmp = this.file + '.tmp'
+      fs.writeFileSync(tmp, JSON.stringify(this.s, null, 1), { mode: 0o600 })
+      const fd = fs.openSync(tmp, 'r'); try { fs.fsyncSync(fd) } finally { fs.closeSync(fd) }
+      fs.renameSync(tmp, this.file)
+      const dir = fs.openSync(path.dirname(this.file), 'r'); try { fs.fsyncSync(dir) } finally { fs.closeSync(dir) }
+      return true
     } catch {
-      /* disk full: carry on in memory */
+      return false
     }
   }
   private changed() {
@@ -350,7 +373,36 @@ export class Relay {
   }
   /** Codex may take over on this machine at all. */
   can() {
-    return this.s.mode !== 'never' && this.deps.codexReady()
+    return this.s.mode !== 'never' && this.deps.codexReady() && (this.deps.health?.canUse('codex') ?? true)
+  }
+  /** Preserve preferences; choose a temporary available route only under durable automatic authorization. */
+  executionTool(preferred: 'claude' | 'codex'): 'claude' | 'codex' | null {
+    if (!this.deps.health) return preferred
+    const usable = (tool: 'claude' | 'codex') => this.deps.health!.canUse(tool) && (tool !== 'claude' || !this.s.episode || this.s.episode.kind === 'near')
+    const wanted = preferred === 'claude' && this.s.episode && this.s.mode === 'auto' ? 'codex' : preferred
+    if (usable(wanted)) return wanted
+    const other = wanted === 'claude' ? 'codex' : 'claude'
+    return this.s.mode === 'auto' && usable(other) ? other : null
+  }
+  providerReady(tool: 'claude' | 'codex') { return this.deps.health?.canUse(tool) ?? true }
+  retryAt() { return this.deps.health?.retryAt(this.now()) ?? this.now() + 60_000 }
+  deliveryTarget(id: string) {
+    let target = id
+    const seen = new Set<string>()
+    while (!seen.has(target)) {
+      seen.add(target)
+      const next = this.returns?.target(target) ?? this.relayedBy(target)
+      if (!next) break
+      target = next
+    }
+    return target
+  }
+  requestReturn(s: Session, requested = false) {
+    const block = this.deps.health?.block('codex')
+    if (this.s.mode !== 'auto' || !block) return
+    // A newly observed account limit must not revive every old interrupted task in the history.
+    if (!requested && (!s.interrupted || s.interrupted.at < block.since - ERRORS_WITHIN_MS)) return
+    this.returns?.request(s, this.now())
   }
   /** Claude is unavailable, or about to be: the episode. */
   episode(): Episode | undefined {
@@ -375,6 +427,7 @@ export class Relay {
     this.save()
     return since
   }
+  peekBossBack() { return this.s.bossBack }
   /** A background task waits (no start on Claude) until this time; 0: no wait. */
   holdUntil(now = this.now()): number {
     const e = this.s.episode
@@ -382,10 +435,11 @@ export class Relay {
   }
   /** New background tasks start on Codex. */
   autoOnCodex() {
-    return !!this.s.episode && this.s.mode === 'auto' && this.deps.codexReady()
+    return !!this.s.episode && this.s.mode === 'auto' && this.can()
   }
   /** This session is being handed over (told to stop, or its plan is on the table): not « done », not « failed ». */
   holds(sessionId: string | undefined): boolean {
+    if (sessionId && this.returns?.holds(sessionId)) return true
     const p = sessionId ? this.planOf(sessionId) : undefined
     if (!p) return false
     if (p.phase === 'draft') return !!this.s.episode && !!p.asked && p.episode === this.s.episode.since
@@ -420,10 +474,10 @@ export class Relay {
         sessionId: p.sessionId,
         title: p.title,
         projectId: p.projectId,
-        state: p.phase === 'go' ? 'running' : p.phase === 'wait' ? 'waiting' : p.text ? 'ready' : p.gen === 'failed' ? 'failed' : 'preparing',
+        state: p.dispatchedAt && !p.relayTo ? 'waiting' : p.phase === 'go' ? 'running' : p.phase === 'wait' ? 'waiting' : p.text ? 'ready' : p.gen === 'failed' ? 'failed' : 'preparing',
         text: p.text,
         ...(p.text && (p.gen === 'todo' || p.gen === 'running') ? { refreshing: true } : {}),
-        ...(p.error ? { error: p.error } : {}),
+        ...(p.dispatchedAt && !p.relayTo ? { error: tr(R).handoffUncertain } : p.error ? { error: p.error } : {}),
         at: p.at,
         ...(p.resolved ? { resolved: true } : {}),
         ...(p.auto ? { auto: true } : {}),
@@ -431,7 +485,8 @@ export class Relay {
       }))
     return {
       mode: this.s.mode,
-      codex: this.deps.codexReady(),
+      codex: this.deps.codexReady() && (this.deps.health?.canUse('codex') ?? true),
+      ...(this.deps.health ? { providers: this.deps.health.view(), handoffs: this.returns?.view() ?? [] } : {}),
       switchAt: this.s.switchAt,
       ...(e ? { limit: { kind: e.kind, since: e.since, until: e.until, percent: e.percent, window: e.window } } : {}),
       ...(this.bossOn() ? { boss: true } : {}),
@@ -501,6 +556,18 @@ export class Relay {
     if (this.ticking) return
     this.ticking = true
     try {
+      if (this.deps.health) {
+        await this.deps.health.refresh(now)
+        const all = [...this.host.sessions(now), ...[this.host.codexBossSession?.()].filter((s): s is Session => !!s)].filter(s => s.machineId === MACHINE.id)
+        for (const s of all) if (s.interrupted?.reason === 'quota') this.deps.health.stop(s.tool, s.interrupted.at, parseReset(s.interrupted.detail ?? '', s.interrupted.at)?.until ?? null)
+        const boss = this.host.codexBossStop?.()
+        if (boss?.reason === 'quota') this.deps.health.stop('codex', boss.at, parseReset(boss.text, boss.at)?.until ?? null)
+        if (this.s.mode === 'auto') {
+          for (const s of all) if (s.tool === 'codex' && s.interrupted?.reason === 'quota') this.requestReturn(s)
+          const target = this.executionTool('codex')
+          await this.returns?.tick(target === 'claude', target === 'codex')
+        }
+      }
       await this.readQuota(now)
       const sessions = this.host.sessions(now).filter((s) => s.machineId === MACHINE.id && s.tool === 'claude')
       await this.detect(now, sessions)
@@ -561,8 +628,8 @@ export class Relay {
     const said = stops.filter((c) => c.reason === 'quota').sort((a, b) => b.at - a.at)[0]
     if (said && (!ep || ep.kind !== 'limit' || ep.source !== 'transcript')) {
       const r = parseReset(said.detail ?? '', said.at, this.s.tz)
-      const until = r?.until ?? (hot && hot.percent >= PREPARE_AT ? hot.resetsAt : null) ?? ep?.until ?? said.at + UNKNOWN_RESET_MS
-      if (until > now) this.begin({ kind: 'limit', since: ep?.since ?? said.at, until, source: 'transcript', window: ep?.window ?? hot?.window, percent: ep?.percent, tz: r?.tz, announced: ep?.announced && ep.kind !== 'near' }, now)
+      const until = r?.until ?? (hot && hot.percent >= PREPARE_AT ? hot.resetsAt : null) ?? ep?.until ?? null
+      if (until === null || until > now) this.begin({ kind: 'limit', since: ep?.since ?? said.at, until, source: 'transcript', window: ep?.window ?? hot?.window, percent: ep?.percent, tz: r?.tz, announced: ep?.announced && ep.kind !== 'near' }, now)
     }
 
     // (b) sessions stopping dead or API errors piling up: with a quota nearly full it is the limit; otherwise ask
@@ -573,8 +640,8 @@ export class Relay {
         await this.readQuota(now, true)
         hot = hottest(this.q, now)
         if (hot && hot.percent >= PREPARE_AT && (recent.length >= 2 || hot.percent >= this.s.switchAt))
-          this.begin({ kind: 'limit', since: Math.min(...recent.map((c) => c.at)), until: hot.resetsAt ?? now + UNKNOWN_RESET_MS, source: 'errors', window: hot.window, percent: hot.percent }, now)
-      } else if (new Set(recent.map((c) => c.id)).size >= 2 && now - this.probeOkAt > ERRORS_WITHIN_MS && !this.probing) {
+          this.begin({ kind: 'limit', since: Math.min(...recent.map((c) => c.at)), until: hot.resetsAt, source: 'errors', window: hot.window, percent: hot.percent }, now)
+      } else if (this.providerReady('claude') && new Set(recent.map((c) => c.id)).size >= 2 && now - this.probeOkAt > ERRORS_WITHIN_MS && !this.probing) {
         this.probing = true
         const since = Math.min(...recent.map((c) => c.at))
         void this.deps
@@ -594,7 +661,7 @@ export class Relay {
     if (hot && hot.percent >= this.s.switchAt) {
       const cur = this.s.episode
       const kind = hot.percent >= 100 ? 'limit' : 'near'
-      if (!cur) this.begin({ kind, since: now, until: hot.resetsAt ?? now + UNKNOWN_RESET_MS, source: 'quota', window: hot.window, percent: hot.percent }, now)
+      if (!cur) this.begin({ kind, since: now, until: hot.resetsAt, source: 'quota', window: hot.window, percent: hot.percent }, now)
       else if (cur.source !== 'transcript') {
         const next = { ...cur, kind: cur.kind === 'limit' ? 'limit' : kind, percent: hot.percent, window: hot.window, until: hot.resetsAt ?? cur.until } as Episode
         if (JSON.stringify(next) !== JSON.stringify(cur)) {
@@ -609,15 +676,18 @@ export class Relay {
     if (!cur) return
     // Opened on the quota alone, and a fresh read is clearly back under the threshold (the window was reset early,
     // or the threshold was raised): no reason left to keep Claude aside.
-    if (cur.source === 'quota' && this.q && now - this.q.at < 2 * QUOTA_HOT_MS && (hot?.percent ?? 0) < Math.min(this.s.switchAt, cur.percent ?? 100) - 5) return this.end(now)
+    const recovered = () => !!this.q?.ok && !this.q.error && this.q.at > cur.since && now - this.q.at < 2 * QUOTA_HOT_MS && this.q.windows.some(w => w.kind !== 'model') && this.q.windows.filter(w => w.kind !== 'model').every(w => Number.isFinite(w.percent) && w.percent < this.s.switchAt)
+    if (cur.source === 'quota' && recovered() && (hot?.percent ?? 0) < Math.min(this.s.switchAt, cur.percent ?? 100) - 5) return this.end(now)
+    if (cur.until === null && cur.kind !== 'down' && recovered()) return this.end(now)
     if (cur.until !== null && now >= cur.until) {
       await this.readQuota(now, true)
       const h = hottest(this.q, now)
       if (h && h.percent >= this.s.switchAt) {
-        cur.until = h.resetsAt ?? now + 30 * 60_000
+        cur.until = h.resetsAt
         this.changed()
-      } else this.end(now)
-    } else if (cur.kind === 'down' && now - (cur.probedAt ?? cur.since) > PROBE_EVERY_MS && !this.probing) {
+      } else if (recovered()) this.end(now)
+      else { cur.until = null; this.changed() }
+    } else if (cur.kind === 'down' && this.providerReady('claude') && now - (cur.probedAt ?? cur.since) > PROBE_EVERY_MS && !this.probing) {
       this.probing = true
       cur.probedAt = now
       void this.deps
@@ -838,7 +908,9 @@ export class Relay {
   private carryOut() {
     for (const p of this.s.plans) {
       if (this.s.mode === 'auto' && p.phase === 'open' && p.gen === 'idle' && p.text && this.s.episode) p.phase = 'go'
-      if (p.phase !== 'go' || p.relayTo || p.gen === 'todo' || p.gen === 'running' || this.launching.has(p.sessionId)) continue
+      if (p.phase !== 'go' || p.relayTo || p.dispatchedAt || p.gen === 'todo' || p.gen === 'running' || this.launching.has(p.sessionId)) continue
+      p.dispatchedAt = this.now()
+      if (!this.save()) { p.error = tr(R).handoffUncertain; continue }
       this.launching.add(p.sessionId)
       const t = tr(R)
       const text = signAs('weevboss', t.go({ why: this.why(undefined), cwd: p.cwd, file: this.host.transcript(p.sessionId)?.file ?? '?', title: p.title, plan: p.text ?? '', note: p.note, auto: !!p.auto }))

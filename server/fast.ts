@@ -1,4 +1,4 @@
-import { preferredTool, providerStatus, providerUnavailable } from './provider.ts'
+import { availableTool, preferredTool, providerStatus, providerUnavailable } from './provider.ts'
 // Modèle rapide et voix, sans API payante : claude -p --model haiku sur l'abonnement, edge-tts pour la voix.
 
 import { execFile } from 'node:child_process'
@@ -35,7 +35,7 @@ const modelText = (stdout: string, schema?: object): string => {
 
 /** Une réponse courte de haiku : sans outils, sans session gardée. ~1,6 s mesuré sur le VPS. */
 export function haiku(prompt: string, timeout = 20_000, schema?: object): Promise<string> {
-  if (preferredTool() === 'codex') {
+  if (availableTool() === 'codex') {
     const status = providerStatus('codex')
     if (!status.installed || !status.logged) return Promise.reject(new Error(providerUnavailable('codex')))
     return relay(prompt, timeout, schema)
@@ -57,7 +57,7 @@ export function haiku(prompt: string, timeout = 20_000, schema?: object): Promis
  * Never the OpenAI key: what is said about the user only goes to the model the user already runs.
  */
 export function smart(prompt: string, timeout = 90_000, schema?: object): Promise<string> {
-  if (preferredTool() === 'codex') {
+  if (availableTool() === 'codex') {
     const status = providerStatus('codex')
     if (!status.installed || !status.logged) return Promise.reject(new Error(providerUnavailable('codex')))
     return relay(prompt, timeout, schema)
@@ -79,6 +79,7 @@ export function smart(prompt: string, timeout = 90_000, schema?: object): Promis
  * what the « for you » stream writes while Claude's usage is nearly full.
  */
 export function relay(prompt: string, timeout = 120_000, schema?: object): Promise<string> {
+  if (availableTool('codex') === 'claude') return smart(prompt, timeout, schema)
   const t0 = Date.now()
   // A private disk-backed scratch directory avoids per-user /tmp quotas and exposes no result in shared /tmp.
   const base = path.join(os.homedir(), '.cache', 'weevils')
@@ -139,7 +140,7 @@ export function parseJson<T>(text: string): T | null {
  * Pour les questions posées depuis l'app, où l'on attend la réponse des yeux.
  */
 export async function quick(prompt: string, maxTokens = 260): Promise<string> {
-  if (preferredTool() === 'codex') return haiku(prompt, 120_000)
+  if (preferredTool() === 'codex' || availableTool() === 'codex') return haiku(prompt, 120_000)
   const key = openaiKey()
   if (key) {
     const t0 = Date.now()

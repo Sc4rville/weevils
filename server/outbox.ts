@@ -8,10 +8,15 @@ import M from './i18n/outbox.ts'
 
 export const deliveryContext = new AsyncLocalStorage<{ messageId: string }>()
 export interface OutboxTask { locale?: Lang; url: string; body: Record<string, unknown>; lane: string }
-interface Entry extends OutboxReceipt { hash: string; task?: OutboxTask }
+interface Entry extends OutboxReceipt { hash: string; task?: OutboxTask; retryAt?: number; sequence?: number }
 export class OutboxError extends Error {
   status: number
   constructor(status: number, message: string) { super(message); this.status = status }
+}
+/** Only throw before any transport side effect. Unlike uncertainty, this is safe to dispatch later. */
+export class OutboxDeferred extends OutboxError {
+  readonly retryAt: number
+  constructor(retryAt: number, message: string) { super(429, message); this.retryAt = retryAt }
 }
 const canonical = (v: any): string => Array.isArray(v) ? `[${v.map(canonical).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map(k => JSON.stringify(k)+':'+canonical(v[k])).join(',')}}` : JSON.stringify(v)
 const hashOf = (v: unknown) => crypto.createHash('sha256').update(canonical(v)).digest('hex')
@@ -22,11 +27,14 @@ export class Outbox {
   private entries = new Map<string, Entry>()
   private lanes = new Set<string>()
   private scheduled = false
+  private sequence = 0
+  private wake?: ReturnType<typeof setTimeout>
   constructor(dir: string, run: (task: OutboxTask) => Promise<OutboxReceipt['result']>) {
     this.dir = dir; this.run = run
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
     for (const file of fs.readdirSync(dir).filter(f => /^[a-f0-9]{64}\.json$/.test(f))) {
       const e = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')) as Entry
+      this.sequence = Math.max(this.sequence, e.sequence ?? 0)
       if (e.status === 'delivering') { e.status = 'uncertain'; e.error = tr(M).uncertain; e.updatedAt = Date.now(); this.save(e) }
       this.entries.set(e.messageId, e)
     }
@@ -55,7 +63,7 @@ export class Outbox {
       return this.get(messageId)!
     }
     const now = Date.now()
-    const e: Entry = { messageId, hash, task, status: 'accepted', acceptedAt: now, updatedAt: now, ...(id ? { id } : {}) }
+    const e: Entry = { messageId, hash, task, sequence: ++this.sequence, status: 'accepted', acceptedAt: now, updatedAt: now, ...(id ? { id } : {}) }
     this.save(e); this.entries.set(messageId, e)
     console.log(`[outbox] ${messageId} accepted`)
     this.start()
@@ -67,16 +75,25 @@ export class Outbox {
     setImmediate(() => { this.scheduled = false; this.pump() })
   }
   private pump() {
-    for (const e of [...this.entries.values()].sort((a,b) => a.acceptedAt-b.acceptedAt)) {
-      if (e.status !== 'accepted' || !e.task || this.lanes.has(e.task.lane)) continue
+    if (this.wake) clearTimeout(this.wake)
+    const waiting = new Set<string>()
+    let next = Infinity
+    for (const e of [...this.entries.values()].sort((a,b) => a.acceptedAt-b.acceptedAt || (a.sequence ?? 0)-(b.sequence ?? 0))) {
+      if (e.status !== 'accepted' || !e.task || this.lanes.has(e.task.lane) || waiting.has(e.task.lane)) continue
+      if (e.retryAt && e.retryAt > Date.now()) { waiting.add(e.task.lane); next = Math.min(next, e.retryAt); continue }
       const lane = e.task.lane
       this.lanes.add(lane)
       e.status = 'delivering'; e.updatedAt = Date.now()
       try { this.save(e) } catch { e.status = 'uncertain'; e.error = tr(M).uncertain; this.lanes.delete(lane); console.error('[outbox] persistence failed before dispatch'); continue }
       void deliveryContext.run({ messageId: e.messageId }, () => this.run(e.task!)).then(result => {
         e.status = 'delivered'; e.result = result; if (result?.id) e.id = result.id
-        delete e.task
+        delete e.task; delete e.retryAt; delete e.error
       }, error => {
+        if (error instanceof OutboxDeferred) {
+          e.status = 'accepted'; e.error = error.message
+          e.retryAt = Math.max(Date.now() + 60_000, Number.isFinite(error.retryAt) ? error.retryAt : 0)
+          return
+        }
         // Only an explicit refusal before dispatch can be called a failure.
         e.status = error instanceof OutboxError && error.status < 500 ? 'failed' : 'uncertain'
         e.error = e.status === 'failed' ? error.message : tr(M).uncertain
@@ -87,5 +104,6 @@ export class Outbox {
         this.lanes.delete(lane); this.start()
       })
     }
+    if (Number.isFinite(next)) { this.wake = setTimeout(() => this.start(), Math.max(1, next - Date.now())); this.wake.unref?.() }
   }
 }

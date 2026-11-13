@@ -7,6 +7,14 @@ import path from 'node:path'
 import type { Tool } from '../shared/api.ts'
 import { HOME, CODEX_DIR } from './config.ts'
 export const preferredTool = (): Tool => process.env.WEEVILS_PROVIDER === 'codex' ? 'codex' : 'claude'
+let route: ((tool: Tool) => Tool | null) | undefined
+export function setProviderRoute(select: (tool: Tool) => Tool | null) { route = select }
+/** Runtime quota routing does not rewrite the user's configured provider/model/effort. */
+export function availableTool(tool = preferredTool()): Tool {
+ const selected = route ? route(tool) : tool
+ if (!selected) throw new Error(tr(P).waiting)
+ return selected
+}
 const read = (file: string): any => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return null } }
 export function codexLogged(): boolean {
  const auth = read(path.join(path.dirname(CODEX_DIR), 'auth.json'))

@@ -11,6 +11,7 @@ import type { QuotaInfo } from '../shared/infra.ts'
 import { PLAN_MARKER, Relay, clockOf, hottest, parseReset, type RelayDeps, type RelayHost } from './relay.ts'
 import { MACHINE } from './config.ts'
 import { setLang } from './i18n.ts'
+import { ProviderHealth } from './provider-health.ts'
 import type { StopError, Transcript } from './transcripts.ts'
 
 const NOW = Date.parse('2026-11-10T14:00:00Z')
@@ -108,6 +109,89 @@ const run = async (relay: Relay, now: number) => {
 const windows = (five: number, week = 10): QuotaInfo => ({ ok: true, source: 'test', at: NOW, windows: [{ kind: 'session', percent: five, resetsAt: NOW + 3 * H }, { kind: 'week', percent: week, resetsAt: NOW + 4 * 24 * H }] })
 
 beforeEach(() => void setLang('fr', true))
+
+describe('automatic quota resilience in both directions', () => {
+  it('does not relaunch a Claude-to-Codex worker after an ambiguous dispatch or restart', async () => {
+    const { x, host, deps, file } = world({ mode: 'auto' })
+    let calls = 0
+    host.openCodex = async () => { calls++; throw new Error('ACK lost') }
+    x.sessions = [cut('usage limit reached · resets 6pm')]
+    let relay = new Relay(host, deps, file); clocks.set(relay, x)
+    await run(relay, NOW); await run(relay, NOW + 5000)
+    expect(calls).toBe(1)
+    relay = new Relay(host, deps, file); clocks.set(relay, x)
+    await run(relay, NOW + 10000); await run(relay, NOW + 20000)
+    expect(calls).toBe(1)
+    expect(relay.view().plans[0].state).toBe('waiting')
+    expect(relay.view().plans[0].error).toBeTruthy()
+  })
+
+  it('includes a stopped main Codex turn in the durable return path without creating a project worker', async () => {
+    const { x, host, deps, file } = world({ mode: 'auto' })
+    let calls = 0, opens = 0
+    host.codexBossSession = () => cut('Usage limit', { tool: 'codex', id: 'main-codex' })
+    host.returnMain = async text => { calls++; expect(text).toContain('main-codex'); return 'main-claude' }
+    host.openClaude = async () => { opens++; return 'wrong' }
+    deps.health = new ProviderHealth(file + '.health', async () => ({ claude: windows(0), codex: windows(100) }), () => true)
+    const relay = new Relay(host, deps, file); clocks.set(relay, x)
+    await run(relay, NOW); await run(relay, NOW + 5000)
+    expect(calls).toBe(1); expect(opens).toBe(0)
+  })
+
+  it('detects Codex exhaustion, carries context to Claude once, and does not wake historical cuts', async () => {
+    const { x, host, deps, file } = world({ mode: 'auto' })
+    let opened = 0
+    host.openClaude = async (_cwd, _title, text, id) => { opened++; expect(text).toContain('s1'); return id }
+    deps.health = new ProviderHealth(file + '.health', async () => ({ claude: windows(0), codex: windows(100) }), () => true)
+    x.sessions = [cut('Usage limit reached', { tool: 'codex' }), cut('Old usage limit', { id: 'old', tool: 'codex', interrupted: { reason: 'quota', detail: 'Old limit', at: NOW - 86400000 } })]
+    const relay = new Relay(host, deps, file); clocks.set(relay, x)
+    await run(relay, NOW); await run(relay, NOW + 5000)
+    expect(relay.can()).toBe(false)
+    expect(relay.executionTool('codex')).toBe('claude')
+    expect(opened).toBe(1)
+    expect(relay.deliveryTarget('s1')).not.toBe('s1')
+    expect(relay.deliveryTarget('old')).toBe('old')
+    expect(x.written).toEqual([])
+    expect(x.sent).toEqual([])
+  })
+
+  it('persists both-limited waiting and resumes the original Codex context if it recovers first', async () => {
+    const { x, host, deps, file } = world({ mode: 'auto' })
+    x.quota = windows(100)
+    let codex = windows(100), resumed = 0, opened = 0
+    host.openClaude = async (_cwd, _title, _text, id) => { opened++; return id }
+    host.resumeCodex = async (id, text) => { resumed++; expect(text).toContain('s1'); return id }
+    deps.health = new ProviderHealth(file + '.health', async () => ({ claude: x.quota, codex }), () => true)
+    x.sessions = [cut('Usage limit', { tool: 'codex' })]
+    let relay = new Relay(host, deps, file); clocks.set(relay, x)
+    await run(relay, NOW)
+    expect(relay.executionTool('codex')).toBeNull()
+    expect(opened + resumed).toBe(0)
+    expect(relay.holds('s1')).toBe(true)
+    relay = new Relay(host, deps, file); clocks.set(relay, x)
+    await run(relay, NOW + 5000)
+    expect(opened + resumed).toBe(0)
+    codex = { ...windows(0), at: NOW + 60000 }
+    await run(relay, NOW + 60000); await run(relay, NOW + 65000)
+    expect(resumed).toBe(1); expect(opened).toBe(0)
+    expect(relay.holds('s1')).toBe(false)
+    expect(x.written).toEqual([])
+  })
+
+  it('does not switch a still-working Codex session or bypass a non-automatic relay preference', async () => {
+    for (const mode of ['ask', 'never', 'auto'] as const) {
+      const { x, host, deps, file } = world({ mode })
+      let opened = 0
+      host.openClaude = async (_cwd, _title, _text, id) => { opened++; return id }
+      deps.health = new ProviderHealth(file + '.health', async () => ({ claude: windows(0), codex: windows(100) }), () => true)
+      x.sessions = [cut('Usage limit', { tool: 'codex', status: mode === 'auto' ? 'working' : 'interrupted' })]
+      const relay = new Relay(host, deps, file); clocks.set(relay, x)
+      await run(relay, NOW)
+      expect(opened).toBe(0)
+      expect(relay.mode).toBe(mode)
+    }
+  })
+})
 
 describe('heure de reset', () => {
   it('lue dans le message de limite, dans son fuseau', () => {
@@ -304,7 +388,7 @@ describe('filet de sécurité', () => {
     expect(x.opened).toHaveLength(2)
     x.sessions = []
     x.probeOk = true
-    x.quota = windows(10)
+    x.quota = { ...windows(10), at: NOW + 5 * H }
     await run(again, NOW + 5 * H)
     expect(again.bossOn()).toBe(false)
     expect(again.autoOnCodex()).toBe(false)
@@ -332,18 +416,22 @@ describe('filet de sécurité', () => {
     expect(x.opened.map((o) => o.cwd).sort()).toEqual(['/work/demo', '/work/tests'])
     expect(x.opened.find((o) => o.cwd === '/work/tests')?.text).toContain('ne touche pas au CI')
     expect(relay.view(NOW).plans.find((p) => p.sessionId === 's3')?.state).toBe('waiting')
-    // 18 h à Paris : Claude revient, la session laissée à Claude est reprise, weevboss retourne sur Claude.
+    // L'heure annoncée ne prouve pas le retour : attendre une mesure fraîche.
     const reset = Date.parse('2026-11-10T17:00:00Z')
     await run(relay, reset + 1000)
-    expect(relay.view(reset + 1000).limit).toBeUndefined()
+    expect(relay.view(reset + 1000).limit).toBeDefined()
+    expect(x.resumed).toEqual([])
+    x.quota = { ...windows(10), at: reset + 301_000 }
+    await run(relay, reset + 301_000)
+    expect(relay.view(reset + 301_000).limit).toBeUndefined()
     expect(relay.bossOn()).toBe(false)
     expect(x.resumed).toEqual(['s3'])
     expect(x.said.at(-1)).toBe('Claude est de retour : je reprends sur Claude.')
     expect(relay.takeBossBack()).toBe(NOW)
     expect(relay.takeBossBack()).toBeUndefined()
     // La même coupure, toujours affichée, ne rouvre pas d'épisode.
-    await run(relay, reset + 10_000)
-    expect(relay.view(reset + 10_000).limit).toBeUndefined()
+    await run(relay, reset + 310_000)
+    expect(relay.view(reset + 310_000).limit).toBeUndefined()
   })
 
   it('R6 erreurs d’API répétées : Claude interrogé une fois — il répond, pas d’épisode ; il ne répond pas, relais, puis retour dès qu’il répond', async () => {
@@ -488,7 +576,7 @@ it('remembers each switch across alternating quota episodes and restart', async 
 
 
 describe('resolved relay requests', () => {
-  it('persists an answered plan across restart and reopens a distinct request on launch failure', async () => {
+  it('persists an answered plan and exposes an uncertain handoff after a missing launch acknowledgement', async () => {
     const { x, relay, host, deps, file } = world()
     x.sessions = [cut('usage limit reached · resets 6pm')]
     await run(relay, NOW)
@@ -503,9 +591,10 @@ describe('resolved relay requests', () => {
     await settle()
     const failed = again.view().plans[0]
     expect(failed.resolved).toBeUndefined()
-    expect(failed.error).toBe('launch failed')
+    expect(failed.error).toContain('non confirmée')
+    expect(failed.state).toBe('waiting')
     expect(failed.at).toBeGreaterThan(first.at)
-    expect(new Relay(host, deps, file).view().plans[0]).toMatchObject({ error: 'launch failed' })
+    expect(new Relay(host, deps, file).view().plans[0]).toMatchObject({ error: failed.error, state: 'waiting' })
   })
   it('a revised plan becomes a new request only when its rewrite finishes', async () => {
     const { x, relay } = world()

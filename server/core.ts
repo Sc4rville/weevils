@@ -8,7 +8,8 @@ import { isModelControl, type ModelControls, type ModelSelection } from '../shar
 import ModelM from './i18n/model-controls.ts'
 import { titlePresentation } from './title-presentation.ts'
 import { SessionProgressReader } from './session-progress.ts'
-import { deliveryContext, OutboxError } from './outbox.ts'
+import { deliveryContext, OutboxError, OutboxDeferred } from './outbox.ts'
+import OutboxM from './i18n/outbox.ts'
 import { CodexBridge } from './codex-bridge.ts'
 import { preferredTool, providerReady, providerUnavailable } from './provider.ts'
 import { notificationText, notificationQuestion } from '../shared/notification-policy.ts'
@@ -1370,13 +1371,15 @@ export class Weevils {
       if (s) this.foryou?.resolveSession(s)
       return result
     }
-    const real = this.resolveId(id)
+    const resolved = this.resolveId(id)
+    const real = this.relay?.deliveryTarget?.(resolved) ?? resolved
     const s = this.snapshot().sessions.find((x) => x.id === real)
     if (!s) {
       // Absente de la liste parce qu'ouverte dans un terminal que weevils ne pilote pas : le dire, plutôt que « introuvable ».
       const t = this.store.get(real)
       throw new OutboxError(t ? 409 : 404, t && !this.toSession(t, Date.now()).controllable ? tr(M).unmanaged : tr(M).sessionNotFound)
     }
+    this.guardProvider(s)
     if (s.tool === 'codex' && this.codexBridge.can(real)) {
       await this.codexBridge.send(real, text)
       this.foryou?.resolveSession(s)
@@ -1438,16 +1441,27 @@ export class Weevils {
   }
 
   /** Message avec des photos : les fichiers sont posés sur la machine de la session, l'agent reçoit leur chemin et va les regarder. */
+  private guardProvider(s: Session) {
+    if (this.relay?.providerReady?.(s.tool) === false && (s.controllable || this.codexBridge.can(s.id))) {
+      if (s.tool === 'codex') this.relay.requestReturn(s, true)
+      throw new OutboxDeferred(this.relay.retryAt(), tr(OutboxM).providerWaiting)
+    }
+  }
   async attach(id: string, text: string, files: { name: string; type: string; data: string }[]): Promise<{ id: string }> {
     const remote = this.remoteFor(id)
     if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/attach`, { text, files })
     if (!files.length) return this.send(id, text)
+    const target = this.relay?.deliveryTarget?.(this.resolveId(id)) ?? this.resolveId(id)
+    const s = this.snapshot().sessions.find(s => s.id === target)
+    if (s) this.guardProvider(s)
     return this.send(id, withFiles(text, saveInbox(path.join(DATA_DIR, 'inbox'), files)))
   }
 
   /** Fichiers (photos, PDF, zip…) pour l'orchestrateur : déposés dans INBOX_DIR/<date>-<nom>, le message dit « (fichier : /chemin) ». */
   async attachMain(text: string, files: { name: string; type: string; data: string }[]) {
     if (!files.length) return this.sendMain(text)
+    const chosen = this.relay?.executionTool?.(preferredTool())
+    if ((chosen === null && (!this.setup || providerReady())) || (chosen && this.bossWorking(chosen === 'claude' ? 'codex' : 'claude'))) throw new OutboxDeferred(this.relay?.retryAt() ?? Date.now() + 60_000, tr(OutboxM).providerWaiting)
     return this.sendMain(withFiles(text, saveInbox(INBOX_DIR, files)))
   }
 
@@ -1588,13 +1602,34 @@ export class Weevils {
     return [claude, codex].filter((t): t is Transcript => !!t)
   }
 
+  private bossWorking(tool: Tool): boolean {
+    const t = tool === 'codex' ? this.codexBoss()?.t : this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
+    if (tool === 'codex' && t) {
+      const activity = this.codexBridge.activityOf?.(t.id)
+      if (activity && activity.at >= t.lastActivityAt) return activity.type === 'active' && !activity.waiting
+    }
+    if (tool === 'claude' && t) {
+      const hook = this.hooks.get(t.id)
+      if (hook && hook.at >= t.lastActivityAt - 2000) {
+        if (['UserPromptSubmit', 'PostToolUse'].includes(hook.event)) return true
+        if (hook.event === 'Stop') return false
+      }
+    }
+    return t?.phase === 'working'
+  }
+  private bossTool(): Tool {
+    if (this.bossWorking('codex')) return 'codex'
+    if (this.bossWorking('claude')) return 'claude'
+    return this.relay?.executionTool?.(preferredTool()) ?? (preferredTool() === 'codex' || this.relay?.bossOn() ? 'codex' : 'claude')
+  }
+
   /** La pane où weevboss répond en ce moment : celle de Codex pendant le relais, sinon celle de Claude. */
   private orchestratorPane() {
-    return ((preferredTool() === 'codex' || this.relay?.bossOn()) ? this.codexBoss()?.pane : undefined) ?? this.claudeBossPane()
+    return (this.bossTool() === 'codex' ? this.codexBoss()?.pane : undefined) ?? this.claudeBossPane()
   }
 
   private orchestratorSettings() {
-    const t = ((preferredTool() === 'codex' || this.relay?.bossOn()) ? this.codexBoss()?.t : undefined) ?? (this.orchestratorId ? this.store.get(this.orchestratorId) : undefined)
+    const t = (this.bossTool() === 'codex' ? this.codexBoss()?.t : undefined) ?? (this.orchestratorId ? this.store.get(this.orchestratorId) : undefined)
     const confirmed = t ? this.codexBridge.settingsOf?.(t.id) : undefined
     if (confirmed) return {approval:t?.approval,...confirmed}
     return t?.model || t?.approval || t?.effort ? { model: t.model, approval: t.approval, effort: t.effort } : undefined
@@ -1797,8 +1832,10 @@ export class Weevils {
     const owner = this.codexBoss()?.id
     const daemon = owner ? this.codexBridge.activityOf?.(owner) : undefined
     const codex = this.codexBoss()?.t
-    if (daemon && daemon.at >= (codex?.lastActivityAt ?? 0)) return daemon.type === 'active' && !daemon.waiting
-    if (codex?.phase === 'working' && now - codex.lastActivityAt < 10 * 60_000) return true
+    if (this.bossTool() === 'codex') {
+      if (daemon && daemon.at >= (codex?.lastActivityAt ?? 0)) return daemon.type === 'active' && !daemon.waiting
+      if (codex?.phase === 'working' && now - codex.lastActivityAt < 10 * 60_000) return true
+    }
     const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
     if (!t) return false
     const hook = this.hooks.get(t.id)
@@ -1810,7 +1847,7 @@ export class Weevils {
   /** La conversation de weevboss où ira le prochain message (son pane est ouvert ou son transcript connu) ; null : sendMain
    * en ouvrira une nouvelle (Setup.contextFor lui redonne alors la mémoire). */
   bossConversation(): string | null {
-    if (preferredTool() === 'codex' || this.relay?.bossOn()) return this.codexBoss()?.id ?? null
+    if (this.bossTool() === 'codex') return this.codexBoss()?.id ?? null
     const id = this.orchestratorId
     return id && (this.orchestratorPane() || this.store.get(id)) ? id : null
   }
@@ -1834,14 +1871,21 @@ export class Weevils {
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
     if (activeRequestLang()) text += joinContext('', tr(M).appLocale)
     // Claude à sa limite (ou tout près) : weevboss répond par Codex, même dossier, mêmes consignes (server/relay.ts).
-    if (preferredTool() === 'codex' && !providerReady()) {
+    const chosen = this.relay?.executionTool ? this.relay.executionTool(preferredTool()) : (preferredTool() === 'codex' || this.relay?.bossOn() ? 'codex' : 'claude')
+    if ((!chosen || chosen === 'codex') && preferredTool() === 'codex' && !providerReady()) {
       if (this.setup) { await this.setup.offline(text); return { id: 'setup' } }
       throw new Error(providerUnavailable('codex'))
     }
-    if (preferredTool() === 'codex' || this.relay?.bossOn()) {
+    if (!chosen && this.setup && !providerReady()) { await this.setup.offline(text); return { id: 'setup' } }
+    if (!chosen) throw new OutboxDeferred(this.relay?.retryAt() ?? Date.now() + 60_000, tr(OutboxM).providerWaiting)
+    if (this.bossWorking(chosen === 'claude' ? 'codex' : 'claude')) throw new OutboxDeferred(this.relay?.retryAt() ?? Date.now() + 60_000, tr(OutboxM).providerWaiting)
+    if (chosen === 'codex') {
       const since = Date.now()
       void this.waitMainReply(since, 300_000).then((r) => r && console.log(`[voix] weevboss (codex) a répondu en ${Date.now() - since} ms`))
-      return this.sendBossCodex(text, this.setup?.contextFor(brief) ?? '')
+      const claude = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
+      const codex = this.codexBoss()?.t
+      const previous = claude && codex && claude.lastActivityAt > codex.lastActivityAt ? this.threadDigest(this.orchestratorMessages().slice(-12)) : ''
+      return this.sendBossCodex(text, joinContext(this.setup?.contextFor(brief) ?? '', previous))
     }
     // Claude Code pas connecté sur cette machine : weevboss ne peut pas répondre. Le message reste dans le fil, et la marche
     // à suivre y arrive à sa place (weevilsd préviendra dès que la connexion est faite).
@@ -1858,6 +1902,7 @@ export class Weevils {
     const pane = this.claudeBossPane()
     if (pane) {
       await this.deliver(pane.name, this.orchestratorId!, text)
+      this.relay?.takeBossBack()
       this.bump()
       return { id: this.orchestratorId! }
     }
@@ -1866,6 +1911,7 @@ export class Weevils {
     const id = this.orchestratorId
     const command = known ? [...CLAUDE, '--resume', id, text] : [...CLAUDE, '--session-id', id, text]
     await this.spawn('claude', ORCH_DIR, 'weevboss', command, id)
+    this.relay?.takeBossBack()
     this.persist()
     return { id }
   }
@@ -1914,15 +1960,11 @@ export class Weevils {
     return { id: known ?? name }
   }
 
-  /** Claude est revenu : ce que Codex a dit à sa place dans le fil, joint (caché) à son prochain message ; la pane de Codex est fermée. */
+  /** Carry context back without terminating a pane that may still own external jobs. */
   private bossBackContext(): string {
-    const since = this.relay?.takeBossBack()
+    const since = (this.relay?.peekBossBack ? this.relay.peekBossBack() : this.relay?.takeBossBack()) ?? (preferredTool() === 'codex' ? 0 : undefined)
     if (since === undefined) return ''
     const boss = this.codexBoss()
-    if (boss?.pane) {
-      if (boss.pane.sessionId) this.closedByUs.set(boss.pane.sessionId, Date.now())
-      void killWv(boss.pane.name).catch(() => undefined)
-    }
     const said = (boss?.t?.messages ?? []).filter((m) => m.at >= since - 60_000).map((m) => (m.role === 'user' ? { ...m, text: withoutContext(m.text) } : m))
     if (!said.some((m) => m.role === 'assistant')) return ''
     return tr(R).bossBack(this.threadDigest(said, 3000, 'codex'))
@@ -1965,6 +2007,13 @@ export class Weevils {
         this.bump()
       },
       openCodex: async (cwd, title, text) => (await this.createIn(cwd, title, text, [], {}, 'codex')).id,
+      openClaude: async (cwd, title, text, id) => (await this.createIn(cwd, title, text, [], {}, 'claude', id)).id,
+      autoReturn: (id, text, targetId, tool = 'claude') => this.optimizers!.relayRun(id, text, tool, tool === 'claude' ? targetId : undefined),
+      resumeCodex: (id, text, requestId) => deliveryContext.run({ messageId: requestId }, async () => (await this.send(id, text)).id),
+      codexBossStop: () => this.codexBoss()?.t?.stopError,
+      codexBossSession: () => { const t = this.codexBoss()?.t; return t ? this.toSession(t, Date.now()) : undefined },
+      mainBusy: () => this.bossWorking('claude') || this.bossWorking('codex'),
+      returnMain: (text, requestId) => deliveryContext.run({ messageId: requestId }, async () => (await this.sendMain(text)).id),
       resolve: (id) => this.resolveId(id),
       bossStop: () => (this.orchestratorId ? this.store.get(this.orchestratorId)?.stopError : undefined),
       bossRelayCut: () => this.sendBossCodex('', '', true),
@@ -2198,7 +2247,7 @@ export class Weevils {
    *  (unset) pour cette session seulement (les barrières de la tâche : gh sans compte, git qui ne pousse pas…), par
    *  « env » devant claude : tmux lance la commande sans shell, une valeur n'est jamais interprétée. wrap : une commande
    *  devant tout le reste (la prison bwrap de la tâche). */
-  async createIn(cwd: string, title: string, text: string, args: string[] = [], env: { set?: Record<string, string>; unset?: string[]; wrap?: string[] } = {}, tool: Tool = preferredTool()): Promise<{ id: string }> {
+  async createIn(cwd: string, title: string, text: string, args: string[] = [], env: { set?: Record<string, string>; unset?: string[]; wrap?: string[] } = {}, tool: Tool = preferredTool(), sessionId?: string): Promise<{ id: string }> {
     if (tool === 'codex') {
       const un = (env.unset ?? []).filter((k) => /^[A-Za-z_]\w*$/.test(k)).flatMap((k) => ['-u', k])
       const st = Object.entries(env.set ?? {}).filter(([k]) => /^[A-Za-z_]\w*$/.test(k)).map(([k, v]) => `${k}=${v}`)
@@ -2207,7 +2256,7 @@ export class Weevils {
       void this.acceptTrust(name)
       return { id: name }
     }
-    const id = crypto.randomUUID()
+    const id = sessionId ?? crypto.randomUUID()
     const unset = (env.unset ?? []).filter((k) => /^[A-Za-z_]\w*$/.test(k)).flatMap((k) => ['-u', k])
     const set = Object.entries(env.set ?? {}).filter(([k]) => /^[A-Za-z_]\w*$/.test(k)).map(([k, v]) => `${k}=${v}`)
     const prefix = unset.length || set.length ? ['env', ...unset, ...set] : []

@@ -4,6 +4,7 @@ import { OutboxError } from './outbox.ts'
 import { internalFeedUpdate, editorialFeedText, acknowledgementOnly, humanFeedItem, humanFeedText, rawEngineeringNotice } from '../shared/feed-text.ts'
 import { reviewedEditorial } from './foryou-editorial.ts'
 import { softwareResult, type SoftwareCatalog } from './foryou-software.ts'
+import { projectFeedWorkstream } from './foryou-workstream.ts'
 import { WorkIntents, intentDispatch, substantive, briefKey, isWorkRequest, type IntentResult } from './foryou-intents.ts'
 import reviewedIntents from './foryou-intents-reviewed.json' with { type: 'json' }
 import { canonicalAlertId, feedNoticeKey, isRequestNotice, quotaReset, sessionNoticeKey } from '../shared/notices.ts'
@@ -1048,7 +1049,7 @@ export class ForYou {
     }
     const software = softwareResult(result, snap, this.softwareCatalog, this.now())
     if (software) result.software = software
-    return result
+    return projectFeedWorkstream(result, snap)
   }
 
   // ---------------------------------------------------------------- reading: live items
@@ -1252,7 +1253,7 @@ export class ForYou {
       const cur = lang()
       const sources = this.all(snap, now, false).filter(x => !technicalEvent(x.item.id, x.item.text))
       const languages = new Map(sources.map(x => [x.item.id, x.lang]))
-      const items = arrange(sources.map(x => humanFeedItem(x.item)), now).slice(0, MAX_FEED)
+      const items = arrange(sources.map(x => projectFeedWorkstream(humanFeedItem(x.item), snap)), now).slice(0, MAX_FEED)
         .map(item => this.localization.project(item, cur, languages.get(item.id), snap.projects.map(p => p.name), true))
       const anchor = this.s.items.find(i => i.id === ALCOVE_SOURCE)
       return { rev: this.s.rev, items: groupAlcove(items, items.some(i => i.id === ALCOVE_SOURCE) ? alcoveFinal(this.shelf, anchor?.cwd) : undefined), pulse: this.pulse(snap, now) }

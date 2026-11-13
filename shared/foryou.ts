@@ -2,7 +2,7 @@
 // Contract between weevilsd (server/foryou.ts, main machine only) and the app (src/ui/foryou.tsx).
 // Named "for you" everywhere in the code: "feed" already means the home list of project bands.
 
-import type { Tool } from './api.ts'
+import type { Tool, WorkstreamIdentity } from './api.ts'
 
 /**
  * What an item is. The names are internal (never shown):
@@ -78,6 +78,8 @@ export interface VisualProposal {
 }
 
 export interface ForYouItem {
+  /** Verified target identity only; never an origin or completion signal. */
+  workstream?: WorkstreamIdentity
   /** Current catalogued software result. Private capability URLs never cross this boundary. */
   software?: { id: string; name: string; state: 'running' | 'unavailable'; url?: string }
   /** Existing authorized work; never another request for approval. */

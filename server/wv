@@ -13,6 +13,7 @@
 #
 # Sans demande de permission (comme d'habitude) ; WV_SAFE=1 wv … (ou WEEVILS_SAFE=1 dans ~/.config/weevils/env)
 # pour garder les confirmations.
+# Tourne aussi sous le bash 3.2 de macOS : un tableau vide s'écrit ${a[@]+"${a[@]}"} (set -u).
 set -euo pipefail
 
 # Langue des messages : celle de l'app (prefs.json de weevilsd), sinon WEEVILS_LANG (env ou ~/.config/weevils/env),
@@ -45,7 +46,8 @@ else claude_flags=(--dangerously-skip-permissions); codex_flags=(--dangerously-b
 # Les sessions d'avant, restées sur le serveur par défaut, sont encore listées et rejointes.
 sock=${WEEVILS_TMUX_SOCKET:-$(sed -n 's/^[[:space:]]*WEEVILS_TMUX_SOCKET[[:space:]]*=[[:space:]]*["'\'']\{0,1\}\([A-Za-z0-9_.-]*\).*/\1/p' "${WEEVILS_CONFIG:-$HOME/.config/weevils/env}" 2>/dev/null | tail -1 || true)}
 sock=${sock:-weevils}
-wt() { tmux -L "$sock" "$@"; }
+# -u: UTF-8 whatever the locale, like weevilsd (server/mux.ts).
+wt() { tmux -u -L "$sock" "$@"; }
 # Rejoint une session wv-* sur le serveur où elle vit ; depuis une autre pane tmux, en imbriqué si ce n'est pas le même serveur.
 join() {
   if wt has-session -t "=$1" 2>/dev/null; then
@@ -77,10 +79,12 @@ fi
 tool=claude
 case "${1:-}" in
   ls)
-    { wt list-sessions -F '#{session_name}  #{@wv_tool}  #{@wv_cwd}' 2>/dev/null; tmux list-sessions -F '#{session_name}  #{@wv_tool}  #{@wv_cwd}' 2>/dev/null; } | grep '^wv-' || echo "$m_none"
+    { wt list-sessions -F '#{session_name}  #{@wv_tool}  #{@wv_cwd}' 2>/dev/null; tmux -u list-sessions -F '#{session_name}  #{@wv_tool}  #{@wv_cwd}' 2>/dev/null; } | grep '^wv-' || echo "$m_none"
     exit 0 ;;
   a|attach)
-    name=${2:-$({ wt list-sessions -F '#{session_created} #{session_name}' 2>/dev/null; tmux list-sessions -F '#{session_created} #{session_name}' 2>/dev/null; } | grep ' wv-' | sort -n | tail -1 | cut -d' ' -f2)}
+    # (Two statements: bash 3.2 can't parse a « #{…} » inside « ${2:-$(…)} ».)
+    name=${2:-}
+    [ -n "$name" ] || name=$({ wt list-sessions -F '#{session_created} #{session_name}' 2>/dev/null; tmux -u list-sessions -F '#{session_created} #{session_name}' 2>/dev/null; } | grep ' wv-' | sort -n | tail -1 | cut -d' ' -f2 || true)
     [ -n "$name" ] || { echo "$m_none"; exit 1; }
     join "$name" ;;
   claude|codex)
@@ -106,11 +110,12 @@ if command -v jq >/dev/null && [ "$tool" = claude ]; then
   t=$(mktemp) && jq --arg d "$PWD" '.projects[$d] = ((.projects[$d] // {}) + {hasTrustDialogAccepted: true})' "$cfg" > "$t" && mv "$t" "$cfg"
 fi
 if [ "$tool" = claude ]; then
-  id=$(cat /proc/sys/kernel/random/uuid)
-  wt new-session -d -s "$name" -x 120 -y 40 -c "$PWD" "${quiet[@]}" "${notmux[@]}" claude "${claude_flags[@]}" --session-id "$id" "$@"
+  # Linux gives a uuid in /proc; a Mac has uuidgen (upper case: Claude Code names its transcript after it, in lower case).
+  id=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen | tr 'A-Z' 'a-z')
+  wt new-session -d -s "$name" -x 120 -y 40 -c "$PWD" "${quiet[@]}" "${notmux[@]}" claude ${claude_flags[@]+"${claude_flags[@]}"} --session-id "$id" "$@"
   wt set-option -t "=$name:" @wv_session_id "$id"
 else
-  wt new-session -d -s "$name" -x 120 -y 40 -c "$PWD" "${quiet[@]}" "${notmux[@]}" codex "${codex_flags[@]}" "$@"
+  wt new-session -d -s "$name" -x 120 -y 40 -c "$PWD" "${quiet[@]}" "${notmux[@]}" codex ${codex_flags[@]+"${codex_flags[@]}"} "$@"
 fi
 wt set-option -t "=$name:" @wv_tool "$tool"
 wt set-option -t "=$name:" @wv_title "${title:0:60}"

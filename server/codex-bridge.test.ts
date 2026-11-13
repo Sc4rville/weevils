@@ -126,3 +126,12 @@ it('reads an explicit shared thread name independently of model state and never 
  name='Think renamed';await bridge.refresh();expect(bridge.nameOf('existing')).toBe('Think renamed')
  name=null;await bridge.refresh();expect(bridge.nameOf('existing')).toBeUndefined()
 })
+
+it('checks an existing daemon owner on demand without sending, starting or draining anything',async()=>{
+ const f=fixture(true),bridge=new CodexBridge('/test/socket',f.transport)
+ expect(bridge.can('existing')).toBe(false)
+ expect(await bridge.reachable('existing')).toBe(true)
+ expect(bridge.can('existing')).toBe(true)
+ expect(await bridge.reachable('missing')).toBe(false)
+ expect(f.calls).toEqual(['thread/loaded/list','thread/loaded/list'])
+})

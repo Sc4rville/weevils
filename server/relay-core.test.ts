@@ -297,3 +297,22 @@ it('ships the same product contract to both agents in a fresh profile without im
  }
  expect(mux.spawnWv).not.toHaveBeenCalled()
 })
+
+it('rechecks a stale boss capability before refusing a real loaded owner, preserving one writer',async()=>{
+ w.relay=fakeRelay({boss:{sessionId:'cx',since:NOW-MIN}}) as never
+ add(transcript({id:'cx',tool:'codex',cwd:ORCH_DIR,originator:'codex-tui',delegationSources:new Map([['brief','boss']])}))
+ const send=vi.fn(async(_id:string,_text:string)=>{}),reachable=vi.fn(async()=>true)
+ ;(w as any).codexBridge={can:()=>false,reachable,send}
+ await w.sendMain('existing pending request')
+ expect(reachable).toHaveBeenCalledWith('cx');expect(send).toHaveBeenCalledOnce()
+ expect(send.mock.calls[0][0]).toBe('cx')
+ expect(mux.spawnWv).not.toHaveBeenCalled();expect(mux.sendText).not.toHaveBeenCalled()
+})
+it('never falls back to a pane or another writer after a daemon send became uncertain',async()=>{
+ w.relay=fakeRelay({boss:{pane:'wv-owner',sessionId:'cx',since:NOW-MIN}}) as never
+ add(transcript({id:'cx',tool:'codex',cwd:ORCH_DIR,originator:'codex-tui'}))
+ w.panes=[{name:'wv-owner',tool:'codex',sessionId:'cx',title:'weevboss',cwd:ORCH_DIR,createdAt:NOW-MIN}]
+ ;(w as any).codexBridge={can:()=>false,reachable:async()=>true,send:async()=>{throw new Error('uncertain')}}
+ await expect(w.sendMain('same request')).rejects.toThrow('uncertain')
+ expect(mux.spawnWv).not.toHaveBeenCalled();expect(mux.sendText).not.toHaveBeenCalled()
+})

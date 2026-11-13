@@ -1525,3 +1525,55 @@ describe('delete automation: durable cancellation without deleting work',()=>{
   spy.mockRestore();expect(o.remove('delete-me')).toEqual({ok:true,running:false})
  })
 })
+
+describe('retroactive automation software adoption',()=>{
+ const seedAdoption=()=>{
+  const items=[
+   {id:'queued',title:'Private purpose',why:'w',repo:null,kind:'watch',heavy:false,state:'queued',prompt:'TOKEN=never-commit-this',createdAt:T0,every:60_000,notBefore:T0+MIN,talk:[{who:'user',text:'private exchange',at:T0}],runs:[{at:T0-1,startedAt:T0-2,ok:true}]},
+   {id:'active',title:'Running task',why:'w',repo:null,kind:'watch',heavy:false,state:'running',prompt:'active instructions',createdAt:T0,sessionId:'existing',startedAt:T0,seenWorking:true},
+   {id:'refused',title:'Refused task',why:'w',repo:null,kind:'watch',heavy:false,state:'refused',prompt:'old instructions',createdAt:T0},
+  ]
+  fs.writeFileSync(path.join(dir,'optimizers.json'),JSON.stringify({items,lastRoundAt:T0,fails:0,failUntil:0}))
+  return items
+ }
+ it('adopts every stored state without rewriting schedules, conversations, history or active workspaces; reload/retry is stable',async()=>{
+  const before=seedAdoption();const o=make();await o.adoptAll()
+  expect(o.adoptionStatus()).toMatchObject({total:3,ready:2,pendingRunning:1,errors:[]})
+  let stored=JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items
+  expect(stored.map(({software,...item}:any)=>item)).toEqual(before)
+  const revisions=stored.map((item:any)=>item.software.revision)
+  const reloaded=make();await reloaded.adoptAll()
+  stored=JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items
+  expect(stored.map((item:any)=>item.software.revision)).toEqual(revisions)
+  const backup=path.join(dir,'automation-adoption-backup.json')
+  expect(JSON.parse(fs.readFileSync(backup,'utf8')).items).toEqual(before);expect(fs.statSync(backup).mode&0o777).toBe(0o600)
+  expect(createIn).not.toHaveBeenCalled();expect(send).not.toHaveBeenCalled()
+  reloaded.rollbackAdoption();expect(make().adoptionStatus().enabled).toBe(false)
+  expect(JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items.map(({software,...item}:any)=>item)).toEqual(before)
+ })
+ it('runs a selected software revision through the existing sandbox and records its identity without moving the legacy cwd',async()=>{
+  seedAdoption();const o=make();await o.adoptAll()
+  // Complete the already running legacy task first; its original run had no software revision.
+  snap.sessions=[session({id:'existing',status:'idle',lastMessage:'done'})]
+  o.tick(T0+IDLE_MS);await o.settled();await o.adoptAll()
+  o.runNow('queued');o.tick(T0+IDLE_MS+MIN);await flush()
+  expect(createIn).toHaveBeenCalled()
+  const [cwd,,,,environment]=createIn.mock.calls.at(-1)!
+  expect(cwd).toBe(path.join(dir,'optimizers','.queued'))
+  expect(environment.wrap).toContain('node');expect(environment.wrap.some((s:string)=>s.includes('/.versions/queued/'))).toBe(true)
+  snap.sessions=[session({id:'sess-1',status:'working'})];o.tick(T0+IDLE_MS+2*MIN)
+  snap.sessions=[session({id:'sess-1',status:'idle',lastMessage:'done'})];o.tick(T0+IDLE_MS+3*MIN);await o.settled()
+  const stored=JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items.find((i:any)=>i.id==='queued')
+  expect(stored.runs.at(-1)).toMatchObject({softwareId:'queued',sourceRevision:stored.software.revision})
+  expect(stored.runs.at(-1).configRevision).toMatch(/^[a-f0-9]{64}$/)
+ })
+})
+
+it('reuses a durable creation request identity after a lost response/reload without another draft or repository',async()=>{
+ const o=make();const first=o.create('request-one')
+ expect(o.create('request-one').id).toBe(first.id)
+ const reload=make();expect(reload.create('request-one').id).toBe(first.id)
+ await reload.adoptAll();expect(reload.adoptionStatus().total).toBe(1)
+ expect(fs.readdirSync(path.join(dir,'automation-workspaces','projects'))).toEqual([`auto-${first.id}`])
+ expect(reload.create('request-two').id).not.toBe(first.id)
+})

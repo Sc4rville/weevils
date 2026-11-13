@@ -59,6 +59,9 @@ export interface FileContent {
 }
 
 export const api = {
+  thinkLayout: (body: unknown) => call<{revision:number;positions:{id:string;x:number;y:number}[];evidence:string[]}>('POST','/api/think/organise',body),
+  think: () => call<import('../shared/think').ThinkBoard>('GET','/api/think'),
+  saveThink: (board: import('../shared/think').ThinkBoard) => call<import('../shared/think').ThinkBoard>('PUT','/api/think',board),
   me: () => call<{ authed: boolean }>('GET', '/api/me'),
   login: (secret: string) => call<{ ok: true }>('POST', '/api/login', { secret }),
   logout: () => call<{ ok: true }>('POST', '/api/logout', {}),

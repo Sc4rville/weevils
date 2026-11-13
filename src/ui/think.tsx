@@ -1,0 +1,122 @@
+import { useEffect, useRef, useState } from 'react'
+import { api, ApiError } from '../api'
+import { useT } from '../i18n'
+import M from '../i18n/think'
+import { useApp } from './app-context'
+import { Composer, Messages } from './bits'
+import type { Message } from '../../shared/api'
+import { OutboxStatus } from './outbox-status'
+import { loadPayload, storePayload, removePayload } from '../outbox-payload'
+import { usePageChrome } from './shell'
+import { emptyBoard, worldPoint, zoomAt, viewportContext, validateBoard, type ThinkBoard, type ThinkCamera, type ThinkObject } from '../../shared/think'
+import './think.css'
+const draftKey=()=>{let id=sessionStorage.getItem('think-client');if(!id){id=crypto.randomUUID();sessionStorage.setItem('think-client',id)}return `think-draft-v1:${id}`}
+export function ThinkPage(){
+ const [key]=useState(draftKey)
+ const t=useT(M),{back,snap,push}=useApp()
+ const root=useRef<HTMLElement>(null),canvas=useRef<HTMLDivElement>(null);usePageChrome('agent',root)
+ const [board,setBoard]=useState<ThinkBoard>(emptyBoard), live=useRef(board)
+ const [ready,setReady]=useState(false),[status,setStatus]=useState(''),[error,setError]=useState('')
+ const [camera,setCamera]=useState<ThinkCamera>(()=>{try{return JSON.parse(localStorage.getItem('think-camera')||'null')||{x:80,y:80,zoom:1}}catch{return{x:80,y:80,zoom:1}}})
+ const cam=useRef(camera);cam.current=camera
+ const [selected,setSelected]=useState<string[]>([]),[editing,setEditing]=useState<string|null>(null),[chat,setChat]=useState(false),[target,setTarget]=useState('')
+ const [watch,setWatch]=useState<{id:string;at:number}|null>(null),[replies,setReplies]=useState<Message[]>([])
+ useEffect(()=>{if(!watch)return;let cancelled=false;const refresh=async()=>{try{const d=await api.session(watch.id);if(!cancelled)setReplies(d.messages.filter(m=>m.at>=watch.at))}catch{}};void refresh();const interval=setInterval(()=>void refresh(),3000);return()=>{cancelled=true;clearInterval(interval)}},[watch])
+ useEffect(()=>{void loadPayload(key+':request').then(value=>{const r=value as {target?:string}|undefined;if(r?.target)setTarget(r.target)})},[key])
+ const [layoutBusy,setLayoutBusy]=useState(false)
+ const [relation,setRelation]=useState('')
+ const [proposal,setProposal]=useState<{base:string;objects:ThinkObject[]}|null>(null)
+ const editHistory=useRef<string|null>(null)
+ const history=useRef<ThinkBoard[]>([]),future=useRef<ThinkBoard[]>([]),recent=useRef<unknown[]>([])
+ const dirty=useRef(false),blocked=useRef(false),busy=useRef(false),pendingLocal=useRef(Promise.resolve()),alive=useRef(true)
+ const record=(action:string,id?:string)=>{recent.current=[...recent.current.slice(-11),{action,id,at:Date.now()}]}
+ const update=(next:ThinkBoard,remember=true)=>{
+  if(remember){history.current.push(structuredClone(live.current));future.current=[]}
+  live.current=next;dirty.current=true;setBoard(next);setStatus(t.saving)
+  pendingLocal.current=pendingLocal.current.then(()=>storePayload(key,next)).then(()=>undefined).catch(()=>{setError(t.error)})
+ }
+ useEffect(()=>{alive.current=true;void Promise.all([api.think(),loadPayload(key)]).then(([saved,draft])=>{
+  let next=saved
+  if(draft){try{validateBoard(draft);next=draft;dirty.current=true;if(draft.revision!==saved.revision){blocked.current=true;setError(t.conflict)}else setStatus(t.local)}catch{setError(t.badImport)}}
+  live.current=next;setBoard(next);setReady(true)
+ }).catch(()=>setError(t.error))
+ const timer=setInterval(async()=>{
+  if(!dirty.current||busy.current||blocked.current||pointers.current.size)return
+  busy.current=true
+  try{await pendingLocal.current;const sending=live.current;const saved=await api.saveThink(sending)
+   if(live.current===sending){dirty.current=false;live.current=saved;if(alive.current){setBoard(saved);setStatus(t.saved)}pendingLocal.current=pendingLocal.current.then(()=>removePayload(key));await pendingLocal.current}
+   else{live.current={...live.current,revision:saved.revision};if(alive.current)setBoard(live.current);const current=live.current;pendingLocal.current=pendingLocal.current.then(()=>storePayload(key,current));await pendingLocal.current}
+  }catch(e){if(e instanceof ApiError&&e.status===409){blocked.current=true;setError(t.conflict)}else setError(t.error)}finally{busy.current=false}
+ },800)
+ return()=>{alive.current=false;clearInterval(timer)}
+ },[])
+ useEffect(()=>{try{localStorage.setItem('think-camera',JSON.stringify(camera))}catch{}},[camera])
+ const change=(id:string,patch:Partial<ThinkObject>,remember=true)=>{update({...live.current,objects:live.current.objects.map(o=>o.id===id?{...o,...patch,updatedAt:Date.now()}:o)},remember)}
+ const add=(type:'text'|'image',content='',point={x:160,y:140})=>{const p=worldPoint(point,cam.current),id=crypto.randomUUID();update({...live.current,objects:[...live.current.objects,{id,type,...p,width:280,height:type==='image'?210:150,content,source:'',updatedAt:Date.now()}]});setSelected([id]);if(type==='text')setEditing(id);record('create',id)}
+ const undo=(redo=false)=>{const from=redo?future.current:history.current,to=redo?history.current:future.current;const previous=from.pop();if(!previous)return;to.push(structuredClone(live.current));update({...previous,revision:live.current.revision},false);record(redo?'redo':'undo')}
+ useEffect(()=>{const keydown=(e:KeyboardEvent)=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!(e.target instanceof HTMLTextAreaElement)&&!(e.target instanceof HTMLInputElement)){e.preventDefault();undo(e.shiftKey)}};window.addEventListener('keydown',keydown);return()=>window.removeEventListener('keydown',keydown)},[])
+ const pointers=useRef(new Map<number,{x:number;y:number}>()),gesture=useRef<any>(null)
+ const relative=(e:{clientX:number;clientY:number})=>{const r=canvas.current!.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
+ const down=(e:React.PointerEvent,id?:string)=>{
+  if(e.button!==0&&e.button!==1)return
+  const p=relative(e);pointers.current.set(e.pointerId,p);e.currentTarget.setPointerCapture(e.pointerId)
+  if(pointers.current.size===2){const previous=gesture.current;if(previous?.kind==='object'&&previous.moved){history.current.push(previous.before);future.current=[];update(live.current,false)}const [a,b]=[...pointers.current.values()];gesture.current={kind:'pinch',distance:Math.hypot(a.x-b.x,a.y-b.y),mid:{x:(a.x+b.x)/2,y:(a.y+b.y)/2},camera:cam.current};return}
+  const obj=live.current.objects.find(o=>o.id===id)
+  gesture.current={kind:obj?'object':'pan',p,camera:cam.current,obj,moved:false,blank:e.target===canvas.current,hitId:(e.target as HTMLElement).closest('[data-think-id]')?.getAttribute('data-think-id'),before:structuredClone(live.current)}
+ }
+ const move=(e:React.PointerEvent)=>{
+  if(!pointers.current.has(e.pointerId))return;const p=relative(e);pointers.current.set(e.pointerId,p);const g=gesture.current;if(!g)return
+  if(g.kind==='pinch'&&pointers.current.size===2){const[a,b]=[...pointers.current.values()];const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};const z=zoomAt(g.camera,g.mid,g.camera.zoom*Math.hypot(a.x-b.x,a.y-b.y)/Math.max(1,g.distance));setCamera({...z,x:z.x+mid.x-g.mid.x,y:z.y+mid.y-g.mid.y});return}
+  const dx=p.x-g.p.x,dy=p.y-g.p.y;if(Math.hypot(dx,dy)<5&&!g.moved)return;g.moved=true
+  if(g.kind==='pan')setCamera({...g.camera,x:g.camera.x+dx,y:g.camera.y+dy})
+  if(g.kind==='object'){const next={...live.current,objects:live.current.objects.map(o=>o.id===g.obj.id?{...o,x:g.obj.x+dx/cam.current.zoom,y:g.obj.y+dy/cam.current.zoom}:o)};live.current=next;setBoard(next)}
+ }
+ const up=(e:React.PointerEvent,cancel=false)=>{
+  pointers.current.delete(e.pointerId);const g=gesture.current;if(pointers.current.size)return;gesture.current=null
+  if(g?.kind==='object'&&g.moved){history.current.push(g.before);future.current=[];update(live.current,false);record('move',g.obj.id)}
+  if(!cancel&&g?.kind==='pan'&&!g.moved&&g.hitId){setSelected([g.hitId]);if(live.current.objects.find(o=>o.id===g.hitId)?.type==='text')setEditing(g.hitId)}
+  if(!cancel&&g?.kind==='pan'&&!g.moved&&g.blank){setEditing(null);add('text','',relative(e))}
+ }
+ useEffect(()=>{const el=canvas.current;if(!el)return;const wheel=(e:WheelEvent)=>{e.preventDefault();if(e.ctrlKey||e.metaKey)setCamera(c=>zoomAt(c,relative(e),c.zoom*Math.exp(-e.deltaY*.01)));else setCamera(c=>({...c,x:c.x-e.deltaX,y:c.y-e.deltaY}))};el.addEventListener('wheel',wheel,{passive:false});return()=>el.removeEventListener('wheel',wheel)},[ready])
+ const context=()=>{const r=canvas.current?.getBoundingClientRect();return viewportContext(live.current,cam.current,r?.width??0,r?.height??0,selected,recent.current)}
+ const exportBoard=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(live.current,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='think.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+ const file=useRef<HTMLInputElement>(null),importFile=useRef<HTMLInputElement>(null)
+ const send=async(text:string)=>{
+  if(!target)throw Error(t.target)
+  const requestKey=key+':request'
+  let frozen=await loadPayload(requestKey) as {target:string;text:string;body:string}|undefined
+  if(frozen&&(frozen.text!==text||frozen.target!==target))throw Error(t.pending)
+  if(!frozen){frozen={target,text,body:t.sharedContext(text,JSON.stringify(context()))};await storePayload(requestKey,frozen)}
+  setWatch({id:frozen.target,at:Date.now()});await api.send(frozen.target,frozen.body);await removePayload(requestKey);record('send',target);setStatus(t.sent)
+ }
+ const aiPreview=async()=>{
+  if(layoutBusy)return
+  if(dirty.current||busy.current){setError(t.aiWait);return}
+  setLayoutBusy(true)
+  const base=JSON.stringify(live.current),r=canvas.current!.getBoundingClientRect();setStatus(t.saving)
+  try{const result=await api.thinkLayout({revision:live.current.revision,camera:cam.current,width:r.width,height:r.height,selected});if(JSON.stringify(live.current)!==base){setError(t.stale);return}setProposal({base,objects:live.current.objects.filter(o=>result.positions.some(p=>p.id===o.id)).map(o=>({...o,...result.positions.find(p=>p.id===o.id)!}))});record('layout-proposal');setStatus('')}catch{setError(t.aiFailed)}finally{setLayoutBusy(false)}
+ }
+ const preview=()=>{const objects=live.current.objects.filter(o=>!selected.length||selected.includes(o.id));const p=worldPoint({x:60,y:60},cam.current);setProposal({base:JSON.stringify(live.current),objects:objects.map((o,i)=>({...o,x:p.x+(i%3)*340,y:p.y+Math.floor(i/3)*270}))})}
+ return <section ref={root} className="think-page tone" style={{'--c':'var(--agent)'} as React.CSSProperties}>
+  <nav className="think-tools"><button onClick={back} aria-label={t.back}>←</button><strong>{t.title}</strong><button aria-label={t.note} disabled={!ready} onClick={()=>add('text')}>＋</button><button onClick={()=>file.current?.click()}>{t.image}</button><button disabled={!history.current.length} onClick={()=>undo()}>{t.undo}</button><button disabled={!future.current.length} onClick={()=>undo(true)}>{t.redo}</button><button onClick={()=>setCamera({x:80,y:80,zoom:1})}>{t.fit}</button><button onClick={exportBoard}>{t.export}</button><button onClick={()=>importFile.current?.click()}>{t.import}</button><button onClick={()=>setChat(!chat)}>{t.chat}</button><span role="status">{status}</span></nav>
+  {error&&<div role="alert" className="think-error">{error}<button onClick={exportBoard}>{t.export}</button><button onClick={()=>{void api.think().then(async b=>{await removePayload(key);blocked.current=false;dirty.current=false;live.current=b;setBoard(b);setError('');setReady(true);history.current=[];future.current=[]})}}>{t.reload}</button></div>}
+  <div ref={canvas} className="think-canvas" onPointerDown={e=>{if(ready&&!pointers.current.has(e.pointerId)&&!(e.target as HTMLElement).closest('button,input,textarea,a'))down(e)}} onPointerMove={move} onPointerUp={e=>up(e)} onPointerCancel={e=>up(e,true)}>
+   {!board.objects.length&&<p className="think-empty">{t.empty}</p>}
+   <div className="think-world" style={{transform:`translate(${camera.x}px,${camera.y}px) scale(${camera.zoom})`}}>
+    <svg className="think-edges">{board.edges.map(edge=>{const a=board.objects.find(o=>o.id===edge.from),b=board.objects.find(o=>o.id===edge.to);return a&&b?<g key={edge.id}><line x1={a.x+a.width/2} y1={a.y+a.height/2} x2={b.x+b.width/2} y2={b.y+b.height/2}/><text x={(a.x+b.x)/2+140} y={(a.y+b.y)/2+70}>{edge.label}</text></g>:null})}</svg>
+    {board.objects.map(o=><article key={o.id} data-think-id={o.id} className={`think-object ${selected.includes(o.id)?'selected':''}`} style={{left:o.x,top:o.y,width:o.width,height:o.height}} onClick={e=>{e.stopPropagation();setSelected(e.shiftKey?[...new Set([...selected,o.id])]:[o.id])}}>
+      <div className="think-object-tools"><button aria-label={t.move} onPointerDown={e=>{e.stopPropagation();down(e,o.id)}}>⠿</button><button aria-label={t.select} onClick={e=>{e.stopPropagation();setSelected(s=>s.includes(o.id)?s.filter(id=>id!==o.id):[...s,o.id])}}>○</button></div>
+      {o.type==='image'?<img draggable={false} src={o.content} alt={o.source} onPointerDown={e=>{e.stopPropagation();down(e,o.id)}}/>:editing===o.id?<textarea autoFocus aria-label={t.note} value={o.content} onPointerDown={e=>e.stopPropagation()} onFocus={()=>{editHistory.current=null}} onChange={e=>{change(o.id,{content:e.target.value},editHistory.current!==o.id);editHistory.current=o.id}} onBlur={()=>setEditing(null)}/>:<div className="think-text" onClick={()=>setEditing(o.id)}>{o.content||'…'}</div>}
+      {selected.includes(o.id)&&<div className="think-detail"><input aria-label={t.source} placeholder={t.source} value={o.source} onChange={e=>change(o.id,{source:e.target.value})}/><button onClick={()=>update({...live.current,objects:live.current.objects.filter(x=>x.id!==o.id),edges:live.current.edges.filter(x=>x.from!==o.id&&x.to!==o.id)})}>{t.remove}</button></div>}
+      {!selected.includes(o.id)&&/^https?:\/\//i.test(o.source)&&<a className="think-source" href={o.source} target="_blank" rel="noreferrer">{o.source}</a>}
+    </article>)}
+    {proposal?.objects.map(o=><div key={o.id} className="think-ghost" style={{left:o.x,top:o.y,width:o.width,height:o.height}}>{o.type==='text'?o.content:t.image}</div>)}
+   </div>
+  </div>
+  <footer className="think-tools"><button onClick={()=>setCamera(c=>zoomAt(c,{x:200,y:200},c.zoom/1.25))}>−</button><span>{Math.round(camera.zoom*100)}%</span><button onClick={()=>setCamera(c=>zoomAt(c,{x:200,y:200},c.zoom*1.25))}>＋</button><button onClick={preview}>{t.organise}</button>{selected.length===2&&<><input aria-label={t.relation} placeholder={t.relation} value={relation} onChange={e=>setRelation(e.target.value)}/><button disabled={!relation.trim()} onClick={()=>update({...live.current,edges:[...live.current.edges,{id:crypto.randomUUID(),from:selected[0],to:selected[1],label:relation.trim()}]})}>{t.link}</button></>}</footer>
+  {proposal&&<div className="think-tools"><span>{t.layout}</span><button onClick={()=>{if(pointers.current.size||JSON.stringify(live.current)!==proposal.base){setError(t.stale);return}update({...live.current,objects:live.current.objects.map(o=>proposal.objects.find(p=>p.id===o.id)??o)});setProposal(null)}}>{t.apply}</button><button onClick={()=>setProposal(null)}>{t.cancel}</button></div>}
+  {chat&&<div className="think-chat"><p>{t.privacy}</p><button disabled={layoutBusy} onClick={()=>void aiPreview()}>{t.aiLayout}</button><select aria-label={t.target} value={target} onChange={e=>setTarget(e.target.value)}><option value="">{t.target}</option>{snap.sessions.filter(s=>!s.archived).map(s=><option key={s.id} value={s.id}>{s.title}</option>)}</select><details><summary>{t.context}</summary><pre>{JSON.stringify(context(),null,2)}</pre></details><Messages session messages={replies} author={snap.sessions.find(s=>s.id===watch?.id)?.tool??'codex'}/><Composer label={t.send} placeholder={t.request} onSend={send} disabled={!target} sayErrors draftKey="think-request"/><OutboxStatus scope={target?`/api/sessions/${encodeURIComponent(target)}/`:'/api/think'}/>{target&&<button onClick={()=>push({kind:'session',id:target})}>{t.openConversation}</button>}</div>}
+  <input hidden ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>4e6){setError(t.invalid);return}const r=new FileReader();r.onload=()=>add('image',String(r.result));r.readAsDataURL(f);e.target.value=''}}/>
+  <input hidden ref={importFile} type="file" accept="application/json" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;try{const b=JSON.parse(await f.text());validateBoard(b);update({...b,revision:live.current.revision})}catch{setError(t.badImport)}e.target.value=''}}/>
+ </section>
+}

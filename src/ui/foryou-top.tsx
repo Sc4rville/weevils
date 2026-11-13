@@ -1,3 +1,4 @@
+import TM from '../i18n/think'
 import { notificationEligible } from '../../shared/notification-policy'
 import { closableFeedNotice } from '../../shared/notices.ts'
 import { NoticeClose } from './notice'
@@ -58,9 +59,11 @@ export function useTop(): [Top, (top: Top) => void] {
 /** The two small words. `active` is the one in full ink; a tap on either calls onPick (the band decides what it does). */
 export function TopWords({ active, onPick }: { active: Top; onPick: (top: Top) => void }) {
   const t = useT(M)
-  const { snap } = useApp()
+  const { snap, push } = useApp()
+  const tt = useT(TM)
   const { unseen } = useForYou()
-  if (!snap.foryou) return null
+  const think = <button className="think-launch" aria-label={tt.title} title={tt.title} onClick={() => push({kind: 'think'})}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden><circle cx="7" cy="7" r="3"/><circle cx="17" cy="15" r="4"/><path d="m9 9 5 4M5 10l-1 8 9-1"/></svg></button>
+  if (!snap.foryou) return think
   return (
     <div className="fyt-words">
       <button type="button" className={`fyt-word ${active === 'boss' ? 'on' : ''}`} aria-pressed={active === 'boss'} onClick={() => onPick('boss')}>
@@ -73,6 +76,7 @@ export function TopWords({ active, onPick }: { active: Top; onPick: (top: Top) =
         {t.forYou}
         {unseen > 0 && <span className="fyt-dot" role="img" aria-label={t.forYouUnseen(unseen)} />}
       </button>
+      {think}
     </div>
   )
 }

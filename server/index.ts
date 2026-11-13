@@ -1,3 +1,5 @@
+import { proposeThinkLayout } from './think-ai.ts'
+import { ThinkStore } from './think.ts'
 import { previewTarget } from './preview-target.ts'
 import { Outbox, OutboxError } from './outbox.ts'
 import { executeOutbox, outboxRoute } from './outbox-http.ts'
@@ -355,7 +357,22 @@ setInterval(() => {
 
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void> | void
 
+const think = new ThinkStore(path.join(DATA_DIR, 'think.json'))
+let thinkLayoutBusy = false
 const routes: [string, RegExp, Handler][] = [
+  ['POST', /^\/api\/think\/organise$/, async (req,res) => {
+    const body=await readBody(req); const board=think.read();
+    if(thinkLayoutBusy)return json(res,429,{error:'think_layout_busy'});
+    if(body.revision!==board.revision)return json(res,409,{error:'think_conflict'});
+    thinkLayoutBusy=true;
+    try { json(res,200,await proposeThinkLayout(board,body)) } catch { json(res,503,{error:'think_layout_unavailable'}) } finally { thinkLayoutBusy=false }
+  }],
+  ['GET', /^\/api\/think$/, (_req,res) => json(res,200,think.read())],
+  ['PUT', /^\/api\/think$/, async (req,res) => {
+    const body=await readBody(req,48 << 20);
+    try { const saved=think.write(body);json(res,saved?200:409,saved ?? {error:'think_conflict'}) }
+    catch { json(res,400,{error:'think_invalid'}) }
+  }],
   ['GET', /^\/api\/preview\/target$/, (_req,res,url) => {
     const snapshot = w.snapshot()
     json(res,200,previewTarget(snapshot.projects,snapshot.sessions,{projectId:url.searchParams.get('projectId') ?? '',repo:url.searchParams.get('repo') || undefined,sessionId:url.searchParams.get('sessionId') || undefined}))

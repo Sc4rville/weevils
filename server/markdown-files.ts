@@ -56,7 +56,7 @@ export function saveMarkdown(root: string, rel: string, content: unknown, revisi
 
 /** Shared by the authenticated server and isolated HTTP integration tests. */
 export function markdownFileRoutes(
-  w: Pick<Weevils, 'remoteById' | 'repoDir' | 'file'>,
+  w: Pick<Weevils, 'remoteById' | 'repoDir' | 'file' | 'assertRepoExecution'>,
   json: (res: http.ServerResponse, status: number, body: unknown) => void,
   readBody: (req: http.IncomingMessage) => Promise<any>,
 ): [string, RegExp, (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void>][] {
@@ -75,6 +75,7 @@ export function markdownFileRoutes(
     const p = url.searchParams.get('path') ?? ''
     const body = await readBody(req)
     try {
+      if (!remote) w.assertRepoExecution(decodeURIComponent(repo))
       const file = remote ? await remote.call('PUT', `/api/repos/${repo}/file?path=${encodeURIComponent(p)}`, body)
         : saveMarkdown(w.repoDir(decodeURIComponent(repo)), p, body?.content, body?.revision)
       json(res, 200, file)

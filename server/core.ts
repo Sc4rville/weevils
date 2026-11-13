@@ -1,3 +1,4 @@
+import { automationSourceRoot } from './automation-workspaces.ts'
 import MachineProse from './i18n/machine-prose.ts'
 import { isModelControl, type ModelControls, type ModelSelection } from '../shared/model-controls.ts'
 import ModelM from './i18n/model-controls.ts'
@@ -2185,7 +2186,7 @@ export class Weevils {
 
   /** Racine de projets qui contient ce repo, sur cette machine. */
   repoRoot(repo: string) {
-    return PROJECT_ROOTS.find((root) => fs.existsSync(path.join(root, repo)))
+    return PROJECT_ROOTS.flatMap(root=>[root,...(automationSourceRoot(root)?[automationSourceRoot(root)!]:[])]).find((root) => fs.existsSync(path.join(root, repo)))
   }
 
   repoDir(repo: string) {
@@ -2198,7 +2199,7 @@ export class Weevils {
   /** Tous les repos de cette machine (pour lancer une session ailleurs que dans un projet actif). */
   allRepos(): string[] {
     const out = new Set<string>()
-    for (const root of PROJECT_ROOTS) {
+    for (const root of PROJECT_ROOTS.flatMap(root=>[root,...(automationSourceRoot(root)?[automationSourceRoot(root)!]:[])])) {
       try {
         for (const e of fs.readdirSync(root, { withFileTypes: true })) if (e.isDirectory() && !e.name.startsWith('.')) out.add(e.name)
       } catch {

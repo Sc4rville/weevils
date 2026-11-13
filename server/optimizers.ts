@@ -1,3 +1,4 @@
+import { AutomationWorkspaces } from './automation-workspaces.ts'
 import { preferredTool, providerReady } from './provider.ts'
 // The « auto » band that never sleeps: from the memory and the real projects, weevils proposes background tasks
 // (« optimizers »: harden a repo's tests, watch a topic the user cares about, prepare content, explore an idea they
@@ -291,6 +292,8 @@ export function jailArgs(o: { home: string; hide: string[]; roots: string[]; rw:
 }
 
 type Stored = Optimizer & {
+  runSourceRevision?: string
+  runConfigRevision?: string
   /** Durable deletion: keep source/history and finish an already running job once. */
   deletedAt?: number
   /** The agent's brief, as the model wrote it (the safety rules are added at launch). */
@@ -321,6 +324,7 @@ type Stored = Optimizer & {
   runNow?: boolean
 }
 interface State {
+  adoptionPaused?: boolean
   items: Stored[]
   lastRoundAt: number
   /** The last round proposed nothing (a blank install): the next memory change is not held 30 min. */
@@ -624,18 +628,22 @@ export class Optimizers {
   private bwrap: boolean | undefined
   private probingJail = false
   private auto = false
+  readonly software: AutomationWorkspaces
+  private adopting = false
+  private adoptionErrors = new Map<string,string>()
   /** Tasks with an exchange turn in flight (one at a time each), and those waiting after a failed one. */
   private talking = new Set<string>()
   private talkFailUntil = new Map<string, number>()
   /** Archives being written (the git diff of a run that just ended): settled() waits for them. */
   private writing = new Set<Promise<void>>()
 
-  constructor(w: Weevils, memory: Memory, opts: { file?: string; /** default <projects>/.auto */ dir?: string; /** default auto/ beside file */ archive?: string; sys?: Partial<Sys> } = {}) {
+  constructor(w: Weevils, memory: Memory, opts: { file?: string; /** default <projects>/.auto */ dir?: string; /** default auto/ beside file */ archive?: string; softwareRoot?:string; sys?: Partial<Sys> } = {}) {
     this.w = w
     this.memory = memory
     this.file = opts.file ?? path.join(DATA_DIR, 'optimizers.json')
     this.dir = opts.dir ?? path.join(PROJECTS_DIR, '.auto')
     this.archive = new RunArchive(opts.archive ?? path.join(path.dirname(this.file), 'auto'))
+    this.software = new AutomationWorkspaces(opts.softwareRoot ?? (opts.file ? path.join(path.dirname(opts.file),'automation-workspaces') : path.join(PROJECTS_DIR,'automations')))
     const sys = opts.sys ?? {}
     this.sys = {
       load: () => (sys.load ?? realSys.load)(),
@@ -650,7 +658,7 @@ export class Optimizers {
       try {
         const raw = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<State>
         const items = (Array.isArray(raw.items) ? raw.items : []).filter((o) => o && typeof o.id === 'string' && typeof o.title === 'string' && typeof o.state === 'string')
-        return { items, lastRoundAt: Number(raw.lastRoundAt) || 0, lastEmpty: raw.lastEmpty === true, fails: Number(raw.fails) || 0, failUntil: Number(raw.failUntil) || 0, refillAt: Number(raw.refillAt) || 0 }
+        return { items, adoptionPaused:raw.adoptionPaused===true, lastRoundAt: Number(raw.lastRoundAt) || 0, lastEmpty: raw.lastEmpty === true, fails: Number(raw.fails) || 0, failUntil: Number(raw.failUntil) || 0, refillAt: Number(raw.refillAt) || 0 }
       } catch {
         return { items: [], lastRoundAt: 0, fails: 0, failUntil: 0 }
       }
@@ -661,7 +669,48 @@ export class Optimizers {
   /** Proposal rounds and the runner loop (main machine only). */
   start() {
     this.auto = true
+    void this.adoptAll()
     setInterval(() => this.tick(), TICK_MS).unref?.()
+  }
+
+  /** Adopt metadata/source while preserving every old path and scheduler identity. No active cwd is changed. */
+  async adoptAll() {
+    if(this.adopting || this.s.adoptionPaused)return
+    this.adopting=true
+    try {
+      if(!this.s.items.length)return
+      const backup=path.join(path.dirname(this.file),'automation-adoption-backup.json')
+      if(!fs.existsSync(backup)) {fs.mkdirSync(path.dirname(backup),{recursive:true});fs.writeFileSync(backup,JSON.stringify(this.s,null,2),{mode:0o600,flag:'wx'})}
+      for(const o of this.s.items){
+        if(o.software?.status==='ready' || (o.software?.status==='pending-running' && o.state==='running'))continue
+        try {
+          const previous=o.software
+          o.software=this.software.adopt(o.id,this.workspace(o),o.state==='running',previous)
+          try{this.save(true)}catch(e){o.software=previous;throw e}
+          this.adoptionErrors.delete(o.id)
+        }catch(e){this.adoptionErrors.set(o.id,(e as Error).message)}
+        await new Promise<void>(resolve=>setImmediate(resolve))
+      }
+      this.w.bump()
+    }finally{this.adopting=false}
+  }
+  adoptionStatus(){
+    return {enabled:!this.s.adoptionPaused,total:this.s.items.length,ready:this.s.items.filter(o=>o.software?.status==='ready').length,pendingRunning:this.s.items.filter(o=>o.software?.status==='pending-running').length,errors:[...this.adoptionErrors].map(([id,error])=>({id,error})),items:this.s.items.map(o=>({id:o.id,state:o.state,deleted:!!o.deletedAt,software:o.software}))}
+  }
+  /** Reversible execution pointer only. Keep source, configuration, active runs and all histories intact. */
+  rollbackAdoption(){
+    const previous=this.s.adoptionPaused;this.s.adoptionPaused=true
+    try{this.save(true)}catch(e){this.s.adoptionPaused=previous;throw e}
+    this.w.bump();return {ok:true}
+  }
+
+  promoteSoftware(id:string,revision:string){
+    const o=this.get(id)
+    if(!o?.software)return null
+    const previous=o.software
+    o.software=this.software.select(previous,revision)
+    try{this.save(true)}catch(e){o.software=previous;throw e}
+    this.w.bump();return {ok:true,revision:o.software.revision}
   }
 
   private save(strict = false) {
@@ -722,7 +771,7 @@ export class Optimizers {
   /** A task as the app sees it: without the brief and the runner's bookkeeping; when it may start, if its time holds
    *  it; what its next run will be, when that was rewritten while it runs. */
   view(o: Stored, now = Date.now()): Optimizer {
-    const { prompt: _p, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, ...v } = o
+    const { prompt: _p, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, runSourceRevision: _sr, runConfigRevision: _cr, ...v } = o
     const at = o.state === 'queued' ? this.timeAt(o, now) : now
     const out: Optimizer = at > now ? { ...v, startAt: at } : { ...v }
     if (o.runNow) out.runRequested = true
@@ -771,6 +820,7 @@ export class Optimizers {
     const o: Stored = { id: crypto.randomBytes(5).toString('hex'), title: t.newTitle, why: '', repo: null, kind: 'other', heavy: false, state: 'proposed', draft: true, userCreated: true, prompt: '', createdAt: now, talk: [{ who: 'auto', text: t.newQuestion, at: now, suggestions: this.creationSuggestions() }] }
     this.s.items.push(o)
     this.changed()
+    if(this.auto)void this.adoptAll()
     return this.view(o)
   }
 
@@ -1072,6 +1122,7 @@ export class Optimizers {
 
   /** Every minute: follow the running task, say what the queue waits for, start the next one, maybe propose. */
   tick(now = Date.now()) {
+    if(this.auto)void this.adoptAll()
     let dirty = this.follow(now)
     const snap = this.w.snapshot()
     const running = this.s.items.find((o) => o.state === 'running')
@@ -1106,7 +1157,7 @@ export class Optimizers {
     // conditions (not before, its window, its next run).
     // Paused by the user: skipped until played again. Asked to run now: first in line, whatever its time.
     const later = (o: Stored) => !!o.retryAt && o.retryAt > now
-    const ready = queue.filter((o) => !o.paused && !later(o) && this.timeAt(o, now) <= now).sort((a, b) => Number(!!b.runNow) - Number(!!a.runNow))
+    const ready = queue.filter((o) => (!this.auto || this.s.adoptionPaused || o.software?.status==='ready') && !o.paused && !later(o) && this.timeAt(o, now) <= now).sort((a, b) => Number(!!b.runNow) - Number(!!a.runNow))
     queue.forEach((o) => {
       const i = ready.indexOf(o)
       const wait = o.paused ? 'paused' : i < 0 ? (later(o) ? 'later' : 'time') : running || this.launching || i > 0 ? 'queue' : (reason ?? undefined)
@@ -1218,7 +1269,7 @@ export class Optimizers {
     const sessionId = o.sessionId
     const t = sessionId ? this.w.store?.get(sessionId) : undefined
     const tokens = t?.file ? sessionTokens(t.file, t.tool) : 0
-    const run: AutoRun = { at: now, startedAt, ok, ...(note ? { note } : {}), ...(tokens ? { tokens } : {}), ...(sessionId ? { sessionId } : {}) }
+    const run: AutoRun = { ...(o.runSourceRevision?{softwareId:o.id,sourceRevision:o.runSourceRevision,configRevision:o.runConfigRevision}:{}), at: now, startedAt, ok, ...(note ? { note } : {}), ...(tokens ? { tokens } : {}), ...(sessionId ? { sessionId } : {}) }
     const before = o.runs ?? []
     o.runCount = (o.runCount ?? before.length) + 1
     if (tokens) o.tokens = (o.tokens ?? 0) + tokens
@@ -1442,6 +1493,13 @@ export class Optimizers {
     let step: 'branch' | 'jail' | 'start' = 'start'
     try {
       const cwd = this.workspace(o)
+      delete o.runSourceRevision
+      const sourceRunner=!this.s.adoptionPaused && o.software?.status==='ready' ? this.software.pin(o.software) : undefined
+      if(sourceRunner){
+        o.runSourceRevision=o.software!.revision
+        o.runConfigRevision=crypto.createHash('sha256').update(JSON.stringify([o.title,o.why,o.prompt,o.repo,o.every,o.notBefore,o.window,o.tz])).digest('hex')
+        this.changed()
+      }
       // A retry or the next run of a recurring task finds its worktree already there (same branch).
       const fresh = !!o.repo && !fs.existsSync(cwd)
       const branch = (!fresh && o.branch) || `auto/${slug(o.title)}-${o.id.slice(0, 4)}`
@@ -1474,10 +1532,11 @@ export class Optimizers {
       step = 'jail'
       // Codex has no deny list: its tasks run only inside the jail (which keeps its login, nothing else of the user's).
       const wrap = await this.jail(o, cwd, guard, tool === 'codex' ? ['.codex'] : [])
+      const executionWrap=sourceRunner ? [...wrap,'node',sourceRunner,'--'] : wrap
       if (tool === 'codex' && !wrap.length) throw new Error(tr(O).noJail)
       step = 'start'
       if(o.deletedAt){o.state='refused';return}
-      const { id } = tool === 'codex' ? await this.w.createIn(cwd, o.title, text, [], { ...guardEnv(guard), wrap }, 'codex') : await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard), wrap }, 'claude')
+      const { id } = tool === 'codex' ? await this.w.createIn(cwd, o.title, text, [], { ...guardEnv(guard), wrap:executionWrap }, 'codex') : await this.w.createIn(cwd, o.title, text, SAFETY_ARGS, { ...guardEnv(guard), wrap:executionWrap }, 'claude')
       o.sessionId = id
       o.seenAt = Date.now()
       console.log(`[auto] lancée : ${o.title} (${cwd})${tool === 'codex' ? ' · sur Codex (Claude à sa limite)' : ''}`)
@@ -1600,6 +1659,12 @@ export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h
     }
   }
   return [
+    ['GET', /^\/api\/auto\/adoption$/, (_req,res)=>json(res,200,o.adoptionStatus())],
+    ['POST', /^\/api\/auto\/adoption\/rollback$/, (_req,res)=>json(res,200,o.rollbackAdoption())],
+    ['POST', /^\/api\/auto\/([\w-]+)\/source$/, async(req,res,_u,[id])=>{
+      const body=await readBody(req);const result=o.promoteSoftware(id,String(body.revision??''))
+      return result?json(res,200,result):missing(res)
+    }],
     ['DELETE', /^\/api\/(?:auto|optimizers)\/([\w-]+)$/, (_req,res,_u,[id]) => {
       const result=o.remove(id)
       return result ? json(res,200,result) : missing(res)

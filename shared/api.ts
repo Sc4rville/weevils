@@ -302,6 +302,7 @@ export interface WeevilReply {
 
 /** Une tâche du h24 (« optimiseur ») : proposée à partir de la mémoire et des projets, lancée quand la machine est libre. */
 export interface Optimizer {
+  software?: { id:string; repository:string; revision:string; status: 'ready'|'pending-running'; legacyWorkspace:string; excluded:string[] }
   id: string
   /** Ce que la tâche fait, très court (« muscler les tests de mon-app »). */
   title: string
@@ -366,6 +367,9 @@ export interface Optimizer {
 
 /** Un passage d'une automatisation : at = fin, startedAt = début. */
 export interface AutoRun {
+  softwareId?: string
+  sourceRevision?: string
+  configRevision?: string
   at: number
   startedAt: number
   ok: boolean

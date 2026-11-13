@@ -10,7 +10,7 @@ import { loadPayload, storePayload, removePayload } from '../outbox-payload'
 import { usePageChrome } from './shell'
 import { emptyBoard, worldPoint, zoomAt, viewportContext, validateBoard, type ThinkBoard, type ThinkCamera, type ThinkObject } from '../../shared/think'
 import './think.css'
-const draftKey=()=>{let id=sessionStorage.getItem('think-client');if(!id){id=crypto.randomUUID();sessionStorage.setItem('think-client',id)}return `think-draft-v1:${id}`}
+const draftKey=()=>{try{let id=sessionStorage.getItem('think-client');if(!id){id=crypto.randomUUID();sessionStorage.setItem('think-client',id)}return `think-draft-v1:${id}`}catch{return `think-draft-v1:${crypto.randomUUID()}`}}
 export function ThinkPage(){
  const [key]=useState(draftKey)
  const t=useT(M),{back,snap,push}=useApp()
@@ -35,9 +35,12 @@ export function ThinkPage(){
   live.current=next;dirty.current=true;setBoard(next);setStatus(t.saving)
   pendingLocal.current=pendingLocal.current.then(()=>storePayload(key,next)).then(()=>undefined).catch(()=>{setError(t.error)})
  }
- useEffect(()=>{alive.current=true;void Promise.all([api.think(),loadPayload(key)]).then(([saved,draft])=>{
+ useEffect(()=>{alive.current=true;void Promise.allSettled([api.think(),loadPayload(key)]).then(([remote,local])=>{
+  const saved=remote.status==='fulfilled'?remote.value:null,draft=local.status==='fulfilled'?local.value:null
   let next=saved
-  if(draft){try{validateBoard(draft);next=draft;dirty.current=true;if(draft.revision!==saved.revision){blocked.current=true;setError(t.conflict)}else setStatus(t.local)}catch{setError(t.badImport)}}
+  if(draft){try{validateBoard(draft);next=draft;dirty.current=true;if(saved&&draft.revision!==saved.revision){blocked.current=true;setError(t.conflict)}else setStatus(t.local)}catch{setError(t.badImport)}}
+  if(!next){setError(t.error);return}
+  if(!saved)setError(t.error)
   live.current=next;setBoard(next);setReady(true)
  }).catch(()=>setError(t.error))
  const timer=setInterval(async()=>{

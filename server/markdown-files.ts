@@ -1,3 +1,5 @@
+import type http from 'node:http'
+import type { Weevils } from './core.ts'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -49,4 +51,36 @@ export function saveMarkdown(root: string, rel: string, content: unknown, revisi
     fs.renameSync(temp, full)
   } finally { if (fs.existsSync(temp)) fs.unlinkSync(temp) }
   return readMarkdown(root, rel)
+}
+
+/** Shared by the authenticated server and isolated HTTP integration tests. */
+export function markdownFileRoutes(
+  w: Pick<Weevils, 'remoteById' | 'repoDir' | 'file'>,
+  json: (res: http.ServerResponse, status: number, body: unknown) => void,
+  readBody: (req: http.IncomingMessage) => Promise<any>,
+): [string, RegExp, (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void>][] {
+  return [
+  ['GET', /^\/api\/repos\/([^/]+)\/file$/, async (_req, res, url, [repo]) => {
+    const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
+    const p = url.searchParams.get('path') ?? ''
+    if (remote) return json(res, 200, await remote.call('GET', `/api/repos/${repo}/file?path=${encodeURIComponent(p)}`))
+    if (/\.(md|markdown)$/i.test(p)) {
+      try { return json(res, 200, readMarkdown(w.repoDir(decodeURIComponent(repo)), p)) } catch { /* Non-editable files retain their existing reader. */ }
+    }
+    json(res, 200, await w.file(decodeURIComponent(repo), p))
+  }],
+  ['PUT', /^\/api\/repos\/([^/]+)\/file$/, async (req, res, url, [repo]) => {
+    const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
+    const p = url.searchParams.get('path') ?? ''
+    const body = await readBody(req)
+    try {
+      const file = remote ? await remote.call('PUT', `/api/repos/${repo}/file?path=${encodeURIComponent(p)}`, body)
+        : saveMarkdown(w.repoDir(decodeURIComponent(repo)), p, body?.content, body?.revision)
+      json(res, 200, file)
+    } catch (e) {
+      if (e instanceof MarkdownFileError || (e instanceof Error && 'status' in e && e.status === 409)) return json(res, Number(e.status), { error: e.message })
+      throw e
+    }
+  }],
+  ]
 }

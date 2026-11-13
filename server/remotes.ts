@@ -67,7 +67,7 @@ export class Remote {
       signal: AbortSignal.timeout(15_000),
     })
     const data = (await res.json().catch(() => ({}))) as T & { error?: string }
-    if (!res.ok) throw new Error(data.error ?? tr(M).failed(this.id, res.status))
+    if (!res.ok) throw Object.assign(new Error(data.error ?? tr(M).failed(this.id, res.status)), { status: res.status })
     return data
   }
 }

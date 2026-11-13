@@ -449,3 +449,8 @@
   white-space: normal;
   overflow: visible;
 }
+
+.auto-delete { position: relative; z-index: 2; display: inline-flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.auto-delete button { font-size: .8rem; min-height: 44px; padding: 6px 10px; text-decoration: underline; text-underline-offset: 3px; }
+.auto-delete [role="alert"] { color: var(--alert); font-size: .8rem; }
+.auto-band > .auto-delete { display: flex; justify-content: flex-end; padding-inline: var(--pad, 12px); }

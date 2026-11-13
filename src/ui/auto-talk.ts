@@ -20,6 +20,8 @@ const FLASH_MS = 1700
 export const SETTLE_MS = 450
 
 export interface Talks {
+  deleted: ReadonlySet<string>
+  forget: (id: string) => void
   create: () => Promise<Optimizer>
   find: (id: string) => Optimizer | undefined
   /** The task whose field is open (kept for callers that fold one open at a time). */
@@ -58,6 +60,14 @@ function without<V>(m: ReadonlyMap<string, V>, k: string): Map<string, V> {
 
 export function useTalks(optimizers: Optimizer[] | undefined): Talks {
   const { refresh } = useApp()
+  const [deleted, setDeleted] = useState<ReadonlySet<string>>(new Set())
+  const forget = (id: string) => {
+    created.current.delete(id)
+    setLocal(m => without(m, id))
+    setDeleted(s => new Set(s).add(id))
+    dismissNotice(noticeKey('proposal', id))
+    dismissNotice(noticeKey('proposal-card', `o:${id}`))
+  }
   const [open, setOpenState] = useState<string | null>(null)
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
   const [asking, setAsking] = useState<ReadonlyMap<string, string>>(new Map())
@@ -175,7 +185,7 @@ export function useTalks(optimizers: Optimizer[] | undefined): Talks {
       .finally(refresh)
     return true
   }
-  return { create, find, open, setOpen, busy, asking, notes, flash: flashes, reply, item, send, landedAt: (id) => landed.current.get(id) ?? -Infinity, openedAt: () => opened.current, stale, isStale, decided, answer }
+  return { deleted, forget, create, find, open, setOpen, busy, asking, notes, flash: flashes, reply, item, send, landedAt: (id) => landed.current.get(id) ?? -Infinity, openedAt: () => opened.current, stale, isStale, decided, answer }
 }
 
 /** One negotiation state for the drawer and the pages (App wraps both). */

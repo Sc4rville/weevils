@@ -13,6 +13,7 @@ import { useApp } from './app-context'
 import { Composer, Line, Messages, Prose, Working } from './bits'
 import { at, autoList, longAt, fromActivity, fromOptimizer, projectOfRepo, short, slotOf, triggerText, typicalMs, type AutoItem } from './auto-model'
 import { TalkCtx, useTalk } from './auto-talk'
+import { AutoDeleteAction } from './auto-delete'
 import { durLong, plain } from './format'
 import { reveal, useFollow } from './follow'
 import { Fill, chg } from './h24'
@@ -33,6 +34,7 @@ const MAX_SHOTS = 3
 function useAutoItem(id: string): { item: AutoItem | null; opt: Optimizer | null } {
   const { snap, now } = useApp()
   const k = useTalk()
+  if (k.deleted.has(id)) return { item: null, opt: null }
   const raw = snap.optimizers?.find((o) => o.id === id) ?? k.find(id)
   if (raw) {
     const o = k.item(raw)
@@ -245,6 +247,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
         ) : undefined
       }
     >
+      {opt && <div className="in"><AutoDeleteAction id={x.id} title={x.title} onDeleted={back} /></div>}
       {proposed && opt && !opt.draft && (
         <Notice closable={false} eventId={noticeKey("proposal", opt.id)} className="band invert auto-decide">
           <Line

@@ -6,6 +6,9 @@ export default defineMessages({
   fr: {
     title: 'automated',
     create: 'créer une automatisation',
+    deleteAutomation: 'Supprimer l’automatisation',
+    deleteConfirm: (title: string) => `Supprimer « ${title} » ? Les futurs déclenchements seront désactivés. Un travail déjà lancé continuera jusqu’à sa fin. Le dépôt et les fichiers seront conservés.`,
+    deleteFailed: 'Suppression impossible. Réessaie ; l’automatisation est conservée.',
     creating: 'ouverture de la conversation',
     discard: 'abandonner ce brouillon',
     replySuggestions: 'idées pour répondre',
@@ -94,6 +97,9 @@ export default defineMessages({
     screenshot: (path: string) => `capture ${path}`,
   },
   en: {
+    deleteAutomation: 'Delete automation',
+    deleteConfirm: (title: string) => `Delete “${title}”? Future triggers will be disabled. Any work already running will finish. The repository and files will be kept.`,
+    deleteFailed: 'Could not delete. Try again; the automation has been kept.',
     title: 'automated',
     create: 'create an automation',
     creating: 'opening the conversation',

@@ -8,6 +8,7 @@ import { useT } from '../i18n'
 import M from '../i18n/h24'
 import { at, autoList, autoRank, bandColors, fromOptimizer, isFinished, projectOfRepo, short, triggerText, type AutoItem } from './auto-model'
 import { TalkCtx, useTalk } from './auto-talk'
+import { AutoDeleteAction } from './auto-delete'
 import './h24.css'
 import { flash, when } from './follow'
 
@@ -118,7 +119,7 @@ export function H24Rail() {
 
   // A task rewritten a moment ago: its new version, before the snapshot follows. One given ✓ here or on its page: an
   // automation already (it slides into its place), one given ×: gone (it folds away).
-  const opts = (snap.optimizers ?? []).map(k.item)
+  const opts = (snap.optimizers ?? []).filter(o => !k.deleted.has(o.id)).map(k.item)
   const drafts = opts.filter((o) => o.state === 'proposed' && o.draft && !k.decided.has(o.id))
   const ready = opts.filter((o) => o.state === 'proposed' && !o.draft && !k.decided.has(o.id))
   const proposals = [...ready.filter((o) => o.userCreated), ...ready.filter((o) => !o.userCreated).slice(0, 3)]
@@ -397,6 +398,7 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
     return (
       <motion.section layout="position" className="band auto-band auto-prop" style={color(slot)} data-h24={o.id} {...drop}>
         <button className="auto-hit" onClick={open} aria-label={t.taskLabel(o.title, t.state_proposed, [t[`kind_${o.kind}`], o.why].filter(Boolean).join(', '))} />
+        <AutoDeleteAction id={o.id} title={o.title} />
         <div className="in">
           <span className={chg(f.includes('kind'), 'st')} aria-hidden>
             <Glyph name={KIND_ICON[o.kind]} />
@@ -433,6 +435,7 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
   return (
     <motion.section layout="position" className={`band auto-band${x.state === 'paused' ? ' paused' : ''}`} style={color(slot)} data-h24={x.id} {...drop}>
       <Fill x={x} />
+      {x.src === 'optimizer' && <AutoDeleteAction id={x.id} title={x.title} />}
       <button className="auto-hit" onClick={open} aria-label={t.taskLabel(x.title, t[`state_${x.state}`], [meta, right].filter(Boolean).join(', '))} />
       <div className="in" aria-hidden>
         <span className="st">

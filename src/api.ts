@@ -123,6 +123,7 @@ export const api = {
   foryouAct: (id: string, action: string, card?: string, eventId?: string) => send<{ ok: true }>(`/api/foryou/${enc(id)}/act${inLang()}`, { action, card, eventId }),
   foryouReply: (id: string, text: string) => send<{ ok: true }>(`/api/foryou/${enc(id)}/reply${inLang()}`, { text }),
   foryouMore: (id: string) => call<{ text: string }>('POST', `/api/foryou/${enc(id)}/more${inLang()}`, {}),
+  deleteAutomation: (id: string) => call<{ ok: true; running: boolean }>('DELETE', `/api/auto/${enc(id)}`),
   createOptimizer: () => call<{ item: Optimizer }>('POST', '/api/optimizers', {}),
   /** rev : la version à l'écran (le serveur refuse, 409, si la tâche a été réécrite depuis). */
   acceptOptimizer: (id: string, rev?: number) => call<{ ok: true }>('POST', `/api/optimizers/${enc(id)}/accept`, rev === undefined ? {} : { rev }),

@@ -22,6 +22,7 @@ const ApiError = vi.hoisted(
 vi.mock('../api', () => ({
   ApiError,
   api: {
+    deleteAutomation: async (id: string) => { calls.push(`delete ${id}`); return {ok:true,running:false} },
     createOptimizer: async () => {
       calls.push('create')
       return { item: { id: 'new-one', title: 'new automation', state: 'proposed', draft: true, talk: [] } }
@@ -129,6 +130,21 @@ describe('auto drawer', () => {
   const timer: H24Activity = { id: 'timer:wv-sync.timer', title: 'sync', kind: 'timer', projectId: null, schedule: '', enabled: true, runState: 'waiting', runStartedAt: null, lastEvent: '', canToggle: true, nextRunAt: NOW + 14 * 60_000, everyMs: 6 * 3600_000 }
   const head = () => host.querySelector('.h24-head')!
   const names = () => [...host.querySelectorAll('.auto-band .auto-name')].map((n) => n.textContent)
+
+  it('deletes only the selected automation, keeps other rows and rejects stale snapshot resurrection', async () => {
+    window.confirm = vi.fn(() => true)
+    const data = snap([task({ id: 'a', title: 'First' }), task({ id: 'b', title: 'Second' })], [timer])
+    render(data)
+    expect(host.querySelector('[data-h24="timer:wv-sync.timer"] .auto-delete')).toBeNull()
+    await click(host.querySelector('[data-h24="a"] .auto-delete button'))
+    await flush()
+    expect(calls).toEqual(['delete a'])
+    expect(pushed).toEqual([])
+    expect(names()).not.toContain('First')
+    expect(names()).toContain('Second')
+    render(data)
+    expect(names()).not.toContain('First')
+  })
 
   it('collapsed automated keeps title/activity only, with language in settings and creation inside the hidden body', async () => {
     render(snap([opt({ id: 'draft', draft: true, title: 'new automation' })]), false)

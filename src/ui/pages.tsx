@@ -1,3 +1,4 @@
+import { sourceAccessIssue, sourceForRepo, sourceForSession } from './source-access'
 import { ThinkGate, LostFeaturesPage } from './lost-features'
 import { ModelControlsPage } from './model-controls'
 import { interceptModelControl } from '../model-controls'
@@ -228,11 +229,13 @@ function SessionPage({ id }: { id: string }) {
     )
 
   const project = snap.projects.find((p) => p.id === s.projectId)
+  const sourceIssue = sourceAccessIssue(sourceForSession(snap.projects, s))
   const st = status[s.status]
   const previewUrl = preview.url ?? guessPreviewUrl(messages, s, project, snap.config)
 
   const send = async (text: string, files: Attachment[] = []) => {
     if(interceptModelControl(id,text,files.length))return
+    if (sourceIssue) throw new Error(sourceIssue)
     setErr(null)
     const shown = files.length ? `${text ? `${text} ` : ''}(${t.photos(files.length)})` : text
     const tmp: Pending = { id: `pending-${Date.now()}`, role: 'user', text: shown, at: Date.now(), typed: text, after: detail?.messages.at(-1)?.id, known: (detail?.messages ?? []).filter((m) => m.role === 'user' || m.role === 'orchestrator').map((m) => m.id) }
@@ -292,13 +295,14 @@ function SessionPage({ id }: { id: string }) {
       foot={
         <>
           <FootError text={err} />
+          {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
           <Composer
-            placeholder={s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly}
+            placeholder={sourceIssue ?? (s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly)}
             label={t.composerLabel(s.title)}
             onSend={send}
             onAttach={send}
             voice
-            disabled={!s.controllable}
+            disabled={!s.controllable || !!sourceIssue}
           />
         </>
       }
@@ -508,7 +512,9 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       .catch((e) => setErr((e as Error).message))
   }, [any, machine])
   if (!project) return <Missing />
+  const sourceIssue = sourceAccessIssue(sourceForRepo(snap.projects, repo, any ? machine : repo ? project.where[repo] : undefined))
   const create = async (text: string) => {
+    if (sourceIssue) { setErr(sourceIssue); throw new Error(sourceIssue) }
     if (created.current) return
     if (any && !repo) {
       setErr(t.pickRepoFirst)
@@ -537,10 +543,11 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       foot={
         <>
           <FootError text={err} />
-          <Composer placeholder={t.firstMessage} label={t.firstMessageLabel} onSend={create} />
+          <Composer placeholder={sourceIssue ?? t.firstMessage} label={t.firstMessageLabel} onSend={create} disabled={!!sourceIssue} />
         </>
       }
     >
+      {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
       <div className="in label">{t.tool}</div>
       {(['claude', 'codex'] as Tool[]).map((x) => (
         <Line key={x} className={tool === x ? 'invert' : ''} ch={tool === x ? '>' : ' '} go={null} onClick={() => setTool(x)} label={`${x}${tool === x ? t.chosen : ''}`}>

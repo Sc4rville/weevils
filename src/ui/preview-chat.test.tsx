@@ -104,3 +104,13 @@ it('refuses a legacy null-target payload on retry without silently moving it to 
  expect(host.querySelector<HTMLInputElement>('.composer input')!.value).toBe('Old draft')
  expect(mocks.payloads.size).toBe(1)
 })
+
+it('retains the draft without freezing or sending when the resolved target is read-only', async () => {
+ mocks.previewTarget.mockResolvedValue({ session: { ...session, sourceAccess: { repo: 'source', machineId: 'm', canExecute: false, reason: 'not-writable' } } })
+ await render(); await type('Keep this feedback'); await submit()
+ expect(host.textContent).toContain('Read-only source')
+ expect(host.querySelector<HTMLInputElement>('.composer input')!.value).toBe('Keep this feedback')
+ expect(mocks.store).not.toHaveBeenCalled()
+ expect(mocks.attach).not.toHaveBeenCalled()
+ expect(mocks.mainAttach).not.toHaveBeenCalled()
+})

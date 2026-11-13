@@ -179,3 +179,20 @@ describe('session coupée en plein travail', () => {
     expect(host.querySelector('.cut-band')).toBeNull()
   })
 })
+
+it('keeps read-only session navigation and history accessible while blocking resume and message entry', async () => {
+ const restricted = session({ sourceAccess: { repo: 'weevils', machineId: 'vps', canExecute: false, reason: 'not-writable' } })
+ render(<SessionRow session={restricted} />, [restricted])
+ const resume = host.querySelector<HTMLButtonElement>('button.resume')!
+ expect(resume.disabled).toBe(true)
+ await act(async () => resume.click())
+ expect(calls.resume).toEqual([])
+ render(<PageView page={{ kind: 'session', id: 's1' }} />, [restricted])
+ await flush()
+ expect(host.textContent).toContain('refonte')
+ expect(host.querySelector<HTMLInputElement>('.composer input')!.disabled).toBe(true)
+ expect(calls.resume).toEqual([])
+ render(<PageView page={{ kind: 'session', id: 's1' }} />, [{ ...restricted, sourceAccess: { ...restricted.sourceAccess!, canExecute: true, reason: 'owned-writable' } }])
+ await flush()
+ expect(host.querySelector<HTMLInputElement>('.composer input')!.disabled).toBe(false)
+})

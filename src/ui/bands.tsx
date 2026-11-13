@@ -1,3 +1,4 @@
+import { sourceAccessIssue } from './source-access'
 import { selfProject, improvingProject } from './recursive-identity'
 import { LostFeaturesLine } from './lost-features'
 import { interceptModelControl, openModelControls } from '../model-controls'
@@ -580,7 +581,7 @@ export function ProjectBand({ project }: { project: Project }) {
               </button>
             )}
             {project.kind === 'repo' || project.repos.length > 0 ? (
-              <button className="ch" aria-label={t.newSessionIn(project.name)} onClick={(e) => {
+              <button className="ch" disabled={!!sourceAccessIssue(project) && project.repos.length <= 1} title={sourceAccessIssue(project) ?? undefined} aria-label={sourceAccessIssue(project) ?? t.newSessionIn(project.name)} onClick={(e) => {
                 if (snap.setup?.claude === false && tapHint('newSession', e.currentTarget, 'newSessionOff')) return void askSetup('claude')
                 if (!tapHint('newSession', e.currentTarget)) push({ kind: 'new', projectId: project.id })
               }}>
@@ -592,6 +593,7 @@ export function ProjectBand({ project }: { project: Project }) {
       </motion.div>
 
       <Collapse open={shown !== 'mini'} transition={tx}>
+        {sourceAccessIssue(project) && <div className="in meta" role="status">{sourceAccessIssue(project)}</div>}
         <AnimatePresence initial={false}>
           {active.map((s) => (
             <RowSlot key={s.id}>

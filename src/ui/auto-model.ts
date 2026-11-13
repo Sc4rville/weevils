@@ -1,6 +1,7 @@
+import { sourceAccessIssue } from './source-access'
 // The « auto » drawer's content: one flat list of automations (everything that runs without asking), the words that
 // say when each one fires, and the colours of its bands. Pure: built from the snapshot, tested in auto-model.test.ts.
-import type { AutoRun, H24Activity, Optimizer, Snapshot } from '../../shared/api.ts'
+import type { AutoRun, H24Activity, Optimizer, Snapshot, SourceAccess, WorkstreamIdentity } from '../../shared/api.ts'
 import { locale, type Lang } from '../../shared/i18n.ts'
 import { getLang, tr } from '../i18n'
 import F from '../i18n/format'
@@ -29,6 +30,8 @@ export interface Span {
 }
 
 export interface AutoItem {
+  sourceAccess?: SourceAccess
+  workstream?: WorkstreamIdentity
   id: string
   src: AutoSrc
   title: string
@@ -130,8 +133,9 @@ export function optimizerTrigger(o: Pick<Optimizer, 'every' | 'window' | 'notBef
 /** Only an upcoming, explicitly dated one-off may expose a next execution. */
 export function fromOptimizer(o: Optimizer, projectId: string | null = null, now = Date.now()): AutoItem | null {
   if (o.state === 'refused') return null
+  const accessBlocked = !!sourceAccessIssue(o)
   const paused = o.paused || o.waiting === 'paused'
-  const fixedAt = o.waiting !== 'later' && !o.every && !o.window && o.notBefore && o.notBefore > now && (!o.startAt || o.startAt === o.notBefore) && (!o.retryAt || o.retryAt <= now) ? o.notBefore : null
+  const fixedAt = !accessBlocked && o.waiting !== 'later' && !o.every && !o.window && o.notBefore && o.notBefore > now && (!o.startAt || o.startAt === o.notBefore) && (!o.retryAt || o.retryAt <= now) ? o.notBefore : null
   const state: AutoState =
     o.state === 'queued'
       ? paused
@@ -145,6 +149,8 @@ export function fromOptimizer(o: Optimizer, projectId: string | null = null, now
   const runs = newestFirst(o.runs)
   return withProgress({
     id: o.id,
+    sourceAccess: o.sourceAccess,
+    workstream: o.workstream,
     src: 'optimizer',
     title: o.title,
     state,

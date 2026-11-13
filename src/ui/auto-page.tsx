@@ -1,3 +1,4 @@
+import { sourceAccessIssue } from './source-access'
 import { noticeKey } from '../../shared/notices.ts'
 import { Notice } from './notice'
 // The page of one automation: a band that fills until it fires (and through its run), the same six facts for every
@@ -145,7 +146,9 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
   useEffect(() => {
     if (x.state === 'running' || x.state === 'paused') setRunPending(false)
   }, [x.state])
+  const sourceIssue = sourceAccessIssue(opt)
   const runNow = () => {
+    if (sourceIssue) { setErr(sourceIssue); return }
     setRunPending(true)
     void api.runOptimizer(x.id).then(refresh).catch((e) => {
       setRunPending(false)
@@ -157,13 +160,13 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
   if (opt && !proposed && !x.state.match(/^(done|failed)$/)) {
     const paused = x.state === 'paused' || !!opt.paused
     actions.push(
-      <button key="pause" className="ch" onClick={() => act(api.pauseOptimizer(x.id, !paused))} aria-label={paused ? t.resume(x.title) : t.pause(x.title)}>
+      <button key="pause" className="ch" disabled={paused && !!sourceIssue} title={paused ? sourceIssue ?? undefined : undefined} onClick={() => act(api.pauseOptimizer(x.id, !paused))} aria-label={paused ? t.resume(x.title) : t.pause(x.title)}>
         <Icon name={paused ? 'play' : 'pause'} />
       </button>,
     )
     if (x.state !== 'running' && !runPending && !opt.runRequested)
       actions.push(
-        <button key="run" className="ch" onClick={runNow} aria-label={t.runNow(x.title)}>
+        <button key="run" className="ch" disabled={!!sourceIssue || runPending} title={sourceIssue ?? undefined} onClick={runNow} aria-label={t.runNow(x.title)}>
           <Icon name="arrow" dir="right" />
         </button>,
       )
@@ -244,13 +247,14 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
         ) : undefined
       }
     >
+      {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
       {opt && <div className="in auto-delete-row"><AutoDeleteAction id={x.id} title={x.title} onDeleted={back} /></div>}
       {proposed && opt && !opt.draft && (
         <Notice closable={false} eventId={noticeKey("proposal", opt.id)} className="band invert auto-decide">
           <Line
             ch="✓"
             go={null}
-            disabled={busy || k.isStale(opt)}
+            disabled={busy || k.isStale(opt) || !!sourceIssue}
             label={busy ? t.acceptBusy(x.title) : t.accept(x.title)}
             onClick={() => {
               k.answer(opt, true, back)

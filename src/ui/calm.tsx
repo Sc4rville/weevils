@@ -1,3 +1,4 @@
+import { sourceAccessIssue, sourceForSession } from './source-access'
 import { interceptModelControl } from '../model-controls'
 import { dismissNotice } from './notice-store'
 import { noticeKey, sessionNoticeKey } from '../../shared/notices.ts'
@@ -105,8 +106,10 @@ export function CalmConv({ id }: { id: string }) {
   const follow = useFollow(body, messages.length > 0, 80, `${messages.length}:${last?.id}:${last?.text.length}:${working}`)
   const [split, unsplit] = useSplit(!!preview.open)
 
+  const sourceIssue = main ? null : sourceAccessIssue(sourceForSession(snap.projects, s))
   const send = async (text: string, files: Attachment[] = []) => {
     if(interceptModelControl(main?'__main':id,text,files.length))return
+    if (sourceIssue) throw new Error(sourceIssue)
     setErr(null)
     follow.toEnd()
     try {
@@ -180,7 +183,8 @@ export function CalmConv({ id }: { id: string }) {
             <FollowDown show={follow.behind} urgent={s?.status === 'needs_user'} body={body} toEnd={follow.toEnd} />
           </div>
           <div className="page-foot">
-            <Composer placeholder={t.writeTo(author)} label={t.messageTo(title)} onSend={send} onAttach={send} voice anyFile={main} disabled={!main && s ? !s.controllable : false} />
+            {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
+            <Composer placeholder={sourceIssue ?? t.writeTo(author)} label={t.messageTo(title)} onSend={send} onAttach={send} voice anyFile={main} disabled={!!sourceIssue || (!main && s ? !s.controllable : false)} />
           </div>
         </div>
         <SidePane

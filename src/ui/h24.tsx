@@ -1,3 +1,4 @@
+import { sourceAccessIssue } from './source-access'
 import { AnimatePresence, animate, motion, useDragControls, useMotionValue, useTransform, type MotionValue } from 'motion/react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Optimizer } from '../../shared/api.ts'
@@ -379,7 +380,7 @@ export function useMetaLine(x: AutoItem): string {
   const { snap, now } = useApp()
   const project = x.projectId ? (snap.projects.find((p) => p.id === x.projectId)?.name ?? x.projectId) : x.repo
   const parts = [triggerText(x.trigger, now), project]
-  if ((x.state === 'waiting' || x.state === 'queued') && x.waiting) parts.push(autoCondition(x))
+  if ((x.state === 'waiting' || x.state === 'queued') && (x.waiting || sourceAccessIssue(x))) parts.push(autoCondition(x))
   else if (x.state === 'queued' && x.place) parts.push(`#${x.place}`)
   if (x.lastRun && !x.lastRun.ok && x.state !== 'running') parts.push(t.failedAgo(short(now - x.lastRun.at, true)))
   else if (x.state === 'done' && x.endedAt) parts.push(t.endedAgo(short(now - x.endedAt, true)))
@@ -415,10 +416,10 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
             </span>
           )}
           <span className={chg(f.some((c) => c === 'every' || c === 'window' || c === 'notBefore' || c === 'repo'), 'meta sub terms')} aria-hidden>
-            {[triggerText(x.trigger, now), project].filter(Boolean).join(' · ')}
+            {[triggerText(x.trigger, now), project, sourceAccessIssue(o)].filter(Boolean).join(' · ')}
           </span>
           <span className="chars">
-            <button className="ch" onClick={() => k.answer(o, true)} disabled={busy || k.isStale(o)} aria-label={busy ? t.acceptBusy(o.title) : t.accept(o.title)}>
+            <button className="ch" onClick={() => k.answer(o, true)} disabled={busy || k.isStale(o) || !!sourceAccessIssue(o)} aria-label={busy ? t.acceptBusy(o.title) : t.accept(o.title)}>
               <Icon name="check" />
             </button>
             <button className="ch" onClick={() => k.answer(o, false)} disabled={busy} aria-label={t.refuse(o.title)}>

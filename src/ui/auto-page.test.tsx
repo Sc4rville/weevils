@@ -422,3 +422,19 @@ describe('draft navigation preserves the original automation', () => {
     })
   }
 })
+
+it('shows source restrictions without hiding the proposal or discussion, and enables ordinary approval when rights refresh', async () => {
+ const p = opt({ id: 'access', state: 'proposed', title: 'Improve source', rev: 4, sourceAccess: { repo: 'source', machineId: 'm', canExecute: false, reason: 'not-writable' }, talk: [{ who: 'user', text: 'Keep this discussion', at: NOW }] })
+ render(snap([p]), <AutoPage id="access" />)
+ const approve = label(/^run "Improve source"/) as HTMLButtonElement
+ expect(approve.disabled).toBe(true)
+ await click(approve)
+ expect(calls).toEqual([])
+ expect(host.textContent).toContain('Read-only source')
+ expect(host.textContent).toContain('Keep this discussion')
+ expect(host.querySelector<HTMLInputElement>('.composer input')!.disabled).toBe(false)
+ render(snap([{ ...p, sourceAccess: { ...p.sourceAccess!, canExecute: true, reason: 'owned-writable' } }]), <AutoPage id="access" />)
+ expect((label(/^run "Improve source"/) as HTMLButtonElement).disabled).toBe(false)
+ await click(label(/^run "Improve source"/)); await flush()
+ expect(calls).toEqual(['accept access rev 4'])
+})

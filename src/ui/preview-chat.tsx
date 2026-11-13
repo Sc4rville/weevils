@@ -1,3 +1,4 @@
+import { sourceAccessIssue, sourceForRepo, sourceForSession } from './source-access'
 import { useEffect, useRef, useState } from 'react'
 import type { Message } from '../../shared/api'
 import { api } from '../api'
@@ -60,7 +61,10 @@ export function PreviewChat({ viewerId, projectId, sessionId, repo, frame }: {
   useEffect(() => {
     if (following.current && transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight
   }, [shown.at(-1)?.id, shown.at(-1)?.text])
+  const knownSession = snap.sessions.find(s => s.id === sessionId)
+  const sourceIssue = sourceAccessIssue(knownSession ? sourceForSession(snap.projects, knownSession) : sourceForRepo(snap.projects, repo, snap.projects.find(p => p.id === projectId)?.where[repo ?? '']))
   const send = async (text: string) => {
+    if (sourceIssue) throw new Error(sourceIssue)
     setError('')
     let frozen = saved.current
     if (frozen && frozen.draft !== text && !feedbackDelivered(frozen)) throw new Error(t.retryOriginal)
@@ -69,6 +73,8 @@ export function PreviewChat({ viewerId, projectId, sessionId, repo, frame }: {
       const capture = capturePreview(frame.current, { unavailable: t.captureUnavailable, unreadable: t.captureUnreadable, changed: t.captureChanged, failed: t.captureFailed })
       const [image, result] = await Promise.all([capture, api.previewTarget({ projectId: projectId ?? '', sessionId, repo })])
       if (!result.session) throw new Error(t.noTarget)
+      const targetIssue = sourceAccessIssue(result.session)
+      if (targetIssue) throw new Error(targetIssue)
       const target = { sessionId: result.session.id, title: result.session.title }
       frozen = await freezeFeedback(viewerId, text, target, image, t.pageContext)
       saved.current = frozen
@@ -85,6 +91,7 @@ export function PreviewChat({ viewerId, projectId, sessionId, repo, frame }: {
     </div>}
     {watch && <OutboxStatus scope={watch.target.sessionId ? `/api/sessions/${encodeURIComponent(watch.target.sessionId)}/` : '/api/main'} />}
     {error && <div className="in meta" role="alert">{error}</div>}
-    <Composer draftKey={`preview:${sessionId ?? viewerId}`} placeholder={t.message} label={t.message} onSend={send} disabled={!ready} sayErrors />
+    {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
+    <Composer draftKey={`preview:${sessionId ?? viewerId}`} placeholder={t.message} label={t.message} onSend={send} disabled={!ready || !!sourceIssue} sayErrors />
   </section>
 }

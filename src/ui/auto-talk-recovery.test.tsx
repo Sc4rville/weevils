@@ -101,3 +101,15 @@ it('restores the unchanged proposal and exposes the error when approval fails',a
  expect(api.acceptOptimizer).toHaveBeenCalledTimes(1)
  expect(api.refuseOptimizer).not.toHaveBeenCalled()
 })
+
+it('blocks approval from fresh source policy even with an older visible proposal, preserving discussion and allowing refusal', async () => {
+ const old = item({ rev: 3 })
+ const restricted = item({ rev: 3, sourceAccess: { repo: 'source', machineId: 'm', canExecute: false, reason: 'not-owned' } })
+ await render(restricted)
+ await act(async () => { expect(current.answer(old, true)).toBe(false) })
+ expect(api.acceptOptimizer).not.toHaveBeenCalled()
+ expect(current.decided.size).toBe(0)
+ expect(host.textContent).toContain('Preserve this exchange')
+ await act(async () => { expect(current.answer(restricted, false)).toBe(true) })
+ expect(api.refuseOptimizer).toHaveBeenCalledOnce()
+})

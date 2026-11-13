@@ -233,3 +233,12 @@ it('recurring notBefore written after a run is eligibility, not a chosen clock t
  const timer=fromActivity(act({kind:'timer',runState:'waiting',nextRunAt:NOW+DAY,everyMs:DAY}))
  expect(timer.nextAt).toBe(NOW+DAY)
 })
+
+it('keeps source-blocked Auto visible without an upcoming time and preserves a real active run', () => {
+ const sourceAccess = { repo: 'source', machineId: 'm', canExecute: false, reason: 'not-writable' as const }
+ const queued = fromOptimizer(opt({ sourceAccess, waiting: 'time', startAt: NOW + H, notBefore: NOW + H }), null, NOW)!
+ expect(queued.nextAt).toBeNull()
+ expect(queued.state).not.toBe('scheduled')
+ expect(queued.sourceAccess).toEqual(sourceAccess)
+ expect(fromOptimizer(opt({ sourceAccess, state: 'running', startedAt: NOW - MIN }))!.state).toBe('running')
+})

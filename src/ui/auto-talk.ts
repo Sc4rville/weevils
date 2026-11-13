@@ -1,3 +1,4 @@
+import { sourceAccessIssue } from './source-access'
 // Talking a task over (the negotiation), shared by the drawer and the automation page: the question in flight, the
 // reply, the task as rewritten before the snapshot follows, what changed (it flashes), and ✓ / × answered once for both.
 import { createContext, createElement, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
@@ -175,6 +176,8 @@ export function useTalks(optimizers: Optimizer[] | undefined): Talks {
     return !!s && (s.o.rev ?? 0) === (o.rev ?? 0) && Date.now() - s.at < STALE_MS
   }
   const answer = (o: Optimizer, yes: boolean, onSuccess?: () => void) => {
+    const accessIssue = sourceAccessIssue(optimizers?.find(item => item.id === o.id) ?? o)
+    if (yes && accessIssue) { setNotes(n => new Map(n).set(o.id, accessIssue)); return false }
     // Just rewritten (the card changed under the finger), or being rewritten: the tap was not meant for ✓ or ×.
     if (o.draft || performance.now() - (landed.current.get(o.id) ?? -Infinity) < SETTLE_MS || inflight.current.has(o.id) || (yes && isStale(o))) return false
     inflight.current.add(o.id)

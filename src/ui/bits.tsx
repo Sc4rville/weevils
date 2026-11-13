@@ -1,3 +1,4 @@
+import { sourceAccessIssue, sourceForSession } from './source-access'
 import ToolM from '../i18n/codex-tools'
 import { interceptModelControl } from '../model-controls'
 import { withoutMachinePrefix } from '../../shared/machine-prefix.ts'
@@ -203,11 +204,13 @@ export function AskButton({ session }: { session: Session }) {
 
 /** Relance une session coupée (--resume et un message qui la renvoie à son travail), puis ouvre son fil. */
 export function ResumeButton({ session, onError, stay }: { session: Session; onError?: (e: string) => void; stay?: boolean }) {
-  const { push } = useApp()
+  const { push, snap } = useApp()
+  const sourceIssue = sourceAccessIssue(sourceForSession(snap.projects, session))
   const t = useT(M)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const go = async () => {
+    if (sourceIssue || busy) return
     setBusy(true)
     setErr(null)
     onError?.('')
@@ -224,7 +227,7 @@ export function ResumeButton({ session, onError, stay }: { session: Session; onE
     }
   }
   return (
-    <button className="resume" onClick={() => void go()} disabled={busy} aria-label={err ?? t.resumeAria(session.title)} title={err ?? undefined}>
+    <button className="resume" onClick={() => void go()} disabled={busy || !!sourceIssue} aria-label={t.resumeAria(session.title)} title={err ?? sourceIssue ?? undefined}>
       {busy ? <span className="spin"><Icon name="star" /></span> : err ? <G c="!" /> : null} {t.resume}
     </button>
   )

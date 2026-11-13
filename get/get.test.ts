@@ -27,6 +27,9 @@ const hetzner = http.createServer((req, res) => {
         { name: 'cax11', cores: 2, memory: 4, disk: 40, architecture: 'arm', prices: [price('nbg1', '3.50')] },
         { name: 'cpx22', cores: 2, memory: 4, disk: 80, architecture: 'x86', prices: [price('nbg1', '6.00'), price('hel1', '5.50')] },
         { name: 'cx23', cores: 2, memory: 4, disk: 40, architecture: 'x86', prices: [price('nbg1', '4.15'), price('fsn1', '4.15'), price('ash', '3.90')] },
+        { name: 'cx33', cores: 4, memory: 8, disk: 80, architecture: 'x86', prices: [price('nbg1', '6.59'), price('fsn1', '6.59')] },
+        { name: 'cpx32', cores: 4, memory: 8, disk: 160, architecture: 'x86', prices: [price('nbg1', '12.00')] },
+        { name: 'cx43', cores: 8, memory: 16, disk: 160, architecture: 'x86', prices: [price('nbg1', '11.99'), price('hel1', '11.99')] },
       ],
     })
   }
@@ -44,7 +47,32 @@ const hetzner = http.createServer((req, res) => {
   reply(404, { error: { code: 'not_found' } })
 })
 
+// ---- a Hostinger API double (paths and shapes from developers.hostinger.com, OpenAPI 3.0.0)
+const hsCalls: { method: string; url: string; body: any }[] = []
+let hsPayment = true
+const hostinger = http.createServer((req, res) => {
+  const reply = (status: number, body: unknown) => (res.writeHead(status, { 'content-type': 'application/json' }), res.end(JSON.stringify(body)))
+  if (req.headers.authorization !== 'Bearer 123|hostingertoken000000000') return reply(401, { message: 'Unauthenticated.', correlation_id: 'x' })
+  let body = ''
+  req.on('data', (c) => (body += c))
+  req.on('end', () => {
+    hsCalls.push({ method: req.method!, url: req.url!, body: body ? JSON.parse(body) : null })
+    const plan = (n: number, monthly: number, first: number) => ({ id: `hostingercom-vps-kvm${n}`, name: `KVM ${n}`, category: 'VPS', metadata: {}, prices: [
+      { id: `hostingercom-vps-kvm${n}-eur-24m`, name: `KVM ${n} (billed every 24 months)`, currency: 'EUR', price: monthly * 1500, first_period_price: first * 1000, period: 24, period_unit: 'month' },
+      { id: `hostingercom-vps-kvm${n}-eur-1m`, name: `KVM ${n} (billed every month)`, currency: 'EUR', price: monthly * 100, first_period_price: first * 100, period: 1, period_unit: 'month' },
+    ] })
+    if (req.method === 'GET' && req.url === '/api/billing/v1/catalog?category=VPS') return reply(200, [plan(1, 10.99, 6.49), plan(2, 15.99, 8.99), plan(4, 29.99, 13.99), plan(8, 59.99, 25.99)])
+    if (req.method === 'GET' && req.url === '/api/billing/v1/payment-methods') return reply(200, hsPayment ? [{ id: 6523, name: 'Credit Card', identifier: '1234*****6464', payment_method: 'card', is_default: true, is_expired: false, is_suspended: false }] : [])
+    if (req.method === 'GET' && req.url === '/api/vps/v1/templates') return reply(200, [{ id: 1, name: 'Ubuntu 22.04' }, { id: 1077, name: 'Ubuntu 24.04 with Docker' }, { id: 1002, name: 'Ubuntu 24.04' }])
+    if (req.method === 'GET' && req.url === '/api/vps/v1/data-centers') return reply(200, [{ id: 29, name: 'phx', location: 'us', city: 'Phoenix', continent: 'North America' }, { id: 17, name: 'fr', location: 'fr', city: 'Paris', continent: 'Europe' }])
+    if (req.method === 'POST' && req.url === '/api/vps/v1/post-install-scripts') return reply(201, { id: 325, name: JSON.parse(body).name, content: JSON.parse(body).content })
+    if (req.method === 'POST' && req.url === '/api/vps/v1/virtual-machines') return reply(200, { order: { id: 1, status: 'completed' }, virtual_machine: { id: 17923, hostname: 'srv12345.hstgr.cloud', state: 'initial', ipv4: [{ id: 1, address: '203.0.113.77' }] } })
+    reply(404, { message: 'Not found' })
+  })
+})
+
 let hzPort = 0
+let hsPort = 0
 let base = ''
 let svc: http.Server
 let gated: http.Server
@@ -53,7 +81,8 @@ const sshCalls: Record<string, unknown>[] = []
 
 beforeAll(async () => {
   hzPort = await listen(hetzner)
-  const cfg = config({ GET_BASE: 'https://get.example', GET_HETZNER_API: `http://127.0.0.1:${hzPort}`, GET_TRUST_PROXY: '0', GET_ALLOW_TARGETS: '172.30.99.10', GET_TARGET_URLS: '172.30.99.10=https://essai.example' })
+  hsPort = await listen(hostinger)
+  const cfg = config({ GET_BASE: 'https://get.example', GET_HETZNER_API: `http://127.0.0.1:${hzPort}`, GET_HOSTINGER_API: `http://127.0.0.1:${hsPort}`, GET_TRUST_PROXY: '0', GET_ALLOW_TARGETS: '172.30.99.10', GET_TARGET_URLS: '172.30.99.10=https://essai.example' })
   svc = createServer(cfg, { sshStart: async (_c: unknown, a: Record<string, unknown>) => (sshCalls.push(a), a.password === 'right' ? { ok: true } : { ok: false, why: 'auth' }) }).server
   base = `http://127.0.0.1:${await listen(svc)}`
   gated = createServer(config({ GET_PREVIEW_KEY: 'letmein', GET_TRUST_PROXY: '0' })).server
@@ -61,6 +90,7 @@ beforeAll(async () => {
 })
 afterAll(() => {
   hetzner.close()
+  hostinger.close()
   svc.close()
   gated.close()
 })
@@ -97,20 +127,27 @@ describe('helpers', () => {
 })
 
 describe('Hetzner (mock API)', () => {
-  it('quotes the cheapest x86 server with 2 vCPU and 4 GB in Europe', async () => {
-    const q = await hetznerQuote(config({ GET_HETZNER_API: `http://127.0.0.1:${hzPort}` }), 'goodtoken00000000000000')
-    expect(q.best).toMatchObject({ type: 'cx23', location: 'nbg1', monthly: 4.15 })
+  it('quotes three sizes (4, 8, 16 GB) with their agents and the cheapest x86 type near the person', async () => {
+    const cfg = config({ GET_HETZNER_API: `http://127.0.0.1:${hzPort}` })
+    const q = await hetznerQuote(cfg, 'goodtoken00000000000000')
+    expect(q.sizes.map((z: any) => [z.size, z.type, z.location, z.monthly, z.agents])).toEqual([
+      ['light', 'cx23', 'nbg1', 4.15, '2-3'],
+      ['recommended', 'cx33', 'nbg1', 6.59, '6'],
+      ['strong', 'cx43', 'nbg1', 11.99, '12'],
+    ])
+    expect((await hetznerQuote(cfg, 'goodtoken00000000000000', 'america')).sizes[0]).toMatchObject({ type: 'cx23', location: 'ash', monthly: 3.9 })
   })
   it('creates the server with the install in cloud-init, then forgets the token', async () => {
     const { pub } = { pub: pubB64(keyPair().publicKey) }
     const job = (await post('/api/job', { kind: 'hetzner', lang: 'en', pub })).data
     expect((await post('/api/hetzner/quote', { sid: job.sid, view: job.view, token: 'badtoken000000000000000' })).data.error).toBe('unauthorized')
-    const ro = await post('/api/hetzner/create', { sid: job.sid, view: job.view, token: 'readonlytoken0000000000' })
+    const ro = await post('/api/hetzner/create', { sid: job.sid, view: job.view, token: 'readonlytoken0000000000', size: 'light' })
     expect(ro.status).toBe(403)
     expect(ro.data.error).toBe('forbidden')
-    const ok = await post('/api/hetzner/create', { sid: job.sid, view: job.view, token: 'goodtoken00000000000000' })
+    expect((await post('/api/hetzner/create', { sid: job.sid, view: job.view, token: 'goodtoken00000000000000', size: 'huge' })).data.error).toBe('bad_size')
+    const ok = await post('/api/hetzner/create', { sid: job.sid, view: job.view, token: 'goodtoken00000000000000', size: 'recommended' })
     expect(ok.status).toBe(200)
-    expect(ok.data.server).toMatchObject({ ip: '203.0.113.50', type: 'cx23', location: 'fsn1' })
+    expect(ok.data.server).toMatchObject({ ip: '203.0.113.50', type: 'cx33', location: 'fsn1', size: 'recommended', agents: '6' })
     expect(ok.data.reach).toBe('203-0-113-50.sslip.io')
     const sent = created.at(-1) as Record<string, string>
     expect(sent.image).toBe('ubuntu-24.04')
@@ -124,6 +161,41 @@ describe('Hetzner (mock API)', () => {
     const job = (await post('/api/job', { kind: 'hetzner', lang: 'en', pub: pubB64(keyPair().publicKey) })).data
     expect((await post('/api/status', { sid: job.sid, view: 'x'.repeat(job.view.length) })).status).toBe(404)
     expect((await post('/api/hetzner/create', { sid: job.sid, token: 'goodtoken00000000000000' })).status).toBe(404)
+  })
+})
+
+describe('Hostinger (mock API)', () => {
+  it('quotes the three KVM plans billed monthly, then buys with the saved card and a post-install script', async () => {
+    const job = (await post('/api/job', { kind: 'hostinger', lang: 'en', pub: pubB64(keyPair().publicKey) })).data
+    expect((await post('/api/hostinger/quote', { sid: job.sid, view: job.view, token: 'wrongtoken0000000000000' })).status).toBe(401)
+    const q = (await post('/api/hostinger/quote', { sid: job.sid, view: job.view, token: '123|hostingertoken000000000' })).data
+    expect(q.payment).toBe(true)
+    expect(q.paymentLabel).toBe('Credit Card 1234*****6464')
+    expect(q.sizes.map((z: any) => [z.size, z.type, z.memory, z.agents, z.first, z.monthly, z.currency])).toEqual([
+      ['light', 'KVM 1', 4, '2-3', 6.49, 10.99, 'EUR'],
+      ['recommended', 'KVM 2', 8, '6', 8.99, 15.99, 'EUR'],
+      ['strong', 'KVM 4', 16, '12', 13.99, 29.99, 'EUR'],
+    ])
+    expect(JSON.stringify(q)).not.toContain('hostingercom-vps')
+    const ok = await post('/api/hostinger/create', { sid: job.sid, view: job.view, token: '123|hostingertoken000000000', size: 'recommended', region: 'europe' })
+    expect(ok.status).toBe(200)
+    expect(ok.data.server).toMatchObject({ ip: '203.0.113.77', type: 'KVM 2', location: 'Paris', size: 'recommended' })
+    expect(ok.data.reach).toBe('203-0-113-77.sslip.io')
+    const script = hsCalls.find((c) => c.url === '/api/vps/v1/post-install-scripts')!.body
+    expect(script.content).toContain(`https://get.example/i/${job.sid}`)
+    const buy = hsCalls.find((c) => c.url === '/api/vps/v1/virtual-machines')!.body
+    expect(buy).toMatchObject({ item_id: 'hostingercom-vps-kvm2-eur-1m', payment_method_id: 6523, setup: { template_id: 1002, data_center_id: 17, post_install_script_id: 325 } })
+    expect(buy.setup.password).toBeUndefined()
+  })
+  it('says so when no card is saved, before buying anything', async () => {
+    hsPayment = false
+    const job = (await post('/api/job', { kind: 'hostinger', lang: 'en', pub: pubB64(keyPair().publicKey) })).data
+    const before = hsCalls.length
+    const r = await post('/api/hostinger/create', { sid: job.sid, view: job.view, token: '123|hostingertoken000000000', size: 'light' })
+    hsPayment = true
+    expect(r.status).toBe(402)
+    expect(r.data.error).toBe('no_payment')
+    expect(hsCalls.slice(before).some((c) => c.method === 'POST')).toBe(false)
   })
 })
 
@@ -186,15 +258,22 @@ describe('an install, end to end through the API', () => {
 })
 
 describe('guards', () => {
-  it('hides everything behind the preview key until launch, except the install scripts', async () => {
-    expect((await fetch(gatedBase + '/')).status).toBe(404)
+  it('hides the page and API behind the preview key until launch, without relying on a redirect or a cookie', async () => {
+    const gate = await fetch(gatedBase + '/')
+    expect(gate.status).toBe(404)
+    expect(await gate.text()).toContain('location.replace("/?k="')
     expect((await post('/api/job', { kind: 'pc', pub: 'x' }, gatedBase)).status).toBe(404)
-    const r = await fetch(gatedBase + '/?k=letmein', { redirect: 'manual' })
-    expect(r.status).toBe(302)
-    const cookie = r.headers.get('set-cookie')!.split(';')[0]
-    const page = await fetch(gatedBase + '/', { headers: { cookie } })
+    expect((await fetch(gatedBase + '/?k=wrong')).status).toBe(404)
+    // The key in the URL opens the page directly (no 302), and keeps working on reload.
+    const page = await fetch(gatedBase + '/?k=letmein', { redirect: 'manual' })
     expect(page.status).toBe(200)
     expect(page.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+    // The page's own assets are public; its API calls carry the key in a header.
+    expect((await fetch(gatedBase + '/qrcode.js')).status).toBe(200)
+    const r = await fetch(gatedBase + '/api/job', { method: 'POST', headers: { 'content-type': 'application/json', 'x-get-key': 'letmein' }, body: JSON.stringify({ kind: 'pc', pub: pubB64(keyPair().publicKey) }) })
+    expect(r.status).toBe(200)
+    // A cookie still works too.
+    expect((await fetch(gatedBase + '/', { headers: { cookie: 'gk=letmein' } })).status).toBe(200)
   })
   it('limits job creation per address', async () => {
     const own = createServer(config({ GET_TRUST_PROXY: '0' })).server

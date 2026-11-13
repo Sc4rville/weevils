@@ -38,6 +38,7 @@ export function config(env = process.env) {
     /** A git bundle served to the installs while the repository is private (see get/make-bundle.sh). */
     bundle: env.GET_BUNDLE || '',
     hetzner: (env.GET_HETZNER_API || 'https://api.hetzner.cloud/v1').replace(/\/$/, ''),
+    hostinger: (env.GET_HOSTINGER_API || 'https://developers.hostinger.com').replace(/\/$/, ''),
     /** Tests only: private addresses accepted as SSH targets, and the URL their weevils will have (ip=url,…). */
     allowTargets: (env.GET_ALLOW_TARGETS || '').split(',').map((s) => s.trim()).filter(Boolean),
     targetUrls: Object.fromEntries((env.GET_TARGET_URLS || '').split(',').filter((s) => s.includes('=')).map((s) => s.split('=').map((x) => x.trim()))),
@@ -126,7 +127,17 @@ const view = (j) => ({ sid: j.sid, kind: j.kind, state: j.state, step: j.step, s
 
 // ---------------------------------------------------------------- Hetzner (a token used for two calls, then dropped)
 
-const LOCATIONS = ['nbg1', 'fsn1', 'hel1']
+// Three sizes, by memory (a Claude Code session takes up to about 1 GB): what runs in parallel, said in agents.
+export const SIZES = [
+  { size: 'light', memory: 4, agents: '2-3' },
+  { size: 'recommended', memory: 8, agents: '6' },
+  { size: 'strong', memory: 16, agents: '12' },
+]
+/** Where to put the machine: near the person (the page sends its browser's region). */
+const REGIONS = { europe: ['nbg1', 'fsn1', 'hel1'], america: ['ash', 'hil'], asia: ['sin'] }
+const region = (r) => (REGIONS[r] ? r : 'europe')
+
+const HZ_RETRY = ['resource_unavailable', 'placement_error', 'invalid_input', 'unsupported_location']
 
 async function hz(cfg, token, method, p, body) {
   const r = await fetch(cfg.hetzner + p, {
@@ -138,39 +149,43 @@ async function hz(cfg, token, method, p, body) {
   const data = await r.json().catch(() => ({}))
   if (!r.ok) {
     const code = data?.error?.code || `http_${r.status}`
-    const e = new Error(code)
-    e.status = r.status
-    e.hz = code
-    throw e
+    throw Object.assign(new Error(code), { status: r.status, hz: code })
   }
   return data
 }
 
-/** The cheapest current x86 type with 2+ vCPU and 4+ GB, and its monthly price (VAT included) where it is offered. */
-export async function hetznerQuote(cfg, token) {
+/** For each size, the cheapest current x86 type with that memory (2+ vCPU), and where it is sold, cheapest first. */
+export async function hetznerQuote(cfg, token, where = 'europe') {
   const { server_types: types = [] } = await hz(cfg, token, 'GET', '/server_types?per_page=50')
-  const fit = []
-  for (const t of types) {
-    if (t.deprecated || t.deprecation || (t.architecture && t.architecture !== 'x86') || t.cores < 2 || t.memory < 4) continue
-    for (const loc of LOCATIONS) {
-      const p = (t.prices || []).find((x) => x.location === loc)
-      if (p) fit.push({ type: t.name, cores: t.cores, memory: t.memory, disk: t.disk, location: loc, monthly: Number(p.price_monthly?.gross ?? NaN) })
+  const locs = REGIONS[region(where)].concat(Object.values(REGIONS).flat().filter((l) => !REGIONS[region(where)].includes(l)))
+  const sizes = []
+  for (const z of SIZES) {
+    const fit = []
+    for (const t of types) {
+      if (t.deprecated || t.deprecation || (t.architecture && t.architecture !== 'x86') || t.cores < 2 || t.memory !== z.memory) continue
+      for (const loc of locs) {
+        const p = (t.prices || []).find((x) => x.location === loc)
+        if (p) fit.push({ type: t.name, cores: t.cores, memory: t.memory, disk: t.disk, location: loc, monthly: Number(p.price_monthly?.gross ?? NaN) })
+      }
     }
+    // Near first, then the cheapest.
+    fit.sort((a, b) => (locs.indexOf(a.location) > 2) - (locs.indexOf(b.location) > 2) || a.monthly - b.monthly || locs.indexOf(a.location) - locs.indexOf(b.location))
+    if (fit.length) sizes.push({ ...z, ...fit[0], currency: 'EUR', options: fit.slice(0, 6) })
   }
-  fit.sort((a, b) => a.monthly - b.monthly || LOCATIONS.indexOf(a.location) - LOCATIONS.indexOf(b.location))
-  if (!fit.length) throw Object.assign(new Error('no_type'), { hz: 'no_type' })
-  return { best: fit[0], options: fit.slice(0, 6) }
+  if (!sizes.length) throw Object.assign(new Error('no_type'), { hz: 'no_type' })
+  return { sizes }
 }
 
 export function cloudInit(cfg, sid) {
   return `#cloud-config\nruncmd:\n  - [bash, -c, "curl -fsSL --retry 5 --retry-delay 3 ${cfg.base}/i/${sid} | bash > /var/log/weevils-get.log 2>&1"]\n`
 }
 
-export async function hetznerCreate(cfg, token, sid) {
-  const { best, options } = await hetznerQuote(cfg, token)
+export async function hetznerCreate(cfg, token, sid, size = 'recommended', where = 'europe') {
+  const { sizes } = await hetznerQuote(cfg, token, where)
+  const pick = sizes.find((x) => x.size === size) || sizes.find((x) => x.size === 'recommended') || sizes[0]
   const tried = new Set()
   let last
-  for (const o of [best, ...options]) {
+  for (const o of [pick, ...pick.options]) {
     const key = `${o.type}@${o.location}`
     if (tried.has(key)) continue
     tried.add(key)
@@ -188,14 +203,80 @@ export async function hetznerCreate(cfg, token, sid) {
       const ip = data?.server?.public_net?.ipv4?.ip
       if (!ip) throw Object.assign(new Error('no_ip'), { hz: 'no_ip' })
       // data.root_password is dropped with the rest of the response: weevils never needs it.
-      return { name: data.server.name, id: data.server.id, ip, ...o }
+      return { name: data.server.name, id: data.server.id, ip, size: pick.size, agents: pick.agents, type: o.type, cores: o.cores, memory: o.memory, location: o.location, monthly: o.monthly, currency: 'EUR' }
     } catch (e) {
       last = e
       // Full, or that type not sold there right now: next option. Anything else (token, quota, payment) stops.
-      if (!['resource_unavailable', 'placement_error', 'invalid_input', 'unsupported_location'].includes(e.hz)) throw e
+      if (!HZ_RETRY.includes(e.hz)) throw e
     }
   }
   throw last
+}
+
+// ---------------------------------------------------------------- Hostinger (same: a token for a few calls, then dropped)
+// https://developers.hostinger.com (OpenAPI 3.0.0): catalog → payment methods → post-install script → purchase.
+
+async function hs(cfg, token, method, p, body) {
+  const r = await fetch(cfg.hostinger + p, {
+    method,
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(30_000),
+  })
+  const data = await r.json().catch(() => ({}))
+  if (r.status === 202) return { ...data, pending: true }
+  if (!r.ok) {
+    const code = r.status === 401 ? 'unauthorized' : r.status === 403 ? 'forbidden' : r.status === 429 ? 'slow_down' : r.status === 422 ? 'hs_invalid' : `http_${r.status}`
+    throw Object.assign(new Error(code), { status: r.status, hz: code, detail: String(data?.message || '').slice(0, 200) })
+  }
+  return data
+}
+
+const HS_PLAN = { light: 1, recommended: 2, strong: 4 }
+const HS_CONTINENT = { europe: 'Europe', america: 'North America', asia: 'Asia' }
+
+/** The three KVM plans billed monthly (no 12- or 24-month commitment), their first-month and renewal prices, and
+ * whether the account has a usable payment method. */
+export async function hostingerQuote(cfg, token) {
+  const [catalog, methods] = await Promise.all([hs(cfg, token, 'GET', '/api/billing/v1/catalog?category=VPS'), hs(cfg, token, 'GET', '/api/billing/v1/payment-methods')])
+  const pay = (Array.isArray(methods) ? methods : []).filter((m) => !m.is_expired && !m.is_suspended).sort((a, b) => b.is_default - a.is_default)[0]
+  const sizes = []
+  for (const z of SIZES) {
+    const n = HS_PLAN[z.size]
+    const item = (Array.isArray(catalog) ? catalog : []).find((i) => new RegExp(`^KVM ${n}$`, 'i').test(String(i.name || '').trim()) || i.id === `hostingercom-vps-kvm${n}`)
+    const prices = (item?.prices || []).filter((p) => p.period === 1 && /^month/i.test(String(p.period_unit)))
+    const price = prices.find((p) => p.currency === 'EUR') || prices.find((p) => p.currency === 'USD') || prices[0]
+    if (!item || !price) continue
+    sizes.push({ ...z, type: item.name, item: price.id, monthly: price.price / 100, first: (price.first_period_price ?? price.price) / 100, currency: price.currency })
+  }
+  if (!sizes.length) throw Object.assign(new Error('no_type'), { hz: 'no_type' })
+  return { sizes, payment: pay ? { id: pay.id, label: `${pay.name || pay.payment_method || ''} ${pay.identifier || ''}`.trim() } : null }
+}
+
+export async function hostingerCreate(cfg, token, sid, size = 'recommended', where = 'europe') {
+  const q = await hostingerQuote(cfg, token)
+  if (!q.payment) throw Object.assign(new Error('no_payment'), { status: 402, hz: 'no_payment' })
+  const pick = q.sizes.find((x) => x.size === size) || q.sizes.find((x) => x.size === 'recommended') || q.sizes[0]
+  const [templates, centers] = await Promise.all([hs(cfg, token, 'GET', '/api/vps/v1/templates'), hs(cfg, token, 'GET', '/api/vps/v1/data-centers')])
+  const tpl = (Array.isArray(templates) ? templates : []).filter((t) => /^Ubuntu 24\.04\b/i.test(String(t.name))).sort((a, b) => String(a.name).length - String(b.name).length)[0]
+  if (!tpl) throw Object.assign(new Error('no_template'), { hz: 'no_template' })
+  const dcs = Array.isArray(centers) ? centers : []
+  const dc = dcs.find((d) => d.continent === HS_CONTINENT[region(where)]) || dcs.find((d) => d.continent === 'Europe') || dcs[0]
+  if (!dc) throw Object.assign(new Error('no_type'), { hz: 'no_type' })
+  // The install runs as root once the OS is in (Hostinger saves it to /post_install, its output to /post_install.log).
+  const script = await hs(cfg, token, 'POST', '/api/vps/v1/post-install-scripts', {
+    name: `weevils-${sid}`,
+    content: `#!/bin/bash\ncurl -fsSL --retry 10 --retry-delay 5 ${cfg.base}/i/${sid} | bash > /var/log/weevils-get.log 2>&1\n`,
+  })
+  const data = await hs(cfg, token, 'POST', '/api/vps/v1/virtual-machines', {
+    item_id: pick.item,
+    payment_method_id: q.payment.id,
+    setup: { template_id: tpl.id, data_center_id: dc.id, post_install_script_id: script.id, hostname: `weevils-${sid.slice(0, 6)}`, enable_backups: false },
+  })
+  if (data.pending) throw Object.assign(new Error('payment_pending'), { status: 402, hz: 'payment_pending' })
+  const vm = data.virtual_machine || {}
+  const ip = [vm.ipv4].flat().map((a) => (typeof a === 'string' ? a : a?.address)).find((a) => net.isIP(a) === 4) || ''
+  return { name: vm.hostname || `weevils-${sid.slice(0, 6)}`, id: vm.id, ip, size: pick.size, agents: pick.agents, type: pick.type, memory: pick.memory, location: dc.city || dc.name, monthly: pick.monthly, first: pick.first, currency: pick.currency }
 }
 
 // ---------------------------------------------------------------- SSH (a password or key used for one command)
@@ -314,10 +395,13 @@ export function createServer(cfg = config(), deps = {}) {
       throw Object.assign(new Error('bad_json'), { status: 400 })
     }
   }
-  const gated = (req) => {
+  const keyOk = (k) => !!k && crypto.timingSafeEqual(crypto.createHash('sha256').update(String(k)).digest(), crypto.createHash('sha256').update(cfg.previewKey).digest())
+  /** Preview gate: the key in the URL (?k=), in a header the page adds to its API calls, or in a cookie. No redirect:
+   * some iOS contexts (in-app browsers, private tabs) drop a cookie set on a redirect. */
+  const gated = (req, url) => {
     if (!cfg.previewKey) return false
     const cookie = /(?:^|;\s*)gk=([^;]+)/.exec(req.headers.cookie || '')?.[1]
-    return !(cookie && crypto.timingSafeEqual(crypto.createHash('sha256').update(cookie).digest(), crypto.createHash('sha256').update(cfg.previewKey).digest()))
+    return !(keyOk(url.searchParams.get('k')) || keyOk(req.headers['x-get-key']) || keyOk(cookie && decodeURIComponent(cookie)))
   }
   /** The job a page asks about: its sid and its view token must match. */
   const owned = (body) => {
@@ -339,7 +423,7 @@ export function createServer(cfg = config(), deps = {}) {
     'POST /api/job': async (req, res, ip) => {
       if (!limit.ok(`job:${ip}`, 12, 3600_000)) return fail(res, 429, 'slow_down')
       const b = await json(req)
-      if (!['hetzner', 'ssh', 'pc'].includes(b.kind)) return fail(res, 400, 'bad_kind')
+      if (!['hetzner', 'hostinger', 'ssh', 'pc'].includes(b.kind)) return fail(res, 400, 'bad_kind')
       if (typeof b.pub !== 'string' || !/^[A-Za-z0-9+/=]{200,800}$/.test(b.pub)) return fail(res, 400, 'bad_key')
       try {
         const k = crypto.createPublicKey({ key: Buffer.from(b.pub, 'base64'), format: 'der', type: 'spki' })
@@ -359,37 +443,52 @@ export function createServer(cfg = config(), deps = {}) {
       if (j.state === 'done' && !j.fetched) j.fetched = Date.now()
       send(res, 200, view(j))
     },
-    'POST /api/hetzner/quote': async (req, res, ip) => {
-      if (!limit.ok(`hz:${ip}`, 20, 3600_000)) return fail(res, 429, 'slow_down')
-      const b = await json(req)
-      if (!owned(b)) return fail(res, 404, 'no_job')
-      if (typeof b.token !== 'string' || !/^[A-Za-z0-9]{20,128}$/.test(b.token.trim())) return fail(res, 400, 'bad_token')
-      try {
-        send(res, 200, await hetznerQuote(cfg, b.token.trim()))
-      } catch (e) {
-        fail(res, e.status === 401 ? 401 : 502, e.hz || 'hetzner_down')
-      }
-    },
-    'POST /api/hetzner/create': async (req, res, ip) => {
-      if (!limit.ok(`hzc:${ip}`, 4, 3600_000)) return fail(res, 429, 'slow_down')
-      const b = await json(req)
-      const j = owned(b)
-      if (!j || j.kind !== 'hetzner') return fail(res, 404, 'no_job')
-      if (j.server) return send(res, 200, view(j))
-      if (typeof b.token !== 'string' || !/^[A-Za-z0-9]{20,128}$/.test(b.token.trim())) return fail(res, 400, 'bad_token')
-      try {
-        const s = await hetznerCreate(cfg, b.token.trim(), j.sid)
-        j.server = { name: s.name, ip: s.ip, type: s.type, location: s.location, monthly: s.monthly }
-        j.reach = cfg.targetUrls[s.ip] || sslip(s.ip)
-        j.mode = cfg.targetUrls[s.ip] ? 'url' : 'vps'
-        j.state = 'running'
-        j.step = 'created'
-        j.steps.push('created')
-        send(res, 200, view(j))
-      } catch (e) {
-        fail(res, e.status === 401 ? 401 : e.status === 403 ? 403 : 502, e.hz || 'hetzner_down')
-      }
-    },
+    // A server created for the person: Hetzner or Hostinger. The token is checked, used for the calls, then dropped.
+    ...Object.fromEntries(['hetzner', 'hostinger'].flatMap((host) => {
+      const quote = host === 'hetzner' ? hetznerQuote : hostingerQuote
+      const create = host === 'hetzner' ? hetznerCreate : hostingerCreate
+      const token = (b) => (typeof b.token === 'string' && /^[A-Za-z0-9|._-]{20,256}$/.test(b.token.trim()) ? b.token.trim() : '')
+      const status = (e) => ([401, 402, 403, 429].includes(e.status) ? e.status : 502)
+      return [
+        [`POST /api/${host}/quote`, async (req, res, ip) => {
+          if (!limit.ok(`hz:${host}:${ip}`, 20, 3600_000)) return fail(res, 429, 'slow_down')
+          const b = await json(req)
+          const j = owned(b)
+          if (!j || j.kind !== host) return fail(res, 404, 'no_job')
+          if (!token(b)) return fail(res, 400, 'bad_token')
+          try {
+            const q = await quote(cfg, token(b), b.region)
+            send(res, 200, { sizes: q.sizes.map(({ options, item, ...z }) => z), payment: host === 'hostinger' ? !!q.payment : true, paymentLabel: q.payment?.label?.replace(/\d(?=\d{4})/g, '•') || '' })
+          } catch (e) {
+            fail(res, status(e), e.hz || 'host_down')
+          }
+        }],
+        [`POST /api/${host}/create`, async (req, res, ip) => {
+          if (!limit.ok(`hzc:${host}:${ip}`, 5, 3600_000)) return fail(res, 429, 'slow_down')
+          const b = await json(req)
+          const j = owned(b)
+          if (!j || j.kind !== host) return fail(res, 404, 'no_job')
+          if (j.server) return send(res, 200, view(j))
+          if (!token(b)) return fail(res, 400, 'bad_token')
+          if (!SIZES.some((z) => z.size === b.size)) return fail(res, 400, 'bad_size')
+          try {
+            const s = await create(cfg, token(b), j.sid, b.size, b.region)
+            j.server = { name: s.name, ip: s.ip, type: s.type, size: s.size, agents: s.agents, location: s.location, monthly: s.monthly, currency: s.currency }
+            // No address yet (Hostinger may give it later): the install's own address, when it fetches its script.
+            if (s.ip) {
+              j.reach = cfg.targetUrls[s.ip] || sslip(s.ip)
+              j.mode = cfg.targetUrls[s.ip] ? 'url' : 'vps'
+            }
+            j.state = 'running'
+            j.step = 'created'
+            j.steps.push('created')
+            send(res, 200, view(j))
+          } catch (e) {
+            fail(res, status(e), e.hz || 'host_down')
+          }
+        }],
+      ]
+    })),
     'POST /api/ssh': async (req, res, ip) => {
       if (!limit.ok(`ssh:${ip}`, 6, 3600_000)) return fail(res, 429, 'slow_down')
       const b = await json(req)
@@ -438,6 +537,10 @@ export function createServer(cfg = config(), deps = {}) {
         if (!j || j.state === 'done' || j.state === 'failed' || ++j.scriptFetches > 12) return send(res, 404, 'echo "weevils: this setup link has expired: open the setup page again." >&2; exit 1\n', 'text/x-shellscript; charset=utf-8')
         j.touched = Date.now()
         if (j.kind === 'pc' && j.state === 'waiting') j.state = 'running'
+        if (!j.reach && j.server && publicAddress(ip)) {
+          j.reach = sslip(ip)
+          j.server.ip ||= ip
+        }
         return send(res, 200, script(j), 'text/x-shellscript; charset=utf-8')
       }
       // Progress from an install: an event, a step title from the allowlist, and the sealed link at the end.
@@ -483,21 +586,23 @@ export function createServer(cfg = config(), deps = {}) {
       }
       if (url.pathname === '/health') return send(res, 200, { ok: true })
       // Preview gate: until the launch, the page and its API need the key once.
-      if (cfg.previewKey) {
-        const k = url.searchParams.get('k')
-        if (k && k === cfg.previewKey) return send(res, 302, '', 'text/plain', { location: '/', 'set-cookie': `gk=${encodeURIComponent(k)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000` })
-        if (gated(req)) return send(res, 404, 'Not here yet.\n', 'text/plain; charset=utf-8')
+      // Public assets (the page's own script, logo, icons) are served to anyone: they are in the open repository.
+      const file = STATIC[url.pathname]
+      if (file && url.pathname !== '/' && req.method === 'GET') {
+        const p = path.join(HERE, file)
+        return send(res, 200, fs.readFileSync(p), PAGE_TYPES[path.extname(p)] || 'application/octet-stream', { 'cache-control': 'public, max-age=3600' })
       }
+      if (gated(req, url)) {
+        // A key in the fragment (#k=…) never reaches a server: this page moves it to the query.
+        return send(res, 404, '<!doctype html><meta name="viewport" content="width=device-width"><title>weevils</title><p style="font:17px system-ui;padding:24px">Not here yet.</p><script>var m=/[#&]k=([^&]+)/.exec(location.hash);if(m)location.replace("/?k="+m[1])</script>', 'text/html; charset=utf-8')
+      }
+      if (cfg.previewKey && keyOk(url.searchParams.get('k'))) res.setHeader('set-cookie', `gk=${encodeURIComponent(url.searchParams.get('k'))}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000`)
       const h = handlers[`${req.method} ${url.pathname}`]
       if (h) {
         if (req.headers['content-type'] && !String(req.headers['content-type']).startsWith('application/json')) return fail(res, 415, 'json_only')
         return await h(req, res, ip)
       }
-      const file = STATIC[url.pathname]
-      if (file && req.method === 'GET') {
-        const p = path.join(HERE, file)
-        return send(res, 200, fs.readFileSync(p), PAGE_TYPES[path.extname(p)] || 'application/octet-stream', url.pathname === '/' ? {} : { 'cache-control': 'public, max-age=3600' })
-      }
+      if (url.pathname === '/' && req.method === 'GET') return send(res, 200, fs.readFileSync(path.join(HERE, 'index.html')), PAGE_TYPES['.html'])
       fail(res, 404, 'not_found')
     } catch (e) {
       if (!res.headersSent) fail(res, e.status || 500, e.status ? e.message : 'internal')

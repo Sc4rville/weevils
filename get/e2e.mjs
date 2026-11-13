@@ -1,7 +1,7 @@
 // Drives a real setup through get's API exactly like the page does (RSA-OAEP key, job, polling, unsealing).
 //   node get/e2e.mjs ssh <host> <user> [port]        (password read from WVGET_PASSWORD)
 //   node get/e2e.mjs pc                                prints the command, then follows it
-//   node get/e2e.mjs hetzner                           token read from WVGET_TOKEN (creates a real server!)
+//   node get/e2e.mjs hetzner|hostinger                 token from WVGET_TOKEN, size from WVGET_SIZE (a real server!)
 // Env: WVGET_BASE (https://get.scarville.tech), WVGET_KEY (preview key, if the site is still gated).
 import crypto from 'node:crypto'
 
@@ -24,12 +24,13 @@ if (kind === 'ssh') {
   const [host, user = 'root', port = '22'] = rest
   console.log(await api('/api/ssh', { sid: job.sid, view: job.view, host, user, port: Number(port), password: process.env.WVGET_PASSWORD || '' }).then((s) => `started on ${s.server.ip}, reach ${s.reach}`))
 }
-if (kind === 'hetzner') {
+if (kind === 'hetzner' || kind === 'hostinger') {
   const token = process.env.WVGET_TOKEN || ''
-  const q = await api('/api/hetzner/quote', { sid: job.sid, view: job.view, token })
-  console.log(`quote: ${q.best.type} ${q.best.location} €${q.best.monthly}/month`)
-  const s = await api('/api/hetzner/create', { sid: job.sid, view: job.view, token })
-  console.log(`created ${s.server.name} ${s.server.ip}`)
+  const size = process.env.WVGET_SIZE || 'recommended'
+  const q = await api(`/api/${kind}/quote`, { sid: job.sid, view: job.view, token, region: 'europe' })
+  for (const z of q.sizes) console.log(`size ${z.size}: ${z.type} ${z.memory} GB, ${z.agents} agents, ${z.first && z.first !== z.monthly ? `${z.first} then ` : ''}${z.monthly} ${z.currency}/month`)
+  const s = await api(`/api/${kind}/create`, { sid: job.sid, view: job.view, token, size, region: 'europe' })
+  console.log(`created ${s.server.name} ${s.server.ip} (${s.server.type}, ${s.server.location})`)
 }
 const t0 = Date.now()
 let last = ''

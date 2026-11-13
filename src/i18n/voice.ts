@@ -4,6 +4,7 @@ import { defineMessages } from './index'
 export default defineMessages({
   fr: {
     savedRecordings: 'enregistrements conservés',
+    interruptedAudio: 'enregistrement interrompu — seule la partie conservée est disponible',
     audioSaved: 'audio conservé — non envoyé',
     transcriptSaved: 'transcription conservée',
     addTranscript: 'ajouter au brouillon',
@@ -27,6 +28,7 @@ export default defineMessages({
   },
   en: {
     savedRecordings: 'saved recordings',
+    interruptedAudio: 'recording interrupted — only retained audio is available',
     audioSaved: 'audio retained — not sent',
     transcriptSaved: 'transcript retained',
     addTranscript: 'add to draft',

@@ -157,3 +157,10 @@ it('does not start an unprotected recording when local storage is unavailable',a
  expect(host.textContent).toContain('Recording has not started')
  expect(api.voiceChunk).not.toHaveBeenCalled()
 })
+
+it('labels a recording without a stop acknowledgement as partial, without transcribing automatically',async()=>{
+ journal.voiceRecordings.mockResolvedValue([{id:'interrupted-id',scope:'page:/',type:'audio/mp4',lang:'en',startedAt:1000,count:3}])
+ await render()
+ expect(host.textContent).toContain('only retained audio is available')
+ expect(api.voiceFinish).not.toHaveBeenCalled();expect(onText).not.toHaveBeenCalled();expect(onSend).not.toHaveBeenCalled()
+})

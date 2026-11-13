@@ -1150,9 +1150,19 @@ export class Optimizers {
         .then((ok) => {
           this.bwrap = ok
           this.probingJail = false
+          if(this.auto)queueMicrotask(()=>this.tick())
         })
     }
     const codex = (preferredTool() === 'codex' ? providerReady() : !!hold && !!this.w.relay?.autoOnCodex()) && this.bwrap === true
+    // The asynchronous jail probe may have held these tasks on the previous tick. Once an authorized
+    // Codex route is safe (or Claude's hold ended), that provider hold is no longer a scheduled time.
+    if (codex || !hold)
+      for (const o of queue)
+        if (o.held) {
+          delete o.held
+          delete o.retryAt
+          dirty = true
+        }
     if (hold && !codex)
       for (const o of queue)
         if (!o.held || (o.retryAt ?? 0) < hold) {

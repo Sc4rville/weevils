@@ -776,6 +776,8 @@ export class Optimizers {
     const { prompt: _p, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, runSourceRevision: _sr, runConfigRevision: _cr, creationKey:_ck, lifecycle:_lc, ...v } = o
     const at = o.state === 'queued' ? this.timeAt(o, now) : now
     const out: Optimizer = at > now ? { ...v, startAt: at } : { ...v }
+    const recovery=o.lifecycle?.findLast(event=>event.action==='restore-draft')
+    if(recovery)out.recoveredAt=recovery.at
     if (o.runNow) out.runRequested = true
     // Stored oldest first (older files read the same); the app reads the newest first.
     if (o.runs) out.runs = newestFirst(o.runs)

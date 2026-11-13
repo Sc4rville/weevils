@@ -1631,6 +1631,7 @@ describe('recovering the original refused draft',()=>{
   const restored=o.restoreDraft(original.id)!
   expect(restored).toMatchObject({id:original.id,state:'proposed',draft:true,rev:5,every:original.every,tz:original.tz,talk:original.talk})
   expect(restored.acceptedAt).toBeUndefined();expect(restored.sessionId).toBeUndefined()
+  expect(restored.recoveredAt).toBe(T0)
   const reload=make();expect(reload.restoreDraft(original.id)).toEqual(restored);expect(reload.list()).toHaveLength(1)
   const stored=JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items[0]
   expect(stored.lifecycle).toHaveLength(1);expect(stored.lifecycle[0]).toMatchObject({action:'restore-draft',priorEndedAt:T0})

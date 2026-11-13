@@ -302,6 +302,8 @@ export interface WeevilReply {
 
 /** Une tâche du h24 (« optimiseur ») : proposée à partir de la mémoire et des projets, lancée quand la machine est libre. */
 export interface Optimizer {
+  /** Explicit recovery event: reconcile an old optimistic refusal, never infer delivery/deletion from text. */
+  recoveredAt?: number
   software?: { id:string; repository:string; revision:string; status: 'ready'|'pending-running'; legacyWorkspace:string; excluded:string[] }
   id: string
   /** Ce que la tâche fait, très court (« muscler les tests de mon-app »). */

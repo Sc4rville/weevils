@@ -77,6 +77,7 @@ export function useTalks(optimizers: Optimizer[] | undefined): Talks {
   const [reply, setReply] = useState<{ key?: string; text?: string }>({})
   const [stales, setStales] = useState<ReadonlyMap<string, { o: Optimizer; at: number }>>(new Map())
   const [decided, setDecided] = useState<ReadonlyMap<string, 'yes' | 'no'>>(new Map())
+  const decisionRecovery = useRef(new Map<string, number>())
   const created = useRef(new Map<string, Optimizer>())
   useEffect(() => {
     for (const o of optimizers ?? []) created.current.delete(o.id)
@@ -110,9 +111,17 @@ export function useTalks(optimizers: Optimizer[] | undefined): Talks {
   // A decision the snapshot now shows (no longer proposed) is forgotten.
   useEffect(() => {
     if (!decided.size) return
-    const left = [...decided.keys()].filter((id) => optimizers?.find((o) => o.id === id)?.state === 'proposed')
+    const left = [...decided.keys()].filter((id) => {
+      const o = optimizers?.find((item) => item.id === id)
+      if (o?.state !== 'proposed') return false
+      // Only an explicit, newer restoration can undo an old optimistic decline.
+      // A confirmed Delete remains authoritative, even if a stale snapshot contains this item.
+      const restored = !deleted.has(id) && decided.get(id) === 'no' && o.userCreated && o.draft &&
+        Number.isFinite(o.recoveredAt) && (o.recoveredAt ?? 0) > (decisionRecovery.current.get(id) ?? 0)
+      return !restored
+    })
     if (left.length !== decided.size) setDecided((m) => new Map([...m].filter(([id]) => left.includes(id))))
-  }, [optimizers, decided])
+  }, [optimizers, decided, deleted])
   const item = (o: Optimizer): Optimizer => {
     const l = local.get(o.id)
     if (!l || ((l.rev ?? 0) <= (o.rev ?? 0) && (l.talk?.length ?? 0) <= (o.talk?.length ?? 0))) return o
@@ -167,7 +176,8 @@ export function useTalks(optimizers: Optimizer[] | undefined): Talks {
   }
   const answer = (o: Optimizer, yes: boolean, onSuccess?: () => void) => {
     // Just rewritten (the card changed under the finger), or being rewritten: the tap was not meant for ✓ or ×.
-    if ((yes && o.draft) || performance.now() - (landed.current.get(o.id) ?? -Infinity) < SETTLE_MS || (yes && (inflight.current.has(o.id) || isStale(o)))) return false
+    if (o.draft || performance.now() - (landed.current.get(o.id) ?? -Infinity) < SETTLE_MS || (yes && (inflight.current.has(o.id) || isStale(o)))) return false
+    decisionRecovery.current.set(o.id, o.recoveredAt ?? 0)
     setDecided((m) => new Map(m).set(o.id, yes ? 'yes' : 'no'))
     void (yes ? api.acceptOptimizer(o.id, o.rev ?? 0) : api.refuseOptimizer(o.id))
       .then(() => {

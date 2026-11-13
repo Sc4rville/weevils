@@ -4,22 +4,16 @@
   "component": "src/ui/logo.tsx",
   "appIcon": {
     "source": "app-icon.svg",
-    "starComponent": "src/ui/icons.tsx#Icon(star)",
-    "purple": "#B39BFF",
-    "green": "#1fd60a",
-    "starBox": [
-      100,
-      112,
-      104,
-      104
-    ],
+    "reference": "app-icon-reference.jpg",
+    "referenceSha256": "2092981a52fbdc5dfaad0ebb4ddd08583752a4f97a5235edf581025daa1f5677",
+    "background": "#ffffff",
     "maskableSafeRadius": 0.4
   },
   "files": {
     "favicon-32.png": {
       "width": 32,
       "height": 32,
-      "sha256": "84647d93670052703723cf2bd628ff46c6dbe8ef9ce1bad5b3804cfa04b5d07d"
+      "sha256": "807944508e0bd9f3cd795cfd14de12a285a9adeea7ab2c253e8788e0349e464f"
     },
     "badge-96.png": {
       "width": 96,
@@ -29,17 +23,17 @@
     "icon-180.png": {
       "width": 180,
       "height": 180,
-      "sha256": "bb70d62650251400f302f46ff4048113e2367ef4ae8241c69dedbcd281dbec11"
+      "sha256": "c19fcc97ee25d8e0942923151c7d0fb19f32c333f06c9df06dd58c0687d0131d"
     },
     "icon-192.png": {
       "width": 192,
       "height": 192,
-      "sha256": "9fec9eacdeccfa69778bbfd25b04ebee657f7512bf271a23f418f3dd0f107b73"
+      "sha256": "7097fb6eff20ad565de1e43f9e8215cd538d63f11b02d7509b9b79f4cfac0f1c"
     },
     "icon-512.png": {
       "width": 512,
       "height": 512,
-      "sha256": "4f01454557f450b6b9686133915d971cf10391c3c4e60ddc9e65a3504587486d"
+      "sha256": "d02fcfd97e7551b41110b88b608efd30c055db0708dbe51e08c26ab7cfd17440"
     }
   }
 }

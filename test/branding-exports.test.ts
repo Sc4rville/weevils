@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { Resvg } from '@resvg/resvg-js'
 import { expect, it } from 'vitest'
 const exports=JSON.parse(fs.readFileSync('public/branding/exports.json','utf8'))
-it('exports the approved logo with correct sizes, fixed purple app backgrounds, working stars and transparent notification badges',()=>{
+it('exports the approved logo with correct sizes, the white reference background, no stars and transparent notification badges',()=>{
  expect(createHash('sha256').update(fs.readFileSync('public/branding/weevboss-cutout.png')).digest('hex')).toBe(exports.sourceSha256)
  for(const [name,meta] of Object.entries(exports.files) as [string,{width:number;height:number;sha256:string}][]){
   const file=fs.readFileSync(`public/${name}`)
@@ -18,12 +18,13 @@ it('exports the approved logo with correct sizes, fixed purple app backgrounds, 
    for(let y=0;y<size;y++)for(let x=0;x<size;x++){
     const i=(y*size+x)*4;expect(pixels[i+3]).toBe(255)
     if(pixels[i+1]>140 && pixels[i+1]>pixels[i]*2 && pixels[i+1]>pixels[i+2]*2){green++;expect(x).toBeLessThan(size*.4);expect(y).toBeLessThan(size*.45)}
-    if(Math.abs(pixels[i]-179)>3||Math.abs(pixels[i+1]-155)>3||Math.abs(pixels[i+2]-255)>3){
+    if(pixels[i]<200||pixels[i+1]<200||pixels[i+2]<200){
      mark++;if(size>=180)expect(Math.hypot(x-size/2,y-size/2)).toBeLessThan(size*.4)
     }
    }
    expect(mark).toBeGreaterThan(size*size*.12)
-   expect(green).toBeGreaterThan(size*size*.003)
+   expect(green).toBe(0)
+   expect(pixels[0]).toBeGreaterThan(245);expect(pixels[1]).toBeGreaterThan(245);expect(pixels[2]).toBeGreaterThan(245)
   }
  }
 })
@@ -36,14 +37,11 @@ it('versions all installed-icon URLs by their bytes without service worker cachi
  expect(sw).not.toContain('caches.open(')
 })
 
-it('composes the real working star geometry without changing the header logo or theme filters',()=>{
- const source=fs.readFileSync('src/ui/icons.tsx','utf8').match(/star: '([^']+)'/)![1]
+it('embeds the exact new reference without changing the header logo',()=>{
+ const reference=fs.readFileSync('public/branding/app-icon-reference.jpg')
  const icon=fs.readFileSync('public/branding/app-icon.svg','utf8')
- expect(icon).toContain(`d="${source}"`)
- expect(icon).toContain('stroke-linecap="square"')
- expect(icon).toContain('stroke-linejoin="miter"')
- expect(icon).toContain('stroke="#1fd60a"')
- expect(icon).toContain('fill="#B39BFF"')
- expect(fs.readFileSync('public/branding/weevboss.svg','utf8')).not.toContain(source)
+ expect(createHash('sha256').update(reference).digest('hex')).toBe(exports.appIcon.referenceSha256)
+ expect(icon).toContain(`data:image/jpeg;base64,${reference.toString('base64')}`)
+ expect(icon).not.toContain('<path')
  expect(fs.readFileSync('src/ui/logo.tsx','utf8')).not.toContain('app-icon.svg')
 })

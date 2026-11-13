@@ -783,3 +783,41 @@ it('prefers a newer turn transition over cached daemon idle/active samples',()=>
  t.messages.push({id:'failed-command',role:'event',text:'Runs tests',at:NOW,toolDetails:{commands:['npm test'],output:'exit code 1'}})
  w.bump();expect(one()).toMatchObject({status:'idle'})
 })
+
+it('shares recursive repository identity between Claude/Codex on a fresh renamed installation without personal preferences',async()=>{
+  const { InstallationIdentity }=await import('./recursive-identity.ts')
+  const { MACHINE }=await import('./config.ts')
+  const { withLang }=await import('./i18n.ts')
+  const installation=path.join(HOME,'projects','freshproduct'),unrelated=path.join(HOME,'projects','tlo')
+  for(const dir of [installation,unrelated]){
+    fs.mkdirSync(dir,{recursive:true})
+    const init=spawnSync('git',['init'],{cwd:dir,stdio:'pipe'});expect(init.status).toBe(0)
+  }
+  ;(w as any).installationIdentity=new InstallationIdentity(installation,MACHINE.id)
+  const project=w.localProjects([]).find(p=>p.id==='freshproduct')
+  expect(project).toMatchObject({repos:['freshproduct'],workstream:{kind:'self-improvement',target:{machineId:MACHINE.id,projectId:'freshproduct',repo:'freshproduct'}}})
+  const sourceMessages=[]
+  for(const tool of ['claude','codex'] as const){
+    const t=add(transcript({id:`self-${tool}`,file:`/none/self-${tool}`,tool,cwd:installation,phase:'working',lastActivityAt:NOW}))
+    sourceMessages.push(t.messages[0])
+    w.panes.push(pane({name:`pane-${tool}`,sessionId:t.id,tool,cwd:installation,pid:ALIVE}))
+  }
+  const unrelatedTranscript=add(transcript({id:'unrelated',file:'/none/unrelated',cwd:unrelated,firstPrompt:'Improve weevils and recursive identity',messages:[{id:'human',role:'user',text:'Improve weevils and recursive identity',at:NOW}]}))
+  w.panes.push(pane({name:'pane-other',sessionId:'unrelated',cwd:unrelated,pid:ALIVE}))
+  for(const locale of ['en','fr'] as const){
+    const sessions=withLang(locale,()=>w.sessions(NOW))
+    const own=sessions.filter(s=>s.id.startsWith('self-'))
+    expect(own).toHaveLength(2)
+    expect(own[0].workstream).toEqual(own[1].workstream)
+    for(const s of own)expect(s).toMatchObject({status:'working',workstream:{kind:'self-improvement'}})
+    expect(sessions.find(s=>s.id==='unrelated')?.workstream).toBeUndefined()
+  }
+  for(const t of w.store.all())if(t.id.startsWith('self-'))t.phase='idle'
+  for(const s of w.sessions(NOW).filter(s=>s.id.startsWith('self-')))expect(s).toMatchObject({status:'idle',workstream:{kind:'self-improvement'}})
+  expect(sourceMessages.every(m=>m.role==='user')).toBe(true)
+  expect(unrelatedTranscript.messages[0].role).toBe('user')
+  expect(JSON.stringify(project?.workstream)).not.toContain(HOME)
+  expect(fs.existsSync(path.join(HOME,'.codex','config.toml'))).toBe(false)
+  expect(fs.existsSync(path.join(DATA_DIR,'prefs.json'))).toBe(false)
+  expect(mux.spawnWv).not.toHaveBeenCalled()
+})

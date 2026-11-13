@@ -200,3 +200,10 @@ verified runtime state; absence/stale evidence does not animate. Per-message Aut
 the request/run provenance contract above. Neither `workstream` nor the optimizer's sessionId authorizes
 labelling all messages in a mixed session. Feed results require actual linked outcomes before describing
 an improvement as delivered. Preserve the existing recursive theme tokens rather than adding a palette.
+
+Recursive identity is a shared product default for every installation, independent of personal model,
+effort or locale settings. The fresh-profile lifecycle regression uses a renamed local Git repository,
+checks the same target metadata for Claude and Codex, keeps an unrelated project's user text unclassified,
+and verifies working-to-idle changes without changing identity or creating personal preference files.
+It invokes no agent, provider request or live job. UI theme tokens and project pinning consume this shared
+identity; a personal profile import is not required to enable it.

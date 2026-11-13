@@ -79,7 +79,7 @@ it('keeps branding and state when the app language changes and reports a storage
   expect(host.querySelector('[role=switch]')?.getAttribute('aria-checked')).toBe('false')
 })
 
-it('initializes a new installation independently when account context changes in the same browser', async () => {
+it('keeps a new machine scope off despite a legacy camera after the first scoped migration', async () => {
   state.snap.setup!.welcomed = true
   await render(<LostFeaturesPage />)
   expect(readThinkEnabled('personal-machine')).toBe(true)

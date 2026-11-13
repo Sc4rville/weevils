@@ -22,6 +22,8 @@ const subscribe = (notify: () => void) => {
   return () => { window.removeEventListener(CHANGE, notify); window.removeEventListener('storage', notify) }
 }
 export function useThinkEnabled(snap: Snapshot) {
+  // Browser/origin preference, partitioned by the reported machine name. This is not an account
+  // or installation identity: two profiles with the same origin and machine id share this choice.
   const scope = snap.machines[0]?.id ?? 'local'
   // Freeze the migration before first-run completion can change the snapshot.
   const initial = useMemo(() => {

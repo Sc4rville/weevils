@@ -47,7 +47,7 @@ export function ThinkPage(){
   if(!dirty.current||busy.current||blocked.current||pointers.current.size)return
   busy.current=true
   try{await pendingLocal.current;const sending=live.current;const saved=await api.saveThink(sending)
-   if(live.current===sending){dirty.current=false;live.current=saved;if(alive.current){setBoard(saved);setStatus(t.saved)}pendingLocal.current=pendingLocal.current.then(()=>removePayload(key));await pendingLocal.current}
+   if(live.current===sending){dirty.current=false;live.current=saved;if(alive.current){setBoard(saved);setStatus(t.saved);setError(e=>e===t.error?'':e)}pendingLocal.current=pendingLocal.current.then(()=>removePayload(key));await pendingLocal.current}
    else{live.current={...live.current,revision:saved.revision};if(alive.current)setBoard(live.current);const current=live.current;pendingLocal.current=pendingLocal.current.then(()=>storePayload(key,current));await pendingLocal.current}
   }catch(e){if(e instanceof ApiError&&e.status===409){blocked.current=true;setError(t.conflict)}else setError(t.error)}finally{busy.current=false}
  },800)

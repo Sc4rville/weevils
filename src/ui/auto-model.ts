@@ -119,18 +119,19 @@ export function windowStart(w: { from: number }, now: number): number {
 
 /** An explicit date is distinct from a retry, a recurring cadence or an eligibility window. */
 export function optimizerTrigger(o: Pick<Optimizer, 'every' | 'window' | 'notBefore' | 'startAt'>): Trigger {
-  const at = o.window ? undefined : o.notBefore
+  // Recurring notBefore is also written by finish(); without provenance it is only eligibility.
+  const at = o.window || o.every ? undefined : o.notBefore
   if (o.every) return { kind: 'every', every: o.every, window: o.window, at }
   if (o.window) return { kind: 'window', window: o.window, at }
   if (o.notBefore) return { kind: 'time', at }
   return { kind: 'idle' }
 }
 
-/** now: when a proposal's window would open next (its words say the right weekday). */
+/** Only an upcoming, explicitly dated one-off may expose a next execution. */
 export function fromOptimizer(o: Optimizer, projectId: string | null = null, now = Date.now()): AutoItem | null {
   if (o.state === 'refused') return null
   const paused = o.paused || o.waiting === 'paused'
-  const fixedAt = o.waiting !== 'later' && !o.window && o.notBefore && o.notBefore > now && (!o.startAt || o.startAt === o.notBefore) && (!o.retryAt || o.retryAt <= now) ? o.notBefore : null
+  const fixedAt = o.waiting !== 'later' && !o.every && !o.window && o.notBefore && o.notBefore > now && (!o.startAt || o.startAt === o.notBefore) && (!o.retryAt || o.retryAt <= now) ? o.notBefore : null
   const state: AutoState =
     o.state === 'queued'
       ? paused

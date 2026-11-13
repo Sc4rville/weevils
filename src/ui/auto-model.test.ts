@@ -24,8 +24,8 @@ describe('autoList: what runs without asking', () => {
     const ids = list([
       opt({ id: 'paused', paused: true, waiting: 'paused' }),
       opt({ id: 'busy', waiting: 'busy' }),
-      opt({ id: 'late', waiting: 'time', startAt: NOW + 9 * H, notBefore: NOW + 9 * H, every: DAY }),
-      opt({ id: 'soon', waiting: 'time', startAt: NOW + H, notBefore: NOW + H, every: DAY }),
+      opt({ id: 'late', waiting: 'time', startAt: NOW + 9 * H, notBefore: NOW + 9 * H }),
+      opt({ id: 'soon', waiting: 'time', startAt: NOW + H, notBefore: NOW + H }),
       opt({ id: 'done', state: 'done', endedAt: NOW - H }),
       opt({ id: 'run', state: 'running', startedAt: NOW - MIN }),
     ]).map((x) => x.id)
@@ -159,13 +159,13 @@ describe('bandColors', () => {
 })
 
 describe('progress: the span the fill covers', () => {
-  it('a wait from the last run (else the acceptance) to the next trigger, never longer than the period', () => {
+  it('a recurring eligibility date never fills toward an invented next execution', () => {
     const x = fromOptimizer(opt({ waiting: 'time', startAt: NOW + 6 * H, notBefore: NOW + 6 * H, every: DAY, acceptedAt: NOW - 30 * DAY, runs: [{ at: NOW - 18 * H, startedAt: NOW - 18 * H - 9 * MIN, ok: true }] }))!
-    expect(x.progress(NOW)).toEqual({ from: NOW - 18 * H, to: NOW + 6 * H })
+    expect(x.progress(NOW)).toBeNull()
     const fresh = fromOptimizer(opt({ waiting: 'time', startAt: NOW + 6 * H, notBefore: NOW + 6 * H, every: DAY, acceptedAt: NOW - 2 * H }))!
-    expect(fresh.progress(NOW)).toEqual({ from: NOW - 2 * H, to: NOW + 6 * H })
+    expect(fresh.progress(NOW)).toBeNull()
     const old = fromOptimizer(opt({ waiting: 'time', startAt: NOW + 6 * H, notBefore: NOW + 6 * H, every: DAY, acceptedAt: NOW - 30 * DAY }))!
-    expect(old.progress(NOW)).toEqual({ from: NOW + 6 * H - DAY, to: NOW + 6 * H })
+    expect(old.progress(NOW)).toBeNull()
   })
 
   it('a run heads for its usual length (median of the past runs, else the estimate)', () => {
@@ -222,4 +222,14 @@ it('does not turn orphan starts, retry eligibility or windows into dated executi
  expect(fromOptimizer(opt({notBefore:NOW+H,startAt:NOW+H}),null,NOW)?.nextAt).toBe(NOW+H)
  expect(fromOptimizer(opt({notBefore:NOW+H,startAt:NOW+2*H}),null,NOW)?.nextAt).toBeNull()
  expect(fromOptimizer(opt({paused:true,notBefore:NOW+H}),null,NOW)?.nextAt).toBeNull()
+})
+
+it('recurring notBefore written after a run is eligibility, not a chosen clock time',()=>{
+ const x=fromOptimizer(opt({every:DAY,notBefore:NOW+DAY,startAt:NOW+DAY,waiting:'time',runs:[{at:NOW,startedAt:NOW-MIN,ok:true}]}),null,NOW)!
+ expect(x.nextAt).toBeNull();expect(x.trigger.at).toBeUndefined()
+ expect(triggerText(x.trigger,NOW,'en')).toBe('every day')
+ expect(triggerText(x.trigger,NOW,'fr')).toBe('chaque jour')
+ expect(x.state).toBe('waiting')
+ const timer=fromActivity(act({kind:'timer',runState:'waiting',nextRunAt:NOW+DAY,everyMs:DAY}))
+ expect(timer.nextAt).toBe(NOW+DAY)
 })

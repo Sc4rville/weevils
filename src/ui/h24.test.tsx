@@ -287,8 +287,9 @@ describe('auto drawer', () => {
 it('labels quota retry eligibility instead of presenting it as a requested schedule',async()=>{
  const item=task({id:'retry',title:'Daily review',every:86_400_000,waiting:'later',retryAt:NOW+3600_000,startAt:NOW+3600_000})
  render(snap([item]))
- expect(host.querySelector('.h24-status')?.textContent).toContain('retry after')
- expect(host.querySelector('[data-h24="retry"] .act')?.textContent).toContain('retry after')
+ expect(host.querySelector('.h24-status')?.textContent).toContain('waiting to retry')
+ expect(host.querySelector('.h24-status')?.textContent).not.toMatch(/\d\d:\d\d/)
+ expect(host.querySelector('[data-h24="retry"] .act')?.textContent).toBe('')
  expect(host.querySelector('[data-h24="retry"] .meta')?.textContent).toContain('every day')
  expect(item.window).toBeUndefined();expect(item.notBefore).toBeUndefined()
 })

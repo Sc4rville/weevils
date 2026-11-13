@@ -14,6 +14,7 @@ import { Composer, Line, Messages, Prose, Working } from './bits'
 import { at, nextTimeText, autoList, longAt, fromActivity, fromOptimizer, projectOfRepo, short, slotOf, triggerText, typicalMs, type AutoItem } from './auto-model'
 import { TalkCtx, useTalk } from './auto-talk'
 import { AutoDeleteAction } from './auto-delete'
+import { autoCondition } from './auto-condition'
 import { durLong, plain } from './format'
 import { reveal, useFollow } from './follow'
 import { Fill, chg } from './h24'
@@ -318,12 +319,12 @@ function Flow({ x, runs, next, onTicks }: { x: AutoItem; runs: AutoRun[]; next?:
   } else if (x.state === 'done' || x.state === 'failed') {
     big = t.endedAgo(short(now - (x.endedAt ?? runs[0]?.at ?? now), true))
   } else if (x.state === 'waiting' && x.waiting && x.waiting !== 'queue') {
-    big = t[`wait_${x.waiting}`]
+    big = autoCondition(x)
     line = ''
   } else if (x.nextAt && x.nextAt > now) {
-    big = x.nextReason === 'retry' ? nextTimeText(x, now) : t.inTime(durLong(x.nextAt - now))
+    big = x.nextReason === 'retry' ? autoCondition(x) : t.inTime(durLong(x.nextAt - now))
   } else {
-    big = t.whenIdle
+    big = autoCondition(x)
     if (x.place) line = `${line} · #${x.place}`
   }
 
@@ -392,22 +393,20 @@ function Kpis({ x, runs, detail, flash, ask, onLast, onRuns }: { x: AutoItem; ru
   const typ = typicalMs({ runs, est: x.est })
   const measured = runs.some((r) => r.at > r.startedAt)
   const total = (x.tokens ?? runs.reduce((s, r) => s + (r.tokens ?? 0), 0)) + (x.state === 'running' ? (detail?.liveTokens ?? 0) : 0)
-  // While it runs: the run after this one (its own next trigger), never « now ».
-  const following = x.nextAt && x.nextAt > now ? x.nextAt : x.state === 'running' && x.startedAt && x.trigger.every ? x.startedAt + x.trigger.every : null
+  // Only a verified dated trigger; never infer the next run from duration or cadence.
+  const following = x.nextAt && x.nextReason !== 'retry' && x.nextAt > now ? x.nextAt : null
   const next =
     x.state === 'proposed'
       ? x.trigger.at
         ? at(x.trigger.at, now)
-        : t.whenIdle
+        : autoCondition(x)
       : x.state === 'paused' || x.state === 'done' || x.state === 'failed'
         ? t.never
         : following
           ? nextTimeText({ ...x, nextAt: following }, now)
           : x.state === 'running'
-            ? t.never
-            : (x.state === 'waiting' || x.state === 'queued') && x.waiting && x.waiting !== 'queue'
-              ? t[`wait_${x.waiting}`]
-              : t.whenIdle
+            ? x.trigger.every ? t.nextNotScheduled : t.never
+            : autoCondition(x)
   const all: { f: Field; icon: ReactNode; value: ReactNode; dim?: boolean }[] = [
     { f: 'when', icon: x.trigger.kind === 'every' ? <Icon name="cycle" /> : <Icon name="arrow" dir="right" />, value: triggerText(x.trigger, now) },
     { f: 'next', icon: <Icon name="arrow" dir="right" />, value: next },

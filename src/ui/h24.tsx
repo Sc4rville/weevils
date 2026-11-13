@@ -9,6 +9,7 @@ import M from '../i18n/h24'
 import { nextTimeText, autoList, autoRank, bandColors, fromOptimizer, isFinished, projectOfRepo, short, triggerText, type AutoItem } from './auto-model'
 import { TalkCtx, useTalk } from './auto-talk'
 import { AutoDeleteAction } from './auto-delete'
+import { autoCondition } from './auto-condition'
 import './h24.css'
 import { flash, when } from './follow'
 
@@ -150,7 +151,9 @@ export function H24Rail() {
 
   // The head: what runs, else what waits for a yes, else the next trigger.
   const running = live.filter((x) => x.state === 'running')
-  const next = live.filter((x) => x.nextAt && x.state !== 'running').sort((a, b) => a.nextAt! - b.nextAt!)[0]
+  const next = live.filter((x) => x.nextAt && x.nextReason !== 'retry' && x.state !== 'running').sort((a, b) => a.nextAt! - b.nextAt!)[0]
+  const waiting = live.find(x => ['waiting', 'queued', 'scheduled'].includes(x.state))
+  const condition = waiting ? autoCondition(waiting) : ''
   const summary: ReactNode = running.length ? (
     <>
       <AutoMark />
@@ -161,8 +164,8 @@ export function H24Rail() {
     <span className="txt">{t.toValidateN(proposals.length)}</span>
   ) : next ? (
     <span className="txt">{nextTimeText(next, now, true)}</span>
-  ) : null
-  const said = running.length ? `${running[0].title}${running.length > 1 ? ` +${running.length - 1}` : ''}` : proposals.length ? t.toValidateN(proposals.length) : next ? nextTimeText(next, now, true) : t.nothing
+  ) : condition ? <span className="txt">{condition}</span> : null
+  const said = running.length ? `${running[0].title}${running.length > 1 ? ` +${running.length - 1}` : ''}` : proposals.length ? t.toValidateN(proposals.length) : next ? nextTimeText(next, now, true) : condition || t.nothing
 
   return (
     <>
@@ -376,7 +379,7 @@ export function useMetaLine(x: AutoItem): string {
   const { snap, now } = useApp()
   const project = x.projectId ? (snap.projects.find((p) => p.id === x.projectId)?.name ?? x.projectId) : x.repo
   const parts = [triggerText(x.trigger, now), project]
-  if ((x.state === 'waiting' || x.state === 'queued') && x.waiting && x.waiting !== 'time') parts.push(t[`wait_${x.waiting}`])
+  if ((x.state === 'waiting' || x.state === 'queued') && x.waiting) parts.push(autoCondition(x))
   else if (x.state === 'queued' && x.place) parts.push(`#${x.place}`)
   if (x.lastRun && !x.lastRun.ok && x.state !== 'running') parts.push(t.failedAgo(short(now - x.lastRun.at, true)))
   else if (x.state === 'done' && x.endedAt) parts.push(t.endedAgo(short(now - x.endedAt, true)))
@@ -431,7 +434,7 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
       </motion.section>
     )
   }
-  const right = x.state === 'running' && x.startedAt ? short(now - x.startedAt) : x.nextAt && x.state !== 'paused' ? nextTimeText(x, now) : ''
+  const right = x.state === 'running' && x.startedAt ? short(now - x.startedAt) : x.nextAt && x.nextReason !== 'retry' && x.state !== 'paused' ? nextTimeText(x, now) : ''
   return (
     <motion.section layout="position" className={`band auto-band${x.state === 'paused' ? ' paused' : ''}`} style={color(slot)} data-h24={x.id} {...drop}>
       <Fill x={x} />

@@ -266,8 +266,8 @@ describe('automation page', () => {
     render(snap([opt({ id: 'r', title: 'Clean deps', state: 'running', startedAt: NOW - 12 * MIN, est: 45, sessionId: 's9', every: 6 * 3600_000 })]), <AutoPage id="r" />)
     await flush()
     expect(host.querySelector('.auto-flow .name')!.textContent).toBe('12 min/ 45 min')
-    // Next: the run after this one, never « now ».
-    expect(kpis().next).toMatch(/^(?:[A-Za-z]+ )?\d\d:\d\d$/)
+    // A recurrence does not establish the next run's actual time.
+    expect(kpis().next).toBe('not yet scheduled')
     const live = host.querySelector('.page-body .row .st .auto-mark')!.closest('button')!
     await click(live)
     expect(pushed).toEqual([{ kind: 'session', id: 's9' }])

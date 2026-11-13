@@ -1,10 +1,16 @@
 // get/server.mjs: the public setup service. A mock Hetzner API, the real bootstrap's encryption through openssl, and
 // the guards (preview key, SSRF, step allowlist, rate limits). No real network beyond 127.0.0.1.
-import { execFileSync } from 'node:child_process'
+// The Mac path, as far as Linux can check it: the script under bash 3.2, the page for a Mac visitor, the Node way of
+// sealing the link. Its branches run for real in get/test-macos.sh (a fake Mac) and get/e2e-mac.mjs (a real one).
+import { execFileSync, spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
+import fs from 'node:fs'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import os from 'node:os'
+import path from 'node:path'
+import { Window } from 'happy-dom'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JavaScript module, no types
 import { config, createServer, hetznerQuote, publicAddress, resolveTarget, sslip, stepTitles } from './server.mjs'
 
@@ -115,6 +121,12 @@ describe('helpers', () => {
     expect(t['dependencies and app build']).toBe('s_build')
     expect(Object.values(t)).toContain('s_https')
     expect(Object.keys(t).some((k) => /é/.test(k))).toBe(true)
+  })
+  it('reads them from both spellings of the installer’s table (bash 4 arrays, bash 3.2 plain variables)', () => {
+    const file = path.join(os.tmpdir(), `wvget-titles-${process.pid}.sh`)
+    fs.writeFileSync(file, 'EN[s_source]="getting weevils"\nFR_s_source="récupération de weevils"\nEN_waiting="waiting for weevilsd"\nEN_usage="usage: install.sh"\nEN_s_build_extra="no"\n')
+    expect(stepTitles(file)).toEqual({ 'getting weevils': 's_source', 'récupération de weevils': 's_source', 'waiting for weevilsd': 'waiting' })
+    fs.rmSync(file)
   })
   it('names a machine by its address', () => {
     expect(sslip('203.0.113.5')).toBe('203-0-113-5.sslip.io')
@@ -256,6 +268,17 @@ describe('an install, end to end through the API', () => {
     expect(st.state).toBe('failed')
     expect(st.error).not.toContain('abc')
   })
+  it('takes the two steps the bootstrap does itself by name, and no other name', async () => {
+    const job = (await post('/api/job', { kind: 'pc', lang: 'en', pub: pubB64(keyPair().publicKey) })).data
+    await report(job.sid, { event: 'start' })
+    await report(job.sid, { event: 'step', step: 's_system' })
+    await report(job.sid, { event: 'step', step: 'done' })
+    await report(job.sid, { event: 'step', step: 'https://x/#k=abc' })
+    await report(job.sid, { event: 'step', step: 'tunnel' })
+    const st = (await post('/api/status', { sid: job.sid, view: job.view })).data
+    expect(st.state).toBe('running')
+    expect(st.steps).toEqual(['start', 's_system', 'tunnel'])
+  })
   it('rejects a weak or malformed page key', async () => {
     const weak = crypto.generateKeyPairSync('rsa', { modulusLength: 1024 }).publicKey
     expect((await post('/api/job', { kind: 'pc', pub: pubB64(weak) })).data.error).toBe('bad_key')
@@ -290,5 +313,103 @@ describe('guards', () => {
     own.close()
     expect(codes.filter((c) => c === 200)).toHaveLength(12)
     expect(codes.at(-1)).toBe(429)
+  })
+})
+
+// ---- macOS
+const here = path.dirname(new URL(import.meta.url).pathname)
+const bootstrap = fs.readFileSync(path.join(here, 'bootstrap.sh'), 'utf8')
+const page = fs.readFileSync(path.join(here, 'index.html'), 'utf8')
+
+describe('a Mac', () => {
+  it('gets a script that macOS’s own bash (3.2) can read', async () => {
+    const job = (await post('/api/job', { kind: 'pc', lang: 'fr', pub: pubB64(keyPair().publicKey) })).data
+    const script = await (await fetch(`${base}/i/${job.sid}`)).text()
+    expect(script).not.toMatch(/@[A-Z]+@/)
+    expect(script).toContain(`MODE='pc'`)
+    // The real thing when Docker has the image (never pulled from a test), else the host's bash.
+    const bash32 = spawnSync('docker', ['image', 'inspect', 'bash:3.2'], { stdio: 'ignore' }).status === 0
+    const r = bash32 ? spawnSync('docker', ['run', '--rm', '-i', 'bash:3.2', 'bash', '-n'], { input: script }) : spawnSync('bash', ['-n'], { input: script })
+    expect(r.stderr.toString()).toBe('')
+    expect(r.status).toBe(0)
+    // What bash 3.2 or the tools of macOS do not have (see the contract of the port), comments left out.
+    const code = bootstrap.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')
+    for (const gnu of [/tail [^|\n]*--pid/, /sed -i /, /(?<!openssl )base64 -[dw] /, /readlink -f/, /date -d/, /stat -c/, /\bsha256sum\b/, /\btimeout \d/, /\bsetsid\b/, /declare -A/, /\bmapfile\b/, /\$\{[A-Za-z_]+,,\}/, /\|&/, /&>>/]) expect(code).not.toMatch(gnu)
+  }, 120_000)
+
+  it('seals the link with Node as well as with openssl, both opened the way the page does (WebCrypto RSA-OAEP, SHA-256)', async () => {
+    // The page's own key pair and import (index.html: newJob, unseal).
+    const pair = await crypto.subtle.generateKey({ name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['encrypt', 'decrypt'])
+    const pub = Buffer.from(await crypto.subtle.exportKey('spki', pair.publicKey)).toString('base64')
+    const jwk = await crypto.subtle.exportKey('jwk', pair.privateKey)
+    const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt'])
+    const link = 'https://essai-mac.trycloudflare.com/#k=AbCdEf123456_-xyz'
+    // The bootstrap's own shell functions, cut out of the script.
+    const fns = ['seal_openssl', 'seal_node'].map((name) => new RegExp(`^  ${name}\\(\\) \\{\\n[\\s\\S]*?\\n  \\}$`, 'm').exec(bootstrap)?.[0])
+    expect(fns.every(Boolean)).toBe(true)
+    for (const how of ['seal_node', 'seal_openssl']) {
+      const sealed = execFileSync('bash', ['-euo', 'pipefail', '-c', `${fns.join('\n')}\n${how}`], { input: link, env: { ...process.env, PUB: pub } }).toString()
+      expect(sealed, how).toMatch(/^[A-Za-z0-9+/=]{340,350}$/)
+      const opened = new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, key, Buffer.from(sealed, 'base64')))
+      expect(opened, how).toBe(link)
+    }
+    // No openssl at all, or one that fails (an old LibreSSL): nothing comes out, and nothing breaks the script.
+    const none = execFileSync('bash', ['-euo', 'pipefail', '-c', `openssl() { return 1; }\n${fns.join('\n')}\nseal_openssl; echo "[$?]"`], { input: link, env: { ...process.env, PUB: pub } }).toString()
+    expect(none).toBe('[0]\n')
+    expect(bootstrap).toMatch(/\[ "\$OS" != Darwin \] \|\| order='node openssl'/)
+  })
+
+  // The page's script, run for one visitor: what the first screen shows.
+  async function firstScreen(userAgent: string, lang = 'en') {
+    const window = new Window({ url: 'https://get.example/', settings: { navigator: { userAgent } } })
+    const document = window.document
+    document.body.innerHTML = /<body>([\s\S]*?)<script src=/.exec(page)![1]
+    window.localStorage.setItem('wvlang', lang)
+    const calls: string[] = []
+    const fetchStub = async (p: string) => {
+      calls.push(p)
+      const body = p === '/api/job' ? { sid: 'abcdefghjk', view: 'v', command: 'curl -fsSL https://get.example/i/abcdefghjk | bash' } : { state: 'waiting', steps: [] }
+      return { ok: true, status: 200, json: async () => body }
+    }
+    const code = /<script>\n([\s\S]*?)<\/script>/.exec(page)![1]
+    const names = ['window', 'document', 'navigator', 'localStorage', 'location', 'matchMedia', 'scrollTo', 'getSelection', 'fetch', 'crypto', 'setTimeout', 'setInterval']
+    const values = [window, document, window.navigator, window.localStorage, window.location, () => ({ matches: false }), () => {}, () => ({ selectAllChildren() {} }), fetchStub, crypto.webcrypto, () => 0, () => 0]
+    new Function(...names, code)(...values)
+    const app = document.getElementById('app')!
+    return { app, calls, text: () => app.textContent || '' }
+  }
+  const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15'
+  const LINUX = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1'
+
+  it('is offered the “connect this computer” command on the first screen, like Linux, with the nudge toward a server', async () => {
+    const mac = await firstScreen(MAC)
+    await vi.waitFor(() => expect(mac.text()).toContain('curl -fsSL https://get.example/i/abcdefghjk | bash'), { timeout: 20_000 })
+    expect(mac.calls[0]).toBe('/api/job')
+    expect(mac.text()).toContain('Connect this computer')
+    expect(mac.text()).toContain('Better: a server')
+    expect(mac.text()).toContain('your phone and computer are off')
+    expect(mac.text()).toContain('Mac password')
+    expect(mac.text()).not.toMatch(/Linux for now|take a VPS/)
+    // Same screen for Linux, without the Mac note; a phone gets servers first and no command.
+    const linux = await firstScreen(LINUX)
+    await vi.waitFor(() => expect(linux.text()).toContain('curl -fsSL https://get.example/i/abcdefghjk | bash'), { timeout: 20_000 })
+    expect(linux.text()).toContain('Connect this computer')
+    expect(linux.text()).not.toContain('Mac password')
+    const phone = await firstScreen(IPHONE)
+    expect(phone.calls).toEqual([])
+    expect(phone.text()).toContain('Mac, Linux, or Windows with WSL.')
+    expect(phone.text()).not.toContain('curl')
+    // French, and no sentence left that sends a Mac away.
+    const fr = await firstScreen(MAC, 'fr')
+    expect(fr.text()).toContain('Branche cet ordinateur')
+    expect(fr.text()).toContain('mot de passe du Mac')
+    expect((await firstScreen(IPHONE, 'fr')).text()).toContain('Mac, Linux, ou Windows avec WSL.')
+    expect(page).not.toMatch(/Linux for now|Linux pour l’instant|prends un VPS|take a VPS/)
+  }, 60_000)
+
+  it('resumes a computer setup on the first screen, where its command already is', async () => {
+    expect(page).toContain("const computer = os === 'linux' || os === 'windows' || os === 'mac'")
+    expect(page).toContain('if (!computer) pc()')
   })
 })

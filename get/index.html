@@ -115,10 +115,10 @@ const W = FR ? {
   hs: 'Crée-moi un serveur chez Hostinger', hsSub: 'Le plus simple : tout se fait dans hPanel, leur espace client.', rec: 'conseillé',
   hz: 'Crée-moi un serveur chez Hetzner', hzSub: 'Le moins cher, facturé à l’heure. Demande une vérification d’identité à l’inscription.',
   vps: 'J’ai déjà un VPS', vpsSub: 'Déjà le tien : son adresse et son mot de passe, weevils s’y installe tout seul.',
-  pc: 'Mon ordinateur', pcSub: 'Linux, ou Windows avec WSL. Tes agents tournent seulement quand il est allumé.',
+  pc: 'Mon ordinateur', pcSub: 'Mac, Linux, ou Windows avec WSL. Tes agents tournent seulement quand il est allumé.',
   thisPc: 'Branche cet ordinateur', thisPcSub: 'Colle cette commande dans un terminal de cet ordinateur. Ensuite, un QR code ouvre weevils sur ton téléphone.',
   better: 'Mieux : un serveur', betterSub: 'Un serveur fait tourner tes agents même téléphone et ordinateur éteints, et ton téléphone les joint de partout. Même parcours, 2 minutes de plus.',
-  macNote: 'weevils tourne sur Linux pour l’instant : sur un Mac, prends un VPS (c’est le mieux de toute façon).',
+  macNote: 'Sur un Mac, le terminal est l’app Terminal. Elle peut demander une fois le mot de passe du Mac (rien ne s’affiche quand tu le tapes).',
   winNote: 'Sous Windows, colle la commande dans Ubuntu (WSL2). Un VPS reste le plus simple.',
   back: '← Retour',
   hzTitle: 'Un serveur rien qu’à toi, chez Hetzner',
@@ -183,10 +183,10 @@ const W = FR ? {
   hs: 'Create a server for me at Hostinger', hsSub: 'The simplest: everything happens in hPanel, their customer area.', rec: 'recommended',
   hz: 'Create a server for me at Hetzner', hzSub: 'The cheapest, billed by the hour. Asks for an ID check at sign-up.',
   vps: 'I already have a VPS', vpsSub: 'Already yours: its address and password, weevils installs itself.',
-  pc: 'My computer', pcSub: 'Linux, or Windows with WSL. Your agents run only while it’s on.',
+  pc: 'My computer', pcSub: 'Mac, Linux, or Windows with WSL. Your agents run only while it’s on.',
   thisPc: 'Connect this computer', thisPcSub: 'Paste this command in a terminal on this computer. Then a QR code opens weevils on your phone.',
   better: 'Better: a server', betterSub: 'A server keeps your agents working while your phone and computer are off, and your phone reaches them from anywhere. Same flow, 2 more minutes.',
-  macNote: 'weevils runs on Linux for now: on a Mac, take a VPS (it’s the best option anyway).',
+  macNote: 'On a Mac, the terminal is the Terminal app. It may ask for your Mac password once (nothing shows while you type).',
   winNote: 'On Windows, paste the command in Ubuntu (WSL2). A VPS is still the simplest.',
   back: '← Back',
   hzTitle: 'A server of your own, at Hetzner',
@@ -253,6 +253,8 @@ langBtn.onclick = () => { try { localStorage.setItem('wvlang', FR ? 'en' : 'fr')
 const ua = navigator.userAgent
 const phone = /iPhone|iPod|Android.+Mobile|Mobile.+Firefox|Windows Phone/i.test(ua) || (/iPad|Android/i.test(ua) && matchMedia('(pointer: coarse)').matches) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
 const os = phone ? 'phone' : /Windows/.test(ua) ? 'windows' : /Macintosh|Mac OS X/.test(ua) ? 'mac' : /Linux|X11|CrOS/.test(ua) ? 'linux' : 'other'
+// A computer weevils installs on: the command is offered right on the first screen.
+const computer = os === 'linux' || os === 'windows' || os === 'mac'
 
 // ------------------------------------------------------------------ tiny DOM
 const app = document.getElementById('app')
@@ -320,12 +322,12 @@ function home() {
   const intro = band('b5', h('h2', {}, W.plug), h('p', { class: 'small' }, W.plugSub))
   const hz = [choiceBtn('b1', W.hs, W.hsSub, () => provider('hostinger'), W.rec), choiceBtn('b4', W.hz, W.hzSub, () => provider('hetzner'))]
   const vps = choiceBtn('b2', W.vps, W.vpsSub, ssh)
-  if (os === 'linux' || os === 'windows') {
+  if (computer) {
     // A computer: connect it right here, and still suggest a VPS.
-    const cmdBand = band('b3', h('h2', {}, W.thisPc), h('p', {}, W.thisPcSub), os === 'windows' ? h('p', { class: 'small' }, W.winNote) : null, pcBox(true))
+    const note = os === 'windows' ? W.winNote : os === 'mac' ? W.macNote : ''
+    const cmdBand = band('b3', h('h2', {}, W.thisPc), h('p', {}, W.thisPcSub), note ? h('p', { class: 'small' }, note) : null, pcBox(true))
     return show(cmdBand, band('b5', h('h2', {}, W.better), h('p', { class: 'small' }, W.betterSub)), ...hz, vps)
   }
-  if (os === 'mac') return show(intro, band('b5', h('p', { class: 'small' }, W.macNote)), ...hz, vps, choiceBtn('b3', W.pc, W.pcSub, pc))
   show(intro, ...hz, vps, choiceBtn('b3', W.pc, W.pcSub, pc))
 }
 
@@ -537,7 +539,7 @@ async function ready(job, s) {
 // ------------------------------------------------------------------ start (or resume a setup in progress)
 const resume = savedJob()
 if (resume && resume.kind !== 'pc' && resume.started) progress(resume)
-else if (resume && resume.kind === 'pc') { home(); if (os !== 'linux' && os !== 'windows') pc() }
+else if (resume && resume.kind === 'pc') { home(); if (!computer) pc() }
 else home()
 </script>
 </body>

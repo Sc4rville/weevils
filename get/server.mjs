@@ -78,7 +78,9 @@ export const sslip = (ip) => (net.isIP(ip) === 4 ? ip.replace(/\./g, '-') : ip.r
 export function stepTitles(installer) {
   const src = fs.readFileSync(installer, 'utf8')
   const titles = {}
-  for (const m of src.matchAll(/^(EN|FR)\[(s_[a-z]+|waiting|ready|almost_login|almost_install)\]="([^"]+)"$/gm)) titles[m[3]] = m[2]
+  // Two spellings of the same table: EN[s_source]="…" (bash 4 arrays) and EN_s_source="…" (the installer that also
+  // runs under macOS's bash 3.2).
+  for (const m of src.matchAll(/^(?:EN|FR)(?:_|\[)(s_[a-z]+|waiting|ready|almost_login|almost_install)\]?="([^"]+)"$/gm)) titles[m[2]] = m[1]
   return titles
 }
 
@@ -567,7 +569,9 @@ export function createServer(cfg = config(), deps = {}) {
         const ev = f.get('event')
         let step = ''
         if (ev === 'start') step = 'start'
-        else if (ev === 'step') step = f.get('title') ? titles[f.get('title')] || '' : ['tunnel'].includes(f.get('step')) ? f.get('step') : ''
+        // A title from the installer's log, or a step the bootstrap does itself: the phone's link, and on a Mac
+        // without Homebrew the system tools it installs before the installer runs.
+        else if (ev === 'step') step = f.get('title') ? titles[f.get('title')] || '' : ['tunnel', 's_system'].includes(f.get('step')) ? f.get('step') : ''
         if (step && STEPS.includes(step)) {
           j.state = 'running'
           j.step = step

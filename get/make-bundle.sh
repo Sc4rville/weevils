@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # While the weevils repository is private, get/server.mjs serves the code to the installs it starts (GET_BUNDLE).
 # This builds that bundle: a single commit snapshot of a committed revision (no history, no author e-mail), without
-# the paths that must not be redistributed. Usage: get/make-bundle.sh [<rev>] [<out>]
+# the paths that must not be redistributed. Usage: get/make-bundle.sh [<rev>] [<out>] [<checkout>]
+# <checkout> is the clone to take <rev> from (default: the one this script is in). The bundle is what an install
+# gets: for Mac visitors, <rev> must hold the installer that supports macOS.
 set -euo pipefail
 rev=${1:-HEAD}
 out=${2:-$HOME/.local/share/weevils-get/weevils.bundle}
-src=$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)
+src=$(git -C "${3:-$(dirname "$0")/..}" rev-parse --show-toplevel)
 commit=$(git -C "$src" rev-parse --verify "$rev^{commit}")
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

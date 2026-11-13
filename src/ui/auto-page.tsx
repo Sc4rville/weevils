@@ -258,7 +258,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
           >
             {t.acceptVersion}
           </Line>
-          <Line ch="×" go={null} label={t.refuse(x.title)} onClick={() => k.answer(opt, false, back)}>
+          <Line ch="×" go={null} disabled={busy} label={t.refuse(x.title)} onClick={() => k.answer(opt, false, back)}>
             {t.refuseIt}
           </Line>
         </Notice>

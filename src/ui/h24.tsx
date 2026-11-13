@@ -237,7 +237,7 @@ export function H24Rail() {
                       <Icon name="bubble" />
                     </span>
                     <span className="auto-name">{o.title}</span>
-                    <span className="meta sub ellipsis">{o.talk?.at(-1)?.text}</span>
+                    <span className="meta sub ellipsis">{k.busy.has(o.id) ? t.preparingProposal : t.draftContinue}</span>
                   </div>
                 </motion.section>
               ))}
@@ -421,7 +421,7 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
             <button className="ch" onClick={() => k.answer(o, true)} disabled={busy || k.isStale(o)} aria-label={busy ? t.acceptBusy(o.title) : t.accept(o.title)}>
               <Icon name="check" />
             </button>
-            <button className="ch" onClick={() => k.answer(o, false)} aria-label={t.refuse(o.title)}>
+            <button className="ch" onClick={() => k.answer(o, false)} disabled={busy} aria-label={t.refuse(o.title)}>
               <Icon name="close" />
             </button>
           </span>

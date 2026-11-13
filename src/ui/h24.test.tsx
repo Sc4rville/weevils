@@ -185,7 +185,7 @@ describe('auto drawer', () => {
 
   it('an unfinished conversation stays available without a validation button', () => {
     render(snap([opt({ id: 'draft', title: 'new automation', draft: true, talk: [{ who: 'auto', text: 'What do you want to automate?', at: NOW }] })]))
-    expect(host.querySelector('[data-h24="draft"]')!.textContent).toContain('What do you want to automate?')
+    expect(host.querySelector('[data-h24="draft"]')!.textContent).toContain('draft — continue the conversation')
     expect(host.querySelector('[data-h24="draft"] .chars')).toBeNull()
     expect(head().querySelector('.auto-sum')!.textContent).not.toContain('to approve')
   })
@@ -292,4 +292,16 @@ it('labels quota retry eligibility instead of presenting it as a requested sched
  expect(host.querySelector('[data-h24="retry"] .act')?.textContent).toBe('')
  expect(host.querySelector('[data-h24="retry"] .meta')?.textContent).toContain('every day')
  expect(item.window).toBeUndefined();expect(item.notBefore).toBeUndefined()
+})
+
+it('does not promote a legacy draft from an English ready claim in its discussion',()=>{
+ const draft=opt({id:'original',draft:true,userCreated:true,title:'Improve interaction quality',talk:[{who:'user',text:'Améliore les interactions',at:NOW},{who:'auto',text:'Everything is ready for you to approve.',at:NOW+1}]})
+ const original=JSON.stringify(draft)
+ render(snap([draft]))
+ const card=host.querySelector('[data-h24="original"]')!
+ expect(card.textContent).toContain('draft — continue the conversation')
+ expect(card.textContent).not.toContain('Everything is ready')
+ expect(card.querySelector('.chars')).toBeNull()
+ expect(JSON.stringify(draft)).toBe(original)
+ expect(calls).toEqual([])
 })

@@ -176,7 +176,10 @@ export function useTalks(optimizers: Optimizer[] | undefined): Talks {
   }
   const answer = (o: Optimizer, yes: boolean, onSuccess?: () => void) => {
     // Just rewritten (the card changed under the finger), or being rewritten: the tap was not meant for ✓ or ×.
-    if (o.draft || performance.now() - (landed.current.get(o.id) ?? -Infinity) < SETTLE_MS || (yes && (inflight.current.has(o.id) || isStale(o)))) return false
+    if (o.draft || performance.now() - (landed.current.get(o.id) ?? -Infinity) < SETTLE_MS || inflight.current.has(o.id) || (yes && isStale(o))) return false
+    inflight.current.add(o.id)
+    setBusy(b => new Set(b).add(o.id))
+    setNotes(n => without(n, o.id))
     decisionRecovery.current.set(o.id, o.recoveredAt ?? 0)
     setDecided((m) => new Map(m).set(o.id, yes ? 'yes' : 'no'))
     void (yes ? api.acceptOptimizer(o.id, o.rev ?? 0) : api.refuseOptimizer(o.id))
@@ -192,7 +195,11 @@ export function useTalks(optimizers: Optimizer[] | undefined): Talks {
         if (yes && e instanceof ApiError && e.status === 409) stale(o, tr(M).stale)
         else setNotes((n) => new Map(n).set(o.id, (e as Error).message))
       })
-      .finally(refresh)
+      .finally(() => {
+        inflight.current.delete(o.id)
+        setBusy(b => { const next = new Set(b); next.delete(o.id); return next })
+        refresh()
+      })
     return true
   }
   return { deleted, forget, create, find, open, setOpen, busy, asking, notes, flash: flashes, reply, item, send, landedAt: (id) => landed.current.get(id) ?? -Infinity, openedAt: () => opened.current, stale, isStale, decided, answer }

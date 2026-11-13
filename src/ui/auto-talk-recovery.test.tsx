@@ -69,3 +69,20 @@ it('does not clear an optimistic acceptance from a restored snapshot', async () 
   expect(current.decided.get(proposal.id)).toBe('yes')
   expect(api.acceptOptimizer).toHaveBeenCalledTimes(1)
 })
+
+it('locks a version while approval is pending, preventing a second approval or competing refusal',async()=>{
+ const proposal=item({draft:false,rev:7})
+ let finish!:(value:object)=>void
+ api.acceptOptimizer.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}))
+ await render(proposal)
+ await act(async()=>{
+  expect(current.answer(proposal,true)).toBe(true)
+  expect(current.answer(proposal,true)).toBe(false)
+  expect(current.answer(proposal,false)).toBe(false)
+ })
+ expect(current.busy.has(proposal.id)).toBe(true)
+ expect(api.acceptOptimizer).toHaveBeenCalledTimes(1)
+ expect(api.refuseOptimizer).not.toHaveBeenCalled()
+ await act(async()=>finish({}))
+ expect(current.busy.has(proposal.id)).toBe(false)
+})

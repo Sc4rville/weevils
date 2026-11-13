@@ -231,7 +231,8 @@ function writeReceipt(id:string,value:{state:'pending'|'done';text?:string}) {
 }
 export function addChunk(id: string, seq: number, type: string, data: string) {
   if (!validUpload(id) || !Number.isInteger(seq) || seq < 0 || seq > 1_000_000) throw new Error(tr(V).badRecording)
-  const dir=partialDir(id),file=path.join(dir,String(seq).padStart(7,'0')),bytes=Buffer.from(data,'base64')
+  const dir=partialDir(id),file=path.join(dir,String(seq).padStart(7,'0')),bytes=Buffer.from(data,'base64'),typeFile=path.join(dir,'type')
+  if(fs.existsSync(typeFile)&&fs.readFileSync(typeFile,'utf8')!==type)throw new Error(tr(V).badRecording)
   // An identical retry is safe even after finish; changed payload under one identity is never accepted.
   if(fs.existsSync(file)){
     if(!fs.readFileSync(file).equals(bytes))throw new Error(tr(V).badRecording)

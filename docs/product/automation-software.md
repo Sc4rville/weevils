@@ -14,6 +14,18 @@ External systemd timers and log-discovered jobs are not silently deleted or adop
 
 ## Independent local repositories
 
+Draft discussion and approval are separate phases. Both providers return a boolean `ready`; the server validates
+the accumulated title, brief and target before exposing approval, even when the final response changes no fields.
+This transition increments the proposal revision and never queues a run. Natural-language approval and assistant
+claims about a button do not replace revision-checked acceptance. Software storage and the execution target are
+separate: organizing an automation's source must not redirect its application work into the registry repository.
+
+Legacy drafts are not bulk-promoted from assistant prose. After reviewing one full proposal,
+`POST /api/optimizers/:id/prepare` takes `expectedRev`, `expectedTalkAt` (last stored discussion timestamp), and an
+optional scope patch (`title`, `why`, `repo`, `prompt` only). It backs up the original, preserves identity/history/
+schedule/source, and exposes the existing approval action without accepting. Stale reviews conflict; identical
+retries reuse the persisted result. Deleted, refused, running and previously accepted records are ineligible.
+
 The first user-created draft and retroactive adoption create `<configured project root>/automations/`:
 
 - `registry/` is a local Git repository with relative ID-to-source references.

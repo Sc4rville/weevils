@@ -675,6 +675,51 @@ describe('auto — talking a task over (the negotiation)', () => {
     expect(createIn).not.toHaveBeenCalled()
   })
 
+  it.each(['claude', 'codex'] as const)('prepares accumulated fields on a French approval reply with an English app (%s), without accepting', async provider => {
+    const onCodex = provider === 'codex'
+    const o = make(onCodex ? { relay: { holdUntil: () => T0 + MIN, autoOnCodex: () => true } } : {})
+    const answerer = onCodex ? vi.mocked(relayAnswer) : model
+    const draft = o.create()
+    answerer.mockResolvedValueOnce(JSON.stringify({ reply: 'Where should the report appear?', ready: false, patch: {
+      title: 'Check interaction quality', prompt: 'Check the application daily, fix verified issues and keep a report in Auto.', repo: 'mygame', every: '1d', est: 90,
+    } }))
+    await o.talk(draft.id, 'Vérifie chaque jour, maximum 90 minutes', P)
+    const before = structuredClone(o.get(draft.id)!)
+    answerer.mockResolvedValueOnce(JSON.stringify({ reply: 'Everything is ready for you to approve with the app button.', ready: true, patch: {} }))
+    const ready = (await o.talk(draft.id, 'Dans Auto, vas-y c bon je veux valider', P))!
+    expect(ready.failed).toBeUndefined()
+    expect(ready.item).toMatchObject({ id: draft.id, state: 'proposed', title: before.title, every: before.every, rev: (before.rev ?? 0) + 1 })
+    expect(ready.item!.draft).toBeUndefined()
+    expect(ready.item!.acceptedAt).toBeUndefined()
+    expect(ready.item!.sessionId).toBeUndefined()
+    expect(ready.reply).toBe(O.en.talkPrepared)
+    expect(ready.changed).toEqual([])
+    expect(o.get(draft.id)!.prompt).toBe(before.prompt)
+    expect(make().list()[0]).toEqual(ready.item)
+    expect(answerer.mock.calls[1][0]).toContain('title, why and prompt stay in English')
+    o.tick(T0 + 20 * MIN)
+    expect(createIn).not.toHaveBeenCalled()
+    expect(o.accept(draft.id, before.rev)).toBe('busy')
+    expect(o.accept(draft.id, ready.item!.rev)).toBe(true)
+    expect(o.accept(draft.id, ready.item!.rev)).toBe(false)
+  })
+
+  it('does not convert a promise, invalid ready flag or rejected required field into a proposal', async () => {
+    const o = make(), draft = o.create()
+    for (const out of [
+      { ready: undefined, patch: {} }, { ready: 'true', patch: {} }, { ready: true, patch: {} },
+      { ready: true, patch: { title: 'Check tests', prompt: 'Check the application and report verified failures.', repo: 'missing' } },
+    ]) {
+      model.mockResolvedValueOnce(JSON.stringify({ reply: 'Everything is ready. Click approve.', ...out }))
+      const r = (await o.talk(draft.id, 'ok jvalidd', P))!
+      expect(r.failed).toBe(true)
+      expect(r.reply).toBe(O.en.talkIncomplete)
+      expect(r.item).toEqual(draft)
+    }
+    expect(o.accept(draft.id)).toBe('busy')
+    expect(createIn).not.toHaveBeenCalled()
+  })
+
   it('offers four useful starters without project context', () => {
     snap.projects = []
     snap.sessions = []
@@ -751,7 +796,7 @@ describe('auto — talking a task over (the negotiation)', () => {
     sys.logged = () => false
     const o = make({ relay: { holdUntil: () => T0 + MIN, autoOnCodex: () => true } })
     const draft = o.create()
-    vi.mocked(relayAnswer).mockResolvedValueOnce(JSON.stringify({ reply: 'What should the report cover?', patch: {} }))
+    vi.mocked(relayAnswer).mockResolvedValueOnce(JSON.stringify({ reply: 'What should the report cover?', patch: {}, ready: false }))
     expect((await o.talk(draft.id, 'prepare a report', P))!.failed).toBeUndefined()
     expect(relayAnswer).toHaveBeenCalledOnce()
     expect(model).not.toHaveBeenCalled()
@@ -1432,6 +1477,23 @@ describe('auto — runs, their outputs, the automation page', () => {
       expect(model).not.toHaveBeenCalled()
     })
 
+    it('prepares an explicitly reviewed legacy proposal through the normal API without accepting it', async () => {
+      const o = make(), draft = o.create()
+      const url = `/api/optimizers/${draft.id}`
+      expect((await call(o, 'POST', `${url}/prepare`, {})).status).toBe(409)
+      const review = { expectedRev: 0, expectedTalkAt: draft.talk!.at(-1)!.at,
+        patch: { title: 'Check application quality', prompt: 'Inspect the application and report verified interaction issues.', repo: 'mygame' } }
+      const ready = await call(o, 'POST', `${url}/prepare`, review)
+      expect(ready).toMatchObject({ status: 200, body: { item: { id: draft.id, state: 'proposed', rev: 1 } } })
+      expect(ready.body.item.draft).toBeUndefined()
+      expect(await call(make(), 'POST', `${url}/prepare`, review)).toEqual(ready)
+      expect((await call(o, 'POST', `${url}/accept`, { rev: 0 })).status).toBe(409)
+      expect(o.get(draft.id)!.state).toBe('proposed')
+      expect(createIn).not.toHaveBeenCalled()
+      expect((await call(o, 'POST', `${url}/accept`, { rev: 1 })).status).toBe(200)
+      expect(o.get(draft.id)!.state).toBe('queued')
+    })
+
     it('pause and run', async () => {
       const o = seed()
       expect(await call(o, 'POST', '/api/optimizers/a1b2c3/pause', { paused: true })).toMatchObject({ status: 200, body: { ok: true } })
@@ -1657,4 +1719,57 @@ it('does not let an old client discard a user draft by calling the refusal API',
  expect(o.refuse(draft.id,'api')).toBe(false)
  expect(make().list()).toHaveLength(1)
  expect(make().get(draft.id)?.draft).toBe(true)
+})
+
+describe('explicit preparation of an existing legacy draft', () => {
+ const seed = (patch: Record<string, unknown> = {}) => {
+  const original = { id: 'existing', title: 'Improve interaction quality', why: 'Keep the agreed purpose', prompt: 'Inspect the application, fix verified issues and report in Auto.', kind: 'tests', repo: 'mygame', heavy: false, state: 'proposed', draft: true, userCreated: true, createdAt: T0 - MIN, rev: 5, every: 86400000, est: 90, tz: 'Europe/Paris', talk: [{ who: 'user', text: 'ok jvalidd', at: T0 - 1 }, { who: 'auto', text: 'Everything is ready for you to approve with the app button.', at: T0 }], lifecycle: [{ action: 'restore-draft', at: T0 - 2 }], ...patch }
+  fs.writeFileSync(path.join(dir, 'optimizers.json'), JSON.stringify({ items: [original], lastRoundAt: T0 }))
+  return { original, o: make() }
+ }
+ it('repairs only the reviewed identity, preserving discussion/schedule/source; reload and retry cannot accept or duplicate', () => {
+  const { original, o } = seed()
+  expect(o.prepareProposal('existing', 4, T0)).toBeNull()
+  expect(o.prepareProposal('existing', 5, T0 - 1)).toBeNull()
+  const patch = { repo: 'notes', prompt: original.prompt + ' Work in the agreed target repository; software storage is separate.' }
+  const prepared = o.prepareProposal('existing', 5, T0, patch)!
+  expect(prepared).toMatchObject({ id: original.id, rev: 6, state: 'proposed', talk: original.talk, every: original.every, tz: original.tz, est: 90, createdAt: original.createdAt })
+  expect(prepared.draft).toBeUndefined()
+  expect(prepared.acceptedAt).toBeUndefined()
+  expect(prepared.sessionId).toBeUndefined()
+  const reload = make()
+  expect(reload.prepareProposal('existing', 5, T0, patch)).toEqual(prepared)
+  expect(reload.prepareProposal('existing', 5, T0, { prompt: 'A different replacement brief must not reuse this request.' })).toBeNull()
+  expect(reload.list()).toHaveLength(1)
+  expect(JSON.parse(fs.readFileSync(path.join(dir, 'automation-recovery', 'existing-prepare-5.json'), 'utf8'))).toEqual(original)
+  expect(fs.statSync(path.join(dir, 'automation-recovery', 'existing-prepare-5.json')).mode & 0o777).toBe(0o600)
+  reload.tick(T0 + 20 * MIN)
+  expect(createIn).not.toHaveBeenCalled()
+  expect(send).not.toHaveBeenCalled()
+  expect(model).not.toHaveBeenCalled()
+  expect(reload.accept('existing', 5)).toBe('busy')
+  expect(reload.accept('existing', 6)).toBe(true)
+  expect(reload.accept('existing', 6)).toBe(false)
+ })
+ it('never sweeps drafts by matching their prose and rejects missing fields, state changes, invalid scope or schedule edits', () => {
+  for (const invalid of [{ draft: false }, { deletedAt: T0 }, { acceptedAt: T0 }, { sessionId: 's' }, { state: 'refused' }, { state: 'running' }, { userCreated: false }, { prompt: '' }, { repo: 'missing' }]) {
+   const { o } = seed(invalid)
+   expect(o.prepareProposal('existing', 5, T0)).toBeNull()
+  }
+  const { o, original } = seed()
+  for (const patch of [{ repo: 'missing' }, { prompt: '' }, { every: '12h' }, { state: 'queued' }]) expect(o.prepareProposal('existing', 5, T0, patch)).toBeNull()
+  expect(o.get('existing')).toEqual(original)
+ })
+ it('rolls back in memory on a disk failure so a retry remains safe', () => {
+  const { o, original } = seed()
+  const write = fs.writeFileSync
+  const spy = vi.spyOn(fs, 'writeFileSync').mockImplementation((...args: any[]) => {
+   if (String(args[0]) === path.join(dir, 'optimizers.json.tmp')) throw new Error('disk full')
+   return (write as any)(...args)
+  })
+  expect(() => o.prepareProposal('existing', 5, T0)).toThrow('disk full')
+  expect(o.get('existing')).toEqual(original)
+  spy.mockRestore()
+  expect(o.prepareProposal('existing', 5, T0)?.draft).toBeUndefined()
+ })
 })

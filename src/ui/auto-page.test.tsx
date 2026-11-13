@@ -214,7 +214,7 @@ describe('automation page', () => {
     const k = kpis()
     expect(Object.keys(k)).toEqual(['when', 'next', 'last', 'length', 'runs', 'cost'])
     expect(k).toMatchObject({ when: 'every day 07:00–08:00', last: '1d ago', length: '9 min', runs: '23', cost: '412K' })
-    expect(host.querySelector('.auto-flow .meta')!.textContent).toBe('scheduled')
+    expect(host.querySelector('.auto-flow .name')!.textContent).toBe('within its time window')
     expect(host.querySelector('.page-head .strong')!.textContent).toBe('mygame')
     expect(host.querySelectorAll('button.auto-kpi')).toHaveLength(6)
     await click(host.querySelector('button.auto-kpi'))

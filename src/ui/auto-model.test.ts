@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { H24Activity, Optimizer, Project } from '../../shared/api.ts'
-import { DRAWER_SLOT, PROP_PALETTE, at, autoList, autoOfSession, bandColors, propColors, failedLine, fromActivity, fromOptimizer, hueGap, progressOf, short, triggerText, windowStart, type Trigger } from './auto-model'
+import { DRAWER_SLOT, PROP_PALETTE, at, autoList, autoOfSession, bandColors, propColors, failedLine, fromActivity, fromOptimizer, hueGap, progressOf, short, triggerText, type Trigger } from './auto-model'
 
 const NOW = 1_800_000_000_000
 const MIN = 60_000
@@ -24,8 +24,8 @@ describe('autoList: what runs without asking', () => {
     const ids = list([
       opt({ id: 'paused', paused: true, waiting: 'paused' }),
       opt({ id: 'busy', waiting: 'busy' }),
-      opt({ id: 'late', waiting: 'time', startAt: NOW + 9 * H, every: DAY }),
-      opt({ id: 'soon', waiting: 'time', startAt: NOW + H, every: DAY }),
+      opt({ id: 'late', waiting: 'time', startAt: NOW + 9 * H, notBefore: NOW + 9 * H, every: DAY }),
+      opt({ id: 'soon', waiting: 'time', startAt: NOW + H, notBefore: NOW + H, every: DAY }),
       opt({ id: 'done', state: 'done', endedAt: NOW - H }),
       opt({ id: 'run', state: 'running', startedAt: NOW - MIN }),
     ]).map((x) => x.id)
@@ -36,7 +36,7 @@ describe('autoList: what runs without asking', () => {
     expect(fromOptimizer(opt({ waiting: 'load' }))).toMatchObject({ state: 'waiting', trigger: { kind: 'idle' } })
     expect(fromOptimizer(opt({ waiting: 'queue' }))!.state).toBe('queued')
     expect(fromOptimizer(opt({ paused: true }))!.state).toBe('paused')
-    expect(fromOptimizer(opt({ waiting: 'time', startAt: NOW + H, every: 7 * DAY, window: { from: 60, to: 360 } }))).toMatchObject({ state: 'scheduled', nextAt: NOW + H, trigger: { kind: 'every', every: 7 * DAY } })
+    expect(fromOptimizer(opt({ waiting: 'time', startAt: NOW + H, every: 7 * DAY, window: { from: 60, to: 360 } }))).toMatchObject({ state: 'waiting', nextAt: null, trigger: { kind: 'every', every: 7 * DAY } })
     expect(fromOptimizer(opt({ window: { from: 60, to: 360 } }))!.trigger.kind).toBe('window')
     expect(fromOptimizer(opt({ notBefore: NOW + H }))!.trigger.kind).toBe('time')
     expect(fromActivity(act({ kind: 'timer', nextRunAt: NOW + MIN, everyMs: 6 * H }))).toMatchObject({ state: 'scheduled', trigger: { kind: 'every', every: 6 * H } })
@@ -119,10 +119,10 @@ describe('triggerText: when it fires, in one phrase', () => {
     expect(triggerText(tg, NOW, 'en')).toBe(en)
   })
 
-  it('a proposal with a window says the weekday of its next window', () => {
+  it('a proposal window never invents the next run or weekday', () => {
     const x = fromOptimizer(opt({ state: 'proposed', every: 7 * DAY, window: { from: 60, to: 360 } }), null, NOW)!
-    expect(x.trigger.at).toBe(windowStart({ from: 60 }, NOW))
-    expect(x.trigger.at! > NOW && x.trigger.at! - NOW <= DAY).toBe(true)
+    expect(x.trigger.at).toBeUndefined()
+    expect(triggerText(x.trigger, NOW, 'en')).toBe('every 7 days, at night')
   })
 })
 
@@ -160,11 +160,11 @@ describe('bandColors', () => {
 
 describe('progress: the span the fill covers', () => {
   it('a wait from the last run (else the acceptance) to the next trigger, never longer than the period', () => {
-    const x = fromOptimizer(opt({ waiting: 'time', startAt: NOW + 6 * H, every: DAY, acceptedAt: NOW - 30 * DAY, runs: [{ at: NOW - 18 * H, startedAt: NOW - 18 * H - 9 * MIN, ok: true }] }))!
+    const x = fromOptimizer(opt({ waiting: 'time', startAt: NOW + 6 * H, notBefore: NOW + 6 * H, every: DAY, acceptedAt: NOW - 30 * DAY, runs: [{ at: NOW - 18 * H, startedAt: NOW - 18 * H - 9 * MIN, ok: true }] }))!
     expect(x.progress(NOW)).toEqual({ from: NOW - 18 * H, to: NOW + 6 * H })
-    const fresh = fromOptimizer(opt({ waiting: 'time', startAt: NOW + 6 * H, every: DAY, acceptedAt: NOW - 2 * H }))!
+    const fresh = fromOptimizer(opt({ waiting: 'time', startAt: NOW + 6 * H, notBefore: NOW + 6 * H, every: DAY, acceptedAt: NOW - 2 * H }))!
     expect(fresh.progress(NOW)).toEqual({ from: NOW - 2 * H, to: NOW + 6 * H })
-    const old = fromOptimizer(opt({ waiting: 'time', startAt: NOW + 6 * H, every: DAY, acceptedAt: NOW - 30 * DAY }))!
+    const old = fromOptimizer(opt({ waiting: 'time', startAt: NOW + 6 * H, notBefore: NOW + 6 * H, every: DAY, acceptedAt: NOW - 30 * DAY }))!
     expect(old.progress(NOW)).toEqual({ from: NOW + 6 * H - DAY, to: NOW + 6 * H })
   })
 
@@ -179,9 +179,9 @@ describe('progress: the span the fill covers', () => {
     expect(fromOptimizer(opt({}))!.progress(NOW)).toBeNull()
   })
 
-  it('paused: the span it had (its last run to one period later)', () => {
+  it('paused: no inferred future cycle', () => {
     const x = fromOptimizer(opt({ paused: true, every: 6 * H, runs: [{ at: NOW - 2 * H, startedAt: NOW - 2 * H - MIN, ok: true }] }))!
-    expect(progressOf(x, NOW)).toEqual({ from: NOW - 2 * H, to: NOW + 4 * H })
+    expect(progressOf(x, NOW)).toBeNull()
   })
 })
 
@@ -211,4 +211,15 @@ describe('automation time', () => {
     expect(at(new Date(2026, 10, 11, 0).getTime(), now, 'fr')).toBe('mer. 00:00')
     expect(at(new Date(2026, 10, 11, 0).getTime(), now, 'en')).toBe('Wed 00:00')
   })
+})
+
+it('does not turn orphan starts, retry eligibility or windows into dated executions',()=>{
+ for(const patch of [{every:DAY,startAt:NOW+H},{waiting:'later' as const,retryAt:NOW+H,startAt:NOW+H},{window:{from:60,to:120},startAt:NOW+H}]) {
+  const x=fromOptimizer(opt(patch),null,NOW)!
+  expect(x.nextAt).toBeNull();expect(x.trigger.at).toBeUndefined()
+ }
+ expect(fromOptimizer(opt({waiting:'later',retryAt:NOW+H}),null,NOW)?.state).toBe('waiting')
+ expect(fromOptimizer(opt({notBefore:NOW+H,startAt:NOW+H}),null,NOW)?.nextAt).toBe(NOW+H)
+ expect(fromOptimizer(opt({notBefore:NOW+H,startAt:NOW+2*H}),null,NOW)?.nextAt).toBeNull()
+ expect(fromOptimizer(opt({paused:true,notBefore:NOW+H}),null,NOW)?.nextAt).toBeNull()
 })

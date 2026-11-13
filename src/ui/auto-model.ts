@@ -93,8 +93,7 @@ export function typicalMs(x: Pick<AutoItem, 'runs' | 'est'>): number | null {
 export function progressOf(x: Omit<AutoItem, 'progress'>, _now: number): Span | null {
   if (x.state === 'running' && x.startedAt) return { from: x.startedAt, to: x.startedAt + (typicalMs(x) ?? DEFAULT_RUN_MS) }
   const every = x.trigger.every
-  let to = x.state === 'scheduled' || x.state === 'paused' ? x.nextAt : null
-  if (!to && x.state === 'paused' && x.lastRun && every) to = x.lastRun.at + every
+  const to = x.state === 'scheduled' ? x.nextAt : null
   if (!to) return null
   let from = x.lastRun?.at ?? x.acceptedAt ?? x.since ?? to - (every ?? 3600_000)
   if (every && to - from > every) from = to - every
@@ -118,9 +117,9 @@ export function windowStart(w: { from: number }, now: number): number {
   return d.getTime()
 }
 
-/** now: for a task not scheduled yet (a proposal), when its window would open next. */
-export function optimizerTrigger(o: Pick<Optimizer, 'every' | 'window' | 'notBefore' | 'startAt'>, now?: number): Trigger {
-  const at = o.startAt ?? o.notBefore ?? (o.window && now !== undefined ? windowStart(o.window, now) : undefined)
+/** An explicit date is distinct from a retry, a recurring cadence or an eligibility window. */
+export function optimizerTrigger(o: Pick<Optimizer, 'every' | 'window' | 'notBefore' | 'startAt'>): Trigger {
+  const at = o.window ? undefined : o.notBefore
   if (o.every) return { kind: 'every', every: o.every, window: o.window, at }
   if (o.window) return { kind: 'window', window: o.window, at }
   if (o.notBefore) return { kind: 'time', at }
@@ -131,11 +130,12 @@ export function optimizerTrigger(o: Pick<Optimizer, 'every' | 'window' | 'notBef
 export function fromOptimizer(o: Optimizer, projectId: string | null = null, now = Date.now()): AutoItem | null {
   if (o.state === 'refused') return null
   const paused = o.paused || o.waiting === 'paused'
+  const fixedAt = o.waiting !== 'later' && !o.window && o.notBefore && o.notBefore > now && (!o.startAt || o.startAt === o.notBefore) && (!o.retryAt || o.retryAt <= now) ? o.notBefore : null
   const state: AutoState =
     o.state === 'queued'
       ? paused
         ? 'paused'
-        : o.waiting === 'time' || o.waiting === 'later'
+        : fixedAt
           ? 'scheduled'
           : o.waiting === 'queue' || !o.waiting
             ? 'queued'
@@ -155,10 +155,10 @@ export function fromOptimizer(o: Optimizer, projectId: string | null = null, now
     est: o.est,
     sessionId: o.sessionId,
     note: o.lastEvent,
-    // Stopped by a limit or an error, or held by its time: when it starts again.
-    nextAt: o.state === 'queued' && !paused ? (o.retryAt && o.retryAt > (o.startAt ?? 0) ? o.retryAt : (o.startAt ?? o.retryAt ?? null)) : null,
-    nextReason: o.waiting === 'later' || (o.retryAt && o.retryAt >= (o.startAt ?? 0)) ? 'retry' : undefined,
-    trigger: optimizerTrigger(o, o.state === 'proposed' ? now : undefined),
+    // Weak provenance is not a future execution: neither retryAt nor an orphan startAt establishes one.
+    nextAt: o.state === 'queued' && !paused ? fixedAt : null,
+    nextReason: o.waiting === 'later' || (o.retryAt && o.retryAt > now) ? 'retry' : undefined,
+    trigger: optimizerTrigger(o),
     projectId,
     repo: o.repo,
     why: o.why,
@@ -297,7 +297,7 @@ export function triggerText(tg: Trigger, now: number, lang: Lang = getLang()): s
       if (every === DAY) return w ? (night ? t.nightly(range) : t.daily(range)) : t.daily(tg.at ? clock(tg.at, lang) : '')
       const head =
         every === WEEK
-          ? t.weekly(new Intl.DateTimeFormat(locale(lang), { weekday: 'long' }).format(tg.at ?? now))
+          ? tg.at ? t.weekly(new Intl.DateTimeFormat(locale(lang), { weekday: 'long' }).format(tg.at)) : t.everyDays(7)
           : every % DAY === 0
             ? t.everyDays(every / DAY)
             : t.every(spanIn(every, lang))

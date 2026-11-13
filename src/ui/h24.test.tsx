@@ -234,7 +234,7 @@ describe('auto drawer', () => {
     render(snap([running(), opt({ id: 'a', title: 'Harden tests', why: 'ship it', rev: 3, window: { from: 60, to: 360 }, every: 7 * 86_400_000 }), opt({ id: 'b', title: 'Watch fairs', kind: 'watch' })]))
     expect(names()).toEqual(['Harden tests', 'Watch fairs', 'Profile loader'])
     expect(host.querySelector('[data-h24="a"] .why')!.textContent).toBe('ship it')
-    expect(host.querySelector('[data-h24="a"] .meta.terms')!.textContent).toMatch(/^every \w+day, at night$/)
+    expect(host.querySelector('[data-h24="a"] .meta.terms')!.textContent).toBe('every 7 days, at night')
     await click(host.querySelector('[data-h24="b"] .auto-hit'))
     expect(pushed).toEqual([{ kind: 'auto', id: 'b' }])
     await click(label(/^run "Harden tests"/)!)

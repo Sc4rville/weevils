@@ -1226,7 +1226,9 @@
   background-size: 420% 100%;
   background-position: 0% 50%;
 }
-.fy-item.recursive-identity { animation: none; }
+.fy-item.recursive-identity,
+.fy-strip.recursive-identity,
+.fy-item.recursive-identity .fy-shift { animation: none; }
 .recursive-identity.recursive-active { animation: fy-drift 16s ease-in-out infinite alternate; }
 .recursive-identity .auto-mark { color: var(--ink); }
 @media (prefers-reduced-motion: reduce) {

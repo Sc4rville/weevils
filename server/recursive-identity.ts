@@ -23,9 +23,12 @@ export class InstallationIdentity {
   private identity:string|null
   private cache=new Map<string,{at:number;identity:string|null}>()
   readonly installationId:string
+  readonly repositoryDirectory:string|null
   private machineId:string
   constructor(directory:string,machineId:string){
     this.machineId=machineId;this.identity=repositoryIdentity(directory)
+    const candidate=this.identity&&path.basename(this.identity)==='.git'?path.dirname(this.identity):path.resolve(directory)
+    this.repositoryDirectory=this.identity&&repositoryIdentity(candidate)===this.identity?candidate:null
     this.installationId=crypto.createHash('sha256').update(machineId+'\0'+(this.identity??path.resolve(directory))).digest('hex').slice(0,24)
   }
   classify(directory:string,projectId:string,repo:string|null,evidence:WorkstreamIdentity['evidence']='repository-identity'):WorkstreamIdentity|undefined {

@@ -819,7 +819,11 @@ export class Weevils {
 
   private toSession(t: Transcript, now: number): Session {
     let where = place(t.cwd, PROJECT_ROOTS)
-    if (where.kind === 'invented') where = this.inferPlace(t) ?? where
+    if (where.kind === 'invented') {
+      const dir=this.installationIdentity.repositoryDirectory,repo=dir?path.basename(dir):null
+      const canonical=repo&&this.repoRoot(repo)===path.dirname(dir!) ? this.installationIdentity.classify(t.cwd,familyOf(repo),repo) : undefined
+      where=canonical?{projectId:canonical.target.projectId,projectName:projectLabel(canonical.target.projectId),kind:'repo',repo}:this.inferPlace(t)??where
+    }
     const { pane, hook, hookAlive, live, alive } = this.lifeOf(t, now)
 
     const observedDaemon = t.tool === 'codex' ? this.codexBridge.activityOf?.(t.id) : undefined
@@ -2225,7 +2229,10 @@ export class Weevils {
 
   /** Racine de projets qui contient ce repo, sur cette machine. */
   repoRoot(repo: string) {
-    return PROJECT_ROOTS.flatMap(root=>[root,...(automationSourceRoot(root)?[automationSourceRoot(root)!]:[])]).find((root) => fs.existsSync(path.join(root, repo)))
+    const configured=PROJECT_ROOTS.flatMap(root=>[root,...(automationSourceRoot(root)?[automationSourceRoot(root)!]:[])]).find((root) => fs.existsSync(path.join(root, repo)))
+    if(configured)return configured
+    const own=this.installationIdentity.repositoryDirectory
+    return own&&path.basename(own)===repo ? path.dirname(own) : undefined
   }
 
   repoDir(repo: string) {
@@ -2238,6 +2245,8 @@ export class Weevils {
   /** Tous les repos de cette machine (pour lancer une session ailleurs que dans un projet actif). */
   allRepos(): string[] {
     const out = new Set<string>()
+    const own=this.installationIdentity.repositoryDirectory
+    if(own)out.add(path.basename(own))
     for (const root of PROJECT_ROOTS.flatMap(root=>[root,...(automationSourceRoot(root)?[automationSourceRoot(root)!]:[])])) {
       try {
         for (const e of fs.readdirSync(root, { withFileTypes: true })) if (e.isDirectory() && !e.name.startsWith('.')) out.add(e.name)

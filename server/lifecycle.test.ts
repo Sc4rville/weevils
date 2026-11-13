@@ -788,12 +788,15 @@ it('shares recursive repository identity between Claude/Codex on a fresh renamed
   const { InstallationIdentity }=await import('./recursive-identity.ts')
   const { MACHINE }=await import('./config.ts')
   const { withLang }=await import('./i18n.ts')
-  const installation=path.join(HOME,'projects','freshproduct'),unrelated=path.join(HOME,'projects','tlo')
+  const installation=path.join(HOME,'freshproduct'),unrelated=path.join(HOME,'projects','tlo')
   for(const dir of [installation,unrelated]){
     fs.mkdirSync(dir,{recursive:true})
     const init=spawnSync('git',['init'],{cwd:dir,stdio:'pipe'});expect(init.status).toBe(0)
   }
   ;(w as any).installationIdentity=new InstallationIdentity(installation,MACHINE.id)
+  fs.mkdirSync(path.join(HOME,'private-unrelated'),{recursive:true})
+  expect(w.allRepos()).not.toContain('private-unrelated')
+  expect(w.repoDir('freshproduct')).toBe(installation)
   const project=w.localProjects([]).find(p=>p.id==='freshproduct')
   expect(project).toMatchObject({repos:['freshproduct'],workstream:{kind:'self-improvement',target:{machineId:MACHINE.id,projectId:'freshproduct',repo:'freshproduct'}}})
   const sourceMessages=[]

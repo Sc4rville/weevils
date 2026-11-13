@@ -23,7 +23,7 @@ export class ApiError extends Error {
 
 let onUnauthorized: (() => void) | null = null
 
-async function call<T>(method: string, url: string, body?: unknown, messageId?: string, signal?: AbortSignal, locale: Lang = getLang()): Promise<T> {
+async function call<T>(method: string, url: string, body?: unknown, messageId?: string, signal?: AbortSignal, locale: Lang = getLang(), expectedStatus?: number): Promise<T> {
   const res = await fetch(url, {
     method,
     headers: { ...localeHeaders(locale), ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(messageId ? { 'Idempotency-Key': messageId } : {}) },
@@ -36,6 +36,7 @@ async function call<T>(method: string, url: string, body?: unknown, messageId?: 
     if (res.status === 401 && !url.endsWith('/login')) onUnauthorized?.()
     throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText)
   }
+  if (expectedStatus !== undefined && res.status !== expectedStatus) throw new Error(tr(OM).unconfirmed)
   return data as T
 }
 
@@ -56,6 +57,25 @@ export interface FileContent {
   binary: boolean
   content: string
   truncated: boolean
+}
+
+const CREATE_OPTIMIZER_KEY = 'weevils-create-optimizer-id'
+let creatingOptimizer: Promise<{ item: Optimizer }> | undefined
+function createOptimizer(): Promise<{ item: Optimizer }> {
+  if (creatingOptimizer) return creatingOptimizer
+  const job = async () => {
+    let key: string
+    try {
+      key = sessionStorage.getItem(CREATE_OPTIMIZER_KEY) || crypto.randomUUID()
+      sessionStorage.setItem(CREATE_OPTIMIZER_KEY, key)
+    } catch { throw new Error(tr(OM).storageFailed) }
+    const result = await call<{ item: Optimizer }>('POST', '/api/optimizers', {}, key, undefined, getLang(), 201)
+    if (!result.item || typeof result.item.id !== 'string' || !result.item.id) throw new Error(tr(OM).unconfirmed)
+    if (sessionStorage.getItem(CREATE_OPTIMIZER_KEY) === key) sessionStorage.removeItem(CREATE_OPTIMIZER_KEY)
+    return result
+  }
+  creatingOptimizer = job().finally(() => { creatingOptimizer = undefined })
+  return creatingOptimizer
 }
 
 export const api = {
@@ -124,7 +144,7 @@ export const api = {
   foryouReply: (id: string, text: string) => send<{ ok: true }>(`/api/foryou/${enc(id)}/reply${inLang()}`, { text }),
   foryouMore: (id: string) => call<{ text: string }>('POST', `/api/foryou/${enc(id)}/more${inLang()}`, {}),
   deleteAutomation: (id: string) => call<{ ok: true; running: boolean }>('DELETE', `/api/auto/${enc(id)}`),
-  createOptimizer: () => call<{ item: Optimizer }>('POST', '/api/optimizers', {}),
+  createOptimizer,
   /** rev : la version à l'écran (le serveur refuse, 409, si la tâche a été réécrite depuis). */
   acceptOptimizer: (id: string, rev?: number) => call<{ ok: true }>('POST', `/api/optimizers/${enc(id)}/accept`, rev === undefined ? {} : { rev }),
   /** Une question sur une tâche (écrite ou dite) : la réponse, la tâche réécrite. tz : où se lisent les heures dites. */

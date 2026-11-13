@@ -555,9 +555,10 @@ export const withoutWeevilsBlock = (s: string) => s.replace(/\s*⟦weevils\b[^�
 /** A title written from that block instead of the session's subject (« Weevils app locale »): treated as no title. */
 export const LOCALE_TITLE = /\bapp[- ]locale\b|\blangue (?:explicite )?de l['’]app\b/i
 export const realTitle = (s: string | undefined) => (s && !LOCALE_TITLE.test(s) ? s : undefined)
-/** A title that speaks of « locale » when the session's own words (block removed) never do: written from the block. */
+/** A title that speaks of « locale » when what the session was asked (block removed) never does: written from the block
+ *  (the agent's replies may well talk of it: they answer the block). */
 export const borrowedTitle = (t: Transcript, title: string | undefined) =>
-  !!title && (LOCALE_TITLE.test(title) || (/\blocale\b/i.test(title) && !t.messages.some((m) => m.role !== 'event' && /\blocale\b/i.test(withoutWeevilsBlock(m.text)))))
+  !!title && (LOCALE_TITLE.test(title) || (/\blocale\b/i.test(title) && !t.messages.some((m) => (m.role === 'user' || m.role === 'orchestrator') && /\blocale\b/i.test(withoutWeevilsBlock(m.text)))))
 const unsigned = (s: string | undefined) => (s ? withoutWeevilsBlock(parseSigned(s)?.text ?? s) : s)
 /** The first real brief: a slash command (« /effort high », « /model … ») tells nothing of the subject. */
 const brief = (t: Transcript) => {

@@ -201,10 +201,14 @@ if [ "$("$svc" mode)" = launchd ]; then
   <dict>
     <key>PATH</key><string>$(xml "$svc_path")</string>
     <key>NODE_ENV</key><string>production</string>
+    <!-- launchd sets no locale: without a UTF-8 one, tmux and the agents in its panes mangle accents. -->
+    <key>LANG</key><string>en_US.UTF-8</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>5</integer>
+  <!-- launchd's default is 256 open files: too few for a server that follows many sessions. -->
+  <key>SoftResourceLimits</key><dict><key>NumberOfFiles</key><integer>8192</integer></dict>
   <!-- The agent sessions (tmux server started by weevilsd) must survive a restart of weevilsd. -->
   <key>AbandonProcessGroup</key><true/>
   <key>ProcessType</key><string>Interactive</string>

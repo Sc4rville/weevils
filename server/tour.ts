@@ -12,7 +12,8 @@ import path from 'node:path'
 import { execFile } from 'node:child_process'
 import type { H24Activity, Snapshot } from '../shared/api.ts'
 import { TOUR_IDS, groupOf, type Handoff, type Tour, type TourId, type TourState, type TourStep } from '../shared/tour.ts'
-import { CLAUDE_DIR, DATA_DIR, HOME, LOGS_DIR, PROJECT_ROOTS } from './config.ts'
+import { CLAUDE_DIR, DATA_DIR, LOGS_DIR, PROJECT_ROOTS } from './config.ts'
+import { claudePlanName } from './claude-credentials.ts'
 import { edgeTts, tts } from './fast.ts'
 import { lang, tr } from './i18n.ts'
 import M from './i18n/tour.ts'
@@ -71,9 +72,8 @@ export function handoff(): Handoff | undefined {
 
 /** L'abonnement de Claude Code (Pro, Max…), tel que /login l'a noté. */
 export function claudePlan(): string {
-  const j = readJson<{ claudeAiOauth?: { subscriptionType?: string } }>(path.join(HOME, '.claude', '.credentials.json'))
-  const p = j?.claudeAiOauth?.subscriptionType ?? ''
-  return /^[a-z0-9_-]{1,20}$/i.test(p) ? p.toLowerCase() : ''
+  // The credentials file; on a Mac, what the last Keychain read gave (the quota read asks it), '' until then.
+  return claudePlanName()
 }
 
 let historyCache: { at: number; v: { projects: number; sessions: number; repos: number } } | null = null

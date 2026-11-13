@@ -8,6 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { QuotaInfo, QuotaWindow, TokenRate, UsageModel, UsageRow } from '../shared/infra.ts'
 import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, HOME, MACHINE, ORCH_DIR, PROJECT_ROOTS } from './config.ts'
+import { claudeOauth, forgetClaudeOauth } from './claude-credentials.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/infra.ts'
 
@@ -167,13 +168,17 @@ export async function claudeQuota(): Promise<QuotaInfo> {
   return shared(
     'claude',
     async () => {
-      const o = readJson(path.join(HOME, '.claude', '.credentials.json'))?.claudeAiOauth
+      // The credentials file, or on a Mac the Keychain (asked a few times an hour at most, see claude-credentials.ts).
+      const o = await claudeOauth()
       if (!o?.accessToken) throw new Error(tr(M).noToken)
       const res = await fetch('https://api.anthropic.com/api/oauth/usage', {
         headers: { authorization: `Bearer ${o.accessToken}`, 'anthropic-beta': 'oauth-2025-04-20', 'user-agent': 'weevils' },
         signal: AbortSignal.timeout(8000),
       })
-      if (res.status === 401) throw new Error(tr(M).expired)
+      if (res.status === 401) {
+        forgetClaudeOauth()
+        throw new Error(tr(M).expired)
+      }
       if (!res.ok) throw httpError(res)
       return { ok: true, plan: claudePlan(o), windows: claudeWindows(await res.json()), source, at: Date.now() }
     },

@@ -27,6 +27,8 @@ import type { MachineFacts } from '../shared/infra.ts'
 import { CONTEXT_BLOCK, FIELDS, isSecretName, type Brick, type Device } from '../shared/setup.ts'
 import { BOSS, resetAuthors, authors } from './authors.ts'
 import { CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL } from './config.ts'
+import { claudeLoggedIn } from './claude-credentials.ts'
+import { which as whichIn } from './platform.ts'
 import { devilConfig } from './devil.ts'
 import { facts } from './discover.ts'
 import { cartesia, edgeTts } from './fast.ts'
@@ -155,31 +157,11 @@ const run = (cmd: string, args: string[], timeout = 6000, env?: NodeJS.ProcessEn
     execFile(cmd, args, { timeout, env: env ?? process.env }, (err, out) => resolve({ ok: !err, out: String(out ?? '').trim() })),
   )
 
-/** Une commande installée : dans le PATH, ou là où les installateurs la posent. */
-export function which(cmd: string): string | null {
-  const dirs = [...(process.env.PATH ?? '').split(path.delimiter), path.join(HOME, '.local', 'bin'), path.join(HOME, '.claude', 'local'), path.join(HOME, '.npm-global', 'bin'), '/usr/local/bin', '/opt/homebrew/bin']
-  for (const d of dirs.filter(Boolean)) {
-    const f = path.join(d, cmd)
-    try {
-      fs.accessSync(f, fs.constants.X_OK)
-      return f
-    } catch {
-      /* pas ici */
-    }
-  }
-  return null
-}
+/** Une commande installée : dans le PATH, ou là où les installateurs la posent (server/platform.ts). */
+export const which = (cmd: string): string | null => whichIn(cmd, process.platform, HOME)
 
-/** Claude Code connecté : les identifiants de /login, une clé dans l'environnement, ou le compte noté par Claude (macOS : trousseau). */
-export function claudeLogged(): boolean {
-  if (process.env.ANTHROPIC_API_KEY?.trim() || process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim()) return true
-  try {
-    if (fs.statSync(path.join(HOME, '.claude', '.credentials.json')).size > 2) return true
-  } catch {
-    /* pas de fichier */
-  }
-  return process.platform === 'darwin' && /"oauthAccount"\s*:\s*\{/.test(read(path.join(HOME, '.claude.json')))
-}
+/** Claude Code connecté : les identifiants de /login, une clé dans l'environnement, ou sur un Mac le trousseau (server/claude-credentials.ts). */
+export const claudeLogged = (): boolean => claudeLoggedIn()
 
 let ghCache: { at: number; v: { installed: boolean; logged: boolean; login?: string } } | null = null
 async function github(force = false) {

@@ -34,7 +34,9 @@ function tmux(args: string[], cwd?: string, socket: string[] = ['-L', SOCKET]): 
       process.env.TMUX_TMPDIR = path.join(process.env.HOME, '.local/share/weevils/tmux')
     }
     if (process.env.TMUX_TMPDIR) fs.mkdirSync(process.env.TMUX_TMPDIR, { recursive: true, mode: 0o700 })
-    execFile('tmux', [...socket, ...args], { cwd, timeout: 8000, maxBuffer: 4 << 20 }, (err, stdout, stderr) => {
+    // -u: tmux takes the terminal for UTF-8 whatever the locale. A launchd service on a Mac has none, and tmux would
+    // then replace the field separator of list-sessions (and every accent of a title) with « _ ».
+    execFile('tmux', ['-u', ...socket, ...args], { cwd, timeout: 8000, maxBuffer: 4 << 20 }, (err, stdout, stderr) => {
       if (err) reject(new Error(stderr?.toString().trim() || err.message))
       else resolve(stdout.toString())
     })

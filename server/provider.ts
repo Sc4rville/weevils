@@ -5,7 +5,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { Tool } from '../shared/api.ts'
-import { HOME, CODEX_DIR } from './config.ts'
+import { CODEX_DIR } from './config.ts'
+import { claudeLoggedIn } from './claude-credentials.ts'
+import { which } from './platform.ts'
 export const preferredTool = (): Tool => process.env.WEEVILS_PROVIDER === 'codex' ? 'codex' : 'claude'
 let route: ((tool: Tool) => Tool | null) | undefined
 export function setProviderRoute(select: (tool: Tool) => Tool | null) { route = select }
@@ -21,8 +23,9 @@ export function codexLogged(): boolean {
  return !!(auth?.tokens?.access_token || auth?.OPENAI_API_KEY || process.env.OPENAI_API_KEY?.trim())
 }
 export function providerStatus(tool: Tool = preferredTool()): { installed: boolean; logged: boolean } {
- const installed = [...(process.env.PATH ?? '').split(path.delimiter),path.join(os.homedir(),'.local','bin')].some(dir=>{try{fs.accessSync(path.join(dir,tool),fs.constants.X_OK);return true}catch{return false}})
- const logged = tool === 'codex' ? codexLogged() : !!(process.env.ANTHROPIC_API_KEY?.trim() || process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim() || read(path.join(HOME,'.claude','.credentials.json'))?.claudeAiOauth?.accessToken || (process.platform === 'darwin' && read(path.join(HOME,'.claude.json'))?.oauthAccount))
+ // Same lookup as the setup (Homebrew's folders on a Mac) and the same login check (the Keychain on a Mac).
+ const installed = !!which(tool, process.platform, os.homedir())
+ const logged = tool === 'codex' ? codexLogged() : claudeLoggedIn()
  return {installed,logged}
 }
 export const providerReady = () => { const s=providerStatus();return s.installed && s.logged }

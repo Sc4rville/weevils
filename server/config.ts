@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { servicePath } from './platform.ts'
 
 export const HOME = os.homedir()
 export const CONFIG_DIR = path.join(HOME, '.config', 'weevils')
@@ -14,6 +15,9 @@ try {
 } catch {
   /* pas de config : valeurs par défaut */
 }
+// A Mac: launchd starts a service with a bare PATH. tmux, claude, gh… are found (by us and by the agents we start)
+// only once ~/.local/bin and Homebrew's folders are in it. Linux: unchanged.
+process.env.PATH = servicePath()
 
 /** Prénom de l'utilisateur, pour que les agents s'adressent à lui. Vide : user() (server/i18n.ts) dit « l'utilisateur » / « the user ». */
 export const USER_NAME = process.env.WEEVILS_USER_NAME?.trim() ?? ''

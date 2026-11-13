@@ -11,6 +11,7 @@ import FY from './i18n/foryou.ts'
 // Lancer : node server/index.ts (Node 22, TypeScript natif).
 
 import { spawn } from 'node:child_process'
+import { keepAwake } from './platform.ts'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
@@ -531,7 +532,7 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ['GET', /^\/api\/setup\/qr\.svg$/, async (req, res) => {
     const svg = await new Promise<string>((resolve) => {
-      const p = spawn('qrencode', ['-t', 'SVG', '-m', '1', '-o', '-', loginLink(req)], { stdio: ['ignore', 'pipe', 'ignore'] })
+      const p = spawn(which('qrencode') ?? 'qrencode', ['-t', 'SVG', '-m', '1', '-o', '-', loginLink(req)], { stdio: ['ignore', 'pipe', 'ignore'] })
       let out = ''
       p.stdout.on('data', (c) => (out += c))
       p.on('error', () => resolve(''))
@@ -889,6 +890,8 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
 }))
 
 server.listen(PORT, HOST, () => console.log(`weevilsd → http://${HOST}:${PORT}`))
+// A Mac goes to sleep on its own: awake while weevilsd runs and the Mac is plugged in (WEEVILS_KEEP_AWAKE=0: no).
+keepAwake()
 
 // Hooks Claude Code : port séparé, local uniquement, pas d'authentification nécessaire. Une page web ouverte sur
 // cette machine (Origin étrangère, DNS rebinding) ne peut pas y forger d'événements.

@@ -9,7 +9,7 @@ import { useApp } from './app-context'
 import { Line, SessionRow } from './bits'
 import { modelLabel } from './settings'
 import { CodeFile } from './codeview'
-import { durLong } from './format'
+import { ago, durLong } from './format'
 import { Icon } from './icons'
 import { Shell } from './shell'
 import { copyText } from './copy'
@@ -382,7 +382,9 @@ function Quota({ name, q }: { name: string; q: QuotaInfo | undefined }) {
         {q?.plan ? ` · ${q.plan}` : ''}
       </div>
       {!q && <div className="in meta empty">…</div>}
-      {q && !q.ok && <Notice eventId={noticeKey("error:usage", q.error ?? t.unavailable)} className="in meta empty" role="alert">! {q.error ?? t.unavailable}</Notice>}
+      {/* Never an empty section: no figures yet says so (not a closable notice); old ones say their age. */}
+      {q && !q.ok && !q.windows.length && <div className="in meta empty" role="status">{t.notYet(q.error ?? t.unavailable)}</div>}
+      {q?.ok && q.stale && <div className="in meta stale">{t.lastKnown(ago(now - q.at))}</div>}
       {q?.windows.map((w) => (
         <div key={`${w.kind}${w.label ?? ''}`} className={`in stat ${w.kind === 'model' ? 'minor' : ''}`}>
           <div className="stat-h">

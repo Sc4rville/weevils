@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { sessionTokens, usageOfLine, rate, codexQuota } from './usage.ts'
+import { sessionTokens, usageOfLine, rate, codexQuota, claudeBackoff } from './usage.ts'
 import { CODEX_DIR } from './config.ts'
 
 let dir: string
@@ -87,4 +87,11 @@ it('discovers active Codex files under old year/month directories and uses delta
  fs.writeFileSync(path.join(parent,'active.jsonl'),[event(100),event(100),event(150),''].join('\n'))
  for(const p of [CODEX_DIR,path.dirname(path.dirname(parent)),path.dirname(parent),parent])fs.utimesSync(p,new Date('2020-01-01'),new Date('2020-01-01'))
  const r=rate();expect(r.available).toBe(true);expect(r.buckets.reduce((a,b)=>a+b,0)).toBe(150)
+})
+
+it('Claude usage backs off on failure: 2, 4, 8 min… capped at 1 h, never under Retry-After', () => {
+  expect(claudeBackoff(1)).toBe(2 * 60_000)
+  expect(claudeBackoff(3)).toBe(8 * 60_000)
+  expect(claudeBackoff(20)).toBe(60 * 60_000)
+  expect(claudeBackoff(1, 15 * 60_000)).toBe(15 * 60_000)
 })

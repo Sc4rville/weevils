@@ -13,6 +13,7 @@ import { AnimatePresence, motion, useIsPresent, useReducedMotion, type PanInfo, 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react'
 import type { ForYouCard, ForYouGauge, ForYouItem, ForYouMedia, ForYouPulse } from '../../shared/foryou.ts'
 import { useApp } from './app-context'
+import { selfRepo } from './recursive-identity'
 import { Collapse, spring, useAuthors } from './bits'
 import { flash, focusBoss } from './follow'
 import { ago } from './format'
@@ -508,6 +509,7 @@ function MailItem({ item, who, fy }: KindProps) {
 
 function Proposals({ item, who, fy }: KindProps) {
   const t = useT(M)
+  const { snap } = useApp()
   const strip = useRef<HTMLDivElement>(null)
   const cards = item.cards ?? []
   const scrolls = cards.length > 2
@@ -533,7 +535,7 @@ function Proposals({ item, who, fy }: KindProps) {
             <motion.div
               key={c.id}
               role="listitem"
-              className={cards.length <= 1 ? 'fy-card wide' : 'fy-card'}
+              className={`${cards.length <= 1 ? 'fy-card wide' : 'fy-card'}${c.source === 'optimizer' && selfRepo(snap.projects, c.repo) ? ' recursive-identity' : ''}`}
               style={slot(slots.current.get(c.id) ?? 'p9')}
               variants={{ gone: () => gone(c.id) }}
               initial={{ flexBasis: '0%', opacity: 0 }}

@@ -3,6 +3,7 @@ import { AnimatePresence, animate, motion, useDragControls, useMotionValue, useT
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Optimizer } from '../../shared/api.ts'
 import { isSettled, stableOrder, useApp } from './app-context'
+import { selfRepo } from './recursive-identity'
 import { Collapse, Line, spring } from './bits'
 import { AutoMark, Icon, type Dir, type IconName } from './icons'
 import { useT } from '../i18n'
@@ -124,7 +125,9 @@ export function H24Rail() {
   const opts = (snap.optimizers ?? []).filter(o => !k.deleted.has(o.id)).map(k.item)
   const drafts = opts.filter((o) => o.state === 'proposed' && o.draft && !k.decided.has(o.id))
   const ready = opts.filter((o) => o.state === 'proposed' && !o.draft && !k.decided.has(o.id))
-  const proposals = [...ready.filter((o) => o.userCreated), ...ready.filter((o) => !o.userCreated).slice(0, 3)]
+  // Automated is the user's automations first. Under them, smaller: proposals of real recurring automations (and the
+  // user's own drafts made proposals). One-shot proposals are actions: they go to « for you » (server/foryou.ts).
+  const proposals = [...ready.filter((o) => o.userCreated), ...ready.filter((o) => !o.userCreated && !!o.every).slice(0, 3)]
   const accepted = opts.map((o) => (o.state === 'proposed' && k.decided.get(o.id) === 'yes' ? ({ ...o, state: 'queued', acceptedAt: now } as Optimizer) : o))
   const all = autoList({ ...snap, optimizers: accepted })
   // Nothing moves under the finger: running first, then the soonest trigger, then the machine, then paused; a band
@@ -146,7 +149,7 @@ export function H24Rail() {
   const rounding = !!snap.autoRound?.busy
   // A colour per band, in display order: each one far from the one above it (the amber head for the first).
   const kept = useRef(new Map<string, string>())
-  kept.current = bandColors([...drafts.map((o) => o.id), ...proposals.map((o) => o.id), ...(rounding ? ['__round'] : []), ...live.map((x) => x.id)], kept.current)
+  kept.current = bandColors([...drafts.map((o) => o.id), ...live.map((x) => x.id), ...proposals.map((o) => o.id), ...(rounding ? ['__round'] : [])], kept.current)
   const keptDone = useRef(new Map<string, string>())
   keptDone.current = bandColors(finished.map((x) => x.id), keptDone.current)
 
@@ -161,12 +164,12 @@ export function H24Rail() {
       <span className="txt">{running[0].title}</span>
       {running.length > 1 && <span className="more">+{running.length - 1}</span>}
     </>
-  ) : proposals.length ? (
-    <span className="txt">{t.toValidateN(proposals.length)}</span>
   ) : next ? (
     <span className="txt">{nextTimeText(next, now, true)}</span>
+  ) : proposals.length ? (
+    <span className="txt">{t.toValidateN(proposals.length)}</span>
   ) : condition ? <span className="txt">{condition}</span> : null
-  const said = running.length ? `${running[0].title}${running.length > 1 ? ` +${running.length - 1}` : ''}` : proposals.length ? t.toValidateN(proposals.length) : next ? nextTimeText(next, now, true) : condition || t.nothing
+  const said = running.length ? `${running[0].title}${running.length > 1 ? ` +${running.length - 1}` : ''}` : next ? nextTimeText(next, now, true) : proposals.length ? t.toValidateN(proposals.length) : condition || t.nothing
 
   return (
     <>
@@ -242,6 +245,9 @@ export function H24Rail() {
                   </div>
                 </motion.section>
               ))}
+              {live.map((x) => (
+                <AutoBand key={x.id} x={x} slot={kept.current.get(x.id) ?? 'p9'} />
+              ))}
               {proposals.map((o) => (
                 <AutoBand key={o.id} x={fromOptimizer(o, projectOfRepo(snap.projects, o.repo))!} proposal={o} slot={kept.current.get(o.id) ?? 'p9'} />
               ))}
@@ -259,9 +265,6 @@ export function H24Rail() {
                   </div>
                 </motion.div>
               )}
-              {live.map((x) => (
-                <AutoBand key={x.id} x={x} slot={kept.current.get(x.id) ?? 'p9'} />
-              ))}
             </AnimatePresence>
             {finished.length > 0 && (
               <>
@@ -400,7 +403,7 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
     const busy = k.busy.has(o.id)
     const project = x.projectId ? (snap.projects.find((p) => p.id === x.projectId)?.name ?? x.projectId) : o.repo
     return (
-      <motion.section layout="position" className="band auto-band auto-prop" style={color(slot)} data-h24={o.id} {...drop}>
+      <motion.section layout="position" className={`band auto-band auto-prop${selfRepo(snap.projects, o.repo) ? ' recursive-identity' : ''}`} style={color(slot)} data-h24={o.id} {...drop}>
         <button className="auto-hit" onClick={open} aria-label={t.taskLabel(o.title, t.state_proposed, [t[`kind_${o.kind}`], o.why].filter(Boolean).join(', '))} />
         <AutoDeleteAction id={o.id} title={o.title} />
         <div className="in">

@@ -1224,7 +1224,8 @@
    `.band.recursive-identity`: styles.css loads after this file and its `.band { background: var(--c) }` shorthand
    would reset the gradient to none on the main page (same specificity, later wins). */
 .recursive-identity,
-.band.recursive-identity {
+.band.recursive-identity,
+.fy-card.recursive-identity {
   background-image: linear-gradient(115deg, var(--fy-g1), var(--fy-g2), var(--fy-g3), var(--fy-g4), var(--fy-g1));
   background-size: 420% 100%;
   background-position: 0% 50%;

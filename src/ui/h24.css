@@ -127,6 +127,15 @@
 /* A proposal: its name over the whole width, its reason on one line (all of it on its page), its terms with ✓ and ×. */
 .auto-prop .auto-name {
   grid-column: 2 / 4;
+  font-size: 1.0625rem;
+  -webkit-line-clamp: 1;
+}
+
+/* Proposals sit under the automations, smaller: they must not outweigh what really runs. */
+.auto-prop > .in {
+  min-height: 44px;
+  padding-block: 7px 8px;
+  font-size: 0.875rem;
 }
 
 .auto-band .sub.why {

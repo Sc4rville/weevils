@@ -50,6 +50,8 @@ export interface ForYouCard {
   kind: string
   /** Label of the accept button when it is not a plain ✓. */
   accept?: string
+  /** optimizer: the repo it works in (the app gives weevils' own the recursive signature). */
+  repo?: string | null
 }
 
 /** A button under an item. The server knows what it does: POST /api/foryou/<item>/act { action }. */

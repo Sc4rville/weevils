@@ -194,8 +194,11 @@ export interface QuotaInfo {
   windows: QuotaWindow[]
   /** D'où viennent les chiffres (affiché nulle part, pour le débogage). */
   source: string
+  /** When the figures were read (for stale ones: their age, shown as « 12 min ago »). */
   at: number
   error?: string
+  /** The last read failed (429, network): these are the last known figures, kept. */
+  stale?: boolean
 }
 
 export interface UsageInfo {

@@ -1123,7 +1123,8 @@ export class ForYou {
 
   /** The cards waiting for a yes or a no: proposed auto tasks first, then tips; never one already answered. */
   private cards(snap: Snapshot, now: number): ForYouCard[] {
-    const auto = (snap.optimizers ?? []).filter((o) => o.state === 'proposed' && !o.draft).map((o): ForYouCard => ({ id: `o:${o.id}`, title: o.title, why: o.why, source: 'optimizer', kind: o.kind }))
+    // One-shot proposals are actions to take: they live here. Recurring ones are automations: the automated page.
+    const auto = (snap.optimizers ?? []).filter((o) => o.state === 'proposed' && !o.draft && !o.every && !o.userCreated).map((o): ForYouCard => ({ id: `o:${o.id}`, title: o.title, why: o.why, source: 'optimizer', kind: o.kind, repo: o.repo }))
     const tips = this.tips(snap, now).map((f): ForYouCard => ({ id: `t:${f.id}`, title: f.text, why: '', source: 'tip', kind: f.rule, ...(f.accept ? { accept: f.accept } : {}) }))
     return [...auto, ...tips].filter((c) => !(c.id in this.s.cards)).slice(0, MAX_CARDS)
   }

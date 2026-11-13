@@ -47,7 +47,8 @@ const { H24Rail } = await import('./h24')
 const { Ctx } = await import('./app-context')
 
 const NOW = Date.now()
-const opt = (o: Partial<Optimizer>): Optimizer => ({ id: 'o', title: 't', why: '', repo: null, kind: 'tests', heavy: false, state: 'proposed', createdAt: NOW, ...o })
+/** A proposal (recurring by default: one-shot ones go to « for you », not the automated page). */
+const opt = (o: Partial<Optimizer>): Optimizer => ({ id: 'o', title: 't', why: '', repo: null, kind: 'tests', heavy: false, state: 'proposed', createdAt: NOW, ...(o.state && o.state !== 'proposed' ? {} : { every: 86_400_000 }), ...o })
 /** An accepted task. */
 const task = (o: Partial<Optimizer>): Optimizer => opt({ state: 'queued', ...o })
 
@@ -190,13 +191,13 @@ describe('auto drawer', () => {
     expect(head().querySelector('.auto-sum')!.textContent).not.toContain('to approve')
   })
 
-  it('the head says what runs (AutoMark, its title, +N), else what waits for a yes, else the next trigger', () => {
+  it('the head says what runs (AutoMark, its title, +N), else the next trigger, else what waits for a yes', () => {
     render(snap([running(), running({ id: 'r2', title: 'A second one' }), opt({ id: 'p' })]))
     expect(head().querySelector('.auto-sum .auto-mark')).not.toBeNull()
-    expect(head().querySelector('.auto-sum .txt')!.textContent).toBe(names()[1])
+    expect(head().querySelector('.auto-sum .txt')!.textContent).toBe(names()[0])
     // The count is never the part that gets cut.
     expect(head().querySelector('.auto-sum .more')!.textContent).toBe('+1')
-    render(snap([opt({ id: 'p' }), opt({ id: 'p2' })], [timer]))
+    render(snap([opt({ id: 'p' }), opt({ id: 'p2' })]))
     expect(head().querySelector('.auto-sum')!.textContent).toBe('2 to approve')
     expect(head().getAttribute('aria-label')).toContain('2 to approve')
     render(snap([], [timer]))
@@ -228,11 +229,11 @@ describe('auto drawer', () => {
     for (const b of host.querySelectorAll('.auto-band:not(.auto-round)')) expect(b.querySelector('.auto-hit')).not.toBeNull()
   })
 
-  it('proposals are bands at the top: ✓ sends the version on screen (rev), × refuses, the band folds away; a tap elsewhere opens its page', async () => {
+  it('proposals are smaller bands under the automations: ✓ sends the version on screen (rev), × refuses, the band folds away; a tap elsewhere opens its page', async () => {
     let clock = 10_000
     const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
     render(snap([running(), opt({ id: 'a', title: 'Harden tests', why: 'ship it', rev: 3, window: { from: 60, to: 360 }, every: 7 * 86_400_000 }), opt({ id: 'b', title: 'Watch fairs', kind: 'watch' })]))
-    expect(names()).toEqual(['Harden tests', 'Watch fairs', 'Profile loader'])
+    expect(names()).toEqual(['Profile loader', 'Harden tests', 'Watch fairs'])
     expect(host.querySelector('[data-h24="a"] .why')!.textContent).toBe('ship it')
     expect(host.querySelector('[data-h24="a"] .meta.terms')!.textContent).toBe('every 7 days, at night')
     await click(host.querySelector('[data-h24="b"] .auto-hit'))
@@ -247,6 +248,11 @@ describe('auto drawer', () => {
     now.mockRestore()
   })
 
+  it('one-shot proposals are not in automated (they go to « for you »)', () => {
+    render(snap([opt({ id: 'once', title: 'Draft a menu', every: undefined }), opt({ id: 'daily', title: 'Daily check' })]))
+    expect(names()).toEqual(['Daily check'])
+  })
+
   it('the kind glyph of a proposal is never ✓ nor ×', () => {
     render(snap([opt({ id: 'a', title: 'Harden tests' })]))
     const d = (sel: string) => host.querySelector(`${sel} path:last-child`)!.getAttribute('d')
@@ -254,12 +260,12 @@ describe('auto drawer', () => {
     expect(d('[data-h24="a"] .st')).not.toBe(d('[data-h24="a"] .ch:last-child'))
   })
 
-  it('while a round runs, a band with the cycle and the breathing squares sits after the proposals', () => {
+  it('while a round runs, a band with the cycle and the breathing squares sits after the automations and their proposals', () => {
     render({ ...snap([opt({ id: 'a' }), running()]), autoRound: { busy: true } })
     const bands = [...host.querySelectorAll('.h24-body > .band')]
-    expect(bands.map((b) => b.getAttribute('data-h24') ?? (b.classList.contains('auto-round') ? 'round' : '?'))).toEqual(['a', 'round', 'r'])
-    expect(bands[1].querySelector('.dots')).not.toBeNull()
-    expect(bands[1].textContent).toBe('')
+    expect(bands.map((b) => b.getAttribute('data-h24') ?? (b.classList.contains('auto-round') ? 'round' : '?'))).toEqual(['r', 'a', 'round'])
+    expect(bands[2].querySelector('.dots')).not.toBeNull()
+    expect(bands[2].textContent).toBe('')
   })
 
   it('finished ones fold behind one line', async () => {

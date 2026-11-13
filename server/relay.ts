@@ -599,7 +599,8 @@ export class Relay {
     try {
       const q = await this.deps.quota()
       // A failed read keeps the last figures for a while (the API of the quota may be down with the rest).
-      if (q.ok) this.q = q
+      // Stale figures (kept by usage.ts after a 429) count only while they are under 30 min old.
+      if (q.ok && (!q.stale || now - q.at <= 30 * 60_000)) this.q = q
       else if (this.q && now - this.q.at > 30 * 60_000) this.q = null
     } catch {
       /* next time */

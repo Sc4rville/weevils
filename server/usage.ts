@@ -7,11 +7,17 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { QuotaInfo, QuotaWindow, TokenRate, UsageModel, UsageRow } from '../shared/infra.ts'
-import { CLAUDE_DIR, CODEX_DIR, HOME, MACHINE, ORCH_DIR, PROJECT_ROOTS } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, HOME, MACHINE, ORCH_DIR, PROJECT_ROOTS } from './config.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/infra.ts'
 
 const CACHE_MS = 90_000
+/** Claude's /api/oauth/usage answers 429 when asked too often: read it every 5 min at most, back off on failure. */
+const CLAUDE_EVERY_MS = 5 * 60_000
+const CLAUDE_BACKOFF_MS = 2 * 60_000
+const CLAUDE_BACKOFF_MAX_MS = 60 * 60_000
+/** The last good Claude figures, kept across restarts (a restart must never show an empty section). */
+const CLAUDE_LAST = path.join(DATA_DIR, 'usage-claude.json')
 const CODEX_HOME = process.env.CODEX_HOME ?? path.join(HOME, '.codex')
 
 const readJson = (f: string): any => {
@@ -62,6 +68,29 @@ export function claudeWindows(d: any): QuotaWindow[] {
 }
 
 let claudeCache: QuotaInfo | null = null
+let claudeNextAt = 0
+let claudeFails = 0
+let claudeLoaded = false
+/** The last good figures from disk, once (a restart keeps them). */
+function claudeLast(): QuotaInfo | null {
+  if (!claudeLoaded) {
+    claudeLoaded = true
+    const d = readJson(CLAUDE_LAST)
+    if (d && Array.isArray(d.windows) && typeof d.at === 'number') claudeCache = { ok: true, plan: d.plan, windows: d.windows, source: String(d.source ?? ''), at: d.at, stale: true }
+  }
+  return claudeCache
+}
+/** Wait before the next try after `fails` failures: doubling from 2 min, at most 1 h, never under Retry-After. */
+export function claudeBackoff(fails: number, retryAfterMs = 0): number {
+  return Math.max(retryAfterMs, Math.min(CLAUDE_BACKOFF_MAX_MS, CLAUDE_BACKOFF_MS * 2 ** Math.max(0, fails - 1)))
+}
+const retryAfter = (v: string | null): number => {
+  if (!v) return 0
+  const s = Number(v)
+  if (Number.isFinite(s)) return s * 1000
+  const t = Date.parse(v)
+  return Number.isFinite(t) ? Math.max(0, t - Date.now()) : 0
+}
 export async function claudeQuota(): Promise<QuotaInfo> {
   const now = Date.now()
   // Simulation (tests of the Codex relay on a throwaway server): a file shaped like the API's answer.
@@ -70,21 +99,35 @@ export async function claudeQuota(): Promise<QuotaInfo> {
     const d = readJson(fake)
     return d ? { ok: true, plan: 'fake', windows: claudeWindows(d), source: fake, at: now } : { ok: false, windows: [], source: fake, at: now, error: tr(M).noToken }
   }
-  if (claudeCache && now - claudeCache.at < CACHE_MS) return claudeCache
+  const last = claudeLast()
+  if (last && now < claudeNextAt) return last
   const source = 'api.anthropic.com/api/oauth/usage'
   const o = readJson(path.join(HOME, '.claude', '.credentials.json'))?.claudeAiOauth
-  if (!o?.accessToken) return (claudeCache = { ok: false, windows: [], source, at: now, error: tr(M).noToken })
+  if (!o?.accessToken) {
+    claudeNextAt = now + CLAUDE_EVERY_MS
+    return (claudeCache = last?.ok ? { ...last, stale: true, error: tr(M).noToken } : { ok: false, windows: [], source, at: now, error: tr(M).noToken })
+  }
   try {
     const res = await fetch('https://api.anthropic.com/api/oauth/usage', {
       headers: { authorization: `Bearer ${o.accessToken}`, 'anthropic-beta': 'oauth-2025-04-20', 'user-agent': 'weevils' },
       signal: AbortSignal.timeout(8000),
     })
-    if (res.status === 401) throw new Error(tr(M).expired)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    if (res.status === 401) throw Object.assign(new Error(tr(M).expired), { wait: 0 })
+    if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { wait: res.status === 429 ? retryAfter(res.headers.get('retry-after')) : 0 })
     claudeCache = { ok: true, plan: claudePlan(o), windows: claudeWindows(await res.json()), source, at: now }
+    claudeFails = 0
+    claudeNextAt = now + CLAUDE_EVERY_MS
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true })
+      fs.writeFileSync(CLAUDE_LAST, JSON.stringify({ plan: claudeCache.plan, windows: claudeCache.windows, source, at: now }))
+    } catch { /* kept in memory */ }
   } catch (e) {
-    // Une erreur passagère garde les derniers chiffres connus (marqués), retentés dans une minute.
-    claudeCache = claudeCache?.ok ? { ...claudeCache, at: now - CACHE_MS + 60_000, error: (e as Error).message } : { ok: false, windows: [], source, at: now - CACHE_MS + 60_000, error: (e as Error).message }
+    // A failed read keeps the last known figures (marked stale, with their age) and backs off: 2, 4, 8… min, 1 h max.
+    claudeFails++
+    const wait = claudeBackoff(claudeFails, (e as { wait?: number }).wait ?? 0)
+    claudeNextAt = now + wait
+    console.error(`[usage] claude : ${(e as Error).message} · next try in ${Math.round(wait / 60_000)} min`)
+    claudeCache = last?.ok ? { ...last, stale: true, error: (e as Error).message } : { ok: false, windows: [], source, at: now, error: (e as Error).message }
   }
   return claudeCache
 }

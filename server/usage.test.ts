@@ -2,8 +2,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { sessionTokens, usageOfLine, rate, codexQuota, claudeBackoff } from './usage.ts'
-import { CODEX_DIR } from './config.ts'
+import { sessionTokens, usageOfLine, rate, codexQuota, claudeQuota, resetQuotaSlots, quotaBackoff } from './usage.ts'
+import { CODEX_DIR, DATA_DIR, HOME } from './config.ts'
 
 let dir: string
 beforeEach(() => {
@@ -89,9 +89,107 @@ it('discovers active Codex files under old year/month directories and uses delta
  const r=rate();expect(r.available).toBe(true);expect(r.buckets.reduce((a,b)=>a+b,0)).toBe(150)
 })
 
-it('Claude usage backs off on failure: 2, 4, 8 min… capped at 1 h, never under Retry-After', () => {
-  expect(claudeBackoff(1)).toBe(2 * 60_000)
-  expect(claudeBackoff(3)).toBe(8 * 60_000)
-  expect(claudeBackoff(20)).toBe(60 * 60_000)
-  expect(claudeBackoff(1, 15 * 60_000)).toBe(15 * 60_000)
+describe('usage — the Claude quota under 429', () => {
+  const answer = { five_hour: { utilization: 42, resets_at: '2026-11-13T15:00:00Z' }, seven_day: { utilization: 61, resets_at: '2026-11-17T08:00:00Z' }, seven_day_opus: { utilization: 12, resets_at: '2026-11-17T08:00:00Z' } }
+  const ok = () => new Response(JSON.stringify(answer), { status: 200 })
+  const tooMany = (retry?: number) => new Response('{}', { status: 429, headers: retry ? { 'retry-after': String(retry) } : {} })
+  beforeEach(() => {
+    fs.mkdirSync(path.join(HOME, '.claude'), { recursive: true })
+    fs.writeFileSync(path.join(HOME, '.claude', '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: 't', subscriptionType: 'max', rateLimitTier: 'default_claude_max_20x' } }))
+    fs.rmSync(path.join(DATA_DIR, 'quota-cache.json'), { force: true })
+    resetQuotaSlots()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(Date.parse('2026-11-13T10:00:00Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('one call shared by every caller, at most every 5 min; a 429 keeps the last figures (with their age) and backs off', async () => {
+    const fetch = vi.fn(async () => ok())
+    vi.stubGlobal('fetch', fetch)
+    const first = await Promise.all([claudeQuota(), claudeQuota(), claudeQuota()])
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(first[0]).toMatchObject({ ok: true, plan: 'Max 20x' })
+    expect(first[0].windows.map((w) => [w.kind, w.percent])).toEqual([['session', 42], ['week', 61], ['model', 12]])
+    const at = first[0].at
+
+    vi.setSystemTime(Date.now() + 4 * 60_000)
+    await claudeQuota()
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    // Six minutes later: Anthropic answers 429 (Retry-After 15 min). The figures stay, marked, and nobody asks again before then.
+    fetch.mockImplementation(async () => tooMany(900))
+    vi.setSystemTime(Date.now() + 2 * 60_000)
+    await claudeQuota()
+    await new Promise((r) => setTimeout(r, 0))
+    const q = await claudeQuota()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(q).toMatchObject({ ok: true, at, stale: true, error: 'HTTP 429' })
+    expect(q.windows).toHaveLength(3)
+    vi.setSystemTime(Date.now() + 14 * 60_000)
+    await claudeQuota()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    fetch.mockImplementation(async () => tooMany())
+    vi.setSystemTime(Date.now() + 2 * 60_000)
+    await claudeQuota()
+    expect(fetch).toHaveBeenCalledTimes(3)
+    await new Promise((r) => setTimeout(r, 0))
+    // Second failure in a row, no Retry-After: 10 min.
+    vi.setSystemTime(Date.now() + 9 * 60_000)
+    await claudeQuota()
+    expect(fetch).toHaveBeenCalledTimes(3)
+    vi.setSystemTime(Date.now() + 2 * 60_000)
+    fetch.mockImplementation(async () => ok())
+    await claudeQuota()
+    expect(fetch).toHaveBeenCalledTimes(4)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(await claudeQuota()).not.toHaveProperty('stale')
+    expect(await claudeQuota()).not.toHaveProperty('error')
+  })
+
+  it('a restart under 429 still shows the last valid answer, read from disk', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ok()))
+    const saved = await claudeQuota()
+    resetQuotaSlots()
+    const fetch = vi.fn(async () => tooMany())
+    vi.stubGlobal('fetch', fetch)
+    // Restarted within the 5 min: not even asked.
+    expect(await claudeQuota()).toMatchObject({ ok: true, at: saved.at, windows: saved.windows })
+    expect(fetch).not.toHaveBeenCalled()
+    resetQuotaSlots()
+    vi.setSystemTime(Date.now() + 30 * 60_000)
+    expect(await claudeQuota()).toMatchObject({ ok: true, at: saved.at, windows: saved.windows })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(await claudeQuota()).toMatchObject({ ok: true, at: saved.at, error: 'HTTP 429' })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('Codex too: a 429 keeps its last valid answer, marked stale', async () => {
+    fs.mkdirSync(path.join(HOME, '.codex'), { recursive: true })
+    fs.writeFileSync(path.join(HOME, '.codex', 'auth.json'), JSON.stringify({ tokens: { access_token: 't', account_id: 'a' } }))
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ plan_type: 'pro', rate_limit: { primary_window: { limit_window_seconds: 18000, used_percent: 30, reset_at: 1794600000 }, secondary_window: { limit_window_seconds: 604800, used_percent: 55, reset_at: 1794900000 } } })))
+    vi.stubGlobal('fetch', fetch)
+    const good = await codexQuota()
+    expect(good).toMatchObject({ ok: true, plan: 'pro', source: 'chatgpt.com/backend-api/wham/usage' })
+    fetch.mockImplementation(async () => tooMany())
+    vi.setSystemTime(Date.now() + 6 * 60_000)
+    await codexQuota()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(await codexQuota()).toMatchObject({ ok: true, at: good.at, windows: good.windows, stale: true, error: 'HTTP 429' })
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('nothing known yet and a 429: an error, never an empty success', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => tooMany()))
+    expect(await claudeQuota()).toMatchObject({ ok: false, windows: [], error: 'HTTP 429' })
+  })
+})
+
+it('quota back-off: 5, 10, 20 min… capped at 1 h, never under Retry-After', () => {
+  expect(quotaBackoff(1)).toBe(5 * 60_000)
+  expect(quotaBackoff(3)).toBe(20 * 60_000)
+  expect(quotaBackoff(20)).toBe(60 * 60_000)
+  expect(quotaBackoff(1, 15 * 60_000)).toBe(15 * 60_000)
 })

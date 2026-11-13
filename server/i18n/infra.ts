@@ -23,6 +23,7 @@ export default defineMessages({
     upgrade: (plan: string, vcpu: number | null, ram: number | null, price: number, delta: number | null, cur: string) =>
       `Palier au-dessus : ${plan}${vcpu && ram ? ` (${vcpu} vCPU / ${ram} Go)` : ''}, ${price} ${cur}/mois${delta != null ? `, +${Math.round(delta * 100) / 100} ${cur}` : ''}.`,
     noToken: 'pas connecté',
+    unavailable: 'pas encore lu',
     expired: 'jeton expiré, ouvre claude une fois',
   },
   en: {
@@ -41,6 +42,7 @@ export default defineMessages({
     upgrade: (plan: string, vcpu: number | null, ram: number | null, price: number, delta: number | null, cur: string) =>
       `Next tier: ${plan}${vcpu && ram ? ` (${vcpu} vCPU / ${ram} GB)` : ''}, ${price} ${cur}/month${delta != null ? `, +${Math.round(delta * 100) / 100} ${cur}` : ''}.`,
     noToken: 'not signed in',
+    unavailable: 'not read yet',
     expired: 'token expired, open claude once',
   },
 })

@@ -11,13 +11,6 @@ import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, HOME, MACHINE, ORCH_DIR, PROJECT_ROOTS
 import { tr } from './i18n.ts'
 import M from './i18n/infra.ts'
 
-const CACHE_MS = 90_000
-/** Claude's /api/oauth/usage answers 429 when asked too often: read it every 5 min at most, back off on failure. */
-const CLAUDE_EVERY_MS = 5 * 60_000
-const CLAUDE_BACKOFF_MS = 2 * 60_000
-const CLAUDE_BACKOFF_MAX_MS = 60 * 60_000
-/** The last good Claude figures, kept across restarts (a restart must never show an empty section). */
-const CLAUDE_LAST = path.join(DATA_DIR, 'usage-claude.json')
 const CODEX_HOME = process.env.CODEX_HOME ?? path.join(HOME, '.codex')
 
 const readJson = (f: string): any => {
@@ -67,75 +60,123 @@ export function claudeWindows(d: any): QuotaWindow[] {
   return out.sort((a, b) => order[a.kind] - order[b.kind])
 }
 
-let claudeCache: QuotaInfo | null = null
-let claudeNextAt = 0
-let claudeFails = 0
-let claudeLoaded = false
-/** The last good figures from disk, once (a restart keeps them). */
-function claudeLast(): QuotaInfo | null {
-  if (!claudeLoaded) {
-    claudeLoaded = true
-    const d = readJson(CLAUDE_LAST)
-    if (d && Array.isArray(d.windows) && typeof d.at === 'number') claudeCache = { ok: true, plan: d.plan, windows: d.windows, source: String(d.source ?? ''), at: d.at, stale: true }
+/** Claude refuses /api/oauth/usage with 429 as soon as it is asked too often: one call shared by every view and device,
+ *  at most every 5 min, an exponential back-off after a failure (Retry-After honoured), and the last valid answer kept
+ *  on disk so the page always shows figures, with their age (`at`), even right after a restart or during a 429. */
+export const QUOTA_MIN_MS = 5 * 60_000
+const QUOTA_MAX_BACKOFF_MS = 60 * 60_000
+const QUOTA_FILE = () => process.env.WEEVILS_QUOTA_CACHE ?? path.join(DATA_DIR, 'quota-cache.json')
+
+class RetryAfter extends Error {
+  constructor(message: string, readonly ms: number) {
+    super(message)
   }
-  return claudeCache
 }
-/** Wait before the next try after `fails` failures: doubling from 2 min, at most 1 h, never under Retry-After. */
-export function claudeBackoff(fails: number, retryAfterMs = 0): number {
-  return Math.max(retryAfterMs, Math.min(CLAUDE_BACKOFF_MAX_MS, CLAUDE_BACKOFF_MS * 2 ** Math.max(0, fails - 1)))
+const httpError = (res: Response) => {
+  const v = res.headers.get('retry-after')
+  const n = Number(v)
+  const ms = !v ? 0 : Number.isFinite(n) ? n * 1000 : Math.max(0, (Date.parse(v) || 0) - Date.now())
+  return ms > 0 ? new RetryAfter(`HTTP ${res.status}`, ms) : new Error(`HTTP ${res.status}`)
 }
-const retryAfter = (v: string | null): number => {
-  if (!v) return 0
-  const s = Number(v)
-  if (Number.isFinite(s)) return s * 1000
-  const t = Date.parse(v)
-  return Number.isFinite(t) ? Math.max(0, t - Date.now()) : 0
+
+/** Wait before the next try after `fails` failures in a row: 5, 10, 20, 40 min, at most 1 h, never under Retry-After. */
+export function quotaBackoff(fails: number, retryAfterMs = 0): number {
+  return Math.max(Math.min(retryAfterMs, QUOTA_MAX_BACKOFF_MS), Math.min(QUOTA_MAX_BACKOFF_MS, QUOTA_MIN_MS * 2 ** Math.max(0, fails - 1)))
 }
-let claudeInflight: Promise<QuotaInfo> | null = null
-/** One read at a time: callers arriving together share it (two at once made two requests, hence 429s). */
-export function claudeQuota(): Promise<QuotaInfo> {
-  return (claudeInflight ??= readClaudeQuota().finally(() => (claudeInflight = null)))
+
+type Provider = 'claude' | 'codex'
+interface Slot {
+  /** The last valid answer (persisted). */
+  good: QuotaInfo | null
+  /** The last failure, when it came after `good`. */
+  error?: string
+  nextAt: number
+  failures: number
+  inflight: Promise<void> | null
 }
-async function readClaudeQuota(): Promise<QuotaInfo> {
+const slots = new Map<Provider, Slot>()
+function slot(p: Provider): Slot {
+  let s = slots.get(p)
+  if (!s) {
+    // usage-claude.json: the Claude-only file of the previous version (0d83cd6), read once if nothing newer.
+    const saved = readJson(QUOTA_FILE())?.[p] ?? (p === 'claude' ? { ok: true, ...readJson(path.join(DATA_DIR, 'usage-claude.json')) } : null)
+    const good = saved?.ok && Array.isArray(saved.windows) && typeof saved.at === 'number' ? (saved as QuotaInfo) : null
+    // After a restart, wait out the rest of the 5 min of the saved answer instead of asking again at once.
+    s = { good, nextAt: good ? good.at + QUOTA_MIN_MS : 0, failures: 0, inflight: null }
+    slots.set(p, s)
+  }
+  return s
+}
+function persist() {
+  const out: Record<string, QuotaInfo> = {}
+  for (const [p, s] of slots) if (s.good) out[p] = s.good
+  try {
+    fs.mkdirSync(path.dirname(QUOTA_FILE()), { recursive: true })
+    const tmp = `${QUOTA_FILE()}.${process.pid}.tmp`
+    fs.writeFileSync(tmp, JSON.stringify(out))
+    fs.renameSync(tmp, QUOTA_FILE())
+  } catch {
+    /* read-only disk: the memory copy still serves */
+  }
+}
+/** Test hook: forget the memory copy (the disk one is read again). */
+export function resetQuotaSlots() {
+  slots.clear()
+}
+
+async function shared(p: Provider, get: () => Promise<QuotaInfo>, fallback: (error: string) => QuotaInfo): Promise<QuotaInfo> {
+  const s = slot(p)
   const now = Date.now()
+  if (now >= s.nextAt && !s.inflight) {
+    s.inflight = (async () => {
+      try {
+        s.good = await get()
+        s.error = undefined
+        s.failures = 0
+        s.nextAt = Date.now() + QUOTA_MIN_MS
+        persist()
+      } catch (e) {
+        s.failures++
+        s.error = (e as Error).message
+        const wait = quotaBackoff(s.failures, e instanceof RetryAfter ? e.ms : 0)
+        s.nextAt = Date.now() + wait
+        console.error(`[usage] ${p}: ${s.error} · next try in ${Math.round(wait / 60_000)} min`)
+      } finally {
+        s.inflight = null
+      }
+    })()
+  }
+  // Only the very first call (nothing known yet) waits for the answer; the others get the last figures at once.
+  if (s.inflight && !s.good) await s.inflight
+  // Stale: the last read failed, or the figures are older than one period (the UI then shows their age).
+  if (s.good) return s.error || Date.now() - s.good.at > QUOTA_MIN_MS + 60_000 ? { ...s.good, stale: true, ...(s.error ? { error: s.error } : {}) } : s.good
+  return fallback(s.error ?? tr(M).unavailable)
+}
+
+export async function claudeQuota(): Promise<QuotaInfo> {
   // Simulation (tests of the Codex relay on a throwaway server): a file shaped like the API's answer.
   const fake = process.env.WEEVILS_FAKE_CLAUDE_USAGE
   if (fake) {
     const d = readJson(fake)
+    const now = Date.now()
     return d ? { ok: true, plan: 'fake', windows: claudeWindows(d), source: fake, at: now } : { ok: false, windows: [], source: fake, at: now, error: tr(M).noToken }
   }
-  const last = claudeLast()
-  if (last && now < claudeNextAt) return last
-  if (!last && now < claudeNextAt) return { ok: false, windows: [], source: 'api.anthropic.com/api/oauth/usage', at: now }
   const source = 'api.anthropic.com/api/oauth/usage'
-  const o = readJson(path.join(HOME, '.claude', '.credentials.json'))?.claudeAiOauth
-  if (!o?.accessToken) {
-    claudeNextAt = now + CLAUDE_EVERY_MS
-    return (claudeCache = last?.ok ? { ...last, stale: true, error: tr(M).noToken } : { ok: false, windows: [], source, at: now, error: tr(M).noToken })
-  }
-  try {
-    const res = await fetch('https://api.anthropic.com/api/oauth/usage', {
-      headers: { authorization: `Bearer ${o.accessToken}`, 'anthropic-beta': 'oauth-2025-04-20', 'user-agent': 'weevils' },
-      signal: AbortSignal.timeout(8000),
-    })
-    if (res.status === 401) throw Object.assign(new Error(tr(M).expired), { wait: 0 })
-    if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { wait: res.status === 429 ? retryAfter(res.headers.get('retry-after')) : 0 })
-    claudeCache = { ok: true, plan: claudePlan(o), windows: claudeWindows(await res.json()), source, at: now }
-    claudeFails = 0
-    claudeNextAt = now + CLAUDE_EVERY_MS
-    try {
-      fs.mkdirSync(DATA_DIR, { recursive: true })
-      fs.writeFileSync(CLAUDE_LAST, JSON.stringify({ plan: claudeCache.plan, windows: claudeCache.windows, source, at: now }))
-    } catch { /* kept in memory */ }
-  } catch (e) {
-    // A failed read keeps the last known figures (marked stale, with their age) and backs off: 2, 4, 8… min, 1 h max.
-    claudeFails++
-    const wait = claudeBackoff(claudeFails, (e as { wait?: number }).wait ?? 0)
-    claudeNextAt = now + wait
-    console.error(`[usage] claude : ${(e as Error).message} · next try in ${Math.round(wait / 60_000)} min`)
-    claudeCache = last?.ok ? { ...last, stale: true, error: (e as Error).message } : { ok: false, windows: [], source, at: now, error: (e as Error).message }
-  }
-  return claudeCache
+  return shared(
+    'claude',
+    async () => {
+      const o = readJson(path.join(HOME, '.claude', '.credentials.json'))?.claudeAiOauth
+      if (!o?.accessToken) throw new Error(tr(M).noToken)
+      const res = await fetch('https://api.anthropic.com/api/oauth/usage', {
+        headers: { authorization: `Bearer ${o.accessToken}`, 'anthropic-beta': 'oauth-2025-04-20', 'user-agent': 'weevils' },
+        signal: AbortSignal.timeout(8000),
+      })
+      if (res.status === 401) throw new Error(tr(M).expired)
+      if (!res.ok) throw httpError(res)
+      return { ok: true, plan: claudePlan(o), windows: claudeWindows(await res.json()), source, at: Date.now() }
+    },
+    (error) => ({ ok: false, windows: [], source, at: Date.now(), error }),
+  )
 }
 
 // ---------------------------------------------------------------- Codex
@@ -190,29 +231,26 @@ function codexFromRollout(): { windows: QuotaWindow[]; plan?: string; at: number
   return null
 }
 
-let codexCache: QuotaInfo | null = null
-let codexReadAt = 0
 export async function codexQuota(): Promise<QuotaInfo> {
-  const now = Date.now()
-  if (codexCache && now - codexReadAt < CACHE_MS) return codexCache
-  codexReadAt = now
-  const t = readJson(path.join(CODEX_HOME, 'auth.json'))?.tokens
-  try {
-    if (!t?.access_token) throw new Error(tr(M).noToken)
-    const res = await fetch('https://chatgpt.com/backend-api/wham/usage', {
-      headers: { authorization: `Bearer ${t.access_token}`, 'chatgpt-account-id': String(t.account_id ?? ''), 'user-agent': 'weevils', originator: 'codex_cli_rs' },
-      signal: AbortSignal.timeout(8000),
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const d = (await res.json()) as any
-    codexCache = { ok: true, plan: d?.plan_type, windows: codexWindows(d?.rate_limit), source: 'chatgpt.com/backend-api/wham/usage', at: now }
-  } catch (e) {
-    const r = codexFromRollout()
-    codexCache = r
-      ? { ok: true, plan: r.plan, windows: r.windows, source: 'codex rollout rate_limits', at: r.at }
-      : { ok: false, windows: [], source: 'codex', at: now, error: (e as Error).message }
-  }
-  return codexCache
+  const q = await shared(
+    'codex',
+    async () => {
+      const t = readJson(path.join(CODEX_HOME, 'auth.json'))?.tokens
+      if (!t?.access_token) throw new Error(tr(M).noToken)
+      const res = await fetch('https://chatgpt.com/backend-api/wham/usage', {
+        headers: { authorization: `Bearer ${t.access_token}`, 'chatgpt-account-id': String(t.account_id ?? ''), 'user-agent': 'weevils', originator: 'codex_cli_rs' },
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!res.ok) throw httpError(res)
+      const d = (await res.json()) as any
+      return { ok: true, plan: d?.plan_type, windows: codexWindows(d?.rate_limit), source: 'chatgpt.com/backend-api/wham/usage', at: Date.now() }
+    },
+    (error) => ({ ok: false, windows: [], source: 'codex', at: Date.now(), error }),
+  )
+  // While the API fails, the rate_limits Codex writes in its rollouts may be newer than the last valid answer.
+  if (q.ok && !q.error) return q
+  const r = codexFromRollout()
+  return r && (!q.ok || r.at > q.at) ? { ok: true, plan: r.plan ?? q.plan, windows: r.windows, source: 'codex rollout rate_limits', at: r.at, ...(Date.now() - r.at > QUOTA_MIN_MS + 60_000 ? { stale: true } : {}) } : q
 }
 
 export async function quotas() {

@@ -11,9 +11,10 @@ export class MarkdownFileError extends Error {
   status: number
   constructor(status: number, key: 'invalid' | 'conflict' | 'readonly') { super(tr(M)[key]); this.status = status }
 }
+const excludedDirectories = new Set(['node_modules', 'dist', 'build', 'coverage', 'vendor', 'generated'])
 const hash = (bytes: Buffer) => crypto.createHash('sha256').update(bytes).digest('hex')
 function resolveMarkdown(root: string, rel: string) {
-  if (!/\.(md|markdown)$/i.test(rel) || path.isAbsolute(rel) || rel.split(/[\\/]/).some(p => !p || p === '..' || p.startsWith('.')) || rel.includes('\0')) throw new MarkdownFileError(400, 'invalid')
+  if (!/\.(md|markdown)$/i.test(rel) || path.isAbsolute(rel) || rel.split(/[\\/]/).some((p, i, parts) => !p || p === '..' || p.startsWith('.') || (i < parts.length - 1 && excludedDirectories.has(p.toLowerCase()))) || rel.includes('\0')) throw new MarkdownFileError(400, 'invalid')
   const base = fs.realpathSync(root)
   let full = base
   for (const part of rel.split('/')) {
@@ -35,7 +36,7 @@ export function readMarkdown(root: string, rel: string) {
 }
 /** Synchronous comparison + atomic replacement serializes app saves, never a blind retry after a lost response. */
 export function saveMarkdown(root: string, rel: string, content: unknown, revision: unknown) {
-  if (typeof content !== 'string' || typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision) || Buffer.byteLength(content) > MARKDOWN_LIMIT || content.includes('\0')) throw new MarkdownFileError(400, 'invalid')
+  if (typeof content !== 'string' || typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision) || Buffer.byteLength(content) > MARKDOWN_LIMIT || content.includes('\0') || Buffer.from(content, 'utf8').toString('utf8') !== content) throw new MarkdownFileError(400, 'invalid')
   const previous = readMarkdown(root, rel)
   if (!previous.editable) throw new MarkdownFileError(403, 'readonly')
   // A response may have been lost after this exact content was committed.

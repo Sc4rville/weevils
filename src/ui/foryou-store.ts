@@ -9,6 +9,7 @@ import { dismissNotice, isNoticeDismissed, subscribeNotices, resetNotices } from
 // snapshot has no « foryou » mark (older server, secondary machine, tests of other components).
 import { useEffect, useMemo, useSyncExternalStore, type CSSProperties } from 'react'
 import { api } from '../api'
+import { useForYouOpen } from './foryou-open'
 import type { Author } from '../../shared/api.ts'
 import type { ForYouFeed, ForYouItem, ForYouMark } from '../../shared/foryou.ts'
 import { isSettled, useApp } from './app-context'
@@ -208,7 +209,11 @@ async function act(id: string, action: string, card?: string) {
   errors.delete(id)
   rebuild()
   try {
-    await api.foryouAct(id, action, card, eventId)
+    const result = await api.foryouAct(id, action, card, eventId)
+    if (result?.open || result?.intentId || result?.existing) {
+      refresh()
+      return result
+    }
     if (card) goneCards.add(card)
     else { gone.add(id); if (eventId) dismissedEvents.set(id, eventId) }
     dirs.set(id, dir)
@@ -323,13 +328,18 @@ const subscribe = (l: () => void) => {
 const getView = () => view
 
 export function useForYou(): ForYouStore {
+  const open = useForYouOpen()
   const { snap } = useApp()
   const mark = snap.foryou
   const authors = snap.config.authors
   const appLang = useLang()
   useEffect(() => sync(mark, authors, appLang), [mark, mark?.rev, mark?.unseen, authors, snap.version, appLang])
   const v = useSyncExternalStore(subscribe, getView, getView)
-  return useMemo(() => ({ ...v, showFresh, act, acting, dismiss, reply, markSeen, more, refresh, error, leaving, leftAs, setReading }), [v])
+  return useMemo(() => ({ ...v, showFresh, act: async (id: string, action: string, card?: string) => {
+    const projectId = feed?.items.find(item => item.id === id)?.projectId
+    const result = await act(id, action, card)
+    if (result?.open) open(result.open, projectId)
+  }, acting, dismiss, reply, markSeen, more, refresh, error, leaving, leftAs, setReading }), [v, open])
 }
 
 /** Tests only: a blank store. */

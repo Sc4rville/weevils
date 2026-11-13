@@ -1475,3 +1475,146 @@ describe('auto — runs, their outputs, the automation page', () => {
     })
   })
 })
+
+describe('delete automation: durable cancellation without deleting work',()=>{
+ const seedDelete=(patch:Record<string,unknown>={})=>{
+  const item={id:'delete-me',title:'Keep source',why:'w',repo:null,kind:'watch',heavy:false,state:'queued',prompt:'Inspect results',createdAt:T0,every:60_000,...patch}
+  fs.writeFileSync(path.join(dir,'optimizers.json'),JSON.stringify({items:[item],lastRoundAt:T0,fails:0,failUntil:0}))
+  return make()
+ }
+ it('removes a queued automation across reload/retry, preserving files and blocking future mutation',()=>{
+  const o=seedDelete();const source=path.join(dir,'source.txt');fs.writeFileSync(source,'keep')
+  expect(o.remove('delete-me')).toEqual({ok:true,running:false})
+  expect(o.list()).toEqual([]);expect(o.detail('delete-me')).toBeNull()
+  const reloaded=make();expect(reloaded.list()).toEqual([])
+  expect(reloaded.remove('delete-me')).toEqual({ok:true,running:false})
+  expect(reloaded.runNow('delete-me')).toBe(false);expect(reloaded.pause('delete-me',false)).toBe(false)
+  reloaded.tick(T0+IDLE_MS+MIN);expect(createIn).not.toHaveBeenCalled()
+  expect(fs.readFileSync(source,'utf8')).toBe('keep')
+ })
+ it('lets an active run finish and archives it, never scheduling a retry or next occurrence',async()=>{
+  const o=seedDelete({state:'running',sessionId:'s',seenWorking:true,startedAt:T0})
+  snap.sessions=[session({id:'s',status:'working'})]
+  expect(o.remove('delete-me')).toEqual({ok:true,running:true});o.tick(T0+MIN)
+  expect(JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items[0].state).toBe('running')
+  snap.sessions=[session({id:'s',status:'idle',lastMessage:'Completed'})]
+  o.tick(T0+2*MIN);await o.settled()
+  const stored=JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items[0]
+  expect(stored.state).toBe('done');expect(stored.runs).toHaveLength(1);expect(stored.deletedAt).toBeTruthy()
+  expect(make().list()).toEqual([]);expect(send).not.toHaveBeenCalled();expect(key).not.toHaveBeenCalled();expect(createIn).not.toHaveBeenCalled()
+ })
+ it('does not retry a deleted run that encounters a quota limit',()=>{
+  const o=seedDelete({state:'running',sessionId:'s',seenWorking:true,startedAt:T0})
+  o.remove('delete-me');snap.sessions=[session({id:'s',status:'idle',lastMessage:'usage limit reached'})];o.tick(T0+MIN)
+  const stored=JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items[0]
+  expect(stored.state).toBe('failed');expect(stored.retryAt).toBeUndefined()
+ })
+ it('cancels a launch still preparing its worktree before it starts an agent',async()=>{
+  let release!:()=>void
+  sys.worktree=vi.fn(async(_repo:string,cwd:string)=>{await new Promise<void>(r=>{release=r});fs.mkdirSync(cwd,{recursive:true})})
+  const o=seedDelete({repo:'mygame'})
+  o.tick(T0+IDLE_MS);await flush()
+  expect(sys.worktree).toHaveBeenCalled()
+  o.remove('delete-me');release();await flush()
+  expect(createIn).not.toHaveBeenCalled();expect(make().list()).toEqual([])
+ })
+ it('reports storage failures and keeps the automation visible for retry',()=>{
+  const o=seedDelete();const original=fs.writeFileSync
+  const spy=vi.spyOn(fs,'writeFileSync').mockImplementation((...args:any[])=>{if(String(args[0])===path.join(dir,'optimizers.json.tmp'))throw new Error('disk full');return (original as any)(...args)})
+  expect(()=>o.remove('delete-me')).toThrow('disk full');expect(o.list()).toHaveLength(1)
+  spy.mockRestore();expect(o.remove('delete-me')).toEqual({ok:true,running:false})
+ })
+})
+
+describe('retroactive automation software adoption',()=>{
+ const seedAdoption=()=>{
+  const items=[
+   {id:'queued',title:'Private purpose',why:'w',repo:null,kind:'watch',heavy:false,state:'queued',prompt:'TOKEN=never-commit-this',createdAt:T0,every:60_000,notBefore:T0+MIN,talk:[{who:'user',text:'private exchange',at:T0}],runs:[{at:T0-1,startedAt:T0-2,ok:true}]},
+   {id:'active',title:'Running task',why:'w',repo:null,kind:'watch',heavy:false,state:'running',prompt:'active instructions',createdAt:T0,sessionId:'existing',startedAt:T0,seenWorking:true},
+   {id:'refused',title:'Refused task',why:'w',repo:null,kind:'watch',heavy:false,state:'refused',prompt:'old instructions',createdAt:T0},
+  ]
+  fs.writeFileSync(path.join(dir,'optimizers.json'),JSON.stringify({items,lastRoundAt:T0,fails:0,failUntil:0}))
+  return items
+ }
+ it('adopts every stored state without rewriting schedules, conversations, history or active workspaces; reload/retry is stable',async()=>{
+  const before=seedAdoption();const o=make();await o.adoptAll()
+  expect(o.adoptionStatus()).toMatchObject({total:3,ready:2,pendingRunning:1,errors:[]})
+  let stored=JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items
+  expect(stored.map(({software,...item}:any)=>item)).toEqual(before)
+  const revisions=stored.map((item:any)=>item.software.revision)
+  const reloaded=make();await reloaded.adoptAll()
+  stored=JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items
+  expect(stored.map((item:any)=>item.software.revision)).toEqual(revisions)
+  const backup=path.join(dir,'automation-adoption-backup.json')
+  expect(JSON.parse(fs.readFileSync(backup,'utf8')).items).toEqual(before);expect(fs.statSync(backup).mode&0o777).toBe(0o600)
+  expect(createIn).not.toHaveBeenCalled();expect(send).not.toHaveBeenCalled()
+  reloaded.rollbackAdoption();expect(make().adoptionStatus().enabled).toBe(false)
+  expect(JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items.map(({software,...item}:any)=>item)).toEqual(before)
+ })
+ it('runs a selected software revision through the existing sandbox and records its identity without moving the legacy cwd',async()=>{
+  seedAdoption();const o=make();await o.adoptAll()
+  // Complete the already running legacy task first; its original run had no software revision.
+  snap.sessions=[session({id:'existing',status:'idle',lastMessage:'done'})]
+  o.tick(T0+IDLE_MS);await o.settled();await o.adoptAll()
+  o.runNow('queued');o.tick(T0+IDLE_MS+MIN);await flush()
+  expect(createIn).toHaveBeenCalled()
+  const [cwd,,,,environment]=createIn.mock.calls.at(-1)!
+  expect(cwd).toBe(path.join(dir,'optimizers','.queued'))
+  expect(environment.wrap).toContain('node');expect(environment.wrap.some((s:string)=>s.includes('/.versions/queued/'))).toBe(true)
+  snap.sessions=[session({id:'sess-1',status:'working'})];o.tick(T0+IDLE_MS+2*MIN)
+  snap.sessions=[session({id:'sess-1',status:'idle',lastMessage:'done'})];o.tick(T0+IDLE_MS+3*MIN);await o.settled()
+  const stored=JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items.find((i:any)=>i.id==='queued')
+  expect(stored.runs.at(-1)).toMatchObject({softwareId:'queued',sourceRevision:stored.software.revision})
+  expect(stored.runs.at(-1).configRevision).toMatch(/^[a-f0-9]{64}$/)
+ })
+})
+
+it('reuses a durable creation request identity after a lost response/reload without another draft or repository',async()=>{
+ const o=make();const first=o.create('request-one')
+ expect(o.create('request-one').id).toBe(first.id)
+ const reload=make();expect(reload.create('request-one').id).toBe(first.id)
+ await reload.adoptAll();expect(reload.adoptionStatus().total).toBe(1)
+ expect(fs.readdirSync(path.join(dir,'automation-workspaces','projects'))).toEqual([`auto-${first.id}`])
+ expect(reload.create('request-two').id).not.toBe(first.id)
+})
+
+describe('provider holds are not user schedules',()=>{
+ const seeded=(items:any[])=>{
+  fs.writeFileSync(path.join(dir,'optimizers.json'),JSON.stringify({items,lastRoundAt:T0,fails:0,failUntil:0}))
+  snap.mainWorking=true // Pure scheduler/capability check: never start an agent.
+ }
+ const queued=(id:string,patch:Record<string,unknown>={})=>({id,title:'Daily review',why:'w',prompt:'Review privately',kind:'watch',repo:null,heavy:false,state:'queued',createdAt:T0,every:24*60*MIN,tz:'Europe/Paris',...patch})
+ it('releases the initial quota hold once the jail probe makes an authorized Codex route available',async()=>{
+  const until=T0+8*60*MIN;const userTime=T0+2*60*MIN
+  seeded([queued('daily'),queued('timed',{notBefore:userTime,window:{from:60,to:120}})])
+  const o=make({relay:{holdUntil:()=>until,autoOnCodex:()=>true}})
+  o.tick(T0+MIN);expect(o.list().find(i=>i.id==='daily')!.retryAt).toBe(until)
+  await flush();o.tick(T0+2*MIN)
+  const daily=o.list().find(i=>i.id==='daily')!
+  expect(daily.retryAt).toBeUndefined();expect(daily.startAt).toBeUndefined();expect(daily.waiting).toBe('busy')
+  expect(daily.every).toBe(24*60*MIN);expect(daily.tz).toBe('Europe/Paris')
+  expect(o.list().find(i=>i.id==='timed')).toMatchObject({notBefore:userTime,window:{from:60,to:120},waiting:'time'})
+  expect(createIn).not.toHaveBeenCalled()
+ })
+ it('preserves a genuine non-quota backoff when no provider hold remains',async()=>{
+  seeded([queued('retry',{retryAt:T0+60*MIN})])
+  const o=make({relay:{holdUntil:()=>0,autoOnCodex:()=>true}})
+  o.tick(T0+MIN);await flush();o.tick(T0+2*MIN)
+  expect(o.list()[0]).toMatchObject({retryAt:T0+60*MIN,waiting:'later'})
+  expect(createIn).not.toHaveBeenCalled()
+ })
+ it('does not release a quota hold without authorization even when the jail is safe',async()=>{
+  const until=T0+8*60*MIN;seeded([queued('daily')])
+  const o=make({relay:{holdUntil:()=>until,autoOnCodex:()=>false}})
+  o.tick(T0+MIN);await flush();o.tick(T0+2*MIN)
+  expect(o.list()[0]).toMatchObject({retryAt:until,waiting:'later'})
+  expect(createIn).not.toHaveBeenCalled()
+ })
+ it('keeps a quota hold if relay authorization or a safe jail is unavailable',async()=>{
+  const until=T0+8*60*MIN;seeded([queued('daily')]);sys.jail=vi.fn(async()=>false)
+  const o=make({relay:{holdUntil:()=>until,autoOnCodex:()=>true}})
+  o.tick(T0+MIN);await flush();o.tick(T0+2*MIN)
+  expect(o.list()[0]).toMatchObject({retryAt:until,waiting:'later'})
+  expect(createIn).not.toHaveBeenCalled()
+ })
+})

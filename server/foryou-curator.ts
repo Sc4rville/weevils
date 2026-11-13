@@ -129,12 +129,12 @@ const repeats = (text: string, known: string[]) => isRepeat(text, known.map((tit
 
 export interface Digest {
   text: string
-  actions?: { label: string; brief: string }[]
+  actions?: { label: string; brief: string; sourceIntentId?: string }[]
 }
 
-const buttons = (raw: unknown, max: number): { label: string; brief: string }[] =>
+const buttons = (raw: unknown, max: number): { label: string; brief: string; sourceIntentId?: string }[] =>
   (Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? [raw] : [])
-    .map((a) => ({ label: plain((a as { label?: unknown })?.label).slice(0, 48).trim(), brief: typeof (a as { brief?: unknown })?.brief === 'string' ? (a as { brief: string }).brief.trim().slice(0, 2000) : '' }))
+    .map((a) => ({ label: plain((a as { label?: unknown })?.label).slice(0, 48).trim(), brief: typeof (a as { brief?: unknown })?.brief === 'string' ? (a as { brief: string }).brief.trim().slice(0, 2000) : '', ...(typeof a?.sourceIntentId === 'string' ? { sourceIntentId: a.sourceIntentId } : {}) }))
     .filter((a) => a.label.length >= 2 && a.brief.length >= 10)
     .slice(0, max)
 
@@ -151,7 +151,7 @@ export function parseDigest(raw: unknown, known: string[] = []): Digest | null {
 export interface Improve {
   title?: string
   text: string
-  action: { label: string; brief: string }
+  action: { label: string; brief: string; sourceIntentId?: string }
 }
 
 /** One way to serve the user better: words, one button with its brief, never an idea already given. */
@@ -792,7 +792,7 @@ export class Curator implements ForYouCurator {
       const l = lang()
       const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s)
       const earlier = boss.filter((i) => i.id.startsWith('d:')).slice(0, 3).map((i) => i.text)
-      const prompt = t.editorial + t.digest({
+      const prompt = t.editorial + t.existingWork(this.fy.intentContext()) + t.digest({
         user: user(),
         memory: this.deps.memory?.()?.digest(10, 1200) ?? '',
         done: results.slice(0, 12).map((i) => t.line(project(i.projectId), '', short((i.body || i.text).replace(/\s+/g, ' '), 1000))).join('\n'),
@@ -907,7 +907,7 @@ export class Curator implements ForYouCurator {
       const advice = ((await this.deps.advice?.().catch(() => [])) ?? []).filter((a) => typeof a === 'string' && a.trim()).slice(0, 5)
       if (advice.length) lines.push(t.patAdvice(advice.map((a) => `- ${a.replace(/\s+/g, ' ').slice(0, 240)}`).join('\n')))
       if (!this.reserve()) return
-      const got = parseImprove(this.json(await this.ask('smart', t.editorial + t.improve({ user: who, patterns: lines.join('\n'), earlier }), 120_000)), known.flatMap((i) => [i.text, ...(i.title ? [i.title] : [])]))
+      const got = parseImprove(this.json(await this.ask('smart', t.editorial + t.existingWork(this.fy.intentContext()) + t.improve({ user: who, patterns: lines.join('\n'), earlier }), 120_000)), known.flatMap((i) => [i.text, ...(i.title ? [i.title] : [])]))
       this.s.improveAt = now
       if (!got) return void console.log('[foryou] curateur : idée écartée (vide ou déjà dite)')
       this.fy.add({ kind: 'improve', tone: 'magic', title: got.title, text: got.text, actions: [got.action], lang: l })

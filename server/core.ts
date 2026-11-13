@@ -1,3 +1,5 @@
+import CB from './i18n/codex-bridge.ts'
+import { automationSourceRoot } from './automation-workspaces.ts'
 import MachineProse from './i18n/machine-prose.ts'
 import { isModelControl, type ModelControls, type ModelSelection } from '../shared/model-controls.ts'
 import ModelM from './i18n/model-controls.ts'
@@ -867,7 +869,7 @@ export class Weevils {
       machineId: MACHINE.id,
       tool: t.tool,
       // Le titre choisi par l'utilisateur dans l'outil prime ; sinon celui du renommeur (ce dont la session parle maintenant) ; sinon le début.
-      title: relayTitle ?? (t.customTitle ? titleOf(t) : (presentation?.title ?? titleOf(t))),
+      title: relayTitle ?? (t.customTitle ? titleOf(t) : ((t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) ?? presentation?.title ?? titleOf(t))),
       // En attendant l'activité réécrite : le dernier pas de l'agent (outil) plutôt que l'ancienne tâche.
       now: shortNow(presentation?.now || (t.phase === 'working' || pane?.screenWorking ? stepOf(t) : '')) || undefined,
       status,
@@ -1313,6 +1315,11 @@ export class Weevils {
 
   /** Écrit dans la session ; si elle n'a plus de processus, la rouvre dans une pane weevils. */
   async send(id: string, text: string, from?: string): Promise<{ id: string; control?: 'model' }> {
+    if (this.foryou && !from) return this.foryou.directRequest(text, this.resolveId(id), () => this.sendOne(id, text, from))
+    return this.sendOne(id, text, from)
+  }
+
+  private async sendOne(id: string, text: string, from?: string): Promise<{ id: string; control?: 'model' }> {
     if (isModelControl(text)) return {id:this.resolveId(id),control:'model'}
     if (/^\/(?:model|effort)\s+/i.test(text.trim())) { await this.command(id,text);return {id:this.resolveId(id),control:'model'} }
     // Signé par un auteur (weevboss, un agent externe) : le fil le montre comme son message, pas celui de l'utilisateur.
@@ -1778,9 +1785,12 @@ export class Weevils {
    * « brief » : la marche à suivre d'un bouton de branchement, jointe au bloc ⟦weevils …⟧ (jamais affichée). */
   private bossSendLock: Promise<unknown> = Promise.resolve()
   async sendMain(text: string, brief?: string): Promise<{ id: string }> {
-    const next = this.bossSendLock.catch(() => undefined).then(() => this.sendMainOne(text, brief))
-    this.bossSendLock = next
-    return next
+    const run = () => {
+      const next = this.bossSendLock.catch(() => undefined).then(() => this.sendMainOne(text, brief))
+      this.bossSendLock = next
+      return next
+    }
+    return this.foryou ? this.foryou.directRequest(text, undefined, run) : run()
   }
 
   private async sendMainOne(text: string, brief?: string) {
@@ -1844,7 +1854,7 @@ export class Weevils {
   private async sendBossCodex(text: string, context = '', unanswered = false): Promise<{ id: string }> {
     this.prepareOrchestrator()
     const boss = this.codexBoss()
-    if (boss?.id && this.codexBridge.can(boss.id)) {
+    if (boss?.id && (this.codexBridge.can(boss.id) || await this.codexBridge.reachable?.(boss.id))) {
       await this.codexBridge.send(boss.id, (text + joinContext(context, unanswered ? tr(R).bossUnanswered : '')).trim())
       this.bump()
       return { id: boss.id }
@@ -1854,7 +1864,7 @@ export class Weevils {
       this.bump()
       return { id: boss.id ?? boss.pane.name }
     }
-    if (boss?.t?.originator === 'codex-tui' && boss.t.delegationSources?.size) throw new OutboxError(409, tr(M).unmanaged)
+    if (boss?.t?.originator === 'codex-tui' && boss.t.delegationSources?.size) throw new OutboxError(409, tr(CB).unavailable)
     const e = this.relay?.episode()
     const t = tr(R)
     const until = e?.until ? t.until(clockOf(e.until, Date.now(), e.tz)) : ''
@@ -2185,7 +2195,7 @@ export class Weevils {
 
   /** Racine de projets qui contient ce repo, sur cette machine. */
   repoRoot(repo: string) {
-    return PROJECT_ROOTS.find((root) => fs.existsSync(path.join(root, repo)))
+    return PROJECT_ROOTS.flatMap(root=>[root,...(automationSourceRoot(root)?[automationSourceRoot(root)!]:[])]).find((root) => fs.existsSync(path.join(root, repo)))
   }
 
   repoDir(repo: string) {
@@ -2198,7 +2208,7 @@ export class Weevils {
   /** Tous les repos de cette machine (pour lancer une session ailleurs que dans un projet actif). */
   allRepos(): string[] {
     const out = new Set<string>()
-    for (const root of PROJECT_ROOTS) {
+    for (const root of PROJECT_ROOTS.flatMap(root=>[root,...(automationSourceRoot(root)?[automationSourceRoot(root)!]:[])])) {
       try {
         for (const e of fs.readdirSync(root, { withFileTypes: true })) if (e.isDirectory() && !e.name.startsWith('.')) out.add(e.name)
       } catch {

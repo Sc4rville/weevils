@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import { automationSourceRoot } from './automation-workspaces.ts'
 // Où range-t-on une session ? Étage déterministe du classement : dossier → repo → famille de repos.
 
 import path from 'node:path'
@@ -25,6 +27,18 @@ export function familyOf(repo: string): string {
 /** roots : dossiers de projets de la machine (~/projects, ~/Documents/projects…). */
 export function place(cwd: string, roots: string[]): Placement {
   if (cwd) {
+    for(const root of roots){
+      const source=automationSourceRoot(root)
+      if(!source)continue
+      const rel=path.relative(source,cwd)
+      if(rel.startsWith('..')||path.isAbsolute(rel))continue
+      const repo=rel.split(path.sep)[0]
+      if(!repo)continue
+      try{
+        const m=JSON.parse(fs.readFileSync(path.join(source,repo,'automation.json'),'utf8'))
+        if(m.kind==='automation'&&repo===`auto-${m.id}`)return {projectId:repo,projectName:repo,kind:'repo',repo}
+      }catch{}
+    }
     for (const root of roots) {
       const rel = path.relative(root, cwd)
       if (rel.startsWith('..') || path.isAbsolute(rel)) continue

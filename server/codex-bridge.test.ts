@@ -110,3 +110,28 @@ it('does not claim success when daemon readback disagrees',async()=>{
  const bridge=new CodexBridge('/test/socket',async(_s,run)=>run(rpc))
  await expect(bridge.modelControls('existing',{model:'real',effort:'high'})).rejects.toThrow()
 })
+
+it('reads an explicit shared thread name independently of model state and never guesses it from prompt text',async()=>{
+ let name:string|null='Think'
+ const rpc=async(method:string)=>{
+  if(method==='thread/loaded/list')return{data:['existing']}
+  if(method==='thread/read')return{thread:{name,status:{type:'active'}}}
+  if(method==='thread/queue/list')return{data:[]}
+  throw new Error(method)
+ }
+ const bridge=new CodexBridge('/test/socket',async(_socket,run)=>run(rpc))
+ await bridge.refresh()
+ expect(bridge.nameOf('existing')).toBe('Think')
+ expect(bridge.nameOf('unknown')).toBeUndefined()
+ name='Think renamed';await bridge.refresh();expect(bridge.nameOf('existing')).toBe('Think renamed')
+ name=null;await bridge.refresh();expect(bridge.nameOf('existing')).toBeUndefined()
+})
+
+it('checks an existing daemon owner on demand without sending, starting or draining anything',async()=>{
+ const f=fixture(true),bridge=new CodexBridge('/test/socket',f.transport)
+ expect(bridge.can('existing')).toBe(false)
+ expect(await bridge.reachable('existing')).toBe(true)
+ expect(bridge.can('existing')).toBe(true)
+ expect(await bridge.reachable('missing')).toBe(false)
+ expect(f.calls).toEqual(['thread/loaded/list','thread/loaded/list'])
+})

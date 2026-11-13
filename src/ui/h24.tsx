@@ -6,8 +6,10 @@ import { Collapse, Line, spring } from './bits'
 import { AutoMark, Icon, type Dir, type IconName } from './icons'
 import { useT } from '../i18n'
 import M from '../i18n/h24'
-import { at, autoList, autoRank, bandColors, fromOptimizer, isFinished, projectOfRepo, short, triggerText, type AutoItem } from './auto-model'
+import { nextTimeText, autoList, autoRank, bandColors, fromOptimizer, isFinished, projectOfRepo, short, triggerText, type AutoItem } from './auto-model'
 import { TalkCtx, useTalk } from './auto-talk'
+import { AutoDeleteAction } from './auto-delete'
+import { autoCondition } from './auto-condition'
 import './h24.css'
 import { flash, when } from './follow'
 
@@ -118,7 +120,7 @@ export function H24Rail() {
 
   // A task rewritten a moment ago: its new version, before the snapshot follows. One given ✓ here or on its page: an
   // automation already (it slides into its place), one given ×: gone (it folds away).
-  const opts = (snap.optimizers ?? []).map(k.item)
+  const opts = (snap.optimizers ?? []).filter(o => !k.deleted.has(o.id)).map(k.item)
   const drafts = opts.filter((o) => o.state === 'proposed' && o.draft && !k.decided.has(o.id))
   const ready = opts.filter((o) => o.state === 'proposed' && !o.draft && !k.decided.has(o.id))
   const proposals = [...ready.filter((o) => o.userCreated), ...ready.filter((o) => !o.userCreated).slice(0, 3)]
@@ -149,7 +151,9 @@ export function H24Rail() {
 
   // The head: what runs, else what waits for a yes, else the next trigger.
   const running = live.filter((x) => x.state === 'running')
-  const next = live.filter((x) => x.nextAt && x.state !== 'running').sort((a, b) => a.nextAt! - b.nextAt!)[0]
+  const next = live.filter((x) => x.nextAt && x.nextReason !== 'retry' && x.state !== 'running').sort((a, b) => a.nextAt! - b.nextAt!)[0]
+  const waiting = live.find(x => ['waiting', 'queued', 'scheduled'].includes(x.state))
+  const condition = waiting ? autoCondition(waiting) : ''
   const summary: ReactNode = running.length ? (
     <>
       <AutoMark />
@@ -159,9 +163,9 @@ export function H24Rail() {
   ) : proposals.length ? (
     <span className="txt">{t.toValidateN(proposals.length)}</span>
   ) : next ? (
-    <span className="txt">{t.nextAt(at(next.nextAt!, now))}</span>
-  ) : null
-  const said = running.length ? `${running[0].title}${running.length > 1 ? ` +${running.length - 1}` : ''}` : proposals.length ? t.toValidateN(proposals.length) : next ? t.nextAt(at(next.nextAt!, now)) : t.nothing
+    <span className="txt">{nextTimeText(next, now, true)}</span>
+  ) : condition ? <span className="txt">{condition}</span> : null
+  const said = running.length ? `${running[0].title}${running.length > 1 ? ` +${running.length - 1}` : ''}` : proposals.length ? t.toValidateN(proposals.length) : next ? nextTimeText(next, now, true) : condition || t.nothing
 
   return (
     <>
@@ -375,7 +379,7 @@ export function useMetaLine(x: AutoItem): string {
   const { snap, now } = useApp()
   const project = x.projectId ? (snap.projects.find((p) => p.id === x.projectId)?.name ?? x.projectId) : x.repo
   const parts = [triggerText(x.trigger, now), project]
-  if ((x.state === 'waiting' || x.state === 'queued') && x.waiting && x.waiting !== 'time') parts.push(t[`wait_${x.waiting}`])
+  if ((x.state === 'waiting' || x.state === 'queued') && x.waiting) parts.push(autoCondition(x))
   else if (x.state === 'queued' && x.place) parts.push(`#${x.place}`)
   if (x.lastRun && !x.lastRun.ok && x.state !== 'running') parts.push(t.failedAgo(short(now - x.lastRun.at, true)))
   else if (x.state === 'done' && x.endedAt) parts.push(t.endedAgo(short(now - x.endedAt, true)))
@@ -397,6 +401,7 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
     return (
       <motion.section layout="position" className="band auto-band auto-prop" style={color(slot)} data-h24={o.id} {...drop}>
         <button className="auto-hit" onClick={open} aria-label={t.taskLabel(o.title, t.state_proposed, [t[`kind_${o.kind}`], o.why].filter(Boolean).join(', '))} />
+        <AutoDeleteAction id={o.id} title={o.title} />
         <div className="in">
           <span className={chg(f.includes('kind'), 'st')} aria-hidden>
             <Glyph name={KIND_ICON[o.kind]} />
@@ -429,17 +434,18 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
       </motion.section>
     )
   }
-  const right = x.state === 'running' && x.startedAt ? short(now - x.startedAt) : x.nextAt && x.state !== 'paused' ? at(x.nextAt, now) : ''
+  const right = x.state === 'running' && x.startedAt ? short(now - x.startedAt) : x.nextAt && x.nextReason !== 'retry' && x.state !== 'paused' ? nextTimeText(x, now) : ''
   return (
     <motion.section layout="position" className={`band auto-band${x.state === 'paused' ? ' paused' : ''}`} style={color(slot)} data-h24={x.id} {...drop}>
       <Fill x={x} />
-      <button className="auto-hit" onClick={open} aria-label={t.taskLabel(x.title, t[`state_${x.state}`], [meta, right].filter(Boolean).join(', '))} />
+      {x.src === 'optimizer' && <AutoDeleteAction id={x.id} title={x.title} />}
+      <button className="auto-hit" onClick={open} aria-label={t.taskLabel(x.title, x.nextReason === 'retry' ? t.retryWaiting : t[`state_${x.state}`], [meta, right].filter(Boolean).join(', '))} />
       <div className="in" aria-hidden>
         <span className="st">
           <Glyph {...glyphOf(x)} />
         </span>
         <span className="auto-name">{x.title}</span>
-        <span className="act">{right}</span>
+        <span className={`act${x.nextReason === 'retry' ? ' retry-time' : ''}`}>{right}</span>
         <span className="meta sub ellipsis">{meta}</span>
       </div>
     </motion.section>

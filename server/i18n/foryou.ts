@@ -5,6 +5,9 @@ import { defineMessages } from '../i18n.ts'
 
 export default defineMessages({
   fr: {
+    intentAmbiguous: 'Plusieurs travaux correspondent. Ouvre la conversation concernée pour préciser lequel, sans relancer la demande.',
+    intentUncertain: 'La réception de cette demande reste incertaine. Vérifie la conversation existante avant de la renvoyer.',
+    followWork: 'Voir le travail existant',
     invalidVisual: 'proposition visuelle invalide ou destination indisponible',
     // ---- refused requests (shown as is by the app and by « weevils post / show »)
     notFound: 'ce n’est plus dans le flux',
@@ -49,6 +52,9 @@ export default defineMessages({
     replyBrief: (post: string) => `réponds au message ci-dessus : l'utilisateur l'a écrit dans son flux « pour toi », en réponse à ton mot « ${post} »`,
   },
   en: {
+    intentAmbiguous: 'Several existing tasks match. Open the relevant conversation to identify which one, without submitting the work again.',
+    intentUncertain: 'Receipt of this request is still uncertain. Check the existing conversation before sending it again.',
+    followWork: 'View existing work',
     invalidVisual: 'invalid visual proposal or unavailable destination',
     notFound: 'this is no longer in the stream',
     localOnly: 'only from this machine',

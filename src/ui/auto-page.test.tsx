@@ -9,10 +9,11 @@ import type { AutoDetail, AutoRunDetail, H24Activity, Optimizer, OptimizerTalkRe
 
 const calls = vi.hoisted(() => [] as string[])
 const fixtures = vi.hoisted(() => ({
-  acceptFail: false, detail: new Map<string, AutoDetail>(), runs: new Map<string, AutoRunDetail>(), reads: 0, talk: undefined as OptimizerTalkReply | undefined }))
+  deleteFail: false, acceptFail: false, detail: new Map<string, AutoDetail>(), runs: new Map<string, AutoRunDetail>(), reads: 0, talk: undefined as OptimizerTalkReply | undefined }))
 vi.mock('../api', () => ({
   ApiError: class extends Error {},
   api: {
+    deleteAutomation: async (id: string) => { calls.push(`delete ${id}`); if(fixtures.deleteFail) throw new Error('offline'); return {ok:true,running:false} },
     auto: async (id: string) => {
       fixtures.reads++
       const d = fixtures.detail.get(id)
@@ -107,11 +108,13 @@ beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   localStorage.clear()
   localStorage.setItem('weevils-lang', 'en')
+  window.confirm = vi.fn(() => false)
   calls.length = 0
   fixtures.detail.clear()
   fixtures.runs.clear()
   fixtures.talk = undefined
   pushed = []
+  fixtures.deleteFail = false
   fixtures.acceptFail = false
   backs = 0
   host = document.createElement('div')
@@ -121,9 +124,39 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount())
   host.remove()
+  vi.restoreAllMocks()
 })
 
 describe('automation page', () => {
+  it('confirms the exact automation and active-run effect, cancels without a request, then deletes once', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(snap([daily]), <AutoPage id="d" />)
+    await click(host.querySelector('.auto-delete button'))
+    expect(calls).not.toContain('delete d')
+    expect(confirm.mock.calls[0][0]).toContain('Daily digest')
+    expect(confirm.mock.calls[0][0]).toContain('already running will finish')
+    confirm.mockReturnValue(true)
+    await act(async () => {
+      const button = host.querySelector<HTMLButtonElement>('.auto-delete button')!
+      button.click(); button.click()
+    })
+    expect(calls.filter(x => x === 'delete d')).toHaveLength(1)
+    expect(backs).toBe(1)
+    render(snap([daily]), <AutoPage id="d" />)
+    expect(host.querySelector('.auto-delete')).toBeNull()
+  })
+  it('keeps the automation after failure and retries only on explicit confirmation', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    fixtures.deleteFail = true
+    render(snap([daily]), <AutoPage id="d" />)
+    await click(host.querySelector('.auto-delete button'))
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('Could not delete')
+    expect(backs).toBe(0)
+    fixtures.deleteFail = false
+    await click(host.querySelector('.auto-delete button'))
+    expect(backs).toBe(1)
+  })
+
   it('a new conversation starts with one clear question and turns into the existing proposal after a natural-language reply', async () => {
     const draft = opt({ id: 'new', state: 'proposed', title: 'new automation', draft: true, talk: [{ who: 'auto', text: 'What do you want to automate?', at: NOW }] })
     render(snap([draft]), <AutoPage id="new" />)
@@ -181,7 +214,7 @@ describe('automation page', () => {
     const k = kpis()
     expect(Object.keys(k)).toEqual(['when', 'next', 'last', 'length', 'runs', 'cost'])
     expect(k).toMatchObject({ when: 'every day 07:00–08:00', last: '1d ago', length: '9 min', runs: '23', cost: '412K' })
-    expect(host.querySelector('.auto-flow .meta')!.textContent).toBe('scheduled')
+    expect(host.querySelector('.auto-flow .name')!.textContent).toBe('within its time window')
     expect(host.querySelector('.page-head .strong')!.textContent).toBe('mygame')
     expect(host.querySelectorAll('button.auto-kpi')).toHaveLength(6)
     await click(host.querySelector('button.auto-kpi'))
@@ -233,8 +266,8 @@ describe('automation page', () => {
     render(snap([opt({ id: 'r', title: 'Clean deps', state: 'running', startedAt: NOW - 12 * MIN, est: 45, sessionId: 's9', every: 6 * 3600_000 })]), <AutoPage id="r" />)
     await flush()
     expect(host.querySelector('.auto-flow .name')!.textContent).toBe('12 min/ 45 min')
-    // Next: the run after this one, never « now ».
-    expect(kpis().next).toMatch(/^(?:[A-Za-z]+ )?\d\d:\d\d$/)
+    // A recurrence does not establish the next run's actual time.
+    expect(kpis().next).toBe('not yet scheduled')
     const live = host.querySelector('.page-body .row .st .auto-mark')!.closest('button')!
     await click(live)
     expect(pushed).toEqual([{ kind: 'session', id: 's9' }])
@@ -348,6 +381,7 @@ it('a failed proposal validation stays on the page with its error until a succes
   expect(backs).toBe(0)
   expect(host.querySelector('.auto-decide')).not.toBeNull()
   expect(host.textContent).toContain('offline')
+  fixtures.deleteFail = false
   fixtures.acceptFail = false
   await click(label(/^run "Retry tests"/))
   await flush()

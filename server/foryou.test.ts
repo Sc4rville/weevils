@@ -1,3 +1,4 @@
+import reviewedIntents from './foryou-intents-reviewed.json' with { type: 'json' }
 import { feedNoticeKey } from '../shared/notices.ts'
 // The « for you » stream: the store (cap, age, one item per session, what never enters), mail privacy, posts and their
 // buttons, replies, media, live alerts and proposals, seen / dismissed across a restart, the order (arrange) and who
@@ -452,14 +453,15 @@ describe('posts', () => {
     expect(() => fy.post('   ')).toThrow(M.en.emptyText)
   })
 
-  it('a tapped button sends its brief to weevboss behind a short visible message, then the item leaves', async () => {
+  it('a tapped button sends once and becomes a link to the existing work', async () => {
     const fy = make()
     const { id } = fy.post('Three things are ready.', [{ label: 'Ship it', brief: 'merge and deploy' }])
     await expect(fy.act(id, 'a9')).rejects.toThrow(M.en.noAction)
     await fy.act(id, 'a1', undefined, 'fr')
     expect(host.sendMain).toHaveBeenCalledWith('Vas-y : Ship it', M.fr.actBrief('Three things are ready.', 'merge and deploy'))
-    expect(fy.feed().items).toEqual([])
-    await expect(fy.act(id, 'a1')).rejects.toThrow(M.en.notFound)
+    expect(find(fy, id)).toMatchObject({ actions: [], work: { status: 'requested', open: { page: 'session', id: 'boss' } } })
+    await expect(fy.act(id, 'a1')).resolves.toMatchObject({ existing: true, open: { id: 'boss' } })
+    expect(host.sendMain).toHaveBeenCalledTimes(1)
   })
 
   it('a reply is a real message to weevboss, with the post as a hidden note', async () => {
@@ -895,14 +897,14 @@ describe('routes', () => {
     expect(host.sendMain).toHaveBeenCalledWith('ok', expect.any(String))
     expect(find(fy, id)).toBeUndefined()
     const actionable = fy.post('Another request.', [{ label: 'Go', brief: 'do it' }]).id
-    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(actionable)}/act`, { action: 'a1' })).toEqual({ status: 200, body: { ok: true } })
-    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(actionable)}/act`, { action: 'a1' })).toEqual({ status: 404, body: { error: M.en.notFound } })
+    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(actionable)}/act`, { action: 'a1' })).toMatchObject({ status: 200, body: { existing: false, open: { id: 'boss' } } })
+    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(actionable)}/act`, { action: 'a1' })).toMatchObject({ status: 200, body: { existing: true, open: { id: 'boss' } } })
     expect(await call(fy, 'POST', '/api/foryou/b%3Anope/dismiss')).toEqual({ status: 404, body: { error: M.en.notFound } })
     // Ids with colons travel encoded.
     snap.optimizers = [optimizer({ id: 'bad', state: 'failed', endedAt: T0 })]
     fy.feed()
     expect(await call(fy, 'POST', '/api/foryou/alert%3Aauto%3Abad/dismiss')).toEqual({ status: 200, body: { ok: true } })
-    expect(fy.feed().items).toEqual([])
+    expect(fy.feed().items).toMatchObject([{ id: actionable, actions: [], work: { status: 'requested' } }])
     await call(fy, 'GET', '/api/foryou/media/abc123')
     expect(shelf.served).toEqual(['abc123'])
     expect(await call(make({ shelf: null }), 'GET', '/api/foryou/media/abc123')).toEqual({ status: 404, body: { error: M.en.noMedia } })
@@ -1151,10 +1153,11 @@ it('coalesces concurrent actions on the same card before delivery is acknowledge
   host.sendMain.mockImplementationOnce(() => new Promise((done) => { resolve = () => done({ id: 'boss' }) }))
   const first = fy.act(id, 'a1')
   const second = fy.act(id, 'a1')
+  await Promise.resolve()
   expect(host.sendMain).toHaveBeenCalledTimes(1)
   resolve()
   await Promise.all([first, second])
-  expect(fy.feed().items).toEqual([])
+  expect(find(fy, id)).toMatchObject({ actions: [], work: { status: 'requested' } })
 })
 
 
@@ -1271,4 +1274,114 @@ describe('explicit editorial compositions', () => {
     expect(find(fy,item.id)?.composition?.panels).toHaveLength(2)
     shelf.get=get
   })
+})
+
+describe('authorized work provenance', () => {
+  const brief = 'Build a Think canvas with text notes, images and undoable arrangements.'
+  it('accepts equivalent cards once, including refresh and locale variants, with source records retained', async () => {
+    const fy = make()
+    const a = fy.post('Think can hold notes and images.', [{ label: 'Build Think', brief }])
+    const b = fy.post('A canvas for your notes.', [{ label: 'Préparer Think', brief }])
+    const results = await Promise.all([fy.act(a.id, 'a1', undefined, 'en'), fy.act(b.id, 'a1', undefined, 'fr')])
+    expect(host.sendMain).toHaveBeenCalledTimes(1)
+    expect(results[0]).toMatchObject({ open: { id: 'boss' } })
+    expect(results[1]).toMatchObject({ existing: true, open: { id: 'boss' } })
+    for (const lang of ['en', 'fr', 'en']) {
+      const items = make().feed(now, lang).items
+      expect(items).toHaveLength(2)
+      expect(items.every(i => i.work?.status === 'requested' && !i.actions?.length)).toBe(true)
+    }
+    const raw = JSON.parse(fs.readFileSync(fy.file, 'utf8')).items
+    expect(raw).toHaveLength(2)
+    expect(raw.every((i: any) => i.actions[0].brief === brief && i.actions[0].id === 'a1')).toBe(true)
+  })
+  it.each(['direct-first', 'card-first'])('shares an intent with a concurrent direct request (%s)', async order => {
+    const fy = make(), run = vi.fn(async () => ({id:'boss'}))
+    const a = fy.post('Think can hold notes and images.', [{label:'Build Think',brief}])
+    const direct = () => fy.directRequest(brief, undefined, run)
+    const card = () => fy.act(a.id, 'a1')
+    await Promise.all(order === 'direct-first' ? [direct(),card()] : [card(),direct()])
+    expect(run.mock.calls.length + host.sendMain.mock.calls.length).toBe(1)
+    expect(find(fy,a.id)?.actions).toEqual([])
+  })
+  it('rejects rephrased proposals tied to an existing source, but accepts a genuinely different task', () => {
+    const fy = make()
+    fy.intents.observe({id:'request:think',brief,status:'running',open:{page:'session',id:'think'}})
+    expect(fy.add({kind:'improve',text:'Arrange your notes on a spatial canvas.',actions:[{label:'Prepare canvas',brief:'A rephrased instruction for the existing work.',sourceIntentId:'request:think'}]})).toBeNull()
+    expect(fy.add({kind:'improve',text:'Export your notes as a portable archive.',actions:[{label:'Prepare export',brief:'Export Think notes and their images as a portable archive.'}]})).not.toBeNull()
+    expect(fy.add({kind:'improve',text:'An unverified source must not create work.',actions:[{label:'Prepare',brief,sourceIntentId:'invented'}]})).toBeNull()
+  })
+  it('tracks completed automation by its ID without accepting it again or interpreting an idle session as completed work', async () => {
+    const fy = make()
+    snap.optimizers = [optimizer({id:'job-existing',state:'done',talk:[{who:'user',text:brief,at:now}]})]
+    const card = fy.post('The canvas task is recorded.',[{label:'Build Think',brief}])
+    expect(find(fy,card.id)).toMatchObject({actions:[],work:{intentId:'auto:job-existing',status:'completed',open:{page:'auto',id:'job-existing'}}})
+    expect(await fy.act(card.id,'a1')).toMatchObject({existing:true,open:{page:'auto',id:'job-existing'}})
+    expect(host.sendMain).not.toHaveBeenCalled()
+  })
+  it('does not deduplicate ordinary repeated conversation', async () => {
+    const fy = make(), run = vi.fn(async () => ({id:'boss'}))
+    const text = 'What is the current status of my Think canvas today?'
+    await fy.directRequest(text, undefined, run)
+    await fy.directRequest(text, undefined, run)
+    expect(run).toHaveBeenCalledTimes(2)
+  })
+})
+
+it('resolves the five reviewed historical proposals to four precise requested tasks, preserving records', async () => {
+  const items = reviewedIntents.map((link,n) => ({id:link.cardId,kind:'improve',tone:'magic',who:'weevils',text:'Prepare the requested work for this existing project.',at:now-n,seen:true,lang:'en',actions:[{id:link.actionId,label:'Prepare',brief:link.brief}]}))
+  snap.sessions = [...new Set(reviewedIntents.map(l => l.sessionId))].map(id => session({id,status:'done'}))
+  fs.writeFileSync(path.join(dir,'foryou.json'),JSON.stringify({items,rev:1}))
+  const fy=make()
+  for(const locale of ['en','fr','en']){
+    const result=fy.feed(now,locale).items
+    for(const source of reviewedIntents){
+      const item=result.find(i=>i.id===source.cardId)!
+      expect(item).toMatchObject({seen:true,actions:[],work:{intentId:source.intentId,status:'requested',source:{sessionId:source.sessionId,messageId:source.messageId},open:{page:'session',id:source.sessionId}}})
+      expect(item.editorial?.original.text).toBe(items.find(i=>i.id===source.cardId)!.text)
+      expect(await fy.act(source.cardId,source.actionId,undefined,locale)).toMatchObject({existing:true,open:{id:source.sessionId}})
+    }
+  }
+  expect(host.sendMain).not.toHaveBeenCalled()
+  expect(host.send).not.toHaveBeenCalled()
+  expect(JSON.parse(fs.readFileSync(fy.file,'utf8')).items.filter((i: {id:string}) => items.some(source=>source.id===i.id))).toEqual(items)
+  expect(new Set(fy.feed().items.flatMap(i=>i.work ? [i.work.intentId] : [])).size).toBe(4)
+})
+
+it('an automation proposal follows a matching direct request without accepting another job', async () => {
+  const brief='Build a Think canvas with text notes, images and undoable arrangements.'
+  const auto={accept:vi.fn(()=>true),refuse:vi.fn(()=>true)}
+  const fy=make({optimizers:()=>auto})
+  snap.optimizers=[optimizer({id:'next-job',talk:[{who:'user',text:brief,at:now}]})]
+  await fy.directRequest(brief,undefined,async()=>({id:'already-working'}))
+  expect(await fy.act('proposals','accept','o:next-job')).toMatchObject({existing:true,open:{id:'already-working'}})
+  expect(auto.accept).not.toHaveBeenCalled()
+})
+it('does not collapse two unrelated tracked actions into a single existing-work target', async () => {
+  const fy=make()
+  fy.intents.observe({id:'one',brief:'Build a canvas with notes and images for Think.',status:'running',open:{page:'session',id:'one'}})
+  fy.intents.observe({id:'two',brief:'Export images from the café as a portable archive.',status:'requested',open:{page:'session',id:'two'}})
+  const card=fy.post('Two separate tasks are available.',[{label:'Canvas',brief:'Build a canvas with notes and images for Think.',sourceIntentId:'one'},{label:'Export',brief:'Export images from the café as a portable archive.',sourceIntentId:'two'}])
+  expect(find(fy,card.id)?.work).toBeUndefined()
+  expect(find(fy,card.id)?.actions?.map(a=>a.id)).toEqual(['a1','a2'])
+  expect(await fy.act(card.id,'a1')).toMatchObject({existing:true,open:{id:'one'}})
+  expect(await fy.act(card.id,'a2')).toMatchObject({existing:true,open:{id:'two'}})
+  expect(host.sendMain).not.toHaveBeenCalled()
+})
+
+it('indexes later explicit request IDs in an existing session without replaying them or swallowing status questions', async () => {
+  const messages=[{id:'first',role:'user',text:'Build a simple text canvas with spatial notes and undo.',at:now-100},
+    {id:'later',role:'orchestrator',text:'Scarville requests export of Think notes and their images as a portable archive.',at:now-10},
+    {id:'status',role:'user',text:'What is the current status of my Think canvas today?',at:now}]
+  snap.sessions=[session({id:'ongoing',status:'working'})]
+  Object.assign(host,{store:{get:()=>({messages})}})
+  const fy=make()
+  const context=JSON.parse(fy.intentContext())
+  expect(context).toEqual(expect.arrayContaining([expect.objectContaining({sourceIntentId:'request:ongoing:later',brief:messages[1].text})]))
+  expect(fy.add({kind:'improve',text:'Export notes and images together.',actions:[{label:'Prepare export',brief:'A rephrased export request.',sourceIntentId:'request:ongoing:later'}]})).toBeNull()
+  const run=vi.fn(async()=>({id:'ongoing'}))
+  await fy.directRequest(messages[2].text,'ongoing',run)
+  await fy.directRequest(messages[2].text,'ongoing',run)
+  expect(run).toHaveBeenCalledTimes(2)
+  expect(host.sendMain).not.toHaveBeenCalled()
 })

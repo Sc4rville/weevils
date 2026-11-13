@@ -22,6 +22,7 @@ const ApiError = vi.hoisted(
 vi.mock('../api', () => ({
   ApiError,
   api: {
+    deleteAutomation: async (id: string) => { calls.push(`delete ${id}`); return {ok:true,running:false} },
     createOptimizer: async () => {
       calls.push('create')
       return { item: { id: 'new-one', title: 'new automation', state: 'proposed', draft: true, talk: [] } }
@@ -130,6 +131,25 @@ describe('auto drawer', () => {
   const head = () => host.querySelector('.h24-head')!
   const names = () => [...host.querySelectorAll('.auto-band .auto-name')].map((n) => n.textContent)
 
+  it('deletes only the selected automation, keeps other rows and rejects stale snapshot resurrection', async () => {
+    window.confirm = vi.fn(() => true)
+    const data = snap([task({ id: 'a', title: 'First' }), task({ id: 'b', title: 'Second' })], [timer])
+    render(data)
+    expect(host.querySelector('[data-h24="timer:wv-sync.timer"] .auto-delete')).toBeNull()
+    const remove = host.querySelector('[data-h24="a"] .auto-delete button')!
+    expect(remove.getAttribute('aria-label')).toBe('Delete automation')
+    expect(remove.querySelector('svg')).not.toBeNull()
+    expect(remove.textContent).toBe('')
+    await click(remove)
+    await flush()
+    expect(calls).toEqual(['delete a'])
+    expect(pushed).toEqual([])
+    expect(names()).not.toContain('First')
+    expect(names()).toContain('Second')
+    render(data)
+    expect(names()).not.toContain('First')
+  })
+
   it('collapsed automated keeps title/activity only, with language in settings and creation inside the hidden body', async () => {
     render(snap([opt({ id: 'draft', draft: true, title: 'new automation' })]), false)
     expect(head().querySelector('.h24-title')?.textContent).toBe('automated')
@@ -214,7 +234,7 @@ describe('auto drawer', () => {
     render(snap([running(), opt({ id: 'a', title: 'Harden tests', why: 'ship it', rev: 3, window: { from: 60, to: 360 }, every: 7 * 86_400_000 }), opt({ id: 'b', title: 'Watch fairs', kind: 'watch' })]))
     expect(names()).toEqual(['Harden tests', 'Watch fairs', 'Profile loader'])
     expect(host.querySelector('[data-h24="a"] .why')!.textContent).toBe('ship it')
-    expect(host.querySelector('[data-h24="a"] .meta.terms')!.textContent).toMatch(/^every \w+day, at night$/)
+    expect(host.querySelector('[data-h24="a"] .meta.terms')!.textContent).toBe('every 7 days, at night')
     await click(host.querySelector('[data-h24="b"] .auto-hit'))
     expect(pushed).toEqual([{ kind: 'auto', id: 'b' }])
     await click(label(/^run "Harden tests"/)!)
@@ -262,4 +282,14 @@ describe('auto drawer', () => {
     render(snap([]))
     expect(localStorage.getItem('weevils-auto-folds')).toBeNull()
   })
+})
+
+it('labels quota retry eligibility instead of presenting it as a requested schedule',async()=>{
+ const item=task({id:'retry',title:'Daily review',every:86_400_000,waiting:'later',retryAt:NOW+3600_000,startAt:NOW+3600_000})
+ render(snap([item]))
+ expect(host.querySelector('.h24-status')?.textContent).toContain('waiting to retry')
+ expect(host.querySelector('.h24-status')?.textContent).not.toMatch(/\d\d:\d\d/)
+ expect(host.querySelector('[data-h24="retry"] .act')?.textContent).toBe('')
+ expect(host.querySelector('[data-h24="retry"] .meta')?.textContent).toContain('every day')
+ expect(item.window).toBeUndefined();expect(item.notBefore).toBeUndefined()
 })

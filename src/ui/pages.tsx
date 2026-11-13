@@ -290,7 +290,6 @@ function SessionPage({ id }: { id: string }) {
       side={preview.open ? <Preview session={s} project={project} url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false, full: false })} full={preview.full} onFull={(full) => setPreview({ full })} /> : undefined}
       foot={
         <>
-          <OutboxStatus scope={`/api/sessions/${encodeURIComponent(id)}/`} />
           <FootError text={err} />
           <Composer
             placeholder={s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly}
@@ -311,6 +310,8 @@ function SessionPage({ id }: { id: string }) {
           <Messages session key={detail || missing ? 'loaded' : 'early'} messages={messages} author={s.tool} working={s.turnWorking ?? (s.status === 'working' && !s.background)} after={th.after} />
         )}
       </div>
+
+      <OutboxStatus scope={`/api/sessions/${encodeURIComponent(id)}/`} />
 
       {/* Les bandes d'état (question, travail, coupure) arrivent avec le fil : posées avant lui sur une page vide, elles
           seraient ensuite repoussées d'un coup vers le bas par les messages (ouverture depuis une notification). */}

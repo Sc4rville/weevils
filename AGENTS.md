@@ -17,7 +17,9 @@ Codex sessions running on this machine, with an assistant called weevboss at the
 - A regular user with sudo is best. Root works, but agents then keep their permission prompts. On a Mac: the user's
   own account, never root and never `sudo` in front of the installer (it refuses).
 - Install nothing yourself first: the installer adds what is missing (git, tmux, jq, Node.js 22, Claude Code…). On a
-  Mac it takes them from Homebrew, and installs Homebrew too when it is missing.
+  Mac it takes them from Homebrew, and installs Homebrew too when it is missing, on Apple Silicon only: Homebrew no
+  longer installs on Intel Macs, so there the installer stops (`status=failed`) and names the missing tools. Tell the
+  user, in plain words, they can come from MacPorts or an existing Homebrew, then run the installer again.
 
 ## 2. Get the code
 
@@ -86,6 +88,7 @@ The summary is `key=value` lines between `--- weevils summary ---` and `--- end 
 | `projects_all`, `repos` | all Claude Code projects; git repos in `~/projects` |
 | `tailscale`, `tailscale_name` | Tailscale installed; this machine's `…ts.net` name when it is connected |
 | `os`, `arch` | `linux` or `macos`; the processor (`x86_64`, `arm64`…) |
+| `service` | `systemd`, `launchd` (a Mac) or `background` (no service manager reachable, e.g. a Mac over SSH with no session open on its screen: weevils runs until the next restart) |
 | `laptop`, `wsl`, `sudo` | `yes`/`no`; `sudo` is `yes`, `password` (you can't use it) or `no` |
 | `qrencode` | `yes` when you can draw a QR code (step 7); on a Mac it may be in `/opt/homebrew/bin`, outside your PATH |
 | `needs`, `retry` | with `needs_sudo` only: what needs root, and the command that does it all from a terminal |
@@ -132,8 +135,8 @@ From `mode`:
   3. Nobody to answer (a one-shot run): set nothing up, end with that question.
 
   On a Mac (`os=macos`), 2 is different: there is no domain to offer, and Tailscale is an app the user installs.
-  - The app may be there without its command in the PATH (the summary then says `tailscale=no`): use
-    `/Applications/Tailscale.app/Contents/MacOS/Tailscale` as `tailscale`. If `tailscale status` succeeds, it is
+  - The app may be there without its command in the PATH: the installer finds it, and you call it as
+    `TAILSCALE_BE_CLI=1 /Applications/Tailscale.app/Contents/MacOS/Tailscale` in place of `tailscale`. If `tailscale status` succeeds, it is
     signed in: do 1, and with an empty `tailscale_name`, give `--url` the `https://…ts.net` address that
     `tailscale serve` prints.
   - Otherwise the one question is: "To open it on your phone, weevils needs Tailscale (free: a private link between

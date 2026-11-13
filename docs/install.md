@@ -110,7 +110,12 @@ The same command works on a Mac, Apple Silicon or Intel. What differs from Linux
   Homebrew refuses to run as root. Packages come from [Homebrew](https://brew.sh). When it is missing, the installer
   offers to install it with Homebrew's official installer, which asks for your Mac password (you need an
   administrator account). Run by an AI agent, that step needs sudo without a password; otherwise the summary says
-  `status=needs_sudo` and gives the command to run once in the Terminal app.
+  `status=needs_sudo` and gives the command to run once in the Terminal app. A Mac that already has every tool
+  (from MacPorts, for example) needs no Homebrew.
+- **Intel Macs.** Homebrew's installer no longer runs on Intel Macs. With Homebrew already installed, nothing
+  changes. Without it, the installer stops and names the missing tools: install them with
+  [MacPorts](https://www.macports.org) (git and python3 also come with Apple's developer tools,
+  `xcode-select --install`), then run it again.
 - **What it installs.** From Homebrew, when they are missing: git, curl, tmux, jq, python3, qrencode, and Node.js
   when yours is older than 22.18 (if an older one still comes first in your PATH, weevils uses Homebrew's and tells
   you). Claude Code comes from its official installer, as on Linux. Settings, data and commands live in the same

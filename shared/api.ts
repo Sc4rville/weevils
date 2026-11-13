@@ -107,6 +107,8 @@ export interface SessionProgress {
 }
 
 export interface Session {
+  /** Local source launch policy, independent of identity and transport controllability. */
+  sourceAccess?: SourceAccess
   /** Target identity only: never use this as an Automated sender or activity/completion signal. */
   workstream?: WorkstreamIdentity
   progress?: SessionProgress
@@ -205,7 +207,16 @@ export interface RelayView {
   plans: RelayPlan[]
 }
 
+/** Observed local policy, not GitHub permissions or an agent sandbox. Absent means unknown. */
+export interface SourceAccess {
+  repo: string
+  machineId: string
+  canExecute: boolean
+  reason: 'owned-writable' | 'not-owned' | 'not-writable' | 'unavailable'
+}
+
 export interface Project {
+  sourceAccess?: SourceAccess
   /** Target identity only: never use this as an Automated sender or activity/completion signal. */
   workstream?: WorkstreamIdentity
   id: string
@@ -318,6 +329,7 @@ export interface WeevilReply {
 
 /** Une tâche du h24 (« optimiseur ») : proposée à partir de la mémoire et des projets, lancée quand la machine est libre. */
 export interface Optimizer {
+  sourceAccess?: SourceAccess
   /** Target identity only: never use this as an Automated sender or activity/completion signal. */
   workstream?: WorkstreamIdentity
   /** Explicit recovery event: reconcile an old optimistic refusal, never infer delivery/deletion from text. */

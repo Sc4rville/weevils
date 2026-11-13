@@ -257,6 +257,15 @@ export class Weevils {
     const root=this.repoRoot(repo)
     return root ? this.installationIdentity.classify(path.join(root,repo),familyOf(repo),repo,'automation-target') : undefined
   }
+  sourceAccessForRepo(repo:string) {
+    const root=this.repoRoot(repo)
+    return root ? this.installationIdentity.access(path.join(root,repo)) : undefined
+  }
+  assertSourceExecution(cwd:string) {
+    const access=this.installationIdentity.access(cwd)
+    if(access&&!access.canExecute)throw new OutboxError(403,tr(M).sourceReadOnly)
+  }
+  assertRepoExecution(repo:string) { this.assertSourceExecution(this.repoDir(repo)) }
   store = new TranscriptStore(CLAUDE_DIR, CODEX_DIR, RECENT_MS)
   private messageOrigins = new MessageOrigins(path.join(DATA_DIR,'message-origins.json'))
   hooks = new Map<string, HookState>()
@@ -891,6 +900,7 @@ export class Weevils {
     return {
       id: t.id,
       workstream: this.installationIdentity.classify(t.cwd,where.projectId,where.repo),
+      sourceAccess: this.installationIdentity.access(t.cwd),
       projectId: where.projectId,
       repo: where.repo,
       machineId: MACHINE.id,
@@ -933,6 +943,7 @@ export class Weevils {
     const where = place(p.cwd, PROJECT_ROOTS)
     return {
       id: p.sessionId ?? p.name,
+      sourceAccess: this.installationIdentity.access(p.cwd),
       projectId: where.projectId,
       repo: where.repo,
       machineId: MACHINE.id,
@@ -994,7 +1005,7 @@ export class Weevils {
       const id=identity.target.projectId
       const p=map.get(id)??{id,name:projectLabel(id),kind:'repo' as const,repos:[],where:{},lastActivityAt:0}
       if(!p.repos.includes(repo))p.repos.push(repo)
-      p.where[repo]=MACHINE.id;p.workstream={...identity,evidence:'repository-identity'};map.set(id,p)
+      p.where[repo]=MACHINE.id;p.workstream={...identity,evidence:'repository-identity'};p.sourceAccess=this.sourceAccessForRepo(repo);map.set(id,p)
     }
     return [...map.values()]
   }
@@ -1013,7 +1024,7 @@ export class Weevils {
         if (!cur.repos.includes(r)) cur.repos.push(r)
         cur.where[r] ??= p.where[r]
       }
-      cur.workstream ??= p.workstream
+      if(!cur.workstream){cur.workstream=p.workstream;cur.sourceAccess=p.sourceAccess}
       cur.lastActivityAt = Math.max(cur.lastActivityAt, p.lastActivityAt)
       if (p.kind === 'repo') cur.kind = 'repo'
     }
@@ -1381,6 +1392,7 @@ export class Weevils {
       const t = this.store.get(real)
       throw new OutboxError(t ? 409 : 404, t && !this.toSession(t, Date.now()).controllable ? tr(M).unmanaged : tr(M).sessionNotFound)
     }
+    this.assertSourceExecution(s.cwd)
     this.guardProvider(s)
     if (s.tool === 'codex' && this.codexBridge.can(real)) {
       await this.codexBridge.send(real, text)
@@ -1455,7 +1467,7 @@ export class Weevils {
     if (!files.length) return this.send(id, text)
     const target = this.relay?.deliveryTarget?.(this.resolveId(id)) ?? this.resolveId(id)
     const s = this.snapshot().sessions.find(s => s.id === target)
-    if (s) this.guardProvider(s)
+    if (s) { this.assertSourceExecution(s.cwd);this.guardProvider(s) }
     return this.send(id, withFiles(text, saveInbox(path.join(DATA_DIR, 'inbox'), files)))
   }
 
@@ -1519,6 +1531,7 @@ export class Weevils {
     const repo = repoGuess ?? (this.repoRoot(input.projectId) ? input.projectId : undefined)
     const cwd = repo ? path.join(this.repoRoot(repo) ?? PROJECTS_DIR, repo) : PROJECTS_DIR
     if (!fs.existsSync(cwd)) throw new Error(tr(M).dirNotFound(cwd))
+    this.assertSourceExecution(cwd)
     let text = input.text.trim()
     const title = text ? (parseSigned(text)?.text ?? text).replace(/\s+/g, ' ').slice(0, 60) : tr(M).newSession
     if (text && activeRequestLang()) text += joinContext('', tr(M).appLocale)
@@ -1532,6 +1545,7 @@ export class Weevils {
   }
 
   private async spawn(tool: Tool, cwd: string, title: string, command: string[], sessionId?: string): Promise<string> {
+    this.assertSourceExecution(cwd)
     const short = crypto.randomBytes(3).toString('hex')
     const name = wvName(path.basename(cwd), short)
     // Jamais de dialogue de confiance au lancement : le dossier est marqué sûr avant.
@@ -2250,6 +2264,7 @@ export class Weevils {
    *  « env » devant claude : tmux lance la commande sans shell, une valeur n'est jamais interprétée. wrap : une commande
    *  devant tout le reste (la prison bwrap de la tâche). */
   async createIn(cwd: string, title: string, text: string, args: string[] = [], env: { set?: Record<string, string>; unset?: string[]; wrap?: string[] } = {}, tool: Tool = preferredTool(), sessionId?: string): Promise<{ id: string }> {
+    this.assertSourceExecution(cwd)
     if (tool === 'codex') {
       const un = (env.unset ?? []).filter((k) => /^[A-Za-z_]\w*$/.test(k)).flatMap((k) => ['-u', k])
       const st = Object.entries(env.set ?? {}).filter(([k]) => /^[A-Za-z_]\w*$/.test(k)).map(([k, v]) => `${k}=${v}`)

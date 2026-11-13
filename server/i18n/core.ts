@@ -17,6 +17,7 @@ export default defineMessages({
     commandRefused: (c: string) => `commande refusée : ${c}`,
 
     badRepo: 'repo invalide',
+    sourceReadOnly: 'Ce dépôt source est en lecture seule pour weevils. Aucun travail n’a été lancé ; les sessions déjà actives continuent.',
     repoNotFound: 'repo introuvable',
     pathRefused: 'chemin refusé',
     starting: 'démarrage…',
@@ -74,6 +75,7 @@ export default defineMessages({
     commandRefused: (c: string) => `command not allowed: ${c}`,
 
     badRepo: 'invalid repo',
+    sourceReadOnly: 'This source repository is read-only for weevils. No work was started; existing active sessions continue.',
     repoNotFound: 'repo not found',
     pathRefused: 'path not allowed',
     starting: 'starting…',

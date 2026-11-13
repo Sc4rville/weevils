@@ -310,6 +310,32 @@ describe('auto — the runner', () => {
     expect(run.endedAt).toBe(T0 + IDLE_MS + 20 * MIN)
   })
 
+  it('rechecks source access before accept/run and keeps revoked queued work across reload without creating a run',async()=>{
+    let allowed=false
+    const policy={
+      sourceAccessForRepo:()=>({repo:'mygame',machineId:'test',canExecute:allowed,reason:allowed?'owned-writable':'not-writable'}),
+      assertRepoExecution:()=>{if(!allowed)throw new Error('source read-only')},
+    }
+    let o=make(policy)
+    model.mockResolvedValue(props(1));await o.round(T0)
+    const id=o.list()[0].id
+    expect(()=>o.accept(id)).toThrow('source read-only')
+    expect(o.list()[0].state).toBe('proposed')
+    allowed=true;expect(o.accept(id)).toBe(true);allowed=false
+    expect(()=>o.runNow(id)).toThrow('source read-only')
+    o.tick(T0+IDLE_MS);await flush()
+    o=make(policy);o.tick(T0+IDLE_MS+MIN);await flush()
+    expect(o.list()[0]).toMatchObject({id,state:'queued',sourceAccess:{canExecute:false}})
+    expect(o.list()[0].startedAt).toBeUndefined();expect(o.list()[0].runs??[]).toEqual([])
+    expect(createIn).not.toHaveBeenCalled();expect(sys.worktree).not.toHaveBeenCalled()
+    allowed=true;o.tick(T0+IDLE_MS+2*MIN);await flush()
+    expect(createIn).toHaveBeenCalledTimes(1);expect(o.list()[0]).toMatchObject({id,state:'running'})
+    allowed=false
+    await expect(o.relayRun('sess-1','Continue')).rejects.toThrow('source read-only')
+    expect(createIn).toHaveBeenCalledTimes(1)
+    expect(o.list()[0]).toMatchObject({id,state:'running',sessionId:'sess-1'})
+  })
+
   it('a task without a repo runs in its own workspace and writes a report', async () => {
     const o = make()
     model.mockResolvedValue(JSON.stringify([JSON.parse(props(2))[1]]))

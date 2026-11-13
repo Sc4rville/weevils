@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { WorkstreamIdentity } from '../shared/api.ts'
+import type { SourceAccess, WorkstreamIdentity } from '../shared/api.ts'
 
 /** Git identity includes linked worktrees, but not unrelated repositories sharing a name or remote. */
 export function repositoryIdentity(directory:string):string|null {
@@ -30,6 +30,31 @@ export class InstallationIdentity {
     const candidate=this.identity&&path.basename(this.identity)==='.git'?path.dirname(this.identity):path.resolve(directory)
     this.repositoryDirectory=this.identity&&repositoryIdentity(candidate)===this.identity?candidate:null
     this.installationId=crypto.createHash('sha256').update(machineId+'\0'+(this.identity??path.resolve(directory))).digest('hex').slice(0,24)
+  }
+  /** Recheck filesystem evidence at dispatch; the identity cache must never cache permission grants. */
+  access(directory:string):SourceAccess|undefined {
+    const source=this.repositoryDirectory
+    if(!this.identity||!source)return undefined
+    let actual:string
+    try{actual=fs.realpathSync(directory)}catch{actual=path.resolve(directory)}
+    const withinSource=actual===source||actual.startsWith(source+path.sep)
+    const identity=repositoryIdentity(directory)
+    if(identity!==this.identity&&!withinSource)return undefined
+    const result=(reason:SourceAccess['reason']):SourceAccess=>({repo:path.basename(source),machineId:this.machineId,canExecute:reason==='owned-writable',reason})
+    if(identity!==this.identity||repositoryIdentity(source)!==this.identity)return result('unavailable')
+    const uid=process.geteuid?.()
+    if(uid===undefined)return result('unavailable')
+    try{
+      for(const dir of new Set([source,this.identity,actual])){
+        const stat=fs.statSync(dir)
+        if(!stat.isDirectory())return result('unavailable')
+        if(stat.uid!==uid)return result('not-owned')
+        // Mode check also keeps root from silently treating a read-only checkout as editable.
+        if(!(stat.mode&0o200)||!(stat.mode&0o100))return result('not-writable')
+        try{fs.accessSync(dir,fs.constants.W_OK|fs.constants.X_OK)}catch{return result('not-writable')}
+      }
+      return result('owned-writable')
+    }catch{return result('unavailable')}
   }
   classify(directory:string,projectId:string,repo:string|null,evidence:WorkstreamIdentity['evidence']='repository-identity'):WorkstreamIdentity|undefined {
     if(!this.identity||!repo)return undefined

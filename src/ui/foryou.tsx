@@ -1,3 +1,4 @@
+import { FeedText, SoftwareResultLink } from './foryou-links'
 import { ResultCard } from './foryou-result'
 import { TranslationStatus } from './foryou-localization'
 import { InlineMediaFormats, ProposalView } from './foryou-formats'
@@ -421,8 +422,9 @@ function MediaItem({ item, who, fy }: KindProps) {
             <Listen item={item} who={who} small />
           </Who>
           {item.title && <div className="fy-title">{item.title}</div>}
-          {item.text && item.text !== item.title && <div className="fy-text">{item.text}</div>}
-          {!!item.gauges?.length && <Gauges list={item.gauges} />}
+          {item.text && item.text !== item.title && <div className="fy-text"><FeedText text={item.text} item={item} /></div>}
+          <SoftwareResultLink item={item} />
+        {!!item.gauges?.length && <Gauges list={item.gauges} />}
         </div>
       </div>
       {(!!item.media?.length || !!item.composition) && <InlineMediaFormats item={item} />}
@@ -454,9 +456,10 @@ function BossItem({ item, who, fy }: KindProps) {
               <span className="fy-transcript-hide">{t.hideTranscript}</span>
               <Icon name="chevron" dir="down" />
             </summary>
-            <div className="fy-text">{item.text}</div>
+            <div className="fy-text"><FeedText text={item.text} item={item} /></div>
           </details>
-        ) : <div className="fy-text">{item.text}</div>}
+        ) : <div className="fy-text"><FeedText text={item.text} item={item} /></div>}
+        <SoftwareResultLink item={item} />
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
       {!!item.media?.length && <MediaStrip media={item.media} />}
@@ -490,7 +493,7 @@ function MailItem({ item, who, fy }: KindProps) {
         <div className="tone">
           <div className="in fy-mail-body">
             {item.title && <div className="fy-title">{item.title}</div>}
-            <div className="fy-text">{item.body ?? item.text}</div>
+            <div className="fy-text"><FeedText text={item.body ?? item.text} item={item} /></div>
           </div>
         </div>
         {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
@@ -622,8 +625,9 @@ function SessionItem({ item, who, project, fy }: KindProps) {
             </span>
           </button>
         ) : (
-          <div className="fy-line">{item.text}</div>
+          <div className="fy-line"><FeedText text={item.text} item={item} /></div>
         )}
+        <SoftwareResultLink item={item} />
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
       {!!item.media?.length && <MediaStrip media={item.media} />}
@@ -633,7 +637,7 @@ function SessionItem({ item, who, project, fy }: KindProps) {
           {item.body && (
             <div className="tone">
               <div className="in fy-mail-body">
-                <div className="fy-text">{item.body}</div>
+                <div className="fy-text"><FeedText text={item.body} item={item} /></div>
               </div>
             </div>
           )}
@@ -656,6 +660,7 @@ function ImproveItem({ item, who, fy }: KindProps) {
         <Who item={item} who={who} />
         {item.title && <div className="fy-title">{item.title}</div>}
         <div className="fy-text fy-lead">{item.text}</div>
+        <SoftwareResultLink item={item} />
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
       <Actions item={item} fy={fy} />
@@ -748,7 +753,8 @@ function MilestoneItem({ item, who, project }: KindProps) {
       <Who item={item} who={project ?? who} />
       {item.title && <div className="fy-title">{item.title}</div>}
       <div className="fy-shift">{item.text}</div>
-      {!!item.gauges?.length && <Gauges list={item.gauges} />}
+      <SoftwareResultLink item={item} />
+        {!!item.gauges?.length && <Gauges list={item.gauges} />}
     </div>
   )
 }
@@ -759,7 +765,8 @@ function StatItem({ item, who, project, fy }: KindProps) {
       <div className="in fy-pad">
         <Who item={item} who={project ?? who} />
         {item.title && <div className="fy-title">{item.title}</div>}
-        {item.text && <div className="fy-text">{item.text}</div>}
+        {item.text && <div className="fy-text"><FeedText text={item.text} item={item} /></div>}
+        <SoftwareResultLink item={item} />
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
       <Actions item={item} fy={fy} />

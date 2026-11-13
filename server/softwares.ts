@@ -1189,6 +1189,12 @@ export class Softwares {
     return this.sorted()
   }
 
+  /** Deployment metadata for result links: no launch, screenshot, enrichment or model. */
+  async catalog(): Promise<{ at: number; items: (Software & { deploymentUrls: string[] })[] }> {
+    if (!this.at || Date.now() - this.at > 20_000) await this.refresh(false)
+    return { at: this.at, items: [...this.entries.values()].map(e => ({ ...e.sw, deploymentUrls: e.sites.map(siteUrl) })) }
+  }
+
   private sorted(): Software[] {
     return [...this.entries.values()].map((e) => e.sw).sort((a, b) => Number(b.run === 'running' || b.run === 'starting') - Number(a.run === 'running' || a.run === 'starting') || b.lastActivityAt - a.lastActivityAt)
   }
@@ -1215,16 +1221,16 @@ export class Softwares {
 
   // ---------------------------------------------------------------- balayage
 
-  private refresh(): Promise<void> {
+  private refresh(enrich = true): Promise<void> {
     if (this.refreshing) return this.refreshing
     this.refreshing = (async () => {
       try {
         const t0 = Date.now()
         if (Date.now() - this.staticAt > 60_000) await this.scanRepos()
-        await this.assemble()
+        await this.assemble(!enrich)
         this.at = Date.now()
         if (Date.now() - t0 > 1500) console.log(`[logiciels] balayage ${Date.now() - t0} ms, ${this.entries.size} logiciels`)
-        void this.enrich()
+        if (enrich) void this.enrich()
       } catch (e) {
         console.error(`[logiciels] balayage : ${(e as Error).stack}`)
       } finally {
@@ -1269,7 +1275,7 @@ export class Softwares {
   }
 
   /** Assemble les logiciels : repos + services + conteneurs + sites + ports + journaux, puis l'état de chacun. */
-  private async assemble() {
+  private async assemble(readOnly = false) {
     const [units, ctrs] = await Promise.all([userUnits(), containers()])
     const sites = caddySites()
     const logs = this.logFiles()
@@ -1385,7 +1391,7 @@ export class Softwares {
       e.sw.lastActivityAt = Math.max(e.sw.lastActivityAt, t.lastActivityAt)
     }
     this.entries = next
-    await this.runtime([...next.values()], false, procs)
+    await this.runtime([...next.values()], false, procs, readOnly)
   }
 
   /** Journaux des jobs (LOGS_DIRS, comme le rail 24/7 : le premier dossier gagne pour un même nom), lus seulement. */
@@ -1404,7 +1410,7 @@ export class Softwares {
   // ---------------------------------------------------------------- état vivant
 
   /** État, port, adresse, plan de lancement, dernières lignes et avancement (fresh : une page ouverte, relue souvent). */
-  private async runtime(list: Entry[], fresh: boolean, procs?: ServerProc[]) {
+  private async runtime(list: Entry[], fresh: boolean, procs?: ServerProc[], readOnly = false) {
     procs ??= await servers()
     if (fresh) {
       const [u, c] = await Promise.all([list.some((e) => e.units.length) ? userUnits() : Promise.resolve([]), list.some((e) => e.containers.length) ? containers() : Promise.resolve([])])
@@ -1436,7 +1442,7 @@ export class Softwares {
       if (rec?.pid) {
         const live = alive(rec.pid, rec.ticks ?? '')
         // Après un redémarrage de weevilsd, la surveillance du lancement n'existe plus : on la refait ici.
-        if (live && !rec.up && rec.port && !this.watching.has(e.key)) {
+        if (!readOnly && live && !rec.up && rec.port && !this.watching.has(e.key)) {
           const l = all.filter((x) => x.port === rec.port)
           if (l.some((x) => x.pids.some((pid) => pgidOf(pid) === rec.pid))) {
             rec.up = true
@@ -1451,9 +1457,11 @@ export class Softwares {
         // Tombé avant d'écouter, ou planté : montré en échec (avec sa sortie) pendant 30 min.
         else if ((!rec.up || (rec.exit != null && rec.exit !== 0)) && Date.now() - (rec.endedAt ?? rec.at) < 30 * MIN) own = 'failed'
         else {
-          if (rec.published) await this.unpublish(rec.published)
-          delete this.runs[e.key]
-          writeJson('runs.json', this.runs)
+          if (!readOnly) {
+            if (rec.published) await this.unpublish(rec.published)
+            delete this.runs[e.key]
+            writeJson('runs.json', this.runs)
+          }
         }
       }
       const unitUp = e.units.some((u) => u.active)
@@ -1484,7 +1492,7 @@ export class Softwares {
         : e.sites.length && !e.units.length && !e.containers.length ? 'web' : sw.url ? 'web' : sw.kind
       // Ce qu'un tap lance quand rien ne tourne.
       sw.launch = this.launchOf(e)
-      if (sw.launch && ['dev', 'start', 'preview', 'static'].includes(sw.launch.how) && !sw.port) {
+      if (!readOnly && sw.launch && ['dev', 'start', 'preview', 'static'].includes(sw.launch.how) && !sw.port) {
         const taken = new Set([...busy, ...[...claimed].filter((p) => p !== proj?.declared)])
         for (const p of mine) taken.delete(p.port)
         const p = allocatePort(e.key, this.ports, taken)
@@ -1497,7 +1505,7 @@ export class Softwares {
       if (sw.launch) sw.launch = this.launchOf(e)
       // Peut-on l'afficher dans un cadre ?
       sw.embeddable = sw.url ? (pageOnly ? true : ownApp(sw.url, e) ? false : this.frames.get(sw.url)?.ok) : undefined
-      if (sw.url && !pageOnly && (!this.frames.has(sw.url) || Date.now() - this.frames.get(sw.url)!.at > 60 * MIN)) void this.checkFrame(sw.url)
+      if (!readOnly && sw.url && !pageOnly && (!this.frames.has(sw.url) || Date.now() - this.frames.get(sw.url)!.at > 60 * MIN)) void this.checkFrame(sw.url)
       sw.shot = this.shotAt(e)
       // Dernières lignes : toujours une vraie sortie.
       await this.tail(e)
@@ -2167,8 +2175,14 @@ type ReadBody = (req: http.IncomingMessage) => Promise<any>
  * est sauté), puis par logiciel : capture, ouverture, arrêt, relecture, correction d'avancement. Le préfixe « <machine>: »
  * de l'id dit quelle machine répond.
  */
+const catalogs = new WeakMap<Weevils, Softwares>()
+export async function softwareCatalog(w: Weevils): Promise<{ at: number; items: Software[] }> {
+  return catalogs.get(w)?.catalog() ?? { at: 0, items: [] }
+}
+
 export function softwareRoutes(w: Weevils, json: Json, readBody: ReadBody): [string, RegExp, Handler][] {
   const sw = new Softwares(w)
+  catalogs.set(w, sw)
   const machineOf = (r: Remote) => r.snap?.machines[0]?.id ?? r.id
   const remoteFor = (id: string) => {
     const m = id.slice(0, id.indexOf(':'))

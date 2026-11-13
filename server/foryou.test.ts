@@ -1385,3 +1385,28 @@ it('indexes later explicit request IDs in an existing session without replaying 
   expect(run).toHaveBeenCalledTimes(2)
   expect(host.sendMain).not.toHaveBeenCalled()
 })
+
+
+it('projects current software links across locale changes and reload without altering stored cards', async () => {
+  const software = { id:'test:deployed', name:'Actual project', machine:'test', repo:'actual-repo', repos:['actual-repo'], kind:'web', run:'running', url:'https://deployed.example/' } as const
+  let catalog = { at: now, items: [{...software, repos:[...software.repos]}] }
+  const fy = make({ softwares: async()=>catalog })
+  const posted = fy.post('The preview is ready at https://deployed.example/.', [{label:'Review',brief:'Review this exact preview'}])
+  fy.seen([posted.id])
+  const raw = JSON.parse(fs.readFileSync(fy.file,'utf8')).items
+  await fy.refreshSoftware()
+  for (const lang of ['en','fr','en'] as const) {
+    const card=fy.feed(now,lang).items.find(i=>i.id===posted.id)!
+    expect(card.software).toEqual({id:software.id,name:software.name,state:'running',url:software.url})
+    expect(card.seen).toBe(true)
+    expect(card.actions?.map(a=>a.id)).toEqual(posted.actions?.map(a=>a.id))
+  }
+  expect(JSON.parse(fs.readFileSync(fy.file,'utf8')).items).toEqual(raw)
+  const again=make({softwares:async()=>catalog})
+  await again.refreshSoftware()
+  expect(again.feed().items.find(i=>i.id===posted.id)?.software?.id).toBe(software.id)
+  catalog={at:now,items:[]}
+  await again.refreshSoftware()
+  expect(again.feed().items.find(i=>i.id===posted.id)?.software).toBeUndefined()
+  expect(again.feed().items.find(i=>i.id===posted.id)?.seen).toBe(true)
+})

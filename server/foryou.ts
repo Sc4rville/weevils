@@ -3,6 +3,7 @@ import { FeedLocalization } from './foryou-localization.ts'
 import { OutboxError } from './outbox.ts'
 import { internalFeedUpdate, editorialFeedText, acknowledgementOnly, humanFeedItem, humanFeedText, rawEngineeringNotice } from '../shared/feed-text.ts'
 import { reviewedEditorial } from './foryou-editorial.ts'
+import { softwareResult, type SoftwareCatalog } from './foryou-software.ts'
 import { WorkIntents, intentDispatch, substantive, briefKey, isWorkRequest, type IntentResult } from './foryou-intents.ts'
 import reviewedIntents from './foryou-intents-reviewed.json' with { type: 'json' }
 import { canonicalAlertId, feedNoticeKey, isRequestNotice, quotaReset, sessionNoticeKey } from '../shared/notices.ts'
@@ -275,6 +276,8 @@ export interface ForYouCurator {
 }
 
 export interface ForYouDeps {
+  /** Read-only current deployment catalogue, never starts software or model work. */
+  softwares?: () => Promise<SoftwareCatalog>
   /** Default DATA_DIR/foryou.json. */
   file?: string
   now?: () => number
@@ -410,6 +413,7 @@ export class ForYou {
   private deps: ForYouDeps
   private s: State
   private now: () => number
+  private softwareCatalog: SoftwareCatalog = { at: 0, items: [] }
   readonly intents: WorkIntents
   private dataDir: string
   private machineId: string
@@ -674,6 +678,11 @@ export class ForYou {
   intentContext(): string {
     this.syncIntents()
     return JSON.stringify(this.intents.list().slice(0, 30).map(i => ({ sourceIntentId: i.id, status: i.status, brief: i.brief.slice(0, 600) })))
+  }
+
+  async refreshSoftware(): Promise<void> {
+    if (!this.deps.softwares) return
+    try { this.softwareCatalog = await this.deps.softwares() } catch { this.softwareCatalog = { at: 0, items: [] } }
   }
 
   private actionIntent(item: Stored, action: NonNullable<Stored['actions']>[number]) {
@@ -1037,6 +1046,8 @@ export class ForYou {
         return work ? { ...a, label: tr(M).followWork } : a
       })
     }
+    const software = softwareResult(result, snap, this.softwareCatalog, this.now())
+    if (software) result.software = software
     return result
   }
 
@@ -1450,7 +1461,10 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
   }
   const exists = (itemId: string) => fy.has(itemId)
   return [
-    ['GET', /^\/api\/foryou$/, (_req, res, url) => json(res, 200, fy.feed(undefined, langOf(url)))],
+    ['GET', /^\/api\/foryou$/, async (_req, res, url) => {
+      await fy.refreshSoftware()
+      json(res, 200, fy.feed(undefined, langOf(url)))
+    }],
     ['POST', /^\/api\/foryou\/seen$/, async (req, res) => {
       fy.seen((await readBody(req))?.ids)
       json(res, 200, { ok: true })

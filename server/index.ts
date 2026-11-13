@@ -26,7 +26,7 @@ import V from './i18n/voice.ts'
 import S from './i18n/setup.ts'
 import { LoadSampler, tipRoutes } from './tips.ts'
 import { Hints, hintRoutes } from './hints.ts'
-import { softwareRoutes } from './softwares.ts'
+import { softwareRoutes, softwareCatalog } from './softwares.ts'
 import { browserSafe, isLocal, trustedFrom, trustedSource } from './http.ts'
 import { startMailBridge } from './mailbridge.ts'
 import { resetAuthors, threadAuthor } from './authors.ts'
@@ -175,6 +175,7 @@ let tipLoad: { at: number; loads: MachineLoad[] } = { at: 0, loads: [] }
 const voices = new Voices({ bossVoice: () => w.voiceId ?? cartesia()?.voice })
 const foryou = ORCHESTRATOR
   ? new ForYou(w, {
+      softwares: () => softwareCatalog(w),
       shelf: new MediaShelf({ file: path.join(DATA_DIR, 'foryou-media.json'), roots: [...PROJECT_ROOTS, INBOX_DIR, DATA_DIR] }),
       isTestBrief,
       optimizers: () => ({ accept: (id) => optimizers.accept(id) === true, refuse: (id) => optimizers.refuse(id) }),

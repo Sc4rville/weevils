@@ -78,6 +78,8 @@ export interface VisualProposal {
 }
 
 export interface ForYouItem {
+  /** Current catalogued software result. Private capability URLs never cross this boundary. */
+  software?: { id: string; name: string; state: 'running' | 'unavailable'; url?: string }
   /** Existing authorized work; never another request for approval. */
   work?: { intentId: string; status: 'requested' | 'dispatching' | 'uncertain' | 'queued' | 'running' | 'completed'; open?: ForYouOpen; source?: { sessionId: string; messageId: string } }
   /** Reviewed generated wording. The stored source and its event identity stay intact. */

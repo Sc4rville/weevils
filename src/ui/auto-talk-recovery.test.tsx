@@ -86,3 +86,18 @@ it('locks a version while approval is pending, preventing a second approval or c
  await act(async()=>finish({}))
  expect(current.busy.has(proposal.id)).toBe(false)
 })
+
+it('restores the unchanged proposal and exposes the error when approval fails',async()=>{
+ const proposal=item({draft:false,rev:7})
+ const before=structuredClone(proposal)
+ api.acceptOptimizer.mockRejectedValueOnce(new Error('Connection unavailable'))
+ await render(proposal)
+ await act(async()=>{expect(current.answer(proposal,true)).toBe(true)})
+ expect(current.busy.has(proposal.id)).toBe(false)
+ expect(current.decided.has(proposal.id)).toBe(false)
+ expect(current.notes.get(proposal.id)).toBe('Connection unavailable')
+ expect(host.textContent).toContain('Preserve this exchange')
+ expect(proposal).toEqual(before)
+ expect(api.acceptOptimizer).toHaveBeenCalledTimes(1)
+ expect(api.refuseOptimizer).not.toHaveBeenCalled()
+})

@@ -27,7 +27,7 @@ import B from '../i18n/bits'
 import { ago, plain, userText, type ChipId } from './format'
 import { AutoMark, FilledIcon, G, Icon } from './icons'
 import { KeepSessionOrder } from './session-order'
-import { autoOfSession } from './auto-model'
+import { autoOfSession, isAutomation } from './auto-model'
 import { PrefLines } from './prefs'
 import { RelayPrefLine, ThreadPlans } from './relay'
 import { UsageLine } from './infra'
@@ -437,7 +437,7 @@ export function ProjectBand({ project }: { project: Project }) {
   const done = sessions.filter((s) => s.status === 'done')
   const att = active.filter((s) => s.status === 'needs_user')
   const cut = active.filter((s) => s.status === 'interrupted')
-  const jobs = snap.h24.filter((a) => a.projectId === project.id)
+  const jobs = snap.h24.filter((a) => a.projectId === project.id && isAutomation(a))
   const convCount = snap.conversationCounts.byProject[project.id] ?? 0
   const convs = snap.conversations.filter((c) => c.projectId === project.id)
   // Réduit ou déplié, au choix, mémorisé par projet ; par défaut réduit quand rien ne tourne.

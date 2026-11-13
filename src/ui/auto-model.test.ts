@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { H24Activity, Optimizer, Project } from '../../shared/api.ts'
-import { DRAWER_SLOT, PROP_PALETTE, at, autoList, autoOfSession, bandColors, propColors, failedLine, fromActivity, fromOptimizer, hueGap, progressOf, short, triggerText, type Trigger } from './auto-model'
+import { DRAWER_SLOT, PROP_PALETTE, at, autoList, autoOfSession, isAutomation, bandColors, propColors, failedLine, fromActivity, fromOptimizer, hueGap, progressOf, short, triggerText, type Trigger } from './auto-model'
 
 const NOW = 1_800_000_000_000
 const MIN = 60_000
@@ -12,10 +12,10 @@ const act = (a: Partial<H24Activity>): H24Activity => ({ id: 'job:x', title: 'x'
 const list = (optimizers: Optimizer[], h24: H24Activity[] = [], projects: Project[] = []) => autoList({ projects, optimizers, h24, now: NOW })
 
 describe('autoList: what runs without asking', () => {
-  it('takes accepted tasks, timers, running jobs and the jobs ended under 3 h; never a proposal or a refused one', () => {
+  it('takes accepted tasks, timers, recurring jobs (running or ended under 3 h); never a proposal, a refused one or a one-off agent job', () => {
     const ids = list(
       [opt({ id: 'q' }), opt({ id: 'p', state: 'proposed' }), opt({ id: 'x', state: 'refused' }), opt({ id: 'd', state: 'done', endedAt: NOW - H })],
-      [act({ id: 'timer:a', kind: 'timer', nextRunAt: NOW + H, everyMs: DAY }), act({ id: 'job:run', runState: 'running', runStartedAt: NOW - MIN }), act({ id: 'job:recent', lastRunAt: NOW - H }), act({ id: 'job:old', lastRunAt: NOW - 4 * H })],
+      [act({ id: 'timer:a', kind: 'timer', nextRunAt: NOW + H, everyMs: DAY }), act({ id: 'job:run', runState: 'running', runStartedAt: NOW - MIN, everyMs: DAY }), act({ id: 'job:recent', lastRunAt: NOW - H, everyMs: DAY }), act({ id: 'job:old', lastRunAt: NOW - 4 * H, everyMs: DAY }), act({ id: 'job:once', runState: 'running', runStartedAt: NOW - MIN })],
     ).map((x) => x.id)
     expect(ids.sort()).toEqual(['d', 'job:recent', 'job:run', 'q', 'timer:a'])
   })
@@ -62,7 +62,7 @@ describe('autoList: what runs without asking', () => {
   })
 
   it('places a task in the project of its repo, a job in its project or its family', () => {
-    const xs = list([opt({ id: 'a', repo: 'mygame-site' })], [act({ id: 'job:b', group: 'notes', runState: 'running' })], [project('mygame', ['mygame', 'mygame-site']), project('notes', ['notes'])])
+    const xs = list([opt({ id: 'a', repo: 'mygame-site' })], [act({ id: 'job:b', group: 'notes', runState: 'running', everyMs: DAY })], [project('mygame', ['mygame', 'mygame-site']), project('notes', ['notes'])])
     expect(xs.find((x) => x.id === 'a')!.projectId).toBe('mygame')
     expect(xs.find((x) => x.id === 'job:b')!.projectId).toBe('notes')
   })
@@ -241,4 +241,15 @@ it('keeps source-blocked Auto visible without an upcoming time and preserves a r
  expect(queued.state).not.toBe('scheduled')
  expect(queued.sourceAccess).toEqual(sourceAccess)
  expect(fromOptimizer(opt({ sourceAccess, state: 'running', startedAt: NOW - MIN }))!.state).toBe('running')
+})
+
+describe('automated shows only real automations', () => {
+  it('a one-off background job an agent started (~/logs) is not an automation; a timer, a recurring or triggered job is', () => {
+    const job = { kind: 'job' as const, demo: false, everyMs: null, nextRunAt: null }
+    expect(isAutomation(job)).toBe(false)
+    expect(isAutomation({ ...job, everyMs: 3600_000 })).toBe(true)
+    expect(isAutomation({ ...job, nextRunAt: 1 })).toBe(true)
+    expect(isAutomation({ ...job, demo: true })).toBe(true)
+    expect(isAutomation({ ...job, kind: 'timer' })).toBe(true)
+  })
 })

@@ -20,7 +20,7 @@ const NOW = 1_800_000_000_000
 const session = (over: Partial<Session>): Session => ({ id: 's1', projectId: 'p', repo: 'weevils', machineId: 'vps', tool: 'claude', title: 't', status: 'working', cwd: '/x', openedAt: NOW, lastActivityAt: NOW, workStartedAt: NOW, origin: 'weevils', controllable: true, live: true, hasScreen: false, subagents: [], background: 0, messageCount: 3, queued: 0, ...over })
 const project: Project = { id: 'p', name: 'weevils', kind: 'repo', repos: ['weevils'], where: {}, lastActivityAt: NOW }
 const auto: Optimizer = { id: 'a1', title: 'Clean deps', why: '', repo: 'weevils', kind: 'other', heavy: false, state: 'running', createdAt: NOW, startedAt: NOW, sessionId: 'sa' }
-const job: H24Activity = { id: 'job:render', title: 'render', kind: 'job', projectId: 'p', schedule: '', enabled: true, runState: 'running', runStartedAt: NOW, lastEvent: '', canToggle: false }
+const job: H24Activity = { id: 'job:render', title: 'render', kind: 'job', projectId: 'p', schedule: '', enabled: true, runState: 'running', runStartedAt: NOW, lastEvent: '', canToggle: false, everyMs: 3600_000 }
 
 let root: Root
 let host: HTMLElement

@@ -227,6 +227,12 @@ export const projectOfRepo = (projects: Snapshot['projects'], repo: string | nul
 
 /** Everything that runs without asking, flat: accepted tasks, timers, running jobs; finished ones (one-off tasks, jobs
  *  ended under 3 h) last. Proposals are not in it. */
+/**
+ * A real automation: a timer, or a job that recurs or has a trigger (and the tour's demo). A one-off background command
+ * an agent started (its log in ~/logs: tests, mocks, builds) is that agent's work, never an automation: not shown here.
+ */
+export const isAutomation = (a: Pick<H24Activity, 'kind' | 'demo' | 'everyMs' | 'nextRunAt'>) => a.kind === 'timer' || !!a.demo || !!a.everyMs || !!a.nextRunAt
+
 export function autoList(snap: Pick<Snapshot, 'projects' | 'h24' | 'optimizers' | 'now'>): AutoItem[] {
   const known = new Set(snap.projects.map((p) => p.id))
   const opts = snap.optimizers ?? []
@@ -242,6 +248,7 @@ export function autoList(snap: Pick<Snapshot, 'projects' | 'h24' | 'optimizers' 
     out.push(x)
   }
   for (const a of snap.h24) {
+    if (!isAutomation(a)) continue
     const pid = a.projectId && known.has(a.projectId) ? a.projectId : a.group && known.has(a.group) ? a.group : null
     const x = fromActivity(a, pid)
     if (x.src === 'job' && isFinished(x) && snap.now - (x.endedAt ?? 0) > JOB_KEEP_MS) continue

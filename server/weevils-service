@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# weevils-service — start, stop and watch weevilsd on this machine, with systemd --user when the machine has it,
-# otherwise as a plain background process (containers, WSL without systemd). Installed in ~/.local/bin by install.sh.
+# weevils-service — start, stop and watch weevilsd on this machine: with systemd --user on Linux, with launchd on a
+# Mac (an agent of your session), otherwise as a plain background process (containers, WSL without systemd, a Mac
+# reached over SSH with no session open). Installed in ~/.local/bin by install.sh. Runs under macOS's bash 3.2.
 #
 #   weevils-service start | stop | restart | status | logs
 #   weevils-service add-remote <id> [url]     main machine: federate another weevilsd (prints its tunnel port)
 #   weevils-service config get <KEY> | set <KEY> <value> | default <KEY> <value>
-#   weevils-service mode                      systemd or background
+#   weevils-service mode                      systemd, launchd or background
 set -euo pipefail
 
 # Always ~/.config/weevils (not XDG_CONFIG_HOME): the server and the systemd unit read it there.
@@ -61,7 +62,66 @@ load_service_conf() {
 
 units() { if [ "$WEEVILS_ROLE" = secondary ] && [ -n "$WEEVILS_MAIN_HOST" ]; then echo weevilsd weevils-tunnel; else echo weevilsd; fi; }
 
-# ---------------------------------------------------------------- background mode (no systemd)
+# ---------------------------------------------------------------- launchd, on a Mac
+# The agents live in ~/Library/LaunchAgents (written by server/install.sh) and run in the session opened on the Mac's
+# screen (gui/<uid>): that is where the Keychain, and so Claude Code's login, can be reached.
+
+LAUNCH_DIR=$HOME/Library/LaunchAgents
+LAUNCH_PREFIX=com.github.sc4rville
+label() { echo "$LAUNCH_PREFIX.$1"; }
+
+launchd_domain() {
+  [ "$(uname -s)" = Darwin ] && command -v launchctl >/dev/null || return 1
+  local dom; dom=gui/$(id -u)
+  launchctl print "$dom" >/dev/null 2>&1 || return 1
+  echo "$dom"
+}
+launchd_loaded() { launchctl print "$1/$(label "$2")" >/dev/null 2>&1; }
+# launchd_gone <domain> <unit> — waits (up to 15 s) until the job has left launchd: bootout returns before that.
+launchd_gone() {
+  local n=0
+  while launchd_loaded "$1" "$2" && [ "$n" -lt 30 ]; do sleep 0.5; n=$((n + 1)); done
+}
+# launchd_load <domain> <unit> — (re)loads the agent from its file, so a file changed by a new install is taken.
+launchd_load() {
+  local dom=$1 u=$2 plist n=0
+  plist=$LAUNCH_DIR/$(label "$u").plist
+  [ -f "$plist" ] || return 0
+  launchctl enable "$dom/$(label "$u")" >/dev/null 2>&1 || true
+  if launchd_loaded "$dom" "$u"; then
+    launchctl bootout "$dom/$(label "$u")" >/dev/null 2>&1 || true
+    launchd_gone "$dom" "$u"
+  fi
+  while [ "$n" -lt 6 ]; do
+    launchctl bootstrap "$dom" "$plist" >/dev/null 2>&1 && return 0
+    # Still there after all (a slow stop): restart it in place.
+    if launchd_loaded "$dom" "$u"; then launchctl kickstart -k "$dom/$(label "$u")" >/dev/null 2>&1 || true; return 0; fi
+    sleep 1; n=$((n + 1))
+  done
+  echo "weevils-service: launchd refused $plist (launchctl bootstrap $dom)" >&2
+  return 1
+}
+launchd_unload() {
+  launchd_loaded "$1" "$2" || return 0
+  launchctl bootout "$1/$(label "$2")" >/dev/null 2>&1 || true
+  launchd_gone "$1" "$2"
+}
+launchd_status() {
+  local out pid
+  if out=$(launchctl print "$1/$(label "$2")" 2>/dev/null); then
+    pid=$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*pid = \([0-9][0-9]*\).*/\1/p' | head -1)
+    if [ -n "$pid" ]; then echo "$2: running (pid $pid, launchd)"; else echo "$2: loaded, not running (launchd)"; fi
+  else echo "$2: stopped"; fi
+}
+
+# ---------------------------------------------------------------- background mode (no systemd, no launchd)
+
+# detach cmd… — cmd in its own session, so it outlives the terminal and can be killed with its whole group.
+detach() {
+  if command -v setsid >/dev/null; then setsid "$@"
+  elif command -v perl >/dev/null; then perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or exit 127' "$@"
+  else "$@"; fi
+}
 
 pid_alive() { local f=$RUN_DIR/$1.pid; [ -f "$f" ] && kill -0 "$(cat "$f")" 2>/dev/null; }
 
@@ -71,11 +131,11 @@ bg_start() {
     [ -n "$WEEVILS_DIR" ] || { echo "weevils-service: $SERVICE_CONF is missing, run install.sh again" >&2; exit 1; }
     # A simple command in the background (no "cd &&" list): $! is node itself, and nothing keeps our stdout open.
     (cd "$WEEVILS_DIR" || exit 1
-      PATH=$WEEVILS_PATH NODE_ENV=production setsid nohup "$WEEVILS_NODE" server/index.ts >>"$LOG_FILE" 2>&1 </dev/null &
+      PATH=$WEEVILS_PATH NODE_ENV=production detach nohup "$WEEVILS_NODE" server/index.ts >>"$LOG_FILE" 2>&1 </dev/null &
       echo $! >"$RUN_DIR/weevilsd.pid")
   fi
   if [ "$(units)" != weevilsd ] && ! pid_alive weevils-tunnel; then
-    (setsid nohup bash -c 'while :; do ssh -NT -o BatchMode=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R "127.0.0.1:$1:127.0.0.1:$2" "$3"; sleep 10; done' \
+    (detach nohup bash -c 'while :; do ssh -NT -o BatchMode=yes -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R "127.0.0.1:$1:127.0.0.1:$2" "$3"; sleep 10; done' \
       _ "$WEEVILS_TUNNEL_PORT" "$WEEVILS_PORT" "$WEEVILS_MAIN_HOST" >>"$TUNNEL_LOG" 2>&1 </dev/null &
       echo $! >"$RUN_DIR/weevils-tunnel.pid")
   fi
@@ -103,6 +163,13 @@ bg_status() {
 
 # ---------------------------------------------------------------- main machine: register a secondary one
 
+# listening <port> — something already listens on it here (ss on Linux, lsof on a Mac; neither: not checked).
+listening() {
+  if command -v ss >/dev/null; then ss -ltn 2>/dev/null | grep -q "127.0.0.1:$1 "
+  elif command -v lsof >/dev/null; then lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+  else return 1; fi
+}
+
 add_remote() {
   local id=${1:?id} url=${2:-} remotes port used
   remotes=$(cfg_get WEEVILS_REMOTES)
@@ -113,7 +180,7 @@ add_remote() {
       # First free port from 4192 that no other remote uses.
       used=$(grep -oE ':[0-9]+' <<<"$remotes" | tr -d : || true)
       port=4192
-      while grep -qx "$port" <<<"$used" || { command -v ss >/dev/null && ss -ltn 2>/dev/null | grep -q "127.0.0.1:$port "; }; do port=$((port + 1)); done
+      while grep -qx "$port" <<<"$used" || listening "$port"; do port=$((port + 1)); done
       url=http://127.0.0.1:$port
     fi
   fi
@@ -137,7 +204,7 @@ case "$cmd" in
       *) echo "usage: weevils-service config get|set|default KEY [value]" >&2; exit 1 ;;
     esac ;;
   add-remote) shift; load_service_conf; add_remote "$@" ;;
-  mode) if systemd_user; then echo systemd; else echo background; fi ;;
+  mode) if systemd_user; then echo systemd; elif launchd_domain >/dev/null; then echo launchd; else echo background; fi ;;
   start | stop | restart | status | logs)
     load_service_conf
     if systemd_user && [ -f "$HOME/.config/systemd/user/weevilsd.service" ]; then
@@ -147,6 +214,18 @@ case "$cmd" in
         restart) bg_stop; systemctl --user enable $(units) >/dev/null 2>&1; systemctl --user restart $(units) ;;
         status) for u in $(units); do echo "$u: $(systemctl --user is-active "$u" 2>/dev/null || true) (systemd --user)"; done ;;
         logs) exec journalctl --user -u weevilsd -n 100 -f ;;
+      esac
+    elif dom=$(launchd_domain) && [ -f "$LAUNCH_DIR/$(label weevilsd).plist" ]; then
+      case "$cmd" in
+        start) bg_stop
+          for u in $(units); do
+            if launchd_loaded "$dom" "$u"; then launchctl kickstart "$dom/$(label "$u")" >/dev/null 2>&1 || true
+            else launchd_load "$dom" "$u"; fi
+          done ;;
+        stop) for u in weevils-tunnel weevilsd; do launchd_unload "$dom" "$u"; done ;;
+        restart) bg_stop; for u in $(units); do launchd_load "$dom" "$u"; done ;;
+        status) for u in $(units); do launchd_status "$dom" "$u"; done ;;
+        logs) exec tail -n 100 -f "$LOG_FILE" ;;
       esac
     else
       case "$cmd" in

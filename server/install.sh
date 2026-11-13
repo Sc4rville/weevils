@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Machine setup of weevils (called by ../install.sh, can also be run alone). Idempotent: re-run = update.
 #   server/install.sh                        main machine: weevilsd serves the app and runs weevboss
+#   (Linux: a systemd --user unit; a Mac: a launchd agent of your session. Runs under macOS's bash 3.2.)
 #   server/install.sh secondary <ssh-host>   secondary machine: local weevilsd + reverse SSH tunnel to the main
 #                                            machine <ssh-host>, which federates it (its sessions show up there)
 # Ports come from ~/.config/weevils/env (WEEVILS_PORT, WEEVILS_HOOK_PORT); WEEVILS_TUNNEL_PORT forces the port the
@@ -92,6 +93,13 @@ fi
 node_bin=$(command -v node)
 npm_bin=$(npm prefix -g 2>/dev/null)/bin
 svc_path="$HOME/.local/bin:$(dirname "$node_bin"):$npm_bin:/usr/local/bin:/usr/bin:/bin"
+if [ "$(uname -s)" = Darwin ]; then
+  # A Mac: Homebrew's folder (tmux, jq, gh… live there; /opt/homebrew on Apple Silicon, /usr/local on Intel) and the
+  # system tools in sbin. launchd gives a service nothing more than what is written here.
+  brew_prefix=${HOMEBREW_PREFIX:-}
+  [ -n "$brew_prefix" ] || for b in /opt/homebrew /usr/local; do [ -x "$b/bin/brew" ] && { brew_prefix=$b; break; }; done
+  svc_path="$HOME/.local/bin:$(dirname "$node_bin"):$npm_bin${brew_prefix:+:$brew_prefix/bin:$brew_prefix/sbin}:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+fi
 mkdir -p ~/.config/weevils
 cat >~/.config/weevils/service.conf <<EOF
 # Written by server/install.sh — read by weevils-service.
@@ -163,6 +171,81 @@ EOF
     rm -f "$units/weevils-tunnel.service"
   fi
   systemctl --user daemon-reload
+fi
+
+# ---------------------------------------------------------------- launchd (a Mac): an agent of the person's session
+# Started at every login and restarted if it stops. The settings file (~/.config/weevils/env) is read by weevilsd
+# itself. With no session open on the Mac's screen (SSH only) there is no launchd domain to load an agent into:
+# weevils-service then runs weevilsd in the background, and no file is written (it would start a second weevilsd at
+# the next login).
+agents=~/Library/LaunchAgents
+prefix=com.github.sc4rville
+xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+if [ "$("$svc" mode)" = launchd ]; then
+  data=~/.local/share/weevils
+  mkdir -p "$agents" "$data"
+  cat >"$agents/$prefix.weevilsd.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- weevilsd, the weevils server ($role): Claude Code / Codex sessions, app API. Written by server/install.sh. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$prefix.weevilsd</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$(xml "$node_bin")</string>
+    <string>server/index.ts</string>
+  </array>
+  <key>WorkingDirectory</key><string>$(xml "$repo")</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$(xml "$svc_path")</string>
+    <key>NODE_ENV</key><string>production</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>5</integer>
+  <!-- The agent sessions (tmux server started by weevilsd) must survive a restart of weevilsd. -->
+  <key>AbandonProcessGroup</key><true/>
+  <key>ProcessType</key><string>Interactive</string>
+  <key>StandardOutPath</key><string>$(xml "$data/weevilsd.log")</string>
+  <key>StandardErrorPath</key><string>$(xml "$data/weevilsd.log")</string>
+</dict>
+</plist>
+EOF
+  if [ "$role" = secondary ]; then
+    cat >"$agents/$prefix.weevils-tunnel.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- weevils, reverse SSH tunnel: the main machine reads this weevilsd (127.0.0.1:$tunnel_port there, 127.0.0.1:$port here). -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$prefix.weevils-tunnel</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$(xml "$(command -v ssh)")</string>
+    <string>-NT</string>
+    <string>-o</string><string>BatchMode=yes</string>
+    <string>-o</string><string>ServerAliveInterval=20</string>
+    <string>-o</string><string>ServerAliveCountMax=3</string>
+    <string>-o</string><string>ExitOnForwardFailure=yes</string>
+    <string>-R</string><string>127.0.0.1:$tunnel_port:127.0.0.1:$port</string>
+    <string>$(xml "$main_host")</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>$(xml "$data/tunnel.log")</string>
+  <key>StandardErrorPath</key><string>$(xml "$data/tunnel.log")</string>
+</dict>
+</plist>
+EOF
+  else
+    launchctl bootout "gui/$(id -u)/$prefix.weevils-tunnel" >/dev/null 2>&1 || true
+    rm -f "$agents/$prefix.weevils-tunnel.plist"
+  fi
+elif [ "$(uname -s)" = Darwin ]; then
+  rm -f "$agents/$prefix.weevilsd.plist" "$agents/$prefix.weevils-tunnel.plist"
 fi
 "$svc" restart
 "$svc" status

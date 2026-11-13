@@ -24,6 +24,8 @@ const PATHS = {
   star: 'M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9',
   idle: 'M5 19h14',
   bang: 'M12 4v10M12 18.5v1.5',
+  // A session waits for the user: a question mark at right angles, gentler than « ! » (kept for errors).
+  waits: 'M7 8V4h10v7h-5v4M12 19v1.5',
   slash: 'M16 3L8 21',
   quote: 'M8.5 5v6M15.5 5v6',
   // Bulle de parole : un rectangle, sa pointe en bas à gauche.
@@ -113,6 +115,7 @@ const GLYPHS: Record<string, [IconName, Dir?]> = {
   '*': ['star'],
   '_': ['idle'],
   '!': ['bang'],
+  '?': ['waits'],
   '/': ['slash'],
   '"': ['quote'],
   '@': ['machine'],

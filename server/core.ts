@@ -49,7 +49,8 @@ import { asksUser, type Ask } from '../shared/asks.ts'
 import { isDemoJob, type TourKeeper } from './tour.ts'
 import TM from './i18n/tour.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
-import { TranscriptStore, digestOf, lastMessageOf, titleOf } from './transcripts.ts'
+import { judgeAsk } from './asks-judge.ts'
+import { TranscriptStore, digestOf, lastMessageOf, realTitle, titleOf } from './transcripts.ts'
 import { emptyBg, subagentSteps } from './background.ts'
 import { llmTitles, needsTitle, shortNow, stableTitle, TitleRetry } from './titles.ts'
 import type { Titled } from './titles.ts'
@@ -250,6 +251,12 @@ export const joinContext = (block: string, extra: string): string => {
   if (!more) return block
   return block.trim() ? block.replace(/⟧\s*$/, ` — ${more}⟧`) : ` ⟦weevils — ${more}⟧`
 }
+
+/** The app-locale instruction rides on a session's first brief only: never on a slash command (« /effort high ⟦…⟧ » is no
+ *  longer a command), never twice (every message ended with it, sessions answered « no task in this message yet » and
+ *  were all titled after it). */
+export const withAppLocale = (text: string, first: boolean): string =>
+  first && activeRequestLang() && text.trim() && !text.trimStart().startsWith('/') && !text.includes('⟦weevils') ? text + joinContext('', tr(M).appLocale) : text
 
 export class Weevils {
   private installationIdentity = new InstallationIdentity(path.join(import.meta.dirname,'..'),MACHINE.id)
@@ -467,7 +474,9 @@ export class Weevils {
       const p = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) as Persisted
       this.hooks = new Map(p.hooks ?? [])
       this.directCodexBoss = p.directCodexBoss
-      this.titles = new Map(p.titles ?? [])
+      // Titles written from the app-locale block (« Weevils app locale ») are dropped: the renamer writes them again
+      // from the session's real subject.
+      this.titles = new Map((p.titles ?? []).filter(([, v]: [string, Titled]) => realTitle(v?.title)))
       this.orchestratorId = p.orchestratorId ?? null
       this.pinnedRepos = p.pinnedRepos ?? []
       this.voiceId = p.voiceId
@@ -828,6 +837,25 @@ export class Weevils {
     if (changed) this.persist()
   }
 
+  /** Haiku's verdict on a session's candidate question, by message: the reworded question, null (not one, or not yet). */
+  private asks = new Map<string, { said: string | null; at: number; failed?: boolean }>()
+  private askVerdict(t: Transcript, last: { id?: string; at: number; text: string }, said: string, where: string): string | null {
+    const key = `${t.id}:${last.id ?? last.at}`
+    const v = this.asks.get(key)
+    if (v && !(v.failed && Date.now() - v.at > 10 * 60_000)) return v.said
+    if (this.asks.size > 500) for (const k of [...this.asks.keys()].slice(0, 100)) this.asks.delete(k)
+    this.asks.set(key, { said: null, at: Date.now() })
+    const session = realTitle(this.titles.get(t.id)?.title) ?? titleOf(t)
+    void judgeAsk({ session, where, message: last.text, said })
+      .then((said) => this.asks.set(key, { said, at: Date.now() }))
+      .catch((e) => {
+        console.error(`[questions] ${t.id.slice(0, 8)}: ${(e as Error).message.slice(0, 120)}`)
+        this.asks.set(key, { said: null, at: Date.now(), failed: true })
+      })
+      .finally(() => this.bump())
+    return null
+  }
+
   private toSession(t: Transcript, now: number): Session {
     let where = place(t.cwd, PROJECT_ROOTS)
     if (where.kind === 'invented') {
@@ -862,10 +890,13 @@ export class Weevils {
     if (status === 'idle' && live && !(pane && this.isOrchestratorPane(pane))) {
       const last = t.messages.findLast((m) => m.role !== 'event')
       ask = last?.role === 'assistant' ? (asksUser(last.text) ?? undefined) : undefined
-      if (ask) {
+      // A « ? » is only a candidate: the question mark and the « reply » card wait for Haiku to confirm a real question
+      // for the human, reworded as one clear sentence. Pending, refused or unreachable: no question mark.
+      const said = ask && last ? this.askVerdict(t, last, ask.text, where.repo ?? where.projectName ?? '') : null
+      if (ask && said) {
         status = 'needs_user'
-        attention = ask.text
-      }
+        attention = said
+      } else ask = undefined
     }
     // Une pane weevils qui n'a rien fait depuis 30 min rejoint les sessions terminées (lui écrire la réveille, son contexte est là).
     if (status === 'idle' && pane && !this.isOrchestratorPane(pane) && now - t.lastActivityAt > DONE_AFTER_MS) status = 'done'
@@ -889,7 +920,7 @@ export class Weevils {
     const relayedBy = t.tool === 'claude' ? this.relay?.relayedBy(t.id) : undefined
     const names = [where.repo ?? '', MACHINE.name].filter(Boolean)
     const titled = this.titles.get(t.id)
-    const explicitTitle = (t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) || t.customTitle
+    const explicitTitle = realTitle(t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) || realTitle(t.customTitle)
     const presentation = titled ? titlePresentation(t.id, explicitTitle ? { ...titled, title: '' } : titled, lang(), this.foryou?.localization, names) : undefined
     const relayTitled = relayOf ? this.titles.get(relayOf) : undefined
     const relayTitle = relayOf && !t.customTitle ? ((relayTitled ? titlePresentation(relayOf, relayTitled, lang(), this.foryou?.localization, names).title : undefined) ?? (this.store.get(relayOf) ? titleOf(this.store.get(relayOf)!) : undefined)) : undefined
@@ -1187,7 +1218,7 @@ export class Weevils {
     try {
       const items = todo.map((t) => {
         const where = place(t.cwd, PROJECT_ROOTS)
-        return { id: t.id, previousTitle: (t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) || t.customTitle || this.titles.get(t.id)?.title, tool: t.tool, where: where.repo ?? t.cwd.replace(HOME, '~'), ...digestOf(t) }
+        return { id: t.id, previousTitle: realTitle(t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) || realTitle(t.customTitle) || realTitle(this.titles.get(t.id)?.title), tool: t.tool, where: where.repo ?? t.cwd.replace(HOME, '~'), ...digestOf(t) }
       })
       const out = await llmTitles(items, path.join(DATA_DIR, 'titles'))
       if (!out.some(r => todo.some(t => t.id === r.id))) throw new Error('empty title result') // i18n-ignore: internal diagnostic, never returned to the user
@@ -1196,7 +1227,7 @@ export class Weevils {
         const t = todo.find((x) => x.id === r.id)
         if (t) {
           const previous = this.titles.get(r.id)
-          const title = (t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) || t.customTitle || stableTitle(previous?.title, r.title, r.topicChanged)
+          const title = realTitle(t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) || realTitle(t.customTitle) || stableTitle(realTitle(previous?.title), r.title, r.topicChanged)
           this.titles.set(r.id, { title, titleLang: title === previous?.title ? previous.titleLang ?? detectLang(title) ?? undefined : lang(), now: r.now, nowLang: lang(), at: now, messageCount: t.messages.length })
         }
       }
@@ -1383,9 +1414,13 @@ export class Weevils {
     const author = normalizeFrom(from)
     // Vide avant la signature : « [from:weevboss] » seul n'est pas un message.
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
-    if (activeRequestLang()) text += joinContext('', tr(M).appLocale)
-    if (author) text = signAs(author, text, sourceThreadId)
     const remote = this.remoteFor(id)
+    // First brief only: a local session with no message from the user (or an agent) yet. A remote session got it at creation.
+    if (!remote) {
+      const target = this.store.get(this.relay?.deliveryTarget?.(this.resolveId(id)) ?? this.resolveId(id))
+      text = withAppLocale(text, !target?.messages.some((m) => m.role === 'user' || m.role === 'orchestrator'))
+    }
+    if (author) text = signAs(author, text, sourceThreadId)
     if (remote) {
       const s = this.snapshot().sessions.find((x) => x.id === id)
       const result = await remote.call<{ id: string }>('POST', `/api/sessions/${encodeURIComponent(id)}/send`, { text })
@@ -1543,7 +1578,7 @@ export class Weevils {
     this.assertSourceExecution(cwd)
     let text = input.text.trim()
     const title = text ? (parseSigned(text)?.text ?? text).replace(/\s+/g, ' ').slice(0, 60) : tr(M).newSession
-    if (text && activeRequestLang()) text += joinContext('', tr(M).appLocale)
+    text = withAppLocale(text, true)
     if (input.tool === 'claude') {
       const id = crypto.randomUUID()
       await this.spawn('claude', cwd, title, [...CLAUDE, '--session-id', id, ...(text ? [text] : [])], id)
@@ -1894,7 +1929,8 @@ export class Weevils {
     if (/^\/(?:model|effort)\s+/i.test(text.trim())) { await this.commandMain(text);return {id:this.bossConversation() ?? '__main',control:'model' as const} }
     if (!ORCHESTRATOR) throw new Error(tr(M).orchNotHere)
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
-    if (activeRequestLang()) text += joinContext('', tr(M).appLocale)
+    // A new weevboss conversation gets it once; the ongoing one already has it.
+    text = withAppLocale(text, !this.bossConversation())
     // Claude à sa limite (ou tout près) : weevboss répond par Codex, même dossier, mêmes consignes (server/relay.ts).
     const chosen = this.relay?.executionTool ? this.relay.executionTool(preferredTool()) : (preferredTool() === 'codex' || this.relay?.bossOn() ? 'codex' : 'claude')
     if ((!chosen || chosen === 'codex') && preferredTool() === 'codex' && !providerReady()) {

@@ -18,9 +18,12 @@ const REQUEST =
 const plainSentence = (s: string) => s.replace(/^\[[^\]\n]{1,12}\]\s*/, '').replace(/^(?:[-*]|\d+[.)])\s+/, '').replace(/\*\*|__/g, '').trim()
 const REPORTED = /^(?:je (?:confirme|demande|vais)|(?:l['’]agent|claude|codex|runpod|weevboss|the agent)\s|question (?:réglée|résolue|précédente)|(?:le|la) (?:message|question) (?:dit|était)|(?:the|previous) (?:question|message) (?:was|said))/iu
 const directRequest = (s: string) => REQUEST.test(plainSentence(s))
+/** Technical or broken text (a table cell, code, a path, an unbalanced quote) is never a question: in doubt, none. */
+const technical = (prose: string) =>
+  /[|`{}<>\\]|=>|::|\w\/\w+\.\w|^[^\p{L}¿¡]/u.test(prose) || (prose.match(/«/g)?.length ?? 0) !== (prose.match(/»/g)?.length ?? 0) || (prose.match(/\p{L}+/gu)?.length ?? 0) < 2
 const directQuestion = (s: string) => {
-  const prose = plainSentence(s).replace(URL_RE, ' ')
-  return /\?(?:[\s»”"']|$)/.test(prose) && !REPORTED.test(prose) && !/^[>«”"']/.test(prose)
+  const prose = plainSentence(s).replace(URL_RE, ' ').trim()
+  return /\?(?:[\s»”"']|$)/.test(prose) && !REPORTED.test(prose) && !/^[>«”"']/.test(prose) && !technical(prose)
 }
 const PASTE = /\b(colle[sz]?|coller|paste|adresse|address|clé|cle|key|token|jeton|code|mot de passe|password|identifiant|id)\b/i
 

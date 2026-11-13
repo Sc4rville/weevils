@@ -20,6 +20,12 @@ const mux = vi.hoisted(() => ({
 vi.mock('./mux.ts', async (orig) => ({ ...(await orig<typeof import('./mux.ts')>()), ...mux }))
 vi.mock('./voicepipe.ts', () => ({ keepWarm() {}, warmCues() {} }))
 vi.mock('./fast.ts', () => ({ setCartesiaVoice() {} }))
+// The question judge (Haiku) is replaced: a candidate question is confirmed as is, after a tick.
+vi.mock('./asks-judge.ts', () => ({ judgeAsk: async (i: { said: string }) => i.said }))
+/** Lets the (mocked) question judge answer: the first read asks it, the next one shows its verdict. */
+const judged = async () => {
+  for (let i = 0; i < 6; i++) await Promise.resolve()
+}
 vi.mock('./titles.ts', async (orig) => ({ ...(await orig<typeof import('./titles.ts')>()), llmTitles: async () => [] }))
 
 const { Weevils } = await import('./core.ts')
@@ -342,6 +348,7 @@ describe('notifications', () => {
     t.lastActivityAt = Date.now()
     w.hook({ session_id: 's1', hook_event_name: 'Stop' })
     await settle()
+    await settle()
     expect(one()).toMatchObject({ status: 'needs_user', ask: { kind: 'link', url: 'https://www.runpod.io/console/billing' } })
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ title: `${tr(P).waitingTitle('demo')} · earlier`, category: 'question', body: 'Ouvre ce lien pour valider la facturation : https://www.runpod.io/console/billing', url: '/#s=s1' }))
   })
@@ -389,11 +396,13 @@ describe('arrière-plan (sous-agents, workflow, commandes)', () => {
     expect(one()).toMatchObject({ status: 'needs_user', background: 1 })
   })
 
-  it('L16b TLO : le tour finit sur une demande (valider RunPod, coller une adresse) avec 6 agents en arrière-plan → « à toi », action « coller », pas « travaille » ; une réponse de l’utilisateur lève l’attente', () => {
+  it('L16b TLO : le tour finit sur une demande (valider RunPod, coller une adresse) avec 6 agents en arrière-plan → « à toi », action « coller », pas « travaille » ; une réponse de l’utilisateur lève l’attente', async () => {
     const ask = 'J’ai lancé six agents sur la recherche.\n\nValide la facturation RunPod, puis colle-moi l’adresse du pod ici.'
     add(transcript({ lastActivityAt: NOW - 40 * MIN, messages: [{ id: 'u', role: 'user', text: 'go', at: NOW - 50 * MIN }, { id: 'a', role: 'assistant', text: ask, at: NOW - 40 * MIN }], subagents: Array.from({ length: 6 }, (_, i) => sub({ id: `a${i}` })) }))
     w.panes = [pane({ createdAt: NOW - 60 * MIN })]
     w.hooks.set('s1', { event: 'Stop', at: NOW - 40 * MIN, pid: ALIVE })
+    expect(one()).not.toMatchObject({ status: 'needs_user' })
+    await judged()
     expect(one()).toMatchObject({ status: 'needs_user', background: 6, attention: 'Valide la facturation RunPod, puis colle-moi l’adresse du pod ici.', ask: { kind: 'paste' } })
     // Scarville répond : l'agent reprend, plus d'attente.
     const t = w.store.get('s1')!
@@ -674,9 +683,11 @@ describe('unknown foreign panes and live composers', () => {
 })
 
 describe('stable question notification identity', () => {
-  it('background activity and wording refinement keep one event, a new user turn creates another', () => {
+  it('background activity and wording refinement keep one event, a new user turn creates another', async () => {
     const t = add(transcript({ messages: [{ id: 'u1', role: 'user', text: 'work', at: NOW - MIN }, { id: 'a1', role: 'assistant', text: 'Which color?', at: NOW - MIN }] }))
     w.panes = [pane()]
+    one()
+    await judged()
     const first = one()!
     expect(first.status).toBe('needs_user')
     expect(first.noticeId).toBeTruthy()
@@ -684,6 +695,8 @@ describe('stable question notification identity', () => {
     t.messages[1].text = 'Which color would you prefer?'
     expect(one()?.noticeId).toBe(first.noticeId)
     t.messages.push({ id: 'u2', role: 'user', text: 'another task', at: NOW }, { id: 'a2', role: 'assistant', text: 'Which color?', at: NOW })
+    one()
+    await judged()
     expect(one()?.noticeId).not.toBe(first.noticeId)
   })
 })
@@ -721,7 +734,7 @@ it('keeps a newly archived Codex pane archived when its transcript gets linked',
   expect(mux.killWv).not.toHaveBeenCalled()
 })
 
-it.each(['claude', 'codex'] as const)('%s completion reports with confirmations are idle; a real question still asks', (tool) => {
+it.each(['claude', 'codex'] as const)('%s completion reports with confirmations are idle; a real question still asks', async (tool) => {
   const t = add(transcript({ tool, messages: [
     { id: 'u', role: 'user', text: 'reprends TLO', at: NOW - MIN },
     { id: 'report', role: 'assistant', text: '[VPS] TLO repris par Codex à 16 h 32 : session liée et lecture des fichiers confirmées.\nPod supprimé, weevboss informé, aucune nouvelle dépense ni publication autorisée.', at: NOW },
@@ -731,6 +744,8 @@ it.each(['claude', 'codex'] as const)('%s completion reports with confirmations 
   expect(one()?.ask).toBeUndefined()
   expect(one()?.attention).toBeUndefined()
   t.messages.push({ id: 'question', role: 'assistant', text: 'Quelle option préfères-tu ?', at: NOW })
+  one()
+  await judged()
   expect(one()).toMatchObject({ status: 'needs_user', attention: 'Quelle option préfères-tu ?' })
 })
 

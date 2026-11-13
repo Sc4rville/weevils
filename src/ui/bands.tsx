@@ -568,7 +568,7 @@ export function ProjectBand({ project }: { project: Project }) {
               onClick={(e) => tapHint('attention', e.currentTarget) || (att[0] && push({ kind: 'session', id: att[0].id }))}
             >
               <span>
-                <Icon name="bang" />
+                <Icon name="waits" />
                 {att.length > 0 && <sup>{att.length}</sup>}
               </span>
             </button>

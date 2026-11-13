@@ -49,7 +49,7 @@ type GeneralKey = 'liveUi' | 'dictate' | 'photo' | 'swipeBack' | 'repos' | 'h24'
 
 /** Icon of each personalized rule (server/tips.ts, plus the client-side "push" rule). */
 const RULE_ICON: Record<string, [IconName, Dir?]> = {
-  waiting: ['bang'],
+  waiting: ['waits'],
   'idle-sessions': ['pause'],
   'idle-unmanaged': ['pause'],
   saturated: ['machine'],

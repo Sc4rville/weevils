@@ -550,12 +550,17 @@ export class TranscriptStore {
   }
 }
 
-const unsigned = (s: string | undefined) => (s ? (parseSigned(s)?.text ?? s) : s)
-export const titleOf = (t: Transcript) => short(oneLine(t.customTitle || t.title || unsigned(t.firstPrompt) || tr(M).newSession).replace(/^[#>*\s-]+/, ''), 60)
+/** weevils' hidden context block (« ⟦weevils — Explicit app locale… ⟧ »), wherever it sits: never material for a title. */
+export const withoutWeevilsBlock = (s: string) => s.replace(/\s*⟦weevils\b[^⟧]*(?:⟧|$)/g, '')
+/** A title written from that block instead of the session's subject (« Weevils app locale »): treated as no title. */
+export const LOCALE_TITLE = /\bapp[- ]locale\b|\blangue (?:explicite )?de l['’]app\b/i
+export const realTitle = (s: string | undefined) => (s && !LOCALE_TITLE.test(s) ? s : undefined)
+const unsigned = (s: string | undefined) => (s ? withoutWeevilsBlock(parseSigned(s)?.text ?? s) : s)
+export const titleOf = (t: Transcript) => short(oneLine(realTitle(t.customTitle) || realTitle(t.title) || unsigned(t.firstPrompt) || tr(M).newSession).replace(/^[#>*\s-]+/, ''), 60)
 /** Matière pour le renommeur : début de la session et ses derniers échanges, compacts. */
 export const digestOf = (t: Transcript, lastN = 10) => {
   const s = tr(M)
-  const recent = t.messages.slice(-lastN).map((m) => s.said(m.role === 'user' ? s.userLabel : m.role === 'orchestrator' ? authorName(m.author) : m.role === 'assistant' ? 'agent' : '→', short(oneLine(m.text), m.role === 'event' ? 80 : 320)))
+  const recent = t.messages.slice(-lastN).map((m) => s.said(m.role === 'user' ? s.userLabel : m.role === 'orchestrator' ? authorName(m.author) : m.role === 'assistant' ? 'agent' : '→', short(oneLine(withoutWeevilsBlock(m.text)), m.role === 'event' ? 80 : 320)))
   return { debut: short(oneLine(unsigned(t.firstPrompt) ?? ''), 200), recents: recent }
 }
 export const lastMessageOf = (t: Transcript) => {

@@ -40,11 +40,12 @@ describe('FollowDown', () => {
     expect(toEnd).toHaveBeenCalledOnce()
   })
 
-  it('la session attend : « ! »', () => {
+  it('la session attend : un « ? » doux, plus de « ! »', () => {
     act(() => root.render(<FollowDown show urgent body={createRef()} toEnd={() => {}} />))
     const b = host.querySelector('.follow-down')!
     expect(b.classList.contains('urgent')).toBe(true)
-    expect(b.textContent).toBe('!')
+    expect(b.textContent).not.toContain('!')
+    expect(b.querySelector('svg')).toBeTruthy()
   })
 
   it('met en avant la question qui attend, sinon le dernier message (pas l’indicateur de travail)', () => {

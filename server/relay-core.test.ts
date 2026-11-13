@@ -314,7 +314,7 @@ it('keeps the persisted owner when a terminal name now points at another thread'
 })
 
 it('carries the explicit app locale into a session without treating French chat as its preference',async()=>{
- const t=add(transcript({id:'locale-target',tool:'codex'}))
+ const t=add(transcript({id:'locale-target',tool:'codex',firstPrompt:undefined,messages:[{id:'e0',role:'event',text:'session started',at:NOW-MIN}]}))
  const delivered:string[]=[]
  ;(w as any).codexBridge={can:()=>true,activityOf:()=>({type:'idle',waiting:false,at:Date.now()}),send:async(_id:string,text:string)=>{delivered.push(text)}}
  await withLang('en',()=>w.send(t.id,'Bonjour, corrige cette image.'))
@@ -322,6 +322,11 @@ it('carries the explicit app locale into a session without treating French chat 
  expect(delivered[0]).toContain('Explicit app locale: English (en)')
  expect(delivered[0]).toContain('Chat replies may follow')
  expect(delivered[0]).toMatch(/⟦weevils[^⟧]+⟧$/)
+ // First brief only: once the session has a message, and never on a slash command.
+ t.messages.push({id:'u1',role:'user',text:delivered[0],at:Date.now()})
+ await withLang('en',()=>w.send(t.id,'Encore une chose.'))
+ await withLang('en',()=>w.send(t.id,'/compact'))
+ expect(delivered.slice(1)).toEqual(['Encore une chose.','/compact'])
 })
 
 it('a device locale cannot rewrite the shared orchestrator template in another language',()=>{

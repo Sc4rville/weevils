@@ -39,3 +39,11 @@ describe('a recap table is never a question', () => {
     expect(asksUser(`${table}\n\nTu veux que je corrige aussi le reste ?`)?.text).toBe('Tu veux que je corrige aussi le reste ?')
   })
 })
+
+it('technical or broken text is never a question (in doubt, no question mark)', () => {
+  expect(asksUser('La carte « | Demande | Visible avant ?')).toBeNull()
+  expect(asksUser('Faut-il garder `foo.bar()` ?')).toBeNull()
+  expect(asksUser('src/ui/app.tsx ?')).toBeNull()
+  expect(asksUser('OK ?')).toBeNull()
+  expect(asksUser('Je peux dépenser 2 $ de GPU sur RunPod ?')).toMatchObject({ kind: 'question' })
+})

@@ -14,7 +14,7 @@ export function lastBand(body: HTMLElement | null): Element | null {
 }
 
 /**
- * `show` : du nouveau est arrivé sous l'écran (useFollow().behind). `urgent` : la session attend l'utilisateur (« ! »).
+ * `show` : du nouveau est arrivé sous l'écran (useFollow().behind). `urgent` : la session attend l'utilisateur (« ? »).
  * `toEnd` : useFollow().toEnd.
  */
 export function FollowDown({ show, urgent, body, toEnd }: { show: boolean; urgent?: boolean; body: RefObject<HTMLElement | null>; toEnd: () => void }) {
@@ -37,7 +37,7 @@ export function FollowDown({ show, urgent, body, toEnd }: { show: boolean; urgen
           onClick={go}
           aria-label={urgent ? t.waitsBelow : t.newBelow}
         >
-          {urgent ? <span aria-hidden>!</span> : <Icon name="arrow" dir="down" />}
+          {urgent ? <Icon name="waits" /> : <Icon name="arrow" dir="down" />}
         </motion.button>
       )}
     </AnimatePresence>

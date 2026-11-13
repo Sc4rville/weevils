@@ -840,7 +840,7 @@ export function Messages({
   after?: (id: string) => ReactNode
   /** Une puce de branchement écrite dans le message id : son bouton, à sa place dans la phrase (null : son libellé). */
   chip?: (brick: ChipId, id: string) => ReactNode
-  pendingLabel?: string
+  pendingLabel?: string | ((id: string) => string)
   /** Full session reading: continuous prose and optional technical coordination. */
   session?: boolean
 }) {
@@ -869,7 +869,7 @@ export function Messages({
             <Bubble
               className={`msg band ${session ? 'session-message' : ''} ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.demo ? 'demo' : ''}`}
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
-              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}${g.m.demo ? ` · ${t.demo}` : ''}${pendingLabel && g.m.id.startsWith('pending-') ? ` · ${pendingLabel}` : ''}`}
+              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}${g.m.demo ? ` · ${t.demo}` : ''}${pendingLabel && g.m.id.startsWith('pending-') ? ` · ${typeof pendingLabel === 'function' ? pendingLabel(g.m.id) : pendingLabel}` : ''}`}
               copy={g.m.role === 'user' ? userText(g.m.text) : chipLabels(withoutMachinePrefix(g.m.text))}
               mid={g.m.id}
             >

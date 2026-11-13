@@ -12,6 +12,9 @@ export interface Pending extends Message {
   /** Premier message d'une session neuve (seedPending) : aucun message plus ancien ne peut s'y tromper, donc pas
    * d'horloge comparée, et le serveur peut l'avoir précédé d'un contexte (conversation reprise) : il suffit qu'il y figure. */
   seed?: boolean
+  /** The server took it (its outbox receipt, messageId); its delivery status says whether it is in the pane yet. */
+  accepted?: boolean
+  messageId?: string
 }
 
 const norm = (s: string) => s.replace(/\s+/g, ' ').trim()

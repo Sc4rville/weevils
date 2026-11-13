@@ -9,7 +9,7 @@ import type { Message, Snapshot } from '../../shared/api.ts'
 import type { ForYouItem } from '../../shared/foryou.ts'
 import type { Page } from './app-context'
 
-const sent = vi.hoisted(() => ({ main: [] as string[], devil: [] as string[], attach: [] as string[], gate: null as Promise<void> | null, fail: '', foryou: 0, feed: [] as unknown[] }))
+const sent = vi.hoisted(() => ({ main: [] as string[], devil: [] as string[], attach: [] as string[], gate: null as Promise<void> | null, fail: '', foryou: 0, feed: [] as unknown[], receipt: '' }))
 
 vi.mock('../api', () => ({
   api: {
@@ -17,6 +17,7 @@ vi.mock('../api', () => ({
       sent.main.push(text)
       if (sent.gate) await sent.gate
       if (sent.fail) throw new Error(sent.fail)
+      return sent.receipt ? { ok: true, delivery: { messageId: sent.receipt } } : undefined
     },
     devil: async (text: string) => void sent.devil.push(text),
     mainAttach: async (text: string, files: { name: string }[]) => void sent.attach.push(`${text}|${files.map((f) => f.name).join(',')}`),
@@ -30,6 +31,19 @@ vi.mock('../api', () => ({
   },
 }))
 vi.mock('../push', () => ({ ensurePush: async () => {} }))
+// Les reçus du serveur (src/outbox.ts), pilotés par le test : « accepted » puis « delivered » (dans la pane de weevboss).
+const receipts = vi.hoisted(() => ({ rows: [] as Record<string, unknown>[], fns: new Set<() => void>() }))
+const deliveredInPane = (messageId: string, status: string) => {
+  receipts.rows = [...receipts.rows.filter((r) => r.messageId !== messageId), { messageId, status, url: '/api/main', fingerprint: messageId, updatedAt: Date.now(), dismissed: true }]
+  receipts.fns.forEach((f) => f())
+}
+vi.mock('../outbox', async (orig) => {
+  const { useSyncExternalStore } = await import('react')
+  return {
+    ...(await orig<typeof import('../outbox')>()),
+    useOutbox: () => useSyncExternalStore((f: () => void) => (receipts.fns.add(f), () => void receipts.fns.delete(f)), () => receipts.rows),
+  }
+})
 // Le logo vocal : on ne simule pas le micro, seulement ce qu'il fait au bout du compte (texte entendu, puis envoi).
 vi.mock('./voice', () => ({
   VoiceLogo: ({ onText, onSend }: { onText: (t: string) => void; onSend: () => void }) => (
@@ -298,6 +312,28 @@ describe('le message envoyé se voit tout de suite', () => {
     await flush()
     expect(peek.textContent).not.toContain(tr(BM).sending)
     expect(peek.textContent!.split('fais le point').length - 1).toBe(1)
+  })
+
+  it('weevboss occupé : la bulle reçue passe « en attente » puis « en file, il le lira » quand elle est dans la pane, jamais « envoi… »', async () => {
+    sent.receipt = 'm-busy'
+    deliveredInPane('m-busy', 'accepted')
+    const s = snap([msg('a', 'assistant', 'je bosse', 1)], true)
+    render(s)
+    await type('et aussi le logo')
+    await submit()
+    await flush()
+    const peek = document.querySelector('.peek')!
+    expect(peek.textContent).toContain(tr(BM).queued)
+    expect(peek.textContent).not.toContain(tr(BM).sending)
+    await act(async () => deliveredInPane('m-busy', 'delivered'))
+    await flush()
+    expect(peek.textContent).toContain(tr(BM).readsSoon)
+    // Son tour fini, weevboss ne l'a pas encore écrit dans son transcript : « reçu », toujours là.
+    render({ ...s, mainWorking: false })
+    await flush()
+    expect(peek.textContent).toContain(tr(BM).received)
+    expect(peek.textContent).toContain('et aussi le logo')
+    sent.receipt = ''
   })
 
   it('un envoi refusé retire la bulle, rend le texte et dit pourquoi', async () => {

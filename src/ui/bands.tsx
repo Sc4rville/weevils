@@ -5,6 +5,7 @@ import { interceptModelControl, openModelControls } from '../model-controls'
 import { effortLabel, modelLabel } from './settings'
 import ModelM from '../i18n/model-controls'
 import { OutboxStatus } from './outbox-status'
+import { useOutbox } from '../outbox'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
@@ -64,7 +65,7 @@ const PEEK_TAIL = 280
  * L'aperçu vivant du fil, dans la bande réduite : les récents en bas, les anciens remontent et s'estompent.
  * Il défile au doigt pour remonter l'historique (sans entraîner la page) ; un tap simple ouvre la conversation.
  */
-function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () => void; visible: boolean; sent: number; messages: Message[]; pendingLabel: string }) {
+function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () => void; visible: boolean; sent: number; messages: Message[]; pendingLabel: (id: string) => string }) {
   const t = useT(M)
   const tb = useT(B)
   const td = useT(D)
@@ -119,7 +120,7 @@ function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () =>
         <AnimatePresence initial={false} mode="popLayout">
           {items.map((m) => {
             const tone = m.role === 'orchestrator' ? authorTone(authorOf(m.author)) : null
-            const who = `${m.role === 'user' ? tb.you : m.role === 'orchestrator' ? authorOf(m.author).name : m.devil ? td.devil : 'weevboss'}${m.demo ? ` · ${tb.demo}` : ''}${m.id.startsWith('pending-') ? ` · ${pendingLabel}` : ''}`
+            const who = `${m.role === 'user' ? tb.you : m.role === 'orchestrator' ? authorOf(m.author).name : m.devil ? td.devil : 'weevboss'}${m.demo ? ` · ${tb.demo}` : ''}${m.id.startsWith('pending-') ? ` · ${pendingLabel(m.id)}` : ''}`
             const full = (m.role === 'user' ? userText(m.text) : plain(m.text)).replace(/\s+/g, ' ')
             // Le dernier : sa fin, entière (la réponse qui s'écrit reste lisible, en bas, là où l'aperçu la suit).
             const isLast = m.id === last?.id
@@ -231,14 +232,24 @@ export function AgentBand() {
   const [pending, setPending] = useState<Pending[]>([])
   const main = useMemo(() => mergePending(snap.main, pending), [snap.main, pending])
   useEffect(() => {
-    // Arrivées (ou perdues depuis longtemps) : on les oublie.
+    // Arrivées (ou perdues depuis longtemps) : on les oublie. Une bulle reçue par weevboss reste jusqu'à son transcript
+    // (Claude Code n'y écrit un message glissé en plein tour qu'en le lisant) : elle ne disparaît pas au bout de 15 min.
     setPending((p) => {
       const left = new Set(mergePending(snap.main, p).map((m) => m.id))
-      const next = p.filter((x) => left.has(x.id) && Date.now() - x.at < 15 * 60_000)
+      const next = p.filter((x) => left.has(x.id) && Date.now() - x.at < (x.accepted ? 24 * 3600_000 : 15 * 60_000))
       return next.length === p.length ? p : next
     })
   }, [snap.main])
-  const pendingLabel = snap.mainQueued > 0 ? t.queued : t.sending
+  // Chaque bulle suit son reçu (src/outbox.ts) : « envoi… » tant que le serveur ne l'a pas, « en attente » tant qu'il ne
+  // l'a pas mise dans la pane, puis « reçu », ou « en file » si weevboss travaille. Jamais « envoi… » pour un message reçu.
+  const receipts = useOutbox()
+  const pendingLabel = (id: string) => {
+    const p = pending.find((x) => x.id === id)
+    if (!p?.accepted) return t.sending
+    const status = p.messageId ? (receipts.find((r) => r.messageId === p.messageId)?.status ?? 'accepted') : 'delivered'
+    if (status !== 'delivered') return t.queued
+    return snap.mainWorking || snap.mainQueued > 0 ? t.readsSoon : t.received
+  }
   const tail = main.at(-1)
   // Le fil ouvert s'interroge comme un fichier ; avec une sélection, le logo pose sa question dessus (réponse sur place).
   const th = useThreadAsk(main, { title: 'weevboss', tool: 'weevboss' })
@@ -261,7 +272,9 @@ export function AgentBand() {
     if (top === 'foryou') setTop('boss')
     if (open) chat.toEnd()
     try {
-      await go()
+      const r = (await go()) as { delivery?: { messageId?: string } } | undefined
+      const messageId = r?.delivery?.messageId
+      setPending((p) => p.map((x) => (x.id === tmp.id ? { ...x, accepted: true, ...(messageId ? { messageId } : {}) } : x)))
     } catch (e) {
       setPending((p) => p.filter((x) => x.id !== tmp.id))
       throw e

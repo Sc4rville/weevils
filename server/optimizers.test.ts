@@ -1618,3 +1618,42 @@ describe('provider holds are not user schedules',()=>{
   expect(createIn).not.toHaveBeenCalled()
  })
 })
+
+describe('recovering the original refused draft',()=>{
+ const seedDraft=(patch:Record<string,unknown>={})=>{
+  const original={id:'original-draft',title:'Improve interaction quality',why:'Original purpose',prompt:'Original task',kind:'other',repo:null,heavy:false,state:'refused',draft:true,userCreated:true,createdAt:T0-MIN,endedAt:T0,rev:5,every:24*60*MIN,tz:'Europe/Paris',talk:[{who:'user',text:'Keep the original conversation',at:T0-2}],...patch}
+  fs.writeFileSync(path.join(dir,'optimizers.json'),JSON.stringify({items:[original],lastRoundAt:T0,fails:0,failUntil:0}))
+  return {original,o:make()}
+ }
+ it('restores one draft identity with its content/schedule/chat, no acceptance or run, and persists across reload/retry',()=>{
+  const {original,o}=seedDraft();expect(o.list()).toHaveLength(0)
+  expect(o.restoreDraft(original.id,T0-1)).toBeNull()
+  const restored=o.restoreDraft(original.id)!
+  expect(restored).toMatchObject({id:original.id,state:'proposed',draft:true,rev:5,every:original.every,tz:original.tz,talk:original.talk})
+  expect(restored.acceptedAt).toBeUndefined();expect(restored.sessionId).toBeUndefined()
+  const reload=make();expect(reload.restoreDraft(original.id)).toEqual(restored);expect(reload.list()).toHaveLength(1)
+  const stored=JSON.parse(fs.readFileSync(path.join(dir,'optimizers.json'),'utf8')).items[0]
+  expect(stored.lifecycle).toHaveLength(1);expect(stored.lifecycle[0]).toMatchObject({action:'restore-draft',priorEndedAt:T0})
+  const backup=path.join(dir,'automation-recovery',`${original.id}-${T0}.json`)
+  expect(JSON.parse(fs.readFileSync(backup,'utf8'))).toEqual(original);expect(fs.statSync(backup).mode&0o777).toBe(0o600)
+  o.tick(T0+MIN);expect(createIn).not.toHaveBeenCalled();expect(send).not.toHaveBeenCalled()
+ })
+ it('does not restore an intentional deletion, accepted automation or non-draft proposal',()=>{
+  for(const patch of [{deletedAt:T0},{acceptedAt:T0},{sessionId:'existing'},{draft:false},{userCreated:false}]){
+   const {o}=seedDraft(patch);expect(o.restoreDraft('original-draft')).toBeNull()
+  }
+ })
+ it('keeps the original refused state if persistence fails and succeeds on a later retry',()=>{
+  const {o}=seedDraft();const write=fs.writeFileSync
+  const spy=vi.spyOn(fs,'writeFileSync').mockImplementation((...args:any[])=>{if(String(args[0])===path.join(dir,'optimizers.json.tmp'))throw new Error('disk full');return (write as any)(...args)})
+  expect(()=>o.restoreDraft('original-draft')).toThrow('disk full');expect(o.list()).toHaveLength(0)
+  spy.mockRestore();expect(o.restoreDraft('original-draft')?.state).toBe('proposed');expect(make().list()).toHaveLength(1)
+ })
+})
+
+it('does not let an old client discard a user draft by calling the refusal API',()=>{
+ const o=make();const draft=o.create()
+ expect(o.refuse(draft.id,'api')).toBe(false)
+ expect(make().list()).toHaveLength(1)
+ expect(make().get(draft.id)?.draft).toBe(true)
+})

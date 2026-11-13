@@ -292,6 +292,7 @@ export function jailArgs(o: { home: string; hide: string[]; roots: string[]; rw:
 }
 
 type Stored = Optimizer & {
+  lifecycle?: {at:number;action:'refuse'|'restore-draft';source?:'api'|'internal';priorEndedAt?:number;wasDraft?:boolean}[]
   creationKey?: string
   runSourceRevision?: string
   runConfigRevision?: string
@@ -772,7 +773,7 @@ export class Optimizers {
   /** A task as the app sees it: without the brief and the runner's bookkeeping; when it may start, if its time holds
    *  it; what its next run will be, when that was rewritten while it runs. */
   view(o: Stored, now = Date.now()): Optimizer {
-    const { prompt: _p, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, runSourceRevision: _sr, runConfigRevision: _cr, creationKey:_ck, ...v } = o
+    const { prompt: _p, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, runSourceRevision: _sr, runConfigRevision: _cr, creationKey:_ck, lifecycle:_lc, ...v } = o
     const at = o.state === 'queued' ? this.timeAt(o, now) : now
     const out: Optimizer = at > now ? { ...v, startAt: at } : { ...v }
     if (o.runNow) out.runRequested = true
@@ -812,6 +813,26 @@ export class Optimizers {
     try { this.save(true) } catch(e) { for(const key of Object.keys(o))delete (o as any)[key];Object.assign(o,previous);throw e }
     this.w.bump()
     return {ok:true,running:o.state==='running'}
+  }
+
+  /** Recover the existing, never accepted draft; this cannot enable a trigger or start a job. */
+  restoreDraft(id:string,expectedEndedAt?:number):Optimizer|null {
+    const o=this.s.items.find(x=>x.id===id)
+    if(!o || !o.userCreated || !o.draft || o.deletedAt || o.acceptedAt || o.sessionId)return null
+    if(o.state==='proposed')return this.view(o)
+    if(o.state!=='refused'||(expectedEndedAt!==undefined&&o.endedAt!==expectedEndedAt))return null
+    const backupDir=path.join(path.dirname(this.file),'automation-recovery')
+    fs.mkdirSync(backupDir,{recursive:true,mode:0o700})
+    const backup=path.join(backupDir,`${o.id}-${o.endedAt ?? o.createdAt}.json`)
+    if(!fs.existsSync(backup))fs.writeFileSync(backup,JSON.stringify(o,null,2),{mode:0o600,flag:'wx'})
+    const previous={...o}
+    o.state='proposed'
+    o.lifecycle=[...(o.lifecycle??[]),{at:Date.now(),action:'restore-draft' as const,priorEndedAt:o.endedAt,wasDraft:true}].slice(-100)
+    delete o.endedAt
+    try{this.save(true)}catch(e){for(const key of Object.keys(o))delete (o as any)[key];Object.assign(o,previous);throw e}
+    console.log(`[auto] ${o.id} draft restored; original decline ${previous.endedAt ?? 'unknown'}`)
+    this.w.bump()
+    return this.view(o)
   }
 
   /** A fresh creation conversation, without a model call or an executable brief. */
@@ -867,10 +888,11 @@ export class Optimizers {
   }
 
   /** Refused (or taken back before it starts): kept for the prompt (never proposed again), hidden from the app. */
-  refuse(id: string): boolean {
+  refuse(id: string, source:'api'|'internal'='internal'): boolean {
     const o = this.get(id)
-    if (!o || (o.state !== 'proposed' && o.state !== 'queued')) return false
+    if (!o || (o.state !== 'proposed' && o.state !== 'queued') || (o.draft && source==='api')) return false
     if (o.state === 'proposed') this.s.refillAt = Date.now()
+    o.lifecycle=[...(o.lifecycle??[]),{at:Date.now(),action:'refuse' as const,source,wasDraft:!!o.draft}].slice(-100)
     o.state = 'refused'
     o.endedAt = Date.now()
     delete o.waiting
@@ -1696,6 +1718,11 @@ export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h
       if(key && (typeof key!=='string'||key.length>128))return json(res,400,{ok:false})
       return json(res,201,{item:o.create(typeof key==='string'?key:undefined)})
     }],
+    ['POST', /^\/api\/optimizers\/([\w-]+)\/restore-draft$/, async(req,res,_u,[id])=>{
+      const body=await readBody(req).catch(()=>({}))
+      const item=o.restoreDraft(id,typeof body.expectedEndedAt==='number'?body.expectedEndedAt:undefined)
+      return item?json(res,200,{item}):missing(res)
+    }],
     ['POST', /^\/api\/optimizers\/([\w-]+)\/accept$/, async (req, res, _u, [id]) => {
       const body = await readBody(req).catch(() => ({}))
       const rev = Number.isInteger(body?.rev) ? Number(body.rev) : undefined
@@ -1708,7 +1735,8 @@ export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h
       json(res, r ? 200 : 404, r ?? { reply: '', changed: [], failed: true })
     }],
     ['POST', /^\/api\/optimizers\/([\w-]+)\/refuse$/, (_req, res, _u, [id]) => {
-      const ok = o.refuse(id)
+      if(o.get(id)?.draft)return json(res,409,{error:tr(O).draftKept})
+      const ok = o.refuse(id,'api')
       json(res, ok ? 200 : 404, { ok })
     }],
     ['POST', /^\/api\/optimizers\/([\w-]+)\/pause$/, async (req, res, _u, [id]) => {

@@ -4,6 +4,7 @@ import { defineMessages } from '../i18n.ts'
 
 export default defineMessages({
   fr: {
+    draftKept: 'Ce brouillon est conservé. Ferme la discussion ou utilise « Supprimer l’automatisation » pour le retirer.',
     newTitle: 'nouvelle automatisation',
     newQuestion: 'Qu’est-ce que tu veux automatiser ?',
     suggestFollowLabel: (project: string) => project ? `Suivre ${project}` : 'Suivre un projet',
@@ -144,6 +145,7 @@ export default defineMessages({
     notFound: 'introuvable',
   },
   en: {
+    draftKept: 'This draft has been kept. Close the conversation, or use Delete automation to remove it.',
     newTitle: 'new automation',
     newQuestion: 'What do you want to automate?',
     suggestFollowLabel: (project: string) => project ? `Follow ${project}` : 'Follow a project',

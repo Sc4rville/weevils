@@ -15,6 +15,14 @@ export type SessionStatus = 'working' | 'needs_user' | 'idle' | 'done' | 'interr
  */
 export type InterruptReason = 'died' | 'dirty' | 'quota' | 'auth' | 'api'
 
+/** Verified target context, independent of request origin, current activity or successful results. */
+export interface WorkstreamIdentity {
+  kind: 'self-improvement'
+  installationId: string
+  target: { machineId:string; projectId:string; repo:string }
+  evidence: 'repository-identity' | 'automation-target'
+}
+
 export interface Message {
   /** Verified runtime source; never inferred from the visible prose. */
   sourceThreadId?: string
@@ -99,6 +107,8 @@ export interface SessionProgress {
 }
 
 export interface Session {
+  /** Target identity only: never use this as an Automated sender or activity/completion signal. */
+  workstream?: WorkstreamIdentity
   progress?: SessionProgress
   /** Hidden from the ordinary list; the agent keeps running and can be restored. */
   archived?: boolean
@@ -194,6 +204,8 @@ export interface RelayView {
 }
 
 export interface Project {
+  /** Target identity only: never use this as an Automated sender or activity/completion signal. */
+  workstream?: WorkstreamIdentity
   id: string
   name: string
   /** 'repo' : famille de repos de ~/projects ; 'invented' : catégorie créée par weevils. */
@@ -304,6 +316,8 @@ export interface WeevilReply {
 
 /** Une tâche du h24 (« optimiseur ») : proposée à partir de la mémoire et des projets, lancée quand la machine est libre. */
 export interface Optimizer {
+  /** Target identity only: never use this as an Automated sender or activity/completion signal. */
+  workstream?: WorkstreamIdentity
   /** Explicit recovery event: reconcile an old optimistic refusal, never infer delivery/deletion from text. */
   recoveredAt?: number
   software?: { id:string; repository:string; revision:string; status: 'ready'|'pending-running'; legacyWorkspace:string; excluded:string[] }

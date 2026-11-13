@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('./voicepipe.ts', () => ({ keepWarm() {}, warmCues() {} }))
 const { withAppLocale } = await import('./core.ts')
 const { withLang } = await import('./i18n.ts')
-const { titleOf, digestOf, realTitle } = await import('./transcripts.ts')
+const { titleOf, digestOf, realTitle, borrowedTitle } = await import('./transcripts.ts')
 
 const BLOCK = ' ⟦weevils — Explicit app locale: English (en). Write UI labels, generated session and project titles…⟧'
 
@@ -34,5 +34,7 @@ describe('the app-locale block', () => {
     const slash = { firstPrompt: `/effort high${BLOCK}`, messages: [{ id: 'a', role: 'user', text: '/effort high', at: 1 }, { id: 'b', role: 'user', text: `Fix the reply cards${BLOCK}`, at: 2 }] } as any
     expect(titleOf(slash)).toBe('Fix the reply cards')
     expect(digestOf(slash).debut).toBe('Fix the reply cards')
+    expect(borrowedTitle(slash, 'weevils locale setup')).toBe(true)
+    expect(borrowedTitle({ messages: [{ id: 'x', role: 'user', text: 'add a French locale', at: 1 }] } as any, 'weevils locale setup')).toBe(false)
   })
 })

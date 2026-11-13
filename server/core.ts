@@ -50,7 +50,7 @@ import { isDemoJob, type TourKeeper } from './tour.ts'
 import TM from './i18n/tour.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { judgeAsk } from './asks-judge.ts'
-import { TranscriptStore, digestOf, lastMessageOf, realTitle, titleOf } from './transcripts.ts'
+import { TranscriptStore, borrowedTitle, digestOf, lastMessageOf, realTitle, titleOf } from './transcripts.ts'
 import { emptyBg, subagentSteps } from './background.ts'
 import { llmTitles, needsTitle, shortNow, stableTitle, TitleRetry } from './titles.ts'
 import type { Titled } from './titles.ts'
@@ -1207,9 +1207,11 @@ export class Weevils {
     if (this.titling) return
     const now = Date.now()
     if (!this.titleRetry.ready(now)) return
-    const todo = this.store
-      .all()
-      .filter((t) => now - t.lastActivityAt < RECENT_MS && !t.cwd.startsWith(DATA_DIR) && t.originator !== 'codex_exec')
+    const recent = this.store.all().filter((t) => now - t.lastActivityAt < RECENT_MS && !t.cwd.startsWith(DATA_DIR) && t.originator !== 'codex_exec')
+    // Titles written from the app-locale block (« weevils locale setup » on a session that never spoke of locales): forgotten,
+    // the renamer writes them again from the real subject.
+    for (const t of recent) if (borrowedTitle(t, this.titles.get(t.id)?.title)) this.titles.delete(t.id)
+    const todo = recent
       .filter((t) => needsTitle(this.titles.get(t.id), t.messages.length, now - t.lastActivityAt < STALE_MS, now))
       .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
       .slice(0, 8)

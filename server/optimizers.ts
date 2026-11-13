@@ -292,6 +292,7 @@ export function jailArgs(o: { home: string; hide: string[]; roots: string[]; rw:
 }
 
 type Stored = Optimizer & {
+  proposalPreparation?: { at: number; source: 'conversation' | 'review'; revision: number; requestHash?: string }
   lifecycle?: {at:number;action:'refuse'|'restore-draft';source?:'api'|'internal';priorEndedAt?:number;wasDraft?:boolean}[]
   creationKey?: string
   runSourceRevision?: string
@@ -773,7 +774,7 @@ export class Optimizers {
   /** A task as the app sees it: without the brief and the runner's bookkeeping; when it may start, if its time holds
    *  it; what its next run will be, when that was rewritten while it runs. */
   view(o: Stored, now = Date.now()): Optimizer {
-    const { prompt: _p, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, runSourceRevision: _sr, runConfigRevision: _cr, creationKey:_ck, lifecycle:_lc, ...v } = o
+    const { prompt: _p, proposalPreparation: _pp, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, runSourceRevision: _sr, runConfigRevision: _cr, creationKey:_ck, lifecycle:_lc, ...v } = o
     const at = o.state === 'queued' ? this.timeAt(o, now) : now
     const out: Optimizer = at > now ? { ...v, startAt: at } : { ...v }
     const recovery=o.lifecycle?.findLast(event=>event.action==='restore-draft')
@@ -834,6 +835,45 @@ export class Optimizers {
     delete o.endedAt
     try{this.save(true)}catch(e){for(const key of Object.keys(o))delete (o as any)[key];Object.assign(o,previous);throw e}
     console.log(`[auto] ${o.id} draft restored; original decline ${previous.endedAt ?? 'unknown'}`)
+    this.w.bump()
+    return this.view(o)
+  }
+
+  private completeProposal(o: Pick<Stored, 'title' | 'prompt' | 'repo'>): boolean {
+    return o.title.trim().length >= 3 && o.prompt.trim().length >= 20 &&
+      (o.repo === null || this.w.allRepos().includes(o.repo))
+  }
+
+  /** Explicit review of a legacy draft, never inference from its assistant's prose. This only exposes the normal
+   * approval action. The caller must review the full stored proposal and supply its revision; no job is accepted.
+   * Only source/scope corrections are allowed here: scheduling, history, IDs and software ownership stay intact. */
+  prepareProposal(id: string, expectedRev: number, expectedTalkAt: number, raw: unknown = {}): Optimizer | null {
+    const o = this.get(id)
+    if (!o || o.deletedAt || o.state !== 'proposed' || !o.userCreated || o.acceptedAt || o.sessionId || this.talking.has(id) || !Number.isInteger(expectedRev) || expectedRev < 0 || !Number.isFinite(expectedTalkAt) || expectedTalkAt !== (o.talk?.at(-1)?.at ?? 0)) return null
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+    const input = raw as Record<string, unknown>
+    if (Object.keys(input).some(k => !['title', 'why', 'repo', 'prompt'].includes(k))) return null
+    const p = parsePatch(input, { repos: this.w.allRepos(), tz: o.tz ?? serverTz(), now: Date.now() })
+    if (Object.keys(input).some(k => !(k in p) || input[k] !== p[k as keyof Patch])) return null
+    const requestHash = crypto.createHash('sha256').update(JSON.stringify([id, expectedRev, expectedTalkAt, p])).digest('hex')
+    if (!o.draft && o.proposalPreparation?.requestHash === requestHash && o.rev === o.proposalPreparation.revision) return this.view(o)
+    if (!o.draft || (o.rev ?? 0) !== expectedRev || !this.completeProposal({ ...o, ...p })) return null
+    const backupDir = path.join(path.dirname(this.file), 'automation-recovery')
+    fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 })
+    const backup = path.join(backupDir, `${id}-prepare-${expectedRev}.json`)
+    if (!fs.existsSync(backup)) fs.writeFileSync(backup, JSON.stringify(o, null, 2), { mode: 0o600, flag: 'wx' })
+    const previous = structuredClone(o)
+    const changed = this.patch(o, p)
+    const now = Date.now()
+    delete o.draft
+    o.rev = expectedRev + 1
+    o.proposalPreparation = { at: now, source: 'review', revision: o.rev, requestHash }
+    if (changed.length) o.changed = { at: now, fields: changed }
+    try { this.save(true) } catch (e) {
+      for (const key of Object.keys(o)) delete (o as any)[key]
+      Object.assign(o, previous)
+      throw e
+    }
     this.w.bump()
     return this.view(o)
   }
@@ -957,7 +997,7 @@ export class Optimizers {
     const said = text.replace(/\s+/g, ' ').trim().slice(0, TALK_CHARS)
     const was = o.state
     const replyLang: Lang = detectLang(said) ?? lang()
-    const note = (k: 'talkFailed' | 'talkBusy' | 'talkMoved' | 'talkHeld'): OptimizerTalkReply => ({ reply: withLang(replyLang, () => tr(O)[k]), item: this.view(o), changed: [], failed: true })
+    const note = (k: 'talkFailed' | 'talkBusy' | 'talkMoved' | 'talkHeld' | 'talkIncomplete'): OptimizerTalkReply => ({ reply: withLang(replyLang, () => tr(O)[k]), item: this.view(o), changed: [], failed: true })
     if (!said) return { reply: '', item: this.view(o), changed: [] }
     if (this.talking.has(id)) return note('talkBusy')
     const held = !!this.w.relay?.holdUntil()
@@ -977,7 +1017,7 @@ export class Optimizers {
         const err = e as NodeJS.ErrnoException & { killed?: boolean }
         console.error(`[auto] échange sur « ${o.title} » : ${err.killed ? 'délai dépassé' : `échec (${err.code ?? '?'})`}`)
       }
-      const reply = typeof out?.reply === 'string' ? oneLine(out.reply, 700) : ''
+      let reply = typeof out?.reply === 'string' ? oneLine(out.reply, 700) : ''
       if (!reply) {
         this.talkFailUntil.set(id, Date.now() + TALK_BACKOFF_MS)
         return note('talkFailed')
@@ -989,6 +1029,10 @@ export class Optimizers {
       if (o.state !== was || o.deletedAt) return note('talkMoved')
       const now = Date.now()
       const p = parsePatch(out?.patch, { repos: this.w.allRepos(), tz: zone, now })
+      // A natural-language promise is never a phase transition. Both providers must return a real boolean;
+      // readiness applies to the accumulated proposal, not just fields changed in the last response.
+      const rejectedField = out?.patch && typeof out.patch === 'object' && Object.keys(out.patch).some(k => !(k in p))
+      if (o.draft && (typeof out?.ready !== 'boolean' || (out.ready && (rejectedField || !this.completeProposal({ ...o, ...p }))))) return note('talkIncomplete')
       // The prompt carried what an agent wrote (its report, its last words: maybe a web page's text). A short bare
       // question never rewrites the task then, nor does a move to a repo the user did not name: such a rewrite comes
       // from that text, not from them. Nothing changes, nothing is kept, and the reply says so.
@@ -997,12 +1041,18 @@ export class Optimizers {
         return note('talkHeld')
       }
       const changed = this.patch(o, p)
-      if (o.draft && out?.ready === true && p.title && p.prompt) delete o.draft
+      const prepared = o.draft && out?.ready === true
+      if (prepared) {
+        delete o.draft
+        // The server, not the model, promises the approval action after validating its existence.
+        reply = withLang(replyLang, () => tr(O).talkPrepared)
+      }
       if (validTz(tz)) o.tz = zone
       o.talk = capTalk([...(o.talk ?? []), { who: 'user', text: said, at: now }, { who: 'auto', text: reply, at: Date.now(), ...(o.draft ? { suggestions: parseSuggestions(out?.suggestions) } : {}), ...(changed.length ? { changed } : {}) }])
-      if (changed.length) {
-        o.changed = { at: now, fields: changed }
+      if (changed.length || prepared) {
+        if (changed.length) o.changed = { at: now, fields: changed }
         o.rev = (o.rev ?? 0) + 1
+        if (prepared) o.proposalPreparation = { at: now, source: 'conversation', revision: o.rev }
         console.log(`[auto] « ${o.title} » réécrite (${changed.join(', ')})`)
       }
       this.changed()
@@ -1725,6 +1775,11 @@ export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h
       const body=await readBody(req).catch(()=>({}))
       const item=o.restoreDraft(id,typeof body.expectedEndedAt==='number'?body.expectedEndedAt:undefined)
       return item?json(res,200,{item}):missing(res)
+    }],
+    ['POST', /^\/api\/optimizers\/([\w-]+)\/prepare$/, async (req, res, _u, [id]) => {
+      const body = await readBody(req)
+      const item = o.prepareProposal(id, body?.expectedRev as number, body?.expectedTalkAt as number, body?.patch ?? {})
+      return json(res, item ? 200 : 409, item ? { item } : { error: tr(O).talkIncomplete })
     }],
     ['POST', /^\/api\/optimizers\/([\w-]+)\/accept$/, async (req, res, _u, [id]) => {
       const body = await readBody(req).catch(() => ({}))

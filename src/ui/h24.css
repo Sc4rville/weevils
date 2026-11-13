@@ -458,3 +458,5 @@
 .auto-band:has(> .auto-delete) > .in { padding-inline-end: calc(var(--pad) + 44px); }
 .auto-band > .auto-delete:has([role="alert"]) { position: relative; inset: auto; transform: none; display: flex; justify-content: flex-end; padding-inline: var(--pad); }
 .auto-delete-row { text-align: end; }
+
+.auto-band .act.retry-time { max-width: 9em; white-space: normal; text-align: end; }

@@ -11,7 +11,7 @@ import { intlLocale, useT } from '../i18n'
 import M from '../i18n/h24'
 import { useApp } from './app-context'
 import { Composer, Line, Messages, Prose, Working } from './bits'
-import { at, autoList, longAt, fromActivity, fromOptimizer, projectOfRepo, short, slotOf, triggerText, typicalMs, type AutoItem } from './auto-model'
+import { at, nextTimeText, autoList, longAt, fromActivity, fromOptimizer, projectOfRepo, short, slotOf, triggerText, typicalMs, type AutoItem } from './auto-model'
 import { TalkCtx, useTalk } from './auto-talk'
 import { AutoDeleteAction } from './auto-delete'
 import { durLong, plain } from './format'
@@ -300,7 +300,7 @@ function Flow({ x, runs, next, onTicks }: { x: AutoItem; runs: AutoRun[]; next?:
   const typ = typicalMs(x)
   let big: ReactNode
   // Under the big value: the state in a word, unless the big value already is it; nothing a fact below repeats.
-  let line: string = t[`state_${x.state}`]
+  let line: string = x.nextReason === 'retry' ? t.retryWaiting : t[`state_${x.state}`]
   if (x.state === 'proposed') {
     big = triggerText(x.trigger, now)
     line = ''
@@ -321,7 +321,7 @@ function Flow({ x, runs, next, onTicks }: { x: AutoItem; runs: AutoRun[]; next?:
     big = t[`wait_${x.waiting}`]
     line = ''
   } else if (x.nextAt && x.nextAt > now) {
-    big = t.inTime(durLong(x.nextAt - now))
+    big = x.nextReason === 'retry' ? nextTimeText(x, now) : t.inTime(durLong(x.nextAt - now))
   } else {
     big = t.whenIdle
     if (x.place) line = `${line} · #${x.place}`
@@ -402,7 +402,7 @@ function Kpis({ x, runs, detail, flash, ask, onLast, onRuns }: { x: AutoItem; ru
       : x.state === 'paused' || x.state === 'done' || x.state === 'failed'
         ? t.never
         : following
-          ? at(following, now)
+          ? nextTimeText({ ...x, nextAt: following }, now)
           : x.state === 'running'
             ? t.never
             : (x.state === 'waiting' || x.state === 'queued') && x.waiting && x.waiting !== 'queue'

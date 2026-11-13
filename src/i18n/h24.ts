@@ -18,6 +18,8 @@ export default defineMessages({
     empty: 'rien',
     toValidateN: (n: number) => `${n} à valider`,
     nextAt: (at: string) => `prochaine ${at}`,
+    retryAfter: (at: string) => `réessai après ${at}`,
+    retryWaiting: 'en attente de réessai',
     /** Proposals (bands at the top of the drawer). */
     proposals: 'tâches proposées',
     accept: (title: string) => `lancer « ${title} »`,
@@ -111,6 +113,8 @@ export default defineMessages({
     empty: 'nothing',
     toValidateN: (n: number) => `${n} to approve`,
     nextAt: (at: string) => `next ${at}`,
+    retryAfter: (at: string) => `retry after ${at}`,
+    retryWaiting: 'waiting to retry',
     proposals: 'proposed tasks',
     accept: (title: string) => `run "${title}"`,
     refuse: (title: string) => `refuse "${title}"`,

@@ -38,6 +38,7 @@ export interface AutoItem {
   /** queued: its place in the line (2 = next after the running one). */
   place?: number
   nextAt: number | null
+  nextReason?: 'retry'
   startedAt: number | null
   endedAt: number | null
   since: number | null
@@ -156,6 +157,7 @@ export function fromOptimizer(o: Optimizer, projectId: string | null = null, now
     note: o.lastEvent,
     // Stopped by a limit or an error, or held by its time: when it starts again.
     nextAt: o.state === 'queued' && !paused ? (o.retryAt && o.retryAt > (o.startAt ?? 0) ? o.retryAt : (o.startAt ?? o.retryAt ?? null)) : null,
+    nextReason: o.waiting === 'later' || (o.retryAt && o.retryAt >= (o.startAt ?? 0)) ? 'retry' : undefined,
     trigger: optimizerTrigger(o, o.state === 'proposed' ? now : undefined),
     projectId,
     repo: o.repo,
@@ -260,6 +262,13 @@ export function at(ts: number, now: number, lang: Lang = getLang()): string {
   if (new Date(ts).toDateString() === new Date(now).toDateString()) return time
   if (ts - now < 6 * DAY) return `${new Intl.DateTimeFormat(loc, { weekday: 'short' }).format(ts)} ${time}`
   return `${new Intl.DateTimeFormat(loc, { day: 'numeric', month: 'short' }).format(ts)} ${time}`
+}
+
+/** Retry eligibility is not a user-selected schedule. */
+export function nextTimeText(x: Pick<AutoItem, 'nextAt' | 'nextReason'>, now: number, summary = false): string {
+  if (!x.nextAt) return ''
+  const time = at(x.nextAt, now)
+  return x.nextReason === 'retry' ? tr(M).retryAfter(time) : summary ? tr(M).nextAt(time) : time
 }
 
 export const hm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`

@@ -28,7 +28,7 @@ function update(receipt: LocalReceipt) {
   const current = rows.find(r => r.messageId === receipt.messageId)
   // A late poll cannot turn a completed operation back into a pending banner.
   if (current?.status === 'delivered' && receipt.status !== 'delivered') return
-  receipt = { ...receipt, dismissed: current?.dismissed ?? receipt.dismissed }
+  receipt = { ...receipt, dismissed: current?.dismissed || receipt.dismissed }
   if (receipt.status === 'delivered') {
     if (receipt.payloadStored) void removePayload(receipt.messageId).catch(() => undefined)
     receipt = { ...receipt, payload: undefined, payloadStored: false, text: undefined }
@@ -36,10 +36,10 @@ function update(receipt: LocalReceipt) {
   rows = [...rows.filter(r => r.messageId !== receipt.messageId), receipt]
   save()
 }
-/** Compatibility for an older dismissal action: hide presentation, retain deduplication identity. */
+/** Hide presentation only: retain payload, tracking and deduplication identity. */
 export function forgetReceipt(id: string) {
   const row = rows.find(r => r.messageId === id)
-  if (row?.status === 'delivered') update({ ...row, dismissed: true })
+  if (row && ['delivered', 'failed', 'uncertain'].includes(row.status)) update({ ...row, dismissed: true })
 }
 // Only an unsupported old server has no durable receipt to retain.
 function forgetUntrackedReceipt(id: string) { rows = rows.filter(r => r.messageId !== id); save() }
@@ -59,11 +59,18 @@ export function useOutbox() {
 const terminal = (r: Receipt) => ['delivered', 'uncertain', 'failed'].includes(r.status)
 let timer: ReturnType<typeof setInterval> | undefined
 let polling = false
+const terminalChecked = new Map<string, number>()
 export async function refreshReceipts() {
   if (polling) return
   polling = true
   try {
-    for (const row of rows.filter(r => !terminal(r))) {
+    for (const row of rows.filter(r => r.status !== 'delivered')) {
+      // Reconcile exact receipts after a backend recovery, without ever resubmitting terminal attempts.
+      if (terminal(row)) {
+        const checked = terminalChecked.get(row.messageId)
+        if (checked !== undefined && Date.now() - checked < 60_000) continue
+        terminalChecked.set(row.messageId, Date.now())
+      }
       try {
         const response = await fetch(`/api/outbox/${encodeURIComponent(row.messageId)}`, { credentials: 'same-origin', headers: localeHeaders(), signal: AbortSignal.timeout(10000) })
         if (response.status === 404 && row.status === 'sending') {
@@ -86,7 +93,7 @@ export async function refreshReceipts() {
         const receipt = await response.json() as Receipt
         if (receipt.messageId !== row.messageId || !['accepted','delivering','delivered','uncertain','failed'].includes(receipt.status)) throw new Error()
         update({ ...row, ...receipt, recovered: row.recovered || (row.status === 'sending' && !inflight.has(row.fingerprint)), trackingLost: false })
-      } catch { update({ ...(rows.find(r => r.messageId === row.messageId) ?? row), trackingLost: true }) }
+      } catch { if (!terminal(row)) update({ ...(rows.find(r => r.messageId === row.messageId) ?? row), trackingLost: true }) }
     }
   } finally { polling = false }
 }
@@ -165,4 +172,21 @@ export async function deliver(url: string, body: unknown, submit: Submit, resumi
   return job
 }
 
-if (typeof window !== 'undefined') window.addEventListener('online', () => { resumed.clear(); void refreshReceipts() })
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => { resumed.clear(); terminalChecked.clear(); void refreshReceipts() })
+  window.addEventListener('storage', event => {
+    if (event.key !== KEY || !event.newValue) return
+    try {
+      for (const incoming of JSON.parse(event.newValue) as LocalReceipt[]) {
+        if (typeof incoming.messageId !== 'string' || typeof incoming.url !== 'string') continue
+        const current = rows.find(r => r.messageId === incoming.messageId)
+        if (JSON.stringify(current) === JSON.stringify(incoming)) continue
+        if (current && current.updatedAt > incoming.updatedAt && incoming.status !== 'delivered') continue
+        update(incoming)
+      }
+    } catch { /* A malformed storage event is not delivery evidence. */ }
+  })
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && trackers) { terminalChecked.clear(); void refreshReceipts() }
+  })
+}

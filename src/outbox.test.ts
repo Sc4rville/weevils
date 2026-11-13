@@ -166,3 +166,14 @@ it('a late accepted poll cannot revive a delivered and dismissed receipt',async(
  await polling
  expect(box.outboxSnapshot()[0]).toMatchObject({messageId:row.messageId,status:'delivered',dismissed:true})
 })
+
+it('a cross-tab delivery resolves the exact failed receipt without resubmitting or accepting a late failure', async()=>{
+ const row={messageId:'cross-tab',url:'/api/main',fingerprint:'same',status:'failed',updatedAt:1,text:'keep'}
+ localStorage.setItem('weevils-outbox-v1',JSON.stringify([row]))
+ const box=await load()
+ window.dispatchEvent(new StorageEvent('storage',{key:'weevils-outbox-v1',newValue:JSON.stringify([{...row,status:'delivered',updatedAt:2}])}))
+ expect(box.outboxSnapshot()[0].status).toBe('delivered')
+ window.dispatchEvent(new StorageEvent('storage',{key:'weevils-outbox-v1',newValue:JSON.stringify([row])}))
+ expect(box.outboxSnapshot()[0].status).toBe('delivered')
+ expect(fetcher).not.toHaveBeenCalled()
+})

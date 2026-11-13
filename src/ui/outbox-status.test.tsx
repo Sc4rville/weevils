@@ -25,7 +25,7 @@ it('an uncertain receipt offers recovery, never a button that reinjects the mess
  state.rows = [{messageId:'a',url:'/api/main',status:'uncertain',text:'original draft'}]
  await act(async () => root.render(<OutboxStatus scope="/api/main" />))
  expect(host.textContent).toContain('no automatic resend')
- const buttons = host.querySelectorAll('button'); expect(buttons).toHaveLength(1)
+ const buttons = host.querySelectorAll('button'); expect(buttons).toHaveLength(2)
  await act(async () => buttons[0].click()); expect(state.copied).toHaveBeenCalledWith('original draft')
 })
 
@@ -47,5 +47,16 @@ it.each(['/api/main','/api/foryou/card/reply','/api/sessions/tlo/send'])('never 
  await act(async()=>root.render(<OutboxStatus scope={scope}/>))
  expect(host.textContent).toContain('Not connected')
  expect(host.textContent).not.toMatch(/forwarded to the agent|open conversation|dismiss this status/)
- expect(host.querySelectorAll('button')).toHaveLength(1)
+ expect(host.querySelectorAll('button')).toHaveLength(2)
+})
+
+it('a confirmed retry of the exact payload hides the old failure, but a different message does not', async()=>{
+ state.rows=[{messageId:'old',url:'/api/main',fingerprint:'same',status:'failed',updatedAt:1,text:'Original message'}, {messageId:'new',url:'/api/main',fingerprint:'different',status:'delivered',updatedAt:2}]
+ await act(async()=>root.render(<OutboxStatus scope="/api/main"/>))
+ expect(host.querySelector('[data-delivery="failed"]')).not.toBeNull()
+ expect(host.querySelector('details')?.open).toBe(false)
+ state.rows[1].fingerprint='same'
+ await act(async()=>root.render(<OutboxStatus scope="/api/main"/>))
+ expect(host.textContent).toBe('')
+ expect(state.rows).toHaveLength(2)
 })

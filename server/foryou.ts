@@ -652,11 +652,14 @@ export class ForYou {
     }
     for (const session of snap.sessions.slice(0, 100)) {
       const source = this.w.store?.get(session.id)
-      const first = source?.messages?.find(m => m.role === 'user' || m.role === 'orchestrator')
-      const brief = first?.text || source?.firstPrompt
-      if (!brief || !substantive(brief)) continue
-      this.intents.observe({ id: `request:${session.id}:${first?.id ?? 'initial'}`, brief, scope: session.projectId, status: 'requested', at: first?.at ?? session.openedAt,
-        open: { page: 'session', id: session.id }, source: { sessionId: session.id, messageId: first?.id ?? 'initial' } })
+      const incoming = source?.messages?.filter(m => m.role === 'user' || m.role === 'orchestrator') ?? []
+      const requests = [...new Map([...incoming.slice(0, 1), ...incoming.slice(-8)].map(m => [m.id, m])).values()]
+      if (!requests.length && source?.firstPrompt) requests.push({ id: 'initial', role: 'user', text: source.firstPrompt, at: session.openedAt ?? this.now() })
+      for (const request of requests) {
+        if (!substantive(request.text)) continue
+        this.intents.observe({ id: `request:${session.id}:${request.id}`, brief: request.text, scope: session.projectId, status: 'requested', at: request.at,
+          open: { page: 'session', id: session.id }, source: { sessionId: session.id, messageId: request.id } })
+      }
     }
     for (const job of snap.optimizers ?? []) {
       if (job.state === 'refused' || (job.state === 'proposed' && !job.userCreated)) continue
@@ -684,7 +687,8 @@ export class ForYou {
     if (intentDispatch.getStore() || !substantive(text)) return run()
     this.syncIntents()
     const scope = this.w.snapshot().sessions.find(s => s.id === sessionId)?.projectId
-    if (!isWorkRequest(text) && !this.intents.find(text, scope)) return run()
+    const proposed = this.s.items.some(i => i.actions?.some(a => briefKey(a.brief) === briefKey(text)))
+    if (!isWorkRequest(text) && !proposed) return run()
     const result = await this.intents.dispatch(text, scope, `direct:${briefKey(text)}`, run)
     if (!result.open && this.intents.get(result.intentId)?.status === 'uncertain') throw new OutboxError(503, tr(M).intentUncertain)
     return { id: result.open?.page === 'session' ? result.open.id : sessionId ?? this.w.orchestratorId ?? '__main' }

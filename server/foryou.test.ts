@@ -1368,3 +1368,20 @@ it('does not collapse two unrelated tracked actions into a single existing-work 
   expect(await fy.act(card.id,'a2')).toMatchObject({existing:true,open:{id:'two'}})
   expect(host.sendMain).not.toHaveBeenCalled()
 })
+
+it('indexes later explicit request IDs in an existing session without replaying them or swallowing status questions', async () => {
+  const messages=[{id:'first',role:'user',text:'Build a simple text canvas with spatial notes and undo.',at:now-100},
+    {id:'later',role:'orchestrator',text:'Scarville requests export of Think notes and their images as a portable archive.',at:now-10},
+    {id:'status',role:'user',text:'What is the current status of my Think canvas today?',at:now}]
+  snap.sessions=[session({id:'ongoing',status:'working'})]
+  Object.assign(host,{store:{get:()=>({messages})}})
+  const fy=make()
+  const context=JSON.parse(fy.intentContext())
+  expect(context).toEqual(expect.arrayContaining([expect.objectContaining({sourceIntentId:'request:ongoing:later',brief:messages[1].text})]))
+  expect(fy.add({kind:'improve',text:'Export notes and images together.',actions:[{label:'Prepare export',brief:'A rephrased export request.',sourceIntentId:'request:ongoing:later'}]})).toBeNull()
+  const run=vi.fn(async()=>({id:'ongoing'}))
+  await fy.directRequest(messages[2].text,'ongoing',run)
+  await fy.directRequest(messages[2].text,'ongoing',run)
+  expect(run).toHaveBeenCalledTimes(2)
+  expect(host.sendMain).not.toHaveBeenCalled()
+})

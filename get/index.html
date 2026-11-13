@@ -137,7 +137,9 @@ const W = FR ? {
   agents: (n) => ({ '2-3': '2 à 3 agents', 6: 'environ 6 agents', 12: 'une douzaine d’agents' })[n] + ' en même temps', gb: 'Go',
   firstOnly: (a) => `${a} le premier mois`,
   perMonth: '/mois', firstMonth: (a, b) => `${a} le premier mois, puis ${b}/mois`,
-  billed_hetzner: 'TTC, facturé à l’heure par Hetzner. Supprimable quand tu veux depuis leur console.',
+  hourly: (a, b) => `${a}/h · max ${b}/mois`,
+  billed_hetzner: (ip) => `${ip ? 'Serveur et adresse IPv4, TTC' : 'TTC'}. Hetzner facture à l’heure, jamais plus que le maximum du mois. Supprimer le serveur dans leur console arrête la facturation.`,
+  createHourly: 'Créer mon serveur · facturé à l’heure',
   billed_hostinger: 'Abonnement mensuel Hostinger, sans engagement : résiliable depuis hPanel.',
   payWith: (l) => `Payé avec ${l}.`,
   createFor: (p) => `Créer mon serveur (${p})`,
@@ -203,7 +205,9 @@ const W = FR ? {
   agents: (n) => ({ '2-3': '2 to 3 agents', 6: 'about 6 agents', 12: 'about a dozen agents' })[n] + ' at once', gb: 'GB',
   firstOnly: (a) => `${a} the first month`,
   perMonth: '/month', firstMonth: (a, b) => `${a} the first month, then ${b}/month`,
-  billed_hetzner: 'VAT included, billed by the hour by Hetzner. Delete it anytime from their console.',
+  hourly: (a, b) => `${a}/h · max ${b}/month`,
+  billed_hetzner: (ip) => `${ip ? 'Server and IPv4 address, VAT included' : 'VAT included'}. Hetzner bills by the hour, never more than the monthly max. Deleting the server in their console stops the billing.`,
+  createHourly: 'Create my server · billed by the hour',
   billed_hostinger: 'Monthly Hostinger subscription, no commitment: cancel it from hPanel.',
   payWith: (l) => `Paid with ${l}.`,
   createFor: (p) => `Create my server (${p})`,
@@ -337,13 +341,16 @@ function provider(kind) {
   const createBtn = h('button', { class: 'btn', hidden: true }, W.create)
   const priceBtn = h('button', { class: 'btn light' }, W.seePrice)
   const price = (z) => money(z.monthly, z.currency)
+  // Billed by the hour (Hetzner): the real hourly price, and the monthly one as its cap.
+  const hourly = (z) => z.hourly > 0 && new Intl.NumberFormat(FR ? 'fr-FR' : 'en-IE', { style: 'currency', currency: z.currency || 'EUR', minimumFractionDigits: 3, maximumFractionDigits: 4 }).format(z.hourly)
+  const label = (z) => hourly(z) ? W.hourly(hourly(z), price(z)) : z.first && z.first !== z.monthly ? W.firstMonth(money(z.first, z.currency), price(z)) : `${price(z)}${W.perMonth}`
   const draw = () => {
     pick.replaceChildren(...sizes.map((z) => h('button', { class: `size${z.size === size ? ' on' : ''}`, type: 'button', onclick: () => { size = z.size; draw() } },
       h('b', {}, W[`size_${z.size}`]),
       h('span', {}, `${z.memory} ${W.gb} · ${W.agents(z.agents)}`),
-      h('strong', {}, z.first && z.first !== z.monthly ? W.firstMonth(money(z.first, z.currency), price(z)) : `${price(z)}${W.perMonth}`))))
+      h('strong', {}, label(z)))))
     const z = sizes.find((x) => x.size === size) || sizes[0]
-    if (z) createBtn.textContent = W.createFor(z.first && z.first !== z.monthly ? W.firstOnly(money(z.first, z.currency)) : `${price(z)}${W.perMonth}`)
+    if (z) createBtn.textContent = hourly(z) ? W.createHourly : W.createFor(z.first && z.first !== z.monthly ? W.firstOnly(money(z.first, z.currency)) : `${price(z)}${W.perMonth}`)
   }
   priceBtn.onclick = async () => {
     err.hidden = true
@@ -356,7 +363,8 @@ function provider(kind) {
       sizes = q.sizes
       if (!sizes.some((z) => z.size === size)) size = sizes[0].size
       draw()
-      note.textContent = [W[`billed_${kind}`], q.paymentLabel ? W.payWith(q.paymentLabel) : ''].join(' ')
+      const billed = W[`billed_${kind}`]
+      note.textContent = [typeof billed === 'function' ? billed(sizes.some((z) => z.ipv4)) : billed, q.paymentLabel ? W.payWith(q.paymentLabel) : ''].join(' ')
       pick.hidden = false
       createBtn.hidden = false
       priceBtn.hidden = true

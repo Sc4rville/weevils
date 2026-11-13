@@ -18,8 +18,13 @@ const hetzner = http.createServer((req, res) => {
   if (auth === 'Bearer readonlytoken0000000000') {
     if (req.method === 'POST') return reply(403, { error: { code: 'forbidden', message: 'insufficient permissions' } })
   } else if (auth !== 'Bearer goodtoken00000000000000') return reply(401, { error: { code: 'unauthorized', message: 'unable to authenticate' } })
+  if (req.method === 'GET' && req.url === '/pricing') {
+    // Hetzner bills the server's IPv4 address on top of its type (shape from the API reference, GET /pricing).
+    const ip = (location: string) => ({ location, price_hourly: { net: '0.0008', gross: '0.0010' }, price_monthly: { net: '0.5000', gross: '0.5950' } })
+    return reply(200, { pricing: { currency: 'EUR', vat_rate: '19.00', primary_ips: [{ type: 'ipv6', prices: [] }, { type: 'ipv4', prices: ['nbg1', 'fsn1', 'hel1', 'ash'].map(ip) }] } })
+  }
   if (req.method === 'GET' && req.url?.startsWith('/server_types')) {
-    const price = (location: string, gross: string) => ({ location, price_monthly: { net: '0', gross } })
+    const price = (location: string, gross: string) => ({ location, price_hourly: { net: '0', gross: (Number(gross) / 625).toFixed(4) }, price_monthly: { net: '0', gross } })
     return reply(200, {
       server_types: [
         { name: 'cx22', cores: 2, memory: 4, disk: 40, architecture: 'x86', deprecated: true, prices: [price('nbg1', '3.00')] },
@@ -130,12 +135,13 @@ describe('Hetzner (mock API)', () => {
   it('quotes three sizes (4, 8, 16 GB) with their agents and the cheapest x86 type near the person', async () => {
     const cfg = config({ GET_HETZNER_API: `http://127.0.0.1:${hzPort}` })
     const q = await hetznerQuote(cfg, 'goodtoken00000000000000')
-    expect(q.sizes.map((z: any) => [z.size, z.type, z.location, z.monthly, z.agents])).toEqual([
-      ['light', 'cx23', 'nbg1', 4.15, '2-3'],
-      ['recommended', 'cx33', 'nbg1', 6.59, '6'],
-      ['strong', 'cx43', 'nbg1', 11.99, '12'],
+    // What the person pays, VAT included: the type plus its IPv4 address, by the hour, never more than the month.
+    expect(q.sizes.map((z: any) => [z.size, z.type, z.location, z.hourly, z.monthly, z.ipv4, z.agents])).toEqual([
+      ['light', 'cx23', 'nbg1', 0.0076, 4.745, true, '2-3'],
+      ['recommended', 'cx33', 'nbg1', 0.0115, 7.185, true, '6'],
+      ['strong', 'cx43', 'nbg1', 0.0202, 12.585, true, '12'],
     ])
-    expect((await hetznerQuote(cfg, 'goodtoken00000000000000', 'america')).sizes[0]).toMatchObject({ type: 'cx23', location: 'ash', monthly: 3.9 })
+    expect((await hetznerQuote(cfg, 'goodtoken00000000000000', 'america')).sizes[0]).toMatchObject({ type: 'cx23', location: 'ash', monthly: 4.495 })
   })
   it('creates the server with the install in cloud-init, then forgets the token', async () => {
     const { pub } = { pub: pubB64(keyPair().publicKey) }

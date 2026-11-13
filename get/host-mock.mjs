@@ -23,7 +23,8 @@ function boot(content) {
   p.unref()
 }
 
-const hzPrice = (location, gross) => ({ location, price_hourly: { net: '0', gross: '0.01' }, price_monthly: { net: (gross / 1.19).toFixed(4), gross: String(gross) } })
+const hzPrice = (location, gross) => ({ location, price_hourly: { net: (gross / 1.19 / 625).toFixed(4), gross: (gross / 625).toFixed(4) }, price_monthly: { net: (gross / 1.19).toFixed(4), gross: String(gross) } })
+const hzIpv4 = (location) => ({ location, price_hourly: { net: '0.0008', gross: '0.0010' }, price_monthly: { net: '0.5000', gross: '0.5950' } })
 const HZ_TYPES = [
   { id: 1, name: 'cx23', cores: 2, memory: 4, disk: 40, architecture: 'x86', deprecated: false, prices: [hzPrice('nbg1', 4.15), hzPrice('fsn1', 4.15), hzPrice('hel1', 4.15), hzPrice('ash', 4.49)] },
   { id: 2, name: 'cx33', cores: 4, memory: 8, disk: 80, architecture: 'x86', deprecated: false, prices: [hzPrice('nbg1', 6.59), hzPrice('fsn1', 6.59), hzPrice('hel1', 6.59)] },
@@ -46,6 +47,7 @@ http.createServer((req, res) => {
       const url = req.url.slice('/hetzner'.length)
       if (req.headers.authorization !== `Bearer ${HZ_TOKEN}`) return reply(401, { error: { code: 'unauthorized', message: 'unable to authenticate' } })
       if (req.method === 'GET' && url.startsWith('/server_types')) return reply(200, { server_types: HZ_TYPES })
+      if (req.method === 'GET' && url === '/pricing') return reply(200, { pricing: { currency: 'EUR', vat_rate: '19.00', primary_ips: [{ type: 'ipv4', prices: ['nbg1', 'fsn1', 'hel1', 'ash'].map(hzIpv4) }] } })
       if (req.method === 'POST' && url === '/servers') {
         const cmd = /^ {2}- \[bash, -c, "(.*)"\]$/m.exec(b.user_data || '')?.[1] || 'true'
         console.log(`[mock] Hetzner create ${b.name} ${b.server_type}@${b.location} image=${b.image}`)

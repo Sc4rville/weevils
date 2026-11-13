@@ -154,9 +154,17 @@ async function hz(cfg, token, method, p, body) {
   return data
 }
 
-/** For each size, the cheapest current x86 type with that memory (2+ vCPU), and where it is sold, cheapest first. */
+/** For each size, the cheapest current x86 type with that memory (2+ vCPU), and where it is sold, cheapest first.
+ * Prices are what the person pays, VAT included: Hetzner bills by the hour (`hourly`), never more than `monthly` in a
+ * month, and the server's IPv4 address on top of its type (`GET /pricing`; left out, `ipv4: false`, if that fails). */
 export async function hetznerQuote(cfg, token, where = 'europe') {
-  const { server_types: types = [] } = await hz(cfg, token, 'GET', '/server_types?per_page=50')
+  const [{ server_types: types = [] }, pricing] = await Promise.all([
+    hz(cfg, token, 'GET', '/server_types?per_page=50'),
+    hz(cfg, token, 'GET', '/pricing').then((d) => d?.pricing, () => null),
+  ])
+  const ipv4 = (pricing?.primary_ips || []).find((x) => x.type === 'ipv4')?.prices || []
+  const gross = (p, k) => Number(p?.[k]?.gross ?? NaN)
+  const round = (v, d) => Math.round(v * 10 ** d) / 10 ** d
   const locs = REGIONS[region(where)].concat(Object.values(REGIONS).flat().filter((l) => !REGIONS[region(where)].includes(l)))
   const sizes = []
   for (const z of SIZES) {
@@ -165,7 +173,13 @@ export async function hetznerQuote(cfg, token, where = 'europe') {
       if (t.deprecated || t.deprecation || (t.architecture && t.architecture !== 'x86') || t.cores < 2 || t.memory !== z.memory) continue
       for (const loc of locs) {
         const p = (t.prices || []).find((x) => x.location === loc)
-        if (p) fit.push({ type: t.name, cores: t.cores, memory: t.memory, disk: t.disk, location: loc, monthly: Number(p.price_monthly?.gross ?? NaN) })
+        if (!p) continue
+        const ip = ipv4.find((x) => x.location === loc)
+        fit.push({
+          type: t.name, cores: t.cores, memory: t.memory, disk: t.disk, location: loc, ipv4: !!ip,
+          hourly: round(gross(p, 'price_hourly') + (ip ? gross(ip, 'price_hourly') : 0), 6),
+          monthly: round(gross(p, 'price_monthly') + (ip ? gross(ip, 'price_monthly') : 0), 4),
+        })
       }
     }
     // Near first, then the cheapest.
@@ -203,7 +217,7 @@ export async function hetznerCreate(cfg, token, sid, size = 'recommended', where
       const ip = data?.server?.public_net?.ipv4?.ip
       if (!ip) throw Object.assign(new Error('no_ip'), { hz: 'no_ip' })
       // data.root_password is dropped with the rest of the response: weevils never needs it.
-      return { name: data.server.name, id: data.server.id, ip, size: pick.size, agents: pick.agents, type: o.type, cores: o.cores, memory: o.memory, location: o.location, monthly: o.monthly, currency: 'EUR' }
+      return { name: data.server.name, id: data.server.id, ip, size: pick.size, agents: pick.agents, type: o.type, cores: o.cores, memory: o.memory, location: o.location, hourly: o.hourly, monthly: o.monthly, currency: 'EUR' }
     } catch (e) {
       last = e
       // Full, or that type not sold there right now: next option. Anything else (token, quota, payment) stops.
@@ -473,7 +487,7 @@ export function createServer(cfg = config(), deps = {}) {
           if (!SIZES.some((z) => z.size === b.size)) return fail(res, 400, 'bad_size')
           try {
             const s = await create(cfg, token(b), j.sid, b.size, b.region)
-            j.server = { name: s.name, ip: s.ip, type: s.type, size: s.size, agents: s.agents, location: s.location, monthly: s.monthly, currency: s.currency }
+            j.server = { name: s.name, ip: s.ip, type: s.type, size: s.size, agents: s.agents, location: s.location, hourly: s.hourly, monthly: s.monthly, currency: s.currency }
             // No address yet (Hostinger may give it later): the install's own address, when it fetches its script.
             if (s.ip) {
               j.reach = cfg.targetUrls[s.ip] || sslip(s.ip)

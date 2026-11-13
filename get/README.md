@@ -21,7 +21,9 @@ without typing anything (or, for a computer, by pasting one command in its termi
      still processing) means the VM isn't set up: the page sends the person to hPanel, then to "I already have a VPS".
      The script stays in their account (`weevils-<id>`); its link expires with the setup.
    - Hetzner: the cheapest x86 type of each size near the person, Ubuntu 24.04, a cloud-init that runs the install.
-     Sign-up asks for an ID check (a photo of an ID and a selfie, through iDenfy), then a manual review: the page says
+     Hetzner bills by the hour: each size shows its real hourly price and its monthly cap ("€0.0115/h · max
+     €7.19/month"), VAT included, with the server's IPv4 address that Hetzner bills on top of the type (`GET /pricing`),
+     and the button says "billed by the hour". Sign-up asks for an ID check (a photo of an ID and a selfie, through iDenfy), then a manual review: the page says
      so under the option and on the account step, so nobody is surprised.
    **I already have a VPS**: IP, user, password (or private key). One SSH connection starts the install in the
    background, then closes.

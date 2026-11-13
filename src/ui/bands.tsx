@@ -1,3 +1,4 @@
+import { LostFeaturesLine } from './lost-features'
 import { interceptModelControl, openModelControls } from '../model-controls'
 import { effortLabel, modelLabel } from './settings'
 import ModelM from '../i18n/model-controls'
@@ -730,6 +731,7 @@ export function FootBand() {
           {t.memory}
         </Line>
       )}
+      <LostFeaturesLine />
     </section>
   )
 }

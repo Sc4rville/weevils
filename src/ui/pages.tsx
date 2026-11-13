@@ -1,4 +1,4 @@
-import { ThinkPage } from './think'
+import { ThinkGate, LostFeaturesPage } from './lost-features'
 import { ModelControlsPage } from './model-controls'
 import { interceptModelControl } from '../model-controls'
 import { FormatsPage } from './foryou-formats'
@@ -41,7 +41,8 @@ import { AutoPage, AutoRunPage } from './auto-page'
 
 export function PageView({ page }: { page: Page }) {
   switch (page.kind) {
-    case 'think': return <ThinkPage />
+    case 'think': return <ThinkGate />
+    case 'lost-features': return <LostFeaturesPage />
     case 'models': return <ModelControlsPage id={page.id}/>
     case 'archived':
       return <ArchivedSessions />

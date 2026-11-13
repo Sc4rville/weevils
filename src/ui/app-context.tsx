@@ -12,6 +12,7 @@ export const THEME_COLOR: Record<Theme, string> = { light: '#B39BFF', dark: '#55
 
 export type Page =
   | { kind: 'think' }
+  | { kind: 'lost-features' }
   | { kind: 'models'; id: string }
   | { kind: 'session'; id: string }
   | { kind: 'archived' }

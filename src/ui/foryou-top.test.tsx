@@ -327,19 +327,17 @@ it('keeps editorial, acknowledgements and progress out of the preview and its un
   expect(host.querySelector('.fyt-dot')?.getAttribute('aria-label')).toBe(tr(BM).forYouUnseen(2))
 })
 
-it('opens Think from the normal header without selecting a feed tab or sending a request', async () => {
+it('keeps experimental Think discovery out of the normal header', async () => {
   render(snap({ rev: 1, unseen: 0 }), <Words />)
   await flush()
-  const button = host.querySelector<HTMLButtonElement>('button[aria-label="Think"]')!
-  expect(button).not.toBeNull()
-  act(() => button.click())
-  expect(pushed).toEqual([{ kind: 'think' }])
+  expect(host.querySelector('button[aria-label="Think"]')).toBeNull()
+  expect(pushed).toEqual([])
   expect(picked).toEqual([])
 })
-it('keeps Think reachable on an installation without the For you service', async () => {
+it('does not add an experimental header control without the For you service', async () => {
   render(snap(), <Words />)
   await flush()
-  act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Think"]')!.click())
-  expect(pushed).toEqual([{ kind: 'think' }])
+  expect(host.querySelector('button[aria-label="Think"]')).toBeNull()
+  expect(pushed).toEqual([])
   expect(net.calls).toBe(0)
 })

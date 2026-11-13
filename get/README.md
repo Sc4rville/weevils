@@ -78,7 +78,7 @@ GET_PORT=4182 GET_BASE=https://get.scarville.tech node get/server.mjs
 | `GET_BASE` | public URL of this service (used in the install command and cloud-init) |
 | `GET_PREVIEW_KEY` | gate everything behind `/?k=<key>` until launch |
 | `GET_REPO` | the repository installs clone (default GitHub) |
-| `GET_BUNDLE` | while the repository is private: a bundle built by `get/make-bundle.sh` (one squashed commit, no history) |
+| `GET_BUNDLE` | while the repository is private: a bundle built by `get/make-bundle.sh` (one squashed commit, no history), kept on `origin/main` by `get/refresh-bundle.sh` (the `weevils-get-bundle` timer, every 2 min) |
 | `GET_HETZNER_API`, `GET_HOSTINGER_API` | the hosts' API bases (tests: `get/host-mock.mjs`) |
 | `GET_ALLOW_TARGETS`, `GET_TARGET_URLS` | tests only: a private SSH target allowed, and the URL its weevils gets (`ip=url`) |
 

@@ -20,6 +20,8 @@ The normal CLI, native bridge and transcript projection preserve the source ID. 
 
 Historical corrections require exact target/message/source/call IDs and verification against the recorded outgoing call. `message-origins.json` in the private data directory stores approved projections with an integrity digest, not a classifier. Raw transcripts are untouched; removing an annotation restores their original projection. No HTTP endpoint accepts arbitrary historical author claims. A same-OS-user client that bypasses Weevils and writes directly to an external daemon remains outside this boundary: migrate that client to canonical delivery rather than pretending its unsigned text proves an author.
 
+Automated work follows the [ordinary project flow contract](automation-software.md#readability-and-ordinary-project-sessions--product-convention): structured origin is attached to the request/run, independently of the actual author, never inferred for the entire session.
+
 ## Verification without personal state
 
 `test/codex-recorded-wrapper.test.tsx` replays a real recorded orchestration call and its structured result through `TranscriptStore`, the serializable API message contract and the normal `Messages` component. It opens the group and the individual step and checks the literal command and result.

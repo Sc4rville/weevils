@@ -68,3 +68,118 @@ Adoption stays disabled after restart following that rollback. No automation is 
 Current scope covers the optimizer objects owned by Auto. External timers/jobs remain observed in place;
 if present they require a separately validated owner/entrypoint mapping before changing their scheduler.
 They are not claimed as migrated by this API's counts. There were zero such objects in the inspected live inventory.
+
+## Readability and ordinary project sessions — product convention
+
+An automation owns versioned software; it does not own the user's conversation. The source repository,
+registry, run record and execution workspace are separate identities from the project session. A TLO
+request belongs in an appropriate ordinary TLO session, reusing an existing compatible session or creating
+an ordinary project session when necessary. A newly needed session appears under that project with a stable
+task title and can receive later direct user requests; it is not permanently categorised as an Auto session. Neither the repository layout nor an automation-only chat or
+file viewer is imposed as the primary interface. Context, requests and results enter the normal project flow.
+
+Origin belongs to each request, not the whole session. A direct user request remains the user's request;
+an automation request is explicitly labelled **Automated**, retaining its actual agent author where relevant.
+Coordination and weevboss briefs keep the attribution rules in `session-contract.md`. Never infer the origin
+from prose, a repository name, session ownership, or the presence of an automation somewhere in its history.
+Show animation only while that request is demonstrably queued or working; an enabled schedule, adopted
+repository, old run or idle session is not current activity. Make automation/run/source links available on
+request. Group related progress and results for human readability while preserving material decisions,
+errors and provenance. Delivery acceptance and an idle agent are not proof of successful completion.
+
+These are the target semantics. The implementation below is an architecture preparation, not a claim that
+ordinary-session routing is deployed. Source adoption alone did not implement this behavior.
+
+## Architecture adjustment from the current runner
+
+Verified baseline: `Optimizers.launch()` creates a provider through `createIn()` in an isolated automation
+worktree, with `guardEnv`, provider restrictions and a sandbox; source adoption wraps that command in the
+pinned software entrypoint. `owns()` includes the current or last session and is used for relay routing.
+`record()` reads the session's last assistant message and cumulative tokens. These assumptions are unsafe
+for attributing work in a shared conversation and must change together, not by relabelling the session.
+
+### Request and run identity
+
+Persist a server-owned envelope before dispatch. Proposed API/storage contract (not yet live):
+
+```ts
+type RequestOrigin =
+  | { kind: 'user-request'; intentId: string }
+  | { kind: 'automation-run'; intentId: string; automationId: string; runId: string }
+
+interface AutomationDispatch {
+  requestId: string              // stable outbox identity across transport retries
+  origin: Extract<RequestOrigin, { kind: 'automation-run' }>
+  projectId: string
+  sessionId: string              // resolved and frozen before acceptance
+  softwareId: string
+  sourceRevision: string
+  configRevision: string        // digest; private configuration never in messages/Git
+  state: 'queued' | 'working' | 'succeeded' | 'failed' | 'cancelled' | 'uncertain'
+  messageId?: string            // confirmed transcript identity
+  turnIds: string[]             // actual turns handling this request, including relay
+}
+```
+
+Keep origin separate from `Message.author` and `sourceThreadId`: the scheduler is authorized to stamp
+`automation-run`, the normal user endpoint stamps `user-request`, and agent coordination retains its actual
+runtime author. The automated incoming request uses the non-user message role; a scheduler dispatch identifies the automation,
+without inventing a human or agent sender. Any relaying agent keeps its actual author alongside that origin.
+Validate the origin against the scheduler-owned dispatch reservation before accepting it; a CLI `from` claim,
+browser input or message text cannot claim automation execution. Legacy messages without
+an origin remain unclassified unless exact recorded sender/run/message evidence supports projection;
+never mark every message in an old Auto session as automated. Raw transcripts remain unchanged.
+
+### Routing, execution and completion
+
+1. Resolve the target project from the accepted automation configuration, independently of its source repo.
+   Within the correct machine/project, prefer a persisted compatible session binding, then an available
+   controllable project session. Freeze the destination with `requestId`; ambiguous or unavailable targets
+   wait with an explicit reason. Create a normal project session only if no suitable session can serve it,
+   under the existing session limit and an idempotent creation reservation. Never fall back silently to boss.
+2. Persist the due occurrence, `runId`, `intentId`, pinned source/configuration revisions and target reservation
+   before any dispatch. Use the durable intent registry to link already accepted equivalent user work;
+   do not execute it again or relabel the user's original message. If that linked user work satisfies the
+   request, record that relationship rather than claiming that an automated run executed. A recurring occurrence is a new run;
+   retries and provider handoff retain the same run/request lineage, with recorded attempt identities.
+3. Acquire a renewable execution reservation for the project/workspace/resources being changed. Distinct
+   sessions can conflict too. Use the ordinary delivery queue without interrupting an active user turn.
+   Yield to direct user work at a safe boundary; do not cancel an in-flight command or GPU job merely to
+   change routing. No duplicate runner is launched while acknowledgement or effects are uncertain.
+4. Preserve existing automation authorization, sandbox, denied operations and output restrictions. Reusing
+   an unrestricted interactive CLI cannot silently grant those extra powers to Auto. Reuse is eligible
+   only when its control adapter can enforce the execution scope and correlate this request's turns; until
+   that capability exists, use a normal project session with the existing restricted runtime or leave the
+   request queued with the capability reason. The source entrypoint evolves into a scoped runner/dispatch
+   adapter; its current unconditional provider-spawn compatibility step is not executed a second time.
+5. Correlate delivery, actual turn starts, commands/background jobs and final result with `requestId/runId`.
+   A transport receipt starts no animation labelled working until execution is observed. A completion
+   applies only to that request and its required jobs; another user answer, the session's last message,
+   cumulative session tokens or a daemon restart cannot complete it. Missing evidence stays uncertain.
+6. Append useful results to the same project flow, linked to the run, and archive only that run's evidence.
+   Expose source/version and command details through existing disclosure patterns. UI may combine related
+   updates, but must keep an actionable failure or material decision visible. Historical completion is
+   static; a later user turn must not inherit an Automated label or animation.
+
+### Adoption and rollout
+
+Keep the existing source repositories, stable automation IDs, schedule definitions, user conversations,
+source/config revision pins and tombstones. Back up/version the scheduler state before adding dispatch
+records. Legacy running jobs finish in their existing directory and retain their real session/job ownership;
+no injection into a second session while they run. Reconcile their final outcome once, then mark the next
+run eligible for project routing. Completed history remains unchanged unless exact evidence permits an
+additive link. Unknown old run origins stay unknown.
+
+Deliver in bounded steps: (1) durable origin/intent/run records and recovery; (2) capability-gated session
+selection, reservation and ordinary outbox dispatch; (3) message/run projection and UI; (4) enable future
+runs after restart/retry evidence passes. Extend `owns`/relay decisions to the active run/turn, not all future
+work in a formerly used session. Disabling the new router affects future dispatch only: preserve accepted
+requests, active reservations/jobs, source repos and outcomes, and drain/reconcile them before changing
+runner mode. Never restore a stale whole-state backup over new user decisions.
+
+Required verification before enabling routing: a real-user request and an automated request in one session
+retain separate origin and completion; busy-session queueing does not interrupt; two automations/direct
+work touching one workspace cannot overlap; response loss/restart/relay cannot duplicate dispatch; deletion
+cancels future/pending work while its active job follows the existing finish policy; source upgrade affects
+only future runs; unresolved legacy provenance is not guessed; reload, EN/FR and theme changes preserve
+IDs, grouping, decisions and activity truth. UI624 owns presentation; scheduler/transport owns these facts.

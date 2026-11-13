@@ -292,6 +292,7 @@ it('ships the same product contract to both agents in a fresh profile without im
   expect(codex).toBe(claude)
   expect(codex).toContain(MachineProse[language].rule)
   expect(codex).toContain(AgentMessages[language].rule)
+  expect(codex).toContain(AgentMessages[language].automation)
   expect(codex).not.toContain('{{machineProse}}')
   expect(codex).toContain(language==='en'?'Shared product contract':'Contrat produit partagé')
   expect(codex).not.toContain('PRIVATE_MEMORY_SENTINEL')

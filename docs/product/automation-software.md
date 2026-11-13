@@ -200,8 +200,8 @@ IDs, grouping, decisions and activity truth. UI624 owns presentation; scheduler/
 
 Identity is not permission. `Project`, `Session` and `Optimizer` expose a separate optional `sourceAccess`
 for the canonical installation source: `{repo, machineId, canExecute, reason}`. Reasons are
-`owned-writable`, `not-owned`, `not-writable` and `unavailable`; absence is unknown, including gitless
-installs. This local launch policy checks effective-user ownership and directory write/search access for
+`owned-writable`, `not-owned`, `not-writable`, `unavailable` and `no-checkout`; absence is unknown.
+This local launch policy checks effective-user ownership and directory write/search access for
 the source, Git common directory and execution directory. It grants neither GitHub publishing rights
 nor a sandbox guarantee about everything an already-running agent could access. No fork is automatic.
 The server rechecks at dispatch, independent of stale UI snapshots. New sessions/messages and Auto
@@ -209,6 +209,15 @@ accept/run are refused when denied; queued Auto work stays queued without a fabr
 time, and can resume when access is restored. Existing active jobs are not stopped. Other repositories
 keep their existing controls. The UI must match the capability's machine/repo to the requested target,
 not disable an entire mixed project merely because one repository is read-only.
+
+`Project.installation` identifies the installation independently: `{id, machineId, source: 'checkout' |
+'artifact'}`. A checkout adds this metadata to its real project. Without Git evidence, the server supplies
+an informational `kind: 'installation'` entry with an installation-scoped ID, product name `weevils`, empty
+`repos`/`where`, zero activity, no `workstream`, and `sourceAccess: {repo: null, machineId, canExecute: false,
+reason: 'no-checkout'}`. It appears before any work, survives daemon restart/locale changes, and grants no
+session target. Consumers can pin it and apply a static installation signature; they must not derive work,
+an animation, a repository, or an execution permission from it. No checkout or fork is created. Other
+projects remain available on an artifact installation; only requests targeting the installation are refused.
 
 `Project`, `Session` and `Optimizer` may expose `workstream` with kind `self-improvement`, a stable
 installation identity, an explicit machine/project/repository target and the evidence type. The server

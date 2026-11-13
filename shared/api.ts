@@ -209,20 +209,28 @@ export interface RelayView {
 
 /** Observed local policy, not GitHub permissions or an agent sandbox. Absent means unknown. */
 export interface SourceAccess {
-  repo: string
+  repo: string | null
   machineId: string
   canExecute: boolean
-  reason: 'owned-writable' | 'not-owned' | 'not-writable' | 'unavailable'
+  reason: 'owned-writable' | 'not-owned' | 'not-writable' | 'unavailable' | 'no-checkout'
+}
+
+/** Installation identity is visible even without source, and never proves work or repository ownership. */
+export interface InstallationInfo {
+  id: string
+  machineId: string
+  source: 'checkout' | 'artifact'
 }
 
 export interface Project {
+  installation?: InstallationInfo
   sourceAccess?: SourceAccess
   /** Target identity only: never use this as an Automated sender or activity/completion signal. */
   workstream?: WorkstreamIdentity
   id: string
   name: string
-  /** 'repo' : famille de repos de ~/projects ; 'invented' : catégorie créée par weevils. */
-  kind: 'repo' | 'invented'
+  /** An installation entry is informational: no source repository or session target is implied. */
+  kind: 'repo' | 'invented' | 'installation'
   repos: string[]
   /** Machine qui porte chaque repo (fichiers, nouvelle session). */
   where: Record<string, string>

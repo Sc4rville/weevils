@@ -43,5 +43,7 @@ it('uses canonical Git identity across renamed installations/worktrees, not proj
 it('fails closed without repository evidence, including a familiar directory name',()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'weevils-'));dirs.push(root)
  expect(new InstallationIdentity(root,'machine').classify(root,'weevils','weevils')).toBeUndefined()
- expect(new InstallationIdentity(root,'machine').access(root)).toBeUndefined()
+ expect(new InstallationIdentity(root,'machine').access(root)).toEqual({repo:null,machineId:'machine',canExecute:false,reason:'no-checkout'})
+ expect(new InstallationIdentity(root,'machine').info()).toMatchObject({source:'artifact',machineId:'machine'})
+ expect(new InstallationIdentity(root,'machine').access(path.dirname(root))).toBeUndefined()
 })

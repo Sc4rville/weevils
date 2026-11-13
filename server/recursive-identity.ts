@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { SourceAccess, WorkstreamIdentity } from '../shared/api.ts'
+import type { InstallationInfo, SourceAccess, WorkstreamIdentity } from '../shared/api.ts'
 
 /** Git identity includes linked worktrees, but not unrelated repositories sharing a name or remote. */
 export function repositoryIdentity(directory:string):string|null {
@@ -24,19 +24,25 @@ export class InstallationIdentity {
   private cache=new Map<string,{at:number;identity:string|null}>()
   readonly installationId:string
   readonly repositoryDirectory:string|null
+  readonly directory:string
   private machineId:string
   constructor(directory:string,machineId:string){
+    try{this.directory=fs.realpathSync(directory)}catch{this.directory=path.resolve(directory)}
     this.machineId=machineId;this.identity=repositoryIdentity(directory)
     const candidate=this.identity&&path.basename(this.identity)==='.git'?path.dirname(this.identity):path.resolve(directory)
     this.repositoryDirectory=this.identity&&repositoryIdentity(candidate)===this.identity?candidate:null
-    this.installationId=crypto.createHash('sha256').update(machineId+'\0'+(this.identity??path.resolve(directory))).digest('hex').slice(0,24)
+    this.installationId=crypto.createHash('sha256').update(machineId+'\0'+(this.identity??this.directory)).digest('hex').slice(0,24)
   }
+  info():InstallationInfo {return {id:this.installationId,machineId:this.machineId,source:this.repositoryDirectory?'checkout':'artifact'}}
   /** Recheck filesystem evidence at dispatch; the identity cache must never cache permission grants. */
   access(directory:string):SourceAccess|undefined {
     const source=this.repositoryDirectory
-    if(!this.identity||!source)return undefined
     let actual:string
     try{actual=fs.realpathSync(directory)}catch{actual=path.resolve(directory)}
+    if(!this.identity||!source){
+      return actual===this.directory||actual.startsWith(this.directory+path.sep)
+        ? {repo:null,machineId:this.machineId,canExecute:false,reason:'no-checkout'} : undefined
+    }
     const withinSource=actual===source||actual.startsWith(source+path.sep)
     const identity=repositoryIdentity(directory)
     if(identity!==this.identity&&!withinSource)return undefined

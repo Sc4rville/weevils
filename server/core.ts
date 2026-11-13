@@ -263,7 +263,7 @@ export class Weevils {
   }
   assertSourceExecution(cwd:string) {
     const access=this.installationIdentity.access(cwd)
-    if(access&&!access.canExecute)throw new OutboxError(403,tr(M).sourceReadOnly)
+    if(access&&!access.canExecute)throw new OutboxError(403,access.reason==='no-checkout'?tr(M).installationReadOnly:tr(M).sourceReadOnly)
   }
   assertRepoExecution(repo:string) { this.assertSourceExecution(this.repoDir(repo)) }
   store = new TranscriptStore(CLAUDE_DIR, CODEX_DIR, RECENT_MS)
@@ -1003,9 +1003,16 @@ export class Weevils {
       const identity=this.workstreamForRepo(repo)
       if(!identity)continue
       const id=identity.target.projectId
-      const p=map.get(id)??{id,name:projectLabel(id),kind:'repo' as const,repos:[],where:{},lastActivityAt:0}
+      const p:Project=map.get(id)??{id,name:projectLabel(id),kind:'repo',repos:[],where:{},lastActivityAt:0}
       if(!p.repos.includes(repo))p.repos.push(repo)
+      p.installation=this.installationIdentity.info()
       p.where[repo]=MACHINE.id;p.workstream={...identity,evidence:'repository-identity'};p.sourceAccess=this.sourceAccessForRepo(repo);map.set(id,p)
+    }
+    if(!this.installationIdentity.repositoryDirectory){
+      const installation=this.installationIdentity.info(),id=`installation:${installation.id}`
+      map.set(id,{id,name:'weevils',kind:'installation',installation,
+        sourceAccess:this.installationIdentity.access(this.installationIdentity.directory),
+        repos:[],where:{},lastActivityAt:0})
     }
     return [...map.values()]
   }
@@ -1024,14 +1031,15 @@ export class Weevils {
         if (!cur.repos.includes(r)) cur.repos.push(r)
         cur.where[r] ??= p.where[r]
       }
-      if(!cur.workstream){cur.workstream=p.workstream;cur.sourceAccess=p.sourceAccess}
+      if(!cur.workstream){cur.workstream=p.workstream;cur.sourceAccess=p.sourceAccess;cur.installation??=p.installation}
       cur.lastActivityAt = Math.max(cur.lastActivityAt, p.lastActivityAt)
       if (p.kind === 'repo') cur.kind = 'repo'
     }
     const merged = [...map.values()]
     merged.push(...this.pinnedProjects(merged))
     // Les projets d'abord, les catégories inventées ensuite ; chacun par activité récente.
-    return merged.sort((a, b) => (a.kind === b.kind ? b.lastActivityAt - a.lastActivityAt : a.kind === 'repo' ? -1 : 1))
+    const rank={repo:0,installation:1,invented:2}
+    return merged.sort((a, b) => rank[a.kind]-rank[b.kind] || b.lastActivityAt-a.lastActivityAt)
   }
 
   snapshot(): Snapshot {
@@ -1524,6 +1532,7 @@ export class Weevils {
     const author = normalizeFrom(input.from)
     if (author && input.text) input = { ...input, text: signAs(author, input.text, input.sourceThreadId) }
     const project = this.snapshot().projects.find((p) => p.id === input.projectId)
+    if(project?.kind==='installation')throw new OutboxError(403,tr(M).installationReadOnly)
     const repoGuess = input.repo ?? project?.repos[0]
     const machineId = input.machineId ?? (repoGuess ? project?.where[repoGuess] : undefined)
     const remote = this.remoteById(machineId)
@@ -2315,7 +2324,10 @@ export class Weevils {
     if(own)out.add(path.basename(own))
     for (const root of PROJECT_ROOTS.flatMap(root=>[root,...(automationSourceRoot(root)?[automationSourceRoot(root)!]:[])])) {
       try {
-        for (const e of fs.readdirSync(root, { withFileTypes: true })) if (e.isDirectory() && !e.name.startsWith('.')) out.add(e.name)
+        for (const e of fs.readdirSync(root, { withFileTypes: true })) if (e.isDirectory() && !e.name.startsWith('.')) {
+          if(!own&&fs.realpathSync(path.join(root,e.name))===this.installationIdentity.directory)continue
+          out.add(e.name)
+        }
       } catch {
         /* racine absente */
       }

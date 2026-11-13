@@ -214,56 +214,69 @@ export function warmCues(voice: string | undefined, l: Lang = lang()) {
 
 // ---------------------------------------------------------------- enregistrement envoyé en morceaux
 
-// Chaque morceau est aussi écrit sur disque (voice-archive/partial/<id>) dès qu'il arrive : un redémarrage de weevilsd
-// en pleine dictée ne perd rien, la fin la reprend. Un enregistrement n'est oublié qu'après 30 min SANS nouveau morceau
-// (avant le 2026-11-10 : 10 min après son début, ce qui effaçait une dictée de plus de 10 min pendant qu'on parlait).
-const uploads = new Map<string, { type: string; parts: Buffer[]; at: number }>()
-const IDLE_MS = 30 * 60_000
+// Persist upload identity and result. Retrying a lost HTTP response must not create a second provider job.
+const finishing = new Map<string, Promise<string>>()
 const partialDir = (id: string) => path.join(ARCHIVE_DIR, 'partial', id)
-
+const validUpload = (id:string) => /^[\w-]{6,64}$/.test(id)
+const receiptFile = (id:string) => path.join(partialDir(id),'receipt.json')
+function receipt(id:string):{state:'pending'|'done';text?:string}|null {
+  try { return JSON.parse(fs.readFileSync(receiptFile(id),'utf8')) }
+  catch(e) { if((e as NodeJS.ErrnoException).code==='ENOENT')return null;throw new Error(tr(V).transcriptionUncertain) }
+}
+function writeReceipt(id:string,value:{state:'pending'|'done';text?:string}) {
+  const file=receiptFile(id),tmp=file+'.tmp'
+  const fd=fs.openSync(tmp,'w',0o600)
+  try{fs.writeFileSync(fd,JSON.stringify(value));fs.fsyncSync(fd)}finally{fs.closeSync(fd)}
+  fs.renameSync(tmp,file)
+}
 export function addChunk(id: string, seq: number, type: string, data: string) {
-  if (!/^[\w-]{6,64}$/.test(id) || !Number.isInteger(seq) || seq < 0 || seq > 1_000_000) throw new Error(tr(V).badRecording)
-  for (const [k, v] of uploads) if (k !== id && Date.now() - v.at > IDLE_MS) uploads.delete(k)
-  const u = uploads.get(id) ?? { type, parts: [], at: Date.now() }
-  u.at = Date.now()
-  u.parts[seq] = Buffer.from(data, 'base64')
-  uploads.set(id, u)
-  const dir = partialDir(id)
-  fs.mkdirSync(dir, { recursive: true })
-  if (seq === 0) fs.writeFileSync(path.join(dir, 'type'), type)
-  fs.writeFileSync(path.join(dir, String(seq).padStart(7, '0')), u.parts[seq])
+  if (!validUpload(id) || !Number.isInteger(seq) || seq < 0 || seq > 1_000_000) throw new Error(tr(V).badRecording)
+  const dir=partialDir(id),file=path.join(dir,String(seq).padStart(7,'0')),bytes=Buffer.from(data,'base64')
+  // An identical retry is safe even after finish; changed payload under one identity is never accepted.
+  if(fs.existsSync(file)){
+    if(!fs.readFileSync(file).equals(bytes))throw new Error(tr(V).badRecording)
+    return
+  }
+  if(receipt(id))throw new Error(tr(V).badRecording)
+  fs.mkdirSync(dir,{recursive:true,mode:0o700})
+  if(seq===0)fs.writeFileSync(path.join(dir,'type'),type,{mode:0o600})
+  const fd=fs.openSync(file,'wx',0o600)
+  try{fs.writeFileSync(fd,bytes);fs.fsyncSync(fd)}finally{fs.closeSync(fd)}
 }
 
-/** Les morceaux d'un enregistrement : en mémoire, sinon relus sur disque (weevilsd a redémarré pendant la dictée). */
-function partsOf(id: string): { type: string; audio: Buffer } | null {
-  const u = uploads.get(id)
-  if (u) return { type: u.type, audio: Buffer.concat(u.parts.filter(Boolean)) }
-  const dir = partialDir(id)
-  try {
-    const files = fs.readdirSync(dir).filter((f) => /^\d+$/.test(f)).sort()
-    if (!files.length) return null
-    const type = fs.existsSync(path.join(dir, 'type')) ? fs.readFileSync(path.join(dir, 'type'), 'utf8') : 'audio/mp4'
-    return { type, audio: Buffer.concat(files.map((f) => fs.readFileSync(path.join(dir, f)))) }
-  } catch {
-    return null
-  }
+/** Disk is authoritative, including chunks received before a process restart. */
+function partsOf(id:string,expectedChunks?:number):{type:string;audio:Buffer}|null {
+  const dir=partialDir(id)
+  if(!fs.existsSync(dir))return null
+  const files=fs.readdirSync(dir).filter(f=>/^\d+$/.test(f)).sort()
+  if(!files.length)return null
+  if(files.some((f,i)=>Number(f)!==i)||(expectedChunks!==undefined&&files.length!==expectedChunks))throw new Error(tr(V).missingChunks)
+  const type=fs.readFileSync(path.join(dir,'type'),'utf8')
+  return {type,audio:Buffer.concat(files.map(f=>fs.readFileSync(path.join(dir,f))))}
 }
 
-export async function finishUpload(id: string, l?: unknown): Promise<string> {
-  if (!/^[\w-]{6,64}$/.test(id)) throw new Error(tr(V).badRecording)
-  const got = partsOf(id)
-  if (!got) throw new Error(tr(V).recordingNotFound)
-  const t0 = Date.now()
-  let text: string
-  try {
-    text = await transcribe(got.audio, got.type, l)
-  } finally {
-    // transcribe() a gardé l'audio entier dans l'archive avant tout : les morceaux peuvent partir, même sur un échec.
-    uploads.delete(id)
-    fs.rmSync(partialDir(id), { recursive: true, force: true })
+export async function finishUpload(id:string,l?:unknown,expectedChunks?:number):Promise<string> {
+  if(!validUpload(id)||(expectedChunks!==undefined&&(!Number.isInteger(expectedChunks)||expectedChunks<1)))throw new Error(tr(V).badRecording)
+  if(expectedChunks!==undefined&&!partsOf(id,expectedChunks))throw new Error(tr(V).recordingNotFound)
+  const active=finishing.get(id)
+  if(active)return active
+  const saved=receipt(id)
+  if(saved){
+    if(saved.state==='done'&&typeof saved.text==='string')return saved.text
+    // A prior process may have submitted work. Never silently duplicate an unknown provider outcome.
+    throw new Error(tr(V).transcriptionUncertain)
   }
-  log(`transcription ${Date.now() - t0} ms (${Math.round(got.audio.length / 1024)} Ko déjà reçus pendant la parole)`)
-  return text
+  const got=partsOf(id,expectedChunks)
+  if(!got)throw new Error(tr(V).recordingNotFound)
+  writeReceipt(id,{state:'pending'})
+  const job=Promise.resolve().then(async()=>{
+    const t0=Date.now(),text=await transcribe(got.audio,got.type,l)
+    writeReceipt(id,{state:'done',text})
+    log(`transcription ${Date.now()-t0} ms (${Math.round(got.audio.length/1024)} Ko déjà reçus pendant la parole)`)
+    return text
+  })
+  finishing.set(id,job)
+  try{return await job}finally{finishing.delete(id)}
 }
 
 // ---------------------------------------------------------------- mesures du téléphone

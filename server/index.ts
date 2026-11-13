@@ -551,7 +551,7 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ['POST', /^\/api\/voice\/finish$/, async (req, res) => {
     const b = await readBody(req)
-    json(res, 200, { text: await finishUpload(String(b.id), b.lang) })
+    json(res, 200, { text: await finishUpload(String(b.id), b.lang, b.expectedChunks) })
   }],
   ['POST', /^\/api\/voice\/marks$/, async (req, res) => {
     logMarks((await readBody(req)) as Record<string, number>)

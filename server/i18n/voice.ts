@@ -19,6 +19,8 @@ export default defineMessages({
     badRecording: 'enregistrement invalide',
     recordingNotFound: 'enregistrement introuvable',
     missingAudio: 'audio manquant',
+    missingChunks: 'enregistrement incomplet : les morceaux reçus sont conservés',
+    transcriptionUncertain: 'résultat de transcription non confirmé : audio conservé, vérification nécessaire avant une nouvelle transcription',
     transcriptionOff: 'la dictée n’est pas encore branchée : demande à weevboss de la brancher',
     transcriptionError: (status: number) => `transcription : erreur ${status}`,
     incomplete: (minutes: number, words: number, file: string) =>
@@ -39,6 +41,8 @@ export default defineMessages({
     badRecording: 'invalid recording',
     recordingNotFound: 'recording not found',
     missingAudio: 'no audio',
+    missingChunks: 'recording incomplete: received chunks are retained',
+    transcriptionUncertain: 'transcription outcome unconfirmed: audio retained, check the result before transcribing again',
     transcriptionOff: 'dictation isn’t plugged in yet: ask weevboss to plug it in',
     transcriptionError: (status: number) => `transcription: error ${status}`,
     incomplete: (minutes: number, words: number, file: string) =>

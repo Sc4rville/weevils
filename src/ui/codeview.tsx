@@ -1,3 +1,4 @@
+import { MarkdownEditor } from './markdown-editor'
 import { noticeKey } from '../../shared/notices.ts'
 import { Notice } from './notice'
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -68,9 +69,10 @@ const CodeLine = memo(function CodeLine({ n, text, s, e, whole, flash }: { n: nu
   )
 })
 
-export function CodeFile({ projectId, repo, path, machine, line, file, err, kicker }: { projectId: string; repo: string; path: string; machine: string; line?: number; file: FileContent | null; err: string | null; kicker?: string }) {
+export function CodeFile({ projectId, repo, path, machine, line, file, err, kicker, onSaved }: { projectId: string; repo: string; path: string; machine: string; line?: number; file: FileContent | null; err: string | null; kicker?: string; onSaved?: (file: FileContent) => void }) {
   const { colors, push } = useApp()
   const t = useT(M)
+  const [editing, setEditing] = useState(false)
   const prose = /\.(md|markdown|txt)$/i.test(path)
   const lines = useMemo(() => (file && !file.binary ? file.content.replace(/\n$/, '').split('\n') : []), [file])
   const box = useRef<HTMLDivElement>(null)
@@ -204,7 +206,7 @@ export function CodeFile({ projectId, repo, path, machine, line, file, err, kick
       el.removeEventListener('pointerup', up)
       el.removeEventListener('pointercancel', cancel)
     }
-  }, [lines])
+  }, [lines, editing])
 
   // ---- Arrivée depuis « où c'est utilisé » : la ligne visée, au centre, un éclair de couleur. À l'ouverture la page
   // arrive déjà sur la ligne (sans défilement) ; dans le même fichier, un glissé doux montre dans quel sens on va.
@@ -238,7 +240,7 @@ export function CodeFile({ projectId, repo, path, machine, line, file, err, kick
       kicker={kicker ?? `${repo}/${path.split('/').slice(0, -1).join('/')}`}
       title={path.split('/').pop()}
       meta={file ? `${t.size(file.size)}${file.truncated ? t.truncated : ''}` : t.reading}
-      dock={file && !file.binary ? <AskVoice a={a} /> : undefined}
+      dock={file && !file.binary && !editing ? <AskVoice a={a} /> : undefined}
     >
       {err && (
         <Notice eventId={noticeKey('error:codeview', location.pathname, location.hash, err)} className="band invert" role="alert">
@@ -247,8 +249,9 @@ export function CodeFile({ projectId, repo, path, machine, line, file, err, kick
           </div>
         </Notice>
       )}
+      {file?.editable && file.revision && onSaved && <MarkdownEditor key={`${machine}:${repo}:${path}`} file={file} machine={machine} repo={repo} path={path} onSaved={onSaved} onEditing={setEditing} />}
       {file?.binary && <div className="in meta empty">{t.binary}</div>}
-      {file && !file.binary && (
+      {file && !file.binary && !editing && (
         <div ref={box} className={`in code lines ${prose ? '' : 'mono'}`} style={{ ['--gw' as string]: `${String(lines.length).length}ch` }}>
           {lines.map((text, i) => {
             const r = lineRange(sel, i, text.length)

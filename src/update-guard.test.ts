@@ -40,3 +40,10 @@ it('protects microphone permission and a recoverable recording error',()=>{
  voice.dataset.voiceBusy='false'
  expect(updateIsBusy()).toBe(false)
 })
+
+it('keeps Markdown drafts and pending file saves safe from automatic updates',()=>{
+ const editor=document.createElement('section');editor.className='markdown-editor';document.body.append(editor)
+ editor.dataset.draft='true';expect(updateIsBusy()).toBe(true)
+ delete editor.dataset.draft;editor.setAttribute('aria-busy','true');expect(updateIsBusy()).toBe(true)
+ editor.removeAttribute('aria-busy');expect(updateIsBusy()).toBe(false)
+})

@@ -382,12 +382,6 @@ function SessionPage({ id }: { id: string }) {
 // ---------------------------------------------------------------------------
 // Explorateur de fichiers : un dossier par page, la liste du repo est gardée en cache.
 
-const fileContents = new Map<string, Promise<FileContent>>()
-const readFile = (repo: string, path: string, machine: string) => {
-  const k = `${machine}:${repo}\u0000${path}`
-  if (!fileContents.has(k)) fileContents.set(k, api.file(repo, path, machine).catch((e) => (fileContents.delete(k), Promise.reject(e))))
-  return fileContents.get(k)!
-}
 /** Préchargement discret (à l'ouverture d'une bande) : l'explorateur s'ouvre ensuite sans attente. */
 export const prefetchRepo = (repo: string, machine: string) => void listFiles(repo, machine).catch(() => undefined)
 
@@ -470,18 +464,23 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
 function FilePage({ projectId, repo, path, line }: { projectId: string; repo: string; path: string; line?: number }) {
   const { snap } = useApp()
   const machine = snap.projects.find((p) => p.id === projectId)?.where[repo] ?? snap.machines[0]?.id ?? ''
+  const identity = `${machine}:${repo}:${path}`
+  const currentIdentity = useRef(identity)
+  currentIdentity.current = identity
   const [file, setFile] = useState<FileContent | null>(null)
   const [err, setErr] = useState<string | null>(null)
   useEffect(() => {
     let off = false
-    readFile(repo, path, machine)
+    setFile(null)
+    setErr(null)
+    api.file(repo, path, machine)
       .then((f) => !off && setFile(f))
       .catch((e) => !off && setErr((e as Error).message))
     return () => {
       off = true
     }
   }, [repo, path, machine])
-  return <CodeFile projectId={projectId} repo={repo} path={path} machine={machine} line={line} file={file} err={err} />
+  return <CodeFile key={`${machine}:${repo}:${path}`} projectId={projectId} repo={repo} path={path} machine={machine} line={line} file={file} err={err} onSaved={saved => { if (currentIdentity.current === identity) setFile(saved) }} />
 }
 
 // ---------------------------------------------------------------------------

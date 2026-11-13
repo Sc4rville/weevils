@@ -52,6 +52,8 @@ const enc = encodeURIComponent
 const inLang = () => `?lang=${getLang()}`
 
 export interface FileContent {
+  revision?: string
+  editable?: boolean
   path: string
   size: number
   binary: boolean
@@ -198,6 +200,7 @@ export const api = {
   usage: () => call<UsageInfo>('GET', '/api/usage'),
   usageToday: () => call<UsageToday>('GET', '/api/usage/today'),
   usageRate: () => call<TokenRate>('GET', '/api/usage/rate'),
+  saveFile: (repo: string, path: string, machine: string, content: string, revision: string) => call<FileContent>('PUT', `/api/repos/${enc(repo)}/file?path=${enc(path)}&machine=${enc(machine)}`, { content, revision }),
   file: (repo: string, path: string, machine: string) => call<FileContent>('GET', `/api/repos/${enc(repo)}/file?path=${enc(path)}&machine=${enc(machine)}`),
   softwares: () => call<SoftwareList>('GET', '/api/softwares'),
   software: (id: string) => call<Software>('GET', `/api/softwares/${enc(id)}`),

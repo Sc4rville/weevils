@@ -1,3 +1,4 @@
+import { readMarkdown, saveMarkdown, MarkdownFileError } from './markdown-files.ts'
 import { proposeThinkLayout } from './think-ai.ts'
 import { ThinkStore } from './think.ts'
 import { previewTarget } from './preview-target.ts'
@@ -660,7 +661,24 @@ const routes: [string, RegExp, Handler][] = [
   ['GET', /^\/api\/repos\/([^/]+)\/file$/, async (_req, res, url, [repo]) => {
     const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
     const p = url.searchParams.get('path') ?? ''
-    json(res, 200, remote ? await remote.call('GET', `/api/repos/${repo}/file?path=${encodeURIComponent(p)}`) : await w.file(decodeURIComponent(repo), p))
+    if (remote) return json(res, 200, await remote.call('GET', `/api/repos/${repo}/file?path=${encodeURIComponent(p)}`))
+    if (/\.(md|markdown)$/i.test(p)) {
+      try { return json(res, 200, readMarkdown(w.repoDir(decodeURIComponent(repo)), p)) } catch { /* Non-editable files retain their existing reader. */ }
+    }
+    json(res, 200, await w.file(decodeURIComponent(repo), p))
+  }],
+  ['PUT', /^\/api\/repos\/([^/]+)\/file$/, async (req, res, url, [repo]) => {
+    const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
+    const p = url.searchParams.get('path') ?? ''
+    const body = await readBody(req)
+    try {
+      const file = remote ? await remote.call('PUT', `/api/repos/${repo}/file?path=${encodeURIComponent(p)}`, body)
+        : saveMarkdown(w.repoDir(decodeURIComponent(repo)), p, body.content, body.revision)
+      json(res, 200, file)
+    } catch (e) {
+      if (e instanceof MarkdownFileError) return json(res, e.status, { error: e.message })
+      throw e
+    }
   }],
   ['GET', /^\/api\/repos\/([^/]+)\/grep$/, async (_req, res, url, [repo]) => json(res, 200, { hits: await grepRepo(w, decodeURIComponent(repo), url.searchParams.get('q') ?? '') })],
   // Vue d'un fichier : explique, où c'est utilisé, demande (haiku, avec le contexte de la page).

@@ -120,6 +120,10 @@ it('retains a five-minute recording after a failed finish and retries the same I
  const retry=[...host.querySelectorAll('button')].find(b=>b.textContent==='retry transcription')!
  await act(async()=>{retry.click();await vi.waitFor(()=>expect(api.voiceFinish).toHaveBeenCalledTimes(2))})
  expect(api.voiceFinish.mock.calls[1]).toEqual(first)
+ expect(rows.get(first[0]).type).toBe('audio/mp4')
+ expect(api.voiceChunk).toHaveBeenCalledTimes(40)
+ // Recovered blobs may have no MIME of their own: use the original recording metadata.
+ expect(api.voiceChunk.mock.calls.every(([id, , type])=>id===first[0] && type==='audio/mp4')).toBe(true)
  expect(onText).toHaveBeenCalledExactlyOnceWith('Recovered words')
  expect(onSend).not.toHaveBeenCalled()
  expect(rows.get(first[0]).text).toBe('Recovered words')

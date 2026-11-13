@@ -851,7 +851,7 @@ detect() {
 HANDOFF=$HOME/.local/share/weevils/install.json
 write_handoff() { # write_handoff url mode
   local by=script agent='' at tmp phone=false
-  if [ "$AGENT" = 1 ]; then by=agent agent=$AGENT_NAME; elif [ "$TTY" = 1 ] || [ -t 1 ]; then by=terminal; fi
+  if [ "$AGENT" = 1 ] && [ -n "$AGENT_NAME" ]; then by=agent agent=$AGENT_NAME; elif [ "$TTY" = 1 ] || [ -t 1 ]; then by=terminal; fi
   [ "$2" = local ] || phone=true
   at=$(date +%s%3N); [[ "$at" =~ ^[0-9]+$ ]] || at=$(($(date +%s) * 1000))
   mkdir -p "$(dirname "$HANDOFF")"

@@ -12,7 +12,7 @@ import { Writable } from 'node:stream'
 import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_FAILED_RUNS, MAX_RUN_MS, MAX_RUNS, MAX_TALK, MAX_TRIES, MAX_WAITING, REFILL_GAP_MS, optimizerRoutes, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, TALK_BACKOFF_MS, TALK_CHARS, VANISH_MS, Optimizers, agreedDigest, freeReason, guardEnv, isRepeat, jailArgs, isStall, parsePatch, parseProposals, parseSuggestions, runLimit, slug, stallKind, tidy, type Sys } from './optimizers.ts'
 
 // Hermetic: no claude CLI, no login check, the language fixed in memory.
-vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn(), relay: vi.fn() }))
+vi.mock('./fast.ts', async (orig) => { const smart = vi.fn(); return { ...(await orig<typeof import('./fast.ts')>()), smart, claudeHaiku: (...a: any[]) => smart(...a), claudeAvailable: () => true, relay: vi.fn() } })
 vi.mock('./setup.ts', () => ({ claudeLogged: vi.fn(() => true) }))
 vi.mock('./i18n.ts', async (orig) => {
   const real = await orig<typeof import('./i18n.ts')>()

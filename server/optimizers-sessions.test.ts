@@ -19,7 +19,7 @@ const mux = vi.hoisted(() => ({
 }))
 vi.mock('./mux.ts', async (orig) => ({ ...(await orig<typeof import('./mux.ts')>()), ...mux }))
 vi.mock('./voicepipe.ts', () => ({ keepWarm() {}, warmCues() {} }))
-vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn(), setCartesiaVoice() {} }))
+vi.mock('./fast.ts', async (orig) => { const smart = vi.fn(); return { ...(await orig<typeof import('./fast.ts')>()), smart, claudeHaiku: (...a: any[]) => smart(...a), claudeAvailable: () => true, setCartesiaVoice() {} } })
 vi.mock('./titles.ts', async (orig) => ({ ...(await orig<typeof import('./titles.ts')>()), llmTitles: async () => [] }))
 
 const { Weevils } = await import('./core.ts')

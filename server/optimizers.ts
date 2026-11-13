@@ -38,7 +38,7 @@ import { RunArchive, blobPath, extractLinks, gitFiles, headOf, mtimeFiles, IMAGE
 import { fmtLocal, nextRun, nextStart, parseEvery, parseLocal, parseWindow, serverTz, validTz, windowText, MAX_AHEAD_MS, type Window } from './auto-time.ts'
 import { DATA_DIR, MACHINE, PROJECT_ROOTS, PROJECTS_DIR } from './config.ts'
 import type { Weevils } from './core.ts'
-import { parseJson, smart, relay as relayAnswer } from './fast.ts'
+import { claudeAvailable, claudeHaiku, parseJson, smart, relay as relayAnswer } from './fast.ts'
 import { lang, tr, user, withLang, type Lang } from './i18n.ts'
 import O from './i18n/optimizers.ts'
 import type { Memory } from './memory.ts'
@@ -1665,7 +1665,7 @@ export class Optimizers {
   /** A round is due: first one a few minutes after start, then every 6 h, sooner after a memory change (2 min after
    *  it settles when the last round proposed nothing, else 30 min after the last round at least). */
   roundDue(now = Date.now()): boolean {
-    if (this.rounding || now < this.s.failUntil || this.waiting() >= MAX_WAITING || !this.sys.logged()) return false
+    if (this.rounding || now < this.s.failUntil || this.waiting() >= MAX_WAITING || !this.sys.logged() || !claudeAvailable()) return false
     if (!this.s.lastRoundAt) return now - this.bootAt >= FIRST_ROUND_MS
     const since = now - this.s.lastRoundAt
     if (since >= ROUND_EVERY_MS) return true
@@ -1714,7 +1714,7 @@ export class Optimizers {
     this.rounding = (async () => {
       const max = MAX_WAITING - this.waiting()
       try {
-        const raw = parseJson<unknown>(await smart(this.proposalPrompt(max), 180_000))
+        const raw = parseJson<unknown>(await claudeHaiku(this.proposalPrompt(max), 180_000))
         // i18n-ignore : raison de l'échec, seulement dans le journal
         if (raw === null) throw new Error('no JSON')
         const props = parseProposals(raw, this.w.allRepos(), this.s.items, max)

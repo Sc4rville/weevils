@@ -33,6 +33,20 @@ const modelText = (stdout: string, schema?: object): string => {
   return result?.structured_output ? JSON.stringify(result.structured_output) : stdout.trim()
 }
 
+/** True when Claude itself would run now (logged in, no limit episode, no relay to Codex). */
+export function claudeAvailable(): boolean {
+  try { return availableTool('claude') === 'claude' && providerStatus('claude').logged } catch { return false }
+}
+
+/**
+ * Background writing that must never spend Codex (the weevil's questions, the automation proposals): Claude Haiku
+ * on the subscription, only while Claude is available. Otherwise it fails at once and the caller keeps what it has.
+ */
+export function claudeHaiku(prompt: string, timeout = 120_000, schema?: object): Promise<string> {
+  if (!claudeAvailable()) return Promise.reject(new Error(providerUnavailable('claude')))
+  return runHaiku(prompt, timeout, schema)
+}
+
 /** Une réponse courte de haiku : sans outils, sans session gardée. ~1,6 s mesuré sur le VPS. */
 export function haiku(prompt: string, timeout = 20_000, schema?: object): Promise<string> {
   if (availableTool() === 'codex') {
@@ -40,6 +54,9 @@ export function haiku(prompt: string, timeout = 20_000, schema?: object): Promis
     if (!status.installed || !status.logged) return Promise.reject(new Error(providerUnavailable('codex')))
     return relay(prompt, timeout, schema)
   }
+  return runHaiku(prompt, timeout, schema)
+}
+function runHaiku(prompt: string, timeout: number, schema?: object): Promise<string> {
   const t0 = Date.now()
   return new Promise((resolve, reject) => {
     const c = execFile('claude', ['-p', '--model', 'haiku', '--tools', '', '--no-session-persistence', ...(schema ? ['--json-schema', JSON.stringify(schema), '--output-format', 'json'] : []), prompt], { timeout, maxBuffer: 1 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {

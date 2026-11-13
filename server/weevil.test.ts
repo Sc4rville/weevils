@@ -9,7 +9,7 @@ import { Memory } from './memory.ts'
 import { BACKOFF_MS, Flyers, MAX_AGE_MS, MAX_FOLLOWUPS, MAX_MISSES, angleFor, angleTurn, answers, followups, isRepeat, readHistory, tidyQuestion } from './weevil.ts'
 
 // Hermetic: no claude CLI, no login check, the language switched in memory only.
-vi.mock('./fast.ts', async (orig) => ({ ...(await orig<typeof import('./fast.ts')>()), smart: vi.fn() }))
+vi.mock('./fast.ts', async (orig) => { const smart = vi.fn(); return { ...(await orig<typeof import('./fast.ts')>()), smart, claudeHaiku: (...a: any[]) => smart(...a), claudeAvailable: () => true } })
 vi.mock('./setup.ts', () => ({ claudeLogged: vi.fn(() => true) }))
 let lang: 'en' | 'fr' = 'en'
 vi.mock('./i18n.ts', async (orig) => {

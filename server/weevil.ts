@@ -11,7 +11,7 @@ import type http from 'node:http'
 import type { MemoryItem, WeevilQuestion, WeevilReply } from '../shared/api.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import type { Weevils } from './core.ts'
-import { parseJson, smart } from './fast.ts'
+import { claudeAvailable, claudeHaiku, parseJson, smart } from './fast.ts'
 import { lang, onLangChange, tr, user, withLang, type Lang } from './i18n.ts'
 import W from './i18n/weevil.ts'
 import { looksSecret, redact, type Asked, type Memory } from './memory.ts'
@@ -170,7 +170,7 @@ export class Flyers {
   /** Writes a question ahead if none is ready (one at a time, never during a backoff). */
   prepare(): Promise<void> {
     if (this.writing) return this.writing
-    if (!this.can() || Date.now() < this.failUntil || this.ready()) return Promise.resolve()
+    if (!this.can() || !claudeAvailable() || Date.now() < this.failUntil || this.ready()) return Promise.resolve()
     this.writing = this.write().finally(() => (this.writing = null))
     return this.writing
   }
@@ -207,7 +207,7 @@ export class Flyers {
     let text: string | null = null
     let why = ''
     try {
-      text = tidyQuestion(parseJson<{ question?: unknown }>(await smart(this.questionPrompt()))?.question)
+      text = tidyQuestion(parseJson<{ question?: unknown }>(await claudeHaiku(this.questionPrompt()))?.question)
       if (text && isRepeat(text, this.memory.asked())) {
         why = `repeat (${text})`
         text = null
@@ -234,6 +234,22 @@ export class Flyers {
     const q = this.ready()
     if (q) return { id: q.id, text: q.text }
     void this.prepare()
+    // Nothing fresh (Claude unavailable, still writing, backoff): the latest question written, never an empty panel.
+    const last = this.lastWritten()
+    return last ? { id: last.id, text: last.text } : null
+  }
+
+  /** The newest unanswered question in the current language, whatever its age or flights. */
+  lastWritten(): Asked | null {
+    const l = lang()
+    const list = this.memory.asked()
+    for (let i = list.length - 1; i >= 0; i--) {
+      const q = list[i]
+      if (q.state === 'answered') continue
+      const ql = detectLang(q.text)
+      if (ql && ql !== l) continue
+      return q
+    }
     return null
   }
 

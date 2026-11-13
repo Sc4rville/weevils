@@ -4,7 +4,8 @@
 #
 # What it does, on your machine:
 #   1. As root (a fresh VPS): installs for a regular user with sudo (yours, or a new "weevils" user), never as root.
-#      On a Mac: as yourself; Homebrew is installed first when it is missing (your password, asked once here).
+#      On a Mac: as yourself; on Apple Silicon, Homebrew is installed first when it is missing (your password,
+#      asked once here). Homebrew no longer installs on Intel Macs: there, the tools must already be on the Mac.
 #   2. Gets weevils into ~/weevils and runs ./install.sh --agent (everything else is that installer's job).
 #   3. A computer at home: opens an HTTPS link to it (Cloudflare quick tunnel), so your phone can reach it. The link
 #      is kept up by a systemd user unit (Linux) or a launchd agent (a Mac), both named weevils-link.
@@ -89,6 +90,8 @@ _weevils_get() {
   local ask=0
   [ "$MODE" != pc ] || ask=1
   [ "$OS" != Darwin ] || ! brew_bin >/dev/null || ask=0
+  # An Intel Mac: Homebrew's installer no longer runs there, so there is nothing a password would be used for.
+  [ "$OS" != Darwin ] || [ "$(uname -m)" = arm64 ] || ask=0
   if [ "$ask" = 1 ] && ! sudo -n true 2>/dev/null && command -v sudo >/dev/null && { : </dev/tty; } 2>/dev/null; then
     say "weevils needs your password once, to install its tools:"
     sudo -v </dev/tty || true
@@ -101,7 +104,9 @@ _weevils_get() {
     # Homebrew goes in here, before the code, rather than in the installer (which would install it with this same
     # command): its installer also brings Apple's Command Line Tools, without a dialog, and git needs them to clone.
     # One order for every Mac, and the installer then needs no password at all.
-    if ! brew_bin >/dev/null; then
+    # (Apple Silicon only: Homebrew's installer refuses Intel Macs. There, weevils' installer goes on with the tools
+    # the Mac already has, or says which ones are missing.)
+    if ! brew_bin >/dev/null && [ "$(uname -m)" = arm64 ]; then
       sudo -n true 2>/dev/null || fail "Homebrew is missing, and installing it needs the password of an administrator of this Mac: start again and type it when the terminal asks."
       say "installing Homebrew and Apple's developer tools (this can take several minutes)"
       event step s_system
@@ -113,8 +118,11 @@ _weevils_get() {
     fi
     brew_path || true
     # Homebrew without the Command Line Tools (a macOS upgrade removes them): git from Homebrew.
-    git_ok || brew_install git >>"$log" 2>&1 || true
-    git_ok || fail "could not install git (see ~/weevils-install.log)"
+    git_ok || ! brew_bin >/dev/null || brew_install git >>"$log" 2>&1 || true
+    if ! git_ok; then
+      [ "$(uname -m)" = arm64 ] || fail "git is missing on this Intel Mac, and Homebrew no longer installs there: install Apple's developer tools (xcode-select --install), then start again."
+      fail "could not install git (see ~/weevils-install.log)"
+    fi
   elif ! command -v git >/dev/null; then
     sudo -n true 2>/dev/null || fail "git is missing and installing it needs sudo without a password"
     if command -v apt-get >/dev/null; then sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git >/dev/null 2>&1 || { sudo -n apt-get update -qq >/dev/null 2>&1; sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git >/dev/null 2>&1; }

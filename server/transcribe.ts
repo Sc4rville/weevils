@@ -190,7 +190,7 @@ export async function transcribe(data: Buffer, mime: string, l: unknown = lang()
   const stats = pcm ? speechStats(pcm, RATE) : null
   if (stats && !worthTranscribing(stats)) {
     console.log(`[voix] clip écarté : ${stats.seconds.toFixed(2)} s, ${stats.voiced.toFixed(2)} s de voix (${Math.round(data.length / 1024)} Ko)`)
-    fs.rmSync(file, { force: true })
+    // A speech detector rejection is not permission to discard the original recording.
     throw nothing()
   }
   const incomplete = (voiced: number, text: string) => new Error(withLang(language, () => tr(V).incomplete(Math.max(1, Math.round(voiced / 60)), words(text).length, file)))

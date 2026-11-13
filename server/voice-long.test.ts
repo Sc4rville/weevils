@@ -126,3 +126,22 @@ describe.skipIf(!hasFfmpeg)('une dictée de 10 minutes', () => {
     expect(fs.existsSync(path.join(ARCHIVE_DIR, 'partial', 'dictee-longue', 'receipt.json'))).toBe(true)
   }, 60_000)
 })
+
+describe.skipIf(!hasFfmpeg)('rejected recordings remain recoverable', () => {
+  it.each(['legacy', 'chunks'] as const)('preserves the byte-exact original from %s without a provider call', async (entrypoint) => {
+    mockOpenAI(() => 'must not be called')
+    const audio = fakeSpeech(entrypoint === 'legacy' ? 0.4 : 2)
+    if (entrypoint === 'chunks') audio.fill(0, 44)
+    if (entrypoint === 'legacy') await expect(transcribe(audio, 'audio/wav', 'en')).rejects.toThrow()
+    else {
+      addChunk('quiet-upload', 0, 'audio/wav', audio.toString('base64'))
+      await expect(finishUpload('quiet-upload', 'en', 1)).rejects.toThrow()
+      expect(fs.readFileSync(path.join(ARCHIVE_DIR, 'partial', 'quiet-upload', '0000000'))).toEqual(audio)
+    }
+    expect(calls).toEqual([])
+    const files = fs.readdirSync(ARCHIVE_DIR).filter(f => f.endsWith('.wav'))
+    expect(files).toHaveLength(1)
+    expect(fs.readFileSync(path.join(ARCHIVE_DIR, files[0]))).toEqual(audio)
+    expect(fs.readdirSync(ARCHIVE_DIR).some(f => f.endsWith('.txt'))).toBe(false)
+  })
+})

@@ -1577,3 +1577,44 @@ it('reuses a durable creation request identity after a lost response/reload with
  expect(fs.readdirSync(path.join(dir,'automation-workspaces','projects'))).toEqual([`auto-${first.id}`])
  expect(reload.create('request-two').id).not.toBe(first.id)
 })
+
+describe('provider holds are not user schedules',()=>{
+ const seeded=(items:any[])=>{
+  fs.writeFileSync(path.join(dir,'optimizers.json'),JSON.stringify({items,lastRoundAt:T0,fails:0,failUntil:0}))
+  snap.mainWorking=true // Pure scheduler/capability check: never start an agent.
+ }
+ const queued=(id:string,patch:Record<string,unknown>={})=>({id,title:'Daily review',why:'w',prompt:'Review privately',kind:'watch',repo:null,heavy:false,state:'queued',createdAt:T0,every:24*60*MIN,tz:'Europe/Paris',...patch})
+ it('releases the initial quota hold once the jail probe makes an authorized Codex route available',async()=>{
+  const until=T0+8*60*MIN;const userTime=T0+2*60*MIN
+  seeded([queued('daily'),queued('timed',{notBefore:userTime,window:{from:60,to:120}})])
+  const o=make({relay:{holdUntil:()=>until,autoOnCodex:()=>true}})
+  o.tick(T0+MIN);expect(o.list().find(i=>i.id==='daily')!.retryAt).toBe(until)
+  await flush();o.tick(T0+2*MIN)
+  const daily=o.list().find(i=>i.id==='daily')!
+  expect(daily.retryAt).toBeUndefined();expect(daily.startAt).toBeUndefined();expect(daily.waiting).toBe('busy')
+  expect(daily.every).toBe(24*60*MIN);expect(daily.tz).toBe('Europe/Paris')
+  expect(o.list().find(i=>i.id==='timed')).toMatchObject({notBefore:userTime,window:{from:60,to:120},waiting:'time'})
+  expect(createIn).not.toHaveBeenCalled()
+ })
+ it('preserves a genuine non-quota backoff when no provider hold remains',async()=>{
+  seeded([queued('retry',{retryAt:T0+60*MIN})])
+  const o=make({relay:{holdUntil:()=>0,autoOnCodex:()=>true}})
+  o.tick(T0+MIN);await flush();o.tick(T0+2*MIN)
+  expect(o.list()[0]).toMatchObject({retryAt:T0+60*MIN,waiting:'later'})
+  expect(createIn).not.toHaveBeenCalled()
+ })
+ it('does not release a quota hold without authorization even when the jail is safe',async()=>{
+  const until=T0+8*60*MIN;seeded([queued('daily')])
+  const o=make({relay:{holdUntil:()=>until,autoOnCodex:()=>false}})
+  o.tick(T0+MIN);await flush();o.tick(T0+2*MIN)
+  expect(o.list()[0]).toMatchObject({retryAt:until,waiting:'later'})
+  expect(createIn).not.toHaveBeenCalled()
+ })
+ it('keeps a quota hold if relay authorization or a safe jail is unavailable',async()=>{
+  const until=T0+8*60*MIN;seeded([queued('daily')]);sys.jail=vi.fn(async()=>false)
+  const o=make({relay:{holdUntil:()=>until,autoOnCodex:()=>true}})
+  o.tick(T0+MIN);await flush();o.tick(T0+2*MIN)
+  expect(o.list()[0]).toMatchObject({retryAt:until,waiting:'later'})
+  expect(createIn).not.toHaveBeenCalled()
+ })
+})

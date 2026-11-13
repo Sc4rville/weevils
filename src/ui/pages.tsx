@@ -512,7 +512,7 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       .catch((e) => setErr((e as Error).message))
   }, [any, machine])
   if (!project) return <Missing />
-  const sourceIssue = sourceAccessIssue(sourceForRepo(snap.projects, repo, any ? machine : repo ? project.where[repo] : undefined))
+  const sourceIssue = sourceAccessIssue(project.kind === 'installation' ? project : sourceForRepo(snap.projects, repo, any ? machine : repo ? project.where[repo] : undefined))
   const create = async (text: string) => {
     if (sourceIssue) { setErr(sourceIssue); throw new Error(sourceIssue) }
     if (created.current) return

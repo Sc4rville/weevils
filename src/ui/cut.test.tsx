@@ -196,3 +196,16 @@ it('keeps read-only session navigation and history accessible while blocking res
  await flush()
  expect(host.querySelector<HTMLInputElement>('.composer input')!.disabled).toBe(false)
 })
+
+it('blocks a deep link to new work on an informational installation without inventing a repository', async () => {
+ const original = { ...project }
+ try {
+  Object.assign(project, { kind: 'installation', repos: [], where: {}, sourceAccess: { repo: null, machineId: 'vps', canExecute: false, reason: 'no-checkout' }, installation: { id: 'own', machineId: 'vps', source: 'artifact' } })
+  render(<PageView page={{ kind: 'new', projectId: 'p' }} />, [])
+  await flush()
+  expect(host.querySelector<HTMLInputElement>('.composer input')!.disabled).toBe(true)
+ } finally {
+  Object.assign(project, original)
+  delete project.sourceAccess; delete project.installation
+ }
+})

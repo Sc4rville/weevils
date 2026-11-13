@@ -2,11 +2,12 @@ import type { Project, Session } from '../../shared/api'
 
 /** Server identity, never a project name, message substring or historical automation association. */
 export function selfProject(project: Project): boolean {
-  return project.workstream?.kind === 'self-improvement' && project.workstream.target.projectId === project.id
+  return !!project.installation || project.workstream?.kind === 'self-improvement' && project.workstream.target.projectId === project.id
 }
 export function improvingProject(project: Project, sessions: Session[]): boolean {
   if (!selfProject(project)) return false
-  const identity = project.workstream!
+  const identity = project.workstream
+  if (!identity) return false
   return sessions.some(s => !s.archived && s.live && s.status === 'working'
     && s.projectId === project.id && s.workstream?.kind === 'self-improvement'
     && s.workstream.installationId === identity.installationId

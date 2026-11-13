@@ -25,3 +25,10 @@ it('pins only the canonical project and retains ordinary stable order and gestur
  expect(order()).toEqual(['p','a','b'])
  expect(order(true)).toEqual(['a','b','p'])
 })
+it('pins a server-identified installation without inventing a source repo, workstream or activity', () => {
+ const installed = { id: 'installation:own', name: 'weevils', kind: 'installation', installation: { id: 'own', machineId: 'm', source: 'artifact' }, repos: [], where: {}, lastActivityAt: 0 } as Project
+ expect(selfProject(installed)).toBe(true)
+ expect(mainProjectRank(installed, 4)).toBe(-1)
+ expect(improvingProject(installed, [working])).toBe(false)
+ expect(installed.workstream).toBeUndefined()
+})

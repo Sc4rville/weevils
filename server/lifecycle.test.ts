@@ -784,6 +784,57 @@ it('prefers a newer turn transition over cached daemon idle/active samples',()=>
  w.bump();expect(one()).toMatchObject({status:'idle'})
 })
 
+it('shows a stable informational gitless installation before any work, without inventing a repo or permitting dispatch',async()=>{
+ const { InstallationIdentity }=await import('./recursive-identity.ts')
+ const { MACHINE }=await import('./config.ts')
+ const { withLang }=await import('./i18n.ts')
+ const app=path.join(HOME,'projects','packaged-app')
+ fs.mkdirSync(app,{recursive:true})
+ const setup=(instance:InstanceType<typeof Weevils>)=>{(instance as any).installationIdentity=new InstallationIdentity(app,MACHINE.id)}
+ setup(w)
+ const get=(instance:InstanceType<typeof Weevils>)=>instance.localProjects([]).find(p=>p.kind==='installation')!
+ const p=get(w)
+ expect(p).toMatchObject({name:'weevils',kind:'installation',repos:[],where:{},lastActivityAt:0,
+  installation:{source:'artifact',machineId:MACHINE.id},sourceAccess:{repo:null,canExecute:false,reason:'no-checkout'}})
+ expect(p.workstream).toBeUndefined();expect(w.allRepos()).not.toContain('packaged-app')
+ expect(JSON.stringify(p)).not.toContain(HOME)
+ for(const locale of ['en','fr','en'] as const){w.bump();expect(withLang(locale,()=>w.snapshot()).projects.find(x=>x.id===p.id)).toEqual(p)}
+ const restarted=new Weevils();setup(restarted);expect(get(restarted)).toEqual(p)
+ const foreign={...p,id:'installation:other',installation:{...p.installation!,id:'other',machineId:'other'}}
+ expect(w.projects([], [foreign]).filter(p=>p.kind==='installation')).toHaveLength(2)
+ for(const tool of ['claude','codex'] as const){
+  await expect(w.create({projectId:p.id,tool,text:'Work'})).rejects.toMatchObject({status:403})
+  await expect(w.createIn(app,'Work','Work',[],{},tool)).rejects.toMatchObject({status:403})
+ }
+ expect(mux.spawnWv).not.toHaveBeenCalled()
+ await expect(w.create({projectId:'demo',tool:'claude',text:'Other project'})).resolves.toHaveProperty('id')
+})
+
+it('enforces canonical source access for both agents without interrupting existing jobs or touching unrelated repos',async()=>{
+ const { InstallationIdentity }=await import('./recursive-identity.ts')
+ const { MACHINE }=await import('./config.ts')
+ const app=path.join(HOME,'access-product')
+ fs.mkdirSync(app,{recursive:true});expect(spawnSync('git',['init'],{cwd:app}).status).toBe(0)
+ ;(w as any).installationIdentity=new InstallationIdentity(app,MACHINE.id)
+ try{
+  for(const tool of ['claude','codex'] as const){
+   const id=`access-${tool}`;add(transcript({id,tool,cwd:app}));w.panes.push(pane({name:`wv-${id}`,sessionId:id,tool,cwd:app}))
+  }
+  fs.chmodSync(path.join(app,'.git'),0o500)
+  expect(w.localProjects([])[0]).toMatchObject({sourceAccess:{canExecute:false,reason:'not-writable'}})
+  for(const tool of ['claude','codex'] as const){
+   await expect(w.create({projectId:'access-product',tool,text:'Do work'})).rejects.toMatchObject({status:403})
+   await expect(w.send(`access-${tool}`,'Do work')).rejects.toMatchObject({status:403})
+   await expect(w.createIn(app,'Auto','Do work',[],{},tool)).rejects.toMatchObject({status:403})
+  }
+  expect(mux.spawnWv).not.toHaveBeenCalled();expect(mux.sendText).not.toHaveBeenCalled();expect(mux.killWv).not.toHaveBeenCalled()
+  expect(w.panes).toHaveLength(2)
+  await expect(w.create({projectId:'demo',tool:'claude',text:'Unrelated work'})).resolves.toHaveProperty('id')
+  fs.chmodSync(path.join(app,'.git'),0o700)
+  await expect(w.create({projectId:'access-product',tool:'claude',text:'Now allowed'})).resolves.toHaveProperty('id')
+ }finally{fs.chmodSync(path.join(app,'.git'),0o700)}
+})
+
 it('shares recursive repository identity between Claude/Codex on a fresh renamed installation without personal preferences',async()=>{
   const { InstallationIdentity }=await import('./recursive-identity.ts')
   const { MACHINE }=await import('./config.ts')

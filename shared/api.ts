@@ -107,6 +107,8 @@ export interface SessionProgress {
 }
 
 export interface Session {
+  /** Local source launch policy, independent of identity and transport controllability. */
+  sourceAccess?: SourceAccess
   /** Target identity only: never use this as an Automated sender or activity/completion signal. */
   workstream?: WorkstreamIdentity
   progress?: SessionProgress
@@ -205,13 +207,30 @@ export interface RelayView {
   plans: RelayPlan[]
 }
 
+/** Observed local policy, not GitHub permissions or an agent sandbox. Absent means unknown. */
+export interface SourceAccess {
+  repo: string | null
+  machineId: string
+  canExecute: boolean
+  reason: 'owned-writable' | 'not-owned' | 'not-writable' | 'unavailable' | 'no-checkout'
+}
+
+/** Installation identity is visible even without source, and never proves work or repository ownership. */
+export interface InstallationInfo {
+  id: string
+  machineId: string
+  source: 'checkout' | 'artifact'
+}
+
 export interface Project {
+  installation?: InstallationInfo
+  sourceAccess?: SourceAccess
   /** Target identity only: never use this as an Automated sender or activity/completion signal. */
   workstream?: WorkstreamIdentity
   id: string
   name: string
-  /** 'repo' : famille de repos de ~/projects ; 'invented' : catégorie créée par weevils. */
-  kind: 'repo' | 'invented'
+  /** An installation entry is informational: no source repository or session target is implied. */
+  kind: 'repo' | 'invented' | 'installation'
   repos: string[]
   /** Machine qui porte chaque repo (fichiers, nouvelle session). */
   where: Record<string, string>
@@ -318,6 +337,7 @@ export interface WeevilReply {
 
 /** Une tâche du h24 (« optimiseur ») : proposée à partir de la mémoire et des projets, lancée quand la machine est libre. */
 export interface Optimizer {
+  sourceAccess?: SourceAccess
   /** Target identity only: never use this as an Automated sender or activity/completion signal. */
   workstream?: WorkstreamIdentity
   /** Explicit recovery event: reconcile an old optimistic refusal, never infer delivery/deletion from text. */

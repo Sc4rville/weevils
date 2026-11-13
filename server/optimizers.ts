@@ -779,7 +779,7 @@ export class Optimizers {
     const out: Optimizer = at > now ? { ...v, startAt: at } : { ...v }
     const recovery=o.lifecycle?.findLast(event=>event.action==='restore-draft')
     if(recovery)out.recoveredAt=recovery.at
-    if(o.repo)out.workstream=this.w.workstreamForRepo?.(o.repo)
+    if(o.repo){out.workstream=this.w.workstreamForRepo?.(o.repo);out.sourceAccess=this.w.sourceAccessForRepo?.(o.repo)}
     if (o.runNow) out.runRequested = true
     // Stored oldest first (older files read the same); the app reads the newest first.
     if (o.runs) out.runs = newestFirst(o.runs)
@@ -922,6 +922,7 @@ export class Optimizers {
     const o = this.get(id)
     if (!o || o.state !== 'proposed') return false
     if (o.draft || this.talking.has(id) || (rev !== undefined && rev !== (o.rev ?? 0))) return 'busy'
+    if(o.repo)this.w.assertRepoExecution?.(o.repo)
     o.state = 'queued'
     o.acceptedAt = Date.now()
     this.s.refillAt = o.acceptedAt
@@ -973,6 +974,7 @@ export class Optimizers {
   runNow(id: string): boolean {
     const o = this.get(id)
     if (!o || o.state !== 'queued') return false
+    if(o.repo)this.w.assertRepoExecution?.(o.repo)
     o.runNow = true
     delete o.paused
     delete o.retryAt
@@ -1251,10 +1253,11 @@ export class Optimizers {
     // conditions (not before, its window, its next run).
     // Paused by the user: skipped until played again. Asked to run now: first in line, whatever its time.
     const later = (o: Stored) => !!o.retryAt && o.retryAt > now
-    const ready = queue.filter((o) => (!this.auto || this.s.adoptionPaused || o.software?.status==='ready') && !o.paused && !later(o) && this.timeAt(o, now) <= now).sort((a, b) => Number(!!b.runNow) - Number(!!a.runNow))
+    const blocked=(o:Stored)=>!!o.repo&&this.w.sourceAccessForRepo?.(o.repo)?.canExecute===false
+    const ready = queue.filter((o) => !blocked(o) && (!this.auto || this.s.adoptionPaused || o.software?.status==='ready') && !o.paused && !later(o) && this.timeAt(o, now) <= now).sort((a, b) => Number(!!b.runNow) - Number(!!a.runNow))
     queue.forEach((o) => {
       const i = ready.indexOf(o)
-      const wait = o.paused ? 'paused' : i < 0 ? (later(o) ? 'later' : 'time') : running || this.launching || i > 0 ? 'queue' : (reason ?? undefined)
+      const wait = o.paused ? 'paused' : blocked(o) ? undefined : i < 0 ? (later(o) ? 'later' : 'time') : running || this.launching || i > 0 ? 'queue' : (reason ?? undefined)
       if (o.waiting !== wait) {
         if (wait) o.waiting = wait
         else delete o.waiting
@@ -1509,6 +1512,7 @@ export class Optimizers {
   async relayRun(sessionId: string, text: string, tool: 'claude' | 'codex' = 'codex', targetId?: string): Promise<string> {
     const o = this.s.items.find((x) => !!x.sessionId && (x.sessionId === sessionId || this.w.sessionIdOf?.(x.sessionId) === sessionId))
     if (!o || o.deletedAt || (o.state !== 'queued' && o.state !== 'running')) throw new Error(tr(O).vanished)
+    if(o.repo)this.w.assertRepoExecution?.(o.repo)
     if (!(await this.sys.jail(['--dev-bind', '/', '/', '--']))) throw new Error(tr(O).noJail)
     await this.launch(o, Date.now(), { tool, relay: text, sessionId: targetId })
     if (o.state !== 'running' || !o.sessionId) throw new Error(o.lastEvent || tr(O).startFailed)
@@ -1566,6 +1570,8 @@ export class Optimizers {
   /** Starts a task in a Claude session: in its own worktree of its repo (on a fresh local branch), or in its workspace. */
   private async launch(o: Stored, now: number, on: { tool?: 'claude' | 'codex'; sessionId?: string; /** the approved takeover plan, first in the brief */ relay?: string } = {}) {
     if(o.deletedAt)return
+    // A queued job remains queued with a sourceAccess explanation, no synthetic failed run or new worktree.
+    if(o.repo&&this.w.sourceAccessForRepo?.(o.repo)?.canExecute===false)return
     const tool = on.tool ?? preferredTool()
     this.launching = true
     o.state = 'running'

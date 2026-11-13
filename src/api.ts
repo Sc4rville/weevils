@@ -10,7 +10,7 @@ import { getLang, localeHeaders, subscribeLang, tr, type Lang } from './i18n'
 import M from './i18n/app'
 import type { FsListing, InfraDetail, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
 import type { ProgressFix, Software, SoftwareList } from '../shared/softwares.ts'
-import type { ForYouFeed } from '../shared/foryou.ts'
+import type { ForYouFeed, ForYouOpen } from '../shared/foryou.ts'
 import type { AutoDetail, AutoRunDetail, ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, Optimizer, OptimizerTalkReply, SessionDetail, Snapshot, SubagentDetail, Tool, WeevilQuestion, WeevilReply } from '../shared/api.ts'
 
 export class ApiError extends Error {
@@ -120,7 +120,7 @@ export const api = {
   foryou: () => call<ForYouFeed>('GET', `/api/foryou${inLang()}`),
   foryouSeen: (ids: string[]) => call<{ ok: true }>('POST', '/api/foryou/seen', { ids }),
   foryouDismiss: (id: string, eventId?: string) => call<{ ok: true }>('POST', `/api/foryou/${enc(id)}/dismiss`, { eventId }),
-  foryouAct: (id: string, action: string, card?: string, eventId?: string) => send<{ ok: true }>(`/api/foryou/${enc(id)}/act${inLang()}`, { action, card, eventId }),
+  foryouAct: (id: string, action: string, card?: string, eventId?: string) => send<{ ok: true; open?: ForYouOpen; intentId?: string; existing?: boolean }>(`/api/foryou/${enc(id)}/act${inLang()}`, { action, card, eventId }),
   foryouReply: (id: string, text: string) => send<{ ok: true }>(`/api/foryou/${enc(id)}/reply${inLang()}`, { text }),
   foryouMore: (id: string) => call<{ text: string }>('POST', `/api/foryou/${enc(id)}/more${inLang()}`, {}),
   deleteAutomation: (id: string) => call<{ ok: true; running: boolean }>('DELETE', `/api/auto/${enc(id)}`),

@@ -10,13 +10,13 @@ import type { ForYouFeed, ForYouItem } from '../../shared/foryou.ts'
 const receipts = vi.hoisted(() => ({ rows: [] as any[] }))
 vi.mock('../outbox', async original => ({ ...await original<typeof import('../outbox')>(), useOutbox: () => receipts.rows }))
 
-const srv = vi.hoisted(() => ({ feed: null as unknown, calls: [] as string[], fail: '', gate: null as Promise<void> | null }))
+const srv = vi.hoisted(() => ({ feed: null as unknown, calls: [] as string[], result: {} as Record<string, unknown>, fail: '', gate: null as Promise<void> | null }))
 vi.mock('../api', () => {
   const run = async (what: string) => {
     srv.calls.push(what)
     if (srv.gate && /^(act|reply) /.test(what)) await srv.gate
     if (srv.fail && what.startsWith(srv.fail)) throw new Error('refused by the server')
-    return { ok: true as const }
+    return { ok: true as const, ...srv.result }
   }
   return {
     api: {
@@ -162,6 +162,7 @@ beforeEach(() => {
   setSettledNow(true)
   srv.calls.length = 0
   srv.fail = ''
+  srv.result = {}
   pushed = []
   host = document.createElement('div')
   document.body.appendChild(host)
@@ -845,4 +846,43 @@ it('keeps editorial source wording folded, verbatim and separate from the revise
   expect(host.querySelector('.fy-editorial')).toBeNull()
   render(<ForYouItemView item={{ ...item, editorial: undefined }} />)
   expect(host.querySelector('.fy-editorial')).toBeNull()
+})
+
+it('shows existing work instead of an approval request, retains original wording and opens only its existing session',async()=>{
+ setLang('en')
+ const original={title:'Think canvas',text:'Would you like me to prepare this?'}
+ const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,title:original.title,text:original.text,editorial:{original},work:{intentId:'intent-think',status:'running',open:{page:'session',id:'think-owner'}}}
+ await open([item])
+ expect(band('bo').querySelector('.fy-text:not(.strong)')?.textContent).toBe('Work in progress.')
+ const buttons=[...band('bo').querySelectorAll<HTMLButtonElement>('.fy-btn')]
+ expect(buttons.map(b=>b.textContent)).toEqual(['View existing work'])
+ expect(band('bo').querySelector('form')).toBeNull()
+ const disclosure=band('bo').querySelector<HTMLDetailsElement>('details.fy-editorial')!
+ expect(disclosure.open).toBe(false)
+ expect(disclosure.textContent).toContain(original.text)
+ await click(buttons[0]);expect(pushed).toEqual([{kind:'session',id:'think-owner'}])
+ expect(srv.calls.some(c=>c.startsWith('act ')||c.startsWith('reply '))).toBe(false)
+ await act(async()=>setLang('fr'));await flush()
+ expect(band('bo').textContent).toContain('Travail en cours.')
+ expect(band('bo').querySelector('.fy-btn')?.textContent).toBe('Voir le travail existant')
+})
+it('a stale approval opens the API-confirmed existing work once and preserves the card',async()=>{
+ setLang('en')
+ const item={...ITEMS.find(i=>i.id==='bo')!}
+ await open([item])
+ srv.result={intentId:'existing-intent',existing:true,open:{page:'session',id:'owner'}}
+ await click(band('bo').querySelector('.fy-btn'));await flush()
+ expect(srv.calls.filter(c=>c==='act bo go')).toHaveLength(1)
+ expect(pushed).toEqual([{kind:'session',id:'owner'}])
+ expect(host.querySelector('[data-fy="bo"]')).not.toBeNull()
+ expect(srv.calls.filter(c=>c.startsWith('dismiss'))).toHaveLength(0)
+})
+
+it('keeps uncertain existing work informational when no destination is known',async()=>{
+ setLang('en')
+ const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,open:undefined,sessionId:undefined,work:{intentId:'unconfirmed',status:'uncertain'}}
+ await open([item])
+ expect(band('bo').textContent).toContain('Receipt unconfirmed; nothing has been resent.')
+ expect(band('bo').querySelector('.fy-btn')).toBeNull()
+ expect(srv.calls.some(c=>c.startsWith('act '))).toBe(false)
 })

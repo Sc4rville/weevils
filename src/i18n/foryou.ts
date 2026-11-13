@@ -3,6 +3,14 @@ import { defineMessages } from './index'
 // src/ui/foryou.tsx, src/ui/foryou-store.ts: the « for you » stream next to weevboss (full-screen page, items, media viewer).
 export default defineMessages({
   fr: {
+    work_requested: 'Demande déjà enregistrée.',
+    work_dispatching: 'Transmission de la demande en cours.',
+    work_uncertain: 'Réception à vérifier ; aucun nouvel envoi.',
+    work_queued: 'Travail déjà en file d’attente.',
+    work_running: 'Travail en cours.',
+    work_completed: 'Travail terminé.',
+    workOpen: 'Voir le travail existant',
+
     editorialOriginal: 'Texte d’origine',
     translationPending: 'Traduction en attente · original conservé',
     translationFailed: 'Traduction indisponible · original conservé',
@@ -71,6 +79,14 @@ export default defineMessages({
     dismissed: 'écarté',
   },
   en: {
+    work_requested: 'Request already recorded.',
+    work_dispatching: 'Sending the request.',
+    work_uncertain: 'Receipt unconfirmed; nothing has been resent.',
+    work_queued: 'Work already queued.',
+    work_running: 'Work in progress.',
+    work_completed: 'Work completed.',
+    workOpen: 'View existing work',
+
     editorialOriginal: 'Original wording',
     translationPending: 'Translation pending · showing the original',
     translationFailed: 'Translation unavailable · showing the original',

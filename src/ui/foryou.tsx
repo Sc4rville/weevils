@@ -2,6 +2,7 @@ import { ResultCard } from './foryou-result'
 import { TranslationStatus } from './foryou-localization'
 import { InlineMediaFormats, ProposalView } from './foryou-formats'
 import { OutboxStatus } from './outbox-status'
+import { useForYouOpen } from './foryou-open'
 import { rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
 import { Notice, NoticeClose, useNotice } from './notice'
@@ -104,24 +105,9 @@ interface KindProps {
 
 /** Where a tap on the item goes. */
 function useOpen(item: ForYouItem): (() => void) | undefined {
-  const { push, home, setH24Open } = useApp()
-  const o = item.open ?? (item.sessionId ? ({ page: 'session', id: item.sessionId } as const) : undefined)
-  if (!o) return undefined
-  switch (o.page) {
-    case 'session':
-      return () => push({ kind: 'session', id: o.id })
-    case 'boss':
-      return () => focusBoss({ mid: o.mid, flash: !!o.mid })
-    case 'auto':
-      return () => {
-        home()
-        setH24Open(true, o.id)
-      }
-    case 'usage':
-      return () => push({ kind: 'usage' })
-    case 'machine':
-      return () => push({ kind: 'machine', projectId: item.projectId ?? '' })
-  }
+  const open = useForYouOpen()
+  const target = item.work?.open ?? item.open ?? (item.sessionId ? ({ page: 'session', id: item.sessionId } as const) : undefined)
+  return target ? () => open(target, item.projectId) : undefined
 }
 
 /** The speaker line: unseen dot, who, when; a tap opens the place it speaks of. */
@@ -800,6 +786,21 @@ const bandClass = (item: ForYouItem) => `band fy-k-${item.kind} fy-t-${item.tone
 /** One line of an item, for the thin strips of the top band's preview. */
 const oneLine = (item: ForYouItem) => (item.kind === 'proposals' ? (item.cards?.[0]?.title ?? item.text) : item.kind === 'media' ? item.title || item.text : item.text || item.title || '')
 
+function ExistingWork({ item, who }: { item: ForYouItem; who: string }) {
+  const t = useT(M)
+  const open = useForYouOpen()
+  const work = item.work!
+  const target = work.open ?? item.open
+  return <><div className="in">
+    <Who item={item} who={who} />
+    {item.title && <div className="fy-text strong">{item.title}</div>}
+    <p className="fy-text">{t[`work_${work.status}`]}</p>
+    {target && <div className="fy-acts"><button type="button" className="fy-btn" onClick={() => open(target, item.projectId)}>{t.workOpen}</button></div>}
+  </div>
+    {(!!item.media?.length || !!item.composition) && <InlineMediaFormats item={item} />}
+  </>
+}
+
 /** One item of the stream. compact: a thin strip (speaker · one line), nothing to tap inside. */
 export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: boolean }) {
   const t = useT(M)
@@ -828,29 +829,30 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
         {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
         <div className="in fy-strip-in">
           <span className="dot fy-dot" aria-hidden />
-          {item.kind === 'proposals' && (
+          {!item.work && item.kind === 'proposals' && (
             <span className="fy-plus" aria-hidden>
               <Icon name="plus" />
             </span>
           )}
           <span className="fy-who-name">{who}</span>
-          <span className="fy-strip-text ellipsis">{oneLine(item)}</span>
+          <span className="fy-strip-text ellipsis">{item.work ? t[`work_${item.work.status}`] : oneLine(item)}</span>
         </div>
       </div>
     )
   }
   const Kind = KINDS[item.kind]
+  const original = item.editorial?.original ?? (item.work ? { title: item.title, text: item.text } : undefined)
   const err = fy.error(item.id)
   return (
     <article ref={band} className={`${bandClass(item)} fy-item${closable ? ' notice-shell' : ''}${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-kind={item.kind}>
       {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
       <TranslationStatus item={item} />
-      {Kind && <Kind item={item} who={who} project={project} inView={inView} fy={fy} />}
-      {item.editorial && (
+      {item.work ? <ExistingWork item={item} who={who} /> : Kind && <Kind item={item} who={who} project={project} inView={inView} fy={fy} />}
+      {original && (
         <details className="fy-editorial in">
           <summary className="meta">{t.editorialOriginal}</summary>
-          {item.editorial.original.title && <div className="fy-text strong">{item.editorial.original.title}</div>}
-          <div className="fy-text">{item.editorial.original.text}</div>
+          {original.title && <div className="fy-text strong">{original.title}</div>}
+          <div className="fy-text">{original.text}</div>
         </details>
       )}
       <OutboxStatus scope={`/api/foryou/${encodeURIComponent(item.id)}/`} eventId={feedNoticeKey(item)} />

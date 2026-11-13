@@ -27,7 +27,7 @@ import S from './i18n/setup.ts'
 import { LoadSampler, tipRoutes } from './tips.ts'
 import { Hints, hintRoutes } from './hints.ts'
 import { softwareRoutes } from './softwares.ts'
-import { browserSafe, isLocal, trustedFrom } from './http.ts'
+import { browserSafe, isLocal, trustedFrom, trustedSource } from './http.ts'
 import { startMailBridge } from './mailbridge.ts'
 import { resetAuthors, threadAuthor } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
@@ -431,7 +431,7 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/sessions\/([^/]+)\/send$/, async (req, res, _u, [id]) => {
     const body = await readBody(req)
     // « from » (weevils, ou un auteur déclaré) n'est accepté que d'une requête locale (l'orchestrateur, la commande weevils), jamais du téléphone.
-    json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), trustedFrom(req, body, sourceAuthor)))
+    json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), trustedFrom(req, body, sourceAuthor), trustedSource(req,body,sourceAuthor)))
   }],
   ['POST', /^\/api\/sessions\/([^/]+)\/attach$/, async (req, res, _u, [id]) => {
     const body = await readBody(req, 24 << 20)
@@ -591,6 +591,7 @@ const routes: [string, RegExp, Handler][] = [
         text: String(body.text ?? ''),
         machineId: body.machineId ? String(body.machineId) : undefined,
         from: trustedFrom(req, body, sourceAuthor),
+        sourceThreadId: trustedSource(req,body,sourceAuthor),
       }),
     )
   }],
@@ -862,9 +863,11 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw new OutboxError(400, tr(OM).invalid)
       if (!/\/act$/.test(url.pathname) && !String(body.text ?? '').trim() && !(Array.isArray(body.files) && body.files.length)) throw new OutboxError(400, tr(OM).invalid)
       const from = trustedFrom(req, body, sourceAuthor)
+      const source = trustedSource(req,body,sourceAuthor)
       delete body.from
-      delete body.sourceThread // Resolve provenance on the original request, never on a local outbox replay.
+      delete body.sourceThread // Persist only source identity validated on the original request.
       if (from) body.from = from
+      if (source) body.sourceThread = source
       const session = /^\/api\/sessions\/([^/]+)\//.exec(url.pathname)
       const id = session ? decodeURIComponent(session[1]) : url.pathname.startsWith('/api/main') ? w.bossConversation() ?? undefined : undefined
       const lane = id ?? (url.pathname.startsWith('/api/main') ? 'main' : url.pathname)

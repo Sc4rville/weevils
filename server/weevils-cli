@@ -16,6 +16,7 @@ from=${WEEVILS_FROM:-weevils}
 # A project agent is not weevboss. Session sends/new resolve an available source thread on the local server.
 sender_from=${WEEVILS_FROM:-agent}
 source_thread=${CODEX_THREAD_ID:-${CODEX_SESSION_ID:-${CLAUDE_SESSION_ID:-}}}
+if [ -n "$source_thread" ]; then sender_from=agent; fi
 py=python3
 
 # Langue des messages : celle de l'app (prefs.json de weevilsd), sinon WEEVILS_LANG (env ou ~/.config/weevils/env),

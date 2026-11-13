@@ -1,3 +1,4 @@
+import AgentMessages from './i18n/agent-messages.ts'
 import MachineProse from './i18n/machine-prose.ts'
 // Relais Codex vu de weevilsd (server/core.ts) : weevboss qui répond par Codex pendant la limite de Claude (même dossier,
 // AGENTS.md, contexte caché), le fil qui mêle les deux, le retour sur Claude avec ce que Codex a dit, les sessions liées
@@ -290,6 +291,7 @@ it('ships the same product contract to both agents in a fresh profile without im
   const codex=fs.readFileSync(path.join(ORCH_DIR,'AGENTS.md'),'utf8')
   expect(codex).toBe(claude)
   expect(codex).toContain(MachineProse[language].rule)
+  expect(codex).toContain(AgentMessages[language].rule)
   expect(codex).not.toContain('{{machineProse}}')
   expect(codex).toContain(language==='en'?'Shared product contract':'Contrat produit partagé')
   expect(codex).not.toContain('PRIVATE_MEMORY_SENTINEL')

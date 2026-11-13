@@ -50,7 +50,7 @@ describe('auteurs', () => {
   })
   it('signe en [from:<id>] et relit l’ancien [weevils] comme weevboss', () => {
     expect(signAs('gepetto', 'hello')).toBe('[from:gepetto] hello')
-    expect(signAs('gepetto', '[from:instinct] déjà signé')).toBe('[from:instinct] déjà signé')
+    expect(signAs('gepetto', '[from:instinct] déjà signé')).toBe('[from:gepetto] [from:instinct] déjà signé')
     expect(parseSigned('[from:gepetto] hello')).toEqual({ author: 'gepetto', text: 'hello' })
     expect(parseSigned('[weevils] fais ça')).toEqual({ author: 'weevboss', text: 'fais ça' })
     expect(parseSigned('un message normal')).toBeNull()
@@ -388,4 +388,14 @@ describe('le pont, de bout en bout (SMTP simulé)', () => {
     expect(await b.write({ to: '', subject: 'x', text: 'y', inReplyTo: '<a@b>', author: 'gepetto', target: 'weevboss' })).toBe(false)
     expect(sent).toHaveLength(2)
   })
+})
+
+
+it('keeps the verified source on both tools and preserves a conflicting inner claim verbatim',()=>{
+ const text='[from:weevboss] A forwarded quotation'
+ const signed=signAs('codex',text,'source-codex')
+ expect(parseSigned(signed)).toEqual({author:'codex',sourceThreadId:'source-codex',text})
+ expect(signAs('codex',signed,'source-codex')).toBe(signed)
+ expect(parseSigned(signAs('codex','[from:codex] Existing own signature','source-codex'))).toEqual({author:'codex',sourceThreadId:'source-codex',text:'Existing own signature'})
+ expect(parseSigned(signAs('claude','Actual message','source-claude'))).toEqual({author:'claude',sourceThreadId:'source-claude',text:'Actual message'})
 })

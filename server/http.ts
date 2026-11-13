@@ -63,6 +63,12 @@ export function isLocal(req: http.IncomingMessage): boolean {
 /** « from » (weevboss, un auteur déclaré) n'est accepté que d'une requête locale, jamais du téléphone. */
 export function trustedFrom(req: http.IncomingMessage, body: { from?: unknown; sourceThread?: unknown } | null | undefined, sourceAuthor?: (id:string)=>string|undefined): string | undefined {
   if (!isLocal(req)) return undefined
-  if (body?.from === 'agent' && typeof body.sourceThread === 'string') return normalizeFrom(sourceAuthor?.(body.sourceThread)) ?? 'agent'
+  // Runtime provenance wins over an inherited WEEVILS_FROM or a signature supplied in the body.
+  if (typeof body?.sourceThread === 'string' && body.sourceThread) return normalizeFrom(sourceAuthor?.(body.sourceThread)) ?? 'agent'
   return normalizeFrom(body?.from)
+}
+
+/** Only local, known runtime identity can become the source metadata signed before dispatch. */
+export function trustedSource(req:http.IncomingMessage, body:{sourceThread?:unknown}|null|undefined, sourceAuthor:(id:string)=>string|undefined):string|undefined {
+  return isLocal(req) && typeof body?.sourceThread==='string' && !!sourceAuthor(body.sourceThread) ? body.sourceThread : undefined
 }

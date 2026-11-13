@@ -16,6 +16,8 @@ export type SessionStatus = 'working' | 'needs_user' | 'idle' | 'done' | 'interr
 export type InterruptReason = 'died' | 'dirty' | 'quota' | 'auth' | 'api'
 
 export interface Message {
+  /** Verified runtime source; never inferred from the visible prose. */
+  sourceThreadId?: string
   /** Incoming technical coordination from the session bridge; boss briefs remain visible. */
   coordination?: boolean
   /** Sanitized command details, never raw orchestration code. */

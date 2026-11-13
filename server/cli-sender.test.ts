@@ -2,7 +2,7 @@ import http from 'node:http'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { afterAll,beforeAll,expect,it } from 'vitest'
-import { trustedFrom } from './http.ts'
+import { trustedFrom,trustedSource } from './http.ts'
 import { threadAuthor,signAs,parseSigned } from './authors.ts'
 const sources:Record<string,{tool:string;cwd:string}>={
  'project-codex':{tool:'codex',cwd:'/project'},'project-claude':{tool:'claude',cwd:'/project'},
@@ -15,7 +15,7 @@ const server=http.createServer((req,res)=>{
  let data='';req.on('data',chunk=>data+=chunk).on('end',()=>{
   const body=JSON.parse(data)
   const author=trustedFrom(req,body,id=>threadAuthor(id,id=>sources[id],'boss-codex','/orchestrator'))
-  seen.push({body,author,signed:author?signAs(author,body.text):body.text})
+  seen.push({body,author,signed:author?signAs(author,body.text,trustedSource(req,body,id=>threadAuthor(id,id=>sources[id],'boss-codex','/orchestrator'))):body.text})
   res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({id:'target'}))
  })
 })
@@ -26,10 +26,13 @@ it('resolves real CLI send/new provenance for either tool without attributing pr
  for(const [source,author] of [['project-codex','codex'],['project-claude','claude'],['boss-codex','weevboss'],['boss-claude','weevboss']] as const){
   await cli(['send','target','A useful brief'],{[source.includes('claude')?'CLAUDE_SESSION_ID':'CODEX_THREAD_ID']:source})
   expect(seen.at(-1)?.body).toMatchObject({from:'agent',sourceThread:source})
-  expect(parseSigned(seen.at(-1)!.signed)).toEqual({author,text:'A useful brief'})
+  expect(parseSigned(seen.at(-1)!.signed)).toEqual({author,sourceThreadId:source,text:'A useful brief'})
  }
  await cli(['new','project','A new brief','codex'],{CODEX_SESSION_ID:'project-codex'})
  expect(seen.at(-1)?.author).toBe('codex')
+ await cli(['send','target','Inherited boss claim'],{CODEX_THREAD_ID:'project-codex',WEEVILS_FROM:'weevboss'})
+ expect(seen.at(-1)?.author).toBe('codex')
+ expect(seen.at(-1)?.body.from).toBe('agent')
  await cli(['send','target','Unknown origin'],{})
  expect(seen.at(-1)?.author).toBe('agent')
  await cli(['send','target','Explicit legacy author'],{WEEVILS_FROM:'weevils'})

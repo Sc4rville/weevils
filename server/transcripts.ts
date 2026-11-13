@@ -36,6 +36,7 @@ export interface Transcript {
   messages: Message[]
   /** Incoming bridge message IDs to source threads, for attribution after every source has been scanned. */
   delegationSources?: Map<string, string>
+  delegationTexts?: Map<string, string>
   /** Sous-agents, étapes de workflow et commandes d'arrière-plan (server/background.ts), récents et finis compris. */
   subagents: Subagent[]
   /** claude : ce que le fil dit du travail d'arrière-plan (lancements, fins annoncées, bilans de fin de tour). */
@@ -87,7 +88,7 @@ const userMsg = (id: string, raw: string, at: number): Message => {
   const text = unwrapPasted(raw)
   // Signé « [from:<id>] » (ou l'ancien « [weevils] ») : écrit par weevboss ou un agent externe, pas par l'utilisateur.
   const signed = parseSigned(text)
-  return signed ? { id, role: 'orchestrator', author: signed.author, text: signed.text, at, ...(['codex','claude','agent'].includes(signed.author) ? {coordination:true} : {}) } : { id, role: 'user', text, at }
+  return signed ? { id, role: 'orchestrator', author: signed.author, ...(signed.sourceThreadId ? {sourceThreadId:signed.sourceThreadId} : {}), text: signed.text, at, ...(['codex','claude','agent'].includes(signed.author) ? {coordination:true} : {}) } : { id, role: 'user', text, at }
 }
 /** Only the bridge's deliberate human input, never arbitrary tool output or system context. */
 export function delegationInput(raw: unknown): { source: string; text: string } | null {
@@ -109,8 +110,9 @@ function delegatedMessage(t: Transcript, item: any, at: number): boolean {
   const signed = parseSigned(unwrapPasted(input.text))
   touch(t, at)
   t.firstPrompt ??= input.text
-  push(t, { ...{ coordination: true }, id, role: 'orchestrator', author: signed?.author ?? 'codex', text: signed?.text ?? unwrapPasted(input.text), at })
-  if (!signed) (t.delegationSources ??= new Map()).set(id, input.source)
+  push(t, { ...(signed?.author==='weevboss'?{}:{coordination:true}), sourceThreadId:input.source, id, role: 'orchestrator', author: signed?.author ?? 'codex', text: signed?.text ?? unwrapPasted(input.text), at })
+  ;(t.delegationSources ??= new Map()).set(id, input.source)
+  ;(t.delegationTexts ??= new Map()).set(id, unwrapPasted(input.text))
   return true
 }
 const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
@@ -442,6 +444,10 @@ export class TranscriptStore {
   pidOf?: (id: string) => number | undefined
   /** The owning app knows which source thread is weevboss, including its Codex relay. */
   authorOfThread?: (id: string) => string | undefined
+  /** Explicit, verified history annotations only. The raw transcript remains unchanged. */
+  originOfMessage?: (threadId:string,message:Message)=>{author:string;sourceThreadId:string}|undefined
+  refreshOrigins?:()=>void
+  private originBases=new Map<Message,Pick<Message,'role'|'author'|'coordination'|'sourceThreadId'>>()
 
   constructor(claudeDir: string, codexDir: string, recentMs: number) {
     this.claudeDir = claudeDir
@@ -494,12 +500,44 @@ export class TranscriptStore {
       const byId = new Map(t.messages.map((m) => [m.id, m]))
       for (const [id, source] of t.delegationSources) {
         const message = byId.get(id)
-        if (!message) { t.delegationSources.delete(id); continue }
+        if (!message) { t.delegationSources.delete(id); t.delegationTexts?.delete(id); continue }
         if (!authors.has(source)) authors.set(source, this.authorOfThread?.(source) ?? 'codex')
         const author = authors.get(source)!
         if (message.author !== author) { message.author = author; changed = true }
+        const original=t.delegationTexts?.get(id)
+        if(original!==undefined){
+          const signed=parseSigned(original), text=signed?.author===author ? signed.text : original
+          if(message.text!==text){message.text=text;changed=true}
+        }
+        if(author==='weevboss' && message.coordination!==undefined){delete message.coordination;changed=true}
+        else if(author!=='weevboss'&&!message.coordination){message.coordination=true;changed=true}
       }
     }
+    this.refreshOrigins?.()
+    const projected=new Set<Message>()
+    for(const t of this.byFile.values())for(const message of t.messages){
+      const base=this.originBases.get(message)
+      let origin=base?undefined:this.originOfMessage?.(t.id,message)
+      if(!base&&!origin)continue
+      const before=JSON.stringify([message.role,message.author,message.coordination,message.sourceThreadId])
+      if(base){
+        message.role=base.role
+        for(const field of ['author','coordination','sourceThreadId'] as const){
+          if(base[field]===undefined)delete message[field]
+          else (message as any)[field]=base[field]
+        }
+      }
+      if(base)origin=this.originOfMessage?.(t.id,message)
+      if(origin){
+        if(!base)this.originBases.set(message,{role:message.role,author:message.author,coordination:message.coordination,sourceThreadId:message.sourceThreadId})
+        message.role='orchestrator';message.author=origin.author;message.sourceThreadId=origin.sourceThreadId
+        if(origin.author==='weevboss')delete message.coordination
+        else message.coordination=true
+        projected.add(message)
+      }else this.originBases.delete(message)
+      if(before!==JSON.stringify([message.role,message.author,message.coordination,message.sourceThreadId]))changed=true
+    }
+    for(const message of this.originBases.keys())if(!projected.has(message))this.originBases.delete(message)
     return changed
   }
 

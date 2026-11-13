@@ -14,7 +14,6 @@ export interface AuthorConfig extends Author {
 export const BOSS = 'weevboss'
 /** Ancien préfixe de weevboss, toujours reconnu. */
 export const LEGACY_PREFIX = '[weevils] '
-const PREFIX_RE = /^\[from:([a-z0-9_-]{1,32})\]\s*/i
 const ID_RE = /^[a-z0-9_-]{1,32}$/
 
 /** Lit les auteurs du fichier de config (déjà chargé dans process.env par config.ts). weevboss est toujours là, en premier. */
@@ -55,21 +54,23 @@ export function normalizeFrom(from: unknown): string | undefined {
   return ['codex', 'claude', 'agent'].includes(id) || authorById(id) ? id : undefined
 }
 
-/** Le texte signé par l'auteur, sauf s'il l'est déjà. */
-export function signAs(author: string, text: string): string {
-  if (PREFIX_RE.test(text) || text.startsWith(LEGACY_PREFIX)) return text
-  return `[from:${author}] ${text}`
+/** The verified outer author wins; a foreign inner signature remains quoted content. */
+export function signAs(author: string, text: string, sourceThreadId?: string): string {
+  const signed = parseSigned(text)
+  if (signed?.author === author && signed.sourceThreadId === sourceThreadId) return text
+  const source = sourceThreadId && /^[a-zA-Z0-9_-]{1,100}$/.test(sourceThreadId) ? `;thread:${sourceThreadId}` : ''
+  return `[from:${author}${source}] ${signed?.author === author ? signed.text : text}`
 }
 
 // Le préfixe est retiré par motif, jamais par une longueur : seul ce qu'il a lui-même reconnu part (« [from:x] » ou
 // « [weevils] » et les espaces qui suivent), quel que soit l'auteur et quoi que dise ensuite le message.
-const SIGNED_RE = /^(?:\[from:([a-z0-9_-]{1,32})\]|\[weevils\])[ \t]*/i
+const SIGNED_RE = /^(?:\[from:([a-z0-9_-]{1,32})(?:;thread:([a-z0-9_-]{1,100}))?\]|\[weevils\])[ \t]*/i
 
 /** Un message signé : son auteur et le texte sans le préfixe. null : message de l'utilisateur. */
-export function parseSigned(text: string): { author: string; text: string } | null {
+export function parseSigned(text: string): { author: string; text: string; sourceThreadId?: string } | null {
   const m = SIGNED_RE.exec(text)
   if (!m) return null
-  return { author: m[1] ? m[1].toLowerCase() : BOSS, text: text.replace(SIGNED_RE, '').trim() }
+  return { author: m[1] ? m[1].toLowerCase() : BOSS, text: text.replace(SIGNED_RE, '').trim(), ...(m[2] ? {sourceThreadId:m[2]} : {}) }
 }
 
 /** Nom affiché d'un auteur (son id s'il n'est plus déclaré). */

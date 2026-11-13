@@ -1,3 +1,5 @@
+import AgentMessages from './i18n/agent-messages.ts'
+import { MessageOrigins } from './message-origins.ts'
 import CB from './i18n/codex-bridge.ts'
 import { automationSourceRoot } from './automation-workspaces.ts'
 import MachineProse from './i18n/machine-prose.ts'
@@ -249,6 +251,7 @@ export const joinContext = (block: string, extra: string): string => {
 
 export class Weevils {
   store = new TranscriptStore(CLAUDE_DIR, CODEX_DIR, RECENT_MS)
+  private messageOrigins = new MessageOrigins(path.join(DATA_DIR,'message-origins.json'))
   hooks = new Map<string, HookState>()
   panes: ManagedPane[] = []
   orchestratorId: string | null = null
@@ -414,7 +417,17 @@ export class Weevils {
   constructor() {
     // Preuves de vie de l'arrière-plan d'une session : le processus claude de sa pane, sinon celui que ses hooks ont donné.
     this.store.pidOf = (id) => this.paneFor(id)?.pid ?? this.hooks.get(id)?.pid
-    this.store.authorOfThread = (id) => id === this.orchestratorId || id === this.relay?.boss?.sessionId || this.store.get(id)?.cwd === ORCH_DIR ? 'weevboss' : undefined
+    this.store.authorOfThread = (id) => {
+      if(id===this.orchestratorId||id===this.relay?.boss?.sessionId||this.store.get(id)?.cwd===ORCH_DIR)return 'weevboss'
+      const tool=this.store.get(id)?.tool
+      return tool==='codex'||tool==='claude'?tool:undefined
+    }
+    let origins=this.messageOrigins.snapshot()
+    this.store.refreshOrigins=()=>{origins=this.messageOrigins.snapshot()}
+    this.store.originOfMessage=(id,message)=>{
+      const origin=origins(id,message)
+      return origin?{author:origin.author,sourceThreadId:origin.sourceThreadId}:undefined
+    }
     this.migrateCategories()
     if (ORCHESTRATOR) {
       this.prepareOrchestrator()
@@ -1314,12 +1327,12 @@ export class Weevils {
   }
 
   /** Écrit dans la session ; si elle n'a plus de processus, la rouvre dans une pane weevils. */
-  async send(id: string, text: string, from?: string): Promise<{ id: string; control?: 'model' }> {
-    if (this.foryou && !from) return this.foryou.directRequest(text, this.resolveId(id), () => this.sendOne(id, text, from))
-    return this.sendOne(id, text, from)
+  async send(id: string, text: string, from?: string, sourceThreadId?: string): Promise<{ id: string; control?: 'model' }> {
+    if (this.foryou && !from) return this.foryou.directRequest(text, this.resolveId(id), () => this.sendOne(id, text, from, sourceThreadId))
+    return this.sendOne(id, text, from, sourceThreadId)
   }
 
-  private async sendOne(id: string, text: string, from?: string): Promise<{ id: string; control?: 'model' }> {
+  private async sendOne(id: string, text: string, from?: string, sourceThreadId?: string): Promise<{ id: string; control?: 'model' }> {
     if (isModelControl(text)) return {id:this.resolveId(id),control:'model'}
     if (/^\/(?:model|effort)\s+/i.test(text.trim())) { await this.command(id,text);return {id:this.resolveId(id),control:'model'} }
     // Signé par un auteur (weevboss, un agent externe) : le fil le montre comme son message, pas celui de l'utilisateur.
@@ -1328,7 +1341,7 @@ export class Weevils {
     // Vide avant la signature : « [from:weevboss] » seul n'est pas un message.
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
     if (activeRequestLang()) text += joinContext('', tr(M).appLocale)
-    if (author) text = signAs(author, text)
+    if (author) text = signAs(author, text, sourceThreadId)
     const remote = this.remoteFor(id)
     if (remote) {
       const s = this.snapshot().sessions.find((x) => x.id === id)
@@ -1458,9 +1471,9 @@ export class Weevils {
     return capture(pane.name)
   }
 
-  async create(input: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string; from?: string }): Promise<{ id: string }> {
+  async create(input: { projectId: string; repo?: string; tool: Tool; text: string; machineId?: string; from?: string; sourceThreadId?:string }): Promise<{ id: string }> {
     const author = normalizeFrom(input.from)
-    if (author && input.text) input = { ...input, text: signAs(author, input.text) }
+    if (author && input.text) input = { ...input, text: signAs(author, input.text, input.sourceThreadId) }
     const project = this.snapshot().projects.find((p) => p.id === input.projectId)
     const repoGuess = input.repo ?? project?.repos[0]
     const machineId = input.machineId ?? (repoGuess ? project?.where[repoGuess] : undefined)
@@ -1470,7 +1483,7 @@ export class Weevils {
     const cwd = repo ? path.join(this.repoRoot(repo) ?? PROJECTS_DIR, repo) : PROJECTS_DIR
     if (!fs.existsSync(cwd)) throw new Error(tr(M).dirNotFound(cwd))
     let text = input.text.trim()
-    const title = text ? text.replace(/\s+/g, ' ').slice(0, 60) : tr(M).newSession
+    const title = text ? (parseSigned(text)?.text ?? text).replace(/\s+/g, ' ').slice(0, 60) : tr(M).newSession
     if (text && activeRequestLang()) text += joinContext('', tr(M).appLocale)
     if (input.tool === 'claude') {
       const id = crypto.randomUUID()
@@ -1514,7 +1527,7 @@ export class Weevils {
       // demandé à gh) et {{projects}} (premier dossier de WEEVILS_PROJECTS, ~/projects par défaut).
       const owner = process.env.WEEVILS_GH_OWNER?.trim() || '$(gh api user -q .login)'
       const projects = PROJECTS_DIR.startsWith(HOME + path.sep) ? '~' + PROJECTS_DIR.slice(HOME.length) : PROJECTS_DIR
-      const text = fs.readFileSync(src, 'utf8').replaceAll('{{user}}', withLang(installationLang(), user)).replaceAll('{{owner}}', owner).replaceAll('{{projects}}', projects).replaceAll('{{machineProse}}', MachineProse[installationLang()].rule)
+      const text = fs.readFileSync(src, 'utf8').replaceAll('{{user}}', withLang(installationLang(), user)).replaceAll('{{owner}}', owner).replaceAll('{{projects}}', projects).replaceAll('{{machineProse}}', MachineProse[installationLang()].rule).replaceAll('{{agentMessages}}', AgentMessages[installationLang()].rule)
       fs.writeFileSync(path.join(ORCH_DIR, 'CLAUDE.md'), text)
       // Les mêmes consignes pour Codex, qui répond à la place de Claude pendant sa limite d'usage (server/relay.ts).
       fs.writeFileSync(path.join(ORCH_DIR, 'AGENTS.md'), text)

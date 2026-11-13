@@ -12,6 +12,14 @@ This is a product contract shared by Claude and Codex. The FR/EN orchestrator te
 - Extracted wrapper arguments are evidence of the submitted program, not proof that every conditional branch ran. A wrapper's output belongs to its recorded call identifier; do not invent a separate outcome for each nested call. Dynamic arguments are unknown, never evaluated by the parser.
 - Explicit app locale controls generated product text independently of chat language; proper names and identifiers remain intact. No automatic QA cards, raw commit announcements or diagnostic vocals belong in the user feed.
 
+## Message authorship
+
+Agent coordination uses the canonical `weevils send` route. The local runtime session ID is resolved against known sessions before dispatch; that identity takes precedence over an inherited `WEEVILS_FROM`. The server signs the actual author and source thread together. Unknown local agent origins remain agents, never the user. Browser/proxied requests cannot claim a source thread. The compatibility file-based adapter in `server/agent-coordinate.mjs` delegates to this route and never calls the daemon directly.
+
+The normal CLI, native bridge and transcript projection preserve the source ID. Coordination is collapsed with its actual source; weevboss briefs remain visible. Native bridge source metadata takes precedence over a conflicting signature in its body; the conflicting text is retained verbatim. Known mail authors retain their existing verified mail path. Ordinary user text is never classified by its wording.
+
+Historical corrections require exact target/message/source/call IDs and verification against the recorded outgoing call. `message-origins.json` in the private data directory stores approved projections with an integrity digest, not a classifier. Raw transcripts are untouched; removing an annotation restores their original projection. No HTTP endpoint accepts arbitrary historical author claims. A same-OS-user client that bypasses Weevils and writes directly to an external daemon remains outside this boundary: migrate that client to canonical delivery rather than pretending its unsigned text proves an author.
+
 ## Verification without personal state
 
 `test/codex-recorded-wrapper.test.tsx` replays a real recorded orchestration call and its structured result through `TranscriptStore`, the serializable API message contract and the normal `Messages` component. It opens the group and the individual step and checks the literal command and result.

@@ -1,6 +1,6 @@
 import type http from 'node:http'
 import { describe, expect, it } from 'vitest'
-import { browserSafe, isLocal, trustedFrom } from './http.ts'
+import { browserSafe, isLocal, trustedFrom, trustedSource } from './http.ts'
 
 /** A request as node:http hands it over: only the peer address and the headers matter here. */
 const req = (headers: Record<string, string> = {}, remoteAddress = '127.0.0.1') =>
@@ -94,4 +94,15 @@ it('does not resolve a browser-provided source thread as a trusted author',()=>{
  expect(trustedFrom(req({'x-forwarded-for':'203.0.113.7'}),{from:'agent',sourceThread:'boss'},()=>{lookedUp=true;return 'weevboss'})).toBeUndefined()
  expect(lookedUp).toBe(false)
  expect(trustedFrom(req(),{from:'agent',sourceThread:'unknown'},()=>undefined)).toBe('agent')
+})
+
+
+it('runtime source overrides inherited author claims; unknown agent runtimes never become the user',()=>{
+ const lookup=(id:string)=>id==='coder'?'codex':id==='boss'?'weevboss':undefined
+ expect(trustedFrom(req(),{from:'weevboss',sourceThread:'coder'},lookup)).toBe('codex')
+ expect(trustedSource(req(),{sourceThread:'coder'},lookup)).toBe('coder')
+ expect(trustedFrom(req(),{sourceThread:'unknown'},lookup)).toBe('agent')
+ expect(trustedSource(req(),{sourceThread:'unknown'},lookup)).toBeUndefined()
+ expect(trustedSource(req({'x-forwarded-for':'203.0.113.7'}),{sourceThread:'boss'},lookup)).toBeUndefined()
+ expect(trustedFrom(req(),{from:'codex',sourceThread:'boss'},lookup)).toBe('weevboss')
 })

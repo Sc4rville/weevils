@@ -42,8 +42,8 @@ export function useAsk(build: () => AskBase, opts: { onVoice?: () => void } = {}
   const seq = useRef(0)
   const heard = useRef('')
   // Le logo vocal rappelle des fonctions gardées depuis le début de l'enregistrement : elles lisent l'hôte à jour ici.
-  const live = useRef({ build, opts })
-  live.current = { build, opts }
+  const live = useRef({ build, opts, draft })
+  live.current = { build, opts, draft }
 
   const reset = () => {
     seq.current++
@@ -76,7 +76,7 @@ export function useAsk(build: () => AskBase, opts: { onVoice?: () => void } = {}
   }
   /** Le logo a entendu : la question s'écrit sous la sélection (ou sous ce qui est affiché). */
   const voiceText = (x: string) => {
-    heard.current = heard.current ? `${heard.current} ${x}` : x
+    heard.current = live.current.draft ? `${live.current.draft} ${x}` : x
     live.current.opts.onVoice?.()
     open()
     setDraft(heard.current)

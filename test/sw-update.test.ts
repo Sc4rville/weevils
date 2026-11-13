@@ -4,7 +4,7 @@ import { expect, it, vi } from 'vitest'
 
 it('defers an update while a composer holds a draft or awaits acknowledgement', async () => {
   const navigate = vi.fn(async () => {})
-  let reply: string | { build: string; editing: boolean } = { build: 'old.js', editing: true }
+  let reply: string | { build: string; editing: boolean; safeToReload?: boolean } = { build: 'old.js', editing: true }
   const retry = vi.fn()
   const client = { url: 'https://example.test/', navigate, postMessage: (_: unknown, ports: { reply: (value: unknown) => void }[]) => ports[0].reply(reply) }
   class Channel {
@@ -21,12 +21,15 @@ it('defers an update while a composer holds a draft or awaits acknowledgement', 
   expect(retry).toHaveBeenCalledWith(expect.any(Function), 5000)
   reply = 'old.js'
   await vm.runInContext('reloadStale()', context)
+  expect(navigate).not.toHaveBeenCalled()
+  reply = { build: 'old.js', editing: false, safeToReload: true }
+  await vm.runInContext('reloadStale()', context)
   expect(navigate).toHaveBeenCalledTimes(1)
 })
 
 it.each(['check-build', 'notification-state'])('rechecks an already active worker on %s after a suspended retry', async type => {
  const navigate = vi.fn(async () => {})
- let reply = { build: 'old.js', editing: true }
+ let reply = { build: 'old.js', editing: true, safeToReload: false }
  const listeners: Record<string, (event: any) => void> = {}
  const client = { url: 'https://example.test/#for-you', navigate, postMessage: (_: unknown, ports: { reply: (value: unknown) => void }[]) => ports[0].reply(reply) }
  class Channel {
@@ -46,11 +49,11 @@ it.each(['check-build', 'notification-state'])('rechecks an already active worke
  await dispatch()
  expect(navigate).not.toHaveBeenCalled()
  // The scheduled retry never runs (as when iOS suspends the worker).
- reply = { build: 'old.js', editing: false }
+ reply = { build: 'old.js', editing: false, safeToReload: true }
  await dispatch()
  expect(navigate).toHaveBeenCalledWith(client.url)
  navigate.mockClear()
- reply = { build: 'new.js', editing: false }
+ reply = { build: 'new.js', editing: false, safeToReload: true }
  await dispatch()
  expect(navigate).not.toHaveBeenCalled()
 })

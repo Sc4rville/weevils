@@ -11,7 +11,7 @@ const BUILD = new URL(import.meta.url).pathname.split('/').pop()
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (e) => {
     if (e.data?.type === 'build?') e.ports[0]?.postMessage(
-      { build: BUILD, editing: updateIsBusy() },
+      { build: BUILD, editing: updateIsBusy(), safeToReload: !updateIsBusy() },
     )
   })
   const check = () =>

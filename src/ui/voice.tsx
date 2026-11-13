@@ -4,6 +4,7 @@ import { Notice, useNotice } from './notice'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { api } from '../api'
+import { recordedChunks, saveRecording, saveVoiceChunk, voiceRecordings, volatileVoiceRecordings, type VoiceRecording } from '../voice-recordings'
 import { WeevbossLogo } from './logo'
 import { Icon } from './icons'
 import { localeHeaders, getLang, tr, useLang, useT } from '../i18n'
@@ -127,10 +128,27 @@ export const voiceBusy = () => busyLogos.size > 0
 /** Durée d'affichage d'un message d'état du logo, avant son fondu (0,35 s) : moins de 3 s en tout. */
 const NOTE_MS = 2200
 
-export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }: { onText: (t: string) => void; onSend: () => void; replyKey?: string; replyText?: string; working: boolean; take: () => string }) {
+export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, recordingScope }: { recordingScope?: string; onText: (t: string) => void; onSend: () => void; replyKey?: string; replyText?: string; working: boolean; take: () => string }) {
   const t = useT(M)
   const lang = useLang()
-  const snapSetup = useApp().snap.setup
+  const snapshot = useApp().snap
+  const snapSetup = snapshot.setup
+  const scope = `${snapshot.machines?.[0]?.id ?? 'local'}:${recordingScope ?? location.pathname + location.hash}`
+  const scopeRef = useRef(scope)
+  scopeRef.current = scope
+  const [saved, setSaved] = useState<VoiceRecording[]>([])
+  const currentRecording = useRef<VoiceRecording | null>(null)
+  const memory = useRef(new Map<string, Blob[]>())
+  const refreshSaved = async () => {
+    const rows = await voiceRecordings(scope).catch(() => [])
+    const ram = [...volatileVoiceRecordings.values()].map(value => value.recording).filter(item => item.scope === scope)
+    if (alive.current && scopeRef.current === scope) setSaved([...ram, ...rows.filter(item => !ram.some(r => r.id === item.id))])
+  }
+  useEffect(() => {
+    setSaved([])
+    void refreshSaved()
+    return () => { if (rec.current?.state === 'recording') rec.current.stop() }
+  }, [scope])
   // Langue changée : l'accroche gardée en mémoire est rechargée dans la nouvelle langue (le serveur suit l'app).
   const firstLang = useRef(true)
   useEffect(() => {
@@ -143,10 +161,11 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
   /** Le dernier message est parti à la voix : sa réponse sera lue. */
   const spoken = useRef(false)
   const [phase, setPhase] = useState<Phase>('idle')
+  const [arming, setArming] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   // Les petits messages d'état du logo (« rien entendu »…) : une bulle de pensée, effacée en fondu (moins de 3 s en tout).
   useEffect(() => {
-    if (!err) return
+    if (!err || currentRecording.current) return
     const t = setTimeout(() => setErr(null), NOTE_MS)
     return () => clearTimeout(t)
   }, [err])
@@ -160,6 +179,13 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
   }, [phase, speaking])
   const [reply, setReply] = useState(false)
   const rec = useRef<MediaRecorder | null>(null)
+  const starting = useRef(false)
+  useEffect(() => {
+    if (phase !== 'rec' && phase !== 'wait') return
+    const protect = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', protect)
+    return () => window.removeEventListener('beforeunload', protect)
+  }, [phase])
   // Démonté en pleine écoute (feuille fermée) : le micro se coupe et plus rien ne part au serveur.
   const alive = useRef(true)
   useEffect(() => {
@@ -168,13 +194,11 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
       alive.current = false
       const r = rec.current
       if (!r || r.state === 'inactive') return
-      r.ondataavailable = null
-      r.onstop = null
+      // Keep the final dataavailable callback: it journals the last chunk even after unmount.
       r.stop()
       r.stream.getTracks().forEach((tr) => tr.stop())
     }
   }, [])
-  const chunks = useRef<Blob[]>([])
   const sendAfter = useRef(false)
   const lastReply = useRef(replyKey)
   // Jamais de voix pendant que l'utilisateur parle : une seule réponse en attente (la dernière), lue dès que le micro est coupé.
@@ -221,61 +245,142 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
     return () => clearTimeout(t)
   }, [replyKey])
 
+  // Recovery never sends a message. Even a completed transcript requires an explicit insertion.
+  const recover = async (item: VoiceRecording) => {
+    if (phase === 'rec' || phase === 'wait') return
+    setErr(null)
+    setPhase('wait')
+    currentRecording.current = item
+    try {
+      let text = item.text
+      if (!text) {
+        const parts = memory.current.get(item.id) ?? volatileVoiceRecordings.get(item.id)?.parts ?? await recordedChunks(item)
+        if (!parts.length) throw new Error(tr(M).nothingHeard)
+        for (let n = 0; n < parts.length; n++) {
+          await saveVoiceChunk(item, n, parts[n])
+          await api.voiceChunk(item.id, n, item.type, await blobToB64(parts[n]))
+        }
+        text = (await api.voiceFinish(item.id, item.lang, parts.length)).text.trim()
+        if (!text) throw new Error(tr(M).nothingHeard)
+        item = { ...item, text }
+        await saveRecording(item)
+      }
+      if (!alive.current || scopeRef.current !== item.scope) return
+      // Do not silently replace or send the current draft.
+      onText(text)
+      await saveRecording({ ...item, insertedAt: Date.now() })
+      if (!volatileVoiceRecordings.get(item.id)?.recording.text) {
+        volatileVoiceRecordings.delete(item.id)
+        memory.current.delete(item.id)
+      }
+      setPhase('ready')
+    } catch (e) {
+      if (alive.current) { setErr((e as Error).message); setPhase('idle') }
+    } finally { void refreshSaved() }
+  }
+  const download = async (item: VoiceRecording) => {
+    try {
+      const parts = memory.current.get(item.id) ?? volatileVoiceRecordings.get(item.id)?.parts ?? await recordedChunks(item)
+      const url = URL.createObjectURL(new Blob(parts, { type: item.type }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `weevils-voice-${item.id}.${item.type.includes('mp4') ? 'm4a' : item.type.includes('ogg') ? 'ogg' : 'webm'}`
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch { setErr(tr(M).readAudio) }
+  }
   const start = async () => {
+    if (starting.current) return
+    starting.current = true
+    setArming(true)
     setErr(null)
     sendAfter.current = false
+    let stream: MediaStream | undefined
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       if (!alive.current) return void stream.getTracks().forEach((tr) => tr.stop())
       const type = MIME.find((t) => MediaRecorder.isTypeSupported(t))
       const r = new MediaRecorder(stream, type ? { mimeType: type } : undefined)
-      chunks.current = []
-      // Chaque tranche part au serveur pendant que l'utilisateur parle : à l'arrêt, il ne reste presque rien à envoyer.
       const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
       const mime = r.mimeType || type || 'audio/mp4'
-      let seq = 0
+      let item: VoiceRecording = { id, scope, type: mime, lang: getLang(), startedAt: Date.now(), count: 0 }
+      // Refuse to start unprotected recording if this browser cannot retain audio.
+      try { await saveRecording(item) } catch { throw new Error(tr(M).storageUnavailable) }
+      if (!alive.current || scopeRef.current !== scope) return void stream.getTracks().forEach((tr) => tr.stop())
+      currentRecording.current = item
+      const parts: Blob[] = []
+      memory.current.set(id, parts)
+      let stored: Promise<void> = Promise.resolve()
       let uploaded: Promise<unknown> = Promise.resolve()
-      let uploadOk = true
-      const recStart = Date.now()
+      let uploadError: unknown
+      let storageError: unknown
+      const tracks = stream
       r.ondataavailable = (ev) => {
         if (!ev.data.size) return
-        chunks.current.push(ev.data)
-        const n = seq++
-        const data = ev.data
+        const n = parts.length
+        parts.push(ev.data)
+        item = { ...item, count: parts.length }
+        const snapshot = item
+        stored = stored.then(() => saveVoiceChunk(snapshot, n, ev.data)).catch(e => {
+          storageError = e
+          // RAM remains available for export; stop before more unprotected speech is recorded.
+          if (r.state !== 'inactive') r.stop()
+        })
         uploaded = uploaded.then(async () => {
-          if (!uploadOk) return
-          await api.voiceChunk(id, n, mime, await blobToB64(data)).catch(() => (uploadOk = false))
+          if (uploadError) return
+          try { await api.voiceChunk(id, n, mime, await blobToB64(ev.data)) } catch (e) { uploadError = e }
         })
       }
+      r.onerror = () => {
+        uploadError = new Error(tr(M).recordingInterrupted)
+        if (r.state !== 'inactive') r.stop()
+      }
       r.onstop = async () => {
-        setPhase('wait')
-        stream.getTracks().forEach((tr) => tr.stop())
+        if (alive.current && scopeRef.current === scope) setPhase('wait')
+        tracks.getTracks().forEach((tr) => tr.stop())
+        item = { ...item, stoppedAt: Date.now() }
         try {
-          const blob = new Blob(chunks.current, { type: mime })
-          if (blob.size < 800 || Date.now() - recStart < MIN_REC_MS) throw new Error(tr(M).nothingHeard)
+          await stored
+          try { await saveRecording(item) } catch (e) { storageError = e; throw e }
+          if (storageError) throw new Error(tr(M).storageInterrupted)
+          if (!alive.current || scopeRef.current !== scope) return
+          const blob = new Blob(parts, { type: mime })
+          if (blob.size < 800 || item.stoppedAt! - item.startedAt < MIN_REC_MS) throw new Error(tr(M).nothingHeard)
           await uploaded
-          const { text } = uploadOk ? await api.voiceFinish(id, getLang()) : await api.transcribe(blob.type, await blobToB64(blob), getLang())
+          if (uploadError) throw uploadError
+          const text = (await api.voiceFinish(id, item.lang, parts.length)).text.trim()
+          if (!text) throw new Error(tr(M).nothingHeard)
+          item = { ...item, text }
+          await saveRecording(item)
           mark('text')
-          if (!text.trim()) throw new Error(tr(M).nothingHeard)
-          onText(text.trim())
+          if (!alive.current || scopeRef.current !== scope) return
+          onText(text)
+          await saveRecording({ ...item, insertedAt: Date.now() })
           if (sendAfter.current) {
-            // Le troisième tap est arrivé pendant la transcription : on envoie dès que le champ est rempli.
-            setTimeout(send, 30)
+            setTimeout(() => { if (alive.current && scopeRef.current === scope) send() }, 30)
             setPhase('idle')
           } else setPhase('ready')
         } catch (e) {
-          setErr((e as Error).message)
-          setPhase('idle')
+          if (alive.current && scopeRef.current === scope) {
+            setErr(storageError ? tr(M).storageInterrupted : (e as Error).message)
+            setPhase('idle')
+            // Include RAM-only recording if browser persistence failed mid-recording.
+            setSaved(rows => [item, ...rows.filter(row => row.id !== id)])
+          }
+        } finally {
+          if (storageError) volatileVoiceRecordings.set(id, { recording: item, parts })
+          else memory.current.delete(id)
+          void refreshSaved()
         }
       }
-      // Petites tranches : l'arrêt est instantané, rien n'attend la fin d'un gros bloc.
       r.start(250)
       rec.current = r
       setPhase('rec')
     } catch (e) {
+      stream?.getTracks().forEach((tr) => tr.stop())
       setErr(/denied|permission|NotAllowed/i.test((e as Error).message + (e as Error).name) ? tr(M).micDenied : (e as Error).message)
       setPhase('idle')
-    }
+    } finally { starting.current = false; if (alive.current) setArming(false) }
   }
 
   // Le message part à weevboss comme un message écrit ; sa vraie réponse sera résumée à l'oral puis lue.
@@ -312,13 +417,27 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
     }
   }
 
-  const { hidden: errorHidden } = useNotice(noticeKey('error:voice', err))
+  const errorId = noticeKey('error:voice', currentRecording.current?.id, err)
+  const { hidden: errorHidden } = useNotice(errorId)
   const label = phase === 'idle' ? t.dictate : phase === 'rec' ? t.stopAndTranscribe : phase === 'wait' ? t.sendWhenReady : t.send
   return (
-    <div className="voice">
+    <div className="voice" data-voice-busy={arming || phase === 'rec' || phase === 'wait' || !!err && !!currentRecording.current}>
       <button className={`voice-logo ${phase} ${reply ? 'reply' : ''} ${working ? 'working' : ''} ${speaking ? 'speaking' : ''}`} onPointerDown={(e) => e.preventDefault()} onClick={tap} aria-label={label} aria-pressed={phase === 'rec'}>
         <WeevbossLogo className="voice-svg" recording={phase === 'rec'} />
       </button>
+      {saved.some(item => item.count > 0) && phase !== 'rec' && (
+        <details className="voice-recovery">
+          <summary>{t.savedRecordings}</summary>
+          {saved.filter(item => item.count > 0).map(item => (
+            <div key={item.id} className="voice-recovery-item">
+              <time dateTime={new Date(item.startedAt).toISOString()}>{new Date(item.startedAt).toLocaleString(lang)}</time>
+              <span>{item.text ? t.transcriptSaved : t.audioSaved}</span>
+              <button type="button" disabled={phase === 'wait'} onClick={() => void recover(item)}>{item.text ? t.addTranscript : t.retryTranscript}</button>
+              <button type="button" onClick={() => void download(item)}>{t.saveAudio}</button>
+            </div>
+          ))}
+        </details>
+      )}
       <AnimatePresence>
         {err && !errorHidden && (
           <motion.div
@@ -330,7 +449,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take }
             exit={{ opacity: 0, rotate: -8, y: -4 }}
             transition={{ duration: 0.35, ease: 'easeOut' }}
           >
-            <Notice eventId={noticeKey("error:voice", err)} className="voice-error-notice" role="status"><span aria-hidden>! </span>{err}</Notice>
+            <Notice eventId={errorId} className="voice-error-notice" role="status"><span aria-hidden>! </span>{err}</Notice>
           </motion.div>
         )}
       </AnimatePresence>

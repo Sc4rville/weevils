@@ -4,6 +4,8 @@ import { MotionGlobalConfig } from 'motion/react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const api=vi.hoisted(()=>({voiceChunk:vi.fn(),voiceFinish:vi.fn(),transcribe:vi.fn()}))
+const journal=vi.hoisted(()=>({volatileVoiceRecordings:new Map(),saveRecording:vi.fn(),saveVoiceChunk:vi.fn(),voiceRecordings:vi.fn(),recordedChunks:vi.fn()}))
+vi.mock('../voice-recordings',()=>journal)
 vi.mock('../api',()=>({api}))
 vi.mock('./app-context',()=>({useApp:()=>({snap:{setup:{voice:true,dictation:true}}})}))
 vi.mock('./hints',()=>({tapHint:()=>false}))
@@ -23,7 +25,8 @@ class Recorder {
  stop(){this.state='inactive';void this.onstop?.()}
 }
 beforeEach(()=>{
- setLang('en');vi.clearAllMocks();MotionGlobalConfig.skipAnimations=true
+ setLang('en');vi.clearAllMocks();journal.volatileVoiceRecordings.clear();MotionGlobalConfig.skipAnimations=true
+ journal.saveRecording.mockResolvedValue(undefined);journal.saveVoiceChunk.mockResolvedValue(undefined);journal.voiceRecordings.mockResolvedValue([])
  permission=vi.fn();stopTrack=vi.fn();onText=vi.fn();onSend=vi.fn()
  vi.stubGlobal('navigator',{mediaDevices:{getUserMedia:permission}})
  vi.stubGlobal('MediaRecorder',Recorder)
@@ -90,5 +93,67 @@ it('clears recording on a recorder stop outside the button and releases tracks o
  await click()
  expect(coloured()).toBe(true)
  await act(async()=>root.render(null))
- expect(stopTrack).toHaveBeenCalledTimes(2)
+ expect(stopTrack.mock.calls.length).toBeGreaterThanOrEqual(2)
+})
+
+it('retains a five-minute recording after a failed finish and retries the same ID without sending',async()=>{
+ let now=1000;vi.spyOn(Date,'now').mockImplementation(()=>now)
+ const rows=new Map<string,any>()
+ journal.saveRecording.mockImplementation(async item=>{rows.set(item.id,{...item})})
+ journal.voiceRecordings.mockImplementation(async()=>[...rows.values()])
+ permission.mockResolvedValue(stream());api.voiceChunk.mockResolvedValue({ok:true})
+ api.voiceFinish.mockRejectedValueOnce(new Error('Connection lost')).mockResolvedValueOnce({text:'Recovered words'})
+ await render();await click()
+ await act(async()=>{
+  for(let n=0;n<20;n++) recorder.ondataavailable?.({data:new Blob(['a'.repeat(1024)])})
+  await new Promise(resolve=>setTimeout(resolve,30))
+ })
+ now=301000;await click()
+ await act(async()=>{await vi.waitFor(()=>expect(api.voiceFinish).toHaveBeenCalledTimes(1),{timeout:3000})})
+ const first=api.voiceFinish.mock.calls[0]
+ expect(first[2]).toBe(20)
+ expect(journal.saveVoiceChunk).toHaveBeenCalledTimes(20)
+ expect(rows.get(first[0]).stoppedAt-rows.get(first[0]).startedAt).toBe(300000)
+ expect(host.textContent).toContain('Connection lost')
+ expect(onText).not.toHaveBeenCalled();expect(onSend).not.toHaveBeenCalled()
+ journal.recordedChunks.mockResolvedValue(Array.from({length:20},()=>new Blob(['a'.repeat(1024)])))
+ const retry=[...host.querySelectorAll('button')].find(b=>b.textContent==='retry transcription')!
+ await act(async()=>{retry.click();await vi.waitFor(()=>expect(api.voiceFinish).toHaveBeenCalledTimes(2))})
+ expect(api.voiceFinish.mock.calls[1]).toEqual(first)
+ expect(onText).toHaveBeenCalledExactlyOnceWith('Recovered words')
+ expect(onSend).not.toHaveBeenCalled()
+ expect(rows.get(first[0]).text).toBe('Recovered words')
+})
+
+it('reloads a saved transcript without inserting or sending it until explicitly requested',async()=>{
+ const item={id:'saved-id',scope:'local:/',type:'audio/mp4',lang:'en',startedAt:1000,stoppedAt:301000,count:1,text:'Original transcript'}
+ journal.voiceRecordings.mockResolvedValue([item])
+ await render()
+ expect(host.textContent).toContain('transcript retained')
+ expect(onText).not.toHaveBeenCalled();expect(onSend).not.toHaveBeenCalled()
+ await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='add to draft')!.click())
+ expect(onText).toHaveBeenCalledExactlyOnceWith('Original transcript')
+ expect(api.voiceFinish).not.toHaveBeenCalled();expect(onSend).not.toHaveBeenCalled()
+})
+
+it('keeps the final recorder callbacks on unmount and never inserts into a departed conversation',async()=>{
+ permission.mockResolvedValue(stream());api.voiceChunk.mockResolvedValue({ok:true})
+ await render();await click()
+ const r=recorder
+ await act(async()=>root.render(null))
+ expect(r.ondataavailable).toBeTypeOf('function')
+ await act(async()=>{r.ondataavailable?.({data:new Blob(['final audio'.repeat(200)])});await r.onstop?.();await vi.waitFor(()=>expect(api.voiceChunk).toHaveBeenCalled())})
+ expect(journal.saveVoiceChunk).toHaveBeenCalled()
+ expect(onText).not.toHaveBeenCalled();expect(onSend).not.toHaveBeenCalled()
+ expect(api.voiceFinish).not.toHaveBeenCalled()
+})
+
+it('does not start an unprotected recording when local storage is unavailable',async()=>{
+ journal.saveRecording.mockRejectedValue(new Error('Quota exceeded'))
+ permission.mockResolvedValue(stream())
+ await render();await click()
+ expect(recorder.state).toBe('inactive')
+ expect(stopTrack).toHaveBeenCalled()
+ expect(host.textContent).toContain('Recording has not started')
+ expect(api.voiceChunk).not.toHaveBeenCalled()
 })

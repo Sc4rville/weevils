@@ -301,6 +301,7 @@ export function AgentBand() {
         <div className="agent-top">
           {/* Pendant un branchement, la dictée va dans le champ du parcours (src/ui/setup.tsx), et le 3e tap y répond. */}
           <VoiceLogo
+            recordingScope="weevboss"
             take={() => { if (onSel || flow) return ''; const h = heard.current; heard.current = ''; setDraft((d) => ({ text: '', n: d.n + 1, reset: true })); return h }}
             onText={(x) => { if (onSel) return th.a.voiceText(x); if (flow) return flowVoice.add(x); heard.current = heard.current ? `${heard.current} ${x}` : x; setDraft((d) => ({ text: x, n: d.n + 1, reset: false })) }}
             onSend={() => (onSel ? th.a.voiceSend() : flow ? flowVoice.send() : form.current?.requestSubmit())}

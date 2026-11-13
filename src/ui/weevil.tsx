@@ -175,8 +175,8 @@ function Sheet({ f, reduce, onLeave, onAnswered }: { f: Flight; reduce: boolean;
   const heard = useRef('')
   const seq = useRef(0)
   const input = useRef<HTMLInputElement>(null)
-  const live = useRef({ lines, waiting, done, onLeave })
-  live.current = { lines, waiting, done, onLeave }
+  const live = useRef({ lines, waiting, done, onLeave, draft })
+  live.current = { lines, waiting, done, onLeave, draft }
   const leave = useCallback(() => live.current.onLeave(answered.current), [])
 
   // On a computer, the field is ready; on a phone, the keyboard waits for a tap (the voice logo is right there).
@@ -231,7 +231,7 @@ function Sheet({ f, reduce, onLeave, onAnswered }: { f: Flight; reduce: boolean;
     }
   }
   const voiceText = (x: string) => {
-    heard.current = heard.current ? `${heard.current} ${x}` : x
+    heard.current = live.current.draft ? `${live.current.draft} ${x}` : x
     setDraft(heard.current)
   }
   const voiceSend = () => {
@@ -286,7 +286,7 @@ function Sheet({ f, reduce, onLeave, onAnswered }: { f: Flight; reduce: boolean;
             </div>
           )}
           <div className={done ? 'weevil-say done' : 'weevil-say'} inert={done}>
-            <VoiceLogo take={() => ''} onText={voiceText} onSend={voiceSend} replyKey={reply.key} replyText={reply.text} working={waiting} />
+            <VoiceLogo recordingScope={`weevil:${f.q.id}`} take={() => ''} onText={voiceText} onSend={voiceSend} replyKey={reply.key} replyText={reply.text} working={waiting} />
             <form
               className="weevil-form"
               onSubmit={(e) => {

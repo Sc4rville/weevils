@@ -14,7 +14,7 @@ self.addEventListener('activate', (e) => {
 })
 
 // La page répond avec son bundle (src/main.tsx) ; sans réponse (code d'avant cette vérification, ou page gelée), ou avec
-// une autre version, elle est rechargée.
+// une autre version, on attend une autorisation explicite de la page avant toute navigation.
 function versionOf(client) {
   return new Promise((resolve) => {
     const ch = new MessageChannel()
@@ -36,7 +36,9 @@ async function reloadStale() {
       const version = await versionOf(c)
       // Never navigate away from an unacknowledged send, a draft or attached photos.
       if ((version?.build ?? version) === BUILD) return
-      if (version?.editing) {
+      // Old/frozen clients cannot attest that their microphone is safely persisted.
+      // No reply is never evidence that navigation is safe.
+      if (version?.safeToReload !== true || version?.editing) {
         if (!retryUpdate) retryUpdate = setTimeout(() => { retryUpdate = null; void reloadStale() }, 5000)
         return
       }

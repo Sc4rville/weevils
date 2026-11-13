@@ -207,6 +207,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
           <>
             <div className="band tone auto-voice">
               <VoiceLogo
+                recordingScope={`auto:${x.id}`}
                 take={() => ''}
                 onText={(said) => {
                   heard.current = heard.current ? `${heard.current} ${said}` : said

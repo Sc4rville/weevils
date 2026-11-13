@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#c9b6ff">
+<title>weevils — your AI agents, on your phone</title>
+<meta name="description" content="Watch and drive the Claude Code and Codex sessions running on your own machine, from your phone.">
+<link rel="icon" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<style>
+  :root {
+    --font: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --ink: #000;
+    --a: oklch(0.80 0.14 297.5); --b: oklch(0.80 0.14 162.5); --c: oklch(0.80 0.14 72.5); --d: oklch(0.80 0.14 230);
+    --e: oklch(0.80 0.14 27.5); --soft: oklch(0.96 0.02 297.5);
+    --pad: 20px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #fff; color: var(--ink); font-family: var(--font); -webkit-text-size-adjust: 100%; }
+  body { min-height: 100dvh; padding-bottom: env(safe-area-inset-bottom, 0); }
+  a { color: inherit; }
+  .band { padding: 22px var(--pad); }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  header.band { background: var(--a); padding-top: calc(18px + env(safe-area-inset-top, 0px)); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 20px; letter-spacing: -0.02em; }
+  .brand img { width: 40px; height: 40px; }
+  h1 { font-size: clamp(30px, 8.5vw, 44px); line-height: 1.04; letter-spacing: -0.035em; margin: 18px 0 10px; }
+  h2 { font-size: 22px; letter-spacing: -0.02em; margin: 0 0 8px; }
+  p { font-size: 17px; line-height: 1.4; margin: 0 0 10px; }
+  .lead { font-size: 18px; }
+  .small { font-size: 14px; opacity: .75; }
+  .choice { display: block; width: 100%; text-align: left; border: 0; border-radius: 0; padding: 20px var(--pad); font: inherit; color: var(--ink); cursor: pointer; }
+  .choice .wrap { display: flex; align-items: center; gap: 14px; }
+  .choice b { display: block; font-size: 19px; letter-spacing: -0.015em; margin-bottom: 3px; }
+  .choice span { display: block; font-size: 15px; line-height: 1.35; opacity: .8; }
+  .choice .go { margin-left: auto; font-size: 26px; font-weight: 700; }
+  .choice:active { filter: brightness(.94); }
+  .tag { display: inline-block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; background: #000; color: #fff; padding: 2px 7px; border-radius: 99px; margin-left: 6px; vertical-align: 2px; }
+  .b1 { background: var(--b); } .b2 { background: var(--c); } .b3 { background: var(--d); } .b4 { background: var(--e); } .b5 { background: var(--soft); }
+  label { display: block; font-weight: 600; font-size: 15px; margin: 14px 0 6px; }
+  input, textarea { width: 100%; font: inherit; font-size: 17px; padding: 13px 14px; border: 2px solid #000; border-radius: 12px; background: #fff; color: #000; }
+  textarea { min-height: 120px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; }
+  .row { display: flex; gap: 10px; }
+  .row > :first-child { flex: 1; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 16px; padding: 16px 18px; font: inherit; font-size: 18px; font-weight: 700; border: 0; border-radius: 14px; background: #000; color: #fff; cursor: pointer; text-decoration: none; }
+  .btn.light { background: #fff; color: #000; border: 2px solid #000; }
+  .btn[disabled] { opacity: .45; }
+  .link { background: none; border: 0; font: inherit; font-size: 15px; text-decoration: underline; padding: 8px 0; cursor: pointer; color: inherit; }
+  .back { background: none; border: 0; font: inherit; font-size: 16px; font-weight: 600; padding: 0; margin-bottom: 8px; cursor: pointer; color: inherit; }
+  ol.how { padding-left: 22px; margin: 6px 0 0; } ol.how li { font-size: 16px; line-height: 1.4; margin: 6px 0; }
+  .cmd { display: flex; align-items: stretch; margin-top: 10px; border: 2px solid #000; border-radius: 12px; overflow: hidden; background: #fff; }
+  .cmd code { flex: 1; padding: 13px 12px; font: 600 14px/1.35 ui-monospace, 'SF Mono', Menlo, monospace; word-break: break-all; user-select: all; -webkit-user-select: all; }
+  .cmd button { border: 0; border-left: 2px solid #000; background: #000; color: #fff; font: inherit; font-weight: 700; padding: 0 16px; cursor: pointer; }
+  .quote { margin-top: 14px; padding: 14px; border: 2px solid #000; border-radius: 12px; background: #fff; }
+  .quote b { font-size: 22px; }
+  .err { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: #000; color: #fff; font-size: 15px; line-height: 1.4; }
+  ul.steps { list-style: none; padding: 0; margin: 14px 0 0; }
+  ul.steps li { display: flex; align-items: center; gap: 12px; padding: 9px 0; font-size: 17px; opacity: .45; }
+  ul.steps li.done, ul.steps li.now { opacity: 1; }
+  ul.steps li.now { font-weight: 700; }
+  ul.steps i { width: 22px; height: 22px; flex: none; border-radius: 50%; border: 2px solid #000; display: grid; place-items: center; font-style: normal; font-size: 13px; font-weight: 800; }
+  ul.steps li.done i { background: #000; color: #fff; }
+  ul.steps li.now i { border-color: #000 transparent #000 transparent; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .bar { height: 10px; border: 2px solid #000; border-radius: 99px; overflow: hidden; margin-top: 14px; background: #fff; }
+  .bar div { height: 100%; background: #000; width: 4%; transition: width .6s; }
+  .qr { display: grid; place-items: center; margin: 16px 0 8px; }
+  .qr img, .qr svg { width: min(280px, 80vw); height: auto; background: #fff; padding: 10px; border: 2px solid #000; border-radius: 12px; }
+  .note { font-size: 14px; line-height: 1.4; opacity: .8; margin-top: 12px; }
+  footer.band { background: #000; color: #fff; }
+  footer p { font-size: 14px; opacity: .85; }
+  [hidden] { display: none !important; }
+  body.deep header h1, body.deep header .lead { display: none; }
+  @media (min-width: 760px) { :root { --pad: 32px; } }
+</style>
+</head>
+<body>
+<header class="band">
+  <div class="wrap">
+    <div class="brand"><img src="/logo.svg" alt="">weevils</div>
+    <h1 data-t="h1"></h1>
+    <p class="lead" data-t="lead"></p>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<footer class="band">
+  <div class="wrap">
+    <p data-t="trust"></p>
+    <p><a href="https://github.com/Sc4rville/weevils" data-t="source"></a></p>
+  </div>
+</footer>
+
+<script src="/qrcode.js"></script>
+<script>
+'use strict'
+// ------------------------------------------------------------------ words
+const FR = /^fr\b/i.test(navigator.language || '')
+const W = FR ? {
+  h1: 'Tes agents IA, dans ta poche.',
+  lead: 'weevils met sur ton téléphone les sessions Claude Code et Codex qui tournent sur ta propre machine : tu les suis, tu leur parles, tu leur confies du travail. Branche une machine, weevboss s’occupe du reste.',
+  trust: 'Rien n’est gardé : ton jeton ou ton mot de passe sert une fois, puis il est oublié. Une fois installé, weevils tourne chez toi, et cette page n’a plus aucun accès à ta machine.',
+  source: 'Le code est ouvert, sur GitHub',
+  plug: 'Branche ta machine',
+  plugSub: 'Là où tourneront tes agents. Prêt en quelques minutes.',
+  hz: 'Crée-moi un serveur', hzSub: 'Un VPS chez Hetzner, créé pour toi. Quelques euros par mois. Tes agents bossent même ton téléphone éteint.', rec: 'conseillé',
+  vps: 'J’ai déjà un VPS', vpsSub: 'Son adresse et son mot de passe : weevils s’y installe tout seul.',
+  pc: 'Mon ordinateur', pcSub: 'Linux, ou Windows avec WSL. Une commande à coller dans son terminal.',
+  thisPc: 'Branche cet ordinateur', thisPcSub: 'Colle cette commande dans un terminal de cet ordinateur. Ensuite, un QR code ouvre weevils sur ton téléphone.',
+  better: 'Mieux : un VPS', betterSub: 'Tes agents bossent même ordinateur éteint, et ton téléphone les joint de partout. Même parcours, 2 minutes de plus.',
+  macNote: 'weevils tourne sur Linux pour l’instant : sur un Mac, prends un VPS (c’est le mieux de toute façon).',
+  winNote: 'Sous Windows, colle la commande dans Ubuntu (WSL2). Un VPS reste le plus simple.',
+  back: '← Retour',
+  hzTitle: 'Un serveur rien qu’à toi, chez Hetzner',
+  hz1: 'Crée un compte Hetzner (avec un moyen de paiement : ils facturent à l’heure, quelques euros par mois).',
+  hz1b: 'Créer mon compte Hetzner',
+  hz2: 'Dans la console Hetzner, ouvre ton projet (ou crée-en un), puis Sécurité → Jetons API → Générer, avec « Lecture et écriture ».',
+  hz2b: 'Ouvrir la console Hetzner',
+  hz3: 'Colle le jeton ici. Il sert à créer ton serveur, puis il est oublié.',
+  token: 'Jeton API Hetzner', seePrice: 'Voir le prix',
+  perMonth: '/mois TTC', billed: 'Facturé à l’heure par Hetzner, supprimable quand tu veux depuis leur console.',
+  create: 'Créer mon serveur',
+  vpsTitle: 'Ton VPS', vpsIntro: 'Ubuntu ou Debian, de préférence tout neuf. weevils s’y connecte une fois, lance l’installation, puis oublie le mot de passe.',
+  host: 'Adresse IP', user: 'Utilisateur', pw: 'Mot de passe', port: 'Port SSH', useKey: 'Plutôt une clé SSH', usePw: 'Plutôt un mot de passe', key: 'Clé privée',
+  install: 'Installer weevils',
+  noVps: 'Pas encore de VPS ? Hetzner, OVHcloud ou Hostinger, Ubuntu 24.04, 2 vCPU et 4 Go suffisent. Ou laisse-moi le créer :',
+  pcTitle: 'Ton ordinateur', pcIntro: 'Sur l’ordinateur, ouvre un terminal, colle cette commande et appuie sur Entrée :',
+  pcPhone: 'Envoie-la-toi pour la coller là-bas :', share: 'M’envoyer la commande', copy: 'Copier', copied: 'Copié',
+  pcWait: 'Cette page suit l’installation dès que la commande démarre.',
+  pcLimit: 'Ton téléphone joindra l’ordinateur tant qu’il est allumé. Pour un lien permanent, weevboss te proposera un VPS ou Tailscale.',
+  progTitle: 'Installation de weevils', progNote: 'Compte 3 à 8 minutes. Tu peux fermer cette page et revenir : elle reprend où elle en est.',
+  s_created_hetzner: 'Serveur créé', s_created_ssh: 'Connecté à ton serveur', s_created_pc: 'Commande lancée',
+  s_start: 'La machine démarre l’installation', s_system: 'Vérification du système et des outils', s_source: 'Récupération de weevils', s_build: 'Construction de l’app',
+  s_service: 'Démarrage de weevils', s_https: 'Lien sécurisé (HTTPS)', s_tunnel: 'Lien sécurisé pour ton téléphone', s_done: 'Prêt',
+  doneTitle: 'Ton weevils est prêt !', donePhone: 'J’ouvre ton weevils…', open: 'Ouvrir mon weevils',
+  home: 'Ensuite, ajoute-le à ton écran d’accueil (iPhone : Partager → Sur l’écran d’accueil ; Android : ⋮ → Installer l’app). weevboss t’accueille et connecte Claude Code ou Codex avec toi.',
+  scan: 'Scanne ce code avec l’appareil photo de ton téléphone :', scanNote: 'Ce code te connecte : garde-le pour toi, comme un mot de passe.',
+  openHere: 'L’ouvrir ici', noSeal: 'Ton weevils répond ici. Ton code d’accès est dans ~/weevils-install.log sur la machine.',
+  failTitle: 'L’installation s’est arrêtée', retry: 'Recommencer',
+  e: {
+    slow_down: 'Trop d’essais d’un coup : réessaie dans quelques minutes.', busy: 'Beaucoup de monde en ce moment : réessaie dans une minute.',
+    bad_token: 'Ce jeton n’a pas la bonne forme : copie-le en entier depuis Hetzner.', unauthorized: 'Hetzner refuse ce jeton : vérifie qu’il est complet et pas supprimé.',
+    forbidden: 'Ce jeton est en lecture seule : génères-en un avec « Lecture et écriture ».', resource_limit_exceeded: 'Ton compte Hetzner a atteint sa limite de serveurs (nouveau compte : vérifie ton e-mail et ton moyen de paiement).',
+    no_type: 'Hetzner ne propose aucun serveur adapté en ce moment : réessaie plus tard.', hetzner_down: 'Hetzner ne répond pas : réessaie dans un instant.',
+    bad_host: 'Cette adresse ne répond pas : vérifie l’IP.', private_host: 'Cette adresse est privée : il faut l’IP publique de ton VPS.',
+    ssh_auth: 'Le serveur refuse ce mot de passe (ou cet utilisateur).', ssh_unreachable: 'Le serveur ne répond pas en SSH : vérifie l’IP et que le port 22 est ouvert.',
+    ssh_sudo: 'Cet utilisateur n’a pas les droits administrateur (sudo) : utilise root.', ssh_timeout: 'Le serveur a mis trop de temps à répondre.', ssh_ssh: 'La connexion SSH a échoué.',
+    bad_secret: 'Il manque le mot de passe (ou la clé n’a pas la bonne forme).', bad_user: 'Ce nom d’utilisateur n’est pas valide.', bad_port: 'Ce port n’est pas valide.',
+    no_job: 'Cette installation a expiré : recommence.', network: 'Pas de réseau : réessaie.',
+  },
+} : {
+  h1: 'Your AI agents, in your pocket.',
+  lead: 'weevils puts the Claude Code and Codex sessions running on your own machine on your phone: follow them, talk to them, hand them work. Plug in a machine, weevboss takes care of the rest.',
+  trust: 'Nothing is kept: your token or password is used once, then forgotten. Once installed, weevils runs on your machine, and this page has no access to it anymore.',
+  source: 'The code is open, on GitHub',
+  plug: 'Plug in your machine',
+  plugSub: 'Where your agents will run. Ready in a few minutes.',
+  hz: 'Create a server for me', hzSub: 'A VPS at Hetzner, created for you. A few euros a month. Your agents keep working with your phone off.', rec: 'recommended',
+  vps: 'I already have a VPS', vpsSub: 'Its address and password: weevils installs itself.',
+  pc: 'My computer', pcSub: 'Linux, or Windows with WSL. One command to paste in its terminal.',
+  thisPc: 'Connect this computer', thisPcSub: 'Paste this command in a terminal on this computer. Then a QR code opens weevils on your phone.',
+  better: 'Better: a VPS', betterSub: 'Your agents keep working with this computer off, and your phone reaches them from anywhere. Same flow, 2 more minutes.',
+  macNote: 'weevils runs on Linux for now: on a Mac, take a VPS (it’s the best option anyway).',
+  winNote: 'On Windows, paste the command in Ubuntu (WSL2). A VPS is still the simplest.',
+  back: '← Back',
+  hzTitle: 'A server of your own, at Hetzner',
+  hz1: 'Create a Hetzner account (with a payment method: they bill by the hour, a few euros a month).',
+  hz1b: 'Create my Hetzner account',
+  hz2: 'In the Hetzner console, open your project (or create one), then Security → API tokens → Generate API token, with “Read & Write”.',
+  hz2b: 'Open the Hetzner console',
+  hz3: 'Paste the token here. It creates your server, then it’s forgotten.',
+  token: 'Hetzner API token', seePrice: 'See the price',
+  perMonth: '/month incl. VAT', billed: 'Billed by the hour by Hetzner, delete it anytime from their console.',
+  create: 'Create my server',
+  vpsTitle: 'Your VPS', vpsIntro: 'Ubuntu or Debian, ideally brand new. weevils connects once, starts the install, then forgets the password.',
+  host: 'IP address', user: 'User', pw: 'Password', port: 'SSH port', useKey: 'Use an SSH key instead', usePw: 'Use a password instead', key: 'Private key',
+  install: 'Install weevils',
+  noVps: 'No VPS yet? Hetzner, DigitalOcean or Hostinger, Ubuntu 24.04, 2 vCPU and 4 GB are enough. Or let me create one:',
+  pcTitle: 'Your computer', pcIntro: 'On the computer, open a terminal, paste this command and press Enter:',
+  pcPhone: 'Send it to yourself to paste it there:', share: 'Send me the command', copy: 'Copy', copied: 'Copied',
+  pcWait: 'This page follows the install as soon as the command starts.',
+  pcLimit: 'Your phone reaches the computer while it’s on. For a permanent link, weevboss will offer a VPS or Tailscale.',
+  progTitle: 'Installing weevils', progNote: 'Takes 3 to 8 minutes. You can close this page and come back: it picks up where it is.',
+  s_created_hetzner: 'Server created', s_created_ssh: 'Connected to your server', s_created_pc: 'Command started',
+  s_start: 'The machine starts the install', s_system: 'Checking the system and tools', s_source: 'Getting weevils', s_build: 'Building the app',
+  s_service: 'Starting weevils', s_https: 'Secure link (HTTPS)', s_tunnel: 'Secure link for your phone', s_done: 'Ready',
+  doneTitle: 'Your weevils is ready!', donePhone: 'Opening your weevils…', open: 'Open my weevils',
+  home: 'Then add it to your home screen (iPhone: Share → Add to Home Screen; Android: ⋮ → Install app). weevboss welcomes you and connects Claude Code or Codex with you.',
+  scan: 'Scan this code with your phone’s camera:', scanNote: 'This code logs you in: keep it to yourself, like a password.',
+  openHere: 'Open it here', noSeal: 'Your weevils answers here. Your access code is in ~/weevils-install.log on the machine.',
+  failTitle: 'The install stopped', retry: 'Start again',
+  e: {
+    slow_down: 'Too many tries at once: try again in a few minutes.', busy: 'Lots of people right now: try again in a minute.',
+    bad_token: 'This token doesn’t look right: copy all of it from Hetzner.', unauthorized: 'Hetzner refuses this token: check it’s complete and not deleted.',
+    forbidden: 'This token is read-only: generate one with “Read & Write”.', resource_limit_exceeded: 'Your Hetzner account reached its server limit (new account: check your e-mail and payment method).',
+    no_type: 'Hetzner has no suitable server right now: try again later.', hetzner_down: 'Hetzner doesn’t answer: try again in a moment.',
+    bad_host: 'This address doesn’t answer: check the IP.', private_host: 'This address is private: use your VPS’s public IP.',
+    ssh_auth: 'The server refuses this password (or user).', ssh_unreachable: 'The server doesn’t answer over SSH: check the IP and that port 22 is open.',
+    ssh_sudo: 'This user has no admin rights (sudo): use root.', ssh_timeout: 'The server took too long to answer.', ssh_ssh: 'The SSH connection failed.',
+    bad_secret: 'The password is missing (or the key doesn’t look right).', bad_user: 'This user name isn’t valid.', bad_port: 'This port isn’t valid.',
+    no_job: 'This setup expired: start again.', network: 'No network: try again.',
+  },
+}
+document.documentElement.lang = FR ? 'fr' : 'en'
+for (const el of document.querySelectorAll('[data-t]')) el.textContent = W[el.dataset.t]
+
+// ------------------------------------------------------------------ device
+const ua = navigator.userAgent
+const phone = /iPhone|iPod|Android.+Mobile|Mobile.+Firefox|Windows Phone/i.test(ua) || (/iPad|Android/i.test(ua) && matchMedia('(pointer: coarse)').matches) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
+const os = phone ? 'phone' : /Windows/.test(ua) ? 'windows' : /Macintosh|Mac OS X/.test(ua) ? 'mac' : /Linux|X11|CrOS/.test(ua) ? 'linux' : 'other'
+
+// ------------------------------------------------------------------ tiny DOM
+const app = document.getElementById('app')
+const h = (tag, attrs = {}, ...kids) => {
+  const el = document.createElement(tag)
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k.startsWith('on')) el.addEventListener(k.slice(2), v)
+    else if (k === 'class') el.className = v
+    else if (v !== false && v != null) el.setAttribute(k, v === true ? '' : v)
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) el.append(k.nodeType ? k : document.createTextNode(k))
+  return el
+}
+const band = (cls, ...kids) => h('section', { class: `band ${cls}` }, h('div', { class: 'wrap' }, ...kids))
+const show = (...sections) => { document.body.classList.toggle('deep', show.deep); show.deep = true; app.replaceChildren(...sections); scrollTo({ top: 0 }) }
+const errBox = () => h('div', { class: 'err', hidden: true, role: 'alert' })
+const showErr = (box, code) => { box.textContent = W.e[code] || W.e[code?.replace?.(/^http_\d+$/, 'hetzner_down')] || code || W.e.network; box.hidden = false }
+const back = () => h('button', { class: 'back', onclick: home }, W.back)
+
+// ------------------------------------------------------------------ API
+async function api(p, body) {
+  let r
+  try {
+    r = await fetch(p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  } catch { throw new Error('network') }
+  const data = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(data.error || `http_${r.status}`)
+  return data
+}
+
+// The page's key pair: the install encrypts your login link with the public half; only this browser can open it.
+async function newJob(kind) {
+  const pair = await crypto.subtle.generateKey({ name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['encrypt', 'decrypt'])
+  const spki = new Uint8Array(await crypto.subtle.exportKey('spki', pair.publicKey))
+  const pub = btoa(String.fromCharCode(...spki))
+  const j = await api('/api/job', { kind, lang: FR ? 'fr' : 'en', pub })
+  const jwk = await crypto.subtle.exportKey('jwk', pair.privateKey)
+  const saved = { sid: j.sid, view: j.view, kind, jwk, command: j.command, at: Date.now() }
+  localStorage.setItem('wvget', JSON.stringify(saved))
+  return saved
+}
+const markStarted = (job) => { job.started = true; localStorage.setItem('wvget', JSON.stringify(job)) }
+const savedJob = () => { try { const s = JSON.parse(localStorage.getItem('wvget') || 'null'); return s && Date.now() - s.at < 3 * 3600e3 ? s : null } catch { return null } }
+async function unseal(job, sealed) {
+  const key = await crypto.subtle.importKey('jwk', job.jwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt'])
+  const bytes = Uint8Array.from(atob(sealed), (c) => c.charCodeAt(0))
+  return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, key, bytes))
+}
+
+// ------------------------------------------------------------------ screens
+function choiceBtn(cls, title, sub, onclick, tag) {
+  return h('button', { class: `choice ${cls}`, onclick }, h('div', { class: 'wrap' }, h('div', {}, h('b', {}, title, tag ? h('em', { class: 'tag' }, tag) : null), h('span', {}, sub)), h('div', { class: 'go' }, '→')))
+}
+
+function home() {
+  history.replaceState(null, '', location.pathname)
+  show.deep = false
+  const intro = band('b5', h('h2', {}, W.plug), h('p', { class: 'small' }, W.plugSub))
+  const hz = choiceBtn('b1', W.hz, W.hzSub, hetzner, W.rec)
+  const vps = choiceBtn('b2', W.vps, W.vpsSub, ssh)
+  if (os === 'linux' || os === 'windows') {
+    // A computer: connect it right here, and still suggest a VPS.
+    const cmdBand = band('b3', h('h2', {}, W.thisPc), h('p', {}, W.thisPcSub), os === 'windows' ? h('p', { class: 'small' }, W.winNote) : null, pcBox(true))
+    return show(cmdBand, band('b5', h('h2', {}, W.better), h('p', { class: 'small' }, W.betterSub)), hz, vps)
+  }
+  if (os === 'mac') return show(intro, band('b5', h('p', { class: 'small' }, W.macNote)), hz, vps, choiceBtn('b3', W.pc, W.pcSub, pc))
+  show(intro, hz, vps, choiceBtn('b3', W.pc, W.pcSub, pc))
+}
+
+// --- (a) Hetzner
+function hetzner() {
+  let job, token = ''
+  const err = errBox()
+  const tok = h('input', { type: 'password', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: '••••••••••••••••', 'aria-label': W.token })
+  const quote = h('div', { class: 'quote', hidden: true })
+  const createBtn = h('button', { class: 'btn', hidden: true }, W.create)
+  const priceBtn = h('button', { class: 'btn light' }, W.seePrice)
+  priceBtn.onclick = async () => {
+    err.hidden = true
+    token = tok.value.trim()
+    priceBtn.disabled = true
+    try {
+      job ||= await newJob('hetzner')
+      const q = await api('/api/hetzner/quote', { sid: job.sid, view: job.view, token })
+      const b = q.best
+      const price = new Intl.NumberFormat(FR ? 'fr-FR' : 'en-IE', { style: 'currency', currency: 'EUR' }).format(b.monthly)
+      const city = { nbg1: 'Nuremberg', fsn1: 'Falkenstein', hel1: 'Helsinki' }[b.location] || b.location
+      quote.replaceChildren(h('div', {}, h('b', {}, price), ' ', W.perMonth), h('p', { class: 'small' }, `${b.type.toUpperCase()} · ${b.cores} vCPU · ${b.memory} GB · ${b.disk} GB · ${city}`), h('p', { class: 'small' }, W.billed))
+      quote.hidden = false
+      createBtn.hidden = false
+      priceBtn.hidden = true
+    } catch (e) { showErr(err, e.message) } finally { priceBtn.disabled = false }
+  }
+  createBtn.onclick = async () => {
+    err.hidden = true
+    createBtn.disabled = true
+    try {
+      await api('/api/hetzner/create', { sid: job.sid, view: job.view, token })
+      token = ''
+      tok.value = ''
+      markStarted(job)
+      progress(job)
+    } catch (e) { showErr(err, e.message); createBtn.disabled = false }
+  }
+  tok.oninput = () => { quote.hidden = true; createBtn.hidden = true; priceBtn.hidden = false }
+  show(band('b1', back(), h('h2', {}, W.hzTitle),
+    h('ol', { class: 'how' },
+      h('li', {}, W.hz1, h('a', { class: 'btn light', href: 'https://accounts.hetzner.com/signUp', target: '_blank', rel: 'noopener' }, W.hz1b)),
+      h('li', {}, W.hz2, h('a', { class: 'btn light', href: 'https://console.hetzner.cloud/projects', target: '_blank', rel: 'noopener' }, W.hz2b)),
+      h('li', {}, W.hz3, h('label', {}, W.token), tok, priceBtn, quote, createBtn)),
+    err))
+}
+
+// --- (b) your VPS
+function ssh() {
+  let job
+  const err = errBox()
+  const host = h('input', { inputmode: 'decimal', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: '203.0.113.7' })
+  const user = h('input', { value: 'root', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' })
+  const port = h('input', { value: '22', inputmode: 'numeric' })
+  const pw = h('input', { type: 'password', autocomplete: 'off' })
+  const key = h('textarea', { placeholder: '-----BEGIN OPENSSH PRIVATE KEY-----', autocapitalize: 'off', spellcheck: 'false' })
+  const pwBlock = h('div', {}, h('label', {}, W.pw), pw)
+  const keyBlock = h('div', { hidden: true }, h('label', {}, W.key), key)
+  const toggle = h('button', { class: 'link', type: 'button' }, W.useKey)
+  toggle.onclick = () => { const k = keyBlock.hidden; keyBlock.hidden = !k; pwBlock.hidden = k; toggle.textContent = k ? W.usePw : W.useKey }
+  const go = h('button', { class: 'btn' }, W.install)
+  go.onclick = async () => {
+    err.hidden = true
+    go.disabled = true
+    try {
+      job ||= await newJob('ssh')
+      const body = { sid: job.sid, view: job.view, host: host.value.trim(), user: user.value.trim() || 'root', port: Number(port.value) || 22 }
+      if (keyBlock.hidden) body.password = pw.value
+      else body.key = key.value
+      await api('/api/ssh', body)
+      pw.value = ''
+      key.value = ''
+      markStarted(job)
+      progress(job)
+    } catch (e) { showErr(err, e.message); go.disabled = false }
+  }
+  show(band('b2', back(), h('h2', {}, W.vpsTitle), h('p', {}, W.vpsIntro),
+    h('label', {}, W.host), host,
+    h('div', { class: 'row' }, h('div', {}, h('label', {}, W.user), user), h('div', { style: 'width:96px' }, h('label', {}, W.port), port)),
+    pwBlock, keyBlock, toggle, go, err),
+  band('b5', h('p', { class: 'small' }, W.noVps), h('button', { class: 'btn light', onclick: hetzner }, W.hz)))
+}
+
+// --- (c) a computer
+function pcBox(here) {
+  const err = errBox()
+  const code = h('code', {}, '…')
+  const copyBtn = h('button', { type: 'button' }, W.copy)
+  const box = h('div', {}, h('div', { class: 'cmd' }, code, copyBtn), err)
+  let job
+  ;(async () => {
+    try {
+      const s = savedJob()
+      job = s && s.kind === 'pc' ? s : await newJob('pc')
+      code.textContent = job.command
+      watch(job, () => progress(job))
+    } catch (e) { showErr(err, e.message) }
+  })()
+  copyBtn.onclick = async () => {
+    if (!job) return
+    try { await navigator.clipboard.writeText(job.command) } catch { getSelection().selectAllChildren(code) }
+    copyBtn.textContent = W.copied
+    setTimeout(() => (copyBtn.textContent = W.copy), 1600)
+  }
+  if (!here && navigator.share) box.append(h('button', { class: 'btn light', onclick: () => job && navigator.share({ text: job.command }).catch(() => {}) }, W.share))
+  box.append(h('p', { class: 'note' }, W.pcWait), h('p', { class: 'note' }, W.pcLimit))
+  return box
+}
+function pc() {
+  show(band('b3', back(), h('h2', {}, W.pcTitle), h('p', {}, W.pcIntro), pcBox(false)))
+}
+
+// ------------------------------------------------------------------ progress, then your weevils
+const ORDER = ['created', 'start', 's_system', 's_source', 's_build', 's_service', 'https', 'done']
+const FOLD = { s_config: 's_source', waiting: 's_service', s_https: 'https', tunnel: 'https' }
+let watching = 0
+/** Polls the job; calls onMove when the install starts (the PC command was run), onState on every answer. */
+function watch(job, onMove, onState) {
+  const me = ++watching
+  let moved = false
+  const tick = async () => {
+    if (me !== watching) return
+    try {
+      const s = await api('/api/status', { sid: job.sid, view: job.view })
+      if (s.state !== 'waiting' && !moved && onMove) { moved = true; return onMove(s) }
+      onState?.(s)
+      if (s.state === 'done' || s.state === 'failed') return
+    } catch (e) {
+      if (e.message === 'no_job') { localStorage.removeItem('wvget'); return onState?.({ state: 'failed', error: W.e.no_job }) }
+    }
+    setTimeout(tick, 2000)
+  }
+  tick()
+}
+
+function progress(job) {
+  const labels = ORDER.map((k) => k === 'created' ? W[`s_created_${job.kind}`] : k === 'https' ? (job.kind === 'pc' ? W.s_tunnel : W.s_https) : W[`s_${k.replace(/^s_/, '')}`])
+  const items = ORDER.map((k, i) => h('li', {}, h('i', {}, ''), labels[i]))
+  const bar = h('div', {}, '')
+  const err = errBox()
+  const started = Date.now()
+  const clock = h('p', { class: 'small' }, '')
+  show(band('b5', h('h2', {}, W.progTitle), h('div', { class: 'bar' }, bar), h('ul', { class: 'steps' }, items), clock, h('p', { class: 'note' }, W.progNote), err))
+  const timer = setInterval(() => { const s = Math.round((Date.now() - started) / 1000); clock.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }, 1000)
+  watch(job, null, async (s) => {
+    const seen = new Set(s.steps.map((k) => FOLD[k] || k))
+    let last = -1
+    ORDER.forEach((k, i) => { if (seen.has(k)) last = i })
+    // A reported step has started; 'created' is reported once finished.
+    const now = ORDER[last] === 'created' || last < 0 ? last + 1 : last
+    items.forEach((li, i) => { li.className = i < now || s.state === 'done' ? 'done' : i === now && s.state !== 'failed' ? 'now' : ''; li.firstChild.textContent = li.className === 'done' ? '✓' : '' })
+    bar.style.width = `${Math.max(4, Math.round((now / (ORDER.length - 1)) * 100))}%`
+    if (s.state === 'failed') {
+      clearInterval(timer)
+      localStorage.removeItem('wvget')
+      err.replaceChildren(h('b', {}, W.failTitle), h('br'), s.error || '', h('br'), h('button', { class: 'btn light', onclick: home }, W.retry))
+      err.hidden = false
+    }
+    if (s.state === 'done') { clearInterval(timer); ready(job, s) }
+  })
+}
+
+async function ready(job, s) {
+  let link = ''
+  if (s.result?.sealed) {
+    try { link = await unseal(job, s.result.sealed) } catch {}
+  }
+  // Only a link to the address the install reported, on that exact origin.
+  if (!link || !s.result.url || !link.startsWith(s.result.url + '/#k=')) link = ''
+  localStorage.removeItem('wvget')
+  const target = link || s.result?.url || ''
+  const sec = [h('h2', {}, W.doneTitle)]
+  if (!link) sec.push(h('p', { class: 'small' }, W.noSeal))
+  if (phone) {
+    sec.push(h('p', {}, W.home), h('a', { class: 'btn', href: target }, W.open))
+    show(band('b1', ...sec))
+    if (link) { sec[0].textContent = W.donePhone; setTimeout(() => location.replace(link), 4000) }
+    return
+  }
+  if (link && window.qrcode) {
+    const q = qrcode(0, 'M')
+    q.addData(link)
+    q.make()
+    sec.push(h('p', {}, W.scan), Object.assign(h('div', { class: 'qr' }), { innerHTML: q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }) }), h('p', { class: 'note' }, W.scanNote))
+  }
+  sec.push(h('p', { class: 'small' }, W.home), h('a', { class: 'btn light', href: target }, W.openHere))
+  show(band('b1', ...sec))
+}
+
+// ------------------------------------------------------------------ start (or resume a setup in progress)
+const resume = savedJob()
+if (resume && resume.kind !== 'pc' && resume.started) progress(resume)
+else if (resume && resume.kind === 'pc') { home(); if (os !== 'linux' && os !== 'windows') pc() }
+else home()
+</script>
+</body>
+</html>

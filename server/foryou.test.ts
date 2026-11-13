@@ -1,3 +1,4 @@
+import type { Software } from '../shared/softwares.ts'
 import reviewedIntents from './foryou-intents-reviewed.json' with { type: 'json' }
 import { feedNoticeKey } from '../shared/notices.ts'
 // The « for you » stream: the store (cap, age, one item per session, what never enters), mail privacy, posts and their
@@ -1388,7 +1389,7 @@ it('indexes later explicit request IDs in an existing session without replaying 
 
 
 it('projects current software links across locale changes and reload without altering stored cards', async () => {
-  const software = { id:'test:deployed', name:'Actual project', machine:'test', repo:'actual-repo', repos:['actual-repo'], kind:'web', run:'running', url:'https://deployed.example/' } as const
+  const software = { id:'test:deployed', name:'Actual project', machine:'test', repo:'actual-repo', repos:['actual-repo'], kind:'web', run:'running', url:'https://deployed.example/' } as Software
   let catalog = { at: now, items: [{...software, repos:[...software.repos]}] }
   const fy = make({ softwares: async()=>catalog })
   const posted = fy.post('The preview is ready at https://deployed.example/.', [{label:'Review',brief:'Review this exact preview'}])

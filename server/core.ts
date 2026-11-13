@@ -1313,6 +1313,11 @@ export class Weevils {
 
   /** Écrit dans la session ; si elle n'a plus de processus, la rouvre dans une pane weevils. */
   async send(id: string, text: string, from?: string): Promise<{ id: string; control?: 'model' }> {
+    if (this.foryou && !from) return this.foryou.directRequest(text, this.resolveId(id), () => this.sendOne(id, text, from))
+    return this.sendOne(id, text, from)
+  }
+
+  private async sendOne(id: string, text: string, from?: string): Promise<{ id: string; control?: 'model' }> {
     if (isModelControl(text)) return {id:this.resolveId(id),control:'model'}
     if (/^\/(?:model|effort)\s+/i.test(text.trim())) { await this.command(id,text);return {id:this.resolveId(id),control:'model'} }
     // Signé par un auteur (weevboss, un agent externe) : le fil le montre comme son message, pas celui de l'utilisateur.
@@ -1778,9 +1783,12 @@ export class Weevils {
    * « brief » : la marche à suivre d'un bouton de branchement, jointe au bloc ⟦weevils …⟧ (jamais affichée). */
   private bossSendLock: Promise<unknown> = Promise.resolve()
   async sendMain(text: string, brief?: string): Promise<{ id: string }> {
-    const next = this.bossSendLock.catch(() => undefined).then(() => this.sendMainOne(text, brief))
-    this.bossSendLock = next
-    return next
+    const run = () => {
+      const next = this.bossSendLock.catch(() => undefined).then(() => this.sendMainOne(text, brief))
+      this.bossSendLock = next
+      return next
+    }
+    return this.foryou ? this.foryou.directRequest(text, undefined, run) : run()
   }
 
   private async sendMainOne(text: string, brief?: string) {

@@ -3,6 +3,8 @@ import { FeedLocalization } from './foryou-localization.ts'
 import { OutboxError } from './outbox.ts'
 import { internalFeedUpdate, editorialFeedText, acknowledgementOnly, humanFeedItem, humanFeedText, rawEngineeringNotice } from '../shared/feed-text.ts'
 import { reviewedEditorial } from './foryou-editorial.ts'
+import { WorkIntents, intentDispatch, substantive, briefKey, isWorkRequest, type IntentResult } from './foryou-intents.ts'
+import reviewedIntents from './foryou-intents-reviewed.json' with { type: 'json' }
 import { canonicalAlertId, feedNoticeKey, isRequestNotice, quotaReset, sessionNoticeKey } from '../shared/notices.ts'
 // « For you »: the stream next to weevboss (docs/foryou.md, contract in shared/foryou.ts). Main machine only.
 //
@@ -241,7 +243,7 @@ export interface ForYouHost {
   resume(id: string): Promise<{ id: string }>
   close(id: string): Promise<unknown>
   orchestratorId: string | null
-  store?: { get(id: string): { firstPrompt?: string; headless?: boolean; originator?: string } | undefined }
+  store?: { get(id: string): { firstPrompt?: string; headless?: boolean; originator?: string; messages?: { id: string; role: string; text: string; at: number }[] } | undefined }
 }
 
 /** One machine as the alerts need it. disk: used share in %, when known. */
@@ -338,7 +340,7 @@ interface Stored {
   /** media: where the caller stood (files of one place join one item). */
   cwd?: string
   /** Buttons: the brief goes to weevboss on a tap. */
-  actions?: { id: string; label: string; brief: string }[]
+  actions?: { id: string; label: string; brief: string; sourceIntentId?: string }[]
   /** mail: what a reply needs. The address stays here. */
   mail?: { address: string; mid: string; subject: string; target: string }
   /** mail: the short « did this » line the curator wrote, shown instead of the first line (lang: the language it is
@@ -385,7 +387,7 @@ export interface NewItem {
   more?: boolean
   gauges?: ForYouGauge[]
   open?: ForYouItem['open']
-  actions?: { label: string; brief: string }[]
+  actions?: { label: string; brief: string; sourceIntentId?: string }[]
   lang?: Lang
 }
 
@@ -408,6 +410,7 @@ export class ForYou {
   private deps: ForYouDeps
   private s: State
   private now: () => number
+  readonly intents: WorkIntents
   private dataDir: string
   private machineId: string
   /** changed() already counted a revision: the next read does not count the same change again. */
@@ -425,6 +428,7 @@ export class ForYou {
     this.deps = deps
     this.file = deps.file ?? path.join(DATA_DIR, 'foryou.json')
     this.now = deps.now ?? Date.now
+    this.intents = new WorkIntents(this.file + '.intents.json', this.now)
     this.localization = new FeedLocalization(this.file + '.translations.json', this.now)
     this.dataDir = deps.dataDir ?? DATA_DIR
     this.machineId = deps.machineId ?? MACHINE.id
@@ -637,9 +641,58 @@ export class ForYou {
     this.changed()
   }
 
+  /** Observe explicit request sources, not titles or a session's idle/done flag. */
+  private syncIntents(snap = this.w.snapshot()) {
+    for (const link of reviewedIntents) {
+      const item = this.get(link.cardId)
+      if (!item?.actions?.some(a => a.id === link.actionId && a.brief === link.brief)) continue
+      if (!snap.sessions.some(s => s.id === link.sessionId)) continue
+      this.intents.observe({ id: link.intentId, brief: link.brief, status: 'requested', scope: item.projectId,
+        open: { page: 'session', id: link.sessionId }, source: { sessionId: link.sessionId, messageId: link.messageId } })
+    }
+    for (const session of snap.sessions.slice(0, 100)) {
+      const source = this.w.store?.get(session.id)
+      const first = source?.messages?.find(m => m.role === 'user' || m.role === 'orchestrator')
+      const brief = first?.text || source?.firstPrompt
+      if (!brief || !substantive(brief)) continue
+      this.intents.observe({ id: `request:${session.id}:${first?.id ?? 'initial'}`, brief, scope: session.projectId, status: 'requested', at: first?.at ?? session.openedAt,
+        open: { page: 'session', id: session.id }, source: { sessionId: session.id, messageId: first?.id ?? 'initial' } })
+    }
+    for (const job of snap.optimizers ?? []) {
+      if (job.state === 'refused' || (job.state === 'proposed' && !job.userCreated)) continue
+      const request = job.talk?.find(m => m.who === 'user')?.text
+      const brief = request || `${job.title}. ${job.why}`
+      this.intents.observe({ id: `auto:${job.id}`, brief, exact: !!request, scope: job.repo ?? undefined, at: job.createdAt,
+        status: job.state === 'done' ? 'completed' : job.state === 'running' ? 'running' : job.state === 'queued' ? 'queued' : 'requested',
+        open: { page: 'auto', id: job.id } })
+    }
+  }
+
+  intentContext(): string {
+    this.syncIntents()
+    return JSON.stringify(this.intents.list().slice(0, 30).map(i => ({ sourceIntentId: i.id, status: i.status, brief: i.brief.slice(0, 600) })))
+  }
+
+  private actionIntent(item: Stored, action: NonNullable<Stored['actions']>[number]) {
+    const reviewed = reviewedIntents.find(link => link.cardId === item.id && link.actionId === action.id && link.brief === action.brief)
+    return this.intents.get(reviewed?.intentId) ?? this.intents.find(action.brief, item.projectId, action.sourceIntentId) ?? this.intents.get(`card:${item.id}:${action.id}`)
+  }
+
+  /** Core calls this before sending a direct request, sharing the same reservation
+   * as a proposal click. No extra send occurs inside an accepted intent dispatch. */
+  async directRequest(text: string, sessionId: string | undefined, run: () => Promise<{ id: string }>): Promise<{ id: string }> {
+    if (intentDispatch.getStore() || !substantive(text)) return run()
+    this.syncIntents()
+    const scope = this.w.snapshot().sessions.find(s => s.id === sessionId)?.projectId
+    if (!isWorkRequest(text) && !this.intents.find(text, scope)) return run()
+    const result = await this.intents.dispatch(text, scope, `direct:${briefKey(text)}`, run)
+    if (!result.open && this.intents.get(result.intentId)?.status === 'uncertain') throw new OutboxError(503, tr(M).intentUncertain)
+    return { id: result.open?.page === 'session' ? result.open.id : sessionId ?? this.w.orchestratorId ?? '__main' }
+  }
+
   private buttons(actions: unknown): Stored['actions'] {
     const list = (Array.isArray(actions) ? actions : [])
-      .map((a) => ({ label: clip(collapse(String((a as { label?: unknown })?.label ?? '')), 48), brief: String((a as { brief?: unknown })?.brief ?? '').trim().slice(0, 4000) }))
+      .map((a) => ({ label: clip(collapse(String((a as { label?: unknown })?.label ?? '')), 48), brief: String((a as { brief?: unknown })?.brief ?? '').trim().slice(0, 4000), ...(typeof a?.sourceIntentId === 'string' && this.intents.get(a.sourceIntentId) ? { sourceIntentId: a.sourceIntentId as string } : {}) }))
       .filter((a) => a.label && a.brief)
       .slice(0, MAX_ACTIONS)
       .map((a, i) => ({ id: `a${i + 1}`, ...a }))
@@ -763,6 +816,11 @@ export class ForYou {
    * again; one the user dismissed stays dismissed).
    */
   add(n: NewItem): ForYouItem | null {
+    this.syncIntents()
+    // A curator proposal is new only when it does not point to authorized work.
+    // Unknown source IDs are rejected, never silently treated as new permission.
+    if (n.actions?.some(a => a.sourceIntentId && !this.intents.get(a.sourceIntentId))) return null
+    if (n.kind === 'improve' && n.actions?.some(a => this.intents.find(a.brief, n.projectId, a.sourceIntentId) || this.intents.ambiguous(a.brief, n.projectId))) return null
     if (technicalEvent(n.id ?? '', n.text) || internalFeedUpdate(n.text)) return null
     const text = clip(n.text.trim(), POST_MAX)
     if (!text) return null
@@ -960,7 +1018,22 @@ export class ForYou {
       out.text = text
       if (out.actions) out.actions = out.actions.filter(a => !internalFeedUpdate(a.label))
     }
-    return humanFeedItem(reviewedEditorial(out, i.text))
+    const result = humanFeedItem(reviewedEditorial(out, i.text))
+    const existing = i.actions?.map(a => this.actionIntent(i, a)).filter(e => !!e)
+    if (existing?.length && existing.length === i.actions?.length && new Set(existing.map(e => e.id)).size === 1) {
+      const work = existing[0]!
+      result.work = { intentId: work.id, status: work.status, open: work.open, source: work.source }
+      result.actions = []
+      if (work.open) result.open = work.open
+      result.editorial ??= { original: { ...(i.title ? { title: i.title } : {}), text: i.text } }
+    } else if (existing?.length && result.actions) {
+      result.actions = result.actions.map(a => {
+        const original = i.actions?.find(b => b.id === a.id)
+        const work = original && this.actionIntent(i, original)
+        return work ? { ...a, label: tr(M).followWork } : a
+      })
+    }
+    return result
   }
 
   // ---------------------------------------------------------------- reading: live items
@@ -1158,6 +1231,7 @@ export class ForYou {
   feed(now = this.now(), l?: unknown): ForYouFeed {
     this.lastWanted = now
     const snap = this.w.snapshot()
+    this.syncIntents(snap)
     this.refresh(now, snap)
     return withLang(l, () => {
       const cur = lang()
@@ -1221,17 +1295,18 @@ export class ForYou {
    * sent to weevboss), remembered so it never comes back. A button under a post: its brief goes to weevboss behind a
    * short visible message, and the item leaves. « resume » on a cut session: resumed, and the item leaves.
    */
-  private actionFlights = new Map<string, Promise<void>>()
-  async act(id: string, action: string, card?: string, l?: unknown): Promise<void> {
+  private actionFlights = new Map<string, Promise<void | IntentResult>>()
+  async act(id: string, action: string, card?: string, l?: unknown): Promise<void | IntentResult> {
     const key = card ?? id
     const previous = this.actionFlights.get(key)
     if (previous) return previous
     const next = this.actOnce(id, action, card, l)
     this.actionFlights.set(key, next)
-    try { await next } finally { this.actionFlights.delete(key) }
+    try { return await next } finally { this.actionFlights.delete(key) }
   }
 
-  private async actOnce(id: string, action: string, card?: string, l?: unknown): Promise<void> {
+  private async actOnce(id: string, action: string, card?: string, l?: unknown): Promise<void | IntentResult> {
+    this.syncIntents()
     const t = withLang(l, () => tr(M))
     if (id === 'proposals') {
       const snap = this.w.snapshot()
@@ -1239,21 +1314,43 @@ export class ForYou {
       const c = withLang(l, () => this.cards(snap, now)).find((x) => x.id === card)
       if (!c || (action !== 'accept' && action !== 'refuse')) throw new Error(c ? t.noAction : t.cardGone)
       const raw = c.id.slice(2)
+      let followed: IntentResult | undefined
       if (c.source === 'optimizer') {
+        const job = snap.optimizers?.find(o => o.id === raw)
+        const request = job?.talk?.find(m => m.who === 'user')?.text
+        const brief = job && (request || `${job.title}. ${job.why}`)
+        const existing = request && this.intents.find(request, job?.repo ?? undefined)
+        if (action === 'accept' && existing && existing.id !== `auto:${raw}`) {
+          this.s.cards[c.id] = this.now()
+          this.changed()
+          return { intentId: existing.id, existing: true, open: existing.open }
+        }
         const o = this.deps.optimizers?.()
-        if (!(action === 'accept' ? o?.accept(raw) : o?.refuse(raw))) throw new Error(t.cardGone)
+        if ((action === 'accept' ? o?.accept(raw) : o?.refuse(raw)) !== true) throw new Error(t.cardGone)
+        if (action === 'accept' && job && brief) {
+          this.intents.observe({ id: `auto:${raw}`, brief, exact: !!request, scope: job.repo ?? undefined, status: 'requested', at: job.createdAt, open: { page: 'auto', id: raw } })
+        }
       } else if (action === 'accept') {
         const input = this.deps.tips?.(snap, now)
         const f = input && withLang(l, () => personalTips(input)).find((x) => x.id === raw)
         if (!input || !f?.action) throw new Error(t.cardGone)
-        if (f.action.kind === 'boss') await this.w.sendMain(f.action.text)
+        if (f.action.kind === 'boss') {
+          const text = f.action.text
+          followed = await this.intents.dispatch(text, undefined, `tip:${raw}`, () => this.w.sendMain(text))
+        }
         else await withLang(l, () => actOn(raw, input, { close: (sid) => this.w.close(sid) }))
       }
       this.s.cards[c.id] = this.now()
-      return this.changed()
+      this.changed()
+      return followed
     }
     const i = this.get(id)
-    if (!i || i.gone) throw new Error(t.notFound)
+    if (!i) throw new Error(t.notFound)
+    const rememberedAction = i.actions?.find(a => a.id === action)
+    const existing = rememberedAction && this.actionIntent(i, rememberedAction)
+    if (existing) return this.intents.dispatch(rememberedAction!.brief, i.projectId, existing.id,
+      async () => { throw new Error(t.noAction) }, existing.id)
+    if (i.gone) throw new Error(t.notFound)
     if (i.visualProposal && i.sessionId) {
       const choice = i.visualProposal.options.find(o => action === `choice:${o.id}`)
       if (!choice || !this.w.snapshot().sessions.some(s => s.id === i.sessionId && s.controllable)) throw new Error(t.noAction)
@@ -1272,7 +1369,12 @@ export class ForYou {
     } else {
       const a = i.actions?.find((x) => x.id === action)
       if (!a) throw new Error(t.noAction)
-      await this.w.sendMain(t.go(a.label), t.actBrief(clip(collapse(i.text), 300), a.brief))
+      const result = await this.intents.dispatch(a.brief, i.projectId, `card:${i.id}:${a.id}`,
+        () => this.w.sendMain(t.go(a.label), t.actBrief(clip(collapse(i.text), 300), a.brief)), a.sourceIntentId)
+      a.sourceIntentId = result.intentId
+      // Keep the original record and expose the existing conversation on refresh.
+      this.changed()
+      return result
     }
     i.gone = true
     this.changed()

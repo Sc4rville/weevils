@@ -2,6 +2,7 @@ import { storePayload, loadPayload, removePayload } from './outbox-payload'
 import { useSyncExternalStore } from 'react'
 import { getLang, localeHeaders, tr, type Lang } from './i18n'
 import M from './i18n/outbox'
+import { automatedHeaders } from './automated'
 
 export type DeliveryState = 'sending' | 'accepted' | 'delivering' | 'delivered' | 'uncertain' | 'failed'
 export interface Receipt {
@@ -81,7 +82,7 @@ export async function refreshReceipts() {
             update({ ...row, recovered: true })
             await deliver(row.url, payload, async (messageId, signal) => {
               if (!messageId) throw new Error(tr(M).unconfirmed)
-              const res = await fetch(row.url, { method: 'POST', credentials: 'same-origin', headers: { ...localeHeaders(row.locale), 'content-type': 'application/json', 'Idempotency-Key': messageId! }, body: JSON.stringify(payload), signal })
+              const res = await fetch(row.url, { method: 'POST', credentials: 'same-origin', headers: { ...localeHeaders(row.locale), ...automatedHeaders(), 'content-type': 'application/json', 'Idempotency-Key': messageId! }, body: JSON.stringify(payload), signal })
               const data = await res.json()
               if (!res.ok) throw Object.assign(new Error(data.error ?? tr(M).unconfirmed), { status: res.status })
               return data

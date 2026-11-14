@@ -41,7 +41,11 @@ tools: `test/macos/run.sh` checks that without a Mac, in a Docker container that
 Tests never touch your real `~/.config`, `~/.claude` or weevils data: they run with a temporary `HOME`. Check a live
 behaviour (a session cut mid-work, a notification) on the throwaway server above, never on the instance someone uses
 every day. If a test session has to run on a real instance anyway, start its brief with `[test]`: it shows in the app
-but never notifies and never posts in weevboss's thread. The one test
+but never notifies and never posts in weevboss's thread. A live weevils also refuses anything that speaks to weevboss
+as the user (a message, live voice, a For you tap) unless it comes from a browser signed in with the access code: a
+script, `curl` or an automated browser on the same machine gets a 403, even though loopback is trusted for the rest.
+Agents and the `weevils` command still write there, signed with their name. Live voice and weevboss tests run on
+`scripts/test-copy.sh`, which lets the copy's own scripts in (`WEEVILS_ALLOW_LOCAL_VOICE=1`). The one test
 that talks to a live server is opt-in: `WEEVILS_LIVE_TEST=1 npx vitest run test/live`.
 
 ## Layout

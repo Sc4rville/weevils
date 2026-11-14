@@ -4,6 +4,9 @@ import { OutboxError, type OutboxTask } from './outbox.ts'
 import { tr, withLang } from './i18n.ts'
 import M from './i18n/outbox.ts'
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void> | void
+const replays = new WeakSet<object>()
+/** A request rebuilt by executeOutbox: its doors (who may speak as the user) were checked when the intent was accepted. */
+export const isReplay = (req: http.IncomingMessage) => replays.has(req)
 export const outboxRoute = (pathname: string) => /^\/api\/(?:main(?:\/attach)?|sessions\/[^/]+\/(?:send|attach)|foryou\/[^/]+\/(?:reply|act))$/.test(pathname)
 /** Replay a persisted, authenticated intent through the same handlers, never through the network. */
 export async function executeOutbox(task: OutboxTask, routes: [string, RegExp, Handler][]) {
@@ -17,6 +20,7 @@ export async function executeOutbox(task: OutboxTask, routes: [string, RegExp, H
     // `from` was resolved by trustedFrom on the authenticated original request, never trusted from the client body.
     req.headers = { ...(task.locale ? { 'x-weevils-locale': task.locale } : {}), host: 'localhost', 'content-type': 'application/json' }
     Object.assign(req, { socket: { remoteAddress: '127.0.0.1' } })
+    replays.add(req)
     let status = 200, result: any = {}, ended = false
     const res = {
       writeHead(code: number) { status = code; return this },

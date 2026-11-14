@@ -14,8 +14,9 @@ repository a stranger can clone, read and trust, because it is the open-source d
 ## 0. Before anything
 
 1. **Mode.** The automation's entrypoint appends a line `HYGIENE_MODE: quiet|full` and `HYGIENE_FINGERPRINT: …`
-   to your brief. `quiet` means nothing changed since the last full scan (same `main` tree, same branch list, last
-   full scan under 7 days): do only section Q and stop. No line at all (older entrypoint): treat it as `full`.
+   to your brief. `quiet` means nothing changed since the last full scan (same `main` tree, same branch list), or
+   the last full scan is under 2 days old: do only section Q and stop. A full scan older than 7 days is always
+   redone. No line at all (older entrypoint): treat it as `full`.
 2. **Provider.** On Codex instead of Claude: run the scan and the report, make no fix, say so in the report.
 3. **Quota.** `curl -s http://127.0.0.1:4179/api/usage`. Claude `week` at 90 % or more: one line in the report
    ("paused: weekly quota at N %") and stop. At 75 % or more: scan and report, no fix, no new rule.
@@ -23,9 +24,11 @@ repository a stranger can clone, read and trust, because it is the open-source d
    code as it is, scan only, and note it in the report.
 5. **Read** `HYGIENE.md` (rules, accepted exceptions, last changelog entries) and your previous report (the
    report file named in your rules, if it exists). Never report again what an accepted exception covers.
-6. **Sleep trigger.** If `main` now has the "when I sleep" trigger for Auto (`onSleep` in `shared/api.ts`), and the
-   changelog does not say it was offered yet, add the button `Switch to sleep::Switch the automation Repo Hygienist
-   from its every-2-days 02:00 fallback to the "when I sleep" trigger, keeping every 2 days at most.` to the post.
+6. **Trigger.** The automation starts on "when I sleep" (one start per night of sleep mode); the entrypoint keeps
+   the full pass to every 2 days at most, the other nights are quiet. Nothing to do about it here.
+7. **Dependencies.** The machine may set `NODE_ENV=production`, which makes npm skip the dev tools the check needs
+   (`tsc`, `vitest`). If `node_modules/.bin/tsc` is missing: `NODE_ENV=development heavy npm ci --include=dev
+   --no-audit --no-fund`.
 
 ## 1. Collision map: never step on live work
 
@@ -102,7 +105,9 @@ Safe means mechanical, behavior-preserving, small and provable by the full check
 
 Never safe, always a proposal: deleting more than 40 lines of real code or any whole source file; deleting or
 renaming branches; history rewrites; major version bumps; refactoring duplicated logic; anything in a hot file;
-the installer, updater, `get/` and release scripts; `LICENSE`; anything about a secret.
+the installer, updater, `get/` and release scripts; `LICENSE`; anything about a secret. Not done at all: dropping
+`export` from symbols used only in their own file. It is churn that conflicts with the many open branches; the
+report counts them, a future guard can stop new ones.
 
 Budget per run: at most 12 safe fixes and 400 changed lines. One commit per category,
 `chore(hygiene): <category>: <what>`, each with the finding it resolves in the body.

@@ -1228,8 +1228,12 @@ export function MediaPage({ url, type, name }: { url: string; type: 'image' | 'v
   const { back } = useApp()
   const page = useRef<HTMLDivElement>(null)
   const video = useRef<HTMLVideoElement>(null)
+  const picture = useRef<HTMLImageElement>(null)
   usePageChrome('agent', page)
   const move = usePageMotion()
+  // A long press on the photo saves it, as the system's own callout would (the host turns that callout off). A video
+  // keeps its long presses for the player's bar.
+  useLongPressSave(picture, { url, name, type })
   // The player's own bar (scrubbing) keeps its drags.
   useOwnSwipe(video, type === 'video')
   return (
@@ -1239,7 +1243,7 @@ export function MediaPage({ url, type, name }: { url: string; type: 'image' | 'v
           <Icon name="chevron" dir="left" />
         </button>
       </div>
-      <div className="fy-stage save-media-host">{type === 'video' ? <video ref={video} src={url} controls autoPlay playsInline loop aria-label={name} /> : <img src={url} alt={name} draggable={false} />}<SaveMediaButton target={{ url, name, type }} /></div>
+      <div className="fy-stage save-media-host">{type === 'video' ? <video ref={video} src={url} controls autoPlay playsInline loop aria-label={name} /> : <img ref={picture} src={url} alt={name} draggable={false} />}<SaveMediaButton target={{ url, name, type }} /></div>
     </motion.div>
   )
 }

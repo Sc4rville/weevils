@@ -742,6 +742,31 @@ describe('for you: strips and the media viewer', () => {
     expect(video.controls).toBe(true)
     expect(video.getAttribute('src')).toBe('/api/foryou/media/m2')
   })
+
+  it('in the viewer, a long press on the photo opens the share sheet with the original file', async () => {
+    const nav = navigator as unknown as Record<string, unknown>
+    const files: File[] = []
+    nav.share = vi.fn(async (d: { files: File[] }) => void files.push(...d.files))
+    nav.canShare = vi.fn(() => true)
+    const realFetch = globalThis.fetch
+    globalThis.fetch = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/png' } })) as typeof fetch
+    vi.useFakeTimers()
+    try {
+      render(<MediaPage url="/api/foryou/media/m77" type="image" name="title.png" />)
+      const img = host.querySelector<HTMLImageElement>('.fy-stage img')!
+      await act(async () => { img.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', clientX: 5, clientY: 5 })) })
+      await act(async () => { vi.advanceTimersByTime(600) })
+      await act(async () => { img.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch' })) })
+      await act(async () => { await vi.runAllTimersAsync() })
+      expect(files).toHaveLength(1)
+      expect(files[0]).toMatchObject({ name: 'title.png', type: 'image/png', size: 3 })
+    } finally {
+      vi.useRealTimers()
+      globalThis.fetch = realFetch
+      delete nav.share
+      delete nav.canShare
+    }
+  })
 })
 
 

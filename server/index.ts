@@ -135,7 +135,8 @@ const setup = new Setup({
   startMail: restartMail,
   handoff: (text, brief) => w.sendMain(text, brief),
   memory: () => w.memory,
-  bossId: () => w.bossConversation(),
+  // Turn mode: the memory sits in every turn's view; the thread only hears when it changed.
+  bossId: () => (w.bossTurns ? 'turns' : w.bossConversation()),
 })
 w.setup = setup
 const tour = new TourKeeper({
@@ -637,6 +638,11 @@ const routes: [string, RegExp, Handler][] = [
         sourceThreadId: trustedSource(req,body,sourceAuthor),
       }),
     )
+  }],
+  ['GET', /^\/api\/boss$/, async (_req, res) => json(res, 200, w.bossStatus())],
+  ['GET', /^\/api\/boss\/recall\/([^/]+)$/, async (_req, res, _u, [id]) => {
+    const text = w.bossRecall(decodeURIComponent(id))
+    json(res, text === null ? 404 : 200, text === null ? { error: tr(M).unknownRoute } : { text })
   }],
   ['POST', /^\/api\/main$/, async (req, res) => {
     const body = await readBody(req)

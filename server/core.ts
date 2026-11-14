@@ -37,6 +37,8 @@ import { keepWarm, warmCues } from './voicepipe.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
+import { BOSS_TURNS, BossTurns } from './boss-turns.ts'
+import { claudeHaiku } from './fast.ts'
 import type { Memory } from './memory.ts'
 import type { Optimizers } from './optimizers.ts'
 import type { ForYou, MailIn } from './foryou.ts'
@@ -330,6 +332,10 @@ export class Weevils {
   hooks = new Map<string, HookState>()
   panes: ManagedPane[] = []
   orchestratorId: string | null = null
+  /** weevboss as stateless turns over a fixed-size view of its whole thread (server/boss-turns.ts); null: the former
+   *  single interactive conversation (WEEVILS_BOSS_TURNS=0). */
+  bossTurns: BossTurns | null = ORCHESTRATOR && BOSS_TURNS ? new BossTurns((prompt, schema) => claudeHaiku(prompt, 120_000, schema)) : null
+  private turnStarting = false
   h24: H24Activity[] = []
   remotes: Remote[] = []
   convs = new ConversationStore(DATA_DIR)
@@ -561,6 +567,11 @@ export class Weevils {
     }, 1500)
     setInterval(() => void this.watchPanes().then(() => this.watchCuts()), 2500)
     setInterval(() => void this.reapPanes(), 60_000)
+    if (this.bossTurns) {
+      setInterval(() => void this.pumpTurns(), 1000)
+      // The summaries of the whole log, written ahead in the background (Haiku, once per message).
+      setTimeout(() => void this.bossTurns?.prewarm().catch(() => undefined), 20_000)
+    }
     setInterval(() => void this.watchImports(), 30_000)
     setInterval(() => void this.classify(), 60_000)
     setTimeout(() => void this.classify(), 5000)
@@ -1588,6 +1599,13 @@ export class Weevils {
     const s = this.snapshot().sessions.find((x) => x.id === real)
     const pane = this.paneFor(real)
     if (!pane) throw new Error(tr(M).noScreen)
+    // A weevboss turn has no prompt to interrupt: Escape stops the turn (its transcript stays in the thread).
+    if (key === 'esc' && this.bossTurns?.isTurn(pane.sessionId)) {
+      await killWv(pane.name).catch(() => undefined)
+      this.panes = this.panes.filter((p) => p.name !== pane.name)
+      this.bump()
+      return
+    }
     if (key === 'esc' && /trust|confiance/i.test(pane.screenAttention ?? '')) throw new Error(tr(M).escWouldClose)
     if (key.startsWith('choice:')) {
       const dialog = screenDialog(await capture(pane.name))
@@ -1711,8 +1729,10 @@ export class Weevils {
 
   /** Les transcripts du fil de weevboss : celui de Claude, et celui de Codex quand il a pris le relais. */
   private bossTranscripts(): Transcript[] {
-    const claude = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
     const codex = this.codexBoss()?.t
+    // Turn mode: one transcript per message (and the former single conversation), all in the orchestrator's folder.
+    if (this.bossTurns) return [...this.store.all().filter((t) => t.tool === 'claude' && (t.cwd === ORCH_DIR || path.dirname(t.file) === this.bossTurns!.transcripts)), ...(codex ? [codex] : [])]
+    const claude = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
     return [claude, codex].filter((t): t is Transcript => !!t)
   }
 
@@ -1750,6 +1770,10 @@ export class Weevils {
   }
 
   private orchestratorQueued(now: number) {
+    if (this.bossTurns && this.bossTool() === 'claude') {
+      const waiting = this.bossTurns.queue.length
+      return Math.max(0, waiting - (this.turnStarting || !this.claudeBossPane() ? 1 : 0))
+    }
     const owner=this.bossConversation()
     const t = owner ? this.store.get(owner) : undefined
     return Math.max(owner ? this.codexBridge.queuedOf?.(owner) ?? 0 : 0, t && this.orchestratorWorking(now) ? t.queued.length : 0)
@@ -1814,6 +1838,8 @@ export class Weevils {
     const owner=this.bossConversation()
     if (isModelControl(command)) return {ok:true,control:'model'}
     if(owner && this.store.get(owner)?.tool==='codex' && /^\/(?:model|effort)\s/.test(command.trim()))return this.command(owner,command)
+    // Turn mode: no conversation to type into; the setting applies to the next turns.
+    if (this.bossTurns && this.bossTool() === 'claude' && this.bossTurns.command(checkCommand(command))) { this.bump(); return { ok: true } }
     const pane = this.orchestratorPane()
     if (!pane) throw new Error(tr(M).orchNotRunning)
     await this.runCommand(pane.name, checkCommand(command))
@@ -1948,6 +1974,7 @@ export class Weevils {
   }
 
   private orchestratorWorking(now: number) {
+    if (this.bossTurns && (this.turnStarting || this.bossTurns.queue.length)) return true
     const owner = this.codexBoss()?.id
     const daemon = owner ? this.codexBridge.activityOf?.(owner) : undefined
     const codex = this.codexBoss()?.t
@@ -1989,7 +2016,8 @@ export class Weevils {
     if (!ORCHESTRATOR) throw new Error(tr(M).orchNotHere)
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
     // A new weevboss conversation gets it once; the ongoing one already has it.
-    text = withAppLocale(text, !this.bossConversation())
+    // Stateless turns never remember it: every turn gets it.
+    text = withAppLocale(text, !!this.bossTurns || !this.bossConversation())
     // Claude à sa limite (ou tout près) : weevboss répond par Codex, même dossier, mêmes consignes (server/relay.ts).
     const chosen = this.relay?.executionTool ? this.relay.executionTool(preferredTool()) : (preferredTool() === 'codex' || this.relay?.bossOn() ? 'codex' : 'claude')
     if ((!chosen || chosen === 'codex') && preferredTool() === 'codex' && !providerReady()) {
@@ -2016,6 +2044,16 @@ export class Weevils {
     this.prepareOrchestrator()
     // Ce que weevilsd a écrit en son nom depuis sa dernière réponse (accueil, branchements) : joint au message.
     text = text + joinContext(this.setup?.contextFor(brief) ?? '', this.bossBackContext())
+    if (this.bossTurns) {
+      // One stateless turn per message, in order; a message that arrives during a turn waits for the next one.
+      this.bossTurns.enqueue(text)
+      this.relay?.takeBossBack()
+      const since = Date.now()
+      void this.waitMainReply(since, 300_000).then((r) => r && console.log(`[voix] weevboss a répondu en ${Date.now() - since} ms`))
+      void this.pumpTurns()
+      this.bump()
+      return { id: this.orchestratorId ?? '__main' }
+    }
     // Mesure : temps de réponse complet de weevboss, au journal.
     const since = Date.now()
     void this.waitMainReply(since, 300_000).then((r) => r && console.log(`[voix] weevboss a répondu en ${Date.now() - since} ms`))
@@ -2034,6 +2072,56 @@ export class Weevils {
     this.relay?.takeBossBack()
     this.persist()
     return { id }
+  }
+
+  /**
+   * Turn mode: starts the next queued message as a stateless turn once nothing else is running. The former single
+   * conversation, if its pane is still open, is closed first, only once it is calm (never in the middle of a reply).
+   */
+  private async pumpTurns() {
+    const turns = this.bossTurns
+    if (!turns || !turns.queue.length || this.turnStarting) return
+    const now = Date.now()
+    const pane = this.claudeBossPane()
+    if (pane) {
+      if (turns.isTurn(pane.sessionId)) return
+      const t = pane.sessionId ? this.store.get(pane.sessionId) : undefined
+      if (this.bossWorking('claude') || (t && (t.queued.length || this.toSession(t, now).background > 0))) return
+      if (pane.sessionId) this.closedByUs.set(pane.sessionId, now)
+      await killWv(pane.name).catch(() => undefined)
+      this.panes = this.panes.filter((p) => p.name !== pane.name)
+      console.log(`[weevboss] conversation unique ${pane.sessionId?.slice(0, 8)} fermée : weevboss passe en tours sans état`)
+    }
+    if (this.bossWorking('codex')) return
+    this.turnStarting = true
+    this.bump()
+    try {
+      const id = crypto.randomUUID()
+      const turn = await turns.prepare({ id, claude: CLAUDE, memory: this.memory?.digest() ?? '' })
+      this.orchestratorId = id
+      await this.spawn('claude', ORCH_DIR, 'weevboss', turn.command, id)
+      turns.started(turn)
+      this.persist()
+      console.log(`[weevboss] tour ${id.slice(0, 8)} · vue ${turn.stableTokens} + ${turn.recentTokens} tokens${turn.rebuilt ? ' · paliers reconstruits' : ''}`)
+      void turns.prewarm(5 * 60_000).catch(() => undefined)
+    } catch (e) {
+      turns.failed(e as Error)
+    } finally {
+      this.turnStarting = false
+      this.bump()
+    }
+  }
+
+  /** `weevils recall <id>`: a line of weevboss's log, back to the original. */
+  bossRecall(id: string): string | null {
+    return this.bossTurns?.recall(id) ?? null
+  }
+
+  /** `weevils boss`: how weevboss runs and the size of what it reads on each message. */
+  bossStatus() {
+    if (this.bossTurns) return { ...this.bossTurns.status(), current: this.orchestratorId }
+    const t = this.orchestratorId ? this.store.get(this.orchestratorId) : undefined
+    return { mode: 'conversation' as const, current: this.orchestratorId, messages: t?.messages.length ?? 0 }
   }
 
   /** Les derniers échanges du fil, en une ligne, pour celui qui prend (ou reprend) le fil. */

@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session, Tool } from '../shared/api.ts'
 
 // weevboss tourne sur cette machine (les tests ont un WEEVILS_MACHINE, qui le coupe par défaut).
-vi.hoisted(() => void (process.env.WEEVILS_ORCHESTRATOR = '1'))
+vi.hoisted(() => { process.env.WEEVILS_ORCHESTRATOR = '1'; process.env.WEEVILS_BOSS_TURNS = '0' }) // the pane-based conversation mode (turn mode: boss-view.test.ts)
 const mux = vi.hoisted(() => ({
   sendText: vi.fn(async (_name: string, _text: string) => {}),
   sendKey: vi.fn(async (_name: string, _key: string) => {}),

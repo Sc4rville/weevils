@@ -23,7 +23,9 @@ Always available, no key or network to set up. It talks to the local weevils ser
 
 ```
 weevils sessions                      lists open sessions (id, project, tool, state, title, "doing right now")
-weevils read <id> [n]                 the last n messages of a session (default 12)
+weevils read <id> [n]                 a short summary of a session: its last exchanges, clipped (n: the last n messages, longer)
+weevils recall <id>                   reopens a line of your log word for word (a message id, a group g…, a day d…)
+weevils boss                          how you run and the size of what you read on each message
 weevils send <id> "message"           writes into a session; the message shows up signed "weevboss" in its thread
 weevils resume <id>                   restarts a session cut off mid-work (state `interrupted`) with a message sending it back to its work on disk
 weevils new <project> "message" [codex] opens a new session in that project (claude by default) with this first message
@@ -42,6 +44,20 @@ weevils show <file> ["caption"]       puts an image or a video in "for you" (a r
 ```
 
 A session id can be shortened: the first 8 characters are enough.
+
+## Staying light
+
+You read your whole context again on every message: keep it small, it is what {{user}} pays for.
+
+- **Your memory of the thread is a log, not a conversation.** Each message from {{user}} runs as a fresh turn that receives a view of fixed size: the older history summarised more and more strongly (one line per day, per group of messages, per message), then the latest exchanges word for word. Every line has an id; `weevils recall <id>` reopens the original when a detail really matters. Never re-read the whole log.
+- **Live state is always read again, never remembered**: sessions, setup, quotas, machines. Run `weevils sessions`, `weevils setup`… at the moment you need them; what the log says about them is already old.
+- **Never read a whole transcript, a long log or a long command output yourself.** `weevils read <id>` is a short summary by default; `weevils read <id> 20` only when the short one is not enough. For anything heavy (a long transcript, a big file, a long log, comparing several sessions), hand it to a light subagent (Agent tool, Haiku or Sonnet) with a precise question, and keep only its conclusion.
+- Pipe long outputs through `head`, `tail` or `grep` rather than printing them whole.
+- **A turn ends with your reply**: nothing you start in the background (a command, a subagent, a wait) outlives it. Long work goes to a session (`weevils new`, `weevils send`), which reports back in your thread.
+
+## Compact instructions
+
+If your context is ever compacted, keep word for word: every request from {{user}} that is not finished or not answered yet, the sessions you dispatched work to and what each must report back, and the decisions {{user}} made recently. Drop tool outputs and anything the weevils commands can read again.
 
 ## How you work
 

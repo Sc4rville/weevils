@@ -3,6 +3,8 @@
 # Elle appelle le weevilsd local : une requête née sur la machine est de confiance, pas de code à fournir.
 #
 #   weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
+#   weevils recall <id>                  rouvre mot pour mot une ligne du journal de weevboss (message, groupe g…, jour d…)
+#   weevils boss                         comment tourne weevboss et la taille de ce qu'il lit à chaque message
 #   weevils resume <id>                  relance une session coupée en plein travail (état « interrupted »)
 #   weevils new <projet> "message" [codex]   weevils projects
 #   weevils setup [install | ask <brique> | mark <id>]      weevils config set <CLÉ> <valeur>
@@ -34,6 +36,7 @@ if [ "$(wv_lang)" = fr ]; then
   # i18n-ignore : messages français, l'anglais est juste en dessous (même chose dans la branche else)
   usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
 weevils resume <id>                  weevils new <projet> "message" [codex]   weevils projects
+weevils recall <id>                  weevils boss
 weevils setup [install | ask <brique> | mark <id>]   weevils config set <CLÉ> <valeur>
 weevils tour open|close
 weevils memory [add "souvenir" | rm <id>]
@@ -44,6 +47,7 @@ weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichie
   export WVM_ERROR='erreur' WVM_NEW='nouvelle session ' WVM_BACKGROUND='en arrière-plan' # i18n-ignore
   m_sent='accepté pour livraison à %s (peut être en file)' m_not_sent='NON reçu par %s : %s' m_resumed='%s relancée' # i18n-ignore
   export WVM_CUT='coupée en plein travail' # i18n-ignore
+  export WVM_MORE='(résumé court : weevils read {} 20 pour plus ; une lecture lourde passe par un sous-agent léger)' WVM_NO_LINE='ligne introuvable dans le journal : ' # i18n-ignore
   export WVM_NO_MEMORY='(rien en mémoire)' WVM_NO_MEMORY_HERE='pas de mémoire sur cette machine (elle vit sur la machine principale)' # i18n-ignore
   export WVM_MEM_NOT_FOUND='souvenir introuvable : ' WVM_MEM_ADDED='retenu ' WVM_MEM_REMOVED='oublié ' # i18n-ignore
   m_mem_empty='souvenir vide : weevils memory add "souvenir"' m_mem_no_id='quel souvenir ? weevils memory rm <id>' # i18n-ignore
@@ -53,6 +57,7 @@ weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichie
 else
   usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
 weevils resume <id>                  weevils new <project> "message" [codex]  weevils projects
+weevils recall <id>                  weevils boss
 weevils setup [install | ask <brick> | mark <id>]   weevils config set <KEY> <value>
 weevils tour open|close
 weevils memory [add "memory" | rm <id>]
@@ -63,6 +68,7 @@ weevils post "text" [--action "label::what to do"]…      weevils show <file> [
   export WVM_ERROR='error' WVM_NEW='new session ' WVM_BACKGROUND='in background'
   m_sent='accepted for delivery to %s (may be queued)' m_not_sent='NOT received by %s: %s' m_resumed='%s restarted'
   export WVM_CUT='cut off mid-work'
+  export WVM_MORE='(short summary: weevils read {} 20 for more; a heavy read goes through a light subagent)' WVM_NO_LINE='no such line in the log: '
   export WVM_NO_MEMORY='(nothing remembered yet)' WVM_NO_MEMORY_HERE='no memory on this machine (it lives on the main machine)'
   export WVM_MEM_NOT_FOUND='no such memory: ' WVM_MEM_ADDED='remembered ' WVM_MEM_REMOVED='forgotten '
   m_mem_empty='empty memory: weevils memory add "memory"' m_mem_no_id='which memory? weevils memory rm <id>'
@@ -118,18 +124,31 @@ for p in d['projects']:
     print(f\"{p['id']:<14} {p['name']:<14} {where}\")
 " ;;
   read)
+    # Short by default (the last exchanges, clipped): a reader that keeps its context small. An explicit n gives more.
     id=$(resolve "${2:?$a_id}")
-    n=${3:-12}
     curl -sf -m 8 "$base/api/sessions/$id" | json "
 s=d['session']; print(f\"# {s['title']} · {s['tool']} · {s['status']}\" + (' · '+s['now'] if s.get('now') else '') + (f\" · {s['background']} {E['WVM_BACKGROUND']}\" if s.get('background') else ''))
-n=max(1,int(sys.argv[1])) if len(sys.argv)>1 else 12
+full=len(sys.argv)>1 and sys.argv[1]!=''
+n=max(1,int(sys.argv[1])) if full else 5
+width=600 if full else 280
 msgs=d.get('messages') or []
 if not msgs: print(E['WVM_NO_MESSAGES'])
-for m in msgs[-n:]:
+shown=[m for m in msgs if full or m.get('role')!='event'][-n:]
+for m in shown:
     who={'user':E['WVM_USER'],'assistant':s['tool'],'orchestrator':m.get('author') or 'weevboss','event':'→'}.get(m.get('role'),m.get('role','?'))
     t=' '.join((m.get('text') or '').split())
-    print(f\"{who}: {t[:600]}\")
-" "$n" ;;
+    print(f\"{who}: {t[:width]}\" + ('…' if len(t)>width else ''))
+if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
+" "${3:-}" ;;
+  recall)
+    # A line of weevboss's log (server/boss-view.ts), back to the original word for word.
+    want=${2:?$a_id}
+    out=$(curl -s -m 15 -w '\n%{http_code}' "$base/api/boss/recall/$("$py" -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=""))' "$want")") || true
+    code=${out##*$'\n'}
+    [ "$code" = 200 ] || { echo "$WVM_NO_LINE$want" >&2; exit 1; }
+    printf '%s' "${out%$'\n'*}" | json "print(d['text'])" ;;
+  boss)
+    curl -sf -m 8 "$base/api/boss" | json "print(' · '.join(f'{k}: {v}' for k,v in d.items() if v is not None))" ;;
   send)
     id=$(resolve "${2:?$a_id}")
     text=${3:?$a_msg}

@@ -1239,3 +1239,13 @@
   display: block;
   width: 100%;
 }
+
+/* A card whose button was tapped: what it was about, two lines at most, above what became of it. */
+.fy-work-about {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+}

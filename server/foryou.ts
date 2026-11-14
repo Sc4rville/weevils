@@ -455,7 +455,7 @@ interface Stored {
   /** media: where the caller stood (files of one place join one item). */
   cwd?: string
   /** Buttons: the brief goes to weevboss on a tap. */
-  actions?: { id: string; label: string; brief: string; sourceIntentId?: string; /** done here on a tap (deps.op), never sent to weevboss */ op?: string }[]
+  actions?: { id: string; label: string; brief: string; sourceIntentId?: string; /** done here on a tap (deps.op), never sent to weevboss */ op?: string; /** tapped on this card (its work is shown on it) */ tapped?: boolean }[]
   /** mail: what a reply needs. The address stays here. */
   mail?: { address: string; mid: string; subject: string; target: string }
   /** mail: the short « did this » line the curator wrote, shown instead of the first line (lang: the language it is
@@ -1271,21 +1271,27 @@ export class ForYou {
       if (out.actions) out.actions = out.actions.filter(a => !internalFeedUpdate(a.label))
     }
     const result = humanFeedItem(reviewedEditorial(out, i.text))
-    const existing = i.actions?.map(a => this.actionIntent(i, a)).filter(e => !!e)
-    if (existing?.length && existing.length === i.actions?.length && new Set(existing.map(e => e.id)).size === 1) {
-      const work = existing[0]!
-      const label = i.actions?.find(a => this.actionIntent(i, a)?.id === work.id)?.label
+    // A button already tapped: the card says what became of it (sent, then weevboss's answer) instead of offering it
+    // again; the other buttons stay under it. Work that existed before the card (unrelated tasks it points to) and a
+    // second work tapped on the same card stay one tap away, as « View existing work ».
+    const intents = (i.actions ?? []).map(a => ({ a, work: this.actionIntent(i, a) }))
+    const tracked = intents.filter((x) => !!x.work)
+    const one = tracked.length === intents.length && new Set(tracked.map((x) => x.work!.id)).size === 1
+    const tapped = one ? tracked : tracked.filter((x) => x.a.tapped)
+    const shown = tapped.length ? tapped.reduce((x, y) => (y.work!.at > x.work!.at ? y : x)) : undefined
+    if (shown) {
+      const work = shown.work!
       const open = this.appOpen(work.open)
-      const reply = open?.page === 'boss' ? this.bossReply(work, label) : undefined
+      const reply = open?.page === 'boss' ? this.bossReply(work, shown.a.label) : undefined
       result.work = { intentId: work.id, status: work.status, open, source: work.source, ...(reply ? { reply } : {}) }
-      result.actions = []
       if (open) result.open = open
       result.editorial ??= { original: { ...(i.title ? { title: i.title } : {}), text: i.text } }
-    } else if (existing?.length && result.actions) {
-      result.actions = result.actions.map(a => {
-        const original = i.actions?.find(b => b.id === a.id)
-        const work = original && this.actionIntent(i, original)
-        return work ? { ...a, label: tr(M).followWork } : a
+    }
+    if (tracked.length && result.actions) {
+      result.actions = result.actions.flatMap(a => {
+        const work = intents.find(x => x.a.id === a.id)?.work
+        if (!work) return [a]
+        return work.id === shown?.work!.id ? [] : [{ ...a, label: tr(M).followWork }]
       })
     }
     const software = softwareResult(result, snap, this.softwareCatalog, this.now())
@@ -1617,7 +1623,8 @@ export class ForYou {
     const asked = messages.findIndex(m => m.role === 'user' && m.at >= work.at - 60_000 && (!label || m.text.includes(label)))
     if (asked < 0) return
     const reply = messages.slice(asked + 1).find(m => m.role === 'assistant' && collapse(m.text))
-    return reply ? clip(collapse(reply.text), 400) : undefined
+    // Its paragraphs kept: the app shows its first plain sentence or two, the rest is in weevboss's thread.
+    return reply ? clip(reply.text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim(), 1200) : undefined
   }
 
   async act(id: string, action: string, card?: string, l?: unknown): Promise<void | IntentResult> {
@@ -1710,6 +1717,7 @@ export class ForYou {
       const result = await this.intents.dispatch(a.brief, i.projectId, `card:${i.id}:${a.id}`,
         () => this.w.sendMain(t.go(a.label), t.actBrief(clip(collapse(i.text), 300), a.brief)), a.sourceIntentId)
       a.sourceIntentId = result.intentId
+      a.tapped = true
       // Keep the original record and expose the existing conversation on refresh.
       this.changed()
       return result

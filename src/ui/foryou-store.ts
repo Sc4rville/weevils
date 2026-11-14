@@ -74,6 +74,8 @@ const moreFlights = new Map<string, Promise<string>>()
 const errors = new Map<string, string>()
 const dirs = new Map<string, 1 | -1>()
 const lefts = new Map<string, Left>()
+/** Buttons handed to weevboss here, until the server's item says so itself: the card shows « sent » at once. */
+const handed = new Map<string, { action: string; intentId: string }>()
 /** The language the stream was last asked in: the server's texts depend on it. */
 let lang: string | undefined
 let reading = false
@@ -97,6 +99,8 @@ function current(): ForYouItem[] {
       if (!cards.length) return []
       if (cards.length !== it.cards.length) x = { ...x, cards }
     }
+    const sent = handed.get(it.id)
+    if (sent && !it.work) x = { ...x, work: { intentId: sent.intentId, status: 'requested', open: { page: 'boss' } }, open: { page: 'boss' }, actions: it.actions?.filter((a) => a.id !== sent.action) }
     if (!it.seen && seen.has(it.id)) x = { ...x, seen: true }
     const more = moreTexts.get(`${getLang()}:${it.id}`)
     if (more && !it.moreText) x = { ...x, moreText: more }
@@ -130,6 +134,7 @@ function adopt(f: ForYouFeed) {
   for (const id of seen) if (!by.has(id) || by.get(id)!.seen) seen.delete(id)
   for (const id of dirs.keys()) if (!gone.has(id) && !goneCards.has(id)) dirs.delete(id)
   for (const id of lefts.keys()) if (!dirs.has(id)) lefts.delete(id)
+  for (const [id, sent] of handed) if (!by.has(id) || by.get(id)!.work?.intentId === sent.intentId) handed.delete(id)
   for (const key of moreTexts.keys()) if (!by.has(key.slice(3))) moreTexts.delete(key)
   if (first || !order.length) {
     order = ids
@@ -211,6 +216,7 @@ async function act(id: string, action: string, card?: string) {
   try {
     const result = await api.foryouAct(id, action, card, eventId)
     if (result?.open || result?.intentId || result?.existing) {
+      if (!card && result.open?.page === 'boss' && result.intentId) handed.set(id, { action, intentId: result.intentId })
       refresh()
       return result
     }
@@ -352,7 +358,7 @@ export function resetForYou() {
   order = []
   held = new Set()
   for (const s of [gone, goneCards, seen, seenQueue]) s.clear()
-  for (const m of [moreTexts, moreFlights, errors, dirs, lefts]) m.clear()
+  for (const m of [moreTexts, moreFlights, errors, dirs, lefts, handed]) m.clear()
   lang = undefined
   reading = false
   enabled = false

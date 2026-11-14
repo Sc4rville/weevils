@@ -658,6 +658,18 @@ describe('posts', () => {
     expect(host.sendMain).toHaveBeenCalledTimes(1)
   })
 
+  it('on a card with two buttons, the tapped one becomes « sent » then the answer, the other one stays', async () => {
+    const fy = make()
+    const { id } = fy.post('Two cleanups are possible.', [{ label: 'Prune 36 branches', brief: 'prune the merged branches' }, { label: 'Neutralize the data file', brief: 'neutralize the data file' }])
+    await expect(fy.act(id, 'a1', undefined, 'en')).resolves.toMatchObject({ existing: false, open: { page: 'boss' } })
+    expect(find(fy, id)).toMatchObject({ open: { page: 'boss' }, work: { status: 'requested', open: { page: 'boss' } }, actions: [{ id: 'a2', label: 'Neutralize the data file' }] })
+    transcripts.set('boss', { messages: [
+      { id: 'u1', role: 'user', text: 'Go ahead: Prune 36 branches', at: now },
+      { id: 'a1', role: 'assistant', text: 'Done: 36 branches pruned.', at: now + 1000 },
+    ] } as never)
+    expect(find(fy, id)?.work?.reply).toBe('Done: 36 branches pruned.')
+  })
+
   it('an action handed to weevboss never opens weevboss as a session page, and its answer lands on the card', async () => {
     const fy = make()
     const { id } = fy.post('Your demo is live.', [{ label: 'Draft launch tweet', brief: 'write the tweet' }])
@@ -668,7 +680,7 @@ describe('posts', () => {
       { id: 'u1', role: 'user', text: 'Go ahead: Draft launch tweet ⟦weevils — note⟧', at: now },
       { id: 'a1', role: 'assistant', text: 'Here is a draft:\n\nweevils is open source.', at: now + 1000 },
     ] } as never)
-    expect(find(fy, id)?.work).toMatchObject({ open: { page: 'boss' }, reply: 'Here is a draft: weevils is open source.' })
+    expect(find(fy, id)?.work).toMatchObject({ open: { page: 'boss' }, reply: 'Here is a draft:\n\nweevils is open source.' })
     // An older conversation of weevboss is weevboss too.
     host.sendMain.mockResolvedValueOnce({ id: 'old-boss-thread' })
     Object.assign(host, { isBossThread: (sid: string) => sid === 'old-boss-thread' })

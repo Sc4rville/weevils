@@ -51,6 +51,8 @@ const PATHS = {
   copy: 'M9 9h11v11H9zM15 5V4H4v11h1',
   // Ce qui revient tout seul : la touche « répéter », à angles droits — une boucle ouverte à gauche, sa pointe en bas.
   cycle: `${CYCLE_LOOP}${CYCLE_HEAD}`,
+  // Sleep mode: three « z », staggered up to the right, the last one smaller.
+  sleep: 'M2 14h7l-7 7h7M11 7h7l-7 7h7M18 2h4l-4 4h4',
 } as const
 
 export type IconName = keyof typeof PATHS
@@ -59,6 +61,8 @@ export type IconName = keyof typeof PATHS
 const FILLED = {
   // Diablotin : un carré, deux cornes, deux yeux évidés.
   devil: 'M4 9h16v12H4zM4 3h4v6H4zM16 3h4v6h-4zM8 13v3h3v-3zM13 13v3h3v-3z',
+  // Fantôme : un dôme en marches, trois pans en bas, deux yeux évidés (un agent qui travaille pendant ton sommeil).
+  ghost: 'M8 2h8v2h2v2h2v16h-3v-2h-2v2h-2v-2h-2v2h-2v-2H7v2H4V6h2V4h2zM8 9v4h3V9zM13 9v4h3V9z',
 } as const
 export type FilledName = keyof typeof FILLED
 

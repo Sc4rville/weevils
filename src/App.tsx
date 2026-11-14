@@ -20,6 +20,7 @@ import { GestureCoach } from './ui/coach'
 import { PageView } from './ui/pages'
 import { adoptUnknown } from './ui/seen'
 import { useDevil } from './ui/devil'
+import { NightBand, useNightChrome } from './ui/night'
 import { FOCUS_BOSS, flash, flashBossMessage, focusBoss, keepInPlace, reveal, takeBossOnReturn, toTop, when, type FocusBoss } from './ui/follow'
 import { ensurePush } from './push'
 import { useT } from './i18n'
@@ -132,6 +133,9 @@ export default function App() {
     document.documentElement.dataset.theme = theme
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme])
   }, [theme])
+
+  // Sleep mode: the night palette on the whole interface (src/ui/night.css), on every device at once.
+  useNightChrome(!!live.snap?.sleep?.on)
 
   // Hauteur visible réelle et zone sûre de la barre d'état, même clavier iPhone ouvert.
   useEffect(trackViewport, [])
@@ -471,6 +475,7 @@ export default function App() {
         >
           <KeepOrder order={orderKey} active={stack.length === 0} />
           <AgentBand />
+          <NightBand />
           <TourBand />
           <RelayBand />
           {ordered.map((p) => (

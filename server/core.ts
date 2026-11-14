@@ -41,6 +41,7 @@ import { BOSS_MODELS, BOSS_TURNS, BossTurns } from './boss-turns.ts'
 import { claudeHaiku } from './fast.ts'
 import type { Memory } from './memory.ts'
 import type { Optimizers } from './optimizers.ts'
+import type { Sleep } from './sleep.ts'
 import type { ForYou, MailIn } from './foryou.ts'
 import { PLAN_MARKER, clockOf, type Relay, type RelayHost } from './relay.ts'
 import R from './i18n/relay.ts'
@@ -352,6 +353,8 @@ export class Weevils {
   optimizers: Optimizers | null = null
   /** The « for you » stream (server/foryou.ts), on the main machine. */
   foryou: ForYou | null = null
+  /** Sleep mode (server/sleep.ts), on the main machine. */
+  sleep: Sleep | null = null
   /** Codex relay while Claude is at its usage limit (server/relay.ts). */
   relay: Relay | null = null
   private githubCache: Map<string, number> = new Map()
@@ -1170,6 +1173,7 @@ export class Weevils {
       autoMachine: this.optimizers?.machine(),
       relay: this.relayView(now, remote.flatMap((r) => r.snap!.relay?.plans ?? [])),
       ...(this.optimizers ? { autoRound: { busy: this.optimizers.roundBusy } } : {}),
+      ...(this.sleep ? { sleep: this.sleep.state() } : {}),
       config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey, autoUpdate: process.env.WEEVILS_AUTO_UPDATE !== '0' },
     }
     this.snapLang = locale

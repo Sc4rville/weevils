@@ -39,6 +39,8 @@ import CM from './i18n/core.ts'
 import M from './i18n/foryou.ts'
 import { ownIdea, ownTask } from './own-words.ts'
 import { actOn, personalTips, type Found, type TipInput } from './tips.ts'
+import { nightRecap, RECAP_MIN_MS, type RecapAuto } from './sleep.ts'
+import SM from './i18n/sleep.ts'
 
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void> | void
 type Json = (res: http.ServerResponse, status: number, body: unknown) => void
@@ -343,6 +345,7 @@ export interface ForYouDeps {
 
 /** A recorded item. Everything the app may read is copied field by field in view(): the rest never leaves. */
 interface Stored {
+  recap?: ForYouItem['recap']
   composition?: ForYouItem['composition']
   visualProposal?: ForYouItem['visualProposal']
   /** session question: what a model read in the session's last message (asked: false — not really a question). */
@@ -863,6 +866,22 @@ export class ForYou {
   }
 
   /**
+   * Sleep mode's morning recap (server/sleep.ts): one card, each line read from a run or a session's state on wake,
+   * never from a model. A short nap with nothing to tell leaves none.
+   */
+  addRecap(night: { from: number; to: number }, autos: RecapAuto[]): ForYouItem | null {
+    const snap = this.w.snapshot()
+    const sessions = snap.sessions.filter((s) => this.eligible(s)).map((s) => ({ ...s, title: cleanTitle(s.title) }))
+    const { recap, counts } = nightRecap({ ...night, sessions, autos, headline: (t) => headline(editorialFeedText(t)) })
+    if (!recap.lines.length && night.to - night.from < RECAP_MIN_MS) return null
+    const t = tr(SM)
+    const item: Stored = { id: `sleep:${night.from}`, kind: 'stat', tone: 'magic', at: night.to, who: 'weevils', title: t.recapTitle, text: t.recap(counts), lang: lang(), recap }
+    this.put(item)
+    this.changed()
+    return this.view(item, snap)
+  }
+
+  /**
    * The seam for generated items (the curator): written as given, replacing an item of the same id (fresh and unseen
    * again; one the user dismissed stays dismissed).
    */
@@ -1072,6 +1091,7 @@ export class ForYou {
     const out: ForYouItem = { id: i.id, kind: i.kind, tone: i.tone, at: i.at, who: i.who, text }
     if (i.visualProposal) out.visualProposal = i.visualProposal
     if (i.composition) out.composition = i.composition
+    if (i.recap) out.recap = i.recap
     if (i.projectId) out.projectId = i.projectId
     if (i.sessionId) out.sessionId = i.sessionId
     if (i.eventId) out.eventId = i.eventId

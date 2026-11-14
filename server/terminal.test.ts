@@ -99,11 +99,11 @@ describe('questions read right', () => {
   })
   it('a permission says what and why, from the dialog itself', () => {
     const s = read('claude-live-R4-dangerous-rm.txt').state
-    expect(s.kind === 'question' && [s.question, s.detail]).toEqual(['Claude wants to run “rm -rf build dist”', 'Remove build output · Dangerous rm operation on a path outside the project'])
+    expect(s.kind === 'question' && [s.question, s.detail]).toEqual(['Claude wants to run a command: remove build output', 'rm -rf build dist · Dangerous rm operation on a path outside the project'])
   })
   it('Codex approvals lose their key hints', () => {
     const s = read('codex-14-command-approval.txt').state
-    expect(s.kind === 'question' && [s.question, s.choices.map((c) => c.label)]).toEqual(['Codex wants to run “curl -sI https://example.com | head -1”', ['Allow', 'Always allow', 'Deny']])
+    expect(s.kind === 'question' && [s.question, s.choices.map((c) => c.label)]).toEqual(['Codex wants to run a command', ['Allow', 'Always allow', 'Deny']])
   })
   it('Codex asking its own question (request_user_input) is a question, not an idle session', () => {
     const s = read('codex-20-request-user-input-codex-asks-you-a-ques.txt').state
@@ -116,7 +116,7 @@ describe('questions read right', () => {
   })
   it('in French too', () => {
     const s = withLang('fr', () => read('claude-live-D3-bash.txt').state)
-    expect(s.kind === 'question' && [s.question, s.choices.map((c) => c.label)]).toEqual(['Claude veut lancer « echo hi »', ['Autoriser', 'Refuser']])
+    expect(s.kind === 'question' && [s.question, s.choices.map((c) => c.label)]).toEqual(['Claude veut lancer une commande : print hi', ['Autoriser', 'Refuser']])
   })
 })
 

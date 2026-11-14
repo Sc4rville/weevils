@@ -31,6 +31,7 @@ export default defineMessages({
     subAria: (label: string, state: string, d: string, open: boolean) => `${label}, ${state}, ${d}, ${open ? 'replier' : 'déplier'}`,
     asks: (tool: string) => `${tool} te demande`,
     waitingForYou: 'la session attend ta réponse',
+    askDetails: 'détails',
     /** Session coupée en plein travail : pourquoi, et les deux gestes. */
     // Fichiers
     /** Titre de la liste des dossiers d'un projet qui en a plusieurs. */
@@ -81,6 +82,7 @@ export default defineMessages({
     subAria: (label: string, state: string, d: string, open: boolean) => `${label}, ${state}, ${d}, ${open ? 'collapse' : 'expand'}`,
     asks: (tool: string) => `${tool} is asking`,
     waitingForYou: 'the session is waiting for your answer',
+    askDetails: 'details',
     folders: 'Folders',
     files: (n: number) => `${n} ${n === 1 ? 'file' : 'files'}`,
     emptyDir: 'Empty folder.',

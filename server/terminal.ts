@@ -269,6 +269,20 @@ function boxed(lines: string[]): string[] {
   return lines.slice(start + 1, end < 0 ? undefined : end).map((l) => l.trim()).filter(Boolean)
 }
 
+/** Looks like shell text (a path, a pipe, a redirection, a heredoc, a well-known command word), not a sentence. */
+const SHELLY = /[/\\;|<>`$=]|&&|^(?:cd|python3?|node|npx|npm|pnpm|yarn|bun|git|bash|sh|ls|cat|rm|mv|cp|curl|wget|ffmpeg|docker|make|sed|grep|find|tmux)\b/i
+
+/** « Claude wants to run a command (why) »: never the command itself in the question; the command goes in the detail. */
+function runQuestion(agent: Agent, cmd: string, why: string[]): { question: string; detail: string } {
+  const t = tr(M)
+  // The dialog sometimes puts the description where the command goes and the other way round: the shell text is the command.
+  if (!SHELLY.test(cmd)) { const real = why.find((w) => SHELLY.test(w)); if (real) { why = [cmd, ...why.filter((w) => w !== real)]; cmd = real } }
+  const plain = why.map((w) => w.trim()).find((w) => w && !SHELLY.test(w) && w.length <= 120)
+  const reason = plain ? plain.charAt(0).toLowerCase() + plain.slice(1).replace(/[.:]$/, '') : ''
+  const rest = why.map((w) => w.trim()).filter((w) => w && w !== plain)
+  return { question: reason ? t.wantsRunWhy(agent, reason) : t.wantsRun(agent), detail: [shorten(cmd, 160), ...rest].join(' · ') }
+}
+
 function permission(c: Ctx, rawRegion: string[]): { question: string; detail?: string } | undefined {
   const t = tr(M)
   const h = c.menu.heading
@@ -287,7 +301,7 @@ function permission(c: Ctx, rawRegion: string[]): { question: string; detail?: s
   if (/^(?:Bash|Shell|PowerShell) command$|^Run command$/i.test(header) || /run (?:the following|this) command/i.test(q)) {
     const cmd = box[0] ?? extra.find((l) => /^\$\s/.test(l))?.replace(/^\$\s*/, '') ?? extra[c.agent === 'codex' ? 0 : 1] ?? extra[0]
     const why = c.agent === 'claude' ? extra.filter((l) => l !== cmd && l !== box[0]) : []
-    return cmd ? { question: t.wantsRun(c.agent, shorten(cmd.replace(/^\$\s*/, ''))), ...(why.length ? { detail: why.join(' · ') } : {}) } : undefined
+    return cmd ? runQuestion(c.agent, cmd.replace(/^\$\s*/, ''), why) : undefined
   }
   if (/fetch/i.test(header) || /fetch this content/i.test(q)) {
     const url = [...extra, ...box].find((l) => /https?:\/\/|\w+\.\w{2,}/.test(l))
@@ -307,6 +321,9 @@ function permission(c: Ctx, rawRegion: string[]): { question: string; detail?: s
   }
   if (/^Do you want to proceed\?$/i.test(q) && header && header !== q) {
     const what = box[0] ?? extra[0]
+    // A command shown as the dialog's own title (newer Claude Code): plain words up front, the command behind « details ».
+    if (SHELLY.test(header)) return runQuestion(c.agent, header, what && what !== header && !SHELLY.test(what) ? [what] : [])
+    if (what && SHELLY.test(what)) return { question: header, detail: shorten(what, 160) }
     return { question: what ? `${header} · ${shorten(what)}` : header }
   }
   return undefined

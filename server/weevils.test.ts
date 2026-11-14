@@ -118,7 +118,7 @@ describe('questions à l’écran', () => {
   })
   it('Claude : permission d’outil', () => {
     const screen = ['  Bash command', '  rm -rf dist', '  Do you want to proceed?', '  ❯ 1. Yes', '    2. No, and tell Claude what to do differently (esc)', '', '  Esc to cancel'].join('\n')
-    expect(attentionFromScreen(screen)).toBe('Claude wants to run “rm -rf dist”')
+    expect(attentionFromScreen(screen)).toMatch(/^Claude wants to run a command/)
   })
 })
 

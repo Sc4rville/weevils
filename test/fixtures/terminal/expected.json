@@ -17,8 +17,8 @@
  "claude-02-bash-permission-ask-rule-no-always-optio.txt": {
   "kind": "question",
   "name": "permission",
-  "question": "Claude wants to run “echo hi”",
-  "detail": "Print hi",
+  "question": "Claude wants to run a command: print hi",
+  "detail": "echo hi",
   "labels": [
    "Allow",
    "Deny"
@@ -27,8 +27,8 @@
  "claude-03-bash-permission-with-don-t-ask-again-def.txt": {
   "kind": "question",
   "name": "permission",
-  "question": "Claude wants to run “npm test”",
-  "detail": "Run the test suite",
+  "question": "Claude wants to run a command: run the test suite",
+  "detail": "npm test",
   "labels": [
    "Allow",
    "Always allow",
@@ -38,8 +38,8 @@
  "claude-04-dangerous-rm-bypass-immune-safety-check.txt": {
   "kind": "question",
   "name": "permission",
-  "question": "Claude wants to run “rm -rf build dist”",
-  "detail": "Remove build output · Dangerous rm operation on a path outside the project",
+  "question": "Claude wants to run a command: remove build output",
+  "detail": "rm -rf build dist · Dangerous rm operation on a path outside the project",
   "labels": [
    "Allow",
    "Deny"
@@ -388,8 +388,8 @@
  "claude-live-D3-bash.txt": {
   "kind": "question",
   "name": "permission",
-  "question": "Claude wants to run “echo hi”",
-  "detail": "Print hi",
+  "question": "Claude wants to run a command: print hi",
+  "detail": "echo hi",
   "labels": [
    "Allow",
    "Deny"
@@ -534,8 +534,8 @@
  "claude-live-R4-dangerous-rm.txt": {
   "kind": "question",
   "name": "permission",
-  "question": "Claude wants to run “rm -rf build dist”",
-  "detail": "Remove build output · Dangerous rm operation on a path outside the project",
+  "question": "Claude wants to run a command: remove build output",
+  "detail": "rm -rf build dist · Dangerous rm operation on a path outside the project",
   "labels": [
    "Allow",
    "Deny"
@@ -544,8 +544,8 @@
  "claude-live-R5-bash-dontask.txt": {
   "kind": "question",
   "name": "permission",
-  "question": "Claude wants to run “npm test”",
-  "detail": "Run the test suite",
+  "question": "Claude wants to run a command: run the test suite",
+  "detail": "npm test",
   "labels": [
    "Allow",
    "Always allow",
@@ -650,7 +650,8 @@
  "codex-14-command-approval.txt": {
   "kind": "question",
   "name": "permission",
-  "question": "Codex wants to run “curl -sI https://example.com | head -1”",
+  "question": "Codex wants to run a command",
+  "detail": "curl -sI https://example.com | head -1",
   "labels": [
    "Allow",
    "Always allow",
@@ -803,7 +804,8 @@
  "codex-handling-15-command-approval.txt": {
   "kind": "question",
   "name": "permission",
-  "question": "Codex wants to run “npm install”",
+  "question": "Codex wants to run a command",
+  "detail": "npm install",
   "labels": [
    "Allow",
    "Always allow",
@@ -897,7 +899,7 @@
  "handling-00-bash-permission-safe-mode-bypass-immune.txt": {
   "kind": "question",
   "name": "permission",
-  "question": "Claude wants to run “Run the unit tests”",
+  "question": "Claude wants to run a command: run the unit tests",
   "detail": "npm test -- --run",
   "labels": [
    "Allow",

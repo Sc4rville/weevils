@@ -7,7 +7,8 @@ const nameOf = (who: Who) => (who === 'codex' ? 'Codex' : 'Claude')
 export default defineMessages({
   fr: {
     // Permissions
-    wantsRun: (who: Who, cmd: string) => `${nameOf(who)} veut lancer « ${cmd} »`,
+    wantsRun: (who: Who) => `${nameOf(who)} veut lancer une commande`,
+    wantsRunWhy: (who: Who, why: string) => `${nameOf(who)} veut lancer une commande : ${why}`,
     wantsCreate: (who: Who, file: string) => `${nameOf(who)} veut créer ${file}`,
     wantsEdit: (who: Who, file: string) => `${nameOf(who)} veut modifier ${file}`,
     wantsEditFiles: (who: Who) => `${nameOf(who)} veut modifier des fichiers`,
@@ -57,7 +58,8 @@ export default defineMessages({
     stopped: (who: Who) => `${nameOf(who)} s’est arrêté`,
   },
   en: {
-    wantsRun: (who: Who, cmd: string) => `${nameOf(who)} wants to run “${cmd}”`,
+    wantsRun: (who: Who) => `${nameOf(who)} wants to run a command`,
+    wantsRunWhy: (who: Who, why: string) => `${nameOf(who)} wants to run a command: ${why}`,
     wantsCreate: (who: Who, file: string) => `${nameOf(who)} wants to create ${file}`,
     wantsEdit: (who: Who, file: string) => `${nameOf(who)} wants to edit ${file}`,
     wantsEditFiles: (who: Who) => `${nameOf(who)} wants to change some files`,

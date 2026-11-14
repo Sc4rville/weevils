@@ -35,7 +35,7 @@ import type { Level, UsageInfo } from '../shared/infra.ts'
 import { DATA_DIR, MACHINE } from './config.ts'
 import type { MediaShelf } from './foryou-media.ts'
 import { isLocal, trustedFrom } from './http.ts'
-import { lang, tr, withLang, type Lang } from './i18n.ts'
+import { installationLang, lang, tr, withLang, type Lang } from './i18n.ts'
 import CM from './i18n/core.ts'
 import M from './i18n/foryou.ts'
 import { ownIdea, ownTask } from './own-words.ts'
@@ -455,13 +455,15 @@ interface Stored {
   /** media: where the caller stood (files of one place join one item). */
   cwd?: string
   /** Buttons: the brief goes to weevboss on a tap. */
-  actions?: { id: string; label: string; brief: string; sourceIntentId?: string; /** done here on a tap (deps.op), never sent to weevboss */ op?: string }[]
+  actions?: { id: string; label: string; brief: string; sourceIntentId?: string; /** done here on a tap (deps.op), never sent to weevboss */ op?: string; /** tapped on this card (its work is shown on it) */ tapped?: boolean }[]
   /** mail: what a reply needs. The address stays here. */
   mail?: { address: string; mid: string; subject: string; target: string }
   /** mail: the short « did this » line the curator wrote, shown instead of the first line (lang: the language it is
    *  in); without text: tried, nothing worth keeping. */
   /** The model's line (text); tries/at: attempts that gave nothing usable, retried a few times. */
-  sum?: { text?: string; lang?: Lang; tries?: number; at?: number }
+  /** relang: asked again once because it was in another language than the installation's; prior: that title, shown
+   * until the new one comes (and kept if it never does). */
+  sum?: { text?: string; lang?: Lang; tries?: number; at?: number; relang?: boolean; prior?: string }
   /** weevils show / post: the evidence supplied with the publication, as given (the label is derived at read time). */
   evidence?: EvidenceInput
 }
@@ -1073,7 +1075,9 @@ export class ForYou {
       const project = snap.projects.find((p) => p.id === i.projectId)?.name ?? i.projectId ?? ''
       // What was asked, without weevils' hidden context block (it would only blur the subject and the language).
       const asked = clip(collapse(cleanTitle(withoutWeevilsBlock(this.w.store?.get(i.sessionId ?? '')?.firstPrompt ?? ''))), 400)
-      const l = lang()
+      // The card is stored once, in the installation's language (other readers get it translated): never the language
+      // of whichever request happened to start this turn's scan (a French call left English cards in French).
+      const l = installationLang()
       let line = ''
       try {
         const raw = await ask(withLang(l, () => tr(M).resultTitle(project, withoutWeevilsBlock(asked), withoutWeevilsBlock(source))))
@@ -1087,11 +1091,11 @@ export class ForYou {
       // Rewritten meanwhile (same turn, better words): asked again with those words.
       if ((cur.body || cur.text) !== source) return void this.retitle.add(id)
       if (line) {
-        cur.sum = { text: line, lang: detectLang(line) ?? l }
+        cur.sum = { text: line, lang: detectLang(line) ?? l, ...(cur.sum?.relang ? { relang: true } : {}) }
         return this.changed()
       }
       const tries = (cur.sum?.tries ?? 0) + 1
-      cur.sum = { tries, at: this.now() }
+      cur.sum = { tries, at: this.now(), ...(cur.sum?.relang ? { relang: true } : {}), ...(cur.sum?.prior ? { prior: cur.sum.prior } : {}) }
       this.save()
       if (tries < TITLE_TRIES) later(() => this.titleResult(id), tries * 2 * 60_000)
     }
@@ -1102,15 +1106,23 @@ export class ForYou {
     })
   }
 
-  /** Result cards of the last days still without a model's title (stored before titles, or after failed tries). */
+  /** Result cards of the last days still without a model's title (stored before titles, or after failed tries), and
+   * titles written in another language than the installation's (once: the old one stays if the new try fails). */
   titleRecentResults(days = 7) {
     const since = this.now() - days * 86_400_000
+    const l = installationLang()
+    let moved = false
     for (const i of this.s.items) {
+      if (i.kind === 'session' && i.tone === 'result' && !i.gone && i.at >= since && i.sum?.text && !i.sum.relang && (i.sum.lang ?? detectLang(i.sum.text) ?? l) !== l) {
+        i.sum = { tries: TITLE_TRIES - 1, at: 0, relang: true, prior: i.sum.text }
+        moved = true
+      }
       const tries = i.sum?.tries ?? 0
       // A failed try keeps its delay (titleResult schedules the next one): the sweep never asks sooner.
       const waiting = !!tries && this.now() - (i.sum?.at ?? 0) < tries * 2 * 60_000
       if (i.kind === 'session' && i.tone === 'result' && !i.gone && !i.sum?.text && i.at >= since && tries < TITLE_TRIES && !waiting) this.titleResult(i.id)
     }
+    if (moved) this.save()
   }
 
   /** The curator's line for a session result (null: it kept nothing, the headline stays). */
@@ -1224,7 +1236,8 @@ export class ForYou {
       if (i.tone === 'result') {
         // A stored title loses a model's preamble written before that rule; closing words with no whole sentence
         // left once their code is out say so plainly rather than show a fragment (a bare file name stays as it is).
-        const titled = i.sum?.text && !internalFeedUpdate(i.sum.text) ? titleWithoutPreamble(i.sum.text) : ''
+        const kept = i.sum?.text || i.sum?.prior
+        const titled = kept && !internalFeedUpdate(kept) ? titleWithoutPreamble(kept) : ''
         const source = i.body || i.text
         out.text = titled || headline(editorialFeedText(source)) || (untitledProse(source) ? tr(M).resultUntitled : i.text)
       }
@@ -1258,21 +1271,27 @@ export class ForYou {
       if (out.actions) out.actions = out.actions.filter(a => !internalFeedUpdate(a.label))
     }
     const result = humanFeedItem(reviewedEditorial(out, i.text))
-    const existing = i.actions?.map(a => this.actionIntent(i, a)).filter(e => !!e)
-    if (existing?.length && existing.length === i.actions?.length && new Set(existing.map(e => e.id)).size === 1) {
-      const work = existing[0]!
-      const label = i.actions?.find(a => this.actionIntent(i, a)?.id === work.id)?.label
+    // A button already tapped: the card says what became of it (sent, then weevboss's answer) instead of offering it
+    // again; the other buttons stay under it. Work that existed before the card (unrelated tasks it points to) and a
+    // second work tapped on the same card stay one tap away, as « View existing work ».
+    const intents = (i.actions ?? []).map(a => ({ a, work: this.actionIntent(i, a) }))
+    const tracked = intents.filter((x) => !!x.work)
+    const one = tracked.length === intents.length && new Set(tracked.map((x) => x.work!.id)).size === 1
+    const tapped = one ? tracked : tracked.filter((x) => x.a.tapped)
+    const shown = tapped.length ? tapped.reduce((x, y) => (y.work!.at > x.work!.at ? y : x)) : undefined
+    if (shown) {
+      const work = shown.work!
       const open = this.appOpen(work.open)
-      const reply = open?.page === 'boss' ? this.bossReply(work, label) : undefined
+      const reply = open?.page === 'boss' ? this.bossReply(work, shown.a.label) : undefined
       result.work = { intentId: work.id, status: work.status, open, source: work.source, ...(reply ? { reply } : {}) }
-      result.actions = []
       if (open) result.open = open
       result.editorial ??= { original: { ...(i.title ? { title: i.title } : {}), text: i.text } }
-    } else if (existing?.length && result.actions) {
-      result.actions = result.actions.map(a => {
-        const original = i.actions?.find(b => b.id === a.id)
-        const work = original && this.actionIntent(i, original)
-        return work ? { ...a, label: tr(M).followWork } : a
+    }
+    if (tracked.length && result.actions) {
+      result.actions = result.actions.flatMap(a => {
+        const work = intents.find(x => x.a.id === a.id)?.work
+        if (!work) return [a]
+        return work.id === shown?.work!.id ? [] : [{ ...a, label: tr(M).followWork }]
       })
     }
     const software = softwareResult(result, snap, this.softwareCatalog, this.now())
@@ -1604,7 +1623,8 @@ export class ForYou {
     const asked = messages.findIndex(m => m.role === 'user' && m.at >= work.at - 60_000 && (!label || m.text.includes(label)))
     if (asked < 0) return
     const reply = messages.slice(asked + 1).find(m => m.role === 'assistant' && collapse(m.text))
-    return reply ? clip(collapse(reply.text), 400) : undefined
+    // Its paragraphs kept: the app shows its first plain sentence or two, the rest is in weevboss's thread.
+    return reply ? clip(reply.text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim(), 1200) : undefined
   }
 
   async act(id: string, action: string, card?: string, l?: unknown): Promise<void | IntentResult> {
@@ -1697,6 +1717,7 @@ export class ForYou {
       const result = await this.intents.dispatch(a.brief, i.projectId, `card:${i.id}:${a.id}`,
         () => this.w.sendMain(t.go(a.label), t.actBrief(clip(collapse(i.text), 300), a.brief)), a.sourceIntentId)
       a.sourceIntentId = result.intentId
+      a.tapped = true
       // Keep the original record and expose the existing conversation on refresh.
       this.changed()
       return result

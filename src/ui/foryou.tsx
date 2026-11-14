@@ -23,7 +23,8 @@ import { useApp } from './app-context'
 import { selfRepo } from './recursive-identity'
 import { Collapse, spring, useAuthors } from './bits'
 import { flash, focusBoss } from './follow'
-import { ago } from './format'
+import { ago, plain } from './format'
+import { plainSummary } from './plain-steps'
 import { cardSlots, itemSlot, itemWho, matchesWho, participants, useForYou, WHO_ALL, type ForYouStore } from './foryou-store'
 import { toggleVoice, useVoice } from './foryou-voice'
 import { markSeen as gestureSeen } from './hints'
@@ -851,21 +852,31 @@ const bandClass = (item: ForYouItem) => `band fy-k-${item.kind} fy-t-${item.tone
 /** One line of an item, for the thin strips of the top band's preview. */
 const oneLine = (item: ForYouItem) => (item.kind === 'proposals' ? (item.cards?.[0]?.title ?? item.text) : item.kind === 'media' ? item.title || item.text : item.text || item.title || '')
 
-function ExistingWork({ item, who }: { item: ForYouItem; who: string }) {
+function ExistingWork({ item, who, fy }: { item: ForYouItem; who: string; fy: ForYouStore }) {
   const t = useT(M)
   const open = useForYouOpen()
   const work = item.work!
   const target = work.open ?? item.open
   // Handed to weevboss: « sent », then its answer right here when it comes; its thread is one tap away.
   const boss = target?.page === 'boss'
+  // What the card was about stays readable above (two lines at most), so the tap never lands on a bare status.
+  const about = item.title || item.text
+  // Its answer in a sentence or two, plain (no markdown): the whole of it is in the thread.
+  // (An older server sends it on one line: its list items, « … : - **If so:** … - **If not:** … », are put back on
+  // their own; only a reply on one line with two of them at least, so a lone dash in a sentence stays where it is.)
+  const items = /[ \t]+[-*•][ \t]+(?=\*\*|\p{Lu})/gu
+  const listed = !!work.reply && !work.reply.includes('\n') && (work.reply.match(items)?.length ?? 0) >= 2
+  const raw = (listed ? work.reply!.replace(items, '\n\n- ') : work.reply) ?? ''
+  const reply = boss && raw ? plainSummary(raw, 280) ?? plain(raw).split('\n')[0] : ''
   return <><div className="in">
     <Who item={item} who={who} />
-    {item.title && <div className="fy-text strong">{item.title}</div>}
-    {boss && work.reply
-      ? <><p className="meta fy-work-from">{t.workBossReplied}</p><p className="fy-text fy-work-reply">{work.reply}</p></>
+    {about && <div className={`fy-text fy-work-about${item.title ? ' strong' : ''}`}>{about}</div>}
+    {reply
+      ? <><p className="meta fy-work-from">{t.workBossReplied}</p><p className="fy-text fy-work-reply">{reply}</p></>
       : <p className="fy-text" role="status">{boss && work.status === 'requested' ? t.workSentBoss : t[`work_${work.status}`]}</p>}
     {target && <div className="fy-acts"><button type="button" className="fy-btn" onClick={() => open(target, item.projectId)}>{boss ? t.workOpenBoss : t.workOpen}</button></div>}
   </div>
+    {!!item.actions?.length && <Actions item={item} fy={fy} />}
     {(!!item.media?.length || !!item.composition) && <InlineMediaFormats item={item} />}
   </>
 }
@@ -921,7 +932,7 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
     <article ref={band} className={`${bandClass(item)} fy-item${closable ? ' notice-shell' : ''}${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-kind={item.kind}>
       {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
       <TranslationStatus item={item} />
-      {item.work ? <ExistingWork item={item} who={who} /> : Kind && <Kind item={item} who={who} project={project} inView={inView} fy={fy} />}
+      {item.work ? <ExistingWork item={item} who={who} fy={fy} /> : Kind && <Kind item={item} who={who} project={project} inView={inView} fy={fy} />}
       {original && (
         <details className="fy-editorial in">
           <summary className="meta">{t.original}</summary>

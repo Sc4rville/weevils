@@ -18,6 +18,7 @@ import {
   resultTitleLine,
 } from './foryou.ts'
 import M from './i18n/foryou.ts'
+import { withLang } from './i18n.ts'
 import TM from './i18n/tips.ts'
 
 // Only for the last block (the hooks in core.ts, with a real Weevils): tmux and the voice are simulated, as in
@@ -464,6 +465,42 @@ describe('result titles', () => {
     await flush(); await flush()
     expect(title).toHaveBeenCalledTimes(1)
   })
+
+  it('a card is titled in the installation language, whatever the language of the call that ended the turn', async () => {
+    const title = vi.fn(async (_p: string) => 'I fixed the command page, it now opens in a quarter of a second.')
+    const fy = make({ title })
+    snap.sessions = [session()]
+    threads.s1 = [says('The command page now opens in 240 ms, tested on the phone.')]
+    await withLang('fr', async () => { fy.sessionTurn(session(), 'result'); await flush(); await flush() })
+    await flush(); await flush()
+    expect(title).toHaveBeenCalledTimes(1)
+    expect(title.mock.calls[0][0]).toContain('In English.')
+    expect(find(fy, 's:s1')?.text).toBe('I fixed the command page, it now opens in a quarter of a second.')
+  })
+
+  it('a title stored in another language is asked again once, the old one shown until the new one comes', async () => {
+    const title = vi.fn(async (_p: string) => 'Je viens de corriger la page des commandes.')
+    fs.writeFileSync(path.join(dir, 'foryou.json'), JSON.stringify({ rev: 1, items: [
+      { id: 's:fr', kind: 'session', tone: 'result', who: 'session', text: 'No batch was started this run.', body: 'No batch was started this run. The previous session has not finished.', at: now - 60_000, sum: { text: "Je n'ai lancé aucun lot cette fois, la session précédente n'est pas terminée.", lang: 'fr' } },
+    ] }))
+    const fy = make({ title })
+    fy.titleRecentResults()
+    expect(find(fy, 's:fr')?.text).toBe("Je n'ai lancé aucun lot cette fois, la session précédente n'est pas terminée.")
+    await flush(); await flush()
+    expect(title).toHaveBeenCalledTimes(1)
+    expect(title.mock.calls[0][0]).toContain('In English.')
+    // Still French (a stubborn model): never asked again in a loop.
+    for (let n = 0; n < 3; n++) { fy.titleRecentResults(); await flush() }
+    expect(title).toHaveBeenCalledTimes(1)
+    title.mockResolvedValueOnce('I skipped this run because the previous batch is still being reviewed.')
+    fs.writeFileSync(path.join(dir, 'foryou.json'), JSON.stringify({ rev: 1, items: [
+      { id: 's:fr2', kind: 'session', tone: 'result', who: 'session', text: 'No batch was started this run.', body: 'No batch was started this run. The previous session has not finished.', at: now - 60_000, sum: { text: "Je n'ai lancé aucun lot cette fois, la session précédente n'est pas terminée.", lang: 'fr' } },
+    ] }))
+    const again = make({ title })
+    again.titleRecentResults()
+    await flush(); await flush()
+    expect(find(again, 's:fr2')?.text).toBe('I skipped this run because the previous batch is still being reviewed.')
+  })
 })
 
 describe('sessions that wait or were cut', () => {
@@ -621,6 +658,18 @@ describe('posts', () => {
     expect(host.sendMain).toHaveBeenCalledTimes(1)
   })
 
+  it('on a card with two buttons, the tapped one becomes « sent » then the answer, the other one stays', async () => {
+    const fy = make()
+    const { id } = fy.post('Two cleanups are possible.', [{ label: 'Prune 36 branches', brief: 'prune the merged branches' }, { label: 'Neutralize the data file', brief: 'neutralize the data file' }])
+    await expect(fy.act(id, 'a1', undefined, 'en')).resolves.toMatchObject({ existing: false, open: { page: 'boss' } })
+    expect(find(fy, id)).toMatchObject({ open: { page: 'boss' }, work: { status: 'requested', open: { page: 'boss' } }, actions: [{ id: 'a2', label: 'Neutralize the data file' }] })
+    transcripts.set('boss', { messages: [
+      { id: 'u1', role: 'user', text: 'Go ahead: Prune 36 branches', at: now },
+      { id: 'a1', role: 'assistant', text: 'Done: 36 branches pruned.', at: now + 1000 },
+    ] } as never)
+    expect(find(fy, id)?.work?.reply).toBe('Done: 36 branches pruned.')
+  })
+
   it('an action handed to weevboss never opens weevboss as a session page, and its answer lands on the card', async () => {
     const fy = make()
     const { id } = fy.post('Your demo is live.', [{ label: 'Draft launch tweet', brief: 'write the tweet' }])
@@ -631,7 +680,7 @@ describe('posts', () => {
       { id: 'u1', role: 'user', text: 'Go ahead: Draft launch tweet ⟦weevils — note⟧', at: now },
       { id: 'a1', role: 'assistant', text: 'Here is a draft:\n\nweevils is open source.', at: now + 1000 },
     ] } as never)
-    expect(find(fy, id)?.work).toMatchObject({ open: { page: 'boss' }, reply: 'Here is a draft: weevils is open source.' })
+    expect(find(fy, id)?.work).toMatchObject({ open: { page: 'boss' }, reply: 'Here is a draft:\n\nweevils is open source.' })
     // An older conversation of weevboss is weevboss too.
     host.sendMain.mockResolvedValueOnce({ id: 'old-boss-thread' })
     Object.assign(host, { isBossThread: (sid: string) => sid === 'old-boss-thread' })

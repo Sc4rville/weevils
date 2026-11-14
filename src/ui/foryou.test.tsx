@@ -856,7 +856,7 @@ it('keeps editorial source wording folded, verbatim and separate from the revise
 it('shows existing work instead of an approval request, retains original wording and opens only its existing session',async()=>{
  setLang('en')
  const original={title:'Think canvas',text:'Would you like me to prepare this?'}
- const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,title:original.title,text:original.text,editorial:{original},work:{intentId:'intent-think',status:'running',open:{page:'session',id:'think-owner'}}}
+ const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,actions:[],title:original.title,text:original.text,editorial:{original},work:{intentId:'intent-think',status:'running',open:{page:'session',id:'think-owner'}}}
  await open([item])
  expect(band('bo').querySelector('.fy-text:not(.strong)')?.textContent).toBe('Working on it.')
  const buttons=[...band('bo').querySelectorAll<HTMLButtonElement>('.fy-btn')]
@@ -906,6 +906,35 @@ it('an action handed to weevboss keeps the reader on the card: no page opens, th
  window.removeEventListener('weevils:focus-boss',onBoss)
 })
 
+it('a tap handed to weevboss says « sent » on the card at once, keeps what the card was about and its other button',async()=>{
+ setLang('en')
+ const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,text:'Two cleanups are possible on the VPS.',actions:[{id:'a1',label:'Prune 36 branches'},{id:'a2',label:'Neutralize the data file'}]}
+ await open([item])
+ srv.result={intentId:'brief:prune',existing:false,open:{page:'boss'}}
+ await click(band('bo').querySelector('.fy-btn'));await flush()
+ expect(srv.calls.filter(c=>c==='act bo a1')).toHaveLength(1)
+ expect(pushed).toEqual([])
+ // The server's next read (an older server: no work on the card yet) changes nothing to what the reader sees.
+ expect(band('bo').textContent).toContain('Two cleanups are possible on the VPS.')
+ expect(band('bo').querySelector('[role=status]')?.textContent).toBe('Sent to weevboss. Its reply will show up here.')
+ expect([...band('bo').querySelectorAll('.fy-btn')].map(b=>b.textContent)).toEqual(['Open weevboss’s thread','Neutralize the data file'])
+})
+
+it('weevboss’s answer on a card is one or two plain sentences, never raw markdown',async()=>{
+ setLang('en')
+ const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,actions:[],work:{intentId:'brief:x',status:'requested',open:{page:'boss'},reply:'It is sent to the install link session.\n\nThe page will check on its own whether the repo is public:\n\n- **If it is:** it shows « The code is open ».\n- **If not:** nothing changes.'}}
+ await open([item])
+ const reply=band('bo').querySelector('.fy-work-reply')!.textContent!
+ expect(reply).toBe('It is sent to the install link session.')
+ expect(reply).not.toMatch(/\*\*|^- /)
+ // On one line (an older server): same.
+ render(<ForYouItemView item={{...item,work:{...item.work!,reply:'It is sent to the install link session. The page will check on its own whether the repo is public: - **If it is:** it shows « The code is open ». - **If not:** nothing changes.'}}}/>)
+ expect(band('bo').querySelector('.fy-work-reply')!.textContent).toBe('It is sent to the install link session.')
+ // A lone dash inside a sentence is not a list: the sentence stays whole.
+ render(<ForYouItemView item={{...item,work:{...item.work!,reply:'The branch is merged - Scarville can test it on his phone now.'}}}/>)
+ expect(band('bo').querySelector('.fy-work-reply')!.textContent).toBe('The branch is merged - Scarville can test it on his phone now.')
+})
+
 it('existing work without a rewrite: no « original » disclosure repeating the card, no "view full image" overlays',async()=>{
  setLang('en')
  const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,title:'Think canvas',text:'Would you like me to prepare this?',editorial:undefined,work:{intentId:'intent-think',status:'running',open:{page:'session',id:'think-owner'}}}
@@ -918,7 +947,7 @@ it('existing work without a rewrite: no « original » disclosure repeating the 
 
 it('keeps uncertain existing work informational when no destination is known',async()=>{
  setLang('en')
- const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,open:undefined,sessionId:undefined,work:{intentId:'unconfirmed',status:'uncertain'}}
+ const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,actions:[],open:undefined,sessionId:undefined,work:{intentId:'unconfirmed',status:'uncertain'}}
  await open([item])
  expect(band('bo').textContent).toContain('Not sure it arrived.')
  expect(band('bo').querySelector('.fy-btn')).toBeNull()

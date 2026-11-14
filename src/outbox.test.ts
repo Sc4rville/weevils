@@ -261,3 +261,15 @@ it('a poll that fails while the first send is still in flight does not call it l
  expect(box.outboxSnapshot()[0].trackingLost).toBeFalsy()
  release(accepted(box.outboxSnapshot()[0].messageId)); await pending
 })
+it('a server error (500) before it took the message says « not sent yet » at once and resumes the same identity', async () => {
+ const box = await load()
+ const submit = vi.fn(async () => { throw Object.assign(new Error('boom'), { status: 500 }) })
+ const first = await box.deliver('/api/main', {text:'hello'}, submit).catch(e => e)
+ expect(first).toBeInstanceOf(Error)
+ const row = box.outboxSnapshot()[0]
+ expect(row).toMatchObject({status:'sending',trackingLost:true})
+ serverBack()
+ await vi.advanceTimersByTimeAsync(15_000); await box.refreshReceipts()
+ expect(posts()).toHaveLength(1); expect((posts()[0][1].headers as any)['Idempotency-Key']).toBe(row.messageId)
+ expect(box.outboxSnapshot()[0]).toMatchObject({messageId:row.messageId,status:'accepted',trackingLost:false})
+})

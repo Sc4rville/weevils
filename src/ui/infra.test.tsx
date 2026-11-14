@@ -180,3 +180,12 @@ it('subscription: one figure per tool, no lone « ! », no raw error, no machine
   await act(async () => row('refonte')!.click())
   expect(state.push).toHaveBeenCalledWith({ kind: 'session', id: 's1' })
 })
+
+it('subscription: a Claude answer with no window still says something (never an empty section)', async () => {
+  state.usage = {
+    claude: { ok: true, plan: 'Max 20x', windows: [], source: 'x', at: Date.now() },
+    codex: { ok: true, windows: [{ kind: 'week', percent: 3, resetsAt: null }], source: 'x', at: Date.now() },
+  } as UsageInfo
+  await render(<UsagePage />)
+  expect(host.textContent).toContain('Claude · Max 20xno figures yet, trying again soon')
+})

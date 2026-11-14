@@ -182,7 +182,9 @@ export async function deliver(url: string, body: unknown, submit: Submit, resumi
         const status = (error as { status?: number }).status
         // Definitive refusals are not network retries. Keep their recovery text visible.
         if (status && ![502,503,504].includes(status)) {
-          update({ ...row, status: status >= 500 ? 'sending' : 'failed', error: error instanceof Error ? error.message : '', updatedAt: Date.now() })
+          // A server error (500) never took it: « not sent yet » with « try again », resumed on the same back-off.
+          if (status >= 500) later(row.messageId)
+          update({ ...row, status: status >= 500 ? 'sending' : 'failed', error: error instanceof Error ? error.message : '', updatedAt: Date.now(), ...(status >= 500 ? { trackingLost: true } : {}) })
           throw error
         }
         if (attempt < 2) await pause(attempt ? 2000 : 600)

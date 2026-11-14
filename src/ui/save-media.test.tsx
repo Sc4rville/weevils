@@ -88,6 +88,54 @@ it('a closed sheet says nothing; without a share sheet for files, the same file 
   spy.mockRestore()
 })
 
+it('a long file says how far it is while preparing, then leaves memory once saved', async () => {
+  let push: (b: Uint8Array | null) => void = () => undefined
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    fetched.push(url)
+    const body = new ReadableStream<Uint8Array>({ start(c) { push = (b) => (b ? c.enqueue(b) : c.close()) } })
+    return new Response(body, { headers: { 'content-type': 'video/mp4', 'content-length': '8' } })
+  }))
+  render(<SaveMediaButton target={{ url: '/api/foryou/media/m2', name: 'long clip', type: 'video' }} />)
+  const button = host.querySelector<HTMLButtonElement>('button.save-media')!
+  await act(async () => button.click())
+  await flush()
+  await act(async () => push(new Uint8Array([1, 2, 3])))
+  await flush()
+  expect(host.textContent).toContain('Preparing… 37%')
+  await act(async () => { push(new Uint8Array([4, 5, 6, 7, 8])); push(null) })
+  await flush()
+  expect(shared).toHaveLength(1)
+  expect(shared[0][0]).toMatchObject({ name: 'long clip.mp4', type: 'video/mp4', size: 8 })
+  expect(host.textContent).not.toContain('Preparing')
+  // Saved: the file is not kept around; another save fetches it again.
+  await act(async () => button.click())
+  await flush()
+  expect(fetched).toHaveLength(2)
+})
+
+it('a load that broke half way, unseen, does not lend its old percent to the next one', async () => {
+  const pushes: Array<(b: Uint8Array | null | Error) => void> = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    fetched.push(url)
+    const body = new ReadableStream<Uint8Array>({ start(c) { pushes.push((b) => (b instanceof Error ? c.error(b) : b ? c.enqueue(b) : c.close())) } })
+    return new Response(body, { headers: { 'content-type': 'video/mp4', 'content-length': '10' } })
+  }))
+  render(<SaveMediaButton target={{ url: '/api/foryou/media/m2', name: 'clip', type: 'video' }} />)
+  const button = host.querySelector<HTMLButtonElement>('button.save-media')!
+  // The finger lands (loading starts), then lifts off without a tap: the load breaks half way, unseen.
+  await act(async () => { button.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' })) })
+  await flush()
+  await act(async () => pushes[0](new Uint8Array([1, 2, 3, 4, 5])))
+  await flush()
+  await act(async () => pushes[0](new Error('network')))
+  await flush()
+  await act(async () => button.click())
+  await flush()
+  expect(fetched).toHaveLength(2)
+  expect(host.textContent).toContain('Preparing…')
+  expect(host.textContent).not.toContain('50%')
+})
+
 function Tile({ onOpen }: { onOpen: () => void }) {
   const el = useRef<HTMLDivElement>(null)
   const guard = useLongPressSave(el, { url: '/api/foryou/media/m1', name: 'render.png', type: 'image' })

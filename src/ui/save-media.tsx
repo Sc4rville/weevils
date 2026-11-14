@@ -38,12 +38,43 @@ export function fileName(name: string, mime: string): string {
 const loading = new Map<string, Promise<File>>()
 const ready = new Map<string, File>()
 const states = new Map<string, SaveState>()
+/** Whole percent of a file still loading, when its size is known (a long video on a phone network takes a while). */
+const progress = new Map<string, number>()
 const listeners = new Set<() => void>()
+const notify = () => listeners.forEach((l) => l())
 const setState = (key: string, s: SaveState) => {
+  if (s !== 'saving') progress.delete(key)
   if (states.get(key) === s) return
   if (s === 'idle') states.delete(key)
   else states.set(key, s)
-  listeners.forEach((l) => l())
+  notify()
+}
+const setProgress = (key: string, pct: number) => {
+  if (progress.get(key) === pct) return
+  progress.set(key, pct)
+  if (states.get(key) === 'saving') notify()
+}
+
+/** The body, read piece by piece so the button can say how far it is; the whole blob at once where streams are missing. */
+async function readBody(key: string, r: Response, size: number): Promise<Blob> {
+  const reader = size > 0 ? r.body?.getReader() : undefined
+  if (!reader) return r.blob()
+  const parts: BlobPart[] = []
+  let got = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    parts.push(value)
+    got += value.byteLength
+    setProgress(key, Math.min(99, Math.floor((got / size) * 100)))
+  }
+  return new Blob(parts, { type: r.headers.get('content-type') ?? '' })
+}
+
+/** A saved file leaves memory (a video can weigh hundreds of MB); the next save fetches it again. */
+const forget = (key: string) => {
+  ready.delete(key)
+  loading.delete(key)
 }
 
 /** The original file, fetched once and kept for the next tap. */
@@ -51,9 +82,11 @@ export function loadFile(t: SaveTarget): Promise<File> {
   const key = originalUrl(t.url)
   let job = loading.get(key)
   if (!job) {
+    // A fresh fetch starts from zero (an earlier one may have stopped half way).
+    progress.delete(key)
     job = fetch(key, { credentials: 'same-origin' }).then(async (r) => {
       if (!r.ok) throw new Error(String(r.status))
-      const blob = await r.blob()
+      const blob = await readBody(key, r, Number(r.headers.get('content-length')) || 0)
       const type = (blob.type || r.headers.get('content-type') || '').split(';')[0].trim()
       const file = new File([blob], fileName(t.name, type), { type })
       ready.set(key, file)
@@ -86,10 +119,12 @@ function download(t: SaveTarget) {
 async function share(key: string, t: SaveTarget, file: File) {
   if (!sharesFiles(file)) {
     download(t)
+    forget(key)
     return setState(key, 'idle')
   }
   try {
     await navigator.share({ files: [file] })
+    forget(key)
     setState(key, 'idle')
   } catch (e) {
     const name = (e as { name?: string })?.name
@@ -113,13 +148,17 @@ export async function saveMedia(t: SaveTarget): Promise<void> {
   return share(key, t, file)
 }
 
+const subscribe = (l: () => void) => (listeners.add(l), () => void listeners.delete(l))
+
 export function useSaveState(url: string): SaveState {
   const key = originalUrl(url)
-  return useSyncExternalStore(
-    (l) => (listeners.add(l), () => void listeners.delete(l)),
-    () => states.get(key) ?? 'idle',
-    () => 'idle',
-  )
+  return useSyncExternalStore(subscribe, () => states.get(key) ?? 'idle', () => 'idle')
+}
+
+/** Whole percent loaded while preparing, when the size is known; undefined otherwise. */
+export function useSaveProgress(url: string): number | undefined {
+  const key = originalUrl(url)
+  return useSyncExternalStore(subscribe, () => progress.get(key), () => undefined)
 }
 
 /** Tests only. */
@@ -127,6 +166,7 @@ export function resetSaves() {
   loading.clear()
   ready.clear()
   states.clear()
+  progress.clear()
 }
 
 export const LONG_PRESS_MS = 450
@@ -199,8 +239,9 @@ export function useLongPressSave(el: RefObject<HTMLElement | null>, t: SaveTarge
 export function SaveMediaButton({ target, className = '' }: { target: SaveTarget; className?: string }) {
   const t = useT(M)
   const state = useSaveState(target.url)
+  const pct = useSaveProgress(target.url)
   const label = t.save(target.type === 'video')
-  const said = state === 'saving' ? t.saving : state === 'again' ? t.again : state === 'failed' ? t.failed : ''
+  const said = state === 'saving' ? t.saving(pct) : state === 'again' ? t.again : state === 'failed' ? t.failed : ''
   return (
     <button
       type="button"

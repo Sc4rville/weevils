@@ -133,7 +133,10 @@ async function shared(p: Provider, get: () => Promise<QuotaInfo>, fallback: (err
   if (now >= s.nextAt && !s.inflight) {
     s.inflight = (async () => {
       try {
-        s.good = await get()
+        const next = await get()
+        // An answer that parses to no window at all (a changed shape, a hiccup) never erases the last good figures.
+        if (!next.windows.length && s.good?.windows.length) throw new Error(tr(M).emptyAnswer)
+        s.good = next
         s.error = undefined
         s.failures = 0
         s.nextAt = Date.now() + QUOTA_MIN_MS

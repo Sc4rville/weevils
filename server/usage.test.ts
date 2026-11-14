@@ -158,6 +158,21 @@ describe('usage — the Claude quota under 429', () => {
     expect(await claudeQuota()).not.toHaveProperty('error')
   })
 
+  it('an answer with no windows never replaces the last figures', async () => {
+    const fetch = vi.fn(async () => ok())
+    vi.stubGlobal('fetch', fetch)
+    const good = await claudeQuota()
+    fetch.mockImplementation(async () => new Response('{}', { status: 200 }))
+    vi.setSystemTime(Date.now() + 6 * 60_000)
+    await claudeQuota()
+    await new Promise((r) => setTimeout(r, 0))
+    const q = await claudeQuota()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(q).toMatchObject({ ok: true, at: good.at, stale: true, error: 'empty answer', windows: good.windows })
+    resetQuotaSlots()
+    expect(await claudeQuota()).toMatchObject({ at: good.at, windows: good.windows })
+  })
+
   it('a restart under 429 still shows the last valid answer, read from disk', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ok()))
     const saved = await claudeQuota()

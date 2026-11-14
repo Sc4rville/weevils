@@ -23,6 +23,8 @@ export default defineMessages({
     // ---- sessions
     /** A session waits for the user and its tool gave no question. */
     waiting: 'J’ai besoin de toi pour continuer.',
+    /** A finished session whose closing words give no whole sentence to show (only code, paths) and no title yet. */
+    resultUntitled: 'Terminé. Ouvre pour lire ce qui a été fait.',
     /** A session cut off mid-work; `why` comes from the core catalog (cutWhy). */
     cut: (why: string) => `Aïe, on m’a coupé en plein travail (${why}). Tu me relances ?`,
     resume: 'Reprendre',
@@ -77,6 +79,8 @@ export default defineMessages({
     noMore: 'nothing more on this for now',
     noMedia: 'images and videos are not available here',
     waiting: 'I need you to keep going.',
+    /** A finished session whose closing words give no whole sentence to show (only code, paths) and no title yet. */
+    resultUntitled: 'Finished. Open it to read what was done.',
     cut: (why: string) => `Ouch, I got cut off mid-work (${why}). Want me to pick it back up?`,
     resume: 'Resume',
     usage: (tool: string, window: string, percent: number, spare: string) =>

@@ -182,6 +182,15 @@ e={k:x for k,x in (("demonstrated",d),("verified",v),("limits",l)) if x}
 print(json.dumps(e) if e else "null")' "$ev_demo" "$ev_ver" ${ev_limits[@]+"${ev_limits[@]}"}
 }
 
+# An automation's run (server/optimizers.ts guardEnv sets WEEVILS_SCOPE=automation): only its permission profile's
+# subcommands (AUTO_WEEVILS there); the rest (the ledger's writes, memory, setup, config, resume…) is refused here too.
+if [ "${WEEVILS_SCOPE:-}" = automation ]; then
+  case "${1:-}" in
+    sessions|read|asks|projects|new|send|post|show) ;;
+    *) echo "weevils ${1:-}: not allowed in an automation run (allowed: sessions, read, asks, projects, new, send, post, show)" >&2; exit 3 ;; # i18n-ignore : technical refusal read by an agent
+  esac
+fi
+
 case "${1:-}" in
   asks)
     filter=${2:-open}

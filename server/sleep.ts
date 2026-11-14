@@ -11,6 +11,8 @@ import path from 'node:path'
 import type { AutoRun, Optimizer, Session, SleepState } from '../shared/api.ts'
 import type { ForYouRecap, ForYouRecapLine } from '../shared/foryou.ts'
 import { notificationText } from '../shared/notification-policy.ts'
+import { tr } from './i18n.ts'
+import SM from './i18n/sleep.ts'
 import type { PushPayload } from './push.ts'
 
 /** A recap card shows this many lines; the others are counted. */
@@ -113,6 +115,8 @@ export interface RecapAuto {
   sessionId?: string
   /** Its run was stopped on wake (the note it was given). */
   stoppedNote?: string
+  /** The supervisor's decisions (optimizers.ts supervise): relaunched, gave up, asked in For you. */
+  supervision?: { at: number; action: 'relaunch' | 'gave-up' | 'asked'; why: string }[]
 }
 
 /**
@@ -122,11 +126,12 @@ export interface RecapAuto {
  * notifications' own rule); otherwise its turn « ended » and its last words are shown as they are. Sessions that ran
  * an automation are the automation's lines, not their own.
  */
-export interface RecapCounts { done: number; working: number; waiting: number; failed: number }
+export interface RecapCounts { done: number; working: number; waiting: number; failed: number; /** runs the supervisor relaunched (not counted in failed) */ retried: number }
 export function nightRecap(x: { from: number; to: number; sessions: Session[]; autos: RecapAuto[]; headline?: (text: string) => string }, max = RECAP_LINES): { recap: ForYouRecap; counts: RecapCounts } {
   const { from, to } = x
   const lines: ForYouRecapLine[] = []
   const owned = new Set<string>()
+  let retried = 0
   const cut = (s: string | undefined, n = 160) => {
     const one = (s ?? '').replace(/\s+/g, ' ').trim()
     return one.length > n ? `${one.slice(0, n - 1).trimEnd()}…` : one
@@ -134,9 +139,21 @@ export function nightRecap(x: { from: number; to: number; sessions: Session[]; a
   for (const a of x.autos) {
     for (const r of a.runs) if (r.sessionId) owned.add(r.sessionId)
     if (a.sessionId) owned.add(a.sessionId)
+    // A run the supervisor relaunched or gave up on reads as failed (a blocked run may have ended « ok »), with why
+    // and what was done; a question it sent to For you is a waiting line.
+    const sup = (a.supervision ?? []).filter((x) => x.at >= from && x.at <= to)
+    let relaunches = 0
     for (const r of a.runs)
-      if (r.at >= from && r.at <= to)
-        lines.push({ state: r.ok ? 'done' : a.stoppedNote && r.note === a.stoppedNote ? 'stopped' : 'failed', src: 'auto', title: a.title, ...(r.note ? { detail: cut(r.note) } : {}), open: { page: 'auto', id: a.id }, at: r.at })
+      if (r.at >= from && r.at <= to) {
+        const d = sup.find((x) => x.at === r.at && x.action !== 'asked')
+        const t = tr(SM)
+        if (d?.action === 'relaunch') relaunches++
+        const detail = d ? (d.action === 'relaunch' ? t.relaunched(relaunches, d.why) : t.gaveUp(d.why)) : r.note
+        if (d?.action === 'gave-up') relaunches = 0
+        if (d?.action === 'relaunch') retried++
+        lines.push({ state: d ? 'failed' : r.ok ? 'done' : a.stoppedNote && r.note === a.stoppedNote ? 'stopped' : 'failed', src: 'auto', title: a.title, ...(detail ? { detail: cut(detail) } : {}), open: { page: 'auto', id: a.id }, at: r.at })
+      }
+    for (const q of sup) if (q.action === 'asked') lines.push({ state: 'waiting', src: 'auto', title: a.title, detail: cut(tr(SM).asked(q.why)), open: { page: 'auto', id: a.id }, at: q.at })
     if (a.state === 'running' && (a.startedAt ?? 0) <= to) lines.push({ state: 'working', src: 'auto', title: a.title, open: { page: 'auto', id: a.id }, at: to })
   }
   for (const s of x.sessions) {
@@ -155,5 +172,5 @@ export function nightRecap(x: { from: number; to: number; sessions: Session[]; a
   const rank: Record<ForYouRecapLine['state'], number> = { waiting: 0, stopped: 1, failed: 2, done: 3, working: 4, ended: 5 }
   lines.sort((a, b) => rank[a.state] - rank[b.state] || b.at - a.at)
   const n = (...st: ForYouRecapLine['state'][]) => lines.filter((l) => st.includes(l.state)).length
-  return { recap: { from, to, lines: lines.slice(0, max), more: Math.max(0, lines.length - max) }, counts: { done: n('done'), working: n('working'), waiting: n('waiting'), failed: n('failed', 'stopped') } }
+  return { recap: { from, to, lines: lines.slice(0, max), more: Math.max(0, lines.length - max) }, counts: { done: n('done'), working: n('working'), waiting: n('waiting'), failed: n('failed', 'stopped') - retried, retried } }
 }

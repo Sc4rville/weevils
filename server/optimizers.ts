@@ -36,7 +36,7 @@ import type { AutoDetail, AutoMachine, AutoRun, AutoRunDetail, AutoSuggestion, O
 import { detectLang } from '../shared/detect-lang.ts'
 import { RunArchive, blobPath, extractLinks, gitFiles, headOf, mtimeFiles, IMAGE_MIME, MAX_REPORT } from './auto-runs.ts'
 import { fmtLocal, nextRun, nextStart, parseEvery, parseLocal, parseWindow, serverTz, validTz, windowText, MAX_AHEAD_MS, type Window } from './auto-time.ts'
-import { DATA_DIR, MACHINE, PROJECT_ROOTS, PROJECTS_DIR } from './config.ts'
+import { DATA_DIR, MACHINE, PORT, PROJECT_ROOTS, PROJECTS_DIR } from './config.ts'
 import type { Weevils } from './core.ts'
 import { claudeAvailable, claudeHaiku, parseJson, smart, relay as relayAnswer } from './fast.ts'
 import { lang, tr, user, withLang, type Lang } from './i18n.ts'
@@ -78,6 +78,20 @@ export const MAX_RUN_CAP_MS = 6 * 3600_000
 /** A task stopped by a usage limit, an expired login or an API error goes back to the queue this long, this many tries. */
 export const RETRY_MS = 3600_000
 export const MAX_TRIES = 3
+/** The supervisor: how often it looks at the runs (and how long a relaunch waits), how many relaunches a task gets in a
+ *  row before it is reported as still failing, how long a run may sit still or on a question. */
+export const SUPERVISE_MS = 15 * 60_000
+export const MAX_RELAUNCHES = 2
+export const STALL_MS = 45 * 60_000
+export const ASK_MS = 5 * 60_000
+/**
+ * A run that ended « ok » but says it could not do its job because something refused it (a permission, the sandbox,
+ * a folder it could not read): a blocked run, relaunched like a failed one. Matched on its note and last words.
+ */
+export const BLOCKED_RE = /permission[^\n]{0,80}\b(denied|blocked|refused)|\b(denied|blocked|refused)\b[^\n]{0,40}\b(permission|sandbox|policy)|sandbox[^\n]{0,20}\bblock|permission policy|not allowed in an automation|couldn'?t (read|access|run) [^\n]{0,60}(outside|permission|denied|sandbox)/i
+/** A refusal of what stays denied on purpose (publishing, pushing, paying): relaunching would meet it again. */
+const HARD_DENIAL_RE = /\b(publish\w*|push\w*|deploy\w*|purchas\w*|payment|paid|spend\w*)\b/i
+export const isBlocked = (text: string | undefined): boolean => !!text && BLOCKED_RE.test(text) && !HARD_DENIAL_RE.test(text)
 /** Finished tasks stay in the band this long. */
 export const KEEP_MS = 3 * 24 * 3600_000
 const TICK_MS = 60_000
@@ -107,6 +121,36 @@ const TIMES = ['notBefore', 'window', 'every'] as const
  * (`timeout`, `VAR=…`, `env`) removed; `bash -c "…"`, `eval` or a script still pass them: the environment barriers
  * (guardEnv) stop the plain commands those run, the jail (jailArgs) what a task does on purpose. The brief says it too.
  */
+/**
+ * The automation permission profile: what an unattended run may do without a prompt (sessions start with permissions
+ * skipped, so nothing ever waits on a prompt; this list is the explicit side, for a session started in safe mode
+ * too). weevils' CLI: read the sessions and the request ledger, start a session, message one, post or show in For you.
+ * git: commit on its own branch (weevils pushes that branch itself at the end of a run, see pushBranch: the agent never
+ * holds a push credential). Tests and builds through `heavy`. RunPod (GPU renders, paid: Scarville's choice).
+ */
+export const AUTO_WEEVILS = ['sessions', 'read', 'asks', 'projects', 'new', 'send', 'post', 'show'] as const
+/** Every other subcommand of server/weevils-cli, denied by name (and refused by the CLI under WEEVILS_SCOPE). */
+export const WEEVILS_DENIED = ['ask', 'goal', 'goals', 'trace', 'mem', 'memory', 'resume', 'recall', 'boss', 'setup', 'config', 'tour'] as const
+function weevilsDeny(): string[] {
+  return ['Bash(weevils)', ...WEEVILS_DENIED.flatMap((c) => [`Bash(weevils ${c})`, `Bash(weevils ${c} *)`, `Bash(*/weevils ${c})`, `Bash(*/weevils ${c} *)`])]
+}
+export const ALLOW = [
+  ...AUTO_WEEVILS.flatMap((c) => [`Bash(weevils ${c})`, `Bash(weevils ${c} *)`]),
+  'Bash(git add *)',
+  'Bash(git commit *)',
+  'Bash(git status*)',
+  'Bash(git diff*)',
+  'Bash(git log*)',
+  'Bash(git show*)',
+  'Bash(git fetch*)',
+  'Bash(heavy *)',
+  'Bash(runpodctl *)',
+  'Read',
+  'Edit',
+  'Write',
+  'Glob',
+  'Grep',
+]
 const curlSends = ['-X', '--request', '-d', '--data', '--json', '-F', '--form', '-T', '--upload-file'].flatMap((f) => [`Bash(curl ${f}*)`, `Bash(curl * ${f}*)`])
 const COMMON_DENY = [
   'Bash(git push*)',
@@ -128,7 +172,6 @@ const COMMON_DENY = [
   'Bash(podman push*)',
   'Bash(expose*)',
   'Bash(*/expose *)',
-  'Bash(runpodctl *)',
   ...curlSends,
   'Bash(wget *--post*)',
   'Bash(wget *--method*)',
@@ -148,8 +191,12 @@ const COMMON_DENY = [
   'Bash(tmux *)',
   'Bash(*/tmux *)',
   'Bash(systemd-run *)',
-  'Bash(weevils*)',
-  'Bash(*/weevils *)',
+  // weevils' CLI: only the subcommands of the profile (AUTO_WEEVILS); every other one is denied by name, and the CLI
+  // refuses them itself under WEEVILS_SCOPE=automation (guardEnv). Its helpers (weevils-update, weevils-service) too.
+  ...weevilsDeny(),
+  'Bash(weevils-*)',
+  'Bash(*/weevils-*)',
+  'Bash(weevilsd*)',
   'Bash(wv *)',
   'Bash(claude *)',
   'Bash(*/claude *)',
@@ -188,6 +235,8 @@ const COMMON_DENY = [
   'SendMessage',
   'ListAgents',
   'RemoteTrigger',
+  // Nobody answers an unattended run: a question goes to For you (weevils post) and the run carries on.
+  'AskUserQuestion',
 ]
 /**
  * Added on a Mac, where a task has no jail and the logins are not files: the Keychain holds Claude Code's login, the
@@ -226,7 +275,7 @@ export const DENY = denyList()
  * user's claude.ai connectors and plugins can send mail, publish or spend credits; an empty --mcp-config with
  * --strict-mcp-config leaves none).
  */
-export const SAFETY_ARGS = ['--settings', JSON.stringify({ permissions: { deny: DENY }, disableClaudeAiConnectors: true }), '--strict-mcp-config', `--mcp-config=${JSON.stringify({ mcpServers: {} })}`]
+export const SAFETY_ARGS = ['--settings', JSON.stringify({ permissions: { allow: ALLOW, deny: DENY }, disableClaudeAiConnectors: true }), '--strict-mcp-config', `--mcp-config=${JSON.stringify({ mcpServers: {} })}`]
 
 /** A push URL weevils rewrites every remote to: no such git transport, so a push fails at once, before any network. */
 export const NO_PUSH_URL = 'weevils-no-push://'
@@ -236,7 +285,7 @@ const PUSH_PREFIXES = ['https://', 'http://', 'ssh://', 'git://', 'git@', 'file:
 const SECRET_VARS = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'SSH_AUTH_SOCK', 'NPM_TOKEN', 'NODE_AUTH_TOKEN', 'CARGO_REGISTRY_TOKEN', 'TWINE_PASSWORD', 'DOCKER_AUTH_CONFIG']
 const SECRET_NAME = /(TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|ACCESS_KEY|CREDENTIALS?)$/i
 /** Claude's own login (an OAuth token or an API key may be how it runs) and weevils' hooks keep theirs. */
-const KEEP_NAME = /^(ANTHROPIC_|CLAUDE_|WEEVILS_)/
+const KEEP_NAME = /^(ANTHROPIC_|CLAUDE_|WEEVILS_|RUNPOD_)/
 
 /**
  * The environment of an optimizer's session (only theirs: the user's own sessions keep everything). These hold even when
@@ -271,8 +320,9 @@ export function guardEnv(guard: string, env: NodeJS.ProcessEnv = process.env, pl
     GIT_SSH_COMMAND: no,
     GIT_CONFIG_COUNT: String(git.length),
     ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
-    // weevils' CLI (weevils new, send…) talks to weevilsd on WEEVILS_PORT: a port where nothing listens.
-    WEEVILS_PORT: '1',
+    // weevils' CLI talks to weevilsd on its real port; under this scope it runs only the profile's subcommands.
+    WEEVILS_PORT: String(PORT),
+    WEEVILS_SCOPE: 'automation',
   }
   git.forEach(([k, v], i) => {
     set[`GIT_CONFIG_KEY_${i}`] = k
@@ -283,7 +333,7 @@ export function guardEnv(guard: string, env: NodeJS.ProcessEnv = process.env, pl
 }
 
 /** Hidden in the jail (an empty folder there): keys, logins, weevils' own config, the user's sockets. */
-const JAIL_HIDE = ['.ssh', '.config/gh', '.config/hub', '.codex', '.config/weevils', '.aws', '.azure', '.config/gcloud', '.kube', '.docker', '.gnupg', '.password-store', '.runpod']
+const JAIL_HIDE = ['.ssh', '.config/gh', '.config/hub', '.codex', '.config/weevils', '.aws', '.azure', '.config/gcloud', '.kube', '.docker', '.gnupg', '.password-store']
 /** Hidden files (/dev/null there): logins kept in one file. */
 const JAIL_HIDE_FILES = ['.netrc', '.git-credentials', '.npmrc', '.pypirc', '.cargo/credentials', '.cargo/credentials.toml']
 /** Read-only in the jail: what runs later in the user's own sessions, unjailed (shell start files, ~/.local/bin, git and
@@ -331,6 +381,10 @@ export function jailArgs(o: { home: string; hide: string[]; roots: string[]; rw:
   ]
 }
 
+/** One decision of the supervisor: relaunched after a failed, blocked or stalled run; gave up after MAX_RELAUNCHES;
+ *  sent a run's question to For you. */
+export interface Supervision { at: number; action: 'relaunch' | 'gave-up' | 'asked'; why: string }
+
 type Stored = Optimizer & {
   proposalPreparation?: { at: number; source: 'conversation' | 'review'; revision: number; requestHash?: string }
   lifecycle?: {at:number;action:'refuse'|'restore-draft';source?:'api'|'internal';priorEndedAt?:number;wasDraft?:boolean}[]
@@ -367,6 +421,12 @@ type Stored = Optimizer & {
   runNow?: boolean
   /** onSleep: the night (sleep's since) its last run started in; one run per night. */
   sleepRunFor?: number
+  /** Relaunches by the supervisor since its last good run (at most MAX_RELAUNCHES in a row). */
+  relaunches?: number
+  /** What the supervisor did and why (the last 20): the morning recap and the log read it. */
+  supervision?: Supervision[]
+  /** The question of the run in progress was sent to For you (once per run). */
+  askedAt?: number
 }
 interface State {
   adoptionPaused?: boolean
@@ -397,17 +457,64 @@ export interface Sys {
   cpus: () => number
   free: () => number
   logged: () => boolean
-  /** git -C <repo> worktree add <dir> -b <branch> (from the checkout's HEAD). */
-  worktree: (repo: string, dir: string, branch: string) => Promise<void>
+  /** git -C <repo> worktree add <dir> -b <branch> <base> (from <base>, else the checkout's HEAD). */
+  worktree: (repo: string, dir: string, branch: string, base?: string) => Promise<void>
+  /** What a task's branch starts from: the repo's current main (see mainRef), undefined outside git. */
+  base: (repo: string) => Promise<string | undefined>
+  /** Brings an existing task worktree up to <base> before a run (see refreshWorktree). */
+  refresh: (dir: string, base: string) => Promise<'ff' | 'merged' | 'kept'>
+  /** Pushes the task's own branch to origin, never anything else (see pushBranch). */
+  push: (dir: string, branch: string, base?: string) => Promise<boolean>
   /** Tries the jail (bwrap <args> true): true when it holds, false without bwrap on this machine; throws if it fails. */
   jail: (args: string[]) => Promise<boolean>
   /** HEAD of the task's worktree <dir> of <repo>: where a run starts from (undefined outside git). */
   head: (repo: string, dir: string) => Promise<string | undefined>
 }
-const gitWorktree = (repo: string, dir: string, branch: string) =>
+const gitWorktree = (repo: string, dir: string, branch: string, base?: string) =>
   new Promise<void>((resolve, reject) =>
-    execFile('git', ['-C', repo, 'worktree', 'add', dir, '-b', branch], { timeout: 60_000 }, (e, _out, err) => (e ? reject(new Error(String(err || e.message).trim().split('\n').pop())) : resolve())),
+    execFile('git', ['-C', repo, 'worktree', 'add', dir, '-b', branch, ...(base ? [base] : [])], { timeout: 60_000 }, (e, _out, err) => (e ? reject(new Error(String(err || e.message).trim().split('\n').pop())) : resolve())),
   )
+/** One git command in <dir>: its trimmed output, or null when it fails. */
+const gitOut = (dir: string, args: string[], timeout = 30_000) =>
+  new Promise<string | null>((resolve) => execFile('git', ['-C', dir, ...args], { timeout }, (e, out) => resolve(e ? null : String(out).trim())))
+/**
+ * The repo's current main, what a task branches from (a task once branched from whatever the checkout had out, and
+ * kept that old base for every later run): origin's default branch (main when unknown), fetched first; the local one
+ * when it holds origin's (unpushed commits), origin's when it is ahead, the local one when they diverged.
+ */
+export async function mainRef(repo: string, git = gitOut): Promise<string | undefined> {
+  if ((await git(repo, ['rev-parse', '--git-dir'])) === null) return undefined
+  const def = (await git(repo, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']))?.replace(/^origin\//, '') || 'main'
+  await git(repo, ['fetch', '-q', 'origin', def], 60_000)
+  const local = (await git(repo, ['rev-parse', '--verify', '-q', `refs/heads/${def}`])) ? def : undefined
+  const remote = (await git(repo, ['rev-parse', '--verify', '-q', `refs/remotes/origin/${def}`])) ? `origin/${def}` : undefined
+  if (local && remote) return (await git(repo, ['merge-base', '--is-ancestor', local, remote])) !== null && (await git(repo, ['merge-base', '--is-ancestor', remote, local])) === null ? remote : local
+  return local ?? remote
+}
+/**
+ * Before a run, an existing task worktree catches up with main: fast-forward when it has nothing of its own, a merge
+ * when it has (its history and any pushed branch stay intact; a conflict is aborted and the worktree kept as it was).
+ * A worktree with uncommitted changes is left alone.
+ */
+export async function refreshWorktree(dir: string, base: string, git = gitOut): Promise<'ff' | 'merged' | 'kept'> {
+  const dirty = await git(dir, ['status', '--porcelain'])
+  if (dirty === null || dirty !== '') return 'kept'
+  if ((await git(dir, ['merge-base', '--is-ancestor', base, 'HEAD'])) !== null) return 'kept'
+  if ((await git(dir, ['merge-base', '--is-ancestor', 'HEAD', base])) !== null) return (await git(dir, ['merge', '-q', '--ff-only', base])) !== null ? 'ff' : 'kept'
+  if ((await git(dir, ['merge', '-q', '--no-edit', base], 60_000)) !== null) return 'merged'
+  await git(dir, ['merge', '--abort'])
+  return 'kept'
+}
+/**
+ * After a run, weevils (not the agent: it holds no push credential) pushes the task's own branch to origin when the run
+ * committed something: only an auto/… branch, never main, never forced.
+ */
+export async function pushBranch(dir: string, branch: string, base?: string, git = gitOut): Promise<boolean> {
+  if (!/^auto\/[\w.-]+$/.test(branch)) return false
+  if ((await git(dir, ['remote', 'get-url', 'origin'])) === null) return false
+  if (base && (await git(dir, ['rev-list', '--count', `${base}..HEAD`])) === '0') return false
+  return (await git(dir, ['push', '-q', 'origin', `HEAD:refs/heads/${branch}`], 120_000)) !== null
+}
 /** bwrap exists on Linux only: on a Mac the answer is known (no jail), nothing is started to find out. */
 export const tryJail = (args: string[], platform: Platform = process.platform, run: typeof execFile = execFile) =>
   new Promise<boolean>((resolve, reject) => {
@@ -444,7 +551,7 @@ export function memGauge(platform: Platform = process.platform, read: () => Prom
 }
 /** The note of a queued task that waits for Claude on a Mac, in every language (a task keeps the one it was given). */
 const MAC_NOTES: string[] = [O.fr.noJailMac, O.en.noJailMac]
-const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: memGauge(), logged: () => preferredTool() === 'codex' ? providerReady() : claudeLogged(), worktree: gitWorktree, jail: tryJail, head: headOf }
+const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: memGauge(), logged: () => preferredTool() === 'codex' ? providerReady() : claudeLogged(), worktree: gitWorktree, base: (repo) => mainRef(repo), refresh: (dir, base) => refreshWorktree(dir, base), push: (dir, branch, base) => pushBranch(dir, branch, base), jail: tryJail, head: headOf }
 
 // ---------------------------------------------------------------- pure helpers (tested)
 
@@ -700,6 +807,8 @@ export class Optimizers {
   readonly archive: RunArchive
   private s: State
   private sys: Sys
+  /** Last look of the supervisor (look). */
+  private supervisedAt = 0
   private bootAt = Date.now()
   /** Last time a local agent (or weevboss) was seen working. */
   private lastBusyAt = Date.now()
@@ -740,7 +849,10 @@ export class Optimizers {
       cpus: () => (sys.cpus ?? realSys.cpus)(),
       free: () => (sys.free ?? realSys.free)(),
       logged: () => (sys.logged ?? realSys.logged)(),
-      worktree: (repo, dir, branch) => (sys.worktree ?? realSys.worktree)(repo, dir, branch),
+      worktree: (repo, dir, branch, base) => (sys.worktree ?? realSys.worktree)(repo, dir, branch, base),
+      base: (repo) => (sys.base ?? realSys.base)(repo),
+      refresh: (dir, base) => (sys.refresh ?? realSys.refresh)(dir, base),
+      push: (dir, branch, base) => (sys.push ?? realSys.push)(dir, branch, base),
       jail: (args) => (sys.jail ?? realSys.jail)(args),
       head: (repo, d) => (sys.head ?? realSys.head)(repo, d),
     }
@@ -896,7 +1008,7 @@ export class Optimizers {
   /** A task as the app sees it: without the brief and the runner's bookkeeping; when it may start, if its time holds
    *  it; what its next run will be, when that was rewritten while it runs. */
   view(o: Stored, now = Date.now()): Optimizer {
-    const { prompt: _p, proposalPreparation: _pp, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, runSourceRevision: _sr, runConfigRevision: _cr, creationKey:_ck, lifecycle:_lc, sleepRunFor: _sf, ...v } = o
+    const { prompt: _p, proposalPreparation: _pp, seenWorking: _w, seenAt: _s, tries: _t, held: _h, tool: _tool, branch: _b, pending: _n, limitMs: _l, slotAt: _sl, baseCommit: _c, runNow: _r, runSourceRevision: _sr, runConfigRevision: _cr, creationKey:_ck, lifecycle:_lc, sleepRunFor: _sf, relaunches: _rl, supervision: _sv, askedAt: _ak, ...v } = o
     const at = o.state === 'queued' ? this.timeAt(o, now) : now
     const out: Optimizer = at > now ? { ...v, startAt: at } : { ...v }
     const recovery=o.lifecycle?.findLast(event=>event.action==='restore-draft')
@@ -946,7 +1058,7 @@ export class Optimizers {
   /** What the morning recap reads of each automation (server/sleep.ts nightRecap). */
   recapAutos(): RecapAuto[] {
     const stopped = tr(SM).stoppedOnWake
-    return this.s.items.filter((o) => !o.builtin && o.state !== 'proposed' && o.state !== 'refused').map((o) => ({ id: o.id, title: o.title, runs: o.runs ?? [], state: o.state, startedAt: o.startedAt, sessionId: o.sessionId, stoppedNote: stopped }))
+    return this.s.items.filter((o) => !o.builtin && o.state !== 'proposed' && o.state !== 'refused').map((o) => ({ id: o.id, title: o.title, runs: o.runs ?? [], state: o.state, startedAt: o.startedAt, sessionId: o.sessionId, stoppedNote: stopped, supervision: o.supervision ?? [] }))
   }
 
   /**
@@ -1399,6 +1511,10 @@ export class Optimizers {
   tick(now = Date.now()) {
     if(this.auto)void this.adoptAll()
     let dirty = this.follow(now)
+    if (now - this.supervisedAt >= SUPERVISE_MS) {
+      this.supervisedAt = now
+      dirty = this.look(now) || dirty
+    }
     const snap = this.w.snapshot()
     const running = this.s.items.find((o) => o.state === 'running')
     const busy =
@@ -1496,6 +1612,8 @@ export class Optimizers {
     if (!s) return now - Math.max(o.seenAt ?? o.startedAt ?? now, this.bootAt) > VANISH_MS ? end('failed', t.vanished) : false
     if (o.sessionId !== s.id) o.sessionId = s.id
     o.seenAt = now
+    // Unattended, a question never blocks the run: after ASK_MS it goes to For you, and the agent carries on.
+    if (s.status === 'needs_user' && !o.askedAt && now - (s.lastActivityAt || now) >= ASK_MS) return this.ask(o, s, now)
     if (s.status === 'working' || s.status === 'needs_user') {
       if (o.seenWorking || s.status !== 'working') return false
       o.seenWorking = true
@@ -1513,6 +1631,104 @@ export class Optimizers {
     if (!o.seenWorking && now - (o.startedAt ?? now) <= VANISH_MS) return false
     if (s.messageCount < 2) return end('failed', t.noWork)
     return end('done', oneLine(last, 160))
+  }
+
+  /**
+   * The supervisor's look, every SUPERVISE_MS at any hour (sleep mode or not): a running task whose session sat still
+   * for STALL_MS (no transcript activity, not working) is ended as stalled, which relaunches it (supervise). Failed and
+   * blocked runs are relaunched as they end; this look catches the ones that never end on their own.
+   */
+  private look(now: number): boolean {
+    const o = this.s.items.find((x) => x.state === 'running')
+    if (!o || this.launching || o.deletedAt) return false
+    const sid = o.sessionId ? (this.w.sessionIdOf?.(o.sessionId) ?? o.sessionId) : undefined
+    const s = sid ? this.w.snapshot().sessions.find((x) => x.id === sid) : undefined
+    if (!s || s.status === 'working') return false
+    const since = Math.max(s.lastActivityAt || 0, o.startedAt ?? 0)
+    if (now - since < STALL_MS) return false
+    console.log(`[auto] superviseur : « ${o.title} » immobile depuis ${Math.round((now - since) / 60_000)} min`)
+    return this.finish(o, now, false, tr(O).stalled(Math.round((now - since) / 60_000)))
+  }
+
+  /**
+   * A run just ended. Failed (not stopped on wake, deleted, or out of quota: those wait on their own) or blocked (it says
+   * a permission or the sandbox stopped it): back to the queue, relaunched SUPERVISE_MS later through the normal queue
+   * (machine load, memory, quota holds all apply), MAX_RELAUNCHES times in a row at most, then reported as still
+   * failing. A « when I sleep » task relaunches within the night (only while sleep is on). A good run resets the count.
+   * true: the supervisor decided the task's state.
+   */
+  private supervise(o: Stored, now: number, ok: boolean, note: string): boolean {
+    const said = o.sessionId ? this.w.detail?.(o.sessionId)?.messages.filter((m) => m.role === 'assistant' && m.text.trim()).at(-1)?.text : undefined
+    const blocked = isBlocked(note) || (ok && isBlocked(said?.slice(0, 2000)))
+    if (ok && !blocked) {
+      delete o.relaunches
+      return false
+    }
+    // Stopped by Claude itself (limit, login, API): later() already retried it MAX_TRIES times, spaced out.
+    const quota = [O.fr, O.en].some((l) => [l.stall_limit, l.stall_login, l.stall_api].includes(note))
+    if (o.deletedAt || o.builtin || note === tr(SM).stoppedOnWake || quota) return false
+    if (o.onSleep && !this.sleep?.on) return false
+    const why = blocked ? oneLine(isBlocked(note) ? note : said ?? note, 160) : note
+    const log = (action: Supervision['action']) => (o.supervision = [...(o.supervision ?? []), { at: now, action, why }].slice(-20))
+    if ((o.relaunches ?? 0) >= MAX_RELAUNCHES) {
+      log('gave-up')
+      delete o.relaunches
+      console.log(`[auto] superviseur : « ${o.title} » toujours en échec après ${MAX_RELAUNCHES} relances (${why})`)
+      return false
+    }
+    o.relaunches = (o.relaunches ?? 0) + 1
+    log('relaunch')
+    this.takePending(o)
+    delete o.paused
+    delete o.sleepRunFor
+    delete o.seenWorking
+    delete o.seenAt
+    delete o.askedAt
+    o.state = 'queued'
+    o.retryAt = now + SUPERVISE_MS
+    o.waiting = 'later'
+    o.lastEvent = blocked ? why : note
+    console.log(`[auto] superviseur : « ${o.title} » ${blocked ? 'bloquée' : 'en échec'} (${why}) · relance ${o.relaunches}/${MAX_RELAUNCHES} dans ${SUPERVISE_MS / 60_000} min`)
+    return true
+  }
+
+  /** A run's question goes to For you; the agent is told to carry on without it (its dialog closed). */
+  private ask(o: Stored, s: Session, now: number): boolean {
+    const t = tr(O)
+    o.askedAt = now
+    const question = oneLine(s.attention || s.lastMessage || '', 600)
+    o.supervision = [...(o.supervision ?? []), { at: now, action: 'asked' as const, why: oneLine(question, 160) }].slice(-20)
+    try {
+      this.w.foryou?.add({ id: `auto-ask:${o.id}:${o.startedAt ?? now}`, kind: 'boss', tone: 'neutral', who: 'weevils', title: t.askTitle(o.title), text: question || t.askTitle(o.title), open: { page: 'auto', id: o.id } })
+    } catch (e) {
+      console.error(`[auto] question de « ${o.title} » : ${(e as Error).message}`)
+    }
+    void Promise.resolve()
+      .then(() => this.w.key(s.id, 'esc'))
+      .then(() => this.w.send(s.id, t.askNudge))
+      .catch((e) => console.error(`[auto] relance de « ${o.title} » après sa question : ${(e as Error).message}`))
+    console.log(`[auto] superviseur : la question de « ${o.title} » part dans « pour toi », la tâche continue`)
+    return true
+  }
+
+  /** After a run, its own branch goes to origin (pushBranch: auto/… only, never forced), in the background. */
+  private pushRun(o: Stored) {
+    if (!o.repo || !o.branch || o.deletedAt || o.builtin) return
+    const place = this.place(o)
+    if (!place?.cwd || !fs.existsSync(place.cwd)) return
+    const { branch, baseCommit, startedAt, id, title } = o
+    void this.sys
+      .push(place.cwd, branch, baseCommit)
+      .then((pushed) => {
+        if (!pushed) return
+        const r = this.get(id)?.runs?.find((x) => x.startedAt === startedAt)
+        if (r) {
+          r.pushed = branch
+          this.changed()
+        }
+        console.log(`[auto] « ${title} » : branche ${branch} poussée`)
+      })
+      .catch((e) => console.error(`[auto] push de « ${title} » : ${(e as Error).message}`))
   }
 
   /** The agent's turn has not ended: its transcript waits for a tool's result and no Stop hook came since. */
@@ -1540,6 +1756,8 @@ export class Optimizers {
       console.error(`[auto] passage de « ${o.title} » non enregistré : ${(e as Error).message}`)
       runs = o.runs ?? []
     }
+    this.pushRun(o)
+    if (this.supervise(o, now, ok, note)) return true
     if (!o.deletedAt && (o.every || o.onSleep)) {
       const streak = runs.slice(-MAX_FAILED_RUNS)
       // A run stopped on wake is no failure of the task.
@@ -1823,12 +2041,20 @@ export class Optimizers {
       // A retry or the next run of a recurring task finds its worktree already there (same branch).
       const fresh = !!o.repo && !fs.existsSync(cwd)
       const branch = (!fresh && o.branch) || `auto/${slug(o.title)}-${o.id.slice(0, 4)}`
+      // From the repo's current main, and an existing worktree brought up to it first (never left on an old base).
+      const base = o.repo ? await this.sys.base(this.w.repoDir(o.repo)).catch(() => undefined) : undefined
       if (o.repo && fresh) {
         step = 'branch'
         fs.mkdirSync(path.dirname(cwd), { recursive: true })
-        await this.sys.worktree(this.w.repoDir(o.repo), cwd, branch)
+        await this.sys.worktree(this.w.repoDir(o.repo), cwd, branch, base)
         step = 'start'
-      } else fs.mkdirSync(cwd, { recursive: true })
+      } else {
+        fs.mkdirSync(cwd, { recursive: true })
+        if (o.repo && base) {
+          const how = await this.sys.refresh(cwd, base).catch(() => 'kept' as const)
+          if (how !== 'kept') console.log(`[auto] « ${o.title} » : worktree remis sur ${base} (${how})`)
+        }
+      }
       if (o.repo) {
         o.branch = branch
         o.baseCommit = await this.sys.head(this.w.repoDir(o.repo), cwd)

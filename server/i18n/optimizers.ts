@@ -59,7 +59,8 @@ export default defineMessages({
       (o.inRepo
         ? `- tu es dans ton propre worktree git, sur la branche locale ${o.branch} faite pour toi : travaille et committe uniquement ici, ne change pas de branche, jamais sur la branche principale ; ne touche pas au dossier ${o.checkout} (l'utilisateur s'en sert) ;\n`
         : `- travaille dans ce dossier seulement ;\n`) +
-      `- ne pousse jamais, n'ouvre aucune PR, ne publie, ne poste et n'envoie rien (ni e-mail, ni message, ni déploiement) ;\n` +
+      `- ne pousse jamais toi-même (weevils pousse ta branche à la fin du passage), n'ouvre aucune PR, ne publie et n'envoie rien hors de cette machine (ni e-mail, ni réseau social, ni déploiement) ;\n` +
+      `- la commande weevils marche pour : sessions, read, asks, projects, new, send, post, show (le reste est refusé) ; une question pour l'utilisateur part avec \`weevils post\`, puis continue sans attendre ;\n` +
       `- ne dépense rien : aucun achat, aucune API payante ;\n` +
       `- ne supprime rien en dehors de ta branche ou de ce dossier ; ne touche à aucun secret (clés, .env, identifiants) ;\n` +
       `- si \`command -v heavy\` répond, préfixe par \`heavy\` les commandes lourdes (builds, tests, installs)${o.heavy ? ' : cette tâche en a' : ''} ;\n` +
@@ -140,6 +141,10 @@ export default defineMessages({
     startFailed: 'lancement impossible',
     branchFailed: 'branche impossible à créer',
     noWork: 'finie sans rien rendre',
+    /** The supervisor (optimizers.ts supervise): a run that sat still, and the question it asked, sent to For you. */
+    stalled: (min: number) => `immobile depuis ${min} min`,
+    askTitle: (t: string) => `« ${t} » a une question`,
+    askNudge: "Personne ne peut répondre en direct : ta question est partie dans « pour toi ». Continue le reste de la tâche en prenant l'option la plus sûre, et note ce qui attend une réponse.",
     /** Stopped by Claude itself, back to the queue for later (or failed after a few tries). */
     stall_limit: "limite d'usage atteinte",
     stall_login: 'connexion à Claude à refaire',
@@ -198,7 +203,8 @@ export default defineMessages({
       (o.inRepo
         ? `- you are in your own git worktree, on the local branch ${o.branch} made for you: work and commit only here, never switch branch, never on the main branch; never touch the folder ${o.checkout} (the user works in it);\n`
         : `- work in this folder only;\n`) +
-      `- never push, never open a PR, never publish, post or send anything (no e-mail, no message, no deploy);\n` +
+      `- never push yourself (weevils pushes your branch at the end of the run), never open a PR, never publish or send anything off this machine (no e-mail, no social post, no deploy);\n` +
+      `- the weevils command works for: sessions, read, asks, projects, new, send, post, show (the rest is refused); a question for the user goes out with \`weevils post\`, then carry on without waiting;\n` +
       `- never spend money: no purchase, no paid API;\n` +
       `- never delete anything outside your branch or this folder; never touch a secret (keys, .env, credentials);\n` +
       `- if \`command -v heavy\` succeeds, prefix heavy commands (builds, tests, installs) with \`heavy\`${o.heavy ? ': this task has some' : ''};\n` +
@@ -266,6 +272,9 @@ export default defineMessages({
     startFailed: 'could not start',
     branchFailed: 'could not make its branch',
     noWork: 'ended without any answer',
+    stalled: (min: number) => `no progress for ${min} min`,
+    askTitle: (t: string) => `"${t}" has a question`,
+    askNudge: 'Nobody can answer live: your question went to For you. Carry on with the rest of the task, taking the safest option, and note what waits for an answer.',
     stall_limit: 'usage limit reached',
     stall_login: 'Claude login needed',
     stall_api: 'Claude API error',

@@ -60,7 +60,7 @@ describe('sleep mode', () => {
     // An unclear last message is never turned into a result: shown as it is, as an ended turn.
     expect(recap.lines.find((l) => l.title === 'Explore ideas')!.detail).toBe('I looked at three options.')
     expect(recap.lines.find((l) => l.title === 'Night lens')).toMatchObject({ src: 'auto', open: { page: 'auto', id: 'n1' }, detail: 'Report: 3 findings' })
-    expect(counts).toEqual({ done: 2, working: 1, waiting: 1, failed: 0 })
+    expect(counts).toEqual({ done: 2, working: 1, waiting: 1, failed: 0, retried: 0 })
     const many = nightRecap({ ...night, sessions: Array.from({ length: RECAP_LINES + 3 }, (_, i) => s({ id: `s${i}` })), autos: [] })
     expect(many.recap.lines).toHaveLength(RECAP_LINES)
     expect(many.recap.more).toBe(3)

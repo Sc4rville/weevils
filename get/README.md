@@ -4,7 +4,8 @@
 link, opens it on a phone or a computer, and ends up on their own weevils without typing anything (or, for a computer,
 by pasting one command in its terminal). Open to anyone since 2026-11-14, with one link for everyone. Pasted on
 Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter tags in `index.html`; the image,
-`og.png`, 1200×630, is `og-card.html` rendered by a headless browser).
+`og.png`, 1200×630, comes from Sc4rville/weevils-content, `productions/og/weevils-og-ask.png`, and its URL carries
+`?v=<first 8 characters of its sha256>` so that X fetches the new card when it changes).
 
 1. A short page (English by default, a small FR switch) says what weevils is, then right away: **plug in your
    machine** ("a server keeps your agents working while your phone and computer are off").

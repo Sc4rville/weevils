@@ -310,7 +310,10 @@ describe('guards', () => {
     const html = await page.text()
     expect(html).toContain('<meta property="og:title" content="weevils — your AI dev team, in your pocket">')
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image">')
-    expect(html).toContain('<meta property="og:image" content="https://tryweevils.scarville.tech/og.png">')
+    // Versioned by the image's own hash: X keeps a card per URL.
+    const v = crypto.createHash('sha256').update(fs.readFileSync(path.join(import.meta.dirname, 'og.png'))).digest('hex').slice(0, 8)
+    expect(html).toContain(`<meta property="og:image" content="https://tryweevils.scarville.tech/og.png?v=${v}">`)
+    expect(html).toContain(`<meta name="twitter:image" content="https://tryweevils.scarville.tech/og.png?v=${v}">`)
     // The card: a PNG of 1200×630, small enough for WhatsApp's previews.
     const card = await fetch(base + '/og.png')
     expect(card.headers.get('content-type')).toBe('image/png')

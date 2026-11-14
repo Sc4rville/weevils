@@ -938,12 +938,24 @@ ${items.map(({ a, d, s }, i) => `${i + 1}. Request: ${a.text}${d.expect ? `\nExp
 
   /** Reads the log of the last `hours` (user and agent messages with what each turn did) into the ledger, once. */
   async backfill(hours = 24, onBatch?: (done: number, total: number) => void): Promise<{ messages: number; asks: number }> {
+    if (this.busy) throw new Error('the ledger is reading messages; try again in a minute') // i18n-ignore : CLI/log only
+    this.busy = true
+    try {
+      return await this.backfillNow(hours, onBatch)
+    } finally {
+      this.busy = false
+    }
+  }
+
+  private async backfillNow(hours: number, onBatch?: (done: number, total: number) => void): Promise<{ messages: number; asks: number }> {
     const since = this.now() - hours * 3600_000
     const entries = this.host.journal()
+    // A message already captured live is read from the inbox, not twice.
+    const live = new Set(this.s.inbox.map((m) => fold(oneLine(m.text))))
     const msgs: MessageToRead[] = []
     entries.forEach((e, i) => {
       if (e.at < since || (e.role !== 'user' && e.role !== 'agent')) return
-      if (this.s.asks.some((a) => a.src === e.id)) return
+      if (this.s.asks.some((a) => a.src === e.id) || live.has(fold(oneLine(e.text)))) return
       const actions: TurnAction[] = []
       const reply: string[] = []
       for (let j = i + 1; j < entries.length && entries[j].role !== 'user' && entries[j].role !== 'agent'; j++) {

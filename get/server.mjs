@@ -44,6 +44,8 @@ export function config(env = process.env) {
     targetUrls: Object.fromEntries((env.GET_TARGET_URLS || '').split(',').filter((s) => s.includes('=')).map((s) => s.split('=').map((x) => x.trim()))),
     installer: env.GET_INSTALLER || path.join(HERE, '..', 'install.sh'),
     trustProxy: env.GET_TRUST_PROXY !== '0',
+    /** Where a stopping service hands its setups in progress to the next one: a RAM file ('' : none). */
+    handoff: env.GET_HANDOFF ?? (fs.existsSync('/dev/shm') ? path.join('/dev/shm', `weevils-get-${process.getuid?.() ?? 'user'}.jobs`) : ''),
   }
 }
 
@@ -121,6 +123,30 @@ export function createStore() {
     },
     get: (sid) => (typeof sid === 'string' ? jobs.get(sid) : undefined),
     sweep,
+  }
+}
+
+/** A restart (main moved: get/follow-main.sh) keeps the setups in progress: the stopping service hands them to the next
+ * one through a file in RAM (/dev/shm, mode 600), read once and deleted at start; never the disk. No secret is in a
+ * setup (tokens and passwords are never kept), only its state, the page's public key and the sealed link. */
+export function saveJobs(store, file) {
+  if (!file) return 0
+  const live = [...store.jobs.values()].filter((j) => Date.now() - j.touched < JOB_TTL)
+  fs.writeFileSync(file, JSON.stringify(live), { mode: 0o600 })
+  return live.length
+}
+export function loadJobs(store, file) {
+  if (!file) return 0
+  try {
+    const fresh = Date.now() - fs.statSync(file).mtimeMs < 10 * 60_000
+    const jobs = fresh ? JSON.parse(fs.readFileSync(file, 'utf8')) : []
+    let n = 0
+    for (const j of Array.isArray(jobs) ? jobs : []) if (typeof j?.sid === 'string' && !store.jobs.has(j.sid)) store.jobs.set(j.sid, j), n++
+    return n
+  } catch {
+    return 0
+  } finally {
+    fs.rmSync(file, { force: true })
   }
 }
 
@@ -541,7 +567,10 @@ export function createServer(cfg = config(), deps = {}) {
     },
   }
 
+  let busy = 0
   const server = http.createServer(async (req, res) => {
+    busy++
+    res.once('close', () => busy--)
     const ip = clientIp(req)
     const url = new URL(req.url || '/', 'http://x')
     try {
@@ -628,11 +657,29 @@ export function createServer(cfg = config(), deps = {}) {
       if (!e.status) console.error(`[get] ${req.method} ${url.pathname}: ${e.name}`)
     }
   })
-  return { server, store }
+  /** Stops without cutting anyone: no new connection, the requests in flight finish (a server being created, an SSH
+   * connection), then the setups go to the next run. */
+  const drain = async (limitMs = 20_000) => {
+    server.close()
+    server.closeIdleConnections?.()
+    for (const end = Date.now() + limitMs; busy > 0 && Date.now() < end; ) await new Promise((r) => setTimeout(r, 100))
+    return saveJobs(store, cfg.handoff)
+  }
+  return { server, store, drain }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const cfg = config()
-  const { server } = createServer(cfg)
-  server.listen(cfg.port, cfg.host, () => console.log(`[get] ${cfg.base} on ${cfg.host}:${cfg.port}${cfg.previewKey ? ' (preview key on)' : ''}${cfg.bundle ? ' (bundle)' : ''}`))
+  const { server, store, drain } = createServer(cfg)
+  const kept = loadJobs(store, cfg.handoff)
+  let stopping = false
+  for (const sig of ['SIGTERM', 'SIGINT'])
+    process.on(sig, async () => {
+      if (stopping) return
+      stopping = true
+      const n = await drain().catch(() => 0)
+      console.log(`[get] stopped, ${n} setups handed to the next run`)
+      process.exit(0)
+    })
+  server.listen(cfg.port, cfg.host, () => console.log(`[get] ${cfg.base} on ${cfg.host}:${cfg.port}${cfg.previewKey ? ' (preview key on)' : ''}${cfg.bundle ? ' (bundle)' : ''}${kept ? ` (${kept} setups kept from the last run)` : ''}`))
 }

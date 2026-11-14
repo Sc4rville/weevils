@@ -108,10 +108,18 @@ GET_PORT=4182 GET_BASE=https://get.scarville.tech node get/server.mjs
 | `GET_INSTALLER` | the `install.sh` the allowed step titles are read from, at start (default: this clone's). Same titles as the bundle's |
 | `GET_HETZNER_API`, `GET_HOSTINGER_API` | the hosts' API bases (tests: `get/host-mock.mjs`) |
 | `GET_ALLOW_TARGETS`, `GET_TARGET_URLS` | tests only: a private SSH target allowed, and the URL its weevils gets (`ip=url`) |
+| `GET_HANDOFF` | the RAM file a stopping service hands its setups in progress to the next one through (default `/dev/shm/weevils-get-<uid>.jobs`; empty: none) |
 
 On scarville.tech: systemd user unit `weevils-get`, env in `~/.config/weevils-get/env`, Caddy site
 `/etc/caddy/sites/get.caddy` for both `get.scarville.tech` and `tryweevils.scarville.tech` (explicit `127.0.0.1`, so
-the dev-server reaper leaves it alone).
+the dev-server reaper leaves it alone; `lb_try_duration` holds requests while the service restarts).
+
+It follows main by itself: the service runs from a checkout of its own, `~/.local/share/weevils-get/live` (a worktree
+detached at `origin/main`), and the `weevils-get-bundle` timer runs `get/follow-main.sh` from it every 2 minutes. That
+moves the checkout to the new main, restarts the service only when what it reads at start changed (`get/server.mjs`,
+`get/bootstrap.sh`, `install.sh`; the page and its assets are read at each request), and rebuilds the bundle. A
+restart cuts nothing: on SIGTERM the service stops taking connections, lets its requests finish (a server being
+created, an SSH connection; 20 s at most), then hands its setups in progress to the next run through RAM.
 
 ## Tests
 

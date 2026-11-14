@@ -12,7 +12,7 @@ import path from 'node:path'
 import { Window } from 'happy-dom'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JavaScript module, no types
-import { config, createServer, hetznerQuote, publicAddress, resolveTarget, sslip, stepTitles } from './server.mjs'
+import { config, createServer, hetznerQuote, publicAddress, resolveTarget, sslip, stepTitles, loadJobs } from './server.mjs'
 
 const listen = (s: http.Server) => new Promise<number>((r) => s.listen(0, '127.0.0.1', () => r((s.address() as AddressInfo).port)))
 
@@ -317,6 +317,20 @@ describe('guards', () => {
     const png = Buffer.from(await card.arrayBuffer())
     expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630])
     expect(png.length).toBeLessThan(300_000)
+  })
+  it('a restart keeps the setups in progress: the stopping service hands them to the next one through RAM', async () => {
+    const handoff = path.join(os.tmpdir(), `get-handoff-${process.pid}.jobs`)
+    const one = createServer(config({ GET_TRUST_PROXY: '0', GET_HANDOFF: handoff }))
+    const job = (await post('/api/job', { kind: 'pc', pub: pubB64(keyPair().publicKey) }, `http://127.0.0.1:${await listen(one.server)}`)).data
+    expect(await one.drain()).toBe(1)
+    expect((fs.statSync(handoff).mode & 0o777).toString(8)).toBe('600')
+    const two = createServer(config({ GET_TRUST_PROXY: '0', GET_HANDOFF: handoff }))
+    expect(loadJobs(two.store, handoff)).toBe(1)
+    expect(fs.existsSync(handoff)).toBe(false)
+    const st = await post('/api/status', { sid: job.sid, view: job.view }, `http://127.0.0.1:${await listen(two.server)}`)
+    two.server.close()
+    expect(st.status).toBe(200)
+    expect(st.data).toMatchObject({ sid: job.sid, kind: 'pc', state: 'waiting' })
   })
   it('limits job creation per address', async () => {
     const own = createServer(config({ GET_TRUST_PROXY: '0' })).server

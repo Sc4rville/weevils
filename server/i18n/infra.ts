@@ -24,6 +24,7 @@ export default defineMessages({
       `Palier au-dessus : ${plan}${vcpu && ram ? ` (${vcpu} vCPU / ${ram} Go)` : ''}, ${price} ${cur}/mois${delta != null ? `, +${Math.round(delta * 100) / 100} ${cur}` : ''}.`,
     noToken: 'pas connecté',
     unavailable: 'pas encore lu',
+    emptyAnswer: 'réponse vide',
     expired: 'jeton expiré, ouvre claude une fois',
   },
   en: {
@@ -43,6 +44,7 @@ export default defineMessages({
       `Next tier: ${plan}${vcpu && ram ? ` (${vcpu} vCPU / ${ram} GB)` : ''}, ${price} ${cur}/month${delta != null ? `, +${Math.round(delta * 100) / 100} ${cur}` : ''}.`,
     noToken: 'not signed in',
     unavailable: 'not read yet',
+    emptyAnswer: 'empty answer',
     expired: 'token expired, open claude once',
   },
 })

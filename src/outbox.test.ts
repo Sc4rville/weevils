@@ -177,3 +177,99 @@ it('a cross-tab delivery resolves the exact failed receipt without resubmitting 
  expect(box.outboxSnapshot()[0].status).toBe('delivered')
  expect(fetcher).not.toHaveBeenCalled()
 })
+
+// r59: a send whose transport failed (server restarting) must never read « sending… » forever.
+const serverBack = (onPost?: (id: string) => unknown) => fetcher.mockImplementation(async (url: string, init?: RequestInit) => {
+ if (url === '/api/outbox/capabilities') return new Response(JSON.stringify({enabled:true}))
+ if (init?.method === 'POST') { const id = (init.headers as Record<string,string>)['Idempotency-Key']; return new Response(JSON.stringify(onPost?.(id) ?? accepted(id)), {status:202}) }
+ return new Response('{}', {status:404})
+})
+const failThrice = async (box: Awaited<ReturnType<typeof load>>, body = {text:'hello'}) => {
+ const submit = vi.fn(async () => { throw new TypeError('502') })
+ const pending = box.deliver('/api/sessions/s/send', body, submit).catch(e => e)
+ await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1)); await vi.advanceTimersByTimeAsync(3000)
+ expect(await pending).toBeInstanceOf(Error)
+ return box.outboxSnapshot()[0]
+}
+const posts = () => fetcher.mock.calls.filter(c => c[1]?.method === 'POST')
+it('resumes a send lost during a server restart by itself, with the same identity, without an online event', async () => {
+ const box = await load(); const row = await failThrice(box)
+ expect(row).toMatchObject({status:'sending',trackingLost:true})
+ serverBack()
+ await box.refreshReceipts(); expect(posts()).toHaveLength(0) // back-off: not on the very next poll
+ await vi.advanceTimersByTimeAsync(15_000); await box.refreshReceipts()
+ expect(posts()).toHaveLength(1); expect((posts()[0][1].headers as any)['Idempotency-Key']).toBe(row.messageId)
+ expect(box.outboxSnapshot()[0]).toMatchObject({messageId:row.messageId,status:'accepted',trackingLost:false})
+})
+it('coming back on screen resumes at once', async () => {
+ const box = await load(); const row = await failThrice(box)
+ serverBack(); const stop = box.subscribeOutbox(() => undefined)
+ await vi.advanceTimersByTimeAsync(1)
+ document.dispatchEvent(new Event('visibilitychange'))
+ await vi.waitFor(() => expect(box.outboxSnapshot()[0].status).toBe('accepted'))
+ expect(posts().every(c => (c[1].headers as any)['Idempotency-Key'] === row.messageId)).toBe(true)
+ stop()
+})
+it('stops resuming after two minutes and waits for « try again », which keeps the identity', async () => {
+ const box = await load(); const row = await failThrice(box)
+ fetcher.mockImplementation(async (url: string, init?: RequestInit) => {
+  if (url === '/api/outbox/capabilities') return new Response(JSON.stringify({enabled:true}))
+  if (init?.method === 'POST') return new Response('{}', {status:503})
+  return new Response('{}', {status:404})
+ })
+ for (let i = 0; i < 8; i++) {
+  await vi.advanceTimersByTimeAsync(20_000)
+  let done = false; const r = box.refreshReceipts().finally(() => { done = true })
+  while (!done) await vi.advanceTimersByTimeAsync(100) // the resume's own pauses (600 ms, 2 s) between its three POSTs
+  await r
+ }
+ expect(box.outboxSnapshot()[0]).toMatchObject({status:'sending',stuck:true})
+ const tried = posts().length; expect(tried).toBeGreaterThan(0)
+ await vi.advanceTimersByTimeAsync(120_000); await box.refreshReceipts()
+ expect(posts()).toHaveLength(tried)
+ expect(posts().every(c => (c[1].headers as any)['Idempotency-Key'] === row.messageId)).toBe(true)
+ serverBack()
+ await box.retryReceipt(row.messageId)
+ expect(box.outboxSnapshot()[0]).toMatchObject({messageId:row.messageId,status:'accepted',stuck:false})
+})
+it('« try again » on a proved refusal gets a new identity and hides the old notice', async () => {
+ const box = await load(); const submit = vi.fn(async (id?: string) => accepted(id!))
+ const first = await box.deliver('/api/main', {text:'hello'}, submit)
+ fetcher.mockResolvedValue(new Response(JSON.stringify({...first,status:'failed',error:'not connected'})))
+ await box.refreshReceipts()
+ serverBack()
+ const next = await box.retryReceipt(first.messageId)
+ expect(next?.messageId).not.toBe(first.messageId)
+ expect(box.outboxSnapshot().find(r => r.messageId === first.messageId)?.dismissed).toBe(true)
+ expect(box.outboxSnapshot().find(r => r.messageId === next?.messageId)).toMatchObject({status:'accepted'})
+})
+it('« try again » never resends an uncertain message', async () => {
+ const box = await load(); const submit = vi.fn(async (id?: string) => accepted(id!))
+ const first = await box.deliver('/api/main', {text:'hello'}, submit)
+ fetcher.mockResolvedValue(new Response(JSON.stringify({...first,status:'uncertain'})))
+ await box.refreshReceipts(); fetcher.mockClear(); serverBack()
+ expect(await box.retryReceipt(first.messageId)).toBeUndefined()
+ expect(posts()).toHaveLength(0); expect(submit).toHaveBeenCalledTimes(1)
+})
+it('a poll that fails while the first send is still in flight does not call it lost', async () => {
+ const box = await load(); let release!: (v: unknown) => void
+ const submit = vi.fn(() => new Promise(r => { release = r }))
+ const pending = box.deliver('/api/main', {text:'hello'}, submit)
+ await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1))
+ fetcher.mockRejectedValueOnce(new TypeError('blip'))
+ await box.refreshReceipts()
+ expect(box.outboxSnapshot()[0].trackingLost).toBeFalsy()
+ release(accepted(box.outboxSnapshot()[0].messageId)); await pending
+})
+it('a server error (500) before it took the message says « not sent yet » at once and resumes the same identity', async () => {
+ const box = await load()
+ const submit = vi.fn(async () => { throw Object.assign(new Error('boom'), { status: 500 }) })
+ const first = await box.deliver('/api/main', {text:'hello'}, submit).catch(e => e)
+ expect(first).toBeInstanceOf(Error)
+ const row = box.outboxSnapshot()[0]
+ expect(row).toMatchObject({status:'sending',trackingLost:true})
+ serverBack()
+ await vi.advanceTimersByTimeAsync(15_000); await box.refreshReceipts()
+ expect(posts()).toHaveLength(1); expect((posts()[0][1].headers as any)['Idempotency-Key']).toBe(row.messageId)
+ expect(box.outboxSnapshot()[0]).toMatchObject({messageId:row.messageId,status:'accepted',trackingLost:false})
+})

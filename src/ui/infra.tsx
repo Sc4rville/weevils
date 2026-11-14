@@ -458,8 +458,8 @@ function Quota({ name, q }: { name: string; q: QuotaInfo | undefined }) {
         {q?.plan ? ` · ${q.plan}` : ''}
       </div>
       {!q && <div className="in meta empty">…</div>}
-      {/* Never an empty section: no figures yet says so (not a closable notice); old ones say their age. */}
-      {q && !q.ok && !q.windows.length && <div className="in meta empty" role="status">{t.notYet}</div>}
+      {/* Never an empty section: no figures yet (an error, or an answer with no window) says so; old ones say their age. */}
+      {q && !q.windows.length && <div className="in meta empty" role="status">{t.notYet}</div>}
       {q?.ok && q.stale && <div className="in meta stale">{t.lastKnown(ago(now - q.at))}</div>}
       {q?.windows.map((w) => (
         <div key={`${w.kind}${w.label ?? ''}`} className={`in stat ${w.kind === 'model' ? 'minor' : ''}`}>

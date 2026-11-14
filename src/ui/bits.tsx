@@ -940,6 +940,11 @@ export function Messages({
   const hidden = all ? 0 : Math.max(0, messages.length - WINDOW)
   const groups = useMemo(() => group(messages.slice(hidden)), [messages, hidden])
   const authorOf = useAuthors()
+  // An empty label says nothing (no dangling « · »).
+  const pendingTag = (id: string) => {
+    const label = !pendingLabel || !id.startsWith('pending-') ? '' : typeof pendingLabel === 'function' ? pendingLabel(id) : pendingLabel
+    return label ? ` · ${label}` : ''
+  }
   return (
     <AnimatePresence initial={false}>
       {hidden > 0 && (
@@ -959,7 +964,7 @@ export function Messages({
             <Bubble
               className={`msg band ${session ? 'session-message' : ''} ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.demo ? 'demo' : ''}`}
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
-              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}${g.m.demo ? ` · ${t.demo}` : ''}${pendingLabel && g.m.id.startsWith('pending-') ? ` · ${typeof pendingLabel === 'function' ? pendingLabel(g.m.id) : pendingLabel}` : ''}`}
+              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}${g.m.demo ? ` · ${t.demo}` : ''}${pendingTag(g.m.id)}`}
               copy={g.m.role === 'user' ? userText(g.m.text) : chipLabels(withoutMachinePrefix(g.m.text))}
               mid={g.m.id}
             >

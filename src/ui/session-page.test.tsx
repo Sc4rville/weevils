@@ -7,12 +7,13 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Project, Session, Snapshot } from '../../shared/api.ts'
 
-const calls = vi.hoisted(() => ({ commands: [] as string[], screen: 0 }))
+const calls = vi.hoisted(() => ({ commands: [] as string[], screen: 0, release: null as null | (() => void) }))
 
 vi.mock('../api', () => ({
   api: {
     session: async () => Promise.reject(new Error('absent')),
     command: async (_id: string, c: string) => (calls.commands.push(c), { ok: true }),
+    send: (id: string) => new Promise((resolve) => { calls.release = () => resolve({ ok: true, id, delivery: { messageId: 'm1', status: 'accepted' } }) }),
     screen: async () => (calls.screen++, { screen: 'RAW TERMINAL' }),
     transcribeInfo: async () => ({ enabled: false }),
     repos: async () => ({ repos: [] }),
@@ -224,5 +225,37 @@ describe('files and new session pages', () => {
     expect(byText('Codex')).toBeTruthy()
     expect(all).toContain('project')
     expect(all).not.toMatch(/\brepo\b|\btool\b|vps-machine-42/)
+  })
+})
+
+describe('session page: a sent message says it arrived', () => {
+  const typeAndSend = async (value: string) => {
+    const field = host.querySelector<HTMLInputElement | HTMLTextAreaElement>('form input:not([type=file]), form textarea')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')!.set!.call(field, value)
+      field.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => void host.querySelector('form')!.requestSubmit())
+  }
+  const bubble = () => text([...host.querySelectorAll('.session-message')].find((m) => text(m).includes('ship it')) ?? null)
+  it('no label while on its way (the notice below speaks), then « received » once the server has it', async () => {
+    render(<PageView page={{ kind: 'session', id: 's1' }} />, [session()])
+    await flush()
+    await typeAndSend('ship it')
+    await flush()
+    expect(bubble()).toContain('ship it')
+    expect(bubble()).not.toMatch(/you ·|received/)
+    await act(async () => calls.release?.())
+    await flush()
+    expect(bubble()).toContain('you · received')
+  })
+  it('the agent busy: received, and it will read it in a moment, never « sending… »', async () => {
+    render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ status: 'working', turnWorking: true, workStartedAt: NOW - MIN })])
+    await flush()
+    await typeAndSend('ship it')
+    await act(async () => calls.release?.())
+    await flush()
+    expect(bubble()).toContain('queued, it will read it in a moment')
+    expect(text(host)).not.toContain('sending…')
   })
 })

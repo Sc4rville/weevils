@@ -523,7 +523,7 @@ export interface Snapshot {
   autoRound?: { busy: boolean }
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */
   /** siteKey : clé des pages statiques des repos (/api/site/<clé>/<repo>/), pour le navigateur intégré sans domaine de preview. */
-  config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[]; siteKey?: string }
+  config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[]; siteKey?: string; autoUpdate?: boolean }
 }
 
 export interface SessionDetail {

@@ -81,6 +81,8 @@ function createOptimizer(): Promise<{ item: Optimizer }> {
 }
 
 export const api = {
+  /** Updates by itself, on or off (WEEVILS_AUTO_UPDATE on the server). */
+  setUpdates: (on: boolean) => call<{ on: boolean }>('POST', '/api/updates', { on }),
   thinkLayout: (body: unknown) => call<{revision:number;positions:{id:string;x:number;y:number}[];evidence:string[]}>('POST','/api/think/organise',body),
   think: () => call<import('../shared/think').ThinkBoard>('GET','/api/think'),
   saveThink: (board: import('../shared/think').ThinkBoard) => call<import('../shared/think').ThinkBoard>('PUT','/api/think',board),

@@ -1109,11 +1109,11 @@ uninstall() {
 
   # Service: stopped through weevils-service (systemd or background), then the units go.
   [ ! -x "$svc" ] || "$svc" stop >/dev/null 2>&1 || true
-  if [ -f "$units/weevilsd.service" ] || [ -f "$units/weevils-tunnel.service" ]; then
+  if [ -f "$units/weevilsd.service" ] || [ -f "$units/weevils-tunnel.service" ] || [ -f "$units/weevils-update.timer" ]; then
     export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
     [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
-    systemctl --user disable --now weevilsd weevils-tunnel >/dev/null 2>&1 || true
-    rm -f "$units/weevilsd.service" "$units/weevils-tunnel.service"
+    systemctl --user disable --now weevilsd weevils-tunnel weevils-update.timer >/dev/null 2>&1 || true
+    rm -f "$units/weevilsd.service" "$units/weevils-tunnel.service" "$units/weevils-update.service" "$units/weevils-update.timer"
     systemctl --user daemon-reload >/dev/null 2>&1 || true
   fi
   # A Mac: the launchd agents (weevilsd, the tunnel of a secondary machine).
@@ -1141,12 +1141,12 @@ uninstall() {
   if [ -n "$domain" ] && [ -x "$svc" ] && [ "$("$svc" config get WEEVILS_PUBLIC_URL)" = "https://$domain" ]; then
     "$svc" config set WEEVILS_PUBLIC_URL ''
   fi
-  rm -f "$HOME/.local/bin/wv" "$HOME/.local/bin/weevils" "$HOME/.local/bin/weevils-service" "$HOME/.local/bin/weevils-hook"
+  rm -f "$HOME/.local/bin/wv" "$HOME/.local/bin/weevils" "$HOME/.local/bin/weevils-service" "$HOME/.local/bin/weevils-hook" "$HOME/.local/bin/weevils-update"
   ok "$(t un_bin)"
 
   # (Not on a Mac: the install never writes a crontab there, and reading it asks for a privacy permission.)
-  if [ "$OS" != Darwin ] && command -v crontab >/dev/null && crontab -l 2>/dev/null | grep -q 'weevils-service'; then
-    { crontab -l 2>/dev/null | grep -v 'weevils-service' || true; } | crontab - && ok "$(t un_cron)"
+  if [ "$OS" != Darwin ] && command -v crontab >/dev/null && crontab -l 2>/dev/null | grep -q 'weevils-service\|weevils-update'; then
+    { crontab -l 2>/dev/null | grep -v 'weevils-service\|weevils-update' || true; } | crontab - && ok "$(t un_cron)"
   fi
 
   if site_mine; then

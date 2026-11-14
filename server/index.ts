@@ -425,6 +425,13 @@ const routes: [string, RegExp, Handler][] = [
     if (changed || !isLocal(req)) for (const r of w.remotes) if (r.online) void r.call('POST', '/api/prefs', { lang: body.lang, chosen }).catch(() => undefined)
     json(res, 200, { ok: true })
   }],
+  // Updates by itself (server/weevils-update, every 20 to 30 minutes when nothing is working): on unless turned off here.
+  ['POST', /^\/api\/updates$/, async (req, res) => {
+    const b = await readBody(req)
+    writeConfig({ WEEVILS_AUTO_UPDATE: b?.on === false ? '0' : '1' })
+    w.bump()
+    json(res, 200, { on: process.env.WEEVILS_AUTO_UPDATE !== '0' })
+  }],
   ['GET', /^\/api\/snapshot$/, (_req, res) => json(res, 200, w.snapshot())],
   ['GET', /^\/api\/events$/, (_req, res) => {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' })

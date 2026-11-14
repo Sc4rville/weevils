@@ -37,6 +37,8 @@ install -m 755 "$here/weevils-service" ~/.local/bin/weevils-service
 # The hook and the cli are called from agent sessions, whose environment may not carry the ports: bake them in.
 sed "s/WEEVILS_HOOK_PORT:-4180/WEEVILS_HOOK_PORT:-$hook_port/" "$here/hook.sh" >~/.local/bin/weevils-hook && chmod 755 ~/.local/bin/weevils-hook
 sed "s/WEEVILS_PORT:-4179/WEEVILS_PORT:-$port/" "$here/weevils-cli" >~/.local/bin/weevils && chmod 755 ~/.local/bin/weevils
+# Updates by itself (weevils-update, timer below): on unless WEEVILS_AUTO_UPDATE=0.
+install -m 755 "$here/weevils-update" ~/.local/bin/weevils-update
 
 # ---------------------------------------------------------------- Claude Code hooks: weevils-hook on the useful events, other hooks kept
 # Only weevils' own entries are written to the user's Claude Code settings: no global env, no other preference.
@@ -172,7 +174,34 @@ EOF
     systemctl --user disable --now weevils-tunnel >/dev/null 2>&1 || true
     rm -f "$units/weevils-tunnel.service"
   fi
+  # Updates: a look every 20 to 30 minutes; weevils-update itself decides (setting, plain install, calm moment).
+  cat >"$units/weevils-update.service" <<EOF
+[Unit]
+Description=weevils — update to the latest version when nothing is working (server/weevils-update)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/weevils-update
+Nice=10
+Environment=PATH=$svc_path
+EOF
+  cat >"$units/weevils-update.timer" <<EOF
+[Unit]
+Description=weevils — look for a new version every 20 to 30 minutes
+
+[Timer]
+OnActiveSec=15min
+OnUnitActiveSec=20min
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
+EOF
   systemctl --user daemon-reload
+  systemctl --user enable --now weevils-update.timer >/dev/null 2>&1 || true
+elif [ "$("$svc" mode)" != launchd ] && command -v crontab >/dev/null; then
+  # No systemd (a container, WSL without it): the same look from cron.
+  { crontab -l 2>/dev/null | grep -v 'weevils-update' || true; echo "*/25 * * * * $HOME/.local/bin/weevils-update >/dev/null 2>&1"; } | crontab - 2>/dev/null || true
 fi
 
 # ---------------------------------------------------------------- launchd (a Mac): an agent of the person's session

@@ -335,6 +335,21 @@ describe('guards', () => {
     expect(st.status).toBe(200)
     expect(st.data).toMatchObject({ sid: job.sid, kind: 'pc', state: 'waiting' })
   })
+  it('lets an installed weevils update itself: the version, the snapshot, the script for older installs', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'get-bundle-'))
+    fs.writeFileSync(path.join(dir, 'w.bundle'), 'BUNDLE')
+    fs.writeFileSync(path.join(dir, 'w.bundle.rev'), 'a'.repeat(40) + '\n')
+    const own = createServer(config({ GET_TRUST_PROXY: '0', GET_BUNDLE: path.join(dir, 'w.bundle'), GET_HANDOFF: '' })).server
+    const b = `http://127.0.0.1:${await listen(own)}`
+    expect(await (await fetch(b + '/version')).json()).toEqual({ rev: 'a'.repeat(40), short: 'aaaaaaa' })
+    const codes = []
+    for (let i = 0; i < 7; i++) codes.push((await fetch(b + '/weevils.bundle')).status)
+    expect(codes).toEqual([200, 200, 200, 200, 200, 200, 404])
+    const script = await (await fetch(b + '/update')).text()
+    own.close()
+    expect(script).toContain('weevils-update')
+    expect(script).toContain('_weevils_update "$@"')
+  })
   it('limits job creation per address', async () => {
     const own = createServer(config({ GET_TRUST_PROXY: '0' })).server
     const b = `http://127.0.0.1:${await listen(own)}`

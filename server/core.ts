@@ -1159,7 +1159,7 @@ export class Weevils {
       autoMachine: this.optimizers?.machine(),
       relay: this.relayView(now, remote.flatMap((r) => r.snap!.relay?.plans ?? [])),
       ...(this.optimizers ? { autoRound: { busy: this.optimizers.roundBusy } } : {}),
-      config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey },
+      config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey, autoUpdate: process.env.WEEVILS_AUTO_UPDATE !== '0' },
     }
     this.snapLang = locale
     // « Pour toi » : sa marque (révision, non vus) se calcule sur le snapshot qu'on vient de poser, sans rappeler snapshot().

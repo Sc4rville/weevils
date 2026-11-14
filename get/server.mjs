@@ -639,10 +639,28 @@ export function createServer(cfg = config(), deps = {}) {
         }
         return send(res, 200, { ok: true })
       }
-      // The code, while the repository is private: only for a live setup.
+      // Installed weevils updating themselves (server/weevils-update): the version of the snapshot new installs get,
+      // then the snapshot itself; and that script, for a weevils installed before it existed (curl …/update | bash).
+      if (url.pathname === '/version' && req.method === 'GET') {
+        let rev = ''
+        try {
+          rev = fs.readFileSync(`${cfg.bundle}.rev`, 'utf8').trim()
+        } catch {
+          /* no snapshot */
+        }
+        if (!cfg.bundle || !/^[0-9a-f]{40}$/.test(rev)) return fail(res, 404, 'no_version')
+        return send(res, 200, { rev, short: rev.slice(0, 7) })
+      }
+      if (url.pathname === '/update' && req.method === 'GET') {
+        if (!limit.ok(`up:${ip}`, 30, 3600_000)) return fail(res, 429, 'slow_down')
+        return send(res, 200, fs.readFileSync(path.join(HERE, '..', 'server', 'weevils-update')), 'text/x-shellscript; charset=utf-8')
+      }
+      // The code, while the repository is private: for a live setup (its sid), or an installed weevils updating.
       if (url.pathname === '/weevils.bundle' && req.method === 'GET') {
-        const j = store.get(url.searchParams.get('sid'))
-        if (!cfg.bundle || !j || j.state === 'done' || !limit.ok(`b:${j.sid}`, 6, 3600_000)) return fail(res, 404, 'no_bundle')
+        const sid = url.searchParams.get('sid')
+        const j = sid ? store.get(sid) : null
+        const allowed = sid ? j && j.state !== 'done' && limit.ok(`b:${j.sid}`, 6, 3600_000) : limit.ok(`bu:${ip}`, 6, 3600_000)
+        if (!cfg.bundle || !allowed) return fail(res, 404, 'no_bundle')
         res.writeHead(200, { 'content-type': 'application/octet-stream', ...SECURITY_HEADERS })
         return fs.createReadStream(cfg.bundle).pipe(res)
       }

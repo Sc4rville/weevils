@@ -29,7 +29,7 @@ import { ago, plain, userText, type ChipId } from './format'
 import { AutoMark, FilledIcon, G, Icon } from './icons'
 import { KeepSessionOrder } from './session-order'
 import { autoOfSession, isAutomation } from './auto-model'
-import { PrefLines } from './prefs'
+import { PrefLines, UpdatesLine } from './prefs'
 import { RelayPrefLine, ThreadPlans } from './relay'
 import { UsageLine } from './infra'
 import { TokenMeter } from './rate'
@@ -742,6 +742,7 @@ export function FootBand() {
       </Line>
       <RelayPrefLine />
       <PrefLines />
+      {snap.config?.autoUpdate !== undefined && <UpdatesLine on={snap.config.autoUpdate} />}
       <Line ch="x" go={null} onClick={logout}>
         {t.logout}
       </Line>

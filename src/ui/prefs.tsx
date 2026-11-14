@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { LANGS, LANG_NAMES, installLang, langIsChosen, setLang, useLang, useT, type Lang } from '../i18n'
 import M from '../i18n/prefs'
+import { api } from '../api'
 import { Line } from './bits'
 import { TourLine } from './tour'
 import { TipsLine } from './tips'
@@ -39,6 +40,23 @@ export function PrefLines() {
       <TourLine />
       <TipsLine />
     </>
+  )
+}
+
+/** Updates by itself (on by default): one tap turns it off or on again, for this weevils (a server setting). */
+export function UpdatesLine({ on }: { on: boolean }) {
+  const t = useT(M)
+  const [value, setValue] = useState(on)
+  useEffect(() => setValue(on), [on])
+  const flip = () => {
+    const next = !value
+    setValue(next)
+    api.setUpdates(next).then((r) => setValue(r.on)).catch(() => setValue(!next))
+  }
+  return (
+    <Line ch="↻" go={null} meta={value ? t.updatesOnMeta : t.updatesOffMeta} onClick={flip}>
+      {t.updates} · {value ? t.updatesOn : t.updatesOff}
+    </Line>
   )
 }
 

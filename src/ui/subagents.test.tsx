@@ -191,25 +191,40 @@ describe('bande d’arrière-plan dans le fil', () => {
     render(<Background session={s} />)
     const flow = host.querySelector('[data-workflow="ultracode"]')!
     expect(flow).not.toBeNull()
-    expect(text(flow.querySelector('.sub-flow-head'))).toBe('ultracode · 2/3')
+    expect(text(flow.querySelector('.sub-flow-head'))).toBe('ultracode · travaille')
     expect([...flow.querySelectorAll('.sub-phase-head')].map(text)).toEqual(['plan', 'build'])
     expect(flow.querySelectorAll('.sub')).toHaveLength(3)
   })
 
-  it('entre deux phases : l’en-tête tourne, « 0/1 », aucune ligne en plus', () => {
+  it('entre deux phases : l’en-tête tourne, « travaille », aucune ligne en plus', () => {
     const s = session([sub('wf_1', { kind: 'step', workflow: 'ultracode', label: 'ultracode', activity: '' }), sub('s1', { kind: 'step', workflow: 'ultracode', phase: 'plan', label: 'plan:archi', status: 'done', endedAt: NOW })])
     render(<Background session={s} />)
     const flow = host.querySelector('[data-workflow="ultracode"]')!
-    expect(text(flow.querySelector('.sub-flow-head'))).toBe('ultracode · 0/1')
+    expect(text(flow.querySelector('.sub-flow-head'))).toBe('ultracode · travaille')
     expect(flow.querySelector('.sub-flow-head .spin')).not.toBeNull()
     expect(rows()).toHaveLength(1)
   })
 
-  it('l’activité d’un outil est traduite comme dans le fil, une phrase reste telle quelle', () => {
+  it('l’activité d’un outil est traduite comme dans le fil, sans chemin ; une phrase reste telle quelle', () => {
     const s = session([sub('a', { activity: 'Read · /home/alex/projects/weevils/server/core.ts' }), sub('b', { activity: 'Page built. Tests pass.' })])
     render(<Background session={s} />)
-    expect(text(rows()[0].querySelector('.meta'))).toBe('travaille · lit · ~/projects/weevils/server/core.ts')
+    expect(text(rows()[0].querySelector('.meta'))).toBe('travaille · lit · core.ts')
     expect(text(rows()[1].querySelector('.meta'))).toBe('travaille · Page built. Tests pass.')
+  })
+
+  it('une commande d’arrière-plan n’a aucun glyphe de terminal ; un workflow fini dit « fini », son nom sans tirets', () => {
+    const s = session([
+      sub('sh', { kind: 'shell', label: 'npm test', activity: 'tourne' }),
+      sub('s1', { kind: 'step', workflow: 'deep-review', phase: 'plan', label: 'plan:archi', status: 'done', endedAt: NOW }),
+    ])
+    render(<Background session={s} />)
+    expect(text(host)).not.toContain('>_')
+    expect(rows()[0].querySelector('.sub-kind')).toBeNull()
+    expect(text(rows()[0])).toContain('npm test')
+    expect(text(host.querySelector('.sub-flow-head'))).toBe('deep review · fini')
+    expect(text(host.querySelector('[data-testid=background] .row'))).toBe('aides · 1 au travail')
+    act(() => setLang('en'))
+    expect(text(host.querySelector('[data-testid=background] .row'))).toBe('helpers · 1 working')
   })
 
   it('les quatre états en mots, en français et en anglais', () => {
@@ -232,7 +247,7 @@ describe('bande d’arrière-plan dans le fil', () => {
     root = createRoot(host)
     render(<Background session={session([sub('a', { status: 'done', endedAt: NOW })])} />)
     expect(rows()).toHaveLength(0)
-    expect(text(host.querySelector('[data-testid=background]'))).toContain('0 actif · 1 fini')
+    expect(text(host.querySelector('[data-testid=background]'))).toBe('aides · tout est fini')
   })
 
   it('déplier lit le détail et montre ses pas ; relu toutes les 3 s tant que ça travaille, plus rien une fois replié', async () => {
@@ -305,12 +320,12 @@ describe('ligne de session : compte d’arrière-plan', () => {
 })
 
 describe('page de session : méta et fil', () => {
-  it('« · 2 en arrière-plan » en gras à côté de l’état, et la bande dans le fil', async () => {
+  it('la méta ne répète pas le compte d’arrière-plan : la bande du fil le dit', async () => {
     const s = session([sub('a'), sub('b', { kind: 'shell' })])
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [s])
     await flush() // la bande d'arrière-plan arrive avec le fil (ici : détail absent)
-    const strong = [...host.querySelectorAll('.strong')].map(text)
-    expect(strong).toContain('· 2 en arrière-plan')
+    expect(host.textContent).not.toContain('arrière-plan')
+    expect(text(host.querySelector('[data-testid=background] .row'))).toBe('aides · 2 au travail')
     expect(rows()).toHaveLength(2)
   })
 

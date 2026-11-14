@@ -855,7 +855,8 @@ function Coordination({ folded, author, sourceThreadId, children }: { folded: bo
   const t = useT(M)
   const { snap } = useApp()
   if (!folded) return children
-  const source = sourceThreadId ? snap.sessions?.find(s => s.id === sourceThreadId)?.title?.trim() || sourceThreadId.slice(0, 8) : null
+  // A source without a known title is omitted: never a raw id.
+  const source = sourceThreadId ? snap.sessions?.find(s => s.id === sourceThreadId)?.title?.trim() || null : null
   return <details className="session-coordination"><summary className="in">{source ? t.coordinationSource(author, source) : t.coordination(author)}</summary>{children}</details>
 }
 

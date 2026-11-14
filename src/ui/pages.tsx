@@ -131,7 +131,7 @@ function ErrorBand({ text }: { text: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Session : le fil, l'écran du terminal, les touches.
+// Session : le fil et ses bandes d'état.
 
 function SessionPage({ id }: { id: string }) {
   const appLang = useLang()
@@ -144,13 +144,8 @@ function SessionPage({ id }: { id: string }) {
   // Le premier message d'une session qu'on vient de lancer est déjà là (pending.ts : seedPending).
   const [pending, setPending] = useState<Pending[]>(() => peekSeed(id))
   useEffect(() => dropSeed(id), [id])
-  const [screenText, setScreenText] = useState<string | null>(null)
-  const [showScreen, setShowScreen] = useState<boolean | null>(null)
   const [preview, setPreview] = usePreviewState(id)
   const [showSettings, setShowSettings] = useState(false)
-  const screenBand = useRef<HTMLDivElement>(null)
-  /** L'écran du terminal ouvert par une commande (/model, /approvals) : il est amené sous les yeux et mis en avant. */
-  const screenAsked = useRef(false)
 
   // Le détail suit chaque nouvelle version annoncée par le serveur.
   useEffect(() => {
@@ -174,26 +169,6 @@ function SessionPage({ id }: { id: string }) {
   useEffect(() => {
     if (s) markSeen(s.id, s.lastActivityAt)
   }, [s, s?.id, s?.lastActivityAt])
-  // L'écran brut du terminal est un secours : jamais ouvert tout seul.
-  const screenOpen = showScreen ?? false
-
-  // Écran du terminal : rafraîchi tant qu'il est affiché.
-  useEffect(() => {
-    if (!s?.hasScreen || !screenOpen) return
-    let off = false
-    const tick = () =>
-      api
-        .screen(id)
-        .then((r) => !off && setScreenText(r.screen))
-        .catch(() => undefined)
-    tick()
-    const t = setInterval(tick, 1500)
-    return () => {
-      off = true
-      clearInterval(t)
-    }
-  }, [id, s?.hasScreen, screenOpen])
-
   const messages = useMemo(() => mergePending(detail?.messages ?? [], pending), [detail, pending])
   const body = useRef<HTMLDivElement>(null)
   const sp = snap.projects.find((p) => p.id === s?.projectId)
@@ -213,14 +188,6 @@ function SessionPage({ id }: { id: string }) {
     const t = window.setTimeout(() => reveal(document.getElementById('session-settings'), { block: 'nearest' }), 380)
     return () => window.clearTimeout(t)
   }, [showSettings])
-  // L'écran du terminal déplié : il s'ouvre vers le bas, on l'amène sous les yeux (mis en avant s'il vient d'une commande).
-  useEffect(() => {
-    if (!screenOpen) return
-    const lit = screenAsked.current
-    screenAsked.current = false
-    const t = window.setTimeout(() => reveal(screenBand.current, { block: 'nearest', flash: lit }), 380)
-    return () => window.clearTimeout(t)
-  }, [screenOpen])
 
   // Introuvable : le même cadre (le conteneur suivi reste le même s'il apparaît ensuite).
   if (!s)
@@ -258,11 +225,11 @@ function SessionPage({ id }: { id: string }) {
   return (
     <Shell
       slot={colors[s.projectId] ?? 'agent'}
-      kicker={project?.name ?? s.projectId}
+      kicker={project?.name ?? t.sessionsKicker}
       title={s.title}
       scrollHeading
       sessionLayout
-      headerControls={<button className="link inline" onClick={() => setShowSettings(true)} aria-label={t.changeModel} aria-controls="session-settings">
+      headerControls={<button className="link inline" onClick={() => setShowSettings((v) => !v)} aria-label={t.changeModel} aria-pressed={showSettings} aria-controls="session-settings">
             {[modelLabel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
           </button>}
       meta={
@@ -275,18 +242,11 @@ function SessionPage({ id }: { id: string }) {
           )}
           {s.tool}{' '}
           {' '}· <StatusChar s={s.status} /> {st.label}
-          {s.background > 0 && <span className="strong"> · {t.background(s.background)}</span>}
           {s.queued > 0 && <span className="strong"> · {t.queued(s.queued)}</span>}
           {s.status === 'working' && s.workStartedAt != null ? <>{t.since(durLong(now - s.workStartedAt))}</> : <> · {ago(now - s.lastActivityAt)}</>}
           {' · '}
-          {s.machineId}
-          {' · '}
           <button className="link" onClick={() => setPreview({ open: !preview.open })} aria-pressed={!!preview.open}>
-            {preview.open ? t.closeBrowser : t.browser}
-          </button>
-          {' · '}
-          <button className="link" onClick={() => setShowSettings((v) => !v)} aria-pressed={showSettings} aria-controls="session-settings">
-            {t.settings}
+            {preview.open ? t.closeApp : t.seeApp}
           </button>
           {' · '}<SessionArchiveAction key={s.id} session={s} />
         </>
@@ -300,7 +260,7 @@ function SessionPage({ id }: { id: string }) {
           <FootError text={err} />
           {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
           <Composer
-            placeholder={sourceIssue ?? (s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly)}
+            placeholder={sourceIssue ? '' : s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly}
             label={t.composerLabel(s.title)}
             onSend={send}
             onAttach={send}
@@ -325,7 +285,7 @@ function SessionPage({ id }: { id: string }) {
           seraient ensuite repoussées d'un coup vers le bas par les messages (ouverture depuis une notification). */}
       {(detail || missing) && (
         <>
-        {s.progress && <RemoteProgress progress={s.progress} agentWorking={s.turnWorking} />}
+        {s.progress && <RemoteProgress progress={s.progress} />}
 
         <Background session={s} />
 
@@ -339,10 +299,15 @@ function SessionPage({ id }: { id: string }) {
           <Notice closable={false} eventId={sessionNoticeKey(s)} about={s.title} className="msg band cut-band">
             <div className="in">
               <span className="who">
-                × {st.label}
+                {st.label}
                 {s.interrupted ? ` · ${t.cutWhy(s.interrupted.reason)}` : ''}
               </span>
-              {s.interrupted?.detail && <div className="text">{s.interrupted.detail}</div>}
+              {s.interrupted?.detail && (
+                <details className="cut-detail">
+                  <summary className="meta">{t.cutDetail}</summary>
+                  <div className="text">{s.interrupted.detail}</div>
+                </details>
+              )}
               <div className="cut-actions">
                 <ResumeButton session={s} stay onError={setErr} />
                 <button className="link" onClick={() => void api.dismiss(s.id).then(() => dismissNotice(sessionNoticeKey(s))).catch((e) => setErr((e as Error).message))}>
@@ -363,31 +328,21 @@ function SessionPage({ id }: { id: string }) {
             settings={s.settings}
             canCommand={s.hasScreen}
             run={(c) => api.command(s.id, c)}
-            onPicker={() => {
-              screenAsked.current = true
-              setShowScreen(true)
-            }}
           />
         </div>
       </Collapse>
-
-      {s.hasScreen && (
-        <div ref={screenBand} className="band tone">
-          <Line ch=">_" go={screenOpen ? '−' : '+'} onClick={() => setShowScreen(!screenOpen)} label={screenOpen ? t.hideScreen : t.showScreen}>
-            <span className="meta">{t.terminalScreen}</span>
-          </Line>
-          <Collapse open={screenOpen}>
-            <pre className="screen">{screenText ?? t.readingScreen}</pre>
-            <div style={{ height: 10 }} />
-          </Collapse>
-        </div>
-      )}
     </Shell>
   )
 }
 
 // ---------------------------------------------------------------------------
 // Explorateur de fichiers : un dossier par page, la liste du repo est gardée en cache.
+
+/** Le nom d'une machine, seulement quand il y en a plusieurs à distinguer : jamais son id. */
+const machineName = (machines: { id: string; name: string }[], id?: string) => (machines.length > 1 && id ? machines.find((m) => m.id === id)?.name : undefined)
+
+/** Un dossier trop long s'affiche par tranches. */
+const FILES_STEP = 500
 
 /** Préchargement discret (à l'ouverture d'une bande) : l'explorateur s'ouvre ensuite sans attente. */
 export const prefetchRepo = (repo: string, machine: string) => void listFiles(repo, machine).catch(() => undefined)
@@ -400,6 +355,8 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
   const machine = (theRepo && project?.where[theRepo]) || (snap.machines[0]?.id ?? '')
   const [files, setFiles] = useState<string[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [shown, setShown] = useState(FILES_STEP)
+  useEffect(() => setShown(FILES_STEP), [theRepo, dir])
   useEffect(() => {
     if (!theRepo) return
     let off = false
@@ -431,9 +388,9 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
 
   if (!theRepo) {
     return (
-      <Shell slot={slot} kicker={project.name} title="/ repos" meta={t.repos(project.repos.length)}>
+      <Shell slot={slot} kicker={project.name} title={t.folders}>
         {project.repos.map((r) => (
-          <Line key={r} ch="/" meta={project.where[r]} onClick={() => push({ kind: 'files', projectId, repo: r })}>
+          <Line key={r} ch="/" meta={machineName(snap.machines, project.where[r])} onClick={() => push({ kind: 'files', projectId, repo: r })}>
             {r}
           </Line>
         ))}
@@ -444,17 +401,17 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
   return (
     <Shell
       slot={slot}
-      kicker={dir ? `${theRepo}/${dir.split('/').slice(0, -1).join('/')}` : project.name}
-      title={dir ? `/${dir.split('/').pop()}` : `/ ${theRepo}`}
-      meta={`${machine} · ${files ? t.files(files.length) : t.readingRepo}`}
+      kicker={dir ? (dir.split('/').at(-2) ?? theRepo) : project.name}
+      title={dir ? dir.split('/').pop() : theRepo}
+      meta={files ? t.files(files.length) : t.reading}
     >
       {err && <ErrorBand text={err} />}
       {entries?.folders.map(([name, count]) => (
         <Line key={name} ch="/" meta={t.files(count)} onClick={() => push({ kind: 'files', projectId, repo: theRepo, dir: dir ? `${dir}/${name}` : name })}>
-          <span className="strong">{name}/</span>
+          <span className="strong">{name}</span>
         </Line>
       ))}
-      {entries?.leaves.slice(0, 500).map((name) => {
+      {entries?.leaves.slice(0, shown).map((name) => {
         const path = dir ? `${dir}/${name}` : name
         return (
           <Line key={name} ch="·" onClick={() => push({ kind: 'file', projectId, repo: theRepo, path })}>
@@ -462,7 +419,11 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
           </Line>
         )
       })}
-      {entries && entries.leaves.length > 500 && <div className="in meta empty">{t.moreFiles(entries.leaves.length - 500)}</div>}
+      {entries && entries.leaves.length > shown && (
+        <Line ch="+" go={null} onClick={() => setShown((n) => n + FILES_STEP)}>
+          <span className="meta">{t.moreFiles(Math.min(FILES_STEP, entries.leaves.length - shown))}</span>
+        </Line>
+      )}
       {entries && entries.folders.length + entries.leaves.length === 0 && <div className="in meta empty">{t.emptyDir}</div>}
     </Shell>
   )
@@ -491,6 +452,9 @@ function FilePage({ projectId, repo, path, line }: { projectId: string; repo: st
 }
 
 // ---------------------------------------------------------------------------
+
+/** Les outils par leur nom, pas leur id. */
+const TOOL_NAME: Record<Tool, string> = { claude: 'Claude', codex: 'Codex' }
 
 function NewSessionPage({ projectId }: { projectId: string }) {
   const { snap, replace, colors } = useApp()
@@ -523,7 +487,7 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       setErr(t.pickRepoFirst)
       // Le choix qui manque est amené sous les yeux.
       reveal(repoLabel.current, { block: 'start' })
-      throw new Error('repo')
+      throw new Error(t.pickRepoFirst)
     }
     created.current = true
     setErr(null)
@@ -541,7 +505,7 @@ function NewSessionPage({ projectId }: { projectId: string }) {
   return (
     <Shell
       slot={colors[projectId] ?? 'agent'}
-      kicker={project.name}
+      kicker={any ? 'weevils' : project.name}
       title={t.newSessionTitle}
       foot={
         <>
@@ -553,8 +517,8 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
       <div className="in label">{t.tool}</div>
       {(['claude', 'codex'] as Tool[]).map((x) => (
-        <Line key={x} className={tool === x ? 'invert' : ''} ch={tool === x ? '>' : ' '} go={null} onClick={() => setTool(x)} label={`${x}${tool === x ? t.chosen : ''}`}>
-          {x}
+        <Line key={x} className={tool === x ? 'invert' : ''} ch={tool === x ? '>' : ' '} go={null} onClick={() => setTool(x)} label={`${TOOL_NAME[x]}${tool === x ? t.chosen : ''}`}>
+          {TOOL_NAME[x]}
         </Line>
       ))}
       {any && snap.machines.length > 1 && (
@@ -581,11 +545,11 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       {(project.repos.length > 1 || any) && (
         <>
           <div ref={repoLabel} className="in label">
-            {t.repo}
+            {t.project}
           </div>
           {any && !allRepos && <div className="in meta empty">…</div>}
           {project.repos.map((r) => (
-            <Line key={r} className={repo === r ? 'invert' : ''} ch={repo === r ? '>' : '/'} go={null} meta={any ? undefined : project.where[r]} onClick={() => setRepo(r)}>
+            <Line key={r} className={repo === r ? 'invert' : ''} ch={repo === r ? '>' : '/'} go={null} meta={any ? undefined : machineName(snap.machines, project.where[r])} onClick={() => setRepo(r)}>
               {r}
             </Line>
           ))}

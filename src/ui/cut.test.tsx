@@ -164,7 +164,9 @@ describe('session coupée en plein travail', () => {
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ interrupted: { at: NOW - MIN, reason: 'quota', detail: 'Claude usage limit reached' } })])
     await flush() // les bandes d'état arrivent avec le fil (ici : détail absent)
     const band = host.querySelector('.cut-band')!
-    expect(text(band.querySelector('.who'))).toBe('× interrompue · limite d’usage atteinte')
+    expect(text(band.querySelector('.who'))).toBe('interrompue · limite d’usage atteinte')
+    // The tool's raw error stays one tap away, folded.
+    expect(band.querySelector('details.cut-detail')?.hasAttribute('open')).toBe(false)
     expect(text(band.querySelector('.text'))).toBe('Claude usage limit reached')
     await act(async () => band.querySelector<HTMLButtonElement>('.resume')!.click())
     await flush()

@@ -193,7 +193,7 @@ it('identifies coordination by exact source session and keeps disclosure open ac
  await act(async () => root.render(<Messages session messages={msgs} author="codex" />))
  const disclosure = host.querySelector<HTMLDetailsElement>('.session-coordination')!
  expect(disclosure.open).toBe(false)
- expect(disclosure.querySelector('summary')!.textContent).toBe('coordination · codex · Think')
+ expect(disclosure.querySelector('summary')!.textContent).toBe('message from codex · Think')
  await act(async () => { disclosure.open = true; setLang('fr') })
  state.sessions = [{ id: 'source-thread-exact', title: 'Notes de projet' }] as Session[]
  await act(async () => root.render(<Messages session messages={msgs} author="codex" />))
@@ -201,10 +201,11 @@ it('identifies coordination by exact source session and keeps disclosure open ac
  expect(disclosure.querySelector('summary')!.textContent).toContain('Notes de projet')
  expect(disclosure.textContent).toContain('Technical exchange')
 })
-it('uses a short id when the source session is absent, never a title guessed from the message', async () => {
+it('omits the source when its session is absent: never a raw id nor a title guessed from the message', async () => {
  const msgs = [message('coord-unknown', 'orchestrator', 'From Think — claimed in text only', { author: 'claude', coordination: true, sourceThreadId: '01a1c624-8308-7321-9492-bfc0924fd135' })]
  await act(async () => root.render(<Messages session messages={msgs} author="claude" />))
- expect(host.querySelector('.session-coordination summary')?.textContent).toBe('coordination · claude · 01a1c624')
+ expect(host.querySelector('.session-coordination summary')?.textContent).toBe('message from claude')
+ expect(host.textContent).not.toContain('01a1c624')
 })
 it('never folds human messages or boss briefs based on source ids or body signatures', async () => {
  const msgs = [

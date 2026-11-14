@@ -82,6 +82,17 @@ export function usePreviewState(id: string) {
   return [state, update] as const
 }
 
+/** An address only this machine can open (localhost, 127.0.0.1…): never offered as a chip to the phone. */
+const LOCAL = /\/\/(localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|\[::1\])(?=[:/]|$)/i
+/** A chip shows the host name only, never a scheme, port or path. */
+const hostOf = (u: string) => {
+  try {
+    return new URL(u).hostname
+  } catch {
+    return u.replace(/^https?:\/\//, '')
+  }
+}
+
 const normalize = (raw: string) => {
   const t = raw.trim()
   if (!t) return ''
@@ -100,7 +111,14 @@ export function Preview({ url, suggestions, onUrl, onClose, full, onFull, sessio
   useEffect(() => {
     if (!url) input.current?.focus({ preventScroll: true })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  const others = useMemo(() => suggestions.filter((s) => s !== url).slice(0, 3), [suggestions, url])
+  const others = useMemo(() => {
+    const seen = new Set([url && hostOf(url)])
+    return suggestions.filter((s) => {
+      if (s === url || LOCAL.test(s) || seen.has(hostOf(s))) return false
+      seen.add(hostOf(s))
+      return true
+    }).slice(0, 3)
+  }, [suggestions, url])
 
   const go = (e: FormEvent) => {
     e.preventDefault()
@@ -120,7 +138,7 @@ export function Preview({ url, suggestions, onUrl, onClose, full, onFull, sessio
           ref={input}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="https://"
+          placeholder={t.placeholder}
           aria-label={t.address}
           inputMode="url"
           autoCapitalize="off"
@@ -146,7 +164,7 @@ export function Preview({ url, suggestions, onUrl, onClose, full, onFull, sessio
         <div className="preview-hints meta">
           {others.map((s) => (
             <button key={s} className="link" onClick={() => onUrl(s)}>
-              {s.replace(/^https?:\/\//, '')}
+              {hostOf(s)}
             </button>
           ))}
         </div>

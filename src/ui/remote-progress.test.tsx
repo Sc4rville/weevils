@@ -15,14 +15,15 @@ const progress = (over: Partial<SessionProgress> = {}): SessionProgress => ({ so
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); setLang('en'); connection.offline = false; host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); setLang(null) })
 it('distinguishes observed remote work from an idle agent and does not invent a total', async () => {
- await act(async () => root.render(<RemoteProgress progress={progress()} agentWorking={false} />))
+ await act(async () => root.render(<RemoteProgress progress={progress()} />))
  expect(host.querySelector('summary')?.textContent).toBe('Rendering')
  expect(host.querySelector('details')?.open).toBe(false)
  expect(host.textContent).not.toContain('agent idle')
- expect(host.querySelector('details')?.textContent).toContain('independently of the conversation')
+ expect(host.querySelector('details')?.textContent).not.toMatch(/independently|Last observation|Last progress/)
  expect(host.textContent).toContain('166 reported frames'); expect(host.textContent).toContain('110 frames verified and downloaded')
  expect(host.querySelector('.spin')).not.toBeNull(); expect(host.querySelector('progress')).toBeNull()
- expect(host.querySelectorAll('time')).toHaveLength(2)
+ expect(host.querySelectorAll('time')).toHaveLength(1)
+ expect(host.querySelector('time')?.textContent).toBe('updated just now')
 })
 it('stops animation when heartbeat expires without receiving another snapshot', async () => {
  await act(async () => root.render(<RemoteProgress progress={progress()} />))
@@ -74,9 +75,9 @@ it('follows real progress at the bottom but preserves rereading until the user r
 
 it('shows one actionable paused state, with counters and timestamps folded and fully localized',async()=>{
  const p=progress({state:'error',label:'Rendu interrompu',detail:'306 images vérifiées et récupérées',completed:306,verified:306,pauseReason:'worker-stopped'})
- await act(async()=>root.render(<RemoteProgress progress={p} agentWorking={false}/>))
+ await act(async()=>root.render(<RemoteProgress progress={p}/>))
  expect(host.querySelector('summary')?.textContent).toBe('Render paused')
- expect(host.querySelector('.remote-progress-reason')?.textContent).toBe('The render worker stopped. Resume with a new worker.')
+ expect(host.querySelector('.remote-progress-reason')?.textContent).toBe('The render machine stopped. Ask in the chat to restart it.')
  expect(host.querySelector('details')?.open).toBe(false)
  expect(host.querySelectorAll('[role="status"]')).toHaveLength(1)
  expect(host.querySelector('summary')?.textContent).not.toContain('306')
@@ -90,4 +91,14 @@ it('shows one actionable paused state, with counters and timestamps folded and f
  await act(async()=>setLang('en'))
  expect(details.open).toBe(true)
  expect(host.querySelector('summary')?.textContent).toBe('Render paused')
+})
+it('one plain "updated … ago" line, and every pause reason tells what to do in the chat', async () => {
+ await act(async () => root.render(<RemoteProgress progress={progress({ lastProgressAt: NOW - 2 * 60000, updatedAt: NOW })} />))
+ expect(host.querySelector('time')?.textContent).toBe('updated 2 min ago')
+ for (const [pauseReason, line] of [['capacity', 'No machine free right now. Ask in the chat to retry later.'], ['retry-stopped', 'The render stopped. Ask in the chat what went wrong.'], [undefined, 'The render stopped. Ask in the chat what went wrong.']] as const) {
+  await act(async () => root.render(<RemoteProgress progress={progress({ state: 'error', pauseReason })} />))
+  expect(host.querySelector('.remote-progress-reason')?.textContent).toBe(line)
+ }
+ await act(async () => setLang('fr'))
+ expect(host.querySelector('.remote-progress-reason')?.textContent).toBe('Le rendu s’est arrêté. Demande dans le fil ce qui s’est passé.')
 })

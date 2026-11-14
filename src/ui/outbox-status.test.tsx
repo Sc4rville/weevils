@@ -15,7 +15,7 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); se
 it('distinguishes acceptance from delivery and scopes the notice to the current conversation', async () => {
  state.rows = [{messageId:'a',url:'/api/main',status:'accepted'}, {messageId:'b',url:'/api/sessions/other/send',status:'delivered'}]
  await act(async () => root.render(<OutboxStatus scope="/api/main" />))
- expect(host.textContent).toContain('waiting to be forwarded'); expect(host.textContent).not.toContain('forwarded to the agent')
+ expect(host.textContent).toContain('sending…'); expect(host.textContent).not.toContain('forwarded to the agent')
  state.rows = [{...state.rows[0],status:'delivered',result:{id:'target'}}]
  await act(async () => root.render(<OutboxStatus scope="/api/main" />))
  expect(host.textContent).toBe('')
@@ -24,7 +24,7 @@ it('distinguishes acceptance from delivery and scopes the notice to the current 
 it('an uncertain receipt offers recovery, never a button that reinjects the message', async () => {
  state.rows = [{messageId:'a',url:'/api/main',status:'uncertain',text:'original draft'}]
  await act(async () => root.render(<OutboxStatus scope="/api/main" />))
- expect(host.textContent).toContain('no automatic resend')
+ expect(host.textContent).toContain('not sure it arrived')
  const buttons = host.querySelectorAll('button'); expect(buttons).toHaveLength(2)
  await act(async () => buttons[0].click()); expect(state.copied).toHaveBeenCalledWith('original draft')
 })
@@ -33,7 +33,7 @@ it('contextual delivery hides completed and older-event receipts without forgett
  state.rows=[{messageId:'old',url:'/api/foryou/a/act',status:'accepted',eventId:'previous'}, {messageId:'current',url:'/api/foryou/a/act',status:'accepted',eventId:'current'}, {messageId:'elsewhere',url:'/api/foryou/b/reply',status:'uncertain'}]
  await act(async()=>root.render(<OutboxStatus scope="/api/foryou/a/" eventId="current"/>))
  expect(host.querySelectorAll('[data-delivery]')).toHaveLength(1)
- expect(host.textContent).toContain('waiting to be forwarded')
+ expect(host.textContent).toContain('sending…')
  state.rows[1]={...state.rows[1],status:'delivered',result:{id:'target'}}
  await act(async()=>root.render(<OutboxStatus scope="/api/foryou/a/" eventId="current"/>))
  expect(host.textContent).toBe('')
@@ -59,4 +59,13 @@ it('a confirmed retry of the exact payload hides the old failure, but a differen
  await act(async()=>root.render(<OutboxStatus scope="/api/main"/>))
  expect(host.textContent).toBe('')
  expect(state.rows).toHaveLength(2)
+})
+
+it('speaks plain words: one "sending…" for every in-flight state, "not sent", no tracking jargon', async () => {
+ state.rows=[{messageId:'s',url:'/api/main',status:'sending'},{messageId:'a',url:'/api/main',status:'accepted'},{messageId:'d',url:'/api/main',status:'delivering'},{messageId:'f',url:'/api/main',status:'failed',text:'hello',trackingLost:true}]
+ await act(async()=>root.render(<OutboxStatus scope="/api/main"/>))
+ expect([...host.querySelectorAll('summary')].map(s=>s.firstChild?.textContent)).toEqual(['sending…','sending…','sending…','not sent'])
+ expect(host.textContent).not.toMatch(/forwarding|confirmation|tracking/)
+ // Recovery stays: the text can still be copied back.
+ expect([...host.querySelectorAll('button')].some(b=>b.textContent==='copy the text')).toBe(true)
 })

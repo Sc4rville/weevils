@@ -237,7 +237,6 @@ export function RelayPage() {
             </button>
           ))}
         </div>
-        {r && <div className="in meta">{t[`modeHelp_${r.mode}`]}</div>}
         <div className="in label">{t.switchAt}</div>
         <div className="in words" role="group" aria-label={t.switchAt}>
           {[...new Set([...SWITCHES, r?.switchAt ?? 97])]

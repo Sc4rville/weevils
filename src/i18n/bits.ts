@@ -3,8 +3,9 @@ import { defineMessages } from './index'
 // src/ui/bits.tsx: composer, conversation thread, session rows.
 export default defineMessages({
   fr: {
-    coordination: (author: string) => `coordination · ${author}`,
-    coordinationSource: (author: string, source: string) => `coordination · ${author} · ${source}`,
+    /** Message replié qu'un autre agent a passé à la session. */
+    coordination: (author: string) => `message de ${author}`,
+    coordinationSource: (author: string, source: string) => `message de ${author} · ${source}`,
     showLess: 'replier',
     readAll: 'tout lire',
     tooBig: (name: string) => `${name} dépasse 32 Mo`,
@@ -49,8 +50,8 @@ export default defineMessages({
     rowAria: (tool: string, title: string, state: string, act: string | undefined, when: string) => `${tool}, ${title}, ${state}${act ? ` : ${act}` : ''}, ${when}`,
   },
   en: {
-    coordination: (author: string) => `coordination · ${author}`,
-    coordinationSource: (author: string, source: string) => `coordination · ${author} · ${source}`,
+    coordination: (author: string) => `message from ${author}`,
+    coordinationSource: (author: string, source: string) => `message from ${author} · ${source}`,
     showLess: 'show less',
     readAll: 'read all',
     tooBig: (name: string) => `${name} is over 32 MB`,

@@ -23,7 +23,7 @@ localStorage.setItem('weevils-language', 'fr')
 for (let p: object | null = HTMLElement.prototype; p; p = Object.getPrototypeOf(p)) if (Object.hasOwn(p, 'animate')) delete (p as { animate?: unknown }).animate
 globalThis.fetch = (async () => new Response('{}')) as typeof fetch
 
-const { RelayBand, RelayPage, ThreadPlans } = await import('./relay')
+const { RelayBand, RelayPage, ThreadPlans, SessionRelay } = await import('./relay')
 const { SessionRow } = await import('./bits')
 const { Ctx } = await import('./app-context')
 
@@ -101,7 +101,7 @@ describe('relais Codex', () => {
     render(<RelayPage />, automatic)
     expect(host.querySelectorAll('.relay-plan')).toHaveLength(3)
     expect([...host.querySelectorAll('button')].filter((b) => /^(valider|ajuster|attendre Claude|tout valider|tout laisser à Claude)$/.test(text(b)))).toEqual([])
-    expect(button('automatique').getAttribute('aria-pressed')).toBe('true')
+    expect(button('reprendre seul').getAttribute('aria-pressed')).toBe('true')
     expect(calls.decide).toEqual([])
   })
 
@@ -174,10 +174,12 @@ describe('relais Codex', () => {
     expect(host.querySelectorAll('.relay-plan')).toHaveLength(0)
   })
 
-  it('réglage : automatique / proposer un plan / jamais, et le seuil de bascule', async () => {
+  it('réglage : reprendre seul / me demander d’abord / jamais, et le seuil de bascule, sans ligne d’aide permanente', async () => {
     render(<RelayPage />, snap(relay({ plans: [] })))
-    expect(button('proposer un plan').getAttribute('aria-pressed')).toBe('true')
-    act(() => button('automatique').click())
+    expect(button('me demander d’abord').getAttribute('aria-pressed')).toBe('true')
+    expect(text(host)).not.toContain('rien n’est touché avant ton oui')
+    expect(text(host)).toContain('passer la main quand Claude atteint')
+    act(() => button('reprendre seul').click())
     act(() => button('95 %').click())
     await flush()
     expect(calls.set).toEqual([{ mode: 'auto' }, { switchAt: 95 }])
@@ -203,5 +205,14 @@ describe('relais Codex', () => {
     expect(text(host.querySelector('.relay-sign'))).toBe('⇄ relais')
     render(<SessionRow session={session()} />, snap(relay()))
     expect(host.querySelector('.relay-sign')).toBeNull()
+  })
+
+  it('dans une session : « demander un plan à Codex » et « reprend « titre » » en mots simples', async () => {
+    const cut = session({ id: 's1', tool: 'claude', status: 'interrupted' })
+    render(<SessionRelay session={cut} onError={() => {}} />, snap(relay({ plans: [] }), [cut]))
+    await act(async () => button('⇄ demander un plan à Codex').click())
+    expect(calls.request.at(-1)).toBe('s1')
+    render(<SessionRelay session={session({ relayOf: 's1' })} onError={() => {}} />, snap(relay({ plans: [] }), [cut]))
+    expect(text(host)).toBe('⇄ reprend « refonte du panier »')
   })
 })

@@ -176,7 +176,7 @@ export default defineMessages({
     // ---- sécurité
     securityAsk: (s: SetupState): string =>
       [
-        'Ton code d’accès vaut un accès au terminal : quiconque l’a peut taper dans tes agents. Ne l’envoie à personne.',
+        'Ton code d’accès est une clé complète de cette machine : quiconque l’a peut piloter tes agents. Ne l’envoie à personne.',
         s.security.exposedHttp ? 'Attention : je suis joignable en http, le code circule en clair. Passe en https : [[setup:reach]]' : s.security.https ? 'L’adresse est en https : bien.' : 'Je n’écoute que sur cette machine : rien n’est exposé.',
         s.security.safe ? 'Tes agents demandent la permission avant d’agir.' : 'Tes agents tournent sans demander de permission : rapide, mais c’est une raison de plus de garder le code pour toi.',
         'Pour changer de code et déconnecter tous les appareils, demande-le-moi.',
@@ -365,7 +365,7 @@ export default defineMessages({
     quotaWindow: (kind: string, pct: number): string => `${kind === 'session' ? 'session' : kind === 'week' ? 'week' : kind} ${pct}%`,
     securityAsk: (s: SetupState): string =>
       [
-        'Your access code is terminal access: anyone who has it can type into your agents. Never send it to anyone.',
+        'Your access code is a full key to this machine: anyone who has it can drive your agents. Never send it to anyone.',
         s.security.exposedHttp ? 'Careful: I’m reachable over http, the code travels in clear text. Switch to https: [[setup:reach]]' : s.security.https ? 'The address is https: good.' : 'I only listen on this machine: nothing is exposed.',
         s.security.safe ? 'Your agents ask for permission before acting.' : 'Your agents run without asking for permission: fast, and one more reason to keep the code to yourself.',
         'To change the code and sign every device out, just ask me.',

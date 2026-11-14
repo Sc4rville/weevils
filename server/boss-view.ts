@@ -14,6 +14,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { parseSigned } from './authors.ts'
+import { originOf, readOrigins, type BossOrigin } from './boss-origins.ts'
 import { withoutContext } from './setup.ts'
 
 export type EntryRole = 'user' | 'assistant' | 'agent' | 'event'
@@ -24,6 +25,8 @@ export interface Entry {
   text: string
   /** agent: the declared source ([from:x]). */
   author?: string
+  /** user: where the message came from (server/boss-origins.ts), when weevilsd sent it. Audit only. */
+  origin?: BossOrigin
 }
 
 /** Rough token count of a text (mixed French and English prose, ids, code). */
@@ -81,6 +84,7 @@ export class BossJournal {
   private readonly journalFile: string
   private readonly offsetsFile: string
   private loaded = false
+  private usedOrigins = new Set<string>()
 
   /** ~/.claude/projects/<slug of the orchestrator's folder> */
   readonly transcriptsDir: string
@@ -147,6 +151,13 @@ export class BossJournal {
     }
     if (fresh.length) {
       fresh.sort((a, b) => a.at - b.at)
+      if (fresh.some((e) => e.role === 'user')) {
+        const records = readOrigins(this.dataDir)
+        for (const e of fresh) {
+          const origin = e.role === 'user' && records.length ? originOf(records, e.text, e.at, this.usedOrigins) : undefined
+          if (origin) e.origin = origin
+        }
+      }
       fs.mkdirSync(this.dataDir, { recursive: true })
       fs.appendFileSync(this.journalFile, fresh.map((e) => JSON.stringify(e)).join('\n') + '\n')
       this.list.push(...fresh)

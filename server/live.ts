@@ -91,6 +91,8 @@ const tools = [
 export class LiveSession {
   private up: WebSocket | null = null
   private ready = false
+  /** The phone heard « ready » once: a renewed Gemini connection must not open its microphone a second time. */
+  private greeted = false
   private handle = ''
   private resuming = false
   private closed = false
@@ -141,6 +143,8 @@ export class LiveSession {
     const up = new WebSocket(this.deps.upstream ?? UPSTREAM, { headers: { 'x-goog-api-key': this.deps.key() } })
     this.up = up
     this.ready = false
+    // A renewed connection starts with no turn of Gemini's in progress (the old one died with its socket).
+    this.modelBusy = false
     up.on('open', () => {
       const recent = this.deps
         .recent()
@@ -212,6 +216,8 @@ export class LiveSession {
     }
     if (m.setupComplete) {
       this.ready = true
+      if (this.greeted) return
+      this.greeted = true
       return this.send({ t: 'ready', model: liveModel() })
     }
     if (m.usageMetadata) {

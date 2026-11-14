@@ -8,11 +8,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message, Optimizer, Session, Snapshot } from '../shared/api.ts'
+import type { ForYouItem } from '../shared/foryou.ts'
 import type { UsageInfo } from '../shared/infra.ts'
 import { haiku, smart } from './fast.ts'
 import {
   BACKOFF_MAX_MS, BACKOFF_MS, Curator, DAILY_CAP, DIGEST_EVERY_MS, IMPROVE_EVERY_MS, INSIGHT_EVERY_MS, MAIL_BATCH, MAIL_EVERY_MS, STAT_EVERY_MS,
   dayKey, fit, isoWeek, manifestDeps, parseDigest, parseImprove, parseInsight, parseLines, repoFacts, usagePatterns, type CuratorDeps, type RepoFacts,
+  withEvidence,
 } from './foryou-curator.ts'
 import { ForYou, WANTED_MS } from './foryou.ts'
 import P from './i18n/foryou-curator.ts'
@@ -995,5 +997,17 @@ describe('translation failure isolation',()=>{
     const c=makeCurator();expect(c.calls(now)).toBe(17);expect(state().relay.n).toBe(23);expect(state().failUntil).toBe(0)
     fs.writeFileSync(path.join(dir,'curator.json'),JSON.stringify({...state(),failure:{at:now,message:'model quota failure'},fails:2,failUntil:now+600000}))
     makeCurator();expect(state().failUntil).toBe(now+600000)
+  })
+})
+
+describe('evidence in model inputs', () => {
+  it('a result reaches the model with its evidence tag and every limit first, never cut by the length cap', () => {
+    const item = { id: 'v:1', kind: 'media', tone: 'result', at: 0, who: 'session', title: 'Live voice mode: interrupt anytime', text: '', evidence: { level: 'demonstrated', where: 'emulated iPhone', limits: ['Interruption not tested on a real iPhone'] } } as ForYouItem
+    const line = withEvidence(item, 'weevils · Live voice mode: interrupt anytime · ' + 'x'.repeat(500), 200)
+    expect(line.startsWith('[evidence=demonstrated · where=emulated iPhone · limit=Interruption not tested on a real iPhone] weevils')).toBe(true)
+    expect(line.length).toBeLessThanOrEqual(200)
+    expect(withEvidence({ ...item, evidence: undefined }, 'plain', 200)).toBe('plain')
+    expect(P.en.editorial).toContain('[evidence=…]')
+    expect(P.fr.editorial).toContain('[evidence=…]')
   })
 })

@@ -96,3 +96,26 @@ export function brief(text: string, max = 110): string | null {
   const cut = sentence.length > max ? `${sentence.slice(0, max - 1).replace(/\s+\S*$/, '')}…` : sentence
   return cut.length < flat.length ? cut : null
 }
+
+/** Words of the "doing right now" text that would expose a path or a command: those never reach the header. */
+const TECHNICAL = /[\/\\`$~|]|&&|(^|\s)--?\w|\b(npm|npx|pnpm|git|cd|sudo|bash|grep|node)\s/i
+
+export type Live = { text: string; state: 'working' | 'waiting' | 'calm' }
+/** The mini-macro: one short live phrase (6 words max) for the session header. `w` = plain-steps messages, `h` = header messages. */
+export function liveNote(
+  s: { status: string; now?: string; turnWorking?: boolean; background?: number },
+  last: Message | undefined,
+  w: Words,
+  h: { waiting: string; stopped: string; done: string; idle: string },
+): Live {
+  if (s.status === 'needs_user') return { text: h.waiting, state: 'waiting' }
+  if (s.status === 'interrupted') return { text: h.stopped, state: 'calm' }
+  if (s.status !== 'working') return { text: s.status === 'idle' ? h.idle : h.done, state: 'calm' }
+  const now = (s.now ?? '').replace(/\s+/g, ' ').trim()
+  if (now && !TECHNICAL.test(now)) {
+    const words = now.split(' ')
+    return { text: words.length > 6 ? `${words.slice(0, 6).join(' ').replace(/[,;:·–-]+$/, '')}…` : now, state: 'working' }
+  }
+  if (last?.role === 'event') return { text: clusterLine({ kind: kindOf(last), steps: [last] }, w).replace(/ ·.*$/, ''), state: 'working' }
+  return { text: String(w.other), state: 'working' }
+}

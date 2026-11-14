@@ -37,6 +37,7 @@ import { startMailBridge } from './mailbridge.ts'
 import { resetAuthors, threadAuthor } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
+import { startDiskUsage } from './disk-usage.ts'
 import { claudeQuota, quotas, rate as tokenRate, today as usageToday } from './usage.ts'
 import { Relay, defaultDeps } from './relay.ts'
 import { ProviderHealth } from './provider-health.ts'
@@ -48,8 +49,10 @@ import { TourKeeper } from './tour.ts'
 import { DEMOS, isTourId } from '../shared/tour.ts'
 import { isBrick, isSecretName, isSetupKey, type Device } from '../shared/setup.ts'
 import { Memory, memoryRoutes } from './memory.ts'
+import { ledgerRoutes } from './boss-ledger-http.ts'
 import { Flyers, weevilRoutes } from './weevil.ts'
 import { Optimizers, optimizerRoutes } from './optimizers.ts'
+import { Sleep } from './sleep.ts'
 import { ForYou, foryouRoutes, type MachineState } from './foryou.ts'
 import { serveAttachment } from './attachments.ts'
 import { MediaShelf } from './foryou-media.ts'
@@ -62,6 +65,7 @@ const w = new Weevils()
 const sourceAuthor = (id: string) => threadAuthor(id, source => w.store.get(source), w.bossConversation(), ORCH_DIR)
 w.start()
 startInfra()
+startDiskUsage()
 // Pont e-mail (agents externes) : sur la machine de l'orchestrateur, seulement si WEEVILS_MAIL_ADDRESS / _PASSWORD sont remplis.
 let mailBridge = ORCHESTRATOR ? startMailBridge(w, DATA_DIR) : null
 const restartMail = () => {
@@ -220,6 +224,20 @@ const foryou = ORCHESTRATOR
     })
   : null
 w.foryou = foryou
+// ---------------------------------------------------------------- mode sommeil (server/sleep.ts, machine principale)
+const sleep = new Sleep(path.join(DATA_DIR, 'sleep.json'))
+if (ORCHESTRATOR) {
+  w.sleep = sleep
+  optimizers.sleep = sleep
+  // Asleep: only real blockers reach the phone.
+  w.push.asleep = () => sleep.on
+  sleep.onChange((on, night, now) => {
+    // Stops the runs that end on wake before the recap reads them.
+    optimizers.sleepChanged(on, now)
+    if (!on && night) foryou?.addRecap(night, optimizers.recapAutos())
+    w.bump()
+  })
+}
 // Ce qui est écrit ou compté dans le flux (point de weevboss, idées, « tu savais que », jalons, barres du jour) : une
 // seule boucle, sur son propre minuteur, jamais sur le chemin d'une requête (server/foryou-curator.ts).
 if (foryou) {
@@ -460,6 +478,14 @@ const routes: [string, RegExp, Handler][] = [
     writeConfig({ WEEVILS_AUTO_UPDATE: b?.on === false ? '0' : '1' })
     w.bump()
     json(res, 200, { on: process.env.WEEVILS_AUTO_UPDATE !== '0' })
+  }],
+  // Sleep mode: { on, since, last } ; POST { on: boolean }.
+  ['GET', /^\/api\/sleep$/, (_req, res) => (w.sleep ? json(res, 200, w.sleep.state()) : json(res, 404, { error: 'sleep_unavailable' }))],
+  ['POST', /^\/api\/sleep$/, async (req, res) => {
+    const b = await readBody(req).catch(() => ({}))
+    if (typeof b?.on !== 'boolean') return json(res, 400, { error: 'sleep_on_boolean' })
+    if (!w.sleep) return json(res, 404, { error: 'sleep_unavailable' })
+    json(res, 200, w.sleep.set(b.on))
   }],
   ['GET', /^\/api\/snapshot$/, (_req, res) => json(res, 200, w.snapshot())],
   ['GET', /^\/api\/events$/, (_req, res) => {
@@ -838,6 +864,8 @@ const routes: [string, RegExp, Handler][] = [
   ...hintRoutes(hints, json, readBody),
   // La mémoire vit sur la machine principale seulement (404 ailleurs, comme weevils memory le dit).
   ...(ORCHESTRATOR ? memoryRoutes(memory, json, readBody) : []),
+  // weevboss's requests, goals, work trace and knowledge (server/boss-ledger.ts), main machine only.
+  ...(w.ledger ? ledgerRoutes(w.ledger, json, readBody, isLocal) : []),
   ...weevilRoutes(flyers, json, readBody),
   // The automation page reads the timers and jobs here too (GET /api/auto/timer:…, job:…).
   ...optimizerRoutes(optimizers, json, readBody, { detail: (id) => w.h24Detail(id), run: (id, at) => w.h24Run(id, at) }),

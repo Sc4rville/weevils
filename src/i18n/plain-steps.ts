@@ -12,6 +12,7 @@ export default defineMessages({
     message: 'Coordonne le travail', other: 'Travaille dessus',
     code: (n: string) => `le code « ${n} »`, doc: (n: string) => `la doc « ${n} »`, settings: (n: string) => `les réglages « ${n} »`,
     count: (n: number) => ` · ${n}`, more: ' …',
+    liveWaiting: 't’attend', liveStopped: 'interrompue', liveDone: 'terminée', liveIdle: 'au repos', liveLabel: (t: string) => `En ce moment : ${t}`,
     rawTitle: 'Action enregistrée', unverified: 'Aucun résultat enregistré : rien n’est affirmé sur son issue.',
   },
   en: {
@@ -25,6 +26,7 @@ export default defineMessages({
     message: 'Coordinates the work', other: 'Works on it',
     code: (n: string) => `the ${n} code`, doc: (n: string) => `the ${n} notes`, settings: (n: string) => `the ${n} settings`,
     count: (n: number) => ` · ${n}`, more: ' …',
+    liveWaiting: 'waiting for you', liveStopped: 'stopped', liveDone: 'done', liveIdle: 'idle', liveLabel: (t: string) => `Right now: ${t}`,
     rawTitle: 'Recorded action', unverified: 'No result recorded: nothing is claimed about how it went.',
   },
 })

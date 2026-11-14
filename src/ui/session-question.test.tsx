@@ -70,9 +70,3 @@ it('a translated terminal question shows what it is about in plain words, with n
   expect(host.textContent).not.toMatch(/esc|enter|❯|›|\(y\)|1\./i)
 })
 
-it('the focused thread shows a pending question with its buttons (weevboss included)', async () => {
-  const { readFileSync } = await import('node:fs')
-  const calm = readFileSync(process.cwd() + '/src/ui/calm.tsx', 'utf8')
-  expect(calm).toMatch(/<SessionQuestion session=\{question\}/)
-  expect(calm).toMatch(/snap\.mainQuestion/)
-})

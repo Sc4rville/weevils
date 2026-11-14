@@ -15,6 +15,7 @@ const fixtures = vi.hoisted(() => ({
 vi.mock('../api', () => ({
   ApiError: class extends Error {},
   api: {
+    autoTrigger: async (id: string, t: unknown) => { calls.push(`trigger ${id} ${JSON.stringify(t)}`); return { item: {} } },
     deleteAutomation: async (id: string) => { calls.push(`delete ${id}`); if(fixtures.deleteFail) throw new Error('offline'); return {ok:true,running:false} },
     auto: async (id: string) => {
       fixtures.reads++
@@ -245,6 +246,19 @@ describe('automation page', () => {
     expect(host.querySelector('.auto-flow .auto-rail.run')).not.toBeNull()
   })
 
+  it('the « when I sleep » trigger: one tap, no model; stop on wake once it is on; said in the « when » fact', async () => {
+    render(snap([daily]), <AutoPage id="d" />)
+    await flush()
+    const row = () => [...host.querySelectorAll<HTMLButtonElement>('.auto-sleep .row')]
+    expect(row().map((b) => b.querySelector('.ellipsis')!.textContent)).toEqual(['Run when I sleep · off'])
+    await act(async () => row()[0].click())
+    expect(calls).toContain('trigger d {"onSleep":true}')
+    render(snap([{ ...daily, every: undefined, window: undefined, onSleep: true, stopOnWake: true, waiting: 'sleep' }]), <AutoPage id="d" />)
+    await flush()
+    expect(row().map((b) => b.querySelector('.ellipsis')!.textContent)).toEqual(['Run when I sleep · on', 'Stop when I wake up · on'])
+    expect(kpis()).toMatchObject({ when: 'when I sleep, until I wake up', next: 'waits for your sleep' })
+  })
+
   it('outputs, newest first, the newest unfolded: its report, files, links, screenshots', async () => {
     fixtures.detail.set('d', { id: 'd', runs: [...runs].reverse(), machine: 'srv' })
     fixtures.runs.set(`d@${runs[2].at}`, {
@@ -259,7 +273,7 @@ describe('automation page', () => {
     await flush()
     const lines = [...host.querySelectorAll('.page-body .row .stack-text > .ellipsis:first-child')].map((n) => n.textContent)
     // The changed files wait behind one line: a path is not the first thing to read.
-    expect(lines).toEqual(['Fourteen sessions, two to read', 'everything it wrote', '1 file changed', 'example.com/pr/1', 'run 2', 'run 3'])
+    expect(lines).toEqual(['Run when I sleep · off', 'Fourteen sessions, two to read', 'everything it wrote', '1 file changed', 'example.com/pr/1', 'run 2', 'run 3'])
     expect(host.textContent).not.toContain('notes/a.md')
     await click([...host.querySelectorAll('.page-body .row')].find((r) => r.textContent?.includes('1 file changed')))
     expect(host.querySelector('.auto-report')!.textContent).toBe('Yesterday was calm.')

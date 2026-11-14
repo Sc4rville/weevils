@@ -1,7 +1,7 @@
 import { noticeKey } from '../../shared/notices.ts'
 import { Notice } from './notice'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { FsListing, InfraDetail, InfraPoint, Level, QuotaInfo, QuotaWindow, UsageInfo, UsageToday } from '../../shared/infra.ts'
+import type { DiskView, FsListing, InfraDetail, InfraPoint, Level, QuotaInfo, QuotaWindow, UsageInfo, UsageToday } from '../../shared/infra.ts'
 import { api, type FileContent } from '../api'
 import { intlLocale, useT } from '../i18n'
 import M from '../i18n/infra'
@@ -108,6 +108,89 @@ function Kv({ k, v, onClick }: { k: string; v: ReactNode; onClick?: () => void }
 
 const money = (n: number, cur: string | null) => `${Math.round(n * 100) / 100} ${cur ?? ''}`.trim()
 const dayName = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(intlLocale(), { weekday: 'short' })
+
+// ---------------------------------------------------------------- où va le disque (mesures en lecture seule, toutes les 6 h)
+
+/** « 14:30 », ou « mar. 14:30 » au-delà de 20 h d'écart. */
+function stamp(t: number, now: number) {
+  const d = new Date(t)
+  const time = d.toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit' })
+  return Math.abs(now - t) > 20 * 3600_000 ? `${d.toLocaleDateString(intlLocale(), { weekday: 'short' })} ${time}` : time
+}
+
+const SHOWN = 8
+
+export function DiskSpace({ v, open }: { v: DiskView; open: (path: string) => void }) {
+  const t = useT(M)
+  const now = Date.now()
+  const next = v.next ? stamp(v.next, now) : ''
+  const share = (b: number) => (v.used ? Math.round((b / v.used) * 100) : 0)
+  const shown = v.folders.slice(0, SHOWN)
+  const smaller = v.folders.slice(SHOWN)
+  const name = (f: DiskView['folders'][number]) =>
+    f.kind === 'rest' ? t.diskRest(f.inside.length > 0) : f.kind === 'swap' ? t.diskSwap : f.kind === 'system' ? t.diskSystem(f.name) : f.name
+  const inside = (f: DiskView['folders'][number]) =>
+    f.kind === 'rest'
+      ? f.inside.length
+        ? t.diskDockerSays(f.inside.filter((i) => i.bytes >= 100 * 1024 ** 2).map((i) => `${t.diskDocker(i.name)} ${t.size(i.bytes)}${(i.reclaimable ?? 0) >= 1024 ** 3 ? ` (${t.diskFreeable(t.size(i.reclaimable!))})` : ''}`).join(' · '))
+        : ''
+      : f.inside.map((i) => `${i.name} ${t.size(i.bytes)}`).join(' · ')
+  const where = (g: { name: string; parent?: string; kind?: string; loose?: boolean }) =>
+    g.kind === 'rest' ? t.diskRest(v.folders.some((f) => f.kind === 'rest' && f.inside.length > 0)) : g.kind === 'swap' ? t.diskSwap : g.kind === 'system' ? t.diskSystem(g.name) : g.kind === 'loose' || g.loose ? t.diskLoose(g.name) : g.name
+  return (
+    <div className="disk-space">
+      <div className="in label">{t.diskWhere}</div>
+      {!v.at && <div className="in meta disk-note">{v.measuring ? t.diskMeasuring : t.diskFirst(next)}</div>}
+      {shown.map((f) => {
+        const body = (
+          <>
+            <div className="stat-h">
+              <span className="strong ellipsis">{name(f)}</span>
+              <span className="meta">{t.size(f.bytes)}</span>
+            </div>
+            <Gauge pct={share(f.bytes)} level="ok" />
+            {inside(f) && <div className="meta disk-inside">{inside(f)}</div>}
+          </>
+        )
+        return f.path ? (
+          <button key={`${f.kind}:${f.name}`} className="in stat share disk-row" onClick={() => open(f.path!)}>
+            {body}
+          </button>
+        ) : (
+          <div key={`${f.kind}:${f.name}`} className="in stat share disk-row">
+            {body}
+          </div>
+        )
+      })}
+      {smaller.length > 0 && <div className="in meta disk-note">{t.diskSmaller(smaller.length, t.size(smaller.reduce((a, f) => a + f.bytes, 0)))}</div>}
+      {v.at && <div className="in meta disk-note">{v.measuring ? t.diskMeasuring : t.diskMeasured(stamp(v.at, now), next)}</div>}
+
+      {v.at && <div className="in label">{t.diskGrowing}</div>}
+      {v.at && !v.growth && <div className="in disk-later">{t.diskGrowthLater(next)}</div>}
+      {v.growth && v.growth.items.length === 0 && <div className="in disk-later">{t.diskStable(stamp(v.growth.since, now))}</div>}
+      {v.growth?.items.map((g) => (
+        <Kv
+          key={`${g.kind}:${g.parent ?? ''}:${g.name}`}
+          k={[where(g), g.parent ? t.diskIn(g.parent) : ''].filter(Boolean).join(' · ')}
+          v={t.diskPerDay(t.size(g.perDay))}
+          onClick={g.path ? () => open(g.path!) : undefined}
+        />
+      ))}
+      {v.growth && Math.abs(v.growth.perDay) >= 50 * 1024 ** 2 && (
+        <div className="in meta disk-note">{t.diskWhole(v.growth.perDay > 0 ? t.diskPerDay(t.size(v.growth.perDay)) : `−${t.size(-v.growth.perDay)}`, stamp(v.growth.since, now))}</div>
+      )}
+      {!v.growth && v.recent.length > 0 && (
+        <>
+          <div className="in label">{t.diskRecent}</div>
+          <div className="in meta disk-note">{t.diskRecentMeta}</div>
+          {v.recent.map((r) => (
+            <Kv key={`${r.parent ?? ''}/${r.name}`} k={[where(r), r.parent ? t.diskIn(r.parent) : ''].filter(Boolean).join(' · ')} v={t.size(r.bytes)} onClick={r.path ? () => open(r.path!) : undefined} />
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
 
 export function InfraPage({ machine, projectId }: { machine?: string; projectId?: string }) {
   const { snap, push } = useApp()
@@ -234,6 +317,8 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
                 {a}
               </div>
             ))}
+
+            {x.diskView && !stale && <DiskSpace v={x.diskView} open={(p) => push({ kind: 'fs', machine: id, path: p })} />}
           </div>
         )}
 

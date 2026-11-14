@@ -12,6 +12,13 @@
 #   weevils memory [add "souvenir" | rm <id>]   (ce que weevils retient de l'utilisateur, ~/.config/weevils/memory.json)
 #   weevils post "texte" [--action "libellé::quoi faire"]…   un mot dans « pour toi », avec des boutons si besoin
 #   weevils show <fichier> ["légende"]                       une image ou une vidéo dans « pour toi »
+#     post et show, quand ils rapportent un résultat : --demonstrated "où ça a tourné" · --verified "environnement vérifié"
+#     · --limit "ce qui n'a pas été vérifié" (répétable). Sans rien : « codé » au plus, quoi que dise le texte.
+#   weevils asks [open|all|stale|done]   le registre des demandes de weevboss (server/boss-ledger.ts)
+#   weevils ask done|drop|open <id> ["note"] · ask add "demande" [--goal <id>] · ask link <id> <session> ["retour attendu"] · ask goal <id> <objectif>
+#   weevils goals [all] · goal add <id> "titre" ["pourquoi"] · goal note <id> "avancée" · goal done|pause|open <id>
+#   weevils trace [<objectif>] [n] · trace add "décision" [--goal <id>]   le journal de travail
+#   weevils mem [search <mots> | add [rule|decision|fact] "texte" | rm <id>]   la mémoire interne (décisions, règles, faits)
 set -euo pipefail
 base="http://127.0.0.1:${WEEVILS_PORT:-4179}"
 from=${WEEVILS_FROM:-weevils}
@@ -41,6 +48,12 @@ weevils setup [install | ask <brique> | mark <id>]   weevils config set <CLÉ> <
 weevils tour open|close
 weevils memory [add "souvenir" | rm <id>]
 weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichier> ["légende"]' # i18n-ignore
+  usage+=$'\n''weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]'
+  usage+=$'\n''weevils ask add "demande" [--goal <id>]   weevils ask link <id> <session> ["retour attendu"]   weevils ask goal <id> <objectif>' # i18n-ignore
+  usage+=$'\n''weevils goals [all]   weevils goal add <id> "titre" ["pourquoi"]   weevils goal note <id> "avancée"   weevils goal done|pause|open <id>' # i18n-ignore
+  usage+=$'\n''weevils trace [<objectif>] [n]   weevils trace add "décision" [--goal <id>]' # i18n-ignore
+  usage+=$'\n''weevils mem   weevils mem search <mots>   weevils mem add [rule|decision|fact] "texte"   weevils mem rm <id>' # i18n-ignore
+  usage+=$'\n''  preuve d’un résultat (post, show) : --demonstrated "où" --verified "environnement" --limit "non vérifié"…' # i18n-ignore
   a_id='id de session' a_msg='message' a_project='projet' a_first='premier message' # i18n-ignore
   export WVM_NOT_FOUND='session introuvable : ' WVM_AMBIGUOUS='plusieurs sessions commencent par {} : {}' # i18n-ignore
   export WVM_NO_SESSIONS='aucune session ouverte' WVM_NO_MESSAGES='(aucun message)' WVM_USER='utilisateur' # i18n-ignore
@@ -54,6 +67,13 @@ weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichie
   m_post_empty='rien à poster : weevils post "texte" [--action "libellé::quoi faire"]' m_posted='posté dans « pour toi »' # i18n-ignore
   m_action_bad='une action s’écrit "libellé::quoi faire"' # i18n-ignore
   m_show_no_file='quel fichier ? weevils show <fichier> ["légende"]' m_shown='affiché dans « pour toi »' # i18n-ignore
+  export WVM_NO_ASKS='(aucune demande)' WVM_STALE='EN PANNE' WVM_PENDING='message(s) pas encore découpé(s) en demandes' WVM_REPORT='retour' WVM_EXPECT='attendu' # i18n-ignore
+  export WVM_NO_GOALS='(aucun objectif)' WVM_DONE_OF='faites' WVM_NO_TRACE='(journal vide)' WVM_NO_MEM='(rien en mémoire interne)' WVM_DIGEST='tokens par tour' # i18n-ignore
+  export WVM_KNOW='mémoire' WVM_ASKS='demandes' WVM_LOG='journal' WVM_NOTHING='rien trouvé' WVM_OK='ok' # i18n-ignore
+  m_ask_usage='weevils ask done|drop|open <id> ["note"] · ask add "demande" · ask link <id> <session> · ask goal <id> <objectif>' # i18n-ignore
+  m_goal_usage='weevils goal add <id> "titre" ["pourquoi"] · goal note <id> "avancée" · goal done|pause|open <id>' # i18n-ignore
+  m_mem_usage='weevils mem search <mots> · mem add [rule|decision|fact] "texte" · mem rm <id>' # i18n-ignore
+  m_evidence_bad='--demonstrated, --verified et --limit attendent un texte : où, dans quel environnement, ce qui manque' # i18n-ignore
 else
   usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
 weevils resume <id>                  weevils new <project> "message" [codex]  weevils projects
@@ -61,7 +81,13 @@ weevils recall <id>                  weevils boss
 weevils setup [install | ask <brick> | mark <id>]   weevils config set <KEY> <value>
 weevils tour open|close
 weevils memory [add "memory" | rm <id>]
-weevils post "text" [--action "label::what to do"]…      weevils show <file> ["caption"]'
+weevils post "text" [--action "label::what to do"]…      weevils show <file> ["caption"]
+weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]
+weevils ask add "request" [--goal <id>]   weevils ask link <id> <session> ["expected report"]   weevils ask goal <id> <goal>
+weevils goals [all]   weevils goal add <id> "title" ["why"]   weevils goal note <id> "progress"   weevils goal done|pause|open <id>
+weevils trace [<goal>] [n]   weevils trace add "decision" [--goal <id>]
+weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] "text"   weevils mem rm <id>'
+  usage+=$'\n''  evidence of a result (post, show): --demonstrated "where" --verified "environment" --limit "not checked"…'
   a_id='session id' a_msg='message' a_project='project' a_first='first message'
   export WVM_NOT_FOUND='no such session: ' WVM_AMBIGUOUS='several sessions start with {}: {}'
   export WVM_NO_SESSIONS='no open sessions' WVM_NO_MESSAGES='(no messages)' WVM_USER='user'
@@ -75,9 +101,17 @@ weevils post "text" [--action "label::what to do"]…      weevils show <file> [
   m_post_empty='nothing to post: weevils post "text" [--action "label::what to do"]' m_posted='posted in "for you"'
   m_action_bad='an action is written "label::what to do"'
   m_show_no_file='which file? weevils show <file> ["caption"]' m_shown='shown in "for you"'
+  export WVM_NO_ASKS='(no requests)' WVM_STALE='STALE' WVM_PENDING='message(s) not split into requests yet' WVM_REPORT='report' WVM_EXPECT='expects'
+  export WVM_NO_GOALS='(no goals)' WVM_DONE_OF='done' WVM_NO_TRACE='(empty trace)' WVM_NO_MEM='(nothing in the internal memory)' WVM_DIGEST='tokens per turn'
+  export WVM_KNOW='memory' WVM_ASKS='requests' WVM_LOG='log' WVM_NOTHING='nothing found' WVM_OK='ok'
+  m_ask_usage='weevils ask done|drop|open <id> ["note"] · ask add "request" · ask link <id> <session> · ask goal <id> <goal>'
+  m_goal_usage='weevils goal add <id> "title" ["why"] · goal note <id> "progress" · goal done|pause|open <id>'
+  m_mem_usage='weevils mem search <words> · mem add [rule|decision|fact] "text" · mem rm <id>'
+  m_evidence_bad='--demonstrated, --verified and --limit take a text: where, which environment, what is missing'
 fi
 
-json() { local code=$1; shift; "$py" -c "import json,sys,os; E=os.environ; d=json.load(sys.stdin); $code" "$@"; }
+# An empty input (the request before it failed and said why on stderr) ends quietly with an error.
+json() { local code=$1; shift; "$py" -c "import json,sys,os; E=os.environ; raw=sys.stdin.read(); raw.strip() or sys.exit(1); d=json.loads(raw); $code" "$@"; }
 
 resolve() {
   # Id complet à partir d'un préfixe (8 caractères suffisent).
@@ -102,7 +136,164 @@ for_you() {
   exit 1
 }
 
+# The request ledger (server/boss-ledger-http.ts): GET or POST a JSON body; prints the body, or the reason on stderr.
+ledger() {
+  local method=$1 url=$2 body=${3-} out code
+  if [ "$method" = GET ]; then out=$(curl -s -m 30 -w '\n%{http_code}' "$base$url") || true
+  else out=$(printf '%s' "$body" | curl -s -m 600 -X "$method" -w '\n%{http_code}' -H 'content-type: application/json' --data-binary @- "$base$url") || true; fi
+  code=${out##*$'\n'} body=${out%$'\n'*}
+  [ "$code" = 200 ] && { printf '%s' "$body"; return 0; }
+  printf '%s' "$body" | json "print(d.get('error') or '')" 2>/dev/null | grep . >&2 || echo "$WVM_ERROR $code" >&2
+  exit 1
+}
+q() { "$py" -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=""))' "$1"; }
+# Shared by asks/ask: one request on two lines (id, where it is, goal, age; then the text, the exact words, the report).
+ASK_FMT='
+import time
+def age(ms):
+    s=ms/1000
+    return "%dd" % (s//86400) if s>=86400 else "%dh" % (s//3600) if s>=3600 else "%dm" % max(1,s//60)
+def show(a):
+    d=(a.get("dispatches") or [])[-1:]
+    where=a["status"]
+    if d:
+        where=("→ " if where=="dispatched" else where+" → ")+d[0]["session"][:8]+(" "+d[0]["label"] if d[0].get("label") else "")
+    tags=[where]+([a["goal"]] if a.get("goal") else [])+[age(time.time()*1000-a["at"])]+([E["WVM_STALE"]] if a.get("stale") else [])
+    print(a["id"]+"  ["+" · ".join(tags)+"] "+a["text"])
+    extra="  “"+a["quote"][:220]+"”"
+    if a.get("note"): extra+=" · "+E["WVM_REPORT"]+": "+a["note"][:200]
+    elif d and d[0].get("expect"): extra+=" · "+E["WVM_EXPECT"]+": "+d[0]["expect"][:160]
+    print("      "+extra)
+'
+# The evidence supplied with a result (shared/evidence.ts): these flags only, never guessed from the words.
+ev_demo='' ev_ver='' ev_limits=()
+evidence_flag() {
+  [ -n "${2//[[:space:]]/}" ] || { echo "$m_evidence_bad" >&2; exit 1; }
+  case "$1" in
+    --demonstrated) ev_demo=$2 ;;
+    --verified) ev_ver=$2 ;;
+    --limit) ev_limits+=("$2") ;;
+  esac
+}
+evidence_json() {
+  "$py" -c 'import json,sys
+d,v,l=sys.argv[1],sys.argv[2],sys.argv[3:]
+e={k:x for k,x in (("demonstrated",d),("verified",v),("limits",l)) if x}
+print(json.dumps(e) if e else "null")' "$ev_demo" "$ev_ver" ${ev_limits[@]+"${ev_limits[@]}"}
+}
+
 case "${1:-}" in
+  asks)
+    filter=${2:-open}
+    ledger GET "/api/boss/asks?filter=$(q "$filter")" | json "$ASK_FMT
+asks=d.get('asks') or []
+if not asks: print(E['WVM_NO_ASKS'])
+for a in asks: show(a)
+if d.get('pending'): print(f\"({d['pending']} {E['WVM_PENDING']})\")
+" ;;
+  ask)
+    verb=${2:-}
+    case "$verb" in
+      done|drop|open)
+        id=${3:?$m_ask_usage}
+        ledger POST "/api/boss/asks/$(q "$id")" "$("$py" -c 'import json,sys; print(json.dumps({"action":sys.argv[1],"note":sys.argv[2]}))' "$verb" "${4-}")" | json "$ASK_FMT
+show(d['ask'])" ;;
+      add)
+        shift 2; text='' goal=''
+        while [ $# -gt 0 ]; do case "$1" in --goal) goal=${2-}; shift; [ $# -gt 0 ] && shift ;; *) [ -n "$text" ] || text=$1; shift ;; esac; done
+        [ -n "${text//[[:space:]]/}" ] || { echo "$m_ask_usage" >&2; exit 1; }
+        ledger POST /api/boss/asks "$("$py" -c 'import json,sys; print(json.dumps({"text":sys.argv[1],"goal":sys.argv[2]}))' "$text" "$goal")" | json "$ASK_FMT
+show(d['ask'])" ;;
+      link)
+        id=${3:?$m_ask_usage} sid=${4:?$m_ask_usage}
+        ledger POST "/api/boss/asks/$(q "$id")" "$("$py" -c 'import json,sys; print(json.dumps({"action":"link","session":sys.argv[1],"expect":sys.argv[2]}))' "$sid" "${5-}")" | json "$ASK_FMT
+show(d['ask'])" ;;
+      goal)
+        id=${3:?$m_ask_usage} g=${4:?$m_ask_usage}
+        ledger POST "/api/boss/asks/$(q "$id")" "$("$py" -c 'import json,sys; print(json.dumps({"action":"goal","goal":sys.argv[1]}))' "$g")" | json "$ASK_FMT
+show(d['ask'])" ;;
+      *) echo "$m_ask_usage" >&2; exit 1 ;;
+    esac ;;
+  goals)
+    all=''; [ "${2:-}" = all ] && all='?all=1'
+    ledger GET "/api/boss/goals$all" | json "
+gs=d.get('goals') or []
+if not gs: print(E['WVM_NO_GOALS'])
+for g in gs:
+    st='' if g['status']=='active' else f\" ({g['status']})\"
+    stale=f\", {g['stale']} {E['WVM_STALE']}\" if g.get('stale') else ''
+    print(f\"{g['id']}{st}  {g['title']} · {g['done']}/{g['total']} {E['WVM_DONE_OF']}{stale} · {len(g.get('sessions') or [])} sessions\")
+    if g.get('progress'): print('      '+g['progress'])
+" ;;
+  goal)
+    verb=${2:-}
+    case "$verb" in
+      add)
+        id=${3:?$m_goal_usage} title=${4:?$m_goal_usage}
+        ledger POST /api/boss/goals "$("$py" -c 'import json,sys; print(json.dumps({"id":sys.argv[1],"title":sys.argv[2],"why":sys.argv[3]}))' "$id" "$title" "${5-}")" | json "g=d['goal']; print(g['id']+'  '+g['title'])" ;;
+      note)
+        id=${3:?$m_goal_usage} text=${4:?$m_goal_usage}
+        ledger POST "/api/boss/goals/$(q "$id")" "$("$py" -c 'import json,sys; print(json.dumps({"action":"note","text":sys.argv[1]}))' "$text")" | json "g=d['goal']; print(g['id']+'  '+(g.get('progress') or ''))" ;;
+      done|pause|open)
+        id=${3:?$m_goal_usage}
+        ledger POST "/api/boss/goals/$(q "$id")" "$("$py" -c 'import json,sys; print(json.dumps({"action":sys.argv[1]}))' "$verb")" | json "g=d['goal']; print(g['id']+'  '+g['status'])" ;;
+      *) echo "$m_goal_usage" >&2; exit 1 ;;
+    esac ;;
+  trace)
+    if [ "${2:-}" = add ]; then
+      shift 2; text='' goal=''
+      while [ $# -gt 0 ]; do case "$1" in --goal) goal=${2-}; shift; [ $# -gt 0 ] && shift ;; *) [ -n "$text" ] || text=$1; shift ;; esac; done
+      [ -n "${text//[[:space:]]/}" ] || { echo "$usage" >&2; exit 1; }
+      ledger POST /api/boss/trace "$("$py" -c 'import json,sys; print(json.dumps({"text":sys.argv[1],"goal":sys.argv[2]}))' "$text" "$goal")" >/dev/null && echo "$WVM_OK"
+    else
+      goal='' n=30
+      for a in "${@:2}"; do case "$a" in *[!0-9]*) goal=$a ;; ?*) n=$a ;; esac; done
+      ledger GET "/api/boss/trace?n=$n&goal=$(q "$goal")" | json "
+import time
+tr=d.get('trace') or []
+if not tr: print(E['WVM_NO_TRACE'])
+for e in tr:
+    when=time.strftime('%m-%d %H:%M', time.localtime(e['at']/1000))
+    extra=''.join(f' · {k}: {e[k]}' for k in ('why','expect') if e.get(k))
+    who=f\" · {e['who']}\" if e.get('who') and e['kind'] in ('dispatch','report') else ''
+    ids=f\" ({', '.join(e['asks'])})\" if e.get('asks') else ''
+    st=(' '+e['status']) if e.get('status') else ''
+    print(f\"{when} {e['kind']+st:<14} {('['+e['goal']+'] ') if e.get('goal') else ''}{e['text']}{ids}{who}{extra}\")
+"
+    fi ;;
+  mem)
+    case "${2:-}" in
+      ''|list)
+        ledger GET /api/boss/mem | json "
+ks=d.get('knowledge') or []
+if not ks: print(E['WVM_NO_MEM'])
+for k in ks[:40]: print(f\"{k['id']:<5} {k['kind']:<8} {k['text']}\" + (f\"  (recall {k['src'][-1][:8]})\" if k.get('src') else ''))
+" ;;
+      search)
+        shift 2
+        [ $# -gt 0 ] || { echo "$m_mem_usage" >&2; exit 1; }
+        ledger GET "/api/boss/mem?q=$(q "$*")" | json "
+import time
+k=d.get('knowledge') or []; a=d.get('asks') or []; l=d.get('log') or []
+if not (k or a or l): print(E['WVM_NOTHING'])
+if k: print('# '+E['WVM_KNOW'])
+for x in k: print(f\"{x['id']:<5} {x['kind']:<8} {x['text']}\" + (f\"  (recall {x['src'][-1][:8]})\" if x.get('src') else ''))
+if a: print('# '+E['WVM_ASKS'])
+for x in a: print(f\"{x['id']:<5} {x['status']:<10} {x['text']}  “{x['quote'][:120]}”\")
+if l: print('# '+E['WVM_LOG']+' (weevils recall <id>)')
+for x in l: print(f\"{x['id']} {time.strftime('%m-%d %H:%M', time.localtime(x['at']/1000))} {x['role']}: {x['text']}\")
+" ;;
+      add)
+        kind=fact
+        case "${3:-}" in rule|decision|fact) kind=$3; shift ;; esac
+        text=${3-}
+        [ -n "${text//[[:space:]]/}" ] || { echo "$m_mem_usage" >&2; exit 1; }
+        ledger POST /api/boss/mem "$("$py" -c 'import json,sys; print(json.dumps({"kind":sys.argv[1],"text":sys.argv[2]}))' "$kind" "$text")" | json "print(E['WVM_MEM_ADDED']+d['item']['id'])" ;;
+      rm)
+        id=${3:?$m_mem_usage}
+        ledger DELETE "/api/boss/mem/$(q "$id")" '' >/dev/null && echo "$WVM_MEM_REMOVED$id" ;;
+      *) echo "$m_mem_usage" >&2; exit 1 ;;
+    esac ;;
   sessions)
     curl -sf -m 8 "$base/api/snapshot" | json "
 names={p['id']:p['name'] for p in d['projects']}
@@ -247,19 +438,34 @@ else: print(E['WVM_MEM_NOT_FOUND']+want, file=sys.stderr); sys.exit(1)
           # A label, « :: », something to do: anything else is one clean line.
           case "$a" in ?*::?*) ;; *) echo "$m_action_bad" >&2; exit 1 ;; esac
           actions+=("$a"); shift; [ $# -gt 0 ] && shift ;;
+        --demonstrated|--verified|--limit) evidence_flag "$1" "${2-}"; shift; [ $# -gt 0 ] && shift ;;
         *) [ -n "$text" ] || text=$1; shift ;;
       esac
     done
     [ -n "${text//[[:space:]]/}" ] || { echo "$m_post_empty" >&2; exit 1; }
     for_you post "$m_posted" "$("$py" -c 'import json,sys
-acts=[dict(zip(("label","brief"),(p.strip() for p in a.split("::",1)))) for a in sys.argv[3:]]
-print(json.dumps({"text":sys.argv[1],"actions":acts,"from":sys.argv[2]}))' "$text" "$from" ${actions[@]+"${actions[@]}"})" ;;
+acts=[dict(zip(("label","brief"),(p.strip() for p in a.split("::",1)))) for a in sys.argv[4:]]
+d={"text":sys.argv[1],"actions":acts,"from":sys.argv[2]}
+e=json.loads(sys.argv[3])
+if e: d["evidence"]=e
+print(json.dumps(d))' "$text" "$from" "$(evidence_json)" ${actions[@]+"${actions[@]}"})" ;;
   show)
     # An image or a video in the « for you » stream. The server checks the file (place, type, size) and says why not.
-    file=${2-}
+    shift
+    file='' caption='' n=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --demonstrated|--verified|--limit) evidence_flag "$1" "${2-}"; shift; [ $# -gt 0 ] && shift ;;
+        *) n=$((n + 1)); [ $n = 1 ] && file=$1; [ $n = 2 ] && caption=$1; shift ;;
+      esac
+    done
     [ -n "${file//[[:space:]]/}" ] || { echo "$m_show_no_file" >&2; exit 1; }
     case "$file" in /*) ;; "~/"*) file=$HOME/${file#"~/"} ;; *) file=$PWD/$file ;; esac
-    for_you media "$m_shown" "$("$py" -c 'import json,sys; print(json.dumps({"path":sys.argv[1],"caption":sys.argv[2],"cwd":sys.argv[3],"from":sys.argv[4]}))' "$file" "${3-}" "$PWD" "$from")" ;;
+    for_you media "$m_shown" "$("$py" -c 'import json,sys
+d={"path":sys.argv[1],"caption":sys.argv[2],"cwd":sys.argv[3],"from":sys.argv[4]}
+e=json.loads(sys.argv[5])
+if e: d["evidence"]=e
+print(json.dumps(d))' "$file" "$caption" "$PWD" "$from" "$(evidence_json)")" ;;
   *)
     echo "$usage"
     exit 1 ;;

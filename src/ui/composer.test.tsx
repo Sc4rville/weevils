@@ -161,3 +161,24 @@ it('sends the final IME value present in the field, even before React onChange',
   await act(async () => host.querySelector('form')!.requestSubmit())
   expect(send).toHaveBeenCalledWith('final composition')
 })
+
+it('keeps one draft per conversation: switching and reloading never moves text between sessions', () => {
+  sessionStorage.clear()
+  const as = (id: string) => act(() => root.render(<Composer draftKey={`session:${id}`} label="message" placeholder="message" horizontal onSend={send} />))
+  const type = (v: string) => act(() => {
+    const f = host.querySelector('textarea')!
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(f, v)
+    f.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  const shown = () => host.querySelector('textarea')!.value
+  as('A'); type('draft for A')
+  as('B'); expect(shown()).toBe('')
+  type('draft for B')
+  as('A'); expect(shown()).toBe('draft for A')
+  expect(sessionStorage.getItem('weevils-draft:session:A')).toBe('draft for A')
+  expect(sessionStorage.getItem('weevils-draft:session:B')).toBe('draft for B')
+  // reload: fresh mount reads each session's own draft
+  act(() => root.unmount()); root = createRoot(host)
+  as('B'); expect(shown()).toBe('draft for B')
+  as('A'); expect(shown()).toBe('draft for A')
+})

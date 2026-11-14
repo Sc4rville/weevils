@@ -3,6 +3,7 @@
 // Named "for you" everywhere in the code: "feed" already means the home list of project bands.
 
 import type { Tool, WorkstreamIdentity } from './api.ts'
+import type { ForYouEvidence } from './evidence.ts'
 
 /**
  * What an item is. The names are internal (never shown):
@@ -81,7 +82,34 @@ export interface VisualProposal {
   options: { id: string; label: string; description: string; instruction: string; recommended?: boolean }[]
 }
 
+/** One line of the morning recap: something that really happened while the user slept, read from the state, never written by a model. */
+export interface ForYouRecapLine {
+  /** done: an automation run that succeeded, or a session whose last words state a finished outcome · failed: a run that
+   *  failed · working: still at it on wake · waiting: needs the user · stopped: cut off, or stopped on wake · ended: a
+   *  turn ended without stating an outcome (its last words are the detail). */
+  state: 'done' | 'failed' | 'working' | 'waiting' | 'stopped' | 'ended'
+  /** automation: a run of the auto band ; session: a session of a project. */
+  src: 'auto' | 'session'
+  title: string
+  /** The evidence: the run's note or the session's own last words, verbatim and short. */
+  detail?: string
+  projectId?: string
+  open?: ForYouOpen
+  at: number
+}
+
+/** The morning recap card (kind stat): what the ghosts did between from (sleep on) and to (wake). */
+export interface ForYouRecap {
+  from: number
+  to: number
+  lines: ForYouRecapLine[]
+  /** Lines left out past the card's limit. */
+  more: number
+}
+
 export interface ForYouItem {
+  /** Sleep mode's morning recap: its lines, each backed by a run or a session state. */
+  recap?: ForYouRecap
   /** Verified target identity only; never an origin or completion signal. */
   workstream?: WorkstreamIdentity
   /** Current catalogued software result. Private capability URLs never cross this boundary. */
@@ -132,6 +160,9 @@ export interface ForYouItem {
   /** « Learn more » exists: POST /api/foryou/<id>/more answers { text }, kept in moreText. */
   more?: boolean
   moreText?: string
+  /** A result: how far it was seen working, from the evidence supplied with it only (shared/evidence.ts). Its limits
+   *  are shown beside the claim, never folded away. */
+  evidence?: ForYouEvidence
   /** Bars: the item shows figures (a stat, or a result with its progress). */
   gauges?: ForYouGauge[]
   /** The item can be listened to, as a voice message in its speaker's own voice: the voice id for GET /api/speak/stream?text=…&voice=…

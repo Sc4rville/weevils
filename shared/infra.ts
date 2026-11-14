@@ -163,6 +163,61 @@ export interface InfraDetail {
   consumers: Consumer[]
   /** Conseils calculés à partir des mesures, dans la langue de l'utilisateur. */
   advice: string[]
+  /** Where the disk goes (absent: an older weevilsd that does not measure it). */
+  diskView?: DiskView
+}
+
+/**
+ * Where the disk goes: the largest folders and which grow fastest, from read-only measurements (du, file sizes and
+ * dates) taken every 6 h. Growth is only ever computed between real measurements: null until there are enough.
+ */
+export interface DiskView {
+  /** Newest measurement (null: none yet). */
+  at: number | null
+  measuring: boolean
+  /** When the next measurement is planned. */
+  next: number | null
+  samples: number
+  /** Oldest measurement kept. */
+  since: number | null
+  /** Disk used at the newest measurement, bytes. */
+  used: number
+  /** Largest first. `folder`: a folder of the home directory; `system`: a top-level folder of the disk; `swap`: swap
+   *  files; `rest`: what the measurement cannot reach (Docker's data, other users, the system), used minus measured. */
+  folders: DiskFolder[]
+  growth: { since: number; perDay: number; items: DiskGrowth[] } | null
+  /** Size of the files new or changed in the last 7 days, by folder (shown while growth is not known yet). */
+  recent: DiskRecent[]
+}
+
+export interface DiskFolder {
+  name: string
+  kind: 'folder' | 'system' | 'swap' | 'rest'
+  path?: string
+  bytes: number
+  /** The largest folders inside; for `rest`, what Docker reports (images, build cache…). */
+  inside: { name: string; bytes: number; reclaimable?: number }[]
+}
+
+export interface DiskGrowth {
+  name: string
+  /** The home folder it sits in. */
+  parent?: string
+  /** `loose`: files sitting directly in the folder `name`, outside its larger subfolders. */
+  kind: 'folder' | 'loose' | 'system' | 'swap' | 'rest'
+  path?: string
+  /** Bytes per day, and size now. */
+  perDay: number
+  bytes: number
+}
+
+export interface DiskRecent {
+  name: string
+  parent?: string
+  /** Files directly in `name`, outside its larger subfolders. */
+  loose?: boolean
+  path?: string
+  bytes: number
 }
 
 export interface FsEntry {

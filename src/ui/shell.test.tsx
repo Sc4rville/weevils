@@ -37,3 +37,17 @@ it('keeps compact session controls and voice in the header without a dock coveri
   expect(model).toHaveBeenCalledOnce();expect(voice).toHaveBeenCalledOnce()
  }finally{await act(async()=>root.unmount());host.remove()}
 })
+it('session header: the live note sits in the title row (header does not grow), the title stays the title', async () => {
+  const host = document.createElement('div')
+  document.body.append(host)
+  const root = createRoot(host)
+  try {
+    await act(async () => root.render(<Shell slot="agent" kicker="weevils" title="weevils voice mode" sessionLayout scrollHeading liveNote={<span className="session-now" role="status">running the full check</span>}><p>msg</p></Shell>))
+    const row = host.querySelector('.page-head .session-context-row')!
+    expect(row.querySelector('.session-context')!.textContent).toBe('weevils voice mode')
+    expect(row.querySelector('.session-now')!.textContent).toBe('running the full check')
+    expect(host.querySelectorAll('.page-head .session-now')).toHaveLength(1)
+  } finally {
+    await act(async () => root.unmount()); host.remove()
+  }
+})

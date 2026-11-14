@@ -199,3 +199,31 @@ button.kv {
 .usage-line .st { font-size: 1rem; font-weight: 500; }
 .usage-line .meta { font-size: .8125rem; line-height: 1.4; }
 .usage-line .meta .gauge { height: 3px; margin-top: 4px; }
+
+/* Where the disk goes: one quiet ink bar per folder (its share of the disk used), what is inside in small type. */
+.disk-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+.disk-row .stat-h .strong {
+  min-width: 0;
+}
+.disk-row .gauge {
+  margin-top: 6px;
+}
+.disk-inside {
+  margin-top: 4px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.disk-note {
+  padding-block: 6px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.disk-later {
+  padding-block: 8px;
+  line-height: 1.35;
+}

@@ -306,6 +306,7 @@ export function glyphOf(x: Pick<AutoItem, 'state' | 'trigger' | 'lastRun'>): { n
   if (x.state === 'failed' || (x.lastRun && !x.lastRun.ok && x.state !== 'done')) return { name: 'close', alert: true }
   if (x.state === 'done') return { name: 'check' }
   if (x.state === 'waiting' || x.state === 'queued') return { name: 'idle' }
+  if (x.trigger.kind === 'sleep') return { name: 'sleep' }
   if (x.trigger.kind === 'every') return { name: 'cycle' }
   return { name: 'arrow', dir: 'right' }
 }

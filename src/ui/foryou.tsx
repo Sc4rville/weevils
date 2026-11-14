@@ -1,4 +1,7 @@
 import { FeedText, SoftwareResultLink } from './foryou-links'
+import { EvidenceLine } from './foryou-evidence'
+import { shownEvidence } from '../../shared/evidence'
+import EM from '../i18n/foryou-evidence'
 import { ResultCard } from './foryou-result'
 import { TranslationStatus } from './foryou-localization'
 import { InlineMediaFormats, ProposalView } from './foryou-formats'
@@ -12,7 +15,10 @@ import { Notice, NoticeClose, useNotice } from './notice'
 // (project, author, weevboss, or the colour of what it says: done, asks, cut), one renderer per kind (docs/foryou.md §2.1).
 import { AnimatePresence, motion, useIsPresent, useReducedMotion, type PanInfo, type Variants } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react'
-import type { ForYouCard, ForYouGauge, ForYouItem, ForYouMedia, ForYouPulse } from '../../shared/foryou.ts'
+import type { ForYouCard, ForYouGauge, ForYouItem, ForYouMedia, ForYouPulse, ForYouRecapLine } from '../../shared/foryou.ts'
+import SM from '../i18n/sleep'
+import { at } from './auto-model'
+import './night.css'
 import { useApp } from './app-context'
 import { selfRepo } from './recursive-identity'
 import { Collapse, spring, useAuthors } from './bits'
@@ -429,6 +435,7 @@ function MediaItem({ item, who, fy }: KindProps) {
           </Who>
           {item.title && <div className="fy-title">{item.title}</div>}
           {item.text && item.text !== item.title && <div className="fy-text"><FeedText text={item.text} item={item} /></div>}
+          <EvidenceLine item={item} />
           <SoftwareResultLink item={item} />
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
         </div>
@@ -465,6 +472,7 @@ function BossItem({ item, who, fy }: KindProps) {
             <div className="fy-text"><FeedText text={item.text} item={item} /></div>
           </details>
         ) : <div className="fy-text"><FeedText text={item.text} item={item} /></div>}
+        <EvidenceLine item={item} />
         <SoftwareResultLink item={item} />
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
@@ -634,6 +642,7 @@ function SessionItem({ item, who, project, fy }: KindProps) {
         ) : (
           <div className="fy-line"><FeedText text={item.text} item={item} /></div>
         )}
+        <EvidenceLine item={item} />
         <SoftwareResultLink item={item} />
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
@@ -766,6 +775,47 @@ function MilestoneItem({ item, who, project }: KindProps) {
   )
 }
 
+/** The morning recap of sleep mode: what each ghost really did overnight, one line each, tap to open it. */
+function Recap({ item }: { item: ForYouItem }) {
+  const t = useT(SM)
+  const open = useForYouOpen()
+  const { now } = useApp()
+  const r = item.recap!
+  const glyph: Record<ForYouRecapLine['state'], ReactNode> = {
+    done: <Icon name="check" />,
+    failed: <Icon name="close" />,
+    stopped: <Icon name="bang" />,
+    waiting: <Icon name="waits" />,
+    working: <Icon name="star" />,
+    ended: <Icon name="idle" />,
+  }
+  return (
+    <>
+      <div className="meta">{t.recapRange(at(r.from, now), at(r.to, now))}</div>
+      {r.lines.length > 0 && (
+        <ul className="fy-recap">
+          {r.lines.map((l, i) => (
+            <li key={`${l.src}:${l.title}:${l.at}:${i}`}>
+              <button type="button" className="fy-recap-line" disabled={!l.open} onClick={() => l.open && open(l.open, l.projectId)}>
+                <span className={`st-${l.state}`} aria-hidden>
+                  {glyph[l.state]}
+                </span>
+                <span className="fy-recap-text">
+                  <span className="fy-recap-title">
+                    {l.title} · <span className="meta">{t[`recap_${l.state}`]}</span>
+                  </span>
+                  {l.detail && <span className="fy-recap-detail">{l.detail}</span>}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {r.more > 0 && <div className="meta">{t.recapMore(r.more)}</div>}
+    </>
+  )
+}
+
 function StatItem({ item, who, project, fy }: KindProps) {
   return (
     <>
@@ -773,6 +823,7 @@ function StatItem({ item, who, project, fy }: KindProps) {
         <Who item={item} who={project ?? who} />
         {item.title && <div className="fy-title">{item.title}</div>}
         {item.text && <div className="fy-text"><FeedText text={item.text} item={item} /></div>}
+        {item.recap && <Recap item={item} />}
         <SoftwareResultLink item={item} />
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
@@ -822,6 +873,7 @@ function ExistingWork({ item, who }: { item: ForYouItem; who: string }) {
 /** One item of the stream. compact: a thin strip (speaker · one line), nothing to tap inside. */
 export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: boolean }) {
   const t = useT(M)
+  const te = useT(EM)
   const fy = useForYou()
   const { hidden, dismiss } = useNotice(feedNoticeKey(item))
   const { colors, snap } = useApp()
@@ -840,6 +892,7 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
   }, [compact, item.id, item.seen, inView, markSeen])
 
   const closable = closableFeedNotice(item)
+  const evidence = shownEvidence(item.evidence)
   if (hidden || rawEngineeringNotice(item.id, item.text)) return null
   if (compact) {
     return (
@@ -853,6 +906,8 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
             </span>
           )}
           <span className="fy-who-name">{who}</span>
+          {/* A strip keeps the result's label first, so a claim never reads as more than its evidence. */}
+          {!item.work && evidence && <span className="fy-ev-strip">{te[evidence.level]}{evidence.limits?.length ? ' ◦' : ''} · </span>}
           <span className="fy-strip-text ellipsis">{item.work ? t[`work_${item.work.status}`] : oneLine(item)}</span>
         </div>
       </div>

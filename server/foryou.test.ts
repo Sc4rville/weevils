@@ -1547,3 +1547,71 @@ describe('the user’s own ideas are never offered back as weevils’', () => {
     expect(find(fy, 'auto:proposed:tests')?.text).toBe('I have an idea for you: "Harden the save tests". You can find it in the proposals.')
   })
 })
+
+// ---------------------------------------------------------------- evidence labels
+
+describe('evidence labels (shared/evidence.ts)', () => {
+  // What session 68fd4d11 actually published: « interrupt anytime » in the caption, never checked on a real iPhone.
+  const fx = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '../test/fixtures/foryou-voice-mode-68fd4d11.json'), 'utf8'))
+  const cwd = '/home/u/projects/weevils'
+  const voice = () => {
+    snap.sessions = [session({ id: fx.session, projectId: 'weevils', cwd, title: 'weevils voice mode' })]
+    shelf.known.add(`${cwd}/${fx.card.file}`)
+    shelf.known.add(`${cwd}/later.png`)
+  }
+
+  it('the voice-mode card as published (no evidence), with a commit saying « verified »: implemented, never verified', () => {
+    const fy = make()
+    voice()
+    // Whatever the words say (caption, commit message, the agent's own « works »), nothing supplied is nothing proven.
+    const card = fy.addMedia({ path: fx.card.file, caption: `${fx.card.title} — ${fx.verifiedCommit}`, cwd })
+    expect(card.evidence).toEqual({ level: 'implemented' })
+    expect(find(fy, card.id)?.evidence).toEqual({ level: 'implemented' })
+  })
+
+  it('the voice-mode card with its supplied evidence: the iPhone limitation stays visible and it is never verified', () => {
+    const fy = make()
+    voice()
+    const limit = fx.evidence.limits[0]
+    const card = fy.addMedia({ path: fx.card.file, caption: fx.card.title, cwd, evidence: fx.evidence })
+    expect(card).toMatchObject({ title: fx.card.title, evidence: { level: 'demonstrated', where: fx.evidence.demonstrated, limits: [limit] } })
+    // A later file on the same card, claiming verification on a real iPhone, cannot lift the open limitation.
+    now += MIN
+    const later = fy.addMedia({ path: 'later.png', cwd, evidence: { verified: 'real iPhone, Safari PWA', level: 'verified' } })
+    expect(later.id).toBe(card.id)
+    expect(later.evidence).toEqual({ level: 'demonstrated', where: 'real iPhone, Safari PWA', limits: [limit] })
+    // Through the whole read path (curation, localization, a restart): the limit is still there, word for word.
+    for (const l of ['en', 'fr'] as const) expect(fy.feed(now, l).items.find((i) => i.id === card.id)?.evidence).toEqual(later.evidence)
+    expect(find(make(), card.id)?.evidence).toEqual(later.evidence)
+    expect(JSON.stringify(fy.feed().items)).not.toContain('"level":"verified"')
+  })
+
+  it('a commit message posted alone never upgrades a label', () => {
+    const fy = make()
+    // A raw commit is an engineering log: refused as a post. Its claim in plain words carries no evidence either.
+    expect(() => fy.post(fx.verifiedCommit)).toThrow()
+    const subject = 'Interruption verified on a real iPhone, works'
+    expect(fy.post(subject).evidence).toBeUndefined()
+    const claimed = fy.post(subject, undefined, undefined, { level: 'verified', verified: 'yes', commit: fx.verifiedCommit })
+    expect(claimed.evidence).toBeUndefined()
+    expect(fy.post(subject, undefined, undefined, { limits: [fx.evidence.limits[0]], commit: fx.verifiedCommit }).evidence).toEqual({ level: 'implemented', limits: fx.evidence.limits })
+    const shown = fy.post('Live voice mode is ready.', undefined, undefined, { demonstrated: 'test server' })
+    expect(shown.evidence).toEqual({ level: 'demonstrated', where: 'test server' })
+  })
+
+  it('the routes carry the evidence of weevils post / show', async () => {
+    const fy = make()
+    voice()
+    const routes = foryouRoutes(fy, (res, status, body) => void Object.assign(res, { status, body }), async (req) => (req as unknown as { body: unknown }).body)
+    const call = async (url: string, body: unknown) => {
+      const [, , handler] = routes.find(([m, re]) => m === 'POST' && re.test(url))!
+      const res = {} as { status?: number; body?: { item?: ForYouItem } }
+      await handler({ body, socket: { remoteAddress: '127.0.0.1' }, headers: { host: '127.0.0.1:4179' } } as never, res as never, new URL('http://x' + url), [])
+      return res
+    }
+    const media = await call('/api/foryou/media', { path: fx.card.file, caption: fx.card.title, cwd, evidence: fx.evidence })
+    expect(media.body?.item?.evidence).toMatchObject({ level: 'demonstrated', limits: fx.evidence.limits })
+    const post = await call('/api/foryou/post', { text: 'Checked.', evidence: { verified: 'real iPhone, Safari PWA' } })
+    expect(post.body?.item?.evidence).toEqual({ level: 'verified', environment: 'real iPhone, Safari PWA' })
+  })
+})

@@ -45,6 +45,8 @@ export interface Queued {
   text: string
   at: number
   tries?: number
+  /** Capture id of the message in the request ledger (server/boss-ledger.ts). */
+  cid?: string
 }
 
 interface TurnsState {
@@ -61,6 +63,8 @@ export interface PreparedTurn {
   command: string[]
   stableTokens: number
   recentTokens: number
+  /** Size of the request ledger's digest joined to the message. */
+  ledgerTokens?: number
   rebuilt: boolean
 }
 
@@ -94,8 +98,8 @@ export class BossTurns {
   isTurn(id: string | undefined) { return !!id && this.s.turns.includes(id) }
   lastTurn(): string | undefined { return this.s.turns.at(-1) }
 
-  enqueue(text: string) {
-    this.s.queue.push({ text, at: Date.now() })
+  enqueue(text: string, cid?: string) {
+    this.s.queue.push({ text, at: Date.now(), ...(cid ? { cid } : {}) })
     this.save()
   }
 
@@ -160,7 +164,7 @@ export class BossTurns {
   }
 
   /** Builds the view and the command of the next turn (the head of the queue). */
-  async prepare(o: { id: string; claude: string[]; memory: string; instructions?: string; summaryMs?: number; now?: number }): Promise<PreparedTurn> {
+  async prepare(o: { id: string; claude: string[]; memory: string; ledger?: string; instructions?: string; summaryMs?: number; now?: number }): Promise<PreparedTurn> {
     const q = this.s.queue[0]
     if (!q) throw new Error('empty queue') // i18n-ignore : internal guard, never shown
     const now = o.now ?? Date.now()
@@ -170,7 +174,9 @@ export class BossTurns {
     const view = await buildView({ entries: this.journal.entries(), summaries: this.summaries, state: this.s.view, budget: this.budget, dataDir: this.dir, head, instructions, summaryMs: o.summaryMs ?? 20_000, now })
     const { text, parts } = peelContext(q.text)
     const recent = view.recent ? `the latest exchanges of your thread before this message, word for word, oldest first (ids work with weevils recall):\n${view.recent}` : ''
-    const block = [...parts, recent].filter(Boolean).join(' — ').replace(/⟧/g, ']')
+    // The request ledger's digest (fixed budget): open requests, stale first, goals, the user's rules.
+    const ledger = o.ledger?.trim() ? `your request ledger right now (this message is not in it yet):\n${o.ledger.trim()}` : ''
+    const block = [...parts, ledger, recent].filter(Boolean).join(' — ').replace(/⟧/g, ']')
     const prompt = block ? `${text} ⟦weevils — ${block}⟧` : text
     const turns = path.join(this.dir, 'turns')
     fs.mkdirSync(turns, { recursive: true })
@@ -197,15 +203,16 @@ export class BossTurns {
     // The prompt goes through a file (stdin): no tmux command-length limit, the whole message reaches the turn.
     const command = ['env', ...(BOSS_MCP ? [] : ['ENABLE_CLAUDEAI_MCP_SERVERS=false']), 'bash', '-c', 'f=$1; shift; exec "$@" < "$f"', 'weevboss-turn', promptFile, bin, ...args]
     this.save()
-    return { id: o.id, command, stableTokens: view.stableTokens, recentTokens: view.recentTokens + tokensOf(text), rebuilt: view.rebuilt }
+    return { id: o.id, command, stableTokens: view.stableTokens, recentTokens: view.recentTokens + tokensOf(text), ledgerTokens: tokensOf(ledger), rebuilt: view.rebuilt }
   }
 
-  /** The head turn is running: it leaves the queue, its id joins the turns. */
-  started(t: PreparedTurn) {
-    this.s.queue.shift()
+  /** The head turn is running: it leaves the queue (returned), its id joins the turns. */
+  started(t: PreparedTurn): Queued | undefined {
+    const q = this.s.queue.shift()
     this.s.turns = [...this.s.turns, t.id].slice(-2000)
     this.save()
-    fs.appendFileSync(path.join(this.dir, 'metrics.jsonl'), JSON.stringify({ id: t.id, at: Date.now(), stable: t.stableTokens, recent: t.recentTokens, rebuilt: t.rebuilt }) + '\n')
+    fs.appendFileSync(path.join(this.dir, 'metrics.jsonl'), JSON.stringify({ id: t.id, at: Date.now(), stable: t.stableTokens, recent: t.recentTokens, ledger: t.ledgerTokens ?? 0, rebuilt: t.rebuilt }) + '\n')
+    return q
   }
 
   recall(id: string): string | null {

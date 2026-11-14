@@ -373,8 +373,9 @@ export interface Optimizer {
   /** Durée estimée, en minutes. */
   est?: number
   /** queued : ce qu'elle attend (busy : un agent travaille ; load : machine chargée ; ram : mémoire ; queue : une autre tâche d'abord ;
-   *  later : arrêtée par une limite d'usage ou une erreur, nouvel essai à retryAt ; time : son heure, à startAt). */
-  waiting?: 'busy' | 'load' | 'ram' | 'queue' | 'later' | 'time' | 'paused'
+   *  later : arrêtée par une limite d'usage ou une erreur, nouvel essai à retryAt ; time : son heure, à startAt ;
+   *  sleep : déclenchée « quand je dors », attend le prochain mode sommeil). */
+  waiting?: 'busy' | 'load' | 'ram' | 'queue' | 'later' | 'time' | 'paused' | 'sleep'
   /** waiting later : quand elle sera relancée. */
   retryAt?: number
   /** Conditions négociées : pas avant (instant), chaque jour dans une fenêtre (minutes après minuit, heure de tz), toutes les every ms. */
@@ -399,6 +400,10 @@ export interface Optimizer {
   runCount?: number
   /** Jetons consommés, tous passages confondus. */
   tokens?: number
+  /** Trigger « when I sleep »: one run each time sleep mode turns on (its other times are ignored). */
+  onSleep?: boolean
+  /** With onSleep: a run still going when the user wakes is stopped then. */
+  stopOnWake?: boolean
   /** Mise en pause par l'utilisateur : le runner la saute (waiting 'paused'). */
   paused?: boolean
   /** Départ immédiat demandé : attend seulement la machine, sans répéter le bouton de départ. */
@@ -468,7 +473,16 @@ export interface OptimizerLine {
 }
 
 /** next : la portée du prochain passage (convenue pendant qu'elle tourne). */
-export type OptimizerField = 'title' | 'why' | 'est' | 'priority' | 'heavy' | 'kind' | 'repo' | 'prompt' | 'notBefore' | 'window' | 'every' | 'next'
+export type OptimizerField = 'title' | 'why' | 'est' | 'priority' | 'heavy' | 'kind' | 'repo' | 'prompt' | 'notBefore' | 'window' | 'every' | 'onSleep' | 'stopOnWake' | 'next'
+
+/** Sleep mode (server/sleep.ts): the user is asleep, the agents keep working as « ghosts ». GET/POST /api/sleep. */
+export interface SleepState {
+  on: boolean
+  /** When it turned on (null while awake). */
+  since: number | null
+  /** The last night, once woken: from sleep to wake. */
+  last?: { from: number; to: number }
+}
 
 /** Réponse de POST /api/optimizers/:id/talk : la réponse à afficher (et lire), la tâche telle qu'elle est maintenant. */
 export interface OptimizerTalkReply {
@@ -517,6 +531,8 @@ export interface Snapshot {
   pinnedRepos: string[]
   /** Nombre de souvenirs (server/memory.ts) ; la liste se lit avec GET /api/memory. Absent hors machine principale (pas de mémoire). */
   memoryCount?: number
+  /** Open requests in weevboss's ledger (server/boss-ledger.ts), main machine only. */
+  asksOpen?: number
   /** Tâches du h24 proposées, en attente, en cours ou finies récemment (server/optimizers.ts). Les refusées n'y sont pas. */
   optimizers?: Optimizer[]
   /** La machine vue par la bande auto (server/optimizers.ts), sur la machine principale. */
@@ -527,6 +543,8 @@ export interface Snapshot {
   relay?: RelayView
   /** Un tour de propositions est en cours (la bande auto montre une place qui se remplit). */
   autoRound?: { busy: boolean }
+  /** Sleep mode (server/sleep.ts), on the main machine. */
+  sleep?: SleepState
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */
   /** siteKey : clé des pages statiques des repos (/api/site/<clé>/<repo>/), pour le navigateur intégré sans domaine de preview. */
   config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[]; siteKey?: string; autoUpdate?: boolean }

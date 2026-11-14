@@ -33,6 +33,8 @@ export type Page =
   | { kind: 'usage' }
   | { kind: 'relay' }
   | { kind: 'memory' }
+  /** weevboss's request ledger, goals and work trace (src/ui/requests.tsx). */
+  | { kind: 'requests' }
   /** « Pour toi » en plein écran ; who : le participant isolé à l'ouverture. */
   | { kind: 'formats' }
   | { kind: 'foryou'; who?: string }

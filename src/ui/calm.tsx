@@ -193,7 +193,7 @@ export function CalmConv({ id }: { id: string }) {
           </div>
           <div className="page-foot">
             {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
-            <Composer placeholder={sourceIssue ? '' : t.writeTo(author)} label={t.messageTo(title)} onSend={send} onAttach={send} voice anyFile={main} disabled={!!sourceIssue || (!main && s ? !s.controllable : false)} />
+            <Composer draftKey={`session:${main ? '__main' : id}`} placeholder={sourceIssue ? '' : t.writeTo(author)} label={t.messageTo(title)} onSend={send} onAttach={send} voice anyFile={main} disabled={!!sourceIssue || (!main && s ? !s.controllable : false)} />
           </div>
         </div>
         <SidePane

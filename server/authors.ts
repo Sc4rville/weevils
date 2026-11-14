@@ -12,8 +12,6 @@ export interface AuthorConfig extends Author {
 }
 
 export const BOSS = 'weevboss'
-/** Ancien préfixe de weevboss, toujours reconnu. */
-export const LEGACY_PREFIX = '[weevils] '
 const ID_RE = /^[a-z0-9_-]{1,32}$/
 
 /** Lit les auteurs du fichier de config (déjà chargé dans process.env par config.ts). weevboss est toujours là, en premier. */

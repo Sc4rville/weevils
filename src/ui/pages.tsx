@@ -37,9 +37,21 @@ import { useLang, useT } from '../i18n'
 import { reveal, useFollow } from './follow'
 import { FollowDown } from './followdown'
 import M from '../i18n/pages'
+import PM from '../i18n/plain-steps'
+import { liveNote } from './plain-steps'
+import type { Message, Session } from '../../shared/api.ts'
 import { MemoryPage } from './memory'
+import { RequestsPage } from './requests'
 import { ForYouPage, MediaPage } from './foryou'
 import { AutoPage, AutoRunPage } from './auto-page'
+
+/** Mini-macro: what the session is doing right now, in a few plain words, beside the title. */
+function LiveNote({ s, messages }: { s: Session; messages: Message[] }) {
+  const w = useT(PM)
+  const live = liveNote(s, messages.at(-1), w, { waiting: String(w.liveWaiting), stopped: String(w.liveStopped), done: String(w.liveDone), idle: String(w.liveIdle) })
+  return <span className="session-now" role="status" data-state={live.state} title={w.liveLabel(live.text)}>{live.text}</span>
+}
+
 
 export function PageView({ page }: { page: Page }) {
   switch (page.kind) {
@@ -84,6 +96,8 @@ export function PageView({ page }: { page: Page }) {
       return <CalmConv id={page.id} />
     case 'memory':
       return <MemoryPage />
+    case 'requests':
+      return <RequestsPage />
     case 'formats':
       return <FormatsPage />
     case 'foryou':
@@ -229,6 +243,7 @@ function SessionPage({ id }: { id: string }) {
       title={s.title}
       scrollHeading
       sessionLayout
+      liveNote={<LiveNote s={s} messages={messages} />}
       headerControls={<button className="link inline" onClick={() => setShowSettings((v) => !v)} aria-label={t.changeModel} aria-pressed={showSettings} aria-controls="session-settings">
             {[modelLabel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
           </button>}
@@ -260,6 +275,7 @@ function SessionPage({ id }: { id: string }) {
           <FootError text={err} />
           {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
           <Composer
+            draftKey={`session:${s.id}`}
             placeholder={sourceIssue ? '' : s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly}
             label={t.composerLabel(s.title)}
             onSend={send}

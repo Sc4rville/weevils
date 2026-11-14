@@ -15,6 +15,7 @@ import { api } from '../api'
 import { tr, useT } from '../i18n'
 import M from '../i18n/bands'
 import NM from '../i18n/notices'
+import RM from '../i18n/requests'
 import D from '../i18n/devil'
 import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
@@ -39,6 +40,7 @@ import { flash, keepInPlace, reveal, useFollow } from './follow'
 import { mergePending, type Pending } from './pending'
 import { Chip, KeyChip, SetupChips, SetupComposer, askSetup, flowVoice, useFlow, useWelcome } from './setup'
 import { ForYouPeek, TopWords, useTop, type Top } from './foryou-top'
+import { SleepButton } from './night'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
@@ -302,6 +304,14 @@ export function AgentBand() {
     </button>
   )
 
+  // With the main controls: sleep mode (one tap before bed), then the devil.
+  const controls = (
+    <span className="agent-ctrls">
+      <SleepButton />
+      {devilButton}
+    </span>
+  )
+
   const band = (
     <section className={`band agent tone ${snap.foryou ? 'has-foryou' : ''} ${devilOn || devilFlash ? 'devil-on' : ''} ${open ? 'open' : ''}`} style={color(devilOn || devilFlash ? 'devil' : 'agent')} aria-label={t.agentBand}>
       {/* En haut : le logo (dicter), sous la barre d'état. Réduite : l'aperçu vivant du fil ; un tap l'ouvre.
@@ -324,13 +334,13 @@ export function AgentBand() {
             replyText={th.a.replyKey ? th.a.shown : mainReply?.text}
             working={snap.mainWorking || th.a.waiting}
           />
-          {!snap.foryou && devilButton}
+          {!snap.foryou && controls}
         </div>
         {/* L'aperçu et le fil restent rendus : ouvrir ou fermer ne fait que les montrer ou les cacher (immédiat). */}
         {/* Les deux mots, sous la ligne du logo ; ils restent quand le fil est ouvert (weevboss y est le mot actif). */}
         <div className="agent-nav">
           <TopWords active={open ? 'boss' : top} onPick={pickTop} />
-          {snap.foryou && !open && devilButton}
+          {snap.foryou && !open && controls}
         </div>
         <div className="peek-wrap" hidden={open || top !== 'boss'}>
           <Peek onOpen={() => setExpanded('agent')} visible={!open && top === 'boss'} sent={sent} messages={main} pendingLabel={pendingLabel} />
@@ -766,6 +776,11 @@ export function FootBand() {
       {snap.memoryCount !== undefined && (
         <Line ch="#" meta={t.memories(snap.memoryCount)} onClick={() => push({ kind: 'memory' })}>
           {t.memory}
+        </Line>
+      )}
+      {snap.asksOpen !== undefined && (
+        <Line ch="!" meta={tr(RM).openCount(snap.asksOpen)} onClick={() => push({ kind: 'requests' })}>
+          {tr(RM).menu}
         </Line>
       )}
       <LostFeaturesLine />

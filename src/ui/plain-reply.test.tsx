@@ -41,6 +41,16 @@ describe('plain summary of a long agent message', () => {
     expect(long.length).toBeLessThanOrEqual(240)
     expect(long.endsWith('…')).toBe(true)
   })
+
+  it('real shapes: a dot inside a word never splits, bold numbered blocks never lead, French spacing stays', () => {
+    // A version number or a domain used to drop everything before it and start the summary mid-word.
+    expect(plainSummary(`Le lot avance bien sur le serveur. Le modèle 4.2 n’a plus de crédits, donc tout passe sur l’autre. Le certificat dépend du service sslip.io pour l’instant, et c’est noté.\n\n${'- détail\n'.repeat(5)}`))
+      .toBe('Le lot avance bien sur le serveur. Le modèle 4.2 n’a plus de crédits, donc tout passe sur l’autre.')
+    expect(plainSummary('Results of the three commands:\n\n**1) `weevils sessions`**: succeeded, four sessions listed:\n\n**2) `weevils memory`**: not run.\n\nI did not retry either denied command. Approve them in your settings if you want them run.'))
+      .toBe('I did not retry either denied command. Approve them in your settings if you want them run.')
+    expect(plainSummary(`J’ai corrigé ma consigne précédente : la page n’ajoute plus de bouton à chaque étape. ${'Encore un détail ici. '.repeat(20)}`))
+      .toMatch(/^J’ai corrigé ma consigne précédente : la page/)
+  })
 })
 
 describe('in the project session thread', () => {

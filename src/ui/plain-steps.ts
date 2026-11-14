@@ -105,13 +105,17 @@ export function isLongReply(text: string): boolean {
 
 /** Bits that never reach a plain summary: inline code, link targets, paths, file names, flags, hashes, uuids, urls. */
 const CODE_SPAN = /`[^`\n]*`/g
-const URL = /\bhttps?:\/\/\S+/g
+const URL = /\bhttps?:\/\/\S+?(?=[,.;:!?)]*(?:\s|$))/g
 const PATHISH = /(?:^|\s)(?:~|\.{1,2})?\/?[\w.@-]+(?:\/[\w.@-]+)+\/?(?=[\s,.;:!?]|$)/g
 const FILEISH = /(?:^|\s)[\w-]+\.(?:tsx?|jsx?|mjs|cjs|json|md|sh|ya?ml|toml|py|rs|go|css|html|lock|env)\b/g
 const FLAG = /(?:^|\s)--?[a-z][\w-]*(?:=\S+)?/gi
 const HASH = /\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b/g
 const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi
 const ENV_NAME = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b(?:=\S+)?/g
+/** Dotted names with a letter on both sides of each dot: domains (sslip.io), Node.js, a.b.c. Version numbers stay. */
+const DOTTED = /\b[A-Za-z][\w-]*(?:\.[A-Za-z][\w-]*)+\b/g
+/** One sentence: a dot, ! or ? inside a word (4.2, sslip.io) never ends it. */
+const SENTENCE = /(?:[^.!?]|[.!?]+(?![\s.!?]|$))+(?:[.!?]+(?=\s|$)|$)/g
 
 /** Marks where something technical was taken out: a dot inside it never ends a sentence, and the sentence is not "clean". */
 const CUT = '\u2063'
@@ -129,13 +133,16 @@ function mark(s: string): string {
     .replace(FLAG, ` ${CUT}`)
     .replace(HASH, CUT)
     .replace(ENV_NAME, CUT)
+    .replace(DOTTED, CUT)
 }
 
 const tidy = (s: string) =>
   s
+    .replace(new RegExp(`\\s*${CUT}[${CUT}\\s]*(?=[,.;:!?]|$)`, 'g'), '')
     .replaceAll(CUT, '')
+    .replace(/^\s*(?:\d+[.)]|[-*+])(?=\s|[,.;:!?]|$)/, '')
     .replace(/[`$|<>{}[\]*]/g, '')
-    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\s+([,.])/g, '$1')
     .replace(/([,;:])(?=[,.;:!?])/g, '')
     .replace(/\s{2,}/g, ' ')
     .replace(/^[\s,;:–-]+/, '')
@@ -150,9 +157,12 @@ const tidy = (s: string) =>
 export function plainSummary(text: string, max = 240): string | null {
   const body = text.replace(/```[\s\S]*?(?:```|$)/g, '\n\n')
   const blocks = body.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean)
-  const prose = blocks.filter((b) => !/^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\||>)/.test(b))
-  const source = (prose.length ? prose : blocks.map((b) => b.replace(/^(?:#{1,6}|[-*+]|\d+[.)]|>)\s+/gm, ''))).join(' ')
-  const all = (mark(source.replace(/\s+/g, ' ')).match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/g) ?? [])
+  const prose = blocks.filter((b) => !/^(?:\*\*|__)?(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\||>)/.test(b))
+  const source = prose.length ? prose : blocks.map((b) => b.replace(/^(?:#{1,6}|[-*+]|\d+[.)]|>)\s+/gm, ''))
+  // Sentence by sentence, a paragraph end closing one too; a sentence ending on a colon only announces what follows.
+  const all = source
+    .flatMap((b) => mark(b.replace(/\s+/g, ' ')).match(SENTENCE) ?? [])
+    .filter((raw) => !/:\s*$/.test(raw))
     .slice(0, 4)
     .map((raw) => ({ clean: !raw.includes(CUT) && !TECHNICAL.test(raw), text: tidy(raw) }))
     .filter((x) => x.text.split(' ').length >= 4 && /\p{L}/u.test(x.text))

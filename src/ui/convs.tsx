@@ -16,6 +16,8 @@ import { Icon } from './icons'
 import { GoneBack, useGoneTitle } from './gone'
 
 const SOURCE = { chatgpt: 'chatgpt', claude: 'claude.ai' } as const
+/** The two agents, by their product names. */
+const TOOL: Record<Tool, string> = { claude: 'Claude', codex: 'Codex' }
 
 export function statusLabel(c: ConversationSummary, name: (id: string) => string) {
   const t = tr(M)
@@ -80,7 +82,7 @@ export function Chooser({ c, onDone }: { c: ConversationSummary; onDone: () => v
 
 export function ConversationsPage({ projectId }: { projectId?: string }) {
   const t = useT(M)
-  const { snap, colors } = useApp()
+  const { snap, colors, push } = useApp()
   const [list, setList] = useState<ConversationSummary[] | null>(null)
   const [q, setQ] = useState('')
   const project = projectId ? snap.projects.find((p) => p.id === projectId) : undefined
@@ -116,6 +118,11 @@ export function ConversationsPage({ projectId }: { projectId?: string }) {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search} aria-label={t.searchLabel} />
         </div>
       </div>
+      {!projectId && (
+        <Line ch="↑" onClick={() => push({ kind: 'import' })}>
+          {t.importTitle}
+        </Line>
+      )}
       {list?.map((c) => <ConvLine key={c.id} c={c} />)}
       {list && list.length === 0 && (
         <div className="in meta empty">{q ? t.nothingFound : snap.conversationCounts.total ? t.noneHere : t.noneYet}</div>
@@ -180,7 +187,7 @@ export function ConversationPage({ id }: { id: string }) {
       foot={
         <>
           <FootError text={err} />
-          <Composer placeholder={t.continueWithTool(tool)} label={t.continueLabel} onSend={cont} />
+          <Composer placeholder={t.continueWithTool(TOOL[tool])} label={t.continueLabel} onSend={cont} />
         </>
       }
     >
@@ -207,8 +214,8 @@ export function ConversationPage({ id }: { id: string }) {
       <div className="band tone">
         <div className="in label">{t.continueWith}</div>
         {(['claude', 'codex'] as Tool[]).map((x) => (
-          <Line key={x} className={tool === x ? 'invert' : ''} ch={tool === x ? '>' : ' '} go={null} onClick={() => setTool(x)}>
-            {x}
+          <Line key={x} className={tool === x ? 'invert' : ''} ch={tool === x ? '✓' : ' '} go={null} onClick={() => setTool(x)}>
+            {TOOL[x]}
           </Line>
         ))}
       </div>
@@ -252,7 +259,6 @@ export function ImportPage() {
           </span>
           <span className="stack-text">
             <span className="strong">{progress != null ? t.uploading(Math.round(progress * 100)) : t.pickFile}</span>
-            <span className="meta">{t.formats}</span>
           </span>
         </span>
         <input ref={input} type="file" accept=".zip,.json,application/zip,application/json" onChange={(e) => void onFile(e)} style={{ position: 'absolute', opacity: 0, width: 1, height: 1 }} />
@@ -262,7 +268,7 @@ export function ImportPage() {
         </div>}
       {err && <Notice eventId={noticeKey("error:import", err)} className="in meta strong" style={{ paddingBlock: 12 }} role="alert">! {err}</Notice>}
       <div className="in meta" style={{ paddingBlock: 10 }}>
-        {cl.running ? t.filing(cl.queued) : cl.lastError ? t.filingFailed(cl.lastError) : snap.conversationCounts.pending ? t.toFileByYou(snap.conversationCounts.pending) : t.allFiled}
+        {cl.running ? t.filing(cl.queued) : cl.lastError ? t.filingFailed : snap.conversationCounts.pending ? t.toFileByYou(snap.conversationCounts.pending) : t.allFiled}
       </div>
     </Shell>
   )

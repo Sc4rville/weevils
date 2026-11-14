@@ -11,7 +11,7 @@ import M from './i18n/app'
 import type { FsListing, InfraDetail, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
 import type { ProgressFix, Software, SoftwareList } from '../shared/softwares.ts'
 import type { ForYouFeed, ForYouOpen } from '../shared/foryou.ts'
-import type { AutoDetail, AutoRunDetail, ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, Optimizer, OptimizerTalkReply, SessionDetail, Snapshot, SubagentDetail, Tool, WeevilQuestion, WeevilReply } from '../shared/api.ts'
+import type { AutoDetail, AutoRunDetail, ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, Optimizer, OptimizerTalkReply, SessionDetail, SleepState, Snapshot, SubagentDetail, Tool, WeevilQuestion, WeevilReply } from '../shared/api.ts'
 
 export class ApiError extends Error {
   status: number
@@ -83,6 +83,8 @@ function createOptimizer(): Promise<{ item: Optimizer }> {
 export const api = {
   /** Updates by itself, on or off (WEEVILS_AUTO_UPDATE on the server). */
   setUpdates: (on: boolean) => call<{ on: boolean }>('POST', '/api/updates', { on }),
+  /** Sleep mode: on before bed, off on wake (the server keeps it, the morning recap follows). */
+  setSleep: (on: boolean) => call<SleepState>('POST', '/api/sleep', { on }),
   thinkLayout: (body: unknown) => call<{revision:number;positions:{id:string;x:number;y:number}[];evidence:string[]}>('POST','/api/think/organise',body),
   think: () => call<import('../shared/think').ThinkBoard>('GET','/api/think'),
   saveThink: (board: import('../shared/think').ThinkBoard) => call<import('../shared/think').ThinkBoard>('PUT','/api/think',board),
@@ -167,6 +169,8 @@ export const api = {
   pauseOptimizer: (id: string, paused: boolean) => call<{ ok: boolean }>('POST', `/api/optimizers/${enc(id)}/pause`, { paused }),
   /** Maintenant, dès que la machine est libre. */
   runOptimizer: (id: string) => call<{ ok: boolean }>('POST', `/api/optimizers/${enc(id)}/run`, {}),
+  /** The trigger without a model: « when I sleep », and whether it stops on wake. */
+  autoTrigger: (id: string, t: { onSleep?: boolean; stopOnWake?: boolean }) => call<{ item: Optimizer }>('POST', `/api/optimizers/${enc(id)}/trigger`, t),
   conversations: (opts: { project?: string; q?: string }) => call<{ conversations: ConversationSummary[] }>('GET', `/api/conversations?${new URLSearchParams(opts)}`),
   conversation: (id: string) => call<ConversationDetail>('GET', `/api/conversations/${enc(id)}`),
   classify: (id: string, target: { projectId?: string }) => call<{ ok: true }>('POST', `/api/conversations/${enc(id)}/classify`, target),

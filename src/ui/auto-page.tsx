@@ -10,6 +10,7 @@ import type { AutoDetail, AutoRun, AutoRunDetail, Message, Optimizer, OptimizerF
 import { api } from '../api'
 import { intlLocale, useT } from '../i18n'
 import M from '../i18n/h24'
+import S from '../i18n/sleep'
 import { useApp } from './app-context'
 import { Composer, Line, Messages, Prose, Working } from './bits'
 import { at, nextTimeText, autoList, longAt, fromActivity, fromOptimizer, projectOfRepo, short, slotOf, triggerText, typicalMs, type AutoItem } from './auto-model'
@@ -273,6 +274,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
           <Flow x={x} runs={runs} next={opt?.next?.title} onTicks={toOutputs} />
 
           <Kpis x={x} runs={runs} detail={detail} flash={f} ask={talkOn ? ask : undefined} onLast={() => runs[0] && push({ kind: 'autorun', id: x.id, at: runs[0].at })} onRuns={toOutputs} />
+          {opt && <SleepTrigger o={opt} />}
 
           <div ref={outputs}>
             {(runs.length > 0 || x.state === 'running') && <div className="in label">{t.outputs}</div>}
@@ -286,6 +288,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
           </div>
         </>
       )}
+      {opt?.draft && <SleepTrigger o={opt} />}
       {opt && <Talk o={opt} />}
     </Shell>
   )
@@ -378,7 +381,7 @@ function Flow({ x, runs, next, onTicks }: { x: AutoItem; runs: AutoRun[]; next?:
 type Field = 'when' | 'next' | 'last' | 'length' | 'runs' | 'cost'
 /** The facts that open the talk when tapped (« quand : » typed in). */
 type Asked = 'when' | 'next' | 'length' | 'cost'
-const FLASHED: Partial<Record<Field, OptimizerField[]>> = { when: ['every', 'window', 'notBefore'], next: ['every', 'window', 'notBefore'], length: ['est'] }
+const FLASHED: Partial<Record<Field, OptimizerField[]>> = { when: ['every', 'window', 'notBefore', 'onSleep', 'stopOnWake'], next: ['every', 'window', 'notBefore', 'onSleep'], length: ['est'] }
 
 /**
  * The same facts for every automation, one quiet block: when it fires, the next time, the last run, how long it runs,
@@ -408,7 +411,7 @@ function Kpis({ x, runs, detail, flash, ask, onLast, onRuns }: { x: AutoItem; ru
             ? x.trigger.every ? t.nextNotScheduled : t.never
             : autoCondition(x)
   const all: { f: Field; icon: ReactNode; value: ReactNode; dim?: boolean }[] = [
-    { f: 'when', icon: x.trigger.kind === 'every' ? <Icon name="cycle" /> : <Icon name="arrow" dir="right" />, value: triggerText(x.trigger, now) },
+    { f: 'when', icon: x.trigger.kind === 'every' ? <Icon name="cycle" /> : x.trigger.kind === 'sleep' ? <Icon name="sleep" /> : <Icon name="arrow" dir="right" />, value: triggerText(x.trigger, now) },
     { f: 'next', icon: <Icon name="arrow" dir="right" />, value: next },
     { f: 'last', icon: <Icon name={last && !last.ok ? 'close' : 'check'} />, value: last ? t.endedAgo(short(now - last.at, true)) : t.never },
     { f: 'length', icon: <Icon name="minus" />, value: typ ? durLong(typ) : '0', dim: !measured && !!typ },
@@ -508,6 +511,39 @@ function Produced({ id, d, machine, short: brief = false }: { id: string; d: Aut
       ))}
       {!brief && d.log && <pre className="screen tone">{d.log}</pre>}
     </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// The « when I sleep » trigger: one tap, no model (the talk can set it too: « run this when I sleep »).
+
+function SleepTrigger({ o }: { o: Optimizer }) {
+  const t = useT(S)
+  const { refresh } = useApp()
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  if (o.builtin || (o.state !== 'proposed' && o.state !== 'queued' && o.state !== 'running')) return null
+  const set = (v: { onSleep?: boolean; stopOnWake?: boolean }) => {
+    setBusy(true)
+    setErr(null)
+    api
+      .autoTrigger(o.id, v)
+      .then(() => refresh())
+      .catch((e) => setErr((e as Error).message))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <div className="auto-sleep" role="group" aria-label={t.triggerSleep}>
+      <Line ch={<Icon name="sleep" />} go={null} disabled={busy} meta={t.runWhenSleepMeta} onClick={() => set({ onSleep: !o.onSleep })}>
+        {t.runWhenSleep} · {o.onSleep ? t.on : t.off}
+      </Line>
+      {o.onSleep && (
+        <Line ch={o.stopOnWake ? '✓' : ''} go={null} disabled={busy} onClick={() => set({ stopOnWake: !o.stopOnWake })}>
+          {t.stopOnWake} · {o.stopOnWake ? t.on : t.off}
+        </Line>
+      )}
+      <FootError text={err} />
+    </div>
   )
 }
 

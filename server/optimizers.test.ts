@@ -2015,3 +2015,81 @@ describe('auto — built-in automations (server/cost.ts)', () => {
     expect(o.list().filter((x) => x.builtin === 'cost')).toHaveLength(0)
   })
 })
+
+describe('auto — the « when I sleep » trigger (sleep mode)', () => {
+  const DAY = 24 * 60 * MIN
+  const seed = (over: Record<string, unknown> = {}) => {
+    const t = { id: 'n1ght5', title: 'Night lens', why: 'you look at it in the morning', kind: 'explore', repo: null, heavy: false, priority: 2, est: 30, prompt: 'Look at the app with fresh eyes and report.', state: 'queued', createdAt: T0 - DAY, acceptedAt: T0 - DAY, onSleep: true, ...over }
+    fs.writeFileSync(path.join(dir, 'optimizers.json'), JSON.stringify({ items: [t], lastRoundAt: T0, fails: 0, failUntil: 0 }))
+    return make()
+  }
+  const sleep = { on: false, since: null as number | null }
+
+  it('waits for sleep mode, runs once per night even with agents at work, comes back for the next night', async () => {
+    const o = seed()
+    o.sleep = sleep
+    sleep.on = false
+    sleep.since = null
+    o.tick(T0 + IDLE_MS)
+    expect(o.list(T0 + IDLE_MS)[0]).toMatchObject({ state: 'queued', waiting: 'sleep', onSleep: true })
+    expect(o.list(T0 + IDLE_MS)[0].startAt).toBeUndefined()
+    expect(createIn).not.toHaveBeenCalled()
+    // Bedtime: a ghost still works, the task starts anyway (only load and memory hold it).
+    sleep.on = true
+    sleep.since = T0 + 10 * MIN
+    snap.sessions = [session({ id: 'ghost', status: 'working' })]
+    o.tick(T0 + 11 * MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(1)
+    expect(o.list()[0].state).toBe('running')
+    snap.sessions = [session({ id: 'ghost', status: 'working' }), session({ id: 'sess-1', status: 'idle', lastMessage: 'Report written: 3 findings.' })]
+    o.tick(T0 + 40 * MIN)
+    // Same night: back in the queue, it does not run again.
+    expect(o.list(T0 + 40 * MIN)[0]).toMatchObject({ state: 'queued', waiting: 'sleep', runCount: 1 })
+    o.tick(T0 + 60 * MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(1)
+    // Next night: once more.
+    sleep.since = T0 + DAY
+    snap.sessions = []
+    o.tick(T0 + DAY + MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops on wake when asked, recorded as stopped (no failure streak), and the recap reads it', async () => {
+    const o = seed({ stopOnWake: true })
+    o.sleep = sleep
+    sleep.on = true
+    sleep.since = T0
+    o.tick(T0 + MIN)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'working' })]
+    o.tick(T0 + 2 * MIN)
+    expect(o.list()[0].state).toBe('running')
+    sleep.on = false
+    sleep.since = null
+    o.sleepChanged(false, T0 + 30 * MIN)
+    await flush()
+    expect(key).toHaveBeenCalledWith('sess-1', 'esc')
+    const v = o.list(T0 + 30 * MIN)[0]
+    expect(v.state).toBe('queued')
+    expect(v.runs![0]).toMatchObject({ ok: false, note: 'stopped when you woke up' })
+    expect(o.recapAutos()[0]).toMatchObject({ id: 'n1ght5', stoppedNote: 'stopped when you woke up' })
+  })
+
+  it('the trigger is set from the auto page and in the schema: it replaces the times, stopOnWake needs it', () => {
+    const o = seed({ onSleep: undefined, every: DAY, window: { from: 60, to: 300 } })
+    const v = o.setTrigger('n1ght5', { onSleep: true, stopOnWake: true })!
+    expect(v).toMatchObject({ onSleep: true, stopOnWake: true, rev: 1 })
+    expect(v.every).toBeUndefined()
+    expect(v.window).toBeUndefined()
+    expect(v.changed!.fields).toEqual(expect.arrayContaining(['onSleep', 'stopOnWake', 'every', 'window']))
+    const off = o.setTrigger('n1ght5', { onSleep: false })!
+    expect(off.onSleep).toBeUndefined()
+    expect(off.stopOnWake).toBeUndefined()
+    expect(o.setTrigger('nope', { onSleep: true })).toBeNull()
+    expect(parsePatch({ onSleep: true, stopOnWake: false }, { repos: [], tz: 'UTC', now: T0 })).toEqual({ onSleep: true, stopOnWake: null })
+    expect(parsePatch({ onSleep: 'yes' }, { repos: [], tz: 'UTC', now: T0 })).toEqual({})
+  })
+})

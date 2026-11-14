@@ -6,6 +6,7 @@ import { locale, type Lang } from '../../shared/i18n.ts'
 import { getLang, tr } from '../i18n'
 import F from '../i18n/format'
 import M from '../i18n/h24'
+import S from '../i18n/sleep'
 
 /** What an automation is doing. waiting: held by the machine (agents at work, load, memory); queued: behind another
  *  one; scheduled: held by its own time; proposed: not accepted yet (proposal bands and page only). */
@@ -13,7 +14,7 @@ export type AutoState = 'running' | 'waiting' | 'queued' | 'scheduled' | 'paused
 export type AutoSrc = 'optimizer' | 'timer' | 'job'
 /** every: recurring; window: once, inside a daily window; time: once, at a time; idle: as soon as nothing else runs;
  *  manual: a job someone started. */
-export type TriggerKind = 'every' | 'window' | 'time' | 'idle' | 'manual'
+export type TriggerKind = 'every' | 'window' | 'time' | 'idle' | 'manual' | 'sleep'
 
 export interface Trigger {
   kind: TriggerKind
@@ -22,6 +23,8 @@ export interface Trigger {
   window?: { from: number; to: number }
   /** The next (or only) time it fires. */
   at?: number
+  /** sleep: stopped when the user wakes up. */
+  stopOnWake?: boolean
 }
 
 export interface Span {
@@ -121,7 +124,9 @@ export function windowStart(w: { from: number }, now: number): number {
 }
 
 /** An explicit date is distinct from a retry, a recurring cadence or an eligibility window. */
-export function optimizerTrigger(o: Pick<Optimizer, 'every' | 'window' | 'notBefore' | 'startAt'>): Trigger {
+export function optimizerTrigger(o: Pick<Optimizer, 'every' | 'window' | 'notBefore' | 'startAt' | 'onSleep' | 'stopOnWake'>): Trigger {
+  // « When I sleep » replaces its times.
+  if (o.onSleep) return { kind: 'sleep', stopOnWake: !!o.stopOnWake }
   // Recurring notBefore is also written by finish(); without provenance it is only eligibility.
   const at = o.window || o.every ? undefined : o.notBefore
   if (o.every) return { kind: 'every', every: o.every, window: o.window, at }
@@ -140,7 +145,7 @@ export function fromOptimizer(o: Optimizer, projectId: string | null = null, now
     o.state === 'queued'
       ? paused
         ? 'paused'
-        : fixedAt
+        : fixedAt || o.waiting === 'sleep'
           ? 'scheduled'
           : o.waiting === 'queue' || !o.waiting
             ? 'queued'
@@ -302,6 +307,8 @@ export function triggerText(tg: Trigger, now: number, lang: Lang = getLang()): s
       return t.whenIdle
     case 'manual':
       return t.manual
+    case 'sleep':
+      return tg.stopOnWake ? S[lang].triggerSleepStop : S[lang].triggerSleep
     case 'time':
       return tg.at ? t.atTime(at(tg.at, now, lang)) : t.whenIdle
     case 'window':

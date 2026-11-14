@@ -50,6 +50,7 @@ import { isBrick, isSecretName, isSetupKey, type Device } from '../shared/setup.
 import { Memory, memoryRoutes } from './memory.ts'
 import { Flyers, weevilRoutes } from './weevil.ts'
 import { Optimizers, optimizerRoutes } from './optimizers.ts'
+import { Sleep } from './sleep.ts'
 import { ForYou, foryouRoutes, type MachineState } from './foryou.ts'
 import { serveAttachment } from './attachments.ts'
 import { MediaShelf } from './foryou-media.ts'
@@ -220,6 +221,20 @@ const foryou = ORCHESTRATOR
     })
   : null
 w.foryou = foryou
+// ---------------------------------------------------------------- mode sommeil (server/sleep.ts, machine principale)
+const sleep = new Sleep(path.join(DATA_DIR, 'sleep.json'))
+if (ORCHESTRATOR) {
+  w.sleep = sleep
+  optimizers.sleep = sleep
+  // Asleep: only real blockers reach the phone.
+  w.push.asleep = () => sleep.on
+  sleep.onChange((on, night, now) => {
+    // Stops the runs that end on wake before the recap reads them.
+    optimizers.sleepChanged(on, now)
+    if (!on && night) foryou?.addRecap(night, optimizers.recapAutos())
+    w.bump()
+  })
+}
 // Ce qui est écrit ou compté dans le flux (point de weevboss, idées, « tu savais que », jalons, barres du jour) : une
 // seule boucle, sur son propre minuteur, jamais sur le chemin d'une requête (server/foryou-curator.ts).
 if (foryou) {
@@ -460,6 +475,14 @@ const routes: [string, RegExp, Handler][] = [
     writeConfig({ WEEVILS_AUTO_UPDATE: b?.on === false ? '0' : '1' })
     w.bump()
     json(res, 200, { on: process.env.WEEVILS_AUTO_UPDATE !== '0' })
+  }],
+  // Sleep mode: { on, since, last } ; POST { on: boolean }.
+  ['GET', /^\/api\/sleep$/, (_req, res) => (w.sleep ? json(res, 200, w.sleep.state()) : json(res, 404, { error: 'sleep_unavailable' }))],
+  ['POST', /^\/api\/sleep$/, async (req, res) => {
+    const b = await readBody(req).catch(() => ({}))
+    if (typeof b?.on !== 'boolean') return json(res, 400, { error: 'sleep_on_boolean' })
+    if (!w.sleep) return json(res, 404, { error: 'sleep_unavailable' })
+    json(res, 200, w.sleep.set(b.on))
   }],
   ['GET', /^\/api\/snapshot$/, (_req, res) => json(res, 200, w.snapshot())],
   ['GET', /^\/api\/events$/, (_req, res) => {

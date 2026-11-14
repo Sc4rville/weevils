@@ -9,6 +9,7 @@ import path from 'node:path'
 import { CONFIG_DIR, DATA_DIR, PUBLIC_URL } from './config.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/push.ts'
+import { sleepAllowsPush } from './sleep.ts'
 
 interface Subscription {
   endpoint: string
@@ -34,6 +35,8 @@ export class Push {
   private sent: Record<string, number> = {}
   private pending = new Set<string>()
   private readonly sentFile: string
+  /** Sleep mode (server/sleep.ts): while it holds, only real blockers are sent. */
+  asleep: () => boolean = () => false
   constructor(sentFile = path.join(DATA_DIR, 'push-sent.json')) {
     this.sentFile = sentFile
     try { this.sent = JSON.parse(fs.readFileSync(sentFile, 'utf8')) } catch { /* no previous sends */ }
@@ -91,6 +94,7 @@ export class Push {
     if (p.tag.startsWith('cut-')) { p.category = 'warning'; p.sessionId = p.tag.slice(4); p.tag = p.sessionId }
     if (p.tag === 'test') p.category = 'test'
     if (!p.category || acknowledgementOnly(p.body)) return
+    if (!sleepAllowsPush(this.asleep(), p.category)) return console.log(`[push] sommeil · « ${p.title} » gardée pour le réveil`)
     if ((p.category === 'result' || p.category === 'milestone') && !notificationText(p.body)) return
     p.title = humanFeedText(p.title)
     p.body = humanFeedText(p.body)

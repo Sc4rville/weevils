@@ -44,7 +44,7 @@ export default defineMessages({
     phoneAndroid: 'D’abord, installe-moi : menu ⋮ du navigateur, puis « Installer l’application ». Je m’ouvrirai en plein écran et je pourrai te prévenir quand un agent t’attend.',
     phoneInstalled: 'Tu m’as sur ton écran d’accueil, parfait. Active les notifications : je te préviens quand un agent t’attend ou a fini.',
     phoneAsk: (s: SetupState): string =>
-      `Scanne ce code avec ton téléphone : il ouvre l’app déjà connectée. Ensuite, iPhone : Partager puis « Sur l’écran d’accueil » ; Android : ⋮ puis « Installer l’application ».${s.reach === 'local' ? ' Attention : l’adresse est en localhost, le téléphone ne la joindra pas sans chemin. [[setup:reach]]' : ''}`,
+      `Scanne ce code avec ton téléphone : il ouvre l’app déjà connectée. Ensuite, iPhone : Partager puis « Sur l’écran d’accueil » ; Android : ⋮ puis « Installer l’application ».${s.reach === 'local' ? ' Attention : cette adresse ne marche que sur cette machine, le téléphone ne la joindra pas sans chemin. [[setup:reach]]' : ''}`,
     pushAsk: (ios: boolean, standalone: boolean): string =>
       ios && !standalone
         ? 'Sur iPhone, les notifications ne marchent que depuis l’app ajoutée à l’écran d’accueil : ajoute-la (Partager puis « Sur l’écran d’accueil »), ouvre-la, et retape ici.'
@@ -244,7 +244,7 @@ export default defineMessages({
     phoneAndroid: 'First, install me: the browser’s ⋮ menu, then “Install app”. I’ll open full screen and I can tell you when an agent needs you.',
     phoneInstalled: 'You have me on your home screen, great. Turn on notifications: I’ll tell you when an agent needs you or is done.',
     phoneAsk: (s: SetupState): string =>
-      `Scan this code with your phone: it opens the app already signed in. Then, iPhone: Share then “Add to Home Screen”; Android: ⋮ then “Install app”.${s.reach === 'local' ? ' Careful: the address is localhost, the phone won’t reach it without a way in. [[setup:reach]]' : ''}`,
+      `Scan this code with your phone: it opens the app already signed in. Then, iPhone: Share then “Add to Home Screen”; Android: ⋮ then “Install app”.${s.reach === 'local' ? ' Careful: this address only works on this machine, the phone won’t reach it without a way in. [[setup:reach]]' : ''}`,
     pushAsk: (ios: boolean, standalone: boolean): string =>
       ios && !standalone
         ? 'On iPhone, notifications only work from the app added to the home screen: add it (Share then “Add to Home Screen”), open it, and tap here again.'

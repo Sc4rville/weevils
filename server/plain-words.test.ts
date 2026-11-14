@@ -15,6 +15,7 @@ it('session refusals and receipts speak plain words, in both languages', () => {
     expect(TI[lang].idleUnmanagedAsk(2, '- x')).not.toMatch(/terminal/i)
     const security = { security: { exposedHttp: false, https: true, safe: true } } as unknown as SetupState
     expect(SE[lang].securityAsk(security)).not.toMatch(/terminal/i)
+    expect(SE[lang].phoneAsk({ reach: 'local' } as unknown as SetupState)).not.toMatch(/localhost/i)
   }
   // src/ui/outbox-status.tsx recognises the « read-only session » refusal by its opening words.
   expect(CO.en.unmanaged).toMatch(/^This session was opened elsewhere,/)

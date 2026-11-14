@@ -187,6 +187,18 @@ describe('Ledger', () => {
     expect(ledger.ask(old.id)).toMatchObject({ status: 'dispatched', dispatches: [{ session: s.id }] })
   })
 
+  it('lets a later turn of the same batch dispatch a request made by an earlier message (M1.1), notes without M labels', async () => {
+    const e = (id: string, at: number, role: Entry['role'], text: string): Entry => ({ id, at, role, text })
+    const s = session('cccc3333-0000-0000-0000-000000000000')
+    const journal = [e('m1', T0 - 600_000, 'user', 'il faut virer les boutons terminal'), e('m2', T0 - 300_000, 'user', 'go'), e('ev', T0 - 299_000, 'event', 'Bash · weevils send cccc3333 "remove the terminal buttons"')]
+    const { ledger } = rig({ journal, sessions: [s], model: async (p) => p.includes('durable goals') ? '{"goals":[]}' : answer([
+      { m: 'M1', requests: [{ quote: 'virer les boutons terminal', text: 'Remove the terminal buttons', kind: 'task', state: 'open', sessions: [], goal: '' }], updates: [], memory: [], trace: [] },
+      { m: 'M2', requests: [], updates: [{ id: 'M1.1', status: 'dispatched', sessions: ['cccc3333'], note: 'M2 sent it to the UX session' }], memory: [], trace: [] },
+    ]) })
+    await ledger.backfill(24)
+    expect(ledger.asks('open')[0]).toMatchObject({ status: 'dispatched', note: 'sent it to the UX session', dispatches: [{ session: s.id }] })
+  })
+
   it('closes the loop when a dispatched session stops, and only once per stop', async () => {
     const s = session('aaaa1111-0000-0000-0000-000000000000')
     let judged = 0

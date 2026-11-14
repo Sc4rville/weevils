@@ -104,7 +104,8 @@ weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] 
   m_mem_usage='weevils mem search <words> · mem add [rule|decision|fact] "text" · mem rm <id>'
 fi
 
-json() { local code=$1; shift; "$py" -c "import json,sys,os; E=os.environ; d=json.load(sys.stdin); $code" "$@"; }
+# An empty input (the request before it failed and said why on stderr) ends quietly with an error.
+json() { local code=$1; shift; "$py" -c "import json,sys,os; E=os.environ; raw=sys.stdin.read(); raw.strip() or sys.exit(1); d=json.loads(raw); $code" "$@"; }
 
 resolve() {
   # Id complet à partir d'un préfixe (8 caractères suffisent).
@@ -244,7 +245,7 @@ for e in tr:
         ledger GET /api/boss/mem | json "
 ks=d.get('knowledge') or []
 if not ks: print(E['WVM_NO_MEM'])
-for k in ks[:40]: print(f\"{k['id']:<5} {k['kind']:<8} {k['text']}\" + (f\"  (recall {k['src'][-1]})\" if k.get('src') else ''))
+for k in ks[:40]: print(f\"{k['id']:<5} {k['kind']:<8} {k['text']}\" + (f\"  (recall {k['src'][-1][:8]})\" if k.get('src') else ''))
 " ;;
       search)
         shift 2
@@ -254,7 +255,7 @@ import time
 k=d.get('knowledge') or []; a=d.get('asks') or []; l=d.get('log') or []
 if not (k or a or l): print(E['WVM_NOTHING'])
 if k: print('# '+E['WVM_KNOW'])
-for x in k: print(f\"{x['id']:<5} {x['kind']:<8} {x['text']}\" + (f\"  (recall {x['src'][-1]})\" if x.get('src') else ''))
+for x in k: print(f\"{x['id']:<5} {x['kind']:<8} {x['text']}\" + (f\"  (recall {x['src'][-1][:8]})\" if x.get('src') else ''))
 if a: print('# '+E['WVM_ASKS'])
 for x in a: print(f\"{x['id']:<5} {x['status']:<10} {x['text']}  “{x['quote'][:120]}”\")
 if l: print('# '+E['WVM_LOG']+' (weevils recall <id>)')

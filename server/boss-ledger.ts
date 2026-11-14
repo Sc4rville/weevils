@@ -736,7 +736,7 @@ For each message below, list every distinct request it contains (something ${use
 - "expect": for a dispatched request, what the session must report back, in ${lang}; else "".
 - No request for acknowledgements, thanks, emotions, small talk or a bare "ok", "go", "yes". A short answer to a question weevboss asked ("opus at medium", "yes do it") is a request only when it asks for something; when it confirms an open request, put it in "updates".
 - A message from an agent: a request it relays from ${user} counts; a report about an open request goes in "updates".
-"updates": open requests (list below) that this message or its turn changes: done (${user} or an agent says it is finished, or the turn finished it), dropped (ONLY when ${user} explicitly says to drop, cancel or forget it), dispatched (the turn sent it to sessions: their ids), or "" with a "note" for progress. Never invent.
+"updates": open requests (list below, or one you listed for an earlier message of this batch: id "M<k>.<n>" = the n-th request of message Mk) that this message or its turn changes: done (${user} or an agent says it is finished, or the turn finished it), dropped (ONLY when ${user} explicitly says to drop, cancel or forget it), dispatched (the turn sent it to sessions: their ids), or "" with a "note" for progress. A later turn of this batch that sends an earlier request to a session is a "dispatched" update with its sessions. Never invent. Notes never mention M1, M2…
 "memory": durable things worth keeping beyond this task: a rule ${user} gives about how to work ("never…", "always…", "stop doing…"), a decision ${user} makes, a lasting project fact. One sentence each, third person, in ${lang}, no secret, no relative date. Usually empty.
 "trace": one line per session the turn sent work to: "session" (8 characters), "text" = what was asked of it in plain words, "why" = the need of ${user}'s it serves, "expect" = what it must report back; in ${lang}.
 "new_goals": only for a broad, durable objective ${user} states that is not in the list (e.g. "make weevils blow up"): "id" a short lowercase slug, "title", "why".
@@ -770,6 +770,8 @@ ${blocks.join('\n\n')}`
 
   private apply(msgs: MessageToRead[], r: Reconciled) {
     const now = this.now()
+    const made = new Map<string, Ask>()
+    const noM = (t: string) => t.replace(/\(?\bM\d+(?:\.\d+)?\b\)?:?\s*/g, '').trim()
     for (const g of r.new_goals ?? []) if (g?.id && g.title && !this.goal(g.id)) this.addGoal(g.id, g.title, g.why)
     const goalOk = (id?: string) => (id && this.goal(id) ? this.goal(id)!.id : undefined)
     msgs.forEach((m, i) => {
@@ -825,13 +827,14 @@ ${blocks.join('\n\n')}`
         if (a.status === 'done') { a.closedAt = m.at; a.closedBy = 'weevboss'; a.note = a.kind === 'question' ? 'answered in the thread' : 'done in the thread' }
         this.s.asks.push(a)
         created.push(a)
+        made.set(`M${i + 1}.${created.length}`, a)
         this.trace({ at: m.at, kind: 'request', text: a.text, asks: [a.id], goal: a.goal, src: m.src })
       }
       for (const u of got.updates ?? []) {
-        const a = u?.id ? this.ask(u.id) : undefined
+        const a = u?.id ? made.get(String(u.id).trim().toUpperCase()) ?? this.ask(u.id) : undefined
         if (!a || a.status === 'done' || a.status === 'dropped') continue
         if (u.status === 'dropped' && m.from !== 'user') continue
-        const note = u.note ? clip(oneLine(u.note), 300) : undefined
+        const note = u.note && noM(oneLine(u.note)) ? clip(noM(oneLine(u.note)), 300) : undefined
         if (u.status === 'done' || u.status === 'dropped') {
           a.status = u.status
           a.closedAt = m.at

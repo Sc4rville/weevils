@@ -1,6 +1,8 @@
 /* The requests page (src/ui/requests.tsx): goals as tone bands, requests as lines, the open one in place. */
 
 .req-tabs {
+  width: 100%;
+  box-sizing: border-box;
   display: flex;
   gap: 4px;
   padding-block: 6px 10px;
@@ -183,7 +185,8 @@
 }
 
 .req-time {
-  width: 3.2em;
+  width: 4.6em;
+  white-space: nowrap;
   flex: none;
   padding-top: 2px;
 }
@@ -206,4 +209,11 @@
 
 .req-goal-tag {
   opacity: 0.7;
+}
+
+/* Direct children of the page body (a column that would shrink them): full width like every band. */
+.req-group,
+.req-empty {
+  width: 100%;
+  box-sizing: border-box;
 }

@@ -27,8 +27,8 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
    background, then closes.
    **My computer** (Mac, Linux, or Windows with WSL): `curl -fsSL https://get.scarville.tech/i/<id> | bash` in its
    terminal.
-3. A live progress screen follows the install (the installer's step names), with **a resume link to keep** ("Keep
-   this link to come back": copy it, mail it to yourself through your own mail app, or share it).
+3. A live progress screen follows the install (the installer's step names). Its address is the setup's resume link:
+   closing the page and opening it again brings the person back here, with no button to find.
 4. At the end the page shows the person's own weevils: its address, the access code, "Open my weevils", the link to
    copy (from an app's browser such as X's, the page says to open it in Safari or Chrome, where it can go on the home
    screen); a computer shows a QR code for the phone. The page no longer jumps away by itself. The existing in-app
@@ -46,9 +46,6 @@ The page finds it again, in this order, and never shows the start screen while s
   that opens the setup's status here, and the key that opens its own private key, which it left here sealed
   (AES-GCM). This service holds neither the secret nor anything that opens the sealed key or the sealed link.
 - **This browser** (localStorage), 7 days.
-- **The same browser at the same address**, with nothing kept (`POST /api/nearby`): the setups started from there,
-  how far they are, live, and nothing else (no address, no link, no token); finishing there takes the resume link or
-  the token.
 - **The Hetzner token again**, on the Hetzner screen itself (there is no separate resume screen or button since
   2026-11-14): the same account's token lists the servers weevils made there (Hetzner label `app=weevils`, plus
   `weevils-sid`), each with how far its setup is, and offers **"Continue on this one"** before any new server. A setup
@@ -56,10 +53,14 @@ The page finds it again, in this order, and never shows the start screen while s
   before it seals the link). A finished, stopped or forgotten one: Hetzner gives the server a new root password
   (`reset_password`), used once for the same SSH command as "I already have a VPS"; the install runs again (it keeps
   what is there) and ends with a fresh link for this page. Or the server's IP and root password ("I already have a VPS").
-- **Before any setup exists**: the screen picked (Hetzner or VPS) is in the address (`#hetzner`, `#vps`) and in this
-  browser for a day, so coming back from Hetzner's own pages (sign-up, ID check, console: native screens this page
-  can't follow) lands on the token field again.
-- **One way on after a failure**: a refused token turns "See sizes and prices" into "Try again"; a stopped install,
+- **Going back** is the phone's own gesture (or the browser's arrow): each step is an entry in the browser's history
+  (`#hetzner`, `#vps`, `#computer`), and the page has no Back button, resume screen or restart link of its own. Going
+  back and forth keeps what was typed (the token, password and key in memory only; the address, user and port in this
+  browser). A step already done is never offered again: back during an install, or after it, lands on that install.
+  Before any setup exists, the step picked is also kept for a day, so coming back from Hetzner's own pages (sign-up, ID
+  check, console: native screens this page can't follow) lands on the token field again.
+- **One way on after a failure**: the sizes come as soon as the token is pasted; a refused token shows one "Try
+  again"; a stopped install,
   a stalled one, or a final link this browser can't open shows one "Try again", which goes back to the token (Hetzner),
   the VPS access, or the computer's command.
 - **Never a second server without asking**: when the token's account already has a weevils server, the page offers to

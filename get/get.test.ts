@@ -750,6 +750,10 @@ describe('a Mac', () => {
     const back = await firstScreen(IPHONE, 'en', 'https://get.example/#hetzner')
     await vi.waitFor(() => expect(back.text()).toContain('A server of your own, at Hetzner'))
     expect(back.text()).not.toContain('Plug in your machine')
+    // No control of its own for going back or resuming: the phone's back gesture (one history entry per step), and
+    // the page reopens where it was. No detour, no restart link, no resume-link box, no nearby screen.
+    expect(page).not.toMatch(/class: 'back'|function keepBox|function nearbyScreen|W\.noVps|W\.startOver|W\.seePrice/)
+    expect(page).toContain("history.pushState({ wv: 1 }")
     // A failure offers one way on: « Try again ».
     expect(page).not.toMatch(/failSame|againSame|W\.retry\b/)
   })

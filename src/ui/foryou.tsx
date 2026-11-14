@@ -862,8 +862,11 @@ function ExistingWork({ item, who, fy }: { item: ForYouItem; who: string; fy: Fo
   // What the card was about stays readable above (two lines at most), so the tap never lands on a bare status.
   const about = item.title || item.text
   // Its answer in a sentence or two, plain (no markdown): the whole of it is in the thread.
-  // (An older server sends it on one line: its list items, « … : - **If so:** … », are put back on their own.)
-  const raw = work.reply?.replace(/[ \t]+[-*•][ \t]+(?=\*\*|\p{Lu})/gu, '\n\n- ') ?? ''
+  // (An older server sends it on one line: its list items, « … : - **If so:** … - **If not:** … », are put back on
+  // their own; only a reply on one line with two of them at least, so a lone dash in a sentence stays where it is.)
+  const items = /[ \t]+[-*•][ \t]+(?=\*\*|\p{Lu})/gu
+  const listed = !!work.reply && !work.reply.includes('\n') && (work.reply.match(items)?.length ?? 0) >= 2
+  const raw = (listed ? work.reply!.replace(items, '\n\n- ') : work.reply) ?? ''
   const reply = boss && raw ? plainSummary(raw, 280) ?? plain(raw).split('\n')[0] : ''
   return <><div className="in">
     <Who item={item} who={who} />

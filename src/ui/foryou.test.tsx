@@ -930,6 +930,9 @@ it('weevboss’s answer on a card is one or two plain sentences, never raw markd
  // On one line (an older server): same.
  render(<ForYouItemView item={{...item,work:{...item.work!,reply:'It is sent to the install link session. The page will check on its own whether the repo is public: - **If it is:** it shows « The code is open ». - **If not:** nothing changes.'}}}/>)
  expect(band('bo').querySelector('.fy-work-reply')!.textContent).toBe('It is sent to the install link session.')
+ // A lone dash inside a sentence is not a list: the sentence stays whole.
+ render(<ForYouItemView item={{...item,work:{...item.work!,reply:'The branch is merged - Scarville can test it on his phone now.'}}}/>)
+ expect(band('bo').querySelector('.fy-work-reply')!.textContent).toBe('The branch is merged - Scarville can test it on his phone now.')
 })
 
 it('existing work without a rewrite: no « original » disclosure repeating the card, no "view full image" overlays',async()=>{

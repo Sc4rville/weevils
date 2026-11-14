@@ -703,7 +703,7 @@ describe('milestones', () => {
     await deliver('s11', 'Turn 11 done.', { projectId: 'notes' })
     snap.optimizers = [{ id: 'o1', state: 'done', title: 't', endedAt: now }] as Optimizer[]
     await c.tick(now)
-    expect(kinds('milestone').map((i) => i.text).sort()).toEqual(["10 sessions shared a result today", '3 projects moved today, good day.', 'First auto task wrapped up on its own while you were doing something else.'])
+    expect(kinds('milestone').map((i) => i.text).sort()).toEqual(["10 sessions shared a result today", '3 projects moved today, good day.', 'First automation finished on its own while you were doing something else.'])
     for (let n = 12; n <= 26; n++) await deliver(`s${n}`, `Turn ${n} done.`)
     const again = makeCurator()
     await again.tick(now)
@@ -763,7 +763,7 @@ describe('where the day stands', () => {
       { label: 'Claude · week', value: 71, max: 100, shown: '71%' },
       { label: 'mygame', value: 2, max: 3, shown: '2 of 3', projectId: 'mygame' },
       { label: 'the site', value: 1, max: 3, shown: '1 of 3', projectId: 'site' },
-      { label: 'Auto queue', value: 1, max: 3, shown: '1 running, 2 waiting' },
+      { label: 'Automations', value: 1, max: 3, shown: '1 running, 2 waiting' },
     ])
     fy.seen([id])
     known = usage(88)

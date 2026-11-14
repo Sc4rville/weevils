@@ -96,7 +96,7 @@ export default defineMessages({
     // ---------------------------------------------------------------- milestones (no model)
     msTurns: (n: number) => `${n} sessions ont partagé un résultat aujourd’hui`,
     msProjects: (n: number) => `${n} projets ont bougé aujourd’hui, belle journée.`,
-    msAutoFirst: 'Première tâche auto bouclée toute seule pendant que tu faisais autre chose.',
+    msAutoFirst: 'Première automatisation terminée toute seule pendant que tu faisais autre chose.',
     msStreak: (n: number) => `${n} jours d’affilée que ça livre, on lâche rien.`,
 
     // ---------------------------------------------------------------- where the day stands (no model)
@@ -104,7 +104,7 @@ export default defineMessages({
     statUsage: (window: string) => `Claude · ${window}`,
     percent: (n: number) => `${n} %`,
     statTurns: (n: number, total: number) => `${n} sur ${total}`,
-    statAuto: 'File auto',
+    statAuto: 'Automatisations',
     statAutoShown: (running: number, queued: number) => `${running} en cours, ${queued} en attente`,
   },
   en: {
@@ -191,14 +191,14 @@ export default defineMessages({
 
     msTurns: (n: number) => `${n} sessions shared a result today`,
     msProjects: (n: number) => `${n} projects moved today, good day.`,
-    msAutoFirst: 'First auto task wrapped up on its own while you were doing something else.',
+    msAutoFirst: 'First automation finished on its own while you were doing something else.',
     msStreak: (n: number) => `${n} days in a row of shipping, keep it going.`,
 
     statText: (n: number) => (n > 0 ? `Your day so far: ${n} session${n === 1 ? '' : 's'} with a result` : 'Your day so far'),
     statUsage: (window: string) => `Claude · ${window}`,
     percent: (n: number) => `${n}%`,
     statTurns: (n: number, total: number) => `${n} of ${total}`,
-    statAuto: 'Auto queue',
+    statAuto: 'Automations',
     statAutoShown: (running: number, queued: number) => `${running} running, ${queued} waiting`,
   },
 })

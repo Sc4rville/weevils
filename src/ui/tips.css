@@ -40,11 +40,6 @@
   display: inline-flex;
 }
 
-.tip-kind {
-  font-size: 0.875rem;
-  font-weight: 700;
-}
-
 .tip-x {
   margin-left: auto;
   display: inline-flex;

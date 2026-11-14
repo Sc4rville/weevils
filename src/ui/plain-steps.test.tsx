@@ -24,7 +24,7 @@ it('collapsed session thread: plain sentences only, no path, command, flag or to
   await act(async () => root.render(<Messages session plain messages={thread} author="claude" />))
   const head = host.querySelector('.steps-head')!
   expect(head.getAttribute('aria-expanded')).toBe('false')
-  expect(head.textContent).toMatch(/Looks through the code/)
+  expect(head.textContent).toMatch(/Looks through the code, edits the code/)
   expect(head.textContent).not.toMatch(FORBIDDEN)
   expect(host.querySelector('.steps-list')).toBeNull()
   expect(host.querySelector('.chatter summary')!.textContent!.length).toBeLessThan(112)

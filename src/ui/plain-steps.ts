@@ -82,11 +82,11 @@ export function clusterLine(c: Cluster, w: Words): string {
   }
 }
 
-/** One line for the whole group: what was done, in order, at most three phrases. */
+/** One short line for the whole group: at most two ideas, in order, no counts (they fit a phone). */
 export function groupLine(cs: Cluster[], w: Words): string {
-  const lines = cs.map((c) => clusterLine(c, w))
-  const uniq = lines.filter((l, i) => lines.indexOf(l) === i)
-  return uniq.slice(0, 3).join(' → ') + (uniq.length > 3 ? w.more : '')
+  const idea = (k: Kind): string => (k === 'read' || k === 'search' ? String(w.readMany) : k === 'edit' || k === 'write' ? String(w.editMany) : String(w[k] ?? w.other))
+  const ideas = cs.map((c) => idea(c.kind)).filter((l, i, all) => all.indexOf(l) === i).slice(0, 2)
+  return ideas.map((l, i) => (i ? l.charAt(0).toLowerCase() + l.slice(1) : l)).join(', ')
 }
 
 /** Intermediate agent chatter: its first sentence, short. null when it already is short. */

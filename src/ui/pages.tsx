@@ -285,7 +285,7 @@ function SessionPage({ id }: { id: string }) {
           seraient ensuite repoussées d'un coup vers le bas par les messages (ouverture depuis une notification). */}
       {(detail || missing) && (
         <>
-        {s.progress && <RemoteProgress progress={s.progress} agentWorking={s.turnWorking} />}
+        {s.progress && <RemoteProgress progress={s.progress} />}
 
         <Background session={s} />
 

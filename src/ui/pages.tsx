@@ -315,6 +315,7 @@ function SessionPage({ id }: { id: string }) {
           <FootError text={err} />
           {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
           <Composer
+            draftKey={`session:${s.id}`}
             placeholder={sourceIssue ?? (s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly)}
             label={t.composerLabel(s.title)}
             onSend={send}

@@ -231,6 +231,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
             </div>
             <FootError text={k.notes.get(x.id) ?? err} />
             <Composer
+              draftKey={`auto:${x.id}`}
               placeholder={t.talkPlaceholder}
               label={t.talkLabel(x.title)}
               voice

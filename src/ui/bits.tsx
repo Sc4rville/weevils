@@ -371,21 +371,30 @@ export function Composer({
   // Le texte en cours survit à un rechargement (mise à jour automatique de l'app, public/sw.js) : gardé dans l'onglet,
   // par champ (son libellé), effacé à l'envoi.
   const key = `weevils-draft:${draftKey ?? label}`
-  const [text, setText] = useState(() => {
+  const readDraft = (k: string) => {
     try {
-      return sessionStorage.getItem(key) ?? ''
+      return sessionStorage.getItem(k) ?? ''
     } catch {
       return ''
     }
-  })
+  }
+  // Le brouillon appartient à une clé (id de session) : si la clé change alors que le composer reste monté, on recharge
+  // le brouillon de la nouvelle conversation, jamais le texte de la précédente.
+  const [draftState, setDraftState] = useState(() => ({ key, text: readDraft(key) }))
+  if (draftState.key !== key) setDraftState({ key, text: readDraft(key) })
+  const text = draftState.key === key ? draftState.text : readDraft(key)
+  const keyRef = useRef(key)
+  keyRef.current = key
+  const setText = (v: string | ((cur: string) => string)) =>
+    setDraftState((s) => (s.key === keyRef.current ? { key: s.key, text: typeof v === 'function' ? v(s.text) : v } : s))
   useEffect(() => {
     try {
-      if (text) sessionStorage.setItem(key, text)
-      else sessionStorage.removeItem(key)
+      if (draftState.text) sessionStorage.setItem(draftState.key, draftState.text)
+      else sessionStorage.removeItem(draftState.key)
     } catch {
       /* stockage indisponible */
     }
-  }, [key, text])
+  }, [draftState])
   const field = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
   const [busy, setBusy] = useState(false)
   const submitting = useRef(false)
@@ -413,6 +422,7 @@ export function Composer({
     if (!typed && !files.length) return
     submitting.current = true // synchronous: two submit events can precede a React render
     const sent = files
+    const sentKey = key
     setText(original)
     setBusy(true)
     setErr(null)
@@ -421,7 +431,12 @@ export function Composer({
       else await onSend(typed)
       // Keep the draft (including sessionStorage) until the server acknowledges it.
       // A new dictation arriving while we await the server must also survive.
-      setText((current) => current === original ? '' : current)
+      if (keyRef.current === sentKey) setText((current) => current === original ? '' : current)
+      else {
+        try {
+          if (sessionStorage.getItem(sentKey) === original) sessionStorage.removeItem(sentKey)
+        } catch { /* stockage indisponible */ }
+      }
       setFiles((current) => current === sent ? [] : current)
     } catch (e) {
       if (sayErrors) setErr((e as Error).message || tr(M).sendFailed)

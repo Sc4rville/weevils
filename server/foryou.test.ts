@@ -233,7 +233,7 @@ describe('session results', () => {
     fy.sessionTurn(session(), 'result')
     await flush()
     expect(find(fy, 's:s1')?.body).toBe('See and out/missing.png, then data-menu.png.')
-    expect(find(fy, 's:s1')?.text).toBe('See and, then data-menu.png.')
+    expect(find(fy, 's:s1')?.text).toBe(M.en.resultUntitled)
     threads.s1 = [says('out/menu.png')]
     fy.sessionTurn(session(), 'result')
     await flush()
@@ -314,7 +314,9 @@ describe('headline', () => {
     expect(headline('[VPS] Cause trouvée : l’instance de test PID 3999499 a exécuté `reapPanes()` et fermé les cinq sessions.')).toBe('Cause trouvée')
     expect(headline('« Pour toi » est en ligne : les deux mots en haut, l’aperçu dans la bande.')).toBe('« Pour toi » est en ligne')
     expect(headline('## Fait\n\nLa page passe de 1,8 s à 240 ms, mesuré sur `/api/orders`. Les tests passent.')).toBe('Fait')
-    expect(headline('Index posé sur (boutique, jour) dans ~/projects/comptoir/db/schema.sql, et la page est rapide.')).toBe('Index posé sur (boutique, jour) dans, et la page est rapide.')
+    // Its only sentence would read with a hole where the path was: nothing rather than a fragment.
+    expect(headline('Index posé sur (boutique, jour) dans ~/projects/comptoir/db/schema.sql, et la page est rapide.')).toBe('')
+    expect(headline('Index posé dans ~/projects/comptoir/db/schema.sql pour la boutique. La page des commandes passe à 240 ms.')).toBe('La page des commandes passe à 240 ms.')
     expect(headline('- out/menu.png\n- ok')).toBe('ok')
     const long = headline('Le menu mobile glisse maintenant depuis la gauche avec un ressort plus doux et il se referme quand on touche ailleurs sur la page entière.')
     expect(long.length).toBeLessThanOrEqual(HEADLINE_MAX)
@@ -322,7 +324,72 @@ describe('headline', () => {
   })
 })
 
+describe('headline never shows a hole where code was', () => {
+  it('skips to a whole sentence, puts plain words back, keeps a clean first clause', () => {
+    // The live card « All three layers and the terminal work are live on; is pushed too. »
+    expect(headline('All three layers and the terminal work are live on `main` (`87aba80`); `feat/terminal-prompts` is pushed too.'))
+      .toBe('All three layers and the terminal work are live on main.')
+    expect(headline("I didn't start a batch session because `ads/brief.md` doesn't exist. Write the brief and I'll run it.")).toBe("Write the brief and I'll run it.")
+    expect(headline("I didn't start a batch session because `ads/brief.md` doesn't exist.")).toBe('')
+    // The fragment of IMG_7395: « wasn't applied. »
+    expect(headline("`/model sonnet` wasn't applied. It only works typed at the session prompt.")).toBe('It only works typed at the session prompt.')
+    // Code that was only an aside leaves no trace.
+    expect(headline('The menu is merged (`a063bf2`) and deployed.')).toBe('The menu is merged and deployed.')
+    expect(headline('See https://example.com/x for the report, and the logs are clean.')).toBe('')
+    expect(headline('Renamed `helperFn` everywhere.')).toBe('')
+  })
+
+  it('a card whose words leave no whole sentence says it finished, never a fragment', async () => {
+    const fy = make()
+    snap.sessions = [session()]
+    threads.s1 = [says("I didn't start a batch session because `ads/brief.md` doesn't exist.")]
+    fy.sessionTurn(session(), 'result')
+    await flush()
+    expect(find(fy, 's:s1')?.text).toBe(M.en.resultUntitled)
+    // The whole words still unfold under it.
+    expect(find(fy, 's:s1')?.body).toContain('batch session')
+  })
+})
+
 describe('result titles', () => {
+  it('leaves out a preamble the model put before the title', () => {
+    expect(resultTitleLine("Here is the title for the card: I couldn't review any new prompts today.")).toBe("I couldn't review any new prompts today.")
+    expect(resultTitleLine('Sure! Here’s the title: "The menu now slides in from the left."')).toBe('The menu now slides in from the left.')
+    expect(resultTitleLine("Voici le titre : J'ai corrigé la page des commandes.")).toBe("J'ai corrigé la page des commandes.")
+    expect(resultTitleLine('Title: The menu now slides in from the left.')).toBe('The menu now slides in from the left.')
+    expect(resultTitleLine('Title screen now fades in over two seconds.')).toBe('Title screen now fades in over two seconds.')
+  })
+
+  it('a title stored with a preamble is shown without it', () => {
+    fs.writeFileSync(path.join(dir, 'foryou.json'), JSON.stringify({ rev: 1, items: [
+      { id: 's:13a', kind: 'session', tone: 'result', who: 'session', text: 'I couldn’t review any new request.', body: 'I couldn’t review any new request.', at: now, sum: { text: "Here is the title for the card: I couldn't review any new prompts today.", lang: 'en' } },
+    ] }))
+    expect(find(make(), 's:13a')?.text).toBe("I couldn't review any new prompts today.")
+  })
+
+  it('words rewritten while their title is asked are titled again, never left a fragment', async () => {
+    const releases: ((v: string) => void)[] = []
+    const title = vi.fn((_p: string) => new Promise<string>((r) => { releases.push(r) }))
+    const fy = make({ title })
+    const s = session({ lastMessage: 'Running the last checks before shipping.' })
+    snap.sessions = [s]
+    threads.s1 = []
+    fy.sessionTurn(s, 'result')
+    await flush(); await flush()
+    expect(title).toHaveBeenCalledTimes(1)
+    // The thread read again while the first call runs: better words.
+    threads.s1 = [says('All checks pass and the terminal prompts are live on the phone.')]
+    later.splice(0).forEach((fn) => fn())
+    await flush(); await flush()
+    releases[0]('I am still running the last checks before shipping the terminal prompts.')
+    for (let n = 0; n < 4; n++) await flush()
+    expect(title).toHaveBeenCalledTimes(2)
+    expect(title.mock.calls[1][0]).toContain('All checks pass and the terminal prompts are live on the phone.')
+    releases[1]('All checks pass and the terminal prompts are now live on the phone.')
+    for (let n = 0; n < 4; n++) await flush()
+    expect(find(fy, 's:s1')?.text).toBe('All checks pass and the terminal prompts are now live on the phone.')
+  })
+
   it('keeps only a whole sentence that stands on its own', () => {
     expect(resultTitleLine("wasn't applied.")).toBe('')
     expect(resultTitleLine('Paused')).toBe('')

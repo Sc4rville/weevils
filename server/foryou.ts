@@ -71,14 +71,24 @@ const TITLE_TRIES = 3
 const SAID_MS = 2 * 60_000
 const SAID_DAYS = 14
 
+/** What a model sometimes says before the title itself (« Here is the title for the card: », « Voici le titre : »,
+ * « Sure! Title: »): left out, with the quotes the title came in. Also applied to titles stored before this rule. */
+export function titleWithoutPreamble(raw: string): string {
+  let s = collapse(raw)
+  // Search patterns in both languages the titles are written in, never shown.
+  const preamble = /^(?:(?:sure|ok(?:ay)?|of course|bien sûr|d['’]accord|voilà)\s*[,.!]\s*)?(?:(?:here(?:['’]s| is)|voici)\s+(?:(?:the|a|your|my|le|un|ton|votre|mon)\s+)?(?:(?:card|result)\s+)?(?:title|titre|sentence|phrase|line|ligne)(?:\s+(?:for|of|de|pour)\s+(?:the|this|that|your|la|cette|ta)\s+(?:card|result|carte|résultat))?|(?:(?:card|result)\s+)?title|titre(?:\s+de\s+la\s+carte)?)\s*[:：—–-]\s*/iu // i18n-ignore
+  s = s.replace(preamble, '')
+  // The whole answer wrapped in quotes.
+  const wrapped = /^(["“«'])\s*([\s\S]*?)\s*(["”»'])$/u.exec(s)
+  if (wrapped) s = wrapped[2]
+  return s
+}
+
 /** A model's title for a result card, kept only if it is a whole sentence that stands on its own: '' otherwise (cut
  * fragment, a bare word, a sentence that starts in the middle, an ellipsis). `names`: where a lowercase product name
  * may legitimately open the sentence (« weevils now installs on a Mac »). */
 export function resultTitleLine(raw: string, names: string[] = []): string {
-  let s = collapse(raw)
-  // The whole answer wrapped in quotes.
-  const wrapped = /^(["“«'])\s*([\s\S]*?)\s*(["”»'])$/u.exec(s)
-  if (wrapped) s = wrapped[2]
+  let s = titleWithoutPreamble(raw)
   s = s.replace(/`([^`]*)`/g, '$1')
   if (s.length < 15 || s.length > 260 || s.split(' ').length < 4) return ''
   if (/(?:\.\.\.|…)$/u.test(s) || /[,;:(–—-]$/u.test(s) || internalFeedUpdate(s)) return ''
@@ -219,42 +229,81 @@ export function withoutPaths(text: string, files: string[]): string {
 /** Inline code that is code (a path, a call, a flag), not a word put in backticks. */
 const CODEY = /[/\\_=<>{}()$#@|]|\.[a-z0-9]{1,5}\b|--|^[\w.-]+$/i
 
+/** Where code left a sentence (a path, a call, a link, a hash): a line with such a hole is never shown. */
+const GAP = '\u0002'
+/** Inline code that reads as a plain word once out of its backticks (`main`, `weevils`): put back only when no line
+ * without it is left. Never a hash, a file name, a camelCase or snake_case name. */
+const WORDISH = /^[A-Za-z][a-z0-9-]*$/
+const HASH = /^[0-9a-f]{7,40}$/
+const strictGaps = (l: string) => l.replace(/\u0003[^\u0004]*\u0004/g, GAP)
+const softGaps = (l: string) => l.replace(/\u0003([^\u0004]*)\u0004/g, '$1')
+
 /**
  * What a session did, in one short line said in passing (« La page des commandes passe à 240 ms »), from the closing
  * words of its turn: no markdown, no paths, no commands, no machine tag, the first sentence, and when it opens with a
  * heading before a colon (« Cause trouvée : … »), that heading. The whole words stay in the item's body.
+ * A sentence that would read with a hole where its code was (« live on ; is pushed too ») gives way to the next
+ * whole one; '' when none is left, never a fragment.
  */
 export function headline(text: string, max = HEADLINE_MAX): string {
   const plain = text
+    .replace(/[\u0002-\u0004]/g, '')
     .replace(/```[\s\S]*?```/g, '\n\n')
     .replace(/^\s*#{1,6}\s+(.*)$/gm, '$1\n\n')
     .replace(/\*\*|__/g, '')
     .replace(/^\s*(?:[-*•>]|\d+[.)])\s+/gm, '\n\n')
     .replace(/^\s*\[(?:VPS|PC|GPU|test)\]\s*/gim, '')
-    .replace(/`([^`\n]*)`/g, (_m, c: string) => (CODEY.test(c) ? '' : c))
+    .replace(/`([^`\n]*)`/g, (_m, c: string) => (!CODEY.test(c) ? c : WORDISH.test(c) && !HASH.test(c) ? `\u0003${c}\u0004` : GAP))
     .replace(/\[([^\]\n]*)\]\([^)\n]*\)/g, '$1')
-    .replace(/https?:\/\/\S+/g, '')
-    .replace(/(?<![\w/])(?:~|\.{1,2})?\/[\w.@~+-]+(?:\/[\w.@~+-]*)*/g, '')
-    .replace(/(?<![\w/])[\w.-]+(?:\/[\w.@~+-]+)+\.[a-z0-9]{1,5}\b/gi, '')
+    .replace(/https?:\/\/[^\s\u0002-\u0004]+/g, GAP)
+    .replace(/(?<![\w/])(?:~|\.{1,2})?\/[\w.@~+-]+(?:\/[\w.@~+-]*)*/g, GAP)
+    .replace(/(?<![\w/])[\w.-]+(?:\/[\w.@~+-]+)+\.[a-z0-9]{1,5}\b/gi, GAP)
     .replace(/\bPID\s*\d+\b/gi, '')
-  const lines = plain.split(/\n\s*\n/).map(collapse).filter((l) => /\p{L}{2}/u.test(l) && !GREETING.test(l))
-  let line = lines[0] ?? ''
-  const sentence = /^(.+?[.!?…])(?:\s|$)/u.exec(line)
-  if (sentence && sentence[1].length >= 12) line = sentence[1]
-  const heading = /^(.{8,80}?)\s*[:：—–]\s/u.exec(line)
-  if (heading) line = heading[1]
-  line = line
-    .replace(/\(\s*[,;]?\s*\)/g, '')
-    // What stayed of « (branche `x`) » once the code left.
-    .replace(/\(\s*\p{L}+\s*\)/gu, '')
-    .replace(/\s+([,.;:!?…])/g, '$1')
-    .replace(/[\s,;:(–—-]+$/u, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
+  const paragraphs = plain.split(/\n\s*\n/).map(collapse).filter((l) => {
+    const words = strictGaps(l).replaceAll(GAP, '')
+    return /\p{L}{2}/u.test(words) && !GREETING.test(words)
+  })
+  // In order: each paragraph's first sentence (the whole paragraph when that sentence is too short), then its others.
+  const candidates: string[] = []
+  for (const p of paragraphs) {
+    const sentences = p.split(/(?<=[.!?…])\s+/u)
+    if (sentences.length > 1 && softGaps(sentences[0]).length >= 12) candidates.push(...sentences)
+    else candidates.push(p)
+  }
+  const shape = (l: string) => {
+    const heading = /^(.{8,80}?)\s*[:：—–]\s/u.exec(l)
+    if (heading) l = heading[1]
+    return l
+      // Code that was only an aside: « (`87aba80`) », « (branche `x`) », « … : `out/a.png` ».
+      .replace(/\(\s*(?:\p{L}+\s+)?\u0002[\s,;/\u0002]*\)/gu, '')
+      .replace(/\s*[:：]\s*\u0002[\s,;\u0002]*([.!?]?)\s*$/u, '$1')
+      .replace(/\(\s*[,;]?\s*\)/g, '')
+      .replace(/\s+([,.;:!?…])/g, '$1')
+      .replace(/[\s,;:(–—-]+$/u, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+  }
+  const whole = (l: string) => !!l && !l.includes(GAP) && /\p{L}{2}/u.test(l)
+  let line = ''
+  pick: for (const c of candidates) {
+    // The sentence as it is, then with its plain words put back; then its first clause (before « ; » or a dash).
+    const clause = /^(.{12,}?)\s*(?:;|\s[—–]\s)/u.exec(c)?.[1]
+    for (const v of [c, ...(clause ? [`${clause.replace(/[\s,]+$/, '')}.`] : [])]) {
+      for (const l of [shape(strictGaps(v)), shape(softGaps(v))]) {
+        if (whole(l)) {
+          line = l
+          break pick
+        }
+      }
+    }
+  }
   if (line.length <= max) return line
   const cut = line.slice(0, max - 1)
   return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), max * 0.6)).replace(/[\s,;:–—-]+$/u, '')}…`
 }
+
+/** Words that say something (more than a bare file name or a word or two), for a card whose headline is empty. */
+const untitledProse = (s: string) => collapse(s).split(' ').length > 3
 
 /** First line of a mail that says something: not a greeting, not a quote, not a separator. */
 export function firstLine(text: string, max = MAIL_LINE_MAX): string {
@@ -627,9 +676,11 @@ export class ForYou {
     // The files are shown under the words: their raw paths leave the words (unless nothing else was said).
     const said = cited.length ? collapse(withoutPaths(raw, cited.map((e) => e.path))) : ''
     const whole = (said || raw || (first ? (s.lastMessage ?? '') : '')).trim()
-    const text = headline(whole) || clip(collapse(whole), HEADLINE_MAX)
+    const line = headline(whole)
+    const text = line || clip(collapse(whole), HEADLINE_MAX)
     if (!text || internalFeedUpdate(whole)) return
-    const body = collapse(whole) === text ? undefined : clip(whole.replace(/\n{3,}/g, '\n\n'), BODY_MAX)
+    // Words with no whole sentence to show keep their body too: the card says it finished, they unfold under it.
+    const body = collapse(whole) === text && (line || !untitledProse(whole)) ? undefined : clip(whole.replace(/\n{3,}/g, '\n\n'), BODY_MAX)
     const cur = this.get(`s:${s.id}`)
     const same = cur?.tone === 'result' && cur.text === text && (cur.mediaIds ?? []).join() === mediaIds.join()
     if (same) return
@@ -977,13 +1028,17 @@ export class ForYou {
   }
 
   private titling = new Set<string>()
+  /** Cards rewritten while their title was being asked: asked again once that call ends. */
+  private retitle = new Set<string>()
   private titles: Promise<void> = Promise.resolve()
 
   /** Every session result card is titled by a light model from its whole closing message: one complete sentence that
    * says what was done, never a fragment cut out of the last sentence. One call at a time; a useless answer is retried. */
   titleResult(id: string) {
     const ask = this.deps.title
-    if (!ask || this.titling.has(id)) return
+    if (!ask) return
+    // Already asked: a rewrite meanwhile asks again once that call ends, never dropped (it left the card a fragment).
+    if (this.titling.has(id)) return void this.retitle.add(id)
     this.titling.add(id)
     const later = this.deps.later ?? ((fn, ms) => void setTimeout(fn, ms).unref?.())
     const job = async () => {
@@ -1004,8 +1059,9 @@ export class ForYou {
         console.error(`[foryou] result title: ${(e as Error).message}`)
       }
       const cur = this.get(id)
-      // Rewritten meanwhile (same turn, better words): that rewrite asks again.
-      if (!cur || (cur.body || cur.text) !== source || cur.sum?.text) return
+      if (!cur || cur.sum?.text) return
+      // Rewritten meanwhile (same turn, better words): asked again with those words.
+      if ((cur.body || cur.text) !== source) return void this.retitle.add(id)
       if (line) {
         cur.sum = { text: line, lang: detectLang(line) ?? l }
         return this.changed()
@@ -1015,7 +1071,11 @@ export class ForYou {
       this.save()
       if (tries < TITLE_TRIES) later(() => this.titleResult(id), tries * 2 * 60_000)
     }
-    this.titles = this.titles.then(job).catch(() => undefined).finally(() => this.titling.delete(id))
+    this.titles = this.titles.then(job).catch(() => undefined).finally(() => {
+      this.titling.delete(id)
+      // Only a rewritten card (its title state cleared): a failed try keeps its own delay.
+      if (this.retitle.delete(id) && !this.get(id)?.sum) this.titleResult(id)
+    })
   }
 
   /** Result cards of the last days still without a model's title (stored before titles, or after failed tries). */
@@ -1134,7 +1194,13 @@ export class ForYou {
     }
     if (i.kind === 'session') {
       // The line follows the latest rules (an item stored earlier gets them too); the curator's line wins.
-      if (i.tone === 'result') out.text = i.sum?.text && !internalFeedUpdate(i.sum.text) ? i.sum.text : headline(editorialFeedText(i.body || i.text)) || i.text
+      if (i.tone === 'result') {
+        // A stored title loses a model's preamble written before that rule; closing words with no whole sentence
+        // left once their code is out say so plainly rather than show a fragment (a bare file name stays as it is).
+        const titled = i.sum?.text && !internalFeedUpdate(i.sum.text) ? titleWithoutPreamble(i.sum.text) : ''
+        const source = i.body || i.text
+        out.text = titled || headline(editorialFeedText(source)) || (untitledProse(source) ? tr(M).resultUntitled : i.text)
+      }
       const cur = snap.sessions.find((s) => s.id === i.sessionId)
       if (cur?.archived) return null
       if (cur) out.title = cleanTitle(cur.title)

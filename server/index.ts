@@ -253,6 +253,8 @@ if (foryou) {
   curator.start()
   // Recent result cards stored before titles existed (or whose title failed): titled once, in the background.
   setTimeout(() => foryou.titleRecentResults(), 15_000).unref?.()
+  // And a card left untitled later (a title call that failed, a rewrite at the wrong moment) heals without a restart.
+  setInterval(() => foryou.titleRecentResults(2), 10 * 60_000).unref?.()
 }
 // ---------------------------------------------------------------- relais Codex pendant la limite de Claude (chaque machine, pour ses sessions)
 

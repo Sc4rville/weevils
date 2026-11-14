@@ -33,10 +33,45 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
    background, then closes.
    **My computer** (Mac, Linux, or Windows with WSL): `curl -fsSL https://get.scarville.tech/i/<id> | bash` in its
    terminal.
-3. A live progress screen follows the install (the installer's step names).
-4. At the end the page opens the person's own weevils (a phone switches to it by itself; a computer shows a QR code
-   for the phone). The existing in-app onboarding takes over: weevboss welcomes them and connects Claude Code or
-   Codex through their official sign-in link, then the first steps.
+3. A live progress screen follows the install (the installer's step names), with **a resume link to keep** ("Keep
+   this link to come back": copy it, mail it to yourself through your own mail app, or share it).
+4. At the end the page shows the person's own weevils: its address, the access code, "Open my weevils", the link to
+   copy (from an app's browser such as X's, the page says to open it in Safari or Chrome, where it can go on the home
+   screen); a computer shows a QR code for the phone. The page no longer jumps away by itself. The existing in-app
+   onboarding takes over: weevboss welcomes them and connects Claude Code or Codex through their official sign-in
+   link, then the first steps.
+
+### Coming back (the page was closed, the in-app browser forgot it)
+
+The install runs on the person's server whatever happens to the page: a setup lives in this service, not in the page.
+The page finds it again, in this order, and never shows the start screen while something is installing:
+
+- **The address bar**: as soon as a setup exists, the page's URL is its resume link, `/#job=<sid>.<secret>` (a reload,
+  or an in-app browser that reloads the tab, comes back to it). The same link opened in **any** browser gets the
+  progress, then the final link: from the secret (after the `#`, never sent to a server) the page derives the token
+  that opens the setup's status here, and the key that opens its own private key, which it left here sealed
+  (AES-GCM). This service holds neither the secret nor anything that opens the sealed key or the sealed link.
+- **This browser** (localStorage), 7 days.
+- **The same browser at the same address**, with nothing kept (`POST /api/nearby`): the setups started from there,
+  how far they are, live, and nothing else (no address, no link, no token); finishing there takes the resume link or
+  the token.
+- **"Pick up where I left off"** on the start screen: the resume link; or the **Hostinger/Hetzner token** again (the
+  same account): the page lists the servers weevils made there (Hetzner label `app=weevils`, plus `weevils-sid`
+  since 2026-11-14; Hostinger: the hostname `weevils-<id>`), each with how far its setup is, and offers **"Continue on
+  this one"**. A setup still installing is taken over by the new page (the install asks for the page's current key,
+  `GET /k/<sid>`, just before it seals the link). A finished, stopped or forgotten one: the host gives the server a
+  new root password (Hetzner `reset_password`, Hostinger `PUT …/root-password` with a random one), used once for the
+  same SSH command as "I already have a VPS"; the install runs again (it keeps what is there) and ends with a fresh
+  link for this page. Or the server's IP and root password ("I already have a VPS").
+- **Never a second server without asking**: when the token's account already has a weevils server, the page offers to
+  continue on it, and creating another takes a tap on "Create another server anyway" (`another: true`; without it,
+  `POST /api/<host>/create` answers `409 exists` with the list). Two taps, or a page reopened during the call, make
+  one server (`409 creating`).
+
+A finished setup is kept 7 days, with its sealed link, until an hour after the first login on the new weevils: the
+bootstrap leaves `~/.local/share/weevils/get-claim` (this service's `/r/<sid>`), and the new weevils posts `claimed`
+there once, at its first login, then deletes the file (`server/get-claim.ts`); nothing else ever goes back. The hour
+covers a first login made in a browser that is then lost (an in-app browser).
 
 Where the new weevils is reached:
 
@@ -67,8 +102,10 @@ Linux in four places:
 
 ## Security
 
-- **Nothing stored.** Setups live in memory for at most 3 hours; no database, no file. Request bodies are never
-  logged (Caddy logs the paths only).
+- **Nothing stored.** Setups live in memory (one that never started: 6 hours; creating or installing a server: a day
+  after its last sign of life; finished: 7 days, its sealed link until an hour after the first login there); no
+  database, no file: a restart hands them to the next run through a file in RAM (`/dev/shm`, mode 600). Request
+  bodies are never logged (Caddy logs the paths only, setup ids masked).
 - **Secrets are used once.** The Hetzner token makes the quote and the create calls, then is dropped (the page clears
   it too). The SSH password goes to `ssh` through an askpass environment variable (never argv, never disk) for one
   command; a private key goes to a file in RAM (`/dev/shm`) for the few seconds of that connection. The root password
@@ -77,7 +114,10 @@ Linux in four places:
   person's machine itself; nothing is proxied through this service.
 - **The access code never reaches the service.** The page generates an RSA-OAEP key pair (WebCrypto); the install
   encrypts the login link with the public half (`openssl pkeyutl`, or Node's `crypto`), and the service only relays the ciphertext. Only
-  the page that started the setup can open it, and it only follows a link to the address the install reported.
+  a page holding the private half can open it: the one that started the setup, a page opened with its resume link
+  (the private half comes back sealed with a key derived from the link's secret, which never reaches the service), or
+  a page that took the setup over with the host's token (proof the server is theirs). It only follows a link to the
+  address the install reported.
 - **The install reports step names only**, checked against the installer's own titles on both sides, never a line of
   its log (which holds the access code: it stays on the machine, `~/weevils-install.log`). Two steps are the
   bootstrap's own and go by name: `tunnel`, and `s_system` while it installs Homebrew on a Mac.
@@ -91,7 +131,8 @@ Linux in four places:
   reachable by their unguessable setup id; the page's own assets are public.
 
 What the service *does* have, briefly, by design: during "I already have a VPS", the password, for one connection;
-during "Create a server for me", the token, for two API calls. A modified service could keep them; the code is open
+during "Create a server for me", the token, for a few API calls; during "Continue on this one", the token and the new
+root password the host gives the server, for those calls and one SSH connection. A modified service could keep them; the code is open
 so anyone can check what runs, and both can be revoked right after (delete the token at Hetzner, change the password).
 
 ## Anonymous stats

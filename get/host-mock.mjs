@@ -1,10 +1,12 @@
 // Hetzner Cloud and Hostinger API doubles for end-to-end tests of get's "create a server for me", without paying.
 // Creating a server "boots" a machine: MOCK_BOOT (a shell command) runs with BOOT_SCRIPT pointing to what the real
 // host would run as root at first boot (Hetzner: cloud-init's runcmd; Hostinger: the post-install script). The
-// server answers with MOCK_IP. Only the calls get makes; shapes from each host's API reference.
-//   MOCK_PORT=4184 MOCK_IP=172.30.99.10 MOCK_BOOT='…' node get/host-mock.mjs
+// server answers with MOCK_IP. A new root password (« continue on this one ») runs MOCK_PASSWD with the password on
+// its stdin. Only the calls get makes; shapes from each host's API reference.
+//   MOCK_PORT=4184 MOCK_IP=172.30.99.10 MOCK_BOOT='…' MOCK_PASSWD='…' node get/host-mock.mjs
 //   Hetzner: GET_HETZNER_API=http://127.0.0.1:4184/hetzner   Hostinger: GET_HOSTINGER_API=http://127.0.0.1:4184/hostinger
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
@@ -15,6 +17,15 @@ const HS_TOKEN = process.env.MOCK_HOSTINGER_TOKEN || '42|mockhostingertoken00000
 const IP = process.env.MOCK_IP || '203.0.113.10'
 let n = 0
 const scripts = new Map()
+/** The servers made so far, as each host lists them. */
+const made = []
+/** Sets the machine's root password (MOCK_PASSWD reads it on stdin), as the host's agent would. */
+function setRoot(password) {
+  const r = spawnSync('bash', ['-c', process.env.MOCK_PASSWD || 'cat >/dev/null'], { input: `${password}\n`, stdio: ['pipe', 'inherit', 'inherit'] })
+  console.log(`[mock] root password set on the machine (exit ${r.status})`)
+}
+const hzView = (x) => ({ id: x.id, name: x.name, status: 'running', created: new Date(x.at).toISOString(), labels: x.labels, public_net: { ipv4: { ip: IP } }, datacenter: { location: { name: x.location, city: 'Nuremberg' } }, server_type: { name: x.type } })
+const hsView = (x) => ({ id: x.id, hostname: x.name, state: 'running', created_at: new Date(x.at).toISOString(), plan: x.type, ipv4: [{ id: 1, address: IP }] })
 
 function boot(content) {
   const file = path.join(os.tmpdir(), `host-mock-${process.pid}-${++n}.sh`)
@@ -52,8 +63,30 @@ http.createServer((req, res) => {
         const cmd = /^ {2}- \[bash, -c, "(.*)"\]$/m.exec(b.user_data || '')?.[1] || 'true'
         console.log(`[mock] Hetzner create ${b.name} ${b.server_type}@${b.location} image=${b.image}`)
         boot(`#!/bin/bash\n${cmd}\n`)
-        return reply(201, { server: { id: 1000 + n, name: b.name, status: 'initializing', public_net: { ipv4: { ip: IP } } }, root_password: 'mock-root-password' })
+        const x = { host: 'hetzner', id: 1000 + n, name: b.name, labels: b.labels || {}, location: b.location, type: b.server_type, at: Date.now() }
+        made.push(x)
+        return reply(201, { server: { id: x.id, name: b.name, status: 'initializing', public_net: { ipv4: { ip: IP } } }, root_password: 'mock-root-password' })
       }
+      if (req.method === 'GET' && url.startsWith('/servers?')) {
+        const sel = new URL(url, 'http://x').searchParams.get('label_selector') || ''
+        const [k, v] = sel.split('=')
+        const list = made.filter((x) => x.host === 'hetzner' && (!k || (v === undefined ? k in x.labels : x.labels[k] === v)))
+        if (/created:desc/.test(url)) list.reverse()
+        return reply(200, { servers: list.map(hzView) })
+      }
+      let m = /^\/servers\/(\d+)$/.exec(url)
+      if (req.method === 'GET' && m) {
+        const x = made.find((y) => y.host === 'hetzner' && String(y.id) === m[1])
+        return x ? reply(200, { server: hzView(x) }) : reply(404, { error: { code: 'not_found', message: 'server not found' } })
+      }
+      m = /^\/servers\/(\d+)\/actions\/reset_password$/.exec(url)
+      if (req.method === 'POST' && m && made.some((y) => String(y.id) === m[1])) {
+        const pw = crypto.randomBytes(15).toString('base64url')
+        console.log(`[mock] Hetzner reset_password on ${m[1]}`)
+        setRoot(pw)
+        return reply(201, { root_password: pw, action: { id: 900 + n, command: 'reset_password', status: 'running' } })
+      }
+      if (req.method === 'GET' && /^\/servers\/\d+\/actions\/\d+$/.test(url)) return reply(200, { action: { id: 1, command: 'reset_password', status: 'success' } })
       return reply(404, { error: { code: 'not_found', message: 'not found' } })
     }
     // ---- Hostinger
@@ -74,8 +107,24 @@ http.createServer((req, res) => {
         if (!script) return reply(422, { message: 'The selected post install script id is invalid.' })
         console.log(`[mock] Hostinger buy ${b.item_id} with payment ${b.payment_method_id}, template ${b.setup.template_id}, dc ${b.setup.data_center_id}`)
         boot(script)
-        return reply(200, { order: { id: 1, status: 'completed', currency: 'EUR' }, virtual_machine: { id: 17923, hostname: b.setup.hostname || 'srv12345.hstgr.cloud', state: 'initial', ipv4: [{ id: 1, address: IP }] } })
+        const x = { host: 'hostinger', id: 17923 + n, name: b.setup.hostname || 'srv12345.hstgr.cloud', type: 'KVM 2', at: Date.now() }
+        made.push(x)
+        return reply(200, { order: { id: 1, status: 'completed', currency: 'EUR' }, virtual_machine: { id: x.id, hostname: x.name, state: 'initial', ipv4: [{ id: 1, address: IP }] } })
       }
+      if (req.method === 'GET' && url === '/api/vps/v1/virtual-machines') return reply(200, made.filter((x) => x.host === 'hostinger').map(hsView))
+      let m = /^\/api\/vps\/v1\/virtual-machines\/(\d+)$/.exec(url)
+      if (req.method === 'GET' && m) {
+        const x = made.find((y) => y.host === 'hostinger' && String(y.id) === m[1])
+        return x ? reply(200, hsView(x)) : reply(404, { message: 'Not found' })
+      }
+      m = /^\/api\/vps\/v1\/virtual-machines\/(\d+)\/root-password$/.exec(url)
+      if (req.method === 'PUT' && m) {
+        if (!/[A-Z]/.test(b.password || '') || !/[a-z]/.test(b.password) || !/\d/.test(b.password) || b.password.length < 12) return reply(422, { message: 'The password is too weak.' })
+        console.log(`[mock] Hostinger root-password on ${m[1]}`)
+        setRoot(b.password)
+        return reply(200, { id: 800 + n, name: 'set_root_password', state: 'success', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      }
+      if (req.method === 'GET' && /^\/api\/vps\/v1\/virtual-machines\/\d+\/actions\/\d+$/.test(url)) return reply(200, { id: 1, name: 'set_root_password', state: 'success' })
       return reply(404, { message: 'Not found' })
     }
     reply(404, {})

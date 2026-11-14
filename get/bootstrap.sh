@@ -307,8 +307,12 @@ EOF
       const link = require("node:fs").readFileSync(0)
       process.stdout.write(c.publicEncrypt({ key, padding: c.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" }, link).toString("base64"))' 2>/dev/null || true
   }
-  local url link mode ready enc='' how order='openssl node'
+  local url link mode ready enc='' how order='openssl node' cur
   url=$(sum url) link=$(sum link) mode=$(sum mode) ready=$(sum ready)
+  # The key of the page following this setup now: another page may have taken it over (« continue on this one »,
+  # after the first one was closed). Public; the one this script came with when the service doesn't answer.
+  cur=$(curl -fsS -m 10 "$BASE/k/$SID" 2>/dev/null || true)
+  if [ "${#cur}" -ge 200 ] && [ -z "$(printf '%s' "$cur" | tr -d 'A-Za-z0-9+/=')" ]; then PUB=$cur; fi
   # The second is tried when the first is missing, fails or gives nothing. A Mac starts with Node: the openssl that
   # macOS ships is LibreSSL, which may not know these options. Neither works: the install still ends, the link is
   # shown here (a way that stops before reading the link breaks the pipe: that is not an error either).
@@ -322,6 +326,9 @@ EOF
   local version
   version=$(git -C "$dir" log -1 --format=%s 2>/dev/null | sed -n 's/^weevils \([0-9a-f]\{7,40\}\)$/\1/p')
   [ -n "$version" ] || version=$(git -C "$dir" rev-parse --short HEAD 2>/dev/null || true)
+  # The first login on this weevils tells the setup page, once, so it stops keeping the link (server/index.ts reads
+  # this file, posts « claimed » to it, and deletes it). Nothing else ever goes back to the setup page.
+  { mkdir -p "$HOME/.local/share/weevils" && printf '%s/r/%s\n' "$BASE" "$SID" >"$HOME/.local/share/weevils/get-claim" && chmod 600 "$HOME/.local/share/weevils/get-claim"; } 2>/dev/null || true
   report --data-urlencode event=done --data-urlencode "url=$url" --data-urlencode "mode=$mode" \
     --data-urlencode "ready=$ready" --data-urlencode "sealed=$enc" --data-urlencode "version=$version"
   echo

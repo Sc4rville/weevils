@@ -12,6 +12,7 @@ import FY from './i18n/foryou.ts'
 
 import { spawn } from 'node:child_process'
 import { keepAwake } from './platform.ts'
+import { claimSetup } from './get-claim.ts'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
@@ -425,6 +426,7 @@ const routes: [string, RegExp, Handler][] = [
     // Secure seulement derrière HTTPS (Caddy envoie x-forwarded-proto) : sinon le navigateur jetterait le cookie en http simple.
     const secure = req.headers['x-forwarded-proto'] === 'https' ? ' Secure;' : ''
     res.setHeader('set-cookie', `wv=${t}; Path=/; HttpOnly;${secure} SameSite=Lax; Max-Age=31536000`)
+    claimSetup()
     json(res, 200, { ok: true })
   }],
   ['GET', /^\/api\/me$/, (req, res) => json(res, 200, { authed: authed(req) })],

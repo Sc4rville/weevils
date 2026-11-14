@@ -3,13 +3,16 @@
 // lands on THEIR OWN weevils, where the existing onboarding (Claude Code or Codex sign-in, first steps) takes over.
 //
 // Security model (see get/README.md):
-// - Nothing is stored: jobs live in memory and expire; no database, no file, no log of a request body.
+// - Nothing is stored: jobs live in memory and expire (7 days after the end at most); no database, no file, no log of
+//   a request body. A restart hands them to the next run through a file in RAM.
 // - Secrets are used once, in memory: a Hetzner token for two API calls, an SSH password or key for one SSH command
 //   (passed through an askpass environment variable or a RAM file, never argv, never disk).
 // - After the install this service has no access to the machine: it never keeps an SSH key, a token or a tunnel. The
 //   new weevils is served by the user's machine itself (its own HTTPS), not proxied here.
 // - The access code never reaches this service: the page generates an RSA key pair, the install encrypts the login
-//   link with the public half, and this service only relays the ciphertext.
+//   link with the public half, and this service only relays the ciphertext. To come back from another browser, the
+//   page also leaves its private half here, encrypted with a key derived from a secret that only its resume link
+//   (#job=<sid>.<secret>, never sent to a server) holds.
 // - No code from visitors runs here: the only programs started are `ssh` with a fixed command, toward a public address.
 // - Rate limits per client address and per job.
 //
@@ -115,22 +118,48 @@ class Limiter {
 
 // ---------------------------------------------------------------- jobs (memory only)
 
-const JOB_TTL = 3 * 3600_000
-const MAX_JOBS = 2000
+// How long a setup is kept after its last sign of life: one that never started, a few hours; one creating or
+// installing a server, a day; a finished one, 7 days, so its page (or its resume link) still shows the new weevils'
+// link. After the first login on that weevils (it says so once, see /r/), its link stays an hour more, then goes.
+const TTL = { waiting: 6 * 3600_000, running: 24 * 3600_000, ended: 7 * 24 * 3600_000 }
+const CLAIM_GRACE = 3600_000
+const MAX_JOBS = 5000
 const STEPS = ['created', 'start', 's_system', 's_source', 's_config', 's_build', 's_service', 's_https', 'tunnel', 'waiting', 'done']
+/** The bootstrap this service hands out asks for the page's current key before sealing the link (see /k/). */
+const BOOTSTRAP_V = 2
 
 export function createStore() {
   const jobs = new Map()
+  const ttl = (j) => (j.state === 'done' || j.state === 'failed' ? TTL.ended : j.server || j.creating ? TTL.running : TTL.waiting)
+  const alive = (j, now = Date.now()) => now - j.touched < ttl(j)
   const sweep = () => {
     const now = Date.now()
-    for (const [k, j] of jobs) if (now - j.touched > JOB_TTL || (j.state === 'done' && j.fetched && now - j.fetched > 600_000)) jobs.delete(k)
+    for (const [k, j] of jobs) {
+      if (!alive(j, now)) jobs.delete(k)
+      else if (j.claimed && now - j.claimed > CLAIM_GRACE && (j.result?.sealed || j.wrapped)) {
+        if (j.result) j.result.sealed = ''
+        j.wrapped = ''
+      }
+    }
   }
   return {
     jobs,
-    create(kind, lang, pub) {
+    alive,
+    /** Pairs a visit with the setups it started (same address and browser), without keeping either: see nearOf. */
+    salt: id(16),
+    create(kind, lang, pub, extra = {}) {
       sweep()
-      if (jobs.size >= MAX_JOBS) return null
-      const j = { sid: sidOf(), view: id(), kind, lang, pub, reach: '', mode: kind === 'pc' ? 'pc' : 'vps', state: 'waiting', step: 'created', steps: [], error: '', result: null, server: null, created: Date.now(), touched: Date.now(), fetched: 0, scriptFetches: 0, reports: 0 }
+      if (jobs.size >= MAX_JOBS) {
+        // Full: the setups that never started go first, oldest first.
+        const idle = [...jobs.values()].filter((j) => j.state === 'waiting' && !j.server && !j.creating).sort((a, b) => a.touched - b.touched)
+        for (const j of idle.slice(0, jobs.size - MAX_JOBS + 1)) jobs.delete(j.sid)
+        if (jobs.size >= MAX_JOBS) return null
+      }
+      const j = {
+        sid: sidOf(), view: extra.view || id(), wrapped: extra.wrapped || '', near: extra.near || '', kind, lang, pub, reach: '', mode: kind === 'pc' ? 'pc' : 'vps',
+        state: 'waiting', step: 'created', steps: [], error: '', result: null, server: null, created: Date.now(), touched: Date.now(), scriptFetches: 0, reports: 0,
+        creating: false, createError: '', claimed: 0, bv: 0,
+      }
       jobs.set(j.sid, j)
       return j
     },
@@ -139,22 +168,35 @@ export function createStore() {
   }
 }
 
-/** A restart (main moved: get/follow-main.sh) keeps the setups in progress: the stopping service hands them to the next
- * one through a file in RAM (/dev/shm, mode 600), read once and deleted at start; never the disk. No secret is in a
- * setup (tokens and passwords are never kept), only its state, the page's public key and the sealed link. */
+/** A restart (main moved: get/follow-main.sh) keeps the setups: the stopping service hands them to the next one
+ * through a file in RAM (/dev/shm, mode 600), read once and deleted at start; never the disk. No secret is in a setup
+ * (tokens and passwords are never kept), only its state, the page's public key, the sealed link and the page's sealed
+ * key (neither opens without what only the page holds). */
 export function saveJobs(store, file) {
   if (!file) return 0
-  const live = [...store.jobs.values()].filter((j) => Date.now() - j.touched < JOB_TTL)
-  fs.writeFileSync(file, JSON.stringify(live), { mode: 0o600 })
+  const live = [...store.jobs.values()].filter((j) => store.alive(j))
+  fs.writeFileSync(file, JSON.stringify({ v: 2, salt: store.salt, jobs: live }), { mode: 0o600 })
   return live.length
 }
 export function loadJobs(store, file) {
   if (!file) return 0
   try {
     const fresh = Date.now() - fs.statSync(file).mtimeMs < 10 * 60_000
-    const jobs = fresh ? JSON.parse(fs.readFileSync(file, 'utf8')) : []
+    const data = fresh ? JSON.parse(fs.readFileSync(file, 'utf8')) : []
+    // Before v2: a plain list of setups.
+    const jobs = Array.isArray(data) ? data : Array.isArray(data?.jobs) ? data.jobs : []
+    if (typeof data?.salt === 'string' && data.salt.length >= 16) store.salt = data.salt
     let n = 0
-    for (const j of Array.isArray(jobs) ? jobs : []) if (typeof j?.sid === 'string' && !store.jobs.has(j.sid)) store.jobs.set(j.sid, j), n++
+    for (const j of jobs) {
+      if (typeof j?.sid !== 'string' || store.jobs.has(j.sid)) continue
+      const k = { createError: '', claimed: 0, bv: 0, wrapped: '', near: '', ...j }
+      // Cut short by the restart (a call to the host still running): the page says so, and its next try finds the
+      // server if the host made it (see `existing`).
+      if (k.creating && !k.server) k.createError ||= 'interrupted'
+      k.creating = false
+      store.jobs.set(k.sid, k)
+      n++
+    }
     return n
   } catch {
     return 0
@@ -182,7 +224,13 @@ export function watchCode(cfg) {
 }
 
 /** What the page sees: never the view token, the public key or anything sent by the user. */
-const view = (j) => ({ sid: j.sid, kind: j.kind, state: j.state, step: j.step, steps: j.steps, error: j.error, result: j.result, server: j.server, reach: j.reach })
+const view = (j) => ({
+  sid: j.sid, kind: j.kind, state: j.state, step: j.step, steps: j.steps, error: j.error, result: j.result, server: j.server, reach: j.reach,
+  creating: !!j.creating, createError: j.createError || '', created: j.created, claimed: !!j.claimed,
+})
+/** Seen from another visit of the same browser (same address and browser, nothing else to prove it): how far it is,
+ * nothing that identifies the machine, opens it, or links to it. */
+const glimpse = (j) => ({ kind: j.kind, state: j.state, step: j.step, steps: j.steps, created: j.created, creating: !!j.creating })
 
 // ---------------------------------------------------------------- anonymous stats (counters only, kept 90 days)
 
@@ -633,7 +681,8 @@ export async function hetznerCreate(cfg, token, sid, size = 'recommended', where
         location: o.location,
         image: 'ubuntu-24.04',
         user_data: cloudInit(cfg, sid),
-        labels: { app: 'weevils' },
+        // How a later visit finds it again (same token): « continue on this one » instead of a second server.
+        labels: { app: 'weevils', weevils: 'true', 'weevils-sid': sid },
         public_net: { enable_ipv4: true, enable_ipv6: true },
         start_after_create: true,
       })
@@ -648,6 +697,37 @@ export async function hetznerCreate(cfg, token, sid, size = 'recommended', where
     }
   }
   throw last
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+/** A server as the page lists it: weevils made it (its label, or the name it gave it), where, since when. */
+const hzServer = (x) => ({
+  id: x.id, name: x.name || '', ip: x.public_net?.ipv4?.ip || '', status: x.status || '', created: Date.parse(x.created) || 0,
+  location: x.datacenter?.location?.city || x.datacenter?.location?.name || '', type: x.server_type?.name || '',
+  sid: /^[a-z2-9]{10}$/.test(x.labels?.['weevils-sid'] || '') ? x.labels['weevils-sid'] : '',
+  weevils: x.labels?.app === 'weevils' || x.labels?.weevils === 'true' || /^weevils-[a-z2-9]{6}$/.test(x.name || ''),
+})
+/** The servers weevils already made on this account (label app=weevils: every server get ever created). */
+export async function hetznerServers(cfg, token) {
+  const { servers = [] } = await hz(cfg, token, 'GET', '/servers?label_selector=app%3Dweevils&per_page=50&sort=created:desc')
+  return servers.map(hzServer).filter((s) => s.weevils)
+}
+export async function hetznerServer(cfg, token, serverId) {
+  const { server } = await hz(cfg, token, 'GET', `/servers/${serverId}`)
+  return hzServer(server || {})
+}
+/** Back into a server weevils made, whose page was lost: Hetzner gives it a new root password (its guest agent sets
+ * it), used once for the SSH command that starts the install again, then dropped like the token. */
+export async function hetznerRoot(cfg, token, s) {
+  const r = await hz(cfg, token, 'POST', `/servers/${s.id}/actions/reset_password`)
+  for (let i = 0; i < 45 && r.action?.id && r.action.status !== 'success'; i++) {
+    const { action } = await hz(cfg, token, 'GET', `/servers/${s.id}/actions/${r.action.id}`)
+    if (action?.status === 'success') break
+    if (action?.status === 'error') throw Object.assign(new Error('reset_failed'), { hz: 'reset_failed' })
+    await sleep(2000)
+  }
+  if (typeof r.root_password !== 'string' || !r.root_password) throw Object.assign(new Error('reset_failed'), { hz: 'reset_failed' })
+  return r.root_password
 }
 
 // ---------------------------------------------------------------- Hostinger (same: a token for a few calls, then dropped)
@@ -714,6 +794,34 @@ export async function hostingerCreate(cfg, token, sid, size = 'recommended', whe
   const vm = data.virtual_machine || {}
   const ip = [vm.ipv4].flat().map((a) => (typeof a === 'string' ? a : a?.address)).find((a) => net.isIP(a) === 4) || ''
   return { name: vm.hostname || `weevils-${sid.slice(0, 6)}`, id: vm.id, ip, size: pick.size, agents: pick.agents, type: pick.type, memory: pick.memory, location: dc.city || dc.name, monthly: pick.monthly, first: pick.first, currency: pick.currency }
+}
+
+const hsServer = (x) => ({
+  id: x.id, name: x.hostname || '', ip: [x.ipv4].flat().map((a) => (typeof a === 'string' ? a : a?.address)).find((a) => net.isIP(a) === 4) || '',
+  status: x.state || '', created: Date.parse(x.created_at) || 0, location: '', type: x.plan || '', sid: '',
+  weevils: /^weevils-[a-z2-9]{6}\b/.test(x.hostname || ''),
+})
+/** Hostinger has no labels: the servers weevils made are the ones it named weevils-<setup>. */
+export async function hostingerServers(cfg, token) {
+  const list = await hs(cfg, token, 'GET', '/api/vps/v1/virtual-machines')
+  return (Array.isArray(list) ? list : Array.isArray(list?.data) ? list.data : []).map(hsServer).filter((s) => s.weevils).sort((a, b) => b.created - a.created)
+}
+export async function hostingerServer(cfg, token, serverId) {
+  return hsServer(await hs(cfg, token, 'GET', `/api/vps/v1/virtual-machines/${serverId}`))
+}
+/** Same as hetznerRoot: Hostinger sets a root password chosen here (theirs must not be a known leaked one: random,
+ * 24 characters, upper and lower case and digits), used once, then dropped. */
+export async function hostingerRoot(cfg, token, s) {
+  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+  const pw = 'Wv7' + Array.from(crypto.randomBytes(21), (b) => abc[b % abc.length]).join('') + 'q'
+  const a = await hs(cfg, token, 'PUT', `/api/vps/v1/virtual-machines/${s.id}/root-password`, { password: pw })
+  for (let i = 0; i < 60 && a?.id && a.state !== 'success'; i++) {
+    const x = await hs(cfg, token, 'GET', `/api/vps/v1/virtual-machines/${s.id}/actions/${a.id}`)
+    if (x?.state === 'success') break
+    if (x?.state === 'error') throw Object.assign(new Error('reset_failed'), { hz: 'reset_failed' })
+    await sleep(2000)
+  }
+  return pw
 }
 
 // ---------------------------------------------------------------- SSH (a password or key used for one command)
@@ -843,6 +951,9 @@ export function createServer(cfg = config(), deps = {}) {
     const cookie = /(?:^|;\s*)gk=([^;]+)/.exec(req.headers.cookie || '')?.[1]
     return !(keyOk(url.searchParams.get('k')) || keyOk(req.headers['x-get-key']) || keyOk(cookie && decodeURIComponent(cookie)))
   }
+  /** The same browser at the same address, as a keyed hash (the key is random, lives in memory and goes with the
+   * setups to the next run): a visit that lost its page finds the setup it started; neither is kept. */
+  const nearOf = (req, ip) => crypto.createHmac('sha256', store.salt).update(`${ip}\n${req.headers['user-agent'] || ''}`).digest('base64url').slice(0, 22)
   /** The job a page asks about: its sid and its view token must match. */
   const owned = (body) => {
     const j = store.get(body?.sid)
@@ -871,7 +982,11 @@ export function createServer(cfg = config(), deps = {}) {
       } catch {
         return fail(res, 400, 'bad_key')
       }
-      const j = store.create(b.kind, b.lang === 'fr' ? 'fr' : 'en', b.pub)
+      // A page from before resume links lets this service pick the view token; a newer one derives it from its secret,
+      // and leaves its private key here sealed with another key derived from the same secret (see the header).
+      const view = typeof b.view === 'string' && /^[A-Za-z0-9_-]{43}$/.test(b.view) ? b.view : ''
+      const wrapped = typeof b.wrapped === 'string' && /^[A-Za-z0-9+/=]{100,8000}$/.test(b.wrapped) ? b.wrapped : ''
+      const j = store.create(b.kind, b.lang === 'fr' ? 'fr' : 'en', b.pub, { view, wrapped, near: nearOf(req, ip) })
       if (!j) return fail(res, 503, 'busy')
       // Roughly where the person is, for the install register: their time zone's country, never their address.
       j.country = countryOf(b.tz)
@@ -892,18 +1007,45 @@ export function createServer(cfg = config(), deps = {}) {
       send(res, 200, { ok: true })
     },
     'POST /api/status': async (req, res, ip) => {
-      if (!limit.ok(`status:${ip}`, 1200, 3600_000)) return fail(res, 429, 'slow_down')
-      const j = owned(await json(req))
+      if (!limit.ok(`status:${ip}`, 2400, 3600_000)) return fail(res, 429, 'slow_down')
+      const b = await json(req)
+      const j = owned(b)
       if (!j) return fail(res, 404, 'no_job')
-      if (j.state === 'done' && !j.fetched) j.fetched = Date.now()
-      send(res, 200, view(j))
+      // full: a page opened from a resume link also gets its sealed key back.
+      send(res, 200, b.full ? { ...view(j), wrapped: j.wrapped || '', command: j.kind === 'pc' ? `curl -fsSL ${cfg.base}/i/${j.sid} | bash` : '' } : view(j))
+    },
+    // A visit without its setup (its page was closed, the in-app browser forgot it): the setups this same browser
+    // started from this same address, and how far they are. Nothing more: the rest needs the resume link or the token.
+    'POST /api/nearby': async (req, res, ip) => {
+      if (!limit.ok(`near:${ip}`, 1500, 3600_000)) return fail(res, 429, 'slow_down')
+      await json(req)
+      const me = nearOf(req, ip)
+      const now = Date.now()
+      const mine = [...store.jobs.values()].filter((j) => j.near === me && (j.server || j.creating) && !j.claimed && now - j.created < 24 * 3600_000)
+      send(res, 200, { jobs: mine.sort((a, b) => b.created - a.created).slice(0, 3).map(glimpse) })
     },
     // A server created for the person: Hetzner or Hostinger. The token is checked, used for the calls, then dropped.
     ...Object.fromEntries(['hetzner', 'hostinger'].flatMap((host) => {
       const quote = host === 'hetzner' ? hetznerQuote : hostingerQuote
       const create = host === 'hetzner' ? hetznerCreate : hostingerCreate
+      const servers = deps.servers?.[host] || (host === 'hetzner' ? hetznerServers : hostingerServers)
+      const serverOf = deps.server?.[host] || (host === 'hetzner' ? hetznerServer : hostingerServer)
+      const rootOf = deps.root?.[host] || (host === 'hetzner' ? hetznerRoot : hostingerRoot)
       const token = (b) => (typeof b.token === 'string' && /^[A-Za-z0-9|._-]{20,256}$/.test(b.token.trim()) ? b.token.trim() : '')
       const status = (e) => ([401, 402, 403, 429].includes(e.status) ? e.status : 502)
+      /** The setup that made this server, if this service still has it: the newest one that worked on it. */
+      const setupOf = (s) =>
+        [...store.jobs.values()]
+          .filter((j) => j.kind === host && ((j.server?.id && String(j.server.id) === String(s.id)) || (s.sid && j.sid === s.sid) || (!s.sid && s.name === `weevils-${j.sid.slice(0, 6)}`)))
+          .sort((a, b) => b.created - a.created)[0]
+      /** The servers weevils already made on this account, each with how far its setup is (when known). */
+      const existing = async (tok) =>
+        (await servers(cfg, tok)).sort((a, b) => b.created - a.created).slice(0, 10).map((s) => {
+          const j = setupOf(s)
+          return { id: s.id, name: s.name, ip: s.ip, location: s.location, type: s.type, status: s.status, created: s.created, setup: j ? { state: j.state, step: j.step, steps: j.steps } : null }
+        })
+      // A page from before this check shows the error as it comes: a sentence then.
+      const existsError = (b) => (Number(b.v) >= 2 ? 'exists' : `You already have a weevils server on this ${host === 'hetzner' ? 'Hetzner' : 'Hostinger'} account: reload this page to continue on it instead of buying another one.`)
       return [
         [`POST /api/${host}/quote`, async (req, res, ip) => {
           if (!limit.ok(`hz:${host}:${ip}`, 20, 3600_000)) return fail(res, 429, 'slow_down')
@@ -912,8 +1054,21 @@ export function createServer(cfg = config(), deps = {}) {
           if (!j || j.kind !== host) return fail(res, 404, 'no_job')
           if (!token(b)) return fail(res, 400, 'bad_token')
           try {
-            const q = await quote(cfg, token(b), b.region)
-            send(res, 200, { sizes: q.sizes.map(({ options, item, ...z }) => z), payment: host === 'hostinger' ? !!q.payment : true, paymentLabel: q.payment?.label?.replace(/\d(?=\d{4})/g, '•') || '' })
+            const [q, ex] = await Promise.all([quote(cfg, token(b), b.region), existing(token(b)).catch(() => [])])
+            send(res, 200, { sizes: q.sizes.map(({ options, item, ...z }) => z), payment: host === 'hostinger' ? !!q.payment : true, paymentLabel: q.payment?.label?.replace(/\d(?=\d{4})/g, '•') || '', existing: ex })
+          } catch (e) {
+            fail(res, status(e), e.hz || 'host_down')
+          }
+        }],
+        // Only the servers weevils made on this account (the « I already started » screen).
+        [`POST /api/${host}/servers`, async (req, res, ip) => {
+          if (!limit.ok(`hz:${host}:${ip}`, 20, 3600_000)) return fail(res, 429, 'slow_down')
+          const b = await json(req)
+          const j = owned(b)
+          if (!j || j.kind !== host) return fail(res, 404, 'no_job')
+          if (!token(b)) return fail(res, 400, 'bad_token')
+          try {
+            send(res, 200, { existing: await existing(token(b)) })
           } catch (e) {
             fail(res, status(e), e.hz || 'host_down')
           }
@@ -924,11 +1079,20 @@ export function createServer(cfg = config(), deps = {}) {
           const j = owned(b)
           if (!j || j.kind !== host) return fail(res, 404, 'no_job')
           if (j.server) return send(res, 200, view(j))
+          // A second tap, or the same page reopened while its server is being made: never two servers.
+          if (j.creating) return fail(res, 409, 'creating')
           if (!token(b)) return fail(res, 400, 'bad_token')
           if (!SIZES.some((z) => z.size === b.size)) return fail(res, 400, 'bad_size')
+          j.creating = true
+          j.createError = ''
           try {
+            // A server weevils already made on this account: never a second one unless the person said so.
+            if (b.another !== true) {
+              const ex = await existing(token(b)).catch(() => [])
+              if (ex.length) return send(res, 409, { error: existsError(b), existing: ex })
+            }
             const s = await create(cfg, token(b), j.sid, b.size, b.region)
-            j.server = { name: s.name, ip: s.ip, type: s.type, size: s.size, agents: s.agents, location: s.location, hourly: s.hourly, monthly: s.monthly, currency: s.currency }
+            j.server = { id: s.id, name: s.name, ip: s.ip, type: s.type, size: s.size, agents: s.agents, location: s.location, hourly: s.hourly, monthly: s.monthly, currency: s.currency }
             // No address yet (Hostinger may give it later): the install's own address, when it fetches its script.
             if (s.ip) {
               j.reach = cfg.targetUrls[s.ip] || sslip(s.ip)
@@ -940,7 +1104,66 @@ export function createServer(cfg = config(), deps = {}) {
             stats.step('started', host)
             send(res, 200, view(j))
           } catch (e) {
+            j.createError = e.hz || 'host_down'
             fail(res, status(e), e.hz || 'host_down')
+          } finally {
+            j.creating = false
+          }
+        }],
+        // « Continue on this one »: a server weevils made on this account, whose page was lost. Still installing: this
+        // page takes the setup over (the install asks for the page's key at the end). Finished, stopped, or forgotten
+        // by this service: the host gives the server a new root password, used once to start the install again (it
+        // keeps what is there and ends with a fresh link, sealed for this page).
+        [`POST /api/${host}/continue`, async (req, res, ip) => {
+          if (!limit.ok(`hzk:${host}:${ip}`, 8, 3600_000)) return fail(res, 429, 'slow_down')
+          const b = await json(req)
+          const j = owned(b)
+          if (!j || j.kind !== host) return fail(res, 404, 'no_job')
+          if (j.server) return send(res, 200, view(j))
+          if (j.creating) return fail(res, 409, 'creating')
+          if (!token(b)) return fail(res, 400, 'bad_token')
+          if (!/^\d{1,15}$/.test(String(b.server ?? ''))) return fail(res, 400, 'bad_server')
+          j.creating = true
+          j.createError = ''
+          try {
+            // The token proves the server is theirs: the host only shows it to its owner.
+            const s = await serverOf(cfg, token(b), String(b.server))
+            if (!s.weevils) return fail(res, 404, 'not_weevils')
+            if (!s.ip) return fail(res, 409, 'no_ip')
+            const old = setupOf(s)
+            const live = old && old !== j && old.state !== 'done' && old.state !== 'failed' && (old.creating || Date.now() - old.touched < 15 * 60_000)
+            if (live) {
+              Object.assign(old, { view: j.view, wrapped: j.wrapped, pub: j.pub, near: j.near || old.near, touched: Date.now() })
+              store.jobs.delete(j.sid)
+              return send(res, 200, { ...view(old), attached: true })
+            }
+            const password = await rootOf(cfg, token(b), s)
+            j.reach = cfg.targetUrls[s.ip] || sslip(s.ip)
+            j.mode = cfg.targetUrls[s.ip] ? 'url' : 'vps'
+            if (sshBusy >= 4) throw Object.assign(new Error('busy'), { status: 503, hz: 'busy' })
+            sshBusy++
+            let r
+            try {
+              // The new password takes a few seconds to land (the host's agent sets it): a refusal is tried again.
+              for (let i = 0; i < 6; i++) {
+                r = await sshStarter(cfg, { ip: s.ip, port: 22, user: 'root', password, sid: j.sid })
+                if (r.ok || !['auth', 'unreachable', 'timeout'].includes(r.why)) break
+                await sleep(deps.retryMs ?? 8000)
+              }
+            } finally {
+              sshBusy--
+            }
+            if (!r.ok) throw Object.assign(new Error(`ssh_${r.why}`), { status: 400, hz: `ssh_${r.why}` })
+            j.server = { id: s.id, name: s.name, ip: s.ip, type: s.type, location: s.location, again: true }
+            j.state = 'running'
+            j.step = 'created'
+            j.steps.push('created')
+            send(res, 200, view(j))
+          } catch (e) {
+            j.createError = e.hz || 'host_down'
+            fail(res, e.status === 400 ? 400 : status(e), e.hz || 'host_down')
+          } finally {
+            j.creating = false
           }
         }],
       ]
@@ -996,6 +1219,7 @@ export function createServer(cfg = config(), deps = {}) {
         const j = store.get(m[1])
         if (!j || j.state === 'done' || j.state === 'failed' || ++j.scriptFetches > 12) return send(res, 404, 'echo "weevils: this setup link has expired: open the setup page again." >&2; exit 1\n', 'text/x-shellscript; charset=utf-8')
         j.touched = Date.now()
+        j.bv = BOOTSTRAP_V
         if (j.kind === 'pc' && j.state === 'waiting') (j.state = 'running'), stats.step('started', 'pc')
         if (!j.reach && j.server && publicAddress(ip)) {
           j.reach = sslip(ip)
@@ -1007,8 +1231,15 @@ export function createServer(cfg = config(), deps = {}) {
       m = /^\/r\/([a-z2-9]{10})$/.exec(url.pathname)
       if (m && req.method === 'POST') {
         const j = store.get(m[1])
-        if (!j || j.state === 'done' || ++j.reports > 300) return fail(res, 404, 'no_job')
+        if (!j || ++j.reports > 300) return fail(res, 404, 'no_job')
         const f = new URLSearchParams(await readBody(req, 8192))
+        // The new weevils, at its first login (server/index.ts): its link no longer needs to wait here (an hour more,
+        // for a login made in a browser that is then lost).
+        if (f.get('event') === 'claimed') {
+          if (j.state === 'done') j.claimed ||= Date.now()
+          return send(res, 200, { ok: true })
+        }
+        if (j.state === 'done') return fail(res, 404, 'no_job')
         j.touched = Date.now()
         const ev = f.get('event')
         let step = ''
@@ -1039,6 +1270,14 @@ export function createServer(cfg = config(), deps = {}) {
           stats.succeeded(j.kind, { country: j.country, version: /^[0-9a-f]{7,40}$/.test(f.get('version') || '') ? f.get('version').slice(0, 12) : '' })
         }
         return send(res, 200, { ok: true })
+      }
+      // The page's public key, asked by the install just before it seals the link: a page that took the setup over
+      // (« continue on this one ») gets a link it can open. Public by nature; only while the setup runs.
+      m = /^\/k\/([a-z2-9]{10})$/.exec(url.pathname)
+      if (m && req.method === 'GET') {
+        const j = store.get(m[1])
+        if (!j || j.state === 'done' || j.state === 'failed' || !limit.ok(`k:${m[1]}`, 20, 3600_000)) return fail(res, 404, 'no_job')
+        return send(res, 200, j.pub, 'text/plain; charset=utf-8')
       }
       // The private stats page and its install register (CSV), behind their own key in the address.
       m = /^\/stats\/([A-Za-z0-9_-]{16,128})(\/installs\.csv)?$/.exec(url.pathname)

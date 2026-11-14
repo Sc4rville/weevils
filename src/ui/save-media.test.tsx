@@ -113,6 +113,29 @@ it('a long file says how far it is while preparing, then leaves memory once save
   expect(fetched).toHaveLength(2)
 })
 
+it('a load that broke half way, unseen, does not lend its old percent to the next one', async () => {
+  const pushes: Array<(b: Uint8Array | null | Error) => void> = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    fetched.push(url)
+    const body = new ReadableStream<Uint8Array>({ start(c) { pushes.push((b) => (b instanceof Error ? c.error(b) : b ? c.enqueue(b) : c.close())) } })
+    return new Response(body, { headers: { 'content-type': 'video/mp4', 'content-length': '10' } })
+  }))
+  render(<SaveMediaButton target={{ url: '/api/foryou/media/m2', name: 'clip', type: 'video' }} />)
+  const button = host.querySelector<HTMLButtonElement>('button.save-media')!
+  // The finger lands (loading starts), then lifts off without a tap: the load breaks half way, unseen.
+  await act(async () => { button.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' })) })
+  await flush()
+  await act(async () => pushes[0](new Uint8Array([1, 2, 3, 4, 5])))
+  await flush()
+  await act(async () => pushes[0](new Error('network')))
+  await flush()
+  await act(async () => button.click())
+  await flush()
+  expect(fetched).toHaveLength(2)
+  expect(host.textContent).toContain('Preparing…')
+  expect(host.textContent).not.toContain('50%')
+})
+
 function Tile({ onOpen }: { onOpen: () => void }) {
   const el = useRef<HTMLDivElement>(null)
   const guard = useLongPressSave(el, { url: '/api/foryou/media/m1', name: 'render.png', type: 'image' })

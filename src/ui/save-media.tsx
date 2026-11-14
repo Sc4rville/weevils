@@ -82,6 +82,8 @@ export function loadFile(t: SaveTarget): Promise<File> {
   const key = originalUrl(t.url)
   let job = loading.get(key)
   if (!job) {
+    // A fresh fetch starts from zero (an earlier one may have stopped half way).
+    progress.delete(key)
     job = fetch(key, { credentials: 'same-origin' }).then(async (r) => {
       if (!r.ok) throw new Error(String(r.status))
       const blob = await readBody(key, r, Number(r.headers.get('content-length')) || 0)

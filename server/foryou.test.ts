@@ -18,6 +18,7 @@ import {
   resultTitleLine,
 } from './foryou.ts'
 import M from './i18n/foryou.ts'
+import { withLang } from './i18n.ts'
 import TM from './i18n/tips.ts'
 
 // Only for the last block (the hooks in core.ts, with a real Weevils): tmux and the voice are simulated, as in
@@ -463,6 +464,42 @@ describe('result titles', () => {
     fy.titleRecentResults(2)
     await flush(); await flush()
     expect(title).toHaveBeenCalledTimes(1)
+  })
+
+  it('a card is titled in the installation language, whatever the language of the call that ended the turn', async () => {
+    const title = vi.fn(async (_p: string) => 'I fixed the command page, it now opens in a quarter of a second.')
+    const fy = make({ title })
+    snap.sessions = [session()]
+    threads.s1 = [says('The command page now opens in 240 ms, tested on the phone.')]
+    await withLang('fr', async () => { fy.sessionTurn(session(), 'result'); await flush(); await flush() })
+    await flush(); await flush()
+    expect(title).toHaveBeenCalledTimes(1)
+    expect(title.mock.calls[0][0]).toContain('In English.')
+    expect(find(fy, 's:s1')?.text).toBe('I fixed the command page, it now opens in a quarter of a second.')
+  })
+
+  it('a title stored in another language is asked again once, the old one shown until the new one comes', async () => {
+    const title = vi.fn(async (_p: string) => 'Je viens de corriger la page des commandes.')
+    fs.writeFileSync(path.join(dir, 'foryou.json'), JSON.stringify({ rev: 1, items: [
+      { id: 's:fr', kind: 'session', tone: 'result', who: 'session', text: 'No batch was started this run.', body: 'No batch was started this run. The previous session has not finished.', at: now - 60_000, sum: { text: "Je n'ai lancé aucun lot cette fois, la session précédente n'est pas terminée.", lang: 'fr' } },
+    ] }))
+    const fy = make({ title })
+    fy.titleRecentResults()
+    expect(find(fy, 's:fr')?.text).toBe("Je n'ai lancé aucun lot cette fois, la session précédente n'est pas terminée.")
+    await flush(); await flush()
+    expect(title).toHaveBeenCalledTimes(1)
+    expect(title.mock.calls[0][0]).toContain('In English.')
+    // Still French (a stubborn model): never asked again in a loop.
+    for (let n = 0; n < 3; n++) { fy.titleRecentResults(); await flush() }
+    expect(title).toHaveBeenCalledTimes(1)
+    title.mockResolvedValueOnce('I skipped this run because the previous batch is still being reviewed.')
+    fs.writeFileSync(path.join(dir, 'foryou.json'), JSON.stringify({ rev: 1, items: [
+      { id: 's:fr2', kind: 'session', tone: 'result', who: 'session', text: 'No batch was started this run.', body: 'No batch was started this run. The previous session has not finished.', at: now - 60_000, sum: { text: "Je n'ai lancé aucun lot cette fois, la session précédente n'est pas terminée.", lang: 'fr' } },
+    ] }))
+    const again = make({ title })
+    again.titleRecentResults()
+    await flush(); await flush()
+    expect(find(again, 's:fr2')?.text).toBe('I skipped this run because the previous batch is still being reviewed.')
   })
 })
 

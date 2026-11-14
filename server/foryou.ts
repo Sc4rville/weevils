@@ -35,7 +35,7 @@ import type { Level, UsageInfo } from '../shared/infra.ts'
 import { DATA_DIR, MACHINE } from './config.ts'
 import type { MediaShelf } from './foryou-media.ts'
 import { isLocal, trustedFrom } from './http.ts'
-import { lang, tr, withLang, type Lang } from './i18n.ts'
+import { installationLang, lang, tr, withLang, type Lang } from './i18n.ts'
 import CM from './i18n/core.ts'
 import M from './i18n/foryou.ts'
 import { ownIdea, ownTask } from './own-words.ts'
@@ -461,7 +461,9 @@ interface Stored {
   /** mail: the short « did this » line the curator wrote, shown instead of the first line (lang: the language it is
    *  in); without text: tried, nothing worth keeping. */
   /** The model's line (text); tries/at: attempts that gave nothing usable, retried a few times. */
-  sum?: { text?: string; lang?: Lang; tries?: number; at?: number }
+  /** relang: asked again once because it was in another language than the installation's; prior: that title, shown
+   * until the new one comes (and kept if it never does). */
+  sum?: { text?: string; lang?: Lang; tries?: number; at?: number; relang?: boolean; prior?: string }
   /** weevils show / post: the evidence supplied with the publication, as given (the label is derived at read time). */
   evidence?: EvidenceInput
 }
@@ -1073,7 +1075,9 @@ export class ForYou {
       const project = snap.projects.find((p) => p.id === i.projectId)?.name ?? i.projectId ?? ''
       // What was asked, without weevils' hidden context block (it would only blur the subject and the language).
       const asked = clip(collapse(cleanTitle(withoutWeevilsBlock(this.w.store?.get(i.sessionId ?? '')?.firstPrompt ?? ''))), 400)
-      const l = lang()
+      // The card is stored once, in the installation's language (other readers get it translated): never the language
+      // of whichever request happened to start this turn's scan (a French call left English cards in French).
+      const l = installationLang()
       let line = ''
       try {
         const raw = await ask(withLang(l, () => tr(M).resultTitle(project, withoutWeevilsBlock(asked), withoutWeevilsBlock(source))))
@@ -1087,11 +1091,11 @@ export class ForYou {
       // Rewritten meanwhile (same turn, better words): asked again with those words.
       if ((cur.body || cur.text) !== source) return void this.retitle.add(id)
       if (line) {
-        cur.sum = { text: line, lang: detectLang(line) ?? l }
+        cur.sum = { text: line, lang: detectLang(line) ?? l, ...(cur.sum?.relang ? { relang: true } : {}) }
         return this.changed()
       }
       const tries = (cur.sum?.tries ?? 0) + 1
-      cur.sum = { tries, at: this.now() }
+      cur.sum = { tries, at: this.now(), ...(cur.sum?.relang ? { relang: true } : {}), ...(cur.sum?.prior ? { prior: cur.sum.prior } : {}) }
       this.save()
       if (tries < TITLE_TRIES) later(() => this.titleResult(id), tries * 2 * 60_000)
     }
@@ -1102,15 +1106,23 @@ export class ForYou {
     })
   }
 
-  /** Result cards of the last days still without a model's title (stored before titles, or after failed tries). */
+  /** Result cards of the last days still without a model's title (stored before titles, or after failed tries), and
+   * titles written in another language than the installation's (once: the old one stays if the new try fails). */
   titleRecentResults(days = 7) {
     const since = this.now() - days * 86_400_000
+    const l = installationLang()
+    let moved = false
     for (const i of this.s.items) {
+      if (i.kind === 'session' && i.tone === 'result' && !i.gone && i.at >= since && i.sum?.text && !i.sum.relang && (i.sum.lang ?? detectLang(i.sum.text) ?? l) !== l) {
+        i.sum = { tries: TITLE_TRIES - 1, at: 0, relang: true, prior: i.sum.text }
+        moved = true
+      }
       const tries = i.sum?.tries ?? 0
       // A failed try keeps its delay (titleResult schedules the next one): the sweep never asks sooner.
       const waiting = !!tries && this.now() - (i.sum?.at ?? 0) < tries * 2 * 60_000
       if (i.kind === 'session' && i.tone === 'result' && !i.gone && !i.sum?.text && i.at >= since && tries < TITLE_TRIES && !waiting) this.titleResult(i.id)
     }
+    if (moved) this.save()
   }
 
   /** The curator's line for a session result (null: it kept nothing, the headline stays). */
@@ -1224,7 +1236,8 @@ export class ForYou {
       if (i.tone === 'result') {
         // A stored title loses a model's preamble written before that rule; closing words with no whole sentence
         // left once their code is out say so plainly rather than show a fragment (a bare file name stays as it is).
-        const titled = i.sum?.text && !internalFeedUpdate(i.sum.text) ? titleWithoutPreamble(i.sum.text) : ''
+        const kept = i.sum?.text || i.sum?.prior
+        const titled = kept && !internalFeedUpdate(kept) ? titleWithoutPreamble(kept) : ''
         const source = i.body || i.text
         out.text = titled || headline(editorialFeedText(source)) || (untitledProse(source) ? tr(M).resultUntitled : i.text)
       }

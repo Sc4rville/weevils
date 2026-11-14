@@ -62,7 +62,7 @@ export default defineMessages({
       `Tu prends le relais d'une session Claude Code (« ${o.title} »), ${o.why}. Le plan de reprise ci-dessous est validé : exécute-le. ` +
       `Avant de toucher à quoi que ce soit, relis l'état réel : git status et git diff dans ${o.cwd}, et la fin du transcript de la session (${o.file}). ` +
       `Ne refais pas ce qui est déjà fait. Vérifie les jobs existants, notamment GPU, sans les relancer, interrompre ou dupliquer ; préserve leur surveillance et leurs conditions d'arrêt. Le relais n'autorise aucune nouvelle dépense. Garde les règles que la session suivait. ` +
-      (o.auto ? `C'est une tâche de fond : reste dans ce worktree et sur sa branche, ne pousse rien, ne publie rien, ne dépense rien. ` : '') +
+      (o.auto ? `C'est une tâche de fond : reste dans ce worktree et sur sa branche, ne pousse rien, ne publie rien, ne dépense rien (sauf RunPod pour un rendu ou un job IA : pod éphémère, arrêté à la fin). ` : '') +
       (o.note ? `Ajustement demandé par l'utilisateur : ${o.note} ` : '') +
       `${MachineProse.fr.rule}\n\n${AgentMessages.fr.rule}\n\n${AgentMessages.fr.automation}\n\n` +
       `Termine par un résumé de trois lignes.\n\nPlan validé :\n${o.plan || '(aucun plan écrit : fais-le toi-même en lisant le contexte, puis exécute-le)'}`,
@@ -129,7 +129,7 @@ export default defineMessages({
       `You take over a Claude Code session ("${o.title}"), ${o.why}. The takeover plan below is approved: carry it out. ` +
       `Before touching anything, reread the real state: git status and git diff in ${o.cwd}, and the end of the session's transcript (${o.file}). ` +
       `Do not redo what is done. Inspect existing jobs, especially GPU jobs, without restarting, interrupting or duplicating them; preserve their monitoring and shutdown conditions. A handoff does not authorize new spending. Keep the rules the session followed. ` +
-      (o.auto ? `This is a background task: stay in this worktree and on its branch, push nothing, publish nothing, spend nothing. ` : '') +
+      (o.auto ? `This is a background task: stay in this worktree and on its branch, push nothing, publish nothing, spend nothing (except RunPod for a render or an AI job: an ephemeral pod, stopped at the end). ` : '') +
       (o.note ? `Adjustment asked by the user: ${o.note} ` : '') +
       `${MachineProse.en.rule}\n\n${AgentMessages.en.rule}\n\n${AgentMessages.en.automation}\n\n` +
       `End with a three-line summary.\n\nApproved plan:\n${o.plan || '(no plan was written: write it yourself from the context, then carry it out)'}`,

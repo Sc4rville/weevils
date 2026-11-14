@@ -61,7 +61,7 @@ export default defineMessages({
         : `- travaille dans ce dossier seulement ;\n`) +
       `- ne pousse jamais toi-même (weevils pousse ta branche à la fin du passage), n'ouvre aucune PR, ne publie et n'envoie rien hors de cette machine (ni e-mail, ni réseau social, ni déploiement) ;\n` +
       `- la commande weevils marche pour : sessions, read, asks, projects, new, send, post, show (le reste est refusé) ; une question pour l'utilisateur part avec \`weevils post\`, puis continue sans attendre ;\n` +
-      `- ne dépense rien : aucun achat, aucune API payante ;\n` +
+      `- ne dépense rien, sauf RunPod pour un rendu ou un job de modèle IA (jamais un rendu sur le CPU de cette machine) : un pod éphémère, arrêté à la fin du job ; tout autre achat ou API payante attend la validation de l'utilisateur ;\n` +
       `- ne supprime rien en dehors de ta branche ou de ce dossier ; ne touche à aucun secret (clés, .env, identifiants) ;\n` +
       `- si \`command -v heavy\` répond, préfixe par \`heavy\` les commandes lourdes (builds, tests, installs)${o.heavy ? ' : cette tâche en a' : ''} ;\n` +
       (o.writesReport ? `- écris ton résultat dans ${o.report} (court, clair, en français) ;\n` : '') +
@@ -205,7 +205,7 @@ export default defineMessages({
         : `- work in this folder only;\n`) +
       `- never push yourself (weevils pushes your branch at the end of the run), never open a PR, never publish or send anything off this machine (no e-mail, no social post, no deploy);\n` +
       `- the weevils command works for: sessions, read, asks, projects, new, send, post, show (the rest is refused); a question for the user goes out with \`weevils post\`, then carry on without waiting;\n` +
-      `- never spend money: no purchase, no paid API;\n` +
+      `- never spend money, except RunPod for a render or an AI model job (never a render on this machine's CPU): an ephemeral pod, stopped at the end of the job; any other purchase or paid API waits for the user's go;\n` +
       `- never delete anything outside your branch or this folder; never touch a secret (keys, .env, credentials);\n` +
       `- if \`command -v heavy\` succeeds, prefix heavy commands (builds, tests, installs) with \`heavy\`${o.heavy ? ': this task has some' : ''};\n` +
       (o.writesReport ? `- write your result to ${o.report} (short and clear, in English);\n` : '') +

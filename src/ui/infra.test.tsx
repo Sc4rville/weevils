@@ -218,6 +218,17 @@ it('subscription: figures once known stay on screen, with their age, through a f
   expect(host.textContent).not.toContain('HTTP 429')
 })
 
+it('subscription: healthy figures a few minutes old (between two server reads) never say « last known » (r41, r42)', async () => {
+  const at = Date.now() - 7 * 60_000
+  state.usage = {
+    claude: { ok: true, windows: [{ kind: 'week', percent: 74, resetsAt: null }], source: 'x', at },
+    codex: { ok: true, windows: [{ kind: 'week', percent: 84, resetsAt: null }], source: 'x', at },
+  } as UsageInfo
+  await render(<UsagePage />)
+  expect(host.textContent).toContain('week 74 %')
+  expect(host.textContent).not.toContain('last known figures')
+})
+
 it('subscription: a reopened app shows the last figures at once, even while weevils does not answer (r41, r42)', async () => {
   state.usage = {
     claude: { ok: true, windows: [{ kind: 'week', percent: 40, resetsAt: null }], source: 'x', at: Date.now() },

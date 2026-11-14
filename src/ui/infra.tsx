@@ -476,8 +476,9 @@ function Quota({ name, q }: { name: string; q: QuotaInfo | undefined }) {
   )
 }
 
-/** Figures older than one server period (5 min) and a margin: shown with their age, as the server marks them. */
-const STALE_MS = 6 * 60_000
+/** Figures older than this say their age. Never under 2 server periods: the server asks every 5 min but hands out the
+ *  previous figures on the call that starts the new read, so with a poll a minute healthy figures reach about 7 min. */
+const STALE_MS = 10 * 60_000
 const USAGE_KEY = 'weevils-usage-v1'
 const readUsage = (): UsageInfo | null => {
   try {

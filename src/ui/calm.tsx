@@ -19,6 +19,7 @@ import { FollowDown } from './followdown'
 import { markSeen } from './seen'
 import { Icon } from './icons'
 import { SessionQuestion } from './session-question'
+import { CutBand } from './cut-band'
 import type { Session } from '../../shared/api.ts'
 
 // Legacy focused conversation routes remain available without the retired overview.
@@ -186,6 +187,7 @@ export function CalmConv({ id }: { id: string }) {
             <Messages plain={!main} messages={messages} author={author} working={!!working} />
             {working && <Working author={author} since={s?.workStartedAt} />}
             {question && <SessionQuestion session={question} onError={(e) => setErr(e || null)} />}
+            {s?.status === 'interrupted' && <CutBand session={s} onError={(e) => setErr(e || null)} />}
             <div className="fill" />
           </div>
           <div className="page-float">

@@ -72,10 +72,10 @@ export const flowVoice = { add: (x: string) => flowInput?.add(x), send: () => fl
 
 /** Lance une brique : weevboss poste son explication (et fait ce qui se fait seul), puis, s'il le dit, le champ du bas
  * pose les questions. Rejette si le serveur ne répond pas. opened : le champ est déjà ouvert (openFlow, au tap). */
-export async function startSetup(brick: Brick, opened = false, primary = false) {
+export async function startSetup(brick: Brick, opened = false, primary = false, again = false) {
   // Le fil de weevboss s'ouvre en haut de l'écran tout de suite (d'une page, du bas du flux) : sa réponse y arrive sous les yeux.
   focusBoss({ flash: false })
-  const r = await (primary && (brick === 'claude' || brick === 'codex') ? api.setupProvider(brick, device()) : api.setupAsk(brick, device())).catch((e: unknown) => {
+  const r = await (primary && (brick === 'claude' || brick === 'codex') ? api.setupProvider(brick, device()) : api.setupAsk(brick, device(), again)).catch((e: unknown) => {
     if (opened && flow?.brick === brick && flow.step === 0) setFlow(null)
     throw e
   })

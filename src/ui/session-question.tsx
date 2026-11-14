@@ -7,6 +7,8 @@ import { api } from '../api'
 import { useT } from '../i18n'
 import M from '../i18n/pages'
 
+const TOOL_NAME: Record<string, string> = { claude: 'Claude', codex: 'Codex' }
+
 /** A real question and its labeled answers. Terminal input and key names never belong here. */
 export function SessionQuestion({ session: s, onError }: { session: Session; onError: (text: string) => void }) {
   const t = useT(M)
@@ -24,7 +26,7 @@ export function SessionQuestion({ session: s, onError }: { session: Session; onE
   return (
     <Notice closable={false} eventId={sessionNoticeKey(s)} about={s.title} className="msg band tone ask">
       <div className="in">
-        <span className="who">! {t.asks(s.tool)}</span>
+        <span className="who">{t.asks(TOOL_NAME[s.tool] ?? s.tool)}</span>
         <div className="text">{s.ask?.text ?? s.attention ?? t.waitingForYou}</div>
         {!s.ask && s.attentionDetail && <div className="meta">{s.attentionDetail}</div>}
         {s.choices?.map((choice) => (

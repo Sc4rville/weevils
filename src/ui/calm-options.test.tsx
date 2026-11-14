@@ -28,8 +28,8 @@ const snap = { version: 1, now: NOW, machines: [], projects: [], sessions: [sess
 let root: Root
 let host: HTMLElement
 const text = (el: Element | null) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim()
-function render(id: string) {
-  const ctx = { snap, now: NOW, offline: false, colors: {}, push: () => {}, replace: () => {}, back: () => {}, home: () => {}, expanded: null, setExpanded: () => {}, h24Open: false, setH24Open: () => {}, theme: 'light' as const, setTheme: () => {}, refresh: () => {}, logout: () => {} }
+function render(id: string, current: Snapshot = snap) {
+  const ctx = { snap: current, now: NOW, offline: false, colors: {}, push: () => {}, replace: () => {}, back: () => {}, home: () => {}, expanded: null, setExpanded: () => {}, h24Open: false, setH24Open: () => {}, theme: 'light' as const, setTheme: () => {}, refresh: () => {}, logout: () => {} }
   act(() => root.render(<Ctx.Provider value={ctx as never}><CalmConv id={id} /></Ctx.Provider>))
   act(() => host.querySelector<HTMLButtonElement>('button[aria-label="options"]')!.click())
 }
@@ -58,4 +58,12 @@ it('a session keeps "see the app", which opens the preview', () => {
   expect(see).toBeTruthy()
   act(() => see.click())
   expect([...host.querySelectorAll('button')].find((b) => text(b) === 'close the app')?.getAttribute('aria-pressed')).toBe('true')
+})
+
+it('a stopped session in its focused thread shows why and a way on, never an idle look; signed out offers « sign in again »', () => {
+  const out = { ...session, status: 'interrupted', interrupted: { at: NOW, reason: 'auth' } } as Session
+  render('s1', { ...snap, sessions: [out] })
+  const band = host.querySelector('.cut-band')!
+  expect(text(band.querySelector('.who'))).toBe('interrupted · signed out')
+  expect([...band.querySelectorAll('button')].map(text)).toEqual(['sign in again', 'resume', 'dismiss'])
 })

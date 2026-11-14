@@ -2,7 +2,6 @@ import { defineMessages } from './index'
 
 const frSize = (b: number) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(b >= 100 * 1024 ** 3 ? 0 : 1)} Go` : b >= 1024 ** 2 ? `${Math.round(b / 1024 ** 2)} Mo` : b >= 1024 ? `${Math.round(b / 1024)} ko` : `${b} o`)
 const enSize = (b: number) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(b >= 100 * 1024 ** 3 ? 0 : 1)} GB` : b >= 1024 ** 2 ? `${Math.round(b / 1024 ** 2)} MB` : b >= 1024 ? `${Math.round(b / 1024)} kB` : `${b} B`)
-const frTok = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} G` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} M` : n >= 1e3 ? `${Math.round(n / 1e3)} k` : String(n))
 
 export default defineMessages({
   fr: {
@@ -55,7 +54,8 @@ export default defineMessages({
     rateLabel: (v: string) => `${v} tokens par minute, toutes sessions`,
     byProject: 'par projet aujourd’hui',
     bySession: 'par session aujourd’hui',
-    share: (pct: number, tokens: number) => `${pct} % · ${frTok(tokens)} tokens`,
+    /** Part de la consommation du jour (le compte brut de jetons ne dit rien à personne). */
+    share: (pct: number) => `${pct} %`,
     nobody: 'rien consommé aujourd’hui',
     reading: 'lecture…',
     // Où va le disque
@@ -128,7 +128,7 @@ export default defineMessages({
     rateLabel: (v: string) => `${v} tokens per minute, all sessions`,
     byProject: 'by project today',
     bySession: 'by session today',
-    share: (pct: number, tokens: number) => `${pct}% · ${frTok(tokens)} tokens`,
+    share: (pct: number) => `${pct}%`,
     nobody: 'nothing used today',
     reading: 'reading…',
     diskWhere: 'where your disk space goes',

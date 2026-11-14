@@ -128,7 +128,6 @@ const GLYPHS: Record<string, [IconName, Dir?]> = {
   '~': ['theme'],
   x: ['logout'],
   '&': ['agents'],
-  '>_': ['terminal'],
   '>': ['chevron', 'right'],
   '<': ['chevron', 'left'],
   '⇣': ['compact'],

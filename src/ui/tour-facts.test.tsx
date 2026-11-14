@@ -18,6 +18,16 @@ it('the install step says « installed 5 min ago », whoever ran the installer',
   expect(factsOf(step('install', { at: NOW - 5 * 60_000 }), NOW)).toBe('installé il y a 5 min')
 })
 
+it('first steps say « code folders », « GitHub projects » and « GitHub project », never « repo »', () => {
+  for (const lang of ['en', 'fr'] as const) {
+    setLang(lang)
+    expect(factsOf(step('history', { projects: 3, sessions: 5, repos: 2 }), NOW)).not.toMatch(/\brepos?\b/i)
+    expect([tr(M).u_github, tr(M)['t_g-repos']].join(' ')).not.toMatch(/\brepos?\b/i)
+  }
+  setLang('en')
+  expect(factsOf(step('history', { projects: 3, sessions: 5, repos: 2 }), NOW)).toBe('3 projects · 5 sessions · 2 code folders')
+})
+
 it('no hosting jargon in the machine fact or the night step', () => {
   for (const lang of ['en', 'fr'] as const) {
     setLang(lang)

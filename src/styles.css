@@ -2336,8 +2336,9 @@ button.copy.done {
 
 .cut-band .cut-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 18px;
+  gap: 10px 18px;
   margin-top: 10px;
 }
 

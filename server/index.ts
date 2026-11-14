@@ -558,7 +558,8 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/setup\/ask$/, async (req, res) => {
     const b = await readBody(req)
     if (!isBrick(b.brick)) return json(res, 400, { error: tr(S).badBrick })
-    const flow = await setup.ask(b.brick, b.device ? asDevice(b.device) : undefined)
+    const again = b.again === true && (b.brick === 'claude' || b.brick === 'codex')
+    const flow = await setup.ask(b.brick, b.device ? asDevice(b.device) : undefined, again)
     json(res, 200, { ok: true, flow, said: setup.lastSaid ?? undefined })
   }],
   ['POST', /^\/api\/setup\/apply$/, async (req, res) => {

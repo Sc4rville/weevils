@@ -46,6 +46,19 @@ it('repeated taps share the same device login instead of killing or duplicating 
   await Promise.all([one, two]); await setup.chooseProvider('codex')
   expect(auth.spawn).toHaveBeenCalledTimes(1); expect(child.kill).not.toHaveBeenCalled()
 })
+it('« sign in again » from a signed-out session starts a fresh login even with one on file, and never switches the provider', async () => {
+  vi.spyOn(setup, 'detect').mockResolvedValue({ codex: { installed: true, logged: true }, claude: { installed: true, logged: true } } as never)
+  // An ordinary tap: already signed in, nothing to do.
+  await setup.ask('claude')
+  expect(auth.spawn).not.toHaveBeenCalled()
+  const login = setup.ask('claude', undefined, true)
+  await vi.waitFor(() => expect(auth.spawn).toHaveBeenCalledTimes(1))
+  expect(auth.spawn.mock.calls[0][1]).toEqual(['auth', 'login', '--claudeai'])
+  child.stdout.emit('data', Buffer.from('Visit https://claude.ai/oauth/authorize?code=1 to sign in'))
+  expect(await login).toBe(true)
+  expect(setup.messages().at(-1)?.text).toContain('https://claude.ai/oauth/authorize?code=1')
+  expect(process.env.WEEVILS_PROVIDER).toBeUndefined()
+})
 it('rejects an unavailable provider before changing the configured selection', async () => {
   vi.spyOn(setup, 'providers').mockReturnValue({ claude: true, codex: false })
   await expect(setup.chooseProvider('codex')).rejects.toThrow(/not available/)

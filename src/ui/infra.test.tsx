@@ -176,6 +176,9 @@ it('subscription: one figure per tool, no lone « ! », no raw error, no machine
   expect(text).toContain('no figures yet, trying again soon')
   expect(text).not.toContain('HTTP 429')
   expect(text).not.toContain('vps-7f3a')
+  // A share of today's use, never a raw token count.
+  expect(text).toContain('100%')
+  expect(text).not.toMatch(/tokens|1 k\b/)
   expect(host.innerHTML).not.toContain(terminalIcon)
   await act(async () => row('refonte')!.click())
   expect(state.push).toHaveBeenCalledWith({ kind: 'session', id: 's1' })

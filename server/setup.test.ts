@@ -400,7 +400,10 @@ describe('[[setup:key:NOM]] : un secret demandé par un agent', async () => {
     expect(fs.readFileSync(cfg, 'utf8')).toContain(`RUNPOD_API_KEY=${secret}\n`)
     expect(process.env.RUNPOD_API_KEY).toBe(secret)
     const shown = setup.messages().map((m) => m.text).join('\n')
-    expect(shown).toContain('RUNPOD_API_KEY : ••••')
+    // The brand, never the variable name or the file it lands in.
+    expect(shown).toContain('my RunPod key: ••••')
+    expect(shown).toContain('RunPod key saved on this machine')
+    expect(shown).not.toMatch(/RUNPOD_API_KEY|config\/weevils/)
     expect(shown).not.toContain(secret.slice(-4))
     expect(logs.join('\n')).not.toContain(secret.slice(-4))
     expect(logs.join('\n')).toContain('RUNPOD_API_KEY')

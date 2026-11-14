@@ -90,6 +90,15 @@ export const SECRET_KEYS: ReadonlySet<string> = new Set(['DEVIL_API_KEY', 'OPENA
 /** « [[setup:key:RUNPOD_API_KEY]] » : un agent demande un secret à l'utilisateur. Un champ masqué s'ouvre ; la valeur va
  * droit dans ~/.config/weevils/env, jamais dans le fil, le modèle ou les journaux. */
 export const KEY_CHIP = /\[\[setup:key:([A-Z][A-Z0-9_]{1,63})\]\]/g
+// « OPENAI_API_KEY » → the brand (« OpenAI ») and whether it is a key or a token: never the raw variable name on screen.
+const BRANDS: Record<string, string> = { OPENAI: 'OpenAI', GITHUB: 'GitHub', GH: 'GitHub', HF: 'Hugging Face', HUGGINGFACE: 'Hugging Face', ANTHROPIC: 'Anthropic', CARTESIA: 'Cartesia', ELEVENLABS: 'ElevenLabs', OPENROUTER: 'OpenRouter', GEMINI: 'Gemini', GOOGLE: 'Google', MISTRAL: 'Mistral', GROQ: 'Groq', DEEPSEEK: 'DeepSeek', REPLICATE: 'Replicate', STRIPE: 'Stripe', VERCEL: 'Vercel', CLOUDFLARE: 'Cloudflare', NPM: 'npm', RUNPOD: 'RunPod', FAL: 'fal' }
+export const secretBrand = (name: string): { brand: string; token: boolean } => {
+  const token = /_TOKEN$/.test(name)
+  const prefix = name.replace(/_(API_KEY|TOKEN)$/, '')
+  const brand = BRANDS[prefix] ?? prefix.split('_').filter(Boolean).map((w) => BRANDS[w] ?? w[0] + w.slice(1).toLowerCase()).join(' ')
+  return { brand, token }
+}
+
 /** Seulement des clés et des jetons (…_API_KEY, …_TOKEN), jamais un réglage de weevils lui-même. */
 export const isSecretName = (s: unknown): s is string => typeof s === 'string' && s.length <= 64 && /^[A-Z][A-Z0-9_]*_(API_KEY|TOKEN)$/.test(s) && !s.startsWith('WEEVILS_')
 

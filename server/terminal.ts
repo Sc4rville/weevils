@@ -512,9 +512,14 @@ export function moves(menu: Menu, index: number): ('up' | 'down')[] {
 
 /** The fallback question for a pane stuck on a screen nothing above understood. */
 export function stuckQuestion(text: string, agent?: Agent): TerminalState {
+  return { kind: 'question', name: 'unknown-stuck', question: tr(M).stuck(nameFor(agent)), choices: stuckChoices(text) }
+}
+
+/** Continue (Enter) / Go back (Esc) for this exact screen: the ids only match while the screen stays the same. */
+export function stuckChoices(text: string): Choice[] {
   const t = tr(M)
   const tok = token(['stuck', text.slice(-400)])
-  return { kind: 'question', name: 'unknown-stuck', question: t.stuck(nameFor(agent)), choices: [{ id: `${tok}:enter`, label: t.stuckContinue }, { id: `${tok}:esc`, label: t.stuckBack }] }
+  return [{ id: `${tok}:enter`, label: t.stuckContinue }, { id: `${tok}:esc`, label: t.stuckBack }]
 }
 
 /** Short stable id of a screen, for "has it changed" and for the log of unknown screens. */

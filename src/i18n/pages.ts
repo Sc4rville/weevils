@@ -32,11 +32,6 @@ export default defineMessages({
     asks: (tool: string) => `${tool} te demande`,
     waitingForYou: 'la session attend ta réponse',
     /** Session coupée en plein travail : pourquoi, et les deux gestes. */
-    cutWhy: (reason: string) =>
-      ({ died: 'arrêt inattendu', dirty: 'changements non enregistrés', quota: 'limite d’usage atteinte', auth: 'compte déconnecté', api: 'le service a échoué' })[reason] ?? 'arrêtée',
-    /** Le message d'erreur brut de l'outil, replié. */
-    cutDetail: 'détails',
-    dismiss: 'laisser',
     // Fichiers
     /** Titre de la liste des dossiers d'un projet qui en a plusieurs. */
     folders: 'Dossiers',
@@ -86,10 +81,6 @@ export default defineMessages({
     subAria: (label: string, state: string, d: string, open: boolean) => `${label}, ${state}, ${d}, ${open ? 'collapse' : 'expand'}`,
     asks: (tool: string) => `${tool} is asking`,
     waitingForYou: 'the session is waiting for your answer',
-    cutWhy: (reason: string) =>
-      ({ died: 'unexpected stop', dirty: 'unsaved changes', quota: 'usage limit reached', auth: 'signed out', api: 'the service failed' })[reason] ?? 'stopped',
-    cutDetail: 'details',
-    dismiss: 'dismiss',
     folders: 'Folders',
     files: (n: number) => `${n} ${n === 1 ? 'file' : 'files'}`,
     emptyDir: 'Empty folder.',

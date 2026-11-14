@@ -73,6 +73,8 @@ export interface AskResult {
   flow: boolean
   /** Le message de weevboss qui répond (nouveau, ou le même déjà posté juste avant) : l'app l'amène sous les yeux. */
   said?: string
+  /** The official sign-in page to open now, in the tab the tap prepared (Claude Code). */
+  open?: string
 }
 
 /** POST /api/setup/apply : `said`, le dernier message posté (ou retrouvé) par le parcours, à mettre en avant. */

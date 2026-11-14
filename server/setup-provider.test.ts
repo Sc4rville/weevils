@@ -4,13 +4,14 @@ import os from 'node:os'
 import path from 'node:path'
 import type { Setup as SetupType, SetupDeps } from './setup.ts'
 import { beforeEach, afterEach, afterAll, expect, it, vi } from 'vitest'
-const auth = vi.hoisted(() => ({ codex: false, claude: false, spawn: vi.fn() }))
+const auth = vi.hoisted(() => ({ codex: false, claude: false, spawn: vi.fn(), claudeStart: vi.fn(async () => 'https://claude.ai/oauth/authorize?code=1') }))
 vi.mock('./provider.ts', () => ({
   preferredTool: () => process.env.WEEVILS_PROVIDER === 'codex' ? 'codex' : 'claude',
   providerStatus: (tool: 'claude' | 'codex' = process.env.WEEVILS_PROVIDER === 'codex' ? 'codex' : 'claude') => ({ installed: true, logged: auth[tool] }),
   providerReady: () => auth[process.env.WEEVILS_PROVIDER === 'codex' ? 'codex' : 'claude'],
   codexLogged: () => auth.codex,
 }))
+vi.mock('./claude-login.ts', () => ({ start: auth.claudeStart, output: () => '', submit: vi.fn(), cancel: vi.fn(), pending: () => null }))
 vi.mock('node:child_process', async original => ({ ...await original<typeof import('node:child_process')>(), spawn: auth.spawn }))
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-provider-'))
 process.env.WEEVILS_CONFIG = path.join(directory, 'env')
@@ -20,7 +21,7 @@ afterAll(() => fs.rmSync(directory, { recursive: true, force: true }))
 let setup: SetupType
 let child: EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; exitCode: number | null; kill: ReturnType<typeof vi.fn> }
 beforeEach(() => {
-  auth.codex = false; auth.claude = false; auth.spawn.mockReset(); delete process.env.WEEVILS_PROVIDER
+  auth.codex = false; auth.claude = false; auth.spawn.mockReset(); auth.claudeStart.mockClear(); delete process.env.WEEVILS_PROVIDER
   child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter(), exitCode: null, kill: vi.fn() })
   auth.spawn.mockReturnValue(child)
   setup = new Setup({ bump() {}, feed: () => ({ machines: [], projects: 0 }), remoteFacts: async () => [], devices: () => 0, push: () => 0, shortcut: () => false, seen: () => [], hasHistory: () => false, startMail() {}, handoff: async () => {} } as SetupDeps)
@@ -51,12 +52,11 @@ it('« sign in again » from a signed-out session starts a fresh login even with
   // An ordinary tap: already signed in, nothing to do.
   await setup.ask('claude')
   expect(auth.spawn).not.toHaveBeenCalled()
-  const login = setup.ask('claude', undefined, true)
-  await vi.waitFor(() => expect(auth.spawn).toHaveBeenCalledTimes(1))
-  expect(auth.spawn.mock.calls[0][1]).toEqual(['auth', 'login', '--claudeai'])
-  child.stdout.emit('data', Buffer.from('Visit https://claude.ai/oauth/authorize?code=1 to sign in'))
-  expect(await login).toBe(true)
+  expect(auth.claudeStart).not.toHaveBeenCalled()
+  expect(await setup.ask('claude', undefined, true)).toBe(true)
+  expect(auth.claudeStart).toHaveBeenCalledTimes(1)
   expect(setup.messages().at(-1)?.text).toContain('https://claude.ai/oauth/authorize?code=1')
+  expect(setup.takeOpen()).toBe('https://claude.ai/oauth/authorize?code=1')
   expect(process.env.WEEVILS_PROVIDER).toBeUndefined()
 })
 it('rejects an unavailable provider before changing the configured selection', async () => {

@@ -572,14 +572,14 @@ const routes: [string, RegExp, Handler][] = [
     const b = await readBody(req)
     if (b.tool !== 'claude' && b.tool !== 'codex') return json(res, 400, { error: tr(S).badBrick })
     const flow = await setup.chooseProvider(b.tool, b.device ? asDevice(b.device) : undefined)
-    json(res, 200, { ok: true, flow, said: setup.lastSaid ?? undefined })
+    json(res, 200, { ok: true, flow, said: setup.lastSaid ?? undefined, open: setup.takeOpen() })
   }],
   ['POST', /^\/api\/setup\/ask$/, async (req, res) => {
     const b = await readBody(req)
     if (!isBrick(b.brick)) return json(res, 400, { error: tr(S).badBrick })
     const again = b.again === true && (b.brick === 'claude' || b.brick === 'codex')
     const flow = await setup.ask(b.brick, b.device ? asDevice(b.device) : undefined, again)
-    json(res, 200, { ok: true, flow, said: setup.lastSaid ?? undefined })
+    json(res, 200, { ok: true, flow, said: setup.lastSaid ?? undefined, open: setup.takeOpen() })
   }],
   ['POST', /^\/api\/setup\/apply$/, async (req, res) => {
     const b = await readBody(req, 64 << 10)

@@ -75,16 +75,32 @@ export const flowVoice = { add: (x: string) => flowInput?.add(x), send: () => fl
 export async function startSetup(brick: Brick, opened = false, primary = false, again = false) {
   // Le fil de weevboss s'ouvre en haut de l'écran tout de suite (d'une page, du bas du flux) : sa réponse y arrive sous les yeux.
   focusBoss({ flash: false })
+  // Claude Code: the official sign-in page opens from this very tap. The tab is opened now, inside the gesture (later,
+  // phones block it), and sent to the page once weevilsd has started the login; the code field waits back here.
+  const tab = brick === 'claude' ? openSignInTab() : null
   const r = await (primary && (brick === 'claude' || brick === 'codex') ? api.setupProvider(brick, device()) : api.setupAsk(brick, device(), again)).catch((e: unknown) => {
+    tab?.close()
     if (opened && flow?.brick === brick && flow.step === 0) setFlow(null)
     throw e
   })
+  if (tab) {
+    if (r.open) tab.location.href = r.open
+    else tab.close()
+  }
   // La réponse (nouvelle, ou l'explication déjà là si on relance) est mise en avant, une fois ; une page ouverte entre-temps
   // n'est pas refermée : ce sera au retour.
   focusBossSoon({ mid: r.said })
   if (r.flow && FIELDS[brick]) {
     if (flow?.brick !== brick) setFlow({ brick, step: 0, values: {} })
   } else if (opened && flow?.brick === brick && flow.step === 0) setFlow(null)
+}
+
+function openSignInTab(): Window | null {
+  try {
+    return window.open('', '_blank')
+  } catch {
+    return null
+  }
 }
 
 const composerInput = () => document.querySelector<HTMLInputElement>('.setup-form input')

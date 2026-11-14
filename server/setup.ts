@@ -28,6 +28,7 @@ import { CONTEXT_BLOCK, FIELDS, isSecretName, type Brick, type Device } from '..
 import { BOSS, resetAuthors, authors } from './authors.ts'
 import { CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL } from './config.ts'
 import { claudeLoggedIn } from './claude-credentials.ts'
+import * as claudeLogin from './claude-login.ts'
 import { servicePath, which as whichIn } from './platform.ts'
 import { devilConfig } from './devil.ts'
 import { facts, macFacts } from './discover.ts'
@@ -127,6 +128,8 @@ interface Persisted {
   bossSeenAt: number
   welcomed?: boolean
   claudeLogged?: boolean
+  /** A Codex device sign-in shown and not finished yet: confirmed by watch() even after a restart of weevilsd. */
+  codexWaiting?: boolean
   githubLogged?: boolean
   /** Un travail pour weevboss qui attend que Claude Code soit connecté (un VPS branché avant la connexion). */
   pending?: { text: string; brief: string }
@@ -577,7 +580,6 @@ export class Setup {
   /** Les installations en cours (un double tap n'en lance pas deux). */
   private jobs = new Map<string, Promise<{ ok: boolean; why: string }>>()
   /** « claude auth login » qui attend le code de la page de connexion. */
-  private claudeLogin: { proc: ChildProcess; url: string; at: number; out: string } | null = null
   private codexLogin: ChildProcess | null = null
   private codexLoginStarting: Promise<boolean> | null = null
   private codexLoginShown = false
@@ -587,6 +589,13 @@ export class Setup {
   private lastAsk: { brick: Brick; id: string; text: string } | null = null
   /** Le dernier message écrit (ou retrouvé) au nom de weevboss : l'app l'amène sous les yeux après une puce. */
   lastSaid: string | null = null
+  /** The official sign-in page the tap that asked for it opens at once (Claude), handed out once. */
+  private openUrl: string | undefined
+  takeOpen(): string | undefined {
+    const u = this.openUrl
+    this.openUrl = undefined
+    return u
+  }
   /** « claude auth login » en train de démarrer : deux demandes coup sur coup partagent le même (une seule adresse). */
   private loginStarting: Promise<string> | null = null
 
@@ -595,7 +604,7 @@ export class Setup {
     this.p = (() => {
       try {
         const raw = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Partial<Persisted>
-        return { log: raw.log ?? [], marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, githubLogged: raw.githubLogged, pending: raw.pending, memorySeen: raw.memorySeen }
+        return { log: raw.log ?? [], marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, codexWaiting: raw.codexWaiting, githubLogged: raw.githubLogged, pending: raw.pending, memorySeen: raw.memorySeen }
       } catch {
         return { log: [], marks: {}, bossSeenAt: 0 }
       }
@@ -785,33 +794,12 @@ export class Setup {
   }
 
   private spawnClaudeLogin(): Promise<string> {
-    const cur = this.claudeLogin
-    if (cur && cur.proc.exitCode === null && Date.now() - cur.at < 8 * 60_000) return Promise.resolve(cur.url)
-    cur?.proc.kill()
-    this.claudeLogin = null
-    const bin = which('claude') ?? 'claude'
-    return new Promise((resolve) => {
-      const proc = spawn(bin, ['auth', 'login', '--claudeai'], { env: { ...shellEnv(), BROWSER: 'true' }, stdio: ['pipe', 'pipe', 'pipe'] })
-      const state = { proc, url: '', at: Date.now(), out: '' }
-      const timer = setTimeout(() => resolve(''), 25_000)
-      const onData = (d: Buffer) => {
-        state.out += d.toString()
-        const m = /https:\/\/\S*oauth\S*/.exec(state.out.replace(ANSI, ''))
-        if (m && !state.url) {
-          state.url = m[0]
-          this.claudeLogin = state
-          clearTimeout(timer)
-          resolve(state.url)
-        }
-      }
-      proc.stdout.on('data', onData)
-      proc.stderr.on('data', onData)
-      proc.on('error', () => (clearTimeout(timer), resolve('')))
-      proc.on('exit', () => {
-        clearTimeout(timer)
-        if (!state.url) resolve('')
-      })
-    })
+    return claudeLogin.start(this.loginDeps())
+  }
+
+  /** The pending « claude auth login » lives in its own folder: it outlives a restart of weevilsd (server/claude-login.ts). */
+  private loginDeps(): claudeLogin.LoginDeps {
+    return { dir: path.join(DATA_DIR, 'claude-login'), bin: which('claude') ?? 'claude', env: shellEnv(), logged: claudeLogged }
   }
 
   /** Codex : connexion par code (une page OpenAI, un code à y taper) ; weevboss confirme quand c'est fait. */
@@ -843,6 +831,8 @@ export class Setup {
           shown = true
           clearTimeout(timer)
           this.codexLoginShown = true
+          this.p.codexWaiting = true
+          this.save()
           this.say(t.codexCode(url, code))
           resolve(true)
         }
@@ -855,7 +845,7 @@ export class Setup {
         if (this.codexLogin === proc) this.codexLogin = null
         this.cache = null
         if (!shown) return resolve(false)
-        if (code === 0 && codexLogged()) void this.codexReady()
+        if (code === 0 && codexLogged()) { if (this.p.codexWaiting) void this.codexReady() }
         else if (code !== null) this.say(chip(t.codexFail(lastLine(out) || t.noAnswer), 'codex'))
       })
     })
@@ -869,6 +859,10 @@ export class Setup {
       this.p.claudeLogged = true
       changed = true
       await this.claudeReady()
+    }
+    if (this.p.codexWaiting && codexLogged()) {
+      changed = true
+      await this.codexReady()
     }
     if (!this.p.githubLogged && which('gh')) {
       const gh = await github()
@@ -989,8 +983,9 @@ export class Setup {
       if (!r.ok) return this.say(chip(t.claudeInstallFail(r.why), 'claude')), false
     }
     const url = await this.startClaudeLogin()
-    if (!url) return this.say(chip(t.claudeInstallFail(lastLine(this.claudeLogin?.out ?? '') || t.noAnswer), 'claude')), false
+    if (!url) return this.say(chip(t.claudeInstallFail(lastLine(claudeLogin.output(this.loginDeps())) || t.noAnswer), 'claude')), false
     if (this.p.log.at(-1)?.text !== t.claudeLink(url)) this.say(t.claudeLink(url))
+    this.openUrl = url
     return true
   }
 
@@ -1007,6 +1002,8 @@ export class Setup {
   }
 
   private async codexReady() {
+    this.p.codexWaiting = false
+    this.save()
     const primary = preferredTool() === 'codex'
     this.say(primary ? tr(M).codexPrimaryReady : tr(M).codexReady)
     const job = this.p.pending
@@ -1104,23 +1101,16 @@ export class Setup {
   /** Le code de la page de connexion de Claude : donné à « claude auth login », qui enregistre la connexion. */
   private async applyClaude(v: Record<string, string>) {
     const t = tr(M)
-    const cur = this.claudeLogin
-    if (!cur || cur.proc.exitCode !== null) return this.say(chip(t.claudeFail(t.noAnswer), 'claude'))
-    const from = cur.out.length
-    const code = await new Promise<number | null>((resolve) => {
-      const timer = setTimeout(() => (cur.proc.kill(), resolve(null)), 45_000)
-      cur.proc.on('exit', (c) => (clearTimeout(timer), resolve(c)))
-      cur.proc.stdin?.write(v.code.replace(/\s+/g, '') + '\n')
-    })
-    this.claudeLogin = null
+    const r = await claudeLogin.submit(this.loginDeps(), v.code ?? '')
     this.cache = null
-    if (code === 0 && claudeLogged()) {
+    if (r.ok) {
+      if (this.p.claudeLogged) return // watch() saw it first and said so
       this.p.claudeLogged = true
       this.save()
       console.log('[setup] Claude Code connecté')
       return this.claudeReady()
     }
-    this.say(chip(t.claudeFail(lastLine(cur.out.slice(from)).replace(/^Login failed:\s*/i, '') || t.noAnswer), 'claude'))
+    this.say(chip(t.claudeFail(r.why || t.noAnswer), 'claude'))
   }
 
   /** Un VPS (ou toute machine joignable en SSH) : weevilsd y entre avec le mot de passe de l'hébergeur, une fois, y pose

@@ -192,6 +192,22 @@ describe('l’aperçu de « pour toi »', () => {
     expect(host.querySelectorAll('.fyt-item').length).toBe(0)
   })
 
+  it('pas encore chargé : jamais un faux « rien de neuf », le compte du snapshot ou « chargement »', async () => {
+    let arrive!: (f: ForYouFeed) => void
+    net.feed = new Promise<ForYouFeed>((r) => (arrive = r))
+    render(snap({ rev: 1, unseen: 41 }), <ForYouPeek />)
+    await flush()
+    expect(host.querySelector('.fyt-empty')!.textContent).toBe(tr(BM).forYouUnseen(41))
+    act(() => root.unmount())
+    root = createRoot(host)
+    render(snap({ rev: 1, unseen: 0 }), <ForYouPeek />)
+    await flush()
+    expect(host.querySelector('.fyt-empty')!.textContent).toBe(tr(BM).forYouLoading)
+    await act(async () => arrive(feedOf([])))
+    await flush()
+    expect(host.querySelector('.fyt-empty')!.textContent).toBe(tr(BM).forYouEmpty)
+  })
+
   it('les premiers items seulement, dans l’ordre du flux, chacun avec qui parle et une ligne', async () => {
     net.feed = feedOf([
       item('b1', { text: 'La page est prête.' }),

@@ -2846,3 +2846,10 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .chatter > summary::-webkit-details-marker { display: none; }
 .chatter[open] > summary { display: none; }
 .step-raw + .step-raw { margin-top: 10px; }
+
+/* Session header: the mini-macro sits beside the title, same row, never pushes anything down. */
+.session-context-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.session-context-row .session-context { flex: 0 1 auto; min-width: 0; max-width: 62%; }
+.session-now { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .68rem; line-height: 1; padding: 3px 8px; border: 1px solid currentColor; border-radius: 999px; opacity: .6; }
+.session-now[data-state="working"] { opacity: .75; }
+.session-now[data-state="calm"] { border-color: transparent; padding-inline: 0; opacity: .5; }

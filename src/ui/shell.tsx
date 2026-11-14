@@ -136,6 +136,7 @@ export function Shell({
   headerControls,
   scrollHeading = false,
   sessionLayout = false,
+  liveNote,
 }: {
   slot: string
   kicker: string
@@ -160,6 +161,8 @@ export function Shell({
   /** Keep only navigation fixed; long session context scrolls with its messages. */
   scrollHeading?: boolean
   sessionLayout?: boolean
+  /** Session header: one short live line beside the title (never below it: the header does not grow). */
+  liveNote?: ReactNode
 }) {
   const { back } = useApp()
   const t = useT(M)
@@ -219,7 +222,7 @@ export function Shell({
           ) : (
             <BackButton kicker={kicker} onClick={back} label={t.back(kicker)} />
           )}
-          {sessionLayout && <button className="session-context" title={typeof title === 'string' ? title : undefined} onClick={() => { bodyRef?.current?.scrollTo({ top: 0, behavior: 'smooth' }); heading.current?.focus({ preventScroll: true }) }}>{title}</button>}
+          {sessionLayout && <div className="session-context-row"><button className="session-context" title={typeof title === 'string' ? title : undefined} onClick={() => { bodyRef?.current?.scrollTo({ top: 0, behavior: 'smooth' }); heading.current?.focus({ preventScroll: true }) }}>{title}</button>{liveNote}</div>}
           {!scrollHeading && details}
         </div>
       </div>

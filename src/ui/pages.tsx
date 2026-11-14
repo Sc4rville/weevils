@@ -37,9 +37,20 @@ import { useLang, useT } from '../i18n'
 import { reveal, useFollow } from './follow'
 import { FollowDown } from './followdown'
 import M from '../i18n/pages'
+import PM from '../i18n/plain-steps'
+import { liveNote } from './plain-steps'
+import type { Message, Session } from '../../shared/api.ts'
 import { MemoryPage } from './memory'
 import { ForYouPage, MediaPage } from './foryou'
 import { AutoPage, AutoRunPage } from './auto-page'
+
+/** Mini-macro: what the session is doing right now, in a few plain words, beside the title. */
+function LiveNote({ s, messages }: { s: Session; messages: Message[] }) {
+  const w = useT(PM)
+  const live = liveNote(s, messages.at(-1), w, { waiting: String(w.liveWaiting), stopped: String(w.liveStopped), done: String(w.liveDone), idle: String(w.liveIdle) })
+  return <span className="session-now" role="status" data-state={live.state} title={w.liveLabel(live.text)}>{live.text}</span>
+}
+
 
 export function PageView({ page }: { page: Page }) {
   switch (page.kind) {
@@ -262,6 +273,7 @@ function SessionPage({ id }: { id: string }) {
       title={s.title}
       scrollHeading
       sessionLayout
+      liveNote={<LiveNote s={s} messages={messages} />}
       headerControls={<button className="link inline" onClick={() => setShowSettings(true)} aria-label={t.changeModel} aria-controls="session-settings">
             {[modelLabel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
           </button>}

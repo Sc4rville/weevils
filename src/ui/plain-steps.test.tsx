@@ -49,3 +49,25 @@ it('French mode speaks French, and the weevboss thread (not plain) is untouched'
   expect(host.querySelector('.steps-head')!.textContent).toMatch(/6 étapes/)
   expect(host.querySelector('.chatter')).toBeNull()
 })
+
+import { liveNote } from './plain-steps'
+import PM from '../i18n/plain-steps'
+import { tr } from '../i18n'
+const H = (w: any) => ({ waiting: String(w.liveWaiting), stopped: String(w.liveStopped), done: String(w.liveDone), idle: String(w.liveIdle) })
+it('header live note: plain words, 6 max, never a path or a command, calm when nothing runs', () => {
+  const w = tr(PM)
+  const note = (s: object, last?: Message) => liveNote({ status: 'working', ...s }, last, w, H(w))
+  expect(note({ now: 'running the full check' })).toEqual({ text: 'running the full check', state: 'working' })
+  expect(note({ now: 'fixing i18n labels and the evidence strings for every page' }).text).toBe('fixing i18n labels and the evidence…')
+  // a raw tool step in `now` is never shown: the last action, in plain words, takes over
+  const raw = note({ now: 'cd ~/projects/weevils-wt/f && npm run check' }, thread.at(-1))
+  expect(raw).toEqual({ text: 'Runs the tests', state: 'working' })
+  expect(note({ now: 'tail -30 /tmp/evidence-check.log' }, m('x', 'event', 'Read · /home/alex/a/PayButton.tsx')).text).toBe('Reads the pay button code')
+  expect(note({ now: '' }).text).toBe('Works on it')
+  for (const l of [note({ now: 'cd /x' }, thread.at(-1)).text, note({ now: 'ls -la ~/x' }).text]) expect(l).not.toMatch(/\/|~|--|npm|cd /)
+  // calm states: a stale `now` is ignored once nothing runs
+  expect(note({ status: 'done', now: 'running the full check' })).toEqual({ text: 'done', state: 'calm' })
+  expect(note({ status: 'idle', now: 'x' }).text).toBe('idle')
+  expect(note({ status: 'needs_user' })).toEqual({ text: 'waiting for you', state: 'waiting' })
+  expect(note({ status: 'interrupted' }).text).toBe('stopped')
+})

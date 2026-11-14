@@ -728,14 +728,17 @@ describe('a Mac', () => {
     // Exactly three machines: Hetzner, a VPS rented anywhere, the person's computer.
     expect(phone.text()).toContain('Create a server for me at Hetzner')
     expect(phone.text()).toContain('I already have a VPS')
-    expect(phone.text()).toContain('My computer (Linux)')
+    expect(phone.text()).toContain('My computer')
+    // A Mac works (bootstrap.sh handles Darwin): the computer option names it, never « Linux » alone.
+    expect(phone.text()).toContain('Mac, Linux, or Windows with WSL.')
+    expect(page).not.toMatch(/\(Linux\)|Linux only|Linux seulement/)
     expect(phone.text()).not.toMatch(/Hostinger|hPanel/)
     expect(phone.text()).not.toContain('curl')
     // French, and no sentence left that sends a Mac away.
     const fr = await firstScreen(MAC, 'fr')
     expect(fr.text()).toContain('Branche cet ordinateur')
     expect(fr.text()).toContain('mot de passe du Mac')
-    expect((await firstScreen(IPHONE, 'fr')).text()).toContain('Mon ordinateur (Linux)')
+    expect((await firstScreen(IPHONE, 'fr')).text()).toContain('Mac, Linux, ou Windows avec WSL.')
     expect(page).not.toMatch(/Hostinger|hPanel/)
     expect(page).not.toMatch(/Linux for now|Linux pour l’instant|prends un VPS|take a VPS/)
   }, 60_000)

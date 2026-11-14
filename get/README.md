@@ -10,7 +10,7 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
 1. A short page (English by default, a small FR switch) says what weevils is, then right away: **plug in your
    machine** ("a server keeps your agents working while your phone and computer are off").
    - On a phone: exactly three machines: a server created for you at Hetzner (recommended, for agents that run
-     24/7), your own VPS (rented anywhere), or your own computer (Linux).
+     24/7), your own VPS (rented anywhere), or your own computer (Mac, Linux, or Windows with WSL).
    - On a Mac, Linux or Windows (WSL) computer: connect this computer here and now (one command), with a nudge
      toward a VPS ("your agents keep working with this computer off").
 2. **Create a server for me** at **Hetzner**: the person creates an account and an API token (links on the page),

@@ -29,6 +29,7 @@ import type { InterruptReason, Message, Session, SessionDetail, Snapshot } from 
 import type { ForYouAction, ForYouCard, ForYouFeed, ForYouGauge, ForYouItem, ForYouKind, ForYouMark, ForYouMedia, ForYouOpen, ForYouPulse, ForYouTone } from '../shared/foryou.ts'
 import { isLang } from '../shared/i18n.ts'
 import { detectLang } from '../shared/detect-lang.ts'
+import { withoutWeevilsBlock } from './transcripts.ts'
 import type { Level, UsageInfo } from '../shared/infra.ts'
 import { DATA_DIR, MACHINE } from './config.ts'
 import type { MediaShelf } from './foryou-media.ts'
@@ -953,11 +954,14 @@ export class ForYou {
       const source = i.body || i.text
       const snap = this.w.snapshot()
       const project = snap.projects.find((p) => p.id === i.projectId)?.name ?? i.projectId ?? ''
-      const asked = clip(collapse(cleanTitle(this.w.store?.get(i.sessionId ?? '')?.firstPrompt ?? '')), 400)
+      // What was asked, without weevils' hidden context block (it would only blur the subject and the language).
+      const asked = clip(collapse(cleanTitle(withoutWeevilsBlock(this.w.store?.get(i.sessionId ?? '')?.firstPrompt ?? ''))), 400)
       const l = lang()
       let line = ''
       try {
-        line = resultTitleLine(await ask(withLang(l, () => tr(M).resultTitle(project, asked, source))), [project, i.title ?? ''])
+        const raw = await ask(withLang(l, () => tr(M).resultTitle(project, withoutWeevilsBlock(asked), withoutWeevilsBlock(source))))
+        line = resultTitleLine(raw, [project, i.title ?? ''])
+        if (!line) console.log(`[foryou] result title not kept for ${id}: ${JSON.stringify(collapse(raw).slice(0, 200))}`)
       } catch (e) {
         console.error(`[foryou] result title: ${(e as Error).message}`)
       }

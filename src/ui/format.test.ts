@@ -121,7 +121,7 @@ describe('puce de secret', () => {
       { kind: 'chip', brick: 'key:RUNPOD_API_KEY' },
       { kind: 'text', s: '. Merci.' },
     ])
-    expect(plain('via [[setup:key:HF_TOKEN]].')).toBe('via coller HF_TOKEN.')
+    expect(plain('via [[setup:key:HF_TOKEN]].')).toBe('via colle ton jeton Hugging Face.')
     expect(inline('[[setup:key:WEEVILS_X_TOKEN]]')).toEqual([{ kind: 'text', s: '[[setup:key:WEEVILS_X_TOKEN]]' }])
   })
 })

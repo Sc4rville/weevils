@@ -208,6 +208,10 @@ function claudeLine(t: Transcript, o: any) {
   }
 
   if (o.type === 'user') {
+    // The summary Claude Code writes when it compacts a session (« This session is being continued from a previous
+    // conversation… »): the agent's memory, not a message from the user, and not a sign of work (weevils compacts
+    // sessions at rest). Never in the thread.
+    if (o.isCompactSummary) return
     touch(t, at)
     // Un message mis en file est remis à l'agent avec le pas suivant de son tour (résultat d'outil ou nouveau message) :
     // tout ce qui a été mis en file avant ce pas est donc traité.

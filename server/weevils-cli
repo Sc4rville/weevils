@@ -12,6 +12,8 @@
 #   weevils memory [add "souvenir" | rm <id>]   (ce que weevils retient de l'utilisateur, ~/.config/weevils/memory.json)
 #   weevils post "texte" [--action "libellé::quoi faire"]…   un mot dans « pour toi », avec des boutons si besoin
 #   weevils show <fichier> ["légende"]                       une image ou une vidéo dans « pour toi »
+#     post et show, quand ils rapportent un résultat : --demonstrated "où ça a tourné" · --verified "environnement vérifié"
+#     · --limit "ce qui n'a pas été vérifié" (répétable). Sans rien : « codé » au plus, quoi que dise le texte.
 #   weevils asks [open|all|stale|done]   le registre des demandes de weevboss (server/boss-ledger.ts)
 #   weevils ask done|drop|open <id> ["note"] · ask add "demande" [--goal <id>] · ask link <id> <session> ["retour attendu"] · ask goal <id> <objectif>
 #   weevils goals [all] · goal add <id> "titre" ["pourquoi"] · goal note <id> "avancée" · goal done|pause|open <id>
@@ -51,6 +53,7 @@ weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichie
   usage+=$'\n''weevils goals [all]   weevils goal add <id> "titre" ["pourquoi"]   weevils goal note <id> "avancée"   weevils goal done|pause|open <id>' # i18n-ignore
   usage+=$'\n''weevils trace [<objectif>] [n]   weevils trace add "décision" [--goal <id>]' # i18n-ignore
   usage+=$'\n''weevils mem   weevils mem search <mots>   weevils mem add [rule|decision|fact] "texte"   weevils mem rm <id>' # i18n-ignore
+  usage+=$'\n''  preuve d’un résultat (post, show) : --demonstrated "où" --verified "environnement" --limit "non vérifié"…' # i18n-ignore
   a_id='id de session' a_msg='message' a_project='projet' a_first='premier message' # i18n-ignore
   export WVM_NOT_FOUND='session introuvable : ' WVM_AMBIGUOUS='plusieurs sessions commencent par {} : {}' # i18n-ignore
   export WVM_NO_SESSIONS='aucune session ouverte' WVM_NO_MESSAGES='(aucun message)' WVM_USER='utilisateur' # i18n-ignore
@@ -70,6 +73,7 @@ weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichie
   m_ask_usage='weevils ask done|drop|open <id> ["note"] · ask add "demande" · ask link <id> <session> · ask goal <id> <objectif>' # i18n-ignore
   m_goal_usage='weevils goal add <id> "titre" ["pourquoi"] · goal note <id> "avancée" · goal done|pause|open <id>' # i18n-ignore
   m_mem_usage='weevils mem search <mots> · mem add [rule|decision|fact] "texte" · mem rm <id>' # i18n-ignore
+  m_evidence_bad='--demonstrated, --verified et --limit attendent un texte : où, dans quel environnement, ce qui manque' # i18n-ignore
 else
   usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
 weevils resume <id>                  weevils new <project> "message" [codex]  weevils projects
@@ -83,6 +87,7 @@ weevils ask add "request" [--goal <id>]   weevils ask link <id> <session> ["expe
 weevils goals [all]   weevils goal add <id> "title" ["why"]   weevils goal note <id> "progress"   weevils goal done|pause|open <id>
 weevils trace [<goal>] [n]   weevils trace add "decision" [--goal <id>]
 weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] "text"   weevils mem rm <id>'
+  usage+=$'\n''  evidence of a result (post, show): --demonstrated "where" --verified "environment" --limit "not checked"…'
   a_id='session id' a_msg='message' a_project='project' a_first='first message'
   export WVM_NOT_FOUND='no such session: ' WVM_AMBIGUOUS='several sessions start with {}: {}'
   export WVM_NO_SESSIONS='no open sessions' WVM_NO_MESSAGES='(no messages)' WVM_USER='user'
@@ -102,6 +107,7 @@ weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] 
   m_ask_usage='weevils ask done|drop|open <id> ["note"] · ask add "request" · ask link <id> <session> · ask goal <id> <goal>'
   m_goal_usage='weevils goal add <id> "title" ["why"] · goal note <id> "progress" · goal done|pause|open <id>'
   m_mem_usage='weevils mem search <words> · mem add [rule|decision|fact] "text" · mem rm <id>'
+  m_evidence_bad='--demonstrated, --verified and --limit take a text: where, which environment, what is missing'
 fi
 
 # An empty input (the request before it failed and said why on stderr) ends quietly with an error.
@@ -159,6 +165,22 @@ def show(a):
     elif d and d[0].get("expect"): extra+=" · "+E["WVM_EXPECT"]+": "+d[0]["expect"][:160]
     print("      "+extra)
 '
+# The evidence supplied with a result (shared/evidence.ts): these flags only, never guessed from the words.
+ev_demo='' ev_ver='' ev_limits=()
+evidence_flag() {
+  [ -n "${2//[[:space:]]/}" ] || { echo "$m_evidence_bad" >&2; exit 1; }
+  case "$1" in
+    --demonstrated) ev_demo=$2 ;;
+    --verified) ev_ver=$2 ;;
+    --limit) ev_limits+=("$2") ;;
+  esac
+}
+evidence_json() {
+  "$py" -c 'import json,sys
+d,v,l=sys.argv[1],sys.argv[2],sys.argv[3:]
+e={k:x for k,x in (("demonstrated",d),("verified",v),("limits",l)) if x}
+print(json.dumps(e) if e else "null")' "$ev_demo" "$ev_ver" ${ev_limits[@]+"${ev_limits[@]}"}
+}
 
 case "${1:-}" in
   asks)
@@ -416,19 +438,34 @@ else: print(E['WVM_MEM_NOT_FOUND']+want, file=sys.stderr); sys.exit(1)
           # A label, « :: », something to do: anything else is one clean line.
           case "$a" in ?*::?*) ;; *) echo "$m_action_bad" >&2; exit 1 ;; esac
           actions+=("$a"); shift; [ $# -gt 0 ] && shift ;;
+        --demonstrated|--verified|--limit) evidence_flag "$1" "${2-}"; shift; [ $# -gt 0 ] && shift ;;
         *) [ -n "$text" ] || text=$1; shift ;;
       esac
     done
     [ -n "${text//[[:space:]]/}" ] || { echo "$m_post_empty" >&2; exit 1; }
     for_you post "$m_posted" "$("$py" -c 'import json,sys
-acts=[dict(zip(("label","brief"),(p.strip() for p in a.split("::",1)))) for a in sys.argv[3:]]
-print(json.dumps({"text":sys.argv[1],"actions":acts,"from":sys.argv[2]}))' "$text" "$from" ${actions[@]+"${actions[@]}"})" ;;
+acts=[dict(zip(("label","brief"),(p.strip() for p in a.split("::",1)))) for a in sys.argv[4:]]
+d={"text":sys.argv[1],"actions":acts,"from":sys.argv[2]}
+e=json.loads(sys.argv[3])
+if e: d["evidence"]=e
+print(json.dumps(d))' "$text" "$from" "$(evidence_json)" ${actions[@]+"${actions[@]}"})" ;;
   show)
     # An image or a video in the « for you » stream. The server checks the file (place, type, size) and says why not.
-    file=${2-}
+    shift
+    file='' caption='' n=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --demonstrated|--verified|--limit) evidence_flag "$1" "${2-}"; shift; [ $# -gt 0 ] && shift ;;
+        *) n=$((n + 1)); [ $n = 1 ] && file=$1; [ $n = 2 ] && caption=$1; shift ;;
+      esac
+    done
     [ -n "${file//[[:space:]]/}" ] || { echo "$m_show_no_file" >&2; exit 1; }
     case "$file" in /*) ;; "~/"*) file=$HOME/${file#"~/"} ;; *) file=$PWD/$file ;; esac
-    for_you media "$m_shown" "$("$py" -c 'import json,sys; print(json.dumps({"path":sys.argv[1],"caption":sys.argv[2],"cwd":sys.argv[3],"from":sys.argv[4]}))' "$file" "${3-}" "$PWD" "$from")" ;;
+    for_you media "$m_shown" "$("$py" -c 'import json,sys
+d={"path":sys.argv[1],"caption":sys.argv[2],"cwd":sys.argv[3],"from":sys.argv[4]}
+e=json.loads(sys.argv[5])
+if e: d["evidence"]=e
+print(json.dumps(d))' "$file" "$caption" "$PWD" "$from" "$(evidence_json)")" ;;
   *)
     echo "$usage"
     exit 1 ;;

@@ -1,4 +1,7 @@
 import { FeedText, SoftwareResultLink } from './foryou-links'
+import { EvidenceLine } from './foryou-evidence'
+import { shownEvidence } from '../../shared/evidence'
+import EM from '../i18n/foryou-evidence'
 import { ResultCard } from './foryou-result'
 import { TranslationStatus } from './foryou-localization'
 import { InlineMediaFormats, ProposalView } from './foryou-formats'
@@ -433,6 +436,7 @@ function MediaItem({ item, who, fy }: KindProps) {
           </Who>
           {item.title && <div className="fy-title">{item.title}</div>}
           {item.text && item.text !== item.title && <div className="fy-text"><FeedText text={item.text} item={item} /></div>}
+          <EvidenceLine item={item} />
           <SoftwareResultLink item={item} />
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
         </div>
@@ -469,6 +473,7 @@ function BossItem({ item, who, fy }: KindProps) {
             <div className="fy-text"><FeedText text={item.text} item={item} /></div>
           </details>
         ) : <div className="fy-text"><FeedText text={item.text} item={item} /></div>}
+        <EvidenceLine item={item} />
         <SoftwareResultLink item={item} />
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
@@ -638,6 +643,7 @@ function SessionItem({ item, who, project, fy }: KindProps) {
         ) : (
           <div className="fy-line"><FeedText text={item.text} item={item} /></div>
         )}
+        <EvidenceLine item={item} />
         <SoftwareResultLink item={item} />
         {!!item.gauges?.length && <Gauges list={item.gauges} />}
       </div>
@@ -868,6 +874,7 @@ function ExistingWork({ item, who }: { item: ForYouItem; who: string }) {
 /** One item of the stream. compact: a thin strip (speaker · one line), nothing to tap inside. */
 export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: boolean }) {
   const t = useT(M)
+  const te = useT(EM)
   const fy = useForYou()
   const { hidden, dismiss } = useNotice(feedNoticeKey(item))
   const { colors, snap } = useApp()
@@ -886,6 +893,7 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
   }, [compact, item.id, item.seen, inView, markSeen])
 
   const closable = closableFeedNotice(item)
+  const evidence = shownEvidence(item.evidence)
   if (hidden || rawEngineeringNotice(item.id, item.text)) return null
   if (compact) {
     return (
@@ -899,6 +907,8 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
             </span>
           )}
           <span className="fy-who-name">{who}</span>
+          {/* A strip keeps the result's label first, so a claim never reads as more than its evidence. */}
+          {!item.work && evidence && <span className="fy-ev-strip">{te[evidence.level]}{evidence.limits?.length ? ' ◦' : ''} · </span>}
           <span className="fy-strip-text ellipsis">{item.work ? t[`work_${item.work.status}`] : oneLine(item)}</span>
         </div>
       </div>

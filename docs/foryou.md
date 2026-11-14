@@ -136,6 +136,18 @@ The store keeps `{ id, path, type, bytes, mtime }`; the route serves only regist
 the cwd when present, so the item knows its project. Files cited in the closing message of a turn are registered the
 same way (same checks, at most 4, dot-directories refused).
 
+**Evidence labels** (`shared/evidence.ts`). A result says how far it was seen working: *implemented* (« Built »: the
+code exists, nothing seen running), *demonstrated* (« Shown working », with where: a clip, a screenshot, a test
+server) or *verified* (« Verified », with the environment it was checked in, shown next to the label). The level comes
+only from the structured `evidence` sent with the publication, `weevils show|post … --demonstrated "where"
+--verified "environment" --limit "what was not checked"` (`{ demonstrated?, verified?, limits? }` on the routes); never
+from the caption, the item's words, a commit message, a PR title, a branch name or the agent's « works / tested ». An
+agent's media result without any is « Built ». Each `--limit` is kept word for word and always shown under the claim
+(never folded, translated or summarised away); while one is open the result is never shown as verified (it stays
+« Shown working » where it was checked). Later files joining an item add their limits, never remove one. The server
+derives the label at read time and the app applies the same rule again; the curator passes an `[evidence=…]` tag
+with every source line so a digest or a suggestion does not claim more than the evidence.
+
 ### 3.4 weevboss (`server/weevils-cli`, `server/orchestrator.{fr,en}.md`)
 
 Two verbs, documented in both prompts: `weevils post "text" [--action "label::what to do"]…` (a word in the stream,

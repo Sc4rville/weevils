@@ -1,13 +1,8 @@
 import { defineMessages } from './index'
 
-const FR_KEYS: Record<string, string> = { '1': 'choix 1', '2': 'choix 2', '3': 'choix 3', up: 'flèche haut', down: 'flèche bas', enter: 'entrée', esc: 'échap', tab: 'tabulation' }
-const EN_KEYS: Record<string, string> = { '1': 'choice 1', '2': 'choice 2', '3': 'choice 3', up: 'up arrow', down: 'down arrow', enter: 'enter', esc: 'escape', tab: 'tab' }
-
 export default defineMessages({
   fr: {
     notFound: 'introuvable',
-    /** Nom lu par le lecteur d'écran pour chaque touche du terminal. */
-    keyAria: (k: string) => FR_KEYS[k] ?? k,
     // Session
     changeModel: 'changer le modèle ou l’effort',
     model: 'modèle',
@@ -41,10 +36,6 @@ export default defineMessages({
       ({ died: 'processus arrêté', dirty: 'arrêtée avec du travail non commité', quota: 'limite d’usage atteinte', auth: 'connexion expirée', api: 'erreur de l’API' })[reason] ?? 'arrêtée',
     resume: 'reprendre',
     dismiss: 'laisser',
-    showScreen: 'voir l’écran du terminal',
-    hideScreen: 'masquer l’écran du terminal',
-    terminalScreen: 'écran du terminal',
-    readingScreen: 'lecture de l’écran…',
     // Fichiers
     repos: (n: number) => `${n} ${n > 1 ? 'repos' : 'repo'}`,
     files: (n: number) => `${n} ${n > 1 ? 'fichiers' : 'fichier'}`,
@@ -78,7 +69,6 @@ export default defineMessages({
   },
   en: {
     notFound: 'not found',
-    keyAria: (k: string) => EN_KEYS[k] ?? k,
     changeModel: 'change model or effort',
     model: 'model',
     queued: (n: number) => `${n} queued`,
@@ -106,10 +96,6 @@ export default defineMessages({
       ({ died: 'process stopped', dirty: 'stopped with uncommitted work', quota: 'usage limit reached', auth: 'login expired', api: 'API error' })[reason] ?? 'stopped',
     resume: 'resume',
     dismiss: 'dismiss',
-    showScreen: 'show the terminal screen',
-    hideScreen: 'hide the terminal screen',
-    terminalScreen: 'terminal screen',
-    readingScreen: 'reading the screen…',
     repos: (n: number) => `${n} ${n === 1 ? 'repo' : 'repos'}`,
     files: (n: number) => `${n} ${n === 1 ? 'file' : 'files'}`,
     readingRepo: 'reading the repo…',

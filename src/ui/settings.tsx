@@ -93,8 +93,6 @@ export function Settings({
   canCommand: boolean
   run: (command: string) => Promise<unknown>
   userName?: string
-  /** Codex ouvre un menu dans le terminal (/model, /approvals) : montrer l'écran pour choisir avec les touches. */
-  onPicker?: () => void
 }) {
   const t = useT(M)
   const [local, setLocal] = useLocalSettings(id)

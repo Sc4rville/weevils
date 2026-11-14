@@ -131,7 +131,7 @@ function ErrorBand({ text }: { text: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Session : le fil, l'écran du terminal, les touches.
+// Session : le fil et ses bandes d'état.
 
 function SessionPage({ id }: { id: string }) {
   const appLang = useLang()
@@ -144,13 +144,8 @@ function SessionPage({ id }: { id: string }) {
   // Le premier message d'une session qu'on vient de lancer est déjà là (pending.ts : seedPending).
   const [pending, setPending] = useState<Pending[]>(() => peekSeed(id))
   useEffect(() => dropSeed(id), [id])
-  const [screenText, setScreenText] = useState<string | null>(null)
-  const [showScreen, setShowScreen] = useState<boolean | null>(null)
   const [preview, setPreview] = usePreviewState(id)
   const [showSettings, setShowSettings] = useState(false)
-  const screenBand = useRef<HTMLDivElement>(null)
-  /** L'écran du terminal ouvert par une commande (/model, /approvals) : il est amené sous les yeux et mis en avant. */
-  const screenAsked = useRef(false)
 
   // Le détail suit chaque nouvelle version annoncée par le serveur.
   useEffect(() => {
@@ -174,26 +169,6 @@ function SessionPage({ id }: { id: string }) {
   useEffect(() => {
     if (s) markSeen(s.id, s.lastActivityAt)
   }, [s, s?.id, s?.lastActivityAt])
-  // L'écran brut du terminal est un secours : jamais ouvert tout seul.
-  const screenOpen = showScreen ?? false
-
-  // Écran du terminal : rafraîchi tant qu'il est affiché.
-  useEffect(() => {
-    if (!s?.hasScreen || !screenOpen) return
-    let off = false
-    const tick = () =>
-      api
-        .screen(id)
-        .then((r) => !off && setScreenText(r.screen))
-        .catch(() => undefined)
-    tick()
-    const t = setInterval(tick, 1500)
-    return () => {
-      off = true
-      clearInterval(t)
-    }
-  }, [id, s?.hasScreen, screenOpen])
-
   const messages = useMemo(() => mergePending(detail?.messages ?? [], pending), [detail, pending])
   const body = useRef<HTMLDivElement>(null)
   const sp = snap.projects.find((p) => p.id === s?.projectId)
@@ -213,14 +188,6 @@ function SessionPage({ id }: { id: string }) {
     const t = window.setTimeout(() => reveal(document.getElementById('session-settings'), { block: 'nearest' }), 380)
     return () => window.clearTimeout(t)
   }, [showSettings])
-  // L'écran du terminal déplié : il s'ouvre vers le bas, on l'amène sous les yeux (mis en avant s'il vient d'une commande).
-  useEffect(() => {
-    if (!screenOpen) return
-    const lit = screenAsked.current
-    screenAsked.current = false
-    const t = window.setTimeout(() => reveal(screenBand.current, { block: 'nearest', flash: lit }), 380)
-    return () => window.clearTimeout(t)
-  }, [screenOpen])
 
   // Introuvable : le même cadre (le conteneur suivi reste le même s'il apparaît ensuite).
   if (!s)
@@ -363,25 +330,9 @@ function SessionPage({ id }: { id: string }) {
             settings={s.settings}
             canCommand={s.hasScreen}
             run={(c) => api.command(s.id, c)}
-            onPicker={() => {
-              screenAsked.current = true
-              setShowScreen(true)
-            }}
           />
         </div>
       </Collapse>
-
-      {s.hasScreen && (
-        <div ref={screenBand} className="band tone">
-          <Line ch=">_" go={screenOpen ? '−' : '+'} onClick={() => setShowScreen(!screenOpen)} label={screenOpen ? t.hideScreen : t.showScreen}>
-            <span className="meta">{t.terminalScreen}</span>
-          </Line>
-          <Collapse open={screenOpen}>
-            <pre className="screen">{screenText ?? t.readingScreen}</pre>
-            <div style={{ height: 10 }} />
-          </Collapse>
-        </div>
-      )}
     </Shell>
   )
 }

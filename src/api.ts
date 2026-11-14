@@ -95,7 +95,6 @@ export const api = {
   session: (id: string) => call<SessionDetail>('GET', `/api/sessions/${enc(id)}`),
   /** Détail d'un sous-agent, d'une étape de workflow ou d'une commande d'arrière-plan (ses derniers pas). */
   subagent: (id: string, subId: string) => call<SubagentDetail>('GET', `/api/sessions/${enc(id)}/subagents/${enc(subId)}`),
-  screen: (id: string) => call<{ screen: string | null }>('GET', `/api/sessions/${enc(id)}/screen`),
   archive: (id: string, archived: boolean) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/archive`, { archived }),
   send: (id: string, text: string) => send<{ id: string }>(`/api/sessions/${enc(id)}/send`, { text }, id),
   /** Session coupée en plein travail : relancée (--resume + message de reprise), ou laissée. */

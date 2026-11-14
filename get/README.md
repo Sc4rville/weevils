@@ -94,6 +94,34 @@ What the service *does* have, briefly, by design: during "I already have a VPS",
 during "Create a server for me", the token, for two API calls. A modified service could keep them; the code is open
 so anyone can check what runs, and both can be revoked right after (delete the token at Hetzner, change the password).
 
+## Anonymous stats
+
+Counters only, one file a day in `<GET_DATA>/stats` (mode 600), deleted after 90 days; the page says so in one line.
+
+- **Visits and visitors.** The page sends a beacon when it opens (`/api/hit`; no cookie, no identifier). A visitor is
+  told apart for one day by a hash of their address and browser with a salt that only lives in memory and changes every
+  day: neither the hashes nor the salt are written. Bots, link previewers, this server's own traffic and private
+  addresses (203.0.113.10, 127.*, 172.*) are not counted.
+- **Where from**: the app it was opened in, else the referring site's address (its origin only); iMessage and WhatsApp
+  send none and count as « direct ». **Where the link was pasted**: the link-preview fetches (WhatsApp or Signal,
+  iMessage, Twitter/X, Telegram, Slack…). **Device**: from the browser's name. **Country**: from the page's time zone
+  and the system's tz database, never from the address, without any outside service.
+- **The funnel**: page opened → option picked (Hostinger, Hetzner, own VPS, computer) → install started (server
+  created, VPS connected, script fetched) → installed (the install's last report) → the phone opened its weevils.
+  **Code downloads**: by installs, and by installed weevils updating themselves.
+- **The install register**, `<GET_DATA>/installs.csv`, appended and never rewritten: time, how (Hostinger, Hetzner,
+  own VPS, computer), rough country, the version installed, a random id tied to nothing, and whether the line was rebuilt
+  from Caddy's log. Kept for good, with the records (best day for visits and for installs, `records.json`), and backed
+  up every day in the private repository Sc4rville/weevils-stats (`get/backup-stats.sh`, the `weevils-get-backup` timer).
+- **Where to see it**: the private page `/stats/<GET_STATS_KEY>` (records first, the funnel, sources, devices,
+  countries, previews, the register and its CSV, the days); `node get/stats.mjs [days] | --csv | --json`; and in the
+  weevils of this machine, « for you » (with `GET_NOTIFY`): a word at each successful install (« Someone just installed
+  weevils via Hetzner. ») and the day's numbers once it is over.
+- **« N people already run weevils »** on the page: off unless `GET_PUBLIC_COUNT=1` (N is the register's length).
+- **The days before**: `sudo cat /var/log/caddy/get.log | node get/backfill.mjs` rebuilds them from Caddy's log, with
+  the same exclusions (no country or final switch there). Caddy's log itself keeps no address or header since
+  (`format filter` in the site).
+
 ## Run
 
 ```sh
@@ -109,6 +137,11 @@ GET_PORT=4182 GET_BASE=https://get.scarville.tech node get/server.mjs
 | `GET_INSTALLER` | the `install.sh` the allowed step titles are read from, at start (default: this clone's). Same titles as the bundle's |
 | `GET_HETZNER_API`, `GET_HOSTINGER_API` | the hosts' API bases (tests: `get/host-mock.mjs`) |
 | `GET_ALLOW_TARGETS`, `GET_TARGET_URLS` | tests only: a private SSH target allowed, and the URL its weevils gets (`ip=url`) |
+| `GET_DATA` | where the stats, the install register and the records are kept (default `~/.local/share/weevils-get`) |
+| `GET_STATS_KEY` | the private stats page, `/stats/<key>` (off without it) |
+| `GET_NOTIFY` | the weevils on this machine (`http://127.0.0.1:4179`): a word in its « for you » at each install and each day |
+| `GET_PUBLIC_COUNT` | `1`: « N people already run weevils » on the page (off by default) |
+| `GET_CODE_URL` | the public repository the page links to once GitHub says it is public (default `github.com/Sc4rville/weevils-oss`) |
 | `GET_HANDOFF` | the RAM file a stopping service hands its setups in progress to the next one through (default `/dev/shm/weevils-get-<uid>.jobs`; empty: none) |
 
 On scarville.tech: systemd user unit `weevils-get`, env in `~/.config/weevils-get/env`, Caddy site

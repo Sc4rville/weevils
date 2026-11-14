@@ -12,7 +12,7 @@ import path from 'node:path'
 import { Window } from 'happy-dom'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JavaScript module, no types
-import { config, createServer, hetznerQuote, publicAddress, resolveTarget, sslip, stepTitles, loadJobs } from './server.mjs'
+import { config, createServer, hetznerQuote, publicAddress, resolveTarget, sslip, stepTitles, loadJobs, describeStats } from './server.mjs'
 
 const listen = (s: http.Server) => new Promise<number>((r) => s.listen(0, '127.0.0.1', () => r((s.address() as AddressInfo).port)))
 
@@ -286,6 +286,93 @@ describe('an install, end to end through the API', () => {
   })
 })
 
+describe('anonymous stats', () => {
+  const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
+  const today = () => new Date().toISOString().slice(0, 10)
+  it('counts visits, visitors, sources, devices, countries, previews and the funnel; keeps the register and the records; nothing about anyone', async () => {
+    const data = fs.mkdtempSync(path.join(os.tmpdir(), 'get-stats-'))
+    fs.mkdirSync(path.join(data, 'stats'))
+    fs.writeFileSync(path.join(data, 'stats', '2000-01-01.json'), '{}')
+    const installed: string[] = []
+    const env = { GET_TRUST_PROXY: '0', GET_HANDOFF: '', GET_DATA: data, GET_STATS_LOCAL: '1', GET_STATS_KEY: 'k'.repeat(24) }
+    const one = createServer(config(env), { notifier: { installed: (kind: string) => installed.push(kind), day: () => {} } })
+    const b = `http://127.0.0.1:${await listen(one.server)}`
+    // Older than 90 days: gone.
+    expect(fs.existsSync(path.join(data, 'stats', '2000-01-01.json'))).toBe(false)
+    const hit = (body: object, ua = iphone) => fetch(b + '/api/hit', { method: 'POST', headers: { 'content-type': 'application/json', 'user-agent': ua }, body: JSON.stringify(body) })
+    await hit({ e: 'open', ref: 'https://t.co', tz: 'Europe/Paris' })
+    await hit({ e: 'open', ref: '', tz: 'Europe/Paris' })
+    await hit({ e: 'open', ref: 'android-app://com.whatsapp/', tz: 'America/New_York' }, 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Mobile Safari/537.36')
+    await hit({ e: 'open' }, 'curl/8.5.0') // a script, not a visit
+    await fetch(b + '/', { headers: { 'user-agent': 'WhatsApp/2.23.20.0 A' } })
+    await fetch(b + '/', { headers: { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/601.2.4 (KHTML, like Gecko) Version/9.0.1 Safari/601.2.4 facebookexternalhit/1.1 Facebot Twitterbot/1.0' } })
+    await hit({ e: 'chose', kind: 'pc' })
+    await hit({ e: 'chose', kind: 'nope' })
+    // A computer: the setup (with the page's time zone), its script fetched, its last report.
+    const job = (await post('/api/job', { kind: 'pc', pub: pubB64(keyPair().publicKey), tz: 'Europe/Paris' }, b)).data
+    await fetch(b + `/i/${job.sid}`)
+    await fetch(b + `/r/${job.sid}`, { method: 'POST', body: new URLSearchParams({ event: 'done', url: 'https://x.example', mode: 'public', ready: 'yes', version: 'abcdef1' }) })
+    await hit({ e: 'switch', kind: 'pc' })
+    one.stats.flush()
+    const file = path.join(data, 'stats', `${today()}.json`)
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ visits: 3, visitors: 2, sources: { twitter: 1, direct: 1, whatsapp: 1 }, devices: { iphone: 2, android: 1 }, countries: { FR: 2, US: 1 }, previews: { whatsapp: 1, imessage: 1 }, chose: { pc: 1 }, started: { pc: 1 }, succeeded: { pc: 1 }, switched: { pc: 1 } })
+    expect(installed).toEqual(['pc'])
+    const register = fs.readFileSync(path.join(data, 'installs.csv'), 'utf8').trim().split('\n')
+    expect(register[0]).toBe('time,host,country,version,id,origin')
+    expect(register[1]).toMatch(/^\d{4}-\d\d-\d\dT[\d:.]+Z,computer,FR,abcdef1,[a-z2-9]{8},live$/)
+    expect(JSON.parse(fs.readFileSync(path.join(data, 'records.json'), 'utf8'))).toEqual({ visits: { day: today(), n: 3 }, installs: { day: today(), n: 1 } })
+    // Nothing that leads back to anyone, anywhere on disk.
+    for (const f of [file, path.join(data, 'installs.csv'), path.join(data, 'records.json')]) {
+      const text = fs.readFileSync(f, 'utf8')
+      expect(text).not.toContain('127.0.0.1')
+      expect(text).not.toMatch(/iPhone OS|Android 14|Europe\/Paris/)
+    }
+    expect((fs.statSync(file).mode & 0o777).toString(8)).toBe('600')
+    // The private page: records first; behind its key; the register as CSV.
+    const page = await fetch(b + `/stats/${'k'.repeat(24)}`)
+    expect(page.status).toBe(200)
+    const html = await page.text()
+    expect(html).toContain('visits, the record day')
+    expect(html).toContain('computer')
+    expect((await fetch(b + `/stats/${'x'.repeat(24)}`)).status).toBe(404)
+    expect(await (await fetch(b + `/stats/${'k'.repeat(24)}/installs.csv`)).text()).toContain(',computer,FR,abcdef1,')
+    // « N people already run weevils »: off by default, on with GET_PUBLIC_COUNT=1.
+    expect(await (await fetch(b + '/')).text()).not.toContain('data-count=')
+    const two = createServer(config({ ...env, GET_PUBLIC_COUNT: '1' }), { notifier: null })
+    const b2 = `http://127.0.0.1:${await listen(two.server)}`
+    expect(await (await fetch(b2 + '/')).text()).toContain('<html lang="en" data-count="1">')
+    one.server.close()
+    two.server.close()
+    one.stats.stop()
+    two.stats.stop()
+    expect(describeStats([JSON.parse(fs.readFileSync(file, 'utf8'))])).toMatch(/3 visits, about 2 visitors[\s\S]*Funnel: 1 \(computer 1\) picked an option/)
+  })
+  it('rebuilds the days before it from Caddy\'s log, without this VPS\'s own traffic', () => {
+    const data = fs.mkdtempSync(path.join(os.tmpdir(), 'get-backfill-'))
+    const t0 = Date.parse('2026-11-13T21:00:00Z') / 1000
+    const line = (dt: number, ip: string, method: string, uri: string, status: number, ua = iphone, ref = '') => JSON.stringify({ ts: t0 + dt, status, request: { client_ip: ip, method, host: 'get.scarville.tech', uri, headers: { 'User-Agent': [ua], ...(ref && { Referer: [ref] }) } } })
+    const log = [
+      line(0, '203.0.113.5', 'GET', '/', 200, iphone, 'https://t.co/'),
+      line(1, '203.0.113.5', 'GET', '/', 200),
+      line(2, '203.0.113.10', 'GET', '/', 200),
+      line(3, '172.17.0.2', 'GET', '/', 200),
+      line(4, '198.51.100.9', 'GET', '/', 200, 'Mozilla/5.0 HeadlessChrome/131.0'),
+      line(5, '198.51.100.10', 'GET', '/', 404, 'WhatsApp/2.23.20.0 A'),
+      line(10, '203.0.113.5', 'POST', '/api/hetzner/quote', 200),
+      line(20, '203.0.113.5', 'POST', '/api/hetzner/create', 200),
+      line(80, '198.51.100.7', 'GET', '/i/abcdefghjk', 200, 'curl/8.5.0'),
+      line(81, '198.51.100.7', 'GET', '/weevils.bundle?sid=abcdefghjk', 200, 'curl/8.5.0'),
+      ...[90, 100, 110, 120, 130, 140].map((dt) => line(dt, '198.51.100.7', 'POST', '/r/abcdefghjk', 200, 'curl/8.5.0')),
+    ].join('\n')
+    const r = spawnSync('node', [path.join(import.meta.dirname, 'backfill.mjs')], { input: log, env: { ...process.env, GET_DATA: data }, encoding: 'utf8' })
+    expect(r.status).toBe(0)
+    expect(r.stdout).not.toMatch(/\d+\.\d+\.\d+\.\d+/)
+    expect(JSON.parse(fs.readFileSync(path.join(data, 'stats', '2026-11-13.json'), 'utf8'))).toMatchObject({ visits: 2, visitors: 1, sources: { twitter: 1, direct: 1 }, previews: { whatsapp: 1 }, chose: { hetzner: 1 }, started: { hetzner: 1 }, succeeded: { hetzner: 1 }, bundles: 1 })
+    expect(fs.readFileSync(path.join(data, 'installs.csv'), 'utf8')).toMatch(/\n2026-11-13T21:02:20\.000Z,Hetzner,\?\?,,[a-z2-9]{8},log\n$/)
+    expect(JSON.parse(fs.readFileSync(path.join(data, 'records.json'), 'utf8'))).toEqual({ visits: { day: '2026-11-13', n: 2 }, installs: { day: '2026-11-13', n: 1 } })
+  })
+})
+
 describe('guards', () => {
   it('hides the page and API behind the preview key until launch, without relying on a redirect or a cookie', async () => {
     const gate = await fetch(gatedBase + '/')
@@ -434,6 +521,8 @@ describe('a Mac', () => {
   // The page's script, run for one visitor: what the first screen shows.
   async function firstScreen(userAgent: string, lang = 'en') {
     const window = new Window({ url: 'https://get.example/', settings: { navigator: { userAgent } } })
+    // The page's anonymous counters (/api/hit) go through sendBeacon: no network here.
+    Object.defineProperty(window.navigator, 'sendBeacon', { value: () => true, configurable: true })
     const document = window.document
     document.body.innerHTML = /<body>([\s\S]*?)<script src=/.exec(page)![1]
     window.localStorage.setItem('wvlang', lang)

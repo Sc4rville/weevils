@@ -34,6 +34,16 @@ export function config(env = process.env) {
     base: (env.GET_BASE || 'https://get.scarville.tech').replace(/\/$/, ''),
     /** Until the public launch: every page and API call needs this key once (?k=…, then a cookie). */
     previewKey: env.GET_PREVIEW_KEY || '',
+    /** Where get keeps its anonymous stats (<data>/stats, one file a day, kept 90 days). */
+    data: env.GET_DATA || path.join(os.homedir(), '.local', 'share', 'weevils-get'),
+    /** The weevils on this machine (http://127.0.0.1:4179): a word in its « for you » at each install, and each day. */
+    notify: (env.GET_NOTIFY || '').replace(/\/$/, ''),
+    /** Tests only: count visits from this machine and private addresses too (real visits come through Caddy). */
+    statsLocal: env.GET_STATS_LOCAL === '1',
+    /** The private stats page, /stats/<key> (off without a key). */
+    statsKey: env.GET_STATS_KEY || '',
+    /** « N people already run weevils » on the page: off unless GET_PUBLIC_COUNT=1. */
+    publicCount: env.GET_PUBLIC_COUNT === '1',
     repo: env.GET_REPO || 'https://github.com/Sc4rville/weevils.git',
     /** The public repository the page links to, once GitHub says it is public (the API asked without credentials). */
     codeUrl: (env.GET_CODE_URL || 'https://github.com/Sc4rville/weevils-oss').replace(/\/$/, ''),
@@ -173,6 +183,370 @@ export function watchCode(cfg) {
 
 /** What the page sees: never the view token, the public key or anything sent by the user. */
 const view = (j) => ({ sid: j.sid, kind: j.kind, state: j.state, step: j.step, steps: j.steps, error: j.error, result: j.result, server: j.server, reach: j.reach })
+
+// ---------------------------------------------------------------- anonymous stats (counters only, kept 90 days)
+
+const KINDS = ['hostinger', 'hetzner', 'ssh', 'pc']
+const STAT_KEEP_DAYS = 90
+const dayOf = (t = Date.now()) => new Date(t).toISOString().slice(0, 10)
+const KEY_SHA = (k) => crypto.createHash('sha256').update(String(k)).digest()
+
+/** Who fetches a page to draw a link's preview: the link was pasted there (counted apart, never as a visit). */
+const PREVIEWERS = [
+  ['imessage', /facebookexternalhit\/1\.1 Facebot Twitterbot\/1\.0/],
+  ['whatsapp', /WhatsApp\//],
+  ['twitter', /Twitterbot/],
+  ['facebook', /facebookexternalhit|Facebot|meta-externalagent/],
+  ['telegram', /TelegramBot/],
+  ['slack', /Slackbot/],
+  ['discord', /Discordbot/],
+  ['linkedin', /LinkedInBot/],
+  ['bluesky', /Bluesky|cardyb/],
+  ['mastodon', /Mastodon/],
+]
+export const previewerOf = (ua) => PREVIEWERS.find(([, re]) => re.test(String(ua || '')))?.[0] || ''
+export const BOT = /bot\b|crawl|spider|slurp|headless|lighthouse|preview|fetch|curl|wget|python|node-fetch|go-http/i
+
+/** Where a visit comes from: the app it was opened in, else the referring site. iMessage and WhatsApp send none: they
+ * count as « direct » (their link previews say where the link was pasted). */
+export function sourceOf(ref, ua) {
+  ua = String(ua || '')
+  if (/Twitter for i(Phone|Pad)|TwitterAndroid/.test(ua)) return 'twitter'
+  if (/Instagram/.test(ua)) return 'instagram'
+  if (/FBAN|FBAV|FB_IAB|FBIOS/.test(ua)) return 'facebook'
+  if (/LinkedInApp/.test(ua)) return 'linkedin'
+  let h = ''
+  try {
+    h = new URL(String(ref || '')).hostname.toLowerCase()
+  } catch {
+    /* no referrer */
+  }
+  if (!h || /(^|\.)scarville\.tech$/.test(h)) return 'direct'
+  const sites = [
+    ['twitter', /(^|\.)(t\.co|twitter\.com|x\.com)$/], ['whatsapp', /whatsapp/], ['instagram', /(^|\.)instagram\.com$/],
+    ['facebook', /(^|\.)(facebook\.com|fb\.com|fb\.me)$/], ['linkedin', /(^|\.)(linkedin\.com|lnkd\.in)$/], ['reddit', /(^|\.)reddit\.com$/],
+    ['hackernews', /(^|\.)news\.ycombinator\.com$/], ['telegram', /(^|\.)(t\.me|telegram\.org)$/], ['github', /(^|\.)github\.com$/],
+    ['bluesky', /(^|\.)bsky\.app$/], ['search', /(^|\.)(google|bing|duckduckgo|qwant|ecosia|yahoo|brave|startpage)\./],
+  ]
+  return sites.find(([, re]) => re.test(h))?.[0] || 'other'
+}
+
+export function deviceOf(ua, touch) {
+  ua = String(ua || '')
+  if (/iPad|Tablet|Silk/.test(ua) || (/Android/.test(ua) && !/Mobile/.test(ua)) || (/Macintosh/.test(ua) && touch)) return 'tablet'
+  if (/iPhone|iPod/.test(ua)) return 'iphone'
+  if (/Android/.test(ua)) return 'android'
+  if (/Macintosh|Mac OS X/.test(ua)) return 'mac'
+  if (/Windows/.test(ua)) return 'windows'
+  if (/CrOS|Linux|X11/.test(ua)) return 'linux'
+  return 'other'
+}
+
+/** Roughly which country, from the page's time zone and the system's tz database: no address, no outside service. */
+let ZONES
+export function countryOf(tz) {
+  ZONES ??= (() => {
+    const zones = new Map()
+    try {
+      for (const l of fs.readFileSync('/usr/share/zoneinfo/zone.tab', 'utf8').split('\n')) {
+        const [cc, , zone] = l.split('\t')
+        if (cc && zone && cc[0] !== '#') zones.set(zone.trim(), cc)
+      }
+      // Old names a browser may still give (Asia/Calcutta → Asia/Kolkata).
+      for (const l of fs.readFileSync('/usr/share/zoneinfo/tzdata.zi', 'utf8').split('\n')) {
+        const [k, target, name] = l.split(' ')
+        if (k === 'L' && zones.has(target) && !zones.has(name)) zones.set(name, zones.get(target))
+      }
+    } catch {
+      /* no tz database: every country is unknown */
+    }
+    return zones
+  })()
+  return (typeof tz === 'string' && ZONES.get(tz)) || '??'
+}
+
+export const total = (o) => Object.values(o || {}).reduce((a, b) => a + b, 0)
+export const readJson = (f) => {
+  try {
+    return JSON.parse(fs.readFileSync(f, 'utf8'))
+  } catch {
+    return null
+  }
+}
+export function writeJson(f, data) {
+  fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 })
+  const tmp = `${f}.${process.pid}.tmp`
+  fs.writeFileSync(tmp, JSON.stringify(data) + '\n', { mode: 0o600 })
+  fs.renameSync(tmp, f)
+}
+
+/** The install register (<data>/installs.csv): time, host, rough country, installed version, an anonymous id drawn
+ * at random (tied to nothing), and where the line comes from (live, or rebuilt from Caddy's log). */
+export const REGISTER_HEAD = 'time,host,country,version,id,origin'
+const REGISTER_HOSTS = { hostinger: 'Hostinger', hetzner: 'Hetzner', ssh: 'own VPS', pc: 'computer' }
+export function appendInstall(file, { time, kind, country, version, origin }) {
+  const id = Array.from(crypto.randomBytes(8), (b) => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('')
+  const row = [time, REGISTER_HOSTS[kind] || '?', /^[A-Z]{2}$/.test(country || '') ? country : '??', /^[0-9a-f]{7,12}$/.test(version || '') ? version : '', id, origin === 'log' ? 'log' : 'live']
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+  fs.appendFileSync(file, (fs.existsSync(file) ? '' : REGISTER_HEAD + '\n') + row.join(',') + '\n', { mode: 0o600 })
+}
+let INSTALLS = { at: -1, n: 0 }
+function countInstalls(file) {
+  try {
+    const st = fs.statSync(file)
+    if (st.mtimeMs !== INSTALLS.at) INSTALLS = { at: st.mtimeMs, n: fs.readFileSync(file, 'utf8').split('\n').filter((l) => l && l !== REGISTER_HEAD).length }
+    return INSTALLS.n
+  } catch {
+    return 0
+  }
+}
+
+/** Anonymous counters, one file a day in <data>/stats, kept 90 days: visits, visitors, where they came from, what
+ * device, roughly which country, link previews, the funnel (option picked → install started → installed → phone
+ * switched to its weevils) and code downloads. A visitor is told apart by a hash of their address and browser with a
+ * salt that only lives in memory and changes every day: neither the hashes nor the salt are ever written, so nothing
+ * stored leads back to anyone. */
+export function createStats(cfg, { onInstalled, onDay } = {}) {
+  const dir = path.join(cfg.data, 'stats')
+  const fileOf = (d) => path.join(dir, `${d}.json`)
+  const blank = (day) => ({ day, visits: 0, visitors: 0, sources: {}, devices: {}, countries: {}, previews: {}, chose: {}, started: {}, succeeded: {}, switched: {}, bundles: 0, updates: 0 })
+  const read = (d) => {
+    try {
+      return { ...blank(d), ...JSON.parse(fs.readFileSync(fileOf(d), 'utf8')), day: d }
+    } catch {
+      return blank(d)
+    }
+  }
+  const regFile = path.join(cfg.data, 'installs.csv')
+  const recFile = path.join(cfg.data, 'records.json')
+  let records = readJson(recFile) || {}
+  let cur = read(dayOf())
+  let salt = crypto.randomBytes(32)
+  let seen = new Set()
+  let dirty = false
+  const bump = (o, k) => (o[k] = (o[k] || 0) + 1)
+  const flush = () => {
+    if (!dirty) return
+    try {
+      writeJson(fileOf(cur.day), cur)
+      // The records: the best day for visits and for installs, kept for good.
+      let better = false
+      for (const [k, n] of [['visits', cur.visits], ['installs', total(cur.succeeded)]]) if (n > (records[k]?.n || 0)) (records[k] = { day: cur.day, n }), (better = true)
+      if (better) writeJson(recFile, records)
+      dirty = false
+    } catch (e) {
+      console.error(`[get] stats: ${e.code || e.name}`)
+    }
+  }
+  const prune = () => {
+    const limit = dayOf(Date.now() - STAT_KEEP_DAYS * 86400_000)
+    try {
+      for (const f of fs.readdirSync(dir)) if (/^\d{4}-\d\d-\d\d\.json$/.test(f) && f.slice(0, 10) < limit) fs.rmSync(path.join(dir, f), { force: true })
+    } catch {
+      /* no stats yet */
+    }
+  }
+  /** A new day: the last one is written for good; its salt and its visitors' hashes are forgotten. */
+  const roll = () => {
+    const d = dayOf()
+    if (d === cur.day) return
+    flush()
+    const done = cur
+    cur = read(d)
+    salt = crypto.randomBytes(32)
+    seen = new Set()
+    prune()
+    onDay?.(done)
+  }
+  prune()
+  const timer = setInterval(() => (roll(), flush()), 60_000)
+  timer.unref?.()
+  const count = (f) => (roll(), f(), (dirty = true))
+  return {
+    visit({ ip, ua, ref, tz, touch }) {
+      count(() => {
+        cur.visits++
+        const h = crypto.createHash('sha256').update(salt).update(String(ip)).update('\0').update(String(ua || '')).digest('base64url').slice(0, 16)
+        if (!seen.has(h) && seen.size < 200_000) seen.add(h), cur.visitors++
+        bump(cur.sources, sourceOf(ref, ua))
+        bump(cur.devices, deviceOf(ua, touch))
+        bump(cur.countries, countryOf(tz))
+      })
+    },
+    preview: (who) => count(() => bump(cur.previews, who)),
+    step(name, kind) {
+      if (!['chose', 'started', 'switched'].includes(name) || !KINDS.includes(kind)) return
+      count(() => bump(cur[name], kind))
+    },
+    /** A successful install: counted, and a line in the register (appended, never rewritten, backed up daily). */
+    succeeded(kind, { country, version } = {}) {
+      if (!KINDS.includes(kind)) return
+      count(() => bump(cur.succeeded, kind))
+      try {
+        appendInstall(regFile, { time: new Date().toISOString(), kind, country, version, origin: 'live' })
+      } catch (e) {
+        console.error(`[get] register: ${e.code || e.name}`)
+      }
+      flush()
+      onInstalled?.(kind, cur)
+    },
+    /** The code downloaded: by an install (its setup), or by an installed weevils updating itself. */
+    bundle: (update = false) => count(() => (update ? cur.updates++ : cur.bundles++)),
+    flush,
+    today: () => cur,
+    records: () => records,
+    installs: () => countInstalls(regFile),
+    stop: () => clearInterval(timer),
+  }
+}
+
+/** The last `days` days of stats, oldest first (today included), from the files. */
+export function readStats(cfg, days = 7) {
+  const out = []
+  for (let i = days - 1; i >= 0; i--) {
+    const d = dayOf(Date.now() - i * 86400_000)
+    try {
+      out.push({ day: d, ...JSON.parse(fs.readFileSync(path.join(cfg.data, 'stats', `${d}.json`), 'utf8')) })
+    } catch {
+      /* nothing that day */
+    }
+  }
+  return out
+}
+
+const STAT_WORDS = {
+  en: {
+    kinds: { hostinger: 'Hostinger', hetzner: 'Hetzner', ssh: 'own VPS', pc: 'computer' },
+    sources: { direct: 'direct or messages', twitter: 'Twitter/X', whatsapp: 'WhatsApp', instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn', reddit: 'Reddit', hackernews: 'Hacker News', telegram: 'Telegram', github: 'GitHub', bluesky: 'Bluesky', search: 'search', other: 'other sites' },
+    devices: { iphone: 'iPhone', android: 'Android', tablet: 'tablet', mac: 'Mac', windows: 'Windows', linux: 'Linux', other: 'other' },
+    previews: { imessage: 'iMessage', whatsapp: 'WhatsApp or Signal', twitter: 'Twitter/X', facebook: 'Facebook', telegram: 'Telegram', slack: 'Slack', discord: 'Discord', linkedin: 'LinkedIn', bluesky: 'Bluesky', mastodon: 'Mastodon' },
+    installed: { hostinger: 'Someone just installed weevils via Hostinger.', hetzner: 'Someone just installed weevils via Hetzner.', ssh: 'Someone just installed weevils on their own VPS.', pc: 'Someone just installed weevils on their computer.' },
+    today: (n) => `${n} installs today.`,
+    head: (when, v, u) => `tryweevils ${when}: ${v} visit${v === 1 ? '' : 's'}, about ${u} visitor${u === 1 ? '' : 's'}.`,
+    from: 'From', devicesWord: 'On', countries: 'Countries (by time zone)',
+    funnel: (c, s, i, w) => `Funnel: ${c} picked an option → ${s} started an install → ${i} installed → ${w} opened their weevils.`,
+    bundles: (n, u) => `${n} code download${n === 1 ? '' : 's'} by installs${u ? `, ${u} by updates` : ''}.`, shared: 'Link previews', none: 'nobody yet',
+  },
+  fr: {
+    kinds: { hostinger: 'Hostinger', hetzner: 'Hetzner', ssh: 'son VPS', pc: 'ordinateur' },
+    sources: { direct: 'direct ou messagerie', twitter: 'Twitter/X', whatsapp: 'WhatsApp', instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn', reddit: 'Reddit', hackernews: 'Hacker News', telegram: 'Telegram', github: 'GitHub', bluesky: 'Bluesky', search: 'recherche', other: 'autres sites' },
+    devices: { iphone: 'iPhone', android: 'Android', tablet: 'tablette', mac: 'Mac', windows: 'Windows', linux: 'Linux', other: 'autre' },
+    previews: { imessage: 'iMessage', whatsapp: 'WhatsApp ou Signal', twitter: 'Twitter/X', facebook: 'Facebook', telegram: 'Telegram', slack: 'Slack', discord: 'Discord', linkedin: 'LinkedIn', bluesky: 'Bluesky', mastodon: 'Mastodon' },
+    installed: { hostinger: 'Quelqu’un vient d’installer weevils via Hostinger.', hetzner: 'Quelqu’un vient d’installer weevils via Hetzner.', ssh: 'Quelqu’un vient d’installer weevils sur son propre VPS.', pc: 'Quelqu’un vient d’installer weevils sur son ordinateur.' },
+    today: (n) => `${n} installations aujourd’hui.`,
+    head: (when, v, u) => `tryweevils ${when} : ${v} visite${v > 1 ? 's' : ''}, environ ${u} visiteur${u > 1 ? 's' : ''}.`,
+    from: 'Provenance', devicesWord: 'Appareils', countries: 'Pays (par fuseau horaire)',
+    funnel: (c, s, i, w) => `Entonnoir : ${c} ont choisi une option → ${s} ont lancé l’installation → ${i} l’ont réussie → ${w} ont ouvert leur weevils.`,
+    bundles: (n, u) => `${n} téléchargement${n > 1 ? 's' : ''} du code par des installations${u ? `, ${u} par des mises à jour` : ''}.`, shared: 'Aperçus du lien', none: 'personne encore',
+  },
+}
+
+/** Stats in a few sentences (one day for the daily word, or several summed). Visitors of several days are summed: a
+ * returning visitor counts once a day. */
+export function describeStats(list, lang = 'en', when = '') {
+  const W = STAT_WORDS[lang] || STAT_WORDS.en
+  const sum = (k) => list.reduce((n, d) => n + (d[k] || 0), 0)
+  const merge = (k) => list.reduce((o, d) => (Object.entries(d[k] || {}).forEach(([x, n]) => (o[x] = (o[x] || 0) + n)), o), {})
+  const total = (o) => Object.values(o).reduce((a, b) => a + b, 0)
+  const top = (o, names = {}, n = 4) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${names[k] || k} ${v}`).join(' · ')
+  const [chose, started, succeeded, switched, previews] = ['chose', 'started', 'succeeded', 'switched', 'previews'].map(merge)
+  const byKind = (o) => (total(o) ? ` (${top(o, W.kinds)})` : '')
+  const lines = [W.head(when || (list.length === 1 ? list[0].day : `${list[0]?.day ?? ''} → ${list.at(-1)?.day ?? ''}`), sum('visits'), sum('visitors'))]
+  if (sum('visits')) lines.push(`${W.from}: ${top(merge('sources'), W.sources)}. ${W.devicesWord}: ${top(merge('devices'), W.devices)}. ${W.countries}: ${top(merge('countries'), {}, 5)}.`)
+  lines.push(W.funnel(`${total(chose)}${byKind(chose)}`, `${total(started)}${byKind(started)}`, `${total(succeeded)}${byKind(succeeded)}`, total(switched)))
+  lines.push(W.bundles(sum('bundles'), sum('updates')) + (total(previews) ? ` ${W.shared}: ${top(previews, W.previews)}.` : ''))
+  return lines.join('\n')
+}
+
+const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+const fmtDay = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—')
+
+/** The private stats page (/stats/<key>): records first, then 90 days of funnel, sources, devices, countries, link
+ * previews, the install register and the days. Numbers only: nothing about anyone. */
+export function statsPage(cfg, stats, key) {
+  stats.flush()
+  const W = STAT_WORDS.en
+  const days = readStats(cfg, STAT_KEEP_DAYS)
+  const sum = (k) => days.reduce((n, d) => n + (d[k] || 0), 0)
+  const merge = (k) => days.reduce((o, d) => (Object.entries(d[k] || {}).forEach(([x, n]) => (o[x] = (o[x] || 0) + n)), o), {})
+  const rec = stats.records()
+  const rows = (() => {
+    try {
+      return fs.readFileSync(path.join(cfg.data, 'installs.csv'), 'utf8').split('\n').filter((l) => l && l !== REGISTER_HEAD).map((l) => l.split(','))
+    } catch {
+      return []
+    }
+  })()
+  const visits = sum('visits')
+  const funnel = [['opened the page', visits], ['picked an option', total(merge('chose'))], ['started an install', total(merge('started'))], ['installed weevils', total(merge('succeeded'))], ['opened their weevils', total(merge('switched'))]]
+  const bars = (o, names = {}) => {
+    const list = Object.entries(o).sort((a, b) => b[1] - a[1])
+    const max = Math.max(1, ...list.map(([, n]) => n))
+    return list.length ? list.map(([k, n]) => `<div class="bar"><span>${esc(names[k] || k)}</span><i style="width:${Math.max(2, Math.round((n / max) * 100))}%"></i><b>${n}</b></div>`).join('') : '<p class="note">nothing yet</p>'
+  }
+  const byKind = (k) => Object.entries(merge(k)).map(([x, n]) => `${esc(W.kinds[x] || x)} ${n}`).join(' · ')
+  const card = (label, n, sub = '') => `<div><b>${n}</b>${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</div>`
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>weevils · stats</title><style>
+:root{--a:oklch(.8 .14 297.5);--b:oklch(.8 .14 162.5);--c:oklch(.8 .14 72.5);--d:oklch(.8 .14 230);--e:oklch(.8 .14 27.5);--soft:oklch(.96 .02 297.5)}
+body{margin:0;font:16px/1.4 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#000}section{padding:22px 20px}.wrap{max-width:760px;margin:0 auto}
+h1{font-size:38px;letter-spacing:-.04em;line-height:1;margin:0 0 6px}h2{font-size:21px;letter-spacing:-.02em;margin:0 0 12px}
+.cards{display:flex;gap:10px;flex-wrap:wrap}.cards div{flex:1 1 150px;border:3px solid #000;border-radius:14px;padding:10px 12px;background:#fff}
+.cards b{display:block;font-size:32px;letter-spacing:-.03em;line-height:1.1}.cards small{display:block;opacity:.7}.rec div{background:#000;color:#fff}
+.bar{display:grid;grid-template-columns:150px 1fr 48px;align-items:center;gap:8px;margin:5px 0;font-size:15px}.bar i{display:block;height:14px;background:#000;border-radius:7px}.bar b{text-align:right}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;padding:5px 6px;border-bottom:1px solid #0003}.note{font-size:13px;opacity:.75}a{color:#000}
+</style></head><body>
+<section style="background:var(--a)"><div class="wrap"><h1>tryweevils</h1><p>Anonymous stats, last 90 days · ${esc(new Date().toISOString().slice(0, 16).replace('T', ' '))} UTC</p>
+<div class="cards rec">${card('visits, the record day', rec.visits?.n || 0, fmtDay(rec.visits?.day))}${card('installs, the record day', rec.installs?.n || 0, fmtDay(rec.installs?.day))}</div></div></section>
+<section style="background:var(--soft)"><div class="wrap"><div class="cards">${card('visits', visits)}${card('visitors (per day, summed)', sum('visitors'))}${card('installs, ever', rows.length)}${card('code downloads', sum('bundles'), sum('updates') ? `${sum('updates')} more by updates` : '')}</div></div></section>
+<section style="background:var(--b)"><div class="wrap"><h2>Funnel</h2>${funnel.map(([label, n]) => `<div class="bar"><span>${label}</span><i style="width:${Math.max(2, Math.round((n / Math.max(1, visits)) * 100))}%"></i><b>${n}</b></div>`).join('')}
+<p class="note">Options: ${byKind('chose') || '—'}. Started: ${byKind('started') || '—'}. Installed: ${byKind('succeeded') || '—'}.</p></div></section>
+<section style="background:var(--c)"><div class="wrap"><h2>Where visits come from</h2>${bars(merge('sources'), W.sources)}<h2 style="margin-top:18px">Where the link was pasted</h2>${bars(merge('previews'), W.previews)}</div></section>
+<section style="background:var(--d)"><div class="wrap"><h2>Devices</h2>${bars(merge('devices'), W.devices)}<h2 style="margin-top:18px">Countries (from the time zone)</h2>${bars(merge('countries'))}</div></section>
+<section style="background:var(--e)"><div class="wrap"><h2>Installs</h2><table><tr><th>when (UTC)</th><th>how</th><th>country</th><th>version</th></tr>${rows.slice(-30).reverse().map((r) => `<tr><td>${esc(r[0].slice(0, 16).replace('T', ' '))}</td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3] || '—')}${r[5] === 'log' ? ' <span class="note">(from the log)</span>' : ''}</td></tr>`).join('') || '<tr><td colspan="4">none yet</td></tr>'}</table>
+<p><a href="/stats/${esc(key)}/installs.csv">The whole register (CSV)</a></p></div></section>
+<section><div class="wrap"><h2>By day</h2><table><tr><th>day</th><th>visits</th><th>visitors</th><th>installs</th></tr>${days.slice().reverse().slice(0, 30).map((d) => `<tr><td>${esc(d.day)}</td><td>${d.visits || 0}</td><td>${d.visitors || 0}</td><td>${total(d.succeeded)}</td></tr>`).join('') || '<tr><td colspan="4">nothing yet</td></tr>'}</table>
+<p class="note">Counters only: no IP address, e-mail or identifier is stored or shown. A visitor is told apart for one day by a hash with a salt that is never written. Kept 90 days; the install register is kept for good and backed up every day in a private repository.</p></div></section>
+</body></html>`
+}
+
+/** The weevils on this machine's language (its settings, else WEEVILS_LANG), for the words posted in « for you ». */
+function hostLang() {
+  try {
+    const p = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.local', 'share', 'weevils', 'prefs.json'), 'utf8'))
+    if (p.from === 'choice' && (p.lang === 'fr' || p.lang === 'en')) return p.lang
+  } catch {
+    /* no choice made */
+  }
+  try {
+    const m = /^\s*WEEVILS_LANG\s*=\s*["']?(fr|en)/m.exec(fs.readFileSync(path.join(os.homedir(), '.config', 'weevils', 'env'), 'utf8'))
+    if (m) return m[1]
+  } catch {
+    /* no config */
+  }
+  return 'en'
+}
+
+/** A word in the « for you » stream of the weevils on this machine (what `weevils post` does, through its local API):
+ * each successful install, and the day's numbers once it is over. Off unless GET_NOTIFY gives that weevils' address. */
+export function createNotifier(cfg) {
+  if (!cfg.notify) return null
+  const post = (text) =>
+    fetch(`${cfg.notify}/api/foryou/post`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, actions: [], from: 'weevils' }), signal: AbortSignal.timeout(10_000) })
+      .then((r) => r.ok || console.error(`[get] for you: HTTP ${r.status}`))
+      .catch((e) => console.error(`[get] for you: ${e.name}`))
+  return {
+    post,
+    installed(kind, today) {
+      const W = STAT_WORDS[hostLang()]
+      const n = Object.values(today?.succeeded || {}).reduce((a, b) => a + b, 0)
+      return post(W.installed[kind] + (n > 1 ? ` ${W.today(n)}` : ''))
+    },
+    day(d) {
+      const quiet = !d.visits && !d.bundles && !Object.keys(d.previews || {}).length && !Object.keys(d.started || {}).length
+      return quiet ? Promise.resolve() : post(describeStats([d], hostLang()))
+    },
+  }
+}
 
 // ---------------------------------------------------------------- Hetzner (a token used for two calls, then dropped)
 
@@ -422,6 +796,8 @@ const SECURITY_HEADERS = {
 export function createServer(cfg = config(), deps = {}) {
   const store = deps.store || createStore()
   const codeOpen = watchCode(cfg)
+  const notifier = deps.notifier !== undefined ? deps.notifier : createNotifier(cfg)
+  const stats = deps.stats || createStats(cfg, { onInstalled: (kind, today) => notifier?.installed(kind, today), onDay: (d) => notifier?.day(d) })
   const limit = new Limiter()
   const titles = stepTitles(cfg.installer)
   const titleList = '|' + Object.keys(titles).filter((t) => !t.includes('|')).join('|') + '|'
@@ -497,8 +873,23 @@ export function createServer(cfg = config(), deps = {}) {
       }
       const j = store.create(b.kind, b.lang === 'fr' ? 'fr' : 'en', b.pub)
       if (!j) return fail(res, 503, 'busy')
+      // Roughly where the person is, for the install register: their time zone's country, never their address.
+      j.country = countryOf(b.tz)
       if (b.kind === 'pc') j.state = 'waiting'
       send(res, 200, { sid: j.sid, view: j.view, command: `curl -fsSL ${cfg.base}/i/${j.sid} | bash` })
+    },
+    // Anonymous counters from the page: it was opened, an option was picked, the phone switched to its weevils. Only
+    // real visits through Caddy count (not this machine, not bots, not link previews).
+    'POST /api/hit': async (req, res, ip) => {
+      if (!limit.ok(`hit:${ip}`, 120, 3600_000)) return fail(res, 429, 'slow_down')
+      const b = await json(req)
+      const ua = String(req.headers['user-agent'] || '')
+      if ((cfg.statsLocal || (publicAddress(ip) && !ownAddresses().includes(ip) && !ip.startsWith('172.'))) && !BOT.test(ua) && !previewerOf(ua)) {
+        if (b.e === 'open') stats.visit({ ip, ua, ref: b.ref, tz: b.tz, touch: b.touch === true })
+        else if (b.e === 'chose') stats.step('chose', b.kind)
+        else if (b.e === 'switch') stats.step('switched', b.kind)
+      }
+      send(res, 200, { ok: true })
     },
     'POST /api/status': async (req, res, ip) => {
       if (!limit.ok(`status:${ip}`, 1200, 3600_000)) return fail(res, 429, 'slow_down')
@@ -546,6 +937,7 @@ export function createServer(cfg = config(), deps = {}) {
             j.state = 'running'
             j.step = 'created'
             j.steps.push('created')
+            stats.step('started', host)
             send(res, 200, view(j))
           } catch (e) {
             fail(res, status(e), e.hz || 'host_down')
@@ -582,6 +974,7 @@ export function createServer(cfg = config(), deps = {}) {
         j.state = 'running'
         j.step = 'created'
         j.steps.push('created')
+        stats.step('started', 'ssh')
         send(res, 200, view(j))
       } finally {
         sshBusy--
@@ -603,7 +996,7 @@ export function createServer(cfg = config(), deps = {}) {
         const j = store.get(m[1])
         if (!j || j.state === 'done' || j.state === 'failed' || ++j.scriptFetches > 12) return send(res, 404, 'echo "weevils: this setup link has expired: open the setup page again." >&2; exit 1\n', 'text/x-shellscript; charset=utf-8')
         j.touched = Date.now()
-        if (j.kind === 'pc' && j.state === 'waiting') j.state = 'running'
+        if (j.kind === 'pc' && j.state === 'waiting') (j.state = 'running'), stats.step('started', 'pc')
         if (!j.reach && j.server && publicAddress(ip)) {
           j.reach = sslip(ip)
           j.server.ip ||= ip
@@ -643,8 +1036,23 @@ export function createServer(cfg = config(), deps = {}) {
           j.state = 'done'
           j.step = 'done'
           j.steps.push('done')
+          stats.succeeded(j.kind, { country: j.country, version: /^[0-9a-f]{7,40}$/.test(f.get('version') || '') ? f.get('version').slice(0, 12) : '' })
         }
         return send(res, 200, { ok: true })
+      }
+      // The private stats page and its install register (CSV), behind their own key in the address.
+      m = /^\/stats\/([A-Za-z0-9_-]{16,128})(\/installs\.csv)?$/.exec(url.pathname)
+      if (m && req.method === 'GET') {
+        const keyOk = cfg.statsKey && crypto.timingSafeEqual(KEY_SHA(m[1]), KEY_SHA(cfg.statsKey))
+        if (!keyOk || !limit.ok(`stats:${ip}`, 240, 3600_000)) return fail(res, 404, 'not_found')
+        if (!m[2]) return send(res, 200, statsPage(cfg, stats, m[1]), PAGE_TYPES['.html'], { 'x-robots-tag': 'noindex' })
+        let csv = REGISTER_HEAD + '\n'
+        try {
+          csv = fs.readFileSync(path.join(cfg.data, 'installs.csv'), 'utf8')
+        } catch {
+          /* none yet */
+        }
+        return send(res, 200, csv, 'text/csv; charset=utf-8', { 'content-disposition': 'attachment; filename="weevils-installs.csv"' })
       }
       // Installed weevils updating themselves (server/weevils-update): the version of the snapshot new installs get,
       // then the snapshot itself; and that script, for a weevils installed before it existed (curl …/update | bash).
@@ -669,6 +1077,7 @@ export function createServer(cfg = config(), deps = {}) {
         const allowed = sid ? j && j.state !== 'done' && limit.ok(`b:${j.sid}`, 6, 3600_000) : limit.ok(`bu:${ip}`, 6, 3600_000)
         if (!cfg.bundle || !allowed) return fail(res, 404, 'no_bundle')
         res.writeHead(200, { 'content-type': 'application/octet-stream', ...SECURITY_HEADERS })
+        stats.bundle(!sid)
         return fs.createReadStream(cfg.bundle).pipe(res)
       }
       if (url.pathname === '/health') return send(res, 200, { ok: true })
@@ -690,8 +1099,13 @@ export function createServer(cfg = config(), deps = {}) {
         return await h(req, res, ip)
       }
       if (url.pathname === '/' && req.method === 'GET') {
+        // A link preview being drawn (WhatsApp, iMessage, Twitter…): where the link was pasted, never a visit.
+        const who = previewerOf(req.headers['user-agent'])
+        if (who) stats.preview(who)
         let html = fs.readFileSync(path.join(HERE, 'index.html'), 'utf8')
-        if (codeOpen()) html = html.replace('<html lang="en">', `<html lang="en" data-code="${cfg.codeUrl}">`)
+        // The code's link once the public repository is open; « N people already run weevils » with GET_PUBLIC_COUNT=1.
+        const attrs = (codeOpen() ? ` data-code="${cfg.codeUrl}"` : '') + (cfg.publicCount ? ` data-count="${stats.installs()}"` : '')
+        if (attrs) html = html.replace('<html lang="en">', `<html lang="en"${attrs}>`)
         return send(res, 200, html, PAGE_TYPES['.html'])
       }
       fail(res, 404, 'not_found')
@@ -707,9 +1121,10 @@ export function createServer(cfg = config(), deps = {}) {
     server.close()
     server.closeIdleConnections?.()
     for (const end = Date.now() + limitMs; busy > 0 && Date.now() < end; ) await new Promise((r) => setTimeout(r, 100))
+    stats.flush()
     return saveJobs(store, cfg.handoff)
   }
-  return { server, store, drain }
+  return { server, store, drain, stats }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

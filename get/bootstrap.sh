@@ -317,8 +317,13 @@ EOF
     [ "${#enc}" -ge 100 ] || enc=$(printf '%s' "$link" | "seal_$how") || true
   done
   [ "${#enc}" -ge 100 ] || enc=''
+  # The version installed, for the setup page's register of installs: the snapshot's revision (its commit says
+  # « weevils <rev> »), else the clone's.
+  local version
+  version=$(git -C "$dir" log -1 --format=%s 2>/dev/null | sed -n 's/^weevils \([0-9a-f]\{7,40\}\)$/\1/p')
+  [ -n "$version" ] || version=$(git -C "$dir" rev-parse --short HEAD 2>/dev/null || true)
   report --data-urlencode event=done --data-urlencode "url=$url" --data-urlencode "mode=$mode" \
-    --data-urlencode "ready=$ready" --data-urlencode "sealed=$enc"
+    --data-urlencode "ready=$ready" --data-urlencode "sealed=$enc" --data-urlencode "version=$version"
   echo
   say "ready: $url"
   [ -n "$enc" ] || say "open the link from $log on your phone (the setup page could not receive it)"

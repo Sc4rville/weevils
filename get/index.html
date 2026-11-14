@@ -104,6 +104,7 @@
     <div class="brand"><img src="/logo.svg" alt="">weevils<button class="lang" id="lang" type="button"></button></div>
     <h1 data-t="h1"></h1>
     <p class="lead" data-t="lead"></p>
+    <p class="lead" id="count" hidden></p>
   </div>
 </header>
 
@@ -114,6 +115,7 @@
     <p data-t="trust"></p>
     <!-- The code's link only once the repository is public (the service asks GitHub): until then, the X account. -->
     <p id="code"><a href="https://x.com/weevilscode" data-t="soon"></a></p>
+    <p data-t="stats"></p>
   </div>
 </footer>
 
@@ -129,6 +131,8 @@ const W = FR ? {
   trust: 'Rien n’est gardé : ton jeton ou ton mot de passe sert une fois, puis il est oublié. Une fois installé, weevils tourne chez toi, et cette page n’a plus aucun accès à ta machine.',
   source: 'Le code est ouvert, sur GitHub',
   soon: 'Bientôt open source — réponds au tweet pour un accès anticipé',
+  stats: 'Statistiques anonymes : des compteurs seulement, sans cookie ni adresse IP gardée, conservés 90 jours.',
+  count: (n) => n > 1 ? `${n} personnes utilisent déjà weevils` : `${n} personne utilise déjà weevils`,
   plug: 'Branche ta machine',
   plugSub: 'Un serveur fait tourner tes agents même téléphone et ordinateur éteints. Prêt en quelques minutes.',
   hs: 'Crée-moi un serveur chez Hostinger', hsSub: 'Le plus simple : tout se fait dans hPanel, leur espace client.', rec: 'conseillé',
@@ -198,6 +202,8 @@ const W = FR ? {
   trust: 'Nothing is kept: your token or password is used once, then forgotten. Once installed, weevils runs on your machine, and this page has no access to it anymore.',
   source: 'The code is open, on GitHub',
   soon: 'Open source soon — reply to the tweet for early access',
+  stats: 'Anonymous stats: counters only, no cookie and no IP address kept, deleted after 90 days.',
+  count: (n) => n > 1 ? `${n} people already run weevils` : `${n} person already runs weevils`,
   plug: 'Plug in your machine',
   plugSub: 'A server keeps your agents working while your phone and computer are off. Ready in a few minutes.',
   hs: 'Create a server for me at Hostinger', hsSub: 'The simplest: everything happens in hPanel, their customer area.', rec: 'recommended',
@@ -266,6 +272,8 @@ document.documentElement.lang = FR ? 'fr' : 'en'
 for (const el of document.querySelectorAll('[data-t]')) el.textContent = W[el.dataset.t]
 // The code's link only once the service has seen the public repository open on GitHub.
 if (/^https:\/\/github\.com\//.test(document.documentElement.dataset.code || '')) Object.assign(document.querySelector('#code a'), { href: document.documentElement.dataset.code, textContent: W.source })
+// « N people already run weevils »: only when the service turns it on (it writes the number in the page).
+if (Number(document.documentElement.dataset.count) > 0) Object.assign(document.getElementById('count'), { hidden: false, textContent: W.count(Number(document.documentElement.dataset.count)) })
 const langBtn = document.getElementById('lang')
 langBtn.textContent = FR ? 'EN' : 'FR'
 langBtn.setAttribute('aria-label', FR ? 'English' : 'Français')
@@ -315,12 +323,23 @@ async function api(p, body) {
   return data
 }
 
+// Anonymous counters (the line at the bottom of the page): what happened, never who. The referring site's address
+// only, the time zone for a rough country; no cookie, no identifier.
+const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || '' } catch { return '' } })()
+function hit(e, kind) {
+  let ref = ''
+  try { if (e === 'open' && document.referrer) ref = new URL(document.referrer).origin } catch {}
+  const body = JSON.stringify({ e, kind, tz: TZ, ref, touch: navigator.maxTouchPoints > 1 })
+  try { if (navigator.sendBeacon && navigator.sendBeacon('/api/hit', new Blob([body], { type: 'application/json' }))) return } catch {}
+  fetch('/api/hit', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {})
+}
+
 // The page's key pair: the install encrypts your login link with the public half; only this browser can open it.
 async function newJob(kind) {
   const pair = await crypto.subtle.generateKey({ name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['encrypt', 'decrypt'])
   const spki = new Uint8Array(await crypto.subtle.exportKey('spki', pair.publicKey))
   const pub = btoa(String.fromCharCode(...spki))
-  const j = await api('/api/job', { kind, lang: FR ? 'fr' : 'en', pub })
+  const j = await api('/api/job', { kind, lang: FR ? 'fr' : 'en', pub, tz: TZ })
   const jwk = await crypto.subtle.exportKey('jwk', pair.privateKey)
   const saved = { sid: j.sid, view: j.view, kind, jwk, command: j.command, at: Date.now() }
   localStorage.setItem('wvget', JSON.stringify(saved))
@@ -356,6 +375,7 @@ function home() {
 // --- (a) a server created for you: Hostinger or Hetzner, same flow
 const money = (v, cur) => new Intl.NumberFormat(FR ? 'fr-FR' : 'en-IE', { style: 'currency', currency: cur || 'EUR' }).format(v)
 function provider(kind) {
+  hit('chose', kind)
   HOSTNAME = kind === 'hostinger' ? 'Hostinger' : 'Hetzner'
   let job, token = '', size = 'recommended', sizes = []
   const err = errBox()
@@ -418,6 +438,7 @@ function provider(kind) {
 
 // --- (b) your VPS
 function ssh() {
+  hit('chose', 'ssh')
   let job
   const err = errBox()
   const host = h('input', { inputmode: 'decimal', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: '203.0.113.7' })
@@ -467,8 +488,10 @@ function pcBox(here) {
       watch(job, () => progress(job))
     } catch (e) { showErr(err, e.message) }
   })()
+  let chose = !here
   copyBtn.onclick = async () => {
     if (!job) return
+    if (!chose) (chose = true), hit('chose', 'pc')
     try { await navigator.clipboard.writeText(job.command) } catch { getSelection().selectAllChildren(code) }
     copyBtn.textContent = W.copied
     setTimeout(() => (copyBtn.textContent = W.copy), 1600)
@@ -478,6 +501,7 @@ function pcBox(here) {
   return box
 }
 function pc() {
+  hit('chose', 'pc')
   show(band('b3', back(), h('h2', {}, W.pcTitle), h('p', {}, W.pcIntro), pcBox(false)))
 }
 
@@ -542,10 +566,12 @@ async function ready(job, s) {
   const target = link || s.result?.url || ''
   const sec = [h('h2', {}, W.doneTitle)]
   if (!link) sec.push(h('p', { class: 'small' }, W.noSeal))
+  let switched = false
+  const opened = () => { if (!switched) (switched = true), hit('switch', job.kind) }
   if (phone) {
-    sec.push(h('p', {}, W.home), h('a', { class: 'btn', href: target }, W.open))
+    sec.push(h('p', {}, W.home), h('a', { class: 'btn', href: target, onclick: opened }, W.open))
     show(band('b1', ...sec))
-    if (link) { sec[0].textContent = W.donePhone; setTimeout(() => location.replace(link), 4000) }
+    if (link) { sec[0].textContent = W.donePhone; setTimeout(() => (opened(), location.replace(link)), 4000) }
     return
   }
   if (link && window.qrcode) {
@@ -554,11 +580,12 @@ async function ready(job, s) {
     q.make()
     sec.push(h('p', {}, W.scan), Object.assign(h('div', { class: 'qr' }), { innerHTML: q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }) }), h('p', { class: 'note' }, W.scanNote))
   }
-  sec.push(h('p', { class: 'small' }, W.home), h('a', { class: 'btn light', href: target }, W.openHere))
+  sec.push(h('p', { class: 'small' }, W.home), h('a', { class: 'btn light', href: target, onclick: opened }, W.openHere))
   show(band('b1', ...sec))
 }
 
 // ------------------------------------------------------------------ start (or resume a setup in progress)
+hit('open')
 const resume = savedJob()
 if (resume && resume.kind !== 'pc' && resume.started) progress(resume)
 else if (resume && resume.kind === 'pc') { home(); if (!computer) pc() }

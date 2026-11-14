@@ -18,6 +18,16 @@ export const RECAP_LINES = 8
 /** A nap this short with nothing to tell leaves no card. */
 export const RECAP_MIN_MS = 20 * 60_000
 
+/**
+ * Whether a wake deserves a morning card. A real night always does (even a quiet one says so). A nap shorter than
+ * RECAP_MIN_MS only does when something reached an outcome during it (a result, a failure, a stop, a question):
+ * work merely still going, or a turn that ended without a result, is not news after a few minutes.
+ */
+export function recapWorth(recap: { from: number; to: number; lines: { state: string }[] }): boolean {
+  if (recap.to - recap.from >= RECAP_MIN_MS) return true
+  return recap.lines.some((l) => l.state !== 'working' && l.state !== 'ended')
+}
+
 type Change = (on: boolean, night: { from: number; to: number } | null, now: number) => void
 
 export class Sleep {

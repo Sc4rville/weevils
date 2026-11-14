@@ -39,7 +39,7 @@ import CM from './i18n/core.ts'
 import M from './i18n/foryou.ts'
 import { ownIdea, ownTask } from './own-words.ts'
 import { actOn, personalTips, type Found, type TipInput } from './tips.ts'
-import { nightRecap, RECAP_MIN_MS, type RecapAuto } from './sleep.ts'
+import { nightRecap, recapWorth, type RecapAuto } from './sleep.ts'
 import SM from './i18n/sleep.ts'
 
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void> | void
@@ -873,7 +873,7 @@ export class ForYou {
     const snap = this.w.snapshot()
     const sessions = snap.sessions.filter((s) => this.eligible(s)).map((s) => ({ ...s, title: cleanTitle(s.title) }))
     const { recap, counts } = nightRecap({ ...night, sessions, autos, headline: (t) => headline(editorialFeedText(t)) })
-    if (!recap.lines.length && night.to - night.from < RECAP_MIN_MS) return null
+    if (!recapWorth(recap)) return null
     const t = tr(SM)
     const item: Stored = { id: `sleep:${night.from}`, kind: 'stat', tone: 'magic', at: night.to, who: 'weevils', title: t.recapTitle, text: t.recap(counts), lang: lang(), recap }
     this.put(item)

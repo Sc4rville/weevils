@@ -338,7 +338,8 @@ export function useForYou(): ForYouStore {
   return useMemo(() => ({ ...v, showFresh, act: async (id: string, action: string, card?: string) => {
     const projectId = feed?.items.find(item => item.id === id)?.projectId
     const result = await act(id, action, card)
-    if (result?.open) open(result.open, projectId)
+    // Handed to weevboss: the card stays under the eyes and says so (then shows its answer); only an existing session opens.
+    if (result?.open && result.open.page !== 'boss') open(result.open, projectId)
   }, acting, dismiss, reply, markSeen, more, refresh, error, leaving, leftAs, setReading }), [v, open])
 }
 

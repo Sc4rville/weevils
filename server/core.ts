@@ -1786,6 +1786,11 @@ export class Weevils {
     return { ok: true }
   }
 
+  /** One of weevboss's own conversations, current or older (For you never opens it as a session page). */
+  isBossThread(id: string): boolean {
+    return this.store.authorOfThread?.(id) === 'weevboss'
+  }
+
   /**
    * Ferme une session que weevils pilote (sa pane tmux), comme le fait le ménage des panes inactives : le processus
    * s'arrête, le transcript reste et la session est reprenable (lui écrire la rouvre avec --resume). Jamais l'orchestrateur.

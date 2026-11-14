@@ -460,9 +460,27 @@ describe('posts', () => {
     await expect(fy.act(id, 'a9')).rejects.toThrow(M.en.noAction)
     await fy.act(id, 'a1', undefined, 'fr')
     expect(host.sendMain).toHaveBeenCalledWith('Vas-y : Ship it', M.fr.actBrief('Three things are ready.', 'merge and deploy'))
-    expect(find(fy, id)).toMatchObject({ actions: [], work: { status: 'requested', open: { page: 'session', id: 'boss' } } })
-    await expect(fy.act(id, 'a1')).resolves.toMatchObject({ existing: true, open: { id: 'boss' } })
+    expect(find(fy, id)).toMatchObject({ actions: [], work: { status: 'requested', open: { page: 'boss' } } })
+    await expect(fy.act(id, 'a1')).resolves.toMatchObject({ existing: true, open: { page: 'boss' } })
     expect(host.sendMain).toHaveBeenCalledTimes(1)
+  })
+
+  it('an action handed to weevboss never opens weevboss as a session page, and its answer lands on the card', async () => {
+    const fy = make()
+    const { id } = fy.post('Your demo is live.', [{ label: 'Draft launch tweet', brief: 'write the tweet' }])
+    await expect(fy.act(id, 'a1', undefined, 'en')).resolves.toMatchObject({ existing: false, open: { page: 'boss' } })
+    expect(find(fy, id)).toMatchObject({ open: { page: 'boss' }, work: { status: 'requested', open: { page: 'boss' } } })
+    expect(find(fy, id)?.work?.reply).toBeUndefined()
+    transcripts.set('boss', { messages: [
+      { id: 'u1', role: 'user', text: 'Go ahead: Draft launch tweet ⟦weevils — note⟧', at: now },
+      { id: 'a1', role: 'assistant', text: 'Here is a draft:\n\nweevils is open source.', at: now + 1000 },
+    ] } as never)
+    expect(find(fy, id)?.work).toMatchObject({ open: { page: 'boss' }, reply: 'Here is a draft: weevils is open source.' })
+    // An older conversation of weevboss is weevboss too.
+    host.sendMain.mockResolvedValueOnce({ id: 'old-boss-thread' })
+    Object.assign(host, { isBossThread: (sid: string) => sid === 'old-boss-thread' })
+    const other = fy.post('Another one.', [{ label: 'Do the other thing', brief: 'other' }])
+    await expect(fy.act(other.id, 'a1', undefined, 'en')).resolves.toMatchObject({ open: { page: 'boss' } })
   })
 
   it('a reply is a real message to weevboss, with the post as a hidden note', async () => {
@@ -898,8 +916,8 @@ describe('routes', () => {
     expect(host.sendMain).toHaveBeenCalledWith('ok', expect.any(String))
     expect(find(fy, id)).toBeUndefined()
     const actionable = fy.post('Another request.', [{ label: 'Go', brief: 'do it' }]).id
-    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(actionable)}/act`, { action: 'a1' })).toMatchObject({ status: 200, body: { existing: false, open: { id: 'boss' } } })
-    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(actionable)}/act`, { action: 'a1' })).toMatchObject({ status: 200, body: { existing: true, open: { id: 'boss' } } })
+    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(actionable)}/act`, { action: 'a1' })).toMatchObject({ status: 200, body: { existing: false, open: { page: 'boss' } } })
+    expect(await call(fy, 'POST', `/api/foryou/${encodeURIComponent(actionable)}/act`, { action: 'a1' })).toMatchObject({ status: 200, body: { existing: true, open: { page: 'boss' } } })
     expect(await call(fy, 'POST', '/api/foryou/b%3Anope/dismiss')).toEqual({ status: 404, body: { error: M.en.notFound } })
     // Ids with colons travel encoded.
     snap.optimizers = [optimizer({ id: 'bad', state: 'failed', endedAt: T0 })]
@@ -1285,8 +1303,8 @@ describe('authorized work provenance', () => {
     const b = fy.post('A canvas for your notes.', [{ label: 'Préparer Think', brief }])
     const results = await Promise.all([fy.act(a.id, 'a1', undefined, 'en'), fy.act(b.id, 'a1', undefined, 'fr')])
     expect(host.sendMain).toHaveBeenCalledTimes(1)
-    expect(results[0]).toMatchObject({ open: { id: 'boss' } })
-    expect(results[1]).toMatchObject({ existing: true, open: { id: 'boss' } })
+    expect(results[0]).toMatchObject({ open: { page: 'boss' } })
+    expect(results[1]).toMatchObject({ existing: true, open: { page: 'boss' } })
     for (const lang of ['en', 'fr', 'en']) {
       const items = make().feed(now, lang).items
       expect(items).toHaveLength(2)

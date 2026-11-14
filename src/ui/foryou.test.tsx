@@ -878,6 +878,29 @@ it('a stale approval opens the API-confirmed existing work once and preserves th
  expect(srv.calls.filter(c=>c.startsWith('dismiss'))).toHaveLength(0)
 })
 
+it('an action handed to weevboss keeps the reader on the card: no page opens, the card says it was sent, then shows the answer',async()=>{
+ setLang('en')
+ const bossed:string[]=[];const onBoss=()=>bossed.push('boss');window.addEventListener('weevils:focus-boss',onBoss)
+ const item={...ITEMS.find(i=>i.id==='bo')!}
+ await open([item])
+ srv.result={intentId:'brief:x',existing:false,open:{page:'boss'}}
+ await click(band('bo').querySelector('.fy-btn'));await flush()
+ expect(srv.calls.filter(c=>c==='act bo go')).toHaveLength(1)
+ expect(pushed).toEqual([])
+ expect(bossed).toEqual([])
+ expect(host.querySelector('[data-fy="bo"]')).not.toBeNull()
+ render(<ForYouItemView item={{...item,actions:[],work:{intentId:'brief:x',status:'requested',open:{page:'boss'}}}}/>)
+ expect(band('bo').textContent).toContain('Sent to weevboss. Its reply will show up here.')
+ expect(band('bo').querySelector('.fy-btn')?.textContent).toBe('Open weevboss’s thread')
+ render(<ForYouItemView item={{...item,actions:[],work:{intentId:'brief:x',status:'requested',open:{page:'boss'},reply:'Here is a draft.'}}}/>)
+ expect(band('bo').textContent).toContain('weevboss replied')
+ expect(band('bo').querySelector('.fy-work-reply')?.textContent).toBe('Here is a draft.')
+ await click(band('bo').querySelector('.fy-btn'))
+ expect(pushed).toEqual([])
+ expect(bossed).toEqual(['boss'])
+ window.removeEventListener('weevils:focus-boss',onBoss)
+})
+
 it('keeps uncertain existing work informational when no destination is known',async()=>{
  setLang('en')
  const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,open:undefined,sessionId:undefined,work:{intentId:'unconfirmed',status:'uncertain'}}

@@ -10,6 +10,7 @@ import { Shell } from './shell'
 import { Icon } from './icons'
 import './softwares.css'
 import { PreviewChat } from './preview-chat'
+import { GoneBack, useGoneTitle } from './gone'
 
 // « Mes logiciels » : tout ce que l'utilisateur construit ou fait tourner, un rectangle de couleur par logiciel (même
 // grille que les repos). Dedans, son interface (capture) ou, sans interface, sa vraie sortie qui se tape comme dans un
@@ -335,6 +336,7 @@ export function SoftwaresPage() {
 export function SoftwarePage({ id }: { id: string }) {
   const previewFrame = useRef<HTMLIFrameElement>(null)
   const t = useT(M)
+  const gone = useGoneTitle()
   const { snap, colors } = useApp()
   const [sw, setSw] = useState<Software | null>(() => known.get(id) ?? null)
   const [missing, setMissing] = useState(false)
@@ -385,8 +387,9 @@ export function SoftwarePage({ id }: { id: string }) {
 
   if (!sw) {
     return (
-      <Shell slot="agent" kicker={t.kicker} title={missing ? t.notFound : '…'}>
+      <Shell slot="agent" kicker={t.kicker} title={missing ? gone : '…'}>
         {err && <ErrorBand text={err} />}
+        {missing && <GoneBack />}
       </Shell>
     )
   }

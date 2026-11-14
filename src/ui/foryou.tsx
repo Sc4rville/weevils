@@ -800,11 +800,15 @@ function ExistingWork({ item, who }: { item: ForYouItem; who: string }) {
   const open = useForYouOpen()
   const work = item.work!
   const target = work.open ?? item.open
+  // Handed to weevboss: « sent », then its answer right here when it comes; its thread is one tap away.
+  const boss = target?.page === 'boss'
   return <><div className="in">
     <Who item={item} who={who} />
     {item.title && <div className="fy-text strong">{item.title}</div>}
-    <p className="fy-text">{t[`work_${work.status}`]}</p>
-    {target && <div className="fy-acts"><button type="button" className="fy-btn" onClick={() => open(target, item.projectId)}>{t.workOpen}</button></div>}
+    {boss && work.reply
+      ? <><p className="meta fy-work-from">{t.workBossReplied}</p><p className="fy-text fy-work-reply">{work.reply}</p></>
+      : <p className="fy-text" role="status">{boss && work.status === 'requested' ? t.workSentBoss : t[`work_${work.status}`]}</p>}
+    {target && <div className="fy-acts"><button type="button" className="fy-btn" onClick={() => open(target, item.projectId)}>{boss ? t.workOpenBoss : t.workOpen}</button></div>}
   </div>
     {(!!item.media?.length || !!item.composition) && <InlineMediaFormats item={item} />}
   </>

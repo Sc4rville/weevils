@@ -26,6 +26,7 @@ import { CalmConv, CalmGrid } from './calm'
 import { markSeen } from './seen'
 import { dropSeed, mergePending, peekSeed, seedPending, type Pending } from './pending'
 import { FootError, Shell, swapPage } from './shell'
+import { GoneBack, useGoneTitle } from './gone'
 import { CodeFile } from './codeview'
 import { FsFilePage, FsPage, InfraPage, UsagePage } from './infra'
 import { RelayPage, SessionRelay } from './relay'
@@ -110,11 +111,11 @@ function ArchivedSessions() {
   </Shell>
 }
 
-function Missing({ text }: { text?: string }) {
-  const t = useT(M)
+function Missing() {
+  const gone = useGoneTitle()
   return (
-    <Shell slot="agent" kicker="weevils" title={t.notFound}>
-      <div className="in meta empty">{text ?? t.notFound}</div>
+    <Shell slot="agent" kicker="weevils" title={gone}>
+      <GoneBack />
     </Shell>
   )
 }
@@ -136,6 +137,7 @@ function SessionPage({ id }: { id: string }) {
   const appLang = useLang()
   const { snap, now, replace, colors } = useApp()
   const t = useT(M)
+  const gone = useGoneTitle()
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [missing, setMissing] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -223,8 +225,9 @@ function SessionPage({ id }: { id: string }) {
   // Introuvable : le même cadre (le conteneur suivi reste le même s'il apparaît ensuite).
   if (!s)
     return (
-      <Shell slot="agent" kicker="weevils" title={missing ? t.notFound : '…'} bodyRef={body}>
-        {missing && <div className="in meta empty">{t.notFound}</div>}
+      <Shell slot="agent" kicker="weevils" title={missing && !pending.length ? gone : '…'} bodyRef={body}>
+        {/* A session just launched (its first message is on its way) is not gone, only not listed yet. */}
+        {missing && !pending.length && <GoneBack />}
       </Shell>
     )
 

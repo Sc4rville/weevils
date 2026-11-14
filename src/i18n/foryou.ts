@@ -10,6 +10,9 @@ export default defineMessages({
     work_running: 'Travail en cours.',
     work_completed: 'Travail terminé.',
     workOpen: 'Voir le travail existant',
+    workSentBoss: 'Envoyé à weevboss. Sa réponse arrive ici.',
+    workBossReplied: 'weevboss a répondu',
+    workOpenBoss: 'Ouvrir le fil de weevboss',
 
     editorialOriginal: 'Texte d’origine',
     translationPending: 'Traduction en attente · original conservé',
@@ -86,6 +89,9 @@ export default defineMessages({
     work_running: 'Work in progress.',
     work_completed: 'Work completed.',
     workOpen: 'View existing work',
+    workSentBoss: 'Sent to weevboss. Its reply will show up here.',
+    workBossReplied: 'weevboss replied',
+    workOpenBoss: 'Open weevboss’s thread',
 
     editorialOriginal: 'Original wording',
     translationPending: 'Translation pending · showing the original',

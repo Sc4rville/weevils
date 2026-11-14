@@ -85,7 +85,7 @@ export interface ForYouItem {
   /** Current catalogued software result. Private capability URLs never cross this boundary. */
   software?: { id: string; name: string; state: 'running' | 'unavailable'; url?: string }
   /** Existing authorized work; never another request for approval. */
-  work?: { intentId: string; status: 'requested' | 'dispatching' | 'uncertain' | 'queued' | 'running' | 'completed'; open?: ForYouOpen; source?: { sessionId: string; messageId: string } }
+  work?: { intentId: string; status: 'requested' | 'dispatching' | 'uncertain' | 'queued' | 'running' | 'completed'; open?: ForYouOpen; source?: { sessionId: string; messageId: string }; /** weevboss's first answer, when the work was handed to it. */ reply?: string }
   /** Reviewed generated wording. The stored source and its event identity stay intact. */
   editorial?: { original: { title?: string; text: string } }
   /** Authored in-card composition; media references never create another event or action. */

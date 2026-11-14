@@ -13,6 +13,7 @@ import { ago } from './format'
 import { seedPending } from './pending'
 import { FootError, Shell, swapPage } from './shell'
 import { Icon } from './icons'
+import { GoneBack, useGoneTitle } from './gone'
 
 const SOURCE = { chatgpt: 'chatgpt', claude: 'claude.ai' } as const
 
@@ -125,6 +126,7 @@ export function ConversationsPage({ projectId }: { projectId?: string }) {
 
 export function ConversationPage({ id }: { id: string }) {
   const t = useT(M)
+  const gone = useGoneTitle()
   const { colors, replace, refresh, snap } = useApp()
   const name = useProjectName()
   const [d, setD] = useState<ConversationDetail | null>(null)
@@ -144,7 +146,7 @@ export function ConversationPage({ id }: { id: string }) {
     }
   }, [id, snap.version])
 
-  if (!d) return <Shell slot="agent" kicker={t.conversations} title={missing ? t.notFound : '…'}>{null}</Shell>
+  if (!d) return <Shell slot="agent" kicker={t.conversations} title={missing ? gone : '…'}>{missing ? <GoneBack /> : null}</Shell>
   const c = d.conversation
 
   const accept = async () => {

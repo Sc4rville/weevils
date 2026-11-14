@@ -5,7 +5,7 @@ import { internalFeedUpdate, editorialFeedText, acknowledgementOnly, humanFeedIt
 import { reviewedEditorial } from './foryou-editorial.ts'
 import { softwareResult, type SoftwareCatalog } from './foryou-software.ts'
 import { projectFeedWorkstream } from './foryou-workstream.ts'
-import { WorkIntents, intentDispatch, substantive, briefKey, isWorkRequest, type IntentResult } from './foryou-intents.ts'
+import { WorkIntents, intentDispatch, substantive, briefKey, isWorkRequest, type IntentResult, type WorkIntent } from './foryou-intents.ts'
 import reviewedIntents from './foryou-intents-reviewed.json' with { type: 'json' }
 import { canonicalAlertId, feedNoticeKey, isRequestNotice, quotaReset, sessionNoticeKey } from '../shared/notices.ts'
 // « For you »: the stream next to weevboss (docs/foryou.md, contract in shared/foryou.ts). Main machine only.
@@ -26,7 +26,7 @@ import fs from 'node:fs'
 import type http from 'node:http'
 import path from 'node:path'
 import type { InterruptReason, Message, Session, SessionDetail, Snapshot } from '../shared/api.ts'
-import type { ForYouAction, ForYouCard, ForYouFeed, ForYouGauge, ForYouItem, ForYouKind, ForYouMark, ForYouMedia, ForYouPulse, ForYouTone } from '../shared/foryou.ts'
+import type { ForYouAction, ForYouCard, ForYouFeed, ForYouGauge, ForYouItem, ForYouKind, ForYouMark, ForYouMedia, ForYouOpen, ForYouPulse, ForYouTone } from '../shared/foryou.ts'
 import { isLang } from '../shared/i18n.ts'
 import type { Level, UsageInfo } from '../shared/infra.ts'
 import { DATA_DIR, MACHINE } from './config.ts'
@@ -245,6 +245,8 @@ export interface ForYouHost {
   resume(id: string): Promise<{ id: string }>
   close(id: string): Promise<unknown>
   orchestratorId: string | null
+  /** One of weevboss's own conversations (current or older): never a session page of the app. */
+  isBossThread?(id: string): boolean
   store?: { get(id: string): { firstPrompt?: string; headless?: boolean; originator?: string; messages?: { id: string; role: string; text: string; at: number }[] } | undefined }
 }
 
@@ -1036,9 +1038,12 @@ export class ForYou {
     const existing = i.actions?.map(a => this.actionIntent(i, a)).filter(e => !!e)
     if (existing?.length && existing.length === i.actions?.length && new Set(existing.map(e => e.id)).size === 1) {
       const work = existing[0]!
-      result.work = { intentId: work.id, status: work.status, open: work.open, source: work.source }
+      const label = i.actions?.find(a => this.actionIntent(i, a)?.id === work.id)?.label
+      const open = this.appOpen(work.open)
+      const reply = open?.page === 'boss' ? this.bossReply(work, label) : undefined
+      result.work = { intentId: work.id, status: work.status, open, source: work.source, ...(reply ? { reply } : {}) }
       result.actions = []
-      if (work.open) result.open = work.open
+      if (open) result.open = open
       result.editorial ??= { original: { ...(i.title ? { title: i.title } : {}), text: i.text } }
     } else if (existing?.length && result.actions) {
       result.actions = result.actions.map(a => {
@@ -1219,7 +1224,8 @@ export class ForYou {
       if (item) out.push({ item, lang: i.lang })
     }
     for (const item of this.live(snap, now)) out.push({ item })
-    const sig = out.map((x) => `${x.item.id}${x.item.cards ? `[${x.item.cards.map((c) => c.id).join()}]` : ''}`).sort().join('|')
+    // weevboss's answer landing on a card that handed it work is a change of the stream too.
+    const sig = out.map((x) => `${x.item.id}${x.item.cards ? `[${x.item.cards.map((c) => c.id).join()}]` : ''}${x.item.work?.reply ? '+reply' : ''}`).sort().join('|')
     let moved = wrote
     if (sig !== this.s.sig) {
       this.s.sig = sig
@@ -1313,7 +1319,29 @@ export class ForYou {
    * short visible message, and the item leaves. « resume » on a cut session: resumed, and the item leaves.
    */
   private actionFlights = new Map<string, Promise<void | IntentResult>>()
+  /** weevboss's conversations are not session pages: a work handed to it opens its thread (or stays on the card). */
+  private bossThread(id: string) {
+    return id === '__main' || id === 'setup' || id === this.w.orchestratorId || !!this.w.isBossThread?.(id)
+  }
+  private appOpen(open?: ForYouOpen): ForYouOpen | undefined {
+    return open?.page === 'session' && this.bossThread(open.id) ? { page: 'boss' } : open
+  }
+  /** weevboss's first answer after an action was handed to it, for the card that sent it. */
+  private bossReply(work: WorkIntent, label?: string): string | undefined {
+    if (work.open?.page !== 'session') return
+    const messages = this.w.store?.get(work.open.id)?.messages ?? []
+    const asked = messages.findIndex(m => m.role === 'user' && m.at >= work.at - 60_000 && (!label || m.text.includes(label)))
+    if (asked < 0) return
+    const reply = messages.slice(asked + 1).find(m => m.role === 'assistant' && collapse(m.text))
+    return reply ? clip(collapse(reply.text), 400) : undefined
+  }
+
   async act(id: string, action: string, card?: string, l?: unknown): Promise<void | IntentResult> {
+    const result = await this.actRaw(id, action, card, l)
+    return result ? { ...result, open: this.appOpen(result.open) } : result
+  }
+
+  private async actRaw(id: string, action: string, card?: string, l?: unknown): Promise<void | IntentResult> {
     const key = card ?? id
     const previous = this.actionFlights.get(key)
     if (previous) return previous

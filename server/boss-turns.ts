@@ -14,6 +14,16 @@ export const BOSS_TURNS = process.env.WEEVILS_BOSS_TURNS !== '0'
 export const BOSS_VIEW_TOKENS = Math.max(8000, Number(process.env.WEEVILS_BOSS_VIEW_TOKENS ?? 40_000) || 40_000)
 /** The claude.ai connectors and MCP servers in weevboss's turns (off: they weigh ~15k tokens on every message). */
 export const BOSS_MCP = process.env.WEEVILS_BOSS_MCP === '1'
+/** The models weevboss's turns can run on (Claude Code aliases, always the latest of each family) and their efforts. */
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+export const BOSS_MODELS = [
+  { id: 'opus', label: 'Opus', efforts: EFFORTS, defaultEffort: 'medium' },
+  { id: 'fable', label: 'Fable', efforts: EFFORTS, defaultEffort: 'medium' },
+  { id: 'sonnet', label: 'Sonnet', efforts: EFFORTS, defaultEffort: 'medium' },
+]
+/** weevboss's default when nothing was chosen in the app (Scarville, 2026-11-14: Opus, medium effort). */
+export const BOSS_MODEL = process.env.WEEVILS_BOSS_MODEL || 'opus'
+export const BOSS_EFFORT = process.env.WEEVILS_BOSS_EFFORT || 'medium'
 const readOr = (file: string) => { try { return fs.readFileSync(file, 'utf8') } catch { return '' } }
 /** Where Claude Code keeps the orchestrator's transcripts and its memory folder. */
 export const orchTranscriptsDir = (claudeDir = CLAUDE_DIR, orchDir = ORCH_DIR) => path.join(claudeDir, orchDir.replace(/[^a-zA-Z0-9]/g, '-'))
@@ -113,6 +123,30 @@ export class BossTurns {
     }
   }
 
+  /** The model and effort of the next turns: the app's choice, else the default (never the global Claude Code setting). */
+  get model() { return this.s.model || BOSS_MODEL }
+  get effort() { return this.s.effort || BOSS_EFFORT }
+
+  /** Sets model and effort for the next turns (a running turn keeps its own), then reads them back from disk. */
+  choose(model: string, effort: string): { model: string; effort: string } {
+    const m = BOSS_MODELS.find((x) => x.id === model)
+    if (!m || !m.efforts.includes(effort)) throw new Error(`unknown model or effort: ${model} ${effort}`) // i18n-ignore
+    this.s.model = model
+    this.s.effort = effort
+    this.save()
+    const disk = JSON.parse(fs.readFileSync(this.file, 'utf8')) as TurnsState
+    return { model: disk.model || BOSS_MODEL, effort: disk.effort || BOSS_EFFORT }
+  }
+
+  /** The model the newest finished turn really ran on, read from its transcript. */
+  lastModel(): string | undefined {
+    for (const id of [...this.s.turns].reverse().slice(0, 3)) {
+      const found = readOr(path.join(this.transcripts, `${id}.jsonl`)).match(/"model":"(claude-[^"]+)"/g)
+      if (found?.length) return found[found.length - 1].slice(9, -1)
+    }
+    return undefined
+  }
+
   /** Slash commands typed in weevboss's thread, in turn mode: model and effort stick to the next turns. */
   command(text: string): boolean {
     const [cmd, value] = text.trim().split(/\s+/)
@@ -157,8 +191,8 @@ export class BossTurns {
       '--settings', JSON.stringify({ claudeMdExcludes: [path.join(ORCH_DIR, 'CLAUDE.md'), path.join(ORCH_DIR, 'AGENTS.md')] }),
       '--disable-slash-commands',
       ...(BOSS_MCP ? [] : ['--strict-mcp-config']),
-      ...(this.s.model ? ['--model', this.s.model] : []),
-      ...(this.s.effort ? ['--effort', this.s.effort] : []),
+      '--model', this.model,
+      '--effort', this.effort,
     ]
     // The prompt goes through a file (stdin): no tmux command-length limit, the whole message reaches the turn.
     const command = ['env', ...(BOSS_MCP ? [] : ['ENABLE_CLAUDEAI_MCP_SERVERS=false']), 'bash', '-c', 'f=$1; shift; exec "$@" < "$f"', 'weevboss-turn', promptFile, bin, ...args]
@@ -202,6 +236,6 @@ export class BossTurns {
     const v = this.s.view
     let stable = 0
     try { if (v.stableFile) stable = tokensOf(fs.readFileSync(v.stableFile, 'utf8')) } catch { /* rebuilt next turn */ }
-    return { mode: 'turns' as const, budget: this.budget, stableTokens: stable, rebuilds: v.rebuilds ?? 0, builtAt: v.builtAt, turns: this.s.turns.length, queued: this.s.queue.length, model: this.s.model, effort: this.s.effort, journal: this.journal.entries().length }
+    return { mode: 'turns' as const, budget: this.budget, stableTokens: stable, rebuilds: v.rebuilds ?? 0, builtAt: v.builtAt, turns: this.s.turns.length, queued: this.s.queue.length, model: this.model, effort: this.effort, lastModel: this.lastModel(), journal: this.journal.entries().length }
   }
 }

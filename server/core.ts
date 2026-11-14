@@ -37,7 +37,7 @@ import { keepWarm, warmCues } from './voicepipe.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
-import { BOSS_TURNS, BossTurns } from './boss-turns.ts'
+import { BOSS_MODELS, BOSS_TURNS, BossTurns } from './boss-turns.ts'
 import { claudeHaiku } from './fast.ts'
 import type { Memory } from './memory.ts'
 import type { Optimizers } from './optimizers.ts'
@@ -1763,6 +1763,7 @@ export class Weevils {
   }
 
   private orchestratorSettings() {
+    if (this.bossTurns && this.bossTool() === 'claude') return { model: this.bossTurns.model, effort: this.bossTurns.effort }
     const t = (this.bossTool() === 'codex' ? this.codexBoss()?.t : undefined) ?? (this.orchestratorId ? this.store.get(this.orchestratorId) : undefined)
     const confirmed = t ? this.codexBridge.settingsOf?.(t.id) : undefined
     if (confirmed) return {approval:t?.approval,...confirmed}
@@ -1782,6 +1783,16 @@ export class Weevils {
   async modelControls(id: string, selection?: ModelSelection): Promise<ModelControls> {
     const remote = id === '__main' ? undefined : this.remoteFor(id)
     if (remote) return remote.call(selection !== undefined ? 'POST' : 'GET', `/api/sessions/${encodeURIComponent(id)}/model-controls`, selection)
+    // Turn mode: weevboss's model lives with its turns; the choice is read back from disk before it is confirmed.
+    if (id === '__main' && this.bossTurns && this.bossTool() === 'claude') {
+      const b = this.bossTurns
+      let selected = { model: b.model, effort: b.effort }
+      if (selection !== undefined) {
+        try { selected = b.choose(String(selection.model), String(selection.effort)) } catch { throw new Error(tr(ModelM).invalid) }
+        this.bump()
+      }
+      return { threadId: '__main', tool: 'claude', models: BOSS_MODELS, selected, active: true, appliesTo: 'next-turn' }
+    }
     const real = id === '__main' ? this.bossConversation() : this.resolveId(id)
     const t = real ? this.store.get(real) : undefined
     if (!real || t?.tool !== 'codex') throw new Error(tr(ModelM).unavailable)

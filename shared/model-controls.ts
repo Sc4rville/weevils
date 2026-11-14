@@ -7,7 +7,7 @@ export interface AvailableModel {
 /** Confirmed thread configuration, not telemetry of a turn already in progress. */
 export interface ModelControls {
  threadId: string
- tool: 'codex'
+ tool: 'codex' | 'claude'
  models: AvailableModel[]
  selected: { model?: string; effort?: string }
  active: boolean

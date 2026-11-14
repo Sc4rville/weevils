@@ -120,5 +120,18 @@ describe('BossTurns', () => {
     expect(turns.queue).toHaveLength(0)
     expect(turns.isTurn('turn-1')).toBe(true)
     expect(tokensOf(prompt)).toBeLessThan(20_000)
+    // No choice made: Opus at medium effort, never the global Claude Code model.
+    expect(p.command.slice(p.command.indexOf('--model'), p.command.indexOf('--model') + 2)).toEqual(['--model', 'opus'])
+    expect(p.command.slice(p.command.indexOf('--effort'), p.command.indexOf('--effort') + 2)).toEqual(['--effort', 'medium'])
+  })
+
+  it('keeps the model and effort chosen in the app, read back from disk, and refuses unknown ones', () => {
+    const dir = tmp()
+    const turns = new BossTurns(async () => '{}', path.join(dir, 'boss'), path.join(dir, 't'), 20_000)
+    expect(turns.choose('fable', 'high')).toEqual({ model: 'fable', effort: 'high' })
+    expect(() => turns.choose('gpt-9', 'high')).toThrow()
+    expect(() => turns.choose('opus', 'ultra')).toThrow()
+    const again = new BossTurns(async () => '{}', path.join(dir, 'boss'), path.join(dir, 't'), 20_000)
+    expect([again.model, again.effort]).toEqual(['fable', 'high'])
   })
 })

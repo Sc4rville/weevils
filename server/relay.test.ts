@@ -321,6 +321,22 @@ describe('un seul message par seuil', () => {
 })
 
 describe('filet de sécurité', () => {
+  it('R0 a failed job left writing a log is not background work the limit killed; a failed background command is', async () => {
+    const { x, relay } = world()
+    const failedAt = NOW - 30_000
+    x.sessions = [
+      cut("You've hit your session limit · resets 6pm (Europe/Paris)"),
+      session({ id: 's2', status: 'idle', workStartedAt: null, subagents: [{ id: 'job:pw-webkit', kind: 'shell', label: 'Test run', activity: 'Test run', status: 'failed', startedAt: NOW - 20 * MIN, endedAt: failedAt }] }),
+      session({ id: 's3', status: 'idle', workStartedAt: null, subagents: [{ id: 'b1x2', kind: 'shell', label: 'Build', activity: 'Build', status: 'failed', startedAt: NOW - 20 * MIN, endedAt: failedAt }] }),
+    ]
+    await run(relay, NOW)
+    await run(relay, NOW + 5000)
+    const ids = relay.view(NOW).plans.map((p) => p.sessionId)
+    expect(ids).toContain('s1')
+    expect(ids).toContain('s3')
+    expect(ids).not.toContain('s2')
+  })
+
   it('R3 message de limite dans un transcript : épisode jusqu’à l’heure écrite, plan par Codex, session Codex seulement après validation', async () => {
     const { x, relay } = world()
     x.sessions = [cut("You've hit your session limit · resets 6pm (Europe/Paris)")]

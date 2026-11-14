@@ -103,11 +103,13 @@ export const emptyBg = (): BgState => ({ launches: {}, notes: {}, stops: {}, cal
 /** Log files a command writes in a logs folder (~/logs, $HOME/logs, /home/u/logs, weevils' jobs folder): their names. */
 export function logJobsIn(command: string): string[] {
   const out = new Set<string>()
-  const re = /(?:>>?|\btee(?:\s+-a)?)\s*["']?(?:~|\$HOME|\$\{HOME\}|\/[^\s"';|&]*?)\/(?:logs|jobs)\/([\w.-]+?)\.log\b/g
+  // Any path ending in /logs/ or /jobs/, from ~, $HOME or the root (« ~/.local/share/weevils/jobs/x.log » too).
+  const re = /(?:>>?|\btee(?:\s+-a)?)\s*["']?(?:~|\$HOME|\$\{HOME\})?(?:\/[^\s"';|&<>]*?)?\/(?:logs|jobs)\/([\w.-]+?)\.log\b/g
   for (const m of command.matchAll(re)) out.add(m[1])
   return [...out]
 }
-const TESTS = /\b(vitest|jest|playwright|pytest|cypress|e2e|pw-[\w-]+|npm (?:run )?test|test)\b/i
+// A test command, not any word « test » (« test -f x », a src/test/ path).
+const TESTS = /\b(vitest|jest|playwright|pytest|cypress|e2e|pw-[\w-]+|(?:npm|pnpm|yarn|bun)(?: run)? test(?::[\w-]+)?)\b/i
 /** What a shell call is called: the agent's description, else a plain catalog word (a test run, a background command). */
 export function shellLabel(description: string, command: string): string {
   return description.trim() || (TESTS.test(command) ? tr(M).testRun : tr(M).bgCommand)

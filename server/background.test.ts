@@ -719,6 +719,9 @@ describe('jobs started into a logs folder, and plain names (r47)', () => {
     expect(logJobsIn('node x.mjs 2>&1 | tee -a /home/u/logs/get-flow-phone.log')).toEqual(['get-flow-phone'])
     expect(logJobsIn('node x > "/home/u/.local/share/weevils/jobs/e2e-pc.log"')).toEqual(['e2e-pc'])
     expect(logJobsIn('tail -n 40 ~/logs/get-host-mock.log; grep -q done ~/logs/a.log')).toEqual([])
+    expect(logJobsIn('nohup node w.mjs > ~/.local/share/weevils/jobs/night.log 2>&1 &')).toEqual(['night'])
+    expect(logJobsIn('node w.mjs >> ${HOME}/logs/a.log; node v.mjs > $HOME/x/jobs/b.log')).toEqual(['a', 'b'])
+    expect(logJobsIn('node w.mjs > /tmp/out.log; echo ok > ~/notes/logs.txt')).toEqual([])
   })
 
   it('J2 a nohup job is remembered with the agent’s description; without one, a catalog word, never the command', () => {
@@ -733,5 +736,9 @@ describe('jobs started into a logs folder, and plain names (r47)', () => {
     expect(shell.label).toBe(shellLabel('', 'sleep 400'))
     expect(shell.label).not.toContain('sleep')
     expect(shellLabel('', 'npx vitest run')).not.toBe(shellLabel('', 'sleep 1'))
+    expect(shellLabel('', 'pnpm test')).toBe(shellLabel('', 'npx vitest run'))
+    // The word alone is not a test run: « test -f », a path under test/.
+    expect(shellLabel('', 'test -f a && node serve.mjs')).toBe(shellLabel('', 'sleep 1'))
+    expect(shellLabel('', 'node src/test/serve.mjs')).toBe(shellLabel('', 'sleep 1'))
   })
 })

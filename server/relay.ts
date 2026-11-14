@@ -827,7 +827,8 @@ export class Relay {
       if (p0 && p0.episode === e.since && p0.phase !== 'draft') continue
       const cut = s.status === 'interrupted' && !!s.interrupted && STOPPED.has(s.interrupted.reason) && s.interrupted.at >= e.since - ERRORS_WITHIN_MS
       const handed = !!p0?.asked && p0.episode === e.since && !atWork(s) && now - p0.asked > 3000
-      const bgKilled = e.kind !== 'near' && !atWork(s) && s.status !== 'needs_user' && s.subagents.some((a) => a.status === 'failed' && (a.endedAt ?? 0) >= e.since - 2 * 60_000)
+      // A job it left writing a log (« job:… », core.ts logJobsOf) failing is its own outcome (a red test run), not work the limit killed.
+      const bgKilled = e.kind !== 'near' && !atWork(s) && s.status !== 'needs_user' && s.subagents.some((a) => a.status === 'failed' && !a.id.startsWith('job:') && (a.endedAt ?? 0) >= e.since - 2 * 60_000)
       if (!cut && !handed && !bgKilled) continue
       this.open(this.ensure(s, now), s, now)
       this.changed()

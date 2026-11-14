@@ -608,7 +608,8 @@ export class CostOptimizer {
     const posts = auditPosts(this.scan, day, (sid) => this.titleOf(snap, sid), (sid) => this.host.autoTasks().some((o) => o.sessionId === sid || o.runs?.some((r) => r.sessionId === sid)), this.host.bossId())
     const internal = Object.entries(this.host.ledger()[day] ?? {}).reduce((n, [, e]) => n + e.tokens, 0)
     const total = posts.reduce((n, p) => n + p.tokens, 0)
-    const top = posts.slice(0, 5)
+    // The four biggest, and the auto tasks past 1 M (they run unattended: nobody watches what they spend).
+    const top = [...posts.slice(0, 4), ...posts.slice(4).filter((p) => p.why.some((w) => w.k === 'auto') && p.tokens >= 1e6).slice(0, 2)]
     const lines = top.map((p) => `• ${p.title}: ${fmtTokens(p.tokens)}. ${p.why.map((w) => t.why(w)).join(' ')}`)
     const text = [t.auditLead(fmtTokens(total), Math.round(this.scan.between(now - 3600_000, now + 1) / 1e6)), ...lines, internal ? t.auditInternal(fmtTokens(internal)) : t.auditInternalNone, t.auditPlan].join('\n')
     const max = Math.max(1, ...top.map((p) => p.tokens))

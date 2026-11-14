@@ -116,6 +116,16 @@ describe('bossDoor taps, live voice, local claim', () => {
     expect(door.tapAllowed(req(), 'POST', '/api/foryou/post')).toBe(true)
   })
 
+  it("Siri's turn: its own token or the app; a loopback script can neither post a turn nor read the token", () => {
+    expect(door.voiceAllowed(req(), '/api/voice/turn', false)).toBe(false) // curl -d '{"text":"…"}' 127.0.0.1:4179/api/voice/turn
+    expect(door.voiceAllowed(req(), '/api/voice/shortcut', false)).toBe(false) // GET the token, then post with it
+    expect(door.voiceAllowed(req(), '/api/voice/turn', true)).toBe(true) // the Siri shortcut, with its token
+    expect(door.voiceAllowed(phone(), '/api/voice/shortcut', false)).toBe(true) // the app shows or renews the token
+    expect(door.voiceAllowed(req(), '/api/voice/clip/abc.mp3', false)).toBe(true)
+    expect(door.voiceAllowed(req(), '/api/voice/chunk', false)).toBe(true)
+    expect(make({ allowLocal: () => true }).voiceAllowed(req(), '/api/voice/turn', false)).toBe(true)
+  })
+
   it('live voice: the phone yes; a websocket script or an automated browser on loopback, no', () => {
     expect(door.liveAllowed(phone(), true)).toBe(true)
     expect(door.liveAllowed(req({}, '127.0.0.1', '/api/live?lang=en'), true)).toBe(false) // /tmp/liveprobe/e2e.mjs

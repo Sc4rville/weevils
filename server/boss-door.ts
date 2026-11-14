@@ -18,6 +18,8 @@ const BOSS_DOOR = /^\/api\/(?:main(?:\/attach)?|sessions\/([^/]+)\/(?:send|attac
 const SIGNED_DOOR = /^\/api\/(?:main(?:\/attach)?|sessions\/[^/]+\/send)$/
 /** Taps that speak for the user (a For you action, a reply, an explanation): the app only. */
 const USER_TAP = /^\/api\/(?:foryou\/[^/]+\/(?:act|reply)|explain)$/
+/** Siri's turn (spoken straight to weevboss) and the token that opens it: the shortcut's token or the app, any method. */
+const VOICE_DOOR = /^\/api\/voice\/(?:turn|shortcut)$/
 
 export interface BossDoorDeps {
   /** The request's cookie names a known device. */
@@ -47,6 +49,9 @@ export function bossDoor(d: BossDoorDeps) {
     },
     /** A tap that speaks for the user (checked before the body is read, and before the outbox accepts it). */
     tapAllowed: (req: http.IncomingMessage, method: string | undefined, pathname: string) => method !== 'POST' || !USER_TAP.test(pathname) || speaksForUser(req),
+    /** Siri's door: with the shortcut's own token (viaShortcut), or from the app. A script on this machine could
+     * otherwise read the token, or post a turn with no token at all, and speak to weevboss as the user. */
+    voiceAllowed: (req: http.IncomingMessage, pathname: string, viaShortcut: boolean) => !VOICE_DOOR.test(pathname) || viaShortcut || speaksForUser(req),
     /** The text as weevboss reads it: signed when a trusted author sent it, also when the outbox replays it. */
     text(req: http.IncomingMessage, body: any): { text: string; origin: BossOrigin } {
       const text = String(body?.text ?? '').trim()

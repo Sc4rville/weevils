@@ -527,6 +527,8 @@ export interface Snapshot {
   pinnedRepos: string[]
   /** Nombre de souvenirs (server/memory.ts) ; la liste se lit avec GET /api/memory. Absent hors machine principale (pas de mémoire). */
   memoryCount?: number
+  /** Open requests in weevboss's ledger (server/boss-ledger.ts), main machine only. */
+  asksOpen?: number
   /** Tâches du h24 proposées, en attente, en cours ou finies récemment (server/optimizers.ts). Les refusées n'y sont pas. */
   optimizers?: Optimizer[]
   /** La machine vue par la bande auto (server/optimizers.ts), sur la machine principale. */

@@ -37,7 +37,8 @@ import { keepWarm, warmCues } from './voicepipe.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
-import { BOSS_MODELS, BOSS_TURNS, BossTurns } from './boss-turns.ts'
+import { BOSS_DIR, BOSS_MODELS, BOSS_TURNS, BossTurns, orchTranscriptsDir } from './boss-turns.ts'
+import { Ledger } from './boss-ledger.ts'
 import { claudeHaiku } from './fast.ts'
 import type { Memory } from './memory.ts'
 import type { Optimizers } from './optimizers.ts'
@@ -337,6 +338,21 @@ export class Weevils {
    *  single interactive conversation (WEEVILS_BOSS_TURNS=0). */
   bossTurns: BossTurns | null = ORCHESTRATOR && BOSS_TURNS ? new BossTurns((prompt, schema) => claudeHaiku(prompt, 120_000, schema)) : null
   private turnStarting = false
+  /** weevboss's request ledger, goals, work trace and knowledge (server/boss-ledger.ts); on the main machine only. */
+  ledger: Ledger | null = ORCHESTRATOR ? new Ledger({
+    dir: BOSS_DIR,
+    budget: Math.max(400, Number(process.env.WEEVILS_BOSS_LEDGER_TOKENS ?? 1800) || 1800),
+    model: (prompt, schema) => claudeHaiku(prompt, 180_000, schema),
+    host: {
+      sessions: () => this.sessions(),
+      detail: (id) => this.detailAny(id),
+      turnRunning: (id) => id === this.orchestratorId && (this.turnStarting || this.bossWorking('claude') || !!this.paneFor(id)),
+      journal: () => { const j = this.bossTurns?.journal; if (!j) return []; j.sync(); return j.entries() },
+      lang: () => lang(),
+      user: () => user(),
+      memory: () => this.memory?.asText(60) ?? '',
+    },
+  }) : null
   h24: H24Activity[] = []
   remotes: Remote[] = []
   convs = new ConversationStore(DATA_DIR)
@@ -574,6 +590,13 @@ export class Weevils {
       setInterval(() => void this.pumpTurns(), 1000)
       // The summaries of the whole log, written ahead in the background (Haiku, once per message).
       setTimeout(() => void this.bossTurns?.prewarm().catch(() => undefined), 20_000)
+    }
+    if (this.ledger) {
+      const ledger = this.ledger
+      // First run: today's requests are read back from the log, so the ledger starts with what is still open.
+      if (ledger.fresh && this.bossTurns) setTimeout(() => void ledger.backfill(24).then((r) => console.log(`[ledger] backfill: ${r.messages} messages → ${r.asks} requests`)).catch((e) => console.error(`[ledger] backfill: ${(e as Error).message}`)), 30_000)
+      ledger.onChange(() => this.bump())
+      setInterval(() => void this.ledgerTick(), 30_000)
     }
     setInterval(() => void this.watchImports(), 30_000)
     setInterval(() => void this.classify(), 60_000)
@@ -1169,6 +1192,7 @@ export class Weevils {
       tour: this.tour?.current() ?? undefined,
       pinnedRepos: this.pinnedRepos,
       memoryCount: this.memory?.count,
+      asksOpen: this.ledger?.openCount,
       optimizers: this.optimizers?.list() ?? [],
       autoMachine: this.optimizers?.machine(),
       relay: this.relayView(now, remote.flatMap((r) => r.snap!.relay?.plans ?? [])),
@@ -2046,6 +2070,8 @@ export class Weevils {
     if (!chosen && this.setup && !providerReady()) { await this.setup.offline(text); return { id: 'setup' } }
     if (!chosen) throw new OutboxDeferred(this.relay?.retryAt() ?? Date.now() + 60_000, tr(OutboxM).providerWaiting)
     if (this.bossWorking(chosen === 'claude' ? 'codex' : 'claude')) throw new OutboxDeferred(this.relay?.retryAt() ?? Date.now() + 60_000, tr(OutboxM).providerWaiting)
+    // Into the request ledger before anything can fail: what the user asks is never lost (server/boss-ledger.ts).
+    const cid = this.captureAsk(text, brief)
     if (chosen === 'codex') {
       const since = Date.now()
       void this.waitMainReply(since, 300_000).then((r) => r && console.log(`[voix] weevboss (codex) a répondu en ${Date.now() - since} ms`))
@@ -2065,7 +2091,7 @@ export class Weevils {
     text = text + joinContext(this.setup?.contextFor(brief) ?? '', this.bossBackContext())
     if (this.bossTurns) {
       // One stateless turn per message, in order; a message that arrives during a turn waits for the next one.
-      this.bossTurns.enqueue(text)
+      this.bossTurns.enqueue(text, cid ?? undefined)
       this.relay?.takeBossBack()
       const since = Date.now()
       void this.waitMainReply(since, 300_000).then((r) => r && console.log(`[voix] weevboss a répondu en ${Date.now() - since} ms`))
@@ -2116,18 +2142,51 @@ export class Weevils {
     this.bump()
     try {
       const id = crypto.randomUUID()
-      const turn = await turns.prepare({ id, claude: CLAUDE, memory: this.memory?.digest() ?? '' })
+      const head = turns.queue[0]
+      const turn = await turns.prepare({ id, claude: CLAUDE, memory: this.memory?.digest() ?? '', ledger: this.ledger?.digest(undefined, head?.cid) ?? '' })
+      // The previous turn is over: its message can be read into the ledger.
+      void this.ledgerTick()
       this.orchestratorId = id
       await this.spawn('claude', ORCH_DIR, 'weevboss', turn.command, id)
-      turns.started(turn)
+      const q = turns.started(turn)
+      if (q?.cid) this.ledger?.attach(q.cid, id)
       this.persist()
-      console.log(`[weevboss] tour ${id.slice(0, 8)} · vue ${turn.stableTokens} + ${turn.recentTokens} tokens${turn.rebuilt ? ' · paliers reconstruits' : ''}`)
+      console.log(`[weevboss] tour ${id.slice(0, 8)} · vue ${turn.stableTokens} + ${turn.recentTokens} + registre ${turn.ledgerTokens ?? 0} tokens${turn.rebuilt ? ' · paliers reconstruits' : ''}`)
       void turns.prewarm(5 * 60_000).catch(() => undefined)
     } catch (e) {
       turns.failed(e as Error)
     } finally {
       this.turnStarting = false
       this.bump()
+    }
+  }
+
+  /** A message for weevboss, into the request ledger (its hidden blocks peeled off; a button's brief kept short). */
+  private captureAsk(text: string, brief?: string): string | null {
+    if (!this.ledger) return null
+    try {
+      const said = withoutContext(text).trim()
+      return this.ledger.capture(brief?.trim() ? `${said} (${brief.replace(/\s+/g, ' ').trim().slice(0, 400)})` : said)
+    } catch (e) {
+      console.error(`[ledger] capture: ${(e as Error).message}`)
+      return null
+    }
+  }
+
+  /** Reads finished turns into the ledger and closes the loop on sessions that stopped. */
+  private ledgerTicking = false
+  async ledgerTick() {
+    const ledger = this.ledger
+    if (!ledger || this.ledgerTicking) return
+    this.ledgerTicking = true
+    try {
+      const transcripts = this.bossTurns?.transcripts ?? orchTranscriptsDir()
+      while (await ledger.reconcile(transcripts)) { /* batches of six until the inbox is read */ }
+      await ledger.closeLoop()
+    } catch (e) {
+      console.error(`[ledger] ${(e as Error).message}`)
+    } finally {
+      this.ledgerTicking = false
     }
   }
 

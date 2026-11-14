@@ -48,6 +48,7 @@ import { TourKeeper } from './tour.ts'
 import { DEMOS, isTourId } from '../shared/tour.ts'
 import { isBrick, isSecretName, isSetupKey, type Device } from '../shared/setup.ts'
 import { Memory, memoryRoutes } from './memory.ts'
+import { ledgerRoutes } from './boss-ledger-http.ts'
 import { Flyers, weevilRoutes } from './weevil.ts'
 import { Optimizers, optimizerRoutes } from './optimizers.ts'
 import { Sleep } from './sleep.ts'
@@ -861,6 +862,8 @@ const routes: [string, RegExp, Handler][] = [
   ...hintRoutes(hints, json, readBody),
   // La mémoire vit sur la machine principale seulement (404 ailleurs, comme weevils memory le dit).
   ...(ORCHESTRATOR ? memoryRoutes(memory, json, readBody) : []),
+  // weevboss's requests, goals, work trace and knowledge (server/boss-ledger.ts), main machine only.
+  ...(w.ledger ? ledgerRoutes(w.ledger, json, readBody, isLocal) : []),
   ...weevilRoutes(flyers, json, readBody),
   // The automation page reads the timers and jobs here too (GET /api/auto/timer:…, job:…).
   ...optimizerRoutes(optimizers, json, readBody, { detail: (id) => w.h24Detail(id), run: (id, at) => w.h24Run(id, at) }),

@@ -15,6 +15,7 @@ import { api } from '../api'
 import { tr, useT } from '../i18n'
 import M from '../i18n/bands'
 import NM from '../i18n/notices'
+import RM from '../i18n/requests'
 import D from '../i18n/devil'
 import { prefetchRepo } from './pages'
 import { ConvLine } from './convs'
@@ -758,6 +759,11 @@ export function FootBand() {
       {snap.memoryCount !== undefined && (
         <Line ch="#" meta={t.memories(snap.memoryCount)} onClick={() => push({ kind: 'memory' })}>
           {t.memory}
+        </Line>
+      )}
+      {snap.asksOpen !== undefined && (
+        <Line ch="!" meta={tr(RM).openCount(snap.asksOpen)} onClick={() => push({ kind: 'requests' })}>
+          {tr(RM).menu}
         </Line>
       )}
       <LostFeaturesLine />

@@ -110,7 +110,6 @@ export const MAX_FAILED_RUNS = 3
 /** What a rewrite may change, in the order the app shows them. */
 const SCOPE = ['title', 'why', 'kind', 'repo', 'prompt'] as const
 const TERMS = ['est', 'priority', 'heavy', 'notBefore', 'window', 'every', 'onSleep', 'stopOnWake'] as const
-/** The time conditions a « when I sleep » trigger replaces. */
 
 /**
  * What an unattended task may never do, enforced by Claude Code itself (deny rules hold even without permission

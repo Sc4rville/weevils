@@ -49,14 +49,19 @@ The page finds it again, in this order, and never shows the start screen while s
 - **The same browser at the same address**, with nothing kept (`POST /api/nearby`): the setups started from there,
   how far they are, live, and nothing else (no address, no link, no token); finishing there takes the resume link or
   the token.
-- **"Pick up where I left off"** on the start screen: the resume link; or the **Hetzner token** again (the
-  same account): the page lists the servers weevils made there (Hetzner label `app=weevils`, plus `weevils-sid`
-  since 2026-11-14), each with how far its setup is, and offers **"Continue on
-  this one"**. A setup still installing is taken over by the new page (the install asks for the page's current key,
-  `GET /k/<sid>`, just before it seals the link). A finished, stopped or forgotten one: the host gives the server a
-  new root password (Hetzner `reset_password`), used once for the
-  same SSH command as "I already have a VPS"; the install runs again (it keeps what is there) and ends with a fresh
-  link for this page. Or the server's IP and root password ("I already have a VPS").
+- **The Hetzner token again**, on the Hetzner screen itself (there is no separate resume screen or button since
+  2026-11-14): the same account's token lists the servers weevils made there (Hetzner label `app=weevils`, plus
+  `weevils-sid`), each with how far its setup is, and offers **"Continue on this one"** before any new server. A setup
+  still installing is taken over by the new page (the install asks for the page's current key, `GET /k/<sid>`, just
+  before it seals the link). A finished, stopped or forgotten one: Hetzner gives the server a new root password
+  (`reset_password`), used once for the same SSH command as "I already have a VPS"; the install runs again (it keeps
+  what is there) and ends with a fresh link for this page. Or the server's IP and root password ("I already have a VPS").
+- **Before any setup exists**: the screen picked (Hetzner or VPS) is in the address (`#hetzner`, `#vps`) and in this
+  browser for a day, so coming back from Hetzner's own pages (sign-up, ID check, console: native screens this page
+  can't follow) lands on the token field again.
+- **One way on after a failure**: a refused token turns "See sizes and prices" into "Try again"; a stopped install,
+  a stalled one, or a final link this browser can't open shows one "Try again", which goes back to the token (Hetzner),
+  the VPS access, or the computer's command.
 - **Never a second server without asking**: when the token's account already has a weevils server, the page offers to
   continue on it, and creating another takes a tap on "Create another server anyway" (`another: true`; without it,
   `POST /api/<host>/create` answers `409 exists` with the list). Two taps, or a page reopened during the call, make

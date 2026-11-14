@@ -684,8 +684,8 @@ describe('a Mac', () => {
   })
 
   // The page's script, run for one visitor: what the first screen shows.
-  async function firstScreen(userAgent: string, lang = 'en') {
-    const window = new Window({ url: 'https://get.example/', settings: { navigator: { userAgent } } })
+  async function firstScreen(userAgent: string, lang = 'en', url = 'https://get.example/') {
+    const window = new Window({ url, settings: { navigator: { userAgent } } })
     // The page's anonymous counters (/api/hit) go through sendBeacon: no network here.
     Object.defineProperty(window.navigator, 'sendBeacon', { value: () => true, configurable: true })
     const document = window.document
@@ -742,6 +742,17 @@ describe('a Mac', () => {
     expect(page).not.toMatch(/Hostinger|hPanel/)
     expect(page).not.toMatch(/Linux for now|Linux pour l’instant|prends un VPS|take a VPS/)
   }, 60_000)
+
+  it('needs no resume button: three choices, and a return from Hetzner’s site lands back on the token screen', async () => {
+    const phone = await firstScreen(IPHONE)
+    expect(phone.text()).not.toMatch(/Pick up where|Already started|resume link/i)
+    expect(page).not.toContain('function resumeScreen')
+    const back = await firstScreen(IPHONE, 'en', 'https://get.example/#hetzner')
+    await vi.waitFor(() => expect(back.text()).toContain('A server of your own, at Hetzner'))
+    expect(back.text()).not.toContain('Plug in your machine')
+    // A failure offers one way on: « Try again ».
+    expect(page).not.toMatch(/failSame|againSame|W\.retry\b/)
+  })
 
   it('resumes a computer setup on the first screen, where its command already is', async () => {
     expect(page).toContain("const computer = os === 'linux' || os === 'windows' || os === 'mac'")

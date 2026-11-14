@@ -181,31 +181,24 @@ const W = FR ? {
   home: 'Ensuite, ajoute-le à ton écran d’accueil (iPhone : Partager → Sur l’écran d’accueil ; Android : ⋮ → Installer l’app). weevboss t’accueille et connecte Claude Code ou Codex avec toi.',
   scan: 'Scanne ce code avec l’appareil photo de ton téléphone :', scanNote: 'Ce code te connecte : garde-le pour toi, comme un mot de passe.',
   openHere: 'L’ouvrir ici', noSeal: 'Ton weevils répond ici. Ton code d’accès est dans ~/weevils-install.log sur la machine.',
-  failTitle: 'L’installation s’est arrêtée', retry: 'Recommencer',
+  failTitle: 'L’installation s’est arrêtée', tryAgain: 'Réessayer',
   backTo: 'Je retrouve ton installation…',
-  resumeBand: 'Déjà commencé, ou déjà un serveur créé par weevils ?', resumeBtn: 'Reprendre où j’en étais',
-  resumeTitle: 'Reprendre où tu en étais', resumeIntro: 'Rien n’est perdu : l’installation continue sur ton serveur même quand cette page est fermée.',
-  byLink: 'Ton lien de reprise', byLinkSub: 'Le lien que cette page t’a donné (il finit par #job=…).', resumeGo: 'Reprendre',
-  byToken: 'Ton jeton Hetzner', byTokenSub: 'Le même qu’avant, ou un nouveau du même compte : weevils liste les serveurs qu’il y a créés.',
-  findHz: 'Mes serveurs Hetzner',
-  byIp: 'L’IP et le mot de passe root de ton serveur', byIpSub: 'weevils s’y connecte une fois et termine l’installation.', byIpBtn: 'Avec l’IP et le mot de passe',
-  badLink: 'Ce n’est pas un lien de reprise : il finit par #job=…',
   existingTitle: (n) => n > 1 ? 'Tu as déjà des serveurs weevils sur ce compte' : 'Tu as déjà un serveur weevils sur ce compte',
   existingSub: 'Continue dessus plutôt que d’en payer un nouveau.', continueBtn: 'Continuer sur celui-ci', another: 'Créer quand même un autre serveur',
-  noServers: (host) => `Aucun serveur créé par weevils sur ce compte ${host}.`, createOne: 'En créer un',
+
   srvRunning: (step) => `Installation en cours : ${step}`, srvDone: 'Installé', srvFailed: 'Installation arrêtée', srvNone: 'Installation à terminer',
   ago: (m) => m < 1 ? 'à l’instant' : m < 60 ? `il y a ${m} min` : m < 1440 ? `il y a ${Math.round(m / 60)} h` : `il y a ${Math.round(m / 1440)} j`,
   createdAgo: (a) => `créé ${a}`,
   continuing: 'Je retourne sur ton serveur… (jusqu’à une minute)',
   keepTitle: 'Garde ce lien pour revenir', keepNote: 'Il te ramène ici depuis n’importe quel navigateur. Garde-le pour toi, comme un mot de passe : il montre aussi le code d’accès de ton weevils une fois prêt.',
   mailMe: 'Me l’envoyer par e-mail', mailSubject: 'Mon installation weevils', mailBody: 'Pour revenir à mon installation weevils (lien privé) :', shareBtn: 'Partager',
-  creatingNow: 'Création de ton serveur…', slow: 'C’est plus long que d’habitude.', againSame: 'Relancer l’installation sur le même serveur', failSame: 'Réessayer sur le même serveur',
+  creatingNow: 'Création de ton serveur…', slow: 'C’est plus long que d’habitude.', 
   yourAddress: 'L’adresse de ton weevils :', yourCode: 'Ton code d’accès (il te connecte : garde-le pour toi, comme un mot de passe) :', copyLink: 'Copier le lien',
   inApp: 'Tu es dans le navigateur d’une app (X, Instagram…) : copie le lien et ouvre-le dans Safari ou Chrome pour ajouter weevils à ton écran d’accueil.',
   keptHere: 'Cette page garde ton lien 7 jours, jusqu’à ta première connexion à ton weevils.',
   lostKey: 'Ton weevils est prêt, mais ce navigateur ne peut pas ouvrir son lien (il a été scellé pour la page qui a lancé l’installation).',
   claimedNote: 'Tu t’es déjà connecté à ton weevils : cette page ne garde plus son lien.', freshLink: 'Obtenir un nouveau lien', startOver: 'Installer une autre machine',
-  nearTitle: 'Ton installation continue', nearSub: 'Lancée depuis cet appareil. Pour la terminer ici et recevoir le lien de ton weevils à la fin :', nearReady: 'C’est installé ! Pour recevoir son lien ici :', notMine: 'Ce n’est pas la mienne : en commencer une',
+  nearTitle: 'Ton installation continue', nearSub: 'Lancée depuis cet appareil, elle continue toute seule. Ce navigateur a perdu sa clé : pour recevoir ici le lien de ton weevils, recolle ton jeton (ou l’accès à ton VPS).', nearReady: 'C’est installé ! Pour recevoir son lien ici :', nearLink: 'Recevoir mon lien ici', notMine: 'Ce n’est pas la mienne : en commencer une',
   expired: 'Cette installation n’est plus gardée ici (au bout de 7 jours).',
   e: {
     exists: 'Tu as déjà un serveur weevils sur ce compte {host}.', creating: 'Ton serveur est déjà en cours de création : un instant.', bad_server: 'Choisis un serveur.',
@@ -275,31 +268,24 @@ const W = FR ? {
   home: 'Then add it to your home screen (iPhone: Share → Add to Home Screen; Android: ⋮ → Install app). weevboss welcomes you and connects Claude Code or Codex with you.',
   scan: 'Scan this code with your phone’s camera:', scanNote: 'This code logs you in: keep it to yourself, like a password.',
   openHere: 'Open it here', noSeal: 'Your weevils answers here. Your access code is in ~/weevils-install.log on the machine.',
-  failTitle: 'The install stopped', retry: 'Start again',
+  failTitle: 'The install stopped', tryAgain: 'Try again',
   backTo: 'Getting back to your install…',
-  resumeBand: 'Already started, or already have a server from weevils?', resumeBtn: 'Pick up where I left off',
-  resumeTitle: 'Pick up where you left off', resumeIntro: 'Nothing is lost: the install keeps going on your server even when this page is closed.',
-  byLink: 'Your resume link', byLinkSub: 'The link this page gave you (it ends with #job=…).', resumeGo: 'Resume',
-  byToken: 'Your Hetzner token', byTokenSub: 'The same one as before, or a new one from the same account: weevils lists the servers it made there.',
-  findHz: 'My Hetzner servers',
-  byIp: 'Your server’s IP and root password', byIpSub: 'weevils connects once and finishes the install.', byIpBtn: 'Use the IP and password',
-  badLink: 'This isn’t a resume link: it ends with #job=…',
   existingTitle: (n) => n > 1 ? 'You already have weevils servers on this account' : 'You already have a weevils server on this account',
   existingSub: 'Continue on it instead of paying for a new one.', continueBtn: 'Continue on this one', another: 'Create another server anyway',
-  noServers: (host) => `No server made by weevils on this ${host} account.`, createOne: 'Create one',
+
   srvRunning: (step) => `Installing: ${step}`, srvDone: 'Installed', srvFailed: 'Install stopped', srvNone: 'Install to finish',
   ago: (m) => m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`,
   createdAgo: (a) => `created ${a}`,
   continuing: 'Getting back into your server… (up to a minute)',
   keepTitle: 'Keep this link to come back', keepNote: 'It brings you back here from any browser. Keep it to yourself, like a password: it also shows your weevils’ access code once it’s ready.',
   mailMe: 'Email it to me', mailSubject: 'My weevils install', mailBody: 'To get back to my weevils install (private link):', shareBtn: 'Share',
-  creatingNow: 'Creating your server…', slow: 'This is taking longer than usual.', againSame: 'Start the install again on the same server', failSame: 'Try again on the same server',
+  creatingNow: 'Creating your server…', slow: 'This is taking longer than usual.', 
   yourAddress: 'Your weevils’ address:', yourCode: 'Your access code (it logs you in: keep it to yourself, like a password):', copyLink: 'Copy the link',
   inApp: 'You’re in an app’s browser (X, Instagram…): copy the link and open it in Safari or Chrome to add weevils to your home screen.',
   keptHere: 'This page keeps your link for 7 days, until you first log in to your weevils.',
   lostKey: 'Your weevils is ready, but this browser can’t open its link (it was sealed for the page that started the install).',
   claimedNote: 'You already logged in to your weevils: this page no longer keeps its link.', freshLink: 'Get a fresh link', startOver: 'Set up another machine',
-  nearTitle: 'Your install is still going', nearSub: 'Started from this device. To finish here and get your weevils’ link at the end:', nearReady: 'It’s installed! To get its link here:', notMine: 'Not mine: start a new one',
+  nearTitle: 'Your install is still going', nearSub: 'Started from this device, it keeps going by itself. This browser lost its key: to get your weevils’ link here, paste your token again (or your VPS access).', nearReady: 'It’s installed! To get its link here:', nearLink: 'Get my link here', notMine: 'Not mine: start a new one',
   expired: 'That setup is no longer kept here (they expire after 7 days).',
   e: {
     exists: 'You already have a weevils server on this {host} account.', creating: 'Your server is already being created: one moment.', bad_server: 'Pick a server.',
@@ -420,8 +406,18 @@ function keep(job) {
   try { if (job.secret) history.replaceState(null, '', `${location.pathname}${location.search}#job=${job.sid}.${job.secret}`) } catch {}
   return job
 }
+/** The screen picked before any setup exists (Hetzner, VPS): a reload, or a return from Hetzner's site, lands on it. */
+function step(name) {
+  try { name ? localStorage.setItem('wvstep', JSON.stringify({ name, at: Date.now() })) : localStorage.removeItem('wvstep') } catch {}
+  try { if (!/#job=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search + (name ? `#${name}` : '')) } catch {}
+}
+const savedStep = () => {
+  const m = /^#(hetzner|vps)$/.exec(location.hash)
+  if (m) return m[1]
+  try { const s = JSON.parse(localStorage.getItem('wvstep') || 'null'); return s && Date.now() - s.at < 24 * 3600_000 ? s.name : '' } catch { return '' }
+}
 function forget() {
-  try { localStorage.removeItem('wvget') } catch {}
+  try { localStorage.removeItem('wvget'); localStorage.removeItem('wvstep') } catch {}
   try { history.replaceState(null, '', location.pathname + location.search) } catch {}
 }
 const fromLink = (text) => { const m = /(?:^|[#&\s/])(?:job=)?([a-z2-9]{10})\.([A-Za-z0-9_-]{22})(?:$|[&\s])/.exec(String(text || '').trim()); return m ? { sid: m[1], secret: m[2] } : null }
@@ -468,20 +464,19 @@ const copyBtn = (text, label = W.copy) => {
 
 function home(notice) {
   show.deep = false
-  // Came back without the page that started it: one tap back to it, at the top and after the choices.
+  step('')
+  // Coming back needs no button: the link, this browser, or the Hetzner token (it finds the server weevils made).
   const top = typeof notice === 'string' && notice ? h('div', { class: 'err' }, notice) : null
-  const toResume = () => h('button', { class: 'link', onclick: () => resumeScreen() }, `${W.resumeBand} ${W.resumeBtn} →`)
-  const intro = band('b5', top, h('h2', {}, W.plug), h('p', { class: 'small' }, W.plugSub), toResume())
+  const intro = band('b5', top, h('h2', {}, W.plug), h('p', { class: 'small' }, W.plugSub))
   const hz = [choiceBtn('b1', W.hz, W.hzSub, () => provider('hetzner'), W.rec)]
   const vps = choiceBtn('b2', W.vps, W.vpsSub, () => ssh())
-  const again = choiceBtn('b5', W.resumeBtn, W.resumeBand, () => resumeScreen())
   if (computer) {
     // A computer: connect it right here, and still suggest a VPS.
     const note = os === 'windows' ? W.winNote : os === 'mac' ? W.macNote : ''
     const cmdBand = band('b3', top, h('h2', {}, W.thisPc), h('p', {}, W.thisPcSub), note ? h('p', { class: 'small' }, note) : null, pcBox(true))
-    return show(cmdBand, band('b5', h('h2', {}, W.better), h('p', { class: 'small' }, W.betterSub), toResume()), ...hz, vps, again)
+    return show(cmdBand, band('b5', h('h2', {}, W.better), h('p', { class: 'small' }, W.betterSub)), ...hz, vps)
   }
-  show(intro, ...hz, vps, choiceBtn('b3', W.pc, W.pcSub, pc), again)
+  show(intro, ...hz, vps, choiceBtn('b3', W.pc, W.pcSub, pc))
 }
 
 // --- (a) a server created for you, at Hetzner
@@ -512,10 +507,11 @@ async function continueOn(kind, job, token, s, btn, err) {
     progress(job)
   } catch (e) { showErr(err, e.message); btn.disabled = false; btn.textContent = label }
 }
-function provider(kind, given, lastError) {
+function provider(kind, given, lastError, reopened) {
   // A setup from a host this page no longer offers: back to the choices.
   if (!HOSTS[kind]) return home()
-  if (!given) hit('chose', kind)
+  if (!given && !reopened) hit('chose', kind)
+  if (!given) step(kind)
   HOSTNAME = HOSTS[kind]
   let job = given, token = '', size = 'recommended', sizes = [], another = false
   const err = errBox()
@@ -561,7 +557,7 @@ function provider(kind, given, lastError) {
       note.textContent = [typeof billed === 'function' ? billed(sizes.some((z) => z.ipv4)) : billed, q.paymentLabel ? W.payWith(q.paymentLabel) : ''].join(' ')
       priceBtn.hidden = true
       showHad(another ? [] : q.existing)
-    } catch (e) { showErr(err, e.message) } finally { priceBtn.disabled = false }
+    } catch (e) { showErr(err, e.message); priceBtn.textContent = W.tryAgain } finally { priceBtn.disabled = false }
   }
   createBtn.onclick = async () => {
     err.hidden = true
@@ -582,7 +578,7 @@ function provider(kind, given, lastError) {
   // Pasting the token is enough: the sizes come by themselves (recommended picked), one tap on Create starts it.
   let auto = 0
   tok.oninput = () => {
-    showSizes(false); had.hidden = true; priceBtn.hidden = false
+    showSizes(false); had.hidden = true; priceBtn.hidden = false; priceBtn.textContent = W.seePrice
     clearTimeout(auto)
     if (/^[A-Za-z0-9|._-]{40,256}$/.test(tok.value.trim())) auto = setTimeout(() => { if (!priceBtn.disabled && !priceBtn.hidden) priceBtn.onclick() }, 500)
   }
@@ -595,48 +591,10 @@ function provider(kind, given, lastError) {
   if (lastError) showErr(err, lastError)
 }
 
-// --- « I already started »: the resume link, the token (the servers weevils made there), or the server itself
-function resumeScreen() {
-  const err = errBox()
-  const link = h('input', { autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: `${location.host}/#job=…` })
-  const go = h('button', { class: 'btn' }, W.resumeGo)
-  go.onclick = async () => {
-    err.hidden = true
-    const ref = fromLink(link.value)
-    if (!ref) return showErr(err, W.badLink)
-    go.disabled = true
-    try { await route(await restore(ref)) } catch (e) { showErr(err, e.message === 'no_job' ? W.expired : e.message); go.disabled = false }
-  }
-  const tok = h('input', { type: 'password', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: '••••••••••••••••', 'aria-label': W.token })
-  const tokErr = errBox()
-  const list = h('div')
-  const find = (kind) => async (ev) => {
-    const btn = ev.currentTarget
-    tokErr.hidden = true
-    HOSTNAME = HOSTS[kind]
-    const token = tok.value.trim()
-    btn.disabled = true
-    try {
-      const job = await newJob(kind)
-      const r = await api(`/api/${kind}/servers`, { sid: job.sid, view: job.view, token })
-      if (!r.existing.length) {
-        list.replaceChildren(h('p', {}, W.noServers(HOSTS[kind])), h('button', { class: 'btn light', onclick: () => provider(kind, job) }, W.createOne))
-      } else {
-        list.replaceChildren(serverList(kind, r.existing, (s, b) => continueOn(kind, job, token, s, b, tokErr)))
-      }
-    } catch (e) { showErr(tokErr, e.message) } finally { btn.disabled = false }
-  }
-  show(band('b5', back(), h('h2', {}, W.resumeTitle), h('p', { class: 'small' }, W.resumeIntro)),
-    band('b1', h('h2', {}, W.byLink), h('p', { class: 'small' }, W.byLinkSub), link, go, err),
-    band('b4', h('h2', {}, W.byToken), h('p', { class: 'small' }, W.byTokenSub), tok,
-      h('button', { class: 'btn light', onclick: find('hetzner') }, W.findHz),
-      list, tokErr),
-    band('b2', h('h2', {}, W.byIp), h('p', { class: 'small' }, W.byIpSub), h('button', { class: 'btn light', onclick: () => ssh() }, W.byIpBtn)))
-}
-
 // --- (b) your VPS
-function ssh(given) {
-  if (!given) hit('chose', 'ssh')
+function ssh(given, reopened) {
+  if (!given && !reopened) hit('chose', 'ssh')
+  if (!given) step('vps')
   let job = given
   const err = errBox()
   const host = h('input', { inputmode: 'decimal', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: '203.0.113.7' })
@@ -728,15 +686,17 @@ function watch(job, onMove, onState, source) {
 function keepBox(job) {
   const link = resumeLink(job)
   if (!link) return null
-  const box = h('div', { class: 'quote' }, h('b', {}, W.keepTitle), h('div', { class: 'cmd' }, h('code', {}, link), copyBtn(link)),
-    h('a', { class: 'btn light', href: `mailto:?subject=${encodeURIComponent(W.mailSubject)}&body=${encodeURIComponent(`${W.mailBody}\n\n${link}\n`)}` }, W.mailMe))
-  if (navigator.share) box.append(h('button', { class: 'btn light', onclick: () => navigator.share({ title: W.mailSubject, url: link }).catch(() => {}) }, W.shareBtn))
+  const box = h('div', { class: 'quote' }, h('b', {}, W.keepTitle), h('div', { class: 'cmd' }, h('code', {}, link), copyBtn(link)))
+  box.append(navigator.share
+    ? h('button', { class: 'btn light', onclick: () => navigator.share({ title: W.mailSubject, url: link }).catch(() => {}) }, W.shareBtn)
+    : h('a', { class: 'btn light', href: `mailto:?subject=${encodeURIComponent(W.mailSubject)}&body=${encodeURIComponent(`${W.mailBody}\n\n${link}\n`)}` }, W.mailMe))
   box.append(h('p', { class: 'note' }, W.keepNote))
   return box
 }
 const hosted = (kind) => kind !== 'ssh' && kind !== 'pc'
-/** A fresh link, or the same server again: back through the token (the list of servers weevils made there). */
-const sameServer = (job) => () => { if (hosted(job.kind)) { HOSTNAME = HOSTS[job.kind]; resumeScreen() } else ssh() }
+/** « Try again », the one way after a failure or a lost key: the token again (its screen lists the server weevils made,
+ * « Continue on this one »), the VPS access again, or the computer's command again. */
+const tryAgain = (job) => () => { watching++; if (hosted(job.kind)) provider(HOSTS[job.kind] ? job.kind : 'hetzner'); else if (job.kind === 'ssh') ssh(); else { forget(); home() } }
 
 function progress(job, opts = {}) {
   const near = opts.near
@@ -745,9 +705,9 @@ function progress(job, opts = {}) {
   const bar = h('div', {}, '')
   const err = errBox()
   const clock = h('p', { class: 'small' }, '')
-  const slow = h('div', { class: 'quote', hidden: true }, h('p', {}, W.slow), h('button', { class: 'btn light', onclick: sameServer(job) }, W.againSame))
+  const slow = h('div', { class: 'quote', hidden: true }, h('p', {}, W.slow), h('button', { class: 'btn light', onclick: tryAgain(job) }, W.tryAgain))
   const head = near
-    ? [h('h2', {}, W.nearTitle), h('p', { class: 'small' }, W.nearSub), h('div', { class: 'row' }, h('button', { class: 'btn light', onclick: () => resumeScreen() }, W.resumeBtn)), h('button', { class: 'link', onclick: () => { watching++; home() } }, W.notMine)]
+    ? [h('h2', {}, W.nearTitle), h('p', { class: 'small' }, W.nearSub), h('button', { class: 'btn light', onclick: tryAgain(job) }, W.nearLink), h('button', { class: 'link', onclick: () => { watching++; home() } }, W.notMine)]
     : [h('h2', {}, W.progTitle)]
   const kept = near ? null : keepBox(job)
   show(band('b5', ...head, h('div', { class: 'bar' }, bar), h('ul', { class: 'steps' }, items), clock, slow, near ? null : h('p', { class: 'note' }, W.progNote), err), kept && band('b1', kept))
@@ -781,8 +741,7 @@ function progress(job, opts = {}) {
     if (s.state === 'failed') {
       clearInterval(timer)
       slow.hidden = true
-      const again = hosted(job.kind) && !near ? h('button', { class: 'btn', onclick: sameServer(job) }, W.failSame) : null
-      err.replaceChildren(h('b', {}, W.failTitle), h('br'), s.error || '', again, h('button', { class: 'btn light', onclick: () => { forget(); home() } }, W.retry))
+      err.replaceChildren(h('b', {}, W.failTitle), h('br'), s.error || '', h('button', { class: 'btn', onclick: tryAgain(job) }, W.tryAgain))
       err.hidden = false
     }
     if (s.state === 'done') {
@@ -824,7 +783,7 @@ async function ready(job, s) {
   } else {
     sec.push(h('p', {}, h('a', { href: url }, h('b', {}, url.replace(/^https?:\/\//, '')))))
     sec.push(h('p', { class: 'small' }, s.claimed ? W.claimedNote : job.kind === 'pc' ? W.noSeal : W.lostKey))
-    if (job.kind !== 'pc') sec.push(h('button', { class: 'btn', onclick: sameServer(job) }, W.freshLink))
+    if (job.kind !== 'pc') sec.push(h('button', { class: 'btn', onclick: tryAgain(job) }, W.freshLink))
   }
   sec.push(h('button', { class: 'link', onclick: () => { forget(); home() } }, W.startOver))
   const kept = keepBox(job)
@@ -864,6 +823,10 @@ hit('open')
     }
   }
   if (s) return route(keep(s))
+  // Left for Hetzner's site (or a reload) before anything started: the same screen, the token field waiting.
+  const at = savedStep()
+  if (at === 'hetzner') return provider('hetzner', null, '', true)
+  if (at === 'vps') return ssh(null, true)
   home()
   const shown = app.firstChild
   const j = await nearbyJob()

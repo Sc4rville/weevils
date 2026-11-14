@@ -61,6 +61,8 @@ export default defineMessages({
     cutWhy: (reason: string) =>
       ({ died: 'processus arrêté', dirty: 'arrêtée avec du travail non commité', quota: 'limite d’usage atteinte', auth: 'connexion expirée', api: 'erreur de l’API' })[reason] ?? 'arrêtée',
     cutSaid: (title: string, project: string, why: string) => `La session « ${title} » (${project}) a été coupée en plein travail : ${why}.`,
+    /** Several sessions stopped at the same moment (their terminal server closed): resumed by weevils, one calm line. */
+    healed: (n: number) => `${n} sessions se sont arrêtées en même temps : weevils les a relancées, elles reprennent là où elles en étaient.`,
     resumePrompt: (why: string, cwd: string) =>
       `Ta session a été coupée en plein travail (${why}). Reprends là où tu en étais : ton travail est sur disque dans ${cwd} (git status, git diff, fichiers non commités), relis tes derniers messages et relance ce qui tournait en arrière-plan et a été tué. Puis termine la tâche ; si elle était déjà finie, dis-le en une phrase.`,
   },
@@ -115,6 +117,7 @@ export default defineMessages({
     cutWhy: (reason: string) =>
       ({ died: 'process stopped', dirty: 'stopped with uncommitted work', quota: 'usage limit reached', auth: 'login expired', api: 'API error' })[reason] ?? 'stopped',
     cutSaid: (title: string, project: string, why: string) => `The session “${title}” (${project}) was cut off mid-work: ${why}.`,
+    healed: (n: number) => `${n} sessions stopped at the same moment: weevils restarted them and they pick up where they were.`,
     resumePrompt: (why: string, cwd: string) =>
       `Your session was cut off mid-work (${why}). Pick up where you left off: your work is on disk in ${cwd} (git status, git diff, uncommitted files), reread your last messages and restart whatever was running in the background and got killed. Then finish the task; if it was already done, say so in one sentence.`,
   },

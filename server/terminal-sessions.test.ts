@@ -187,3 +187,57 @@ describe('weevboss', () => {
     expect(keys()).toEqual(['enter'])
   })
 })
+
+describe('self-healing (the 07:56 / 09:01 crash)', () => {
+  it('sessions that vanish together are resumed, with one calm line instead of a cut-off alert each', async () => {
+    const ids = ['h1', 'h2', 'h3']
+    w = new Weevils()
+    const panes = ids.map((id, i) => ({ name: `wv-demo-heal${i}`, tool: 'claude' as Tool, sessionId: id, title: id, cwd, createdAt: NOW - 3600_000 }))
+    for (const [i, id] of ids.entries()) {
+      const tr = {
+        id, tool: 'claude' as Tool, file: `/nowhere/${id}.jsonl`, cwd, openedAt: NOW - 7200_000, lastActivityAt: NOW - 40 * 60_000, workStartedAt: NOW - 600_000,
+        phase: (i < 2 ? 'working' : 'idle') as Transcript['phase'], messages: [{ id: 'm0', role: 'user' as const, text: 'go', at: NOW - 7200_000 }], subagents: [], offset: 0, partial: '', queued: [],
+      }
+      w.store.byFile.set(tr.file, tr)
+      // At work: its process answers (a live pid), its last hook is a tool step.
+      w.hooks.set(id, { event: i < 2 ? 'PostToolUse' : 'Stop', at: NOW - 1000, pid: process.pid } as any)
+    }
+    const resumed: string[] = []
+    ;(w as any).resume = vi.fn(async (id: string) => { resumed.push(id); return { id } })
+    const posts: string[] = []
+    ;(w as any).foryou = { post: (text: string) => posts.push(text), sessionTurn: () => {}, resolveSession: () => {} }
+    const pushes = vi.fn()
+    ;(w as any).push = { enabled: true, send: pushes }
+    // Alive with their panes…
+    w.panes = panes
+    mux.listWv.mockResolvedValue(panes)
+    await (w as any).watchCuts()
+    // …then the tmux server is closed: every pane is gone in the same pass, and the agents with it.
+    mux.listWv.mockResolvedValue([])
+    for (const [i, id] of ids.entries()) w.hooks.set(id, { event: i < 2 ? 'PostToolUse' : 'Stop', at: NOW - 1000, pid: 2 ** 22 + i } as any)
+    await watch()
+    await (w as any).watchCuts()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(resumed.sort()).toEqual(['h1', 'h2'])
+    expect(posts).toEqual(['2 sessions stopped at the same moment: weevils restarted them and they pick up where they were.'])
+    ;(w as any).announceCuts?.()
+    expect(pushes).not.toHaveBeenCalled()
+    expect(w.sessions(Date.now()).filter((s) => s.status === 'interrupted').map((s) => s.id)).toEqual([])
+  })
+  it('one session that stops alone keeps the ordinary cut-off handling', async () => {
+    w = new Weevils()
+    const tr = { ...t, id: 'solo', file: '/nowhere/solo.jsonl', phase: 'working' as Transcript['phase'], lastActivityAt: NOW - 40 * 60_000 }
+    w.store.byFile.set(tr.file, tr)
+    w.hooks.set('solo', { event: 'PostToolUse', at: NOW - 1000, pid: 2 ** 22 + 9 } as any)
+    ;(w as any).resume = vi.fn()
+    const pane = { name: 'wv-demo-solo', tool: 'claude' as Tool, sessionId: 'solo', title: 'solo', cwd, createdAt: NOW - 3600_000 }
+    w.panes = [pane]
+    await (w as any).watchCuts()
+    mux.listWv.mockResolvedValue([])
+    await watch()
+    await (w as any).watchCuts()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect((w as any).resume).not.toHaveBeenCalled()
+    expect(w.sessions(Date.now()).find((s) => s.id === 'solo')?.status).toBe('interrupted')
+  })
+})

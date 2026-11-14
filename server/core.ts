@@ -967,6 +967,26 @@ export class Weevils {
     return undefined
   }
 
+  /** Resumes sessions stopped together, one after another; a session that can't be resumed falls back to a cut. */
+  private async healAll(ids: string[]) {
+    console.log(`[sessions] ${ids.length} sessions stopped together, resumed by weevils`)
+    let ok = 0
+    for (const id of ids) {
+      try {
+        await sleep(1500)
+        await this.resume(id)
+        ok++
+      } catch (e) {
+        console.error(`[sessions] ${id.slice(0, 8)} could not be resumed: ${(e as Error).message}`)
+        this.cuts.set(id, { at: Date.now(), reason: 'died' }) // i18n-ignore : code de raison, pas un texte affiché
+        this.cleared.delete(id)
+      }
+    }
+    if (ok) try { this.foryou?.post(tr(M).healed(ok), undefined, 'weevils') } catch { /* the sessions are back anyway */ }
+    this.persist()
+    this.bump()
+  }
+
   /**
    * Toutes les 2,5 s, après la relecture des panes : une session qui vivait et ne vit plus, sans fin voulue, est coupée si
    * elle travaillait (ou attendait une réponse), ou si son dossier garde du travail non commité.
@@ -983,6 +1003,15 @@ export class Weevils {
       if (prev?.alive && !alive && !this.endedCleanly(s.id, hook)) died.push({ id: s.id, cwd: s.cwd, status: prev.status })
     }
     this.lastSeen = seen
+    // Several sessions gone in the same pass: their terminal server was closed under them (a « tmux kill-server »).
+    // Not N cut-off alerts: the ones at work or waiting on a question are resumed, and one calm line says so.
+    if (died.length >= 2) {
+      const heal = died.filter((d) => d.status === 'working' || d.status === 'needs_user')
+      for (const d of heal) this.cleared.set(d.id, now)
+      if (heal.length) void this.healAll(heal.map((d) => d.id))
+      const rest = new Set(heal.map((d) => d.id))
+      died.splice(0, died.length, ...died.filter((d) => !rest.has(d.id)))
+    }
     for (const d of died) {
       const working = d.status === 'working' || d.status === 'needs_user'
       const reason: InterruptReason | null = working ? 'died' : d.cwd && (await gitDirty(d.cwd)) ? 'dirty' : null

@@ -528,8 +528,8 @@ export function VoicePicker({ userName }: { userName: string }) {
     }
   }
   const siriWord = (
-    <button key="__siri" className={`word ${siri === 'copied' ? 'on' : ''}`} onClick={() => void siriLink()} aria-label="Siri">
-      siri{siri === 'copied' ? <> <Icon name="check" /></> : siri === 'error' ? <> <Icon name="bang" /></> : null}
+    <button key="__siri" className={`word ${siri === 'copied' ? 'on' : ''}`} onClick={() => void siriLink()}>
+      {t.siri}{siri === 'copied' ? <> <Icon name="check" /></> : siri === 'error' ? <> <Icon name="bang" /></> : null}
     </button>
   )
   if (!list?.length) return <div className="in words">{siriWord}</div>

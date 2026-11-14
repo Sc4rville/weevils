@@ -4,8 +4,6 @@ export default defineMessages({
   fr: {
     language: 'langue',
     closeLanguage: 'fermer le choix de langue',
-    followsDefault: 'par défaut',
-    chosen: 'choisie ici',
     followDefault: (name: string) => `par défaut (${name})`,
     updates: 'mises à jour',
     updatesOn: 'automatiques',
@@ -16,8 +14,6 @@ export default defineMessages({
   en: {
     language: 'language',
     closeLanguage: 'close language choices',
-    followsDefault: 'default',
-    chosen: 'chosen here',
     followDefault: (name: string) => `default (${name})`,
     updates: 'updates',
     updatesOn: 'automatic',

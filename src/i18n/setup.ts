@@ -1,5 +1,14 @@
 import { defineMessages } from './index'
 
+// « OPENAI_API_KEY » → the brand (« OpenAI ») and whether it is a key or a token: never the raw variable name on screen.
+const BRANDS: Record<string, string> = { OPENAI: 'OpenAI', GITHUB: 'GitHub', GH: 'GitHub', HF: 'Hugging Face', HUGGINGFACE: 'Hugging Face', ANTHROPIC: 'Anthropic', CARTESIA: 'Cartesia', ELEVENLABS: 'ElevenLabs', OPENROUTER: 'OpenRouter', GEMINI: 'Gemini', GOOGLE: 'Google', MISTRAL: 'Mistral', GROQ: 'Groq', DEEPSEEK: 'DeepSeek', REPLICATE: 'Replicate', STRIPE: 'Stripe', VERCEL: 'Vercel', CLOUDFLARE: 'Cloudflare', NPM: 'npm', RUNPOD: 'RunPod', FAL: 'fal' }
+const secret = (name: string) => {
+  const token = /_TOKEN$/.test(name)
+  const prefix = name.replace(/_(API_KEY|TOKEN)$/, '')
+  const brand = BRANDS[prefix] ?? prefix.split('_').filter(Boolean).map((w) => BRANDS[w] ?? w[0] + w.slice(1).toLowerCase()).join(' ')
+  return { brand, token }
+}
+
 // src/ui/setup.tsx: the buttons under weevboss's messages and the questions of the setup flows (bottom field).
 export default defineMessages({
   fr: {
@@ -16,7 +25,7 @@ export default defineMessages({
     chip_author: 'autoriser quelqu’un',
     chip_quota: 'voir mon quota',
     chip_security: 'sécurité',
-    chip_shortcut: 'copier mon adresse siri',
+    chip_shortcut: 'ajouter à Siri',
     chip_install: 'ce qui manque',
     q_claude_code: 'le code affiché par la page de Claude',
     p_claude_code: 'colle le code ici',
@@ -30,11 +39,11 @@ export default defineMessages({
     o_none: 'j’en ai pas, aide-moi',
     q_machine_host: 'son adresse IP (ou son nom)',
     p_machine_host: '203.0.113.7',
-    q_machine_user: 'utilisateur (vide : root)',
+    q_machine_user: 'nom d’utilisateur (vide si tu ne sais pas)',
     p_machine_user: 'root',
-    q_machine_password: 'le mot de passe envoyé par l’hébergeur (vide si ma clé est déjà posée)',
+    q_machine_password: 'le mot de passe envoyé par l’hébergeur (vide si tu as déjà ajouté la clé de weevils)',
     p_machine_password: 'mot de passe',
-    q_reach_domain: 'ton nom de domaine (vide : Tailscale)',
+    q_reach_domain: 'ton nom de domaine (vide : Tailscale, gratuit)',
     p_reach_domain: 'weevils.mon-domaine.fr',
     addMachine: 'brancher une autre machine',
     q_devil_url: 'adresse du modèle, compatible OpenAI',
@@ -61,8 +70,14 @@ export default defineMessages({
     p_author_color: '#ff6b8a',
     step: (i: number, n: number) => `${i}/${n}`,
     secretNote: 'reste sur ta machine',
-    keyChip: (name: string) => `coller ${name}`,
-    q_key: (name: string) => name,
+    keyChip: (name: string) => {
+      const { brand, token } = secret(name)
+      return token ? `colle ton jeton ${brand}` : `colle ta clé ${brand}`
+    },
+    q_key: (name: string) => {
+      const { brand, token } = secret(name)
+      return token ? `ton jeton ${brand}` : `ta clé ${brand}`
+    },
     p_key: 'colle la clé ici',
     cancel: 'annuler',
     failed: 'pas passé, réessaie',
@@ -86,7 +101,7 @@ export default defineMessages({
     chip_author: 'allow someone',
     chip_quota: 'see my quota',
     chip_security: 'security',
-    chip_shortcut: 'copy my siri address',
+    chip_shortcut: 'add to Siri',
     chip_install: 'what’s missing',
     q_claude_code: 'the code shown by Claude’s page',
     p_claude_code: 'paste the code here',
@@ -100,11 +115,11 @@ export default defineMessages({
     o_none: 'I don’t have one, help me',
     q_machine_host: 'its IP address (or its name)',
     p_machine_host: '203.0.113.7',
-    q_machine_user: 'user (empty: root)',
+    q_machine_user: 'user name (leave empty if unsure)',
     p_machine_user: 'root',
-    q_machine_password: 'the password your host sent you (empty if my key is already there)',
+    q_machine_password: 'the password your host sent you (leave empty if you already added weevils’ key)',
     p_machine_password: 'password',
-    q_reach_domain: 'your domain name (empty: Tailscale)',
+    q_reach_domain: 'your domain name (leave empty to use Tailscale, free)',
     p_reach_domain: 'weevils.my-domain.com',
     addMachine: 'plug in another machine',
     q_devil_url: 'model address, OpenAI-compatible',
@@ -131,8 +146,8 @@ export default defineMessages({
     p_author_color: '#ff6b8a',
     step: (i: number, n: number) => `${i}/${n}`,
     secretNote: 'stays on your machine',
-    keyChip: (name: string) => `paste ${name}`,
-    q_key: (name: string) => name,
+    keyChip: (name: string) => `paste your ${secret(name).brand} ${secret(name).token ? 'token' : 'key'}`,
+    q_key: (name: string) => `your ${secret(name).brand} ${secret(name).token ? 'token' : 'key'}`,
     p_key: 'paste the key here',
     cancel: 'cancel',
     failed: 'didn’t go through, try again',

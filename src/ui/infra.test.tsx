@@ -1,0 +1,182 @@
+// @vitest-environment happy-dom
+// Machine, files and subscription pages: no ssh command to copy, no reverse DNS, no load average or swap, no terminal
+// prompt glyph, no port as a server's name, no « machine:/path » kicker, no raw error text. What stays reachable:
+// opening a server, walking the files, adding a machine, opening a session from the usage list.
+import { act } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import type { Snapshot } from '../../shared/api'
+import type { FsListing, InfraDetail, UsageInfo, UsageToday } from '../../shared/infra'
+
+const state = vi.hoisted(() => ({
+  snap: null as unknown as Snapshot,
+  push: vi.fn(),
+  infra: null as unknown as InfraDetail | Error,
+  fs: null as unknown as FsListing | Error,
+  usage: null as unknown as UsageInfo,
+  today: { rows: [] } as UsageToday,
+  setup: [] as string[],
+}))
+vi.mock('./app-context', () => ({ useApp: () => ({ snap: state.snap, push: state.push, now: Date.now(), colors: {} }) }))
+vi.mock('./shell', () => ({
+  Shell: ({ children, title, kicker, meta }: { children: React.ReactNode; title: string; kicker?: string; meta?: string }) => (
+    <section>
+      <p data-kicker>{kicker}</p>
+      <h1>{title}</h1>
+      <p data-meta>{meta}</p>
+      {children}
+    </section>
+  ),
+}))
+vi.mock('./setup', () => ({ askSetup: (b: string) => void state.setup.push(b) }))
+vi.mock('../api', () => ({
+  api: {
+    infra: async () => (state.infra instanceof Error ? Promise.reject(state.infra) : state.infra),
+    fs: async () => (state.fs instanceof Error ? Promise.reject(state.fs) : state.fs),
+    usage: async () => state.usage,
+    usageToday: async () => state.today,
+  },
+}))
+
+const { setLang } = await import('../i18n')
+const { InfraPage, FsPage, UsageLine, UsagePage } = await import('./infra')
+const { Icon } = await import('./icons')
+
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+const terminalIcon = renderToStaticMarkup(<Icon name="terminal" />).match(/ d="([^"]+)"/)![1]
+
+const detail = (over: Partial<InfraDetail> = {}): InfraDetail => ({
+  id: 'vps',
+  name: 'vps',
+  weevboss: true,
+  facts: { hostname: 'srv1', user: 'scarville', os: 'Ubuntu 26.04', kernel: '7.0', arch: 'x86_64', virt: 'kvm', ip: '203.0.113.7', publicIp: true, rdns: 'srv1.hstgr.cloud', sshPort: 2222, ssh: [] },
+  offer: null,
+  reach: [{ from: 'pc', alias: 'vps' }] as InfraDetail['reach'],
+  cores: 4,
+  memTotal: 16 * 1024 ** 3,
+  memUsed: 8 * 1024 ** 3,
+  swapTotal: 2 * 1024 ** 3,
+  swapUsed: 1024 ** 3,
+  diskTotal: 0,
+  diskUsed: 0,
+  cpu: 42,
+  load: [0.52, 0.31, 0.2],
+  uptime: 3600_000,
+  day: [],
+  episodes: [],
+  days: [],
+  servers: [
+    { port: 4173, name: 'vite', dir: '/home/alex/projects/mygame', url: 'https://mygame.example.tech' },
+    { port: 8080, name: 'caddy' },
+  ],
+  consumers: [{ kind: 'process', label: 'node', count: 1, mem: 1024 ** 3, cpu: 12, parts: [] }] as unknown as InfraDetail['consumers'],
+  advice: [],
+  ...over,
+})
+
+let root: Root, host: HTMLDivElement
+beforeEach(() => {
+  setLang('en')
+  state.push.mockClear()
+  state.setup = []
+  state.snap = { machines: [{ id: 'vps', name: 'vps', online: true }], sessions: [], projects: [{ id: 'p', name: 'mygame', repos: ['mygame'] }] } as unknown as Snapshot
+  state.infra = detail()
+  host = document.createElement('div')
+  document.body.append(host)
+  root = createRoot(host)
+})
+afterEach(async () => {
+  await act(async () => root.unmount())
+  host.remove()
+  setLang(null)
+})
+const render = async (node: React.ReactNode) => {
+  await act(async () => root.render(node))
+  await act(async () => new Promise((r) => setTimeout(r, 10)))
+}
+const rows = () => [...host.querySelectorAll('button')]
+const row = (txt: string) => rows().find((b) => b.textContent?.includes(txt))
+
+it('machine page: no ssh commands, reverse DNS, load average, swap, arch or terminal glyph', async () => {
+  await render(<InfraPage machine="vps" />)
+  const text = host.textContent ?? ''
+  expect(text).toContain('weevboss runs here')
+  expect(text).toContain('Ubuntu 26.04')
+  for (const gone of ['ssh', 'connect', 'from pc', 'copied', 'reverse DNS', 'srv1.hstgr.cloud', '203.0.113.7', 'load', '0.52', 'swap', 'x86_64', 'kvm']) expect(text).not.toContain(gone)
+  expect(text).toContain('42 %')
+  expect(host.innerHTML).not.toContain(terminalIcon)
+  expect(text).toContain('node')
+})
+
+it('machine page: a server is named by its project, never by its port or path, and still opens', async () => {
+  const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+  await render(<InfraPage machine="vps" />)
+  const text = host.textContent ?? ''
+  expect(text).not.toContain('4173')
+  expect(text).not.toContain('8080')
+  expect(text).not.toContain('/home/alex/projects/mygame')
+  await act(async () => row('mygame')!.click())
+  expect(open).toHaveBeenCalledWith('https://mygame.example.tech', '_blank', 'noopener')
+  expect(row('caddy')).toBeTruthy()
+  open.mockRestore()
+})
+
+it('machine page: one plain « add a machine » line, still asking weevboss', async () => {
+  await render(<InfraPage machine="vps" />)
+  const text = host.textContent ?? ''
+  expect(text).not.toContain('other machines')
+  expect(text).not.toContain('the host, the address, the password')
+  await act(async () => row('add a machine')!.click())
+  expect(state.setup).toEqual(['machine'])
+})
+
+it('machine page: a failed read says so in plain words, never the raw error', async () => {
+  state.infra = new Error('failed (502) ECONNREFUSED')
+  await render(<InfraPage machine="vps" />)
+  expect(host.textContent).toContain('can’t read this machine right now, retrying')
+  expect(host.textContent).not.toContain('ECONNREFUSED')
+})
+
+it('files: folder name as kicker, no « machine:/path », « home folder » instead of ~, plain error', async () => {
+  state.fs = { path: '/home/alex/projects', home: '/home/alex', entries: [{ name: 'mygame', dir: true, size: 0 }] }
+  await render(<FsPage machine="vps" path="/home/alex/projects" />)
+  expect(host.querySelector('[data-kicker]')!.textContent).toBe('scarville')
+  expect(host.querySelector('[data-meta]')!.textContent).toBe('1 item')
+  expect(host.textContent).not.toContain('vps:')
+  await act(async () => row('mygame/')!.click())
+  expect(state.push).toHaveBeenCalledWith({ kind: 'fs', machine: 'vps', path: '/home/alex/projects/mygame' })
+
+  state.fs = { path: '/', home: '/home/alex', entries: [], error: 'EACCES: permission denied' }
+  await render(<FsPage machine="vps" path="/" />)
+  expect(host.textContent).not.toContain('~')
+  expect(host.textContent).not.toContain('EACCES')
+  expect(host.textContent).toContain('can’t open this folder')
+  await act(async () => row('home folder')!.click())
+  expect(state.push).toHaveBeenCalledWith({ kind: 'fs', machine: 'vps', path: '/home/alex' })
+})
+
+it('subscription: one figure per tool, no lone « ! », no raw error, no machine id or terminal glyph', async () => {
+  state.usage = {
+    claude: { ok: true, windows: [{ kind: 'week', percent: 40, resetsAt: null }, { kind: 'session', percent: 12, resetsAt: null }], source: 'x', at: Date.now() },
+    codex: { ok: true, windows: [{ kind: 'week', percent: 3, resetsAt: null }], source: 'x', at: Date.now() },
+  } as UsageInfo
+  await render(<UsageLine />)
+  expect(host.textContent).toContain('Claude 40% this week · Codex 3%')
+  expect(host.textContent).not.toContain('5 h')
+
+  state.usage = { claude: { ok: false, windows: [], source: 'x', at: 0, error: 'HTTP 429' }, codex: { ok: false, windows: [], source: 'x', at: 0 } } as UsageInfo
+  await render(<UsageLine />)
+  expect(host.textContent).not.toContain('!')
+
+  state.snap.sessions = [{ id: 's1', title: 'refonte' }] as Snapshot['sessions']
+  state.today = { rows: [{ id: 's1', machine: 'vps-7f3a', tool: 'codex', projectId: 'p', title: 'refonte', weight: 1, tokens: 1000 }] } as UsageToday
+  await render(<UsagePage />)
+  const text = host.textContent ?? ''
+  expect(text).toContain('no figures yet, trying again soon')
+  expect(text).not.toContain('HTTP 429')
+  expect(text).not.toContain('vps-7f3a')
+  expect(host.innerHTML).not.toContain(terminalIcon)
+  await act(async () => row('refonte')!.click())
+  expect(state.push).toHaveBeenCalledWith({ kind: 'session', id: 's1' })
+})

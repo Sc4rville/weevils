@@ -86,37 +86,6 @@
   white-space: nowrap;
 }
 
-/* Terminal : encre, texte de la couleur du rectangle, collé en bas (le texte monte). */
-.sw-term {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  padding: 6px 7px;
-  color: var(--c);
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  font-size: 0.5625rem;
-  line-height: 1.35;
-}
-
-.sw-term-line {
-  display: block;
-  white-space: pre;
-  overflow: hidden;
-  text-overflow: clip;
-  min-height: 1.35em;
-}
-
-.sw-cursor {
-  display: inline-block;
-  width: 0.6em;
-  height: 1.1em;
-  vertical-align: text-bottom;
-  background: currentColor;
-  animation: sw-blink 1s steps(1) infinite;
-}
-
 /* Tourne : un carré plein vert fluo dans le coin ; démarre : il clignote ; en échec : un « ! » d'encre sur la couleur. */
 .sw-run {
   position: absolute;
@@ -148,7 +117,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sw-cursor,
   .sw-run.blink {
     animation: none;
   }

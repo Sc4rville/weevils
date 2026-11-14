@@ -140,7 +140,8 @@ describe('tips — rules', () => {
     const i = input({ snap: snap({ sessions }), reapMs: 2 * H })
     const card = personalTips(i).find((c) => c.rule === 'idle-unmanaged')!
     expect(rules(i)).toEqual(['waiting', 'idle-unmanaged'])
-    expect(card.text).toBe('2 terminal sessions idle for over 12 h — weevils can’t close them')
+    expect(card.text).toBe('2 sessions started outside weevils are idle for over 12 h')
+    expect(card.text).not.toMatch(/terminal/)
     expect(card.accept).toBe('ask weevboss')
     expect(card.action).toEqual({ kind: 'boss', text: expect.stringContaining('- “refactor the parser” on pc, in /home/u/projects/parser (session t1, nothing for 20 h)') })
     expect(card.action).toEqual({ kind: 'boss', text: expect.stringContaining('close nothing without my go-ahead') })
@@ -154,7 +155,8 @@ describe('tips — rules', () => {
     try {
       const s = session({ id: 't1', origin: 'terminal', controllable: false, hasScreen: false, status: 'idle', lastActivityAt: NOW - 20 * H })
       const [card] = personalTips(input({ snap: snap({ sessions: [s] }), reapMs: 2 * H }))
-      expect(card.text).toBe('une session de terminal dort depuis hier — weevils ne peut pas la fermer')
+      expect(card.text).toBe('une session lancée hors de weevils dort depuis hier')
+      expect(card.action).toEqual({ kind: 'boss', text: expect.not.stringContaining('terminal') })
       expect(card.action).toEqual({ kind: 'boss', text: expect.stringContaining('ne ferme rien sans mon accord') })
     } finally {
       setLang('en')

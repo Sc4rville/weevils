@@ -13,8 +13,8 @@ import { PreviewChat } from './preview-chat'
 import { GoneBack, useGoneTitle } from './gone'
 
 // « Mes logiciels » : tout ce que l'utilisateur construit ou fait tourner, un rectangle de couleur par logiciel (même
-// grille que les repos). Dedans, son interface (capture) ou, sans interface, sa vraie sortie qui se tape comme dans un
-// terminal ; en bas, la barre d'avancement en trois phases. Un tap l'ouvre et le lance (le serveur fait le reste).
+// grille que les repos). Dedans, son interface (capture) ou, sans capture, une phrase simple (jamais de sortie brute) ;
+// en bas, la barre d'avancement en trois phases. Un tap l'ouvre et le lance (le serveur fait le reste).
 
 /** Couleur par place (attribuée à la première vue, puis gardée) : le même pas que la grille des repos (deux voisins n'ont jamais une teinte proche). */
 const tint = (i: number) => ({ '--c': `var(--p${(i * 7) % 16})` }) as CSSProperties
@@ -48,39 +48,6 @@ export function fromLinear(v: number): { phase: Phase; percent: number } {
   const x = Math.max(0, Math.min(300, Math.round(v)))
   const phase = Math.min(3, Math.floor(x / 100) + 1) as Phase
   return { phase, percent: x - (phase - 1) * 100 }
-}
-
-/** Les lignes de l'aperçu : la vraie sortie, précédée de la vraie commande quand ce sont les commits (git log). */
-export function termLines(sw: Pick<Software, 'tail' | 'tailSource'>): string[] {
-  const lines = sw.tail.filter((l) => l.trim() !== '')
-  return sw.tailSource === 'git' && lines.length ? ['$ git log', ...lines] : lines
-}
-
-/** Machine à écrire : ligne en cours, caractères tapés, pas d'attente (entre deux lignes, puis avant de reprendre). */
-export interface Typing {
-  line: number
-  ch: number
-  wait: number
-}
-export const TYPING0: Typing = { line: 0, ch: 0, wait: 0 }
-/** Pas d'attente entre deux lignes, et à la fin avant de recommencer. */
-const GAP = 3
-const PAUSE = 28
-
-/** Un pas : quelques caractères de plus (une ligne prend au plus 8 pas, quelle que soit sa longueur), puis la suivante ; en boucle. */
-export function step(s: Typing, lines: string[]): Typing {
-  if (!lines.length) return TYPING0
-  if (s.line >= lines.length) return s.wait < PAUSE ? { ...s, wait: s.wait + 1 } : TYPING0
-  const len = lines[s.line].length
-  if (s.ch >= len) return s.wait < GAP ? { ...s, wait: s.wait + 1 } : { line: s.line + 1, ch: 0, wait: 0 }
-  return { line: s.line, ch: Math.min(len, s.ch + Math.max(3, Math.ceil(len / 8))), wait: 0 }
-}
-
-/** Ce qui est à l'écran : les lignes déjà tapées et celle en cours, les `rows` dernières (le texte monte). */
-export function frame(lines: string[], s: Typing, rows: number): { lines: string[]; typing: boolean } {
-  if (s.line >= lines.length) return { lines: lines.slice(-rows), typing: false }
-  const shown = [...lines.slice(0, s.line), lines[s.line].slice(0, s.ch)]
-  return { lines: shown.slice(-rows), typing: true }
 }
 
 const base = (p: string) => p.split('/').filter(Boolean).pop() ?? p
@@ -231,7 +198,7 @@ function ErrorBand({ text }: { text: string }) {
 // ---------------------------------------------------------------------------
 // La grille.
 
-export function Tile({ sw, slot, onOpen }: { sw: Software; slot: number; top: boolean; onOpen: () => void }) {
+export function Tile({ sw, slot, onOpen }: { sw: Software; slot: number; onOpen: () => void }) {
   const t = useT(M)
   const ref = useRef<HTMLButtonElement>(null)
   /** La capture qui n'a pas pu se charger : la suivante (autre horodatage) retente. */
@@ -267,20 +234,6 @@ export function SoftwaresPage() {
   /** L'ordre affiché, et la place de couleur de chaque logiciel (donnée à la première vue, gardée tant que la page vit). */
   const order = useRef<Software[] | null>(null)
   const slots = useRef(new Map<string, number>())
-  /** Page du dessus et onglet visible : sinon aucun terminal ne s'anime (l'IntersectionObserver ne voit pas la page posée dessus). */
-  const [top, setTop] = useState(true)
-
-  useEffect(() => {
-    const check = () => setTop(!document.hidden && onTop())
-    check()
-    const id = window.setInterval(check, 1000)
-    document.addEventListener('visibilitychange', check)
-    return () => {
-      window.clearInterval(id)
-      document.removeEventListener('visibilitychange', check)
-    }
-  }, [])
-
   useEffect(() => {
     let off = false
     let first = true
@@ -323,7 +276,7 @@ export function SoftwaresPage() {
       {err && <ErrorBand text={err} />}
       <div className="sw-grid">
         {list?.map((sw) => (
-          <Tile key={sw.id} sw={sw} slot={slots.current.get(sw.id) ?? 0} top={top} onOpen={() => open(sw)} />
+          <Tile key={sw.id} sw={sw} slot={slots.current.get(sw.id) ?? 0} onOpen={() => open(sw)} />
         ))}
       </div>
     </Shell>
@@ -431,7 +384,7 @@ export function SoftwarePage({ id }: { id: string }) {
   // Seul ce que weevils a lancé lui-même s'arrête d'ici : pas ce qu'un service ou un conteneur fait tourner en permanence.
   const canStop = live && !!sw.owned
   const frame = !!sw.url && !!sw.embeddable && sw.run !== 'starting' && !sameOrigin(sw.url, location.origin)
-  const meta = [sw.machine, sw.port ? `:${sw.port}` : '', t[sw.run], sw.blurb].filter(Boolean).join(' · ')
+  const meta = [t[sw.run], sw.blurb].filter(Boolean).join(' · ')
 
   return (
     <Shell slot={slot} kicker={t.kicker} title={sw.name} meta={meta}

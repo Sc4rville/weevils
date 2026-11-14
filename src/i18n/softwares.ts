@@ -2,8 +2,8 @@ import { defineMessages } from './index'
 
 export default defineMessages({
   fr: {
-    noPreview: 'Aperçu visuel indisponible',
-    noVisualInterface: 'Sans interface visuelle',
+    noPreview: 'Pas encore d’aperçu',
+    noVisualInterface: 'Tourne en coulisse',
     phaseName: (phase: number): string => phase === 1 ? 'Première version en préparation' : phase === 2 ? 'Version utilisable' : 'Avec des utilisateurs',
     title: 'logiciels',
     kicker: 'logiciels',
@@ -16,7 +16,6 @@ export default defineMessages({
     openTab: 'ouvrir dans un nouvel onglet',
     frame: 'interface du logiciel',
     shot: (name: string) => `capture de ${name}`,
-    terminal: (name: string) => `sortie de ${name}`,
     progress: (phase: number, percent: number) =>
       `${phase === 1 ? 'vers une première version' : phase === 2 ? 'version utilisable' : 'utilisateurs'}, phase ${phase} sur 3, ${percent} %`,
     fix: 'toucher pour corriger, appui long pour revenir à l’estimation',
@@ -24,8 +23,8 @@ export default defineMessages({
     notFound: 'introuvable',
   },
   en: {
-    noPreview: 'Visual preview unavailable',
-    noVisualInterface: 'No visual interface',
+    noPreview: 'No preview yet',
+    noVisualInterface: 'Runs in the background',
     phaseName: (phase: number): string => phase === 1 ? 'First version in preparation' : phase === 2 ? 'Usable version' : 'Used by people',
     title: 'software',
     kicker: 'software',
@@ -38,7 +37,6 @@ export default defineMessages({
     openTab: 'open in a new tab',
     frame: 'software interface',
     shot: (name: string) => `screenshot of ${name}`,
-    terminal: (name: string) => `output of ${name}`,
     progress: (phase: number, percent: number) =>
       `${phase === 1 ? 'toward a first version' : phase === 2 ? 'usable version' : 'users'}, phase ${phase} of 3, ${percent}%`,
     fix: 'tap to correct, long press to go back to the estimate',

@@ -11,10 +11,10 @@ export default defineMessages({
       `${n > 1 ? `${n} sessions dorment` : 'une session dort'} ${sinceYesterday ? 'depuis hier' : 'depuis plus de 12 h'} — je ${n > 1 ? 'les' : 'la'} ferme ?`,
     closeThem: (n: number): string => (n > 1 ? 'les fermer' : 'la fermer'),
     idleUnmanaged: (n: number, sinceYesterday: boolean) =>
-      `${n > 1 ? `${n} sessions de terminal dorment` : 'une session de terminal dort'} ${sinceYesterday ? 'depuis hier' : 'depuis plus de 12 h'} — weevils ne peut pas ${n > 1 ? 'les' : 'la'} fermer`,
+      `${n > 1 ? `${n} sessions lancées hors de weevils dorment` : 'une session lancée hors de weevils dort'} ${sinceYesterday ? 'depuis hier' : 'depuis plus de 12 h'}`,
     unmanagedLine: (title: string, machine: string, cwd: string, id: string, since: string) => `- « ${title} » sur ${machine}, dans ${cwd} (session ${id}, rien depuis ${since})`,
     idleUnmanagedAsk: (n: number, lines: string) =>
-      `${n > 1 ? 'ces sessions sont ouvertes' : 'cette session est ouverte'} dans un terminal que weevils ne pilote pas, et ${n > 1 ? 'ne font' : 'ne fait'} plus rien depuis plus de 12 h :\n${lines}\nregarde ce que c’est (processus, terminal) et dis-moi ${n > 1 ? 'lesquelles on peut fermer' : 'si on peut la fermer'} — ne ferme rien sans mon accord.`,
+      `${n > 1 ? 'ces sessions ont été lancées' : 'cette session a été lancée'} hors de weevils, et ${n > 1 ? 'ne font' : 'ne fait'} plus rien depuis plus de 12 h :\n${lines}\nregarde ce que c’est (le processus derrière) et dis-moi ${n > 1 ? 'lesquelles on peut fermer' : 'si on peut la fermer'} — ne ferme rien sans mon accord.`,
     closed: (n: number): string => (n > 1 ? `${n} sessions fermées` : 'session fermée'),
     waiting: (title: string, since: string) => `« ${title} » t’attend depuis ${since}`,
     openIt: 'y aller',
@@ -38,10 +38,10 @@ export default defineMessages({
       `${n > 1 ? `${n} sessions idle` : 'one session idle'} ${sinceYesterday ? 'since yesterday' : 'for over 12 h'} — close ${n > 1 ? 'them' : 'it'}?`,
     closeThem: (n: number): string => (n > 1 ? 'close them' : 'close it'),
     idleUnmanaged: (n: number, sinceYesterday: boolean) =>
-      `${n > 1 ? `${n} terminal sessions idle` : 'one terminal session idle'} ${sinceYesterday ? 'since yesterday' : 'for over 12 h'} — weevils can’t close ${n > 1 ? 'them' : 'it'}`,
+      `${n > 1 ? `${n} sessions started outside weevils are idle` : 'one session started outside weevils is idle'} ${sinceYesterday ? 'since yesterday' : 'for over 12 h'}`,
     unmanagedLine: (title: string, machine: string, cwd: string, id: string, since: string) => `- “${title}” on ${machine}, in ${cwd} (session ${id}, nothing for ${since})`,
     idleUnmanagedAsk: (n: number, lines: string) =>
-      `${n > 1 ? 'these sessions are' : 'this session is'} open in a terminal weevils doesn't drive, and ${n > 1 ? 'have' : 'has'} done nothing for over 12 h:\n${lines}\nfind out what ${n > 1 ? 'they are' : 'it is'} (process, terminal) and tell me ${n > 1 ? 'which ones can be closed' : 'whether it can be closed'} — close nothing without my go-ahead.`,
+      `${n > 1 ? 'these sessions were' : 'this session was'} started outside weevils, and ${n > 1 ? 'have' : 'has'} done nothing for over 12 h:\n${lines}\nfind out what ${n > 1 ? 'they are' : 'it is'} (the process behind ${n > 1 ? 'them' : 'it'}) and tell me ${n > 1 ? 'which ones can be closed' : 'whether it can be closed'} — close nothing without my go-ahead.`,
     closed: (n: number): string => (n > 1 ? `${n} sessions closed` : 'session closed'),
     waiting: (title: string, since: string) => `“${title}” has been waiting for you for ${since}`,
     openIt: 'open it',

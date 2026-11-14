@@ -60,11 +60,12 @@ describe("la langue de l'app", () => {
 
   it('un tap sur la ligne « langue » ouvre le choix sans rien changer', () => {
     act(() => root.render(<PrefLines />))
-    expect(rows()[0].textContent).toBe('language · Englishdefault')
+    // No « default » / « chosen here » meta on the line: the open choices already show it with a ✓.
+    expect(rows()[0].textContent).toBe('language · English')
     tap(rows()[0])
     expect(getLang()).toBe('en')
     expect(posted).toEqual([])
-    expect(rows().map((r) => r.textContent)).toEqual(['language · Englishdefault', 'default (English)', 'English', 'Français'])
+    expect(rows().map((r) => r.textContent)).toEqual(['language · English', 'default (English)', 'English', 'Français'])
     // Un second tap sur la ligne la referme, toujours en anglais.
     tap(rows()[0])
     expect(rows()).toHaveLength(1)

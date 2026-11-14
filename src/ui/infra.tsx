@@ -12,7 +12,6 @@ import { CodeFile } from './codeview'
 import { ago, durLong } from './format'
 import { Icon } from './icons'
 import { Shell } from './shell'
-import { copyText } from './copy'
 import { askSetup } from './setup'
 import './infra.css'
 
@@ -84,6 +83,9 @@ function DayChart({ points, episodes }: { points: InfraPoint[]; episodes: InfraD
   )
 }
 
+/** A local server by what it serves: the project folder's name (« mygame »), else the program (« caddy »); never the port. */
+const serverName = (s: { name: string; dir?: string }) => (s.dir ? s.dir.replace(/\/+$/, '').split('/').pop() || s.name : s.name)
+
 const hhmm = (t: number) => new Date(t).toLocaleTimeString(intlLocale(), { hour: '2-digit', minute: '2-digit' })
 
 /** Une ligne « clé · valeur », la valeur en gras ; absente quand la valeur est inconnue. */
@@ -114,7 +116,6 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
   const [id, setId] = useState(machine ?? fromProject ?? snap.machines[0]?.id ?? '')
   const [d, setD] = useState<InfraDetail | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [copied, setCopied] = useState<string | null>(null)
   useEffect(() => {
     let off = false
     setErr(null)
@@ -135,9 +136,7 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
   const f = x?.facts
   const sessions = snap.sessions.filter((s) => s.machineId === id && s.status !== 'done')
   const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0)
-  const copy = (cmd: string) => void copyText(cmd).then((ok) => ok && (setCopied(cmd), setTimeout(() => setCopied(null), 1500)))
   const place = f ? [f.city, f.region !== f.city ? f.region : undefined, f.country].filter(Boolean).join(', ') : ''
-  const direct = f?.ip && f.publicIp && f.sshPort ? `ssh ${f.sshPort !== 22 ? `-p ${f.sshPort} ` : ''}${f.user}@${f.ip}` : ''
   const offer = x?.offer
   // La première ligne sous le titre : qui l'héberge (ou quel matériel), l'offre, où.
   const headline = f && !stale ? [f.provider ?? f.hardware, offer?.plan, place].filter(Boolean).join(' · ') : ''
@@ -165,7 +164,7 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
         {err && (!x || stale) && (
           <Notice eventId={noticeKey('error:infra', location.pathname, location.hash, err)} className="band invert" role="alert">
             <div className="in meta" style={{ paddingBlock: 12 }}>
-              ! {err}
+              {t.cantRead}
             </div>
           </Notice>
         )}
@@ -177,30 +176,26 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
             <Kv k={t.cpu} v={`${t.cores(x.cores)}${f.cpuModel ? ` · ${f.cpuModel}` : ''}`} />
             <Kv k={t.mem} v={t.size(x.memTotal)} />
             <Kv k={t.disk} v={x.diskTotal ? t.size(x.diskTotal) : null} />
-            <Kv k={t.system} v={[f.os, f.arch, f.virt].filter(Boolean).join(' · ')} />
+            <Kv k={t.system} v={f.os} />
             <Kv k={t.region} v={place} />
             <Kv k={t.network} v={f.network} />
             <Kv k={t.upSince} v={durLong(x.uptime)} />
-            <Kv k="weevboss" v={x.weevboss ? t.here : null} />
-
-            {(x.reach.length > 0 || direct || f.rdns) && <div className="in label">{t.connect}</div>}
-            {x.reach.map((r) => (
-              <Kv key={`${r.from}:${r.alias}`} k={t.from(r.from)} v={copied === `ssh ${r.alias}` ? t.copied : `ssh ${r.alias}`} onClick={() => copy(`ssh ${r.alias}`)} />
-            ))}
-            <Kv k={f.ip ?? ''} v={direct ? (copied === direct ? t.copied : direct) : null} onClick={() => copy(direct)} />
-            <Kv k={t.rdns} v={f.rdns} />
+            {x.weevboss && (
+              <div className="in kv">
+                <span className="v">{t.bossHere}</span>
+              </div>
+            )}
 
             <div className="in label">{t.loadLabel}</div>
-            <Stat label={t.cpu} pct={x.cpu} level={levelOf1(x.cpu, 'cpu')} text={`${x.cpu} % · ${t.load(...x.load)}`} />
+            <Stat label={t.cpu} pct={x.cpu} level={levelOf1(x.cpu, 'cpu')} text={`${x.cpu} %`} />
             <Stat label={t.mem} pct={pct(x.memUsed, x.memTotal)} level={levelOf1(pct(x.memUsed, x.memTotal), 'mem')} text={t.of(t.size(x.memUsed), t.size(x.memTotal))} />
-            {x.swapTotal > 0 && <Stat label={t.swap} pct={pct(x.swapUsed, x.swapTotal)} level={pct(x.swapUsed, x.swapTotal) > 50 ? 'warn' : 'ok'} text={t.of(t.size(x.swapUsed), t.size(x.swapTotal))} />}
             {x.diskTotal > 0 && <Stat label={t.disk} pct={pct(x.diskUsed, x.diskTotal)} level={pct(x.diskUsed, x.diskTotal) >= 92 ? 'crit' : pct(x.diskUsed, x.diskTotal) >= 85 ? 'warn' : 'ok'} text={t.of(t.size(x.diskUsed), t.size(x.diskTotal))} />}
 
             {x.consumers.length > 0 && <div className="in label">{t.consumers}</div>}
             {x.consumers.map((c, i) => (
               <Line
                 key={`${c.kind}:${c.label}:${i}`}
-                ch={c.kind === 'session' ? '*' : c.kind === 'container' ? '#' : '>_'}
+                ch={c.kind === 'session' ? '*' : c.kind === 'container' ? '#' : '·'}
                 go={c.sessionId ? '→' : null}
                 onClick={c.sessionId ? () => push({ kind: 'session', id: c.sessionId! }) : undefined}
                 meta={[`${t.size(c.mem)} · ${c.cpu} % CPU`, ...c.parts].join(' · ')}
@@ -251,22 +246,16 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
         {!stale && x?.servers.map((s) =>
           s.url ? (
             <Line key={s.port} ch="#" meta={s.url.replace(/^https:\/\//, '')} onClick={() => window.open(s.url, '_blank', 'noopener')} go="↑">
-              <span className="strong">{s.port}</span> {s.name} {s.dir}
+              <span className="strong">{serverName(s)}</span>
             </Line>
           ) : (
             <Line key={s.port} ch="#" go={s.dir ? '→' : null} onClick={s.dir ? () => push({ kind: 'fs', machine: id, path: s.dir! }) : undefined}>
-              <span className="strong">{s.port}</span> {s.name} {s.dir}
+              <span className="strong">{serverName(s)}</span>
             </Line>
           ),
         )}
         {/* Brancher une machine : weevboss pose les questions dans son fil (hébergeur, adresse, mot de passe), rien à taper d'autre. */}
-        <div className="in label">{t.addTitle}</div>
-        <Line
-          ch="+"
-          go="→"
-          meta={t.addMeta}
-          onClick={() => askSetup('machine')}
-        >
+        <Line ch="+" go="→" onClick={() => askSetup('machine')}>
           <span className="strong">{t.addLine}</span>
         </Line>
         <div style={{ height: 12 }} aria-hidden />
@@ -279,6 +268,8 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
 
 const parentOf = (p: string) => (p === '/' ? null : p.replace(/\/[^/]+\/?$/, '') || '/')
 const join = (dir: string, name: string) => (dir.endsWith('/') ? `${dir}${name}` : `${dir}/${name}`)
+/** The folder's own name, never the full path: « /home/alex/projects » → « projects »; the root gives the machine name. */
+const folderName = (dir: string, machine: string) => (dir === '/' ? machine : dir.replace(/\/+$/, '').split('/').pop() || machine)
 
 export function FsPage({ machine, path }: { machine: string; path: string }) {
   const { snap, push } = useApp()
@@ -299,7 +290,7 @@ export function FsPage({ machine, path }: { machine: string; path: string }) {
   const parent = parentOf(here)
   const name = snap.machines.find((m) => m.id === machine)?.name ?? machine
   return (
-    <Shell slot="agent" kicker={parent ? `${name}:${parent}` : name} title={here === '/' ? '/' : `/${here.split('/').pop()}`} meta={l ? `${name} · ${t.entries(l.entries.length)}` : t.reading}>
+    <Shell slot="agent" kicker={parent ? folderName(parent, name) : name} title={here === '/' ? '/' : `/${here.split('/').pop()}`} meta={l ? t.entries(l.entries.length) : t.reading}>
       <div className="ipage">
         {snap.machines.length > 1 && here === '/' && (
           <div className="in mx-tabs">
@@ -318,13 +309,13 @@ export function FsPage({ machine, path }: { machine: string; path: string }) {
         {(err || l?.error) && (
           <Notice eventId={noticeKey('error:infra', location.pathname, location.hash, err ?? l?.error)} className="band invert" role="alert">
             <div className="in meta" style={{ paddingBlock: 12 }}>
-              ! {err ?? l?.error}
+              {t.cantOpen}
             </div>
           </Notice>
         )}
         {l && here === '/' && (
-          <Line ch="/" meta={l.home} onClick={() => push({ kind: 'fs', machine, path: l.home })}>
-            <span className="strong">~</span>
+          <Line ch="/" onClick={() => push({ kind: 'fs', machine, path: l.home })}>
+            <span className="strong">{t.homeFolder}</span>
           </Line>
         )}
         {l?.entries.map((e) =>
@@ -363,9 +354,9 @@ export function FsFilePage({ machine, path }: { machine: string; path: string })
   const dir = path.split('/').slice(0, -1).join('/') || '/'
   const name = snap.machines.find((m) => m.id === machine)?.name ?? machine
   return inRepo ? (
-    <CodeFile projectId={project?.id ?? ''} repo={inRepo[1]} path={inRepo[2]} machine={machine} file={file} err={err} kicker={`${name}:${dir}`} />
+    <CodeFile projectId={project?.id ?? ''} repo={inRepo[1]} path={inRepo[2]} machine={machine} file={file} err={err} kicker={folderName(dir, name)} />
   ) : (
-    <CodeFile projectId="" repo="" path={path} machine={machine} file={file} err={err} kicker={`${name}:${dir}`} />
+    <CodeFile projectId="" repo="" path={path} machine={machine} file={file} err={err} kicker={folderName(dir, name)} />
   )
 }
 
@@ -383,7 +374,7 @@ function Quota({ name, q }: { name: string; q: QuotaInfo | undefined }) {
       </div>
       {!q && <div className="in meta empty">…</div>}
       {/* Never an empty section: no figures yet says so (not a closable notice); old ones say their age. */}
-      {q && !q.ok && !q.windows.length && <div className="in meta empty" role="status">{t.notYet(q.error ?? t.unavailable)}</div>}
+      {q && !q.ok && !q.windows.length && <div className="in meta empty" role="status">{t.notYet}</div>}
       {q?.ok && q.stale && <div className="in meta stale">{t.lastKnown(ago(now - q.at))}</div>}
       {q?.windows.map((w) => (
         <div key={`${w.kind}${w.label ?? ''}`} className={`in stat ${w.kind === 'model' ? 'minor' : ''}`}>
@@ -428,10 +419,8 @@ export function UsageLine() {
   const cw = pick(u?.claude, 'week')
   const c5 = pick(u?.claude, 'session')
   const xw = pick(u?.codex, 'week') ?? pick(u?.codex, 'session')
-  const parts = [
-    cw != null || c5 != null ? ['claude', cw != null ? t.weekBrief(cw) : '', c5 != null ? t.fiveBrief(c5) : ''].filter(Boolean).join(' ') : '',
-    xw != null ? `codex ${t.pct(xw)}` : '',
-  ].filter(Boolean)
+  // One figure per tool: Claude's week (its 5 h window stays on the subscription page), Codex's nearest limit.
+  const parts = [cw != null ? t.weekBrief('Claude', cw) : c5 != null ? t.toolPct('Claude', c5) : '', xw != null ? t.toolPct('Codex', xw) : ''].filter(Boolean)
   const top = Math.max(-1, ...[u?.claude, u?.codex].flatMap((q) => (q?.ok ? q.windows.filter((w) => w.kind !== 'model').map((w) => w.percent) : [])))
   return (
     <Line
@@ -440,7 +429,7 @@ export function UsageLine() {
       meta={
         u ? (
           <>
-            {parts.join(' · ') || '!'}
+            {parts.join(' · ')}
             {top >= 0 && <Gauge pct={top} level={quotaLevel(top)} />}
           </>
         ) : (
@@ -530,8 +519,8 @@ export function UsagePage() {
         {rows?.slice(0, 40).map((r) => (
           <Line
             key={`${r.machine}:${r.id}`}
-            ch={r.tool === 'codex' ? '>_' : '*'}
-            meta={`${projectName(r.projectId)} · ${r.tool} · ${r.machine} · ${t.share(share(r.weight), r.tokens)}`}
+            ch="*"
+            meta={`${projectName(r.projectId)} · ${t.share(share(r.weight), r.tokens)}`}
             go={known.has(r.id) ? '→' : null}
             onClick={known.has(r.id) ? () => push({ kind: 'session', id: r.id }) : undefined}
           >

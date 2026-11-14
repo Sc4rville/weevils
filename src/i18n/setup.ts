@@ -1,13 +1,5 @@
 import { defineMessages } from './index'
-
-// « OPENAI_API_KEY » → the brand (« OpenAI ») and whether it is a key or a token: never the raw variable name on screen.
-const BRANDS: Record<string, string> = { OPENAI: 'OpenAI', GITHUB: 'GitHub', GH: 'GitHub', HF: 'Hugging Face', HUGGINGFACE: 'Hugging Face', ANTHROPIC: 'Anthropic', CARTESIA: 'Cartesia', ELEVENLABS: 'ElevenLabs', OPENROUTER: 'OpenRouter', GEMINI: 'Gemini', GOOGLE: 'Google', MISTRAL: 'Mistral', GROQ: 'Groq', DEEPSEEK: 'DeepSeek', REPLICATE: 'Replicate', STRIPE: 'Stripe', VERCEL: 'Vercel', CLOUDFLARE: 'Cloudflare', NPM: 'npm', RUNPOD: 'RunPod', FAL: 'fal' }
-const secret = (name: string) => {
-  const token = /_TOKEN$/.test(name)
-  const prefix = name.replace(/_(API_KEY|TOKEN)$/, '')
-  const brand = BRANDS[prefix] ?? prefix.split('_').filter(Boolean).map((w) => BRANDS[w] ?? w[0] + w.slice(1).toLowerCase()).join(' ')
-  return { brand, token }
-}
+import { secretBrand as secret } from '../../shared/setup.ts'
 
 // src/ui/setup.tsx: the buttons under weevboss's messages and the questions of the setup flows (bottom field).
 export default defineMessages({

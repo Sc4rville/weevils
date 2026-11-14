@@ -662,7 +662,7 @@ export class Setup {
     const v = value.trim()
     if (!isSecretName(name) || !v || v.length > 4096 || /[\r\n]/.test(v)) throw new Error(tr(M).badSecret)
     writeConfig({ [name]: v })
-    this.userSays(`${name} : ••••`)
+    this.userSays(tr(M).keyTyped(name))
     this.say(tr(M).keySaved(name))
     console.log(`[setup] secret enregistré : ${name}`)
     this.deps.bump()

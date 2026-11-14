@@ -3,6 +3,7 @@
 // Jamais de commande à taper : ce qui s'installe, weevilsd l'installe ; le reste, weevboss s'en charge.
 import { defineMessages } from '../i18n.ts'
 import type { MachineInfo, SetupState } from '../setup.ts'
+import { secretBrand } from '../../shared/setup.ts'
 
 const gb = (n: number) => (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10)
 /** Créer un jeton GitHub avec les bons droits, pré-rempli. */
@@ -194,7 +195,15 @@ export default defineMessages({
       missing ? `Sur ${os}, voici ce qui manque, dans l’ordre. Lance ces commandes toi-même, ne les donne jamais à l’utilisateur :` : `Sur ${os}, tout l’essentiel est déjà là.`,
     installDone: 'Déjà installé :',
     installLogins: 'Puis les connexions : propose la puce [[setup:claude]], [[setup:github]] ou [[setup:codex]], jamais une commande.',
-    keySaved: (name: string) => `${name} enregistrée dans ~/.config/weevils/env (jamais affichée). L’agent qui l’a demandée peut la lire là.`,
+    keySaved: (name: string) => {
+      const { brand, token } = secretBrand(name)
+      return `${token ? `Jeton ${brand} enregistré` : `Clé ${brand} enregistrée`} sur cette machine (jamais affiché). L’agent qui l’a demandé peut s’en servir.`
+    },
+    /** Ce que l'utilisateur a « dit » dans le fil en collant le secret : la marque, jamais le nom de variable. */
+    keyTyped: (name: string) => {
+      const { brand, token } = secretBrand(name)
+      return `${token ? `mon jeton ${brand}` : `ma clé ${brand}`} : ••••`
+    },
     badSecret: 'clé ou valeur refusée',
     installNoSudo: 'Pas de sudo ici : ces commandes s’installent dans le dossier de l’utilisateur.',
     installNoBrew: (clone: string): string =>
@@ -380,7 +389,14 @@ export default defineMessages({
       missing ? `On ${os}, here’s what’s missing, in order. Run these commands yourself, never hand them to the user:` : `On ${os}, all the essentials are already there.`,
     installDone: 'Already installed:',
     installLogins: 'Then the sign-ins: offer the chip [[setup:claude]], [[setup:github]] or [[setup:codex]], never a command.',
-    keySaved: (name: string) => `${name} saved in ~/.config/weevils/env (never shown). The agent that asked for it can read it there.`,
+    keySaved: (name: string) => {
+      const { brand, token } = secretBrand(name)
+      return `${brand} ${token ? 'token' : 'key'} saved on this machine (never shown). The agent that asked for it can use it.`
+    },
+    keyTyped: (name: string) => {
+      const { brand, token } = secretBrand(name)
+      return `my ${brand} ${token ? 'token' : 'key'}: ••••`
+    },
     badSecret: 'key or value refused',
     installNoSudo: 'No sudo here: these commands install into the user’s home folder.',
     installNoBrew: (clone: string): string =>

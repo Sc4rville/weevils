@@ -2,7 +2,6 @@ import { defineMessages } from './index'
 
 export default defineMessages({
   fr: {
-    notFound: 'introuvable',
     // Session
     changeModel: 'changer le modèle ou l’effort',
     model: 'modèle',
@@ -37,7 +36,6 @@ export default defineMessages({
       ({ died: 'arrêt inattendu', dirty: 'changements non enregistrés', quota: 'limite d’usage atteinte', auth: 'compte déconnecté', api: 'le service a échoué' })[reason] ?? 'arrêtée',
     /** Le message d'erreur brut de l'outil, replié. */
     cutDetail: 'détails',
-    resume: 'reprendre',
     dismiss: 'laisser',
     // Fichiers
     /** Titre de la liste des dossiers d'un projet qui en a plusieurs. */
@@ -48,11 +46,7 @@ export default defineMessages({
     truncated: 'seul le début est affiché',
     reading: 'chargement…',
     binary: 'binaire',
-    // Machines
-    machines: (n: number) => `${n} ${n > 1 ? 'machines' : 'machine'}`,
-    online: 'en ligne',
     offline: 'hors ligne',
-    sessions: (n: number) => `${n} ${n > 1 ? 'sessions' : 'session'}`,
     // Nouvelle session
     newSession: 'nouvelle session',
     newSessionTitle: 'Nouvelle session',
@@ -71,7 +65,6 @@ export default defineMessages({
     moreFiles: (n: number) => `en voir ${n} de plus`,
   },
   en: {
-    notFound: 'not found',
     changeModel: 'change model or effort',
     model: 'model',
     queued: (n: number) => (n === 1 ? '1 message waiting' : `${n} messages waiting`),
@@ -96,7 +89,6 @@ export default defineMessages({
     cutWhy: (reason: string) =>
       ({ died: 'unexpected stop', dirty: 'unsaved changes', quota: 'usage limit reached', auth: 'signed out', api: 'the service failed' })[reason] ?? 'stopped',
     cutDetail: 'details',
-    resume: 'resume',
     dismiss: 'dismiss',
     folders: 'Folders',
     files: (n: number) => `${n} ${n === 1 ? 'file' : 'files'}`,
@@ -104,10 +96,7 @@ export default defineMessages({
     truncated: 'only the beginning is shown',
     reading: 'loading…',
     binary: 'binary file',
-    machines: (n: number) => `${n} ${n === 1 ? 'machine' : 'machines'}`,
-    online: 'online',
     offline: 'offline',
-    sessions: (n: number) => `${n} ${n === 1 ? 'session' : 'sessions'}`,
     newSession: 'new session',
     newSessionTitle: 'New session',
     pickRepoFirst: 'pick a project first',

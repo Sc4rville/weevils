@@ -84,8 +84,9 @@ describe('view', () => {
   })
 
   it('shows recent writes by folder, never more than the folder holds', () => {
-    const s = snap(0, 50 * GB, { 'h:work': 12 * GB, 'h:work/trailer': 9 * GB }, { recent: { 'work/trailer': 10 * GB, 'work/': 200 * 1024 ** 2, 'x/y': 1024 } })
+    const s = snap(0, 50 * GB, { 'h:work': 12 * GB, 'h:work/trailer': 9 * GB, 'h:work/b': 9.5 * GB }, { recent: { 'work/trailer': 10 * GB, 'work/b': 9.2 * GB, 'work/': 200 * 1024 ** 2, 'x/y': 1024 } })
     expect(buildView([s], opts).recent).toEqual([
+      { name: 'b', parent: 'work', bytes: 9.2 * GB, path: '/home/user/work/b' },
       { name: 'trailer', parent: 'work', bytes: 9 * GB, path: '/home/user/work/trailer' },
       { name: 'work', loose: true, bytes: 200 * 1024 ** 2, path: '/home/user/work' },
     ])

@@ -165,15 +165,15 @@ export function buildView(snaps: DiskSnapshot[], o: { home: string; measuring: b
 
   // Until then: what was written in the last 7 days (sizes of new or changed files), by folder.
   base.recent = Object.entries(last.recent ?? {})
-    .filter(([, v]) => v >= RECENT_FLOOR)
-    .sort((x, y) => y[1] - x[1])
-    .slice(0, 5)
     .map(([k, v]): DiskRecent => {
       const [a, b] = k.split('/')
       // Hard links count once in du but once per name in find: never more than the folder holds.
       const bytes = Math.min(v, last.items[`h:${b ? `${a}/${b}` : a}`] ?? v)
       return b ? { name: b, parent: a, bytes, path: path.join(o.home, a, b) } : { name: a, bytes, loose: true, path: path.join(o.home, a) }
     })
+    .filter((r) => r.bytes >= RECENT_FLOOR)
+    .sort((x, y) => y.bytes - x.bytes)
+    .slice(0, 5)
   return base
 }
 

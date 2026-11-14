@@ -130,7 +130,7 @@ export function DiskSpace({ v, open }: { v: DiskView; open: (path: string) => vo
   const inside = (f: DiskView['folders'][number]) =>
     f.kind === 'rest'
       ? f.inside.length
-        ? t.diskDockerSays(f.inside.map((i) => `${t.diskDocker(i.name)} ${t.size(i.bytes)}${i.reclaimable ? ` (${t.diskFreeable(t.size(i.reclaimable))})` : ''}`).join(' · '))
+        ? t.diskDockerSays(f.inside.filter((i) => i.bytes >= 100 * 1024 ** 2).map((i) => `${t.diskDocker(i.name)} ${t.size(i.bytes)}${(i.reclaimable ?? 0) >= 1024 ** 3 ? ` (${t.diskFreeable(t.size(i.reclaimable!))})` : ''}`).join(' · '))
         : ''
       : f.inside.map((i) => `${i.name} ${t.size(i.bytes)}`).join(' · ')
   const where = (g: { name: string; parent?: string; kind?: string; loose?: boolean }) =>

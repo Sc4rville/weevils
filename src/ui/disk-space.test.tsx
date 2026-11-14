@@ -25,7 +25,7 @@ const base: DiskView = {
   used: 100 * GB,
   folders: [
     { name: 'projects', kind: 'folder', path: '/home/user/projects', bytes: 40 * GB, inside: [{ name: 'game', bytes: 11 * GB }, { name: 'site', bytes: 5 * GB }] },
-    { name: 'rest', kind: 'rest', bytes: 31 * GB, inside: [{ name: 'Build Cache', bytes: 21e9, reclaimable: 13e9 }, { name: 'Images', bytes: 14e9 }] },
+    { name: 'rest', kind: 'rest', bytes: 31 * GB, inside: [{ name: 'Build Cache', bytes: 21e9, reclaimable: 13e9 }, { name: 'Images', bytes: 14e9 }, { name: 'Local Volumes', bytes: 5e6, reclaimable: 1e6 }] },
     { name: 'swap', kind: 'swap', bytes: 12 * GB, inside: [] },
     { name: 'usr', kind: 'system', path: '/usr', bytes: 4 * GB, inside: [] },
   ],
@@ -57,6 +57,7 @@ it('lists folders with their size, plain names, and what is inside', () => {
   expect(text()).toContain('game 11.0 GB · site 5.0 GB')
   expect(text()).toContain('Docker and system data31.0 GB')
   expect(text()).toContain('per Docker: build cache 19.6 GB (12.1 GB can be freed) · images 13.0 GB')
+  expect(text()).not.toContain('volumes')
   expect(text()).toContain('swap files12.0 GB')
   expect(text()).toContain('system programs4.0 GB')
   ;(host.querySelector('button.disk-row') as HTMLButtonElement).click()

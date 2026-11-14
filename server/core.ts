@@ -1,5 +1,6 @@
 import { InstallationIdentity } from './recursive-identity.ts'
 import AgentMessages from './i18n/agent-messages.ts'
+import { CLAUDE, CODEX_FLAGS, projectClaude, projectCodexFlags } from './agent-launch.ts'
 import { MessageOrigins } from './message-origins.ts'
 import CB from './i18n/codex-bridge.ts'
 import { automationSourceRoot } from './automation-workspaces.ts'
@@ -158,10 +159,6 @@ export function trustDirs(dirs: string[]) {
   return changed
 }
 
-/** Comme on les lance d'habitude : sans demande de permission. WEEVILS_SAFE=1 pour revenir aux confirmations. */
-const SAFE = process.env.WEEVILS_SAFE === '1'
-const CLAUDE = SAFE ? ['claude'] : ['claude', '--dangerously-skip-permissions']
-const CODEX_FLAGS = SAFE ? [] : ['--dangerously-bypass-approvals-and-sandbox']
 
 const pidAlive = (pid?: number) => {
   if (!pid) return false
@@ -1676,7 +1673,9 @@ export class Weevils {
       return { id: real }
     }
     const cwd = s.cwd && fs.existsSync(s.cwd) ? s.cwd : HOME
-    const command = s.tool === 'claude' ? [...CLAUDE, '--resume', s.id, text] : ['codex', 'resume', ...CODEX_FLAGS, s.id, text]
+    // A project session gets the plain-voice rule back on every relaunch; a weevboss conversation never does.
+    const boss = cwd.startsWith(DATA_DIR) || this.isBossThread(s.id)
+    const command = s.tool === 'claude' ? [...(boss ? CLAUDE : projectClaude()), '--resume', s.id, text] : ['codex', 'resume', ...(boss ? CODEX_FLAGS : projectCodexFlags()), s.id, text]
     const at = Date.now()
     await this.spawn(s.tool, cwd, s.title, command, s.id)
     // Rouverte : une coupure d'avant est réglée (une nouvelle, plus tard, comptera).
@@ -1820,10 +1819,10 @@ export class Weevils {
     text = withAppLocale(text, true)
     if (input.tool === 'claude') {
       const id = crypto.randomUUID()
-      await this.spawn('claude', cwd, title, [...CLAUDE, '--session-id', id, ...(text ? [text] : [])], id)
+      await this.spawn('claude', cwd, title, [...projectClaude(), '--session-id', id, ...(text ? [text] : [])], id)
       return { id }
     }
-    const name = await this.spawn('codex', cwd, title, ['codex', ...CODEX_FLAGS, ...(text ? [text] : [])])
+    const name = await this.spawn('codex', cwd, title, ['codex', ...projectCodexFlags(), ...(text ? [text] : [])])
     return { id: name }
   }
 
@@ -2351,7 +2350,7 @@ export class Weevils {
     try {
       const id = crypto.randomUUID()
       const head = turns.queue[0]
-      const turn = await turns.prepare({ id, claude: CLAUDE, memory: this.memory?.digest() ?? '', ledger: this.ledger?.digest(undefined, head?.cid) ?? '' })
+      const turn = await turns.prepare({ id, claude: [...CLAUDE], memory: this.memory?.digest() ?? '', ledger: this.ledger?.digest(undefined, head?.cid) ?? '' })
       // The previous turn is over: its message can be read into the ledger.
       void this.ledgerTick()
       this.orchestratorId = id
@@ -2751,7 +2750,7 @@ export class Weevils {
       const un = (env.unset ?? []).filter((k) => /^[A-Za-z_]\w*$/.test(k)).flatMap((k) => ['-u', k])
       const st = Object.entries(env.set ?? {}).filter(([k]) => /^[A-Za-z_]\w*$/.test(k)).map(([k, v]) => `${k}=${v}`)
       // Codex ne laisse pas choisir l'identifiant : c'est le nom de la pane, jusqu'à ce que son transcript apparaisse.
-      const name = await this.spawn('codex', cwd, title, [...(env.wrap ?? []), ...(un.length || st.length ? ['env', ...un, ...st] : []), 'codex', ...CODEX_FLAGS, ...args, text])
+      const name = await this.spawn('codex', cwd, title, [...(env.wrap ?? []), ...(un.length || st.length ? ['env', ...un, ...st] : []), 'codex', ...projectCodexFlags(), ...args, text])
       void this.acceptTrust(name)
       return { id: name }
     }
@@ -2759,7 +2758,7 @@ export class Weevils {
     const unset = (env.unset ?? []).filter((k) => /^[A-Za-z_]\w*$/.test(k)).flatMap((k) => ['-u', k])
     const set = Object.entries(env.set ?? {}).filter(([k]) => /^[A-Za-z_]\w*$/.test(k)).map(([k, v]) => `${k}=${v}`)
     const prefix = unset.length || set.length ? ['env', ...unset, ...set] : []
-    await this.spawn('claude', cwd, title, [...(env.wrap ?? []), ...prefix, ...CLAUDE, ...args, '--session-id', id, text], id)
+    await this.spawn('claude', cwd, title, [...(env.wrap ?? []), ...prefix, ...projectClaude(), ...args, '--session-id', id, text], id)
     return { id }
   }
 

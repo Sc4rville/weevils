@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { Session } from '../shared/api.ts'
-import { Sleep, nightRecap, sleepAllowsPush, RECAP_LINES } from './sleep.ts'
+import { Sleep, nightRecap, recapWorth, sleepAllowsPush, RECAP_LINES, RECAP_MIN_MS } from './sleep.ts'
 
 const T0 = new Date('2026-11-13T22:30:00Z').getTime()
 const MIN = 60_000
@@ -64,6 +64,13 @@ describe('sleep mode', () => {
     const many = nightRecap({ ...night, sessions: Array.from({ length: RECAP_LINES + 3 }, (_, i) => s({ id: `s${i}` })), autos: [] })
     expect(many.recap.lines).toHaveLength(RECAP_LINES)
     expect(many.recap.more).toBe(3)
+  })
+  it('a short nap gets a card only when something reached an outcome, a real night always does', () => {
+    const nap = { from: T0, to: T0 + 40_000 }
+    expect(recapWorth({ ...nap, lines: [] })).toBe(false)
+    expect(recapWorth({ ...nap, lines: [{ state: 'working' }, { state: 'ended' }] })).toBe(false)
+    for (const state of ['done', 'failed', 'waiting', 'stopped']) expect(recapWorth({ ...nap, lines: [{ state: 'working' }, { state }] })).toBe(true)
+    expect(recapWorth({ from: T0, to: T0 + RECAP_MIN_MS, lines: [] })).toBe(true)
   })
 })
 const DAYMS = 24 * 60 * MIN

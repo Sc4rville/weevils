@@ -76,32 +76,7 @@ const hetzner = http.createServer((req, res) => {
   reply(404, { error: { code: 'not_found' } })
 })
 
-// ---- a Hostinger API double (paths and shapes from developers.hostinger.com, OpenAPI 3.0.0)
-const hsCalls: { method: string; url: string; body: any }[] = []
-let hsPayment = true
-const hostinger = http.createServer((req, res) => {
-  const reply = (status: number, body: unknown) => (res.writeHead(status, { 'content-type': 'application/json' }), res.end(JSON.stringify(body)))
-  if (req.headers.authorization !== 'Bearer 123|hostingertoken000000000') return reply(401, { message: 'Unauthenticated.', correlation_id: 'x' })
-  let body = ''
-  req.on('data', (c) => (body += c))
-  req.on('end', () => {
-    hsCalls.push({ method: req.method!, url: req.url!, body: body ? JSON.parse(body) : null })
-    const plan = (n: number, monthly: number, first: number) => ({ id: `hostingercom-vps-kvm${n}`, name: `KVM ${n}`, category: 'VPS', metadata: {}, prices: [
-      { id: `hostingercom-vps-kvm${n}-eur-24m`, name: `KVM ${n} (billed every 24 months)`, currency: 'EUR', price: monthly * 1500, first_period_price: first * 1000, period: 24, period_unit: 'month' },
-      { id: `hostingercom-vps-kvm${n}-eur-1m`, name: `KVM ${n} (billed every month)`, currency: 'EUR', price: monthly * 100, first_period_price: first * 100, period: 1, period_unit: 'month' },
-    ] })
-    if (req.method === 'GET' && req.url === '/api/billing/v1/catalog?category=VPS') return reply(200, [plan(1, 10.99, 6.49), plan(2, 15.99, 8.99), plan(4, 29.99, 13.99), plan(8, 59.99, 25.99)])
-    if (req.method === 'GET' && req.url === '/api/billing/v1/payment-methods') return reply(200, hsPayment ? [{ id: 6523, name: 'Credit Card', identifier: '1234*****6464', payment_method: 'card', is_default: true, is_expired: false, is_suspended: false }] : [])
-    if (req.method === 'GET' && req.url === '/api/vps/v1/templates') return reply(200, [{ id: 1, name: 'Ubuntu 22.04' }, { id: 1077, name: 'Ubuntu 24.04 with Docker' }, { id: 1002, name: 'Ubuntu 24.04' }])
-    if (req.method === 'GET' && req.url === '/api/vps/v1/data-centers') return reply(200, [{ id: 29, name: 'phx', location: 'us', city: 'Phoenix', continent: 'North America' }, { id: 17, name: 'fr', location: 'fr', city: 'Paris', continent: 'Europe' }])
-    if (req.method === 'POST' && req.url === '/api/vps/v1/post-install-scripts') return reply(201, { id: 325, name: JSON.parse(body).name, content: JSON.parse(body).content })
-    if (req.method === 'POST' && req.url === '/api/vps/v1/virtual-machines') return reply(200, { order: { id: 1, status: 'completed' }, virtual_machine: { id: 17923, hostname: 'srv12345.hstgr.cloud', state: 'initial', ipv4: [{ id: 1, address: '203.0.113.77' }] } })
-    reply(404, { message: 'Not found' })
-  })
-})
-
 let hzPort = 0
-let hsPort = 0
 let base = ''
 let svc: http.Server
 let gated: http.Server
@@ -110,8 +85,7 @@ const sshCalls: Record<string, unknown>[] = []
 
 beforeAll(async () => {
   hzPort = await listen(hetzner)
-  hsPort = await listen(hostinger)
-  const cfg = config({ GET_BASE: 'https://get.example', GET_HETZNER_API: `http://127.0.0.1:${hzPort}`, GET_HOSTINGER_API: `http://127.0.0.1:${hsPort}`, GET_TRUST_PROXY: '0', GET_ALLOW_TARGETS: '172.30.99.10', GET_TARGET_URLS: '172.30.99.10=https://essai.example' })
+  const cfg = config({ GET_BASE: 'https://get.example', GET_HETZNER_API: `http://127.0.0.1:${hzPort}`, GET_TRUST_PROXY: '0', GET_ALLOW_TARGETS: '172.30.99.10', GET_TARGET_URLS: '172.30.99.10=https://essai.example' })
   svc = createServer(cfg, { sshStart: async (_c: unknown, a: Record<string, unknown>) => (sshCalls.push(a), a.password === 'right' ? { ok: true } : { ok: false, why: 'auth' }) }).server
   base = `http://127.0.0.1:${await listen(svc)}`
   gated = createServer(config({ GET_PREVIEW_KEY: 'letmein', GET_TRUST_PROXY: '0' })).server
@@ -119,7 +93,6 @@ beforeAll(async () => {
 })
 afterAll(() => {
   hetzner.close()
-  hostinger.close()
   svc.close()
   gated.close()
 })
@@ -200,38 +173,11 @@ describe('Hetzner (mock API)', () => {
   })
 })
 
-describe('Hostinger (mock API)', () => {
-  it('quotes the three KVM plans billed monthly, then buys with the saved card and a post-install script', async () => {
-    const job = (await post('/api/job', { kind: 'hostinger', lang: 'en', pub: pubB64(keyPair().publicKey) })).data
-    expect((await post('/api/hostinger/quote', { sid: job.sid, view: job.view, token: 'wrongtoken0000000000000' })).status).toBe(401)
-    const q = (await post('/api/hostinger/quote', { sid: job.sid, view: job.view, token: '123|hostingertoken000000000' })).data
-    expect(q.payment).toBe(true)
-    expect(q.paymentLabel).toBe('Credit Card 1234*****6464')
-    expect(q.sizes.map((z: any) => [z.size, z.type, z.memory, z.agents, z.first, z.monthly, z.currency])).toEqual([
-      ['light', 'KVM 1', 4, '2-3', 6.49, 10.99, 'EUR'],
-      ['recommended', 'KVM 2', 8, '6', 8.99, 15.99, 'EUR'],
-      ['strong', 'KVM 4', 16, '12', 13.99, 29.99, 'EUR'],
-    ])
-    expect(JSON.stringify(q)).not.toContain('hostingercom-vps')
-    const ok = await post('/api/hostinger/create', { sid: job.sid, view: job.view, token: '123|hostingertoken000000000', size: 'recommended', region: 'europe' })
-    expect(ok.status).toBe(200)
-    expect(ok.data.server).toMatchObject({ ip: '203.0.113.77', type: 'KVM 2', location: 'Paris', size: 'recommended' })
-    expect(ok.data.reach).toBe('203-0-113-77.sslip.io')
-    const script = hsCalls.find((c) => c.url === '/api/vps/v1/post-install-scripts')!.body
-    expect(script.content).toContain(`https://get.example/i/${job.sid}`)
-    const buy = hsCalls.find((c) => c.method === 'POST' && c.url === '/api/vps/v1/virtual-machines')!.body
-    expect(buy).toMatchObject({ item_id: 'hostingercom-vps-kvm2-eur-1m', payment_method_id: 6523, setup: { template_id: 1002, data_center_id: 17, post_install_script_id: 325 } })
-    expect(buy.setup.password).toBeUndefined()
-  })
-  it('says so when no card is saved, before buying anything', async () => {
-    hsPayment = false
-    const job = (await post('/api/job', { kind: 'hostinger', lang: 'en', pub: pubB64(keyPair().publicKey) })).data
-    const before = hsCalls.length
-    const r = await post('/api/hostinger/create', { sid: job.sid, view: job.view, token: '123|hostingertoken000000000', size: 'light' })
-    hsPayment = true
-    expect(r.status).toBe(402)
-    expect(r.data.error).toBe('no_payment')
-    expect(hsCalls.slice(before).some((c) => c.method === 'POST')).toBe(false)
+describe('Hostinger is no longer offered', () => {
+  it('refuses a Hostinger setup and has no Hostinger route', async () => {
+    expect((await post('/api/job', { kind: 'hostinger', lang: 'en', pub: pubB64(keyPair().publicKey) })).status).toBe(400)
+    const job = (await post('/api/job', { kind: 'hetzner', lang: 'en', pub: pubB64(keyPair().publicKey) })).data
+    expect((await post('/api/hostinger/quote', { sid: job.sid, view: job.view, token: '123|hostingertoken000000000' })).status).toBe(404)
   })
 })
 
@@ -313,7 +259,7 @@ describe('coming back to a setup (page closed, another browser, the same token)'
   let ip = ''
   let n = 0
   beforeAll(async () => {
-    const cfg = config({ GET_BASE: 'https://get.example', GET_HETZNER_API: `http://127.0.0.1:${hzPort}`, GET_HOSTINGER_API: `http://127.0.0.1:${hsPort}`, GET_ALLOW_TARGETS: '172.30.99.10', GET_TARGET_URLS: '172.30.99.10=https://essai.example', GET_HANDOFF: '' })
+    const cfg = config({ GET_BASE: 'https://get.example', GET_HETZNER_API: `http://127.0.0.1:${hzPort}`, GET_ALLOW_TARGETS: '172.30.99.10', GET_TARGET_URLS: '172.30.99.10=https://essai.example', GET_HANDOFF: '' })
     const made = createServer(cfg, { retryMs: 5, notifier: null, sshStart: async (_c: unknown, a: Record<string, unknown>) => (sshCalls.push(a), a.password === 'right' ? { ok: true } : { ok: false, why: 'auth' }) })
     svc2 = made.server
     store = made.store
@@ -779,13 +725,18 @@ describe('a Mac', () => {
     const phone = await firstScreen(IPHONE)
     // A phone asks only whether it already started a setup from here (nothing kept: a fresh visit).
     expect(phone.calls.filter((c) => c !== '/api/nearby')).toEqual([])
-    expect(phone.text()).toContain('Mac, Linux, or Windows with WSL.')
+    // Exactly three machines: Hetzner, a VPS rented anywhere, the person's computer.
+    expect(phone.text()).toContain('Create a server for me at Hetzner')
+    expect(phone.text()).toContain('I already have a VPS')
+    expect(phone.text()).toContain('My computer (Linux)')
+    expect(phone.text()).not.toMatch(/Hostinger|hPanel/)
     expect(phone.text()).not.toContain('curl')
     // French, and no sentence left that sends a Mac away.
     const fr = await firstScreen(MAC, 'fr')
     expect(fr.text()).toContain('Branche cet ordinateur')
     expect(fr.text()).toContain('mot de passe du Mac')
-    expect((await firstScreen(IPHONE, 'fr')).text()).toContain('Mac, Linux, ou Windows avec WSL.')
+    expect((await firstScreen(IPHONE, 'fr')).text()).toContain('Mon ordinateur (Linux)')
+    expect(page).not.toMatch(/Hostinger|hPanel/)
     expect(page).not.toMatch(/Linux for now|Linux pour l’instant|prends un VPS|take a VPS/)
   }, 60_000)
 

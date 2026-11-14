@@ -28,7 +28,7 @@ import B from '../i18n/bits'
 import { ago, plain, userText, type ChipId } from './format'
 import { AutoMark, FilledIcon, G, Icon } from './icons'
 import { KeepSessionOrder } from './session-order'
-import { autoOfSession, isAutomation } from './auto-model'
+import { autoOfSession, fromActivity, isAutomation } from './auto-model'
 import { PrefLines, UpdatesLine } from './prefs'
 import { RelayPrefLine, ThreadPlans } from './relay'
 import { UsageLine } from './infra'
@@ -451,6 +451,15 @@ export function ProjectBand({ project }: { project: Project }) {
   const att = active.filter((s) => s.status === 'needs_user')
   const cut = active.filter((s) => s.status === 'interrupted')
   const jobs = snap.h24.filter((a) => a.projectId === project.id && isAutomation(a))
+  // Machines by their name, never their internal id.
+  const machineName = (id?: string) => (id ? (snap.machines.find((m) => m.id === id)?.name ?? id) : undefined)
+  // A job's state in words (running, last run, failed), never the raw last line of its log.
+  const jobMeta = (a: (typeof jobs)[number]) => {
+    if (a.runState === 'running') return t.running
+    const last = fromActivity(a).lastRun
+    if (!last) return undefined
+    return last.ok ? t.lastRun(ago(now - last.at)) : t.failedRun(ago(now - last.at))
+  }
   const convCount = snap.conversationCounts.byProject[project.id] ?? 0
   const convs = snap.conversations.filter((c) => c.projectId === project.id)
   // Réduit ou déplié, au choix, mémorisé par projet ; par défaut réduit quand rien ne tourne.
@@ -646,17 +655,17 @@ export function ProjectBand({ project }: { project: Project }) {
           )}
           {project.repos.length > 0 && <div className="in label">{t.reposLabel}</div>}
           {project.repos.map((r) => (
-            <Line key={r} ch="/" meta={project.where[r] ?? snap.machines[0]?.id ?? ''} onClick={() => push({ kind: 'files', projectId: project.id, repo: r })}>
+            <Line key={r} ch="/" meta={snap.machines.length > 1 ? machineName(project.where[r]) : undefined} onClick={() => push({ kind: 'files', projectId: project.id, repo: r })}>
               {r}
             </Line>
           ))}
           <div className="in label">{t.machinesLabel}</div>
           <Line ch="@" meta={t.openSessions(active.length)} onClick={() => push({ kind: 'machine', projectId: project.id })}>
-            {[...new Set(sessions.map((s) => s.machineId))].join(' · ') || snap.machines[0]?.name}
+            {[...new Set(sessions.map((s) => machineName(s.machineId)))].join(' · ') || snap.machines[0]?.name}
           </Line>
           {jobs.length > 0 && <div className="in label">{t.h24Label}</div>}
           {jobs.map((a) => (
-            <Line key={a.id} ch={a.runState === 'running' ? <AutoMark /> : <Icon name="cycle" />} meta={a.runState === 'running' ? t.running : a.lastEvent} onClick={() => push({ kind: 'auto', id: a.id })}>
+            <Line key={a.id} ch={a.runState === 'running' ? <AutoMark /> : <Icon name="cycle" />} meta={jobMeta(a)} onClick={() => push({ kind: 'auto', id: a.id })}>
               {a.title}
             </Line>
           ))}
@@ -694,18 +703,27 @@ function NotifyLine() {
       setMsg((e as Error).message)
     }
   }
+  // Not possible here: say the one thing that would make it possible, rather than a greyed line with no reason.
   if (!supported || (ios && !standalone)) {
     return (
-      <Line ch="!" go={null} disabled>
+      <Line ch="!" go={null} disabled meta={ios && !standalone ? t.notifyInstall : t.notifyUnsupported}>
         {t.notifications}
       </Line>
     )
   }
   return (
-    <Line ch="!" go={null} meta={msg ?? (tested ? t.testSent : state === 'on' ? t.notifyOn : t.notifyOff)} onClick={() => void enable()}>
+    <Line ch="!" go={null} meta={msg ?? (tested ? t.testSent : state === 'on' ? undefined : t.notifyOff)} onClick={() => void enable()}>
       {t.notifications} {state === 'on' ? t.notifyOnSuffix : state === 'busy' ? '…' : ''}
     </Line>
   )
+}
+
+/** Only what matters: offline for one machine, how many are online for several. */
+function machinesMeta(machines: { online?: boolean }[]) {
+  const t = tr(M)
+  const on = machines.filter((m) => m.online !== false).length
+  if (machines.length === 1) return on ? undefined : t.offline
+  return t.onlineOf(on, machines.length)
 }
 
 export function FootBand() {
@@ -716,25 +734,24 @@ export function FootBand() {
     <section className="band demo" style={color(colors.__foot ?? 'p3')} aria-label={t.settings}>
       <div className="in head">
         <h2 className="h2" style={{ margin: 0 }}>
-          {t.machines}
+          {t.settings}
         </h2>
         <span className="chars meta strong">{offline ? t.reconnecting : ''}</span>
       </div>
-      {snap.machines.map((m) => (
-        <Line key={m.id} ch="@" meta={m.online === false ? t.offline : t.online} onClick={() => push({ kind: 'machine', projectId: '' })}>
-          {m.name}
+      {/* One line for the machines: their page lists them all (one line each opened the same page). */}
+      {snap.machines.length > 0 && (
+        <Line ch="@" meta={machinesMeta(snap.machines)} onClick={() => push({ kind: 'machine', projectId: '' })}>
+          {snap.machines.length === 1 ? snap.machines[0].name : t.machines}
         </Line>
-      ))}
+      )}
       <UsageLine />
       {snap.sessions.some((s) => s.archived) && <Line ch="↓" onClick={() => push({ kind: 'archived' })}>{nt.archived}</Line>}
       <Line ch="+" onClick={() => push({ kind: 'new', projectId: '__any' })}>
-        {t.newSessionElsewhere}
+        {t.newSession}
       </Line>
-      <Line ch='"' meta={t.imported(snap.conversationCounts.total)} onClick={() => push({ kind: 'conversations' })}>
+      {/* Importing lives on the conversations page. */}
+      <Line ch='"' meta={snap.conversationCounts.total ? String(snap.conversationCounts.total) : undefined} onClick={() => push({ kind: 'conversations' })}>
         {t.conversationsLabel}
-      </Line>
-      <Line ch="↑" onClick={() => push({ kind: 'import' })}>
-        {t.importConversations}
       </Line>
       <NotifyLine />
       <Line ch="~" go={null} onClick={() => setTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length])}>

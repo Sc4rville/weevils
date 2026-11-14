@@ -189,7 +189,7 @@ function Forget({ onForget }: { onForget: () => void }) {
   }, [armed])
   return (
     <button className={armed ? 'mem-del on' : 'mem-del'} onClick={() => (armed ? onForget() : setArmed(true))}>
-      x {armed ? t.sure : t.forget}
+      {armed ? t.sure : t.forget}
     </button>
   )
 }

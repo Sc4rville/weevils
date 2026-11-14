@@ -8,10 +8,10 @@ import { motion } from 'motion/react'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { AutoDetail, AutoRun, AutoRunDetail, Message, Optimizer, OptimizerField } from '../../shared/api.ts'
 import { api } from '../api'
-import { intlLocale, useT } from '../i18n'
+import { useT } from '../i18n'
 import M from '../i18n/h24'
 import { useApp } from './app-context'
-import { Composer, Line, Messages, Prose, Working } from './bits'
+import { Collapse, Composer, Line, Messages, Prose, Working } from './bits'
 import { at, nextTimeText, autoList, longAt, fromActivity, fromOptimizer, projectOfRepo, short, slotOf, triggerText, typicalMs, type AutoItem } from './auto-model'
 import { TalkCtx, useTalk } from './auto-talk'
 import { AutoDeleteAction } from './auto-delete'
@@ -25,8 +25,6 @@ import { FootError, Shell } from './shell'
 import { VoiceLogo } from './voice'
 import './h24.css'
 
-/** Compact tokens, like the token meter: 12 k, 1,2 M. */
-const tokens = (n: number) => new Intl.NumberFormat(intlLocale(), { notation: 'compact', maximumSignificantDigits: 3 }).format(n)
 /** The newest run's report, unfolded on the page: this much of it. */
 const REPORT_HEAD = 600
 const MAX_TICKS = 30
@@ -48,7 +46,7 @@ function useAutoItem(id: string): { item: AutoItem | null; opt: Optimizer | null
   return { item: autoList({ ...snap, optimizers: [] }).find((x) => x.id === id) ?? fromActivity(a), opt: null }
 }
 
-/** While it runs, the page reads its tokens again this often (the cost moves with the run). */
+/** While it runs, the page reads it again this often. */
 const LIVE_EVERY_MS = 20_000
 
 /** GET /api/auto/:id, again when a run starts or ends, and every LIVE_EVERY_MS while one runs. Null until it answers
@@ -91,7 +89,7 @@ function useRunDetail(id: string, at: number | undefined, files?: number): AutoR
   return d
 }
 
-const projectName = (snap: { projects: { id: string; name: string }[] }, x: AutoItem) => (x.projectId ? (snap.projects.find((p) => p.id === x.projectId)?.name ?? x.projectId) : null)
+const projectName = (snap: { projects: { id: string; name: string }[] }, x: AutoItem) => (x.projectId ? (snap.projects.find((p) => p.id === x.projectId)?.name ?? null) : null)
 const headline = (d: AutoRunDetail | null | undefined, r: AutoRun) => (d?.report ? plain(d.report).split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '').trim() : undefined) || r.note
 
 export function AutoPage({ id }: { id: string }) {
@@ -139,8 +137,8 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
   }, [opt?.draft])
   const heard = useRef('')
   const f = k.flash.get(x.id) ?? []
-  const project = projectName(snap, x)
-  const where = [...new Set([project, x.repo].filter(Boolean))].join(' · ')
+  // Where it runs: the project's name, else its folder (never both, never an internal id).
+  const where = projectName(snap, x) ?? x.repo ?? ''
 
   const act = (p: Promise<unknown>) => void p.then(refresh).catch((e) => setErr((e as Error).message))
   useEffect(() => {
@@ -272,7 +270,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
         <>
           <Flow x={x} runs={runs} next={opt?.next?.title} onTicks={toOutputs} />
 
-          <Kpis x={x} runs={runs} detail={detail} flash={f} ask={talkOn ? ask : undefined} onLast={() => runs[0] && push({ kind: 'autorun', id: x.id, at: runs[0].at })} onRuns={toOutputs} />
+          <Kpis x={x} runs={runs} flash={f} ask={talkOn ? ask : undefined} onLast={() => runs[0] && push({ kind: 'autorun', id: x.id, at: runs[0].at })} onRuns={toOutputs} />
 
           <div ref={outputs}>
             {(runs.length > 0 || x.state === 'running') && <div className="in label">{t.outputs}</div>}
@@ -325,7 +323,7 @@ function Flow({ x, runs, next, onTicks }: { x: AutoItem; runs: AutoRun[]; next?:
     big = x.nextReason === 'retry' ? autoCondition(x) : t.inTime(durLong(x.nextAt - now))
   } else {
     big = autoCondition(x)
-    if (x.place) line = `${line} · #${x.place}`
+    if (x.place) line = `${line} · ${t.placeN(x.place)}`
   }
 
   // A run that just ended: the full fill shrinks into its tick (shared layoutId), then fills again toward the next.
@@ -375,24 +373,23 @@ function Flow({ x, runs, next, onTicks }: { x: AutoItem; runs: AutoRun[]; next?:
 // ---------------------------------------------------------------------------
 // The same six facts for every automation.
 
-type Field = 'when' | 'next' | 'last' | 'length' | 'runs' | 'cost'
+type Field = 'when' | 'next' | 'last' | 'length' | 'runs'
 /** The facts that open the talk when tapped (« quand : » typed in). */
-type Asked = 'when' | 'next' | 'length' | 'cost'
+type Asked = 'when' | 'next' | 'length'
 const FLASHED: Partial<Record<Field, OptimizerField[]>> = { when: ['every', 'window', 'notBefore'], next: ['every', 'window', 'notBefore'], length: ['est'] }
 
 /**
  * The same facts for every automation, one quiet block: when it fires, the next time, the last run, how long it runs,
- * how many runs, what they cost. What it is for is the head's line, where it runs the head's bold word, what it is doing
+ * how many runs. What it is for is the head's line, where it runs the head's bold word, what it is doing
  * the flow band's: never said twice. A proposal has no past yet: its trigger is the flow band, here its next time and
  * its length.
  */
-function Kpis({ x, runs, detail, flash, ask, onLast, onRuns }: { x: AutoItem; runs: AutoRun[]; detail: AutoDetail | null; flash: OptimizerField[]; ask?: (f: Asked) => void; onLast: () => void; onRuns: () => void }) {
+function Kpis({ x, runs, flash, ask, onLast, onRuns }: { x: AutoItem; runs: AutoRun[]; flash: OptimizerField[]; ask?: (f: Asked) => void; onLast: () => void; onRuns: () => void }) {
   const t = useT(M)
   const { now } = useApp()
   const last = runs[0] ?? x.lastRun
   const typ = typicalMs({ runs, est: x.est })
   const measured = runs.some((r) => r.at > r.startedAt)
-  const total = (x.tokens ?? runs.reduce((s, r) => s + (r.tokens ?? 0), 0)) + (x.state === 'running' ? (detail?.liveTokens ?? 0) : 0)
   // Only a verified dated trigger; never infer the next run from duration or cadence.
   const following = x.nextAt && x.nextReason !== 'retry' && x.nextAt > now ? x.nextAt : null
   const next =
@@ -411,9 +408,8 @@ function Kpis({ x, runs, detail, flash, ask, onLast, onRuns }: { x: AutoItem; ru
     { f: 'when', icon: x.trigger.kind === 'every' ? <Icon name="cycle" /> : <Icon name="arrow" dir="right" />, value: triggerText(x.trigger, now) },
     { f: 'next', icon: <Icon name="arrow" dir="right" />, value: next },
     { f: 'last', icon: <Icon name={last && !last.ok ? 'close' : 'check'} />, value: last ? t.endedAgo(short(now - last.at, true)) : t.never },
-    { f: 'length', icon: <Icon name="minus" />, value: typ ? durLong(typ) : '0', dim: !measured && !!typ },
+    { f: 'length', icon: <Icon name="minus" />, value: typ ? durLong(typ) : t.unknown, dim: !measured },
     { f: 'runs', icon: <Icon name="hash" />, value: String(x.runCount || runs.length) },
-    { f: 'cost', icon: <Icon name="agents" />, value: tokens(total) },
   ]
   const cells = x.state === 'proposed' ? all.filter((c) => c.f === 'next' || c.f === 'length') : all
   const tap = (c: Field) => (c === 'last' ? onLast : c === 'runs' ? onRuns : ask ? () => ask(c) : undefined)
@@ -450,18 +446,20 @@ function Kpis({ x, runs, detail, flash, ask, onLast, onRuns }: { x: AutoItem; ru
 function LiveRun({ x }: { x: AutoItem }) {
   const { snap, push } = useApp()
   const s = x.sessionId ? snap.sessions.find((y) => y.id === x.sessionId) : undefined
+  // A timer's or a job's note is the raw last line of its log: never shown here.
+  const note = x.src === 'optimizer' ? x.note : undefined
   return (
     <Line ch={<AutoMark />} onClick={x.sessionId ? () => push({ kind: 'session', id: x.sessionId! }) : undefined} go={x.sessionId ? '→' : null}>
-      {s?.now || x.note || s?.title || x.title}
+      {s?.now || note || s?.title || x.title}
     </Line>
   )
 }
 
-/** A run: what it said (else when it ended), then when, how long, what it cost and left. */
+/** A run: what it said (else when it ended), then when, how long, what it left. */
 function RunLine({ id, r, head }: { id: string; r: AutoRun; head?: string }) {
   const t = useT(M)
   const { now, push } = useApp()
-  const meta = [head ? t.endedAgo(short(now - r.at, true)) : '', r.at > r.startedAt ? durLong(r.at - r.startedAt) : '', r.tokens ? t.tokensN(tokens(r.tokens)) : '', r.files ? t.filesN(r.files) : ''].filter(Boolean).join(' · ')
+  const meta = [head ? t.endedAgo(short(now - r.at, true)) : '', r.at > r.startedAt ? durLong(r.at - r.startedAt) : '', r.files ? t.filesN(r.files) : ''].filter(Boolean).join(' · ')
   return (
     <Line ch={r.ok ? '✓' : <span className="alert"><Icon name="close" /></span>} meta={meta} onClick={() => push({ kind: 'autorun', id, at: r.at })} label={`${t.runLabel(t.endedAgo(short(now - r.at, true)), r.ok)}${head ? `, ${head}` : ''}`}>
       {head || longAt(r.at)}
@@ -470,7 +468,8 @@ function RunLine({ id, r, head }: { id: string; r: AutoRun; head?: string }) {
 }
 
 /** What a run wrote and left: its report (or last message), files, links, screenshots, its log. short: the newest run
- *  unfolded on the automation's page (the report's beginning, then a line to all of it). */
+ *  unfolded on the automation's page (the report's beginning, then a line to all of it). The changed files and the log
+ *  wait behind a tap: paths and raw lines are not something to read first. */
 function Produced({ id, d, machine, short: brief = false }: { id: string; d: AutoRunDetail; machine?: string; short?: boolean }) {
   const t = useT(M)
   const { push, snap } = useApp()
@@ -493,11 +492,15 @@ function Produced({ id, d, machine, short: brief = false }: { id: string; d: Aut
           {t.wholeReport}
         </Line>
       )}
-      {d.files.map((file) => (
-        <Line key={file.path} ch="·" meta={file.status === 'D' ? '−' : [file.add ? `+${file.add}` : '', file.del ? `−${file.del}` : ''].filter(Boolean).join(' ') || undefined} onClick={file.status === 'D' ? undefined : () => push({ kind: 'fsfile', machine: on, path: file.abs })} go={file.status === 'D' ? null : '→'}>
-          {file.path}
-        </Line>
-      ))}
+      {d.files.length > 0 && (
+        <Fold label={t.filesChanged(d.files.length)} ch={<Icon name="file" />}>
+          {d.files.map((file) => (
+            <Line key={file.path} ch="·" meta={file.status === 'D' ? '−' : [file.add ? `+${file.add}` : '', file.del ? `−${file.del}` : ''].filter(Boolean).join(' ') || undefined} onClick={file.status === 'D' ? undefined : () => push({ kind: 'fsfile', machine: on, path: file.abs })} go={file.status === 'D' ? null : '→'}>
+              {file.path}
+            </Line>
+          ))}
+        </Fold>
+      )}
       {d.links.map((url) => (
         <Line key={url} ch={<Icon name="external" />} onClick={() => window.open(url, '_blank', 'noopener')}>
           {url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
@@ -506,7 +509,24 @@ function Produced({ id, d, machine, short: brief = false }: { id: string; d: Aut
       {(brief ? d.images.slice(0, MAX_SHOTS) : d.images).map((path) => (
         <img key={path} className="auto-shot" src={api.autoBlob(id, path)} alt={t.screenshot(path)} loading="lazy" />
       ))}
-      {!brief && d.log && <pre className="screen tone">{d.log}</pre>}
+      {!brief && d.log && (
+        <Fold label={t.fullLog} ch='"'>
+          <pre className="screen tone">{d.log}</pre>
+        </Fold>
+      )}
+    </>
+  )
+}
+
+/** A line that unfolds what is under it (closed at first). */
+function Fold({ label, ch, children }: { label: string; ch: ReactNode; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Line ch={ch} go={open ? '↑' : '↓'} onClick={() => setOpen((v) => !v)} label={label}>
+        {label}
+      </Line>
+      <Collapse open={open}>{children}</Collapse>
     </>
   )
 }
@@ -574,7 +594,7 @@ export function AutoRunPage({ id, at: end }: { id: string; at: number }) {
       meta={
         r ? (
           <>
-            {[r.at > r.startedAt ? durLong(r.at - r.startedAt) : '', r.tokens ? t.tokensN(tokens(r.tokens)) : ''].filter(Boolean).join(' · ')}{' '}
+            {r.at > r.startedAt ? durLong(r.at - r.startedAt) : ''}{' '}
             <span className={r.ok ? undefined : 'alert'}>
               <Icon name={r.ok ? 'check' : 'close'} />
             </span>{' '}
@@ -585,7 +605,7 @@ export function AutoRunPage({ id, at: end }: { id: string; at: number }) {
     >
       {d && <Produced id={id} d={d} machine={detail?.machine} />}
       {session && (
-        <Line ch=">_" onClick={() => push({ kind: 'session', id: session })}>
+        <Line ch={<Icon name="bubble" />} onClick={() => push({ kind: 'session', id: session })}>
           {t.openSession}
         </Line>
       )}

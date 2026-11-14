@@ -211,9 +211,12 @@ describe('memory page', () => {
     await click(host.querySelectorAll('.mem-row')[1])
     await flush()
     const del = host.querySelector('.mem-del')!
+    // Plain words, no "x" glyph in front.
+    expect(del.textContent).toBe('forget')
     await click(del)
     expect(db.calls).toEqual([])
     expect(del.className).toContain('on')
+    expect(del.textContent).toBe('sure?')
     await click(del)
     await flush()
     expect(db.calls).toEqual(['delete a'])
@@ -241,12 +244,12 @@ describe('memory page', () => {
     expect(host.querySelector('.qa-text')!.textContent).toBe('because you said so')
   })
 
-  it('a single short word when empty', async () => {
+  it('a short line when empty', async () => {
     db.items = []
     render(0)
     await flush()
     // In place of the count, under the title; nothing in the page itself.
-    expect([...host.querySelectorAll('.meta')].map((n) => n.textContent)).toContain('nothing')
+    expect([...host.querySelectorAll('.meta')].map((n) => n.textContent)).toContain('no memories yet')
     expect(host.querySelectorAll('.mem-item')).toHaveLength(0)
   })
 })

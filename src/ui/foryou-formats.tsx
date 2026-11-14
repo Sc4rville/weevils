@@ -34,7 +34,7 @@ export function FullImage({ media, description }: { media: ForYouMedia; descript
   useEffect(() => { setFailed(false); setAttempt(0) }, [media.id, media.url])
   if (failed) return <div className="formats-media-error"><p role="alert">{t.imageUnavailable}</p><button type="button" onClick={() => { setAttempt(n => n + 1); setFailed(false) }}>{t.retryImage}</button></div>
   return <div ref={host} className="save-media-host formats-image-host"><button type="button" className="formats-image" onClickCapture={notOpen} onClick={() => push({ kind: 'media', url: media.url, type: 'image', name: description })} aria-label={`${t.open} · ${description}`}>
-    <img key={`${media.id}:${media.url}:${attempt}`} src={mediaAttempt(media.url, attempt)} alt={description} loading="lazy" onError={() => setFailed(true)} /><span>{t.open}</span>
+    <img key={`${media.id}:${media.url}:${attempt}`} src={mediaAttempt(media.url, attempt)} alt={description} loading="lazy" onError={() => setFailed(true)} />
   </button><SaveMediaButton target={target} /></div>
 }
 
@@ -75,7 +75,7 @@ export function ProposalView({ item, fy }: { item: ForYouItem; fy: ForYouStore }
       <div className="formats-options">{p.options.map(o => <label key={o.id} className={choice === o.id ? 'selected' : ''}><input type="radio" name={`choice-${item.id}`} value={o.id} checked={choice === o.id} onChange={() => setChoice(o.id)} /><span><strong>{o.label}{o.recommended ? ` · ${t.recommended}` : ''}</strong><span>{o.description}</span></span></label>)}</div>
     </fieldset>
     <p className="meta">{p.caveat}</p>
-    {selected ? <details key={selected.id}><summary>{t.instruction}</summary><p className="formats-instruction">{selected.instruction}</p></details> : <p>{t.choose}</p>}
+    {selected && <details key={selected.id}><summary>{t.instruction}</summary><p className="formats-instruction">{selected.instruction}</p></details>}
     <button type="button" className="formats-send" disabled={!selected || pending || sent} onClick={() => selected && void fy.act(item.id, `choice:${selected.id}`)}>{sent ? t.sent : pending ? t.sending : t.send}</button>
     <OutboxStatus scope={`/api/foryou/${encodeURIComponent(item.id)}/act`} />
     {fy.error(item.id) && <p role="alert">{fy.error(item.id)}</p>}

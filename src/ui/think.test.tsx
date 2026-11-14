@@ -118,3 +118,11 @@ it('keeps the last drag position locally when paused before pointerup and releas
  await act(async()=>{canvas.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:1,button:0,clientX:10,clientY:10}));canvas.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:1,clientX:70,clientY:50}))});await render(false);await tick();expect(state.saves).toEqual([])
  const draft=[...state.payloads.values()].find(b=>(b as ThinkBoard).objects) as ThinkBoard;expect(draft.objects[0]).toMatchObject({x:60,y:40});await render();await tick();expect(state.saved?.objects[0]).toMatchObject({x:60,y:40});await click('Undo');expect(host.querySelector<HTMLElement>('.think-object')?.style.left).toBe('0px')
 })
+it('the chat panel shows no raw JSON context dump, only one short line about what sending shares',async()=>{
+ state.saved={...emptyBoard(),objects:[{id:'n',type:'text',x:0,y:0,width:280,height:150,content:'Keep this decision',source:'',updatedAt:1}]};await render();await click('Ask about this view')
+ const panel=host.querySelector('.think-chat')!
+ expect(panel.querySelector('details')).toBeNull();expect(panel.querySelector('pre')).toBeNull()
+ expect(panel.textContent).not.toMatch(/Context to share|"objects"|"camera"/)
+ expect(panel.textContent).toContain('Sending shares this view with the session you pick.')
+ expect(panel.querySelector('select')).not.toBeNull()
+})

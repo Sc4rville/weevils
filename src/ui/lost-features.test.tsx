@@ -23,12 +23,16 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); setLang(null); vi.restoreAllMocks() })
 const render = async (page: React.ReactNode) => { await act(async () => root.render(page)) }
 const toggle = async () => { await act(async () => host.querySelector<HTMLButtonElement>('[role=switch]')!.click()) }
-it('discovers Lost features from the Machine menu and starts a clean profile off', async () => {
+it('discovers the experiments from the settings and starts a clean profile off', async () => {
   await render(<LostFeaturesLine />)
+  // A plain name, a short state: not "Lost features · experimental features · Think disabled".
+  expect(host.textContent).toContain('experiments')
+  expect(host.textContent).toContain('Think · disabled')
+  expect(host.textContent).not.toMatch(/Lost features|experimental features/)
   await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
   expect(state.push).toHaveBeenCalledWith({ kind: 'lost-features' })
   await render(<LostFeaturesPage />)
-  expect(host.textContent).toContain('Lost features')
+  expect(host.querySelector('h1')?.textContent).toBe('experiments')
   expect(host.querySelector('[role=switch]')?.getAttribute('aria-checked')).toBe('false')
   expect(host.textContent).not.toContain('Open Think')
   state.snap.setup!.welcomed = true
@@ -67,10 +71,10 @@ it('blocks disabled deep links, pauses a mounted board across tabs, and resumes 
   expect(state.mounts).toBe(1)
   expect(host.querySelector('article')?.getAttribute('data-active')).toBe('true')
 })
-it('keeps branding and state when the app language changes and reports a storage failure honestly', async () => {
+it('keeps state when the app language changes and reports a storage failure honestly', async () => {
   await render(<LostFeaturesPage />)
   await act(async () => setLang('fr'))
-  expect(host.textContent).toContain('Lost features')
+  expect(host.textContent).toContain('expériences')
   expect(host.textContent).toContain('Désactivé')
   const originalStorage = localStorage
   vi.stubGlobal('localStorage', { getItem: originalStorage.getItem.bind(originalStorage), setItem: () => { throw new Error('blocked') } })

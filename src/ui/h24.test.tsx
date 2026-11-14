@@ -43,7 +43,7 @@ vi.mock('../api', () => ({
 
 const { MotionGlobalConfig } = await import('motion/react')
 MotionGlobalConfig.skipAnimations = true
-const { H24Rail } = await import('./h24')
+const { H24Rail, KIND_ICON } = await import('./h24')
 const { Ctx } = await import('./app-context')
 
 const NOW = Date.now()
@@ -132,28 +132,24 @@ describe('auto drawer', () => {
   const head = () => host.querySelector('.h24-head')!
   const names = () => [...host.querySelectorAll('.auto-band .auto-name')].map((n) => n.textContent)
 
-  it('deletes only the selected automation, keeps other rows and rejects stale snapshot resurrection', async () => {
-    window.confirm = vi.fn(() => true)
-    const data = snap([task({ id: 'a', title: 'First' }), task({ id: 'b', title: 'Second' })], [timer])
+  it('no delete button on the drawer bands: one tap opens the page, where « delete » lives', async () => {
+    const data = snap([task({ id: 'a', title: 'First' }), opt({ id: 'p', title: 'Proposed' })], [timer])
     render(data)
-    expect(host.querySelector('[data-h24="timer:wv-sync.timer"] .auto-delete')).toBeNull()
-    const remove = host.querySelector('[data-h24="a"] .auto-delete button')!
-    expect(remove.getAttribute('aria-label')).toBe('Delete automation')
-    expect(remove.querySelector('svg')).not.toBeNull()
-    expect(remove.textContent).toBe('')
-    await click(remove)
-    await flush()
-    expect(calls).toEqual(['delete a'])
-    expect(pushed).toEqual([])
-    expect(names()).not.toContain('First')
-    expect(names()).toContain('Second')
-    render(data)
-    expect(names()).not.toContain('First')
+    expect(host.querySelector('.auto-delete')).toBeNull()
+    expect(label(/Delete automation/)).toBeUndefined()
+    await click(host.querySelector('[data-h24="a"] .auto-hit'))
+    expect(pushed).toEqual([{ kind: 'auto', id: 'a' }])
   })
 
-  it('collapsed automated keeps title/activity only, with language in settings and creation inside the hidden body', async () => {
+  it('a proposal of tests never wears the terminal glyph', () => {
+    render(snap([opt({ id: 't', kind: 'tests', title: 'Run the tests' })]))
+    expect(KIND_ICON.tests).not.toBe('terminal')
+    expect(host.querySelector('[data-h24="t"] .st svg path')?.getAttribute('d')).not.toBe('M4 7l5 5-5 5M12 18h8')
+  })
+
+  it('collapsed automations keeps title/activity only, with language in settings and creation inside the hidden body', async () => {
     render(snap([opt({ id: 'draft', draft: true, title: 'new automation' })]), false)
-    expect(head().querySelector('.h24-title')?.textContent).toBe('automated')
+    expect(head().querySelector('.h24-title')?.textContent).toBe('automations')
     expect(head().querySelector('.h24-activity')).not.toBeNull()
     expect(host.querySelector('.h24-top .h24-create')).toBeNull()
     expect(host.querySelector('.h24-top .h24-heading .h2')).toBeNull()

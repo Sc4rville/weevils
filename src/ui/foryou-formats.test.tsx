@@ -38,7 +38,7 @@ it('keeps instructions and explicit transmission separate from selection at phon
 })
 it('opens complete images and changes the story without publishing or dispatching',async()=>{
  await act(async()=>root.render(<PictureJourney media={item.media!} frames={item.visualProposal!.frames}/>))
- await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Next view')!.click())
+ await act(async()=>[...host.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='Next view')!.click())
  expect(host.querySelector('.fy-rail-slide[aria-current="true"] img')?.getAttribute('src')).toBe('/image/1')
  await act(async()=>host.querySelector<HTMLButtonElement>('.fy-rail-slide[aria-current="true"] .formats-image')!.click())
  expect(state.push).toHaveBeenCalledWith({kind:'media',url:'/image/1',type:'image',name:'Description 1'})
@@ -144,11 +144,11 @@ it('shows translation progress and original wording without changing the selecte
   if(status==='pending')await act(async()=>host.querySelectorAll<HTMLInputElement>('input')[1].click())
   expect(host.querySelectorAll<HTMLInputElement>('input')[1].checked).toBe(true)
   if(status==='translated'){
-   const original=[...host.querySelectorAll('details')].find(d=>d.querySelector('summary')?.textContent==='View original wording')!
+   const original=[...host.querySelectorAll('details')].find(d=>d.querySelector('summary')?.textContent==='original')!
    expect(original).toBeTruthy()
    expect(original.open).toBe(false)
    expect(original.querySelector('[lang="fr"]')?.textContent).toBe(localization.original.text)
-  }else expect(host.querySelector('[role="status"]')?.textContent).toContain(status==='pending'?'Translation pending':'Translation unavailable')
+  }else expect(host.querySelector('[role="status"]')?.textContent).toContain(status==='pending'?'not translated yet':'couldn’t translate')
  }
  expect(state.send).not.toHaveBeenCalled()
 })
@@ -157,7 +157,7 @@ it('uses the gallery components directly inside existing feed cards without send
  const media:ForYouItem={...item,visualProposal:undefined,media:[{id:'341ba5be815fb245',type:'image',url:'/street',name:'street.png',bytes:1},{id:'b3fdac9f32927919',type:'image',url:'/cafe',name:'cafe.png',bytes:1},{id:'video',type:'video',url:'/clip',name:'clip.mp4',bytes:1}]}
  await act(async()=>root.render(<InlineMediaFormats item={media}/>))
  expect(host.textContent).toContain('Outside the café')
- await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Next view')!.click())
+ await act(async()=>[...host.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='Next view')!.click())
  expect(host.querySelector('.fy-rail-slide[aria-current="true"] img')?.getAttribute('src')).toBe('/cafe')
  expect(host.querySelector('video')?.controls).toBe(true)
  expect(host.querySelector('video')?.autoplay).toBe(false)

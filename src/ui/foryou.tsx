@@ -387,7 +387,6 @@ function MediaTile({ m, many }: { m: ForYouMedia; many: boolean }) {
       ) : (
         <img src={m.url} alt="" loading="lazy" decoding="async" draggable={false} onLoad={(e) => sized(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)} />
       )}
-      <span className="fy-media-open">{m.type === 'image' ? t.fullImage : t.fullVideo}</span>
       {m.type === 'video' && (
         <span className="fy-media-mark" aria-hidden>
           <Icon name="play" />
@@ -860,7 +859,8 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
     )
   }
   const Kind = KINDS[item.kind]
-  const original = item.editorial?.original ?? (item.work ? { title: item.title, text: item.text } : undefined)
+  // Only a real rewrite has an original to show (existing work repeats its own title and text above).
+  const original = item.editorial?.original
   const err = fy.error(item.id)
   return (
     <article ref={band} className={`${bandClass(item)} fy-item${closable ? ' notice-shell' : ''}${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-kind={item.kind}>
@@ -869,7 +869,7 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
       {item.work ? <ExistingWork item={item} who={who} /> : Kind && <Kind item={item} who={who} project={project} inView={inView} fy={fy} />}
       {original && (
         <details className="fy-editorial in">
-          <summary className="meta">{t.editorialOriginal}</summary>
+          <summary className="meta">{t.original}</summary>
           {original.title && <div className="fy-text strong">{original.title}</div>}
           <div className="fy-text">{original.text}</div>
         </details>
@@ -1183,7 +1183,6 @@ export function MediaPage({ url, type, name }: { url: string; type: 'image' | 'v
         <button className="ch" onClick={back} aria-label={t.back}>
           <Icon name="chevron" dir="left" />
         </button>
-        <span className="meta ellipsis">{name}</span>
       </div>
       <div className="fy-stage save-media-host">{type === 'video' ? <video ref={video} src={url} controls autoPlay playsInline loop aria-label={name} /> : <img src={url} alt={name} draggable={false} />}<SaveMediaButton target={{ url, name, type }} /></div>
     </motion.div>

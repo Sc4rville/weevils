@@ -310,7 +310,6 @@ export function Tips({ paused }: { paused: boolean }) {
               <span className="tip-ic" aria-hidden>
                 <Icon name={feedback ? (feedback.ok ? 'check' : 'bang') : icon} dir={feedback ? undefined : dir} />
               </span>
-              <span className="tip-kind">{tip.personal ? t.personal : t.general}</span>
               {!feedback && (
                 <button className="tip-x" onClick={hide} aria-label={t.dismiss}>
                   <Icon name="close" />

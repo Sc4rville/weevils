@@ -10,15 +10,14 @@ import { useT } from '../i18n'
 import M from '../i18n/h24'
 import { nextTimeText, autoList, autoRank, bandColors, fromOptimizer, isFinished, projectOfRepo, short, triggerText, type AutoItem } from './auto-model'
 import { TalkCtx, useTalk } from './auto-talk'
-import { AutoDeleteAction } from './auto-delete'
 import { autoCondition } from './auto-condition'
 import './h24.css'
 import { flash, when } from './follow'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
-/** The kind of a proposal, drawn as its band's glyph (never ✓ nor ×: they would read as the buttons). */
-export const KIND_ICON: Record<Optimizer['kind'], IconName> = { tests: 'terminal', watch: 'external', content: 'file', explore: 'slash', other: 'star' }
+/** The kind of a proposal, drawn as its band's glyph (never ✓ nor ×: they would read as the buttons; never a terminal). */
+export const KIND_ICON: Record<Optimizer['kind'], IconName> = { tests: 'agents', watch: 'external', content: 'file', explore: 'slash', other: 'star' }
 
 /** The fields that flash after a rewrite (auto-chg). */
 export const chg = (on: boolean, base = '') => `${base}${on ? `${base ? ' ' : ''}auto-chg` : ''}`
@@ -381,10 +380,10 @@ export function Fill({ x }: { x: AutoItem }) {
 export function useMetaLine(x: AutoItem): string {
   const t = useT(M)
   const { snap, now } = useApp()
-  const project = x.projectId ? (snap.projects.find((p) => p.id === x.projectId)?.name ?? x.projectId) : x.repo
+  const project = (x.projectId && snap.projects.find((p) => p.id === x.projectId)?.name) || x.repo
   const parts = [triggerText(x.trigger, now), project]
   if ((x.state === 'waiting' || x.state === 'queued') && (x.waiting || sourceAccessIssue(x))) parts.push(autoCondition(x))
-  else if (x.state === 'queued' && x.place) parts.push(`#${x.place}`)
+  else if (x.state === 'queued' && x.place) parts.push(t.placeN(x.place))
   if (x.lastRun && !x.lastRun.ok && x.state !== 'running') parts.push(t.failedAgo(short(now - x.lastRun.at, true)))
   else if (x.state === 'done' && x.endedAt) parts.push(t.endedAgo(short(now - x.endedAt, true)))
   return parts.filter(Boolean).join(' · ')
@@ -401,11 +400,10 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
   if (o) {
     const f = k.flash.get(o.id) ?? []
     const busy = k.busy.has(o.id)
-    const project = x.projectId ? (snap.projects.find((p) => p.id === x.projectId)?.name ?? x.projectId) : o.repo
+    const project = (x.projectId && snap.projects.find((p) => p.id === x.projectId)?.name) || o.repo
     return (
       <motion.section layout="position" className={`band auto-band auto-prop${selfRepo(snap.projects, o.repo) ? ' recursive-identity' : ''}`} style={color(slot)} data-h24={o.id} {...drop}>
         <button className="auto-hit" onClick={open} aria-label={t.taskLabel(o.title, t.state_proposed, [t[`kind_${o.kind}`], o.why].filter(Boolean).join(', '))} />
-        <AutoDeleteAction id={o.id} title={o.title} />
         <div className="in">
           <span className={chg(f.includes('kind'), 'st')} aria-hidden>
             <Glyph name={KIND_ICON[o.kind]} />
@@ -442,7 +440,6 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
   return (
     <motion.section layout="position" className={`band auto-band${x.state === 'paused' ? ' paused' : ''}`} style={color(slot)} data-h24={x.id} {...drop}>
       <Fill x={x} />
-      {x.src === 'optimizer' && <AutoDeleteAction id={x.id} title={x.title} />}
       <button className="auto-hit" onClick={open} aria-label={t.taskLabel(x.title, x.nextReason === 'retry' ? t.retryWaiting : t[`state_${x.state}`], [meta, right].filter(Boolean).join(', '))} />
       <div className="in" aria-hidden>
         <span className="st">

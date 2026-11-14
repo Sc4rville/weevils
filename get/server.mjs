@@ -150,6 +150,21 @@ export function loadJobs(store, file) {
   }
 }
 
+/** Is the repository public yet? GitHub's API, asked at most every 10 minutes and never waited for: the page links to
+ * the code only once it is (a private repository is a 404 for visitors). */
+let CODE = { at: 0, public: false, asking: false }
+function codeIsPublic(repo) {
+  const slug = /github\.com[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?$/.exec(repo)?.[1]
+  if (slug && !CODE.asking && Date.now() - CODE.at > 10 * 60_000) {
+    CODE.asking = true
+    fetch(`https://api.github.com/repos/${slug}`, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'weevils-get' }, signal: AbortSignal.timeout(5000) })
+      .then(async (r) => (r.ok ? (await r.json())?.private === false : r.status === 404 ? false : CODE.public))
+      .catch(() => CODE.public)
+      .then((v) => (CODE = { at: Date.now(), public: !!v, asking: false }))
+  }
+  return CODE.public
+}
+
 /** What the page sees: never the view token, the public key or anything sent by the user. */
 const view = (j) => ({ sid: j.sid, kind: j.kind, state: j.state, step: j.step, steps: j.steps, error: j.error, result: j.result, server: j.server, reach: j.reach })
 
@@ -649,7 +664,11 @@ export function createServer(cfg = config(), deps = {}) {
         if (req.headers['content-type'] && !String(req.headers['content-type']).startsWith('application/json')) return fail(res, 415, 'json_only')
         return await h(req, res, ip)
       }
-      if (url.pathname === '/' && req.method === 'GET') return send(res, 200, fs.readFileSync(path.join(HERE, 'index.html')), PAGE_TYPES['.html'])
+      if (url.pathname === '/' && req.method === 'GET') {
+        let html = fs.readFileSync(path.join(HERE, 'index.html'), 'utf8')
+        if (codeIsPublic(cfg.repo)) html = html.replace('<html lang="en">', '<html lang="en" data-code="public">')
+        return send(res, 200, html, PAGE_TYPES['.html'])
+      }
       fail(res, 404, 'not_found')
     } catch (e) {
       if (!res.headersSent) fail(res, e.status || 500, e.status ? e.message : 'internal')

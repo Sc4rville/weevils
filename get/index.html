@@ -112,7 +112,8 @@
 <footer class="band">
   <div class="wrap">
     <p data-t="trust"></p>
-    <p><a href="https://github.com/Sc4rville/weevils" data-t="source"></a></p>
+    <!-- The code's link only once the repository is public (the service asks GitHub): until then, the X account. -->
+    <p id="code"><a href="https://x.com/weevilscode" data-t="soon"></a></p>
   </div>
 </footer>
 
@@ -127,6 +128,7 @@ const W = FR ? {
   lead: 'weevils met sur ton téléphone les sessions Claude Code et Codex qui tournent sur ta propre machine : tu les suis, tu leur parles, tu leur confies du travail. Branche une machine, weevboss s’occupe du reste.',
   trust: 'Rien n’est gardé : ton jeton ou ton mot de passe sert une fois, puis il est oublié. Une fois installé, weevils tourne chez toi, et cette page n’a plus aucun accès à ta machine.',
   source: 'Le code est ouvert, sur GitHub',
+  soon: 'Bientôt open source — réponds au tweet pour un accès anticipé',
   plug: 'Branche ta machine',
   plugSub: 'Un serveur fait tourner tes agents même téléphone et ordinateur éteints. Prêt en quelques minutes.',
   hs: 'Crée-moi un serveur chez Hostinger', hsSub: 'Le plus simple : tout se fait dans hPanel, leur espace client.', rec: 'conseillé',
@@ -195,6 +197,7 @@ const W = FR ? {
   lead: 'weevils puts the Claude Code and Codex sessions running on your own machine on your phone: follow them, talk to them, hand them work. Plug in a machine, weevboss takes care of the rest.',
   trust: 'Nothing is kept: your token or password is used once, then forgotten. Once installed, weevils runs on your machine, and this page has no access to it anymore.',
   source: 'The code is open, on GitHub',
+  soon: 'Open source soon — reply to the tweet for early access',
   plug: 'Plug in your machine',
   plugSub: 'A server keeps your agents working while your phone and computer are off. Ready in a few minutes.',
   hs: 'Create a server for me at Hostinger', hsSub: 'The simplest: everything happens in hPanel, their customer area.', rec: 'recommended',
@@ -261,6 +264,7 @@ const W = FR ? {
 }
 document.documentElement.lang = FR ? 'fr' : 'en'
 for (const el of document.querySelectorAll('[data-t]')) el.textContent = W[el.dataset.t]
+if (document.documentElement.dataset.code === 'public') Object.assign(document.querySelector('#code a'), { href: 'https://github.com/Sc4rville/weevils', textContent: W.source })
 const langBtn = document.getElementById('lang')
 langBtn.textContent = FR ? 'EN' : 'FR'
 langBtn.setAttribute('aria-label', FR ? 'English' : 'Français')

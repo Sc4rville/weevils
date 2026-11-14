@@ -176,7 +176,8 @@ paths, commands, ids or jargon on screen, no permanent help text.
 
 - Question card header « ! claude is asking » → « Claude is asking » (no glyph, the tool's real name).
 - Stopped band, signed out: only « resume » (which fails again while signed out) → « sign in again » first (runs the
-  in-app login in weevboss's thread: a link, then a code to paste), « resume » for afterwards, « dismiss ».
+  in-app login in weevboss's thread: a link, then a code to paste), « resume » for afterwards, « dismiss ». The
+  three buttons wrap onto a second line on a narrow phone.
 - Stopped band in the focused thread: missing (a stopped session looked idle there) → the same band as on the session
   page.
 - A waiting session with nothing to tap (a hook notification, no input box on screen): text only → « Continue » /
@@ -200,9 +201,10 @@ paths, commands, ids or jargon on screen, no permanent help text.
 
 ### First steps, hints, For you milestones
 
-- « your repos » → « your code folders »; « 2 repos » → « 2 code folders »; « it exists, with its repo » → « it exists,
-  with its GitHub project ».
-- First-steps item « auto » → « automations ».
+- First-steps swipe item « your repos » → « your GitHub projects » (the page it opens is titled « GitHub »); « 2 repos »
+  → « 2 code folders » (it counts git folders on the machine); « it exists, with its repo » → « it exists, with its
+  GitHub project ».
+- First-steps item « auto » → « automations »; hint « the auto band » → « the automations band » (as in the tips).
 - Hint « all your github repos… » → « all your GitHub projects… ».
 - Milestone « First auto task wrapped up on its own… » → « First automation finished on its own… »; stat label « Auto
   queue » → « Automations ».

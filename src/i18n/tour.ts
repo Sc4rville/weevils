@@ -67,7 +67,7 @@ export default defineMessages({
     t_night: 'un serveur toujours allumé',
     t_codex: 'codex',
     't_g-talk': 'parler',
-    't_g-repos': 'tes dossiers de code',
+    't_g-repos': 'tes projets GitHub',
     't_g-calm': 'lecture',
     't_g-back': 'retour',
     // une ligne d'usage : pourquoi la brancher
@@ -158,7 +158,7 @@ export default defineMessages({
     t_night: 'a server that never sleeps',
     t_codex: 'codex',
     't_g-talk': 'talk',
-    't_g-repos': 'your code folders',
+    't_g-repos': 'your GitHub projects',
     't_g-calm': 'reading',
     't_g-back': 'back',
     u_phone: 'weevils in your pocket, on your home screen like an app.',

@@ -18,7 +18,7 @@ it('the install step says « installed 5 min ago », whoever ran the installer',
   expect(factsOf(step('install', { at: NOW - 5 * 60_000 }), NOW)).toBe('installé il y a 5 min')
 })
 
-it('first steps say « code folders » and « GitHub project », never « repo »', () => {
+it('first steps say « code folders », « GitHub projects » and « GitHub project », never « repo »', () => {
   for (const lang of ['en', 'fr'] as const) {
     setLang(lang)
     expect(factsOf(step('history', { projects: 3, sessions: 5, repos: 2 }), NOW)).not.toMatch(/\brepos?\b/i)

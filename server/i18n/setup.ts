@@ -197,7 +197,9 @@ export default defineMessages({
     installLogins: 'Puis les connexions : propose la puce [[setup:claude]], [[setup:github]] ou [[setup:codex]], jamais une commande.',
     keySaved: (name: string) => {
       const { brand, token } = secretBrand(name)
-      return `${token ? `Jeton ${brand} enregistré` : `Clé ${brand} enregistrée`} sur cette machine (jamais affiché). L’agent qui l’a demandé peut s’en servir.`
+      return token
+        ? `Jeton ${brand} enregistré sur cette machine (jamais affiché). L’agent qui l’a demandé peut s’en servir.`
+        : `Clé ${brand} enregistrée sur cette machine (jamais affichée). L’agent qui l’a demandée peut s’en servir.`
     },
     /** Ce que l'utilisateur a « dit » dans le fil en collant le secret : la marque, jamais le nom de variable. */
     keyTyped: (name: string) => {

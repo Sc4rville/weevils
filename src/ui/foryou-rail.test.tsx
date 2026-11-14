@@ -25,12 +25,12 @@ it('claims horizontal gesture starts including the screen edge, without cancelli
 })
 it('offers local keyboard navigation but never intercepts an input or video control',async()=>{
  await render()
- await key(track(),'End');expect(host.querySelector('[aria-live]')?.textContent).toBe('View 3 of 3')
- await key(track(),'Home');expect(host.querySelector('[aria-live]')?.textContent).toBe('View 1 of 3')
- await key(track(),'ArrowRight');expect(host.querySelector('[aria-live]')?.textContent).toBe('View 2 of 3')
+ await key(track(),'End');expect(host.querySelector('[aria-live]')?.getAttribute('aria-label')).toBe('View 3 of 3')
+ await key(track(),'Home');expect(host.querySelector('[aria-live]')?.getAttribute('aria-label')).toBe('View 1 of 3')
+ await key(track(),'ArrowRight');expect(host.querySelector('[aria-live]')?.getAttribute('aria-label')).toBe('View 2 of 3')
  scroll.mockClear()
  await key(host.querySelector('input')!,'ArrowLeft');await key(host.querySelector('video')!,'ArrowRight')
- expect(scroll).not.toHaveBeenCalled();expect(host.querySelector('[aria-live]')?.textContent).toBe('View 2 of 3')
+ expect(scroll).not.toHaveBeenCalled();expect(host.querySelector('[aria-live]')?.getAttribute('aria-label')).toBe('View 2 of 3')
 })
 it('preserves mounted video, draft, selected view and focus through locale and content refreshes',async()=>{
  await render();await key(track(),'ArrowRight')
@@ -40,7 +40,7 @@ it('preserves mounted video, draft, selected view and focus through locale and c
  await render(slides.map(s=>({...s,label:'Vue '+s.id})))
  expect(host.querySelector('video')).toBe(video);expect(video.currentTime).toBe(12)
  expect(host.querySelector('input')).toBe(input);expect(input.value).toBe('Still editing');expect(document.activeElement).toBe(input)
- expect(host.querySelector('[aria-live]')?.textContent).toBe('Vue 2 sur 3')
+ expect(host.querySelector('[aria-live]')?.getAttribute('aria-label')).toBe('Vue 2 sur 3')
 })
 it('claims the rail when media arrives after an empty response and removes the listener on unmount',async()=>{
  await render([]);await render()
@@ -50,5 +50,14 @@ it('claims the rail when media arrives after an empty response and removes the l
 })
 it('uses reduced motion and keeps navigation actions inside the card',async()=>{
  vi.stubGlobal('matchMedia',()=>({matches:true}))
- try{await render();await act(async()=>host.querySelector<HTMLButtonElement>('.fy-rail-controls button:last-child')!.click());expect(scroll).toHaveBeenLastCalledWith(expect.objectContaining({behavior:'instant'}));expect(host.querySelector('[aria-live]')?.textContent).toBe('View 2 of 3')}finally{vi.unstubAllGlobals()}
+ try{await render();await act(async()=>host.querySelector<HTMLButtonElement>('.fy-rail-controls button:last-child')!.click());expect(scroll).toHaveBeenLastCalledWith(expect.objectContaining({behavior:'instant'}));expect(host.querySelector('[aria-live]')?.getAttribute('aria-label')).toBe('View 2 of 3')}finally{vi.unstubAllGlobals()}
+})
+it('controls are short: chevrons and « 2 / 3 », the words only for screen readers',async()=>{
+ await render();await key(track(),'ArrowRight')
+ const controls=host.querySelector('.fy-rail-controls')!
+ expect(controls.textContent).toBe('2 / 3')
+ expect(controls.textContent).not.toMatch(/Previous view|Next view|View 2 of 3/)
+ const [prev,next]=[...controls.querySelectorAll('button')]
+ expect(prev.getAttribute('aria-label')).toBe('Previous view');expect(next.getAttribute('aria-label')).toBe('Next view')
+ await act(async()=>next.click());expect(controls.textContent).toBe('3 / 3')
 })

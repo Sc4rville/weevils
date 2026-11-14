@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useT } from '../i18n'
 import M from '../i18n/foryou-rail'
+import { Icon } from './icons'
 import './foryou-rail.css'
 export interface FeedSlide { id: string; label: string; content: ReactNode }
 /** Native scrolling keeps vertical reading, media controls and every slide's DOM alive. */
@@ -42,6 +43,7 @@ export function FeedRail({ label, slides }: { label: string; slides: FeedSlide[]
   }}>
    {slides.map((slide,n)=><div className="fy-rail-slide" key={slide.id} role="group" aria-current={n===index?true:undefined} aria-label={`${t.position(n+1,slides.length)} · ${slide.label}`}>{slide.content}</div>)}
   </div>
-  {many&&<div className="fy-rail-controls"><button type="button" aria-controls={id} disabled={index===0} onClick={()=>move(index-1)}>{t.previous}</button><span className="meta" aria-live="polite" aria-atomic="true">{t.position(index+1,slides.length)}</span><button type="button" aria-controls={id} disabled={index===slides.length-1} onClick={()=>move(index+1)}>{t.next}</button></div>}
+  {/* Short: ‹ 2 / 3 ›, the words stay for screen readers. */}
+  {many&&<div className="fy-rail-controls"><button type="button" aria-controls={id} aria-label={t.previous} disabled={index===0} onClick={()=>move(index-1)}><Icon name="chevron" dir="left"/></button><span className="meta" aria-live="polite" aria-atomic="true" aria-label={t.position(index+1,slides.length)}>{index+1} / {slides.length}</span><button type="button" aria-controls={id} aria-label={t.next} disabled={index===slides.length-1} onClick={()=>move(index+1)}><Icon name="chevron" dir="right"/></button></div>}
  </section>
 }

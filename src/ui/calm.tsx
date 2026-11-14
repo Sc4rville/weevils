@@ -175,7 +175,7 @@ export function CalmConv({ id }: { id: string }) {
                 ! {err}
               </Notice>
             )}
-            <Messages messages={messages} author={author} working={!!working} />
+            <Messages plain={!main} messages={messages} author={author} working={!!working} />
             {working && <Working author={author} since={s?.workStartedAt} />}
             <div className="fill" />
           </div>

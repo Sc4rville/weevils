@@ -315,7 +315,7 @@ function SessionPage({ id }: { id: string }) {
             s'il y a déjà une bulle (premier message d'une session lancée) ; remonté au chargement pour que le lot arrive sans
             se dérouler lui non plus. */}
         {(detail || missing || pending.length > 0) && (
-          <Messages session key={detail || missing ? 'loaded' : 'early'} messages={messages} author={s.tool} working={s.turnWorking ?? (s.status === 'working' && !s.background)} after={th.after} />
+          <Messages session plain key={detail || missing ? 'loaded' : 'early'} messages={messages} author={s.tool} working={s.turnWorking ?? (s.status === 'working' && !s.background)} after={th.after} />
         )}
       </div>
 

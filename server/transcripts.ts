@@ -1,4 +1,4 @@
-import { commandDetails, toolOutputDetails, callDetails, commandSummaries } from './codex-command-details.ts'
+import { commandDetails, toolOutputDetails, callDetails, commandSummaries, redactToolText } from './codex-command-details.ts'
 import { codexToolLabel, codexToolKinds } from './codex-tool-label.ts'
 // Lecture incrémentale des transcripts Claude Code (~/.claude/projects) et Codex (~/.codex/sessions).
 // Formats non documentés : on lit ce qui est utile et on ignore le reste sans jamais planter.
@@ -251,7 +251,7 @@ function claudeLine(t: Transcript, o: any) {
         else push(t, { id: `${msg.id ?? o.uuid}-${t.messages.length}`, role: 'assistant', text: part.text.trim(), at })
         t.lastAssistantId = msg.id
       } else if (part?.type === 'tool_use') {
-        push(t, { id: part.id ?? `${o.uuid}-tool`, role: 'event', text: toolSummary(part.name, part.input), at })
+        push(t, { id: part.id ?? `${o.uuid}-tool`, role: 'event', text: redactToolText(toolSummary(part.name, part.input)), at })
         t.lastAssistantId = undefined
       }
     }

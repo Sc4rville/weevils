@@ -18,6 +18,8 @@ import { flash, reveal } from './follow'
 import C from '../i18n/copy'
 import { getLang, tr, useT } from '../i18n'
 import M from '../i18n/bits'
+import PM from '../i18n/plain-steps'
+import { brief, clusters, clusterLine, groupLine } from './plain-steps'
 import D from '../i18n/devil'
 import RM from '../i18n/relay'
 import { isUnread, useSeen } from './seen'
@@ -748,7 +750,58 @@ function group(messages: Message[]): Group[] {
   return out
 }
 
-function Steps({ steps, live }: { steps: Message[]; live: boolean }) {
+/** Session threads: one plain sentence per action; commands, paths and raw results only behind a tap. */
+function PlainSteps({ steps, live }: { steps: Message[]; live: boolean }) {
+  const mid = steps[0].id
+  const listId = useId()
+  const t = useT(M)
+  const w = useT(PM)
+  const [open, setOpen] = useState(false)
+  const cs = useMemo(() => clusters(steps), [steps])
+  const head = live ? clusterLine(cs[cs.length - 1], w) : groupLine(cs, w)
+  return (
+    <div className="msg band event plain" data-mid={mid}>
+      <button type="button" className="in steps-head" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={open ? listId : undefined}>
+        <span className="text">
+          {live ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="arrow" dir="right" />} <span key={head} className="fade-in">{head}</span>
+        </span>
+        <span className="go" aria-hidden>
+          <Icon name={open ? 'minus' : 'plus'} />
+        </span>
+      </button>
+      <Collapse open={open}>
+        <div id={listId} className="in steps-list">
+          {cs.map((c, ci) => (
+            <details key={c.steps[0].id + ci} className="step-detail">
+              <summary className="step-head">
+                <span className="text">{clusterLine(c, w)}</span>
+                <span className="step-toggle" aria-hidden><span className="step-plus"><Icon name="plus" /></span><span className="step-minus"><Icon name="minus" /></span></span>
+              </summary>
+              <div className="step-content">
+                {c.steps.map((s) => (
+                  <div key={s.id} className="step-raw">
+                    <div className="meta">{w.rawTitle}</div>
+                    {s.toolDetails?.commands.length ? <>{s.toolDetails.commands.map((command, i) => <pre key={i}>{command}</pre>)}</> : <pre>{s.text}</pre>}
+                    {s.toolDetails?.commandsTruncated && <p className="meta">{t.commandTruncated}</p>}
+                    {s.toolDetails?.output ? <><div className="meta">{t.recordedOutput}</div><pre>{s.toolDetails.output}</pre></> : <p className="meta">{w.unverified}</p>}
+                    {s.toolDetails?.outputTruncated && <p className="meta">{t.outputTruncated}</p>}
+                  </div>
+                ))}
+              </div>
+            </details>
+          ))}
+        </div>
+      </Collapse>
+    </div>
+  )
+}
+
+function Steps({ steps, live, plain = false }: { steps: Message[]; live: boolean; plain?: boolean }) {
+  if (plain) return <PlainSteps steps={steps} live={live} />
+  return <RawSteps steps={steps} live={live} />
+}
+
+function RawSteps({ steps, live }: { steps: Message[]; live: boolean }) {
   const mid = steps[0].id
   const listId = useId()
   const t = useT(M)
@@ -833,6 +886,7 @@ export function Messages({
   chip,
   pendingLabel,
   session = false,
+  plain = false,
 }: {
   messages: Message[]
   author: string
@@ -843,6 +897,8 @@ export function Messages({
   pendingLabel?: string | ((id: string) => string)
   /** Full session reading: continuous prose and optional technical coordination. */
   session?: boolean
+  /** Project session thread: plain one-line actions, short intermediate chatter. Never the weevboss thread. */
+  plain?: boolean
 }) {
   const t = useT(M)
   const td = useT(D)
@@ -860,7 +916,7 @@ export function Messages({
       {groups.map((g, i) =>
         g.kind === 'steps' ? (
           <Appear key={g.id}>
-            <Steps steps={g.steps} live={working && i === groups.length - 1} />
+            <Steps steps={g.steps} live={working && i === groups.length - 1} plain={plain} />
             {after?.(g.id)}
           </Appear>
         ) : (
@@ -886,7 +942,11 @@ export function Messages({
                 <Clamp text={withoutMachinePrefix(g.m.text)} full={session} />
               ) : (
                 <ChipSlot.Provider value={chip ? (b) => chip(b, g.m.id) : null}>
-                  <Prose text={withoutMachinePrefix(g.m.text)} />
+                  {plain && groups[i + 1]?.kind === 'steps' && brief(withoutMachinePrefix(g.m.text)) ? (
+                    <details className="chatter"><summary>{brief(withoutMachinePrefix(g.m.text))}</summary><Prose text={withoutMachinePrefix(g.m.text)} /></details>
+                  ) : (
+                    <Prose text={withoutMachinePrefix(g.m.text)} />
+                  )}
                 </ChipSlot.Provider>
               )}
             </Bubble>

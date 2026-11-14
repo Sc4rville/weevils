@@ -106,6 +106,48 @@ describe('live voice mode', () => {
     expect(got.find((m) => m.t === 'error')).toEqual({ t: 'error', code: 'billing' })
   })
 
+  it('the user cutting in reaches the phone at once as « interrupted »', async () => {
+    const upstream = await fakeGemini((ws) =>
+      ws.on('message', (d) => {
+        const m = JSON.parse(d.toString())
+        if (m.setup) ws.send(JSON.stringify({ setupComplete: {} }))
+        if (m.realtimeInput?.audio) {
+          ws.send(JSON.stringify({ serverContent: { modelTurn: { parts: [{ inlineData: { data: Buffer.alloc(480).toString('base64') } }] } } }))
+          ws.send(JSON.stringify({ serverContent: { interrupted: true } }))
+        }
+      }),
+    )
+    const { phone, got, audio } = await bridge({ upstream })
+    await until(() => got.some((m) => m.t === 'ready'))
+    phone.send(Buffer.alloc(640), { binary: true })
+    await until(() => got.some((m) => m.t === 'interrupted'))
+    expect(audio.length).toBe(1)
+    expect(got.map((m) => m.t)).not.toContain('done')
+  })
+
+  it('a renewed Gemini connection (goAway) resumes the session without telling the phone « ready » again', async () => {
+    const setups: Record<string, any>[] = []
+    const upstream = await fakeGemini((ws) =>
+      ws.on('message', (d) => {
+        const m = JSON.parse(d.toString())
+        if (!m.setup) return
+        setups.push(m.setup)
+        ws.send(JSON.stringify({ setupComplete: {} }))
+        if (setups.length === 1) {
+          ws.send(JSON.stringify({ sessionResumptionUpdate: { resumable: true, newHandle: 'h1' } }))
+          ws.send(JSON.stringify({ goAway: { timeLeft: '1s' } }))
+          setTimeout(() => ws.close(1000), 30)
+        }
+      }),
+    )
+    const { got } = await bridge({ upstream })
+    await until(() => setups.length === 2)
+    await new Promise((r) => setTimeout(r, 50))
+    expect(setups[1].sessionResumption).toEqual({ handle: 'h1' })
+    expect(got.filter((m) => m.t === 'ready')).toHaveLength(1)
+    expect(got.map((m) => m.t)).not.toContain('error')
+  })
+
   it('closes itself after a silence', async () => {
     const upstream = await fakeGemini((ws) => ws.on('message', (d) => JSON.parse(d.toString()).setup && ws.send(JSON.stringify({ setupComplete: {} }))))
     const { got } = await bridge({ upstream, silenceMs: 300 })

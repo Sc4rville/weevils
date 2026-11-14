@@ -54,6 +54,7 @@ export class LiveSession {
   private lastVoice = 0
   private sending = false
   private ring: ArrayBuffer[] = []
+  private micOpened = false
 
   constructor(private h: LiveHandlers) {}
 
@@ -104,6 +105,10 @@ export class LiveSession {
   }
 
   private async mic() {
+    // One microphone per conversation: a second « ready » (an older server renewing its Gemini link) must not open
+    // another capture, whose frames would interleave with the first and garble what Gemini hears.
+    if (this.micOpened) return
+    this.micOpened = true
     const c = ctx
     if (!c) return this.end('mic')
     try {

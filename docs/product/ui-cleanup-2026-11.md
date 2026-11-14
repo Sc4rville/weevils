@@ -221,7 +221,7 @@ A fresh read of every screen on Scarville's live instance (phone viewport, read-
 
 - The line under the title repeated, word for word, what the header's live line already said (« QA pass on ad videos »
   twice on the same screen) → said once in the header; the full sentence stays under the title only when the header
-  had to shorten it.
+  had to shorten it (more than six words, or a narrow screen cutting the pill with « … »).
 - « claude · working for 3 min » (the tool's lowercase id in front of the status; the model chip already says which
   one) → « working for 3 min ».
 - Composer placeholder « write to claude » / « resume with codex » → « write to Claude » / « resume with Codex ».

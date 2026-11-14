@@ -279,6 +279,21 @@ describe('session page header (r162)', () => {
     expect(text(host.querySelector('.session-heading'))).toContain(long)
   })
 
+  it('keeps the sentence under the title when a narrow screen cuts the header pill with « … »', async () => {
+    const sw = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth')
+    const cw = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', { configurable: true, get() { return (this as HTMLElement).classList.contains('session-now') ? 180 : 0 } })
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return (this as HTMLElement).classList.contains('session-now') ? 120 : 0 } })
+    try {
+      render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ status: 'working', workStartedAt: NOW - 3 * MIN, now: 'QA pass on ad videos' })])
+      await flush()
+      expect(text(host.querySelector('.session-heading'))).toContain('QA pass on ad videos')
+    } finally {
+      if (sw) Object.defineProperty(HTMLElement.prototype, 'scrollWidth', sw); else delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth
+      if (cw) Object.defineProperty(HTMLElement.prototype, 'clientWidth', cw); else delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth
+    }
+  })
+
   it('names the plan as its product does: « prolite » reads Pro Lite, Claude’s « Max 20x » unchanged', async () => {
     const { planName } = await import('./infra')
     expect(planName('prolite')).toBe('Pro Lite')

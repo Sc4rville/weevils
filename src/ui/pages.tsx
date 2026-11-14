@@ -8,7 +8,7 @@ import { OutboxStatus } from './outbox-status'
 import { noticeKey, sessionNoticeKey } from '../../shared/notices.ts'
 import { dismissNotice } from './notice-store'
 import { Notice } from './notice'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
@@ -48,10 +48,19 @@ import { ForYouPage, MediaPage } from './foryou'
 import { AutoPage, AutoRunPage } from './auto-page'
 
 /** Mini-macro: what the session is doing right now, in a few plain words, beside the title. */
-function LiveNote({ s, messages }: { s: Session; messages: Message[] }) {
+function LiveNote({ s, messages, onWhole }: { s: Session; messages: Message[]; onWhole?: (whole: boolean) => void }) {
   const w = useT(PM)
   const live = liveNote(s, messages.at(-1), w, { waiting: String(w.liveWaiting), stopped: String(w.liveStopped), done: String(w.liveDone), idle: String(w.liveIdle) })
-  return <span className="session-now" role="status" data-state={live.state} title={w.liveLabel(live.text)}>{live.text}</span>
+  const ref = useRef<HTMLSpanElement>(null)
+  // A narrow phone cuts the pill with « … » (CSS): then it no longer says the phrase whole, and the line under the title keeps it.
+  useLayoutEffect(() => {
+    if (!onWhole) return
+    const check = () => { const el = ref.current; if (el) onWhole(el.scrollWidth <= el.clientWidth + 1) }
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [live.text, onWhole])
+  return <span ref={ref} className="session-now" role="status" data-state={live.state} title={w.liveLabel(live.text)}>{live.text}</span>
 }
 
 
@@ -164,6 +173,8 @@ function SessionPage({ id }: { id: string }) {
   useEffect(() => dropSeed(id), [id])
   const [preview, setPreview] = usePreviewState(id)
   const [showSettings, setShowSettings] = useState(false)
+  /** Whether the header pill shows its phrase whole (not cut with « … » on a narrow screen). */
+  const [pillWhole, setPillWhole] = useState(true)
 
   // Le détail suit chaque nouvelle version annoncée par le serveur.
   useEffect(() => {
@@ -253,14 +264,14 @@ function SessionPage({ id }: { id: string }) {
       title={s.title}
       scrollHeading
       sessionLayout
-      liveNote={<LiveNote s={s} messages={messages} />}
+      liveNote={<LiveNote s={s} messages={messages} onWhole={setPillWhole} />}
       headerControls={<button className="link inline" onClick={() => setShowSettings((v) => !v)} aria-label={t.changeModel} aria-pressed={showSettings} aria-controls="session-settings">
             {[modelLabel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
           </button>}
       meta={
         <>
           {/* What it does now, unless the live line in the header already says it whole (r162). */}
-          {s.now && liveText !== s.now.replace(/\s+/g, ' ').trim() && (
+          {s.now && !(pillWhole && liveText === s.now.replace(/\s+/g, ' ').trim()) && (
             <>
               <span className="strong">{s.now}</span>
               <br />

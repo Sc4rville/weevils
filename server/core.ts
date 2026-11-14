@@ -62,7 +62,7 @@ import type { Transcript } from './transcripts.ts'
 import type { WvSession } from './mux.ts'
 import { capture, type ScreenDialog, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv, wvName } from './mux.ts'
 import TerminalM from './i18n/terminal.ts'
-import { moves, readScreen, redactScreen, screenId, stuckQuestion, type Hold, type Reading, type TerminalState } from './terminal.ts'
+import { moves, readScreen, redactScreen, screenId, stuckChoices, stuckQuestion, type Hold, type Reading, type TerminalState } from './terminal.ts'
 import { activeRequestLang, installationLang, lang, onLangChange, tr, user, withLang, type Lang } from './i18n.ts'
 import TipsM from './i18n/tips.ts'
 import { normalizeFrom, parseSigned, publicAuthors, signAs } from './authors.ts'
@@ -107,6 +107,9 @@ interface ManagedPane extends WvSession {
   screenQueued?: number
   /** A calm status read on the screen (usage limit, signed out, stopped) and since when. */
   screenHold?: Hold & { since: number }
+  /** Continue / Go back for the screen as it is now, when it has no input box and no known dialog: what a waiting
+   * session without a question of its own (a hook notification) offers, so its card is never button-less. */
+  screenFallback?: ScreenDialog['options']
 }
 
 /** How long an unchanged screen with no input box, no progress and no known dialog waits before it becomes a question. */
@@ -741,6 +744,7 @@ export class Weevils {
       let screenWorking = false
       let screenQueued = 0
       let screenHold: ManagedPane['screenHold']
+      let screenFallback: ManagedPane['screenFallback']
       try {
         const screen = await capture(p.name)
         const reading = readScreen(screen, p.tool)
@@ -755,10 +759,11 @@ export class Weevils {
         if (hold) screenHold = { ...hold, since: prev?.screenHold?.text === hold.text ? prev.screenHold.since : Date.now() }
         screenWorking = reading.working
         screenQueued = reading.queued
+        if (state.kind !== 'question' && !reading.composer && !reading.working && screen.trim()) screenFallback = stuckChoices(screen)
       } catch {
         /* écran illisible un instant */
       }
-      next.push({ ...p, sessionId: p.sessionId ?? prev?.sessionId, screenAttention, screenDialog: dialog, screenWorking, screenQueued, ...(screenHold ? { screenHold } : {}) })
+      next.push({ ...p, sessionId: p.sessionId ?? prev?.sessionId, screenAttention, screenDialog: dialog, screenWorking, screenQueued, ...(screenHold ? { screenHold } : {}), ...(screenFallback ? { screenFallback } : {}) })
     }
     for (const old of this.panes) {
       if (next.some((p) => p.name === old.name)) continue
@@ -1161,7 +1166,10 @@ export class Weevils {
       status,
       ...(noticeId ? { noticeId } : {}),
       attention: status === 'needs_user' ? attention : undefined,
-      ...(status === 'needs_user' && pane?.screenDialog ? { choices: pane.screenDialog.options, ...(pane.screenDialog.detail ? { attentionDetail: pane.screenDialog.detail } : {}) } : {}),
+      ...(status === 'needs_user' && pane?.screenDialog?.options.length ? { choices: pane.screenDialog.options, ...(pane.screenDialog.detail ? { attentionDetail: pane.screenDialog.detail } : {}) } : {}),
+      // Waiting with nothing to tap (a hook notification, a question read without answers) and no input box on screen:
+      // Continue / Go back, never a card that blocks without a button. With an input box, the composer is the answer.
+      ...(status === 'needs_user' && !ask && !pane?.screenDialog?.options.length && pane?.screenFallback ? { choices: pane.screenFallback } : {}),
       ...(ask && status === 'needs_user' ? { ask } : {}),
       ...(interrupted ? { interrupted } : {}),
       cwd: t.cwd,
@@ -1770,7 +1778,8 @@ export class Weevils {
       // The id must match the question on screen now (or the stuck-screen question still shown): never a stale tap.
       const screen = await capture(pane.name)
       const read = readScreen(screen, pane.tool).state
-      const shown = pane.screenDialog?.options.some((o) => o.id === id)
+      // A Continue / Go back fallback only while the screen is exactly the one it was offered for.
+      const shown = pane.screenDialog?.options.some((o) => o.id === id) || (!!pane.screenFallback?.some((o) => o.id === id) && stuckChoices(screen).some((o) => o.id === id))
       const state = read.kind === 'question' && read.choices.some((o) => o.id === id) ? read : undefined
       if (!state && !(shown && /:(?:enter|esc)$/.test(id))) throw new Error(tr(TerminalM).choiceGone)
       this.driving.add(pane.name)

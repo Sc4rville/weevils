@@ -145,6 +145,21 @@ export function arrange(items: ForYouItem[], _now: number): ForYouItem[] {
   return [...items.filter((i) => i.kind === 'alert').sort(newest), ...pace(ranked)]
 }
 
+/**
+ * A band still waiting for a yes or a no (the live proposals: one-off tasks to do once) is an action, not news: it never
+ * sinks out of reach. Taken from its arranged place, it goes back at most LIVE_REACH places down, and the MAX_FEED cut
+ * never drops it, however many newer items came in since it was first seen.
+ */
+export const LIVE_REACH = 12
+export function keepLive(list: ForYouItem[], max: number): ForYouItem[] {
+  const waiting = (i: ForYouItem) => !!i.live && i.kind === 'proposals'
+  const out = list.filter((i) => !waiting(i))
+  list.forEach((i, at) => {
+    if (waiting(i)) out.splice(Math.min(at, LIVE_REACH, out.length), 0, i)
+  })
+  return out.slice(0, max)
+}
+
 /** The sort of an item, for the pace: a session's result, question and cut read as three different things. */
 const sortOf = (i: ForYouItem) => (i.kind === 'session' ? `session:${i.tone}` : i.kind)
 /** How far down the pace may fetch an item to break a run. */
@@ -1393,7 +1408,7 @@ export class ForYou {
       const cur = lang()
       const sources = this.all(snap, now, false).filter(x => !technicalEvent(x.item.id, x.item.text))
       const languages = new Map(sources.map(x => [x.item.id, x.lang]))
-      const items = arrange(sources.map(x => projectFeedWorkstream(humanFeedItem(x.item), snap)), now).slice(0, MAX_FEED)
+      const items = keepLive(arrange(sources.map(x => projectFeedWorkstream(humanFeedItem(x.item), snap)), now), MAX_FEED)
         .map(item => this.localization.project(item, cur, languages.get(item.id), snap.projects.map(p => p.name), true))
       const anchor = this.s.items.find(i => i.id === ALCOVE_SOURCE)
       return { rev: this.s.rev, items: groupAlcove(items, items.some(i => i.id === ALCOVE_SOURCE) ? alcoveFinal(this.shelf, anchor?.cwd) : undefined), pulse: this.pulse(snap, now) }

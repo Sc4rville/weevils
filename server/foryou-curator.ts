@@ -1,5 +1,6 @@
 import { editorialText } from './foryou-editorial.ts'
 import { internalFeedUpdate } from '../shared/feed-text.ts'
+import { evidenceTag } from '../shared/evidence.ts'
 import { preferredTool, providerReady } from './provider.ts'
 // The curator of the « for you » stream (docs/foryou.md §3.5): everything in the stream that is written or counted
 // rather than recorded. One loop, one spender.
@@ -90,6 +91,13 @@ export const MAIL_LINE = 220
 
 const pad = (n: number) => String(n).padStart(2, '0')
 /** Local day, sortable: 2026-11-10. */
+/** A source line for a model, its evidence tag first and never cut: a summary must not claim more than it, nor drop a
+ *  stated limitation (shared/evidence.ts). */
+export function withEvidence(i: ForYouItem, text: string, max: number): string {
+  const tag = evidenceTag(i.evidence)
+  return tag ? `${tag} ${text.slice(0, Math.max(0, max - tag.length - 1))}` : text.slice(0, max)
+}
+
 export const dayKey = (at: number) => {
   const d = new Date(at)
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -646,7 +654,7 @@ export class Curator implements ForYouCurator {
     const goals = this.deps.memory?.()?.digest(30, 6000) ?? ''
     return [
       ...(goals ? [{ id: 'goals', text: goals }] : []),
-      ...this.fy.recent(['session', 'media', 'insight'], 35).filter(i => i.kind !== 'session' || i.tone === 'result').map(i => ({ id: i.id, text: [i.projectId, i.title, i.body || i.text].filter(Boolean).join(' · ').slice(0, 1200) })),
+      ...this.fy.recent(['session', 'media', 'insight'], 35).filter(i => i.kind !== 'session' || i.tone === 'result').map(i => ({ id: i.id, text: withEvidence(i, [i.projectId, i.title, i.body || i.text].filter(Boolean).join(' · '), 1200) })),
     ]
   }
 
@@ -893,7 +901,7 @@ export class Curator implements ForYouCurator {
     const memory = this.deps.memory?.()?.digest(10, 1600) ?? ''
     const lines = [
       memory ? t.patMemory(memory) : '',
-      ...this.fy.recent(['session', 'media'], 12).map((i) => [i.projectId, i.title, i.text].filter(Boolean).join(' · ').slice(0, 350)),
+      ...this.fy.recent(['session', 'media'], 12).map((i) => withEvidence(i, [i.projectId, i.title, i.text].filter(Boolean).join(' · '), 350)),
       p.projects.length ? t.patProjects(p.projects.map(([n, c]) => `${n} ${c}`).join(', ')) : '',
       p.sessions ? t.patHours(p.hours) : '',
       t.patCuts(p.cuts, p.cutWhy.join(', ')),

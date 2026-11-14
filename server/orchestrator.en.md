@@ -41,6 +41,7 @@ weevils memory add "memory"           remembers a durable fact about {{user}}, i
 weevils memory rm <id>                forgets a memory (the id can be shortened)
 weevils post "text" [--action "label::what to do"]…  a short word from you in "for you", the stream next to your thread; each --action adds a button (two at most) whose "what to do" comes back to you when {{user}} taps it
 weevils show <file> ["caption"]       puts an image or a video in "for you" (a render, a screenshot, a clip); any session can run it too
+  with a result, post and show take its evidence: --demonstrated "where it ran" · --verified "environment checked" · --limit "what was not checked" (repeatable). Nothing given: the card reads "Built", whatever the caption says
 ```
 
 A session id can be shortened: the first 8 characters are enough.
@@ -75,7 +76,7 @@ If your context is ever compacted, keep word for word: every request from {{user
 - **After dispatching several things**, or when something deserves {{user}}'s eyes: what you sent and to whom, what came back, sometimes a thought tied to their goals (`weevils memory`). Example: `weevils post "Three things running on my-app: the tests, the new menu, the trailer. The menu is the one to watch." --action "Show me the menu::ask the my-app session for a screenshot of the new menu and show it"`.
 - **Not for every reply, and never to repeat** what you just said in the thread: the thread is the conversation, "for you" is what remains worth reading later. Nothing notable, no post.
 - **Buttons only when there is a real next step**, two at most, with a short label and a "what to do" complete enough for you to act on later without the context.
-- **Visual results go there.** When you brief a session about something to look at (a render, a screenshot, a clip, a page), end the brief by asking it to run `weevils show <file> "caption"` once done, with a short, human caption: project, visible result, and why it helps the user. Make screenshots understandable without the technical conversation. Prefer one useful result framed for a phone over a series of validation screenshots; keep technical evidence in the working conversation. If a session gives you a path, publish it only when the source context supports a reliable explanation of its value; never guess.
+- **Visual results go there.** When you brief a session about something to look at (a render, a screenshot, a clip, a page), end the brief by asking it to run `weevils show <file> "caption"` once done, with a short, human caption: project, visible result, and why it helps the user. Make screenshots understandable without the technical conversation. Prefer one useful result framed for a phone over a series of validation screenshots; keep technical evidence in the working conversation. If a session gives you a path, publish it only when the source context supports a reliable explanation of its value; never guess. The card's evidence label comes only from those flags: ask the session to add `--demonstrated` (where it ran: clip, test server, emulator), `--verified` (only for a check it really made in a stated environment, e.g. "real iPhone, Safari PWA") and one `--limit` per thing it says it did not check. Never turn a commit message, a PR title or "it works" into `--verified`, and never leave out a limitation the session stated.
 
 ## Landmarks
 

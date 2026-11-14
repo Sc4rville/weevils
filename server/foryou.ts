@@ -28,6 +28,7 @@ import path from 'node:path'
 import type { InterruptReason, Message, Session, SessionDetail, Snapshot } from '../shared/api.ts'
 import type { ForYouAction, ForYouCard, ForYouFeed, ForYouGauge, ForYouItem, ForYouKind, ForYouMark, ForYouMedia, ForYouOpen, ForYouPulse, ForYouTone } from '../shared/foryou.ts'
 import { isLang } from '../shared/i18n.ts'
+import { evidenceInput, evidenceLabel, mergeEvidence, type EvidenceInput } from '../shared/evidence.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { withoutWeevilsBlock } from './transcripts.ts'
 import type { Level, UsageInfo } from '../shared/infra.ts'
@@ -385,6 +386,8 @@ interface Stored {
    *  in); without text: tried, nothing worth keeping. */
   /** The model's line (text); tries/at: attempts that gave nothing usable, retried a few times. */
   sum?: { text?: string; lang?: Lang; tries?: number; at?: number }
+  /** weevils show / post: the evidence supplied with the publication, as given (the label is derived at read time). */
+  evidence?: EvidenceInput
 }
 
 interface LiveState {
@@ -750,12 +753,14 @@ export class ForYou {
     return list.length ? list : undefined
   }
 
-  /** « weevils post »: a word in the stream, from weevboss unless another author signs it, with up to two buttons. */
-  post(text: unknown, actions?: unknown, from?: string): ForYouItem {
+  /** « weevils post »: a word in the stream, from weevboss unless another author signs it, with up to two buttons, and the
+   *  evidence supplied with it when it reports a result (shared/evidence.ts). */
+  post(text: unknown, actions?: unknown, from?: string, evidence?: unknown): ForYouItem {
     const body = typeof text === 'string' ? text.trim() : ''
     if (!body) throw new Error(tr(M).emptyText)
     if (technicalEvent('', body) || internalFeedUpdate(body)) throw new Error(tr(M).technicalPost)
-    const item: Stored = { id: newId('b'), kind: 'boss', tone: 'neutral', at: this.now(), who: from || 'weevboss', text: clip(body, POST_MAX), actions: this.buttons(actions), reply: 'boss', open: { page: 'boss' } }
+    const proof = evidenceInput(evidence)
+    const item: Stored = { id: newId('b'), kind: 'boss', tone: 'neutral', at: this.now(), who: from || 'weevboss', text: clip(body, POST_MAX), actions: this.buttons(actions), reply: 'boss', open: { page: 'boss' }, ...(proof ? { evidence: proof } : {}) }
     this.put(item)
     this.changed()
     return this.view(item, this.w.snapshot())!
@@ -765,11 +770,12 @@ export class ForYou {
    * « weevils show »: a file an agent wants the user to see. Its session is the most recently active one working in
    * (or above) the caller's folder; files shown by the same session within two minutes join one item.
    */
-  addMedia(o: { path: unknown; caption?: unknown; cwd?: unknown; from?: string }): ForYouItem {
+  addMedia(o: { path: unknown; caption?: unknown; cwd?: unknown; from?: string; evidence?: unknown }): ForYouItem {
     if (!this.shelf) throw new Error(tr(M).noMedia)
     const cwd = typeof o.cwd === 'string' && o.cwd ? path.resolve(o.cwd) : undefined
     const entry = this.shelf.add(String(o.path ?? ''), cwd)
     const caption = clip(collapse(typeof o.caption === 'string' ? o.caption : ''), 200)
+    const proof = evidenceInput(o.evidence)
     const snap = this.w.snapshot()
     const s = cwd
       ? snap.sessions
@@ -781,6 +787,8 @@ export class ForYou {
     if (open) {
       if (!open.mediaIds!.includes(entry.id)) open.mediaIds!.push(entry.id)
       if (caption) open.title = caption
+      const evidence = mergeEvidence(open.evidence, proof)
+      if (evidence) open.evidence = evidence
       open.at = now
       delete open.seen
       this.changed()
@@ -799,6 +807,7 @@ export class ForYou {
       text: '',
       mediaIds: [entry.id],
       cwd,
+      ...(proof ? { evidence: proof } : {}),
       ...(s ? { projectId: s.projectId, sessionId: s.id, tool: s.tool, reply: 'session' as const, open: { page: 'session' as const, id: s.id } } : boss ? { reply: 'boss' as const, open: { page: 'boss' as const } } : {}),
     }
     this.put(item)
@@ -1083,6 +1092,9 @@ export class ForYou {
     if (i.more) out.more = true
     if (i.moreText) out.moreText = i.moreText
     if (i.gauges?.length) out.gauges = i.gauges
+    // A result says how far it was seen working, from what was supplied with it only: an agent's media result without
+    // any is « implemented » at most, whatever its caption claims.
+    if (i.evidence || (i.kind === 'media' && i.tone === 'result')) out.evidence = evidenceLabel(i.evidence)
     // Words of weevboss or of an outside author can be listened to, each in its own voice.
     const voice = i.kind === 'boss' && i.id.startsWith('b:') && i.text ? this.deps.voiceOf?.(i.who) : undefined
     if (voice) out.voice = voice
@@ -1622,7 +1634,8 @@ export class ForYou {
 /**
  * GET /api/foryou[?lang=] → ForYouFeed · POST /api/foryou/seen { ids } · POST /api/foryou/:id/dismiss ·
  * POST /api/foryou/:id/act { action, card? } · POST /api/foryou/:id/reply { text } · POST /api/foryou/:id/more → { text } ·
- * POST /api/foryou/post { text, actions?, from? } and POST /api/foryou/media { path, caption?, cwd?, from? }: from this
+ * POST /api/foryou/post { text, actions?, from?, evidence? } and POST /api/foryou/media { path, caption?, cwd?, from?,
+ * evidence? } (evidence: { demonstrated?, verified?, limits? }, shared/evidence.ts): from this
  * machine only (weevils post / show) · GET /api/foryou/media/:id → the bytes (the router already checked the cookie).
  */
 export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [string, RegExp, Handler][] {
@@ -1658,7 +1671,7 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
     ['POST', /^\/api\/foryou\/post$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
-      await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, b)) }))
+      await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, b), b?.evidence) }))
     }],
     ['GET', /^\/api\/foryou\/formats$/, (_req, res, url) => json(res, 200, { proposal: fy.visualExample(langOf(url)) })],
     ['POST', /^\/api\/foryou\/composition$/, async (req, res) => {
@@ -1674,7 +1687,7 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
     ['POST', /^\/api\/foryou\/media$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
-      await run(res, true, () => ({ item: fy.addMedia({ path: b?.path, caption: b?.caption, cwd: b?.cwd, from: trustedFrom(req, b) }) }))
+      await run(res, true, () => ({ item: fy.addMedia({ path: b?.path, caption: b?.caption, cwd: b?.cwd, from: trustedFrom(req, b), evidence: b?.evidence }) }))
     }],
     // GET and HEAD (a player may ask for the size first): the router matches the method exactly.
     ...(['GET', 'HEAD'] as const).map((method): [string, RegExp, Handler] => [method, /^\/api\/foryou\/media\/([\w-]+)$/, (req, res, u, [mid]) => {

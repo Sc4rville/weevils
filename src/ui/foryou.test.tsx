@@ -2,6 +2,7 @@
 // The « for you » page: each kind of item shows its essentials, what can be done from the stream calls the right route
 // (accept a card, reply, more), a mail unfolds in place, a session's head opens the real conversation.
 import { act } from 'react'
+import voiceModeFixture from '../../test/fixtures/foryou-voice-mode-68fd4d11.json?raw'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Snapshot } from '../../shared/api.ts'
@@ -921,4 +922,56 @@ it('uses the static recursive signature only for structured identity, including 
   expect(band(item.id).classList.contains('recursive-identity')).toBe(false)
  }
  expect(srv.calls.some(c=>/^(act|reply|dismiss) /.test(c))).toBe(false)
+})
+
+// Evidence labels: the voice-mode card of session 68fd4d11 (test/fixtures), whose caption says « interrupt anytime ».
+describe('evidence labels', () => {
+  const fx = JSON.parse(voiceModeFixture)
+  const limit: string = fx.evidence.limits[0]
+  const card = (evidence: ForYouItem['evidence']): ForYouItem => ({
+    ...base, id: fx.card.id, kind: 'media', tone: 'result', who: 'session', projectId: 'mygame', title: fx.card.title, text: '',
+    media: [{ id: 'clip', type: 'video', url: '/api/foryou/media/clip', name: fx.card.file, bytes: 1 }], evidence,
+  })
+  afterEach(() => act(() => setLang('en')))
+
+  it('the voice-mode card keeps « interruption not tested on a real iPhone » in sight and never reads « Verified »', async () => {
+    // Even a server (or a commit) claiming verified cannot put « Verified » next to an open limitation.
+    for (const evidence of [{ level: 'demonstrated' as const, where: fx.evidence.demonstrated, limits: [limit] }, { level: 'verified' as const, environment: 'real iPhone, Safari PWA', limits: [limit] }]) {
+      render(<ForYouItemView item={card(evidence)} />)
+      const el = band(fx.card.id)
+      expect(el.querySelector('.fy-title')!.textContent).toBe(fx.card.title)
+      const line = el.querySelector('.fy-evidence')!
+      expect(line.getAttribute('data-evidence')).toBe('demonstrated')
+      expect(line.querySelector('.fy-ev-label')!.textContent).toBe('Shown working')
+      expect(el.textContent).not.toContain('Verified')
+      // The limitation is outside the folded details: visible without a tap, word for word.
+      const shown = line.querySelector('.fy-ev-limits li')!
+      expect(shown.textContent).toBe(limit)
+      expect(shown.closest('details')).toBeNull()
+      expect(line.querySelector('.fy-ev-limits')!.getAttribute('aria-label')).toBe('Not checked yet')
+    }
+    // Details wait for a deliberate tap.
+    const details = band(fx.card.id).querySelector<HTMLDetailsElement>('details.fy-ev-more')!
+    expect(details.open).toBe(false)
+    expect(details.querySelector('.fy-ev-about')!.textContent).toBe('Seen running: real iPhone, Safari PWA. Not verified yet.')
+    // The thin strip says the label first.
+    render(<ForYouItemView item={card({ level: 'demonstrated', where: fx.evidence.demonstrated, limits: [limit] })} compact />)
+    expect(band(fx.card.id).querySelector('.fy-ev-strip')!.textContent).toBe('Shown working ◦ · ')
+  })
+
+  it('as published, without evidence: « Built », whatever the caption claims', () => {
+    render(<ForYouItemView item={card({ level: 'implemented' })} />)
+    expect(band(fx.card.id).querySelector('.fy-ev-label')!.textContent).toBe('Built')
+    expect(band(fx.card.id).querySelector('.fy-ev-place')).toBeNull()
+    render(<ForYouItemView item={card(undefined)} />)
+    expect(band(fx.card.id).querySelector('.fy-evidence')).toBeNull()
+  })
+
+  it('verified shows its environment next to the label; French too', async () => {
+    render(<ForYouItemView item={card({ level: 'verified', environment: 'real iPhone, Safari PWA' })} />)
+    const summary = band(fx.card.id).querySelector('.fy-ev-more summary')!
+    expect(summary.textContent).toBe('Verified · real iPhone, Safari PWA')
+    await act(async () => setLang('fr'))
+    expect(band(fx.card.id).querySelector('.fy-ev-more summary')!.textContent).toBe('Vérifié · real iPhone, Safari PWA')
+  })
 })

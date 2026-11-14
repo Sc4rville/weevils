@@ -6,14 +6,16 @@ export default defineMessages({
     // Session
     changeModel: 'changer le modèle ou l’effort',
     model: 'modèle',
-    queued: (n: number) => `${n} en attente`,
+    queued: (n: number) => (n > 1 ? `${n} messages en attente` : '1 message en attente'),
     since: (d: string) => ` depuis ${d}`,
-    browser: 'navigateur',
-    closeBrowser: 'fermer le navigateur',
-    settings: 'réglages',
+    /** Le volet qui montre l'appli en cours de construction. */
+    seeApp: 'voir l’appli',
+    closeApp: 'fermer l’appli',
+    /** Surtitre d'une session dont le projet n'est pas (encore) connu. */
+    sessionsKicker: 'sessions',
     writeTo: (tool: string) => `écris à ${tool}`,
     resumeWith: (tool: string) => `reprendre avec ${tool}`,
-    readOnly: 'lecture seule',
+    readOnly: 'ouverte hors de weevils : lecture seule',
     composerLabel: (title: string) => `message à la session ${title}`,
     /** Bulle provisoire d'un envoi avec photos. */
     photos: (n: number) => (n > 1 ? `${n} photos` : 'photo'),
@@ -25,15 +27,15 @@ export default defineMessages({
     done: 'fini',
     /** État d'un sous-agent, d'une étape de workflow ou d'une commande d'arrière-plan. */
     subStatus: (s: 'working' | 'done' | 'failed' | 'stopped') => ({ working: 'travaille', done: 'fini', failed: 'échoué', stopped: 'coupé' })[s],
-    /** Méta de la session : ce qui tourne encore à côté d'elle. */
-    background: (n: number) => `${n} en arrière-plan`,
     /** Lecteur d'écran, ligne de sous-agent : nom, état, durée, déplié ou non. */
     subAria: (label: string, state: string, d: string, open: boolean) => `${label}, ${state}, ${d}, ${open ? 'replier' : 'déplier'}`,
     asks: (tool: string) => `${tool} te demande`,
     waitingForYou: 'la session attend ta réponse',
     /** Session coupée en plein travail : pourquoi, et les deux gestes. */
     cutWhy: (reason: string) =>
-      ({ died: 'processus arrêté', dirty: 'arrêtée avec du travail non commité', quota: 'limite d’usage atteinte', auth: 'connexion expirée', api: 'erreur de l’API' })[reason] ?? 'arrêtée',
+      ({ died: 'arrêt inattendu', dirty: 'changements non enregistrés', quota: 'limite d’usage atteinte', auth: 'compte déconnecté', api: 'le service a échoué' })[reason] ?? 'arrêtée',
+    /** Le message d'erreur brut de l'outil, replié. */
+    cutDetail: 'détails',
     resume: 'reprendre',
     dismiss: 'laisser',
     // Fichiers
@@ -71,14 +73,14 @@ export default defineMessages({
     notFound: 'not found',
     changeModel: 'change model or effort',
     model: 'model',
-    queued: (n: number) => `${n} queued`,
+    queued: (n: number) => (n === 1 ? '1 message waiting' : `${n} messages waiting`),
     since: (d: string) => ` for ${d}`,
-    browser: 'browser',
-    closeBrowser: 'close browser',
-    settings: 'settings',
+    seeApp: 'see the app',
+    closeApp: 'close the app',
+    sessionsKicker: 'sessions',
     writeTo: (tool: string) => `write to ${tool}`,
     resumeWith: (tool: string) => `resume with ${tool}`,
-    readOnly: 'read-only',
+    readOnly: 'opened outside weevils: read only',
     composerLabel: (title: string) => `message to session ${title}`,
     photos: (n: number) => (n > 1 ? `${n} photos` : 'photo'),
     subagentsLabel: (n: number) => `subagents: ${n} active`,
@@ -88,12 +90,12 @@ export default defineMessages({
     working: 'working',
     done: 'done',
     subStatus: (s: 'working' | 'done' | 'failed' | 'stopped') => ({ working: 'working', done: 'done', failed: 'failed', stopped: 'stopped' })[s],
-    background: (n: number) => `${n} in background`,
     subAria: (label: string, state: string, d: string, open: boolean) => `${label}, ${state}, ${d}, ${open ? 'collapse' : 'expand'}`,
     asks: (tool: string) => `${tool} is asking`,
     waitingForYou: 'the session is waiting for your answer',
     cutWhy: (reason: string) =>
-      ({ died: 'process stopped', dirty: 'stopped with uncommitted work', quota: 'usage limit reached', auth: 'login expired', api: 'API error' })[reason] ?? 'stopped',
+      ({ died: 'unexpected stop', dirty: 'unsaved changes', quota: 'usage limit reached', auth: 'signed out', api: 'the service failed' })[reason] ?? 'stopped',
+    cutDetail: 'details',
     resume: 'resume',
     dismiss: 'dismiss',
     repos: (n: number) => `${n} ${n === 1 ? 'repo' : 'repos'}`,

@@ -135,3 +135,39 @@ describe('session page: no terminal', () => {
     expect(text(host)).not.toMatch(/terminal/i)
   })
 })
+
+describe('session page header', () => {
+  it('no machine id, no background count, one settings control, plain words for the app preview and queued messages', async () => {
+    localStorage.removeItem('weevils-preview:s1')
+    render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ background: 2, queued: 3 })])
+    await flush()
+    const all = text(host)
+    expect(all).not.toContain('vps-machine-42')
+    expect(all).not.toContain('in background')
+    expect(all).toContain('3 messages waiting')
+    expect(byText('settings')).toBeUndefined()
+    expect(host.querySelectorAll('button[aria-controls="session-settings"]')).toHaveLength(1)
+    expect(byText('browser')).toBeUndefined()
+    const see = byText('see the app')!
+    await act(async () => see.click())
+    expect(byText('close the app')?.getAttribute('aria-pressed')).toBe('true')
+    // The header chip opens and closes the settings.
+    const chip = host.querySelector<HTMLButtonElement>('button[aria-controls="session-settings"]')!
+    await act(async () => chip.click())
+    expect(chip.getAttribute('aria-pressed')).toBe('true')
+    await act(async () => chip.click())
+    expect(chip.getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('an unknown project falls back to "sessions", never to the raw project id', async () => {
+    render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ projectId: 'p-7f3a9c' })], [])
+    await flush()
+    expect(text(host)).not.toContain('p-7f3a9c')
+  })
+
+  it('a session opened outside weevils says so in plain words', async () => {
+    render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ controllable: false })])
+    await flush()
+    expect(host.querySelector<HTMLInputElement>('.composer input')!.placeholder).toBe('opened outside weevils: read only')
+  })
+})

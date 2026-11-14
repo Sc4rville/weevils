@@ -225,11 +225,11 @@ function SessionPage({ id }: { id: string }) {
   return (
     <Shell
       slot={colors[s.projectId] ?? 'agent'}
-      kicker={project?.name ?? s.projectId}
+      kicker={project?.name ?? t.sessionsKicker}
       title={s.title}
       scrollHeading
       sessionLayout
-      headerControls={<button className="link inline" onClick={() => setShowSettings(true)} aria-label={t.changeModel} aria-controls="session-settings">
+      headerControls={<button className="link inline" onClick={() => setShowSettings((v) => !v)} aria-label={t.changeModel} aria-pressed={showSettings} aria-controls="session-settings">
             {[modelLabel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
           </button>}
       meta={
@@ -242,18 +242,11 @@ function SessionPage({ id }: { id: string }) {
           )}
           {s.tool}{' '}
           {' '}· <StatusChar s={s.status} /> {st.label}
-          {s.background > 0 && <span className="strong"> · {t.background(s.background)}</span>}
           {s.queued > 0 && <span className="strong"> · {t.queued(s.queued)}</span>}
           {s.status === 'working' && s.workStartedAt != null ? <>{t.since(durLong(now - s.workStartedAt))}</> : <> · {ago(now - s.lastActivityAt)}</>}
           {' · '}
-          {s.machineId}
-          {' · '}
           <button className="link" onClick={() => setPreview({ open: !preview.open })} aria-pressed={!!preview.open}>
-            {preview.open ? t.closeBrowser : t.browser}
-          </button>
-          {' · '}
-          <button className="link" onClick={() => setShowSettings((v) => !v)} aria-pressed={showSettings} aria-controls="session-settings">
-            {t.settings}
+            {preview.open ? t.closeApp : t.seeApp}
           </button>
           {' · '}<SessionArchiveAction key={s.id} session={s} />
         </>
@@ -267,7 +260,7 @@ function SessionPage({ id }: { id: string }) {
           <FootError text={err} />
           {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
           <Composer
-            placeholder={sourceIssue ?? (s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly)}
+            placeholder={sourceIssue ? '' : s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly}
             label={t.composerLabel(s.title)}
             onSend={send}
             onAttach={send}
@@ -306,10 +299,15 @@ function SessionPage({ id }: { id: string }) {
           <Notice closable={false} eventId={sessionNoticeKey(s)} about={s.title} className="msg band cut-band">
             <div className="in">
               <span className="who">
-                × {st.label}
+                {st.label}
                 {s.interrupted ? ` · ${t.cutWhy(s.interrupted.reason)}` : ''}
               </span>
-              {s.interrupted?.detail && <div className="text">{s.interrupted.detail}</div>}
+              {s.interrupted?.detail && (
+                <details className="cut-detail">
+                  <summary className="meta">{t.cutDetail}</summary>
+                  <div className="text">{s.interrupted.detail}</div>
+                </details>
+              )}
               <div className="cut-actions">
                 <ResumeButton session={s} stay onError={setErr} />
                 <button className="link" onClick={() => void api.dismiss(s.id).then(() => dismissNotice(sessionNoticeKey(s))).catch((e) => setErr((e as Error).message))}>

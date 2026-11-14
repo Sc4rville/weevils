@@ -22,7 +22,7 @@ export function PrefLines() {
   }
   return (
     <>
-      <Line ch="~" go={null} meta={chosen ? t.chosen : t.followsDefault} onClick={() => setPicking((p) => !p)}>
+      <Line ch="~" go={null} onClick={() => setPicking((p) => !p)}>
         {t.language} · {LANG_NAMES[lang]}
       </Line>
       {picking && (

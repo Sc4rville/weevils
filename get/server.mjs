@@ -363,7 +363,7 @@ export function sshStart(cfg, { ip, port, user, password, key, sid }) {
 // ---------------------------------------------------------------- HTTP
 
 const PAGE_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' }
-const STATIC = { '/': 'index.html', '/logo.svg': '../public/branding/weevboss.svg', '/qrcode.js': 'qrcode.js', '/icon-192.png': '../public/icon-192.png', '/icon-180.png': '../public/icon-180.png', '/favicon-32.png': '../public/favicon-32.png' }
+const STATIC = { '/': 'index.html', '/logo.svg': '../public/branding/weevboss.svg', '/qrcode.js': 'qrcode.js', '/icon-192.png': '../public/icon-192.png', '/icon-180.png': '../public/icon-180.png', '/favicon-32.png': '../public/favicon-32.png', '/og.png': 'og.png' }
 const SECURITY_HEADERS = {
   'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
   'referrer-policy': 'no-referrer',

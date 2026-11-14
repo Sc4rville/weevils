@@ -304,6 +304,20 @@ describe('guards', () => {
     // A cookie still works too.
     expect((await fetch(gatedBase + '/', { headers: { cookie: 'gk=letmein' } })).status).toBe(200)
   })
+  it('open to anyone since the launch: an old ?k= link still opens the page, which carries its share card', async () => {
+    const page = await fetch(base + '/?k=anOldSharedKey', { redirect: 'manual' })
+    expect(page.status).toBe(200)
+    const html = await page.text()
+    expect(html).toContain('<meta property="og:title" content="weevils — your AI dev team, in your pocket">')
+    expect(html).toContain('<meta name="twitter:card" content="summary_large_image">')
+    expect(html).toContain('<meta property="og:image" content="https://tryweevils.scarville.tech/og.png">')
+    // The card: a PNG of 1200×630, small enough for WhatsApp's previews.
+    const card = await fetch(base + '/og.png')
+    expect(card.headers.get('content-type')).toBe('image/png')
+    const png = Buffer.from(await card.arrayBuffer())
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630])
+    expect(png.length).toBeLessThan(300_000)
+  })
   it('limits job creation per address', async () => {
     const own = createServer(config({ GET_TRUST_PROXY: '0' })).server
     const b = `http://127.0.0.1:${await listen(own)}`

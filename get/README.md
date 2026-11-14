@@ -1,7 +1,10 @@
 # get — the public way in
 
-`https://get.scarville.tech`: someone sees a link, opens it on a phone or a computer, and ends up on their own weevils
-without typing anything (or, for a computer, by pasting one command in its terminal).
+`https://tryweevils.scarville.tech` (the link to share; `https://get.scarville.tech` serves the same): someone sees a
+link, opens it on a phone or a computer, and ends up on their own weevils without typing anything (or, for a computer,
+by pasting one command in its terminal). Open to anyone since 2026-11-14, with one link for everyone. Pasted on
+Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter tags in `index.html`; the image,
+`og.png`, 1200×630, is `og-card.html` rendered by a headless browser).
 
 1. A short page (English by default, a small FR switch) says what weevils is, then right away: **plug in your
    machine** ("a server keeps your agents working while your phone and computer are off").
@@ -81,9 +84,10 @@ Linux in four places:
   address (private, loopback, link-local and this server's own addresses are refused).
 - **Rate limits** per client address (setups, quotes, server creations, SSH attempts, script downloads) and per
   setup (reports), plus a cap on concurrent SSH connections and on setups in memory.
-- **Preview gate**: with `GET_PREVIEW_KEY`, the page needs `/?k=<key>` (or `/#k=<key>`) in its URL, and its API calls
-  carry the key in a header: no redirect and no cookie needed (some iOS contexts drop a cookie set on a redirect).
-  Install scripts stay reachable by their unguessable setup id; the page's own assets are public.
+- **Preview gate** (off since the launch; old links with `?k=` still open the page, the key is ignored): with
+  `GET_PREVIEW_KEY`, the page needs `/?k=<key>` (or `/#k=<key>`) in its URL, and its API calls carry the key in a
+  header: no redirect and no cookie needed (some iOS contexts drop a cookie set on a redirect). Install scripts stay
+  reachable by their unguessable setup id; the page's own assets are public.
 
 What the service *does* have, briefly, by design: during "I already have a VPS", the password, for one connection;
 during "Create a server for me", the token, for two API calls. A modified service could keep them; the code is open
@@ -98,7 +102,7 @@ GET_PORT=4182 GET_BASE=https://get.scarville.tech node get/server.mjs
 | env | meaning |
 |---|---|
 | `GET_BASE` | public URL of this service (used in the install command and cloud-init) |
-| `GET_PREVIEW_KEY` | gate everything behind `/?k=<key>` until launch |
+| `GET_PREVIEW_KEY` | gate everything behind `/?k=<key>` (unset on scarville.tech since the launch) |
 | `GET_REPO` | the repository installs clone (default GitHub) |
 | `GET_BUNDLE` | while the repository is private: a bundle built by `get/make-bundle.sh [<rev>] [<out>] [<checkout>]` (one squashed commit, no history), kept on `origin/main` by `get/refresh-bundle.sh` (the `weevils-get-bundle` timer, every 2 min). It is what every install gets, so it must hold the installer that supports macOS; the file is read at each download, replacing it needs no restart |
 | `GET_INSTALLER` | the `install.sh` the allowed step titles are read from, at start (default: this clone's). Same titles as the bundle's |
@@ -106,7 +110,8 @@ GET_PORT=4182 GET_BASE=https://get.scarville.tech node get/server.mjs
 | `GET_ALLOW_TARGETS`, `GET_TARGET_URLS` | tests only: a private SSH target allowed, and the URL its weevils gets (`ip=url`) |
 
 On scarville.tech: systemd user unit `weevils-get`, env in `~/.config/weevils-get/env`, Caddy site
-`/etc/caddy/sites/get.caddy` (explicit `127.0.0.1`, so the dev-server reaper leaves it alone).
+`/etc/caddy/sites/get.caddy` for both `get.scarville.tech` and `tryweevils.scarville.tech` (explicit `127.0.0.1`, so
+the dev-server reaper leaves it alone).
 
 ## Tests
 

@@ -195,7 +195,7 @@ function WorkflowGroup({ sessionId, w, now }: { sessionId: string; w: Extract<Su
         </span>
         <span className="ellipsis">
           <span className="strong">{flowName(w.name)}</span>
-          {all.length > 0 && ` · ${t.subStatus(live ? 'working' : 'done')}`}
+          {all.length > 0 && ` · ${live ? t.flowWorking : t.flowDone}`}
         </span>
       </div>
       {w.phases.map((p) => (

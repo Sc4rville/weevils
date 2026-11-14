@@ -23,6 +23,9 @@ export default defineMessages({
     helpers: 'aides',
     helpersWorking: (n: number) => `${n} au travail`,
     helpersDone: 'tout est fini',
+    /** En-tête d'un workflow dans la bande : en cours ou fini. */
+    flowWorking: 'travaille',
+    flowDone: 'fini',
     /** État d'un sous-agent, d'une étape de workflow ou d'une commande d'arrière-plan. */
     subStatus: (s: 'working' | 'done' | 'failed' | 'stopped') => ({ working: 'travaille', done: 'fini', failed: 'échoué', stopped: 'coupé' })[s],
     /** Lecteur d'écran, ligne de sous-agent : nom, état, durée, déplié ou non. */
@@ -84,6 +87,8 @@ export default defineMessages({
     helpers: 'helpers',
     helpersWorking: (n: number) => `${n} working`,
     helpersDone: 'all done',
+    flowWorking: 'working',
+    flowDone: 'done',
     subStatus: (s: 'working' | 'done' | 'failed' | 'stopped') => ({ working: 'working', done: 'done', failed: 'failed', stopped: 'stopped' })[s],
     subAria: (label: string, state: string, d: string, open: boolean) => `${label}, ${state}, ${d}, ${open ? 'collapse' : 'expand'}`,
     asks: (tool: string) => `${tool} is asking`,

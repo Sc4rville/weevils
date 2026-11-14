@@ -66,11 +66,12 @@ export function useLocalSettings(id: string) {
   return [local, update] as const
 }
 
-function Choice({ label, options, value, onPick, words }: { label: string; options: string[]; value?: string; onPick: (v: string) => void; known: boolean; words?: (o: string) => string }) {
+/** One tap applies: the tapped word is the choice at once, marked pending while its command is on its way. */
+function Choice({ label, options, value, onPick, words, pending }: { label: string; options: string[]; value?: string; onPick: (v: string) => void; known: boolean; words?: (o: string) => string; pending?: string }) {
   return (
     <div className="in words" role="group" aria-label={label}>
       {options.map((o) => (
-        <button key={o} className={`word ${value === o ? 'on' : ''}`} aria-pressed={value === o} onClick={() => onPick(o)}>
+        <button key={o} type="button" className={`word${value === o ? ' on' : ''}${pending === o ? ' pending' : ''}`} aria-pressed={value === o} aria-busy={pending === o || undefined} onClick={() => onPick(o)}>
           {words ? words(o) : o}
         </button>
       ))}
@@ -130,8 +131,8 @@ export function Settings({
       )}
       {tool === 'claude' ? (
         <>
-          <Choice label={t.model} options={models} value={model} known={modelKnown} onPick={(m) => void send(`/model ${m}`, () => setLocal({ model: m, at: Date.now() }))} />
-          <Choice label={t.effort} options={EFFORTS} value={local.effort && local.at && Date.now() - local.at < 20_000 ? local.effort : (settings?.effort ?? local.effort)} known={!!settings?.effort} words={t.effortWord} onPick={(e) => void send(`/effort ${e}`, () => setLocal({ effort: e, at: Date.now() }))} />
+          <Choice label={t.model} options={models} value={model} known={modelKnown} pending={busy?.startsWith('/model ') ? busy.slice(7) : undefined} onPick={(m) => void send(`/model ${m}`, () => setLocal({ model: m, at: Date.now() }))} />
+          <Choice label={t.effort} options={EFFORTS} value={local.effort && local.at && Date.now() - local.at < 20_000 ? local.effort : (settings?.effort ?? local.effort)} known={!!settings?.effort} pending={busy?.startsWith('/effort ') ? busy.slice(8) : undefined} words={t.effortWord} onPick={(e) => void send(`/effort ${e}`, () => setLocal({ effort: e, at: Date.now() }))} />
           <div className="in settings-row">
             <span className="meta settings-label">
               {t.fastMode}

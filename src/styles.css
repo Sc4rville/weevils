@@ -1873,6 +1873,12 @@ button.copy.done {
   opacity: 1;
 }
 
+/* A tapped setting on its way: the only sign of a change, on the word itself, until the session confirms it. */
+.word.pending {
+  text-decoration: underline dotted;
+  text-underline-offset: 5px;
+}
+
 /* ---------- Icônes : un seul jeu, une seule taille, aucun arrondi ---------- */
 
 .ic {

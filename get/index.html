@@ -264,7 +264,8 @@ const W = FR ? {
 }
 document.documentElement.lang = FR ? 'fr' : 'en'
 for (const el of document.querySelectorAll('[data-t]')) el.textContent = W[el.dataset.t]
-if (document.documentElement.dataset.code === 'public') Object.assign(document.querySelector('#code a'), { href: 'https://github.com/Sc4rville/weevils', textContent: W.source })
+// The code's link only once the service has seen the public repository open on GitHub.
+if (/^https:\/\/github\.com\//.test(document.documentElement.dataset.code || '')) Object.assign(document.querySelector('#code a'), { href: document.documentElement.dataset.code, textContent: W.source })
 const langBtn = document.getElementById('lang')
 langBtn.textContent = FR ? 'EN' : 'FR'
 langBtn.setAttribute('aria-label', FR ? 'English' : 'Français')

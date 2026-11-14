@@ -35,6 +35,9 @@ export function config(env = process.env) {
     /** Until the public launch: every page and API call needs this key once (?k=…, then a cookie). */
     previewKey: env.GET_PREVIEW_KEY || '',
     repo: env.GET_REPO || 'https://github.com/Sc4rville/weevils.git',
+    /** The public repository the page links to, once GitHub says it is public (the API asked without credentials). */
+    codeUrl: (env.GET_CODE_URL || 'https://github.com/Sc4rville/weevils-oss').replace(/\/$/, ''),
+    githubApi: (env.GET_GITHUB_API || 'https://api.github.com').replace(/\/$/, ''),
     /** A git bundle served to the installs while the repository is private (see get/make-bundle.sh). */
     bundle: env.GET_BUNDLE || '',
     hetzner: (env.GET_HETZNER_API || 'https://api.hetzner.cloud/v1').replace(/\/$/, ''),
@@ -150,19 +153,22 @@ export function loadJobs(store, file) {
   }
 }
 
-/** Is the repository public yet? GitHub's API, asked at most every 10 minutes and never waited for: the page links to
- * the code only once it is (a private repository is a 404 for visitors). */
-let CODE = { at: 0, public: false, asking: false }
-function codeIsPublic(repo) {
-  const slug = /github\.com[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?$/.exec(repo)?.[1]
-  if (slug && !CODE.asking && Date.now() - CODE.at > 10 * 60_000) {
-    CODE.asking = true
-    fetch(`https://api.github.com/repos/${slug}`, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'weevils-get' }, signal: AbortSignal.timeout(5000) })
-      .then(async (r) => (r.ok ? (await r.json())?.private === false : r.status === 404 ? false : CODE.public))
-      .catch(() => CODE.public)
-      .then((v) => (CODE = { at: Date.now(), public: !!v, asking: false }))
+/** Is the public repository open yet (GET_CODE_URL, default github.com/Sc4rville/weevils-oss)? GitHub's API, asked
+ * without credentials at most every 5 minutes and never waited for: until it says so, the page claims nothing (« Open
+ * source soon »), and the install works the same either way. */
+export function watchCode(cfg) {
+  let known = { at: 0, open: false, asking: false }
+  const slug = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+?)\/?$/.exec(cfg.codeUrl)?.[1]
+  return () => {
+    if (slug && !known.asking && Date.now() - known.at > 5 * 60_000) {
+      known.asking = true
+      fetch(`${cfg.githubApi}/repos/${slug}`, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'weevils-get' }, signal: AbortSignal.timeout(5000) })
+        .then(async (r) => (r.ok ? (await r.json())?.private === false : r.status === 404 ? false : known.open))
+        .catch(() => known.open)
+        .then((open) => (known = { at: Date.now(), open: !!open, asking: false }))
+    }
+    return known.open
   }
-  return CODE.public
 }
 
 /** What the page sees: never the view token, the public key or anything sent by the user. */
@@ -415,6 +421,7 @@ const SECURITY_HEADERS = {
 
 export function createServer(cfg = config(), deps = {}) {
   const store = deps.store || createStore()
+  const codeOpen = watchCode(cfg)
   const limit = new Limiter()
   const titles = stepTitles(cfg.installer)
   const titleList = '|' + Object.keys(titles).filter((t) => !t.includes('|')).join('|') + '|'
@@ -684,7 +691,7 @@ export function createServer(cfg = config(), deps = {}) {
       }
       if (url.pathname === '/' && req.method === 'GET') {
         let html = fs.readFileSync(path.join(HERE, 'index.html'), 'utf8')
-        if (codeIsPublic(cfg.repo)) html = html.replace('<html lang="en">', '<html lang="en" data-code="public">')
+        if (codeOpen()) html = html.replace('<html lang="en">', `<html lang="en" data-code="${cfg.codeUrl}">`)
         return send(res, 200, html, PAGE_TYPES['.html'])
       }
       fail(res, 404, 'not_found')

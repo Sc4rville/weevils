@@ -350,6 +350,32 @@ describe('guards', () => {
     expect(script).toContain('weevils-update')
     expect(script).toContain('_weevils_update "$@"')
   })
+  it('claims nothing until the public repository is open: then « The code is open, on GitHub », with its link', async () => {
+    let open = false
+    const github = http.createServer((req, res) => {
+      if (req.url !== '/repos/Sc4rville/weevils-oss' || !open) return res.writeHead(404).end('{"message":"Not Found"}')
+      res.writeHead(200, { 'content-type': 'application/json' }).end('{"private":false}')
+    })
+    const api = `http://127.0.0.1:${await listen(github)}`
+    const page = async (b: string) => (await fetch(b + '/')).text()
+    const tick = () => new Promise((r) => setTimeout(r, 150))
+    const closed = createServer(config({ GET_TRUST_PROXY: '0', GET_HANDOFF: '', GET_GITHUB_API: api })).server
+    const b1 = `http://127.0.0.1:${await listen(closed)}`
+    await page(b1)
+    await tick()
+    expect(await page(b1)).not.toContain('data-code=')
+    open = true
+    const opened = createServer(config({ GET_TRUST_PROXY: '0', GET_HANDOFF: '', GET_GITHUB_API: api })).server
+    const b2 = `http://127.0.0.1:${await listen(opened)}`
+    await page(b2)
+    await tick()
+    const html = await page(b2)
+    closed.close()
+    opened.close()
+    github.close()
+    expect(html).toContain('<html lang="en" data-code="https://github.com/Sc4rville/weevils-oss">')
+    expect(html).toContain('<a href="https://x.com/weevilscode" data-t="soon">')
+  })
   it('limits job creation per address', async () => {
     const own = createServer(config({ GET_TRUST_PROXY: '0' })).server
     const b = `http://127.0.0.1:${await listen(own)}`

@@ -281,10 +281,6 @@ export class BossSummaries {
 
 // ---------------------------------------------------------------- the view
 
-export interface ViewBudget {
-  /** The whole view, in tokens. */
-  total: number
-}
 export const budgetParts = (total: number) => ({
   stable: Math.round(total * 0.4),
   /** The word-for-word part grows up to this, then the ladder is rebuilt and it shrinks back to `recentTarget`. */

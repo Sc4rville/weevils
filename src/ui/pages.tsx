@@ -41,6 +41,7 @@ import PM from '../i18n/plain-steps'
 import { liveNote } from './plain-steps'
 import type { Message, Session } from '../../shared/api.ts'
 import { MemoryPage } from './memory'
+import { RequestsPage } from './requests'
 import { ForYouPage, MediaPage } from './foryou'
 import { AutoPage, AutoRunPage } from './auto-page'
 
@@ -95,6 +96,8 @@ export function PageView({ page }: { page: Page }) {
       return <CalmConv id={page.id} />
     case 'memory':
       return <MemoryPage />
+    case 'requests':
+      return <RequestsPage />
     case 'formats':
       return <FormatsPage />
     case 'foryou':

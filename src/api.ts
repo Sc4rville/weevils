@@ -12,6 +12,7 @@ import type { FsListing, InfraDetail, TokenRate, UsageInfo, UsageToday } from '.
 import type { ProgressFix, Software, SoftwareList } from '../shared/softwares.ts'
 import type { ForYouFeed, ForYouOpen } from '../shared/foryou.ts'
 import type { AutoDetail, AutoRunDetail, ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, Optimizer, OptimizerTalkReply, SessionDetail, SleepState, Snapshot, SubagentDetail, Tool, WeevilQuestion, WeevilReply } from '../shared/api.ts'
+import type { LedgerView } from '../shared/ledger.ts'
 
 export class ApiError extends Error {
   status: number
@@ -139,6 +140,8 @@ export const api = {
   setVoice: (id: string) => call<{ ok: true }>('POST', '/api/voices', { id }),
   mainAttach: (text: string, files: { name: string; type: string; data: string }[]) => send<{ id: string }>('/api/main/attach', { text, files }),
   memory: () => call<{ items: MemoryItem[] }>('GET', '/api/memory'),
+  ledger: () => call<LedgerView>('GET', '/api/boss/ledger'),
+  askAction: (id: string, action: 'done' | 'drop' | 'open') => call<{ ask: unknown }>('POST', `/api/boss/asks/${enc(id)}`, { action }),
   addMemory: (text: string) => call<{ item: MemoryItem }>('POST', '/api/memory', { text }),
   editMemory: (id: string, text: string) => call<{ item: MemoryItem }>('PUT', `/api/memory/${enc(id)}`, { text }),
   deleteMemory: (id: string) => call<{ ok: true }>('DELETE', `/api/memory/${enc(id)}`),

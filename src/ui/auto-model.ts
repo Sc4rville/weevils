@@ -115,14 +115,6 @@ const withProgress = (x: Omit<AutoItem, 'progress'>): AutoItem => {
 
 const newestFirst = (runs: AutoRun[] | undefined) => [...(runs ?? [])].map((r) => ({ ...r, startedAt: r.startedAt ?? r.at })).sort((a, b) => b.at - a.at)
 
-/** The next time a daily window opens (local time), after now. */
-export function windowStart(w: { from: number }, now: number): number {
-  const d = new Date(now)
-  d.setHours(Math.floor(w.from / 60) % 24, w.from % 60, 0, 0)
-  if (d.getTime() <= now) d.setDate(d.getDate() + 1)
-  return d.getTime()
-}
-
 /** An explicit date is distinct from a retry, a recurring cadence or an eligibility window. */
 export function optimizerTrigger(o: Pick<Optimizer, 'every' | 'window' | 'notBefore' | 'startAt' | 'onSleep' | 'stopOnWake'>): Trigger {
   // « When I sleep » replaces its times.

@@ -2085,6 +2085,11 @@ describe('auto — the « when I sleep » trigger (sleep mode)', () => {
     expect(v.every).toBeUndefined()
     expect(v.window).toBeUndefined()
     expect(v.changed!.fields).toEqual(expect.arrayContaining(['onSleep', 'stopOnWake', 'every', 'window']))
+    // Switched while awake: it waits for the night, it never starts on the switch.
+    o.sleep = { on: false, since: null }
+    o.tick(T0 + IDLE_MS)
+    expect(o.list(T0 + IDLE_MS)[0]).toMatchObject({ state: 'queued', waiting: 'sleep' })
+    expect(createIn).not.toHaveBeenCalled()
     const off = o.setTrigger('n1ght5', { onSleep: false })!
     expect(off.onSleep).toBeUndefined()
     expect(off.stopOnWake).toBeUndefined()

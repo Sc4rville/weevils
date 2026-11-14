@@ -38,7 +38,6 @@ const set = (patch: Partial<Live>) => {
 
 export const useLive = () => useSyncExternalStore(subscribe, () => live, () => null)
 export const useLiveEnded = () => useSyncExternalStore(subscribe, () => ended, () => null)
-export const liveOn = () => !!live
 
 /** Inside the pointer-down gesture: wakes the audio (iOS) so a hold can start live without another tap. */
 export const armLive = () => primeLive()

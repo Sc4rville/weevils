@@ -19,7 +19,7 @@ import C from '../i18n/copy'
 import { getLang, tr, useT } from '../i18n'
 import M from '../i18n/bits'
 import PM from '../i18n/plain-steps'
-import { brief, clusters, clusterLine, groupLine } from './plain-steps'
+import { brief, clusters, clusterLine, groupLine, isLongReply, plainSummary } from './plain-steps'
 import D from '../i18n/devil'
 import RM from '../i18n/relay'
 import { isUnread, useSeen } from './seen'
@@ -765,6 +765,30 @@ function group(messages: Message[]): Group[] {
   return out
 }
 
+/** The closed fold of project session threads: a plain line, the raw or long content behind a tap. */
+function Fold({ head, className = '', label, children }: { head: ReactNode; className?: string; label?: string; children: ReactNode }) {
+  return (
+    <details className={`step-detail ${className}`}>
+      <summary className="step-head" title={label}>
+        <span className="text">{head}</span>
+        <span className="step-toggle" aria-hidden><span className="step-plus"><Icon name="plus" /></span><span className="step-minus"><Icon name="minus" /></span></span>
+      </summary>
+      <div className="step-content">{children}</div>
+    </details>
+  )
+}
+
+/** A long agent message in a project session: one or two plain sentences, the full text behind the same fold as commands. */
+function LongReply({ text }: { text: string }) {
+  const w = useT(PM)
+  const summary = useMemo(() => plainSummary(text), [text])
+  return (
+    <Fold className="reply-fold" head={summary ?? w.longReply} label={w.longReplyOpen}>
+      <Prose text={text} />
+    </Fold>
+  )
+}
+
 /** Session threads: one plain sentence per action; commands, paths and raw results only behind a tap. */
 function PlainSteps({ steps, live }: { steps: Message[]; live: boolean }) {
   const mid = steps[0].id
@@ -787,12 +811,7 @@ function PlainSteps({ steps, live }: { steps: Message[]; live: boolean }) {
       <Collapse open={open}>
         <div id={listId} className="in steps-list">
           {cs.map((c, ci) => (
-            <details key={c.steps[0].id + ci} className="step-detail">
-              <summary className="step-head">
-                <span className="text">{clusterLine(c, w)}</span>
-                <span className="step-toggle" aria-hidden><span className="step-plus"><Icon name="plus" /></span><span className="step-minus"><Icon name="minus" /></span></span>
-              </summary>
-              <div className="step-content">
+            <Fold key={c.steps[0].id + ci} head={clusterLine(c, w)}>
                 {c.steps.map((s) => (
                   <div key={s.id} className="step-raw">
                     <div className="meta">{w.rawTitle}</div>
@@ -802,8 +821,7 @@ function PlainSteps({ steps, live }: { steps: Message[]; live: boolean }) {
                     {s.toolDetails?.outputTruncated && <p className="meta">{t.outputTruncated}</p>}
                   </div>
                 ))}
-              </div>
-            </details>
+            </Fold>
           ))}
         </div>
       </Collapse>
@@ -960,6 +978,8 @@ export function Messages({
                 <ChipSlot.Provider value={chip ? (b) => chip(b, g.m.id) : null}>
                   {plain && groups[i + 1]?.kind === 'steps' && brief(withoutMachinePrefix(g.m.text)) ? (
                     <details className="chatter"><summary>{brief(withoutMachinePrefix(g.m.text))}</summary><Prose text={withoutMachinePrefix(g.m.text)} /></details>
+                  ) : plain && g.m.role === 'assistant' && isLongReply(withoutMachinePrefix(g.m.text)) ? (
+                    <LongReply text={withoutMachinePrefix(g.m.text)} />
                   ) : (
                     <Prose text={withoutMachinePrefix(g.m.text)} />
                   )}

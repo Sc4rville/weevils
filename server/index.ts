@@ -19,7 +19,7 @@ import path from 'node:path'
 import { CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECT_ROOTS, PUBLIC_URL } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
-import { cartesia, cartesiaVoices, ledger, relay as modelRelay } from './fast.ts'
+import { cartesia, cartesiaVoices, claudeAvailable, haiku, ledger, relay as modelRelay } from './fast.ts'
 import { CostOptimizer, RUN_EVERY_MS as COST_EVERY_MS } from './cost.ts'
 import CostM from './i18n/cost.ts'
 import { Weevils, isTestBrief } from './core.ts'
@@ -210,6 +210,8 @@ const foryou = ORCHESTRATOR
       mail: () => mailBridge,
       voiceOf: (who) => voices.of(who),
       op: (op) => cost.op(op),
+      // Each session result card's title, from its whole closing message (subscription haiku, ~2 s).
+      title: (prompt) => (claudeAvailable() ? haiku(prompt, 45_000) : Promise.resolve('')),
     })
   : null
 w.foryou = foryou
@@ -226,6 +228,8 @@ if (foryou) {
   })
   foryou.curator = curator
   curator.start()
+  // Recent result cards stored before titles existed (or whose title failed): titled once, in the background.
+  setTimeout(() => foryou.titleRecentResults(), 15_000).unref?.()
 }
 // ---------------------------------------------------------------- relais Codex pendant la limite de Claude (chaque machine, pour ses sessions)
 

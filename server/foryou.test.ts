@@ -15,6 +15,7 @@ import type { UsageInfo } from '../shared/infra.ts'
 import {
   ForYou, KEEP_MS, MAX_CARDS, MAX_FEED, MAX_ITEMS, MAX_MEDIA, MEDIA_JOIN_MS, OFFLINE_AFTER_MS, REFRESH_MS,
   HEADLINE_MAX, arrange, cleanTitle, headline, firstLine, foryouRoutes, lastWords, withoutPaths, type ForYouDeps, type MachineState,
+  resultTitleLine,
 } from './foryou.ts'
 import M from './i18n/foryou.ts'
 import TM from './i18n/tips.ts'
@@ -318,6 +319,56 @@ describe('headline', () => {
     const long = headline('Le menu mobile glisse maintenant depuis la gauche avec un ressort plus doux et il se referme quand on touche ailleurs sur la page entière.')
     expect(long.length).toBeLessThanOrEqual(HEADLINE_MAX)
     expect(long).toMatch(/\S…$/)
+  })
+})
+
+describe('result titles', () => {
+  it('keeps only a whole sentence that stands on its own', () => {
+    expect(resultTitleLine("wasn't applied.")).toBe('')
+    expect(resultTitleLine('Paused')).toBe('')
+    expect(resultTitleLine('is in place and tested without a pod (interruption, resume…')).toBe('')
+    expect(resultTitleLine('I saved three launch tweet drafts, and')).toBe('')
+    expect(resultTitleLine('"I tried to switch the session to Sonnet, but `/model` only works typed at the prompt."'))
+      .toBe('I tried to switch the session to Sonnet, but /model only works typed at the prompt.')
+    expect(resultTitleLine('weevils now installs on a Mac and runs in production.')).toBe('')
+    expect(resultTitleLine('weevils now installs on a Mac and runs in production.', ['weevils macOS installer'])).toBe('weevils now installs on a Mac and runs in production.')
+  })
+
+  it('a result card is titled by the model from the whole closing message, never a cut fragment', async () => {
+    const title = vi.fn(async (_p: string) => 'I tried to switch this session to Sonnet, but that command only works typed at its prompt.')
+    const fy = make({ title })
+    snap.sessions = [session()]
+    threads.s1 = [says("`/model sonnet` wasn't applied. It's a built-in Claude Code command: it only works when entered directly at the session prompt.")]
+    fy.sessionTurn(session(), 'result')
+    await flush(); await flush()
+    expect(title).toHaveBeenCalledTimes(1)
+    expect(title.mock.calls[0][0]).toContain('it only works when entered directly at the session prompt')
+    expect(find(fy, 's:s1')?.text).toBe('I tried to switch this session to Sonnet, but that command only works typed at its prompt.')
+  })
+
+  it('a useless answer or a failure is retried a few times, then the card keeps its headline', async () => {
+    const title = vi.fn(async (_p: string) => "wasn't applied.")
+    title.mockRejectedValueOnce(new Error('down'))
+    const fy = make({ title })
+    snap.sessions = [session()]
+    threads.s1 = [says('The jump now feels right on every level, tested on the phone.')]
+    fy.sessionTurn(session(), 'result')
+    for (let n = 0; n < 5; n++) { await flush(); later.splice(0).forEach((fn) => fn()) }
+    expect(title).toHaveBeenCalledTimes(3)
+    expect(find(fy, 's:s1')?.text).toBe('The jump now feels right on every level, tested on the phone.')
+  })
+
+  it('recent cards stored without a title, seen or not, are titled once in the background', async () => {
+    const title = vi.fn(async (_p: string) => 'I finished the twenty-two still views of the world, the moving ones wait for a GPU.')
+    fs.writeFileSync(path.join(dir, 'foryou.json'), JSON.stringify({ rev: 1, items: [
+      { id: 's:old', kind: 'session', tone: 'result', who: 'session', text: 'For TLO', body: 'For TLO: the full version is not operational yet. The 22 fixed views are ready.', at: now - 60_000, seen: true, sum: {} },
+      { id: 's:ancient', kind: 'session', tone: 'result', who: 'session', text: 'Paused', body: 'Paused: everything is stopped until the go-ahead.', at: now - 30 * 86_400_000, seen: true },
+    ] }))
+    const fy = make({ title })
+    fy.titleRecentResults()
+    await flush(); await flush()
+    expect(title).toHaveBeenCalledTimes(1)
+    expect(find(fy, 's:old')?.text).toBe('I finished the twenty-two still views of the world, the moving ones wait for a GPU.')
   })
 })
 

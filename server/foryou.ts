@@ -28,6 +28,7 @@ import path from 'node:path'
 import type { InterruptReason, Message, Session, SessionDetail, Snapshot } from '../shared/api.ts'
 import type { ForYouAction, ForYouCard, ForYouFeed, ForYouGauge, ForYouItem, ForYouKind, ForYouMark, ForYouMedia, ForYouOpen, ForYouPulse, ForYouTone } from '../shared/foryou.ts'
 import { isLang } from '../shared/i18n.ts'
+import { detectLang } from '../shared/detect-lang.ts'
 import type { Level, UsageInfo } from '../shared/infra.ts'
 import { DATA_DIR, MACHINE } from './config.ts'
 import type { MediaShelf } from './foryou-media.ts'
@@ -59,6 +60,26 @@ export const HEADLINE_MAX = 110
 export const LINE_MAX = 240
 /** The closing words kept for the unfold. */
 export const BODY_MAX = 4000
+/** Attempts at a model title for a result card before its headline stays. */
+const TITLE_TRIES = 3
+
+/** A model's title for a result card, kept only if it is a whole sentence that stands on its own: '' otherwise (cut
+ * fragment, a bare word, a sentence that starts in the middle, an ellipsis). `names`: where a lowercase product name
+ * may legitimately open the sentence (« weevils now installs on a Mac »). */
+export function resultTitleLine(raw: string, names: string[] = []): string {
+  let s = collapse(raw)
+  // The whole answer wrapped in quotes.
+  const wrapped = /^(["“«'])\s*([\s\S]*?)\s*(["”»'])$/u.exec(s)
+  if (wrapped) s = wrapped[2]
+  s = s.replace(/`([^`]*)`/g, '$1')
+  if (s.length < 15 || s.length > 260 || s.split(' ').length < 4) return ''
+  if (/(?:\.\.\.|…)$/u.test(s) || /[,;:(–—-]$/u.test(s) || internalFeedUpdate(s)) return ''
+  // Stops on a word that announces more (« …, and », « … avec »): cut short.
+  if (/\s(?:and|or|but|with|to|of|the|a|an|for|et|ou|mais|avec|de|du|des|le|la|les|un|une|pour|à)$/iu.test(s)) return ''
+  const first = s.split(/[\s,.:;!?]/u)[0] ?? ''
+  if (/^\p{Ll}/u.test(first) && !names.some((n) => n.toLowerCase().split(/[\s/_-]+/).includes(first.toLowerCase()))) return ''
+  return s
+}
 /** Turns that ended before the stream heard of them (first start, restart): picked up when this recent, this many at a time. */
 export const BACKFILL_MS = 4 * 24 * 3600_000
 export const BACKFILL_MAX = 40
@@ -307,6 +328,8 @@ export interface ForYouDeps {
   later?: (fn: () => void, ms: number) => void
   /** A button that acts here (server/cost.ts: switch a session's model, stop it), never through weevboss. */
   op?: (op: string) => Promise<void>
+  /** A light model (haiku) answering a prompt: writes the title of each session result card from its whole closing message. */
+  title?: (prompt: string) => Promise<string>
 }
 
 // ---------------------------------------------------------------- the store
@@ -353,7 +376,8 @@ interface Stored {
   mail?: { address: string; mid: string; subject: string; target: string }
   /** mail: the short « did this » line the curator wrote, shown instead of the first line (lang: the language it is
    *  in); without text: tried, nothing worth keeping. */
-  sum?: { text?: string; lang?: Lang }
+  /** The model's line (text); tries/at: attempts that gave nothing usable, retried a few times. */
+  sum?: { text?: string; lang?: Lang; tries?: number; at?: number }
 }
 
 interface LiveState {
@@ -605,10 +629,12 @@ export class ForYou {
       delete cur.sum
       if (mediaIds.length) cur.mediaIds = mediaIds
       else delete cur.mediaIds
+      this.titleResult(cur.id)
       return this.changed()
     }
     const now = this.now()
     this.put(this.sessionItem(s, { tone: 'result', text, at: back ? Math.min(now, s.lastActivityAt || now) : now, ...(body ? { body } : {}), ...(mediaIds.length ? { mediaIds } : {}) }))
+    this.titleResult(`s:${s.id}`)
     // Picked up late: already counted, or from another day.
     if (back) return this.changed()
     this.s.delivered = { day: day(now), ...this.deliveredToday(now) }
@@ -896,6 +922,8 @@ export class ForYou {
 
   /** Session results still in their raw closing words (no line said in passing yet), never seen: for the curator. */
   rawResults(max = 6): { id: string; project: string; title: string; asked: string; askedAt: number; text: string }[] {
+    // Each result is titled as it lands (titleResult): nothing left for the curator's batch.
+    if (this.deps.title) return []
     const snap = this.w.snapshot()
     return this.s.items
       .filter((i) => i.kind === 'session' && i.tone === 'result' && !i.gone && !i.seen && !i.sum && !!i.body)
@@ -907,6 +935,53 @@ export class ForYou {
         const asked = clip(collapse(cleanTitle(this.w.store?.get(i.sessionId ?? '')?.firstPrompt ?? '')), 400) || (i.title ?? '')
         return { id: i.id, project: snap.projects.find((p) => p.id === i.projectId)?.name ?? i.projectId ?? '', title: i.title ?? '', asked, askedAt: s?.openedAt ?? i.at, text: i.body! }
       })
+  }
+
+  private titling = new Set<string>()
+  private titles: Promise<void> = Promise.resolve()
+
+  /** Every session result card is titled by a light model from its whole closing message: one complete sentence that
+   * says what was done, never a fragment cut out of the last sentence. One call at a time; a useless answer is retried. */
+  titleResult(id: string) {
+    const ask = this.deps.title
+    if (!ask || this.titling.has(id)) return
+    this.titling.add(id)
+    const later = this.deps.later ?? ((fn, ms) => void setTimeout(fn, ms).unref?.())
+    const job = async () => {
+      const i = this.get(id)
+      if (!i || i.kind !== 'session' || i.tone !== 'result' || i.gone || i.sum?.text || (i.sum?.tries ?? 0) >= TITLE_TRIES) return
+      const source = i.body || i.text
+      const snap = this.w.snapshot()
+      const project = snap.projects.find((p) => p.id === i.projectId)?.name ?? i.projectId ?? ''
+      const asked = clip(collapse(cleanTitle(this.w.store?.get(i.sessionId ?? '')?.firstPrompt ?? '')), 400)
+      const l = lang()
+      let line = ''
+      try {
+        line = resultTitleLine(await ask(withLang(l, () => tr(M).resultTitle(project, asked, source))), [project, i.title ?? ''])
+      } catch (e) {
+        console.error(`[foryou] result title: ${(e as Error).message}`)
+      }
+      const cur = this.get(id)
+      // Rewritten meanwhile (same turn, better words): that rewrite asks again.
+      if (!cur || (cur.body || cur.text) !== source || cur.sum?.text) return
+      if (line) {
+        cur.sum = { text: line, lang: detectLang(line) ?? l }
+        return this.changed()
+      }
+      const tries = (cur.sum?.tries ?? 0) + 1
+      cur.sum = { tries, at: this.now() }
+      this.save()
+      if (tries < TITLE_TRIES) later(() => this.titleResult(id), tries * 2 * 60_000)
+    }
+    this.titles = this.titles.then(job).catch(() => undefined).finally(() => this.titling.delete(id))
+  }
+
+  /** Result cards of the last days still without a model's title (stored before titles, or after failed tries). */
+  titleRecentResults(days = 7) {
+    const since = this.now() - days * 86_400_000
+    for (const i of this.s.items) {
+      if (i.kind === 'session' && i.tone === 'result' && !i.gone && !i.sum?.text && i.at >= since && (i.sum?.tries ?? 0) < TITLE_TRIES) this.titleResult(i.id)
+    }
   }
 
   /** The curator's line for a session result (null: it kept nothing, the headline stays). */

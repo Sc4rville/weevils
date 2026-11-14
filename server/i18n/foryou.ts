@@ -50,6 +50,12 @@ export default defineMessages({
     actBrief: (post: string, brief: string) => `l'utilisateur a touché ce bouton sous ton mot dans son flux « pour toi » (« ${post} »). À faire : ${brief}`,
     /** Hidden note joined to a reply typed under a post. */
     replyBrief: (post: string) => `réponds au message ci-dessus : l'utilisateur l'a écrit dans son flux « pour toi », en réponse à ton mot « ${post} »`,
+    /** The prompt that titles a session result card (a light model reads the whole closing message). */
+    resultTitle: (project: string, asked: string, text: string) =>
+      `Voici le compte rendu de fin de tour d'un agent de code qui travaille sur le projet « ${project} »${asked ? ` ; l'utilisateur lui avait demandé : ${asked}` : ''}.\n\nCompte rendu :\n${text}\n\n` +
+      `Écris le titre de la carte de ce résultat dans le flux de l'utilisateur : UNE phrase complète, qui se suffit à elle-même et dit ce qui a été fait ou trouvé (ou ce qui bloque), compréhensible sans lire le compte rendu. ` +
+      `Jamais un fragment, jamais le début ou la fin d'une phrase du compte rendu. Première personne, comme l'agent qui parle à l'utilisateur et le tutoie (« J'ai corrigé… », « La page est en ligne… »), mots simples, 160 caractères au plus. ` +
+      `Aucun chemin de fichier, commande, identifiant de commit ni jargon ; pas de guillemets autour, pas d'emoji ; rien d'inventé. En français. Réponds uniquement par la phrase.`,
   },
   en: {
     intentAmbiguous: 'Several existing tasks match. Open the relevant conversation to identify which one, without submitting the work again.',
@@ -87,5 +93,10 @@ export default defineMessages({
     go: (label: string) => `Go ahead: ${label}`,
     actBrief: (post: string, brief: string) => `the user tapped this button under your post in their "for you" stream ("${post}"). To do: ${brief}`,
     replyBrief: (post: string) => `answer the message above: the user wrote it in their "for you" stream, as a reply to your post "${post}"`,
+    resultTitle: (project: string, asked: string, text: string) =>
+      `Here is the end-of-turn report of a coding agent working on the project "${project}"${asked ? `; the user had asked it: ${asked}` : ''}.\n\nReport:\n${text}\n\n` +
+      `Write the title of this result's card in the user's feed: ONE complete sentence that stands on its own and says what was done or found (or what is blocking), understandable without reading the report. ` +
+      `Never a fragment, never the start or the end of a sentence from the report. First person, as the agent talking to the user ("I fixed…", "The page is live…"), plain words, 160 characters at most. ` +
+      `No file path, command, commit id or jargon; no surrounding quotes, no emoji; nothing made up. In English. Answer with the sentence only.`,
   },
 })

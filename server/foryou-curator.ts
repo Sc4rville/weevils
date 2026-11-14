@@ -23,8 +23,8 @@ import { preferredTool, providerReady } from './provider.ts'
 // « More » under an insight (ForYouCurator.more) is the one call a tap starts: it counts in the same daily cap and
 // answers nothing when the cap is reached, Claude is logged out or a usage window is nearly full.
 //
-// Session results are NOT summarised: the app shows « project · title » above the closing words, which already read as
-// the summary (cleaned by the store: no raw media path, no signature); a model line would only repeat the title. Mail
+// Session results are titled as they land by ForYou.titleResult (one haiku call per card, from the whole closing
+// message), not here: rawResults() is empty then. Mail
 // lines are: a mail's first line is often a greeting's neighbour, and the whole mail stays one tap away (body).
 //
 // Every generated item retains its original language; cached presentation variants serve other app locales.

@@ -14,7 +14,7 @@ const state = vi.hoisted(() => ({
   push: vi.fn(),
   infra: null as unknown as InfraDetail | Error,
   fs: null as unknown as FsListing | Error,
-  usage: null as unknown as UsageInfo,
+  usage: null as unknown as UsageInfo | Error,
   today: { rows: [] } as UsageToday,
   setup: [] as string[],
 }))
@@ -34,13 +34,13 @@ vi.mock('../api', () => ({
   api: {
     infra: async () => (state.infra instanceof Error ? Promise.reject(state.infra) : state.infra),
     fs: async () => (state.fs instanceof Error ? Promise.reject(state.fs) : state.fs),
-    usage: async () => state.usage,
+    usage: async () => (state.usage instanceof Error ? Promise.reject(state.usage) : state.usage),
     usageToday: async () => state.today,
   },
 }))
 
 const { setLang } = await import('../i18n')
-const { InfraPage, FsPage, UsageLine, UsagePage } = await import('./infra')
+const { InfraPage, FsPage, UsageLine, UsagePage, forgetUsage } = await import('./infra')
 const { Icon } = await import('./icons')
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -78,6 +78,7 @@ const detail = (over: Partial<InfraDetail> = {}): InfraDetail => ({
 let root: Root, host: HTMLDivElement
 beforeEach(() => {
   setLang('en')
+  forgetUsage()
   state.push.mockClear()
   state.setup = []
   state.snap = { machines: [{ id: 'vps', name: 'vps', online: true }], sessions: [], projects: [{ id: 'p', name: 'mygame', repos: ['mygame'] }] } as unknown as Snapshot
@@ -165,6 +166,8 @@ it('subscription: one figure per tool, no lone « ! », no raw error, no machine
   expect(host.textContent).toContain('Claude 40% this week · Codex 3%')
   expect(host.textContent).not.toContain('5 h')
 
+  // Nothing ever known (a fresh install, Claude refusing): the page says so.
+  forgetUsage()
   state.usage = { claude: { ok: false, windows: [], source: 'x', at: 0, error: 'HTTP 429' }, codex: { ok: false, windows: [], source: 'x', at: 0 } } as UsageInfo
   await render(<UsageLine />)
   expect(host.textContent).not.toContain('!')
@@ -191,4 +194,57 @@ it('subscription: a Claude answer with no window still says something (never an 
   } as UsageInfo
   await render(<UsagePage />)
   expect(host.textContent).toContain('Claude · Max 20xno figures yet, trying again soon')
+})
+
+it('subscription: figures once known stay on screen, with their age, through a failed read or an empty answer (r41, r42)', async () => {
+  const at = Date.now() - 20 * 60_000
+  state.usage = {
+    claude: { ok: true, plan: 'Max 20x', windows: [{ kind: 'week', percent: 74, resetsAt: null }], source: 'x', at },
+    codex: { ok: true, windows: [{ kind: 'week', percent: 84, resetsAt: null }], source: 'x', at },
+  } as UsageInfo
+  await render(<UsagePage />)
+  // Twenty minutes old: said so, never passed off as fresh.
+  expect(host.textContent).toContain('week 74 %')
+  expect(host.textContent).toContain('last known figures')
+
+  // weevils restarts with nothing to say: the page keeps the figures instead of « no figures yet ».
+  state.usage = { claude: { ok: false, windows: [], source: 'x', at: Date.now(), error: 'HTTP 429' }, codex: { ok: true, windows: [], source: 'x', at: Date.now() } } as UsageInfo
+  await act(async () => root.unmount())
+  root = createRoot(host)
+  await render(<UsagePage />)
+  expect(host.textContent).toContain('week 74 %')
+  expect(host.textContent).toContain('week 84 %')
+  expect(host.textContent).not.toContain('no figures yet')
+  expect(host.textContent).not.toContain('HTTP 429')
+})
+
+it('subscription: healthy figures a few minutes old (between two server reads) never say « last known » (r41, r42)', async () => {
+  const at = Date.now() - 7 * 60_000
+  state.usage = {
+    claude: { ok: true, windows: [{ kind: 'week', percent: 74, resetsAt: null }], source: 'x', at },
+    codex: { ok: true, windows: [{ kind: 'week', percent: 84, resetsAt: null }], source: 'x', at },
+  } as UsageInfo
+  await render(<UsagePage />)
+  expect(host.textContent).toContain('week 74 %')
+  expect(host.textContent).not.toContain('last known figures')
+})
+
+it('subscription: a reopened app shows the last figures at once, even while weevils does not answer (r41, r42)', async () => {
+  state.usage = {
+    claude: { ok: true, windows: [{ kind: 'week', percent: 40, resetsAt: null }], source: 'x', at: Date.now() },
+    codex: { ok: true, windows: [{ kind: 'week', percent: 3, resetsAt: null }], source: 'x', at: Date.now() },
+  } as UsageInfo
+  await render(<UsageLine />)
+  expect(localStorage.getItem('weevils-usage-v1')).toContain('"percent":40')
+
+  // A new page load (the memory copy is gone, the phone's copy stays) while the server is restarting.
+  const saved = localStorage.getItem('weevils-usage-v1')!
+  vi.resetModules()
+  localStorage.setItem('weevils-usage-v1', saved)
+  const fresh = await import('./infra')
+  state.usage = new Error('offline')
+  await act(async () => root.unmount())
+  root = createRoot(host)
+  await render(<fresh.UsageLine />)
+  expect(host.textContent).toContain('Claude 40% this week · Codex 3%')
 })

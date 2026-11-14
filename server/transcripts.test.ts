@@ -175,6 +175,19 @@ describe('claude : phases et messages', () => {
     expect(one().messages.map((m) => m.text)).toEqual(['real'])
   })
 
+  it('le résumé de compaction n’est ni un message de l’utilisateur ni un signe de travail', () => {
+    const now = Date.now()
+    write(claudeFile(), [
+      user('real', now - 4000),
+      assistant([{ type: 'text', text: 'Done.' }], now - 3000, { stop_reason: 'end_turn' }),
+      user('This session is being continued from a previous conversation that ran out of context. Summary: …', now - 1000, { isCompactSummary: true, isVisibleInTranscriptOnly: true }),
+    ])
+    store.scan(now)
+    expect(one().messages.map((m) => [m.role, m.text])).toEqual([['user', 'real'], ['assistant', 'Done.']])
+    expect(one().firstPrompt).toBe('real')
+    expect(one().phase).not.toBe('working')
+  })
+
   it('deux parties de texte du même message assistant : un seul message', () => {
     const now = Date.now()
     const a = assistant([{ type: 'text', text: 'part one' }], now - 2000)

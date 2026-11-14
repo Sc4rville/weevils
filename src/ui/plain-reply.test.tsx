@@ -87,3 +87,39 @@ describe('in the project session thread', () => {
     expect(host.querySelector('.reply-fold summary')!.textContent).toBe('Un message détaillé de l’agent')
   })
 })
+
+describe('a brief from weevboss in a project session', () => {
+  // The real shape of a weevboss brief (2026-11-14): instructions, a file path, flags, then weevils' hidden context block.
+  const LOCALE = ' ⟦weevils — Explicit app locale: English (en). Write UI labels, generated session and project titles and For you publications in natural English.⟧'
+  const BRIEF = 'URGENT from Scarville (overrides the earlier decision for this one control): a friend of Scarville is stuck in the onboarding right now. Add ONE always-visible Back button on every step after the first, going exactly one step back and keeping everything already typed. Test on a separate copy (see productions/FACTORY.md), then ship to main fast. Report back: live or not (commit), which steps have it. Then run: weevils show <phone screenshot> "a Back button on every step" --demonstrated "<where>" with a --limit for anything not tested on a real iPhone.' + LOCALE
+  const brief = (text: string): Message => ({ id: 'b', role: 'orchestrator', author: 'weevboss', text, at: 1 })
+
+  it('a long brief: one or two plain sentences, the full brief behind the closed fold, never the hidden context block', async () => {
+    await act(async () => root.render(<Messages session plain messages={[brief(BRIEF)]} author="claude" />))
+    const fold = host.querySelector<HTMLDetailsElement>('details.reply-fold')!
+    expect(fold.open).toBe(false)
+    const head = fold.querySelector('summary .text')!.textContent!
+    expect(head).toBe('URGENT from Scarville: a friend of Scarville is stuck in the onboarding right now. Add ONE always-visible Back button on every step after the first, going exactly one step back and keeping everything already typed.')
+    expect(head).not.toMatch(TECHNICAL)
+    expect(fold.querySelector('.step-content')!.textContent).toContain('--demonstrated')
+    expect(host.textContent).not.toContain('⟦')
+    expect(host.textContent).not.toContain('Explicit app locale')
+  })
+
+  it('a short brief stays whole, still without the context block; the weevboss thread is not folded', async () => {
+    await act(async () => root.render(<Messages session plain messages={[brief(`Go ahead, fix the menu.${LOCALE}`)]} author="claude" />))
+    expect(host.querySelector('.reply-fold')).toBeNull()
+    expect(host.textContent).toContain('Go ahead, fix the menu.')
+    expect(host.textContent).not.toContain('⟦')
+    await act(async () => root.render(<Messages session messages={[brief(BRIEF)]} author="weevboss" />))
+    expect(host.querySelector('.reply-fold')).toBeNull()
+    expect(host.textContent).toContain('ONE always-visible Back button')
+    expect(host.textContent).not.toContain('⟦')
+  })
+
+  it('a long brief with no plain sentence in it says who sent it, not « the agent »', async () => {
+    const steps = Array.from({ length: 6 }, (_, i) => `- \`npm run step${i}\``).join('\n')
+    await act(async () => root.render(<Messages session plain messages={[brief(steps + LOCALE)]} author="claude" />))
+    expect(host.querySelector('details.reply-fold summary .text')!.textContent).toBe('A detailed message from weevboss')
+  })
+})

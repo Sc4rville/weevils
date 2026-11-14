@@ -504,6 +504,8 @@ export interface Snapshot {
   /** Réglages connus de la session de l'orchestrateur, et si on peut lui envoyer des commandes (/model…). */
   mainSettings?: SessionSettings
   mainHasScreen: boolean
+  /** A question on weevboss's own screen (a permission, a menu), as plain words and answers; answered with its id. */
+  mainQuestion?: { id: string; attention: string; attentionDetail?: string; choices: { id: string; label: string }[] }
   mainQueued: number
   /** Devil mode : modèle branché (DEVIL_API_URL) et réponse en cours. */
   devil: { enabled: boolean; working: boolean }

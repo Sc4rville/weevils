@@ -175,3 +175,15 @@ describe('never a silent block', () => {
     expect(session()).toMatchObject({ status: 'interrupted', interrupted: { reason: 'auth', detail: 'Claude needs to be signed in again on this machine' } })
   })
 })
+
+describe('weevboss', () => {
+  it('a question on weevboss’s own screen shows in its thread, and its answer reaches its pane', async () => {
+    ;(w as any).orchestratorId = 's1'
+    mux.capture.mockResolvedValue(screen('claude-live-D3-bash.txt'))
+    await watch()
+    const q = w.snapshot().mainQuestion!
+    expect(q).toMatchObject({ id: PANE, attention: 'Claude wants to run “echo hi”', choices: [{ label: 'Allow' }, { label: 'Deny' }] })
+    await w.key(q.id, `choice:${q.choices[0].id}`)
+    expect(keys()).toEqual(['enter'])
+  })
+})

@@ -1260,6 +1260,7 @@ export class Weevils {
       mainWorking: this.orchestratorWorking(now),
       mainSettings: this.orchestratorSettings(),
       mainHasScreen: !!this.orchestratorPane(),
+      ...this.mainQuestion(),
       mainQueued: this.orchestratorQueued(now),
       devil: { enabled: !!devilConfig(), working: devilWorking() },
       setup: this.setup?.flags(),
@@ -1869,6 +1870,14 @@ export class Weevils {
   /** La pane où weevboss répond en ce moment : celle de Codex pendant le relais, sinon celle de Claude. */
   private orchestratorPane() {
     return (this.bossTool() === 'codex' ? this.codexBoss()?.pane : undefined) ?? this.claudeBossPane()
+  }
+
+  /** A question on weevboss's pane, shown in its thread like any session's (server/terminal.ts). */
+  private mainQuestion(): { mainQuestion?: Snapshot['mainQuestion'] } {
+    const p = this.orchestratorPane()
+    const d = p?.screenDialog
+    if (!p || !d || d.kind === 'settings') return {}
+    return { mainQuestion: { id: p.name, attention: d.question, ...(d.detail ? { attentionDetail: d.detail } : {}), choices: d.options } }
   }
 
   private orchestratorSettings() {

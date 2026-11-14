@@ -18,6 +18,8 @@ import { SidePane, usePageChrome, useSplit } from './shell'
 import { FollowDown } from './followdown'
 import { markSeen } from './seen'
 import { Icon } from './icons'
+import { SessionQuestion } from './session-question'
+import type { Session } from '../../shared/api.ts'
 
 // Legacy focused conversation routes remain available without the retired overview.
 
@@ -102,6 +104,9 @@ export function CalmConv({ id }: { id: string }) {
   const title = main ? 'weevboss' : (s?.title ?? '')
   const settings = main ? snap.mainSettings : s?.settings
   const canCommand = main ? snap.mainHasScreen : !!s?.hasScreen
+  // A question waiting on the screen (a permission, a menu, the agent's own question): its plain words and buttons.
+  const mq = snap.mainQuestion
+  const question = main ? (mq ? ({ id: mq.id, tool: 'claude', title: 'weevboss', status: 'needs_user', attention: mq.attention, attentionDetail: mq.attentionDetail, choices: mq.choices } as Session) : undefined) : s?.status === 'needs_user' ? s : undefined
   const last = messages.at(-1)
   const follow = useFollow(body, messages.length > 0, 80, `${messages.length}:${last?.id}:${last?.text.length}:${working}`)
   const [split, unsplit] = useSplit(!!preview.open)
@@ -180,6 +185,7 @@ export function CalmConv({ id }: { id: string }) {
             )}
             <Messages plain={!main} messages={messages} author={author} working={!!working} />
             {working && <Working author={author} since={s?.workStartedAt} />}
+            {question && <SessionQuestion session={question} onError={(e) => setErr(e || null)} />}
             <div className="fill" />
           </div>
           <div className="page-float">

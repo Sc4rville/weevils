@@ -12,8 +12,9 @@ export default defineMessages({
     captureChanged: 'La page a changé pendant la capture. Attends qu’elle soit stable et réessaie. Ton brouillon est conservé.',
     captureFailed: 'Capture non obtenue, aucun message envoyé. Réessaie en partageant cet onglet weevils. Ton brouillon est conservé.',
 
-    close: 'fermer le navigateur',
+    close: 'fermer l’appli',
     address: 'adresse à afficher',
+    placeholder: 'adresse de l’appli',
     reload: 'recharger',
     openTab: 'ouvrir dans un onglet',
     frame: 'aperçu de l’application',
@@ -33,8 +34,9 @@ export default defineMessages({
     captureChanged: 'The page changed during capture. Wait for it to settle, then retry. Your draft is kept.',
     captureFailed: 'No capture obtained; nothing was sent. Retry and share this weevils tab. Your draft is kept.',
 
-    close: 'close the browser',
+    close: 'close the app',
     address: 'address to show',
+    placeholder: 'app address',
     reload: 'reload',
     openTab: 'open in a new tab',
     frame: 'app preview',

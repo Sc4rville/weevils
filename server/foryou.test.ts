@@ -802,7 +802,7 @@ describe('alerts', () => {
     await flush()
     // One peak is not an alert; the tunnel may hiccup.
     expect(ids(fy)).toEqual(['alert:disk:test', 'alert:auto:bad'])
-    expect(find(fy, 'alert:auto:bad')).toMatchObject({ text: 'The auto task "Harden the tests" crashed (stopped after 2 h). Retry or drop it?', open: { page: 'auto', id: 'bad' }, at: T0 - HOUR })
+    expect(find(fy, 'alert:auto:bad')).toMatchObject({ text: 'The automation "Harden the tests" crashed (stopped after 2 h). Retry or drop it?', open: { page: 'auto', id: 'bad' }, at: T0 - HOUR })
     now = T0 + REFRESH_MS + 1
     fy.feed()
     await flush()
@@ -1191,7 +1191,7 @@ describe('wired into core', async () => {
     w.hooks.set('s1', { event: 'PostToolUse', at: T0 - MIN, pid: DEAD })
     w.bump()
     await settle()
-    expect(fy.feed().items).toMatchObject([{ id: 's:s1', tone: 'alert', text: 'Ouch, I got cut off mid-work (process stopped). Want me to pick it back up?', actions: [{ id: 'resume', label: 'Resume' }] }])
+    expect(fy.feed().items).toMatchObject([{ id: 's:s1', tone: 'alert', text: 'Ouch, I got cut off mid-work (unexpected stop). Want me to pick it back up?', actions: [{ id: 'resume', label: 'Resume' }] }])
     w.mailed({ author: 'gepetto', subject: 'done', text: 'The page is built.', target: 'weevboss', mid: '<m@x>', address: 'g@example.com' })
     expect(fy.feed().items.map((i) => i.kind).sort()).toEqual(['mail', 'session'])
     expect(JSON.stringify(fy.feed())).not.toContain('g@example.com')

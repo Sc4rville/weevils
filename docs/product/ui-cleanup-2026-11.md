@@ -3,7 +3,7 @@
 What was removed, merged or rewritten in plain words so that no screen shows a useless or incomprehensible button,
 text, shortcut, identifier or badge. Built from the commit history: the first pass is the 31 `fix(ui)` /
 `refactor(ui)` commits of 2026-11-14 (07:43 to 08:56 UTC, live since the 09:45 restart); the second pass is branch
-`resume/terminal-ui`. Each line reads before → after, with its commit.
+`resume/terminal-ui`; the third pass is branch `resume2/ui-audit`. Each line reads before → after, with its commit.
 
 The rules these follow are in [session-contract.md](session-contract.md) and CONTRIBUTING.md: plain short words, no
 paths, commands, ids or jargon on screen, no permanent help text.
@@ -213,6 +213,38 @@ paths, commands, ids or jargon on screen, no permanent help text.
 
 - Unused « >_ » → terminal icon mapping → removed (nothing passed it any more).
 
+## Third pass (branch resume2/ui-audit, r162)
+
+A fresh read of every screen on Scarville's live instance (phone viewport, read-only) and of every catalog.
+
+### Session page
+
+- The line under the title repeated, word for word, what the header's live line already said (« QA pass on ad videos »
+  twice on the same screen) → said once in the header; the full sentence stays under the title only when the header
+  had to shorten it (more than six words, or a narrow screen cutting the pill with « … »).
+- « claude · working for 3 min » (the tool's lowercase id in front of the status; the model chip already says which
+  one) → « working for 3 min ».
+- Composer placeholder « write to claude » / « resume with codex » → « write to Claude » / « resume with Codex ».
+- Archived sessions: « claude · stopped » → « Claude · stopped ».
+
+### weevboss thread, notifications, For you
+
+- Why a session was cut off: « process stopped » / « processus arrêté », « stopped with uncommitted work » / « arrêtée
+  avec du travail non commité », « login expired », « API error » → « unexpected stop » / « arrêt inattendu »,
+  « changes not saved yet » / « changements pas encore enregistrés », « signed out » / « déconnectée », « service
+  error » / « erreur du service » (the line in weevboss's thread, the notification and the For you card).
+- For you: « The auto task “X” crashed / is wrapped up », « I started the auto task “X” » (« La tâche auto « X » … »)
+  → « The automation “X” … » (« L’automatisation « X » … »); the figures the curator writes from, « 3 auto tasks
+  done » → « 3 automations done ».
+- For you pulse « 3 on auto » / « 3 en auto » → « 3 automations in progress » / « 3 automatisations en cours ».
+- The cost automation's description: « … subagent, auto task and internal call … » → « … subagent, automation and
+  internal call … ».
+
+### Subscription
+
+- Codex plan shown as its raw id (« Codex · prolite ») → its product name (« Codex · Pro Lite »; « plus » → « Plus »,
+  any other id capitalised); Claude's « Max 20x » unchanged.
+
 ## Kept on purpose
 
 - The live token meter's accessible name (« N tokens per minute, all sessions »): it is the only thing that explains
@@ -222,8 +254,6 @@ paths, commands, ids or jargon on screen, no permanent help text.
 
 ## Still open
 
-- `server/i18n/foryou.ts` (`autoFailed`, `autoGo`, `autoDone`): « La tâche auto « X » … » / « The auto task “X” … » →
-  « L’automatisation « X » … » / « The automation “X” … ». Left to the For you cards work (r100), which rewrites these
-  sentences.
-- `server/i18n/cost.ts` `seedWhy`: « tâche auto » / « auto task » in the cost automation's description. Left to the
-  automations owner.
+- Nothing from the first two passes. A model chip for a model weevils doesn't list yet still shows its raw id in the
+  model picker (rare: only right after a new model ships); left as is because the picker and the settings module
+  import each other.

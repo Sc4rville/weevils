@@ -8,7 +8,7 @@ import { OutboxStatus } from './outbox-status'
 import { noticeKey, sessionNoticeKey } from '../../shared/notices.ts'
 import { dismissNotice } from './notice-store'
 import { Notice } from './notice'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
@@ -33,7 +33,7 @@ import { FsFilePage, FsPage, InfraPage, UsagePage } from './infra'
 import { RelayPage, SessionRelay } from './relay'
 import { listFiles } from './repofiles'
 import { useThreadAsk } from './askthread'
-import { ago, durLong, status } from './format'
+import { ago, durLong, status, toolName } from './format'
 import { useLang, useT } from '../i18n'
 import { reveal, useFollow } from './follow'
 import { FollowDown } from './followdown'
@@ -48,10 +48,19 @@ import { ForYouPage, MediaPage } from './foryou'
 import { AutoPage, AutoRunPage } from './auto-page'
 
 /** Mini-macro: what the session is doing right now, in a few plain words, beside the title. */
-function LiveNote({ s, messages }: { s: Session; messages: Message[] }) {
+function LiveNote({ s, messages, onWhole }: { s: Session; messages: Message[]; onWhole?: (whole: boolean) => void }) {
   const w = useT(PM)
   const live = liveNote(s, messages.at(-1), w, { waiting: String(w.liveWaiting), stopped: String(w.liveStopped), done: String(w.liveDone), idle: String(w.liveIdle) })
-  return <span className="session-now" role="status" data-state={live.state} title={w.liveLabel(live.text)}>{live.text}</span>
+  const ref = useRef<HTMLSpanElement>(null)
+  // A narrow phone cuts the pill with « … » (CSS): then it no longer says the phrase whole, and the line under the title keeps it.
+  useLayoutEffect(() => {
+    if (!onWhole) return
+    const check = () => { const el = ref.current; if (el) onWhole(el.scrollWidth <= el.clientWidth + 1) }
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [live.text, onWhole])
+  return <span ref={ref} className="session-now" role="status" data-state={live.state} title={w.liveLabel(live.text)}>{live.text}</span>
 }
 
 
@@ -121,7 +130,7 @@ function ArchivedSessions() {
     {!list.length && <div className="in meta empty">{t.empty}</div>}
     {list.map((s) => <div key={s.id} className="in archive-entry">
       <button type="button" className="link" onClick={() => push({ kind: 'session', id: s.id })}>{s.title}</button>
-      <div className="meta">{s.tool} · {status[s.status].label}</div>
+      <div className="meta">{toolName(s.tool)} · {status[s.status].label}</div>
       <SessionArchiveAction session={s} />
     </div>)}
   </Shell>
@@ -154,6 +163,7 @@ function SessionPage({ id }: { id: string }) {
   const { snap, now, replace, colors } = useApp()
   const t = useT(M)
   const tb = useT(BM)
+  const tp = useT(PM)
   const gone = useGoneTitle()
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [missing, setMissing] = useState(false)
@@ -163,6 +173,8 @@ function SessionPage({ id }: { id: string }) {
   useEffect(() => dropSeed(id), [id])
   const [preview, setPreview] = usePreviewState(id)
   const [showSettings, setShowSettings] = useState(false)
+  /** Whether the header pill shows its phrase whole (not cut with « … » on a narrow screen). */
+  const [pillWhole, setPillWhole] = useState(true)
 
   // Le détail suit chaque nouvelle version annoncée par le serveur.
   useEffect(() => {
@@ -219,6 +231,7 @@ function SessionPage({ id }: { id: string }) {
   const sourceIssue = sourceAccessIssue(sourceForSession(snap.projects, s))
   const st = status[s.status]
   const previewUrl = preview.url ?? guessPreviewUrl(messages, s, project, snap.config)
+  const liveText = liveNote(s, messages.at(-1), tp, { waiting: String(tp.liveWaiting), stopped: String(tp.liveStopped), done: String(tp.liveDone), idle: String(tp.liveIdle) }).text
 
   // Before the server takes it, the notice under the thread speaks (« sending… », « try again »); after, the bubble.
   const busy = (s.turnWorking ?? (s.status === 'working' && !s.background)) || s.queued > 0
@@ -251,20 +264,20 @@ function SessionPage({ id }: { id: string }) {
       title={s.title}
       scrollHeading
       sessionLayout
-      liveNote={<LiveNote s={s} messages={messages} />}
+      liveNote={<LiveNote s={s} messages={messages} onWhole={setPillWhole} />}
       headerControls={<button className="link inline" onClick={() => setShowSettings((v) => !v)} aria-label={t.changeModel} aria-pressed={showSettings} aria-controls="session-settings">
             {[modelLabel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
           </button>}
       meta={
         <>
-          {s.now && (
+          {/* What it does now, unless the live line in the header already says it whole (r162). */}
+          {s.now && !(pillWhole && liveText === s.now.replace(/\s+/g, ' ').trim()) && (
             <>
               <span className="strong">{s.now}</span>
               <br />
             </>
           )}
-          {s.tool}{' '}
-          {' '}· <StatusChar s={s.status} /> {st.label}
+          <StatusChar s={s.status} /> {st.label}
           {s.queued > 0 && <span className="strong"> · {t.queued(s.queued)}</span>}
           {s.status === 'working' && s.workStartedAt != null ? <>{t.since(durLong(now - s.workStartedAt))}</> : <> · {ago(now - s.lastActivityAt)}</>}
           {' · '}
@@ -284,7 +297,7 @@ function SessionPage({ id }: { id: string }) {
           {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
           <Composer
             draftKey={`session:${s.id}`}
-            placeholder={sourceIssue ? '' : s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly}
+            placeholder={sourceIssue ? '' : s.controllable ? (s.live ? t.writeTo(toolName(s.tool)) : t.resumeWith(toolName(s.tool))) : t.readOnly}
             label={t.composerLabel(s.title)}
             onSend={send}
             onAttach={send}

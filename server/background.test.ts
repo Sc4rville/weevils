@@ -6,7 +6,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { PS_EVERY_MS, PS_KEEP_MS, STALE_BG_MS, STALE_TOOL_MS, backgroundOf, bgLine, emptyBg, forgetPs, parsePs, procInfo, procInfoIn, psProcInfo, subagentSteps, type BgState, type ProcInfo } from './background.ts'
+import { PS_EVERY_MS, PS_KEEP_MS, STALE_BG_MS, STALE_TOOL_MS, backgroundOf, bgLine, emptyBg, forgetPs, logJobsIn, shellLabel, parsePs, procInfo, procInfoIn, psProcInfo, subagentSteps, type BgState, type ProcInfo } from './background.ts'
 import { TranscriptStore } from './transcripts.ts'
 
 const MIN = 60_000
@@ -709,5 +709,29 @@ describe('dans le store', () => {
     for (const o of [null, 1, 'x', {}, { type: 'assistant' }, { type: 'assistant', message: { content: [null, { type: 'tool_use' }] } }, { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'nope' }] } }, { type: 'queue-operation', operation: 'enqueue', content: '<task-notification><status>completed' }, { type: 'system', subtype: 'turn_duration', pendingWorkflowCount: 'two' }])
       expect(() => bgLine(bg, o, 0)).not.toThrow()
     expect(() => backgroundOf(path.join(root, 'missing.jsonl'), bg, Date.now())).not.toThrow()
+  })
+})
+
+describe('jobs started into a logs folder, and plain names (r47)', () => {
+  it('J1 the log names a command writes in a logs folder, not the ones it only reads', () => {
+    expect(logJobsIn('cd ~/projects/weevils && nohup node scripts/mock.mjs > ~/logs/get-host-mock.log 2>&1 &')).toEqual(['get-host-mock'])
+    expect(logJobsIn('npx playwright test >> $HOME/logs/pw-webkit.log 2>&1')).toEqual(['pw-webkit'])
+    expect(logJobsIn('node x.mjs 2>&1 | tee -a /home/u/logs/get-flow-phone.log')).toEqual(['get-flow-phone'])
+    expect(logJobsIn('node x > "/home/u/.local/share/weevils/jobs/e2e-pc.log"')).toEqual(['e2e-pc'])
+    expect(logJobsIn('tail -n 40 ~/logs/get-host-mock.log; grep -q done ~/logs/a.log')).toEqual([])
+  })
+
+  it('J2 a nohup job is remembered with the agent’s description; without one, a catalog word, never the command', () => {
+    const now = Date.now()
+    const bg = stateOf([
+      toolUse('j1', 'Bash', { command: 'nohup node mock.mjs > ~/logs/get-host-mock.log 2>&1 &', description: 'Start the host mock' }, now - 5 * MIN),
+      toolUse('j2', 'Bash', { command: 'nohup npx playwright test --project=webkit > ~/logs/pw-webkit.log 2>&1 &' }, now - 4 * MIN),
+      toolUse('j3', 'Bash', { command: 'sleep 400', run_in_background: true }, now - 3 * MIN),
+    ])
+    expect(bg.logJobs).toEqual({ 'get-host-mock': { label: 'Start the host mock', at: now - 5 * MIN }, 'pw-webkit': { label: shellLabel('', 'playwright test'), at: now - 4 * MIN } })
+    const shell = backgroundOf(file, bg, now).find((x) => x.kind === 'shell')!
+    expect(shell.label).toBe(shellLabel('', 'sleep 400'))
+    expect(shell.label).not.toContain('sleep')
+    expect(shellLabel('', 'npx vitest run')).not.toBe(shellLabel('', 'sleep 1'))
   })
 })

@@ -818,7 +818,7 @@ describe('proposals', () => {
 
   it('one-off tasks stay within reach of the stream, however many newer items came in (r34)', () => {
     const fy = make()
-    snap.optimizers = [optimizer(), optimizer({ id: 'o2', every: '1d' }), optimizer({ id: 'o3', userCreated: true })]
+    snap.optimizers = [optimizer(), optimizer({ id: 'o2', every: 24 * HOUR }), optimizer({ id: 'o3', userCreated: true })]
     fy.feed()
     fy.seen(['proposals'])
     for (let i = 0; i < MAX_FEED + 40; i++) {

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// The page of an automation: the same six facts for a task, a timer and a job; the newest run unfolded (report,
+// The page of an automation: the same five facts for a task, a timer and a job; the newest run unfolded (report,
 // files, links, screenshots); the talk only for a task; a proposal's ✓ / × from the page, then back.
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -211,33 +211,35 @@ describe('automation page', () => {
     expect(host.querySelector('.auto-decide')).not.toBeNull()
   })
 
-  it('the same six facts for a task (its state is the flow band, where it runs the head); tapping one prefills the talk', async () => {
+  it('the same five facts for a task (its state is the flow band, where it runs the head); tapping one prefills the talk', async () => {
     render(snap([daily]), <AutoPage id="d" />)
     await flush()
     const k = kpis()
-    expect(Object.keys(k)).toEqual(['when', 'next', 'last', 'length', 'runs', 'cost'])
-    expect(k).toMatchObject({ when: 'every day 07:00–08:00', last: '1d ago', length: '9 min', runs: '23', cost: '412K' })
+    // No token count: a number of tokens means nothing to a person.
+    expect(Object.keys(k)).toEqual(['when', 'next', 'last', 'length', 'runs'])
+    expect(k).toMatchObject({ when: 'every day 07:00–08:00', last: '1d ago', length: '9 min', runs: '23' })
+    expect(host.textContent).not.toMatch(/tokens|412K|12K/)
     expect(host.querySelector('.auto-flow .name')!.textContent).toBe('within its time window')
     expect(host.querySelector('.page-head .strong')!.textContent).toBe('mygame')
-    expect(host.querySelectorAll('button.auto-kpi')).toHaveLength(6)
+    expect(host.querySelectorAll('button.auto-kpi')).toHaveLength(5)
     await click(host.querySelector('button.auto-kpi'))
     await act(() => new Promise((r) => requestAnimationFrame(() => r(null))))
     expect(host.querySelector<HTMLInputElement>('.composer input')!.value).toBe('when: ')
   })
 
-  it('a timer and a job: the same six facts, not tappable, no talk', async () => {
+  it('a timer and a job: the same five facts, not tappable, no talk', async () => {
     render(snap([], [timer]), <AutoPage id="timer:wv-backup.timer" />)
     await flush()
-    expect(Object.keys(kpis())).toHaveLength(6)
+    expect(Object.keys(kpis())).toHaveLength(5)
     expect(kpis().when).toMatch(/^every day \d\d:\d\d$/)
-    expect(kpis()).toMatchObject({ runs: '60', cost: '0', length: '6 min' })
+    expect(kpis()).toMatchObject({ runs: '60', length: '6 min' })
     expect(host.querySelectorAll('button.auto-kpi')).toHaveLength(2) // last → its run, runs → the outputs
     expect(host.querySelector('.composer')).toBeNull()
     expect(host.querySelector('[aria-label="pause Backup"]')).not.toBeNull()
     render(snap([], [job]), <AutoPage id="job:render" />)
     await flush()
     // A job runs once: no next run, never « now ».
-    expect(kpis()).toMatchObject({ when: 'started by hand', next: 'never', cost: '0' })
+    expect(kpis()).toMatchObject({ when: 'started by hand', next: 'never' })
     expect(host.querySelector('.auto-flow .meta')!.textContent).toBe('running')
     expect(host.querySelector('.composer')).toBeNull()
     expect(host.querySelector('.auto-flow .auto-rail.run')).not.toBeNull()
@@ -256,7 +258,10 @@ describe('automation page', () => {
     await flush()
     await flush()
     const lines = [...host.querySelectorAll('.page-body .row .stack-text > .ellipsis:first-child')].map((n) => n.textContent)
-    expect(lines).toEqual(['Fourteen sessions, two to read', 'everything it wrote', 'notes/a.md', 'example.com/pr/1', 'run 2', 'run 3'])
+    // The changed files wait behind one line: a path is not the first thing to read.
+    expect(lines).toEqual(['Fourteen sessions, two to read', 'everything it wrote', '1 file changed', 'example.com/pr/1', 'run 2', 'run 3'])
+    expect(host.textContent).not.toContain('notes/a.md')
+    await click([...host.querySelectorAll('.page-body .row')].find((r) => r.textContent?.includes('1 file changed')))
     expect(host.querySelector('.auto-report')!.textContent).toBe('Yesterday was calm.')
     expect(host.querySelectorAll('img.auto-shot')).toHaveLength(3)
     expect(host.querySelectorAll('.auto-ticks > span:not(.next)')).toHaveLength(3)
@@ -279,19 +284,18 @@ describe('automation page', () => {
     expect(label(/^run "Clean deps" now/)).toBeUndefined()
   })
 
-  it('while it runs, the page reads its tokens again (the cost moves with the run), and stops when it leaves', async () => {
+  it('while it runs, the page reads it again, and stops when it leaves', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     try {
       fixtures.detail.set('r', { id: 'r', runs: [], liveTokens: 1000, machine: 'srv' })
       render(snap([opt({ id: 'r', title: 'Clean deps', state: 'running', startedAt: NOW - 12 * MIN, sessionId: 's9' })]), <AutoPage id="r" />)
       await flush()
-      expect(kpis().cost).toBe('1K')
       const before = fixtures.reads
       fixtures.detail.set('r', { id: 'r', runs: [], liveTokens: 52_000, machine: 'srv' })
       await act(async () => void vi.advanceTimersByTime(20_000))
       await flush()
       expect(fixtures.reads).toBe(before + 1)
-      expect(kpis().cost).toBe('52K')
+      expect(host.textContent).not.toMatch(/52K|tokens/)
       render(snap([]), <div />)
       const after = fixtures.reads
       await act(async () => void vi.advanceTimersByTime(60_000))
@@ -370,8 +374,22 @@ describe('automation page', () => {
     await flush()
     expect(host.querySelector('.auto-report')!.textContent).toBe('All of it.')
     expect(host.querySelector('h1')!.textContent).toMatch(/\d\d:\d\d/)
-    await click([...host.querySelectorAll('.row')].at(-1))
+    // Its session opens as a conversation: no terminal glyph, no token count.
+    const open = [...host.querySelectorAll('.row')].at(-1)!
+    expect(open.textContent).toContain('open the conversation')
+    expect(host.textContent).not.toContain('>_')
+    expect(host.textContent).not.toMatch(/tokens|12K/)
+    await click(open)
     expect(pushed).toEqual([{ kind: 'session', id: 's1' }])
+  })
+
+  it('a run: its raw log waits behind « full log »', async () => {
+    fixtures.runs.set(`d@${runs[0].at}`, { run: runs[0], report: 'Short.', files: [], links: [], images: [], log: 'npm ERR! raw line' })
+    render(snap([daily]), <AutoRunPage id="d" at={runs[0].at} />)
+    await flush()
+    expect(host.textContent).not.toContain('npm ERR! raw line')
+    await click([...host.querySelectorAll('.row')].find((r) => r.textContent?.includes('full log')))
+    expect(host.querySelector('pre')!.textContent).toBe('npm ERR! raw line')
   })
 })
 

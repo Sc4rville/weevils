@@ -4,7 +4,6 @@ import { useT } from '../i18n'
 import M from '../i18n/h24'
 import { useApp } from './app-context'
 import { useTalk } from './auto-talk'
-import { Icon } from './icons'
 
 export function AutoDeleteAction({ id, title, onDeleted }: { id: string; title: string; onDeleted?: () => void }) {
   const t = useT(M)
@@ -31,7 +30,7 @@ export function AutoDeleteAction({ id, title, onDeleted }: { id: string; title: 
     }
   }
   return <span className="auto-delete">
-    <button type="button" className="auto-delete-button" aria-label={t.deleteAutomation} title={t.deleteAutomation} disabled={busy} onClick={() => void remove()}><Icon name="more" /></button>
+    <button type="button" className="auto-delete-button link" disabled={busy} onClick={() => void remove()}>{t.deleteAutomation}</button>
     {failed && <span role="alert">{t.deleteFailed}</span>}
   </span>
 }

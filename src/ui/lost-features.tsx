@@ -22,7 +22,7 @@ export function LostFeaturesPage() {
   const t = useT(M)
   const [enabled, setEnabled] = useThinkEnabled(snap)
   const [error, setError] = useState(false)
-  return <Shell slot={colors.__foot ?? 'p3'} kicker={t.title} title={t.title}>
+  return <Shell slot={colors.__foot ?? 'p3'} kicker="weevils" title={t.title}>
     <section className="in lost-feature" aria-label={t.think}>
       <div className="lost-feature-head"><ThinkIcon /><h2>{t.think}</h2>
         <button type="button" role="switch" aria-checked={enabled} aria-label={t.toggle} className="lost-feature-toggle" onClick={() => {

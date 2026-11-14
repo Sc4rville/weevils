@@ -158,7 +158,7 @@ it('does not start an unprotected recording when local storage is unavailable',a
  await render();await click()
  expect(recorder.state).toBe('inactive')
  expect(stopTrack).toHaveBeenCalled()
- expect(host.textContent).toContain('Recording has not started')
+ expect(host.textContent).toContain('recording didn’t start')
  expect(api.voiceChunk).not.toHaveBeenCalled()
 })
 

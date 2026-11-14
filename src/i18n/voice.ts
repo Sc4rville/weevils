@@ -10,10 +10,10 @@ export default defineMessages({
     addTranscript: 'ajouter au brouillon',
     retryTranscript: 'reprendre la transcription',
     saveAudio: 'enregistrer l’audio',
-    incompleteAudio: 'Des morceaux de cet enregistrement manquent. L’original conservé n’a pas été supprimé.',
+    incompleteAudio: 'Une partie de l’enregistrement manque, le reste est gardé.',
     recordingInterrupted: 'Enregistrement interrompu. L’audio conservé peut être récupéré.',
-    storageUnavailable: 'La sauvegarde audio est indisponible dans ce navigateur. L’enregistrement n’a pas démarré.',
-    storageInterrupted: 'La sauvegarde audio a échoué. Gardez cette page ouverte et enregistrez l’audio avant de réessayer.',
+    storageUnavailable: 'Ce navigateur ne peut pas garder d’enregistrement : rien n’a démarré.',
+    storageInterrupted: 'La sauvegarde a échoué : garde la page ouverte et touche « enregistrer l’audio ».',
     readAudio: 'lecture audio impossible',
     nothingHeard: 'rien entendu',
     micDenied: 'micro refusé',
@@ -25,6 +25,8 @@ export default defineMessages({
     /** Sample sentence said when a voice is picked. */
     hello: (name: string) => `Salut${name ? ` ${name}` : ''}, c’est moi, weevboss.`,
     voices: 'voix',
+    /** The word after the voices: installs the Siri Shortcut (its address is copied first). */
+    siri: 'ajouter à Siri',
   },
   en: {
     savedRecordings: 'saved recordings',
@@ -34,10 +36,10 @@ export default defineMessages({
     addTranscript: 'add to draft',
     retryTranscript: 'retry transcription',
     saveAudio: 'save audio',
-    incompleteAudio: 'Some recording chunks are missing. The retained original has not been deleted.',
+    incompleteAudio: 'Part of this recording is missing. The rest is kept.',
     recordingInterrupted: 'Recording interrupted. The retained audio can be recovered.',
-    storageUnavailable: 'Audio storage is unavailable in this browser. Recording has not started.',
-    storageInterrupted: 'Audio storage failed. Keep this page open and save the audio before retrying.',
+    storageUnavailable: 'This browser can’t keep recordings, so recording didn’t start.',
+    storageInterrupted: 'Saving failed: keep this page open and tap “save audio”.',
     readAudio: 'couldn’t read the audio',
     nothingHeard: 'didn’t hear anything',
     micDenied: 'mic blocked',
@@ -47,5 +49,6 @@ export default defineMessages({
     send: 'send',
     hello: (name: string) => `Hi${name ? ` ${name}` : ''}, it’s me, weevboss.`,
     voices: 'voices',
+    siri: 'add to Siri',
   },
 })

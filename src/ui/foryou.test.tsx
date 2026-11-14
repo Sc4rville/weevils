@@ -789,7 +789,7 @@ it('keeps the original header and places only unresolved delivery beside its car
  expect(head.textContent).not.toMatch(/projects|Try visual formats|Try new formats|forwarded|dismiss this status/i)
  expect(head.querySelector('.outbox-status')).toBeNull()
  expect(band('bo').querySelector('.outbox-status')).toBeNull()
- expect(band('se').querySelector('.outbox-status')?.textContent).toContain('waiting to be forwarded')
+ expect(band('se').querySelector('.outbox-status')?.textContent).toContain('sending…')
  render(null);render(<ForYouPage/>);await flush()
  expect(host.querySelector('.page-head .outbox-status')).toBeNull()
  expect(band('bo').querySelector('.outbox-status')).toBeNull()

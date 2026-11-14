@@ -19,7 +19,9 @@ import path from 'node:path'
 import { CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECT_ROOTS, PUBLIC_URL } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
-import { cartesia, cartesiaVoices, relay as modelRelay } from './fast.ts'
+import { cartesia, cartesiaVoices, ledger, relay as modelRelay } from './fast.ts'
+import { CostOptimizer, RUN_EVERY_MS as COST_EVERY_MS } from './cost.ts'
+import CostM from './i18n/cost.ts'
 import { Weevils, isTestBrief } from './core.ts'
 import { lang, requestLang, withLang, setLang, tr, withInstallLang } from './i18n.ts'
 import M from './i18n/api.ts'
@@ -153,9 +155,25 @@ const memory = new Memory()
 memory.onChange(() => w.bump())
 const flyers = new Flyers(w, memory)
 const optimizers = new Optimizers(w, memory)
+// L'optimiseur de coûts (server/cost.ts) : une automatisation intégrée de la page auto, toutes les 30 min, sans modèle.
+const cost = new CostOptimizer({
+  snapshot: () => w.snapshot(),
+  fileOf: (id) => w.store.get(id)?.file,
+  bossId: () => w.bossConversation(),
+  command: (id, cmd) => w.command(id, cmd),
+  commandMain: (cmd) => w.commandMain(cmd),
+  key: (id, key) => w.key(id, key),
+  autoTasks: () => optimizers.list(),
+  ledger: () => ledger.days(7),
+  post: (item) => foryou?.add(item),
+})
 if (ORCHESTRATOR) {
   w.memory = memory
   w.optimizers = optimizers
+  // weevils' own checkout (the recursive signature) when the server runs from one inside the project roots.
+  const self = path.basename(path.resolve(import.meta.dirname, '..'))
+  const selfRepo = (() => { try { return w.workstreamForRepo(self) ? self : null } catch { return null } })()
+  optimizers.registerBuiltin('cost', (now) => cost.run(now), { title: tr(CostM).title, why: tr(CostM).seedWhy, every: COST_EVERY_MS, repo: selfRepo })
   optimizers.start()
 }
 
@@ -191,6 +209,7 @@ const foryou = ORCHESTRATOR
       machines: machineStates,
       mail: () => mailBridge,
       voiceOf: (who) => voices.of(who),
+      op: (op) => cost.op(op),
     })
   : null
 w.foryou = foryou
@@ -794,6 +813,12 @@ const routes: [string, RegExp, Handler][] = [
       models: [...models, ...far.flatMap((d) => d.models ?? [])],
     })
   }],
+  // L'optimiseur de coûts : ce qu'il mesure, et l'audit du jour à la demande (publié dans « pour toi »).
+  ...(ORCHESTRATOR ? ([
+    ['GET', /^\/api\/cost$/, (_req, res) => json(res, 200, { week: cost.week(), internal: ledger.days(7) })],
+    ['POST', /^\/api\/cost\/audit$/, async (_req, res) => json(res, 200, await cost.audit())],
+    ['POST', /^\/api\/cost\/run$/, async (_req, res) => json(res, 200, await cost.run())],
+  ] as [string, RegExp, Handler][]) : []),
   ...tipRoutes(w, json, readBody, () => !!openaiKey()),
   ...hintRoutes(hints, json, readBody),
   // La mémoire vit sur la machine principale seulement (404 ailleurs, comme weevils memory le dit).

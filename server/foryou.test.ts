@@ -454,6 +454,17 @@ describe('posts', () => {
     expect(() => fy.post('   ')).toThrow(M.en.emptyText)
   })
 
+  it('a button with an op acts here (the cost optimiser), never through weevboss, once', async () => {
+    const op = vi.fn(async () => undefined)
+    const fy = make({ op })
+    const item = fy.add({ id: 'cost:model:s1', kind: 'improve', who: 'weevils', text: 'Switch to Sonnet?', actions: [{ label: 'Switch to Sonnet', brief: 'switch s1 to sonnet', op: 'model:s1:sonnet' }] })!
+    expect(JSON.stringify(item.actions)).not.toContain('model:s1')
+    await fy.act(item.id, 'a1')
+    expect(op).toHaveBeenCalledWith('model:s1:sonnet')
+    expect(host.sendMain).not.toHaveBeenCalled()
+    await expect(fy.act(item.id, 'a1')).rejects.toThrow(M.en.notFound)
+  })
+
   it('a tapped button sends once and becomes a link to the existing work', async () => {
     const fy = make()
     const { id } = fy.post('Three things are ready.', [{ label: 'Ship it', brief: 'merge and deploy' }])

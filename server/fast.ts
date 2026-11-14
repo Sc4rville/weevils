@@ -9,7 +9,8 @@ import { lang, tr, type Lang } from './i18n.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import V from './i18n/voice.ts'
 import { openaiKey } from './transcribe.ts'
-import { TTS_RATE, TTS_VOICE } from './config.ts'
+import { DATA_DIR, TTS_RATE, TTS_VOICE } from './config.ts'
+import { CostLedger, callerOf } from './cost-ledger.ts'
 import { which } from './platform.ts'
 
 /** Provider failures stay distinct from a malformed content payload. No prompt in error messages. */
@@ -27,6 +28,47 @@ export class ModelError extends Error {
     this.detail = detail
   }
 }
+/** What weevilsd's own calls cost, per caller and per day, and the answers of identical requests (server/cost-ledger.ts). */
+export const ledger = new CostLedger(path.join(DATA_DIR, 'cost-ledger.json'))
+process.once('exit', () => ledger.flush())
+
+/** A small internal generation never needs Opus or Fable: WEEVILS_SMART_MODEL set to one of them still writes short
+ *  prompts with Sonnet. */
+export const SMALL_PROMPT = 8000
+export function smartModel(prompt: string, env = process.env.WEEVILS_SMART_MODEL): string {
+  const m = env?.trim() || 'sonnet'
+  return /opus|fable/i.test(m) && prompt.length < SMALL_PROMPT ? 'sonnet' : m
+}
+
+/**
+ * claude -p always answers in JSON (--output-format json) so its usage is counted; the text returned stays what it
+ * was: the result, or the structured output when a schema was given. Not JSON (an older CLI, a test double): as before.
+ */
+export function claudeAnswer(stdout: string, schema: object | undefined, caller: string, model: string): string {
+  let o: any
+  try { o = JSON.parse(stdout) } catch { o = null }
+  if (!o || typeof o !== 'object' || o.type !== 'result') return modelText(stdout, schema)
+  if (o.usage) ledger.record(caller, model, o.usage)
+  if (o.is_error) throw new ModelError({}, String(o.result ?? ''))
+  if (schema) return o.structured_output ? JSON.stringify(o.structured_output) : stdout.trim()
+  return String(o.result ?? '').trim()
+}
+
+/** The same request within the cache window: the answer already given, no call. */
+function cachedCall(model: string, prompt: string, schema: object | undefined, run: (caller: string) => Promise<string>): Promise<string> {
+  const caller = callerOf()
+  const key = CostLedger.key(model, prompt, schema)
+  const hit = ledger.get(key)
+  if (hit !== undefined) {
+    ledger.hit(caller, model)
+    return Promise.resolve(hit)
+  }
+  return run(caller).then((text) => {
+    ledger.put(key, text)
+    return text
+  })
+}
+
 const modelText = (stdout: string, schema?: object): string => {
   if (!schema) return stdout.trim()
   const result = parseJson<{ structured_output?: unknown; is_error?: boolean; result?: string }>(stdout)
@@ -68,14 +110,16 @@ export function haiku(prompt: string, timeout = 20_000, schema?: object): Promis
   return runHaiku(prompt, timeout, schema)
 }
 function runHaiku(prompt: string, timeout: number, schema?: object): Promise<string> {
-  const t0 = Date.now()
-  return new Promise((resolve, reject) => {
-    const c = execFile(toolCommand('claude'), ['-p', '--model', 'haiku', '--tools', '', '--no-session-persistence', ...(schema ? ['--json-schema', JSON.stringify(schema), '--output-format', 'json'] : []), prompt], { timeout, maxBuffer: 1 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
-      console.log(`[rapide] haiku ${Date.now() - t0} ms${err ? ' · échec' : ''}`)
-      if (err) reject(new ModelError(err, String(stdout ?? ''), String(stderr ?? '')))
-      else { try { resolve(modelText(String(stdout ?? ''), schema)) } catch (e) { reject(e) } }
+  return cachedCall('haiku', prompt, schema, (caller) => {
+    const t0 = Date.now()
+    return new Promise((resolve, reject) => {
+      const c = execFile(toolCommand('claude'), ['-p', '--model', 'haiku', '--tools', '', '--no-session-persistence', '--output-format', 'json', ...(schema ? ['--json-schema', JSON.stringify(schema)] : []), prompt], { timeout, maxBuffer: 1 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
+        console.log(`[rapide] haiku ${Date.now() - t0} ms${err ? ' · échec' : ''}`)
+        if (err) reject(new ModelError(err, String(stdout ?? ''), String(stderr ?? '')))
+        else { try { resolve(claudeAnswer(String(stdout ?? ''), schema, caller, 'haiku')) } catch (e) { reject(e) } }
+      })
+      c.stdin?.end()
     })
-    c.stdin?.end()
   })
 }
 
@@ -90,15 +134,17 @@ export function smart(prompt: string, timeout = 90_000, schema?: object): Promis
     if (!status.installed || !status.logged) return Promise.reject(new Error(providerUnavailable('codex')))
     return relay(prompt, timeout, schema)
   }
-  const t0 = Date.now()
-  const model = process.env.WEEVILS_SMART_MODEL?.trim() || 'sonnet'
-  return new Promise((resolve, reject) => {
-    const c = execFile(toolCommand('claude'), ['-p', '--model', model, '--tools', '', '--no-session-persistence', ...(schema ? ['--json-schema', JSON.stringify(schema), '--output-format', 'json'] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
-      console.log(`[rapide] ${model} ${Date.now() - t0} ms${err ? ' · échec' : ''}`)
-      if (err) reject(new ModelError(err, String(stdout ?? ''), String(stderr ?? '')))
-      else { try { resolve(modelText(String(stdout ?? ''), schema)) } catch (e) { reject(e) } }
+  const model = smartModel(prompt)
+  return cachedCall(model, prompt, schema, (caller) => {
+    const t0 = Date.now()
+    return new Promise((resolve, reject) => {
+      const c = execFile(toolCommand('claude'), ['-p', '--model', model, '--tools', '', '--no-session-persistence', '--output-format', 'json', ...(schema ? ['--json-schema', JSON.stringify(schema)] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
+        console.log(`[rapide] ${model} ${Date.now() - t0} ms${err ? ' · échec' : ''}`)
+        if (err) reject(new ModelError(err, String(stdout ?? ''), String(stderr ?? '')))
+        else { try { resolve(claudeAnswer(String(stdout ?? ''), schema, caller, model)) } catch (e) { reject(e) } }
+      })
+      c.stdin?.end()
     })
-    c.stdin?.end()
   })
 }
 

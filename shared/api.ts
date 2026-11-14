@@ -403,6 +403,8 @@ export interface Optimizer {
   runRequested?: boolean
   /** Validée à cet instant (début du remplissage de la page auto). */
   acceptedAt?: number
+  /** Automatisation intégrée à weevilsd (server/cost.ts) : elle tourne dans le serveur, sans session d'agent. */
+  builtin?: 'cost'
 }
 
 /** Un passage d'une automatisation : at = fin, startedAt = début. */

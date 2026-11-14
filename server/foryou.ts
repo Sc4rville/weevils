@@ -305,6 +305,8 @@ export interface ForYouDeps {
   voiceOf?: (who: string) => string | undefined
   /** Runs fn after ms (default: an unref'd timer). */
   later?: (fn: () => void, ms: number) => void
+  /** A button that acts here (server/cost.ts: switch a session's model, stop it), never through weevboss. */
+  op?: (op: string) => Promise<void>
 }
 
 // ---------------------------------------------------------------- the store
@@ -346,7 +348,7 @@ interface Stored {
   /** media: where the caller stood (files of one place join one item). */
   cwd?: string
   /** Buttons: the brief goes to weevboss on a tap. */
-  actions?: { id: string; label: string; brief: string; sourceIntentId?: string }[]
+  actions?: { id: string; label: string; brief: string; sourceIntentId?: string; /** done here on a tap (deps.op), never sent to weevboss */ op?: string }[]
   /** mail: what a reply needs. The address stays here. */
   mail?: { address: string; mid: string; subject: string; target: string }
   /** mail: the short « did this » line the curator wrote, shown instead of the first line (lang: the language it is
@@ -393,7 +395,7 @@ export interface NewItem {
   more?: boolean
   gauges?: ForYouGauge[]
   open?: ForYouItem['open']
-  actions?: { label: string; brief: string; sourceIntentId?: string }[]
+  actions?: { label: string; brief: string; sourceIntentId?: string; op?: string }[]
   lang?: Lang
 }
 
@@ -708,7 +710,7 @@ export class ForYou {
 
   private buttons(actions: unknown): Stored['actions'] {
     const list = (Array.isArray(actions) ? actions : [])
-      .map((a) => ({ label: clip(collapse(String((a as { label?: unknown })?.label ?? '')), 48), brief: String((a as { brief?: unknown })?.brief ?? '').trim().slice(0, 4000), ...(typeof a?.sourceIntentId === 'string' && this.intents.get(a.sourceIntentId) ? { sourceIntentId: a.sourceIntentId as string } : {}) }))
+      .map((a) => ({ label: clip(collapse(String((a as { label?: unknown })?.label ?? '')), 48), brief: String((a as { brief?: unknown })?.brief ?? '').trim().slice(0, 4000), ...(typeof a?.sourceIntentId === 'string' && this.intents.get(a.sourceIntentId) ? { sourceIntentId: a.sourceIntentId as string } : {}), ...(typeof a?.op === 'string' && a.op ? { op: a.op as string } : {}) }))
       .filter((a) => a.label && a.brief)
       .slice(0, MAX_ACTIONS)
       .map((a, i) => ({ id: `a${i + 1}`, ...a }))
@@ -1391,6 +1393,15 @@ export class ForYou {
     }
     const i = this.get(id)
     if (!i) throw new Error(t.notFound)
+    const direct = i.actions?.find(a => a.id === action && a.op)
+    if (direct) {
+      if (i.gone) throw new Error(t.notFound)
+      if (!this.deps.op) throw new Error(t.noAction)
+      await this.deps.op(direct.op!)
+      i.gone = true
+      this.changed()
+      return
+    }
     const rememberedAction = i.actions?.find(a => a.id === action)
     const existing = rememberedAction && this.actionIntent(i, rememberedAction)
     if (existing) return this.intents.dispatch(rememberedAction!.brief, i.projectId, existing.id,

@@ -702,6 +702,10 @@ export class Optimizers {
   private adoptionErrors = new Map<string,string>()
   /** Tasks with an exchange turn in flight (one at a time each), and those waiting after a failed one. */
   private talking = new Set<string>()
+  /** Built-in automations (server/cost.ts): run inside weevilsd, no agent session, never in the one-at-a-time slot. */
+  private builtins = new Map<string, (now: number) => Promise<{ ok: boolean; note: string; report?: string }>>()
+  private builtinBusy = new Set<string>()
+  private builtinReports = new Map<string, string>()
   private talkFailUntil = new Map<string, number>()
   /** Archives being written (the git diff of a run that just ended): settled() waits for them. */
   private writing = new Set<Promise<void>>()
@@ -744,6 +748,40 @@ export class Optimizers {
     setInterval(() => this.tick(), TICK_MS).unref?.()
   }
 
+  /**
+   * A built-in automation: its runner, and its row in the auto page created once (recurring every `every` ms, first run
+   * in two minutes, on weevils' own repo when this server runs from a checkout: the recursive signature). A row the user
+   * deleted or refused is never created again; pausing, running now and the run history work as for any other task.
+   */
+  registerBuiltin(kind: NonNullable<Optimizer['builtin']>, run: (now: number) => Promise<{ ok: boolean; note: string; report?: string }>, seed: { title: string; why: string; every: number; repo: string | null }, now = Date.now()) {
+    this.builtins.set(kind, run)
+    if (this.s.items.some((o) => o.builtin === kind)) return
+    const o: Stored = { id: crypto.randomBytes(5).toString('hex'), title: seed.title, why: seed.why, repo: seed.repo, kind: 'other', heavy: false, state: 'queued', userCreated: true, builtin: kind, prompt: '', createdAt: now, acceptedAt: now, every: seed.every, notBefore: now + 2 * 60_000 }
+    this.s.items.push(o)
+    this.changed()
+  }
+
+  private async runBuiltin(o: Stored, now: number) {
+    const run = o.builtin ? this.builtins.get(o.builtin) : undefined
+    if (!run || this.builtinBusy.has(o.id)) return
+    this.builtinBusy.add(o.id)
+    o.startedAt = now
+    o.slotAt = o.runNow ? now : (o.notBefore ?? now)
+    delete o.runNow
+    try {
+      const r = await run(now)
+      if (r.report) this.builtinReports.set(o.id, r.report)
+      this.finish(o, Date.now(), r.ok, r.note)
+    } catch (e) {
+      this.finish(o, Date.now(), false, oneLine((e as Error).message, 160))
+    } finally {
+      this.builtinBusy.delete(o.id)
+      this.builtinReports.delete(o.id)
+      delete o.slotAt
+      this.changed()
+    }
+  }
+
   /** Adopt metadata/source while preserving every old path and scheduler identity. No active cwd is changed. */
   async adoptAll() {
     if(this.adopting || this.s.adoptionPaused)return
@@ -753,6 +791,7 @@ export class Optimizers {
       const backup=path.join(path.dirname(this.file),'automation-adoption-backup.json')
       if(!fs.existsSync(backup)) {fs.mkdirSync(path.dirname(backup),{recursive:true});fs.writeFileSync(backup,JSON.stringify(this.s,null,2),{mode:0o600,flag:'wx'})}
       for(const o of this.s.items){
+        if(o.builtin)continue
         if(o.software?.status==='ready' || (o.software?.status==='pending-running' && o.state==='running'))continue
         try {
           const previous=o.software
@@ -1282,7 +1321,9 @@ export class Optimizers {
       !!snap.mainWorking || snap.sessions.some((s) => s.machineId === MACHINE.id && s.status === 'working' && s.id !== running?.sessionId)
     if (busy) this.lastBusyAt = now
     const reason = this.machine(now).wait
-    const queue = this.s.items.filter((o) => !o.deletedAt && o.state === 'queued').sort((a, b) => (a.acceptedAt ?? a.createdAt) - (b.acceptedAt ?? b.createdAt))
+    for (const o of this.s.items)
+      if (o.builtin && !o.deletedAt && o.state === 'queued' && !o.paused && this.timeAt(o, now) <= now) void this.runBuiltin(o, now)
+    const queue = this.s.items.filter((o) => !o.deletedAt && o.state === 'queued' && !o.builtin).sort((a, b) => (a.acceptedAt ?? a.createdAt) - (b.acceptedAt ?? b.createdAt))
     // Claude at its limit (server/relay.ts): new tasks start on Codex when the relay is automatic, otherwise every
     // task waits for the reset time.
     const selected = this.w.relay?.executionTool?.(preferredTool())
@@ -1453,9 +1494,9 @@ export class Optimizers {
     // Read now, before the next run overwrites them: the report (beside the worktree, rewritten every run) and the
     // agent's last words.
     // Its repo gone (renamed, deleted, out of the roots): no report, no files, the run is still recorded.
-    const place = this.place(o)
+    const place = o.builtin ? null : this.place(o)
     const reportFile = place ? this.reportFile(o) : undefined
-    let report: string | undefined
+    let report: string | undefined = o.builtin ? this.builtinReports.get(o.id) : undefined
     try {
       if (reportFile && fs.statSync(reportFile).mtimeMs >= startedAt - 2000) report = fs.readFileSync(reportFile, 'utf8').slice(0, MAX_REPORT).trim() || undefined
     } catch {

@@ -1975,3 +1975,36 @@ describe('auto — on a Mac', () => {
     expect(o.list()[0].lastEvent).toBeUndefined()
   })
 })
+
+describe('auto — built-in automations (server/cost.ts)', () => {
+  const seed = { title: 'Cost optimizer', why: 'w', every: 30 * MIN, repo: null }
+  it('creates its row once, runs it in the server without a session, and queues the next run', async () => {
+    const o = make()
+    const run = vi.fn(async () => ({ ok: true, note: 'compacted 2', report: 'r' }))
+    o.registerBuiltin('cost', run, seed)
+    o.registerBuiltin('cost', run, seed)
+    const rows = o.list().filter((x) => x.builtin === 'cost')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ state: 'queued', every: 30 * MIN, userCreated: true })
+    o.tick(T0)
+    expect(run).not.toHaveBeenCalled()
+    vi.setSystemTime(T0 + 3 * MIN)
+    o.tick(T0 + 3 * MIN)
+    await flush()
+    await flush()
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(createIn).not.toHaveBeenCalled()
+    const after = o.list().find((x) => x.builtin === 'cost')!
+    expect(after.state).toBe('queued')
+    expect(after.runs?.[0]).toMatchObject({ ok: true, note: 'compacted 2' })
+    expect(after.startAt).toBeGreaterThan(T0 + 3 * MIN)
+  })
+  it('never comes back once deleted, and leaves the one-at-a-time slot to the others', () => {
+    const o = make()
+    o.registerBuiltin('cost', async () => ({ ok: true, note: '' }), seed)
+    const id = o.list().find((x) => x.builtin === 'cost')!.id
+    o.remove(id)
+    o.registerBuiltin('cost', async () => ({ ok: true, note: '' }), seed)
+    expect(o.list().filter((x) => x.builtin === 'cost')).toHaveLength(0)
+  })
+})

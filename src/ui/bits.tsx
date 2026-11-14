@@ -778,6 +778,9 @@ function Fold({ head, className = '', label, children }: { head: ReactNode; clas
   )
 }
 
+/** A brief from weevboss or another agent as shown: without the hidden ⟦weevils …⟧ context block (locale, steps) that rides on it. */
+const briefText = (text: string) => userText(withoutMachinePrefix(text))
+
 /** A long agent message in a project session: one or two plain sentences, the full text behind the same fold as commands. */
 function LongReply({ text }: { text: string }) {
   const w = useT(PM)
@@ -965,7 +968,7 @@ export function Messages({
               className={`msg band ${session ? 'session-message' : ''} ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.demo ? 'demo' : ''}`}
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
               who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}${g.m.demo ? ` · ${t.demo}` : ''}${pendingTag(g.m.id)}`}
-              copy={g.m.role === 'user' ? userText(g.m.text) : chipLabels(withoutMachinePrefix(g.m.text))}
+              copy={g.m.role === 'user' ? userText(g.m.text) : g.m.role === 'orchestrator' ? briefText(g.m.text) : chipLabels(withoutMachinePrefix(g.m.text))}
               mid={g.m.id}
             >
               {g.m.role === 'user' ? (
@@ -978,7 +981,11 @@ export function Messages({
                   ))}
                 </>
               ) : g.m.role === 'orchestrator' ? (
-                <Clamp text={withoutMachinePrefix(g.m.text)} full={session} />
+                plain && isLongReply(briefText(g.m.text)) ? (
+                  <LongReply text={briefText(g.m.text)} />
+                ) : (
+                  <Clamp text={briefText(g.m.text)} full={session} />
+                )
               ) : (
                 <ChipSlot.Provider value={chip ? (b) => chip(b, g.m.id) : null}>
                   {plain && groups[i + 1]?.kind === 'steps' && brief(withoutMachinePrefix(g.m.text)) ? (

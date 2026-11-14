@@ -131,28 +131,28 @@ export function Settings({
           <Choice label={t.model} options={models} value={model} known={modelKnown} onPick={(m) => void send(`/model ${m}`, () => setLocal({ model: m, at: Date.now() }))} />
           <Choice label={t.effort} options={EFFORTS} value={local.effort && local.at && Date.now() - local.at < 20_000 ? local.effort : (settings?.effort ?? local.effort)} known={!!settings?.effort} words={t.effortWord} onPick={(e) => void send(`/effort ${e}`, () => setLocal({ effort: e, at: Date.now() }))} />
           <div className="in settings-row">
-            <span className="meta settings-label">
-              {t.fastMode}
-              {local.fast != null && <span className="settings-hint">{t.setHere}</span>}
-            </span>
+            <span className="meta settings-label">{t.fastMode}</span>
+            {/* /fast toggles: a chip sends it only when it changes the state (unknown counts as off, as before). */}
             <div className="words" role="group" aria-label={t.fastMode}>
-              <button className={`word ${local.fast ? 'on' : ''}`} aria-pressed={!!local.fast} onClick={() => void send('/fast', () => setLocal({ fast: !local.fast }))}>
-                {local.fast == null ? t.toggle : local.fast ? t.on : t.off}
-              </button>
+              {[true, false].map((on) => (
+                <button key={String(on)} className={`word ${local.fast === on ? 'on' : ''}`} aria-pressed={local.fast === on} onClick={() => (!!local.fast === on ? setLocal({ fast: on }) : void send('/fast', () => setLocal({ fast: on })))}>
+                  {on ? t.on : t.off}
+                </button>
+              ))}
             </div>
           </div>
         </>
       ) : <ModelPicker key={id} id={id} />}
       <Line ch="⇣" go={null} onClick={() => void send('/compact')} disabled={busy === '/compact'}>
-        {'/compact'}
+        {t.compact}
       </Line>
       {confirm ? (
         <Line ch="!" go={null} className="invert" onClick={() => void send(tool === 'codex' ? '/new' : '/clear', () => setConfirm(null))}>
-          {t.confirm} {tool === 'codex' ? '/new' : '/clear'}
+          {t.confirmClear}
         </Line>
       ) : (
         <Line ch="×" go={null} onClick={() => setConfirm('clear')}>
-          {tool === 'codex' ? '/new' : '/clear'}
+          {t.clear}
         </Line>
       )}
       {confirm && (

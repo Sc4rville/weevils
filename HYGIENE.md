@@ -19,6 +19,7 @@ file too: a rule changed here applies from the next run.
 | H-8 | Every command, path, env var and link in the docs exists in the code. | Outdated docs cost newcomers the most. | Section 2, docs vs behavior. |
 | H-9 | No known high or critical vulnerability in dependencies stays unreported for more than one run. | Safety of everyone who installs weevils. | `npm audit`, every run including quiet ones. |
 | H-10 | Copies of this repository (mirrors in `~/projects/.mirrors`) are compared, never synced, by the automation. | Decision of 2026-11-12: one canonical source. | Section 2c. |
+| H-11 | Entry points are declared in `knip.json`; dead-code findings count only when knip runs with it and a plain text search agrees. | Without them knip called the server itself, the service worker, the `get/` scripts and a lazily imported dependency unused (13 false files, 2 false dependencies); with them, zero. | `npx knip` with `knip.json`, section 2. Introduced 2026-11-14. |
 
 ## Accepted exceptions
 
@@ -26,6 +27,10 @@ Deliberate choices the automation must not report again. One line each: what, wh
 
 - `harness-interface-kit/` and the other paths excluded in `scripts/release-policy.json` are local or private by
   policy: not part of the shared selection, not scanned as shared source.
+- The owner's GitHub handle in `LICENSE`, in repository URLs and in the launchd labels `com.github.<owner>.weevils*`:
+  product identity, not a personal trace (renaming the labels would orphan installed services). 2026-11-14.
+- The public install entry `get.<domain>` named in `get/`, `server/weevils-update` and their docs: the product's
+  own hosted entry point, overridable by environment. 2026-11-14.
 
 ## Retired rules
 
@@ -35,6 +40,14 @@ None yet.
 
 Newest first, last 10 runs (older ones in `docs/hygiene/history.md`).
 
+- 2026-11-14 · first run (by hand) · main 17c1bf0 · full
+  - Cleaner: 4 exports nothing used are gone; test fixtures no longer carry a real home directory; full check green
+    (1,865 tests, build), tests leave no file behind, no secret, no known vulnerability, no real TODO left.
+  - Invented: H-11, declared entry points for knip, which turned 13 false "unused files" into zero.
+  - Proposed: prune 36 branches already merged and idle (7 bare, 29 with a clean worktree); neutral examples instead
+    of a private project's real feed text in `server/foryou-editorial-reviewed.json`; document the 54 env vars read
+    by the server but named nowhere in the docs (many are internal); weevils-oss lags main by 35 commits (report only).
+  - Held: real home paths in two other test fixtures, both being edited by live work.
 - 2026-11-14 · set up · rules H-1 to H-10 written from the owner's brief; no run yet.
 
-<!-- hygiene:last-full none -->
+<!-- hygiene:last-full main=17c1bf03e401cc850b3c2fa3dafaf3fbe7c7f415 branches=029dc8e5a11b at=2026-11-14T07:20:50.276Z -->

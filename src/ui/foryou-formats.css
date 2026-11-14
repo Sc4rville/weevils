@@ -52,3 +52,14 @@
   .formats-composition { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .formats-composition .formats-journey { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Save (src/ui/save-media.tsx): a picture shown whole leaves the frame's corner on the band, so the button sits in the
+   row under it, at the right of « Open full image » / « Open the clip ». */
+.formats-image-host .save-media,
+.formats-clip .save-media {
+  top: auto;
+  bottom: 2px;
+  right: 0;
+}
+.formats-clip { position: relative; }
+.formats-clip > button:not(.save-media) { display: block; min-height: 44px; padding-block: 12px; text-decoration: underline; }

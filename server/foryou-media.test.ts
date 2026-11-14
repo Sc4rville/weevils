@@ -6,7 +6,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { tr } from './i18n.ts'
 import M from './i18n/foryou-media.ts'
-import { MAX_ENTRIES, MediaRefused, MediaShelf, citedPaths, mimeOf, parseRange, sniff } from './foryou-media.ts'
+import { MAX_ENTRIES, MediaRefused, MediaShelf, citedPaths, disposition, mimeOf, parseRange, sniff } from './foryou-media.ts'
 
 // The media shelf of « for you » (server/foryou-media.ts): temp folders only, never the real projects or data.
 const PNG = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(40, 1)])
@@ -357,7 +357,7 @@ describe('serve', () => {
   // The route as index.ts mounts it: only the id reaches the shelf.
   const server = http.createServer((req, res) => {
     const m = /^\/api\/foryou\/media\/([^/?]+)/.exec(req.url ?? '')
-    shelf.serve(req, res, m ? decodeURIComponent(m[1]) : '')
+    shelf.serve(req, res, m ? decodeURIComponent(m[1]) : '', new URL(req.url ?? '', 'http://x').searchParams.get('download') === '1')
   })
   beforeAll(async () => {
     await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok))
@@ -389,6 +389,22 @@ describe('serve', () => {
     const img = await get(shot.id)
     expect(img.headers['content-type']).toBe('image/png')
     expect(img.body.equals(PNG)).toBe(true)
+  })
+
+  it('names the file: inline by default, attachment with ?download=1, ranges still answered (a save to the camera roll)', async () => {
+    const r = await get(clip.id)
+    expect(r.headers['content-disposition']).toBe(`inline; filename="clip.mp4"; filename*=UTF-8''clip.mp4`)
+    const d = await get(`${clip.id}?download=1`, { range: 'bytes=0-9' })
+    expect(d.status).toBe(206)
+    expect(d.headers).toMatchObject({ 'content-type': 'video/mp4', 'accept-ranges': 'bytes', 'content-disposition': `attachment; filename="clip.mp4"; filename*=UTF-8''clip.mp4` })
+    expect(d.body.equals(body.subarray(0, 10))).toBe(true)
+    expect((await get(`${shot.id}?download=1`, {}, 'HEAD')).headers['content-disposition']).toMatch(/^attachment; filename="shot.png"/)
+  })
+
+  it('a file name in the header is clean: real extension, accents kept in filename*, nothing that breaks the header', () => {
+    expect(disposition('Écran d’accueil.PNG', 'abc', true)).toBe(`attachment; filename="Ecran d_accueil.png"; filename*=UTF-8''%C3%89cran%20d%E2%80%99accueil.png`)
+    expect(disposition('a"b\\c;.mp4', 'abc', false)).toBe(`inline; filename="a b c_.mp4"; filename*=UTF-8''a%20b%20c%3B.mp4`)
+    expect(disposition('___.jpg', 'k9', true)).toBe(`attachment; filename="weevils-k9.jpg"; filename*=UTF-8''weevils-k9.jpg`)
   })
 
   it('answers a range with 206 and exactly those bytes (what iOS asks before playing)', async () => {

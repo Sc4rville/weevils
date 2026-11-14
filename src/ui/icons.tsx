@@ -35,6 +35,8 @@ const PATHS = {
   mic: 'M9 3h6v10H9zM5 10v6h14v-6M12 16v5M8 21h8',
   enter: 'M19 5v8H6M10 9l-4 4 4 4',
   compact: 'M12 3v11M6 9l6 6 6-6M4 20h16',
+  /** Save to the device (camera roll, downloads). */
+  save: 'M12 3v11M6 9l6 6 6-6M4 20h16',
   theme: 'M4 4h16v16H4zM12 4v16',
   logout: 'M10 4H4v16h6M15 8l4 4-4 4M19 12H9',
   agents: 'M4 6h16M4 12h16M4 18h16',

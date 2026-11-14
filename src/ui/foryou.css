@@ -1243,3 +1243,9 @@
 /* Keep semantic alerts and inverted-card contrast; milestone headings already use this signature. */
 .fy-item.recursive-identity.invert,
 .fy-item.recursive-identity.fy-t-alert { background-image: none; }
+
+/* The tile is a frame; the picture inside opens it, the corner button saves it (src/ui/save-media.tsx). */
+.fy-media-hit {
+  display: block;
+  width: 100%;
+}

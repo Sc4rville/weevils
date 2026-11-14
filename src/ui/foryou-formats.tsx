@@ -2,7 +2,7 @@ import { FeedRail } from './foryou-rail'
 import { TranslationStatus } from './foryou-localization'
 import { OutboxStatus } from './outbox-status'
 import { api } from '../api'
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { ForYouItem, ForYouMedia, VisualProposal } from '../../shared/foryou'
 import { useApp } from './app-context'
 import { Shell } from './shell'
@@ -10,6 +10,7 @@ import { useForYou, type ForYouStore } from './foryou-store'
 import { useLang, useT } from '../i18n'
 import M from '../i18n/foryou-formats'
 import './foryou-formats.css'
+import { SaveMediaButton, useLongPressSave } from './save-media'
 
 const tone = (slot: string) => ({ '--c': `var(--${slot})`, background: `var(--${slot})` }) as CSSProperties
 /** Retry same-origin media with a fresh URL; never alter signed third-party URLs. */
@@ -24,14 +25,17 @@ function mediaAttempt(url: string, attempt: number) {
 }
 export function FullImage({ media, description }: { media: ForYouMedia; description: string }) {
   const { push } = useApp()
+  const host = useRef<HTMLDivElement>(null)
+  const target = { url: media.url, name: media.name, type: 'image' as const }
+  const notOpen = useLongPressSave(host, target)
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const t = useT(M)
   useEffect(() => { setFailed(false); setAttempt(0) }, [media.id, media.url])
   if (failed) return <div className="formats-media-error"><p role="alert">{t.imageUnavailable}</p><button type="button" onClick={() => { setAttempt(n => n + 1); setFailed(false) }}>{t.retryImage}</button></div>
-  return <button type="button" className="formats-image" onClick={() => push({ kind: 'media', url: media.url, type: 'image', name: description })} aria-label={`${t.open} · ${description}`}>
+  return <div ref={host} className="save-media-host formats-image-host"><button type="button" className="formats-image" onClickCapture={notOpen} onClick={() => push({ kind: 'media', url: media.url, type: 'image', name: description })} aria-label={`${t.open} · ${description}`}>
     <img key={`${media.id}:${media.url}:${attempt}`} src={mediaAttempt(media.url, attempt)} alt={description} loading="lazy" onError={() => setFailed(true)} /><span>{t.open}</span>
-  </button>
+  </button><SaveMediaButton target={target} /></div>
 }
 
 export function PreviewClip({ media, poster, title }: { media: ForYouMedia; poster?: string; title: string }) {
@@ -41,7 +45,7 @@ export function PreviewClip({ media, poster, title }: { media: ForYouMedia; post
   const t = useT(M)
   useEffect(() => { setFailed(false); setAttempt(0) }, [media.id, media.url])
   if (failed) return <div className="formats-media-error"><p role="alert">{t.clipUnavailable}</p><button type="button" onClick={() => { setAttempt(n => n + 1); setFailed(false) }}>{t.retryClip}</button></div>
-  return <div className="formats-clip"><video key={`${media.id}:${media.url}:${attempt}`} controls playsInline preload="none" poster={poster} aria-label={title} src={mediaAttempt(media.url, attempt)} onError={() => setFailed(true)} /><button type="button" onClick={() => push({ kind: 'media', url: media.url, type: 'video', name: title })}>{t.openClip}</button></div>
+  return <div className="formats-clip save-media-host"><SaveMediaButton target={{ url: media.url, name: media.name, type: 'video' }} /><video key={`${media.id}:${media.url}:${attempt}`} controls playsInline preload="none" poster={poster} aria-label={title} src={mediaAttempt(media.url, attempt)} onError={() => setFailed(true)} /><button type="button" onClick={() => push({ kind: 'media', url: media.url, type: 'video', name: title })}>{t.openClip}</button></div>
 }
 
 export function PictureJourney({ media, frames, label }: { media: ForYouMedia[]; frames: VisualProposal['frames']; label?: string }) {

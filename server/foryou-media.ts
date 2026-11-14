@@ -60,6 +60,16 @@ const extOf = (p: string) => path.extname(p).slice(1).toLowerCase()
 /** Content type of a media file name (by extension); undefined when it is neither an image nor a video we take. */
 export const mimeOf = (p: string): string | undefined => EXT[extOf(p)]?.mime
 
+/** The header that names the file (« inline »: shown in place; « attachment »: saved), with its real extension and an
+ * ASCII fallback for old clients. A name made only of punctuation becomes « weevils-<id> ». */
+export function disposition(name: string, id: string, attachment: boolean): string {
+  const ext = extOf(name)
+  const stem = name.slice(0, ext ? -(ext.length + 1) : undefined).normalize('NFC').replace(/[\u0000-\u001f\u007f"\\/]+/g, ' ').replace(/\s+/g, ' ').trim()
+  const clean = `${/[\p{L}\p{N}]/u.test(stem) ? stem : `weevils-${id}`}${ext ? `.${ext}` : ''}`
+  const ascii = clean.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7e]+/g, '_').replace(/[%;]/g, '_')
+  return `${attachment ? 'attachment' : 'inline'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(clean).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`
+}
+
 /** What the first bytes of a file are, whatever its name says. null: nothing we show. */
 export function sniff(b: Uint8Array): MediaType | null {
   const buf = Buffer.from(b.buffer, b.byteOffset, b.byteLength)
@@ -309,7 +319,8 @@ export class MediaShelf {
     return { id: e.id, type: e.type, url: '/api/foryou/media/' + e.id, name: e.name, bytes: e.bytes }
   }
 
-  serve(req: IncomingMessage, res: ServerResponse, id: string): void {
+  /** download: « Content-Disposition: attachment » (a save, where no share sheet exists); otherwise inline, named too. */
+  serve(req: IncomingMessage, res: ServerResponse, id: string, download = false): void {
     const gone = () => {
       if (res.headersSent) return void res.destroy()
       res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify({ error: tr(M).gone }))
@@ -335,6 +346,7 @@ export class MediaShelf {
       'accept-ranges': 'bytes',
       'cache-control': 'private, max-age=3600',
       'x-content-type-options': 'nosniff',
+      'content-disposition': disposition(e.name, e.id, download),
     }
     const range = parseRange(typeof req.headers.range === 'string' ? req.headers.range : undefined, size)
     if (range === 'unsatisfiable') {

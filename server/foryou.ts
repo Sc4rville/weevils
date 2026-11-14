@@ -1612,9 +1612,9 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
       await run(res, true, () => ({ item: fy.addMedia({ path: b?.path, caption: b?.caption, cwd: b?.cwd, from: trustedFrom(req, b) }) }))
     }],
     // GET and HEAD (a player may ask for the size first): the router matches the method exactly.
-    ...(['GET', 'HEAD'] as const).map((method): [string, RegExp, Handler] => [method, /^\/api\/foryou\/media\/([\w-]+)$/, (req, res, _u, [mid]) => {
+    ...(['GET', 'HEAD'] as const).map((method): [string, RegExp, Handler] => [method, /^\/api\/foryou\/media\/([\w-]+)$/, (req, res, u, [mid]) => {
       if (!fy.shelf) return json(res, 404, { error: tr(M).noMedia })
-      fy.shelf.serve(req, res, mid)
+      fy.shelf.serve(req, res, mid, u.searchParams.get('download') === '1')
     }]),
     ['POST', /^\/api\/foryou\/([^/]+)\/dismiss$/, async (req, res, _u, [raw]) => {
       const b = await readBody(req)

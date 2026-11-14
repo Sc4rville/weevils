@@ -3,6 +3,7 @@ import { ResultCard } from './foryou-result'
 import { TranslationStatus } from './foryou-localization'
 import { InlineMediaFormats, ProposalView } from './foryou-formats'
 import { OutboxStatus } from './outbox-status'
+import { SaveMediaButton, useLongPressSave } from './save-media'
 import { useForYouOpen } from './foryou-open'
 import { rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
@@ -355,9 +356,11 @@ export function mediaFit(w: number, h: number, boxW: number, boxH: number, fixed
 function MediaTile({ m, many }: { m: ForYouMedia; many: boolean }) {
   const t = useT(M)
   const { push } = useApp()
-  const tile = useRef<HTMLButtonElement>(null)
+  const tile = useRef<HTMLDivElement>(null)
   const video = useRef<HTMLVideoElement>(null)
   const inView = useInView(tile, 0.6)
+  const target = { url: m.url, name: m.name, type: m.type }
+  const notOpen = useLongPressSave(tile, target)
   const [fit, setFit] = useState<'cover' | 'contain' | 'crop'>('cover')
   const sized = (w: number, h: number) => {
     const el = tile.current
@@ -377,7 +380,8 @@ function MediaTile({ m, many }: { m: ForYouMedia; many: boolean }) {
     }
   }, [inView])
   return (
-    <button ref={tile} className={`fy-media ${fit}${inView ? ' fy-inview' : ''}`} onClick={() => push({ kind: 'media', url: m.url, type: m.type, name: m.name })} aria-label={t.openMedia(m.name)}>
+    <div ref={tile} className={`fy-media save-media-host ${fit}${inView ? ' fy-inview' : ''}`}>
+    <button type="button" className="fy-media-hit" onClickCapture={notOpen} onClick={() => push({ kind: 'media', url: m.url, type: m.type, name: m.name })} aria-label={t.openMedia(m.name)}>
       {m.type === 'video' ? (
         <video ref={video} src={m.url} playsInline muted loop preload="metadata" onLoadedMetadata={(e) => sized(e.currentTarget.videoWidth, e.currentTarget.videoHeight)} />
       ) : (
@@ -390,6 +394,8 @@ function MediaTile({ m, many }: { m: ForYouMedia; many: boolean }) {
         </span>
       )}
     </button>
+    <SaveMediaButton target={target} />
+    </div>
   )
 }
 
@@ -1179,7 +1185,7 @@ export function MediaPage({ url, type, name }: { url: string; type: 'image' | 'v
         </button>
         <span className="meta ellipsis">{name}</span>
       </div>
-      <div className="fy-stage">{type === 'video' ? <video ref={video} src={url} controls autoPlay playsInline loop aria-label={name} /> : <img src={url} alt={name} draggable={false} />}</div>
+      <div className="fy-stage save-media-host">{type === 'video' ? <video ref={video} src={url} controls autoPlay playsInline loop aria-label={name} /> : <img src={url} alt={name} draggable={false} />}<SaveMediaButton target={{ url, name, type }} /></div>
     </motion.div>
   )
 }

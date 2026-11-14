@@ -160,11 +160,14 @@ export function CalmConv({ id }: { id: string }) {
         </button>
       </div>
       <Collapse open={more}>
-        <div className="in inline-actions" style={{ paddingBottom: 6 }}>
-          <button className="link inline" onClick={() => setPreview({ open: !preview.open })} aria-pressed={!!preview.open}>
-            {t.browser}
-          </button>
-        </div>
+        {/* weevboss has no app of its own to show: the preview only exists for a session. */}
+        {!main && (
+          <div className="in inline-actions" style={{ paddingBottom: 6 }}>
+            <button className="link inline" onClick={() => setPreview({ open: !preview.open })} aria-pressed={!!preview.open}>
+              {preview.open ? t.closeApp : t.seeApp}
+            </button>
+          </div>
+        )}
         <Settings userName={snap.config.userName} id={main ? '__main' : id} tool={main ? 'claude' : (s?.tool ?? 'claude')} settings={settings} canCommand={canCommand} run={run} />
       </Collapse>
       <div className="page-cols">
@@ -184,7 +187,7 @@ export function CalmConv({ id }: { id: string }) {
           </div>
           <div className="page-foot">
             {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
-            <Composer placeholder={sourceIssue ?? t.writeTo(author)} label={t.messageTo(title)} onSend={send} onAttach={send} voice anyFile={main} disabled={!!sourceIssue || (!main && s ? !s.controllable : false)} />
+            <Composer placeholder={sourceIssue ? '' : t.writeTo(author)} label={t.messageTo(title)} onSend={send} onAttach={send} voice anyFile={main} disabled={!!sourceIssue || (!main && s ? !s.controllable : false)} />
           </div>
         </div>
         <SidePane

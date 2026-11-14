@@ -95,9 +95,12 @@ const soft = { type: 'spring', stiffness: 160, damping: 26, mass: 1 } as const
 export function ForYouPeek() {
   const t = useT(M)
   const { snap, colors, push } = useApp()
-  const { items, dismiss } = useForYou()
+  const { items, dismiss, feed } = useForYou()
   const authorOf = useAuthors()
   const shown = items.filter(notificationEligible).slice(0, PEEK_ITEMS)
+  // Before the stream arrives, « nothing new » would be a false all-quiet: say what the snapshot already knows.
+  const waiting = snap.foryou?.unseen ?? 0
+  const emptyLine = feed ? t.forYouEmpty : waiting > 0 ? t.forYouUnseen(waiting) : t.forYouLoading
   const open = () => push({ kind: 'foryou' })
   // A voice message being read aloud: its strip shows it. It stops when its item leaves the stream.
   const speaking = useVoiceId()
@@ -189,7 +192,7 @@ export function ForYouPeek() {
             )
           })}
         </AnimatePresence>
-        {shown.length === 0 && <button type="button" className="in fyt-empty" onClick={open}>{t.forYouEmpty}</button>}
+        {shown.length === 0 && <button type="button" className="in fyt-empty" onClick={open}>{emptyLine}</button>}
       </div>
     </motion.div>
   )

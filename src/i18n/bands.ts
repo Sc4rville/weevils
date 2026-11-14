@@ -34,6 +34,7 @@ export default defineMessages({
     forYou: 'pour toi',
     forYouOpen: 'ouvrir « pour toi » en grand',
     forYouEmpty: 'rien de neuf pour l’instant',
+    forYouLoading: 'chargement…',
     forYouUnseen: (n: number) => `${n} pas encore ${n > 1 ? 'vus' : 'vu'}`,
     forYouSpeaking: 'en cours de lecture',
 
@@ -104,6 +105,7 @@ export default defineMessages({
     forYou: 'for you',
     forYouOpen: 'open “for you” full screen',
     forYouEmpty: 'nothing new for now',
+    forYouLoading: 'loading…',
     forYouUnseen: (n: number) => `${n} not seen yet`,
     forYouSpeaking: 'playing',
 

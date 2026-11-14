@@ -35,10 +35,10 @@ function useAge() {
   }
 }
 
-/** « weevils · claude · Onboarding link » → « weevils · Onboarding link ». */
-const who = (d: Dispatch) => {
+/** « weevils · claude · Onboarding link » → « weevils · Onboarding link » ; no label: a plain word, never a session id. */
+const who = (d: Dispatch, none: string) => {
   const p = (d.label ?? '').split(' · ')
-  return p.length >= 3 ? `${p[0]} · ${p.slice(2).join(' · ')}` : d.label || d.session.slice(0, 8)
+  return p.length >= 3 ? `${p[0]} · ${p.slice(2).join(' · ')}` : d.label || none
 }
 
 function glyph(a: Row) {
@@ -56,7 +56,7 @@ function useStatus() {
       const by = a.closedBy === 'auto' ? t.closedByAuto : a.closedBy === 'user' ? t.closedByYou : t.closedByBoss
       return `${a.status === 'done' ? t.done : t.dropped} · ${by}${a.closedAt ? ` · ${age(now - a.closedAt)}` : ''}`
     }
-    const where = d ? t.sentTo(who(d)) : t.open
+    const where = d ? t.sentTo(who(d, t.aSession)) : t.open
     const how = d?.outcome === 'question' ? ` · ${t.waitsForYou}` : d?.outcome === 'failed' ? ` · ${t.failed}` : d?.outcome === 'progress' ? ` · ${t.partly}` : ''
     return a.stale ? `${t.stale(age(now - a.progressAt))} · ${where}` : `${where}${how} · ${age(now - a.at)}`
   }
@@ -100,7 +100,7 @@ function AskRow({ a, open, now, onToggle, onAction }: { a: Row; open: boolean; n
           <div className="meta">{t.yourWords}{a.from !== 'user' ? ` · ${t.from(a.from)}` : ''} · {hhmm(a.at)} · {a.id}</div>
           {a.dispatches.map((d) => (
             <div key={d.session + d.at} className="req-dispatch">
-              <button type="button" className="link req-who" onClick={() => push({ kind: 'session', id: d.session })}>→ {who(d)}</button>
+              <button type="button" className="link req-who" onClick={() => push({ kind: 'session', id: d.session })}>→ {who(d, t.aSession)}</button>
               {d.expect && <div className="meta"><span className="strong">{t.expects}</span> {d.expect}</div>}
               {d.report && <div className="meta"><span className="strong">{t.report}</span> {d.report}</div>}
             </div>

@@ -3,7 +3,9 @@ import { defineMessages } from './index'
 // The requests page (src/ui/requests.tsx): weevboss's request ledger, goals and work trace.
 export default defineMessages({
   fr: {
-    title: '! demandes',
+    title: 'demandes',
+    /** Une session envoyée sans nom connu. */
+    aSession: 'une session',
     menu: 'demandes',
     openCount: (n: number) => `${n} ouverte${n > 1 ? 's' : ''}`,
     staleCount: (n: number) => `${n} en panne`,
@@ -45,7 +47,8 @@ export default defineMessages({
     age: (n: number, u: 'm' | 'h' | 'd') => `${n}\u00a0${u === 'm' ? 'min' : u === 'h' ? 'h' : 'j'}`,
   },
   en: {
-    title: '! requests',
+    title: 'requests',
+    aSession: 'a session',
     menu: 'requests',
     openCount: (n: number) => `${n} open`,
     staleCount: (n: number) => `${n} stale`,

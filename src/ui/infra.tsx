@@ -545,22 +545,20 @@ export function UsagePage() {
   const rows = today?.rows ?? null
   const total = rows?.reduce((s, r) => s + r.weight, 0) ?? 0
   const byModel = useMemo(() => {
-    const m = new Map<string, { tool: string; weight: number; tokens: number }>()
+    const m = new Map<string, { weight: number }>()
     for (const r of today?.models ?? []) {
       const k = `${r.tool}:${modelName(r.model)}`
-      const p = m.get(k) ?? { tool: r.tool, weight: 0, tokens: 0 }
+      const p = m.get(k) ?? { weight: 0 }
       p.weight += r.weight
-      p.tokens += r.tokens
       m.set(k, p)
     }
     return [...m].sort((a, b) => b[1].weight - a[1].weight)
   }, [today])
   const byProject = useMemo(() => {
-    const m = new Map<string, { weight: number; tokens: number }>()
+    const m = new Map<string, { weight: number }>()
     for (const r of rows ?? []) {
-      const p = m.get(r.projectId) ?? { weight: 0, tokens: 0 }
+      const p = m.get(r.projectId) ?? { weight: 0 }
       p.weight += r.weight
-      p.tokens += r.tokens
       m.set(r.projectId, p)
     }
     return [...m].sort((a, b) => b[1].weight - a[1].weight)
@@ -580,7 +578,7 @@ export function UsagePage() {
             <div className="stat-h">
               <span className="strong">{k.slice(k.indexOf(':') + 1)}</span>
               <span className="meta">
-                {p.tool} · {t.share(share(p.weight), p.tokens)}
+                {t.share(share(p.weight))}
               </span>
             </div>
             <Gauge pct={share(p.weight)} level="ok" className="big" />
@@ -594,7 +592,7 @@ export function UsagePage() {
           <div key={id} className="in stat share" style={{ ['--bar' as string]: colors[id] ? `var(--${colors[id]})` : undefined }}>
             <div className="stat-h">
               <span className="strong">{projectName(id)}</span>
-              <span className="meta">{t.share(share(p.weight), p.tokens)}</span>
+              <span className="meta">{t.share(share(p.weight))}</span>
             </div>
             <Gauge pct={share(p.weight)} level="ok" className="big" />
           </div>
@@ -605,7 +603,7 @@ export function UsagePage() {
           <Line
             key={`${r.machine}:${r.id}`}
             ch="*"
-            meta={`${projectName(r.projectId)} · ${t.share(share(r.weight), r.tokens)}`}
+            meta={`${projectName(r.projectId)} · ${t.share(share(r.weight))}`}
             go={known.has(r.id) ? '→' : null}
             onClick={known.has(r.id) ? () => push({ kind: 'session', id: r.id }) : undefined}
           >

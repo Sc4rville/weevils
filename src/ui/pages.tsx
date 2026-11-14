@@ -33,7 +33,7 @@ import { FsFilePage, FsPage, InfraPage, UsagePage } from './infra'
 import { RelayPage, SessionRelay } from './relay'
 import { listFiles } from './repofiles'
 import { useThreadAsk } from './askthread'
-import { ago, durLong, status } from './format'
+import { ago, durLong, status, toolName } from './format'
 import { useLang, useT } from '../i18n'
 import { reveal, useFollow } from './follow'
 import { FollowDown } from './followdown'
@@ -121,7 +121,7 @@ function ArchivedSessions() {
     {!list.length && <div className="in meta empty">{t.empty}</div>}
     {list.map((s) => <div key={s.id} className="in archive-entry">
       <button type="button" className="link" onClick={() => push({ kind: 'session', id: s.id })}>{s.title}</button>
-      <div className="meta">{s.tool} · {status[s.status].label}</div>
+      <div className="meta">{toolName(s.tool)} · {status[s.status].label}</div>
       <SessionArchiveAction session={s} />
     </div>)}
   </Shell>
@@ -154,6 +154,7 @@ function SessionPage({ id }: { id: string }) {
   const { snap, now, replace, colors } = useApp()
   const t = useT(M)
   const tb = useT(BM)
+  const tp = useT(PM)
   const gone = useGoneTitle()
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [missing, setMissing] = useState(false)
@@ -219,6 +220,7 @@ function SessionPage({ id }: { id: string }) {
   const sourceIssue = sourceAccessIssue(sourceForSession(snap.projects, s))
   const st = status[s.status]
   const previewUrl = preview.url ?? guessPreviewUrl(messages, s, project, snap.config)
+  const liveText = liveNote(s, messages.at(-1), tp, { waiting: String(tp.liveWaiting), stopped: String(tp.liveStopped), done: String(tp.liveDone), idle: String(tp.liveIdle) }).text
 
   // Before the server takes it, the notice under the thread speaks (« sending… », « try again »); after, the bubble.
   const busy = (s.turnWorking ?? (s.status === 'working' && !s.background)) || s.queued > 0
@@ -257,14 +259,14 @@ function SessionPage({ id }: { id: string }) {
           </button>}
       meta={
         <>
-          {s.now && (
+          {/* What it does now, unless the live line in the header already says it whole (r162). */}
+          {s.now && liveText !== s.now.replace(/\s+/g, ' ').trim() && (
             <>
               <span className="strong">{s.now}</span>
               <br />
             </>
           )}
-          {s.tool}{' '}
-          {' '}· <StatusChar s={s.status} /> {st.label}
+          <StatusChar s={s.status} /> {st.label}
           {s.queued > 0 && <span className="strong"> · {t.queued(s.queued)}</span>}
           {s.status === 'working' && s.workStartedAt != null ? <>{t.since(durLong(now - s.workStartedAt))}</> : <> · {ago(now - s.lastActivityAt)}</>}
           {' · '}
@@ -284,7 +286,7 @@ function SessionPage({ id }: { id: string }) {
           {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
           <Composer
             draftKey={`session:${s.id}`}
-            placeholder={sourceIssue ? '' : s.controllable ? (s.live ? t.writeTo(s.tool) : t.resumeWith(s.tool)) : t.readOnly}
+            placeholder={sourceIssue ? '' : s.controllable ? (s.live ? t.writeTo(toolName(s.tool)) : t.resumeWith(toolName(s.tool))) : t.readOnly}
             label={t.composerLabel(s.title)}
             onSend={send}
             onAttach={send}

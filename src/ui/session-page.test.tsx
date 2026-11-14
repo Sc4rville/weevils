@@ -259,3 +259,31 @@ describe('session page: a sent message says it arrived', () => {
     expect(text(host)).not.toContain('sending…')
   })
 })
+
+describe('session page header (r162)', () => {
+  it('says what the session does once: the header line, not again under the title; no lowercase tool id', async () => {
+    render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ status: 'working', workStartedAt: NOW - 3 * MIN, now: 'QA pass on ad videos' })])
+    await flush()
+    expect(text(host.querySelector('.session-now'))).toBe('QA pass on ad videos')
+    expect(text(host).split('QA pass on ad videos').length - 1).toBe(1)
+    const meta = text(host.querySelector('.session-heading'))
+    expect(meta).not.toMatch(/\bclaude\b/)
+    expect(meta).toContain('working')
+    expect(host.querySelector('textarea, input[enterkeyhint]')?.getAttribute('placeholder')).toBe('write to Claude')
+  })
+
+  it('keeps the full sentence under the title when the header line had to shorten it', async () => {
+    const long = 'checks every screen of the app for useless buttons and texts'
+    render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ status: 'working', workStartedAt: NOW - 3 * MIN, now: long })])
+    await flush()
+    expect(text(host.querySelector('.session-heading'))).toContain(long)
+  })
+
+  it('names the plan as its product does: « prolite » reads Pro Lite, Claude’s « Max 20x » unchanged', async () => {
+    const { planName } = await import('./infra')
+    expect(planName('prolite')).toBe('Pro Lite')
+    expect(planName('plus')).toBe('Plus')
+    expect(planName('Max 20x')).toBe('Max 20x')
+    expect(planName('some_new_plan')).toBe('Some new plan')
+  })
+})

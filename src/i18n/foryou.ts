@@ -33,7 +33,7 @@ export default defineMessages({
     pulseWorking: (n: number) => (n > 1 ? `${n} agents travaillent` : `1 agent travaille`),
     pulseDelivered: (n: number) => (n > 1 ? `${n} sessions avec résultat aujourd’hui` : `1 session avec résultat aujourd’hui`),
     pulseWaiting: (n: number) => (n > 1 ? `${n} t’attendent` : `1 t’attend`),
-    pulseAuto: (n: number) => `${n} en auto`,
+    pulseAuto: (n: number) => (n > 1 ? `${n} automatisations en cours` : `1 automatisation en cours`),
     pulseQuiet: 'tout est calme',
 
     fresh: (n: number) => (n > 1 ? `${n} nouveaux` : `1 nouveau`),
@@ -109,7 +109,7 @@ export default defineMessages({
     pulseWorking: (n: number) => (n > 1 ? `${n} agents working` : `1 agent working`),
     pulseDelivered: (n: number) => (n > 1 ? `${n} sessions with results today` : `1 session with a result today`),
     pulseWaiting: (n: number) => (n > 1 ? `${n} waiting for you` : `1 waiting for you`),
-    pulseAuto: (n: number) => `${n} on auto`,
+    pulseAuto: (n: number) => (n > 1 ? `${n} automations in progress` : `1 automation in progress`),
     pulseQuiet: 'all quiet',
 
     fresh: (n: number) => (n > 1 ? `${n} new` : `1 new`),

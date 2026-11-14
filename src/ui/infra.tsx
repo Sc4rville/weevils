@@ -447,6 +447,13 @@ export function FsFilePage({ machine, path }: { machine: string; path: string })
 
 // ---------------------------------------------------------------- abonnement
 
+/** A plan as its product names it (« Max 20x », « Pro Lite »), never the raw lowercase id Codex reports (« prolite »). */
+export function planName(plan: string): string {
+  if (/[A-Z\s]/.test(plan)) return plan
+  const known: Record<string, string> = { prolite: 'Pro Lite', plus: 'Plus', pro: 'Pro', team: 'Team', business: 'Business', enterprise: 'Enterprise', edu: 'Edu', free: 'Free', go: 'Go' }
+  return known[plan] ?? plan.replace(/[_-]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
+}
+
 function Quota({ name, q }: { name: string; q: QuotaInfo | undefined }) {
   const t = useT(M)
   const { now } = useApp()
@@ -455,7 +462,7 @@ function Quota({ name, q }: { name: string; q: QuotaInfo | undefined }) {
     <>
       <div className="in label">
         {name}
-        {q?.plan ? ` · ${q.plan}` : ''}
+        {q?.plan ? ` · ${planName(q.plan)}` : ''}
       </div>
       {!q && <div className="in meta empty">…</div>}
       {/* Never an empty section: no figures yet (an error, or an answer with no window) says so; old ones say their age. */}

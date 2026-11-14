@@ -16,6 +16,9 @@ export const chipLabels = (text: string): string => text.replace(ANY_CHIP, (m, k
 const chipOf = (k: string | undefined, b: string | undefined): ChipId | null => (k ? (isSecretName(k) ? `key:${k}` : null) : isBrick(b) ? b : null)
 
 /** Durée compacte, façon croquis : 12m, 1h36, 14h01, 2j (2d en anglais). */
+/** The tool a session runs on, as its product name (« Claude », « Codex »): never the lowercase id. */
+export const toolName = (tool: string): string => (tool === 'codex' ? 'Codex' : tool === 'claude' ? 'Claude' : tool)
+
 export function dur(ms: number): string {
   const m = Math.max(0, Math.floor(ms / 60000))
   if (m < 60) return `${m}m`

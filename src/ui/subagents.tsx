@@ -64,8 +64,17 @@ function StateGlyph({ s }: { s: Subagent['status'] }) {
   return <G c={s === 'done' ? '✓' : s === 'failed' ? '!' : '×'} />
 }
 
-/** Glyphe de la nature : & sous-agent, >_ commande ; une étape est déjà sous son workflow. */
-const KIND_GLYPH: Record<Subagent['kind'], string | null> = { agent: '&', step: null, shell: '>_' }
+/** Glyphe de la nature : & sous-agent ; une commande n'en a pas (rien qui évoque un terminal), une étape est déjà sous son workflow. */
+const KIND_GLYPH: Record<Subagent['kind'], string | null> = { agent: '&', step: null, shell: null }
+
+/** Ce que fait un aide, sans chemin : « lit · ~/projects/x/src/a.ts » → « lit · a.ts », une adresse → son hôte. */
+export const subActivity = (text: string) =>
+  activityText(text)
+    .replace(/https?:\/\/([^/\s]+)\S*/g, '$1')
+    .replace(/(?:(?<![\w.~])(?:~|\.{1,2})?\/(?:[\w.@-]+\/)*|(?:[\w.@-]+\/){2,})([\w.@-]+)/g, '$1')
+
+/** Nom d'un workflow lisible : « deep-review_v2 » → « deep review v2 ». */
+const flowName = (name: string) => name.replace(/[-_]+/g, ' ').trim()
 
 const POLL_MS = 3000
 
@@ -150,7 +159,7 @@ function SubRow({ sessionId, a, now }: { sessionId: string; a: Subagent; now: nu
             </span>
             <span className="meta ellipsis">
               <span className="strong">{state}</span>
-              {a.activity ? ` · ${activityText(a.activity)}` : ''}
+              {a.activity ? ` · ${subActivity(a.activity)}` : ''}
             </span>
           </span>
           <span className="act">{d}</span>
@@ -166,8 +175,9 @@ function SubRow({ sessionId, a, now }: { sessionId: string; a: Subagent; now: nu
   )
 }
 
-/** En-tête d'un workflow : son nom en gras, ce qui tourne sur le total ; chaque phase en sous-titre. */
+/** En-tête d'un workflow : son nom en gras, en cours ou fini ; chaque phase en sous-titre. */
 function WorkflowGroup({ sessionId, w, now }: { sessionId: string; w: Extract<SubItem, { kind: 'workflow' }>; now: number }) {
+  const t = useT(M)
   const all = w.phases.flatMap((p) => p.items)
   const working = all.filter((a) => a.status === 'working').length
   const live = working > 0 || w.live
@@ -184,8 +194,8 @@ function WorkflowGroup({ sessionId, w, now }: { sessionId: string; w: Extract<Su
           )}
         </span>
         <span className="ellipsis">
-          <span className="strong">{w.name}</span>
-          {all.length > 0 && ` · ${working}/${all.length}`}
+          <span className="strong">{flowName(w.name)}</span>
+          {all.length > 0 && ` · ${t.subStatus(live ? 'working' : 'done')}`}
         </span>
       </div>
       {w.phases.map((p) => (
@@ -219,9 +229,9 @@ export function Background({ session: s }: { session: Session }) {
           setChoice(!open)
           if (!open) revealOpened(band.current)
         }}
-        label={t.subagentsLabel(active)}
+        label={active > 0 ? `${t.helpers} · ${t.helpersWorking(active)}` : `${t.helpers} · ${t.helpersDone}`}
       >
-        <span className="strong">{t.subagents}</span> · {t.active(active)} · {t.finished(s.subagents.length - active)}
+        <span className="strong">{t.helpers}</span> · {active > 0 ? t.helpersWorking(active) : t.helpersDone}
       </Line>
       <Collapse open={open}>
         {items.map((it) =>

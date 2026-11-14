@@ -19,12 +19,10 @@ export default defineMessages({
     composerLabel: (title: string) => `message à la session ${title}`,
     /** Bulle provisoire d'un envoi avec photos. */
     photos: (n: number) => (n > 1 ? `${n} photos` : 'photo'),
-    subagentsLabel: (n: number) => `sous-agents : ${n} ${n > 1 ? 'actifs' : 'actif'}`,
-    subagents: 'sous-agents',
-    active: (n: number) => `${n} ${n > 1 ? 'actifs' : 'actif'}`,
-    finished: (n: number) => `${n} ${n > 1 ? 'finis' : 'fini'}`,
-    working: 'travaille',
-    done: 'fini',
+    /** Bande du fil : les sous-agents, étapes de workflow et commandes qui tournent à côté de la session. */
+    helpers: 'aides',
+    helpersWorking: (n: number) => `${n} au travail`,
+    helpersDone: 'tout est fini',
     /** État d'un sous-agent, d'une étape de workflow ou d'une commande d'arrière-plan. */
     subStatus: (s: 'working' | 'done' | 'failed' | 'stopped') => ({ working: 'travaille', done: 'fini', failed: 'échoué', stopped: 'coupé' })[s],
     /** Lecteur d'écran, ligne de sous-agent : nom, état, durée, déplié ou non. */
@@ -83,12 +81,9 @@ export default defineMessages({
     readOnly: 'opened outside weevils: read only',
     composerLabel: (title: string) => `message to session ${title}`,
     photos: (n: number) => (n > 1 ? `${n} photos` : 'photo'),
-    subagentsLabel: (n: number) => `subagents: ${n} active`,
-    subagents: 'subagents',
-    active: (n: number) => `${n} active`,
-    finished: (n: number) => `${n} done`,
-    working: 'working',
-    done: 'done',
+    helpers: 'helpers',
+    helpersWorking: (n: number) => `${n} working`,
+    helpersDone: 'all done',
     subStatus: (s: 'working' | 'done' | 'failed' | 'stopped') => ({ working: 'working', done: 'done', failed: 'failed', stopped: 'stopped' })[s],
     subAria: (label: string, state: string, d: string, open: boolean) => `${label}, ${state}, ${d}, ${open ? 'collapse' : 'expand'}`,
     asks: (tool: string) => `${tool} is asking`,

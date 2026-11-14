@@ -139,10 +139,10 @@ const W = FR ? {
   count: (n) => n > 1 ? `${n} personnes utilisent déjà weevils` : `${n} personne utilise déjà weevils`,
   plug: 'Branche ta machine',
   plugSub: 'Un serveur fait tourner tes agents même téléphone et ordinateur éteints. Prêt en quelques minutes.',
-  hs: 'Crée-moi un serveur chez Hostinger', hsSub: 'Le plus simple : tout se fait dans hPanel, leur espace client.', rec: 'conseillé',
-  hz: 'Crée-moi un serveur chez Hetzner', hzSub: 'Le moins cher, facturé à l’heure. Demande une vérification d’identité à l’inscription.',
-  vps: 'J’ai déjà un VPS', vpsSub: 'Déjà le tien : son adresse et son mot de passe, weevils s’y installe tout seul.',
-  pc: 'Mon ordinateur', pcSub: 'Mac, Linux, ou Windows avec WSL. Tes agents tournent seulement quand il est allumé.',
+  rec: 'conseillé',
+  hz: 'Crée-moi un serveur chez Hetzner', hzSub: 'On crée le serveur pour toi. Conseillé pour des agents qui tournent 24 h/24 : facturé à l’heure, vérification d’identité à l’inscription.',
+  vps: 'J’ai déjà un VPS', vpsSub: 'Loué n’importe où : son adresse et son mot de passe, weevils s’y installe tout seul.',
+  pc: 'Mon ordinateur (Linux)', pcSub: 'Ton propre ordinateur. Tes agents tournent seulement quand il est allumé.',
   thisPc: 'Branche cet ordinateur', thisPcSub: 'Colle cette commande dans un terminal de cet ordinateur. Ensuite, un QR code ouvre weevils sur ton téléphone.',
   better: 'Mieux : un serveur', betterSub: 'Un serveur fait tourner tes agents même téléphone et ordinateur éteints, et ton téléphone les joint de partout. Même parcours, 2 minutes de plus.',
   macNote: 'Sur un Mac, le terminal est l’app Terminal. Elle peut demander une fois le mot de passe du Mac (rien ne s’affiche quand tu le tapes).',
@@ -153,11 +153,6 @@ const W = FR ? {
   hz1b: 'Créer mon compte Hetzner',
   hz2: 'Dans la console Hetzner, ouvre ton projet (ou crée-en un), puis Sécurité → Jetons API → Générer, avec « Lecture et écriture ».',
   hz2b: 'Ouvrir la console Hetzner',
-  hsTitle: 'Un serveur rien qu’à toi, chez Hostinger',
-  hs1: 'Crée un compte Hostinger, puis enregistre une carte dans hPanel (Facturation → Moyens de paiement) : c’est elle qui paiera le serveur.',
-  hs1b: 'Ouvrir mes moyens de paiement',
-  hs2: 'Dans hPanel, Compte → API → Générer un jeton.',
-  hs2b: 'Ouvrir la page API de hPanel',
   hz3: 'Colle le jeton ici. Il sert à créer ton serveur, puis il est oublié.',
   token: 'Jeton API', seePrice: 'Voir les tailles et les prix',
   size_light: 'Léger', size_recommended: 'Recommandé', size_strong: 'Costaud',
@@ -167,14 +162,13 @@ const W = FR ? {
   hourly: (a, b) => `${a}/h · max ${b}/mois`,
   billed_hetzner: (ip) => `${ip ? 'Serveur et adresse IPv4, TTC' : 'TTC'}. Hetzner facture à l’heure, jamais plus que le maximum du mois. Supprimer le serveur dans leur console arrête la facturation.`,
   createHourly: 'Créer mon serveur · facturé à l’heure',
-  billed_hostinger: 'Abonnement mensuel Hostinger, sans engagement : résiliable depuis hPanel.',
   payWith: (l) => `Payé avec ${l}.`,
   createFor: (p) => `Créer mon serveur (${p})`,
   create: 'Créer mon serveur',
   vpsTitle: 'Ton VPS', vpsIntro: 'Ubuntu ou Debian, de préférence tout neuf. weevils s’y connecte une fois, lance l’installation, puis oublie le mot de passe.',
   host: 'Adresse IP', user: 'Utilisateur', pw: 'Mot de passe', port: 'Port SSH', useKey: 'Plutôt une clé SSH', usePw: 'Plutôt un mot de passe', key: 'Clé privée',
   install: 'Installer weevils',
-  noVps: 'Pas encore de VPS ? Hostinger, Hetzner ou OVHcloud, Ubuntu 24.04, 8 Go pour 6 agents. Ou laisse-moi le créer :',
+  noVps: 'Pas encore de VPS ? N’importe quel hébergeur convient : Ubuntu 24.04, 8 Go pour 6 agents. Ou laisse-moi en créer un chez Hetzner :',
   pcTitle: 'Ton ordinateur', pcIntro: 'Sur l’ordinateur, ouvre un terminal, colle cette commande et appuie sur Entrée :',
   pcPhone: 'Envoie-la-toi pour la coller là-bas :', share: 'M’envoyer la commande', copy: 'Copier', copied: 'Copié',
   pcWait: 'Cette page suit l’installation dès que la commande démarre.',
@@ -192,8 +186,8 @@ const W = FR ? {
   resumeBand: 'Déjà commencé, ou déjà un serveur créé par weevils ?', resumeBtn: 'Reprendre où j’en étais',
   resumeTitle: 'Reprendre où tu en étais', resumeIntro: 'Rien n’est perdu : l’installation continue sur ton serveur même quand cette page est fermée.',
   byLink: 'Ton lien de reprise', byLinkSub: 'Le lien que cette page t’a donné (il finit par #job=…).', resumeGo: 'Reprendre',
-  byToken: 'Ton jeton Hostinger ou Hetzner', byTokenSub: 'Le même qu’avant, ou un nouveau du même compte : weevils liste les serveurs qu’il y a créés.',
-  findHs: 'Mes serveurs Hostinger', findHz: 'Mes serveurs Hetzner',
+  byToken: 'Ton jeton Hetzner', byTokenSub: 'Le même qu’avant, ou un nouveau du même compte : weevils liste les serveurs qu’il y a créés.',
+  findHz: 'Mes serveurs Hetzner',
   byIp: 'L’IP et le mot de passe root de ton serveur', byIpSub: 'weevils s’y connecte une fois et termine l’installation.', byIpBtn: 'Avec l’IP et le mot de passe',
   badLink: 'Ce n’est pas un lien de reprise : il finit par #job=…',
   existingTitle: (n) => n > 1 ? 'Tu as déjà des serveurs weevils sur ce compte' : 'Tu as déjà un serveur weevils sur ce compte',
@@ -222,7 +216,7 @@ const W = FR ? {
     bad_token: 'Ce jeton n’a pas la bonne forme : copie-le en entier depuis {host}.', unauthorized: '{host} refuse ce jeton : vérifie qu’il est complet et pas supprimé.',
     forbidden: 'Ce jeton n’a pas le droit de créer un serveur : génères-en un avec tous les droits (« Lecture et écriture » chez Hetzner).', resource_limit_exceeded: 'Ton compte {host} a atteint sa limite de serveurs (nouveau compte : vérifie ton e-mail et ton moyen de paiement).',
     no_type: '{host} ne propose aucun serveur adapté en ce moment : réessaie plus tard.', host_down: '{host} ne répond pas : réessaie dans un instant.', no_template: '{host} ne propose pas Ubuntu 24.04 en ce moment.',
-    no_payment: 'Aucun moyen de paiement enregistré : ajoute une carte dans hPanel (Facturation → Moyens de paiement), puis réessaie.', payment_pending: 'Le paiement est en cours chez {host} : termine la mise en route dans hPanel, puis prends « J’ai déjà un VPS ».', hs_invalid: '{host} a refusé la commande : vérifie ton compte dans hPanel.', bad_size: 'Choisis une taille.',
+    bad_size: 'Choisis une taille.',
     bad_host: 'Cette adresse ne répond pas : vérifie l’IP.', private_host: 'Cette adresse est privée : il faut l’IP publique de ton VPS.',
     ssh_auth: 'Le serveur refuse ce mot de passe (ou cet utilisateur).', ssh_unreachable: 'Le serveur ne répond pas en SSH : vérifie l’IP et que le port 22 est ouvert.',
     ssh_sudo: 'Cet utilisateur n’a pas les droits administrateur (sudo) : utilise root.', ssh_timeout: 'Le serveur a mis trop de temps à répondre.', ssh_ssh: 'La connexion SSH a échoué.',
@@ -239,10 +233,10 @@ const W = FR ? {
   count: (n) => n > 1 ? `${n} people already run weevils` : `${n} person already runs weevils`,
   plug: 'Plug in your machine',
   plugSub: 'A server keeps your agents working while your phone and computer are off. Ready in a few minutes.',
-  hs: 'Create a server for me at Hostinger', hsSub: 'The simplest: everything happens in hPanel, their customer area.', rec: 'recommended',
-  hz: 'Create a server for me at Hetzner', hzSub: 'The cheapest, billed by the hour. Asks for an ID check at sign-up.',
-  vps: 'I already have a VPS', vpsSub: 'Already yours: its address and password, weevils installs itself.',
-  pc: 'My computer', pcSub: 'Mac, Linux, or Windows with WSL. Your agents run only while it’s on.',
+  rec: 'recommended',
+  hz: 'Create a server for me at Hetzner', hzSub: 'We create the server for you. Recommended for agents that run 24/7: billed by the hour, ID check at sign-up.',
+  vps: 'I already have a VPS', vpsSub: 'Rented anywhere: its address and password, weevils installs itself.',
+  pc: 'My computer (Linux)', pcSub: 'Your own computer. Your agents run only while it’s on.',
   thisPc: 'Connect this computer', thisPcSub: 'Paste this command in a terminal on this computer. Then a QR code opens weevils on your phone.',
   better: 'Better: a server', betterSub: 'A server keeps your agents working while your phone and computer are off, and your phone reaches them from anywhere. Same flow, 2 more minutes.',
   macNote: 'On a Mac, the terminal is the Terminal app. It may ask for your Mac password once (nothing shows while you type).',
@@ -253,11 +247,6 @@ const W = FR ? {
   hz1b: 'Create my Hetzner account',
   hz2: 'In the Hetzner console, open your project (or create one), then Security → API tokens → Generate API token, with “Read & Write”.',
   hz2b: 'Open the Hetzner console',
-  hsTitle: 'A server of your own, at Hostinger',
-  hs1: 'Create a Hostinger account, then save a card in hPanel (Billing → Payment methods): it pays for the server.',
-  hs1b: 'Open my payment methods',
-  hs2: 'In hPanel, Account → API → Generate token.',
-  hs2b: 'Open hPanel’s API page',
   hz3: 'Paste the token here. It creates your server, then it’s forgotten.',
   token: 'API token', seePrice: 'See sizes and prices',
   size_light: 'Light', size_recommended: 'Recommended', size_strong: 'Strong',
@@ -267,14 +256,13 @@ const W = FR ? {
   hourly: (a, b) => `${a}/h · max ${b}/month`,
   billed_hetzner: (ip) => `${ip ? 'Server and IPv4 address, VAT included' : 'VAT included'}. Hetzner bills by the hour, never more than the monthly max. Deleting the server in their console stops the billing.`,
   createHourly: 'Create my server · billed by the hour',
-  billed_hostinger: 'Monthly Hostinger subscription, no commitment: cancel it from hPanel.',
   payWith: (l) => `Paid with ${l}.`,
   createFor: (p) => `Create my server (${p})`,
   create: 'Create my server',
   vpsTitle: 'Your VPS', vpsIntro: 'Ubuntu or Debian, ideally brand new. weevils connects once, starts the install, then forgets the password.',
   host: 'IP address', user: 'User', pw: 'Password', port: 'SSH port', useKey: 'Use an SSH key instead', usePw: 'Use a password instead', key: 'Private key',
   install: 'Install weevils',
-  noVps: 'No VPS yet? Hostinger, Hetzner or DigitalOcean, Ubuntu 24.04, 8 GB for 6 agents. Or let me create one:',
+  noVps: 'No VPS yet? Any host works: Ubuntu 24.04, 8 GB for 6 agents. Or let me create one at Hetzner:',
   pcTitle: 'Your computer', pcIntro: 'On the computer, open a terminal, paste this command and press Enter:',
   pcPhone: 'Send it to yourself to paste it there:', share: 'Send me the command', copy: 'Copy', copied: 'Copied',
   pcWait: 'This page follows the install as soon as the command starts.',
@@ -292,8 +280,8 @@ const W = FR ? {
   resumeBand: 'Already started, or already have a server from weevils?', resumeBtn: 'Pick up where I left off',
   resumeTitle: 'Pick up where you left off', resumeIntro: 'Nothing is lost: the install keeps going on your server even when this page is closed.',
   byLink: 'Your resume link', byLinkSub: 'The link this page gave you (it ends with #job=…).', resumeGo: 'Resume',
-  byToken: 'Your Hostinger or Hetzner token', byTokenSub: 'The same one as before, or a new one from the same account: weevils lists the servers it made there.',
-  findHs: 'My Hostinger servers', findHz: 'My Hetzner servers',
+  byToken: 'Your Hetzner token', byTokenSub: 'The same one as before, or a new one from the same account: weevils lists the servers it made there.',
+  findHz: 'My Hetzner servers',
   byIp: 'Your server’s IP and root password', byIpSub: 'weevils connects once and finishes the install.', byIpBtn: 'Use the IP and password',
   badLink: 'This isn’t a resume link: it ends with #job=…',
   existingTitle: (n) => n > 1 ? 'You already have weevils servers on this account' : 'You already have a weevils server on this account',
@@ -322,7 +310,7 @@ const W = FR ? {
     bad_token: 'This token doesn’t look right: copy all of it from {host}.', unauthorized: '{host} refuses this token: check it’s complete and not deleted.',
     forbidden: 'This token can’t create a server: generate one with full rights (“Read & Write” at Hetzner).', resource_limit_exceeded: 'Your {host} account reached its server limit (new account: check your e-mail and payment method).',
     no_type: '{host} has no suitable server right now: try again later.', host_down: '{host} doesn’t answer: try again in a moment.', no_template: '{host} doesn’t offer Ubuntu 24.04 right now.',
-    no_payment: 'No saved payment method: add a card in hPanel (Billing → Payment methods), then try again.', payment_pending: 'The payment is still processing at {host}: finish the setup in hPanel, then pick “I already have a VPS”.', hs_invalid: '{host} refused the order: check your account in hPanel.', bad_size: 'Pick a size.',
+    bad_size: 'Pick a size.',
     bad_host: 'This address doesn’t answer: check the IP.', private_host: 'This address is private: use your VPS’s public IP.',
     ssh_auth: 'The server refuses this password (or user).', ssh_unreachable: 'The server doesn’t answer over SSH: check the IP and that port 22 is open.',
     ssh_sudo: 'This user has no admin rights (sudo): use root.', ssh_timeout: 'The server took too long to answer.', ssh_ssh: 'The SSH connection failed.',
@@ -467,7 +455,7 @@ async function unseal(job, sealed) {
 function choiceBtn(cls, title, sub, onclick, tag) {
   return h('button', { class: `choice ${cls}`, onclick }, h('div', { class: 'wrap' }, h('div', {}, h('b', {}, title, tag ? h('em', { class: 'tag' }, tag) : null), h('span', {}, sub)), h('div', { class: 'go' }, '→')))
 }
-const HOSTS = { hostinger: 'Hostinger', hetzner: 'Hetzner' }
+const HOSTS = { hetzner: 'Hetzner' }
 const copyBtn = (text, label = W.copy) => {
   const b = h('button', { type: 'button' }, label)
   b.onclick = async () => {
@@ -484,7 +472,7 @@ function home(notice) {
   const top = typeof notice === 'string' && notice ? h('div', { class: 'err' }, notice) : null
   const toResume = () => h('button', { class: 'link', onclick: () => resumeScreen() }, `${W.resumeBand} ${W.resumeBtn} →`)
   const intro = band('b5', top, h('h2', {}, W.plug), h('p', { class: 'small' }, W.plugSub), toResume())
-  const hz = [choiceBtn('b1', W.hs, W.hsSub, () => provider('hostinger'), W.rec), choiceBtn('b4', W.hz, W.hzSub, () => provider('hetzner'))]
+  const hz = [choiceBtn('b1', W.hz, W.hzSub, () => provider('hetzner'), W.rec)]
   const vps = choiceBtn('b2', W.vps, W.vpsSub, () => ssh())
   const again = choiceBtn('b5', W.resumeBtn, W.resumeBand, () => resumeScreen())
   if (computer) {
@@ -496,7 +484,7 @@ function home(notice) {
   show(intro, ...hz, vps, choiceBtn('b3', W.pc, W.pcSub, pc), again)
 }
 
-// --- (a) a server created for you: Hostinger or Hetzner, same flow
+// --- (a) a server created for you, at Hetzner
 const money = (v, cur) => new Intl.NumberFormat(FR ? 'fr-FR' : 'en-IE', { style: 'currency', currency: cur || 'EUR' }).format(v)
 const stepName = (k) => W[`s_${String(FOLD[k] || k).replace(/^s_/, '')}`] || ''
 /** The servers weevils already made on the account, each with « Continue on this one ». */
@@ -525,6 +513,8 @@ async function continueOn(kind, job, token, s, btn, err) {
   } catch (e) { showErr(err, e.message); btn.disabled = false; btn.textContent = label }
 }
 function provider(kind, given, lastError) {
+  // A setup from a host this page no longer offers: back to the choices.
+  if (!HOSTS[kind]) return home()
   if (!given) hit('chose', kind)
   HOSTNAME = HOSTS[kind]
   let job = given, token = '', size = 'recommended', sizes = [], another = false
@@ -564,7 +554,6 @@ function provider(kind, given, lastError) {
     try {
       job ||= await newJob(kind)
       const q = await api(`/api/${kind}/quote`, { sid: job.sid, view: job.view, token, region: REGION })
-      if (!q.payment) throw new Error('no_payment')
       sizes = q.sizes
       if (!sizes.some((z) => z.size === size)) size = sizes[0].size
       draw()
@@ -592,12 +581,9 @@ function provider(kind, given, lastError) {
   }
   tok.oninput = () => { showSizes(false); had.hidden = true; priceBtn.hidden = false }
   showSizes(false)
-  const steps = kind === 'hostinger'
-    ? [h('li', {}, W.hs1, h('a', { class: 'btn light', href: 'https://hpanel.hostinger.com/billing/payment-methods', target: '_blank', rel: 'noopener' }, W.hs1b)),
-       h('li', {}, W.hs2, h('a', { class: 'btn light', href: 'https://hpanel.hostinger.com/profile/api', target: '_blank', rel: 'noopener' }, W.hs2b))]
-    : [h('li', {}, W.hz1, h('a', { class: 'btn light', href: 'https://accounts.hetzner.com/signUp', target: '_blank', rel: 'noopener' }, W.hz1b)),
+  const steps = [h('li', {}, W.hz1, h('a', { class: 'btn light', href: 'https://accounts.hetzner.com/signUp', target: '_blank', rel: 'noopener' }, W.hz1b)),
        h('li', {}, W.hz2, h('a', { class: 'btn light', href: 'https://console.hetzner.cloud/projects', target: '_blank', rel: 'noopener' }, W.hz2b))]
-  show(band(kind === 'hostinger' ? 'b1' : 'b4', back(), h('h2', {}, kind === 'hostinger' ? W.hsTitle : W.hzTitle),
+  show(band('b1', back(), h('h2', {}, W.hzTitle),
     h('ol', { class: 'how' }, ...steps, h('li', {}, W.hz3, h('label', {}, W.token), tok, priceBtn, had, pick, note, createBtn)),
     err))
   if (lastError) showErr(err, lastError)
@@ -637,7 +623,7 @@ function resumeScreen() {
   show(band('b5', back(), h('h2', {}, W.resumeTitle), h('p', { class: 'small' }, W.resumeIntro)),
     band('b1', h('h2', {}, W.byLink), h('p', { class: 'small' }, W.byLinkSub), link, go, err),
     band('b4', h('h2', {}, W.byToken), h('p', { class: 'small' }, W.byTokenSub), tok,
-      h('div', { class: 'row' }, h('button', { class: 'btn light', onclick: find('hostinger') }, W.findHs), h('button', { class: 'btn light', onclick: find('hetzner') }, W.findHz)),
+      h('button', { class: 'btn light', onclick: find('hetzner') }, W.findHz),
       list, tokErr),
     band('b2', h('h2', {}, W.byIp), h('p', { class: 'small' }, W.byIpSub), h('button', { class: 'btn light', onclick: () => ssh() }, W.byIpBtn)))
 }
@@ -675,7 +661,7 @@ function ssh(given) {
     h('label', {}, W.host), host,
     h('div', { class: 'row' }, h('div', {}, h('label', {}, W.user), user), h('div', { style: 'width:96px' }, h('label', {}, W.port), port)),
     pwBlock, keyBlock, toggle, go, err),
-  band('b5', h('p', { class: 'small' }, W.noVps), h('button', { class: 'btn light', onclick: () => provider('hostinger') }, W.hs), h('button', { class: 'btn light', onclick: () => provider('hetzner') }, W.hz)))
+  band('b5', h('p', { class: 'small' }, W.noVps), h('button', { class: 'btn light', onclick: () => provider('hetzner') }, W.hz)))
 }
 
 // --- (c) a computer
@@ -742,13 +728,13 @@ function keepBox(job) {
   box.append(h('p', { class: 'note' }, W.keepNote))
   return box
 }
-const hosted = (kind) => kind === 'hetzner' || kind === 'hostinger'
+const hosted = (kind) => kind !== 'ssh' && kind !== 'pc'
 /** A fresh link, or the same server again: back through the token (the list of servers weevils made there). */
 const sameServer = (job) => () => { if (hosted(job.kind)) { HOSTNAME = HOSTS[job.kind]; resumeScreen() } else ssh() }
 
 function progress(job, opts = {}) {
   const near = opts.near
-  const labels = ORDER.map((k) => k === 'created' ? W[`s_created_${job.kind === 'hostinger' ? 'hetzner' : job.kind}`] : k === 'https' ? (job.kind === 'pc' ? W.s_tunnel : W.s_https) : W[`s_${k.replace(/^s_/, '')}`])
+  const labels = ORDER.map((k) => k === 'created' ? W[`s_created_${hosted(job.kind) ? 'hetzner' : job.kind}`] : k === 'https' ? (job.kind === 'pc' ? W.s_tunnel : W.s_https) : W[`s_${k.replace(/^s_/, '')}`])
   const items = ORDER.map((k, i) => h('li', {}, h('i', {}, ''), labels[i]))
   const bar = h('div', {}, '')
   const err = errBox()

@@ -9,21 +9,15 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
 
 1. A short page (English by default, a small FR switch) says what weevils is, then right away: **plug in your
    machine** ("a server keeps your agents working while your phone and computer are off").
-   - On a phone: a server first (created for you at Hostinger or Hetzner, or your own VPS), your computer second.
+   - On a phone: exactly three machines: a server created for you at Hetzner (recommended, for agents that run
+     24/7), your own VPS (rented anywhere), or your own computer (Linux).
    - On a Mac, Linux or Windows (WSL) computer: connect this computer here and now (one command), with a nudge
      toward a VPS ("your agents keep working with this computer off").
-2. **Create a server for me** at **Hostinger** (the simplest, recommended) or **Hetzner** (the cheapest): the person
-   creates an account and an API token (links on the page), pastes the token in a masked field, then picks one of
-   three sizes with the real prices from the host's API: light (4 GB, 2 to 3 agents), recommended (8 GB, about 6),
-   strong (16 GB, about a dozen; a Claude Code session takes up to about 1 GB). Neither host offers OAuth to third
-   parties: a token is the only way.
-   - Hostinger ([API reference](https://developers.hostinger.com), OpenAPI 3.0.0): the KVM 1/2/4 plans billed
-     monthly (no 12- or 24-month commitment; first-month and renewal prices shown), paid with the card saved in
-     hPanel (`GET /api/billing/v1/payment-methods`; none → a clear message before anything is bought), Ubuntu 24.04,
-     a data center near the person, and a post-install script (`POST /api/vps/v1/post-install-scripts`, run as root
-     after the OS is in) that starts the install. Purchase: `POST /api/vps/v1/virtual-machines`. A `202` (payment
-     still processing) means the VM isn't set up: the page sends the person to hPanel, then to "I already have a VPS".
-     The script stays in their account (`weevils-<id>`); its link expires with the setup.
+2. **Create a server for me** at **Hetzner**: the person creates an account and an API token (links on the page),
+   pastes the token in a masked field, then picks one of three sizes with the real prices from Hetzner's API: light
+   (4 GB, 2 to 3 agents), recommended (8 GB, about 6), strong (16 GB, about a dozen; a Claude Code session takes up
+   to about 1 GB). Hetzner offers no OAuth to third parties: a token is the only way. (Hostinger was offered too
+   until 2026-11-14; dropped as one option too many. A VPS rented there goes through "I already have a VPS".)
    - Hetzner: the cheapest x86 type of each size near the person, Ubuntu 24.04, a cloud-init that runs the install.
      Hetzner bills by the hour: each size shows its real hourly price and its monthly cap ("€0.0115/h · max
      €7.19/month"), VAT included, with the server's IPv4 address that Hetzner bills on top of the type (`GET /pricing`),
@@ -55,12 +49,12 @@ The page finds it again, in this order, and never shows the start screen while s
 - **The same browser at the same address**, with nothing kept (`POST /api/nearby`): the setups started from there,
   how far they are, live, and nothing else (no address, no link, no token); finishing there takes the resume link or
   the token.
-- **"Pick up where I left off"** on the start screen: the resume link; or the **Hostinger/Hetzner token** again (the
+- **"Pick up where I left off"** on the start screen: the resume link; or the **Hetzner token** again (the
   same account): the page lists the servers weevils made there (Hetzner label `app=weevils`, plus `weevils-sid`
-  since 2026-11-14; Hostinger: the hostname `weevils-<id>`), each with how far its setup is, and offers **"Continue on
+  since 2026-11-14), each with how far its setup is, and offers **"Continue on
   this one"**. A setup still installing is taken over by the new page (the install asks for the page's current key,
   `GET /k/<sid>`, just before it seals the link). A finished, stopped or forgotten one: the host gives the server a
-  new root password (Hetzner `reset_password`, Hostinger `PUT …/root-password` with a random one), used once for the
+  new root password (Hetzner `reset_password`), used once for the
   same SSH command as "I already have a VPS"; the install runs again (it keeps what is there) and ends with a fresh
   link for this page. Or the server's IP and root password ("I already have a VPS").
 - **Never a second server without asking**: when the token's account already has a weevils server, the page offers to
@@ -147,11 +141,11 @@ Counters only, one file a day in `<GET_DATA>/stats` (mode 600), deleted after 90
   send none and count as « direct ». **Where the link was pasted**: the link-preview fetches (WhatsApp or Signal,
   iMessage, Twitter/X, Telegram, Slack…). **Device**: from the browser's name. **Country**: from the page's time zone
   and the system's tz database, never from the address, without any outside service.
-- **The funnel**: page opened → option picked (Hostinger, Hetzner, own VPS, computer) → install started (server
+- **The funnel**: page opened → option picked (Hetzner, own VPS, computer) → install started (server
   created, VPS connected, script fetched) → installed (the install's last report) → the phone opened its weevils.
   **Code downloads**: by installs, and by installed weevils updating themselves.
-- **The install register**, `<GET_DATA>/installs.csv`, appended and never rewritten: time, how (Hostinger, Hetzner,
-  own VPS, computer), rough country, the version installed, a random id tied to nothing, and whether the line was rebuilt
+- **The install register**, `<GET_DATA>/installs.csv`, appended and never rewritten: time, how (Hetzner,
+  own VPS, computer; Hostinger in older lines), rough country, the version installed, a random id tied to nothing, and whether the line was rebuilt
   from Caddy's log. Kept for good, with the records (best day for visits and for installs, `records.json`), and backed
   up every day in the private repository Sc4rville/weevils-stats (`get/backup-stats.sh`, the `weevils-get-backup` timer).
 - **Where to see it**: the private page `/stats/<GET_STATS_KEY>` (records first, the funnel, sources, devices,
@@ -176,7 +170,7 @@ GET_PORT=4182 GET_BASE=https://get.scarville.tech node get/server.mjs
 | `GET_REPO` | the repository installs clone (default GitHub) |
 | `GET_BUNDLE` | while the repository is private: a bundle built by `get/make-bundle.sh [<rev>] [<out>] [<checkout>]` (one squashed commit, no history), kept on `origin/main` by `get/refresh-bundle.sh` (the `weevils-get-bundle` timer, every 2 min). It is what every install gets, so it must hold the installer that supports macOS; the file is read at each download, replacing it needs no restart |
 | `GET_INSTALLER` | the `install.sh` the allowed step titles are read from, at start (default: this clone's). Same titles as the bundle's |
-| `GET_HETZNER_API`, `GET_HOSTINGER_API` | the hosts' API bases (tests: `get/host-mock.mjs`) |
+| `GET_HETZNER_API` | Hetzner's API base (tests: `get/host-mock.mjs`) |
 | `GET_ALLOW_TARGETS`, `GET_TARGET_URLS` | tests only: a private SSH target allowed, and the URL its weevils gets (`ip=url`) |
 | `GET_DATA` | where the stats, the install register and the records are kept (default `~/.local/share/weevils-get`) |
 | `GET_STATS_KEY` | the private stats page, `/stats/<key>` (off without it) |
@@ -198,7 +192,7 @@ created, an SSH connection; 20 s at most), then hands its setups in progress to 
 
 ## Tests
 
-- `npx vitest run get/`: API, Hetzner and Hostinger doubles (sizes, prices, payment method, purchase body), the
+- `npx vitest run get/`: API, a Hetzner double (sizes, prices, payment method, purchase body), the
   bootstrap's real `openssl` encryption opened like the page does, guards (preview gate, SSRF, step allowlist, rate
   limits). For a Mac: the script read by bash 3.2 (the `bash:3.2` Docker image when it is there), the page's first
   screen for a Mac, Linux and iPhone browser (happy-dom), the bootstrap's two ways of sealing the link (its own shell
@@ -217,7 +211,7 @@ created, an SSH connection; 20 s at most), then hands its setups in progress to 
   unsealing, then logs in to the new weevils with the unsealed code). Verified on 2026-11-13:
   - own VPS: the `essai` machine (`essai reset`), password over SSH;
   - computer: a plain Ubuntu 24.04 Docker container (no systemd), command pasted, Cloudflare link;
-  - Hetzner and Hostinger: `get/host-mock.mjs`, whose "boot" resets `essai` and runs there, as root, what the host
-    would (cloud-init's runcmd, or the post-install script);
+  - Hetzner: `get/host-mock.mjs`, whose "boot" resets `essai` and runs there, as root, what Hetzner
+    would (cloud-init's runcmd);
   - the page in real iPhone WebKit (Playwright `webkit` in the `mcr.microsoft.com/playwright` image: Ubuntu 26.04
     has no WebKit build): gate by `?k=` and `#k=`, reload, language switch, size picker.

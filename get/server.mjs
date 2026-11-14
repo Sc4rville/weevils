@@ -54,7 +54,6 @@ export function config(env = process.env) {
     /** A git bundle served to the installs while the repository is private (see get/make-bundle.sh). */
     bundle: env.GET_BUNDLE || '',
     hetzner: (env.GET_HETZNER_API || 'https://api.hetzner.cloud/v1').replace(/\/$/, ''),
-    hostinger: (env.GET_HOSTINGER_API || 'https://developers.hostinger.com').replace(/\/$/, ''),
     /** Tests only: private addresses accepted as SSH targets, and the URL their weevils will have (ip=url,…). */
     allowTargets: (env.GET_ALLOW_TARGETS || '').split(',').map((s) => s.trim()).filter(Boolean),
     targetUrls: Object.fromEntries((env.GET_TARGET_URLS || '').split(',').filter((s) => s.includes('=')).map((s) => s.split('=').map((x) => x.trim()))),
@@ -234,7 +233,7 @@ const glimpse = (j) => ({ kind: j.kind, state: j.state, step: j.step, steps: j.s
 
 // ---------------------------------------------------------------- anonymous stats (counters only, kept 90 days)
 
-const KINDS = ['hostinger', 'hetzner', 'ssh', 'pc']
+const KINDS = ['hetzner', 'ssh', 'pc']
 const STAT_KEEP_DAYS = 90
 const dayOf = (t = Date.now()) => new Date(t).toISOString().slice(0, 10)
 const KEY_SHA = (k) => crypto.createHash('sha256').update(String(k)).digest()
@@ -730,100 +729,6 @@ export async function hetznerRoot(cfg, token, s) {
   return r.root_password
 }
 
-// ---------------------------------------------------------------- Hostinger (same: a token for a few calls, then dropped)
-// https://developers.hostinger.com (OpenAPI 3.0.0): catalog → payment methods → post-install script → purchase.
-
-async function hs(cfg, token, method, p, body) {
-  const r = await fetch(cfg.hostinger + p, {
-    method,
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', accept: 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(30_000),
-  })
-  const data = await r.json().catch(() => ({}))
-  if (r.status === 202) return { ...data, pending: true }
-  if (!r.ok) {
-    const code = r.status === 401 ? 'unauthorized' : r.status === 403 ? 'forbidden' : r.status === 429 ? 'slow_down' : r.status === 422 ? 'hs_invalid' : `http_${r.status}`
-    throw Object.assign(new Error(code), { status: r.status, hz: code, detail: String(data?.message || '').slice(0, 200) })
-  }
-  return data
-}
-
-const HS_PLAN = { light: 1, recommended: 2, strong: 4 }
-const HS_CONTINENT = { europe: 'Europe', america: 'North America', asia: 'Asia' }
-
-/** The three KVM plans billed monthly (no 12- or 24-month commitment), their first-month and renewal prices, and
- * whether the account has a usable payment method. */
-export async function hostingerQuote(cfg, token) {
-  const [catalog, methods] = await Promise.all([hs(cfg, token, 'GET', '/api/billing/v1/catalog?category=VPS'), hs(cfg, token, 'GET', '/api/billing/v1/payment-methods')])
-  const pay = (Array.isArray(methods) ? methods : []).filter((m) => !m.is_expired && !m.is_suspended).sort((a, b) => b.is_default - a.is_default)[0]
-  const sizes = []
-  for (const z of SIZES) {
-    const n = HS_PLAN[z.size]
-    const item = (Array.isArray(catalog) ? catalog : []).find((i) => new RegExp(`^KVM ${n}$`, 'i').test(String(i.name || '').trim()) || i.id === `hostingercom-vps-kvm${n}`)
-    const prices = (item?.prices || []).filter((p) => p.period === 1 && /^month/i.test(String(p.period_unit)))
-    const price = prices.find((p) => p.currency === 'EUR') || prices.find((p) => p.currency === 'USD') || prices[0]
-    if (!item || !price) continue
-    sizes.push({ ...z, type: item.name, item: price.id, monthly: price.price / 100, first: (price.first_period_price ?? price.price) / 100, currency: price.currency })
-  }
-  if (!sizes.length) throw Object.assign(new Error('no_type'), { hz: 'no_type' })
-  return { sizes, payment: pay ? { id: pay.id, label: `${pay.name || pay.payment_method || ''} ${pay.identifier || ''}`.trim() } : null }
-}
-
-export async function hostingerCreate(cfg, token, sid, size = 'recommended', where = 'europe') {
-  const q = await hostingerQuote(cfg, token)
-  if (!q.payment) throw Object.assign(new Error('no_payment'), { status: 402, hz: 'no_payment' })
-  const pick = q.sizes.find((x) => x.size === size) || q.sizes.find((x) => x.size === 'recommended') || q.sizes[0]
-  const [templates, centers] = await Promise.all([hs(cfg, token, 'GET', '/api/vps/v1/templates'), hs(cfg, token, 'GET', '/api/vps/v1/data-centers')])
-  const tpl = (Array.isArray(templates) ? templates : []).filter((t) => /^Ubuntu 24\.04\b/i.test(String(t.name))).sort((a, b) => String(a.name).length - String(b.name).length)[0]
-  if (!tpl) throw Object.assign(new Error('no_template'), { hz: 'no_template' })
-  const dcs = Array.isArray(centers) ? centers : []
-  const dc = dcs.find((d) => d.continent === HS_CONTINENT[region(where)]) || dcs.find((d) => d.continent === 'Europe') || dcs[0]
-  if (!dc) throw Object.assign(new Error('no_type'), { hz: 'no_type' })
-  // The install runs as root once the OS is in (Hostinger saves it to /post_install, its output to /post_install.log).
-  const script = await hs(cfg, token, 'POST', '/api/vps/v1/post-install-scripts', {
-    name: `weevils-${sid}`,
-    content: `#!/bin/bash\ncurl -fsSL --retry 10 --retry-delay 5 ${cfg.base}/i/${sid} | bash > /var/log/weevils-get.log 2>&1\n`,
-  })
-  const data = await hs(cfg, token, 'POST', '/api/vps/v1/virtual-machines', {
-    item_id: pick.item,
-    payment_method_id: q.payment.id,
-    setup: { template_id: tpl.id, data_center_id: dc.id, post_install_script_id: script.id, hostname: `weevils-${sid.slice(0, 6)}`, enable_backups: false },
-  })
-  if (data.pending) throw Object.assign(new Error('payment_pending'), { status: 402, hz: 'payment_pending' })
-  const vm = data.virtual_machine || {}
-  const ip = [vm.ipv4].flat().map((a) => (typeof a === 'string' ? a : a?.address)).find((a) => net.isIP(a) === 4) || ''
-  return { name: vm.hostname || `weevils-${sid.slice(0, 6)}`, id: vm.id, ip, size: pick.size, agents: pick.agents, type: pick.type, memory: pick.memory, location: dc.city || dc.name, monthly: pick.monthly, first: pick.first, currency: pick.currency }
-}
-
-const hsServer = (x) => ({
-  id: x.id, name: x.hostname || '', ip: [x.ipv4].flat().map((a) => (typeof a === 'string' ? a : a?.address)).find((a) => net.isIP(a) === 4) || '',
-  status: x.state || '', created: Date.parse(x.created_at) || 0, location: '', type: x.plan || '', sid: '',
-  weevils: /^weevils-[a-z2-9]{6}\b/.test(x.hostname || ''),
-})
-/** Hostinger has no labels: the servers weevils made are the ones it named weevils-<setup>. */
-export async function hostingerServers(cfg, token) {
-  const list = await hs(cfg, token, 'GET', '/api/vps/v1/virtual-machines')
-  return (Array.isArray(list) ? list : Array.isArray(list?.data) ? list.data : []).map(hsServer).filter((s) => s.weevils).sort((a, b) => b.created - a.created)
-}
-export async function hostingerServer(cfg, token, serverId) {
-  return hsServer(await hs(cfg, token, 'GET', `/api/vps/v1/virtual-machines/${serverId}`))
-}
-/** Same as hetznerRoot: Hostinger sets a root password chosen here (theirs must not be a known leaked one: random,
- * 24 characters, upper and lower case and digits), used once, then dropped. */
-export async function hostingerRoot(cfg, token, s) {
-  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
-  const pw = 'Wv7' + Array.from(crypto.randomBytes(21), (b) => abc[b % abc.length]).join('') + 'q'
-  const a = await hs(cfg, token, 'PUT', `/api/vps/v1/virtual-machines/${s.id}/root-password`, { password: pw })
-  for (let i = 0; i < 60 && a?.id && a.state !== 'success'; i++) {
-    const x = await hs(cfg, token, 'GET', `/api/vps/v1/virtual-machines/${s.id}/actions/${a.id}`)
-    if (x?.state === 'success') break
-    if (x?.state === 'error') throw Object.assign(new Error('reset_failed'), { hz: 'reset_failed' })
-    await sleep(2000)
-  }
-  return pw
-}
-
 // ---------------------------------------------------------------- SSH (a password or key used for one command)
 
 const SSH_OPTS = ['-F', '/dev/null', '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null', '-o', 'GlobalKnownHostsFile=/dev/null', '-o', 'LogLevel=ERROR', '-o', 'ConnectTimeout=15', '-o', 'IdentityAgent=none', '-o', 'ServerAliveInterval=10', '-o', 'NumberOfPasswordPrompts=1']
@@ -974,7 +879,7 @@ export function createServer(cfg = config(), deps = {}) {
     'POST /api/job': async (req, res, ip) => {
       if (!limit.ok(`job:${ip}`, 12, 3600_000)) return fail(res, 429, 'slow_down')
       const b = await json(req)
-      if (!['hetzner', 'hostinger', 'ssh', 'pc'].includes(b.kind)) return fail(res, 400, 'bad_kind')
+      if (!['hetzner', 'ssh', 'pc'].includes(b.kind)) return fail(res, 400, 'bad_kind')
       if (typeof b.pub !== 'string' || !/^[A-Za-z0-9+/=]{200,800}$/.test(b.pub)) return fail(res, 400, 'bad_key')
       try {
         const k = crypto.createPublicKey({ key: Buffer.from(b.pub, 'base64'), format: 'der', type: 'spki' })
@@ -1024,13 +929,13 @@ export function createServer(cfg = config(), deps = {}) {
       const mine = [...store.jobs.values()].filter((j) => j.near === me && (j.server || j.creating) && !j.claimed && now - j.created < 24 * 3600_000)
       send(res, 200, { jobs: mine.sort((a, b) => b.created - a.created).slice(0, 3).map(glimpse) })
     },
-    // A server created for the person: Hetzner or Hostinger. The token is checked, used for the calls, then dropped.
-    ...Object.fromEntries(['hetzner', 'hostinger'].flatMap((host) => {
-      const quote = host === 'hetzner' ? hetznerQuote : hostingerQuote
-      const create = host === 'hetzner' ? hetznerCreate : hostingerCreate
-      const servers = deps.servers?.[host] || (host === 'hetzner' ? hetznerServers : hostingerServers)
-      const serverOf = deps.server?.[host] || (host === 'hetzner' ? hetznerServer : hostingerServer)
-      const rootOf = deps.root?.[host] || (host === 'hetzner' ? hetznerRoot : hostingerRoot)
+    // A server created for the person, at Hetzner. The token is checked, used for the calls, then dropped.
+    ...Object.fromEntries(['hetzner'].flatMap((host) => {
+      const quote = hetznerQuote
+      const create = hetznerCreate
+      const servers = deps.servers?.[host] || hetznerServers
+      const serverOf = deps.server?.[host] || hetznerServer
+      const rootOf = deps.root?.[host] || hetznerRoot
       const token = (b) => (typeof b.token === 'string' && /^[A-Za-z0-9|._-]{20,256}$/.test(b.token.trim()) ? b.token.trim() : '')
       const status = (e) => ([401, 402, 403, 429].includes(e.status) ? e.status : 502)
       /** The setup that made this server, if this service still has it: the newest one that worked on it. */
@@ -1045,7 +950,7 @@ export function createServer(cfg = config(), deps = {}) {
           return { id: s.id, name: s.name, ip: s.ip, location: s.location, type: s.type, status: s.status, created: s.created, setup: j ? { state: j.state, step: j.step, steps: j.steps } : null }
         })
       // A page from before this check shows the error as it comes: a sentence then.
-      const existsError = (b) => (Number(b.v) >= 2 ? 'exists' : `You already have a weevils server on this ${host === 'hetzner' ? 'Hetzner' : 'Hostinger'} account: reload this page to continue on it instead of buying another one.`)
+      const existsError = (b) => (Number(b.v) >= 2 ? 'exists' : `You already have a weevils server on this Hetzner account: reload this page to continue on it instead of buying another one.`)
       return [
         [`POST /api/${host}/quote`, async (req, res, ip) => {
           if (!limit.ok(`hz:${host}:${ip}`, 20, 3600_000)) return fail(res, 429, 'slow_down')
@@ -1055,7 +960,7 @@ export function createServer(cfg = config(), deps = {}) {
           if (!token(b)) return fail(res, 400, 'bad_token')
           try {
             const [q, ex] = await Promise.all([quote(cfg, token(b), b.region), existing(token(b)).catch(() => [])])
-            send(res, 200, { sizes: q.sizes.map(({ options, item, ...z }) => z), payment: host === 'hostinger' ? !!q.payment : true, paymentLabel: q.payment?.label?.replace(/\d(?=\d{4})/g, '•') || '', existing: ex })
+            send(res, 200, { sizes: q.sizes.map(({ options, item, ...z }) => z), payment: true, paymentLabel: q.payment?.label?.replace(/\d(?=\d{4})/g, '•') || '', existing: ex })
           } catch (e) {
             fail(res, status(e), e.hz || 'host_down')
           }
@@ -1093,7 +998,7 @@ export function createServer(cfg = config(), deps = {}) {
             }
             const s = await create(cfg, token(b), j.sid, b.size, b.region)
             j.server = { id: s.id, name: s.name, ip: s.ip, type: s.type, size: s.size, agents: s.agents, location: s.location, hourly: s.hourly, monthly: s.monthly, currency: s.currency }
-            // No address yet (Hostinger may give it later): the install's own address, when it fetches its script.
+            // No address yet: the install's own address, when it fetches its script.
             if (s.ip) {
               j.reach = cfg.targetUrls[s.ip] || sslip(s.ip)
               j.mode = cfg.targetUrls[s.ip] ? 'url' : 'vps'

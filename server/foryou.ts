@@ -235,6 +235,8 @@ const GAP = '\u0002'
  * without it is left. Never a hash, a file name, a camelCase or snake_case name. */
 const WORDISH = /^[A-Za-z][a-z0-9-]*$/
 const HASH = /^[0-9a-f]{7,40}$/
+/** Words that turn a clause into a reservation (search pattern, both languages, never shown). */
+const RESERVATION = /(?<!\p{L})(?:not|no|never|fail\p{L}*|still|but|yet|except|only|broken|pas|plus|jamais|aucun\p{L}*|échou\p{L}*|encore|mais|sauf|seulement|cass\p{L}*)(?!\p{L})|n['’]t(?!\p{L})/iu // i18n-ignore
 const strictGaps = (l: string) => l.replace(/\u0003[^\u0004]*\u0004/g, GAP)
 const softGaps = (l: string) => l.replace(/\u0003([^\u0004]*)\u0004/g, '$1')
 
@@ -270,8 +272,9 @@ export function headline(text: string, max = HEADLINE_MAX): string {
     if (sentences.length > 1 && softGaps(sentences[0]).length >= 12) candidates.push(...sentences)
     else candidates.push(p)
   }
-  const shape = (l: string) => {
-    const heading = /^(.{8,80}?)\s*[:：—–]\s/u.exec(l)
+  // A heading before a colon (« Cause trouvée : … ») only opens the words: further on, a colon or a dash is mid-sentence.
+  const shape = (l: string, opening: boolean) => {
+    const heading = opening ? /^(.{8,80}?)\s*[:：—–]\s/u.exec(l) : null
     if (heading) l = heading[1]
     return l
       // Code that was only an aside: « (`87aba80`) », « (branche `x`) », « … : `out/a.png` ».
@@ -283,13 +286,19 @@ export function headline(text: string, max = HEADLINE_MAX): string {
       .replace(/\s{2,}/g, ' ')
       .trim()
   }
-  const whole = (l: string) => !!l && !l.includes(GAP) && /\p{L}{2}/u.test(l)
+  // A quote or a bracket left open is a cut sentence too.
+  const balanced = (l: string) => (l.match(/"/g)?.length ?? 0) % 2 === 0 && (l.match(/«/g)?.length ?? 0) === (l.match(/»/g)?.length ?? 0) && (l.match(/\(/g)?.length ?? 0) === (l.match(/\)/g)?.length ?? 0)
+  const whole = (l: string) => !!l && !l.includes(GAP) && /\p{L}{2}/u.test(l) && balanced(l)
   let line = ''
-  pick: for (const c of candidates) {
-    // The sentence as it is, then with its plain words put back; then its first clause (before « ; » or a dash).
-    const clause = /^(.{12,}?)\s*(?:;|\s[—–]\s)/u.exec(c)?.[1]
+  pick: for (const [n, c] of candidates.entries()) {
+    // « The new leads are: » only announces a list: never a line of its own.
+    if (/[:：]$/u.test(c)) continue
+    // The sentence as it is, then with its plain words put back; then its first clause (before « ; » or a dash), unless
+    // what follows is a reservation (« the menu is live; the tests still fail »): a card never drops a « but ».
+    const cut = /^(.{12,}?)\s*(?:;|\s[—–]\s)/u.exec(c)
+    const clause = cut && !RESERVATION.test(c.slice(cut[0].length)) ? cut[1] : undefined
     for (const v of [c, ...(clause ? [`${clause.replace(/[\s,]+$/, '')}.`] : [])]) {
-      for (const l of [shape(strictGaps(v)), shape(softGaps(v))]) {
+      for (const l of [shape(strictGaps(v), n === 0), shape(softGaps(v), n === 0)]) {
         if (whole(l)) {
           line = l
           break pick
@@ -1082,7 +1091,10 @@ export class ForYou {
   titleRecentResults(days = 7) {
     const since = this.now() - days * 86_400_000
     for (const i of this.s.items) {
-      if (i.kind === 'session' && i.tone === 'result' && !i.gone && !i.sum?.text && i.at >= since && (i.sum?.tries ?? 0) < TITLE_TRIES) this.titleResult(i.id)
+      const tries = i.sum?.tries ?? 0
+      // A failed try keeps its delay (titleResult schedules the next one): the sweep never asks sooner.
+      const waiting = !!tries && this.now() - (i.sum?.at ?? 0) < tries * 2 * 60_000
+      if (i.kind === 'session' && i.tone === 'result' && !i.gone && !i.sum?.text && i.at >= since && tries < TITLE_TRIES && !waiting) this.titleResult(i.id)
     }
   }
 

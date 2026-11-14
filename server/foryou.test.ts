@@ -339,6 +339,18 @@ describe('headline never shows a hole where code was', () => {
     expect(headline('Renamed `helperFn` everywhere.')).toBe('')
   })
 
+  it('never a list intro, a cut quote, a heading taken mid-text, or a clause that drops a reservation', () => {
+    // Live cards: « The new leads are », « marked "brouillon ».
+    expect(headline('I added 3 new leads, and `publish.json` is empty. The new leads are:\n- **DEV post:** a Nov 10 post comparing phone options.'))
+      .toBe('DEV post: a Nov 10 post comparing phone options.')
+    expect(headline('I saved the draft at `weevils/tweets/launch.md`. It has 3 variants, marked "brouillon — à valider par Scarville" and labelled as AI-generated.'))
+      .toBe('It has 3 variants, marked "brouillon — à valider par Scarville" and labelled as AI-generated.')
+    // « The menu is live. » would hide that the tests fail.
+    expect(headline('The menu is live on the phone; `tests/menu.spec.ts` still fails on CI.')).toBe('')
+    expect(headline('Le menu est en ligne ; `tests/menu.spec.ts` échoue encore.')).toBe('')
+    expect(headline('The menu is live on the phone; `feat/menu` is pushed too.')).toBe('The menu is live on the phone.')
+  })
+
   it('a card whose words leave no whole sentence says it finished, never a fragment', async () => {
     const fy = make()
     snap.sessions = [session()]
@@ -436,6 +448,21 @@ describe('result titles', () => {
     await flush(); await flush()
     expect(title).toHaveBeenCalledTimes(1)
     expect(find(fy, 's:old')?.text).toBe('I finished the twenty-two still views of the world, the moving ones wait for a GPU.')
+  })
+
+  it('the background sweep never asks again before a failed try has waited its delay', async () => {
+    const title = vi.fn(async (_p: string) => 'I finished the twenty-two still views of the world, the moving ones wait for a GPU.')
+    fs.writeFileSync(path.join(dir, 'foryou.json'), JSON.stringify({ rev: 1, items: [
+      { id: 's:old', kind: 'session', tone: 'result', who: 'session', text: 'For TLO', body: 'For TLO: the full version is not operational yet. The 22 fixed views are ready.', at: now - 60_000, sum: { tries: 1, at: now - 60_000 } },
+    ] }))
+    const fy = make({ title })
+    fy.titleRecentResults(2)
+    await flush(); await flush()
+    expect(title).not.toHaveBeenCalled()
+    now += 2 * MIN
+    fy.titleRecentResults(2)
+    await flush(); await flush()
+    expect(title).toHaveBeenCalledTimes(1)
   })
 })
 

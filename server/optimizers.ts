@@ -1584,9 +1584,14 @@ export class Optimizers {
     const later = (o: Stored) => !!o.retryAt && o.retryAt > now
     const blocked=(o:Stored)=>!!o.repo&&this.w.sourceAccessForRepo?.(o.repo)?.canExecute===false
     const ready = queue.filter((o) => !blocked(o) && (!this.auto || this.s.adoptionPaused || o.software?.status==='ready') && !o.paused && !later(o) && !this.sleepHeld(o, now) && this.timeAt(o, now) <= now).sort((a, b) => Number(!!b.runNow) - Number(!!a.runNow) || Number(!!b.onSleep) - Number(!!a.onSleep))
-    // A « when I sleep » task does not wait for the night's ghosts to rest (they may work till morning): only for the
-    // machine's load and memory.
-    const reasonFor = (o: Stored | undefined) => (o?.onSleep && reason === 'busy' ? null : reason)
+    // What the user wants run never waits for other agents to rest (they may work all day, or till morning as the
+    // night's ghosts): an automation they created or asked for, « when I sleep », run now, or a supervisor relaunch
+    // waits only for the machine's load and memory (and quota, see later()). Only an idea weevils proposed by itself
+    // stays polite and waits for the agents to rest.
+    const wanted = (o: Stored) => !!(o.userCreated || o.onSleep || o.runNow || o.relaunches)
+    // « busy » hides the load and memory behind it: read them on their own for these.
+    const calm = reason === 'busy' ? freeReason({ idleFor: IDLE_MS, load: this.sys.load(), cpus: this.sys.cpus(), free: this.sys.free() }) : reason
+    const reasonFor = (o: Stored | undefined) => (o && wanted(o) ? calm : reason)
     queue.forEach((o) => {
       const i = ready.indexOf(o)
       const wait = o.paused ? 'paused' : blocked(o) ? undefined : i < 0 ? (later(o) ? 'later' : this.sleepHeld(o, now) ? 'sleep' : 'time') : running || this.launching || i > 0 ? 'queue' : (reasonFor(o) ?? undefined)

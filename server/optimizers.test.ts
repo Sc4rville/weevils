@@ -260,6 +260,27 @@ describe('auto — the runner', () => {
     expect(freeReason({ idleFor: IDLE_MS, load: 5.9, cpus: 4, free: MIN_FREE_BYTES })).toBeNull()
   })
 
+  it('what the user created, asked to run now or the supervisor relaunches never waits for other agents to rest', async () => {
+    const o = await accepted(2)
+    const [mine, idea] = o.list()
+    ;(o.get(mine.id) as { userCreated?: boolean }).userCreated = true
+    snap.sessions = [session({ id: 'other', status: 'working' })]
+    snap.mainWorking = true
+    // The load still holds even the user's own.
+    sys.load = () => 6
+    o.tick(T0 + 10 * MIN)
+    await flush()
+    expect(createIn).not.toHaveBeenCalled()
+    expect(o.list().find((x) => x.id === mine.id)!.waiting).toBe('load')
+    sys.load = () => 0.3
+    o.tick(T0 + 11 * MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(1)
+    expect(o.get(mine.id)!.state).toBe('running')
+    // weevils' own idea stays polite: it waits for the agents to rest.
+    expect(o.list().find((x) => x.id === idea.id)).toMatchObject({ state: 'queued' })
+  })
+
   it('a remote session working does not hold the machine; weevboss working does', async () => {
     const o = await accepted()
     snap.sessions = [session({ id: 'far', status: 'working', machineId: 'pc' })]
@@ -1444,10 +1465,12 @@ describe('auto — runs, their outputs, the automation page', () => {
     expect(o.runNow('a1b2c3')).toBe(true)
     expect(o.list()[0].runRequested).toBe(true)
     expect(make().list()[0].runRequested).toBe(true)
-    // Still waits for the machine.
+    // Still waits for the machine's load, never for other agents at work.
     snap.sessions = [session({ id: 'other', status: 'working' })]
+    sys.load = () => 6
     o.tick(T0 + 2 * MIN)
-    expect(o.list(T0 + 2 * MIN)[0]).toMatchObject({ state: 'queued', waiting: 'busy' })
+    expect(o.list(T0 + 2 * MIN)[0]).toMatchObject({ state: 'queued', waiting: 'load' })
+    sys.load = () => 0.3
     snap.sessions = []
     o.tick(T0 + 2 * MIN + IDLE_MS)
     await flush()

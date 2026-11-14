@@ -37,6 +37,7 @@ import { useLang, useT } from '../i18n'
 import { reveal, useFollow } from './follow'
 import { FollowDown } from './followdown'
 import M from '../i18n/pages'
+import BM from '../i18n/bands'
 import PM from '../i18n/plain-steps'
 import { liveNote } from './plain-steps'
 import type { Message, Session } from '../../shared/api.ts'
@@ -151,6 +152,7 @@ function SessionPage({ id }: { id: string }) {
   const appLang = useLang()
   const { snap, now, replace, colors } = useApp()
   const t = useT(M)
+  const tb = useT(BM)
   const gone = useGoneTitle()
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [missing, setMissing] = useState(false)
@@ -217,6 +219,9 @@ function SessionPage({ id }: { id: string }) {
   const st = status[s.status]
   const previewUrl = preview.url ?? guessPreviewUrl(messages, s, project, snap.config)
 
+  // Before the server takes it, the notice under the thread speaks (« sending… », « try again »); after, the bubble.
+  const busy = (s.turnWorking ?? (s.status === 'working' && !s.background)) || s.queued > 0
+  const pendingLabel = (pid: string) => (pending.find((x) => x.id === pid)?.accepted ? (busy ? tb.readsSoon : tb.received) : '')
   const send = async (text: string, files: Attachment[] = []) => {
     if(interceptModelControl(id,text,files.length))return
     if (sourceIssue) throw new Error(sourceIssue)
@@ -226,7 +231,9 @@ function SessionPage({ id }: { id: string }) {
     setPending((p) => [...p, tmp])
     toEnd()
     try {
-      const r = files.length ? await api.attach(s.id, text, files) : await api.send(s.id, text)
+      const r: { id: string; delivery?: { messageId?: string } } = files.length ? await api.attach(s.id, text, files) : await api.send(s.id, text)
+      // The server has it: the bubble says « received », even while the agent is busy (r59).
+      setPending((p) => p.map((x) => (x.id === tmp.id ? { ...x, accepted: true, ...(r.delivery?.messageId ? { messageId: r.delivery.messageId } : {}) } : x)))
       if (s.status === 'needs_user' || s.status === 'interrupted') dismissNotice(sessionNoticeKey(s))
       if (r.id !== id) replace({ kind: 'session', id: r.id })
     } catch (e) {
@@ -291,7 +298,7 @@ function SessionPage({ id }: { id: string }) {
             s'il y a déjà une bulle (premier message d'une session lancée) ; remonté au chargement pour que le lot arrive sans
             se dérouler lui non plus. */}
         {(detail || missing || pending.length > 0) && (
-          <Messages session plain key={detail || missing ? 'loaded' : 'early'} messages={messages} author={s.tool} working={s.turnWorking ?? (s.status === 'working' && !s.background)} after={th.after} />
+          <Messages session plain key={detail || missing ? 'loaded' : 'early'} messages={messages} pendingLabel={pendingLabel} author={s.tool} working={s.turnWorking ?? (s.status === 'working' && !s.background)} after={th.after} />
         )}
       </div>
 

@@ -14,7 +14,7 @@ export default defineMessages({
     count: (n: number) => ` · ${n}`, more: ' …',
     liveWaiting: 't’attend', liveStopped: 'interrompue', liveDone: 'terminée', liveIdle: 'au repos', liveLabel: (t: string) => `En ce moment : ${t}`,
     rawTitle: 'Action enregistrée', unverified: 'Aucun résultat enregistré : rien n’est affirmé sur son issue.',
-    longReply: 'Un message détaillé de l’agent', longReplyOpen: 'Lire le message en entier',
+    longReply: 'Un message détaillé de l’agent', longBrief: (n: string) => `Un message détaillé de ${n}`, longReplyOpen: 'Lire le message en entier',
   },
   en: {
     read: (s: string) => (s ? `Reads ${s}` : 'Reads a file'), readMany: 'Looks through the code',
@@ -29,6 +29,6 @@ export default defineMessages({
     count: (n: number) => ` · ${n}`, more: ' …',
     liveWaiting: 'waiting for you', liveStopped: 'stopped', liveDone: 'done', liveIdle: 'idle', liveLabel: (t: string) => `Right now: ${t}`,
     rawTitle: 'Recorded action', unverified: 'No result recorded: nothing is claimed about how it went.',
-    longReply: 'A detailed message from the agent', longReplyOpen: 'Read the whole message',
+    longReply: 'A detailed message from the agent', longBrief: (n: string) => `A detailed message from ${n}`, longReplyOpen: 'Read the whole message',
   },
 })

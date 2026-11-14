@@ -116,4 +116,10 @@ describe('a brief from weevboss in a project session', () => {
     expect(host.textContent).toContain('ONE always-visible Back button')
     expect(host.textContent).not.toContain('⟦')
   })
+
+  it('a long brief with no plain sentence in it says who sent it, not « the agent »', async () => {
+    const steps = Array.from({ length: 6 }, (_, i) => `- \`npm run step${i}\``).join('\n')
+    await act(async () => root.render(<Messages session plain messages={[brief(steps + LOCALE)]} author="claude" />))
+    expect(host.querySelector('details.reply-fold summary .text')!.textContent).toBe('A detailed message from weevboss')
+  })
 })

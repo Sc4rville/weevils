@@ -782,11 +782,11 @@ function Fold({ head, className = '', label, children }: { head: ReactNode; clas
 const briefText = (text: string) => userText(withoutMachinePrefix(text))
 
 /** A long agent message in a project session: one or two plain sentences, the full text behind the same fold as commands. */
-function LongReply({ text }: { text: string }) {
+function LongReply({ text, from }: { text: string; from?: string }) {
   const w = useT(PM)
   const summary = useMemo(() => plainSummary(text), [text])
   return (
-    <Fold className="reply-fold" head={summary ?? w.longReply} label={w.longReplyOpen}>
+    <Fold className="reply-fold" head={summary ?? (from ? w.longBrief(from) : w.longReply)} label={w.longReplyOpen}>
       <Prose text={text} />
     </Fold>
   )
@@ -982,7 +982,7 @@ export function Messages({
                 </>
               ) : g.m.role === 'orchestrator' ? (
                 plain && isLongReply(briefText(g.m.text)) ? (
-                  <LongReply text={briefText(g.m.text)} />
+                  <LongReply text={briefText(g.m.text)} from={authorOf(g.m.author).name} />
                 ) : (
                   <Clamp text={briefText(g.m.text)} full={session} />
                 )

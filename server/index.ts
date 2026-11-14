@@ -50,7 +50,7 @@ import { DEMOS, isTourId } from '../shared/tour.ts'
 import { isBrick, isSecretName, isSetupKey, type Device } from '../shared/setup.ts'
 import { Memory, memoryRoutes } from './memory.ts'
 import { ledgerRoutes } from './boss-ledger-http.ts'
-import { Flyers, weevilRoutes } from './weevil.ts'
+import { weevilRoutes } from './weevil.ts'
 import { Optimizers, optimizerRoutes } from './optimizers.ts'
 import { Sleep } from './sleep.ts'
 import { ForYou, foryouRoutes, type MachineState } from './foryou.ts'
@@ -156,11 +156,10 @@ const tour = new TourKeeper({
 })
 w.tour = tour
 
-// ---------------------------------------------------------------- mémoire, questions du weevil, auto (machine principale)
+// ---------------------------------------------------------------- mémoire, auto (machine principale)
 
 const memory = new Memory()
 memory.onChange(() => w.bump())
-const flyers = new Flyers(w, memory)
 const optimizers = new Optimizers(w, memory)
 // L'optimiseur de coûts (server/cost.ts) : une automatisation intégrée de la page auto, toutes les 30 min, sans modèle.
 const cost = new CostOptimizer({
@@ -866,7 +865,8 @@ const routes: [string, RegExp, Handler][] = [
   ...(ORCHESTRATOR ? memoryRoutes(memory, json, readBody) : []),
   // weevboss's requests, goals, work trace and knowledge (server/boss-ledger.ts), main machine only.
   ...(w.ledger ? ledgerRoutes(w.ledger, json, readBody, isLocal) : []),
-  ...weevilRoutes(flyers, json, readBody),
+  // The weevil's questions were removed: an old open app only ever hears « nothing » (server/weevil.ts).
+  ...weevilRoutes(json),
   // The automation page reads the timers and jobs here too (GET /api/auto/timer:…, job:…).
   ...optimizerRoutes(optimizers, json, readBody, { detail: (id) => w.h24Detail(id), run: (id, at) => w.h24Run(id, at) }),
   // Le flux « pour toi » vit sur la machine principale seulement.

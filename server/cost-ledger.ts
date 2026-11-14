@@ -1,5 +1,5 @@
 // What weevilsd's own model calls cost (claude -p from server/fast.ts: the « for you » curator, titles, automation
-// proposals, the weevil's questions, voice summaries…). Those calls run with --no-session-persistence, so no transcript
+// proposals, voice summaries…). Those calls run with --no-session-persistence, so no transcript
 // ever shows them: each answer's usage is counted here, per caller and per day, for the cost optimiser (server/cost.ts).
 //
 // And the cheapest call is the one never made: an identical request (same model, same prompt, same schema) asked again

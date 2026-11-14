@@ -322,21 +322,6 @@ export interface MemoryItem {
   updatedAt: number
 }
 
-/** La petite question portée par un weevil volant. */
-export interface WeevilQuestion {
-  id: string
-  text: string
-}
-
-/** Réponse du weevil à ce qu'on lui a dit : une phrase de relance (ou de clôture) et ce qui a été retenu. */
-export interface WeevilReply {
-  reply: string
-  /** Souvenirs ajoutés ou mis à jour par cette réponse. */
-  learned: MemoryItem[]
-  /** true : l'échange est fini (le weevil repart) ; false : sa phrase invite à répondre encore. */
-  done: boolean
-}
-
 /** Une tâche du h24 (« optimiseur ») : proposée à partir de la mémoire et des projets, lancée quand la machine est libre. */
 export interface Optimizer {
   sourceAccess?: SourceAccess

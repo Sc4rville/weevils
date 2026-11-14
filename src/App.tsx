@@ -14,7 +14,6 @@ import { Login } from './ui/login'
 import { TourBand, TourIntro } from './ui/tour'
 import { RelayBand } from './ui/relay'
 import { Tips } from './ui/tips'
-import { WeevilQuestions } from './ui/weevil'
 import { HintBubble, loadHints } from './ui/hints'
 import { GestureCoach } from './ui/coach'
 import { PageView } from './ui/pages'
@@ -496,7 +495,6 @@ export default function App() {
           </AnimatePresence>
         </TalkProvider>
         <Tips paused={stack.length > 0} />
-        <WeevilQuestions paused={stack.length > 0} />
         <TourIntro />
         <HintBubble />
         <GestureCoach />

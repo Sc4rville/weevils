@@ -147,7 +147,7 @@ describe('spawnWv', () => {
       expect(first[i - 1]).toBe('-e')
     }
     // L'agent part sans TMUX ni TMUX_PANE : son tmux de test ne peut pas viser le serveur de weevils.
-    expect(first.slice(-9)).toEqual(['env', '-u', 'TMUX', '-u', 'TMUX_PANE', 'claude', '--session-id', 'u', 'hi'])
+    expect(first.slice(-11)).toEqual(['env', '-u', 'TMUX', '-u', 'TMUX_PANE', '-u', 'WEEVILS_TMUX_TOKEN', 'claude', '--session-id', 'u', 'hi'])
     expect(opts).toEqual([
       ['set-option', '-t', '=wv-x:', '@wv_tool', 'claude'],
       ['set-option', '-t', '=wv-x:', '@wv_title', 't'],
@@ -165,7 +165,7 @@ describe('spawnWv', () => {
   it('argv exact : env -u TMUX -u TMUX_PANE juste avant la commande, après l’environnement calme (pas de shell)', async () => {
     await mux.spawnWv('wv-x', '/d', 'codex', 't', ['codex', 'resume', 'id', 'go'])
     const quiet = Object.entries(mux.QUIET_ENV).flatMap(([k, v]) => ['-e', `${k}=${v}`])
-    expect(sh.calls[0]).toEqual(['new-session', '-d', '-s', 'wv-x', '-x', '120', '-y', '40', '-c', '/d', ...quiet, '-e', 'WEEVILS_FROM=codex', 'env', '-u', 'TMUX', '-u', 'TMUX_PANE', 'codex', 'resume', 'id', 'go'])
+    expect(sh.calls[0]).toEqual(['new-session', '-d', '-s', 'wv-x', '-x', '120', '-y', '40', '-c', '/d', ...quiet, '-e', 'WEEVILS_FROM=codex', 'env', '-u', 'TMUX', '-u', 'TMUX_PANE', '-u', 'WEEVILS_TMUX_TOKEN', 'codex', 'resume', 'id', 'go'])
   })
 
   it('assigns the orchestrator author at launch for either agent tool', async()=>{

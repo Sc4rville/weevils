@@ -39,6 +39,9 @@ sed "s/WEEVILS_HOOK_PORT:-4180/WEEVILS_HOOK_PORT:-$hook_port/" "$here/hook.sh" >
 sed "s/WEEVILS_PORT:-4179/WEEVILS_PORT:-$port/" "$here/weevils-cli" >~/.local/bin/weevils && chmod 755 ~/.local/bin/weevils
 # Updates by itself (weevils-update, timer below): on unless WEEVILS_AUTO_UPDATE=0.
 install -m 755 "$here/weevils-update" ~/.local/bin/weevils-update
+# tmux guard: ~/.local/bin/tmux, ahead of the real one, refuses to close the live weevils sessions without the
+# server's token (a test script once closed them all through « tmux -L weevils kill-server »).
+install -m 755 "$here/tmux-guard" ~/.local/bin/tmux
 
 # ---------------------------------------------------------------- Claude Code hooks: weevils-hook on the useful events, other hooks kept
 # Only weevils' own entries are written to the user's Claude Code settings: no global env, no other preference.

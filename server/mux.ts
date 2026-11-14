@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { randomBytes } from 'node:crypto'
 import { ORCH_DIR } from './config.ts'
 import type { Tool } from '../shared/api.ts'
 import { tr } from './i18n.ts'
@@ -26,6 +27,28 @@ export const SOCKET = process.env.WEEVILS_TMUX_SOCKET?.trim() || 'weevils'
 const legacy = new Set<string>()
 const sockArgs = (name?: string) => (name && legacy.has(name) ? [] : ['-L', SOCKET])
 
+/**
+ * The tmux guard (server/tmux-guard, installed as ~/.local/bin/tmux) refuses to close the live weevils sessions
+ * (kill-server, kill-session on this socket) unless the caller carries this server's token. Only weevils' own tmux
+ * calls carry it: never process.env, never the agent panes (NO_TMUX drops it from their environment).
+ */
+let guardToken: string | undefined
+export function tmuxGuardToken(): string {
+  if (guardToken) return guardToken
+  const dir = path.join(process.env.HOME ?? os.homedir(), '.local/share/weevils')
+  const file = path.join(dir, 'tmux-token')
+  try { guardToken = fs.readFileSync(file, 'utf8').trim() } catch { /* first start */ }
+  if (!guardToken) {
+    guardToken = randomBytes(24).toString('hex')
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+    fs.writeFileSync(file, guardToken + '\n', { mode: 0o600 })
+  }
+  // The live socket of this server, for the guard (it resolves the path the way tmux does).
+  const base = process.env.TMUX_TMPDIR && fs.existsSync(process.env.TMUX_TMPDIR) ? process.env.TMUX_TMPDIR : '/tmp'
+  try { fs.writeFileSync(path.join(dir, 'tmux-live'), path.join(base, `tmux-${os.userInfo().uid}`, SOCKET) + '\n', { mode: 0o600 }) } catch { /* the default path stays protected */ }
+  return guardToken
+}
+
 function tmux(args: string[], cwd?: string, socket: string[] = ['-L', SOCKET]): Promise<string> {
   return new Promise((resolve, reject) => {
     // tmux silently falls back to /tmp when TMUX_TMPDIR does not exist. A throwaway HOME
@@ -36,7 +59,7 @@ function tmux(args: string[], cwd?: string, socket: string[] = ['-L', SOCKET]): 
     if (process.env.TMUX_TMPDIR) fs.mkdirSync(process.env.TMUX_TMPDIR, { recursive: true, mode: 0o700 })
     // -u: tmux takes the terminal for UTF-8 whatever the locale. A launchd service on a Mac has none, and tmux would
     // then replace the field separator of list-sessions (and every accent of a title) with « _ ».
-    execFile('tmux', ['-u', ...socket, ...args], { cwd, timeout: 8000, maxBuffer: 4 << 20 }, (err, stdout, stderr) => {
+    execFile('tmux', ['-u', ...socket, ...args], { cwd, timeout: 8000, maxBuffer: 4 << 20, env: { ...process.env, WEEVILS_TMUX_TOKEN: tmuxGuardToken() } }, (err, stdout, stderr) => {
       if (err) reject(new Error(stderr?.toString().trim() || err.message))
       else resolve(stdout.toString())
     })
@@ -110,7 +133,7 @@ export const QUIET_ENV: Record<string, string> = {
  * « TMUX_TMPDIR=/tmp/x tmux kill-server » pour un serveur de test tuerait le serveur de weevils et toutes les sessions
  * (arrivé le 10/11 à 03:48). L'agent part donc sans ces deux variables : son tmux vise son propre serveur.
  */
-export const NO_TMUX = ['env', '-u', 'TMUX', '-u', 'TMUX_PANE']
+export const NO_TMUX = ['env', '-u', 'TMUX', '-u', 'TMUX_PANE', '-u', 'WEEVILS_TMUX_TOKEN']
 
 /** Nom d'une session wv-* pour un dossier. tmux remplace « . » et « : » par « _ » dans un nom de session : sans ce
  * remplacement fait d'avance, un dossier comme « .ad9651b0c8 » (tâche auto sans repo) ou « mon.site » donnait une

@@ -27,6 +27,7 @@ vi.mock('./titles.ts', async (orig) => ({ ...(await orig<typeof import('./titles
 const { Weevils, joinContext } = await import('./core.ts')
 const { DATA_DIR, HOME, ORCH_DIR, INBOX_DIR } = await import('./config.ts')
 const { setLang, withLang } = await import('./i18n.ts')
+const { projectCodexFlags } = await import('./agent-launch.ts')
 type Transcript = import('./transcripts.ts').Transcript
 
 const NOW = Date.parse('2026-11-10T14:00:00Z')
@@ -156,6 +157,8 @@ describe('weevboss pendant la limite de Claude', () => {
     expect(command.at(-1)).toMatch(/^où en sont mes sessions \? ⟦weevils — tu es weevboss, sur Codex pendant que Claude est indisponible \(limite d'usage atteinte jusqu'à 18 h\)/)
     expect(command.at(-1)).toContain('user: lance les tests du panier | you: c’est lancé dans demo')
     expect(command.join(' ')).not.toContain('claude')
+    // weevboss keeps its own voice: never the project sessions' plain-voice rule.
+    expect(command.join(' ')).not.toContain('developer_instructions')
     expect(res).toEqual({ id: name })
     expect(r.boss).toMatchObject({ pane: name })
     // Les consignes de l'orchestrateur, identiques pour les deux outils.
@@ -231,7 +234,7 @@ describe('sessions liées par le relais', () => {
     const sub = path.join(cwd, 'packages', 'cart')
     fs.mkdirSync(sub, { recursive: true })
     const id = await host.openCodex(sub, 'refonte', '[from:weevboss] Tu prends le relais')
-    expect(mux.spawnWv.mock.calls[0].slice(1, 5)).toEqual([sub, 'codex', 'refonte', ['codex', '--dangerously-bypass-approvals-and-sandbox', '[from:weevboss] Tu prends le relais']])
+    expect(mux.spawnWv.mock.calls[0].slice(1, 5)).toEqual([sub, 'codex', 'refonte', ['codex', ...projectCodexFlags(), '[from:weevboss] Tu prends le relais']])
     expect(id).toBe(mux.spawnWv.mock.calls[0][0])
     expect(host.resolve(id)).toBe(id)
   })

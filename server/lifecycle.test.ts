@@ -34,6 +34,7 @@ const { tr } = await import('./i18n.ts')
 const CO = (await import('./i18n/core.ts')).default
 const P = (await import('./i18n/push.ts')).default
 const TipsM = (await import('./i18n/tips.ts')).default
+const { projectClaude, projectCodexFlags } = await import('./agent-launch.ts')
 type Transcript = import('./transcripts.ts').Transcript
 
 const NOW = Date.parse('2026-11-09T12:00:00Z')
@@ -43,7 +44,9 @@ const cwd = path.join(HOME, 'projects', 'demo')
 fs.mkdirSync(cwd, { recursive: true })
 const ALIVE = process.pid
 const DEAD = spawnSync('true').pid
-const CLAUDE = ['claude', '--dangerously-skip-permissions']
+/** A project session's commands: the bare one plus the plain-voice rule (server/agent-launch.ts). */
+const CLAUDE = projectClaude()
+const CODEX = projectCodexFlags()
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 let w: InstanceType<typeof Weevils>
@@ -189,7 +192,7 @@ describe('lancement et reprise', () => {
     const r = await w.create({ projectId: 'demo', tool: 'codex', text: '  ' })
     const [name, , tool, title, command, sessionId] = mux.spawnWv.mock.calls[0]
     expect(r.id).toBe(name)
-    expect([tool, title, command, sessionId]).toEqual(['codex', tr(CO).newSession, ['codex', '--dangerously-bypass-approvals-and-sandbox'], undefined])
+    expect([tool, title, command, sessionId]).toEqual(['codex', tr(CO).newSession, ['codex', ...CODEX], undefined])
   })
 
   it('L8c signé par weevboss ; dossier absent → erreur, rien lancé', async () => {
@@ -211,7 +214,7 @@ describe('lancement et reprise', () => {
     mux.spawnWv.mockClear()
     add({ ...t, tool: 'codex', cwd: path.join(HOME, 'gone') })
     await w.send('s1', 'again')
-    expect(mux.spawnWv.mock.calls[0].slice(1)).toEqual([HOME, 'codex', 'earlier', ['codex', 'resume', '--dangerously-bypass-approvals-and-sandbox', 's1', 'again'], 's1'])
+    expect(mux.spawnWv.mock.calls[0].slice(1)).toEqual([HOME, 'codex', 'earlier', ['codex', 'resume', ...CODEX, 's1', 'again'], 's1'])
   })
 
   it('L9b la pane relancée remplace la reprise : le message suivant est tapé dedans', async () => {
@@ -590,10 +593,10 @@ describe('session coupée en plein travail', () => {
     expect(await w.resume('s1')).toEqual({ id: 's1' })
     const [, dir, tool, , command, id] = mux.spawnWv.mock.calls[0] as [string, string, string, string, string[], string]
     expect([dir, tool, id]).toEqual([cwd, 'claude', 's1'])
-    expect(command.slice(0, 4)).toEqual([...CLAUDE, '--resume', 's1'])
+    expect(command.slice(0, CLAUDE.length + 2)).toEqual([...CLAUDE, '--resume', 's1'])
     const t = tr(CO)
-    expect(command[4]).toBe(`[from:weevboss] ${t.resumePrompt(t.cutWhy('died'), cwd)}`)
-    expect(command[4]).toContain(cwd)
+    expect(command.at(-1)).toBe(`[from:weevboss] ${t.resumePrompt(t.cutWhy('died'), cwd)}`)
+    expect(command.at(-1)).toContain(cwd)
     expect(one()).toMatchObject({ status: 'working', live: true })
     expect(one()?.interrupted).toBeUndefined()
     // Remort plus tard, en plein tour : de nouveau coupée.

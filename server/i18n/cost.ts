@@ -8,7 +8,7 @@ const n = (x: number) => (x >= 1e6 ? `${(x / 1e6).toFixed(x >= 1e7 ? 0 : 1)} M` 
 export default defineMessages({
   fr: {
     title: 'Optimiseur de coûts',
-    seedWhy: 'Mesure les jetons de chaque session, sous-agent, tâche auto et appel interne, compacte les sessions au repos trop lourdes, arrête les boucles orphelines et propose le reste.',
+    seedWhy: 'Mesure les jetons de chaque session, sous-agent, automatisation et appel interne, compacte les sessions au repos trop lourdes, arrête les boucles orphelines et propose le reste.',
     today: 'auj.',
     weekday: (d: number) => ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'][d],
     compacted: (k: number) => `J’ai compacté ${k} session${k > 1 ? 's' : ''} au repos`,
@@ -54,7 +54,7 @@ export default defineMessages({
   },
   en: {
     title: 'Cost optimizer',
-    seedWhy: 'Measures the tokens of every session, subagent, auto task and internal call, compacts heavy sessions at rest, stops orphan loops and proposes the rest.',
+    seedWhy: 'Measures the tokens of every session, subagent, automation and internal call, compacts heavy sessions at rest, stops orphan loops and proposes the rest.',
     today: 'today',
     weekday: (d: number) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d],
     compacted: (k: number) => `I compacted ${k} idle session${k > 1 ? 's' : ''}`,

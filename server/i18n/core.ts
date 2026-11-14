@@ -61,7 +61,7 @@ export default defineMessages({
 
     // Session cut off mid-work (status « interrupted »): why, the line posted in weevboss' thread, the resume message.
     cutWhy: (reason: string) =>
-      ({ died: 'processus arrêté', dirty: 'arrêtée avec du travail non commité', quota: 'limite d’usage atteinte', auth: 'connexion expirée', api: 'erreur de l’API' })[reason] ?? 'arrêtée',
+      ({ died: 'arrêt inattendu', dirty: 'changements pas encore enregistrés', quota: 'limite d’usage atteinte', auth: 'déconnectée', api: 'erreur du service' })[reason] ?? 'arrêtée',
     cutSaid: (title: string, project: string, why: string) => `La session « ${title} » (${project}) a été coupée en plein travail : ${why}.`,
     /** Several sessions stopped at the same moment (their terminal server closed): resumed by weevils, one calm line. */
     healed: (n: number) => `${n} sessions se sont arrêtées en même temps : weevils les a relancées, elles reprennent là où elles en étaient.`,
@@ -118,7 +118,7 @@ export default defineMessages({
     cantPause: 'this activity can’t be paused',
 
     cutWhy: (reason: string) =>
-      ({ died: 'process stopped', dirty: 'stopped with uncommitted work', quota: 'usage limit reached', auth: 'login expired', api: 'API error' })[reason] ?? 'stopped',
+      ({ died: 'unexpected stop', dirty: 'changes not saved yet', quota: 'usage limit reached', auth: 'signed out', api: 'service error' })[reason] ?? 'stopped',
     cutSaid: (title: string, project: string, why: string) => `The session “${title}” (${project}) was cut off mid-work: ${why}.`,
     healed: (n: number) => `${n} sessions stopped at the same moment: weevils restarted them and they pick up where they were.`,
     resumePrompt: (why: string, cwd: string) =>

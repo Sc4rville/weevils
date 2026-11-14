@@ -20,8 +20,8 @@ export default defineMessages({
         `${c.asking} qui attend${c.asking > 1 ? 'ent' : ''} une réponse`,
         `${c.cut} coupée${c.cut > 1 ? 's' : ''}`,
         `${c.mails} mail${c.mails > 1 ? 's' : ''} reçu${c.mails > 1 ? 's' : ''}`,
-        `${c.autoDone} tâche${c.autoDone > 1 ? 's' : ''} auto finie${c.autoDone > 1 ? 's' : ''}`,
-        `${c.autoFailed} tâche${c.autoFailed > 1 ? 's' : ''} auto échouée${c.autoFailed > 1 ? 's' : ''}`,
+        `${c.autoDone} automatisation${c.autoDone > 1 ? 's' : ''} finie${c.autoDone > 1 ? 's' : ''}`,
+        `${c.autoFailed} automatisation${c.autoFailed > 1 ? 's' : ''} échouée${c.autoFailed > 1 ? 's' : ''}`,
         `${c.posts} mot${c.posts > 1 ? 's' : ''} déjà posté${c.posts > 1 ? 's' : ''} par weevboss`,
       ].join(', '),
     digest: (o: { user: string; memory: string; done: string; waiting: string; counts: string; earlier: string }) =>
@@ -119,8 +119,8 @@ export default defineMessages({
         `${c.asking} waiting for an answer`,
         `${c.cut} cut off`,
         `${c.mails} mail${c.mails === 1 ? '' : 's'} received`,
-        `${c.autoDone} auto task${c.autoDone === 1 ? '' : 's'} done`,
-        `${c.autoFailed} auto task${c.autoFailed === 1 ? '' : 's'} failed`,
+        `${c.autoDone} automation${c.autoDone === 1 ? '' : 's'} done`,
+        `${c.autoFailed} automation${c.autoFailed === 1 ? '' : 's'} failed`,
         `${c.posts} word${c.posts === 1 ? '' : 's'} already posted by weevboss`,
       ].join(', '),
     digest: (o: { user: string; memory: string; done: string; waiting: string; counts: string; earlier: string }) =>

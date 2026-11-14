@@ -543,6 +543,24 @@ describe('weevils post / show (the CLI)', () => {
     expect((await cli(['show', 'a.png'], { cwd: dir, lang: 'fr' })).out).toBe('affiché dans « pour toi »\n')
   })
 
+  it('show / post: the evidence flags become a structured field, never guessed from the words', async () => {
+    answer = { status: 200, body: { ok: true } }
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cli-cwd-')))
+    const limit = 'Interruption not tested on a real iPhone'
+    expect((await cli(['show', 'live.mp4', '--demonstrated', 'emulated iPhone, test server', 'Live voice mode: interrupt anytime', '--limit', limit, '--limit', 'No sound in the clip'], { cwd: dir })).rc).toBe(0)
+    expect(last().body).toEqual({ path: path.join(dir, 'live.mp4'), caption: 'Live voice mode: interrupt anytime', cwd: dir, from: 'weevils', evidence: { demonstrated: 'emulated iPhone, test server', limits: [limit, 'No sound in the clip'] } })
+    expect((await cli(['post', 'Voice mode checked', '--verified', 'real iPhone, Safari PWA', '--action', 'Try it::open live mode'])).rc).toBe(0)
+    expect(last().body).toEqual({ text: 'Voice mode checked', actions: [{ label: 'Try it', brief: 'open live mode' }], from: 'weevils', evidence: { verified: 'real iPhone, Safari PWA' } })
+    // The words alone (« verified », « works ») send no evidence at all.
+    expect((await cli(['post', 'verified on iPhone, works'])).rc).toBe(0)
+    expect(last().body.evidence).toBeUndefined()
+    const before = seen.length
+    for (const args of [['show', 'a.png', '--verified'], ['show', 'a.png', '--limit', '  '], ['post', 'hi', '--demonstrated', '']]) {
+      expect(await cli(args, { cwd: dir }), args.join(' ')).toEqual({ rc: 1, out: '', err: '--demonstrated, --verified and --limit take a text: where, which environment, what is missing\n' })
+    }
+    expect(seen.length).toBe(before)
+  })
+
   it('show: one clean line when the file is missing; the reason of the server when it refuses', async () => {
     const before = seen.length
     for (const args of [['show'], ['show', ''], ['show', '  ']]) {

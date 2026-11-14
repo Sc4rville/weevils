@@ -3,6 +3,7 @@
 // Named "for you" everywhere in the code: "feed" already means the home list of project bands.
 
 import type { Tool, WorkstreamIdentity } from './api.ts'
+import type { ForYouEvidence } from './evidence.ts'
 
 /**
  * What an item is. The names are internal (never shown):
@@ -159,6 +160,9 @@ export interface ForYouItem {
   /** « Learn more » exists: POST /api/foryou/<id>/more answers { text }, kept in moreText. */
   more?: boolean
   moreText?: string
+  /** A result: how far it was seen working, from the evidence supplied with it only (shared/evidence.ts). Its limits
+   *  are shown beside the claim, never folded away. */
+  evidence?: ForYouEvidence
   /** Bars: the item shows figures (a stat, or a result with its progress). */
   gauges?: ForYouGauge[]
   /** The item can be listened to, as a voice message in its speaker's own voice: the voice id for GET /api/speak/stream?text=…&voice=…

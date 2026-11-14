@@ -579,7 +579,13 @@ function provider(kind, given, lastError) {
       showErr(err, e.message)
     }
   }
-  tok.oninput = () => { showSizes(false); had.hidden = true; priceBtn.hidden = false }
+  // Pasting the token is enough: the sizes come by themselves (recommended picked), one tap on Create starts it.
+  let auto = 0
+  tok.oninput = () => {
+    showSizes(false); had.hidden = true; priceBtn.hidden = false
+    clearTimeout(auto)
+    if (/^[A-Za-z0-9|._-]{40,256}$/.test(tok.value.trim())) auto = setTimeout(() => { if (!priceBtn.disabled && !priceBtn.hidden) priceBtn.onclick() }, 500)
+  }
   showSizes(false)
   const steps = [h('li', {}, W.hz1, h('a', { class: 'btn light', href: 'https://accounts.hetzner.com/signUp', target: '_blank', rel: 'noopener' }, W.hz1b)),
        h('li', {}, W.hz2, h('a', { class: 'btn light', href: 'https://console.hetzner.cloud/projects', target: '_blank', rel: 'noopener' }, W.hz2b))]

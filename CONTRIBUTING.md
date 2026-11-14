@@ -14,9 +14,16 @@ no weevboss), build the app and start it:
 
 ```sh
 npm run build
-T=$(mktemp -d); env -u WEEVILS_REMOTES HOME=$T TMUX_TMPDIR=$T WEEVILS_PORT=4410 WEEVILS_HOOK_PORT=4411 \
-  WEEVILS_ORCHESTRATOR=0 node server/index.ts
+scripts/test-copy.sh up mytest 4410     # in its own Docker container: own HOME, data, ports and tmux server
+scripts/test-copy.sh link mytest        # its login link
+scripts/test-copy.sh tmux mytest ls     # tmux inside the copy only
+scripts/test-copy.sh down mytest
 ```
+
+Never start a test copy by hand next to a real install, and never run `tmux -L weevils kill-server`: with a
+`TMUX_TMPDIR` that doesn't exist yet, tmux falls back to the real server and closes every live agent session (it
+happened twice on 2026-11-14). The launcher needs Docker and refuses to start without it; on a real install the tmux
+guard (`server/tmux-guard`, installed as `~/.local/bin/tmux`) refuses such a command anyway.
 
 `scripts/fresh.sh up` runs a complete blank install in a Docker container instead (what a newcomer sees).
 

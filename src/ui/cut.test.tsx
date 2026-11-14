@@ -7,12 +7,13 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Project, Session, Snapshot } from '../../shared/api.ts'
 
-const calls = vi.hoisted(() => ({ resume: [] as string[], dismiss: [] as string[], pushed: [] as unknown[] }))
+const calls = vi.hoisted(() => ({ resume: [] as string[], dismiss: [] as string[], pushed: [] as unknown[], setup: [] as unknown[][] }))
 
 vi.mock('../api', () => ({
   api: {
     resume: async (id: string) => (calls.resume.push(id), { id }),
     dismiss: async (id: string) => (calls.dismiss.push(id), { ok: true }),
+    setupAsk: async (...a: unknown[]) => (calls.setup.push(a), { ok: true, flow: false }),
     // Le détail ne vient pas (session distante) : la page s'appuie sur l'instantané ; les bandes d'état s'affichent.
     session: async () => Promise.reject(new Error('absent')),
     transcribeInfo: async () => ({ enabled: false }),
@@ -179,6 +180,30 @@ describe('session coupée en plein travail', () => {
     await flush()
     expect(calls.dismiss).toEqual(['s1'])
     expect(host.querySelector('.cut-band')).toBeNull()
+  })
+})
+
+describe('compte déconnecté', () => {
+  it('« me reconnecter » lance la connexion dans le fil de weevboss, sans changer d’outil ; « reprendre » reste pour après', async () => {
+    calls.setup.length = 0
+    const out = session({ tool: 'codex', interrupted: { at: NOW - MIN, reason: 'auth', detail: 'Codex needs to be signed in again' } })
+    render(<PageView page={{ kind: 'session', id: 's1' }} />, [out])
+    await flush()
+    const band = host.querySelector('.cut-band')!
+    expect(text(band.querySelector('.who'))).toBe('interrompue · compte déconnecté')
+    const sign = band.querySelector<HTMLButtonElement>('.sign-in')!
+    expect(text(sign)).toBe('me reconnecter')
+    expect(band.querySelector('.resume:not(.sign-in)')).not.toBeNull()
+    await act(async () => sign.click())
+    await flush()
+    expect(calls.setup).toHaveLength(1)
+    expect(calls.setup[0][0]).toBe('codex')
+    expect(calls.setup[0][2]).toBe(true)
+  })
+  it('les autres coupures n’ont pas de bouton de connexion', async () => {
+    render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ interrupted: { at: NOW - MIN, reason: 'quota' } })])
+    await flush()
+    expect(host.querySelector('.cut-band .sign-in')).toBeNull()
   })
 })
 

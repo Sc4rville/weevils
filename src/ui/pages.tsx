@@ -12,11 +12,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
-import { Collapse, Composer, Line, Messages, ResumeButton, StatusChar, Working, type Attachment } from './bits'
+import { Collapse, Composer, Line, Messages, StatusChar, Working, type Attachment } from './bits'
 import { Background } from './subagents'
 import { SessionArchiveAction } from './session-archive'
 import NM from '../i18n/notices'
 import { SessionQuestion } from './session-question'
+import { CutBand } from './cut-band'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Settings, effortLabel, modelLabel } from './settings'
@@ -311,28 +312,7 @@ function SessionPage({ id }: { id: string }) {
 
         <SessionRelay session={s} onError={setErr} />
 
-        {s.status === 'interrupted' && (
-          <Notice closable={false} eventId={sessionNoticeKey(s)} about={s.title} className="msg band cut-band">
-            <div className="in">
-              <span className="who">
-                {st.label}
-                {s.interrupted ? ` · ${t.cutWhy(s.interrupted.reason)}` : ''}
-              </span>
-              {s.interrupted?.detail && (
-                <details className="cut-detail">
-                  <summary className="meta">{t.cutDetail}</summary>
-                  <div className="text">{s.interrupted.detail}</div>
-                </details>
-              )}
-              <div className="cut-actions">
-                <ResumeButton session={s} stay onError={setErr} />
-                <button className="link" onClick={() => void api.dismiss(s.id).then(() => dismissNotice(sessionNoticeKey(s))).catch((e) => setErr((e as Error).message))}>
-                  {t.dismiss}
-                </button>
-              </div>
-            </div>
-          </Notice>
-        )}
+        <CutBand session={s} onError={setErr} />
         </>
       )}
 

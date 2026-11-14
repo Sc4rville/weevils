@@ -885,8 +885,9 @@ export class Setup {
 
   /** Une puce tapée (ou weevboss qui propose) : weevboss dit ce que la brique apporte, à partir de l'état réel, et fait
    * ce qui se fait sans rien demander (installer, lancer une connexion). Vrai : le champ du bas pose maintenant les
-   * questions de la brique. */
-  async ask(brick: Brick, device?: Device): Promise<boolean> {
+   * questions de la brique. again (claude, codex) : une session lue « déconnectée » à l'écran, on se reconnecte même si
+   * une connexion est enregistrée (elle a expiré). */
+  async ask(brick: Brick, device?: Device, again = false): Promise<boolean> {
     const s = await this.detect(true)
     const t = tr(M)
     const d = device ?? this.p.device
@@ -938,9 +939,9 @@ export class Setup {
         return true
       }
       case 'claude':
-        return this.askClaude(s)
+        return this.askClaude(s, again)
       case 'codex':
-        await this.askCodex(s)
+        await this.askCodex(s, again)
         return false
       case 'github':
         post(t.githubAsk(s))
@@ -979,9 +980,9 @@ export class Setup {
   }
 
   /** Claude Code : installé s'il manque, puis « claude auth login » ; le lien arrive dans le fil, le code se colle en bas. */
-  private async askClaude(s: SetupState): Promise<boolean> {
+  private async askClaude(s: SetupState, again = false): Promise<boolean> {
     const t = tr(M)
-    if (s.claude.logged) return this.say(t.claudeOk), false
+    if (s.claude.logged && !again) return this.say(t.claudeOk), false
     if (!s.claude.installed) {
       this.say(t.claudeInstalling(s.machine.host))
       const r = await this.install('claude', s)
@@ -994,9 +995,9 @@ export class Setup {
   }
 
   /** Codex : installé s'il manque, puis la connexion par code. */
-  private async askCodex(s: SetupState) {
+  private async askCodex(s: SetupState, again = false) {
     const t = tr(M)
-    if (s.codex.installed && s.codex.logged) return this.codexReady()
+    if (s.codex.installed && s.codex.logged && !again) return this.codexReady()
     if (!s.codex.installed) {
       this.say(t.codexInstalling(s.machine.host))
       const r = await this.install('codex', s)

@@ -1520,8 +1520,21 @@ describe('the user’s own ideas are never offered back as weevils’', () => {
     const fy = make({ said: () => memory })
     expect(find(fy, 'i:own')).toBeUndefined()
     expect(find(fy, 'i:new')).toBeDefined()
+    // A card the user acted on that tells them « You want… » goes too; one that only resembles their words stays.
     // A cost button acts here: not a suggestion of weevils, never filtered as one.
     expect(find(fy, 'cost:model:x')).toBeDefined()
+  })
+
+  it('a card the user acted on goes when it tells them « You want… », stays when it only resembles their words', () => {
+    const brief = (x: string) => `Prepare the ${x} in the content repo, keep it as a draft and report back.`
+    fs.writeFileSync(path.join(dir, 'foryou.json.intents.json'), JSON.stringify(['echo', 'close'].map((x) => ({ id: `brief:${x}`, brief: brief(x), status: 'requested', at: now - HOUR }))))
+    fs.writeFileSync(path.join(dir, 'foryou.json'), JSON.stringify({ rev: 1, items: [
+      { id: 'i:echo', kind: 'improve', tone: 'magic', who: 'weevils', at: now - HOUR, title: 'Launch tweet', text: 'Your demo is live, and you want to announce the launch. I suggest a tweet.', actions: [{ id: 'a1', label: 'Draft it', brief: brief('echo') }] },
+      { id: 'i:close', kind: 'improve', tone: 'magic', who: 'weevils', at: now - HOUR, title: 'First access reply', text: 'Give first access to the people who reply to your announcement tweet.', actions: [{ id: 'a1', label: 'Draft it', brief: brief('close') }] },
+    ] }))
+    const fy = make({ said: () => memory })
+    expect(find(fy, 'i:echo')).toBeUndefined()
+    expect(find(fy, 'i:close')?.work).toBeDefined()
   })
 
   it('an auto task that carries out the user’s own idea says so, a parroting why is dropped', () => {

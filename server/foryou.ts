@@ -1064,8 +1064,11 @@ export class ForYou {
       if (!idea || idea.draft) return null
       if (this.ownTask(idea).own) text = tr(M).autoOwn(idea.title)
     }
-    // Published before the rule, or the user said it since: their own idea is not shown back as weevils' (unless they already acted on it).
-    if (this.proposal(i) && this.ownStored(i) && !i.actions?.some(a => this.actionIntent(i, a))) return null
+    // Published before the rule, or the user said it since: their own idea is not shown back as weevils'. A card they
+    // acted on stays when it only resembles what they said (the tap itself sends its brief to weevboss), never when it
+    // tells them « You want… ».
+    const own = this.proposal(i) ? this.ownStored(i) : null
+    if (own && (own === 'echo' || !i.actions?.some(a => this.actionIntent(i, a)))) return null
     const out: ForYouItem = { id: i.id, kind: i.kind, tone: i.tone, at: i.at, who: i.who, text }
     if (i.visualProposal) out.visualProposal = i.visualProposal
     if (i.composition) out.composition = i.composition
@@ -1449,13 +1452,13 @@ export class ForYou {
     return list
   }
   private said: { at: number; list: string[] } | null = null
-  private ownSeen = new Map<string, boolean>()
+  private ownSeen = new Map<string, 'echo' | 'restates' | null>()
 
-  private ownStored(i: Stored): boolean {
+  private ownStored(i: Stored): 'echo' | 'restates' | null {
     const said = this.saidNow()
     const key = `${i.id}\n${i.title ?? ''}\n${i.text}`
     let own = this.ownSeen.get(key)
-    if (own === undefined) this.ownSeen.set(key, (own = !!ownIdea({ title: i.title, text: i.text }, said)))
+    if (own === undefined) this.ownSeen.set(key, (own = ownIdea({ title: i.title, text: i.text }, said)?.why ?? null))
     return own
   }
 

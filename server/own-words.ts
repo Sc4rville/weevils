@@ -45,6 +45,12 @@ function stem(w: string): string {
 /** Two words are the same when equal, or when one starts the other over at least 5 letters (announce / announcement). */
 const same = (a: string, b: string) => a === b || (Math.min(a.length, b.length) >= 5 && (a.startsWith(b) || b.startsWith(a)))
 
+// i18n-ignore: clause boundaries, recognition only
+const CLAUSE = /,\s+|\s+(?:and|but|so|while|whereas|et|mais|donc|alors que|tandis que)\s+/iu
+
+/** Sentences, and the clauses inside them: « Your demo is live, and you keep ideas in the repo » is two claims. */
+const clauses = (s: string) => sentences(s).flatMap((x) => [x, ...x.split(CLAUSE)])
+
 const sentences = (s: string) =>
   s
     .split(/(?<=[.!?;:])\s+|\n+/u)
@@ -58,11 +64,12 @@ function shared(a: Set<string>, b: Set<string>): number {
 }
 
 /**
- * The source one sentence of `text` restates, or null: at least 3 content words in common, half of the sentence's
- * and a quarter of the source sentence's. Compared sentence to sentence, so a long message does not match by volume.
+ * The source one sentence or clause of `text` restates, or null: at least 3 content words in common, half of the
+ * clause's and a quarter of the source sentence's. Compared to each source sentence, so a long message does not match
+ * by volume.
  */
 export function restated(text: string, sources: readonly string[]): string | null {
-  const mine = sentences(text).map(contentWords).filter((w) => w.size >= 3)
+  const mine = clauses(text).map(contentWords).filter((w) => w.size >= 3)
   if (!mine.length) return null
   for (const src of sources) {
     for (const part of sentences(src)) {

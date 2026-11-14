@@ -34,6 +34,11 @@ describe('own words', () => {
     expect(ownIdea({ title: 'Pick your launch excerpt', text: 'Your four weevils films are finished. I suggest preparing a shortlist of three excerpts, with timestamps.' }, memory)).toBeNull()
   })
 
+  it('a clause restating the memory is caught inside a longer sentence', () => {
+    const said = ['Keeps raw content ideas in the private Sc4rville/content repo, organised by project.']
+    expect(restated('You keep raw ideas in the content repo and want your videos recorded by Friday, so an index would help.', said)).toBe(said[0])
+  })
+
   it('a long message does not match a short sentence by sheer volume', () => {
     const long = 'Ok so today I looked at the installer, the landing page, the trailer, the tests, the release notes, the pricing, the docs and the screenshots, and the tweet thread for the launch with friends.'
     expect(restated('The installer link on the landing page is broken.', [long])).toBeNull()

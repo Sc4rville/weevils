@@ -30,6 +30,8 @@ export default defineMessages({
     unknownMachine: (id: string) => `machine inconnue : ${id}`,
     sessionNotFound: 'session introuvable',
     emptyMessage: 'message vide',
+    /** A test session (its brief starts with [test]) tried to write to weevboss. */
+    testNotInBoss: 'un test n’écrit jamais dans le fil de weevboss',
     // Keeps its opening words: src/ui/outbox-status.tsx recognises this refusal by them.
     unmanaged: 'Cette session a été ouverte ailleurs, hors de weevils : je peux la lire, pas lui écrire. Ouvre-en une depuis le + du projet pour lui parler d’ici.',
     noScreen: 'weevils ne joint pas cette session pour l’instant',
@@ -91,6 +93,7 @@ export default defineMessages({
     unknownMachine: (id: string) => `unknown machine: ${id}`,
     sessionNotFound: 'session not found',
     emptyMessage: 'empty message',
+    testNotInBoss: 'a test never writes to weevboss’s thread',
     unmanaged: 'This session was opened elsewhere, outside weevils: I can read it but not write to it. Start one from the project’s + to talk to it here.',
     noScreen: 'weevils can’t reach this session right now',
     escWouldClose: 'that would close the session: pick an answer instead',

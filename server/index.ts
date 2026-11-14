@@ -4,6 +4,7 @@ import { ThinkStore } from './think.ts'
 import { previewTarget } from './preview-target.ts'
 import { Outbox, OutboxError } from './outbox.ts'
 import { executeOutbox, outboxRoute } from './outbox-http.ts'
+import { bossDoor } from './boss-door.ts'
 import OM from './i18n/outbox.ts'
 import { rawEngineeringNotice } from '../shared/feed-text.ts'
 import FY from './i18n/foryou.ts'
@@ -284,11 +285,24 @@ const loginLink = (req: http.IncomingMessage) => {
 }
 
 const cookieToken = (req: http.IncomingMessage) => /(?:^|;\s*)wv=([\w-]+)/.exec(req.headers.cookie ?? '')?.[1]
-const authed = (req: http.IncomingMessage) => {
-  if (isLocal(req)) return true
+/** The cookie names a browser signed in with the access code (or claimed by a real browser on this machine). */
+const hasDevice = (req: http.IncomingMessage) => {
   const t = cookieToken(req)
   return !!t && tokens.has(t)
 }
+const authed = (req: http.IncomingMessage) => isLocal(req) || hasDevice(req)
+/** A new device token, as the cookie of this browser. */
+const issueDevice = (req: http.IncomingMessage, res: http.ServerResponse) => {
+  const t = crypto.randomBytes(24).toString('base64url')
+  tokens.add(t)
+  saveTokens()
+  // Secure seulement derrière HTTPS (Caddy envoie x-forwarded-proto) : sinon le navigateur jetterait le cookie en http simple.
+  const secure = req.headers['x-forwarded-proto'] === 'https' ? ' Secure;' : ''
+  res.setHeader('set-cookie', `wv=${t}; Path=/; HttpOnly;${secure} SameSite=Lax; Max-Age=31536000`)
+}
+
+// Who may speak as the user into weevboss's thread: a signed-in browser, never a script on this machine (server/boss-door.ts).
+const door = bossDoor({ hasDevice, isBossTarget: (id) => w.isBossTarget(id), sourceAuthor, refusal: () => tr(M).bossUserOnly })
 
 // ---------------------------------------------------------------- utilitaires
 
@@ -442,16 +456,18 @@ const routes: [string, RegExp, Handler][] = [
       await new Promise((r) => setTimeout(r, 800))
       return json(res, 401, { error: tr(M).wrongCode })
     }
-    const t = crypto.randomBytes(24).toString('base64url')
-    tokens.add(t)
-    saveTokens()
-    // Secure seulement derrière HTTPS (Caddy envoie x-forwarded-proto) : sinon le navigateur jetterait le cookie en http simple.
-    const secure = req.headers['x-forwarded-proto'] === 'https' ? ' Secure;' : ''
-    res.setHeader('set-cookie', `wv=${t}; Path=/; HttpOnly;${secure} SameSite=Lax; Max-Age=31536000`)
+    issueDevice(req, res)
     claimSetup()
     json(res, 200, { ok: true })
   }],
-  ['GET', /^\/api\/me$/, (req, res) => json(res, 200, { authed: authed(req) })],
+  // A real browser on this machine opened the app without the login link: it becomes a device, so the user can write
+  // to weevboss from it. Never a script (no browser user agent) nor an automated browser (navigator.webdriver, headless).
+  ['POST', /^\/api\/login\/local$/, (req, res) => {
+    if (!door.localClaimAllowed(req)) return json(res, 403, { error: tr(M).bossUserOnly })
+    if (!hasDevice(req)) issueDevice(req, res)
+    json(res, 200, { ok: true })
+  }],
+  ['GET', /^\/api\/me$/, (req, res) => json(res, 200, { authed: authed(req), device: hasDevice(req) })],
   ['POST', /^\/api\/logout$/, (req, res) => {
     const t = cookieToken(req)
     if (t) {
@@ -504,13 +520,15 @@ const routes: [string, RegExp, Handler][] = [
     d ? json(res, 200, d) : json(res, 404, { error: tr(M).subagentNotFound })
   }],
   ['GET', /^\/api\/sessions\/([^/]+)\/screen$/, async (_req, res, _u, [id]) => json(res, 200, { screen: await w.screen(decodeURIComponent(id)) })],
-  ['POST', /^\/api\/sessions\/([^/]+)\/send$/, async (req, res, _u, [id]) => {
+  ['POST', /^\/api\/sessions\/([^/]+)\/send$/, async (req, res, u, [id]) => {
     const body = await readBody(req)
+    door.guard(req, u.pathname, body)
     // « from » (weevils, ou un auteur déclaré) n'est accepté que d'une requête locale (l'orchestrateur, la commande weevils), jamais du téléphone.
     json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), trustedFrom(req, body, sourceAuthor), trustedSource(req,body,sourceAuthor)))
   }],
-  ['POST', /^\/api\/sessions\/([^/]+)\/attach$/, async (req, res, _u, [id]) => {
+  ['POST', /^\/api\/sessions\/([^/]+)\/attach$/, async (req, res, u, [id]) => {
     const body = await readBody(req, 24 << 20)
+    door.guard(req, u.pathname, body)
     const files = Array.isArray(body.files) ? body.files.filter((f: any) => typeof f?.data === 'string').map((f: any) => ({ name: String(f.name ?? 'photo'), type: String(f.type ?? 'image/jpeg'), data: String(f.data) })) : []
     json(res, 200, await w.attach(decodeURIComponent(id), String(body.text ?? ''), files))
   }],
@@ -677,9 +695,12 @@ const routes: [string, RegExp, Handler][] = [
     const text = w.bossRecall(decodeURIComponent(id))
     json(res, text === null ? 404 : 200, text === null ? { error: tr(M).unknownRoute } : { text })
   }],
-  ['POST', /^\/api\/main$/, async (req, res) => {
+  ['POST', /^\/api\/main$/, async (req, res, u) => {
     const body = await readBody(req)
-    json(res, 200, await w.sendMain(String(body.text ?? '').trim()))
+    door.guard(req, u.pathname, body)
+    // A signed post (an agent, the weevils command) keeps its author, also when the outbox replays it.
+    const { text, origin } = door.text(req, body)
+    json(res, 200, await w.sendMain(text, undefined, origin))
   }],
   ['GET', /^\/api\/sessions\/([^/]+)\/model-controls$/, async (_req,res,_u,[id]) => json(res,200,await w.modelControls(decodeURIComponent(id)))],
   ['POST', /^\/api\/sessions\/([^/]+)\/model-controls$/, async (req,res,_u,[id]) => json(res,200,await w.modelControls(decodeURIComponent(id),await readBody(req)))],
@@ -696,10 +717,12 @@ const routes: [string, RegExp, Handler][] = [
   ['GET', /^\/api\/attachments$/, (_req, res, url) => {
     serveAttachment(res, url.searchParams.get('path') ?? '', [INBOX_DIR, path.join(DATA_DIR, 'inbox')])
   }],
-  ['POST', /^\/api\/main\/attach$/, async (req, res) => {
+  ['POST', /^\/api\/main\/attach$/, async (req, res, u) => {
     const body = await readBody(req, 48 << 20)
+    door.guard(req, u.pathname, body)
+    const { text, origin } = door.text(req, body)
     const files = Array.isArray(body.files) ? body.files.filter((f: any) => typeof f?.data === 'string').map((f: any) => ({ name: String(f.name ?? ''), type: String(f.type ?? ''), data: String(f.data) })) : []
-    json(res, 200, await w.attachMain(String(body.text ?? '').trim(), files))
+    json(res, 200, await w.attachMain(text, files, origin))
   }],
   ['POST', /^\/api\/import$/, (req, res) => receiveImport(req, res)],
   ['GET', /^\/api\/push$/, (_req, res) => json(res, 200, { enabled: w.push.enabled, publicKey: w.push.publicKey, devices: w.push.count })],
@@ -937,6 +960,7 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
     // Le Raccourci Siri n'a pas de cookie : son jeton personnel n'ouvre que le tour de parole et le son qui va avec.
     const viaShortcut = /^\/api\/voice\/(turn|clip\/)/.test(url.pathname) && shortcutAuthed(req, url)
     if (!PUBLIC.has(url.pathname) && !viaShortcut && !authed(req)) return json(res, 401, { error: tr(M).signInRequired })
+    if (!door.tapAllowed(req, req.method, url.pathname) || !door.voiceAllowed(req, url.pathname, viaShortcut)) return json(res, 403, { error: tr(M).bossUserOnly })
     if (req.method === 'GET' && url.pathname === '/api/outbox/capabilities') return json(res, 200, { enabled: true, version: 1 })
     const receipt = /^\/api\/outbox\/([a-zA-Z0-9_-]{16,120})$/.exec(url.pathname)
     if (req.method === 'GET' && receipt) {
@@ -949,6 +973,7 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
       const body = await readBody(req, /\/attach$/.test(url.pathname) ? 48 << 20 : 1 << 20)
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw new OutboxError(400, tr(OM).invalid)
       if (!/\/act$/.test(url.pathname) && !String(body.text ?? '').trim() && !(Array.isArray(body.files) && body.files.length)) throw new OutboxError(400, tr(OM).invalid)
+      door.guard(req, url.pathname, body) // checked here, on the request itself: the replay is this machine's
       const from = trustedFrom(req, body, sourceAuthor)
       const source = trustedSource(req,body,sourceAuthor)
       delete body.from
@@ -974,14 +999,16 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
 const live = liveUpgrade({
   key: geminiKey,
   enabled: () => ORCHESTRATOR,
-  sendMain: (text) => w.sendMain(text),
+  sendMain: (text) => w.sendMain(text, undefined, 'live'),
   waitMainReply: (since, ms) => w.waitMainReply(since, ms),
   recent: () => w.recentMain(8),
   user,
 })
 server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url ?? '/', 'http://local')
-  if (url.pathname !== '/api/live' || !authed(req) || !sameOrigin(req)) {
+  // Live voice speaks as the user: a signed-in browser only, never a script on this machine (2026-11-14: a test played
+  // recorded questions into it). A test copy opens it with WEEVILS_ALLOW_LOCAL_VOICE=1.
+  if (url.pathname !== '/api/live' || !door.liveAllowed(req, authed(req)) || !sameOrigin(req)) {
     socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
     return
   }

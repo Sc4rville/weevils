@@ -2,6 +2,7 @@ import type { ModelControls, ModelSelection } from '../shared/model-controls'
 // Client de weevilsd : appels REST + flux temps réel (SSE). Aucune donnée fictive.
 
 import { deliver, awaitDelivery } from './outbox'
+import { automatedBrowser, automatedHeaders } from './automated'
 import OM from './i18n/outbox'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AskResult, Brick, Device } from '../shared/setup.ts'
@@ -27,7 +28,7 @@ let onUnauthorized: (() => void) | null = null
 async function call<T>(method: string, url: string, body?: unknown, messageId?: string, signal?: AbortSignal, locale: Lang = getLang(), expectedStatus?: number): Promise<T> {
   const res = await fetch(url, {
     method,
-    headers: { ...localeHeaders(locale), ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(messageId ? { 'Idempotency-Key': messageId } : {}) },
+    headers: { ...localeHeaders(locale), ...automatedHeaders(), ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(messageId ? { 'Idempotency-Key': messageId } : {}) },
     signal,
     body: body !== undefined ? JSON.stringify(body) : undefined,
     credentials: 'same-origin',
@@ -89,7 +90,9 @@ export const api = {
   thinkLayout: (body: unknown) => call<{revision:number;positions:{id:string;x:number;y:number}[];evidence:string[]}>('POST','/api/think/organise',body),
   think: () => call<import('../shared/think').ThinkBoard>('GET','/api/think'),
   saveThink: (board: import('../shared/think').ThinkBoard) => call<import('../shared/think').ThinkBoard>('PUT','/api/think',board),
-  me: () => call<{ authed: boolean }>('GET', '/api/me'),
+  me: () => call<{ authed: boolean; device?: boolean }>('GET', '/api/me'),
+  /** This machine's own browser, opened without the login link, becomes a device (to write to weevboss). */
+  claimLocal: () => call<{ ok: true }>('POST', '/api/login/local', {}),
   login: (secret: string) => call<{ ok: true }>('POST', '/api/login', { secret }),
   logout: () => call<{ ok: true }>('POST', '/api/logout', {}),
   foryouFormats: () => call<{ proposal: import('../shared/foryou').ForYouItem | null }>('GET', '/api/foryou/formats'),
@@ -231,7 +234,11 @@ export function useLive() {
     const m = /#k=([\w-]+)/.exec(location.hash)
     const start = m
       ? (history.replaceState(null, '', location.pathname), api.login(m[1]).then(() => ({ authed: true }), () => api.me()))
-      : api.me()
+      : api.me().then(async (r) => {
+        // Trusted as this machine but not a device yet: claim one, or weevboss would refuse what the user writes.
+        if (r.authed && r.device === false && !automatedBrowser()) await api.claimLocal().catch(() => undefined)
+        return r
+      })
     start.then((r) => setAuthed(r.authed)).catch(() => setOffline(true))
     return () => {
       onUnauthorized = null

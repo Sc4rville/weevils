@@ -72,3 +72,23 @@ export function trustedFrom(req: http.IncomingMessage, body: { from?: unknown; s
 export function trustedSource(req:http.IncomingMessage, body:{sourceThread?:unknown}|null|undefined, sourceAuthor:(id:string)=>string|undefined):string|undefined {
   return isLocal(req) && typeof body?.sourceThread==='string' && !!sourceAuthor(body.sourceThread) ? body.sourceThread : undefined
 }
+
+/**
+ * Driven by a script: the app sends « x-weevils-automated: 1 » (« ?automated=1 » on its websocket) when the browser
+ * says it is automated (navigator.webdriver: Playwright, Puppeteer, Selenium). A headless browser says so in its user agent.
+ */
+export function automated(req: http.IncomingMessage): boolean {
+  if (header(req, 'x-weevils-automated') === '1') return true
+  if (/HeadlessChrome\//.test(header(req, 'user-agent') ?? '')) return true
+  return /[?&]automated=1(?:&|$)/.test(req.url ?? '')
+}
+
+/**
+ * The user's own voice (what he writes or says to weevboss, his taps that speak for him): a browser signed in with the
+ * access code (its wv cookie names a known device) and not automated. A loopback request is trusted for everything
+ * else, but never speaks as the user: on 2026-11-14 test scripts on this machine sent questions to weevboss as if
+ * the user had asked them. Pure: the caller says whether the cookie names a known device.
+ */
+export function userVoice(req: http.IncomingMessage, device: boolean): boolean {
+  return device && !automated(req)
+}

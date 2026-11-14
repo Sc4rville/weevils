@@ -15,6 +15,8 @@ export default defineMessages({
     unknownRoute: 'route inconnue',
     /** Siri asked for a voice clip that is no longer kept. */
     clipExpired: 'son expiré',
+    /** A script or an automated browser on this machine tried to write to weevboss as the user. */
+    bossUserOnly: 'toi seul peux écrire à weevboss : les tests passent par une copie de test',
   },
   en: {
     bodyTooLarge: 'request too large',
@@ -28,5 +30,6 @@ export default defineMessages({
     signInRequired: 'sign-in required',
     unknownRoute: 'unknown route',
     clipExpired: 'clip expired',
+    bossUserOnly: 'only you can write to weevboss: tests and scripts use a test copy',
   },
 })

@@ -39,6 +39,7 @@ import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
 import { BOSS_DIR, BOSS_MODELS, BOSS_TURNS, BossTurns, orchTranscriptsDir } from './boss-turns.ts'
+import { recordOrigin, type BossOrigin } from './boss-origins.ts'
 import { Ledger } from './boss-ledger.ts'
 import { claudeHaiku } from './fast.ts'
 import type { Memory } from './memory.ts'
@@ -1394,6 +1395,13 @@ export class Weevils {
     return this.resolveId(id)
   }
 
+  /** A message to this id lands in weevboss's thread: '__main', its current conversation or an older one. */
+  isBossTarget(id: string): boolean {
+    if (id === '__main' || id === 'turns') return true
+    const real = this.resolveId(id)
+    return real === this.bossConversation() || (!!this.orchestratorId && real === this.orchestratorId) || this.isBossThread(real)
+  }
+
   private resolveId(id: string) {
     const p = this.panes.find((x) => x.name === id && x.sessionId)
     return p?.sessionId ?? id
@@ -1683,6 +1691,8 @@ export class Weevils {
     const author = normalizeFrom(from)
     // Vide avant la signature : « [from:weevboss] » seul n'est pas un message.
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
+    // A test (its brief starts with [test]) never writes into weevboss's thread, whoever relays it.
+    if (this.isBossTarget(id) && (isTestBrief(text) || (sourceThreadId && isTestBrief(this.store.get(this.resolveId(sourceThreadId))?.firstPrompt)))) throw new OutboxError(409, tr(M).testNotInBoss)
     const remote = this.remoteFor(id)
     // First brief only: a local session with no message from the user (or an agent) yet. A remote session got it at creation.
     if (!remote) {
@@ -1786,11 +1796,11 @@ export class Weevils {
   }
 
   /** Fichiers (photos, PDF, zip…) pour l'orchestrateur : déposés dans INBOX_DIR/<date>-<nom>, le message dit « (fichier : /chemin) ». */
-  async attachMain(text: string, files: { name: string; type: string; data: string }[]) {
-    if (!files.length) return this.sendMain(text)
+  async attachMain(text: string, files: { name: string; type: string; data: string }[], origin: BossOrigin = 'server') {
+    if (!files.length) return this.sendMain(text, undefined, origin)
     const chosen = this.relay?.executionTool?.(preferredTool())
     if ((chosen === null && (!this.setup || providerReady())) || (chosen && this.bossWorking(chosen === 'claude' ? 'codex' : 'claude'))) throw new OutboxDeferred(this.relay?.retryAt() ?? Date.now() + 60_000, tr(OutboxM).providerWaiting)
-    return this.sendMain(withFiles(text, saveInbox(INBOX_DIR, files)))
+    return this.sendMain(withFiles(text, saveInbox(INBOX_DIR, files)), undefined, origin)
   }
 
   async key(id: string, key: string) {
@@ -2301,20 +2311,23 @@ export class Weevils {
   /** L'utilisateur parle à weevboss : le message part dans la session Claude de l'orchestrateur (lancée ou reprise au besoin).
    * « brief » : la marche à suivre d'un bouton de branchement, jointe au bloc ⟦weevils …⟧ (jamais affichée). */
   private bossSendLock: Promise<unknown> = Promise.resolve()
-  async sendMain(text: string, brief?: string): Promise<{ id: string }> {
+  async sendMain(text: string, brief?: string, origin: BossOrigin = 'server'): Promise<{ id: string }> {
     const run = () => {
-      const next = this.bossSendLock.catch(() => undefined).then(() => this.sendMainOne(text, brief))
+      const next = this.bossSendLock.catch(() => undefined).then(() => this.sendMainOne(text, brief, origin))
       this.bossSendLock = next
       return next
     }
     return this.foryou ? this.foryou.directRequest(text, undefined, run) : run()
   }
 
-  private async sendMainOne(text: string, brief?: string) {
+  private async sendMainOne(text: string, brief?: string, origin: BossOrigin = 'server') {
     if (isModelControl(text)) return {id:this.bossConversation() ?? '__main',control:'model' as const}
     if (/^\/(?:model|effort)\s+/i.test(text.trim())) { await this.commandMain(text);return {id:this.bossConversation() ?? '__main',control:'model' as const} }
     if (!ORCHESTRATOR) throw new Error(tr(M).orchNotHere)
     if (!text.trim()) throw new Error(tr(M).emptyMessage)
+    // A test never writes into weevboss's thread (CONTRIBUTING.md: a test brief starts with [test]).
+    if (isTestBrief(text)) throw new OutboxError(409, tr(M).testNotInBoss)
+    recordOrigin(BOSS_DIR, text, origin)
     // A new weevboss conversation gets it once; the ongoing one already has it.
     // Stateless turns never remember it: every turn gets it.
     text = withAppLocale(text, !!this.bossTurns || !this.bossConversation())

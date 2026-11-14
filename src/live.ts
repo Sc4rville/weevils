@@ -1,6 +1,7 @@
 // Live voice mode, phone side (server: server/live.ts). The microphone goes out as 16 kHz PCM over /api/live, Gemini's
 // voice comes back as 24 kHz PCM and plays at once; when the server says "interrupted" (the user spoke over it), what
 // is still queued is dropped. Nothing here ever sees a key.
+import { automatedBrowser } from './automated'
 
 export type LiveState = 'connecting' | 'listening' | 'speaking' | 'thinking'
 /** Why a live session ended (or never started): the server's words, plus the phone's own (mic, network). */
@@ -60,7 +61,7 @@ export class LiveSession {
     this.h.state('connecting')
     if (!ctx) return this.end('mic')
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const ws = new WebSocket(`${proto}//${location.host}/api/live?lang=${encodeURIComponent(lang)}`)
+    const ws = new WebSocket(`${proto}//${location.host}/api/live?lang=${encodeURIComponent(lang)}${automatedBrowser() ? '&automated=1' : ''}`)
     ws.binaryType = 'arraybuffer'
     this.ws = ws
     ws.onmessage = (e) => (typeof e.data === 'string' ? this.message(JSON.parse(e.data)) : this.play(e.data as ArrayBuffer))

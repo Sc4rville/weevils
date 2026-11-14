@@ -14,6 +14,8 @@
 # apart: it runs in a container that mounts only its own folder (read-write) and the dependencies (read-only). The
 # live tmux socket, ~/.config/weevils, ~/.claude and the live data simply don't exist in there. No Docker, no copy.
 # Inside, every tmux call still names the copy's own socket by absolute path, and kill-server, -L and -S are refused.
+# WEEVILS_ALLOW_LOCAL_VOICE=1: scripts may write to the copy's weevboss and open its live voice as the user, which the
+# live weevils refuses to anything but a signed-in browser.
 set -euo pipefail
 
 ROOT=${WEEVILS_TEST_COPIES:-/tmp/weevils-test-copies}
@@ -64,7 +66,7 @@ case "$cmd" in
       -v "$DIR:/copy" -v "$deps:/copy/app/node_modules:ro" \
       -e HOME=/copy -e TMUX_TMPDIR=/copy -e LANG=C.UTF-8 -e WEEVILS_LANG="${WEEVILS_LANG:-en}" \
       -e WEEVILS_PORT="$port" -e WEEVILS_HOOK_PORT=$((port + 1)) -e WEEVILS_ORCHESTRATOR="${WEEVILS_COPY_ORCHESTRATOR:-0}" -e WEEVILS_MACHINE=test-copy \
-      -e WEEVILS_HOST=0.0.0.0 \
+      -e WEEVILS_HOST=0.0.0.0 -e WEEVILS_ALLOW_LOCAL_VOICE=1 \
       -w /copy/app "$IMAGE" node server/index.ts >/dev/null
     echo "test copy $name: http://127.0.0.1:$port · folder $DIR · container $BOX"
     ;;

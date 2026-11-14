@@ -97,12 +97,15 @@
   .note { font-size: 14px; line-height: 1.4; opacity: .8; margin-top: 12px; }
   footer.band { background: #000; color: #fff; }
   footer p { font-size: 14px; opacity: .85; }
+  #backbtn { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 10px; z-index: 50; min-height: 48px; min-width: 104px; padding: 0 18px; border: 2px solid #fff; border-radius: 99px; background: #000; color: #fff; font: 700 17px var(--font); box-shadow: 0 2px 10px rgba(0,0,0,.25); cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  body.hasback header.band { padding-top: calc(70px + env(safe-area-inset-top, 0px)); }
   [hidden] { display: none !important; }
   body.deep header h1, body.deep header .lead { display: none; }
   @media (min-width: 760px) { :root { --pad: 32px; } }
 </style>
 </head>
 <body>
+<button id="backbtn" type="button" hidden></button>
 <header class="band">
   <div class="wrap">
     <div class="brand"><img src="/logo.svg" alt="">weevils<button class="lang" id="lang" type="button"></button></div>
@@ -181,6 +184,7 @@ const W = FR ? {
   openHere: 'L’ouvrir ici', noSeal: 'Ton weevils répond ici. Ton code d’accès est dans ~/weevils-install.log sur la machine.',
   failTitle: 'L’installation s’est arrêtée', tryAgain: 'Réessayer',
   backTo: 'Je retrouve ton installation…',
+  back: '← Retour',
   existingTitle: (n) => n > 1 ? 'Tu as déjà des serveurs weevils sur ce compte' : 'Tu as déjà un serveur weevils sur ce compte',
   existingSub: 'Continue dessus plutôt que d’en payer un nouveau.', continueBtn: 'Continuer sur celui-ci', another: 'Créer quand même un autre serveur',
 
@@ -264,6 +268,7 @@ const W = FR ? {
   openHere: 'Open it here', noSeal: 'Your weevils answers here. Your access code is in ~/weevils-install.log on the machine.',
   failTitle: 'The install stopped', tryAgain: 'Try again',
   backTo: 'Getting back to your install…',
+  back: '← Back',
   existingTitle: (n) => n > 1 ? 'You already have weevils servers on this account' : 'You already have a weevils server on this account',
   existingSub: 'Continue on it instead of paying for a new one.', continueBtn: 'Continue on this one', another: 'Create another server anyway',
 
@@ -327,7 +332,7 @@ const h = (tag, attrs = {}, ...kids) => {
   return el
 }
 const band = (cls, ...kids) => h('section', { class: `band ${cls}` }, h('div', { class: 'wrap' }, ...kids))
-const show = (...sections) => { document.body.classList.toggle('deep', show.deep); show.deep = true; app.replaceChildren(...sections.filter(Boolean)); scrollTo({ top: 0 }) }
+const show = (...sections) => { setBack(null); document.body.classList.toggle('deep', show.deep); show.deep = true; app.replaceChildren(...sections.filter(Boolean)); scrollTo({ top: 0 }) }
 const errBox = () => h('div', { class: 'err', hidden: true, role: 'alert' })
 let HOSTNAME = 'Hetzner'
 const showErr = (box, code) => { box.textContent = (W.e[code] || W.e[code?.replace?.(/^http_\d+$/, 'host_down')] || code || W.e.network).replace(/\{host\}/g, HOSTNAME); box.hidden = false }
@@ -403,9 +408,38 @@ function step(name) {
   try {
     const url = location.pathname + location.search + (name ? `#${name}` : '')
     // A new step: a new entry, so Back (the button or the phone's gesture) returns to the one before.
-    if (name && location.hash !== `#${name}`) history.pushState({ wv: 1 }, '', url)
-    else if (!name && !/#job=/.test(location.hash)) history.replaceState(history.state, '', url)
+    if (name && replaceStep) history.replaceState({ ...history.state, wv: 1, form: name, prog: 0 }, '', url)
+    else if (name && history.state?.form !== name) {
+      if (location.hash === `#${name}`) history.replaceState({ ...history.state, wv: 1, form: name, prog: 0 }, '', url)
+      else history.pushState({ wv: 1, doc: DOC, pushed: 1, form: name }, '', url)
+    }
+    else if (!name) history.replaceState({ ...history.state, wv: 1, form: '', prog: 0 }, '', url)
   } catch {}
+}
+/** The Back button (fixed, top left, on every step after the first): exactly one step back. When the step before
+ * is an entry this page made, it is the same as the phone's gesture (history.back); otherwise (a link opened fresh,
+ * a reload) the screen's own step before, put in place of this entry. */
+const DOC = Math.random().toString(36).slice(2)
+let replaceStep = false, backFn = null
+const backBtn = document.getElementById('backbtn')
+function setBack(fn) { backFn = fn; backBtn.textContent = W.back; backBtn.hidden = !fn; document.body.classList.toggle('hasback', !!fn) }
+backBtn.onclick = () => {
+  if (!backFn) return
+  if (history.state?.doc === DOC && history.state.pushed) return history.back()
+  const fn = backFn
+  replaceStep = true
+  try { fn() } finally { replaceStep = false }
+}
+/** A setup just started from its form: the progress gets its own entry, so Back returns to the form. */
+function ahead() { try { history.pushState({ wv: 1, doc: DOC, pushed: 1, prog: 1 }, '', location.href) } catch {} }
+/** The step before a setup's progress: its form, filled as it was (a new setup from there; the Hetzner token finds the
+ * server weevils made, « Continue on this one », never a second server without asking). */
+function formOf(kind) {
+  watching++
+  const s = savedJob(), given = s && s.kind === kind ? s : null
+  if (kind === 'ssh') return ssh(given, true)
+  if (kind === 'pc') return computer ? home() : pc(true)
+  return provider(HOSTS[kind] ? kind : 'hetzner', given, '', true)
 }
 /** What was typed on a step, kept when going back and forth. Secrets (token, password, key) stay in memory only. */
 const draft = (() => { try { return { hetzner: {}, ...JSON.parse(localStorage.getItem('wvdraft') || '{}'), } } catch { return { hetzner: {} } } })()
@@ -415,9 +449,8 @@ const saveDraft = () => { try { localStorage.setItem('wvdraft', JSON.stringify({
 function toStart() {
   watching++
   const s = savedJob()
-  // A setup already started is never redone: back lands on it again (its progress, or the finished weevils).
-  if (s?.started || s?.done) return route(keep(s))
-  if (s) { try { localStorage.removeItem('wvget') } catch {} }
+  // One that never started is dropped; one that did stays kept (a reload or its link brings its progress back).
+  if (s && !s.started && !s.done) { try { localStorage.removeItem('wvget') } catch {} }
   home()
 }
 const savedStep = () => {
@@ -515,14 +548,14 @@ async function continueOn(kind, job, token, s, btn, err) {
     // Still installing: this page now follows that setup (its key opens the link at the end).
     if (r.attached && r.sid !== job.sid) job.sid = r.sid
     keep(job)
-    progress(job)
+    progress(job, { push: true })
   } catch (e) { showErr(err, e.message); btn.disabled = false; btn.textContent = label }
 }
 function provider(kind, given, lastError, reopened) {
   // A setup from a host this page no longer offers: back to the choices.
   if (!HOSTS[kind]) return home()
   if (!given && !reopened) hit('chose', kind)
-  if (!given) step(kind)
+  if (!given || reopened) step(kind)
   HOSTNAME = HOSTS[kind]
   const d = draft.hetzner
   let job = given, token = '', size = d.size || 'recommended', sizes = [], another = false
@@ -581,7 +614,7 @@ function provider(kind, given, lastError, reopened) {
       await api(`/api/${kind}/create`, { sid: job.sid, view: job.view, token, size, region: REGION, another, v: 2 })
       tok.value = ''
       d.token = ''
-      progress(job)
+      progress(job, { push: true })
     } catch (e) {
       createBtn.disabled = false
       // Made in the meantime (another tab, or a page cut off): the list, never a second server without asking.
@@ -605,6 +638,7 @@ function provider(kind, given, lastError, reopened) {
   show(band('b1', h('h2', {}, W.hzTitle),
     h('ol', { class: 'how' }, ...steps, h('li', {}, W.hz3, h('label', {}, W.token), tok, priceBtn, had, pick, note, createBtn)),
     err))
+  setBack(() => toStart())
   if (lastError) showErr(err, lastError)
   // Back here (Back, or the phone's gesture): the token typed before, and its sizes again.
   if (d.token) { tok.value = d.token; if (!lastError) priceBtn.onclick() }
@@ -613,7 +647,7 @@ function provider(kind, given, lastError, reopened) {
 // --- (b) your VPS
 function ssh(given, reopened) {
   if (!given && !reopened) hit('chose', 'ssh')
-  if (!given) step('vps')
+  if (!given || reopened) step('vps')
   let job = given
   const d = draft.vps
   const err = errBox()
@@ -654,13 +688,14 @@ function ssh(given, reopened) {
       pw.value = ''
       key.value = ''
       d.pw = d.key = ''
-      progress(job)
+      progress(job, { push: true })
     } catch (e) { showErr(err, e.message); go.disabled = false }
   }
   show(band('b2', h('h2', {}, W.vpsTitle), h('p', {}, W.vpsIntro),
     h('label', {}, W.host), host,
     h('div', { class: 'row' }, h('div', {}, h('label', {}, W.user), user), h('div', { style: 'width:96px' }, h('label', {}, W.port), port)),
     pwBlock, keyBlock, toggle, go, err))
+  setBack(() => toStart())
 }
 
 // --- (c) a computer
@@ -675,7 +710,8 @@ function pcBox(here) {
       const s = savedJob()
       job = s && s.kind === 'pc' && s.command ? s : await newJob('pc')
       code.textContent = job.command
-      watch(job, () => progress(job))
+      // Back here from its install: the same command, no jump forward (the install stays one step ahead).
+      if (!job.started) watch(job, () => progress(job, { push: true }))
     } catch (e) { showErr(err, e.message) }
   })()
   let chose = !here
@@ -694,6 +730,7 @@ function pc(reopened) {
   if (!reopened) hit('chose', 'pc')
   step('computer')
   show(band('b3', h('h2', {}, W.pcTitle), h('p', {}, W.pcIntro), pcBox(false)))
+  setBack(() => toStart())
 }
 
 // ------------------------------------------------------------------ progress, then your weevils
@@ -726,6 +763,8 @@ const tryAgain = (job) => () => { watching++; if (hosted(job.kind)) provider(HOS
 function progress(job, opts = {}) {
   const near = opts.near
   if (!near && job.sid && !job.started) { job.started = true; keep(job) }
+  if (opts.push) ahead()
+  else try { history.replaceState({ ...history.state, wv: 1, prog: 1, form: '' }, '') } catch {}
   const labels = ORDER.map((k) => k === 'created' ? W[`s_created_${hosted(job.kind) ? 'hetzner' : job.kind}`] : k === 'https' ? (job.kind === 'pc' ? W.s_tunnel : W.s_https) : W[`s_${k.replace(/^s_/, '')}`])
   const items = ORDER.map((k, i) => h('li', {}, h('i', {}, ''), labels[i]))
   const bar = h('div', {}, '')
@@ -736,6 +775,7 @@ function progress(job, opts = {}) {
     ? [h('h2', {}, W.nearTitle), h('p', { class: 'small' }, W.nearSub), h('button', { class: 'btn light', onclick: tryAgain(job) }, W.nearLink), h('button', { class: 'link', onclick: () => { watching++; home() } }, W.notMine)]
     : [h('h2', {}, W.progTitle)]
   show(band('b5', ...head, h('div', { class: 'bar' }, bar), h('ul', { class: 'steps' }, items), clock, slow, near ? null : h('p', { class: 'note' }, W.progNote), err))
+  setBack(() => formOf(job.kind))
   let since = 0, stepSeen = '', moved = Date.now()
   const timer = setInterval(() => {
     if (!since) return
@@ -811,6 +851,7 @@ async function ready(job, s) {
     if (job.kind !== 'pc') sec.push(h('button', { class: 'btn', onclick: tryAgain(job) }, W.freshLink))
   }
   show(band('b1', ...sec))
+  setBack(() => formOf(job.kind))
 }
 
 // ------------------------------------------------------------------ start: back to the setup, wherever it is kept
@@ -833,13 +874,17 @@ async function route(job) {
 // Back and forward (the phone's gesture, the browser's arrows): the step at that entry, with what was typed on it.
 window.addEventListener('popstate', () => {
   watching++
+  const st = history.state || {}
   const ref = fromLink(location.hash)
-  if (ref) return restore(ref).then(route, () => toStart())
-  const m = /^#(hetzner|vps|computer)$/.exec(location.hash)
-  if (!m) return toStart()
-  if (m[1] === 'hetzner') return provider('hetzner', null, '', true)
-  if (m[1] === 'vps') return ssh(null, true)
-  return computer ? toStart() : pc(true)
+  const f = st.form || (/^#(hetzner|vps|computer)$/.exec(location.hash) || [])[1]
+  if (f) {
+    // This browser's setup for that form stays the same one (never a second setup replacing a started one).
+    const kind = f === 'vps' ? 'ssh' : f === 'computer' ? 'pc' : f
+    if (kind === 'pc' && computer) return toStart()
+    return formOf(kind)
+  }
+  if (ref && (st.prog || !st.wv)) return restore(ref).then(route, () => toStart())
+  toStart()
 })
 hit('open')
 ;(async () => {

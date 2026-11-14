@@ -702,7 +702,7 @@ describe('a Mac', () => {
     const values = [window, document, window.navigator, window.localStorage, window.location, () => ({ matches: false }), () => {}, () => ({ selectAllChildren() {} }), fetchStub, crypto.webcrypto, () => 0, () => 0]
     new Function(...names, code)(...values)
     const app = document.getElementById('app')!
-    return { app, calls, text: () => app.textContent || '' }
+    return { app, calls, document, text: () => app.textContent || '' }
   }
   const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15'
   const LINUX = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
@@ -750,10 +750,15 @@ describe('a Mac', () => {
     const back = await firstScreen(IPHONE, 'en', 'https://get.example/#hetzner')
     await vi.waitFor(() => expect(back.text()).toContain('A server of your own, at Hetzner'))
     expect(back.text()).not.toContain('Plug in your machine')
-    // No control of its own for going back or resuming: the phone's back gesture (one history entry per step), and
-    // the page reopens where it was. No detour, no restart link, no resume-link box, no nearby screen.
-    expect(page).not.toMatch(/class: 'back'|function keepBox|function nearbyScreen|W\.noVps|W\.startOver|W\.seePrice/)
-    expect(page).toContain("history.pushState({ wv: 1 }")
+    // One Back button, fixed top left, on every step after the first (and the phone's gesture: one history entry per
+    // step); the page reopens where it was. No detour, no restart link, no resume-link box, no nearby screen.
+    expect(page).not.toMatch(/function keepBox|function nearbyScreen|W\.noVps|W\.startOver|W\.seePrice/)
+    expect(page).toContain('<button id="backbtn" type="button" hidden>')
+    expect(page).toMatch(/#backbtn \{ position: fixed;/)
+    expect(page).toContain('history.pushState({ wv: 1, doc: DOC, pushed: 1, form: name }')
+    expect(phone.document.getElementById('backbtn').hidden).toBe(true)
+    expect(back.document.getElementById('backbtn').hidden).toBe(false)
+    expect(back.document.getElementById('backbtn').textContent).toBe('← Back')
     // A failure offers one way on: « Try again ».
     expect(page).not.toMatch(/failSame|againSame|W\.retry\b/)
   })

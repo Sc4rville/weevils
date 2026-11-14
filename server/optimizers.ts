@@ -43,6 +43,7 @@ import { lang, tr, user, withLang, type Lang } from './i18n.ts'
 import O from './i18n/optimizers.ts'
 import type { Memory } from './memory.ts'
 import { availableMem, type Platform } from './platform.ts'
+import { ownTask } from './own-words.ts'
 import { claudeLogged } from './setup.ts'
 import { sessionTokens } from './usage.ts'
 
@@ -524,7 +525,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
  * priority 1–3, a rough estimate, nothing already proposed (in any state: refused and done are never proposed again),
  * at most `max`.
  */
-export function parseProposals(raw: unknown, repos: string[], known: { title: string }[], max = MAX_WAITING): Proposal[] {
+export function parseProposals(raw: unknown, repos: string[], known: { title: string }[], max = MAX_WAITING, said: readonly string[] = []): Proposal[] {
   const r = raw as { tasks?: unknown; proposals?: unknown } | null
   const list: unknown[] = Array.isArray(raw) ? raw : Array.isArray(r?.tasks) ? r.tasks : Array.isArray(r?.proposals) ? r.proposals : []
   const out: Proposal[] = []
@@ -537,9 +538,12 @@ export function parseProposals(raw: unknown, repos: string[], known: { title: st
     if (isRepeat(title, [...known, ...out])) continue
     const want = typeof x.repo === 'string' ? x.repo.trim() : ''
     const repo = want ? (repos.find((n) => n === want) ?? repos.find((n) => n.toLowerCase() === want.toLowerCase()) ?? null) : null
+    // The user's own idea says so; a why that only hands their wish back to them is dropped (server/own-words.ts).
+    const why = tidy(x.why, 220)
+    const own = ownTask({ title, why }, said)
     out.push({
       title,
-      why: tidy(x.why, 220),
+      why: own.why === null ? why : own.own ? tr(O).ownWhy : '',
       repo,
       kind: (KINDS as readonly string[]).includes(String(x.kind)) ? (x.kind as Optimizer['kind']) : 'other',
       heavy: x.heavy === true,
@@ -1840,7 +1844,7 @@ export class Optimizers {
         const raw = parseJson<unknown>(await claudeHaiku(this.proposalPrompt(max), 180_000))
         // i18n-ignore : raison de l'échec, seulement dans le journal
         if (raw === null) throw new Error('no JSON')
-        const props = parseProposals(raw, this.w.allRepos(), this.s.items, max)
+        const props = parseProposals(raw, this.w.allRepos(), this.s.items, max, this.memory.list().map((m) => m.text))
         for (const p of props) this.s.items.push({ ...p, id: crypto.randomBytes(5).toString('hex'), state: 'proposed', createdAt: Date.now() })
         this.s.lastRoundAt = now
         this.s.lastEmpty = props.length === 0

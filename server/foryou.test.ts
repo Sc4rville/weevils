@@ -1491,3 +1491,46 @@ it('projects current software links across locale changes and reload without alt
   expect(again.feed().items.find(i=>i.id===posted.id)?.software).toBeUndefined()
   expect(again.feed().items.find(i=>i.id===posted.id)?.seen).toBe(true)
 })
+
+// ---------------------------------------------------------------- the user's own ideas
+
+describe('the user’s own ideas are never offered back as weevils’', () => {
+  const memory = ['wants to make the weevils app open source by Friday, with first access given to whoever responds to his announcement tweet', 'Wants the weevils project pinned on the main page of the app.']
+  const firstAccess = { kind: 'improve' as const, title: 'First access reply', text: 'You want to give first access to people who reply to your announcement tweet. I suggest preparing a short reply with the installer link.', actions: [{ label: 'Draft access reply', brief: 'Prepare a reply template with the installer link.' }] }
+
+  it('a generated suggestion that restates the memory or opens on « You want… » is not published', () => {
+    const fy = make({ said: () => memory })
+    expect(fy.add(firstAccess)).toBeNull()
+    expect(fy.add({ kind: 'improve', title: 'Colour by project', text: 'You want cards coloured by project. Prepare a palette that works in every theme.' })).toBeNull()
+    expect(fy.add({ kind: 'improve', title: 'Keep renders after RunPod stops', text: 'Your launch trailer lost full-size frames when RunPod credit ran out. I suggest a save step that copies each render to the VPS.' })).not.toBeNull()
+  })
+
+  it('what the user just told weevboss counts too', () => {
+    transcripts.set('boss', { messages: [{ id: 'u1', role: 'user', text: 'I want a weekly digest of the TLO renders sent every Sunday morning.', at: now - HOUR }] } as never)
+    const fy = make({ said: () => [] })
+    expect(fy.add({ kind: 'improve', title: 'Sunday TLO digest', text: 'A weekly digest of the TLO renders every Sunday morning would keep you posted.' })).toBeNull()
+  })
+
+  it('cards already published are taken out of the stream, unless the user already acted on them', () => {
+    fs.writeFileSync(path.join(dir, 'foryou.json'), JSON.stringify({ rev: 1, items: [
+      { id: 'i:own', tone: 'magic', who: 'weevils', at: now - HOUR, ...firstAccess, actions: [{ id: 'a1', ...firstAccess.actions[0] }] },
+      { id: 'i:new', kind: 'improve', tone: 'magic', who: 'weevils', at: now - HOUR, title: 'Pick your launch excerpt', text: 'Your four films are finished. I suggest a shortlist of three excerpts with timestamps.' },
+      { id: 'cost:model:x', kind: 'improve', tone: 'question', who: 'weevils', at: now - HOUR, title: 'Cost optimizer', text: 'You want to keep costs down: this session runs on Opus.', actions: [{ id: 'a1', label: 'Switch', brief: 'Switch session x to Sonnet.', op: 'model:x:sonnet' }] },
+    ] }))
+    const fy = make({ said: () => memory })
+    expect(find(fy, 'i:own')).toBeUndefined()
+    expect(find(fy, 'i:new')).toBeDefined()
+    // A cost button acts here: not a suggestion of weevils, never filtered as one.
+    expect(find(fy, 'cost:model:x')).toBeDefined()
+  })
+
+  it('an auto task that carries out the user’s own idea says so, a parroting why is dropped', () => {
+    snap.optimizers = [optimizer({ id: 'pin', title: 'Pin weevils project on main', why: 'you want the weevils project first' }), optimizer({ id: 'tests', title: 'Harden the save tests', why: 'You want to ship mygame this year.' })]
+    const fy = make({ said: () => memory })
+    const cards = find(fy, 'proposals')?.cards ?? []
+    expect(cards.find((c) => c.id === 'o:pin')).toMatchObject({ why: 'Your idea, ready to run.', own: true })
+    expect(cards.find((c) => c.id === 'o:tests')).toMatchObject({ why: '' })
+    expect(find(fy, 'auto:proposed:pin')?.text).toBe('Your idea, ready to run: "Pin weevils project on main". It’s waiting in the proposals.')
+    expect(find(fy, 'auto:proposed:tests')?.text).toBe('I have an idea for you: "Harden the save tests". You can find it in the proposals.')
+  })
+})

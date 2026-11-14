@@ -890,8 +890,9 @@ export class Curator implements ForYouCurator {
     if (p.sessions < 3 && !p.unused.length && !p.cuts && !p.waited) return null
     const t = tr(P)
     const l = lang()
+    const memory = this.deps.memory?.()?.digest(10, 1600) ?? ''
     const lines = [
-      this.deps.memory?.()?.digest(10, 1600) ?? '',
+      memory ? t.patMemory(memory) : '',
       ...this.fy.recent(['session', 'media'], 12).map((i) => [i.projectId, i.title, i.text].filter(Boolean).join(' · ').slice(0, 350)),
       p.projects.length ? t.patProjects(p.projects.map(([n, c]) => `${n} ${c}`).join(', ')) : '',
       p.sessions ? t.patHours(p.hours) : '',

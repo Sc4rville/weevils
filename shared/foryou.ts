@@ -50,6 +50,8 @@ export interface ForYouCard {
   kind: string
   /** Label of the accept button when it is not a plain ✓. */
   accept?: string
+  /** An auto task that carries out what the user said themselves: shown as their idea, never as weevils'. */
+  own?: boolean
   /** optimizer: the repo it works in (the app gives weevils' own the recursive signature). */
   repo?: string | null
 }

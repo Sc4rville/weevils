@@ -182,8 +182,15 @@ describe('auto — rounds', () => {
     expect(tidy('Préparer la page « mygame »', 80)).toBe('Préparer la page mygame')
     expect(tidy('"Watch" the “indie” fairs , now', 80)).toBe('Watch the indie fairs, now')
     expect(tidy("Tu veux l'écrire « bientôt » ?", 80)).toBe("Tu veux l'écrire bientôt ?")
-    const out = parseProposals([{ title: '« Muscler » les tests', why: 'Tu veux sortir « mygame » cette année.', prompt: 'Add tests for the jump physics of mygame.' }], [], [])
-    expect(out[0]).toMatchObject({ title: 'Muscler les tests', why: 'Tu veux sortir mygame cette année.' })
+    const out = parseProposals([{ title: '« Muscler » les tests', why: 'Un saut cassé passerait inaperçu avant la sortie de « mygame ».', prompt: 'Add tests for the jump physics of mygame.' }], [], [])
+    expect(out[0]).toMatchObject({ title: 'Muscler les tests', why: 'Un saut cassé passerait inaperçu avant la sortie de mygame.' })
+    // The user's wish handed back as a reason is dropped; their own idea says so (server/own-words.ts).
+    const said = ['Wants the weevils project pinned on the main page of the app.']
+    const own = parseProposals([
+      { title: 'Muscler les tests', why: 'Tu veux sortir mygame cette année.', prompt: 'Add tests for the jump physics of mygame.' },
+      { title: 'Pin weevils project on main', why: 'You want it first.', prompt: 'Pin the weevils project on the main page of the app.' },
+    ], [], [], 3, said)
+    expect(own.map((p) => p.why)).toEqual(['', 'Your idea, ready to run.'])
     const o = make()
     expect(o.proposalPrompt()).toMatch(/why speaks to them directly as you/)
     expect(o.proposalPrompt()).toMatch(/speaking to them directly as you .*never they, he, she or the user/)

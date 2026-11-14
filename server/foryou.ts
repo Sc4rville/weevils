@@ -37,6 +37,7 @@ import { isLocal, trustedFrom } from './http.ts'
 import { lang, tr, withLang, type Lang } from './i18n.ts'
 import CM from './i18n/core.ts'
 import M from './i18n/foryou.ts'
+import { ownIdea, ownTask } from './own-words.ts'
 import { actOn, personalTips, type Found, type TipInput } from './tips.ts'
 
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void> | void
@@ -63,6 +64,9 @@ export const LINE_MAX = 240
 export const BODY_MAX = 4000
 /** Attempts at a model title for a result card before its headline stays. */
 const TITLE_TRIES = 3
+/** What the user said (server/own-words.ts): read again at most this often, over this many days of the boss thread. */
+const SAID_MS = 2 * 60_000
+const SAID_DAYS = 14
 
 /** A model's title for a result card, kept only if it is a whole sentence that stands on its own: '' otherwise (cut
  * fragment, a bare word, a sentence that starts in the middle, an ellipsis). `names`: where a lowercase product name
@@ -331,6 +335,8 @@ export interface ForYouDeps {
   op?: (op: string) => Promise<void>
   /** A light model (haiku) answering a prompt: writes the title of each session result card from its whole closing message. */
   title?: (prompt: string) => Promise<string>
+  /** What weevils remembers of the user (memory item texts): context only, never offered back as weevils' idea (server/own-words.ts). */
+  said?: () => string[]
 }
 
 // ---------------------------------------------------------------- the store
@@ -867,6 +873,10 @@ export class ForYou {
     if (n.actions?.some(a => a.sourceIntentId && !this.intents.get(a.sourceIntentId))) return null
     if (n.kind === 'improve' && n.actions?.some(a => this.intents.find(a.brief, n.projectId, a.sourceIntentId) || this.intents.ambiguous(a.brief, n.projectId))) return null
     if (technicalEvent(n.id ?? '', n.text) || internalFeedUpdate(n.text)) return null
+    if (this.proposal(n)) {
+      const own = ownIdea({ title: n.title, text: n.text }, this.saidNow())
+      if (own) return void console.log(`[foryou] not offered back as an idea, it is the user's own (${own.why}${own.source ? `: « ${clip(collapse(own.source), 80)} »` : ''}): ${clip(collapse(n.title || n.text), 80)}`), null
+    }
     const text = clip(n.text.trim(), POST_MAX)
     if (!text) return null
     const boss = n.kind === 'boss'
@@ -1048,11 +1058,15 @@ export class ForYou {
   private view(i: Stored, snap: Snapshot, any = false): ForYouItem | null {
     if (i.gone || i.id.startsWith('r:') || technicalEvent(i.id, i.text)) return null
     if (((i.kind === 'session' && i.tone === 'result') || ['boss', 'improve', 'insight'].includes(i.kind)) && (internalFeedUpdate(i.body || i.text) || internalFeedUpdate([i.title, i.body || i.text].filter(Boolean).join('\n')))) return null
+    let text = i.text
     if (i.id.startsWith('auto:proposed:')) {
       const idea = snap.optimizers?.find((o) => i.id === `auto:proposed:${o.id}`)
       if (!idea || idea.draft) return null
+      if (this.ownTask(idea).own) text = tr(M).autoOwn(idea.title)
     }
-    const out: ForYouItem = { id: i.id, kind: i.kind, tone: i.tone, at: i.at, who: i.who, text: i.text }
+    // Published before the rule, or the user said it since: their own idea is not shown back as weevils' (unless they already acted on it).
+    if (this.proposal(i) && this.ownStored(i) && !i.actions?.some(a => this.actionIntent(i, a))) return null
+    const out: ForYouItem = { id: i.id, kind: i.kind, tone: i.tone, at: i.at, who: i.who, text }
     if (i.visualProposal) out.visualProposal = i.visualProposal
     if (i.composition) out.composition = i.composition
     if (i.projectId) out.projectId = i.projectId
@@ -1210,7 +1224,10 @@ export class ForYou {
   /** The cards waiting for a yes or a no: proposed auto tasks first, then tips; never one already answered. */
   private cards(snap: Snapshot, now: number): ForYouCard[] {
     // One-shot proposals are actions to take: they live here. Recurring ones are automations: the automated page.
-    const auto = (snap.optimizers ?? []).filter((o) => o.state === 'proposed' && !o.draft && !o.every && !o.userCreated).map((o): ForYouCard => ({ id: `o:${o.id}`, title: o.title, why: o.why, source: 'optimizer', kind: o.kind, repo: o.repo }))
+    const auto = (snap.optimizers ?? []).filter((o) => o.state === 'proposed' && !o.draft && !o.every && !o.userCreated).map((o): ForYouCard => {
+      const own = this.ownTask(o)
+      return { id: `o:${o.id}`, title: o.title, why: own.own && own.why !== null ? tr(M).ownWhy : (own.why ?? o.why), source: 'optimizer', kind: o.kind, repo: o.repo, ...(own.own ? { own: true } : {}) }
+    })
     const tips = this.tips(snap, now).map((f): ForYouCard => ({ id: `t:${f.id}`, title: f.text, why: '', source: 'tip', kind: f.rule, ...(f.accept ? { accept: f.accept } : {}) }))
     return [...auto, ...tips].filter((c) => !(c.id in this.s.cards)).slice(0, MAX_CARDS)
   }
@@ -1223,7 +1240,7 @@ export class ForYou {
     }
     const items = this.systemAlerts(snap, now)
     const cards = this.cards(snap, now)
-    if (cards.length) items.push({ id: 'proposals', kind: 'proposals', tone: 'neutral', at: 0, who: 'weevils', text: tr(M).proposals(cards.length), cards, live: true })
+    if (cards.length) items.push({ id: 'proposals', kind: 'proposals', tone: 'neutral', at: 0, who: 'weevils', text: cards.every((c) => c.own) ? tr(M).ownProposals(cards.length) : tr(M).proposals(cards.length), cards, live: true })
     const out: ForYouItem[] = []
     for (const i of items) {
       // Migrate earlier raw API reset timestamps: a few milliseconds must never revive a closed quota event.
@@ -1408,6 +1425,51 @@ export class ForYou {
     return open?.page === 'session' && this.bossThread(open.id) ? { page: 'boss' } : open
   }
   /** weevboss's first answer after an action was handed to it, for the card that sent it. */
+  /** A generated suggestion presented as weevils' idea: an « improve » card (not a cost button) or a story. */
+  private proposal(i: { kind: string; id?: string; actions?: { op?: string }[] }): boolean {
+    return (i.kind === 'improve' && !i.actions?.some(a => a.op)) || (i.kind === 'boss' && !!i.id?.startsWith('r:'))
+  }
+
+  /**
+   * What the user said themselves: their memory, what they told weevboss and what they asked any session over the
+   * last two weeks. Read again at most every two minutes (the boss thread can be long).
+   */
+  private saidNow(): string[] {
+    const now = this.now()
+    if (this.said && now - this.said.at < SAID_MS) return this.said.list
+    const list = (this.deps.said?.() ?? []).filter(Boolean)
+    const boss = this.w.orchestratorId ? this.w.store?.get(this.w.orchestratorId)?.messages ?? [] : []
+    for (const m of boss) if (m.role === 'user' && now - m.at < SAID_DAYS * 86_400_000 && m.text.trim()) list.push(m.text.slice(0, 2000))
+    // What they asked any session lately (each request is recorded as an intent before it is sent).
+    this.syncIntents()
+    for (const i of this.intents.list()) if (i.id.startsWith('request:') && now - i.at < SAID_DAYS * 86_400_000) list.push(i.brief.slice(0, 2000))
+    this.said = { at: now, list }
+    this.ownSeen.clear()
+    this.ownTasks.clear()
+    return list
+  }
+  private said: { at: number; list: string[] } | null = null
+  private ownSeen = new Map<string, boolean>()
+
+  private ownStored(i: Stored): boolean {
+    const said = this.saidNow()
+    const key = `${i.id}\n${i.title ?? ''}\n${i.text}`
+    let own = this.ownSeen.get(key)
+    if (own === undefined) this.ownSeen.set(key, (own = !!ownIdea({ title: i.title, text: i.text }, said)))
+    return own
+  }
+
+  private ownTask(o: { id: string; title: string; why: string }) {
+    const said = this.saidNow()
+    const key = `o:${o.id}\n${o.title}\n${o.why}`
+    const hit = this.ownTasks.get(key)
+    if (hit && hit.at === this.said?.at) return hit.v
+    const v = ownTask(o, said)
+    this.ownTasks.set(key, { at: this.said!.at, v })
+    return v
+  }
+  private ownTasks = new Map<string, { at: number; v: ReturnType<typeof ownTask> }>()
+
   private bossReply(work: WorkIntent, label?: string): string | undefined {
     if (work.open?.page !== 'session') return
     const messages = this.w.store?.get(work.open.id)?.messages ?? []

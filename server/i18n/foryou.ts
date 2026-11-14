@@ -40,6 +40,10 @@ export default defineMessages({
     deployed: (hash: string) => `La version ${hash} de weevils est en ligne. Tu peux la retrouver ici.`,
     commit: (repo: string, hash: string, subject: string) => `${repo} a un nouveau commit (${hash}) : ${subject}`,
     autoProposed: (title: string) => `J’ai une idée pour toi : « ${title} ». Tu peux la retrouver dans les propositions.`,
+    /** An auto task that carries out what the user said themselves: never passed off as weevils' idea. */
+    autoOwn: (title: string) => `Ton idée, prête à lancer : « ${title} ». Elle t’attend dans les propositions.`,
+    ownWhy: 'Ton idée, prête à lancer.',
+    ownProposals: (n: number) => (n > 1 ? `Tes ${n} idées sont prêtes à lancer` : 'Ton idée est prête à lancer'),
     autoGo: (title: string) => `J’ai lancé la tâche auto « ${title} » pendant que la machine souffle un peu.`,
     autoDone: (title: string, note: string) => `La tâche auto « ${title} » est bouclée${note ? ` : ${note}` : '.'}`,
     proposals: (n: number) => (n > 1 ? `J’ai ${n} idées pour toi` : 'J’ai une idée pour toi'),
@@ -87,6 +91,10 @@ export default defineMessages({
     deployed: (hash: string) => `weevils version ${hash} is live. You can use it right here.`,
     commit: (repo: string, hash: string, subject: string) => `${repo} has a new commit (${hash}): ${subject}`,
     autoProposed: (title: string) => `I have an idea for you: "${title}". You can find it in the proposals.`,
+    /** An auto task that carries out what the user said themselves: never passed off as weevils' idea. */
+    autoOwn: (title: string) => `Your idea, ready to run: "${title}". It’s waiting in the proposals.`,
+    ownWhy: 'Your idea, ready to run.',
+    ownProposals: (n: number) => (n === 1 ? 'Your idea is ready to run' : `Your ${n} ideas are ready to run`),
     autoGo: (title: string) => `I started the auto task "${title}" while the machine catches its breath.`,
     autoDone: (title: string, note: string) => `The auto task "${title}" is wrapped up${note ? `: ${note}` : '.'}`,
     proposals: (n: number) => (n === 1 ? 'I have an idea for you' : `I have ${n} ideas for you`),

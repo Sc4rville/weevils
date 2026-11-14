@@ -214,6 +214,8 @@ const foryou = ORCHESTRATOR
       op: (op) => cost.op(op),
       // Each session result card's title, from its whole closing message (subscription haiku, ~2 s).
       title: (prompt) => (claudeAvailable() ? haiku(prompt, 45_000) : Promise.resolve('')),
+      // The user's own words: context for the stream, never handed back as weevils' idea.
+      said: () => memory.list().map((m) => m.text),
     })
   : null
 w.foryou = foryou

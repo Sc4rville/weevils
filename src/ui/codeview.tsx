@@ -237,9 +237,9 @@ export function CodeFile({ projectId, repo, path, machine, line, file, err, kick
   return (
     <Shell
       slot={colors[projectId] ?? 'agent'}
-      kicker={kicker ?? `${repo}/${path.split('/').slice(0, -1).join('/')}`}
+      kicker={kicker ?? (path.split('/').at(-2) || repo)}
       title={path.split('/').pop()}
-      meta={file ? `${t.size(file.size)}${file.truncated ? t.truncated : ''}` : t.reading}
+      meta={file ? (file.truncated ? t.truncated : undefined) : t.reading}
       dock={file && !file.binary && !editing ? <AskVoice a={a} /> : undefined}
     >
       {err && (

@@ -338,6 +338,12 @@ function SessionPage({ id }: { id: string }) {
 // ---------------------------------------------------------------------------
 // Explorateur de fichiers : un dossier par page, la liste du repo est gardée en cache.
 
+/** Le nom d'une machine, seulement quand il y en a plusieurs à distinguer : jamais son id. */
+const machineName = (machines: { id: string; name: string }[], id?: string) => (machines.length > 1 && id ? machines.find((m) => m.id === id)?.name : undefined)
+
+/** Un dossier trop long s'affiche par tranches. */
+const FILES_STEP = 500
+
 /** Préchargement discret (à l'ouverture d'une bande) : l'explorateur s'ouvre ensuite sans attente. */
 export const prefetchRepo = (repo: string, machine: string) => void listFiles(repo, machine).catch(() => undefined)
 
@@ -349,6 +355,8 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
   const machine = (theRepo && project?.where[theRepo]) || (snap.machines[0]?.id ?? '')
   const [files, setFiles] = useState<string[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [shown, setShown] = useState(FILES_STEP)
+  useEffect(() => setShown(FILES_STEP), [theRepo, dir])
   useEffect(() => {
     if (!theRepo) return
     let off = false
@@ -380,9 +388,9 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
 
   if (!theRepo) {
     return (
-      <Shell slot={slot} kicker={project.name} title="/ repos" meta={t.repos(project.repos.length)}>
+      <Shell slot={slot} kicker={project.name} title={t.folders}>
         {project.repos.map((r) => (
-          <Line key={r} ch="/" meta={project.where[r]} onClick={() => push({ kind: 'files', projectId, repo: r })}>
+          <Line key={r} ch="/" meta={machineName(snap.machines, project.where[r])} onClick={() => push({ kind: 'files', projectId, repo: r })}>
             {r}
           </Line>
         ))}
@@ -393,17 +401,17 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
   return (
     <Shell
       slot={slot}
-      kicker={dir ? `${theRepo}/${dir.split('/').slice(0, -1).join('/')}` : project.name}
-      title={dir ? `/${dir.split('/').pop()}` : `/ ${theRepo}`}
-      meta={`${machine} · ${files ? t.files(files.length) : t.readingRepo}`}
+      kicker={dir ? (dir.split('/').at(-2) ?? theRepo) : project.name}
+      title={dir ? dir.split('/').pop() : theRepo}
+      meta={files ? t.files(files.length) : t.reading}
     >
       {err && <ErrorBand text={err} />}
       {entries?.folders.map(([name, count]) => (
         <Line key={name} ch="/" meta={t.files(count)} onClick={() => push({ kind: 'files', projectId, repo: theRepo, dir: dir ? `${dir}/${name}` : name })}>
-          <span className="strong">{name}/</span>
+          <span className="strong">{name}</span>
         </Line>
       ))}
-      {entries?.leaves.slice(0, 500).map((name) => {
+      {entries?.leaves.slice(0, shown).map((name) => {
         const path = dir ? `${dir}/${name}` : name
         return (
           <Line key={name} ch="·" onClick={() => push({ kind: 'file', projectId, repo: theRepo, path })}>
@@ -411,7 +419,11 @@ function FilesPage({ projectId, repo, dir = '' }: { projectId: string; repo?: st
           </Line>
         )
       })}
-      {entries && entries.leaves.length > 500 && <div className="in meta empty">{t.moreFiles(entries.leaves.length - 500)}</div>}
+      {entries && entries.leaves.length > shown && (
+        <Line ch="+" go={null} onClick={() => setShown((n) => n + FILES_STEP)}>
+          <span className="meta">{t.moreFiles(Math.min(FILES_STEP, entries.leaves.length - shown))}</span>
+        </Line>
+      )}
       {entries && entries.folders.length + entries.leaves.length === 0 && <div className="in meta empty">{t.emptyDir}</div>}
     </Shell>
   )
@@ -440,6 +452,9 @@ function FilePage({ projectId, repo, path, line }: { projectId: string; repo: st
 }
 
 // ---------------------------------------------------------------------------
+
+/** Les outils par leur nom, pas leur id. */
+const TOOL_NAME: Record<Tool, string> = { claude: 'Claude', codex: 'Codex' }
 
 function NewSessionPage({ projectId }: { projectId: string }) {
   const { snap, replace, colors } = useApp()
@@ -472,7 +487,7 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       setErr(t.pickRepoFirst)
       // Le choix qui manque est amené sous les yeux.
       reveal(repoLabel.current, { block: 'start' })
-      throw new Error('repo')
+      throw new Error(t.pickRepoFirst)
     }
     created.current = true
     setErr(null)
@@ -490,7 +505,7 @@ function NewSessionPage({ projectId }: { projectId: string }) {
   return (
     <Shell
       slot={colors[projectId] ?? 'agent'}
-      kicker={project.name}
+      kicker={any ? 'weevils' : project.name}
       title={t.newSessionTitle}
       foot={
         <>
@@ -502,8 +517,8 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
       <div className="in label">{t.tool}</div>
       {(['claude', 'codex'] as Tool[]).map((x) => (
-        <Line key={x} className={tool === x ? 'invert' : ''} ch={tool === x ? '>' : ' '} go={null} onClick={() => setTool(x)} label={`${x}${tool === x ? t.chosen : ''}`}>
-          {x}
+        <Line key={x} className={tool === x ? 'invert' : ''} ch={tool === x ? '>' : ' '} go={null} onClick={() => setTool(x)} label={`${TOOL_NAME[x]}${tool === x ? t.chosen : ''}`}>
+          {TOOL_NAME[x]}
         </Line>
       ))}
       {any && snap.machines.length > 1 && (
@@ -530,11 +545,11 @@ function NewSessionPage({ projectId }: { projectId: string }) {
       {(project.repos.length > 1 || any) && (
         <>
           <div ref={repoLabel} className="in label">
-            {t.repo}
+            {t.project}
           </div>
           {any && !allRepos && <div className="in meta empty">…</div>}
           {project.repos.map((r) => (
-            <Line key={r} className={repo === r ? 'invert' : ''} ch={repo === r ? '>' : '/'} go={null} meta={any ? undefined : project.where[r]} onClick={() => setRepo(r)}>
+            <Line key={r} className={repo === r ? 'invert' : ''} ch={repo === r ? '>' : '/'} go={null} meta={any ? undefined : machineName(snap.machines, project.where[r])} onClick={() => setRepo(r)}>
               {r}
             </Line>
           ))}

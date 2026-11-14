@@ -16,6 +16,8 @@ vi.mock('../api', () => ({
     screen: async () => (calls.screen++, { screen: 'RAW TERMINAL' }),
     transcribeInfo: async () => ({ enabled: false }),
     repos: async () => ({ repos: [] }),
+    files: async () => ({ files: [...Array.from({ length: 600 }, (_, i) => `f${String(i).padStart(3, '0')}.ts`), 'src/ui/pages.tsx', 'src/main.ts'] }),
+    file: async (_repo: string, path: string) => ({ path, content: 'line one', binary: false, truncated: true, size: 4_200_000, editable: false }),
   },
 }))
 vi.mock('../push', () => ({ ensurePush: async () => {} }))
@@ -169,5 +171,58 @@ describe('session page header', () => {
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ controllable: false })])
     await flush()
     expect(host.querySelector<HTMLInputElement>('.composer input')!.placeholder).toBe('opened outside weevils: read only')
+  })
+})
+
+const multi: Project = { id: 'm', name: 'suite', kind: 'repo', repos: ['front', 'back'], where: { front: 'vps-machine-42', back: 'vps-machine-42' }, lastActivityAt: NOW }
+
+describe('files and new session pages', () => {
+  it('a project with several folders: "Folders", no count, no machine id', async () => {
+    render(<PageView page={{ kind: 'files', projectId: 'm' }} />, [], [multi])
+    await flush()
+    const all = text(host)
+    expect(all).toContain('Folders')
+    expect(all).not.toMatch(/repos|vps-machine-42|\/ /)
+    expect(text(host)).toContain('front')
+  })
+
+  it('a folder: its name without slashes, a file count without machine id, and a button for the rest', async () => {
+    render(<PageView page={{ kind: 'files', projectId: 'p' }} />, [], [project])
+    await flush()
+    const all = text(host)
+    expect(all).not.toContain('vps-machine-42')
+    expect(all).not.toContain('/ weevils')
+    expect(all).toContain('602 files')
+    expect(all).not.toMatch(/not shown/)
+    expect(host.querySelectorAll('.row')).toHaveLength(1 + 500 + 1)
+    const more = byText('show 100 more')!
+    await act(async () => more.click())
+    expect(host.querySelectorAll('.row')).toHaveLength(1 + 600)
+    expect(byText('show 100 more')).toBeUndefined()
+    render(<PageView page={{ kind: 'files', projectId: 'p', repo: 'weevils', dir: 'src/ui' }} />, [], [project])
+    await flush()
+    expect(text(host)).not.toMatch(/\/ui|weevils\/src/)
+    expect(text(host)).toContain('ui')
+  })
+
+  it('a file: no size, and a plain line when only its beginning is shown', async () => {
+    render(<PageView page={{ kind: 'file', projectId: 'p', repo: 'weevils', path: 'src/ui/pages.tsx' }} />, [], [project])
+    await flush()
+    const all = text(host)
+    expect(all).toContain('only the beginning is shown')
+    expect(all).not.toMatch(/MB|KB|truncated|weevils\/src/)
+  })
+
+  it('new session: plain title, "who works on it" with tool names, "project" instead of repo, no machine id', async () => {
+    render(<PageView page={{ kind: 'new', projectId: 'm' }} />, [], [multi])
+    await flush()
+    const all = text(host)
+    expect(all).toContain('New session')
+    expect(all).not.toContain('+ new session')
+    expect(all).toContain('who works on it')
+    expect(byText('Claude')).toBeTruthy()
+    expect(byText('Codex')).toBeTruthy()
+    expect(all).toContain('project')
+    expect(all).not.toMatch(/\brepo\b|\btool\b|vps-machine-42/)
   })
 })

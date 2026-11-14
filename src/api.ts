@@ -11,7 +11,7 @@ import M from './i18n/app'
 import type { FsListing, InfraDetail, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
 import type { ProgressFix, Software, SoftwareList } from '../shared/softwares.ts'
 import type { ForYouFeed, ForYouOpen } from '../shared/foryou.ts'
-import type { AutoDetail, AutoRunDetail, ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, Optimizer, OptimizerTalkReply, SessionDetail, SleepState, Snapshot, SubagentDetail, Tool, WeevilQuestion, WeevilReply } from '../shared/api.ts'
+import type { AutoDetail, AutoRunDetail, ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, Optimizer, OptimizerTalkReply, SessionDetail, SleepState, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
 import type { LedgerView } from '../shared/ledger.ts'
 
 export class ApiError extends Error {
@@ -145,9 +145,6 @@ export const api = {
   addMemory: (text: string) => call<{ item: MemoryItem }>('POST', '/api/memory', { text }),
   editMemory: (id: string, text: string) => call<{ item: MemoryItem }>('PUT', `/api/memory/${enc(id)}`, { text }),
   deleteMemory: (id: string) => call<{ ok: true }>('DELETE', `/api/memory/${enc(id)}`),
-  weevil: () => call<{ question: WeevilQuestion | null }>('GET', '/api/weevil'),
-  weevilMissed: (id: string) => call<{ ok: true }>('POST', `/api/weevil/${enc(id)}/missed`, {}),
-  weevilAnswer: (id: string, text: string, history: { role: 'weevil' | 'user'; text: string }[]) => call<WeevilReply>('POST', `/api/weevil/${enc(id)}/answer`, { text, history }),
   /** « Pour toi » (shared/foryou.ts) : le flux, puis ce qu'on y fait. */
   foryou: () => call<ForYouFeed>('GET', `/api/foryou${inLang()}`),
   foryouSeen: (ids: string[]) => call<{ ok: true }>('POST', '/api/foryou/seen', { ids }),

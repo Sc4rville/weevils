@@ -13,8 +13,8 @@ import type { Message, Optimizer, Session, Snapshot } from '../shared/api.ts'
 import type { ForYouItem, ForYouKind } from '../shared/foryou.ts'
 import type { UsageInfo } from '../shared/infra.ts'
 import {
-  ForYou, KEEP_MS, MAX_CARDS, MAX_FEED, MAX_ITEMS, MAX_MEDIA, MEDIA_JOIN_MS, OFFLINE_AFTER_MS, REFRESH_MS,
-  HEADLINE_MAX, arrange, cleanTitle, headline, firstLine, foryouRoutes, lastWords, withoutPaths, type ForYouDeps, type MachineState,
+  ForYou, KEEP_MS, LIVE_REACH, MAX_CARDS, MAX_FEED, MAX_ITEMS, MAX_MEDIA, MEDIA_JOIN_MS, OFFLINE_AFTER_MS, REFRESH_MS,
+  HEADLINE_MAX, arrange, keepLive, cleanTitle, headline, firstLine, foryouRoutes, lastWords, withoutPaths, type ForYouDeps, type MachineState,
   resultTitleLine,
 } from './foryou.ts'
 import M from './i18n/foryou.ts'
@@ -909,6 +909,28 @@ describe('proposals', () => {
     expect(p).toMatchObject({ id: 'proposals', at: T0 + HOUR })
     expect(p.seen).toBeUndefined()
   })
+
+  it('one-off tasks stay within reach of the stream, however many newer items came in (r34)', () => {
+    const fy = make()
+    snap.optimizers = [optimizer(), optimizer({ id: 'o2', every: 24 * HOUR }), optimizer({ id: 'o3', userCreated: true })]
+    fy.feed()
+    fy.seen(['proposals'])
+    for (let i = 0; i < MAX_FEED + 40; i++) {
+      now = T0 + MIN + i * 1000
+      fy.post(`post ${i}`)
+    }
+    now += 3 * 24 * HOUR
+    const items = fy.feed().items
+    expect(items).toHaveLength(MAX_FEED)
+    const at = items.findIndex((i) => i.id === 'proposals')
+    expect(at).toBeGreaterThanOrEqual(0)
+    expect(at).toBeLessThanOrEqual(LIVE_REACH)
+    // Only the one-off task: recurring proposals and the user's own drafts live on the automated page.
+    expect(items[at].cards?.map((c) => c.id)).toEqual(['o:o1'])
+    // Answered by a dismiss, it leaves for good (until a new card comes).
+    fy.dismiss('proposals')
+    expect(fy.feed().items.some((i) => i.id === 'proposals')).toBe(false)
+  })
 })
 
 // ---------------------------------------------------------------- revision, unseen, restart
@@ -1005,6 +1027,17 @@ describe('arrange', () => {
     expect(arrange(list, T0).findIndex((i) => i.id === 'useful')).toBeLessThan(5)
     expect(arrange(list, T0 + 2 * HOUR).at(-1)?.id).toBe('useful')
     expect(arrange([{ ...useful, seen: true }, ...rows, news], T0).at(-1)?.id).toBe('useful')
+  })
+
+  it('keepLive: a waiting proposals band never falls under the cut nor below LIVE_REACH; news keeps its order', () => {
+    const news = Array.from({ length: 30 }, (_, k) => item('boss', { id: `n${k}` }))
+    const band = item('proposals', { id: 'proposals', live: true })
+    const kept = keepLive([...news, band], 20)
+    expect(kept).toHaveLength(20)
+    expect(kept.findIndex((i) => i.id === 'proposals')).toBe(LIVE_REACH)
+    expect(kept.filter((i) => i.id !== 'proposals').map((i) => i.id)).toEqual(news.slice(0, 19).map((i) => i.id))
+    // Already within reach: it stays where the order put it.
+    expect(keepLive([news[0], band, news[1]], 20).map((i) => i.id)).toEqual(['n0', 'proposals', 'n1'])
   })
 
   it('the system alerts sit above, newest first among them', () => {

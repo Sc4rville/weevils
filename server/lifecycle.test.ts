@@ -893,3 +893,34 @@ it('shares recursive repository identity between Claude/Codex on a fresh renamed
   expect(fs.existsSync(path.join(DATA_DIR,'prefs.json'))).toBe(false)
   expect(mux.spawnWv).not.toHaveBeenCalled()
 })
+
+describe('jobs an agent started into a logs folder (r47)', () => {
+  const job = (name: string, over: Partial<import('../shared/api.ts').H24Activity> = {}) => ({
+    id: `job:${name}`, title: name, kind: 'job' as const, projectId: null, schedule: '', enabled: true, runState: 'waiting' as const,
+    runStartedAt: null, lastEvent: 'done', canToggle: false, lastRunAt: NOW - 2 * MIN, ...over,
+  })
+  const bg = (jobs: Record<string, { label: string; at: number }>) => ({ launches: {}, notes: {}, stops: {}, calls: {}, sawPending: false, lastTurnEndAt: 0, logJobs: jobs })
+
+  it('nested under the session that started them, in its words; the latest launch owns a reused log name', () => {
+    add(transcript({ bg: bg({ 'get-host-mock': { label: 'Start the host mock', at: NOW - 10 * MIN }, 'pw-webkit': { label: 'Test run', at: NOW - 9 * MIN } }) }))
+    add(transcript({ id: 's2', bg: bg({ 'get-host-mock': { label: 'Older mock', at: NOW - 60 * MIN } }) }))
+    w.panes = [pane(), pane({ name: 'wv-demo-s2', sessionId: 's2' })]
+    w.h24 = [job('get-host-mock', { runState: 'running', lastRunAt: NOW }), job('pw-webkit', { lastEvent: '1 failed, 12 passed' }), job('by-hand')]
+    const subs = one()!.subagents
+    expect(subs).toEqual([
+      { id: 'job:get-host-mock', kind: 'shell', label: 'Start the host mock', activity: 'Start the host mock', status: 'working', startedAt: NOW - 10 * MIN },
+      { id: 'job:pw-webkit', kind: 'shell', label: 'Test run', activity: 'Test run', status: 'failed', startedAt: NOW - 9 * MIN, endedAt: NOW - 2 * MIN },
+    ])
+    expect(subs.map((x) => `${x.label} ${x.activity}`).join(' ')).not.toMatch(/get-|pw-|by-hand|nohup|logs/)
+    expect(one('s2')!.subagents).toEqual([])
+    // A server left running is not the agent's turn: the session is not kept « working » by it.
+    expect(one()).toMatchObject({ status: 'idle', background: 0 })
+  })
+
+  it('a log older than the launch belongs to an earlier run: not nested', () => {
+    add(transcript({ bg: bg({ 'get-flow-phone': { label: 'Phone flow', at: NOW - MIN } }) }))
+    w.panes = [pane()]
+    w.h24 = [job('get-flow-phone', { lastRunAt: NOW - 30 * MIN })]
+    expect(one()!.subagents).toEqual([])
+  })
+})

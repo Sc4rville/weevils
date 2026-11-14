@@ -2,6 +2,7 @@ import { sourceAccessIssue } from './source-access'
 // The « auto » drawer's content: one flat list of automations (everything that runs without asking), the words that
 // say when each one fires, and the colours of its bands. Pure: built from the snapshot, tested in auto-model.test.ts.
 import type { AutoRun, H24Activity, Optimizer, Snapshot, SourceAccess, WorkstreamIdentity } from '../../shared/api.ts'
+import { failedLine } from '../../shared/failed-line.ts'
 import { locale, type Lang } from '../../shared/i18n.ts'
 import { getLang, tr } from '../i18n'
 import F from '../i18n/format'
@@ -76,11 +77,8 @@ const JOB_KEEP_MS = 3 * 3600_000
 /** A run with no estimate and no history: the fill heads for this. */
 const DEFAULT_RUN_MS = 15 * 60_000
 
-/** A finished job's last line that says it failed: ✗, npm ERR!, a non-zero exit, error / failed / fatal… (not « 0 errors »). */
-const FAIL =
-  /[✗✘❌]|\bERR!|\bexit(?:ed)?(?: with)?(?: (?:code|status))?\s*[:=]?\s*[1-9]\d*|\bnon-?zero exit|(?<!\b(?:0|no|zero)\s+)\b(?:errors?|fail(?:ed|s|ures?)?|fatal|panic|traceback|abort(?:ed)?)\b(?!\s*[:=]?\s*0\b)/i
-
-export const failedLine = (line: string | undefined): boolean => !!line && FAIL.test(line)
+// A finished job's last line that says it failed: shared with the server, which nests an agent's jobs under its session.
+export { failedLine }
 
 const median = (xs: number[]): number | null => {
   if (!xs.length) return null

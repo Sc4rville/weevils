@@ -123,7 +123,7 @@ const hush = () => {
   }
 }
 
-/** Logos qui écoutent, transcrivent ou parlent : tant qu'il y en a un, les questions du weevil attendent (src/ui/weevil.tsx). */
+/** Logos qui écoutent, transcrivent ou parlent. */
 const busyLogos = new Set<object>()
 export const voiceBusy = () => busyLogos.size > 0
 

@@ -1,9 +1,9 @@
-// What weevils remembers about the user: goals, wishes, projects, tastes. Fed by the answers given to the weevil's questions
-// (server/weevil.ts) and edited by hand in the app (memory page, bottom of the machines band).
+// What weevils remembers about the user: goals, wishes, projects, tastes. Fed by what the user tells weevboss
+// and edited by hand in the app (memory page, bottom of the machines band).
 //
 // Stored in ~/.config/weevils/memory.json (mode 600): outside every repo, never committed, never sent anywhere but to
-// the model that writes the weevils' questions, the h24 proposals (server/optimizers.ts) and weevboss's context.
-// The questions already asked live in the same file, so a question is never asked twice.
+// the model that writes the h24 proposals (server/optimizers.ts) and weevboss's context.
+// The questions the weevil used to ask (a panel since removed) still live in the same file, read-only history.
 
 import crypto from 'node:crypto'
 import fs from 'node:fs'

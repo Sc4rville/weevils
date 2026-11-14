@@ -92,7 +92,7 @@ export function claudeAvailable(): boolean {
 }
 
 /**
- * Background writing that must never spend Codex (the weevil's questions, the automation proposals): Claude Haiku
+ * Background writing that must never spend Codex (the automation proposals): Claude Haiku
  * on the subscription, only while Claude is available. Otherwise it fails at once and the caller keeps what it has.
  */
 export function claudeHaiku(prompt: string, timeout = 120_000, schema?: object): Promise<string> {

@@ -22,7 +22,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { AutoDetail, AutoRun, AutoRunDetail, ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, Session, SessionDetail, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
+import type { AutoDetail, AutoRun, AutoRunDetail, ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, Session, SessionDetail, Snapshot, Subagent, SubagentDetail, Tool } from '../shared/api.ts'
 import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, LOGS_DIRS, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
@@ -57,6 +57,7 @@ import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFil
 import { judgeAsk } from './asks-judge.ts'
 import { TranscriptStore, borrowedTitle, digestOf, lastMessageOf, realTitle, titleOf } from './transcripts.ts'
 import { emptyBg, subagentSteps } from './background.ts'
+import { failedLine } from '../shared/failed-line.ts'
 import { llmTitles, needsTitle, shortNow, stableTitle, TitleRetry } from './titles.ts'
 import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
@@ -1178,7 +1179,9 @@ export class Weevils {
       controllable: !unmanagedLive || (t.tool === 'codex' && this.codexBridge.can(t.id)),
       live,
       hasScreen: !!pane,
-      subagents,
+      // Plus the long jobs it started into a logs folder: nested here, never on the automated page. They outlive the
+      // claude process and never make the session « working » (a server left running is not the agent's turn).
+      subagents: [...subagents, ...this.logJobsOf(t)],
       background: running.length,
       turnWorking,
       ...(!relayedBy ? { progress: this.progressReader.read(t.cwd, now) } : {}),
@@ -1190,6 +1193,44 @@ export class Weevils {
       ...(relayOf ? { relayOf } : {}),
       ...(relayedBy ? { relayedBy } : {}),
     }
+  }
+
+  /**
+   * The h24 jobs (logs folders) a session started, as shell rows of that session: its agent's description for a label,
+   * running while the log grows, failed when its last line says so. When several sessions wrote the same log name, the
+   * latest launch before the log's last write owns it. Without a launch seen in any transcript, a job stays « by hand ».
+   */
+  private logJobsOf(t: Transcript): Subagent[] {
+    const mine = t.bg?.logJobs
+    if (!mine) return []
+    const out: Subagent[] = []
+    for (const [name, job] of Object.entries(mine)) {
+      const a = this.h24.find((x) => x.id === `job:${name}` && x.kind === 'job' && !x.demo)
+      const last = a?.lastRunAt ?? 0
+      // A log older than this launch belongs to an earlier run (or to someone else).
+      if (!a || last < job.at - 60_000 || this.jobOwner(name, last) !== t.id) continue
+      const running = a.runState === 'running'
+      out.push({
+        id: a.id,
+        kind: 'shell',
+        label: job.label,
+        activity: job.label,
+        status: running ? 'working' : failedLine(a.lastEvent) ? 'failed' : 'done',
+        startedAt: Math.round(job.at),
+        ...(running ? {} : { endedAt: Math.round(last) }),
+      })
+    }
+    return out
+  }
+
+  /** Which transcript launched the job writing `name`.log last (before `last`, its latest write). */
+  private jobOwner(name: string, last: number): string | undefined {
+    let best: { id: string; at: number } | undefined
+    for (const x of this.store.all()) {
+      const at = x.bg?.logJobs?.[name]?.at
+      if (at !== undefined && at <= last + 60_000 && (!best || at > best.at)) best = { id: x.id, at }
+    }
+    return best?.id
   }
 
   /** Pane lancée par weevils dont le transcript n'existe pas encore. */

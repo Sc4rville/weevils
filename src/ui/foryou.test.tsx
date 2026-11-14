@@ -989,3 +989,16 @@ describe('evidence labels', () => {
     expect(band(fx.card.id).querySelector('.fy-ev-more summary')!.textContent).toBe('Vérifié · real iPhone, Safari PWA')
   })
 })
+
+it('a one-off task on weevils itself carries the recursive colour; one on another project does not (r35)', () => {
+ setLang('en')
+ const s = snap()
+ s.projects = [...s.projects, { id: 'weevils', name: 'weevils', kind: 'repo', repos: ['weevils'], where: {}, lastActivityAt: 0, installation: {} } as unknown as Snapshot['projects'][number]]
+ const item: ForYouItem = { ...base, id: 'pr', kind: 'proposals', who: 'weevils', text: '', live: true, cards: [
+  { id: 'o:self', title: 'Check onboarding on blank install', why: '', source: 'optimizer', kind: 'tests', repo: 'weevils' },
+  { id: 'o:game', title: 'Harden the tests', why: '', source: 'optimizer', kind: 'tests', repo: 'mygame' },
+ ] }
+ render(<ForYouItemView item={item} />, s)
+ const cards = [...band('pr').querySelectorAll<HTMLElement>('.fy-card')]
+ expect(cards.map(c => c.classList.contains('recursive-identity'))).toEqual([true, false])
+})

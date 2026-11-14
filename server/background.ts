@@ -89,8 +89,31 @@ export interface BgState {
   /** Cette version de Claude Code écrit les compteurs pending* : leur absence vaut 0. */
   sawPending: boolean
   lastTurnEndAt: number
+  /** Jobs this session started writing to a log in a logs folder (« nohup … > ~/logs/<name>.log & »), by log name: the
+   *  long jobs the automated page would otherwise list as « started by hand ». core.ts nests them under this session. */
+  logJobs?: Record<string, LogJob>
+}
+export interface LogJob {
+  /** The agent's description of the call, else a catalog word (never the raw command nor the log name). */
+  label: string
+  at: number
 }
 export const emptyBg = (): BgState => ({ launches: {}, notes: {}, stops: {}, calls: {}, sawPending: false, lastTurnEndAt: 0 })
+
+/** Log files a command writes in a logs folder (~/logs, $HOME/logs, /home/u/logs, weevils' jobs folder): their names. */
+export function logJobsIn(command: string): string[] {
+  const out = new Set<string>()
+  // Any path ending in /logs/ or /jobs/, from ~, $HOME or the root (« ~/.local/share/weevils/jobs/x.log » too).
+  const re = /(?:>>?|\btee(?:\s+-a)?)\s*["']?(?:~|\$HOME|\$\{HOME\})?(?:\/[^\s"';|&<>]*?)?\/(?:logs|jobs)\/([\w.-]+?)\.log\b/g
+  for (const m of command.matchAll(re)) out.add(m[1])
+  return [...out]
+}
+// A test command, not any word « test » (« test -f x », a src/test/ path).
+const TESTS = /\b(vitest|jest|playwright|pytest|cypress|e2e|pw-[\w-]+|(?:npm|pnpm|yarn|bun)(?: run)? test(?::[\w-]+)?)\b/i
+/** What a shell call is called: the agent's description, else a plain catalog word (a test run, a background command). */
+export function shellLabel(description: string, command: string): string {
+  return description.trim() || (TESTS.test(command) ? tr(M).testRun : tr(M).bgCommand)
+}
 
 const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
@@ -155,6 +178,10 @@ export function bgLine(bg: BgState, o: any, at: number) {
       if (part?.type !== 'tool_use' || typeof part.id !== 'string') continue
       const input = (part.input ?? {}) as Record<string, any>
       const name = str(part.name)
+      if (name === 'Bash') {
+        // A job started into a logs folder (« nohup … > ~/logs/x.log & »): remembered, core.ts nests it under this session.
+        for (const job of logJobsIn(str(input.command))) (bg.logJobs ??= {})[job] = { label: shellLabel(str(input.description), str(input.command)), at }
+      }
       if (name === 'Agent' || name === 'Task') {
         bg.launches[part.id] = { toolUseId: part.id, kind: 'agent', label: str(input.description) || str(input.subagent_type), at, async: input.run_in_background === true }
       } else if (name === 'Workflow') {
@@ -163,12 +190,12 @@ export function bgLine(bg: BgState, o: any, at: number) {
         const summary = /\bdescription\s*:\s*['"`]([^'"`\n]+)['"`]/.exec(script)?.[1]
         bg.launches[part.id] = { toolUseId: part.id, kind: 'workflow', label: wfName, workflow: wfName || undefined, summary, at, async: true }
       } else if (name === 'Bash' && input.run_in_background === true) {
-        bg.launches[part.id] = { toolUseId: part.id, kind: 'shell', label: str(input.description) || short(oneLine(str(input.command)), 80), at, async: true }
+        bg.launches[part.id] = { toolUseId: part.id, kind: 'shell', label: shellLabel(str(input.description), str(input.command)), at, async: true }
       } else if (name === 'Bash' || name === 'Monitor') {
         // Peut passer en arrière-plan plus tard (Bash au-delà de 600 s, Ctrl+B ; Monitor toujours) : retenu jusqu'à son résultat.
         const ids = Object.keys(bg.calls)
         if (ids.length > 200) for (const id of ids.slice(0, 100)) delete bg.calls[id]
-        bg.calls[part.id] = { label: str(input.description) || short(oneLine(str(input.command)), 80), at, monitor: name === 'Monitor' }
+        bg.calls[part.id] = { label: shellLabel(str(input.description), str(input.command)), at, monitor: name === 'Monitor' }
       } else if (name === 'TaskStop' || name === 'KillShell' || name === 'KillBash') {
         const id = str(input.task_id) || str(input.shell_id) || str(input.id)
         if (id) bg.stops[id] = at

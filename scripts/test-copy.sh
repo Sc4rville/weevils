@@ -6,6 +6,9 @@
 #   scripts/test-copy.sh link <name>                   the copy's login link (it asks for its own access code)
 #   scripts/test-copy.sh down <name>                   stop and remove the copy's container (its folder stays)
 #
+# WEEVILS_COPY_ORCHESTRATOR=1 on « up »: the copy runs as a main machine (For you, sleep mode, automations), still in
+# its container; without Claude logged in there, weevboss and the automations never start an agent.
+#
 # Why: on 2026-11-14 a hand-made script ran « TMUX_TMPDIR=$H tmux -L weevils kill-server » before $H existed. tmux
 # then fell back to /tmp, killed the real weevils tmux server and every agent session, twice. So a copy is physically
 # apart: it runs in a container that mounts only its own folder (read-write) and the dependencies (read-only). The
@@ -60,7 +63,7 @@ case "$cmd" in
       -p "127.0.0.1:$port:$port" \
       -v "$DIR:/copy" -v "$deps:/copy/app/node_modules:ro" \
       -e HOME=/copy -e TMUX_TMPDIR=/copy -e LANG=C.UTF-8 -e WEEVILS_LANG="${WEEVILS_LANG:-en}" \
-      -e WEEVILS_PORT="$port" -e WEEVILS_HOOK_PORT=$((port + 1)) -e WEEVILS_ORCHESTRATOR=0 -e WEEVILS_MACHINE=test-copy \
+      -e WEEVILS_PORT="$port" -e WEEVILS_HOOK_PORT=$((port + 1)) -e WEEVILS_ORCHESTRATOR="${WEEVILS_COPY_ORCHESTRATOR:-0}" -e WEEVILS_MACHINE=test-copy \
       -e WEEVILS_HOST=0.0.0.0 \
       -w /copy/app "$IMAGE" node server/index.ts >/dev/null
     echo "test copy $name: http://127.0.0.1:$port · folder $DIR · container $BOX"

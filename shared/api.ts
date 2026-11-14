@@ -426,6 +426,8 @@ export interface AutoRun {
   tokens?: number
   files?: number
   sessionId?: string
+  /** The task's own branch, pushed to origin by weevils after this run. */
+  pushed?: string
 }
 /** Un fichier produit ou modifié par un passage. abs : chemin absolu sur la machine (page fichier). */
 export interface AutoOutputFile {

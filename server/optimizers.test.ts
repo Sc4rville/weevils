@@ -7,9 +7,11 @@ import { smart, relay as relayAnswer } from './fast.ts'
 import { headOf } from './auto-runs.ts'
 import O from './i18n/optimizers.ts'
 import { Memory } from './memory.ts'
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFile as execFileCb, execFileSync, spawnSync } from 'node:child_process'
 import { Writable } from 'node:stream'
-import { BACKOFF_MS, DENY, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_FAILED_RUNS, MAX_RUN_MS, MAX_RUNS, MAX_TALK, MAX_TRIES, MAX_WAITING, MAC_DENY, MEM_REFRESH_MS, REFILL_GAP_MS, optimizerRoutes, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, TALK_BACKOFF_MS, TALK_CHARS, VANISH_MS, Optimizers, agreedDigest, denyList, freeReason, guardEnv, isRepeat, jailArgs, isStall, memGauge, parsePatch, parseProposals, parseSuggestions, runLimit, slug, stallKind, tidy, tryJail, type Sys } from './optimizers.ts'
+import { nightRecap } from './sleep.ts'
+import { PORT } from './config.ts'
+import { BACKOFF_MS, DENY, isBlocked, MAX_RELAUNCHES, STALL_MS, SUPERVISE_MS, mainRef, pushBranch, refreshWorktree, FIRST_ROUND_MS, IDLE_MS, KEEP_MS, MAX_FAILED_RUNS, MAX_RUN_MS, MAX_RUNS, MAX_TALK, MAX_TRIES, MAX_WAITING, MAC_DENY, MEM_REFRESH_MS, REFILL_GAP_MS, optimizerRoutes, MIN_FREE_BYTES, RETRY_MS, ROUND_EVERY_MS, ROUND_MEMORY_MS, SAFETY_ARGS, TALK_BACKOFF_MS, TALK_CHARS, VANISH_MS, Optimizers, agreedDigest, denyList, freeReason, guardEnv, isRepeat, jailArgs, isStall, memGauge, parsePatch, parseProposals, parseSuggestions, runLimit, slug, stallKind, tidy, tryJail, type Sys } from './optimizers.ts'
 import { availableMem } from './platform.ts'
 
 // Hermetic: no claude CLI, no login check, the language fixed in memory.
@@ -64,7 +66,7 @@ beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'optimizers-'))
   memory = new Memory(path.join(dir, 'memory.json'))
   snap = { projects: [{ id: 'mygame', name: 'mygame', kind: 'repo', repos: ['mygame', 'mygame-site'], where: {}, lastActivityAt: T0 }], sessions: [], mainWorking: false } as unknown as Snapshot
-  sys = { load: () => 0.2, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true, worktree: vi.fn(async (_repo: string, d: string) => void fs.mkdirSync(d, { recursive: true })), jail: vi.fn(async () => true), head: vi.fn(async () => undefined) }
+  sys = { load: () => 0.2, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true, worktree: vi.fn(async (_repo: string, d: string) => void fs.mkdirSync(d, { recursive: true })), jail: vi.fn(async () => true), head: vi.fn(async () => undefined), base: vi.fn(async () => undefined), refresh: vi.fn(async () => 'kept' as const), push: vi.fn(async () => false) }
   store = new Map()
   hooks = new Map()
   createIn = vi.fn(async () => ({ id: 'sess-1' }))
@@ -226,8 +228,8 @@ describe('auto — rounds', () => {
 })
 
 describe('auto — the runner', () => {
-  const accepted = async (n = 1) => {
-    const o = make()
+  const accepted = async (n = 1, extra: Record<string, unknown> = {}) => {
+    const o = make(extra)
     model.mockResolvedValue(props(n))
     await o.round(T0)
     for (const x of o.list()) expect(o.accept(x.id)).toBe(true)
@@ -279,7 +281,7 @@ describe('auto — the runner', () => {
     const id = o.list()[0].id
     // Its own worktree beside the repo, on a fresh branch, made by weevils before the session starts.
     expect(cwd).toBe(path.join(dir, 'p', '.auto', 'mygame', id))
-    expect(sys.worktree).toHaveBeenCalledWith(path.join(dir, 'p', 'mygame'), cwd, expect.stringMatching(/^auto\/harden-mygame-tests-\w{4}$/))
+    expect(sys.worktree).toHaveBeenCalledWith(path.join(dir, 'p', 'mygame'), cwd, expect.stringMatching(/^auto\/harden-mygame-tests-\w{4}$/), undefined)
     expect(title).toBe('Harden mygame tests')
     expect(text).toMatch(/on the local branch auto\/harden-mygame-tests-\w{4} made for you/)
     expect(text).toContain(`never touch the folder ${path.join(dir, 'p', 'mygame')}`)
@@ -359,12 +361,12 @@ describe('auto — the runner', () => {
     expect(text).not.toContain('git worktree')
   })
 
-  it('vanished or too long → failed; a failed start → failed', async () => {
+  it('vanished or too long, or a failed start → relaunched by the supervisor', async () => {
     let o = await accepted()
     o.tick(T0 + IDLE_MS)
     await flush()
     o.tick(T0 + IDLE_MS + VANISH_MS + MIN)
-    expect(o.list()[0]).toMatchObject({ state: 'failed', lastEvent: 'the session vanished' })
+    expect(o.list()[0]).toMatchObject({ state: 'queued', waiting: 'later', lastEvent: 'the session vanished' })
 
     fs.rmSync(path.join(dir, 'optimizers.json'))
     o = await accepted()
@@ -372,7 +374,7 @@ describe('auto — the runner', () => {
     await flush()
     snap.sessions = [session({ id: 'sess-1', status: 'working' })]
     o.tick(T0 + IDLE_MS + MAX_RUN_MS + MIN)
-    expect(o.list()[0]).toMatchObject({ state: 'failed', lastEvent: 'stopped after 2 h' })
+    expect(o.list()[0]).toMatchObject({ state: 'queued', waiting: 'later', lastEvent: 'stopped after 2 h' })
 
     fs.rmSync(path.join(dir, 'optimizers.json'))
     snap.sessions = []
@@ -381,7 +383,7 @@ describe('auto — the runner', () => {
     o.tick(T0 + IDLE_MS)
     await flush()
     // A short note in the app, the raw error in the log only.
-    expect(o.list()[0]).toMatchObject({ state: 'failed', lastEvent: 'could not start' })
+    expect(o.list()[0]).toMatchObject({ state: 'queued', waiting: 'later', lastEvent: 'could not start' })
     expect(vi.mocked(console.error).mock.calls.flat().join(' ')).toContain('tmux missing')
 
     fs.rmSync(path.join(dir, 'optimizers.json'))
@@ -389,7 +391,7 @@ describe('auto — the runner', () => {
     o = await accepted()
     o.tick(T0 + IDLE_MS)
     await flush()
-    expect(o.list()[0]).toMatchObject({ state: 'failed', lastEvent: 'could not make its branch' })
+    expect(o.list()[0]).toMatchObject({ state: 'queued', waiting: 'later', lastEvent: 'could not make its branch' })
 
     // A jail that does not hold stops the task; no bwrap at all (macOS) runs it with the other barriers only.
     fs.rmSync(path.join(dir, 'optimizers.json'))
@@ -399,7 +401,7 @@ describe('auto — the runner', () => {
     o = await accepted()
     o.tick(T0 + IDLE_MS)
     await flush()
-    expect(o.list()[0]).toMatchObject({ state: 'failed', lastEvent: 'could not start' })
+    expect(o.list()[0]).toMatchObject({ state: 'queued', waiting: 'later', lastEvent: 'could not start' })
     expect(createIn).not.toHaveBeenCalled()
     expect(vi.mocked(console.error).mock.calls.flat().join(' ')).toContain('(jail)')
 
@@ -413,21 +415,34 @@ describe('auto — the runner', () => {
     expect(createIn.mock.calls[0][4].wrap).toEqual([])
   })
 
-  it('blocked on a question (needs_user) it keeps running and holds the slot; ended without any answer → failed', async () => {
-    const o = await accepted(2)
+  it('a question (needs_user) never blocks the run: it goes to For you, the agent carries on; ended without any answer → relaunched', async () => {
+    const add = vi.fn()
+    const o = await accepted(2, { foryou: { add } })
     o.tick(T0 + IDLE_MS)
     await flush()
-    snap.sessions = [session({ id: 'sess-1', status: 'working' })]
+    snap.sessions = [session({ id: 'sess-1', status: 'working', lastActivityAt: T0 + IDLE_MS + MIN })]
     o.tick(T0 + IDLE_MS + MIN)
-    snap.sessions = [session({ id: 'sess-1', status: 'needs_user', attention: 'Do you want to proceed?' })]
+    snap.sessions = [session({ id: 'sess-1', status: 'needs_user', attention: 'Do you want to proceed?', lastActivityAt: T0 + IDLE_MS + 2 * MIN })]
+    // Within ASK_MS it may still be answered by someone watching: nothing yet.
+    o.tick(T0 + IDLE_MS + 4 * MIN)
+    await flush()
+    expect(add).not.toHaveBeenCalled()
     o.tick(T0 + IDLE_MS + 20 * MIN)
     await flush()
     expect(o.list()[0]).toMatchObject({ state: 'running' })
+    expect(add).toHaveBeenCalledTimes(1)
+    expect(add.mock.calls[0][0]).toMatchObject({ kind: 'boss', title: '"Harden mygame tests" has a question', text: 'Do you want to proceed?', open: { page: 'auto' } })
+    expect(key).toHaveBeenCalledWith('sess-1', 'esc')
+    expect(send).toHaveBeenCalledWith('sess-1', expect.stringContaining('Nobody can answer live'))
+    // Once per run.
+    o.tick(T0 + IDLE_MS + 25 * MIN)
+    await flush()
+    expect(add).toHaveBeenCalledTimes(1)
     expect(createIn).toHaveBeenCalledTimes(1)
-    // The process went away with only the brief in its transcript: nothing was done.
+    // The process went away with only the brief in its transcript: nothing was done → the supervisor relaunches it.
     snap.sessions = [session({ id: 'sess-1', status: 'done', live: false, messageCount: 1, lastMessage: 'Background task…' })]
     o.tick(T0 + IDLE_MS + 30 * MIN)
-    expect(o.list().find((x) => x.title === 'Harden mygame tests')).toMatchObject({ state: 'failed', lastEvent: 'ended without any answer' })
+    expect(o.list().find((x) => x.title === 'Harden mygame tests')).toMatchObject({ state: 'queued', waiting: 'later', lastEvent: 'ended without any answer' })
   })
 
   it('a long silent command reads idle, but the turn is still open: not done until it ends', async () => {
@@ -509,7 +524,7 @@ describe('auto — the runner', () => {
       expect(isStall(m), m).toBe(true)
     for (const m of ['Added a rate limit test to mygame; the branch awaits review.', 'Done. Usage limits are documented in report.md.', ''])
       expect(isStall(m), m).toBe(false)
-    expect(DENY.every((r) => /^(Bash|Read|Edit)\(.+\)$/.test(r) || ['SendMessage', 'ListAgents', 'RemoteTrigger'].includes(r))).toBe(true)
+    expect(DENY.every((r) => /^(Bash|Read|Edit)\(.+\)$/.test(r) || ['SendMessage', 'ListAgents', 'RemoteTrigger', 'AskUserQuestion'].includes(r))).toBe(true)
     // A trailing « :* » is Claude Code's old prefix syntax: every rule uses wildcards.
     expect(DENY.filter((r) => r.endsWith(':*)'))).toEqual([])
     expect(["You've hit your limit · resets 3am", 'Credit balance is too low'].map(stallKind)).toEqual(['limit', 'limit'])
@@ -1003,8 +1018,9 @@ describe('auto — talking a task over (the negotiation)', () => {
       o.tick(t + 20 * MIN)
       v = o.list(t + 20 * MIN)[0]
       if (i < MAX_FAILED_RUNS - 1) {
+        // Relaunched by the supervisor SUPERVISE_MS later (its next day stays its next day).
         expect(v.state).toBe('queued')
-        t = v.startAt!
+        t = (o.get(id) as { retryAt?: number }).retryAt ?? v.startAt!
         o.tick(t)
         await flush()
         expect(o.list(t)[0].state).toBe('running')
@@ -1113,7 +1129,7 @@ describe('auto — talking a task over (the negotiation)', () => {
     o.tick(t + MIN)
     expect(o.list(t + MIN)[0]).toMatchObject({ state: 'running', est: 30 })
     o.tick(T0 + IDLE_MS + 181 * MIN)
-    expect(o.list()[0]).toMatchObject({ state: 'failed', lastEvent: O.en.timedOut(3) })
+    expect(o.list()[0]).toMatchObject({ state: 'queued', waiting: 'later', lastEvent: O.en.timedOut(3) })
   })
 
   it('a nightly task started late comes back at the opening of the next window, not at its late hour', async () => {
@@ -1369,7 +1385,8 @@ describe('auto — runs, their outputs, the automation page', () => {
     o.tick(T0 + IDLE_MS)
     await o.settled()
     const v = o.list(T0 + IDLE_MS)[0]
-    expect(v.state).toBe('failed')
+    // Relaunched by the supervisor (bounded), never stuck running.
+    expect(v.state).toBe('queued')
     expect(v.runCount).toBe(1)
     expect(createIn).not.toHaveBeenCalled()
     expect(o.detail('g0n3')!.runs).toHaveLength(1)
@@ -2096,5 +2113,257 @@ describe('auto — the « when I sleep » trigger (sleep mode)', () => {
     expect(o.setTrigger('nope', { onSleep: true })).toBeNull()
     expect(parsePatch({ onSleep: true, stopOnWake: false }, { repos: [], tz: 'UTC', now: T0 })).toEqual({ onSleep: true, stopOnWake: null })
     expect(parsePatch({ onSleep: 'yes' }, { repos: [], tz: 'UTC', now: T0 })).toEqual({})
+  })
+})
+
+describe('auto — the supervisor: every unattended run runs, at any hour', () => {
+  const DAY = 24 * 60 * MIN
+  const seed = (over: Record<string, unknown> = {}) => {
+    const t = { id: 'ad5f4c', title: 'UI ad factory', why: 'ads while you sleep', kind: 'content', repo: null, heavy: false, priority: 1, est: 30, prompt: 'Start one batch session with weevils new.', state: 'queued', createdAt: T0 - DAY, acceptedAt: T0 - DAY, ...over }
+    fs.writeFileSync(path.join(dir, 'optimizers.json'), JSON.stringify({ items: [t], lastRoundAt: T0, fails: 0, failUntil: 0 }))
+    return make()
+  }
+  const BLOCKED = 'I skipped this run and started no batch session, because the sandbox blocked every `weevils` command (`weevils sessions`).'
+  const end = (lastMessage: string, messageCount = 6) => (snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage, messageCount })])
+
+  it('sleep mode: a blocked « when I sleep » automation is relaunched within the night, and the wake-up recap says so', async () => {
+    const o = seed({ onSleep: true })
+    o.sleep = { on: true, since: T0 }
+    o.tick(T0 + MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(1)
+    snap.sessions = [session({ id: 'sess-1', status: 'working' })]
+    o.tick(T0 + 2 * MIN)
+    // It ends « ok », but it says the sandbox blocked it: a blocked run, not a result.
+    end(BLOCKED)
+    o.tick(T0 + 10 * MIN)
+    let v = o.get('ad5f4c') as { state: string; retryAt?: number; relaunches?: number; supervision?: { action: string; why: string }[] }
+    expect(v).toMatchObject({ state: 'queued', relaunches: 1, retryAt: T0 + 10 * MIN + SUPERVISE_MS })
+    expect(v.supervision).toEqual([{ at: T0 + 10 * MIN, action: 'relaunch', why: expect.stringContaining('sandbox blocked') }])
+    // Not before its relaunch time…
+    snap.sessions = []
+    o.tick(T0 + 20 * MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(1)
+    // …then once more the same night (one run per night does not hold a relaunch).
+    o.tick(T0 + 26 * MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(2)
+    snap.sessions = [session({ id: 'sess-1', status: 'working' })]
+    o.tick(T0 + 27 * MIN)
+    end('Started one batch session: UI ad factory batch (a1b2c3d4).')
+    o.tick(T0 + 50 * MIN)
+    v = o.get('ad5f4c') as typeof v
+    expect(v.state).toBe('queued')
+    expect(v.relaunches).toBeUndefined()
+    // Done for the night: it waits for the next one.
+    o.tick(T0 + 80 * MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(2)
+    // The wake-up recap: what was retried and why, then what ran.
+    const { recap, counts } = nightRecap({ from: T0, to: T0 + 8 * 60 * MIN, sessions: [], autos: o.recapAutos() })
+    expect(counts).toMatchObject({ done: 1, retried: 1, failed: 0 })
+    expect(recap.lines.map((l) => [l.state, l.detail])).toEqual([
+      ['failed', expect.stringMatching(/^relaunched \(1st time\) after: I skipped this run.*sandbox blocked/)],
+      ['done', 'Started one batch session: UI ad factory batch (a1b2c3d4).'],
+    ])
+  })
+
+  it('daytime, sleep mode off: a blocked automation is relaunched too', async () => {
+    const S = T0 + IDLE_MS
+    const o = seed()
+    o.sleep = { on: false, since: null }
+    o.tick(S + MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(1)
+    snap.sessions = [session({ id: 'sess-1', status: 'working' })]
+    o.tick(S + 2 * MIN)
+    end('Permission to use Bash with command weevils sessions has been denied, so nothing was started.')
+    o.tick(S + 10 * MIN)
+    expect(o.get('ad5f4c')).toMatchObject({ state: 'queued', relaunches: 1 })
+    snap.sessions = []
+    o.tick(S + 10 * MIN + SUPERVISE_MS)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(2)
+    expect(o.get('ad5f4c')!.state).toBe('running')
+    snap.sessions = [session({ id: 'sess-1', status: 'working' })]
+    o.tick(S + 30 * MIN)
+    end('Started one batch session.')
+    o.tick(S + 40 * MIN)
+    // A one-off task: done now, for good.
+    expect(o.get('ad5f4c')!.state).toBe('done')
+  })
+
+  it('a run that sits still is ended as stalled and relaunched; after MAX_RELAUNCHES it is reported as still failing', async () => {
+    const S = T0 + IDLE_MS
+    const o = seed()
+    o.tick(S + MIN)
+    await flush()
+    // A turn still open (a hung command): follow() keeps waiting, the supervisor's look does not.
+    store.set('sess-1', { phase: 'working', lastActivityAt: S + 2 * MIN })
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastActivityAt: S + 2 * MIN })]
+    o.tick(S + 2 * MIN)
+    o.tick(S + 30 * MIN)
+    expect(o.get('ad5f4c')!.state).toBe('running')
+    o.tick(S + 2 * MIN + STALL_MS + MIN)
+    expect(o.get('ad5f4c')).toMatchObject({ state: 'queued', relaunches: 1, lastEvent: O.en.stalled(46) })
+    // Two failed relaunches: it gives up, says so, and stays failed.
+    let t = S + 2 * MIN + STALL_MS + MIN
+    for (let i = 0; i < MAX_RELAUNCHES; i++) {
+      t += SUPERVISE_MS
+      store.delete('sess-1')
+      snap.sessions = []
+      o.tick(t)
+      await flush()
+      expect(o.get('ad5f4c')!.state).toBe('running')
+      end('x', 1)
+      t += 20 * MIN
+      o.tick(t)
+    }
+    const v = o.get('ad5f4c') as { state: string; supervision?: { action: string }[] }
+    expect(v.state).toBe('failed')
+    expect(v.supervision!.map((x) => x.action)).toEqual(['relaunch', 'relaunch', 'gave-up'])
+    expect(createIn).toHaveBeenCalledTimes(1 + MAX_RELAUNCHES)
+    const { recap } = nightRecap({ from: T0, to: t, sessions: [], autos: o.recapAutos() })
+    expect(recap.lines[0]).toMatchObject({ state: 'failed', detail: 'still failing after its relaunches: ended without any answer' })
+  })
+
+  it('tells a blocked run from a result, and from a refusal that stays on purpose', () => {
+    for (const m of [
+      'I skipped this run and started no batch session, because the sandbox blocked every `weevils` command (`weevils sessions…',
+      "I couldn't review any new request–prompt pairs today. The permission policy blocks reading anything outside this folder…",
+      'Permission to use Bash with command ls ~/.config/weevils has been denied.',
+      'weevils memory: not allowed in an automation run',
+    ])
+      expect(isBlocked(m), m).toBe(true)
+    for (const m of [
+      'I skipped this run and did not start a batch. FACTORY.md says to check first that no batch is still working.',
+      'Report written: 3 findings.',
+      'docs(night-lens): posts held, publishing refused by permissions',
+      '',
+    ])
+      expect(isBlocked(m), m).toBe(false)
+  })
+
+  it('never relaunches what the user stopped, deleted, or what is out of quota', async () => {
+    const o = seed({ onSleep: true, stopOnWake: true })
+    o.sleep = { on: true, since: T0 }
+    o.tick(T0 + MIN)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'working' })]
+    o.tick(T0 + 2 * MIN)
+    o.sleep = { on: false, since: null }
+    o.sleepChanged(false, T0 + 30 * MIN)
+    expect(o.get('ad5f4c')).toMatchObject({ state: 'queued' })
+    expect((o.get('ad5f4c') as { relaunches?: number }).relaunches).toBeUndefined()
+  })
+})
+
+describe('auto — the permission profile', () => {
+  it('lets a run use the weevils commands it needs, git, heavy and RunPod; keeps the rest denied', () => {
+    const settings = JSON.parse(SAFETY_ARGS[1])
+    const { allow, deny } = settings.permissions as { allow: string[]; deny: string[] }
+    for (const c of ['sessions', 'read', 'asks', 'new', 'send', 'post', 'show']) {
+      expect(allow).toContain(`Bash(weevils ${c} *)`)
+      expect(deny.some((r) => r.startsWith(`Bash(weevils ${c}`))).toBe(false)
+    }
+    expect(allow).toEqual(expect.arrayContaining(['Bash(heavy *)', 'Bash(runpodctl *)', 'Bash(git commit *)']))
+    expect(deny).not.toContain('Bash(weevils*)')
+    expect(deny).toEqual(expect.arrayContaining(['Bash(weevils memory *)', 'Bash(weevils ask *)', 'Bash(weevils config *)', 'Bash(weevils resume *)', 'Bash(*/weevils setup *)', 'Bash(weevils-*)', 'Bash(git push*)', 'Bash(tmux *)', 'Bash(sudo *)', 'Bash(rm * ~*)', 'Bash(* publish *)', 'AskUserQuestion']))
+    const { set, unset } = guardEnv('/g', { RUNPOD_API_KEY: 'k', GH_TOKEN: 't' })
+    expect(set).toMatchObject({ WEEVILS_PORT: String(PORT), WEEVILS_SCOPE: 'automation' })
+    expect(unset).toContain('GH_TOKEN')
+    expect(unset).not.toContain('RUNPOD_API_KEY')
+  })
+
+  it('the CLI itself refuses every other subcommand in an automation run, and reaches weevilsd for the allowed ones', async () => {
+    const http = await import('node:http')
+    const hits: string[] = []
+    const srv = http.createServer((req, res) => {
+      hits.push(`${req.method} ${req.url}`)
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify({ projects: [{ id: 'weevils', name: 'weevils', where: {} }], sessions: [{ id: 'abcdef1234', projectId: 'weevils', tool: 'claude', machineId: 'vps', status: 'working', title: 'A live one' }] }))
+    })
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r))
+    const port = (srv.address() as { port: number }).port
+    const run = (...args: string[]) =>
+      new Promise<{ code: number; out: string; err: string }>((resolve) => {
+        const p = execFileCb('bash', [path.join(import.meta.dirname, 'weevils-cli'), ...args], { env: { PATH: process.env.PATH, HOME: dir, WEEVILS_LANG: 'en', WEEVILS_PORT: String(port), WEEVILS_SCOPE: 'automation' } }, (e, out, err) => resolve({ code: e ? Number(e.code ?? 1) : 0, out: String(out), err: String(err) }))
+        void p
+      })
+    try {
+      const ok = await run('sessions')
+      expect(ok.code).toBe(0)
+      expect(ok.out).toContain('A live one')
+      for (const sub of ['memory', 'ask', 'resume', 'config', 'setup', 'mem', 'tour']) {
+        const r = await run(sub, 'rm', 'x')
+        expect(r.code, sub).toBe(3)
+        expect(r.err).toContain('not allowed in an automation run')
+      }
+      expect(hits).toEqual(['GET /api/snapshot'])
+    } finally {
+      srv.close()
+    }
+  })
+})
+
+describe('auto — worktrees follow main, branches are pushed by weevils', () => {
+  const g = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', HOME: dir, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).trim()
+  const setup = () => {
+    const origin = path.join(dir, 'origin.git')
+    const repo = path.join(dir, 'repo')
+    execFileSync('git', ['init', '-q', '--bare', '-b', 'main', origin])
+    fs.mkdirSync(repo)
+    g(repo, 'init', '-q', '-b', 'main')
+    g(repo, 'remote', 'add', 'origin', origin)
+    g(repo, 'commit', '-q', '--allow-empty', '-m', 'one')
+    g(repo, 'push', '-q', 'origin', 'main')
+    return { origin, repo }
+  }
+  const prev = { ...process.env }
+  beforeEach(() => Object.assign(process.env, { GIT_CONFIG_NOSYSTEM: '1', HOME: dir, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' }))
+  afterEach(() => {
+    for (const k of ['GIT_CONFIG_NOSYSTEM', 'HOME', 'GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL']) {
+      if (prev[k] === undefined) delete process.env[k]
+      else process.env[k] = prev[k]
+    }
+  })
+
+  it('a new task branches from main even when the checkout is on another branch; an old worktree catches up; its branch is pushed, never main', async () => {
+    vi.useRealTimers()
+    const { origin, repo } = setup()
+    g(repo, 'checkout', '-q', '-b', 'feature')
+    g(repo, 'commit', '-q', '--allow-empty', '-m', 'feature work')
+    expect(await mainRef(repo)).toBe('main')
+    const wt = path.join(dir, 'wt')
+    g(repo, 'worktree', 'add', '-q', wt, '-b', 'auto/x-1234', (await mainRef(repo))!)
+    expect(g(wt, 'log', '--format=%s', '-1')).toBe('one')
+    // main moves on: an untouched worktree fast-forwards, one with its own commit merges, a dirty one is left alone.
+    g(repo, 'checkout', '-q', 'main')
+    g(repo, 'commit', '-q', '--allow-empty', '-m', 'two')
+    expect(await refreshWorktree(wt, 'main')).toBe('ff')
+    expect(g(wt, 'log', '--format=%s', '-1')).toBe('two')
+    fs.writeFileSync(path.join(wt, 'r.md'), 'report')
+    expect(await refreshWorktree(wt, 'main')).toBe('kept')
+    g(wt, 'add', 'r.md')
+    g(wt, 'commit', '-q', '-m', 'report')
+    g(repo, 'commit', '-q', '--allow-empty', '-m', 'three')
+    expect(await refreshWorktree(wt, 'main')).toBe('merged')
+    expect(g(wt, 'log', '--format=%s', 'main..HEAD')).toContain('report')
+    expect(g(wt, 'merge-base', '--is-ancestor', 'main', 'HEAD')).toBe('')
+    // Origin ahead of the local main: origin's is the base.
+    const other = path.join(dir, 'other')
+    execFileSync('git', ['clone', '-q', origin, other])
+    g(other, 'commit', '-q', '--allow-empty', '-m', 'from elsewhere')
+    g(other, 'push', '-q', 'origin', 'main')
+    g(repo, 'reset', '-q', '--hard', 'origin/main')
+    expect(await mainRef(repo)).toBe('origin/main')
+    // Push: the auto branch only, and only when the run committed.
+    const base = g(wt, 'rev-parse', 'HEAD')
+    expect(await pushBranch(wt, 'auto/x-1234', base)).toBe(false)
+    expect(await pushBranch(wt, 'main')).toBe(false)
+    expect(await pushBranch(wt, 'auto/x-1234', 'main')).toBe(true)
+    expect(g(origin, 'log', '--format=%s', '-1', 'auto/x-1234')).toBe('Merge branch \'main\' into auto/x-1234')
+    expect(g(origin, 'log', '--format=%s', '-1', 'main')).toBe('from elsewhere')
   })
 })

@@ -325,6 +325,7 @@ export function writeConfig(changes: Record<string, string>) {
 /** Chaque geste de l'app, et l'id (hints.json) qui dit qu'il a été vu ou fait. */
 export const GESTURES: [id: string, seen: string, what: string][] = [
   ['voice', 'voice', 'tap the weevboss logo to talk, tap again to stop, once more to send'],
+  ['live', 'g-live', 'hold the weevboss logo: a live spoken conversation (Gemini Live is only the voice, every real request comes to you as a normal message); needs GEMINI_API_KEY ([[setup:key:GEMINI_API_KEY]]), about 1-2 cents a minute, ends itself after 2 minutes of silence, a tap ends it'],
   ['repos', 'repos', 'swipe the feed left: every GitHub repo; + pins one to the feed'],
   ['calm', 'calm', 'pinch the feed: conversation mode (only the messages); pinch again to come back'],
   ['back', 'g-back', 'on a page, swipe right from the left edge: back'],

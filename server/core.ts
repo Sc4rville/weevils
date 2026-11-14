@@ -1945,6 +1945,10 @@ export class Weevils {
     return false
   }
 
+  /** The last messages of weevboss's thread (live voice mode: context for the voice layer). */
+  recentMain(n: number): Message[] {
+    return this.orchestratorMessages().slice(-n)
+  }
   private orchestratorMessages(): Message[] {
     const boss = this.codexBoss()
     // La bande du haut : tes messages et les réponses de weevils, pas ses appels d'outils.

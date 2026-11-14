@@ -1729,6 +1729,10 @@ button.copy.done {
   place-items: center;
   transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), color 0.22s ease;
   touch-action: manipulation;
+  /* Held for live mode: no callout, no text selection. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .weevboss-logo { display: block; flex: none; overflow: hidden; filter: var(--logo-filter, none); }
@@ -1795,6 +1799,40 @@ button.copy.done {
   75% { color: var(--anim-3); }
   100% { color: var(--ink); }
 }
+
+/* Live conversation (src/ui/live.tsx): calm on purpose. A slow breath in one soft colour; the voice's colours drift
+   slowly while it speaks; nothing blinks, nothing turns red. */
+.voice-logo.live {
+  color: color-mix(in oklab, var(--anim-2) 45%, var(--ink));
+  animation: live-breathe 4s ease-in-out infinite;
+}
+.voice-logo.live .voice-svg { filter: none; color: inherit; }
+.voice-logo.live-connecting { opacity: 0.7; }
+.voice-logo.live-speaking .voice-svg { animation: voice-reply 4s ease-in-out infinite; }
+.voice-logo.live-thinking { color: color-mix(in oklab, var(--anim-1) 45%, var(--ink)); }
+
+@keyframes live-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+
+.voice-live {
+  display: grid;
+  gap: 2px;
+  max-width: min(80vw, 22rem);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+.voice-live-meta { opacity: 0.7; font-variant-numeric: tabular-nums; }
+.voice-live-caption {
+  opacity: 0.55;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+.voice-live.ended { gap: 6px; justify-items: start; }
 
 /* Message d'état du logo : une bulle de pensée sans boîte, à droite de la tête (le petit rectangle incliné), en biais, texte fin précédé de « ! ». */
 .voice {

@@ -54,7 +54,7 @@ export default defineConfig({
     allowedHosts: publicHost ? [publicHost] : [],
     hmr: publicHost ? { protocol: 'wss', host: publicHost, clientPort: 443 } : undefined,
     // weevilsd sert l'API ; en dev, le serveur de dev la relaie (flux SSE compris).
-    proxy: { '/api': { target: 'http://127.0.0.1:4179', changeOrigin: false } },
+    proxy: { '/api': { target: 'http://127.0.0.1:4179', changeOrigin: false, ws: true } },
   },
   // Tests en mode développement de React (act), même si le shell a NODE_ENV=production.
   // setup-env : HOME jetable et WEEVILS_* fixés avant tout import, jamais la vraie config du développeur.

@@ -24,7 +24,7 @@ import { cartesia, cartesiaVoices, claudeAvailable, haiku, ledger, relay as mode
 import { CostOptimizer, RUN_EVERY_MS as COST_EVERY_MS } from './cost.ts'
 import CostM from './i18n/cost.ts'
 import { Weevils, isTestBrief } from './core.ts'
-import { lang, requestLang, withLang, setLang, tr, withInstallLang } from './i18n.ts'
+import { lang, requestLang, withLang, setLang, tr, withInstallLang, user } from './i18n.ts'
 import M from './i18n/api.ts'
 import P from './i18n/push.ts'
 import V from './i18n/voice.ts'
@@ -55,6 +55,7 @@ import { serveAttachment } from './attachments.ts'
 import { MediaShelf } from './foryou-media.ts'
 import { Curator } from './foryou-curator.ts'
 import { Voices, voiceParam } from './foryou-voice.ts'
+import { geminiKey, liveUpgrade, sameOrigin } from './live.ts'
 import type { MachineLoad } from '../shared/tips.ts'
 
 const w = new Weevils()
@@ -937,6 +938,24 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
     json(res, e instanceof OutboxError ? e.status : 400, { error: (e as Error).message })
   }
 }))
+
+// Live voice mode (server/live.ts): the phone's websocket, proxied to Gemini Live. The key stays here.
+const live = liveUpgrade({
+  key: geminiKey,
+  enabled: () => ORCHESTRATOR,
+  sendMain: (text) => w.sendMain(text),
+  waitMainReply: (since, ms) => w.waitMainReply(since, ms),
+  recent: () => w.recentMain(8),
+  user,
+})
+server.on('upgrade', (req, socket, head) => {
+  const url = new URL(req.url ?? '/', 'http://local')
+  if (url.pathname !== '/api/live' || !authed(req) || !sameOrigin(req)) {
+    socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+    return
+  }
+  live(req, socket, head, requestLang(req))
+})
 
 server.listen(PORT, HOST, () => console.log(`weevilsd → http://${HOST}:${PORT}`))
 // A Mac goes to sleep on its own: awake while weevilsd runs and the Mac is plugged in (WEEVILS_KEEP_AWAKE=0: no).

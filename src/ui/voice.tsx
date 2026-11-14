@@ -9,10 +9,12 @@ import { WeevbossLogo } from './logo'
 import { Icon } from './icons'
 import { localeHeaders, getLang, tr, useLang, useT } from '../i18n'
 import M from '../i18n/voice'
-import { tapHint } from './hints'
+import { markSeen, tapHint } from './hints'
 import { askSetup } from './setup'
 import { useApp } from './app-context'
 import { ITEM_SAYS, LOGO_SAYS } from './foryou-voice'
+import LM from '../i18n/live'
+import { LiveLine, armLive, disarmLive, startLive, stopLive, useLive } from './live'
 
 /**
  * Le logo de weevboss est le bouton vocal, en trois taps qui s'enchaînent vite :
@@ -125,12 +127,18 @@ const hush = () => {
 const busyLogos = new Set<object>()
 export const voiceBusy = () => busyLogos.size > 0
 
+/** Hold the logo this long for a live conversation (src/ui/live.tsx). */
+const HOLD_MS = 550
+
 /** Durée d'affichage d'un message d'état du logo, avant son fondu (0,35 s) : moins de 3 s en tout. */
 const NOTE_MS = 2200
 
 export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, recordingScope }: { recordingScope?: string; onText: (t: string) => void; onSend: () => void; replyKey?: string; replyText?: string; working: boolean; take: () => string }) {
   const t = useT(M)
+  const tl = useT(LM)
   const lang = useLang()
+  const liveNow = useLive()
+  const hold = useRef<{ timer?: ReturnType<typeof setTimeout>; fired: boolean }>({ fired: false })
   const snapshot = useApp().snap
   const snapSetup = snapshot.setup
   // IndexedDB is already isolated by app origin. A late machine snapshot must not move an active recording.
@@ -174,10 +182,10 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
   useEffect(() => {
     const k = busyKey.current
     // « ready » (dictée transcrite, en attente d'un tap pour l'envoyer) n'écoute ni ne parle : souvent envoyée autrement.
-    if (phase === 'rec' || phase === 'wait' || speaking) busyLogos.add(k)
+    if (phase === 'rec' || phase === 'wait' || speaking || liveNow) busyLogos.add(k)
     else busyLogos.delete(k)
     return () => void busyLogos.delete(k)
-  }, [phase, speaking])
+  }, [phase, speaking, !!liveNow])
   const [reply, setReply] = useState(false)
   const rec = useRef<MediaRecorder | null>(null)
   const starting = useRef(false)
@@ -393,7 +401,29 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
     onSend()
     take()
   }
+  // Hold: a live conversation (Gemini as the voice, weevboss doing the work). The audio wakes inside the gesture.
+  const pressStart = () => {
+    hold.current.fired = false
+    if (phase !== 'idle' || liveNow) return
+    armLive()
+    hold.current.timer = setTimeout(() => {
+      hold.current.fired = true
+      hush()
+      setSpeaking(false)
+      setErr(null)
+      navigator.vibrate?.(12)
+      markSeen('g-live')
+      startLive()
+    }, HOLD_MS)
+  }
+  const pressEnd = () => {
+    clearTimeout(hold.current.timer)
+    if (!hold.current.fired) disarmLive()
+  }
   const tap = (e: MouseEvent<HTMLButtonElement>) => {
+    if (hold.current.fired) return void (hold.current.fired = false)
+    // While live, a tap ends it.
+    if (liveNow) return stopLive()
     // Première fois : la bulle. Sans dictée ni voix branchées, elle renvoie vers weevboss, qui explique comment.
     const off = snapSetup?.voice === false && snapSetup.dictation === false
     if (phase === 'idle' && !speaking && tapHint('voice', e.currentTarget, off ? 'voiceOff' : undefined)) return void (off && askSetup('voice'))
@@ -421,12 +451,23 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
 
   const errorId = noticeKey('error:voice', currentRecording.current?.id, err)
   const { hidden: errorHidden } = useNotice(errorId)
-  const label = phase === 'idle' ? t.dictate : phase === 'rec' ? t.stopAndTranscribe : phase === 'wait' ? t.sendWhenReady : t.send
+  const label = liveNow ? tl.stop : phase === 'idle' ? t.dictate : phase === 'rec' ? t.stopAndTranscribe : phase === 'wait' ? t.sendWhenReady : t.send
   return (
     <div className="voice" data-voice-busy={arming || phase === 'rec' || phase === 'wait' || !!err && !!currentRecording.current}>
-      <button className={`voice-logo ${phase} ${reply ? 'reply' : ''} ${working ? 'working' : ''} ${speaking ? 'speaking' : ''}`} onPointerDown={(e) => e.preventDefault()} onClick={tap} aria-label={label} aria-pressed={phase === 'rec'}>
+      <button
+        className={`voice-logo ${liveNow ? `live live-${liveNow.state}` : phase} ${reply && !liveNow ? 'reply' : ''} ${working ? 'working' : ''} ${speaking ? 'speaking' : ''}`}
+        onPointerDown={(e) => { e.preventDefault(); pressStart() }}
+        onPointerUp={pressEnd}
+        onPointerLeave={pressEnd}
+        onPointerCancel={pressEnd}
+        onContextMenu={(e) => e.preventDefault()}
+        onClick={tap}
+        aria-label={label}
+        aria-pressed={phase === 'rec' || !!liveNow}
+      >
         <WeevbossLogo className="voice-svg" recording={phase === 'rec'} />
       </button>
+      <LiveLine />
       {saved.some(item => item.count > 0) && phase !== 'rec' && (
         <details className="voice-recovery">
           <summary>{t.savedRecordings}</summary>

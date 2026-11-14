@@ -3,13 +3,6 @@ import { defineMessages } from './index'
 
 export default defineMessages({
   fr: {
-    savedRecordings: 'enregistrements conservés',
-    interruptedAudio: 'enregistrement interrompu — seule la partie conservée est disponible',
-    audioSaved: 'audio conservé — non envoyé',
-    transcriptSaved: 'transcription conservée',
-    addTranscript: 'ajouter au brouillon',
-    retryTranscript: 'reprendre la transcription',
-    saveAudio: 'enregistrer l’audio',
     incompleteAudio: 'Des morceaux de cet enregistrement manquent. L’original conservé n’a pas été supprimé.',
     recordingInterrupted: 'Enregistrement interrompu. L’audio conservé peut être récupéré.',
     storageUnavailable: 'La sauvegarde audio est indisponible dans ce navigateur. L’enregistrement n’a pas démarré.',
@@ -27,13 +20,6 @@ export default defineMessages({
     voices: 'voix',
   },
   en: {
-    savedRecordings: 'saved recordings',
-    interruptedAudio: 'recording interrupted — only retained audio is available',
-    audioSaved: 'audio retained — not sent',
-    transcriptSaved: 'transcript retained',
-    addTranscript: 'add to draft',
-    retryTranscript: 'retry transcription',
-    saveAudio: 'save audio',
     incompleteAudio: 'Some recording chunks are missing. The retained original has not been deleted.',
     recordingInterrupted: 'Recording interrupted. The retained audio can be recovered.',
     storageUnavailable: 'Audio storage is unavailable in this browser. Recording has not started.',

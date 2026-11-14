@@ -116,9 +116,11 @@ it('retains a five-minute recording after a failed finish and retries the same I
  expect(rows.get(first[0]).stoppedAt-rows.get(first[0]).startedAt).toBe(300000)
  expect(host.textContent).toContain('Connection lost')
  expect(onText).not.toHaveBeenCalled();expect(onSend).not.toHaveBeenCalled()
+ expect(host.querySelector('details,.voice-recovery')).toBeNull()
+ // No button: the next time the bar mounts, the stopped recording is transcribed again by itself.
  journal.recordedChunks.mockResolvedValue(Array.from({length:20},()=>new Blob(['a'.repeat(1024)])))
- const retry=[...host.querySelectorAll('button')].find(b=>b.textContent==='retry transcription')!
- await act(async()=>{retry.click();await vi.waitFor(()=>expect(api.voiceFinish).toHaveBeenCalledTimes(2))})
+ await act(async()=>root.render(null));await render()
+ await act(async()=>{await vi.waitFor(()=>expect(api.voiceFinish).toHaveBeenCalledTimes(2))})
  expect(api.voiceFinish.mock.calls[1]).toEqual(first)
  expect(rows.get(first[0]).type).toBe('audio/mp4')
  expect(api.voiceChunk).toHaveBeenCalledTimes(40)
@@ -129,14 +131,13 @@ it('retains a five-minute recording after a failed finish and retries the same I
  expect(rows.get(first[0]).text).toBe('Recovered words')
 })
 
-it('reloads a saved transcript without inserting or sending it until explicitly requested',async()=>{
+it('puts a saved, never-inserted transcript into the draft by itself, without a visible list and without sending',async()=>{
  const item={id:'saved-id',scope:'page:/',type:'audio/mp4',lang:'en',startedAt:1000,stoppedAt:301000,count:1,text:'Original transcript'}
  journal.voiceRecordings.mockResolvedValue([item])
  await render()
- expect(host.textContent).toContain('transcript retained')
- expect(onText).not.toHaveBeenCalled();expect(onSend).not.toHaveBeenCalled()
- await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='add to draft')!.click())
- expect(onText).toHaveBeenCalledExactlyOnceWith('Original transcript')
+ await act(async()=>{await vi.waitFor(()=>expect(onText).toHaveBeenCalledExactlyOnceWith('Original transcript'))})
+ expect(host.textContent).not.toContain('transcript retained')
+ expect(host.querySelector('details')).toBeNull()
  expect(api.voiceFinish).not.toHaveBeenCalled();expect(onSend).not.toHaveBeenCalled()
 })
 
@@ -162,9 +163,10 @@ it('does not start an unprotected recording when local storage is unavailable',a
  expect(api.voiceChunk).not.toHaveBeenCalled()
 })
 
-it('labels a recording without a stop acknowledgement as partial, without transcribing automatically',async()=>{
+it('keeps an interrupted recording in the journal, invisible and never transcribed on its own',async()=>{
  journal.voiceRecordings.mockResolvedValue([{id:'interrupted-id',scope:'page:/',type:'audio/mp4',lang:'en',startedAt:1000,count:3}])
  await render()
- expect(host.textContent).toContain('only retained audio is available')
+ expect(host.textContent).not.toContain('only retained audio')
+ expect(host.querySelector('details')).toBeNull()
  expect(api.voiceFinish).not.toHaveBeenCalled();expect(onText).not.toHaveBeenCalled();expect(onSend).not.toHaveBeenCalled()
 })

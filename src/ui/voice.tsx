@@ -148,6 +148,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
   const [saved, setSaved] = useState<VoiceRecording[]>([])
   const currentRecording = useRef<VoiceRecording | null>(null)
   const memory = useRef(new Map<string, Blob[]>())
+  const tried = useRef(new Set<string>())
   const refreshSaved = async () => {
     const rows = await voiceRecordings(scope).catch(() => [])
     const ram = [...volatileVoiceRecordings.values()].map(value => value.recording).filter(item => item.scope === scope)
@@ -287,17 +288,15 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
       if (alive.current) { setErr((e as Error).message); setPhase('idle') }
     } finally { void refreshSaved() }
   }
-  const download = async (item: VoiceRecording) => {
-    try {
-      const parts = memory.current.get(item.id) ?? volatileVoiceRecordings.get(item.id)?.parts ?? await recordedChunks(item)
-      const url = URL.createObjectURL(new Blob(parts, { type: item.type }))
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `weevils-voice-${item.id}.${item.type.includes('mp4') ? 'm4a' : item.type.includes('ogg') ? 'ogg' : 'webm'}`
-      link.click()
-      setTimeout(() => URL.revokeObjectURL(url), 60_000)
-    } catch { setErr(tr(M).readAudio) }
-  }
+  // No visible list: a dictation that stopped but was never transcribed (or never reached the draft) is recovered by itself,
+  // once per recording, in the conversation it belongs to. An interrupted one stays in the journal. Never sends.
+  useEffect(() => {
+    if (phase === 'rec' || phase === 'wait') return
+    const next = saved.find(item => item.count > 0 && item.stoppedAt && !item.insertedAt && !tried.current.has(item.id))
+    if (!next) return
+    tried.current.add(next.id)
+    void recover(next)
+  }, [saved, phase])
   const start = async () => {
     if (starting.current) return
     starting.current = true
@@ -317,6 +316,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
       try { await saveRecording(item) } catch { throw new Error(tr(M).storageUnavailable) }
       if (!alive.current || scopeRef.current !== scope) return void stream.getTracks().forEach((tr) => tr.stop())
       currentRecording.current = item
+      tried.current.add(item.id) // this session reports its own failure; automatic recovery is for what an earlier page left behind
       const parts: Blob[] = []
       memory.current.set(id, parts)
       let stored: Promise<void> = Promise.resolve()
@@ -468,19 +468,6 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
         <WeevbossLogo className="voice-svg" recording={phase === 'rec'} />
       </button>
       <LiveLine />
-      {saved.some(item => item.count > 0) && phase !== 'rec' && (
-        <details className="voice-recovery">
-          <summary>{t.savedRecordings}</summary>
-          {saved.filter(item => item.count > 0).map(item => (
-            <div key={item.id} className="voice-recovery-item">
-              <time dateTime={new Date(item.startedAt).toISOString()}>{new Date(item.startedAt).toLocaleString(lang)}</time>
-              <span>{!item.stoppedAt ? t.interruptedAudio : item.text ? t.transcriptSaved : t.audioSaved}</span>
-              <button type="button" disabled={phase === 'wait'} onClick={() => void recover(item)}>{item.text ? t.addTranscript : t.retryTranscript}</button>
-              <button type="button" onClick={() => void download(item)}>{t.saveAudio}</button>
-            </div>
-          ))}
-        </details>
-      )}
       <AnimatePresence>
         {err && !errorHidden && (
           <motion.div

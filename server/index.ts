@@ -37,6 +37,7 @@ import { startMailBridge } from './mailbridge.ts'
 import { resetAuthors, threadAuthor } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
+import { startDiskUsage } from './disk-usage.ts'
 import { claudeQuota, quotas, rate as tokenRate, today as usageToday } from './usage.ts'
 import { Relay, defaultDeps } from './relay.ts'
 import { ProviderHealth } from './provider-health.ts'
@@ -64,6 +65,7 @@ const w = new Weevils()
 const sourceAuthor = (id: string) => threadAuthor(id, source => w.store.get(source), w.bossConversation(), ORCH_DIR)
 w.start()
 startInfra()
+startDiskUsage()
 // Pont e-mail (agents externes) : sur la machine de l'orchestrateur, seulement si WEEVILS_MAIL_ADDRESS / _PASSWORD sont remplis.
 let mailBridge = ORCHESTRATOR ? startMailBridge(w, DATA_DIR) : null
 const restartMail = () => {

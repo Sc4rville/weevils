@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { Consumer, DaySummary, Episode, FsListing, InfraDetail, InfraPoint, Level, Offer, ServerProc } from '../shared/infra.ts'
 import { facts, offer } from './discover.ts'
+import { diskView } from './disk-usage.ts'
 import { DATA_DIR, EXPOSE_DOMAIN, EXPOSE_SITES_DIR, HOME, MACHINE, ORCH_DIR, ORCHESTRATOR } from './config.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/infra.ts'
@@ -726,6 +727,7 @@ export async function detail(lookup: (id: string) => { title: string; projectId:
     servers: await servers(),
     consumers: await consumers(lookup),
     advice: advice({ points: pts, eps, days, mem: m, disk: d, cores, offer: o }),
+    diskView: diskView(),
   }
 }
 

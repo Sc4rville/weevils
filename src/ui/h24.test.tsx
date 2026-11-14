@@ -175,6 +175,18 @@ describe('auto drawer', () => {
     expect(pushed).toEqual([{ kind: 'auto', id: 'new-one' }])
   })
 
+  it('the real automations come first: an unfinished « new automation » sits under them, recurring proposals last', () => {
+    render(snap([
+      opt({ id: 'p', title: 'Weekly cleanup' }),
+      opt({ id: 'draft', title: 'new automation', draft: true, userCreated: true, talk: [{ who: 'auto', text: 'What do you want to automate?', at: NOW }] }),
+      task({ id: 'n', title: 'Night lens', every: 86_400_000 }),
+      running(),
+    ]))
+    expect(names()).toEqual(['Profile loader', 'Night lens', 'new automation', 'Weekly cleanup'])
+    expect(host.querySelector('[data-h24="p"]')!.classList.contains('auto-prop')).toBe(true)
+    expect(host.querySelector('[data-h24="n"]')!.classList.contains('auto-prop')).toBe(false)
+  })
+
   it('keeps personal proposals visible even when three automatic suggestions already wait', () => {
     render(snap([...['a', 'b', 'c'].map((id) => opt({ id, title: id })), opt({ id: 'personal', title: 'My own idea', userCreated: true })]))
     expect(names()).toEqual(['My own idea', 'a', 'b', 'c'])

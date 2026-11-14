@@ -124,8 +124,9 @@ export function H24Rail() {
   const opts = (snap.optimizers ?? []).filter(o => !k.deleted.has(o.id)).map(k.item)
   const drafts = opts.filter((o) => o.state === 'proposed' && o.draft && !k.decided.has(o.id))
   const ready = opts.filter((o) => o.state === 'proposed' && !o.draft && !k.decided.has(o.id))
-  // Automated is the user's automations first. Under them, smaller: proposals of real recurring automations (and the
-  // user's own drafts made proposals). One-shot proposals are actions: they go to « for you » (server/foryou.ts).
+  // Automated is the user's automations first. Under them: the conversations still being drafted (an unfinished
+  // « new automation » never sits above what really runs), then, smaller, proposals of real recurring automations (and
+  // the user's own drafts made proposals). One-shot proposals are actions: they go to « for you » (server/foryou.ts).
   const proposals = [...ready.filter((o) => o.userCreated), ...ready.filter((o) => !o.userCreated && !!o.every).slice(0, 3)]
   const accepted = opts.map((o) => (o.state === 'proposed' && k.decided.get(o.id) === 'yes' ? ({ ...o, state: 'queued', acceptedAt: now } as Optimizer) : o))
   const all = autoList({ ...snap, optimizers: accepted })
@@ -148,7 +149,7 @@ export function H24Rail() {
   const rounding = !!snap.autoRound?.busy
   // A colour per band, in display order: each one far from the one above it (the amber head for the first).
   const kept = useRef(new Map<string, string>())
-  kept.current = bandColors([...drafts.map((o) => o.id), ...live.map((x) => x.id), ...proposals.map((o) => o.id), ...(rounding ? ['__round'] : [])], kept.current)
+  kept.current = bandColors([...live.map((x) => x.id), ...drafts.map((o) => o.id), ...proposals.map((o) => o.id), ...(rounding ? ['__round'] : [])], kept.current)
   const keptDone = useRef(new Map<string, string>())
   keptDone.current = bandColors(finished.map((x) => x.id), keptDone.current)
 
@@ -232,6 +233,9 @@ export function H24Rail() {
           )}
           <TalkCtx.Provider value={k}>
             <AnimatePresence initial={false}>
+              {live.map((x) => (
+                <AutoBand key={x.id} x={x} slot={kept.current.get(x.id) ?? 'p9'} />
+              ))}
               {drafts.map((o) => (
                 <motion.section key={o.id} layout="position" className="band auto-band" style={color(kept.current.get(o.id) ?? 'p9')} data-h24={o.id} {...drop}>
                   <button className="auto-hit" onClick={() => push({ kind: 'auto', id: o.id })} aria-label={o.title} />
@@ -243,9 +247,6 @@ export function H24Rail() {
                     <span className="meta sub ellipsis">{k.busy.has(o.id) ? t.preparingProposal : t.draftContinue}</span>
                   </div>
                 </motion.section>
-              ))}
-              {live.map((x) => (
-                <AutoBand key={x.id} x={x} slot={kept.current.get(x.id) ?? 'p9'} />
               ))}
               {proposals.map((o) => (
                 <AutoBand key={o.id} x={fromOptimizer(o, projectOfRepo(snap.projects, o.repo))!} proposal={o} slot={kept.current.get(o.id) ?? 'p9'} />

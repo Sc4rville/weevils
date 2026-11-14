@@ -113,6 +113,9 @@ describe('triggerText: when it fires, in one phrase', () => {
     [{ kind: 'window', window: { from: 600, to: 720 } }, 'entre 10:00 et 12:00', 'between 10:00 and 12:00'],
     [{ kind: 'idle' }, 'quand rien ne tourne', 'when nothing else runs'],
     [{ kind: 'manual' }, 'lancé à la main', 'started by hand'],
+    [{ kind: 'sleep' }, 'quand je dors', 'when I sleep'],
+    [{ kind: 'sleep', every: DAY, window: { from: 60, to: 300 } }, 'quand je dors, sinon chaque nuit 01:00–05:00', 'when I sleep, otherwise every night 01:00–05:00'],
+    [{ kind: 'sleep', every: 2 * DAY, window: { from: 120, to: 300 } }, 'quand je dors, sinon tous les 2 jours, la nuit', 'when I sleep, otherwise every 2 days, at night'],
   ]
   it.each(cases)('%j', (tg, fr, en) => {
     expect(triggerText(tg, NOW, 'fr')).toBe(fr)

@@ -111,7 +111,6 @@ export const MAX_FAILED_RUNS = 3
 const SCOPE = ['title', 'why', 'kind', 'repo', 'prompt'] as const
 const TERMS = ['est', 'priority', 'heavy', 'notBefore', 'window', 'every', 'onSleep', 'stopOnWake'] as const
 /** The time conditions a « when I sleep » trigger replaces. */
-const TIMES = ['notBefore', 'window', 'every'] as const
 
 /**
  * What an unattended task may never do, enforced by Claude Code itself (deny rules hold even without permission
@@ -1024,19 +1023,38 @@ export class Optimizers {
 
   /** When its conditions let a task start (now when it has none, or when it was asked to run now). */
   private timeAt(o: Stored, now: number): number {
-    // « When I sleep » replaces its times: sleepHeld() says whether it may go.
-    if (o.onSleep) return now
-    return !o.runNow && (o.notBefore || o.window) ? nextStart(o, now, o.tz ?? serverTz()) : now
+    // « When I sleep »: at once when sleep mode makes it due, or relaunched by the supervisor (its retryAt holds it).
+    // Otherwise its own times, kept as the fallback: it still runs on a night sleep mode never came (sleepHeld()
+    // holds the ones that have no times).
+    if (o.runNow || o.relaunches || (o.onSleep && this.sleepDue(o, now))) return now
+    return o.notBefore || o.window ? nextStart(o, now, o.tz ?? serverTz()) : now
   }
 
   /** Sleep mode (server/sleep.ts), set at start on the main machine. */
   sleep: { readonly on: boolean; readonly since: number | null } | null = null
 
-  /** A « when I sleep » task waits for a night it has not run in yet (unless asked to run now). */
-  private sleepHeld(o: Stored): boolean {
-    if (!o.onSleep || o.runNow) return false
+  /**
+   * A « when I sleep » task with no times of its own waits for a night it has not run in yet. One with times (window,
+   * every, not before) is never held by sleep mode: they are its fallback, so it runs whether or not the user turned
+   * sleep mode on. Asked to run now, or relaunched by the supervisor, it goes at any hour.
+   */
+  private sleepHeld(o: Stored, now = Date.now()): boolean {
+    if (!o.onSleep || o.runNow || o.relaunches) return false
+    if (o.notBefore || o.window || o.every) return false
+    return !this.sleepDue(o, now)
+  }
+
+  /**
+   * Sleep mode makes a « when I sleep » task due: a night it has not run in yet and, when it repeats (every), its
+   * period nearly over (slack: half the period, at most 12 h, so a night that starts early still counts, and a run
+   * from its fallback window earlier the same night is not run again).
+   */
+  private sleepDue(o: Stored, now: number): boolean {
     const s = this.sleep
-    return !(s?.on && s.since !== null && o.sleepRunFor !== s.since)
+    if (!o.onSleep || !s?.on || s.since === null || o.sleepRunFor === s.since) return false
+    if (!o.every) return true
+    const slack = Math.min(o.every / 2, 12 * 60 * 60_000)
+    return now >= (o.notBefore ?? 0) - slack && now >= (o.startedAt ?? 0) + slack
   }
 
   /**
@@ -1390,13 +1408,7 @@ export class Optimizers {
       ;(o as unknown as Record<string, unknown>)[k] = p[k]
       changed.push(k)
     }
-    // « When I sleep » replaces its times; without it, nothing stops on wake.
-    if (p.onSleep === true)
-      for (const k of TIMES)
-        if (o[k] !== undefined && !(k in p && p[k] !== null)) {
-          delete o[k]
-          if (!changed.includes(k)) changed.push(k)
-        }
+    // « When I sleep » keeps its times as the fallback (sleepHeld()); without it, nothing stops on wake.
     if (!o.onSleep && o.stopOnWake) {
       delete o.stopOnWake
       if (!changed.includes('stopOnWake')) changed.push('stopOnWake')
@@ -1423,7 +1435,7 @@ export class Optimizers {
   private talkTurn(o: Stored, said: string, tz: string, replyLang: Lang, now = Date.now()): { prompt: string; untrusted: boolean } {
     const t = tr(O)
     const name = user()
-    const when = o.onSleep ? t.whenSleep(!!o.stopOnWake) : [o.notBefore && o.notBefore > now ? t.whenNotBefore(fmtLocal(o.notBefore, tz)) : '', o.window ? t.whenWindow(windowText(o.window)) : ''].filter(Boolean).join(', ') || t.whenAsap
+    const when = [o.onSleep ? t.whenSleep(!!o.stopOnWake) : '', o.notBefore && o.notBefore > now ? t.whenNotBefore(fmtLocal(o.notBefore, tz)) : '', o.window ? t.whenWindow(windowText(o.window)) : ''].filter(Boolean).join(', ') || t.whenAsap
     const item = t.talkItem({
       title: o.title,
       why: o.why,
@@ -1433,7 +1445,7 @@ export class Optimizers {
       priority: o.priority ?? 2,
       heavy: o.heavy,
       when,
-      every: o.onSleep ? t.everySleep : o.every ? t.everyEvery(fmtSpan(o.every)) : t.everyOnce,
+      every: [o.onSleep ? t.everySleep : '', o.every ? t.everyEvery(fmtSpan(o.every)) : ''].filter(Boolean).join(', ') || t.everyOnce,
       prompt: o.prompt,
     })
     const history = (o.talk ?? []).map((l) => (l.who === 'user' ? t.lineUser(name, l.text) : t.lineAuto(l.text))).join('\n')
@@ -1572,13 +1584,13 @@ export class Optimizers {
     // Paused by the user: skipped until played again. Asked to run now: first in line, whatever its time.
     const later = (o: Stored) => !!o.retryAt && o.retryAt > now
     const blocked=(o:Stored)=>!!o.repo&&this.w.sourceAccessForRepo?.(o.repo)?.canExecute===false
-    const ready = queue.filter((o) => !blocked(o) && (!this.auto || this.s.adoptionPaused || o.software?.status==='ready') && !o.paused && !later(o) && !this.sleepHeld(o) && this.timeAt(o, now) <= now).sort((a, b) => Number(!!b.runNow) - Number(!!a.runNow) || Number(!!b.onSleep) - Number(!!a.onSleep))
+    const ready = queue.filter((o) => !blocked(o) && (!this.auto || this.s.adoptionPaused || o.software?.status==='ready') && !o.paused && !later(o) && !this.sleepHeld(o, now) && this.timeAt(o, now) <= now).sort((a, b) => Number(!!b.runNow) - Number(!!a.runNow) || Number(!!b.onSleep) - Number(!!a.onSleep))
     // A « when I sleep » task does not wait for the night's ghosts to rest (they may work till morning): only for the
     // machine's load and memory.
     const reasonFor = (o: Stored | undefined) => (o?.onSleep && reason === 'busy' ? null : reason)
     queue.forEach((o) => {
       const i = ready.indexOf(o)
-      const wait = o.paused ? 'paused' : blocked(o) ? undefined : i < 0 ? (later(o) ? 'later' : this.sleepHeld(o) ? 'sleep' : 'time') : running || this.launching || i > 0 ? 'queue' : (reasonFor(o) ?? undefined)
+      const wait = o.paused ? 'paused' : blocked(o) ? undefined : i < 0 ? (later(o) ? 'later' : this.sleepHeld(o, now) ? 'sleep' : 'time') : running || this.launching || i > 0 ? 'queue' : (reasonFor(o) ?? undefined)
       if (o.waiting !== wait) {
         if (wait) o.waiting = wait
         else delete o.waiting
@@ -1654,7 +1666,7 @@ export class Optimizers {
    * A run just ended. Failed (not stopped on wake, deleted, or out of quota: those wait on their own) or blocked (it says
    * a permission or the sandbox stopped it): back to the queue, relaunched SUPERVISE_MS later through the normal queue
    * (machine load, memory, quota holds all apply), MAX_RELAUNCHES times in a row at most, then reported as still
-   * failing. A « when I sleep » task relaunches within the night (only while sleep is on). A good run resets the count.
+   * failing. A « when I sleep » task relaunches too, sleep mode on or off. A good run resets the count.
    * true: the supervisor decided the task's state.
    */
   private supervise(o: Stored, now: number, ok: boolean, note: string): boolean {
@@ -1667,7 +1679,6 @@ export class Optimizers {
     // Stopped by Claude itself (limit, login, API): later() already retried it MAX_TRIES times, spaced out.
     const quota = [O.fr, O.en].some((l) => [l.stall_limit, l.stall_login, l.stall_api].includes(note))
     if (o.deletedAt || o.builtin || note === tr(SM).stoppedOnWake || quota) return false
-    if (o.onSleep && !this.sleep?.on) return false
     const why = blocked ? oneLine(isBlocked(note) ? note : said ?? note, 160) : note
     const log = (action: Supervision['action']) => (o.supervision = [...(o.supervision ?? []), { at: now, action, why }].slice(-20))
     if ((o.relaunches ?? 0) >= MAX_RELAUNCHES) {
@@ -1766,14 +1777,14 @@ export class Optimizers {
         this.takePending(o)
         o.state = 'queued'
         // From the slot it was due at, not from when it could start: a busy evening never drifts the next nights.
-        // « When I sleep »: the next night is its next time.
-        if (o.every && !o.onSleep) o.notBefore = Math.max(nextRun(o.slotAt ?? o.startedAt ?? now, o.every, now), o.notBefore ?? 0)
+        // « When I sleep »: the next night is its next time, its own period the fallback.
+        if (o.every) o.notBefore = Math.max(nextRun(o.slotAt ?? o.startedAt ?? now, o.every, now), o.notBefore ?? 0)
         delete o.waiting
         delete o.retryAt
         delete o.tries
         delete o.seenWorking
         delete o.seenAt
-        console.log(`[auto] « ${o.title} » ${ok ? 'faite' : 'échouée'} · prochain passage ${o.onSleep ? 'à la prochaine nuit' : new Date(o.notBefore ?? now).toISOString()}`)
+        console.log(`[auto] « ${o.title} » ${ok ? 'faite' : 'échouée'} · prochain passage ${o.onSleep ? `à la prochaine nuit${o.notBefore ? ` ou au plus tard ${new Date(o.notBefore).toISOString()}` : ''}` : new Date(o.notBefore ?? now).toISOString()}`)
         return true
       }
     }

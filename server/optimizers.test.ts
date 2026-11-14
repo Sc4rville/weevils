@@ -2095,17 +2095,15 @@ describe('auto — the « when I sleep » trigger (sleep mode)', () => {
     expect(o.recapAutos()[0]).toMatchObject({ id: 'n1ght5', stoppedNote: 'stopped when you woke up' })
   })
 
-  it('the trigger is set from the auto page and in the schema: it replaces the times, stopOnWake needs it', () => {
-    const o = seed({ onSleep: undefined, every: DAY, window: { from: 60, to: 300 } })
+  it('the trigger is set from the auto page and in the schema: it keeps the times as its fallback, stopOnWake needs it', () => {
+    const o = seed({ onSleep: undefined, every: DAY, window: { from: 60, to: 300 }, notBefore: T0 + DAY })
     const v = o.setTrigger('n1ght5', { onSleep: true, stopOnWake: true })!
-    expect(v).toMatchObject({ onSleep: true, stopOnWake: true, rev: 1 })
-    expect(v.every).toBeUndefined()
-    expect(v.window).toBeUndefined()
-    expect(v.changed!.fields).toEqual(expect.arrayContaining(['onSleep', 'stopOnWake', 'every', 'window']))
-    // Switched while awake: it waits for the night, it never starts on the switch.
+    expect(v).toMatchObject({ onSleep: true, stopOnWake: true, rev: 1, every: DAY, window: { from: 60, to: 300 } })
+    expect(v.changed!.fields).toEqual(['onSleep', 'stopOnWake'])
+    // Switched while awake: it waits for sleep or its own time, it never starts on the switch.
     o.sleep = { on: false, since: null }
     o.tick(T0 + IDLE_MS)
-    expect(o.list(T0 + IDLE_MS)[0]).toMatchObject({ state: 'queued', waiting: 'sleep' })
+    expect(o.list(T0 + IDLE_MS)[0]).toMatchObject({ state: 'queued', waiting: 'time' })
     expect(createIn).not.toHaveBeenCalled()
     const off = o.setTrigger('n1ght5', { onSleep: false })!
     expect(off.onSleep).toBeUndefined()
@@ -2113,6 +2111,107 @@ describe('auto — the « when I sleep » trigger (sleep mode)', () => {
     expect(o.setTrigger('nope', { onSleep: true })).toBeNull()
     expect(parsePatch({ onSleep: true, stopOnWake: false }, { repos: [], tz: 'UTC', now: T0 })).toEqual({ onSleep: true, stopOnWake: null })
     expect(parsePatch({ onSleep: 'yes' }, { repos: [], tz: 'UTC', now: T0 })).toEqual({})
+  })
+})
+
+describe('auto — « when I sleep » with its own times: it runs, sleep mode on or off', () => {
+  const DAY = 24 * 60 * MIN
+  const HOUR = 60 * MIN
+  // T0 is a fixed UTC instant; the window is read in UTC here.
+  const at = (h: number, d = 0) => Math.floor(T0 / DAY) * DAY + d * DAY + h * HOUR
+  const seed = (over: Record<string, unknown> = {}) => {
+    const t = { id: 'hyg1en', title: 'Repo Hygienist', why: 'a cleaner repo', kind: 'other', repo: null, heavy: false, priority: 2, est: 30, prompt: 'Clean the repo.', state: 'queued', createdAt: T0 - DAY, acceptedAt: T0 - DAY, onSleep: true, tz: 'UTC', ...over }
+    fs.writeFileSync(path.join(dir, 'optimizers.json'), JSON.stringify({ items: [t], lastRoundAt: T0, fails: 0, failUntil: 0 }))
+    return make()
+  }
+  const runOnce = async (o: ReturnType<typeof make>, start: number) => {
+    o.tick(start)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'working' })]
+    o.tick(start + MIN)
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Repo cleaned: 2 fixes.' })]
+    o.tick(start + 30 * MIN)
+    snap.sessions = []
+  }
+
+  it('sleep mode never turned on: it still runs in its window (the fallback), and its next time moves on', async () => {
+    const o = seed({ window: { from: 2 * 60, to: 5 * 60 }, every: DAY, notBefore: at(2, 1) })
+    o.sleep = { on: false, since: null }
+    o.tick(at(23))
+    await flush()
+    expect(createIn).not.toHaveBeenCalled()
+    expect(o.list(at(23))[0]).toMatchObject({ waiting: 'time' })
+    await runOnce(o, at(2, 1) + MIN)
+    expect(createIn).toHaveBeenCalledTimes(1)
+    const v = o.get('hyg1en') as { state: string; notBefore?: number; window?: unknown }
+    expect(v).toMatchObject({ state: 'queued', notBefore: at(2, 2), window: { from: 120, to: 300 } })
+  })
+
+  it('sleep mode on: it starts at bedtime, not again in its window the same night, and again the next night', async () => {
+    const o = seed({ window: { from: 1 * 60, to: 5 * 60 }, every: DAY, notBefore: at(1, 1) })
+    const sleep = { on: true, since: at(22) as number | null }
+    o.sleep = sleep
+    await runOnce(o, at(22) + MIN)
+    expect(createIn).toHaveBeenCalledTimes(1)
+    // Its window comes in the same night: it already ran.
+    o.tick(at(1, 1) + 5 * MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(1)
+    // Next night, sleep mode again: it runs at bedtime.
+    sleep.since = at(22, 1)
+    await runOnce(o, at(22, 1) + MIN)
+    expect(createIn).toHaveBeenCalledTimes(2)
+  })
+
+  it('every 2 days under nightly sleep mode: only every other night', async () => {
+    const o = seed({ window: { from: 2 * 60, to: 5 * 60 }, every: 2 * DAY, notBefore: at(2, 1) })
+    const sleep = { on: true, since: at(23) as number | null }
+    o.sleep = sleep
+    await runOnce(o, at(23) + MIN)
+    expect(createIn).toHaveBeenCalledTimes(1)
+    sleep.since = at(23, 1)
+    o.tick(at(23, 1) + MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(1)
+    sleep.since = at(23, 2)
+    await runOnce(o, at(23, 2) + MIN)
+    expect(createIn).toHaveBeenCalledTimes(2)
+  })
+
+  it('a fallback run earlier in the night is not run again when sleep mode turns on later', async () => {
+    const o = seed({ window: { from: 1 * 60, to: 5 * 60 }, every: DAY, notBefore: at(1, 1) })
+    const sleep = { on: false, since: null as number | null }
+    o.sleep = sleep
+    await runOnce(o, at(1, 1) + MIN)
+    expect(createIn).toHaveBeenCalledTimes(1)
+    sleep.on = true
+    sleep.since = at(3, 1)
+    o.tick(at(3, 1) + MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(1)
+  })
+
+  it('daytime, sleep mode off: a blocked « when I sleep » run is relaunched 15 min later', async () => {
+    const o = seed({ window: { from: 1 * 60, to: 5 * 60 }, every: DAY })
+    o.sleep = { on: true, since: at(9) }
+    o.tick(at(9) + MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(1)
+    snap.sessions = [session({ id: 'sess-1', status: 'working' })]
+    o.tick(at(9) + 2 * MIN)
+    // Woken up meanwhile: sleep mode off, broad daylight, outside its window.
+    o.sleep = { on: false, since: null }
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Permission to use Bash with command weevils sessions has been denied, so nothing was done.', messageCount: 6 })]
+    o.tick(at(10))
+    expect(o.get('hyg1en')).toMatchObject({ state: 'queued', relaunches: 1, retryAt: at(10) + SUPERVISE_MS })
+    snap.sessions = []
+    o.tick(at(10) + SUPERVISE_MS - MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(1)
+    o.tick(at(10) + SUPERVISE_MS + MIN)
+    await flush()
+    expect(createIn).toHaveBeenCalledTimes(2)
+    expect(o.get('hyg1en')!.state).toBe('running')
   })
 })
 

@@ -19,10 +19,8 @@ philosophical, never filler.
    line in the report ("paused: weekly quota at N %") and stop. Above 75 %, do a shorter walk (one journey, no fix).
 3. Refresh your branch: `git merge --no-edit main` (the local `main`). On a conflict, `git merge --abort` and carry on
    with the code as it is, noting the revision in the report.
-4. Sleep trigger: if `main` now has a sleep-mode trigger for Auto (search `server/optimizers.ts`, `server/schedule.ts`
-   and `git log main -i --grep sleep`), add a post in step 5 with the button
-   `Switch Night lens to sleep::Switch the automation Night lens from its 01:00 fallback to the "when I sleep" trigger.`
-   Do it once: skip it when the ledger says it was already offered.
+4. Sleep trigger: Night lens already runs « when I sleep », with its 01:00–05:00 window as the fallback on a night
+   sleep mode never came. Never offer to switch it.
 5. Read `reports/night-lens/ledger.md` on this branch (create it on the first run): past personas, journeys,
    proposals and pieces, with what became of them. Also read the latest report of the UX consistency audit
    (`git log auto/find-ux-inconsistencies-156a --oneline -- reports/ux-consistency`, then `git show` its newest
@@ -79,29 +77,42 @@ that pins them (`npm test` must stay green; respect the house rules: every strin
 themes, flat bands, sharp corners). Anything bigger stays a proposal.
 
 Stop early, and say so in the report, when the walk found nothing that is not already in the ledger or the UX
-consistency reports. A night with nothing new costs little and publishes nothing but one line.
+consistency reports. A night with nothing new costs little and publishes no proposal; the piece (step 4) is still
+written.
 
 ## 4. One thoughtful piece for For you
 
-One per night, at most. It must be worth reading on its own: an insight about how the user's agents actually worked
+Exactly one per night, every night, even when the walk stopped early or found nothing (only the Codex and the 90 %
+quota stops of step 0 skip it). This is the part the user reads with their coffee: take real time over it. It must
+be worth reading on its own, close to philosophical: an idea that changes how one sees the work, not a status. It is: an insight about how the user's agents actually worked
 (read the real Claude Code transcripts in `~/.claude/projects` and the session threads: patterns of rework, where
 time went, what kind of brief produced clean work, how a decision travelled), a pattern across projects, or a
 well-argued idea about the product. Grounded in something real and named, with the evidence in one line.
 
+Shape: a title that is a claim, not a topic (« The brief that asked fewer questions got better work », not
+« Thoughts on briefs »). Then 150 to 300 words of plain prose: the observation, the evidence in one line (what,
+where, how many), what it means beyond tonight, and one quiet question or consequence to end on. No list, no
+heading, no emoji, no file path, no session id. Read it once more as a stranger would: cut every sentence that only
+fills. Never the same subject as the last three pieces in the ledger.
+
 Never: a restatement of the user's own ideas, memory or brief presented as weevils' insight; filler or
-motivational talk; test output, logs, raw commits or token counts as the content itself. If nothing deserves to be
-said tonight, publish no piece.
+motivational talk; test output, logs, raw commits or token counts as the content itself.
+
+Write it to `.night-lens/piece.md` in this worktree (git-ignored): the title on the first line, a blank line, then
+the text. Never post the piece yourself: the automation's adapter publishes that file to For you once, and keeps it
+for the next run if the post failed. Copy it into the report too.
 
 ## 5. Publish
 
 Publishing into the user's own For you feed on this machine is the one posting the user approved for this
-automation (nothing leaves the machine: no push, no mail, no PR). Use the CLI, which talks to the local server:
+automation (no mail, no PR, no social network; you never push: weevils pushes this branch to GitHub itself after the
+run, so the report never stays on this machine only). Use the CLI, which talks to the local server:
 
 - Each proposal: `weevils show reports/night-lens/<date>/<n>-before-after.png "<one-line caption>"`, then
   `weevils post "<2–4 short sentences: what the persona hit, what we change, what stays>" --action "Build it::<a
   self-contained brief for weevboss: the change, the files, the no-capability-removed guarantee, the branch if a
   fix is already there>"`.
-- The piece: `weevils post "<the piece>"`, with a button only if there is a real next step.
+- The piece: not here, it is the file of step 4.
 - A readability fix already on the branch: its proposal's button is `Merge the fix::<brief naming the branch, the
   commit and the test>`.
 

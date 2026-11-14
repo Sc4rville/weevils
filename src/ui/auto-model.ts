@@ -115,8 +115,8 @@ const newestFirst = (runs: AutoRun[] | undefined) => [...(runs ?? [])].map((r) =
 
 /** An explicit date is distinct from a retry, a recurring cadence or an eligibility window. */
 export function optimizerTrigger(o: Pick<Optimizer, 'every' | 'window' | 'notBefore' | 'startAt' | 'onSleep' | 'stopOnWake'>): Trigger {
-  // « When I sleep » replaces its times.
-  if (o.onSleep) return { kind: 'sleep', stopOnWake: !!o.stopOnWake }
+  // « When I sleep » keeps its times as the fallback (it runs at them on a night sleep mode never came).
+  if (o.onSleep) return { kind: 'sleep', stopOnWake: !!o.stopOnWake, ...(o.every ? { every: o.every } : {}), ...(o.window ? { window: o.window } : {}) }
   // Recurring notBefore is also written by finish(); without provenance it is only eligibility.
   const at = o.window || o.every ? undefined : o.notBefore
   if (o.every) return { kind: 'every', every: o.every, window: o.window, at }
@@ -297,8 +297,11 @@ export function triggerText(tg: Trigger, now: number, lang: Lang = getLang()): s
       return t.whenIdle
     case 'manual':
       return t.manual
-    case 'sleep':
-      return tg.stopOnWake ? S[lang].triggerSleepStop : S[lang].triggerSleep
+    case 'sleep': {
+      const head = tg.stopOnWake ? S[lang].triggerSleepStop : S[lang].triggerSleep
+      const rest = tg.every || tg.window ? triggerText({ kind: tg.every ? 'every' : 'window', every: tg.every, window: tg.window }, now, lang) : ''
+      return rest ? S[lang].triggerSleepFallback(head, rest) : head
+    }
     case 'time':
       return tg.at ? t.atTime(at(tg.at, now, lang)) : t.whenIdle
     case 'window':

@@ -6,5 +6,5 @@ export function TranslationStatus({ item }: { item: ForYouItem }) {
   const loc = item.localization
   if (!loc) return null
   if (loc.status !== 'translated') return <p className="in meta" role="status">{loc.status === 'failed' ? t.translationFailed : t.translationPending}</p>
-  return <details className="in meta"><summary>{t.translationOriginal}</summary>{Object.entries(loc.original).map(([k,v]) => <p key={k} lang={loc.source === 'unknown' ? undefined : loc.source} style={{ whiteSpace: 'pre-wrap' }}>{v}</p>)}</details>
+  return <details className="in meta"><summary>{t.original}</summary>{Object.entries(loc.original).map(([k,v]) => <p key={k} lang={loc.source === 'unknown' ? undefined : loc.source} style={{ whiteSpace: 'pre-wrap' }}>{v}</p>)}</details>
 }

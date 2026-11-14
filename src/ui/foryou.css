@@ -1183,16 +1183,6 @@
   object-fit: cover;
   object-position: top;
 }
-.fy-media-open {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  padding: 8px 12px;
-  background: var(--ink);
-  color: var(--c);
-  font-size: 14px;
-  font-weight: 700;
-}
 /* Screenshots should stay still so their text remains readable. */
 .fy-media.fy-inview img { transform: none; }
 

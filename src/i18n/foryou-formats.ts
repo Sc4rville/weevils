@@ -10,8 +10,8 @@ export default defineMessages({
     result: '01 · Résultat visuel', resultTitle: 'Une alcôve pour se poser', resultText: 'TLO · Deux fauteuils, une petite table et une lumière chaude sous la voûte. Ce rendu existant permet de juger l’atmosphère de ce lieu de rencontre.',
     story: '02 · Parcours en images', storyTitle: 'Du café au couloir', storyText: 'Trois moments du même déplacement existant. Regarde comment le rideau fait passer de la salle chaleureuse aux arches de pierre.',
     clip: '03 · Mouvement', clipTitle: 'Entrer dans le café', clipText: 'TLO · Un premier aperçu existant du trajet rue → café, ralenti pour observer le mouvement. Lance-le pour juger la transition.',
-    proposal: '04 · À toi de choisir', open: 'Ouvrir l’image complète', previous: 'Image précédente', next: 'Image suivante', step: (n: number, total: number) => `Image ${n} sur ${total}`,
-    recommended: 'Recommandé', instruction: 'Voir la consigne prête à transmettre', send: 'Transmettre mon choix à TLO', sending: 'Transmission en cours…', sent: 'Choix transmis à TLO', choose: 'Choisis une option avant de transmettre.',
+    proposal: '04 · À toi de choisir', open: 'Ouvrir l’image complète', step: (n: number, total: number) => `Image ${n} sur ${total}`,
+    recommended: 'Recommandé', instruction: 'ce qui sera envoyé', send: 'Transmettre mon choix à TLO', sending: 'Transmission en cours…', sent: 'Choix transmis à TLO',
     keep: 'Garder ce format', kept: 'Format retenu sur cet appareil', preference: 'Ton choix de format est conservé sur cet appareil. Tu peux le changer.', missing: 'Cet exemple n’est pas disponible dans le flux actuel.',
   },
   en: {
@@ -24,8 +24,8 @@ export default defineMessages({
     result: '01 · Visual result', resultTitle: 'An alcove to settle into', resultText: 'TLO · Two armchairs, a small table and warm light beneath the vault. This existing render lets you assess the atmosphere of this meeting place.',
     story: '02 · Picture journey', storyTitle: 'From café to corridor', storyText: 'Three moments from the same existing movement. See how the curtain leads from the warm room into the stone arches.',
     clip: '03 · Motion', clipTitle: 'Entering the café', clipText: 'TLO · An existing early preview of the street → café journey, slowed down to observe the movement. Play it to assess the transition.',
-    proposal: '04 · Your choice', open: 'Open full image', previous: 'Previous image', next: 'Next image', step: (n: number, total: number) => `Image ${n} of ${total}`,
-    recommended: 'Recommended', instruction: 'Read the instructions to send', send: 'Send my choice to TLO', sending: 'Sending…', sent: 'Choice sent to TLO', choose: 'Choose an option before sending.',
+    proposal: '04 · Your choice', open: 'Open full image', step: (n: number, total: number) => `Image ${n} of ${total}`,
+    recommended: 'Recommended', instruction: 'what will be sent', send: 'Send my choice to TLO', sending: 'Sending…', sent: 'Choice sent to TLO',
     keep: 'Keep this format', kept: 'Format selected on this device', preference: 'Your format choice is saved on this device. You can change it.', missing: 'This example is unavailable in the current feed.',
   },
 })

@@ -207,7 +207,9 @@ describe('for you page', () => {
     expect(media.querySelector('.formats-inline')).toBeTruthy()
     expect(media.querySelector('.fy-cap.tone')!.textContent).toContain('the new title screen')
     expect(media.querySelector('.fy-cap')!.compareDocumentPosition(media.querySelector('.formats-inline')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(media.querySelector('.formats-image')!.textContent).toContain('Open full image')
+    // The image itself opens it: no permanent « Open full image » caption under it.
+    expect(media.querySelector('.formats-image')!.textContent).not.toContain('Open full image')
+    expect(media.querySelector('.formats-image')!.getAttribute('aria-label')).toContain('Open full image')
     // weevboss: its words, its button, a reply line.
     expect(band('bo').textContent).toContain('Three sessions sent this morning')
     expect(band('bo').querySelector('.fy-btn')!.textContent).toBe('review the two')
@@ -730,6 +732,8 @@ describe('for you: strips and the media viewer', () => {
     render(<MediaPage url="/api/foryou/media/m1" type="image" name="title.png" />)
     expect(host.querySelector('.fy-stage img')!.getAttribute('src')).toBe('/api/foryou/media/m1')
     expect(host.querySelector('.fy-stage img')!.getAttribute('alt')).toBe('title.png')
+    // The raw file name is not printed in the header (it stays the dialog's accessible name).
+    expect(host.querySelector('.fy-viewer-top')!.textContent).not.toContain('title.png')
     await click(labelled(t().back))
     expect(pushed).toEqual(['back'])
     render(<MediaPage url="/api/foryou/media/m2" type="video" name="run.mp4" />)
@@ -827,7 +831,7 @@ it('keeps editorial source wording folded, verbatim and separate from the revise
   await open([item])
   const details = band('bo').querySelector<HTMLDetailsElement>('details.fy-editorial')!
   expect(details.open).toBe(false)
-  expect(details.querySelector('summary')!.textContent).toBe('Original wording')
+  expect(details.querySelector('summary')!.textContent).toBe('original')
   expect(details.querySelector('.strong')!.textContent).toBe(original.title)
   expect(details.querySelector('.fy-text:last-child')!.textContent).toBe(original.text)
   expect(details.querySelector('private')).toBeNull()
@@ -838,7 +842,7 @@ it('keeps editorial source wording folded, verbatim and separate from the revise
   await act(async () => setLang('fr'))
   expect(band('bo').querySelector('details.fy-editorial')).toBe(details)
   expect(details.open).toBe(true)
-  expect(details.querySelector('summary')!.textContent).toBe('Texte d’origine')
+  expect(details.querySelector('summary')!.textContent).toBe('version d’origine')
   expect(details.querySelector('.fy-text:last-child')!.textContent).toBe(original.text)
   expect([...band('bo').querySelectorAll('.fy-btn')]).toEqual(actions)
   expect(srv.calls.some(c => /^(act|reply|dismiss) /.test(c))).toBe(false)
@@ -853,9 +857,9 @@ it('shows existing work instead of an approval request, retains original wording
  const original={title:'Think canvas',text:'Would you like me to prepare this?'}
  const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,title:original.title,text:original.text,editorial:{original},work:{intentId:'intent-think',status:'running',open:{page:'session',id:'think-owner'}}}
  await open([item])
- expect(band('bo').querySelector('.fy-text:not(.strong)')?.textContent).toBe('Work in progress.')
+ expect(band('bo').querySelector('.fy-text:not(.strong)')?.textContent).toBe('Working on it.')
  const buttons=[...band('bo').querySelectorAll<HTMLButtonElement>('.fy-btn')]
- expect(buttons.map(b=>b.textContent)).toEqual(['View existing work'])
+ expect(buttons.map(b=>b.textContent)).toEqual(['Open'])
  expect(band('bo').querySelector('form')).toBeNull()
  const disclosure=band('bo').querySelector<HTMLDetailsElement>('details.fy-editorial')!
  expect(disclosure.open).toBe(false)
@@ -863,8 +867,8 @@ it('shows existing work instead of an approval request, retains original wording
  await click(buttons[0]);expect(pushed).toEqual([{kind:'session',id:'think-owner'}])
  expect(srv.calls.some(c=>c.startsWith('act ')||c.startsWith('reply '))).toBe(false)
  await act(async()=>setLang('fr'));await flush()
- expect(band('bo').textContent).toContain('Travail en cours.')
- expect(band('bo').querySelector('.fy-btn')?.textContent).toBe('Voir le travail existant')
+ expect(band('bo').textContent).toContain('En cours.')
+ expect(band('bo').querySelector('.fy-btn')?.textContent).toBe('Ouvrir')
 })
 it('a stale approval opens the API-confirmed existing work once and preserves the card',async()=>{
  setLang('en')
@@ -901,11 +905,21 @@ it('an action handed to weevboss keeps the reader on the card: no page opens, th
  window.removeEventListener('weevils:focus-boss',onBoss)
 })
 
+it('existing work without a rewrite: no « original » disclosure repeating the card, no "view full image" overlays',async()=>{
+ setLang('en')
+ const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,title:'Think canvas',text:'Would you like me to prepare this?',editorial:undefined,work:{intentId:'intent-think',status:'running',open:{page:'session',id:'think-owner'}}}
+ await open([item, ...ITEMS.filter(i=>i.kind==='media')])
+ expect(band('bo').querySelector('details.fy-editorial')).toBeNull()
+ expect(band('bo').textContent).not.toMatch(/Original wording|View existing work|Work in progress/)
+ expect(host.textContent).not.toMatch(/view full image|open video ↗/)
+ expect(host.querySelector('.fy-media-open')).toBeNull()
+})
+
 it('keeps uncertain existing work informational when no destination is known',async()=>{
  setLang('en')
  const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,open:undefined,sessionId:undefined,work:{intentId:'unconfirmed',status:'uncertain'}}
  await open([item])
- expect(band('bo').textContent).toContain('Receipt unconfirmed; nothing has been resent.')
+ expect(band('bo').textContent).toContain('Not sure it arrived.')
  expect(band('bo').querySelector('.fy-btn')).toBeNull()
  expect(srv.calls.some(c=>c.startsWith('act '))).toBe(false)
 })

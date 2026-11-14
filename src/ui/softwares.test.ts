@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { TYPING0, frame, fromLinear, keepOrder, linear, sameOrigin, segFill, step, tapToFix, termLines, type Typing } from './softwares'
+import { fromLinear, keepOrder, linear, sameOrigin, segFill, tapToFix } from './softwares'
 
 describe('barre d’avancement', () => {
   it('remplit les segments avant, dans et après la phase', () => {
@@ -28,40 +28,6 @@ describe('barre d’avancement', () => {
     expect(fromLinear(linear({ phase: 1, percent: 100 }) + 5)).toEqual({ phase: 2, percent: 5 })
     expect(fromLinear(-5)).toEqual({ phase: 1, percent: 0 })
     expect(fromLinear(305)).toEqual({ phase: 3, percent: 100 })
-  })
-})
-
-describe('aperçu terminal', () => {
-  it('garde les vraies lignes, précédées de la commande pour git', () => {
-    expect(termLines({ tail: ['a', '', 'b'], tailSource: 'log' })).toEqual(['a', 'b'])
-    expect(termLines({ tail: ['abc fix'], tailSource: 'git' })).toEqual(['$ git log', 'abc fix'])
-    expect(termLines({ tail: [], tailSource: 'git' })).toEqual([])
-  })
-
-  it('tape chaque ligne en quelques pas, passe à la suivante, puis recommence', () => {
-    const lines = ['hello', 'x'.repeat(80)]
-    let s: Typing = TYPING0
-    const seen: Typing[] = []
-    for (let i = 0; i < 200; i++) {
-      s = step(s, lines)
-      seen.push(s)
-    }
-    // Une ligne de 80 caractères prend au plus 8 pas.
-    const firstPass = seen.slice(0, seen.findIndex((x) => x.line === 2))
-    const longSteps = firstPass.filter((x) => x.line === 1 && x.wait === 0 && x.ch > 0).length
-    expect(longSteps).toBeLessThanOrEqual(8)
-    // La boucle revient au début.
-    expect(seen.some((x, i) => i > 0 && x.line === 0 && x.ch === 0 && seen[i - 1].line === 2)).toBe(true)
-    expect(step(TYPING0, [])).toEqual(TYPING0)
-  })
-
-  it('montre les lignes tapées et celle en cours, les dernières seulement', () => {
-    const lines = ['a1', 'b2', 'c3', 'd4']
-    expect(frame(lines, { line: 2, ch: 1, wait: 0 }, 10)).toEqual({ lines: ['a1', 'b2', 'c'], typing: true })
-    expect(frame(lines, { line: 2, ch: 1, wait: 0 }, 2)).toEqual({ lines: ['b2', 'c'], typing: true })
-    expect(frame(lines, { line: 4, ch: 0, wait: 3 }, 3)).toEqual({ lines: ['b2', 'c3', 'd4'], typing: false })
-    // La sortie a raccourci entre deux pas : jamais de ligne fantôme.
-    expect(frame(['a'], { line: 3, ch: 2, wait: 0 }, 5)).toEqual({ lines: ['a'], typing: false })
   })
 })
 

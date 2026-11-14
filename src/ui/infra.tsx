@@ -460,7 +460,7 @@ function Quota({ name, q }: { name: string; q: QuotaInfo | undefined }) {
       {!q && <div className="in meta empty">…</div>}
       {/* Never an empty section: no figures yet (an error, or an answer with no window) says so; old ones say their age. */}
       {q && !q.windows.length && <div className="in meta empty" role="status">{t.notYet}</div>}
-      {q?.ok && q.stale && <div className="in meta stale">{t.lastKnown(ago(now - q.at))}</div>}
+      {q?.ok && q.windows.length > 0 && (q.stale || now - q.at > STALE_MS) && <div className="in meta stale">{t.lastKnown(ago(now - q.at))}</div>}
       {q?.windows.map((w) => (
         <div key={`${w.kind}${w.label ?? ''}`} className={`in stat ${w.kind === 'model' ? 'minor' : ''}`}>
           <div className="stat-h">
@@ -476,17 +476,64 @@ function Quota({ name, q }: { name: string; q: QuotaInfo | undefined }) {
   )
 }
 
-/** Quotas Claude et Codex, relus toutes les minutes tant que la page est ouverte (le serveur garde 90 s en cache). */
+/** Figures older than one server period (5 min) and a margin: shown with their age, as the server marks them. */
+const STALE_MS = 6 * 60_000
+const USAGE_KEY = 'weevils-usage-v1'
+const readUsage = (): UsageInfo | null => {
+  try {
+    const u = JSON.parse(localStorage.getItem(USAGE_KEY) ?? 'null')
+    return u && typeof u === 'object' && u.claude && u.codex ? (u as UsageInfo) : null
+  } catch {
+    return null
+  }
+}
+/** The last answer, kept on the phone too: the section opens on it at once, and keeps it while weevils restarts. */
+let lastUsage: UsageInfo | null = readUsage()
+/** Test hook: forget the phone's copy. */
+export function forgetUsage() {
+  lastUsage = null
+  try {
+    localStorage.removeItem(USAGE_KEY)
+  } catch {
+    /* unavailable storage */
+  }
+}
+/** An answer without figures never replaces figures already known: they stay, marked old (with their age). */
+const keep = (prev: QuotaInfo | undefined, next: QuotaInfo): QuotaInfo => (!next.windows.length && prev?.ok && prev.windows.length ? { ...prev, stale: true } : next)
+function remember(next: UsageInfo): UsageInfo {
+  const u = { ...next, claude: keep(lastUsage?.claude, next.claude), codex: keep(lastUsage?.codex, next.codex) }
+  lastUsage = u
+  try {
+    localStorage.setItem(USAGE_KEY, JSON.stringify(u))
+  } catch {
+    /* unavailable storage: the memory copy still serves */
+  }
+  return u
+}
+
+/** Quotas Claude et Codex, relus toutes les minutes tant que la page est ouverte (le serveur ne demande qu'une fois
+ *  toutes les 5 min). Une lecture ratée (weevils redémarre) réessaie 10 s plus tard ; les derniers chiffres restent. */
 function useQuotas() {
-  const [u, setU] = useState<UsageInfo | null>(null)
+  const [u, setU] = useState<UsageInfo | null>(lastUsage)
   useEffect(() => {
+    let retry: ReturnType<typeof setTimeout> | undefined
+    let off = false
     const load = () => {
-      if (document.visibilityState === 'visible') void api.usage().then(setU).catch(() => undefined)
+      if (document.visibilityState !== 'visible') return
+      clearTimeout(retry)
+      void api
+        .usage()
+        .then((next) => !off && setU(remember(next)))
+        .catch(() => {
+          if (!off) retry = setTimeout(load, 10_000)
+        })
     }
     load()
     const iv = setInterval(load, 60_000)
     document.addEventListener('visibilitychange', load)
     return () => {
+      off = true
+      clearTimeout(retry)
       clearInterval(iv)
       document.removeEventListener('visibilitychange', load)
     }

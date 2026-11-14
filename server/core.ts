@@ -58,7 +58,9 @@ import { llmTitles, needsTitle, shortNow, stableTitle, TitleRetry } from './titl
 import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
 import type { WvSession } from './mux.ts'
-import { capture, dialogOnScreen, screenDialog, workingOnScreen, type ScreenDialog, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv, wvName } from './mux.ts'
+import { capture, type ScreenDialog, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv, wvName } from './mux.ts'
+import TerminalM from './i18n/terminal.ts'
+import { moves, readScreen, redactScreen, screenId, stuckQuestion, type Hold, type Reading, type TerminalState } from './terminal.ts'
 import { activeRequestLang, installationLang, lang, onLangChange, tr, user, withLang, type Lang } from './i18n.ts'
 import TipsM from './i18n/tips.ts'
 import { normalizeFrom, parseSigned, publicAuthors, signAs } from './authors.ts'
@@ -101,7 +103,12 @@ interface ManagedPane extends WvSession {
   screenDialog?: ScreenDialog
   screenWorking?: boolean
   screenQueued?: number
+  /** A calm status read on the screen (usage limit, signed out, stopped) and since when. */
+  screenHold?: Hold & { since: number }
 }
+
+/** How long an unchanged screen with no input box, no progress and no known dialog waits before it becomes a question. */
+const STUCK_AFTER_MS = 90_000
 
 interface Persisted {
   directCodexBoss?: { pane?: string; sessionId?: string; since: number }
@@ -707,17 +714,25 @@ export class Weevils {
       let dialog: ScreenDialog | undefined
       let screenWorking = false
       let screenQueued = 0
+      let screenHold: ManagedPane['screenHold']
       try {
         const screen = await capture(p.name)
-        dialog = screenDialog(screen)
-        if (dialog?.kind === 'settings') dialog = undefined
-        screenAttention = dialog?.question
-        screenWorking = workingOnScreen(screen)
-        screenQueued = (screen.split('Queued follow-up inputs')[1]?.split(/^[›❯>]/m)[0].match(/^\s*↳/gm) ?? []).length
+        const reading = readScreen(screen, p.tool)
+        const state = this.stuckOr(p, screen, reading)
+        if (state.kind === 'question') {
+          dialog = { question: state.question, ...(state.detail ? { detail: state.detail } : {}), options: state.choices, selected: state.menu?.selected ?? -1 }
+          screenAttention = state.question
+          if (state.name.startsWith('unknown')) this.keepUnknown(p.name, screen, state.name)
+        } else if (state.kind === 'auto') void this.answerAuto(p.name, screen, state)
+        else if (state.kind === 'picker') void this.closePicker(p.name, screen)
+        const hold = state.kind === 'hold' ? state.hold : state.kind === 'auto' ? state.hold : undefined
+        if (hold) screenHold = { ...hold, since: prev?.screenHold?.text === hold.text ? prev.screenHold.since : Date.now() }
+        screenWorking = reading.working
+        screenQueued = reading.queued
       } catch {
         /* écran illisible un instant */
       }
-      next.push({ ...p, sessionId: p.sessionId ?? prev?.sessionId, screenAttention, screenDialog: dialog, screenWorking, screenQueued })
+      next.push({ ...p, sessionId: p.sessionId ?? prev?.sessionId, screenAttention, screenDialog: dialog, screenWorking, screenQueued, ...(screenHold ? { screenHold } : {}) })
     }
     for (const old of this.panes) {
       if (next.some((p) => p.name === old.name)) continue
@@ -756,6 +771,86 @@ export class Weevils {
   }
 
   /** Une pane weevils inactive depuis 2 h est fermée : la machine respire, la session reste reprenable par --resume. */
+  // ---------------------------------------------------------------- terminal screens (server/terminal.ts)
+
+  /** Panes whose screen weevils is answering or changing right now: a command, a choice, an automatic answer. */
+  private driving = new Set<string>()
+  /** Last screen of each pane and since when it has not changed (stuck-screen fallback). */
+  private stillSince = new Map<string, { id: string; since: number }>()
+  /** Automatic answers already sent for a screen: never twice the same keys on the same screen in a row. */
+  private answered = new Map<string, { id: string; at: number }>()
+  private unknownSeen = new Set<string>()
+
+  /** Nothing known on screen, no input box, no progress, unchanged for STUCK_AFTER_MS: a plain question, never a silent block. */
+  private stuckOr(p: ManagedPane, screen: string, reading: Reading): TerminalState {
+    const id = screenId(screen)
+    const was = this.stillSince.get(p.name)
+    const since = was?.id === id ? was.since : Date.now()
+    this.stillSince.set(p.name, { id, since })
+    const state = reading.state
+    if (state.kind !== 'none' || reading.composer || reading.working || !screen.trim()) return state
+    if (this.driving.has(p.name) || Date.now() - since < STUCK_AFTER_MS || Date.now() - p.createdAt < STUCK_AFTER_MS) return state
+    const t = p.sessionId ? this.store.get(p.sessionId) : undefined
+    if (t && Date.now() - t.lastActivityAt < STUCK_AFTER_MS) return state
+    if (this.isOrchestratorPane(p) && this.bossTurns?.isTurn(p.sessionId)) return state
+    return stuckQuestion(screen, p.tool)
+  }
+
+  /** An unknown screen is kept (redacted) so it gets a proper translation later; once per screen. */
+  private keepUnknown(pane: string, screen: string, name: string) {
+    const id = screenId(screen)
+    if (this.unknownSeen.has(id)) return
+    this.unknownSeen.add(id)
+    try {
+      const dir = path.join(DATA_DIR, 'terminal-unknown')
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+      fs.writeFileSync(path.join(dir, `${new Date().toISOString().slice(0, 10)}-${id}.txt`), redactScreen(screen.split('\n').slice(-40).join('\n')) + '\n', { mode: 0o600 })
+    } catch { /* the question is shown anyway */ }
+    console.log(`[terminal] ${pane} · screen not recognized (${name}), kept as terminal-unknown/${id}`)
+  }
+
+  /** Moves to an option of the current menu and confirms it. */
+  private async pick(pane: string, menu: NonNullable<Extract<TerminalState, { kind: 'question' }>['menu']>, index: number) {
+    for (const key of moves(menu, index)) await sendKey(pane, key)
+    await sendKey(pane, 'enter')
+  }
+
+  /** Safe, already-authorized answers (trust, bypass warning, updates, nudges, resume, usage wait): sent by weevils. */
+  private async answerAuto(pane: string, screen: string, state: Extract<TerminalState, { kind: 'auto' }>) {
+    const id = screenId(screen)
+    const last = this.answered.get(pane)
+    if (this.driving.has(pane) || (last?.id === id && Date.now() - last.at < 20_000)) return
+    this.answered.set(pane, { id, at: Date.now() })
+    this.driving.add(pane)
+    try {
+      // Some dialogs refuse keys for a moment after they open (Claude's trust prompt).
+      await sleep(500)
+      const fresh = readScreen(await capture(pane), this.panes.find((p) => p.name === pane)?.tool).state
+      if (fresh.kind !== 'auto' || fresh.name !== state.name) return
+      if (fresh.pick === 'enter' || !fresh.menu) await sendKey(pane, 'enter')
+      else await this.pick(pane, fresh.menu, fresh.pick)
+      const label = fresh.pick === 'enter' ? 'enter' : fresh.menu?.options[fresh.pick]?.raw
+      console.log(`[terminal] ${pane} · answered by weevils: ${fresh.name} → ${label}`)
+    } catch (e) {
+      console.error(`[terminal] ${pane} · automatic answer failed: ${(e as Error).message}`)
+    } finally {
+      this.driving.delete(pane)
+      this.bump()
+    }
+  }
+
+  /** A settings menu or panel nobody is using holds the input box: closed (Escape changes nothing). */
+  private async closePicker(pane: string, screen: string) {
+    const id = screenId(screen)
+    const was = this.stillSince.get(pane)
+    if (this.driving.has(pane) || !was || was.id !== id || Date.now() - was.since < 4000) return
+    const last = this.answered.get(pane)
+    if (last?.id === id && Date.now() - last.at < 20_000) return
+    this.answered.set(pane, { id, at: Date.now() })
+    console.log(`[terminal] ${pane} · settings menu left open, closed`)
+    await sendKey(pane, 'esc').catch(() => undefined)
+  }
+
   private async reapPanes() {
     const now = Date.now()
     for (const p of this.panes) {
@@ -765,6 +860,8 @@ export class Weevils {
       if (!t) continue
       const last = Math.max(t?.lastActivityAt ?? 0, this.hooks.get(p.sessionId ?? '')?.at ?? 0, p.createdAt)
       if (now - last < KILL_AFTER_MS) continue
+      // A pending question stays until someone answers it: closing the pane would lose it silently.
+      if (p.screenDialog) continue
       if (t?.phase === 'working' && now - t.lastActivityAt < 10 * 60_000) continue
       // Des sous-agents, un workflow ou une commande tournent encore : fermer la pane les tuerait.
       if (t && this.toSession(t, now).background > 0) continue
@@ -973,7 +1070,10 @@ export class Weevils {
     // Tant qu'il tourne, la session travaille : ni « idle », ni « done » après 30 min, ni « a fini » (notifyTransitions).
     if (running.length && status !== 'needs_user') status = 'working'
     // Coupée en plein travail : ni « terminée », ni « travaille » ; elle attend une reprise.
-    const interrupted = this.cutOf(t, alive, hook, t.subagents.some((x) => x.status === 'working'))
+    let interrupted = this.cutOf(t, alive, hook, t.subagents.some((x) => x.status === 'working'))
+    // Read on the screen: paused by the usage limit, signed out, stopped. A calm status, nothing to answer.
+    if (!interrupted && pane?.screenHold && status !== 'working' && status !== 'needs_user')
+      interrupted = { at: pane.screenHold.since, reason: pane.screenHold.reason, detail: pane.screenHold.text }
     if (interrupted) status = 'interrupted'
 
     // Ouverte dans un terminal que weevils ne pilote pas : on ne peut ni lui écrire ni la reprendre sans risque.
@@ -1006,7 +1106,7 @@ export class Weevils {
       status,
       ...(noticeId ? { noticeId } : {}),
       attention: status === 'needs_user' ? attention : undefined,
-      ...(status === 'needs_user' && pane?.screenDialog ? { choices: pane.screenDialog.options } : {}),
+      ...(status === 'needs_user' && pane?.screenDialog ? { choices: pane.screenDialog.options, ...(pane.screenDialog.detail ? { attentionDetail: pane.screenDialog.detail } : {}) } : {}),
       ...(ask && status === 'needs_user' ? { ask } : {}),
       ...(interrupted ? { interrupted } : {}),
       cwd: t.cwd,
@@ -1045,7 +1145,7 @@ export class Weevils {
       title: p.title,
       status: p.screenAttention ? 'needs_user' : now - p.createdAt > DONE_AFTER_MS ? 'done' : 'working',
       attention: p.screenAttention,
-      ...(p.screenDialog ? { choices: p.screenDialog.options } : {}),
+      ...(p.screenDialog ? { choices: p.screenDialog.options, ...(p.screenDialog.detail ? { attentionDetail: p.screenDialog.detail } : {}) } : {}),
       cwd: p.cwd,
       openedAt: p.createdAt,
       lastActivityAt: p.createdAt,
@@ -1608,17 +1708,26 @@ export class Weevils {
     }
     if (key === 'esc' && /trust|confiance/i.test(pane.screenAttention ?? '')) throw new Error(tr(M).escWouldClose)
     if (key.startsWith('choice:')) {
-      const dialog = screenDialog(await capture(pane.name))
-      const index = dialog?.options.findIndex((o) => o.id === key.slice(7)) ?? -1
-      if (!dialog || index < 0) throw new Error(tr(M).noScreen)
-      if (dialog.selected < 0) {
-        await sendKey(pane.name, key.endsWith(':y') ? 'y' : 'n')
-        if (s) this.foryou?.resolveSession(s)
-        this.bump()
-        return
+      const id = key.slice(7)
+      // The id must match the question on screen now (or the stuck-screen question still shown): never a stale tap.
+      const screen = await capture(pane.name)
+      const read = readScreen(screen, pane.tool).state
+      const shown = pane.screenDialog?.options.some((o) => o.id === id)
+      const state = read.kind === 'question' && read.choices.some((o) => o.id === id) ? read : undefined
+      if (!state && !(shown && /:(?:enter|esc)$/.test(id))) throw new Error(tr(TerminalM).choiceGone)
+      this.driving.add(pane.name)
+      try {
+        const tail = id.slice(id.lastIndexOf(':') + 1)
+        if (tail === 'enter' || tail === 'esc') await sendKey(pane.name, tail)
+        else if (tail === 'y' || tail === 'n') {
+          await sendKey(pane.name, tail)
+          await sendKey(pane.name, 'enter')
+        } else if (state?.menu) await this.pick(pane.name, state.menu, Number(tail))
+        console.log(`[terminal] ${pane.name} · answered from the app: ${state?.question ?? pane.screenAttention} → ${pane.screenDialog?.options.find((o) => o.id === id)?.label ?? tail}`)
+      } finally {
+        this.driving.delete(pane.name)
+        this.stillSince.delete(pane.name)
       }
-      for (let n = Math.abs(index - dialog.selected); n > 0; n--) await sendKey(pane.name, index < dialog.selected ? 'up' : 'down')
-      await sendKey(pane.name, 'enter')
       if (s) this.foryou?.resolveSession(s)
       this.bump()
       return
@@ -1867,26 +1976,77 @@ export class Weevils {
    * (« Kept model as … ») : ici on la confirme par Entrée, jusqu'à trois fois, puis on rend la main.
    */
   private async runCommand(pane: string, command: string) {
-    await this.clearDialog(pane)
-    await sendText(pane, command)
-    for (let i = 0; i < 3; i++) {
-      await sleep(700)
-      const dlg = dialogOnScreen(await capture(pane).catch(() => ''))
-      if (!dlg) break
-      console.log(`[sessions] ${pane} ${command} · confirmation acceptée : ${dlg}`)
-      await sendKey(pane, 'enter')
+    this.driving.add(pane)
+    try {
+      await this.clearDialog(pane)
+      await sendText(pane, command)
+      for (let i = 0; i < 3; i++) {
+        await sleep(700)
+        const state = readScreen(await capture(pane).catch(() => ''), this.toolOf(pane)).state
+        // The confirmation the command itself asks ("Switch model?"), answered yes; a menu is left to the app.
+        const yes = state.kind === 'auto' ? state.pick : state.kind === 'question' && state.menu ? state.menu.options.findIndex((o) => /^yes\b/i.test(o.raw)) : -1
+        if ((state.kind !== 'auto' && state.kind !== 'question') || yes === -1) break
+        console.log(`[terminal] ${pane} ${command} · confirmed: ${state.kind === 'question' ? state.question : state.name}`)
+        if (yes === 'enter' || !state.menu) await sendKey(pane, 'enter')
+        else await this.pick(pane, state.menu, yes)
+      }
+      console.log(`[sessions] ${pane} ← ${command}`)
+    } finally {
+      this.driving.delete(pane)
     }
-    console.log(`[sessions] ${pane} ← ${command}`)
   }
 
-  /** Un dialogue bloque l'écran ? Échap, puis on vérifie qu'il a disparu. Renvoie le texte du dialogue fermé. */
-  private async clearDialog(pane: string): Promise<string | undefined> {
-    const dlg = dialogOnScreen(await capture(pane).catch(() => ''))
-    if (!dlg) return undefined
-    // Dialogue de confiance : Échap ferait quitter claude. On accepte (le dossier est à l'utilisateur) ; sinon, Échap ferme le menu.
-    await sendKey(pane, /trust|confiance/i.test(dlg) ? 'enter' : 'esc')
+  private toolOf = (pane: string) => this.panes.find((p) => p.name === pane)?.tool
+
+  /**
+   * Before a message: what covers the input box is answered or closed, never by a blind key.
+   * A safe automatic answer is sent; a settings menu is closed; a permission or plan question is declined (the message
+   * is the answer: "no, do this instead"); a launch question gets its own "no" when that keeps the agent running.
+   * Anything else stays, and the message waits (409) for the question to be answered in the app.
+   */
+  private async clearDialog(pane: string, known?: TerminalState): Promise<string | undefined> {
+    const state = known ?? readScreen(await capture(pane).catch(() => ''), this.toolOf(pane)).state
+    if (state.kind === 'none' || state.kind === 'hold') return undefined
+    if (state.kind === 'auto') {
+      if (state.pick === 'enter' || !state.menu) await sendKey(pane, 'enter')
+      else await this.pick(pane, state.menu, state.pick)
+      console.log(`[terminal] ${pane} · answered by weevils before a message: ${state.name}`)
+    } else if (state.kind === 'picker') await sendKey(pane, 'esc')
+    else if (['permission', 'plan', 'enter-plan', 'choice', 'yes-no', 'unknown-stuck'].includes(state.name) || state.name === 'unknown') {
+      await sendKey(pane, 'esc')
+      console.log(`[terminal] ${pane} · question answered by the message: ${state.question}`)
+    } else {
+      const no = state.menu?.options.findIndex((o) => /^no\b|without|skip/i.test(o.raw) && !/exit|quit/i.test(o.raw)) ?? -1
+      if (no < 0 || !state.menu) throw new OutboxError(409, tr(M).notReceived(state.question))
+      await this.pick(pane, state.menu, no)
+      console.log(`[terminal] ${pane} · launch question declined before a message: ${state.question}`)
+    }
     await sleep(600)
-    return dlg
+    return state.kind === 'question' ? state.question : state.name
+  }
+
+  /**
+   * A message sent while the agent asks a question with a free-text row (Claude's "Type something."): it is the
+   * answer. Moves to the row, types it, confirms; delivered when that question is gone from the screen.
+   */
+  private async answerByText(pane: string, text: string, state: TerminalState): Promise<boolean> {
+    if (state.kind !== 'question' || state.typeIndex === undefined || !state.menu) return false
+    this.driving.add(pane)
+    try {
+      for (const key of moves(state.menu, state.typeIndex)) await sendKey(pane, key)
+      await sendText(pane, text)
+      for (let i = 0; i < 20; i++) {
+        await sleep(300)
+        const now = readScreen(await capture(pane).catch(() => ''), this.toolOf(pane)).state
+        if (now.kind !== 'question' || now.question !== state.question) {
+          console.log(`[terminal] ${pane} · question answered in words: ${state.question}`)
+          return true
+        }
+      }
+      throw new Error(tr(M).noConfirmation)
+    } finally {
+      this.driving.delete(pane)
+    }
   }
 
   /**
@@ -1906,10 +2066,18 @@ export class Weevils {
   private async deliverOne(pane: string, sessionId: string | undefined, text: string): Promise<void> {
     const managed = this.panes.find((p) => p.name === pane)
     if (managed?.tool === 'codex') {
-      const screen = await capture(pane)
-      if (screenDialog(screen)) throw new OutboxError(409, tr(M).notReceived(screenDialog(screen)!.question))
+      let screen = await capture(pane)
+      let reading = readScreen(screen, 'codex')
+      // An update, a nudge, a menu nobody uses: answered or closed first, then the message goes.
+      if (reading.state.kind === 'auto' || reading.state.kind === 'picker') {
+        await this.clearDialog(pane)
+        screen = await capture(pane)
+        reading = readScreen(screen, 'codex')
+      }
+      if (reading.state.kind === 'question' || reading.state.kind === 'auto' || reading.state.kind === 'picker')
+        throw new OutboxError(409, tr(M).notReceived(reading.state.kind === 'question' ? reading.state.question : tr(TerminalM).choiceGone))
       const t = sessionId ? this.store.get(sessionId) : undefined
-      const queued = workingOnScreen(screen) || t?.phase === 'working'
+      const queued = reading.working || t?.phase === 'working'
       const before = Date.now()
       await sendText(pane, fitTerminal(text), queued ? 'Tab' : 'Enter')
       // Tab queues in Codex; the transcript is written only at the next turn. No blind resend:
@@ -1918,7 +2086,9 @@ export class Weevils {
       return
     }
     text = fitTerminal(text)
-    await this.clearDialog(pane)
+    const state = readScreen(await capture(pane).catch(() => ''), 'claude').state
+    if (await this.answerByText(pane, text, state)) return
+    await this.clearDialog(pane, state)
     const before = Date.now()
     await sendText(pane, text)
     // No confirmation is not proof of rejection. Never submit a second copy.
@@ -1941,7 +2111,7 @@ export class Weevils {
       // Toutes les secondes : l'écran. Le texte y est (envoyé, ou en file pendant que l'agent travaille) et aucun dialogue ne le recouvre.
       if (Math.round((Date.now() - before) / 300) % 3 === 0) {
         const screen = await capture(pane).catch(() => '')
-        if (screen && !dialogOnScreen(screen) && mark && flatScreen(screen).includes(mark)) {
+        if (screen && readScreen(screen, this.toolOf(pane)).state.kind === 'none' && mark && flatScreen(screen).includes(mark)) {
           if (!codex && mark.length >= 8) return true
           const queueOf = (value: string) => value.split('Queued follow-up inputs')[1]?.split(/^[›❯>]/m)[0] ?? ''
           const exactReplies = (value: string) => queueOf(value).split('\n')
@@ -2207,10 +2377,10 @@ export class Weevils {
   private async acceptTrust(pane: string) {
     for (let i = 0; i < 14; i++) {
       await sleep(1500)
-      const dlg = dialogOnScreen(await capture(pane).catch(() => ''))
-      if (dlg && /trust|confiance/i.test(dlg)) {
-        console.log(`[sessions] ${pane} · dossier accepté pour Codex : ${dlg.slice(0, 60)}`)
-        await sendKey(pane, 'enter').catch(() => undefined)
+      const screen = await capture(pane).catch(() => '')
+      const state = readScreen(screen, 'codex').state
+      if (state.kind === 'auto' && state.name === 'trust') {
+        await this.answerAuto(pane, screen, state)
         return
       }
     }

@@ -5,11 +5,11 @@ import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createHash } from 'node:crypto'
 import { ORCH_DIR } from './config.ts'
 import type { Tool } from '../shared/api.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/mux.ts'
+import { readScreen, workingOnScreen, type Agent } from './terminal.ts'
 
 // weevilsd lancé à la main depuis une pane tmux hérite de $TMUX, qui l'emporte sur TMUX_TMPDIR : il lirait (et son
 // nettoyage fermerait) les sessions wv-* du serveur tmux de cette pane, même avec un autre HOME. Le serveur tmux de
@@ -163,83 +163,41 @@ export async function capture(name: string): Promise<string> {
   return out.replace(/\s+$/g, '')
 }
 
-/**
- * Repère une vraie question à l'écran (permission, confiance, menu de choix) et renvoie la phrase à montrer.
- * Exigeant exprès : il faut le pied de dialogue (« Enter to confirm · Esc to cancel », « (y/n) »…) dans les
- * dernières lignes. Un mot comme « approve » ou « do you want » dans le fil normal ne suffit plus : ça créait
- * des faux « à toi » dès qu'un fichier ou une réponse contenait ces mots.
- */
-export function attentionFromScreen(text: string): string | undefined {
-  const dialog = screenDialog(text)
-  return dialog?.kind === 'settings' ? undefined : dialog?.question
+// What the screen means (questions, automatic answers, settings menus, status lines) lives in server/terminal.ts.
+// These wrappers keep the older names for callers and tests.
+
+/** The plain question on screen, when the agent is waiting for an answer from a person. */
+export function attentionFromScreen(text: string, agent?: Agent): string | undefined {
+  const s = readScreen(text, agent).state
+  return s.kind === 'question' ? s.question : undefined
 }
 
-/**
- * Dialogue ou menu qui bloque l'écran, même sans pied de dialogue classique : un menu avec un curseur ❯ sur une
- * option et une touche indiquée (esc, enter, ↑/↓, y/n) dans les dernières lignes, ou une question « [y/n] » en fin de ligne.
- * Sert à repérer qu'une session est coincée (autocompact proposé, mise à jour, choix…), pas seulement les permissions.
- */
-export function dialogOnScreen(text: string): string | undefined {
-  return screenDialog(text)?.question
+/** Something covers the input box (a question, a dialog weevils answers itself, a settings menu): its name or question. */
+export function dialogOnScreen(text: string, agent?: Agent): string | undefined {
+  const s = readScreen(text, agent).state
+  return s.kind === 'question' ? s.question : s.kind === 'auto' || s.kind === 'picker' ? s.name : undefined
 }
 
 /** Ce qui est écrit à l'écran, aplati, pour y retrouver un message qu'on vient d'envoyer. */
 export const flatScreen = (text: string) => text.replace(/[│╭╮╰╯─┃━>❯›]/g, ' ').replace(/\s+/g, ' ').toLowerCase()
 
-/** Only the live bottom-of-screen progress indicator counts, never quoted command output. */
-export function workingOnScreen(text: string): boolean {
-  return text.trimEnd().split('\n').slice(-14).some((l) => /^\s*(?:[•●◦∙]\s+Working\s*\(|[✢✳✶✻✽]\s+[^\n]+…)/u.test(l))
-}
+export { workingOnScreen }
 
 export interface ScreenDialog {
   kind?: 'settings'
-
   question: string
+  /** What exactly is asked (the command, the reason), when the dialog says it. */
+  detail?: string
   options: { id: string; label: string }[]
   selected: number
 }
 
-/** A selector with actual options and an interaction footer, never a user's ordinary composer. */
-export function screenDialog(text: string): ScreenDialog | undefined {
-  const lines = text.trimEnd().split('\n').map((l) => l.replace(/[│╭╮╰╯─┃━]/g, '').trim())
-  const yn = lines.slice(-6).find((l) => /\?\s*\[y\/n\]:?\s*$/i.test(l))
-  if (yn) {
-    const question = yn.replace(/\s*\[y\/n\]:?\s*$/i, '')
-    const token = createHash('sha256').update(question).digest('hex').slice(0, 12)
-    return { question, options: [{ id: `${token}:y`, label: tr(M).yes }, { id: `${token}:n`, label: tr(M).no }], selected: -1 }
-  }
-  const cursor = lines.findLastIndex((l) => /^[›❯>]\s*\S/.test(l))
-  if (cursor < 0) return undefined
-  const selected = /^[›❯>]\s*(?:\d+[.)]\s+|(?=(?:yes|no|allow|deny|accept|cancel|continue|oui|non|autoriser|refuser)\b))(.+)/i.exec(lines[cursor])
-  if (!selected) return undefined
-  let footer = lines.findLastIndex((l) => /enter(?: to)? (confirm|select|continue)|esc (?:to )?(cancel|back|dismiss|skip)|escape to cancel|↑.*↓|\(y\/n\)/i.test(l))
-  if (footer < cursor) {
-    // Some Claude selectors omit the footer; the cursor must still be a numbered option,
-    // the last content must be options, and no normal composer may follow it.
-    if (!/^[›❯>]\s*\d+[.)]\s/.test(lines[cursor]) || !lines.slice(cursor + 1).some((l) => /^\d+[.)]\s/.test(l))) return undefined
-    if (lines.slice(cursor + 1).some((l) => l && !/^\d+[.)]\s/.test(l))) return undefined
-    footer = lines.length
-  }
-  if (lines.length - footer > 8) return undefined
-  if (workingOnScreen(lines.slice(cursor + 1).join("\n"))) return undefined
-  const start = Math.max(0, cursor - 12)
-  const optionRE = /^(?:[›❯>]\s*)?(?:\d+[.)]\s+|(?=(?:yes|no|allow|deny|accept|cancel|continue|oui|non|autoriser|refuser)\b))(.+)/i
-  const entries = lines.slice(start, footer).map((l, i) => ({ line: start + i, match: optionRE.exec(l) })).filter((x) => x.match)
-  if (!entries.length) return undefined
-  const question = lines.slice(Math.max(0, entries[0].line - 12), entries[0].line).reverse().find((l) => l.includes('?'))?.replace(/^[●•]\s*/, '').split('?')[0].concat('?') ?? tr(M).choiceWaiting
-  const labels = entries.map((x) => x.match![1].replace(/\s*\([^)]*(?:esc|enter|tab)[^)]*\)\s*$/i, '').trim())
-  const token = createHash('sha256').update(JSON.stringify([question, labels])).digest('hex').slice(0, 12)
-  const permission = /Would you like to run (?:the following|this) command|(?:Bash|Shell) command/i.test(text)
-  const display = (label: string) => {
-    const clean = label.replace(/\s*\((?:y|n|p|esc|enter|tab)\)\s*$/i, '')
-    if (!permission) return clean
-    if (/^yes,? (?:proceed|allow|run)(?:\s|$)/i.test(clean)) return tr(M).allowCommand
-    if (/^yes,? and don.t ask again/i.test(clean)) return tr(M).allowRule(clean.replace(/^yes,? and don.t ask again for /i, ''))
-    if (/^no,? (?:and tell|cancel|deny)/i.test(clean) || /^no$/i.test(clean)) return tr(M).denyCommand
-    return clean
-  }
-  const settings = lines.slice(Math.max(0, entries[0].line - 5), entries[0].line).some((line) => /^Select (?:Reasoning Level|Model)(?:\s|$)/i.test(line))
-  return { ...(settings ? { kind: 'settings' as const } : {}), question: question.replace(/^Reason:\s*/i, ''), options: labels.map((label, i) => ({ id: `${token}:${i}`, label: display(label) })), selected: entries.findIndex((x) => x.line === cursor) }
+/** A question with its labeled answers, or a settings menu (kind 'settings'); never the ordinary composer. */
+export function screenDialog(text: string, agent?: Agent): ScreenDialog | undefined {
+  const s = readScreen(text, agent).state
+  if (s.kind === 'question') return { question: s.question, ...(s.detail ? { detail: s.detail } : {}), options: s.choices, selected: s.menu?.selected ?? -1 }
+  if (s.kind === 'picker') return { kind: 'settings', question: s.name, options: (s.menu?.options ?? []).map((o, i) => ({ id: String(i), label: o.raw })), selected: s.menu?.selected ?? -1 }
+  return undefined
 }
 
-export const codexDialogOnScreen = (text: string) => attentionFromScreen(text)
+export const codexDialogOnScreen = (text: string) => attentionFromScreen(text, 'codex')

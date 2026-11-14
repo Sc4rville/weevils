@@ -56,3 +56,16 @@ it.each(['claude', 'codex'] as const)('%s answers retire only after success; fai
   await render({ ...s, noticeId: 'two' })
   expect(host.querySelector('.ask')).not.toBeNull()
 })
+
+it('a translated terminal question shows what it is about in plain words, with no terminal text', async () => {
+  const s = session('claude', {
+    attention: 'Claude wants to run “rm -rf build dist”',
+    attentionDetail: 'Remove build output · Dangerous rm operation on a path outside the project',
+    choices: [{ id: 'abc:0', label: 'Allow' }, { id: 'abc:1', label: 'Deny' }],
+  })
+  await act(async () => root.render(<SessionQuestion session={s} onError={() => {}} />))
+  expect(host.querySelector('.text')!.textContent).toBe('Claude wants to run “rm -rf build dist”')
+  expect(host.querySelector('.meta')!.textContent).toBe('Remove build output · Dangerous rm operation on a path outside the project')
+  expect([...host.querySelectorAll('button.choice-band')].map((b) => b.textContent)).toEqual(['Allow', 'Deny'])
+  expect(host.textContent).not.toMatch(/esc|enter|❯|›|\(y\)|1\./i)
+})

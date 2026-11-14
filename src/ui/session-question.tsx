@@ -26,6 +26,7 @@ export function SessionQuestion({ session: s, onError }: { session: Session; onE
       <div className="in">
         <span className="who">! {t.asks(s.tool)}</span>
         <div className="text">{s.ask?.text ?? s.attention ?? t.waitingForYou}</div>
+        {!s.ask && s.attentionDetail && <div className="meta">{s.attentionDetail}</div>}
         {s.choices?.map((choice) => (
           <button key={choice.id} disabled={busy} className="choice-band" onClick={() => void choose(choice.id)}>{choice.label}</button>
         ))}

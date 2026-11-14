@@ -156,11 +156,11 @@ describe('send : dialogues et échecs', () => {
     expect(mux.sendKey.mock.invocationCallOrder[0]).toBeLessThan(mux.sendText.mock.invocationCallOrder[0])
   })
 
-  it('D4b le dialogue de confiance : Entrée (Échap quitterait claude)', async () => {
+  it('D4b le dialogue de confiance : « Yes, I trust » choisi par son nom (le curseur est sur « No, exit », Entrée seule quittait claude)', async () => {
     mux.capture.mockResolvedValueOnce(trust)
     hookAfterSend()
     expect(await run(w.send('s1', 'hello'))).toEqual({ id: 's1' })
-    expect(mux.sendKey.mock.calls).toEqual([[PANE, 'enter']])
+    expect(mux.sendKey.mock.calls).toEqual([[PANE, 'down'], [PANE, 'enter']])
   })
 
   it('D5 jamais confirmé : un seul envoi, puis réception incertaine', async () => {

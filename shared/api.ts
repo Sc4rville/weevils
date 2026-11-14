@@ -129,6 +129,8 @@ export interface Session {
   noticeId?: string
   /** Live selector options; ids are validated against the current screen before choosing. */
   choices?: { id: string; label: string }[]
+  /** What exactly the question is about (the command, the reason), in plain words, when the dialog says it. */
+  attentionDetail?: string
   /** status = needs_user sans dialogue : le tour fini sur une question ou une demande (shared/asks.ts), pour l'action rapide. */
   ask?: Ask
   /** status = interrupted : quand et pourquoi (detail : le message d'erreur de l'outil, s'il y en a un). */

@@ -80,12 +80,12 @@ describe('rangement des sessions', () => {
 })
 
 describe('questions à l’écran', () => {
-  it('Claude : confiance dans le dossier', () => {
+  it('Claude : confiance dans le dossier — weevils répond lui-même, ce n’est pas une question pour toi', () => {
     const screen = ' Quick safety check: Is this a project you created or one you trust? (Like your own code)\n ❯ No, exit\n   Yes, I trust this folder\n Enter to confirm · Esc to cancel'
-    expect(attentionFromScreen(screen)).toBe('Quick safety check: Is this a project you created or one you trust?')
+    expect(attentionFromScreen(screen)).toBeUndefined()
   })
-  it('Codex : menu numéroté', () => {
-    expect(attentionFromScreen('  Trust this folder? Codex can read files.\n› 1. Trust and continue\n  enter continue · esc back')).toBe('Trust this folder?')
+  it('Codex : confiance dans le dossier, pareil', () => {
+    expect(attentionFromScreen('  Trust this folder? Codex can read files.\n› 1. Trust and continue\n  enter continue · esc back')).toBeUndefined()
   })
   it('écran normal : rien', () => {
     expect(attentionFromScreen('› Ask Codex to do anything\n  ← for agents')).toBeUndefined()
@@ -118,7 +118,7 @@ describe('questions à l’écran', () => {
   })
   it('Claude : permission d’outil', () => {
     const screen = ['  Bash command', '  rm -rf dist', '  Do you want to proceed?', '  ❯ 1. Yes', '    2. No, and tell Claude what to do differently (esc)', '', '  Esc to cancel'].join('\n')
-    expect(attentionFromScreen(screen)).toBe('Do you want to proceed?')
+    expect(attentionFromScreen(screen)).toBe('Claude wants to run “rm -rf dist”')
   })
 })
 
@@ -171,7 +171,8 @@ describe('écran bloqué par un dialogue (dialogOnScreen)', async () => {
     const screen = ['', '  Your context is at 400k tokens. Enable auto-compact?', '', '  ❯ 1. Yes, enable auto-compact', '    2. Not now', '', '  Enter to select · Esc to dismiss'].join('\n')
     expect(dialogOnScreen(screen)).toMatch(/auto-compact/)
     const update = ['  A new version is available. Update now?', '  ❯ Yes', '    No', '  esc to skip'].join('\n')
-    expect(dialogOnScreen(update)).toMatch(/Update now/)
+    // Une mise à jour est l’affaire de weevils : réponse automatique (« No »), plus une question.
+    expect(dialogOnScreen(update)).toBe('update')
   })
   it('question [y/n] en fin de ligne', () => {
     expect(dialogOnScreen('Compacting conversation…\nContinue? [y/n]: ')).toMatch(/Continue/)
@@ -244,7 +245,8 @@ describe('confirmation « Switch model? »', async () => {
   const { dialogOnScreen } = await import('./mux.ts')
   it('menu numéroté sans touches indiquées : reconnu', () => {
     const screen = ['  Switch model?', '  Your next response will be slower and use more tokens', '  ❯ 1. Yes, switch to Sonnet 5.5', '    2. No, go back'].join('\n')
-    expect(dialogOnScreen(screen)).toBe('Switch model?')
+    // La confirmation d’un réglage demandé depuis l’app : weevils répond oui lui-même.
+    expect(dialogOnScreen(screen)).toBe('switch-model')
   })
 })
 

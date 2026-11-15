@@ -508,7 +508,7 @@ function refresh() {
     files = new Map()
   }
   const claude: string[] = []
-  listJsonl(CLAUDE_DIR, 3, claude)
+  listJsonl(CLAUDE_DIR, 6, claude) // subagents/workflows/wf_*/agent-*.jsonl sit 5 levels down
   for (const f of claude) scan(f, 'claude')
   const codex: string[] = []
   listJsonl(CODEX_DIR, 3, codex)

@@ -1,7 +1,7 @@
 import { noticeKey } from '../../shared/notices.ts'
 import { Notice } from './notice'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { DiskView, FsListing, InfraDetail, InfraPoint, Level, QuotaInfo, QuotaWindow, UsageInfo, UsageToday } from '../../shared/infra.ts'
+import type { DiskView, FsListing, InfraDetail, InfraPoint, Level, QuotaInfo, QuotaWindow, SpendSummary, UsageInfo, UsageToday } from '../../shared/infra.ts'
 import { api, type FileContent } from '../api'
 import { intlLocale, useT } from '../i18n'
 import M from '../i18n/infra'
@@ -583,6 +583,42 @@ export function UsageLine() {
   )
 }
 
+/** Pace and forecast from the spend estimator (read-only). Hidden while the server has no such route (older weevilsd). */
+function Pace() {
+  const t = useT(M)
+  const { now } = useApp()
+  const [s, setS] = useState<SpendSummary | null>(null)
+  useEffect(() => {
+    let off = false
+    const load = () => void Promise.resolve().then(() => api.usageSpend()).then((x) => !off && setS(x)).catch(() => {})
+    load()
+    const iv = setInterval(load, 60_000)
+    return () => {
+      off = true
+      clearInterval(iv)
+    }
+  }, [])
+  if (!s?.burn) return null
+  const usd = (n: number) => (n >= 100 ? Math.round(n).toString() : n.toFixed(1))
+  const lines: string[] = []
+  if (s.perPercent && s.pctPerHour && s.weekPercentNow != null) {
+    const p = s.pctPerHour.fiveHours
+    lines.push(p < 0.05 ? t.paceIdle : t.paceHour(p < 1 ? p.toFixed(2) : p.toFixed(1)))
+    if (p >= 0.05) lines.push(s.limitAt ? t.limitAt(when(s.limitAt, now), durLong(s.limitAt - now)) : t.lastsWeek(when(s.week.end, now)))
+    lines.push(t.estNow(Math.min(100, Math.round(s.weekPercentNow)), usd(s.week.cost)))
+  } else lines.push(t.paceUncal(usd(s.burn.fiveHours)))
+  return (
+    <>
+      <div className="in label">{t.pace}</div>
+      {lines.map((l) => (
+        <div key={l} className="in meta">
+          {l}
+        </div>
+      ))}
+    </>
+  )
+}
+
 /** « claude-opus-5-5 » → « opus 5.5 » ; les autres noms tels quels. */
 const modelName = (m: string) => modelLabel(m) ?? m
 
@@ -625,6 +661,7 @@ export function UsagePage() {
     <Shell slot="agent" kicker="weevils" title={t.usageTitle}>
       <div className="ipage">
         <Quota name="Claude" q={u?.claude} />
+        <Pace />
         <Quota name="Codex" q={u?.codex} />
 
         {byModel.length > 0 && <div className="in label">{t.byModel}</div>}

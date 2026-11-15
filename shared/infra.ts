@@ -297,3 +297,31 @@ export interface UsageToday {
   /** Absent quand une machine distante a une version plus ancienne. */
   models?: UsageModel[]
 }
+
+/** Spend estimate from the transcripts (API list prices, a common unit across models) matched with the Claude quota. */
+export interface WindowSpend {
+  start: number
+  end: number
+  cost: number
+  tokens: number
+  /** Real percent from the quota answer, when known. */
+  percent?: number
+}
+export interface SpendSummary {
+  at: number
+  /** The quota answer these figures were matched with (its read time). */
+  quotaAt?: number
+  week: WindowSpend & { byModel: { model: string; cost: number; tokens: number }[]; bySession: { sid: string; cost: number; tokens: number }[] }
+  session?: WindowSpend
+  /** API-price dollars per hour, last 60 min and last 5 h. */
+  burn: { hour: number; fiveHours: number }
+  /** Dollars per 1 % of the week, learned from the quota (null until the week is past 3 %). */
+  perPercent: number | null
+  /** Estimated week percent now (real percent + spend since that reading). */
+  weekPercentNow?: number
+  /** Percent of the week per hour at the last hour's / last 5 h's pace. */
+  pctPerHour?: { hour: number; fiveHours: number }
+  /** When the week reaches 100 % at the last 5 h's pace; null: not before it resets. */
+  limitAt?: number | null
+  codexTokens: { week: number; hour: number }
+}

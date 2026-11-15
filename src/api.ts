@@ -9,7 +9,7 @@ import type { AskResult, Brick, Device } from '../shared/setup.ts'
 import type { Tour, TourId } from '../shared/tour.ts'
 import { getLang, localeHeaders, subscribeLang, tr, type Lang } from './i18n'
 import M from './i18n/app'
-import type { FsListing, InfraDetail, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
+import type { FsListing, InfraDetail, SpendSummary, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
 import type { ProgressFix, Software, SoftwareList } from '../shared/softwares.ts'
 import type { ForYouFeed, ForYouOpen } from '../shared/foryou.ts'
 import type { AutoDetail, AutoRunDetail, ConversationDetail, ExplainReply, ExplainRequest, ConversationSummary, GithubRepo, MemoryItem, Optimizer, OptimizerTalkReply, SessionDetail, SleepState, Snapshot, SubagentDetail, Tool } from '../shared/api.ts'
@@ -209,6 +209,7 @@ export const api = {
   usage: () => call<UsageInfo>('GET', '/api/usage'),
   usageToday: () => call<UsageToday>('GET', '/api/usage/today'),
   usageRate: () => call<TokenRate>('GET', '/api/usage/rate'),
+  usageSpend: () => call<SpendSummary>('GET', '/api/usage/spend'),
   saveFile: (repo: string, path: string, machine: string, content: string, revision: string) => call<FileContent>('PUT', `/api/repos/${enc(repo)}/file?path=${enc(path)}&machine=${enc(machine)}`, { content, revision }),
   file: (repo: string, path: string, machine: string) => call<FileContent>('GET', `/api/repos/${enc(repo)}/file?path=${enc(path)}&machine=${enc(machine)}`),
   softwares: () => call<SoftwareList>('GET', '/api/softwares'),

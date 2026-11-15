@@ -39,6 +39,7 @@ import { resetAuthors, threadAuthor } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
 import { startDiskUsage } from './disk-usage.ts'
+import { anchorFor, entries as spendEntries, logCalibration, summarize } from './spend.ts'
 import { claudeQuota, quotas, rate as tokenRate, today as usageToday } from './usage.ts'
 import { Relay, defaultDeps } from './relay.ts'
 import { ProviderHealth } from './provider-health.ts'
@@ -868,6 +869,15 @@ const routes: [string, RegExp, Handler][] = [
       })
     }
     json(res, 200, r)
+  }],
+  // Spend estimate (API-price dollars from the transcripts) matched with the real Claude quota: pace and forecast.
+  ['GET', /^\/api\/usage\/spend$/, async (_req, res) => {
+    const q = (await quotas()).claude
+    const es = spendEntries()
+    const first = summarize(es, q)
+    const s = summarize(es, q, Date.now(), anchorFor(first.week.end) ?? undefined)
+    logCalibration(s, es, q)
+    json(res, 200, { ...s, week: { ...s.week, bySession: s.week.bySession.slice(0, 10) } })
   }],
   ['GET', /^\/api\/usage\/today$/, async (_req, res, url) => {
     const sessions = new Map(w.snapshot().sessions.map((s) => [s.id, s]))

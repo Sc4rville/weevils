@@ -149,7 +149,8 @@ const W = FR ? {
   thisPc: 'Branche cet ordinateur', thisPcSub: 'Colle cette commande dans un terminal de cet ordinateur. Ensuite, un QR code ouvre weevils sur ton téléphone.',
   better: 'Mieux : un serveur', betterSub: 'Un serveur fait tourner tes agents même téléphone et ordinateur éteints, et ton téléphone les joint de partout. Même parcours, 2 minutes de plus.',
   macNote: 'Sur un Mac, le terminal est l’app Terminal. Elle peut demander une fois le mot de passe du Mac (rien ne s’affiche quand tu le tapes).',
-  winNote: 'Sous Windows, colle la commande dans Ubuntu (WSL2). Un VPS reste le plus simple.',
+  winNote: 'Sous Windows, colle-la dans PowerShell : weevils s’installe dans Ubuntu (WSL). Un VPS reste le plus simple.',
+  onWindows: 'Sous Windows (PowerShell) :',
   hzTitle: 'Un serveur rien qu’à toi, chez Hetzner',
   hz1: 'Crée un compte Hetzner, avec un moyen de paiement. Ils vérifient ton identité (une photo de ta pièce d’identité et un selfie), puis valident le compte à la main : reviens ici une fois qu’il l’est.',
   hz1b: 'Créer mon compte Hetzner',
@@ -233,7 +234,8 @@ const W = FR ? {
   thisPc: 'Connect this computer', thisPcSub: 'Paste this command in a terminal on this computer. Then a QR code opens weevils on your phone.',
   better: 'Better: a server', betterSub: 'A server keeps your agents working while your phone and computer are off, and your phone reaches them from anywhere. Same flow, 2 more minutes.',
   macNote: 'On a Mac, the terminal is the Terminal app. It may ask for your Mac password once (nothing shows while you type).',
-  winNote: 'On Windows, paste the command in Ubuntu (WSL2). A VPS is still the simplest.',
+  winNote: 'On Windows, paste it in PowerShell: weevils installs in Ubuntu (WSL). A VPS is still the simplest.',
+  onWindows: 'On Windows (PowerShell):',
   hzTitle: 'A server of your own, at Hetzner',
   hz1: 'Create a Hetzner account, with a payment method. They check your ID (a photo of it and a selfie), then approve the account by hand: come back here once it’s approved.',
   hz1b: 'Create my Hetzner account',
@@ -474,7 +476,7 @@ async function newJob(kind) {
   const view = await viewOf(secret)
   const j = await api('/api/job', { kind, lang: FR ? 'fr' : 'en', pub, tz: TZ, view, wrapped: await wrapKey(secret, jwk) })
   // A service from before resume links picks its own token: then this browser is the only way back.
-  return keep({ sid: j.sid, view: j.view, secret: j.view === view ? secret : '', kind, jwk, command: j.command, at: Date.now() })
+  return keep({ sid: j.sid, view: j.view, secret: j.view === view ? secret : '', kind, jwk, command: j.command, win: j.win || '', at: Date.now() })
 }
 /** A resume link: this browser's copy when it has it, else the setup and its sealed key from the service. */
 async function restore(ref) {
@@ -484,7 +486,7 @@ async function restore(ref) {
   const st = await api('/api/status', { sid: ref.sid, view, full: true })
   let jwk = null
   try { if (st.wrapped) jwk = await unwrapKey(ref.secret, st.wrapped) } catch {}
-  return keep({ sid: ref.sid, view, secret: ref.secret, kind: st.kind, jwk, command: st.command || '', at: st.created || Date.now() })
+  return keep({ sid: ref.sid, view, secret: ref.secret, kind: st.kind, jwk, command: st.command || '', win: st.win || '', at: st.created || Date.now() })
 }
 async function unseal(job, sealed) {
   const key = await crypto.subtle.importKey('jwk', job.jwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt'])
@@ -703,13 +705,16 @@ function pcBox(here) {
   const err = errBox()
   const code = h('code', {}, '…')
   const copy = h('button', { type: 'button' }, W.copy)
-  const box = h('div', {}, h('div', { class: 'cmd' }, code, copy), err)
+  const winLine = h('p', { class: 'note' })
+  const box = h('div', {}, h('div', { class: 'cmd' }, code, copy), winLine, err)
   let job
   ;(async () => {
     try {
       const s = savedJob()
       job = s && s.kind === 'pc' && s.command ? s : await newJob('pc')
-      code.textContent = job.command
+      // Windows: its own command (PowerShell, which hands the install to Ubuntu in WSL); a phone shows both.
+      code.textContent = os === 'windows' && job.win ? job.win : job.command
+      if (os === 'phone' && job.win) winLine.replaceChildren(W.onWindows, ' ', h('code', {}, job.win))
       // Back here from its install: the same command, no jump forward (the install stays one step ahead).
       if (!job.started) watch(job, () => progress(job, { push: true }))
     } catch (e) { showErr(err, e.message) }
@@ -718,11 +723,11 @@ function pcBox(here) {
   copy.onclick = async () => {
     if (!job) return
     if (!chose) (chose = true), hit('chose', 'pc')
-    try { await navigator.clipboard.writeText(job.command) } catch { getSelection().selectAllChildren(code) }
+    try { await navigator.clipboard.writeText(code.textContent) } catch { getSelection().selectAllChildren(code) }
     copy.textContent = W.copied
     setTimeout(() => (copy.textContent = W.copy), 1600)
   }
-  if (!here && navigator.share) box.append(h('button', { class: 'btn light', onclick: () => job && navigator.share({ text: job.command }).catch(() => {}) }, W.share))
+  if (!here && navigator.share) box.append(h('button', { class: 'btn light', onclick: () => job && navigator.share({ text: code.textContent }).catch(() => {}) }, W.share))
   box.append(h('p', { class: 'note' }, W.pcWait), h('p', { class: 'note' }, W.pcLimit))
   return box
 }
@@ -747,7 +752,8 @@ function watch(job, onMove, onState, source) {
       const s = source ? await source() : await api('/api/status', { sid: job.sid, view: job.view })
       if (me !== watching) return
       if (s.state !== 'waiting' && !moved && onMove) { moved = true; return onMove(s) }
-      if (onState?.(s) === 'stop' || s.state === 'done' || s.state === 'failed') return
+      // A computer's failed install keeps being followed: its command pasted again starts it over.
+      if (onState?.(s) === 'stop' || s.state === 'done' || (s.state === 'failed' && job.kind !== 'pc')) return
     } catch (e) {
       if (e.message === 'no_job') { forget(); return onState?.({ state: 'failed', steps: [], error: W.expired }) }
     }
@@ -803,8 +809,9 @@ function progress(job, opts = {}) {
     items.forEach((li, i) => { li.className = i < now || s.state === 'done' ? 'done' : i === now && s.state !== 'failed' ? 'now' : ''; li.firstChild.textContent = li.className === 'done' ? '✓' : '' })
     if (s.creating && !steps.length) items[0].lastChild.textContent = job.kind === 'ssh' ? labels[0] : W.creatingNow
     bar.style.width = `${Math.max(4, Math.round((now / (ORDER.length - 1)) * 100))}%`
+    err.hidden = s.state !== 'failed'
     if (s.state === 'failed') {
-      clearInterval(timer)
+      if (job.kind !== 'pc') clearInterval(timer)
       slow.hidden = true
       err.replaceChildren(h('b', {}, W.failTitle), h('br'), s.error || '', h('button', { class: 'btn', onclick: tryAgain(job) }, W.tryAgain))
       err.hidden = false

@@ -874,6 +874,33 @@ export function createServer(cfg = config(), deps = {}) {
     return bootstrap.replace(/@([A-Z]+)@/g, (m, k) => (k in vals ? sq(vals[k]) : m))
   }
 
+  // A computer's command: bash on Linux, a Mac or inside WSL; PowerShell on Windows (any of its terminals: cmd and Git
+  // Bash run it too), which hands the same install to Ubuntu in WSL.
+  const commands = (j) => ({ command: `curl -fsSL ${cfg.base}/i/${j.sid} | bash`, win: `powershell -c "irm ${cfg.base}/w/${j.sid} | iex"` })
+  const NEEDS_WSL = {
+    en: 'weevils runs in Linux, and this Windows has no Linux (WSL) yet. Simplest: go back to the page and pick a server. Or open PowerShell as administrator, type wsl --install, restart the computer, open Ubuntu once, then paste the command again.',
+    fr: 'weevils tourne sous Linux, et ce Windows n’a pas encore Linux (WSL). Le plus simple : reviens sur la page et choisis un serveur. Sinon ouvre PowerShell en administrateur, tape wsl --install, redémarre l’ordinateur, ouvre Ubuntu une fois, puis colle à nouveau la commande.',
+  }
+  /** Windows: the same install, run by bash in the first Linux distribution of WSL (Docker Desktop's own excepted). */
+  const winScript = (j) => {
+    const ps = (v) => `'${String(v).replace(/'/g, "''")}'`
+    return `$ErrorActionPreference = 'SilentlyContinue'
+& {
+  $base = ${ps(cfg.base)}; $sid = ${ps(j.sid)}
+  $d = $null
+  if (Get-Command wsl.exe) { $d = (wsl.exe -l -q) -replace [char]0, '' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -notlike 'docker-desktop*' } | Select-Object -First 1 }
+  if (-not $d) {
+    $m = ${ps(NEEDS_WSL[j.lang] || NEEDS_WSL.en)}
+    try { Invoke-RestMethod -Method Post -Uri "$base/r/$sid" -Body @{ event = 'failed'; error = $m } | Out-Null } catch {}
+    Write-Host ''; Write-Host "  weevils · $m" -ForegroundColor Yellow; Write-Host ''
+    return
+  }
+  Write-Host "  weevils · installing in $d (WSL)"
+  wsl.exe -d $d -- bash -lc "curl -fsSL '$base/i/$sid' | bash"
+}
+`
+  }
+
   const handlers = {
     // A new setup: kind is hetzner, ssh or pc; pub is the page's RSA-OAEP public key (base64 DER, SPKI).
     'POST /api/job': async (req, res, ip) => {
@@ -896,7 +923,7 @@ export function createServer(cfg = config(), deps = {}) {
       // Roughly where the person is, for the install register: their time zone's country, never their address.
       j.country = countryOf(b.tz)
       if (b.kind === 'pc') j.state = 'waiting'
-      send(res, 200, { sid: j.sid, view: j.view, command: `curl -fsSL ${cfg.base}/i/${j.sid} | bash` })
+      send(res, 200, { sid: j.sid, view: j.view, ...commands(j) })
     },
     // Anonymous counters from the page: it was opened, an option was picked, the phone switched to its weevils. Only
     // real visits through Caddy count (not this machine, not bots, not link previews).
@@ -917,7 +944,7 @@ export function createServer(cfg = config(), deps = {}) {
       const j = owned(b)
       if (!j) return fail(res, 404, 'no_job')
       // full: a page opened from a resume link also gets its sealed key back.
-      send(res, 200, b.full ? { ...view(j), wrapped: j.wrapped || '', command: j.kind === 'pc' ? `curl -fsSL ${cfg.base}/i/${j.sid} | bash` : '' } : view(j))
+      send(res, 200, b.full ? { ...view(j), wrapped: j.wrapped || '', ...(j.kind === 'pc' ? commands(j) : { command: '' }) } : view(j))
     },
     // A visit without its setup (its page was closed, the in-app browser forgot it): the setups this same browser
     // started from this same address, and how far they are. Nothing more: the rest needs the resume link or the token.
@@ -1122,6 +1149,8 @@ export function createServer(cfg = config(), deps = {}) {
       if (m && req.method === 'GET') {
         if (!limit.ok(`i:${ip}`, 60, 3600_000)) return fail(res, 429, 'slow_down')
         const j = store.get(m[1])
+        // A computer's command pasted again after a failure (in the wrong terminal, a password mistyped) starts over.
+        if (j?.kind === 'pc' && j.state === 'failed') (j.state = 'running'), (j.error = '')
         if (!j || j.state === 'done' || j.state === 'failed' || ++j.scriptFetches > 12) return send(res, 404, 'echo "weevils: this setup link has expired: open the setup page again." >&2; exit 1\n', 'text/x-shellscript; charset=utf-8')
         j.touched = Date.now()
         j.bv = BOOTSTRAP_V
@@ -1131,6 +1160,16 @@ export function createServer(cfg = config(), deps = {}) {
           j.server.ip ||= ip
         }
         return send(res, 200, script(j), 'text/x-shellscript; charset=utf-8')
+      }
+      // Windows: the PowerShell step before the same install, in WSL. A failed one can be pasted again.
+      m = /^\/w\/([a-z2-9]{10})$/.exec(url.pathname)
+      if (m && req.method === 'GET') {
+        if (!limit.ok(`i:${ip}`, 60, 3600_000)) return fail(res, 429, 'slow_down')
+        const j = store.get(m[1])
+        if (!j || j.kind !== 'pc' || j.state === 'done' || ++j.scriptFetches > 12) return send(res, 404, 'Write-Host "weevils: this setup link has expired: open the setup page again."\n', 'text/plain; charset=utf-8')
+        j.touched = Date.now()
+        if (j.state === 'waiting' || j.state === 'failed') (j.state === 'waiting' && stats.step('started', 'pc')), (j.state = 'running'), (j.error = '')
+        return send(res, 200, winScript(j), 'text/plain; charset=utf-8')
       }
       // Progress from an install: an event, a step title from the allowlist, and the sealed link at the end.
       m = /^\/r\/([a-z2-9]{10})$/.exec(url.pathname)

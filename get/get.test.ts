@@ -645,6 +645,26 @@ const here = path.dirname(new URL(import.meta.url).pathname)
 const bootstrap = fs.readFileSync(path.join(here, 'bootstrap.sh'), 'utf8')
 const page = fs.readFileSync(path.join(here, 'index.html'), 'utf8')
 
+describe('Windows', () => {
+  it('gets a PowerShell command that hands the install to WSL, and a failed run can be pasted again', async () => {
+    const job = (await post('/api/job', { kind: 'pc', lang: 'en', pub: pubB64(keyPair().publicKey) })).data
+    expect(job.win).toBe(`powershell -c "irm https://get.example/w/${job.sid} | iex"`)
+    const ps = await (await fetch(`${base}/w/${job.sid}`)).text()
+    expect(ps).toContain(`$sid = '${job.sid}'`)
+    expect(ps).toContain(`wsl.exe -d $d -- bash -lc "curl -fsSL '$base/i/$sid' | bash"`)
+    expect(ps).toContain('no Linux (WSL) yet')
+    expect((await post('/api/status', { sid: job.sid, view: job.view })).data.state).toBe('running')
+    // No WSL there: the page is told why, and the same command works once it is set up.
+    await fetch(`${base}/r/${job.sid}`, { method: 'POST', body: new URLSearchParams({ event: 'failed', error: 'no WSL' }) })
+    expect((await post('/api/status', { sid: job.sid, view: job.view })).data).toMatchObject({ state: 'failed', error: 'no WSL' })
+    expect((await fetch(`${base}/i/${job.sid}`)).status).toBe(200)
+    expect((await post('/api/status', { sid: job.sid, view: job.view })).data).toMatchObject({ state: 'running', error: '' })
+    // Git Bash: the bootstrap goes to WSL itself, or says what is missing.
+    expect(bootstrap).toMatch(/MINGW\* \| MSYS\* \| CYGWIN\*\)/)
+    expect(page).toContain("os === 'windows' && job.win ? job.win : job.command")
+  })
+})
+
 describe('a Mac', () => {
   it('gets a script that macOS’s own bash (3.2) can read', async () => {
     const job = (await post('/api/job', { kind: 'pc', lang: 'fr', pub: pubB64(keyPair().publicKey) })).data

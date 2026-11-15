@@ -26,7 +26,12 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
    **I already have a VPS**: IP, user, password (or private key). One SSH connection starts the install in the
    background, then closes.
    **My computer** (Mac, Linux, or Windows with WSL): `curl -fsSL https://get.scarville.tech/i/<id> | bash` in its
-   terminal.
+   terminal. On Windows the page shows `powershell -c "irm https://get.scarville.tech/w/<id> | iex"` instead (it works
+   from PowerShell, cmd and Git Bash alike): it runs the same install in WSL's first Linux, or tells the page and the
+   terminal that WSL is missing (a phone shows both commands). Until 2026-11-15 Windows got the bash command: pasted in
+   PowerShell or cmd it fetched the script and nothing ran, which is why no computer install had finished. Git Bash
+   pasting the bash command is handed to WSL too, and a computer's failed install can be pasted again (the page keeps
+   following it).
 3. A live progress screen follows the install (the installer's step names). Its address is the setup's resume link:
    closing the page and opening it again brings the person back here, with no button to find.
 4. At the end the page shows the person's own weevils: its address, the access code, "Open my weevils", the link to

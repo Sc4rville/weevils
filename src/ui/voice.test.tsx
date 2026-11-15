@@ -170,3 +170,37 @@ it('keeps an interrupted recording in the journal, invisible and never transcrib
  expect(host.querySelector('details')).toBeNull()
  expect(api.voiceFinish).not.toHaveBeenCalled();expect(onText).not.toHaveBeenCalled();expect(onSend).not.toHaveBeenCalled()
 })
+
+it('a failed earlier recording retried after a reload never puts a note on the logo',async()=>{
+ // Regression: the background retry failed (e.g. iOS could not read the stored audio) and the note stuck forever.
+ journal.voiceRecordings.mockResolvedValue([{id:'old-id',scope:'page:/',type:'audio/mp4',lang:'en',startedAt:1000,stoppedAt:5000,count:2}])
+ journal.recordedChunks.mockResolvedValue([new Blob(['a'.repeat(1024)]),new Blob(['b'.repeat(1024)])])
+ api.voiceChunk.mockRejectedValue(new Error('couldn’t read the audio'))
+ await render()
+ await act(async()=>{await vi.waitFor(()=>expect(api.voiceChunk).toHaveBeenCalled());await new Promise(resolve=>setTimeout(resolve,20))})
+ expect(host.querySelector('.voice-err')).toBeNull()
+ expect(host.textContent).not.toContain('read the audio')
+ expect(onText).not.toHaveBeenCalled();expect(onSend).not.toHaveBeenCalled()
+})
+
+it('says nothing for a too-short recording',async()=>{
+ let now=1000;vi.spyOn(Date,'now').mockImplementation(()=>now)
+ permission.mockResolvedValue(stream())
+ await render();await click()
+ now=1200;await click()
+ await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20))})
+ expect(host.querySelector('.voice-err')).toBeNull()
+ expect(api.voiceFinish).not.toHaveBeenCalled()
+})
+
+it('a real failed recording shows its note briefly, then it fades by itself',async()=>{
+ let now=1000;vi.spyOn(Date,'now').mockImplementation(()=>now)
+ permission.mockResolvedValue(stream());api.voiceChunk.mockResolvedValue({ok:true})
+ api.voiceFinish.mockRejectedValue(new Error('couldn’t read the audio'))
+ await render();await click()
+ await act(async()=>{recorder.ondataavailable?.({data:new Blob(['a'.repeat(2048)])});await new Promise(resolve=>setTimeout(resolve,10))})
+ now=3000;await click()
+ await act(async()=>{await vi.waitFor(()=>expect(host.querySelector('.voice-err')).not.toBeNull())})
+ await act(async()=>{await new Promise(resolve=>setTimeout(resolve,2400))})
+ expect(host.querySelector('.voice-err')).toBeNull()
+})

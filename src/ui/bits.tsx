@@ -479,11 +479,15 @@ export function Composer({
         setRec('wait')
         try {
           const blob = new Blob(chunks.current, { type: r.mimeType || type || 'audio/mp4' })
-          if (blob.size < 800) throw new Error(tr(M).nothingRecorded)
+          // Too short or empty: not a failure, say nothing.
+          if (blob.size < 800) return
           const { text: heard } = await api.transcribe(blob.type, await blobToB64(blob), getLang())
           if (heard) setText((cur) => (cur ? `${cur.replace(/\s+$/, '')} ${heard}` : heard))
         } catch (e) {
-          setErr((e as Error).message)
+          // A failed dictation is said briefly, then fades: it never stays on screen.
+          const m = (e as Error).message
+          setErr(m)
+          setTimeout(() => setErr((cur) => (cur === m ? null : cur)), 4000)
         } finally {
           setRec('off')
         }

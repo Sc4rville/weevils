@@ -37,6 +37,10 @@ const MIME = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg']
 /** Un tap-tap plus court que ça n'est pas une phrase : rien n'est envoyé (le serveur refait le contrôle, niveau sonore compris). */
 const MIN_REC_MS = 600
 
+/** Rien à transcrire (trop court, silence) : pas une panne, le logo n'en dit rien. */
+class Quiet extends Error {}
+const quiet = () => new Quiet(tr(M).nothingHeard)
+
 // Un seul élément audio, déverrouillé par le premier tap (iOS refuse de jouer sans geste).
 let player: HTMLAudioElement | null = null
 const SILENCE = 'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVCSiJrDCQBTcu3UrAIwUdkRgQbFAZC1CQEwTJ9mjRvBA4UOLD8nKVOWfh+UlK3z/177OXrfOdKl7pyn3Xf//WreyTRUoAWgBgkOAGbZHBgG1OF6zM82DWbZaUmMBptgQhGjsyYqc9ae9XFz280948NMBWInljyzsNRFLPWdnZGWrddDsjK1unuSrVN9jJsK8KuQtQCtMBjCEtImISdNKJOopIpBFpNSMbIHCSRpRR5iakjTiyzLhchUUBwCgyKiweBv/7UsQbg8isVNoMPMjAAAA0gAAABEVFGmgqK////9bP/6XCykxBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq'
@@ -175,7 +179,8 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
   const [err, setErr] = useState<string | null>(null)
   // Les petits messages d'état du logo (« rien entendu »…) : une bulle de pensée, effacée en fondu (moins de 3 s en tout).
   useEffect(() => {
-    if (!err || currentRecording.current) return
+    // Toujours effacé, même lié à un enregistrement : une note ne reste jamais collée au logo.
+    if (!err) return
     const t = setTimeout(() => setErr(null), NOTE_MS)
     return () => clearTimeout(t)
   }, [err])
@@ -265,13 +270,13 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
       let text = item.text
       if (!text) {
         const parts = memory.current.get(item.id) ?? volatileVoiceRecordings.get(item.id)?.parts ?? await recordedChunks(item)
-        if (!parts.length) throw new Error(tr(M).nothingHeard)
+        if (!parts.length) throw quiet()
         for (let n = 0; n < parts.length; n++) {
           await saveVoiceChunk(item, n, parts[n])
           await api.voiceChunk(item.id, n, item.type, await blobToB64(parts[n]))
         }
         text = (await api.voiceFinish(item.id, item.lang, parts.length)).text.trim()
-        if (!text) throw new Error(tr(M).nothingHeard)
+        if (!text) throw quiet()
         item = { ...item, text }
         await saveRecording(item)
       }
@@ -284,8 +289,9 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
         memory.current.delete(item.id)
       }
       setPhase('ready')
-    } catch (e) {
-      if (alive.current) { setErr((e as Error).message); setPhase('idle') }
+    } catch {
+      // Background retry of an earlier page's recording: silent. The audio stays in the journal; nothing was asked just now.
+      if (alive.current) setPhase('idle')
     } finally { void refreshSaved() }
   }
   // No visible list: a dictation that stopped but was never transcribed (or never reached the draft) is recovered by itself,
@@ -355,11 +361,11 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
           if (storageError) throw new Error(tr(M).storageInterrupted)
           if (!alive.current || scopeRef.current !== scope) return
           const blob = new Blob(parts, { type: mime })
-          if (blob.size < 800 || item.stoppedAt! - item.startedAt < MIN_REC_MS) throw new Error(tr(M).nothingHeard)
+          if (blob.size < 800 || item.stoppedAt! - item.startedAt < MIN_REC_MS) throw quiet()
           await uploaded
           if (uploadError) throw uploadError
           const text = (await api.voiceFinish(id, item.lang, parts.length)).text.trim()
-          if (!text) throw new Error(tr(M).nothingHeard)
+          if (!text) throw quiet()
           item = { ...item, text }
           await saveRecording(item)
           mark('text')
@@ -372,7 +378,7 @@ export function VoiceLogo({ onText, onSend, replyKey, replyText, working, take, 
           } else setPhase('ready')
         } catch (e) {
           if (alive.current && scopeRef.current === scope) {
-            setErr(storageError ? tr(M).storageInterrupted : (e as Error).message)
+            if (storageError || !(e instanceof Quiet)) setErr(storageError ? tr(M).storageInterrupted : (e as Error).message)
             setPhase('idle')
             // Include RAM-only recording if browser persistence failed mid-recording.
             setSaved(rows => [item, ...rows.filter(row => row.id !== id)])

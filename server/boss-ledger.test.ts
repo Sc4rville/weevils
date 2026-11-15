@@ -297,3 +297,83 @@ describe('BossTurns + ledger', () => {
     expect(t.started(turn)?.cid).toBe('c12345678')
   })
 })
+
+describe('grouping a burst into one request', () => {
+  const msg = (n: number, text: string, at = T0 + n * 40_000) => ({ key: `c${n}`, src: `m${n}`, at, from: 'user', text, reply: '', actions: [] })
+  const req = (quote: string, text: string, merge_into = '') => ({ quote, text, kind: 'task', state: 'open', sessions: [], goal: '', merge_into })
+  const one = (requests: object[]) => ({ m: '', requests, updates: [], memory: [], trace: [] })
+
+  it('a burst of 4 messages on one topic makes 1 request, with every message id and exact words kept', async () => {
+    const texts = ['refais l onboarding il est trop long', 'pc', 'et aussi enleve l etape langue', 'non garde la langue mais en dernier']
+    const { ledger } = rig({ model: async () => answer([
+      { ...one([req(texts[0], 'Shorten the onboarding')]), m: 'M1' },
+      { ...one([req('pc', 'Shorten the onboarding on desktop', 'M1.1')]), m: 'M2' },
+      { ...one([req('enleve l etape langue', 'Shorten the desktop onboarding, without the language step', 'M1.1')]), m: 'M3' },
+      { ...one([req(texts[3], 'Shorten the desktop onboarding, language step moved last', 'M1.1')]), m: 'M4' },
+    ]) })
+    expect(await ledger.read(texts.map((t, i) => msg(i + 1, t)))).toBe(true)
+    const asks = ledger.asks('all')
+    expect(asks).toHaveLength(1)
+    expect(asks[0]).toMatchObject({ src: 'm1', quote: texts[0], text: 'Shorten the desktop onboarding, language step moved last' })
+    expect(asks[0].more?.map((x) => [x.src, x.quote])).toEqual([['m2', 'pc'], ['m3', 'enleve l etape langue'], ['m4', texts[3]]])
+  })
+
+  it('two different topics in a burst stay 2 requests, even when the model names a wrong merge', async () => {
+    const { ledger } = rig({ model: async () => answer([
+      { ...one([req('fix the login page', 'Fix the login page')]), m: 'M1' },
+      { ...one([req('post the video on twitter', 'Post the video on Twitter')]), m: 'M2' },
+    ]) })
+    await ledger.read([msg(1, 'fix the login page'), msg(2, 'post the video on twitter')])
+    expect(ledger.asks('all').map((a) => a.text).sort()).toEqual(['Fix the login page', 'Post the video on Twitter'])
+  })
+
+  it('a later message that refines an open request joins it; a closed one is never reopened by a merge', async () => {
+    let reply = ''
+    const { ledger } = rig({ model: async () => reply })
+    const open = ledger.add('Fix the onboarding link', { quote: 'fix the onboarding link', src: 'm0' })
+    const closed = ledger.add('Rename the app')
+    ledger.setStatus(closed.id, 'done', 'user')
+    reply = answer([
+      { ...one([req('on iphone only', 'Fix the onboarding link on iPhone', open.id)]), m: 'M1' },
+      { ...one([req('call it weevils', 'Call the app weevils', closed.id)]), m: 'M2' },
+    ])
+    await ledger.read([msg(1, 'on iphone only', T0 + 3600_000), msg(2, 'call it weevils', T0 + 3600_000)])
+    expect(ledger.ask(open.id)).toMatchObject({ text: 'Fix the onboarding link on iPhone', more: [{ src: 'm1', quote: 'on iphone only' }] })
+    expect(ledger.asks('all')).toHaveLength(3)
+  })
+
+  it('a twin the model forgot to merge, in the same burst, is merged anyway', async () => {
+    const { ledger } = rig({ model: async () => answer([
+      { ...one([req('fix the onboarding link', 'Fix the onboarding link')]), m: 'M1' },
+      { ...one([req('the onboarding link fix', 'Fix the onboarding link')]), m: 'M2' },
+    ]) })
+    await ledger.read([msg(1, 'fix the onboarding link'), msg(2, 'the onboarding link fix')])
+    expect(ledger.asks('all')).toHaveLength(1)
+    expect(ledger.asks('all')[0].more).toHaveLength(1)
+  })
+
+  it('old ledger data without the new fields still loads and shows', () => {
+    const { ledger, dir } = rig()
+    fs.writeFileSync(path.join(dir, 'ledger.json'), JSON.stringify({ v: 1, next: { r: 5, k: 1 }, asks: [{ id: 'r4', text: 'Old one', quote: 'old', src: 'x', from: 'user', at: T0, kind: 'task', status: 'open', dispatches: [], progressAt: T0 }], goals: [], inbox: [], readTurns: [], recent: {} }))
+    const again = new Ledger({ dir, host: (ledger as any).host, model: async () => '{}' })
+    expect(again.view().asks[0]).toMatchObject({ id: 'r4', text: 'Old one' })
+  })
+})
+
+describe('handling: answered, sent or queued', () => {
+  it('records it on each new request from the user’s words', async () => {
+    const r = (quote: string, text: string, state = 'open', kind = 'task') => ({ m: '', requests: [{ quote, text, kind, state, sessions: [], goal: '' }], updates: [], memory: [], trace: [] })
+    const { ledger } = rig({ model: async () => answer([
+      { ...r('fix the login, urgent', 'Fix the login'), m: 'M1' },
+      { ...r('clean the repo this weekend', 'Clean the repo'), m: 'M2' },
+      { ...r('what is the quota', 'What is the quota?', 'done', 'question'), m: 'M3' },
+    ]) })
+    const m = (n: number, text: string) => ({ key: `c${n}`, src: `m${n}`, at: T0, from: 'user', text, reply: '', actions: [] })
+    await ledger.read([m(1, 'fix the login, urgent'), m(2, 'clean the repo this weekend'), m(3, 'what is the quota')])
+    const by = (t: string) => ledger.asks('all').find((a) => a.text === t)!
+    expect(by('Fix the login')).toMatchObject({ handling: 'send', why: 'you-said-now' })
+    expect(by('Clean the repo')).toMatchObject({ handling: 'queued', why: 'you-said-later' })
+    expect(by('What is the quota?')).toMatchObject({ handling: 'answered', why: 'answered' })
+    expect(ledger.digest()).toContain('SEND NOW')
+  })
+})

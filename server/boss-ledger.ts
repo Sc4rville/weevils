@@ -23,6 +23,7 @@ import type { Ask, Dispatch, Goal, Knowledge, KnowledgeKind, LedgerView, Outcome
 import { parseSigned } from './authors.ts'
 import { shortId, tokensOf, type Entry } from './boss-view.ts'
 import { looksSecret } from './memory.ts'
+import { decide, speedMode } from './request-handling.ts'
 
 // ---------------------------------------------------------------- types
 
@@ -78,6 +79,8 @@ const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd
 const sha = (s: string) => crypto.createHash('sha1').update(s).digest('hex').slice(0, 12)
 const DAY = 86400_000
 export const STALE_MS = DAY
+/** Messages of one author this close together are one burst: a twin request in it is merged. */
+export const BURST_MS = 10 * 60_000
 const LANG_NAMES: Record<string, string> = { en: 'English', fr: 'French' }
 export const langName = (l: string) => LANG_NAMES[l] ?? l
 
@@ -243,7 +246,7 @@ export const RECONCILE_SCHEMA = {
             type: 'array',
             items: {
               type: 'object',
-              properties: { quote: str, text: str, kind: { type: 'string', enum: ['task', 'question'] }, state: { type: 'string', enum: ['open', 'dispatched', 'done'] }, sessions: strs, goal: str, expect: str },
+              properties: { quote: str, text: str, kind: { type: 'string', enum: ['task', 'question'] }, state: { type: 'string', enum: ['open', 'dispatched', 'done'] }, sessions: strs, goal: str, expect: str, merge_into: str },
               required: ['quote', 'text', 'kind', 'state', 'sessions', 'goal'],
             },
           },
@@ -265,7 +268,7 @@ export const RECONCILE_SCHEMA = {
 interface Reconciled {
   messages: {
     m: string
-    requests: { quote: string; text: string; kind: 'task' | 'question'; state: 'open' | 'dispatched' | 'done'; sessions: string[]; goal: string; expect?: string }[]
+    requests: { quote: string; text: string; kind: 'task' | 'question'; state: 'open' | 'dispatched' | 'done'; sessions: string[]; goal: string; expect?: string; merge_into?: string }[]
     updates: { id: string; status: '' | 'done' | 'dropped' | 'dispatched'; sessions?: string[]; note?: string }[]
     memory: { kind: KnowledgeKind; text: string }[]
     trace: { session?: string; text: string; why?: string; expect?: string }[]
@@ -434,12 +437,33 @@ export class Ledger {
 
   private nextAsk() { return `r${this.s.next.r++}` }
 
+  /** Every exact word the user said for a request (its first message and the ones merged into it). */
+  static words(a: Ask) { return [a.quote, ...(a.more ?? []).map((m) => m.quote)].join(' · ') }
+
+  /** Answered, sent, to send now or queued (and why), from its state, the user's words and the speed mode. */
+  private rehandle(a: Ask) {
+    if (a.status === 'dropped') return
+    const d = decide({ state: a.status === 'done' ? (a.handling === 'sent' || a.dispatches.length ? 'dispatched' : 'done') : a.status, kind: a.kind, words: Ledger.words(a), mode: speedMode() })
+    a.handling = d.handling
+    a.why = d.why
+  }
+
+  /** A follow-up or a correction folded into an open request: its words kept, never a near-duplicate. */
+  private merge(a: Ask, m: { src: string; quote: string; at: number; from: string }, text?: string) {
+    const more = (a.more ??= [])
+    if (a.src === m.src && fold(a.quote) === fold(m.quote)) return
+    if (!more.some((x) => x.src === m.src && fold(x.quote) === fold(m.quote))) more.push({ src: m.src, quote: clip(oneLine(m.quote), 600), at: m.at, from: m.from })
+    if (text && oneLine(text)) a.text = clip(oneLine(text), 400)
+    a.progressAt = Math.max(a.progressAt, m.at)
+  }
+
   add(text: string, o: { goal?: string; quote?: string; src?: string; from?: string; kind?: 'task' | 'question' } = {}): Ask {
     const t = oneLine(text)
     if (!t) throw new Error('empty request') // i18n-ignore : API guard, the CLI checks first
     const now = this.now()
     const a: Ask = { id: this.nextAsk(), text: clip(t, 400), quote: clip(oneLine(o.quote ?? t), 600), src: o.src ?? '', from: o.from ?? 'user', at: now, kind: o.kind ?? 'task', status: 'open', dispatches: [], progressAt: now }
     if (o.goal && this.goal(o.goal)) a.goal = this.goal(o.goal)!.id
+    this.rehandle(a)
     this.s.asks.push(a)
     this.trace({ kind: 'request', text: a.text, asks: [a.id], goal: a.goal, src: a.src })
     this.save()
@@ -455,6 +479,7 @@ export class Ledger {
     if (status === 'open') { delete a.closedAt; delete a.closedBy } else { a.closedAt = now; a.closedBy = by }
     if (note) a.note = clip(oneLine(note), 400)
     a.progressAt = now
+    if (status === 'open') this.rehandle(a)
     this.trace({ kind: 'status', status, text: note ? oneLine(note) : a.text, asks: [a.id], goal: a.goal, who: by })
     this.save()
     return a
@@ -470,6 +495,7 @@ export class Ledger {
     }
     if (a.status === 'open') a.status = 'dispatched'
     a.progressAt = this.now()
+    this.rehandle(a)
     this.trace({ kind: 'dispatch', text: a.text, asks: [a.id], goal: a.goal, session: sid, who: s ? this.label(s) : sid.slice(0, 8), expect })
     this.save()
     return a
@@ -610,13 +636,15 @@ export class Ledger {
       const d = a.dispatches.at(-1)
       const where = d ? `→ ${d.session.slice(0, 8)}${d.label ? ` ${clip(d.label, 40)}` : ''}${d.outcome && d.outcome !== 'done' ? ` (${d.outcome})` : ''}` : 'open'
       const note = a.note ? ` · ${clip(a.note, 90)}` : ''
-      return `- ${a.id} [${where}${a.goal ? ` · ${a.goal}` : ''} · ${age(t - a.at)}] ${clip(a.text, 150)}${note}`
+      const how = a.status === 'open' && a.handling === 'send' ? ` · SEND NOW (${a.why})` : a.status === 'open' && a.handling === 'queued' ? ` · queued (${a.why})` : ''
+      const merged = a.more?.length ? ` · ${a.more.length + 1} messages` : ''
+      return `- ${a.id} [${where}${how}${merged}${a.goal ? ` · ${a.goal}` : ''} · ${age(t - a.at)}] ${clip(a.text, 150)}${note}`
     }
     // Goals and rules have a reserved share; requests take the rest (they are the point).
     const goalShare = Math.floor(chars * 0.18)
     const ruleShare = Math.floor(chars * 0.17)
     const reqChars = chars - goalShare - ruleShare
-    put(`## Open requests (${live.length} open${stale.length ? `, ${stale.length} stale` : ''}) — never drop one silently: weevils asks · weevils ask done|drop <id> · weevils ask link <id> <session>`)
+    put(`## Open requests (${live.length} open${stale.length ? `, ${stale.length} stale` : ''}) — never drop one silently: weevils asks · weevils ask done|drop <id> · weevils ask link <id> <session> · speed mode ${speedMode()}: the user's own timing wins (now → send, later → keep queued), else pause/veille queue · cruise keeps ongoing work going · turbo/max send at once`)
     const pending = this.s.inbox.filter((m) => m.cid !== except)
     let shown = 0
     for (const a of [...stale.map((x) => ({ x, s: true })), ...fresh.map((x) => ({ x, s: false }))]) {
@@ -728,6 +756,7 @@ export class Ledger {
 
 For each message below, list every distinct request it contains (something ${user} wants done, changed, made, checked, sent or answered):
 - One request per distinct ask: "do X and also Y, then send Z to W" is three requests. Merge only true repeats inside one message.
+- ${user} often sends several messages in a burst about one thing: a follow-up, a correction, a precision ("desktop", "on mobile", "and the colour too", "no, the other button"), often in French. Such a message does NOT make a new request: give it "merge_into" = the id of the request it refines (an open request below, or "M<k>.<n>" from an earlier message of this batch), its own "quote", and as "text" the refined request restated whole. Same for a later message that clearly refines an open request. Never merge two different asks, even about the same project: when unsure, make a new request. Else "merge_into" is "".
 - "quote": the exact words of the message that carry this request, copied character for character (one contiguous excerpt, 3 to 40 words). Never paraphrase it, never translate it.
 - "text": the request as one short sentence in ${lang}, complete enough to understand alone (name the project or the thing). An imperative for a task, a question for a question.
 - "kind": "question" when ${user} only wants an answer or an explanation; "task" when something must be done.
@@ -788,6 +817,7 @@ ${blocks.join('\n\n')}`
           a.dispatches.push({ session: sid, label: s ? this.label(s) : act.project, at: m.at, brief: act.brief })
           a.status = 'dispatched'
           a.progressAt = Math.max(a.progressAt, m.at)
+          this.rehandle(a)
           this.trace({ at: m.at, kind: 'dispatch', text: a.text, asks: [a.id], goal: a.goal, session: sid, who: s ? this.label(s) : sid.slice(0, 8), src: m.src })
         }
       }
@@ -811,6 +841,22 @@ ${blocks.join('\n\n')}`
         const quote = verbatim(q.quote ?? '', m.text)
         const goal = goalOk(q.goal)
         const sent = sessionsOf(q.sessions)
+        // A follow-up or a correction: folded into the request it refines (named by the model, or, in a burst of the
+        // same author, one that plainly says the same thing). Never into a closed one.
+        const live = (x?: Ask) => (x && (x.status === 'open' || x.status === 'dispatched') ? x : undefined)
+        const named = q.merge_into ? live(made.get(String(q.merge_into).trim().toUpperCase()) ?? this.ask(String(q.merge_into))) : undefined
+        const twin = named ?? live([...made.values()].reverse().find((x) => x.from === m.from && m.at - x.at <= BURST_MS && x.kind === (q.kind === 'question' ? 'question' : 'task') && similar(x.text, q.text)))
+        if (twin && q.state !== 'done') {
+          this.merge(twin, { src: m.src, quote, at: m.at, from: m.from }, named ? q.text : undefined)
+          for (const s of sent) if (!twin.dispatches.some((d) => d.session === s.id)) twin.dispatches.push({ session: s.id, label: s.label, at: m.at, brief: s.brief, expect: q.expect ? clip(oneLine(q.expect), 300) : traceFor(s.id)?.expect })
+          if (twin.status === 'open' && twin.dispatches.length) twin.status = 'dispatched'
+          if (!twin.goal && goal) twin.goal = goal
+          this.rehandle(twin)
+          created.push(twin)
+          made.set(`M${i + 1}.${created.length}`, twin)
+          this.trace({ at: m.at, kind: 'status', status: 'progress', text: quote, asks: [twin.id], goal: twin.goal, src: m.src, who: m.from })
+          continue
+        }
         const a: Ask = {
           id: this.nextAsk(),
           text: clip(oneLine(q.text), 400),
@@ -825,6 +871,7 @@ ${blocks.join('\n\n')}`
           ...(goal ? { goal } : {}),
         }
         if (a.status === 'done') { a.closedAt = m.at; a.closedBy = 'weevboss'; a.note = a.kind === 'question' ? 'answered in the thread' : 'done in the thread' }
+        this.rehandle(a)
         this.s.asks.push(a)
         created.push(a)
         made.set(`M${i + 1}.${created.length}`, a)
@@ -844,6 +891,7 @@ ${blocks.join('\n\n')}`
         if (a.status === 'open' && a.dispatches.length) a.status = 'dispatched'
         if (note) a.note = note
         a.progressAt = Math.max(a.progressAt, m.at)
+        this.rehandle(a)
         this.trace({ at: m.at, kind: 'status', status: u.status || 'progress', text: note ?? a.text, asks: [a.id], goal: a.goal, src: m.src, who: m.from })
       }
       for (const k of got.memory ?? []) {

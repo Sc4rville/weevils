@@ -871,12 +871,16 @@ export function createServer(cfg = config(), deps = {}) {
     const vals = {
       BASE: cfg.base, SID: j.sid, LANG: j.lang, MODE: j.mode, REACH: j.reach, REPO: cfg.repo, BUNDLE: cfg.bundle ? '1' : '0', PUB: j.pub, TITLES: titleList,
     }
-    return bootstrap.replace(/@([A-Z]+)@/g, (m, k) => (k in vals ? sq(vals[k]) : m))
+    return bootstrap.replace(/@([A-Z]+)@/g, (m, k) => (k in vals ? sq(vals[k]) : m)).replaceAll('https://get.scarville.tech', cfg.base)
   }
+  // The same script for everyone (a computer's command): readable at a stable address, with its checksum. The setup
+  // id comes as its argument; its settings are read from /i/<sid>.env as plain values.
+  const shared = script({ sid: '', lang: '', mode: '', reach: '', pub: '' })
+  const sharedSum = crypto.createHash('sha256').update(shared).digest('hex')
 
   // A computer's command: bash on Linux, a Mac or inside WSL; PowerShell on Windows (any of its terminals: cmd and Git
   // Bash run it too), which hands the same install to Ubuntu in WSL.
-  const commands = (j) => ({ command: `curl -fsSL ${cfg.base}/i/${j.sid} | bash`, win: `powershell -c "irm ${cfg.base}/w/${j.sid} | iex"` })
+  const commands = (j) => ({ command: `curl -fsSL ${cfg.base}/install.sh | bash -s ${j.sid}`, win: `powershell -c "irm ${cfg.base}/w/${j.sid} | iex"` })
   const NEEDS_WSL = {
     en: 'weevils runs in Linux, and this Windows has no Linux (WSL) yet. Simplest: go back to the page and pick a server. Or open PowerShell as administrator, type wsl --install, restart the computer, open Ubuntu once, then paste the command again.',
     fr: 'weevils tourne sous Linux, et ce Windows n’a pas encore Linux (WSL). Le plus simple : reviens sur la page et choisis un serveur. Sinon ouvre PowerShell en administrateur, tape wsl --install, redémarre l’ordinateur, ouvre Ubuntu une fois, puis colle à nouveau la commande.',
@@ -896,7 +900,7 @@ export function createServer(cfg = config(), deps = {}) {
     return
   }
   Write-Host "  weevils · installing in $d (WSL)"
-  wsl.exe -d $d -- bash -lc "curl -fsSL '$base/i/$sid' | bash"
+  wsl.exe -d $d -- bash -lc "curl -fsSL '$base/install.sh' | bash -s $sid"
 }
 `
   }
@@ -1160,6 +1164,26 @@ export function createServer(cfg = config(), deps = {}) {
           j.server.ip ||= ip
         }
         return send(res, 200, script(j), 'text/x-shellscript; charset=utf-8')
+      }
+      if ((url.pathname === '/install.sh' || url.pathname === '/install.sh.sha256') && req.method === 'GET') {
+        return url.pathname === '/install.sh' ? send(res, 200, shared, 'text/x-shellscript; charset=utf-8') : send(res, 200, `${sharedSum}  install.sh\n`, 'text/plain; charset=utf-8')
+      }
+      // The shared script's settings for one setup, as key=value lines (counted like a fetch of its own script).
+      m = /^\/i\/([a-z2-9]{10})\.env$/.exec(url.pathname)
+      if (m && req.method === 'GET') {
+        if (!limit.ok(`i:${ip}`, 60, 3600_000)) return fail(res, 429, 'slow_down')
+        const j = store.get(m[1])
+        if (j?.kind === 'pc' && j.state === 'failed') (j.state = 'running'), (j.error = '')
+        if (!j || j.state === 'done' || j.state === 'failed' || ++j.scriptFetches > 12) return send(res, 404, 'expired\n', 'text/plain; charset=utf-8')
+        j.touched = Date.now()
+        j.bv = BOOTSTRAP_V
+        if (j.kind === 'pc' && j.state === 'waiting') (j.state = 'running'), stats.step('started', 'pc')
+        if (!j.reach && j.server && publicAddress(ip)) {
+          j.reach = sslip(ip)
+          j.server.ip ||= ip
+        }
+        const clean = (v) => String(v ?? '').replace(/[\r\n=]/g, '')
+        return send(res, 200, `lang=${clean(j.lang)}\nmode=${clean(j.mode)}\nreach=${clean(j.reach)}\npub=${String(j.pub).replace(/[\r\n]/g, '')}\n`, 'text/plain; charset=utf-8')
       }
       // Windows: the PowerShell step before the same install, in WSL. A failed one can be pasted again.
       m = /^\/w\/([a-z2-9]{10})$/.exec(url.pathname)

@@ -1109,13 +1109,16 @@ uninstall() {
 
   # Service: stopped through weevils-service (systemd or background), then the units go.
   [ ! -x "$svc" ] || "$svc" stop >/dev/null 2>&1 || true
-  if [ -f "$units/weevilsd.service" ] || [ -f "$units/weevils-tunnel.service" ] || [ -f "$units/weevils-update.timer" ]; then
+  if [ -f "$units/weevilsd.service" ] || [ -f "$units/weevils-tunnel.service" ] || [ -f "$units/weevils-link.service" ] || [ -f "$units/weevils-update.timer" ]; then
     export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
     [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
-    systemctl --user disable --now weevilsd weevils-tunnel weevils-update.timer >/dev/null 2>&1 || true
-    rm -f "$units/weevilsd.service" "$units/weevils-tunnel.service" "$units/weevils-update.service" "$units/weevils-update.timer"
+    # weevils-link: the phone's HTTPS link of a computer set up from the setup page (get/bootstrap.sh).
+    systemctl --user disable --now weevilsd weevils-tunnel weevils-link weevils-update.timer >/dev/null 2>&1 || true
+    rm -f "$units/weevilsd.service" "$units/weevils-tunnel.service" "$units/weevils-link.service" "$units/weevils-update.service" "$units/weevils-update.timer"
     systemctl --user daemon-reload >/dev/null 2>&1 || true
   fi
+  # The setup page's link left as a plain background process (no service manager reachable).
+  pkill -u "$(id -u)" -f 'cloudflared tunnel --no-autoupdate --url http://127.0.0.1:' >/dev/null 2>&1 || true
   # A Mac: the launchd agents (weevilsd, the tunnel of a secondary machine).
   local plist label
   for plist in "$HOME"/Library/LaunchAgents/com.github.sc4rville.weevils*.plist; do

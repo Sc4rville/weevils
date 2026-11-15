@@ -25,8 +25,11 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
      so under the option and on the account step, so nobody is surprised.
    **I already have a VPS**: IP, user, password (or private key). One SSH connection starts the install in the
    background, then closes.
-   **My computer** (Mac, Linux, or Windows with WSL): `curl -fsSL https://get.scarville.tech/i/<id> | bash` in its
-   terminal. On Windows the page shows `powershell -c "irm https://get.scarville.tech/w/<id> | iex"` instead (it works
+   **My computer** (Mac, Linux, or Windows with WSL): `curl -fsSL https://get.scarville.tech/install.sh | bash -s <id>`
+   in its terminal. Since 2026-11-15 that script is the same file for everyone (`/install.sh`, its SHA-256 at
+   `/install.sh.sha256`), opens with a plain « what it does / never does / the code it runs / undo in one line » header,
+   and reads the setup's settings from `/i/<id>.env` as checked values: people's own AI assistants refused the old
+   per-setup URL (unverifiable, looked like it could differ per person). Servers still use `/i/<id>`. On Windows the page shows `powershell -c "irm https://get.scarville.tech/w/<id> | iex"` instead (it works
    from PowerShell, cmd and Git Bash alike): it runs the same install in WSL's first Linux, or tells the page and the
    terminal that WSL is missing (a phone shows both commands). Until 2026-11-15 Windows got the bash command: pasted in
    PowerShell or cmd it fetched the script and nothing ran, which is why no computer install had finished. Git Bash

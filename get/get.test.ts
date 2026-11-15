@@ -225,8 +225,8 @@ describe('an install, end to end through the API', () => {
   })
   it('reports a failure without anything that looks like a login link', async () => {
     const job = (await post('/api/job', { kind: 'pc', lang: 'en', pub: pubB64(keyPair().publicKey) })).data
-    expect(job.command).toBe(`curl -fsSL https://get.example/i/${job.sid} | bash`)
-    await fetch(`${base}/i/${job.sid}`)
+    expect(job.command).toBe(`curl -fsSL https://get.example/install.sh | bash -s ${job.sid}`)
+    await fetch(`${base}/i/${job.sid}.env`)
     await report(job.sid, { event: 'failed', error: 'oops https://x/#k=abc' })
     const st = (await post('/api/status', { sid: job.sid, view: job.view })).data
     expect(st.state).toBe('failed')
@@ -645,13 +645,32 @@ const here = path.dirname(new URL(import.meta.url).pathname)
 const bootstrap = fs.readFileSync(path.join(here, 'bootstrap.sh'), 'utf8')
 const page = fs.readFileSync(path.join(here, 'index.html'), 'utf8')
 
+describe('the shared script (a computer)', () => {
+  it('is the same file for everyone, with its checksum, says what it does, and reads its settings as plain values', async () => {
+    const job = (await post('/api/job', { kind: 'pc', lang: 'fr', pub: pubB64(keyPair().publicKey) })).data
+    const sh = await (await fetch(`${base}/install.sh`)).text()
+    expect(sh).not.toMatch(/@[A-Z]+@/)
+    expect(sh).not.toContain(job.sid)
+    expect(sh).toContain(`SID=''`)
+    for (const s of ['WHAT IT DOES', 'WHAT IT NEVER DOES', 'UNDO, in one line', '_weevils_get "$@"']) expect(sh).toContain(s)
+    execFileSync('bash', ['-n'], { input: sh })
+    const sum = (await (await fetch(`${base}/install.sh.sha256`)).text()).split(' ')[0]
+    expect(sum).toBe(crypto.createHash('sha256').update(sh).digest('hex'))
+    expect((await post('/api/status', { sid: job.sid, view: job.view })).data.state).toBe('waiting')
+    const env = await (await fetch(`${base}/i/${job.sid}.env`)).text()
+    expect(env).toMatch(/^lang=fr\nmode=pc\nreach=\npub=[A-Za-z0-9+/=]{200,800}\n$/)
+    expect((await post('/api/status', { sid: job.sid, view: job.view })).data.state).toBe('running')
+    expect((await fetch(`${base}/i/zzzzzzzzzz.env`)).status).toBe(404)
+  })
+})
+
 describe('Windows', () => {
   it('gets a PowerShell command that hands the install to WSL, and a failed run can be pasted again', async () => {
     const job = (await post('/api/job', { kind: 'pc', lang: 'en', pub: pubB64(keyPair().publicKey) })).data
     expect(job.win).toBe(`powershell -c "irm https://get.example/w/${job.sid} | iex"`)
     const ps = await (await fetch(`${base}/w/${job.sid}`)).text()
     expect(ps).toContain(`$sid = '${job.sid}'`)
-    expect(ps).toContain(`wsl.exe -d $d -- bash -lc "curl -fsSL '$base/i/$sid' | bash"`)
+    expect(ps).toContain(`wsl.exe -d $d -- bash -lc "curl -fsSL '$base/install.sh' | bash -s $sid"`)
     expect(ps).toContain('no Linux (WSL) yet')
     expect((await post('/api/status', { sid: job.sid, view: job.view })).data.state).toBe('running')
     // No WSL there: the page is told why, and the same command works once it is set up.

@@ -1,17 +1,33 @@
 #!/usr/bin/env bash
-# weevils — the install started from the setup page (get/server.mjs). One copy per setup; it holds no secret.
-# Written for bash 3.2 and BSD tools as well as Linux: on a Mac, "curl … | bash" runs /bin/bash 3.2.
+# weevils — installer started from the setup page, https://tryweevils.scarville.tech (source: get/bootstrap.sh in
+# github.com/Sc4rville/weevils). The same file for everyone: https://get.scarville.tech/install.sh, its SHA-256 at
+# https://get.scarville.tech/install.sh.sha256. The one argument is a setup id: it only lets this script tell the page
+# that opened it how far the install is. Written for bash 3.2 and BSD tools as well as Linux.
 #
-# What it does, on your machine:
-#   1. As root (a fresh VPS): installs for a regular user with sudo (yours, or a new "weevils" user), never as root.
-#      On a Mac: as yourself; on Apple Silicon, Homebrew is installed first when it is missing (your password,
-#      asked once here). Homebrew no longer installs on Intel Macs: there, the tools must already be on the Mac.
-#   2. Gets weevils into ~/weevils and runs ./install.sh --agent (everything else is that installer's job).
-#   3. A computer at home: opens an HTTPS link to it (Cloudflare quick tunnel), so your phone can reach it. The link
-#      is kept up by a systemd user unit (Linux) or a launchd agent (a Mac), both named weevils-link.
-#   4. Tells the setup page how far it is: only the step names below, never a line of the installer's log (it holds
-#      your access code). At the end, it sends your weevils' address encrypted with a key that only the page you
-#      opened holds: the setup service never sees your access code.
+# WHAT IT IS: weevils lets you watch and drive the Claude Code / Codex sessions of this machine from your phone. Its
+# agents run HERE, as you, with your files and your rights: install it on a machine you are fine giving to agents (a
+# small rented server is the recommended choice; the setup page creates one at Hetzner).
+#
+# WHAT IT DOES, as you (never as root on your computer):
+#   1. Gets the weevils code into ~/weevils (a git clone) and runs its installer, ~/weevils/install.sh --agent, which
+#      adds the tools it needs if missing (git, tmux, jq, Node.js 22, Claude Code), a background service (weevilsd,
+#      listening on 127.0.0.1 only), a few commands in ~/.local/bin and its hooks in ~/.claude/settings.json.
+#      Missing system packages need sudo: on a computer it asks your password ONCE, in this terminal, and only
+#      package installs use it. On a Mac: Homebrew (Apple Silicon only, when missing), then everything as you.
+#   2. A computer at home: opens an HTTPS link so your phone can reach it, a Cloudflare quick tunnel (cloudflared,
+#      kept up by a user service named weevils-link). Everything behind the link asks for your access code.
+#   3. Tells the setup page how far it is: step names only, then your weevils' address. Your access code never
+#      leaves this machine in clear: the login link is sent encrypted with a key only your open page holds.
+#   Run as root (that is how a fresh server starts it): it installs for a regular user with passwordless sudo instead.
+#
+# WHAT IT NEVER DOES: read your files or your Claude conversations for anyone else, send telemetry beyond the steps
+# above, or open a port on your router or firewall.
+#
+# THE CODE IT RUNS, to read before: the clone in step 1 comes from github.com/Sc4rville/weevils, or, while that
+# repository is private, from https://get.scarville.tech/weevils.bundle (a plain git bundle: download it, then
+# "git clone weevils.bundle" and read install.sh, the installer step 1 runs).
+#
+# UNDO, in one line:  ~/weevils/install.sh --uninstall --purge && rm -rf ~/weevils
 # The installer's full log stays here, in ~/weevils-install.log.
 set -euo pipefail
 
@@ -19,6 +35,23 @@ set -euo pipefail
 _weevils_get() {
   BASE=@BASE@ SID=@SID@ UI_LANG=@LANG@ MODE=@MODE@ REACH=@REACH@ REPO=@REPO@ BUNDLE=@BUNDLE@
   PUB=@PUB@
+  # The shared copy (get.scarville.tech/install.sh): the setup id comes as the argument, and this setup's settings
+  # are read as plain values, checked one by one (nothing fetched here is run).
+  if [ -z "$SID" ]; then
+    SID=${1:-}
+    [[ $SID =~ ^[a-z2-9]{10}$ ]] || { printf '  weevils · usage: curl -fsSL %s/install.sh | bash -s <setup id from the page>\n' "$BASE" >&2; exit 1; }
+    local kv k v
+    kv=$(curl -fsS -m 30 "$BASE/i/$SID.env") || { printf '  weevils · this setup link has expired: open the setup page again.\n' >&2; exit 1; }
+    while IFS='=' read -r k v; do
+      case $k in
+        lang) [[ $v =~ ^(en|fr)$ ]] && UI_LANG=$v || true ;;
+        mode) [[ $v =~ ^[a-z]{1,8}$ ]] && MODE=$v || true ;;
+        reach) [[ $v =~ ^[A-Za-z0-9.:/_-]{0,200}$ ]] && REACH=$v || true ;;
+        pub) [[ $v =~ ^[A-Za-z0-9+/=]{200,800}$ ]] && PUB=$v || true ;;
+      esac
+    done <<<"$kv"
+    [ -n "$MODE" ] && [ -n "$PUB" ] || { printf '  weevils · this setup link has expired: open the setup page again.\n' >&2; exit 1; }
+  fi
   # The installer's step titles, the only lines that leave this machine.
   TITLES=@TITLES@
   OS=$(uname -s)
@@ -351,4 +384,4 @@ EOF
     ! command -v qrencode >/dev/null || qrencode -t ANSIUTF8 -m 2 "$link" | sed 's/^/  /' || true
   fi
 }
-_weevils_get
+_weevils_get "$@"

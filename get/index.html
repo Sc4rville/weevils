@@ -145,8 +145,9 @@ const W = FR ? {
   rec: 'conseillé',
   hz: 'Crée-moi un serveur chez Hetzner', hzSub: 'On crée le serveur pour toi. Conseillé pour des agents qui tournent 24 h/24 : facturé à l’heure, vérification d’identité à l’inscription.',
   vps: 'J’ai déjà un VPS', vpsSub: 'Loué n’importe où : son adresse et son mot de passe, weevils s’y installe tout seul.',
-  pc: 'Mon ordinateur', pcSub: 'Mac, Linux, ou Windows avec WSL. Tes agents tournent seulement quand il est allumé.',
-  thisPc: 'Branche cet ordinateur', thisPcSub: 'Colle cette commande dans un terminal de cet ordinateur. Ensuite, un QR code ouvre weevils sur ton téléphone.',
+  pc: 'Mon ordinateur', pcSub: 'Mac, Linux, ou Windows avec WSL. Les agents tournent sur cet ordinateur, avec tes droits, et seulement quand il est allumé.',
+  thisPc: 'Branche cet ordinateur', thisPcSub: 'Colle cette commande dans un terminal de cet ordinateur, ou donne-la à ton assistant IA. Ensuite, un QR code ouvre weevils sur ton téléphone. Les agents tourneront ici, avec tes droits.',
+  pcWhat: 'Elle installe weevils dans ton dossier personnel, demande ton mot de passe une fois pour les outils manquants, et se retire en une ligne. Pas de root, pas de port ouvert.', pcRead: 'Lire le script',
   better: 'Mieux : un serveur', betterSub: 'Un serveur fait tourner tes agents même téléphone et ordinateur éteints, et ton téléphone les joint de partout. Même parcours, 2 minutes de plus.',
   macNote: 'Sur un Mac, le terminal est l’app Terminal. Elle peut demander une fois le mot de passe du Mac (rien ne s’affiche quand tu le tapes).',
   winNote: 'Sous Windows, colle-la dans PowerShell : weevils s’installe dans Ubuntu (WSL). Un VPS reste le plus simple.',
@@ -230,8 +231,9 @@ const W = FR ? {
   rec: 'recommended',
   hz: 'Create a server for me at Hetzner', hzSub: 'We create the server for you. Recommended for agents that run 24/7: billed by the hour, ID check at sign-up.',
   vps: 'I already have a VPS', vpsSub: 'Rented anywhere: its address and password, weevils installs itself.',
-  pc: 'My computer', pcSub: 'Mac, Linux, or Windows with WSL. Your agents run only while it’s on.',
-  thisPc: 'Connect this computer', thisPcSub: 'Paste this command in a terminal on this computer. Then a QR code opens weevils on your phone.',
+  pc: 'My computer', pcSub: 'Mac, Linux, or Windows with WSL. Agents run on this computer, with your rights, and only while it’s on.',
+  thisPc: 'Connect this computer', thisPcSub: 'Paste this command in a terminal on this computer, or give it to your AI assistant. Then a QR code opens weevils on your phone. Agents will run here, with your rights.',
+  pcWhat: 'It installs weevils in your home folder, asks your password once for missing tools, and comes off in one line. No root, no open port.', pcRead: 'Read the script',
   better: 'Better: a server', betterSub: 'A server keeps your agents working while your phone and computer are off, and your phone reaches them from anywhere. Same flow, 2 more minutes.',
   macNote: 'On a Mac, the terminal is the Terminal app. It may ask for your Mac password once (nothing shows while you type).',
   winNote: 'On Windows, paste it in PowerShell: weevils installs in Ubuntu (WSL). A VPS is still the simplest.',
@@ -728,7 +730,7 @@ function pcBox(here) {
     setTimeout(() => (copy.textContent = W.copy), 1600)
   }
   if (!here && navigator.share) box.append(h('button', { class: 'btn light', onclick: () => job && navigator.share({ text: code.textContent }).catch(() => {}) }, W.share))
-  box.append(h('p', { class: 'note' }, W.pcWait), h('p', { class: 'note' }, W.pcLimit))
+  box.append(h('p', { class: 'note' }, W.pcWhat, ' ', h('a', { href: '/install.sh', target: '_blank', rel: 'noopener' }, W.pcRead)), h('p', { class: 'note' }, W.pcWait), h('p', { class: 'note' }, W.pcLimit))
   return box
 }
 function pc(reopened) {

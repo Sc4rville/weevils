@@ -10,7 +10,11 @@ import type { Snapshot } from '../../shared/api.ts'
 const NOW = 1_800_000_000_000
 const view: LedgerView = {
   goals: [],
-  asks: [{ id: 'r7', text: 'Fix the login page', quote: 'fix the login', src: 'm1', from: 'user', at: NOW - 60_000, kind: 'task', status: 'dispatched', dispatches: [{ session: '0a1b2c3d4e5f6789', at: NOW - 50_000 }], progressAt: NOW - 50_000, stale: false }],
+  asks: [
+    { id: 'r8', text: 'Shorten the onboarding', quote: 'refais l onboarding', src: 'm2', from: 'user', at: NOW - 120_000, kind: 'task', status: 'open', dispatches: [], progressAt: NOW - 120_000, stale: false, handling: 'queued', why: 'you-said-later', more: [{ src: 'm3', quote: 'pc', at: NOW - 100_000, from: 'user' }] },
+    { id: 'r9', text: 'Pick a colour', quote: 'which colour', src: 'm4', from: 'user', at: NOW - 3 * 86400_000, kind: 'task', status: 'dispatched', dispatches: [{ session: 'aa', at: NOW - 3 * 86400_000, outcome: 'question', report: 'Blue or green?', reportAt: NOW - 2 * 86400_000 }, { session: 'bb', at: NOW - 3 * 86400_000, outcome: 'done' }], progressAt: NOW - 2 * 86400_000, stale: true },
+    { id: 'r6', text: 'Old done thing', quote: 'x', src: 'm0', from: 'user', at: NOW - 3600_000, kind: 'task', status: 'done', closedAt: NOW - 600_000, closedBy: 'auto', dispatches: [], progressAt: NOW - 600_000, stale: false },
+    { id: 'r7', text: 'Fix the login page', quote: 'fix the login', src: 'm1', from: 'user', at: NOW - 60_000, kind: 'task', status: 'dispatched', dispatches: [{ session: '0a1b2c3d4e5f6789', at: NOW - 50_000 }], progressAt: NOW - 50_000, stale: false }],
   pending: [],
   trace: [],
   knowledge: [],
@@ -46,7 +50,24 @@ it('a request sent to an unnamed session says « a session », never its id; no 
   await act(async () => root.render(<Ctx.Provider value={ctx as never}><RequestsPage /></Ctx.Provider>))
   await act(async () => {})
   const text = host.textContent ?? ''
-  expect(text).toContain('sent to a session')
+  expect(text).toContain('a session →')
   expect(text).not.toContain('0a1b2c3d')
   expect(text).not.toContain('! requests')
+})
+
+it('each request is one line: status chip, progress hint, merged messages; done ones folded; calm stale; no ids', async () => {
+  const ctx = { snap, now: NOW, offline: false, colors: {}, push: () => {}, replace: () => {}, back: () => {}, home: () => {}, expanded: null, setExpanded: () => {}, h24Open: false, setH24Open: () => {}, theme: 'light' as const, setTheme: () => {}, refresh: () => {}, logout: () => {} }
+  await act(async () => root.render(<Ctx.Provider value={ctx as never}><RequestsPage /></Ctx.Provider>))
+  await act(async () => {})
+  const text = host.textContent ?? ''
+  expect(text).toContain('queued')
+  expect(text).toContain('you said later')
+  expect(text).toContain('2 messages')
+  expect(text).toContain('needs you')
+  expect(text).toContain('1 of 2 steps')
+  expect(text).toContain('quiet for 2d')
+  expect(text).toContain('running')
+  expect(text).toContain('done lately · 1')
+  expect(host.querySelector('.req-fold')?.getAttribute('aria-expanded')).toBe('false')
+  expect(text).not.toMatch(/\br[6-9]\b/)
 })

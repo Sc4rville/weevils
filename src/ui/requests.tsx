@@ -1,8 +1,10 @@
 // The requests page (bottom of the machines band): weevboss's request ledger, read by the user in plain words.
 //
 // - « open »: the goals, each with its progress and its open requests (stale ones first), then the requests with no
-//   goal, then the messages still being read. A request opens in place: the user's exact words, where it was sent,
-//   what is expected back, what came back; « done » and « drop » (two taps) close it from here.
+//   goal, then the messages still being read, then what was done lately, folded. Each request is one compact line: its
+//   title, a status chip (queued, running, blocked, needs you, done), a progress hint (steps, last update, why it
+//   waits) and the session it is in (a tap opens it). It opens in place: every message merged into it with the user's
+//   exact words, why it is handled that way, where it was sent, what came back; « done » and « drop » close it.
 // - « closed »: what was done or dropped, newest first, and by whom.
 // - « trace »: the work journal, newest first, by day: requests, dispatches (who, why, what must come back), reports,
 //   decisions.
@@ -41,24 +43,35 @@ const who = (d: Dispatch, none: string) => {
   return p.length >= 3 ? `${p[0]} · ${p.slice(2).join(' · ')}` : d.label || none
 }
 
-function glyph(a: Row) {
-  if (a.stale) return '!'
-  return { open: '○', dispatched: '→', done: '✓', dropped: '×' }[a.status]
+type Chip = 'queued' | 'running' | 'blocked' | 'needs' | 'done' | 'dropped'
+
+/** The one word that says where a request stands. Exported for tests. */
+export function chipOf(a: Row): Chip {
+  if (a.status === 'done') return 'done'
+  if (a.status === 'dropped') return 'dropped'
+  if (a.dispatches.some((d) => d.outcome === 'question')) return 'needs'
+  if (a.dispatches.some((d) => d.outcome === 'failed')) return 'blocked'
+  if (a.status === 'dispatched') return 'running'
+  return 'queued'
 }
 
-/** One line under the request: where it stands, in words. */
-function useStatus() {
+/** The progress hint after the chip: steps, the last real update and when, or why it waits. */
+function useHint() {
   const t = useT(M)
   const age = useAge()
   return (a: Row, now: number) => {
-    const d = a.dispatches.at(-1)
+    const parts: string[] = []
+    const n = a.dispatches.length
     if (a.status === 'done' || a.status === 'dropped') {
       const by = a.closedBy === 'auto' ? t.closedByAuto : a.closedBy === 'user' ? t.closedByYou : t.closedByBoss
-      return `${a.status === 'done' ? t.done : t.dropped} · ${by}${a.closedAt ? ` · ${age(now - a.closedAt)}` : ''}`
+      return [by, a.closedAt ? age(now - a.closedAt) : ''].filter(Boolean).join(' · ')
     }
-    const where = d ? t.sentTo(who(d, t.aSession)) : t.open
-    const how = d?.outcome === 'question' ? ` · ${t.waitsForYou}` : d?.outcome === 'failed' ? ` · ${t.failed}` : d?.outcome === 'progress' ? ` · ${t.partly}` : ''
-    return a.stale ? `${t.stale(age(now - a.progressAt))} · ${where}` : `${where}${how} · ${age(now - a.at)}`
+    if (n > 1) parts.push(t.steps(a.dispatches.filter((d) => d.outcome === 'done').length, n))
+    if (a.status === 'open') parts.push(a.handling === 'send' ? `${t.whyWord(a.why ?? 'you-said-now')} · ${t.sendingNow}` : t.whyWord(a.why ?? 'waits-for-weevboss'))
+    if (a.more?.length) parts.push(t.messages(a.more.length + 1))
+    const last = Math.max(a.progressAt, ...a.dispatches.map((d) => d.reportAt ?? 0))
+    parts.push(a.stale ? t.quiet(age(now - last)) : t.updated(age(now - last)))
+    return parts.join(' · ')
   }
 }
 
@@ -81,23 +94,33 @@ function Drop({ onDrop }: { onDrop: () => void }) {
 function AskRow({ a, open, now, onToggle, onAction }: { a: Row; open: boolean; now: number; onToggle: () => void; onAction: (action: 'done' | 'drop' | 'open') => void }) {
   const t = useT(M)
   const { push } = useApp()
-  const status = useStatus()
+  const hint = useHint()
   const live = a.status === 'open' || a.status === 'dispatched'
+  const chip = chipOf(a)
+  // The session to open: the one that needs the user or is stuck, else the latest.
+  const d = a.dispatches.find((x) => x.outcome === 'question') ?? a.dispatches.find((x) => x.outcome === 'failed') ?? a.dispatches.at(-1)
+  const words = [{ quote: a.quote, at: a.at, from: a.from }, ...(a.more ?? [])]
   return (
-    <motion.div layout="position" transition={spring} className={`req-item${open ? ' band tone open' : ''}${a.stale ? ' stale' : ''}`}>
-      <button className="row req-row" onClick={onToggle} aria-expanded={open}>
-        <span className="in">
-          <span className="st" aria-hidden>{glyph(a)}</span>
-          <span className="stack-text">
-            <span className="req-text">{a.text}</span>
-            <span className="meta req-status">{status(a, now)}</span>
+    <motion.div layout="position" transition={spring} className={`req-item c-${chip}${open ? ' band tone open' : ''}${a.stale ? ' stale' : ''}`}>
+      <div className="in req-line">
+        <button className="req-main" onClick={onToggle} aria-expanded={open}>
+          <span className="req-text">{a.text}</span>
+          <span className="meta req-status">
+            <span className={`req-chip c-${chip}`}>{t.chip(chip)}</span>
+            <span className="req-hint">{hint(a, now)}</span>
           </span>
-        </span>
-      </button>
+        </button>
+        {d && <button type="button" className="link req-sess" aria-label={t.openSession} onClick={() => push({ kind: 'session', id: d.session })}>{who(d, t.aSession)} →</button>}
+      </div>
       <Collapse open={open}>
         <div className="in req-detail">
-          <blockquote className="req-quote">“{a.quote}”</blockquote>
-          <div className="meta">{t.yourWords}{a.from !== 'user' ? ` · ${t.from(a.from)}` : ''} · {hhmm(a.at)} · {a.id}</div>
+          {words.map((w, i) => (
+            <div key={i} className="req-said">
+              <blockquote className="req-quote">“{w.quote}”</blockquote>
+              <div className="meta">{i === 0 ? t.yourWords : ''}{w.from !== 'user' ? ` · ${t.from(w.from)}` : ''}{i === 0 ? ' · ' : ''}{hhmm(w.at)}</div>
+            </div>
+          ))}
+          {a.why && a.status === 'open' && <div className="meta req-why"><span className="strong">{t.why}</span> {t.whyWord(a.why)}</div>}
           {a.dispatches.map((d) => (
             <div key={d.session + d.at} className="req-dispatch">
               <button type="button" className="link req-who" onClick={() => push({ kind: 'session', id: d.session })}>→ {who(d, t.aSession)}</button>
@@ -182,6 +205,7 @@ export function RequestsPage() {
   const [err, setErr] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('open')
   const [open, setOpen] = useState<string | null>(null)
+  const [showDone, setShowDone] = useState(false)
   const last = useRef(0)
   const load = useCallback(() => api.ledger().then((r) => { last.current = Date.now(); setV(r); setErr(null) }).catch((e) => setErr((e as Error).message)), [])
   useEffect(() => void load(), [snap.asksOpen, load])
@@ -195,6 +219,7 @@ export function RequestsPage() {
   const live = asks.filter((a) => a.status === 'open' || a.status === 'dispatched')
   const closed = asks.filter((a) => a.status === 'done' || a.status === 'dropped').sort((x, y) => (y.closedAt ?? y.at) - (x.closedAt ?? x.at))
   const stale = live.filter((a) => a.stale).length
+  const recent = closed.filter((a) => a.status === 'done' && now - (a.closedAt ?? a.at) < 86400_000)
   // Stale first, then newest.
   const order = (l: Row[]) => [...l].sort((x, y) => Number(y.stale) - Number(x.stale) || y.at - x.at)
   const goals = (v?.goals ?? []).filter((g) => g.status === 'active')
@@ -244,6 +269,12 @@ export function RequestsPage() {
             </section>
           )}
           {!live.length && !v.pending.length && <div className="in meta req-empty">{t.nothingOpen}</div>}
+          {!!recent.length && (
+            <section className="req-group">
+              <button className="in meta strong req-day req-fold" aria-expanded={showDone} onClick={() => setShowDone(!showDone)}>{showDone ? '−' : '+'} {t.doneRecent(recent.length)}</button>
+              <Collapse open={showDone}>{recent.map(row)}</Collapse>
+            </section>
+          )}
         </>
       )}
       {tab === 'done' && v && (closed.length ? closed.map(row) : <div className="in meta req-empty">{t.nothingDone}</div>)}

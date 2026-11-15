@@ -2,6 +2,19 @@
 
 export type AskStatus = 'open' | 'dispatched' | 'done' | 'dropped'
 export type Outcome = 'done' | 'question' | 'failed' | 'progress'
+/** answered: done in weevboss's reply · sent: in a session · send: to send now, not yet sent · queued: waits. */
+export type Handling = 'answered' | 'sent' | 'send' | 'queued'
+export type HandlingWhy = 'answered' | 'done-in-thread' | 'sent' | 'you-said-now' | 'you-said-later' | 'mode-pause' | 'mode-veille' | 'mode-turbo' | 'waits-for-weevboss'
+/** The speed mode (pause, veille, croisière, turbo, max), read through server/request-handling.ts. */
+export type SpeedMode = 'pause' | 'veille' | 'cruise' | 'turbo' | 'max'
+
+/** One more message merged into a request (a follow-up, a correction): its id and the user's exact words. */
+export interface MergedWords {
+  src: string
+  quote: string
+  at: number
+  from: string
+}
 
 export interface Dispatch {
   session: string
@@ -39,6 +52,11 @@ export interface Ask {
   progressAt: number
   closedAt?: number
   closedBy?: 'user' | 'weevboss' | 'auto'
+  /** Follow-ups and corrections merged into this request, oldest first (the first message is src/quote). */
+  more?: MergedWords[]
+  /** How it is handled, and why (older requests have none: read from their status). */
+  handling?: Handling
+  why?: HandlingWhy
 }
 
 export interface Goal {

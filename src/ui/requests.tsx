@@ -67,10 +67,10 @@ function useHint() {
       return [by, a.closedAt ? age(now - a.closedAt) : ''].filter(Boolean).join(' · ')
     }
     if (n > 1) parts.push(t.steps(a.dispatches.filter((d) => d.outcome === 'done').length, n))
-    if (a.status === 'open') parts.push(a.handling === 'send' ? t.sendingNow : t.whyWord(a.why ?? 'waits-for-weevboss'))
+    if (a.status === 'open') parts.push(a.handling === 'send' ? `${t.whyWord(a.why ?? 'you-said-now')} · ${t.sendingNow}` : t.whyWord(a.why ?? 'waits-for-weevboss'))
+    if (a.more?.length) parts.push(t.messages(a.more.length + 1))
     const last = Math.max(a.progressAt, ...a.dispatches.map((d) => d.reportAt ?? 0))
     parts.push(a.stale ? t.quiet(age(now - last)) : t.updated(age(now - last)))
-    if (a.more?.length) parts.push(t.messages(a.more.length + 1))
     return parts.join(' · ')
   }
 }
@@ -120,7 +120,7 @@ function AskRow({ a, open, now, onToggle, onAction }: { a: Row; open: boolean; n
               <div className="meta">{i === 0 ? t.yourWords : ''}{w.from !== 'user' ? ` · ${t.from(w.from)}` : ''}{i === 0 ? ' · ' : ''}{hhmm(w.at)}</div>
             </div>
           ))}
-          {a.why && <div className="meta req-why"><span className="strong">{t.why}</span> {t.whyWord(a.why)}</div>}
+          {a.why && a.status === 'open' && <div className="meta req-why"><span className="strong">{t.why}</span> {t.whyWord(a.why)}</div>}
           {a.dispatches.map((d) => (
             <div key={d.session + d.at} className="req-dispatch">
               <button type="button" className="link req-who" onClick={() => push({ kind: 'session', id: d.session })}>→ {who(d, t.aSession)}</button>

@@ -25,7 +25,7 @@ import { cartesia, cartesiaVoices, claudeAvailable, haiku, ledger, relay as mode
 import { CostOptimizer, RUN_EVERY_MS as COST_EVERY_MS } from './cost.ts'
 import CostM from './i18n/cost.ts'
 import { Weevils, isTestBrief } from './core.ts'
-import { lang, requestLang, withLang, setLang, tr, withInstallLang, user } from './i18n.ts'
+import { lang, requestLang, withLang, setLang, tr, withInstallLang, user, installationLang } from './i18n.ts'
 import M from './i18n/api.ts'
 import P from './i18n/push.ts'
 import V from './i18n/voice.ts'
@@ -56,6 +56,7 @@ import { weevilRoutes } from './weevil.ts'
 import { Optimizers, optimizerRoutes } from './optimizers.ts'
 import { Sleep } from './sleep.ts'
 import { ForYou, foryouRoutes, type MachineState } from './foryou.ts'
+import { ForYouNumbers } from './foryou-numbers.ts'
 import { serveAttachment } from './attachments.ts'
 import { MediaShelf } from './foryou-media.ts'
 import { Curator } from './foryou-curator.ts'
@@ -206,6 +207,7 @@ const voices = new Voices({ bossVoice: () => w.voiceId ?? cartesia()?.voice })
 const foryou = ORCHESTRATOR
   ? new ForYou(w, {
       softwares: () => softwareCatalog(w),
+      numbers: new ForYouNumbers({ ledgerFile: path.join(DATA_DIR, 'boss', 'ledger.json'), roots: PROJECT_ROOTS, fr: () => installationLang() === 'fr' }),
       shelf: new MediaShelf({ file: path.join(DATA_DIR, 'foryou-media.json'), roots: [...PROJECT_ROOTS, INBOX_DIR, DATA_DIR] }),
       isTestBrief,
       optimizers: () => ({ accept: (id) => optimizers.accept(id) === true, refuse: (id) => optimizers.refuse(id) }),

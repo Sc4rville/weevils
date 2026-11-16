@@ -2,6 +2,7 @@ import { InlineMediaFormats } from './foryou-formats'
 import { OutboxStatus } from './outbox-status'
 import { SaveMediaButton, useLongPressSave } from './save-media'
 import { useForYouOpen } from './foryou-open'
+import { busyOf } from './foryou-busy'
 import { rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
 import { Notice, NoticeClose, useNotice } from './notice'
@@ -145,6 +146,7 @@ function MediaTile({ m, many }: { m: ForYouMedia; many: boolean }) {
   const target = { url: m.url, name: m.name, type: m.type }
   const notOpen = useLongPressSave(tile, target)
   const [fit, setFit] = useState<'cover' | 'contain' | 'crop'>('cover')
+  const [focus, setFocus] = useState<{ flat: boolean; at: number } | null>(null)
   const sized = (w: number, h: number) => {
     const el = tile.current
     if (!el) return
@@ -163,12 +165,12 @@ function MediaTile({ m, many }: { m: ForYouMedia; many: boolean }) {
     }
   }, [inView])
   return (
-    <div ref={tile} className={`fy-media save-media-host ${fit}${inView ? ' fy-inview' : ''}`}>
+    <div ref={tile} className={`fy-media save-media-host ${fit}${inView ? ' fy-inview' : ''}${focus?.flat ? ' fy-flat' : ''}`}>
     <button type="button" className="fy-media-hit" onClickCapture={notOpen} onClick={() => push({ kind: 'media', url: m.url, type: m.type, name: m.name })} aria-label={t.openMedia(m.name)}>
       {m.type === 'video' ? (
         <video ref={video} src={m.url} playsInline muted loop preload="metadata" onLoadedMetadata={(e) => sized(e.currentTarget.videoWidth, e.currentTarget.videoHeight)} />
       ) : (
-        <img src={m.url} alt="" loading="lazy" decoding="async" draggable={false} onLoad={(e) => sized(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)} />
+        <img src={m.url} alt="" loading="lazy" decoding="async" draggable={false} style={focus ? { objectPosition: `50% ${focus.at}%` } : undefined} onLoad={(e) => { const el = e.currentTarget; sized(el.naturalWidth, el.naturalHeight); setFocus(busyOf(el)) }} />
       )}
       {m.type === 'video' && (
         <span className="fy-media-mark" aria-hidden>

@@ -65,7 +65,7 @@ describe('short lines', () => {
 
 describe('streamOf', () => {
   it('keeps only items with a layout, at most STREAM_CAP', () => {
-    const many = Array.from({ length: 200 }, (_, i) => it0({ id: `b${i}`, kind: i % 2 ? 'boss' : 'stat', text: i % 2 ? `A thought number ${i} worth chewing on.` : '' }))
+    const many = Array.from({ length: 200 }, (_, i) => it0({ id: `b${i}`, kind: i % 2 ? 'boss' : 'stat', text: i % 2 ? `A thought number ${i} worth chewing on.` : '', ...(i % 2 ? { actions: [{ id: 'go', label: 'Go' }] } : {}) }))
     const out = streamOf(many)
     expect(out.length).toBe(STREAM_CAP)
     expect(out.every((i) => i.kind === 'boss')).toBe(true)
@@ -103,7 +103,7 @@ describe('junk filters', () => {
     expect(streamOf([adv('cost:model:a', 'nav'), adv('cost:model:b', 'ads')]).map((i) => i.id)).toEqual(['cost:model:a'])
   })
   it('a session result says its outcome, not its bare title', () => {
-    expect(cardLine(it0({ kind: 'session', tone: 'result', title: 'content ideas index', text: 'I built an index of 40 content ideas, ranked by effort.' }))).toBe('I built an index of 40 content ideas, ranked by effort.')
+    expect(cardLine(it0({ kind: 'session', tone: 'result', title: 'content ideas index', text: 'I built an index of 40 content ideas, ranked by effort.' }))).toBe('Built an index of 40 content ideas, ranked by effort.')
   })
   it('dedupes contained text and same subjects, keeping the richest', () => {
     const out = streamOf([
@@ -131,5 +131,22 @@ describe('rhythm', () => {
   })
   it('a tap reveals one more line from the body', () => {
     expect(detailLine(short('x', 'Shorts posted early do better.', { body: 'Posted before 9 am they got 2.1x the views over 30 days.' }))).toBe('Posted before 9 am they got 2.1x the views over 30 days.')
+  })
+})
+
+describe('results first', () => {
+  it('a session sentence and the media it posted are one card: the media, captioned with the words', () => {
+    const s = it0({ id: 's', kind: 'session', tone: 'result', sessionId: 'S', text: 'I built the new menu for the café, live on staging now.' })
+    const v = it0({ id: 'v', kind: 'media', sessionId: 'S', text: '', media })
+    const out = streamOf([s, v])
+    expect(out.map((i) => i.id)).toEqual(['v'])
+    expect(out[0].title).toBe('Built the new menu for the café, live on staging now.')
+  })
+  it('outcome words, not a diary', () => {
+    expect(shortLine("I couldn't run the install test because Docker was blocked.")).toBe("Couldn't run the install test because Docker was blocked.")
+  })
+  it('at most three sentence-only cards per screen', () => {
+    const many = Array.from({ length: 6 }, (_, i) => it0({ id: `l${i}`, kind: 'insight', text: `Lesson number ${i} learned the hard way today.` }))
+    expect(streamOf(many).length).toBe(3)
   })
 })

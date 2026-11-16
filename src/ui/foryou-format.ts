@@ -103,10 +103,16 @@ export function lifecycleLine(text: string): boolean {
 
 const TAIL_WORDS = /\s+(?:a|an|the|and|or|but|of|to|in|on|for|with|at|by|from|is|are|was|its|their|your|my|that|which|so|as|into|than)$/i
 
+/** An outcome, not a diary: « I built the menu » → « Built the menu », « I couldn't run X » → « Couldn't run X ». */
+export function outcomeWords(text: string): string {
+  const s = text.replace(/^\s*(?:I|We)(?:'ve| have| just)?\s+(?=\S)/, '')
+  return s === text ? text : s.charAt(0).toUpperCase() + s.slice(1)
+}
+
 /** One short line that never ends on « … »: the first sentence when it fits, else cut at a clause, else on a word
  * (never on a dangling « the »/« and »). Empty when nothing sensible fits. */
 export function shortLine(text: string | undefined, max = LINE_MAX): string {
-  const line = cleanSubject(plainLine(text ?? ''))
+  const line = outcomeWords(cleanSubject(plainLine(text ?? '')))
   if (!line) return ''
   const first = /^[\s\S]*?[.!?](?=\s|$)/.exec(line)?.[0] ?? line
   const pick = first.length >= 12 && first.length <= max ? first : line
@@ -171,6 +177,8 @@ export function worthShowing(item: ForYouItem, strict = true): boolean {
 
 /** Same thing said twice: one's words inside the other's, or the same subject. */
 function sameThing(a: ForYouItem, b: ForYouItem): boolean {
+  // A session's sentence and the media it posted are one result: the media wins (it is the thing itself).
+  if (a.sessionId && a.sessionId === b.sessionId && (a.kind === 'session' || b.kind === 'session') && (a.kind === 'media' || b.kind === 'media')) return true
   const ta = a.title ? norm(cleanSubject(a.title)) : ''
   const tb = b.title ? norm(cleanSubject(b.title)) : ''
   if (ta && ta === tb) return true
@@ -211,9 +219,31 @@ export function streamOf(items: ForYouItem[], cap = STREAM_CAP, strict = true): 
     if (family) families.add(family)
     const twin = kept.findIndex((k) => sameThing(k, i))
     if (twin < 0) kept.push(i)
-    else if (richness(i) > richness(kept[twin])) kept[twin] = i
+    else if (richness(i) > richness(kept[twin])) {
+      // The media keeps its place in time and borrows the sentence's words when it has no caption.
+      const words = kept[twin]
+      kept[twin] = !i.title && !plainLine(i.text) && words.kind === 'session' ? { ...i, title: cardLine(words) } : i
+    } else if (!kept[twin].title && !plainLine(kept[twin].text) && i.kind === 'session') kept[twin] = { ...kept[twin], title: cardLine(i) }
   }
-  return strict ? mixDepths(kept.slice(0, cap)) : kept.slice(0, cap)
+  return strict ? fewSentences(mixDepths(kept.slice(0, cap))) : kept.slice(0, cap)
+}
+
+/** A sentence about a result, with no media, no figure, nothing to decide. */
+export const sentenceOnly = (item: ForYouItem) => {
+  const f = formatOf(item)
+  return f === 'learn' || f === 'think' || (f === 'progress' && !bigNumber(item))
+}
+
+/** At most SENTENCES sentence-only cards per screen (a window of WINDOW cards): the rest is left out, the feed stays light. */
+const SENTENCES = 3
+export function fewSentences(items: ForYouItem[]): ForYouItem[] {
+  const out: ForYouItem[] = []
+  for (const i of items) {
+    const recent = out.slice(-(WINDOW - 1)).filter(sentenceOnly).length
+    if (sentenceOnly(i) && recent >= SENTENCES) continue
+    out.push(i)
+  }
+  return out
 }
 
 /** One more line, revealed on tap: what the card's line did not say (its body, its fetched « more », its text's rest). */

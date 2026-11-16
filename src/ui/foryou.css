@@ -1421,3 +1421,7 @@ button.fy-hit {
   opacity: 0.88;
 }
 .fy-l-fill .fy-c { padding-block: 22px; }
+
+/* A flat image (one colour, nothing to see) never takes the stream's space. */
+.fy-media.fy-flat { display: none; }
+.fy-f-visual:has(.fy-media.fy-flat):not(:has(.fy-media:not(.fy-flat))) { display: none; }

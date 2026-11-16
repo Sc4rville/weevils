@@ -42,6 +42,7 @@ import { ownIdea, ownTask } from './own-words.ts'
 import { actOn, personalTips, type Found, type TipInput } from './tips.ts'
 import { nightRecap, recapWorth, type RecapAuto } from './sleep.ts'
 import SM from './i18n/sleep.ts'
+import { ForYouNumbers } from './foryou-numbers.ts'
 
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void> | void
 type Json = (res: http.ServerResponse, status: number, body: unknown) => void
@@ -383,6 +384,8 @@ export interface ForYouCurator {
 }
 
 export interface ForYouDeps {
+  /** Figures that moved (server/foryou-numbers.ts): goals' requests, commits per project, this week vs last. */
+  numbers?: ForYouNumbers
   /** Read-only current deployment catalogue, never starts software or model work. */
   softwares?: () => Promise<SoftwareCatalog>
   /** Default DATA_DIR/foryou.json. */
@@ -1410,7 +1413,7 @@ export class ForYou {
       if (m.online) this.offSince.delete(m.id)
       else if (!this.offSince.has(m.id)) this.offSince.set(m.id, now)
     }
-    const items = [...this.systemAlerts(snap, now), ...this.paceInsights(now)]
+    const items = [...this.systemAlerts(snap, now), ...this.paceInsights(now), ...(this.deps.numbers?.items(now) ?? [])]
     const cards = this.cards(snap, now)
     if (cards.length) items.push({ id: 'proposals', kind: 'proposals', tone: 'neutral', at: 0, who: 'weevils', text: cards.every((c) => c.own) ? tr(M).ownProposals(cards.length) : tr(M).proposals(cards.length), cards, live: true })
     const out: ForYouItem[] = []

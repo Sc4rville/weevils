@@ -349,7 +349,7 @@ describe('for you: one stream, five layouts, no labels', () => {
   })
 
   it('the page renders at most 60 items', async () => {
-    const many = Array.from({ length: 150 }, (_, i) => ({ ...base, id: `t${i}`, kind: 'boss' as const, who: 'weevboss', text: `Thought number ${i} worth a second look today.` }))
+    const many = Array.from({ length: 150 }, (_, i) => ({ ...base, id: `t${i}`, kind: 'boss' as const, who: 'weevboss', text: `Thought number ${i} worth a second look today.`, actions: [{ id: 'go', label: 'Go' }] }))
     await open(many)
     expect(host.querySelectorAll('[data-fy]').length).toBe(60)
   })

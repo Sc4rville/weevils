@@ -1249,3 +1249,132 @@
   overflow: hidden;
   white-space: normal;
 }
+
+/* ---------- The five layouts (src/ui/foryou-format.ts): big words, a line or two, no frame ---------- */
+
+.fy-c {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding-block: 22px;
+  text-align: left;
+}
+
+button.fy-hit {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+}
+
+.fy-say {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.fy-say.small {
+  font-size: 1.0625rem;
+  font-weight: 650;
+}
+
+.fy-caption {
+  padding-block: 10px 16px;
+}
+
+/* A big word to tap: the word itself, never a filled box. */
+.fy-taps {
+  display: flex;
+  align-items: baseline;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+
+.fy-tap {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 1.625rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.fy-tap .ic {
+  width: 22px;
+  height: 22px;
+}
+
+.fy-tap.quiet {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  opacity: 0.62;
+}
+
+.fy-tap:disabled {
+  opacity: 0.45;
+}
+
+/* Progress: the figure, huge. */
+.fy-num {
+  font-size: 4rem;
+  font-weight: 850;
+  line-height: 0.95;
+  letter-spacing: -0.045em;
+}
+
+.fy-shipped {
+  font-size: 1.625rem;
+  font-weight: 800;
+}
+
+/* Learn: one sentence, at reading size but heavy. */
+.fy-learn {
+  font-size: 1.5rem;
+  font-weight: 780;
+  line-height: 1.18;
+  letter-spacing: -0.02em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Think: the thought cut out of the palette's gradient. */
+.fy-think {
+  font-size: 1.75rem;
+  font-weight: 820;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Think: the band itself carries the palette's slow gradient (as « improve » did), the words stay ink. */
+.fy-f-think.fy-item {
+  background-image: linear-gradient(115deg, var(--fy-g1), var(--fy-g2), var(--fy-g3), var(--fy-g4), var(--fy-g1));
+  background-size: 420% 100%;
+  animation: fy-drift 16s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fy-f-think.fy-item {
+    animation: none;
+  }
+}
+
+.fy-strip-text {
+  font-weight: 650;
+}

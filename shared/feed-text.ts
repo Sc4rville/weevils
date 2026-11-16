@@ -23,6 +23,12 @@ export function humanFeedText(text: string): string {
     .replace(/(?<![\w:/])(?:(?:~|\.{1,2})\/(?:[\w.@~+-]+\/)*[\w.@~+-]+|\/(?:[\w.@~+-]+\/)+[\w.@~+-]+)/g, '')
     .replace(/\b(?:[\w.@+-]+\/)+[\w.@+-]+\.(?:tsx?|jsx?|mjs|cjs|json|ya?ml|md|sh|py|log|lock)\b/g, '')
     .replace(/\b(?!Node\.js\b)[\w-]+\.(?:tsx?|jsx?|mjs|cjs|json|ya?ml|md|sh|py|log|lock)\b/g, '')
+    // Test runs and shell commands: evidence for the session, never words for the stream.
+    .replace(/^\s*(?:[✓✔✗×]\s|(?:PASS|FAIL)\s|Tests?:\s|Test Files\s)[^\n]*$/gm, '')
+    .replace(/^\s*(?:npm|npx|pnpm|yarn|tsc|vitest|sudo|docker|ssh|curl)\s[^\n]*$/gm, '')
+    .replace(/`(?:npm|npx|pnpm|yarn|node|tsc|vitest|git|cd|ssh|curl|sudo|docker|make)\s[^`\n]*`/g, '')
+    .replace(/[(,;]?\s*\b\d+\s*(?:\/\s*\d+\s*)?(?:tests?|specs?)\s+(?:passed|passing|failed|green|pass(?:ent)?|réussis|verts?)\b\)?/gi, '')
+    .replace(/[(,;]?\s*\bexit code\s+\d+\)?/gi, '')
     .replace(/`\s*`/g, '')
     .replace(/\(\s*\)/g, '')
     .replace(/[ \t]+([,.;])/g, '$1')

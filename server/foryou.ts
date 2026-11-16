@@ -55,7 +55,9 @@ const technicalEvent = rawEngineeringNotice
 export const MAX_ITEMS = 400
 export const KEEP_MS = 14 * 24 * 3600_000
 /** What GET /api/foryou returns at most. */
-export const MAX_FEED = 160
+export const MAX_FEED = 60
+/** How many of the newest stored items a view reads at most (hidden ones included), so a view never costs the whole store. */
+export const VIEW_REACH = MAX_FEED * 3
 export const TEXT_MAX = 600
 export const POST_MAX = 1200
 export const MAIL_LINE_MAX = 140
@@ -1464,7 +1466,10 @@ export class ForYou {
     this.backfill(snap, now)
     this.autoEvents(snap)
     const out: { item: ForYouItem; lang?: Lang }[] = []
-    for (const i of this.s.items) {
+    // Only the newest stored items are read for a view (view() is the costly part): the stream shows MAX_FEED at
+    // most, the rest stays stored as history, untouched.
+    const recent = this.s.items.length > VIEW_REACH ? [...this.s.items].sort((a, b) => b.at - a.at).slice(0, VIEW_REACH) : this.s.items
+    for (const i of recent) {
       const item = this.view(i, snap)
       if (item) out.push({ item, lang: i.lang })
     }

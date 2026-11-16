@@ -396,8 +396,8 @@ export function cardSlots(ids: string[], kept: ReadonlyMap<string, string> = new
 export function itemSlot(item: ForYouItem, colors: Record<string, string>, authors?: (id?: string) => { color: string }): CSSProperties {
   const project = item.projectId ? colors[item.projectId] : undefined
   const own = slot(project ?? 'agent')
-  if (item.kind === 'alert') return own // drawn inverted: ink band, coloured words
-  if (item.tone === 'alert') return slot('alert')
+  // Never anxious: something that needs the user is drawn in the calm amber of a question, never the alert red.
+  if (item.kind === 'alert' || item.tone === 'alert') return project ? own : slot('h24')
   if (item.tone === 'result') return project ? own : { '--c': OK } as CSSProperties
   if (item.tone === 'question') return project ? own : slot('h24')
   switch (item.kind) {

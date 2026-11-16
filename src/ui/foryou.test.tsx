@@ -2,7 +2,6 @@
 // The « for you » page: each kind of item shows its essentials, what can be done from the stream calls the right route
 // (accept a card, reply, more), a mail unfolds in place, a session's head opens the real conversation.
 import { act } from 'react'
-import voiceModeFixture from '../../test/fixtures/foryou-voice-mode-68fd4d11.json?raw'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Snapshot } from '../../shared/api.ts'
@@ -34,11 +33,10 @@ vi.mock('../api', () => {
 const { MotionGlobalConfig } = await import('motion/react')
 MotionGlobalConfig.skipAnimations = true
 const { ForYouPage, ForYouItemView, MediaPage, mediaFit, waveOf } = await import('./foryou')
-const { resetVoice, toggleVoice, LOGO_SAYS, ITEM_SAYS } = await import('./foryou-voice')
+const { resetVoice } = await import('./foryou-voice')
 const { resetForYou } = await import('./foryou-store')
 const { Ctx, setSettledNow } = await import('./app-context')
-const { FOCUS_BOSS } = await import('./follow')
-const { tr, getLang, setLang } = await import('../i18n')
+const { tr, setLang } = await import('../i18n')
 const { default: M } = await import('../i18n/foryou')
 
 const NOW = Date.now()
@@ -143,15 +141,6 @@ async function open(items = ITEMS, who?: string) {
   await flush()
 }
 
-const type = async (form: HTMLFormElement, text: string) => {
-  const field = form.querySelector<HTMLInputElement>('input')!
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')!.set!.call(field, text)
-    field.dispatchEvent(new Event('input', { bubbles: true }))
-  })
-}
-const submit = (form: HTMLFormElement) => act(async () => void form.requestSubmit())
-
 beforeEach(() => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   localStorage.clear()
@@ -175,228 +164,6 @@ afterEach(() => {
 })
 
 describe('for you page', () => {
-  it('shows the two words, the line, every item in the server order, then « up to date »', async () => {
-    await open()
-    expect(host.querySelector('.page[role=dialog]')).toBeTruthy()
-    expect(host.querySelector('[data-scroll]')).toBeTruthy()
-    expect([...host.querySelectorAll('.fy-words .word')].map((w) => w.textContent)).toEqual(['weevboss', t().title])
-    expect(host.querySelector('.fy-words .word.on')!.textContent).toBe(t().title)
-    expect([...host.querySelectorAll('[data-fy]')].map((e) => e.getAttribute('data-fy'))).toEqual(ITEMS.map((i) => i.id))
-    const pulse = host.querySelector('.fy-pulse')!
-    expect(pulse.querySelectorAll('.spin.fluo')).toHaveLength(2)
-    expect(pulse.textContent).toContain(t().pulseWorking(2))
-    expect(pulse.textContent).toContain(t().pulseDelivered(7))
-    expect(pulse.textContent).toContain(t().pulseWaiting(1))
-    expect(pulse.textContent).toContain(t().pulseAuto(3))
-    expect(host.querySelector('.fy-end')!.textContent).toContain(t().upToDate)
-    // The plan's category names are internal: never on screen.
-    for (const word of ['proposals', 'insight', 'milestone', 'improve']) expect(host.querySelector('[data-scroll]')!.textContent).not.toContain(word)
-  })
-
-  it('each kind shows its essentials', async () => {
-    await open()
-    // Existing media cards use full-image previews and explicit video playback inside the feed.
-    const media = band('me')
-    expect(media.querySelector('img')!.getAttribute('src')).toBe('/api/foryou/media/m1')
-    const video = media.querySelector('video')!
-    expect(video.getAttribute('src')).toBe('/api/foryou/media/m2')
-    expect(video.hasAttribute('playsinline')).toBe(true)
-    expect(video.loop).toBe(false)
-    expect(video.autoplay).toBe(false)
-    expect(video.controls).toBe(true)
-    expect(video.getAttribute('preload')).toBe('none')
-    expect(media.querySelector('.formats-inline')).toBeTruthy()
-    expect(media.querySelector('.fy-cap.tone')!.textContent).toContain('the new title screen')
-    expect(media.querySelector('.fy-cap')!.compareDocumentPosition(media.querySelector('.formats-inline')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    // The image itself opens it: no permanent « Open full image » caption under it.
-    expect(media.querySelector('.formats-image')!.textContent).not.toContain('Open full image')
-    expect(media.querySelector('.formats-image')!.getAttribute('aria-label')).toContain('Open full image')
-    // weevboss: its words, its button, a reply line.
-    expect(band('bo').textContent).toContain('Three sessions sent this morning')
-    expect(band('bo').querySelector('.fy-btn')!.textContent).toBe('review the two')
-    expect(band('bo').querySelector('form.fy-reply')).toBeTruthy()
-    // mail: one thin line, author and summary; the body stays folded.
-    expect(band('ma').querySelector('.fy-mail')!.textContent).toBe('Junosent the March invoices')
-    expect(band('ma').textContent).not.toContain('all the March invoices went out')
-    // proposals: « + » leads each title, each card has its ✓ × pair and its own colour.
-    const cards = [...band('pr').querySelectorAll<HTMLElement>('.fy-card')]
-    expect(cards.map((c) => c.querySelector('.fy-card-t')!.textContent)).toEqual(['Harden the tests', 'Watch the fairs', 'Draft the page'])
-    for (const c of cards) {
-      expect(c.querySelector('.fy-card-t .fy-plus svg')).toBeTruthy()
-      expect(c.querySelector('.fy-ok')).toBeTruthy()
-      expect(c.querySelector('.fy-no')).toBeTruthy()
-    }
-    expect(new Set(cards.map((c) => c.style.getPropertyValue('--c'))).size).toBe(3)
-    // session: project · title, what it asks, in the project colour, its button and a reply line.
-    expect(band('se').querySelector('.fy-head')!.textContent).toBe('mygame · fix the login')
-    expect(band('se').textContent).toContain('Should I keep the old cookie?')
-    expect(band('se').textContent).toContain(t().toneQuestion)
-    expect(band('se').style.getPropertyValue('--c')).toBe('var(--p4)')
-    expect(band('se').querySelector('.fy-btn')!.textContent).toBe('resume')
-    // improve: the gradient band, « do it », reply, dismiss.
-    expect(band('im').classList.contains('fy-k-improve')).toBe(true)
-    expect(band('im').querySelector('.fy-btn')!.textContent).toBe('do it')
-    expect(band('im').querySelector('form.fy-reply')).toBeTruthy()
-    expect(band('im').querySelector('.notice-close')).toBeNull()
-    for (const item of ITEMS) expect(!!band(item.id).querySelector('.notice-close')).toBe(item.kind === 'alert' && !!item.live)
-    // alert: one sober inverted line that opens where it is solved.
-    expect(band('al').classList.contains('invert')).toBe(true)
-    expect(band('al').querySelector('.fy-alert')!.textContent).toBe('the usage window is at 92 %')
-    // insight: big type in the project's colour, « more » still folded.
-    expect(band('in').querySelector('.fy-big')!.textContent).toBe('Vite only bundles for production.')
-    expect(band('in').style.getPropertyValue('--c')).toBe('var(--p4)')
-    expect(band('in').querySelector('.fy-more-btn')!.textContent).toBe(t().more)
-    // milestone: the number in shifting type.
-    expect(band('mi').querySelector('.fy-shift')!.textContent).toBe('42')
-    // figures as bars.
-    const meters = [...band('st').querySelectorAll('[role=meter]')]
-    expect(meters.map((m) => m.getAttribute('aria-valuetext'))).toEqual(['71 %', '12 of 18'])
-    expect(meters[0].classList.contains('hot')).toBe(true)
-  })
-
-  it('unseen items carry the dot and the heavier type; seen ones do not', async () => {
-    await open()
-    expect(band('bo').classList.contains('fy-unseen')).toBe(true)
-    expect(labelled(t().unseen, band('bo'))).toBeTruthy()
-    expect(band('ma').classList.contains('fy-unseen')).toBe(false)
-  })
-
-  it('✓ on a card calls the act route with the card, and the card leaves; × refuses', async () => {
-    await open()
-    await click(labelled(t().accept('Harden the tests')))
-    await flush()
-    expect(srv.calls).toContain('act pr accept c1')
-    expect([...band('pr').querySelectorAll('.fy-card-t')].map((c) => c.textContent)).toEqual(['Watch the fairs', 'Draft the page'])
-    await click(labelled(t().refuse('Watch the fairs')))
-    await flush()
-    expect(srv.calls).toContain('act pr refuse c2')
-    // One left: a wide band, still « + » and the pair.
-    const last = band('pr').querySelectorAll('.fy-card')
-    expect(last).toHaveLength(1)
-    expect(last[0].classList.contains('wide')).toBe(true)
-    await click(labelled(t().accept('Draft the page')))
-    await flush()
-    expect(host.querySelector('[data-fy="pr"]')).toBeNull()
-  })
-
-  it('a refused action brings the item back and says why', async () => {
-    await open()
-    srv.fail = 'act'
-    await click(band('im').querySelector('.fy-btn'))
-    await flush()
-    expect(srv.calls).toContain('act im do')
-    expect(band('im').querySelector('[role=alert]')!.textContent).toContain('refused by the server')
-  })
-
-  it('an action button makes its item leave; dismiss too', async () => {
-    await open()
-    await click(band('bo').querySelector('.fy-btn'))
-    await flush()
-    expect(srv.calls).toContain('act bo go')
-    expect(host.querySelector('[data-fy="bo"]')).toBeNull()
-    expect(band('im').querySelector('.notice-close')).toBeNull()
-    await click(band('al').querySelector('.notice-close'))
-    await flush()
-    expect(srv.calls).toContain('dismiss al')
-    expect(host.querySelector('[data-fy="al"]')).toBeNull()
-  })
-
-  it('a reply goes to the reply route and clears its draft after acknowledgement; each reply field has its own label', async () => {
-    await open()
-    const form = band('se').querySelector<HTMLFormElement>('form.fy-reply')!
-    await type(form, 'keep it')
-    await submit(form)
-    await flush()
-    expect(srv.calls).toContain('reply se keep it')
-    expect(form.querySelector('input')!.value).toBe('')
-    expect(sessionStorage.getItem('weevils-feed-draft:se')).toBeNull()
-    const labels = [...host.querySelectorAll('form.fy-reply input')].map((i) => i.getAttribute('aria-label'))
-    expect(new Set(labels).size).toBe(labels.length)
-  })
-
-  it('a reply the server refuses puts the text back and says why, in place', async () => {
-    await open()
-    srv.fail = 'reply'
-    const form = band('bo').querySelector<HTMLFormElement>('form.fy-reply')!
-    await type(form, 'go on')
-    await submit(form)
-    await flush()
-    expect(form.querySelector('input')!.value).toBe('go on')
-    expect(form.querySelector('[role=alert]')!.textContent).toContain('refused by the server')
-    expect(form.querySelector('[role=status]')!.textContent).toBe('')
-  })
-
-  it('a mail unfolds in place: the whole message, and its reply line', async () => {
-    await open()
-    const line = band('ma').querySelector<HTMLElement>('.fy-mail')!
-    expect(line.getAttribute('aria-expanded')).toBe('false')
-    expect(band('ma').querySelector('form.fy-reply')).toBeNull()
-    await click(line)
-    expect(line.getAttribute('aria-expanded')).toBe('true')
-    expect(band('ma').textContent).toContain('all the March invoices went out this morning.')
-    expect(band('ma').textContent).toContain('Re: invoices')
-    expect(band('ma').querySelector('form.fy-reply')).toBeTruthy()
-  })
-
-  it('a session’s head opens the real conversation; a media opens alone; an alert opens where it is solved', async () => {
-    await open()
-    await click(band('se').querySelector('.fy-head'))
-    expect(pushed).toEqual([{ kind: 'session', id: 's1' }])
-    await click([...document.querySelectorAll('button')].find(b => b.textContent === 'Open full video')!)
-    expect(pushed[1]).toEqual({ kind: 'media', url: '/api/foryou/media/m2', type: 'video', name: 'the new title screen' })
-    await click(band('al').querySelector('.fy-alert'))
-    expect(pushed[2]).toEqual({ kind: 'usage' })
-  })
-
-  it('« more » asks once and unfolds the answer in place', async () => {
-    await open()
-    const more = band('in').querySelector<HTMLElement>('.fy-more-btn')!
-    await click(more)
-    await flush()
-    expect(srv.calls.filter((c) => c.startsWith('more'))).toEqual(['more in'])
-    expect(band('in').textContent).toContain('Vite serves modules as they are asked for.')
-    expect(more.textContent).toBe(t().less)
-    await click(more)
-    await click(more)
-    await flush()
-    expect(srv.calls.filter((c) => c.startsWith('more'))).toHaveLength(1)
-  })
-
-  it('« weevboss » asks for the thread in full, without a flash', async () => {
-    await open()
-    const seen: unknown[] = []
-    const on = (e: Event) => seen.push((e as CustomEvent).detail)
-    window.addEventListener(FOCUS_BOSS, on)
-    await click(host.querySelector('.fy-words button.word'))
-    window.removeEventListener(FOCUS_BOSS, on)
-    expect(seen).toEqual([{ flash: false }])
-  })
-
-  it('the participants line isolates one speaker and remembers it', async () => {
-    await open()
-    const words = () => [...host.querySelectorAll<HTMLElement>('.fy-people .word')]
-    expect(words().map((w) => w.textContent)).toEqual([t().whoAll, 'weevboss', 'Juno', t().whoSessions, t().whoMedia, t().whoIdeas])
-    await click(words()[3])
-    expect([...host.querySelectorAll('[data-fy]')].map((e) => e.getAttribute('data-fy'))).toEqual(['se'])
-    expect(words()[3].getAttribute('aria-pressed')).toBe('true')
-    expect(localStorage.getItem('weevils-foryou-who')).toBe('session')
-    await click(words()[5])
-    expect([...host.querySelectorAll('[data-fy]')].map((e) => e.getAttribute('data-fy'))).toEqual(['pr', 'im', 'in', 'mi'])
-    // The same word again: everything.
-    await click(words()[5])
-    expect(host.querySelectorAll('[data-fy]')).toHaveLength(ITEMS.length)
-    expect(localStorage.getItem('weevils-foryou-who')).toBe('all')
-  })
-
-  it('opens on the participant asked for, else on the one chosen last time', async () => {
-    localStorage.setItem('weevils-foryou-who', 'juno')
-    await open()
-    expect([...host.querySelectorAll('[data-fy]')].map((e) => e.getAttribute('data-fy'))).toEqual(['ma'])
-    act(() => root.unmount())
-    root = createRoot(host)
-    await open(ITEMS, 'weevboss')
-    expect([...host.querySelectorAll('[data-fy]')].map((e) => e.getAttribute('data-fy'))).toEqual(['bo'])
-  })
 
   it('an empty stream is one quiet line', async () => {
     await open([])
@@ -428,226 +195,7 @@ describe('for you page', () => {
   })
 })
 
-/** The one audio element of the stream, as the browser would give it: what it was asked to play, and whether it plays. */
-class FakeAudio {
-  static made: FakeAudio[] = []
-  static refuse = false
-  src = ''
-  preload = ''
-  currentTime = 0
-  paused = true
-  onplaying: (() => void) | null = null
-  ontimeupdate: (() => void) | null = null
-  onended: (() => void) | null = null
-  onerror: (() => void) | null = null
-  constructor() {
-    FakeAudio.made.push(this)
-  }
-  play() {
-    if (FakeAudio.refuse) return Promise.reject(new Error('no speech here'))
-    this.paused = false
-    return Promise.resolve()
-  }
-  pause() {
-    this.paused = true
-  }
-}
-
-describe('for you: voice messages', () => {
-  const VOICED: ForYouItem[] = [
-    { ...base, id: 'bo', kind: 'boss', who: 'weevboss', text: 'Three sessions sent this morning.', voice: 'nova' },
-    { ...base, id: 'ma', kind: 'mail', who: 'juno', title: 'Re: invoices', text: 'sent the March invoices', body: 'Hello,\nall done.', reply: 'mail', voice: 'alloy' },
-    { ...base, id: 'b2', kind: 'boss', who: 'weevboss', text: 'No voice on this one.' },
-  ]
-  const listen = (id: string) => band(id).querySelector<HTMLButtonElement>('.fy-listen')!
-  const audio = () => FakeAudio.made[0]
-  const fire = (what: 'onplaying' | 'ontimeupdate' | 'onended' | 'onerror') => act(async () => audio()[what]?.())
-
-  beforeEach(() => {
-    FakeAudio.made = []
-    FakeAudio.refuse = false
-    vi.stubGlobal('Audio', FakeAudio)
-  })
-  afterEach(() => vi.unstubAllGlobals())
-
-  it('the chevron exits; leaving and reopening the feed keeps its scroll and active audio', async () => {
-    await open(VOICED)
-    await click(listen('bo'))
-    await fire('onplaying')
-    const body = host.querySelector<HTMLElement>('.fy-body')!
-    body.scrollTop = 480
-    act(() => body.dispatchEvent(new Event('scroll', { bubbles: true })))
-    await click(labelled(t().back))
-    expect(pushed.at(-1)).toBe('back')
-    render(null)
-    expect(audio().paused).toBe(false)
-    render(<ForYouPage />)
-    await flush()
-    expect(host.querySelector('.fy-body')!.scrollTop).toBe(480)
-    expect(audio().paused).toBe(false)
-    expect(FakeAudio.made).toHaveLength(1)
-  })
-
-  it('FR→EN→FR preserves cards, draft, scroll and playing audio without remounting',async()=>{
-    const originalLang=getLang()
-    setLang('fr')
-    await open(VOICED.map(i=>i.id==='bo'?{...i,reply:'boss'}:i))
-    await click(listen('bo'));await fire('onplaying')
-    const playing=audio();playing.currentTime=3.2
-    const body=host.querySelector<HTMLElement>('.fy-body')!
-    body.scrollTop=480
-    act(()=>body.dispatchEvent(new Event('scroll',{bubbles:true})))
-    const form=band('bo').querySelector<HTMLFormElement>('form.fy-reply')!
-    await type(form,'Mon texte reste français')
-    const input=form.querySelector('input')!
-    const ids=()=>[...host.querySelectorAll('[data-fy]')].map(e=>e.getAttribute('data-fy'))
-    const before=ids()
-    for(const locale of ['en','fr'] as const){
-      await act(async()=>setLang(locale));await flush()
-      expect(ids()).toEqual(before)
-      expect(host.querySelector('.fy-body')).toBe(body)
-      expect(body.scrollTop).toBe(480)
-      expect(band('bo').querySelector('input')).toBe(input)
-      expect(input.value).toBe('Mon texte reste français')
-      expect(audio()).toBe(playing)
-      expect(playing.paused).toBe(false)
-      expect(playing.currentTime).toBe(3.2)
-    }
-    expect(srv.calls.some(c=>c.startsWith('reply '))).toBe(false)
-    await act(async()=>setLang(originalLang))
-  })
-
-  it('only an item with a voice carries the play glyph and its bars, still until it is played', async () => {
-    await open(VOICED)
-    expect(listen('bo').getAttribute('aria-label')).toBe(t().listen('weevboss'))
-    expect(listen('bo').querySelectorAll('.fy-wave i').length).toBeGreaterThan(12)
-    expect(listen('bo').classList.contains('fy-v-idle')).toBe(true)
-    expect(listen('ma').classList.contains('small')).toBe(true)
-    expect(band('b2').querySelector('.fy-listen')).toBeNull()
-    // Nothing is synthesised before a tap.
-    expect(FakeAudio.made).toHaveLength(0)
-    // The mail's play button is not inside the line that unfolds it.
-    expect(band('ma').querySelector('.fy-mail .fy-listen')).toBeNull()
-  })
-
-  it('starts transcripts folded and keeps audio playing when the text opens or closes', async () => {
-    await open(VOICED)
-    const transcript = band('bo').querySelector<HTMLDetailsElement>('details.fy-transcript')!
-    expect(transcript.open).toBe(false)
-    expect(transcript.querySelector('summary')!.textContent).toContain(t().readTranscript)
-    expect(transcript.querySelector('.fy-listen')).toBeNull()
-    expect(band('b2').querySelector('.fy-transcript')).toBeNull()
-    expect(band('b2').querySelector('.fy-text')!.textContent).toBeTruthy()
-    await click(listen('bo'))
-    await fire('onplaying')
-    const playing = audio()
-    transcript.open = true
-    await flush()
-    transcript.open = false
-    await flush()
-    expect(audio()).toBe(playing)
-    expect(playing.paused).toBe(false)
-    expect(listen('bo').classList.contains('fy-v-playing')).toBe(true)
-  })
-
-  it('shows unvoiced content as readable text without a fake audio card', async () => {
-    const item: ForYouItem = { ...base, id: 'arrival', kind: 'boss', who: 'weevboss', text: 'A useful result. More detail about the result.' }
-    render(<ForYouItemView item={item} />)
-    expect(host.querySelector('details.fy-transcript')).toBeNull()
-    expect(host.querySelector('.fy-boss-audio')).toBeNull()
-    expect(host.querySelector('.fy-listen')).toBeNull()
-    expect(host.querySelector('.fy-text')!.textContent).toBe(item.text)
-    render(<ForYouItemView item={{ ...item, voice: 'nova' }} />)
-    expect(host.querySelector<HTMLDetailsElement>('details.fy-transcript')!.open).toBe(false)
-    expect(host.querySelector('.fy-listen')).toBeTruthy()
-  })
-
-  it('a tap streams the item’s words in its speaker’s voice; a second tap stops', async () => {
-    await open(VOICED)
-    await click(listen('bo'))
-    const q = new URL(audio().src, 'http://x')
-    expect(q.pathname).toBe('/api/speak/stream')
-    expect(q.searchParams.get('text')).toBe('Three sessions sent this morning.')
-    expect(q.searchParams.get('voice')).toBe('nova')
-    expect(listen('bo').classList.contains('fy-v-loading')).toBe(true)
-    expect(listen('bo').getAttribute('aria-pressed')).toBe('true')
-    await fire('onplaying')
-    expect(listen('bo').classList.contains('fy-v-playing')).toBe(true)
-    expect(listen('bo').getAttribute('aria-label')).toBe(t().stop)
-    audio().currentTime = 7.4
-    await fire('ontimeupdate')
-    expect(listen('bo').querySelector('.fy-listen-note')!.textContent).toBe('0:07')
-    await click(listen('bo'))
-    expect(audio().paused).toBe(true)
-    expect(listen('bo').classList.contains('fy-v-idle')).toBe(true)
-  })
-
-  it('one element for the whole stream: starting another item stops the first; the end brings the bars to rest', async () => {
-    await open(VOICED)
-    await click(listen('bo'))
-    await fire('onplaying')
-    await click(listen('ma'))
-    expect(FakeAudio.made).toHaveLength(1)
-    expect(new URL(audio().src, 'http://x').searchParams.get('voice')).toBe('alloy')
-    expect(listen('bo').classList.contains('fy-v-idle')).toBe(true)
-    await fire('onplaying')
-    expect(host.querySelectorAll('.fy-v-playing')).toHaveLength(1)
-    expect(listen('ma').classList.contains('fy-v-playing')).toBe(true)
-    await fire('onended')
-    expect(host.querySelectorAll('.fy-v-playing, .fy-v-loading')).toHaveLength(0)
-  })
-
-  it('no sound: said quietly in place, and a new tap tries again', async () => {
-    await open(VOICED)
-    FakeAudio.refuse = true
-    await click(listen('bo'))
-    await flush()
-    expect(listen('bo').classList.contains('fy-v-error')).toBe(true)
-    expect(listen('bo').querySelector('[role=status]')!.textContent).toBe(t().voiceFailed)
-    FakeAudio.refuse = false
-    await click(listen('bo'))
-    await fire('onplaying')
-    expect(listen('bo').classList.contains('fy-v-playing')).toBe(true)
-    // The element itself fails later (the stream breaks): same quiet word.
-    await fire('onerror')
-    expect(listen('bo').classList.contains('fy-v-error')).toBe(true)
-  })
-
-  it('removing an old technical card stops its audio and raw commit text can never start another stream', async () => {
-    await open(VOICED)
-    await click(listen('bo'))
-    expect(audio().paused).toBe(false)
-    const raw = 'weevils a un nouveau commit (435cf0d) : fix(auto): propColors kept (auto-model.ts)'
-    srv.feed = feed([{ ...base, id: 'b:old', kind: 'boss', who: 'weevils', text: raw, voice: 'nova' }], 2)
-    render(<ForYouPage />, snap(2))
-    await flush()
-    expect(audio().paused).toBe(true)
-    expect(host.querySelector('[data-fy="b:old"]')).toBeNull()
-    const oldUrl = audio().src
-    await act(async () => toggleVoice('b:old', raw, 'nova'))
-    expect(audio().src).toBe(oldUrl)
-    expect(audio().paused).toBe(true)
-    expect(FakeAudio.made).toHaveLength(1)
-    await act(async () => toggleVoice('human', 'Le thème est en ligne (commit 2d5496f, poussé sur main).', 'nova'))
-    expect(new URL(audio().src, 'http://x').searchParams.get('text')).toBe('Le thème est en ligne.')
-  })
-
-  it('weevboss’s logo and a voice message never speak together', async () => {
-    await open(VOICED)
-    let asked = 0
-    const onItem = () => void asked++
-    window.addEventListener(ITEM_SAYS, onItem)
-    await click(listen('bo'))
-    await fire('onplaying')
-    window.removeEventListener(ITEM_SAYS, onItem)
-    // The message told the logo to be quiet when it started.
-    expect(asked).toBe(1)
-    // The logo speaks: the message stops.
-    await act(async () => void window.dispatchEvent(new Event(LOGO_SAYS)))
-    expect(audio().paused).toBe(true)
-    expect(listen('bo').classList.contains('fy-v-idle')).toBe(true)
-  })
-
+describe('for you: voice bars', () => {
   it('the bars of an item are always the same, between a quarter and full height', () => {
     expect(waveOf('b:1', 26)).toEqual(waveOf('b:1', 26))
     expect(waveOf('b:1', 26)).not.toEqual(waveOf('b:2', 26))
@@ -656,25 +204,6 @@ describe('for you: voice messages', () => {
 })
 
 describe('for you: figures, the line, media fit', () => {
-  it('bars: label, figure, bar; a project’s colour, the alert colour when hot, the ink otherwise; also under a result', async () => {
-    const result: ForYouItem = { ...base, id: 're', kind: 'session', tone: 'result', who: 'session', projectId: 'mygame', title: 'layout', text: 'twelve weeks laid out', gauges: [{ label: 'weeks', value: 12, max: 52, shown: '12 of 52', projectId: 'mygame' }, { label: 'tests', value: 48, max: 48, shown: '48 of 48' }, { label: 'hot project', value: 9, max: 10, shown: '9 of 10', projectId: 'mygame', hot: true }] }
-    await open([result, ITEMS[9]])
-    const bars = [...band('re').querySelectorAll<HTMLElement>('.fy-gauge')]
-    expect(bars.map((b) => [b.querySelector('.fy-gauge-label')!.textContent, b.querySelector('.fy-gauge-shown')!.textContent])).toEqual([
-      ['weeks', '12 of 52'],
-      ['tests', '48 of 48'],
-      ['hot project', '9 of 10'],
-    ])
-    expect(bars.map((b) => b.style.getPropertyValue('--v'))).toEqual([`${(12 / 52) * 100}%`, '100%', '90%'])
-    expect(bars[0].classList.contains('own')).toBe(true)
-    expect(bars[0].style.getPropertyValue('--g')).toBe('var(--p4)')
-    expect(bars[1].className).toBe('fy-gauge')
-    // Hot wins over the project's colour.
-    expect(bars[2].className).toBe('fy-gauge hot')
-    // A stat: a short title and its bars.
-    expect(band('st').querySelector('.fy-title')!.textContent).toBe('this week')
-    expect(band('st').querySelectorAll('.fy-gauge')).toHaveLength(2)
-  })
 
   it('the line: a star per working agent, each count as its own figure', async () => {
     await open()
@@ -684,16 +213,6 @@ describe('for you: figures, the line, media fit', () => {
     expect(line.querySelector('.fy-pulse-text')!.textContent).toBe([t().pulseWorking(2), t().pulseDelivered(7), t().pulseWaiting(1), t().pulseAuto(3)].join(' · '))
   })
 
-  it('three proposals or more: each takes most of the width so the next one shows its edge; two share it', async () => {
-    await open()
-    const strip = band('pr').querySelector('.fy-props')!
-    expect(strip.classList.contains('scroll')).toBe(true)
-    expect([...strip.querySelectorAll<HTMLElement>('.fy-card')].map((c) => c.style.flexBasis)).toEqual(['78%', '78%', '78%'])
-    await click(labelled(t().refuse('Draft the page'), band('pr')))
-    await flush()
-    expect(strip.classList.contains('scroll')).toBe(false)
-    expect([...strip.querySelectorAll<HTMLElement>('.fy-card')].map((c) => c.style.flexBasis)).toEqual(['50%', '50%'])
-  })
 
   it('a media is never cut by more than a little: beyond, it is shown whole', () => {
     // One media alone on a phone (390 wide, cap 523): landscape and near-square fill, a portrait clip is shown whole.
@@ -713,21 +232,6 @@ describe('for you: figures, the line, media fit', () => {
 })
 
 describe('for you: strips and the media viewer', () => {
-  it('compact: a thin strip with only its notification close control', async () => {
-    srv.feed = feed(ITEMS)
-    render(
-      <>
-        <ForYouItemView item={ITEMS[2]} compact />
-        <ForYouItemView item={ITEMS[4]} compact />
-      </>,
-    )
-    await flush()
-    const strips = [...host.querySelectorAll('.fy-strip')]
-    expect(strips.map((s) => s.textContent)).toEqual(['weevbossThree sessions sent this morning, two are back.', 'weevilsHarden the tests'])
-    expect(strips[1].querySelector('.fy-plus svg')).toBeTruthy()
-    expect(host.querySelectorAll('button.notice-close')).toHaveLength(0)
-    expect(host.querySelectorAll('input, form, button:not(.notice-close)')).toHaveLength(0)
-  })
 
   it('the viewer shows the image whole, or the video with its controls, and goes back', async () => {
     render(<MediaPage url="/api/foryou/media/m1" type="image" name="title.png" />)
@@ -769,214 +273,12 @@ describe('for you: strips and the media viewer', () => {
   })
 })
 
-
-describe('spoken proposals', () => {
-  it('offers a visible button that opens the announced idea itself', async () => {
-    render(<ForYouItemView item={{ id: 'auto:proposed:real', kind: 'boss', tone: 'neutral', at: NOW, who: 'weevils', text: 'A useful idea', voice: 'default', open: { page: 'auto', id: 'real' } }} />)
-    const button = [...host.querySelectorAll('button')].find((el) => el.textContent === t().openIdea)
-    expect(button).toBeTruthy()
-    await click(button)
-    expect(pushed).toContainEqual({ kind: 'auto', id: 'real' })
-  })
-})
-
-it('a pending feed reply keeps its draft, does not claim success, and ignores duplicate submits', async () => {
-  await open(ITEMS.map((i) => i.id === 'bo' ? { ...i, actions: undefined } : i))
-  let resolve!: () => void
-  srv.gate = new Promise<void>((done) => { resolve = done })
-  const form = band('bo').querySelector<HTMLFormElement>('form.fy-reply')!
-  await type(form, 'oui')
-  act(() => { form.requestSubmit(); form.requestSubmit() })
-  expect(srv.calls.filter((s) => s === 'reply bo oui')).toHaveLength(1)
-  expect(form.querySelector('input')!.value).toBe('oui')
-  expect(form.querySelector('[role=status]')!.textContent).toContain(t().sending)
-  expect(sessionStorage.getItem('weevils-feed-draft:bo')).toBe('oui')
-  await act(async () => resolve())
-  expect(form.querySelector('input')!.value).toBe('')
-  expect(form.querySelector('[role=status]')!.textContent).toContain(t().sent)
-})
-
-it('an action stays visible and disabled until acknowledged, despite repeated taps', async () => {
-  await open()
-  let resolve!: () => void
-  srv.gate = new Promise<void>((done) => { resolve = done })
-  const button = band('bo').querySelector<HTMLButtonElement>('.fy-btn')!
-  act(() => { button.click(); button.click(); button.click() })
-  expect(srv.calls.filter((s) => s === 'act bo go')).toHaveLength(1)
-  expect(button.disabled).toBe(true)
-  expect(button.textContent).toContain(t().sending)
-  await act(async () => resolve())
-})
-
-it('keeps the original header and places only unresolved delivery beside its card through reload',async()=>{
- const locale=getLang()
- await act(async()=>setLang('en'))
- receipts.rows=[{messageId:'done',url:'/api/foryou/bo/reply',status:'delivered'}, {messageId:'pending',url:'/api/foryou/se/reply',status:'accepted'}]
- await open()
- const head=host.querySelector('.page-head')!
- expect(head.querySelector('.back')).not.toBeNull()
- expect([...head.querySelectorAll('.fy-words .word')].map(n=>n.textContent)).toEqual(['weevboss','for you'])
- expect(head.textContent).not.toMatch(/projects|Try visual formats|Try new formats|forwarded|dismiss this status/i)
- expect(head.querySelector('.outbox-status')).toBeNull()
- expect(band('bo').querySelector('.outbox-status')).toBeNull()
- expect(band('se').querySelector('.outbox-status')?.textContent).toContain('received')
- render(null);render(<ForYouPage/>);await flush()
- expect(host.querySelector('.page-head .outbox-status')).toBeNull()
- expect(band('bo').querySelector('.outbox-status')).toBeNull()
- receipts.rows[1]={...receipts.rows[1],status:'delivered'}
- await act(async()=>setLang('fr'))
- expect(band('se').querySelector('.outbox-status')).toBeNull()
- await click(labelled(t().back));expect(pushed.at(-1)).toBe('back')
- await act(async()=>setLang(locale))
-})
-it('a reply success is brief and stays beside the submitted message',async()=>{
- await open(ITEMS.map(i=>i.id==='bo'?{...i,actions:undefined}:i))
- const form=band('bo').querySelector<HTMLFormElement>('form.fy-reply')!
- vi.useFakeTimers()
- try{
-  await type(form,'oui');await submit(form)
-  expect(form.querySelector('.fy-sent')?.textContent).toContain(t().sent)
-  expect(host.querySelector('.page-head')?.textContent).not.toContain(t().sent)
-  await act(async()=>vi.advanceTimersByTimeAsync(3001))
-  expect(form.querySelector('.fy-sent')?.textContent).toBe('')
- }finally{vi.useRealTimers()}
-})
-
 it('keeps authored panel text accessible when every source image is missing',async()=>{
  setLang('en')
  await open([{...ITEMS.find(i=>i.id==='me')!,media:[],composition:{layout:'split',panels:[{mediaId:'gone',title:'Earlier view',text:'The original context remains available.'}]}}])
  expect(band('me').textContent).toContain('The original context remains available.')
  expect(band('me').querySelector('[role="status"]')?.textContent).toContain('did not load')
  expect(band('me').querySelector('img')).toBeNull()
-})
-
-it('keeps editorial source wording folded, verbatim and separate from the revised card across locale changes', async () => {
-  setLang('en')
-  const original = { title: 'Original <title>', text: '> Quoted user wording\n\n```sh\nprintf "<private>"\n```\n' + 'Full source wording. '.repeat(80) }
-  const item: ForYouItem = { ...ITEMS.find(i => i.id === 'bo')!, text: 'The revised result is ready.', editorial: { original } }
-  await open([item])
-  const details = band('bo').querySelector<HTMLDetailsElement>('details.fy-editorial')!
-  expect(details.open).toBe(false)
-  expect(details.querySelector('summary')!.textContent).toBe('original')
-  expect(details.querySelector('.strong')!.textContent).toBe(original.title)
-  expect(details.querySelector('.fy-text:last-child')!.textContent).toBe(original.text)
-  expect(details.querySelector('private')).toBeNull()
-  expect(details.querySelector('.clamp')).toBeNull()
-  expect(host.querySelector('.page-head .fy-editorial')).toBeNull()
-  const actions = [...band('bo').querySelectorAll('.fy-btn')]
-  details.open = true
-  await act(async () => setLang('fr'))
-  expect(band('bo').querySelector('details.fy-editorial')).toBe(details)
-  expect(details.open).toBe(true)
-  expect(details.querySelector('summary')!.textContent).toBe('version d’origine')
-  expect(details.querySelector('.fy-text:last-child')!.textContent).toBe(original.text)
-  expect([...band('bo').querySelectorAll('.fy-btn')]).toEqual(actions)
-  expect(srv.calls.some(c => /^(act|reply|dismiss) /.test(c))).toBe(false)
-  render(<ForYouItemView item={item} compact />)
-  expect(host.querySelector('.fy-editorial')).toBeNull()
-  render(<ForYouItemView item={{ ...item, editorial: undefined }} />)
-  expect(host.querySelector('.fy-editorial')).toBeNull()
-})
-
-it('shows existing work instead of an approval request, retains original wording and opens only its existing session',async()=>{
- setLang('en')
- const original={title:'Think canvas',text:'Would you like me to prepare this?'}
- const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,actions:[],title:original.title,text:original.text,editorial:{original},work:{intentId:'intent-think',status:'running',open:{page:'session',id:'think-owner'}}}
- await open([item])
- expect(band('bo').querySelector('.fy-text:not(.strong)')?.textContent).toBe('Working on it.')
- const buttons=[...band('bo').querySelectorAll<HTMLButtonElement>('.fy-btn')]
- expect(buttons.map(b=>b.textContent)).toEqual(['Open'])
- expect(band('bo').querySelector('form')).toBeNull()
- const disclosure=band('bo').querySelector<HTMLDetailsElement>('details.fy-editorial')!
- expect(disclosure.open).toBe(false)
- expect(disclosure.textContent).toContain(original.text)
- await click(buttons[0]);expect(pushed).toEqual([{kind:'session',id:'think-owner'}])
- expect(srv.calls.some(c=>c.startsWith('act ')||c.startsWith('reply '))).toBe(false)
- await act(async()=>setLang('fr'));await flush()
- expect(band('bo').textContent).toContain('En cours.')
- expect(band('bo').querySelector('.fy-btn')?.textContent).toBe('Ouvrir')
-})
-it('a stale approval opens the API-confirmed existing work once and preserves the card',async()=>{
- setLang('en')
- const item={...ITEMS.find(i=>i.id==='bo')!}
- await open([item])
- srv.result={intentId:'existing-intent',existing:true,open:{page:'session',id:'owner'}}
- await click(band('bo').querySelector('.fy-btn'));await flush()
- expect(srv.calls.filter(c=>c==='act bo go')).toHaveLength(1)
- expect(pushed).toEqual([{kind:'session',id:'owner'}])
- expect(host.querySelector('[data-fy="bo"]')).not.toBeNull()
- expect(srv.calls.filter(c=>c.startsWith('dismiss'))).toHaveLength(0)
-})
-
-it('an action handed to weevboss keeps the reader on the card: no page opens, the card says it was sent, then shows the answer',async()=>{
- setLang('en')
- const bossed:string[]=[];const onBoss=()=>bossed.push('boss');window.addEventListener('weevils:focus-boss',onBoss)
- const item={...ITEMS.find(i=>i.id==='bo')!}
- await open([item])
- srv.result={intentId:'brief:x',existing:false,open:{page:'boss'}}
- await click(band('bo').querySelector('.fy-btn'));await flush()
- expect(srv.calls.filter(c=>c==='act bo go')).toHaveLength(1)
- expect(pushed).toEqual([])
- expect(bossed).toEqual([])
- expect(host.querySelector('[data-fy="bo"]')).not.toBeNull()
- render(<ForYouItemView item={{...item,actions:[],work:{intentId:'brief:x',status:'requested',open:{page:'boss'}}}}/>)
- expect(band('bo').textContent).toContain('Sent to weevboss. Its reply will show up here.')
- expect(band('bo').querySelector('.fy-btn')?.textContent).toBe('Open weevboss’s thread')
- render(<ForYouItemView item={{...item,actions:[],work:{intentId:'brief:x',status:'requested',open:{page:'boss'},reply:'Here is a draft.'}}}/>)
- expect(band('bo').textContent).toContain('weevboss replied')
- expect(band('bo').querySelector('.fy-work-reply')?.textContent).toBe('Here is a draft.')
- await click(band('bo').querySelector('.fy-btn'))
- expect(pushed).toEqual([])
- expect(bossed).toEqual(['boss'])
- window.removeEventListener('weevils:focus-boss',onBoss)
-})
-
-it('a tap handed to weevboss says « sent » on the card at once, keeps what the card was about and its other button',async()=>{
- setLang('en')
- const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,text:'Two cleanups are possible on the VPS.',actions:[{id:'a1',label:'Prune 36 branches'},{id:'a2',label:'Neutralize the data file'}]}
- await open([item])
- srv.result={intentId:'brief:prune',existing:false,open:{page:'boss'}}
- await click(band('bo').querySelector('.fy-btn'));await flush()
- expect(srv.calls.filter(c=>c==='act bo a1')).toHaveLength(1)
- expect(pushed).toEqual([])
- // The server's next read (an older server: no work on the card yet) changes nothing to what the reader sees.
- expect(band('bo').textContent).toContain('Two cleanups are possible on the VPS.')
- expect(band('bo').querySelector('[role=status]')?.textContent).toBe('Sent to weevboss. Its reply will show up here.')
- expect([...band('bo').querySelectorAll('.fy-btn')].map(b=>b.textContent)).toEqual(['Open weevboss’s thread','Neutralize the data file'])
-})
-
-it('weevboss’s answer on a card is one or two plain sentences, never raw markdown',async()=>{
- setLang('en')
- const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,actions:[],work:{intentId:'brief:x',status:'requested',open:{page:'boss'},reply:'It is sent to the install link session.\n\nThe page will check on its own whether the repo is public:\n\n- **If it is:** it shows « The code is open ».\n- **If not:** nothing changes.'}}
- await open([item])
- const reply=band('bo').querySelector('.fy-work-reply')!.textContent!
- expect(reply).toBe('It is sent to the install link session.')
- expect(reply).not.toMatch(/\*\*|^- /)
- // On one line (an older server): same.
- render(<ForYouItemView item={{...item,work:{...item.work!,reply:'It is sent to the install link session. The page will check on its own whether the repo is public: - **If it is:** it shows « The code is open ». - **If not:** nothing changes.'}}}/>)
- expect(band('bo').querySelector('.fy-work-reply')!.textContent).toBe('It is sent to the install link session.')
- // A lone dash inside a sentence is not a list: the sentence stays whole.
- render(<ForYouItemView item={{...item,work:{...item.work!,reply:'The branch is merged - Scarville can test it on his phone now.'}}}/>)
- expect(band('bo').querySelector('.fy-work-reply')!.textContent).toBe('The branch is merged - Scarville can test it on his phone now.')
-})
-
-it('existing work without a rewrite: no « original » disclosure repeating the card, no "view full image" overlays',async()=>{
- setLang('en')
- const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,title:'Think canvas',text:'Would you like me to prepare this?',editorial:undefined,work:{intentId:'intent-think',status:'running',open:{page:'session',id:'think-owner'}}}
- await open([item, ...ITEMS.filter(i=>i.kind==='media')])
- expect(band('bo').querySelector('details.fy-editorial')).toBeNull()
- expect(band('bo').textContent).not.toMatch(/Original wording|View existing work|Work in progress/)
- expect(host.textContent).not.toMatch(/view full image|open video ↗/)
- expect(host.querySelector('.fy-media-open')).toBeNull()
-})
-
-it('keeps uncertain existing work informational when no destination is known',async()=>{
- setLang('en')
- const item:ForYouItem={...ITEMS.find(i=>i.id==='bo')!,actions:[],open:undefined,sessionId:undefined,work:{intentId:'unconfirmed',status:'uncertain'}}
- await open([item])
- expect(band('bo').textContent).toContain('Not sure it arrived.')
- expect(band('bo').querySelector('.fy-btn')).toBeNull()
- expect(srv.calls.some(c=>c.startsWith('act '))).toBe(false)
 })
 
 it('uses the static recursive signature only for structured identity, including compact history', () => {
@@ -992,67 +294,67 @@ it('uses the static recursive signature only for structured identity, including 
  expect(srv.calls.some(c=>/^(act|reply|dismiss) /.test(c))).toBe(false)
 })
 
-// Evidence labels: the voice-mode card of session 68fd4d11 (test/fixtures), whose caption says « interrupt anytime ».
-describe('evidence labels', () => {
-  const fx = JSON.parse(voiceModeFixture)
-  const limit: string = fx.evidence.limits[0]
-  const card = (evidence: ForYouItem['evidence']): ForYouItem => ({
-    ...base, id: fx.card.id, kind: 'media', tone: 'result', who: 'session', projectId: 'mygame', title: fx.card.title, text: '',
-    media: [{ id: 'clip', type: 'video', url: '/api/foryou/media/clip', name: fx.card.file, bytes: 1 }], evidence,
-  })
-  afterEach(() => act(() => setLang('en')))
-
-  it('the voice-mode card keeps « interruption not tested on a real iPhone » in sight and never reads « Verified »', async () => {
-    // Even a server (or a commit) claiming verified cannot put « Verified » next to an open limitation.
-    for (const evidence of [{ level: 'demonstrated' as const, where: fx.evidence.demonstrated, limits: [limit] }, { level: 'verified' as const, environment: 'real iPhone, Safari PWA', limits: [limit] }]) {
-      render(<ForYouItemView item={card(evidence)} />)
-      const el = band(fx.card.id)
-      expect(el.querySelector('.fy-title')!.textContent).toBe(fx.card.title)
-      const line = el.querySelector('.fy-evidence')!
-      expect(line.getAttribute('data-evidence')).toBe('demonstrated')
-      expect(line.querySelector('.fy-ev-label')!.textContent).toBe('Shown working')
-      expect(el.textContent).not.toContain('Verified')
-      // The limitation is outside the folded details: visible without a tap, word for word.
-      const shown = line.querySelector('.fy-ev-limits li')!
-      expect(shown.textContent).toBe(limit)
-      expect(shown.closest('details')).toBeNull()
-      expect(line.querySelector('.fy-ev-limits')!.getAttribute('aria-label')).toBe('Not checked yet')
-    }
-    // Details wait for a deliberate tap.
-    const details = band(fx.card.id).querySelector<HTMLDetailsElement>('details.fy-ev-more')!
-    expect(details.open).toBe(false)
-    expect(details.querySelector('.fy-ev-about')!.textContent).toBe('Seen running: real iPhone, Safari PWA. Not verified yet.')
-    // The thin strip says the label first.
-    render(<ForYouItemView item={card({ level: 'demonstrated', where: fx.evidence.demonstrated, limits: [limit] })} compact />)
-    expect(band(fx.card.id).querySelector('.fy-ev-strip')!.textContent).toBe('Shown working ◦ · ')
+describe('for you: one stream, five layouts, no labels', () => {
+  it('one single stream titled only « For you »: no chips, no headers, no speaker or kind words', async () => {
+    setLang('en')
+    await open()
+    expect(host.querySelector('.fy-people')).toBeNull()
+    expect([...host.querySelectorAll('.fy-words .word')].map((w) => w.textContent)).toEqual(['For you'])
+    const body = host.querySelector('[data-scroll]')!
+    expect(body.querySelector('.fy-who, .fy-dot, .fy-plus, .fy-bang, .fy-btn, .fy-gauges, .fy-reply, details')).toBeNull()
+    const text = body.textContent!
+    for (const word of ['Action', 'Progress', 'Learn', 'Think', 'Visual', 'Built', 'From your agents', 'weevboss', 'Juno', 'mygame', 'proposals', 'insight']) expect(text).not.toContain(word)
   })
 
-  it('as published, without evidence: « Built », whatever the caption claims', () => {
-    render(<ForYouItemView item={card({ level: 'implemented' })} />)
-    expect(band(fx.card.id).querySelector('.fy-ev-label')!.textContent).toBe('Built')
-    expect(band(fx.card.id).querySelector('.fy-ev-place')).toBeNull()
-    render(<ForYouItemView item={card(undefined)} />)
-    expect(band(fx.card.id).querySelector('.fy-evidence')).toBeNull()
+  it('every item takes one of the five layouts; stats without a moved number stay out', async () => {
+    await open()
+    const formats = Object.fromEntries([...host.querySelectorAll('[data-fy]')].map((e) => [e.getAttribute('data-fy'), e.getAttribute('data-fy-format')]))
+    expect(formats).toEqual({ al: 'action', me: 'visual', bo: 'action', ma: 'action', pr: 'action', se: 'action', im: 'action', in: 'learn', mi: 'progress' })
+    expect(band('mi').querySelector('.fy-num')!.textContent).toBe('42')
   })
 
-  it('verified shows its environment next to the label; French too', async () => {
-    render(<ForYouItemView item={card({ level: 'verified', environment: 'real iPhone, Safari PWA' })} />)
-    const summary = band(fx.card.id).querySelector('.fy-ev-more summary')!
-    expect(summary.textContent).toBe('Verified · real iPhone, Safari PWA')
-    await act(async () => setLang('fr'))
-    expect(band(fx.card.id).querySelector('.fy-ev-more summary')!.textContent).toBe('Vérifié · real iPhone, Safari PWA')
+  it('a proposal is one big tap: yes accepts the card, not now refuses it', async () => {
+    setLang('en')
+    await open([ITEMS.find((i) => i.id === 'pr')!])
+    expect(band('pr').querySelector('.fy-say')!.textContent).toBe('Harden the tests')
+    const [yes, no] = band('pr').querySelectorAll<HTMLButtonElement>('.fy-tap')
+    expect(yes.textContent).toBe(t().tapYes)
+    expect(no.textContent).toBe(t().tapNotNow)
+    await click(yes)
+    expect(srv.calls).toContain('act pr accept c1')
+    resetForYou()
+    await open([ITEMS.find((i) => i.id === 'pr')!])
+    await click(band('pr').querySelectorAll('.fy-tap')[1])
+    expect(srv.calls).toContain('act pr refuse c1')
   })
-})
 
-it('a one-off task on weevils itself carries the recursive colour; one on another project does not (r35)', () => {
- setLang('en')
- const s = snap()
- s.projects = [...s.projects, { id: 'weevils', name: 'weevils', kind: 'repo', repos: ['weevils'], where: {}, lastActivityAt: 0, installation: {} } as unknown as Snapshot['projects'][number]]
- const item: ForYouItem = { ...base, id: 'pr', kind: 'proposals', who: 'weevils', text: '', live: true, cards: [
-  { id: 'o:self', title: 'Check onboarding on blank install', why: '', source: 'optimizer', kind: 'tests', repo: 'weevils' },
-  { id: 'o:game', title: 'Harden the tests', why: '', source: 'optimizer', kind: 'tests', repo: 'mygame' },
- ] }
- render(<ForYouItemView item={item} />, s)
- const cards = [...band('pr').querySelectorAll<HTMLElement>('.fy-card')]
- expect(cards.map(c => c.classList.contains('recursive-identity'))).toEqual([true, false])
+  it('the user’s own idea reads as theirs, never as weevils’', async () => {
+    setLang('en')
+    const pr = ITEMS.find((i) => i.id === 'pr')!
+    await open([{ ...pr, cards: [{ ...pr.cards![0], own: true }] }])
+    expect(band('pr').querySelector('.fy-say')!.textContent).toBe(t().yourIdea('Harden the tests'))
+  })
+
+  it('an alert is calm: a look, never the alert colour or an inverted band', async () => {
+    setLang('en')
+    await open([ITEMS[0]])
+    expect(band('al').className).not.toMatch(/invert|fy-t-alert/)
+    expect(band('al').getAttribute('style')).not.toContain('--alert')
+    await click(band('al').querySelector('.fy-tap'))
+    expect(pushed.length + srv.calls.length).toBeGreaterThan(0)
+  })
+
+  it('long words are cut to a line or two', async () => {
+    const long = { ...ITEMS.find((i) => i.id === 'in')!, text: 'Vite only bundles for production and ' + 'serves each module on demand during development '.repeat(8) }
+    await open([long])
+    const line = band('in').querySelector('.fy-learn')!.textContent!
+    expect(line.length).toBeLessThanOrEqual(121)
+    expect(line.endsWith('…')).toBe(true)
+  })
+
+  it('the page renders at most 60 items', async () => {
+    const many = Array.from({ length: 150 }, (_, i) => ({ ...base, id: `t${i}`, kind: 'boss' as const, who: 'weevboss', text: `Thought ${i}.` }))
+    await open(many)
+    expect(host.querySelectorAll('[data-fy]').length).toBe(60)
+  })
 })

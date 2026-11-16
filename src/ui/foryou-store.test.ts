@@ -355,7 +355,7 @@ describe('for you: colours and speakers', () => {
     expect(c(item({ id: 'question-general', tone: 'question' }))).toBe('var(--h24)')
     expect(c(item({ id: 'milestone', kind: 'milestone', tone: 'result', projectId: 'game' }))).toBe('var(--p4)')
     expect(c(item({ id: '4', kind: 'session', who: 'session', tone: 'question', projectId: 'game' }))).toBe('var(--p4)')
-    expect(c(item({ id: '5', kind: 'session', who: 'session', tone: 'alert', projectId: 'game' }))).toBe('var(--alert)')
+    expect(c(item({ id: '5', kind: 'session', who: 'session', tone: 'alert', projectId: 'game' }))).not.toBe('var(--alert)') // calm, never the alert red
     // An alert is drawn inverted on its project's colour, never on the red itself.
     expect(c(item({ id: '6', kind: 'alert', who: 'weevils', tone: 'alert', projectId: 'game' }))).toBe('var(--p4)')
     expect(c(item({ id: '7', kind: 'insight', who: 'weevils', projectId: 'game' }))).toBe('var(--p4)')

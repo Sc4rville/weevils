@@ -129,6 +129,7 @@ describe('the store', () => {
     expect(kept.some((i) => i.text === `post ${MAX_ITEMS + 4}`)).toBe(true)
     // The app gets 60 of them at most.
     expect(fy.feed().items).toHaveLength(MAX_FEED)
+    expect(MAX_FEED).toBeLessThanOrEqual(60)
     now = T0 + KEEP_MS + HOUR
     fy.post('the only fresh one')
     expect((JSON.parse(fs.readFileSync(fy.file, 'utf8')).items as { text: string }[]).map((i) => i.text)).toEqual(['the only fresh one'])

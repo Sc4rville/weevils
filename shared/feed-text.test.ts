@@ -54,3 +54,11 @@ describe('product outcomes instead of internal agent chatter',()=>{
   expect(editorialFeedText('Le rendu est prêt. TLO: raise the reasoning level to High.')).toBe('Le rendu est prêt.')
  })
 })
+
+describe('humanFeedText: test runs and commands', () => {
+  it('drops test output, shell commands and command spans, keeps the human sentence', () => {
+    const t = humanFeedText('The menu opens again on the phone (42 tests passed).\n✓ src/ui/menu.test.tsx (3)\nnpx vitest run\nRun `npm run build` to see it.')
+    expect(t).toContain('The menu opens again on the phone')
+    expect(t).not.toMatch(/tests passed|vitest|npm run|✓/)
+  })
+})

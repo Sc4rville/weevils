@@ -96,7 +96,7 @@ describe('sleep mode', () => {
 })
 
 describe('the morning recap card', () => {
-  it('shows each line from the state, its evidence, and opens what it names', async () => {
+  it('says how many things got done overnight, big, in one line', async () => {
     const { ForYouItemView } = await import('./foryou')
     const item: ForYouItem = {
       id: 'sleep:1', kind: 'stat', tone: 'magic', at: NOW, who: 'weevils', title: 'While you slept', text: 'Overnight: 1 result, 1 waiting for you.',
@@ -106,9 +106,9 @@ describe('the morning recap card', () => {
       ] },
     }
     render(<ForYouItemView item={item} />)
-    const lines = [...host.querySelectorAll('.fy-recap-line')]
-    expect(lines.map((l) => l.querySelector('.fy-recap-title')!.textContent)).toEqual(['Deploy · waiting for you', 'Night lens · done'])
-    expect(lines[1].querySelector('.fy-recap-detail')!.textContent).toBe('Report: 3 findings')
-    expect(host.textContent).toContain('Overnight: 1 result, 1 waiting for you.')
+    expect(host.querySelector('[data-fy-format]')!.getAttribute('data-fy-format')).toBe('progress')
+    expect(host.querySelector('.fy-num')!.textContent).toBe('1')
+    expect(host.querySelector('.fy-say')!.textContent).toBe('done overnight')
+    expect(host.textContent).not.toContain('Report: 3 findings')
   })
 })

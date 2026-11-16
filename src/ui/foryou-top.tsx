@@ -1,4 +1,5 @@
 import { notificationEligible } from '../../shared/notification-policy'
+import { streamOf } from './foryou-format'
 import { closableFeedNotice } from '../../shared/notices.ts'
 import { NoticeClose } from './notice'
 // The top band's two words, « weevboss · pour toi », and the preview of the stream shown under them (docs/foryou.md §4.1).
@@ -97,7 +98,7 @@ export function ForYouPeek() {
   const { snap, colors, push } = useApp()
   const { items, dismiss, feed } = useForYou()
   const authorOf = useAuthors()
-  const shown = items.filter(notificationEligible).slice(0, PEEK_ITEMS)
+  const shown = streamOf(items.filter(notificationEligible), PEEK_ITEMS)
   // Before the stream arrives, « nothing new » would be a false all-quiet: say what the snapshot already knows.
   const waiting = snap.foryou?.unseen ?? 0
   const emptyLine = feed ? t.forYouEmpty : waiting > 0 ? t.forYouUnseen(waiting) : t.forYouLoading

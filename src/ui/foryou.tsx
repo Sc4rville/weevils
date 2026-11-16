@@ -1,32 +1,19 @@
-import { FeedText, SoftwareResultLink } from './foryou-links'
-import { EvidenceLine } from './foryou-evidence'
-import { shownEvidence } from '../../shared/evidence'
-import EM from '../i18n/foryou-evidence'
-import { ResultCard } from './foryou-result'
-import { TranslationStatus } from './foryou-localization'
-import { InlineMediaFormats, ProposalView } from './foryou-formats'
+import { InlineMediaFormats } from './foryou-formats'
 import { OutboxStatus } from './outbox-status'
 import { SaveMediaButton, useLongPressSave } from './save-media'
 import { useForYouOpen } from './foryou-open'
 import { rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
 import { Notice, NoticeClose, useNotice } from './notice'
-// « Pour toi » : the stream next to weevboss, full screen. Every item is a full-width band in its own colour
-// (project, author, weevboss, or the colour of what it says: done, asks, cut), one renderer per kind (docs/foryou.md §2.1).
+import { bigNumber, cardLine, formatOf, shortLine, streamOf, type ForYouFormat } from './foryou-format'
+// « For you »: the stream next to weevboss, full screen. One single stream, no sections, no labels: every item is a
+// full-width band in its own colour, drawn in one of five layouts (src/ui/foryou-format.ts).
 import { AnimatePresence, motion, useIsPresent, useReducedMotion, type PanInfo, type Variants } from 'motion/react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react'
-import type { ForYouCard, ForYouGauge, ForYouItem, ForYouMedia, ForYouPulse, ForYouRecapLine } from '../../shared/foryou.ts'
-import SM from '../i18n/sleep'
-import { at } from './auto-model'
-import './night.css'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import type { ForYouItem, ForYouMedia, ForYouPulse } from '../../shared/foryou.ts'
 import { useApp } from './app-context'
-import { selfRepo } from './recursive-identity'
-import { Collapse, spring, useAuthors } from './bits'
-import { flash, focusBoss } from './follow'
-import { ago, plain } from './format'
-import { plainSummary } from './plain-steps'
-import { cardSlots, itemSlot, itemWho, matchesWho, participants, useForYou, WHO_ALL, type ForYouStore } from './foryou-store'
-import { toggleVoice, useVoice } from './foryou-voice'
+import { spring, useAuthors } from './bits'
+import { itemSlot, useForYou, type ForYouStore } from './foryou-store'
 import { markSeen as gestureSeen } from './hints'
 import { Icon } from './icons'
 import { usePageChrome } from './shell'
@@ -38,7 +25,7 @@ const cssVar = (name: string) => `var(--${name})`
 const slot = (name: string) => ({ '--c': cssVar(name) }) as CSSProperties
 /** The left edge stays with the page's back gesture (same width as the code viewer's). */
 const EDGE = 22
-const WHO_KEY = 'weevils-foryou-who'
+const SCROLL_KEY = 'stream'
 const LOOK_KEY = 'weevils-foryou-look'
 const SEEN_AFTER = 1200
 
@@ -105,11 +92,8 @@ function useInView(ref: RefObject<Element | null>, ratio = 0.5, on = true): bool
 // ---------------------------------------------------------------------------
 // Pieces shared by the items.
 
-interface KindProps {
+interface CardProps {
   item: ForYouItem
-  who: string
-  project?: string
-  inView: boolean
   fy: ForYouStore
 }
 
@@ -120,32 +104,6 @@ function useOpen(item: ForYouItem): (() => void) | undefined {
   return target ? () => open(target, item.projectId) : undefined
 }
 
-/** The speaker line: unseen dot, who, when; a tap opens the place it speaks of. */
-function Who({ item, who, extra, children }: { item: ForYouItem; who: string; extra?: string; children?: ReactNode }) {
-  const t = useT(M)
-  const { now } = useApp()
-  const open = useOpen(item)
-  const line = (
-    <>
-      <span className="dot fy-dot" role={item.seen ? undefined : 'img'} aria-label={item.seen ? undefined : t.unseen} aria-hidden={item.seen ? true : undefined} />
-      <span className="fy-who-name">{who}</span>
-      {extra && <span className="fy-who-extra"> · {extra}</span>}
-      <span className="fy-at"> · {ago(Math.max(0, now - item.at))}</span>
-    </>
-  )
-  return (
-    <div className="fy-who">
-      {open ? (
-        <button className="fy-who-line" onClick={open} aria-label={t.openIt(extra ? `${who} · ${extra}` : who)}>
-          {line}
-        </button>
-      ) : (
-        <span className="fy-who-line">{line}</span>
-      )}
-      {children}
-    </div>
-  )
-}
 
 const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)
 
@@ -158,188 +116,6 @@ export function waveOf(id: string, n: number): number[] {
     const bell = 0.55 + 0.45 * Math.sin((Math.PI * (i + 0.5)) / n)
     return Math.round((0.25 + 0.75 * (h / 0xffffffff) * bell) * 100) / 100
   })
-}
-
-const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-
-/** A voice message: the play square and a wave of bars. A tap reads the item aloud in its speaker's voice (one at a
- * time for the whole stream, src/ui/foryou-voice.ts); the bars only move while it speaks. small: inside a thin line. */
-function Listen({ item, who, small }: { item: ForYouItem; who: string; small?: boolean }) {
-  const t = useT(M)
-  const v = useVoice(item.id)
-  const bars = useMemo(() => waveOf(item.id, small ? 7 : 26), [item.id, small])
-  if (!item.voice || !item.text) return null
-  const on = v.phase === 'playing' || v.phase === 'loading'
-  return (
-    <button
-      type="button"
-      className={`fy-listen fy-v-${v.phase}${small ? ' small' : ''}`}
-      onClick={() => toggleVoice(item.id, item.text, item.voice ?? '')}
-      aria-label={on ? t.stop : t.listen(who)}
-      aria-pressed={on}
-    >
-      <span className="fy-listen-mark" aria-hidden>
-        <Icon name={on ? 'pause' : 'play'} />
-      </span>
-      <span className="fy-wave" aria-hidden>
-        {bars.map((h, i) => (
-          <i key={i} style={{ '--h': h, '--d': `${-((i * 0.137) % 0.9).toFixed(3)}s` } as CSSProperties} />
-        ))}
-      </span>
-      <span className="fy-listen-note tab" role="status">
-        {v.phase === 'error' ? t.voiceFailed : v.phase === 'playing' ? clock(v.seconds) : ''}
-      </span>
-    </button>
-  )
-}
-
-/** Where things stand, as flat bars: the label and the figure, the bar under them. They fill from nothing the first
- * time they come under the eyes (once; no animation when motion is reduced, foryou.css). A project's bar takes its
- * colour, a bar close to a limit the alert colour, the others the ink. */
-function Gauges({ list }: { list: ForYouGauge[] }) {
-  const { colors } = useApp()
-  const box = useRef<HTMLDivElement>(null)
-  const inView = useInView(box, 0.35)
-  const [filled, setFilled] = useState(false)
-  useEffect(() => {
-    if (inView) setFilled(true)
-  }, [inView])
-  return (
-    <div ref={box} className={filled ? 'fy-gauges fy-filled' : 'fy-gauges'}>
-      {list.map((g, i) => {
-        const pct = g.max > 0 ? Math.max(0, Math.min(100, (g.value / g.max) * 100)) : 0
-        const own = !g.hot && g.projectId && colors[g.projectId] ? cssVar(colors[g.projectId]) : undefined
-        return (
-          <div
-            key={i}
-            className={`fy-gauge${g.hot ? ' hot' : ''}${own ? ' own' : ''}`}
-            style={{ '--v': `${pct}%`, '--i': i, ...(own ? { '--g': own } : {}) } as CSSProperties}
-            role="meter"
-            aria-label={g.label}
-            aria-valuemin={0}
-            aria-valuemax={g.max}
-            aria-valuenow={g.value}
-            aria-valuetext={g.shown}
-          >
-            <span className="fy-gauge-label ellipsis">{g.label}</span>
-            <span className="fy-gauge-shown tab">{g.shown}</span>
-            <span className="fy-gauge-bar" aria-hidden>
-              <i />
-            </span>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-/** The item's buttons: the server knows what each one does. The item leaves once tapped. */
-function Actions({ item, fy }: { item: ForYouItem; fy: ForYouStore }) {
-  const t = useT(M)
-  if (!item.actions?.length) return null
-  return (
-    <div className="in fy-acts" aria-busy={fy.acting(item.id)}>
-      {item.actions.map((a) => (
-        <button
-          key={a.id}
-          className="fy-btn"
-          disabled={fy.acting(item.id)}
-          onClick={() => {
-            buzz()
-            void fy.act(item.id, a.id)
-          }}
-        >
-          {fy.acting(item.id) ? t.sending : a.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-/** A reply typed right under the item: « > », the field, the arrow. Said « sent » at once; the text comes back if it failed. */
-function ReplyLine({ item, who, fy }: { item: ForYouItem; who: string; fy: ForYouStore }) {
-  const t = useT(M)
-  const key = `weevils-feed-draft:${item.id}`
-  const [text, setText] = useState(() => { try { return sessionStorage.getItem(key) ?? '' } catch { return '' } })
-  useEffect(() => { try { if (text) sessionStorage.setItem(key, text); else sessionStorage.removeItem(key) } catch { /* private storage */ } }, [key, text])
-  const submitting = useRef(false)
-  const [sent, setSent] = useState(false)
-  useEffect(() => {
-    if (!sent) return
-    const timer = setTimeout(() => setSent(false), 3000)
-    return () => clearTimeout(timer)
-  }, [sent])
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-  const form = useRef<HTMLFormElement>(null)
-  // Who receives it, not who spoke: under an idea of weevils, the words go to weevboss.
-  const to = item.reply === 'boss' ? 'weevboss' : who
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
-    const field = form.current?.querySelector('input')
-    const original = field?.value ?? text
-    const body = original.trim()
-    if (!body || busy || submitting.current) return
-    submitting.current = true
-    setText(original)
-    setErr(null)
-    setSent(false)
-    setBusy(true)
-    buzz()
-    flash(form.current)
-    try {
-      await fy.reply(item.id, body)
-      setSent(true)
-      if (field?.value === original) {
-        field.value = ''
-        try { sessionStorage.removeItem(key) } catch { /* private storage */ }
-      }
-      setText((current) => current === original ? '' : current)
-    } catch (e) {
-      setSent(false)
-      setErr(e instanceof Error && e.message ? e.message : t.failed)
-    } finally {
-      submitting.current = false
-      setBusy(false)
-    }
-  }
-  return (
-    <form ref={form} className="tone fy-reply" aria-busy={busy} data-draft={!!text} onSubmit={submit}>
-      <div className="in fy-reply-in">
-        <span className="fy-reply-gt" aria-hidden>
-          <Icon name="chevron" dir="right" />
-        </span>
-        <input
-          type="text"
-          name={`fy-reply-${item.id}`}
-          value={text}
-          onChange={(e) => { setText(e.target.value); setSent(false) }}
-          onKeyDown={(e) => { if (e.key === 'Enter' && (e.nativeEvent.isComposing || e.keyCode === 229)) e.preventDefault() }}
-          placeholder={t.replyTo(to)}
-          aria-label={t.replyLabel(to, item.title ?? item.text.slice(0, 60))}
-          enterKeyHint="send"
-          autoComplete="off"
-          autoCapitalize="sentences"
-        />
-        <span className="fy-sent" role="status">
-          {busy && t.sending}
-          {sent && (
-            <>
-              <Icon name="check" /> {t.sent}
-            </>
-          )}
-        </span>
-        <button type="submit" className="fy-send" aria-label={t.send} disabled={!text.trim() || busy}>
-          <Icon name="arrow" />
-        </button>
-      </div>
-      {err && (
-        <Notice eventId={noticeKey('error:foryou', location.pathname, location.hash, err)} className="in meta fy-reply-err" role="alert">
-          ! {err}
-        </Notice>
-      )}
-    </form>
-  )
 }
 
 // ---------------------------------------------------------------------------
@@ -419,478 +195,127 @@ function MediaStrip({ media }: { media: ForYouMedia[] }) {
   )
 }
 
-function MediaItem({ item, who, fy }: KindProps) {
-  if (item.visualProposal) return <ProposalView item={item} fy={fy} />
-  if (item.resultGroup) return <>
-    <div className="in"><Who item={item} who={who} /></div>
-    <ResultCard item={item} sourceControls={source => <><Who item={source} who={who} />{source.id !== item.id && <><Actions item={source} fy={fy} />{source.reply && <ReplyLine item={source} who={who} fy={fy} />}</>}</>} />
-    <Actions item={item} fy={fy} />
-    {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
-  </>
-  return (
-    <>
-      <div className="tone fy-cap">
-        <div className="in">
-          <Who item={item} who={who}>
-            <Listen item={item} who={who} small />
-          </Who>
-          {item.title && <div className="fy-title">{item.title}</div>}
-          {item.text && item.text !== item.title && <div className="fy-text"><FeedText text={item.text} item={item} /></div>}
-          <EvidenceLine item={item} />
-          <SoftwareResultLink item={item} />
-        {!!item.gauges?.length && <Gauges list={item.gauges} />}
-        </div>
-      </div>
-      {(!!item.media?.length || !!item.composition) && <InlineMediaFormats item={item} />}
-      <Actions item={item} fy={fy} />
-      {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
-    </>
-  )
-}
-
 // ---------------------------------------------------------------------------
-// weevboss, mail.
+// The five layouts (src/ui/foryou-format.ts). No speaker, no kind, no frame: big words in the band's colour, a line
+// or two at most, one big tap when something waits.
 
-function BossItem({ item, who, fy }: KindProps) {
-  const first = item.text.split(/(?<=[.!?])\s|\n/)[0]
-  const summary = item.title || first.slice(0, 160) + (first.length > 160 ? '…' : '')
-  const t = useT(M)
-  const open = useOpen(item)
+/** A big word to tap: no box, the word itself in the band's colour. quiet: the second choice, smaller and softer. */
+function Tap({ label, onTap, quiet, busy }: { label: string; onTap?: () => void; quiet?: boolean; busy?: boolean }) {
   return (
-    <>
-      <div className="in fy-pad">
-        <Who item={item} who={who} />
-        {/* Audio stays mounted and independent of the optional transcript. */}
-        {item.voice && <div className="fy-boss-audio"><Listen item={item} who={who} /></div>}
-        {summary && (item.voice || item.title) && <div className="fy-title">{summary}</div>}
-        {item.text && item.voice ? (
-          <details className="fy-transcript" key={item.id}>
-            <summary>
-              <span className="fy-transcript-read">{t.readTranscript}</span>
-              <span className="fy-transcript-hide">{t.hideTranscript}</span>
-              <Icon name="chevron" dir="down" />
-            </summary>
-            <div className="fy-text"><FeedText text={item.text} item={item} /></div>
-          </details>
-        ) : <div className="fy-text"><FeedText text={item.text} item={item} /></div>}
-        <EvidenceLine item={item} />
-        <SoftwareResultLink item={item} />
-        {!!item.gauges?.length && <Gauges list={item.gauges} />}
-      </div>
-      {!!item.media?.length && <MediaStrip media={item.media} />}
-      {item.id.startsWith('auto:proposed:') && open && <div className="in fy-pad-b"><button className="fy-btn" onClick={open}>{t.openIdea}</button></div>}
-      <Actions item={item} fy={fy} />
-      {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
-    </>
-  )
-}
-
-/** A thin line (who · what was done); a tap unfolds the whole message, and the reply line with it. */
-function MailItem({ item, who, fy }: KindProps) {
-  const [open, setOpen] = useState(false)
-  const more = !!item.body || !!item.reply
-  return (
-    <>
-      <div className="in fy-mail-in">
-        <Listen item={item} who={who} small />
-        <button className="fy-mail" onClick={() => setOpen((v) => !v)} aria-expanded={open} disabled={!more}>
-          <span className="dot fy-dot" aria-hidden />
-          <span className="fy-who-name">{who}</span>
-          <span className="fy-mail-sum ellipsis">{item.text}</span>
-          {more && (
-            <span className="fy-go" aria-hidden>
-              <Icon name="chevron" dir={open ? 'up' : 'down'} />
-            </span>
-          )}
-        </button>
-      </div>
-      <Collapse open={open}>
-        <div className="tone">
-          <div className="in fy-mail-body">
-            {item.title && <div className="fy-title">{item.title}</div>}
-            <div className="fy-text"><FeedText text={item.body ?? item.text} item={item} /></div>
-          </div>
-        </div>
-        {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
-      </Collapse>
-    </>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Proposals: always the same trait, « + » before the title and the ✓ × pair. One: a wide band. Several: columns side by
-// side that scroll natively, each in its own colour. ✓ leaves to the right, × to the left.
-
-function Proposals({ item, who, fy }: KindProps) {
-  const t = useT(M)
-  const { snap } = useApp()
-  const strip = useRef<HTMLDivElement>(null)
-  const cards = item.cards ?? []
-  const scrolls = cards.length > 2
-  useOwnSwipe(strip, scrolls)
-  // A colour per card, kept while it stays: one leaving does not repaint the others.
-  const slots = useRef(new Map<string, string>())
-  slots.current = cardSlots(
-    cards.map((c) => c.id),
-    slots.current,
-  )
-  // Two share the width; from three on, each takes most of it and the next one clearly shows its edge (it snaps).
-  const basis = cards.length <= 1 ? '100%' : cards.length === 2 ? '50%' : '78%'
-  const answer = (c: ForYouCard, yes: boolean) => {
-    if (yes) buzz()
-    void fy.act(item.id, yes ? 'accept' : 'refuse', c.id)
-  }
-  const gone = (id: string) => ({ x: fy.leaving(id) < 0 ? '-100%' : '100%', opacity: 0, flexBasis: '0%' })
-  return (
-    <>
-      <div ref={strip} className={scrolls ? 'fy-props scroll' : 'fy-props'} role="list" aria-label={t.proposals}>
-        <AnimatePresence initial={false}>
-          {cards.map((c) => (
-            <motion.div
-              key={c.id}
-              role="listitem"
-              className={`${cards.length <= 1 ? 'fy-card wide' : 'fy-card'}${c.source === 'optimizer' && selfRepo(snap.projects, c.repo) ? ' recursive-identity' : ''}`}
-              style={slot(slots.current.get(c.id) ?? 'p9')}
-              variants={{ gone: () => gone(c.id) }}
-              initial={{ flexBasis: '0%', opacity: 0 }}
-              animate={{ flexBasis: basis, opacity: 1, x: 0 }}
-              exit="gone"
-              transition={spring}
-            >
-              <div className="fy-card-in">
-                <div className="fy-card-text">
-                  <div className="fy-card-t">
-                    <span className="fy-plus" aria-hidden>
-                      <Icon name="plus" />
-                    </span>
-                    {c.title}
-                  </div>
-                  {c.why && <div className="fy-card-w">{c.why}</div>}
-                </div>
-                <div className="fy-card-acts">
-                  <button className="fy-ok" onClick={() => answer(c, true)} aria-label={t.accept(c.title)}>
-                    <Icon name="check" />
-                    {c.accept && <span className="fy-ok-word">{c.accept}</span>}
-                  </button>
-                  <button className="fy-no" onClick={() => answer(c, false)} aria-label={t.refuse(c.title)}>
-                    <Icon name="close" />
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
-      {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
-    </>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// A session: project · title (a tap opens the real conversation), what it did / asks / why it stopped.
-
-function SessionItem({ item, who, project, fy }: KindProps) {
-  const t = useT(M)
-  const { now } = useApp()
-  const open = useOpen(item)
-  const [unfold, setUnfold] = useState(false)
-  const said = item.tone === 'result' ? t.toneResult : item.tone === 'question' ? t.toneQuestion : item.tone === 'alert' ? t.toneAlert : null
-  const name = project ?? who
-  const label = item.title ? `${name} · ${item.title}` : name
-  // A result says what was done in one line; the whole report and the reply wait behind a tap. A question or a cut
-  // keeps its reply line in sight: answering is the point.
-  const result = item.tone === 'result'
-  const fold = !!item.body || (result && !!item.reply)
-  return (
-    <>
-      <button className="fy-head" onClick={open} disabled={!open} aria-label={t.openSession(label)}>
-        <span className="in fy-head-in">
-          <span className="fy-head-text">
-            <span className="dot fy-dot" aria-hidden />
-            <span className="fy-who-name">{name}</span>
-            {item.title && <span className="fy-head-title"> · {item.title}</span>}
-          </span>
-          {open && (
-            <span className="fy-go" aria-hidden>
-              <Icon name="arrow" dir="right" />
-            </span>
-          )}
+    <button
+      type="button"
+      className={quiet ? 'fy-tap quiet' : 'fy-tap'}
+      disabled={!onTap || busy}
+      onClick={() => {
+        if (!quiet) buzz()
+        onTap?.()
+      }}
+    >
+      {label}
+      {!quiet && (
+        <span className="fy-tap-go" aria-hidden>
+          <Icon name="arrow" dir="right" />
         </span>
-      </button>
-      <div className="in fy-pad-b">
-        <div className="fy-said">
-          {said && <span className="fy-said-word">{said}</span>}
-          <span className="fy-at">
-            {said ? ' · ' : ''}
-            {ago(Math.max(0, now - item.at))}
-          </span>
-          <Listen item={item} who={name} small />
-        </div>
-        {item.tone === 'question' ? (
-          // A question card: only the short title in bold, the question itself at reading size.
-          <>
-            {item.lead && <div className="fy-q-lead">{item.lead}</div>}
-            <div className="fy-q">{item.text}</div>
-          </>
-        ) : fold ? (
-          <button className="fy-line fy-line-btn" onClick={() => setUnfold((v) => !v)} aria-expanded={unfold}>
-            <span>{item.text}</span>
-            <span className="fy-line-more" aria-hidden>
-              {' '}
-              <Icon name="chevron" dir={unfold ? 'up' : 'down'} />
-            </span>
-          </button>
-        ) : (
-          <div className="fy-line"><FeedText text={item.text} item={item} /></div>
-        )}
-        <EvidenceLine item={item} />
-        <SoftwareResultLink item={item} />
-        {!!item.gauges?.length && <Gauges list={item.gauges} />}
-      </div>
-      {!!item.media?.length && <MediaStrip media={item.media} />}
-      <Actions item={item} fy={fy} />
-      {fold && (
-        <Collapse open={unfold}>
-          {item.body && (
-            <div className="tone">
-              <div className="in fy-mail-body">
-                <div className="fy-text"><FeedText text={item.body} item={item} /></div>
-              </div>
-            </div>
-          )}
-          {result && item.reply && <ReplyLine item={item} who={name} fy={fy} />}
-        </Collapse>
       )}
-      {/* The project is enough here: the title sits just above, and with it the placeholder was cut mid-word on a phone. */}
-      {!result && item.reply && <ReplyLine item={item} who={name} fy={fy} />}
-    </>
+    </button>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Improve (the one place colour goes wild), alert (sober), insight (a page you learn from), milestone, stat.
-
-function ImproveItem({ item, who, fy }: KindProps) {
-  return (
-    <>
-      <div className="in fy-pad">
-        <Who item={item} who={who} />
-        {item.title && <div className="fy-title">{item.title}</div>}
-        <div className="fy-text fy-lead">{item.text}</div>
-        <SoftwareResultLink item={item} />
-        {!!item.gauges?.length && <Gauges list={item.gauges} />}
-      </div>
-      <Actions item={item} fy={fy} />
-      {item.reply && <ReplyLine item={item} who={who} fy={fy} />}
-    </>
-  )
-}
-
-function AlertItem({ item, fy }: KindProps) {
+function ActionCard({ item, fy }: CardProps) {
   const t = useT(M)
   const open = useOpen(item)
-  const text = item.title && item.title !== item.text ? `${item.title} · ${item.text}` : item.text
-  return (
-    <>
-      <button className="fy-alert" onClick={open} disabled={!open} aria-label={open ? t.openIt(text) : undefined}>
-        <span className="in fy-alert-in">
-          <span className="fy-bang" aria-hidden>
-            <Icon name="bang" />
-          </span>
-          <span className="fy-alert-text">{text}</span>
-          {open && (
-            <span className="fy-go" aria-hidden>
-              <Icon name="arrow" dir="right" />
-            </span>
-          )}
-        </span>
-      </button>
-      <Actions item={item} fy={fy} />
-    </>
-  )
-}
-
-function InsightItem({ item, who, project, fy }: KindProps) {
-  const t = useT(M)
-  const [open, setOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-  const toggle = async () => {
-    if (open) return setOpen(false)
-    if (item.moreText) return setOpen(true)
-    setBusy(true)
-    setErr(null)
-    try {
-      await fy.more(item.id)
-      setOpen(true)
-    } catch (e) {
-      setErr(e instanceof Error && e.message ? e.message : t.failed)
-    } finally {
-      setBusy(false)
-    }
+  const busy = fy.acting(item.id)
+  if (item.kind === 'proposals') {
+    const c = item.cards?.[0]
+    if (!c) return null
+    const title = shortLine(c.title)
+    return (
+      <div className="in fy-c">
+        <p className="fy-say">{c.own ? t.yourIdea(title) : title}</p>
+        <div className="fy-taps">
+          <Tap label={c.accept || t.tapYes} busy={busy} onTap={() => void fy.act(item.id, 'accept', c.id)} />
+          <Tap quiet label={t.tapNotNow} busy={busy} onTap={() => void fy.act(item.id, 'refuse', c.id)} />
+        </div>
+      </div>
+    )
   }
+  const actions = item.actions?.slice(0, 2) ?? []
+  const answer = item.kind === 'session' && item.tone === 'question'
   return (
-    <div className="in fy-pad">
-      <Who item={item} who={project ?? who} />
-      {item.title && <div className="fy-title">{item.title}</div>}
-      <p className="fy-big">{item.text}</p>
-      <Collapse open={open && !!item.moreText}>
-        <div className="fy-text fy-more">{item.moreText}</div>
-      </Collapse>
-      {item.more && (
-        <button className="link fy-more-btn" onClick={() => void toggle()} aria-expanded={open} disabled={busy}>
-          {busy ? (
-            <>
-              {t.searching}
-              <span className="dots" aria-hidden>
-                <i />
-                <i />
-                <i />
-              </span>
-            </>
-          ) : open ? (
-            t.less
-          ) : (
-            t.more
-          )}
-        </button>
-      )}
-      {err && (
-        <Notice eventId={noticeKey('error:foryou', location.pathname, location.hash, err)} className="meta" role="alert">
-          ! {err}
-        </Notice>
-      )}
+    <div className="in fy-c">
+      <p className="fy-say">{cardLine(item)}</p>
+      <div className="fy-taps">
+        {actions.length
+          ? actions.map((a, i) => <Tap key={a.id} quiet={i > 0} label={busy ? t.sending : a.label} busy={busy} onTap={() => void fy.act(item.id, a.id)} />)
+          : open && <Tap label={answer ? t.tapAnswer : t.tapLook} onTap={open} />}
+      </div>
     </div>
   )
 }
 
-function MilestoneItem({ item, who, project }: KindProps) {
-  return (
-    <div className="in fy-pad">
-      <Who item={item} who={project ?? who} />
-      {item.title && <div className="fy-title">{item.title}</div>}
-      <div className="fy-shift">{item.text}</div>
-      <SoftwareResultLink item={item} />
-        {!!item.gauges?.length && <Gauges list={item.gauges} />}
-    </div>
-  )
-}
-
-/** The morning recap of sleep mode: what each ghost really did overnight, one line each, tap to open it. */
-function Recap({ item }: { item: ForYouItem }) {
-  const t = useT(SM)
-  const open = useForYouOpen()
-  const { now } = useApp()
-  const r = item.recap!
-  const glyph: Record<ForYouRecapLine['state'], ReactNode> = {
-    done: <Icon name="check" />,
-    failed: <Icon name="close" />,
-    stopped: <Icon name="bang" />,
-    waiting: <Icon name="waits" />,
-    working: <Icon name="star" />,
-    ended: <Icon name="idle" />,
-  }
-  return (
-    <>
-      <div className="meta">{t.recapRange(at(r.from, now), at(r.to, now))}</div>
-      {r.lines.length > 0 && (
-        <ul className="fy-recap">
-          {r.lines.map((l, i) => (
-            <li key={`${l.src}:${l.title}:${l.at}:${i}`}>
-              <button type="button" className="fy-recap-line" disabled={!l.open} onClick={() => l.open && open(l.open, l.projectId)}>
-                <span className={`st-${l.state}`} aria-hidden>
-                  {glyph[l.state]}
-                </span>
-                <span className="fy-recap-text">
-                  <span className="fy-recap-title">
-                    {l.title} · <span className="meta">{t[`recap_${l.state}`]}</span>
-                  </span>
-                  {l.detail && <span className="fy-recap-detail">{l.detail}</span>}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {r.more > 0 && <div className="meta">{t.recapMore(r.more)}</div>}
-    </>
-  )
-}
-
-function StatItem({ item, who, project, fy }: KindProps) {
-  return (
-    <>
-      <div className="in fy-pad">
-        <Who item={item} who={project ?? who} />
-        {item.title && <div className="fy-title">{item.title}</div>}
-        {item.text && <div className="fy-text"><FeedText text={item.text} item={item} /></div>}
-        {item.recap && <Recap item={item} />}
-        <SoftwareResultLink item={item} />
-        {!!item.gauges?.length && <Gauges list={item.gauges} />}
-      </div>
-      <Actions item={item} fy={fy} />
-    </>
-  )
-}
-
-const KINDS: Record<ForYouItem['kind'], (p: KindProps) => ReactNode> = {
-  media: MediaItem,
-  boss: BossItem,
-  mail: MailItem,
-  proposals: Proposals,
-  session: SessionItem,
-  improve: ImproveItem,
-  alert: AlertItem,
-  insight: InsightItem,
-  milestone: MilestoneItem,
-  stat: StatItem,
-}
-
-/** The band's extra classes: an alert and a milestone are drawn inverted (ink band, coloured words). */
-const bandClass = (item: ForYouItem) => `band fy-k-${item.kind} fy-t-${item.tone}${item.kind === 'alert' || item.kind === 'milestone' ? ' invert' : ''}${item.seen ? '' : ' fy-unseen'}${item.workstream?.kind === 'self-improvement' ? ' recursive-identity' : ''}`
-
-/** One line of an item, for the thin strips of the top band's preview. */
-const oneLine = (item: ForYouItem) => (item.kind === 'proposals' ? (item.cards?.[0]?.title ?? item.text) : item.kind === 'media' ? item.title || item.text : item.text || item.title || '')
-
-function ExistingWork({ item, who, fy }: { item: ForYouItem; who: string; fy: ForYouStore }) {
+function ProgressCard({ item }: CardProps) {
   const t = useT(M)
-  const open = useForYouOpen()
-  const work = item.work!
-  const target = work.open ?? item.open
-  // Handed to weevboss: « sent », then its answer right here when it comes; its thread is one tap away.
-  const boss = target?.page === 'boss'
-  // What the card was about stays readable above (two lines at most), so the tap never lands on a bare status.
-  const about = item.title || item.text
-  // Its answer in a sentence or two, plain (no markdown): the whole of it is in the thread.
-  // (An older server sends it on one line: its list items, « … : - **If so:** … - **If not:** … », are put back on
-  // their own; only a reply on one line with two of them at least, so a lone dash in a sentence stays where it is.)
-  const items = /[ \t]+[-*•][ \t]+(?=\*\*|\p{Lu})/gu
-  const listed = !!work.reply && !work.reply.includes('\n') && (work.reply.match(items)?.length ?? 0) >= 2
-  const raw = (listed ? work.reply!.replace(items, '\n\n- ') : work.reply) ?? ''
-  const reply = boss && raw ? plainSummary(raw, 280) ?? plain(raw).split('\n')[0] : ''
-  return <><div className="in">
-    <Who item={item} who={who} />
-    {about && <div className={`fy-text fy-work-about${item.title ? ' strong' : ''}`}>{about}</div>}
-    {reply
-      ? <><p className="meta fy-work-from">{t.workBossReplied}</p><p className="fy-text fy-work-reply">{reply}</p></>
-      : <p className="fy-text" role="status">{boss && work.status === 'requested' ? t.workSentBoss : t[`work_${work.status}`]}</p>}
-    {target && <div className="fy-acts"><button type="button" className="fy-btn" onClick={() => open(target, item.projectId)}>{boss ? t.workOpenBoss : t.workOpen}</button></div>}
-  </div>
-    {!!item.actions?.length && <Actions item={item} fy={fy} />}
-    {(!!item.media?.length || !!item.composition) && <InlineMediaFormats item={item} />}
-  </>
+  const open = useOpen(item)
+  const num = item.kind === 'milestone' || item.kind === 'stat' ? bigNumber(item) : null
+  const line = num ? shortLine(num.rest || (item.recap ? t.doneOvernight : '')) : cardLine(item)
+  return (
+    <button type="button" className="in fy-c fy-hit" onClick={open} disabled={!open}>
+      {num && <span className="fy-num tab">{num.n}</span>}
+      {line && <span className={num ? 'fy-say' : 'fy-say fy-shipped'}>{line}</span>}
+    </button>
+  )
 }
 
-/** One item of the stream. compact: a thin strip (speaker · one line), nothing to tap inside. */
+function LearnCard({ item }: CardProps) {
+  const open = useOpen(item)
+  return (
+    <button type="button" className="in fy-c fy-hit" onClick={open} disabled={!open}>
+      <span className="fy-learn">{shortLine(item.text || item.title)}</span>
+    </button>
+  )
+}
+
+function ThinkCard({ item }: CardProps) {
+  const open = useOpen(item)
+  return (
+    <button type="button" className="in fy-c fy-hit" onClick={open} disabled={!open}>
+      <span className="fy-think">{cardLine(item)}</span>
+    </button>
+  )
+}
+
+function VisualCard({ item }: CardProps) {
+  const media = item.resultGroup?.final ? [item.resultGroup.final] : (item.media ?? [])
+  const caption = shortLine(item.title || item.text, 80)
+  return (
+    <>
+      {item.composition && !item.resultGroup ? <InlineMediaFormats item={item} /> : !!media.length && <MediaStrip media={media} />}
+      {caption && (
+        <div className="in fy-caption">
+          <p className="fy-say small">{caption}</p>
+        </div>
+      )}
+    </>
+  )
+}
+
+const CARDS: Record<ForYouFormat, (p: CardProps) => ReactNode> = {
+  action: ActionCard,
+  progress: ProgressCard,
+  learn: LearnCard,
+  think: ThinkCard,
+  visual: VisualCard,
+}
+
+/** The band: its layout and tone only (an alert stays calm: never inverted, never red). */
+const bandClass = (item: ForYouItem, format: ForYouFormat) => `band fy-f-${format} fy-t-${item.tone === 'alert' ? 'question' : item.tone}${item.seen ? '' : ' fy-unseen'}${item.workstream?.kind === 'self-improvement' ? ' recursive-identity' : ''}`
+
+/** One item of the stream. compact: a thin strip (one line), nothing to tap inside. Hidden when it has no layout. */
 export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: boolean }) {
-  const t = useT(M)
-  const te = useT(EM)
   const fy = useForYou()
   const { hidden, dismiss } = useNotice(feedNoticeKey(item))
-  const { colors, snap } = useApp()
+  const { colors } = useApp()
   const authors = useAuthors()
-  const project = item.projectId ? snap.projects.find((p) => p.id === item.projectId)?.name : undefined
-  const who = itemWho(item, authors, project)
   const style = itemSlot(item, colors, authors)
   const band = useRef<HTMLElement>(null)
   const inView = useInView(band, 0.5, !compact)
@@ -902,48 +327,29 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
     return () => clearTimeout(timer)
   }, [compact, item.id, item.seen, inView, markSeen])
 
+  const format = formatOf(item)
   const closable = closableFeedNotice(item)
-  const evidence = shownEvidence(item.evidence)
-  if (hidden || rawEngineeringNotice(item.id, item.text)) return null
+  if (!format || hidden || rawEngineeringNotice(item.id, item.text)) return null
   if (compact) {
     return (
-      <div className={`${bandClass(item)} fy-strip${closable ? ' notice-shell' : ''}`} style={style} data-fy={item.id}>
+      <div className={`${bandClass(item, format)} fy-strip${closable ? ' notice-shell' : ''}`} style={style} data-fy={item.id}>
         {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
         <div className="in fy-strip-in">
-          <span className="dot fy-dot" aria-hidden />
-          {!item.work && item.kind === 'proposals' && (
-            <span className="fy-plus" aria-hidden>
-              <Icon name="plus" />
-            </span>
-          )}
-          <span className="fy-who-name">{who}</span>
-          {/* A strip keeps the result's label first, so a claim never reads as more than its evidence. */}
-          {!item.work && evidence && <span className="fy-ev-strip">{te[evidence.level]}{evidence.limits?.length ? ' ◦' : ''} · </span>}
-          <span className="fy-strip-text ellipsis">{item.work ? t[`work_${item.work.status}`] : oneLine(item)}</span>
+          <span className="fy-strip-text ellipsis">{item.kind === 'proposals' && item.cards?.[0]?.own ? shortLine(item.cards[0].title) : cardLine(item)}</span>
         </div>
       </div>
     )
   }
-  const Kind = KINDS[item.kind]
-  // Only a real rewrite has an original to show (existing work repeats its own title and text above).
-  const original = item.editorial?.original
+  const Card = CARDS[format]
   const err = fy.error(item.id)
   return (
-    <article ref={band} className={`${bandClass(item)} fy-item${closable ? ' notice-shell' : ''}${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-kind={item.kind}>
+    <article ref={band} className={`${bandClass(item, format)} fy-item${closable ? ' notice-shell' : ''}${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-format={format}>
       {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
-      <TranslationStatus item={item} />
-      {item.work ? <ExistingWork item={item} who={who} fy={fy} /> : Kind && <Kind item={item} who={who} project={project} inView={inView} fy={fy} />}
-      {original && (
-        <details className="fy-editorial in">
-          <summary className="meta">{t.original}</summary>
-          {original.title && <div className="fy-text strong">{original.title}</div>}
-          <div className="fy-text">{original.text}</div>
-        </details>
-      )}
+      <Card item={item} fy={fy} />
       <OutboxStatus scope={`/api/foryou/${encodeURIComponent(item.id)}/`} eventId={feedNoticeKey(item)} />
       {err && (
         <Notice eventId={noticeKey('error:foryou', location.pathname, location.hash, err)} className="fy-err" role="alert">
-          <div className="in meta">! {err}</div>
+          <div className="in meta">{err}</div>
         </Notice>
       )}
     </article>
@@ -1032,22 +438,6 @@ function ForYouPulse({ pulse }: { pulse: ForYouPulse }) {
   )
 }
 
-function Participants({ list, sel, onPick }: { list: string[]; sel: string; onPick: (who: string) => void }) {
-  const t = useT(M)
-  const authors = useAuthors()
-  const row = useRef<HTMLDivElement>(null)
-  useOwnSwipe(row)
-  const name = (w: string) => (w === WHO_ALL ? t.whoAll : w === 'weevboss' ? w : w === 'session' ? t.whoSessions : w === 'media' ? t.whoMedia : w === 'ideas' ? t.whoIdeas : authors(w).name)
-  return (
-    <div ref={row} className="fy-people" role="group" aria-label={t.participants}>
-      {list.map((w) => (
-        <button key={w} className={w === sel ? 'word on' : 'word'} aria-pressed={w === sel} onClick={() => onPick(w)}>
-          {name(w)}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 /** How long the word flashed where an acted item was stays, before the next ones close the gap (seconds). */
 const LEFT_HOLD = 0.62
@@ -1133,7 +523,7 @@ function lookTime(at: number): string {
 
 /** « Pour toi » in full screen. who: the participant isolated at opening (else the one chosen last time). */
 const feedScroll = new Map<string, number>()
-export function ForYouPage({ who }: { who?: string }) {
+export function ForYouPage(_: { who?: string } = {}) {
   const t = useT(M)
   const { back } = useApp()
   const fy = useForYou()
@@ -1142,7 +532,6 @@ export function ForYouPage({ who }: { who?: string }) {
   const heading = useRef<HTMLHeadingElement>(null)
   usePageChrome('agent', page)
   const move = usePageMotion()
-  const [sel, setSel] = useState(() => who ?? read(WHO_KEY) ?? WHO_ALL)
   const [lastLook] = useState(() => Number(read(LOOK_KEY)) || 0)
   const { showFresh, setReading } = fy
   useLayoutEffect(() => {
@@ -1150,24 +539,15 @@ export function ForYouPage({ who }: { who?: string }) {
     showFresh()
     heading.current?.focus({ preventScroll: true })
     write(LOOK_KEY, String(Date.now()))
-    const y = feedScroll.get(sel) ?? 0
+    const y = feedScroll.get(SCROLL_KEY) ?? 0
     if (body.current) body.current.scrollTop = y
     setReading(y > 48)
     return () => setReading(false)
   }, [showFresh, setReading])
 
   const toTop = (smooth: boolean) => body.current?.scrollTo?.({ top: 0, behavior: smooth && !reduced() ? 'smooth' : 'auto' })
-  const pick = (w: string) => {
-    const next = w === sel ? WHO_ALL : w
-    setSel(next)
-    write(WHO_KEY, next)
-    toTop(false)
-  }
-  const people = useMemo(() => {
-    const list = participants(fy.items)
-    return list.includes(sel) ? list : [...list, sel]
-  }, [fy.items, sel])
-  const shown = useMemo(() => fy.items.filter((i) => matchesWho(i, sel)), [fy.items, sel])
+  // One single stream: no filter, no section; only items that have a layout, at most STREAM_CAP of them.
+  const shown = useMemo(() => streamOf(fy.items), [fy.items])
 
   return (
     <motion.div ref={page} className="page fy-page" style={slot('agent')} {...move} role="dialog" aria-modal="true" aria-label={t.title}>
@@ -1179,18 +559,13 @@ export function ForYouPage({ who }: { who?: string }) {
             </span>
           </button>
           <div className="fy-words">
-            <button className="word" onClick={() => focusBoss({ flash: false })} aria-label={t.openBoss}>
-              weevboss
-            </button>
-            <span className="fyt-sep" aria-hidden>·</span>
             <h1 ref={heading} tabIndex={-1} className="word on">
               {t.title}
             </h1>
           </div>
         </div>
-        <Participants list={people} sel={sel} onPick={pick} />
       </div>
-      <div ref={body} className="page-body fy-body" data-scroll onScroll={(e) => { feedScroll.set(sel, e.currentTarget.scrollTop); setReading(e.currentTarget.scrollTop > 48) }}>
+      <div ref={body} className="page-body fy-body" data-scroll onScroll={(e) => { feedScroll.set(SCROLL_KEY, e.currentTarget.scrollTop); setReading(e.currentTarget.scrollTop > 48) }}>
         <AnimatePresence initial={false}>
           {fy.fresh > 0 && (
             <Notice key="fresh-notice" eventId={noticeKey('fresh-items', fy.feed?.items.map(feedNoticeKey))}>
@@ -1214,17 +589,17 @@ export function ForYouPage({ who }: { who?: string }) {
           )}
         </AnimatePresence>
         {fy.feed && <ForYouPulse pulse={fy.feed.pulse} />}
-        <Stream key={sel} items={shown} />
+        <Stream items={shown} />
         {fy.feed &&
           (shown.length ? (
             <div className="fy-end">
               <div className="in meta">
-                <Icon name="check" /> {lastLook ? t.upToDateSince(lookTime(lastLook)) : t.upToDate}
+                {lastLook ? t.upToDateSince(lookTime(lastLook)) : t.upToDate}
               </div>
             </div>
           ) : (
             <div className="fy-end fy-quiet">
-              <div className="in meta">{sel === WHO_ALL ? t.empty : t.emptyWho}</div>
+              <div className="in meta">{t.empty}</div>
             </div>
           ))}
         <div className="fill" />

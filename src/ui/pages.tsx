@@ -12,8 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
-import { Collapse, Composer, Line, Messages, StatusChar, Working, type Attachment } from './bits'
-import { Background } from './subagents'
+import { Collapse, Composer, Line, Messages, StatusChar, type Attachment } from './bits'
 import { SessionArchiveAction } from './session-archive'
 import NM from '../i18n/notices'
 import { SessionQuestion } from './session-question'
@@ -295,11 +294,9 @@ function SessionPage({ id }: { id: string }) {
         <>
         {s.progress && <RemoteProgress progress={s.progress} />}
 
-        <Background session={s} />
-
         <SessionQuestion session={s} onError={setErr} />
 
-        {(s.turnWorking ?? (s.status === 'working' && !s.background)) && <Working author="" since={s.workStartedAt} />}
+        {/* No helpers row and no « working » row: the status line at the top says it, so the last message sent stays last. */}
 
         <SessionRelay session={s} onError={setErr} />
 

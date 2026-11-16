@@ -321,13 +321,13 @@ describe('ligne de session : compte d’arrière-plan', () => {
 })
 
 describe('page de session : méta et fil', () => {
-  it('la méta ne répète pas le compte d’arrière-plan : la bande du fil le dit', async () => {
+  it('pas de rangée « aides » dans le fil d’une session : le dernier message envoyé reste en bas', async () => {
     const s = session([sub('a'), sub('b', { kind: 'shell' })])
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [s])
-    await flush() // la bande d'arrière-plan arrive avec le fil (ici : détail absent)
+    await flush()
     expect(host.textContent).not.toContain('arrière-plan')
-    expect(text(host.querySelector('[data-testid=background] .row'))).toBe('aides · 2 au travail')
-    expect(rows()).toHaveLength(2)
+    expect(host.querySelector('[data-testid=background]')).toBeNull()
+    expect(host.querySelector('.msg.working')).toBeNull()
   })
 
   it('rien dans la méta quand rien ne tourne à côté', () => {

@@ -23,7 +23,7 @@ const GAP = S + 0.06
 const EDGE = 18
 const PRESS_MS = 420
 /** Never long-pressed: what has its own press (buttons, links, fields) and the text of messages (selection). */
-const NO_PRESS = 'button, a, input, textarea, select, label, [contenteditable], [role="button"], [role="slider"], [data-mid], .h24, .msg'
+const NO_PRESS = 'button, a, input, textarea, select, label, [contenteditable], [role="button"], [role="slider"], [data-mid], .h24, .msg, .peek'
 
 const reduced = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const go = (mv: MotionValue<number>, to: number, velocity = 0) => {

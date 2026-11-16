@@ -150,7 +150,7 @@ describe('auto drawer', () => {
   it('collapsed automations keeps title/activity only, with language in settings and creation inside the hidden body', async () => {
     render(snap([opt({ id: 'draft', draft: true, title: 'new automation' })]), false)
     expect(head().querySelector('.h24-title')?.textContent).toBe('automations')
-    expect(head().querySelector('.h24-activity')).not.toBeNull()
+    expect(head().querySelector('.h24-activity, .auto-sum')).toBeNull() // no caption, no square marker
     expect(host.querySelector('.h24-top .h24-create')).toBeNull()
     expect(host.querySelector('.h24-top .h24-heading .h2')).toBeNull()
     expect(host.querySelector('#h24-body')?.hasAttribute('hidden')).toBe(true)
@@ -194,24 +194,20 @@ describe('auto drawer', () => {
 
   it('an unfinished conversation stays available without a validation button', () => {
     render(snap([opt({ id: 'draft', title: 'new automation', draft: true, talk: [{ who: 'auto', text: 'What do you want to automate?', at: NOW }] })]))
-    expect(host.querySelector('[data-h24="draft"]')!.textContent).toContain('draft — continue the conversation')
+    expect(host.querySelector('[data-h24="draft"]')!.textContent).not.toContain('draft — continue the conversation')
     expect(host.querySelector('[data-h24="draft"] .chars')).toBeNull()
-    expect(head().querySelector('.auto-sum')!.textContent).not.toContain('to approve')
+    expect(head().getAttribute('aria-label')).not.toContain('to approve')
   })
 
   it('the head says what runs (AutoMark, its title, +N), else the next trigger, else what waits for a yes', () => {
     render(snap([running(), running({ id: 'r2', title: 'A second one' }), opt({ id: 'p' })]))
-    expect(head().querySelector('.auto-sum .auto-mark')).not.toBeNull()
-    expect(head().querySelector('.auto-sum .txt')!.textContent).toBe(names()[0])
-    // The count is never the part that gets cut.
-    expect(head().querySelector('.auto-sum .more')!.textContent).toBe('+1')
+    expect(head().getAttribute('aria-label')).toContain(`${names()[0]} +1`)
     render(snap([opt({ id: 'p' }), opt({ id: 'p2' })]))
-    expect(head().querySelector('.auto-sum')!.textContent).toBe('2 to approve')
     expect(head().getAttribute('aria-label')).toContain('2 to approve')
     render(snap([], [timer]))
-    expect(head().querySelector('.auto-sum')!.textContent).toMatch(/^next \d\d:\d\d$/)
+    expect(head().getAttribute('aria-label')).toMatch(/next \d\d:\d\d/)
     render(snap([]))
-    expect(head().querySelector('.auto-sum')!.textContent).toBe('')
+    expect(head().querySelector('.auto-sum')).toBeNull()
     expect(host.querySelector('.empty')!.textContent).toBe('nothing')
   })
 
@@ -219,7 +215,7 @@ describe('auto drawer', () => {
     render(snap([running(), task({ id: 'q', waiting: 'load' }), opt({ id: 'p' })], [timer]))
     for (const sel of ['.auto-machine', '.auto-tag', '.auto-props', '.auto-prop-strip', '.auto-gauge', '.auto-cat', '.auto-grp']) expect(host.querySelector(sel), sel).toBeNull()
     // Why it waits: a plain word in its meta line.
-    expect(host.querySelector('[data-h24="q"] .meta')!.textContent).toContain('machine busy')
+    expect(host.querySelector('[data-h24="q"] .auto-hit')!.getAttribute('aria-label')).toContain('machine busy')
   })
 
   it('one band per automation, running first, AutoMark on the running one; a tap opens its page, the drawer stays', async () => {
@@ -288,7 +284,7 @@ describe('auto drawer', () => {
     render(snap([task({ id: 'z', paused: true, waiting: 'paused', title: 'Z' }), task({ id: 'f', waiting: 'time', startAt: NOW + 3600_000, every: 86_400_000, runs: [{ at: NOW - 3600_000, startedAt: NOW - 3700_000, ok: false }], title: 'F' })]))
     expect(host.querySelector('[data-h24="z"]')!.classList.contains('paused')).toBe(true)
     expect(host.querySelector('[data-h24="f"] .st .alert')).not.toBeNull()
-    expect(host.querySelector('[data-h24="f"] .meta')!.textContent).toContain('failed 1h ago')
+    expect(host.querySelector('[data-h24="f"] .auto-hit')!.getAttribute('aria-label')).toContain('failed 1h ago')
   })
 
   it('clears the old fold memory', () => {
@@ -301,10 +297,9 @@ describe('auto drawer', () => {
 it('labels quota retry eligibility instead of presenting it as a requested schedule',async()=>{
  const item=task({id:'retry',title:'Daily review',every:86_400_000,waiting:'later',retryAt:NOW+3600_000,startAt:NOW+3600_000})
  render(snap([item]))
- expect(host.querySelector('.h24-status')?.textContent).toContain('waiting to retry')
- expect(host.querySelector('.h24-status')?.textContent).not.toMatch(/\d\d:\d\d/)
- expect(host.querySelector('[data-h24="retry"] .act')?.textContent).toBe('')
- expect(host.querySelector('[data-h24="retry"] .meta')?.textContent).toContain('every day')
+ expect(host.querySelector('[data-h24="retry"] .act')?.textContent).toBe('waiting to retry')
+ expect(host.querySelector('[data-h24="retry"] .act')?.textContent).not.toMatch(/\d\d:\d\d/)
+ expect(host.querySelector('[data-h24="retry"] .auto-hit')?.getAttribute('aria-label')).toContain('every day')
  expect(item.window).toBeUndefined();expect(item.notBefore).toBeUndefined()
 })
 
@@ -313,7 +308,6 @@ it('does not promote a legacy draft from an English ready claim in its discussio
  const original=JSON.stringify(draft)
  render(snap([draft]))
  const card=host.querySelector('[data-h24="original"]')!
- expect(card.textContent).toContain('draft — continue the conversation')
  expect(card.textContent).not.toContain('Everything is ready')
  expect(card.querySelector('.chars')).toBeNull()
  expect(JSON.stringify(draft)).toBe(original)

@@ -1,6 +1,6 @@
 import { sourceAccessIssue } from './source-access'
 import { AnimatePresence, animate, motion, useDragControls, useMotionValue, useTransform, type MotionValue } from 'motion/react'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Optimizer } from '../../shared/api.ts'
 import { isSettled, stableOrder, useApp } from './app-context'
 import { selfRepo } from './recursive-identity'
@@ -158,17 +158,6 @@ export function H24Rail() {
   const next = live.filter((x) => x.nextAt && x.nextReason !== 'retry' && x.state !== 'running').sort((a, b) => a.nextAt! - b.nextAt!)[0]
   const waiting = live.find(x => ['waiting', 'queued', 'scheduled'].includes(x.state))
   const condition = waiting ? autoCondition(waiting) : ''
-  const summary: ReactNode = running.length ? (
-    <>
-      <AutoMark />
-      <span className="txt">{running[0].title}</span>
-      {running.length > 1 && <span className="more">+{running.length - 1}</span>}
-    </>
-  ) : next ? (
-    <span className="txt">{nextTimeText(next, now, true)}</span>
-  ) : proposals.length ? (
-    <span className="txt">{t.toValidateN(proposals.length)}</span>
-  ) : condition ? <span className="txt">{condition}</span> : null
   const said = running.length ? `${running[0].title}${running.length > 1 ? ` +${running.length - 1}` : ''}` : next ? nextTimeText(next, now, true) : proposals.length ? t.toValidateN(proposals.length) : condition || t.nothing
 
   return (
@@ -218,7 +207,7 @@ export function H24Rail() {
               <span className="h24-grip" aria-hidden />
               <span className="h24-heading" aria-hidden>
                 <span className="h24-title">{t.title}</span>
-                <span className="h24-status"><span className="h24-activity" data-busy={running.length > 0 || rounding} aria-hidden><i /></span><span className="meta auto-sum">{summary}</span></span>
+                {/* No small caption under the title: the rows say it (Scarville, 2026-11-16); the button's label still reads it out. */}
               </span>
             </button>
           </div>
@@ -244,7 +233,6 @@ export function H24Rail() {
                       <Icon name="bubble" />
                     </span>
                     <span className="auto-name">{o.title}</span>
-                    <span className="meta sub ellipsis">{k.busy.has(o.id) ? t.preparingProposal : t.draftContinue}</span>
                   </div>
                 </motion.section>
               ))}
@@ -448,8 +436,8 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
           <Glyph {...glyphOf(x)} />
         </span>
         <span className="auto-name">{x.title}</span>
-        <span className={`act${x.nextReason === 'retry' ? ' retry-time' : ''}`}>{right}</span>
-        <span className="meta sub ellipsis">{meta}</span>
+        {/* One clear state on the right (next time, run time, or the state in a word); no caption line under the name. */}
+        <span className={`act${x.nextReason === 'retry' ? ' retry-time' : ''}`}>{right || (x.nextReason === 'retry' ? t.retryWaiting : t[`state_${x.state}`])}</span>
       </div>
     </motion.section>
   )

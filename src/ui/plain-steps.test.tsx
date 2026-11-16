@@ -24,7 +24,7 @@ it('collapsed session thread: plain sentences only, no path, command, flag or to
   await act(async () => root.render(<Messages session plain messages={thread} author="claude" />))
   const head = host.querySelector('.steps-head')!
   expect(head.getAttribute('aria-expanded')).toBe('false')
-  expect(head.textContent).toMatch(/Looks through the code, edits the code/)
+  expect(head.textContent).toMatch(/Reading the code, editing the code/)
   expect(head.textContent).not.toMatch(FORBIDDEN)
   expect(host.querySelector('.steps-list')).toBeNull()
   expect(host.querySelector('.chatter summary')!.textContent!.length).toBeLessThan(112)
@@ -34,7 +34,7 @@ it('expanded: one plain line per goal; raw commands and results only inside clos
   await act(async () => root.render(<Messages session plain messages={thread} author="claude" />))
   await act(async () => host.querySelector<HTMLButtonElement>('.steps-head')!.click())
   const lines = [...host.querySelectorAll('.steps-list .step-head .text')].map((e) => e.textContent)
-  expect(lines).toEqual(['Looks through the code · 3', 'Searches the code', 'Edits the pay button code', 'Runs the tests'])
+  expect(lines).toEqual(['Reading the code · 3', 'Searching the code', 'Editing the pay button code', 'Running tests'])
   for (const l of lines) expect(l).not.toMatch(FORBIDDEN)
   for (const d of host.querySelectorAll('.step-detail')) expect((d as HTMLDetailsElement).open).toBe(false)
   expect(host.querySelector('.step-content')!.textContent).toContain('CheckoutForm.tsx')
@@ -44,7 +44,7 @@ it('expanded: one plain line per goal; raw commands and results only inside clos
 it('French mode speaks French, and the weevboss thread (not plain) is untouched', async () => {
   setLang('fr')
   await act(async () => root.render(<Messages session plain messages={thread} author="claude" />))
-  expect(host.querySelector('.steps-head')!.textContent).toMatch(/Parcourt le code/)
+  expect(host.querySelector('.steps-head')!.textContent).toMatch(/Lecture du code/)
   await act(async () => root.render(<Messages messages={thread} author="weevboss" />))
   expect(host.querySelector('.steps-head')!.textContent).toMatch(/6 étapes/)
   expect(host.querySelector('.chatter')).toBeNull()
@@ -61,9 +61,9 @@ it('header live note: plain words, 6 max, never a path or a command, calm when n
   expect(note({ now: 'fixing i18n labels and the evidence strings for every page' }).text).toBe('fixing i18n labels and the evidence…')
   // a raw tool step in `now` is never shown: the last action, in plain words, takes over
   const raw = note({ now: 'cd ~/projects/weevils-wt/f && npm run check' }, thread.at(-1))
-  expect(raw).toEqual({ text: 'Runs the tests', state: 'working' })
-  expect(note({ now: 'tail -30 /tmp/evidence-check.log' }, m('x', 'event', 'Read · /home/user/a/PayButton.tsx')).text).toBe('Reads the pay button code')
-  expect(note({ now: '' }).text).toBe('Works on it')
+  expect(raw).toEqual({ text: 'Running tests', state: 'working' })
+  expect(note({ now: 'tail -30 /tmp/evidence-check.log' }, m('x', 'event', 'Read · /home/user/a/PayButton.tsx')).text).toBe('Reading the pay button code')
+  expect(note({ now: '' }).text).toBe('Working')
   for (const l of [note({ now: 'cd /x' }, thread.at(-1)).text, note({ now: 'ls -la ~/x' }).text]) expect(l).not.toMatch(/\/|~|--|npm|cd /)
   // calm states: a stale `now` is ignored once nothing runs
   expect(note({ status: 'done', now: 'running the full check' })).toEqual({ text: 'done', state: 'calm' })

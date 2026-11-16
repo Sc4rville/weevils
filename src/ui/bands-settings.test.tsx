@@ -111,6 +111,7 @@ describe('open project band', () => {
     expect(host.textContent).not.toContain('npm ERR!')
     expect(rows().find((r) => r.includes('Render'))).toBeUndefined()
     expect(rows().find((r) => r.startsWith('shop'))).toBeUndefined()
-    expect(host.querySelector('.chars')).toBeNull()
+    // Only « / » (the repo explorer) stays by the name.
+    expect([...host.querySelectorAll('.chars button')].map((b) => b.getAttribute('aria-label'))).toEqual([expect.stringMatching(/files/)])
   })
 })

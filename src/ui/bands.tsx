@@ -628,14 +628,21 @@ export function ProjectBand({ project }: { project: Project }) {
           </AnimatePresence>
         </button>
         {/* Next to the name: nothing, unless a session was cut and needs a restart (Scarville, 2026-11-16: the era of the big clean-up). */}
-        {shown !== 'mini' && cut.length > 0 && (
+        {shown !== 'mini' && (cut.length > 0 || project.repos.length > 0) && (
           <div className="chars">
+            {project.repos.length > 0 && (
+              <button className="ch" aria-label={t.filesOf(project.name)} onClick={() => push({ kind: 'files', projectId: project.id })}>
+                <Icon name="slash" />
+              </button>
+            )}
+            {cut.length > 0 && (
             <button className="ch alert-ch" aria-label={t.cutAria(cut.length)} onClick={() => push({ kind: 'session', id: cut[0].id })}>
               <span>
                 <G c="×" />
                 <sup>{cut.length}</sup>
               </span>
             </button>
+            )}
           </div>
         )}
       </motion.div>

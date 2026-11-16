@@ -2782,10 +2782,7 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 /* What isn't working steps back: a quiet project and its resting sessions at half opacity. Waiting or cut stays full. */
 .band[data-project] > .in.head .name, .session-item, .repo { transition: opacity .4s ease; }
 .band[data-project] { transition: background-color .4s ease; }
-/* A resting project: its whole colour steps back (faded towards the page), the name stays legible on it. */
-.band[data-project]:not(.busy) { background-color: color-mix(in oklab, var(--c) 45%, #fff); }
-[data-theme='dark'] .band[data-project]:not(.busy) { background-color: color-mix(in oklab, var(--c) 45%, #000); }
-.band[data-project]:not(.busy) > .in.head .name { opacity: .75; }
+.band[data-project]:not(.busy) > .in.head .name { opacity: .45; }
 .repo.resting { opacity: .45; }
 .session-item:has(> .row:not(.live, .tone, .cut)) { opacity: .45; }
 .session-item:has(> .cut-wrap) { opacity: 1; }

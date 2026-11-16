@@ -2850,9 +2850,9 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 /* Session header: the mini-macro sits beside the title, same row, never pushes anything down. */
 .session-context-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .session-context-row .session-context { flex: 0 1 auto; min-width: 0; max-width: 62%; }
-.session-now { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .68rem; line-height: 1; padding: 3px 8px; border: 1px solid color-mix(in oklab, currentColor 35%, transparent); border-radius: 999px; opacity: .65; }
+.session-now { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .68rem; line-height: 1; padding: 3px 0; opacity: .65; }
 .session-now[data-state="working"] { opacity: .75; }
-.session-now[data-state="calm"] { border-color: transparent; padding-inline: 0; opacity: .5; }
+.session-now[data-state="calm"] { opacity: .5; }
 /* A long agent message in a project session: its plain summary reads as body text; the full text opens below. */
 .reply-fold > .step-head { list-style: none; align-items: flex-start; }
 .reply-fold > .step-head .text { font-size: inherit; line-height: inherit; }

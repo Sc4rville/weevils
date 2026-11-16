@@ -21,10 +21,12 @@ export interface NumberDeps {
 }
 
 const short = (s: string, n = 48) => {
-  const t = s.replace(/[.!]+$/, '').trim()
+  let t = s.replace(/[.!]+$/, '').trim()
+  const head = t.split(/\s*[:;,—(]\s*/)[0]
+  if (head.length >= 12) t = head
   if (t.length <= n) return t
   const cut = t.slice(0, n)
-  return cut.slice(0, cut.lastIndexOf(' ')).replace(/[\s,;:–—-]+$/, '')
+  return cut.slice(0, cut.lastIndexOf(' ')).replace(/(?:\s+(?:a|an|the|to|of|and|or|for|from|with|their|your|its|in|on))+$/i, '').replace(/[\s,;:–—-]+$/, '')
 }
 
 /** this week vs last: the words of the change, or '' when nothing moved. */
@@ -91,7 +93,9 @@ export class ForYouNumbers {
       res({ name: path.basename(dir), tw: ts.filter((t) => t >= since).length, lw: ts.filter((t) => t < since).length })
     }))
     void Promise.all(repos.slice(0, 60).map(one)).then((all) => {
-      this.git.items = all.filter((r) => r.tw >= 3 && change(r.tw, r.lw)).sort((a, b) => b.tw - a.tw).slice(0, 2).map((r) => ({
+      // A clone of the same repo has the same history: one card per history.
+      const seen = new Set<string>()
+      this.git.items = all.filter((r) => r.tw >= 3 && change(r.tw, r.lw) && !seen.has(`${r.tw}:${r.lw}`) && !!seen.add(`${r.tw}:${r.lw}`)).sort((a, b) => b.tw - a.tw).slice(0, 2).map((r) => ({
         id: `ms:commits:${r.name}:${Math.floor(now / WEEK)}`, kind: 'milestone' as const, tone: 'magic' as const, at: now, who: 'weevils', projectId: r.name,
         text: fr ? `${r.tw} commits livrés sur ${r.name} cette semaine, ${change(r.tw, r.lw, true)}.` : `${r.tw} commits shipped on ${r.name} this week, ${change(r.tw, r.lw)}.`, live: true,
       }))

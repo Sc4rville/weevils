@@ -237,8 +237,21 @@ export const sentenceOnly = (item: ForYouItem) => {
 /** At most SENTENCES sentence-only cards per screen (a window of WINDOW cards): the rest is left out, the feed stays light. */
 const SENTENCES = 3
 export function fewSentences(items: ForYouItem[]): ForYouItem[] {
+  // Figures are spread out (one per screen, the others wait further down): a feed, not a dashboard.
+  const queue = [...items]
+  const spread: ForYouItem[] = []
+  const held: ForYouItem[] = []
+  const isNum = (i: ForYouItem) => formatOf(i) === 'progress' && !!bigNumber(i)
+  while (queue.length || held.length) {
+    const recentNum = spread.slice(-(WINDOW - 1)).some(isNum)
+    if (held.length && !recentNum) { spread.push(held.shift()!); continue }
+    const next = queue.shift()
+    if (!next) { spread.push(held.shift()!); continue }
+    if (isNum(next) && recentNum) held.push(next)
+    else spread.push(next)
+  }
   const out: ForYouItem[] = []
-  for (const i of items) {
+  for (const i of spread) {
     const recent = out.slice(-(WINDOW - 1)).filter(sentenceOnly).length
     if (sentenceOnly(i) && recent >= SENTENCES) continue
     out.push(i)

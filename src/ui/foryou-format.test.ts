@@ -150,3 +150,13 @@ describe('results first', () => {
     expect(streamOf(many).length).toBe(3)
   })
 })
+
+describe('figures spread out', () => {
+  it('one figure card per screen, the others further down', () => {
+    const num = (id: string) => it0({ id, kind: 'milestone', text: `${id.length + 40} commits this week, vs 12 last week.` })
+    const act = (id: string) => it0({ id, kind: 'boss', text: `Something to decide about item ${id} today.`, actions: [{ id: 'a', label: 'Go' }] })
+    const out = streamOf([num('n1'), num('n22'), num('n333'), act('a1'), act('a2'), act('a3'), act('a4'), act('a5'), act('a6')]).map((i) => i.id)
+    expect(out.indexOf('n22') - out.indexOf('n1')).toBeGreaterThanOrEqual(6)
+    expect(out).toHaveLength(9)
+  })
+})

@@ -1425,3 +1425,9 @@ button.fy-hit {
 /* A flat image (one colour, nothing to see) never takes the stream's space. */
 .fy-media.fy-flat { display: none; }
 .fy-f-visual:has(.fy-media.fy-flat):not(:has(.fy-media:not(.fy-flat))) { display: none; }
+
+/* A figure card: the number, then one quiet line of what changed. */
+.fy-numcard { gap: 4px; padding-block: 18px; }
+.fy-numcard .fy-num { font-size: 2rem; }
+.fy-numcard .fy-say { font-size: 0.9375rem; font-weight: 550; line-height: 1.4; }
+.fy-caption .fy-say.small { font-size: 0.875rem; font-weight: 500; opacity: 0.85; }

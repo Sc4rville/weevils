@@ -18,7 +18,6 @@ import NM from '../i18n/notices'
 import RM from '../i18n/requests'
 import D from '../i18n/devil'
 import { prefetchRepo } from './pages'
-import { ConvLine } from './convs'
 import { THEMES, stableOrder, useApp, useSettled } from './app-context'
 import { ensurePush } from '../push'
 import { VoiceLogo } from './voice'
@@ -29,7 +28,7 @@ import B from '../i18n/bits'
 import { ago, plain, userText, type ChipId } from './format'
 import { AutoMark, FilledIcon, G, Icon } from './icons'
 import { KeepSessionOrder } from './session-order'
-import { autoOfSession, fromActivity, isAutomation } from './auto-model'
+import { autoOfSession } from './auto-model'
 import { PrefLines, UpdatesLine } from './prefs'
 import { RelayPrefLine, ThreadPlans } from './relay'
 import { UsageLine } from './infra'
@@ -525,18 +524,7 @@ export function ProjectBand({ project }: { project: Project }) {
   const done = sessions.filter((s) => s.status === 'done')
   const att = active.filter((s) => s.status === 'needs_user')
   const cut = active.filter((s) => s.status === 'interrupted')
-  const jobs = snap.h24.filter((a) => a.projectId === project.id && isAutomation(a))
-  // Machines by their name, never their internal id.
-  const machineName = (id?: string) => (id ? (snap.machines.find((m) => m.id === id)?.name ?? id) : undefined)
-  // A job's state in words (running, last run, failed), never the raw last line of its log.
-  const jobMeta = (a: (typeof jobs)[number]) => {
-    if (a.runState === 'running') return t.running
-    const last = fromActivity(a).lastRun
-    if (!last) return undefined
-    return last.ok ? t.lastRun(ago(now - last.at)) : t.failedRun(ago(now - last.at))
-  }
   const convCount = snap.conversationCounts.byProject[project.id] ?? 0
-  const convs = snap.conversations.filter((c) => c.projectId === project.id)
   // Réduit ou déplié, au choix, mémorisé par projet ; par défaut réduit quand rien ne tourne.
   const [pref, setPref] = useState<boolean | undefined>(() => collapsedPrefs()[project.id])
   const collapsed = mode === 'normal' && (pref ?? active.length === 0)
@@ -639,48 +627,15 @@ export function ProjectBand({ project }: { project: Project }) {
             )}
           </AnimatePresence>
         </button>
-        {shown !== 'mini' && (
+        {/* Next to the name: nothing, unless a session was cut and needs a restart (Scarville, 2026-11-16: the era of the big clean-up). */}
+        {shown !== 'mini' && cut.length > 0 && (
           <div className="chars">
-            {project.repos.length > 0 && (
-              <button className="ch" aria-label={t.filesOf(project.name)} onClick={() => push({ kind: 'files', projectId: project.id })}>
-                <Icon name="slash" />
-              </button>
-            )}
-            {cut.length > 0 && (
-              <button className="ch alert-ch" aria-label={t.cutAria(cut.length)} onClick={() => push({ kind: 'session', id: cut[0].id })}>
-                <span>
-                  <G c="×" />
-                  <sup>{cut.length}</sup>
-                </span>
-              </button>
-            )}
-            <button
-              className={`ch ${att.length ? '' : 'off'}`}
-              disabled={!att.length}
-              aria-label={att.length ? t.waiting(att.length) : t.nothingWaiting}
-              onClick={(e) => tapHint('attention', e.currentTarget) || (att[0] && push({ kind: 'session', id: att[0].id }))}
-            >
+            <button className="ch alert-ch" aria-label={t.cutAria(cut.length)} onClick={() => push({ kind: 'session', id: cut[0].id })}>
               <span>
-                <Icon name="waits" />
-                {att.length > 0 && <sup>{att.length}</sup>}
+                <G c="×" />
+                <sup>{cut.length}</sup>
               </span>
             </button>
-            {convCount > 0 && (
-              <button className="ch" aria-label={t.conversationsOf(convCount, project.name)} onClick={() => push({ kind: 'conversations', projectId: project.id })}>
-                <span>
-                  <Icon name="quote" />
-                  <sup>{convCount}</sup>
-                </span>
-              </button>
-            )}
-            {project.kind === 'repo' || project.repos.length > 0 ? (
-              <button className="ch" disabled={!!sourceAccessIssue(project) && project.repos.length <= 1} title={sourceAccessIssue(project) ?? undefined} aria-label={sourceAccessIssue(project) ?? t.newSessionIn(project.name)} onClick={(e) => {
-                if (snap.setup?.claude === false && tapHint('newSession', e.currentTarget, 'newSessionOff')) return void askSetup('claude')
-                if (!tapHint('newSession', e.currentTarget)) push({ kind: 'new', projectId: project.id })
-              }}>
-                <Icon name="plus" />
-              </button>
-            ) : null}
           </div>
         )}
       </motion.div>
@@ -694,12 +649,11 @@ export function ProjectBand({ project }: { project: Project }) {
             </RowSlot>
           ))}
         </AnimatePresence>
-        {active.length === 0 && sessions.length > 0 && project.lastActivityAt > 0 && <div className="in meta empty">{t.idleSince(ago(now - project.lastActivityAt))}</div>}
-        {sessions.length === 0 && mode === 'normal' && convs.slice(0, 3).map((c) => <ConvLine key={c.id} c={c} />)}
         {done.length > 0 && (
           <>
-            <Line ch="✓" go={doneOpen ? '↑' : '↓'} onClick={toggleDone} label={t.done(done.length)}>
-              <span className="meta">{t.done(done.length)}</span>
+            {/* One line: how many sessions, and when it last moved; a tap shows them. */}
+            <Line go={null} onClick={toggleDone} label={t.done(done.length)}>
+              <span className="meta">{t.sessionsN(done.length)}{!active.length && project.lastActivityAt > 0 ? ` · ${ago(now - project.lastActivityAt)}` : ''}</span>
             </Line>
             <Collapse open={doneOpen}>
               <div ref={doneBox}>
@@ -713,36 +667,6 @@ export function ProjectBand({ project }: { project: Project }) {
         <div style={{ height: 12 }} />
       </Collapse>
 
-      <Collapse open={mode === 'open'} id={`more-${project.id}`}>
-        <div className="band tone">
-          {convCount > 0 && <div className="in label">{t.conversationsLabel}</div>}
-          {convs.slice(0, 4).map((c) => (
-            <ConvLine key={c.id} c={c} />
-          ))}
-          {convCount > 4 && (
-            <Line ch='"' onClick={() => push({ kind: 'conversations', projectId: project.id })}>
-              <span className="meta">{t.allConversations(convCount)}</span>
-            </Line>
-          )}
-          {project.repos.length > 0 && <div className="in label">{t.reposLabel}</div>}
-          {project.repos.map((r) => (
-            <Line key={r} ch="/" meta={snap.machines.length > 1 ? machineName(project.where[r]) : undefined} onClick={() => push({ kind: 'files', projectId: project.id, repo: r })}>
-              {r}
-            </Line>
-          ))}
-          <div className="in label">{t.machinesLabel}</div>
-          <Line ch="@" meta={t.openSessions(active.length)} onClick={() => push({ kind: 'machine', projectId: project.id })}>
-            {[...new Set(sessions.map((s) => machineName(s.machineId)))].join(' · ') || snap.machines[0]?.name}
-          </Line>
-          {jobs.length > 0 && <div className="in label">{t.h24Label}</div>}
-          {jobs.map((a) => (
-            <Line key={a.id} ch={a.runState === 'running' ? <AutoMark /> : <Icon name="cycle" />} meta={jobMeta(a)} onClick={() => push({ kind: 'auto', id: a.id })}>
-              {a.title}
-            </Line>
-          ))}
-          <div style={{ height: 14 }} />
-        </div>
-      </Collapse>
     </motion.section>
   )
 }

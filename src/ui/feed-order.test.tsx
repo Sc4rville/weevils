@@ -179,7 +179,7 @@ describe('bande projet', () => {
     // An idle session really starts: only its status, never the activity timestamp, promotes it.
     render([{ ...idle, status: 'working' }, a, b, relay, waiting, done])
     expect(rows()).toEqual(['beta', 'alpha', 'idle', 'relay', 'waiting'])
-    expect(host.textContent).toContain('1 session terminée')
+    expect(host.textContent).toContain('1 session')
   })
 
   it('defers status reordering during a gesture and applies it when settled', () => {
@@ -198,15 +198,11 @@ describe('bande projet', () => {
   it('« terminées » restent repliées, même dans une bande ouverte, jusqu’au choix explicite', () => {
     const d = session('fini', { status: 'done', live: false, workStartedAt: null })
     render([d], 'p')
-    const line = () => Array.from(host.querySelectorAll<HTMLButtonElement>('.row')).find((r) => (r.textContent ?? '').includes('termin'))!
-    const arrow = () => line().querySelector('.go')!.innerHTML
-    const closed = arrow()
+    const line = () => Array.from(host.querySelectorAll<HTMLButtonElement>('.row')).find((r) => /^1 session\b/.test(r.textContent ?? ''))!
+    expect(line().querySelector('.go')).toBeNull() // one quiet line, no arrow
     expect(host.querySelectorAll('.session-item')).toHaveLength(0)
     act(() => line().click())
-    expect(arrow()).not.toBe(closed)
     expect(host.querySelectorAll('.session-item')).toHaveLength(1)
-    act(() => line().click())
-    expect(arrow()).toBe(closed) // the closing animation may still retain its DOM
   })
 })
 

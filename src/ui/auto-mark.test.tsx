@@ -59,9 +59,7 @@ describe('AutoMark outside the drawer', () => {
     render(<ProjectBand project={project} />, [session({ id: 'sa' })], 'p')
     expect(host.querySelector('.name .auto-mark')).not.toBeNull()
     expect(host.querySelector('.name .spin.fluo')).toBeNull()
-    const line = [...host.querySelectorAll('.row')].find((r) => r.textContent?.includes('render'))!
-    expect(line.querySelector('.auto-mark')).not.toBeNull()
-    await act(async () => void (line as HTMLElement).click())
-    expect(pushed).toEqual([{ kind: 'auto', id: 'job:render' }])
+    // The open band no longer lists its jobs: they live in the automations drawer.
+    expect([...host.querySelectorAll('.row')].find((r) => r.textContent?.includes('render'))).toBeUndefined()
   })
 })

@@ -105,22 +105,12 @@ describe('settings band', () => {
 })
 
 describe('open project band', () => {
-  it('shows machine names, never their ids, and a job in words, never its raw log line', () => {
+  it('only its sessions: no machines, no code folders, no jobs, no ids', () => {
     render(<ProjectBand project={project} />, snap([{ id: 'm-7f3a9c', name: 'vps' }]), 'p')
     expect(host.textContent).not.toContain('m-7f3a9c')
     expect(host.textContent).not.toContain('npm ERR!')
-    // Its log ends on an error line: "failed", in words.
-    expect(rows().find((r) => r.includes('Render'))).toMatch(/^Renderfailed 2h/)
-    render(<ProjectBand project={project} />, snap([{ id: 'm-7f3a9c', name: 'vps' }], { h24: [{ ...job, lastEvent: 'done: 12 frames' }] }), 'p')
-    expect(rows().find((r) => r.includes('Render'))).toMatch(/^Renderlast run 2h/)
-    expect(host.textContent).not.toContain('12 frames')
-    // One machine: no machine next to the folder.
-    expect(rows().find((r) => r.startsWith('shop'))).toBe('shop')
-  })
-
-  it('several machines: the folder says which, by name', () => {
-    render(<ProjectBand project={project} />, snap([{ id: 'm-7f3a9c', name: 'vps' }, { id: 'm-2', name: 'laptop' }]), 'p')
-    expect(rows().find((r) => r.startsWith('shop'))).toBe('shopvps')
-    expect(host.textContent).not.toContain('m-7f3a9c')
+    expect(rows().find((r) => r.includes('Render'))).toBeUndefined()
+    expect(rows().find((r) => r.startsWith('shop'))).toBeUndefined()
+    expect(host.querySelector('.chars')).toBeNull()
   })
 })

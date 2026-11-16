@@ -582,9 +582,6 @@ export function ProjectBand({ project }: { project: Project }) {
                 <Icon name="slash" />
               </button>
             )}
-            <button className="ch" aria-label={t.machineOf(project.name)} onClick={() => push({ kind: 'machine', projectId: project.id })}>
-              <Icon name="machine" />
-            </button>
             {cut.length > 0 && (
               <button className="ch alert-ch" aria-label={t.cutAria(cut.length)} onClick={() => push({ kind: 'session', id: cut[0].id })}>
                 <span>

@@ -2768,12 +2768,20 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
   overflow: visible;
   -webkit-line-clamp: unset;
 }
+/* One line per session: the title only, cut with « … » (Scarville, 2026-11-16). */
 .session-name {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  display: block;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
+.session-item .row .line .title.wrap { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* What isn't working steps back: a quiet project and its resting sessions at half opacity. Waiting or cut stays full. */
+.band[data-project] > .in.head .name, .session-item, .repo { transition: opacity .4s ease; }
+.band[data-project]:not(.busy) > .in.head .name { opacity: .45; }
+.repo.resting { opacity: .45; }
+.session-item:has(> .row:not(.live, .tone, .cut)) { opacity: .45; }
+.session-item:has(> .cut-wrap) { opacity: 1; }
 .page-body { min-height: 0; }
 .session-heading { flex: none; padding-block: 12px; }
 

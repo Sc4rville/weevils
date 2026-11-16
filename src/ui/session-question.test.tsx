@@ -27,9 +27,9 @@ it.each(['claude', 'codex'] as const)('%s renders labeled choices, never a keybo
   await act(async () => buttons[1].click())
   expect(calls.key.mock.calls).toEqual([['s1', 'choice:token:1']])
 })
-it('the header names the agent plainly, with no glyph in front', async () => {
+it('the header names no agent: just « Question »', async () => {
   await act(async () => root.render(<SessionQuestion session={session('codex')} onError={() => {}} />))
-  expect(host.querySelector('.who')!.textContent).toBe('Codex is asking')
+  expect(host.querySelector('.who')!.textContent).toBe('Question')
 })
 it('working sessions and ordinary composers never produce an attention band', async () => {
   for (const s of [session('codex', { status: 'working' }), session('claude', { attention: '› nn go' }), session('codex', { attention: '› Ask Codex to do anything' })]) {

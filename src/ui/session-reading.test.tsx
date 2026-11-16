@@ -79,7 +79,7 @@ it('opens each recorded step independently and preserves disclosure across resul
  expect([...details].every(d => !d.open)).toBe(true)
  expect(details[0].querySelector('summary')!.textContent).toBe('Runs tests')
  expect(details[1].querySelector('summary')!.textContent).toBe('Reads files')
- expect(host.querySelectorAll('.step-plus')).toHaveLength(2)
+ expect(host.querySelectorAll('.step-plus, .step-toggle')).toHaveLength(0)
  await act(async () => { details[0].open = true })
  expect(details[0].querySelectorAll('pre')[0].textContent).toBe('npm test -- --run')
  expect(details[0].querySelectorAll('pre')[1].textContent).toContain('TOKEN=[redacted]')

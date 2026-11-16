@@ -171,7 +171,7 @@ describe('bande d’arrière-plan dans le fil', () => {
     const r = rows()
     expect(r.map((x) => x.dataset.kind)).toEqual(['agent', 'shell', 'step'])
     expect(text(r[0])).toContain('relire le serveur')
-    expect(text(r[0])).toContain('travaille · lit · server/core.ts')
+    expect(r[0].querySelector('.meta')).toBeNull()
     expect(text(r[0].querySelector('.act'))).toBe('5m')
     expect(text(r[1].querySelector('.act'))).toBe('12m')
     expect(text(r[2])).toContain('build:page')
@@ -205,11 +205,11 @@ describe('bande d’arrière-plan dans le fil', () => {
     expect(rows()).toHaveLength(1)
   })
 
-  it('l’activité d’un outil est traduite comme dans le fil, sans chemin ; une phrase reste telle quelle', () => {
-    const s = session([sub('a', { activity: 'Read · /home/alex/projects/weevils/server/core.ts' }), sub('b', { activity: 'Page built. Tests pass.' })])
+  it('une seule ligne par ligne d’activité : pas de sous-texte, l’activité reste dans le détail', () => {
+    const s = session([sub('a', { activity: 'Read · /home/alex/projects/weevils/server/core.ts' })])
     render(<Background session={s} />)
-    expect(text(rows()[0].querySelector('.meta'))).toBe('travaille · lit · core.ts')
-    expect(text(rows()[1].querySelector('.meta'))).toBe('travaille · Page built. Tests pass.')
+    expect(text(rows()[0])).not.toContain('core.ts')
+    expect(rows()[0].querySelectorAll('.stack-text > *')).toHaveLength(1)
   })
 
   it('une commande d’arrière-plan n’a aucun glyphe de terminal ; un workflow fini dit « fini », son nom sans tirets', () => {
@@ -235,9 +235,10 @@ describe('bande d’arrière-plan dans le fil', () => {
       sub('x', { status: 'stopped', endedAt: NOW }),
     ])
     render(<Background session={s} />)
-    expect(rows().map((r) => text(r.querySelector('.meta .strong')))).toEqual(['travaille', 'fini', 'échoué', 'coupé'])
+    expect(rows().map((r) => text(r.querySelector('.meta .strong')))).toEqual(['', 'fini', 'échoué', 'coupé'])
+    expect(rows()[0].closest('.sub')?.querySelector('button')?.getAttribute('aria-label') ?? rows()[0].getAttribute('aria-label')).toContain('travaille')
     act(() => setLang('en'))
-    expect(rows().map((r) => text(r.querySelector('.meta .strong')))).toEqual(['working', 'done', 'failed', 'stopped'])
+    expect(rows().map((r) => text(r.querySelector('.meta .strong')))).toEqual(['', 'done', 'failed', 'stopped'])
   })
 
   it('ouverte d’office quand quelque chose tourne, repliée sur une ligne quand tout est fini', () => {

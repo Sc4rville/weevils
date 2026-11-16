@@ -151,13 +151,13 @@ describe('session page header', () => {
     expect(byText('settings')).toBeUndefined()
     expect(host.querySelectorAll('button[aria-controls="session-settings"]')).toHaveLength(1)
     expect(byText('browser')).toBeUndefined()
-    const see = byText('see the app')!
-    await act(async () => see.click())
-    expect(byText('close the app')?.getAttribute('aria-pressed')).toBe('true')
-    // The header chip opens and closes the settings.
+    // The header chip opens the settings; « see the app » and archive live there, out of the status line.
     const chip = host.querySelector<HTMLButtonElement>('button[aria-controls="session-settings"]')!
     await act(async () => chip.click())
     expect(chip.getAttribute('aria-pressed')).toBe('true')
+    const see = byText('see the app')!
+    await act(async () => see.click())
+    expect(byText('close the app')?.getAttribute('aria-pressed')).toBe('true')
     await act(async () => chip.click())
     expect(chip.getAttribute('aria-pressed')).toBe('false')
   })
@@ -261,37 +261,14 @@ describe('session page: a sent message says it arrived', () => {
 })
 
 describe('session page header (r162)', () => {
-  it('says what the session does once: the header line, not again under the title; no lowercase tool id', async () => {
+  it('one plain status line, no agent name, no « idle », no pill; the composer names no agent', async () => {
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ status: 'working', workStartedAt: NOW - 3 * MIN, now: 'QA pass on ad videos' })])
     await flush()
-    expect(text(host.querySelector('.session-now'))).toBe('QA pass on ad videos')
-    expect(text(host).split('QA pass on ad videos').length - 1).toBe(1)
+    expect(host.querySelector('.session-now')).toBeNull()
     const meta = text(host.querySelector('.session-heading'))
-    expect(meta).not.toMatch(/\bclaude\b/)
-    expect(meta).toContain('working')
-    expect(host.querySelector('textarea, input[enterkeyhint]')?.getAttribute('placeholder')).toBe('write to Claude')
-  })
-
-  it('keeps the full sentence under the title when the header line had to shorten it', async () => {
-    const long = 'checks every screen of the app for useless buttons and texts'
-    render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ status: 'working', workStartedAt: NOW - 3 * MIN, now: long })])
-    await flush()
-    expect(text(host.querySelector('.session-heading'))).toContain(long)
-  })
-
-  it('keeps the sentence under the title when a narrow screen cuts the header pill with « … »', async () => {
-    const sw = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth')
-    const cw = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
-    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', { configurable: true, get() { return (this as HTMLElement).classList.contains('session-now') ? 180 : 0 } })
-    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return (this as HTMLElement).classList.contains('session-now') ? 120 : 0 } })
-    try {
-      render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ status: 'working', workStartedAt: NOW - 3 * MIN, now: 'QA pass on ad videos' })])
-      await flush()
-      expect(text(host.querySelector('.session-heading'))).toContain('QA pass on ad videos')
-    } finally {
-      if (sw) Object.defineProperty(HTMLElement.prototype, 'scrollWidth', sw); else delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth
-      if (cw) Object.defineProperty(HTMLElement.prototype, 'clientWidth', cw); else delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth
-    }
+    expect(meta).not.toMatch(/\bclaude\b|idle|see the app|archive/i)
+    expect(meta).toContain('working · 3 min')
+    expect(host.querySelector('textarea, input[enterkeyhint]')?.getAttribute('placeholder')).toBe('write a message')
   })
 
   it('names the plan as its product does: « prolite » reads Pro Lite, Claude’s « Max 20x » unchanged', async () => {

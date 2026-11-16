@@ -148,7 +148,6 @@ export function SessionRow({ session }: { session: Session }) {
         </span>
         <span className="title wrap">
           <span className="session-name">{unread && <span className="dot" aria-hidden />}{text}</span>
-          {act && act !== text && <span className="session-activity meta">{act}</span>}
           {session.background > 0 && <span className="bg strong"> · {t.background(session.background)}</span>}
           {/* Session Codex ouverte en relais d'une session Claude arrêtée par sa limite d'usage. */}
           {session.relayOf && (
@@ -631,7 +630,7 @@ function Snippet({ code }: { code: string }) {
     <div ref={box} className="snippet">
       <div className="snippet-head">
         <button className="link" onClick={toggle} aria-expanded={open}>
-          <Icon name={open ? 'minus' : 'plus'} /> {t.code(n)}
+          {t.code(n)}
         </button>
         <CopyButton text={code} />
       </div>
@@ -747,7 +746,7 @@ function Bubble({ className, style, who, copy, mid, children }: { className: str
   return (
     <div ref={ref} className={`${className} ${copied ? 'copied' : ''}`} style={style} data-mid={mid}>
       <div className="in">
-        <span className="who">{copied ? t.copied : who}</span>
+        {(copied || who) && <span className="who">{copied ? t.copied : who}</span>}
         {children}
       </div>
     </div>
@@ -775,7 +774,7 @@ function Fold({ head, className = '', label, children }: { head: ReactNode; clas
     <details className={`step-detail ${className}`}>
       <summary className="step-head" title={label}>
         <span className="text">{head}</span>
-        <span className="step-toggle" aria-hidden><span className="step-plus"><Icon name="plus" /></span><span className="step-minus"><Icon name="minus" /></span></span>
+        
       </summary>
       <div className="step-content">{children}</div>
     </details>
@@ -810,9 +809,6 @@ function PlainSteps({ steps, live }: { steps: Message[]; live: boolean }) {
       <button type="button" className="in steps-head" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={open ? listId : undefined}>
         <span className="text">
           {live ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="arrow" dir="right" />} <span key={head} className="fade-in">{head}</span>
-        </span>
-        <span className="go" aria-hidden>
-          <Icon name={open ? 'minus' : 'plus'} />
         </span>
       </button>
       <Collapse open={open}>
@@ -860,9 +856,6 @@ function RawSteps({ steps, live }: { steps: Message[]; live: boolean }) {
         <span className="text">
           {live ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="arrow" dir="right" />} {t.steps(steps.length)} · <span key={last} className="fade-in">{last}</span>
         </span>
-        <span className="go" aria-hidden>
-          <Icon name={open ? 'minus' : 'plus'} />
-        </span>
       </button>
       <Collapse open={open}>
         <div id={listId} className="in steps-list">
@@ -870,7 +863,7 @@ function RawSteps({ steps, live }: { steps: Message[]; live: boolean }) {
             <details key={s.id} className="step-detail">
               <summary className="step-head">
                 <span className="text">{label(s)}</span>
-                <span className="step-toggle" aria-hidden><span className="step-plus"><Icon name="plus" /></span><span className="step-minus"><Icon name="minus" /></span></span>
+                
               </summary>
               <div className="step-content">
                 {!!s.toolDetails?.calls?.length && <>
@@ -971,7 +964,7 @@ export function Messages({
             <Bubble
               className={`msg band ${session ? 'session-message' : ''} ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.demo ? 'demo' : ''}`}
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
-              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : author}${g.m.demo ? ` · ${t.demo}` : ''}${pendingTag(g.m.id)}`}
+              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : session ? '' : author}${g.m.demo ? ` · ${t.demo}` : ''}${pendingTag(g.m.id)}`}
               copy={g.m.role === 'user' ? userText(g.m.text) : g.m.role === 'orchestrator' ? briefText(g.m.text) : chipLabels(withoutMachinePrefix(g.m.text))}
               mid={g.m.id}
             >

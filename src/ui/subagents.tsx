@@ -156,16 +156,11 @@ function SubRow({ sessionId, a, now }: { sessionId: string; a: Subagent; now: nu
                 </span>
               )}
               {a.label}
-            </span>
-            <span className="meta ellipsis">
-              <span className="strong">{state}</span>
-              {a.activity ? ` · ${subActivity(a.activity)}` : ''}
+              {/* One line only: the state word joins it when it is not the spinning « working ». */}
+              {a.status !== 'working' && <span className="meta"> · <span className="strong">{state}</span></span>}
             </span>
           </span>
           <span className="act">{d}</span>
-          <span className="go">
-            <G c={open ? '−' : '+'} />
-          </span>
         </span>
       </button>
       <Collapse open={open}>
@@ -224,7 +219,7 @@ export function Background({ session: s }: { session: Session }) {
     <div ref={band} className="band tone subs" data-testid="background">
       <Line
         ch={active > 0 ? <span className="spin fluo"><Icon name="star" /></span> : '&'}
-        go={open ? '−' : '+'}
+        go={null}
         onClick={() => {
           setChoice(!open)
           if (!open) revealOpened(band.current)

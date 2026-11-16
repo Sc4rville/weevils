@@ -12,8 +12,8 @@ export default defineMessages({
     closeApp: 'fermer l’appli',
     /** Surtitre d'une session dont le projet n'est pas (encore) connu. */
     sessionsKicker: 'sessions',
-    writeTo: (tool: string) => `écris à ${tool}`,
-    resumeWith: (tool: string) => `reprendre avec ${tool}`,
+    writeTo: (_tool: string) => 'écris un message',
+    resumeWith: (_tool: string) => 'reprends la session',
     readOnly: 'ouverte hors de weevils : lecture seule',
     composerLabel: (title: string) => `message à la session ${title}`,
     /** Bulle provisoire d'un envoi avec photos. */
@@ -29,7 +29,7 @@ export default defineMessages({
     subStatus: (s: 'working' | 'done' | 'failed' | 'stopped') => ({ working: 'travaille', done: 'fini', failed: 'échoué', stopped: 'coupé' })[s],
     /** Lecteur d'écran, ligne de sous-agent : nom, état, durée, déplié ou non. */
     subAria: (label: string, state: string, d: string, open: boolean) => `${label}, ${state}, ${d}, ${open ? 'replier' : 'déplier'}`,
-    asks: (tool: string) => `${tool} te demande`,
+    asks: (_tool: string) => 'Question',
     waitingForYou: 'la session attend ta réponse',
     askDetails: 'détails',
     /** Session coupée en plein travail : pourquoi, et les deux gestes. */
@@ -68,8 +68,8 @@ export default defineMessages({
     seeApp: 'see the app',
     closeApp: 'close the app',
     sessionsKicker: 'sessions',
-    writeTo: (tool: string) => `write to ${tool}`,
-    resumeWith: (tool: string) => `resume with ${tool}`,
+    writeTo: (_tool: string) => 'write a message',
+    resumeWith: (_tool: string) => 'resume the session',
     readOnly: 'opened outside weevils: read only',
     composerLabel: (title: string) => `message to session ${title}`,
     photos: (n: number) => (n > 1 ? `${n} photos` : 'photo'),
@@ -80,7 +80,7 @@ export default defineMessages({
     flowDone: 'done',
     subStatus: (s: 'working' | 'done' | 'failed' | 'stopped') => ({ working: 'working', done: 'done', failed: 'failed', stopped: 'stopped' })[s],
     subAria: (label: string, state: string, d: string, open: boolean) => `${label}, ${state}, ${d}, ${open ? 'collapse' : 'expand'}`,
-    asks: (tool: string) => `${tool} is asking`,
+    asks: (_tool: string) => 'Question',
     waitingForYou: 'the session is waiting for your answer',
     askDetails: 'details',
     folders: 'Folders',

@@ -29,6 +29,8 @@ export function ReposPage() {
   /** Le repo qui vient d'être créé : amené sous les yeux et mis en avant dès qu'il est dans la grille. */
   const [fresh, setFresh] = useState<string | null>(null)
   const pinned = new Set(snap.pinnedRepos)
+  // A repo with nothing working right now steps back (dimmed); full again as soon as one of its sessions works.
+  const working = new Set(snap.sessions.filter((s) => s.status === 'working' && s.repo).map((s) => s.repo as string))
   const off = snap.setup?.github === false
   const alive = useRef(true)
   useEffect(() => () => void (alive.current = false), [])
@@ -150,7 +152,7 @@ export function ReposPage() {
           const on = pinned.has(r.name)
           const open = () => push({ kind: 'files', projectId: r.name.split(/[-_.]/)[0].toLowerCase(), repo: r.name })
           return (
-            <div key={r.name} className="repo" style={tint(i)} data-repo={r.name}>
+            <div key={r.name} className={`repo ${working.has(r.name) ? 'working' : 'resting'}`} style={tint(i)} data-repo={r.name}>
               <button className="repo-open" aria-label={r.name} onClick={open}>
                 <span className="repo-name">{r.name}</span>
                 {r.blurb && <span className="repo-blurb">{r.blurb}</span>}

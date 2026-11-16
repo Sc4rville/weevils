@@ -8,7 +8,7 @@ import { OutboxStatus } from './outbox-status'
 import { noticeKey, sessionNoticeKey } from '../../shared/notices.ts'
 import { dismissNotice } from './notice-store'
 import { Notice } from './notice'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
@@ -33,35 +33,18 @@ import { FsFilePage, FsPage, InfraPage, UsagePage } from './infra'
 import { RelayPage, SessionRelay } from './relay'
 import { listFiles } from './repofiles'
 import { useThreadAsk } from './askthread'
-import { ago, durLong, status, toolName } from './format'
+import { durLong, status, toolName } from './format'
 import { useLang, useT } from '../i18n'
 import { reveal, useFollow } from './follow'
 import { FollowDown } from './followdown'
 import M from '../i18n/pages'
 import BM from '../i18n/bands'
 import PM from '../i18n/plain-steps'
-import { liveNote } from './plain-steps'
-import type { Message, Session } from '../../shared/api.ts'
 import { MemoryPage } from './memory'
 import { RequestsPage } from './requests'
 import { ForYouPage, MediaPage } from './foryou'
 import { AutoPage, AutoRunPage } from './auto-page'
 
-/** Mini-macro: what the session is doing right now, in a few plain words, beside the title. */
-function LiveNote({ s, messages, onWhole }: { s: Session; messages: Message[]; onWhole?: (whole: boolean) => void }) {
-  const w = useT(PM)
-  const live = liveNote(s, messages.at(-1), w, { waiting: String(w.liveWaiting), stopped: String(w.liveStopped), done: String(w.liveDone), idle: String(w.liveIdle) })
-  const ref = useRef<HTMLSpanElement>(null)
-  // A narrow phone cuts the pill with « … » (CSS): then it no longer says the phrase whole, and the line under the title keeps it.
-  useLayoutEffect(() => {
-    if (!onWhole) return
-    const check = () => { const el = ref.current; if (el) onWhole(el.scrollWidth <= el.clientWidth + 1) }
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [live.text, onWhole])
-  return <span ref={ref} className="session-now" role="status" data-state={live.state} title={w.liveLabel(live.text)}>{live.text}</span>
-}
 
 
 export function PageView({ page }: { page: Page }) {
@@ -174,7 +157,7 @@ function SessionPage({ id }: { id: string }) {
   const [preview, setPreview] = usePreviewState(id)
   const [showSettings, setShowSettings] = useState(false)
   /** Whether the header pill shows its phrase whole (not cut with « … » on a narrow screen). */
-  const [pillWhole, setPillWhole] = useState(true)
+
 
   // Le détail suit chaque nouvelle version annoncée par le serveur.
   useEffect(() => {
@@ -231,7 +214,7 @@ function SessionPage({ id }: { id: string }) {
   const sourceIssue = sourceAccessIssue(sourceForSession(snap.projects, s))
   const st = status[s.status]
   const previewUrl = preview.url ?? guessPreviewUrl(messages, s, project, snap.config)
-  const liveText = liveNote(s, messages.at(-1), tp, { waiting: String(tp.liveWaiting), stopped: String(tp.liveStopped), done: String(tp.liveDone), idle: String(tp.liveIdle) }).text
+
 
   // Before the server takes it, the notice under the thread speaks (« sending… », « try again »); after, the bubble.
   const busy = (s.turnWorking ?? (s.status === 'working' && !s.background)) || s.queued > 0
@@ -264,27 +247,15 @@ function SessionPage({ id }: { id: string }) {
       title={s.title}
       scrollHeading
       sessionLayout
-      liveNote={<LiveNote s={s} messages={messages} onWhole={setPillWhole} />}
       headerControls={<button className="link inline" onClick={() => setShowSettings((v) => !v)} aria-label={t.changeModel} aria-pressed={showSettings} aria-controls="session-settings">
             {[modelLabel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
           </button>}
       meta={
         <>
-          {/* What it does now, unless the live line in the header already says it whole (r162). */}
-          {s.now && !(pillWhole && liveText === s.now.replace(/\s+/g, ' ').trim()) && (
-            <>
-              <span className="strong">{s.now}</span>
-              <br />
-            </>
-          )}
-          <StatusChar s={s.status} /> {st.label}
+          {/* One plain line: the state in words a non-developer reads, and for how long it has worked. */}
+          <StatusChar s={s.status} /> {s.status === 'needs_user' ? tp.liveWaiting : s.status === 'idle' || s.status === 'done' ? tp.liveDone : st.label}
+          {s.status === 'working' && s.workStartedAt != null && <> · {durLong(now - s.workStartedAt)}</>}
           {s.queued > 0 && <span className="strong"> · {t.queued(s.queued)}</span>}
-          {s.status === 'working' && s.workStartedAt != null ? <>{t.since(durLong(now - s.workStartedAt))}</> : <> · {ago(now - s.lastActivityAt)}</>}
-          {' · '}
-          <button className="link" onClick={() => setPreview({ open: !preview.open })} aria-pressed={!!preview.open}>
-            {preview.open ? t.closeApp : t.seeApp}
-          </button>
-          {' · '}<SessionArchiveAction key={s.id} session={s} />
         </>
       }
       dock={th.voice}
@@ -328,7 +299,7 @@ function SessionPage({ id }: { id: string }) {
 
         <SessionQuestion session={s} onError={setErr} />
 
-        {(s.turnWorking ?? (s.status === 'working' && !s.background)) && <Working author={s.tool} since={s.workStartedAt} />}
+        {(s.turnWorking ?? (s.status === 'working' && !s.background)) && <Working author="" since={s.workStartedAt} />}
 
         <SessionRelay session={s} onError={setErr} />
 
@@ -338,6 +309,12 @@ function SessionPage({ id }: { id: string }) {
 
       <Collapse open={showSettings} id="session-settings">
         <div className="band tone">
+          <div className="in session-actions">
+            <button className="link" onClick={() => setPreview({ open: !preview.open })} aria-pressed={!!preview.open}>
+              {preview.open ? t.closeApp : t.seeApp}
+            </button>
+            {' · '}<SessionArchiveAction key={s.id} session={s} />
+          </div>
           <Settings
             id={s.id}
             tool={s.tool}

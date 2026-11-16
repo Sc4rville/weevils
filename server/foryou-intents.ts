@@ -65,7 +65,17 @@ export class WorkIntents {
   private matches(brief: string, scope?: string) {
     if (!substantive(brief)) return []
     const key = briefKey(brief)
-    return [...this.entries.values()].filter(e => e.exact !== false && briefKey(e.brief) === key && (!scope || !e.scope || e.scope === scope))
+    return [...this.entries.values()].filter(e => e.exact !== false && this.keyOf(e) === key && (!scope || !e.scope || e.scope === scope))
+  }
+  /** Hashing every stored brief on each lookup made snapshots O(actions x intents)
+   * sha256+NFKC passes and pinned the event loop; cache the key per entry. */
+  private keys = new WeakMap<WorkIntent, { brief: string; key: string }>()
+  private keyOf(e: WorkIntent) {
+    const hit = this.keys.get(e)
+    if (hit && hit.brief === e.brief) return hit.key
+    const key = briefKey(e.brief)
+    this.keys.set(e, { brief: e.brief, key })
+    return key
   }
   ambiguous(brief: string, scope?: string) {
     const matches = this.matches(brief, scope)

@@ -115,7 +115,6 @@ function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () =>
       role="button"
       tabIndex={0}
       aria-label={t.openChat}
-      onClick={onOpen}
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}
     >
       <div className="peek-list">
@@ -226,7 +225,6 @@ export function AgentBand() {
   }
   const body = useRef<HTMLDivElement>(null)
   const form = useRef<HTMLFormElement>(null)
-  const swipe = useRef<{ y: number; top: number } | null>(null)
   const [draft, setDraft] = useState({ text: '', n: 0, reset: false })
   const heard = useRef('')
   // Le message envoyé s'affiche tout de suite (aperçu et fil), avant que Claude Code l'écrive dans son transcript (qui
@@ -312,11 +310,13 @@ export function AgentBand() {
     </span>
   )
 
+  const pullDown = usePull('down', () => setExpanded('agent'), !open)
+  const pullUp = usePull('up', () => setExpanded(null), open)
   const band = (
     <section className={`band agent tone ${snap.foryou ? 'has-foryou' : ''} ${devilOn || devilFlash ? 'devil-on' : ''} ${open ? 'open' : ''}`} style={color(devilOn || devilFlash ? 'devil' : 'agent')} aria-label={t.agentBand}>
       {/* En haut : le logo (dicter), sous la barre d'état. Réduite : l'aperçu vivant du fil ; un tap l'ouvre.
           Ouverte : un tap dans l'espace vide, le chevron, ou glisser vers le bas la réduit. */}
-      <div className="agent-space" onClick={(e) => open && e.target === e.currentTarget && setExpanded(null)}>
+      <div className="agent-space" ref={open ? pullUp : pullDown} onClick={(e) => open && e.target === e.currentTarget && setExpanded(null)}>
         {open && (
           <button className="agent-close" onClick={() => setExpanded(null)} aria-label={t.collapseChat}>
             <Icon name="chevron" dir="left" />
@@ -358,16 +358,6 @@ export function AgentBand() {
           ref={body}
           className="chat"
           aria-live="polite"
-          onTouchStart={(e) => (swipe.current = { y: e.touches[0].clientY, top: body.current?.scrollTop ?? 0 })}
-          onTouchEnd={(e) => {
-            const s = swipe.current
-            swipe.current = null
-            // Tirer vers le bas depuis le haut du fil (déjà en haut) : réduit.
-            if (s && s.top <= 0 && e.changedTouches[0].clientY - s.y > 90) {
-              markSeen('g-collapse')
-              setExpanded(null)
-            }
-          }}
         >
           <div ref={th.ref} className="ask-thread">
             <Messages messages={main} author="weevboss" working={snap.mainWorking || !!snap.devil?.working} pendingLabel={pendingLabel} after={(id) => <>{qa(th.after(id), `${th.a.asking}:${!!th.a.shown}:${th.a.waiting}`)}{chipsOf(id)}</>} chip={chipIn} />
@@ -407,6 +397,81 @@ export function AgentBand() {
   )
   // Escape the draggable home stack: its transform makes fixed descendants smaller than the viewport.
   return open ? createPortal(band, document.body) : band
+}
+
+/**
+ * weevboss opens like the automations drawer, mirrored: pull its band down to open it full screen, push its top up to
+ * close it. The band follows the finger (with resistance); a pull past 64 px or a quick flick decides, else it springs back.
+ * No tap toggle on the preview (Scarville, 2026-11-16).
+ */
+function usePull(dir: 'down' | 'up', onDone: () => void, on: boolean) {
+  const ref = useRef<HTMLDivElement>(null)
+  const done = useRef(onDone)
+  done.current = onDone
+  useEffect(() => {
+    const host = ref.current
+    if (!host || !on) return
+    const sign = dir === 'down' ? 1 : -1
+    let s: { y: number; t: number; moved: boolean } | null = null
+    const band = () => host.closest('.band.agent') as HTMLElement | null
+    const reset = () => {
+      const el = band()
+      if (!el) return
+      el.style.transition = 'transform .28s cubic-bezier(.2,.8,.2,1)'
+      el.style.transform = ''
+    }
+    const start = (y: number, target: EventTarget | null) => {
+      s = (target as HTMLElement | null)?.closest('input, textarea, [contenteditable]') ? null : { y, t: performance.now(), moved: false }
+    }
+    const move = (y: number, e: Event) => {
+      if (!s) return
+      const d = (y - s.y) * sign
+      if (!s.moved && d < 8) { if (d < -8) s = null; return }
+      s.moved = true
+      if (e.cancelable) e.preventDefault()
+      const el = band()
+      if (el) { el.style.transition = 'none'; el.style.transform = `translateY(${sign * Math.max(0, d) * 0.5}px)` }
+    }
+    const end = (y: number) => {
+      const c = s
+      s = null
+      if (!c) return
+      const d = (y - c.y) * sign
+      const v = d / Math.max(1, performance.now() - c.t)
+      reset()
+      // A drag that started on a button (the logo, the words) is a drag, not a tap.
+      if (c.moved) {
+        const swallow = (ev: Event) => { ev.stopPropagation(); ev.preventDefault() }
+        host.addEventListener('click', swallow, { capture: true, once: true })
+        window.setTimeout(() => host.removeEventListener('click', swallow, { capture: true }), 400)
+      }
+      if (c.moved && (d > (dir === 'down' ? 64 : 32) || (d > 16 && v > 0.5))) done.current()
+    }
+    const ts = (e: TouchEvent) => start(e.touches[0].clientY, e.target)
+    const tm = (e: TouchEvent) => move(e.touches[0].clientY, e)
+    const te = (e: TouchEvent) => end(e.changedTouches[0].clientY)
+    const tc = () => { s = null; reset() }
+    const md = (e: MouseEvent) => {
+      start(e.clientY, e.target)
+      const mm = (ev: MouseEvent) => move(ev.clientY, ev)
+      const mu = (ev: MouseEvent) => { window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu); end(ev.clientY) }
+      window.addEventListener('mousemove', mm)
+      window.addEventListener('mouseup', mu)
+    }
+    host.addEventListener('touchstart', ts, { passive: true })
+    host.addEventListener('touchmove', tm, { passive: false })
+    host.addEventListener('touchend', te)
+    host.addEventListener('touchcancel', tc)
+    host.addEventListener('mousedown', md)
+    return () => {
+      host.removeEventListener('touchstart', ts)
+      host.removeEventListener('touchmove', tm)
+      host.removeEventListener('touchend', te)
+      host.removeEventListener('touchcancel', tc)
+      host.removeEventListener('mousedown', md)
+    }
+  }, [dir, on])
+  return ref
 }
 
 // ---------------------------------------------------------------------------

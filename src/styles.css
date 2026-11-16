@@ -2879,3 +2879,9 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .dot, .fyt-dot, .h24-activity { display: none !important; }
 .band[data-project]:not(.busy):has(.head-name .dot) > .in.head .name { opacity: 1; }
 .fyt-word:has(.fyt-dot) { opacity: 1; font-weight: 750; }
+
+/* weevboss opens like a drawer coming down from the top (mirror of the automations drawer). */
+@keyframes agent-drop { from { transform: translateY(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
+.agent.open #agent-body { animation: agent-drop .26s cubic-bezier(.2,.8,.2,1); }
+@media (prefers-reduced-motion: reduce) { .agent.open #agent-body { animation: none; } }
+.peek { cursor: grab; }

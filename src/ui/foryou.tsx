@@ -5,7 +5,7 @@ import { useForYouOpen } from './foryou-open'
 import { rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
 import { Notice, NoticeClose, useNotice } from './notice'
-import { bigNumber, cardLine, formatOf, shortLine, streamOf, type ForYouFormat } from './foryou-format'
+import { bigNumber, cardLine, detailLine, formatOf, looksOf, shortLine, streamOf, worthShowing, type ForYouFormat, type ForYouLook } from './foryou-format'
 // « For you »: the stream next to weevboss, full screen. One single stream, no sections, no labels: every item is a
 // full-width band in its own colour, drawn in one of five layouts (src/ui/foryou-format.ts).
 import { AnimatePresence, motion, useIsPresent, useReducedMotion, type PanInfo, type Variants } from 'motion/react'
@@ -239,57 +239,72 @@ function ActionCard({ item, fy }: CardProps) {
       </div>
     )
   }
-  const actions = item.actions?.slice(0, 2) ?? []
+  const vp = item.visualProposal
+  const actions = vp && !item.actions?.length ? vp.options.slice(0, 2).map((o) => ({ id: `choice:${o.id}`, label: o.label })) : (item.actions?.slice(0, 2) ?? [])
   const answer = item.kind === 'session' && item.tone === 'question'
   return (
     <div className="in fy-c">
       <p className="fy-say">{cardLine(item)}</p>
       <div className="fy-taps">
         {actions.length
-          ? actions.map((a, i) => <Tap key={a.id} quiet={i > 0} label={busy ? t.sending : a.label} busy={busy} onTap={() => void fy.act(item.id, a.id)} />)
+          ? actions.map((a, i) => <Tap key={a.id} quiet={i > 0 && !vp} label={busy ? t.sending : shortLine(a.label, 40) || a.label} busy={busy} onTap={() => void fy.act(item.id, a.id)} />)
           : open && <Tap label={answer ? t.tapAnswer : t.tapLook} onTap={open} />}
       </div>
     </div>
   )
 }
 
+/** A text card: the first tap reveals one more line (its detail), the next one opens where it comes from. */
+function useReveal(item: ForYouItem) {
+  const open = useOpen(item)
+  const detail = useMemo(() => detailLine(item), [item])
+  const [shown, setShown] = useState(false)
+  const tap = detail && !shown ? () => setShown(true) : open
+  return { tap, more: shown ? detail : '', can: !!tap }
+}
+
 function ProgressCard({ item }: CardProps) {
   const t = useT(M)
-  const open = useOpen(item)
+  const { tap, more, can } = useReveal(item)
   const num = item.kind === 'milestone' || item.kind === 'stat' ? bigNumber(item) : null
   const line = num ? shortLine(num.rest || (item.recap ? t.doneOvernight : '')) : cardLine(item)
   return (
-    <button type="button" className="in fy-c fy-hit" onClick={open} disabled={!open}>
+    <button type="button" className={`in fy-c fy-hit${num ? ' fy-numcard' : ''}`} onClick={tap} disabled={!can}>
       {num && <span className="fy-num tab">{num.n}</span>}
       {line && <span className={num ? 'fy-say' : 'fy-say fy-shipped'}>{line}</span>}
+      {more && <span className="fy-more">{more}</span>}
     </button>
   )
 }
 
 function LearnCard({ item }: CardProps) {
-  const open = useOpen(item)
+  const { tap, more, can } = useReveal(item)
   return (
-    <button type="button" className="in fy-c fy-hit" onClick={open} disabled={!open}>
-      <span className="fy-learn">{shortLine(item.text || item.title)}</span>
+    <button type="button" className="in fy-c fy-hit" onClick={tap} disabled={!can}>
+      <span className="fy-learn">{cardLine(item)}</span>
+      {more && <span className="fy-more">{more}</span>}
     </button>
   )
 }
 
 function ThinkCard({ item }: CardProps) {
-  const open = useOpen(item)
+  const { tap, more, can } = useReveal(item)
   return (
-    <button type="button" className="in fy-c fy-hit" onClick={open} disabled={!open}>
+    <button type="button" className="in fy-c fy-hit" onClick={tap} disabled={!can}>
       <span className="fy-think">{cardLine(item)}</span>
+      {more && <span className="fy-more">{more}</span>}
     </button>
   )
 }
 
 function VisualCard({ item }: CardProps) {
   const media = item.resultGroup?.final ? [item.resultGroup.final] : (item.media ?? [])
-  const caption = shortLine(item.title || item.text, 80)
+  const caption = shortLine(item.title, 80) || shortLine(item.text, 80)
   return (
     <>
-      {item.composition && !item.resultGroup ? <InlineMediaFormats item={item} /> : !!media.length && <MediaStrip media={media} />}
+      {item.composition && !item.resultGroup ? <InlineMediaFormats item={item} /> : media.length === 2 ? (
+        <div className="fy-two">{media.map((m) => <MediaTile key={m.id} m={m} many />)}</div>
+      ) : !!media.length && <MediaStrip media={media} />}
       {caption && (
         <div className="in fy-caption">
           <p className="fy-say small">{caption}</p>
@@ -308,10 +323,10 @@ const CARDS: Record<ForYouFormat, (p: CardProps) => ReactNode> = {
 }
 
 /** The band: its layout and tone only (an alert stays calm: never inverted, never red). */
-const bandClass = (item: ForYouItem, format: ForYouFormat) => `band fy-f-${format} fy-t-${item.tone === 'alert' ? 'question' : item.tone}${item.seen ? '' : ' fy-unseen'}${item.workstream?.kind === 'self-improvement' ? ' recursive-identity' : ''}`
+const bandClass = (item: ForYouItem, format: ForYouFormat, look: ForYouLook = 'fill') => `band fy-f-${format} fy-l-${look} fy-t-${item.tone === 'alert' ? 'question' : item.tone}${item.seen ? '' : ' fy-unseen'}${item.workstream?.kind === 'self-improvement' ? ' recursive-identity' : ''}`
 
 /** One item of the stream. compact: a thin strip (one line), nothing to tap inside. Hidden when it has no layout. */
-export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: boolean }) {
+export function ForYouItemView({ item, compact, look }: { item: ForYouItem; compact?: boolean; look?: ForYouLook }) {
   const fy = useForYou()
   const { hidden, dismiss } = useNotice(feedNoticeKey(item))
   const { colors } = useApp()
@@ -330,7 +345,7 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
 
   const format = formatOf(item)
   const closable = closableFeedNotice(item)
-  if (!format || hidden || rawEngineeringNotice(item.id, item.text)) return null
+  if (!format || hidden || rawEngineeringNotice(item.id, item.text) || !worthShowing(item)) return null
   if (compact) {
     return (
       <div className={`${bandClass(item, format)} fy-strip${closable ? ' notice-shell' : ''}`} style={style} data-fy={item.id}>
@@ -344,7 +359,7 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
   const Card = CARDS[format]
   const err = fy.error(item.id)
   return (
-    <article ref={band} className={`${bandClass(item, format)} fy-item${closable ? ' notice-shell' : ''}${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-format={format}>
+    <article ref={band} className={`${bandClass(item, format, look)} fy-item${closable ? ' notice-shell' : ''}${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-format={format}>
       {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
       <Card item={item} fy={fy} />
       <OutboxStatus scope={`/api/foryou/${encodeURIComponent(item.id)}/`} eventId={feedNoticeKey(item)} />
@@ -404,7 +419,7 @@ function Tick({ text }: { text: string }) {
 }
 
 /** The line: what is turning right now. The only thing always alive: a star spins per working agent, figures roll when they change. */
-function ForYouPulse({ pulse }: { pulse: ForYouPulse }) {
+export function ForYouPulse({ pulse }: { pulse: ForYouPulse }) {
   const t = useT(M)
   const stars = Math.min(pulse.working, 6)
   const parts: [string, string][] = []
@@ -445,7 +460,7 @@ const LEFT_HOLD = 0.62
 
 /** An item's place in the stream. It comes in once with the house spring. Acted on, it leaves sideways (launched, sent:
  * to the right; refused, dismissed: to the left), a word flashes where it was, then the next ones close the gap. */
-function Slot({ item, index, opening: atOpening }: { item: ForYouItem; index: number; opening: boolean }) {
+function Slot({ item, index, look, opening: atOpening }: { item: ForYouItem; index: number; look: ForYouLook; opening: boolean }) {
   const t = useT(M)
   // Decided once, when it comes in: a slot that came in with the page keeps that entrance for good (were its target to
   // change at the next render, Motion would send « y » back to where it started and every band would sit 22 px low).
@@ -495,7 +510,7 @@ function Slot({ item, index, opening: atOpening }: { item: ForYouItem; index: nu
         </div>
       )}
       <motion.div className="fy-slot-body" variants={variants.body}>
-        <ForYouItemView item={item} />
+        <ForYouItemView item={item} look={look} />
       </motion.div>
     </motion.div>
   )
@@ -506,10 +521,11 @@ function Stream({ items }: { items: ForYouItem[] }) {
   useEffect(() => {
     opening.current = false
   }, [])
+  const looks = useMemo(() => looksOf(items), [items])
   return (
     <AnimatePresence>
       {items.map((it, i) => (
-        <Slot key={it.id} item={it} index={i} opening={opening.current} />
+        <Slot key={it.id} item={it} index={i} look={looks[i]} opening={opening.current} />
       ))}
     </AnimatePresence>
   )
@@ -589,7 +605,6 @@ export function ForYouPage(_: { who?: string } = {}) {
             </Notice>
           )}
         </AnimatePresence>
-        {fy.feed && <ForYouPulse pulse={fy.feed.pulse} />}
         <Stream items={shown} />
         {fy.feed &&
           (shown.length ? (

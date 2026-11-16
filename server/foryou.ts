@@ -1325,6 +1325,29 @@ export class ForYou {
     })
   }
 
+  /** Weekly quota pace, from the cached usage (no request of its own): said only when it changes a decision — it will
+   * run dry before the reset, or a lot is left late in the week. */
+  private paceInsights(now: number): ForYouItem[] {
+    const t = tr(M)
+    const out: ForYouItem[] = []
+    const WEEK = 7 * 86_400_000
+    for (const tool of ['claude', 'codex'] as const) {
+      const q = this.usage?.[tool]
+      const w = q?.ok ? q.windows.find((x) => x.kind === 'week') : undefined
+      if (!w?.resetsAt || w.percent >= USAGE_ALERT) continue
+      const left = w.resetsAt - now
+      const gone = (WEEK - left) / WEEK
+      if (left <= 0 || gone <= 0.15 || gone >= 1) continue
+      const name = tool === 'claude' ? 'Claude' : 'Codex'
+      const rate = w.percent / (WEEK - left) // % per ms
+      const dryIn = rate > 0 ? (100 - w.percent) / rate : Infinity
+      const id = `insight:pace:${tool}:${quotaReset(w.resetsAt)}`
+      if (dryIn < left - 6 * 3_600_000) out.push({ id, kind: 'insight', tone: 'neutral', at: now, who: 'weevils', text: t.paceOut(name, Math.round(w.percent), Math.round(gone * 100), Math.round((left - dryIn) / 3_600_000)), open: { page: 'usage' }, live: true })
+      else if (gone >= 0.6 && w.percent < 40) out.push({ id, kind: 'insight', tone: 'neutral', at: now, who: 'weevils', text: t.paceRoom(name, Math.round(w.percent), Math.max(1, Math.round(left / 86_400_000))), open: { page: 'usage' }, live: true })
+    }
+    return out
+  }
+
   /** Alerts that come from the system (not from a session): each with the place where it is solved. */
   private systemAlerts(snap: Snapshot, now: number): ForYouItem[] {
     const t = tr(M)
@@ -1387,7 +1410,7 @@ export class ForYou {
       if (m.online) this.offSince.delete(m.id)
       else if (!this.offSince.has(m.id)) this.offSince.set(m.id, now)
     }
-    const items = this.systemAlerts(snap, now)
+    const items = [...this.systemAlerts(snap, now), ...this.paceInsights(now)]
     const cards = this.cards(snap, now)
     if (cards.length) items.push({ id: 'proposals', kind: 'proposals', tone: 'neutral', at: 0, who: 'weevils', text: cards.every((c) => c.own) ? tr(M).ownProposals(cards.length) : tr(M).proposals(cards.length), cards, live: true })
     const out: ForYouItem[] = []

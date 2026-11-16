@@ -40,8 +40,8 @@ export function formatOf(item: ForYouItem): ForYouFormat | null {
       if (item.tone === 'result') return hasVisual(item) ? 'visual' : 'progress'
       return null
     case 'boss':
-      if (id.startsWith('auto:go:')) return null
-      if (id.startsWith('auto:done:')) return 'progress'
+      // Automation lifecycle (started, running, wrapped up): bookkeeping, never a card. Only its media would say more.
+      if (/^auto:(?:go|done|run|start|end|stop|fail)/.test(id) && !hasVisual(item)) return null
       if (id.startsWith('auto:proposed:') || item.actions?.length) return 'action'
       if (hasVisual(item)) return 'visual'
       return item.text ? 'think' : null
@@ -53,16 +53,22 @@ export function formatOf(item: ForYouItem): ForYouFormat | null {
       if (id.startsWith('cost:')) return null
       return item.text ? 'learn' : null
     case 'milestone':
-      return 'progress'
+      // A count alone (« 3 projects moved today ») is a readout; a figure earns a card when it compares.
+      return compares(item) ? 'progress' : null
     case 'stat':
-      if (item.recap) return item.recap.lines.length ? 'progress' : null
+      // The overnight tally is a status readout, not content.
+      if (item.recap) return null
       // Repeated « saved this week » lines and plain usage bars: not a number that moved.
       if (id.startsWith('cost:')) return null
-      return bigNumber(item) ? 'progress' : null
+      return bigNumber(item) && compares(item) ? 'progress' : null
     default:
       return null
   }
 }
+
+/** A figure that says something: a trend, a comparison, a record — not a bare count. */
+export const compares = (item: ForYouItem) =>
+  /\b(?:vs\.?|than|up|down|more|fewer|less|since|from|record|best|worst|first|doubled|halved|faster|slower|instead|before|after|compared|yesterday|last (?:week|month))\b|[×%]|\d\s?x\b/i.test(`${item.title ?? ''} ${item.text}`)
 
 /** Plain words of a card: no markdown marks, no code spans, one line. */
 export function plainLine(text: string): string {
@@ -78,16 +84,38 @@ export function plainLine(text: string): string {
     .trim()
 }
 
-/** One short line: the first sentence when it fits, else cut on a word with an ellipsis. */
+/** A mail subject or title as a person would say it: no « [tag] », no shouted « ACTION — » prefix, no trailing « … ». */
+export function cleanSubject(text: string): string {
+  let s = text.replace(/\[[^\]\n]{1,40}\]\s*/g, '').trim()
+  // Shouted prefixes: « ACTION — », « FYI: », « URGENT - ».
+  s = s.replace(/^(?:[A-Z][A-Z0-9]{1,15}\s*){1,3}[—–:-]\s+/, '')
+  // A line still all in capitals reads as shouting: sentence case (keeps short acronyms intact in mixed lines).
+  const letters = s.replace(/[^\p{L}]/gu, '')
+  if (letters.length > 8 && letters.replace(/\p{Lu}/gu, "").length < letters.length * 0.3) s = s.charAt(0) + s.slice(1).toLowerCase()
+  return s.replace(/\s*(?:…|\.{3})\s*$/, '').replace(/\s+[—–-]\s*$/, '').trim()
+}
+
+/** Automation bookkeeping worded as a sentence (« The automation "X" is wrapped up », « … is running »). */
+export function lifecycleLine(text: string): boolean {
+  return /^(?:the )?automation\s+["“«']?[^"”»']{0,80}["”»']?\s+(?:is|has|was|just)\s+(?:wrapped|running|started|starting|finished|done|over|complete|stopped|paused|scheduled|launched|back)/i.test(plainLine(text))
+}
+
+const TAIL_WORDS = /\s+(?:a|an|the|and|or|but|of|to|in|on|for|with|at|by|from|is|are|was|its|their|your|my|that|which|so|as|into|than)$/i
+
+/** One short line that never ends on « … »: the first sentence when it fits, else cut at a clause, else on a word
+ * (never on a dangling « the »/« and »). Empty when nothing sensible fits. */
 export function shortLine(text: string | undefined, max = LINE_MAX): string {
-  const line = plainLine(text ?? '')
+  const line = cleanSubject(plainLine(text ?? ''))
   if (!line) return ''
-  const first = /^[\s\S]*?[.!?…](?=\s|$)/.exec(line)?.[0] ?? line
+  const first = /^[\s\S]*?[.!?](?=\s|$)/.exec(line)?.[0] ?? line
   const pick = first.length >= 12 && first.length <= max ? first : line
   if (pick.length <= max) return pick
   const cut = pick.slice(0, max)
-  const space = cut.lastIndexOf(' ')
-  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:.–—-]+$/, '')}…`
+  const clause = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('; '), cut.lastIndexOf(', '), cut.lastIndexOf(' — '), cut.lastIndexOf(': '))
+  let out = clause > max * 0.45 ? cut.slice(0, clause) : cut.slice(0, Math.max(cut.lastIndexOf(' '), 0))
+  for (let i = 0; i < 4 && TAIL_WORDS.test(out); i++) out = out.replace(TAIL_WORDS, '')
+  out = out.replace(/[\s,;:–—-]+$/, '').replace(/\s*[(\["“«]$/, '')
+  return out.length >= 12 ? out : ''
 }
 
 /** The figure a progress card shows big, and the words that go with it (« 100 » · « turns this week »). */
@@ -108,16 +136,101 @@ export function bigNumber(item: ForYouItem): { n: string; rest: string } | null 
 export function cardLine(item: ForYouItem): string {
   if (item.kind === 'proposals') return shortLine(item.cards?.[0]?.title)
   if (item.kind === 'session' && item.tone === 'question') return shortLine(item.lead || item.text)
-  if (item.kind === 'mail' || item.kind === 'media' || item.kind === 'session') return shortLine(item.title || item.text)
-  return shortLine(item.text || item.title)
+  if (item.kind === 'mail' || item.kind === 'media' || item.kind === 'session') return shortLine(item.title) || shortLine(item.text)
+  return shortLine(item.text) || shortLine(item.title)
 }
 
-/** The stream as shown: only items with a layout, at most STREAM_CAP. */
-export function streamOf(items: ForYouItem[], cap = STREAM_CAP): ForYouItem[] {
+const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+
+/** How much an item brings: media, then something to do, then a figure, then words. Duplicates keep the richest. */
+export function richness(item: ForYouItem): number {
+  return (hasVisual(item) ? 1000 : 0) + (item.cards?.length || item.actions?.length ? 500 : 0) + (bigNumber(item) ? 200 : 0) + Math.min(plainLine(item.text).length + (item.body?.length ?? 0), 199)
+}
+
+/** Rich: an outcome to see (media, a figure, a decision). The rest is a short line. */
+export const richItem = (item: ForYouItem) => {
+  const f = formatOf(item)
+  return f === 'visual' || f === 'action' || (f === 'progress' && !!bigNumber(item))
+}
+
+/** Shown at all: a layout, a line that says something (not a bare 3-word title, not bookkeeping). */
+export function worthShowing(item: ForYouItem, strict = true): boolean {
+  const f = formatOf(item)
+  if (!f) return false
+  if (lifecycleLine(item.text) || lifecycleLine(item.title ?? '')) return false
+  if (f === 'visual' || !strict) return true
+  if (f === 'action') return item.kind === 'proposals' ? !!shortLine(item.cards?.[0]?.title) : !!cardLine(item)
+  if (f === 'progress' && bigNumber(item)) return true
+  const line = cardLine(item)
+  // A title alone (« content ideas index »): no outcome, no action, no insight.
+  return line.split(/\s+/).length >= 5
+}
+
+/** Same thing said twice: one's words inside the other's, or the same subject. */
+function sameThing(a: ForYouItem, b: ForYouItem): boolean {
+  const ta = a.title ? norm(cleanSubject(a.title)) : ''
+  const tb = b.title ? norm(cleanSubject(b.title)) : ''
+  if (ta && ta === tb) return true
+  const la = norm(cardLine(a)), lb = norm(cardLine(b))
+  if (la.length < 8 || lb.length < 8) return false
+  const fa = norm(`${a.title ?? ''} ${plainLine(a.text)}`), fb = norm(`${b.title ?? ''} ${plainLine(b.text)}`)
+  return fa.includes(lb) || fb.includes(la)
+}
+
+/** Interleave depths: within windows of WINDOW consecutive items (recency kept window by window), rich and short
+ * items alternate, so a run of one-liners never hides the outcomes. */
+const WINDOW = 6
+export function mixDepths(items: ForYouItem[]): ForYouItem[] {
   const out: ForYouItem[] = []
-  for (const i of items) {
-    if (out.length >= cap) break
-    if (formatOf(i)) out.push(i)
+  for (let w = 0; w < items.length; w += WINDOW) {
+    const win = items.slice(w, w + WINDOW)
+    const rich = win.filter(richItem), short = win.filter((i) => !richItem(i))
+    let takeRich = richItem(win[0])
+    while (rich.length || short.length) {
+      const from = (takeRich && rich.length) || !short.length ? rich : short
+      out.push(from.shift()!)
+      takeRich = !takeRich
+    }
   }
+  return out
+}
+
+/** The stream as shown: only items worth a card, duplicates folded into the richest, depths mixed, at most STREAM_CAP. */
+export function streamOf(items: ForYouItem[], cap = STREAM_CAP, strict = true): ForYouItem[] {
+  const kept: ForYouItem[] = []
+  for (const i of items) {
+    if (kept.length >= cap * 2) break
+    if (!worthShowing(i, strict)) continue
+    const twin = kept.findIndex((k) => sameThing(k, i))
+    if (twin < 0) kept.push(i)
+    else if (richness(i) > richness(kept[twin])) kept[twin] = i
+  }
+  return strict ? mixDepths(kept.slice(0, cap)) : kept.slice(0, cap)
+}
+
+/** One more line, revealed on tap: what the card's line did not say (its body, its fetched « more », its text's rest). */
+export function detailLine(item: ForYouItem): string {
+  const line = norm(cardLine(item))
+  for (const src of [item.moreText, item.body, item.text, item.title]) {
+    if (!src) continue
+    const plain = plainLine(src)
+    const rest = norm(plain).startsWith(line) ? plain.slice(cardLine(item).length).trim() : plain
+    const d = shortLine(rest, 160)
+    if (d && !line.includes(norm(d)) && norm(d) !== line) return d
+  }
+  return ''
+}
+
+/** The look of each card in its place: rhythm so no two neighbours look alike. fill: the item's colour band ·
+ * plain: on the page, words only · quote: a centred thought. */
+export type ForYouLook = 'fill' | 'plain' | 'quote'
+export function looksOf(items: ForYouItem[]): ForYouLook[] {
+  const out: ForYouLook[] = []
+  items.forEach((it, i) => {
+    const f = formatOf(it)
+    let look: ForYouLook = f === 'think' ? 'quote' : f === 'learn' || f === 'visual' ? 'plain' : 'fill'
+    if (i > 0 && look === out[i - 1]) look = look === 'fill' ? 'plain' : f === 'think' ? 'fill' : look === 'plain' ? 'fill' : 'plain'
+    out.push(look)
+  })
   return out
 }

@@ -28,6 +28,9 @@ export default defineMessages({
     /** A session cut off mid-work; `why` comes from the core catalog (cutWhy). */
     cut: (why: string) => `Aïe, on m’a coupé en plein travail (${why}). Tu me relances ?`,
     resume: 'Reprendre',
+    // ---- quota pace (an insight: a trend and its consequence)
+    paceOut: (tool: string, used: number, gone: number, hours: number) => `${tool} : ${used} % de la semaine utilisés en ${gone} % du temps. À ce rythme, plus rien ~${hours} h avant la remise à zéro.`,
+    paceRoom: (tool: string, used: number, days: number) => `${tool} : seulement ${used} % de la semaine utilisés, ${days} j avant la remise à zéro. De la place pour un gros chantier.`,
     // ---- alerts (one sober line each)
     usage: (tool: string, window: string, percent: number, spare: string) =>
       `T’es à ${percent} % de ta ${window} ${tool}. ${spare ? `Je garde ${spare} au chaud au cas où.` : 'Je lève le pied sur ce qui peut attendre.'}`,
@@ -83,6 +86,8 @@ export default defineMessages({
     resultUntitled: 'Finished. Open it to read what was done.',
     cut: (why: string) => `Ouch, I got cut off mid-work (${why}). Want me to pick it back up?`,
     resume: 'Resume',
+    paceOut: (tool: string, used: number, gone: number, hours: number) => `${tool} has used ${used}% of its week in ${gone}% of the time. At this pace it runs dry ~${hours} h before the reset.`,
+    paceRoom: (tool: string, used: number, days: number) => `${tool} has only used ${used}% of its week with ${days} days to the reset. Room for a big job.`,
     usage: (tool: string, window: string, percent: number, spare: string) =>
       `You're at ${percent}% of your ${tool ? `${tool} ` : ''}${window}. ${spare ? `I'm keeping ${spare} warm just in case.` : 'I’m easing off what can wait.'}`,
     window_session: '5 h window',

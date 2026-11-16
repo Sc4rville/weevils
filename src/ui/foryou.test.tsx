@@ -77,7 +77,7 @@ const ITEMS: ForYouItem[] = [
   { ...base, id: 'se', kind: 'session', tone: 'question', who: 'session', projectId: 'mygame', sessionId: 's1', title: 'fix the login', text: 'Should I keep the old cookie?', reply: 'session', actions: [{ id: 'resume', label: 'resume' }] },
   { ...base, id: 'im', kind: 'improve', tone: 'magic', who: 'weevils', title: 'Your evenings', text: 'Most of your sessions start after 9 pm: queue them for the night.', actions: [{ id: 'do', label: 'do it' }], reply: 'boss' },
   { ...base, id: 'in', kind: 'insight', who: 'weevils', projectId: 'mygame', text: 'Vite only bundles for production.', more: true },
-  { ...base, id: 'mi', kind: 'milestone', who: 'weevils', title: 'turns delivered today', text: '42' },
+  { ...base, id: 'mi', kind: 'milestone', who: 'weevils', title: 'turns delivered today', text: '42 turns delivered today, up from 30 yesterday' },
   { ...base, id: 'st', kind: 'stat', who: 'weevils', title: 'this week', text: '', gauges: [{ label: 'usage', value: 71, max: 100, shown: '71 %', hot: true }, { label: 'mygame', value: 12, max: 18, shown: '12 of 18', projectId: 'mygame' }] },
 ]
 const feed = (items: ForYouItem[], rev = 1): ForYouFeed => ({ rev, items, pulse: { working: 2, waiting: 1, delivered: 7, auto: 3 } })
@@ -205,14 +205,10 @@ describe('for you: voice bars', () => {
 
 describe('for you: figures, the line, media fit', () => {
 
-  it('the line: a star per working agent, each count as its own figure', async () => {
+  it('no status readout above the stream: it is content, not a control panel', async () => {
     await open()
-    const line = host.querySelector('.fy-pulse')!
-    expect(line.querySelectorAll('.fy-stars .spin')).toHaveLength(2)
-    expect([...line.querySelectorAll('.fy-tick-n')].map((n) => n.textContent)).toEqual(['2', '7', '1', '3'])
-    expect(line.querySelector('.fy-pulse-text')!.textContent).toBe([t().pulseWorking(2), t().pulseDelivered(7), t().pulseWaiting(1), t().pulseAuto(3)].join(' · '))
+    expect(host.querySelector('.fy-pulse')).toBeNull()
   })
-
 
   it('a media is never cut by more than a little: beyond, it is shown whole', () => {
     // One media alone on a phone (390 wide, cap 523): landscape and near-square fill, a portrait clip is shown whole.
@@ -348,12 +344,12 @@ describe('for you: one stream, five layouts, no labels', () => {
     const long = { ...ITEMS.find((i) => i.id === 'in')!, text: 'Vite only bundles for production and ' + 'serves each module on demand during development '.repeat(8) }
     await open([long])
     const line = band('in').querySelector('.fy-learn')!.textContent!
-    expect(line.length).toBeLessThanOrEqual(121)
-    expect(line.endsWith('…')).toBe(true)
+    expect(line.length).toBeLessThanOrEqual(120)
+    expect(line.endsWith('…')).toBe(false)
   })
 
   it('the page renders at most 60 items', async () => {
-    const many = Array.from({ length: 150 }, (_, i) => ({ ...base, id: `t${i}`, kind: 'boss' as const, who: 'weevboss', text: `Thought ${i}.` }))
+    const many = Array.from({ length: 150 }, (_, i) => ({ ...base, id: `t${i}`, kind: 'boss' as const, who: 'weevboss', text: `Thought number ${i} worth a second look today.` }))
     await open(many)
     expect(host.querySelectorAll('[data-fy]').length).toBe(60)
   })

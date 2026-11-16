@@ -96,19 +96,16 @@ describe('sleep mode', () => {
 })
 
 describe('the morning recap card', () => {
-  it('says how many things got done overnight, big, in one line', async () => {
+  it('the overnight tally is a readout, not content: it stays out of the stream', async () => {
     const { ForYouItemView } = await import('./foryou')
     const item: ForYouItem = {
       id: 'sleep:1', kind: 'stat', tone: 'magic', at: NOW, who: 'weevils', title: 'While you slept', text: 'Overnight: 1 result, 1 waiting for you.',
       recap: { from: NOW - 8 * 60 * MIN, to: NOW, more: 0, lines: [
-        { state: 'waiting', src: 'session', title: 'Deploy', detail: 'Allow the deploy?', projectId: 'p', open: { page: 'session', id: 'd' }, at: NOW },
         { state: 'done', src: 'auto', title: 'Night lens', detail: 'Report: 3 findings', open: { page: 'auto', id: 'a1' }, at: NOW },
       ] },
     }
     render(<ForYouItemView item={item} />)
-    expect(host.querySelector('[data-fy-format]')!.getAttribute('data-fy-format')).toBe('progress')
-    expect(host.querySelector('.fy-num')!.textContent).toBe('1')
-    expect(host.querySelector('.fy-say')!.textContent).toBe('done overnight')
-    expect(host.textContent).not.toContain('Report: 3 findings')
+    expect(host.querySelector('[data-fy-format]')).toBeNull()
   })
+
 })

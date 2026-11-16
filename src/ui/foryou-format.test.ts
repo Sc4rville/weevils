@@ -1,7 +1,7 @@
 // The five internal layouts of « For you »: every legacy kind maps to one of them or is hidden, the lines stay short.
 import { describe, expect, it } from 'vitest'
 import type { ForYouItem } from '../../shared/foryou.ts'
-import { bigNumber, cardLine, formatOf, LINE_MAX, shortLine, STREAM_CAP, streamOf } from './foryou-format'
+import { bigNumber, cardLine, cleanSubject, detailLine, formatOf, LINE_MAX, looksOf, mixDepths, richItem, shortLine, STREAM_CAP, streamOf } from './foryou-format'
 
 const it0 = (o: Partial<ForYouItem>): ForYouItem => ({ id: 'x', kind: 'boss', tone: 'neutral', at: 1, who: 'weevils', text: 'Something.', ...o })
 const media = [{ id: 'm', type: 'image' as const, url: '/m', name: 'm.png', bytes: 1 }]
@@ -22,16 +22,18 @@ describe('formatOf', () => {
     ['a boss idea with buttons is action', { kind: 'boss', actions: [{ id: 'a', label: 'do' }] }, 'action'],
     ['a boss word without buttons is a thought', { kind: 'boss' }, 'think'],
     ['an automation start is chatter', { kind: 'boss', id: 'auto:go:1' }, null],
-    ['an automation done is progress', { kind: 'boss', id: 'auto:done:1' }, 'progress'],
+    ['an automation wrap-up is chatter', { kind: 'boss', id: 'auto:done:1' }, null],
     ['an automation proposal is action', { kind: 'boss', id: 'auto:proposed:1' }, 'action'],
     ['improve with buttons is action', { kind: 'improve', actions: [{ id: 'a', label: 'do' }] }, 'action'],
     ['improve without is a thought', { kind: 'improve' }, 'think'],
     ['an insight is learn', { kind: 'insight' }, 'learn'],
     ['the token audit hides', { kind: 'insight', id: 'cost:audit:1' }, null],
-    ['a milestone is progress', { kind: 'milestone', text: '100 turns' }, 'progress'],
+    ['a milestone that compares is progress', { kind: 'milestone', text: '100 turns, twice last week' }, 'progress'],
+    ['a bare count is a readout', { kind: 'milestone', text: '3 projects moved today, good day.' }, null],
+    ['the overnight tally is a readout', { kind: 'stat', recap: { lines: [{ state: 'done', src: 'auto', title: 'x' }] } as any }, null],
     ['a repeated saving line hides', { kind: 'stat', id: 'cost:gain:1', text: 'saved 12 %' }, null],
     ['plain bars without a figure hide', { kind: 'stat', text: '' }, null],
-    ['a stat with a figure is progress', { kind: 'stat', text: '12 turns today' }, 'progress'],
+    ['a stat that compares is progress', { kind: 'stat', text: '12 turns today, up from 4' }, 'progress'],
     ['work in progress is chatter', { work: { intentId: 'i', status: 'running' } }, null],
     ['work done is progress', { work: { intentId: 'i', status: 'completed' } }, 'progress'],
   ])('%s', (_, o, want) => expect(formatOf(it0(o))).toBe(want))
@@ -42,8 +44,14 @@ describe('short lines', () => {
     expect(shortLine('**Shipped** the `menu`. Then a long tail of details nobody needs here.')).toBe('Shipped the menu.')
     const long = 'word '.repeat(80)
     const line = shortLine(long)
-    expect(line.length).toBeLessThanOrEqual(LINE_MAX + 1)
-    expect(line.endsWith('…')).toBe(true)
+    expect(line.length).toBeLessThanOrEqual(LINE_MAX)
+    expect(line.endsWith('…')).toBe(false)
+  })
+  it('never ends on an ellipsis or a dangling word', () => {
+    const l = shortLine('We moved the whole render queue onto the cheaper pod, and every clip now finishes before breakfast, which frees the afternoon for the trailer and the edit of the')
+    expect(l).not.toMatch(/…|\.\.\.$/)
+    expect(l).not.toMatch(/\b(the|and|of|for)$/)
+    expect(shortLine('Brief ready…')).toBe('Brief ready')
   })
   it('a big number comes out of a milestone', () => {
     expect(bigNumber(it0({ kind: 'milestone', text: '100 turns delivered' }))).toEqual({ n: '100', rest: 'turns delivered' })
@@ -56,7 +64,7 @@ describe('short lines', () => {
 
 describe('streamOf', () => {
   it('keeps only items with a layout, at most STREAM_CAP', () => {
-    const many = Array.from({ length: 200 }, (_, i) => it0({ id: `b${i}`, kind: i % 2 ? 'boss' : 'stat', text: i % 2 ? 'A thought.' : '' }))
+    const many = Array.from({ length: 200 }, (_, i) => it0({ id: `b${i}`, kind: i % 2 ? 'boss' : 'stat', text: i % 2 ? `A thought number ${i} worth chewing on.` : '' }))
     const out = streamOf(many)
     expect(out.length).toBe(STREAM_CAP)
     expect(out.every((i) => i.kind === 'boss')).toBe(true)
@@ -69,5 +77,51 @@ describe('plainLine paths', () => {
     const { plainLine } = await import('./foryou-format')
     expect(plainLine('Fixed src/ui/foryou.tsx and ~/x/y today')).toBe('Fixed and today')
     expect(plainLine('before/after shots')).toBe('before/after shots')
+  })
+})
+
+const short = (id: string, text: string, o: Partial<ForYouItem> = {}) => it0({ id, kind: 'insight', text, ...o })
+
+describe('junk filters', () => {
+  it('strips [tags] and shouted prefixes from subjects', () => {
+    expect(cleanSubject('[weevboss] ACTION — HOW TO TAKE OVER PARIS EP01 — brief…')).toBe('How to take over paris ep01 — brief')
+    expect(cleanSubject('FYI: the pod is down')).toBe('the pod is down')
+    expect(cardLine(it0({ kind: 'mail', title: '[x] URGENT - Invoice from Hostinger' }))).toBe('Invoice from Hostinger')
+  })
+  it('hides automation lifecycle notices and bare titles', () => {
+    const out = streamOf([
+      it0({ id: 'a', kind: 'boss', text: 'The automation "Index your content ideas" is wrapped up.' }),
+      it0({ kind: 'boss', id: 'auto:go:1', text: 'The automation "X" is running.' }),
+      short('c', 'content ideas index'),
+      short('d', 'Shorts posted before 9 am get twice the reach of evening ones.'),
+    ])
+    expect(out.map((i) => i.id)).toEqual(['d'])
+  })
+  it('dedupes contained text and same subjects, keeping the richest', () => {
+    const out = streamOf([
+      short('n', 'weevils install drop-off is down to twelve percent this week'),
+      it0({ id: 'r', kind: 'session', tone: 'result', title: 'Install drop-off', text: 'The weevils install drop-off is down to twelve percent this week, after the new onboarding.', media }),
+      it0({ id: 'm1', kind: 'mail', title: 'Invoice from Hostinger for November' }),
+      it0({ id: 'm2', kind: 'mail', title: '[billing] Invoice from Hostinger for November', actions: [{ id: 'pay', label: 'Pay' }] }),
+    ])
+    expect(out.map((i) => i.id).sort()).toEqual(['m2', 'r'])
+  })
+})
+
+describe('rhythm', () => {
+  it('interleaves rich and short items inside a window', () => {
+    const s = (id: string) => short(id, `A plain sentence about item ${id} worth reading.`)
+    const r = (id: string) => it0({ id, kind: 'media', media })
+    const out = mixDepths([s('1'), s('2'), s('3'), r('4'), r('5'), s('6')])
+    expect(out.map(richItem)).toEqual([false, true, false, true, false, false])
+    expect(new Set(out.map((i) => i.id)).size).toBe(6)
+  })
+  it('no two neighbours share a look', () => {
+    const items = [short('a', 'One learned thing here.'), short('b', 'Another learned thing.'), it0({ id: 'c', kind: 'boss', text: 'A thought to chew.' }), it0({ id: 'd', kind: 'boss', text: 'Another thought.' })]
+    const looks = looksOf(items)
+    for (let i = 1; i < looks.length; i++) expect(looks[i]).not.toBe(looks[i - 1])
+  })
+  it('a tap reveals one more line from the body', () => {
+    expect(detailLine(short('x', 'Shorts posted early do better.', { body: 'Posted before 9 am they got 2.1x the views over 30 days.' }))).toBe('Posted before 9 am they got 2.1x the views over 30 days.')
   })
 })

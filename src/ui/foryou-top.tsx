@@ -98,7 +98,7 @@ export function ForYouPeek() {
   const { snap, colors, push } = useApp()
   const { items, dismiss, feed } = useForYou()
   const authorOf = useAuthors()
-  const shown = streamOf(items.filter(notificationEligible), PEEK_ITEMS)
+  const shown = streamOf(items.filter(notificationEligible), PEEK_ITEMS, false)
   // Before the stream arrives, « nothing new » would be a false all-quiet: say what the snapshot already knows.
   const waiting = snap.foryou?.unseen ?? 0
   const emptyLine = feed ? t.forYouEmpty : waiting > 0 ? t.forYouUnseen(waiting) : t.forYouLoading

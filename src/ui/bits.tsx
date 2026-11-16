@@ -2,7 +2,6 @@ import { sourceAccessIssue, sourceForSession } from './source-access'
 import ToolM from '../i18n/codex-tools'
 import { interceptModelControl } from '../model-controls'
 import { withoutMachinePrefix } from '../../shared/machine-prefix.ts'
-import { SessionMenu } from './session-archive'
 import { sessionNoticeKey } from '../../shared/notices.ts'
 import { dismissNotice } from './notice-store'
 import { AnimatePresence, motion, type Transition } from 'motion/react'
@@ -163,7 +162,6 @@ export function SessionRow({ session }: { session: Session }) {
   return <div className="session-item">
     {waiting && session.ask ? <div className="cut-wrap ask-wrap">{row}<AskButton session={session} /></div>
       : cut ? <div className="cut-wrap">{row}<ResumeButton session={session} /></div> : row}
-    <SessionMenu session={session} />
   </div>
 }
 
@@ -328,7 +326,7 @@ export function Composer({
   onSend,
   onAttach,
   onFocus,
-  prompt = <Icon name="chevron" dir="right" />,
+  prompt: _prompt,
   className = 'tone',
   disabled,
   voice = false,
@@ -518,9 +516,8 @@ export function Composer({
         </div>
       )}
       <div className="in">
-        <span className="prompt" aria-hidden>
-          {busy ? <span className="spin"><Icon name="star" /></span> : prompt}
-        </span>
+        {/* No « > » before the field: its width goes to the text. Only the sending star takes that spot. */}
+        {busy && <span className="prompt" aria-hidden><span className="spin"><Icon name="star" /></span></span>}
         {horizontal ? (
           <textarea
             ref={(node) => { field.current = node }}

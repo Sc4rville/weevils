@@ -471,7 +471,7 @@ button:disabled {
 .composer > .in {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
   min-height: 56px;
 }
 
@@ -492,11 +492,11 @@ button:disabled {
 }
 
 .composer .send {
-  min-width: 44px;
+  min-width: 38px;
   height: 44px;
   display: grid;
   place-items: center;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 700;
 }
 
@@ -1277,11 +1277,11 @@ button.copy.done {
 /* ---------- Composer : photo et dictée ---------- */
 
 .tool-btn {
-  min-width: 40px;
+  min-width: 38px;
   height: 44px;
   display: grid;
   place-items: center;
-  font-size: 1.375rem;
+  font-size: 1.25rem;
   font-weight: 700;
   line-height: 1;
 }
@@ -2773,12 +2773,19 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
   display: block;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
+  /* No « … »: a long title fades out at the right edge. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
-.session-item .row .line .title.wrap { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.session-item .row .line .title.wrap { overflow: hidden; white-space: nowrap; text-overflow: clip; }
 /* What isn't working steps back: a quiet project and its resting sessions at half opacity. Waiting or cut stays full. */
 .band[data-project] > .in.head .name, .session-item, .repo { transition: opacity .4s ease; }
-.band[data-project]:not(.busy) > .in.head .name { opacity: .45; }
+.band[data-project] { transition: background-color .4s ease; }
+/* A resting project: its whole colour steps back (faded towards the page), the name stays legible on it. */
+.band[data-project]:not(.busy) { background-color: color-mix(in oklab, var(--c) 45%, #fff); }
+[data-theme='dark'] .band[data-project]:not(.busy) { background-color: color-mix(in oklab, var(--c) 45%, #000); }
+.band[data-project]:not(.busy) > .in.head .name { opacity: .75; }
 .repo.resting { opacity: .45; }
 .session-item:has(> .row:not(.live, .tone, .cut)) { opacity: .45; }
 .session-item:has(> .cut-wrap) { opacity: 1; }

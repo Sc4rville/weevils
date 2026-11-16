@@ -539,11 +539,10 @@ export function ProjectBand({ project }: { project: Project }) {
   useSeen()
   const unread = sessions.some(isUnread)
   const summary = [
-    improving ? t.improvingWeevils : active.length > cut.length ? activity(active.filter((s) => s.status !== 'interrupted')) : sessions.length && !cut.length ? t.nothingRunning : null,
+    improving ? t.improvingWeevils : active.length > cut.length ? activity(active.filter((s) => s.status !== 'interrupted')) : null,
     att.length ? t.yours(att.length) : null,
     convCount ? t.conversations(convCount) : null,
-    // Sans activité connue (projet épinglé jamais lancé, horodatage 0) : rien, pas « il y a 20766 jours ».
-    !active.length && project.lastActivityAt > 0 ? ago(now - project.lastActivityAt) : null,
+    // A resting project says nothing: no « nothing running », no « 1 day ago » (Scarville, 2026-11-16).
   ]
     .filter(Boolean)
     .join(' · ')

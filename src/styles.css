@@ -2874,7 +2874,6 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 /* No little squares anywhere (Scarville, 2026-11-16): unread, unseen and activity markers are not drawn. What they meant
    lives in the text: an unread project keeps its name at full ink even when resting, an unseen « for you » word too. */
 .dot, .fyt-dot, .h24-activity { display: none !important; }
-.band[data-project]:not(.busy):has(.head-name .dot) > .in.head .name { opacity: 1; }
 .fyt-word:has(.fyt-dot) { opacity: 1; font-weight: 750; }
 
 /* weevboss opens like a drawer coming down from the top (mirror of the automations drawer). */

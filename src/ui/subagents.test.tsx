@@ -305,12 +305,9 @@ describe('ligne de session : compte d’arrière-plan', () => {
     render(<SessionRow session={s} />, [s])
     // À la suite du texte, pas dans la colonne de la durée (qui mangerait le titre sur téléphone).
     expect(host.querySelector('.act .bg')).toBeNull()
-    const bg = host.querySelector('.title .bg')
-    expect(text(bg)).toBe('· 2 en arrière-plan')
-    expect(bg!.classList.contains('strong')).toBe(true)
+    // No written count on the row (Scarville, 2026-11-16): one line, title + time; the label still says it.
+    expect(host.querySelector('.title .bg')).toBeNull()
     expect(host.querySelector('button')!.getAttribute('aria-label')).toContain('2 en arrière-plan')
-    act(() => setLang('en'))
-    expect(text(host.querySelector('.title .bg'))).toBe('· 2 in background')
   })
 
   it('rien quand plus rien ne tourne', () => {

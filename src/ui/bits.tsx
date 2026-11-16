@@ -147,7 +147,6 @@ export function SessionRow({ session }: { session: Session }) {
         </span>
         <span className="title wrap">
           <span className="session-name">{unread && <span className="dot" aria-hidden />}{text}</span>
-          {session.background > 0 && <span className="bg strong"> · {t.background(session.background)}</span>}
           {/* Session Codex ouverte en relais d'une session Claude arrêtée par sa limite d'usage. */}
           {session.relayOf && (
             <span className="relay-sign" title={rt.signAria}>

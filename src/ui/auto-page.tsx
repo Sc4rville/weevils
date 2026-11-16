@@ -248,7 +248,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
       }
     >
       {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
-      {opt && <div className="in auto-delete-row"><AutoDeleteAction id={x.id} title={x.title} onDeleted={back} /></div>}
+      {opt && !(opt.draft && !opt.talk?.some((l) => l.who === 'user')) && <div className="in auto-delete-row"><AutoDeleteAction id={x.id} title={x.title} onDeleted={back} /></div>}
       {proposed && opt && !opt.draft && (
         <Notice closable={false} eventId={noticeKey("proposal", opt.id)} className="band invert auto-decide">
           <Line
@@ -287,7 +287,6 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
           </div>
         </>
       )}
-      {opt?.draft && <SleepTrigger o={opt} />}
       {opt && <Talk o={opt} />}
     </Shell>
   )
@@ -583,6 +582,8 @@ function Talk({ o }: { o: Optimizer }) {
   const messages = mergePending(real, pending)
   const last = o.talk?.at(-1)
   const suggestions = o.draft && last?.who === 'auto' ? last.suggestions ?? [] : []
+  // A new automation before you've said anything: one line, nothing else (Scarville, 2026-11-16).
+  if (o.draft && !asking && !k.busy.has(o.id) && !real.some((m) => m.role === 'user')) return <div className="in auto-discuss">{t.letsDiscuss}</div>
   if (!messages.length && !k.busy.has(o.id)) return null
   return (
     <div className="auto-talk">

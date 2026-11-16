@@ -315,6 +315,7 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
   const fy = useForYou()
   const { hidden, dismiss } = useNotice(feedNoticeKey(item))
   const { colors } = useApp()
+  const t = useT(M)
   const authors = useAuthors()
   const style = itemSlot(item, colors, authors)
   const band = useRef<HTMLElement>(null)
@@ -335,7 +336,7 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
       <div className={`${bandClass(item, format)} fy-strip${closable ? ' notice-shell' : ''}`} style={style} data-fy={item.id}>
         {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
         <div className="in fy-strip-in">
-          <span className="fy-strip-text ellipsis">{item.kind === 'proposals' && item.cards?.[0]?.own ? shortLine(item.cards[0].title) : cardLine(item)}</span>
+          <span className="fy-strip-text ellipsis">{item.kind === 'proposals' && item.cards?.[0]?.own ? t.yourIdea(shortLine(item.cards[0].title)) : cardLine(item)}</span>
         </div>
       </div>
     )

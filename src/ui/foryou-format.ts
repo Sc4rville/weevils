@@ -71,6 +71,8 @@ export function plainLine(text: string): string {
     .replace(/`([^`]*)`/g, '$1')
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/(\*\*|__|\*|~~)/g, '')
+    // File paths never reach a card: « ~/x/y.ts », « src/ui/a.tsx », « ./run.sh ».
+    .replace(/(?<=^|\s)(?:(?:~|\.{1,2})?\/(?:[\w.-]+\/?)+|(?:[\w.-]+\/)+[\w-]+\.[a-z]{1,5})(?=[\s,;:)]|$)/g, ' ')
     .replace(/^\s*(?:#{1,6}|[-*•>]|\d+[.)])\s+/gm, '')
     .replace(/\s+/g, ' ')
     .trim()

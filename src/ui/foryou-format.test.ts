@@ -63,3 +63,11 @@ describe('streamOf', () => {
     expect(STREAM_CAP).toBeLessThanOrEqual(60)
   })
 })
+
+describe('plainLine paths', () => {
+  it('drops file paths but keeps before/after words', async () => {
+    const { plainLine } = await import('./foryou-format')
+    expect(plainLine('Fixed src/ui/foryou.tsx and ~/x/y today')).toBe('Fixed and today')
+    expect(plainLine('before/after shots')).toBe('before/after shots')
+  })
+})

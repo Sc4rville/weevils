@@ -2885,3 +2885,55 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .agent.open #agent-body { animation: agent-drop .26s cubic-bezier(.2,.8,.2,1); }
 @media (prefers-reduced-motion: reduce) { .agent.open #agent-body { animation: none; } }
 .peek { cursor: grab; }
+/* ---------- Lateral chain: main → repos → previews (src/ui/lateral.tsx) ---------- */
+
+/* A lateral screen: a full-screen drawer above the main screen and its automations rail, under the opened pages. */
+.lat-layer {
+  position: fixed;
+  inset: 0;
+  will-change: transform;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-touch-callout: none;
+}
+
+/* The list scrolls up and down; sideways belongs to the drawer (a scroll container would otherwise take it). */
+.lat-layer * {
+  touch-action: pan-y;
+}
+
+.lat-layer > .page {
+  z-index: auto;
+  overscroll-behavior: contain;
+}
+
+main.stack {
+  -webkit-touch-callout: none;
+}
+
+/* The grip: the right edge, above the rail so the rail still opens from there. */
+.lat-edge {
+  position: fixed;
+  right: 0;
+  top: var(--safe-t, 0px);
+  bottom: calc(var(--rail) + var(--safe-b, 0px));
+  z-index: 29;
+  touch-action: none;
+}
+
+/* The overview: one surface over the three shrunk screens takes every touch (swipe between, tap to go). */
+.lat-over {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+  touch-action: none;
+}
+
+/* Behind the three shrunk screens: a dark ground, so each screen reads as a card. */
+.lat-back {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--ink);
+  pointer-events: none;
+}

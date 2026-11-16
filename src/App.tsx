@@ -17,6 +17,7 @@ import { Tips } from './ui/tips'
 import { HintBubble, loadHints } from './ui/hints'
 import { GestureCoach } from './ui/coach'
 import { PageView } from './ui/pages'
+import { LateralDeck, useLateralNav } from './ui/lateral'
 import { adoptUnknown } from './ui/seen'
 import { useDevil } from './ui/devil'
 import { NightBand, useNightChrome } from './ui/night'
@@ -420,6 +421,10 @@ export default function App() {
     prevExpanded.current = expanded
   }, [expanded])
 
+  // The lateral chain (main → repos → previews) and its overview.
+  const mainRef = useRef<HTMLElement>(null)
+  const nav = useLateralNav(stack.length === 0, mainRef)
+
   if (live.authed === false) return <Login onDone={() => live.setAuthed(true)} />
   if (!live.snap) {
     return (
@@ -461,16 +466,11 @@ export default function App() {
         <div className="status-cover" aria-hidden style={devil ? ({ ['--status-c' as string]: 'var(--devil)' }) : undefined} />
         <motion.main
           className="stack"
-          aria-hidden={stack.length > 0 || undefined}
-          inert={stack.length > 0}
-          drag="x"
-          dragDirectionLock
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={{ left: 0.18, right: 0 }}
-          dragSnapToOrigin
-          onDragEnd={(_, info) => {
-            if (info.offset.x < -90 || info.velocity.x < -600) push({ kind: 'repos' })
-          }}
+          aria-hidden={stack.length > 0 || nav.rest > 0 || undefined}
+          ref={mainRef}
+          inert={stack.length > 0 || nav.rest > 0 || nav.overview}
+          style={nav.mainStyle}
+          onPointerDown={nav.press}
         >
           <KeepOrder order={orderKey} active={stack.length === 0} />
           <AgentBand />
@@ -485,9 +485,10 @@ export default function App() {
         {/* One negotiation state for the drawer and the automation pages: a question in flight, a rewritten task, a ✓
             given on one shows on the other. */}
         <TalkProvider>
-          <div inert={stack.length > 0}>
+          <div inert={stack.length > 0 || nav.rest > 0 || nav.overview} style={nav.overview ? { visibility: 'hidden' } : undefined}>
             <H24Rail />
           </div>
+          <LateralDeck nav={nav} active={stack.length === 0} />
           <AnimatePresence>
             {stack.map((p, i) => (
               <PageView key={`${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : p.kind === 'software' || p.kind === 'auto' ? p.id : p.kind === 'autorun' ? `${p.id}@${p.at}` : p.kind === 'media' ? p.url : ''}`} page={p} />

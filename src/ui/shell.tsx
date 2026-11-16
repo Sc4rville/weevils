@@ -9,6 +9,7 @@ import { Icon } from './icons'
 import { markSeen } from './hints'
 import { useT } from '../i18n'
 import M from '../i18n/shell'
+import { useLateral } from './lateral'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
 
@@ -33,9 +34,10 @@ function applyTop(theme: Theme) {
 }
 
 /** Une page ouverte teinte toute la fenêtre (fond, barre d'état) et masque le fil : à appeler depuis chaque page plein écran. */
-export function usePageChrome(slot: string, page: React.RefObject<HTMLElement | null>) {
+export function usePageChrome(slot: string, page: React.RefObject<HTMLElement | null>, on = true) {
   const { theme } = useApp()
   useEffect(() => {
+    if (!on) return
     const entry = { slot, el: page.current }
     open.push(entry)
     applyTop(theme)
@@ -43,7 +45,7 @@ export function usePageChrome(slot: string, page: React.RefObject<HTMLElement | 
       open.splice(open.indexOf(entry), 1)
       applyTop(theme)
     }
-  }, [slot, theme, page])
+  }, [slot, theme, page, on])
 }
 
 /** La page suivante remplace celle-ci (session lancée depuis « nouvelle session », conversation reprise) : l'une s'efface
@@ -164,14 +166,17 @@ export function Shell({
   /** Session header: one short live line beside the title (never below it: the header does not grow). */
   liveNote?: ReactNode
 }) {
-  const { back } = useApp()
+  const app = useApp()
   const t = useT(M)
   const heading = useRef<HTMLHeadingElement>(null)
   const page = useRef<HTMLDivElement>(null)
+  // A screen of the lateral chain (repos, previews): it lives in its drawer, which moves it; back pushes the drawer away.
+  const lateral = useLateral()
+  const back = lateral ? lateral.close : app.back
   useEffect(() => {
-    heading.current?.focus({ preventScroll: true })
-  }, [])
-  usePageChrome(slot, page)
+    if (!lateral) heading.current?.focus({ preventScroll: true })
+  }, [lateral])
+  usePageChrome(slot, page, !lateral)
   const [split, unsplit] = useSplit(!!side)
   const details = (
     <>
@@ -186,17 +191,21 @@ export function Shell({
       ref={page}
       className={`${split ? 'page split' : 'page'}${sessionLayout ? ' session-page' : ''}`}
       style={color(slot)}
-      variants={slide}
-      initial="enter"
-      animate="shown"
-      exit="leave"
-      transition={spring}
-      drag="x"
-      dragDirectionLock
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={{ left: onSwipeLeft ? 0.18 : 0, right: 0.9 }}
-      dragSnapToOrigin
-      onDragEnd={(_, info) => {
+      {...(lateral
+        ? {}
+        : {
+            variants: slide,
+            initial: 'enter',
+            animate: 'shown',
+            exit: 'leave',
+            transition: spring,
+            drag: 'x' as const,
+            dragDirectionLock: true,
+            dragConstraints: { left: 0, right: 0 },
+            dragElastic: { left: onSwipeLeft ? 0.18 : 0, right: 0.9 },
+            dragSnapToOrigin: true,
+          })}
+      onDragEnd={lateral ? undefined : (_, info) => {
         if (info.offset.x > 110 || info.velocity.x > 600) {
           markSeen('g-back')
           back()

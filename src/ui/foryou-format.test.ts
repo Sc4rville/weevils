@@ -12,6 +12,7 @@ describe('formatOf', () => {
     ['empty proposals hide', { kind: 'proposals', cards: [] }, null],
     ['an alert asks for a look', { kind: 'alert', tone: 'alert' }, 'action'],
     ['a mail asks for a look', { kind: 'mail' }, 'action'],
+    ['weevboss relay mail hides', { kind: 'mail', title: '[weevboss] ACTION — brief' }, null],
     ['a question asks for an answer', { kind: 'session', tone: 'question' }, 'action'],
     ['a cut session asks for a look', { kind: 'session', tone: 'alert' }, 'action'],
     ['a result is progress', { kind: 'session', tone: 'result' }, 'progress'],
@@ -96,6 +97,13 @@ describe('junk filters', () => {
       short('d', 'Shorts posted before 9 am get twice the reach of evening ones.'),
     ])
     expect(out.map((i) => i.id)).toEqual(['d'])
+  })
+  it('repeated advice of one family shows once', () => {
+    const adv = (id: string, who: string) => it0({ id, kind: 'improve', text: `“${who}” is doing a simple task on Opus; Sonnet would do it for less.` })
+    expect(streamOf([adv('cost:model:a', 'nav'), adv('cost:model:b', 'ads')]).map((i) => i.id)).toEqual(['cost:model:a'])
+  })
+  it('a session result says its outcome, not its bare title', () => {
+    expect(cardLine(it0({ kind: 'session', tone: 'result', title: 'content ideas index', text: 'I built an index of 40 content ideas, ranked by effort.' }))).toBe('I built an index of 40 content ideas, ranked by effort.')
   })
   it('dedupes contained text and same subjects, keeping the richest', () => {
     const out = streamOf([

@@ -34,7 +34,8 @@ export function formatOf(item: ForYouItem): ForYouFormat | null {
     case 'proposals':
       return item.cards?.length ? 'action' : null
     case 'mail':
-      return 'action'
+      // weevboss's own relay mail (« [weevboss] ACTION — … ») is an internal handoff, not news for the user.
+      return /^\s*\[weevboss\]/i.test(item.title ?? '') ? null : 'action'
     case 'session':
       if (item.tone === 'question' || item.tone === 'alert') return 'action'
       if (item.tone === 'result') return hasVisual(item) ? 'visual' : 'progress'
@@ -136,7 +137,9 @@ export function bigNumber(item: ForYouItem): { n: string; rest: string } | null 
 export function cardLine(item: ForYouItem): string {
   if (item.kind === 'proposals') return shortLine(item.cards?.[0]?.title)
   if (item.kind === 'session' && item.tone === 'question') return shortLine(item.lead || item.text)
-  if (item.kind === 'mail' || item.kind === 'media' || item.kind === 'session') return shortLine(item.title) || shortLine(item.text)
+  // A session's outcome is in its words; its title alone (« content ideas index ») says nothing.
+  if (item.kind === 'session') return shortLine(item.text) || shortLine(item.title)
+  if (item.kind === 'mail' || item.kind === 'media') return shortLine(item.title) || shortLine(item.text)
   return shortLine(item.text) || shortLine(item.title)
 }
 
@@ -198,9 +201,14 @@ export function mixDepths(items: ForYouItem[]): ForYouItem[] {
 /** The stream as shown: only items worth a card, duplicates folded into the richest, depths mixed, at most STREAM_CAP. */
 export function streamOf(items: ForYouItem[], cap = STREAM_CAP, strict = true): ForYouItem[] {
   const kept: ForYouItem[] = []
+  const families = new Set<string>()
   for (const i of items) {
     if (kept.length >= cap * 2) break
     if (!worthShowing(i, strict)) continue
+    // The same advice for one session after another (« X runs on Opus, Sonnet would do »): the latest once.
+    const family = /^(cost:[a-z]+):/.exec(i.id)?.[1]
+    if (family && families.has(family)) continue
+    if (family) families.add(family)
     const twin = kept.findIndex((k) => sameThing(k, i))
     if (twin < 0) kept.push(i)
     else if (richness(i) > richness(kept[twin])) kept[twin] = i

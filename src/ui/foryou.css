@@ -1409,3 +1409,15 @@ button.fy-hit {
 .fy-strip-text {
   font-weight: 650;
 }
+
+/* Plain cards whisper: smaller, lighter words, so a colour band and a plain line never read alike. */
+.fy-item.fy-l-plain { background: transparent !important; }
+.fy-l-plain .fy-shipped,
+.fy-l-plain .fy-say:not(.small),
+.fy-l-plain .fy-learn {
+  font-size: 0.9375rem;
+  font-weight: 520;
+  line-height: 1.45;
+  opacity: 0.88;
+}
+.fy-l-fill .fy-c { padding-block: 22px; }

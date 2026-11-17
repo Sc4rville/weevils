@@ -1185,6 +1185,8 @@ uninstall() {
   for nb in node npm npx corepack; do
     case $(readlink "$HOME/.local/bin/$nb" 2>/dev/null) in "$HOME/.local/share/weevils/node/"*) rm -f "$HOME/.local/bin/$nb" ;; esac
   done
+  # The tmux guard (server/tmux-guard) stands in ~/.local/bin/tmux: it goes, the real tmux stays.
+  ! grep -q 'tmux-guard' "$HOME/.local/bin/tmux" 2>/dev/null || rm -f "$HOME/.local/bin/tmux"
   rm -f "$HOME/.local/bin/wv" "$HOME/.local/bin/weevils" "$HOME/.local/bin/weevils-service" "$HOME/.local/bin/weevils-hook" "$HOME/.local/bin/weevils-update"
   ok "$(t un_bin)"
 

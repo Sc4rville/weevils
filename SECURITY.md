@@ -15,7 +15,8 @@ On your own computer, weevils works the same way, but its agents can reach every
 
 - agents ask before acting (Claude Code's permission prompts, answered from the app). `--no-permission-prompts` turns
   that off, as on a server.
-- the phone reaches the computer through a Cloudflare quick tunnel to weevils' port on `127.0.0.1`. Only weevils'
+- the phone reaches the computer through a Cloudflare quick tunnel to weevils' port on `127.0.0.1` (`cloudflared`,
+  from Cloudflare's GitHub release, checked against the SHA-256 GitHub publishes for it). Only weevils'
   app is behind it, and only with your access code (72 random bits; a wrong code waits 800 ms). `--no-link` installs
   without it: weevils stays on this machine until you set up a way in (Tailscale, for one).
 
@@ -34,10 +35,12 @@ In short, as you and in your home folder:
    - Claude Code, through Anthropic's own installer.
    - the `weevilsd` service, listening on `127.0.0.1` only.
    - a few commands in `~/.local/bin`, weevils' hooks in `~/.claude/settings.json`, and an update timer.
-3. **Root only for missing system packages** (git, curl, tmux, jq, python3). The script prints the exact command, for
-   example `sudo apt-get install -y tmux jq`. It asks your password for that command only, then drops it
-   (`sudo -k`). If nothing is missing, no password is asked. On a Mac, root is needed only for Homebrew's own
-   installer, when Homebrew is missing.
+3. **No root for missing system tools** (git, curl, tmux, jq, python3) on Debian and Ubuntu: apt downloads your
+   distribution's own signed packages as you (`apt-get download`), and they are unpacked in
+   `~/.local/share/weevils/sys`, never installed system-wide. On other distributions, or if that fails, the script
+   prints the exact command (for example `sudo dnf install -y tmux jq`), asks your password for that command only,
+   then drops it (`sudo -k`). If nothing is missing, no password is asked. On a Mac, root is needed only for
+   Homebrew's own installer, when Homebrew is missing.
 4. When run as root (that is how a fresh server starts it), it creates a regular user with passwordless sudo and
    installs as that user. Agents on a server of their own install and configure things themselves.
 

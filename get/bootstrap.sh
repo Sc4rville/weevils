@@ -17,11 +17,14 @@
 #      (Anthropic's installer) if missing, a background service (weevilsd, on 127.0.0.1 only), a few commands in
 #      ~/.local/bin, its hooks in ~/.claude/settings.json, and a timer that installs new signed versions (opt out:
 #      --no-auto-update, or in the app's settings).
-#   2. Root only for system packages that are missing (git, curl, tmux, jq, python3): it shows the one command
-#      ("sudo apt-get install -y tmux jq") and your password is asked for that command alone, then forgotten
-#      (sudo -k). Nothing missing: no password at all. On a Mac: Homebrew's installer if Homebrew is missing.
+#   2. System tools that are missing (git, curl, tmux, jq, python3): on Debian/Ubuntu, apt downloads your
+#      distribution's own signed packages as you (apt-get download) and they are unpacked in
+#      ~/.local/share/weevils/sys, never installed system-wide: no root, no password. Elsewhere, or if that fails, it
+#      shows the one command ("sudo dnf install -y tmux jq") and asks your password for that command alone, then
+#      forgets it (sudo -k). On a Mac: Homebrew's own installer, only if Homebrew is missing.
 #   3. A computer: opens an HTTPS link so your phone can reach weevils from anywhere (a Cloudflare quick tunnel to
-#      127.0.0.1, user service weevils-link). Only weevils' own app is reachable there, behind your access code (72
+#      127.0.0.1, user service weevils-link; cloudflared from Cloudflare's GitHub release, checked against the
+#      SHA-256 GitHub publishes). Only weevils' own app is reachable there, behind your access code (72
 #      random bits). --no-link: no link, weevils stays on this machine (reach it later through Tailscale, say).
 #   4. Tells the setup page how far it is: step names only, then your weevils' address; the login link is sealed with
 #      a key only your open page holds, so the setup service never sees your access code.
@@ -118,6 +121,33 @@ _weevils_get() {
     return $ok
   }
 
+  # user_debs <command>…: Debian/Ubuntu packages for these commands, and the libraries they need that this system
+  # lacks, downloaded by apt as the user (signed by the distribution, checked by apt) and unpacked under $sys/root.
+  # Each command gets a small launcher in $sys/bin that points it at those libraries.
+  user_debs() {
+    local root=$sys/root debs=$sys/debs pkgs='' p dep libdirs='' c lib
+    mkdir -p "$root" "$debs" "$sys/bin"
+    for c in "$@"; do case $c in python3) pkgs="$pkgs python3-minimal" ;; *) pkgs="$pkgs $c" ;; esac; done
+    # The packages and every dependency not already installed here.
+    for dep in $(apt-cache depends --recurse --no-recommends --no-suggests --no-conflicts --no-breaks --no-replaces --no-enhances $pkgs 2>/dev/null | grep '^[a-z0-9]' | sort -u); do
+      dpkg -s "$dep" >/dev/null 2>&1 && continue
+      (cd "$debs" && apt-get download "$dep" >/dev/null 2>&1) || true
+    done
+    for p in "$debs"/*.deb; do [ -f "$p" ] && dpkg-deb -x "$p" "$root"; done
+    for lib in "$root"/lib/*-linux-gnu "$root"/usr/lib/*-linux-gnu; do [ -d "$lib" ] && libdirs="$libdirs${libdirs:+:}$lib"; done
+    for c in "$@"; do
+      [ -x "$root/usr/bin/$c" ] || continue
+      local envs=''
+      case $c in
+        git) envs="GIT_EXEC_PATH=$root/usr/lib/git-core " ;;
+        python3) envs="PYTHONHOME=$root/usr " ;;
+      esac
+      printf '#!/bin/sh\n# weevils: %s from your distribution, unpacked in your home folder (get/bootstrap.sh).\n%sLD_LIBRARY_PATH=%s${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} exec %s "$@"\n' "$c" "$envs" "$libdirs" "$root/usr/bin/$c" >"$sys/bin/$c"
+      chmod 755 "$sys/bin/$c"
+    done
+    PATH=$sys/bin:$PATH; export PATH; hash -r
+  }
+
   # Homebrew, in the PATH or where it lives on Apple Silicon and on Intel (a new terminal may not have it yet).
   brew_bin() {
     local b
@@ -165,25 +195,31 @@ _weevils_get() {
   event start
   cd "$HOME"
   local log=$HOME/weevils-install.log
-  # A Linux computer: only the system packages weevils can't get as the person (git, curl, tmux, jq, python3) need
-  # root, and only when one is missing. Then one command, shown as is, asks the password once for that command alone.
-  # Node.js and Claude Code go in your home folder, without root (the installer).
+  # A Linux computer: the system tools weevils needs (git, curl, tmux, jq, python3). One missing on Debian or Ubuntu:
+  # its signed packages are fetched by apt as you (apt-get download, no root) and unpacked in your home folder
+  # (~/.local/share/weevils/sys), never installed system-wide. Only where that can't work (another distribution, no
+  # apt lists) the one install command is shown, and your password is asked for that command alone.
+  local sys=$HOME/.local/share/weevils/sys
   if [ "$MODE" = pc ] && [ "$OS" = Linux ] && [ "$(id -u)" != 0 ]; then
-    local miss='' c pm='' cmd=''
+    local miss='' c cmd=''
     for c in git curl tmux jq python3; do command -v "$c" >/dev/null 2>&1 || miss="$miss $c"; done
+    if [ -n "$miss" ] && command -v apt-get >/dev/null && command -v dpkg >/dev/null; then
+      say "missing:$miss. Getting them from your system's own packages, into your home folder (no root)"
+      user_debs $miss || true
+      miss=''
+      for c in git curl tmux jq python3; do command -v "$c" >/dev/null 2>&1 || miss="$miss $c"; done
+    fi
     if [ -n "$miss" ]; then
-      if command -v apt-get >/dev/null; then pm=apt cmd="apt-get install -y$miss"
-      elif command -v dnf >/dev/null; then pm=dnf cmd="dnf install -y$miss"
-      elif command -v pacman >/dev/null; then pm=pacman cmd="pacman -S --needed --noconfirm${miss/python3/python}"
+      if command -v apt-get >/dev/null; then cmd="apt-get install -y$miss"
+      elif command -v dnf >/dev/null; then cmd="dnf install -y$miss"
+      elif command -v pacman >/dev/null; then cmd="pacman -S --needed --noconfirm${miss/python3/python}"
       fi
       if [ -n "$cmd" ] && command -v sudo >/dev/null; then
         if sudo -n true 2>/dev/null; then
-          [ "$pm" != apt ] || sudo -n apt-get update -qq >/dev/null 2>&1 || true
           sudo -n env DEBIAN_FRONTEND=noninteractive $cmd >/dev/null 2>&1 || true
         elif { : </dev/tty; } 2>/dev/null; then
-          say "missing:$miss. Installing them needs your password, for this one command:"
+          say "still missing:$miss. Installing them needs your password, for this one command:"
           say "  sudo $cmd"
-          [ "$pm" != apt ] || sudo apt-get update -qq </dev/tty || true
           sudo env DEBIAN_FRONTEND=noninteractive $cmd </dev/tty || true
           # Done with root: nothing after this reuses the password.
           sudo -k 2>/dev/null || true
@@ -298,22 +334,34 @@ _weevils_get() {
   # ------------------------------------------------------------ 4. a computer: an HTTPS link for the phone
   if [ "$MODE" = pc ] && [ "$(sum mode)" = local ] && [ "$link" = 1 ]; then
     event step tunnel
-    local port bin arch turl='' state=$HOME/.local/share/weevils rel=https://github.com/cloudflare/cloudflared/releases/latest/download
+    local port bin arch turl='' state=$HOME/.local/share/weevils
     port=$(sum port)
-    mkdir -p "$HOME/.local/bin" "$state"
+    mkdir -p "$state/bin"
     # A Mac: cloudflared from Homebrew (there since the install), else from its release like on Linux.
     if [ "$OS" = Darwin ] && ! command -v cloudflared >/dev/null && brew_bin >/dev/null; then
       brew_install cloudflared >/dev/null 2>&1 || true
     fi
-    bin=$(command -v cloudflared || echo "$HOME/.local/bin/cloudflared")
+    bin=$(command -v cloudflared || echo "$state/bin/cloudflared")
     if [ ! -x "$bin" ]; then
       case $(uname -m) in x86_64 | amd64) arch=amd64 ;; aarch64 | arm64) arch=arm64 ;; armv7l) arch=arm ;; *) fail "no secure link for this processor ($(uname -m))" ;; esac
+      # Cloudflare's latest release, checked against the SHA-256 GitHub publishes for that very file.
+      local asset=cloudflared-linux-$arch meta tag want got f
+      [ "$OS" != Darwin ] || asset=cloudflared-darwin-$arch.tgz
+      meta=$(curl -fsSL -m 30 https://api.github.com/repos/cloudflare/cloudflared/releases/latest | python3 -c 'import json,sys
+d=json.load(sys.stdin); a=[x for x in d.get("assets",[]) if x.get("name")==sys.argv[1]]
+print(d.get("tag_name",""), (a[0].get("digest") or "") if a else "")' "$asset" 2>/dev/null) || meta=''
+      tag=${meta%% *} want=${meta#* }; want=${want#sha256:}
+      [ -n "$tag" ] && [ ${#want} = 64 ] || fail "could not read cloudflared's release and checksum"
+      f=$state/bin/$asset
+      curl -fsSL "https://github.com/cloudflare/cloudflared/releases/download/$tag/$asset" -o "$f" || fail "could not download the secure link (cloudflared)"
+      got=$(if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$f"; else openssl dgst -sha256 -r "$f"; fi | cut -d' ' -f1)
+      [ "$got" = "$want" ] || { rm -f "$f"; fail "cloudflared did not match its published checksum: not installed"; }
       if [ "$OS" = Darwin ]; then
         # The macOS release is an archive that holds the one binary, "cloudflared".
-        curl -fsSL "$rel/cloudflared-darwin-$arch.tgz" -o "$bin.tgz" && tar -xzf "$bin.tgz" -C "$state" cloudflared && mv -f "$state/cloudflared" "$bin.tmp" || fail "could not download the secure link (cloudflared)"
-        rm -f "$bin.tgz"
+        tar -xzf "$f" -C "$state" cloudflared && mv -f "$state/cloudflared" "$bin.tmp" || fail "could not unpack the secure link (cloudflared)"
+        rm -f "$f"
       else
-        curl -fsSL "$rel/cloudflared-linux-$arch" -o "$bin.tmp" || fail "could not download the secure link (cloudflared)"
+        mv -f "$f" "$bin.tmp"
       fi
       chmod 755 "$bin.tmp" && mv -f "$bin.tmp" "$bin"
     fi

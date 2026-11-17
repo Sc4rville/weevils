@@ -97,7 +97,8 @@ fi
 # ---------------------------------------------------------------- service description (read by weevils-service)
 node_bin=$(command -v node)
 npm_bin=$(npm prefix -g 2>/dev/null)/bin
-svc_path="$HOME/.local/bin:$(dirname "$node_bin"):$npm_bin:/usr/local/bin:/usr/bin:/bin"
+# ~/.local/share/weevils/sys/bin: system tools the setup page's install unpacked in the home folder (no root).
+svc_path="$HOME/.local/bin:$HOME/.local/share/weevils/sys/bin:$(dirname "$node_bin"):$npm_bin:/usr/local/bin:/usr/bin:/bin"
 if [ "$(uname -s)" = Darwin ]; then
   # A Mac: Homebrew's folder (tmux, jq, gh… live there; /opt/homebrew on Apple Silicon, /usr/local on Intel) and the
   # system tools in sbin. launchd gives a service nothing more than what is written here.

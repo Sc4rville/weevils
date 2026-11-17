@@ -26,7 +26,7 @@ import { preferredTool, providerStatus, providerReady, codexLogged } from './pro
 import type { MachineFacts } from '../shared/infra.ts'
 import { CONTEXT_BLOCK, FIELDS, isSecretName, type Brick, type Device } from '../shared/setup.ts'
 import { BOSS, resetAuthors, authors } from './authors.ts'
-import { CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL } from './config.ts'
+import { CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL, USER_NAME } from './config.ts'
 import { claudeLoggedIn } from './claude-credentials.ts'
 import * as claudeLogin from './claude-login.ts'
 import { servicePath, which as whichIn } from './platform.ts'
@@ -605,7 +605,7 @@ export class Setup {
     this.p = (() => {
       try {
         const raw = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Partial<Persisted>
-        return { log: raw.log ?? [], marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, codexWaiting: raw.codexWaiting, githubLogged: raw.githubLogged, pending: raw.pending, memorySeen: raw.memorySeen }
+        return { log: (raw.log ?? []).filter((m) => !m.id.startsWith('demo-')), marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, codexWaiting: raw.codexWaiting, githubLogged: raw.githubLogged, pending: raw.pending, memorySeen: raw.memorySeen }
       } catch {
         return { log: [], marks: {}, bossSeenAt: 0 }
       }
@@ -642,8 +642,7 @@ export class Setup {
   }
 
   /** Les messages écrits au nom de weevboss (et les réponses des parcours), à mêler à son fil. */
-  /** Les démos des premiers pas s'effacent d'elles-mêmes au bout de 20 min : le fil reste le vrai. */
-  messages = () => this.p.log.filter((m) => !m.demo || Date.now() - m.at < 20 * 60_000)
+  messages = () => this.p.log
   welcomed = () => !!this.p.welcomed
 
   /** Le seul passage des messages automatiques de weevboss (parcours, confirmations, coupures) et de leurs réponses.
@@ -652,7 +651,7 @@ export class Setup {
    * nouvelle coupure, ce que dit l'utilisateur ont leur bulle, en bas du fil (les détections ont leur propre garde). */
   private add(role: 'user' | 'assistant', text: string, once = false) {
     const id = `setup-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-    const same = once ? this.p.log.slice(-12).findLast((m) => m.role === role && !m.demo && m.text === text && Date.now() - m.at < REPEAT_MS) : undefined
+    const same = once ? this.p.log.slice(-12).findLast((m) => m.role === role && m.text === text && Date.now() - m.at < REPEAT_MS) : undefined
     if (same) {
       this.deps.bump()
       return (this.lastSaid = same.id)
@@ -678,23 +677,7 @@ export class Setup {
     this.deps.bump()
   }
 
-  /** Un message de démo (premiers pas, server/tour.ts) : marqué démo dans l'app, jamais envoyé à weevboss. */
-  demoSay(role: 'assistant' | 'orchestrator', text: string, demo: string, author?: string, devil?: boolean) {
-    const last = this.p.log.at(-1)?.at ?? 0
-    this.p.log.push({ id: `demo-${demo}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, role, text, at: Math.max(Date.now(), last + 1), demo, ...(author ? { author } : {}), ...(devil ? { devil } : {}) })
-    this.save()
-    this.deps.bump()
-  }
 
-  /** La vraie brique est branchée : ses démos quittent le fil. */
-  dropDemo(demo: string) {
-    const before = this.p.log.length
-    this.p.log = this.p.log.filter((m) => m.demo !== demo)
-    if (this.p.log.length !== before) {
-      this.save()
-      this.deps.bump()
-    }
-  }
 
   async detect(force = false): Promise<SetupState> {
     if (!force && this.cache && Date.now() - this.cache.at < 15_000) return this.cache.v
@@ -732,9 +715,9 @@ export class Setup {
 
   // ---------------------------------------------------------------- accueil
 
-  /** Premier lancement : l'appareil est noté. L'accueil lui-même, ce sont les premiers pas (server/tour.ts,
-   * src/ui/tour.tsx) : ce qui est déjà prêt, coché d'office, puis une première vraie demande. Rien n'est écrit dans le
-   * fil : weevboss prend la parole quand on lui parle, ou quand un branchement a besoin de lui. */
+  /** Premier lancement : l'appareil est noté et weevboss accueille dans son fil, d'après l'état réel. C'est tout
+   * l'onboarding : une brique à la fois, avec sa puce ; la suite, weevboss la mène lui-même (weevils setup). Une
+   * installation qui a déjà parlé à weevboss n'est pas accueillie. */
   async welcome(device: Device) {
     if (this.p.welcomed) return
     this.p.welcomed = true
@@ -742,6 +725,11 @@ export class Setup {
     const s = await this.detect(true)
     this.p.claudeLogged = s.claude.logged
     this.p.githubLogged = s.github.logged
+    if (!this.deps.hasHistory()) {
+      const { text, brick } = greeting(s, device, this.providers())
+      if (brick) this.p.marks[brick] = Date.now()
+      this.say(text)
+    }
     this.save()
     this.deps.bump()
   }
@@ -1338,7 +1326,7 @@ export class Setup {
 
   /** Ce que weevilsd a écrit au nom de weevboss depuis sa dernière réponse : un bloc à joindre au message (jamais affiché). */
   contextFor(brief?: string): string {
-    const fresh = this.p.log.filter((m) => m.at > this.p.bossSeenAt && !m.demo)
+    const fresh = this.p.log.filter((m) => m.at > this.p.bossSeenAt)
     this.p.bossSeenAt = Date.now()
     const memory = this.memoryNote()
     this.save()
@@ -1405,8 +1393,36 @@ export class Setup {
       `proposed already: ${Object.keys(this.p.marks).filter((k) => !k.startsWith('tip:') && !k.startsWith('gesture:')).map((k) => `${k} (${ago(k)})`).join(', ') || 'nothing'}`,
       `gestures not discovered yet: ${GESTURES.filter(([id, h]) => !seen.has(h) && !this.p.marks[`gesture:${id}`]).map(([id, , w]) => `${id} = ${w}`).join(' | ') || 'none'}`,
       `tips not given yet: ${TIPS.filter(([id]) => !this.p.marks[`tip:${id}`]).map(([id, w]) => `${id} = ${w}`).join(' | ') || 'none'}`,
+      `welcomed in the thread: ${yes(!!this.p.welcomed)}${this.p.device ? ` (first opened on ${this.p.device.mobile ? 'a phone' : 'a computer'}, ${this.p.device.os})` : ''}`,
+      installedBy(),
     ]
-    return l.join('\n')
+    return l.filter(Boolean).join('\n')
+  }
+}
+
+/** L'accueil de weevboss : bonjour, puis une seule brique, la plus utile d'après l'état réel — l'agent s'il n'est pas
+ * connecté (sans lui rien ne répond), sinon le téléphone vu d'un ordinateur, sinon GitHub. Pure (testée). */
+export function greeting(s: SetupState, device: Device, providers: { claude: boolean; codex: boolean }): { text: string; brick?: Brick } {
+  const t = tr(M)
+  const hello = t.welcomeHello(USER_NAME)
+  if (!providerReady()) {
+    const tool: 'claude' | 'codex' = preferredTool() === 'codex' || (!providers.claude && providers.codex) ? 'codex' : 'claude'
+    return { text: chip(`${hello} ${t.welcomeProvider(tool === 'codex' ? 'Codex' : 'Claude Code')}`, tool), brick: tool }
+  }
+  const ready = `${hello} ${t.welcomeReady(s.projects)}`
+  if (!device.mobile && s.phone.devices < 2) return { text: chip(`${ready} ${t.welcomePhone}`, 'phone'), brick: 'phone' }
+  if (!s.github.logged) return { text: chip(`${ready} ${t.githubPitch}`, 'github'), brick: 'github' }
+  return { text: ready }
+}
+
+/** Ce que l'installation a laissé (install.json, écrit par install.sh) : qui l'a faite, il y a combien de temps. */
+function installedBy(): string {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'install.json'), 'utf8')) as { by?: string; agent?: string; at?: number }
+    if (typeof j.at !== 'number') return ''
+    return `installed by: ${j.by === 'agent' || j.by === 'script' ? j.by : 'terminal'}${typeof j.agent === 'string' && j.agent ? ` (${j.agent.slice(0, 20)})` : ''}, ${Math.round((Date.now() - j.at) / 60_000)} min ago`
+  } catch {
+    return ''
   }
 }
 

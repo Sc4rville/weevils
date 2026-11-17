@@ -4,7 +4,7 @@ import type { Snapshot } from '../../shared/api'
 const CHANGE = 'weevils-lost-features-change'
 export const lostFeaturesKey = (scope: string) => `weevils-lost-features-v1:${scope}`
 export function initialThinkEnabled(snap: Snapshot): boolean {
-  return !!(snap.setup?.welcomed || snap.tour?.intro)
+  return !!snap.setup?.welcomed
 }
 export function readThinkEnabled(scope: string, fallback = false): boolean {
   try {

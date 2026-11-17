@@ -106,25 +106,13 @@ export function GestureCoach() {
       lastTouch.current = Date.now()
       setGhost(null)
     }
-    // Les premiers pas demandent un geste précis (« montre-moi ») : mimé tout de suite, où qu'on en soit.
-    const show = (e: Event) => {
-      const id = (e as CustomEvent<string>).detail
-      const g = GESTURES.find((x) => x.done === id)
-      const r = g?.where({ ...ctx.current, page: document.documentElement.dataset.page, agentOpen: false, mainCount: 99, projects: Math.max(1, ctx.current.projects) })
-      if (!g || !r) return
-      const now = Date.now()
-      lastGhost.current = now
-      setGhost({ move: g.move, r, key: now })
-      window.setTimeout(() => setGhost((x) => (x?.key === now ? null : x)), 3200)
-    }
-    window.addEventListener('weevils:coach', show)
     window.addEventListener('pointerdown', touch, { capture: true })
     window.addEventListener('keydown', touch)
     window.addEventListener('scroll', touch, { capture: true, passive: true })
     const id = window.setInterval(() => {
       const now = Date.now()
       if (now - lastTouch.current < IDLE_MS || now - lastGhost.current < GAP_MS || busy.current || document.hidden) return
-      if (document.querySelector('.ob, .hint, .tip') || localStorage.getItem('weevils-onboarded') !== '1') return
+      if (document.querySelector('.hint, .tip') || localStorage.getItem('weevils-onboarded') !== '1') return
       const c = { ...ctx.current, page: document.documentElement.dataset.page }
       for (const g of GESTURES) {
         if (isSeen(g.done) || isSeen(`ghost-${g.done}`)) continue
@@ -139,7 +127,6 @@ export function GestureCoach() {
     }, 700)
     return () => {
       window.clearInterval(id)
-      window.removeEventListener('weevils:coach', show)
       window.removeEventListener('pointerdown', touch, { capture: true })
       window.removeEventListener('keydown', touch)
       window.removeEventListener('scroll', touch, { capture: true })

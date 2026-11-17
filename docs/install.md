@@ -49,8 +49,8 @@ Or ask your AI agent: paste `install https://github.com/Sc4rville/weevils` into 
    it (`--domain`, `--url`, `--lan`, or a `WEEVILS_PUBLIC_URL`). Without any of them, it lists the ways in instead
    (below). It ends on what is already there (your Claude Code projects of the last 3 days, or your repos in
    `~/projects`) and the first thing to try in the app.
-10. Writes the hand-off file `~/.local/share/weevils/install.json` (see below), read by the app to start its tour
-    where the install stopped.
+10. Writes the hand-off file `~/.local/share/weevils/install.json` (see below), read by weevboss (`weevils setup`)
+    so its welcome in the thread picks up where the install stopped.
 
 ### Permissions
 

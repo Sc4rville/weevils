@@ -92,7 +92,7 @@ The summary is `key=value` lines between `--- weevils summary ---` and `--- end 
 | `laptop`, `wsl`, `sudo` | `yes`/`no`; `sudo` is `yes`, `password` (you can't use it) or `no` |
 | `qrencode` | `yes` when you can draw a QR code (step 7); on a Mac it may be in `/opt/homebrew/bin`, outside your PATH |
 | `needs`, `retry` | with `needs_sudo` only: what needs root, and the command that does it all from a terminal |
-| `handoff` | the file the app reads to start its tour where you stopped (`~/.local/share/weevils/install.json`) |
+| `handoff` | the file weevboss reads (`weevils setup`) to pick up where you stopped (`~/.local/share/weevils/install.json`) |
 | `next` | what to do now: steps 6 and 7 below |
 
 - `status=needs_sudo`: sudo wants a password you can't type. Ask the user, in one sentence, to run the `retry`

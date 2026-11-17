@@ -248,11 +248,10 @@ it('keeps source-blocked Auto visible without an upcoming time and preserves a r
 
 describe('automated shows only real automations', () => {
   it('a one-off background job an agent started (~/logs) is not an automation; a timer, a recurring or triggered job is', () => {
-    const job = { kind: 'job' as const, demo: false, everyMs: null, nextRunAt: null }
+    const job = { kind: 'job' as const, everyMs: null, nextRunAt: null }
     expect(isAutomation(job)).toBe(false)
     expect(isAutomation({ ...job, everyMs: 3600_000 })).toBe(true)
     expect(isAutomation({ ...job, nextRunAt: 1 })).toBe(true)
-    expect(isAutomation({ ...job, demo: true })).toBe(true)
     expect(isAutomation({ ...job, kind: 'timer' })).toBe(true)
   })
 })

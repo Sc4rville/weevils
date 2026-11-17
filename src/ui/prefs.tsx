@@ -3,7 +3,6 @@ import { LANGS, LANG_NAMES, installLang, langIsChosen, setLang, useLang, useT, t
 import M from '../i18n/prefs'
 import { api } from '../api'
 import { Line } from './bits'
-import { TourLine } from './tour'
 import { TipsLine } from './tips'
 import { Icon } from './icons'
 import './prefs.css'
@@ -37,7 +36,6 @@ export function PrefLines() {
           ))}
         </div>
       )}
-      <TourLine />
       <TipsLine />
     </>
   )

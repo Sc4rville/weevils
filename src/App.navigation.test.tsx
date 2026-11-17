@@ -9,7 +9,6 @@ const live = vi.hoisted(() => ({ snap: { version: 1, now: 1, sessions: [], proje
 vi.mock('./api', () => ({ useLive: () => live, api: {} }))
 vi.mock('./push', () => ({ ensurePush: async () => {} }))
 vi.mock('./ui/hints', () => ({ loadHints: async () => {}, HintBubble: () => null, markSeen: () => {} }))
-vi.mock('./ui/tour', () => ({ TourBand: () => null, TourIntro: () => null }))
 vi.mock('./ui/relay', () => ({ RelayBand: () => null }))
 vi.mock('./ui/h24', () => ({ H24Rail: () => null }))
 vi.mock('./ui/tips', () => ({ Tips: () => null }))

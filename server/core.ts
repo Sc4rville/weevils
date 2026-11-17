@@ -59,8 +59,6 @@ import { parseTimerShow } from './schedule.ts'
 import { extractLinks, journalRuns, tailLines, unitDescriptions, type JournalRun } from './auto-runs.ts'
 import { chipsInPlace } from '../shared/setup.ts'
 import { asksUser, type Ask } from '../shared/asks.ts'
-import { isDemoJob, type TourKeeper } from './tour.ts'
-import TM from './i18n/tour.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { judgeAsk } from './asks-judge.ts'
 import { TranscriptStore, borrowedTitle, digestOf, lastMessageOf, realTitle, titleOf } from './transcripts.ts'
@@ -376,8 +374,6 @@ export class Weevils {
   pinnedRepos: string[] = []
   /** Accueil et branchements (server/setup.ts), posé par index.ts : ses messages se mêlent au fil de weevboss. */
   setup: Setup | null = null
-  /** Premiers pas (server/tour.ts), posé par index.ts. */
-  tour: TourKeeper | null = null
   /** Clé des pages statiques des repos (index.ts, dérivée du code d'accès). */
   siteKey = ''
   /** What weevils remembers about the user (server/memory.ts), on the main machine. */
@@ -1224,7 +1220,7 @@ export class Weevils {
     if (!mine) return []
     const out: Subagent[] = []
     for (const [name, job] of Object.entries(mine)) {
-      const a = this.h24.find((x) => x.id === `job:${name}` && x.kind === 'job' && !x.demo)
+      const a = this.h24.find((x) => x.id === `job:${name}` && x.kind === 'job')
       const last = a?.lastRunAt ?? 0
       // A log older than this launch belongs to an earlier run (or to someone else).
       if (!a || last < job.at - 60_000 || this.jobOwner(name, last) !== t.id) continue
@@ -1384,7 +1380,6 @@ export class Weevils {
       mainQueued: this.orchestratorQueued(now),
       devil: { enabled: !!devilConfig(), working: devilWorking() },
       setup: this.setup?.flags(),
-      tour: this.tour?.current() ?? undefined,
       pinnedRepos: this.pinnedRepos,
       memoryCount: this.memory?.count,
       asksOpen: this.ledger?.openCount,
@@ -2731,7 +2726,7 @@ export class Weevils {
         const name = f.replace(/\.log$/, '')
         out.push({
           id: `job:${name}`,
-          title: isDemoJob(name) ? tr(TM).jobTitle : name,
+          title: name,
           kind: 'job',
           projectId: familyOf(name),
           schedule: tr(M).manualJob,
@@ -2740,7 +2735,6 @@ export class Weevils {
           runStartedAt: running ? st.birthtimeMs || null : st.mtimeMs,
           lastEvent: last.slice(0, 160) || '—',
           canToggle: false,
-          ...(isDemoJob(name) ? { demo: true } : {}),
           since: st.birthtimeMs || null,
           lastRunAt: st.mtimeMs,
           group: familyOf(name),

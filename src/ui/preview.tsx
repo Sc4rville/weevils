@@ -66,9 +66,6 @@ function save(id: string, v: Saved) {
   }
 }
 
-/** Ouvre le navigateur intégré d'une session à sa prochaine ouverture (premiers pas : « voir le résultat »). */
-export const openPreviewOf = (id: string) => save(id, { ...load(id), open: true, full: true })
-
 /** Choix mémorisés par session : volet ouvert ou non, URL réglée à la main. */
 export function usePreviewState(id: string) {
   const [state, setState] = useState<Saved>(() => load(id))

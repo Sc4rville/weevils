@@ -8,7 +8,6 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('./tour', () => ({ TourLine: () => null }))
 vi.mock('./tips', () => ({ TipsLine: () => null }))
 
 // Un téléphone en français, sur un weevils installé en anglais (la page get par défaut).

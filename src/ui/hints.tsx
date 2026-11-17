@@ -50,7 +50,7 @@ const post = (body: { seen: string[]; reset?: boolean }) =>
   fetch('/api/hints', { method: 'POST', credentials: 'same-origin', headers: { ...localeHeaders(), 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => undefined)
 
 /** The first-launch intro is open or not finished: no hint competes with it. */
-const introActive = () => !!document.querySelector('.ob') || read('weevils-onboarded') !== '1'
+const introActive = () => read('weevils-onboarded') !== '1'
 
 /** Forgets what this device kept about a previous server (weevils-* keys). */
 function forgetDevice() {

@@ -973,7 +973,7 @@ detect() {
   if [ "$OS" = Darwin ] && pmset -g batt 2>/dev/null | grep -q InternalBattery; then LAPTOP=yes; fi
 }
 
-# The hand-off file read by the app (its first-run tour starts where the install stopped): written on every successful
+# The hand-off file read by weevboss (`weevils setup` says who installed and when): written on every successful
 # install of a main machine, atomically (temp file in the same folder, then mv). Shape, version 1:
 #   { "v": 1, "at": <ms>, "by": "agent"|"terminal"|"script", "agent": "claude"|"codex"|"", "url": <no code>,
 #     "mode": "public"|"lan"|"local", "phoneLink": bool, "lang": "fr"|"en",

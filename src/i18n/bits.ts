@@ -44,7 +44,6 @@ export default defineMessages({
     askReply: 'répondre',
     clipboardEmpty: 'presse-papiers vide',
     askAria: (action: string, title: string) => `${action} · ${title}`,
-    demo: 'démo',
     working: (author: string) => (author ? `${author} travaille` : 'travaille'),
     /** Lecteur d'écran, ligne de session : outil, titre, état, activité, durée. */
     rowAria: (tool: string, title: string, state: string, act: string | undefined, when: string) => `${tool}, ${title}, ${state}${act ? ` : ${act}` : ''}, ${when}`,
@@ -88,7 +87,6 @@ export default defineMessages({
     askReply: 'reply',
     clipboardEmpty: 'clipboard is empty',
     askAria: (action: string, title: string) => `${action} · ${title}`,
-    demo: 'demo',
     working: (author: string) => (author ? `${author} is working` : 'working'),
     rowAria: (tool: string, title: string, state: string, act: string | undefined, when: string) => `${tool}, ${title}, ${state}${act ? `: ${act}` : ''}, ${when}`,
   },

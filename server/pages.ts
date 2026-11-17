@@ -449,7 +449,7 @@ export function scanLibrary(roots: string[]): { group: string; items: LibraryIte
       const fi = finishedIdx(f.rel)
       if (anyFinished && fi < 0) continue
       const above = (fi >= 0 ? segs.slice(0, fi) : segs.slice(0, -1)).filter((s) => !GENERIC.has(s.toLowerCase()))
-      const group = above.join(' · ') || rootName
+      const group = above.join(' · ') || (fi >= 0 ? segs[fi] : rootName)
       const inside = fi >= 0 ? segs.slice(fi + 1, -1) : []
       const name = segs.at(-1)!
       const ext = path.extname(name).toLowerCase()

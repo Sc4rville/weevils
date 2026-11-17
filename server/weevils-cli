@@ -487,7 +487,7 @@ if e: d["evidence"]=e
 print(json.dumps(d))' "$file" "$caption" "$PWD" "$from" "$(evidence_json)")" ;;
   pages)
     # The living-link pages of this machine (server/pages.ts): kind, title, link.
-    ledger GET /api/pages | json 'for p in d["pages"]: print(p["slug"]+"  ["+p["kind"]+"] "+p["title"])' ;;
+    ledger GET /api/pages | json 'print("\n".join(p["slug"]+"  ["+p["kind"]+"] "+p["title"] for p in d["pages"]))' ;;
   page)
     # A small private page and its living link (docs/LINKS.md). Prints a markdown link to paste as is.
     shift

@@ -182,6 +182,9 @@ export default defineMessages({
         s.security.safe ? 'Tes agents demandent la permission avant d’agir.' : 'Tes agents tournent sans demander de permission : rapide, mais c’est une raison de plus de garder le code pour toi.',
         'Pour changer de code et déconnecter tous les appareils, demande-le-moi.',
       ].join(' '),
+    // ---- conversations d’un autre ordinateur
+    historyAsk:
+      'Tes conversations Claude Code et Codex restent sur l’ordinateur où elles ont tourné. Sur cet ordinateur, colle la ligne ci-dessous dans un terminal : elles s’affichent ici, tu touches celles à ramener, et elles continuent ici avec tout ce qu’elles savaient. [[setup:history]]',
     // ---- Siri
     shortcutAsk:
       'Sur iPhone, un Raccourci te laisse me parler sans ouvrir l’app : « Dis Siri, weevboss », ou le bouton Action. Touche le bouton : je copie ton adresse personnelle, puis dans l’app Raccourcis, + et ces actions :\n\n1. « Dicter le texte »\n2. « Obtenir le contenu de l’URL » : colle l’adresse, Méthode POST, Corps de la requête JSON, champ text = Texte dicté\n3. « Obtenir la valeur du dictionnaire » : clé say\n4. « Énoncer le texte »\n\nNomme-le « weevboss » : Siri le trouve tout seul.',
@@ -381,6 +384,8 @@ export default defineMessages({
         s.security.safe ? 'Your agents ask for permission before acting.' : 'Your agents run without asking for permission: fast, and one more reason to keep the code to yourself.',
         'To change the code and sign every device out, just ask me.',
       ].join(' '),
+    historyAsk:
+      'Your Claude Code and Codex conversations stay on the computer where they ran. On that computer, paste the line below in a terminal: they show up here, you tap the ones to bring, and they carry on here with everything they knew. [[setup:history]]',
     shortcutAsk:
       'On iPhone, a Shortcut lets you talk to me without opening the app: “Hey Siri, weevboss”, or the Action button. Tap the button: I copy your personal address, then in the Shortcuts app, + and these actions:\n\n1. “Dictate Text”\n2. “Get Contents of URL”: paste the address, Method POST, Request Body JSON, field text = Dictated Text\n3. “Get Dictionary Value”: key say\n4. “Speak Text”\n\nName it “weevboss”: Siri finds it on its own.',
     shortcutOk: 'Address copied: paste it in the “Get Contents of URL” action.',

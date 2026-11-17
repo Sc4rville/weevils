@@ -10,6 +10,7 @@ import { copyText } from './copy'
 import { Icon } from './icons'
 import { flash, focusBoss, focusBossSoon } from './follow'
 import { setTop } from './foryou-top'
+import { Bring } from './bring'
 
 // Accueil et branchements, côté app (contrat : shared/setup.ts, serveur : server/setup.ts).
 // - useWelcome : au premier lancement (intro terminée), weevilsd écrit l'accueil de weevboss dans son fil, adapté à
@@ -237,7 +238,7 @@ export function SetupChips({ chips }: { chips: string[] }) {
   if (!list.length) return null
   return (
     <div className="setup-chips">
-      {list.map((b) => (b === 'phone' ? <PhoneLink key={b} /> : <Chip key={b} brick={b} />))}
+      {list.map((b) => (b === 'phone' ? <PhoneLink key={b} /> : b === 'history' ? <Bring key={b} /> : <Chip key={b} brick={b} />))}
     </div>
   )
 }

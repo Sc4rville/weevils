@@ -142,6 +142,14 @@ describe('statut', () => {
     expect(w.sessions(NOW).map((s) => s.id)).toEqual(['s1'])
   })
 
+  it('L4b a conversation brought from another computer (server/bring.ts): listed from its arrival, finished, ready to resume', () => {
+    add(transcript({ lastActivityAt: NOW - 40 * 24 * 60 * MIN }))
+    expect(one()).toBeUndefined()
+    w.store.broughtAt = (id) => (id === 's1' ? NOW - MIN : undefined)
+    expect(one()).toMatchObject({ status: 'done', live: false, controllable: true, lastActivityAt: NOW - 40 * 24 * 60 * MIN })
+    w.store.broughtAt = undefined
+  })
+
   it('L5 ouverte dans un terminal que weevils ne pilote pas (processus vivant, pas de pane) : cachée', () => {
     add(transcript())
     w.hooks.set('s1', { event: 'Stop', at: NOW, pid: ALIVE })

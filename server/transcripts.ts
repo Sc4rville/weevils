@@ -373,6 +373,24 @@ function emptyTranscript(file: string, tool: Tool): Transcript {
   return { id, tool, file, cwd: '', openedAt: 0, lastActivityAt: 0, workStartedAt: null, phase: 'idle', messages: [], delegationSources: new Map(), subagents: [], bg: tool === 'claude' ? emptyBg() : undefined, offset: 0, partial: '', queued: [] }
 }
 
+/** A transcript read from text already in memory (a head and a tail sent by another machine, server/bring.ts):
+ * the same parsers as the live store, without touching the disk. A line cut at either end is skipped. */
+export function parseTranscriptText(file: string, tool: Tool, text: string): Transcript {
+  const t = emptyTranscript(file, tool)
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    let o: unknown
+    try {
+      o = JSON.parse(line)
+    } catch {
+      continue
+    }
+    if (tool === 'claude') claudeLine(t, o)
+    else codexLine(t, o)
+  }
+  return t
+}
+
 /** Lit la suite du fichier ; renvoie true si quelque chose a changé. */
 export function readMore(t: Transcript, size: number): boolean {
   if (size < t.offset) {
@@ -451,6 +469,9 @@ export class TranscriptStore {
   /** Explicit, verified history annotations only. The raw transcript remains unchanged. */
   originOfMessage?: (threadId:string,message:Message)=>{author:string;sourceThreadId:string}|undefined
   refreshOrigins?:()=>void
+  /** A conversation brought from another machine (server/bring.ts): when it arrived here. The sessions list keeps it
+   * with the recent ones from then (core.ts), ready to resume; its own activity stays as it was (not « live »). */
+  broughtAt?: (id: string) => number | undefined
   private originBases=new Map<Message,Pick<Message,'role'|'author'|'coordination'|'sourceThreadId'>>()
 
   constructor(claudeDir: string, codexDir: string, recentMs: number) {

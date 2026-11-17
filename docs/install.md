@@ -234,6 +234,11 @@ The secondary machine runs its own weevilsd (no app, no weevboss) and a reverse 
 It registers itself there (`weevils-service add-remote <id>` adds it to `WEEVILS_REMOTES` and picks a free port from
 4192), so its sessions show up in the main app.
 
+Conversations already on another computer (Claude Code or Codex, before weevils was there) come over without
+installing anything on it: « bring my conversations » in the app shows one line to paste in that computer's terminal,
+then its conversations, one tap each (`server/bring.ts`). A secondary machine lists its own conversations there by
+itself.
+
 ## Testing the installer
 
 ```sh

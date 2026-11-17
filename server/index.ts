@@ -18,7 +18,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECT_ROOTS, PUBLIC_URL } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices, claudeAvailable, haiku, ledger, relay as modelRelay } from './fast.ts'
@@ -66,9 +66,16 @@ import { geminiKey, liveUpgrade, sameOrigin } from './live.ts'
 import { KEY_RE as PAGE_KEY_RE, PageRefused, Pages } from './pages.ts'
 import { pageLink } from '../shared/pages.ts'
 import type { MachineLoad } from '../shared/tips.ts'
+import { Bring, realGit } from './bring.ts'
 
 const w = new Weevils()
 const sourceAuthor = (id: string) => threadAuthor(id, source => w.store.get(source), w.bossConversation(), ORCH_DIR)
+// Bring your conversations (server/bring.ts): another computer's Claude Code and Codex conversations, resumed here.
+const bring = new Bring({
+  home: HOME, projectsDir: PROJECTS_DIR, roots: PROJECT_ROOTS, claudeDir: CLAUDE_DIR, codexDir: CODEX_DIR,
+  codexHome: path.dirname(CODEX_DIR), dataDir: DATA_DIR, git: realGit, remotes: () => w.remotes, bump: () => w.bump(),
+})
+w.store.broughtAt = bring.broughtAt
 w.start()
 startInfra()
 startDiskUsage()
@@ -761,6 +768,14 @@ const routes: [string, RegExp, Handler][] = [
     json(res, 200, await w.attachMain(text, files, origin))
   }],
   ['POST', /^\/api\/import$/, (req, res) => receiveImport(req, res)],
+  ['POST', /^\/api\/bring\/link$/, (_req, res) => json(res, 200, { code: bring.link() })],
+  ['GET', /^\/api\/bring$/, async (_req, res) => json(res, 200, await bring.view())],
+  ['POST', /^\/api\/bring$/, async (req, res) => {
+    const body = await readBody(req)
+    json(res, 200, bring.request(String(body.source ?? ''), String(body.key ?? '')))
+  }],
+  ['GET', /^\/api\/bring\/local$/, (_req, res) => json(res, 200, bring.local())],
+  ['GET', /^\/api\/bring\/local\/file$/, (_req, res, url) => bring.sendLocal(url.searchParams.get('key') ?? '', res)],
   ['GET', /^\/api\/push$/, (_req, res) => json(res, 200, { enabled: w.push.enabled, publicKey: w.push.publicKey, devices: w.push.count })],
   ['POST', /^\/api\/push\/subscribe$/, async (req, res) => {
     w.push.subscribe((await readBody(req)) as any)
@@ -1009,6 +1024,8 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
     if (!url.pathname.startsWith('/api/')) return serveStatic(res, url.pathname)
     const keyed = PAGE_KEY_RE.exec(url.pathname)
     if (keyed && (req.method === 'GET' || req.method === 'HEAD')) return pages.serve(req, res, keyed[1], keyed[2], keyed[3])
+    // A computer bringing its conversations: its one-time code is its key, not the access code (server/bring.ts).
+    if (url.pathname.startsWith('/api/bring') && (url.pathname === '/api/bring.sh' || url.pathname.startsWith('/api/bring/pc/')) && (await bring.pcRoute(req, res, url.pathname))) return
     const site = SITE_RE.exec(url.pathname)
     if (site && req.method === 'GET') return serveSite(res, site[1], site[2], site[3])
     // Le Raccourci Siri n'a pas de cookie : son jeton personnel n'ouvre que le tour de parole et le son qui va avec.

@@ -1274,7 +1274,7 @@ export class Weevils {
   sessions(now = Date.now()): Session[] {
     const list = this.store
       .all()
-      .filter((t) => now - t.lastActivityAt < RECENT_MS && (t.messages.length > 0 || this.paneFor(t.id)) && !t.cwd.startsWith(DATA_DIR) && !t.firstPrompt?.startsWith(PLAN_MARKER))
+      .filter((t) => now - Math.max(t.lastActivityAt, this.store.broughtAt?.(t.id) ?? 0) < RECENT_MS && (t.messages.length > 0 || this.paneFor(t.id)) && !t.cwd.startsWith(DATA_DIR) && !t.firstPrompt?.startsWith(PLAN_MARKER))
       .map((t) => this.toSession(t, now))
     const known = new Set(list.map((s) => s.id))
     for (const p of this.panes) {

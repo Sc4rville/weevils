@@ -7,6 +7,7 @@ import OM from './i18n/outbox'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AskResult, Brick, Device } from '../shared/setup.ts'
 import type { Tour, TourId } from '../shared/tour.ts'
+import type { BringView } from '../shared/bring.ts'
 import { getLang, localeHeaders, subscribeLang, tr, type Lang } from './i18n'
 import M from './i18n/app'
 import type { FsListing, InfraDetail, SpendSummary, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
@@ -136,6 +137,9 @@ export const api = {
   tourAct: (action: 'skip' | 'unskip' | 'done' | 'close' | 'open' | 'intro', id?: TourId) => call<Tour>('POST', '/api/tour', { action, id }),
   tourDemo: (id: TourId) => call<{ text?: string; audio?: string }>('POST', '/api/tour/demo', { id }),
   setupLink: () => call<{ link: string }>('GET', '/api/setup/link'),
+  bringLink: () => call<{ code: string }>('POST', '/api/bring/link'),
+  bringView: () => call<BringView>('GET', '/api/bring'),
+  bring: (source: string, key: string) => call<{ ok: boolean }>('POST', '/api/bring', { source, key }),
   voiceChunk: (id: string, seq: number, type: string, data: string) => call<{ ok: true }>('POST', '/api/voice/chunk', { id, seq, type, data }, undefined, AbortSignal.timeout(30_000)),
   voiceFinish: (id: string, lang: string, expectedChunks?: number) => call<{ text: string }>('POST', '/api/voice/finish', { id, lang, expectedChunks }, undefined, AbortSignal.timeout(180_000)),
   shortcut: (fresh: boolean) => call<{ token: string; url: string }>(fresh ? 'POST' : 'GET', '/api/voice/shortcut', fresh ? {} : undefined),

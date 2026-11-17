@@ -450,6 +450,7 @@ export function installPlan(s: SetupState): string {
 
 /** Mots qui désignent une brique, en français et en anglais ; le premier qui colle gagne. */
 const GUESS: [Brick, RegExp][] = [
+  ['history', /\b(conversations?|historique|history|old (chats|sessions)|anciennes? (sessions?|conversations?)|ramener|bring (over|my))\b/i],
   ['install', /\b(install|installer|installe|installation|setup|que dois|what do i need|dépendances?|dependencies)\b/i],
   ['devil', /\b(diable|devil|abliterat\w*|open.?weight|ollama|lm ?studio|vllm|openrouter)\b/i],
   ['github', /\b(github|gh|repos?|dépôts?)\b/i],
@@ -969,6 +970,9 @@ export class Setup {
         return false
       case 'install':
         post(installStatus(s))
+        return false
+      case 'history':
+        post(t.historyAsk)
         return false
     }
   }

@@ -261,6 +261,12 @@ export function TourIntro() {
     void ask(snap, text)
   }
   const sug = suggestions(snap)
+  // A new machine with nothing on it yet: the conversations of the computer that has them, one tap each (src/ui/bring.tsx).
+  const bringButton = !tour?.steps.some((x) => x.id === 'history') && (
+    <button type="button" className="tr-alt tr-bring" onClick={() => { finish(); void runBrick('history') }}>
+      <Icon name="arrow" dir="right" /> {t.bring}
+    </button>
+  )
 
   return (
     <AnimatePresence>
@@ -331,6 +337,7 @@ export function TourIntro() {
                             <Icon name="chevron" dir="right" /> {t.write}
                           </button>
                         </div>
+                        {bringButton}
                       </div>
                     </>
                   ) : (
@@ -354,6 +361,7 @@ export function TourIntro() {
                             <span>{t.plugCodex}</span> <Icon name="arrow" dir="right" />
                           </button>
                         )}
+                        {bringButton}
                       </div>
                     </>
                   )}

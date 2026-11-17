@@ -11,7 +11,7 @@
 // installer) part chez weevboss, qui a un terminal.
 
 /** Ce que weevboss sait détecter, conseiller et brancher. */
-export const BRICKS = ['phone', 'push', 'reach', 'machine', 'claude', 'codex', 'github', 'voice', 'devil', 'mail', 'author', 'quota', 'security', 'shortcut', 'install'] as const
+export const BRICKS = ['phone', 'push', 'reach', 'machine', 'claude', 'codex', 'github', 'voice', 'devil', 'mail', 'author', 'quota', 'security', 'shortcut', 'install', 'history'] as const
 export type Brick = (typeof BRICKS)[number]
 export const isBrick = (s: unknown): s is Brick => typeof s === 'string' && (BRICKS as readonly string[]).includes(s)
 
@@ -130,7 +130,8 @@ export function splitChips(text: string): { text: string; chips: Brick[] } {
 export function chipsInPlace(text: string): { text: string; chips: Brick[] } {
   const { chips } = splitChips(text)
   if (!chips.length) return { text, chips }
-  const clean = text.replace(CHIP, (m, b: string) => (isBrick(b) && b !== 'phone' ? m : ''))
+  // The phone's QR and the list of conversations to bring are not buttons: they show under the message, out of the sentence.
+  const clean = text.replace(CHIP, (m, b: string) => (isBrick(b) && b !== 'phone' && b !== 'history' ? m : ''))
   return { text: clean.replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim(), chips }
 }
 

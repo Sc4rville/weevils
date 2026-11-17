@@ -2,6 +2,18 @@
 
 A short summary of what changed after the first working version.
 
+## 2026-11-17
+
+### Bring your conversations
+- Claude Code and Codex conversations from another computer, resumed here in one tap. Both tools keep a conversation
+  only on the machine where it ran (one file each; neither account syncs local sessions). On a new machine, the first
+  screen offers « bring my conversations from another computer », and weevboss can put the same button anywhere
+  (`[[setup:history]]`): one line to paste in that computer's terminal (`server/bring.sh`: reads, sends, installs
+  nothing), its 300 most recent conversations listed by title, a tap brings one. The project is found among the local
+  clones or cloned (same git address), its folder paths are rewritten, and the conversation opens as a finished session
+  that resumes with the next message. A machine already connected to this weevils (`WEEVILS_REMOTES`) lists its own
+  without the line. Details: `server/bring.ts`.
+
 ## 2026-11-13
 
 ### macOS

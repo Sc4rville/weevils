@@ -351,7 +351,7 @@ export function AgentBand() {
         )}
       </div>
       <div id="agent-body" hidden={!(open || dr.shown)}>
-        <div className="in"><MainModelControl model={snap.mainSettings?.model} effort={snap.mainSettings?.effort}/></div>
+        <div className="in agent-model"><MainModelControl model={snap.mainSettings?.model} effort={snap.mainSettings?.effort}/></div>
         <motion.div
           ref={body}
           className="chat"

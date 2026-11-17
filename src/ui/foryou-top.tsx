@@ -67,9 +67,6 @@ export function TopWords({ active, onPick }: { active: Top; onPick: (top: Top) =
       <button type="button" className={`fyt-word ${active === 'boss' ? 'on' : ''}`} aria-pressed={active === 'boss'} onClick={() => onPick('boss')}>
         weevboss
       </button>
-      <span className="fyt-sep" aria-hidden>
-        ·
-      </span>
       <button type="button" className={`fyt-word ${active === 'foryou' ? 'on' : ''}`} aria-pressed={active === 'foryou'} onClick={() => onPick('foryou')}>
         {t.forYou}
         {unseen > 0 && <span className="fyt-dot" role="img" aria-label={t.forYouUnseen(unseen)} />}

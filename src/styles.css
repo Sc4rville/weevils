@@ -2901,9 +2901,8 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 /* A long agent message in a project session: its plain summary reads as body text; the full text opens below. */
 
 /* No little squares anywhere (Scarville, 2026-11-16): unread, unseen and activity markers are not drawn. What they meant
-   lives in the text: an unread project keeps its name at full ink even when resting, an unseen « for you » word too. */
+   lives in the text: an unread project keeps its name at full ink even when resting. */
 .dot, .fyt-dot, .h24-activity { display: none !important; }
-.fyt-word:has(.fyt-dot) { opacity: 1; font-weight: 750; }
 
 /* weevboss opens like a drawer coming down from the top (mirror of the automations drawer). */
 @keyframes agent-drop { from { transform: translateY(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -3082,3 +3081,14 @@ main.stack {
   mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 .session-asked-full { padding-bottom: 12px; }
+
+/* Weight is the one signal for « active » on the home screen (Scarville, 2026-11-17): the selected word of the top switcher,
+   a project with something working, a working session are bold; everything resting is regular. Unread, cut or an
+   unseen « for you » no longer borrow the bold. */
+.band[data-project] > .in.head .name { font-weight: 400; }
+.band[data-project].busy > .in.head .name { font-weight: 700; }
+.row .title, .row.unread .title, .row.cut .title, [data-theme='graphite'] .row.unread .title { font-weight: 400; }
+.row.live .title { font-weight: 650; }
+/* The open weevboss head: the model line starts on the same left edge as « weevboss  for you » above it. */
+.agent.open .agent-model { display: flex; justify-content: flex-start; align-self: stretch; width: 100%; box-sizing: border-box; padding-left: calc(var(--pad) + 38px); text-align: left; }
+.agent.open .agent-model > .link { margin: 0; font-weight: 400; } /* not a selection: regular weight */

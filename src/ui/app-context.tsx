@@ -40,6 +40,7 @@ export type Page =
   | { kind: 'foryou'; who?: string }
   /** Un média du flux, seul, en grand. */
   | { kind: 'media'; url: string; type: 'image' | 'video'; name: string }
+  | { kind: 'webpage'; path: string; title: string; pageKind: import('../../shared/pages').PageKind }
   /** Une automatisation (tâche, proposition, timer, job) et l'un de ses passages (at : sa fin). */
   | { kind: 'auto'; id: string }
   | { kind: 'autorun'; id: string; at: number }

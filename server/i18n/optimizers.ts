@@ -60,7 +60,8 @@ export default defineMessages({
         ? `- tu es dans ton propre worktree git, sur la branche locale ${o.branch} faite pour toi : travaille et committe uniquement ici, ne change pas de branche, jamais sur la branche principale ; ne touche pas au dossier ${o.checkout} (l'utilisateur s'en sert) ;\n`
         : `- travaille dans ce dossier seulement ;\n`) +
       `- ne pousse jamais toi-même (weevils pousse ta branche à la fin du passage), n'ouvre aucune PR, ne publie et n'envoie rien hors de cette machine (ni e-mail, ni réseau social, ni déploiement) ;\n` +
-      `- la commande weevils marche pour : sessions, read, asks, projects, new, send, post, show (le reste est refusé) ; une question pour l'utilisateur part avec \`weevils post\`, puis continue sans attendre ;\n` +
+      `- la commande weevils marche pour : sessions, read, asks, projects, new, send, post, show, page, pages (le reste est refusé) ; une question pour l'utilisateur part avec \`weevils post\`, puis continue sans attendre ;\n` +
+      `- un résultat à regarder ou sur lequel agir (des pistes, une liste, des médias, un rapport) devient une page : \`weevils page list <items.json> "titre"\` ou \`weevils page <dossier> "titre" --kind <type>\` (docs/LINKS.md) ; mets le lien qu'elle imprime dans ton \`weevils post\`, plutôt qu'un résumé en texte ;\n` +
       `- ne dépense rien, sauf RunPod pour un rendu ou un job de modèle IA (jamais un rendu sur le CPU de cette machine) : un pod éphémère, arrêté à la fin du job ; tout autre achat ou API payante attend la validation de l'utilisateur ;\n` +
       `- ne supprime rien en dehors de ta branche ou de ce dossier ; ne touche à aucun secret (clés, .env, identifiants) ;\n` +
       `- si \`command -v heavy\` répond, préfixe par \`heavy\` les commandes lourdes (builds, tests, installs)${o.heavy ? ' : cette tâche en a' : ''} ;\n` +
@@ -204,7 +205,8 @@ export default defineMessages({
         ? `- you are in your own git worktree, on the local branch ${o.branch} made for you: work and commit only here, never switch branch, never on the main branch; never touch the folder ${o.checkout} (the user works in it);\n`
         : `- work in this folder only;\n`) +
       `- never push yourself (weevils pushes your branch at the end of the run), never open a PR, never publish or send anything off this machine (no e-mail, no social post, no deploy);\n` +
-      `- the weevils command works for: sessions, read, asks, projects, new, send, post, show (the rest is refused); a question for the user goes out with \`weevils post\`, then carry on without waiting;\n` +
+      `- the weevils command works for: sessions, read, asks, projects, new, send, post, show, page, pages (the rest is refused); a question for the user goes out with \`weevils post\`, then carry on without waiting;\n` +
+      `- a result to look at or act on (leads, a list, media, a report) becomes a page: \`weevils page list <items.json> "title"\` or \`weevils page <folder> "title" --kind <kind>\` (docs/LINKS.md); put the link it prints in your \`weevils post\` rather than a text summary;\n` +
       `- never spend money, except RunPod for a render or an AI model job (never a render on this machine's CPU): an ephemeral pod, stopped at the end of the job; any other purchase or paid API waits for the user's go;\n` +
       `- never delete anything outside your branch or this folder; never touch a secret (keys, .env, credentials);\n` +
       `- if \`command -v heavy\` succeeds, prefix heavy commands (builds, tests, installs) with \`heavy\`${o.heavy ? ': this task has some' : ''};\n` +

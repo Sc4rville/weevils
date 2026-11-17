@@ -27,6 +27,7 @@ import CostM from './i18n/cost.ts'
 import { Weevils, isTestBrief } from './core.ts'
 import { lang, requestLang, withLang, setLang, tr, withInstallLang, user, installationLang } from './i18n.ts'
 import M from './i18n/api.ts'
+import PM from './i18n/pages.ts'
 import P from './i18n/push.ts'
 import V from './i18n/voice.ts'
 import S from './i18n/setup.ts'
@@ -62,6 +63,8 @@ import { MediaShelf } from './foryou-media.ts'
 import { Curator } from './foryou-curator.ts'
 import { Voices, voiceParam } from './foryou-voice.ts'
 import { geminiKey, liveUpgrade, sameOrigin } from './live.ts'
+import { KEY_RE as PAGE_KEY_RE, PageRefused, Pages } from './pages.ts'
+import { pageLink } from '../shared/pages.ts'
 import type { MachineLoad } from '../shared/tips.ts'
 
 const w = new Weevils()
@@ -380,6 +383,15 @@ const SITE_KEY = crypto.createHmac('sha256', SECRET).update('weevils-site').dige
 w.siteKey = SITE_KEY
 const SITE_RE = /^\/api\/site\/([\w-]{22})\/([\w.@+-]+)(\/.*)?$/
 
+// Living-link pages (server/pages.ts, docs/LINKS.md): /p/<kind>/<slug> for the signed-in, keyed files for the sandbox.
+const pages = new Pages({ dataDir: DATA_DIR, secret: SECRET, roots: [...PROJECT_ROOTS, INBOX_DIR] })
+/** The address of a page, as a link to paste: the public one, else the one this request came by. */
+const pageUrl = (req: http.IncomingMessage, p: string) => {
+  const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? `127.0.0.1:${PORT}`)
+  const proto = String(req.headers['x-forwarded-proto'] ?? 'http')
+  return `${(PUBLIC_URL || `${proto}://${host}`).replace(/\/$/, '')}${p}`
+}
+
 function serveSite(res: http.ServerResponse, key: string, repo: string, rest: string | undefined) {
   const a = Buffer.from(key)
   const b = Buffer.from(SITE_KEY)
@@ -448,6 +460,27 @@ const routes: [string, RegExp, Handler][] = [
     const body=await readBody(req,48 << 20);
     try { const saved=think.write(body);json(res,saved?200:409,saved ?? {error:'think_conflict'}) }
     catch { json(res,400,{error:'think_invalid'}) }
+  }],
+  ['GET', /^\/api\/pages$/, (_req, res) => json(res, 200, { pages: pages.list() })],
+  // weevils page (weevils-cli): a session or an automation on this machine publishes; never the phone.
+  ['POST', /^\/api\/pages$/, async (req, res) => {
+    if (!isLocal(req)) return json(res, 403, { error: tr(PM).localOnly })
+    const b = await readBody(req)
+    const from = trustedFrom(req, b) ?? undefined
+    const at = (p: unknown) => path.resolve(typeof b.cwd === 'string' ? b.cwd : process.cwd(), String(p ?? ''))
+    try {
+      const page = b.build === 'list' ? pages.publishList({ source: at(b.path), title: b.title, kind: b.kind, from, slug: b.slug })
+        : b.build === 'library' ? pages.publishLibrary({ roots: (Array.isArray(b.roots) ? b.roots : [b.path]).map(at), title: b.title, from, slug: b.slug })
+        : pages.publish({ path: at(b.path), title: b.title, kind: b.kind, from, slug: b.slug })
+      json(res, 200, { slug: page.slug, kind: page.kind, title: page.title, path: page.path, url: pageUrl(req, page.path) })
+    } catch (e) {
+      json(res, e instanceof PageRefused ? 400 : 500, { error: (e as Error).message })
+    }
+  }],
+  ['DELETE', /^\/api\/pages\/([a-z0-9-]{1,80})$/, (req, res, _url, [slug]) => {
+    if (!isLocal(req)) return json(res, 403, { error: tr(PM).localOnly })
+    const ok = pages.remove(slug)
+    json(res, ok ? 200 : 404, ok ? { ok: true } : { error: tr(PM).gone })
   }],
   ['GET', /^\/api\/preview\/target$/, (_req,res,url) => {
     const snapshot = w.snapshot()
@@ -966,7 +999,16 @@ outbox.start()
 const server = http.createServer((req, res) => withLang(requestLang(req), async () => {
   const url = new URL(req.url ?? '/', 'http://local')
   try {
+    // A page link: signed in, its keyed files; otherwise the app, which signs in and then opens it.
+    const page = req.method === 'GET' || req.method === 'HEAD' ? pageLink(url.pathname) : undefined
+    if (page) {
+      if (!authed(req) || !pages.get(page.slug)) return serveStatic(res, '/')
+      res.writeHead(302, { location: `/api/page/${pages.key(page.slug)}/${page.slug}/`, 'cache-control': 'no-store' })
+      return void res.end()
+    }
     if (!url.pathname.startsWith('/api/')) return serveStatic(res, url.pathname)
+    const keyed = PAGE_KEY_RE.exec(url.pathname)
+    if (keyed && (req.method === 'GET' || req.method === 'HEAD')) return pages.serve(req, res, keyed[1], keyed[2], keyed[3])
     const site = SITE_RE.exec(url.pathname)
     if (site && req.method === 'GET') return serveSite(res, site[1], site[2], site[3])
     // Le Raccourci Siri n'a pas de cookie : son jeton personnel n'ouvre que le tour de parole et le son qui va avec.

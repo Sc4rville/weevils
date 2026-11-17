@@ -23,6 +23,7 @@ import D from '../i18n/devil'
 import RM from '../i18n/relay'
 import { isUnread, useSeen } from './seen'
 import { AutoMark, G, Icon } from './icons'
+import { LivingLink, livingLink } from './living-link'
 import { autoOfSession } from './auto-model'
 
 /** Ressort commun : léger dépassement, pour que les bandes aient de l'inertie. */
@@ -681,6 +682,8 @@ export function Rich({ text, code = true }: { text: string; code?: boolean }) {
           p.s
         ) : p.kind === 'chip' ? (
           <InlineChip key={i} brick={p.brick} />
+        ) : p.kind === 'url' && livingLink(p.href) ? (
+          <LivingLink key={i} href={p.href} label={p.label} />
         ) : p.kind === 'url' ? (
           <a key={i} className="url" href={p.href} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
             {p.label}

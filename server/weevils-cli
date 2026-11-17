@@ -12,6 +12,8 @@
 #   weevils memory [add "souvenir" | rm <id>]   (ce que weevils retient de l'utilisateur, ~/.config/weevils/memory.json)
 #   weevils post "texte" [--action "libellé::quoi faire"]…   un mot dans « pour toi », avec des boutons si besoin
 #   weevils show <fichier> ["légende"]                       une image ou une vidéo dans « pour toi »
+#   weevils page <dossier|fichier> "titre" --kind <type>      une petite page privée, son lien vivant (docs/LINKS.md)
+#     weevils page list <items.json> "titre" [--kind …] · page library "titre" <dossier>… · pages · page rm <slug>
 #     post et show, quand ils rapportent un résultat : --demonstrated "où ça a tourné" · --verified "environnement vérifié"
 #     · --limit "ce qui n'a pas été vérifié" (répétable). Sans rien : « codé » au plus, quoi que dise le texte.
 #   weevils asks [open|all|stale|done]   le registre des demandes de weevboss (server/boss-ledger.ts)
@@ -47,6 +49,7 @@ weevils recall <id>                  weevils boss
 weevils setup [install | ask <brique> | mark <id>]   weevils config set <CLÉ> <valeur>
 weevils tour open|close
 weevils memory [add "souvenir" | rm <id>]
+weevils page <dossier|fichier> "titre" --kind <type>   weevils page list|library …   weevils pages
 weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichier> ["légende"]' # i18n-ignore
   usage+=$'\n''weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]'
   usage+=$'\n''weevils ask add "demande" [--goal <id>]   weevils ask link <id> <session> ["retour attendu"]   weevils ask goal <id> <objectif>' # i18n-ignore
@@ -67,6 +70,9 @@ weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichie
   m_post_empty='rien à poster : weevils post "texte" [--action "libellé::quoi faire"]' m_posted='posté dans « pour toi »' # i18n-ignore
   m_action_bad='une action s’écrit "libellé::quoi faire"' # i18n-ignore
   m_show_no_file='quel fichier ? weevils show <fichier> ["légende"]' m_shown='affiché dans « pour toi »' # i18n-ignore
+  m_page_usage='weevils page <dossier|fichier> "titre" --kind opportunities|library|preview|report|render
+weevils page list <items.json> "titre" [--kind opportunities] · weevils page library "titre" <dossier>…
+weevils pages · weevils page rm <slug>' # i18n-ignore
   export WVM_NO_ASKS='(aucune demande)' WVM_STALE='EN PANNE' WVM_PENDING='message(s) pas encore découpé(s) en demandes' WVM_REPORT='retour' WVM_EXPECT='attendu' # i18n-ignore
   export WVM_NO_GOALS='(aucun objectif)' WVM_DONE_OF='faites' WVM_NO_TRACE='(journal vide)' WVM_NO_MEM='(rien en mémoire interne)' WVM_DIGEST='tokens par tour' # i18n-ignore
   export WVM_KNOW='mémoire' WVM_ASKS='demandes' WVM_LOG='journal' WVM_NOTHING='rien trouvé' WVM_OK='ok' # i18n-ignore
@@ -82,6 +88,7 @@ weevils setup [install | ask <brick> | mark <id>]   weevils config set <KEY> <va
 weevils tour open|close
 weevils memory [add "memory" | rm <id>]
 weevils post "text" [--action "label::what to do"]…      weevils show <file> ["caption"]
+weevils page <folder|file> "title" --kind <kind>   weevils page list|library …   weevils pages
 weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]
 weevils ask add "request" [--goal <id>]   weevils ask link <id> <session> ["expected report"]   weevils ask goal <id> <goal>
 weevils goals [all]   weevils goal add <id> "title" ["why"]   weevils goal note <id> "progress"   weevils goal done|pause|open <id>
@@ -101,6 +108,9 @@ weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] 
   m_post_empty='nothing to post: weevils post "text" [--action "label::what to do"]' m_posted='posted in "for you"'
   m_action_bad='an action is written "label::what to do"'
   m_show_no_file='which file? weevils show <file> ["caption"]' m_shown='shown in "for you"'
+  m_page_usage='weevils page <folder|file> "title" --kind opportunities|library|preview|report|render
+weevils page list <items.json> "title" [--kind opportunities] · weevils page library "title" <folder>…
+weevils pages · weevils page rm <slug>'
   export WVM_NO_ASKS='(no requests)' WVM_STALE='STALE' WVM_PENDING='message(s) not split into requests yet' WVM_REPORT='report' WVM_EXPECT='expects'
   export WVM_NO_GOALS='(no goals)' WVM_DONE_OF='done' WVM_NO_TRACE='(empty trace)' WVM_NO_MEM='(nothing in the internal memory)' WVM_DIGEST='tokens per turn'
   export WVM_KNOW='memory' WVM_ASKS='requests' WVM_LOG='log' WVM_NOTHING='nothing found' WVM_OK='ok'
@@ -186,8 +196,8 @@ print(json.dumps(e) if e else "null")' "$ev_demo" "$ev_ver" ${ev_limits[@]+"${ev
 # subcommands (AUTO_WEEVILS there); the rest (the ledger's writes, memory, setup, config, resume…) is refused here too.
 if [ "${WEEVILS_SCOPE:-}" = automation ]; then
   case "${1:-}" in
-    sessions|read|asks|projects|new|send|post|show) ;;
-    *) echo "weevils ${1:-}: not allowed in an automation run (allowed: sessions, read, asks, projects, new, send, post, show)" >&2; exit 3 ;; # i18n-ignore : technical refusal read by an agent
+    sessions|read|asks|projects|new|send|post|show|page|pages) ;;
+    *) echo "weevils ${1:-}: not allowed in an automation run (allowed: sessions, read, asks, projects, new, send, post, show, page, pages)" >&2; exit 3 ;; # i18n-ignore : technical refusal read by an agent
   esac
 fi
 
@@ -475,6 +485,37 @@ d={"path":sys.argv[1],"caption":sys.argv[2],"cwd":sys.argv[3],"from":sys.argv[4]
 e=json.loads(sys.argv[5])
 if e: d["evidence"]=e
 print(json.dumps(d))' "$file" "$caption" "$PWD" "$from" "$(evidence_json)")" ;;
+  pages)
+    # The living-link pages of this machine (server/pages.ts): kind, title, link.
+    ledger GET /api/pages | json 'for p in d["pages"]: print(p["slug"]+"  ["+p["kind"]+"] "+p["title"])' ;;
+  page)
+    # A small private page and its living link (docs/LINKS.md). Prints a markdown link to paste as is.
+    shift
+    case "${1:-}" in
+      rm) [ -n "${2:-}" ] || { echo "$m_page_usage" >&2; exit 1; }
+          ledger DELETE "/api/pages/$(q "$2")" >/dev/null; exit 0 ;;
+      list|library) build=$1; shift ;;
+      *) build='' ;;
+    esac
+    kind='' slug='' args=()
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --kind) kind=${2-}; shift; [ $# -gt 0 ] && shift ;;
+        --slug) slug=${2-}; shift; [ $# -gt 0 ] && shift ;;
+        *) args+=("$1"); shift ;;
+      esac
+    done
+    [ ${#args[@]} -ge 2 ] || { echo "$m_page_usage" >&2; exit 1; }
+    if [ "$build" = library ]; then title=${args[0]}; target=''; roots=("${args[@]:1}"); kind=library
+    else target=${args[0]}; title=${args[1]}; roots=(); [ "$build" = list ] && kind=${kind:-opportunities}; fi
+    body=$("$py" -c 'import json,sys
+b,k,s,t,p,cwd,frm=sys.argv[1:8]
+d={"title":t,"kind":k,"path":p,"cwd":cwd,"from":frm}
+if b: d["build"]=b
+if s: d["slug"]=s
+if sys.argv[8:]: d["roots"]=sys.argv[8:]
+print(json.dumps(d))' "$build" "$kind" "$slug" "$title" "$target" "$PWD" "$from" ${roots[@]+"${roots[@]}"})
+    ledger POST /api/pages "$body" | json 'print("["+d["title"]+"]("+d["url"]+")")' ;;
   *)
     echo "$usage"
     exit 1 ;;

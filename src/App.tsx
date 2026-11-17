@@ -1,4 +1,5 @@
 import { mainProjectRank } from './ui/recursive-identity'
+import { pageLink } from '../shared/pages'
 import { MODEL_CONTROL_EVENT } from './model-controls'
 import { trackViewport } from './ui/viewport'
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
@@ -381,6 +382,12 @@ export default function App() {
       setTimeout(() => flash(Array.from(page?.querySelectorAll('[data-mid]') ?? []).at(-1)), 400)
     }
     open(location.hash)
+    // A page link opened outside the app (/p/<kind>/<slug>, signed in only now): the page, in the app.
+    const page = pageLink(location.pathname)
+    if (page) {
+      history.replaceState(history.state, '', '/')
+      push({ kind: 'webpage', path: page.path, title: page.slug.replace(/-/g, ' '), pageKind: page.kind })
+    }
     const onMsg = (e: MessageEvent) => e.data?.type === 'open' && open(String(e.data.url))
     navigator.serviceWorker?.addEventListener('message', onMsg)
     return () => navigator.serviceWorker?.removeEventListener('message', onMsg)
@@ -491,7 +498,7 @@ export default function App() {
           <LateralDeck nav={nav} active={stack.length === 0} />
           <AnimatePresence>
             {stack.map((p, i) => (
-              <PageView key={`${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : p.kind === 'software' || p.kind === 'auto' ? p.id : p.kind === 'autorun' ? `${p.id}@${p.at}` : p.kind === 'media' ? p.url : ''}`} page={p} />
+              <PageView key={`${i}:${p.kind}:${p.kind === 'files' ? `${p.repo}/${p.dir}` : p.kind === 'software' || p.kind === 'auto' ? p.id : p.kind === 'autorun' ? `${p.id}@${p.at}` : p.kind === 'media' ? p.url : p.kind === 'webpage' ? p.path : ''}`} page={p} />
             ))}
           </AnimatePresence>
         </TalkProvider>

@@ -43,6 +43,7 @@ import { MemoryPage } from './memory'
 import { RequestsPage } from './requests'
 import { ForYouPage, MediaPage } from './foryou'
 import { AutoPage, AutoRunPage } from './auto-page'
+import { WebPage } from './living-link'
 
 
 
@@ -101,6 +102,8 @@ export function PageView({ page }: { page: Page }) {
       return <AutoPage id={page.id} />
     case 'autorun':
       return <AutoRunPage id={page.id} at={page.at} />
+    case 'webpage':
+      return <WebPage path={page.path} title={page.title} pageKind={page.pageKind} />
   }
 }
 

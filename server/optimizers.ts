@@ -126,7 +126,7 @@ const TERMS = ['est', 'priority', 'heavy', 'notBefore', 'window', 'every', 'onSl
  * git: commit on its own branch (weevils pushes that branch itself at the end of a run, see pushBranch: the agent never
  * holds a push credential). Tests and builds through `heavy`. RunPod (GPU renders, paid: Scarville's choice).
  */
-export const AUTO_WEEVILS = ['sessions', 'read', 'asks', 'projects', 'new', 'send', 'post', 'show'] as const
+export const AUTO_WEEVILS = ['sessions', 'read', 'asks', 'projects', 'new', 'send', 'post', 'show', 'page', 'pages'] as const
 /** Every other subcommand of server/weevils-cli, denied by name (and refused by the CLI under WEEVILS_SCOPE). */
 export const WEEVILS_DENIED = ['ask', 'goal', 'goals', 'trace', 'mem', 'memory', 'resume', 'recall', 'boss', 'setup', 'config', 'tour'] as const
 function weevilsDeny(): string[] {

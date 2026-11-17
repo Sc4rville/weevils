@@ -6,6 +6,7 @@ import M from '../i18n/foryou-links'
 import { useApp } from './app-context'
 import { useForYouOpen } from './foryou-open'
 import './foryou-links.css'
+import { LivingLink, livingLink } from './living-link'
 
 /** Text stays text: React escapes it, only validated HTTP(S) spans become links. */
 export function FeedText({ text, item }: { text: string; item?: ForYouItem }) {
@@ -14,7 +15,8 @@ export function FeedText({ text, item }: { text: string; item?: ForYouItem }) {
   let end = 0
   for (const link of webLinks(text)) {
     parts.push(text.slice(end, link.start))
-    if (!link.url) parts.push(link.text)
+    if (livingLink(link.text)) parts.push(<LivingLink key={`${link.start}:${link.text}`} href={link.text} />)
+    else if (!link.url) parts.push(link.text)
     else {
       const software = item?.software
       const viewer = software?.state === 'running' && software.url && publicWebUrl(software.url) === link.url

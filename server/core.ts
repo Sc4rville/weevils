@@ -39,6 +39,12 @@ import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
 import { BOSS_DIR, BOSS_MODELS, BOSS_TURNS, BossTurns, orchTranscriptsDir } from './boss-turns.ts'
+
+/** What a Claude Code session can switch to from the app's header (one tap, applied before its next turn). */
+const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'max']
+const CLAUDE_MODELS = ['fable', 'opus', 'sonnet', 'haiku'].map((id) => ({ id, label: id, efforts: CLAUDE_EFFORTS, defaultEffort: 'medium' }))
+const family = (model?: string) => /opus|sonnet|haiku|fable/i.exec(model ?? '')?.[0].toLowerCase()
+
 import { recordOrigin, type BossOrigin } from './boss-origins.ts'
 import { Ledger } from './boss-ledger.ts'
 import { claudeHaiku } from './fast.ts'
@@ -593,7 +599,7 @@ export class Weevils {
       if (this.store.scan(Date.now())) this.bump()
       this.linkCodexPanes()
     }, 1500)
-    setInterval(() => void this.watchPanes().then(() => this.watchCuts()), 2500)
+    setInterval(() => void this.watchPanes().then(() => this.watchCuts()).then(() => Promise.all([...this.modelWish.keys()].map((id) => this.applyModelWish(id)))), 2500)
     setInterval(() => void this.reapPanes(), 60_000)
     if (this.bossTurns) {
       setInterval(() => void this.pumpTurns(), 1000)
@@ -1188,7 +1194,7 @@ export class Weevils {
       ...(!relayedBy ? { progress: this.progressReader.read(t.cwd, now) } : {}),
       lastMessage: lastMessageOf(t),
       messageCount: t.messages.length,
-      settings: (t.model || t.approval || t.effort || this.codexBridge.settingsOf?.(t.id) ? { model: t.model, approval: t.approval, effort: t.effort, ...this.codexBridge.settingsOf?.(t.id) } : undefined),
+      settings: (t.model || t.approval || t.effort || this.codexBridge.settingsOf?.(t.id) || this.modelWish.has(t.id) ? { model: t.model, approval: t.approval, effort: t.effort, ...this.codexBridge.settingsOf?.(t.id), ...(this.modelWish.has(t.id) ? this.claudeSelected(t.id) : {}) } : undefined),
       // Une file ne survit pas à la fin du tour : si la session ne travaille plus, tout a été traité.
       queued: Math.max(this.codexBridge.queuedOf?.(t.id) ?? 0, turnWorking ? Math.max(t.queued.length, pane?.screenQueued ?? 0) : 0),
       ...(relayOf ? { relayOf } : {}),
@@ -2029,8 +2035,51 @@ export class Weevils {
     }
     const real = id === '__main' ? this.bossConversation() : this.resolveId(id)
     const t = real ? this.store.get(real) : undefined
+    if (real && t?.tool === 'claude' && this.paneFor(real)) {
+      // Claude Code: the choice is kept here and typed into its own pane (/model, /effort) only between turns — never a
+      // message, never during a turn. Until its next request shows the new model, the header reads this choice.
+      if (selection !== undefined) {
+        const m = CLAUDE_MODELS.find((x) => x.id === String(selection.model))
+        if (!m || !m.efforts.includes(String(selection.effort))) throw new Error(tr(ModelM).invalid)
+        // What the pane runs now: the last choice typed into it, else what its transcript last showed.
+        const prev = this.modelWish.get(real)
+        const from = prev?.applied ? { model: prev.model, effort: prev.effort } : prev ? prev.from : { model: family(t.model), effort: t.effort }
+        this.modelWish.set(real, { model: m.id, effort: String(selection.effort), from })
+        this.bump()
+        void this.applyModelWish(real)
+      }
+      return { threadId: real, tool: 'claude', models: CLAUDE_MODELS, selected: this.claudeSelected(real), active: t.phase === 'working', appliesTo: 'next-turn' }
+    }
     if (!real || t?.tool !== 'codex') throw new Error(tr(ModelM).unavailable)
     return this.codexBridge.modelControls(real, selection)
+  }
+
+  /** Model choices made in the app for Claude Code sessions, waiting for (or just past) their switch in the pane. */
+  private modelWish = new Map<string, { model: string; effort: string; from: { model?: string; effort?: string }; applied?: boolean }>()
+
+  /** The model and effort a Claude session runs its next turn with: the app's choice until its transcript moves past it. */
+  private claudeSelected(id: string): { model?: string; effort?: string } {
+    const t = this.store.get(id)
+    const w = this.modelWish.get(id)
+    if (w && t && w.applied && family(t.model) === w.model && t.effort === w.effort) this.modelWish.delete(id)
+    else if (w) return { model: w.model, effort: w.effort }
+    return { model: family(t?.model), effort: t?.effort }
+  }
+
+  /** Types the waiting choice into the session's pane when it is between turns (no work, no question on screen). */
+  private async applyModelWish(id: string) {
+    const w = this.modelWish.get(id)
+    const pane = this.paneFor(id)
+    if (!w || w.applied || !pane || pane.tool === 'codex' || pane.screenWorking || pane.screenAttention || this.driving.has(pane.name)) return
+    w.applied = true
+    try {
+      if (w.model !== w.from.model) await this.runCommand(pane.name, `/model ${w.model}`)
+      if (w.effort !== w.from.effort) await this.runCommand(pane.name, `/effort ${w.effort}`)
+    } catch (e) {
+      w.applied = false
+      console.log(`[model] ${pane.name} switch failed: ${(e as Error).message}`)
+    }
+    this.bump()
   }
 
   /** Commande slash (/model opus, /effort high, /fast, /compact, /clear, /approvals…) tapée dans la pane de la session : pas un message, pas signée. */
@@ -2190,6 +2239,8 @@ export class Weevils {
 
   private async deliverOne(pane: string, sessionId: string | undefined, text: string): Promise<void> {
     const managed = this.panes.find((p) => p.name === pane)
+    // A model chosen in the app goes in first, so this message is answered by it.
+    if (sessionId && this.modelWish.has(sessionId)) await this.applyModelWish(sessionId)
     if (managed?.tool === 'codex') {
       let screen = await capture(pane)
       let reading = readScreen(screen, 'codex')

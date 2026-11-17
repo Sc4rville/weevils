@@ -9,6 +9,7 @@ import type { Session, Snapshot } from '../../shared/api.ts'
 vi.mock('../api', () => ({
   api: {
     session: async () => Promise.reject(new Error('absent')),
+    modelControls: async () => ({ threadId: 's', tool: 'claude', models: [{ id: 'opus', label: 'opus', efforts: ['low', 'medium'], defaultEffort: 'medium' }, { id: 'sonnet', label: 'sonnet', efforts: ['low', 'medium'], defaultEffort: 'medium' }], selected: { model: 'sonnet', effort: 'medium' }, active: false, appliesTo: 'next-turn' }),
     transcribeInfo: async () => ({ enabled: false }),
     voices: async () => ({ voices: [], current: undefined }),
   },

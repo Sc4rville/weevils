@@ -12,6 +12,7 @@ const calls = vi.hoisted(() => ({ commands: [] as string[], screen: 0, release: 
 vi.mock('../api', () => ({
   api: {
     session: async () => Promise.reject(new Error('absent')),
+    modelControls: async () => ({ threadId: 's', tool: 'claude', models: [{ id: 'opus', label: 'opus', efforts: ['low', 'medium'], defaultEffort: 'medium' }, { id: 'sonnet', label: 'sonnet', efforts: ['low', 'medium'], defaultEffort: 'medium' }], selected: { model: 'sonnet', effort: 'medium' }, active: false, appliesTo: 'next-turn' }),
     command: async (_id: string, c: string) => (calls.commands.push(c), { ok: true }),
     send: (id: string) => new Promise((resolve) => { calls.release = () => resolve({ ok: true, id, delivery: { messageId: 'm1', status: 'accepted' } }) }),
     screen: async () => (calls.screen++, { screen: 'RAW TERMINAL' }),
@@ -134,7 +135,7 @@ describe('session page: no terminal', () => {
     // The settings it used to share the page with still open from the header.
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-controls="session-settings"]')!.click())
     await flush()
-    expect(host.querySelector('#session-settings .settings')).not.toBeNull()
+    expect(host.querySelector('#session-settings .model-controls')).not.toBeNull()
     expect(text(host)).not.toMatch(/terminal/i)
   })
 })

@@ -12,18 +12,17 @@ import './model-controls.css'
  * until the readback confirms it; a failed readback puts the confirmed word back and says so in one inline line.
  * Taps made while a change is in flight are kept in order: only the latest one is sent next.
  */
-export function ModelPicker({id}:{id:string}) {
+export function ModelPicker({id,onPicked}:{id:string;onPicked?:()=>void}) {
  const t=useT(M)
  const [data,setData]=useState<ModelControls|null>(null)
- const [loading,setLoading]=useState(true)
  const [pending,setPending]=useState<ModelSelection|null>(null)
  const [error,setError]=useState(''),[loadError,setLoadError]=useState('')
  const [reload,setReload]=useState(0)
  const want=useRef<ModelSelection|null>(null),running=useRef(false),alive=useRef(true)
  useEffect(()=>{alive.current=true;return ()=>{alive.current=false}},[])
  useEffect(()=>{
-  let stale=false;setLoading(true);setLoadError('');setError('');setPending(null);setData(null)
-  api.modelControls(id).then(d=>{if(!stale)setData(d)}).catch(e=>{if(!stale)setLoadError(e instanceof Error?e.message:t.failed)}).finally(()=>{if(!stale)setLoading(false)})
+  let stale=false;setLoadError('');setError('');setPending(null);setData(null)
+  api.modelControls(id).then(d=>{if(!stale)setData(d)}).catch(e=>{if(!stale)setLoadError(e instanceof Error?e.message:t.failed)})
   return ()=>{stale=true}
  },[id,reload,t.failed])
  const flush=async()=>{
@@ -39,7 +38,7 @@ export function ModelPicker({id}:{id:string}) {
  const pick=(sel:ModelSelection)=>{
   setError('')
   if(!pending&&sel.model===data?.selected.model&&sel.effort===data?.selected.effort)return
-  want.current=sel;setPending(sel)
+  want.current=sel;setPending(sel);onPicked?.()
   if(!running.current)void flush()
  }
  const word=(value:string)=>t[value as 'low']??value
@@ -47,11 +46,9 @@ export function ModelPicker({id}:{id:string}) {
  const model=data?.models.find(m=>m.id===shown?.model)
  const chip=(on:boolean,busy:boolean)=>`word${on?' on':''}${busy?' pending':''}`
  return <div className="in model-controls">
-  {loading&&<p className="meta" role="status">{t.loading}</p>}
   {data&&<>
    <div className="mc-row">
-    <span className="meta mc-label" id={`mc-model-${id}`}>{t.model}</span>
-    <div className="words" role="group" aria-labelledby={`mc-model-${id}`}>
+    <div className="words" role="group" aria-label={t.model}>
      {shown?.model&&!model&&<button type="button" className="word on" aria-pressed disabled>{shown.model}</button>}
      {data.models.map(m=>{const on=m.id===shown?.model,busy=on&&pending?.model===m.id&&pending.model!==data.selected.model
       return <button type="button" key={m.id} className={chip(on,busy)} aria-pressed={on} aria-busy={busy||undefined}
@@ -59,8 +56,7 @@ export function ModelPicker({id}:{id:string}) {
     </div>
    </div>
    {model&&model.efforts.length>0&&<div className="mc-row">
-    <span className="meta mc-label" id={`mc-effort-${id}`}>{t.effort}</span>
-    <div className="words" role="group" aria-labelledby={`mc-effort-${id}`}>
+    <div className="words" role="group" aria-label={t.effort}>
      {model.efforts.map(e=>{const on=e===shown?.effort,busy=on&&!!pending&&(pending.effort!==data.selected.effort||pending.model!==data.selected.model)
       return <button type="button" key={e} className={chip(on,busy)} aria-pressed={on} aria-busy={busy||undefined}
        onClick={()=>pick({model:model.id,effort:e})}>{word(e)}</button>})}

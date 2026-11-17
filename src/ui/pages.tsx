@@ -12,14 +12,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionDetail, Tool } from '../../shared/api.ts'
 import { api, type FileContent } from '../api'
 import { useApp, type Page } from './app-context'
-import { Collapse, Composer, Line, Messages, StatusChar, type Attachment } from './bits'
+import { Composer, Line, Messages, StatusChar, type Attachment } from './bits'
 import { SessionArchiveAction } from './session-archive'
 import NM from '../i18n/notices'
 import { SessionQuestion } from './session-question'
 import { CutBand } from './cut-band'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
-import { Settings, effortLabel, modelLabel } from './settings'
+import { effortLabel, modelLabel } from './settings'
+import { ModelPicker } from './model-controls'
 import { ReposPage } from './repos'
 import { SoftwarePage, SoftwaresPage } from './softwares'
 import { CalmConv, CalmGrid } from './calm'
@@ -196,12 +197,6 @@ function SessionPage({ id }: { id: string }) {
   // Ce qui arrive pendant qu'une sélection tient le fil est signalé (behind) et rejoint en glissant au relâché (useFollow).
   const toEnd = follow.toEnd
 
-  // Réglages ouverts (en bas du fil) : amenés sous les yeux une fois dépliés, même si on relisait plus haut.
-  useEffect(() => {
-    if (!showSettings) return
-    const t = window.setTimeout(() => reveal(document.getElementById('session-settings'), { block: 'nearest' }), 380)
-    return () => window.clearTimeout(t)
-  }, [showSettings])
 
   // Introuvable : le même cadre (le conteneur suivi reste le même s'il apparaît ensuite).
   if (!s)
@@ -252,8 +247,19 @@ function SessionPage({ id }: { id: string }) {
       headerControls={<button className="link inline" onClick={() => setShowSettings((v) => !v)} aria-label={t.changeModel} aria-pressed={showSettings} aria-controls="session-settings">
             {[modelLabel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
           </button>}
+      underHeader={showSettings && (
+          <div id="session-settings">
+          <ModelPicker key={s.id} id={s.id} onPicked={() => setShowSettings(false)} />
+          <div className="in session-actions">
+            <button className="link" onClick={() => setPreview({ open: !preview.open })} aria-pressed={!!preview.open}>
+              {preview.open ? t.closeApp : t.seeApp}
+            </button>
+            {' · '}<SessionArchiveAction key={s.id} session={s} />
+          </div>
+        </div>
+      )}
       meta={
-        <>
+          <>
           {/* One plain line: the state in words a non-developer reads, and for how long it has worked. */}
           <StatusChar s={s.status} /> {s.status === 'needs_user' ? tp.liveWaiting : s.status === 'idle' || s.status === 'done' ? tp.liveDone : st.label}
           {s.status === 'working' && s.workStartedAt != null && <> · {durLong(now - s.workStartedAt)}</>}
@@ -307,23 +313,6 @@ function SessionPage({ id }: { id: string }) {
         </>
       )}
 
-      <Collapse open={showSettings} id="session-settings">
-        <div className="band tone">
-          <div className="in session-actions">
-            <button className="link" onClick={() => setPreview({ open: !preview.open })} aria-pressed={!!preview.open}>
-              {preview.open ? t.closeApp : t.seeApp}
-            </button>
-            {' · '}<SessionArchiveAction key={s.id} session={s} />
-          </div>
-          <Settings
-            id={s.id}
-            tool={s.tool}
-            settings={s.settings}
-            canCommand={s.hasScreen}
-            run={(c) => api.command(s.id, c)}
-          />
-        </div>
-      </Collapse>
     </Shell>
   )
 }

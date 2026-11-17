@@ -136,6 +136,7 @@ export function Shell({
   onSwipeLeft,
   actions,
   headerControls,
+  underHeader,
   scrollHeading = false,
   sessionLayout = false,
   liveNote,
@@ -160,6 +161,8 @@ export function Shell({
   actions?: ReactNode
   /** Compact session controls beside the existing back button. */
   headerControls?: ReactNode
+  /** Opened from the header (a session's model and effort): drawn right under it, in the fixed head. */
+  underHeader?: ReactNode
   /** Keep only navigation fixed; long session context scrolls with its messages. */
   scrollHeading?: boolean
   sessionLayout?: boolean
@@ -234,6 +237,7 @@ export function Shell({
           {sessionLayout && <div className="session-context-row"><button className="session-context" title={typeof title === 'string' ? title : undefined} onClick={() => { bodyRef?.current?.scrollTo({ top: 0, behavior: 'smooth' }); heading.current?.focus({ preventScroll: true }) }}>{title}</button>{liveNote}</div>}
           {!scrollHeading && details}
         </div>
+        {underHeader}
       </div>
       <div className="page-cols">
         <div className={dock && !sessionLayout && !foot ? 'page-main no-foot' : 'page-main'}>

@@ -1,17 +1,8 @@
 import { ModelPicker } from './model-controls'
-import { noticeKey } from '../../shared/notices.ts'
-import { Notice } from './notice'
-import { useEffect, useState } from 'react'
-import type { SessionSettings, Tool } from '../../shared/api.ts'
-import { tr, useT } from '../i18n'
+import { tr } from '../i18n'
 import M from '../i18n/settings'
-import { Line } from './bits'
 import { VoicePicker } from './voice'
 
-/** Réglages manuels d'une session : ils partent en commandes slash (/model, /effort, /fast, /compact, /clear, /approvals). */
-
-const MODELS: Record<Tool, string[]> = { claude: ['fable', 'opus', 'sonnet', 'haiku'], codex: [] }
-const EFFORTS = ['low', 'medium', 'high', 'max']
 /** Effort dans la langue de l'app (« effort élevé », « high effort ») : lu à l'appel. */
 export const effortLabel = (e?: string) => (e ? tr(M).effortLabel(e) : undefined)
 
@@ -33,134 +24,11 @@ export function shortModel(model?: string): string | undefined {
   return m ? m[0].toLowerCase() : model
 }
 
-interface Local {
-  model?: string
-  effort?: string
-  fast?: boolean
-  /** Moment du dernier choix fait d'ici : il prime le temps que la session le reflète. */
-  at?: number
-}
-const KEY = (id: string) => `weevils-settings:${id}`
-const load = (id: string): Local => {
-  try {
-    return JSON.parse(localStorage.getItem(KEY(id)) ?? '{}') as Local
-  } catch {
-    return {}
-  }
-}
-
-/** Ce que l'app a réglé elle-même (effort et mode rapide ne se lisent pas dans le transcript) : mémorisé par session. */
-export function useLocalSettings(id: string) {
-  const [local, setLocal] = useState<Local>(() => load(id))
-  useEffect(() => setLocal(load(id)), [id])
-  const update = (patch: Local) =>
-    setLocal((s) => {
-      const next = { ...s, ...patch }
-      try {
-        localStorage.setItem(KEY(id), JSON.stringify(next))
-      } catch {
-        /* stockage indisponible */
-      }
-      return next
-    })
-  return [local, update] as const
-}
-
-/** One tap applies: the tapped word is the choice at once, marked pending while its command is on its way. */
-function Choice({ label, options, value, onPick, words, pending }: { label: string; options: string[]; value?: string; onPick: (v: string) => void; known: boolean; words?: (o: string) => string; pending?: string }) {
-  return (
-    <div className="in words" role="group" aria-label={label}>
-      {options.map((o) => (
-        <button key={o} type="button" className={`word${value === o ? ' on' : ''}${pending === o ? ' pending' : ''}`} aria-pressed={value === o} aria-busy={pending === o || undefined} onClick={() => onPick(o)}>
-          {words ? words(o) : o}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-export function Settings({
-  id,
-  tool,
-  settings,
-  canCommand,
-  run,
-  userName,
-}: {
-  id: string
-  tool: Tool
-  settings?: SessionSettings
-  /** La session tourne dans une pane weevils : on peut lui taper des commandes. */
-  canCommand: boolean
-  run: (command: string) => Promise<unknown>
-  userName?: string
-}) {
-  const t = useT(M)
-  const [local, setLocal] = useLocalSettings(id)
-  const [err, setErr] = useState<string | null>(null)
-  const [confirm, setConfirm] = useState<string | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
-
-  // Jamais bloquant : le choix s'affiche tout de suite, la commande part en fond.
-  const send = (command: string, after?: () => void) => {
-    setErr(null)
-    after?.()
-    setBusy(command)
-    void run(command)
-      .catch((e) => setErr((e as Error).message))
-      .finally(() => setBusy(null))
-  }
-
-  const model = local.model && local.at && Date.now() - local.at < 20_000 ? local.model : (shortModel(settings?.model) ?? local.model)
-  const modelKnown = !!settings?.model
-  const models = model && !MODELS.claude.includes(model) ? [model, ...MODELS.claude] : MODELS.claude
-
-  if (!canCommand && tool !== 'codex') {
-    return <div className="in meta empty">{t.unavailable}</div>
-  }
-
-  return (
-    <div className="settings">
-      {id === '__main' && <VoicePicker userName={userName ?? ''} />}
-      {err && (
-        <Notice eventId={noticeKey('error:settings', location.pathname, location.hash, err)} className="in meta" role="alert">
-          ! {err}
-        </Notice>
-      )}
-      {tool === 'claude' ? (
-        <>
-          <Choice label={t.model} options={models} value={model} known={modelKnown} pending={busy?.startsWith('/model ') ? busy.slice(7) : undefined} onPick={(m) => void send(`/model ${m}`, () => setLocal({ model: m, at: Date.now() }))} />
-          <Choice label={t.effort} options={EFFORTS} value={local.effort && local.at && Date.now() - local.at < 20_000 ? local.effort : (settings?.effort ?? local.effort)} known={!!settings?.effort} pending={busy?.startsWith('/effort ') ? busy.slice(8) : undefined} words={t.effortWord} onPick={(e) => void send(`/effort ${e}`, () => setLocal({ effort: e, at: Date.now() }))} />
-          <div className="in settings-row">
-            <span className="meta settings-label">{t.fastMode}</span>
-            {/* /fast toggles: a chip sends it only when it changes the state (unknown counts as off, as before). */}
-            <div className="words" role="group" aria-label={t.fastMode}>
-              {[true, false].map((on) => (
-                <button key={String(on)} className={`word ${local.fast === on ? 'on' : ''}`} aria-pressed={local.fast === on} onClick={() => (!!local.fast === on ? setLocal({ fast: on }) : void send('/fast', () => setLocal({ fast: on })))}>
-                  {on ? t.on : t.off}
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
-      ) : <ModelPicker key={id} id={id} />}
-      <Line ch="⇣" go={null} onClick={() => void send('/compact')} disabled={busy === '/compact'}>
-        {t.compact}
-      </Line>
-      {confirm ? (
-        <Line ch="!" go={null} className="invert" onClick={() => void send(tool === 'codex' ? '/new' : '/clear', () => setConfirm(null))}>
-          {t.confirmClear}
-        </Line>
-      ) : (
-        <Line ch="×" go={null} onClick={() => setConfirm('clear')}>
-          {t.clear}
-        </Line>
-      )}
-      {confirm && (
-        <Line ch=" " go={null} onClick={() => setConfirm(null)}>
-          <span className="meta">{t.cancel}</span>
-        </Line>
-      )}
-    </div>
-  )
+/**
+ * A conversation's settings: weevboss's voice, or the model and effort of a session, each applied in one tap by the
+ * server (src/ui/model-controls.tsx). No slash command is typed from here; fast mode, « tidy up » and « start over » are
+ * gone (Scarville, 2026-11-17: nothing that doesn't earn its place).
+ */
+export function Settings({ id, userName }: { id: string; userName?: string }) {
+  return <div className="settings">{id === '__main' ? <VoicePicker userName={userName ?? ''} /> : <ModelPicker key={id} id={id} />}</div>
 }

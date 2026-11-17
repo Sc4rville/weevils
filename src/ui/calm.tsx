@@ -103,8 +103,6 @@ export function CalmConv({ id }: { id: string }) {
   const working = main ? snap.mainWorking : s?.status === 'working'
   const author = main ? 'weevboss' : (s?.tool ?? 'claude')
   const title = main ? 'weevboss' : (s?.title ?? '')
-  const settings = main ? snap.mainSettings : s?.settings
-  const canCommand = main ? snap.mainHasScreen : !!s?.hasScreen
   // A question waiting on the screen (a permission, a menu, the agent's own question): its plain words and buttons.
   const mq = snap.mainQuestion
   const question = main ? (mq ? ({ id: mq.id, tool: 'claude', title: 'weevboss', status: 'needs_user', attention: mq.attention, attentionDetail: mq.attentionDetail, choices: mq.choices } as Session) : undefined) : s?.status === 'needs_user' ? s : undefined
@@ -132,7 +130,6 @@ export function CalmConv({ id }: { id: string }) {
       throw e
     }
   }
-  const run = (c: string) => (main ? api.mainCommand(c) : api.command(id, c))
   const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
   const previewUrl = preview.url ?? (s ? guessPreviewUrl(messages, s, snap.projects.find((p) => p.id === s.projectId), snap.config) : '')
 
@@ -174,7 +171,7 @@ export function CalmConv({ id }: { id: string }) {
             </button>
           </div>
         )}
-        <Settings userName={snap.config.userName} id={main ? '__main' : id} tool={main ? 'claude' : (s?.tool ?? 'claude')} settings={settings} canCommand={canCommand} run={run} />
+        <Settings userName={snap.config.userName} id={main ? '__main' : id} />
       </Collapse>
       <div className="page-cols">
         <div className="page-main">

@@ -8,7 +8,6 @@
 #   weevils resume <id>                  relance une session coupée en plein travail (état « interrupted »)
 #   weevils new <projet> "message" [codex]   weevils projects
 #   weevils setup [install | ask <brique> | mark <id>]      weevils config set <CLÉ> <valeur>
-#   weevils tour open|close                                 rouvre ou ferme les premiers pas dans l'app
 #   weevils memory [add "souvenir" | rm <id>]   (ce que weevils retient de l'utilisateur, ~/.config/weevils/memory.json)
 #   weevils post "texte" [--action "libellé::quoi faire"]…   un mot dans « pour toi », avec des boutons si besoin
 #   weevils show <fichier> ["légende"]                       une image ou une vidéo dans « pour toi »
@@ -47,7 +46,6 @@ if [ "$(wv_lang)" = fr ]; then
 weevils resume <id>                  weevils new <projet> "message" [codex]   weevils projects
 weevils recall <id>                  weevils boss
 weevils setup [install | ask <brique> | mark <id>]   weevils config set <CLÉ> <valeur>
-weevils tour open|close
 weevils memory [add "souvenir" | rm <id>]
 weevils page <dossier|fichier> "titre" --kind <type>   weevils page list|library …   weevils pages
 weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichier> ["légende"]' # i18n-ignore
@@ -85,7 +83,6 @@ else
 weevils resume <id>                  weevils new <project> "message" [codex]  weevils projects
 weevils recall <id>                  weevils boss
 weevils setup [install | ask <brick> | mark <id>]   weevils config set <KEY> <value>
-weevils tour open|close
 weevils memory [add "memory" | rm <id>]
 weevils post "text" [--action "label::what to do"]…      weevils show <file> ["caption"]
 weevils page <folder|file> "title" --kind <kind>   weevils page list|library …   weevils pages
@@ -389,14 +386,6 @@ if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
         key=brick; [ "$2" = mark ] && key=id
         "$py" -c 'import json,sys; print(json.dumps({sys.argv[1]:sys.argv[2]}))' "$key" "${3:?}" \
           | curl -sf -m 30 -H 'content-type: application/json' --data-binary @- "$base/api/setup/$2" >/dev/null && echo ok ;;
-      *) echo "$usage"; exit 1 ;;
-    esac ;;
-  tour)
-    # Premiers pas : les rouvrir dans l'app (« reprends le tour »), ou les fermer.
-    case "${2:-}" in
-      open|close)
-        "$py" -c 'import json,sys; print(json.dumps({"action":sys.argv[1]}))' "$2" \
-          | curl -sf -m 30 -H 'content-type: application/json' --data-binary @- "$base/api/tour" >/dev/null && echo ok ;;
       *) echo "$usage"; exit 1 ;;
     esac ;;
   config)

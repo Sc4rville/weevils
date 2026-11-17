@@ -28,6 +28,7 @@ import B from '../i18n/bits'
 import { plain, userText, type ChipId } from './format'
 import { AutoMark, FilledIcon, G, Icon } from './icons'
 import { KeepSessionOrder } from './session-order'
+import { OlderLine, ProjectNow, useHistory } from './project-screen'
 import { autoOfSession } from './auto-model'
 import { PrefLines, UpdatesLine } from './prefs'
 import { RelayPrefLine, ThreadPlans } from './relay'
@@ -72,8 +73,7 @@ function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () =>
   const td = useT(D)
   const authorOf = useAuthors()
   const { snap } = useApp()
-  // Les démos des premiers pas passent dans l'aperçu le temps d'être vues, puis restent seulement dans le fil.
-  const items = messages.filter((m) => m.role !== 'event' && m.text.trim() && (!m.demo || snap.now - m.at < 2 * 60_000)).slice(-60)
+  const items = messages.filter((m) => m.role !== 'event' && m.text.trim()).slice(-60)
   const working = snap.mainWorking || !!snap.devil?.working
   const soft = { type: 'spring', stiffness: 160, damping: 26, mass: 1 } as const
   const box = useRef<HTMLDivElement>(null)
@@ -120,7 +120,7 @@ function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () =>
         <AnimatePresence initial={false} mode="popLayout">
           {items.map((m) => {
             const tone = m.role === 'orchestrator' ? authorTone(authorOf(m.author)) : null
-            const who = `${m.role === 'user' ? tb.you : m.role === 'orchestrator' ? authorOf(m.author).name : m.devil ? td.devil : 'weevboss'}${m.demo ? ` · ${tb.demo}` : ''}${m.id.startsWith('pending-') ? ` · ${pendingLabel(m.id)}` : ''}`
+            const who = `${m.role === 'user' ? tb.you : m.role === 'orchestrator' ? authorOf(m.author).name : m.devil ? td.devil : 'weevboss'}${m.id.startsWith('pending-') ? ` · ${pendingLabel(m.id)}` : ''}`
             const full = (m.role === 'user' ? userText(m.text) : plain(m.text)).replace(/\s+/g, ' ')
             // Le dernier : sa fin, entière (la réponse qui s'écrit reste lisible, en bas, là où l'aperçu la suit).
             const isLast = m.id === last?.id
@@ -129,7 +129,7 @@ function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () =>
               <motion.div
                 key={m.id}
                 layout="position"
-                className={`peek-item ${m.role === 'user' ? '' : tone ? tone.className.replace('tone ', '') : m.devil ? 'devil' : 'base'} ${m.demo ? 'demo' : ''} ${isLast ? 'last' : ''}`}
+                className={`peek-item ${m.role === 'user' ? '' : tone ? tone.className.replace('tone ', '') : m.devil ? 'devil' : 'base'} ${isLast ? 'last' : ''}`}
                 style={tone?.style}
                 initial={taken.has(m.id) ? false : { opacity: 0, y: 18 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -197,21 +197,6 @@ export function AgentBand() {
   // Devil mode : le diablotin, toujours là à droite du logo. Branché, un tap bascule (bande orange, réponses en vert,
   // même fil) ; pas branché, un tap demande à weevboss de proposer le branchement, dans son fil.
   const devilOn = useDevil(!!snap.devil?.enabled)
-  // Démo du diable (premiers pas) : la bande prend sa couleur quelques secondes, sans rien basculer.
-  const [devilFlash, setDevilFlash] = useState(false)
-  useEffect(() => {
-    let id = 0
-    const on = () => {
-      setDevilFlash(true)
-      window.clearTimeout(id)
-      id = window.setTimeout(() => setDevilFlash(false), 2600)
-    }
-    window.addEventListener('weevils:devil-flash', on)
-    return () => {
-      window.removeEventListener('weevils:devil-flash', on)
-      window.clearTimeout(id)
-    }
-  }, [])
   const flow = useFlow()
   useWelcome()
   const tapDevil = (el: Element) => {
@@ -311,7 +296,7 @@ export function AgentBand() {
 
   const dr = useBossDrawer(open, () => setExpanded('agent'), () => setExpanded(null))
   const band = (
-    <motion.section ref={dr.box} className={`band agent tone ${snap.foryou ? 'has-foryou' : ''} ${devilOn || devilFlash ? 'devil-on' : ''} ${open || dr.shown ? 'open' : ''}`} style={{ ...color(devilOn || devilFlash ? 'devil' : 'agent'), y: dr.y }} aria-label={t.agentBand}>
+    <motion.section ref={dr.box} className={`band agent tone ${snap.foryou ? 'has-foryou' : ''} ${devilOn ? 'devil-on' : ''} ${open || dr.shown ? 'open' : ''}`} style={{ ...color(devilOn ? 'devil' : 'agent'), y: dr.y }} aria-label={t.agentBand}>
       {/* En haut : le logo (dicter), sous la barre d'état. Réduite : l'aperçu vivant du fil ; un tap l'ouvre.
           Ouverte : un tap dans l'espace vide, le chevron, ou glisser vers le bas la réduit. */}
       <div className="agent-space" onClick={(e) => open && e.target === e.currentTarget && dr.close()}>
@@ -508,9 +493,10 @@ function collapsedPrefs(): Record<string, boolean> {
     return {}
   }
 }
-function saveCollapsed(id: string, v: boolean) {
+function forgetCollapsed(id: string) {
   try {
-    localStorage.setItem(COLLAPSED, JSON.stringify({ ...collapsedPrefs(), [id]: v }))
+    const { [id]: _, ...rest } = collapsedPrefs()
+    localStorage.setItem(COLLAPSED, JSON.stringify(rest))
   } catch {
     /* stockage indisponible */
   }
@@ -543,15 +529,16 @@ export function ProjectBand({ project }: { project: Project }) {
   useLayoutEffect(() => {
     shownRows.current = rowKey ? rowKey.split('|') : []
   }, [rowKey])
+  const history = useHistory(sessions)
   const att = active.filter((s) => s.status === 'needs_user')
   const cut = active.filter((s) => s.status === 'interrupted')
   const convCount = snap.conversationCounts.byProject[project.id] ?? 0
   // Réduit ou déplié, au choix, mémorisé par projet ; par défaut réduit quand rien ne tourne.
   const [pref, setPref] = useState<boolean | undefined>(() => collapsedPrefs()[project.id])
   const collapsed = mode === 'normal' && (pref ?? active.length === 0)
-  const remember = (v: boolean) => {
-    setPref(v)
-    saveCollapsed(project.id, v)
+  const forget = () => {
+    setPref(undefined)
+    forgetCollapsed(project.id)
   }
   // Un tap sur le nom : la bande reste sous le doigt pendant que les autres se replient ou se déplient autour
   // (keepInPlace) ; ce qui s'ouvre sous le bas de l'écran y est amené ; si elle a dû bouger malgré tout (haut du flux,
@@ -563,25 +550,15 @@ export function ProjectBand({ project }: { project: Project }) {
     markSeen('g-fold')
     const grow = mode === 'mini' || (mode === 'normal' && collapsed)
     pin.current = { fix: keepInPlace(head.current, 480), top: head.current?.getBoundingClientRect().top ?? 0, grow, at: Date.now() }
-    // Une autre bande est ouverte (le fil de weevboss en grand, un autre projet) : un tap saute directement ici.
-    if (mode === 'mini') {
-      for (const r of project.repos) prefetchRepo(r, project.where[r] ?? snap.machines[0]?.id ?? '')
-      remember(false)
-      setExpanded(project.id)
-      return
-    }
+    // A tap on the name opens the project (what runs, its to-do, its sessions); a second tap closes it. On closing, a
+    // project goes back to its resting look: folded when nothing runs (an older manual fold is forgotten).
     if (mode === 'open') {
       setExpanded(null)
-      remember(true)
       return
     }
-    if (collapsed) {
-      for (const r of project.repos) prefetchRepo(r, project.where[r] ?? snap.machines[0]?.id ?? '')
-      remember(false)
-      if (active.length === 0) setExpanded(project.id)
-      return
-    }
-    remember(true)
+    for (const r of project.repos) prefetchRepo(r, project.where[r] ?? snap.machines[0]?.id ?? '')
+    if (pref !== undefined) forget()
+    setExpanded(project.id)
   }
   useLayoutEffect(() => {
     const p = pin.current
@@ -663,14 +640,21 @@ export function ProjectBand({ project }: { project: Project }) {
 
       <Collapse open={shown !== 'mini'} transition={tx}>
         {sourceAccessIssue(project) && <div className="in meta" role="status">{sourceAccessIssue(project)}</div>}
+        {mode === 'open' && <ProjectNow project={project} sessions={sessions} />}
         <AnimatePresence initial={false}>
           {active.map((s) => (
             <RowSlot key={s.id}>
               <SessionRow session={s} />
             </RowSlot>
           ))}
+          {/* Finished sessions only in the open project, newest first (Scarville, 2026-11-17): not on the home screen. */}
+          {mode === 'open' && history.shown.map((s) => (
+            <RowSlot key={s.id}>
+              <SessionRow session={s} />
+            </RowSlot>
+          ))}
         </AnimatePresence>
-        {/* Finished sessions are not listed on the home screen (Scarville, 2026-11-17): the conversations page keeps them. */}
+        {mode === 'open' && history.hidden > 0 && <OlderLine n={history.hidden} onClick={history.showAll} />}
         <div style={{ height: 12 }} />
       </Collapse>
 

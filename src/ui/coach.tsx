@@ -9,7 +9,7 @@ import './coach.css'
 // repos sont à un glissé ; une page est ouverte : le retour est un glissé depuis le bord ; le fil de weevboss est ouvert :
 // un mot se tape pour l'expliquer…), un doigt fantôme le mime une fois sur l'élément, sans un mot. Jamais si le geste a
 // déjà été fait (hints.json, partagé par les appareils), jamais deux de suite : au plus un toutes les 25 s, après
-// quelques secondes sans toucher l'écran, jamais pendant l'intro, une bulle, une carte d'astuce ou un branchement.
+// quelques secondes sans toucher l'écran, jamais avant l'accueil, pendant une bulle, une carte d'astuce ou un branchement.
 
 type Move = 'edge-left' | 'swipe-left' | 'swipe-right' | 'pull-down' | 'pinch' | 'tap' | 'press'
 
@@ -79,7 +79,7 @@ const GESTURES: Gesture[] = [
   { done: 'g-copy', move: 'press', where: (c) => (c.agentOpen && !c.page ? rect('.band.agent .ask-thread [data-mid]') : null) },
   // Le fil des projets : les repos sont à un glissé vers la gauche (surtout quand il est vide).
   { done: 'repos', move: 'edge-left', where: (c) => (!c.agentOpen && !c.page && lat() === 0 ? rect('.lat-grip') : null) },
-  // Des projets : un tap sur le nom les replie.
+  // Des projets : un tap sur le nom ouvre le projet (ce qui tourne, sa to-do, ses sessions).
   { done: 'g-fold', move: 'tap', where: (c) => (!c.agentOpen && !c.page && c.projects > 0 ? firstRect('.band[data-project] .head-name .name') : null) },
   // Le logo de weevboss : on lui parle d'un tap (la bulle dit la suite au premier tap).
   { done: 'voice', move: 'tap', where: (c) => (!c.page ? firstRect('.voice-logo') : null) },
@@ -106,25 +106,13 @@ export function GestureCoach() {
       lastTouch.current = Date.now()
       setGhost(null)
     }
-    // Les premiers pas demandent un geste précis (« montre-moi ») : mimé tout de suite, où qu'on en soit.
-    const show = (e: Event) => {
-      const id = (e as CustomEvent<string>).detail
-      const g = GESTURES.find((x) => x.done === id)
-      const r = g?.where({ ...ctx.current, page: document.documentElement.dataset.page, agentOpen: false, mainCount: 99, projects: Math.max(1, ctx.current.projects) })
-      if (!g || !r) return
-      const now = Date.now()
-      lastGhost.current = now
-      setGhost({ move: g.move, r, key: now })
-      window.setTimeout(() => setGhost((x) => (x?.key === now ? null : x)), 3200)
-    }
-    window.addEventListener('weevils:coach', show)
     window.addEventListener('pointerdown', touch, { capture: true })
     window.addEventListener('keydown', touch)
     window.addEventListener('scroll', touch, { capture: true, passive: true })
     const id = window.setInterval(() => {
       const now = Date.now()
       if (now - lastTouch.current < IDLE_MS || now - lastGhost.current < GAP_MS || busy.current || document.hidden) return
-      if (document.querySelector('.ob, .hint, .tip') || localStorage.getItem('weevils-onboarded') !== '1') return
+      if (document.querySelector('.hint, .tip') || localStorage.getItem('weevils-onboarded') !== '1') return
       const c = { ...ctx.current, page: document.documentElement.dataset.page }
       for (const g of GESTURES) {
         if (isSeen(g.done) || isSeen(`ghost-${g.done}`)) continue
@@ -139,7 +127,6 @@ export function GestureCoach() {
     }, 700)
     return () => {
       window.clearInterval(id)
-      window.removeEventListener('weevils:coach', show)
       window.removeEventListener('pointerdown', touch, { capture: true })
       window.removeEventListener('keydown', touch)
       window.removeEventListener('scroll', touch, { capture: true })

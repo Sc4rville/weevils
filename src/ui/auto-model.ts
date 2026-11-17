@@ -56,7 +56,6 @@ export interface AutoItem {
   sessionId?: string
   /** A timer: paused or resumed with one tap. */
   toggle?: boolean
-  demo?: boolean
   note?: string
   trigger: Trigger
   projectId: string | null
@@ -196,7 +195,6 @@ export function fromActivity(a: H24Activity, projectId: string | null = a.projec
     endedAt: a.kind === 'job' && a.runState !== 'running' ? (lastAt ?? null) : null,
     since: a.since ?? null,
     toggle: a.canToggle,
-    demo: a.demo,
     note: a.lastEvent,
     trigger: a.kind === 'job' ? { kind: 'manual' } : a.everyMs ? { kind: 'every', every: a.everyMs, at: a.nextRunAt ?? undefined } : { kind: 'time', at: a.nextRunAt ?? undefined },
     projectId,
@@ -231,10 +229,10 @@ export const projectOfRepo = (projects: Snapshot['projects'], repo: string | nul
 /** Everything that runs without asking, flat: accepted tasks, timers, running jobs; finished ones (one-off tasks, jobs
  *  ended under 3 h) last. Proposals are not in it. */
 /**
- * A real automation: a timer, or a job that recurs or has a trigger (and the tour's demo). A one-off background command
+ * A real automation: a timer, or a job that recurs or has a trigger. A one-off background command
  * an agent started (its log in ~/logs: tests, mocks, builds) is that agent's work, never an automation: not shown here.
  */
-export const isAutomation = (a: Pick<H24Activity, 'kind' | 'demo' | 'everyMs' | 'nextRunAt'>) => a.kind === 'timer' || !!a.demo || !!a.everyMs || !!a.nextRunAt
+export const isAutomation = (a: Pick<H24Activity, 'kind' | 'everyMs' | 'nextRunAt'>) => a.kind === 'timer' || !!a.everyMs || !!a.nextRunAt
 
 export function autoList(snap: Pick<Snapshot, 'projects' | 'h24' | 'optimizers' | 'now'>): AutoItem[] {
   const known = new Set(snap.projects.map((p) => p.id))

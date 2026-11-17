@@ -7,7 +7,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Project, Session, Snapshot } from '../../shared/api.ts'
 
-vi.mock('../api', () => ({ api: {} }))
+vi.mock('../api', () => ({ api: { ledger: async () => ({ goals: [], asks: [], pending: [], trace: [], knowledge: [], digestTokens: 0 }) } }))
 vi.mock('../push', () => ({ ensurePush: async () => {} }))
 
 localStorage.setItem('weevils-language', 'fr')
@@ -195,11 +195,13 @@ describe('bande projet', () => {
     expect(order()).toBe('alpha beta')
   })
 
-  it('finished sessions are not on the home screen at all, even in an open band (Scarville, 2026-11-17)', () => {
-    const d = session('fini', { status: 'done', live: false, workStartedAt: null })
-    render([d], 'p')
-    expect(host.textContent).not.toMatch(/\bsessions?\b/)
+  it('finished sessions are not on the home screen; the open project lists them, newest first (Scarville, 2026-11-17)', () => {
+    const old = session('ancienne', { status: 'done', live: false, workStartedAt: null, lastActivityAt: NOW - 90 * MIN })
+    const recent = session('récente', { status: 'done', live: false, workStartedAt: null, lastActivityAt: NOW - 5 * MIN })
+    render([old, recent], null)
     expect(host.querySelectorAll('.session-item')).toHaveLength(0)
+    render([old, recent], 'p')
+    expect([...host.querySelectorAll('.session-item .session-name')].map((e) => e.textContent)).toEqual(['récente', 'ancienne'])
   })
 })
 

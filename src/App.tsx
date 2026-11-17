@@ -12,7 +12,6 @@ import { spring } from './ui/bits'
 import { H24Rail } from './ui/h24'
 import { TalkProvider } from './ui/auto-talk'
 import { Login } from './ui/login'
-import { TourBand, TourIntro } from './ui/tour'
 import { RelayBand } from './ui/relay'
 import { Tips } from './ui/tips'
 import { HintBubble, loadHints } from './ui/hints'
@@ -482,7 +481,6 @@ export default function App() {
           <KeepOrder order={orderKey} active={stack.length === 0} />
           <AgentBand />
           <NightBand />
-          <TourBand />
           <RelayBand />
           {ordered.map((p) => (
             <ProjectBand key={p.id} project={p} />
@@ -503,7 +501,6 @@ export default function App() {
           </AnimatePresence>
         </TalkProvider>
         <Tips paused={stack.length > 0} />
-        <TourIntro />
         <HintBubble />
         <GestureCoach />
       </MotionConfig>

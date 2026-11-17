@@ -2432,7 +2432,7 @@ describe('auto — the permission profile', () => {
       const ok = await run('sessions')
       expect(ok.code).toBe(0)
       expect(ok.out).toContain('A live one')
-      for (const sub of ['memory', 'ask', 'resume', 'config', 'setup', 'mem', 'tour']) {
+      for (const sub of ['memory', 'ask', 'resume', 'config', 'setup', 'mem']) {
         const r = await run(sub, 'rm', 'x')
         expect(r.code, sub).toBe(3)
         expect(r.err).toContain('not allowed in an automation run')

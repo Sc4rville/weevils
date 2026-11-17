@@ -6,7 +6,6 @@ import { automatedBrowser, automatedHeaders } from './automated'
 import OM from './i18n/outbox'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AskResult, Brick, Device } from '../shared/setup.ts'
-import type { Tour, TourId } from '../shared/tour.ts'
 import type { BringView } from '../shared/bring.ts'
 import { getLang, localeHeaders, subscribeLang, tr, type Lang } from './i18n'
 import M from './i18n/app'
@@ -125,7 +124,7 @@ export const api = {
   pinRepo: (repo: string, pinned: boolean) => call<{ ok: true }>('POST', '/api/github/pin', { repo, pinned }),
   newRepo: (name: string, description: string) => call<{ name: string }>('POST', '/api/github/repos', { name, description }),
   devil: (text: string) => call<{ id: string }>('POST', '/api/devil', { text }),
-  setupWelcome: (device: Device) => call<{ ok: true }>('POST', '/api/setup/welcome', { device }),
+  setupWelcome: (device: Device) => call<{ ok: true; mid?: string }>('POST', '/api/setup/welcome', { device }),
   setupProvider: (tool: 'claude' | 'codex', device: Device) => call<AskResult>('POST', '/api/setup/provider', { tool, device }),
   /** again: sign in once more (a session found its agent signed out), even when a login is on file. */
   setupAsk: (brick: Brick, device: Device, again = false) => call<AskResult>('POST', '/api/setup/ask', again ? { brick, device, again } : { brick, device }),
@@ -133,9 +132,6 @@ export const api = {
   /** Un secret demandé par un agent ([[setup:key:NOM]]) : la valeur part au serveur, rien ne revient. */
   setupKey: (name: string, value: string) => call<{ ok: true }>('POST', '/api/setup/key', { name, value }),
   setupDone: (brick: Brick) => call<{ ok: true }>('POST', '/api/setup/done', { brick }),
-  tour: (mobile: boolean) => call<Tour>('GET', `/api/tour${mobile ? '?mobile=1' : ''}`),
-  tourAct: (action: 'skip' | 'unskip' | 'done' | 'close' | 'open' | 'intro', id?: TourId) => call<Tour>('POST', '/api/tour', { action, id }),
-  tourDemo: (id: TourId) => call<{ text?: string; audio?: string }>('POST', '/api/tour/demo', { id }),
   setupLink: () => call<{ link: string }>('GET', '/api/setup/link'),
   bringLink: () => call<{ code: string }>('POST', '/api/bring/link'),
   bringView: () => call<BringView>('GET', '/api/bring'),

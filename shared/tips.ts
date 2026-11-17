@@ -9,8 +9,6 @@ export type TipAction =
   /** Opens a page of the app. */
   | { kind: 'open'; page: 'session'; id: string }
   | { kind: 'open'; page: 'conversations' }
-  /** Replays the first-launch intro (its first step adds a machine). */
-  | { kind: 'intro' }
   /** Asks for notifications on this device. */
   | { kind: 'push' }
   /** Opens weevboss's thread and starts a setup flow (a brick of shared/setup.ts: machine, voice…). */

@@ -13,8 +13,8 @@ import { setTop } from './foryou-top'
 import { Bring } from './bring'
 
 // Accueil et branchements, côté app (contrat : shared/setup.ts, serveur : server/setup.ts).
-// - useWelcome : au premier lancement (intro terminée), weevilsd écrit l'accueil de weevboss dans son fil, adapté à
-//   l'appareil, et le fil s'ouvre pour qu'on le lise arriver.
+// - useWelcome : au premier lancement, weevilsd écrit l'accueil de weevboss dans son fil, d'après l'état réel (une
+//   brique à la fois, avec sa puce), et le fil s'ouvre pour qu'on le lise arriver. C'est tout l'onboarding.
 // - SetupChips : les boutons sous un message de weevboss. Un tap lance le branchement : une action sur place
 //   (notifications, adresse Siri), ou weevboss dit ce que ça apporte (et installe ce qui manque) puis le champ du bas
 //   pose les questions. Jamais de commande à taper.
@@ -22,14 +22,6 @@ import { Bring } from './bring'
 //   l'écran (focusBoss, src/ui/follow.ts), et sa réponse est mise en avant.
 // - SetupComposer : le champ du bas pendant un parcours, une question à la fois ; les secrets sont masqués et partent
 //   droit au serveur avec les autres réponses, à la fin. Jamais au modèle.
-
-const read = (k: string) => {
-  try {
-    return localStorage.getItem(k)
-  } catch {
-    return null
-  }
-}
 
 const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
 
@@ -120,23 +112,23 @@ export const askSetup = (brick: Brick) => void startSetup(brick).catch(() => und
 
 // ---------------------------------------------------------------- accueil
 
-/** Premier lancement : une fois l'intro fermée, l'appareil est noté (l'accueil, ce sont les premiers pas). */
+/** Premier lancement : weevboss accueille dans son fil, ouvert en haut de l'écran. Un appareil qui arrive après
+ * (l'accueil déjà fait ailleurs) est simplement noté comme accueilli : bulles et astuces peuvent venir. */
 export function useWelcome() {
   const { snap } = useApp()
-  const pending = !!snap.setup && !snap.setup.welcomed
+  const welcomed = snap.setup?.welcomed
   const asked = useRef(false)
   useEffect(() => {
-    if (!pending || asked.current) return
-    const tick = () => {
-      if (asked.current || read('weevils-onboarded') !== '1' || document.querySelector('.ob')) return
-      asked.current = true
-      // Le fil ne s'ouvre pas : les premiers pas (src/ui/tour.tsx) suivent la première demande sous la bande de weevboss.
-      void api.setupWelcome(device()).catch(() => (asked.current = false))
+    if (welcomed === undefined || asked.current) return
+    asked.current = true
+    // Le fil s'ouvre sur l'accueil une fois écrit (une installation qui a déjà servi n'en a pas : rien ne s'ouvre).
+    if (!welcomed) void api.setupWelcome(device()).then((r) => r.mid && focusBoss({ mid: r.mid }), () => (asked.current = false))
+    try {
+      localStorage.setItem('weevils-onboarded', '1')
+    } catch {
+      /* stockage indisponible */
     }
-    tick()
-    const id = window.setInterval(tick, 800)
-    return () => window.clearInterval(id)
-  }, [pending])
+  }, [welcomed])
 }
 
 // ---------------------------------------------------------------- les boutons sous un message
@@ -168,7 +160,7 @@ export function PhoneLink() {
   )
 }
 
-/** Lance le branchement d'une brique, d'où qu'on le demande (puce sous un message, premiers pas) : les questions du
+/** Lance le branchement d'une brique, d'où qu'on le demande (puce sous un message, bulle, carte) : les questions du
  * champ du bas, une action sur place (notifications, adresse Siri), ou la marche à suivre postée par weevboss.
  * Renvoie une note à montrer en cas d'échec. */
 export async function runBrick(brick: Brick, primary = false): Promise<{ ok: boolean; note?: string }> {

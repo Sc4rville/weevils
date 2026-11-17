@@ -103,6 +103,12 @@ export default defineMessages({
     claudeInstallFail: (why: string): string => `L’installation de Claude Code a échoué (${why}). Réessaie :`,
     claudeLink: (url: string): string => `Ouvre [la page de connexion de Claude](${url}), accepte, puis colle en bas le code qu’elle affiche.`,
     claudeFail: (why: string): string => `Claude n’accepte pas ce code (${/wasn.t accepted|invalid|expired/i.test(why) ? 'incomplet, expiré ou déjà utilisé' : why}). On recommence avec un nouveau lien :`,
+    // ---- Accueil (premier lancement, Setup.welcome) : bonjour, puis une seule brique.
+    welcomeHello: (name: string): string => `Salut${name ? ` ${name}` : ''}, moi c’est weevboss.`,
+    welcomeProvider: (tool: string): string => `Tes agents tournent sur ton propre abonnement : connecte d’abord ${tool}, un tap :`,
+    welcomeReady: (projects: number): string =>
+      `${projects ? `Je vois déjà tes ${projects} projet${projects > 1 ? 's' : ''}. ` : ''}Dis-moi ce que tu veux faire, une idée, un correctif, une question sur ton code : j’ouvre une session et je te tiens au courant ici.`,
+    welcomePhone: 'Ensuite, mets-moi sur ton téléphone pour suivre de partout :',
     claudeReady: 'Claude Code est connecté : je suis prêt. Dis-moi ce que tu veux faire, par exemple « crée un repo pour mon idée de… » ou « où en est mon projet ? ».',
     claudeOk: 'Claude Code est connecté sur cette machine.',
     notLoggedShort: 'Pour tout le reste, il me faut Claude Code connecté sur cette machine.',
@@ -312,6 +318,11 @@ export default defineMessages({
     claudeInstallFail: (why: string): string => `Installing Claude Code failed (${why}). Try again:`,
     claudeLink: (url: string): string => `Open [Claude’s sign-in page](${url}), accept, then paste the code it shows below.`,
     claudeFail: (why: string): string => `Claude doesn’t accept this code (${/wasn.t accepted|invalid|expired/i.test(why) ? 'incomplete, expired or already used' : why}). Let’s start over with a new link:`,
+    welcomeHello: (name: string): string => `Hi${name ? ` ${name}` : ''}, I’m weevboss.`,
+    welcomeProvider: (tool: string): string => `Your agents run on your own subscription, so first sign in to ${tool}. One tap:`,
+    welcomeReady: (projects: number): string =>
+      `${projects ? `I can already see your ${projects} project${projects > 1 ? 's' : ''}. ` : ''}Tell me what you want done, an idea, a fix, a question about your code: I’ll open a session and keep you posted here.`,
+    welcomePhone: 'Next, put me on your phone so you can follow from anywhere:',
     claudeReady: 'Claude Code is signed in: I’m ready. Tell me what you want to do, like “create a repo for my idea about…” or “where’s my project at?”.',
     claudeOk: 'Claude Code is signed in on this machine.',
     notLoggedShort: 'For everything else, I need Claude Code signed in on this machine.',

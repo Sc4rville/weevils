@@ -42,6 +42,7 @@ import BM from '../i18n/bands'
 import PM from '../i18n/plain-steps'
 import { MemoryPage } from './memory'
 import { RequestsPage } from './requests'
+import { ProjectPage } from './project-screen'
 import { ForYouPage, MediaPage } from './foryou'
 import { AutoPage, AutoRunPage } from './auto-page'
 import { WebPage } from './living-link'
@@ -61,6 +62,8 @@ export function PageView({ page }: { page: Page }) {
       return <FilesPage projectId={page.projectId} repo={page.repo} dir={page.dir} />
     case 'file':
       return <FilePage projectId={page.projectId} repo={page.repo} path={page.path} line={page.line} />
+    case 'project':
+      return <ProjectPage projectId={page.projectId} />
     case 'machine':
       return <InfraPage projectId={page.projectId || undefined} />
     case 'fs':

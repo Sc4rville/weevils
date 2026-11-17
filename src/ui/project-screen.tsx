@@ -1,5 +1,5 @@
-// The open project (a tap on its name): what is being done right now across all its sessions, then its to-do (the
-// user's open requests sent to it), then its sessions. No headings, no counters, no boxes: weight says what is active.
+// A project's page (the « > » beside its « / » on the home band): what is being done right now across all its sessions,
+// then its to-do (the user's open requests sent to it), then its sessions. No headings, no counters, no boxes: weight says what is active.
 //
 // The to-do comes from weevboss's request ledger (GET /api/boss/ledger). A request belongs to a project through the
 // session it was last sent to (that session's project; a session gone from the snapshot is matched by the project
@@ -12,6 +12,8 @@ import { api } from '../api'
 import { useT } from '../i18n'
 import M from '../i18n/project-screen'
 import { useApp } from './app-context'
+import { SessionRow } from './bits'
+import { Shell } from './shell'
 import { chipOf } from './requests'
 import './project-screen.css'
 
@@ -20,6 +22,7 @@ type Chip = ReturnType<typeof chipOf>
 
 const FEED_MAX = 4
 const TODO_MAX = 6
+const OLDER_AFTER = 6
 
 /** What runs now in a project, newest first: one short plain line per working session (its current activity). */
 export function feedOf(sessions: Session[]): { id: string; text: string }[] {
@@ -124,18 +127,30 @@ export function ProjectNow({ project, sessions }: { project: { id: string; name:
   )
 }
 
-/** The project's finished sessions, newest first, under its open ones: a few, the rest one tap away. */
-export function useHistory(sessions: Session[]) {
-  const [all, setAll] = useState(false)
-  const done = sessions.filter((s) => !s.archived && s.status === 'done').sort((a, b) => b.lastActivityAt - a.lastActivityAt)
-  return { shown: all ? done : done.slice(0, 6), hidden: all ? 0 : Math.max(0, done.length - 6), showAll: () => setAll(true) }
-}
-
-export function OlderLine({ n, onClick }: { n: number; onClick: () => void }) {
+/** A project's own page (the « > » beside its « / »): what runs now, its to-do, then every session, the open ones first,
+ *  then the finished ones newest first, a few, the rest one tap away. The home band keeps its own behaviour. */
+export function ProjectPage({ projectId }: { projectId: string }) {
   const t = useT(M)
+  const { snap, colors } = useApp()
+  const [all, setAll] = useState(false)
+  const project = snap.projects.find((p) => p.id === projectId)
+  const sessions = snap.sessions.filter((s) => !s.archived && s.projectId === projectId)
+  const rank = (s: Session) => (s.status === 'working' ? 0 : s.status === 'needs_user' || s.status === 'interrupted' ? 1 : 2)
+  const open = sessions.filter((s) => s.status !== 'done').sort((a, b) => rank(a) - rank(b) || b.openedAt - a.openedAt)
+  const done = sessions.filter((s) => s.status === 'done').sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+  const shown = all ? done : done.slice(0, OLDER_AFTER)
   return (
-    <div className="in pj-older">
-      <button type="button" className="pj-line rest" onClick={onClick}>{t.older(n)}</button>
-    </div>
+    <Shell slot={colors[projectId] ?? 'agent'} kicker="weevils" title={project?.name ?? '…'}>
+      <div className="pj-page">
+        {project && <ProjectNow project={project} sessions={sessions} />}
+        {[...open, ...shown].map((s) => <SessionRow key={s.id} session={s} />)}
+        {done.length > shown.length && (
+          <div className="in pj-older">
+            <button type="button" className="pj-line rest" onClick={() => setAll(true)}>{t.older(done.length - shown.length)}</button>
+          </div>
+        )}
+        <div style={{ height: 96 }} />
+      </div>
+    </Shell>
   )
 }

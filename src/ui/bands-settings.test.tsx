@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H24Activity, Machine, Project, Session, Snapshot } from '../../shared/api.ts'
 
-vi.mock('../api', () => ({ api: { ledger: async () => ({ goals: [], asks: [], pending: [], trace: [], knowledge: [], digestTokens: 0 }),  usageRate: async () => ({ step: 15_000, end: Date.now(), buckets: [] }) } }))
+vi.mock('../api', () => ({ api: { usageRate: async () => ({ step: 15_000, end: Date.now(), buckets: [] }) } }))
 vi.mock('../push', () => ({ ensurePush: async () => {} }))
 vi.mock('./infra', async (orig) => ({ ...(await orig<typeof import('./infra')>()), UsageLine: () => null }))
 vi.mock('./relay', async (orig) => ({ ...(await orig<typeof import('./relay')>()), RelayPrefLine: () => null }))
@@ -111,7 +111,7 @@ describe('open project band', () => {
     expect(host.textContent).not.toContain('npm ERR!')
     expect(rows().find((r) => r.includes('Render'))).toBeUndefined()
     expect(rows().find((r) => r.startsWith('shop'))).toBeUndefined()
-    // Only « / » (the repo explorer) stays by the name.
-    expect([...host.querySelectorAll('.chars button')].map((b) => b.getAttribute('aria-label'))).toEqual([expect.stringMatching(/files/)])
+    // Only « / » (the repo explorer) and « > » (the project's page) stay by the name.
+    expect([...host.querySelectorAll('.chars button')].map((b) => b.getAttribute('aria-label'))).toEqual([expect.stringMatching(/files/), expect.stringMatching(/^open /)])
   })
 })

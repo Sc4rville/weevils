@@ -1,4 +1,4 @@
-/* The open project (src/ui/project-screen.tsx): small calm lines, weight for what is active, air between the groups. */
+/* A project's page (src/ui/project-screen.tsx): small calm lines, weight for what is active, air between the groups. */
 
 .pj {
   padding-block: 2px 14px;
@@ -39,4 +39,11 @@
 
 .pj-older {
   padding-block: 6px 2px;
+}
+
+/* The page body is a flex column: one block so the lines take the page's width, not their max. */
+.pj-page {
+  width: 100%;
+  min-width: 0;
+  padding-top: 12px;
 }

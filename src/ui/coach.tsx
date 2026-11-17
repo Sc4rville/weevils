@@ -79,7 +79,7 @@ const GESTURES: Gesture[] = [
   { done: 'g-copy', move: 'press', where: (c) => (c.agentOpen && !c.page ? rect('.band.agent .ask-thread [data-mid]') : null) },
   // Le fil des projets : les repos sont à un glissé vers la gauche (surtout quand il est vide).
   { done: 'repos', move: 'edge-left', where: (c) => (!c.agentOpen && !c.page && lat() === 0 ? rect('.lat-grip') : null) },
-  // Des projets : un tap sur le nom ouvre le projet (ce qui tourne, sa to-do, ses sessions).
+  // Des projets : un tap sur le nom les replie.
   { done: 'g-fold', move: 'tap', where: (c) => (!c.agentOpen && !c.page && c.projects > 0 ? firstRect('.band[data-project] .head-name .name') : null) },
   // Le logo de weevboss : on lui parle d'un tap (la bulle dit la suite au premier tap).
   { done: 'voice', move: 'tap', where: (c) => (!c.page ? firstRect('.voice-logo') : null) },

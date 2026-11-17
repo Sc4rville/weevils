@@ -25,7 +25,7 @@ import { useThreadAsk } from './askthread'
 import { isUnread, useSeen } from './seen'
 import { Collapse, Composer, INSTANT, Line, Messages, SessionRow, Working, authorTone, spring, useAuthors } from './bits'
 import B from '../i18n/bits'
-import { ago, plain, userText, type ChipId } from './format'
+import { plain, userText, type ChipId } from './format'
 import { AutoMark, FilledIcon, G, Icon } from './icons'
 import { KeepSessionOrder } from './session-order'
 import { autoOfSession } from './auto-model'
@@ -390,9 +390,10 @@ export function AgentBand() {
 
       {/* Écrire ici n'ouvre pas la conversation : elle s'ouvre à l'envoi, pour lire la réponse. Pendant un branchement,
           le champ pose les questions du parcours, une à la fois (src/ui/setup.tsx). */}
-      {flow ? <SetupComposer /> : <Composer placeholder={t.agentPlaceholder} label={t.agentLabel} onSend={send} onAttach={attach} anyFile voice sayErrors horizontal captureSuggestions draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="chevron" dir="right" />} />}
-      {/* The handle at the bottom edge: pull it down to open, push it up to close, or tap it. */}
+      {/* The handle, about a centimetre above the field (Scarville, 2026-11-17): pull it down to open, push it up to close, or
+          tap it. Under the field it sat on the keyboard's toolbar and the home indicator, where closing failed. */}
       <div className="agent-grip" onPointerDown={dr.grab} aria-hidden><span /></div>
+      {flow ? <SetupComposer /> : <Composer placeholder={t.agentPlaceholder} label={t.agentLabel} onSend={send} onAttach={attach} anyFile voice sayErrors horizontal captureSuggestions draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="chevron" dir="right" />} />}
     </motion.section>
   )
   // Escape the draggable home stack: its transform makes fixed descendants smaller than the viewport. While it is
@@ -460,7 +461,9 @@ function useBossDrawer(open: boolean, onOpen: () => void, onClose: () => void) {
       if (ev.pointerId !== id) return
       const d = ev.clientY - y0
       if (!moved && Math.abs(d) < 6) return
-      if (!moved) { moved = true; setShown(true) }
+      // Pushing it up shows the real home screen behind it, as the automations drawer does: the open state is let go
+      // as the drag starts (the drawer stays drawn until it lands), and taken back if it is released open.
+      if (!moved) { moved = true; setShown(true); if (open) onClose() }
       const t = performance.now()
       v = (ev.clientY - last.y) / Math.max(1, t - last.t) * 1000
       last = { y: ev.clientY, t }
@@ -485,7 +488,6 @@ function useBossDrawer(open: boolean, onOpen: () => void, onClose: () => void) {
       if (!moved) return open ? closeIt() : (setShown(true), y.set(closedOff.current), openIt())
       const next = v > 300 ? true : v < -300 ? false : y.get() > closedOff.current / 2
       if (next) openIt()
-      else if (open) closeIt()
       else go(closedOff.current, finishClose)
     }
     el.addEventListener('pointermove', move)
@@ -529,11 +531,9 @@ const sessionRank = (s: { status: string }) => s.status === 'working' ? 0 : s.st
 export function ProjectBand({ project }: { project: Project }) {
   const settled = useSettled()
   const t = useT(M)
-  const { snap, expanded, setExpanded, push, now, colors, instant } = useApp()
+  const { snap, expanded, setExpanded, push, colors, instant } = useApp()
   const tx = instant ? INSTANT : spring
   const mode = expanded === null ? 'normal' : expanded === project.id ? 'open' : 'mini'
-  // Les « terminées » : ouvertes ou fermées à la main, pour la vue en cours (un changement de vue rend la règle par défaut).
-  const [doneSet, setDoneSet] = useState<{ v: boolean; mode: string } | null>(null)
   const sessions = snap.sessions.filter((s) => !s.archived && s.projectId === project.id)
   // Une ligne ne change pas de place parce qu'une autre session écrit (le serveur les range par activité) : ce qui
   // travaille en tête, puis l'ordre déjà affiché, une nouvelle session en tête des siennes. Rien ne bouge sous le doigt.
@@ -543,7 +543,6 @@ export function ProjectBand({ project }: { project: Project }) {
   useLayoutEffect(() => {
     shownRows.current = rowKey ? rowKey.split('|') : []
   }, [rowKey])
-  const done = sessions.filter((s) => s.status === 'done')
   const att = active.filter((s) => s.status === 'needs_user')
   const cut = active.filter((s) => s.status === 'interrupted')
   const convCount = snap.conversationCounts.byProject[project.id] ?? 0
@@ -559,7 +558,6 @@ export function ProjectBand({ project }: { project: Project }) {
   // fil de weevboss qui se referme d'un coup), elle s'éclaire un instant.
   const sec = useRef<HTMLElement>(null)
   const head = useRef<HTMLDivElement>(null)
-  const doneBox = useRef<HTMLDivElement>(null)
   const pin = useRef<{ fix: () => void; top: number; grow: boolean; at: number } | null>(null)
   const toggle = () => {
     markSeen('g-fold')
@@ -601,12 +599,6 @@ export function ProjectBand({ project }: { project: Project }) {
   }, [mode, collapsed])
   // Réduit : une ligne, au format de la vue « mini » (nom, étoile verte, résumé).
   const shown = collapsed ? 'mini' : mode
-  const doneOpen = doneSet?.mode === mode ? doneSet.v : false
-  const toggleDone = () => {
-    setDoneSet({ v: !doneOpen, mode })
-    // Les terminées s'ouvrent souvent sous le bas de l'écran : la dernière y est amenée, le dépliage fini.
-    if (!doneOpen) window.setTimeout(() => reveal(doneBox.current?.lastElementChild, { block: 'nearest', flash: false }), 380)
-  }
 
   const recursive = selfProject(project)
   const improving = improvingProject(project, sessions)
@@ -678,21 +670,7 @@ export function ProjectBand({ project }: { project: Project }) {
             </RowSlot>
           ))}
         </AnimatePresence>
-        {done.length > 0 && (
-          <>
-            {/* One line: how many sessions, and when it last moved; a tap shows them. */}
-            <Line go={null} onClick={toggleDone} label={t.done(done.length)}>
-              <span className="meta">{t.sessionsN(done.length)}{!active.length && project.lastActivityAt > 0 ? ` · ${ago(now - project.lastActivityAt)}` : ''}</span>
-            </Line>
-            <Collapse open={doneOpen}>
-              <div ref={doneBox}>
-                {done.slice(0, 6).map((s) => (
-                  <SessionRow key={s.id} session={s} />
-                ))}
-              </div>
-            </Collapse>
-          </>
-        )}
+        {/* Finished sessions are not listed on the home screen (Scarville, 2026-11-17): the conversations page keeps them. */}
         <div style={{ height: 12 }} />
       </Collapse>
 

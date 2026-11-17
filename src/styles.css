@@ -2955,7 +2955,7 @@ main.stack {
 
 /* ---------- weevboss drawer handle (src/ui/bands.tsx useBossDrawer) ---------- */
 .agent-grip {
-  height: 26px;
+  height: 38px;
   display: grid;
   place-items: center;
   touch-action: none;
@@ -2972,3 +2972,4 @@ main.stack {
   opacity: 0.35;
 }
 .agent.open { will-change: transform; }
+

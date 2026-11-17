@@ -179,7 +179,7 @@ describe('bande projet', () => {
     // An idle session really starts: only its status, never the activity timestamp, promotes it.
     render([{ ...idle, status: 'working' }, a, b, relay, waiting, done])
     expect(rows()).toEqual(['beta', 'alpha', 'idle', 'relay', 'waiting'])
-    expect(host.textContent).toContain('1 session')
+    expect(host.textContent).not.toContain('1 session')
   })
 
   it('defers status reordering during a gesture and applies it when settled', () => {
@@ -195,14 +195,11 @@ describe('bande projet', () => {
     expect(order()).toBe('alpha beta')
   })
 
-  it('« terminées » restent repliées, même dans une bande ouverte, jusqu’au choix explicite', () => {
+  it('finished sessions are not on the home screen at all, even in an open band (Scarville, 2026-11-17)', () => {
     const d = session('fini', { status: 'done', live: false, workStartedAt: null })
     render([d], 'p')
-    const line = () => Array.from(host.querySelectorAll<HTMLButtonElement>('.row')).find((r) => /^1 session\b/.test(r.textContent ?? ''))!
-    expect(line().querySelector('.go')).toBeNull() // one quiet line, no arrow
+    expect(host.textContent).not.toMatch(/\bsessions?\b/)
     expect(host.querySelectorAll('.session-item')).toHaveLength(0)
-    act(() => line().click())
-    expect(host.querySelectorAll('.session-item')).toHaveLength(1)
   })
 })
 

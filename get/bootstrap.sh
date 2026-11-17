@@ -188,8 +188,13 @@ _weevils_get() {
     printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$user" >"/etc/sudoers.d/90-weevils-$user"
     chmod 440 "/etc/sudoers.d/90-weevils-$user"
     loginctl enable-linger "$user" >/dev/null 2>&1 || true
-    # Same script again, as that user (the URL stays valid for this setup).
-    exec runuser -l "$user" -c "curl -fsSL '$BASE/i/$SID?as=user' | bash"
+    # This same script again, as that user: the copy already running (written out from memory, never fetched again).
+    local self a q=''
+    self=$(mktemp /tmp/weevils-get.XXXXXX)
+    for a in "$SID" "${@:2}"; do q="$q $(printf '%q' "$a")"; done
+    { echo 'set -euo pipefail'; declare -f _weevils_get; echo "_weevils_get$q"; } >"$self"
+    chmod 644 "$self"
+    exec runuser -l "$user" -c "bash $self"
   fi
 
   event start

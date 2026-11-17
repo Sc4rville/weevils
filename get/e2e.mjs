@@ -1,5 +1,5 @@
 // Drives a real setup through get's API exactly like the page does (RSA-OAEP key, job, polling, unsealing).
-//   node get/e2e.mjs ssh <host> <user> [port]        (password read from WVGET_PASSWORD)
+//   node get/e2e.mjs vps                               prints the command to paste on the server, then follows it
 //   node get/e2e.mjs pc                                prints the command, then follows it
 //   node get/e2e.mjs hetzner                           token from WVGET_TOKEN, size from WVGET_SIZE (a real server!)
 // Env: WVGET_BASE (https://get.scarville.tech), WVGET_KEY (preview key, if the site is still gated).
@@ -17,13 +17,9 @@ async function api(p, body) {
 }
 
 const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 })
-const job = await api('/api/job', { kind, lang: process.env.WVGET_LANG || 'en', pub: publicKey.export({ type: 'spki', format: 'der' }).toString('base64') })
+const job = await api('/api/job', { kind: kind === 'vps' ? 'ssh' : kind, lang: process.env.WVGET_LANG || 'en', pub: publicKey.export({ type: 'spki', format: 'der' }).toString('base64') })
 console.log(`job ${job.sid}`)
-if (kind === 'pc') console.log(`run: ${job.command}`)
-if (kind === 'ssh') {
-  const [host, user = 'root', port = '22'] = rest
-  console.log(await api('/api/ssh', { sid: job.sid, view: job.view, host, user, port: Number(port), password: process.env.WVGET_PASSWORD || '' }).then((s) => `started on ${s.server.ip}, reach ${s.reach}`))
-}
+if (kind === 'vps' || kind === 'pc') console.log(`run there: ${job.command}`)
 if (kind === 'hetzner') {
   const token = process.env.WVGET_TOKEN || ''
   const size = process.env.WVGET_SIZE || 'recommended'

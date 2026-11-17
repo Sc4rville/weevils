@@ -137,7 +137,7 @@ const W = FR ? {
   h1: 'Tes agents IA, dans ta poche.',
   lead: 'weevils met sur ton téléphone les sessions Claude Code et Codex qui tournent sur ta propre machine : tu les suis, tu leur parles, tu leur confies du travail. Branche une machine, weevboss s’occupe du reste.',
   secLink: 'Sécurité : ce que l’installation fait, ne fait jamais, et comment la retirer',
-  trust: 'Ton jeton Hetzner reste dans ton navigateur : il ne part que chez Hetzner. Un mot de passe de serveur, si tu choisis de le donner, sert une fois puis il est oublié. Une fois installé, weevils tourne chez toi, et cette page n’a plus aucun accès à ta machine.',
+  trust: 'Aucun mot de passe ni jeton n’arrive jamais au service de cette page : ton jeton Hetzner reste dans ton navigateur et ne part que chez Hetzner, et un serveur s’installe avec une commande que tu colles toi-même dessus. Une fois installé, weevils tourne chez toi, et cette page n’a plus aucun accès à ta machine.',
   source: 'Le code est ouvert, sur GitHub',
   soon: 'Bientôt open source — réponds au tweet pour un accès anticipé',
   stats: 'Statistiques anonymes : des compteurs seulement, sans cookie ni adresse IP gardée, conservés 90 jours.',
@@ -146,7 +146,7 @@ const W = FR ? {
   plugSub: 'Un serveur fait tourner tes agents même téléphone et ordinateur éteints. Prêt en quelques minutes.',
   rec: 'conseillé',
   hz: 'Crée-moi un serveur chez Hetzner', hzSub: 'On crée le serveur pour toi. Conseillé pour des agents qui tournent 24 h/24 : facturé à l’heure, vérification d’identité à l’inscription.',
-  vps: 'J’ai déjà un VPS', vpsSub: 'Loué n’importe où : son adresse et son mot de passe, weevils s’y installe tout seul.',
+  vps: 'J’ai déjà un VPS', vpsSub: 'Loué n’importe où : une commande à coller sur le serveur, weevils s’y installe tout seul.',
   pc: 'Mon ordinateur', pcSub: 'Mac, Linux, ou Windows avec WSL. Les agents tournent sur cet ordinateur, avec tes droits, et seulement quand il est allumé.',
   thisPc: 'Branche cet ordinateur', thisPcSub: 'Colle cette commande dans un terminal de cet ordinateur, ou donne-la à ton assistant IA. Ensuite, un QR code ouvre weevils sur ton téléphone. Les agents tourneront ici, avec tes droits.',
   pcWhat: 'Elle installe weevils dans ton dossier personnel et vérifie la signature du code. Ton mot de passe n’est demandé que s’il manque un outil système, pour cette seule commande. Ici, les agents demandent avant d’agir. Elle se retire en une ligne.', pcRead: 'Lire le script', pcSec: 'Notes de sécurité',
@@ -160,6 +160,12 @@ const W = FR ? {
   hz2: 'Dans la console Hetzner, ouvre ton projet (ou crée-en un), puis Sécurité → Jetons API → Générer, avec « Lecture et écriture ».',
   hz2b: 'Ouvrir la console Hetzner',
   hz3: 'Colle le jeton ici. Il reste dans ton navigateur et ne part que chez Hetzner, pour créer ton serveur : notre service ne le voit jamais.',
+  hzTip: 'Crée le jeton dans un projet rien que pour weevils, et supprime-le dès que ton serveur tourne : weevils n’en a plus jamais besoin.',
+  rootTitle: 'Relancer l’installation sur ce serveur',
+  root1: 'Hetzner vient de donner un nouveau mot de passe root au serveur. Il reste sur cette page : copie-le, puis ouvre la console du serveur chez Hetzner (ton projet → le serveur → le bouton console >_) et connecte-toi en root avec.',
+  rootConsole: 'Ouvrir la console Hetzner', rootPw: 'Mot de passe root',
+  root2: 'Puis colle cette commande dans la console :',
+  rootNote: 'Cette page suit l’installation dès que la commande démarre. Le mot de passe ne quitte jamais ton navigateur.',
   token: 'Jeton API', 
   size_light: 'Léger', size_recommended: 'Recommandé', size_strong: 'Costaud',
   agents: (n) => ({ '2-3': '2 à 3 agents', 6: 'environ 6 agents', 12: 'une douzaine d’agents' })[n] + ' en même temps', gb: 'Go',
@@ -170,12 +176,8 @@ const W = FR ? {
   createHourly: 'Créer mon serveur · facturé à l’heure',
   createFor: (p) => `Créer mon serveur (${p})`,
   create: 'Créer mon serveur',
-  vpsTitle: 'Ton VPS', vpsCmd: 'Ubuntu ou Debian, de préférence tout neuf. Dans un terminal sur le serveur (en root ou avec sudo), colle cette commande :',
+  vpsTitle: 'Ton VPS', vpsCmd: 'Ubuntu ou Debian, de préférence tout neuf. Connecte-toi au serveur (SSH) en root ou avec un utilisateur sudo, et colle cette commande dans son terminal :',
   vpsWait: 'Cette page suit l’installation dès que la commande démarre. Aucun mot de passe ne quitte ton serveur.',
-  vpsOr: 'Ou laisse cette page s’y connecter pour toi',
-  vpsIntro: 'Le mot de passe sert une seule fois, pour lancer l’installation, et n’est jamais gardé.',
-  host: 'Adresse IP', user: 'Utilisateur', pw: 'Mot de passe', port: 'Port SSH', useKey: 'Plutôt une clé SSH', usePw: 'Plutôt un mot de passe', key: 'Clé privée',
-  install: 'Installer weevils',
   pcTitle: 'Ton ordinateur', pcIntro: 'Sur l’ordinateur, ouvre un terminal, colle cette commande et appuie sur Entrée :',
   pcPhone: 'Envoie-la-toi pour la coller là-bas :', share: 'M’envoyer la commande', copy: 'Copier', copied: 'Copié',
   pcWait: 'Cette page suit l’installation dès que la commande démarre.',
@@ -216,17 +218,13 @@ const W = FR ? {
     forbidden: 'Ce jeton n’a pas le droit de créer un serveur : génères-en un avec tous les droits (« Lecture et écriture » chez Hetzner).', resource_limit_exceeded: 'Ton compte {host} a atteint sa limite de serveurs (nouveau compte : vérifie ton e-mail et ton moyen de paiement).',
     no_type: '{host} ne propose aucun serveur adapté en ce moment : réessaie plus tard.', host_down: '{host} ne répond pas : réessaie dans un instant.', no_template: '{host} ne propose pas Ubuntu 24.04 en ce moment.',
     bad_size: 'Choisis une taille.',
-    bad_host: 'Cette adresse ne répond pas : vérifie l’IP.', private_host: 'Cette adresse est privée : il faut l’IP publique de ton VPS.',
-    ssh_auth: 'Le serveur refuse ce mot de passe (ou cet utilisateur).', ssh_unreachable: 'Le serveur ne répond pas en SSH : vérifie l’IP et que le port 22 est ouvert.',
-    ssh_sudo: 'Cet utilisateur n’a pas les droits administrateur (sudo) : utilise root.', ssh_timeout: 'Le serveur a mis trop de temps à répondre.', ssh_ssh: 'La connexion SSH a échoué.',
-    bad_secret: 'Il manque le mot de passe (ou la clé n’a pas la bonne forme).', bad_user: 'Ce nom d’utilisateur n’est pas valide.', bad_port: 'Ce port n’est pas valide.',
     no_job: 'Cette installation a expiré : recommence.', network: 'Pas de réseau : réessaie.',
   },
 } : {
   h1: 'Your AI agents, in your pocket.',
   lead: 'weevils puts the Claude Code and Codex sessions running on your own machine on your phone: follow them, talk to them, hand them work. Plug in a machine, weevboss takes care of the rest.',
   secLink: 'Security: what the install does, never does, and how to remove it',
-  trust: 'Your Hetzner token stays in your browser and goes only to Hetzner. A server password, if you choose to give one, is used once and then forgotten. Once installed, weevils runs on your machine, and this page has no access to it anymore.',
+  trust: 'No password or token ever reaches this page’s service: your Hetzner token stays in your browser and goes only to Hetzner, and a server installs itself with a command you paste there yourself. Once installed, weevils runs on your machine, and this page has no access to it anymore.',
   source: 'The code is open, on GitHub',
   soon: 'Open source soon — reply to the tweet for early access',
   stats: 'Anonymous stats: counters only, no cookie and no IP address kept, deleted after 90 days.',
@@ -235,7 +233,7 @@ const W = FR ? {
   plugSub: 'A server keeps your agents working while your phone and computer are off. Ready in a few minutes.',
   rec: 'recommended',
   hz: 'Create a server for me at Hetzner', hzSub: 'We create the server for you. Recommended for agents that run 24/7: billed by the hour, ID check at sign-up.',
-  vps: 'I already have a VPS', vpsSub: 'Rented anywhere: its address and password, weevils installs itself.',
+  vps: 'I already have a VPS', vpsSub: 'Rented anywhere: one command to paste on the server, and weevils installs itself.',
   pc: 'My computer', pcSub: 'Mac, Linux, or Windows with WSL. Agents run on this computer, with your rights, and only while it’s on.',
   thisPc: 'Connect this computer', thisPcSub: 'Paste this command in a terminal on this computer, or give it to your AI assistant. Then a QR code opens weevils on your phone. Agents will run here, with your rights.',
   pcWhat: 'It installs weevils in your home folder and checks the code’s signature. Your password is asked only if a system tool is missing, for that one command. Agents here ask before acting. It comes off in one line.', pcRead: 'Read the script', pcSec: 'Security notes',
@@ -249,6 +247,12 @@ const W = FR ? {
   hz2: 'In the Hetzner console, open your project (or create one), then Security → API tokens → Generate API token, with “Read & Write”.',
   hz2b: 'Open the Hetzner console',
   hz3: 'Paste the token here. It stays in your browser and goes only to Hetzner, to create your server: our service never sees it.',
+  hzTip: 'Create the token in a project just for weevils, and delete it once your server is running: weevils never needs it again.',
+  rootTitle: 'Start the install again on this server',
+  root1: 'Hetzner just gave the server a new root password. It stays on this page: copy it, then open the server’s console at Hetzner (your project → the server → the >_ console button) and log in as root with it.',
+  rootConsole: 'Open the Hetzner console', rootPw: 'Root password',
+  root2: 'Then paste this command in the console:',
+  rootNote: 'This page follows the install as soon as the command starts. The password never leaves your browser.',
   token: 'API token', 
   size_light: 'Light', size_recommended: 'Recommended', size_strong: 'Strong',
   agents: (n) => ({ '2-3': '2 to 3 agents', 6: 'about 6 agents', 12: 'about a dozen agents' })[n] + ' at once', gb: 'GB',
@@ -259,12 +263,8 @@ const W = FR ? {
   createHourly: 'Create my server · billed by the hour',
   createFor: (p) => `Create my server (${p})`,
   create: 'Create my server',
-  vpsTitle: 'Your VPS', vpsCmd: 'Ubuntu or Debian, ideally brand new. In a terminal on the server (as root or a user with sudo), paste this command:',
+  vpsTitle: 'Your VPS', vpsCmd: 'Ubuntu or Debian, ideally brand new. Log in to the server (SSH) as root or a user with sudo, and paste this command in its terminal:',
   vpsWait: 'This page follows the install as soon as the command starts. No password leaves your server.',
-  vpsOr: 'Or let this page connect for you',
-  vpsIntro: 'The password is used once to start the install, and never stored.',
-  host: 'IP address', user: 'User', pw: 'Password', port: 'SSH port', useKey: 'Use an SSH key instead', usePw: 'Use a password instead', key: 'Private key',
-  install: 'Install weevils',
   pcTitle: 'Your computer', pcIntro: 'On the computer, open a terminal, paste this command and press Enter:',
   pcPhone: 'Send it to yourself to paste it there:', share: 'Send me the command', copy: 'Copy', copied: 'Copied',
   pcWait: 'This page follows the install as soon as the command starts.',
@@ -305,10 +305,6 @@ const W = FR ? {
     forbidden: 'This token can’t create a server: generate one with full rights (“Read & Write” at Hetzner).', resource_limit_exceeded: 'Your {host} account reached its server limit (new account: check your e-mail and payment method).',
     no_type: '{host} has no suitable server right now: try again later.', host_down: '{host} doesn’t answer: try again in a moment.', no_template: '{host} doesn’t offer Ubuntu 24.04 right now.',
     bad_size: 'Pick a size.',
-    bad_host: 'This address doesn’t answer: check the IP.', private_host: 'This address is private: use your VPS’s public IP.',
-    ssh_auth: 'The server refuses this password (or user).', ssh_unreachable: 'The server doesn’t answer over SSH: check the IP and that port 22 is open.',
-    ssh_sudo: 'This user has no admin rights (sudo): use root.', ssh_timeout: 'The server took too long to answer.', ssh_ssh: 'The SSH connection failed.',
-    bad_secret: 'The password is missing (or the key doesn’t look right).', bad_user: 'This user name isn’t valid.', bad_port: 'This port isn’t valid.',
     no_job: 'This setup expired: start again.', network: 'No network: try again.',
   },
 }
@@ -454,8 +450,6 @@ function formOf(kind) {
 }
 /** What was typed on a step, kept when going back and forth. Secrets (token, password, key) stay in memory only. */
 const draft = (() => { try { return { hetzner: {}, ...JSON.parse(localStorage.getItem('wvdraft') || '{}'), } } catch { return { hetzner: {} } } })()
-draft.vps ||= {}
-const saveDraft = () => { try { localStorage.setItem('wvdraft', JSON.stringify({ vps: { host: draft.vps.host, user: draft.vps.user, port: draft.vps.port, useKey: draft.vps.useKey } })) } catch {} }
 /** Back to the start (the phone's back gesture): a setup that never started is dropped; one that did stays on screen. */
 function toStart() {
   watching++
@@ -472,7 +466,6 @@ const savedStep = () => {
 function forget() {
   try { localStorage.removeItem('wvget'); localStorage.removeItem('wvstep'); localStorage.removeItem('wvdraft') } catch {}
   draft.hetzner = {}
-  draft.vps = {}
   try { history.replaceState(null, '', location.pathname + location.search) } catch {}
 }
 const fromLink = (text) => { const m = /(?:^|[#&\s/])(?:job=)?([a-z2-9]{10})\.([A-Za-z0-9_-]{22})(?:$|[&\s])/.exec(String(text || '').trim()); return m ? { sid: m[1], secret: m[2] } : null }
@@ -582,13 +575,34 @@ async function continueOn(kind, job, token, s, btn, err) {
         return progress(job, { push: true })
       } catch (e) { if (e.message !== 'not_live') throw e }
     }
-    // Over, or forgotten: Hetzner gives the server a new root password (asked from here, with the token), used once
-    // to start the install again over SSH. It keeps what is there and ends with a fresh link for this page.
+    // Over, or forgotten: Hetzner gives the server a new root password (asked from here, with the token). It is shown
+    // on this page only, never sent anywhere else: the person logs in to the server's console with it and pastes this
+    // setup's command there. The install keeps what is there and ends with a fresh link for this page.
     const password = await (await hzLib()).rootPassword(token, s.id)
-    await api('/api/ssh', { sid: job.sid, view: job.view, host: s.ip, password, server: { id: s.id, name: s.name, type: s.type, location: s.location } })
     keep(job)
-    progress(job, { push: true })
+    rootScreen(job, password)
   } catch (e) { showErr(err, hzErr(e)); btn.disabled = false; btn.textContent = label }
+}
+/** A text to copy, in the command's box. */
+function copyBox(text) {
+  const code = h('code', {}, text)
+  const copy = h('button', { type: 'button' }, W.copy)
+  copy.onclick = async () => {
+    try { await navigator.clipboard.writeText(text) } catch { getSelection().selectAllChildren(code) }
+    copy.textContent = W.copied
+    setTimeout(() => (copy.textContent = W.copy), 1600)
+  }
+  return h('div', { class: 'cmd' }, code, copy)
+}
+/** A server weevils made, whose setup is over or lost: its new root password (from Hetzner, held by this page only),
+ * its console at Hetzner, and this setup's command to paste there. */
+function rootScreen(job, password) {
+  const err = errBox()
+  show(band('b1', h('h2', {}, W.rootTitle), h('p', {}, W.root1),
+    h('a', { class: 'btn light', href: 'https://console.hetzner.cloud/projects', target: '_blank', rel: 'noopener' }, W.rootConsole),
+    h('label', {}, W.rootPw), copyBox(password),
+    h('p', {}, W.root2), cmdBox(Promise.resolve(job), err), h('p', { class: 'note' }, W.rootNote), err))
+  setBack(() => provider('hetzner', job, '', true))
 }
 function provider(kind, given, lastError, reopened) {
   // A setup from a host this page no longer offers: back to the choices.
@@ -684,7 +698,7 @@ function provider(kind, given, lastError, reopened) {
   const steps = [h('li', {}, W.hz1, h('a', { class: 'btn light', href: 'https://accounts.hetzner.com/signUp', target: '_blank', rel: 'noopener' }, W.hz1b)),
        h('li', {}, W.hz2, h('a', { class: 'btn light', href: 'https://console.hetzner.cloud/projects', target: '_blank', rel: 'noopener' }, W.hz2b))]
   show(band('b1', h('h2', {}, W.hzTitle),
-    h('ol', { class: 'how' }, ...steps, h('li', {}, W.hz3, h('label', {}, W.token), tok, priceBtn, had, pick, note, createBtn)),
+    h('ol', { class: 'how' }, ...steps, h('li', {}, W.hz3, h('p', { class: 'small' }, W.hzTip), h('label', {}, W.token), tok, priceBtn, had, pick, note, createBtn)),
     err))
   setBack(() => toStart())
   if (lastError) showErr(err, lastError)
@@ -692,16 +706,10 @@ function provider(kind, given, lastError, reopened) {
   if (d.token) { tok.value = d.token; if (!lastError) priceBtn.onclick() }
 }
 
-// --- (b) your VPS
-function ssh(given, reopened) {
-  if (!given && !reopened) hit('chose', 'ssh')
-  if (!given || reopened) step('vps')
-  let job = given
-  const d = draft.vps
-  const err = errBox()
-  // First way: the same one-line command as a computer, pasted in the server's own terminal. No secret leaves it.
-  let jobP = given ? Promise.resolve(given) : null
-  const getJob = () => (jobP ||= newJob('ssh'))
+/** A setup's one-line command, to paste in a terminal on the machine (no secret leaves it), with Copy. The page
+ * follows the install as soon as the command starts. */
+function cmdBox(jobP, err) {
+  let job = null
   const code = h('code', {}, '…')
   const copy = h('button', { type: 'button' }, W.copy)
   copy.onclick = async () => {
@@ -710,58 +718,22 @@ function ssh(given, reopened) {
     copy.textContent = W.copied
     setTimeout(() => (copy.textContent = W.copy), 1600)
   }
-  getJob().then(async (j) => {
+  jobP.then(async (j) => {
     job = j
     if (!j.command) j.command = (await api('/api/status', { sid: j.sid, view: j.view, full: true })).command || ''
     code.textContent = j.command || '…'
-    // The command pasted there starts the install: this page follows it.
     if (!j.started) watch(j, () => progress(j, { push: true }))
   }).catch((e) => showErr(err, e.message))
-  const host = h('input', { inputmode: 'decimal', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: '203.0.113.7' })
-  const user = h('input', { value: 'root', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' })
-  const port = h('input', { value: '22', inputmode: 'numeric' })
-  const pw = h('input', { type: 'password', autocomplete: 'off' })
-  const key = h('textarea', { placeholder: '-----BEGIN OPENSSH PRIVATE KEY-----', autocapitalize: 'off', spellcheck: 'false' })
-  const pwBlock = h('div', {}, h('label', {}, W.pw), pw)
-  const keyBlock = h('div', { hidden: true }, h('label', {}, W.key), key)
-  const toggle = h('button', { class: 'link', type: 'button' }, W.useKey)
-  const useKey = (k) => { keyBlock.hidden = !k; pwBlock.hidden = k; toggle.textContent = k ? W.usePw : W.useKey; d.useKey = k; saveDraft() }
-  toggle.onclick = () => useKey(keyBlock.hidden)
-  // What was typed before (Back and forth, or a reload): the address and user here, the password from memory only.
-  if (d.host) host.value = d.host
-  if (d.user) user.value = d.user
-  if (d.port) port.value = d.port
-  if (d.pw) pw.value = d.pw
-  if (d.key) key.value = d.key
-  if (d.useKey) useKey(true)
-  host.oninput = () => { d.host = host.value; saveDraft() }
-  user.oninput = () => { d.user = user.value; saveDraft() }
-  port.oninput = () => { d.port = port.value; saveDraft() }
-  pw.oninput = () => (d.pw = pw.value)
-  key.oninput = () => (d.key = key.value)
-  const go = h('button', { class: 'btn' }, W.install)
-  go.onclick = async () => {
-    err.hidden = true
-    go.disabled = true
-    try {
-      job ||= await getJob()
-      job.started = true
-      keep(job)
-      const body = { sid: job.sid, view: job.view, host: host.value.trim(), user: user.value.trim() || 'root', port: Number(port.value) || 22 }
-      if (keyBlock.hidden) body.password = pw.value
-      else body.key = key.value
-      await api('/api/ssh', body)
-      pw.value = ''
-      key.value = ''
-      d.pw = d.key = ''
-      progress(job, { push: true })
-    } catch (e) { showErr(err, e.message); go.disabled = false }
-  }
-  show(band('b2', h('h2', {}, W.vpsTitle), h('p', {}, W.vpsCmd), h('div', { class: 'cmd' }, code, copy), h('p', { class: 'note' }, W.vpsWait),
-    h('h3', {}, W.vpsOr), h('p', { class: 'small' }, W.vpsIntro),
-    h('label', {}, W.host), host,
-    h('div', { class: 'row' }, h('div', {}, h('label', {}, W.user), user), h('div', { style: 'width:96px' }, h('label', {}, W.port), port)),
-    pwBlock, keyBlock, toggle, go, err))
+  return h('div', { class: 'cmd' }, code, copy)
+}
+
+// --- (b) your VPS: the same one-line command as a computer, pasted in the server's own terminal. Nothing secret is
+// ever typed on this page.
+function ssh(given, reopened) {
+  if (!given && !reopened) hit('chose', 'ssh')
+  if (!given || reopened) step('vps')
+  const err = errBox()
+  show(band('b2', h('h2', {}, W.vpsTitle), h('p', {}, W.vpsCmd), cmdBox(given ? Promise.resolve(given) : newJob('ssh'), err), h('p', { class: 'note' }, W.vpsWait), err))
   setBack(() => toStart())
 }
 

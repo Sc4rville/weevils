@@ -13,7 +13,7 @@ import { Window } from 'happy-dom'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JavaScript module, no types
 import * as HZ from './hetzner.js'
-import { config, createServer, publicAddress, resolveTarget, sslip, stepTitles, loadJobs, saveJobs, createStore, describeStats } from './server.mjs'
+import { config, createServer, publicAddress, sslip, stepTitles, loadJobs, saveJobs, createStore, describeStats } from './server.mjs'
 import { claimSetup } from '../server/get-claim.ts'
 
 const listen = (s: http.Server) => new Promise<number>((r) => s.listen(0, '127.0.0.1', () => r((s.address() as AddressInfo).port)))
@@ -82,12 +82,11 @@ let base = ''
 let svc: http.Server
 let gated: http.Server
 let gatedBase = ''
-const sshCalls: Record<string, unknown>[] = []
 
 beforeAll(async () => {
   hzPort = await listen(hetzner)
   const cfg = config({ GET_BASE: 'https://get.example', GET_HETZNER_API: `http://127.0.0.1:${hzPort}`, GET_TRUST_PROXY: '0', GET_ALLOW_TARGETS: '172.30.99.10', GET_TARGET_URLS: '172.30.99.10=https://essai.example' })
-  svc = createServer(cfg, { sshStart: async (_c: unknown, a: Record<string, unknown>) => (sshCalls.push(a), a.password === 'right' ? { ok: true } : { ok: false, why: 'auth' }) }).server
+  svc = createServer(cfg).server
   base = `http://127.0.0.1:${await listen(svc)}`
   gated = createServer(config({ GET_PREVIEW_KEY: 'letmein', GET_TRUST_PROXY: '0' })).server
   gatedBase = `http://127.0.0.1:${await listen(gated)}`
@@ -123,15 +122,9 @@ describe('helpers', () => {
   it('names a machine by its address', () => {
     expect(sslip('203.0.113.5')).toBe('203-0-113-5.sslip.io')
   })
-  it('refuses private, loopback and link-local targets unless allowed for tests', async () => {
+  it('tells private, loopback and link-local addresses from public ones', () => {
     for (const ip of ['127.0.0.1', '10.0.0.1', '192.168.1.2', '169.254.169.254', '172.16.0.1', '100.64.0.1', '::1', 'fd00::1']) expect(publicAddress(ip)).toBe(false)
     expect(publicAddress('8.8.8.8')).toBe(true)
-    const cfg = config({ GET_ALLOW_TARGETS: '172.30.99.10' })
-    await expect(resolveTarget(cfg, '127.0.0.1')).rejects.toThrow('private_host')
-    await expect(resolveTarget(cfg, '169.254.169.254')).rejects.toThrow('private_host')
-    await expect(resolveTarget(cfg, 'localhost')).rejects.toThrow('private_host')
-    await expect(resolveTarget(cfg, 'a b;rm')).rejects.toThrow('bad_host')
-    expect(await resolveTarget(cfg, '172.30.99.10')).toBe('172.30.99.10')
   })
 })
 
@@ -207,18 +200,13 @@ describe('an install, end to end through the API', () => {
   it('serves its script, keeps only allowlisted step titles, and relays a link only the page can open', async () => {
     const { publicKey, privateKey } = keyPair()
     const job = (await post('/api/job', { kind: 'ssh', lang: 'fr', pub: pubB64(publicKey) })).data
-    expect((await post('/api/ssh', { sid: job.sid, view: job.view, host: '10.1.2.3', password: 'right' })).data.error).toBe('private_host')
-    expect((await post('/api/ssh', { sid: job.sid, view: job.view, host: '172.30.99.10', user: 'pote', password: 'wrong' })).data.error).toBe('ssh_auth')
-    const ok = await post('/api/ssh', { sid: job.sid, view: job.view, host: '172.30.99.10', user: 'pote', password: 'right' })
-    expect(ok.status).toBe(200)
-    expect(ok.data.reach).toBe('https://essai.example')
-    expect(JSON.stringify(ok.data)).not.toContain('right')
-
+    // The command pasted on the machine: its first request starts the setup (from here, an address the Internet
+    // can't reach: set up like a computer, with a link of its own).
+    expect(await (await fetch(`${base}/i/${job.sid}.env`)).text()).toMatch(/^lang=fr\nmode=pc\nreach=\n/)
     const script = await (await fetch(`${base}/i/${job.sid}`)).text()
     expect(script).not.toMatch(/@[A-Z]+@/)
     expect(script).toContain(`SID='${job.sid}'`)
-    expect(script).toContain(`MODE='url'`)
-    expect(script).toContain(`REACH='https://essai.example'`)
+    expect(script).toContain(`MODE='pc'`)
     execFileSync('bash', ['-n'], { input: script })
 
     await report(job.sid, { event: 'start' })
@@ -282,7 +270,7 @@ describe('coming back to a setup (page closed, another browser, the same token)'
   let n = 0
   beforeAll(async () => {
     const cfg = config({ GET_BASE: 'https://get.example', GET_HETZNER_API: `http://127.0.0.1:${hzPort}`, GET_ALLOW_TARGETS: '172.30.99.10', GET_TARGET_URLS: '172.30.99.10=https://essai.example', GET_HANDOFF: '' })
-    const made = createServer(cfg, { retryMs: 5, notifier: null, sshStart: async (_c: unknown, a: Record<string, unknown>) => (sshCalls.push(a), a.password === 'right' ? { ok: true } : { ok: false, why: 'auth' }) })
+    const made = createServer(cfg, { notifier: null })
     svc2 = made.server
     store = made.store
     base2 = `http://127.0.0.1:${await listen(svc2)}`
@@ -363,21 +351,25 @@ describe('coming back to a setup (page closed, another browser, the same token)'
     expect((await post('/api/hetzner/attach', { sid: third.sid, view: third.view, label: first.sid, server: 601 })).data.error).toBe('not_live')
   })
 
-  it('starts the install again on a finished or forgotten server: a root password the page got from Hetzner, used once', async () => {
+  it('starts the install again on a finished or forgotten server with the same command, pasted in its console', async () => {
+    // The page shows Hetzner's new root password itself: the service only gives this setup's command.
     const job = await pageJob('hetzner')
-    sshCalls.length = 0
-    const r = await post('/api/ssh', { sid: job.sid, view: job.view, host: '172.30.99.10', user: 'someone', port: 2222, password: 'right', server: { id: 701, name: 'weevils-qqqqqq', type: 'cx33' } })
-    expect(r.status).toBe(200)
-    expect(r.data).toMatchObject({ sid: job.sid, state: 'running', reach: 'https://essai.example', server: { id: 701, name: 'weevils-qqqqqq', again: true } })
-    // Always root on 22 there (Hetzner reset root's password), whatever the page says.
-    expect(sshCalls.at(-1)).toMatchObject({ ip: '172.30.99.10', port: 22, user: 'root', password: 'right', sid: job.sid })
-    expect(JSON.stringify(r.data)).not.toMatch(/right/)
-    expect(JSON.stringify(store.get(job.sid))).not.toMatch(/"right"/)
-    // A password that takes a few seconds to land is tried again.
-    const late = await pageJob('hetzner')
-    sshCalls.length = 0
-    expect((await post('/api/ssh', { sid: late.sid, view: late.view, host: '172.30.99.10', password: 'wrong' })).data.error).toBe('ssh_auth')
-    expect(sshCalls.length).toBe(6)
+    expect(job.command).toBe(`curl -fsSL https://get.example/install.sh | bash -s ${job.sid}`)
+    expect(job.userData).toContain(`/i/${job.sid}`)
+    const env = await (await fetch(`${base2}/i/${job.sid}.env`, { headers: { 'x-forwarded-for': '172.30.99.10' } })).text()
+    expect(env).toMatch(/^lang=en\nmode=url\nreach=https:\/\/essai\.example\npub=/)
+    expect((await post('/api/status', { sid: job.sid, view: job.view })).data).toMatchObject({ state: 'running', step: 'created', server: { ip: '172.30.99.10' } })
+  })
+
+  it('takes no password, key or token anywhere', async () => {
+    const job = await pageJob('ssh')
+    const secrets = { password: 'right', key: '-----BEGIN OPENSSH PRIVATE KEY-----\nx\n-----END OPENSSH PRIVATE KEY-----', token: GOOD, host: '172.30.99.10' }
+    for (const r of ['/api/ssh', '/api/hetzner/quote', '/api/hetzner/create', '/api/hetzner/continue', '/api/hetzner/servers']) expect((await post(r, { sid: job.sid, view: job.view, ...secrets })).status).toBe(404)
+    // The routes that remain ignore such fields and never keep them.
+    for (const r of ['/api/status', '/api/hetzner/setups', '/api/hetzner/attach', '/api/hetzner/failed']) await post(r, { sid: job.sid, view: job.view, ...secrets })
+    expect(JSON.stringify(store.get(job.sid))).not.toMatch(/right|goodtoken|PRIVATE KEY/)
+    const src = fs.readFileSync(path.join(import.meta.dirname, 'server.mjs'), 'utf8')
+    expect(src).not.toMatch(/b\.(password|key|token)\b|spawn\(|askpass/)
   })
 
   it('gives a VPS the same command as a computer: pasted there, it starts, its address from where it asks', async () => {

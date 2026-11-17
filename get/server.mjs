@@ -7,29 +7,25 @@
 //   a request body. A restart hands them to the next run through a file in RAM.
 // - A Hetzner API token never reaches this service: the page calls Hetzner's API from the person's browser
 //   (get/hetzner.js) and tells this service only the new server's id, address and size.
-// - The one secret this service may see is an SSH password or key, when the person asks it to connect to their own
-//   server (« I already have a VPS », or a Hetzner server whose setup was lost: a fresh root password Hetzner gave the
-//   page). It is used once, in memory, for one SSH command (an askpass environment variable or a RAM file, never argv,
-//   never disk). The same screen offers the install command to paste instead, which sends no secret anywhere.
-// - After the install this service has no access to the machine: it never keeps an SSH key, a token or a tunnel. The
+// - No password, key or token ever reaches this service, and no route takes one: a VPS (or a Hetzner server whose
+//   setup was lost) runs the same one-line install command as a computer, pasted by the person in its own terminal.
+// - After the install this service has no access to the machine: it never had an SSH key, a token or a tunnel. The
 //   new weevils is served by the user's machine itself (its own HTTPS), not proxied here.
 // - The access code never reaches this service: the page generates an RSA key pair, the install encrypts the login
 //   link with the public half, and this service only relays the ciphertext. To come back from another browser, the
 //   page also leaves its private half here, encrypted with a key derived from a secret that only its resume link
 //   (#job=<sid>.<secret>, never sent to a server) holds.
-// - No code from visitors runs here: the only programs started are `ssh` with a fixed command, toward a public address.
+// - No code from visitors runs here, and this service starts no program at all.
 // - Rate limits per client address and per job.
 //
-// Run: node get/server.mjs (env below). Zero dependencies beyond Node 22 and the system's ssh client.
+// Run: node get/server.mjs (env below). Zero dependencies beyond Node 22.
 
 import crypto from 'node:crypto'
-import dns from 'node:dns/promises'
 import fs from 'node:fs'
 import http from 'node:http'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { SIZES } from './hetzner.js'
 
@@ -58,7 +54,7 @@ export function config(env = process.env) {
     githubApi: (env.GET_GITHUB_API || 'https://api.github.com').replace(/\/$/, ''),
     /** A git bundle served to the installs while the repository is private (see get/make-bundle.sh). */
     bundle: env.GET_BUNDLE || '',
-    /** Tests only: private addresses accepted as SSH targets, and the URL their weevils will have (ip=url,…). */
+    /** Tests only: private addresses accepted as machine addresses, and the URL their weevils will have (ip=url,…). */
     allowTargets: (env.GET_ALLOW_TARGETS || '').split(',').map((s) => s.trim()).filter(Boolean),
     targetUrls: Object.fromEntries((env.GET_TARGET_URLS || '').split(',').filter((s) => s.includes('=')).map((s) => s.split('=').map((x) => x.trim()))),
     installer: env.GET_INSTALLER || path.join(HERE, '..', 'install.sh'),
@@ -605,72 +601,9 @@ export function createNotifier(cfg) {
 export function cloudInit(cfg, sid) {
   return `#cloud-config\nruncmd:\n  - [bash, -c, "curl -fsSL --retry 5 --retry-delay 3 ${cfg.base}/i/${sid} | bash > /var/log/weevils-get.log 2>&1"]\n`
 }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-
-// ---------------------------------------------------------------- SSH (a password or key used for one command)
-
-const SSH_OPTS = ['-F', '/dev/null', '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null', '-o', 'GlobalKnownHostsFile=/dev/null', '-o', 'LogLevel=ERROR', '-o', 'ConnectTimeout=15', '-o', 'IdentityAgent=none', '-o', 'ServerAliveInterval=10', '-o', 'NumberOfPasswordPrompts=1']
-
-export async function resolveTarget(cfg, host) {
-  const h = String(host || '').trim().replace(/^\[|\]$/g, '')
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9.:-]{0,252}$/.test(h)) throw new Error('bad_host')
-  const addrs = net.isIP(h) ? [h] : (await dns.lookup(h, { all: true }).catch(() => [])).map((a) => a.address)
-  if (!addrs.length) throw new Error('bad_host')
-  const ip = addrs.find((a) => net.isIP(a) === 4) || addrs[0]
-  if (!cfg.allowTargets.includes(ip) && (!publicAddress(ip) || ownAddresses().includes(ip))) throw new Error('private_host')
-  return ip
-}
 
 let OWN = null
 const ownAddresses = () => (OWN ??= Object.values(os.networkInterfaces()).flat().map((a) => a.address))
-
-/** Starts the install on the target, detached, then disconnects. Resolves when the command was accepted. */
-export function sshStart(cfg, { ip, port, user, password, key, sid }) {
-  const url = `${cfg.base}/i/${sid}`
-  // Root: start it directly. Another user: sudo with the same password, read from stdin (never argv).
-  const detached = `setsid nohup bash -c "curl -fsSL --retry 3 ${url} | bash" >/tmp/weevils-get.log 2>&1 </dev/null &`
-  const cmd = user === 'root'
-    ? `IFS= read -r _ignored; ${detached} echo WVOK`
-    : `IFS= read -r pw; printf '%s\\n' "$pw" | sudo -S -p '' sh -c ${sq(detached + ' echo WVOK')} 2>/dev/null || { [ -z "$pw" ] && sudo -n sh -c ${sq(detached + ' echo WVOK')}; } || echo WVNOSUDO`
-  return new Promise((resolve) => {
-    const dir = fs.mkdtempSync(path.join(fs.existsSync('/dev/shm') ? '/dev/shm' : os.tmpdir(), 'wvget-'))
-    const env = { PATH: process.env.PATH, HOME: dir, LANG: 'C.UTF-8' }
-    const args = [...SSH_OPTS, '-p', String(port)]
-    try {
-      if (key) {
-        // A private key in a RAM file for the few seconds of the connection, then deleted.
-        fs.writeFileSync(path.join(dir, 'id'), key.trim() + '\n', { mode: 0o600 })
-        args.push('-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes', '-i', path.join(dir, 'id'), '-o', 'PreferredAuthentications=publickey')
-      } else {
-        fs.writeFileSync(path.join(dir, 'askpass'), '#!/bin/sh\nprintf \'%s\\n\' "$WVGET_PW"\n', { mode: 0o700 })
-        Object.assign(env, { SSH_ASKPASS: path.join(dir, 'askpass'), SSH_ASKPASS_REQUIRE: 'force', DISPLAY: ':0', WVGET_PW: password })
-        args.push('-o', 'PubkeyAuthentication=no', '-o', 'PreferredAuthentications=password,keyboard-interactive')
-      }
-    } catch (e) {
-      fs.rmSync(dir, { recursive: true, force: true })
-      return resolve({ ok: false, why: 'internal' })
-    }
-    const p = spawn('ssh', [...args, `${user}@${ip}`, cmd], { env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
-    let out = ''
-    let err = ''
-    p.stdout.on('data', (d) => (out += d).length > 4096 && (out = out.slice(-4096)))
-    p.stderr.on('data', (d) => (err += d).length > 4096 && (err = err.slice(-4096)))
-    p.stdin.on('error', () => {})
-    p.stdin.end((key ? '' : password) + '\n')
-    const timer = setTimeout(() => p.kill('SIGKILL'), 45_000)
-    const done = (code) => {
-      clearTimeout(timer)
-      fs.rmSync(dir, { recursive: true, force: true })
-      if (/WVOK/.test(out)) return resolve({ ok: true })
-      if (/WVNOSUDO/.test(out)) return resolve({ ok: false, why: 'sudo' })
-      if (/Permission denied|Authentication failed/i.test(err)) return resolve({ ok: false, why: 'auth' })
-      if (/timed out|No route|unreachable|Connection refused|Could not resolve/i.test(err)) return resolve({ ok: false, why: 'unreachable' })
-      resolve({ ok: false, why: code === null ? 'timeout' : 'ssh' })
-    }
-    p.on('error', () => done(-1))
-    p.on('exit', done)
-  })
-}
 
 // ---------------------------------------------------------------- HTTP
 
@@ -696,8 +629,6 @@ export function createServer(cfg = config(), deps = {}) {
   /** The release key's public half: pinned in the script it serves, which checks the code's signature with it. */
   const releaseKey = fs.readFileSync(path.join(HERE, 'release-key.pub'), 'utf8').trim()
   const securityNotes = fs.readFileSync(path.join(HERE, '..', 'SECURITY.md'), 'utf8').replaceAll('https://get.scarville.tech', cfg.base)
-  const sshStarter = deps.sshStart || sshStart
-  let sshBusy = 0
 
   const clientIp = (req) => {
     const direct = req.socket.remoteAddress || ''
@@ -764,7 +695,7 @@ export function createServer(cfg = config(), deps = {}) {
   const commands = (j) => ({ command: `curl -fsSL ${cfg.base}/install.sh | bash -s ${j.sid}`, win: `powershell -c "irm ${cfg.base}/w/${j.sid} | iex"` })
   /** What the page needs to start a setup: a computer's commands; a VPS's command to paste on it; the cloud-init of a
    * Hetzner server (the page creates it from the browser, with the person's own token). */
-  const forPage = (j) => (j.kind === 'pc' ? commands(j) : j.kind === 'ssh' ? { command: commands(j).command } : { userData: cloudInit(cfg, j.sid) })
+  const forPage = (j) => (j.kind === 'pc' ? commands(j) : j.kind === 'ssh' ? { command: commands(j).command } : { command: commands(j).command, userData: cloudInit(cfg, j.sid) })
   const NEEDS_WSL = {
     en: 'weevils runs in Linux, and this Windows has no Linux (WSL) yet. Simplest: go back to the page and pick a server. Or open PowerShell as administrator, type wsl --install, restart the computer, open Ubuntu once, then paste the command again.',
     fr: 'weevils tourne sous Linux, et ce Windows n’a pas encore Linux (WSL). Le plus simple : reviens sur la page et choisis un serveur. Sinon ouvre PowerShell en administrateur, tape wsl --install, redémarre l’ordinateur, ouvre Ubuntu une fois, puis colle à nouveau la commande.',
@@ -898,7 +829,8 @@ export function createServer(cfg = config(), deps = {}) {
     },
     // « Continue on this one », a setup still installing: this page takes it over (the install asks for the page's key
     // at the end). The server's « weevils-sid » label, read by the page with its token, is the proof: only the account's
-    // owner can read it. A finished or forgotten one goes through /api/ssh with a fresh root password instead.
+    // owner can read it. A finished or forgotten one: the page shows a fresh root password from Hetzner and this setup's
+    // command, pasted by the person in the server's console (the password never comes here).
     'POST /api/hetzner/attach': async (req, res, ip) => {
       if (!limit.ok(`hzk:${ip}`, 8, 3600_000)) return fail(res, 429, 'slow_down')
       const b = await json(req)
@@ -912,57 +844,6 @@ export function createServer(cfg = config(), deps = {}) {
       Object.assign(old, { view: j.view, wrapped: j.wrapped, pub: j.pub, near: j.near || old.near, touched: Date.now() })
       store.jobs.delete(j.sid)
       send(res, 200, { ...view(old), attached: true })
-    },
-    // One SSH command that starts the install, with a password or key used once. Own VPS (« let this page connect for
-    // you »), or a Hetzner server whose setup was lost (a fresh root password the page got from Hetzner: `again`).
-    'POST /api/ssh': async (req, res, ip) => {
-      if (!limit.ok(`ssh:${ip}`, 6, 3600_000)) return fail(res, 429, 'slow_down')
-      const b = await json(req)
-      const j = owned(b)
-      if (!j || (j.kind !== 'ssh' && j.kind !== 'hetzner')) return fail(res, 404, 'no_job')
-      const again = j.kind === 'hetzner'
-      if (again && j.server) return send(res, 200, view(j))
-      const user = again ? 'root' : String(b.user || 'root').trim()
-      const port = again ? 22 : Number(b.port || 22)
-      if (!/^[a-z_][a-z0-9_-]{0,31}$/.test(user)) return fail(res, 400, 'bad_user')
-      if (!Number.isInteger(port) || !(port === 22 || (port >= 1024 && port <= 65535))) return fail(res, 400, 'bad_port')
-      const password = typeof b.password === 'string' ? b.password : ''
-      const key = again ? '' : typeof b.key === 'string' ? b.key : ''
-      if ((!password && !key) || password.length > 1024 || /[\0\r\n]/.test(password) || key.length > 12_000 || (key && !/^-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+-----END [A-Z ]*PRIVATE KEY-----\s*$/.test(key.trim()))) return fail(res, 400, 'bad_secret')
-      let target
-      try {
-        target = await resolveTarget(cfg, b.host)
-      } catch (e) {
-        return fail(res, 400, e.message)
-      }
-      if (sshBusy >= 4) return fail(res, 503, 'busy')
-      if (again && j.creating) return fail(res, 409, 'creating')
-      sshBusy++
-      j.creating = again
-      try {
-        j.reach = cfg.targetUrls[target] || sslip(target)
-        j.mode = cfg.targetUrls[target] ? 'url' : 'vps'
-        let r
-        // A password Hetzner just reset takes a few seconds to land (its agent sets it): a refusal is tried again.
-        for (let i = 0; i < (again ? 6 : 1); i++) {
-          r = await sshStarter(cfg, { ip: target, port, user, password, key, sid: j.sid })
-          if (r.ok || !again || !['auth', 'unreachable', 'timeout'].includes(r.why)) break
-          await sleep(deps.retryMs ?? 8000)
-        }
-        if (!r.ok) return fail(res, 400, `ssh_${r.why}`)
-        const s = b.server || {}
-        j.server = again
-          ? { id: /^\d{1,15}$/.test(String(s.id ?? '')) ? Number(s.id) : 0, name: typeof s.name === 'string' && /^[a-z0-9-]{1,63}$/.test(s.name) ? s.name : target, ip: target, type: typeof s.type === 'string' && /^[a-z0-9-]{1,20}$/.test(s.type) ? s.type : '', location: typeof s.location === 'string' && /^[A-Za-z0-9 -]{1,40}$/.test(s.location) ? s.location : '', again: true }
-          : { ip: target, name: target }
-        j.state = 'running'
-        j.step = 'created'
-        j.steps.push('created')
-        if (!again) stats.step('started', 'ssh')
-        send(res, 200, view(j))
-      } finally {
-        sshBusy--
-        j.creating = false
-      }
     },
   }
 
@@ -1003,8 +884,9 @@ export function createServer(cfg = config(), deps = {}) {
         j.touched = Date.now()
         j.bv = BOOTSTRAP_V
         if (j.kind === 'pc' && j.state === 'waiting') (j.state = 'running'), stats.step('started', 'pc')
-        // A VPS whose command was pasted there by hand: it starts now, and its address is where it asks from.
-        if (j.kind === 'ssh' && j.state === 'waiting' && !j.server) {
+        // A VPS (or a Hetzner server whose setup was lost) whose command was pasted there by hand: it starts now, and
+        // its address is where it asks from.
+        if ((j.kind === 'ssh' || j.kind === 'hetzner') && j.state === 'waiting' && !j.server) {
           if (publicAddress(ip) || cfg.allowTargets.includes(ip)) {
             j.reach = cfg.targetUrls[ip] || sslip(ip)
             j.mode = cfg.targetUrls[ip] ? 'url' : 'vps'
@@ -1013,7 +895,7 @@ export function createServer(cfg = config(), deps = {}) {
           j.state = 'running'
           j.step = 'created'
           j.steps.push('created')
-          stats.step('started', 'ssh')
+          if (j.kind === 'ssh') stats.step('started', 'ssh')
         }
         if (!j.reach && j.server && publicAddress(ip)) {
           j.reach = sslip(ip)
@@ -1168,8 +1050,8 @@ export function createServer(cfg = config(), deps = {}) {
       if (!e.status) console.error(`[get] ${req.method} ${url.pathname}: ${e.name}`)
     }
   })
-  /** Stops without cutting anyone: no new connection, the requests in flight finish (a server being created, an SSH
-   * connection), then the setups go to the next run. */
+  /** Stops without cutting anyone: no new connection, the requests in flight finish, then the setups go to the next
+   * run. */
   const drain = async (limitMs = 20_000) => {
     server.close()
     server.closeIdleConnections?.()

@@ -30,8 +30,8 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
    **I already have a VPS**: first, the same one-line command as a computer, to paste in a terminal on the server (as
    root or a sudo user): no secret goes anywhere; its first request (`/i/<sid>.env`) starts the setup, and the
    address it comes from names the machine (`<ip>.sslip.io`; from an address the Internet can't reach, it is set up
-   like a computer, with a link of its own). Below it, the alternative: IP, user, password (or private key), and one
-   SSH connection from this service starts the install in the background, then closes.
+   like a computer, with a link of its own). That is the whole screen: since 2026-11-17 there is no IP/password form
+   any more (people's AI assistants rightly refused to send a root password to a third party).
    **My computer** (Mac, Linux, or Windows with WSL): `curl -fsSL https://get.scarville.tech/install.sh | bash -s <id>`
    in its terminal. Since 2026-11-15 that script is the same file for everyone (`/install.sh`, its SHA-256 at
    `/install.sh.sha256`), opens with a plain « what it does / never does / the code it runs / undo in one line » header,
@@ -82,9 +82,10 @@ The page finds it again, in this order, and never shows the start screen while s
   installing is taken over by the new page, by that label (`/api/hetzner/attach`; only the account's owner can read
   it), and the install asks for the page's current key, `GET /k/<sid>`, just before it seals the link. A finished,
   stopped or forgotten one: the page asks Hetzner for a new root password (`reset_password`, from the browser) and
-  hands that password, once, to the same SSH start as "I already have a VPS" (`/api/ssh`, root on port 22 only, tried
-  again while the new password lands); the install runs again (it keeps what is there) and ends with a fresh link
-  for this page. A server the page created but could not report (closed right after) is reported then. Or the server's IP and root password ("I already have a VPS").
+  shows it on the page only, with a link to Hetzner's console and this setup's command (a Hetzner setup gets a
+  `command` too): the person logs in to the server's console with that password and pastes the command; its first
+  request starts the setup. The install runs again (it keeps what is there) and ends with a fresh link for this page.
+  A server the page created but could not report (closed right after) is reported then.
 - **Going back** is the phone's own gesture (or the browser's arrow): each step is an entry in the browser's history
   (`#hetzner`, `#vps`, `#computer`), and the page has no Back button, resume screen or restart link of its own. Going
   back and forth keeps what was typed (the token, password and key in memory only; the address, user and port in this
@@ -141,10 +142,10 @@ Linux in four places:
 - **The Hetzner token never reaches the service.** The page uses it from the browser, toward Hetzner only (the
   page's CSP allows `connect-src` to itself and `https://api.hetzner.cloud`, nothing else), and clears it once the
   server exists. No route of the service accepts a token.
-- **Secrets are used once.** The SSH password goes to `ssh` through an askpass environment variable (never argv, never disk) for one
-  command; a private key goes to a file in RAM (`/dev/shm`) for the few seconds of that connection. The root password
-  Hetzner returns when it creates a server is discarded in the browser.
-- **No access afterwards.** The service keeps no SSH key, no token and no tunnel. The new weevils is served by the
+- **No password or key either.** No route takes one, and this service runs no `ssh` (since 2026-11-17): a machine
+  installs itself with the command pasted in its own terminal. The root password Hetzner returns when it creates a
+  server is discarded in the browser; the one it gives for a lost setup is only shown on the page.
+- **No access, ever.** The service never has an SSH key, a password, a token or a tunnel. The new weevils is served by the
   person's machine itself; nothing is proxied through this service.
 - **The access code never reaches the service.** The page generates an RSA-OAEP key pair (WebCrypto); the install
   encrypts the login link with the public half (`openssl pkeyutl`, or Node's `crypto`), and the service only relays the ciphertext. Only
@@ -155,19 +156,16 @@ Linux in four places:
 - **The install reports step names only**, checked against the installer's own titles on both sides, never a line of
   its log (which holds the access code: it stays on the machine, `~/weevils-install.log`). Two steps are the
   bootstrap's own and go by name: `tunnel`, and `s_system` while it installs Homebrew on a Mac.
-- **No code from visitors runs here.** The only program started is `ssh`, with a fixed command, toward a public
-  address (private, loopback, link-local and this server's own addresses are refused).
-- **Rate limits** per client address (setups, server reports, SSH attempts, script downloads) and per
-  setup (reports), plus a cap on concurrent SSH connections and on setups in memory.
+- **No code from visitors runs here**, and the service starts no program at all.
+- **Rate limits** per client address (setups, server reports, script downloads) and per setup (reports), plus a cap
+  on setups in memory.
 - **Preview gate** (off since the launch; old links with `?k=` still open the page, the key is ignored): with
   `GET_PREVIEW_KEY`, the page needs `/?k=<key>` (or `/#k=<key>`) in its URL, and its API calls carry the key in a
   header: no redirect and no cookie needed (some iOS contexts drop a cookie set on a redirect). Install scripts stay
   reachable by their unguessable setup id; the page's own assets are public.
 
-What the service *does* have, briefly, by design, and only when the person picks that way: during "I already have a
-VPS" through the form (not the command), the password or key, for one connection; during "Continue on this one" on a
-finished or forgotten server, the new root password Hetzner gave that server, for one connection. Never the Hetzner
-token. A modified service could keep a password; it can be changed right after, and the command needs none.
+What the service has: setup ids, the page's public key and its sealed private key, step names, the address of the
+machine, the sealed login link. Never a password, a key or a token, in any path.
 
 ## Anonymous stats
 
@@ -211,7 +209,7 @@ GET_PORT=4182 GET_BASE=https://get.scarville.tech node get/server.mjs
 | `GET_BUNDLE` | while the repository is private: a bundle built by `get/make-bundle.sh [<rev>] [<out>] [<checkout>]` (one squashed commit, no history), kept on `origin/main` by `get/refresh-bundle.sh` (the `weevils-get-bundle` timer, every 2 min). It is what every install gets, so it must hold the installer that supports macOS; the file is read at each download, replacing it needs no restart |
 | `GET_INSTALLER` | the `install.sh` the allowed step titles are read from, at start (default: this clone's). Same titles as the bundle's |
 | `GET_HETZNER_API` | Hetzner's API base (tests: `get/host-mock.mjs`) |
-| `GET_ALLOW_TARGETS`, `GET_TARGET_URLS` | tests only: a private SSH target allowed, and the URL its weevils gets (`ip=url`) |
+| `GET_ALLOW_TARGETS`, `GET_TARGET_URLS` | tests only: a private machine address accepted, and the URL its weevils gets (`ip=url`) |
 | `GET_DATA` | where the stats, the install register and the records are kept (default `~/.local/share/weevils-get`) |
 | `GET_STATS_KEY` | the private stats page, `/stats/<key>` (off without it) |
 | `GET_NOTIFY` | the weevils on this machine (`http://127.0.0.1:4179`): a word in its « for you » at each install and each day |
@@ -228,7 +226,7 @@ detached at `origin/main`), and the `weevils-get-bundle` timer runs `get/follow-
 moves the checkout to the new main, restarts the service only when what it reads at start changed (`get/server.mjs`,
 `get/bootstrap.sh`, `install.sh`; the page and its assets are read at each request), and rebuilds the bundle. A
 restart cuts nothing: on SIGTERM the service stops taking connections, lets its requests finish (a server being
-created, an SSH connection; 20 s at most), then hands its setups in progress to the next run through RAM.
+created; 20 s at most), then hands its setups in progress to the next run through RAM.
 
 ## Tests
 
@@ -247,9 +245,9 @@ created, an SSH connection; 20 s at most), then hands its setups in progress to 
   no browser: a local service, a setup created like the page does, the command run with `/bin/bash`, the real
   installer, a real quick tunnel, then the sealed link opened and the new weevils logged in to. For a macOS runner
   of GitHub Actions; `--dry` stops before the command.
-- `node get/e2e.mjs ssh|pc|hetzner …`: drives a real setup through the API exactly like the page (key pair, polling,
+- `node get/e2e.mjs vps|pc|hetzner …`: drives a real setup through the API exactly like the page (key pair, polling,
   unsealing, then logs in to the new weevils with the unsealed code). Verified on 2026-11-13:
-  - own VPS: the `essai` machine (`essai reset`), password over SSH;
+  - own VPS: the `essai` machine (`essai reset`), the command run there over SSH (by the tester, as the person would);
   - computer: a plain Ubuntu 24.04 Docker container (no systemd), command pasted, Cloudflare link;
   - Hetzner: `get/host-mock.mjs`, whose "boot" resets `essai` and runs there, as root, what Hetzner
     would (cloud-init's runcmd);

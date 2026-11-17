@@ -695,7 +695,7 @@ export function createServer(cfg = config(), deps = {}) {
   const bootstrap = fs.readFileSync(path.join(HERE, 'bootstrap.sh'), 'utf8')
   /** The release key's public half: pinned in the script it serves, which checks the code's signature with it. */
   const releaseKey = fs.readFileSync(path.join(HERE, 'release-key.pub'), 'utf8').trim()
-  const securityNotes = fs.readFileSync(path.join(HERE, '..', 'SECURITY.md'), 'utf8')
+  const securityNotes = fs.readFileSync(path.join(HERE, '..', 'SECURITY.md'), 'utf8').replaceAll('https://get.scarville.tech', cfg.base)
   const sshStarter = deps.sshStart || sshStart
   let sshBusy = 0
 

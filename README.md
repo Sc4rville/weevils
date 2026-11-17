@@ -20,6 +20,20 @@ without asking them anything first.*
 
 No API cost: weevils drives the official `claude` and `codex` commands you are already logged in to.
 
+### What it does, what it never does, how to remove it
+
+- **It does**: installs in your home folder (`~/weevils`), runs a small service on `127.0.0.1`, adds its hooks to
+  `~/.claude/settings.json`, and lets your phone reach that service with a private access code. On a computer set
+  up from [tryweevils](https://tryweevils.scarville.tech), agents ask before acting and the phone link is a
+  Cloudflare tunnel; on a server of its own, agents act without asking.
+- **It never** sends your files, code, conversations, keys or passwords anywhere, never opens a port on your router
+  or firewall, and never runs code that weevils' release key didn't sign. The install never asks for a password
+  unless a system tool is missing, and then only for that one command.
+- **Remove it**: `~/weevils/install.sh --uninstall --purge && rm -rf ~/weevils`.
+
+All the details, including what leaves your machine and how to check a release's signature, are in
+[SECURITY.md](SECURITY.md).
+
 ## Install it with your AI agent
 
 Paste this into Claude Code or Codex, on the machine that will run weevils:
@@ -105,8 +119,9 @@ which explains every setting. After a change: `weevils-service restart` (for the
 
 - **The access code is shell access.** Anyone with it can type into your agents. It lives in
   `~/.config/weevils/secret`; keep it private.
-- **Agents run without permission prompts** (`--dangerously-skip-permissions`), so they never wait for you while you
-  are away. Set `WEEVILS_SAFE=1` to keep the prompts and answer them from the phone.
+- **On a server, agents run without permission prompts** (`--dangerously-skip-permissions`), so they never wait for
+  you while you are away. Set `WEEVILS_SAFE=1` to keep the prompts and answer them from the phone (the default on a
+  computer set up from the setup page).
 - **Use HTTPS** (`--domain`, or Tailscale with `--url`) for anything beyond your home network.
 - **Requests from the machine itself are trusted without the code** (the `weevils` command, a second machine's
   tunnel). If you put a proxy other than the installer's Caddy in front, it must send `X-Forwarded-For`

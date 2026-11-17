@@ -8,7 +8,7 @@ import './hints.css'
 // First-tap hints. The first time someone taps an element (the voice logo, the star, the +…), a short bubble
 // says what it is and what to do with it, instead of acting: the next tap acts. Pages reached by a gesture (repos,
 // conversation mode) get theirs the first time they open. Each hint shows once, ever: weevilsd keeps the seen ids
-// (GET/POST /api/hints), shared by every device. Gone after a few seconds or at the next touch. Never during the intro.
+// (GET/POST /api/hints), shared by every device. Gone after a few seconds or at the next touch. Never before weevboss's welcome.
 //
 // Also, on load: the server's install id. A different one than the device knew (server reinstalled or reset from
 // scratch) → the device forgets everything it kept about the old one (weevils-* in localStorage) and reloads.
@@ -88,7 +88,7 @@ export async function loadHints() {
     /* storage unavailable */
   }
   seen = new Set(r.seen)
-  // First time this server hears about hints: a device that already went through the intro is no newcomer.
+  // First time this server hears about hints: a device already welcomed is no newcomer.
   if (!r.touched) {
     const veteran = read('weevils-onboarded') === '1'
     if (veteran) for (const id of HINT_IDS) seen.add(id)
@@ -118,7 +118,7 @@ export const isSeen = (id: string) => !seen || seen.has(id)
 
 /**
  * First tap on an element: shows its hint and returns true (the caller then does nothing else this time).
- * Already seen, not loaded yet, or the intro is open: false, the tap acts as usual.
+ * Already seen, not loaded yet, or weevboss has not welcomed yet: false, the tap acts as usual.
  */
 export const tapHint = (id: HintId, el: Element | null, variant?: Shown['key']) => show(id, el, variant)
 

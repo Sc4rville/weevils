@@ -9,7 +9,7 @@ import './coach.css'
 // repos sont à un glissé ; une page est ouverte : le retour est un glissé depuis le bord ; le fil de weevboss est ouvert :
 // un mot se tape pour l'expliquer…), un doigt fantôme le mime une fois sur l'élément, sans un mot. Jamais si le geste a
 // déjà été fait (hints.json, partagé par les appareils), jamais deux de suite : au plus un toutes les 25 s, après
-// quelques secondes sans toucher l'écran, jamais pendant l'intro, une bulle, une carte d'astuce ou un branchement.
+// quelques secondes sans toucher l'écran, jamais avant l'accueil, pendant une bulle, une carte d'astuce ou un branchement.
 
 type Move = 'edge-left' | 'swipe-left' | 'swipe-right' | 'pull-down' | 'pinch' | 'tap' | 'press'
 

@@ -349,7 +349,7 @@ export const TIPS: [id: string, what: string][] = [
   ['ultracode', 'say “ultracode” for a big job: the session deploys several agents in parallel'],
   ['model', 'ask me “opus”, “max effort”, “fast” or “compact” for a session: I type the right slash command'],
   ['newRepo', 'tell me an idea that fits no repo: I create the repo and open a session in it'],
-  ['settings', 'bottom band: language, theme, the intro again, tips'],
+  ['settings', 'bottom band: language, theme, tips'],
 ]
 
 // ---------------------------------------------------------------- installer : la marche à suivre exacte

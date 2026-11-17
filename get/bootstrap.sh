@@ -1,31 +1,38 @@
 #!/usr/bin/env bash
-# weevils — installer started from the setup page, https://tryweevils.scarville.tech (source: get/bootstrap.sh in
-# github.com/Sc4rville/weevils). The same file for everyone: https://get.scarville.tech/install.sh, its SHA-256 at
-# https://get.scarville.tech/install.sh.sha256. The one argument is a setup id: it only lets this script tell the page
-# that opened it how far the install is. Written for bash 3.2 and BSD tools as well as Linux.
+# weevils — installer started from the setup page, https://tryweevils.scarville.tech. The same file for everyone:
+# https://get.scarville.tech/install.sh (SHA-256: https://get.scarville.tech/install.sh.sha256). Full security notes:
+# https://get.scarville.tech/security (SECURITY.md). Written for bash 3.2 and BSD tools as well as Linux.
+# Usage: curl -fsSL https://get.scarville.tech/install.sh | bash -s <setup id> [--no-link] [--no-auto-update]
+#        [--no-permission-prompts]
+# The setup id only lets this script tell the page that opened it how far the install is.
 #
 # WHAT IT IS: weevils lets you watch and drive the Claude Code / Codex sessions of this machine from your phone. Its
-# agents run HERE, as you, with your files and your rights: install it on a machine you are fine giving to agents (a
-# small rented server is the recommended choice; the setup page creates one at Hetzner).
+# agents run HERE, as you, with your files. On a computer they ask before acting (you answer from the app); on a
+# rented server, which the setup page recommends and creates at Hetzner, they act without asking.
 #
-# WHAT IT DOES, as you (never as root on your computer):
-#   1. Gets the weevils code into ~/weevils (a git clone) and runs its installer, ~/weevils/install.sh --agent, which
-#      adds the tools it needs if missing (git, tmux, jq, Node.js 22, Claude Code), a background service (weevilsd,
-#      listening on 127.0.0.1 only), a few commands in ~/.local/bin and its hooks in ~/.claude/settings.json.
-#      Missing system packages need sudo: on a computer it asks your password ONCE, in this terminal, and only
-#      package installs use it. On a Mac: Homebrew (Apple Silicon only, when missing), then everything as you.
-#   2. A computer at home: opens an HTTPS link so your phone can reach it, a Cloudflare quick tunnel (cloudflared,
-#      kept up by a user service named weevils-link). Everything behind the link asks for your access code.
-#   3. Tells the setup page how far it is: step names only, then your weevils' address. Your access code never
-#      leaves this machine in clear: the login link is sent encrypted with a key only your open page holds.
-#   Run as root (that is how a fresh server starts it): it installs for a regular user with passwordless sudo instead.
+# WHAT IT DOES, as you, in your home folder:
+#   1. Downloads the weevils code, checks its signature against the release key pinned below (refused if it does not
+#      check), puts it in ~/weevils and runs its installer, ~/weevils/install.sh --agent. That adds Node.js 22 (the
+#      official build, checked against nodejs.org's SHA-256 list, in ~/.local/share/weevils/node) and Claude Code
+#      (Anthropic's installer) if missing, a background service (weevilsd, on 127.0.0.1 only), a few commands in
+#      ~/.local/bin, its hooks in ~/.claude/settings.json, and a timer that installs new signed versions (opt out:
+#      --no-auto-update, or in the app's settings).
+#   2. Root only for system packages that are missing (git, curl, tmux, jq, python3): it shows the one command
+#      ("sudo apt-get install -y tmux jq") and your password is asked for that command alone, then forgotten
+#      (sudo -k). Nothing missing: no password at all. On a Mac: Homebrew's installer if Homebrew is missing.
+#   3. A computer: opens an HTTPS link so your phone can reach weevils from anywhere (a Cloudflare quick tunnel to
+#      127.0.0.1, user service weevils-link). Only weevils' own app is reachable there, behind your access code (72
+#      random bits). --no-link: no link, weevils stays on this machine (reach it later through Tailscale, say).
+#   4. Tells the setup page how far it is: step names only, then your weevils' address; the login link is sealed with
+#      a key only your open page holds, so the setup service never sees your access code.
+#   Run as root (that is how a fresh server starts it): it installs for a regular user with passwordless sudo.
 #
-# WHAT IT NEVER DOES: read your files or your Claude conversations for anyone else, send telemetry beyond the steps
-# above, or open a port on your router or firewall.
+# WHAT IT NEVER DOES: send your files, code, conversations or keys anywhere; open a port on your router or firewall;
+# keep a password; run anything from the setup service that is not signed by the release key.
 #
-# THE CODE IT RUNS, to read before: the clone in step 1 comes from github.com/Sc4rville/weevils, or, while that
-# repository is private, from https://get.scarville.tech/weevils.bundle (a plain git bundle: download it, then
-# "git clone weevils.bundle" and read install.sh, the installer step 1 runs).
+# THE CODE IT RUNS, to read before: https://get.scarville.tech/weevils.bundle (a git bundle: download it, then
+# "git clone weevils.bundle" and read install.sh), with its signature (/weevils.bundle.sig, check it with
+# ssh-keygen -Y verify and /release-key.pub) and SHA-256 (/weevils.bundle.sha256).
 #
 # UNDO, in one line:  ~/weevils/install.sh --uninstall --purge && rm -rf ~/weevils
 # The installer's full log stays here, in ~/weevils-install.log.
@@ -37,6 +44,17 @@ _weevils_get() {
   PUB=@PUB@
   # The shared copy (get.scarville.tech/install.sh): the setup id comes as the argument, and this setup's settings
   # are read as plain values, checked one by one (nothing fetched here is run).
+  # Options after the setup id: --no-link (no public link for the phone: weevils stays on this machine only),
+  # --no-auto-update (never fetch a new version by itself), --no-permission-prompts (a computer's agents act without
+  # asking, as on a server).
+  local opt link=1 extra=() prompts=1
+  for opt in "${@:2}"; do
+    case $opt in
+      --no-link) link=0 ;;
+      --no-auto-update) extra+=(--no-auto-update) ;;
+      --no-permission-prompts) prompts=0 ;;
+    esac
+  done
   if [ -z "$SID" ]; then
     SID=${1:-}
     [[ $SID =~ ^[a-z2-9]{10}$ ]] || { printf '  weevils · usage: curl -fsSL %s/install.sh | bash -s <setup id from the page>\n' "$BASE" >&2; exit 1; }
@@ -80,6 +98,25 @@ _weevils_get() {
       ;;
     *) fail "weevils runs on Linux and macOS (a VPS, a Linux PC, a Mac, or WSL2 on Windows)." ;;
   esac
+
+  RELEASE_KEY=@RELEASEKEY@
+  # verify_bundle <file> <base>: the file is the code weevils' release key signed (namespace weevils-release).
+  verify_bundle() {
+    local sig allowed ok=1 v want
+    sig=$(mktemp) allowed=$(mktemp)
+    printf 'weevils-release %s\n' "$RELEASE_KEY" >"$allowed"
+    # ssh-keygen -Y came with OpenSSH 8.1.
+    v=$(ssh -V 2>&1 | sed -n 's/^OpenSSH_\([0-9]*\)\.\([0-9]*\).*/\1 \2/p')
+    if [ -n "$v" ] && { [ "${v% *}" -gt 8 ] || { [ "${v% *}" = 8 ] && [ "${v#* }" -ge 1 ]; }; }; then
+      curl -fsS -m 30 "$2/weevils.bundle.sig" -o "$sig" 2>/dev/null &&
+        ssh-keygen -Y verify -f "$allowed" -I weevils-release -n weevils-release -s "$sig" <"$1" >/dev/null 2>&1 && ok=0
+    else
+      want=$(curl -fsS -m 30 "$2/weevils.bundle.sha256" 2>/dev/null | cut -d' ' -f1)
+      [ -n "$want" ] && [ "$want" = "$(if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1"; else openssl dgst -sha256 -r "$1"; fi | cut -d' ' -f1)" ] && ok=0
+    fi
+    rm -f "$sig" "$allowed"
+    return $ok
+  }
 
   # Homebrew, in the PATH or where it lives on Apple Silicon and on Intel (a new terminal may not have it yet).
   brew_bin() {
@@ -128,20 +165,31 @@ _weevils_get() {
   event start
   cd "$HOME"
   local log=$HOME/weevils-install.log
-  # A computer: the person is at its terminal. If sudo wants a password, ask it once there (the installer itself never
-  # prompts), and keep it fresh while the install runs. A Mac needs it for one thing only, Homebrew's own installer:
-  # everything else comes from Homebrew, as the person. So with Homebrew already there, no password is asked.
-  local ask=0
-  [ "$MODE" != pc ] || ask=1
-  [ "$OS" != Darwin ] || ! brew_bin >/dev/null || ask=0
-  # An Intel Mac: Homebrew's installer no longer runs there, so there is nothing a password would be used for.
-  [ "$OS" != Darwin ] || [ "$(uname -m)" = arm64 ] || ask=0
-  if [ "$ask" = 1 ] && ! sudo -n true 2>/dev/null && command -v sudo >/dev/null && { : </dev/tty; } 2>/dev/null; then
-    say "weevils needs your password once, to install its tools:"
-    sudo -v </dev/tty || true
-    (while sudo -n -v 2>/dev/null; do sleep 50; done) &
-    KEEP_SUDO=$!
-    trap 'kill "$KEEP_SUDO" 2>/dev/null || true' EXIT
+  # A Linux computer: only the system packages weevils can't get as the person (git, curl, tmux, jq, python3) need
+  # root, and only when one is missing. Then one command, shown as is, asks the password once for that command alone.
+  # Node.js and Claude Code go in your home folder, without root (the installer).
+  if [ "$MODE" = pc ] && [ "$OS" = Linux ] && [ "$(id -u)" != 0 ]; then
+    local miss='' c pm='' cmd=''
+    for c in git curl tmux jq python3; do command -v "$c" >/dev/null 2>&1 || miss="$miss $c"; done
+    if [ -n "$miss" ]; then
+      if command -v apt-get >/dev/null; then pm=apt cmd="apt-get install -y$miss"
+      elif command -v dnf >/dev/null; then pm=dnf cmd="dnf install -y$miss"
+      elif command -v pacman >/dev/null; then pm=pacman cmd="pacman -S --needed --noconfirm${miss/python3/python}"
+      fi
+      if [ -n "$cmd" ] && command -v sudo >/dev/null; then
+        if sudo -n true 2>/dev/null; then
+          [ "$pm" != apt ] || sudo -n apt-get update -qq >/dev/null 2>&1 || true
+          sudo -n env DEBIAN_FRONTEND=noninteractive $cmd >/dev/null 2>&1 || true
+        elif { : </dev/tty; } 2>/dev/null; then
+          say "missing:$miss. Installing them needs your password, for this one command:"
+          say "  sudo $cmd"
+          [ "$pm" != apt ] || sudo apt-get update -qq </dev/tty || true
+          sudo env DEBIAN_FRONTEND=noninteractive $cmd </dev/tty || true
+          # Done with root: nothing after this reuses the password.
+          sudo -k 2>/dev/null || true
+        fi
+      fi
+    fi
   fi
   # ------------------------------------------------------------ 2. the code
   if [ "$OS" = Darwin ]; then
@@ -151,12 +199,21 @@ _weevils_get() {
     # (Apple Silicon only: Homebrew's installer refuses Intel Macs. There, weevils' installer goes on with the tools
     # the Mac already has, or says which ones are missing.)
     if ! brew_bin >/dev/null && [ "$(uname -m)" = arm64 ]; then
+      # Homebrew's own installer is the one thing that needs the Mac's password: asked once here, kept only while it runs.
+      if ! sudo -n true 2>/dev/null && { : </dev/tty; } 2>/dev/null; then
+        say "Homebrew is missing. Its installer needs your Mac password once:"
+        sudo -v </dev/tty || true
+      fi
       sudo -n true 2>/dev/null || fail "Homebrew is missing, and installing it needs the password of an administrator of this Mac: start again and type it when the terminal asks."
+      (while sudo -n -v 2>/dev/null; do sleep 50; done) &
+      local keep=$!
       say "installing Homebrew and Apple's developer tools (this can take several minutes)"
       event step s_system
       local hb; hb=$(mktemp)
       curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o "$hb" || fail "could not download Homebrew's installer"
       NONINTERACTIVE=1 /bin/bash "$hb" </dev/null >"$log" 2>&1 || true
+      kill "$keep" 2>/dev/null || true
+      sudo -k 2>/dev/null || true
       rm -f "$hb"
       brew_bin >/dev/null || fail "Homebrew did not install (see ~/weevils-install.log)"
     fi
@@ -181,6 +238,10 @@ _weevils_get() {
     if [ "$BUNDLE" = 1 ]; then
       local b; b=$(mktemp)
       curl -fsSL "$BASE/weevils.bundle?sid=$SID" -o "$b" || fail "could not download weevils"
+      # The code is signed with weevils' release key (its public half is pinned in this script): a bundle whose
+      # signature does not check is refused. Where ssh-keygen can't check signatures (OpenSSH before 8.1), its
+      # published SHA-256 at least.
+      verify_bundle "$b" "$BASE" || { sleep 3; curl -fsSL "$BASE/weevils.bundle?sid=$SID" -o "$b" && verify_bundle "$b" "$BASE"; } || fail "the downloaded code did not match weevils' signature: nothing was installed"
       git clone -q -b main "$b" "$dir" || fail "could not unpack weevils"
       rm -f "$b"
       git -C "$dir" remote set-url origin "$REPO"
@@ -225,15 +286,17 @@ _weevils_get() {
     esac
   }
 
+  # A computer: its agents ask before acting (answered from the app), unless the person said otherwise.
+  [ "$MODE" != pc ] || [ "$prompts" = 0 ] || extra+=(--ask-permissions)
   case $MODE in
-    vps) run_install --domain "$REACH" ;;
-    url) run_install --url "$REACH" ;;
-    *) run_install ;;
+    vps) run_install --domain "$REACH" ${extra[@]+"${extra[@]}"} ;;
+    url) run_install --url "$REACH" ${extra[@]+"${extra[@]}"} ;;
+    *) run_install ${extra[@]+"${extra[@]}"} ;;
   esac
   check
 
   # ------------------------------------------------------------ 4. a computer: an HTTPS link for the phone
-  if [ "$MODE" = pc ] && [ "$(sum mode)" = local ]; then
+  if [ "$MODE" = pc ] && [ "$(sum mode)" = local ] && [ "$link" = 1 ]; then
     event step tunnel
     local port bin arch turl='' state=$HOME/.local/share/weevils rel=https://github.com/cloudflare/cloudflared/releases/latest/download
     port=$(sum port)

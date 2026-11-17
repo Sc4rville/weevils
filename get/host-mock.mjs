@@ -4,7 +4,7 @@
 // server answers with MOCK_IP. A new root password (« continue on this one ») runs MOCK_PASSWD with the password on
 // its stdin. Only the calls get makes; shapes from Hetzner's API reference.
 //   MOCK_PORT=4184 MOCK_IP=172.30.99.10 MOCK_BOOT='…' MOCK_PASSWD='…' node get/host-mock.mjs
-//   GET_HETZNER_API=http://127.0.0.1:4184/hetzner
+//   GET_HETZNER_API=http://127.0.0.1:4184/hetzner (read by get/e2e.mjs; the page itself calls api.hetzner.cloud)
 import { spawn, spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'

@@ -120,6 +120,7 @@
 <footer class="band">
   <div class="wrap">
     <p data-t="trust"></p>
+    <p><a href="/security" data-t="secLink"></a></p>
     <!-- The code's link only once the repository is public (the service asks GitHub): until then, the X account. -->
     <p id="code"><a href="https://x.com/weevilscode" data-t="soon"></a></p>
     <p data-t="stats"></p>
@@ -135,7 +136,8 @@ const FR = (() => { try { return localStorage.getItem('wvlang') === 'fr' } catch
 const W = FR ? {
   h1: 'Tes agents IA, dans ta poche.',
   lead: 'weevils met sur ton téléphone les sessions Claude Code et Codex qui tournent sur ta propre machine : tu les suis, tu leur parles, tu leur confies du travail. Branche une machine, weevboss s’occupe du reste.',
-  trust: 'Rien n’est gardé : ton jeton ou ton mot de passe sert une fois, puis il est oublié. Une fois installé, weevils tourne chez toi, et cette page n’a plus aucun accès à ta machine.',
+  secLink: 'Sécurité : ce que l’installation fait, ne fait jamais, et comment la retirer',
+  trust: 'Ton jeton Hetzner reste dans ton navigateur : il ne part que chez Hetzner. Un mot de passe de serveur, si tu choisis de le donner, sert une fois puis il est oublié. Une fois installé, weevils tourne chez toi, et cette page n’a plus aucun accès à ta machine.',
   source: 'Le code est ouvert, sur GitHub',
   soon: 'Bientôt open source — réponds au tweet pour un accès anticipé',
   stats: 'Statistiques anonymes : des compteurs seulement, sans cookie ni adresse IP gardée, conservés 90 jours.',
@@ -147,7 +149,7 @@ const W = FR ? {
   vps: 'J’ai déjà un VPS', vpsSub: 'Loué n’importe où : son adresse et son mot de passe, weevils s’y installe tout seul.',
   pc: 'Mon ordinateur', pcSub: 'Mac, Linux, ou Windows avec WSL. Les agents tournent sur cet ordinateur, avec tes droits, et seulement quand il est allumé.',
   thisPc: 'Branche cet ordinateur', thisPcSub: 'Colle cette commande dans un terminal de cet ordinateur, ou donne-la à ton assistant IA. Ensuite, un QR code ouvre weevils sur ton téléphone. Les agents tourneront ici, avec tes droits.',
-  pcWhat: 'Elle installe weevils dans ton dossier personnel, demande ton mot de passe une fois pour les outils manquants, et se retire en une ligne. Pas de root, pas de port ouvert.', pcRead: 'Lire le script',
+  pcWhat: 'Elle installe weevils dans ton dossier personnel et vérifie la signature du code. Ton mot de passe n’est demandé que s’il manque un outil système, pour cette seule commande. Ici, les agents demandent avant d’agir. Elle se retire en une ligne.', pcRead: 'Lire le script', pcSec: 'Notes de sécurité',
   better: 'Mieux : un serveur', betterSub: 'Un serveur fait tourner tes agents même téléphone et ordinateur éteints, et ton téléphone les joint de partout. Même parcours, 2 minutes de plus.',
   macNote: 'Sur un Mac, le terminal est l’app Terminal. Elle peut demander une fois le mot de passe du Mac (rien ne s’affiche quand tu le tapes).',
   winNote: 'Sous Windows, colle-la dans PowerShell : weevils s’installe dans Ubuntu (WSL). Un VPS reste le plus simple.',
@@ -157,7 +159,7 @@ const W = FR ? {
   hz1b: 'Créer mon compte Hetzner',
   hz2: 'Dans la console Hetzner, ouvre ton projet (ou crée-en un), puis Sécurité → Jetons API → Générer, avec « Lecture et écriture ».',
   hz2b: 'Ouvrir la console Hetzner',
-  hz3: 'Colle le jeton ici. Il sert à créer ton serveur, puis il est oublié.',
+  hz3: 'Colle le jeton ici. Il reste dans ton navigateur et ne part que chez Hetzner, pour créer ton serveur : notre service ne le voit jamais.',
   token: 'Jeton API', 
   size_light: 'Léger', size_recommended: 'Recommandé', size_strong: 'Costaud',
   agents: (n) => ({ '2-3': '2 à 3 agents', 6: 'environ 6 agents', 12: 'une douzaine d’agents' })[n] + ' en même temps', gb: 'Go',
@@ -166,10 +168,12 @@ const W = FR ? {
   hourly: (a, b) => `${a}/h · max ${b}/mois`,
   billed_hetzner: (ip) => `${ip ? 'Serveur et adresse IPv4, TTC' : 'TTC'}. Hetzner facture à l’heure, jamais plus que le maximum du mois. Supprimer le serveur dans leur console arrête la facturation.`,
   createHourly: 'Créer mon serveur · facturé à l’heure',
-  payWith: (l) => `Payé avec ${l}.`,
   createFor: (p) => `Créer mon serveur (${p})`,
   create: 'Créer mon serveur',
-  vpsTitle: 'Ton VPS', vpsIntro: 'Ubuntu ou Debian, de préférence tout neuf. weevils s’y connecte une fois, lance l’installation, puis oublie le mot de passe.',
+  vpsTitle: 'Ton VPS', vpsCmd: 'Ubuntu ou Debian, de préférence tout neuf. Dans un terminal sur le serveur (en root ou avec sudo), colle cette commande :',
+  vpsWait: 'Cette page suit l’installation dès que la commande démarre. Aucun mot de passe ne quitte ton serveur.',
+  vpsOr: 'Ou laisse cette page s’y connecter pour toi',
+  vpsIntro: 'Le mot de passe sert une seule fois, pour lancer l’installation, et n’est jamais gardé.',
   host: 'Adresse IP', user: 'Utilisateur', pw: 'Mot de passe', port: 'Port SSH', useKey: 'Plutôt une clé SSH', usePw: 'Plutôt un mot de passe', key: 'Clé privée',
   install: 'Installer weevils',
   pcTitle: 'Ton ordinateur', pcIntro: 'Sur l’ordinateur, ouvre un terminal, colle cette commande et appuie sur Entrée :',
@@ -221,7 +225,8 @@ const W = FR ? {
 } : {
   h1: 'Your AI agents, in your pocket.',
   lead: 'weevils puts the Claude Code and Codex sessions running on your own machine on your phone: follow them, talk to them, hand them work. Plug in a machine, weevboss takes care of the rest.',
-  trust: 'Nothing is kept: your token or password is used once, then forgotten. Once installed, weevils runs on your machine, and this page has no access to it anymore.',
+  secLink: 'Security: what the install does, never does, and how to remove it',
+  trust: 'Your Hetzner token stays in your browser and goes only to Hetzner. A server password, if you choose to give one, is used once and then forgotten. Once installed, weevils runs on your machine, and this page has no access to it anymore.',
   source: 'The code is open, on GitHub',
   soon: 'Open source soon — reply to the tweet for early access',
   stats: 'Anonymous stats: counters only, no cookie and no IP address kept, deleted after 90 days.',
@@ -233,7 +238,7 @@ const W = FR ? {
   vps: 'I already have a VPS', vpsSub: 'Rented anywhere: its address and password, weevils installs itself.',
   pc: 'My computer', pcSub: 'Mac, Linux, or Windows with WSL. Agents run on this computer, with your rights, and only while it’s on.',
   thisPc: 'Connect this computer', thisPcSub: 'Paste this command in a terminal on this computer, or give it to your AI assistant. Then a QR code opens weevils on your phone. Agents will run here, with your rights.',
-  pcWhat: 'It installs weevils in your home folder, asks your password once for missing tools, and comes off in one line. No root, no open port.', pcRead: 'Read the script',
+  pcWhat: 'It installs weevils in your home folder and checks the code’s signature. Your password is asked only if a system tool is missing, for that one command. Agents here ask before acting. It comes off in one line.', pcRead: 'Read the script', pcSec: 'Security notes',
   better: 'Better: a server', betterSub: 'A server keeps your agents working while your phone and computer are off, and your phone reaches them from anywhere. Same flow, 2 more minutes.',
   macNote: 'On a Mac, the terminal is the Terminal app. It may ask for your Mac password once (nothing shows while you type).',
   winNote: 'On Windows, paste it in PowerShell: weevils installs in Ubuntu (WSL). A VPS is still the simplest.',
@@ -243,7 +248,7 @@ const W = FR ? {
   hz1b: 'Create my Hetzner account',
   hz2: 'In the Hetzner console, open your project (or create one), then Security → API tokens → Generate API token, with “Read & Write”.',
   hz2b: 'Open the Hetzner console',
-  hz3: 'Paste the token here. It creates your server, then it’s forgotten.',
+  hz3: 'Paste the token here. It stays in your browser and goes only to Hetzner, to create your server: our service never sees it.',
   token: 'API token', 
   size_light: 'Light', size_recommended: 'Recommended', size_strong: 'Strong',
   agents: (n) => ({ '2-3': '2 to 3 agents', 6: 'about 6 agents', 12: 'about a dozen agents' })[n] + ' at once', gb: 'GB',
@@ -252,10 +257,12 @@ const W = FR ? {
   hourly: (a, b) => `${a}/h · max ${b}/month`,
   billed_hetzner: (ip) => `${ip ? 'Server and IPv4 address, VAT included' : 'VAT included'}. Hetzner bills by the hour, never more than the monthly max. Deleting the server in their console stops the billing.`,
   createHourly: 'Create my server · billed by the hour',
-  payWith: (l) => `Paid with ${l}.`,
   createFor: (p) => `Create my server (${p})`,
   create: 'Create my server',
-  vpsTitle: 'Your VPS', vpsIntro: 'Ubuntu or Debian, ideally brand new. weevils connects once, starts the install, then forgets the password.',
+  vpsTitle: 'Your VPS', vpsCmd: 'Ubuntu or Debian, ideally brand new. In a terminal on the server (as root or a user with sudo), paste this command:',
+  vpsWait: 'This page follows the install as soon as the command starts. No password leaves your server.',
+  vpsOr: 'Or let this page connect for you',
+  vpsIntro: 'The password is used once to start the install, and never stored.',
   host: 'IP address', user: 'User', pw: 'Password', port: 'SSH port', useKey: 'Use an SSH key instead', usePw: 'Use a password instead', key: 'Private key',
   install: 'Install weevils',
   pcTitle: 'Your computer', pcIntro: 'On the computer, open a terminal, paste this command and press Enter:',
@@ -478,7 +485,7 @@ async function newJob(kind) {
   const view = await viewOf(secret)
   const j = await api('/api/job', { kind, lang: FR ? 'fr' : 'en', pub, tz: TZ, view, wrapped: await wrapKey(secret, jwk) })
   // A service from before resume links picks its own token: then this browser is the only way back.
-  return keep({ sid: j.sid, view: j.view, secret: j.view === view ? secret : '', kind, jwk, command: j.command, win: j.win || '', at: Date.now() })
+  return keep({ sid: j.sid, view: j.view, secret: j.view === view ? secret : '', kind, jwk, command: j.command || '', win: j.win || '', userData: j.userData || '', at: Date.now() })
 }
 /** A resume link: this browser's copy when it has it, else the setup and its sealed key from the service. */
 async function restore(ref) {
@@ -488,7 +495,7 @@ async function restore(ref) {
   const st = await api('/api/status', { sid: ref.sid, view, full: true })
   let jwk = null
   try { if (st.wrapped) jwk = await unwrapKey(ref.secret, st.wrapped) } catch {}
-  return keep({ sid: ref.sid, view, secret: ref.secret, kind: st.kind, jwk, command: st.command || '', win: st.win || '', at: st.created || Date.now() })
+  return keep({ sid: ref.sid, view, secret: ref.secret, kind: st.kind, jwk, command: st.command || '', win: st.win || '', userData: st.userData || '', at: st.created || Date.now() })
 }
 async function unseal(job, sealed) {
   const key = await crypto.subtle.importKey('jwk', job.jwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt'])
@@ -541,6 +548,18 @@ function serverList(kind, list, onPick) {
     return h('div', { class: 'srv' }, h('b', {}, where), h('span', {}, `${s.ip ? s.ip + ' · ' : ''}${state}`), btn)
   }))
 }
+// Hetzner's API, called from this browser with the person's token (get/hetzner.js): the token goes to Hetzner only,
+// never to this page's service, which is told just the new server's id, address and size.
+let HZ = null
+const hzLib = () => (HZ ||= import('/hetzner.js'))
+const hzErr = (e) => e?.hz || e?.message || 'host_down'
+/** The servers found on the account, each with how far its setup is (asked by its « weevils-sid » label, no token). */
+async function withSetups(job, list) {
+  const sids = list.map((s) => s.sid).filter(Boolean)
+  let setups = {}
+  if (sids.length) try { setups = (await api('/api/hetzner/setups', { sid: job.sid, view: job.view, sids })).setups || {} } catch {}
+  return list.map((s) => ({ ...s, setup: (s.sid && setups[s.sid]) || null }))
+}
 /** Back on a server weevils made: the setup takes over the one still installing, or starts the install again. */
 async function continueOn(kind, job, token, s, btn, err) {
   err.hidden = true
@@ -548,12 +567,28 @@ async function continueOn(kind, job, token, s, btn, err) {
   const label = btn.textContent
   btn.textContent = W.continuing
   try {
-    const r = await api(`/api/${kind}/continue`, { sid: job.sid, view: job.view, token, server: s.id })
+    // Made by this very setup (the page was closed right after): it boots and installs by itself.
+    if (s.sid && s.sid === job.sid) {
+      await api('/api/hetzner/created', { sid: job.sid, view: job.view, server: { id: s.id, name: s.name, ip: s.ip, type: s.type } })
+      keep(job)
+      return progress(job, { push: true })
+    }
     // Still installing: this page now follows that setup (its key opens the link at the end).
-    if (r.attached && r.sid !== job.sid) job.sid = r.sid
+    if (s.sid && s.setup && s.setup.state !== 'done' && s.setup.state !== 'failed') {
+      try {
+        const r = await api('/api/hetzner/attach', { sid: job.sid, view: job.view, label: s.sid, server: s.id })
+        if (r.attached && r.sid !== job.sid) job.sid = r.sid
+        keep(job)
+        return progress(job, { push: true })
+      } catch (e) { if (e.message !== 'not_live') throw e }
+    }
+    // Over, or forgotten: Hetzner gives the server a new root password (asked from here, with the token), used once
+    // to start the install again over SSH. It keeps what is there and ends with a fresh link for this page.
+    const password = await (await hzLib()).rootPassword(token, s.id)
+    await api('/api/ssh', { sid: job.sid, view: job.view, host: s.ip, password, server: { id: s.id, name: s.name, type: s.type, location: s.location } })
     keep(job)
     progress(job, { push: true })
-  } catch (e) { showErr(err, e.message); btn.disabled = false; btn.textContent = label }
+  } catch (e) { showErr(err, hzErr(e)); btn.disabled = false; btn.textContent = label }
 }
 function provider(kind, given, lastError, reopened) {
   // A setup from a host this page no longer offers: back to the choices.
@@ -598,32 +633,41 @@ function provider(kind, given, lastError, reopened) {
     priceBtn.disabled = true
     try {
       job ||= await newJob(kind)
-      const q = await api(`/api/${kind}/quote`, { sid: job.sid, view: job.view, token, region: REGION })
+      const hz = await hzLib()
+      const [q, ex] = await Promise.all([hz.quote(token, REGION), hz.servers(token).catch(() => [])])
       sizes = q.sizes
       if (!sizes.some((z) => z.size === size)) size = sizes[0].size
       draw()
       const billed = W[`billed_${kind}`]
-      note.textContent = [typeof billed === 'function' ? billed(sizes.some((z) => z.ipv4)) : billed, q.paymentLabel ? W.payWith(q.paymentLabel) : ''].join(' ')
+      note.textContent = typeof billed === 'function' ? billed(sizes.some((z) => z.ipv4)) : billed
       priceBtn.hidden = true
-      showHad(another ? [] : q.existing)
-    } catch (e) { showErr(err, e.message); priceBtn.hidden = false } finally { priceBtn.disabled = false }
+      showHad(another ? [] : await withSetups(job, ex))
+    } catch (e) { showErr(err, hzErr(e)); priceBtn.hidden = false } finally { priceBtn.disabled = false }
   }
   createBtn.onclick = async () => {
     err.hidden = true
     createBtn.disabled = true
     try {
-      // Saved before the call: closed while the server is being made, this page comes back to it.
+      const hz = await hzLib()
+      // Made in the meantime (another tab, or a page cut off): the list, never a second server without asking.
+      if (!another) {
+        const ex = await hz.servers(token)
+        if (ex.length) { createBtn.disabled = false; return showHad(await withSetups(job, ex)) }
+      }
+      job.userData ||= (await api('/api/status', { sid: job.sid, view: job.view, full: true })).userData || ''
+      if (!job.userData) throw new Error('no_job')
+      // Saved before the call: closed while the server is being made, this page comes back to it (the token lists it).
       job.started = true
       keep(job)
-      await api(`/api/${kind}/create`, { sid: job.sid, view: job.view, token, size, region: REGION, another, v: 2 })
+      const server = await hz.create(token, { sid: job.sid, size, where: REGION, userData: job.userData })
       tok.value = ''
       d.token = ''
+      await api('/api/hetzner/created', { sid: job.sid, view: job.view, server })
       progress(job, { push: true })
     } catch (e) {
       createBtn.disabled = false
-      // Made in the meantime (another tab, or a page cut off): the list, never a second server without asking.
-      if (e.message === 'exists' && e.data?.existing) return showHad(e.data.existing)
-      showErr(err, e.message)
+      if (e?.hz) api('/api/hetzner/failed', { sid: job.sid, view: job.view, error: hzErr(e) }).catch(() => {})
+      showErr(err, hzErr(e))
     }
   }
   // Pasting the token is enough: the sizes come by themselves (recommended picked), one tap on Create starts it.
@@ -655,6 +699,24 @@ function ssh(given, reopened) {
   let job = given
   const d = draft.vps
   const err = errBox()
+  // First way: the same one-line command as a computer, pasted in the server's own terminal. No secret leaves it.
+  let jobP = given ? Promise.resolve(given) : null
+  const getJob = () => (jobP ||= newJob('ssh'))
+  const code = h('code', {}, '…')
+  const copy = h('button', { type: 'button' }, W.copy)
+  copy.onclick = async () => {
+    if (!job?.command) return
+    try { await navigator.clipboard.writeText(code.textContent) } catch { getSelection().selectAllChildren(code) }
+    copy.textContent = W.copied
+    setTimeout(() => (copy.textContent = W.copy), 1600)
+  }
+  getJob().then(async (j) => {
+    job = j
+    if (!j.command) j.command = (await api('/api/status', { sid: j.sid, view: j.view, full: true })).command || ''
+    code.textContent = j.command || '…'
+    // The command pasted there starts the install: this page follows it.
+    if (!j.started) watch(j, () => progress(j, { push: true }))
+  }).catch((e) => showErr(err, e.message))
   const host = h('input', { inputmode: 'decimal', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: '203.0.113.7' })
   const user = h('input', { value: 'root', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' })
   const port = h('input', { value: '22', inputmode: 'numeric' })
@@ -682,7 +744,7 @@ function ssh(given, reopened) {
     err.hidden = true
     go.disabled = true
     try {
-      job ||= await newJob('ssh')
+      job ||= await getJob()
       job.started = true
       keep(job)
       const body = { sid: job.sid, view: job.view, host: host.value.trim(), user: user.value.trim() || 'root', port: Number(port.value) || 22 }
@@ -695,7 +757,8 @@ function ssh(given, reopened) {
       progress(job, { push: true })
     } catch (e) { showErr(err, e.message); go.disabled = false }
   }
-  show(band('b2', h('h2', {}, W.vpsTitle), h('p', {}, W.vpsIntro),
+  show(band('b2', h('h2', {}, W.vpsTitle), h('p', {}, W.vpsCmd), h('div', { class: 'cmd' }, code, copy), h('p', { class: 'note' }, W.vpsWait),
+    h('h3', {}, W.vpsOr), h('p', { class: 'small' }, W.vpsIntro),
     h('label', {}, W.host), host,
     h('div', { class: 'row' }, h('div', {}, h('label', {}, W.user), user), h('div', { style: 'width:96px' }, h('label', {}, W.port), port)),
     pwBlock, keyBlock, toggle, go, err))
@@ -730,7 +793,7 @@ function pcBox(here) {
     setTimeout(() => (copy.textContent = W.copy), 1600)
   }
   if (!here && navigator.share) box.append(h('button', { class: 'btn light', onclick: () => job && navigator.share({ text: code.textContent }).catch(() => {}) }, W.share))
-  box.append(h('p', { class: 'note' }, W.pcWhat, ' ', h('a', { href: '/install.sh', target: '_blank', rel: 'noopener' }, W.pcRead)), h('p', { class: 'note' }, W.pcWait), h('p', { class: 'note' }, W.pcLimit))
+  box.append(h('p', { class: 'note' }, W.pcWhat, ' ', h('a', { href: '/install.sh', target: '_blank', rel: 'noopener' }, W.pcRead), ' · ', h('a', { href: '/security', target: '_blank', rel: 'noopener' }, W.pcSec)), h('p', { class: 'note' }, W.pcWait), h('p', { class: 'note' }, W.pcLimit))
   return box
 }
 function pc(reopened) {

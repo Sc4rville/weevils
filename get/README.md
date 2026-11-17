@@ -16,15 +16,22 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
 2. **Create a server for me** at **Hetzner**: the person creates an account and an API token (links on the page),
    pastes the token in a masked field, then picks one of three sizes with the real prices from Hetzner's API: light
    (4 GB, 2 to 3 agents), recommended (8 GB, about 6), strong (16 GB, about a dozen; a Claude Code session takes up
-   to about 1 GB). Hetzner offers no OAuth to third parties: a token is the only way. (Hostinger was offered too
+   to about 1 GB). Hetzner offers no OAuth to third parties: a token is the only way. Since 2026-11-17 the token never
+   leaves the person's browser except toward Hetzner: the page calls Hetzner's API itself (`get/hetzner.js`; Hetzner
+   allows it, CORS), creates the server with the cloud-init this service gave the setup (`userData` in the
+   `POST /api/job` answer: it only runs `/i/<sid>`), then tells this service just the server's id, address and size
+   (`POST /api/hetzner/created`). (Hostinger was offered too
    until 2026-11-14; dropped as one option too many. A VPS rented there goes through "I already have a VPS".)
    - Hetzner: the cheapest x86 type of each size near the person, Ubuntu 24.04, a cloud-init that runs the install.
      Hetzner bills by the hour: each size shows its real hourly price and its monthly cap ("€0.0115/h · max
      €7.19/month"), VAT included, with the server's IPv4 address that Hetzner bills on top of the type (`GET /pricing`),
      and the button says "billed by the hour". Sign-up asks for an ID check (a photo of an ID and a selfie, through iDenfy), then a manual review: the page says
      so under the option and on the account step, so nobody is surprised.
-   **I already have a VPS**: IP, user, password (or private key). One SSH connection starts the install in the
-   background, then closes.
+   **I already have a VPS**: first, the same one-line command as a computer, to paste in a terminal on the server (as
+   root or a sudo user): no secret goes anywhere; its first request (`/i/<sid>.env`) starts the setup, and the
+   address it comes from names the machine (`<ip>.sslip.io`; from an address the Internet can't reach, it is set up
+   like a computer, with a link of its own). Below it, the alternative: IP, user, password (or private key), and one
+   SSH connection from this service starts the install in the background, then closes.
    **My computer** (Mac, Linux, or Windows with WSL): `curl -fsSL https://get.scarville.tech/install.sh | bash -s <id>`
    in its terminal. Since 2026-11-15 that script is the same file for everyone (`/install.sh`, its SHA-256 at
    `/install.sh.sha256`), opens with a plain « what it does / never does / the code it runs / undo in one line » header,
@@ -55,12 +62,15 @@ The page finds it again, in this order, and never shows the start screen while s
   (AES-GCM). This service holds neither the secret nor anything that opens the sealed key or the sealed link.
 - **This browser** (localStorage), 7 days.
 - **The Hetzner token again**, on the Hetzner screen itself (there is no separate resume screen or button since
-  2026-11-14): the same account's token lists the servers weevils made there (Hetzner label `app=weevils`, plus
-  `weevils-sid`), each with how far its setup is, and offers **"Continue on this one"** before any new server. A setup
-  still installing is taken over by the new page (the install asks for the page's current key, `GET /k/<sid>`, just
-  before it seals the link). A finished, stopped or forgotten one: Hetzner gives the server a new root password
-  (`reset_password`), used once for the same SSH command as "I already have a VPS"; the install runs again (it keeps
-  what is there) and ends with a fresh link for this page. Or the server's IP and root password ("I already have a VPS").
+  2026-11-14): in the browser, the same account's token lists the servers weevils made there (Hetzner label
+  `app=weevils`, plus `weevils-sid`); the page asks this service how far those setups are by their `weevils-sid`
+  (`/api/hetzner/setups`, no token), and offers **"Continue on this one"** before any new server. A setup still
+  installing is taken over by the new page, by that label (`/api/hetzner/attach`; only the account's owner can read
+  it), and the install asks for the page's current key, `GET /k/<sid>`, just before it seals the link. A finished,
+  stopped or forgotten one: the page asks Hetzner for a new root password (`reset_password`, from the browser) and
+  hands that password, once, to the same SSH start as "I already have a VPS" (`/api/ssh`, root on port 22 only, tried
+  again while the new password lands); the install runs again (it keeps what is there) and ends with a fresh link
+  for this page. A server the page created but could not report (closed right after) is reported then. Or the server's IP and root password ("I already have a VPS").
 - **Going back** is the phone's own gesture (or the browser's arrow): each step is an entry in the browser's history
   (`#hetzner`, `#vps`, `#computer`), and the page has no Back button, resume screen or restart link of its own. Going
   back and forth keeps what was typed (the token, password and key in memory only; the address, user and port in this
@@ -114,34 +124,36 @@ Linux in four places:
   after its last sign of life; finished: 7 days, its sealed link until an hour after the first login there); no
   database, no file: a restart hands them to the next run through a file in RAM (`/dev/shm`, mode 600). Request
   bodies are never logged (Caddy logs the paths only, setup ids masked).
-- **Secrets are used once.** The Hetzner token makes the quote and the create calls, then is dropped (the page clears
-  it too). The SSH password goes to `ssh` through an askpass environment variable (never argv, never disk) for one
+- **The Hetzner token never reaches the service.** The page uses it from the browser, toward Hetzner only (the
+  page's CSP allows `connect-src` to itself and `https://api.hetzner.cloud`, nothing else), and clears it once the
+  server exists. No route of the service accepts a token.
+- **Secrets are used once.** The SSH password goes to `ssh` through an askpass environment variable (never argv, never disk) for one
   command; a private key goes to a file in RAM (`/dev/shm`) for the few seconds of that connection. The root password
-  Hetzner returns is discarded.
+  Hetzner returns when it creates a server is discarded in the browser.
 - **No access afterwards.** The service keeps no SSH key, no token and no tunnel. The new weevils is served by the
   person's machine itself; nothing is proxied through this service.
 - **The access code never reaches the service.** The page generates an RSA-OAEP key pair (WebCrypto); the install
   encrypts the login link with the public half (`openssl pkeyutl`, or Node's `crypto`), and the service only relays the ciphertext. Only
   a page holding the private half can open it: the one that started the setup, a page opened with its resume link
   (the private half comes back sealed with a key derived from the link's secret, which never reaches the service), or
-  a page that took the setup over with the host's token (proof the server is theirs). It only follows a link to the
+  a page that took the setup over by the server's `weevils-sid` label (read with the host's token, in the browser). It only follows a link to the
   address the install reported.
 - **The install reports step names only**, checked against the installer's own titles on both sides, never a line of
   its log (which holds the access code: it stays on the machine, `~/weevils-install.log`). Two steps are the
   bootstrap's own and go by name: `tunnel`, and `s_system` while it installs Homebrew on a Mac.
 - **No code from visitors runs here.** The only program started is `ssh`, with a fixed command, toward a public
   address (private, loopback, link-local and this server's own addresses are refused).
-- **Rate limits** per client address (setups, quotes, server creations, SSH attempts, script downloads) and per
+- **Rate limits** per client address (setups, server reports, SSH attempts, script downloads) and per
   setup (reports), plus a cap on concurrent SSH connections and on setups in memory.
 - **Preview gate** (off since the launch; old links with `?k=` still open the page, the key is ignored): with
   `GET_PREVIEW_KEY`, the page needs `/?k=<key>` (or `/#k=<key>`) in its URL, and its API calls carry the key in a
   header: no redirect and no cookie needed (some iOS contexts drop a cookie set on a redirect). Install scripts stay
   reachable by their unguessable setup id; the page's own assets are public.
 
-What the service *does* have, briefly, by design: during "I already have a VPS", the password, for one connection;
-during "Create a server for me", the token, for a few API calls; during "Continue on this one", the token and the new
-root password the host gives the server, for those calls and one SSH connection. A modified service could keep them; the code is open
-so anyone can check what runs, and both can be revoked right after (delete the token at Hetzner, change the password).
+What the service *does* have, briefly, by design, and only when the person picks that way: during "I already have a
+VPS" through the form (not the command), the password or key, for one connection; during "Continue on this one" on a
+finished or forgotten server, the new root password Hetzner gave that server, for one connection. Never the Hetzner
+token. A modified service could keep a password; it can be changed right after, and the command needs none.
 
 ## Anonymous stats
 

@@ -49,10 +49,11 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
     }
     continue
   }
-  let m = /^\/api\/(hetzner|hostinger)\/(quote|create)$/.exec(p)
+  // (Since 2026-11-17 the page creates the server from the browser and posts « created »: no quote reaches here.)
+  let m = /^\/api\/(hetzner|hostinger)\/(quote|create|created)$/.exec(p)
   if (r.method === 'POST' && m) {
     if (m[2] === 'quote' && !d.picked.has(`${who}\0${m[1]}`)) d.picked.add(`${who}\0${m[1]}`), bump(d.chose, m[1])
-    if (m[2] === 'create' && o.status === 200) bump(d.started, m[1]), pending.push({ t, kind: m[1] })
+    if ((m[2] === 'create' || m[2] === 'created') && o.status === 200) bump(d.started, m[1]), pending.push({ t, kind: m[1] })
     continue
   }
   if (r.method === 'POST' && p === '/api/ssh') {

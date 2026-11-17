@@ -27,9 +27,13 @@ if (kind === 'ssh') {
 if (kind === 'hetzner') {
   const token = process.env.WVGET_TOKEN || ''
   const size = process.env.WVGET_SIZE || 'recommended'
-  const q = await api(`/api/${kind}/quote`, { sid: job.sid, view: job.view, token, region: 'europe' })
-  for (const z of q.sizes) console.log(`size ${z.size}: ${z.type} ${z.memory} GB, ${z.agents} agents, ${z.first && z.first !== z.monthly ? `${z.first} then ` : ''}${z.monthly} ${z.currency}/month`)
-  const s = await api(`/api/${kind}/create`, { sid: job.sid, view: job.view, token, size, region: 'europe' })
+  // As the page does: Hetzner's API from here with the token (get/hetzner.js), then only the server to the service.
+  const HZ = await import('./hetzner.js')
+  const o = process.env.GET_HETZNER_API ? { api: process.env.GET_HETZNER_API } : {}
+  const q = await HZ.quote(token, 'europe', o)
+  for (const z of q.sizes) console.log(`size ${z.size}: ${z.type} ${z.memory} GB, ${z.agents} agents, ${z.hourly}/h, max ${z.monthly} ${z.currency}/month`)
+  const made = await HZ.create(token, { sid: job.sid, size, where: 'europe', userData: job.userData }, o)
+  const s = await api(`/api/${kind}/created`, { sid: job.sid, view: job.view, server: made })
   console.log(`created ${s.server.name} ${s.server.ip} (${s.server.type}, ${s.server.location})`)
 }
 const t0 = Date.now()

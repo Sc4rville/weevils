@@ -12,7 +12,8 @@ import path from 'node:path'
 import { Window } from 'happy-dom'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 // @ts-expect-error plain JavaScript module, no types
-import { config, createServer, hetznerQuote, publicAddress, resolveTarget, sslip, stepTitles, loadJobs, saveJobs, createStore, describeStats } from './server.mjs'
+import * as HZ from './hetzner.js'
+import { config, createServer, publicAddress, resolveTarget, sslip, stepTitles, loadJobs, saveJobs, createStore, describeStats } from './server.mjs'
 import { claimSetup } from '../server/get-claim.ts'
 
 const listen = (s: http.Server) => new Promise<number>((r) => s.listen(0, '127.0.0.1', () => r((s.address() as AddressInfo).port)))
@@ -57,7 +58,7 @@ const hetzner = http.createServer((req, res) => {
       const b = JSON.parse(body)
       created.push(b)
       if (created.length === 1 && b.location === 'nbg1') return reply(412, { error: { code: 'resource_unavailable', message: 'full' } })
-      setTimeout(() => reply(201, { server: { id: 42, name: b.name, public_net: { ipv4: { ip: '203.0.113.50' } } }, root_password: 'never-used' }), slowCreate)
+      setTimeout(() => reply(201, { server: { id: 42, name: b.name, public_net: { ipv4: { ip: '5.75.130.50' } } }, root_password: 'never-used' }), slowCreate)
     })
     return
   }
@@ -134,42 +135,63 @@ describe('helpers', () => {
   })
 })
 
-describe('Hetzner (mock API)', () => {
+describe('Hetzner, from the browser (mock API)', () => {
+  const o = () => ({ api: `http://127.0.0.1:${hzPort}`, wait: async () => {} })
+  // One setup for this whole block (the service allows a dozen new setups an hour per address).
+  let job: any
+  beforeAll(async () => (job = (await post('/api/job', { kind: 'hetzner', lang: 'en', pub: pubB64(keyPair().publicKey) })).data))
   it('quotes three sizes (4, 8, 16 GB) with their agents and the cheapest x86 type near the person', async () => {
-    const cfg = config({ GET_HETZNER_API: `http://127.0.0.1:${hzPort}` })
-    const q = await hetznerQuote(cfg, 'goodtoken00000000000000')
+    const q = await HZ.quote('goodtoken00000000000000', 'europe', o())
     // What the person pays, VAT included: the type plus its IPv4 address, by the hour, never more than the month.
     expect(q.sizes.map((z: any) => [z.size, z.type, z.location, z.hourly, z.monthly, z.ipv4, z.agents])).toEqual([
       ['light', 'cx23', 'nbg1', 0.0076, 4.745, true, '2-3'],
       ['recommended', 'cx33', 'nbg1', 0.0115, 7.185, true, '6'],
       ['strong', 'cx43', 'nbg1', 0.0202, 12.585, true, '12'],
     ])
-    expect((await hetznerQuote(cfg, 'goodtoken00000000000000', 'america')).sizes[0]).toMatchObject({ type: 'cx23', location: 'ash', monthly: 4.495 })
+    expect((await HZ.quote('goodtoken00000000000000', 'america', o())).sizes[0]).toMatchObject({ type: 'cx23', location: 'ash', monthly: 4.495 })
+    await expect(HZ.quote('badtoken000000000000000', 'europe', o())).rejects.toMatchObject({ hz: 'unauthorized', status: 401 })
   })
-  it('creates the server with the install in cloud-init, then forgets the token', async () => {
-    const { pub } = { pub: pubB64(keyPair().publicKey) }
-    const job = (await post('/api/job', { kind: 'hetzner', lang: 'en', pub })).data
-    expect((await post('/api/hetzner/quote', { sid: job.sid, view: job.view, token: 'badtoken000000000000000' })).data.error).toBe('unauthorized')
-    const ro = await post('/api/hetzner/create', { sid: job.sid, view: job.view, token: 'readonlytoken0000000000', size: 'light' })
-    expect(ro.status).toBe(403)
-    expect(ro.data.error).toBe('forbidden')
-    expect((await post('/api/hetzner/create', { sid: job.sid, view: job.view, token: 'goodtoken00000000000000', size: 'huge' })).data.error).toBe('bad_size')
-    const ok = await post('/api/hetzner/create', { sid: job.sid, view: job.view, token: 'goodtoken00000000000000', size: 'recommended' })
-    expect(ok.status).toBe(200)
-    expect(ok.data.server).toMatchObject({ ip: '203.0.113.50', type: 'cx33', location: 'fsn1', size: 'recommended', agents: '6' })
-    expect(ok.data.reach).toBe('203-0-113-50.sslip.io')
-    const sent = created.at(-1) as Record<string, string>
+  it('creates the server from the browser with the setup’s cloud-init, and tells the service only the server', async () => {
+    // The page gets the cloud-init of its setup: it only runs that setup's install script.
+    expect(job.userData).toBe(`#cloud-config\nruncmd:\n  - [bash, -c, "curl -fsSL --retry 5 --retry-delay 3 https://get.example/i/${job.sid} | bash > /var/log/weevils-get.log 2>&1"]\n`)
+    await expect(HZ.create('readonlytoken0000000000', { sid: job.sid, size: 'light', userData: job.userData }, o())).rejects.toMatchObject({ hz: 'forbidden', status: 403 })
+    const s = await HZ.create('goodtoken00000000000000', { sid: job.sid, size: 'recommended', userData: job.userData }, o())
+    // Full in the first place: the next option.
+    expect(s).toMatchObject({ ip: '5.75.130.50', type: 'cx33', location: 'fsn1', size: 'recommended', agents: '6' })
+    const sent = created.at(-1) as Record<string, any>
     expect(sent.image).toBe('ubuntu-24.04')
-    expect(sent.user_data).toContain(`https://get.example/i/${job.sid}`)
-    expect(JSON.stringify(ok.data)).not.toMatch(/goodtoken|never-used/)
-    // The page sees the job, never its key or token.
-    const st = (await post('/api/status', { sid: job.sid, view: job.view })).data
-    expect(JSON.stringify(st)).not.toMatch(/goodtoken|never-used|view|pub/)
+    expect(sent.user_data).toBe(job.userData)
+    expect(sent.labels).toEqual({ app: 'weevils', weevils: 'true', 'weevils-sid': job.sid })
+    expect(JSON.stringify(s)).not.toMatch(/never-used/)
+    expect((await post('/api/hetzner/created', { sid: job.sid, view: job.view, server: { ...s, size: 'huge' } })).data.error).toBe('bad_size')
+    expect((await post('/api/hetzner/created', { sid: job.sid, view: job.view, server: { ...s, ip: '127.0.0.1' } })).data.error).toBe('bad_server')
+    const ok = await post('/api/hetzner/created', { sid: job.sid, view: job.view, server: s })
+    expect(ok.status).toBe(200)
+    expect(ok.data).toMatchObject({ state: 'running', step: 'created', reach: '5-75-130-50.sslip.io', server: { id: 42, ip: '5.75.130.50', type: 'cx33', size: 'recommended', agents: '6' } })
+    // Told again (a second tap, a page reopened): the same server, never another.
+    expect((await post('/api/hetzner/created', { sid: job.sid, view: job.view, server: { ...s, id: 43 } })).data.server.id).toBe(42)
+  })
+  it('lists the servers weevils made on the account and gets a fresh root password, all from the browser', async () => {
+    hzServers.push(hzServer(801, 'weevils-aaaaaa', { app: 'weevils', 'weevils-sid': 'abcdefghjk' }), hzServer(802, 'my-database'))
+    const list = await HZ.servers('goodtoken00000000000000', o())
+    expect(list).toEqual([expect.objectContaining({ id: 801, sid: 'abcdefghjk', ip: '172.30.99.10', location: 'Nuremberg', weevils: true })])
+    expect(await HZ.rootPassword('goodtoken00000000000000', 801, o())).toBe('right')
+    expect(resets.at(-1)).toBe(801)
+    hzServers.length = 0
+  })
+  it('takes no token anywhere: the token-taking routes are gone, and the page may only talk to Hetzner besides itself', async () => {
+    for (const r of ['quote', 'servers', 'create', 'continue']) expect((await post(`/api/hetzner/${r}`, { sid: job.sid, view: job.view, token: 'goodtoken00000000000000', size: 'light' })).status).toBe(404)
+    const csp = (await fetch(base + '/')).headers.get('content-security-policy') || ''
+    expect(csp).toMatch(/connect-src 'self' https:\/\/api\.hetzner\.cloud;/)
+    const lib = await fetch(base + '/hetzner.js')
+    expect(lib.headers.get('content-type')).toMatch(/^text\/javascript/)
+    expect(await lib.text()).toContain('export async function create(')
+    const src = fs.readFileSync(path.join(import.meta.dirname, 'server.mjs'), 'utf8')
+    expect(src).not.toMatch(/b\.token|authorization: `Bearer/)
   })
   it('needs the page’s view token for every call', async () => {
-    const job = (await post('/api/job', { kind: 'hetzner', lang: 'en', pub: pubB64(keyPair().publicKey) })).data
     expect((await post('/api/status', { sid: job.sid, view: 'x'.repeat(job.view.length) })).status).toBe(404)
-    expect((await post('/api/hetzner/create', { sid: job.sid, token: 'goodtoken00000000000000' })).status).toBe(404)
+    expect((await post('/api/hetzner/created', { sid: job.sid, server: { id: 1, ip: '5.75.130.50', size: 'light' } })).status).toBe(404)
   })
 })
 
@@ -310,77 +332,66 @@ describe('coming back to a setup (page closed, another browser, the same token)'
     expect(old.view).toMatch(/^[A-Za-z0-9_-]{24}$/)
   })
 
-  it('never creates a second server on an account that has a weevils server, unless the person says so', async () => {
-    hzServers.push(hzServer(501, 'weevils-zzzzzz', { app: 'weevils' }))
-    const job = await pageJob('hetzner')
-    const q = (await post('/api/hetzner/quote', { sid: job.sid, view: job.view, token: GOOD })).data
-    expect(q.existing).toEqual([expect.objectContaining({ id: 501, name: 'weevils-zzzzzz', ip: '172.30.99.10', location: 'Nuremberg', setup: null })])
-    const n = created.length
-    const refused = await post('/api/hetzner/create', { sid: job.sid, view: job.view, token: GOOD, size: 'recommended', v: 2 })
-    expect(refused.status).toBe(409)
-    expect(refused.data.error).toBe('exists')
-    expect(refused.data.existing[0].id).toBe(501)
-    // A page from before this check reads the error as it comes: a sentence that says what to do.
-    const old = await post('/api/hetzner/create', { sid: job.sid, view: job.view, token: GOOD, size: 'recommended' })
-    expect(old.data.error).toMatch(/already have a weevils server.*reload this page/)
-    expect(created.length).toBe(n)
-    const ok = await post('/api/hetzner/create', { sid: job.sid, view: job.view, token: GOOD, size: 'recommended', another: true, v: 2 })
-    expect(ok.status).toBe(200)
-    // The new server carries its setup: a later visit with the same token finds it.
-    expect((created.at(-1) as any).labels).toEqual({ app: 'weevils', weevils: 'true', 'weevils-sid': job.sid })
-    hzServers.length = 0
-  })
-
-  it('makes one server for two taps at once, and keeps a failure for the page that comes back', async () => {
-    slowCreate = 300
-    const job = await pageJob('hetzner')
-    const [a, b] = await Promise.all([
-      post('/api/hetzner/create', { sid: job.sid, view: job.view, token: GOOD, size: 'light', v: 2 }),
-      new Promise((r) => setTimeout(r, 60)).then(() => post('/api/hetzner/create', { sid: job.sid, view: job.view, token: GOOD, size: 'light', v: 2 })),
-    ])
-    slowCreate = 0
-    expect([a.status, b.status].sort()).toEqual([200, 409])
-    expect(b.data.error).toBe('creating')
+  it('keeps a failure for the page that comes back, and tells how far the account’s setups are (no token)', async () => {
     const bad = await pageJob('hetzner')
-    expect((await post('/api/hetzner/create', { sid: bad.sid, view: bad.view, token: 'readonlytoken0000000000', size: 'light', v: 2 })).status).toBe(403)
+    expect((await post('/api/hetzner/failed', { sid: bad.sid, view: bad.view, error: 'forbidden' })).status).toBe(200)
     expect((await post('/api/status', { sid: bad.sid, view: bad.view })).data).toMatchObject({ state: 'waiting', creating: false, createError: 'forbidden' })
+    const first = await pageJob('hetzner')
+    Object.assign(store.get(first.sid), { server: { id: 601, name: `weevils-${first.sid.slice(0, 6)}`, ip: '172.30.99.10' }, state: 'running' })
+    await report(first.sid, { event: 'step', title: 'getting weevils' })
+    const r = (await post('/api/hetzner/setups', { sid: bad.sid, view: bad.view, sids: [first.sid, 'zzzzzzzzzz', 'not a sid'] })).data
+    expect(r.setups).toEqual({ [first.sid]: { state: 'running', step: 's_source', steps: expect.any(Array) } })
+    expect(JSON.stringify(r)).not.toMatch(/172\.30|weevils-/)
   })
 
-  it('takes over a setup still installing (the install asks for the page’s key at the end)', async () => {
+  it('takes over a setup still installing, by the server’s label (the install asks for the page’s key at the end)', async () => {
     const first = await pageJob('hetzner')
-    store.get(first.sid).server = { id: 601, name: `weevils-${first.sid.slice(0, 6)}`, ip: '172.30.99.10' }
-    store.get(first.sid).state = 'running'
-    // The server, made before the setup label existed: found by the name it was given.
-    hzServers.push(hzServer(601, `weevils-${first.sid.slice(0, 6)}`, { app: 'weevils' }))
+    Object.assign(store.get(first.sid), { server: { id: 601, name: `weevils-${first.sid.slice(0, 6)}`, ip: '172.30.99.10' }, state: 'running' })
     expect((await fetch(`${base2}/i/${first.sid}`)).status).toBe(200)
-    await report(first.sid, { event: 'step', title: 'getting weevils' })
     const second = await pageJob('hetzner', 'another browser')
-    const list = (await post('/api/hetzner/servers', { sid: second.sid, view: second.view, token: GOOD })).data
-    expect(list.existing[0]).toMatchObject({ id: 601, setup: { state: 'running', step: 's_source' } })
-    const r = (await post('/api/hetzner/continue', { sid: second.sid, view: second.view, token: GOOD, server: 601 })).data
+    expect((await post('/api/hetzner/attach', { sid: second.sid, view: second.view, label: 'zzzzzzzzzz' })).data.error).toBe('not_live')
+    expect((await post('/api/hetzner/attach', { sid: second.sid, view: second.view, label: first.sid, server: 999 })).data.error).toBe('not_live')
+    const r = (await post('/api/hetzner/attach', { sid: second.sid, view: second.view, label: first.sid, server: 601 })).data
     expect(r).toMatchObject({ attached: true, sid: first.sid, state: 'running' })
     // The second page's resume link now opens the first setup; the first page's no longer does.
     expect((await post('/api/status', { sid: first.sid, view: second.view })).status).toBe(200)
     expect((await post('/api/status', { sid: first.sid, view: first.view })).status).toBe(404)
     expect(await (await fetch(`${base2}/k/${first.sid}`)).text()).toBe(pubB64(second.kp.publicKey))
-    expect(resets).toEqual([])
-    hzServers.length = 0
+    // A finished one is not taken over.
+    store.get(first.sid).state = 'done'
+    const third = await pageJob('hetzner', 'a third browser')
+    expect((await post('/api/hetzner/attach', { sid: third.sid, view: third.view, label: first.sid, server: 601 })).data.error).toBe('not_live')
   })
 
-  it('starts the install again on a finished or forgotten server: a new root password from the host, used once', async () => {
-    hzServers.push(hzServer(701, 'weevils-qqqqqq', { app: 'weevils', weevils: 'true' }), hzServer(702, 'my-database'))
+  it('starts the install again on a finished or forgotten server: a root password the page got from Hetzner, used once', async () => {
     const job = await pageJob('hetzner')
-    expect((await post('/api/hetzner/continue', { sid: job.sid, view: job.view, token: GOOD, server: 702 })).data.error).toBe('not_weevils')
-    expect((await post('/api/hetzner/continue', { sid: job.sid, view: job.view, token: 'badtoken000000000000000', server: 701 })).status).toBe(401)
     sshCalls.length = 0
-    const r = await post('/api/hetzner/continue', { sid: job.sid, view: job.view, token: GOOD, server: 701 })
+    const r = await post('/api/ssh', { sid: job.sid, view: job.view, host: '172.30.99.10', user: 'someone', port: 2222, password: 'right', server: { id: 701, name: 'weevils-qqqqqq', type: 'cx33' } })
     expect(r.status).toBe(200)
     expect(r.data).toMatchObject({ sid: job.sid, state: 'running', reach: 'https://essai.example', server: { id: 701, name: 'weevils-qqqqqq', again: true } })
-    expect(resets).toEqual([701])
-    expect(sshCalls.at(-1)).toMatchObject({ ip: '172.30.99.10', user: 'root', password: 'right', sid: job.sid })
-    expect(JSON.stringify(r.data)).not.toMatch(/right|goodtoken/)
-    expect(JSON.stringify(store.get(job.sid))).not.toMatch(/"right"|goodtoken/)
-    hzServers.length = 0
+    // Always root on 22 there (Hetzner reset root's password), whatever the page says.
+    expect(sshCalls.at(-1)).toMatchObject({ ip: '172.30.99.10', port: 22, user: 'root', password: 'right', sid: job.sid })
+    expect(JSON.stringify(r.data)).not.toMatch(/right/)
+    expect(JSON.stringify(store.get(job.sid))).not.toMatch(/"right"/)
+    // A password that takes a few seconds to land is tried again.
+    const late = await pageJob('hetzner')
+    sshCalls.length = 0
+    expect((await post('/api/ssh', { sid: late.sid, view: late.view, host: '172.30.99.10', password: 'wrong' })).data.error).toBe('ssh_auth')
+    expect(sshCalls.length).toBe(6)
+  })
+
+  it('gives a VPS the same command as a computer: pasted there, it starts, its address from where it asks', async () => {
+    const job = await pageJob('ssh')
+    expect(job.command).toBe(`curl -fsSL https://get.example/install.sh | bash -s ${job.sid}`)
+    expect(job.win).toBeUndefined()
+    expect((await post('/api/status', { sid: job.sid, view: job.view, full: true })).data.command).toBe(job.command)
+    expect((await post('/api/status', { sid: job.sid, view: job.view })).data.state).toBe('waiting')
+    const env = await (await fetch(`${base2}/i/${job.sid}.env`, { headers: { 'x-forwarded-for': '5.75.130.77' } })).text()
+    expect(env).toMatch(/^lang=en\nmode=vps\nreach=5-75-130-77\.sslip\.io\npub=/)
+    expect((await post('/api/status', { sid: job.sid, view: job.view })).data).toMatchObject({ state: 'running', step: 'created', server: { ip: '5.75.130.77' } })
+    // Pasted on a machine the Internet can't reach: set up like a computer (a link of its own for the phone).
+    const home = await pageJob('ssh')
+    expect(await (await fetch(`${base2}/i/${home.sid}.env`, { headers: { 'x-forwarded-for': '192.168.1.20' } })).text()).toMatch(/\nmode=pc\nreach=\n/)
   })
 
   it('shows the same browser at the same address how far its setup is, and nothing that opens it', async () => {
@@ -661,6 +672,34 @@ describe('the shared script (a computer)', () => {
     expect(env).toMatch(/^lang=fr\nmode=pc\nreach=\npub=[A-Za-z0-9+/=]{200,800}\n$/)
     expect((await post('/api/status', { sid: job.sid, view: job.view })).data.state).toBe('running')
     expect((await fetch(`${base}/i/zzzzzzzzzz.env`)).status).toBe(404)
+  })
+
+  it('pins the release key, serves the security notes and the key, and installs only code the key signed', async () => {
+    const sh = await (await fetch(`${base}/install.sh`)).text()
+    const pub = fs.readFileSync(path.join(here, 'release-key.pub'), 'utf8').trim()
+    expect(sh).toContain(`RELEASE_KEY='${pub}'`)
+    expect(await (await fetch(`${base}/release-key.pub`)).text()).toBe(pub + '\n')
+    const notes = await (await fetch(`${base}/security`)).text()
+    for (const s of ['## What the install does', '## What leaves your machine', '## Remove it', pub.split(' ')[1]]) expect(notes).toContain(s)
+    // The bootstrap's own check, cut out of the script, against a throwaway key (the real one never leaves its machine).
+    const fn = /^  verify_bundle\(\) \{\n[\s\S]*?\n  \}$/m.exec(bootstrap)?.[0]
+    expect(fn).toBeTruthy()
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-sig-'))
+    execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', path.join(dir, 'k')])
+    fs.writeFileSync(path.join(dir, 'weevils.bundle'), 'the code')
+    execFileSync('ssh-keygen', ['-q', '-Y', 'sign', '-n', 'weevils-release', '-f', path.join(dir, 'k'), path.join(dir, 'weevils.bundle')])
+    // The signature is fetched from "$2/weevils.bundle.sig": here a file URL (a sync call would block a local server).
+    const check = (file: string, key: string) =>
+      spawnSync('bash', ['-c', `${fn}\nRELEASE_KEY="$K"; verify_bundle "$1" "$2"`, 'x', file, `file://${dir}`], { env: { ...process.env, K: key } }).status
+    try {
+      const good = fs.readFileSync(path.join(dir, 'k.pub'), 'utf8').trim()
+      expect(check(path.join(dir, 'weevils.bundle'), good)).toBe(0)
+      fs.writeFileSync(path.join(dir, 'other'), 'other code')
+      expect(check(path.join(dir, 'other'), good)).not.toBe(0)
+      expect(check(path.join(dir, 'weevils.bundle'), pub)).not.toBe(0)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

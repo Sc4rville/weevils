@@ -8,7 +8,7 @@
 #   ./install.sh --agent      run by an AI agent (see AGENTS.md): no questions, ends with a machine-readable summary
 #
 # Options: --yes  --agent  --name <first name>  --lang en|fr  --domain <host> | --url <https://…> | --lan  --port <n>
-#          --dir <path>  --secondary <ssh-host>  --machine <id>  --no-update  --uninstall [--purge]  --help
+#          --dir <path>  --secondary <ssh-host>  --machine <id>  --no-update  --ask-permissions  --no-auto-update  --uninstall [--purge]  --help
 # The messages are plain variables read by name in t(): shellcheck can't see that they are used.
 # shellcheck disable=SC2034
 set -euo pipefail
@@ -45,8 +45,8 @@ ORIG_PATH=$PATH
 # One plain variable per message (EN_<key>, FR_<key>), read by t(): bash 3.2 has no associative array.
 EN_title="weevils installer"
 FR_title="installation de weevils"
-EN_usage="usage: install.sh [--yes | --agent] [--name <first name>] [--lang en|fr] [--domain <host> | --url <https://…> | --lan] [--port <n>] [--dir <path>] [--secondary <ssh-host>] [--machine <id>] [--no-update] | --uninstall [--purge]"
-FR_usage="usage : install.sh [--yes | --agent] [--name <prénom>] [--lang en|fr] [--domain <hôte> | --url <https://…> | --lan] [--port <n>] [--dir <dossier>] [--secondary <hôte-ssh>] [--machine <id>] [--no-update] | --uninstall [--purge]"
+EN_usage="usage: install.sh [--yes | --agent] [--name <first name>] [--lang en|fr] [--domain <host> | --url <https://…> | --lan] [--port <n>] [--dir <path>] [--secondary <ssh-host>] [--machine <id>] [--no-update] [--ask-permissions] [--no-auto-update] | --uninstall [--purge]"
+FR_usage="usage : install.sh [--yes | --agent] [--name <prénom>] [--lang en|fr] [--domain <hôte> | --url <https://…> | --lan] [--port <n>] [--dir <dossier>] [--secondary <hôte-ssh>] [--machine <id>] [--no-update] [--ask-permissions] [--no-auto-update] | --uninstall [--purge]"
 EN_s_system="checking the system"
 FR_s_system="vérification du système"
 EN_no_tty="no terminal to ask questions: default answers, and no to anything that installs (run with --yes or from a terminal)"
@@ -77,8 +77,8 @@ EN_refused="can't go on without them. Install them, then run me again."
 FR_refused="impossible de continuer sans eux. Installe-les, puis relance-moi."
 EN_node_old="needs Node.js >= 22.18 (found:"
 FR_node_old="il faut Node.js >= 22.18 (trouvé :"
-EN_ask_node="install Node.js 22 (NodeSource)?"
-FR_ask_node="j'installe Node.js 22 (NodeSource) ?"
+EN_ask_node="install Node.js 22?"
+FR_ask_node="j'installe Node.js 22 ?"
 EN_node_hint="install Node.js 22 or newer (https://nodejs.org), then run me again."
 FR_node_hint="installe Node.js 22 ou plus récent (https://nodejs.org), puis relance-moi."
 EN_npm_nosudo="npm is missing and installing it needs root: install npm (or Node.js from https://nodejs.org), then run me again."
@@ -273,7 +273,7 @@ FR_mac_awake="sur un Mac, weevils tourne tant que ta session est ouverte ; il ga
 # ---------------------------------------------------------------- options
 
 YES=0 NAME='' LANG_OPT='' DOMAIN='' URL_OPT='' PORT='' DIR='' SECONDARY='' MACHINE='' NO_UPDATE=${WEEVILS_NO_UPDATE:-0}
-LAN=0 UNINSTALL=0 PURGE=0 AGENT=0
+LAN=0 UNINSTALL=0 PURGE=0 AGENT=0 ASK_PERMS=0 NO_AUTO_UPDATE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -y | --yes) YES=1 ;;
@@ -287,6 +287,8 @@ while [ $# -gt 0 ]; do
     --secondary) SECONDARY=${2:?--secondary}; shift ;;
     --machine) MACHINE=${2:?--machine}; shift ;;
     --no-update) NO_UPDATE=1 ;;
+    --ask-permissions) ASK_PERMS=1 ;;
+    --no-auto-update) NO_AUTO_UPDATE=1 ;;
     --lan) LAN=1 ;;
     --uninstall) UNINSTALL=1 ;;
     --purge) PURGE=1 ;;
@@ -443,6 +445,31 @@ pkg_install() { # pkg_install pkg… (names for the detected package manager)
   esac
 }
 
+# Node 22 for this user only: the official linux tarball from nodejs.org, verified against its SHASUMS256.txt,
+# unpacked in ~/.local/share/weevils/node, its commands linked into ~/.local/bin. No sudo, nothing outside $HOME.
+node_user() {
+  local arch dist=https://nodejs.org/dist/latest-v22.x sums file tmp dest=$HOME/.local/share/weevils/node
+  case $(uname -m) in x86_64 | amd64) arch=x64 ;; aarch64 | arm64) arch=arm64 ;; *) return 1 ;; esac
+  sums=$(curl -fsSL "$dist/SHASUMS256.txt") || return 1
+  file=$(printf '%s\n' "$sums" | awk -v a="linux-$arch.tar.gz" '$2 ~ ("^node-v22\\.[0-9.]+-" a "$") { print $2; exit }')
+  [ -n "$file" ] || return 1
+  tmp=$(mktemp -d)
+  curl -fsSL "$dist/$file" -o "$tmp/$file" || { rm -rf "$tmp"; return 1; }
+  if [ "$(sha256_of "$tmp/$file")" != "$(printf '%s\n' "$sums" | awk -v f="$file" '$2 == f { print $1 }')" ]; then
+    rm -rf "$tmp"; warn "node: checksum mismatch"; return 1
+  fi
+  rm -rf "$dest.new" && mkdir -p "$dest.new" && tar -xzf "$tmp/$file" -C "$dest.new" --strip-components=1 || { rm -rf "$tmp" "$dest.new"; return 1; }
+  rm -rf "$tmp" "$dest" && mv "$dest.new" "$dest"
+  mkdir -p "$HOME/.local/bin"
+  local b
+  for b in node npm npx corepack; do [ ! -e "$dest/bin/$b" ] || ln -sf "$dest/bin/$b" "$HOME/.local/bin/$b"; done
+  # Global npm packages (Codex…) go there too, as the person.
+  "$dest/bin/npm" config set prefix "$dest" >/dev/null 2>&1 || true
+  PATH=$HOME/.local/bin:$PATH; export PATH; hash -r
+  node_ok
+}
+sha256_of() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+
 node_ok() {
   command -v node >/dev/null || return 1
   local v; v=$(node -p 'process.versions.node' 2>/dev/null) || return 1
@@ -564,6 +591,10 @@ check_system() {
         PATH=$HOMEBREW_PREFIX/bin:$PATH; export PATH; hash -r
       fi
       node_ok || die "$(t node_hint)"
+    elif [ "$OS" = Linux ] && [ "$(id -u)" != 0 ]; then
+      # As the person, no root: Node's official build, checked against nodejs.org's SHA-256 list, in ~/.local.
+      confirm "$(t ask_node)" || die "$(t node_hint)"
+      node_user || die "$(t node_hint)"
     elif [ "$PM" = apt ] || [ "$PM" = dnf ] || [ "$PM" = pacman ]; then
       [ "$SUDO" != none ] || no_root "node 22"
       confirm "$(t ask_node)" || die "$(t node_hint)"
@@ -698,6 +729,11 @@ configure() {
   [ -z "$DOMAIN" ] || [ "$(cfg get WEEVILS_HOST)" != 0.0.0.0 ] || cfg set WEEVILS_HOST 127.0.0.1
   # Claude Code refuses --dangerously-skip-permissions as root: agents keep their permission prompts there.
   [ "$(id -u)" != 0 ] || cfg default WEEVILS_SAFE 1
+  # --ask-permissions (a personal computer, from the setup page): agents ask before acting, answered from the app.
+  # A later choice in the app is kept: only a first value is written.
+  [ "$ASK_PERMS" = 0 ] || cfg default WEEVILS_SAFE 1
+  # --no-auto-update: weevils never fetches a new version by itself (an update from the app, by hand, still works).
+  [ "$NO_AUTO_UPDATE" = 0 ] || cfg set WEEVILS_AUTO_UPDATE 0
   # --url: HTTPS is served by something else in front (tailscale serve…): weevilsd back on 127.0.0.1, behind it.
   if [ -n "$URL_OPT" ]; then
     cfg set WEEVILS_PUBLIC_URL "$URL_OPT"
@@ -1144,6 +1180,11 @@ uninstall() {
   if [ -n "$domain" ] && [ -x "$svc" ] && [ "$("$svc" config get WEEVILS_PUBLIC_URL)" = "https://$domain" ]; then
     "$svc" config set WEEVILS_PUBLIC_URL ''
   fi
+  # Node.js put in the home folder by the install (node_user): its links go; the files go with --purge.
+  local nb
+  for nb in node npm npx corepack; do
+    case $(readlink "$HOME/.local/bin/$nb" 2>/dev/null) in "$HOME/.local/share/weevils/node/"*) rm -f "$HOME/.local/bin/$nb" ;; esac
+  done
   rm -f "$HOME/.local/bin/wv" "$HOME/.local/bin/weevils" "$HOME/.local/bin/weevils-service" "$HOME/.local/bin/weevils-hook" "$HOME/.local/bin/weevils-update"
   ok "$(t un_bin)"
 

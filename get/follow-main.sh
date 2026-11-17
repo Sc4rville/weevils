@@ -10,15 +10,17 @@ live=$(git -C "$here/.." rev-parse --show-toplevel)
 git -C "$live" fetch -q origin main
 new=$(git -C "$live" rev-parse --verify 'origin/main^{commit}')
 old=$(git -C "$live" rev-parse HEAD)
+restart=0
 if [ "$new" != "$old" ]; then
   changed=$(git -C "$live" diff --name-only "$old" "$new")
   git -C "$live" checkout -q --detach --force "$new"
   # What the service reads once, at start: its code, the install script it serves, the installer's step titles.
-  if grep -qxE 'get/server\.mjs|get/bootstrap\.sh|install\.sh' <<<"$changed"; then
-    systemctl --user restart weevils-get
-    echo "get restarted on ${new:0:7}"
-  else
-    echo "get on ${new:0:7} (pages and assets only: no restart)"
-  fi
+  if grep -qxE 'get/server\.mjs|get/bootstrap\.sh|get/release-key\.pub|install\.sh' <<<"$changed"; then restart=1
+  else echo "get on ${new:0:7} (pages and assets only: no restart)"; fi
 fi
-exec "$live/get/refresh-bundle.sh"
+# The bundle first (signed), then the service that serves the script checking it.
+"$live/get/refresh-bundle.sh"
+if [ "$restart" = 1 ]; then
+  systemctl --user restart weevils-get
+  echo "get restarted on ${new:0:7}"
+fi

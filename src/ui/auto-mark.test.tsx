@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H24Activity, Optimizer, Project, Session, Snapshot } from '../../shared/api.ts'
 
 const pushed = vi.hoisted(() => [] as unknown[])
-vi.mock('../api', () => ({ api: { transcribeInfo: async () => ({ enabled: false }) } }))
+vi.mock('../api', () => ({ api: { ledger: async () => ({ goals: [], asks: [], pending: [], trace: [], knowledge: [], digestTokens: 0 }),  transcribeInfo: async () => ({ enabled: false }) } }))
 vi.mock('../push', () => ({ ensurePush: async () => {} }))
 for (let p: object | null = HTMLElement.prototype; p; p = Object.getPrototypeOf(p)) if (Object.hasOwn(p, 'animate')) delete (p as { animate?: unknown }).animate
 globalThis.fetch = (async () => new Response('{}')) as typeof fetch

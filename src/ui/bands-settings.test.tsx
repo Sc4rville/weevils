@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { H24Activity, Machine, Project, Session, Snapshot } from '../../shared/api.ts'
 
-vi.mock('../api', () => ({ api: { usageRate: async () => ({ step: 15_000, end: Date.now(), buckets: [] }) } }))
+vi.mock('../api', () => ({ api: { ledger: async () => ({ goals: [], asks: [], pending: [], trace: [], knowledge: [], digestTokens: 0 }),  usageRate: async () => ({ step: 15_000, end: Date.now(), buckets: [] }) } }))
 vi.mock('../push', () => ({ ensurePush: async () => {} }))
 vi.mock('./infra', async (orig) => ({ ...(await orig<typeof import('./infra')>()), UsageLine: () => null }))
 vi.mock('./relay', async (orig) => ({ ...(await orig<typeof import('./relay')>()), RelayPrefLine: () => null }))

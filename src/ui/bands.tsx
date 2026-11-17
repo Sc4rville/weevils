@@ -28,6 +28,7 @@ import B from '../i18n/bits'
 import { plain, userText, type ChipId } from './format'
 import { AutoMark, FilledIcon, G, Icon } from './icons'
 import { KeepSessionOrder } from './session-order'
+import { OlderLine, ProjectNow, useHistory } from './project-screen'
 import { autoOfSession } from './auto-model'
 import { PrefLines, UpdatesLine } from './prefs'
 import { RelayPrefLine, ThreadPlans } from './relay'
@@ -492,9 +493,10 @@ function collapsedPrefs(): Record<string, boolean> {
     return {}
   }
 }
-function saveCollapsed(id: string, v: boolean) {
+function forgetCollapsed(id: string) {
   try {
-    localStorage.setItem(COLLAPSED, JSON.stringify({ ...collapsedPrefs(), [id]: v }))
+    const { [id]: _, ...rest } = collapsedPrefs()
+    localStorage.setItem(COLLAPSED, JSON.stringify(rest))
   } catch {
     /* stockage indisponible */
   }
@@ -527,15 +529,16 @@ export function ProjectBand({ project }: { project: Project }) {
   useLayoutEffect(() => {
     shownRows.current = rowKey ? rowKey.split('|') : []
   }, [rowKey])
+  const history = useHistory(sessions)
   const att = active.filter((s) => s.status === 'needs_user')
   const cut = active.filter((s) => s.status === 'interrupted')
   const convCount = snap.conversationCounts.byProject[project.id] ?? 0
   // Réduit ou déplié, au choix, mémorisé par projet ; par défaut réduit quand rien ne tourne.
   const [pref, setPref] = useState<boolean | undefined>(() => collapsedPrefs()[project.id])
   const collapsed = mode === 'normal' && (pref ?? active.length === 0)
-  const remember = (v: boolean) => {
-    setPref(v)
-    saveCollapsed(project.id, v)
+  const forget = () => {
+    setPref(undefined)
+    forgetCollapsed(project.id)
   }
   // Un tap sur le nom : la bande reste sous le doigt pendant que les autres se replient ou se déplient autour
   // (keepInPlace) ; ce qui s'ouvre sous le bas de l'écran y est amené ; si elle a dû bouger malgré tout (haut du flux,
@@ -547,25 +550,15 @@ export function ProjectBand({ project }: { project: Project }) {
     markSeen('g-fold')
     const grow = mode === 'mini' || (mode === 'normal' && collapsed)
     pin.current = { fix: keepInPlace(head.current, 480), top: head.current?.getBoundingClientRect().top ?? 0, grow, at: Date.now() }
-    // Une autre bande est ouverte (le fil de weevboss en grand, un autre projet) : un tap saute directement ici.
-    if (mode === 'mini') {
-      for (const r of project.repos) prefetchRepo(r, project.where[r] ?? snap.machines[0]?.id ?? '')
-      remember(false)
-      setExpanded(project.id)
-      return
-    }
+    // A tap on the name opens the project (what runs, its to-do, its sessions); a second tap closes it. On closing, a
+    // project goes back to its resting look: folded when nothing runs (an older manual fold is forgotten).
     if (mode === 'open') {
       setExpanded(null)
-      remember(true)
       return
     }
-    if (collapsed) {
-      for (const r of project.repos) prefetchRepo(r, project.where[r] ?? snap.machines[0]?.id ?? '')
-      remember(false)
-      if (active.length === 0) setExpanded(project.id)
-      return
-    }
-    remember(true)
+    for (const r of project.repos) prefetchRepo(r, project.where[r] ?? snap.machines[0]?.id ?? '')
+    if (pref !== undefined) forget()
+    setExpanded(project.id)
   }
   useLayoutEffect(() => {
     const p = pin.current
@@ -647,14 +640,21 @@ export function ProjectBand({ project }: { project: Project }) {
 
       <Collapse open={shown !== 'mini'} transition={tx}>
         {sourceAccessIssue(project) && <div className="in meta" role="status">{sourceAccessIssue(project)}</div>}
+        {mode === 'open' && <ProjectNow project={project} sessions={sessions} />}
         <AnimatePresence initial={false}>
           {active.map((s) => (
             <RowSlot key={s.id}>
               <SessionRow session={s} />
             </RowSlot>
           ))}
+          {/* Finished sessions only in the open project, newest first (Scarville, 2026-11-17): not on the home screen. */}
+          {mode === 'open' && history.shown.map((s) => (
+            <RowSlot key={s.id}>
+              <SessionRow session={s} />
+            </RowSlot>
+          ))}
         </AnimatePresence>
-        {/* Finished sessions are not listed on the home screen (Scarville, 2026-11-17): the conversations page keeps them. */}
+        {mode === 'open' && history.hidden > 0 && <OlderLine n={history.hidden} onClick={history.showAll} />}
         <div style={{ height: 12 }} />
       </Collapse>
 

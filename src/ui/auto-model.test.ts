@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { H24Activity, Optimizer, Project } from '../../shared/api.ts'
-import { DRAWER_SLOT, PROP_PALETTE, at, autoList, autoOfSession, isAutomation, bandColors, propColors, failedLine, fromActivity, fromOptimizer, hueGap, progressOf, short, triggerText, type Trigger } from './auto-model'
+import { autoGroups, rowStatus, DRAWER_SLOT, PROP_PALETTE, at, autoList, autoOfSession, isAutomation, bandColors, propColors, failedLine, fromActivity, fromOptimizer, hueGap, progressOf, short, triggerText, type Trigger } from './auto-model'
 
 const NOW = 1_800_000_000_000
 const MIN = 60_000
@@ -36,7 +36,7 @@ describe('autoList: what runs without asking', () => {
     expect(fromOptimizer(opt({ waiting: 'load' }))).toMatchObject({ state: 'waiting', trigger: { kind: 'idle' } })
     expect(fromOptimizer(opt({ waiting: 'queue' }))!.state).toBe('queued')
     expect(fromOptimizer(opt({ paused: true }))!.state).toBe('paused')
-    expect(fromOptimizer(opt({ waiting: 'time', startAt: NOW + H, every: 7 * DAY, window: { from: 60, to: 360 } }))).toMatchObject({ state: 'waiting', nextAt: null, trigger: { kind: 'every', every: 7 * DAY } })
+    expect(fromOptimizer(opt({ waiting: 'time', startAt: NOW + H, every: 7 * DAY, window: { from: 60, to: 360 } }))).toMatchObject({ state: 'scheduled', nextAt: NOW + H, trigger: { kind: 'every', every: 7 * DAY } })
     expect(fromOptimizer(opt({ window: { from: 60, to: 360 } }))!.trigger.kind).toBe('window')
     expect(fromOptimizer(opt({ notBefore: NOW + H }))!.trigger.kind).toBe('time')
     expect(fromActivity(act({ kind: 'timer', nextRunAt: NOW + MIN, everyMs: 6 * H }))).toMatchObject({ state: 'scheduled', trigger: { kind: 'every', every: 6 * H } })
@@ -162,13 +162,13 @@ describe('bandColors', () => {
 })
 
 describe('progress: the span the fill covers', () => {
-  it('a recurring eligibility date never fills toward an invented next execution', () => {
+  it('held by its time, it fills from its last run (else its acceptance) to the runner\'s next start, never longer than the period', () => {
     const x = fromOptimizer(opt({ waiting: 'time', startAt: NOW + 6 * H, notBefore: NOW + 6 * H, every: DAY, acceptedAt: NOW - 30 * DAY, runs: [{ at: NOW - 18 * H, startedAt: NOW - 18 * H - 9 * MIN, ok: true }] }))!
-    expect(x.progress(NOW)).toBeNull()
+    expect(x.progress(NOW)).toEqual({ from: NOW - 18 * H, to: NOW + 6 * H })
     const fresh = fromOptimizer(opt({ waiting: 'time', startAt: NOW + 6 * H, notBefore: NOW + 6 * H, every: DAY, acceptedAt: NOW - 2 * H }))!
-    expect(fresh.progress(NOW)).toBeNull()
+    expect(fresh.progress(NOW)).toEqual({ from: NOW - 2 * H, to: NOW + 6 * H })
     const old = fromOptimizer(opt({ waiting: 'time', startAt: NOW + 6 * H, notBefore: NOW + 6 * H, every: DAY, acceptedAt: NOW - 30 * DAY }))!
-    expect(old.progress(NOW)).toBeNull()
+    expect(old.progress(NOW)).toEqual({ from: NOW + 6 * H - DAY, to: NOW + 6 * H })
   })
 
   it('a run heads for its usual length (median of the past runs, else the estimate)', () => {
@@ -227,12 +227,12 @@ it('does not turn orphan starts, retry eligibility or windows into dated executi
  expect(fromOptimizer(opt({paused:true,notBefore:NOW+H}),null,NOW)?.nextAt).toBeNull()
 })
 
-it('recurring notBefore written after a run is eligibility, not a chosen clock time',()=>{
+it('a recurring task held by its time is scheduled at the runner\'s next start (never « waiting for the machine »); its trigger stays a cadence',()=>{
  const x=fromOptimizer(opt({every:DAY,notBefore:NOW+DAY,startAt:NOW+DAY,waiting:'time',runs:[{at:NOW,startedAt:NOW-MIN,ok:true}]}),null,NOW)!
- expect(x.nextAt).toBeNull();expect(x.trigger.at).toBeUndefined()
+ expect(x.nextAt).toBe(NOW+DAY);expect(x.trigger.at).toBeUndefined()
  expect(triggerText(x.trigger,NOW,'en')).toBe('every day')
  expect(triggerText(x.trigger,NOW,'fr')).toBe('chaque jour')
- expect(x.state).toBe('waiting')
+ expect(x.state).toBe('scheduled')
  const timer=fromActivity(act({kind:'timer',runState:'waiting',nextRunAt:NOW+DAY,everyMs:DAY}))
  expect(timer.nextAt).toBe(NOW+DAY)
 })
@@ -254,5 +254,29 @@ describe('automated shows only real automations', () => {
     expect(isAutomation({ ...job, nextRunAt: 1 })).toBe(true)
     expect(isAutomation({ ...job, demo: true })).toBe(true)
     expect(isAutomation({ ...job, kind: 'timer' })).toBe(true)
+  })
+})
+
+describe('the drawer: one specific status per row, families', () => {
+  const cond = () => 'machine busy'
+  it('says what only this automation can say', () => {
+    expect(rowStatus(fromOptimizer(opt({ state: 'running', startedAt: NOW - 14 * MIN }), null, NOW)!, NOW, cond, 'en')).toBe('running 14m')
+    expect(rowStatus(fromOptimizer(opt({ waiting: 'time', startAt: NOW + 2 * H, every: DAY }), null, NOW)!, NOW, cond, 'en')).toBe('in 2h')
+    expect(rowStatus(fromOptimizer(opt({ waiting: 'time', startAt: NOW + 25 * MIN, every: DAY }), null, NOW)!, NOW, cond, 'en')).toBe('in 25m')
+    expect(rowStatus(fromOptimizer(opt({ waiting: 'time', startAt: NOW + H, every: DAY, runs: [{ at: NOW - 3 * H, startedAt: NOW - 3 * H - MIN, ok: false }] }), null, NOW)!, NOW, cond, 'en')).toBe('failed 3h ago')
+    expect(rowStatus(fromOptimizer(opt({ waiting: 'load' }), null, NOW)!, NOW, cond, 'en')).toBe('machine busy')
+    expect(rowStatus(fromOptimizer(opt({ paused: true }), null, NOW)!, NOW, cond, 'en')).toBe('paused')
+    // Held for a retry that ends before its own time (Claude logged out, a limit): its own time, not « waiting to retry » on every row.
+    expect(rowStatus(fromOptimizer(opt({ waiting: 'later', retryAt: NOW + MIN, startAt: NOW + 3 * H, every: DAY }), null, NOW)!, NOW, cond, 'en')).toBe('in 3h')
+    expect(rowStatus(fromOptimizer(opt({ waiting: 'later', retryAt: NOW + 4 * H, startAt: NOW + 3 * H, every: DAY }), null, NOW)!, NOW, () => 'waiting to retry', 'en')).toBe('waiting to retry')
+    // A built-in (the queue never marks it) is held by its own time too.
+    expect(rowStatus(fromOptimizer(opt({ builtin: 'cost', startAt: NOW + 15 * MIN, every: 30 * MIN }), null, NOW)!, NOW, cond, 'en')).toBe('in 15m')
+  })
+  it('groups by family, the unnamed ones last; none named: a flat list', () => {
+    const a = fromOptimizer(opt({ id: 'a', group: 'Growth' }), null, NOW)!
+    const b = fromOptimizer(opt({ id: 'b', group: 'Content' }), null, NOW)!
+    const c = fromOptimizer(opt({ id: 'c' }), null, NOW)!
+    expect(autoGroups([a, b, c], 'other')?.map((g) => [g.name, g.items.map((x) => x.id)])).toEqual([['Content', ['b']], ['Growth', ['a']], ['other', ['c']]])
+    expect(autoGroups([c], 'other')).toBeNull()
   })
 })

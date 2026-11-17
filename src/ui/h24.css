@@ -71,8 +71,8 @@
   grid-template-columns: 22px minmax(0, 1fr) auto;
   column-gap: 10px;
   align-items: center;
-  min-height: 52px;
-  padding-block: 12px 13px;
+  min-height: 48px;
+  padding-block: 10px;
 }
 
 .auto-band .chars {
@@ -93,16 +93,15 @@
   vertical-align: middle;
 }
 
+/* One line, small, like a session row: a long name fades out at its right edge, never « … » (Scarville, 2026-11-17). */
 .auto-name {
-  font-size: 1.375rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
   overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 
 .auto-band .act {
@@ -465,3 +464,50 @@
 .auto-delete-row { text-align: end; }
 
 .auto-band .act.retry-time { max-width: 9em; white-space: normal; text-align: end; }
+
+/* ---------- A family: the feed's nesting (a project band opening onto its sessions) ---------- */
+
+.auto-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  text-align: left;
+}
+
+.auto-group-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.auto-group-name .auto-mark { flex: none; width: 16px; height: 16px; }
+
+.auto-group-head .act {
+  flex: none;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Its automations: rows in the family's colour, each with its own fill. */
+.auto-row {
+  position: relative;
+  overflow: hidden;
+}
+
+.auto-row > .in {
+  min-height: 44px;
+  padding-block: 8px;
+}
+
+.auto-band .act.alert { color: var(--alert); }

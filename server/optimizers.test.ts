@@ -1568,6 +1568,21 @@ describe('auto — runs, their outputs, the automation page', () => {
       expect(o.get(draft.id)!.state).toBe('queued')
     })
 
+    it('label: a name and a family set by hand, nothing else changes', async () => {
+      const o = seed()
+      const before = o.get('a1b2c3')!.rev
+      expect(await call(o, 'POST', '/api/optimizers/a1b2c3/label', { title: '  Funding   hunter ', group: 'Growth' })).toMatchObject({ status: 200, body: { item: { title: 'Funding hunter', group: 'Growth' } } })
+      expect(o.list()[0]).toMatchObject({ title: 'Funding hunter', group: 'Growth' })
+      expect(o.get('a1b2c3')!.rev).toBe(before)
+      expect((await call(o, 'POST', '/api/optimizers/a1b2c3/label', { group: null })).status).toBe(200)
+      expect(o.list()[0].group).toBeUndefined()
+      expect((await call(o, 'POST', '/api/optimizers/a1b2c3/label', { title: '' })).status).toBe(400)
+      expect((await call(o, 'POST', '/api/optimizers/a1b2c3/label', { title: 'x'.repeat(61) })).status).toBe(400)
+      expect((await call(o, 'POST', '/api/optimizers/a1b2c3/label', {})).status).toBe(400)
+      expect((await call(o, 'POST', '/api/optimizers/nope/label', { title: 'x' })).status).toBe(404)
+      expect(model).not.toHaveBeenCalled()
+    })
+
     it('pause and run', async () => {
       const o = seed()
       expect(await call(o, 'POST', '/api/optimizers/a1b2c3/pause', { paused: true })).toMatchObject({ status: 200, body: { ok: true } })

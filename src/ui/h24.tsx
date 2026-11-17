@@ -8,7 +8,7 @@ import { Collapse, Line, spring } from './bits'
 import { AutoMark, Icon, type Dir, type IconName } from './icons'
 import { useT } from '../i18n'
 import M from '../i18n/h24'
-import { nextTimeText, autoList, autoRank, bandColors, fromOptimizer, isFinished, projectOfRepo, short, triggerText, type AutoItem } from './auto-model'
+import { nextTimeText, autoGroups, autoList, autoRank, bandColors, fromOptimizer, isFinished, projectOfRepo, rowStatus, short, triggerText, type AutoGroup, type AutoItem } from './auto-model'
 import { TalkCtx, useTalk } from './auto-talk'
 import { autoCondition } from './auto-condition'
 import './h24.css'
@@ -24,6 +24,18 @@ export const chg = (on: boolean, base = '') => `${base}${on ? `${base ? ' ' : ''
 
 /** The old fold memory of the drawer's categories: cleared once. */
 const OLD_FOLDS = 'weevils-auto-folds'
+/** Which families the user opened, by name. */
+const GROUPS_OPEN = 'weevils-auto-groups-open'
+const openGroups = (): Record<string, boolean> => {
+  try {
+    return JSON.parse(localStorage.getItem(GROUPS_OPEN) ?? '{}') as Record<string, boolean>
+  } catch {
+    return {}
+  }
+}
+
+/** A « new automation » nobody wrote anything in, left for more than this: it says nothing, the drawer drops it. */
+const SILENT_DRAFT_MS = 10 * 60_000
 
 /** Bande « auto » collée en bas : on la tire vers le haut (ou on la touche) pour voir ce qui tourne tout seul. */
 export function H24Rail() {
@@ -122,7 +134,7 @@ export function H24Rail() {
   // A task rewritten a moment ago: its new version, before the snapshot follows. One given ✓ here or on its page: an
   // automation already (it slides into its place), one given ×: gone (it folds away).
   const opts = (snap.optimizers ?? []).filter(o => !k.deleted.has(o.id)).map(k.item)
-  const drafts = opts.filter((o) => o.state === 'proposed' && o.draft && !k.decided.has(o.id))
+  const drafts = opts.filter((o) => o.state === 'proposed' && o.draft && !k.decided.has(o.id) && ((o.talk ?? []).some((l) => l.who === 'user') || now - o.createdAt < SILENT_DRAFT_MS))
   const ready = opts.filter((o) => o.state === 'proposed' && !o.draft && !k.decided.has(o.id))
   // Automated is the user's automations first. Under them: the conversations still being drafted (an unfinished
   // « new automation » never sits above what really runs), then, smaller, proposals of real recurring automations (and
@@ -149,7 +161,8 @@ export function H24Rail() {
   const rounding = !!snap.autoRound?.busy
   // A colour per band, in display order: each one far from the one above it (the amber head for the first).
   const kept = useRef(new Map<string, string>())
-  kept.current = bandColors([...live.map((x) => x.id), ...drafts.map((o) => o.id), ...proposals.map((o) => o.id), ...(rounding ? ['__round'] : [])], kept.current)
+  const groups = autoGroups(live, t.otherGroup)
+  kept.current = bandColors([...(groups ? groups.map((g) => `g:${g.name}`) : live.map((x) => x.id)), ...drafts.map((o) => o.id), ...proposals.map((o) => o.id), ...(rounding ? ['__round'] : [])], kept.current)
   const keptDone = useRef(new Map<string, string>())
   keptDone.current = bandColors(finished.map((x) => x.id), keptDone.current)
 
@@ -222,9 +235,9 @@ export function H24Rail() {
           )}
           <TalkCtx.Provider value={k}>
             <AnimatePresence initial={false}>
-              {live.map((x) => (
-                <AutoBand key={x.id} x={x} slot={kept.current.get(x.id) ?? 'p9'} />
-              ))}
+              {groups
+                ? groups.map((g) => <GroupBand key={`g:${g.name}`} g={g} slot={kept.current.get(`g:${g.name}`) ?? 'p9'} focus={h24Focus} />)
+                : live.map((x) => <AutoBand key={x.id} x={x} slot={kept.current.get(x.id) ?? 'p9'} />)}
               {drafts.map((o) => (
                 <motion.section key={o.id} layout="position" className="band auto-band" style={color(kept.current.get(o.id) ?? 'p9')} data-h24={o.id} {...drop}>
                   <button className="auto-hit" onClick={() => push({ kind: 'auto', id: o.id })} aria-label={o.title} />
@@ -381,7 +394,7 @@ export function useMetaLine(x: AutoItem): string {
 
 /** One band, automation or proposal (the same component and key: a proposal given ✓ slides into its place among the
  *  automations, its glyph turning into theirs). */
-function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposal?: Optimizer }) {
+function AutoBand({ x, slot, proposal: o, nested }: { x: AutoItem; slot: string; proposal?: Optimizer; nested?: boolean }) {
   const t = useT(M)
   const { snap, now, push } = useApp()
   const k = useTalk()
@@ -426,19 +439,66 @@ function AutoBand({ x, slot, proposal: o }: { x: AutoItem; slot: string; proposa
       </motion.section>
     )
   }
-  const right = x.state === 'running' && x.startedAt ? short(now - x.startedAt) : x.nextAt && x.nextReason !== 'retry' && x.state !== 'paused' ? nextTimeText(x, now) : ''
+  // One status that only this automation can say (running 14m, in 2h, failed 3h ago, memory low…): never a generic
+  // state repeated on every row (Scarville, 2026-11-17).
+  const right = rowStatus(x, now, autoCondition)
+  const glyph = glyphOf(x)
+  const failed = x.state === 'failed' || (!!x.lastRun && !x.lastRun.ok && x.state !== 'done' && x.state !== 'running')
   return (
-    <motion.section layout="position" className={`band auto-band${x.state === 'paused' ? ' paused' : ''}`} style={color(slot)} data-h24={x.id} {...drop}>
-      <Fill x={x} />
-      <button className="auto-hit" onClick={open} aria-label={t.taskLabel(x.title, x.nextReason === 'retry' ? t.retryWaiting : t[`state_${x.state}`], [meta, right].filter(Boolean).join(', '))} />
+    <motion.section layout="position" className={`${nested ? 'auto-row' : 'band'} auto-band${x.state === 'paused' ? ' paused' : ''}`} style={nested ? undefined : color(slot)} data-h24={x.id} {...drop}>
+      {/* In a family, the fill and the glyph only while they say something the status word doesn't: a run going, a
+          pause, a failure, sleep. A cadence icon and a bar toward « in 2h » on every row were the same thing twice. */}
+      {(!nested || x.state === 'running') && <Fill x={x} />}
+      <button className="auto-hit" onClick={open} aria-label={t.taskLabel(x.title, right, meta)} />
       <div className="in" aria-hidden>
         <span className="st">
-          <Glyph {...glyphOf(x)} />
+          {(!nested || glyph.name !== 'cycle') && <Glyph {...glyph} />}
         </span>
         <span className="auto-name">{x.title}</span>
-        {/* One clear state on the right (next time, run time, or the state in a word); no caption line under the name. */}
-        <span className={`act${x.nextReason === 'retry' ? ' retry-time' : ''}`}>{right || (x.nextReason === 'retry' ? t.retryWaiting : t[`state_${x.state}`])}</span>
+        <span className={`act${x.nextReason === 'retry' ? ' retry-time' : ''}${failed ? ' alert' : ''}`}>{right}</span>
       </div>
+    </motion.section>
+  )
+}
+
+/**
+ * A family of automations, the feed's nesting (a project band opening onto its sessions): one band in its colour, its
+ * name, and on its right, folded, the most pressing word of its rows; a tap opens it onto its automations. Folded by
+ * default, unless one of them runs, failed, or is the one asked for.
+ */
+function GroupBand({ g, slot, focus }: { g: AutoGroup; slot: string; focus?: string | null }) {
+  const t = useT(M)
+  const { now } = useApp()
+  const [pref, setPref] = useState<boolean | undefined>(() => openGroups()[g.name])
+  const lead = g.items[0]
+  const urgent = g.items.some((x) => x.state === 'running' || x.state === 'failed' || (!!x.lastRun && !x.lastRun.ok && x.state !== 'done'))
+  const open = pref ?? (urgent || (!!focus && g.items.some((x) => x.id === focus)))
+  const toggle = () => {
+    setPref(!open)
+    try {
+      localStorage.setItem(GROUPS_OPEN, JSON.stringify({ ...openGroups(), [g.name]: !open }))
+    } catch {
+      /* stockage indisponible */
+    }
+  }
+  const running = g.items.some((x) => x.state === 'running')
+  return (
+    <motion.section layout="position" className={`band auto-group${running ? ' busy' : ''}`} style={color(slot)} data-h24-group={g.name} {...drop}>
+      <button className="in auto-group-head" onClick={toggle} aria-expanded={open} aria-label={t.groupLabel(g.name, g.items.length, open)}>
+        <span className="auto-group-name">
+          {g.name}
+          {running && <AutoMark />}
+        </span>
+        {!open && lead && <span className="act">{rowStatus(lead, now, autoCondition)}</span>}
+      </button>
+      <Collapse open={open}>
+        <AnimatePresence initial={false}>
+          {g.items.map((x) => (
+            <AutoBand key={x.id} x={x} slot={slot} nested />
+          ))}
+        </AnimatePresence>
+        <div style={{ height: 6 }} />
+      </Collapse>
     </motion.section>
   )
 }

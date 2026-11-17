@@ -223,7 +223,7 @@ describe('auto drawer', () => {
     expect(names()).toEqual(['Profile loader', 'sync', 'Nightly'])
     expect(host.querySelector('[data-h24="r"] .st .auto-mark')).not.toBeNull()
     expect(host.querySelector('[data-h24="q"] .st .auto-mark')).toBeNull()
-    expect(host.querySelector('[data-h24="r"] .act')!.textContent).toBe('5m')
+    expect(host.querySelector('[data-h24="r"] .act')!.textContent).toBe('running 5m')
     // Its rail runs along the bottom edge, magenta; nothing crosses the name.
     expect(host.querySelector('[data-h24="r"] .auto-rail.run')).not.toBeNull()
     await click(host.querySelector('[data-h24="q"] .auto-hit'))

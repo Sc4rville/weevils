@@ -1102,6 +1102,30 @@ export class Optimizers {
     return this.view(o)
   }
 
+  /**
+   * Its name and its family in the drawer, set by hand (the user, weevboss): nothing else changes, no model, no new
+   * version to accept. title: 1-60 characters; group: up to 24, empty or null takes it out of its family. null: no such
+   * task, or a value out of bounds.
+   */
+  label(id: string, raw: unknown): Optimizer | null {
+    const o = this.get(id)
+    if (!o || o.deletedAt || o.state === 'refused') return null
+    const x = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+    const clean = (v: unknown) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : undefined)
+    const title = clean(x.title)
+    const group = x.group === null ? '' : clean(x.group)
+    if (title === undefined && group === undefined) return null
+    if (title !== undefined && (!title || title.length > 60)) return null
+    if (group !== undefined && group.length > 24) return null
+    if (title) o.title = title
+    if (group !== undefined) {
+      if (group) o.group = group
+      else delete o.group
+    }
+    this.changed()
+    return this.view(o)
+  }
+
   /** The machine as the runner sees it (snapshot). */
   machine(now = Date.now()): AutoMachine {
     const load = this.sys.load()
@@ -2273,6 +2297,13 @@ export function optimizerRoutes(o: Optimizers, json: Json, readBody: ReadBody, h
       if (typeof body?.onSleep !== 'boolean' && typeof body?.stopOnWake !== 'boolean') return json(res, 400, { ok: false })
       const item = o.setTrigger(id, body)
       return item ? json(res, 200, { item }) : missing(res)
+    }],
+    // Name and family by hand: { title?, group? } (weevboss tidying the drawer, no rewrite by a model).
+    ['POST', /^\/api\/optimizers\/([\w-]+)\/label$/, async (req, res, _u, [id]) => {
+      const body = await readBody(req).catch(() => ({}))
+      if (!o.get(id)) return missing(res)
+      const item = o.label(id, body)
+      return item ? json(res, 200, { item }) : json(res, 400, { ok: false })
     }],
     ['POST', /^\/api\/optimizers\/([\w-]+)\/run$/, (_req, res, _u, [id]) => {
       const ok = o.runNow(id)

@@ -39,6 +39,8 @@ export interface AutoItem {
   id: string
   src: AutoSrc
   title: string
+  /** Its family in the drawer (Optimizer.group). */
+  group?: string
   state: AutoState
   /** waiting / queued: what holds it (busy, load, ram, queue, later, time, paused). */
   waiting?: Optimizer['waiting']
@@ -131,11 +133,16 @@ export function fromOptimizer(o: Optimizer, projectId: string | null = null, now
   const accessBlocked = !!sourceAccessIssue(o)
   const paused = o.paused || o.waiting === 'paused'
   const fixedAt = !accessBlocked && o.waiting !== 'later' && !o.every && !o.window && o.notBefore && o.notBefore > now && (!o.startAt || o.startAt === o.notBefore) && (!o.retryAt || o.retryAt <= now) ? o.notBefore : null
+  // Held by its own time (waiting « time », or a built-in, which the queue never marks): startAt is the moment the
+  // server's runner itself waits for (timeAt()), so it is its next run, recurring or not. Never a retry delay.
+  // Held for a retry (a usage limit, Claude logged out) that ends before its own time: its own time still says when.
+  const ownTime = !accessBlocked && !paused && o.startAt && o.startAt > now && (o.waiting === 'time' || o.waiting === 'later' || (!o.waiting && !!o.builtin)) && (!o.retryAt || o.retryAt < o.startAt) ? o.startAt : null
+  const nextAt = fixedAt ?? ownTime
   const state: AutoState =
     o.state === 'queued'
       ? paused
         ? 'paused'
-        : fixedAt || o.waiting === 'sleep'
+        : nextAt || o.waiting === 'sleep'
           ? 'scheduled'
           : o.waiting === 'queue' || !o.waiting
             ? 'queued'
@@ -148,6 +155,7 @@ export function fromOptimizer(o: Optimizer, projectId: string | null = null, now
     workstream: o.workstream,
     src: 'optimizer',
     title: o.title,
+    group: o.group,
     state,
     waiting: o.waiting,
     startedAt: o.startedAt ?? null,
@@ -158,8 +166,8 @@ export function fromOptimizer(o: Optimizer, projectId: string | null = null, now
     sessionId: o.sessionId,
     note: o.lastEvent,
     // Weak provenance is not a future execution: neither retryAt nor an orphan startAt establishes one.
-    nextAt: o.state === 'queued' && !paused ? fixedAt : null,
-    nextReason: o.waiting === 'later' || (o.retryAt && o.retryAt > now) ? 'retry' : undefined,
+    nextAt: o.state === 'queued' && !paused ? nextAt : null,
+    nextReason: !ownTime && (o.waiting === 'later' || (o.retryAt && o.retryAt > now)) ? 'retry' : undefined,
     trigger: optimizerTrigger(o),
     projectId,
     repo: o.repo,
@@ -409,4 +417,43 @@ export function propColors(ids: string[], kept: ReadonlyMap<string, string>, bel
     out.set(id, free.find((p) => ok(p) && apart(p, used)) ?? free.find(ok) ?? free[0] ?? PROP_PALETTE[0])
   }
   return out
+}
+
+// ---------------------------------------------------------------- the drawer's rows and families
+
+/**
+ * The one word on the right of a row: something only this automation can say (running for 14m, in 2h, Sat 08:00,
+ * failed 3h ago, memory low…), never a generic state repeated on every row.
+ */
+export function rowStatus(x: AutoItem, now: number, condition: (x: AutoItem) => string, lang: Lang = getLang()): string {
+  const t = M[lang]
+  if (x.state === 'running') return x.startedAt ? t.runningFor(short(now - x.startedAt)) : t.state_running
+  if (x.state === 'paused') return t.paused
+  if (x.state === 'failed' || (x.lastRun && !x.lastRun.ok && x.state !== 'done')) {
+    const at = x.state === 'failed' ? (x.endedAt ?? x.lastRun?.at) : x.lastRun?.at
+    return at ? t.failedAgo(short(now - at, true)) : t.state_failed
+  }
+  if (x.state === 'done') return x.endedAt ? t.endedAgo(short(now - x.endedAt, true)) : t.state_done
+  if (x.nextAt && x.nextReason !== 'retry') return x.nextAt - now < 18 * 3600_000 ? t.inTime(short(x.nextAt - now, x.nextAt - now >= 3600_000)) : at(x.nextAt, now, lang)
+  if (x.state === 'scheduled' && x.waiting === 'sleep') return t.wait_sleep
+  if (x.state === 'queued' && x.place) return t.placeN(x.place)
+  return condition(x)
+}
+
+export interface AutoGroup {
+  name: string
+  items: AutoItem[]
+}
+
+/** Families in the drawer, by name (the unnamed ones last, as « other »); null when none is named: a flat list. */
+export function autoGroups(items: AutoItem[], other: string): AutoGroup[] | null {
+  if (!items.some((x) => x.group)) return null
+  const by = new Map<string, AutoItem[]>()
+  for (const x of items) {
+    const k = x.group ?? ''
+    by.set(k, [...(by.get(k) ?? []), x])
+  }
+  return [...by.entries()]
+    .sort(([a], [b]) => (!a ? 1 : !b ? -1 : a.localeCompare(b)))
+    .map(([k, v]) => ({ name: k || other, items: v }))
 }

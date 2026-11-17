@@ -338,6 +338,9 @@ export interface Optimizer {
   /** Repo où elle tourne (null : dans son propre dossier de travail, hors repo). */
   repo: string | null
   kind: 'tests' | 'watch' | 'content' | 'explore' | 'other'
+  /** The family it sits in, in the drawer (« Content », « Code quality »): one band per family that opens onto its
+   *  automations. None set anywhere: the drawer stays one flat list. */
+  group?: string
   /** Builds, tests, installs : lancés via heavy quand il existe. */
   heavy: boolean
   /** proposed : attend un oui ou un non ; queued : acceptée, attend une machine libre ; running ; done ; failed ; refused. */

@@ -42,6 +42,20 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
    PowerShell or cmd it fetched the script and nothing ran, which is why no computer install had finished. Git Bash
    pasting the bash command is handed to WSL too, and a computer's failed install can be pasted again (the page keeps
    following it).
+
+   **Safety (2026-11-17, because people's own Claude and Codex refused the install):** see `SECURITY.md`, served at
+   `/security` and linked from the script, the computer step and the footer. The code bundle is signed with the
+   release key (`get/make-bundle.sh` signs with `~/.config/weevils-get/release_ed25519` on this VPS; the public half
+   is `get/release-key.pub`, pinned in the script). Installs and `weevils-update` refuse a bundle whose signature
+   doesn't check; `/weevils.bundle.sig`, `/weevils.bundle.sha256` and `/release-key.pub` are public. On a computer:
+   - Node.js goes in the home folder: the official build, checked against nodejs.org's SHA-256.
+   - Missing system tools come from the distribution's own packages, unpacked in the home folder
+     (`apt-get download`, no root). Elsewhere, one shown `sudo` command, then `sudo -k`.
+   - cloudflared is checked against GitHub's published digest.
+   - Agents keep their permission prompts (`--ask-permissions`).
+   - Options after the id: `--no-link`, `--no-auto-update`, `--no-permission-prompts`.
+
+   `follow-main.sh` rebuilds (and signs) the bundle before restarting the service.
 3. A live progress screen follows the install (the installer's step names). Its address is the setup's resume link:
    closing the page and opening it again brings the person back here, with no button to find.
 4. At the end the page shows the person's own weevils: its address, the access code, "Open my weevils", the link to

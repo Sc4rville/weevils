@@ -2878,7 +2878,7 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 
 /* weevboss opens like a drawer coming down from the top (mirror of the automations drawer). */
 @keyframes agent-drop { from { transform: translateY(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
-.agent.open #agent-body { animation: agent-drop .26s cubic-bezier(.2,.8,.2,1); }
+/* No pop-in: the drawer itself moves (useBossDrawer). */
 @media (prefers-reduced-motion: reduce) { .agent.open #agent-body { animation: none; } }
 .peek { cursor: grab; }
 /* ---------- Lateral chain: main → repos → previews (src/ui/lateral.tsx) ---------- */
@@ -2952,3 +2952,23 @@ main.stack {
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* ---------- weevboss drawer handle (src/ui/bands.tsx useBossDrawer) ---------- */
+.agent-grip {
+  height: 26px;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+  cursor: grab;
+  flex: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.agent-grip > span {
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: currentColor;
+  opacity: 0.35;
+}
+.agent.open { will-change: transform; }

@@ -231,17 +231,12 @@ describe('bande de weevboss : envoyer ne l’ouvre jamais en plein écran', () =
     expect(peek.textContent).toContain('Tout tourne, deux sessions travaillent.')
     // Le fil est déjà rendu mais caché : l'ouvrir est immédiat.
     expect(document.querySelector<HTMLElement>('#agent-body')!.hidden).toBe(true)
-    // Un tap ne l'ouvre plus : on tire la bande vers le bas, comme le tiroir des automatisations (à l'envers).
+    // A tap on the messages does not open it: the handle at the band's bottom edge does (a pull or a tap), like automations.
     await act(async () => (peek as HTMLElement).click())
     expect(expanded).toEqual([])
-    const space = document.querySelector<HTMLElement>('.agent-space')!
-    const touch = (type: string, y: number) => {
-      const e = new Event(type, { bubbles: true, cancelable: true }) as Event & { touches: { clientY: number }[]; changedTouches: { clientY: number }[] }
-      e.touches = [{ clientY: y }]; e.changedTouches = [{ clientY: y }]
-      peek.dispatchEvent(e)
-    }
-    expect(space).not.toBeNull()
-    await act(async () => { touch('touchstart', 100); touch('touchmove', 140); touch('touchmove', 200); touch('touchend', 200) })
+    const grip = document.querySelector<HTMLElement>('.agent-grip')!
+    const ev = (type: string, y: number) => grip.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientY: y, button: 0 }))
+    await act(async () => { ev('pointerdown', 100); ev('pointerup', 100) })
     expect(expanded).toEqual(['agent'])
   })
 })

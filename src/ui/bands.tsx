@@ -7,8 +7,8 @@ import ModelM from '../i18n/model-controls'
 import { OutboxStatus } from './outbox-status'
 import { useOutbox } from '../outbox'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { AnimatePresence, animate, motion, useMotionValue, type MotionValue } from 'motion/react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { Message, Project } from '../../shared/api.ts'
 import type { Brick } from '../../shared/setup.ts'
 import { api } from '../api'
@@ -309,15 +309,14 @@ export function AgentBand() {
     </span>
   )
 
-  const pullDown = usePull('down', () => setExpanded('agent'), !open)
-  const pullUp = usePull('up', () => setExpanded(null), open)
+  const dr = useBossDrawer(open, () => setExpanded('agent'), () => setExpanded(null))
   const band = (
-    <section className={`band agent tone ${snap.foryou ? 'has-foryou' : ''} ${devilOn || devilFlash ? 'devil-on' : ''} ${open ? 'open' : ''}`} style={color(devilOn || devilFlash ? 'devil' : 'agent')} aria-label={t.agentBand}>
+    <motion.section ref={dr.box} className={`band agent tone ${snap.foryou ? 'has-foryou' : ''} ${devilOn || devilFlash ? 'devil-on' : ''} ${open || dr.shown ? 'open' : ''}`} style={{ ...color(devilOn || devilFlash ? 'devil' : 'agent'), y: dr.y }} aria-label={t.agentBand}>
       {/* En haut : le logo (dicter), sous la barre d'état. Réduite : l'aperçu vivant du fil ; un tap l'ouvre.
           Ouverte : un tap dans l'espace vide, le chevron, ou glisser vers le bas la réduit. */}
-      <div className="agent-space" ref={open ? pullUp : pullDown} onClick={(e) => open && e.target === e.currentTarget && setExpanded(null)}>
+      <div className="agent-space" onClick={(e) => open && e.target === e.currentTarget && dr.close()}>
         {open && (
-          <button className="agent-close" onClick={() => setExpanded(null)} aria-label={t.collapseChat}>
+          <button className="agent-close" onClick={() => dr.close()} aria-label={t.collapseChat}>
             <Icon name="chevron" dir="left" />
           </button>
         )}
@@ -341,17 +340,17 @@ export function AgentBand() {
           <TopWords active={open ? 'boss' : top} onPick={pickTop} />
           {snap.foryou && !open && controls}
         </div>
-        <div className="peek-wrap" hidden={open || top !== 'boss'}>
+        <div className="peek-wrap" hidden={open || dr.shown || top !== 'boss'}>
           <Peek onOpen={() => setExpanded('agent')} visible={!open && top === 'boss'} sent={sent} messages={main} pendingLabel={pendingLabel} />
         </div>
         {/* L'aperçu de « pour toi » : à côté de celui du fil, dans la même boîte ; l'un ou l'autre est caché, aucun démonté. */}
         {snap.foryou && (
-          <div className="fyt-wrap" hidden={open || top !== 'foryou'}>
+          <div className="fyt-wrap" hidden={open || dr.shown || top !== 'foryou'}>
             <ForYouPeek />
           </div>
         )}
       </div>
-      <div id="agent-body" hidden={!open}>
+      <div id="agent-body" hidden={!(open || dr.shown)}>
         <div className="in"><MainModelControl model={snap.mainSettings?.model} effort={snap.mainSettings?.effort}/></div>
         <motion.div
           ref={body}
@@ -392,85 +391,108 @@ export function AgentBand() {
       {/* Écrire ici n'ouvre pas la conversation : elle s'ouvre à l'envoi, pour lire la réponse. Pendant un branchement,
           le champ pose les questions du parcours, une à la fois (src/ui/setup.tsx). */}
       {flow ? <SetupComposer /> : <Composer placeholder={t.agentPlaceholder} label={t.agentLabel} onSend={send} onAttach={attach} anyFile voice sayErrors horizontal captureSuggestions draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="chevron" dir="right" />} />}
-    </section>
+      {/* The handle at the bottom edge: pull it down to open, push it up to close, or tap it. */}
+      <div className="agent-grip" onPointerDown={dr.grab} aria-hidden><span /></div>
+    </motion.section>
   )
-  // Escape the draggable home stack: its transform makes fixed descendants smaller than the viewport.
-  return open ? createPortal(band, document.body) : band
+  // Escape the draggable home stack: its transform makes fixed descendants smaller than the viewport. While it is
+  // pulled or springs back, a spacer keeps the closed band's height so nothing below moves.
+  if (open || dr.shown) return <>{dr.shown && !open && <div style={{ height: dr.spacer }} />}{createPortal(band, document.body)}</>
+  return band
 }
 
 /**
- * weevboss opens like the automations drawer, mirrored: pull its band down to open it full screen, push its top up to
- * close it. The band follows the finger (with resistance); a pull past 64 px or a quick flick decides, else it springs back.
- * No tap toggle on the preview (Scarville, 2026-11-16).
+ * weevboss is a real drawer coming down from the top, the automations drawer mirrored (Scarville, 2026-11-17): the whole
+ * open conversation hangs above the screen with only its bottom edge showing where the band was; its handle at the bottom
+ * follows the finger 1:1 and the release springs it open or closed with the automations spring. Nothing scrolls during
+ * the pull. A tap on the handle opens or closes it too.
  */
-function usePull(dir: 'down' | 'up', onDone: () => void, on: boolean) {
-  const ref = useRef<HTMLDivElement>(null)
-  const done = useRef(onDone)
-  done.current = onDone
-  useEffect(() => {
-    const host = ref.current
-    if (!host || !on) return
-    const sign = dir === 'down' ? 1 : -1
-    let s: { y: number; t: number; moved: boolean } | null = null
-    const band = () => host.closest('.band.agent') as HTMLElement | null
-    const reset = () => {
-      const el = band()
-      if (!el) return
-      el.style.transition = 'transform .28s cubic-bezier(.2,.8,.2,1)'
-      el.style.transform = ''
+function useBossDrawer(open: boolean, onOpen: () => void, onClose: () => void) {
+  const box = useRef<HTMLElement>(null)
+  const y = useMotionValue(0)
+  const [shown, setShown] = useState(false)
+  const [spacer, setSpacer] = useState(0)
+  const closedOff = useRef(0)
+  const anim = useRef<{ stop: () => void } | null>(null)
+  const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+  const H = () => window.visualViewport?.height ?? window.innerHeight
+  const go = (to: number, done?: () => void) => {
+    anim.current?.stop()
+    if (still()) { y.set(to); done?.(); return }
+    anim.current = animate(y, to, { ...spring, onComplete: done })
+  }
+  // The offset where the open drawer shows only the strip the closed band covered.
+  const measure = () => {
+    const r = box.current?.getBoundingClientRect()
+    if (r && !open) {
+      closedOff.current = -(H() - Math.max(0, r.bottom))
+      setSpacer(r.height)
     }
-    const start = (y: number, target: EventTarget | null) => {
-      s = (target as HTMLElement | null)?.closest('input, textarea, [contenteditable]') ? null : { y, t: performance.now(), moved: false }
+  }
+  const finishClose = () => { setShown(false); y.set(0) }
+  const openIt = () => { onOpen(); go(0, () => setShown(false)) }
+  const closeIt = () => {
+    setShown(true)
+    onClose()
+    go(closedOff.current || -H(), finishClose)
+  }
+  // Opened elsewhere (a link, a notification): it comes down from the same place.
+  const wasOpen = useRef(open)
+  useLayoutEffect(() => {
+    if (open && !wasOpen.current && !shown) { y.set(closedOff.current || -H()); go(0) }
+    wasOpen.current = open
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { if (!open && !shown) measure() })
+  const grab = (e: ReactPointerEvent) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    // Listened on the window: the band moves into its portal as the pull starts, which replaces the handle element.
+    const el = window
+    const id = e.pointerId
+    anim.current?.stop()
+    if (!open && !shown) measure()
+    const startOff = open ? y.get() : closedOff.current
+    const y0 = e.clientY
+    let moved = false
+    let last = { y: e.clientY, t: performance.now() }
+    let v = 0
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return
+      const d = ev.clientY - y0
+      if (!moved && Math.abs(d) < 6) return
+      if (!moved) { moved = true; setShown(true) }
+      const t = performance.now()
+      v = (ev.clientY - last.y) / Math.max(1, t - last.t) * 1000
+      last = { y: ev.clientY, t }
+      const raw = startOff + d
+      y.set(raw > 0 ? raw * 0.15 : raw < closedOff.current ? closedOff.current + (raw - closedOff.current) * 0.2 : raw)
     }
-    const move = (y: number, e: Event) => {
-      if (!s) return
-      const d = (y - s.y) * sign
-      if (!s.moved && d < 8) { if (d < -8) s = null; return }
-      s.moved = true
-      if (e.cancelable) e.preventDefault()
-      const el = band()
-      if (el) { el.style.transition = 'none'; el.style.transform = `translateY(${sign * Math.max(0, d) * 0.5}px)` }
-    }
-    const end = (y: number) => {
-      const c = s
-      s = null
-      if (!c) return
-      const d = (y - c.y) * sign
-      const v = d / Math.max(1, performance.now() - c.t)
-      reset()
-      // A drag that started on a button (the logo, the words) is a drag, not a tap.
-      if (c.moved) {
-        const swallow = (ev: Event) => { ev.stopPropagation(); ev.preventDefault() }
-        host.addEventListener('click', swallow, { capture: true, once: true })
-        window.setTimeout(() => host.removeEventListener('click', swallow, { capture: true }), 400)
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', up)
+      el.removeEventListener('pointercancel', up)
+      // The click that follows lands on whatever the drawer just moved under the finger: swallowed.
+      const at = { x: ev.clientX, y: ev.clientY }
+      const swallow = (c: MouseEvent) => {
+        if (Math.abs(c.clientX - at.x) > 40 || Math.abs(c.clientY - at.y) > 40) return
+        window.removeEventListener('click', swallow, { capture: true })
+        c.stopPropagation()
+        c.preventDefault()
       }
-      if (c.moved && (d > (dir === 'down' ? 64 : 32) || (d > 16 && v > 0.5))) done.current()
+      window.addEventListener('click', swallow, { capture: true })
+      window.setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 450)
+      if (!moved) return open ? closeIt() : (setShown(true), y.set(closedOff.current), openIt())
+      const next = v > 300 ? true : v < -300 ? false : y.get() > closedOff.current / 2
+      if (next) openIt()
+      else if (open) closeIt()
+      else go(closedOff.current, finishClose)
     }
-    const ts = (e: TouchEvent) => start(e.touches[0].clientY, e.target)
-    const tm = (e: TouchEvent) => move(e.touches[0].clientY, e)
-    const te = (e: TouchEvent) => end(e.changedTouches[0].clientY)
-    const tc = () => { s = null; reset() }
-    const md = (e: MouseEvent) => {
-      start(e.clientY, e.target)
-      const mm = (ev: MouseEvent) => move(ev.clientY, ev)
-      const mu = (ev: MouseEvent) => { window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu); end(ev.clientY) }
-      window.addEventListener('mousemove', mm)
-      window.addEventListener('mouseup', mu)
-    }
-    host.addEventListener('touchstart', ts, { passive: true })
-    host.addEventListener('touchmove', tm, { passive: false })
-    host.addEventListener('touchend', te)
-    host.addEventListener('touchcancel', tc)
-    host.addEventListener('mousedown', md)
-    return () => {
-      host.removeEventListener('touchstart', ts)
-      host.removeEventListener('touchmove', tm)
-      host.removeEventListener('touchend', te)
-      host.removeEventListener('touchcancel', tc)
-      host.removeEventListener('mousedown', md)
-    }
-  }, [dir, on])
-  return ref
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', up)
+    el.addEventListener('pointercancel', up)
+  }
+  return { box, y: y as MotionValue<number>, shown, spacer, grab, close: closeIt }
 }
 
 // ---------------------------------------------------------------------------

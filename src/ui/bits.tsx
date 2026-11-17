@@ -19,7 +19,7 @@ import C from '../i18n/copy'
 import { getLang, tr, useT } from '../i18n'
 import M from '../i18n/bits'
 import PM from '../i18n/plain-steps'
-import { clusters, clusterLine, groupLine, isLongReply, plainSummary } from './plain-steps'
+import { clusters, clusterLine, groupLine } from './plain-steps'
 import D from '../i18n/devil'
 import RM from '../i18n/relay'
 import { isUnread, useSeen } from './seen'
@@ -836,17 +836,6 @@ function Fold({ head, className = '', label, children }: { head: ReactNode; clas
 /** A brief from weevboss or another agent as shown: without the hidden ⟦weevils …⟧ context block (locale, steps) that rides on it. */
 const briefText = (text: string) => userText(withoutMachinePrefix(text))
 
-/** A long agent message in a project session: one or two plain sentences, the full text behind the same fold as commands. */
-function LongReply({ text, from }: { text: string; from?: string }) {
-  const w = useT(PM)
-  const summary = useMemo(() => plainSummary(text), [text])
-  return (
-    <Fold className="reply-fold" head={summary ?? (from ? w.longBrief(from) : w.longReply)} label={w.longReplyOpen}>
-      <Prose text={text} />
-    </Fold>
-  )
-}
-
 /** Session threads: one plain sentence per action; commands, paths and raw results only behind a tap. */
 function PlainSteps({ steps, live }: { steps: Message[]; live: boolean }) {
   const mid = steps[0].id
@@ -1090,18 +1079,10 @@ export function Messages({
                   ))}
                 </>
               ) : g.m.role === 'orchestrator' ? (
-                plain && isLongReply(briefText(g.m.text)) ? (
-                  <LongReply text={briefText(g.m.text)} from={authorOf(g.m.author).name} />
-                ) : (
-                  <Clamp text={briefText(g.m.text)} full={session} />
-                )
+                <Clamp text={briefText(g.m.text)} full={session} />
               ) : (
                 <ChipSlot.Provider value={chip ? (b) => chip(b, g.m.id) : null}>
-                  {plain && g.m.role === 'assistant' && isLongReply(withoutMachinePrefix(g.m.text)) ? (
-                    <LongReply text={withoutMachinePrefix(g.m.text)} />
-                  ) : (
-                    <Prose text={withoutMachinePrefix(g.m.text)} />
-                  )}
+                  <Prose text={withoutMachinePrefix(g.m.text)} />
                 </ChipSlot.Provider>
               )}
             </Bubble>

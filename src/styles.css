@@ -2899,10 +2899,6 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .session-now[data-state="working"] { opacity: .75; }
 .session-now[data-state="calm"] { opacity: .5; }
 /* A long agent message in a project session: its plain summary reads as body text; the full text opens below. */
-.reply-fold > .step-head { list-style: none; align-items: flex-start; }
-.reply-fold > .step-head .text { font-size: inherit; line-height: inherit; }
-.reply-fold > .step-head .step-toggle { padding-top: 2px; }
-.reply-fold[open] > .step-head .text { opacity: .7; }
 
 /* No little squares anywhere (Scarville, 2026-11-16): unread, unseen and activity markers are not drawn. What they meant
    lives in the text: an unread project keeps its name at full ink even when resting, an unseen « for you » word too. */

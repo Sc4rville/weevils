@@ -60,14 +60,32 @@ case "$cmd" in
     for part in server shared dist package.json; do
       if [ -e "$checkout/$part" ]; then cp -R "$checkout/$part" "$DIR/app/"; fi
     done
+    # WEEVILS_COPY_CLAUDE=1: a real Claude Code in the copy — the installed binary (read-only) and only the current
+    # access token of this machine's login (never the refresh token: refreshing a copy would sign the original out).
+    claude_mount=()
+    if [ "${WEEVILS_COPY_CLAUDE:-}" = 1 ]; then
+      cc=$(dirname "$(dirname "$(readlink -f "$(command -v claude)")")")
+      guard_dir "$cc"
+      mkdir -p "$DIR/.claude" "$DIR/bin" && chmod 700 "$DIR/.claude"
+      (umask 077 && python3 -c 'import json,os,sys
+o=json.load(open(os.path.expanduser("~/.claude/.credentials.json")))["claudeAiOauth"]
+json.dump({"claudeAiOauth":{k:o[k] for k in ("accessToken","expiresAt","scopes","subscriptionType") if k in o}},sys.stdout)' > "$DIR/.claude/.credentials.json")
+      echo '{"hasCompletedOnboarding":true}' > "$DIR/.claude.json"
+      ln -sf /opt/claude-code/bin/claude.exe "$DIR/bin/claude"
+      claude_mount=(-v "$cc:/opt/claude-code:ro" -e PATH=/copy/bin:/usr/local/bin:/usr/bin:/bin)
+    fi
+    # WEEVILS_COPY_RESTARTABLE=1: the server runs in a loop, so « docker exec $BOX pkill -f '^node server/index.ts' »
+    # restarts weevilsd alone while the copy's tmux sessions live on (what a live restart does).
+    run=(node server/index.ts)
+    [ "${WEEVILS_COPY_RESTARTABLE:-}" = 1 ] && run=(sh -c 'while :; do node server/index.ts; sleep 1; done')
     "$DOCKER" run -d --name "$BOX" --init --user "$(id -u):$(id -g)" \
-      --label weevils-test-copy="$name" \
+      --label weevils-test-copy="$name" "${claude_mount[@]}" -e WEEVILS_STRUCTURED="${WEEVILS_STRUCTURED:-}" \
       -p "127.0.0.1:$port:$port" \
       -v "$DIR:/copy" -v "$deps:/copy/app/node_modules:ro" \
       -e HOME=/copy -e TMUX_TMPDIR=/copy -e LANG=C.UTF-8 -e WEEVILS_LANG="${WEEVILS_LANG:-en}" \
       -e WEEVILS_PORT="$port" -e WEEVILS_HOOK_PORT=$((port + 1)) -e WEEVILS_ORCHESTRATOR="${WEEVILS_COPY_ORCHESTRATOR:-0}" -e WEEVILS_MACHINE=test-copy \
       -e WEEVILS_HOST=0.0.0.0 -e WEEVILS_ALLOW_LOCAL_VOICE=1 \
-      -w /copy/app "$IMAGE" node server/index.ts >/dev/null
+      -w /copy/app "$IMAGE" "${run[@]}" >/dev/null
     echo "test copy $name: http://127.0.0.1:$port · folder $DIR · container $BOX"
     ;;
   tmux)

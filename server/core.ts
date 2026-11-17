@@ -32,6 +32,7 @@ import type { CatalogEntry } from './classify.ts'
 import { MISC, familyOf, place, projectLabel } from './projects.ts'
 import { locale } from '../shared/i18n.ts'
 import M from './i18n/core.ts'
+import MuxM from './i18n/mux.ts'
 import P from './i18n/push.ts'
 import { setCartesiaVoice } from './fast.ts'
 import { keepWarm, warmCues } from './voicepipe.ts'
@@ -69,6 +70,7 @@ import { llmTitles, needsTitle, shortNow, stableTitle, TitleRetry } from './titl
 import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
 import type { WvSession } from './mux.ts'
+import { pumpCall, pumpCommand, pumpForget, pumpReady, pumpState, structuredOn } from './pump.ts'
 import { capture, type ScreenDialog, flatScreen, killWv, listWv, sendKey, sendText, setOpt, spawnWv, wvName } from './mux.ts'
 import TerminalM from './i18n/terminal.ts'
 import { moves, readScreen, redactScreen, screenId, stuckChoices, stuckQuestion, type Hold, type Reading, type TerminalState } from './terminal.ts'
@@ -750,6 +752,14 @@ export class Weevils {
       let screenQueued = 0
       let screenHold: ManagedPane['screenHold']
       let screenFallback: ManagedPane['screenFallback']
+      if (p.mode === 'structured') {
+        // Structured session: its state comes from Claude's own events (server/claude-pump.mjs), never from the screen.
+        const st = pumpState(p.name)
+        const q = st?.question
+        next.push({ ...p, sessionId: p.sessionId ?? st?.sessionId ?? prev?.sessionId, screenWorking: !!st?.working, screenQueued: st?.queued ?? 0,
+          ...(q ? { screenAttention: q.question, screenDialog: { question: q.question, ...(q.detail ? { detail: q.detail } : {}), options: q.options, selected: -1 } } : {}) })
+        continue
+      }
       try {
         const screen = await capture(p.name)
         const reading = readScreen(screen, p.tool)
@@ -773,6 +783,7 @@ export class Weevils {
     for (const old of this.panes) {
       if (next.some((p) => p.name === old.name)) continue
       const t = old.sessionId ? this.store.get(old.sessionId) : undefined
+      if (old.mode === 'structured') pumpForget(old.name)
       console.log(`[sessions] ${old.name} disparue après ${Math.round((Date.now() - old.createdAt) / 1000)} s · ${t ? `${t.messages.length} messages` : 'aucun transcript'}${old.screenAttention ? ` · dernier écran : ${old.screenAttention}` : ''}`)
     }
     const changed = JSON.stringify(next) !== JSON.stringify(this.panes)
@@ -1102,6 +1113,7 @@ export class Weevils {
       status = 'needs_user'
       attention = pane.screenAttention
     } else if (pane?.screenWorking) status = 'working'
+    else if (pane?.mode === 'structured') status = 'idle' // Claude's own events said the turn ended: no hook or screen guess
     else if (hook?.event === 'Notification' && hook.at >= t.lastActivityAt - 2000 && !/waiting for your input/i.test(hook.message ?? '')) {
       status = 'needs_user'
       attention = hook.message
@@ -1828,6 +1840,15 @@ export class Weevils {
       this.bump()
       return
     }
+    if (pane.mode === 'structured') {
+      if (key === 'esc') await pumpCall(pane.name, { op: 'interrupt' })
+      else if (key.startsWith('choice:')) await pumpCall(pane.name, { op: 'answer', choice: key.slice(7) }).catch(() => { throw new Error(tr(TerminalM).choiceGone) })
+      else throw new Error(tr(MuxM).keyRefused(key))
+      console.log(`[structured] ${pane.name} ← ${key}`)
+      if (s && key.startsWith('choice:')) this.foryou?.resolveSession(s)
+      this.bump()
+      return
+    }
     if (key === 'esc' && /trust|confiance/i.test(pane.screenAttention ?? '')) throw new Error(tr(M).escWouldClose)
     if (key.startsWith('choice:')) {
       const id = key.slice(7)
@@ -1884,30 +1905,55 @@ export class Weevils {
     const title = text ? (parseSigned(text)?.text ?? text).replace(/\s+/g, ' ').slice(0, 60) : tr(M).newSession
     text = withAppLocale(text, true)
     if (input.tool === 'claude') {
+      if (structuredOn()) {
+        const id = crypto.randomUUID()
+        const name = await this.spawn('claude', cwd, title, [...projectClaude(), '--session-id', id], id, text).catch((e) => { console.error(`[structured] launch refused: ${(e as Error).message}`); return undefined })
+        if (name && await pumpReady(name)) return { id }
+        // Fallback: the structured session did not come up. Close what started and launch the ordinary tmux way,
+        // under a new id (the first one may have half a transcript).
+        console.error(`[structured] ${name ?? 'session'} did not start, falling back to the tmux path`)
+        if (name) {
+          await killWv(name).catch(() => undefined)
+          this.panes = this.panes.filter((p) => p.name !== name)
+          pumpForget(name)
+        }
+      }
       const id = crypto.randomUUID()
       await this.spawn('claude', cwd, title, [...projectClaude(), '--session-id', id, ...(text ? [text] : [])], id)
       return { id }
+    }
+    const socket = process.env.WEEVILS_CODEX_SOCKET?.trim()
+    if (structuredOn() && socket && fs.statSync(socket, { throwIfNoEntry: false })?.isSocket()) {
+      // Through Codex's shared app-server, explicitly: the bridge (server/codex-bridge.ts) then sends, queues and reads
+      // its state as messages. If the TUI cannot reach the server it exits at once: then the ordinary tmux launch.
+      const name = await this.spawn('codex', cwd, title, ['codex', '--remote', `unix://${socket}`, ...projectCodexFlags(), ...(text ? [text] : [])]).catch(() => undefined)
+      await sleep(6000)
+      if (name && (await listWv()).some((p) => p.name === name)) return { id: name }
+      console.error(`[structured] codex ${name ?? ''} could not use the shared app-server, falling back to the tmux path`)
+      if (name) this.panes = this.panes.filter((p) => p.name !== name)
     }
     const name = await this.spawn('codex', cwd, title, ['codex', ...projectCodexFlags(), ...(text ? [text] : [])])
     return { id: name }
   }
 
-  private async spawn(tool: Tool, cwd: string, title: string, command: string[], sessionId?: string): Promise<string> {
+  /** structuredFirst (a string, possibly empty): launch through server/claude-pump.mjs, with this first message. */
+  private async spawn(tool: Tool, cwd: string, title: string, command: string[], sessionId?: string, structuredFirst?: string): Promise<string> {
     this.assertSourceExecution(cwd)
     const short = crypto.randomBytes(3).toString('hex')
     const name = wvName(path.basename(cwd), short)
     // Jamais de dialogue de confiance au lancement : le dossier est marqué sûr avant.
     if (tool === 'claude') trustDirs([cwd])
-    // Le message de départ (dernier argument) passe lui aussi par tmux.
-    command = command.map((a) => fitTerminal(a))
+    const mode = structuredFirst !== undefined && tool === 'claude' ? 'structured' as const : undefined
+    // Le message de départ (dernier argument) passe lui aussi par tmux ; en mode structuré, par un fichier.
+    command = mode ? pumpCommand(name, command, structuredFirst) : command.map((a) => fitTerminal(a))
     try {
-      await spawnWv(name, cwd, tool, title.slice(0, 60), command, sessionId)
+      await (mode ? spawnWv(name, cwd, tool, title.slice(0, 60), command, sessionId, mode) : spawnWv(name, cwd, tool, title.slice(0, 60), command, sessionId))
     } catch (e) {
       console.error(`[sessions] lancement de ${name} (${tool}, ${cwd}) refusé : ${(e as Error).message}`)
       throw e
     }
     console.log(`[sessions] ${name} lancée · ${tool} · ${cwd} · ${sessionId?.slice(0, 8) ?? 'id à venir'} · « ${title.slice(0, 50)} »`)
-    this.panes.push({ name, tool, sessionId, title, cwd, createdAt: Date.now() })
+    this.panes.push({ name, tool, sessionId, title, cwd, createdAt: Date.now(), ...(mode ? { mode } : {}) })
     this.bump()
     return name
   }
@@ -2150,6 +2196,14 @@ export class Weevils {
    * (« Kept model as … ») : ici on la confirme par Entrée, jusqu'à trois fois, puis on rend la main.
    */
   private async runCommand(pane: string, command: string) {
+    if (this.panes.find((p) => p.name === pane)?.mode === 'structured') {
+      const model = /^\/model\s+(\S+)/.exec(command.trim())?.[1]
+      // No effort control in Claude's stream-json mode: skipped (never sent to the agent as words).
+      if (/^\/effort\b/.test(command.trim())) return void console.log(`[structured] ${pane} · ${command} skipped`)
+      await pumpCall(pane, model ? { op: 'model', model } : { op: 'send', text: command })
+      console.log(`[structured] ${pane} ← ${command}`)
+      return
+    }
     this.driving.add(pane)
     try {
       await this.clearDialog(pane)
@@ -2241,6 +2295,11 @@ export class Weevils {
     const managed = this.panes.find((p) => p.name === pane)
     // A model chosen in the app goes in first, so this message is answered by it.
     if (sessionId && this.modelWish.has(sessionId)) await this.applyModelWish(sessionId)
+    if (managed?.mode === 'structured') {
+      // The pump's acknowledgement is delivery: the message is in Claude's input (or answers its open question).
+      await pumpCall(pane, { op: 'send', text })
+      return
+    }
     if (managed?.tool === 'codex') {
       let screen = await capture(pane)
       let reading = readScreen(screen, 'codex')

@@ -79,13 +79,15 @@ export interface WvSession {
   createdAt: number
   /** Pid du processus de la pane (l'agent lui-même : lancé sans shell). */
   pid?: number
+  /** 'structured': a Claude session driven through server/claude-pump.mjs (messages, not keystrokes). */
+  mode?: 'structured'
 }
 
 const SEP = '\u001f'
 /** Le séparateur tel que tmux le rend : brut, ou échappé en octal par tmux 3.4. */
 const SEP_OUT = /\u001f|\\037/
 
-const FORMAT = ['#{session_name}', '#{@wv_tool}', '#{@wv_session_id}', '#{@wv_title}', '#{@wv_cwd}', '#{pane_current_path}', '#{session_created}', '#{pane_pid}'].join(SEP)
+const FORMAT = ['#{session_name}', '#{@wv_tool}', '#{@wv_session_id}', '#{@wv_title}', '#{@wv_cwd}', '#{pane_current_path}', '#{session_created}', '#{pane_pid}', '#{@wv_mode}'].join(SEP)
 
 function parse(out: string): WvSession[] {
   return out
@@ -93,7 +95,7 @@ function parse(out: string): WvSession[] {
     .filter((l) => l.startsWith('wv-'))
     .map((l) => {
       // tmux 3.4 (Ubuntu 24.04) écrit les caractères de contrôle d'un format en octal : « \037 » au lieu du séparateur.
-      const [name, tool, sessionId, title, cwd, current, created, pid] = l.split(SEP_OUT)
+      const [name, tool, sessionId, title, cwd, current, created, pid, mode] = l.split(SEP_OUT)
       const s: WvSession = {
         name,
         tool: tool === 'codex' ? 'codex' : 'claude',
@@ -103,6 +105,7 @@ function parse(out: string): WvSession[] {
         createdAt: Number(created) * 1000,
       }
       if (Number(pid) > 0) s.pid = Number(pid)
+      if (mode === 'structured') s.mode = 'structured'
       return s
     })
 }
@@ -140,10 +143,11 @@ export const NO_TMUX = ['env', '-u', 'TMUX', '-u', 'TMUX_PANE', '-u', 'WEEVILS_T
  * session lancée sous un autre nom que celui retenu, introuvable ensuite (« no such session ») mais au travail. */
 export const wvName = (dir: string, short: string) => `wv-${dir.slice(0, 18).replace(/[.:]/g, '_')}-${short}`
 
-export async function spawnWv(name: string, cwd: string, tool: Tool, title: string, command: string[], sessionId?: string) {
+export async function spawnWv(name: string, cwd: string, tool: Tool, title: string, command: string[], sessionId?: string, mode?: 'structured') {
   // Plusieurs arguments : tmux lance la commande directement, sans shell (pas d'injection possible) ; env non plus.
   const env = Object.entries({...QUIET_ENV, WEEVILS_FROM:cwd===ORCH_DIR?'weevboss':tool}).flatMap(([k, v]) => ['-e', `${k}=${v}`])
   await tmux(['new-session', '-d', '-s', name, '-x', '120', '-y', '40', '-c', cwd, ...env, ...NO_TMUX, ...command], cwd)
+  if (mode) await setOpt(name, '@wv_mode', mode)
   await setOpt(name, '@wv_tool', tool)
   await setOpt(name, '@wv_title', title)
   await setOpt(name, '@wv_cwd', cwd)

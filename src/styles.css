@@ -3043,3 +3043,13 @@ main.stack {
   width: 14px;
   height: 14px;
 }
+
+/* The request a session works on, pinned above its older messages (src/ui/bits.tsx AskedLine): one line, a tap shows it all. */
+.session-asked-line { display: flex; gap: 6px; align-items: baseline; width: 100%; min-height: 44px; padding-block: 10px; text-align: left; }
+.session-asked-line .who { flex: none; }
+.session-asked-line .one-line {
+  flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+.session-asked-full { padding-bottom: 12px; }

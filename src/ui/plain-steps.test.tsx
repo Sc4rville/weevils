@@ -20,18 +20,27 @@ const thread = [
   m('t', 'event', 'Bash · npx vitest run --reporter=dot', { toolDetails: { commands: ['npx vitest run --reporter=dot'], output: '3 failed' } }),
 ]
 const FORBIDDEN = /\/home|src\/|\.tsx|\.ts\b|--|npx|vitest|\bBash\b|\bRead\b|\bGrep\b|\bEdit ·/
-it('collapsed session thread: plain sentences only, no path, command, flag or tool name', async () => {
+const tapMessage = async () => act(async () => host.querySelector<HTMLElement>('[data-mid="a"] .text, [data-mid="a"]')!.click())
+it('finished steps show nothing; a tap on the message they led to opens them, collapsed, in plain words', async () => {
   await act(async () => root.render(<Messages session plain messages={thread} author="claude" />))
+  expect(host.querySelector('.steps-head')).toBeNull()
+  expect(host.textContent).not.toMatch(/Reading the code|Running/)
+  await tapMessage()
   const head = host.querySelector('.steps-head')!
   expect(head.getAttribute('aria-expanded')).toBe('false')
   expect(head.textContent).toMatch(/Reading the code, editing the code/)
   expect(head.textContent).not.toMatch(FORBIDDEN)
   expect(host.querySelector('.steps-list')).toBeNull()
-  expect(host.querySelector('.chatter summary')!.textContent!.length).toBeLessThan(112)
   expect(host.textContent).not.toMatch(/\/home|\.tsx|npx vitest|--reporter/)
+})
+it('while it works, only the live step says what happens now', async () => {
+  await act(async () => root.render(<Messages session plain working messages={thread} author="claude" />))
+  expect(host.querySelectorAll('.steps-head')).toHaveLength(1)
+  expect(host.querySelector('.steps-head .spin')).not.toBeNull()
 })
 it('expanded: one plain line per goal; raw commands and results only inside closed details; missing evidence said', async () => {
   await act(async () => root.render(<Messages session plain messages={thread} author="claude" />))
+  await tapMessage()
   await act(async () => host.querySelector<HTMLButtonElement>('.steps-head')!.click())
   const lines = [...host.querySelectorAll('.steps-list .step-head .text')].map((e) => e.textContent)
   expect(lines).toEqual(['Reading the code · 3', 'Searching the code', 'Editing the pay button code', 'Running tests'])
@@ -44,10 +53,27 @@ it('expanded: one plain line per goal; raw commands and results only inside clos
 it('French mode speaks French, and the weevboss thread (not plain) is untouched', async () => {
   setLang('fr')
   await act(async () => root.render(<Messages session plain messages={thread} author="claude" />))
+  await tapMessage()
   expect(host.querySelector('.steps-head')!.textContent).toMatch(/Lecture du code/)
   await act(async () => root.render(<Messages messages={thread} author="weevboss" />))
   expect(host.querySelector('.steps-head')!.textContent).toMatch(/6 étapes/)
-  expect(host.querySelector('.chatter')).toBeNull()
+})
+it('the request that started a session stays on top when 150 tool steps and 70 messages push it out of the window', async () => {
+  const long = [m('b0', 'orchestrator', 'Bring old chats into weevils in one tap. Then report back.', { author: 'weevboss' }), ...Array.from({ length: 150 }, (_, i) => m(`e${i}`, 'event', 'Bash · ls')), ...Array.from({ length: 70 }, (_, i) => m(`x${i}`, 'assistant', `Update ${i} is done.`))]
+  await act(async () => root.render(<Messages session plain messages={long} author="claude" />))
+  const pinned = host.querySelector('.session-asked-line')!
+  expect(pinned.textContent).toContain('Bring old chats into weevils in one tap.')
+  expect(pinned.textContent).not.toContain('Then report back')
+  expect(host.textContent).toContain('10 older messages')
+  await act(async () => (pinned as HTMLButtonElement).click())
+  expect(host.querySelector('.session-asked-full')!.textContent).toContain('Then report back')
+})
+it('a short thread full of tool steps hides nothing: steps never count toward the window', async () => {
+  const t2 = [m('b0', 'orchestrator', 'Do it.', { author: 'weevboss' }), ...Array.from({ length: 150 }, (_, i) => m(`e${i}`, 'event', 'Bash · ls')), m('x', 'assistant', 'Done.')]
+  await act(async () => root.render(<Messages session plain messages={t2} author="claude" />))
+  expect(host.textContent).not.toMatch(/older message/)
+  expect(host.querySelector('.session-asked-line')).toBeNull()
+  expect(host.textContent).toContain('Do it.')
 })
 
 import { liveNote } from './plain-steps'

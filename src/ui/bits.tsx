@@ -18,7 +18,7 @@ import C from '../i18n/copy'
 import { getLang, tr, useT } from '../i18n'
 import M from '../i18n/bits'
 import PM from '../i18n/plain-steps'
-import { brief, clusters, clusterLine, groupLine, isLongReply, plainSummary } from './plain-steps'
+import { clusters, clusterLine, groupLine, isLongReply, plainSummary } from './plain-steps'
 import D from '../i18n/devil'
 import RM from '../i18n/relay'
 import { isUnread, useSeen } from './seen'
@@ -894,6 +894,24 @@ function Coordination({ folded, author, sourceThreadId, children }: { folded: bo
 
 const WINDOW = 60
 
+/** The request a session works on, pinned above its older messages: its first sentence on one line; a tap shows it all. */
+function AskedLine({ text, who, tone, style }: { text: string; who: string; tone: string; style?: React.CSSProperties }) {
+  const [open, setOpen] = useState(false)
+  const first = text.split(/(?<=[.!?:])\s|\n/)[0].trim() || text
+  return (
+    <div className={`msg band session-asked ${tone}`} style={style}>
+      <button type="button" className="in session-asked-line" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <span className="who strong">{who}</span> <span className={open ? 'text' : 'text one-line'}>{open ? '' : first}</span>
+      </button>
+      {open && (
+        <div className="in session-asked-full">
+          <Rich text={text} code={false} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Auteur d'un message signé (weevboss par défaut) : nom affiché et couleur, d'après la config du serveur. */
 export function useAuthors() {
   const { snap } = useApp()
@@ -936,8 +954,43 @@ export function Messages({
   const t = useT(M)
   const td = useT(D)
   const [all, setAll] = useState(false)
-  const hidden = all ? 0 : Math.max(0, messages.length - WINDOW)
-  const groups = useMemo(() => group(messages.slice(hidden)), [messages, hidden])
+  // The window counts what is read (messages), never tool steps: 150 commands no longer push the request out of view.
+  const said = useMemo(() => messages.flatMap((m, i) => (m.role === 'event' ? [] : [i])), [messages])
+  const cut = all || said.length <= WINDOW ? 0 : said[said.length - WINDOW]
+
+  // What the session was asked: the request that started it, and the latest one to it, always on top when the window
+  // hides them (Scarville, 2026-11-17: « why is there no prompt »).
+  const asked = (m: Message) => m.role === 'user' || m.role === 'orchestrator'
+  const firstAsk = messages.findIndex(asked)
+  const lastAsk = messages.length - 1 - [...messages].reverse().findIndex(asked)
+  const pinnedAt = session && cut > 0 ? [...new Set([firstAsk, lastAsk])].filter((i) => i >= 0 && i < cut) : []
+  const groups = useMemo(() => group(messages.slice(cut)), [messages, cut])
+  const pinned = pinnedAt.map((i) => messages[i])
+  const hidden = said.filter((i) => i < cut && !pinnedAt.includes(i)).length
+  // Project threads: finished tool steps show nothing; a tap on the message they led to opens them (recorded actions
+  // stay inspectable). Only the live one, at the bottom, says what is happening now.
+  const [openSteps, setOpenSteps] = useState<Set<string>>(() => new Set())
+  const stepsBefore = useMemo(() => {
+    const out = new Map<string, Message[]>()
+    if (!plain) return out
+    groups.forEach((g, i) => {
+      if (g.kind !== 'steps') return
+      const next = groups.slice(i + 1).find((x) => x.kind === 'msg')
+      const prev = groups.slice(0, i).reverse().find((x) => x.kind === 'msg')
+      const host = next ?? prev
+      if (host?.kind === 'msg') out.set(host.m.id, [...(out.get(host.m.id) ?? []), ...g.steps])
+    })
+    return out
+  }, [groups, plain])
+  const toggleSteps = (id: string, e: React.MouseEvent) => {
+    if (!stepsBefore.has(id) || (e.target as HTMLElement).closest('a, button, summary, details[open] > *:not(summary)')) return
+    setOpenSteps((v) => {
+      const n = new Set(v)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
   const authorOf = useAuthors()
   // An empty label says nothing (no dangling « · »).
   const pendingTag = (id: string) => {
@@ -946,6 +999,11 @@ export function Messages({
   }
   return (
     <AnimatePresence initial={false}>
+      {pinned.map((m) => (
+        <Appear key={`ask-${m.id}`}>
+          <AskedLine text={m.role === 'user' ? userCaption(m.text) : briefText(m.text)} who={m.role === 'user' ? t.you : authorOf(m.author).name} tone={m.role === 'user' ? 'tone' : authorTone(authorOf(m.author)).className} style={m.role === 'orchestrator' ? authorTone(authorOf(m.author)).style : undefined} />
+        </Appear>
+      ))}
       {hidden > 0 && (
         <Line key="older" ch="↑" go={null} onClick={() => setAll(true)}>
           <span className="meta">{t.older(hidden)}</span>
@@ -954,11 +1012,13 @@ export function Messages({
       {groups.map((g, i) =>
         g.kind === 'steps' ? (
           <Appear key={g.id}>
-            <Steps steps={g.steps} live={working && i === groups.length - 1} plain={plain} />
+            {(!plain || (working && i === groups.length - 1)) && <Steps steps={g.steps} live={working && i === groups.length - 1} plain={plain} />}
             {after?.(g.id)}
           </Appear>
         ) : (
           <Appear key={g.m.id}>
+            {openSteps.has(g.m.id) && stepsBefore.get(g.m.id) && <Steps steps={stepsBefore.get(g.m.id)!} live={false} plain />}
+            <div onClick={(e) => toggleSteps(g.m.id, e)}>
             <Coordination folded={session && g.m.role === 'orchestrator' && !!g.m.coordination && authorOf(g.m.author).id !== 'weevboss'} author={authorOf(g.m.author).name} sourceThreadId={g.m.sourceThreadId}>
             <Bubble
               className={`msg band ${session ? 'session-message' : ''} ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.demo ? 'demo' : ''}`}
@@ -984,9 +1044,7 @@ export function Messages({
                 )
               ) : (
                 <ChipSlot.Provider value={chip ? (b) => chip(b, g.m.id) : null}>
-                  {plain && groups[i + 1]?.kind === 'steps' && brief(withoutMachinePrefix(g.m.text)) ? (
-                    <details className="chatter"><summary>{brief(withoutMachinePrefix(g.m.text))}</summary><Prose text={withoutMachinePrefix(g.m.text)} /></details>
-                  ) : plain && g.m.role === 'assistant' && isLongReply(withoutMachinePrefix(g.m.text)) ? (
+                  {plain && g.m.role === 'assistant' && isLongReply(withoutMachinePrefix(g.m.text)) ? (
                     <LongReply text={withoutMachinePrefix(g.m.text)} />
                   ) : (
                     <Prose text={withoutMachinePrefix(g.m.text)} />
@@ -996,6 +1054,7 @@ export function Messages({
             </Bubble>
             {after?.(g.m.id)}
             </Coordination>
+            </div>
           </Appear>
         ),
       )}

@@ -1,71 +1,32 @@
 /* The requests page (src/ui/requests.tsx): goals as tone bands, requests as lines, the open one in place. */
 
-.req-tabs {
-  width: 100%;
-  box-sizing: border-box;
-  display: flex;
-  gap: 4px;
-  padding-block: 6px 10px;
-}
-
-.req-tabs button {
-  min-height: 44px;
-  padding-inline: 12px;
-  font-size: 1rem;
-  font-weight: 650;
-  opacity: 0.62;
-}
-
-.req-tabs button:first-child {
-  padding-left: 0;
-}
-
-.req-tabs button.on {
-  opacity: 1;
-  text-decoration: none;
-  box-shadow: inset 0 -3px 0 currentColor;
-}
-
-.req-tabs button.on:first-child {
-  box-shadow: none;
-  background: linear-gradient(currentColor, currentColor) 0 100% / calc(100% - 12px) 3px no-repeat;
-}
-
 .req-group + .req-group {
   margin-top: 10px;
 }
 
-/* A goal: its title big, its progress as a flat bar. */
-.req-goal > .in {
-  padding-block: 14px 12px;
+/* A goal: a short name and « 8/11 », one line. */
+.req-goal-line {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-block: 12px;
 }
 
 .req-goal-title {
-  font-size: 1.375rem;
+  flex: 1;
+  min-width: 0;
+  font-size: 1.125rem;
   font-weight: 700;
-  letter-spacing: -0.015em;
-  line-height: 1.18;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 
-.req-goal-meta {
-  margin-top: 4px;
-  font-weight: 600;
-}
-
-.req-bar {
-  height: 6px;
-  margin-top: 10px;
-  background: color-mix(in oklab, currentColor 18%, transparent);
-}
-
-.req-bar > span {
-  display: block;
-  height: 100%;
-  background: currentColor;
-}
-
-.req-goal-note {
-  margin-top: 8px;
+.req-goal-n {
+  flex: none;
+  font-variant-numeric: tabular-nums;
 }
 
 /* A request, closed: its sentence (two lines at most) and where it stands. */
@@ -76,15 +37,10 @@
 }
 
 .req-text {
-  font-size: 1.0625rem;
-  font-weight: 650;
+  font-size: 1rem;
+  font-weight: 600;
   line-height: 1.3;
   overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
 }
 
 .req-item.open .req-text {
@@ -99,28 +55,46 @@
   opacity: 0.8;
 }
 
-/* One compact line: title, chip + hint under it, the session on the right. */
+/* One line: the title, fading at its edge, and its one word on the right. */
 .in.req-line {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  padding-block: 8px;
+  padding-block: 2px;
 }
 
 .req-main {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  align-items: center;
+  gap: 12px;
   text-align: left;
   min-height: 44px;
-  justify-content: center;
 }
 
 .req-main .req-text {
-  -webkit-line-clamp: 1;
-  line-clamp: 1;
+  flex: 1;
+  min-width: 0;
+}
+
+.req-item.open .req-main {
+  flex-direction: column;
+  gap: 2px;
+  padding-block: 8px;
+}
+
+.req-main .req-text {
+  white-space: nowrap;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+
+.req-item.open .req-main .req-text {
+  white-space: normal;
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 .req-status {
@@ -140,8 +114,13 @@
 /* The status chip: a flat word, filled only when it needs the user. */
 .req-chip {
   flex: none;
-  font-weight: 750;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
+}
+
+/* Only what needs the user stands out. */
+.req-chip.c-needs,
+.req-chip.c-blocked {
+  font-weight: 700;
 }
 
 .req-chip.c-done,
@@ -159,11 +138,6 @@
   font-size: 0.875rem;
   font-weight: 650;
   text-align: left;
-}
-
-/* Stale: said calmly, never alarming. */
-.req-item.stale .req-hint {
-  font-style: italic;
 }
 
 .req-said + .req-said {

@@ -1,18 +1,16 @@
 // The requests page (bottom of the machines band): weevboss's request ledger, read by the user in plain words.
 //
-// - « open »: the goals, each with its progress and its open requests (stale ones first), then the requests with no
-//   goal, then the messages still being read, then what was done lately, folded. Each request is one compact line: its
-//   title, a status chip (queued, running, blocked, needs you, done), a progress hint (steps, last update, why it
-//   waits) and the session it is in (a tap opens it). It opens in place: every message merged into it with the user's
-//   exact words, why it is handled that way, where it was sent, what came back; « done » and « drop » close it.
-// - « closed »: what was done or dropped, newest first, and by whom.
-// - « trace »: the work journal, newest first, by day: requests, dispatches (who, why, what must come back), reports,
-//   decisions.
-// Flat bands, bold type, no help text: the words of the ledger are the page.
+// One page, no tabs, no counters: the goals (a short name and « 8/11 »), each with its open requests, then the requests
+// with no goal, then the messages still being read, then what is closed, folded. A request is one line: a short title
+// and one honest word read from its real session (in progress, waiting on you, stuck, to check, not started), with
+// how long it has been quiet when it is not in progress. A tap opens it in place: the user's exact words, where it
+// was sent (a tap opens that session), what came back; « done » and « drop » close it. The work journal (trace) stays
+// in `weevils trace`: nobody read it here.
 
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Ask, Dispatch, TraceEntry } from '../../shared/ledger.ts'
+import type { SessionStatus } from '../../shared/api.ts'
+import type { Ask, Dispatch } from '../../shared/ledger.ts'
 import type { LedgerView } from '../../shared/ledger.ts'
 import { noticeKey } from '../../shared/notices.ts'
 import { api } from '../api'
@@ -24,18 +22,9 @@ import { Notice } from './notice'
 import { Shell } from './shell'
 import './requests.css'
 
-type Tab = 'open' | 'done' | 'trace'
 type Row = LedgerView['asks'][number]
 
 const hhmm = (at: number) => new Date(at).toLocaleTimeString(getLang(), { hour: '2-digit', minute: '2-digit' })
-
-function useAge() {
-  const t = useT(M)
-  return (ms: number) => {
-    const m = Math.max(1, Math.floor(ms / 60_000))
-    return m < 60 ? t.age(m, 'm') : m < 1440 ? t.age(Math.floor(m / 60), 'h') : t.age(Math.floor(m / 1440), 'd')
-  }
-}
 
 /** « weevils · claude · Onboarding link » → « weevils · Onboarding link » ; no label: a plain word, never a session id. */
 const who = (d: Dispatch, none: string) => {
@@ -43,36 +32,33 @@ const who = (d: Dispatch, none: string) => {
   return p.length >= 3 ? `${p[0]} · ${p.slice(2).join(' · ')}` : d.label || none
 }
 
-type Chip = 'queued' | 'running' | 'blocked' | 'needs' | 'done' | 'dropped'
+type Chip = 'queued' | 'running' | 'blocked' | 'needs' | 'check' | 'paused' | 'done' | 'dropped'
 
-/** The one word that says where a request stands. Exported for tests. */
-export function chipOf(a: Row): Chip {
-  if (a.status === 'done') return 'done'
-  if (a.status === 'dropped') return 'dropped'
-  if (a.dispatches.some((d) => d.outcome === 'question')) return 'needs'
-  if (a.dispatches.some((d) => d.outcome === 'failed')) return 'blocked'
-  if (a.status === 'dispatched') return 'running'
-  return 'queued'
+/** A title that fits one line: its first clause (« Prepare the fix: show the… » → « Prepare the fix »). The whole
+ *  sentence stays in the opened request. */
+export const shortTitle = (text: string) => {
+  const cut = text.split(/: | — | – |\. /)[0].trim()
+  return cut.length >= 12 ? cut : text
 }
 
-/** The progress hint after the chip: steps, the last real update and when, or why it waits. */
-function useHint() {
-  const t = useT(M)
-  const age = useAge()
-  return (a: Row, now: number) => {
-    const parts: string[] = []
-    const n = a.dispatches.length
-    if (a.status === 'done' || a.status === 'dropped') {
-      const by = a.closedBy === 'auto' ? t.closedByAuto : a.closedBy === 'user' ? t.closedByYou : t.closedByBoss
-      return [by, a.closedAt ? age(now - a.closedAt) : ''].filter(Boolean).join(' · ')
-    }
-    if (n > 1) parts.push(t.steps(a.dispatches.filter((d) => d.outcome === 'done').length, n))
-    if (a.status === 'open') parts.push(a.handling === 'send' ? `${t.whyWord(a.why ?? 'you-said-now')} · ${t.sendingNow}` : t.whyWord(a.why ?? 'waits-for-weevboss'))
-    if (a.more?.length) parts.push(t.messages(a.more.length + 1))
-    const last = Math.max(a.progressAt, ...a.dispatches.map((d) => d.reportAt ?? 0))
-    parts.push(a.stale ? t.quiet(age(now - last)) : t.updated(age(now - last)))
-    return parts.join(' · ')
-  }
+/**
+ * The one word that says where a request stands, read from the real session it was sent to (never from the ledger's
+ * « dispatched » alone: a session gone for days is not running). `session`: its state, 'gone' when it no longer
+ * exists, undefined when nothing was sent. Exported for tests.
+ */
+export function chipOf(a: Row, session?: SessionStatus | 'gone'): Chip {
+  if (a.status === 'done') return 'done'
+  if (a.status === 'dropped') return 'dropped'
+  const d = a.dispatches.at(-1)
+  if (!d) return 'queued'
+  if (session === 'working') return 'running'
+  if (session === 'needs_user') return 'needs'
+  // Its session finished long ago, or no longer exists, and nobody closed it: nothing is happening, said plainly
+  // (a failure or a question days old included: it opens with the report).
+  if (a.stale || session === 'gone') return 'paused'
+  if (session === 'interrupted' || d.outcome === 'failed') return 'blocked'
+  if (d.outcome === 'question') return 'needs'
+  return 'check'
 }
 
 /** « drop »: a first tap arms it, a second one (within 3 s) drops. */
@@ -91,26 +77,19 @@ function Drop({ onDrop }: { onDrop: () => void }) {
   )
 }
 
-function AskRow({ a, open, now, onToggle, onAction }: { a: Row; open: boolean; now: number; onToggle: () => void; onAction: (action: 'done' | 'drop' | 'open') => void }) {
+function AskRow({ a, open, state, onToggle, onAction }: { a: Row; open: boolean; state?: SessionStatus | 'gone'; onToggle: () => void; onAction: (action: 'done' | 'drop' | 'open') => void }) {
   const t = useT(M)
   const { push } = useApp()
-  const hint = useHint()
   const live = a.status === 'open' || a.status === 'dispatched'
-  const chip = chipOf(a)
-  // The session to open: the one that needs the user or is stuck, else the latest.
-  const d = a.dispatches.find((x) => x.outcome === 'question') ?? a.dispatches.find((x) => x.outcome === 'failed') ?? a.dispatches.at(-1)
+  const chip = chipOf(a, state)
   const words = [{ quote: a.quote, at: a.at, from: a.from }, ...(a.more ?? [])]
   return (
     <motion.div layout="position" transition={spring} className={`req-item c-${chip}${open ? ' band tone open' : ''}${a.stale ? ' stale' : ''}`}>
       <div className="in req-line">
         <button className="req-main" onClick={onToggle} aria-expanded={open}>
-          <span className="req-text">{a.text}</span>
-          <span className="meta req-status">
-            <span className={`req-chip c-${chip}`}>{t.chip(chip)}</span>
-            <span className="req-hint">{hint(a, now)}</span>
-          </span>
+          <span className="req-text">{open ? a.text : shortTitle(a.text)}</span>
+          <span className={`meta req-chip c-${chip}`}>{t.chip(chip)}</span>
         </button>
-        {d && <button type="button" className="link req-sess" aria-label={t.openSession} onClick={() => push({ kind: 'session', id: d.session })}>{who(d, t.aSession)} →</button>}
       </div>
       <Collapse open={open}>
         <div className="in req-detail">
@@ -120,7 +99,6 @@ function AskRow({ a, open, now, onToggle, onAction }: { a: Row; open: boolean; n
               <div className="meta">{i === 0 ? t.yourWords : ''}{w.from !== 'user' ? ` · ${t.from(w.from)}` : ''}{i === 0 ? ' · ' : ''}{hhmm(w.at)}</div>
             </div>
           ))}
-          {a.why && a.status === 'open' && <div className="meta req-why"><span className="strong">{t.why}</span> {t.whyWord(a.why)}</div>}
           {a.dispatches.map((d) => (
             <div key={d.session + d.at} className="req-dispatch">
               <button type="button" className="link req-who" onClick={() => push({ kind: 'session', id: d.session })}>→ {who(d, t.aSession)}</button>
@@ -146,66 +124,24 @@ function AskRow({ a, open, now, onToggle, onAction }: { a: Row; open: boolean; n
 }
 
 function GoalHead({ g }: { g: LedgerView['goals'][number] }) {
-  const t = useT(M)
-  const pct = g.total ? Math.round((g.done / g.total) * 100) : 0
   return (
     <div className="band tone req-goal">
-      <div className="in">
-        <div className="req-goal-title">{g.title}</div>
-        <div className="meta req-goal-meta">
-          {t.goalStats(g.done, g.total)}
-          {g.stale ? ` · ${t.staleCount(g.stale)}` : ''}
-          {g.sessions.length ? ` · ${t.sessions(g.sessions.length)}` : ''}
-        </div>
-        <div className="req-bar" aria-hidden><span style={{ width: `${pct}%` }} /></div>
-        {g.progress && <div className="meta req-goal-note">{g.progress}</div>}
+      <div className="in req-goal-line">
+        <span className="req-goal-title">{shortTitle(g.title)}</span>
+        <span className="meta req-goal-n">{g.done}/{g.total}</span>
       </div>
     </div>
   )
 }
 
-function TraceList({ trace, goals }: { trace: TraceEntry[]; goals: LedgerView['goals'] }) {
-  const t = useT(M)
-  const title = (id?: string) => goals.find((g) => g.id === id)?.title
-  const day = (at: number) => {
-    const d = new Date(at)
-    const today = new Date()
-    const y = new Date(Date.now() - 86400_000)
-    if (d.toDateString() === today.toDateString()) return t.today
-    if (d.toDateString() === y.toDateString()) return t.yesterday
-    return d.toLocaleDateString(getLang(), { weekday: 'long', day: 'numeric', month: 'short' })
-  }
-  if (!trace.length) return <div className="in meta req-empty">{t.nothingTrace}</div>
-  const list = [...trace].reverse()
-  return (
-    <>
-      {list.map((e, i) => (
-        <div key={`${e.at}-${i}`}>
-          {(i === 0 || day(list[i - 1].at) !== day(e.at)) && <div className="in meta strong req-day">{day(e.at)}</div>}
-          <div className={`in req-trace k-${e.kind}`}>
-            <span className="meta tab req-time">{hhmm(e.at)}</span>
-            <div className="req-trace-body">
-              <div><span className="req-kind">{t.kind(e.kind)}{e.status ? ` · ${t.statusWord(e.status)}` : ''}</span> {e.text}{e.asks?.length ? <span className="meta"> ({e.asks.join(', ')})</span> : null}</div>
-              {e.who && e.kind !== 'status' && <div className="meta">→ {e.who}</div>}
-              {e.why && <div className="meta"><span className="strong">{t.why}</span> {e.why}</div>}
-              {e.expect && <div className="meta"><span className="strong">{t.expects}</span> {e.expect}</div>}
-              {e.goal && title(e.goal) && <div className="meta req-goal-tag"># {title(e.goal)}</div>}
-            </div>
-          </div>
-        </div>
-      ))}
-    </>
-  )
-}
-
 export function RequestsPage() {
   const t = useT(M)
-  const { snap, colors, now } = useApp()
+  const { snap, colors } = useApp()
   const [v, setV] = useState<LedgerView | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [tab, setTab] = useState<Tab>('open')
   const [open, setOpen] = useState<string | null>(null)
   const [showDone, setShowDone] = useState(false)
+  const [showPaused, setShowPaused] = useState(false)
   const last = useRef(0)
   const load = useCallback(() => api.ledger().then((r) => { last.current = Date.now(); setV(r); setErr(null) }).catch((e) => setErr((e as Error).message)), [])
   useEffect(() => void load(), [snap.asksOpen, load])
@@ -215,35 +151,34 @@ export function RequestsPage() {
 
   const act = (a: Ask) => (action: 'done' | 'drop' | 'open') => void api.askAction(a.id, action).then(load).catch((e) => setErr((e as Error).message))
 
+  const stateOf = (a: Row): SessionStatus | 'gone' | undefined => {
+    const d = a.dispatches.at(-1)
+    return d ? (sessionState.get(d.session) ?? 'gone') : undefined
+  }
   const asks = v?.asks ?? []
-  const live = asks.filter((a) => a.status === 'open' || a.status === 'dispatched')
+  const sessionState = new Map<string, SessionStatus>(snap.sessions.map((x) => [x.id, x.status]))
+  const open_ = asks.filter((a) => a.status === 'open' || a.status === 'dispatched')
+  // Where nothing happens (paused) is folded under one line: the page shows what moves or waits on you.
+  const live = open_.filter((a) => chipOf(a, stateOf(a)) !== 'paused')
+  const paused = open_.filter((a) => chipOf(a, stateOf(a)) === 'paused').sort((x, y) => y.at - x.at)
   const closed = asks.filter((a) => a.status === 'done' || a.status === 'dropped').sort((x, y) => (y.closedAt ?? y.at) - (x.closedAt ?? x.at))
-  const stale = live.filter((a) => a.stale).length
-  const recent = closed.filter((a) => a.status === 'done' && now - (a.closedAt ?? a.at) < 86400_000)
-  // Stale first, then newest.
-  const order = (l: Row[]) => [...l].sort((x, y) => Number(y.stale) - Number(x.stale) || y.at - x.at)
+  // What waits on you first, then the newest.
+  const order = (l: Row[]) => [...l].sort((x, y) => Number(chipOf(y, stateOf(y)) === 'needs') - Number(chipOf(x, stateOf(x)) === 'needs') || y.at - x.at)
   const goals = (v?.goals ?? []).filter((g) => g.status === 'active')
-  const row = (a: Row) => <AskRow key={a.id} a={a} now={now} open={open === a.id} onToggle={() => setOpen(open === a.id ? null : a.id)} onAction={act(a)} />
-  const meta = v ? [t.openCount(live.length), stale ? t.staleCount(stale) : ''].filter(Boolean).join(' · ') : '…'
+  const row = (a: Row) => <AskRow key={a.id} a={a} state={stateOf(a)} open={open === a.id} onToggle={() => setOpen(open === a.id ? null : a.id)} onAction={act(a)} />
 
   return (
-    <Shell slot={colors.__foot ?? 'p3'} kicker="weevboss" title={t.title} meta={meta}>
+    <Shell slot={colors.__foot ?? 'p3'} kicker="weevboss" title={t.title}>
       {err && (
         <Notice eventId={noticeKey('error:requests', location.pathname, location.hash, err)} className="band invert" role="alert">
           <div className="in meta" style={{ paddingBlock: 12 }}>! {err}</div>
         </Notice>
       )}
-      <div className="in req-tabs" role="tablist">
-        {([['open', t.tabOpen], ['done', t.tabDone], ['trace', t.tabTrace]] as [Tab, string][]).map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
-            {label}
-          </button>
-        ))}
-      </div>
-      {tab === 'open' && v && (
+      {v && (
         <>
           {goals.map((g) => {
             const mine = order(live.filter((a) => a.goal === g.id))
+            if (!mine.length) return null
             return (
               <section key={g.id} className="req-group">
                 <GoalHead g={g} />
@@ -269,16 +204,20 @@ export function RequestsPage() {
             </section>
           )}
           {!live.length && !v.pending.length && <div className="in meta req-empty">{t.nothingOpen}</div>}
-          {!!recent.length && (
+          {!!paused.length && (
             <section className="req-group">
-              <button className="in meta strong req-day req-fold" aria-expanded={showDone} onClick={() => setShowDone(!showDone)}>{showDone ? '−' : '+'} {t.doneRecent(recent.length)}</button>
-              <Collapse open={showDone}>{recent.map(row)}</Collapse>
+              <button className="in meta strong req-day req-fold" aria-expanded={showPaused} onClick={() => setShowPaused(!showPaused)}>{t.pausedN(paused.length)}</button>
+              <Collapse open={showPaused}>{paused.map(row)}</Collapse>
+            </section>
+          )}
+          {!!closed.length && (
+            <section className="req-group">
+              <button className="in meta strong req-day req-fold" aria-expanded={showDone} onClick={() => setShowDone(!showDone)}>{t.closedN(closed.length)}</button>
+              <Collapse open={showDone}>{closed.slice(0, 30).map(row)}</Collapse>
             </section>
           )}
         </>
       )}
-      {tab === 'done' && v && (closed.length ? closed.map(row) : <div className="in meta req-empty">{t.nothingDone}</div>)}
-      {tab === 'trace' && v && <TraceList trace={v.trace} goals={v.goals} />}
       <div style={{ height: 96 }} />
     </Shell>
   )

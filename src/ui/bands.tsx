@@ -771,7 +771,7 @@ export function FootBand() {
         </Line>
       )}
       {snap.asksOpen !== undefined && (
-        <Line ch="!" meta={tr(RM).openCount(snap.asksOpen)} onClick={() => push({ kind: 'requests' })}>
+        <Line ch="!" onClick={() => push({ kind: 'requests' })}>
           {tr(RM).menu}
         </Line>
       )}

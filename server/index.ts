@@ -582,8 +582,8 @@ const routes: [string, RegExp, Handler][] = [
     res.end(installPlan(await setup.detect(true)) + '\n')
   }],
   ['POST', /^\/api\/setup\/welcome$/, async (req, res) => {
-    await setup.welcome(asDevice((await readBody(req)).device))
-    json(res, 200, { ok: true })
+    const mid = await setup.welcome(asDevice((await readBody(req)).device))
+    json(res, 200, { ok: true, ...(mid ? { mid } : {}) })
   }],
   ['POST', /^\/api\/setup\/provider$/, async (req, res) => {
     const b = await readBody(req)

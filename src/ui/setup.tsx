@@ -121,10 +121,8 @@ export function useWelcome() {
   useEffect(() => {
     if (welcomed === undefined || asked.current) return
     asked.current = true
-    if (!welcomed) {
-      focusBoss()
-      void api.setupWelcome(device()).catch(() => (asked.current = false))
-    }
+    // Le fil s'ouvre sur l'accueil une fois écrit (une installation qui a déjà servi n'en a pas : rien ne s'ouvre).
+    if (!welcomed) void api.setupWelcome(device()).then((r) => r.mid && focusBoss({ mid: r.mid }), () => (asked.current = false))
     try {
       localStorage.setItem('weevils-onboarded', '1')
     } catch {

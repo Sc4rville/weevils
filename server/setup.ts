@@ -718,20 +718,22 @@ export class Setup {
   /** Premier lancement : l'appareil est noté et weevboss accueille dans son fil, d'après l'état réel. C'est tout
    * l'onboarding : une brique à la fois, avec sa puce ; la suite, weevboss la mène lui-même (weevils setup). Une
    * installation qui a déjà parlé à weevboss n'est pas accueillie. */
-  async welcome(device: Device) {
+  async welcome(device: Device): Promise<string | undefined> {
     if (this.p.welcomed) return
     this.p.welcomed = true
     this.p.device = device
     const s = await this.detect(true)
     this.p.claudeLogged = s.claude.logged
     this.p.githubLogged = s.github.logged
+    let mid: string | undefined
     if (!this.deps.hasHistory()) {
       const { text, brick } = greeting(s, device, this.providers())
       if (brick) this.p.marks[brick] = Date.now()
-      this.say(text)
+      mid = this.say(text)
     }
     this.save()
     this.deps.bump()
+    return mid
   }
 
   /** Claude Code vient d'être connecté : weevboss le dit, propose GitHub s'il manque, et reprend le travail en attente. */

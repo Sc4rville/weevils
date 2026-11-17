@@ -124,7 +124,7 @@ export const api = {
   pinRepo: (repo: string, pinned: boolean) => call<{ ok: true }>('POST', '/api/github/pin', { repo, pinned }),
   newRepo: (name: string, description: string) => call<{ name: string }>('POST', '/api/github/repos', { name, description }),
   devil: (text: string) => call<{ id: string }>('POST', '/api/devil', { text }),
-  setupWelcome: (device: Device) => call<{ ok: true }>('POST', '/api/setup/welcome', { device }),
+  setupWelcome: (device: Device) => call<{ ok: true; mid?: string }>('POST', '/api/setup/welcome', { device }),
   setupProvider: (tool: 'claude' | 'codex', device: Device) => call<AskResult>('POST', '/api/setup/provider', { tool, device }),
   /** again: sign in once more (a session found its agent signed out), even when a login is on file. */
   setupAsk: (brick: Brick, device: Device, again = false) => call<AskResult>('POST', '/api/setup/ask', again ? { brick, device, again } : { brick, device }),

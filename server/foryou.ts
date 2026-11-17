@@ -653,6 +653,10 @@ export class ForYou {
     if (s.archived) return false
     if (s.origin === 'headless' || s.id === this.w.orchestratorId) return false
     if (s.cwd && (s.cwd === this.dataDir || s.cwd.startsWith(this.dataDir + path.sep))) return false
+    // A repo-less automation's run (<projects>/.auto/.<id>: watches, hunters, reports) speaks in For you only through
+    // what it posts (one line with its page link, docs/LINKS.md): its closing turn is not a card. A task working in a
+    // repo (<projects>/.auto/<repo>/<id>) stays a session like another.
+    if (s.cwd && /(?:^|\/)\.auto\/\.[^/]+(?:\/|$)/.test(s.cwd)) return false
     const t = this.w.store?.get(s.id)
     if (t?.headless || t?.originator === 'codex_exec') return false
     const test = this.deps.isTestBrief ?? ((p?: string) => !!p && /^\s*\[test\]/.test(p))

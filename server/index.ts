@@ -1101,7 +1101,7 @@ const SELF_DIR = path.resolve(import.meta.dirname, '..')
 let landed: { at: number; git: boolean; list: { sha: string; at: number; group: string; text: string }[] } = { at: 0, git: false, list: [] }
 const landedOnMain = () => new Promise<typeof landed>((resolve) => {
   if (Date.now() - landed.at < 20_000) return resolve(landed)
-  execFile('git', ['-C', SELF_DIR, 'log', '-n', '60', '--since=8 days ago', '--no-merges', '--format=%h%x1f%ct%x1f%s'], { timeout: 5000 }, (err, out) => {
+  execFile('git', ['-C', SELF_DIR, 'log', '-n', '30', '--since=8 days ago', '--no-merges', '--format=%h%x1f%ct%x1f%s'], { timeout: 5000 }, (err, out) => {
     landed = { at: Date.now(), git: !err, list: err ? [] : String(out).split('\n').filter(Boolean).map((l) => {
       const [sha, ct, subject] = l.split('\x1f')
       return { sha, at: Number(ct) * 1000, ...commitSentence(subject ?? '') }

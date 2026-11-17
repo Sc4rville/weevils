@@ -131,7 +131,7 @@ describe('Pages', () => {
 describe('the weevils machine', () => {
   it('turns a commit subject into a plain sentence under its feature', () => {
     expect(commitSentence('feat(for-you): a card shows its link — the quote format kept it')).toEqual({ group: 'For you', text: 'A card shows its link' })
-    expect(commitSentence('fix: nothing scoped')).toEqual({ group: 'Fix', text: 'Nothing scoped' })
+    expect(commitSentence('fix(ui): nothing else; and more')).toEqual({ group: 'UI', text: 'Nothing else' })
   })
 
   it('is one page per install, its state live behind the key, its shots only from the shelf', async () => {

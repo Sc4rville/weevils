@@ -580,10 +580,11 @@ m.append(grid)}if(!any)m.append(el('p','meta',T.empty))};draw();`
 export function commitSentence(subject: string): { group: string; text: string } {
   const m = /^(\w+)(?:\(([^)]*)\))?!?:\s*(.*)$/.exec(subject.trim())
   const scope = (m?.[2] ?? '').split(/[,/]/)[0].replace(/[-_]+/g, ' ').trim()
-  let text = (m ? m[3] : subject).split(/\s+—\s+|\s+--\s+/)[0].trim()
-  if (text.length > 180) text = `${text.slice(0, 179).replace(/\s+\S*$/, '')}…`
+  let text = (m ? m[3] : subject).split(/\s+—\s+|\s+--\s+|;\s+|\s+\(/)[0].trim()
+  if (text.length > 140) text = `${text.slice(0, 139).replace(/\s+\S*$/, '')}…`
   const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1)
-  return { group: cap(scope || m?.[1] || ''), text: cap(text) }
+  const g = scope || m?.[1] || ''
+  return { group: g.length <= 3 ? g.toUpperCase() : cap(g), text: cap(text) }
 }
 
 function writeMachinePage(root: string, title: string) {
@@ -603,7 +604,7 @@ function writeMachinePage(root: string, title: string) {
 .ln1{display:flex;gap:8px;align-items:baseline;padding:5px 0}.ln1 .dot{flex:none;margin:0;transform:translateY(-1px)}
 .ln1 .tx{min-width:0;flex:1}.ln1 .tx b{font-weight:600}.ln1 .tx i{font-style:normal;color:var(--mute)}.ln1 time{color:var(--mute);font-size:12px;flex:none}
 .grp{font-weight:800;font-size:15px;margin:16px 0 2px}.cm{padding:4px 0 4px 12px;border-left:2px solid color-mix(in srgb,var(--ink) 10%,transparent)}
-.cm time{color:var(--mute);font-size:12px;margin-left:6px}
+.cm time{color:var(--mute);font-size:12px;margin-left:6px;white-space:nowrap}
 .cm.new{animation:land 2.4s ease-out;border-left-color:var(--a1)}
 @keyframes land{0%{opacity:0;transform:translateY(-8px);background:color-mix(in srgb,var(--a2) 26%,transparent)}25%{opacity:1;transform:none}100%{background:transparent}}
 .gl{padding:5px 0}.bar{height:3px;border-radius:3px;background:color-mix(in srgb,var(--ink) 10%,transparent);margin-top:5px;overflow:hidden}

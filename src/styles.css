@@ -522,6 +522,39 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+/* A reply's structure, calm: type and space carry it, no boxes. Headings a step up, bold where the agent put it,
+   real lists with a hanging indent, a quote set off by a thin rule, tables that scroll sideways rather than wrap. */
+.md > * { margin: 0; }
+.md > * + * { margin-top: .65em; }
+.md > .md-h + * { margin-top: .3em; }
+.md > * + .md-h { margin-top: 1.1em; }
+.md-h { font-weight: 700; line-height: 1.3; }
+.md-h1 { font-size: 1.25rem; }
+.md-h2 { font-size: 1.1563rem; }
+.md-h3 { font-size: 1.0625rem; }
+.md strong { font-weight: 700; }
+.md ul, .md ol { padding-inline-start: 1.3em; white-space: normal; }
+.md li + li { margin-top: .3em; }
+.md li > ul { margin-top: .3em; }
+.md li { white-space: pre-wrap; }
+.md li::marker { color: color-mix(in srgb, currentColor 55%, transparent); }
+.md blockquote {
+  padding-inline-start: .8em;
+  border-inline-start: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  opacity: .85;
+}
+.md blockquote button.copy { min-height: 24px; min-width: 28px; margin-block: -4px; }
+.md hr { border: 0; height: .2em; }
+.md-table { overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: normal; }
+.md table { border-collapse: collapse; font-size: .9375rem; line-height: 1.35; min-width: 100%; }
+.md th, .md td { text-align: start; vertical-align: top; padding: .35em .9em .35em 0; }
+.md th { font-weight: 700; }
+.md tr + tr td, .md tbody tr:first-child td { border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent); }
+.md td { min-width: 5.5em; max-width: 16em; }
+.md-code { position: relative; }
+.md-code pre { margin: 0 32px 0 0; padding-block: 2px; white-space: pre; overflow-x: auto; font-size: .8125rem; line-height: 1.5; }
+.md-code > button.copy { position: absolute; top: -8px; inset-inline-end: -6px; }
+
 .msg.event .text {
   font-size: 0.9375rem;
   font-style: italic;

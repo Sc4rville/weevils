@@ -10,7 +10,8 @@ import { api } from '../api'
 import { useCaptureSuggestion } from './capture-suggestion'
 import type { Author, Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
-import { chipLabel, chipLabels, type ChipId, dur, inline, isCommand, plain, segments, status, step, userText, userPhotos, userCaption } from './format'
+import { chipLabel, chipLabels, type ChipId, dur, inline, isCommand, status, step, userText, userPhotos, userCaption } from './format'
+import { blocks, spans, type ListItem } from './md'
 import { copyText, useLongPress } from './copy'
 import { markSeen } from './hints'
 import { flash, reveal } from './follow'
@@ -594,19 +595,71 @@ export function Composer({
 // ---------------------------------------------------------------------------
 // Le fil : la vraie conversation, simplifiée. Toi, l'agent, et ce qu'il fait entre deux réponses.
 
-/** Prose d'agent sans markdown ; les blocs de code sont repliés derrière « code · n lignes ». */
+/** An agent's reply with its structure kept, like a chat app: headings, bold, lists, quotes (with copy), tables that
+ * scroll sideways on a phone, short code open with its copy button, long code folded behind « code · n lines ». */
 export function Prose({ text }: { text: string }) {
-  const parts = useMemo(() => segments(text), [text])
+  const parts = useMemo(() => blocks(text), [text])
+  return (
+    <div className="text md">
+      {parts.map((b, i) =>
+        b.kind === 'heading' ? (
+          <p key={i} className={`md-h md-h${b.level}`}><Inline text={b.text} /></p>
+        ) : b.kind === 'para' ? (
+          <p key={i}><Inline text={b.text} /></p>
+        ) : b.kind === 'list' ? (
+          b.ordered ? (
+            <ol key={i} start={b.start}>{b.items.map((it, j) => <Item key={j} item={it} />)}</ol>
+          ) : (
+            <ul key={i}>{b.items.map((it, j) => <Item key={j} item={it} />)}</ul>
+          )
+        ) : b.kind === 'quote' ? (
+          <blockquote key={i}>
+            <Inline text={b.text} />
+            <CopyButton text={b.text} />
+          </blockquote>
+        ) : b.kind === 'table' ? (
+          <div key={i} className="md-table">
+            <table>
+              <thead><tr>{b.head.map((c, j) => <th key={j}><Inline text={c} /></th>)}</tr></thead>
+              <tbody>{b.rows.map((r, j) => <tr key={j}>{b.head.map((_, k) => <td key={k}><Inline text={r[k] ?? ''} /></td>)}</tr>)}</tbody>
+            </table>
+          </div>
+        ) : b.kind === 'code' ? (
+          b.body.split('\n').length <= SHORT_CODE ? (
+            <div key={i} className="md-code">
+              <pre className="code mono small">{b.body}</pre>
+              <CopyButton text={b.body} />
+            </div>
+          ) : (
+            <Snippet key={i} code={b.body} />
+          )
+        ) : (
+          <hr key={i} />
+        ),
+      )}
+    </div>
+  )
+}
+
+/** Code this short reads at a glance: shown, not folded. */
+const SHORT_CODE = 8
+
+function Item({ item }: { item: ListItem }) {
+  return (
+    <li>
+      <Inline text={item.text} />
+      {item.sub.length > 0 && <ul>{item.sub.map((s, k) => <li key={k}><Inline text={s} /></li>)}</ul>}
+    </li>
+  )
+}
+
+/** One line of a reply: bold and italic around what Rich reads (links, `commands`, chips). */
+function Inline({ text }: { text: string }) {
+  const parts = useMemo(() => spans(text), [text])
   return (
     <>
       {parts.map((p, i) =>
-        p.kind === 'text' ? (
-          <div key={i} className="text">
-            <Rich text={plain(p.body, true)} />
-          </div>
-        ) : (
-          <Snippet key={i} code={p.body} />
-        ),
+        p.kind === 'strong' ? <strong key={i}><Rich text={p.s} /></strong> : p.kind === 'em' ? <em key={i}><Rich text={p.s} /></em> : <Rich key={i} text={p.s} />,
       )}
     </>
   )

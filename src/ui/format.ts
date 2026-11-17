@@ -146,21 +146,6 @@ function inlineText(text: string, code: boolean): Inline[] {
 /** Une commande vaut un bouton copier quand elle ressemble à une ligne à taper (plusieurs mots), pas à un simple nom. */
 export const isCommand = (s: string) => /\S\s+\S/.test(s.trim()) && s.trim().length >= 6
 
-/** Découpe un texte en prose et blocs de code (``` … ```), pour replier le code. */
-export function segments(text: string): { kind: 'text' | 'code'; body: string }[] {
-  const out: { kind: 'text' | 'code'; body: string }[] = []
-  const re = /```[^\n]*\n([\s\S]*?)```/g
-  let last = 0
-  for (const m of text.matchAll(re)) {
-    const i = m.index ?? 0
-    if (i > last) out.push({ kind: 'text', body: text.slice(last, i) })
-    out.push({ kind: 'code', body: m[1].replace(/\s+$/, '') })
-    last = i + m[0].length
-  }
-  if (last < text.length) out.push({ kind: 'text', body: text.slice(last) })
-  return out.filter((s) => s.body.trim())
-}
-
 /** Nom d'outil (Claude Code, Codex) → clé du verbe affiché. */
 const VERBS: Record<string, keyof (typeof M)['fr']> = {
   read: 'read',

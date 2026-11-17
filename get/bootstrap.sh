@@ -94,7 +94,7 @@ _weevils_get() {
       ! command -v wsl.exe >/dev/null 2>&1 || d=$(wsl.exe -l -q 2>/dev/null | tr -d '\000\r' | grep -v '^docker-desktop' | grep . | head -1 || true)
       if [ -n "$d" ]; then
         say "installing in $d (WSL)"
-        MSYS_NO_PATHCONV=1 exec wsl.exe -d "$d" -- bash -lc "curl -fsSL '$BASE/i/$SID' | bash"
+        MSYS_NO_PATHCONV=1 exec wsl.exe -d "$d" -- bash -lc "curl -fsSL '$BASE/install.sh' | bash -s $SID"
       fi
       if [ "$UI_LANG" = fr ]; then fail "weevils tourne sous Linux, et ce Windows n’a pas encore Linux (WSL). Le plus simple : reviens sur la page et choisis un serveur. Sinon ouvre PowerShell en administrateur, tape wsl --install, redémarre, ouvre Ubuntu une fois, puis colle à nouveau la commande."
       else fail "weevils runs in Linux, and this Windows has no Linux (WSL) yet. Simplest: go back to the page and pick a server. Or open PowerShell as administrator, type wsl --install, restart, open Ubuntu once, then paste the command again."; fi

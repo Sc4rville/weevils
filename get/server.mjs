@@ -599,7 +599,7 @@ export function createNotifier(cfg) {
 
 /** What a server created from the page runs at its first boot: the install script of its setup, nothing else. */
 export function cloudInit(cfg, sid) {
-  return `#cloud-config\nruncmd:\n  - [bash, -c, "curl -fsSL --retry 5 --retry-delay 3 ${cfg.base}/i/${sid} | bash > /var/log/weevils-get.log 2>&1"]\n`
+  return `#cloud-config\nruncmd:\n  - [bash, -c, "curl -fsSL --retry 5 --retry-delay 3 ${cfg.base}/install.sh | bash -s ${sid} > /var/log/weevils-get.log 2>&1"]\n`
 }
 
 let OWN = null

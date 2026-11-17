@@ -146,7 +146,7 @@ describe('Hetzner, from the browser (mock API)', () => {
   })
   it('creates the server from the browser with the setup’s cloud-init, and tells the service only the server', async () => {
     // The page gets the cloud-init of its setup: it only runs that setup's install script.
-    expect(job.userData).toBe(`#cloud-config\nruncmd:\n  - [bash, -c, "curl -fsSL --retry 5 --retry-delay 3 https://get.example/i/${job.sid} | bash > /var/log/weevils-get.log 2>&1"]\n`)
+    expect(job.userData).toBe(`#cloud-config\nruncmd:\n  - [bash, -c, "curl -fsSL --retry 5 --retry-delay 3 https://get.example/install.sh | bash -s ${job.sid} > /var/log/weevils-get.log 2>&1"]\n`)
     await expect(HZ.create('readonlytoken0000000000', { sid: job.sid, size: 'light', userData: job.userData }, o())).rejects.toMatchObject({ hz: 'forbidden', status: 403 })
     const s = await HZ.create('goodtoken00000000000000', { sid: job.sid, size: 'recommended', userData: job.userData }, o())
     // Full in the first place: the next option.
@@ -355,7 +355,7 @@ describe('coming back to a setup (page closed, another browser, the same token)'
     // The page shows Hetzner's new root password itself: the service only gives this setup's command.
     const job = await pageJob('hetzner')
     expect(job.command).toBe(`curl -fsSL https://get.example/install.sh | bash -s ${job.sid}`)
-    expect(job.userData).toContain(`/i/${job.sid}`)
+    expect(job.userData).toContain(`/install.sh | bash -s ${job.sid}`)
     const env = await (await fetch(`${base2}/i/${job.sid}.env`, { headers: { 'x-forwarded-for': '172.30.99.10' } })).text()
     expect(env).toMatch(/^lang=en\nmode=url\nreach=https:\/\/essai\.example\npub=/)
     expect((await post('/api/status', { sid: job.sid, view: job.view })).data).toMatchObject({ state: 'running', step: 'created', server: { ip: '172.30.99.10' } })

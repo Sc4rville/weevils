@@ -25,7 +25,7 @@ export interface PageMeta extends PageInfo {
   /** The file opened at the page's address, relative to root. */
   entry: string
   /** Built pages: what they are made from, so they rebuild themselves. */
-  build?: { type: 'list'; source: string; mtime: number } | { type: 'library'; roots: string[]; at: number }
+  build?: { type: 'list'; source: string; mtime: number } | { type: 'library'; roots: string[]; at: number } | { type: 'machine' }
   from?: string
   createdAt: number
 }
@@ -48,7 +48,18 @@ const MIME: Record<string, string> = {
 }
 const LIBRARY_STALE_MS = 10 * 60_000
 
+/** The machine page's live side (server/index.ts): its state, and the before/after shots it may show. */
+export interface MachineLive {
+  state(): Promise<unknown>
+  /** A shot's file by its id (the media shelf), or null. */
+  shot(id: string): string | null
+}
+
+export const MACHINE_SLUG = 'weevils-machine'
+
 export class Pages {
+  /** Set by the server: without it the machine page says it is not wired. */
+  live?: MachineLive
   readonly dir: string
   private index: string
   private secret: string
@@ -165,6 +176,15 @@ export class Pages {
     return this.save({ kind, title, root, entry: 'index.html', from: o.from, build: { type: 'list', source, mtime: fs.statSync(source).mtimeMs } }, slug)
   }
 
+  /** The weevils machine: one per install, a live page of the stack, what runs and what lands (docs/LINKS.md). */
+  publishMachine(from?: string): PageMeta {
+    const title = tr(M).machineTitle
+    const slug = this.read().find((p) => p.build?.type === 'machine')?.slug ?? MACHINE_SLUG
+    const root = path.join(this.dir, slug)
+    writeMachinePage(root, title)
+    return this.save({ kind: 'report', title, root, entry: 'index.html', from, build: { type: 'machine' } }, slug)
+  }
+
   /** The media of some folders, organised by project and series; rebuilt when opened if older than ten minutes. */
   publishLibrary(o: { roots: string[]; title: unknown; from?: string; slug?: string }): PageMeta {
     const t = tr(M)
@@ -202,6 +222,7 @@ export class Pages {
   private fresh(page: PageMeta): void {
     const b = page.build
     if (!b) return
+    if (b.type === 'machine') return void writeMachinePage(page.root, page.title)
     try {
       if (b.type === 'list') {
         const m = fs.statSync(b.source).mtimeMs
@@ -239,6 +260,12 @@ export class Pages {
       }
       this.fresh(page)
     }
+    if (page.build?.type === 'machine' && rest === '/state.json') return void this.machineState(res)
+    const shot = page.build?.type === 'machine' ? /^\/shot\/([\w-]{1,40})$/.exec(rest) : null
+    if (shot) {
+      const f = this.live?.shot(shot[1])
+      return f && fs.existsSync(f) ? sendFile(req, res, f) : gone()
+    }
     let rel: string
     try {
       rel = decodeURIComponent(rest)
@@ -255,6 +282,19 @@ export class Pages {
     if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html')
     if (!fs.existsSync(file)) return gone()
     sendFile(req, res, file)
+  }
+
+  /** The page's script asks from a sandboxed (opaque) origin: no cookie travels, the key in the address is the access. */
+  private async machineState(res: http.ServerResponse) {
+    const head = { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' }
+    try {
+      const body = this.live ? await this.live.state() : { unwired: true }
+      res.writeHead(200, head)
+      res.end(JSON.stringify(body))
+    } catch {
+      res.writeHead(503, head)
+      res.end('{}')
+    }
   }
 }
 
@@ -531,4 +571,78 @@ c.append(media);const n=el('div','n',it.name);if(it.series){n.append(' ');n.appe
 m.append(grid)}if(!any)m.append(el('p','meta',T.empty))};draw();`
   const data = { at: Date.now(), count: groups.reduce((n, g) => n + g.items.length, 0), groups, t: { updated: t.updated, empty: t.empty, all: t.all, video: t.video, clip: t.clip, still: t.still, card: t.card } }
   writeAtomic(path.join(root, 'index.html'), shell(title, 'library', css, js, data))
+}
+
+// ---------------------------------------------------------------- the weevils machine
+
+/** A commit subject as a plain sentence and the feature it belongs to: « feat(for-you): a card … — details » →
+ *  { group: 'For you', text: 'A card …' }. The part after an em dash (the how) is dropped. */
+export function commitSentence(subject: string): { group: string; text: string } {
+  const m = /^(\w+)(?:\(([^)]*)\))?!?:\s*(.*)$/.exec(subject.trim())
+  const scope = (m?.[2] ?? '').split(/[,/]/)[0].replace(/[-_]+/g, ' ').trim()
+  let text = (m ? m[3] : subject).split(/\s+—\s+|\s+--\s+/)[0].trim()
+  if (text.length > 180) text = `${text.slice(0, 179).replace(/\s+\S*$/, '')}…`
+  const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1)
+  return { group: cap(scope || m?.[1] || ''), text: cap(text) }
+}
+
+function writeMachinePage(root: string, title: string) {
+  const t = tr(M)
+  const css = `h2{font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin:30px 0 8px}
+#dia{margin:18px 0 4px}.row{display:flex;justify-content:space-around;gap:6px;text-align:center}
+.nd{flex:1;min-width:0;padding:2px 0}.nd b{display:block;font-size:14px;line-height:1.2}.nd small{display:block;color:var(--mute);font-size:11px;min-height:14px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-bottom:4px;background:var(--c);transition:background .6s}
+.up{--c:oklch(.7 .16 150)}.busy{--c:var(--a1)}.idle{--c:color-mix(in srgb,var(--ink) 28%,transparent)}.error{--c:oklch(.62 .2 25)}
+.off{--c:transparent}.off .dot{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--ink) 28%,transparent)}
+.busy .dot{animation:beat 1.6s ease-in-out infinite}@keyframes beat{50%{transform:scale(1.5);opacity:.6}}
+.ln{width:2px;height:20px;margin:3px auto;background:color-mix(in srgb,var(--ink) 14%,transparent);border-radius:2px}
+.ln.flow{background:linear-gradient(180deg,transparent,var(--a1),var(--a2),transparent);background-size:100% 300%;animation:flow 1.4s linear infinite}
+@keyframes flow{from{background-position:0 100%}to{background-position:0 -200%}}
+.oiled .dot{animation:oil 1.8s ease-out}@keyframes oil{0%{box-shadow:0 0 0 0 var(--a2)}100%{box-shadow:0 0 0 22px transparent}}
+#pulse{color:var(--mute);font-size:13px;font-variant-numeric:tabular-nums}#pulse span{white-space:nowrap;margin-right:12px}
+.ln1{display:flex;gap:8px;align-items:baseline;padding:5px 0}.ln1 .dot{flex:none;margin:0;transform:translateY(-1px)}
+.ln1 .tx{min-width:0;flex:1}.ln1 .tx b{font-weight:600}.ln1 .tx i{font-style:normal;color:var(--mute)}.ln1 time{color:var(--mute);font-size:12px;flex:none}
+.grp{font-weight:800;font-size:15px;margin:16px 0 2px}.cm{padding:4px 0 4px 12px;border-left:2px solid color-mix(in srgb,var(--ink) 10%,transparent)}
+.cm time{color:var(--mute);font-size:12px;margin-left:6px}
+.cm.new{animation:land 2.4s ease-out;border-left-color:var(--a1)}
+@keyframes land{0%{opacity:0;transform:translateY(-8px);background:color-mix(in srgb,var(--a2) 26%,transparent)}25%{opacity:1;transform:none}100%{background:transparent}}
+.gl{padding:5px 0}.bar{height:3px;border-radius:3px;background:color-mix(in srgb,var(--ink) 10%,transparent);margin-top:5px;overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--a1),var(--a2));transition:width 1s}
+#shots{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -18px;padding:0 18px}
+#shots a{flex:none;width:78%;scroll-snap-align:start;text-decoration:none}#shots img{width:100%;border-radius:10px;display:block}
+#shots small{display:block;color:var(--mute);font-size:12px;margin-top:4px}
+@media (prefers-reduced-motion:reduce){.busy .dot,.ln.flow,.cm.new,.oiled .dot{animation:none}}`
+  // i18n-ignore: the page's script, its words come from T (the catalog above)
+  const js = `const m=document.getElementById('m');const when=document.getElementById('when');
+const ROWS=[['app'],['weevilsd'],['boss','autos','pages'],['tmux','hooks','codex'],['sessions']];
+const sec=(id,h)=>{if(h)m.append(el('h2',null,h));const d=el('div');d.id=id;m.append(d);return d};
+const dia=sec('dia');const pulse=sec('pulse',T.now);const run=sec('run');const goals=sec('goals',T.goals);const shots=sec('shots',T.shots);const feed=sec('feed',T.better);
+const fill=(s,n)=>s.replace('{n}',n);const seen=new Set();let first=true;
+const nodes={};for(const [i,r] of ROWS.entries()){if(i){const l=el('div','ln');l.dataset.i=i;dia.append(l)}const row=el('div','row');for(const id of r){const n=el('div','nd idle');n.append(el('span','dot'),el('b',null,T.p[id]),el('small'));nodes[id]=n;row.append(n)}dia.append(row)}
+function draw(S){if(S.unwired){when.textContent=T.unwired;return}
+when.textContent=T.live+' · '+new Date(S.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+const st={};for(const p of S.parts){st[p.id]=p.state;const n=nodes[p.id];if(!n)continue;n.className='nd '+p.state+(n.classList.contains('oiled')?' oiled':'');n.title=T.s[p.state];n.querySelector('small').textContent=p.note||T.s[p.state]}
+for(const l of dia.querySelectorAll('.ln')){const i=+l.dataset.i;l.classList.toggle('flow',[...ROWS[i-1],...ROWS[i]].some(id=>st[id]==='busy'))}
+pulse.replaceChildren(...S.pulse.map(x=>el('span',null,x.label+' '+x.value)));
+run.replaceChildren();for(const r of S.running){const d=el('div','ln1 '+r.state);d.append(el('span','dot'));const tx=el('div','tx');tx.append(el('b',null,r.title));if(r.note)tx.append(el('i',null,' — '+r.note));d.append(tx);if(r.at)d.append(el('time',null,ago(r.at)));run.append(d)}
+if(S.more)run.append(el('div','meta',fill(T.more,S.more)));if(!S.running.length)run.append(el('div','meta',T.quiet));
+goals.previousSibling.hidden=goals.hidden=!S.goals.length;goals.replaceChildren(...S.goals.map(g=>{const d=el('div','gl');d.append(el('span',null,g.title+' '),el('span','meta',g.done+'/'+g.total));const b=el('div','bar');const f=el('i');f.style.width=(g.total?Math.round(100*g.done/g.total):0)+'%';b.append(f);d.append(b);return d}));
+shots.previousSibling.hidden=shots.hidden=!S.shots.length;if(shots.dataset.k!==S.shots.map(s=>s.id).join()){shots.dataset.k=S.shots.map(s=>s.id).join();shots.replaceChildren(...S.shots.map(s=>{const a=el('a');a.href='shot/'+s.id;a.target='_blank';const im=el('img');im.src='shot/'+s.id;im.loading='lazy';im.alt=s.name;a.append(im,el('small',null,s.name+' · '+ago(s.at)));return a}))}
+let fresh=0;feed.replaceChildren();const groups=new Map();for(const c of S.commits){if(!groups.has(c.group))groups.set(c.group,[]);groups.get(c.group).push(c)}
+for(const [g,list] of groups){if(g)feed.append(el('div','grp',g));for(const c of list){const d=el('div','cm');d.append(document.createTextNode(c.text),el('time',null,ago(c.at)));if(!first&&!seen.has(c.sha)){d.classList.add('new');fresh++}seen.add(c.sha);if(Date.now()-c.at<60000&&first)d.classList.add('new');feed.append(d)}}
+if(!S.commits.length)feed.append(el('div','meta',S.git?T.noCommits:T.noGit));
+if(fresh){const n=nodes.weevilsd;n.classList.remove('oiled');void n.offsetWidth;n.classList.add('oiled');setTimeout(()=>n.classList.remove('oiled'),1900)}first=false}
+let wait=4000;async function tick(){try{const r=await fetch('state.json',{cache:'no-store'});if(r.ok){draw(await r.json());wait=4000}else wait=Math.min(wait*2,30000)}catch(e){wait=Math.min(wait*2,30000)}setTimeout(tick,document.hidden?15000:wait)}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick()});tick()`
+  const s = { up: t.mUp, busy: t.mBusy, idle: t.mIdle, error: t.mError, off: t.mOff }
+  const p = { app: t.mApp, weevilsd: t.mDaemon, boss: t.mBoss, autos: t.mAutos, pages: t.mPages, tmux: t.mTmux, hooks: t.mHooks, codex: t.mCodex, sessions: t.mSessions }
+  const data = { at: Date.now(), t: { updated: t.updated, live: t.mLive, unwired: t.mUnwired, now: t.mNow, goals: t.mGoals, shots: t.mShots, better: t.mBetter, more: t.mMore, quiet: t.mQuiet, noCommits: t.mNoCommits, noGit: t.mNoGit, s, p } }
+  const html = shell(title, 'report', css, js, data)
+  const file = path.join(root, 'index.html')
+  // Rewritten when opened only if it changed (the words follow the install's language).
+  const strip = (x: string) => x.replace(/"at":\d+/, '')
+  try {
+    if (strip(fs.readFileSync(file, 'utf8')) === strip(html)) return
+  } catch {}
+  writeAtomic(file, html)
 }

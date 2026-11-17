@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { pageLink, slugOf } from '../shared/pages.ts'
-import { listItems, PageRefused, Pages, scanLibrary } from './pages.ts'
+import { commitSentence, listItems, MACHINE_SLUG, PageRefused, Pages, scanLibrary } from './pages.ts'
 
 let tmp: string
 let pages: Pages
@@ -125,5 +125,29 @@ describe('Pages', () => {
     expect(pages.remove(p.slug)).toBe(true)
     expect(fs.existsSync(path.join(tmp, 'projects/content/productions'))).toBe(true)
     expect(pages.list()).toHaveLength(0)
+  })
+})
+
+describe('the weevils machine', () => {
+  it('turns a commit subject into a plain sentence under its feature', () => {
+    expect(commitSentence('feat(for-you): a card shows its link — the quote format kept it')).toEqual({ group: 'For you', text: 'A card shows its link' })
+    expect(commitSentence('fix: nothing scoped')).toEqual({ group: 'Fix', text: 'Nothing scoped' })
+  })
+
+  it('is one page per install, its state live behind the key, its shots only from the shelf', async () => {
+    const a = pages.publishMachine()
+    expect(pages.publishMachine().slug).toBe(a.slug)
+    expect(a.slug).toBe(MACHINE_SLUG)
+    const k = pages.key(a.slug)
+    expect(JSON.parse((await get(`/api/page/${k}/${a.slug}/state.json`)).body)).toEqual({ unwired: true })
+    const shot = write('projects/shot.png', 'png')
+    pages.live = { state: async () => ({ parts: [] }), shot: (id) => (id === 'abc' ? shot : null) }
+    const s = await get(`/api/page/${k}/${a.slug}/state.json`)
+    expect(s.headers.get('access-control-allow-origin')).toBe('*')
+    expect(JSON.parse(s.body)).toEqual({ parts: [] })
+    expect((await get(`/api/page/${k}/${a.slug}/shot/abc`)).body).toBe('png')
+    expect((await get(`/api/page/${k}/${a.slug}/shot/nope`)).status).toBe(404)
+    expect((await get(`/api/page/${'x'.repeat(22)}/${a.slug}/state.json`)).status).toBe(404)
+    expect((await get(`/api/page/${k}/${a.slug}/`)).body).toContain('state.json')
   })
 })

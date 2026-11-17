@@ -11,7 +11,7 @@ import FY from './i18n/foryou.ts'
 // weevilsd : API + flux temps réel pour l'app, et récepteur local des hooks Claude Code.
 // Lancer : node server/index.ts (Node 22, TypeScript natif).
 
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { keepAwake } from './platform.ts'
 import { claimSetup } from './get-claim.ts'
 import crypto from 'node:crypto'
@@ -63,7 +63,8 @@ import { MediaShelf } from './foryou-media.ts'
 import { Curator } from './foryou-curator.ts'
 import { Voices, voiceParam } from './foryou-voice.ts'
 import { geminiKey, liveUpgrade, sameOrigin } from './live.ts'
-import { KEY_RE as PAGE_KEY_RE, PageRefused, Pages } from './pages.ts'
+import { commitSentence, KEY_RE as PAGE_KEY_RE, PageRefused, Pages } from './pages.ts'
+import os from 'node:os'
 import { pageLink } from '../shared/pages.ts'
 import type { MachineLoad } from '../shared/tips.ts'
 import { Bring, realGit } from './bring.ts'
@@ -214,11 +215,12 @@ const machineStates = async (): Promise<MachineState[]> => {
 let tipLoad: { at: number; loads: MachineLoad[] } = { at: 0, loads: [] }
 // La voix de chacun dans le flux : weevboss garde celle de l'app, chaque auteur extérieur a la sienne (server/foryou-voice.ts).
 const voices = new Voices({ bossVoice: () => w.voiceId ?? cartesia()?.voice })
+const mediaShelf = new MediaShelf({ file: path.join(DATA_DIR, 'foryou-media.json'), roots: [...PROJECT_ROOTS, INBOX_DIR, DATA_DIR] })
 const foryou = ORCHESTRATOR
   ? new ForYou(w, {
       softwares: () => softwareCatalog(w),
       numbers: new ForYouNumbers({ ledgerFile: path.join(DATA_DIR, 'boss', 'ledger.json'), roots: PROJECT_ROOTS, fr: () => installationLang() === 'fr' }),
-      shelf: new MediaShelf({ file: path.join(DATA_DIR, 'foryou-media.json'), roots: [...PROJECT_ROOTS, INBOX_DIR, DATA_DIR] }),
+      shelf: mediaShelf,
       isTestBrief,
       optimizers: () => ({ accept: (id) => optimizers.accept(id) === true, refuse: (id) => optimizers.refuse(id) }),
       tips: (snap, now) => {
@@ -476,7 +478,8 @@ const routes: [string, RegExp, Handler][] = [
     const from = trustedFrom(req, b) ?? undefined
     const at = (p: unknown) => path.resolve(typeof b.cwd === 'string' ? b.cwd : process.cwd(), String(p ?? ''))
     try {
-      const page = b.build === 'list' ? pages.publishList({ source: at(b.path), title: b.title, kind: b.kind, from, slug: b.slug })
+      const page = b.build === 'machine' ? pages.publishMachine(from)
+        : b.build === 'list' ? pages.publishList({ source: at(b.path), title: b.title, kind: b.kind, from, slug: b.slug })
         : b.build === 'library' ? pages.publishLibrary({ roots: (Array.isArray(b.roots) ? b.roots : [b.path]).map(at), title: b.title, from, slug: b.slug })
         : pages.publish({ path: at(b.path), title: b.title, kind: b.kind, from, slug: b.slug })
       json(res, 200, { slug: page.slug, kind: page.kind, title: page.title, path: page.path, url: pageUrl(req, page.path) })
@@ -1090,6 +1093,78 @@ server.listen(PORT, HOST, () => console.log(`weevilsd → http://${HOST}:${PORT}
 // A Mac goes to sleep on its own: awake while weevilsd runs and the Mac is plugged in (WEEVILS_KEEP_AWAKE=0: no).
 keepAwake()
 
+
+// ---------------------------------------------------------------- the weevils machine page (server/pages.ts, docs/LINKS.md)
+// Real data only: what this server knows right now. Every install gets its own page at /p/report/weevils-machine.
+let lastHookAt = 0
+const SELF_DIR = path.resolve(import.meta.dirname, '..')
+let landed: { at: number; git: boolean; list: { sha: string; at: number; group: string; text: string }[] } = { at: 0, git: false, list: [] }
+const landedOnMain = () => new Promise<typeof landed>((resolve) => {
+  if (Date.now() - landed.at < 20_000) return resolve(landed)
+  execFile('git', ['-C', SELF_DIR, 'log', '-n', '60', '--since=8 days ago', '--no-merges', '--format=%h%x1f%ct%x1f%s'], { timeout: 5000 }, (err, out) => {
+    landed = { at: Date.now(), git: !err, list: err ? [] : String(out).split('\n').filter(Boolean).map((l) => {
+      const [sha, ct, subject] = l.split('\x1f')
+      return { sha, at: Number(ct) * 1000, ...commitSentence(subject ?? '') }
+    }) }
+    resolve(landed)
+  })
+})
+pages.live = {
+  shot: (id) => {
+    const e = mediaShelf.get(id)
+    return e?.type === 'image' ? e.path : null
+  },
+  state: async () => {
+    const t = tr(PM)
+    const snap = w.snapshot()
+    const live = snap.sessions.filter((s) => s.live && s.machineId === MACHINE.id)
+    const of = (list: typeof live) => list.some((s) => s.status === 'interrupted') ? 'error' : list.some((s) => s.status === 'working') ? 'busy' : list.length ? 'idle' : 'off'
+    const working = (list: typeof live) => list.filter((s) => s.status === 'working').length
+    const note = (list: typeof live) => (working(list) ? t.mWorking(working(list)) : t.mOpen(list.length))
+    const autos = snap.optimizers ?? []
+    const running = autos.filter((o) => o.state === 'running')
+    const scheduled = autos.filter((o) => o.state === 'queued')
+    const ago = (ms: number) => { const m = Math.round(ms / 60_000); return m < 60 ? `${m} min` : m < 2880 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d` }
+    const claude = live.filter((s) => s.tool === 'claude')
+    const codex = live.filter((s) => s.tool === 'codex')
+    const parts = [
+      { id: 'app', state: sseClients.size ? 'up' : 'idle', note: t.mConnected(sseClients.size) },
+      { id: 'weevilsd', state: 'up', note: t.mUptime(ago(process.uptime() * 1000)) },
+      { id: 'boss', state: !ORCHESTRATOR ? 'off' : snap.mainWorking ? 'busy' : 'idle' },
+      { id: 'autos', state: running.length ? 'busy' : autos.some((o) => o.state === 'failed') ? 'error' : autos.length ? 'idle' : 'off', note: t.mActive(running.length + scheduled.length) },
+      { id: 'pages', state: 'up', note: t.mCount(pages.list().length) },
+      { id: 'tmux', state: of(live.filter((s) => s.hasScreen)), note: note(live.filter((s) => s.hasScreen)) },
+      { id: 'hooks', state: claude.some((s) => s.status === 'working') && Date.now() - lastHookAt < 120_000 ? 'busy' : of(claude), note: lastHookAt ? ago(Date.now() - lastHookAt) : note(claude) },
+      { id: 'codex', state: snap.setup?.codex === false ? 'off' : of(codex), note: note(codex) },
+      { id: 'sessions', state: of(live), note: note(live) },
+    ]
+    const b = brief()
+    const disk = await fs.promises.statfs(DATA_DIR).then((d) => (d.blocks ? Math.round((1 - d.bavail / d.blocks) * 100) : null)).catch(() => null)
+    const q = await quotas().catch(() => null)
+    const week = (x: any) => x?.ok ? x.windows?.find((w: any) => w.kind === 'week')?.percent : undefined
+    const pulse = [
+      { label: t.mLoad, value: `${os.loadavg()[0].toFixed(1)} / ${os.cpus().length}` },
+      { label: t.mRam, value: `${Math.round(b.mem)}%` },
+      ...(disk != null ? [{ label: t.mDisk, value: `${disk}%` }] : []),
+      ...(week(q?.claude) != null ? [{ label: t.mClaudeWeek, value: `${week(q?.claude)}%` }] : []),
+      ...(week(q?.codex) != null ? [{ label: t.mCodexWeek, value: `${week(q?.codex)}%` }] : []),
+    ]
+    const order = { working: 0, needs_user: 1, interrupted: 2, idle: 3, done: 4 } as Record<string, number>
+    const runningNow = [
+      ...live.sort((a, b) => (order[a.status] ?? 5) - (order[b.status] ?? 5) || b.lastActivityAt - a.lastActivityAt).slice(0, 12).map((s) => ({
+        title: s.title || s.repo || s.projectId, note: s.status === 'working' ? s.now : s.repo, at: s.lastActivityAt,
+        state: s.status === 'working' ? 'busy' : s.status === 'interrupted' ? 'error' : s.status === 'needs_user' ? 'up' : 'idle',
+      })),
+      ...running.map((o) => ({ title: o.title, note: o.lastEvent, at: o.startedAt, state: 'busy' })),
+    ]
+    const goals = (w.ledger?.goals() ?? []).map((g) => ({ title: g.title, ...w.ledger!.goalStats(g.id) })).filter((g) => g.total).map(({ title, done, total }) => ({ title, done, total }))
+    const shots = mediaShelf.list().filter((e) => e.type === 'image' && /before|after/i.test(e.name)).sort((a, b) => b.at - a.at).slice(0, 6).map((e) => ({ id: e.id, name: e.name.replace(/\.\w+$/, '').replace(/[-_]+/g, ' '), at: e.at }))
+    const main = await landedOnMain()
+    return { at: Date.now(), parts, pulse, running: runningNow, more: scheduled.length, goals, shots, commits: main.list, git: main.git }
+  },
+}
+try { pages.publishMachine() } catch (e) { console.error('[pages] machine', e) }
+
 // Hooks Claude Code : port séparé, local uniquement, pas d'authentification nécessaire. Une page web ouverte sur
 // cette machine (Origin étrangère, DNS rebinding) ne peut pas y forger d'événements.
 http
@@ -1098,6 +1173,7 @@ http
     try {
       const body = await readBody(req, 256 << 10)
       w.hook(body, req.headers['x-pid'] as string | undefined)
+      lastHookAt = Date.now()
       console.log(`[hook] ${body?.hook_event_name ?? '?'} ${String(body?.session_id ?? '').slice(0, 8)}`)
       res.writeHead(200).end('ok')
     } catch {

@@ -11,6 +11,7 @@ page inside the app.
 weevils page <folder|file> "Title" --kind <kind>      # a folder (its index.html opens) or one file
 weevils page list <items.json> "Title" [--kind opportunities]   # an actionable list, built by weevils
 weevils page library "Title" <folder>…                # a media library that sorts itself
+weevils page machine                                  # this install's live machine page (always there)
 weevils pages                                         # what is published
 weevils page rm <slug>                                # unpublish
 ```
@@ -38,6 +39,13 @@ done or dismissed are left out.
 `previews`, `og`, `cards`…) when there are any, otherwise all its media; grouped by project (the folders above) and
 series (the folder inside), newest first; videos, clips, stills and cards. Hidden folders, `node_modules`, `renders`,
 `frames`, `build`, `dist` are never walked. A video's poster is `<name>.poster.jpg` next to it.
+
+`machine` is built in: every install has one, `/p/report/weevils-machine`. It shows the stack (app → weevilsd →
+weevboss, automations, pages → tmux, Claude hooks + JSONL, Codex app-server → sessions), each part lit from this
+server's live state; what runs now with the machine's pulse (load, RAM, disk, Claude and Codex week); and what gets
+better: the commits of weevils' own checkout over eight days as plain sentences per feature (a new one lands with an
+animation), weevboss's goals, and the before/after shots shown with `weevils show`. The page polls `state.json`
+every four seconds; nothing in it is made up: a part with no data says off or idle.
 
 ## Where it lives
 

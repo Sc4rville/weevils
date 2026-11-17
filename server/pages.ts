@@ -599,7 +599,7 @@ function writeMachinePage(root: string, title: string) {
 .ln.flow{background:linear-gradient(180deg,transparent,var(--a1),var(--a2),transparent);background-size:100% 300%;animation:flow 1.4s linear infinite}
 @keyframes flow{from{background-position:0 100%}to{background-position:0 -200%}}
 .oiled .dot{animation:oil 1.8s ease-out}@keyframes oil{0%{box-shadow:0 0 0 0 var(--a2)}100%{box-shadow:0 0 0 22px transparent}}
-#pulse{color:var(--mute);font-size:13px;font-variant-numeric:tabular-nums}#pulse span{white-space:nowrap;margin-right:12px}
+#pulse{display:flex;flex-wrap:wrap;gap:2px 12px;color:var(--mute);font-size:13px;font-variant-numeric:tabular-nums;margin-bottom:6px}#pulse span{white-space:nowrap}
 .ln1{display:flex;gap:8px;align-items:baseline;padding:5px 0}.ln1 .dot{flex:none;margin:0;transform:translateY(-1px)}
 .ln1 .tx{min-width:0;flex:1}.ln1 .tx b{font-weight:600}.ln1 .tx i{font-style:normal;color:var(--mute)}.ln1 time{color:var(--mute);font-size:12px;flex:none}
 .grp{font-weight:800;font-size:15px;margin:16px 0 2px}.cm{padding:4px 0 4px 12px;border-left:2px solid color-mix(in srgb,var(--ink) 10%,transparent)}

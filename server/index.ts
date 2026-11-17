@@ -1124,7 +1124,7 @@ pages.live = {
     const autos = snap.optimizers ?? []
     const running = autos.filter((o) => o.state === 'running')
     const scheduled = autos.filter((o) => o.state === 'queued')
-    const ago = (ms: number) => { const m = Math.round(ms / 60_000); return m < 60 ? `${m} min` : m < 2880 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d` }
+    const ago = (ms: number) => { const m = Math.round(ms / 60_000); return m < 1 ? '<1 min' : m < 60 ? `${m} min` : m < 2880 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d` }
     const claude = live.filter((s) => s.tool === 'claude')
     const codex = live.filter((s) => s.tool === 'codex')
     const parts = [
@@ -1152,7 +1152,7 @@ pages.live = {
     const order = { working: 0, needs_user: 1, interrupted: 2, idle: 3, done: 4 } as Record<string, number>
     const runningNow = [
       ...live.sort((a, b) => (order[a.status] ?? 5) - (order[b.status] ?? 5) || b.lastActivityAt - a.lastActivityAt).slice(0, 12).map((s) => ({
-        title: s.title || s.repo || s.projectId, note: s.status === 'working' ? s.now : s.repo, at: s.lastActivityAt,
+        title: s.title || s.repo || s.projectId, note: s.status === 'working' ? s.now : undefined, at: s.lastActivityAt,
         state: s.status === 'working' ? 'busy' : s.status === 'interrupted' ? 'error' : s.status === 'needs_user' ? 'up' : 'idle',
       })),
       ...running.map((o) => ({ title: o.title, note: o.lastEvent, at: o.startedAt, state: 'busy' })),

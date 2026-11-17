@@ -2885,6 +2885,8 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 
 /* A lateral screen: a full-screen drawer above the main screen and its automations rail, under the opened pages. */
 .lat-layer {
+  -webkit-user-select: none;
+  user-select: none;
   position: fixed;
   inset: 0;
   will-change: transform;
@@ -2932,4 +2934,21 @@ main.stack {
   z-index: -1;
   background: var(--ink);
   pointer-events: none;
+}
+
+/* The grip on the right edge: tap it to open the next screen, or pull it to the left. */
+.lat-grip {
+  position: absolute;
+  right: 6px;
+  top: calc(50% - 28px);
+  width: 5px;
+  height: 56px;
+  background: var(--ink);
+  opacity: 0.35;
+}
+
+.lat-layer input,
+.lat-layer textarea {
+  -webkit-user-select: text;
+  user-select: text;
 }

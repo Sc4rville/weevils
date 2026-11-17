@@ -11,7 +11,7 @@ import './coach.css'
 // déjà été fait (hints.json, partagé par les appareils), jamais deux de suite : au plus un toutes les 25 s, après
 // quelques secondes sans toucher l'écran, jamais pendant l'intro, une bulle, une carte d'astuce ou un branchement.
 
-type Move = 'swipe-left' | 'swipe-right' | 'pull-down' | 'pinch' | 'tap' | 'press'
+type Move = 'edge-left' | 'swipe-left' | 'swipe-right' | 'pull-down' | 'pinch' | 'tap' | 'press'
 
 interface Gesture {
   /** Fait pour de vrai : hints.json (bulle de la page vue, ou markSeen à l'endroit du geste). */
@@ -44,14 +44,6 @@ const rect = (sel: string) => onScreen([...document.querySelectorAll<HTMLElement
 
 const firstRect = (sel: string) => onScreen(document.querySelector<HTMLElement>(sel)?.getBoundingClientRect())
 
-/** La page du dessus, si elle contient cet élément (les pages n'ont pas d'autre marque que leur contenu). */
-const topPage = (inner: string) => {
-  const page = [...document.querySelectorAll<HTMLElement>('.page')].at(-1)
-  if (!page?.querySelector(inner)) return null
-  const r = page.getBoundingClientRect()
-  return r.width && r.height ? r : null
-}
-
 /** Le premier mot d'au moins 5 lettres du dernier message de weevboss visible : là où taper pour demander. */
 function wordRect(): DOMRect | null {
   const bubbles = [...document.querySelectorAll<HTMLElement>('.band.agent .ask-thread [data-mid] .text')].reverse()
@@ -72,10 +64,13 @@ function wordRect(): DOMRect | null {
   return null
 }
 
+/** Where the lateral chain rests: 0 main, 1 repos, 2 previews, -1 the overview (src/ui/lateral.tsx). */
+const lat = () => Number(document.documentElement.dataset.lat ?? 0)
+
 /** Par ordre de priorité : le premier utile dans le contexte du moment est mimé. */
 const GESTURES: Gesture[] = [
   // La page des repos : les logiciels sont à un glissé de plus vers la gauche.
-  { done: 'softwares', move: 'swipe-left', where: (c) => (c.page ? topPage('.repo-grid') : null) },
+  { done: 'softwares', move: 'edge-left', where: (c) => (!c.page && lat() === 1 ? rect('.lat-grip') : null) },
   // Une page ouverte : on revient en glissant depuis le bord gauche.
   { done: 'g-back', move: 'swipe-right', where: (c) => (c.page ? rect('.page') : null) },
   // Le fil de weevboss ouvert : un mot se tape pour l'expliquer ; on le referme en tirant vers le bas.
@@ -83,7 +78,7 @@ const GESTURES: Gesture[] = [
   { done: 'g-collapse', move: 'pull-down', where: (c) => (c.agentOpen && !c.page ? rect('#agent-body .chat') : null) },
   { done: 'g-copy', move: 'press', where: (c) => (c.agentOpen && !c.page ? rect('.band.agent .ask-thread [data-mid]') : null) },
   // Le fil des projets : les repos sont à un glissé vers la gauche (surtout quand il est vide).
-  { done: 'repos', move: 'swipe-left', where: (c) => (!c.agentOpen && !c.page ? rect('main.stack') : null) },
+  { done: 'repos', move: 'edge-left', where: (c) => (!c.agentOpen && !c.page && lat() === 0 ? rect('.lat-grip') : null) },
   // Des projets : un tap sur le nom les replie.
   { done: 'g-fold', move: 'tap', where: (c) => (!c.agentOpen && !c.page && c.projects > 0 ? firstRect('.band[data-project] .head-name .name') : null) },
   // Le logo de weevboss : on lui parle d'un tap (la bulle dit la suite au premier tap).
@@ -171,6 +166,7 @@ function Ghost({ move, r }: { move: Move; r: DOMRect }) {
   )
   return (
     <div className="coach-ghost" data-move={move} aria-hidden>
+      {move === 'edge-left' && dot([r.right - 4, r.right - 4, r.right - 200, r.right - 200], [r.top + r.height / 2, r.top + r.height / 2, r.top + r.height / 2, r.top + r.height / 2])}
       {move === 'swipe-left' && dot([r.right - 70, r.right - 70, r.left + 50, r.left + 50], [cy, cy, cy, cy])}
       {move === 'swipe-right' && dot([r.left + 4, r.left + 4, r.left + 170, r.left + 170], [cy, cy, cy, cy])}
       {move === 'pull-down' && dot([cx, cx, cx, cx], [r.top + 30, r.top + 30, r.top + 200, r.top + 200])}

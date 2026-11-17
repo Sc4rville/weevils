@@ -1,6 +1,7 @@
 import { animate, motion, useMotionValue, useTransform, type MotionValue } from 'motion/react'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react'
 import { spring } from './bits'
+import { markSeen } from './hints'
 import { ReposPage } from './repos'
 import { SoftwaresPage } from './softwares'
 
@@ -20,7 +21,7 @@ const LAST = SCREENS.length
 /** A screen's size in the overview, and the distance between two screens' centres (in screen widths). */
 const S = 0.46
 const GAP = S + 0.06
-const EDGE = 18
+const EDGE = 26
 const PRESS_MS = 420
 /** Never long-pressed: what has its own press (buttons, links, fields) and the text of messages (selection). */
 const NO_PRESS = 'button, a, input, textarea, select, label, [contenteditable], [role="button"], [role="slider"], [data-mid], .h24, .msg, .peek'
@@ -108,6 +109,7 @@ function usePress(fire: () => void, enabled: boolean) {
         }
         window.addEventListener('click', eat, { capture: true, once: true })
         setTimeout(() => window.removeEventListener('click', eat, { capture: true }), 600)
+        window.getSelection()?.removeAllRanges()
         navigator.vibrate?.(8)
         fire()
       }, PRESS_MS)
@@ -152,10 +154,16 @@ export function useLateralNav(active: boolean, main: React.RefObject<HTMLElement
       const to = clamp(Math.round(i), 0, LAST)
       setMounted((m) => Math.max(m, to))
       setRest(to)
+      if (to >= 1) markSeen('repos')
+      if (to >= 2) markSeen('softwares')
       go(pos, to)
     },
     [pos],
   )
+
+  useEffect(() => {
+    document.documentElement.dataset.lat = String(overview ? -1 : rest)
+  }, [rest, overview])
 
   const mount = useCallback((n: number) => setMounted((m) => Math.max(m, n)), [])
 
@@ -275,8 +283,10 @@ export function LateralDeck({ nav, active }: { nav: LateralNav; active: boolean 
         const to = vx < -400 ? base + 1 : vx > 400 ? base : cur > base + 0.5 ? base + 1 : base
         goTo(to)
       },
-      // A tap on the grip is a tap on what is under it.
+      // A tap on the visible grip opens the next screen; elsewhere on the edge it is a tap on what is under it.
       tap: () => {
+        const bar = grip.firstElementChild?.getBoundingClientRect()
+        if (bar && Math.abs(e.clientY - (bar.top + bar.height / 2)) < 56) return goTo(base + 1)
         grip.style.pointerEvents = 'none'
         const under = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
         grip.style.pointerEvents = ''
@@ -315,7 +325,9 @@ export function LateralDeck({ nav, active }: { nav: LateralNav; active: boolean 
           </Layer>
         ) : null,
       )}
-      {active && !overview && rest < LAST && <div className="lat-edge" style={{ width: EDGE }} onPointerDown={pull} aria-hidden />}
+      {active && !overview && rest < LAST && <div className="lat-edge" style={{ width: EDGE }} onPointerDown={pull} aria-hidden>
+          <span className="lat-grip" />
+        </div>}
       {overview && <div className="lat-over" onPointerDown={browse} aria-hidden />}
     </>
   )

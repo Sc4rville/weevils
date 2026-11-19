@@ -35,7 +35,10 @@ for d, dirs, files in os.walk(root, topdown=True):
             os.remove(os.path.join(d, n))
 PY
 # Personal traces left in shipped files: refuse to publish rather than ship them.
-if grep -rIl --exclude-dir=test --exclude='*.test.*' -e '/home/alex' -e '203\.0\.113\.10' "$work" >"$work.leaks" 2>/dev/null; then
+# Looked for: the publisher's home folder and this machine's own addresses (none written here).
+leak=(-e "$HOME/")
+for ip in $(hostname -I 2>/dev/null); do case $ip in 127.*|10.*|172.*|192.168.*|::1|f[cd]*|fe80*) ;; *) leak+=(-e "$ip") ;; esac; done
+if [ "$HOME" != / ] && grep -rIlF --exclude-dir=test --exclude='*.test.*' "${leak[@]}" "$work" >"$work.leaks" 2>/dev/null; then
   echo "make-bundle: personal traces in $(wc -l <"$work.leaks") file(s):" >&2; sed "s|$work/||" "$work.leaks" >&2; rm -f "$work.leaks"; exit 1
 fi
 rm -f "$work.leaks"

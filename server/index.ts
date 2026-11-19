@@ -40,6 +40,7 @@ import { startMailBridge } from './mailbridge.ts'
 import { resetAuthors, threadAuthor } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
+import { jailedAllowed, jailedPeer } from './jail-peer.ts'
 import { startDiskUsage } from './disk-usage.ts'
 import { anchorFor, entries as spendEntries, logCalibration, summarize } from './spend.ts'
 import { claudeQuota, claudeWindows, quotas, rate as tokenRate, today as usageToday } from './usage.ts'
@@ -1016,6 +1017,8 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
     // Le Raccourci Siri n'a pas de cookie : son jeton personnel n'ouvre que le tour de parole et le son qui va avec.
     const viaShortcut = /^\/api\/voice\/(turn|clip\/)/.test(url.pathname) && shortcutAuthed(req, url)
     if (!PUBLIC.has(url.pathname) && !viaShortcut && !authed(req)) return json(res, 401, { error: tr(M).signInRequired })
+    // An automation's jail calling on loopback: only its CLI profile's routes (server/jail-peer.ts).
+    if (!hasDevice(req) && isLocal(req) && jailedPeer(req.socket) && !jailedAllowed(req.method, url.pathname)) return json(res, 403, { error: tr(M).signInRequired })
     if (!door.tapAllowed(req, req.method, url.pathname) || !door.voiceAllowed(req, url.pathname, viaShortcut)) return json(res, 403, { error: tr(M).bossUserOnly })
     if (req.method === 'GET' && url.pathname === '/api/outbox/capabilities') return json(res, 200, { enabled: true, version: 1 })
     const receipt = /^\/api\/outbox\/([a-zA-Z0-9_-]{16,120})$/.exec(url.pathname)

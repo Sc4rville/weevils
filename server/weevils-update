@@ -114,6 +114,7 @@ fi
 
 # ---------------------------------------------------------------- the installer, as on a re-run
 run=$state/update-install.log
+(umask 077; : >>"$run") && chmod 600 "$run"
 install_ok() { (cd "$dir" && WEEVILS_NO_UPDATE=1 ./install.sh --agent --no-update) >"$run" 2>&1 || true; grep -q '^status=ok$' "$run"; }
 lang=$(sed -n 's/.*"lang" *: *"\(fr\|en\)".*"from" *: *"choice".*/\1/p' "$state/prefs.json" 2>/dev/null || true)
 lang=${lang:-$(cfgv WEEVILS_LANG)}

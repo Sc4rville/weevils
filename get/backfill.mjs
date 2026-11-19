@@ -15,7 +15,7 @@ import { BOT, appendInstall, config, deviceOf, previewerOf, readJson, sourceOf, 
 
 const cfg = config()
 const force = process.argv.includes('--force')
-const OWN = new Set(Object.values(os.networkInterfaces()).flat().map((a) => a.address))
+const OWN = new Set([...Object.values(os.networkInterfaces()).flat().map((a) => a.address), ...(process.env.GET_OWN_IPS || '').split(',').filter(Boolean)])
 const TEST = (ip) => !ip || OWN.has(ip) || ip.startsWith('127.') || ip.startsWith('172.') || ip === '::1'
 const days = {}
 const day = (d) => (days[d] ??= { day: d, visits: 0, visitors: 0, sources: {}, devices: {}, countries: {}, previews: {}, chose: {}, started: {}, succeeded: {}, switched: {}, bundles: 0, seen: new Set(), picked: new Set() })

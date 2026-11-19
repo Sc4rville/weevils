@@ -15,8 +15,8 @@ const ownNs = (() => {
 })()
 const seen = new WeakMap<net.Socket, boolean>()
 
-/** The inode of the client end of a loopback TCP connection (its port → the server's port). */
-function peerInode(peerPort: number, serverPort: number, read: (f: string) => string): string | null {
+/** The client end of a loopback TCP connection (its port → the server's port): its socket inode and owner uid. */
+function peerEntry(peerPort: number, serverPort: number, read: (f: string) => string): { inode: string; uid: number } | null {
   for (const f of ['/proc/net/tcp', '/proc/net/tcp6']) {
     let text: string
     try {
@@ -27,7 +27,7 @@ function peerInode(peerPort: number, serverPort: number, read: (f: string) => st
     for (const line of text.split('\n').slice(1)) {
       const c = line.trim().split(/\s+/)
       if (c.length < 10) continue
-      if (parseInt(c[1].split(':')[1], 16) === peerPort && parseInt(c[2].split(':')[1], 16) === serverPort && c[9] !== '0') return c[9]
+      if (parseInt(c[1].split(':')[1], 16) === peerPort && parseInt(c[2].split(':')[1], 16) === serverPort && c[9] !== '0') return { inode: c[9], uid: Number(c[7]) }
     }
   }
   return null
@@ -63,7 +63,7 @@ export function jailedPeer(socket: net.Socket | undefined, read: (f: string) => 
   const peer = socket.remotePort
   const local = socket.localPort
   if (peer && local) {
-    const inode = peerInode(peer, local, read)
+    const inode = peerEntry(peer, local, read)?.inode
     const pid = inode ? ownerOf(inode) : null
     if (pid) {
       try {
@@ -90,3 +90,10 @@ const JAILED_ROUTES: [string, RegExp][] = [
   ['DELETE', /^\/api\/pages\/[^/]+$/], // page rm
 ]
 export const jailedAllowed = (method: string | undefined, pathname: string) => JAILED_ROUTES.some(([m, re]) => m === method && re.test(pathname))
+
+/** False when the peer of this loopback connection is another user's process (Linux; elsewhere always true). */
+export function sameUserPeer(socket: net.Socket | undefined, read: (f: string) => string = (f) => fs.readFileSync(f, 'utf8')): boolean {
+  if (!socket || process.platform !== 'linux' || !socket.remotePort || !socket.localPort) return true
+  const e = peerEntry(socket.remotePort, socket.localPort, read)
+  return !e || e.uid === process.getuid?.()
+}

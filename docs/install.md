@@ -245,7 +245,27 @@ Claude settings goes too when weevils wrote it (after `--no-ask-permissions`); o
 
 ## Several machines
 
-Install the main machine first, then on each other machine (it needs `ssh <main host>` to work without a password):
+The simplest way is to ask weevboss ("plug in my laptop"). When the main machine answers at a public https address
+and its sshd answers too (SSH goes to that name, or to a VPS's public IP when the address is a tunnel's), weevboss's
+thread shows one line to paste in a terminal on the other computer:
+
+```sh
+curl -fsSL https://<your weevils>/api/join.sh | bash -s <code>
+```
+
+The code works once, for an hour (only its SHA-256 is kept, in `~/.local/share/weevils/join.json`). `server/join.sh`
+makes an SSH key of its own on that computer (`~/.ssh/weevils_ed25519`) and sends its public half with the computer's
+name; the main machine writes it into `~/.ssh/authorized_keys` held to the tunnel: `restrict`, one `permitlisten` and
+one `permitopen` (the tunnel's port, reserved from 4192 when the code was made), and the forced command
+`weevils-service remote-shell <id> <port>`, which only answers the connection check and registers that same machine
+on that same port (no shell, nothing else). The script then writes a `weevils-<main id>` alias in `~/.ssh/config`
+and the main machine's host keys in `~/.ssh/known_hosts`, and runs `install.sh --secondary` through it. The thread
+says when the key came in and when the machine is online. A main machine on a laptop, or one only reachable over plain
+http (this machine, the home network), cannot take another computer this way: weevboss asks for that computer's
+address in a masked field instead.
+
+By hand, install the main machine first, then on each other machine (it needs `ssh <main host>` to work without a
+password):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Sc4rville/weevils/main/install.sh | bash -s -- --secondary <main ssh host>
@@ -280,8 +300,8 @@ test/docker/run.sh          # all scenarios, ends with PASS or FAIL
 
 It installs the HEAD commit in blank `ubuntu:24.04` containers: a systemd "VPS" (install from a clone as a sudo
 user, service + linger, login over http, the end screen without a domain, idempotent re-run, `--domain` with Caddy,
-a port change that moves the Caddy site, a `--secondary` machine federated over SSH, reboot, `--uninstall` then a
-new install), a plain container without systemd (piped install as root: Claude Code from its official installer,
+a port change that moves the Caddy site, a `--secondary` machine federated over SSH, a third machine plugged in
+from weevboss's one line (`/api/join.sh`, its key held to the tunnel), reboot, `--uninstall` then a new install), a plain container without systemd (piped install as root: Claude Code from its official installer,
 `WEEVILS_SAFE=1`, background fallback, `--uninstall --purge`), and the hard cases (`test/docker/run.sh edge`):
 truncated downloads, no terminal without `--yes`, a user without sudo and without tmux, Node 20 from NodeSource
 and Node 18 from Ubuntu upgraded, a Node 20 tarball shadowing the new one, `cat install.sh | bash -s` as a sudo user

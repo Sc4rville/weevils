@@ -17,7 +17,8 @@ a resume happens only when asked. Step 4 is off unless `WEEVILS_THREADS=1`: then
 a conversation is one thread whatever engines carried it, the app shows three states and the weevbook page, and the
 Codex relay is gone ([06](06-dispatch.md#step-4-the-dispatcher-in-weevilsd), with what making it the default needs). The connector of
 step 5 ([`server/connector`](../../server/connector): `/mcp`, its sign-in and the five tools) is off unless
-`WEEVILS_CONNECTOR=1`; on, ChatGPT and Claude.ai can send chats to the weevbook ([05](05-connector.md#step-5-the-connector-in-weevilsd)).
+`WEEVILS_CONNECTOR=1`, which weevboss writes and applies at once when the person asks to plug in a chat app; on,
+ChatGPT and Claude.ai can send chats to the weevbook ([05](05-connector.md#step-5-the-connector-in-weevilsd)).
 Each page ends with
 "What exists today", which names the real files the design builds on.
 

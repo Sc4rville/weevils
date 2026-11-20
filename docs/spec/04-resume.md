@@ -92,10 +92,22 @@ git push <hub> refs/weevils/checkpoints/<thread id>:refs/checkpoints/<thread id>
 1. If the folder has changes that are not this thread's previous checkpoint, or another leg is at work in it:
    restore into a git worktree of the same repository instead, on a new branch `weevils/<slug>`. Nobody's work is
    overwritten.
-2. Otherwise move to `base`: fast-forward the branch when that is possible, else use the worktree of step 1. An
-   existing branch is never moved backwards or sideways.
-3. `git restore --source=<checkpoint> --worktree -- :/`. The files are now as the engine left them, and `git status`
-   shows them as changes on top of `base`.
+2. Otherwise restore in place only when `HEAD` is already `base`. An existing branch is never moved, not even
+   forward: weevils does not touch the user's branches (decided with step 2; this replaces "fast-forward the
+   branch"). Any other `HEAD`: the worktree of step 1. A repository weevils has just made (an empty folder, or its own
+   clone) is the exception: its branch goes forward to `base`, or a branch is made there.
+3. Write the checkpoint's files over the folder through a throwaway index (`git read-tree <checkpoint>`, `git
+   checkout-index -a -f`), and remove the files `base` has and the checkpoint has not. Same result as `git restore
+   --source=<checkpoint> --worktree -- :/`; the user's index is never written. The files are now as the engine left
+   them, and `git status` shows them as changes on top of `base`.
+
+A folder without git is restored in place when it is empty or holds only this thread's earlier state, otherwise in a
+new folder beside it (`<folder>-weevils-<slug>`).
+
+**When a checkpoint is taken** (step 2, with a hub set): when the writer reads the end of a turn (`done`, or `failed`
+with an effect) within 10 minutes of it. A turn read later (a backfill, a restart long after) keeps `kind: none` as in
+step 1: the folder is no longer what it was then. A checkpoint that could not be copied into the weevbook is `kind:
+none` with its reason. `server/weevbook/checkpoint.ts` takes and restores them.
 
 Not carried by a checkpoint, and therefore written in the handoff: ignored files (`.env`, `node_modules`), the
 difference between staged and unstaged, stashes, running programs, local databases, environment variables.
@@ -147,8 +159,9 @@ by: codex:c81d2e@laptop
   a push) without checking that it did not already happen".
 - **Once resumed, always resumed.** The effect of a turn is sticky: after one attempt had an effect, every later
   attempt has `resume: true` and gets the preface, even when the attempt just before failed with no effect.
-- **Three attempts.** A turn is assigned at most three times. After that it is `held` with the reason, and the app
-  says what to do.
+- **Three failures that are the turn's own.** A turn that failed three times with reason `api` or `auth` is `held`
+  with the reason `attempts`, and the app says what to do. A quota that ran out, a machine that went away or a lease
+  that was lost does not count: the table bounds those (`no-room`, `no-machine`).
 - **Never stuck.** A failed turn is always followed by `assigned` or `held`. A thread never waits for a new message
   to notice that its last turn did not finish.
 - **Oldest first.** One turn at a time is in an engine's hands (THREAD-11). A message that arrives while a turn runs
@@ -160,12 +173,44 @@ by: codex:c81d2e@laptop
   held turn is written again with it; when it gives an engine, the turn is assigned.
 - `turn.ts` implements this section: the state machine, the retry rule (`next`) and the preface.
 
-**Open question: what counts as an attempt.** Every `assigned` counts today. In the simulator about one turn in 40
-is held for `attempts`, and nearly always after failures that were not the turn's doing: an account that ran out
-(`quota`), a machine that went away (`machine-lost`). The app then says "it stopped three times in a row" when the
-truth is "your accounts ran out". Counting only `api` and `auth` failures would keep the limit for turns that break
-engines; quota and lost machines are bounded anyway by the table, which ends in `no-room` or `no-machine`.
-*Recommendation: count only `api` and `auth`.* Not changed here.
+**What counts as an attempt** (decided with step 3). Only failures with reason `api` or `auth`. Counting every
+`assigned` held about one turn in 40 in the simulator, nearly always after failures that were not the turn's doing
+(`quota`, `machine-lost`), and the app then said "it stopped three times in a row" when the truth was "your accounts
+ran out". With the rule above, 20,000 simulated runs (395,157 turns done) held 12 turns for `attempts`, with no
+invariant broken. `turn.ts` counts them (`counted`, `COUNTED`); the attempt number in `assigned` still counts every
+attempt.
+
+## Step 3: resume on another machine
+
+Decided with step 3. `server/weevbook/resume.ts` (`resumeThread`) implements it; `weevils weevbook resume <thread>
+[--wait]` calls it, and the dispatcher of step 4 will.
+
+- **Only when asked**, and only with the thread's own provider. A change of provider (rung 3) is not done here.
+- **The lease.** Idle, whoever holds it: taken over. Working, and its holder silent: stolen first when the rules of
+  [03](03-sync-and-lease.md) allow it (`--wait` waits at most 130 s + 30 s). Working, and its holder alive: refused,
+  with how long until a steal would be allowed. Working on this machine: refused.
+- **The engine** comes from `dispatch.ts` on a table of two machines: this one, alive, signed in on the thread's
+  provider, its quota taken as 0 % (no reading exists before step 4), and the old one, silent. The rows give
+  `machine` (rung 2) for another machine, `stay` or `account` (rung 1) for the same one. `hold` (`only-there` for a
+  last checkpoint of `kind: none`) is reported and nothing is written. A turn held for `attempts` is refused.
+- **The folder**: found or cloned as in rung 2 (`place` of `server/bring.ts`), then the last checkpoint of the thread
+  that the hub has is restored (above). With no checkpoint on the hub, the folder is used as found and the preface
+  says that steps may be missing from it.
+- **One push**: `leg.end` (`moved`, when the open leg is another machine's), `assigned` (next attempt, `resume` from
+  the sticky effect, rule and reason from the table), `leg.start` (rung, the epoch of the lease after the push),
+  `running`, with the lease `working`. Rejected: the hub's version is taken back and nothing happened.
+- **The provider session** (rung 2): rebuilt from the raw segments of every leg with this session, each leg's folder
+  rewritten to the new one. It is recorded in `weevbook-sessions.jsonl` before the file is written (the writer must
+  never take it for a new thread), with the lines of the earlier legs as `base`: only what follows is the new leg's
+  raw. A file already there is kept beside it (`.before-weevbook`).
+- **The first request**: the preface when an attempt of the turn had an effect (RESUME-8), the user's message
+  otherwise; never both. The local weevilsd starts the engine (`POST /api/sessions/<id>/send`, as the app does). If
+  it cannot: `failed` (`api`, effect `none`), `leg.end` (`error`), idle.
+- **No waiting turn**: the leg moves here (`leg.end`, `leg.start`), nothing is started; the user goes on from the app.
+- **In the end-to-end test** (`hub.e2e.test.ts`): the steal 90 s after the last renewal, then the resume (restore,
+  rebuild, push, start) in about 0.3 s.
+- **Known limit**: the adapter of the resumed leg reads that leg's events only, so its own record of an earlier
+  effect starts at the new leg; `turn.ts` and the journal (THREAD-10) still keep the effect sticky.
 
 ## Invariants
 
@@ -200,8 +245,14 @@ To be tested with two machines at step 3, and by the simulator at step 4.
 ## What exists today
 
 - [`server/weevbook/turn.ts`](../../server/weevbook/turn.ts): the turn as a pure reducer (`applyTurn`, `turnsOf`),
-  the retry rule (`next`, `assign`, `holdAll`, `stolen`) and the signed preface (`preface`). Nothing in the app uses
-  it yet.
+  the retry rule (`next`, `assign`, `holdAll`, `stolen`) and the signed preface (`preface`). The hub sync uses it for
+  steals, `resume.ts` for the attempt and the preface.
+- [`server/weevbook/checkpoint.ts`](../../server/weevbook/checkpoint.ts) (step 2): checkpoints `git`, `shadow` and
+  `none`, and restores, as above. `checkpoint.test.ts`: a repository with staged, unstaged, deleted, untracked and
+  ignored files (RESUME-1), the 5 MiB cap, a folder without git, a home folder, restores in place, in a worktree, in a
+  new repository, beside (RESUME-3, RESUME-4).
+- [`server/weevbook/resume.ts`](../../server/weevbook/resume.ts) (step 3): "Step 3" above. `hub.e2e.test.ts` runs it
+  between two machines (RESUME-5, RESUME-8, RESUME-9).
 - `server/bring.ts` does half of rung 2 by hand: it finds or clones the project (`place`), rewrites the folder path
   in every line (`rewritePaths`) and writes the file where the provider looks (`arrive`). It is started by the user,
   moves whole files in one go, and does not move the code's state.
@@ -213,7 +264,7 @@ To be tested with two machines at step 3, and by the simulator at step 4.
   when the limit is near, not kept current, and the user sees the whole mechanism.
 - `server/return-relay.ts` goes the other way without a model: the first request plus the last 24 messages, cut at
   20,000 characters. Rung 3 keeps those two numbers.
-- Nothing saves the state of the code today.
+- The state of the code is saved only with a hub set (step 2).
 
 ## Not in v1
 

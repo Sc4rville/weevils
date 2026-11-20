@@ -4,16 +4,20 @@ Today a conversation with Claude Code or Codex lives in one file, on one machine
 specification describes the next shape: a conversation belongs to you. You start it anywhere, it continues anywhere,
 and the app shows one thread.
 
-**Status: step 1, in shadow.** These pages, the sample in [`examples/weevbook`](../../examples/weevbook), the pure
-module of the journal ([`server/weevbook/journal.ts`](../../server/weevbook/journal.ts)), the core of the lease, the
-turn and the dispatcher (`lease.ts`, `turn.ts`, `dispatch.ts` next to it), a simulator that drives the three together
-([`server/weevbook/sim`](../../server/weevbook/sim), `npm run sim`), and the local weevbook
-([`server/weevbook`](../../server/weevbook): store, adapters, writer, `weevils weevbook backfill | check | compare`)
-exist. The lease, the turn, the dispatcher and the simulator are not used by the running app yet. The writer is off
-unless `WEEVILS_WEEVBOOK=1`; on, it writes next to the app and changes nothing the app shows or does. The connector of
+**Status: steps 1, 2, 3 and 5, behind flags.** These pages, the sample in [`examples/weevbook`](../../examples/weevbook), the
+pure module of the journal ([`server/weevbook/journal.ts`](../../server/weevbook/journal.ts)), the core of the lease,
+the turn and the dispatcher (`lease.ts`, `turn.ts`, `dispatch.ts` next to it), a simulator that drives the three
+together ([`server/weevbook/sim`](../../server/weevbook/sim), `npm run sim`), the local weevbook
+([`server/weevbook`](../../server/weevbook): store, adapters, writer, `weevils weevbook backfill | check | compare`),
+and since steps 2 and 3 the sync with a hub (`hub.ts`), the checkpoints of the code (`checkpoint.ts`) and the resume
+of a thread on another machine with the same provider (`resume.ts`, `weevils weevbook resume <thread>`, `weevils
+weevbook sync status`). The writer is off unless `WEEVILS_WEEVBOOK=1`; the sync, the checkpoints and the steals are
+off unless `WEEVILS_WEEVBOOK_HUB` is set too. On, they write next to the app and change nothing the app shows or does;
+a resume happens only when asked. The dispatcher is not used by the running app yet (step 4). The connector of
 step 5 ([`server/connector`](../../server/connector): `/mcp`, its sign-in and the five tools) is off unless
 `WEEVILS_CONNECTOR=1`; on, ChatGPT and Claude.ai can send chats to the weevbook ([05](05-connector.md#step-5-the-connector-in-weevilsd)).
-Each page ends with "What exists today", which names the real files the design builds on.
+Each page ends with
+"What exists today", which names the real files the design builds on.
 
 ## The idea in one picture
 
@@ -123,7 +127,9 @@ Every number in these pages, in one place. They are starting values, to be tuned
 | Largest raw segment | 16 MiB | 02 |
 | Largest untracked file in a checkpoint | 5 MiB | 04 |
 | Largest folder without git that is checkpointed | 200 MiB or 20,000 files | 04 |
-| Attempts per turn before it is held | 3 | 04 |
+| Failures of a turn on `api` or `auth` before it is held | 3 | 04 |
+| New threads a machine takes on the hub per round | 50 | 03 |
+| A turn's checkpoint is taken when its end is read within | 10 min | 04 |
 | Last exchanges given word for word on rung 3 | 24 messages, 20,000 characters | 04 |
 | Messages per connector part | 40, each up to 20,000 characters | 05 |
 | Quota reading considered fresh | 5 min | 06 |

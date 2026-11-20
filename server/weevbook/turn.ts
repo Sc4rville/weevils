@@ -2,15 +2,19 @@
 // Specified in docs/spec/01-thread.md ("The turn") and docs/spec/04-resume.md ("When a turn fails").
 //
 // Pure: a reducer over turn events, the retry rule as a function of the turns, and the signed preface a resumed
-// attempt receives instead of the user's message. No clock, no disk. Nothing in the app imports this module yet.
+// attempt receives instead of the user's message. No clock, no disk. Used by resume.ts (step 3); the dispatcher of
+// step 4 will use the rest.
 
 import type { JournalEvent, TurnEvent, TurnState } from './journal.ts'
 
-/** A turn is assigned at most this many times; then it is held with the reason `attempts`. */
+/** A turn that failed this many times on `api` or `auth` is held with the reason `attempts` (docs/spec/04-resume.md). */
 export const MAX_ATTEMPTS = 3
 
 export type Effect = 'none' | 'some'
 export type FailReason = 'quota' | 'auth' | 'api' | 'machine-lost' | 'lease-lost'
+/** The failures that count toward MAX_ATTEMPTS: the turn broke an engine. A quota that ran out or a machine that went
+ *  away is not the turn's doing; the dispatcher's table bounds those (`no-room`, `no-machine`). */
+export const COUNTED: readonly FailReason[] = ['api', 'auth']
 /** The `reason` of a held turn: the app maps each to one sentence and one action (docs/spec/06-dispatch.md). */
 export type HoldReason = 'no-machine' | 'no-room' | 'not-signed-in' | 'only-there' | 'attempts'
 
@@ -45,10 +49,13 @@ const fail = (why: string): never => {
 /** Turns that wait for an engine: accepted, failed, or held for a reason the table can lift. */
 const open = (t: Turn) => t.state === 'accepted' || t.state === 'failed' || (t.state === 'held' && t.held?.reason !== 'attempts')
 const live = (t: Turn) => t.state === 'assigned' || t.state === 'running'
+/** The attempts of a turn that count toward MAX_ATTEMPTS: those that failed on `api` or `auth`. */
+export const counted = (t: Turn) => t.attempts.filter((a) => a.end?.state === 'failed' && COUNTED.includes(a.end.reason)).length
 
 /**
  * One step of the state machine. Throws TurnError on a move the spec forbids: a state out of order, a second turn in
- * an engine's hands (THREAD-11), a turn served before an older one, a fourth attempt, an attempt number or a `resume`
+ * an engine's hands (THREAD-11), a turn served before an older one, an attempt after three that failed on `api` or
+ * `auth`, an attempt number or a `resume`
  * that does not follow from the attempts before (THREAD-10, RESUME-8), an effect before the engine had the request.
  */
 export function applyTurn(turns: readonly Turn[], c: TurnChange): Turn[] {
@@ -66,13 +73,13 @@ export function applyTurn(turns: readonly Turn[], c: TurnChange): Turn[] {
     case 'held':
       if (!open(t)) fail(`turn ${t.turn} is ${t.state}${t.held ? ` (${t.held.reason})` : ''}: it cannot be held`)
       if (!c.rule || !c.reason) fail('held without its rule and reason')
-      if (c.reason === 'attempts' && t.attempts.length < MAX_ATTEMPTS) fail(`held for attempts after ${t.attempts.length}`)
-      if (t.state === 'failed' && t.attempts.length >= MAX_ATTEMPTS && c.reason !== 'attempts') fail('a turn out of attempts is held for attempts')
+      if (c.reason === 'attempts' && counted(t) < MAX_ATTEMPTS) fail(`held for attempts after ${counted(t)} counted failures`)
+      if (t.state === 'failed' && counted(t) >= MAX_ATTEMPTS && c.reason !== 'attempts') fail('a turn out of attempts is held for attempts')
       next.held = { rule: c.rule!, reason: c.reason! }
       break
     case 'assigned': {
       if (!open(t)) fail(`turn ${t.turn} is ${t.state}${t.held ? ` (${t.held.reason})` : ''}: it cannot be assigned`)
-      if (t.attempts.length >= MAX_ATTEMPTS) fail(`turn ${t.turn} was assigned ${MAX_ATTEMPTS} times`)
+      if (counted(t) >= MAX_ATTEMPTS) fail(`turn ${t.turn} failed ${MAX_ATTEMPTS} times on api or auth`)
       const busy = turns.find(live)
       if (busy) fail(`turn ${busy.turn} is still ${busy.state}`)
       const older = turns.find((o) => o.turn < t.turn && open(o))
@@ -125,7 +132,7 @@ export type Next =
   | { kind: 'busy'; turn: number; state: 'assigned' | 'running' }
   /** The oldest waiting turn needs an engine: ask the dispatcher. `open`: every waiting turn, oldest first. */
   | { kind: 'dispatch'; turn: number; attempt: number; resume: boolean; request: 'message' | 'preface'; retry: boolean; open: number[] }
-  /** The oldest waiting turn has failed three times: hold it, without asking the dispatcher. */
+  /** The oldest waiting turn has failed three times on `api` or `auth`: hold it, without asking the dispatcher. */
   | { kind: 'hold'; turn: number; rule: 'hold'; reason: 'attempts' }
 
 /**
@@ -138,7 +145,7 @@ export function next(turns: readonly Turn[]): Next {
   const waiting = turns.filter(open)
   const t = waiting[0]
   if (!t) return { kind: 'quiet' }
-  if (t.attempts.length >= MAX_ATTEMPTS) return { kind: 'hold', turn: t.turn, rule: 'hold', reason: 'attempts' } // i18n-ignore: journal data (DISP-2)
+  if (counted(t) >= MAX_ATTEMPTS) return { kind: 'hold', turn: t.turn, rule: 'hold', reason: 'attempts' } // i18n-ignore: journal data (DISP-2)
   const resume = t.effect === 'some'
   return {
     kind: 'dispatch',

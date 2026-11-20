@@ -120,6 +120,31 @@ export const WEEVBOOK_DIR = path.join(DATA_DIR, 'weevbook')
  *  once the person allows them. Off unless WEEVILS_CONNECTOR=1: until then /mcp is the app's like any other path. */
 export const CONNECTOR = process.env.WEEVILS_CONNECTOR?.trim() === '1'
 
+/**
+ * The weevbook's hub (docs/spec/03-sync-and-lease.md, step 2), read only when WEEVBOOK is on. Empty: no hub, nothing
+ * leaves this machine. `here`: this machine keeps the hub, a bare repository in DATA_DIR/hub.git. `main`: the hub of
+ * the main machine, over the SSH a secondary machine already uses for its tunnel (WEEVILS_MAIN_HOST of service.conf).
+ * Anything else: a git URL or path, as `git push` takes it.
+ */
+export const WEEVBOOK_HUB_DIR = path.join(DATA_DIR, 'hub.git')
+export function weevbookHub(value = process.env.WEEVILS_WEEVBOOK_HUB?.trim() ?? ''): { url: string; here: boolean } | null {
+  if (!value || value === '0') return null
+  if (value === 'here') return { url: WEEVBOOK_HUB_DIR, here: true }
+  if (value === 'main') {
+    let host = process.env.WEEVILS_MAIN_HOST?.trim() ?? ''
+    if (!host) {
+      try {
+        host = /^WEEVILS_MAIN_HOST=['"]?([^'"\s]+)/m.exec(fs.readFileSync(path.join(CONFIG_DIR, 'service.conf'), 'utf8'))?.[1] ?? ''
+      } catch {
+        /* no service.conf: not a secondary machine */
+      }
+    }
+    return host ? { url: `${host}:.local/share/weevils/hub.git`, here: false } : null
+  }
+  return { url: value, here: path.resolve(value) === WEEVBOOK_HUB_DIR }
+}
+export const WEEVBOOK_HUB = weevbookHub()
+
 /** L'orchestrateur (la bande du haut) tourne sur une seule machine : celle qui sert l'app. */
 export const ORCHESTRATOR = (process.env.WEEVILS_ORCHESTRATOR || (process.env.WEEVILS_MACHINE ? '0' : '1')) === '1'
 export const ORCH_DIR = path.join(DATA_DIR, 'orchestrateur')

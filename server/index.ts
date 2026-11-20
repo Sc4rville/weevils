@@ -22,7 +22,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl, WEEVBOOK, WEEVBOOK_DIR, CONNECTOR } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl, WEEVBOOK, WEEVBOOK_DIR, CONNECTOR, WEEVBOOK_HUB } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices, claudeAvailable, haiku, ledger, relay as modelRelay } from './fast.ts'
@@ -72,6 +72,7 @@ import { changedPieces, KEY_RE as PAGE_KEY_RE, PageRefused, Pages } from './page
 import { pageLink } from '../shared/pages.ts'
 import type { MachineLoad } from '../shared/tips.ts'
 import { Bring, realGit } from './bring.ts'
+import { HubSync, checkpointHook } from './weevbook/hub.ts'
 import { startWeevbookWriter } from './weevbook/writer.ts'
 import { Connector, reposUnder } from './connector/tools.ts'
 import { ConnectorAuth, codeFingerprint } from './connector/oauth.ts'
@@ -88,12 +89,20 @@ w.store.broughtAt = bring.broughtAt
 w.start()
 // The weevbook, in shadow (docs/spec, step 1): off unless WEEVILS_WEEVBOOK=1. It reads the same session files as the
 // app, on its own timer, and changes nothing the app shows or does.
+// With a hub (WEEVILS_WEEVBOOK_HUB, step 2): each turn's code is checkpointed, threads and checkpoints are pushed to the
+// hub every 20 s, and the main machine steals the leases of machines gone silent. Nothing shows in the app either.
 if (WEEVBOOK) {
+  const sessions = path.join(DATA_DIR, 'weevbook-sessions.jsonl')
   startWeevbookWriter({
-    dir: WEEVBOOK_DIR, sessions: path.join(DATA_DIR, 'weevbook-sessions.jsonl'), machine: MACHINE.id, home: HOME, codexDir: CODEX_DIR, roots: PROJECT_ROOTS,
+    dir: WEEVBOOK_DIR, sessions, machine: MACHINE.id, home: HOME, codexDir: CODEX_DIR, roots: PROJECT_ROOTS,
     sources: () => [...w.store.byFile.values()].map((t) => ({ file: t.file, provider: t.tool })),
+    ...(WEEVBOOK_HUB ? { checkpoint: checkpointHook({ dataDir: DATA_DIR, home: HOME, weevbookGitDir: path.join(WEEVBOOK_DIR, '.git'), log: (l) => console.error(l) }) } : {}),
   })
   console.log(`[weevbook] shadow writer on: ${WEEVBOOK_DIR}`)
+  if (WEEVBOOK_HUB) {
+    new HubSync({ dir: WEEVBOOK_DIR, dataDir: DATA_DIR, sessions, machine: MACHINE.id, hub: WEEVBOOK_HUB, steals: ORCHESTRATOR }).start()
+    console.log(`[weevbook] hub sync on: ${WEEVBOOK_HUB.url}${ORCHESTRATOR ? ' (steals the leases of silent machines)' : ''}`)
+  }
 }
 startInfra()
 startDiskUsage()

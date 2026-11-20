@@ -29,10 +29,11 @@ sequenceDiagram
 |---|---|---|---|
 | `refs/threads/<id>` | A chain of commits. The tree is the thread folder itself: `events.jsonl`, `thread.md`, … at the root. | the lease holder | fast-forward only |
 | `refs/leases/<id>` | One commit with no parent. The tree is one file, `lease.json`. | the holder, or a machine taking the lease | compare-and-swap: `--force-with-lease` |
-| `refs/checkpoints/<id>` | Checkpoint commits of the project's code ([04](04-resume.md)). Unrelated history, same repository. | the lease holder | fast-forward only |
+| `refs/checkpoints/<id>` | Checkpoint commits of the project's code ([04](04-resume.md)). Unrelated history, same repository. | the machine that took them | fast-forward only; a keep commit when chains differ (below) |
 | `refs/orphans/<id>/<machine>-<epoch>` | Commits a machine made after it lost the lease. | that machine | created once; deleted by the holder after it wrote the `note` |
 | `refs/engines/<machine>` | One commit with no parent. The tree is `engines.json` ([06](06-dispatch.md)). | that machine only | forced |
-| `refs/heads/main` | The browsable tree of [02](02-weevbook.md). | any machine | fast-forward; recomposed when rejected |
+| `refs/heads/main` | The browsable tree of [02](02-weevbook.md). | the hub's machine (step 2) | fast-forward |
+| `refs/weevils-probe/<machine>` | The check of a hub at start: created and deleted at once. | that machine | atomic, then deleted |
 
 A plain `git clone` fetches only `main`: small, readable, and complete for reading. The other refs are fetched by
 weevils with explicit refspecs.
@@ -155,6 +156,7 @@ Machines' clocks are assumed to agree within 30 s. The protocol stays safe when 
   starts or ends, and every 60 s while one runs with new events (the pace of a renewal). `main` is composed locally
   60 s after a change, and at the end of a backfill. Between two commits the folder is ahead of its ref: `weevils
   weevbook check` accepts it when the ref's journal is the start of the folder's.
+- **Step 2 (shadow, with a hub)**: see [Step 2: the hub weevils sets up](#step-2-the-hub-weevils-sets-up).
 
 A hub must accept atomic pushes and refs outside `refs/heads`. weevils checks both at setup with a throwaway ref and
 refuses a hub that fails.
@@ -176,6 +178,80 @@ projects/<project>/<YYYY-MM>/<id>-<slug>/    = the tree of refs/threads/<id> at 
 4. Push fast-forward. If rejected, another machine composed first: go to 1.
 
 Because every composer starts from the previous `main`, a thread's folder never goes back to an older commit.
+
+## Step 2: the hub weevils sets up
+
+Decided with step 2, where the sections above left room. `server/weevbook/hub.ts` implements it, with `lease.ts` as
+it is.
+
+**Transport and trust.** The hub is a bare repository on the main machine, `~/.local/share/weevils/hub.git`. Other
+machines reach it with git over SSH, through the same `ssh <WEEVILS_MAIN_HOST>` (key only, `BatchMode`) that a
+secondary machine already opens for its tunnel to the main one. Nothing new listens: no port, no HTTP route. HTTPS
+with a machine token was set aside because tokens only go the other way today (the main machine calls the others
+through their tunnels with their local token); giving every secondary a token valid on the main machine would be a
+new trust. Every network command has a time limit (60 s; 15 min for a checkpoint push) and never asks anything.
+
+| `WEEVILS_WEEVBOOK_HUB` | Meaning |
+|---|---|
+| empty | No hub: nothing leaves the machine (step 1). |
+| `here` | This machine keeps the hub. It is created at start with a `pre-receive` hook: thread refs, checkpoint refs and `main` only move forward and are never deleted; an orphan ref is created or deleted, never moved; leases and engines are compare-and-swap; any other ref is refused. |
+| `main` | The hub of the main machine, `<WEEVILS_MAIN_HOST>:.local/share/weevils/hub.git` (from `service.conf`). |
+| a git URL | Any hub that passes the check below (D1 and D2 still apply). |
+
+At start each machine pushes two throwaway refs `refs/weevils-probe/<machine>` in one atomic push and deletes them. A
+hub that refuses is not used (`weevils weevbook sync status` says `refused`); one that does not answer is tried again
+at the next round.
+
+**One round every 20 s, per machine.** In this order:
+
+1. Folders ahead of their ref (a journal longer than the ref's) are committed. The hub then has everything
+   up to the last round: at most 20 s, plus the push itself.
+2. One atomic push renews every lease the machine holds whose thread moved, whose turn runs, or whose state changes
+   (SYNC-10).
+3. Threads it does not hold yet (new ones, or after a restart) are read from the hub one by one, then taken, taken
+   over when idle and the machine has all the hub has, or given up (lose). At most 50 per round and 8 s: a machine
+   that comes back with many threads catches up over several rounds, and its renewals are never late for it.
+4. Every 60 s: orphan refs of the threads it holds become late notes (below).
+
+An idle thread that did not move is never pushed again. Offline, the round stops at its first failed push and the
+commits wait; nothing is dropped.
+
+**The lease of a shadow thread.** In shadow the engine is the provider session the writer reads, not one weevils
+started. The lease is `working` while the journal has a turn `assigned` or `running`, with the open leg's engine and
+leg, and only the machine of that engine renews it. After a restart, a machine does **not** write `turn failed` for
+its own turns: the provider runs in tmux and usually outlives weevilsd, and the journal says whether the turn still
+runs. A provider that died with its machine is closed by the writer's 30-minute silence, or stolen if the machine
+stays down.
+
+**lose, in step 2.** What the machine committed and the hub does not have goes to its orphan ref; the thread becomes
+the hub's version; each session of the machine whose leg ended there (a steal writes `leg.end`) is marked `moved` in
+`weevbook-sessions.jsonl` and is no longer written into the thread. The provider process is not stopped: what it
+writes after that stays in that machine's own session file, and nothing of it reaches the thread (SYNC-12 for the
+hub). Stopping it belongs to the dispatcher (step 4).
+
+**Late notes.** The holder of the lease files them, working or idle, within 60 s of seeing the orphan ref. A note
+already in the thread for that ref (same `data.from`) is not written again; only the deletion is left. If the holder
+never comes back, the orphan stays on the hub: nothing is lost. The dispatcher taking an idle lease to file one is
+step 4.
+
+**Steals.** The dispatcher's machine is the main machine (`WEEVILS_ORCHESTRATOR`). Every 10 s it fetches
+`refs/leases/*` in one fetch, reads each `working` lease of another machine with its thread, and steals by the rules
+above. The stolen lease is left `idle`, holder the stealer, until someone resumes the thread ([04](04-resume.md)).
+In the end-to-end test (`hub.e2e.test.ts`), the laptop's last renewal was stolen 90 s later.
+
+**Checkpoint refs.** Each machine copies a turn's checkpoint into its weevbook's `refs/checkpoints/<id>` and pushes it
+in a lane of its own, so that a large first push never makes a renewal late. A thread can reach the hub before its
+checkpoint: a resume then restores the last checkpoint the hub has ([04](04-resume.md#failure-cases)). The ref only
+moves forward; when the hub's chain went elsewhere (another machine checkpointed the thread since), the machine
+pushes a keep commit whose parents are the hub's tip and its own: every checkpoint a journal names stays reachable.
+A restore uses the commit the journal names, never the ref's tip.
+
+**`main` of the hub** is composed by the hub's machine only, in the hub repository, 60 s after a thread ref changed
+(steps 2 and 3 of the composition above; the compare-and-swap is `git update-ref` with the old value). Other machines
+compose their own local `main` and never fetch other machines' threads.
+
+**On each machine.** `refs/hub/*` in the weevbook holds what the hub had when last read or pushed;
+`DATA_DIR/weevbook-hub.json` is what `weevils weevbook sync status` prints.
 
 ## Invariants
 
@@ -243,12 +319,15 @@ Ship steps 1 to 3 with own-server and no-hub only.*
 - [`server/weevbook/lease.ts`](../../server/weevbook/lease.ts): `lease.json`, the rules above as pure functions
   (`plan`, `stealable`, `standing`, `lateNote`), and `LeaseClient`, which runs them as the git pushes of this page
   with an injected clock and git runner. `lease.test.ts` runs two machines against a real bare repository: two
-  takers at once, steal timing, the old holder rejected and its orphan, clocks 30 s apart and far beyond. Nothing in
-  the app uses it yet.
+  takers at once, steal timing, the old holder rejected and its orphan, clocks 30 s apart and far beyond.
+- [`server/weevbook/hub.ts`](../../server/weevbook/hub.ts) (step 2): the round, the steals, the checkpoint lane, late
+  notes, `main` of the hub, the hub's hook, as decided in "Step 2" above. In weevilsd with `WEEVILS_WEEVBOOK=1` and
+  `WEEVILS_WEEVBOOK_HUB`. `hub.test.ts` (offline and catching up, the 50 per round, the hook, the keep commit) and
+  `hub.e2e.test.ts` (two machines, two HOMEs, one hub: push, death mid-turn, steal, resume, late note).
 - `server/weevbook/sim`: the same rules over an in-memory hub with the same guarantees (atomic push,
   compare-and-swap, fast-forward only), checked after every simulated run.
 - Step 1: the local refs and the composition of `main` (`server/weevbook/store.ts`), no push.
-- No hub in the app. A machine's threads never leave it, except by hand with `server/bring.ts`.
+- A machine's threads leave it only with a hub set (step 2), or by hand with `server/bring.ts`.
 - `server/remotes.ts`: a main machine reads the other machines' servers every 2 s through a reverse SSH tunnel
   (`WEEVILS_REMOTES`). It is a live view, not storage: when a machine is off, its sessions are gone from the app.
   The hub replaces it for content; it stays useful to know quickly that a machine is reachable.
@@ -265,5 +344,5 @@ Ship steps 1 to 3 with own-server and no-hub only.*
 - Encryption (D2), and therefore GitHub as a hub (D1).
 - Several people sharing one weevbook.
 - Garbage collection of old lease commits and of checkpoints of closed threads (git's own `gc` handles unreachable
-  lease commits; checkpoint pruning is specified with step 2).
+  lease commits). Checkpoints are kept forever in step 2: the hook never lets a checkpoint ref go backwards or away.
 - A hub that is not git.

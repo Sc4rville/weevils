@@ -17,7 +17,8 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { place } from '../projects.ts'
-import { Adapter, ulid, type Out } from './adapters/adapter.ts'
+import { Adapter, SHADOW_CHECKPOINT, ulid, type Out } from './adapters/adapter.ts'
+import type { CheckpointFields } from './checkpoint.ts'
 import { ClaudeAdapter } from './adapters/claude.ts'
 import { CodexAdapter } from './adapters/codex.ts'
 import { slugify, type EventDraft, type Provider } from './journal.ts'
@@ -38,6 +39,11 @@ export interface SessionRecord {
   lines?: number
   offset?: number
   rawBytes?: number
+  /** Lines of the file that earlier legs hold: a session resumed here from the weevbook (resume.ts) starts with them,
+   *  and only what follows is this leg's raw. */
+  base?: number
+  /** The thread went to another machine (its lease was taken, hub.ts): this session is no longer read into it here. */
+  moved?: boolean
 }
 
 /** A session's key: provider and the session id of its file name. */
@@ -199,6 +205,8 @@ export interface SyncOptions {
   account: (p: Provider) => string
   /** Codex thread names by session id. */
   codexNames?: Map<string, string>
+  /** Step 2: the checkpoint of a turn that ends now, in place of the adapter's `kind: none` (checkpoint.ts). */
+  checkpoint?: (o: { thread: string; turn: number; cwd: string | undefined; at: number }) => Promise<CheckpointFields | null>
 }
 export interface SyncResult {
   key: string
@@ -225,8 +233,9 @@ export interface Follow {
   outs: Out[]
   /** The last safe point among them. */
   mark: { raw: number; outs: number; offset: number }
-  /** Its thread, once there is one. */
+  /** Its thread, once there is one, and the leg it reads into. */
   thread?: string
+  leg?: string
   /** The thread's ref: the turn and state it was last committed at, when, and whether the folder is ahead of it. */
   refKey: string
   refAt: number
@@ -263,8 +272,10 @@ const parse = (text: string): { value: unknown } | 'not-json' => {
 export async function syncSession(book: Weevbook, sessions: Sessions, src: Source, o: SyncOptions, follows?: Map<string, Follow>): Promise<SyncResult> {
   const key = sessionKey(src)
   const rec = sessions.get(key)
-  const st = await fsp.stat(src.file)
   const result: SyncResult = { key, thread: rec?.thread, created: false, events: 0, lines: 0, refused: 0, empty: false, dirty: false }
+  // Its thread is another machine's now (step 2): nothing more of this session goes into it from here.
+  if (rec?.moved) return result
+  const st = await fsp.stat(src.file)
   const thread = rec ? await book.thread(rec.thread) : undefined
   const leg = rec?.leg ?? 'L1'
 
@@ -276,16 +287,17 @@ export async function syncSession(book: Weevbook, sessions: Sessions, src: Sourc
     if (rec.lines !== undefined && rec.offset !== undefined && rec.rawBytes === bytes) {
       committed = rec.lines
       knownOffset = rec.offset
-    } else committed = await book.rawLines(rec.thread, leg, src.provider)
+    } else committed = (rec.base ?? 0) + (await book.rawLines(rec.thread, leg, src.provider))
   }
   let f = follows?.get(key)
-  if (f && f.committedLines !== committed) f = undefined
+  // A session resumed into a new leg (resume.ts) is read again from what the journal says of that leg.
+  if (f && (f.committedLines !== committed || (f.leg !== undefined && f.leg !== leg))) f = undefined
   const grew = (at: number) => st.size > at
   if (f && !f.parsed && grew(f.offset)) f = undefined
   if (!f) {
     const engine = `${src.provider}:${o.account(src.provider)}@${machinePart(o.machine)}`
     const adapter = adapterFor(src, engine, st.mtimeMs)
-    f = { key, adapter, parsed: true, offset: 0, committedLines: committed, raw: [], outs: [], mark: { raw: 0, outs: 0, offset: 0 }, thread: thread ? rec?.thread : undefined, refKey: '', refAt: 0, dirty: false }
+    f = { key, adapter, parsed: true, offset: 0, committedLines: committed, raw: [], outs: [], mark: { raw: 0, outs: 0, offset: 0 }, thread: thread ? rec?.thread : undefined, leg, refKey: '', refAt: 0, dirty: false }
     if (committed > 0 && thread) {
       if (knownOffset !== undefined && !grew(knownOffset)) {
         // Nothing new: the turn's state is enough to settle it.
@@ -342,7 +354,13 @@ export async function syncSession(book: Weevbook, sessions: Sessions, src: Sourc
     }
     const contents = new Map<string, Buffer>()
     for (const x of outs) {
-      events.push({ ...x.event, leg: leg as `L${number}` } as EventDraft)
+      let e = { ...x.event, leg: leg as `L${number}` } as EventDraft
+      // Step 2: the code of a turn that ends is saved now; the adapter only knows to write `kind: none`.
+      if (o.checkpoint && e.type === 'checkpoint' && e.kind === 'none' && e.reason === SHADOW_CHECKPOINT) {
+        const c = await o.checkpoint({ thread: id, turn: e.turn, cwd: a.cwd, at: Date.parse(e.at) })
+        if (c) e = { id: e.id, at: e.at, leg: e.leg, type: 'checkpoint', turn: e.turn, ...c }
+      }
+      events.push(e)
       if (x.content && x.event.type === 'attachment') contents.set(x.event.sha256, x.content)
     }
     const r = await book.append(id, { events, raw: { leg, provider: src.provider, lines: raw }, contents })

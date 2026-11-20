@@ -22,7 +22,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl, WEEVBOOK, WEEVBOOK_DIR } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl, WEEVBOOK, WEEVBOOK_DIR, CONNECTOR } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices, claudeAvailable, haiku, ledger, relay as modelRelay } from './fast.ts'
@@ -73,6 +73,9 @@ import { pageLink } from '../shared/pages.ts'
 import type { MachineLoad } from '../shared/tips.ts'
 import { Bring, realGit } from './bring.ts'
 import { startWeevbookWriter } from './weevbook/writer.ts'
+import { Connector, reposUnder } from './connector/tools.ts'
+import { ConnectorAuth, codeFingerprint } from './connector/oauth.ts'
+import { connectorHttp } from './connector/http.ts'
 
 const w = new Weevils()
 const sourceAuthor = (id: string) => threadAuthor(id, source => w.store.get(source), w.bossConversation(), ORCH_DIR)
@@ -361,6 +364,18 @@ const issueDevice = (req: http.IncomingMessage, res: http.ServerResponse) => {
   res.setHeader('set-cookie', `wv=${t}; Path=/; HttpOnly;${secure} SameSite=Lax; Max-Age=31536000`)
 }
 
+// The connector (docs/spec/05-connector.md, step 5): off unless WEEVILS_CONNECTOR=1. ChatGPT or Claude.ai reaches /mcp
+// with a token the person gave it on the consent page (the access code, or this browser signed in). The token opens
+// /mcp only: the weevbook's five tools, never /api. Changing the access code drops every connector token.
+const connectorAuth = CONNECTOR ? new ConnectorAuth({ file: path.join(DATA_DIR, 'connector.json'), fingerprint: codeFingerprint(SECRET) }) : null
+const connector = connectorAuth
+  ? connectorHttp({
+      auth: connectorAuth, publicUrl: () => PUBLIC_URL, hasDevice, limiter: logins, checkCode: (code) => sameCode(code, SECRET),
+      tools: new Connector({ dir: WEEVBOOK_DIR, machine: MACHINE.id, projects: reposUnder(PROJECT_ROOTS) }),
+    })
+  : null
+if (connector) console.log('[connector] on: /mcp')
+
 // Who may speak as the user into weevboss's thread: a signed-in browser, never a script on this machine (server/boss-door.ts).
 const door = bossDoor({ hasDevice, isBossTarget: (id) => w.isBossTarget(id), sourceAuthor, refusal: () => tr(M).bossUserOnly })
 
@@ -536,6 +551,9 @@ const routes: [string, RegExp, Handler][] = [
     try { const saved=think.write(body);json(res,saved?200:409,saved ?? {error:'think_conflict'}) }
     catch { json(res,400,{error:'think_invalid'}) }
   }],
+  // The chat apps connected to the weevbook (docs/spec/05-connector.md): listed, and revoked one by one, by app or all.
+  ['GET', /^\/api\/connector$/, (_req, res) => json(res, 200, { enabled: CONNECTOR, grants: connectorAuth?.list() ?? [] })],
+  ['DELETE', /^\/api\/connector\/([\w-]+)$/, (_req, res, _url, [what]) => json(res, 200, { revoked: connectorAuth?.revoke(what) ?? 0 })],
   ['GET', /^\/api\/pages$/, (_req, res) => json(res, 200, { pages: pages.list() })],
   // weevils page (weevils-cli): a session or an automation on this machine publishes; never the phone.
   ['POST', /^\/api\/pages$/, async (req, res) => {
@@ -1072,6 +1090,8 @@ outbox.start()
 const server = http.createServer((req, res) => withLang(requestLang(req), async () => {
   const url = new URL(req.url ?? '/', 'http://local')
   try {
+    // The connector's own addresses (/mcp…, /.well-known/oauth-…), with their own sign-in.
+    if (connector && (await connector.handle(req, res, url))) return
     // A page link: signed in, its keyed files; otherwise the app, which signs in and then opens it.
     const page = req.method === 'GET' || req.method === 'HEAD' ? pageLink(url.pathname) : undefined
     if (page) {

@@ -614,7 +614,7 @@ describe('guards', () => {
   it('claims nothing until the public repository is open: then « The code is open, on GitHub », with its link', async () => {
     let open = false
     const github = http.createServer((req, res) => {
-      if (req.url !== '/repos/Sc4rville/weevils-oss' || !open) return res.writeHead(404).end('{"message":"Not Found"}')
+      if (req.url !== '/repos/Sc4rville/weevils' || !open) return res.writeHead(404).end('{"message":"Not Found"}')
       res.writeHead(200, { 'content-type': 'application/json' }).end('{"private":false}')
     })
     const api = `http://127.0.0.1:${await listen(github)}`
@@ -634,7 +634,7 @@ describe('guards', () => {
     closed.close()
     opened.close()
     github.close()
-    expect(html).toContain('<html lang="en" data-code="https://github.com/Sc4rville/weevils-oss">')
+    expect(html).toContain('<html lang="en" data-code="https://github.com/Sc4rville/weevils">')
     expect(html).toContain('<a href="https://x.com/weevilscode" data-t="soon">')
   })
   it('limits job creation per address', async () => {

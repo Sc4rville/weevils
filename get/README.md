@@ -220,7 +220,7 @@ GET_PORT=4182 GET_BASE=https://get.scarville.tech node get/server.mjs
 | `GET_STATS_KEY` | the private stats page, `/stats/<key>` (off without it) |
 | `GET_NOTIFY` | the weevils on this machine (`http://127.0.0.1:4179`): a word in its « for you » at each install and each day |
 | `GET_PUBLIC_COUNT` | `1`: « N people already run weevils » on the page (off by default) |
-| `GET_CODE_URL` | the public repository the page links to once GitHub says it is public (default `github.com/Sc4rville/weevils-oss`) |
+| `GET_CODE_URL` | the public repository the page links to once GitHub says it is public (default `github.com/Sc4rville/weevils`) |
 | `GET_HANDOFF` | the RAM file a stopping service hands its setups in progress to the next one through (default `/dev/shm/weevils-get-<uid>.jobs`; empty: none) |
 
 On scarville.tech: systemd user unit `weevils-get`, env in `~/.config/weevils-get/env`, Caddy site

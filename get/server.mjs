@@ -50,7 +50,7 @@ export function config(env = process.env) {
     publicCount: env.GET_PUBLIC_COUNT === '1',
     repo: env.GET_REPO || 'https://github.com/Sc4rville/weevils.git',
     /** The public repository the page links to, once GitHub says it is public (the API asked without credentials). */
-    codeUrl: (env.GET_CODE_URL || 'https://github.com/Sc4rville/weevils-oss').replace(/\/$/, ''),
+    codeUrl: (env.GET_CODE_URL || 'https://github.com/Sc4rville/weevils').replace(/\/$/, ''),
     githubApi: (env.GET_GITHUB_API || 'https://api.github.com').replace(/\/$/, ''),
     /** A signed git bundle served to the installs this service starts and to their updates (see get/make-bundle.sh). */
     bundle: env.GET_BUNDLE || '',
@@ -204,7 +204,7 @@ export function loadJobs(store, file) {
   }
 }
 
-/** Is the public repository open yet (GET_CODE_URL, default github.com/Sc4rville/weevils-oss)? GitHub's API, asked
+/** Is the public repository open yet (GET_CODE_URL, default github.com/Sc4rville/weevils)? GitHub's API, asked
  * without credentials at most every 5 minutes and never waited for: until it says so, the page claims nothing (« Open
  * source soon »), and the install works the same either way. */
 export function watchCode(cfg) {

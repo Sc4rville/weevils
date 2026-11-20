@@ -100,8 +100,8 @@ of the same main commit, is published only after the tests pass on it; an instal
 or older than the one it runs, and a clone refuses a manifest that is unsigned or names a commit that does not
 descend from its own. The first install from a clone is the code you cloned: read it, or check that its commit is
 the one in `/main.txt` (signed as above). The code is public at https://github.com/Sc4rville/weevils, and each
-bundle (one commit « weevils <rev> ») is also published at https://github.com/Sc4rville/weevils-oss with the same
-message, after a secret scan, so what you install is what you can read.
+bundle is one commit « weevils <rev> »: the files of that public commit, minus the paths listed in
+`scripts/release-policy.json`, so what you install is what you can read.
 
 ## Remove it
 

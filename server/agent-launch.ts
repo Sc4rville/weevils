@@ -9,10 +9,18 @@ import LivingResults from './i18n/living-results.ts'
  *  --no-ask-permissions). Unset counts as asking. */
 export const askPermissions = (env: NodeJS.ProcessEnv = process.env): boolean => env.WEEVILS_SAFE?.trim() !== '0'
 const SAFE = askPermissions()
+
+/** Claude Code, asking or not. Asking is said explicitly (--permission-mode default): with no flag, a session would take
+ *  the person's own default mode from ~/.claude/settings.json, bypassPermissions included, and never ask. */
+export const claudeCommand = (ask: boolean): string[] => (ask ? ['claude', '--permission-mode', 'default'] : ['claude', '--dangerously-skip-permissions'])
+/** Codex's flags, asking or not. Asking is said explicitly too (approvals on request, writes inside the folder only):
+ *  with no flag, ~/.codex/config.toml's approval_policy = "never" or sandbox_mode = "danger-full-access" would win. */
+export const codexFlags = (ask: boolean): string[] => (ask ? ['-a', 'on-request', '-s', 'workspace-write'] : ['--dangerously-bypass-approvals-and-sandbox'])
+
 /** weevboss's Claude command, bare. */
-export const CLAUDE: readonly string[] = SAFE ? ['claude'] : ['claude', '--dangerously-skip-permissions']
+export const CLAUDE: readonly string[] = claudeCommand(SAFE)
 /** weevboss's Codex flags, bare. */
-export const CODEX_FLAGS: readonly string[] = SAFE ? [] : ['--dangerously-bypass-approvals-and-sandbox']
+export const CODEX_FLAGS: readonly string[] = codexFlags(SAFE)
 
 /** The rule, in the installation's language (the one picked in the app), read at launch time. */
 export const plainVoice = (l: Lang = installationLang()): string => PlainVoice[l].rule

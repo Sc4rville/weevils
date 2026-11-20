@@ -68,10 +68,26 @@ describe('permission prompts', () => {
     expect(askPermissions({ WEEVILS_SAFE: '0' })).toBe(false)
     expect(askPermissions({ WEEVILS_SAFE: ' 0 ' })).toBe(false)
   })
-  it('with nothing set (a test HOME): no bypass flag at all', () => {
-    expect(CLAUDE).toEqual(['claude'])
-    expect(CODEX_FLAGS).toEqual([])
+  it('with nothing set (a test HOME): sessions ask, said explicitly so the person\'s own default mode cannot skip it', () => {
+    // No flag would let ~/.claude/settings.json (defaultMode: bypassPermissions) or ~/.codex/config.toml
+    // (approval_policy = "never", sandbox_mode = "danger-full-access") decide, and the session would never ask.
+    expect(CLAUDE).toEqual(['claude', '--permission-mode', 'default'])
+    expect(CODEX_FLAGS).toEqual(['-a', 'on-request', '-s', 'workspace-write'])
+    expect(projectClaude('en').slice(0, 3)).toEqual(['claude', '--permission-mode', 'default'])
+    expect(projectCodexFlags('en').slice(0, 4)).toEqual(['-a', 'on-request', '-s', 'workspace-write'])
     expect(projectClaude('en').join(' ')).not.toMatch(/dangerously/)
     expect(projectCodexFlags('en').join(' ')).not.toMatch(/dangerously/)
+  })
+  it('turned off (WEEVILS_SAFE=0): the skip flags, as before', async () => {
+    const { claudeCommand, codexFlags } = await import('./agent-launch.ts')
+    expect(claudeCommand(false)).toEqual(['claude', '--dangerously-skip-permissions'])
+    expect(codexFlags(false)).toEqual(['--dangerously-bypass-approvals-and-sandbox'])
+    expect(claudeCommand(true)).toEqual([...CLAUDE])
+    expect(codexFlags(true)).toEqual([...CODEX_FLAGS])
+  })
+  it('wv, the terminal launcher, asks the same way', () => {
+    const wv = src('wv')
+    expect(wv).toMatch(/else claude_flags=\(--permission-mode default\); codex_flags=\(-a on-request -s workspace-write\); fi/)
+    expect(wv).toMatch(/if \[ "\$\{WV_SAFE:-\}" = 0 \]; then claude_flags=\(--dangerously-skip-permissions\); codex_flags=\(--dangerously-bypass-approvals-and-sandbox\)/)
   })
 })

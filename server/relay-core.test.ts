@@ -27,7 +27,7 @@ vi.mock('./titles.ts', async (orig) => ({ ...(await orig<typeof import('./titles
 const { Weevils, joinContext } = await import('./core.ts')
 const { DATA_DIR, HOME, ORCH_DIR, INBOX_DIR } = await import('./config.ts')
 const { setLang, withLang } = await import('./i18n.ts')
-const { projectCodexFlags } = await import('./agent-launch.ts')
+const { CLAUDE, projectCodexFlags } = await import('./agent-launch.ts')
 type Transcript = import('./transcripts.ts').Transcript
 
 const NOW = Date.parse('2026-11-10T14:00:00Z')
@@ -186,7 +186,7 @@ describe('weevboss pendant la limite de Claude', () => {
     await w.sendMain('merci')
     expect(mux.killWv).not.toHaveBeenCalled()
     const command = (mux.spawnWv.mock.calls.at(-1) as unknown[])[4] as string[]
-    expect(command.slice(0, 3)).toEqual(['claude', '--resume', 'boss'])
+    expect(command.slice(0, CLAUDE.length + 2)).toEqual([...CLAUDE, '--resume', 'boss'])
     expect(command.at(-1)).toMatch(/^merci ⟦weevils — /)
     expect(command.at(-1)).toContain('Codex a répondu à ta place')
     expect(command.at(-1)).toContain('user: où en est demo ? | codex: demo : deux sessions arrêtées, plans prêts')

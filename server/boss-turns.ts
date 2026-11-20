@@ -28,6 +28,33 @@ const readOr = (file: string) => { try { return fs.readFileSync(file, 'utf8') } 
 /** Where Claude Code keeps the orchestrator's transcripts and its memory folder. */
 export const orchTranscriptsDir = (claudeDir = CLAUDE_DIR, orchDir = ORCH_DIR) => path.join(claudeDir, orchDir.replace(/[^a-zA-Z0-9]/g, '-'))
 
+/** The weevils subcommands weevboss's instructions call (server/orchestrator.*.md). */
+export const BOSS_WEEVILS = ['sessions', 'read', 'recall', 'boss', 'send', 'resume', 'new', 'projects', 'setup', 'config', 'memory', 'post', 'show', 'page', 'pages', 'asks', 'ask', 'goals', 'goal', 'trace', 'mem'] as const
+/** Keys and secrets weevboss never reads: the ones an automation may not read (server/optimizers.ts), .env files anywhere. */
+const SECRET_READS = ['~/.ssh/**', '~/.aws/**', '~/.config/gh/**', '~/.config/weevils/**', '~/.claude.json', '~/.claude/.credentials.json', '~/.netrc', '~/.git-credentials', '~/.npmrc', '~/.docker/config.json', '//**/.env', '//**/.env.*']
+/**
+ * weevboss's permission profile, the way automations get theirs. In ask mode (WEEVILS_SAFE, the default) a turn is a
+ * `claude -p` run that nobody can answer, so whatever is not allowed here is refused: allowed by name, the weevils
+ * subcommands it calls, the read-only tools, the repo list, and edits in its own folder and its memory folder only; no
+ * other shell command, no write anywhere else. Denied in every mode: the secrets above and its instructions, which
+ * follow the repo. A path rule starting with // is absolute (a bare one is relative to the folder it runs in); Edit
+ * rules cover every tool that writes a file.
+ */
+export function bossPermissions(orchDir = ORCH_DIR, transcripts = orchTranscriptsDir(), platform: NodeJS.Platform = process.platform) {
+  return {
+    allow: [
+      ...BOSS_WEEVILS.flatMap((c) => [`Bash(weevils ${c})`, `Bash(weevils ${c} *)`]),
+      'Bash(gh repo list)', 'Bash(gh repo list *)',
+      'Read', 'Glob', 'Grep', 'Agent',
+      `Edit(/${orchDir}/**)`, `Edit(/${path.join(transcripts, 'memory')}/**)`,
+    ],
+    deny: [
+      ...SECRET_READS.map((p) => `Read(${p})`), ...(platform === 'darwin' ? ['Read(~/Library/Keychains/**)'] : []),
+      `Edit(/${path.join(orchDir, 'CLAUDE.md')})`, `Edit(/${path.join(orchDir, 'AGENTS.md')})`,
+    ],
+  }
+}
+
 /** The hidden blocks at the end of a message (« ⟦weevils — …⟧ »), peeled off so a turn can join them into one. */
 export function peelContext(text: string): { text: string; parts: string[] } {
   const parts: string[] = []
@@ -194,7 +221,8 @@ export class BossTurns {
       '--append-system-prompt-file', view.stableFile,
       // Lean by construction: its CLAUDE.md (and the same AGENTS.md for Codex) is already in the cached prefix, not loaded again uncached, no
       // skill listing, and no MCP connectors (Bash, Read, weevils… are what it needs; WEEVILS_BOSS_MCP=1 brings them back).
-      '--settings', JSON.stringify({ claudeMdExcludes: [path.join(ORCH_DIR, 'CLAUDE.md'), path.join(ORCH_DIR, 'AGENTS.md')] }),
+      // Its permission profile rides along: what it may do with nobody there to answer.
+      '--settings', JSON.stringify({ claudeMdExcludes: [path.join(ORCH_DIR, 'CLAUDE.md'), path.join(ORCH_DIR, 'AGENTS.md')], permissions: bossPermissions(ORCH_DIR, this.transcripts) }),
       '--disable-slash-commands',
       ...(BOSS_MCP ? [] : ['--strict-mcp-config']),
       '--model', this.model,

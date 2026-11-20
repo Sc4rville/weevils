@@ -40,8 +40,10 @@ fi
 # WV_SAFE gagne ; sinon WEEVILS_SAFE du fichier de config, comme weevilsd : les deux interrupteurs disent la même chose.
 WV_SAFE=${WV_SAFE:-$(sed -n 's/^[[:space:]]*WEEVILS_SAFE[[:space:]]*=[[:space:]]*["'\'']\{0,1\}\([0-9]*\).*/\1/p' "${WEEVILS_CONFIG:-$HOME/.config/weevils/env}" 2>/dev/null | head -1 || true)}
 # Par défaut les agents demandent la permission ; seul un 0 explicite (WV_SAFE=0 ou WEEVILS_SAFE=0) les fait agir sans demander.
+# Demander se dit explicitement : sans option, le mode par défaut de la personne (bypassPermissions dans
+# ~/.claude/settings.json, approval_policy = "never" dans ~/.codex/config.toml) l'emporterait et rien ne serait demandé.
 if [ "${WV_SAFE:-}" = 0 ]; then claude_flags=(--dangerously-skip-permissions); codex_flags=(--dangerously-bypass-approvals-and-sandbox)
-else claude_flags=(); codex_flags=(); fi
+else claude_flags=(--permission-mode default); codex_flags=(-a on-request -s workspace-write); fi
 
 # Serveur tmux dédié, comme weevilsd (server/mux.ts) : un « tmux kill-server » lancé ailleurs ne ferme pas les sessions.
 # Les sessions d'avant, restées sur le serveur par défaut, sont encore listées et rejointes.
@@ -120,9 +122,17 @@ in_roots() {
   done
   return 1
 }
+# ~/.claude.json est celui de Claude Code, réécrit par chaque session : laissé tel quel s'il ne se lit pas (écriture de
+# Claude prise en plein milieu, jq -e), remplacé d'un coup depuis un fichier voisin, avec son mode ; un lien, jamais.
 if command -v jq >/dev/null && [ "$tool" = claude ] && in_roots; then
-  cfg=~/.claude.json; [ -f "$cfg" ] || echo '{}' > "$cfg"
-  t=$(mktemp) && jq --arg d "$PWD" '.projects[$d] = ((.projects[$d] // {}) + {hasTrustDialogAccepted: true})' "$cfg" > "$t" && mv "$t" "$cfg"
+  cfg=~/.claude.json
+  [ -e "$cfg" ] || (umask 077 && echo '{}' > "$cfg")
+  if [ ! -L "$cfg" ] && ! jq -e --arg d "$PWD" '.projects[$d].hasTrustDialogAccepted == true' "$cfg" >/dev/null 2>&1 && t=$(mktemp "$cfg.weevils.XXXXXX" 2>/dev/null); then
+    if jq -e --arg d "$PWD" 'if type == "object" then .projects[$d] = ((.projects[$d] // {}) + {hasTrustDialogAccepted: true}) else error("not an object") end' "$cfg" > "$t" 2>/dev/null && [ -s "$t" ]; then
+      chmod "$(stat -c %a "$cfg" 2>/dev/null || stat -f %Lp "$cfg")" "$t" 2>/dev/null || true
+      mv -f "$t" "$cfg"
+    else rm -f "$t"; fi
+  fi
 fi
 if [ "$tool" = claude ]; then
   # Linux gives a uuid in /proc; a Mac has uuidgen (upper case: Claude Code names its transcript after it, in lower case).

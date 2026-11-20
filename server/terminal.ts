@@ -331,9 +331,27 @@ function permission(c: Ctx, rawRegion: string[]): { question: string; detail?: s
   return undefined
 }
 
+/** The first line of a Claude Code permission dialog: the tool's name, written by Claude Code, never by the model. */
+const PERMISSION_TITLE = /^(?:Bash|Shell|PowerShell) command$|^Run command$|^(?:Create|Edit|Write|Read|Delete|Overwrite) file$|^Fetch$|^Web ?(?:fetch|search)$|^Tool use$|^MCP tool|^Notebook edit$/i
+/** Answers only a permission dialog offers. */
+const PERMISSION_ANSWER = /don.?t ask again for|tell (?:claude|codex) what to do differently|allow all edits during this session/i
+
+/** A permission dialog (a Claude Code tool, a Codex approval): always the person's question, never answered by weevils,
+ *  whatever words the agent put in it. Checked before anything else. */
 const isPermissionMenu = (c: Ctx) =>
-  /Do you want to proceed\?|Do you want to (?:create|make this edit|edit|overwrite|delete) |allow Claude to fetch|Would you like to (?:run|make the following edits|grant)|approve network access|tool call\?|send input/i.test(c.head) &&
-  c.labels.some((l) => /^(?:yes|allow|approve)\b/i.test(l)) && c.labels.some((l) => /^(?:no|deny|reject|cancel)\b/i.test(l))
+  c.labels.some((l) => /^(?:yes|allow|approve)\b/i.test(l)) && c.labels.some((l) => /^(?:no|deny|reject|cancel)\b/i.test(l)) &&
+  (/Do you want to proceed\?|Do you want to (?:create|make this edit|edit|overwrite|delete) |allow Claude to fetch|Would you like to (?:run|make the following edits|grant)|approve network access|tool call\?|send input/i.test(c.head) ||
+    PERMISSION_TITLE.test(c.menu.heading[0] ?? '') || c.labels.some((l) => PERMISSION_ANSWER.test(l)))
+
+/** Folder trust, known by its question in its place: the dialog's first line, or right under its title (Claude
+ *  « Accessing workspace: », Codex « Folder access » or « > You are in … », the folder between them). Never a line
+ *  further down, where another dialog can quote an agent's words. */
+const TRUST_Q = /^(?:>\s*)?(?:Quick safety check: Is this a project you created or one you trust\?|Do you trust the files in this folder\?|Trust this folder\?|Do you trust the contents of this directory\?)/i
+function trustDialog(h: string[]): boolean {
+  if (TRUST_Q.test(h[0] ?? '')) return true
+  if (/^(?:Accessing workspace:|Folder access)$/i.test(h[0] ?? '') && (TRUST_Q.test(h[1] ?? '') || TRUST_Q.test(h[2] ?? ''))) return true
+  return /^>\s*You are in /i.test(h[0] ?? '') && TRUST_Q.test(h[1] ?? '')
+}
 
 function question(c: Ctx, name: string, q: string, labels?: (raw: string, i: number) => string | null, detail?: string): TerminalState {
   const keep: Choice[] = []
@@ -362,6 +380,18 @@ function classifyMenu(c: Ctx, rawRegion: string[]): TerminalState {
   const { menu, head, labels } = c
   const pick = (re: RegExp) => find(menu, re)
   let i: number
+  // A dialog weevils answers by itself is known by its own question line, in its place (the title, the last line
+  // above the answers): never by words anywhere on the screen, where an agent's own text can sit.
+  const title = menu.heading[0] ?? ''
+  const lastLine = menu.heading.at(-1) ?? ''
+
+  // ---- permissions first (Claude tools, Codex approvals), from the dialog itself: what, and why. Never answered by
+  // weevils, whatever the agent wrote in them (a description that quotes another dialog's question).
+  if (isPermissionMenu(c)) {
+    const p = permission(c, rawRegion)
+    if (p) return question(c, 'permission', p.question, (raw) => answerLabel(raw), p.detail)
+    return question(c, 'permission', titleOf(c), (raw) => answerLabel(raw))
+  }
 
   // ---- theme (first launch on a blank profile, or /theme): keep the one already selected.
   if (/text style|choose .*theme|syntax theme/i.test(head + ' ' + c.lines.join(' ')) && labels.some((l) => /^(?:dark|light) mode/i.test(l)))
@@ -381,7 +411,7 @@ function classifyMenu(c: Ctx, rawRegion: string[]): TerminalState {
 
   // ---- folder trust: answered yes (by label) only for a folder inside the user's project roots, the folders weevils
   // pre-marks; anywhere else the person decides, like any other question.
-  if (/trust (?:this|the files in this) folder|quick safety check|do you trust/i.test(head + ' ' + labels.join(' '))) {
+  if (trustDialog(menu.heading)) {
     if (/pre-approves|adds \d+ director|mint HTTP headers|continue without these permissions/i.test(head + ' ' + labels.join(' ')))
       return question(c, 'trust-rules', t.trustRules(c.agent), (raw) => (/^yes/i.test(raw) ? t.trustYes : /^no/i.test(raw) ? t.trustNo : raw))
     if ((i = pick(/^(?:yes,? i trust|trust and continue|yes,? continue|yes,? proceed|trust)/i)) >= 0) {
@@ -397,30 +427,29 @@ function classifyMenu(c: Ctx, rawRegion: string[]): TerminalState {
 
   // ---- updates are weevils' job (and `npm -g` would fail without root): skip.
   if ((i = pick(/^skip$/i)) >= 0 && labels.some((l) => /^update now/i.test(l))) return { kind: 'auto', name: 'update', menu, pick: i }
-  if (/new version is available|update now\?|update available/i.test(head) && (i = pick(/^(?:no|skip|not now|later)\b/i)) >= 0) return { kind: 'auto', name: 'update', menu, pick: i }
+  if (/new version is available|update now\?|update available/i.test(title) && (i = pick(/^(?:no|skip|not now|later)\b/i)) >= 0) return { kind: 'auto', name: 'update', menu, pick: i }
 
   // ---- nudges to change model or plan: the configured model stays (product contract), keep waiting.
   if ((i = pick(/^(?:use existing model|keep current model|keep (?:using )?(?:my|the) current|dismiss and keep waiting|keep waiting|not now|no,? not now|no,? thanks|maybe later|no,? keep manual|no \(default\))$/i)) >= 0 &&
-      /model|faster|upgrade|daybreak|credit|new|announc|try|turn on|plugin|default permission mode|fullscreen|renderer/i.test(head + ' ' + labels.join(' ')) && !isPermissionMenu(c))
+      /model|faster|upgrade|daybreak|credit|new|announc|try|turn on|plugin|default permission mode|fullscreen|renderer/i.test(head + ' ' + labels.join(' ')))
     return { kind: 'auto', name: 'nudge', menu, pick: i }
 
   // ---- model/effort confirmation after a model control sent from the app.
-  if (/^(?:switch model|change (?:effort level|model)|use .* for this session)\?/im.test(menu.heading.join('\n')) && (i = pick(/^yes\b/i)) >= 0)
+  if (/^(?:switch model|change (?:effort level|model)|use .+ for this session)\?$/i.test(title) && (i = pick(/^yes\b/i)) >= 0)
     return { kind: 'auto', name: 'switch-model', menu, pick: i }
 
   // ---- resuming a session weevils reopened: the recommended way, or the session's own folder.
-  if (/resume this conversation\?/i.test(head)) return { kind: 'auto', name: 'resume', menu, pick: Math.max(0, pick(/recommended/i)) }
-  if ((i = pick(/^use session directory/i)) >= 0) return { kind: 'auto', name: 'resume-folder', menu, pick: i }
+  if (/^resume this conversation\?$/i.test(title) && ((i = pick(/^resume\b.*\(recommended\)$/i)) >= 0 || (i = pick(/^resume from summary/i)) >= 0))
+    return { kind: 'auto', name: 'resume', menu, pick: i }
+  if (/^working directory$/i.test(title) && (i = pick(/^use session directory/i)) >= 0) return { kind: 'auto', name: 'resume-folder', menu, pick: i }
 
   // ---- AskUserQuestion review step: the answers are already chosen.
-  if (/ready to submit your answers\?|review your answers/i.test(head) && (i = pick(/^submit answers/i)) >= 0) return { kind: 'auto', name: 'submit-answers', menu, pick: i }
+  if (/^ready to submit your answers\?$/i.test(lastLine) && (i = pick(/^submit answers$/i)) >= 0) return { kind: 'auto', name: 'submit-answers', menu, pick: i }
 
   // ---- usage limit menu: wait (free), never pay. The session continues by itself at the reset.
-  if (/what do you want to do\?|usage limit|session limit|weekly limit|rate.?limit/i.test(head) && labels.some((l) => /\bwait\b/i.test(l))) {
+  if (/^what do you want to do\?$/i.test(lastLine) && ((i = pick(/^wait here.*continue automatically/i)) >= 0 || (i = pick(/^(?:stop and )?wait\b/i)) >= 0)) {
     const when = resetTime(labels.join('\n') + '\n' + c.lines.join('\n'))
     const hold: Hold = { reason: 'quota', text: when ? t.limitUntil(when) : t.limit } // i18n-ignore : code de raison, pas un texte affiché
-    i = pick(/^wait here.*continue automatically/i)
-    if (i < 0) i = pick(/^(?:stop and )?wait\b/i)
     return { kind: 'auto', name: 'usage-limit', menu, pick: i, hold }
   }
 
@@ -441,13 +470,6 @@ function classifyMenu(c: Ctx, rawRegion: string[]): TerminalState {
   if (/trust these settings|managed settings|organization settings/i.test(head + labels.join(' ')))
     return question(c, 'managed-settings', t.settingsTrust, (raw) => (/^yes/i.test(raw) ? t.yes : /^no/i.test(raw) ? t.no : raw))
   if (/use this API key\?/i.test(head)) return question(c, 'api-key', t.apiKey(c.agent), (raw) => (/^yes/i.test(raw) ? t.yes : /^no/i.test(raw) ? t.no : raw))
-
-  // ---- permissions (Claude tools, Codex approvals), from the dialog itself: what, and why.
-  if (isPermissionMenu(c)) {
-    const p = permission(c, rawRegion)
-    if (p) return question(c, 'permission', p.question, (raw) => answerLabel(raw), p.detail)
-    return question(c, 'permission', titleOf(c), (raw) => answerLabel(raw))
-  }
 
   // ---- a question the agent asks (AskUserQuestion, request_user_input) or any other menu: its own words.
   const known = !!questionLine(menu.heading)
@@ -522,7 +544,8 @@ export function readScreen(text: string, agent?: Agent, opts: { trustedFolder?: 
   if (!composer && /Esc to (?:cancel|clear|close)\s*$/i.test(lines.at(-1) ?? '') && lines.slice(-30).some((l) => /^\s*▔{16,}/.test(l)))
     return done({ kind: 'picker', name: 'panel' })
   // "Press Enter to continue…" (security notes, login success) has a single answer.
-  if (/press enter to continue/i.test(lines.slice(-4).join(' '))) return done({ kind: 'auto', name: 'press-enter', pick: 'enter' })
+  // Never over the composer: there it is the agent's own text, and Enter would send what is typed.
+  if (!composer && /press enter to continue/i.test(lines.slice(-4).join(' '))) return done({ kind: 'auto', name: 'press-enter', pick: 'enter' })
 
   const hold = holdOf(lines, who)
   if (hold && !working) return done({ kind: 'hold', name: hold.reason, hold })

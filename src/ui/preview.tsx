@@ -43,6 +43,32 @@ export function guessPreviewUrl(messages: Message[], session: Session, project: 
   return repo && cfg.exposeDomain ? `https://${repo}.${cfg.exposeDomain}` : site
 }
 
+/** weevils' own site pages (/api/site/<key>/<repo>/…): the key changes every hour (server/site.ts), the page does not. */
+const SITE_KEY_RE = /\/api\/site\/[\w-]{22}\//
+const siteless = (u: string) => u.replace(SITE_KEY_RE, '/api/site/~/')
+
+/** An address of weevils' own site pages saved with an earlier key, given today's key. Other addresses as they are. */
+export function freshSite(url: string, siteKey?: string): string {
+  if (!siteKey || !SITE_KEY_RE.test(url)) return url
+  try {
+    if (new URL(url, location.origin).origin !== location.origin) return url
+  } catch {
+    return url
+  }
+  return url.replace(SITE_KEY_RE, `/api/site/${siteKey}/`)
+}
+
+/** The address a frame keeps showing: a new site key alone does not reload the page someone is looking at (a reload,
+ *  `reload` changing, takes the new one). */
+export function useSteadyUrl(url: string, reload = 0): string {
+  const [kept, setKept] = useState({ url, reload })
+  const same = kept.reload === reload && siteless(kept.url) === siteless(url)
+  useEffect(() => {
+    if (!same) setKept({ url, reload })
+  }, [same, url, reload])
+  return same ? kept.url : url
+}
+
 interface Saved {
   url?: string
   open?: boolean
@@ -101,6 +127,7 @@ export function Preview({ url, suggestions, onUrl, onClose, full, onFull, sessio
   const t = useT(M)
   const [draft, setDraft] = useState(url)
   const [gen, setGen] = useState(0)
+  const src = useSteadyUrl(url, gen)
   const input = useRef<HTMLInputElement>(null)
   const frame = useRef<HTMLIFrameElement>(null)
   useEffect(() => setDraft(url), [url])
@@ -172,9 +199,9 @@ export function Preview({ url, suggestions, onUrl, onClose, full, onFull, sessio
         {url && (
           <iframe
             ref={frame}
-            key={`${url}#${gen}`}
+            key={`${src}#${gen}`}
             className="preview-frame"
-            src={url}
+            src={src}
             title={t.frame}
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
             allow="clipboard-write; fullscreen"

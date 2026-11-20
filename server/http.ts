@@ -61,6 +61,50 @@ export function fromThisMachine(req: http.IncomingMessage): boolean {
   return browserSafe(req)
 }
 
+/**
+ * The address a request really comes from, for counting wrong access codes. Straight from the network: the
+ * connection's own. Through the proxy or tunnel on this machine (Caddy, cloudflared, tailscale serve: a loopback peer),
+ * the address that proxy added last to X-Forwarded-For (the client's own value, if it sent one, comes before it), else
+ * Cloudflare's Cf-Connecting-Ip. Never a header from a client that reached the port directly.
+ */
+export function clientAddress(req: http.IncomingMessage): string {
+  const peer = req.socket.remoteAddress ?? ''
+  if (!LOOPBACK_PEERS.has(peer)) return peer
+  const forwarded = String(header(req, 'x-forwarded-for') ?? '').split(',').map((a) => a.trim()).filter(Boolean).at(-1)
+  return forwarded || String(header(req, 'cf-connecting-ip') ?? '').trim() || peer
+}
+
+/**
+ * A request that changes something (anything but GET, HEAD, OPTIONS) and comes from a browser must come from the app's
+ * own pages: its Origin is this server's address (Host, the X-Forwarded-Host of a proxy that rewrites Host, or the
+ * public address configured). The device cookie is SameSite=Lax, which a sibling domain (an agent's preview under the
+ * same domain) still gets: this is what stops such a page, another site or a sandboxed page (Origin « null ») from
+ * acting as the person. With no Origin (weevils' commands, another machine, the Siri Shortcut), only a browser that
+ * says the request is from another site is refused.
+ */
+export function appWriteAllowed(req: http.IncomingMessage, publicUrl = ''): boolean {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return true
+  const origin = header(req, 'origin')
+  if (origin === undefined) {
+    const site = header(req, 'sec-fetch-site')
+    return site !== 'cross-site' && site !== 'same-site'
+  }
+  let from: string
+  try {
+    from = new URL(origin).host.toLowerCase()
+  } catch {
+    return false
+  }
+  let configured = ''
+  try {
+    configured = publicUrl ? new URL(publicUrl).host : ''
+  } catch {
+    /* no public address */
+  }
+  const own = [header(req, 'host'), header(req, 'x-forwarded-host')?.split(',')[0], configured]
+  return own.some((h) => !!h && h.trim().toLowerCase() === from)
+}
+
 /** The header a local caller of weevils (weevils-cli, weevils-update, the main machine of a federation, Vite's dev
  *  proxy) sends: the line of weevils' per-machine token file (DATA_DIR/local-token, 0600, created by weevilsd). */
 export const LOCAL_TOKEN_HEADER = 'x-weevils-local'

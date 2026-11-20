@@ -3,6 +3,7 @@ import { InstallationIdentity } from './recursive-identity.ts'
 import { isScratchDir } from './scratch.ts'
 import AgentMessages from './i18n/agent-messages.ts'
 import { CLAUDE, CODEX_FLAGS, projectClaude, projectCodexFlags } from './agent-launch.ts'
+import { trustInClaudeJson } from './claude-json.ts'
 import { MessageOrigins } from './message-origins.ts'
 import CB from './i18n/codex-bridge.ts'
 import { automationSourceRoot } from './automation-workspaces.ts'
@@ -154,24 +155,10 @@ const stepOf = (t: { messages: { role: string; text: string }[] }) => {
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-/** Marque des dossiers comme de confiance dans ~/.claude.json : Claude Code n'affiche plus « Is this a project you trust? ». */
+/** Marque des dossiers comme de confiance dans ~/.claude.json : Claude Code n'affiche plus « Is this a project you trust? ».
+ *  Le fichier est celui de Claude Code, réécrit sans cesse : jamais touché s'il ne se lit pas (server/claude-json.ts). */
 export function trustDirs(dirs: string[]) {
-  const cfg = path.join(HOME, '.claude.json')
-  let d: any = {}
-  try {
-    d = JSON.parse(fs.readFileSync(cfg, 'utf8'))
-  } catch {
-    /* premier lancement : fichier absent */
-  }
-  d.projects ??= {}
-  let changed = false
-  for (const dir of dirs) {
-    if (d.projects[dir]?.hasTrustDialogAccepted) continue
-    d.projects[dir] = { ...(d.projects[dir] ?? {}), hasTrustDialogAccepted: true }
-    changed = true
-  }
-  if (changed) fs.writeFileSync(cfg, JSON.stringify(d, null, 2))
-  return changed
+  return trustInClaudeJson(path.join(HOME, '.claude.json'), dirs)
 }
 
 
@@ -558,12 +545,8 @@ export class Weevils {
       this.bump()
     })
     keepWarm()
-    // Tous les repos connus sont de confiance d'avance.
-    try {
-      if (trustDirs(this.allRepos().map((r) => this.repoDir(r)).filter((d) => insideRoots(d)))) console.log('[sessions] dossiers de ~/projects marqués de confiance pour Claude Code')
-    } catch (e) {
-      console.error(`[sessions] confiance : ${(e as Error).message}`)
-    }
+    // Aucun dossier marqué de confiance d'avance : un repo cloné par un agent garde la question de Claude Code. Seul le
+    // dossier d'une session que weevils lance l'est, au lancement (spawn).
     try {
       const p = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) as Persisted
       this.hooks = new Map(p.hooks ?? [])
@@ -1946,10 +1929,17 @@ export class Weevils {
     this.assertSourceExecution(cwd)
     const short = crypto.randomBytes(3).toString('hex')
     const name = wvName(path.basename(cwd), short)
-    // No trust dialog at launch in the user's project folders (and weevils' own): marked trusted before. Anywhere else
-    // Claude Code asks, and the person answers from the app (server/terminal.ts).
+    // No trust dialog when weevils launches a session in the user's project folders (and weevils' own): this exact
+    // folder is marked trusted now, at launch, never in advance. Anywhere else Claude Code asks, and the person answers
+    // from the app (server/terminal.ts).
     const trusted = insideRoots(cwd)
-    if (tool === 'claude' && trusted) trustDirs([cwd])
+    if (tool === 'claude' && trusted) {
+      try {
+        trustDirs([cwd])
+      } catch (e) {
+        console.error(`[sessions] confiance de ${cwd} : ${(e as Error).message}`)
+      }
+    }
     // Several Claude accounts (server/claude-accounts.ts): the session starts under the active one.
     const acc = tool === 'claude' && accounts()?.on() ? accounts() : null
     if (trusted) acc?.trust(cwd)

@@ -10,7 +10,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import type { Provider } from './journal.ts'
 import { Weevbook } from './store.ts'
-import { REF_MS, Sessions, accountOf, codexNames, commitSubject, sessionKey, syncSession, type Follow, type Source } from './sync.ts'
+import { REF_MS, Sessions, accountOf, codexNames, commitSubject, sessionKey, syncSession, type Follow, type Source, type SyncOptions } from './sync.ts'
 
 export interface WriterOptions {
   /** DATA_DIR/weevbook */
@@ -30,6 +30,8 @@ export interface WriterOptions {
   composeMs?: number
   log?: (line: string) => void
   now?: () => number
+  /** Step 2 (a hub is set): the checkpoint of a turn that ends (hub.ts). */
+  checkpoint?: SyncOptions['checkpoint']
 }
 
 const MAX_QUEUE = 256
@@ -111,7 +113,7 @@ export function startWeevbookWriter(o: WriterOptions) {
         queue.delete(file)
         await sessions.load()
         const st = await fsp.stat(file)
-        const r = await syncSession(book, sessions, src, { now: now(), quietMs, staleMs, roots: o.roots, machine: o.machine, account, codexNames: names }, follows)
+        const r = await syncSession(book, sessions, src, { now: now(), quietMs, staleMs, roots: o.roots, machine: o.machine, account, codexNames: names, checkpoint: o.checkpoint }, follows)
         wrote = r.created || r.events > 0 || r.lines > 0
         dirty ||= wrote
         seen.set(file, { size: st.size, level: levelOf(now() - st.mtimeMs) })

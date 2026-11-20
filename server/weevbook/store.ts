@@ -487,6 +487,48 @@ export class Weevbook {
       if (name.endsWith('.json')) await this.rollback(name.slice(0, -'.json'.length))
       else await fsp.rm(path.join(this.gitDir, 'weevbook', 'tx', name), { force: true })
     }
+    // An adopt cut short (step 2): the new folder is put in place when the thread has none, then the rest goes.
+    const adopting = path.join(this.gitDir, 'weevbook', 'adopt')
+    for (const id of await fsp.readdir(adopting).catch(() => [] as string[])) {
+      const next = path.join(adopting, id, 'next')
+      if ((await exists(path.join(next, 'events.jsonl'))) && !this.paths.has(id)) {
+        const events = parseJournal(await fsp.readFile(path.join(next, 'events.jsonl'), 'utf8')).events
+        const rel = threadFolder(events)
+        await fsp.mkdir(path.dirname(this.abs(rel)), { recursive: true })
+        await fsp.rename(next, this.abs(rel)).catch(() => undefined)
+      }
+      await fsp.rm(path.join(adopting, id), { recursive: true, force: true })
+    }
+  }
+
+  /**
+   * The thread becomes the tree of `commit` (the hub's version of it, docs/spec/03-sync-and-lease.md): its folder is
+   * written beside, then swapped in place of the one it had, and refs/threads/<id> is moved there, whatever it held
+   * (what this machine wrote and the hub refused is in an orphan ref by then). Hook of the hub sync (step 2). Call
+   * under lock().
+   */
+  async adopt(id: string, commit: string): Promise<string> {
+    const events = parseJournal(await git(this.gitDir, ['cat-file', 'blob', `${commit}:events.jsonl`])).events
+    const rel = threadFolder(events)
+    const work = path.join(this.gitDir, 'weevbook', 'adopt', id)
+    const next = path.join(work, 'next')
+    await fsp.rm(work, { recursive: true, force: true })
+    await fsp.mkdir(next, { recursive: true })
+    const env = { GIT_INDEX_FILE: path.join(work, 'index'), GIT_WORK_TREE: next }
+    await git(this.gitDir, ['read-tree', commit], { env })
+    await git(this.gitDir, ['checkout-index', '-a', '-f'], { cwd: next, env })
+    await fsp.rm(path.join(work, 'index'), { force: true })
+    const old = this.paths.get(id)
+    if (old) await fsp.rename(this.abs(old), path.join(work, 'old'))
+    await fsp.mkdir(path.dirname(this.abs(rel)), { recursive: true })
+    await fsp.rename(next, this.abs(rel))
+    await fsp.rm(work, { recursive: true, force: true })
+    if (old && old !== rel) await this.prune(path.dirname(this.abs(old)))
+    await fsp.rm(path.join(this.gitDir, 'weevbook', 'index', id), { force: true })
+    await git(this.gitDir, ['update-ref', `refs/threads/${id}`, commit])
+    this.paths.set(id, rel)
+    this.cache.delete(id)
+    return rel
   }
 
   /** Rebuilds thread.md and meta.json from the journal (02-weevbook.md: « rebuilt … by weevils weevbook check »). */
@@ -506,8 +548,7 @@ export class Weevbook {
   // ---------------------------------------------------------------- git
 
   private author() {
-    const who = { name: 'weevils', email: `weevils@${this.machine}` }
-    return { GIT_AUTHOR_NAME: who.name, GIT_AUTHOR_EMAIL: who.email, GIT_COMMITTER_NAME: who.name, GIT_COMMITTER_EMAIL: who.email }
+    return authorEnv(this.machine)
   }
   private async ref(name: string): Promise<string | null> {
     return (await git(this.gitDir, ['rev-parse', '-q', '--verify', `${name}^{commit}`]).catch(() => '')).trim() || null
@@ -541,24 +582,7 @@ export class Weevbook {
 
   /** The thread refs and the meta.json of each tip. */
   async refs(): Promise<{ id: string; commit: string; tree: string; meta: ThreadMeta }[]> {
-    const list = (await git(this.gitDir, ['for-each-ref', '--format=%(objectname) %(tree) %(refname)', 'refs/threads/'])).trim()
-    if (!list) return []
-    const rows = list.split('\n').map((l) => {
-      const [commit, tree, ref] = l.split(' ')
-      return { id: ref.slice('refs/threads/'.length), commit, tree }
-    })
-    const out = await git(this.gitDir, ['cat-file', '--batch'], { input: rows.map((r) => `${r.commit}:meta.json\n`).join('') })
-    const buf = Buffer.from(out)
-    const metas: ThreadMeta[] = []
-    let pos = 0
-    for (let i = 0; i < rows.length; i++) {
-      const nl = buf.indexOf(10, pos)
-      const head = buf.subarray(pos, nl).toString().split(' ')
-      const size = Number(head[2])
-      metas.push(JSON.parse(buf.subarray(nl + 1, nl + 1 + size).toString()) as ThreadMeta)
-      pos = nl + 1 + size + 1
-    }
-    return rows.map((r, i) => ({ ...r, meta: metas[i] }))
+    return threadRefs(this.gitDir)
   }
 
   /**
@@ -567,48 +591,10 @@ export class Weevbook {
    * with the previous main as parent. The files on disk follow. Returns the new commit, or null when nothing changed.
    */
   async compose(): Promise<string | null> {
-    const refs = await this.refs()
-    const index: IndexEntry[] = []
-    const months = new Map<string, Map<string, string>>()
-    for (const r of refs.sort((a, b) => (a.id < b.id ? -1 : 1))) {
-      const m = r.meta
-      const project = m.project ?? UNSORTED
-      const month = m.created.slice(0, 7)
-      const name = `${m.thread}-${slugify(m.title) || 'untitled'}`
-      index.push({ thread: m.thread, path: `projects/${project}/${month}/${name}`, title: m.title, project: m.project, updated: m.updated, state: m.state, commit: r.commit })
-      const key = `${project}/${month}`
-      if (!months.has(key)) months.set(key, new Map())
-      months.get(key)!.set(name, r.tree)
-    }
-    const mktree = async (entries: string[]) => (await git(this.gitDir, ['mktree'], { input: entries.join('\n') + (entries.length ? '\n' : '') })).trim()
-    const blob = async (data: string) => (await git(this.gitDir, ['hash-object', '-w', '--stdin'], { input: data })).trim()
-    const projects = new Map<string, string[]>()
-    for (const [key, threads] of months) {
-      const [project, month] = key.split('/')
-      const tree = await mktree([...threads].map(([name, t]) => `040000 tree ${t}\t${name}`))
-      projects.set(project, [...(projects.get(project) ?? []), `040000 tree ${tree}\t${month}`])
-    }
-    const projectEntries: string[] = []
-    for (const [project, entries] of projects) projectEntries.push(`040000 tree ${await mktree(entries)}\t${project}`)
-    const indexJson = `${JSON.stringify({ v: 1, threads: index }, null, 2)}\n`
-    const root = [`100644 blob ${await blob(README)}\tREADME.md`, `100644 blob ${await blob(indexJson)}\tindex.json`]
-    if (projectEntries.length) root.push(`040000 tree ${await mktree(projectEntries)}\tprojects`)
-    const tree = await mktree(root)
-    const old = await this.ref('refs/heads/main')
+    const r = await composeMain(this.gitDir, this.machine)
     await writeAtomic(path.join(this.dir, 'README.md'), README)
-    await writeAtomic(path.join(this.dir, 'index.json'), indexJson)
-    if (old && (await git(this.gitDir, ['rev-parse', `${old}^{tree}`])).trim() === tree) return null
-    // The message lists the thread commits added since the previous main.
-    const before = new Map<string, string>()
-    if (old) {
-      const prev = await git(this.gitDir, ['cat-file', 'blob', `${old}:index.json`]).catch(() => '')
-      for (const t of (prev ? (JSON.parse(prev) as { threads: IndexEntry[] }).threads : [])) before.set(t.thread, t.commit)
-    }
-    const added = index.filter((t) => before.get(t.thread) !== t.commit)
-    const message = [`compose · ${this.machine} · ${added.length} thread${added.length === 1 ? '' : 's'}`, '', ...added.map((t) => `${t.commit.slice(0, 12)} ${t.thread} ${t.title}`)].join('\n') // i18n-ignore: commit message
-    const commit = (await git(this.gitDir, ['commit-tree', tree, ...(old ? ['-p', old] : []), '-m', message], { env: this.author() })).trim()
-    await git(this.gitDir, ['update-ref', 'refs/heads/main', commit, old ?? ''])
-    return commit
+    await writeAtomic(path.join(this.dir, 'index.json'), r.indexJson)
+    return r.commit
   }
 
   /** index.json of `main` (empty when main does not exist yet). */
@@ -634,6 +620,80 @@ export class Weevbook {
   async tidy() {
     await git(this.gitDir, ['gc', '--auto', '--quiet']).catch(() => undefined)
   }
+}
+
+const authorEnv = (machine: string) => {
+  const who = { name: 'weevils', email: `weevils@${machine}` }
+  return { GIT_AUTHOR_NAME: who.name, GIT_AUTHOR_EMAIL: who.email, GIT_COMMITTER_NAME: who.name, GIT_COMMITTER_EMAIL: who.email }
+}
+
+/** The thread refs of a repository (`refs/threads/*`) and the meta.json of each tip. */
+export async function threadRefs(gitDir: string): Promise<{ id: string; commit: string; tree: string; meta: ThreadMeta }[]> {
+  const list = (await git(gitDir, ['for-each-ref', '--format=%(objectname) %(tree) %(refname)', 'refs/threads/'])).trim()
+  if (!list) return []
+  const rows = list.split('\n').map((l) => {
+    const [commit, tree, ref] = l.split(' ')
+    return { id: ref.slice('refs/threads/'.length), commit, tree }
+  })
+  const out = await git(gitDir, ['cat-file', '--batch'], { input: rows.map((r) => `${r.commit}:meta.json\n`).join('') })
+  const buf = Buffer.from(out)
+  const metas: ThreadMeta[] = []
+  let pos = 0
+  for (let i = 0; i < rows.length; i++) {
+    const nl = buf.indexOf(10, pos)
+    const head = buf.subarray(pos, nl).toString().split(' ')
+    const size = Number(head[2])
+    metas.push(JSON.parse(buf.subarray(nl + 1, nl + 1 + size).toString()) as ThreadMeta)
+    pos = nl + 1 + size + 1
+  }
+  return rows.map((r, i) => ({ ...r, meta: metas[i] }))
+}
+
+/**
+ * `main` composed from a repository's thread refs, committed on its previous `main` (03-sync-and-lease.md#composing-
+ * main): the weevbook's own, or the hub's on the machine that keeps it (hub.ts). `commit` is null when nothing changed.
+ */
+export async function composeMain(gitDir: string, machine: string): Promise<{ commit: string | null; indexJson: string }> {
+  const refs = await threadRefs(gitDir)
+  const index: IndexEntry[] = []
+  const months = new Map<string, Map<string, string>>()
+  for (const r of refs.sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const m = r.meta
+    const project = m.project ?? UNSORTED
+    const month = m.created.slice(0, 7)
+    const name = `${m.thread}-${slugify(m.title) || 'untitled'}`
+    index.push({ thread: m.thread, path: `projects/${project}/${month}/${name}`, title: m.title, project: m.project, updated: m.updated, state: m.state, commit: r.commit })
+    const key = `${project}/${month}`
+    if (!months.has(key)) months.set(key, new Map())
+    months.get(key)!.set(name, r.tree)
+  }
+  const mktree = async (entries: string[]) => (await git(gitDir, ['mktree'], { input: entries.join('\n') + (entries.length ? '\n' : '') })).trim()
+  const blob = async (data: string) => (await git(gitDir, ['hash-object', '-w', '--stdin'], { input: data })).trim()
+  const projects = new Map<string, string[]>()
+  for (const [key, threads] of months) {
+    const [project, month] = key.split('/')
+    const tree = await mktree([...threads].map(([name, t]) => `040000 tree ${t}\t${name}`))
+    projects.set(project, [...(projects.get(project) ?? []), `040000 tree ${tree}\t${month}`])
+  }
+  const projectEntries: string[] = []
+  for (const [project, entries] of projects) projectEntries.push(`040000 tree ${await mktree(entries)}\t${project}`)
+  const indexJson = `${JSON.stringify({ v: 1, threads: index }, null, 2)}\n`
+  const root = [`100644 blob ${await blob(README)}\tREADME.md`, `100644 blob ${await blob(indexJson)}\tindex.json`]
+  if (projectEntries.length) root.push(`040000 tree ${await mktree(projectEntries)}\tprojects`)
+  const tree = await mktree(root)
+  const old = (await git(gitDir, ['rev-parse', '-q', '--verify', 'refs/heads/main^{commit}']).catch(() => '')).trim() || null
+  if (old && (await git(gitDir, ['rev-parse', `${old}^{tree}`])).trim() === tree) return { commit: null, indexJson }
+  // The message lists the thread commits added since the previous main.
+  const before = new Map<string, string>()
+  if (old) {
+    const prev = await git(gitDir, ['cat-file', 'blob', `${old}:index.json`]).catch(() => '')
+    for (const t of (prev ? (JSON.parse(prev) as { threads: IndexEntry[] }).threads : [])) before.set(t.thread, t.commit)
+  }
+  const added = index.filter((t) => before.get(t.thread) !== t.commit)
+  const message = [`compose · ${machine} · ${added.length} thread${added.length === 1 ? '' : 's'}`, '', ...added.map((t) => `${t.commit.slice(0, 12)} ${t.thread} ${t.title}`)].join('\n') // i18n-ignore: commit message
+  const commit = (await git(gitDir, ['commit-tree', tree, ...(old ? ['-p', old] : []), '-m', message], { env: authorEnv(machine) })).trim()
+  await git(gitDir, ['update-ref', 'refs/heads/main', commit, old ?? ''])
+  return { commit, indexJson }
 }
 
 /** Every file under `dir`, by path inside it. */

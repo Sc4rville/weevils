@@ -1,7 +1,7 @@
 import type http from 'node:http'
 import { describe, expect, it } from 'vitest'
 import { afterEach, beforeEach } from 'vitest'
-import { browserSafe, clientAddress, configureLocalAuth, fromThisMachine, isLocal, localTokenProblem, markInternal, parseLocalToken, trustedFrom, trustedSource } from './http.ts'
+import { appWriteAllowed, browserSafe, clientAddress, configureLocalAuth, fromThisMachine, isLocal, localTokenProblem, markInternal, parseLocalToken, trustedFrom, trustedSource } from './http.ts'
 
 const TOKEN = 'ab'.repeat(32)
 const jailedSockets = new WeakSet<object>()
@@ -169,5 +169,35 @@ describe('the address a sign-in comes from', () => {
     expect(at({ 'x-forwarded-for': '203.0.113.7' }, '::1')).toBe('203.0.113.7')
     expect(at({ 'cf-connecting-ip': '203.0.113.9' }, '::ffff:127.0.0.1')).toBe('203.0.113.9')
     expect(at({}, '127.0.0.1')).toBe('127.0.0.1')
+  })
+})
+
+describe('a change asked from a browser', () => {
+  const ask = (method: string, headers: Record<string, string>, publicUrl = '') =>
+    appWriteAllowed(({ method, socket: { remoteAddress: '127.0.0.1' }, headers: { host: 'weevils.example.com', ...headers } }) as unknown as http.IncomingMessage, publicUrl)
+  it('from the app\'s own pages: allowed', () => {
+    expect(ask('POST', { origin: 'https://weevils.example.com' })).toBe(true)
+    expect(ask('DELETE', { origin: 'https://WEEVILS.example.com' })).toBe(true)
+    // Behind a proxy that rewrites Host, its X-Forwarded-Host or the public address configured.
+    expect(ask('POST', { host: '127.0.0.1:4179', 'x-forwarded-host': 'weevils.example.com', origin: 'https://weevils.example.com' })).toBe(true)
+    expect(ask('POST', { host: '127.0.0.1:4179', origin: 'https://abc.trycloudflare.com' }, 'https://abc.trycloudflare.com')).toBe(true)
+    // The dev server relays the app with its own Host.
+    expect(ask('PUT', { host: '127.0.0.1:4178', origin: 'http://127.0.0.1:4178' })).toBe(true)
+  })
+  it('from another site, a sibling domain (an agent\'s preview) or a sandboxed page: refused', () => {
+    expect(ask('POST', { origin: 'https://evil.example' })).toBe(false)
+    expect(ask('POST', { origin: 'https://game.example.com' })).toBe(false)
+    expect(ask('POST', { origin: 'null' })).toBe(false)
+    expect(ask('POST', { origin: 'http://weevils.example.com.evil.example' })).toBe(false)
+    // No Origin, but the browser says it is another site.
+    expect(ask('POST', { 'sec-fetch-site': 'cross-site' })).toBe(false)
+    expect(ask('POST', { 'sec-fetch-site': 'same-site' })).toBe(false)
+  })
+  it('reading, and callers that are no browser (weevils\' commands, another machine, the Shortcut): unchanged', () => {
+    expect(ask('GET', { origin: 'https://evil.example' })).toBe(true)
+    expect(ask('HEAD', {})).toBe(true)
+    expect(ask('POST', {})).toBe(true)
+    expect(ask('POST', { 'sec-fetch-site': 'same-origin' })).toBe(true)
+    expect(ask('POST', { 'sec-fetch-site': 'none' })).toBe(true)
   })
 })

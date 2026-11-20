@@ -37,7 +37,7 @@ import S from './i18n/setup.ts'
 import { LoadSampler, tipRoutes } from './tips.ts'
 import { Hints, hintRoutes } from './hints.ts'
 import { softwareRoutes, softwareCatalog } from './softwares.ts'
-import { browserSafe, clientAddress, configureLocalAuth, isLocal, localTokenProblem, parseLocalToken, trustedFrom, trustedSource } from './http.ts'
+import { appWriteAllowed, browserSafe, clientAddress, configureLocalAuth, isLocal, localTokenProblem, parseLocalToken, trustedFrom, trustedSource } from './http.ts'
 import { startMailBridge } from './mailbridge.ts'
 import { resetAuthors, threadAuthor } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
@@ -390,6 +390,10 @@ function serveStatic(res: http.ServerResponse, pathname: string) {
   res.writeHead(200, {
     'content-type': MIME[ext] ?? 'application/octet-stream',
     'cache-control': pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
+    // The app is never shown inside another page (clickjacking), and its addresses go nowhere as a Referer.
+    'x-frame-options': 'DENY',
+    'content-security-policy': "frame-ancestors 'none'",
+    'referrer-policy': 'no-referrer',
   })
   // The app's page carries this installation's language, for the devices that have picked none.
   if (file === path.join(DIST_DIR, 'index.html')) return void res.end(withInstallLang(fs.readFileSync(file, 'utf8')))
@@ -1043,6 +1047,8 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
       return void res.end()
     }
     if (!url.pathname.startsWith('/api/')) return serveStatic(res, url.pathname)
+    // A change asked by a browser comes from the app's own pages only (server/http.ts appWriteAllowed).
+    if (!appWriteAllowed(req, PUBLIC_URL)) return json(res, 403, { error: tr(M).signInRequired })
     const keyed = PAGE_KEY_RE.exec(url.pathname)
     if (keyed && (req.method === 'GET' || req.method === 'HEAD')) return pages.serve(req, res, keyed[1], keyed[2], keyed[3])
     // A computer bringing its conversations: its one-time code is its key, not the access code (server/bring.ts).

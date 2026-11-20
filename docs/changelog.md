@@ -62,7 +62,8 @@ A short summary of what changed after the first working version.
   there, with buttons.
 - **Voice messages**: a word from weevboss or from an outside agent can be listened to, each speaker in its own voice.
 - Generated items (weevboss's digest, ideas, insights) are written by weevilsd on a budget: only while the stream is
-  being looked at, never past 85 % of a usage window, 12 model calls a day at most. Plan and state: [foryou.md](foryou.md).
+  being looked at, never past 85 % of a usage window, 60 model calls a day at most (plus, near Claude's limits, up
+  to 120 through Codex and 16 short haiku lines). Plan and state: [foryou.md](foryou.md).
 ### Codex relay when Claude hits its usage limit
 - weevilsd watches three signals, in plain code (no model call): the limit message Claude Code writes in a transcript
   (with its reset time), sessions that stop dead or API errors piling up, and the subscription quota read live (5-hour

@@ -106,7 +106,7 @@ The page finds it again, in this order, and never shows the start screen while s
 - **One way on after a failure**: the sizes come as soon as the token is pasted; a refused token shows one "Try
   again"; a stopped install,
   a stalled one, or a final link this browser can't open shows one "Try again", which goes back to the token (Hetzner),
-  the VPS access, or the computer's command.
+  the VPS's command, or the computer's command.
 - **Never a second server without asking**: when the token's account already has a weevils server, the page offers to
   continue on it, and creating another takes a tap on "Create another server anyway" (`another: true`; without it,
   `POST /api/<host>/create` answers `409 exists` with the list). Two taps, or a page reopened during the call, make

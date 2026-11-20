@@ -371,7 +371,14 @@ _weevils_get() {
   check
 
   # ------------------------------------------------------------ 4. a computer: an HTTPS link for the phone
-  if [ "$MODE" = pc ] && [ "$(sum mode)" = local ] && [ "$link" = 1 ]; then
+  # A server whose ports 80 and 443 another web server already holds (nginx, Traefik, Docker…) gets one too: the
+  # installer left that server alone and installed no Caddy.
+  local web; web=$(sum web_server)
+  if [ "$MODE" = vps ] && [ -n "$web" ] && [ "$(sum mode)" = local ]; then
+    if [ "$UI_LANG" = fr ]; then say "$web répond déjà sur les ports 80/443 ici : weevils n'y touche pas et donne à ce serveur son propre lien sécurisé" # i18n-ignore
+    else say "$web already answers on ports 80/443 here: weevils leaves it alone and gives this server its own secure link instead"; fi
+  fi
+  if { [ "$MODE" = pc ] || [ -n "$web" ]; } && [ "$(sum mode)" = local ] && [ "$link" = 1 ]; then
     event step tunnel
     local port bin arch turl='' state=$HOME/.local/share/weevils
     port=$(sum port)

@@ -47,7 +47,10 @@ Or ask your AI agent: paste `install https://github.com/Sc4rville/weevils` into 
    original is kept in `Caddyfile.bak-weevils`). If Caddy rejects the result (say the domain is already a site
    there), both files go back exactly as they were. When ufw is active, it offers to open ports 80 and 443. Then it
    checks that `https://<domain>` answers, and says what to look at (DNS, ports, Caddy logs) when it doesn't. A
-   re-run keeps the site and points it to the current port.
+   re-run keeps the site and points it to the current port. When another web server already answers on ports 80/443
+   (nginx, Apache, Traefik, Docker), Caddy could not take them: the installer leaves that server alone, installs no
+   Caddy and says so; have it forward to weevils' port and run again with `--url`. From the setup page, such a server
+   gets its own secure link instead, as a computer does.
 9. Prints the address, the access code and the login link (`…/#k=<code>`), with its QR code when a phone can open
    it (`--domain`, `--url`, `--lan`, or a `WEEVILS_PUBLIC_URL`). Without any of them, it lists the ways in instead
    (below). It ends on what is already there (your Claude Code projects of the last 3 days, or your repos in

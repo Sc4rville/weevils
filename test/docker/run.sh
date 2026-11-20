@@ -10,7 +10,7 @@
 #   test/docker/run.sh edge       the hard cases: truncated download, no terminal without --yes, no sudo, node 20
 #                                 (NodeSource, Ubuntu apt, tarball shadowing), user with sudo + file:// repo + --dir,
 #                                 re-run after editing the config, --lang fr only, bad options, --lan, a Caddyfile that
-#                                 already serves another site (and a port change)
+#                                 already serves another site (and a port change), nginx already on ports 80/443
 #
 # Claude Code is a stub (/usr/local/bin/claude) everywhere but in the plain scenario, which installs the real one.
 # It installs the HEAD commit of this repo (commit first). KEEP=1 keeps the containers for a look.
@@ -352,6 +352,15 @@ run_edge() {
   check "end screen: the LAN address ($ip) with a QR code" bash -c "grep -q 'http://$ip:4179/#k=' '$work/lan.log' && grep -qE '$QR' '$work/lan.log'"
   check "a private address: no warning, but http limits said" bash -c "! grep -q 'not a private network address' '$work/lan.log' && grep -q 'neither the microphone nor notifications' '$work/lan.log'"
   check "weevilsd answers on the LAN address" docker exec "$c" curl -sf "http://$ip:4179/api/me"
+
+  say "edge: nginx already holds ports 80 and 443: --domain installs no Caddy and leaves nginx alone"
+  box nginx 'apt-get update -qq && apt-get install -y -qq nginx curl iproute2 >/dev/null && nginx && cp /etc/nginx/sites-enabled/default /tmp/nginx.orig'
+  docker exec -i -e WEEVILS_REPO=/srv/weevils.git "$c" bash -s -- --agent --lang en --domain weevils.test <"$work/weevils/install.sh" >"$work/nginx.log" 2>&1
+  echo $? >"$work/nginx.rc"
+  check "exits 0, says nginx holds the ports, once" bash -c "[ \$(cat '$work/nginx.rc') = 0 ] && [ \$(grep -c 'nginx already answers on ports 80/443' '$work/nginx.log') = 1 ] || { tail -30 '$work/nginx.log'; exit 1; }"
+  check "no Caddy installed, no public URL from --domain" docker exec "$c" bash -c '! command -v caddy && ! grep -q "^WEEVILS_PUBLIC_URL=https://weevils.test" /root/.config/weevils/env'
+  check "summary: web_server=nginx, mode=local (the setup page then gives it a tunnel)" bash -c "grep -qx web_server=nginx '$work/nginx.log' && grep -qx mode=local '$work/nginx.log'"
+  check "nginx untouched, still answering" docker exec "$c" bash -c 'cmp /tmp/nginx.orig /etc/nginx/sites-enabled/default && curl -sf -o /dev/null http://127.0.0.1/'
 
   say "edge: Caddy already serves another site (no systemd)"
   box caddy 'apt-get update -qq && apt-get install -y -qq caddy curl >/dev/null && printf "other.test {\n\ttls internal\n\trespond \"other site\"\n}\n" >/etc/caddy/Caddyfile && cp /etc/caddy/Caddyfile /tmp/Caddyfile.orig && caddy start --config /etc/caddy/Caddyfile >/dev/null 2>&1'

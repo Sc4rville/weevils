@@ -151,6 +151,8 @@ EN_https_down="does not answer yet: check the DNS record, ports 80 and 443 (ufw,
 FR_https_down="ne répond pas encore : vérifie l'enregistrement DNS, les ports 80 et 443 (ufw, pare-feu de l'hébergeur), et : sudo journalctl -u caddy -n 30"
 EN_caddy_bad="Caddy refuses the new config: previous Caddyfile restored, HTTPS skipped."
 FR_caddy_bad="Caddy refuse la nouvelle config : ancien Caddyfile remis, HTTPS laissé de côté."
+EN_web_busy="already answers on ports 80/443 of this server: weevils leaves it as it is and installs no Caddy (to reach weevils through it, have it forward to 127.0.0.1:4179, then run me again with --url https://<your domain>)."
+FR_web_busy="répond déjà sur les ports 80/443 de ce serveur : weevils n'y touche pas et n'installe pas Caddy (pour passer par lui, fais-le renvoyer vers 127.0.0.1:4179, puis relance-moi avec --url https://<ton domaine>)."
 EN_waiting="waiting for weevilsd"
 FR_waiting="j'attends weevilsd"
 EN_down="weevilsd does not answer. Look at: weevils-service status, weevils-service logs"
@@ -388,6 +390,7 @@ ask() { # ask "question" default → answer on stdout
 # ---------------------------------------------------------------- system
 
 SUDO=''
+WEB_BUSY=''
 SUDO_PW=0
 PM=''
 IS_WSL=0
@@ -523,6 +526,11 @@ check_system() {
     # An agent can't type a password, and a prompt would hang: sudo only when it needs none.
     if [ "$AGENT" = 1 ]; then if sudo -n true 2>/dev/null; then SUDO='sudo -n'; else SUDO=none SUDO_PW=1; fi; fi
   else SUDO=none; fi
+  # Ports 80 and 443 held by another web server: no Caddy, so --domain is set aside (said once, here).
+  if [ -n "$DOMAIN" ] && [ -z "$SECONDARY" ]; then
+    WEB_BUSY=$(web_busy)
+    if [ -n "$WEB_BUSY" ]; then warn "$WEB_BUSY $(t web_busy)"; DOMAIN=''; fi
+  fi
   # --domain sets up Caddy in /etc: without sudo, stop here, before anything is written.
   [ -z "$DOMAIN" ] || [ -n "$SECONDARY" ] || [ "$SUDO" != none ] || no_root caddy
   if [ "$OS" = Darwin ]; then
@@ -757,7 +765,7 @@ configure() {
     [ "$(cfg get WEEVILS_HOST)" != 0.0.0.0 ] || cfg set WEEVILS_HOST 127.0.0.1
   fi
   # (Never on a Mac: --domain sets up Caddy, which weevils does not do there.)
-  if [ "$OS" != Darwin ] && [ -z "$SECONDARY" ] && [ -z "$DOMAIN" ] && [ "$LAN" = 0 ] && [ -z "$(cfg get WEEVILS_PUBLIC_URL)" ] && ! site_mine; then
+  if [ "$OS" != Darwin ] && [ -z "$SECONDARY" ] && [ -z "$DOMAIN" ] && [ -z "$WEB_BUSY" ] && [ "$LAN" = 0 ] && [ -z "$(cfg get WEEVILS_PUBLIC_URL)" ] && ! site_mine; then
     DOMAIN=$(ask "$(t ask_domain)" ""); DOMAIN=${DOMAIN#http://}; DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN%%/*}
     [ -z "$DOMAIN" ] || [[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || { warn "$(t bad_opt) $DOMAIN"; DOMAIN=''; }
   fi
@@ -846,6 +854,36 @@ site_mine() {
   local site=/etc/caddy/weevils.caddy
   [ -f "$site" ] || return 1
   ! grep -q '^# weevils — written by install.sh for ' "$site" || grep -qx "# weevils — written by install.sh for $(id -un)" "$site"
+}
+
+# web_busy — the name of what already serves port 80 or 443 on this machine when it is not Caddy (nginx, Apache,
+# Traefik, Docker…), nothing otherwise. Caddy can't take ports that are held, and that server is not weevils' to
+# change. Caddy itself there is fine: weevils adds its site to it. Without the right to see whose a listener is, a
+# Caddy that runs counts as the one listening.
+web_busy() {
+  local s='' lines names other
+  [ "$OS" != Darwin ] || return 0
+  [ "$SUDO" = none ] || s=$SUDO
+  if command -v ss >/dev/null 2>&1; then lines=$($s ss -Hltnp 2>/dev/null || true)
+  elif command -v netstat >/dev/null 2>&1; then lines=$($s netstat -ltnp 2>/dev/null || true)
+  else return 0; fi
+  lines=$(printf '%s\n' "$lines" | awk '{ n = split($4, a, ":"); if (a[n] == "80" || a[n] == "443") print }')
+  [ -n "$lines" ] || return 0
+  # ss: users:(("nginx",pid=…)); netstat: 123/nginx in its last column.
+  names=$(printf '%s\n' "$lines" | sed -n -e 's/.*users:(("\([^"]*\)".*/\1/p' -e 's#.*[[:space:]][0-9][0-9]*/\([^[:space:]]*\)[[:space:]]*$#\1#p' | sort -u)
+  if [ -z "$names" ]; then
+    pgrep -x caddy >/dev/null 2>&1 && return 0
+    printf '%s' "another web server"
+    return 0
+  fi
+  other=$(printf '%s\n' "$names" | grep -vx caddy | head -1 || true)
+  case $other in
+    '') ;;
+    docker-proxy | dockerd | containerd*) printf 'Docker' ;;
+    apache2 | httpd) printf 'Apache' ;;
+    traefik) printf 'Traefik' ;;
+    *) printf '%s' "$other" ;;
+  esac
 }
 
 https() {
@@ -1145,6 +1183,7 @@ finish() {
   [ "$AGENT" = 0 ] || info "$(t agent_next) $DIR/AGENTS.md"
 
   kv role main; kv url "$url"; kv code "$code"; kv link "$url/#k=$code"; kv mode "$mode"
+  [ -z "$WEB_BUSY" ] || kv web_server "$WEB_BUSY"
   kv https "$([ "${url#https://}" != "$url" ] && echo yes || echo no)"; kv port "$port"
   kv ready "$([ "$title" = ready ] && echo yes || echo no)"
   sum_found

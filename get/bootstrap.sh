@@ -88,7 +88,7 @@ _weevils_get() {
         lang) [[ $v =~ ^(en|fr)$ ]] && UI_LANG=$v || true ;;
         mode) [[ $v =~ ^[a-z]{1,8}$ ]] && MODE=$v || true ;;
         reach) [[ $v =~ ^[A-Za-z0-9.:/_-]{0,200}$ ]] && REACH=$v || true ;;
-        pub) [[ $v =~ ^[A-Za-z0-9+/=]{200,800}$ ]] && PUB=$v || true ;;
+        pub) [[ $v =~ ^[A-Za-z0-9+/=]+$ ]] && [ ${#v} -ge 200 ] && [ ${#v} -le 800 ] && PUB=$v || true ;; # no {200,800}: macOS caps a repeat at 255
       esac
     done <<<"$kv"
     [ -n "$MODE" ] && [ -n "$PUB" ] || { printf '  weevils · this setup link has expired: open the setup page again.\n' >&2; exit 1; }

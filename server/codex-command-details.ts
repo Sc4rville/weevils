@@ -41,12 +41,34 @@ export function nestedCalls(input: unknown): NestedCall[] {
 }
 /** Redact before data crosses the API boundary, not just in the renderer. */
 export function redactToolText(text:string,limit=8000):string {
-  return text.replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[redacted]')
+  return redactKeyValues(text.replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,'[redacted]')
     .replace(/\b(Bearer)\s+[^\s"']+/gi,'$1 [redacted]')
     .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi,'$1[redacted]@')
-    .replace(/\b(sk-[a-zA-Z0-9_-]{8,}|eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)\b/g,'[redacted]')
-    .replace(/([\w-]*(?:token|password|passwd|secret|api[_-]?key|authorization|cookie)[\w-]*["']?\s*[:=]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;&}]+)/gi,'$1[redacted]')
+    .replace(/\b(sk-[a-zA-Z0-9_-]{8,}|eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)\b/g,'[redacted]'))
     .slice(0,limit)
+}
+const SECRET_NAME=/token|password|passwd|secret|api[_-]?key|authorization|cookie/i
+/**
+ * `name=value` and `"name": "value"` where the name says secret: the value becomes [redacted]. The same as
+ * /([\w-]*(?:token|…)[\w-]*["']?\s*[:=]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;&}]+)/gi → '$1[redacted]', in one pass: that
+ * regex tries every start inside a long run of word characters and takes time in the square of its length (a long
+ * text, redacted whole for the weevbook, never ends).
+ */
+function redactKeyValues(text:string):string {
+  const runs=/[\w-]+/g
+  const tail=/(["']?\s*[:=]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;&}]+)/y
+  let out=''
+  let last=0
+  for(let m=runs.exec(text);m;m=runs.exec(text)) {
+    if(!SECRET_NAME.test(m[0]))continue
+    tail.lastIndex=m.index+m[0].length
+    const v=tail.exec(text)
+    if(!v)continue
+    out+=text.slice(last,tail.lastIndex-v[0].length+v[1].length)+'[redacted]'
+    last=tail.lastIndex
+    runs.lastIndex=last
+  }
+  return last?out+text.slice(last):text
 }
 export function commandDetails(name:string,input:unknown,limit=8000):string[] {
   const obj=input && typeof input==='object'? input as Record<string,unknown>:{}

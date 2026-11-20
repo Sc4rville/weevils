@@ -1,6 +1,8 @@
 // "My computer" on a real Mac, end to end, without a browser. Starts get/server.mjs on this machine, creates a setup
 // the way the page does (WebCrypto RSA-OAEP key pair, POST /api/job), runs the command the page shows with macOS's
-// own bash, then checks what the page would get: the install done, the sealed link opened, the tunnel answering.
+// own bash (curl …/install.sh | bash -s <setup id>: the shared script, its settings read from the service, the code
+// checked against the release key the script pins), then checks what the page would get: the install done, the
+// sealed link opened, the tunnel answering.
 // Made for a macOS runner of GitHub Actions (Node 22, nothing else); it also runs on Linux.
 //
 //   WVGET_SOURCE=<a weevils checkout> node get/e2e-mac.mjs      installs the committed HEAD of that checkout
@@ -9,7 +11,9 @@
 //
 // One of the two is required, on purpose: the setup service hands the install the code itself (GET_BUNDLE, a signed
 // snapshot), rather than a clone from GitHub. WVGET_SOURCE is bundled by get/make-bundle.sh: one commit, HEAD,
-// so uncommitted changes are NOT installed. The source must be a weevils whose install.sh supports macOS.
+// so uncommitted changes are NOT installed. A bundle without its signature next to it (<bundle>.sig) is signed here
+// with a throwaway key that this service pins in the script instead of the release key (which never leaves its
+// machine); a release bundle with its .sig keeps the real key. The source must be a weevils whose install.sh supports macOS.
 // In a workflow, after actions/checkout of a branch that has both get/ and the macOS installer:
 //   WVGET_SOURCE="$GITHUB_WORKSPACE" node get/e2e-mac.mjs
 //
@@ -19,6 +23,7 @@
 // Not covered on a runner: sudo needs no password there and Homebrew is already installed, so "the password once in
 // the terminal, then Homebrew first" never runs. That case needs a Mac without Homebrew and a person at its terminal.
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
@@ -46,12 +51,30 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // ---------------------------------------------------------------- the code to install, said explicitly
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wvget-e2e-'))
 let bundle = process.env.WVGET_BUNDLE || ''
+// The throwaway key (see the top of this file), made when a bundle needs it.
+const key = path.join(tmp, 'release')
+let releaseKey = ''
+const throwaway = () => {
+  if (releaseKey) return
+  execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', 'weevils-e2e', '-f', key])
+  releaseKey = `${key}.pub`
+}
 if (!bundle && process.env.WVGET_SOURCE) {
+  throwaway()
   bundle = path.join(tmp, 'weevils.bundle')
-  console.log(execFileSync('bash', [path.join(HERE, 'make-bundle.sh'), 'HEAD', bundle, process.env.WVGET_SOURCE]).toString().trim())
+  const env = { ...process.env, WEEVILS_RELEASE_KEY: key, WEEVILS_RELEASE_SIGNER: '' }
+  console.log(execFileSync('bash', [path.join(HERE, 'make-bundle.sh'), 'HEAD', bundle, process.env.WVGET_SOURCE], { env }).toString().trim())
 }
 if (!bundle) stop('say where the code comes from: WVGET_SOURCE=<a weevils checkout> or WVGET_BUNDLE=<a bundle file> (see the top of this file)')
 if (!fs.existsSync(bundle)) stop(`no bundle at ${bundle}`)
+if (!fs.existsSync(`${bundle}.sig`)) {
+  throwaway()
+  const signed = path.join(tmp, 'weevils.bundle')
+  fs.copyFileSync(bundle, signed)
+  bundle = signed
+  execFileSync('ssh-keygen', ['-q', '-Y', 'sign', '-n', 'weevils-release', '-f', key, bundle])
+  fs.writeFileSync(`${bundle}.sha256`, `${createHash('sha256').update(fs.readFileSync(bundle)).digest('hex')}  weevils.bundle\n`)
+}
 // The installer inside that bundle: the service reads the step titles from it, like in production.
 const unpacked = path.join(tmp, 'src')
 execFileSync('git', ['clone', '-q', '-b', 'main', bundle, unpacked])
@@ -69,7 +92,7 @@ const port = await new Promise((r) => {
   })
 })
 const base = `http://127.0.0.1:${port}`
-const { server } = createServer(config({ GET_BASE: base, GET_BUNDLE: bundle, GET_INSTALLER: installer, GET_TRUST_PROXY: '0' }))
+const { server } = createServer(config({ GET_BASE: base, GET_BUNDLE: bundle, GET_INSTALLER: installer, GET_TRUST_PROXY: '0', ...(releaseKey ? { GET_RELEASE_KEY: releaseKey } : {}) }))
 await new Promise((r) => server.listen(port, '127.0.0.1', r))
 const api = async (p, body) => {
   const r = await fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
@@ -87,17 +110,26 @@ const unseal = async (sealed) => {
   return new TextDecoder().decode(await subtle.decrypt({ name: 'RSA-OAEP' }, key, Buffer.from(sealed, 'base64')))
 }
 const job = await api('/api/job', { kind: 'pc', lang: process.env.WVGET_LANG === 'fr' ? 'fr' : 'en', pub })
-check('the page gets the command to paste', job.command === `curl -fsSL ${base}/i/${job.sid} | bash`, job.command)
+check('the page gets the command to paste', job.command === `curl -fsSL ${base}/install.sh | bash -s ${job.sid}`, job.command)
 
 // macOS's own bash (3.2), whatever a newer one in the PATH says.
 const bash = fs.existsSync('/bin/bash') ? '/bin/bash' : 'bash'
 console.log(`${os.type()} ${os.release()} ${os.arch()}, ${execFileSync(bash, ['--version']).toString().split('\n')[0]}`)
-const script = await (await fetch(`${base}/i/${job.sid}`)).text()
-check('its script has every value filled in', !/@[A-Z]+@/.test(script) && script.includes(`SID='${job.sid}'`) && script.includes(`MODE='pc'`))
+const script = await (await fetch(`${base}/install.sh`)).text()
+check('the shared script has every value filled in, the release key pinned', !/@[A-Z]+@/.test(script) && script.includes(`RELEASE_KEY='${fs.readFileSync(releaseKey || path.join(HERE, 'release-key.pub'), 'utf8').trim()}'`))
 const syntax = spawnSync(bash, ['-n'], { input: script })
 check(`${bash} reads the script (bash -n)`, syntax.status === 0, syntax.stderr.toString().trim().slice(0, 200))
+const env = await (await fetch(`${base}/i/${job.sid}.env?os=Darwin&systemd=0&own=`)).text()
+check('this setup’s settings come as plain values: a computer, the page’s key', /^mode=pc$/m.test(env) && env.includes(`pub=${pub}`))
 const got = await fetch(`${base}/weevils.bundle?sid=${job.sid}`)
-check('the service hands the code to this setup', got.ok && (await got.arrayBuffer()).byteLength === fs.statSync(bundle).size)
+const bytes = got.ok ? Buffer.from(await got.arrayBuffer()) : Buffer.alloc(0)
+check('the service hands the code to this setup', bytes.length === fs.statSync(bundle).size)
+// The script's own check of that code (verify_bundle, with the key it pins), run apart; async: it asks this service.
+fs.writeFileSync(path.join(tmp, 'got.bundle'), bytes)
+const verify = /^  verify_bundle\(\) \{\n[\s\S]*?\n  \}$/m.exec(script)?.[0] || 'verify_bundle() { return 1; }'
+const pinned = /^  RELEASE_KEY=('[^'\n]*')$/m.exec(script)?.[1] || "''"
+const verified = await new Promise((r) => spawn(bash, ['-c', `${verify}\nRELEASE_KEY=${pinned}\nverify_bundle "$1" "$2"`, 'x', path.join(tmp, 'got.bundle'), base]).on('exit', r))
+check('it checks against the release key the script pins', verified === 0)
 
 if (dry) {
   // No install: the reports a run would send, with a link sealed the way the script's Node path does.
@@ -118,8 +150,9 @@ if (dry) {
 }
 
 // ---------------------------------------------------------------- the command, for real
-console.log(`\nrunning: curl -fsSL ${base}/i/${job.sid} | ${bash}\n`)
-const run = spawn(bash, ['-c', `curl -fsSL '${base}/i/${job.sid}' | ${bash}`], { stdio: ['ignore', 'inherit', 'inherit'] })
+const command = job.command.replace(/\| bash -s /, `| ${bash} -s `)
+console.log(`\nrunning: ${command}\n`)
+const run = spawn(bash, ['-c', command], { stdio: ['ignore', 'inherit', 'inherit'] })
 let exit = null
 run.on('exit', (c) => (exit = c ?? -1))
 const t0 = Date.now()
@@ -152,7 +185,7 @@ const log = (() => {
 const summary = Object.fromEntries((/--- weevils summary ---\n([\s\S]*?)--- end ---/.exec(log)?.[1] || '').split('\n').filter((l) => l.includes('=')).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]))
 if (!check('the install ends: the page sees "done"', s.state === 'done', s.state === 'failed' ? s.error : s.state)) {
   // The end of the installer's log, without the access code.
-  console.log(log.split('\n').slice(-40).join('\n').replace(/#k=\S+/g, '#k=…').replace(/^(code|link)=.*$/gm, '$1=…'))
+  console.log(log.split('\n').slice(-40).join('\n').replace(/#k=\S+/g, '#k=…'))
 }
 check('the command itself ended well', exit === 0, `exit ${exit}`)
 const want = ['start', 's_system', 's_source', 's_build', 's_service', 'tunnel', 'done']
@@ -163,6 +196,16 @@ const link = s.result?.sealed ? await unseal(s.result.sealed).catch(() => '') : 
 check('the sealed link opens with the page’s key, on that address', !!url && link.startsWith(url + '/#k='), s.result?.sealed ? 'sealed received' : 'nothing sealed')
 if (process.env.WVGET_SHOW_LINK) console.log(link)
 check('the installer’s summary says ok', summary.status === 'ok' && summary.mode === 'public' && summary.url === url, `status=${summary.status} mode=${summary.mode} os=${summary.os}`)
+const linkFile = summary.link_file || ''
+const kept = (() => {
+  try {
+    return { text: fs.readFileSync(linkFile, 'utf8').trim(), mode: fs.statSync(linkFile).mode & 0o777 }
+  } catch {
+    return { text: '', mode: 0 }
+  }
+})()
+check('the login link is kept in a file of the user alone (mode 600)', !!link && kept.text === link && kept.mode === 0o600, `${linkFile} ${kept.mode.toString(8)}`)
+check('the install log never holds the access code', !!link && !log.includes(link.split('#k=')[1]))
 if (mac) check('and that this is macOS', summary.os === 'macos', `os=${summary.os}`)
 
 // The tunnel, from outside: a new trycloudflare name can take a moment to resolve.

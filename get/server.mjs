@@ -54,6 +54,9 @@ export function config(env = process.env) {
     githubApi: (env.GET_GITHUB_API || 'https://api.github.com').replace(/\/$/, ''),
     /** A signed git bundle served to the installs this service starts and to their updates (see get/make-bundle.sh). */
     bundle: env.GET_BUNDLE || '',
+    /** The release key's public half, pinned in the scripts served. Tests only: a throwaway key's (the real one, which
+     * signs the bundle, never leaves its machine), to install a bundle the test signed itself. */
+    releaseKey: env.GET_RELEASE_KEY || path.join(HERE, 'release-key.pub'),
     /** Tests only: private addresses accepted as machine addresses, and the URL their weevils will have (ip=url,…). */
     allowTargets: (env.GET_ALLOW_TARGETS || '').split(',').map((s) => s.trim()).filter(Boolean),
     targetUrls: Object.fromEntries((env.GET_TARGET_URLS || '').split(',').filter((s) => s.includes('=')).map((s) => s.split('=').map((x) => x.trim()))),
@@ -651,7 +654,7 @@ export function createServer(cfg = config(), deps = {}) {
   const titleList = '|' + Object.keys(titles).filter((t) => !t.includes('|')).join('|') + '|'
   const bootstrap = fs.readFileSync(path.join(HERE, 'bootstrap.sh'), 'utf8')
   /** The release key's public half: pinned in the script it serves, which checks the code's signature with it. */
-  const releaseKey = fs.readFileSync(path.join(HERE, 'release-key.pub'), 'utf8').trim()
+  const releaseKey = fs.readFileSync(cfg.releaseKey, 'utf8').trim()
   const securityNotes = fs.readFileSync(path.join(HERE, '..', 'SECURITY.md'), 'utf8').replaceAll('https://get.scarville.tech', cfg.base)
 
   const clientIp = (req) => {

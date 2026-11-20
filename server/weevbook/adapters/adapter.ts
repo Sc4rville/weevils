@@ -192,7 +192,8 @@ export abstract class Adapter {
         this.turn = Math.max(this.turn, e.turn)
         if (e.state === 'assigned') this.attempt = e.attempt ?? this.attempt + 1
         if (e.state === 'running') this.effects = 0
-        if (e.state === 'failed') this.failedEffect = e.effect ?? 'none'
+        if (e.state === 'accepted') this.failedEffect = 'none'
+        if (e.state === 'failed' && this.failedEffect !== 'some') this.failedEffect = e.effect ?? 'none'
         this.state = e.state === 'done' ? 'idle' : e.state === 'failed' ? 'failed' : 'running'
       }
     }
@@ -298,6 +299,7 @@ export abstract class Adapter {
     } else {
       this.turn++
       this.attempt = 1
+      this.failedEffect = 'none'
       this.emit({ type: 'turn', turn: this.turn, state: 'accepted', message })
       this.emit({ ...assigned, turn: this.turn, attempt: 1 })
     }
@@ -339,14 +341,17 @@ export abstract class Adapter {
   }
 
   private fail(reason: 'quota' | 'auth' | 'api') {
-    if (this.state === 'ended') return this.close()
-    if (this.state !== 'running') return
     this.flush()
+    // No turn running: the provider failed on work it took by itself (a background task that finished, a hook after
+    // the turn ended) or tried the failed turn again. That is a turn too, and it failed (every error is one).
+    if (this.state === 'ended') this.close()
+    if (this.state !== 'running') this.open(null)
     const effect = this.effects > 0 ? 'some' : 'none'
     if (effect === 'some') this.emit({ type: 'checkpoint', turn: this.turn, kind: 'none', reason: SHADOW_CHECKPOINT })
     this.emit({ type: 'turn', turn: this.turn, state: 'failed', reason, effect })
     this.state = 'failed'
-    this.failedEffect = effect
+    // Once an attempt has had an effect, every later attempt of the turn resumes (THREAD-10).
+    if (this.failedEffect !== 'some') this.failedEffect = effect
   }
 
   private retitle() {

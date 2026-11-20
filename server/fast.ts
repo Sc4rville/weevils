@@ -10,6 +10,7 @@ import { detectLang } from '../shared/detect-lang.ts'
 import V from './i18n/voice.ts'
 import { openaiKey } from './transcribe.ts'
 import { DATA_DIR, TTS_RATE, TTS_VOICE } from './config.ts'
+import { USAGE_LIMIT } from './usage-limit.ts'
 import { CostLedger, callerOf } from './cost-ledger.ts'
 import { which } from './platform.ts'
 import { quietClaude, quietCodexArgs } from './quiet-calls.ts'
@@ -21,7 +22,7 @@ export class ModelError extends Error {
   constructor(error: unknown, stdout = '', stderr = '') {
     const e = error as { code?: unknown; message?: string }
     const detail = (stdout + '\n' + stderr).trim().slice(0, 4000)
-    const kind = /rate.?limit|usage.?limit|quota|out of.*(?:usage|credits)|hit your.*limit/i.test(detail) ? 'quota'
+    const kind = USAGE_LIMIT.test(detail) ? 'quota'
       : /unauth|not logged|authentication|login required|sign in|\b401\b/i.test(detail) ? 'auth'
       : /ENOSPC|EDQUOT|disk quota|no space left|EACCES|ENOENT/i.test(detail + String(e?.code)) ? 'io' : 'provider'
     super(`model ${kind} failure${e?.code !== undefined ? ` (${e.code})` : ''}`)

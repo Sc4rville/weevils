@@ -1,4 +1,5 @@
 import { commandDetails, toolOutputDetails, callDetails, commandSummaries, redactToolText } from './codex-command-details.ts'
+import { USAGE_LIMIT } from './usage-limit.ts'
 import { codexToolLabel, codexToolKinds } from './codex-tool-label.ts'
 // Lecture incrémentale des transcripts Claude Code (~/.claude/projects) et Codex (~/.codex/sessions).
 // Formats non documentés : on lit ce qui est utile et on ignore le reste sans jamais planter.
@@ -66,7 +67,7 @@ export interface StopError {
 /** Classe une erreur qui arrête un tour : limite d'usage, connexion, ou le reste. */
 export function stopErrorOf(at: number, kind: unknown, text: string): StopError {
   const k = typeof kind === 'string' ? kind : ''
-  const reason = /rate_limit|quota|usage|billing/i.test(k) || /usage limit|limit reached|rate.?limit|quota|out of (extra )?usage|credit balance/i.test(text)
+  const reason = /rate_limit|quota|usage|billing/i.test(k) || USAGE_LIMIT.test(text)
     ? 'quota'
     : /auth|permission/i.test(k) || /authenticat|\/login|oauth|logged out|login expired/i.test(text)
       ? 'auth'
@@ -154,7 +155,8 @@ export function toolSummary(name: string, input: Record<string, unknown> | undef
   const i = input ?? {}
   const pick = (k: string) => (typeof i[k] === 'string' ? (i[k] as string) : '')
   const detail = pick('description') || pick('file_path') || pick('command') || pick('pattern') || pick('url') || pick('query') || pick('prompt')
-  return `${name}${detail ? ` · ${short(oneLine(detail), 90)}` : ''}`
+  // Redacted before it is cut: a value cut in the middle is no longer one the patterns see whole.
+  return `${name}${detail ? ` · ${short(redactToolText(oneLine(detail), Infinity), 90)}` : ''}`
 }
 
 function touch(t: Transcript, at: number) {

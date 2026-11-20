@@ -66,6 +66,8 @@ describe('Claude Code adapter', () => {
       'user: Use the euro sign for now',
       'tool Read · src/money.ts',
       'tool Edit · src/money.ts',
+      // A variable named, not its value: left as it is (the same text the app shows).
+      'tool Bash · . "$CONF"; EXAMPLE_API_KEY="$(grep -h "^EXAMPLE_API_KEY=" .env | cut -d= -f2-)" npm run p…',
       // One reply written over three lines (thinking, then two texts), each saying end_turn: one message, one turn.
       'assistant: Prices now go through formatPrice with the euro sign.\n\nI also updated the test that checks the total.',
       'turn 1 done',
@@ -147,6 +149,46 @@ describe('Claude Code adapter', () => {
     expect(brief(j.events)).toEqual(brief(events))
   })
 
+  it('an error with no turn running is a turn the engine took by itself, and it failed', () => {
+    // A usage limit hit on work Claude Code took by itself (a background task that finished, `<task-notification>`,
+    // which the reader leaves out), then the same limit again with no new request: each is a failed attempt.
+    const b = new ClaudeAdapter({ file: CLAUDE, engine: 'claude:abc123@laptop' })
+    const t = (s: number) => new Date(Date.parse('2026-11-16T09:00:00Z') + s * 1000).toISOString()
+    const base = { sessionId: 's1', cwd: '/home/alex/projects/shop-app', isSidechain: false }
+    const limit = (s: number, id: string, text: string) => ({ ...base, type: 'assistant', uuid: id, timestamp: t(s), isApiErrorMessage: true, message: { id, role: 'assistant', model: '<synthetic>', stop_reason: 'stop_sequence', content: [{ type: 'text', text }] } })
+    const ev = journal(read(b, [
+      { ...base, type: 'user', uuid: 'u1', timestamp: t(0), message: { role: 'user', content: 'Run the slow import in the background.' } },
+      { ...base, type: 'assistant', uuid: 'a1', timestamp: t(1), message: { id: 'm1', role: 'assistant', model: 'claude-x', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Started; I will report when it ends.' }] } },
+      { ...base, type: 'user', uuid: 'u2', timestamp: t(60), message: { role: 'user', content: '<task-notification><task-id>b1</task-id><status>completed</status></task-notification>' } },
+      limit(61, 'm2', "You've hit your weekly limit · resets Nov 13, 4pm (UTC)"),
+      limit(62, 'm3', "You've hit your weekly limit · resets Nov 13, 4pm (UTC)"),
+      { ...base, type: 'user', uuid: 'u3', timestamp: t(90), message: { role: 'user', content: 'Go on.' } },
+      { ...base, type: 'assistant', uuid: 'a2', timestamp: t(91), message: { id: 'm4', role: 'assistant', model: 'claude-x', stop_reason: 'end_turn', content: [{ type: 'text', text: 'The import finished.' }] } },
+    ]), b)
+    expect(validateJournal(ev)).toEqual([])
+    expect(brief(ev)).toEqual([
+      'user: Run the slow import in the background.',
+      'turn 1 accepted',
+      'turn 1 assigned #1',
+      'turn 1 running',
+      'title Run the slow import in the background.',
+      'assistant: Started; I will report when it ends.',
+      'turn 1 done',
+      'turn 2 accepted',
+      'turn 2 assigned #1',
+      'turn 2 running',
+      'turn 2 failed quota none',
+      'turn 2 assigned #2',
+      'turn 2 running',
+      'turn 2 failed quota none',
+      'user: Go on.',
+      'turn 2 assigned #3',
+      'turn 2 running',
+      'assistant: The import finished.',
+      'turn 2 done',
+    ])
+  })
+
   it('a message from weevboss is the orchestrator’s', () => {
     const b = new ClaudeAdapter({ file: NOTES, engine: 'claude:abc123@laptop' })
     const ev = journal(read(b, lines(NOTES)), b)
@@ -217,10 +259,15 @@ describe('Codex adapter', () => {
       { timestamp: t(2), type: 'response_item', payload: { type: 'function_call', name: 'exec_command', arguments: '{"cmd":"git mv a b"}', call_id: 'k1' } },
       { timestamp: t(3), type: 'event_msg', payload: { type: 'error', message: 'stream disconnected before completion' } },
       { timestamp: t(9), type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'go on' }] } },
+      // The second attempt fails before doing anything; the third still resumes: the first one's effect is there.
+      { timestamp: t(10), type: 'event_msg', payload: { type: 'error', message: "You've hit your usage limit. Try again in 3 hours." } },
+      { timestamp: t(20), type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'go on' }] } },
     ]), b)
     expect(validateJournal(ev)).toEqual([])
     expect(brief(ev)).toContain('turn 1 failed api some')
+    expect(brief(ev)).toContain('turn 1 failed quota none')
     expect(ev.filter((e) => e.type === 'checkpoint')).toHaveLength(2)
     expect(ev.find((e) => e.type === 'turn' && e.state === 'assigned' && e.attempt === 2)).toMatchObject({ resume: true })
+    expect(ev.find((e) => e.type === 'turn' && e.state === 'assigned' && e.attempt === 3)).toMatchObject({ resume: true })
   })
 })

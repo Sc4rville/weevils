@@ -4,7 +4,8 @@
 //
 // Differences that are intended, and counted apart:
 // - redacted: the journal holds the text with what looks like a secret replaced (02-weevbook.md#redaction); the app
-//   shows the provider's text.
+//   shows the provider's text, or redacted less (its reading redacts a step's label, not a value under a key that
+//   names a secret).
 // - long: a message over 1 MiB is cut in its event, the whole text is its message.txt attachment (02, failure cases).
 // - error: the sentence a provider writes when it stops on an error (a usage limit) is a reply in the app; in the
 //   journal it is the turn's `failed` state, not a message (01-thread.md, the adapter contract).
@@ -16,12 +17,12 @@
 import fsp from 'node:fs/promises'
 import { parseTranscriptText } from '../transcripts.ts'
 import { parseJournal, type JournalEvent, type Provider } from './journal.ts'
-import { redactText } from './redact.ts'
+import { REDACTED, redactText } from './redact.ts'
 import { Locked, Weevbook } from './store.ts'
 import { Sessions, sessionKey, type Source } from './sync.ts'
 import { allSessions } from './backfill.ts'
 
-type Item =
+export type Item =
   | { kind: 'said'; role: string; author?: string; text: string }
   | { kind: 'reply'; text: string }
   | { kind: 'step'; key: string }
@@ -93,16 +94,43 @@ function bookItems(events: readonly JournalEvent[], leg: string, provider: Provi
   return out
 }
 
+/**
+ * Whether `book` is `app` with parts replaced by [redacted]: the weevbook redacted more than the app shows (a raw line
+ * redacted per JSON value, a key that names a secret), never less. Two labels cut at the same length (`…`) are
+ * compared on what both show: the weevbook's, shorter where it redacted, may show more of the end.
+ */
+export function redactedFrom(app: string, book: string): boolean {
+  if (!book.includes(REDACTED)) return false
+  const cut = app.endsWith('…') && book.endsWith('…')
+  const a = cut ? app.slice(0, -1) : app
+  const parts = (cut ? book.slice(0, -1) : book).split(REDACTED)
+  const first = parts[0]
+  const last = parts[parts.length - 1]
+  if (!a.startsWith(first)) return false
+  let at = first.length
+  for (const p of parts.slice(1, -1)) {
+    const k = a.indexOf(p, at)
+    if (k < 0) return false
+    at = k + p.length
+  }
+  // Cut: the app's end falls in a redacted part or in the last part, which may go on past it.
+  if (cut) return true
+  return a.length - last.length >= at && a.endsWith(last)
+}
+
 /** How `a` (the app's) and `b` (the weevbook's) relate: the same, the same once redacted or cut, or not. */
 function relate(a: Item, b: Item & { long?: boolean }): 'identical' | 'redacted' | 'long' | null {
   if (a.kind !== b.kind) return null
-  if (a.kind === 'step') return a.key === (b as typeof a).key ? 'identical' : null
+  if (a.kind === 'step') {
+    const bk = (b as typeof a).key
+    return a.key === bk ? 'identical' : redactedFrom(a.key, bk) ? 'redacted' : null
+  }
   if (a.kind === 'failed') return 'identical'
   const bt = (b as { text: string }).text
   if (a.kind === 'said' && (a.role !== (b as typeof a).role || a.author !== (b as typeof a).author)) return null
   if (a.text === bt) return 'identical'
   const red = redactText(a.text)
-  if (red === bt) return 'redacted'
+  if (red === bt || redactedFrom(a.text, bt)) return 'redacted'
   if (b.long && bt === `${red.slice(0, 4000)}…`) return 'long'
   return null
 }

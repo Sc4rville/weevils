@@ -143,6 +143,8 @@ export class Threads {
 
   /** Every 10 s: engines.json written (each minute), read back (dispatcher), every watched thread looked at. */
   async tick() {
+    // The hub sync may still be opening the weevbook (a machine that does not run the dispatcher does not wait for it).
+    if (!(await this.o.sync.ensure())) return
     const now = this.now()
     if (now - this.published >= PUBLISH_EVERY) await this.publish()
     if (this.o.dispatcher) {

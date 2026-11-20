@@ -285,6 +285,23 @@ describe('continue_with_agent', () => {
   })
 })
 
+describe('continue_with_agent with threads on (WEEVILS_THREADS)', () => {
+  it('hands the request to the dispatcher\'s inbox, even while an agent writes the thread; a retry is the same request', async () => {
+    const got: { thread: string; text: string; key: string; app: string; project?: string | null }[] = []
+    const c = connector({ accept: async (thread, m) => void got.push({ thread, ...m }) })
+    await send(c, { conversation: 'inbox-chat', title: 'Inbox', messages: chat(2) })
+    const [t] = await threads()
+    const before = t.bytes
+    const ask = { conversation: 'inbox-chat', app: 'chatgpt', request: 'go-ahead', instruction: 'Go.', project: 'Trip Planner' }
+    const r = await c.call('continue_with_agent', ask, GPT)
+    expect(r.isError).toBeFalsy()
+    expect(got).toEqual([{ thread: t.id, text: 'Go.', key: 'conn:chatgpt:inbox-chat:req:go-ahead', app: 'chatgpt', project: 'trip-planner' }])
+    // The connector writes nothing itself: the dispatcher files it with the lease.
+    expect((await threads())[0].bytes.equals(before)).toBe(true)
+    expect(text(r)).toContain('An agent is working on "Inbox"')
+  })
+})
+
 describe('search_weevbook, read_thread, thread_status', () => {
   it('find, read and tell where a thread stands', async () => {
     const c = connector()

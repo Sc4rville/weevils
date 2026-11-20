@@ -162,6 +162,8 @@ export interface Session {
   relayOf?: string
   /** Session Claude dont une session Codex a pris le relais : l'id de cette session Codex. */
   relayedBy?: string
+  /** With WEEVILS_THREADS: the weevbook thread this session carries. One thread is one row, whatever engine runs it. */
+  thread?: string
 }
 
 /** Relais Codex quand Claude atteint sa limite : auto (Codex écrit son plan puis l'exécute), ask (le plan attend un oui), never. */
@@ -544,7 +546,8 @@ export interface Snapshot {
   sleep?: SleepState
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */
   /** siteKey : clé des pages statiques des repos (/api/site/<clé>/<repo>/), pour le navigateur intégré sans domaine de preview. */
-  config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[]; siteKey?: string; autoUpdate?: boolean }
+  /** threads: WEEVILS_THREADS is on (docs/spec, step 4): conversations are weevbook threads and nothing shows relays. */
+  config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[]; siteKey?: string; autoUpdate?: boolean; threads?: boolean }
 }
 
 export interface SessionDetail {

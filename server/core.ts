@@ -377,6 +377,8 @@ export class Weevils {
   sleep: Sleep | null = null
   /** Codex relay while Claude is at its usage limit (server/relay.ts). */
   relay: Relay | null = null
+  /** WEEVILS_THREADS (server/threads-app.ts): each row carries its weevbook thread, one row per thread. */
+  threadRows: ((sessions: Session[]) => Session[]) | null = null
   private githubCache: Map<string, number> = new Map()
 
   // ---------------------------------------------------------------- repos GitHub
@@ -1346,7 +1348,8 @@ export class Weevils {
     if (this.snap && this.snapLang === locale) return this.snap
     const now = Date.now()
     const remote = this.remotes.filter((r) => r.online && r.snap && r.snap.machines[0]?.id !== MACHINE.id)
-    const sessions = [...new Map([...remote.flatMap((r) => r.snap!.sessions.filter((s) => s.machineId === r.snap!.machines[0]?.id)), ...this.sessions(now)].map((s) => [s.id, this.archived.has(s.id) ? { ...s, archived: true } : s])).values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    const listed = [...new Map([...remote.flatMap((r) => r.snap!.sessions.filter((s) => s.machineId === r.snap!.machines[0]?.id)), ...this.sessions(now)].map((s) => [s.id, this.archived.has(s.id) ? { ...s, archived: true } : s])).values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    const sessions = this.threadRows ? this.threadRows(listed) : listed
     this.snap = {
       version: this.version,
       now,
@@ -1377,7 +1380,7 @@ export class Weevils {
       relay: this.relayView(now, remote.flatMap((r) => r.snap!.relay?.plans ?? [])),
       ...(this.optimizers ? { autoRound: { busy: this.optimizers.roundBusy } } : {}),
       ...(this.sleep ? { sleep: this.sleep.state() } : {}),
-      config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey, autoUpdate: process.env.WEEVILS_AUTO_UPDATE !== '0' },
+      config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey, autoUpdate: process.env.WEEVILS_AUTO_UPDATE !== '0', ...(this.threadRows ? { threads: true } : {}) },
     }
     this.snapLang = locale
     // « Pour toi » : sa marque (révision, non vus) se calcule sur le snapshot qu'on vient de poser, sans rappeler snapshot().
@@ -2950,6 +2953,12 @@ export class Weevils {
     const prefix = unset.length || set.length ? ['env', ...unset, ...set] : []
     await this.spawn('claude', cwd, title, [...(env.wrap ?? []), ...prefix, ...projectClaude(), ...args, '--session-id', id, text], id)
     return { id }
+  }
+
+  /** A provider session started again by its id in `cwd` (threads: a session rebuilt here from the weevbook). */
+  async resumeIn(tool: Tool, cwd: string, id: string, text: string): Promise<void> {
+    const command = tool === 'claude' ? [...projectClaude(), '--resume', id, text] : ['codex', 'resume', ...projectCodexFlags(), id, text]
+    await this.spawn(tool, cwd, '', command, id)
   }
 
   async toggleH24(id: string) {

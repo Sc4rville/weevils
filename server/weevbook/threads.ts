@@ -181,7 +181,7 @@ export class Threads {
     const known = this.keys.get(key)
     if (known) return { thread: known, key }
     const id = thread ?? ulid(this.now())
-    const e: Inbox = { key, thread: id, text: m.text, source: m.source ?? 'weevils', ...(m.app ? { app: m.app } : {}), ...(thread ? {} : { project: m.project ?? null, ...(m.title ? { title: m.title } : {}) }), at: this.now() }
+    const e: Inbox = { key, thread: id, text: m.text, source: m.source ?? 'weevils', ...(m.app ? { app: m.app } : {}), ...(thread ? (m.project !== undefined ? { project: m.project } : {}) : { project: m.project ?? null, ...(m.title ? { title: m.title } : {}) }), at: this.now() }
     await fsp.mkdir(path.dirname(this.o.inboxFile), { recursive: true })
     await fsp.appendFile(this.o.inboxFile, `${JSON.stringify(e)}\n`, { mode: 0o600 })
     this.remember(e)
@@ -287,7 +287,13 @@ export class Threads {
       drafts.push(draft(now, null, { type: 'meta', thread, ...(first.title ? { title: first.title } : {}), ...(first.project ? { project: slugify(first.project) || null } : {}) }))
     }
     let turn = turns.length
+    let project = events0Project(r.events)
     for (const w of waiting) {
+      // A request that names another project moves the thread there (the connector's `project`).
+      if (r.events.length && w.project !== undefined && w.project !== project) {
+        project = w.project ? slugify(w.project) || null : null
+        drafts.push(draft(now, legNow, { type: 'meta', project }))
+      }
       const id = ulid(now)
       drafts.push(draft(now, legNow, { type: 'message', role: 'user', text: w.text, source: w.source, ...(w.app ? { app: w.app } : {}), key: w.key, id }))
       drafts.push(draft(now, legNow, { type: 'turn', turn: ++turn, state: 'accepted', message: id }))
@@ -592,4 +598,9 @@ function gitOut(gitDir: string, args: string[], input?: string, code = false): P
     child.stdin?.on('error', () => {})
     child.stdin?.end(input)
   })
+}
+
+/** The thread's project as its journal says now. */
+function events0Project(events: readonly JournalEvent[]): string | null {
+  return events.findLast((e): e is MetaEvent => e.type === 'meta' && e.project !== undefined)?.project ?? null
 }

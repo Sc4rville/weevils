@@ -138,17 +138,34 @@ by: codex:c81d2e@laptop
 |---|---|---|---|
 | The provider refused before doing anything (limit, sign-in, API error on the first request) | The adapter sees the stop with no `tool` and no `assistant` event since `running`, and the folder equals the last checkpoint. | `none` | The dispatcher runs again at once. The request goes to the next engine as it was. Nothing is shown. |
 | The provider stopped part-way, machine alive | The adapter sees the stop after at least one step. | `some` | A checkpoint is taken now. The dispatcher runs again; the next `assigned` has `resume: true`. |
-| The machine went silent | Its lease is stolen ([03](03-sync-and-lease.md)). | `some` | The new holder restores the last pushed checkpoint and resumes. |
+| The machine went silent | Its lease is stolen ([03](03-sync-and-lease.md)). | `some` once `running`; `none` if it was only `assigned` | The new holder restores the last pushed checkpoint and resumes. |
 | The user stopped the turn | The provider's own interruption line. | — | `checkpoint`, then `done`. A stop the user asked for is not a failure. |
 
 - **A resumed turn is not a replay.** With `resume: true` the engine does not receive the user's message again as if
   it were new. It receives the preface: what was asked, the steps the journal recorded, where the folder stands, and
   "look before redoing anything; do not repeat a step that acts outside this folder (a deploy, a payment, an e-mail,
   a push) without checking that it did not already happen".
+- **Once resumed, always resumed.** The effect of a turn is sticky: after one attempt had an effect, every later
+  attempt has `resume: true` and gets the preface, even when the attempt just before failed with no effect.
 - **Three attempts.** A turn is assigned at most three times. After that it is `held` with the reason, and the app
   says what to do.
 - **Never stuck.** A failed turn is always followed by `assigned` or `held`. A thread never waits for a new message
   to notice that its last turn did not finish.
+- **Oldest first.** One turn at a time is in an engine's hands (THREAD-11). A message that arrives while a turn runs
+  opens the next turn, which waits in `accepted`. The dispatcher always places the oldest waiting turn. When the
+  table finds no engine, every waiting turn is held with the same reason; a turn held for `attempts` waits for the
+  user and does not block the turns after it.
+- **Held.** `rule` is `hold`; `reason` is a code the app turns into its sentence: `no-machine`, `no-room`,
+  `not-signed-in`, `only-there` ([06](06-dispatch.md)) or `attempts`. When the table later gives another reason, the
+  held turn is written again with it; when it gives an engine, the turn is assigned.
+- `turn.ts` implements this section: the state machine, the retry rule (`next`) and the preface.
+
+**Open question: what counts as an attempt.** Every `assigned` counts today. In the simulator about one turn in 40
+is held for `attempts`, and nearly always after failures that were not the turn's doing: an account that ran out
+(`quota`), a machine that went away (`machine-lost`). The app then says "it stopped three times in a row" when the
+truth is "your accounts ran out". Counting only `api` and `auth` failures would keep the limit for turns that break
+engines; quota and lost machines are bounded anyway by the table, which ends in `no-room` or `no-machine`.
+*Recommendation: count only `api` and `auth`.* Not changed here.
 
 ## Invariants
 
@@ -182,6 +199,9 @@ To be tested with two machines at step 3, and by the simulator at step 4.
 
 ## What exists today
 
+- [`server/weevbook/turn.ts`](../../server/weevbook/turn.ts): the turn as a pure reducer (`applyTurn`, `turnsOf`),
+  the retry rule (`next`, `assign`, `holdAll`, `stolen`) and the signed preface (`preface`). Nothing in the app uses
+  it yet.
 - `server/bring.ts` does half of rung 2 by hand: it finds or clones the project (`place`), rewrites the folder path
   in every line (`rewritePaths`) and writes the file where the provider looks (`arrive`). It is started by the user,
   moves whole files in one go, and does not move the code's state.

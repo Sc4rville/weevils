@@ -473,7 +473,7 @@ EOF
       nohup "$bin" tunnel --no-autoupdate --url "http://127.0.0.1:$port" >>"$tlog" 2>&1 </dev/null &
     fi
     for _ in $(seq 1 60); do
-      turl=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$tlog" | tail -1 || true)
+      turl=$(grep -o 'https://[a-z0-9]*-[a-z0-9-]*\.trycloudflare\.com' "$tlog" | tail -1 || true)
       [ -z "$turl" ] || break
       sleep 1
     done

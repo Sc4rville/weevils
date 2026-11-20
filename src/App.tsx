@@ -356,6 +356,10 @@ export default function App() {
   useEffect(() => {
     if (!ready) return
     const open = (url: string) => {
+      // weevils' own new address (a computer's quick tunnel restarted, server/tunnel-link.ts): the app moves there.
+      if (/^https:\/\//.test(url)) {
+        try { if (new URL(url).origin !== location.origin) return location.assign(url) } catch { return }
+      }
       if (/#formats\b/.test(url)) {
         history.replaceState(history.state, '', location.pathname)
         if (stackRef.current.at(-1)?.kind !== 'formats') push({ kind: 'formats' })

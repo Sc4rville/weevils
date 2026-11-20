@@ -24,7 +24,9 @@ On your own computer, weevils works the same way, but its agents can reach every
   code (72 random bits; a wrong code waits 800 ms); a browser that logged in keeps a device cookie for a year (log
   out, or the "lost a phone" steps in the README, to revoke it). The setup page and the script say so before the
   install. `--no-link` installs without it: weevils stays on this machine until you set up a private way in
-  (Tailscale, a private network between your own devices).
+  (Tailscale, a private network between your own devices). A quick tunnel gets a new address each time it starts
+  again (a restart, a network change): weevils takes the new one and sends your phone a notification with the new
+  login link (push notifications don't go through the tunnel); the app then has to be added to the home screen again.
 - programs on the computer don't get in without the code either, unless they can read weevils' local token
   (`~/.local/share/weevils/local-token`, readable by your user only), which weevils' own commands send.
 

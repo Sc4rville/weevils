@@ -22,8 +22,12 @@ if (process.platform === 'darwin') process.env.PATH = servicePath(process.env.PA
 
 /** Prénom de l'utilisateur, pour que les agents s'adressent à lui. Vide : user() (server/i18n.ts) dit « l'utilisateur » / « the user ». */
 export const USER_NAME = process.env.WEEVILS_USER_NAME?.trim() ?? ''
-/** Adresse publique de l'app (notifications push, QR de connexion). */
-export const PUBLIC_URL = process.env.WEEVILS_PUBLIC_URL?.trim() || ''
+/** Adresse publique de l'app (notifications push, QR de connexion). Live binding: a quick tunnel's new address
+ *  (server/tunnel-link.ts) replaces it while weevilsd runs. */
+export let PUBLIC_URL = process.env.WEEVILS_PUBLIC_URL?.trim() || ''
+export function setPublicUrl(url: string) {
+  PUBLIC_URL = url.trim()
+}
 /** Domaine où les serveurs de preview sont exposés en <nom>.<domaine> (navigateur intégré). */
 export const EXPOSE_DOMAIN = process.env.WEEVILS_EXPOSE_DOMAIN?.trim() || ''
 /** Dossier des sites Caddy, un <nom>.caddy par port exposé (reverse_proxy localhost:<port>) : avec EXPOSE_DOMAIN, la page

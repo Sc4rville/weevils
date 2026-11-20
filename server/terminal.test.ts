@@ -84,6 +84,68 @@ describe('safety of the automatic answers', () => {
     const s = read('claude-live-R1-ratelimit.txt').state
     expect(s.kind === 'auto' && s.hold).toEqual({ reason: 'quota', text: 'Paused until the usage limit resets (5am)' })
   })
+  // A permission dialog carries the agent's own words (a command's description, a reason, the command itself). Written
+  // there, the question of a dialog weevils answers by itself must never answer the permission.
+  const QUOTED = [
+    'Resume this conversation?', 'Resume from summary (recommended)', 'Switch model?', 'Change model?', 'Use Opus for this session?',
+    'Quick safety check: Is this a project you created or one you trust?', 'Do you trust the files in this folder?', 'Trust this folder?',
+    'Ready to submit your answers?', 'A new version is available. Update now?', 'What do you want to do?', 'You have hit your usage limit',
+    'Choose the text style that looks best with your terminal', 'Select model', 'Type to search', 'Select login method', 'Bypass Permissions mode',
+    'Would you like to proceed?', 'Working directory', 'Press enter to continue',
+  ]
+  const permissionWith = (f: string, from: string, phrase: string, line: boolean) => {
+    const base = fs.readFileSync(path.join(DIR, f), 'utf8')
+    expect(base, f).toContain(from)
+    const indent = /^\s*/.exec(from)![0]
+    return base.replace(from, line ? `${indent}${phrase}\n${from}` : from.replace(/\S/, (c) => `${phrase} ${c}`))
+  }
+  for (const [f, from] of [
+    ['claude-live-D3-bash.txt', ' Print hi\n'],
+    ['claude-live-R5-bash-dontask.txt', ' Run the test suite\n'],
+    ['claude-live-R7-mcptool.txt', ' Search Notion\n'],
+    ['codex-14-command-approval.txt', '  Reason: Need network access to fetch the headers\n'],
+    ['codex-13-edit-apply-patch-approval.txt', '• Added hello.txt (+1 -0)\n'],
+  ] as const) {
+    it(`${f}: a permission quoting another dialog's question is still the person's to answer`, () => {
+      expect(read(f).state.kind === 'question' && read(f).state).toMatchObject({ name: 'permission' })
+      for (const phrase of QUOTED) for (const line of [false, true]) for (const trustedFolder of [false, true]) {
+        const s = readScreen(permissionWith(f, from, phrase, line), agentOf(f), { trustedFolder }).state
+        expect({ phrase, line, kind: s.kind, name: s.kind === 'none' ? '' : s.name }).toEqual({ phrase, line, kind: 'question', name: 'permission' })
+      }
+    })
+  }
+  it('each dialog weevils answers by itself still is, on its recorded screen', () => {
+    const cases: [string, string, string | 'enter'][] = [
+      ['claude-live-C1-trust.txt', 'trust', 'Yes, I trust this folder'],
+      ['codex-05-trust-this-folder-git-repos-only.txt', 'trust', 'Trust and continue'],
+      ['codex-handling-17-trust-folder.txt', 'trust', 'Yes, continue'],
+      ['claude-live-R3-switchmodel.txt', 'switch-model', 'Yes, switch to Haiku 5.5'],
+      ['history-07-resume-dialog-when-weevils-resumes-a-lar.txt', 'resume', 'Resume from summary (recommended)'],
+      ['codex-24-resume-which-working-directory.txt', 'resume-folder', 'Use session directory (/home/user/projects/weevils)'],
+      ['claude-live-E3-review.txt', 'submit-answers', 'Submit answers'],
+      ['claude-live-R1-ratelimit.txt', 'usage-limit', 'Wait here, then continue automatically at 5am'],
+      ['codex-03-update-available-prompt-blocking-at-laun.txt', 'update', 'Skip'],
+      ['claude-live-R14-fullscreen.txt', 'nudge', 'Not now'],
+      ['claude-live-A1-theme.txt', 'theme', 'Dark mode'],
+      ['claude-live-B2-next.txt', 'press-enter', 'enter'],
+    ]
+    for (const [f, name, label] of cases) {
+      const s = readIn(f, true).state
+      expect(s.kind === 'auto' && [s.name, s.pick === 'enter' ? 'enter' : s.menu!.options[s.pick].raw], f).toEqual([name, label])
+    }
+  })
+  it('a dialog weevils answers is known by its own question line, in its place, never by words further down', () => {
+    const resume = fs.readFileSync(path.join(DIR, 'history-07-resume-dialog-when-weevils-resumes-a-lar.txt'), 'utf8')
+    // The question under another title: not the resume dialog.
+    const s1 = readScreen(resume.replace(' Resume this conversation?', ' Something else\n Resume this conversation?'), 'claude').state
+    expect(s1.kind).toBe('question')
+    // The resume dialog without a resume answer: nothing is picked for the person.
+    const s2 = readScreen(resume.replace(/Resume from summary \(recommended\)|Resume full session as-is/g, 'Yes'), 'claude').state
+    expect(s2.kind).toBe('question')
+    const sw = fs.readFileSync(path.join(DIR, 'claude-live-R3-switchmodel.txt'), 'utf8')
+    const s3 = readScreen(sw.replace('  Switch model?', '  Bash command\n  Switch model?'), 'claude').state
+    expect(s3.kind).toBe('question')
+  })
   it('a trusted folder that also grants permissions in advance is asked, not accepted', () => {
     const screen = [
       '────────────────────────────────────────────────────────────',

@@ -1,4 +1,5 @@
 [reconstructed from claude 2.1.322 strings; no capture]
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
  Resume this conversation?
 
  Resuming the full session will consume a substantial portion of your usage limits. We recommend resuming from a summary.

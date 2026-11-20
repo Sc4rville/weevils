@@ -304,6 +304,25 @@ export class ClaudeAccounts {
   private ids() {
     return [MAIN, ...this.i.accounts.map((a) => a.id)]
   }
+
+  // ---------------------------------------------------------------- the dispatcher's engine table (step 4)
+
+  /** Every account with its Claude Code folder (null: the main one, CLAUDE_CONFIG_DIR as weevilsd found it). */
+  folders(): { id: string; dir: string | null; logged: boolean }[] {
+    if (!this.on()) return [{ id: MAIN, dir: this.original ?? null, logged: this.logged(MAIN) }]
+    return this.ids().map((id) => ({ id, dir: this.dirOf(id) ?? this.original ?? null, logged: this.logged(id) }))
+  }
+  /** One account's quota: the last figures read (read again at most every 5 min). */
+  async quotaOf(id: string): Promise<QuotaInfo | null> {
+    if (id === MAIN) return this.d.mainQuota()
+    await this.read(id, !this.quotas.has(id))
+    return this.quotas.get(id)?.q ?? null
+  }
+  /** The dispatcher chose this account for a turn: new sessions and resumed ones start under it. */
+  use(id: string) {
+    if (!this.on() || id === this.i.active || !this.ids().includes(id)) return
+    this.setActive(id, this.now())
+  }
   private percent(id: string, now: number) {
     const q = this.quotas.get(id)?.q
     return q?.ok ? (hottest(q, now)?.percent ?? 0) : null

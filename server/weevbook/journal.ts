@@ -307,128 +307,193 @@ const NEXT: Record<TurnState, readonly TurnState[]> = {
   failed: ['held', 'assigned'],
 }
 
-/** Every broken invariant of docs/spec/01-thread.md, by number. An empty list: the journal is sound. */
-export function validateJournal(events: readonly JournalEvent[]): Violation[] {
-  const out: Violation[] = []
-  const bad = (invariant: string, e: JournalEvent | undefined, info: string) => out.push({ invariant, ...(e ? { seq: e.seq } : {}), info })
-  const ids = new Set<string>()
-  const keys = new Set<string>()
-  const legs = new Map<string, { engine: string; ended: boolean }>()
-  const turns = new Map<number, TurnTrack>()
-  let open: LegId | null = null
-  let lastUpTo = -1
+/**
+ * The THREAD invariants checked one event at a time, in journal order. validateJournal runs it over a whole journal;
+ * Journal keeps one alive so that appending to a long journal does not check every line again.
+ */
+export class JournalCheck {
+  private ids = new Set<string>()
+  private keys = new Set<string>()
+  private legs = new Map<string, { engine: string; ended: boolean }>()
+  private turns = new Map<number, TurnTrack>()
+  /** The turns that are assigned or running. */
+  private live = new Set<number>()
+  private open: LegId | null = null
+  private lastUpTo = -1
+  private prev: JournalEvent | undefined
+  private n = 0
 
-  events.forEach((e, i) => {
+  /** Every invariant `e` breaks as the next line of the journal. With `commit` (the default) it becomes that line;
+   *  without, nothing changes: the check of a line that may be refused. */
+  check(e: JournalEvent, commit = true): Violation[] {
+    const out: Violation[] = []
+    const bad = (invariant: string, info: string) => out.push({ invariant, seq: e.seq, info })
+    const apply: (() => void)[] = []
+    const i = this.n
+    const finish = () => {
+      if (commit) {
+        for (const f of apply) f()
+        this.prev = e
+        this.n++
+      }
+      return out
+    }
     // THREAD-1: seq counts from 1, one by one.
-    if (e.seq !== i + 1) bad('THREAD-1', e, `seq ${e.seq} at line ${i + 1}`)
+    if (e.seq !== i + 1) bad('THREAD-1', `seq ${e.seq} at line ${i + 1}`)
     // THREAD-2: ids are ULIDs, each used once.
-    if (!isStr(e.id) || !ULID.test(e.id)) bad('THREAD-2', e, 'id is not a ULID')
-    else if (ids.has(e.id)) bad('THREAD-2', e, `id ${e.id} used twice`)
-    else ids.add(e.id)
+    let ownId: string | undefined
+    if (!isStr(e.id) || !ULID.test(e.id)) bad('THREAD-2', 'id is not a ULID')
+    else if (this.ids.has(e.id)) bad('THREAD-2', `id ${e.id} used twice`)
+    else {
+      ownId = e.id
+      apply.push(() => this.ids.add(e.id))
+    }
     // THREAD-3: the envelope and the fields of the type.
     const wrong = shape(e)
     if (wrong) {
-      bad('THREAD-3', e, `field ${wrong}`)
-      return
+      bad('THREAD-3', `field ${wrong}`)
+      return finish()
     }
-    if (e.v > FORMAT) return
+    if (e.v > FORMAT) return finish()
     // THREAD-4: the thread is born once, on line 1.
-    if (e.type === 'meta' && (e.thread !== undefined) !== (i === 0)) bad('THREAD-4', e, i === 0 ? 'line 1 has no thread id' : 'thread id given again')
-    if (i === 0 && e.type !== 'meta') bad('THREAD-4', e, 'line 1 is not a meta event')
+    if (e.type === 'meta' && (e.thread !== undefined) !== (i === 0)) bad('THREAD-4', i === 0 ? 'line 1 has no thread id' : 'thread id given again')
+    if (i === 0 && e.type !== 'meta') bad('THREAD-4', 'line 1 is not a meta event')
 
+    const open = this.open
     // THREAD-5, THREAD-6: legs are numbered in order and never overlap.
     if (e.type === 'leg.start') {
-      if (e.leg !== `L${legs.size + 1}`) bad('THREAD-5', e, `expected L${legs.size + 1}`)
-      if (open) bad('THREAD-6', e, `${open} is still open`)
-      if (e.leg && !legs.has(e.leg)) legs.set(e.leg, { engine: e.engine, ended: false })
-      open = e.leg
+      if (e.leg !== `L${this.legs.size + 1}`) bad('THREAD-5', `expected L${this.legs.size + 1}`)
+      if (open) bad('THREAD-6', `${open} is still open`)
+      apply.push(() => {
+        if (e.leg && !this.legs.has(e.leg)) this.legs.set(e.leg, { engine: e.engine, ended: false })
+        this.open = e.leg
+      })
     } else if (e.type === 'note') {
       // THREAD-7: a note may speak of any leg that started.
-      if (e.leg !== null && !legs.has(e.leg)) bad('THREAD-7', e, `unknown ${e.leg}`)
+      if (e.leg !== null && !this.legs.has(e.leg)) bad('THREAD-7', `unknown ${e.leg}`)
     } else if (e.leg !== open) {
       // THREAD-7: every other event carries the open leg, or null when none is open.
-      bad('THREAD-7', e, `carries ${e.leg}, open leg is ${open}`)
+      bad('THREAD-7', `carries ${e.leg}, open leg is ${open}`)
     }
     if (e.type === 'leg.end') {
-      const l = e.leg ? legs.get(e.leg) : undefined
-      if (!l || l.ended) bad('THREAD-5', e, 'ends a leg that is not open')
-      else l.ended = true
-      if (e.leg === open) open = null
+      const l = e.leg ? this.legs.get(e.leg) : undefined
+      if (!l || l.ended) bad('THREAD-5', 'ends a leg that is not open')
+      else apply.push(() => (l.ended = true))
+      if (e.leg === open) apply.push(() => (this.open = null))
     }
-    if ((e.type === 'tool' || e.type === 'checkpoint') && e.leg === null) bad('THREAD-7', e, `${e.type} outside a leg`)
+    if ((e.type === 'tool' || e.type === 'checkpoint') && e.leg === null) bad('THREAD-7', `${e.type} outside a leg`)
 
     // THREAD-8: a message outside a leg says where it came from; an agent's reply never claims another source.
     if (e.type === 'message') {
-      if (e.leg === null && e.source === undefined) bad('THREAD-8', e, 'no source outside a leg')
-      if (e.leg === null && e.role === 'assistant' && e.source !== 'connector' && e.source !== 'import') bad('THREAD-8', e, 'assistant message outside a leg')
-      if (e.leg !== null && e.role === 'assistant' && e.source !== undefined) bad('THREAD-8', e, 'assistant message in a leg with a source')
+      if (e.leg === null && e.source === undefined) bad('THREAD-8', 'no source outside a leg')
+      if (e.leg === null && e.role === 'assistant' && e.source !== 'connector' && e.source !== 'import') bad('THREAD-8', 'assistant message outside a leg')
+      if (e.leg !== null && e.role === 'assistant' && e.source !== undefined) bad('THREAD-8', 'assistant message in a leg with a source')
     }
     // THREAD-9: an idempotency key is used once.
     if ((e.type === 'message' || e.type === 'attachment') && e.key !== undefined) {
-      if (keys.has(e.key)) bad('THREAD-9', e, `key ${e.key} used twice`)
-      keys.add(e.key)
+      const key = e.key
+      if (this.keys.has(key)) bad('THREAD-9', `key ${key} used twice`)
+      apply.push(() => this.keys.add(key))
     }
 
-    const live = [...turns.entries()].filter(([, t]) => t.state === 'assigned' || t.state === 'running')
     if (e.type === 'turn') {
-      const t = turns.get(e.turn)
+      const t = this.turns.get(e.turn)
+      const track = (n: number, state: TurnState) => (state === 'assigned' || state === 'running' ? this.live.add(n) : this.live.delete(n))
       // THREAD-10: turns are numbered in order and follow the state machine.
       if (!t) {
-        if (e.state !== 'accepted') bad('THREAD-10', e, `turn ${e.turn} starts with ${e.state}`)
-        if (e.turn !== turns.size + 1) bad('THREAD-10', e, `expected turn ${turns.size + 1}`)
-        if (e.state === 'accepted' && e.message != null && !ids.has(e.message)) bad('THREAD-10', e, 'opening message not found before')
-        turns.set(e.turn, { state: e.state, attempt: 0 })
+        if (e.state !== 'accepted') bad('THREAD-10', `turn ${e.turn} starts with ${e.state}`)
+        if (e.turn !== this.turns.size + 1) bad('THREAD-10', `expected turn ${this.turns.size + 1}`)
+        if (e.state === 'accepted' && e.message != null && !this.ids.has(e.message) && e.message !== ownId) bad('THREAD-10', 'opening message not found before')
+        apply.push(() => {
+          this.turns.set(e.turn, { state: e.state, attempt: 0 })
+          track(e.turn, e.state)
+        })
       } else {
-        if (!NEXT[t.state].includes(e.state)) bad('THREAD-10', e, `${t.state} → ${e.state}`)
-        if (e.state === 'failed' && t.state === 'assigned' && e.effect !== 'none') bad('THREAD-10', e, 'failed before running with an effect')
+        if (!NEXT[t.state].includes(e.state)) bad('THREAD-10', `${t.state} → ${e.state}`)
+        if (e.state === 'failed' && t.state === 'assigned' && e.effect !== 'none') bad('THREAD-10', 'failed before running with an effect')
         if (e.state === 'assigned') {
-          if (e.attempt !== t.attempt + 1) bad('THREAD-10', e, `attempt ${e.attempt}, expected ${t.attempt + 1}`)
-          if (t.effect === 'some' && e.resume !== true) bad('THREAD-10', e, 'resumes a turn failed mid-way without resume')
+          if (e.attempt !== t.attempt + 1) bad('THREAD-10', `attempt ${e.attempt}, expected ${t.attempt + 1}`)
+          if (t.effect === 'some' && e.resume !== true) bad('THREAD-10', 'resumes a turn failed mid-way without resume')
           // THREAD-11: one turn at a time is in an engine's hands.
-          if (live.some(([n]) => n !== e.turn)) bad('THREAD-11', e, `turn ${live[0][0]} is still ${live[0][1].state}`)
+          const others = [...this.turns.entries()].filter(([n, x]) => n !== e.turn && (x.state === 'assigned' || x.state === 'running'))
+          if (others.length) bad('THREAD-11', `turn ${others[0][0]} is still ${others[0][1].state}`)
           // THREAD-12: no change of engine inside a leg.
-          if (open && legs.get(open)?.engine !== e.engine) bad('THREAD-12', e, `assigned to ${e.engine} while ${open} is open`)
-          t.attempt = e.attempt ?? t.attempt + 1
-          t.engine = e.engine
+          if (open && this.legs.get(open)?.engine !== e.engine) bad('THREAD-12', `assigned to ${e.engine} while ${open} is open`)
+          apply.push(() => {
+            t.attempt = e.attempt ?? t.attempt + 1
+            t.engine = e.engine
+          })
         }
         // THREAD-12: a turn runs in a leg of the engine it was assigned to.
-        if (e.state === 'running' && (!open || legs.get(open)?.engine !== t.engine)) bad('THREAD-12', e, 'runs outside a leg of its engine')
+        if (e.state === 'running' && (!open || this.legs.get(open)?.engine !== t.engine)) bad('THREAD-12', 'runs outside a leg of its engine')
         // THREAD-14: a finished turn has its checkpoint just before.
         if (e.state === 'done') {
-          const prev = events[i - 1]
-          if (!prev || prev.type !== 'checkpoint' || prev.turn !== e.turn) bad('THREAD-14', e, 'no checkpoint just before')
+          const prev = this.prev
+          if (!prev || prev.type !== 'checkpoint' || prev.turn !== e.turn) bad('THREAD-14', 'no checkpoint just before')
         }
-        if (e.state === 'failed') t.effect = e.effect
-        t.state = e.state
+        apply.push(() => {
+          if (e.state === 'failed') t.effect = e.effect
+          t.state = e.state
+          track(e.turn, e.state)
+        })
       }
     }
     // THREAD-13: an agent speaks and acts only while a turn is running.
-    if ((e.type === 'tool' || (e.type === 'message' && e.role === 'assistant' && e.leg !== null)) && !live.some(([, t]) => t.state === 'running')) {
-      bad('THREAD-13', e, `${e.type} with no running turn`)
+    if ((e.type === 'tool' || (e.type === 'message' && e.role === 'assistant' && e.leg !== null)) && ![...this.live].some((n) => this.turns.get(n)?.state === 'running')) {
+      bad('THREAD-13', `${e.type} with no running turn`)
     }
     // THREAD-15: a handoff covers what is behind it, and never less than the one before.
     if (e.type === 'handoff') {
-      if (e.upTo >= e.seq) bad('THREAD-15', e, `upTo ${e.upTo} is not behind`)
-      if (e.upTo < lastUpTo) bad('THREAD-15', e, `upTo ${e.upTo} after ${lastUpTo}`)
-      lastUpTo = Math.max(lastUpTo, e.upTo)
+      if (e.upTo >= e.seq) bad('THREAD-15', `upTo ${e.upTo} is not behind`)
+      if (e.upTo < this.lastUpTo) bad('THREAD-15', `upTo ${e.upTo} after ${this.lastUpTo}`)
+      apply.push(() => (this.lastUpTo = Math.max(this.lastUpTo, e.upTo)))
     }
-  })
-  return out
+    return finish()
+  }
 }
+
+/** Every broken invariant of docs/spec/01-thread.md, by number. An empty list: the journal is sound. */
+export function validateJournal(events: readonly JournalEvent[]): Violation[] {
+  const check = new JournalCheck()
+  return events.flatMap((e) => check.check(e))
+}
+
+const keyOf = (e: JournalEvent | EventDraft) => (e.type === 'message' || e.type === 'attachment' ? e.key : undefined)
 
 /**
  * The line to append for `draft`, numbered after `events`. Throws JournalError when the journal would break an
  * invariant. Returns null when the draft carries a key the journal already has: a replay, nothing to write.
- * (Checks the whole journal each time: fine for a specification, to be made incremental when the app uses it.)
  */
 export function appendEvent(events: readonly JournalEvent[], draft: EventDraft): string | null {
-  const key = (draft as { key?: string }).key
-  if (key !== undefined && events.some((e) => (e.type === 'message' || e.type === 'attachment') && e.key === key)) return null
-  const event = { ...draft, v: FORMAT, seq: events.length + 1 } as JournalEvent
-  const before = validateJournal(events).length
-  const after = validateJournal([...events, event])
-  if (after.length > before) throw new JournalError(after.slice(before))
-  return serializeEvent(event)
+  return new Journal(events).append(draft)
+}
+
+/** A journal in memory that grows one line at a time, each line checked against the lines before it only. */
+export class Journal {
+  readonly events: JournalEvent[] = []
+  /** Violations already in the journal it was opened with (a damaged file): reported by check, never added to. */
+  readonly violations: Violation[] = []
+  private checker = new JournalCheck()
+  private keys = new Set<string>()
+  constructor(events: readonly JournalEvent[] = []) {
+    for (const e of events) this.push(e)
+  }
+  private push(e: JournalEvent) {
+    this.violations.push(...this.checker.check(e))
+    this.events.push(e)
+    const key = keyOf(e)
+    if (key !== undefined) this.keys.add(key)
+  }
+  /** appendEvent: the line for `draft`, or null for a key already there. Throws JournalError, changing nothing. */
+  append(draft: EventDraft): string | null {
+    const key = keyOf(draft)
+    if (key !== undefined && this.keys.has(key)) return null
+    const event = { ...draft, v: FORMAT, seq: this.events.length + 1 } as JournalEvent
+    const broken = this.checker.check(event, false)
+    if (broken.length) throw new JournalError(broken)
+    this.push(event)
+    return serializeEvent(event)
+  }
 }
 
 /** BOOK-2: the journal only grows. `next` starts with every byte of `previous`. */

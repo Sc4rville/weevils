@@ -33,6 +33,7 @@ export interface WriterOptions {
 }
 
 const MAX_QUEUE = 256
+const RETRY_MS = 60_000
 type Level = 0 | 1 | 2 // nothing settled, a quiet session settled, a session over settled
 
 export function startWeevbookWriter(o: WriterOptions) {
@@ -45,7 +46,8 @@ export function startWeevbookWriter(o: WriterOptions) {
   const codexHome = path.dirname(o.codexDir)
   const sessions = new Sessions(o.sessions)
   const follows = new Map<string, Follow>()
-  const seen = new Map<string, { size: number; level: Level }>()
+  /** Each file as last synced: its size, what its silence had settled, and when to try again after an error. */
+  const seen = new Map<string, { size: number; level: Level; retryAt?: number }>()
   const queue = new Map<string, Source>()
   /** Threads whose folder is ahead of their ref, and whose session is no longer followed: committed next round. */
   const unpublished = new Map<string, string>()
@@ -78,7 +80,7 @@ export function startWeevbookWriter(o: WriterOptions) {
       const s = seen.get(src.file)
       const f = follows.get(sessionKey(src))
       // New lines, a silence long enough to settle something, or a running turn whose ref is due (REF_MS).
-      const due = !s || st.size !== s.size || levelOf(now() - st.mtimeMs) > s.level || (!!f?.dirty && now() - f.refAt >= REF_MS)
+      const due = !s || st.size !== s.size || levelOf(now() - st.mtimeMs) > s.level || (!!f?.dirty && now() - f.refAt >= REF_MS) || (s.retryAt !== undefined && now() >= s.retryAt)
       if (due) queue.set(src.file, src)
     }
     // Sessions the app no longer reads: nothing to keep in memory for them, once their ref holds their folder.
@@ -115,9 +117,11 @@ export function startWeevbookWriter(o: WriterOptions) {
         seen.set(file, { size: st.size, level: levelOf(now() - st.mtimeMs) })
       } catch (e) {
         once(file, e)
-        // Read from the start next time: what is in memory may not match the disk.
+        // Read from the start next time, when the file grows or in a minute: what is in memory may not match the
+        // disk, and a file that fails every time must not be read again every 3 s.
         follows.delete(sessionKey(src))
-        seen.set(file, { size: -1, level: 0 })
+        const cur = await fsp.stat(file).catch(() => null)
+        seen.set(file, { size: cur?.size ?? -1, level: cur ? levelOf(now() - cur.mtimeMs) : 0, retryAt: now() + RETRY_MS })
       } finally {
         await book.unlock(wrote).catch((e) => once('unlock', e))
       }

@@ -208,6 +208,7 @@ export class HubSync {
   private composeKey = ''
   private composedAt = 0
   private leaseCommits = new Map<string, string>()
+  private lastWorking = new Set<string>()
   private leases = new Map<string, Lease>()
   private chain: Promise<unknown> = Promise.resolve()
 
@@ -396,7 +397,22 @@ export class HubSync {
       if (!this.ready && !(await this.init())) return this.save()
       await this.sessions.load().catch((e) => this.once('sessions', e))
       const l = await this.local()
-      if (!l) return this.save()
+      if (!l) {
+        // The weevbook stayed locked (a long checkpoint, a backfill): the leases at work are renewed all the same, with
+        // what the hub already has, so that a busy machine is never taken for a silent one.
+        const keep = [...this.lastWorking].filter((id) => this.client.seen(id)?.lease?.holder === this.o.machine)
+        if (keep.length) {
+          const out = await this.client.renew(
+            keep.map((id) => {
+              const l = this.client.seen(id)!.lease!
+              return { thread: id, intent: { engine: l.engine, leg: l.leg, state: l.state, ...(l.turn !== undefined ? { turn: l.turn } : {}) } }
+            }),
+          )
+          for (const id of keep) await this.outcome(id, out.get(id)!)
+        }
+        return this.save()
+      }
+      this.lastWorking = new Set([...l.intents].filter(([, i]) => i.state === 'working').map(([id]) => id))
       const renew: { thread: string; intent: Intent }[] = []
       const fresh: string[] = []
       for (const [id, intent] of l.intents) {

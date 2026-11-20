@@ -132,6 +132,31 @@ describe('sync with the hub', () => {
     expect(validateJournal(parseJournal(git(hub, 'cat-file', 'blob', `refs/threads/${running}:events.jsonl`)).events)).toEqual([])
   })
 
+  it('a weevbook locked for long (a big checkpoint, a backfill) does not stop the renewals', async () => {
+    const root = tmp('locked')
+    const hub = path.join(root, 'hub.git')
+    await ensureHubRepo(hub)
+    const clock = { t: T0 }
+    const a = machine(root, 'laptop', hub, { clock })
+    const id = await thread(a.dir, 'laptop', { at: T0 })
+    await a.sync.round()
+    expect(leaseOf(hub, id)).toMatchObject({ state: 'working', renewed: '2026-11-20T10:00:00Z' })
+    const other = await Weevbook.open(a.dir, 'laptop')
+    expect(await other.lock()).toBe(true)
+    const lockWait = Weevbook.prototype.lockWait
+    Weevbook.prototype.lockWait = async function () {
+      return false
+    }
+    try {
+      clock.t += 20_000
+      await a.sync.round()
+    } finally {
+      Weevbook.prototype.lockWait = lockWait
+      await other.unlock(false)
+    }
+    expect(leaseOf(hub, id)).toMatchObject({ state: 'working', turn: 1, renewed: '2026-11-20T10:00:20Z', tip: ref(hub, `refs/threads/${id}`) })
+  })
+
   it(`a machine with many threads catches up over rounds, ${TAKES_PER_ROUND} at a time`, async () => {
     const root = tmp('many')
     const hub = path.join(root, 'hub.git')

@@ -1,7 +1,8 @@
 // Threads in the app (docs/spec, step 4, behind WEEVILS_THREADS): one conversation is one weevbook thread, whatever
 // engines carried it. The conversation view shows its messages and one of three states (working, your move, paused);
-// a paused thread says, in one sentence, what the person can do, and only when there is something to do. The weevbook
-// page lists the threads by project, searches them, rereads one and continues it. Nothing here names an engine, an
+// a paused thread says, in one sentence, what the person can do, and only when there is something to do. The
+// « conversations » page lists the threads by project, searches them, rereads one and continues it: a row says its
+// state only when it is not simply over (working, paused). Nothing here names an engine, an
 // account or a relay.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -131,7 +132,7 @@ export function ThreadPage({ id, session }: { id: string; session?: Session }) {
   return (
     <Shell
       slot={(project && colors[project.id]) ?? 'agent'}
-      kicker={project?.name ?? view?.project ?? 'weevbook'}
+      kicker={project?.name ?? view?.project ?? 'weevils'}
       title={view?.title || (missing ? t.untitled : '…')}
       scrollHeading
       sessionLayout
@@ -198,7 +199,8 @@ export function WeevbookPage({ projectId }: { projectId?: string }) {
       <div className="in weevbook-search">
         <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search} aria-label={t.search} />
       </div>
-      {list && list.projects.length > 1 && (
+      {/* Opened from a project: its conversations only, the project's name above says which. */}
+      {!projectId && list && list.projects.length > 1 && (
         <div className="in weevbook-projects" role="group">
           <button className="link" aria-pressed={!slug} onClick={() => setSlug(undefined)}>
             {t.allProjects}
@@ -216,7 +218,7 @@ export function WeevbookPage({ projectId }: { projectId?: string }) {
       {err && <div className="in meta" role="alert">{err}</div>}
       {list && !list.threads.length && <div className="in meta empty">{q.trim() ? t.noMatch : t.none}</div>}
       {list?.threads.map((l) => (
-        <Line key={l.thread} ch={STATE_CHAR[l.state]} meta={[word(l.state), !slug && l.project ? name(l.project) : '', ago(now - l.updated), l.snippet ? `… ${l.snippet} …` : ''].filter(Boolean).join(' · ')} onClick={() => open(l)}>
+        <Line key={l.thread} ch={STATE_CHAR[l.state]} meta={[l.state === 'waiting' ? '' : word(l.state), !slug && l.project ? name(l.project) : '', ago(now - l.updated), l.snippet ? `… ${l.snippet} …` : ''].filter(Boolean).join(' · ')} onClick={() => open(l)}>
           {l.title || t.untitled}
         </Line>
       ))}

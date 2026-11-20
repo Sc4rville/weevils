@@ -1330,6 +1330,11 @@ uninstall() {
     local enc
     enc=$(printf '%s' "$HOME/.local/share/weevils" | sed 's/[^A-Za-z0-9]/-/g')
     for d in "$HOME/.claude/projects/$enc" "$HOME/.claude/projects/$enc"-*; do [ ! -d "$d" ] || rm -rf "$d"; done
+    # The keys of computers plugged in from weevboss's line (server/join.ts wrote them, each tagged weevils-join:<id>).
+    local ak="$HOME/.ssh/authorized_keys"
+    if [ -f "$ak" ] && grep -q ' weevils-join:[a-z0-9-]*$' "$ak"; then
+      { grep -v ' weevils-join:[a-z0-9-]*$' "$ak" || true; } >"$ak.weevils.tmp" && chmod 600 "$ak.weevils.tmp" && mv "$ak.weevils.tmp" "$ak"
+    fi
     ok "$(t un_purged)"
   else info "$(t un_kept)"; fi
   [ -z "$clone" ] || info "$(t un_clone) $clone"

@@ -240,7 +240,9 @@ Stops the service and removes its units (on a Mac: its launchd agents), the comm
 `weevils`, `weevils-service`, `weevils-hook`), the weevils hooks in `~/.claude/settings.json`, the `@reboot` crontab
 line, and the Caddy site (`/etc/caddy/weevils.caddy` and its import line, with sudo; the public URL that came with
 it is cleared). It keeps `~/.config/weevils` (settings, access code) and `~/.local/share/weevils` (data) unless
-`--purge`, the clone, the agent sessions still open in tmux, and linger. `skipDangerousModePermissionPrompt` in your
+`--purge`, the clone, the agent sessions still open in tmux, and linger. The keys of computers plugged in from
+weevboss's line (`weevils-join:<id>` in `~/.ssh/authorized_keys`) stay with the settings and go with `--purge`.
+`skipDangerousModePermissionPrompt` in your
 Claude settings goes too when weevils wrote it (after `--no-ask-permissions`); one you had set yourself stays.
 
 ## Several machines

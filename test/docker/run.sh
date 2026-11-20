@@ -4,7 +4,8 @@
 #   test/docker/run.sh            all scenarios
 #   test/docker/run.sh systemd    VPS with systemd: install from a clone, service + linger, login over http, the
 #                                 end screen without a domain, idempotent re-run, --domain with Caddy, a port change
-#                                 that moves the Caddy site, survives a reboot, --uninstall then a new install
+#                                 that moves the Caddy site, a --secondary machine, a third one from weevboss's one
+#                                 line (join.sh), survives a reboot, --uninstall then a new install
 #   test/docker/run.sh plain      container without systemd, as root: curl | bash style (piped), Claude Code from its
 #                                 official installer, WEEVILS_SAFE=1, background fallback, re-run, --uninstall --purge
 #   test/docker/run.sh edge       the hard cases: truncated download, no terminal without --yes, no sudo, node 20
@@ -192,6 +193,47 @@ run_systemd() {
   check "secondary: units name the main host given, nothing hardcoded" as_2 'grep -q "ExecStart=.* mainbox$" ~/.config/systemd/user/weevils-tunnel.service && ! grep -rqiE "\bvps\b|scarville|scarville" ~/.config/systemd/user/ ~/.config/weevils/'
   check "secondary re-run is idempotent (same tunnel port)" as_2 'cd weevils && ./install.sh --yes --secondary mainbox >/dev/null && grep -q "WEEVILS_TUNNEL_PORT=4192" ~/.config/weevils/service.conf'
   check "main: still a single remote entry" as_test '[ "$(grep -c "^WEEVILS_REMOTES=" ~/.config/weevils/env)" = 1 ] && grep -qx "WEEVILS_REMOTES=laptop=http://127.0.0.1:4192" ~/.config/weevils/env'
+
+  say "systemd: a third machine plugged in from weevboss's one line (join.sh), its key held to the tunnel"
+  local c3=weevils-test-sd3-$tag ip line
+  containers+=("$c3")
+  docker run -d --name "$c3" --hostname desk --network "$net" --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock "$image" >/dev/null
+  docker exec "$c3" systemctl is-system-running --wait >/dev/null 2>&1
+  # Test harness only: what a desktop already has (curl, ssh), the main machine's name, and Caddy's local CA standing
+  # in for a real certificate. No key, no ssh config: the line does that.
+  docker exec "$c3" bash -c 'apt-get update -qq >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends curl ca-certificates openssh-client >/dev/null 2>&1'
+  ip=$(docker inspect -f "{{(index .NetworkSettings.Networks \"$net\").IPAddress}}" "$c")
+  docker exec "$c3" bash -c "echo '$ip weevils.test' >>/etc/hosts"
+  docker exec "$c" cat /var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt >"$work/caddy-root.crt"
+  docker cp "$work/caddy-root.crt" "$c3:/usr/local/share/ca-certificates/weevils-test.crt"
+  docker exec "$c3" update-ca-certificates >/dev/null 2>&1
+  docker cp "$work/weevils.git" "$c3:/srv/weevils.git"
+  docker cp "$work/weevils/install.sh" "$c3:/srv/install.sh"
+  docker exec "$c3" chown -R test:test /srv/weevils.git /srv/install.sh
+  fake_claude "$c3" /home/test
+  as_3() { docker exec -u test -w /home/test -e XDG_RUNTIME_DIR=/run/user/1000 -e WEEVILS_REPO=/srv/weevils.git -e WEEVILS_INSTALL_SH=/srv/install.sh "$c3" bash -c "$1"; }
+  # What weevboss runs when asked (its CLI is in ~/.local/bin, which a docker exec shell has no PATH entry for).
+  check "main: weevboss's 'weevils setup ask machine' posts one line to paste" as_test '~/.local/bin/weevils setup ask machine && jq -r ".log[-1].text" ~/.local/share/weevils/setup.json | grep -q "^On your other computer"'
+  line=$(as_test 'jq -r ".log[-1].text" ~/.local/share/weevils/setup.json 2>/dev/null' | grep -oE 'curl -fsSL https://weevils\.test/api/join\.sh \| bash -s [A-Za-z0-9_-]{20,}' | head -1 || true)
+  if [ -z "$line" ]; then
+    fails=$((fails + 1)); echo "  FAIL no join line in weevboss's thread: the rest of this scenario cannot run"
+    as_test 'tail -5 ~/.local/share/weevils/setup.json 2>&1; journalctl --user -u weevilsd -n 30 --no-pager 2>&1' | tail -30
+  else
+    check "  … that line: our https address, the join script, a code" true
+    check "  … only the code's hash is kept on the main machine" as_test "test -s ~/.local/share/weevils/join.json && ! grep -qF -- '${line##* }' ~/.local/share/weevils/join.json"
+    echo "  \$ $line"
+    if as_3 "$line" >"$work/join.log" 2>&1; then
+      passes=$((passes + 1)); echo "  ok   the line ran on the third machine"; sed 's/^/  │ /' "$work/join.log" | tail -15
+    else fails=$((fails + 1)); echo "  FAIL the line"; tail -30 "$work/join.log"; fi
+    check "third: a secondary named after its host, its tunnel on the next free port" as_3 'systemctl --user is-active weevilsd weevils-tunnel && grep -qx WEEVILS_MACHINE=desk ~/.config/weevils/env && grep -qx "WEEVILS_TUNNEL_PORT=4193" ~/.config/weevils/service.conf'
+    check "third: its own key, an ssh alias for the main machine, the main machine's host key known" as_3 'test -f ~/.ssh/weevils_ed25519 && grep -qx "Host weevils-testbox" ~/.ssh/config && grep -q "^weevils.test ssh-ed25519 " ~/.ssh/known_hosts'
+    check "main: desk registered, laptop kept" as_test 'grep -qx "WEEVILS_REMOTES=laptop=http://127.0.0.1:4192,desk=http://127.0.0.1:4193" ~/.config/weevils/env'
+    check "main: the key may only hold the tunnel and register desk" as_test 'grep "weevils-join:desk$" ~/.ssh/authorized_keys | grep -q "^restrict,port-forwarding,permitlisten=\"127.0.0.1:4193\",permitopen=\"127.0.0.1:4193\",command=\"/home/test/.local/bin/weevils-service remote-shell desk 4193\" ssh-ed25519 "'
+    check "main: desk online in its snapshot" as_test 'for i in $(seq 30); do curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"desk\" and .online==true)" && exit 0; sleep 1; done; exit 1'
+    check "main: the thread said it came in, then that it is plugged in" as_test 'for i in $(seq 20); do jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk is plugged in" && jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk is plugging in" && exit 0; sleep 1; done; exit 1'
+    check "third: that key gets no shell and no other command on the main machine" as_3 '! ssh -o BatchMode=yes weevils-testbox "cat ~/.config/weevils/secret" >/tmp/out 2>&1 && grep -q "this key only registers desk" /tmp/out && ! ssh -o BatchMode=yes weevils-testbox bash </dev/null'
+    check "third: the line works once" as_3 "! ($line) >/tmp/again 2>&1 && grep -q 'expired or was already used' /tmp/again"
+  fi
 
   say "systemd: reboot"
   docker restart "$c" >/dev/null

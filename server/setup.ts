@@ -19,6 +19,7 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import dns from 'node:dns/promises'
 import fs from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import type { Message, Tool } from '../shared/api.ts'
@@ -42,10 +43,15 @@ import { Imap } from './imap.ts'
 import { mailConfig } from './mailbridge.ts'
 import type { Memory } from './memory.ts'
 import { quotas } from './usage.ts'
+import type { Join } from './join.ts'
+import { isTunnelUrl } from './tunnel-link.ts'
 
 const FILE = path.join(DATA_DIR, 'setup.json')
 /** En deçà, un message automatique identique n'est pas reposté (voir Setup.add). */
 const REPEAT_MS = 30 * 60_000
+/** The first days: weevboss's turns get firstRunBrief, for three days or 40 messages. */
+const FIRST_RUN_MS = 3 * 86_400_000
+const FIRST_RUN_TURNS = 40
 /** Le clone de weevils qui tourne (install.sh, changer l'interface en direct). */
 const CLONE = path.resolve(import.meta.dirname, '..')
 
@@ -95,12 +101,16 @@ export interface SetupState {
   sudo: 'yes' | 'password' | 'no'
   tools: { git: boolean; tmux: boolean; curl: boolean; python3: boolean; qrencode: boolean; pipx: boolean; uv: boolean; node: number }
   projects: number
+  /** A few project names, for the hello. */
+  projectNames: string[]
+  /** The connector (ChatGPT, Claude.ai) answers on /mcp. */
+  connector: boolean
 }
 
 export interface SetupDeps {
   bump: () => void
   /** Machines du fil (la première est celle-ci) et nombre de projets. */
-  feed: () => { machines: { id: string; name: string; online?: boolean }[]; projects: number }
+  feed: () => { machines: { id: string; name: string; online?: boolean }[]; projects: number; names?: string[] }
   /** Faits des autres machines (fédération), pour savoir si l'une reste allumée. */
   remoteFacts: () => Promise<MachineFacts[]>
   devices: () => number
@@ -120,6 +130,15 @@ export interface SetupDeps {
   /** La conversation de weevboss où ira le prochain message (id de sa session Claude), null quand ce message en ouvrira
    * une nouvelle : une nouvelle conversation reçoit le résumé de la mémoire. */
   bossId?: () => string | null
+  /** Agents ask before acting: a job that needs a terminal goes to a session (which asks the user in the app), since
+   * weevboss's own turns cannot run it. */
+  delegate?: (text: string, brief: string) => Promise<unknown>
+  /** Turns the connector on now (WEEVILS_CONNECTOR=1 is written too, for the next start). */
+  connectorOn?: () => void
+  /** The one-time codes of another computer's line (server/join.ts). */
+  join?: Join
+  /** sshd answers here (tests replace the probe). */
+  sshd?: () => Promise<boolean>
 }
 
 interface Persisted {
@@ -138,6 +157,12 @@ interface Persisted {
   pending?: { text: string; brief: string }
   /** La mémoire telle que weevboss l'a reçue en dernier (signature) et dans quelle conversation. */
   memorySeen?: { sig: string; boss: string | null }
+  /** The first days: weevboss's turns get what weevils detected and how onboarding goes (firstRunBrief). */
+  firstRun?: { at: number; turns: number }
+  /** Another computer's line was given (then its key came in: id): said once it shows up online. */
+  joining?: { at: number; id?: string }
+  /** The user's messages that were a sign-in code: never passed on to the model. */
+  hidden?: string[]
 }
 
 // ---------------------------------------------------------------- détection
@@ -458,6 +483,7 @@ const GUESS: [Brick, RegExp][] = [
   ['devil', /\b(diable|devil|abliterat\w*|open.?weight|ollama|lm ?studio|vllm|openrouter)\b/i],
   ['github', /\b(github|gh|repos?|dépôts?)\b/i],
   ['voice', /\b(voix|voice|dict\w*|micro|cartesia|parler|speak|talk)\b/i],
+  ['connector', /\b(connecteur|connector|mcp|claude\.ai)\b/i],
   ['mail', /\b(e-?mails?|courriel|gmail|chatgpt|pont|bridge)\b/i],
   ['shortcut', /\b(siri|raccourcis?|shortcuts?|bouton action|action button)\b/i],
   ['machine', /\b(vps|serveur|server|machines?|pc|mac|ordi\w*|computer|laptop|portable|nuit|night)\b/i],
@@ -608,7 +634,7 @@ export class Setup {
     this.p = (() => {
       try {
         const raw = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Partial<Persisted>
-        return { log: (raw.log ?? []).filter((m) => !m.id.startsWith('demo-')), marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, codexWaiting: raw.codexWaiting, githubLogged: raw.githubLogged, pending: raw.pending, memorySeen: raw.memorySeen }
+        return { log: (raw.log ?? []).filter((m) => !m.id.startsWith('demo-')), marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, codexWaiting: raw.codexWaiting, githubLogged: raw.githubLogged, pending: raw.pending, memorySeen: raw.memorySeen, firstRun: raw.firstRun, joining: raw.joining, hidden: raw.hidden }
       } catch {
         return { log: [], marks: {}, bossSeenAt: 0 }
       }
@@ -711,6 +737,8 @@ export class Setup {
       sudo: sd,
       tools: { git: !!which('git'), tmux: !!which('tmux'), curl: !!which('curl'), python3: !!which('python3'), qrencode: !!which('qrencode'), pipx: !!which('pipx'), uv: !!which('uv'), node: nodeMajor },
       projects: this.deps.feed().projects,
+      projectNames: (this.deps.feed().names ?? []).slice(0, 8),
+      connector: process.env.WEEVILS_CONNECTOR?.trim() === '1',
     }
     this.cache = { at: Date.now(), v }
     return v
@@ -718,9 +746,10 @@ export class Setup {
 
   // ---------------------------------------------------------------- accueil
 
-  /** Premier lancement : l'appareil est noté et weevboss accueille dans son fil, d'après l'état réel. C'est tout
-   * l'onboarding : une brique à la fois, avec sa puce ; la suite, weevboss la mène lui-même (weevils setup). Une
-   * installation qui a déjà parlé à weevboss n'est pas accueillie. */
+  /** First launch: the app opens weevboss's thread and weevboss speaks first, from what weevils detected (projects,
+   * other machines, subscriptions signed in). That is all of onboarding: a conversation. When no subscription is signed
+   * in yet, the hello carries Claude's sign-in link (or Codex's code follows), and the code is pasted in the chat
+   * (offline()). An installation that already talked to weevboss is not welcomed. */
   async welcome(device: Device): Promise<string | undefined> {
     if (this.p.welcomed) return
     this.p.welcomed = true
@@ -730,37 +759,65 @@ export class Setup {
     this.p.githubLogged = s.github.logged
     let mid: string | undefined
     if (!this.deps.hasHistory()) {
-      const { text, brick } = greeting(s, device, this.providers())
-      if (brick) this.p.marks[brick] = Date.now()
-      mid = this.say(text)
+      const ready = providerReady()
+      const tool = providerTool(this.providers())
+      // Claude Code here and signed out: its sign-in link goes in the hello itself (a few seconds at most; later, it
+      // follows on its own: the same sign-in, askClaude below).
+      const link = !ready && tool === 'claude' && s.claude.installed ? await Promise.race([this.startClaudeLogin().catch(() => ''), sleep(8000).then(() => '')]) : ''
+      mid = this.say(greeting(s, this.providers(), link))
+      this.p.firstRun = { at: Date.now(), turns: 0 }
+      if (!ready && !link) void (tool === 'codex' ? this.askCodex(s) : this.askClaude(s, false, true)).catch((e) => console.log(`[setup] ${short(e)}`))
     }
     this.save()
     this.deps.bump()
     return mid
   }
 
-  /** Claude Code vient d'être connecté : weevboss le dit, propose GitHub s'il manque, et reprend le travail en attente. */
+  /** Claude Code vient d'être connecté : weevboss le dit et reprend le travail en attente. GitHub vient plus tard, de
+   * weevboss, quand un projet en a besoin : à ce moment-là, la personne a quelque chose à demander. */
   private async claudeReady() {
-    const s = await this.detect(true)
-    const t = tr(M)
-    this.say(s.github.logged ? t.claudeReady : `${t.claudeReady} ${t.githubPitch} [[setup:github]]`)
+    this.cache = null
+    this.say(tr(M).claudeReady)
     const job = this.p.pending
     if (job && providerReady()) {
       this.p.pending = undefined
       this.save()
-      await this.deps.handoff(job.text, job.brief).catch((e) => console.log(`[setup] travail confié à weevboss : échec (${short(e)})`))
+      await this.pass(job.text, job.brief).catch((e) => console.log(`[setup] travail confié à weevboss : échec (${short(e)})`))
     }
   }
 
   /** Un travail qui demande un terminal : confié à weevboss, ou gardé jusqu'à ce que Claude Code soit connecté. */
   private async handoff(text: string, brief: string) {
-    if (providerReady()) {
-      await this.deps.handoff(text, brief)
-      return
-    }
+    if (providerReady()) return this.pass(text, brief)
     this.p.pending = { text, brief }
     this.save()
-    this.say(chip(tr(M).providerLater(preferredTool() === 'codex' ? 'Codex' : 'Claude Code'), preferredTool()))
+    this.say(tr(M).providerLater(preferredTool() === 'codex' ? 'Codex' : 'Claude Code'))
+    await this.askProvider()
+  }
+
+  /** To weevboss, who does it in its turn; when agents ask before acting, its turn could not (no terminal): a session
+   * does it and asks the user in the app at each step, and weevboss says so in one sentence. */
+  private async pass(text: string, brief: string) {
+    if (askPermissions() && this.deps.delegate) {
+      await this.deps.delegate(text, brief)
+      this.say(tr(M).delegated)
+      return
+    }
+    await this.deps.handoff(text, brief)
+  }
+
+  /** The subscription's sign-in, by talking: Claude's link (the code is pasted in the chat) or Codex's code. */
+  private async askProvider(again = false) {
+    const s = await this.detect()
+    if (preferredTool() === 'codex') return this.askCodex(s, again)
+    await this.askClaude(s, again)
+  }
+
+  /** Another computer's key came in through its line (server/join.ts): weevilsd says it, then says when it shows up. */
+  joined(id: string) {
+    this.p.joining = { at: Date.now(), id }
+    this.save()
+    this.say(tr(M).joinKey(id))
   }
 
   /** Installe un outil dans le dossier de l'utilisateur (ou par le gestionnaire de paquets si sudo marche sans mot de
@@ -843,15 +900,18 @@ export class Setup {
         this.cache = null
         if (!shown) return resolve(false)
         if (code === 0 && codexLogged()) { if (this.p.codexWaiting) void this.codexReady() }
-        else if (code !== null) this.say(chip(t.codexFail(lastLine(out) || t.noAnswer), 'codex'))
+        else if (code !== null) this.say(t.codexFail(lastLine(out) || t.noAnswer))
       })
     })
   }
 
   /** Ce qui a changé tout seul (une connexion faite dans un terminal) : dit une fois. */
   private async watch() {
-    if (!this.p.welcomed) return
-    let changed = false
+    let changed = this.watchJoin()
+    if (!this.p.welcomed) {
+      if (changed) this.save()
+      return
+    }
     if (!this.p.claudeLogged && claudeLogged()) {
       this.p.claudeLogged = true
       changed = true
@@ -870,6 +930,20 @@ export class Setup {
       }
     }
     if (changed) this.save()
+  }
+
+  /** Another computer plugged in from its line: said once it answers. True when something changed. */
+  private watchJoin(): boolean {
+    const j = this.p.joining
+    if (!j?.id) return false
+    const m = this.deps.feed().machines.find((x) => x.id === j.id && x.online !== false)
+    if (!m && Date.now() - j.at < 3 * 3600_000) return false
+    this.p.joining = undefined
+    if (m) {
+      this.cache = null
+      this.say(tr(M).joinOnline(m.name || m.id))
+    }
+    return true
   }
 
   // ---------------------------------------------------------------- briques
@@ -904,7 +978,11 @@ export class Setup {
       case 'reach': {
         if (s.reach === 'public' && s.https) return post(t.reachAsk(s)), false
         const http = s.reach === 'public'
-        if (!providerReady()) return post(`${t.reachAsk(s)} ${chip(t.providerLater(preferredTool() === 'codex' ? 'Codex' : 'Claude Code'), preferredTool())}`), false
+        if (!providerReady()) {
+          post(`${t.reachAsk(s)} ${t.providerLater(preferredTool() === 'codex' ? 'Codex' : 'Claude Code')}`)
+          await this.askProvider()
+          return false
+        }
         // Un Mac : rien ne demande les droits administrateur, et pas de domaine (install.sh y refuse --domain). Une seule
         // voie, Tailscale : pas de question à poser, weevboss s'y met tout de suite.
         if (s.machine.mac) {
@@ -923,10 +1001,20 @@ export class Setup {
         return true
       }
       case 'machine': {
+        // This machine can be reached from anywhere over SSH: the other computer only needs one line, pasted there.
+        const host = this.deps.join ? joinHost(s) : null
+        if (host && (await (this.deps.sshd ?? sshdUp)())) {
+          const code = this.deps.join!.create(`${s.machine.user}@${host}`)
+          this.p.joining = { at: Date.now() }
+          this.save()
+          post(t.joinLine(`curl -fsSL ${s.url.replace(/\/+$/, '')}/api/join.sh | bash -s ${code}`))
+          return false
+        }
         // L'état de la machine vient d'être dit (accueil) : pas deux fois de suite.
         const status = t.machine(s.machine).replace(/\s*\[\[setup:machine\]\]/, '')
         const said = this.p.log.slice(-8).some((m) => m.text.replace(/\s*\[\[setup:machine\]\]/, '').includes(status))
-        post(said ? t.machineAsk(s) : `${status}\n\n${t.machineAsk(s)}`)
+        // Its address and the password its host sent: a masked field, never the chat.
+        post(chip(said ? t.machineAsk(s) : `${status}\n\n${t.machineAsk(s)}`, 'machine'))
         return true
       }
       case 'claude':
@@ -972,20 +1060,33 @@ export class Setup {
       case 'history':
         post(t.historyAsk)
         return false
+      case 'connector': {
+        // ChatGPT and Claude.ai reach /mcp from the internet, over https only.
+        if (s.reach !== 'public' || !s.https) return post(t.connectorNeedsHttps(s.url)), false
+        if (!s.connector) {
+          writeConfig({ WEEVILS_CONNECTOR: '1' })
+          this.deps.connectorOn?.()
+          this.cache = null
+          console.log('[setup] connector on')
+        }
+        post(t.connectorHow(`${s.url.replace(/\/+$/, '')}/mcp`, isTunnelUrl(s.url)))
+        return false
+      }
     }
   }
 
   /** Claude Code : installé s'il manque, puis « claude auth login » ; le lien arrive dans le fil, le code se colle en bas. */
-  private async askClaude(s: SetupState, again = false): Promise<boolean> {
+  private async askClaude(s: SetupState, again = false, quiet = false): Promise<boolean> {
     const t = tr(M)
     if (s.claude.logged && !again) return this.say(t.claudeOk), false
     if (!s.claude.installed) {
-      this.say(t.claudeInstalling(s.machine.host))
+      if (!quiet) this.say(t.claudeInstalling(s.machine.host))
       const r = await this.install('claude', s)
-      if (!r.ok) return this.say(chip(t.claudeInstallFail(r.why), 'claude')), false
+      // It will not install from here: the exact line for a terminal there; watch() notices the sign-in.
+      if (!r.ok) return this.say(t.claudeTerminal(r.why, `${installCommand('claude', s)} && claude`)), false
     }
     const url = await this.startClaudeLogin()
-    if (!url) return this.say(chip(t.claudeInstallFail(lastLine(claudeLogin.output(this.loginDeps())) || t.noAnswer), 'claude')), false
+    if (!url) return this.say(t.claudeTerminal(lastLine(claudeLogin.output(this.loginDeps())) || t.noAnswer, 'claude')), false
     if (this.p.log.at(-1)?.text !== t.claudeLink(url)) this.say(t.claudeLink(url))
     this.openUrl = url
     return true
@@ -1018,9 +1119,14 @@ export class Setup {
     if (!s.codex.installed) {
       this.say(t.codexInstalling(s.machine.host))
       const r = await this.install('codex', s)
-      if (!r.ok) return this.say(chip(t.codexInstallFail(r.why), 'codex'))
+      if (!r.ok) return this.say(t.codexTerminal(r.why, `${installCommand('codex', s)} && codex login`))
     }
-    if (!(await this.startCodexLogin())) this.say(chip(t.codexFail(t.noAnswer), 'codex'))
+    if (!(await this.startCodexLogin())) {
+      // No device code came: the sign-in in a terminal there; watch() notices it.
+      this.p.codexWaiting = true
+      this.save()
+      this.say(t.codexTerminal(t.noAnswer, 'codex login'))
+    }
   }
 
   private async codexReady() {
@@ -1032,7 +1138,7 @@ export class Setup {
     if (primary && providerReady() && job) {
       this.p.pending = undefined
       this.save()
-      await this.deps.handoff(job.text, job.brief).catch((e) => console.log(`[setup] ${short(e)}`))
+      await this.pass(job.text, job.brief).catch((e) => console.log(`[setup] ${short(e)}`))
     }
   }
 
@@ -1044,23 +1150,27 @@ export class Setup {
   }
 
   private async offlineReply(text: string) {
+    const typed = withoutContext(text).trim()
+    // The code Claude's sign-in page showed, pasted in the chat: it goes to the waiting sign-in, never to the model.
+    if (preferredTool() !== 'codex' && looksLikeLoginCode(typed) && claudeLogin.pending(this.loginDeps())) {
+      const id = this.userSays(text)
+      this.p.hidden = [...(this.p.hidden ?? []).slice(-19), id]
+      this.save()
+      return this.applyClaude({ code: typed })
+    }
     this.userSays(text)
-    const brick = guessBrick(text)
+    const brick = guessBrick(typed)
     const t = tr(M)
-    if (brick && brick !== preferredTool()) {
-      // La réponse de la brique, avec son bouton (le champ du bas s'ouvre au tap), puis ce qui manque pour le reste.
+    if (brick && brick !== 'claude' && brick !== 'codex') {
+      // La réponse de la brique (avec son bouton quand elle a des questions à poser), puis ce qui manque pour le reste.
       if ((await this.ask(brick)) && this.lastAsk && this.p.log.at(-1)?.id === this.lastAsk.id) {
         const last = this.p.log.at(-1)!
         last.text = chip(last.text, brick)
         this.save()
       }
-      this.say(chip(t.providerLater(preferredTool() === 'codex' ? 'Codex' : 'Claude Code'), preferredTool()))
-    } else {
-      const s = await this.detect()
-      this.say(preferredTool() === 'codex'
-        ? chip(t.providerLater('Codex'), 'codex')
-        : chip(s.claude.installed ? t.claudeLogin : t.claudeMissing(s.machine), 'claude'))
+      this.say(t.providerLater(preferredTool() === 'codex' ? 'Codex' : 'Claude Code'))
     }
+    await this.askProvider()
   }
 
   mark(id: string) {
@@ -1133,7 +1243,8 @@ export class Setup {
       console.log('[setup] Claude Code connecté')
       return this.claudeReady()
     }
-    this.say(chip(t.claudeFail(r.why || t.noAnswer), 'claude'))
+    this.say(t.claudeFail(r.why || t.noAnswer))
+    await this.askClaude(await this.detect(true), true)
   }
 
   /** Un VPS (ou toute machine joignable en SSH) : weevilsd y entre avec le mot de passe de l'hébergeur, une fois, y pose
@@ -1362,11 +1473,22 @@ export class Setup {
     const memory = this.memoryNote()
     this.save()
     const parts: string[] = []
+    const hidden = new Set(this.p.hidden ?? [])
+    // A join line's code works on its own: the model never needs it.
+    const said = (m: Message) => (hidden.has(m.id) ? '(a sign-in code, not shown)' : m.text.replace(/(\/api\/join\.sh \| bash -s )[A-Za-z0-9_-]+/g, '$1••••'))
     if (fresh.length) {
-      const lines = fresh.map((m) => `${m.role === 'user' ? 'user' : 'you'}: ${m.text.replace(/```[a-z]*\n?/g, '`').replace(/\s+/g, ' ').slice(0, 400)}`)
+      const lines = fresh.map((m) => `${m.role === 'user' ? 'user' : 'you'}: ${said(m).replace(/```[a-z]*\n?/g, '`').replace(/\s+/g, ' ').slice(0, 400)}`)
       parts.push(`shown in your thread since your last reply (written by weevils in your name, or the user's answers to a setup flow; secrets never shown): ${lines.join(' | ').slice(0, 2400)}`)
     }
     if (brief) parts.push(`the user tapped a setup button, here is exactly what to do: ${brief}`)
+    const first = this.p.firstRun
+    if (first && Date.now() - first.at < FIRST_RUN_MS && first.turns < FIRST_RUN_TURNS) {
+      first.turns++
+      const s = this.cache?.v
+      parts.push(s ? firstRunBrief(s, !!this.deps.join && !!joinHost(s)) : 'first days with the user: onboarding is this conversation; run `weevils setup` for what weevils detected, never ask about it')
+      void this.detect().catch(() => undefined)
+      this.save()
+    }
     if (memory) parts.push(memory)
     return parts.length ? ` ⟦weevils — ${parts.join(' — ').replace(/⟧/g, ']')}⟧` : ''
   }
@@ -1421,6 +1543,8 @@ export class Setup {
       `security: agents ask permission ${yes(s.security.safe)} · exposed over plain http ${yes(s.security.exposedHttp)}`,
       `tools: ${Object.entries(s.tools).map(([k, x]) => (k === 'node' ? `node ${x}` : `${k} ${yes(!!x)}`)).join(', ')} · package manager ${s.pkg ?? 'none'} · sudo ${s.sudo}`,
       `projects in the feed: ${s.projects} · weevils clone: ${s.clone}`,
+      `connector (ChatGPT, Claude.ai): ${s.connector ? `on at ${s.url.replace(/\/+$/, '')}/mcp` : 'off (weevils setup ask connector turns it on)'}`,
+      `another computer from one line: ${this.deps.join && joinHost(s) ? 'yes (weevils setup ask machine)' : 'no (needs this weevils at a public https address)'}`,
       `proposed already: ${Object.keys(this.p.marks).filter((k) => !k.startsWith('tip:') && !k.startsWith('gesture:')).map((k) => `${k} (${ago(k)})`).join(', ') || 'nothing'}`,
       `gestures not discovered yet: ${GESTURES.filter(([id, h]) => !seen.has(h) && !this.p.marks[`gesture:${id}`]).map(([id, , w]) => `${id} = ${w}`).join(' | ') || 'none'}`,
       `tips not given yet: ${TIPS.filter(([id]) => !this.p.marks[`tip:${id}`]).map(([id, w]) => `${id} = ${w}`).join(' | ') || 'none'}`,
@@ -1431,20 +1555,79 @@ export class Setup {
   }
 }
 
-/** L'accueil de weevboss : bonjour, puis une seule brique, la plus utile d'après l'état réel — l'agent s'il n'est pas
- * connecté (sans lui rien ne répond), sinon le téléphone vu d'un ordinateur, sinon GitHub. Pure (testée). */
-export function greeting(s: SetupState, device: Device, providers: { claude: boolean; codex: boolean }): { text: string; brick?: Brick } {
+/** The subscription weevboss thinks with: Codex when chosen (or the only one this machine can run), else Claude. */
+export const providerTool = (providers: { claude: boolean; codex: boolean }): 'claude' | 'codex' =>
+  preferredTool() === 'codex' || (!providers.claude && providers.codex) ? 'codex' : 'claude'
+
+/** weevboss's hello on first launch: who it is, what weevils already sees (projects, other machines), then either
+ * "tell me what you want done" or the one thing it needs, the subscription's sign-in (with Claude's link when there is
+ * one). No button, no tour, nothing about how weevils works. Pure (tested). */
+export function greeting(s: SetupState, providers: { claude: boolean; codex: boolean }, link = ''): string {
   const t = tr(M)
-  const hello = t.welcomeHello(USER_NAME)
-  if (!providerReady()) {
-    const tool: 'claude' | 'codex' = preferredTool() === 'codex' || (!providers.claude && providers.codex) ? 'codex' : 'claude'
-    return { text: chip(`${hello} ${t.welcomeProvider(tool === 'codex' ? 'Codex' : 'Claude Code')}`, tool), brick: tool }
-  }
-  const ready = `${hello} ${t.welcomeReady(s.projects)}`
-  if (!device.mobile && s.phone.devices < 2) return { text: chip(`${ready} ${t.welcomePhone}`, 'phone'), brick: 'phone' }
-  if (!s.github.logged) return { text: chip(`${ready} ${t.githubPitch}`, 'github'), brick: 'github' }
-  return { text: ready }
+  const seen = t.welcomeSeen(s.projects, s.projectNames, s.machine.others)
+  const head = [t.welcomeHello(USER_NAME), seen].filter(Boolean).join(' ')
+  if (providerReady()) return `${head} ${t.welcomeReady}`
+  if (providerTool(providers) === 'codex') return `${head} ${t.welcomeCodex}`
+  if (link) return `${head} ${t.welcomeClaude} ${t.claudeLink(link)}`
+  return `${head} ${s.claude.installed ? t.welcomeClaudeLink : t.welcomeClaudeInstall(s.machine.host)}`
 }
+
+/** What weevboss is told in its first days (every turn: they do not remember): what weevils detected, so it asks none
+ * of it, and how onboarding goes, a conversation. Pure (tested). */
+export function firstRunBrief(s: SetupState, joinable: boolean): string {
+  const yes = (b: boolean) => (b ? 'yes' : 'no')
+  const m = s.machine
+  const facts = [
+    `Claude Code signed in ${yes(s.claude.logged)}`,
+    `Codex signed in ${yes(s.codex.logged)}${s.codex.installed ? '' : ' (not installed)'}`,
+    `GitHub signed in ${yes(s.github.logged)}${s.github.login ? ` (${s.github.login})` : ''}`,
+    `projects ${s.projects}${s.projectNames.length ? ` (${s.projectNames.join(', ')})` : ''}`,
+    `this machine: ${m.kind}${m.mac ? ' (mac)' : ''}, ${m.os}, always on ${m.alwaysOn ?? 'unknown'}`,
+    `other machines: ${m.others.join(', ') || 'none'}`,
+    `reached at ${s.url} (${s.reach}${s.https ? ', https' : ''})`,
+    `agents ask before acting ${yes(s.security.safe)}`,
+    `connector for ChatGPT and Claude.ai: ${s.connector ? 'on' : 'off'}`,
+  ]
+  return [
+    `first days with the user: onboarding is this conversation, there is nothing else in the app (no tour, no button, no checklist). What weevils already detected, so never ask about it: ${facts.join(' · ')}.`,
+    'Speak plainly and briefly; never explain how weevils works inside. What only the user can do comes as one sentence at the moment it helps, in this thread:',
+    `another computer → \`weevils setup ask machine\` (${joinable ? 'posts the one line to paste in a terminal there' : 'this machine cannot take one from a single line: it posts what to do'});`,
+    'ChatGPT or Claude.ai, only when relevant or asked → `weevils setup ask connector` (turns it on, posts the address and the clicks);',
+    'a subscription to sign in → `weevils setup ask claude` or `weevils setup ask codex` (posts the link). A first real request beats any setup: do it first.',
+  ].join(' ')
+}
+
+/** Where another computer reaches this one over SSH, when the line can be given at all: the other computer fetches it
+ * from this weevils' public https address (never plain http: the answer says where to connect and which host keys to
+ * trust). SSH goes to that name, or to a VPS's public IP when the address is a tunnel's. Null otherwise (a laptop, a
+ * local or home-network install). */
+export function joinHost(s: SetupState): string | null {
+  if (s.reach !== 'public' || !s.https || !/^https:\/\//.test(s.url)) return null
+  if (!isTunnelUrl(s.url)) {
+    try {
+      return new URL(s.url).hostname
+    } catch {
+      return null
+    }
+  }
+  const host = s.machine.sshTarget.slice(s.machine.sshTarget.indexOf('@') + 1)
+  return (s.machine.kind === 'vps' || s.machine.kind === 'server') && /^\d{1,3}(\.\d{1,3}){3}$/.test(host) && !/^(10|127|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(host) ? host : null
+}
+
+/** sshd answers on this machine (port 22). */
+export const sshdUp = (port = 22, host = '127.0.0.1') =>
+  new Promise<boolean>((resolve) => {
+    const c = net.connect({ port, host })
+    const done = (ok: boolean) => (c.destroy(), resolve(ok))
+    c.setTimeout(800, () => done(false))
+    c.once('connect', () => done(true))
+    c.once('error', () => done(false))
+  })
+
+/** A sign-in code pasted in the chat (Claude's page shows one: letters, digits, maybe #state): one word, long. */
+export const looksLikeLoginCode = (text: string) => /^[A-Za-z0-9._~-]{20,}(#[A-Za-z0-9._~-]{4,})?$/.test(text) && /\d|#/.test(text)
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 /** Ce que l'installation a laissé (install.json, écrit par install.sh) : qui l'a faite, il y a combien de temps. */
 function installedBy(): string {

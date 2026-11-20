@@ -218,6 +218,11 @@ What step 5 built, and what it decided where the pages above leave room.
 - **In weevilsd, on the app's port, only with `WEEVILS_CONNECTOR=1`** (`server/connector`). Off, `/mcp` is the app's
   like any other path. The person adds `https://<their weevils>/mcp` in the chat app: the address must be public and
   HTTPS, the one the phone opens.
+- **Turned on by talking.** A first run leaves it off: it opens dynamic client registration and a consent page to the
+  internet, and it does nothing without a public https address. When the person asks weevboss to plug in ChatGPT or
+  Claude.ai (or it is clearly relevant), `weevils setup ask connector` (`server/setup.ts`) writes
+  `WEEVILS_CONNECTOR=1`, starts the connector at once without a restart, and posts in weevboss's thread the address
+  and the clicks for both apps. Without a public https address it says that first, and turns nothing on.
 - **Addresses.** `GET /.well-known/oauth-protected-resource` (and `…/oauth-protected-resource/mcp`),
   `GET /.well-known/oauth-authorization-server`, `POST /mcp`, `POST /mcp/register`, `GET` and `POST /mcp/authorize`,
   `POST /mcp/token`, `POST /mcp/revoke` (RFC 7009). They are answered before the app's own routes.

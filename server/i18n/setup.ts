@@ -97,31 +97,49 @@ export default defineMessages({
     machineDo: (target: string, provider: string): string => `Branche ${target}${provider ? ` (${provider})` : ''} sur weevils.`,
     machineLater: 'Connecte Claude Code et je finis le branchement tout seul :',
     // ---- Claude Code
-    claudeMissing: (m: MachineInfo): string => `Pour que je te réponde, il me faut Claude Code sur ${m.host}, connecté à ton compte Claude (Pro ou Max). Un tap, je l’installe et je te donne le lien :`,
-    claudeLogin: 'Pour que je te réponde, il me faut Claude Code connecté à ton compte Claude (Pro ou Max). Un tap :',
     claudeInstalling: (host: string): string => `J’installe Claude Code sur ${host}, une minute…`,
-    claudeInstallFail: (why: string): string => `L’installation de Claude Code a échoué (${why}). Réessaie :`,
-    claudeLink: (url: string): string => `Ouvre [la page de connexion de Claude](${url}), accepte, puis colle en bas le code qu’elle affiche.`,
-    claudeFail: (why: string): string => `Claude n’accepte pas ce code (${/wasn.t accepted|invalid|expired/i.test(why) ? 'incomplet, expiré ou déjà utilisé' : why}). On recommence avec un nouveau lien :`,
-    // ---- Accueil (premier lancement, Setup.welcome) : bonjour, puis une seule brique.
+    // La connexion se fait en parlant : le lien ici, le code collé dans le fil. Un terminal seulement si rien ne marche d'ici.
+    claudeLink: (url: string): string => `Ouvre [la page de connexion de Claude](${url}), accepte, puis colle ici le code qu’elle affiche.`,
+    claudeTerminal: (why: string, line: string): string => `Je n’arrive pas à lancer la connexion de Claude d’ici (${why}). Dans un terminal sur cette machine, tape \`${line}\` et connecte-toi : je le verrai tout seul.`,
+    claudeFail: (why: string): string => `Claude n’accepte pas ce code (${/wasn.t accepted|invalid|expired/i.test(why) ? 'incomplet, expiré ou déjà utilisé' : why}). Voici un nouveau lien :`,
+    // ---- Accueil (premier lancement, Setup.welcome) : bonjour, ce que weevils voit déjà, puis la seule chose qui manque.
     welcomeHello: (name: string): string => `Salut${name ? ` ${name}` : ''}, moi c’est weevboss.`,
-    welcomeProvider: (tool: string): string => `Tes agents tournent sur ton propre abonnement : connecte d’abord ${tool}, un tap :`,
-    welcomeReady: (projects: number): string =>
-      `${projects ? `Je vois déjà tes ${projects} projet${projects > 1 ? 's' : ''}. ` : ''}Dis-moi ce que tu veux faire, une idée, un correctif, une question sur ton code : j’ouvre une session et je te tiens au courant ici.`,
-    welcomePhone: 'Ensuite, mets-moi sur ton téléphone pour suivre de partout :',
+    welcomeSeen: (count: number, names: string[], machines: string[]): string => {
+      const shown = names.slice(0, 4)
+      const and = (l: string[]) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} et ${l.at(-1)}` : l[0] ?? '')
+      const list = shown.length ? ` (${shown.length < count ? `${shown.join(', ')}…` : and(shown)})` : ''
+      const p = count ? `Je vois déjà ${count > 1 ? `tes ${count} projets` : 'ton projet'}${list}` : ''
+      const m = machines.length ? `${machines.length > 1 ? `tes machines ${and(machines)} sont branchées` : `ta machine ${machines[0]} est branchée`} aussi` : ''
+      return p && m ? `${p}, et ${m}.` : p ? `${p}.` : m ? `${m[0].toUpperCase()}${m.slice(1)}.` : ''
+    },
+    welcomeReady: 'Dis-moi ce que tu veux faire : une idée, un correctif, une question sur ton code.',
+    welcomeClaude: 'Pour réfléchir, j’utilise ton propre abonnement Claude.',
+    welcomeClaudeLink: 'Pour réfléchir, j’utilise ton propre abonnement Claude : le lien de connexion arrive juste en dessous.',
+    welcomeClaudeInstall: (host: string): string => `Pour réfléchir, j’utilise ton propre abonnement Claude : j’installe d’abord Claude Code sur ${host}, le lien de connexion suit dans une minute.`,
+    welcomeCodex: 'Pour réfléchir, j’utilise ton abonnement ChatGPT, par Codex : le code de connexion arrive juste en dessous.',
     claudeReady: 'Claude Code est connecté : je suis prêt. Dis-moi ce que tu veux faire, par exemple « crée un repo pour mon idée de… » ou « où en est mon projet ? ».',
     claudeOk: 'Claude Code est connecté sur cette machine.',
     notLoggedShort: 'Pour tout le reste, il me faut Claude Code connecté sur cette machine.',
     // ---- Codex
     providerUnavailable: (name: string) => `La connexion à ${name} n’est pas disponible sur cette machine.`,
-    providerLater: (name: string) => `Connecte ${name} pour continuer avec cet agent.`,
+    providerLater: (name: string) => `Pour le reste, il me faut d’abord ${name} connecté.`,
     codexPrimaryReady: 'Codex est connecté : je suis prêt. Dis-moi ce que tu veux faire.',
     codexReady: 'Codex est prêt : dis « avec codex » et j’ouvre la session dedans.',
     codexInstalling: (host: string): string => `J’installe Codex sur ${host}…`,
-    codexInstallFail: (why: string): string => `L’installation de Codex a échoué (${why}). Réessaie :`,
+    codexTerminal: (why: string, line: string): string => `Je n’arrive pas à connecter Codex d’ici (${why}). Dans un terminal sur cette machine, tape \`${line}\` : je le verrai tout seul.`,
     codexCode: (url: string, code: string): string =>
       `Pour connecter Codex à ton compte ChatGPT : ouvre [cette page](${url}), connecte-toi et tape le code ${code} (valable 15 minutes). Je te fais signe dès que c’est bon.`,
-    codexFail: (why: string): string => `La connexion de Codex n’a pas abouti (${why}). Réessaie :`,
+    codexFail: (why: string): string => `La connexion de Codex n’a pas abouti (${why}). Dis-moi quand tu veux réessayer.`,
+    // ---- Un autre ordinateur, d'une ligne (server/join.ts) ; le connecteur ; un travail confié à une session.
+    joinLine: (line: string): string =>
+      `Sur ton autre ordinateur, ouvre un terminal et colle cette ligne :\n\n\`${line}\`\n\nElle marche une fois, pendant une heure. Je te dis ici quand il est branché.`,
+    joinKey: (id: string): string => `${id} se branche : weevils s’installe dessus, quelques minutes.`,
+    joinOnline: (name: string): string => `${name} est branché : je peux y lancer des agents.`,
+    connectorNeedsHttps: (url: string): string =>
+      `ChatGPT et Claude.ai ne me joignent qu’à une adresse publique en https, et pour l’instant je suis à ${url}. Demande-moi de me rendre joignable de partout : on le branche juste après.`,
+    connectorHow: (url: string, tunnel: boolean): string =>
+      `Ajoute cette adresse dans ton app de chat : \`${url}\`\n\n- Claude.ai : Paramètres → Connecteurs → Ajouter un connecteur personnalisé, colle-la, puis Connecter.\n- ChatGPT : Paramètres → Applications et connecteurs → Paramètres avancés, active le mode développeur, puis Créer, colle-la.\n\nElle te demande une fois ton code d’accès weevils.${tunnel ? ' Cette adresse change quand la machine redémarre : pour qu’elle tienne, il faudra un nom de domaine.' : ''}`,
+    delegated: 'Je l’ai confié à un agent : il te demande ton accord dans l’app avant chaque étape.',
     // ---- GitHub
     githubPitch: 'Branche GitHub : je verrai tous tes repos (glisse le fil vers la gauche), j’en créerai pour tes nouvelles idées et je rangerai les sessions par projet.',
     githubAsk: (s: SetupState): string =>
@@ -231,6 +249,7 @@ export default defineMessages({
     badKey: 'réglage non modifiable ici',
     noQr: 'qrencode n’est pas installé',
     badValue: (field: string): string => `réponse manquante : ${field}`,
+    badProject: (name: string): string => `pas un nom de projet : « ${name} » (minuscules, chiffres et tirets)`,
     // ---- nom des champs, dans la bulle récapitulative
     field_url: 'adresse',
     field_model: 'modèle',
@@ -312,29 +331,45 @@ export default defineMessages({
     machineNoSsh: 'This machine has no SSH to reach the new one.',
     machineDo: (target: string, provider: string): string => `Plug ${target}${provider ? ` (${provider})` : ''} into weevils.`,
     machineLater: 'Sign Claude Code in and I’ll finish plugging it in on my own:',
-    claudeMissing: (m: MachineInfo): string => `For me to answer, I need Claude Code on ${m.host}, signed in to your Claude account (Pro or Max). One tap, I install it and give you the link:`,
-    claudeLogin: 'For me to answer, I need Claude Code signed in to your Claude account (Pro or Max). One tap:',
     claudeInstalling: (host: string): string => `Installing Claude Code on ${host}, one minute…`,
-    claudeInstallFail: (why: string): string => `Installing Claude Code failed (${why}). Try again:`,
-    claudeLink: (url: string): string => `Open [Claude’s sign-in page](${url}), accept, then paste the code it shows below.`,
-    claudeFail: (why: string): string => `Claude doesn’t accept this code (${/wasn.t accepted|invalid|expired/i.test(why) ? 'incomplete, expired or already used' : why}). Let’s start over with a new link:`,
+    claudeLink: (url: string): string => `Open [Claude’s sign-in page](${url}), accept, then paste the code it shows here.`,
+    claudeTerminal: (why: string, line: string): string => `I can’t start Claude’s sign-in from here (${why}). In a terminal on this machine, type \`${line}\` and sign in: I’ll notice on my own.`,
+    claudeFail: (why: string): string => `Claude doesn’t accept this code (${/wasn.t accepted|invalid|expired/i.test(why) ? 'incomplete, expired or already used' : why}). Here’s a new link:`,
     welcomeHello: (name: string): string => `Hi${name ? ` ${name}` : ''}, I’m weevboss.`,
-    welcomeProvider: (tool: string): string => `Your agents run on your own subscription, so first sign in to ${tool}. One tap:`,
-    welcomeReady: (projects: number): string =>
-      `${projects ? `I can already see your ${projects} project${projects > 1 ? 's' : ''}. ` : ''}Tell me what you want done, an idea, a fix, a question about your code: I’ll open a session and keep you posted here.`,
-    welcomePhone: 'Next, put me on your phone so you can follow from anywhere:',
+    welcomeSeen: (count: number, names: string[], machines: string[]): string => {
+      const shown = names.slice(0, 4)
+      const and = (l: string[]) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0] ?? '')
+      const list = shown.length ? ` (${shown.length < count ? `${shown.join(', ')}…` : and(shown)})` : ''
+      const p = count ? `I can already see ${count > 1 ? `your ${count} projects` : 'your project'}${list}` : ''
+      const m = machines.length ? `${and(machines)} ${machines.length > 1 ? 'are' : 'is'} plugged in too` : ''
+      return p && m ? `${p}, and ${m}.` : p ? `${p}.` : m ? `${m[0].toUpperCase()}${m.slice(1)}.` : ''
+    },
+    welcomeReady: 'Tell me what you want done: an idea, a fix, a question about your code.',
+    welcomeClaude: 'To think, I use your own Claude subscription.',
+    welcomeClaudeLink: 'To think, I use your own Claude subscription: the sign-in link comes right below.',
+    welcomeClaudeInstall: (host: string): string => `To think, I use your own Claude subscription: I’m installing Claude Code on ${host} first, the sign-in link follows in a minute.`,
+    welcomeCodex: 'To think, I use your ChatGPT subscription, through Codex: the sign-in code comes right below.',
     claudeReady: 'Claude Code is signed in: I’m ready. Tell me what you want to do, like “create a repo for my idea about…” or “where’s my project at?”.',
     claudeOk: 'Claude Code is signed in on this machine.',
     notLoggedShort: 'For everything else, I need Claude Code signed in on this machine.',
     providerUnavailable: (name: string) => `Connecting ${name} is not available on this machine.`,
-    providerLater: (name: string) => `Sign in to ${name} to continue with this agent.`,
+    providerLater: (name: string) => `For the rest, I need ${name} signed in first.`,
     codexPrimaryReady: 'Codex is connected: I’m ready. Tell me what you want to do.',
     codexReady: 'Codex is ready: say “with codex” and I’ll open the session in it.',
     codexInstalling: (host: string): string => `Installing Codex on ${host}…`,
-    codexInstallFail: (why: string): string => `Installing Codex failed (${why}). Try again:`,
+    codexTerminal: (why: string, line: string): string => `I can’t sign Codex in from here (${why}). In a terminal on this machine, type \`${line}\`: I’ll notice on my own.`,
     codexCode: (url: string, code: string): string =>
       `To sign Codex in to your ChatGPT account: open [this page](${url}), sign in and type the code ${code} (valid 15 minutes). I’ll let you know as soon as it’s done.`,
-    codexFail: (why: string): string => `Codex didn’t sign in (${why}). Try again:`,
+    codexFail: (why: string): string => `Codex didn’t sign in (${why}). Tell me when you want to try again.`,
+    joinLine: (line: string): string =>
+      `On your other computer, open a terminal and paste this line:\n\n\`${line}\`\n\nIt works once, for an hour. I’ll tell you here when that computer is plugged in.`,
+    joinKey: (id: string): string => `${id} is plugging in: weevils is installing there, a few minutes.`,
+    joinOnline: (name: string): string => `${name} is plugged in: I can run agents there now.`,
+    connectorNeedsHttps: (url: string): string =>
+      `ChatGPT and Claude.ai only reach me at a public https address, and right now I’m at ${url}. Ask me to make me reachable from anywhere: we’ll plug it in right after.`,
+    connectorHow: (url: string, tunnel: boolean): string =>
+      `Add this address to your chat app: \`${url}\`\n\n- Claude.ai: Settings → Connectors → Add custom connector, paste it, then Connect.\n- ChatGPT: Settings → Apps & Connectors → Advanced settings, turn on developer mode, then Create and paste it.\n\nIt asks once for your weevils access code.${tunnel ? ' This address changes when the machine restarts: to keep it, you’ll need a domain name.' : ''}`,
+    delegated: 'I’ve handed it to an agent: it asks for your OK in the app before each step.',
     githubPitch: 'Plug in GitHub: I’ll see all your repos (swipe the feed left), create new ones for your ideas, and sort sessions by project.',
     githubAsk: (s: SetupState): string =>
       s.github.logged
@@ -430,6 +465,7 @@ export default defineMessages({
     badKey: 'setting not editable here',
     noQr: 'qrencode is not installed',
     badValue: (field: string): string => `missing answer: ${field}`,
+    badProject: (name: string): string => `not a project name: “${name}” (lowercase letters, digits and dashes)`,
     field_url: 'address',
     field_model: 'model',
     field_key: 'key',

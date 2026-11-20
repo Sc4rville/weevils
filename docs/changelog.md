@@ -4,6 +4,16 @@ A short summary of what changed after the first working version.
 
 ## 2026-11-20
 
+### The first run is a conversation with weevboss
+- No tour, no card, no button: weevboss speaks first, in the install's language, from what weevils already sees
+  (projects, other machines, which subscription is signed in). Without one, Claude's sign-in link is in that first
+  sentence and the code is pasted in the chat (kept from the model); Codex gets its device code the same way.
+- Another computer plugs in from one line weevboss gives (`curl -fsSL <your weevils>/api/join.sh | bash -s <code>`):
+  a one-time code, an SSH key held to the reverse tunnel's one port, then `install.sh --secondary`.
+- ChatGPT and Claude.ai: asking weevboss turns the connector on at once and gives the address and the clicks.
+- With agents asking before acting, weevboss makes a project's folder itself (`weevils project new`) and hands what
+  needs a terminal (an install, a repo to create) to a session that asks in the app (`weevils do`).
+
 ### Safer defaults before going public
 - Agents ask before acting on every install path (`WEEVILS_SAFE=1`); `--no-ask-permissions` lets them act without
   asking. An install that never chose switches on its next installer run (an automatic update counts) and says so.

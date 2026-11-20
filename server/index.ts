@@ -478,8 +478,10 @@ w.onChange(() => {
   const data = `event: version\ndata: ${w.version}\n\n`
   for (const res of sseClients) res.write(data)
 })
+// A heartbeat the app sees (a comment would not reach it): a stream silent longer than this is one the link holds
+// back, and the app falls back to asking for the version (src/api.ts).
 setInterval(() => {
-  for (const res of sseClients) res.write(': ping\n\n')
+  for (const res of sseClients) res.write(`event: version\ndata: ${w.version}\n\n`)
 }, 25_000)
 
 // ---------------------------------------------------------------- API
@@ -592,6 +594,7 @@ const routes: [string, RegExp, Handler][] = [
     json(res, 200, w.sleep.set(b.on))
   }],
   ['GET', /^\/api\/snapshot$/, (_req, res) => json(res, 200, w.snapshot())],
+  ['GET', /^\/api\/version$/, (_req, res) => json(res, 200, { version: w.version })],
   ['GET', /^\/api\/events$/, (_req, res) => {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' })
     res.write(`event: version\ndata: ${w.version}\n\n`)

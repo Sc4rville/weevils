@@ -97,6 +97,8 @@ export const api = {
   logout: () => call<{ ok: true }>('POST', '/api/logout', {}),
   foryouFormats: () => call<{ proposal: import('../shared/foryou').ForYouItem | null }>('GET', '/api/foryou/formats'),
   snapshot: () => call<Snapshot>('GET', '/api/snapshot'),
+  /** The snapshot's version alone: what the live stream announces, polled when the stream stays silent. */
+  version: () => call<{ version: number }>('GET', '/api/version'),
   previewTarget: (input: { projectId: string; sessionId?: string; repo?: string }) => call<{ session: import('../shared/api').Session | null }>('GET', `/api/preview/target?${new URLSearchParams(Object.entries(input).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))}`),
   session: (id: string) => call<SessionDetail>('GET', `/api/sessions/${enc(id)}`),
   /** Détail d'un sous-agent, d'une étape de workflow ou d'une commande d'arrière-plan (ses derniers pas). */
@@ -280,21 +282,55 @@ export function useLive() {
     loader.current = () => void load()
     void load()
     const unsubscribeLang = subscribeLang(() => void load())
-    const es = new EventSource('/api/events')
-    es.addEventListener('version', (e) => {
-      wanted = Number((e as MessageEvent).data)
-      if (wanted > have) void load()
-    })
-    es.onerror = () => setOffline(true)
-    es.onopen = () => {
-      setOffline(false)
-      void load()
+    // The server says « version » on every change and every 25 s. A link that doesn't carry server-sent events
+    // (a Cloudflare quick tunnel, some proxies) cuts the stream or holds it back: then the version is asked for
+    // every few seconds, as long as the stream stays silent. Offline only when the server itself doesn't answer.
+    let heard = Date.now()
+    let checking = false
+    let es: EventSource | null = null
+    let opened = 0
+    const check = async () => {
+      if (checking || stopped) return
+      checking = true
+      try {
+        wanted = Math.max(wanted, (await api.version()).version)
+        setOffline(false)
+        if (wanted > have) void load()
+      } catch (e) {
+        if (!(e instanceof ApiError)) setOffline(true)
+      } finally {
+        checking = false
+      }
     }
+    const listen = () => {
+      opened = Date.now()
+      es = new EventSource('/api/events')
+      es.addEventListener('version', (e) => {
+        heard = Date.now()
+        wanted = Number((e as MessageEvent).data)
+        if (wanted > have) void load()
+      })
+      es.onerror = () => void check()
+      es.onopen = () => {
+        heard = Date.now()
+        setOffline(false)
+        void load()
+      }
+    }
+    listen()
+    const SILENT = 35_000
+    const poll = setInterval(() => {
+      if (stopped || document.visibilityState !== 'visible') return
+      // A stream refused outright is not retried by the browser: opened again now and then.
+      if (es?.readyState === 2 && Date.now() - opened > 30_000) { es.close(); listen() }
+      if (Date.now() - heard > SILENT) void check()
+    }, 3000)
     const onVisible = () => document.visibilityState === 'visible' && void load()
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       stopped = true
-      es.close()
+      clearInterval(poll)
+      es?.close()
       unsubscribeLang()
       document.removeEventListener('visibilitychange', onVisible)
     }

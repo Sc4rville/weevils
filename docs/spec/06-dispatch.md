@@ -176,6 +176,88 @@ with random failures (quota gone mid-turn, machine cut, network cut, machine bac
 | An account is signed in on no machine that has the project | `hold` with `not-signed-in`. |
 | Two engines of the same account on two machines | They share one quota and one reservation ledger entry. |
 
+## Step 4: the dispatcher in weevilsd
+
+Decided with step 4. Everything below runs only with `WEEVILS_THREADS=1`, which implies `WEEVILS_WEEVBOOK=1` and,
+when `WEEVILS_WEEVBOOK_HUB` is not set, a hub: `here` on the machine that serves the app, `main` on the others. With
+the switch off, weevilsd and the app are as they were.
+
+| File | Role |
+|---|---|
+| [`server/weevbook/threads.ts`](../../server/weevbook/threads.ts) | The service: inbox, the dispatcher's look at a thread, engines.json, handoffs, what the app reads. |
+| [`server/weevbook/dispatcher.ts`](../../server/weevbook/dispatcher.ts) | The dispatcher's memory (engine table, ledger, pending starts, holds) around `decide`. The simulator drives the same class. |
+| [`server/weevbook/start.ts`](../../server/weevbook/start.ts) | The engine's machine starts an instruction: lease, session, request. |
+| [`server/weevbook/engines.ts`](../../server/weevbook/engines.ts) | `engines.json`: written by each machine, read by the dispatcher. |
+| [`server/weevbook/handoff.ts`](../../server/weevbook/handoff.ts) | `handoff.md` and the first request of a new session ([04](04-resume.md#the-handoff)). |
+| [`server/weevbook/view.ts`](../../server/weevbook/view.ts) | A thread as the app shows it: messages and one of three states. |
+| [`server/threads-app.ts`](../../server/threads-app.ts) | The binding to weevilsd: how a session starts, engine sources, session rows, routes. |
+
+**A message, end to end.** The app posts to `/api/threads/<id>/send` with a key. The message goes to the inbox
+(`DATA_DIR/threads-inbox.jsonl`, one line per message, kept until the thread has it; the same key twice is one
+message). The dispatcher's look at the thread, one at a time per thread: a `working` lease whose holder is silent is
+stolen ([03](03-sync-and-lease.md)); a running turn gets the new messages through its engine; otherwise the messages
+are filed as `message` + `turn accepted` (carrying the open leg, THREAD-7) and pushed with an `idle` lease, then
+`Dispatcher.place` decides on the table and reserves before the call. The engine's machine (here, or through its
+remote: `POST /api/weevbook/start`) takes the lease `working` with `leg.end` (`moved`) when the leg changes,
+`assigned`, `leg.start` and `running` in one push, makes the session ready (rung 1 as it is; rung 2 rebuilt from raw,
+the checkpoint restored; rungs 0 and 3 a new session that reads the handoff) and gives it the request. The shadow
+writer records what the engine does; the hub round renews the lease and lets it go when the turn ends. The
+dispatcher looks at every unfinished thread every 10 s, and at once when a message arrives.
+
+**Decided here, where the pages were loose:**
+
+- **The engine reads back what it was sent.** The writer takes the first user line of a dispatched turn that matches
+  its request as that turn's own message (`awaitedRequest`): no second message, no second turn. A signed first
+  request (preface or handoff) is never a message, never a thread of its own and never a title.
+- **A new Codex session.** Its id is known only once its file exists. The lease is taken `working` with `assigned`
+  first; `leg.start` and `running` follow in a second push as soon as the file whose first request names the thread
+  appears (at most 30 s), else the attempt fails (`api`, effect `none`).
+- **A usage-limit stop is a quota reading.** `failed` with `reason: quota` puts that account at 100 % of its 5-hour
+  window until a machine with the account publishes `engines.json` after the stop. Without it the next look would
+  `stay` on the same account and stop again.
+- **A start refused or unanswered.** The machine says why (`busy`, `stale`, `rejected`, `no-folder`, `launch`) or does
+  not answer: the placement and its reservation end, and the next look places the turn again (an unanswered machine
+  is marked as not answering, as a failed direct call).
+- **Messages while a turn runs** go to the running engine, which takes them into its turn ([01](01-thread.md)): the
+  dispatcher's machine hands them to the holder (`POST /api/weevbook/deliver`), again every 30 s until it takes them.
+- **Expiry.** A request from a chat app (`continue_with_agent`, key `…:req:…`) still held after an hour, that never
+  ran, is held again with reason `expired`. Like `attempts`, it waits for the person ("ask again"), never starts by
+  itself when machines come back, and does not hold back the turns asked after it. The dispatcher applies it at
+  every look, so a request older than an hour when the dispatcher starts ends this way too.
+- **Three states.** The app shows `working` (a turn is accepted, assigned, running, or failed and being retried),
+  `waiting` (every turn is done) and `paused` (a turn is held). `meta.json` keeps its step-1 rule (a failed turn is
+  `paused` there); the app reads the journal (`visibleState`). A paused thread says one sentence only when the person
+  can act: `no-machine` (turn it on), `not-signed-in` (sign in), `only-there` (turn that machine on), each with
+  "continue" (look now); `attempts` and `expired`, with "ask again" (the same words as a new message). `no-room` says
+  nothing but when it goes on.
+- **The handoff (D3).** On the machine that ran the turn, 15 s after its end, for threads active in the last 24 h:
+  the leg's provider's small model rewrites it, isolated (`claudeHaiku`, or `codex exec` through `server/fast.ts`,
+  both through `server/quiet-calls.ts`); a first handoff is the model's rewrite of the journal's. A turn that
+  started meanwhile makes it wait for the next end.
+- **Session rows.** Each provider session that carries a thread says so (`Session.thread`); the rows of one thread
+  are one row, the latest, titled with the thread's title; its status follows the thread's state (a question the
+  engine asks, such as a permission, stays: the person answers it). No tool and no relay sign on it.
+- **The Codex relay** is not started and its routes answer 404; the app hides every part of it. Its code stays until
+  the default changes (deleting it is a separate proposal).
+- **Accounts.** `engines.json` lists the Claude accounts of `server/claude-accounts.ts` (the home one without them)
+  and the signed-in Codex account. The chosen Claude account is made the active one before its session starts.
+
+**Known limits.** One active Claude account per machine: two threads on two accounts of one machine at once switch
+it back and forth. Sessions the shadow writer opens itself (outside the dispatcher) carry the home account's id. A
+start runs in the engine's weevilsd, which needs to be reachable as a remote of the machine that serves the app.
+
+**To make it the default** (`WEEVILS_THREADS` on unless `0`), in this order:
+
+1. The Docker scenario of two machines (`test/docker/threads-two-machines.sh`) green on the server, then a week of
+   real use with the switch on, on the owner's machines.
+2. A hub for every install: `here` exists; a machine without a server needs D1 and D2 first.
+3. The new-session path for weevboss and for sessions started from the app (`/api/sessions`), which today start a
+   provider session directly: they would file a thread and let the dispatcher start it.
+4. The relay's code, settings and texts deleted (`server/relay.ts`, `server/return-relay.ts`, `src/ui/relay.tsx`,
+   `src/i18n/relay.ts`, the `relay*` routes and fields): a proposal of its own, over 40 lines (H-4).
+5. One active Claude account per machine replaced by an account per session (`CLAUDE_CONFIG_DIR` per launch).
+6. `meta.json`'s `state` aligned with the app's (a failed turn is `working` while the dispatcher runs).
+
 ## What exists today
 
 - `server/relay.ts` is a dispatcher for one case. It watches Claude's quota (`PREPARE_AT = 90`, `SWITCH_AT = 97`,
@@ -190,9 +272,10 @@ with random failures (quota gone mid-turn, machine cut, network cut, machine bac
 - `server/remotes.ts` already tells the main machine within seconds that another machine stopped answering.
 - [`server/weevbook/dispatch.ts`](../../server/weevbook/dispatch.ts): the decision table (`decide`), the ledger
   (`reserve`, `release`, `settle`) and the thread's facts from its journal (`threadFacts`). `dispatch.test.ts` has a
-  test per row and the worked example above. Nothing in the app uses it yet.
+  test per row and the worked example above. With `WEEVILS_THREADS=1`, weevilsd uses it (above).
 - [`server/weevbook/sim`](../../server/weevbook/sim): the simulator below.
-- No engine table is published by any machine yet.
+- [`server/weevbook/engines.ts`](../../server/weevbook/engines.ts) (step 4): each machine writes its `engines.json`
+  every 60 s; the quota of each account is the app's own reading (`server/usage.ts`, `ClaudeAccounts.quotaOf`).
 
 ## The simulator
 
@@ -201,7 +284,7 @@ step by step; `--reference` runs the reference scenario. A run is drawn from its
 replayed from its number. `sim.test.ts` runs the reference scenario and 2,000 seeds with every `npm test`.
 
 - **The world.** A phone that only sends messages; a laptop and a server, the server holding the hub and the
-  dispatcher; three Claude accounts on both machines and Codex on the laptop; quotas that run out in the middle of a
+  dispatcher (the same `Dispatcher` class as weevilsd: table, ledger, pending starts, holds); three Claude accounts on both machines and Codex on the laptop; quotas that run out in the middle of a
   turn; machines switched off and on, links cut, answers to the phone lost; clocks a few seconds apart, and in one run
   in six minutes apart or drifting by 1 to 3 %. The rules are the real ones: `lease.ts`, `turn.ts`, `dispatch.ts`.
 - **The reference scenario.** Four threads at work at once on three accounts, one of them on Codex. The laptop dies

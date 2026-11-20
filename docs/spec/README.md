@@ -4,7 +4,7 @@ Today a conversation with Claude Code or Codex lives in one file, on one machine
 specification describes the next shape: a conversation belongs to you. You start it anywhere, it continues anywhere,
 and the app shows one thread.
 
-**Status: steps 1, 2, 3 and 5, behind flags.** These pages, the sample in [`examples/weevbook`](../../examples/weevbook), the
+**Status: steps 1 to 5, behind flags.** These pages, the sample in [`examples/weevbook`](../../examples/weevbook), the
 pure module of the journal ([`server/weevbook/journal.ts`](../../server/weevbook/journal.ts)), the core of the lease,
 the turn and the dispatcher (`lease.ts`, `turn.ts`, `dispatch.ts` next to it), a simulator that drives the three
 together ([`server/weevbook/sim`](../../server/weevbook/sim), `npm run sim`), the local weevbook
@@ -13,7 +13,9 @@ and since steps 2 and 3 the sync with a hub (`hub.ts`), the checkpoints of the c
 of a thread on another machine with the same provider (`resume.ts`, `weevils weevbook resume <thread>`, `weevils
 weevbook sync status`). The writer is off unless `WEEVILS_WEEVBOOK=1`; the sync, the checkpoints and the steals are
 off unless `WEEVILS_WEEVBOOK_HUB` is set too. On, they write next to the app and change nothing the app shows or does;
-a resume happens only when asked. The dispatcher is not used by the running app yet (step 4). The connector of
+a resume happens only when asked. Step 4 is off unless `WEEVILS_THREADS=1`: then the dispatcher runs in weevilsd,
+a conversation is one thread whatever engines carried it, the app shows three states and the weevbook page, and the
+Codex relay is gone ([06](06-dispatch.md#step-4-the-dispatcher-in-weevilsd), with what making it the default needs). The connector of
 step 5 ([`server/connector`](../../server/connector): `/mcp`, its sign-in and the five tools) is off unless
 `WEEVILS_CONNECTOR=1`; on, ChatGPT and Claude.ai can send chats to the weevbook ([05](05-connector.md#step-5-the-connector-in-weevilsd)).
 Each page ends with
@@ -139,6 +141,10 @@ Every number in these pages, in one place. They are starting values, to be tuned
 | Reservation per turn (5-hour window) | 10 points; 20 on a change of account | 06 |
 | A reservation ends when the account is read again | over 60 s after it was made | 06 |
 | A held turn is looked at again | when the engine table changes, at least every 60 s | 06 |
+| A machine writes its `engines.json` | every 60 s | 06 |
+| A chat app's request held without starting expires | after 1 h | 06 |
+| `handoff.md` rewritten after a turn ends | 15 s later, threads active in the last 24 h | 04, 06 |
+| A new Codex session's file is waited for | 30 s | 06 |
 
 ## Open decisions
 

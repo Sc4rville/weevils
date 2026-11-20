@@ -183,7 +183,8 @@ const W = FR ? {
   pcPhone: 'Envoie-la-toi pour la coller là-bas :', share: 'M’envoyer la commande', copy: 'Copier', copied: 'Copié',
   pcWait: 'Cette page suit l’installation dès que la commande démarre.',
   pcLimit: 'Ton téléphone joindra l’ordinateur tant qu’il est allumé. Pour un lien permanent, weevboss te proposera un VPS ou Tailscale.',
-  progTitle: 'Installation de weevils', progNote: 'Compte 3 à 8 minutes. Tu peux fermer cette page : l’installation continue sur ton serveur, et rouvrir ce lien te ramène ici.',
+  progTitle: 'Installation de weevils', progNote: 'Compte 3 à 8 minutes. Tu peux fermer cette page : l’installation continue sur ta machine, et rouvrir ce lien te ramène ici.',
+  asPc: 'Cette machine est un ordinateur, pas un serveur : weevils s’y installe comme sur un ordinateur, avec son propre lien sécurisé, et ton téléphone le joint tant que l’ordinateur est allumé.',
   s_created_hetzner: 'Serveur créé', s_created_ssh: 'Connecté à ton serveur', s_created_pc: 'Commande lancée',
   s_start: 'La machine démarre l’installation', s_system: 'Vérification du système et des outils', s_source: 'Récupération de weevils', s_build: 'Construction de l’app',
   s_service: 'Démarrage de weevils', s_https: 'Lien sécurisé (HTTPS)', s_tunnel: 'Lien sécurisé pour ton téléphone', s_done: 'Prêt',
@@ -270,7 +271,8 @@ const W = FR ? {
   pcPhone: 'Send it to yourself to paste it there:', share: 'Send me the command', copy: 'Copy', copied: 'Copied',
   pcWait: 'This page follows the install as soon as the command starts.',
   pcLimit: 'Your phone reaches the computer while it’s on. For a permanent link, weevboss will offer a VPS or Tailscale.',
-  progTitle: 'Installing weevils', progNote: 'Takes 3 to 8 minutes. You can close this page: the install keeps going on your server, and opening this link again brings you back here.',
+  progTitle: 'Installing weevils', progNote: 'Takes 3 to 8 minutes. You can close this page: the install keeps going on your machine, and opening this link again brings you back here.',
+  asPc: 'This machine is a computer, not a server: weevils installs there as on a computer, with its own secure link, and your phone reaches it while the computer is on.',
   s_created_hetzner: 'Server created', s_created_ssh: 'Connected to your server', s_created_pc: 'Command started',
   s_start: 'The machine starts the install', s_system: 'Checking the system and tools', s_source: 'Getting weevils', s_build: 'Building the app',
   s_service: 'Starting weevils', s_https: 'Secure link (HTTPS)', s_tunnel: 'Secure link for your phone', s_done: 'Ready',
@@ -815,10 +817,12 @@ function progress(job, opts = {}) {
   const err = errBox()
   const clock = h('p', { class: 'small' }, '')
   const slow = h('div', { class: 'quote', hidden: true }, h('p', {}, W.slow), h('button', { class: 'btn light', onclick: tryAgain(job) }, W.tryAgain))
+  // A VPS command run on a computer (at home, behind its box): the service set it up as one, and this page says so.
+  const asPc = h('p', { class: 'small', hidden: true }, W.asPc)
   const head = near
     ? [h('h2', {}, W.nearTitle), h('p', { class: 'small' }, W.nearSub), h('button', { class: 'btn light', onclick: tryAgain(job) }, W.nearLink), h('button', { class: 'link', onclick: () => { watching++; home() } }, W.notMine)]
     : [h('h2', {}, W.progTitle)]
-  show(band('b5', ...head, h('div', { class: 'bar' }, bar), h('ul', { class: 'steps' }, items), clock, slow, near ? null : h('p', { class: 'note' }, W.progNote), err))
+  show(band('b5', ...head, asPc, h('div', { class: 'bar' }, bar), h('ul', { class: 'steps' }, items), clock, slow, near ? null : h('p', { class: 'note' }, W.progNote), err))
   setBack(() => formOf(job.kind))
   let since = 0, stepSeen = '', moved = Date.now()
   const timer = setInterval(() => {
@@ -837,6 +841,11 @@ function progress(job, opts = {}) {
       return 'stop'
     }
     since ||= s.created || Date.now()
+    if (s.mode === 'pc' && job.kind !== 'pc' && asPc.hidden) {
+      asPc.hidden = false
+      items[0].lastChild.textContent = W.s_created_pc
+      items[ORDER.indexOf('https')].lastChild.textContent = W.s_tunnel
+    }
     const steps = s.steps || []
     if (steps.join() !== stepSeen) (stepSeen = steps.join()), (moved = Date.now())
     const seen = new Set(steps.map((k) => FOLD[k] || k))

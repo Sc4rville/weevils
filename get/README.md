@@ -29,8 +29,13 @@ Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter t
      so under the option and on the account step, so nobody is surprised.
    **I already have a VPS**: first, the same one-line command as a computer, to paste in a terminal on the server (as
    root or a sudo user): no secret goes anywhere; its first request (`/i/<sid>.env`) starts the setup, and the
-   address it comes from names the machine (`<ip>.sslip.io`; from an address the Internet can't reach, it is set up
-   like a computer, with a link of its own). That is the whole screen: since 2026-11-17 there is no IP/password form
+   address it comes from names the machine (`<ip>.sslip.io`). Only a real server gets that: since 2026-11-20 the
+   request says what the machine is (`?os=`, `?systemd=`, and `?own=`, the address `/ip` showed it when that address
+   is on one of its own interfaces), and a server is Linux run by systemd that holds the very IPv4 address it asks
+   from. Anything else is set up like a computer, with a link of its own: a Mac, a machine at home behind its box (it
+   asks through the box's address, or from the network that opened the page), an address the Internet can't reach,
+   and a cloud server behind 1:1 NAT (AWS, GCP: a tunnel link, safe). A person's Claude Code on a Mac at home refused
+   the old rule, rightly: it would have set up Caddy there. That is the whole screen: since 2026-11-17 there is no IP/password form
    any more (people's AI assistants rightly refused to send a root password to a third party).
    **My computer** (Mac, Linux, or Windows with WSL): `curl -fsSL https://get.scarville.tech/install.sh | bash -s <id>`
    in its terminal. Since 2026-11-15 that script is the same file for everyone (`/install.sh`, its SHA-256 at

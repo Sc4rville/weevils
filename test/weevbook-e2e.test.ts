@@ -47,7 +47,7 @@ describe('weevils weevbook backfill, check, compare', () => {
 
   it('validates every thread: no invariant broken', async () => {
     const r = await run('check')
-    expect(r.out).toBe('3 threads, 102 events checked\nno invariant broken')
+    expect(r.out).toBe('3 threads, 103 events checked\nno invariant broken')
     expect(r.code).toBe(0)
   })
 
@@ -55,7 +55,7 @@ describe('weevils weevbook backfill, check, compare', () => {
     const r = await run('compare')
     expect(r.out).toBe([
       '5 sessions: 3 compared, 3 identical, 2 without a message',
-      '34 messages and steps in the app: 32 identical in the weevbook',
+      '35 messages and steps in the app: 33 identical in the weevbook',
       'intended differences: 1 redacted (secret), 0 long (as an attachment), 1 provider errors (failed turn)',
       'no loss',
     ].join('\n'))

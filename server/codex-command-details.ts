@@ -48,11 +48,28 @@ export function redactToolText(text:string,limit=8000):string {
     .slice(0,limit)
 }
 const SECRET_NAME=/token|password|passwd|secret|api[_-]?key|authorization|cookie/i
+const REDACTED='[redacted]'
+/**
+ * What follows `name=` but holds no secret, left as it is:
+ * - a value already redacted (`[redacted]…`): redacting twice changes nothing;
+ * - a variable or a command named, not its value: `$NAME`, `${NAME}`, `$(…)`, bare or in double quotes (`\"…\"` too,
+ *   inside a JSON string);
+ * - an empty string, `""` or `''`;
+ * - the quote that closes a text opened just before the name (`grep "^API_KEY=" .env`): a pattern, not a value.
+ */
+function notAValue(text:string,name:number,sep:string,v:string):boolean {
+  if(v.startsWith(REDACTED)||v==='""'||v==="''")return true
+  const q=/^\\?(["'])/.exec(v)
+  if(q&&!/["']/.test(sep)&&new RegExp(`${q[1]}\\^?$`).test(text.slice(Math.max(0,name-2),name)))return true
+  const inner=v.length>=4&&v.startsWith('\\"')&&v.endsWith('\\"')?v.slice(2,-2):v.length>=2&&v.startsWith('"')&&v.endsWith('"')?v.slice(1,-1):v
+  return /^\$\(/.test(inner)||/^\$(?:[A-Za-z_]\w*|\{[A-Za-z_]\w*\})[)"'\]\\]*$/.test(inner)
+}
 /**
  * `name=value` and `"name": "value"` where the name says secret: the value becomes [redacted]. The same as
  * /([\w-]*(?:token|…)[\w-]*["']?\s*[:=]\s*)(?:"[^"\n]*"|'[^'\n]*'|[^\s,;&}]+)/gi → '$1[redacted]', in one pass: that
  * regex tries every start inside a long run of word characters and takes time in the square of its length (a long
- * text, redacted whole for the weevbook, never ends).
+ * text, redacted whole for the weevbook, never ends). What is not a value (notAValue) stays, so that redacting a
+ * text twice gives the same text (BOOK-9 in docs/spec/02-weevbook.md).
  */
 function redactKeyValues(text:string):string {
   const runs=/[\w-]+/g
@@ -63,8 +80,8 @@ function redactKeyValues(text:string):string {
     if(!SECRET_NAME.test(m[0]))continue
     tail.lastIndex=m.index+m[0].length
     const v=tail.exec(text)
-    if(!v)continue
-    out+=text.slice(last,tail.lastIndex-v[0].length+v[1].length)+'[redacted]'
+    if(!v||notAValue(text,m.index,v[1],v[0].slice(v[1].length)))continue
+    out+=text.slice(last,tail.lastIndex-v[0].length+v[1].length)+REDACTED
     last=tail.lastIndex
     runs.lastIndex=last
   }

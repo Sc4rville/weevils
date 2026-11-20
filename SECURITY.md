@@ -113,9 +113,15 @@ bundle is one commit « weevils <rev> »: the files of that public commit, minus
 ~/weevils/install.sh --uninstall --purge && rm -rf ~/weevils
 ```
 
-That stops and removes the service, the phone link, the update timer, the commands, and the hooks in
-`~/.claude/settings.json` (with `skipDangerousModePermissionPrompt` when weevils wrote it). Node.js links in `~/.local/bin` go too. `--purge` also removes weevils' settings and data, Node.js's files in
-`~/.local/share/weevils/node` included. Claude Code stays, since you may use it without weevils.
+That stops and removes the service, the phone link (weevils' own tunnel only: other Cloudflare tunnels of yours
+stay up), the update timer, the commands, and the hooks in `~/.claude/settings.json` (with
+`skipDangerousModePermissionPrompt` when weevils wrote it). Node.js links in `~/.local/bin` go too, and so do the
+install log (`~/weevils-install.log`), weevils' cache (`~/.cache/weevils`) and Claude Code's trust for weevils' own
+folders in `~/.claude.json`. `--purge` also removes weevils' settings and data, Node.js's files in
+`~/.local/share/weevils/node` included, the copy of your Claude Code settings from before weevils
+(`settings.json.bak-weevils`), and Claude Code's records of weevils' own folders (weevboss's conversations). Claude
+Code stays, since you may use it without weevils. The install log never holds your access code: the login link is
+in `~/.local/share/weevils/login-link`, readable by you only.
 
 ## Reporting a problem
 

@@ -12,7 +12,8 @@
 # The messages are plain variables read by name in t(): shellcheck can't see that they are used.
 # shellcheck disable=SC2034
 set -euo pipefail
-# The summary ends with the login link: whatever file this output goes to (~/weevils-install.log) is the user's alone.
+# Whatever file this output goes to (~/weevils-install.log) is the user's alone: it never holds the access code (the
+# login link goes to ~/.local/share/weevils/login-link), but it says what this machine has.
 for _fd in 1 2; do _out=$(readlink "/proc/$$/fd/$_fd" 2>/dev/null || true); [ -n "$_out" ] && [ -f "$_out" ] && [ -O "$_out" ] && chmod 600 "$_out" 2>/dev/null || true; done
 [ ! -f "$HOME/weevils-install.log" ] || [ ! -O "$HOME/weevils-install.log" ] || chmod 600 "$HOME/weevils-install.log" 2>/dev/null || true
 unset _fd _out
@@ -1074,6 +1075,8 @@ detect() {
 # by: agent (--agent or detected), terminal (a human saw the end screen), script (--yes without a terminal).
 # phoneLink: the end screen printed a link a phone can open (public or lan; the agent then hands it over).
 HANDOFF=$HOME/.local/share/weevils/install.json
+# The login link (<url>/#k=<code>), mode 600: what an agent reads for its final message instead of the install log.
+LINK_FILE=$HOME/.local/share/weevils/login-link
 write_handoff() { # write_handoff url mode
   local by=script agent='' at tmp phone=false
   if [ "$AGENT" = 1 ] && [ -n "$AGENT_NAME" ]; then by=agent agent=$AGENT_NAME; elif [ "$TTY" = 1 ] || [ -t 1 ]; then by=terminal; fi
@@ -1142,9 +1145,15 @@ finish() {
   write_handoff "$url" "$mode"
 
   step "$(t "$title")"
+  # The login link, for whoever needs it again: a file of the user's alone, removed by --uninstall --purge. An agent's
+  # run goes to a log file (~/weevils-install.log): the code is never written there, only where the link is.
+  (umask 077 && mkdir -p "$(dirname "$LINK_FILE")" && printf '%s/#k=%s\n' "$url" "$code" >"$LINK_FILE" && chmod 600 "$LINK_FILE")
   printf '\n  %s : %s%s%s\n' "$(t address)" "$B" "$url" "$R"
-  printf '  %s : %s%s%s\n' "$(t code)" "$B$M" "$code" "$R"
-  printf '  %s : %s\n\n' "$(t link)" "$url/#k=$code"
+  if [ "$AGENT" = 1 ]; then printf '  %s : %s\n\n' "$(t link)" "$LINK_FILE"
+  else
+    printf '  %s : %s%s%s\n' "$(t code)" "$B$M" "$code" "$R"
+    printf '  %s : %s\n\n' "$(t link)" "$url/#k=$code"
+  fi
   if [ "$mode" = local ]; then
     # http://localhost on a phone is the phone itself: no QR code, the ways in instead.
     ip=$(lan_ip)
@@ -1182,7 +1191,7 @@ finish() {
   echo
   [ "$AGENT" = 0 ] || info "$(t agent_next) $DIR/AGENTS.md"
 
-  kv role main; kv url "$url"; kv code "$code"; kv link "$url/#k=$code"; kv mode "$mode"
+  kv role main; kv url "$url"; kv link_file "$LINK_FILE"; kv mode "$mode"
   [ -z "$WEB_BUSY" ] || kv web_server "$WEB_BUSY"
   kv https "$([ "${url#https://}" != "$url" ] && echo yes || echo no)"; kv port "$port"
   kv ready "$([ "$title" = ready ] && echo yes || echo no)"
@@ -1193,6 +1202,21 @@ finish() {
 }
 
 # ---------------------------------------------------------------- uninstall
+
+# untrust_own <folder> — takes out of ~/.claude.json the projects inside <folder> (weevils' own: weevboss's,
+# automations'), nothing else. Claude Code rewrites that file all the time: a file that doesn't read as JSON is left
+# alone, the new one is written beside it and renamed in one step (with the same mode), and a symlink is followed.
+untrust_own() {
+  local f=$HOME/.claude.json dir=$1 tmp mode
+  [ -f "$f" ] && command -v jq >/dev/null || return 0
+  [ ! -L "$f" ] || f=$(cd "$(dirname "$f")" && cd "$(dirname "$(readlink "$f")")" && pwd)/$(basename "$(readlink "$f")")
+  jq -e --arg d "$dir" '(.projects // {}) | keys | any(. == $d or startswith($d + "/"))' "$f" >/dev/null 2>&1 || return 0
+  tmp=$(mktemp "$f.XXXXXX") || return 0
+  if jq --arg d "$dir" '.projects |= with_entries(select((.key == $d or (.key | startswith($d + "/"))) | not))' "$f" >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    if [ "$OS" = Darwin ]; then mode=$(stat -f %Lp "$f" 2>/dev/null || echo 600); else mode=$(stat -c %a "$f" 2>/dev/null || echo 600); fi
+    chmod "$mode" "$tmp" && mv -f "$tmp" "$f" || rm -f "$tmp"
+  else rm -f "$tmp"; fi
+}
 
 # Removes what install.sh put outside the clone: the service, the commands in ~/.local/bin, the weevils hooks in
 # ~/.claude/settings.json, the @reboot line, the Caddy site. Settings, access code and data stay unless --purge.
@@ -1214,8 +1238,12 @@ uninstall() {
     rm -f "$units/weevilsd.service" "$units/weevils-tunnel.service" "$units/weevils-link.service" "$units/weevils-update.service" "$units/weevils-update.timer"
     systemctl --user daemon-reload >/dev/null 2>&1 || true
   fi
-  # The setup page's link left as a plain background process (no service manager reachable).
-  pkill -u "$(id -u)" -f 'cloudflared tunnel --no-autoupdate --url http://127.0.0.1:' >/dev/null 2>&1 || true
+  # The setup page's link left as a plain background process (no service manager reachable): weevils' own tunnel
+  # only, the one to its port. Other quick tunnels of the person stay up.
+  local wport
+  wport=$([ ! -x "$svc" ] || "$svc" config get WEEVILS_PORT 2>/dev/null || true)
+  [[ "${wport:-}" =~ ^[0-9]+$ ]] || wport=4179
+  pkill -u "$(id -u)" -f "cloudflared tunnel --no-autoupdate --url http://127\.0\.0\.1:$wport( |\$)" >/dev/null 2>&1 || true
   # A Mac: the launchd agents (weevilsd, the tunnel of a secondary machine).
   local plist label
   for plist in "$HOME"/Library/LaunchAgents/com.github.sc4rville.weevils*.plist; do
@@ -1283,8 +1311,21 @@ uninstall() {
     fi
   fi
 
+  # What weevils left beside its own folders: the install log (it once held the access code), its private cache
+  # (~/.cache/weevils: scratch folders of its model calls), and Claude Code's trust for weevils' own folders
+  # (weevboss's, automations'), in ~/.claude.json.
+  [ ! -f "$HOME/weevils-install.log" ] || [ ! -O "$HOME/weevils-install.log" ] || rm -f "$HOME/weevils-install.log"
+  rm -rf "$HOME/.cache/weevils"
+  untrust_own "$HOME/.local/share/weevils"
+
   if [ "$PURGE" = 1 ]; then
     rm -rf "$CONF_DIR" "$HOME/.local/share/weevils"
+    # The settings as they were before weevils (kept once by server/install.sh), and Claude Code's own records of
+    # weevils' folders (weevboss's conversations): weevils' too.
+    rm -f "$settings.bak-weevils"
+    local enc
+    enc=$(printf '%s' "$HOME/.local/share/weevils" | sed 's/[^A-Za-z0-9]/-/g')
+    for d in "$HOME/.claude/projects/$enc" "$HOME/.claude/projects/$enc"-*; do [ ! -d "$d" ] || rm -rf "$d"; done
     ok "$(t un_purged)"
   else info "$(t un_kept)"; fi
   [ -z "$clone" ] || info "$(t un_clone) $clone"

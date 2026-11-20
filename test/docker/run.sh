@@ -128,7 +128,10 @@ run_systemd() {
   check "install.sh --agent exits 0" as_test 'cd weevils && ./install.sh --agent'
   cp "$work/out" "$work/agent1.log"; sed -n '/--- weevils summary ---/,$p' "$work/agent1.log" | sed 's/^/  │ /'
   check "summary block last, every line key=value" summary_valid "$work/agent1.log"
-  check "summary: status ok, local link, Claude logged in, 1 project, 2 repos" bash -c "grep -qx status=ok '$work/agent1.log' && grep -qx mode=local '$work/agent1.log' && grep -q '^link=http://localhost:4179/#k=' '$work/agent1.log' && grep -qx claude_logged=yes '$work/agent1.log' && grep -qx projects=1 '$work/agent1.log' && grep -qx repos=2 '$work/agent1.log'"
+  check "summary: status ok, local link, Claude logged in, 1 project, 2 repos" bash -c "grep -qx status=ok '$work/agent1.log' && grep -qx mode=local '$work/agent1.log' && grep -qx link_file=/home/test/.local/share/weevils/login-link '$work/agent1.log' && grep -qx claude_logged=yes '$work/agent1.log' && grep -qx projects=1 '$work/agent1.log' && grep -qx repos=2 '$work/agent1.log'"
+  local secret; secret=$(as_test 'cat ~/.config/weevils/secret')
+  check "the access code is nowhere in the log; the login link is in a file of the user's alone" bash -c "[ -n '$secret' ] && ! grep -qF -- '$secret' '$work/agent1.log'"
+  check "  … that file: the link, mode 600" as_test 'f=~/.local/share/weevils/login-link; grep -q "^http://localhost:4179/#k=" "$f" && [ "$(stat -c %a "$f")" = 600 ]'
   check "no colours, no QR code" bash -c "! grep -q \$'\\e\\[' '$work/agent1.log' && ! grep -qE '$QR' '$work/agent1.log'"
   check "end screen: the project already in the app, what to ask" grep -q 'already in the app: your Claude Code project.*' "$work/agent1.log"
   check "install.json: by=agent, one project, two repos" as_test 'jq -e ".by == \"agent\" and .projects == 1 and .repos == 2" ~/.local/share/weevils/install.json'
@@ -234,7 +237,13 @@ run_plain() {
   check "re-run (piped again) exits 0" docker exec -i -w /root -e WEEVILS_REPO=/srv/weevils.git "$c" bash -s -- --yes --lang fr <"$work/weevils/install.sh"
   check "still one weevilsd process" test "$(count)" = 1
   check "stop / start" in_c '~/.local/bin/weevils-service stop && ! curl -sf -m 2 http://127.0.0.1:4179/api/me; ~/.local/bin/weevils-service start && for i in $(seq 20); do curl -sf http://127.0.0.1:4179/api/me && exit 0; sleep 0.5; done; exit 1'
+  # Leftovers the uninstall takes too, next to a quick tunnel of the person's own (another port), which stays.
+  in_c 'touch ~/weevils-install.log ~/.claude/settings.json.bak-weevils && mkdir -p ~/.cache/weevils/quiet ~/.claude/projects/-root--local-share-weevils-orchestrateur ~/.claude/projects/-root-projects-mine && printf "%s" "{\"projects\":{\"/root/.local/share/weevils/orchestrateur\":{\"hasTrustDialogAccepted\":true},\"/root/projects/mine\":{\"hasTrustDialogAccepted\":true}},\"userID\":\"u\"}" >~/.claude.json && chmod 600 ~/.claude.json'
+  in_c '(exec -a "cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8080" sleep 300 >/dev/null 2>&1 &) && (exec -a "cloudflared tunnel --no-autoupdate --url http://127.0.0.1:4179" sleep 300 >/dev/null 2>&1 &)'
   check "--uninstall --purge (piped) exits 0" docker exec -i "$c" bash -s -- --yes --lang fr --uninstall --purge <"$work/weevils/install.sh"
+  check "install log, cache, settings backup, weevils' Claude projects gone; the person's own kept" in_c '! test -e ~/weevils-install.log && ! test -e ~/.cache/weevils && ! test -e ~/.claude/settings.json.bak-weevils && ! test -e ~/.claude/projects/-root--local-share-weevils-orchestrateur && test -d ~/.claude/projects/-root-projects-mine'
+  check "~/.claude.json: weevils' trust gone, the rest kept, mode 600" in_c 'jq -e ".projects | keys == [\"/root/projects/mine\"]" ~/.claude.json && jq -e ".userID == \"u\"" ~/.claude.json && [ "$(stat -c %a ~/.claude.json)" = 600 ]'
+  check "only weevils' own tunnel stopped, the person's other one still up" in_c 'pgrep -f "[c]loudflared tunnel --no-autoupdate --url http://127.0.0.1:8080" >/dev/null && ! pgrep -f "[c]loudflared tunnel --no-autoupdate --url http://127.0.0.1:4179( |\$)" >/dev/null'
   check "no weevilsd left, commands, settings and data gone, the clone kept" bash -c "[ '$(count)' = 0 ] && docker exec $c bash -c '! test -e ~/.local/bin/weevils-service && ! test -e ~/.config/weevils && ! test -e ~/.local/share/weevils && test -f ~/weevils/install.sh'"
 }
 

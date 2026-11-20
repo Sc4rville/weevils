@@ -182,8 +182,8 @@ The output ends with a block to parse, `key=value` per line (an agent gets it ev
 status=ok                      # ok | needs_sudo | failed (then error=…)
 role=main
 url=http://localhost:4179      # what the phone opens, without the code
-code=…
-link=http://localhost:4179/#k=…
+link_file=/home/you/.local/share/weevils/login-link   # holds the login link <url>/#k=<code> (mode 600): the
+                               # access code is never in this output, so a log of it gives nothing away
 mode=local                     # public | lan | local
 https=no
 port=4179

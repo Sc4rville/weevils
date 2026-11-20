@@ -43,7 +43,8 @@
 # /weevils.bundle.sha256.
 #
 # UNDO, in one line:  ~/weevils/install.sh --uninstall --purge && rm -rf ~/weevils
-# The installer's full log stays here, in ~/weevils-install.log.
+# The installer's full log stays here, in ~/weevils-install.log (without the access code: the login link is in
+# ~/.local/share/weevils/login-link, readable by the user only).
 set -euo pipefail
 
 # The whole script is one function, called on the last line: a download cut short runs nothing.
@@ -509,7 +510,9 @@ EOF
       process.stdout.write(c.publicEncrypt({ key, padding: c.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" }, link).toString("base64"))' 2>/dev/null || true
   }
   local url link mode ready enc='' how order='openssl node' cur
-  url=$(sum url) link=$(sum link) mode=$(sum mode) ready=$(sum ready)
+  # The login link is in a file of the user's alone (the installer's log never holds the access code).
+  url=$(sum url) mode=$(sum mode) ready=$(sum ready)
+  link=$(cat "$(sum link_file)" 2>/dev/null || true)
   # The key of the page following this setup now: another page may have taken it over (« continue on this one »,
   # after the first one was closed). Public; the one this script came with when the service doesn't answer.
   cur=$(curl -fsS -m 10 "$BASE/k/$SID" 2>/dev/null || true)
@@ -525,7 +528,7 @@ EOF
   # The version installed, for the setup page's register of installs: the snapshot's revision (its commit says
   # « weevils <rev> »), else the clone's.
   local version
-  version=$(git -C "$dir" log -1 --format=%s 2>/dev/null | sed -n 's/^weevils \([0-9a-f]\{7,40\}\)$/\1/p')
+  version=$(git -C "$dir" log -1 --format=%s 2>/dev/null | sed -n 's/^weevils \([0-9a-f]\{7,40\}\)$/\1/p' || true)
   [ -n "$version" ] || version=$(git -C "$dir" rev-parse --short HEAD 2>/dev/null || true)
   # The first login on this weevils tells the setup page, once, so it stops keeping the link (server/index.ts reads
   # this file, posts « claimed » to it, and deletes it). Nothing else ever goes back to the setup page.
@@ -534,7 +537,7 @@ EOF
     --data-urlencode "ready=$ready" --data-urlencode "sealed=$enc" --data-urlencode "version=$version"
   echo
   say "ready: $url"
-  [ -n "$enc" ] || say "open the link from $log on your phone (the setup page could not receive it)"
+  [ -n "$enc" ] || say "open the link from $(sum link_file) on your phone (the setup page could not receive it)"
   if [ "$MODE" = pc ]; then
     say "on your phone, open this link (it logs you in, keep it to yourself):"
     printf '\n  %s\n\n' "$link"

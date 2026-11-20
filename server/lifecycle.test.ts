@@ -196,6 +196,19 @@ describe('lancement et reprise', () => {
     expect(one(r.id)).toMatchObject({ status: 'working', lastMessage: tr(CO).starting })
   })
 
+  it('L8a confiance : rien d’avance au démarrage (un repo cloné par un agent reste une question de Claude Code) ; au lancement, le dossier de la session seulement', async () => {
+    const cloned = path.join(HOME, 'projects', 'cloned')
+    fs.mkdirSync(path.join(cloned, '.git'), { recursive: true })
+    fs.mkdirSync(path.join(cwd, '.git'), { recursive: true })
+    const cfg = path.join(HOME, '.claude.json')
+    fs.rmSync(cfg, { force: true })
+    w = new Weevils()
+    expect(fs.existsSync(cfg)).toBe(false)
+    await w.create({ projectId: 'demo', tool: 'claude', text: 'fix x' })
+    expect(Object.keys(JSON.parse(fs.readFileSync(cfg, 'utf8')).projects)).toEqual([cwd])
+    fs.rmSync(path.join(cloned), { recursive: true, force: true })
+  })
+
   it('L8b codex : l’id est le nom de la pane ; texte vide → « nouvelle session », sans argument', async () => {
     const r = await w.create({ projectId: 'demo', tool: 'codex', text: '  ' })
     const [name, , tool, title, command, sessionId] = mux.spawnWv.mock.calls[0]

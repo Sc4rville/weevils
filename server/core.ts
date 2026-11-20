@@ -545,12 +545,8 @@ export class Weevils {
       this.bump()
     })
     keepWarm()
-    // Tous les repos connus sont de confiance d'avance.
-    try {
-      if (trustDirs(this.allRepos().map((r) => this.repoDir(r)).filter((d) => insideRoots(d)))) console.log('[sessions] dossiers de ~/projects marqués de confiance pour Claude Code')
-    } catch (e) {
-      console.error(`[sessions] confiance : ${(e as Error).message}`)
-    }
+    // Aucun dossier marqué de confiance d'avance : un repo cloné par un agent garde la question de Claude Code. Seul le
+    // dossier d'une session que weevils lance l'est, au lancement (spawn).
     try {
       const p = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) as Persisted
       this.hooks = new Map(p.hooks ?? [])
@@ -1933,10 +1929,17 @@ export class Weevils {
     this.assertSourceExecution(cwd)
     const short = crypto.randomBytes(3).toString('hex')
     const name = wvName(path.basename(cwd), short)
-    // No trust dialog at launch in the user's project folders (and weevils' own): marked trusted before. Anywhere else
-    // Claude Code asks, and the person answers from the app (server/terminal.ts).
+    // No trust dialog when weevils launches a session in the user's project folders (and weevils' own): this exact
+    // folder is marked trusted now, at launch, never in advance. Anywhere else Claude Code asks, and the person answers
+    // from the app (server/terminal.ts).
     const trusted = insideRoots(cwd)
-    if (tool === 'claude' && trusted) trustDirs([cwd])
+    if (tool === 'claude' && trusted) {
+      try {
+        trustDirs([cwd])
+      } catch (e) {
+        console.error(`[sessions] confiance de ${cwd} : ${(e as Error).message}`)
+      }
+    }
     // Several Claude accounts (server/claude-accounts.ts): the session starts under the active one.
     const acc = tool === 'claude' && accounts()?.on() ? accounts() : null
     if (trusted) acc?.trust(cwd)

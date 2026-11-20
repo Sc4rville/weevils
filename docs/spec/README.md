@@ -10,8 +10,10 @@ turn and the dispatcher (`lease.ts`, `turn.ts`, `dispatch.ts` next to it), a sim
 ([`server/weevbook/sim`](../../server/weevbook/sim), `npm run sim`), and the local weevbook
 ([`server/weevbook`](../../server/weevbook): store, adapters, writer, `weevils weevbook backfill | check | compare`)
 exist. The lease, the turn, the dispatcher and the simulator are not used by the running app yet. The writer is off
-unless `WEEVILS_WEEVBOOK=1`; on, it writes next to the app and changes nothing the app shows or does. Each page ends
-with "What exists today", which names the real files the design builds on.
+unless `WEEVILS_WEEVBOOK=1`; on, it writes next to the app and changes nothing the app shows or does. The connector of
+step 5 ([`server/connector`](../../server/connector): `/mcp`, its sign-in and the five tools) is off unless
+`WEEVILS_CONNECTOR=1`; on, ChatGPT and Claude.ai can send chats to the weevbook ([05](05-connector.md#step-5-the-connector-in-weevilsd)).
+Each page ends with "What exists today", which names the real files the design builds on.
 
 ## The idea in one picture
 

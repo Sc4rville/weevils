@@ -116,6 +116,9 @@ export const MACHINE = {
  *  Off by default: it changes nothing the app shows or does. */
 export const WEEVBOOK = process.env.WEEVILS_WEEVBOOK?.trim() === '1'
 export const WEEVBOOK_DIR = path.join(DATA_DIR, 'weevbook')
+/** The connector (docs/spec/05-connector.md, step 5): ChatGPT and Claude.ai send chats to the weevbook through /mcp,
+ *  once the person allows them. Off unless WEEVILS_CONNECTOR=1: until then /mcp is the app's like any other path. */
+export const CONNECTOR = process.env.WEEVILS_CONNECTOR?.trim() === '1'
 
 /** L'orchestrateur (la bande du haut) tourne sur une seule machine : celle qui sert l'app. */
 export const ORCHESTRATOR = (process.env.WEEVILS_ORCHESTRATOR || (process.env.WEEVILS_MACHINE ? '0' : '1')) === '1'

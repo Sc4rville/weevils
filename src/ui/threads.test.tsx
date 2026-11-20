@@ -183,6 +183,19 @@ describe('the three states', () => {
   })
 })
 
+describe('a thread that will never go on by itself', () => {
+  it('stopped before threads were on: the person\'s move, one line, no button; writing again continues', async () => {
+    calls.view = view({ state: 'waiting', hold: { reason: 'stopped' } })
+    render(<ThreadPage id={T} />, snap(true))
+    await flush()
+    expect(text()).toContain('your move')
+    expect(text(host.querySelector('.thread-hold'))).toBe('Stopped before this version: write again to continue.')
+    expect(host.querySelector('.thread-hold button')).toBeNull()
+    expect(host.querySelector('.composer')).not.toBeNull()
+    noRelayTrace()
+  })
+})
+
 describe('the weevbook page', () => {
   const list: ThreadList = {
     projects: ['blog', 'shop'],

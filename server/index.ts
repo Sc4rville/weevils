@@ -4,6 +4,7 @@ import { proposeThinkLayout } from './think-ai.ts'
 import { ThinkStore } from './think.ts'
 import { previewTarget } from './preview-target.ts'
 import { openSiteFile, siteFile, siteKey, siteKeyOk } from './site.ts'
+import { loadTokens, saveTokens as saveDeviceTokens } from './device-tokens.ts'
 import { Outbox, OutboxError } from './outbox.ts'
 import { executeOutbox, outboxRoute } from './outbox-http.ts'
 import { bossDoor } from './boss-door.ts'
@@ -146,14 +147,16 @@ const sameCode = (a: string, b: string) => {
   const y = crypto.createHash('sha256').update(foldCode(b)).digest()
   return crypto.timingSafeEqual(x, y)
 }
+// Appareils connectés : un nouveau code d'accès les déconnecte tous (server/device-tokens.ts).
 const TOKENS_FILE = path.join(DATA_DIR, 'tokens.json')
-let tokens = new Set<string>()
+const tokens = loadTokens(TOKENS_FILE, SECRET)
+const saveTokens = () => saveDeviceTokens(TOKENS_FILE, SECRET, tokens)
+// Written again at once with this code's mark: a list from before, or the devices of an old code, gone.
 try {
-  tokens = new Set(JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf8')))
-} catch {
-  /* aucun appareil connecté */
+  saveTokens()
+} catch (e) {
+  console.error('[devices]', (e as Error).message)
 }
-const saveTokens = () => fs.writeFileSync(TOKENS_FILE, JSON.stringify([...tokens]), { mode: 0o600 })
 
 // ---------------------------------------------------------------- accueil et branchements (server/setup.ts)
 

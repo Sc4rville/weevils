@@ -138,8 +138,8 @@ which explains every setting. After a change: `weevils-service restart` (for the
   against what cannot read your files (another account, a sandboxed app, a container); a program running as you can
   read the token, as it can read the access code. If you put a proxy other than the installer's Caddy in front, it
   must send `X-Forwarded-For` (nginx: `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`).
-- **Lost a phone?** `rm ~/.config/weevils/secret ~/.local/share/weevils/tokens.json && weevils-service restart`, then
-  log in again with the new code (`cat ~/.config/weevils/secret`).
+- **Lost a phone?** `rm ~/.config/weevils/secret && weevils-service restart`: a new code is made and every device
+  signed in with the old one is signed out. Log in again with the new code (`cat ~/.config/weevils/secret`).
 - The machine page shows a few facts about the machine (CPU, memory, disk). It only looks up the hosting provider
   online if you set `WEEVILS_DISCOVER=1`. The quota page reads your Claude Code / Codex login to show your usage.
 

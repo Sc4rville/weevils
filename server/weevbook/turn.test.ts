@@ -149,6 +149,13 @@ describe('the retry rule', () => {
     expect(holdAll(t, 'hold', 'no-machine').map((c) => c.turn)).toEqual([1, 2])
     expect(holdAll(run(...STATES.done), 'hold', 'no-room')).toEqual([])
   })
+  it('expired: a request no engine ever had waits for the person, and does not hold back the turns after it', () => {
+    const t = run(accepted(), held('no-machine'), held('expired'))
+    expect(next(t)).toMatchObject({ kind: 'quiet' })
+    expect(next(applyTurn(t, accepted(2)))).toMatchObject({ kind: 'dispatch', turn: 2, attempt: 1 })
+    // A request that ever ran never expires: it is the dispatcher's to finish.
+    expect(() => run(accepted(), assigned(1), running(), failed('some'), held('expired'))).toThrow(/expires/)
+  })
   it('the steal: failed machine-lost, no effect before running, some after', () => {
     expect(stolen(run(accepted(), assigned(1)))).toEqual({ turn: 1, state: 'failed', reason: 'machine-lost', effect: 'none' })
     expect(stolen(run(accepted(), assigned(1), running()))).toEqual({ turn: 1, state: 'failed', reason: 'machine-lost', effect: 'some' })

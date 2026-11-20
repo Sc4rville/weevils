@@ -313,6 +313,49 @@ EOF
     launchctl bootout "gui/$(id -u)/$prefix.weevils-tunnel" >/dev/null 2>&1 || true
     rm -f "$agents/$prefix.weevils-tunnel.plist"
   fi
+  # Updates: a look every 25 minutes, as the systemd timer does on Linux; weevils-update itself decides (setting,
+  # plain install, calm moment). Loaded again only when its file changed, and never from an install the updater runs
+  # itself (taking its agent out of launchd would stop it half-way).
+  upd=$agents/$prefix.weevils-update.plist
+  cat >"$upd.new" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- weevils, automatic updates (server/weevils-update; off with WEEVILS_AUTO_UPDATE=0). Written by server/install.sh. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$prefix.weevils-update</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$(xml "$HOME/.local/bin/weevils-update")</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$(xml "$svc_path")</string>
+    <key>LANG</key><string>en_US.UTF-8</string>
+  </dict>
+  <key>StartInterval</key><integer>1500</integer>
+  <key>RunAtLoad</key><false/>
+  <key>ProcessType</key><string>Background</string>
+  <key>LowPriorityIO</key><true/>
+  <key>Nice</key><integer>10</integer>
+  <key>StandardOutPath</key><string>/dev/null</string>
+  <key>StandardErrorPath</key><string>$(xml "$data/update.log")</string>
+</dict>
+</plist>
+EOF
+  upd_changed=0
+  if cmp -s "$upd.new" "$upd"; then rm -f "$upd.new"; else mv -f "$upd.new" "$upd"; upd_changed=1; fi
+  if [ "${WEEVILS_UPDATING:-0}" != 1 ]; then
+    dom=gui/$(id -u)
+    if ! launchctl print "$dom/$prefix.weevils-update" >/dev/null 2>&1; then
+      launchctl enable "$dom/$prefix.weevils-update" >/dev/null 2>&1 || true
+      launchctl bootstrap "$dom" "$upd" >/dev/null 2>&1 || echo "WARNING: launchd refused $upd: no automatic updates" >&2
+    elif [ "$upd_changed" = 1 ]; then
+      launchctl bootout "$dom/$prefix.weevils-update" >/dev/null 2>&1 || true
+      for _ in $(seq 1 30); do launchctl print "$dom/$prefix.weevils-update" >/dev/null 2>&1 || break; sleep 0.5; done
+      launchctl bootstrap "$dom" "$upd" >/dev/null 2>&1 || echo "WARNING: launchd refused $upd: no automatic updates" >&2
+    fi
+  fi
 elif [ "$(uname -s)" = Darwin ]; then
   rm -f "$agents/$prefix.weevilsd.plist" "$agents/$prefix.weevils-tunnel.plist"
 fi

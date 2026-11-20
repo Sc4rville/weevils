@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # weevils-update — keeps this weevils up to date by itself: the weevils-update timer runs it every 20 to 30 minutes
-# (server/install.sh sets it up; a crontab line where systemd is missing). Turned off by WEEVILS_AUTO_UPDATE=0 (the
+# (server/install.sh sets it up: a systemd timer, a launchd agent on a Mac, a crontab line elsewhere). Turned off by WEEVILS_AUTO_UPDATE=0 (the
 # app's settings, or `weevils config set WEEVILS_AUTO_UPDATE 0`).
 #
 # - Only a plain install moves: no local change, no extra worktree, nothing of its own (local commits, another
@@ -33,9 +33,25 @@ state=$HOME/.local/share/weevils
 mkdir -p "$state"
 log=$state/update.log
 say() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >>"$log"; [ "$now" = 0 ] || printf '  weevils · %s\n' "$*"; }
-# One run at a time.
-exec 9>"$state/update.lock"
-command -v flock >/dev/null && { flock -n 9 || exit 0; }
+# What goes when this run ends, whatever ends it (one trap for all: a second one would replace the first).
+cleanup=()
+trap 'rm -rf ${cleanup[@]+"${cleanup[@]}"}' EXIT
+# One run at a time: flock where there is one, else a lock folder (macOS has no flock; mkdir is atomic). A folder
+# left by a run that died (its process gone) is taken over.
+if command -v flock >/dev/null; then
+  exec 9>"$state/update.lock"
+  flock -n 9 || exit 0
+else
+  lockd=$state/update.lock.d
+  if ! mkdir "$lockd" 2>/dev/null; then
+    held=$(cat "$lockd/pid" 2>/dev/null || true)
+    if [ -n "$held" ] && kill -0 "$held" 2>/dev/null; then exit 0; fi
+    rm -rf "$lockd"
+    mkdir "$lockd" 2>/dev/null || exit 0
+  fi
+  echo $$ >"$lockd/pid"
+  cleanup+=("$lockd")
+fi
 
 # weevilsd trusts this machine's own commands by the local token they send (server/http.ts isLocal).
 local_token=$state/local-token
@@ -84,7 +100,7 @@ if [ -z "$snap" ] && g ls-remote -q origin main >/dev/null 2>&1; then
   key=$dir/get/release-key.pub
   [ -s "$key" ] || { say "no release key in $dir to check an update against: not updated"; exit 0; }
   man=$(mktemp) mansig=$(mktemp) allowed=$(mktemp)
-  trap 'rm -f "$man" "$mansig" "$allowed"' EXIT
+  cleanup+=("$man" "$mansig" "$allowed")
   if ! { curl -fsS -m 20 "$from_url/main.txt" -o "$man" && curl -fsS -m 20 "$from_url/main.txt.sig" -o "$mansig"; } 2>/dev/null; then
     say "no signed release manifest from $from_url: not updated"; exit 0
   fi
@@ -124,7 +140,7 @@ fi
 say "updating $from → $to ($mode)"
 if [ "$mode" = bundle ]; then
   b=$(mktemp)
-  trap 'rm -f "$b"' EXIT
+  cleanup+=("$b")
   curl -fsSL -m 600 "$from_url/weevils.bundle" -o "$b" || { say "could not download $to"; exit 0; }
   # Signed with weevils' release key: the public half comes from the version installed now (get/release-key.pub), so
   # only code signed by the same key replaces it. A signature that does not check: nothing changes.
@@ -155,7 +171,8 @@ fi
 # ---------------------------------------------------------------- the installer, as on a re-run
 run=$state/update-install.log
 (umask 077; : >>"$run") && chmod 600 "$run"
-install_ok() { (cd "$dir" && WEEVILS_NO_UPDATE=1 ./install.sh --agent --no-update) >"$run" 2>&1 || true; grep -q '^status=ok$' "$run"; }
+# WEEVILS_UPDATING: the install leaves this updater's own launchd agent alone (server/install.sh).
+install_ok() { (cd "$dir" && WEEVILS_NO_UPDATE=1 WEEVILS_UPDATING=1 ./install.sh --agent --no-update) >"$run" 2>&1 || true; grep -q '^status=ok$' "$run"; }
 lang=$(sed -n 's/.*"lang" *: *"\(fr\|en\)".*"from" *: *"choice".*/\1/p' "$state/prefs.json" 2>/dev/null || true)
 lang=${lang:-$(cfgv WEEVILS_LANG)}
 post() {

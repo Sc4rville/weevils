@@ -24,6 +24,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { Session } from '../shared/api.ts'
 import type { QuotaInfo } from '../shared/infra.ts'
+import { trustInClaudeJson } from './claude-json.ts'
 import * as login from './claude-login.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/claude-accounts.ts'
@@ -198,12 +199,8 @@ export class ClaudeAccounts {
     if (!dir || !this.on()) return
     try {
       this.prepare(this.i.active)
-      const f = path.join(dir, '.claude.json')
-      const d = readJson(f) ?? {}
-      d.projects ??= {}
-      if (d.projects[cwd]?.hasTrustDialogAccepted) return
-      d.projects[cwd] = { ...(d.projects[cwd] ?? {}), hasTrustDialogAccepted: true }
-      writePrivate(f, d)
+      // The account's own ~/.claude.json, rewritten by its sessions too: same care as the main one.
+      trustInClaudeJson(path.join(dir, '.claude.json'), [cwd])
     } catch (e) {
       console.error(`[accounts] trust: ${(e as Error).message}`)
     }

@@ -3,6 +3,7 @@ import { InstallationIdentity } from './recursive-identity.ts'
 import { isScratchDir } from './scratch.ts'
 import AgentMessages from './i18n/agent-messages.ts'
 import { CLAUDE, CODEX_FLAGS, projectClaude, projectCodexFlags } from './agent-launch.ts'
+import { trustInClaudeJson } from './claude-json.ts'
 import { MessageOrigins } from './message-origins.ts'
 import CB from './i18n/codex-bridge.ts'
 import { automationSourceRoot } from './automation-workspaces.ts'
@@ -154,24 +155,10 @@ const stepOf = (t: { messages: { role: string; text: string }[] }) => {
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-/** Marque des dossiers comme de confiance dans ~/.claude.json : Claude Code n'affiche plus « Is this a project you trust? ». */
+/** Marque des dossiers comme de confiance dans ~/.claude.json : Claude Code n'affiche plus « Is this a project you trust? ».
+ *  Le fichier est celui de Claude Code, réécrit sans cesse : jamais touché s'il ne se lit pas (server/claude-json.ts). */
 export function trustDirs(dirs: string[]) {
-  const cfg = path.join(HOME, '.claude.json')
-  let d: any = {}
-  try {
-    d = JSON.parse(fs.readFileSync(cfg, 'utf8'))
-  } catch {
-    /* premier lancement : fichier absent */
-  }
-  d.projects ??= {}
-  let changed = false
-  for (const dir of dirs) {
-    if (d.projects[dir]?.hasTrustDialogAccepted) continue
-    d.projects[dir] = { ...(d.projects[dir] ?? {}), hasTrustDialogAccepted: true }
-    changed = true
-  }
-  if (changed) fs.writeFileSync(cfg, JSON.stringify(d, null, 2))
-  return changed
+  return trustInClaudeJson(path.join(HOME, '.claude.json'), dirs)
 }
 
 

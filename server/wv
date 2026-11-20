@@ -122,9 +122,17 @@ in_roots() {
   done
   return 1
 }
+# ~/.claude.json est celui de Claude Code, réécrit par chaque session : laissé tel quel s'il ne se lit pas (écriture de
+# Claude prise en plein milieu, jq -e), remplacé d'un coup depuis un fichier voisin, avec son mode ; un lien, jamais.
 if command -v jq >/dev/null && [ "$tool" = claude ] && in_roots; then
-  cfg=~/.claude.json; [ -f "$cfg" ] || echo '{}' > "$cfg"
-  t=$(mktemp) && jq --arg d "$PWD" '.projects[$d] = ((.projects[$d] // {}) + {hasTrustDialogAccepted: true})' "$cfg" > "$t" && mv "$t" "$cfg"
+  cfg=~/.claude.json
+  [ -e "$cfg" ] || (umask 077 && echo '{}' > "$cfg")
+  if [ ! -L "$cfg" ] && ! jq -e --arg d "$PWD" '.projects[$d].hasTrustDialogAccepted == true' "$cfg" >/dev/null 2>&1 && t=$(mktemp "$cfg.weevils.XXXXXX" 2>/dev/null); then
+    if jq -e --arg d "$PWD" 'if type == "object" then .projects[$d] = ((.projects[$d] // {}) + {hasTrustDialogAccepted: true}) else error("not an object") end' "$cfg" > "$t" 2>/dev/null && [ -s "$t" ]; then
+      chmod "$(stat -c %a "$cfg" 2>/dev/null || stat -f %Lp "$cfg")" "$t" 2>/dev/null || true
+      mv -f "$t" "$cfg"
+    else rm -f "$t"; fi
+  fi
 fi
 if [ "$tool" = claude ]; then
   # Linux gives a uuid in /proc; a Mac has uuidgen (upper case: Claude Code names its transcript after it, in lower case).

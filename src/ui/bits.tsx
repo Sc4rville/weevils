@@ -22,6 +22,7 @@ import PM from '../i18n/plain-steps'
 import { clusters, clusterLine, groupLine } from './plain-steps'
 import D from '../i18n/devil'
 import RM from '../i18n/relay'
+import { threadsOn } from './threads-on'
 import { isUnread, useSeen } from './seen'
 import { AutoMark, G, Icon } from './icons'
 import { LivingLink, livingLink } from './living-link'
@@ -132,12 +133,14 @@ export function SessionRow({ session }: { session: Session }) {
   const act = waiting && session.attention ? session.attention : session.status === 'working' ? session.now : undefined
   const text = session.title
   const cut = session.status === 'interrupted'
+  // Threads on: the row is a conversation, whatever engine carries it now; no tool, no relay on it.
+  const thread = threadsOn(snap) && !!session.thread
   const when = dur(now - (cut ? (session.interrupted?.at ?? session.lastActivityAt) : session.status === 'done' ? session.lastActivityAt : ref))
   const row = (
     <button
       className={`row ${waiting ? 'tone' : ''} ${cut ? 'cut' : ''} ${session.status === 'working' ? 'live' : ''} ${unread ? 'unread' : ''}`}
       onClick={() => push({ kind: 'session', id: session.id })}
-      aria-label={t.rowAria(session.tool, session.title, st.label, act, session.background > 0 ? `${when}, ${t.background(session.background)}` : when)}
+      aria-label={t.rowAria(thread ? '' : session.tool, session.title, st.label, act, session.background > 0 ? `${when}, ${t.background(session.background)}` : when)}
       title={act ? session.title : undefined}
     >
       <span className="in line" aria-hidden>
@@ -145,12 +148,12 @@ export function SessionRow({ session }: { session: Session }) {
           <StatusChar s={session.status} auto={!!autoOfSession(snap, session.id)} />
         </span>
         <span className="tool-ic">
-          <ToolIcon tool={session.tool} />
+          {!thread && <ToolIcon tool={session.tool} />}
         </span>
         <span className="title wrap">
           <span className="session-name">{unread && <span className="dot" aria-hidden />}{text}</span>
           {/* Session Codex ouverte en relais d'une session Claude arrêtée par sa limite d'usage. */}
-          {session.relayOf && (
+          {session.relayOf && !threadsOn(snap) && (
             <span className="relay-sign" title={rt.signAria}>
               ⇄ {rt.sign}
             </span>

@@ -108,6 +108,12 @@ export const api = {
   /** Session coupée en plein travail : relancée (--resume + message de reprise), ou laissée. */
   resume: (id: string) => call<{ id: string }>('POST', `/api/sessions/${enc(id)}/resume`, {}),
   dismiss: (id: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/dismiss`, {}),
+  /** Threads (WEEVILS_THREADS): the weevbook's conversations, one thread whatever engines carried it. */
+  threads: (o: { project?: string; q?: string } = {}) => call<import('../shared/threads').ThreadList>('GET', `/api/threads?${new URLSearchParams(Object.entries(o).filter((e): e is [string, string] => typeof e[1] === 'string'))}`),
+  thread: (id: string) => call<import('../shared/threads').ThreadView>('GET', `/api/threads/${enc(id)}`),
+  /** key: the same message sent twice (a retry) is filed once. */
+  threadSend: (id: string, text: string, key: string) => call<{ thread: string; key: string }>('POST', `/api/threads/${enc(id)}/send`, { text, key }),
+  threadContinue: (id: string) => call<import('../shared/threads').ThreadView>('POST', `/api/threads/${enc(id)}/continue`, {}),
   /** Relais Codex pendant la limite de Claude : réglage, plan demandé pour une session, décision sur un plan (id « all » : tous). */
   relaySet: (o: { mode?: string; switchAt?: number; tz?: string }) => call<{ ok: true }>('POST', '/api/relay', o),
   relayRequest: (id: string) => call<{ ok: true }>('POST', `/api/sessions/${enc(id)}/relay`, {}),

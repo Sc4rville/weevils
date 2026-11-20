@@ -288,6 +288,7 @@ const HELD: Record<string, string> = { // i18n-ignore
   'not-signed-in': 'an account must be signed in again on the machine', // i18n-ignore
   'only-there': 'it can only continue on the machine where it started, which is off', // i18n-ignore
   attempts: 'it stopped three times in a row', // i18n-ignore
+  expired: 'it waited more than an hour for a machine and was dropped; ask again if it is still wanted', // i18n-ignore
 }
 
 // ---------------------------------------------------------------- the connector
@@ -327,6 +328,9 @@ export interface ConnectorOptions {
   /** The repositories under the project roots: a chat that names one is filed under it. */
   projects?: () => string[]
   dispatch?: Dispatch
+  /** Threads (step 4, WEEVILS_THREADS): the request goes to the dispatcher's inbox, which files it with the lease when
+   *  the thread is free and places it like any message. The thread may then have a leg: leases decide. */
+  accept?: (thread: string, m: { text: string; key: string; app: 'chatgpt' | 'claude-ai'; project?: string | null }) => Promise<void>
   now?: () => number
   /** How long a call waits for the weevbook's lock (the shadow writer holds it a moment at a time). */
   lockMs?: number
@@ -588,7 +592,7 @@ export class Connector {
     const id = await this.threadOf(book, prefix, a.thread, a.conversation)
     if (!id) throw new Refusal('This chat is not saved yet: save it with send_to_weevboss first, then ask again.') // i18n-ignore
     const before = (await book.thread(id))!.journal.events
-    if (openLeg(before)) throw new Refusal('An agent session writes this thread: continue it from weevils.') // i18n-ignore
+    if (!this.o.accept && openLeg(before)) throw new Refusal('An agent session writes this thread: continue it from weevils.') // i18n-ignore
     const key = `${prefix}req:${a.request}`
     if (!keySafe(key)) throw new Refusal(UNSAFE_NAME)
     const link = `${ctx.base}/t/${id}`
@@ -605,6 +609,10 @@ export class Connector {
     if (asked) {
       const turn = [...turnsOf(before)].find(([, t]) => t.message === asked.id)?.[0]
       return answer(before, turn ?? 0)
+    }
+    if (this.o.accept) {
+      await this.o.accept(id, { text: a.instruction, key, app, ...(a.project !== undefined ? { project: slugify(a.project) || null } : {}) })
+      return answer(before, 0)
     }
     const now = this.now()
     const at = new Date(now).toISOString()

@@ -240,6 +240,9 @@ export interface Follow {
   refKey: string
   refAt: number
   dirty: boolean
+  /** The journal's length when the adapter last read its state from it: longer, someone else wrote (the dispatcher
+   *  started a turn, step 4), and the adapter reads its state again. */
+  events?: number
 }
 
 /** How often a running turn's ref follows its folder (03-sync-and-lease.md: a commit at each lease renewal that has
@@ -292,12 +295,16 @@ export async function syncSession(book: Weevbook, sessions: Sessions, src: Sourc
   let f = follows?.get(key)
   // A session resumed into a new leg (resume.ts) is read again from what the journal says of that leg.
   if (f && (f.committedLines !== committed || (f.leg !== undefined && f.leg !== leg))) f = undefined
+  // A session the dispatcher opened for a thread (step 4), followed before its record named the thread.
+  if (f && rec?.thread && f.thread === undefined) f = undefined
   const grew = (at: number) => st.size > at
   if (f && !f.parsed && grew(f.offset)) f = undefined
   if (!f) {
     const engine = `${src.provider}:${o.account(src.provider)}@${machinePart(o.machine)}`
     const adapter = adapterFor(src, engine, st.mtimeMs)
     f = { key, adapter, parsed: true, offset: 0, committedLines: committed, raw: [], outs: [], mark: { raw: 0, outs: 0, offset: 0 }, thread: thread ? rec?.thread : undefined, leg, refKey: '', refAt: 0, dirty: false }
+    // A leg the dispatcher opened on a new session (step 4) has no line yet: its turn's state is the journal's.
+    if (committed === 0 && thread) adapter.restore(thread.journal.events, leg)
     if (committed > 0 && thread) {
       if (knownOffset !== undefined && !grew(knownOffset)) {
         // Nothing new: the turn's state is enough to settle it.
@@ -319,9 +326,15 @@ export async function syncSession(book: Weevbook, sessions: Sessions, src: Sourc
       adapter.restore(thread.journal.events, leg)
     }
     f.mark = { raw: 0, outs: 0, offset: f.offset }
+    f.events = thread?.journal.events.length
     follows?.set(key, f)
   }
   const a = f.adapter
+  // The journal grew under the adapter (the dispatcher filed a request and started its turn here): its state again.
+  if (thread && f.events !== undefined && thread.journal.events.length !== f.events && a.safe && f.outs.length === 0) {
+    a.restore(thread.journal.events, leg)
+    f.events = thread.journal.events.length
+  }
   const markIfSafe = () => {
     if (a.safe) f.mark = { raw: f.raw.length, outs: f.outs.length, offset: f.offset }
   }
@@ -342,6 +355,8 @@ export async function syncSession(book: Weevbook, sessions: Sessions, src: Sourc
     const events: EventDraft[] = []
     let id = result.thread
     if (!id || !(await book.thread(id))) {
+      // Opened by the dispatcher for a thread: it waits for the record that names the thread and its leg.
+      if (!rec && a.prefaced) return
       id ??= ulid(a.firstAt ?? st.mtimeMs)
       if (!rec) await sessions.record({ key, thread: id, leg, provider: src.provider, file: src.file })
       result.thread = id
@@ -371,6 +386,7 @@ export async function syncSession(book: Weevbook, sessions: Sessions, src: Sourc
     f.raw.splice(0, m.raw)
     f.outs.splice(0, m.outs)
     f.mark = { raw: 0, outs: 0, offset: m.offset }
+    f.events = (await book.thread(id))?.journal.events.length
     await sessions.record({ key, lines: f.committedLines, offset: m.offset, rawBytes: await book.rawBytes(id, leg, src.provider) })
   }
 

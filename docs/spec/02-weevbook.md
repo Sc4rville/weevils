@@ -239,6 +239,15 @@ On each machine, in weevils' data dir (`~/.local/share/weevils`):
   turn. Codex tool steps are compared by call id, since the app
   labels them in the reader's language.
 
+## The weevbook page (step 4)
+
+With `WEEVILS_THREADS=1`, the app reaches the weevbook from where projects are listed (the `≡` beside a project's
+name, and a line on the project's page). It lists the threads of a project, newest first, with their state; searches
+titles, projects and `handoff.md` (`GET /api/threads?project=&q=`); opens one to reread it in the app's own look
+(the journal's messages, steps and attachments, as `thread.md` has them); and continues it by writing in it. It
+replaces nothing yet: sessions keep their own list, collapsed to one row per thread. The state shown is the app's
+([06](06-dispatch.md#step-4-the-dispatcher-in-weevilsd)), not `meta.json`'s.
+
 ## What exists today
 
 - Step 1 above. Before it there was no weevbook. Threads live in provider files (`~/.claude/projects/<folder>/<id>.jsonl`,

@@ -31,6 +31,7 @@ import { GoneBack, useGoneTitle } from './gone'
 import { CodeFile } from './codeview'
 import { FsFilePage, FsPage, InfraPage, UsagePage } from './infra'
 import { RelayPage, SessionRelay } from './relay'
+import { ThreadPage, WeevbookPage, threadOf, threadsOn } from './threads'
 import { listFiles } from './repofiles'
 import { useThreadAsk } from './askthread'
 import { durLong, status, toolName } from './format'
@@ -50,6 +51,7 @@ import { WebPage } from './living-link'
 
 
 export function PageView({ page }: { page: Page }) {
+  const { snap } = useApp()
   switch (page.kind) {
     case 'think': return <ThinkGate />
     case 'lost-features': return <LostFeaturesPage />
@@ -57,7 +59,12 @@ export function PageView({ page }: { page: Page }) {
     case 'archived':
       return <ArchivedSessions />
     case 'session':
-      return <SessionPage id={page.id} />
+      // Threads on: a session that carries a thread opens the thread, one conversation whatever engines carried it.
+      return threadOf(snap, page.id) ? <ThreadPage id={threadOf(snap, page.id)!} session={snap.sessions.find((s) => s.id === page.id)} /> : <SessionPage id={page.id} />
+    case 'weevbook':
+      return <WeevbookPage projectId={page.projectId} />
+    case 'thread':
+      return <ThreadPage id={page.id} />
     case 'files':
       return <FilesPage projectId={page.projectId} repo={page.repo} dir={page.dir} />
     case 'file':
@@ -73,7 +80,8 @@ export function PageView({ page }: { page: Page }) {
     case 'usage':
       return <UsagePage />
     case 'relay':
-      return <RelayPage />
+      // Threads on: no relay; an old link to its page opens the weevbook.
+      return threadsOn(snap) ? <WeevbookPage /> : <RelayPage />
     case 'new':
       return <NewSessionPage projectId={page.projectId} />
     case 'conversations':

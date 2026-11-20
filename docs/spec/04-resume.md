@@ -183,7 +183,7 @@ attempt.
 ## Step 3: resume on another machine
 
 Decided with step 3. `server/weevbook/resume.ts` (`resumeThread`) implements it; `weevils weevbook resume <thread>
-[--wait]` calls it, and the dispatcher of step 4 will.
+[--wait]` calls it. The dispatcher of step 4 starts its turns with `start.ts`, which shares its steps.
 
 - **Only when asked**, and only with the thread's own provider. A change of provider (rung 3) is not done here.
 - **The lease.** Idle, whoever holds it: taken over. Working, and its holder silent: stolen first when the rules of
@@ -264,6 +264,11 @@ To be tested with two machines at step 3, and by the simulator at step 4.
   when the limit is near, not kept current, and the user sees the whole mechanism.
 - `server/return-relay.ts` goes the other way without a model: the first request plus the last 24 messages, cut at
   20,000 characters. Rung 3 keeps those two numbers.
+- [`server/weevbook/handoff.ts`](../../server/weevbook/handoff.ts) (step 4): the handoff from the journal
+  (`journalHandoff`), its check (front matter, the seven headings in order, 12,000 characters), its rewrite by a small
+  model (`nextHandoff`, falling back to the journal's), and the first request of rung 3 (`firstRequest`): the signed
+  preface, the handoff, the events after `upTo`, the last 24 messages within 20,000 characters, the request.
+  [`start.ts`](../../server/weevbook/start.ts) runs rungs 0 to 3 for the dispatcher ([06](06-dispatch.md#step-4-the-dispatcher-in-weevilsd)).
 - The state of the code is saved only with a hub set (step 2).
 
 ## Not in v1

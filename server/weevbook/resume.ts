@@ -4,7 +4,8 @@
 // preface, never as a replay of the user's message. dispatch.ts chooses among this machine's engines of the thread's
 // own provider; a change of provider is not done here.
 //
-// `weevils weevbook resume <thread>` calls it, and step 4's dispatcher will (resumeThread, with its own `launch`).
+// `weevils weevbook resume <thread>` calls it. Step 4's dispatcher starts turns with start.ts, which uses the same
+// pieces (the session rebuilt from raw, the checkpoint restored) for every rung.
 
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
@@ -96,7 +97,7 @@ const fail = (why: Extract<ResumeResult, { ok: false }>['why'], detail: string, 
 const zero = (now: number): Quota => ({ readAt: now, fiveHour: { used: 0, resetsAt: null }, week: { used: 0, resetsAt: null } })
 
 /** A session of the folder was written in the last two minutes: someone works there. */
-function busyByFiles(claudeDir: string) {
+export function busyByFiles(claudeDir: string) {
   return (cwd: string) => {
     const dir = path.join(claudeDir, claudeSlug(cwd))
     try {
@@ -109,7 +110,7 @@ function busyByFiles(claudeDir: string) {
 }
 
 /** The provider session file of `session` on this machine, if there is one. */
-function findSession(provider: Provider, session: string, claudeDir: string, codexDir: string): string | null {
+export function findSession(provider: Provider, session: string, claudeDir: string, codexDir: string): string | null {
   if (provider === 'claude') {
     let dirs: fs.Dirent[] = []
     try {
@@ -139,10 +140,10 @@ function findSession(provider: Provider, session: string, claudeDir: string, cod
     return null
   }
 }
-const countLines = (text: string) => text.split('\n').length - 1
+export const countLines = (text: string) => text.split('\n').length - 1
 
 /** The raw lines of every leg of `session`, in order, each leg's folder rewritten to `cwd` (04-resume.md, rung 2). */
-async function rebuild(book: HubSync['book'], thread: string, events: readonly JournalEvent[], provider: Provider, session: string, cwd: string): Promise<string> {
+export async function rebuild(book: HubSync['book'], thread: string, events: readonly JournalEvent[], provider: Provider, session: string, cwd: string): Promise<string> {
   const dir = book.abs(book.pathOf(thread)!)
   const names = await fsp.readdir(path.join(dir, 'raw')).catch(() => [] as string[])
   let text = ''
@@ -157,7 +158,7 @@ async function rebuild(book: HubSync['book'], thread: string, events: readonly J
 }
 
 /** Where the provider looks for the session here; an existing file is kept beside (`.before-weevbook`). */
-async function destination(provider: Provider, session: string, cwd: string, claudeDir: string, codexDir: string, now: number): Promise<string> {
+export async function destination(provider: Provider, session: string, cwd: string, claudeDir: string, codexDir: string, now: number): Promise<string> {
   let dest: string
   if (provider === 'claude') dest = path.join(claudeDir, claudeSlug(cwd), `${session}.jsonl`)
   else {

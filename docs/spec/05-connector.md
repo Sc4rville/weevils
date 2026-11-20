@@ -272,7 +272,10 @@ client registration), then send the person's browser to the consent page with PK
   project, and `turn` `accepted`, then asks the dispatcher. The dispatcher of 06 does not run in weevilsd yet (step
   4): until it does, the turn is `held` with rule `hold` and reason `no-machine`, and the result is
   `Saved. No machine can work on it now: none of the user's machines takes work from the weevbook now. It starts as
-  soon as one can.` A held turn is assigned when the dispatcher runs: the request starts then. The outbox is not
+  soon as one can.` A held turn is assigned when the dispatcher runs: the request starts then. With
+  `WEEVILS_THREADS=1` the dispatcher runs: the request goes to its inbox instead (the same key twice is one request),
+  a thread with an open leg takes it too (the lease decides), and a request held an hour without starting ends as
+  `expired` ("ask again"; [06](06-dispatch.md#step-4-the-dispatcher-in-weevilsd)). The outbox is not
   used: it delivers to live sessions, and the dispatcher, not the outbox, decides which engine takes a turn. The same
   `request` again answers from the turn it opened.
 - **`search_weevbook`** matches the query's words (two letters or more, accents and case folded) in the title, the
@@ -282,7 +285,7 @@ client registration), then send the person's browser to the consent page with PK
   header, its first request and its last messages; `recent` is the last `count` messages. Speakers are named as in
   `thread.md` (User, ChatGPT, Claude, Agent).
 - **`thread_status`**: `waiting for you`, `an agent is working on it`, or `paused:` with the held turn's reason in one
-  sentence (`no-machine`, `no-room`, `not-signed-in`, `only-there`, `attempts`) or a failed turn.
+  sentence (`no-machine`, `no-room`, `not-signed-in`, `only-there`, `attempts`, `expired`) or a failed turn.
 - **Texts for the model** (descriptions, results, errors) are English, like the journal; only the consent page is
   translated (`server/i18n/connector.ts`).
 - **The link** `<base>/t/<thread id>` opens the app until the weevbook page has the route.

@@ -57,6 +57,8 @@ export interface Batch {
   raw?: { leg: string; provider: Provider; lines: string[] }
   /** The bytes of the attachment events, by SHA-256. An attachment without its bytes is not written. */
   contents?: Map<string, Buffer>
+  /** handoff.md, written with the `handoff` event of this batch that records its SHA-256 (BOOK-8). */
+  handoff?: string
 }
 
 interface RawSegments {
@@ -146,6 +148,8 @@ interface Tx {
   sizes: Record<string, number>
   /** Attachments the write adds. */
   created: string[]
+  /** handoff.md before the write, when the write replaces it (null: there was none). */
+  handoff?: string | null
 }
 
 export class Weevbook {
@@ -410,13 +414,16 @@ export class Weevbook {
     const created: string[] = []
     for (const rel of files.keys()) if (!(await exists(path.join(old, rel)))) created.push(rel)
 
-    const tx: Tx = { thread: th.id, from, to, sizes, created }
+    const handoff = batch.handoff !== undefined && lines.some((l) => l.includes('"type":"handoff"')) ? batch.handoff : undefined
+    const before = handoff !== undefined ? await fsp.readFile(path.join(old, 'handoff.md'), 'utf8').catch(() => null) : undefined
+    const tx: Tx = { thread: th.id, from, to, sizes, created, ...(before !== undefined ? { handoff: before } : {}) }
     await writeAtomic(this.txFile(th.id), JSON.stringify(tx))
     if (from && from !== to) await this.move(from, to)
     // The attachments first: an event never names a file that is not there (02-weevbook.md, failure cases).
     for (const rel of created) await writeAtomic(path.join(dir, rel), files.get(rel)!)
     if (lines.length) await appendSync(path.join(dir, 'events.jsonl'), `${lines.join('\n')}\n`)
     for (const [rel, seg] of segments) await appendSync(path.join(dir, rel), seg.text.join(''))
+    if (handoff !== undefined) await writeAtomic(path.join(dir, 'handoff.md'), handoff)
     await writeAtomic(path.join(dir, 'thread.md'), renderThread(th.journal.events))
     await writeAtomic(path.join(dir, 'meta.json'), renderMeta(th.journal.events))
     await fsp.rm(this.txFile(th.id), { force: true })
@@ -470,6 +477,8 @@ export class Weevbook {
         else await fsp.truncate(file, size).catch(() => undefined)
       }
       for (const rel of tx.created) await fsp.rm(path.join(dir, rel), { force: true })
+      if (tx.handoff === null) await fsp.rm(path.join(dir, 'handoff.md'), { force: true })
+      else if (tx.handoff !== undefined) await writeAtomic(path.join(dir, 'handoff.md'), tx.handoff)
       for (const f of await walk(dir)) if (f.endsWith('.next')) await fsp.rm(path.join(dir, f), { force: true })
       const events = parseJournal(await fsp.readFile(path.join(dir, 'events.jsonl'), 'utf8').catch(() => '')).events
       await writeAtomic(path.join(dir, 'thread.md'), renderThread(events))

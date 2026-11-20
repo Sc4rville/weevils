@@ -2619,6 +2619,34 @@ button.copy.done {
   min-height: 36px;
 }
 
+/* ---------- Threads (src/ui/threads.tsx, WEEVILS_THREADS): the sentence of a paused thread, the weevbook page ---------- */
+.thread-hold {
+  padding-block: 12px;
+  font-weight: 700;
+}
+.thread-hold .link {
+  min-height: 36px;
+  font-weight: 400;
+}
+.weevbook-search {
+  padding-block: 8px;
+}
+.weevbook-search input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+}
+.weevbook-projects {
+  padding-block: 4px 8px;
+}
+.weevbook-projects .link[aria-pressed='true'] {
+  font-weight: 700;
+}
+
 /* Keep the open conversation inside the visual viewport when iOS pans for the keyboard. */
 .agent.open {
   position: fixed;

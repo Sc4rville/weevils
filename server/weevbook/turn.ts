@@ -15,8 +15,12 @@ export type FailReason = 'quota' | 'auth' | 'api' | 'machine-lost' | 'lease-lost
 /** The failures that count toward MAX_ATTEMPTS: the turn broke an engine. A quota that ran out or a machine that went
  *  away is not the turn's doing; the dispatcher's table bounds those (`no-room`, `no-machine`). */
 export const COUNTED: readonly FailReason[] = ['api', 'auth']
-/** The `reason` of a held turn: the app maps each to one sentence and one action (docs/spec/06-dispatch.md). */
-export type HoldReason = 'no-machine' | 'no-room' | 'not-signed-in' | 'only-there' | 'attempts'
+/** The `reason` of a held turn: the app maps each to one sentence and one action (docs/spec/06-dispatch.md).
+ *  `expired`: a request held more than an hour that the dispatcher found when it started (05-connector.md, step 4). */
+export type HoldReason = 'no-machine' | 'no-room' | 'not-signed-in' | 'only-there' | 'attempts' | 'expired'
+/** Held for a reason the table cannot lift: the turn waits for the person (try again, ask again), and the turns after
+ *  it are served. */
+export const WAITS_FOR_YOU: readonly string[] = ['attempts', 'expired']
 
 export interface Attempt {
   attempt: number
@@ -47,7 +51,7 @@ const fail = (why: string): never => {
 }
 
 /** Turns that wait for an engine: accepted, failed, or held for a reason the table can lift. */
-const open = (t: Turn) => t.state === 'accepted' || t.state === 'failed' || (t.state === 'held' && t.held?.reason !== 'attempts')
+const open = (t: Turn) => t.state === 'accepted' || t.state === 'failed' || (t.state === 'held' && !WAITS_FOR_YOU.includes(t.held?.reason ?? ''))
 const live = (t: Turn) => t.state === 'assigned' || t.state === 'running'
 /** The attempts of a turn that count toward MAX_ATTEMPTS: those that failed on `api` or `auth`. */
 export const counted = (t: Turn) => t.attempts.filter((a) => a.end?.state === 'failed' && COUNTED.includes(a.end.reason)).length
@@ -74,7 +78,8 @@ export function applyTurn(turns: readonly Turn[], c: TurnChange): Turn[] {
       if (!open(t)) fail(`turn ${t.turn} is ${t.state}${t.held ? ` (${t.held.reason})` : ''}: it cannot be held`)
       if (!c.rule || !c.reason) fail('held without its rule and reason')
       if (c.reason === 'attempts' && counted(t) < MAX_ATTEMPTS) fail(`held for attempts after ${counted(t)} counted failures`)
-      if (t.state === 'failed' && counted(t) >= MAX_ATTEMPTS && c.reason !== 'attempts') fail('a turn out of attempts is held for attempts')
+      if (t.state === 'failed' && counted(t) >= MAX_ATTEMPTS && c.reason !== 'attempts' && c.reason !== 'expired') fail('a turn out of attempts is held for attempts')
+      if (c.reason === 'expired' && t.attempts.some((a) => a.ran)) fail('only a request no engine ever had expires')
       next.held = { rule: c.rule!, reason: c.reason! }
       break
     case 'assigned': {
@@ -126,7 +131,7 @@ export function turnsOf(events: readonly JournalEvent[]): Turn[] {
 // ---------------------------------------------------------------- what comes next
 
 export type Next =
-  /** Every turn is done, or held for attempts (it waits for "Try again"). */
+  /** Every turn is done, or held for a reason only the person lifts (attempts: "Try again"; expired: ask again). */
   | { kind: 'quiet' }
   /** A turn is in an engine's hands. */
   | { kind: 'busy'; turn: number; state: 'assigned' | 'running' }

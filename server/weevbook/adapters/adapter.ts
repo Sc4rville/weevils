@@ -87,6 +87,12 @@ export abstract class Adapter {
   private images = 0
   /** A title that is not in the provider's lines (Codex keeps its thread names apart). */
   externalTitle: string | undefined
+  /** The request of a turn the dispatcher started (step 4): already in the journal, it opens nothing when the provider
+   *  writes it. Set by restore() while the turn runs and its engine has not said anything yet. */
+  awaiting: string | undefined
+  /** The thread a session's first request named (`[from:weevbook;thread:<id>]`): a session the dispatcher opened for
+   *  a thread, never a thread of its own (sync.ts waits for its record). */
+  prefaced: string | undefined
   private seen: Message | undefined
   private seenLen = 0
   /** The reply being read: it is written when something else comes, since a reply may still grow. */
@@ -199,6 +205,7 @@ export abstract class Adapter {
     }
     this.seen = this.t.messages.at(-1)
     this.seenLen = this.seen?.text.length ?? 0
+    this.awaiting = this.state === 'running' ? awaitedRequest(events) : undefined
   }
 
   setExternalTitle(title: string | undefined): Out[] {
@@ -249,6 +256,7 @@ export abstract class Adapter {
   }
 
   private reply(m: Message) {
+    this.awaiting = undefined
     this.flush()
     this.ensureRunning()
     this.pending = { m, at: m.at || this.lastAt }
@@ -256,6 +264,7 @@ export abstract class Adapter {
   }
 
   private tool(m: Message, o: Record<string, any>) {
+    this.awaiting = undefined
     this.flush()
     this.ensureRunning()
     const { name, summary } = this.step(m, o)
@@ -267,7 +276,15 @@ export abstract class Adapter {
     this.flush()
     // A resume preface ([from:weevbook;thread:<id>]): leg.start already tells it; the turn is the engine's own.
     if (m.role === 'orchestrator' && m.author === 'weevbook') {
+      this.prefaced ??= m.sourceThreadId
+      this.awaiting = undefined
       this.ensureRunning()
+      return
+    }
+    // The request the dispatcher filed and gave to this engine: the journal has it, and the turn is running.
+    if (this.awaiting !== undefined && this.state === 'running' && m.role === 'user' && sameRequest(m.text, this.awaiting)) {
+      this.awaiting = undefined
+      this.attached = true
       return
     }
     if (this.state === 'ended') this.close()
@@ -355,10 +372,49 @@ export abstract class Adapter {
   }
 
   private retitle() {
-    if (!this.spoke) return
+    // A session the dispatcher opened for a thread: the thread keeps its title (its first request is the handoff).
+    if (!this.spoke || this.prefaced) return
     const title = this.titleNow()
     if (!title || title === this.title) return
     this.title = title
     this.emit({ type: 'meta', title })
   }
+}
+
+/** The same request, as the provider wrote it back: spaces aside, and whatever the app added after it (the language
+ *  of the first brief). */
+function sameRequest(read: string, filed: string): boolean {
+  const norm = (x: string) => x.replace(/\s+/g, ' ').trim()
+  const a = norm(read)
+  const b = norm(filed)
+  return !!b && (a === b || a.startsWith(b) || b.startsWith(a.slice(0, Math.max(40, a.length - 1))))
+}
+
+/**
+ * The request a dispatched turn is waiting for its engine to read: the user's message of the last turn, when that
+ * turn is running on an attempt given the message (not the preface), and nothing was written since it started.
+ */
+export function awaitedRequest(events: readonly JournalEvent[]): string | undefined {
+  let running = -1
+  let turn = 0
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]
+    if (e.type === 'message' || e.type === 'tool') {
+      if (running < 0) return undefined
+    }
+    if (e.type === 'turn') {
+      if (running < 0) {
+        if (e.state !== 'running') return undefined
+        running = i
+        turn = e.turn
+      } else if (e.turn === turn && e.state === 'assigned') {
+        if (e.resume || e.rule === SHADOW_RULE) return undefined
+        const accepted = events.find((x) => x.type === 'turn' && x.turn === turn && x.state === 'accepted')
+        const id = accepted && accepted.type === 'turn' ? accepted.message : null
+        const m = id ? events.find((x) => x.id === id) : undefined
+        return m && m.type === 'message' && m.role === 'user' ? m.text : undefined
+      }
+    }
+  }
+  return undefined
 }

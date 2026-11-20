@@ -22,7 +22,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl, WEEVBOOK, WEEVBOOK_DIR, CONNECTOR, WEEVBOOK_HUB } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl, WEEVBOOK, WEEVBOOK_DIR, CONNECTOR, WEEVBOOK_HUB, THREADS } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices, claudeAvailable, haiku, ledger, relay as modelRelay } from './fast.ts'
@@ -51,7 +51,7 @@ import { claudeQuota, claudeWindows, quotas, rate as tokenRate, today as usageTo
 import { Relay, defaultDeps } from './relay.ts'
 import { ClaudeAccounts, accountsOn, defaultRoot, setAccounts } from './claude-accounts.ts'
 import { ProviderHealth } from './provider-health.ts'
-import { providerStatus, setProviderRoute } from './provider.ts'
+import { preferredTool, providerStatus, setProviderRoute } from './provider.ts'
 import type { InfraDetail, MachineBrief, MachineFacts, Reach, TokenRate, UsageToday } from '../shared/infra.ts'
 import { facts } from './discover.ts'
 import { Setup, installPlan, shellEnv, which, writeConfig } from './setup.ts'
@@ -77,6 +77,7 @@ import { startWeevbookWriter } from './weevbook/writer.ts'
 import { Connector, reposUnder } from './connector/tools.ts'
 import { ConnectorAuth, codeFingerprint } from './connector/oauth.ts'
 import { connectorHttp } from './connector/http.ts'
+import { startThreads, threadsRoutes, type ThreadsApp } from './threads-app.ts'
 
 const w = new Weevils()
 const sourceAuthor = (id: string) => threadAuthor(id, source => w.store.get(source), w.bossConversation(), ORCH_DIR)
@@ -87,6 +88,7 @@ const bring = new Bring({
 })
 w.store.broughtAt = bring.broughtAt
 w.start()
+let threadsApp: ThreadsApp | null = null
 // The weevbook, in shadow (docs/spec, step 1): off unless WEEVILS_WEEVBOOK=1. It reads the same session files as the
 // app, on its own timer, and changes nothing the app shows or does.
 // With a hub (WEEVILS_WEEVBOOK_HUB, step 2): each turn's code is checkpointed, threads and checkpoints are pushed to the
@@ -100,8 +102,15 @@ if (WEEVBOOK) {
   })
   console.log(`[weevbook] shadow writer on: ${WEEVBOOK_DIR}`)
   if (WEEVBOOK_HUB) {
-    new HubSync({ dir: WEEVBOOK_DIR, dataDir: DATA_DIR, sessions, machine: MACHINE.id, hub: WEEVBOOK_HUB, steals: ORCHESTRATOR }).start()
+    const sync = new HubSync({ dir: WEEVBOOK_DIR, dataDir: DATA_DIR, sessions, machine: MACHINE.id, hub: WEEVBOOK_HUB, steals: ORCHESTRATOR })
+    sync.start()
     console.log(`[weevbook] hub sync on: ${WEEVBOOK_HUB.url}${ORCHESTRATOR ? ' (steals the leases of silent machines)' : ''}`)
+    // Threads (step 4): every message goes to the dispatcher, which runs on the machine that serves the app.
+    if (THREADS) {
+      threadsApp = startThreads({ w, sync, machine: MACHINE.id, dispatcher: ORCHESTRATOR, dataDir: DATA_DIR, home: HOME, claudeDir: CLAUDE_DIR, codexDir: CODEX_DIR, roots: PROJECT_ROOTS, projectsDir: PROJECTS_DIR, preferred: preferredTool(), log: (l) => console.log(l) })
+      w.threadRows = threadsApp.rows
+      console.log(`[threads] on${ORCHESTRATOR ? ': this machine runs the dispatcher' : ''}`)
+    }
   }
 }
 startInfra()
@@ -320,9 +329,12 @@ const health = new ProviderHealth(path.join(DATA_DIR, 'provider-health.json'), a
   return s.installed && s.logged
 })
 const relay = new Relay(w.relayHost(), { ...defaultDeps(() => claudeAccounts.quota(), codexReady), health, ...(accountsOn() ? { accounts: claudeAccounts } : {}) })
-w.relay = relay
-setProviderRoute(tool => relay.executionTool(tool))
-relay.start()
+// With threads (WEEVILS_THREADS), the dispatcher moves a thread between accounts and providers: no relay runs.
+if (!THREADS) {
+  w.relay = relay
+  setProviderRoute(tool => relay.executionTool(tool))
+  relay.start()
+}
 
 const asDevice = (d: any): Device => ({
   os: ['ios', 'android', 'mac', 'windows', 'linux'].includes(d?.os) ? d.os : 'other',
@@ -380,7 +392,7 @@ const connectorAuth = CONNECTOR ? new ConnectorAuth({ file: path.join(DATA_DIR, 
 const connector = connectorAuth
   ? connectorHttp({
       auth: connectorAuth, publicUrl: () => PUBLIC_URL, hasDevice, limiter: logins, checkCode: (code) => sameCode(code, SECRET),
-      tools: new Connector({ dir: WEEVBOOK_DIR, machine: MACHINE.id, projects: reposUnder(PROJECT_ROOTS) }),
+      tools: new Connector({ dir: WEEVBOOK_DIR, machine: MACHINE.id, projects: reposUnder(PROJECT_ROOTS), ...(threadsApp ? { accept: (thread, m) => threadsApp!.threads.accept(thread, { ...m, source: 'connector' }).then(() => undefined) } : {}) }),
     })
   : null
 if (connector) console.log('[connector] on: /mcp')
@@ -552,7 +564,7 @@ const routes: [string, RegExp, Handler][] = [
     if(thinkLayoutBusy)return json(res,429,{error:'think_layout_busy'});
     if(body.revision!==board.revision)return json(res,409,{error:'think_conflict'});
     thinkLayoutBusy=true;
-    try { json(res,200,await proposeThinkLayout(board,body,relay.autoOnCodex()?modelRelay:undefined)) } catch { json(res,503,{error:'think_layout_unavailable'}) } finally { thinkLayoutBusy=false }
+    try { json(res,200,await proposeThinkLayout(board,body,!THREADS&&relay.autoOnCodex()?modelRelay:undefined)) } catch { json(res,503,{error:'think_layout_unavailable'}) } finally { thinkLayoutBusy=false }
   }],
   ['GET', /^\/api\/think$/, (_req,res) => json(res,200,think.read())],
   ['PUT', /^\/api\/think$/, async (req,res) => {
@@ -916,6 +928,7 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/sessions\/([^/]+)\/dismiss$/, async (_req, res, _u, [id]) => json(res, 200, await w.dismiss(decodeURIComponent(id)))],
   // ---- Relais Codex pendant la limite de Claude (server/relay.ts) : réglage, plan demandé pour une session, décision sur un plan.
   ['POST', /^\/api\/relay$/, async (req, res) => {
+    if (THREADS) return json(res, 404, { error: 'no relay' }) // i18n-ignore: the app never calls it with threads on
     const body = await readBody(req)
     relay.set({ mode: body.mode, switchAt: body.switchAt, tz: body.tz })
     // Les autres machines suivent le réglage (pas le fuseau : relayé seulement quand l'app parle, jamais en boucle).
@@ -923,11 +936,13 @@ const routes: [string, RegExp, Handler][] = [
     json(res, 200, { ok: true })
   }],
   ['POST', /^\/api\/sessions\/([^/]+)\/relay$/, async (_req, res, _u, [raw]) => {
+    if (THREADS) return json(res, 404, { error: 'no relay' }) // i18n-ignore: the app never calls it with threads on
     const id = decodeURIComponent(raw)
     const remote = w.remoteFor(id)
     json(res, 200, remote ? await remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/relay`, {}) : relay.request(id))
   }],
   ['POST', /^\/api\/relay\/plans\/([^/]+)$/, async (req, res, _u, [raw]) => {
+    if (THREADS) return json(res, 404, { error: 'no relay' }) // i18n-ignore: the app never calls it with threads on
     const id = decodeURIComponent(raw)
     const body = await readBody(req)
     const call = { action: String(body.action ?? ''), text: typeof body.text === 'string' ? body.text : undefined }
@@ -1034,6 +1049,7 @@ const routes: [string, RegExp, Handler][] = [
   ...hintRoutes(hints, json, readBody),
   // La mémoire vit sur la machine principale seulement (404 ailleurs, comme weevils memory le dit).
   ...(ORCHESTRATOR ? memoryRoutes(memory, json, readBody) : []),
+  ...(threadsApp ? threadsRoutes(threadsApp, json, readBody, isLocal) : []),
   // weevboss's requests, goals, work trace and knowledge (server/boss-ledger.ts), main machine only.
   ...(w.ledger ? ledgerRoutes(w.ledger, json, readBody, isLocal) : []),
   // The weevil's questions were removed: an old open app only ever hears « nothing » (server/weevil.ts).

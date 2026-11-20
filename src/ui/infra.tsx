@@ -416,7 +416,7 @@ export function UsagePage() {
         <Quota name="Claude" q={u?.claude} />
         <Pace />
         <Quota name="Codex" q={u?.codex} />
-        {snap.relay && (
+        {snap.relay && !snap.config?.threads && (
           <Line value={rt[`mode_${snap.relay.mode}`]} onClick={() => push({ kind: 'relay' })}>
             {rt.pref}
           </Line>

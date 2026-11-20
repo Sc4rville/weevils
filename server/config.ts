@@ -112,9 +112,15 @@ export const MACHINE = {
   name: process.env.WEEVILS_MACHINE_NAME || process.env.WEEVILS_MACHINE || machine,
 }
 
-/** The weevbook (docs/spec, step 1): written in DATA_DIR/weevbook next to the app, in shadow, when WEEVILS_WEEVBOOK=1.
- *  Off by default: it changes nothing the app shows or does. */
-export const WEEVBOOK = process.env.WEEVILS_WEEVBOOK?.trim() === '1'
+/**
+ * Threads (docs/spec, step 4): one conversation is one weevbook thread, whatever engines carried it; the dispatcher
+ * places every turn, and the app shows no relay. Off unless WEEVILS_THREADS=1: then the app is exactly as before. It
+ * implies the weevbook, and a hub (`here` on the machine that serves the app, `main` on another) when none is set.
+ */
+export const THREADS = process.env.WEEVILS_THREADS?.trim() === '1'
+/** The weevbook (docs/spec, step 1): written in DATA_DIR/weevbook next to the app, in shadow, when WEEVILS_WEEVBOOK=1
+ *  (or WEEVILS_THREADS=1). Off by default: it changes nothing the app shows or does. */
+export const WEEVBOOK = process.env.WEEVILS_WEEVBOOK?.trim() === '1' || THREADS
 export const WEEVBOOK_DIR = path.join(DATA_DIR, 'weevbook')
 /** The connector (docs/spec/05-connector.md, step 5): ChatGPT and Claude.ai send chats to the weevbook through /mcp,
  *  once the person allows them. Off unless WEEVILS_CONNECTOR=1: until then /mcp is the app's like any other path. */
@@ -143,7 +149,9 @@ export function weevbookHub(value = process.env.WEEVILS_WEEVBOOK_HUB?.trim() ?? 
   }
   return { url: value, here: path.resolve(value) === WEEVBOOK_HUB_DIR }
 }
-export const WEEVBOOK_HUB = weevbookHub()
+/** The hub threads use when none is set: the machine that serves the app keeps it. */
+const threadsHub = () => (!THREADS ? '' : (process.env.WEEVILS_ORCHESTRATOR || (process.env.WEEVILS_MACHINE ? '0' : '1')) === '1' ? 'here' : 'main')
+export const WEEVBOOK_HUB = weevbookHub(process.env.WEEVILS_WEEVBOOK_HUB?.trim() || threadsHub())
 
 /** L'orchestrateur (la bande du haut) tourne sur une seule machine : celle qui sert l'app. */
 export const ORCHESTRATOR = (process.env.WEEVILS_ORCHESTRATOR || (process.env.WEEVILS_MACHINE ? '0' : '1')) === '1'

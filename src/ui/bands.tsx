@@ -26,6 +26,7 @@ import { plain, userText, type ChipId } from './format'
 import { AutoMark, FilledIcon, G, Icon } from './icons'
 import { KeepSessionOrder } from './session-order'
 import PM from '../i18n/project-screen'
+import TM from '../i18n/threads'
 import { autoOfSession } from './auto-model'
 import { ThreadPlans } from './relay'
 import { LanguageLine } from './prefs'
@@ -514,6 +515,7 @@ export function ProjectBand({ project }: { project: Project }) {
   const settled = useSettled()
   const t = useT(M)
   const pt = useT(PM)
+  const wt = useT(TM)
   const { snap, expanded, setExpanded, push, colors, instant } = useApp()
   const tx = instant ? INSTANT : spring
   const mode = expanded === null ? 'normal' : expanded === project.id ? 'open' : 'mini'
@@ -636,6 +638,12 @@ export function ProjectBand({ project }: { project: Project }) {
             <button className="ch" aria-label={pt.openAria(project.name)} onClick={() => push({ kind: 'project', projectId: project.id })}>
               <G c=">" />
             </button>
+            {/* Threads on: the project's conversations in the weevbook. */}
+            {snap.config?.threads && (
+              <button className="ch" aria-label={wt.weevbookAria(project.name)} onClick={() => push({ kind: 'weevbook', projectId: project.id })}>
+                <G c="≡" />
+              </button>
+            )}
             {cut.length > 0 && (
             <button className="ch alert-ch" aria-label={t.cutAria(cut.length)} onClick={() => push({ kind: 'session', id: cut[0].id })}>
               <span>
@@ -682,12 +690,14 @@ export function FootBand() {
   const { snap, theme, setTheme, offline, colors, logout, push } = useApp()
   // The relay writes « until 6 pm » in this device's time zone (the Codex relay row moved to the subscriptions page).
   useEffect(() => {
+    // Threads on (WEEVILS_THREADS): no relay to tell.
+    if (snap.config?.threads) return
     try {
       void api.relaySet({ tz: Intl.DateTimeFormat().resolvedOptions().timeZone }).catch(() => undefined)
     } catch {
       /* no time zone: the server's */
     }
-  }, [])
+  }, [snap.config?.threads])
   // Four sections, language and log out (Scarville, 2026-11-17): everything else lives where it is used — notifications, the phone and
   // old conversations through weevboss's chips, memory through weevboss, finished sessions on their project's page.
   return (

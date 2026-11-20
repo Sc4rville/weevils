@@ -211,6 +211,7 @@ export class HubSync {
   private lastWorking = new Set<string>()
   private leases = new Map<string, Lease>()
   private chain: Promise<unknown> = Promise.resolve()
+  private opening: Promise<boolean> | null = null
 
   constructor(o: HubOptions) {
     this.o = o
@@ -247,7 +248,12 @@ export class HubSync {
     return this.ready || this.init()
   }
 
-  async init(): Promise<boolean> {
+  /** One opening at a time: the round, the dispatcher and Threads may all ask at start. */
+  init(): Promise<boolean> {
+    return (this.opening ??= this.open().finally(() => (this.opening = null)))
+  }
+
+  private async open(): Promise<boolean> {
     try {
       this.book ??= await Weevbook.open(this.o.dir, this.o.machine)
       if (this.o.hub.here) await ensureHubRepo(this.o.hub.url)

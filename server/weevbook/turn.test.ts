@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseJournal, type JournalEvent } from './journal.ts'
-import { MAX_ATTEMPTS, TurnError, applyTurn, assign, effectOf, holdAll, next, preface, prefaceSign, stolen, turnsOf, type Turn, type TurnChange } from './turn.ts'
+import { MAX_ATTEMPTS, TurnError, applyTurn, assign, counted, effectOf, holdAll, next, preface, prefaceSign, stolen, turnsOf, type Turn, type TurnChange } from './turn.ts'
 
 const MSG = '01M7M8E6XRZ0FEBHYK2C5GNQF4'
 const E1 = 'claude:a3f9c1@laptop'
@@ -19,13 +19,13 @@ const held = (reason = 'no-room', turn = 1): TurnChange => ({ turn, state: 'held
 const STATES: Record<string, TurnChange[]> = {
   accepted: [accepted()],
   held: [accepted(), held()],
-  'held (attempts)': [accepted(), assigned(1), failed('none'), assigned(2), failed('none'), assigned(3), failed('none'), held('attempts')],
+  'held (attempts)': [accepted(), assigned(1), failed('none', 1, 'api'), assigned(2), failed('none', 1, 'auth'), assigned(3), failed('none', 1, 'api'), held('attempts')],
   assigned: [accepted(), assigned(1)],
   running: [accepted(), assigned(1), running()],
   done: [accepted(), assigned(1), running(), done()],
   'failed (none)': [accepted(), assigned(1), running(), failed('none')],
   'failed (some)': [accepted(), assigned(1), running(), failed('some')],
-  'failed (3 attempts)': [accepted(), assigned(1), failed('none'), assigned(2), failed('none'), assigned(3), failed('none')],
+  'failed (3 attempts)': [accepted(), assigned(1), failed('none', 1, 'api'), assigned(2), failed('none', 1, 'api'), assigned(3), failed('none', 1, 'auth')],
 }
 // Every change tried from every state, with the attempt and resume the turn would need.
 const CHANGES: Record<string, (t: Turn) => TurnChange> = {
@@ -81,11 +81,26 @@ describe('the state machine, every state against every change', () => {
     expect(() => run(accepted(), assigned(2))).toThrow(/attempt 2, expected 1/)
     expect(() => run(accepted(), assigned(1), failed('none'), assigned(1))).toThrow(/expected 2/)
   })
-  it('a fourth assignment is refused: three attempts, then held', () => {
+  it('after three api or auth failures, a fourth assignment is refused: held for attempts', () => {
     const t = run(...STATES['failed (3 attempts)'])
-    expect(() => applyTurn(t, assigned(4))).toThrow(new RegExp(`${MAX_ATTEMPTS} times`))
+    expect(counted(t[0])).toBe(MAX_ATTEMPTS)
+    expect(() => applyTurn(t, assigned(4))).toThrow(new RegExp(`${MAX_ATTEMPTS} times on api or auth`))
     expect(() => applyTurn(t, held('no-room'))).toThrow(/attempts/)
     expect(() => run(accepted(), held('attempts'))).toThrow(/attempts after 0/)
+  })
+  it('only api and auth failures count: a quota that ran out or a machine that went away does not', () => {
+    // Five attempts lost to quotas and machines, then two api failures: still assigned again.
+    const t = run(accepted(),
+      assigned(1), failed('none', 1, 'quota'), assigned(2), running(), failed('some', 1, 'machine-lost'),
+      assigned(3, true), failed('none', 1, 'quota'), assigned(4, true), running(), failed('some', 1, 'machine-lost'),
+      assigned(5, true), failed('none', 1, 'lease-lost'), assigned(6, true), failed('none', 1, 'api'), assigned(7, true), failed('none', 1, 'auth'))
+    expect(counted(t[0])).toBe(2)
+    expect(next(t)).toMatchObject({ kind: 'dispatch', attempt: 8, resume: true, request: 'preface' })
+    expect(() => applyTurn(t, held('attempts'))).toThrow(/attempts after 2/)
+    // The third that counts holds it, whatever came between.
+    const out = applyTurn(applyTurn(t, assigned(8, true)), failed('none', 1, 'api'))
+    expect(next(out)).toEqual({ kind: 'hold', turn: 1, rule: 'hold', reason: 'attempts' })
+    expect(() => applyTurn(out, assigned(9, true))).toThrow(/api or auth/)
   })
 })
 
@@ -110,7 +125,7 @@ describe('the retry rule', () => {
   it('resume without an earlier effect is refused', () => {
     expect(() => run(accepted(), assigned(1, true))).toThrow(/without an earlier effect/)
   })
-  it('three attempts, then held for attempts, without asking the dispatcher', () => {
+  it('three api or auth failures, then held for attempts, without asking the dispatcher', () => {
     expect(next(run(...STATES['failed (3 attempts)']))).toEqual({ kind: 'hold', turn: 1, rule: 'hold', reason: 'attempts' })
     expect(next(run(...STATES['held (attempts)']))).toEqual({ kind: 'quiet' })
   })

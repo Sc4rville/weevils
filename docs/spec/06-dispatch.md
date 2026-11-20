@@ -140,7 +140,7 @@ Rules about changing (the reference scenario's "staying is cheap, changing costs
 | `no-room` | Every account is at its limit until 17:00. | "Tell me when it starts again." |
 | `not-signed-in` | Claude is signed out on laptop. | Opens the sign-in. |
 | `only-there` | This one can only continue on laptop, which is off. | — |
-| `attempts` | It stopped three times in a row. | "Try again." |
+| `attempts` | It failed three times on an error of its own (`api` or `auth`). | "Try again." |
 
 A held turn is assigned as soon as the table gives an engine: the dispatcher looks again whenever the engine table
 changes, and at least every 60 s. When the table gives another reason, the turn is held again with it, so the

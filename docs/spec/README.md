@@ -4,11 +4,14 @@ Today a conversation with Claude Code or Codex lives in one file, on one machine
 specification describes the next shape: a conversation belongs to you. You start it anywhere, it continues anywhere,
 and the app shows one thread.
 
-**Status: step 0.** These pages, the sample in [`examples/weevbook`](../../examples/weevbook), the pure module of
-the journal ([`server/weevbook/journal.ts`](../../server/weevbook/journal.ts)), the core of the lease, the turn and
-the dispatcher (`lease.ts`, `turn.ts`, `dispatch.ts` next to it) and a simulator that drives the three together
-([`server/weevbook/sim`](../../server/weevbook/sim), `npm run sim`) exist. Nothing in the running app uses them yet.
-Each page ends with "What exists today", which names the real files the design builds on.
+**Status: step 1, in shadow.** These pages, the sample in [`examples/weevbook`](../../examples/weevbook), the pure
+module of the journal ([`server/weevbook/journal.ts`](../../server/weevbook/journal.ts)), the core of the lease, the
+turn and the dispatcher (`lease.ts`, `turn.ts`, `dispatch.ts` next to it), a simulator that drives the three together
+([`server/weevbook/sim`](../../server/weevbook/sim), `npm run sim`), and the local weevbook
+([`server/weevbook`](../../server/weevbook): store, adapters, writer, `weevils weevbook backfill | check | compare`)
+exist. The lease, the turn, the dispatcher and the simulator are not used by the running app yet. The writer is off
+unless `WEEVILS_WEEVBOOK=1`; on, it writes next to the app and changes nothing the app shows or does. Each page ends
+with "What exists today", which names the real files the design builds on.
 
 ## The idea in one picture
 
@@ -139,7 +142,7 @@ Not decided here. Each has a recommendation; the owner decides.
 | D2 | Encrypt the weevbook before it leaves for a hub you do not own? | Yes. It costs reading on GitHub and delta compression. | [03](03-sync-and-lease.md#open-decisions) |
 | D3 | Keep the handoff current after every turn, using a small model? | Yes, for threads active in the last 24 h. | [04](04-resume.md#the-handoff) |
 | D4 | When several engines can take a turn: same provider first, or spread the quota? | Same provider first. | [06](06-dispatch.md#the-decision-table) |
-| D5 | Bring existing provider sessions into the weevbook? | Yes, at step 1, through the same adapters. | [02](02-weevbook.md#not-in-v1) |
+| D5 | Bring existing provider sessions into the weevbook? | **Decided at step 1: yes**, `weevils weevbook backfill`, through the same adapters: one thread with one leg each, no checkpoint. | [02](02-weevbook.md#step-1-the-local-weevbook) |
 | D6 | The name shown in the app for the weevbook page. | Not a specification matter. | — |
 
 ## The steps
@@ -147,7 +150,7 @@ Not decided here. Each has a recommendation; the owner decides.
 | Step | What | Done when |
 |---|---|---|
 | 0 | This specification, the sample weevbook, the invariant tests. No change in the app. | The owner has read and approved it. |
-| 1 | The weevbook is written locally, next to the app, for every provider session ("shadow"). | Every session is there and matches the app for 7 days. |
+| 1 | The weevbook is written locally, next to the app, for every provider session ("shadow"). | `weevils weevbook backfill` then `weevils weevbook compare` over every session of a machine: no message missing or altered (the owner chose this replay over 7 days of observation). Then the writer runs in shadow. |
 | 2 | Sync to the hub and checkpoints. | A machine switched off mid-work: the hub has everything pushed up to the last 20 seconds. |
 | 3 | Resume on another machine, same provider. | Automated: start on one machine, cut it, resume on the other, same code. |
 | 4 | The thread becomes the unit in the app; handoff between providers; the dispatcher. | The simulator of the reference scenario is green over thousands of runs. (The simulator exists: `npm run sim -- --seeds 20000`.) |

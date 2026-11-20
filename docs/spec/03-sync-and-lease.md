@@ -151,6 +151,10 @@ Machines' clocks are assumed to agree within 30 s. The protocol stays safe when 
   took the lease: everything is pushed) or is rejected (see **lose**).
 - **One machine, no hub**: the same refs, in the local repository. Nothing is pushed. A hub added later receives
   everything at the first push.
+- **Step 1 (shadow, no hub, no lease)**: the writer commits a thread's folder to `refs/threads/<id>` when a turn
+  starts or ends, and every 60 s while one runs with new events (the pace of a renewal). `main` is composed locally
+  60 s after a change, and at the end of a backfill. Between two commits the folder is ahead of its ref: `weevils
+  weevbook check` accepts it when the ref's journal is the start of the folder's.
 
 A hub must accept atomic pushes and refs outside `refs/heads`. weevils checks both at setup with a throwaway ref and
 refuses a hub that fails.
@@ -243,6 +247,7 @@ Ship steps 1 to 3 with own-server and no-hub only.*
   the app uses it yet.
 - `server/weevbook/sim`: the same rules over an in-memory hub with the same guarantees (atomic push,
   compare-and-swap, fast-forward only), checked after every simulated run.
+- Step 1: the local refs and the composition of `main` (`server/weevbook/store.ts`), no push.
 - No hub in the app. A machine's threads never leave it, except by hand with `server/bring.ts`.
 - `server/remotes.ts`: a main machine reads the other machines' servers every 2 s through a reverse SSH tunnel
   (`WEEVILS_REMOTES`). It is a live view, not storage: when a machine is off, its sessions are gone from the app.

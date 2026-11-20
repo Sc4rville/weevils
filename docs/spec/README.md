@@ -101,9 +101,9 @@ Every number in these pages, in one place. They are starting values, to be tuned
 
 | Constant | Value | Page |
 |---|---|---|
-| Lease renewal while a turn runs | every 60 s | 03 |
-| Lease lifetime after a renewal | 300 s | 03 |
-| Unchanged lease observed before a steal | 150 s | 03 |
+| Lease renewal while a turn runs | every 20 s | 03 |
+| Lease lifetime after a renewal | 60 s | 03 |
+| Unchanged lease observed before a steal | 60 s | 03 |
 | Clock grace before a steal | 60 s | 03 |
 | Largest journal line | 1 MiB | 02 |
 | Largest raw segment | 16 MiB | 02 |
@@ -135,7 +135,7 @@ Not decided here. Each has a recommendation; the owner decides.
 |---|---|---|
 | 0 | This specification, the sample weevbook, the invariant tests. No change in the app. | The owner has read and approved it. |
 | 1 | The weevbook is written locally, next to the app, for every provider session ("shadow"). | Every session is there and matches the app for 7 days. |
-| 2 | Sync to the hub and checkpoints. | A machine switched off mid-work: the hub has everything pushed up to the last minute. |
+| 2 | Sync to the hub and checkpoints. | A machine switched off mid-work: the hub has everything pushed up to the last 20 seconds. |
 | 3 | Resume on another machine, same provider. | Automated: start on one machine, cut it, resume on the other, same code. |
 | 4 | The thread becomes the unit in the app; handoff between providers; the dispatcher. | The simulator of the reference scenario is green over thousands of runs. |
 | 5 | The connector and the weevbook page. | A chat is sent from ChatGPT and Claude.ai, then continued by an engine. |

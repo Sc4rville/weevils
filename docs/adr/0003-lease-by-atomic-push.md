@@ -17,7 +17,7 @@ retries it, because nothing can tell whether the other side received it.
 The lease of a thread is the ref `refs/leases/<id>`: one commit holding `lease.json`. It is created with a push that
 requires the ref not to exist, and replaced with a push that requires its current value (`--force-with-lease`).
 Every push of thread content goes in the same `--atomic` push as a lease renewal. A lease in use can be taken by
-another machine only after it has expired and has not changed for 150 seconds.
+another machine only after it has expired and has not changed for 60 seconds.
 
 ## Consequences
 
@@ -26,9 +26,9 @@ another machine only after it has expired and has not changed for 150 seconds.
   orphan ref and comes back as a note; it is never mixed in.
 - No lock service and no clock service. Safety does not depend on clocks; only how fast a dead machine is replaced
   does.
-- A machine that dies mid-turn is replaced after five to seven minutes, not at once. This is the price of not
+- A machine that dies mid-turn is replaced after one and a half to two minutes, not at once. This is the price of not
   taking a thread from a machine that is only slow.
 - A machine that works offline for longer than that loses its thread to another machine. Its work is kept but is
   not in the thread. Favouring "the thread always moves on" over "offline work always wins" is deliberate.
-- A renewal is a push every 60 seconds per machine with work in progress.
+- A renewal is a push every 20 seconds per machine with work in progress.
 - The hub must support atomic pushes. This is checked at setup.

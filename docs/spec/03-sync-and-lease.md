@@ -11,11 +11,11 @@ sequenceDiagram
   participant S as server
   L->>H: push lease (must not exist) ✔ epoch 1
   S->>H: push lease (must not exist) ✘ rejected
-  loop every 60 s while the turn runs
+  loop every 20 s while the turn runs
     L->>H: atomic push: new events + renewed lease ✔
   end
   Note over L: laptop goes silent
-  S->>H: fetch lease: same commit for 150 s, expired
+  S->>H: fetch lease: same commit for 60 s, expired
   S->>H: atomic push: "turn failed, leg ended" + lease epoch 2 ✔
   Note over L: laptop comes back
   L->>H: atomic push: events + renewed lease ✘ rejected
@@ -55,13 +55,13 @@ one with each lease renewal that has new events, one when the turn ends. The sub
 | `epoch` | Starts at 1. Grows by 1 each time the holder changes. Written into `leg.start`. |
 | `state` | `working` (a turn is assigned or running) or `idle`. |
 | `turn` | The turn at work, when `working`. |
-| `taken`, `renewed`, `expires` | UTC times by the holder's clock. `expires` is `renewed` + 300 s. |
+| `taken`, `renewed`, `expires` | UTC times by the holder's clock. `expires` is `renewed` + 60 s. |
 | `tip` | The commit of `refs/threads/<id>` pushed together with this lease. |
 
 ```json
 {"v":1,"thread":"01M7M8E6XR7ZVPYA7TRMHKHR25","holder":"laptop","engine":"claude:a3f9c1@laptop","leg":"L1","epoch":1,
  "state":"working","turn":2,"taken":"2026-11-17T08:02:13Z","renewed":"2026-11-17T08:12:41Z",
- "expires":"2026-11-17T08:17:41Z","tip":"9adfb7a34e4a513eb760d627d9bba045a8271eb5"}
+ "expires":"2026-11-17T08:13:41Z","tip":"9adfb7a34e4a513eb760d627d9bba045a8271eb5"}
 ```
 
 ### The operations, as git
@@ -73,9 +73,9 @@ commit the machine last fetched or pushed.
 |---|---|---|
 | **take** | No lease exists. | `git push hub $new:refs/leases/<id> --force-with-lease=refs/leases/<id>:` (empty value: the ref must not exist) |
 | **take over idle** | The lease is `idle`, whoever holds it. | `git push hub $new:refs/leases/<id> --force-with-lease=refs/leases/<id>:$old` |
-| **renew** | Every 60 s while `working`; at each start and end of a turn. | `git push --atomic hub refs/threads/<id> $new:refs/leases/<id> --force-with-lease=refs/leases/<id>:$old` |
+| **renew** | Every 20 s while `working`; at each start and end of a turn. | `git push --atomic hub refs/threads/<id> $new:refs/leases/<id> --force-with-lease=refs/leases/<id>:$old` |
 | **go idle** | The turn is done, failed or held. | Same push as renew, with `state: idle`. The thread stays with this machine until someone else needs it. |
-| **steal** | The lease is `working`, **and** `expires` + 60 s is past by the local clock, **and** this machine has seen the same lease commit for 150 s by its own clock. | Same push as renew, with the new holder and `epoch` + 1. The thread commit in that push holds `turn failed` and `leg.end` ([01](01-thread.md)). |
+| **steal** | The lease is `working`, **and** `expires` + 30 s is past by the local clock, **and** this machine has seen the same lease commit for 60 s by its own clock. | Same push as renew, with the new holder and `epoch` + 1. The thread commit in that push holds `turn failed` and `leg.end` ([01](01-thread.md)). |
 | **lose** | Any of the pushes above is rejected and the fetched lease names another holder. | Stop the engine's turn. `git push hub refs/threads/<id>:refs/orphans/<id>/<machine>-<epoch>`. Write nothing more to the thread. |
 
 `--atomic` makes the hub apply both ref updates or neither. `--force-with-lease=<ref>:<value>` makes the hub refuse
@@ -87,19 +87,19 @@ there is one), then deletes the ref. The events are kept; they are never mixed i
 
 ### Clocks
 
-Machines' clocks are assumed to agree within 60 s. The protocol stays safe when they do not:
+Machines' clocks are assumed to agree within 30 s. The protocol stays safe when they do not:
 
-- A steal needs the lease commit to stay unchanged for 150 s on the stealer's own clock. A holder that is alive and
-  connected changes it every 60 s. So a wrong clock can delay a steal; it cannot take a thread from a live,
+- A steal needs the lease commit to stay unchanged for 60 s on the stealer's own clock. A holder that is alive and
+  connected changes it every 20 s. So a wrong clock can delay a steal; it cannot take a thread from a live,
   connected holder.
-- If a steal is wrong anyway (the holder was alive but cut off from the hub for more than five minutes), the holder
+- If a steal is wrong anyway (the holder was alive but cut off from the hub for more than about a minute and a half), the holder
   loses at its next push. Two engines may have worked for a while; only one of them is in the thread. The other's
   work is in a `note` and in its own checkpoint.
 
 ## Sync
 
 - **Before a turn**: fetch the thread ref and the lease ref. The push that starts the turn fails if either moved.
-- **During a turn**: every 60 s, one atomic push per machine carries all its working leases and their new events.
+- **During a turn**: every 20 s, one atomic push per machine carries all its working leases and their new events.
 - **After a turn**: push the thread, the lease (`idle`) and the checkpoint, then compose `main`.
 - **Offline**: the engine keeps working and commits locally. Back online, the next renewal either passes (nobody
   took the lease: everything is pushed) or is rejected (see **lose**).
@@ -137,8 +137,8 @@ To be tested with two real repositories at step 2, and by the simulator at step 
 - **SYNC-3** Every accepted push to `refs/threads/<id>` comes with a lease whose `holder` is the pusher and whose
   `tip` is the pushed commit.
 - **SYNC-4** `epoch` never decreases, and changes exactly when `holder` changes.
-- **SYNC-5** A `working` lease is replaced by another holder only after 150 s without change and past `expires` +
-  60 s.
+- **SYNC-5** A `working` lease is replaced by another holder only after 60 s without change and past `expires` +
+  30 s.
 - **SYNC-6** A machine whose push was rejected for the lease writes no further event to that thread until it holds
   the lease again.
 - **SYNC-7** Every commit a machine made and could not push is, in the end, either in the thread or named by a
@@ -154,7 +154,7 @@ To be tested with two real repositories at step 2, and by the simulator at step 
 | What happens | Result |
 |---|---|
 | Two machines take the same free lease at once | One push wins. The other is rejected (`stale info`) and does not start. |
-| The holder's machine dies mid-turn | After about five to seven minutes another machine steals, writes `turn failed` (`machine-lost`) and continues ([04](04-resume.md)). |
+| The holder's machine dies mid-turn | After about one and a half to two minutes another machine steals, writes `turn failed` (`machine-lost`) and continues ([04](04-resume.md)). |
 | The holder is alive but offline for longer than that | Same steal. On return the holder loses: its commits go to an orphan ref and come back as a `note`. Its code is in its own checkpoint, named in the note. |
 | The old machine comes back while the new one answers | Its first push is rejected. It stops. Nothing it wrote reaches the thread. |
 | The hub is unreachable for everyone | Each machine keeps working on the threads it holds. No lease changes hands. |

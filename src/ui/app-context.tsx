@@ -34,6 +34,9 @@ export type Page =
   | { kind: 'fsfile'; machine: string; path: string }
   | { kind: 'usage' }
   | { kind: 'relay' }
+  /** Threads (WEEVILS_THREADS): the weevbook's conversations by project, and one of them reread. */
+  | { kind: 'weevbook'; projectId?: string }
+  | { kind: 'thread'; id: string }
   | { kind: 'memory' }
   /** weevboss's request ledger, goals and work trace (src/ui/requests.tsx). */
   | { kind: 'requests' }

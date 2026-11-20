@@ -16,6 +16,7 @@ import { SessionRow } from './bits'
 import { Shell } from './shell'
 import { chipOf } from './requests'
 import './project-screen.css'
+import { WeevbookLine } from './threads'
 
 type Row = LedgerView['asks'][number]
 type Chip = ReturnType<typeof chipOf>
@@ -149,6 +150,7 @@ export function ProjectPage({ projectId }: { projectId: string }) {
             <button type="button" className="pj-line rest" onClick={() => setAll(true)}>{t.older(done.length - shown.length)}</button>
           </div>
         )}
+        {project && <WeevbookLine projectId={project.id} name={project.name} />}
         <div style={{ height: 96 }} />
       </div>
     </Shell>

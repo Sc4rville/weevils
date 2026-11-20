@@ -46,7 +46,7 @@ export default defineMessages({
     askAria: (action: string, title: string) => `${action} · ${title}`,
     working: (author: string) => (author ? `${author} travaille` : 'travaille'),
     /** Lecteur d'écran, ligne de session : outil, titre, état, activité, durée. */
-    rowAria: (tool: string, title: string, state: string, act: string | undefined, when: string) => `${tool}, ${title}, ${state}${act ? ` : ${act}` : ''}, ${when}`,
+    rowAria: (tool: string, title: string, state: string, act: string | undefined, when: string) => `${tool ? `${tool}, ` : ''}${title}, ${state}${act ? ` : ${act}` : ''}, ${when}`,
   },
   en: {
     coordination: (author: string) => `message from ${author}`,
@@ -88,6 +88,6 @@ export default defineMessages({
     clipboardEmpty: 'clipboard is empty',
     askAria: (action: string, title: string) => `${action} · ${title}`,
     working: (author: string) => (author ? `${author} is working` : 'working'),
-    rowAria: (tool: string, title: string, state: string, act: string | undefined, when: string) => `${tool}, ${title}, ${state}${act ? `: ${act}` : ''}, ${when}`,
+    rowAria: (tool: string, title: string, state: string, act: string | undefined, when: string) => `${tool ? `${tool}, ` : ''}${title}, ${state}${act ? `: ${act}` : ''}, ${when}`,
   },
 })

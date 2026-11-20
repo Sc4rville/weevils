@@ -10,6 +10,7 @@ import M from '../i18n/relay'
 import { useApp } from './app-context'
 import { Line, Prose } from './bits'
 import { Shell } from './shell'
+import { threadsOn } from './threads-on'
 
 // Codex relay while Claude is at its usage limit (server/relay.ts): the alert band of the feed, the grouped view of the
 // takeover plans (approve, adjust or wait for Claude, one by one or all at once), the plan inside a session's page and
@@ -47,7 +48,7 @@ export function RelayBand() {
   const t = useT(M)
   const status = useStatus()
   const r = snap.relay
-  if (!r || r.mode !== 'ask') return null
+  if (!r || r.mode !== 'ask' || threadsOn(snap)) return null
   const todo = r.plans.filter((p) => !p.resolved && !isNoticeDismissed(relayPlanNoticeKey(p)) && (p.state === 'ready' || p.state === 'failed')).length
   const coming = r.plans.filter((p) => !p.resolved && p.state === 'preparing').length
   if (!status && !todo && !coming) return null
@@ -165,7 +166,7 @@ export function ThreadPlans() {
   useNotices()
   const { snap } = useApp()
   const list = open(snap.relay?.plans ?? []).filter((p) => !isNoticeDismissed(relayPlanNoticeKey(p)))
-  if (snap.relay?.mode !== 'ask' || !list.length) return null
+  if (snap.relay?.mode !== 'ask' || !list.length || threadsOn(snap)) return null
   return (
     <div className="relay-thread">
       <AllActions plans={list} />
@@ -297,6 +298,7 @@ export function SessionRelay({ session, onError }: { session: Session; onError: 
   const [asked, setAsked] = useState(false)
   const plan = snap.relay?.plans.find((p) => p.sessionId === session.id)
   const from = session.relayOf ? snap.sessions.find((s) => s.id === session.relayOf) : undefined
+  if (threadsOn(snap)) return null
   return (
     <>
       {session.relayOf && (

@@ -432,7 +432,8 @@ export class JournalCheck {
           if (!prev || prev.type !== 'checkpoint' || prev.turn !== e.turn) bad('THREAD-14', 'no checkpoint just before')
         }
         apply.push(() => {
-          if (e.state === 'failed') t.effect = e.effect
+          // Once an attempt has had an effect, every later attempt resumes (the effect is still there).
+          if (e.state === 'failed' && t.effect !== 'some') t.effect = e.effect
           t.state = e.state
           track(e.turn, e.state)
         })

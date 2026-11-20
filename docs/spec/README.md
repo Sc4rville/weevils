@@ -4,8 +4,10 @@ Today a conversation with Claude Code or Codex lives in one file, on one machine
 specification describes the next shape: a conversation belongs to you. You start it anywhere, it continues anywhere,
 and the app shows one thread.
 
-**Status: step 0.** These pages, the sample in [`examples/weevbook`](../../examples/weevbook) and one pure module
-([`server/weevbook/journal.ts`](../../server/weevbook/journal.ts)) exist. Nothing in the running app uses them yet.
+**Status: step 0.** These pages, the sample in [`examples/weevbook`](../../examples/weevbook), the pure module of
+the journal ([`server/weevbook/journal.ts`](../../server/weevbook/journal.ts)), the core of the lease, the turn and
+the dispatcher (`lease.ts`, `turn.ts`, `dispatch.ts` next to it) and a simulator that drives the three together
+([`server/weevbook/sim`](../../server/weevbook/sim), `npm run sim`) exist. Nothing in the running app uses them yet.
 Each page ends with "What exists today", which names the real files the design builds on.
 
 ## The idea in one picture
@@ -56,7 +58,10 @@ from the last checkpoint of the code.
 
 Decisions and their reasons are in [`docs/adr`](../adr). Each page lists its invariants: numbered statements that
 tests check. `THREAD-n` and `BOOK-n` are tested today in
-[`server/weevbook/journal.test.ts`](../../server/weevbook/journal.test.ts), one test per number.
+[`server/weevbook/journal.test.ts`](../../server/weevbook/journal.test.ts), one test per number. The lease runs against
+real bare repositories in `lease.test.ts`, the turn's state machine and retry rule in `turn.test.ts`, the decision
+table row by row in `dispatch.test.ts`, and every invariant a run can show (`SYNC-n`, `RESUME-8`, `DISP-n`, the
+journals' `THREAD-n`) is checked after each simulated run in `sim/sim.test.ts`.
 
 ## Glossary
 
@@ -104,7 +109,11 @@ Every number in these pages, in one place. They are starting values, to be tuned
 | Lease renewal while a turn runs | every 20 s | 03 |
 | Lease lifetime after a renewal | 60 s | 03 |
 | Unchanged lease observed before a steal | 60 s | 03 |
-| Clock grace before a steal | 60 s | 03 |
+| Clock grace before a steal | 30 s | 03 |
+| The dispatcher reads `working` leases | every 10 s | 03 |
+| A dead holder's lease is stolen, at the latest | 130 s after its last renewal (clocks within 30 s) | 03 |
+| A held message handed again to the holder | every 30 s | 03 |
+| An engine chosen that has not started the turn | decided again after 30 s | 03 |
 | Largest journal line | 1 MiB | 02 |
 | Largest raw segment | 16 MiB | 02 |
 | Largest untracked file in a checkpoint | 5 MiB | 04 |
@@ -115,6 +124,10 @@ Every number in these pages, in one place. They are starting values, to be tuned
 | Quota reading considered fresh | 5 min | 06 |
 | Engine considered alive | seen in the last 180 s | 06 |
 | Quota: leave at / enter under / return under | 97 % / 85 % / 50 % | 06 |
+| Turns finished before going back to the first provider | 2 | 06 |
+| Reservation per turn (5-hour window) | 10 points; 20 on a change of account | 06 |
+| A reservation ends when the account is read again | over 60 s after it was made | 06 |
+| A held turn is looked at again | when the engine table changes, at least every 60 s | 06 |
 
 ## Open decisions
 
@@ -137,6 +150,6 @@ Not decided here. Each has a recommendation; the owner decides.
 | 1 | The weevbook is written locally, next to the app, for every provider session ("shadow"). | Every session is there and matches the app for 7 days. |
 | 2 | Sync to the hub and checkpoints. | A machine switched off mid-work: the hub has everything pushed up to the last 20 seconds. |
 | 3 | Resume on another machine, same provider. | Automated: start on one machine, cut it, resume on the other, same code. |
-| 4 | The thread becomes the unit in the app; handoff between providers; the dispatcher. | The simulator of the reference scenario is green over thousands of runs. |
+| 4 | The thread becomes the unit in the app; handoff between providers; the dispatcher. | The simulator of the reference scenario is green over thousands of runs. (The simulator exists: `npm run sim -- --seeds 20000`.) |
 | 5 | The connector and the weevbook page. | A chat is sent from ChatGPT and Claude.ai, then continued by an engine. |
 | 6 | Setup by talking to weevboss, with no screen to fill in. | A new user connects an account, a second machine and the connector by talking. |

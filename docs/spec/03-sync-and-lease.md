@@ -85,6 +85,45 @@ it knows. A machine that lost the lease cannot push to the thread, even one comm
 The holder folds an orphan ref into the journal as one `note` of kind `late` (the events, the checkpoint commit if
 there is one), then deletes the ref. The events are kept; they are never mixed into the thread.
 
+- **The note.** `leg`: the first leg of the late events that the thread knows; `text`: `laptop came back with 2
+  events of L2 it had not pushed; kept here, not part of the thread`; `data`: `from` (the orphan ref), `events` (the
+  late events without `v`, `seq`, `id` and `leg`, which only made sense in the losing copy) and `checkpoint` (the
+  commit of the last checkpoint among them). The late events are the orphan's events after the longest run of ids it
+  shares with the thread from the start.
+- **When.** The next push of the holder to that thread carries the note, and deletes the ref in the same atomic push
+  (`:refs/orphans/<id>/<machine>-<epoch>` with `--force-with-lease=` that ref`:`its commit). An orphan whose events
+  are all in the thread already is deleted with no note. In practice the dispatcher's machine does it, the next time
+  the lease is idle.
+
+### Who writes what
+
+Decided with the simulator (step 4); `lease.ts` implements the rules and `sim/world.ts` the roles.
+
+- **The dispatcher's machine files messages.** A message is acknowledged to the phone once it is on the dispatcher's
+  disk, with its idempotency key; a message sent again with a known key is acknowledged and not filed again. While
+  the lease is `idle` (or absent: then `meta` first), the dispatcher writes `message` and `turn accepted` itself
+  (take, or take over idle). While it is `working`, it hands the message to the holder, which appends it at its next
+  renewal. The dispatcher keeps the message until its key is in the thread, and hands it again every 30 s.
+- **The machine of the chosen engine starts the turn.** In the one push that takes over the idle lease it writes
+  `leg.end` (`moved`, when the open leg is another engine's), `turn assigned`, `leg.start` (when the leg is new) and
+  `turn running`. The compare-and-swap on the lease also pins the thread tip that machine read: if anything moved,
+  it reads again and tries once more. If the turn has not started 30 s after the decision (the machine never took
+  the lease), the dispatcher decides again; no attempt is spent.
+- **The engine's machine ends it**: `done`, or a checkpoint when there was an effect, `turn failed` and `leg.end`
+  (`quota` or `error`), and goes idle in the same push.
+- **The dispatcher's machine steals.** It reads every `working` lease every 10 s. The steal push writes `turn failed`
+  (reason `machine-lost`; `effect: none` if the turn was only `assigned`, `some` once `running`, because what the
+  engine did after its last push is unknown) and `leg.end` (`machine-lost`, `by` the stealer), and leaves the lease
+  `idle`. The turn is then placed like any failed turn.
+- **A lease that names this machine** with the epoch it pushed is its own write, even when the answer to the push was
+  lost: it adopts it.
+- **After a restart** a machine reads its own `working` leases first. Still the holder: it pushes what it committed
+  locally, writes `turn failed` (`machine-lost`, effect as for a steal) and `leg.end`, and goes idle; the holder does
+  not change, so neither does the epoch. No longer the holder: what it did not push goes to an orphan ref.
+- **A leg can outlive an epoch.** The dispatcher taking an idle lease to file a message changes the holder and the
+  epoch, but not the leg: the next turn on the same engine continues it. `epoch` in `leg.start` is the epoch the leg
+  started under.
+
 ### Clocks
 
 Machines' clocks are assumed to agree within 30 s. The protocol stays safe when they do not:
@@ -95,6 +134,13 @@ Machines' clocks are assumed to agree within 30 s. The protocol stays safe when 
 - If a steal is wrong anyway (the holder was alive but cut off from the hub for more than about a minute and a half), the holder
   loses at its next push. Two engines may have worked for a while; only one of them is in the thread. The other's
   work is in a `note` and in its own checkpoint.
+- **How late.** With the stealer reading leases every 10 s, a dead holder's lease goes at the latest
+  max(60 + 30 + 30, 10 + 60) + 10 = **130 s** after its last renewal, counted on the stealer's clock (a clock that
+  runs 3 % slow makes it 3 % longer). A holder whose clock is ahead by more than 30 s delays the steal by the
+  difference; a holder whose clock is behind cannot make it earlier than 60 s unchanged.
+- **What the simulator saw.** Over 20,000 runs, one in six with a clock minutes wrong or drifting by 1 to 3 %, no
+  holder that could renew ever lost its lease: clocks changed how long a dead holder kept its threads, never who
+  could write.
 
 ## Sync
 
@@ -148,6 +194,10 @@ To be tested with two real repositories at step 2, and by the simulator at step 
 - **SYNC-9** Deleting `main` and composing again gives the same tree.
 - **SYNC-10** A push about one thread never depends on another thread's refs. In the batch of renewals each lease
   is checked on its own; when one is rejected, the batch is pushed again without it.
+- **SYNC-11** Simulator: with the dispatcher's machine up and clocks within 30 s, a `working` lease whose holder
+  stopped renewing is stolen within 130 s of its last renewal.
+- **SYNC-12** Simulator: a machine stops its engine at its first push that reaches the hub after it lost the lease.
+  Two engines never write to the hub for one thread at once.
 
 ## Failure cases
 
@@ -186,7 +236,14 @@ Ship steps 1 to 3 with own-server and no-hub only.*
 
 ## What exists today
 
-- No hub and no lease. A machine's threads never leave it, except by hand with `server/bring.ts`.
+- [`server/weevbook/lease.ts`](../../server/weevbook/lease.ts): `lease.json`, the rules above as pure functions
+  (`plan`, `stealable`, `standing`, `lateNote`), and `LeaseClient`, which runs them as the git pushes of this page
+  with an injected clock and git runner. `lease.test.ts` runs two machines against a real bare repository: two
+  takers at once, steal timing, the old holder rejected and its orphan, clocks 30 s apart and far beyond. Nothing in
+  the app uses it yet.
+- `server/weevbook/sim`: the same rules over an in-memory hub with the same guarantees (atomic push,
+  compare-and-swap, fast-forward only), checked after every simulated run.
+- No hub in the app. A machine's threads never leave it, except by hand with `server/bring.ts`.
 - `server/remotes.ts`: a main machine reads the other machines' servers every 2 s through a reverse SSH tunnel
   (`WEEVILS_REMOTES`). It is a live view, not storage: when a machine is off, its sessions are gone from the app.
   The hub replaces it for content; it stays useful to know quickly that a machine is reachable.

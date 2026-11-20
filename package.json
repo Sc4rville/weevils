@@ -9,6 +9,7 @@
     "build": "npm run typecheck && vite build",
     "typecheck": "tsc --noEmit && tsc --noEmit -p server",
     "test": "vitest run",
+    "sim": "node server/weevbook/sim/main.ts",
     "icons": "node scripts/make-icons.mjs",
     "i18n:check": "node scripts/check-i18n.mjs",
     "lint:sh": "for f in install.sh get/bootstrap.sh get/make-bundle.sh get/refresh-bundle.sh get/follow-main.sh get/sign-main.sh get/backup-stats.sh server/install.sh server/bring.sh server/weevils-cli server/weevils-update server/weevils-service server/wv server/tmux-guard scripts/test-copy.sh scripts/fresh.sh scripts/fresh/entrypoint.sh test/docker/run.sh; do bash -n \"$f\" || exit 1; done && sh -n server/hook.sh && if command -v shellcheck >/dev/null 2>&1; then shellcheck -S error install.sh get/bootstrap.sh get/make-bundle.sh get/refresh-bundle.sh get/sign-main.sh server/weevils-update server/install.sh server/bring.sh server/weevils-cli server/weevils-service server/wv scripts/fresh.sh scripts/fresh/entrypoint.sh test/docker/run.sh server/hook.sh; fi",

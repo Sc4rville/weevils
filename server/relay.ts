@@ -23,6 +23,7 @@ import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import type { ProviderHealth } from './provider-health.ts'
 import { ReturnRelay } from './return-relay.ts'
+import { quietCodexArgs } from './quiet-calls.ts'
 import os from 'node:os'
 import path from 'node:path'
 import type { ClaudeAccountLine, RelayMode, RelayPlan, RelayView, Session } from '../shared/api.ts'
@@ -274,7 +275,7 @@ export const defaultDeps = (quota: () => Promise<QuotaInfo>, codexReady: () => b
   write: (cwd, prompt) =>
     new Promise((resolve, reject) => {
       const out = path.join(os.tmpdir(), `wv-plan-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.md`)
-      const c = execFile('codex', ['exec', '--sandbox', 'read-only', '--skip-git-repo-check', '--ephemeral', '-C', cwd, '-o', out, prompt], { cwd, timeout: 10 * 60_000, maxBuffer: 16 << 20 }, (err, _stdout, stderr) => {
+      const c = execFile('codex', ['exec', '--sandbox', 'read-only', '--skip-git-repo-check', '--ephemeral', ...quietCodexArgs(), '-C', cwd, '-o', out, prompt], { cwd, timeout: 10 * 60_000, maxBuffer: 16 << 20 }, (err, _stdout, stderr) => {
         let text = ''
         try {
           text = fs.readFileSync(out, 'utf8').trim()

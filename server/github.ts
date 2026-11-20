@@ -6,6 +6,7 @@ import path from 'node:path'
 import type { GithubRepo } from '../shared/api.ts'
 import { lang, tr, user, type Lang } from './i18n.ts'
 import M from './i18n/github.ts'
+import { quietCodexArgs } from './quiet-calls.ts'
 
 function gh(args: string[], cwd?: string, timeout = 30_000): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -162,7 +163,7 @@ export async function describeRepos(list: GithubRepo[], roots: string[], dataDir
       await new Promise<void>((resolve, reject) => {
         const child = execFile(
           'codex',
-          ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '--output-schema', schemaFile, '-o', outFile, '-c', 'model_reasoning_effort="low"', prompt],
+          ['exec', '--ephemeral', '--skip-git-repo-check', ...quietCodexArgs(), '-s', 'read-only', '--output-schema', schemaFile, '-o', outFile, '-c', 'model_reasoning_effort="low"', prompt],
           { cwd: workdir, timeout: 240_000, maxBuffer: 16 << 20 },
           (err, _o, stderr) => (err ? reject(new Error(stderr?.toString().slice(-300) || err.message)) : resolve()),
         )

@@ -18,7 +18,7 @@ import NM from '../i18n/notices'
 import { SessionQuestion } from './session-question'
 import { CutBand } from './cut-band'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
-import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
+import { Preview, freshSite, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { effortLabel, modelLabel } from './settings'
 import { ModelPicker } from './model-controls'
 import { ReposPage } from './repos'
@@ -213,7 +213,7 @@ function SessionPage({ id }: { id: string }) {
   const project = snap.projects.find((p) => p.id === s.projectId)
   const sourceIssue = sourceAccessIssue(sourceForSession(snap.projects, s))
   const st = status[s.status]
-  const previewUrl = preview.url ?? guessPreviewUrl(messages, s, project, snap.config)
+  const previewUrl = freshSite(preview.url ?? guessPreviewUrl(messages, s, project, snap.config), snap.config.siteKey)
 
 
   // Before the server takes it, the notice under the thread speaks (« sending… », « try again »); after, the bubble.

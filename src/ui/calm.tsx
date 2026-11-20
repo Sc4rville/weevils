@@ -12,7 +12,7 @@ import { useFollow } from './follow'
 import M from '../i18n/calm'
 import { useApp } from './app-context'
 import { Collapse, Composer, Messages, Working, type Attachment } from './bits'
-import { Preview, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
+import { Preview, freshSite, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
 import { Settings } from './settings'
 import { SidePane, usePageChrome, useSplit } from './shell'
 import { FollowDown } from './followdown'
@@ -131,7 +131,7 @@ export function CalmConv({ id }: { id: string }) {
     }
   }
   const suggestions = useMemo(() => urlsInMessages(messages, snap.config), [messages])
-  const previewUrl = preview.url ?? (s ? guessPreviewUrl(messages, s, snap.projects.find((p) => p.id === s.projectId), snap.config) : '')
+  const previewUrl = freshSite(preview.url ?? (s ? guessPreviewUrl(messages, s, snap.projects.find((p) => p.id === s.projectId), snap.config) : ''), snap.config.siteKey)
 
   return (
     <motion.div

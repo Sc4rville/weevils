@@ -3,6 +3,7 @@ import { markdownFileRoutes } from './markdown-files.ts'
 import { proposeThinkLayout } from './think-ai.ts'
 import { ThinkStore } from './think.ts'
 import { previewTarget } from './preview-target.ts'
+import { openSiteFile, siteFile, siteKey, siteKeyOk } from './site.ts'
 import { Outbox, OutboxError } from './outbox.ts'
 import { executeOutbox, outboxRoute } from './outbox-http.ts'
 import { bossDoor } from './boss-door.ts'
@@ -396,11 +397,19 @@ function serveStatic(res: http.ServerResponse, pathname: string) {
 
 // Une petite appli faite par un agent (index.html, chemins relatifs) s'ouvre dans l'app sans domaine de preview :
 // /api/site/<clé>/<repo>/… sert les fichiers du repo (dist/ s'il n'y a pas d'index.html à la racine). La clé (dérivée du
-// code d'accès, donnée dans le snapshot) remplace le cookie, que le document isolé ne porte pas. La page est servie en
-// bac à sable (CSP sandbox, sans allow-same-origin) : son JavaScript n'a pas l'origine de weevils et ne peut pas piloter
-// l'API, même si le repo vient d'ailleurs. Jamais de fichier caché (.git, .env…).
-const SITE_KEY = crypto.createHmac('sha256', SECRET).update('weevils-site').digest('base64url').slice(0, 22)
-w.siteKey = SITE_KEY
+// code d'accès, donnée dans le snapshot) remplace le cookie, que le document isolé ne porte pas ; elle change toutes les
+// heures (server/site.ts). La page est servie en bac à sable (CSP sandbox, sans allow-same-origin) : son JavaScript n'a
+// pas l'origine de weevils et ne peut pas piloter l'API, même si le repo vient d'ailleurs. Seulement les fichiers du
+// repo lui-même, liens symboliques résolus : jamais un fichier caché (.git, .env…) ni rien hors du repo.
+const refreshSiteKey = () => {
+  const k = siteKey(SECRET)
+  if (k === w.siteKey) return
+  const first = !w.siteKey
+  w.siteKey = k
+  if (!first) w.bump()
+}
+refreshSiteKey()
+setInterval(refreshSiteKey, 60_000).unref()
 const SITE_RE = /^\/api\/site\/([\w-]{22})\/([\w.@+-]+)(\/.*)?$/
 
 // Living-link pages (server/pages.ts, docs/LINKS.md): /p/<kind>/<slug> for the signed-in, keyed files for the sandbox.
@@ -417,9 +426,7 @@ const pageUrl = (req: http.IncomingMessage, p: string) => {
 }
 
 function serveSite(res: http.ServerResponse, key: string, repo: string, rest: string | undefined) {
-  const a = Buffer.from(key)
-  const b = Buffer.from(SITE_KEY)
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return json(res, 404, { error: tr(M).unknownRoute })
+  if (!siteKeyOk(SECRET, key)) return json(res, 404, { error: tr(M).unknownRoute })
   let dir: string
   try {
     dir = w.repoDir(repo)
@@ -436,22 +443,27 @@ function serveSite(res: http.ServerResponse, key: string, repo: string, rest: st
   } catch {
     return json(res, 400, { error: tr(M).unknownRoute })
   }
-  if (rel.split('/').some((seg) => seg.startsWith('.'))) return json(res, 404, { error: tr(M).unknownRoute })
-  if (rel === '/' && !fs.existsSync(path.join(dir, 'index.html')) && fs.existsSync(path.join(dir, 'dist', 'index.html'))) {
+  if (rel === '/' && !siteFile(dir, '/index.html') && siteFile(dir, '/dist/index.html')) {
     res.writeHead(302, { location: `/api/site/${key}/${repo}/dist/` })
     return res.end()
   }
-  let file = path.resolve(dir, `.${rel}`)
-  if (file !== dir && !file.startsWith(dir + path.sep)) return json(res, 404, { error: tr(M).unknownRoute })
-  if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html')
-  if (!fs.existsSync(file)) return json(res, 404, { error: tr(M).unknownRoute })
+  const file = siteFile(dir, rel)
+  if (!file) return json(res, 404, { error: tr(M).unknownRoute })
+  let stream: fs.ReadStream
+  try {
+    stream = openSiteFile(file)
+  } catch {
+    return json(res, 404, { error: tr(M).unknownRoute })
+  }
   res.writeHead(200, {
     'content-type': MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
     'cache-control': 'no-cache',
     'content-security-policy': 'sandbox allow-scripts allow-forms allow-popups allow-modals',
     'x-content-type-options': 'nosniff',
+    // The key is in the address: never sent on to what the page loads or links to.
+    'referrer-policy': 'no-referrer',
   })
-  fs.createReadStream(file).pipe(res)
+  stream.on('error', () => res.destroy()).pipe(res)
 }
 
 // ---------------------------------------------------------------- flux temps réel

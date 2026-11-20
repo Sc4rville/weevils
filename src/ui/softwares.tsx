@@ -10,6 +10,7 @@ import { Shell } from './shell'
 import { Icon } from './icons'
 import './softwares.css'
 import { PreviewChat } from './preview-chat'
+import { useSteadyUrl } from './preview'
 import { GoneBack, useGoneTitle } from './gone'
 
 // « Mes logiciels » : tout ce que l'utilisateur construit ou fait tourner, un rectangle de couleur par logiciel (même
@@ -337,6 +338,8 @@ export function SoftwarePage({ id }: { id: string }) {
       window.clearInterval(timer)
     }
   }, [id])
+  // A page weevils serves itself keeps its frame when only its key changes (src/ui/preview.tsx).
+  const frameUrl = useSteadyUrl(sw?.url ?? '')
 
   if (!sw) {
     return (
@@ -410,8 +413,8 @@ export function SoftwarePage({ id }: { id: string }) {
         <div className="sw-frame">
           <iframe
             ref={previewFrame}
-            key={sw.url}
-            src={sw.url}
+            key={frameUrl}
+            src={frameUrl}
             title={t.frame}
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             allow="clipboard-write; fullscreen"

@@ -20,7 +20,8 @@ import { HubSync, checkpointHook, draft } from './hub.ts'
 import { parseJournal, validateJournal, type EventDraft, type JournalEvent, type LegId, type Provider, type TurnEvent } from './journal.ts'
 import { STEAL_BOUND, parseLease } from './lease.ts'
 import { startTurn, type Launcher, type StartResult } from './start.ts'
-import { REQUEST_EXPIRES, Threads, type Peer } from './threads.ts'
+import O from '../i18n/optimizers.ts'
+import { REQUEST_EXPIRES, Threads, ownTask, type Peer } from './threads.ts'
 import { prefaceSign } from './turn.ts'
 import { startWeevbookWriter } from './writer.ts'
 
@@ -493,6 +494,10 @@ describe('switching threads on in an install with history', () => {
     for (const id of [...theirs, cut]) expect(await server.threads.view(id)).toMatchObject({ state: 'waiting', hold: { reason: 'stopped' } })
     expect(await server.threads.view(recent)).toMatchObject({ state: 'paused', hold: { reason: 'expired', request: 'Summarise the open pull requests' } })
     expect((await server.threads.lines()).filter((l) => l.state === 'working')).toEqual([])
+    // The list dates a thread by the last thing said, not by the dispatcher's bookkeeping (the requests closed as
+    // expired two hours later do not rise above the session cut five minutes ago).
+    const mine = new Set([cut, recent, old, elsewhere, out, failed])
+    expect((await server.threads.lines()).map((l) => l.thread).filter((id) => mine.has(id))).toEqual([cut, recent, old, elsewhere, out, failed])
 
     // The person writes again in one of them: the old turn is closed, the new one runs, in the same session.
     await server.threads.tick()
@@ -552,4 +557,13 @@ describe('the dispatcher keeps its own clock of what is live', () => {
     expect(journal(w.hub, id).at(-1)).toMatchObject({ reason: 'expired' })
     expect(server.calls).toEqual([])
   }, 60_000)
+})
+
+describe('the conversations list', () => {
+  it('leaves out the tasks weevils started by itself, in both languages, and nothing the person wrote', () => {
+    const brief = { title: 'Tidy the docs', branch: 'b', checkout: '/c', report: 'r', inRepo: true, writesReport: false, heavy: false, prompt: 'p', minutes: 30, agreed: '' }
+    for (const lang of ['fr', 'en'] as const) expect(ownTask(O[lang].brief(brief).slice(0, 60))).toBe(true)
+    expect(ownTask('Background tasks: how do they start?')).toBe(false)
+    expect(ownTask('Show prices with the currency')).toBe(false)
+  })
 })

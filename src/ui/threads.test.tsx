@@ -210,10 +210,21 @@ describe('the weevbook page', () => {
     render(<WeevbookPage projectId="p" />, snap(true))
     await flush()
     expect(calls.listed[0]).toEqual({ project: 'shop' })
+    expect(text()).toContain('conversations')
+    expect(text()).not.toContain('weevbook')
     expect(text()).toContain('Prices with the currency')
     expect(text()).toContain('Offline maps')
     expect(text()).toContain('tile cache with a cap')
+    // A row says its state only when it is not simply over.
     expect(text()).toContain('paused')
+    expect(text()).not.toContain('your move')
+    // Opened from a project: no row of other projects.
+    expect(button('all projects')).toBeFalsy()
+    expect(button('blog')).toBeFalsy()
+    act(() => root.unmount())
+    root = createRoot(host)
+    render(<WeevbookPage />, snap(true))
+    await flush()
     const input = host.querySelector('input[type="search"]') as HTMLInputElement
     await act(async () => {
       const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
@@ -221,10 +232,10 @@ describe('the weevbook page', () => {
       input.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await act(() => new Promise((r) => setTimeout(r, 300)))
-    expect(calls.listed.at(-1)).toEqual({ project: 'shop', q: 'maps' })
-    await act(async () => button('all projects')!.click())
-    await act(() => new Promise((r) => setTimeout(r, 300)))
     expect(calls.listed.at(-1)).toEqual({ q: 'maps' })
+    await act(async () => button('shop')!.click())
+    await act(() => new Promise((r) => setTimeout(r, 300)))
+    expect(calls.listed.at(-1)).toEqual({ project: 'shop', q: 'maps' })
     await act(async () => [...host.querySelectorAll('button.row')].find((b) => text(b).includes('Offline maps'))!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
     expect(calls.pushed).toEqual([{ kind: 'thread', id: '01M7M8E6XRZ0FEBHYK2C5GNQF5' }])
     noRelayTrace()

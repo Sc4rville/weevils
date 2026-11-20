@@ -531,6 +531,7 @@ export class Threads {
     const by = new Map<string, ThreadLine & { commit: string; dir: string }>()
     for (const dir of dirs) {
       for (const r of await threadRefs(dir).catch(() => [])) {
+        if (ownTask(r.meta.title)) continue
         const cur = by.get(r.id)
         if (cur && cur.updated >= Date.parse(r.meta.updated)) continue
         by.set(r.id, { thread: r.id, title: r.meta.title, project: r.meta.project, updated: Date.parse(r.meta.updated), state: r.meta.state, commit: r.commit, dir })
@@ -558,11 +559,18 @@ export class Threads {
     }
     // meta.json says `paused` for a failed turn, `working` for a turn a provider's session left open; the app reads the
     // journal for those (view.ts): retried by the dispatcher, working; never to be placed, waiting.
+    // Their last event can be the dispatcher's own bookkeeping (a turn held, closed as stopped): the list dates them by
+    // the last thing said, so a thread nobody touched in days does not rise to the top.
     for (const l of lines) {
       if (l.state === 'waiting') continue
       const text = await gitOut(l.dir, ['cat-file', 'blob', `${l.commit}:events.jsonl`])
-      if (text) l.state = visibleState(parseJournal(text).events).state
+      if (!text) continue
+      const { events } = parseJournal(text)
+      l.state = visibleState(events).state
+      const said = [...events].reverse().find((e) => e.type === 'message')
+      if (said) l.updated = Date.parse(said.at)
     }
+    lines.sort((a, b) => b.updated - a.updated)
     const plain = lines.map(({ commit: _c, dir: _d, ...l }) => l)
     this.refsCache = { key, lines: plain, handoffs }
     return plain
@@ -659,6 +667,12 @@ function holdFacts(reason: string, input: DecideInput | undefined, project: stri
   }
   return { reason }
 }
+
+/**
+ * A task weevils started by itself while the machine was free (server/i18n/optimizers.ts `brief`, the first words of
+ * its first message, so its title): the « auto » band shows it, it is not one of the person's conversations.
+ */
+export const ownTask = (title: string) => /^(Background task started by weevils|Tâche de fond lancée par weevils)\b/.test(title)
 
 const norm = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 

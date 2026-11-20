@@ -2643,8 +2643,12 @@ button.copy.done {
 .weevbook-projects {
   padding-block: 4px 8px;
 }
+.weevbook-projects .link {
+  font-weight: 400;
+}
 .weevbook-projects .link[aria-pressed='true'] {
   font-weight: 700;
+  text-decoration: underline;
 }
 
 /* Keep the open conversation inside the visual viewport when iOS pans for the keyboard. */

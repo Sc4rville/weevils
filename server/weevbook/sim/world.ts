@@ -9,16 +9,15 @@
 
 import { parseEngine, type JournalEvent, type LegId, type Provider } from '../journal.ts'
 import { OBSERVE_EVERY, RENEW_EVERY, lateNote, observe, orphanRef, plan, stealable, standing, type Intent, type Lease, type Seen } from '../lease.ts'
-import { assign, holdAll, next, stolen, turnsOf, type Effect, type Next, type Turn, type TurnChange } from '../turn.ts'
-import { QUOTA_FRESH, accountOf, decide, release, reserve, reservedOn, settle, threadFacts, type DecideInput, type Decision, type MachineFacts, type Quota, type Reservation } from '../dispatch.ts'
+import { assign, next, stolen, turnsOf, type Effect, type Turn, type TurnChange } from '../turn.ts'
+import { accountOf, reservedOn, type DecideInput, type Decision, type Quota } from '../dispatch.ts'
+import { Dispatcher, type Instruction as Order, type PlaceOptions } from '../dispatcher.ts'
 import { Hub } from './hub.ts'
 import { Rng, ulid } from './rng.ts'
 import { MIN, S, type Control, type MachineId, type RunView, type Scenario } from './scenario.ts'
 
 export const BASE = Date.parse('2026-11-20T08:00:00Z')
 const PUBLISH_EVERY = 60 * S
-/** An instruction whose turn has not started after this is decided again. */
-const START_TIMEOUT = 30 * S
 const FORWARD_AGAIN = 30 * S
 const PHONE_RETRY = 15 * S
 const SETTLE_MAX = 90 * MIN
@@ -151,16 +150,7 @@ interface Inbox {
   thread: string
   text: string
 }
-interface Instruction {
-  thread: string
-  turn: number
-  attempt: number
-  engine: string
-  rule: string
-  reason: string
-  rung: 0 | 1 | 2 | 3
-  request: 'message' | 'preface'
-}
+type Instruction = Order
 interface Read {
   seen: Seen
   journal: readonly JournalEvent[]
@@ -193,20 +183,9 @@ export class World {
   /** Every key accepted, and its thread: a message the phone sends again is answered, not filed again. */
   private readonly keys = new Map<string, string>()
   private readonly convThread = new Map<number, string>()
-  // the dispatcher: memory
-  ledger: Reservation[] = []
-  private readonly pending = new Map<string, { turn: number; attempt: number; at: number }>()
+  // the dispatcher: memory. The same class as weevilsd's (dispatcher.ts): ledger, engine table, pending turns, holds.
+  readonly d: Dispatcher
   private readonly forwarded = new Map<string, number>()
-  private readonly answers = new Map<MachineId, { t: number; ok: boolean }>()
-  private readonly settled = new Map<string, number>()
-  /**
-   * engines.json of each machine, and when the dispatcher first read that version, by its own clock (`at`): the age of
-   * `seen` and of a quota reading is judged like a lease, by the reader's clock (docs/spec/06-dispatch.md).
-   */
-  private readonly published = new Map<MachineId, { seen: number; at: number; quotas: Record<string, Quota> }>()
-  /** Grows whenever the engine table changes: a machine published, or did not answer. */
-  private version = 0
-  private readonly holds = new Map<string, { turn: number; at: number; version: number }>()
   // the phone
   private readonly outbox = new Map<number, PhoneMessage[]>()
   private phoneCuts = 0
@@ -230,6 +209,7 @@ export class World {
   constructor(sc: Scenario, seed: number, o: { trace?: boolean } = {}) {
     this.sc = sc
     this.rng = new Rng(seed ^ 0x5eed)
+    this.d = new Dispatcher(sc.preferred)
     this.trace = o.trace ? [] : null
     const mk = (id: MachineId): Machine => {
       const s = sc.machines.find((m) => m.id === id)!
@@ -599,7 +579,7 @@ export class World {
       lease = r.seen.lease
     }
     if (lease?.state === 'working') {
-      this.pending.delete(thread)
+      this.d.working(thread)
       this.forward(this.machines[lease.holder as MachineId], thread, r)
       if (lease.holder === s.id || !stealable(r.seen, this.now(s)).ok) return
       const turns = this.turnsAt(r.seen.tip)
@@ -609,7 +589,7 @@ export class World {
       const res = this.pushOne(s, thread, r.seen, r.seen.tip, () => [...(failed ? [turnDraft(failed)] : []), ...(open ? [{ type: 'leg.end', reason: 'machine-lost', by: s.id } as Draft] : [])], { engine: null, leg: null, state: 'idle' }, { steal: true })
       if (!res.ok) return
       this.steals.push({ t: this.loop.t, thread, holder: lease.holder, set })
-      this.ledger = release(this.ledger, thread)
+      this.d.stole(thread)
       r = this.read(s, thread)!
     }
     // The lease is idle or absent. File what waits: orphans as late notes, messages as turns.
@@ -633,90 +613,42 @@ export class World {
     this.place(thread, r)
   }
 
-  /** The retry rule, then the decision table; the machine of the chosen engine is called directly. */
+  /** The retry rule, then the decision table (dispatcher.ts, as in weevilsd); the chosen engine's machine is called
+   *  directly. */
   private place(thread: string, r: Read) {
     const s = this.server
     const turns = this.turnsAt(r.seen.tip)
-    const n: Next = next(turns)
-    if (n.kind === 'busy') return
-    const p = this.pending.get(thread)
-    if (n.kind === 'quiet' || n.kind === 'hold') {
-      this.pending.delete(thread)
-      this.ledger = release(this.ledger, thread)
-      if (n.kind === 'hold') this.pushOne(s, thread, r.seen, r.seen.tip, () => [{ type: 'turn', turn: n.turn, state: 'held', rule: n.rule, reason: n.reason } as Draft], { engine: null, leg: null, state: 'idle' })
+    const now = this.now(s)
+    const p = this.d.place(thread, r.journal, turns, now, this.placing(thread))
+    if (p.kind === 'none') return
+    if (p.kind === 'hold') {
+      if (p.changes.length) {
+        if (p.decision) this.log('server', `hold ${short(thread)}: ${p.decision.hold}`)
+        this.pushOne(s, thread, r.seen, r.seen.tip, () => p.changes.map(turnDraft), { engine: null, leg: null, state: 'idle' })
+      }
       return
     }
-    if (p && p.turn === n.turn && p.attempt === n.attempt && this.now(s) - p.at < START_TIMEOUT) return
-    // A held turn is looked at again when the engine table changes (docs/spec/06-dispatch.md), or once a minute.
-    const h = this.holds.get(thread)
-    if (turns[n.turn - 1].state === 'held' && h && h.turn === n.turn && h.version === this.version && this.now(s) - h.at < 60 * S) return
-    this.pending.delete(thread)
-    this.ledger = release(this.ledger, thread)
-    for (let tries = 0; tries < 3; tries++) {
-      const input: DecideInput = {
-        now: this.now(s),
-        thread: threadFacts(r.journal, { project: this.registry.get(thread)!, cloneable: this.sc.projects[this.registry.get(thread)!]?.cloneable ?? false, retry: n.retry, turn: n.turn }),
-        table: this.table(),
-        ledger: this.ledger,
-        preferred: this.sc.preferred,
-      }
-      // Frozen: decide cannot change what it is given (DISP-1); the checks replay it.
-      const d = decide(freeze(input))
-      this.decisions.push({ t: this.loop.t, thread, turn: n.turn, attempt: n.attempt, input, output: d })
-      if (!d.engine) {
-        this.holds.set(thread, { turn: n.turn, at: this.now(s), version: this.version })
-        const changes: TurnChange[] = holdAll(turns, 'hold', d.hold!)
-        if (changes.length) {
-          this.log('server', `hold ${short(thread)}: ${d.hold}`)
-          this.pushOne(s, thread, r.seen, r.seen.tip, () => changes.map(turnDraft), { engine: null, leg: null, state: 'idle' })
-        }
-        return
-      }
-      const target = this.machineOf(d.engine)
-      if (!this.direct(target)) {
-        this.answers.set(target.id, { t: this.now(s), ok: false })
-        this.version++
-        continue
-      }
-      this.answers.set(target.id, { t: this.now(s), ok: true })
-      this.ledger = reserve(this.ledger, d, thread, n.turn, this.now(s))
-      const account = accountOf(d.engine)
-      const q = input.table.quotas[account]
-      this.reservations.push({ t: this.loop.t, account, five: q ? (q.fiveHour.resetsAt !== null && input.now >= q.fiveHour.resetsAt ? 0 : q.fiveHour.used) : 0, reserved: reservedOn(this.ledger, account) })
-      this.pending.set(thread, { turn: n.turn, attempt: n.attempt, at: this.now(s) })
-      this.log('server', `${d.rule} ${short(thread)} turn ${n.turn}.${n.attempt} → ${d.engine}: ${d.reason}`)
-      this.startTurn(target, { thread, turn: n.turn, attempt: n.attempt, engine: d.engine, rule: d.rule, reason: d.reason, rung: d.rung ?? 1, request: n.request })
-      return
+    const { ins, decision: d, input } = p
+    const account = accountOf(d.engine!)
+    const q = input.table.quotas[account]
+    this.reservations.push({ t: this.loop.t, account, five: q ? (q.fiveHour.resetsAt !== null && input.now >= q.fiveHour.resetsAt ? 0 : q.fiveHour.used) : 0, reserved: reservedOn(this.d.ledger, account) })
+    this.log('server', `${d.rule} ${short(thread)} turn ${ins.turn}.${ins.attempt} → ${d.engine}: ${d.reason}`)
+    this.startTurn(this.machineOf(d.engine!), ins)
+  }
+
+  /** What the dispatcher needs besides the journal: the project, who answers, how to read a quota again. */
+  private placing(thread: string): PlaceOptions {
+    const project = this.registry.get(thread)!
+    return {
+      project,
+      cloneable: this.sc.projects[project]?.cloneable ?? false,
+      direct: (machine) => this.direct(this.machines[machine as MachineId]),
+      reread: (account, now) => this.reading(account, now),
+      accounts: this.quota.keys(),
+      record: (d) => this.decisions.push({ t: this.loop.t, ...d }),
     }
   }
 
-  /** The engine table as the dispatcher reads it: engines.json of each machine, its own calls, fresh quotas. */
-  table(): DecideInput['table'] {
-    const s = this.server
-    const now = this.now(s)
-    const machines: MachineFacts[] = []
-    const quotas: Record<string, Quota> = {}
-    for (const m of Object.values(this.machines)) {
-      const p = this.published.get(m.id)
-      if (!p) continue
-      const a = this.answers.get(m.id)
-      machines.push({ machine: m.id, seen: p.at, ...(a && a.t > p.at ? { answers: a.ok } : {}), projects: m.projects, engines: m.engines })
-      for (const [acc, q] of Object.entries(p.quotas)) if (!quotas[acc] || quotas[acc].readAt < p.at) quotas[acc] = { ...q, readAt: p.at }
-    }
-    // A reading older than 5 minutes is read again, through a machine that answers and has the account signed in.
-    for (const acc of this.quota.keys()) {
-      if (quotas[acc] && now - quotas[acc].readAt < QUOTA_FRESH) continue
-      const via = Object.values(this.machines).find((m) => this.direct(m) && m.engines.some((e) => e.signedIn && accountOf(e.engine) === acc))
-      if (via) quotas[acc] = this.reading(acc, now)
-    }
-    for (const [acc, q] of Object.entries(quotas)) {
-      if ((this.settled.get(acc) ?? -Infinity) < q.readAt) {
-        this.ledger = settle(this.ledger, acc, q.readAt)
-        this.settled.set(acc, q.readAt)
-      }
-    }
-    return { machines, quotas }
-  }
   private reading(account: string, readAt: number): Quota {
     const q = this.trueQuota(account)
     // The provider gives the time of the reset itself, by its own (true) clock.
@@ -728,8 +660,7 @@ export class World {
     const now = this.now(m)
     const quotas: Record<string, Quota> = {}
     for (const e of m.engines) if (e.signedIn) quotas[accountOf(e.engine)] = this.reading(accountOf(e.engine), now)
-    this.published.set(m.id, { seen: now, at: this.now(this.server), quotas })
-    this.version++
+    this.d.engines.publish({ machine: m.id, projects: m.projects, engines: m.engines }, quotas, now, this.now(this.server))
   }
   /** A machine tells the dispatcher a thread changed (a turn ended): it looks at once. */
   private notify(thread: string) {
@@ -798,16 +729,14 @@ export class World {
       m.seen.clear()
       m.unsure.clear()
       if (m.id === 'server') {
-        this.ledger = []
-        this.pending.clear()
+        this.d.restart(null)
         this.forwarded.clear()
-        this.answers.clear()
       }
       return
     }
     m.boot++
     // The dispatcher's memory is gone: it reads every engines.json again, as of now.
-    if (m.id === 'server') for (const p of this.published.values()) p.at = this.now(m)
+    if (m.id === 'server') this.d.engines.restart(this.now(m))
     m.unsure = new Set(m.local.keys())
     this.timers(m)
     this.loop.after(1 * S, () => this.sync(m))
@@ -987,7 +916,7 @@ export class World {
   isQuiet(): boolean {
     for (const q of this.outbox.values()) if (q.length) return false
     for (const m of Object.values(this.machines)) if (!m.on || m.work.size || m.unsure.size || m.pendingOrphans.size) return false
-    if (this.pending.size) return false
+    if (this.d.pendingCount) return false
     for (const thread of this.registry.keys()) {
       const commit = this.hub.refs.get(`refs/leases/${thread}`)
       if (commit && this.hub.lease(commit).state === 'working') return false
@@ -1010,15 +939,7 @@ export class World {
   /** The decision the dispatcher would take now for a thread's oldest waiting turn (for the checks). */
   decideNow(thread: string): Decision | null {
     const tip = this.hub.refs.get(`refs/threads/${thread}`) ?? null
-    const turns = this.turnsAt(tip)
-    const n = next(turns)
-    if (n.kind !== 'dispatch') return null
-    const project = this.registry.get(thread)!
-    return decide({
-      now: this.now(this.server),
-      thread: threadFacts(tip ? this.hub.thread(tip).journal : [], { project, cloneable: this.sc.projects[project]?.cloneable ?? false, retry: n.retry, turn: n.turn }),
-      table: this.table(), ledger: this.ledger, preferred: this.sc.preferred,
-    })
+    return this.d.decideNow(tip ? this.hub.thread(tip).journal : [], this.turnsAt(tip), this.now(this.server), this.placing(thread))
   }
 }
 
@@ -1040,13 +961,6 @@ function legs(journal: readonly JournalEvent[]): { open: LegId | null; openEngin
   return { open, openEngine, count }
 }
 const short = (thread: string) => thread.slice(-4)
-function freeze<T>(o: T): T {
-  if (o && typeof o === 'object' && !Object.isFrozen(o)) {
-    Object.freeze(o)
-    for (const v of Object.values(o)) freeze(v)
-  }
-  return o
-}
 const iso = (ms: number) => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace('.000Z', 'Z')
 function hex40(rng: Rng): string {
   let s = ''

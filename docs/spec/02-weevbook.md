@@ -145,6 +145,10 @@ through `redactToolText` (`server/codex-command-details.ts`) with no length limi
 | `sk-…` keys, JSON Web Tokens | `[redacted]` |
 | `<name with token, password, secret, api_key, authorization, cookie> = <value>` | `<name> = [redacted]` |
 
+What follows such a name but is not a value stays as it is: a variable or a command named (`$NAME`, `"${NAME}"`,
+`"$(…)"`), an empty string, the quote that closes a text opened just before the name (`grep "^API_KEY=" .env`), and
+a value already `[redacted]`. A value written in single quotes (`'$NAME'`) is a value.
+
 - **Events**: every string field.
 - **Raw**: each line is parsed, every string value inside it is redacted, and the line is written again as JSON. The
   function is never run over the line as text: that would break the JSON. A line in which nothing changed is kept
@@ -155,9 +159,14 @@ through `redactToolText` (`server/codex-command-details.ts`) with no length limi
 - **A raw line that is not JSON** (cut by a crash): written as one JSON string, redacted as text. Raw holds JSON lines
   only (BOOK-6); a raw line that parses to a string is such a line.
 - **A raw line over 16 MiB**: written as `{"weevbook":"omitted","reason":"line over 16 MiB","bytes":…,"sha256":…}`.
+- **Idempotent.** Redacting a redacted text changes nothing (BOOK-9 depends on it). At step 1 the `name = value`
+  pattern took the marker and what followed it for a new value (`KEY=[redacted]" run` lost `" run` the second time);
+  a value that starts with the marker is now left as it is. Property-tested over random texts, every string of the
+  fixtures and the shapes above.
 - The patterns run in time proportional to the text (`redactToolText`; its `name = value` pattern was rewritten as one
-  pass at step 1, with the same output: as a single regular expression it took time in the square of a long run of
-  word characters).
+  pass at step 1: as a single regular expression it took time in the square of a long run of word characters).
+- **A step's label** (`Bash · <command>`, the app's and the journal's alike) is redacted before it is cut to 90
+  characters: cut first, a value broken in the middle was no longer one the patterns saw, and its end showed.
 - **`handoff.md`**: the whole text. The handoff names environment variables; it never holds their values.
 - **Attachments** are not scanned. They are files the user or the engine chose to attach.
 
@@ -221,8 +230,10 @@ On each machine, in weevils' data dir (`~/.local/share/weevils`):
 - **`weevils weevbook compare [--verbose]`**: for every session, the messages the app makes of it
   (`parseTranscriptText`, the app's own reader, with no 400-message cap) against the thread's journal, over the lines
   the weevbook has read. Exit 1 on a message missing or altered. Counted apart, as intended: a text with a secret
-  redacted, a message over 1 MiB cut (its full text is `message.txt`), and a provider's error sentence, which the app
-  shows as a reply and the journal holds as a `failed` turn. Codex tool steps are compared by call id, since the app
+  redacted (the journal's text is the app's with parts replaced by `[redacted]`: raw is redacted per JSON value, so
+  the journal may redact more than the app shows, never less), a message over 1 MiB cut (its full text is
+  `message.txt`), and a provider's error sentence, which the app shows as a reply and the journal holds as a `failed`
+  turn. Codex tool steps are compared by call id, since the app
   labels them in the reader's language.
 
 ## What exists today

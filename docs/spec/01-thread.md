@@ -151,10 +151,14 @@ above leaves open is decided this way:
   `queued_command`) closes it and opens the next. Esc (`[Request interrupted by user`) and `turn_aborted` are `done`:
   the user stopped the turn, nothing failed.
 - **Failure and retry.** A provider error is `checkpoint` (when `effect` is `some`) then `failed` with `reason`
-  `quota`, `auth` or `api` (`stopErrorOf` in `server/transcripts.ts`) and `effect` `some` when a reply or a step
-  came since `running`. The next request retries the same turn: `assigned` with `attempt` + 1 (`resume: true` after
-  an effect), then `running`; the request is written as a `message`, not as a new turn. The limit of 3 attempts does
-  not apply: the provider, not weevils, decided to go on.
+  `quota`, `auth` or `api` (`stopErrorOf` in `server/transcripts.ts`, the app's own reading: a usage limit is told by
+  one pattern, `server/usage-limit.ts`, in every wording of both providers) and `effect` `some` when a reply or a step
+  came since `running`. The next request retries the same turn: `assigned` with `attempt` + 1 (`resume: true` once an
+  attempt had an effect), then `running`; the request is written as a `message`, not as a new turn. The limit of 3
+  attempts does not apply: the provider, not weevils, decided to go on. An error with no turn running (work the
+  provider took by itself, such as a background task that finished, or the failed turn tried again with no request)
+  is still a turn: one the engine opened (`accepted` with no `message`), or the next attempt of the failed one, and
+  it fails. Every error the app shows is a `failed` in the journal.
 - **Titles.** A `meta` `title` each time the title the app computes changes (`untranslatedTitleOf`), never the
   translated "new session" placeholder. A title alone makes no thread: a session that never said anything has none.
 - **Images.** A pasted image is an `attachment` (`image-<n>.<ext>`, `role: "user"`) right after its message.
@@ -182,8 +186,9 @@ Checked by `validateJournal`; `appendEvent` refuses a line that would break one.
 - **THREAD-9** A `key` appears once in the journal. (`appendEvent` returns `null` for a key it already has: replaying
   a message changes nothing.)
 - **THREAD-10** Turns are numbered 1, 2, … in the order they are accepted, and follow the state machine above.
-  `attempt` is 1 on the first `assigned` and grows by 1. After `failed` with `effect: some`, the next `assigned` has
-  `resume: true`.
+  `attempt` is 1 on the first `assigned` and grows by 1. Once a turn has `failed` with `effect: some`, every later
+  `assigned` of that turn has `resume: true` (an attempt that fails before doing anything leaves the first one's
+  effect where it was).
 - **THREAD-11** At most one turn is `assigned` or `running` at any line.
 - **THREAD-12** A turn is not assigned to another engine while a leg is open, and it runs in a leg of the engine it
   was assigned to.

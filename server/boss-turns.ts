@@ -29,7 +29,7 @@ const readOr = (file: string) => { try { return fs.readFileSync(file, 'utf8') } 
 export const orchTranscriptsDir = (claudeDir = CLAUDE_DIR, orchDir = ORCH_DIR) => path.join(claudeDir, orchDir.replace(/[^a-zA-Z0-9]/g, '-'))
 
 /** The weevils subcommands weevboss's instructions call (server/orchestrator.*.md). */
-export const BOSS_WEEVILS = ['sessions', 'read', 'recall', 'boss', 'send', 'resume', 'new', 'projects', 'setup', 'config', 'memory', 'post', 'show', 'page', 'pages', 'asks', 'ask', 'goals', 'goal', 'trace', 'mem', 'connector'] as const
+export const BOSS_WEEVILS = ['sessions', 'read', 'recall', 'boss', 'send', 'resume', 'new', 'do', 'project', 'projects', 'setup', 'config', 'memory', 'post', 'show', 'page', 'pages', 'asks', 'ask', 'goals', 'goal', 'trace', 'mem', 'connector'] as const
 /** Keys and secrets weevboss never reads: the ones an automation may not read (server/optimizers.ts), .env files anywhere. */
 const SECRET_READS = ['~/.ssh/**', '~/.aws/**', '~/.config/gh/**', '~/.config/weevils/**', '~/.claude.json', '~/.claude/.credentials.json', '~/.netrc', '~/.git-credentials', '~/.npmrc', '~/.docker/config.json', '//**/.env', '//**/.env.*']
 /**
@@ -53,6 +53,15 @@ export function bossPermissions(orchDir = ORCH_DIR, transcripts = orchTranscript
       `Edit(/${path.join(orchDir, 'CLAUDE.md')})`, `Edit(/${path.join(orchDir, 'AGENTS.md')})`,
     ],
   }
+}
+
+/**
+ * The parts of weevboss's instructions that depend on the permission mode: `<!-- ask-mode -->…<!-- /ask-mode -->` stays
+ * when agents ask before acting (its own turns then cannot install, create a repo or touch a folder: it hands that to a
+ * session, which asks the user in the app), `<!-- bypass-mode -->…<!-- /bypass-mode -->` stays otherwise.
+ */
+export function modeSections(text: string, ask: boolean): string {
+  return text.replace(/<!-- (ask|bypass)-mode -->\n([\s\S]*?)<!-- \/\1-mode -->\n/g, (_m, mode: string, body: string) => ((mode === 'ask') === ask ? body : ''))
 }
 
 /** The hidden blocks at the end of a message (« ⟦weevils — …⟧ »), peeled off so a turn can join them into one. */

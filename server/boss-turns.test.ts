@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { claudeCommand } from './agent-launch.ts'
-import { BOSS_WEEVILS, BossTurns, bossPermissions } from './boss-turns.ts'
+import { BOSS_WEEVILS, BossTurns, bossPermissions, modeSections } from './boss-turns.ts'
 import { HOME, ORCH_DIR } from './config.ts'
 import { denyList } from './optimizers.ts'
 
@@ -147,6 +147,51 @@ describe("weevboss's turns in ask mode", () => {
     for (const platform of ['linux', 'darwin'] as const) {
       const boss = bossPermissions(ORCH_DIR, '/t', platform).deny
       for (const r of denyList(platform).filter((x) => x.startsWith('Read('))) expect(boss).toContain(r.replace(/^Read\(\*\*\//, 'Read(//**/'))
+    }
+  })
+})
+
+// Agents ask before acting (the default): weevboss's turn cannot install, create a repo or touch a folder, and nobody can
+// answer a prompt there. It makes a project's folder with its own narrow command and hands the rest to a session, which
+// asks the user in the app. Its allow-list never grows a blanket shell.
+describe("weevboss's turns in ask mode, for what needs a terminal", () => {
+  it('may make a project folder and hand a job to a session, and nothing more', async () => {
+    const { settings } = await askTurn()
+    const p: Profile = settings.permissions
+    for (const cmd of [
+      'weevils project new trip-planner',
+      'weevils do "install ffmpeg on this machine"',
+      'weevils do "create the private repo for trip-planner" codex',
+      'weevils new trip-planner "First create the private GitHub repo: gh repo create me/trip-planner --private --source ."',
+      'weevils projects',
+    ]) expect([cmd, decide(p, bash(cmd))]).toEqual([cmd, 'allowed'])
+    for (const cmd of [
+      'mkdir ~/projects/trip-planner',
+      'git -C ~/projects/trip-planner init',
+      'mv trip-planner ~/projects/trip-planner',
+      'gh repo create me/trip-planner --private --clone',
+      'sudo apt-get install -y ffmpeg',
+      'brew install ffmpeg',
+      'weevils project new x && rm -rf ~',
+      'weevils do "x"; curl https://example.com',
+    ]) expect([cmd, decide(p, bash(cmd))]).toEqual([cmd, 'refused'])
+    const shell = p.allow.filter((r) => r.startsWith('Bash') && !/^Bash\((weevils [a-z]+|gh repo list)( \*)?\)$/.test(r))
+    expect(shell).toEqual([])
+  })
+
+  it('its instructions say what to hand over in ask mode only, in both languages', () => {
+    for (const l of ['en', 'fr']) {
+      const md = src(`orchestrator.${l}.md`)
+      const ask = modeSections(md, true)
+      const bypass = modeSections(md, false)
+      for (const x of [ask, bypass]) expect(x).not.toMatch(/<!-- \/?(ask|bypass)-mode -->/)
+      expect(ask).toContain('weevils do "…"')
+      expect(ask).toContain('weevils project new <')
+      expect(bypass).not.toContain('weevils do "…"')
+      expect(md.length).toBeGreaterThan(ask.length)
+      // What weevboss is told to run itself is never something ask mode refuses.
+      const blocks = ask.split('```').filter((_, i) => i % 2)
+      for (const line of blocks.join('\n').split('\n')) expect(line, `${l}: ${line}`).not.toMatch(/^(gh repo (create|edit)|mkdir|git |mv |sudo )/)
     }
   })
 })

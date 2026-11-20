@@ -97,12 +97,13 @@ it('reach on a Mac: no admin rights asked, no VPS, no domain field; weevboss get
       expect(handoff).toHaveBeenCalledTimes(1)
     }
 })
-it('reach on a Mac before the agent is signed in: nothing is handed over, the sign-in comes first', async () => {
-  const { it: s, handoff, said } = reachSetup(state(true, 'password'))
+it('reach on a Mac before the agent is signed in: nothing is handed over, the sign-in link comes first, no button', async () => {
+  const { it: s, handoff, said } = reachSetup({ ...state(true, 'password'), claude: { installed: true, logged: false } })
   auth.claude = false
   expect(await s.ask('reach')).toBe(false)
   expect(handoff).not.toHaveBeenCalled()
-  expect(said()).toContain('[[setup:claude]]')
+  expect(said()).toContain('https://claude.ai/oauth/authorize?code=1')
+  expect(s.messages().map((m) => m.text).join('\n')).not.toContain('[[setup:')
 })
 it('a domain typed on a Mac (an older app, the API) is answered plainly, with the button of the way that works', async () => {
   const { it: s, handoff, said } = reachSetup(state(true, 'password'))

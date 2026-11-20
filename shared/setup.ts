@@ -11,7 +11,7 @@
 // installer) part chez weevboss, qui a un terminal.
 
 /** Ce que weevboss sait détecter, conseiller et brancher. */
-export const BRICKS = ['phone', 'push', 'reach', 'machine', 'claude', 'codex', 'github', 'voice', 'devil', 'mail', 'author', 'quota', 'security', 'shortcut', 'install', 'history', 'account'] as const
+export const BRICKS = ['phone', 'push', 'reach', 'machine', 'claude', 'codex', 'github', 'voice', 'devil', 'mail', 'author', 'quota', 'security', 'shortcut', 'install', 'history', 'account', 'connector'] as const
 export type Brick = (typeof BRICKS)[number]
 export const isBrick = (s: unknown): s is Brick => typeof s === 'string' && (BRICKS as readonly string[]).includes(s)
 

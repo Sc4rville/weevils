@@ -75,6 +75,8 @@ import { Bring, realGit } from './bring.ts'
 import { HubSync, checkpointHook } from './weevbook/hub.ts'
 import { startWeevbookWriter } from './weevbook/writer.ts'
 import { Connector, reposUnder } from './connector/tools.ts'
+import { Join, joinRoute, remotesIn } from './join.ts'
+import { newProjectFolder } from './project-folder.ts'
 import { ConnectorAuth, codeFingerprint } from './connector/oauth.ts'
 import { connectorHttp } from './connector/http.ts'
 import { startThreads, threadsRoutes, type ThreadsApp } from './threads-app.ts'
@@ -193,9 +195,16 @@ try {
 // ---------------------------------------------------------------- accueil et branchements (server/setup.ts)
 
 const hints = new Hints(DATA_DIR)
+// Another computer from one line (server/join.ts): its one-time codes, and the key each one lets in.
+const join = new Join({
+  file: path.join(DATA_DIR, 'join.json'), authorizedKeys: path.join(HOME, '.ssh', 'authorized_keys'), service: path.join(HOME, '.local', 'bin', 'weevils-service'),
+  remotes: () => remotesIn(CONFIG_FILE), machineIds: () => w.snapshot().machines.map((m) => m.id),
+})
+// weevboss creates projects there, and a job handed to a session (weevils do) runs there.
+if (ORCHESTRATOR) fs.mkdirSync(PROJECTS_DIR, { recursive: true })
 const setup = new Setup({
   bump: () => w.bump(),
-  feed: () => ({ machines: w.snapshot().machines, projects: w.snapshot().projects.length }),
+  feed: () => ({ machines: w.snapshot().machines, projects: w.snapshot().projects.length, names: w.snapshot().projects.map((p) => p.name) }),
   remoteFacts: async () => (await Promise.all(w.remotes.filter((r) => r.online).map((r) => r.call<MachineFacts>('GET', '/api/infra/facts').catch(() => null)))).filter((f): f is MachineFacts => !!f),
   devices: () => tokens.size,
   push: () => w.push.count,
@@ -207,6 +216,9 @@ const setup = new Setup({
   memory: () => w.memory,
   // Turn mode: the memory sits in every turn's view; the thread only hears when it changed.
   bossId: () => (w.bossTurns ? 'turns' : w.bossConversation()),
+  delegate: (text, brief) => w.create({ projectId: '', tool: preferredTool(), text: `${text}\n\n${brief}` }),
+  connectorOn: () => connectorOn(),
+  join: ORCHESTRATOR ? join : undefined,
 })
 w.setup = setup
 
@@ -388,14 +400,20 @@ const issueDevice = (req: http.IncomingMessage, res: http.ServerResponse) => {
 // The connector (docs/spec/05-connector.md, step 5): off unless WEEVILS_CONNECTOR=1. ChatGPT or Claude.ai reaches /mcp
 // with a token the person gave it on the consent page (the access code, or this browser signed in). The token opens
 // /mcp only: the weevbook's five tools, never /api. Changing the access code drops every connector token.
-const connectorAuth = CONNECTOR ? new ConnectorAuth({ file: path.join(DATA_DIR, 'connector.json'), fingerprint: codeFingerprint(SECRET) }) : null
-const connector = connectorAuth
-  ? connectorHttp({
-      auth: connectorAuth, publicUrl: () => PUBLIC_URL, hasDevice, limiter: logins, checkCode: (code) => sameCode(code, SECRET),
-      tools: new Connector({ dir: WEEVBOOK_DIR, machine: MACHINE.id, projects: reposUnder(PROJECT_ROOTS), ...(threadsApp ? { accept: (thread, m) => threadsApp!.threads.accept(thread, { ...m, source: 'connector' }).then(() => undefined) } : {}) }),
-    })
-  : null
-if (connector) console.log('[connector] on: /mcp')
+// weevboss turns it on when the person asks to plug in a chat app (server/setup.ts, brick "connector"): at once, and
+// WEEVILS_CONNECTOR=1 in the config keeps it on at the next start.
+let connectorAuth: ConnectorAuth | null = null
+let connector: ReturnType<typeof connectorHttp> | null = null
+function connectorOn() {
+  if (connector) return
+  connectorAuth = new ConnectorAuth({ file: path.join(DATA_DIR, 'connector.json'), fingerprint: codeFingerprint(SECRET) })
+  connector = connectorHttp({
+    auth: connectorAuth, publicUrl: () => PUBLIC_URL, hasDevice, limiter: logins, checkCode: (code) => sameCode(code, SECRET),
+    tools: new Connector({ dir: WEEVBOOK_DIR, machine: MACHINE.id, projects: reposUnder(PROJECT_ROOTS), ...(threadsApp ? { accept: (thread, m) => threadsApp!.threads.accept(thread, { ...m, source: 'connector' }).then(() => undefined) } : {}) }),
+  })
+  console.log('[connector] on: /mcp')
+}
+if (CONNECTOR) connectorOn()
 
 // Who may speak as the user into weevboss's thread: a signed-in browser, never a script on this machine (server/boss-door.ts).
 const door = bossDoor({ hasDevice, isBossTarget: (id) => w.isBossTarget(id), sourceAuthor, refusal: () => tr(M).bossUserOnly })
@@ -573,7 +591,7 @@ const routes: [string, RegExp, Handler][] = [
     catch { json(res,400,{error:'think_invalid'}) }
   }],
   // The chat apps connected to the weevbook (docs/spec/05-connector.md): listed, and revoked one by one, by app or all.
-  ['GET', /^\/api\/connector$/, (_req, res) => json(res, 200, { enabled: CONNECTOR, grants: connectorAuth?.list() ?? [] })],
+  ['GET', /^\/api\/connector$/, (_req, res) => json(res, 200, { enabled: !!connector, grants: connectorAuth?.list() ?? [] })],
   ['DELETE', /^\/api\/connector\/([\w-]+)$/, (_req, res, _url, [what]) => json(res, 200, { revoked: connectorAuth?.revoke(what) ?? 0 })],
   ['GET', /^\/api\/pages$/, (_req, res) => json(res, 200, { pages: pages.list() })],
   // weevils page (weevils-cli): a session or an automation on this machine publishes; never the phone.
@@ -829,6 +847,16 @@ const routes: [string, RegExp, Handler][] = [
         sourceThreadId: trustedSource(req,body,sourceAuthor),
       }),
     )
+  }],
+  // « weevils project new <name> » : the folder of a new project, with git (server/project-folder.ts).
+  ['POST', /^\/api\/projects\/new$/, async (req, res) => {
+    const name = String((await readBody(req)).name ?? '')
+    try {
+      const r = newProjectFolder(PROJECTS_DIR, name)
+      json(res, 200, { dir: r.dir.startsWith(HOME + path.sep) ? '~' + r.dir.slice(HOME.length) : r.dir, existed: r.existed })
+    } catch {
+      json(res, 400, { error: tr(S).badProject(name.slice(0, 80)) })
+    }
   }],
   ['GET', /^\/api\/boss$/, async (_req, res) => json(res, 200, w.bossStatus())],
   ['GET', /^\/api\/boss\/recall\/([^/]+)$/, async (_req, res, _u, [id]) => {
@@ -1131,6 +1159,8 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
     if (keyed && (req.method === 'GET' || req.method === 'HEAD')) return pages.serve(req, res, keyed[1], keyed[2], keyed[3])
     // A computer bringing its conversations: its one-time code is its key, not the access code (server/bring.ts).
     if (url.pathname.startsWith('/api/bring') && (url.pathname === '/api/bring.sh' || url.pathname.startsWith('/api/bring/pc/')) && (await bring.pcRoute(req, res, url.pathname))) return
+    // Another computer joining from its line: the one-time code is its key (server/join.ts).
+    if (ORCHESTRATOR && url.pathname.startsWith('/api/join') && (await joinRoute(req, res, url.pathname, { join, machine: MACHINE.id, lang: installationLang(), onJoined: (id) => setup.joined(id) }))) return
     const site = SITE_RE.exec(url.pathname)
     if (site && req.method === 'GET') return serveSite(res, site[1], site[2], site[3])
     // Le Raccourci Siri n'a pas de cookie : son jeton personnel n'ouvre que le tour de parole et le son qui va avec.

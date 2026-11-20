@@ -2,7 +2,7 @@ import LivingResults from './i18n/living-results.ts'
 import { InstallationIdentity } from './recursive-identity.ts'
 import { isScratchDir } from './scratch.ts'
 import AgentMessages from './i18n/agent-messages.ts'
-import { CLAUDE, CODEX_FLAGS, projectClaude, projectCodexFlags } from './agent-launch.ts'
+import { askPermissions, CLAUDE, CODEX_FLAGS, projectClaude, projectCodexFlags } from './agent-launch.ts'
 import { trustInClaudeJson } from './claude-json.ts'
 import { MessageOrigins } from './message-origins.ts'
 import CB from './i18n/codex-bridge.ts'
@@ -42,7 +42,7 @@ import { keepWarm, warmCues } from './voicepipe.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
-import { BOSS_DIR, BOSS_MODELS, BOSS_TURNS, BossTurns, orchTranscriptsDir } from './boss-turns.ts'
+import { BOSS_DIR, BOSS_MODELS, BOSS_TURNS, BossTurns, modeSections, orchTranscriptsDir } from './boss-turns.ts'
 
 /** What a Claude Code session can switch to from the app's header (one tap, applied before its next turn). */
 const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'max']
@@ -1979,9 +1979,9 @@ export class Weevils {
       // demandé à gh) et {{projects}} (premier dossier de WEEVILS_PROJECTS, ~/projects par défaut).
       const owner = process.env.WEEVILS_GH_OWNER?.trim() || '$(gh api user -q .login)'
       const projects = PROJECTS_DIR.startsWith(HOME + path.sep) ? '~' + PROJECTS_DIR.slice(HOME.length) : PROJECTS_DIR
-      const text = fs.readFileSync(src, 'utf8').replaceAll('{{user}}', withLang(installationLang(), user)).replaceAll('{{owner}}', owner).replaceAll('{{projects}}', projects).replaceAll('{{machineProse}}', MachineProse[installationLang()].rule).replaceAll('{{agentMessages}}', AgentMessages[installationLang()].rule + '\n\n' + AgentMessages[installationLang()].automation + '\n\n' + LivingResults[installationLang()].rule)
+      const text = modeSections(fs.readFileSync(src, 'utf8').replaceAll('{{user}}', withLang(installationLang(), user)).replaceAll('{{owner}}', owner).replaceAll('{{projects}}', projects).replaceAll('{{machineProse}}', MachineProse[installationLang()].rule).replaceAll('{{agentMessages}}', AgentMessages[installationLang()].rule + '\n\n' + AgentMessages[installationLang()].automation + '\n\n' + LivingResults[installationLang()].rule)
         // Several Claude accounts: weevboss hears of them only where the feature is on.
-        .replace(/<!-- claude-accounts -->\n([\s\S]*?)<!-- \/claude-accounts -->\n/g, (_m, body: string) => (accountsOn() ? body : ''))
+        .replace(/<!-- claude-accounts -->\n([\s\S]*?)<!-- \/claude-accounts -->\n/g, (_m, body: string) => (accountsOn() ? body : '')), askPermissions())
       fs.writeFileSync(path.join(ORCH_DIR, 'CLAUDE.md'), text)
       // Les mêmes consignes pour Codex, qui répond à la place de Claude pendant sa limite d'usage (server/relay.ts).
       fs.writeFileSync(path.join(ORCH_DIR, 'AGENTS.md'), text)

@@ -9,6 +9,8 @@
 #   weevils boss                         comment tourne weevboss et la taille de ce qu'il lit à chaque message
 #   weevils resume <id>                  relance une session coupée en plein travail (état « interrupted »)
 #   weevils new <projet> "message" [codex]   weevils projects
+#   weevils project new <nom>            le dossier d'un nouveau projet (avec git), dans le dossier des projets
+#   weevils do "travail" [codex]         une session qui s'en charge (installer, créer un repo…), et demande d'abord si besoin
 #   weevils setup [install | ask <brique> | mark <id>]      weevils config set <CLÉ> <valeur>
 #   weevils memory [add "souvenir" | rm <id>]   (ce que weevils retient de l'utilisateur, ~/.config/weevils/memory.json)
 #   weevils post "texte" [--action "libellé::quoi faire"]…   un mot dans « pour toi », avec des boutons si besoin
@@ -59,6 +61,7 @@ if [ "$(wv_lang)" = fr ]; then
   # i18n-ignore : messages français, l'anglais est juste en dessous (même chose dans la branche else)
   usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
 weevils resume <id>                  weevils new <projet> "message" [codex]   weevils projects
+weevils project new <nom>            weevils do "travail" [codex]
 weevils recall <id>                  weevils boss
 weevils setup [install | ask <brique> | mark <id>]   weevils config set <CLÉ> <valeur>
 weevils memory [add "souvenir" | rm <id>]
@@ -74,7 +77,8 @@ weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichie
   usage+=$'\n''weevils connector [revoke <id>|chatgpt|claude-ai|all]'
   export WVM_CONNECTOR_OFF='le connecteur est éteint (WEEVILS_CONNECTOR=1 l’allume)' WVM_CONNECTOR_NONE='aucune app de chat connectée' WVM_CONNECTOR_LINE='{id}  {app}  connectée le {created}, utilisée le {used}' WVM_CONNECTOR_REVOKED='connexions retirées : {}' # i18n-ignore
   m_connector_usage='weevils connector revoke <id>|chatgpt|claude-ai|all' # i18n-ignore
-  a_id='id de session' a_msg='message' a_project='projet' a_first='premier message' # i18n-ignore
+  a_id='id de session' a_msg='message' a_project='projet' a_first='premier message' a_name='nom du projet' a_job='le travail à faire' # i18n-ignore
+  export WVM_EXISTED=' (déjà là)' # i18n-ignore
   export WVM_NOT_FOUND='session introuvable : ' WVM_AMBIGUOUS='plusieurs sessions commencent par {} : {}' # i18n-ignore
   export WVM_NO_SESSIONS='aucune session ouverte' WVM_NO_MESSAGES='(aucun message)' WVM_USER='utilisateur' # i18n-ignore
   export WVM_ERROR='erreur' WVM_NEW='nouvelle session ' WVM_BACKGROUND='en arrière-plan' # i18n-ignore
@@ -100,6 +104,7 @@ weevils pages · weevils page machine · weevils page rm <slug>' # i18n-ignore
 else
   usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
 weevils resume <id>                  weevils new <project> "message" [codex]  weevils projects
+weevils project new <name>           weevils do "job" [codex]
 weevils recall <id>                  weevils boss
 weevils setup [install | ask <brick> | mark <id>]   weevils config set <KEY> <value>
 weevils memory [add "memory" | rm <id>]
@@ -115,7 +120,8 @@ weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] 
   usage+=$'\n''weevils connector [revoke <id>|chatgpt|claude-ai|all]'
   export WVM_CONNECTOR_OFF='the connector is off (WEEVILS_CONNECTOR=1 turns it on)' WVM_CONNECTOR_NONE='no chat app connected' WVM_CONNECTOR_LINE='{id}  {app}  connected {created}, last used {used}' WVM_CONNECTOR_REVOKED='connections revoked: {}'
   m_connector_usage='weevils connector revoke <id>|chatgpt|claude-ai|all'
-  a_id='session id' a_msg='message' a_project='project' a_first='first message'
+  a_id='session id' a_msg='message' a_project='project' a_first='first message' a_name='project name' a_job='the job to do'
+  export WVM_EXISTED=' (already there)'
   export WVM_NOT_FOUND='no such session: ' WVM_AMBIGUOUS='several sessions start with {}: {}'
   export WVM_NO_SESSIONS='no open sessions' WVM_NO_MESSAGES='(no messages)' WVM_USER='user'
   export WVM_ERROR='error' WVM_NEW='new session ' WVM_BACKGROUND='in background'
@@ -398,6 +404,20 @@ if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
     text=${3:?$a_first}
     tool=claude; [ "${4:-}" = codex ] && tool=codex
     "$py" -c 'import json,sys; print(json.dumps({"projectId":sys.argv[1],"tool":sys.argv[2],"text":sys.argv[3],"from":sys.argv[4],"sourceThread":sys.argv[5]}))' "$project" "$tool" "$text" "$sender_from" "$source_thread" \
+      | curl -sf -m 30 -H 'content-type: application/json' --data-binary @- "$base/api/sessions" | json "print(E['WVM_NEW']+d['id'][:8])" ;;
+  project)
+    # Le dossier d'un nouveau projet, avec git : <dossier des projets>/<nom>. Rien d'autre (le repo GitHub, le code :
+    # une session). Possible dans un tour de weevboss même quand les agents demandent avant d'agir.
+    [ "${2:-}" = new ] || { echo "$usage"; exit 1; }
+    "$py" -c 'import json,sys; print(json.dumps({"name":sys.argv[1]}))' "${3:?$a_name}" \
+      | curl -sf -m 20 -H 'content-type: application/json' --data-binary @- "$base/api/projects/new" | json "print(d['dir'] + (E['WVM_EXISTED'] if d.get('existed') else ''))" ;;
+  do)
+    # Un travail que le tour de weevboss ne fait pas lui-même (installer un outil, créer un repo, tout ce qui demande un
+    # terminal) : une session dans le dossier des projets s'en charge, et demande d'abord à l'utilisateur dans l'app
+    # quand les agents demandent avant d'agir.
+    text=${2:?$a_job}
+    tool=claude; [ "${3:-}" = codex ] && tool=codex
+    "$py" -c 'import json,sys; print(json.dumps({"projectId":"","tool":sys.argv[1],"text":sys.argv[2],"from":sys.argv[3],"sourceThread":sys.argv[4]}))' "$tool" "$text" "$sender_from" "$source_thread" \
       | curl -sf -m 30 -H 'content-type: application/json' --data-binary @- "$base/api/sessions" | json "print(E['WVM_NEW']+d['id'][:8])" ;;
   setup)
     # L'état réel de chaque brique (machine, Claude Code, GitHub, voix, diable, e-mail…), la marche à suivre pour

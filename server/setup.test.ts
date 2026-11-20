@@ -243,7 +243,7 @@ describe('never a command for the user to type', () => {
         }
       for (const kind of ['vps', 'server', 'container', 'vm', 'laptop', 'desktop', 'wsl'] as const) {
         const m = { ...base.machine, kind }
-        texts.push(t.machine(m), t.claudeMissing(m), t.machineAsk({ ...base, machine: m }))
+        texts.push(t.machine(m), t.welcomeClaudeInstall(m.host), t.machineAsk({ ...base, machine: m }))
       }
       // Un Mac (portable ou fixe) : les mêmes phrases, plus celles du chemin Tailscale.
       for (const kind of ['laptop', 'desktop'] as const) {
@@ -256,11 +256,21 @@ describe('never a command for the user to type', () => {
               // Rien n'y demande les droits administrateur, un VPS ou un nom de domaine : le Mac est à son propriétaire.
               for (const x of said) expect(x, x).not.toMatch(/admin rights|droits administrateur|VPS|\bserver|\bserveur|domain|domaine|sudo/i)
               expect(said[0]).toContain('Tailscale')
-              texts.push(...said, t.reachMacDomain('weevils.example.com'), t.machine(m), t.claudeMissing(m), t.machineAsk(s), t.voiceAsk(s), t.securityAsk(s), t.githubAsk(s), installStatus(s))
+              texts.push(...said, t.reachMacDomain('weevils.example.com'), t.machine(m), t.welcomeClaudeInstall(m.host), t.machineAsk(s), t.voiceAsk(s), t.securityAsk(s), t.githubAsk(s), installStatus(s))
             }
       }
-      texts.push(t.claudeLogin, t.claudeLink('https://claude.com/x'), t.codexCode('https://auth.openai.com/codex/device', 'ABCD-EFGH'), t.machineNone, t.machineIn('root@203.0.113.7', 'Ubuntu'), t.githubNoCli('404'), t.quotaAsk([]), t.mailAsk, t.devilAsk(false, ''))
+      texts.push(t.welcomeClaudeLink, t.welcomeCodex, t.welcomeReady, t.welcomeSeen(3, ['a', 'b'], ['laptop']), t.claudeLink('https://claude.com/x'), t.claudeFail('expired'), t.codexFail('x'), t.providerLater('Codex'), t.codexCode('https://auth.openai.com/codex/device', 'ABCD-EFGH'), t.machineNone, t.machineIn('root@203.0.113.7', 'Ubuntu'), t.githubNoCli('404'), t.quotaAsk([]), t.mailAsk, t.devilAsk(false, ''), t.joinKey('laptop'), t.joinOnline('laptop'), t.connectorNeedsHttps('http://127.0.0.1:4179'), t.delegated)
       for (const x of texts) expect(x, x).not.toMatch(COMMAND)
+    })
+    // The only lines the person pastes: the one for another computer, and a sign-in that only works in a terminal.
+    it(`${lang}: the deliberate exceptions, each one exact line in code`, () => {
+      const t = M[lang]
+      const join = t.joinLine('curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE')
+      expect(join.match(/`[^`]+`/g)).toEqual(['`curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE`'])
+      expect(t.claudeTerminal('no answer', 'claude').match(/`[^`]+`/g)).toEqual(['`claude`'])
+      expect(t.codexTerminal('no answer', 'codex login').match(/`[^`]+`/g)).toEqual(['`codex login`'])
+      // The connector's address is a link to copy, not a command.
+      expect(t.connectorHow('https://weevils.example.com/mcp', false).match(/`[^`]+`/g)).toEqual(['`https://weevils.example.com/mcp`'])
     })
   }
 })

@@ -215,7 +215,10 @@ On each machine, in weevils' data dir (`~/.local/share/weevils`):
 | `weevbook/.git/weevbook/index/<id>` | A private git index per thread: a commit hashes again only the files that changed. |
 | `weevbook/.git/weevbook/tx/<id>.json` | A write in progress ([Writing](#writing)). |
 | `weevbook.lock` | One writer at a time: weevilsd's writer or the `weevils weevbook` command (`<pid> <token>`; a lock left by a process that is gone is taken). |
-| `weevbook-sessions.jsonl` | Provider session → thread, leg, and how far it was read. Append-only, the last line of a session wins; written before the thread, so a crash never makes two threads for one session. |
+| `weevbook-sessions.jsonl` | Provider session → thread, leg, and how far it was read. Append-only, the last line of a session wins; written before the thread, so a crash never makes two threads for one session. Step 2 adds `moved` (its thread went to another machine: no longer written here) and `base` (a session rebuilt by a resume: the lines of earlier legs it starts with). |
+| `weevbook-hub.json` | Step 2: how the sync with the hub goes, for `weevils weevbook sync status`. |
+| `hub.git` | Step 2, on the hub's machine only: the hub ([03](03-sync-and-lease.md#step-2-the-hub-weevils-sets-up)). |
+| `checkpoints/<id>.git` | Step 2: the private repository of a folder without git ([04](04-resume.md#checkpoints)). |
 
 - **Writer** (`server/weevbook/writer.ts`, in weevilsd, only with `WEEVILS_WEEVBOOK=1`): every 3 s it looks at the
   session files the app reads, one at a time, under the lock, never in the app's loop. An error is logged once and

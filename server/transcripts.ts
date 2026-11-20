@@ -1,4 +1,5 @@
 import { commandDetails, toolOutputDetails, callDetails, commandSummaries, redactToolText } from './codex-command-details.ts'
+import { USAGE_LIMIT } from './usage-limit.ts'
 import { codexToolLabel, codexToolKinds } from './codex-tool-label.ts'
 // Lecture incrémentale des transcripts Claude Code (~/.claude/projects) et Codex (~/.codex/sessions).
 // Formats non documentés : on lit ce qui est utile et on ignore le reste sans jamais planter.
@@ -53,6 +54,8 @@ export interface Transcript {
   effort?: string
   /** Messages mis en file pendant que l'agent travaille, pas encore repris comme messages de l'utilisateur. */
   queued: { key: string; at: number }[]
+  /** How many messages are kept (MAX_MESSAGES when absent). The weevbook's comparison reads a whole session. */
+  maxMessages?: number
 }
 
 export interface StopError {
@@ -64,7 +67,7 @@ export interface StopError {
 /** Classe une erreur qui arrête un tour : limite d'usage, connexion, ou le reste. */
 export function stopErrorOf(at: number, kind: unknown, text: string): StopError {
   const k = typeof kind === 'string' ? kind : ''
-  const reason = /rate_limit|quota|usage|billing/i.test(k) || /usage limit|limit reached|rate.?limit|quota|out of (extra )?usage|credit balance/i.test(text)
+  const reason = /rate_limit|quota|usage|billing/i.test(k) || USAGE_LIMIT.test(text)
     ? 'quota'
     : /auth|permission/i.test(k) || /authenticat|\/login|oauth|logged out|login expired/i.test(text)
       ? 'auth'
@@ -144,14 +147,16 @@ function dequeue(t: Transcript, text: string): boolean {
 
 function push(t: Transcript, m: Message) {
   t.messages.push(m)
-  if (t.messages.length > MAX_MESSAGES) t.messages.splice(0, t.messages.length - MAX_MESSAGES)
+  const max = t.maxMessages ?? MAX_MESSAGES
+  if (t.messages.length > max) t.messages.splice(0, t.messages.length - max)
 }
 
-function toolSummary(name: string, input: Record<string, unknown> | undefined): string {
+export function toolSummary(name: string, input: Record<string, unknown> | undefined): string {
   const i = input ?? {}
   const pick = (k: string) => (typeof i[k] === 'string' ? (i[k] as string) : '')
   const detail = pick('description') || pick('file_path') || pick('command') || pick('pattern') || pick('url') || pick('query') || pick('prompt')
-  return `${name}${detail ? ` · ${short(oneLine(detail), 90)}` : ''}`
+  // Redacted before it is cut: a value cut in the middle is no longer one the patterns see whole.
+  return `${name}${detail ? ` · ${short(redactToolText(oneLine(detail), Infinity), 90)}` : ''}`
 }
 
 function touch(t: Transcript, at: number) {
@@ -367,16 +372,25 @@ function codexLine(t: Transcript, o: any) {
 // ---------------------------------------------------------------------------
 // Lecture incrémentale
 
-function emptyTranscript(file: string, tool: Tool): Transcript {
+export function emptyTranscript(file: string, tool: Tool): Transcript {
   const base = path.basename(file, '.jsonl')
   const id = tool === 'claude' ? base : (base.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)?.[0] ?? base)
   return { id, tool, file, cwd: '', openedAt: 0, lastActivityAt: 0, workStartedAt: null, phase: 'idle', messages: [], delegationSources: new Map(), subagents: [], bg: tool === 'claude' ? emptyBg() : undefined, offset: 0, partial: '', queued: [] }
 }
 
+/** One parsed line of a provider session into its transcript: what the live store does for each line. The weevbook's
+ * adapters (server/weevbook/adapters) read sessions through it, so the journal says what the app shows. */
+export function readLine(t: Transcript, o: unknown) {
+  if (t.tool === 'claude') claudeLine(t, o)
+  else codexLine(t, o)
+}
+
 /** A transcript read from text already in memory (a head and a tail sent by another machine, server/bring.ts):
- * the same parsers as the live store, without touching the disk. A line cut at either end is skipped. */
-export function parseTranscriptText(file: string, tool: Tool, text: string): Transcript {
+ * the same parsers as the live store, without touching the disk. A line cut at either end is skipped.
+ * maxMessages: how many messages to keep (the app's 400 by default). */
+export function parseTranscriptText(file: string, tool: Tool, text: string, maxMessages?: number): Transcript {
   const t = emptyTranscript(file, tool)
+  if (maxMessages !== undefined) t.maxMessages = maxMessages
   for (const line of text.split('\n')) {
     if (!line.trim()) continue
     let o: unknown
@@ -385,8 +399,7 @@ export function parseTranscriptText(file: string, tool: Tool, text: string): Tra
     } catch {
       continue
     }
-    if (tool === 'claude') claudeLine(t, o)
-    else codexLine(t, o)
+    readLine(t, o)
   }
   return t
 }
@@ -637,7 +650,13 @@ const brief = (t: Transcript) => {
   }
   return undefined
 }
-export const titleOf = (t: Transcript) => short(oneLine(realTitle(t.customTitle) || (borrowedTitle(t, t.title) ? undefined : t.title) || brief(t) || tr(M).newSession).replace(/^[#>*\s-]+/, ''), 60)
+const titled = (s: string) => short(oneLine(s).replace(/^[#>*\s-]+/, ''), 60)
+/** The session's title as the app shows it, without the translated « new session » of a session with none yet. */
+export const untranslatedTitleOf = (t: Transcript): string | undefined => {
+  const s = realTitle(t.customTitle) || (borrowedTitle(t, t.title) ? undefined : t.title) || brief(t)
+  return s ? titled(s) : undefined
+}
+export const titleOf = (t: Transcript) => untranslatedTitleOf(t) ?? titled(tr(M).newSession)
 /** Matière pour le renommeur : début de la session et ses derniers échanges, compacts. */
 export const digestOf = (t: Transcript, lastN = 10) => {
   const s = tr(M)

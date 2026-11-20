@@ -23,6 +23,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { Subagent, SubagentDetail } from '../shared/api.ts'
+import { redactToolText } from './codex-command-details.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/transcripts.ts'
 
@@ -127,7 +128,7 @@ const unescapeXml = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
 export function toolLine(name: string, input: unknown): string {
   const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
   const detail = str(i.description) || str(i.file_path) || str(i.command) || str(i.pattern) || str(i.url) || str(i.query) || str(i.prompt)
-  return `${name || tr(M).tool}${detail ? ` · ${short(oneLine(detail), 90)}` : ''}`
+  return `${name || tr(M).tool}${detail ? ` · ${short(redactToolText(oneLine(detail), Infinity), 90)}` : ''}`
 }
 
 const contentText = (c: unknown): string => {

@@ -112,6 +112,11 @@ export const MACHINE = {
   name: process.env.WEEVILS_MACHINE_NAME || process.env.WEEVILS_MACHINE || machine,
 }
 
+/** The weevbook (docs/spec, step 1): written in DATA_DIR/weevbook next to the app, in shadow, when WEEVILS_WEEVBOOK=1.
+ *  Off by default: it changes nothing the app shows or does. */
+export const WEEVBOOK = process.env.WEEVILS_WEEVBOOK?.trim() === '1'
+export const WEEVBOOK_DIR = path.join(DATA_DIR, 'weevbook')
+
 /** L'orchestrateur (la bande du haut) tourne sur une seule machine : celle qui sert l'app. */
 export const ORCHESTRATOR = (process.env.WEEVILS_ORCHESTRATOR || (process.env.WEEVILS_MACHINE ? '0' : '1')) === '1'
 export const ORCH_DIR = path.join(DATA_DIR, 'orchestrateur')

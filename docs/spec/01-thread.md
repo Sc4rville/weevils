@@ -128,6 +128,46 @@ An adapter reads the lines of one provider session and does two things with **ev
 command, pattern, URL, query. It is redacted, cut at 90 characters, and paths under the leg's `cwd` are written
 relative. It is not translated: the same lines give the same journal on every machine.
 
+### Step 1: a provider session read in shadow
+
+At step 1 nothing is dispatched: the adapters ([`server/weevbook/adapters`](../../server/weevbook/adapters)) read
+sessions the provider ran by itself. They hand every line to the app's own reader (`readLine` in
+`server/transcripts.ts`) and turn what it added into events, so the journal says what the app shows. What the table
+above leaves open is decided this way:
+
+- **Thread and leg.** One provider session is one thread with one leg, `L1`. `leg.start` carries the provider's
+  session id, the session's folder, `rung` 0 and `epoch` 1. The engine is `<provider>:<account>@<machine>`; the
+  account is the first six hex characters of the SHA-256 of the provider's own account id
+  (`~/.claude.json` `oauthAccount.accountUuid`, `~/.codex/auth.json` `tokens.account_id`), `unknown` when the
+  machine's files do not say. The thread id is a ULID of the session's first line.
+- **Turns.** Every turn is `accepted`, `assigned` to the session's own engine with `rule: "shadow"`, and `running`
+  at once. A turn the engine opens by itself (a reply with no request before it, background work that finished) is
+  accepted with `message: null`. A turn ends `done` after a `checkpoint` of `kind: "none"` (reason `shadow: no
+  checkpoint before step 2`), dated at the provider's last line of the turn.
+- **The end of a turn.** Claude Code writes one line per part of a reply, each with the reply's `stop_reason`: a turn
+  ended by `end_turn` stays open while lines of the same `message.id` come, and is closed by the next other line or
+  by 10 s of silence. A turn with no end at all (the provider was closed mid-turn) is closed after 30 min of silence
+  (the app's `STALE_MS`). A request that the provider did not take into the running turn (a plain `user` line, not a
+  `queued_command`) closes it and opens the next. Esc (`[Request interrupted by user`) and `turn_aborted` are `done`:
+  the user stopped the turn, nothing failed.
+- **Failure and retry.** A provider error is `checkpoint` (when `effect` is `some`) then `failed` with `reason`
+  `quota`, `auth` or `api` (`stopErrorOf` in `server/transcripts.ts`, the app's own reading: a usage limit is told by
+  one pattern, `server/usage-limit.ts`, in every wording of both providers) and `effect` `some` when a reply or a step
+  came since `running`. The next request retries the same turn: `assigned` with `attempt` + 1 (`resume: true` once an
+  attempt had an effect), then `running`; the request is written as a `message`, not as a new turn. The limit of 3
+  attempts does not apply: the provider, not weevils, decided to go on. An error with no turn running (work the
+  provider took by itself, such as a background task that finished, or the failed turn tried again with no request)
+  is still a turn: one the engine opened (`accepted` with no `message`), or the next attempt of the failed one, and
+  it fails. Every error the app shows is a `failed` in the journal.
+- **Titles.** A `meta` `title` each time the title the app computes changes (`untranslatedTitleOf`), never the
+  translated "new session" placeholder. A title alone makes no thread: a session that never said anything has none.
+- **Images.** A pasted image is an `attachment` (`image-<n>.<ext>`, `role: "user"`) right after its message.
+- **Late text.** A reply that grows after it was written (a part that came after the turn was settled) is a reply of
+  its own, holding the added text, in a turn the engine opened. Nothing the app shows is dropped.
+- **Where it stands.** Events are written only at a point where every line read is in them (no reply waiting for its
+  end). So the raw line count of the leg alone says how far the session was read: after a restart its lines are read
+  again by the reader only, and the turn is taken from the journal.
+
 ## Invariants
 
 Checked by `validateJournal`; `appendEvent` refuses a line that would break one.
@@ -146,8 +186,9 @@ Checked by `validateJournal`; `appendEvent` refuses a line that would break one.
 - **THREAD-9** A `key` appears once in the journal. (`appendEvent` returns `null` for a key it already has: replaying
   a message changes nothing.)
 - **THREAD-10** Turns are numbered 1, 2, … in the order they are accepted, and follow the state machine above.
-  `attempt` is 1 on the first `assigned` and grows by 1. After `failed` with `effect: some`, the next `assigned` has
-  `resume: true`.
+  `attempt` is 1 on the first `assigned` and grows by 1. Once a turn has `failed` with `effect: some`, every later
+  `assigned` of that turn has `resume: true` (an attempt that fails before doing anything leaves the first one's
+  effect where it was).
 - **THREAD-11** At most one turn is `assigned` or `running` at any line.
 - **THREAD-12** A turn is not assigned to another engine while a leg is open, and it runs in a leg of the engine it
   was assigned to.
@@ -163,7 +204,7 @@ lease enforces it ([03](03-sync-and-lease.md)).
 | What happens | Result |
 |---|---|
 | The same message is delivered twice (a retry, a replayed connector part) | Same `key`: nothing is written. |
-| A crash while a line is being written | The file is written beside and renamed ([02](02-weevbook.md)): the journal has the line or does not. |
+| A crash while a line is being written | The write is undone at the next start ([02](02-weevbook.md#writing)): the journal has the line or does not, and its raw lines with it. |
 | A provider changes its format | Unknown lines still reach raw. A fixture test fails before users see it (step 1). The thread loses detail, not content. |
 | A machine writes after it lost the lease | Its lines never enter the journal. They come back later inside one `note` ([03](03-sync-and-lease.md)). |
 | A journal breaks an invariant on disk | `weevils weevbook check` (step 1) names the invariant and the line. Repair appends a `note` of kind `repair`; it never rewrites a line. |
@@ -180,6 +221,9 @@ lease enforces it ([03](03-sync-and-lease.md)).
 - `server/authors.ts` defines the `[from:<id>]` signature that `orchestrator` messages and the resume preface use.
 - The sample's raw files are read by today's `parseTranscriptText` in `journal.test.ts`, and give the journal's
   replies and tool steps.
+- Step 1: `server/weevbook/adapters/{claude,codex}.ts` implement the table above on top of `readLine`, tested on
+  the sessions in `test/fixtures/weevbook`. A session read line by line, with a restart at every line, gives the
+  same journal as the whole file read at once (`server/weevbook/sync.test.ts`).
 
 ## Not in v1
 

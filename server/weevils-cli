@@ -22,6 +22,7 @@
 #   weevils goals [all] · goal add <id> "titre" ["pourquoi"] · goal note <id> "avancée" · goal done|pause|open <id>
 #   weevils trace [<objectif>] [n] · trace add "décision" [--goal <id>]   le journal de travail
 #   weevils mem [search <mots> | add [rule|decision|fact] "texte" | rm <id>]   la mémoire interne (décisions, règles, faits)
+#   weevils weevbook backfill | check [--repair] | compare [--verbose]   le weevbook (docs/spec, étape 1), sur les fichiers de cette machine
 set -euo pipefail
 base="http://127.0.0.1:${WEEVILS_PORT:-4179}"
 local_token=$HOME/.local/share/weevils/local-token
@@ -67,6 +68,7 @@ weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichie
   usage+=$'\n''weevils trace [<objectif>] [n]   weevils trace add "décision" [--goal <id>]' # i18n-ignore
   usage+=$'\n''weevils mem   weevils mem search <mots>   weevils mem add [rule|decision|fact] "texte"   weevils mem rm <id>' # i18n-ignore
   usage+=$'\n''  preuve d’un résultat (post, show) : --demonstrated "où" --verified "environnement" --limit "non vérifié"…' # i18n-ignore
+  usage+=$'\n''weevils weevbook backfill | check [--repair] | compare [--verbose]'
   a_id='id de session' a_msg='message' a_project='projet' a_first='premier message' # i18n-ignore
   export WVM_NOT_FOUND='session introuvable : ' WVM_AMBIGUOUS='plusieurs sessions commencent par {} : {}' # i18n-ignore
   export WVM_NO_SESSIONS='aucune session ouverte' WVM_NO_MESSAGES='(aucun message)' WVM_USER='utilisateur' # i18n-ignore
@@ -104,6 +106,7 @@ weevils goals [all]   weevils goal add <id> "title" ["why"]   weevils goal note 
 weevils trace [<goal>] [n]   weevils trace add "decision" [--goal <id>]
 weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] "text"   weevils mem rm <id>'
   usage+=$'\n''  evidence of a result (post, show): --demonstrated "where" --verified "environment" --limit "not checked"…'
+  usage+=$'\n''weevils weevbook backfill | check [--repair] | compare [--verbose]'
   a_id='session id' a_msg='message' a_project='project' a_first='first message'
   export WVM_NOT_FOUND='no such session: ' WVM_AMBIGUOUS='several sessions start with {}: {}'
   export WVM_NO_SESSIONS='no open sessions' WVM_NO_MESSAGES='(no messages)' WVM_USER='user'
@@ -518,6 +521,22 @@ if s: d["slug"]=s
 if sys.argv[8:]: d["roots"]=sys.argv[8:]
 print(json.dumps(d))' "$build" "$kind" "$slug" "$title" "$target" "$PWD" "$from" ${roots[@]+"${roots[@]}"})
     ledger POST /api/pages "$body" | json 'print("["+d["title"]+"]("+d["url"]+")")' ;;
+  weevbook)
+    # The weevbook (docs/spec, step 1): backfill, check, compare. Run by weevils' own node (service.conf) on this
+    # machine's files, in its own process: weevilsd keeps running, the weevbook's lock lets one of them write at a time.
+    shift
+    svc_conf=$HOME/.config/weevils/service.conf
+    # shellcheck disable=SC1090
+    wv_dir=$( { [ -f "$svc_conf" ] && . "$svc_conf"; } >/dev/null 2>&1; printf '%s' "${WEEVILS_DIR:-}")
+    # shellcheck disable=SC1090
+    wv_node=$( { [ -f "$svc_conf" ] && . "$svc_conf"; } >/dev/null 2>&1; printf '%s' "${WEEVILS_NODE:-}")
+    wv_dir=${wv_dir:-$HOME/weevils}
+    wv_node=${wv_node:-$(command -v node || true)}
+    if [ ! -f "$wv_dir/server/weevbook/cli.ts" ] || [ -z "$wv_node" ]; then
+      echo "weevils weevbook: no weevils in $wv_dir" >&2 # i18n-ignore : technical refusal
+      exit 1
+    fi
+    exec "$wv_node" "$wv_dir/server/weevbook/cli.ts" "$@" ;;
   *)
     echo "$usage"
     exit 1 ;;

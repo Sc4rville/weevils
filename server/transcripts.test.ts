@@ -6,7 +6,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { TranscriptStore, type Transcript } from './transcripts.ts'
+import { TranscriptStore, toolSummary, type Transcript } from './transcripts.ts'
 
 const DAY = 86400_000
 const UUID = '0b6c1d2e-3f40-4a5b-8c6d-7e8f9a0b1c2d'
@@ -506,4 +506,25 @@ it('projects shared signed source metadata on Claude and Codex without changing 
  expect(store.get(CODEX_UUID)?.messages[0]).toMatchObject({role:'orchestrator',author:'claude',sourceThreadId:'source-claude',coordination:true,text})
  for(const id of [UUID,CODEX_UUID])expect(store.get(id)?.messages[1]).toMatchObject({role:'user',text})
  expect(store.get(UUID)?.messages[2]).toMatchObject({role:'orchestrator',author:'gepetto',text:'Mail message'})
+})
+
+describe('étiquette d’un appel d’outil', () => {
+  // Masquée avant d'être coupée : une valeur coupée au milieu n'est plus une valeur que les motifs reconnaissent.
+  it('ne montre aucune partie d’une valeur, même coupée à 90 caractères', () => {
+    const pad = 'cd /srv/app && ./scripts/run --verbose --env staging '
+    const cases: [string, string[]][] = [
+      [`${pad}EXAMPLE_TOKEN="first-part second-part third-part fourth-part fifth"`, ['first', 'second', 'third']],
+      [`${pad}&& git clone https://alex:averylongpasswordvalue1234@example.com/x.git`, ['alex', 'averylong']],
+      [`${pad}&& cd /srv/app/www1 && OPENAI=sk-abcdefghijklmnopqrstuvwxyz0123456789 run`, ['sk-a']],
+      [`grep -cE "^EXAMPLE_API_KEY=" .env && grep -c "68fd4e2a" /srv/app/.cache/${'x'.repeat(40)}`, []],
+    ]
+    for (const [command, hidden] of cases) {
+      const label = toolSummary('Bash', { command })
+      expect(label.length).toBeLessThanOrEqual('Bash · '.length + 90)
+      for (const h of hidden) expect(label, command).not.toContain(h)
+    }
+    // Un motif (la fin d'un texte entre guillemets ouvert avant le nom) n'est pas une valeur : rien n'est masqué.
+    expect(toolSummary('Bash', { command: 'grep -cE "^EXAMPLE_API_KEY=" .env' })).toBe('Bash · grep -cE "^EXAMPLE_API_KEY=" .env')
+    expect(toolSummary('Bash', { command: 'EXAMPLE_API_KEY=abc123 npm test' })).toBe('Bash · EXAMPLE_API_KEY=[redacted] npm test')
+  })
 })

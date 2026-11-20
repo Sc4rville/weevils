@@ -249,6 +249,34 @@ describe('invariants of docs/spec/01-thread.md', () => {
     after.push({ v: 1, seq: after.length + 1, id: ULID_B, at: '2026-11-17T10:00:00Z', leg: 'L2', type: 'turn', turn: 2, state: 'running' })
     expect(numbers(validateJournal(after))).toContain('THREAD-10')
   })
+  it('THREAD-10: once an attempt has had an effect, every later attempt resumes', () => {
+    let n = 0
+    const at = '2026-11-17T08:00:00Z'
+    const draft = (d: Record<string, unknown>) => ({ id: `01M7M8E6XR${String(++n).padStart(16, '0')}`, at, leg: 'L1', ...d }) as unknown as EventDraft
+    const engine = 'claude:a3f9c1@laptop'
+    const assigned = (attempt: number, resume?: boolean) => draft({ type: 'turn', turn: 1, state: 'assigned', engine, attempt, rule: 'stay', reason: 'x', ...(resume ? { resume } : {}) })
+    const story = (thirdResumes: boolean) => {
+      const events: JournalEvent[] = []
+      const add = (d: EventDraft) => events.push(JSON.parse(appendEvent(events, d)!))
+      add(draft({ leg: null, type: 'meta', thread: '01M7M8E6XR0000000000000000' }))
+      add(draft({ type: 'leg.start', engine, session: 's', cwd: '/x', rung: 0, epoch: 1 }))
+      add(draft({ type: 'message', role: 'user', text: 'Rename the file.', source: 'weevils' }))
+      add(draft({ type: 'turn', turn: 1, state: 'accepted', message: events[2].id }))
+      add(assigned(1))
+      add(draft({ type: 'turn', turn: 1, state: 'running' }))
+      add(draft({ type: 'tool', call: 'c1', name: 'Bash', summary: 'Bash · git mv a b' }))
+      add(draft({ type: 'checkpoint', turn: 1, kind: 'none', reason: 'x' }))
+      add(draft({ type: 'turn', turn: 1, state: 'failed', reason: 'api', effect: 'some' }))
+      add(assigned(2, true))
+      add(draft({ type: 'turn', turn: 1, state: 'running' }))
+      // The second attempt fails before doing anything: the first one's effect is still there.
+      add(draft({ type: 'turn', turn: 1, state: 'failed', reason: 'quota', effect: 'none' }))
+      events.push({ ...assigned(3, thirdResumes), v: 1, seq: events.length + 1 } as JournalEvent)
+      return events
+    }
+    expect(validateJournal(story(true))).toEqual([])
+    expect(numbers(validateJournal(story(false)))).toEqual(['THREAD-10'])
+  })
   it('THREAD-11: one turn at a time is in an engine’s hands', () => {
     const events = moved().slice(0, 6) // turn 1 is running
     const at = '2026-11-17T08:02:20Z'

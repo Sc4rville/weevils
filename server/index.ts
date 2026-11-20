@@ -22,7 +22,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl, WEEVBOOK, WEEVBOOK_DIR } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices, claudeAvailable, haiku, ledger, relay as modelRelay } from './fast.ts'
@@ -72,6 +72,7 @@ import { changedPieces, KEY_RE as PAGE_KEY_RE, PageRefused, Pages } from './page
 import { pageLink } from '../shared/pages.ts'
 import type { MachineLoad } from '../shared/tips.ts'
 import { Bring, realGit } from './bring.ts'
+import { startWeevbookWriter } from './weevbook/writer.ts'
 
 const w = new Weevils()
 const sourceAuthor = (id: string) => threadAuthor(id, source => w.store.get(source), w.bossConversation(), ORCH_DIR)
@@ -82,6 +83,15 @@ const bring = new Bring({
 })
 w.store.broughtAt = bring.broughtAt
 w.start()
+// The weevbook, in shadow (docs/spec, step 1): off unless WEEVILS_WEEVBOOK=1. It reads the same session files as the
+// app, on its own timer, and changes nothing the app shows or does.
+if (WEEVBOOK) {
+  startWeevbookWriter({
+    dir: WEEVBOOK_DIR, sessions: path.join(DATA_DIR, 'weevbook-sessions.jsonl'), machine: MACHINE.id, home: HOME, codexDir: CODEX_DIR, roots: PROJECT_ROOTS,
+    sources: () => [...w.store.byFile.values()].map((t) => ({ file: t.file, provider: t.tool })),
+  })
+  console.log(`[weevbook] shadow writer on: ${WEEVBOOK_DIR}`)
+}
 startInfra()
 startDiskUsage()
 // Pont e-mail (agents externes) : sur la machine de l'orchestrateur, seulement si WEEVILS_MAIL_ADDRESS / _PASSWORD sont remplis.

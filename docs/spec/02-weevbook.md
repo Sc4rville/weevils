@@ -117,12 +117,20 @@ move), `paused` (a turn is held or failed: the app says what to do).
 
 ### Writing
 
-- A file is written beside its place (`<name>.next`), flushed to disk, then renamed. A power cut leaves the old file
-  or the new one, never half of one. `server/outbox.ts` does the same today.
-- The journal is extended the same way: old bytes plus the new lines, renamed over. The old bytes are never touched
-  (BOOK-2).
+- A file that is replaced (`thread.md`, `meta.json`, an attachment, `index.json`) is written beside its place
+  (`<name>.next`), flushed to disk, then renamed. A power cut leaves the old file or the new one, never half of one.
+  `server/outbox.ts` does the same today.
+- A file that grows (`events.jsonl`, a raw segment) is appended to in place, after a record of the write is saved
+  with each file's size before it (`.git/weevbook/tx/<id>.json`, itself renamed into place). The record is removed
+  once every file of the write is flushed. A record still there at the next start is a write a crash cut short:
+  each file is cut back to its size before, the attachments it added are removed, `thread.md` and `meta.json` are
+  rebuilt. So the journal and its raw lines always move together, and old bytes are never touched (BOOK-2).
+  Decided at step 1: copying a 16 MiB segment to add one line, every few seconds of a live session, writes far more
+  than the session itself; nothing reads the files between a crash and the next start but weevils, which undoes the
+  write first.
 - `thread.md` and `meta.json` are rebuilt after every append. When in doubt they are rebuilt: nothing reads them as
   truth.
+- An event the journal refuses (`appendEvent` throws) is not dropped: a `note` of kind `debug` holds it in `data`.
 
 ### Redaction
 
@@ -137,9 +145,28 @@ through `redactToolText` (`server/codex-command-details.ts`) with no length limi
 | `sk-…` keys, JSON Web Tokens | `[redacted]` |
 | `<name with token, password, secret, api_key, authorization, cookie> = <value>` | `<name> = [redacted]` |
 
+What follows such a name but is not a value stays as it is: a variable or a command named (`$NAME`, `"${NAME}"`,
+`"$(…)"`), an empty string, the quote that closes a text opened just before the name (`grep "^API_KEY=" .env`), and
+a value already `[redacted]`. A value written in single quotes (`'$NAME'`) is a value.
+
 - **Events**: every string field.
 - **Raw**: each line is parsed, every string value inside it is redacted, and the line is written again as JSON. The
-  function is never run over the line as text: that would break the JSON. A line that is not JSON is redacted as text.
+  function is never run over the line as text: that would break the JSON. A line in which nothing changed is kept
+  byte for byte (a provider session rebuilt from raw is the provider's own file).
+- **A key that names a secret** (a JSON key matching `token`, `password`, `passwd`, `secret`, `api_key`,
+  `authorization`, `cookie`): its string value is written `[redacted]` whatever it looks like. Inside one string the
+  patterns see `name = value`; in a JSON object the name is the key.
+- **A raw line that is not JSON** (cut by a crash): written as one JSON string, redacted as text. Raw holds JSON lines
+  only (BOOK-6); a raw line that parses to a string is such a line.
+- **A raw line over 16 MiB**: written as `{"weevbook":"omitted","reason":"line over 16 MiB","bytes":…,"sha256":…}`.
+- **Idempotent.** Redacting a redacted text changes nothing (BOOK-9 depends on it). At step 1 the `name = value`
+  pattern took the marker and what followed it for a new value (`KEY=[redacted]" run` lost `" run` the second time);
+  a value that starts with the marker is now left as it is. Property-tested over random texts, every string of the
+  fixtures and the shapes above.
+- The patterns run in time proportional to the text (`redactToolText`; its `name = value` pattern was rewritten as one
+  pass at step 1: as a single regular expression it took time in the square of a long run of word characters).
+- **A step's label** (`Bash · <command>`, the app's and the journal's alike) is redacted before it is cut to 90
+  characters: cut first, a value broken in the middle was no longer one the patterns saw, and its end showed.
 - **`handoff.md`**: the whole text. The handoff names environment variables; it never holds their values.
 - **Attachments** are not scanned. They are files the user or the engine chose to attach.
 
@@ -177,9 +204,41 @@ Checked by `validateFolder` on one thread folder (BOOK-2 by `extendsJournal` on 
 | The disk is full | The append fails before the rename. The turn is `failed` with `effect` as observed; the app says the disk is full. |
 | Redaction replaces something that was not a secret | The original is still in the provider session on the machine where it ran. The weevbook keeps `[redacted]`. |
 
+## Step 1: the local weevbook
+
+On each machine, in weevils' data dir (`~/.local/share/weevils`):
+
+| Path | What |
+|---|---|
+| `weevbook/` | The files, laid out as `main` (`README.md`, `index.json`, `projects/…`): readable as they are. |
+| `weevbook/.git` | The repository, with `core.bare` set: no index, nothing is ever checked out over the files. `refs/threads/<id>` and `refs/heads/main` ([03](03-sync-and-lease.md#the-refs)). |
+| `weevbook/.git/weevbook/index/<id>` | A private git index per thread: a commit hashes again only the files that changed. |
+| `weevbook/.git/weevbook/tx/<id>.json` | A write in progress ([Writing](#writing)). |
+| `weevbook.lock` | One writer at a time: weevilsd's writer or the `weevils weevbook` command (`<pid> <token>`; a lock left by a process that is gone is taken). |
+| `weevbook-sessions.jsonl` | Provider session → thread, leg, and how far it was read. Append-only, the last line of a session wins; written before the thread, so a crash never makes two threads for one session. |
+
+- **Writer** (`server/weevbook/writer.ts`, in weevilsd, only with `WEEVILS_WEEVBOOK=1`): every 3 s it looks at the
+  session files the app reads, one at a time, under the lock, never in the app's loop. An error is logged once and
+  stays there.
+- **`weevils weevbook backfill`**: every session file of the machine (`~/.claude/projects/*/*.jsonl`,
+  `~/.codex/sessions/**`), oldest first, through the same code as the writer, then `main`. Running it again writes
+  nothing. A session file that is still being written is taken up by the writer where the backfill stopped.
+- **`weevils weevbook check [--repair]`**: every thread against `validateJournal` and `validateFolder` (counts by
+  invariant), plus: the journal of `refs/threads/<id>` is the start of the folder's (a running turn is committed at
+  its end), and `index.json` of `main` names a commit on that ref (SYNC-8). `--repair` rebuilds `thread.md` and
+  `meta.json`.
+- **`weevils weevbook compare [--verbose]`**: for every session, the messages the app makes of it
+  (`parseTranscriptText`, the app's own reader, with no 400-message cap) against the thread's journal, over the lines
+  the weevbook has read. Exit 1 on a message missing or altered. Counted apart, as intended: a text with a secret
+  redacted (the journal's text is the app's with parts replaced by `[redacted]`: raw is redacted per JSON value, so
+  the journal may redact more than the app shows, never less), a message over 1 MiB cut (its full text is
+  `message.txt`), and a provider's error sentence, which the app shows as a reply and the journal holds as a `failed`
+  turn. Codex tool steps are compared by call id, since the app
+  labels them in the reader's language.
+
 ## What exists today
 
-- No weevbook. Threads live in provider files (`~/.claude/projects/<folder>/<id>.jsonl`,
+- Step 1 above. Before it there was no weevbook. Threads live in provider files (`~/.claude/projects/<folder>/<id>.jsonl`,
   `~/.codex/sessions/YYYY/MM/DD/rollout-…-<id>.jsonl`), read by `server/transcripts.ts` and never copied.
 - `server/conversations.ts` imports ChatGPT and Claude.ai exports into SQLite (`weevils.db`: tables `conversations`
   and `messages`), with each message cut at 60,000 characters. It reads the export formats this design needs for the
@@ -188,14 +247,12 @@ Checked by `validateFolder` on one thread folder (BOOK-2 by `extendsJournal` on 
   the text), then by a model call. The weevbook uses the rule at once and lets the model re-file later with a `meta`
   event ([06](06-dispatch.md)).
 - `redactToolText` exists and is used on what the app displays. Its default cuts the text at 8,000 characters; the
-  weevbook calls it without a limit.
+  weevbook calls it without a limit, one string value at a time (`server/weevbook/redact.ts`).
 - `server/attachments.ts` serves images of a session to the app from their original paths. Nothing stores
   attachments by hash yet.
 
 ## Not in v1
 
-- Bringing old provider sessions in (decision D5; recommended at step 1 through the same adapters, as threads with
-  one leg and no checkpoint).
 - Full-text search inside the repository (the weevbook page searches titles and `handoff.md` first).
 - Scanning attachments for secrets.
 - Deleting a thread. It will be a tombstone event plus a history rewrite of that thread's ref, specified with step 5.

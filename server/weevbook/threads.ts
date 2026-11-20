@@ -103,6 +103,8 @@ export class Threads {
   private since: number
   private runSaved = 0
   private started = false
+  /** The engine table was read once: until then nothing is placed (an empty table holds every turn, `no-machine`). */
+  private tableRead = false
 
   constructor(o: ThreadsOptions) {
     this.o = o
@@ -175,8 +177,15 @@ export class Threads {
   /** This machine's engines.json, written to the hub. */
   async publish() {
     const j = await machineEngines(this.o.machine, this.o.projects(), this.o.sources(), this.now())
-    if (await this.o.sync.serial(() => publishEngines(this.o.sync.git, j))) this.published = this.now()
-    else this.log('engines.json not written: the hub did not answer')
+    if (await this.o.sync.serial(() => publishEngines(this.o.sync.git, j))) {
+      this.published = this.now()
+      // The dispatcher knows its own machine from what it just wrote, not from a copy read back later: right after a
+      // restart, the hub still holds the file written before it.
+      if (this.o.dispatcher) {
+        const f = factsOf(j)
+        this.d.engines.publish(f.facts, f.quotas, f.seen, this.now())
+      }
+    } else this.log('engines.json not written: the hub did not answer')
   }
 
   /** Every machine's engines.json, read by the dispatcher: a version not seen before enters the table now. */
@@ -188,6 +197,7 @@ export class Threads {
       if (this.d.engines.seenOf(f.facts.machine) === f.seen) continue
       this.d.engines.publish(f.facts, f.quotas, f.seen, this.now())
     }
+    this.tableRead = true
   }
 
   // ---------------------------------------------------------------- messages
@@ -379,6 +389,10 @@ export class Threads {
     // A provider's turn in hands with a turn of weevils behind it: watched until it ends (or is closed as stopped).
     if (n.kind === 'busy' && !filedByWeevils(events, turns[n.turn - 1]) && !oursWaiting(events, turns, this.since, this.now())) return this.forget(thread)
     if ((n.kind === 'dispatch' || n.kind === 'hold') && liveness(events, turns[n.turn - 1], this.since, this.now()) !== 'live') return this.forget(thread)
+    // Not before the engine table was read once: an empty table would hold every turn, `no-machine`.
+    if (!this.tableRead) return
+    // This machine is the dispatcher's own: it always answers.
+    this.d.engines.answered(this.me, true, this.now())
     const meta = events.findLast((e): e is MetaEvent => e.type === 'meta' && e.project !== undefined)
     const project = meta?.project ?? null
     const p = this.d.place(thread, events, turns, this.now(), {
@@ -408,8 +422,9 @@ export class Threads {
     }
     void go()
       .catch((e): StartResult => {
-        this.d.engines.answered(machine, false, this.now())
-        return { ok: false, why: 'unreachable', detail: (e as Error).message }
+        // Another machine that throws did not answer. This one did: its own start failed (a launch, a file).
+        if (machine !== this.me) this.d.engines.answered(machine, false, this.now())
+        return { ok: false, why: machine === this.me ? 'launch' : 'unreachable', detail: (e as Error).message }
       })
       .then((res) => {
         if (res.ok) {

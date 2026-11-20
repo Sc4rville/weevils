@@ -67,7 +67,7 @@ function world() {
  * A machine running weevilsd with threads on: a clone of the project, a writer, a hub sync, the Threads service, and
  * fake engines (accounts with a quota each) that write session files like the real CLIs.
  */
-function machine(w: ReturnType<typeof world>, name: string, o: { dispatcher?: boolean; accounts: { provider: Provider; account: string; used: number }[] }) {
+function machine(w: ReturnType<typeof world>, name: string, o: { dispatcher?: boolean; accounts: { provider: Provider; account: string; used: number }[]; failStarts?: number }) {
   const home = path.join(w.root, name)
   const data = path.join(home, '.local', 'share', 'weevils')
   const projects = path.join(home, 'projects')
@@ -121,7 +121,10 @@ function machine(w: ReturnType<typeof world>, name: string, o: { dispatcher?: bo
   }
   const starts: Promise<StartResult>[] = []
   const peers: Peer[] = []
+  let failStarts = o.failStarts ?? 0
   const start = (ins: Instruction) => {
+    // A start that throws here (a file renamed under it: the weevbook's tx race), before anything was written.
+    if (failStarts-- > 0) return Promise.reject(new Error(`ENOENT: no such file or directory, rename 'weevbook/tx/${ins.thread}.json.next'`))
     const p = startTurn({ sync, sessionsFile: sessions, dataDir: data, machine: name, home, claudeDir, codexDir, roots: [projects], projectsDir: projects, launch, folderOf: (p) => (p === 'shop' ? repo : null), now: () => clock.t, log, findFor: 2_000, sleep: (ms) => sleep(Math.min(ms, 50)).then(() => undefined) }, ins)
     starts.push(p)
     return p
@@ -504,6 +507,32 @@ describe('switching threads on in an install with history', () => {
     expect(events.find((e) => e.type === 'turn' && e.turn === 2 && e.state === 'held')).toMatchObject({ reason: 'stopped' })
     expect(turnsOf(events, 3)).toEqual([['accepted', null], ['assigned', 'stay'], ['running', null]])
   }, 120_000)
+
+  it('right after a start, nothing is placed before the table is read, and a start that fails here leaves this machine alive', async () => {
+    const w = world()
+    const server = machine(w, 'server', { dispatcher: true, accounts: [{ provider: 'claude', account: accountHash('account-of-server'), used: 10 }], failStarts: 1 })
+    await server.sync.round()
+
+    // No table yet: the message is filed, and waits; no hold « no machine » is written.
+    const { thread: a } = await server.threads.accept(null, { text: 'Show prices with the currency', project: 'shop' })
+    await server.threads.step(a)
+    expect(turnsOf(journal(w.hub, a))).toEqual([['accepted', null]])
+    expect(decisions(server.logs)).toEqual([])
+
+    // The table: this machine. Its first start fails here (a file renamed under it): it is placed again, here.
+    await tables(server, server)
+    await server.threads.step(a)
+    await sleep(100)
+    expect(server.logs.some((l) => l.includes('server did not start it (launch: ENOENT'))).toBe(true)
+    const { thread: b } = await server.threads.accept(null, { text: 'And the cart', project: 'shop' })
+    await server.threads.step(b)
+    await server.threads.step(a)
+    const results = await server.started()
+    expect(results.every((r) => r.ok)).toBe(true)
+    expect(server.calls.map((c) => c.text).sort()).toEqual(['And the cart', 'Show prices with the currency'])
+    for (const id of [a, b]) expect(turnsOf(journal(w.hub, id))).toEqual([['accepted', null], ['assigned', 'new'], ['running', null]])
+    expect(server.logs.filter((l) => /hold|silent since/.test(l))).toEqual([])
+  }, 60_000)
 })
 
 describe('the dispatcher keeps its own clock of what is live', () => {

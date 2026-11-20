@@ -53,6 +53,7 @@ weevils trace [<goal>] [n]            the work journal: what you decided and dis
 weevils trace add "decision" [--goal <id>]  writes one of your decisions in it, in plain words ({{user}} reads it in the app)
 weevils mem search <words>            searches your internal memory (decisions, rules {{user}} gave, project facts), the requests and the whole log; ids lead back (weevils recall)
 weevils mem add rule|decision|fact "text" · weevils mem rm <id> · weevils mem   your internal memory itself
+weevils connector [revoke <id>|chatgpt|claude-ai|all]   the chat apps {{user}} connected to the weevbook (ChatGPT, Claude.ai); revoke takes one back
 ```
 
 A session id can be shortened: the first 8 characters are enough.

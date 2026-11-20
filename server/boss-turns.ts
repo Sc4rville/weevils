@@ -29,7 +29,7 @@ const readOr = (file: string) => { try { return fs.readFileSync(file, 'utf8') } 
 export const orchTranscriptsDir = (claudeDir = CLAUDE_DIR, orchDir = ORCH_DIR) => path.join(claudeDir, orchDir.replace(/[^a-zA-Z0-9]/g, '-'))
 
 /** The weevils subcommands weevboss's instructions call (server/orchestrator.*.md). */
-export const BOSS_WEEVILS = ['sessions', 'read', 'recall', 'boss', 'send', 'resume', 'new', 'projects', 'setup', 'config', 'memory', 'post', 'show', 'page', 'pages', 'asks', 'ask', 'goals', 'goal', 'trace', 'mem'] as const
+export const BOSS_WEEVILS = ['sessions', 'read', 'recall', 'boss', 'send', 'resume', 'new', 'projects', 'setup', 'config', 'memory', 'post', 'show', 'page', 'pages', 'asks', 'ask', 'goals', 'goal', 'trace', 'mem', 'connector'] as const
 /** Keys and secrets weevboss never reads: the ones an automation may not read (server/optimizers.ts), .env files anywhere. */
 const SECRET_READS = ['~/.ssh/**', '~/.aws/**', '~/.config/gh/**', '~/.config/weevils/**', '~/.claude.json', '~/.claude/.credentials.json', '~/.netrc', '~/.git-credentials', '~/.npmrc', '~/.docker/config.json', '//**/.env', '//**/.env.*']
 /**

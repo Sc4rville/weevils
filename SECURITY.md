@@ -44,7 +44,10 @@ In short, as you and in your home folder:
      `~/.local/share/weevils/node`.
    - Claude Code, through Anthropic's own installer.
    - the `weevilsd` service, listening on `127.0.0.1` only.
-   - a few commands in `~/.local/bin`, weevils' hooks in `~/.claude/settings.json`, and an update timer.
+   - a few commands in `~/.local/bin`, weevils' hooks in `~/.claude/settings.json`, and an update timer. The
+     settings file keeps its mode, and stays a symlink if it is one. A `~/.local/bin/tmux` of your own is kept as
+     `tmux.bak-weevils` (weevils' tmux guard runs it) and comes back at uninstall. The hook never holds a session up:
+     one second at most, and nothing to wait for after a tool call.
 3. **No root for missing system tools** (git, curl, tmux, jq, python3) on Debian and Ubuntu: apt downloads your
    distribution's own signed packages as you (`apt-get download`), and they are unpacked in
    `~/.local/share/weevils/sys`, never installed system-wide. On other distributions, or if that fails, the script

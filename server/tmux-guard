@@ -15,9 +15,12 @@
 data=${WEEVILS_GUARD_DATA:-$HOME/.local/share/weevils}
 uid=$(id -u)
 
-# The real tmux: WEEVILS_REAL_TMUX, else the first tmux on the PATH that is not this file.
+# The real tmux: WEEVILS_REAL_TMUX; else the tmux that stood here before the guard (kept aside by server/install.sh as
+# tmux.bak-weevils, beside this file: the person had put it first on their PATH); else the first tmux on the PATH that
+# is not this file.
 self=$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")
 real=${WEEVILS_REAL_TMUX:-}
+[ -n "$real" ] || [ ! -x "$self.bak-weevils" ] || [ -d "$self.bak-weevils" ] || real=$self.bak-weevils
 if [ -z "$real" ]; then
   IFS=: read -r -a dirs <<<"$PATH"
   for d in "${dirs[@]}"; do

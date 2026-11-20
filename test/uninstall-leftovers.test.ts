@@ -89,6 +89,8 @@ it('takes the install log, the cache, the settings copy and weevils’ Claude re
   expect(un).toContain('rm -f "$HOME/weevils-install.log"')
   expect(un).toContain('rm -rf "$HOME/.cache/weevils"')
   expect(un).toContain('untrust_own "$HOME/.local/share/weevils"')
+  // A tmux of the person's own, kept aside when the guard took its place (server/install.sh), comes back.
+  expect(un).toContain('mv "$HOME/.local/bin/tmux.bak-weevils" "$HOME/.local/bin/tmux"')
   const purge = un.slice(un.indexOf('if [ "$PURGE" = 1 ]'))
   expect(purge).toContain('rm -f "$settings.bak-weevils"')
   expect(purge).toContain('"$HOME/.claude/projects/$enc"')

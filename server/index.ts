@@ -318,6 +318,9 @@ new TunnelFollower({
   adopt: (url) => {
     setPublicUrl(url)
     try { writeConfig({ WEEVILS_PUBLIC_URL: url }) } catch (e) { console.error('[link] config:', (e as Error).message) }
+    // The login link the install keeps for the person (install.sh: login-link, mode 600) follows too.
+    const kept = path.join(DATA_DIR, 'login-link')
+    try { if (fs.existsSync(kept)) fs.writeFileSync(kept, `${url}/#k=${SECRET}\n`, { mode: 0o600 }) } catch { /* kept as it was */ }
   },
   announce: async (url) => {
     await waitServed(url)

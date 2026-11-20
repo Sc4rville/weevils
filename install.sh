@@ -277,8 +277,8 @@ EN_mac_intel="Homebrew no longer installs on Intel Macs, and some tools weevils 
 FR_mac_intel="Homebrew ne s'installe plus sur les Mac Intel, et il manque ici des outils dont weevils a besoin. Installe-les avec MacPorts (https://www.macports.org) ou un Homebrew déjà présent (git et python3 viennent aussi avec les outils de développement d'Apple : xcode-select --install), puis relance-moi. Il manque :"
 EN_mac_bg="no desktop session on this Mac (installed over SSH?): weevilsd runs in the background until the next restart. Log in on the Mac's screen and run this installer again: launchd then starts it at every login."
 FR_mac_bg="pas de session ouverte sur l'écran de ce Mac (installation par SSH ?) : weevilsd tourne en arrière-plan jusqu'au prochain redémarrage. Ouvre une session sur le Mac et relance cette installation : launchd le démarrera alors à chaque ouverture de session."
-EN_mac_awake="on a Mac, weevils runs while your session is open; it keeps the Mac awake while it is plugged in (WEEVILS_KEEP_AWAKE=0 to turn that off). A closed laptop lid still puts it to sleep."
-FR_mac_awake="sur un Mac, weevils tourne tant que ta session est ouverte ; il garde le Mac éveillé tant qu'il est branché (WEEVILS_KEEP_AWAKE=0 pour l'éviter). Un portable au capot fermé s'endort quand même."
+EN_mac_awake="on a Mac, weevils runs while your session is open; it keeps the Mac awake while an agent works and the Mac is plugged in (WEEVILS_KEEP_AWAKE=0 to turn that off). A closed laptop lid still puts it to sleep."
+FR_mac_awake="sur un Mac, weevils tourne tant que ta session est ouverte ; il garde le Mac éveillé tant qu'un agent travaille et qu'il est branché (WEEVILS_KEEP_AWAKE=0 pour l'éviter). Un portable au capot fermé s'endort quand même."
 
 # ---------------------------------------------------------------- options
 

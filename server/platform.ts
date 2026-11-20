@@ -1,7 +1,7 @@
 // What differs between Linux and macOS, in one place. Every function takes its platform (and what it runs) as a
 // parameter with a default, so the macOS branches are tested on Linux. No import from config.ts: config.ts calls
 // servicePath() while it loads.
-import { execFile, spawn } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -78,17 +78,45 @@ export function parseVmStat(out: string): number | null {
 export const macHasBattery = (pmsetBatt: string) => /InternalBattery/.test(pmsetBatt)
 
 /**
- * On a Mac, keeps the machine awake while weevilsd runs and the Mac is on mains power (caffeinate -s, tied to our pid:
- * it leaves with us). Off with WEEVILS_KEEP_AWAKE=0. Returns the pid of caffeinate, or undefined when nothing started.
+ * On a Mac, keeps the machine awake while the Mac is on mains power (caffeinate -s, tied to our pid: it leaves with
+ * us). Off with WEEVILS_KEEP_AWAKE=0. Returns the caffeinate child, or undefined when nothing started.
  */
-export function keepAwake(platform: Platform = process.platform, env: NodeJS.ProcessEnv = process.env, start: typeof spawn = spawn, pid = process.pid): number | undefined {
+export function keepAwake(platform: Platform = process.platform, env: NodeJS.ProcessEnv = process.env, start: typeof spawn = spawn, pid = process.pid): ChildProcess | undefined {
   if (platform !== 'darwin' || env.WEEVILS_KEEP_AWAKE?.trim() === '0') return undefined
   try {
     const child = start('/usr/bin/caffeinate', ['-s', '-w', String(pid)], { stdio: 'ignore', detached: false })
     child.on('error', () => undefined)
     child.unref()
-    return child.pid
+    return child.pid ? child : undefined
   } catch {
     return undefined
+  }
+}
+
+/**
+ * Awake only while there is work: caffeinate runs while an agent of this machine works or waits for an answer (the
+ * phone must still reach the Mac to answer), and stops `graceMs` after the last of them is done, so an idle Mac
+ * sleeps as it would without weevils.
+ */
+export class Awake {
+  private child: ChildProcess | undefined
+  private lastBusy = 0
+  private start: () => ChildProcess | undefined
+  private graceMs: number
+  constructor(start: () => ChildProcess | undefined = () => keepAwake(), graceMs = 5 * 60_000) {
+    this.start = start
+    this.graceMs = graceMs
+  }
+  /** Called with whether work goes on now; returns whether caffeinate runs after it. */
+  update(busy: boolean, now = Date.now()): boolean {
+    if (this.child && (this.child.exitCode !== null || this.child.signalCode !== null)) this.child = undefined
+    if (busy) {
+      this.lastBusy = now
+      if (!this.child) this.child = this.start()
+    } else if (this.child && now - this.lastBusy >= this.graceMs) {
+      try { this.child.kill('SIGTERM') } catch { /* already gone */ }
+      this.child = undefined
+    }
+    return !!this.child
   }
 }

@@ -248,9 +248,9 @@ async function machine(deps: SetupDeps): Promise<MachineInfo> {
   const laptop = mac ? (f?.laptop ?? (await macFacts()).laptop) : !!f?.laptop || battery
   const kind = machineKind({ wsl, mac, virt, laptop, publicIp: !!f?.publicIp, provider: !!f?.provider })
   const uptimeDays = os.uptime() / 86400
-  // Un Mac fixe reste éveillé tant que weevilsd tourne (caffeinate, server/platform.ts) ; sans ça (WEEVILS_KEEP_AWAKE=0),
-  // sa durée d'allumage compte aussi la veille et ne dit rien.
-  const dozes = mac && process.env.WEEVILS_KEEP_AWAKE?.trim() === '0'
+  // A Mac is kept awake only while its agents work (caffeinate, server/platform.ts): it sleeps when idle, so its
+  // uptime counts sleep too and says nothing about being always on.
+  const dozes = mac
   const alwaysOn = kind === 'laptop' || kind === 'wsl' ? false : kind === 'desktop' ? (uptimeDays > 3 && !dozes ? true : null) : true
   // Dans un conteneur, les limites qui comptent sont celles du cgroup (--cpus, --memory), pas celles de l'hôte.
   const quota = /^(\d+)\s+(\d+)/.exec(read('/sys/fs/cgroup/cpu.max'))

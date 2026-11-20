@@ -13,7 +13,7 @@ import FY from './i18n/foryou.ts'
 // Lancer : node server/index.ts (Node 22, TypeScript natif).
 
 import { execFile, spawn } from 'node:child_process'
-import { keepAwake } from './platform.ts'
+import { Awake } from './platform.ts'
 import { TunnelFollower, waitServed } from './tunnel-link.ts'
 import { claimSetup } from './get-claim.ts'
 import crypto from 'node:crypto'
@@ -1124,8 +1124,14 @@ server.on('upgrade', (req, socket, head) => {
 })
 
 server.listen(PORT, HOST, () => console.log(`weevilsd → http://${HOST}:${PORT}`))
-// A Mac goes to sleep on its own: awake while weevilsd runs and the Mac is plugged in (WEEVILS_KEEP_AWAKE=0: no).
-keepAwake()
+// A Mac goes to sleep on its own: kept awake while one of its agents works or waits for an answer and the Mac is
+// plugged in, then left to sleep (WEEVILS_KEEP_AWAKE=0: never kept awake).
+if (process.platform === 'darwin') {
+  const awake = new Awake()
+  const look = () => awake.update(w.snapshot().sessions.some((s) => !s.archived && (s.machineId ?? MACHINE.id) === MACHINE.id && (s.status === 'working' || s.status === 'needs_user')))
+  setInterval(look, 30_000).unref()
+  look()
+}
 
 
 // ---------------------------------------------------------------- « How weevils works » (server/pages.ts, docs/LINKS.md)

@@ -158,9 +158,10 @@ The same command works on a Mac, Apple Silicon or Intel. What differs from Linux
 
 Limits on a Mac:
 
-- weevils runs while your session is open. It keeps the Mac awake while it is plugged in (`WEEVILS_KEEP_AWAKE=0` in
-  `~/.config/weevils/env` turns that off), but a laptop with its lid closed still goes to sleep, and your agents
-  stop with it. For agents that work at night, a small VPS is better as the main machine; the Mac can then join it
+- weevils runs while your session is open. While one of your agents works or waits for your answer and the Mac is
+  plugged in, it keeps the Mac awake (`WEEVILS_KEEP_AWAKE=0` in `~/.config/weevils/env` turns that off); five
+  minutes after the last one is done, the Mac sleeps as it would without weevils, and an automation due then waits
+  for it to wake. A laptop with its lid closed still goes to sleep, and your agents stop with it. For agents that work at night, a small VPS is better as the main machine; the Mac can then join it
   with `--secondary`.
 - Two things stay Linux only: the systemd timers shown in the auto band, and the bwrap jail that background tasks
   run in.

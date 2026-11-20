@@ -92,6 +92,76 @@ describe('scan : découverte', () => {
   })
 })
 
+describe('scan : ce qui ne change pas n’est pas relu', () => {
+  it('a project folder is listed again only when it changed; its files are still read as they grow', () => {
+    const now = Date.now()
+    const f = claudeFile()
+    write(f, [user('one', now - 1000)])
+    const dir = path.dirname(f)
+    // The folder's last change is old enough for its mtime to be trusted.
+    fs.utimesSync(dir, (now - 10_000) / 1000, (now - 10_000) / 1000)
+    const reads: string[] = []
+    const real = fs.readdirSync
+    const spy = ((p: fs.PathLike, ...rest: unknown[]) => {
+      reads.push(String(p))
+      return (real as (...a: unknown[]) => unknown)(p, ...rest)
+    }) as typeof fs.readdirSync
+    fs.readdirSync = spy
+    try {
+      expect(store.scan(now)).toBe(true)
+      expect(reads.filter((r) => r === dir)).toHaveLength(1)
+      append(f, [user('two', now - 500)])
+      expect(store.scan(now)).toBe(true)
+      expect(store.scan(now)).toBe(false)
+      expect(reads.filter((r) => r === dir)).toHaveLength(1)
+      expect(one().messages.map((m) => m.text)).toEqual(['one', 'two'])
+      // A new session in that folder changes it: listed again, found.
+      write(claudeFile(CODEX_UUID), [user('other', now - 200)])
+      fs.utimesSync(dir, (now - 5000) / 1000, (now - 5000) / 1000)
+      store.scan(now)
+      expect(reads.filter((r) => r === dir)).toHaveLength(2)
+      expect(store.all()).toHaveLength(2)
+    } finally {
+      fs.readdirSync = real
+    }
+  })
+
+  it('a folder changed a moment ago is listed every time (its mtime may hide a second change)', () => {
+    const now = Date.now()
+    write(claudeFile(), [user('one', now - 1000)])
+    store.scan(now)
+    write(claudeFile(CODEX_UUID), [user('other', now - 200)])
+    store.scan(now)
+    expect(store.all()).toHaveLength(2)
+  })
+
+  it('a file too old to follow is looked at again about every 30 s, or at once when its session gives news', () => {
+    const now = Date.now()
+    const f = claudeFile()
+    write(f, [user('old', now - 5 * DAY)])
+    fs.utimesSync(f, (now - 5 * DAY) / 1000, (now - 5 * DAY) / 1000)
+    const stats: string[] = []
+    const real = fs.statSync
+    fs.statSync = ((p: fs.PathLike, ...rest: unknown[]) => {
+      stats.push(String(p))
+      return (real as (...a: unknown[]) => unknown)(p, ...rest)
+    }) as typeof fs.statSync
+    try {
+      for (let i = 0; i < 20; i++) store.scan(now)
+      expect(stats.filter((p) => p === f)).toHaveLength(1)
+      store.scan(now)
+      expect(stats.filter((p) => p === f)).toHaveLength(2)
+      // Resumed: written again, and its hooks say so.
+      append(f, [user('back', now - 100)])
+      store.wake(UUID)
+      expect(store.scan(now)).toBe(true)
+      expect(one().messages.map((m) => m.text)).toEqual(['old', 'back'])
+    } finally {
+      fs.statSync = real
+    }
+  })
+})
+
 describe('scan : lecture incrémentale', () => {
   it('lit la suite seulement, attend la fin d’une ligne, repart de zéro si le fichier rétrécit', () => {
     const now = Date.now()

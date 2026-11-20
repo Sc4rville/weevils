@@ -718,6 +718,8 @@ export class Weevils {
   hook(body: any, pidHeader?: string) {
     const id = body?.session_id
     if (!id) return
+    // An old session resumed: its transcript is read from the next scan, not only when old files are looked at again.
+    if (typeof id === 'string') this.store.wake(id)
     const prev = this.hooks.get(id)
     const pid = pidHeader ? (findClaudePid(Number(pidHeader)) ?? prev?.pid) : prev?.pid
     this.hooks.set(id, { event: body.hook_event_name ?? 'unknown', at: Date.now(), message: body.message, pid, ...(typeof body.reason === 'string' ? { reason: body.reason } : {}) })

@@ -185,7 +185,7 @@ run_systemd() {
   else fails=$((fails + 1)); echo "  FAIL install.sh --secondary"; tail -30 "$work/install4.log"; fi
   check "secondary: weevilsd and tunnel active, no weevboss, no app build" as_2 'systemctl --user is-active weevilsd weevils-tunnel && grep -qx WEEVILS_ORCHESTRATOR=0 ~/.config/weevils/env && grep -qx WEEVILS_MACHINE=laptop ~/.config/weevils/env && test ! -e weevils/dist/index.html'
   check "main: WEEVILS_REMOTES registered by the secondary" as_test 'grep -qx "WEEVILS_REMOTES=laptop=http://127.0.0.1:4192" ~/.config/weevils/env'
-  check "main: the second machine is online in its snapshot" as_test 'for i in $(seq 30); do curl -sf http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"laptop\" and .online==true)" && exit 0; sleep 1; done; exit 1'
+  check "main: the second machine is online in its snapshot" as_test 'for i in $(seq 30); do curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"laptop\" and .online==true)" && exit 0; sleep 1; done; exit 1'
   check "secondary: units name the main host given, nothing hardcoded" as_2 'grep -q "ExecStart=.* mainbox$" ~/.config/systemd/user/weevils-tunnel.service && ! grep -rqiE "\bvps\b|scarville|scarville" ~/.config/systemd/user/ ~/.config/weevils/'
   check "secondary re-run is idempotent (same tunnel port)" as_2 'cd weevils && ./install.sh --yes --secondary mainbox >/dev/null && grep -q "WEEVILS_TUNNEL_PORT=4192" ~/.config/weevils/service.conf'
   check "main: still a single remote entry" as_test '[ "$(grep -c "^WEEVILS_REMOTES=" ~/.config/weevils/env)" = 1 ] && grep -qx "WEEVILS_REMOTES=laptop=http://127.0.0.1:4192" ~/.config/weevils/env'
@@ -308,7 +308,7 @@ run_edge() {
   check "weevilsd answers" docker exec -u u "$c" curl -sf http://127.0.0.1:4179/api/me
   check "nothing in the home belongs to root" docker exec "$c" bash -c '[ -z "$(find /home/u -user root | head -1)" ]'
   check "config: name with a space, lang fr, mode 600" docker exec -u u "$c" bash -c 'grep -qx "WEEVILS_USER_NAME=Ana Maria" ~/.config/weevils/env && grep -qx WEEVILS_LANG=fr ~/.config/weevils/env && [ "$(stat -c %a ~/.config/weevils/env)" = 600 ]'
-  check "the server reads the name with its space" docker exec -u u "$c" bash -c 'curl -sf http://127.0.0.1:4179/api/snapshot | grep -q "Ana Maria"'
+  check "the server reads the name with its space" docker exec -u u "$c" bash -c 'curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | grep -q "Ana Maria"'
   check "Claude Code not logged in: 'presque prêt', run claude once" grep -q "presque prêt : lance claude" "$work/ns20.log"
   check "--lang fr: no English line" bash -c "! grep -E 'checking the system|getting weevils|your settings|dependencies and app|weevils is ready|access code|login link|waiting for' '$work/ns20.log'"
 

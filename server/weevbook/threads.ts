@@ -320,7 +320,7 @@ export class Threads {
       const m = events.find((e) => e.id === t.message)
       if (!m || m.type !== 'message' || !m.key?.includes(':req:')) continue
       if (now - Date.parse(m.at) < REQUEST_EXPIRES) continue
-      out.push(draft(now, leg, { type: 'turn', turn: t.turn, state: 'held', rule: 'hold', reason: 'expired' }))
+      out.push(draft(now, leg, { type: 'turn', turn: t.turn, state: 'held', rule: 'hold', reason: 'expired' })) // i18n-ignore: log and journal data
       this.log(`${thread.slice(-6)} turn ${t.turn}: a request held for ${Math.round((now - Date.parse(m.at)) / 60_000)} min expires`)
     }
     return out
@@ -354,7 +354,7 @@ export class Threads {
     const go = async (): Promise<StartResult> => {
       if (machine === this.me) return this.o.start(p.ins)
       const peer = this.o.peers().find((x) => x.machine === machine)
-      if (!peer) return { ok: false, why: 'unreachable', detail: `${machine} is not a remote of this install` }
+      if (!peer) return { ok: false, why: 'unreachable', detail: `${machine} is not a remote of this install` } // i18n-ignore: log and journal data
       return peer.start(p.ins)
     }
     void go()
@@ -402,7 +402,7 @@ export class Threads {
   async deliverHere(thread: string, text: string) {
     const events = await this.o.sync.withBook(async () => (await this.o.sync.book.thread(thread))?.journal.events ?? [])
     const session = openSession(events ?? [], this.me)
-    if (!session) throw new Error('no session of this thread runs here')
+    if (!session) throw new Error('no session of this thread runs here') // i18n-ignore: log and journal data
     await this.o.deliver(session, text)
   }
 
@@ -491,6 +491,12 @@ export class Threads {
         handoffs.set(l.thread, out.slice(nl + 1, nl + 1 + size))
         pos = nl + 1 + size + 1
       }
+    }
+    // meta.json says `paused` for a failed turn too; the dispatcher retries those: the thread is working (view.ts).
+    for (const l of lines) {
+      if (l.state !== 'paused') continue
+      const text = await gitOut(l.dir, ['cat-file', 'blob', `${l.commit}:events.jsonl`])
+      if (text) l.state = visibleState(parseJournal(text).events).state
     }
     const plain = lines.map(({ commit: _c, dir: _d, ...l }) => l)
     this.refsCache = { key, lines: plain, handoffs }

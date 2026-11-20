@@ -12,6 +12,7 @@
 import type http from 'node:http'
 import path from 'node:path'
 import type { Session } from '../shared/api.ts'
+import type { ThreadState } from '../shared/threads.ts'
 import { MAIN, accounts } from './claude-accounts.ts'
 import { reposUnder } from './connector/tools.ts'
 import type { Weevils } from './core.ts'
@@ -133,12 +134,17 @@ export function startThreads(o: ThreadsAppOptions): ThreadsApp {
   // Which thread each session file belongs to, and each thread's title, read again every few seconds.
   const sessions = new Sessions(sessionsFile)
   let titles = new Map<string, string>()
+  let states = new Map<string, ThreadState>()
   const refresh = async () => {
     const before = sessions.all().length
+    const was = [...states].join()
     await sessions.load().catch(() => undefined)
     const lines = await threads.lines().catch(() => null)
-    if (lines) titles = new Map(lines.filter((l) => l.title).map((l) => [l.thread, l.title]))
-    if (sessions.all().length !== before) w.bump()
+    if (lines) {
+      titles = new Map(lines.filter((l) => l.title).map((l) => [l.thread, l.title]))
+      states = new Map(lines.map((l) => [l.thread, l.state]))
+    }
+    if (sessions.all().length !== before || [...states].join() !== was) w.bump()
   }
   void refresh()
   setInterval(() => void refresh(), 5_000).unref?.()
@@ -152,13 +158,26 @@ export function startThreads(o: ThreadsAppOptions): ThreadsApp {
         out.push(s)
         continue
       }
-      const row = { ...s, thread, ...(titles.get(thread) ? { title: titles.get(thread)! } : {}) }
+      const row = { ...s, ...rowState(s, states.get(thread)), thread, ...(titles.get(thread) ? { title: titles.get(thread)! } : {}) }
       const cur = best.get(thread)
       if (!cur || row.lastActivityAt > cur.lastActivityAt) best.set(thread, row)
     }
     return [...out, ...best.values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
   }
   return { threads, rows, start }
+}
+
+/**
+ * A session row says what its thread says (one of three states), not what its engine did: a usage limit or an error
+ * the dispatcher works around is not a cut. A question the engine asks (a permission) stays: the person must answer.
+ */
+export function rowState(s: Session, state: ThreadState | undefined): Partial<Session> {
+  if (!state) return {}
+  const { interrupted: _i, ...rest } = s
+  if (s.status === 'needs_user' && (s.attention || s.choices?.length || s.ask)) return {}
+  if (state === 'working') return { ...rest, interrupted: undefined, status: 'working', workStartedAt: s.workStartedAt ?? s.lastActivityAt }
+  if (state === 'paused') return { ...rest, interrupted: undefined, status: 'needs_user', workStartedAt: null }
+  return s.status === 'interrupted' || s.status === 'working' && !s.live ? { ...rest, interrupted: undefined, status: 'idle', workStartedAt: null } : {}
 }
 
 /** The routes of threads: the app's (list, read, write, continue) and the dispatcher's calls to this machine. */

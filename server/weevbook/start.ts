@@ -282,14 +282,14 @@ export async function startTurn(h: StartHost, ins: Instruction): Promise<StartRe
           found = await findNewSession(h.codexDir, id, at)
           if (!found) await (h.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(500)
         }
-        if (!found) throw new Error('the new Codex session wrote no file')
+        if (!found) throw new Error('the new Codex session wrote no file') // i18n-ignore: log and journal data
         session = found.session
         file = found.file
         await sessions.record({ key: sessionKey({ file, provider }), thread: id, leg, provider, file, lines: 0, offset: 0, rawBytes: 0, base: 0, moved: false })
         const more = await sync.serial(() =>
           pushEvents(sync, id, pushed.tip, [draft(now(), leg, { type: 'leg.start', engine: ins.engine, session, cwd, rung: ins.rung, epoch: pushed.epoch }), draft(now(), leg, { type: 'turn', turn: ins.turn, state: 'running' })], () => ({ engine: ins.engine, leg, state: 'working', turn: ins.turn }), `turn ${ins.turn} (running) · ${provider} · ${h.machine}`),
         )
-        if (!more.ok) throw new Error('the lease moved while Codex started')
+        if (!more.ok) throw new Error('the lease moved while Codex started') // i18n-ignore: log and journal data
       }
     }
   } catch (e) {

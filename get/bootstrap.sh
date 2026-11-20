@@ -29,7 +29,9 @@
 #      To avoid it: --no-link (no link, weevils stays on this machine; reach it later through Tailscale, a private
 #      network between your own devices).
 #   4. Tells the setup page how far it is: step names only, then your weevils' address; the login link is sealed with
-#      a key only your open page holds, so the setup service never sees your access code.
+#      a key only your open page holds, so the setup service never sees your access code. At the start, so the
+#      service knows a server from a computer: the system's name (uname -s), whether systemd runs it, and whether
+#      the address the service sees is one of this machine's own (yes: that address, which the service just gave it).
 #   Run as root (that is how a fresh server starts it): it installs for a regular user with passwordless sudo.
 #
 # WHAT IT NEVER DOES: send your files, code, conversations or keys anywhere; open a port on your router or firewall;
@@ -61,11 +63,26 @@ _weevils_get() {
       --no-permission-prompts) prompts=0 ;;
     esac
   done
+  OS=$(uname -s)
+  # The address the setup service sees this machine from, when it is on one of the machine's own interfaces: a
+  # server's is, a computer at home asks through its box's. The service names it (/ip), the machine only answers
+  # whether it holds it: none of its other addresses leaves. Linux only (a Mac is never a server).
+  own_address() {
+    local seen addrs
+    [ "$OS" = Linux ] || return 0
+    seen=$(curl -fsS -m 10 "$BASE/ip" 2>/dev/null) || return 0
+    [[ $seen =~ ^[0-9a-f.:]{2,39}$ ]] || return 0
+    addrs=$({ ip -o addr show 2>/dev/null | awk '{ print $4 }'; hostname -I 2>/dev/null; } || true)
+    case " $(printf '%s\n' $addrs | sed 's,/.*,,' | tr '\n' ' ')" in *" $seen "*) printf '%s' "$seen" ;; esac
+  }
   if [ -z "$SID" ]; then
     SID=${1:-}
     [[ $SID =~ ^[a-z2-9]{10}$ ]] || { printf '  weevils · usage: curl -fsSL %s/install.sh | bash -s <setup id from the page>\n' "$BASE" >&2; exit 1; }
-    local kv k v
-    kv=$(curl -fsS -m 30 "$BASE/i/$SID.env") || { printf '  weevils · this setup link has expired: open the setup page again.\n' >&2; exit 1; }
+    local kv k v sd=0
+    # What this machine is, so the setup service picks its way in by itself (a server, or a computer with a link of
+    # its own for the phone): its system, whether systemd runs it, and own_address. Nothing else (no name, no user).
+    [ ! -d /run/systemd/system ] || sd=1
+    kv=$(curl -fsS -m 30 -G --data-urlencode "os=$OS" --data-urlencode "systemd=$sd" --data-urlencode "own=$(own_address)" "$BASE/i/$SID.env") || { printf '  weevils · this setup link has expired: open the setup page again.\n' >&2; exit 1; }
     while IFS='=' read -r k v; do
       case $k in
         lang) [[ $v =~ ^(en|fr)$ ]] && UI_LANG=$v || true ;;
@@ -76,9 +93,11 @@ _weevils_get() {
     done <<<"$kv"
     [ -n "$MODE" ] && [ -n "$PUB" ] || { printf '  weevils · this setup link has expired: open the setup page again.\n' >&2; exit 1; }
   fi
+  # A Mac is never a server (Caddy and --domain are Linux only): a server's settings, from a setup decided before the
+  # machine said what it is, take a computer's way instead, with a link of its own for the phone.
+  if [ "$OS" = Darwin ] && [ "$MODE" = vps ]; then MODE=pc REACH=''; fi
   # The installer's step titles, the only lines that leave this machine.
   TITLES=@TITLES@
-  OS=$(uname -s)
 
   say() { printf '  weevils · %s\n' "$*"; }
   report() { curl -fsS -m 20 -o /dev/null -X POST "$BASE/r/$SID" "$@" 2>/dev/null || true; }

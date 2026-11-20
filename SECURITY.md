@@ -61,7 +61,9 @@ router, and on a computer never touches its firewall. Apart from this script its
 
 - **During the install**, to the setup service: the installer's step names (from a fixed list), your weevils'
   address, its version, and the login link sealed with a key that only your open setup page holds (RSA-OAEP). The
-  setup service can't read your access code.
+  setup service can't read your access code. At the start, so it can tell a server from a computer by itself: the
+  system's name (`uname -s`), whether systemd runs it, and whether the address the setup service sees it from is on
+  one of the machine's own interfaces. No machine name, user name or other address.
 - **At your first login**, once: a "claimed" signal, so the setup service stops keeping your sealed link.
 - **Updates**: every 20 to 30 minutes, weevils asks the setup service for its current version. When there is a newer
   one, it downloads the bundle and checks its signature with the release key of the version you already run. It

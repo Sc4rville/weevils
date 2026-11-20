@@ -71,6 +71,14 @@ const id = (n = 18) => crypto.randomBytes(n).toString('base64url')
 const sidOf = () => Array.from(crypto.randomBytes(10), (b) => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('')
 const sq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`
 
+/** The eight groups of an IPv6 address, as numbers (:: expanded). */
+const groups6 = (ip) => {
+  const halves = ip.toLowerCase().split('::')
+  const left = halves[0] ? halves[0].split(':') : []
+  const right = halves[1] ? halves[1].split(':') : []
+  return (halves.length === 2 ? [...left, ...Array(8 - left.length - right.length).fill('0'), ...right] : left).map((x) => parseInt(x, 16))
+}
+
 export function publicAddress(ip) {
   if (net.isIP(ip) === 4) {
     const [a, b, c] = ip.split('.').map(Number)
@@ -78,14 +86,29 @@ export function publicAddress(ip) {
   }
   if (net.isIP(ip) === 6) {
     if (ip.includes('.') || ip.includes('%')) return false
-    const halves = ip.toLowerCase().split('::')
-    const left = halves[0] ? halves[0].split(':') : []
-    const right = halves[1] ? halves[1].split(':') : []
-    const parts = halves.length === 2 ? [...left, ...Array(8 - left.length - right.length).fill('0'), ...right] : left
-    const [a, b] = parts.map((x) => parseInt(x, 16))
+    const [a, b] = groups6(ip)
     return a >= 0x2000 && a <= 0x3fff && !(a === 0x2001 && (b <= 0x1ff || b === 0xdb8)) && a !== 0x2002 && !(a === 0x3fff && b < 0x1000)
   }
   return false
+}
+
+/** The network an address belongs to: itself for IPv4 (a home's devices share their box's), its /64 for IPv6 (where
+ * each device at home has an address of its own). */
+export const networkOf = (ip) => (net.isIP(ip) === 6 && !ip.includes('.') ? groups6(ip).slice(0, 4).map((g) => g.toString(16)).join(':') + '::/64' : ip)
+
+/** A VPS command pasted by hand: is the machine a server the Internet reaches (Caddy, its sslip name), or a computer
+ * (a link of its own for the phone, like « My computer »)? The install sends what the machine is (?os, ?systemd, and
+ * ?own: the address this service sees, when it is on one of the machine's own interfaces). A server is Linux run by
+ * systemd that holds the very IPv4 address it asks from; a computer at home asks through its box's, or from the
+ * network that opened the setup page. An IPv6 address of its own proves nothing: at home every device has one, behind
+ * the box's firewall. A cloud server behind 1:1 NAT (its public address not on its interface) gets the computer's
+ * path: a working link, never an exposed one. An install from before these facts (no ?os) keeps the old rule, a
+ * public address, the page's network aside. The service's own targets (tests, GET_ALLOW_TARGETS) always count. */
+export function isServer(cfg, ip, facts, fromPage) {
+  if (cfg.allowTargets.includes(ip) || Object.hasOwn(cfg.targetUrls, ip)) return true
+  if (!publicAddress(ip) || fromPage) return false
+  if (!facts.has('os')) return true
+  return facts.get('os') === 'Linux' && facts.get('systemd') === '1' && net.isIP(ip) === 4 && facts.get('own') === ip
 }
 
 /** 1.2.3.4 → 1-2-3-4.sslip.io: a name that resolves to the machine, so Caddy gets it a real certificate. */
@@ -155,7 +178,7 @@ export function createStore() {
         if (jobs.size >= MAX_JOBS) return null
       }
       const j = {
-        sid: sidOf(), view: extra.view || id(), wrapped: extra.wrapped || '', near: extra.near || '', kind, lang, pub, reach: '', mode: kind === 'pc' ? 'pc' : 'vps',
+        sid: sidOf(), view: extra.view || id(), wrapped: extra.wrapped || '', near: extra.near || '', home: extra.home || '', kind, lang, pub, reach: '', mode: kind === 'pc' ? 'pc' : 'vps',
         state: 'waiting', step: 'created', steps: [], error: '', result: null, server: null, created: Date.now(), touched: Date.now(), scriptFetches: 0, reports: 0,
         creating: false, createError: '', claimed: 0, bv: 0,
       }
@@ -188,7 +211,7 @@ export function loadJobs(store, file) {
     let n = 0
     for (const j of jobs) {
       if (typeof j?.sid !== 'string' || store.jobs.has(j.sid)) continue
-      const k = { createError: '', claimed: 0, bv: 0, wrapped: '', near: '', ...j }
+      const k = { createError: '', claimed: 0, bv: 0, wrapped: '', near: '', home: '', ...j }
       // Cut short by the restart (a call to the host still running): the page says so, and its next try finds the
       // server if the host made it (see `existing`).
       if (k.creating && !k.server) k.createError ||= 'interrupted'
@@ -222,9 +245,10 @@ export function watchCode(cfg) {
   }
 }
 
-/** What the page sees: never the view token, the public key or anything sent by the user. */
+/** What the page sees: never the view token, the public key or anything sent by the user. Its mode: 'pc' when a VPS
+ * command turned out to run on a computer (the page then names it so). */
 const view = (j) => ({
-  sid: j.sid, kind: j.kind, state: j.state, step: j.step, steps: j.steps, error: j.error, result: j.result, server: j.server, reach: j.reach,
+  sid: j.sid, kind: j.kind, state: j.state, step: j.step, steps: j.steps, error: j.error, result: j.result, server: j.server, reach: j.reach, mode: j.mode,
   creating: !!j.creating, createError: j.createError || '', created: j.created, claimed: !!j.claimed,
 })
 /** Seen from another visit of the same browser (same address and browser, nothing else to prove it): how far it is,
@@ -671,6 +695,8 @@ export function createServer(cfg = config(), deps = {}) {
   /** The same browser at the same address, as a keyed hash (the key is random, lives in memory and goes with the
    * setups to the next run): a visit that lost its page finds the setup it started; neither is kept. */
   const nearOf = (req, ip) => crypto.createHmac('sha256', store.salt).update(`${ip}\n${req.headers['user-agent'] || ''}`).digest('base64url').slice(0, 22)
+  /** The network that opened the page, hashed the same way: a VPS command run from there is a machine at home. */
+  const homeOf = (ip) => crypto.createHmac('sha256', store.salt).update(`home\n${networkOf(ip)}`).digest('base64url').slice(0, 22)
   /** The job a page asks about: its sid and its view token must match. */
   const owned = (body) => {
     const j = store.get(body?.sid)
@@ -737,7 +763,7 @@ export function createServer(cfg = config(), deps = {}) {
       // and leaves its private key here sealed with another key derived from the same secret (see the header).
       const view = typeof b.view === 'string' && /^[A-Za-z0-9_-]{43}$/.test(b.view) ? b.view : ''
       const wrapped = typeof b.wrapped === 'string' && /^[A-Za-z0-9+/=]{100,8000}$/.test(b.wrapped) ? b.wrapped : ''
-      const j = store.create(b.kind, b.lang === 'fr' ? 'fr' : 'en', b.pub, { view, wrapped, near: nearOf(req, ip) })
+      const j = store.create(b.kind, b.lang === 'fr' ? 'fr' : 'en', b.pub, { view, wrapped, near: nearOf(req, ip), home: homeOf(ip) })
       if (!j) return fail(res, 503, 'busy')
       // Roughly where the person is, for the install register: their time zone's country, never their address.
       j.country = countryOf(b.tz)
@@ -871,6 +897,12 @@ export function createServer(cfg = config(), deps = {}) {
         }
         return send(res, 200, script(j), 'text/x-shellscript; charset=utf-8')
       }
+      // The address an install asks from, as seen here: it checks whether that address is on one of its machine's own
+      // interfaces (a server's is; a computer at home asks through its box) and sends only that answer (?own).
+      if (url.pathname === '/ip' && req.method === 'GET') {
+        if (!limit.ok(`ip:${ip}`, 60, 3600_000)) return fail(res, 429, 'slow_down')
+        return send(res, 200, ip, 'text/plain; charset=utf-8')
+      }
       if ((url.pathname === '/install.sh' || url.pathname === '/install.sh.sha256') && req.method === 'GET') {
         return url.pathname === '/install.sh' ? send(res, 200, shared, 'text/x-shellscript; charset=utf-8') : send(res, 200, `${sharedSum}  install.sh\n`, 'text/plain; charset=utf-8')
       }
@@ -884,14 +916,14 @@ export function createServer(cfg = config(), deps = {}) {
         j.touched = Date.now()
         j.bv = BOOTSTRAP_V
         if (j.kind === 'pc' && j.state === 'waiting') (j.state = 'running'), stats.step('started', 'pc')
-        // A VPS (or a Hetzner server whose setup was lost) whose command was pasted there by hand: it starts now, and
-        // its address is where it asks from.
+        // A VPS (or a Hetzner server whose setup was lost) whose command was pasted there by hand: it starts now, a
+        // server under the name of the address it asks from, or a computer, from what it says it is (see isServer).
         if ((j.kind === 'ssh' || j.kind === 'hetzner') && j.state === 'waiting' && !j.server) {
-          if (publicAddress(ip) || cfg.allowTargets.includes(ip)) {
+          if (isServer(cfg, ip, url.searchParams, !!j.home && j.home === homeOf(ip))) {
             j.reach = cfg.targetUrls[ip] || sslip(ip)
             j.mode = cfg.targetUrls[ip] ? 'url' : 'vps'
             j.server = { ip, name: ip }
-          } else j.mode = 'pc' // not reachable from the Internet: like a computer, a link of its own for the phone
+          } else j.mode = 'pc' // a computer, or out of the Internet's reach: like a computer, a link of its own for the phone
           j.state = 'running'
           j.step = 'created'
           j.steps.push('created')

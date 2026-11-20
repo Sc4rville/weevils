@@ -386,6 +386,52 @@ describe('coming back to a setup (page closed, another browser, the same token)'
     expect(await (await fetch(`${base2}/i/${home.sid}.env`, { headers: { 'x-forwarded-for': '192.168.1.20' } })).text()).toMatch(/\nmode=pc\nreach=\n/)
   })
 
+  it('takes a VPS command for a server only on a real server: a machine at home gets a computer’s link', async () => {
+    // The first request of the shared script, with what the machine says it is (get/bootstrap.sh), from an address.
+    const env = async (sid: string, from: string, facts?: Record<string, string>) =>
+      (await fetch(`${base2}/i/${sid}.env${facts ? `?${new URLSearchParams(facts)}` : ''}`, { headers: { 'x-forwarded-for': from } })).text()
+    // The address the service sees, which the install looks for on its own interfaces.
+    expect(await (await fetch(`${base2}/ip`, { headers: { 'x-forwarded-for': '5.75.130.78' } })).text()).toBe('5.75.130.78')
+
+    // The report: Claude Code on a Mac at home, asking through the box's public address.
+    const mac = await pageJob('ssh')
+    expect(await env(mac.sid, '88.160.81.197', { os: 'Darwin', systemd: '0', own: '' })).toMatch(/^lang=en\nmode=pc\nreach=\npub=/)
+    expect((await post('/api/status', { sid: mac.sid, view: mac.view })).data).toMatchObject({ state: 'running', step: 'created', mode: 'pc', server: null, reach: '' })
+    // A VPS: Linux run by systemd, holding the address the service sees.
+    const vps = await pageJob('ssh')
+    expect(await env(vps.sid, '5.75.130.78', { os: 'Linux', systemd: '1', own: '5.75.130.78' })).toMatch(/\nmode=vps\nreach=5-75-130-78\.sslip\.io\n/)
+    expect((await post('/api/status', { sid: vps.sid, view: vps.view })).data).toMatchObject({ mode: 'vps', server: { ip: '5.75.130.78' } })
+    // Linux behind a box (the address is not on its interfaces), or holding another address than this request's.
+    const linux = await pageJob('ssh')
+    expect(await env(linux.sid, '88.160.81.198', { os: 'Linux', systemd: '1', own: '' })).toMatch(/\nmode=pc\nreach=\n/)
+    const other = await pageJob('ssh')
+    expect(await env(other.sid, '88.160.81.199', { os: 'Linux', systemd: '1', own: '5.75.130.79' })).toMatch(/\nmode=pc\nreach=\n/)
+    // No systemd (a container), or an IPv6 address of its own (every device at home has one): a computer's way too.
+    const nosd = await pageJob('ssh')
+    expect(await env(nosd.sid, '5.75.130.81', { os: 'Linux', systemd: '0', own: '5.75.130.81' })).toMatch(/\nmode=pc\n/)
+    const v6 = await pageJob('ssh')
+    expect(await env(v6.sid, '2a01:e0a:1f:2::10', { os: 'Linux', systemd: '1', own: '2a01:e0a:1f:2::10' })).toMatch(/\nmode=pc\n/)
+    // An install from before these facts (no ?os): the old rule, a public address is a server.
+    const old = await pageJob('ssh')
+    expect(await env(old.sid, '5.75.130.80')).toMatch(/\nmode=vps\nreach=5-75-130-80\.sslip\.io\n/)
+    // The service's own targets: as configured, whatever the machine says.
+    const target = await pageJob('ssh')
+    expect(await env(target.sid, '172.30.99.10', { os: 'Darwin', systemd: '0', own: '' })).toMatch(/\nmode=url\nreach=https:\/\/essai\.example\n/)
+
+    // From the network that opened the page: a machine at home behind the same box, whatever it says, and for an
+    // install from before the facts too. For IPv6, the same /64 (the phone and the computer each have an address).
+    ip = '88.160.81.200'
+    const same = await pageJob('ssh')
+    expect(await env(same.sid, ip, { os: 'Linux', systemd: '1', own: ip })).toMatch(/\nmode=pc\nreach=\n/)
+    const sameOld = await pageJob('ssh')
+    expect(await env(sameOld.sid, ip)).toMatch(/\nmode=pc\nreach=\n/)
+    ip = '2a01:e0a:1f:3::99'
+    const v6old = await pageJob('ssh')
+    expect(await env(v6old.sid, '2a01:e0a:1f:3:0:0:0:10')).toMatch(/\nmode=pc\nreach=\n/)
+    const v6far = await pageJob('ssh')
+    expect(await env(v6far.sid, '2a01:4f8:c0c:1::1')).toMatch(/\nmode=vps\nreach=2a01-4f8-c0c-1--1\.sslip\.io\n/)
+  })
+
   it('shows the same browser at the same address how far its setup is, and nothing that opens it', async () => {
     const job = await pageJob('hetzner', 'Mozilla/5.0 (iPhone) nearby-test')
     expect((await post('/api/nearby', {}, 'Mozilla/5.0 (iPhone) nearby-test')).data.jobs).toEqual([])
@@ -672,6 +718,28 @@ describe('the shared script (a computer)', () => {
     expect((await fetch(`${base}/i/zzzzzzzzzz.env`)).status).toBe(404)
   })
 
+  it('says what the machine is with its first request, and nothing else: its system, systemd, its own address', () => {
+    expect(bootstrap).toContain('kv=$(curl -fsS -m 30 -G --data-urlencode "os=$OS" --data-urlencode "systemd=$sd" --data-urlencode "own=$(own_address)" "$BASE/i/$SID.env")')
+    expect(bootstrap).toContain('[ ! -d /run/systemd/system ] || sd=1')
+    // own_address, cut out of the script: the address the service names (/ip, a stand-in curl here), only when one of
+    // the machine's interfaces holds it exactly; the interfaces come from `ip`, else `hostname -I`.
+    const fn = /^  own_address\(\) \{\n[\s\S]*?\n  \}$/m.exec(bootstrap)?.[0]
+    expect(fn).toBeTruthy()
+    const lines = '1: lo    inet 127.0.0.1/8 scope host lo\n2: eth0    inet 5.75.130.78/32 scope global dynamic eth0\n2: eth0    inet6 2a01:4f8:c0c:1::1/64 scope global'
+    const own = (os: string, seen: string, stubs = `ip() { printf '%s\\n' "$ADDRS"; }`) =>
+      execFileSync('bash', ['-euo', 'pipefail', '-c', `curl() { [ "$4" = x/ip ] && printf '%s' "$SEEN"; }\n${stubs}\n${fn}\nOS=$1 BASE=x; printf '[%s]' "$(own_address)"`, 'x', os], { env: { ...process.env, SEEN: seen, ADDRS: lines } }).toString()
+    expect(own('Linux', '5.75.130.78')).toBe('[5.75.130.78]')
+    expect(own('Linux', '2a01:4f8:c0c:1::1')).toBe('[2a01:4f8:c0c:1::1]')
+    // A computer at home: the service sees its box's address.
+    expect(own('Linux', '88.160.81.197')).toBe('[]')
+    expect(own('Linux', '5.75.130.7')).toBe('[]')
+    expect(own('Linux', 'not an address; rm -rf /')).toBe('[]')
+    // A Mac never claims one (it is never a server), and asks nothing.
+    expect(own('Darwin', '5.75.130.78')).toBe('[]')
+    // No `ip` command: the addresses from `hostname -I`.
+    expect(own('Linux', '5.75.130.78', `ip() { return 127; }\nhostname() { [ "$1" = -I ] && echo '5.75.130.78 10.0.0.2 '; }`)).toBe('[5.75.130.78]')
+  })
+
   it('pins the release key, serves the security notes and the key, and installs only code the key signed', async () => {
     const sh = await (await fetch(`${base}/install.sh`)).text()
     const pub = fs.readFileSync(path.join(here, 'release-key.pub'), 'utf8').trim()
@@ -759,18 +827,30 @@ describe('a Mac', () => {
     expect(bootstrap).toMatch(/\[ "\$OS" != Darwin \] \|\| order='node openssl'/)
   })
 
+  it('never takes a server’s way, even when an older setup says so: a computer’s, with a link of its own', () => {
+    const line = /^  if \[ "\$OS" = Darwin \] && \[ "\$MODE" = vps \]; then .*$/m.exec(bootstrap)?.[0]
+    expect(line).toBeTruthy()
+    const after = (os: string, mode: string) => execFileSync('bash', ['-euo', 'pipefail', '-c', `OS=$1 MODE=$2 REACH=1-2-3-4.sslip.io\n${line}\necho "$MODE [$REACH]"`, 'x', os, mode]).toString()
+    expect(after('Darwin', 'vps')).toBe('pc []\n')
+    expect(after('Darwin', 'url')).toBe('url [1-2-3-4.sslip.io]\n')
+    expect(after('Linux', 'vps')).toBe('vps [1-2-3-4.sslip.io]\n')
+    // Before the computer's notice and the install that reads MODE.
+    expect(bootstrap.indexOf(line!)).toBeLessThan(bootstrap.indexOf('if [ "$MODE" = pc ] && [ "$link" = 1 ]; then'))
+  })
+
   // The page's script, run for one visitor: what the first screen shows.
-  async function firstScreen(userAgent: string, lang = 'en', url = 'https://get.example/') {
+  async function firstScreen(userAgent: string, lang = 'en', url = 'https://get.example/', { saved, status }: { saved?: object; status?: object } = {}) {
     const window = new Window({ url, settings: { navigator: { userAgent } } })
     // The page's anonymous counters (/api/hit) go through sendBeacon: no network here.
     Object.defineProperty(window.navigator, 'sendBeacon', { value: () => true, configurable: true })
     const document = window.document
     document.body.innerHTML = /<body>([\s\S]*?)<script src=/.exec(page)![1]
     window.localStorage.setItem('wvlang', lang)
+    if (saved) window.localStorage.setItem('wvget', JSON.stringify(saved))
     const calls: string[] = []
     const fetchStub = async (p: string) => {
       calls.push(p)
-      const body = p === '/api/job' ? { sid: 'abcdefghjk', view: 'v', command: 'curl -fsSL https://get.example/i/abcdefghjk | bash' } : { state: 'waiting', steps: [] }
+      const body = p === '/api/job' ? { sid: 'abcdefghjk', view: 'v', command: 'curl -fsSL https://get.example/i/abcdefghjk | bash' } : (p === '/api/status' && status) || { state: 'waiting', steps: [] }
       return { ok: true, status: 200, json: async () => body }
     }
     const code = /<script>\n([\s\S]*?)<\/script>/.exec(page)![1]
@@ -837,6 +917,27 @@ describe('a Mac', () => {
     expect(back.document.getElementById('backbtn').textContent).toBe('← Back')
     // A failure offers one way on: « Try again ».
     expect(page).not.toMatch(/failSame|againSame|W\.retry\b/)
+  })
+
+  it('says so when a VPS command ran on a computer, and its progress names no server', async () => {
+    const saved = { sid: 'abcdefghjk', view: 'v', kind: 'ssh', started: true, at: Date.now() }
+    const status = { sid: 'abcdefghjk', kind: 'ssh', state: 'running', step: 'created', steps: ['created'], mode: 'pc', server: null, reach: '', created: Date.now() }
+    const note = (s: Awaited<ReturnType<typeof firstScreen>>, start: string) => [...s.app.querySelectorAll('p')].find((p) => p.textContent?.startsWith(start))
+    const en = await firstScreen(IPHONE, 'en', 'https://get.example/', { saved, status })
+    await vi.waitFor(() => expect(note(en, 'This machine is a computer')?.hidden).toBe(false))
+    expect(note(en, 'This machine is a computer')?.textContent).toBe('This machine is a computer, not a server: weevils installs there as on a computer, with its own secure link, and your phone reaches it while the computer is on.')
+    expect(en.text()).toContain('Command started')
+    expect(en.text()).toContain('Secure link for your phone')
+    expect(en.text()).not.toMatch(/Connected to your server|Secure link \(HTTPS\)|on your server/)
+    const fr = await firstScreen(IPHONE, 'fr', 'https://get.example/', { saved, status })
+    await vi.waitFor(() => expect(note(fr, 'Cette machine est un ordinateur')?.hidden).toBe(false))
+    expect(fr.text()).toContain('Commande lancée')
+    expect(fr.text()).not.toMatch(/Connecté à ton serveur|sur ton serveur/)
+    // A real server keeps its words, and the sentence stays hidden.
+    const vps = await firstScreen(IPHONE, 'en', 'https://get.example/', { saved, status: { ...status, mode: 'vps', server: { ip: '5.75.130.78', name: '5.75.130.78' }, reach: '5-75-130-78.sslip.io' } })
+    await vi.waitFor(() => expect(vps.text()).toContain('Connected to your server'))
+    expect(vps.text()).toContain('Secure link (HTTPS)')
+    expect(note(vps, 'This machine is a computer')?.hidden).toBe(true)
   })
 
   it('resumes a computer setup on the first screen, where its command already is', async () => {

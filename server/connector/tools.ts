@@ -289,6 +289,7 @@ const HELD: Record<string, string> = { // i18n-ignore
   'only-there': 'it can only continue on the machine where it started, which is off', // i18n-ignore
   attempts: 'it stopped three times in a row', // i18n-ignore
   expired: 'it waited more than an hour for a machine and was dropped; ask again if it is still wanted', // i18n-ignore
+  stopped: 'it stopped earlier and will not go on by itself; ask again to continue', // i18n-ignore
 }
 
 // ---------------------------------------------------------------- the connector

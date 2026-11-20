@@ -21,15 +21,15 @@ import { PUBLISH_EVERY, factsOf, machineEngines, publishEngines, readEngines, ty
 import { activeRecently, checkHandoff, handoffEvent, nextHandoff } from './handoff.ts'
 import { HubSync, draft, openLeg, safeTurns } from './hub.ts'
 import { parseEngine, parseJournal, slugify, type EventDraft, type JournalEvent, type LegId, type MetaEvent, type Provider } from './journal.ts'
-import { OBSERVE_EVERY, stealable } from './lease.ts'
+import { OBSERVE_EVERY, STEAL_BOUND, stealable } from './lease.ts'
+import { REQUEST_EXPIRES, beginRun, filedByWeevils, liveness, oursWaiting, saveRun, waitsForEngine } from './live.ts'
 import { pushEvents, readThread, type StartResult } from './start.ts'
 import { threadRefs } from './store.ts'
 import { machinePart } from './sync.ts'
-import { next, type Turn } from './turn.ts'
+import { effectOf, next, type Turn } from './turn.ts'
 import { openSession, threadMessages, titleOf, visibleState } from './view.ts'
 
-/** A connector request (continue_with_agent) held longer than this never starts: it ends as « expired, ask again ». */
-export const REQUEST_EXPIRES = 3600_000
+export { REQUEST_EXPIRES } from './live.ts'
 /** A message for a running turn is given to its engine again after this, if the first try failed. */
 const FORWARD_AGAIN = 30_000
 /** A handoff is rewritten this long after the turn ended (a quick next turn makes it wait). */
@@ -64,6 +64,8 @@ export interface ThreadsOptions {
   preferred: Provider
   /** DATA_DIR/threads-inbox.jsonl */
   inboxFile: string
+  /** When the dispatcher's current run began (live.ts); default: threads-on.json beside the inbox. */
+  runFile?: string
   /** The projects present here, and the accounts signed in here (engines.json). */
   projects: () => string[]
   sources: () => EngineSource[]
@@ -97,10 +99,18 @@ export class Threads {
   private published = 0
   private stopped = false
   private timers: NodeJS.Timeout[] = []
+  /** The start of the dispatcher's current run: a turn filed before it is never placed (live.ts). */
+  private since: number
+  private runSaved = 0
+  private started = false
 
   constructor(o: ThreadsOptions) {
     this.o = o
     this.d = new Dispatcher(o.preferred)
+    this.since = this.now()
+  }
+  private get runFile() {
+    return this.o.runFile ?? path.join(path.dirname(this.o.inboxFile), 'threads-on.json')
   }
   private now() {
     return this.o.now?.() ?? Date.now()
@@ -118,6 +128,10 @@ export class Threads {
   async start(): Promise<void> {
     await this.loadInbox()
     if (this.o.dispatcher) {
+      this.since = await beginRun(this.runFile, this.now())
+      this.runSaved = this.now()
+      this.started = true
+      if (this.since === this.runSaved) this.log('dispatcher: a new run; turns filed before it are never placed')
       await this.o.sync.ensure()
       for (const t of await this.lines().catch(() => [] as ThreadLine[])) if (t.state !== 'waiting') this.watch.add(t.thread)
       for (const id of this.inbox.keys()) this.watch.add(id)
@@ -148,6 +162,10 @@ export class Threads {
     const now = this.now()
     if (now - this.published >= PUBLISH_EVERY) await this.publish()
     if (this.o.dispatcher) {
+      if (this.started && now - this.runSaved >= PUBLISH_EVERY) {
+        this.runSaved = now
+        await saveRun(this.runFile, this.since, now).catch((e) => this.log(`run file: ${(e as Error).message}`))
+      }
       await this.readTable()
       for (const id of [...this.watch]) await this.step(id)
     }
@@ -290,6 +308,8 @@ export class Threads {
     }
     let turn = turns.length
     let project = events0Project(r.events)
+    // The turns before: those weevils will never place are closed first (live.ts); only then do new ones come.
+    drafts.push(...this.closures(thread, r.events, turns, now, legNow, waiting.length > 0 || oursWaiting(r.events, turns, this.since, now)))
     for (const w of waiting) {
       // A request that names another project moves the thread there (the connector's `project`).
       if (r.events.length && w.project !== undefined && w.project !== project) {
@@ -299,8 +319,12 @@ export class Threads {
       const id = ulid(now)
       drafts.push(draft(now, legNow, { type: 'message', role: 'user', text: w.text, source: w.source, ...(w.app ? { app: w.app } : {}), key: w.key, id }))
       drafts.push(draft(now, legNow, { type: 'turn', turn: ++turn, state: 'accepted', message: id }))
+      // Kept in the inbox longer than a request waits (the dispatcher was down): filed, and expired at once.
+      if (now - w.at > REQUEST_EXPIRES) {
+        drafts.push(draft(now, legNow, { type: 'turn', turn, state: 'held', rule: 'hold', reason: 'expired' })) // i18n-ignore: journal data
+        this.log(`${thread.slice(-6)} turn ${turn}: a message kept ${Math.round((now - w.at) / 60_000)} min in the inbox expires`)
+      }
     }
-    drafts.push(...this.expired(thread, r.events, turns, now, legNow))
     if (drafts.length) {
       const seen = r.seen
       const out = await sync.serial(() => pushEvents(sync, thread, seen.tip, drafts, () => ({ engine: openLeg(r!.events)?.engine ?? null, leg: openLeg(r!.events)?.leg ?? null, state: 'idle' }), `turn ${turn} (accepted) · ${this.o.machine}`))
@@ -313,17 +337,35 @@ export class Threads {
     await this.place(thread, r.events, turns, r.seen.tip)
   }
 
-  /** Connector requests held more than an hour, never started: held again, `expired` (they wait for « ask again »). */
-  private expired(thread: string, events: readonly JournalEvent[], turns: readonly Turn[], now: number, leg: LegId | null): EventDraft[] {
+  /**
+   * The turns the dispatcher will never place, closed (live.ts, 06-dispatch.md « Activation »): its own that waited
+   * too long or across a stop (`expired`, or `stopped` once an engine had them), at once; those weevils did not file
+   * (typed in the provider's session, or older than threads), only once weevils takes the thread over: the person
+   * writes to it from weevils, or a turn of weevils waits in it (`takeOver`). Until then they are left as they are:
+   * their session may still go on with them.
+   */
+  private closures(thread: string, events: readonly JournalEvent[], turns: readonly Turn[], now: number, leg: LegId | null, takeOver: boolean): EventDraft[] {
     const out: EventDraft[] = []
+    const held = (t: Turn, reason: 'expired' | 'stopped') => { // i18n-ignore: journal data
+      out.push(draft(now, leg, { type: 'turn', turn: t.turn, state: 'held', rule: 'hold', reason })) // i18n-ignore: journal data
+      this.log(`${thread.slice(-6)} turn ${t.turn}: ${reason}, never placed (${t.state}, ${Math.round((now - Date.parse(events.findLast((e) => e.type === 'turn' && e.turn === t.turn)!.at)) / 60_000)} min)`)
+    }
+    const quiet = now - Date.parse(events.at(-1)?.at ?? '1970-01-01T00:00:00Z') > STEAL_BOUND
     for (const t of turns) {
-      if (t.state !== 'held' || t.attempts.some((a) => a.ran) || !t.message) continue
-      if (t.held?.reason === 'expired' || t.held?.reason === 'attempts') continue
-      const m = events.find((e) => e.id === t.message)
-      if (!m || m.type !== 'message' || !m.key?.includes(':req:')) continue
-      if (now - Date.parse(m.at) < REQUEST_EXPIRES) continue
-      out.push(draft(now, leg, { type: 'turn', turn: t.turn, state: 'held', rule: 'hold', reason: 'expired' })) // i18n-ignore: log and journal data
-      this.log(`${thread.slice(-6)} turn ${t.turn}: a request held for ${Math.round((now - Date.parse(m.at)) / 60_000)} min expires`)
+      const inHands = t.state === 'assigned' || t.state === 'running'
+      if (inHands) {
+        // In an engine's hands by the journal, with no working lease (a look returns before this when there is one),
+        // and nothing written for longer than a steal takes: a provider's session that stopped without an end. (One
+        // at work has its machine's working lease within a round.)
+        if (!takeOver || !quiet || filedByWeevils(events, t)) continue
+        out.push(draft(now, leg, { type: 'turn', turn: t.turn, state: 'failed', reason: 'machine-lost', effect: t.state === 'running' ? effectOf(events, t.turn) : 'none' })) // i18n-ignore: journal data
+        held(t, 'stopped')
+        continue
+      }
+      if (!waitsForEngine(t)) continue
+      const l = liveness(events, t, this.since, now)
+      if (l === 'live' || (l === 'theirs' && !takeOver)) continue
+      held(t, l === 'expired' ? 'expired' : 'stopped')
     }
     return out
   }
@@ -332,6 +374,11 @@ export class Threads {
   private async place(thread: string, events: readonly JournalEvent[], turns: readonly Turn[], tip: string | null) {
     const n = next(turns)
     if (n.kind === 'quiet' && !this.inbox.get(thread)?.size) return this.forget(thread)
+    // Only what weevils filed in this run is placed (live.ts): a turn of the provider's own session, or one older than
+    // the run, never reaches the table, is never held and never sent to an engine.
+    // A provider's turn in hands with a turn of weevils behind it: watched until it ends (or is closed as stopped).
+    if (n.kind === 'busy' && !filedByWeevils(events, turns[n.turn - 1]) && !oursWaiting(events, turns, this.since, this.now())) return this.forget(thread)
+    if ((n.kind === 'dispatch' || n.kind === 'hold') && liveness(events, turns[n.turn - 1], this.since, this.now()) !== 'live') return this.forget(thread)
     const meta = events.findLast((e): e is MetaEvent => e.type === 'meta' && e.project !== undefined)
     const project = meta?.project ?? null
     const p = this.d.place(thread, events, turns, this.now(), {
@@ -494,9 +541,10 @@ export class Threads {
         pos = nl + 1 + size + 1
       }
     }
-    // meta.json says `paused` for a failed turn too; the dispatcher retries those: the thread is working (view.ts).
+    // meta.json says `paused` for a failed turn, `working` for a turn a provider's session left open; the app reads the
+    // journal for those (view.ts): retried by the dispatcher, working; never to be placed, waiting.
     for (const l of lines) {
-      if (l.state !== 'paused') continue
+      if (l.state === 'waiting') continue
       const text = await gitOut(l.dir, ['cat-file', 'blob', `${l.commit}:events.jsonl`])
       if (text) l.state = visibleState(parseJournal(text).events).state
     }

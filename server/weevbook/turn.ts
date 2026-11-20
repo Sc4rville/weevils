@@ -16,11 +16,13 @@ export type FailReason = 'quota' | 'auth' | 'api' | 'machine-lost' | 'lease-lost
  *  away is not the turn's doing; the dispatcher's table bounds those (`no-room`, `no-machine`). */
 export const COUNTED: readonly FailReason[] = ['api', 'auth']
 /** The `reason` of a held turn: the app maps each to one sentence and one action (docs/spec/06-dispatch.md).
- *  `expired`: a request held more than an hour that the dispatcher found when it started (05-connector.md, step 4). */
-export type HoldReason = 'no-machine' | 'no-room' | 'not-signed-in' | 'only-there' | 'attempts' | 'expired'
-/** Held for a reason the table cannot lift: the turn waits for the person (try again, ask again), and the turns after
- *  it are served. */
-export const WAITS_FOR_YOU: readonly string[] = ['attempts', 'expired']
+ *  `expired`: a request that waited more than an hour without an engine (05-connector.md, step 4). `stopped`: a turn
+ *  the dispatcher will never place: weevils did not file it (it was typed in the provider's own session, or came
+ *  before threads were on), or it waited too long after it had run (06-dispatch.md, « Activation »). */
+export type HoldReason = 'no-machine' | 'no-room' | 'not-signed-in' | 'only-there' | 'attempts' | 'expired' | 'stopped'
+/** Held for a reason the table cannot lift: the turn waits for the person (try again, ask again, write again), and the
+ *  turns after it are served. */
+export const WAITS_FOR_YOU: readonly string[] = ['attempts', 'expired', 'stopped']
 
 export interface Attempt {
   attempt: number
@@ -78,7 +80,7 @@ export function applyTurn(turns: readonly Turn[], c: TurnChange): Turn[] {
       if (!open(t)) fail(`turn ${t.turn} is ${t.state}${t.held ? ` (${t.held.reason})` : ''}: it cannot be held`)
       if (!c.rule || !c.reason) fail('held without its rule and reason')
       if (c.reason === 'attempts' && counted(t) < MAX_ATTEMPTS) fail(`held for attempts after ${counted(t)} counted failures`)
-      if (t.state === 'failed' && counted(t) >= MAX_ATTEMPTS && c.reason !== 'attempts' && c.reason !== 'expired') fail('a turn out of attempts is held for attempts')
+      if (t.state === 'failed' && counted(t) >= MAX_ATTEMPTS && c.reason !== 'attempts' && c.reason !== 'expired' && c.reason !== 'stopped') fail('a turn out of attempts is held for attempts')
       if (c.reason === 'expired' && t.attempts.some((a) => a.ran)) fail('only a request no engine ever had expires')
       next.held = { rule: c.rule!, reason: c.reason! }
       break
@@ -131,7 +133,8 @@ export function turnsOf(events: readonly JournalEvent[]): Turn[] {
 // ---------------------------------------------------------------- what comes next
 
 export type Next =
-  /** Every turn is done, or held for a reason only the person lifts (attempts: "Try again"; expired: ask again). */
+  /** Every turn is done, or held for a reason only the person lifts (attempts: "Try again"; expired: ask again;
+   *  stopped: write again). */
   | { kind: 'quiet' }
   /** A turn is in an engine's hands. */
   | { kind: 'busy'; turn: number; state: 'assigned' | 'running' }

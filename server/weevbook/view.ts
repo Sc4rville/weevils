@@ -5,20 +5,28 @@ import type { Message } from '../../shared/api.ts'
 import type { ThreadHold, ThreadState } from '../../shared/threads.ts'
 import { parseEngine, type JournalEvent } from './journal.ts'
 import { safeTurns } from './hub.ts'
+import { filedByWeevils } from './live.ts'
 import { WAITS_FOR_YOU, type Turn } from './turn.ts'
 
 /**
  * The state the app shows. A turn the dispatcher retries (failed, then assigned again) is still working: the person
  * sees nothing of it. Paused only when a turn is held, that is when the person must act; a turn held for a reason
  * only the person lifts (attempts, expired) stops pausing the thread once a later turn was asked.
+ *
+ * A turn the dispatcher will never place is not the person's to act on: one weevils did not file (typed in the
+ * provider's own session, or older than threads) that its session left waiting, or one closed as `stopped`. The thread
+ * is then the person's move (`waiting`), with one line saying it stopped (`hold.reason: stopped`, 06-dispatch.md).
  */
 export function visibleState(events: readonly JournalEvent[]): { state: ThreadState; hold?: ThreadHold } {
   const turns = safeTurns(events)
   const last = turns.at(-1)
-  const pending = turns.filter((t) => t.state !== 'done' && !(t.state === 'held' && WAITS_FOR_YOU.includes(t.held?.reason ?? '') && t !== last))
+  const theirs = (t: Turn) => (t.state === 'accepted' || t.state === 'failed' || t.state === 'held') && !filedByWeevils(events, t)
+  const stopped = (t: Turn) => (t.state === 'held' && t.held?.reason === 'stopped') || theirs(t)
+  const pending = turns.filter((t) => t.state !== 'done' && !stopped(t) && !(t.state === 'held' && WAITS_FOR_YOU.includes(t.held?.reason ?? '') && t !== last))
   const held = pending.find((t) => t.state === 'held')
   if (held) return { state: 'paused', hold: holdOf(events, held) }
-  return { state: pending.length ? 'working' : 'waiting' }
+  if (pending.length) return { state: 'working' }
+  return last && stopped(last) ? { state: 'waiting', hold: { reason: 'stopped' } } : { state: 'waiting' } // i18n-ignore: a reason, not a text
 }
 
 /** The facts the sentence of a held turn needs (06-dispatch.md): the machine and provider of the last leg, or the

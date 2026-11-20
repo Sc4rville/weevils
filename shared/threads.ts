@@ -9,10 +9,11 @@ export type ThreadState = 'working' | 'waiting' | 'paused'
 
 /**
  * Why a thread is paused, when the person must act (docs/spec/06-dispatch.md, « When nothing matches »). The app
- * turns it into one sentence and one action.
+ * turns it into one sentence and one action. `stopped` comes with a thread that waits for the person: a turn that
+ * will never go on by itself (06-dispatch.md, « Activation »); one line says so, writing again continues.
  */
 export interface ThreadHold {
-  reason: 'no-machine' | 'no-room' | 'not-signed-in' | 'only-there' | 'attempts' | 'expired' | string
+  reason: 'no-machine' | 'no-room' | 'not-signed-in' | 'only-there' | 'attempts' | 'expired' | 'stopped' | string
   /** no-room: when the first account starts again (ms). */
   until?: number | null
   /** not-signed-in, only-there: the machine's name; no-machine: the machines that have the project. */

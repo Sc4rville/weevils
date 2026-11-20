@@ -143,7 +143,8 @@ Every number in these pages, in one place. They are starting values, to be tuned
 | A reservation ends when the account is read again | over 60 s after it was made | 06 |
 | A held turn is looked at again | when the engine table changes, at least every 60 s | 06 |
 | A machine writes its `engines.json` | every 60 s | 06 |
-| A chat app's request held without starting expires | after 1 h | 06 |
+| A turn of weevils waiting for an engine is closed (`expired`, `stopped`), unless it waits for room | 1 h after it last moved | 06 |
+| The dispatcher stopped longer than this begins a new run (what came before is never placed) | 10 min | 06 |
 | `handoff.md` rewritten after a turn ends | 15 s later, threads active in the last 24 h | 04, 06 |
 | A new Codex session's file is waited for | 30 s | 06 |
 

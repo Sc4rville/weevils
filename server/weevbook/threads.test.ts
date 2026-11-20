@@ -13,13 +13,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { claudeSlug } from '../bring.ts'
+import { ulid } from './adapters/adapter.ts'
 import type { Instruction } from './dispatcher.ts'
 import { accountHash, type EngineSource } from './engines.ts'
-import { HubSync, checkpointHook } from './hub.ts'
-import { parseJournal, validateJournal, type JournalEvent, type Provider, type TurnEvent } from './journal.ts'
+import { HubSync, checkpointHook, draft } from './hub.ts'
+import { parseJournal, validateJournal, type EventDraft, type JournalEvent, type LegId, type Provider, type TurnEvent } from './journal.ts'
 import { STEAL_BOUND, parseLease } from './lease.ts'
 import { startTurn, type Launcher, type StartResult } from './start.ts'
-import { Threads, type Peer } from './threads.ts'
+import { REQUEST_EXPIRES, Threads, type Peer } from './threads.ts'
 import { prefaceSign } from './turn.ts'
 import { startWeevbookWriter } from './writer.ts'
 
@@ -66,7 +67,7 @@ function world() {
  * A machine running weevilsd with threads on: a clone of the project, a writer, a hub sync, the Threads service, and
  * fake engines (accounts with a quota each) that write session files like the real CLIs.
  */
-function machine(w: ReturnType<typeof world>, name: string, o: { dispatcher?: boolean; accounts: { provider: Provider; account: string; used: number }[] }) {
+function machine(w: ReturnType<typeof world>, name: string, o: { dispatcher?: boolean; accounts: { provider: Provider; account: string; used: number }[]; failStarts?: number }) {
   const home = path.join(w.root, name)
   const data = path.join(home, '.local', 'share', 'weevils')
   const projects = path.join(home, 'projects')
@@ -120,7 +121,10 @@ function machine(w: ReturnType<typeof world>, name: string, o: { dispatcher?: bo
   }
   const starts: Promise<StartResult>[] = []
   const peers: Peer[] = []
+  let failStarts = o.failStarts ?? 0
   const start = (ins: Instruction) => {
+    // A start that throws here (a file renamed under it: the weevbook's tx race), before anything was written.
+    if (failStarts-- > 0) return Promise.reject(new Error(`ENOENT: no such file or directory, rename 'weevbook/tx/${ins.thread}.json.next'`))
     const p = startTurn({ sync, sessionsFile: sessions, dataDir: data, machine: name, home, claudeDir, codexDir, roots: [projects], projectsDir: projects, launch, folderOf: (p) => (p === 'shop' ? repo : null), now: () => clock.t, log, findFor: 2_000, sleep: (ms) => sleep(Math.min(ms, 50)).then(() => undefined) }, ins)
     starts.push(p)
     return p
@@ -377,5 +381,175 @@ describe('threads in weevilsd: message → turn → dispatch → lease → engin
     // The dispatcher looks again: the expired request does not start by itself.
     await server.threads.step(id)
     expect(server.calls).toHaveLength(0)
+  }, 60_000)
+})
+
+// ---------------------------------------------------------------- switching threads on over a weevbook with history
+
+/** A thread as step 1 left it (the shadow writer, a backfill, the connector before threads): written straight into a
+ *  machine's weevbook, at `at`, then committed; the next round pushes it. */
+async function history(m: ReturnType<typeof machine>, at: number, build: (id: string, e: (leg: LegId | null, x: Record<string, unknown>) => EventDraft) => EventDraft[]): Promise<string> {
+  let t = at
+  const id = ulid(at)
+  const events = build(id, (leg, x) => draft(t++, leg, x))
+  const r = await m.sync.withBook(async () => {
+    const r = await m.sync.book.append(id, { events })
+    await m.sync.book.commitThread(id, `history · ${m.name}`)
+    return r
+  })
+  expect(r).toEqual({ written: events.length, refused: 0 })
+  return id
+}
+
+/** A provider session's thread, as the shadow writer records it: a first turn done, a second that failed on a
+ *  provider error (`failed`), failed three times (`out`), or was cut while running (`cut`). */
+function shadow(m: ReturnType<typeof machine>, account: string, project: string, end: 'failed' | 'out' | 'cut') {
+  return (id: string, e: (leg: LegId | null, x: Record<string, unknown>) => EventDraft) => {
+    const engine = `claude:${account}@${m.name}`
+    const session = crypto.randomUUID()
+    claudeTurn(m.home, m.repo, session, 'Fix the export', 'answer')
+    const out: EventDraft[] = [e(null, { type: 'meta', thread: id, title: `Old work (${end})`, project }), e('L1', { type: 'leg.start', engine, session, cwd: m.repo, rung: 0, epoch: 1 })]
+    const ask = (turn: number, text: string) => {
+      const msg = e('L1', { type: 'message', role: 'user', text, source: 'claude' })
+      out.push(msg, e('L1', { type: 'turn', turn, state: 'accepted', message: msg.id }))
+    }
+    ask(1, 'Fix the export')
+    out.push(e('L1', { type: 'turn', turn: 1, state: 'assigned', engine, attempt: 1, rule: 'shadow', reason: 'recorded' }), e('L1', { type: 'turn', turn: 1, state: 'running' }), e('L1', { type: 'message', role: 'assistant', text: 'Fixed.' }), e('L1', { type: 'checkpoint', turn: 1, kind: 'none', reason: 'recorded' }), e('L1', { type: 'turn', turn: 1, state: 'done' }))
+    ask(2, 'Now the import')
+    for (let a = 1; a <= (end === 'out' ? 3 : 1); a++) {
+      out.push(e('L1', { type: 'turn', turn: 2, state: 'assigned', engine, attempt: a, ...(a > 1 ? { resume: true } : {}), rule: 'shadow', reason: 'recorded' }), e('L1', { type: 'turn', turn: 2, state: 'running' }))
+      out.push(e('L1', { type: 'tool', call: `c${a}`, name: 'Bash', summary: 'Bash · npm test' }))
+      if (end !== 'cut') out.push(e('L1', { type: 'turn', turn: 2, state: 'failed', reason: 'api', effect: 'some' }))
+    }
+    return out
+  }
+}
+
+/** A request from a chat app that the connector of step 5 filed, before any dispatcher: held, or only accepted. */
+function request(key: string, held: boolean) {
+  return (id: string, e: (leg: LegId | null, x: Record<string, unknown>) => EventDraft) => {
+    const msg = e(null, { type: 'message', role: 'user', text: 'Summarise the open pull requests', source: 'connector', app: 'chatgpt', key })
+    return [e(null, { type: 'meta', thread: id, title: 'Open pull requests', project: 'shop' }), msg, e(null, { type: 'turn', turn: 1, state: 'accepted', message: msg.id }), ...(held ? [e(null, { type: 'turn', turn: 1, state: 'held', rule: 'hold', reason: 'no-machine' })] : [])]
+  }
+}
+
+const assigned = (events: JournalEvent[]) => events.filter((e) => e.type === 'turn' && e.state === 'assigned').length
+/** The dispatcher's decision lines (« <thread> turn 2.1: stay → … »): a placement or a hold. */
+const decisions = (logs: string[]) => logs.filter((l) => /\[threads\] \w{6} turn \d+\.\d+: /.test(l))
+
+describe('switching threads on in an install with history', () => {
+  it('places nothing, holds nothing and calls no engine; what will never go on says so; writing again continues', async () => {
+    const w = world()
+    const acc = accountHash('account-of-server')
+    const server = machine(w, 'server', { dispatcher: true, accounts: [{ provider: 'claude', account: acc, used: 10 }] })
+    const laptop = machine(w, 'laptop', { accounts: [{ provider: 'claude', account: accountHash('account-of-laptop'), used: 10 }] })
+    let laptopOn = true
+    server.peers.push(laptop.peer(() => laptopOn))
+    await server.sync.round()
+    await laptop.sync.ensure()
+    const day = 86400_000
+
+    // Step 1's weevbook: turns cut by a provider error, out of attempts, on a project only another machine has, a
+    // session cut on the laptop (which then goes off), requests the connector held before there was a dispatcher.
+    const failed = await history(server, T0 - 10 * day, shadow(server, acc, 'shop', 'failed'))
+    const out = await history(server, T0 - 9 * day, shadow(server, acc, 'shop', 'out'))
+    const elsewhere = await history(server, T0 - 8 * day, shadow(server, acc, 'lws-final-rookie', 'failed'))
+    const cut = await history(laptop, T0 - 5 * 60_000, shadow(laptop, accountHash('account-of-laptop'), 'shop', 'cut'))
+    const recent = await history(server, T0 - 30 * 60_000, request('conn:chatgpt:c1:req:r1', true))
+    const old = await history(server, T0 - 3 * day, request('conn:chatgpt:c2:req:r1', false))
+    await server.sync.round()
+    await laptop.sync.round()
+    laptopOn = false
+    expect(lease(w.hub, cut)).toMatchObject({ holder: 'laptop', state: 'working' })
+    const theirs = [failed, out, elsewhere]
+    const before = new Map([...theirs, cut].map((id) => [id, journal(w.hub, id)]))
+
+    // Threads on: the dispatcher's first run, several rounds, past the steal bound and past an hour.
+    await server.threads.start()
+    for (const step of [10_000, 10_000, STEAL_BOUND, 10_000, 2 * 3600_000, 10_000]) {
+      w.clock.t += step
+      await server.threads.tick()
+      await server.sync.round()
+    }
+    server.threads.stop()
+
+    // Not one engine call, not one placement or hold decided, not one `assigned` written.
+    expect(await server.started()).toEqual([])
+    expect(await laptop.started()).toEqual([])
+    expect([...server.calls, ...laptop.calls]).toEqual([])
+    expect(decisions(server.logs)).toEqual([])
+    for (const id of [...theirs, cut, recent, old]) {
+      const events = journal(w.hub, id)
+      expect(validateJournal(events)).toEqual([])
+      expect(assigned(events)).toBe(assigned(before.get(id) ?? events))
+    }
+    // The provider sessions' turns are left as they were (the laptop's cut one: only the steal of step 2).
+    for (const id of theirs) expect(journal(w.hub, id)).toEqual(before.get(id))
+    expect(journal(w.hub, cut).slice(before.get(cut)!.length)).toEqual([expect.objectContaining({ type: 'turn', turn: 2, state: 'failed', reason: 'machine-lost' }), expect.objectContaining({ type: 'leg.end', reason: 'machine-lost' })])
+    // The connector's requests from before threads were on are closed: expired, never started.
+    for (const id of [recent, old]) expect(journal(w.hub, id).at(-1)).toMatchObject({ type: 'turn', turn: 1, state: 'held', reason: 'expired' })
+
+    // What the person sees: the provider's turns stopped, their move; the requests, « ask again ».
+    for (const id of [...theirs, cut]) expect(await server.threads.view(id)).toMatchObject({ state: 'waiting', hold: { reason: 'stopped' } })
+    expect(await server.threads.view(recent)).toMatchObject({ state: 'paused', hold: { reason: 'expired', request: 'Summarise the open pull requests' } })
+    expect((await server.threads.lines()).filter((l) => l.state === 'working')).toEqual([])
+
+    // The person writes again in one of them: the old turn is closed, the new one runs, in the same session.
+    await server.threads.tick()
+    await server.threads.accept(failed, { text: 'Try the import again' })
+    await server.threads.step(failed)
+    const [r] = await server.started()
+    expect(r).toMatchObject({ ok: true, leg: 'L1', rung: 1 })
+    expect(server.calls).toEqual([expect.objectContaining({ how: 'resume', text: 'Try the import again' })])
+    const events = journal(w.hub, failed)
+    expect(validateJournal(events)).toEqual([])
+    expect(turnsOf(events, 2).slice(-1)).toEqual([['held', null]])
+    expect(events.find((e) => e.type === 'turn' && e.turn === 2 && e.state === 'held')).toMatchObject({ reason: 'stopped' })
+    expect(turnsOf(events, 3)).toEqual([['accepted', null], ['assigned', 'stay'], ['running', null]])
+  }, 120_000)
+
+  it('right after a start, nothing is placed before the table is read, and a start that fails here leaves this machine alive', async () => {
+    const w = world()
+    const server = machine(w, 'server', { dispatcher: true, accounts: [{ provider: 'claude', account: accountHash('account-of-server'), used: 10 }], failStarts: 1 })
+    await server.sync.round()
+
+    // No table yet: the message is filed, and waits; no hold « no machine » is written.
+    const { thread: a } = await server.threads.accept(null, { text: 'Show prices with the currency', project: 'shop' })
+    await server.threads.step(a)
+    expect(turnsOf(journal(w.hub, a))).toEqual([['accepted', null]])
+    expect(decisions(server.logs)).toEqual([])
+
+    // The table: this machine. Its first start fails here (a file renamed under it): it is placed again, here.
+    await tables(server, server)
+    await server.threads.step(a)
+    await sleep(100)
+    expect(server.logs.some((l) => l.includes('server did not start it (launch: ENOENT'))).toBe(true)
+    const { thread: b } = await server.threads.accept(null, { text: 'And the cart', project: 'shop' })
+    await server.threads.step(b)
+    await server.threads.step(a)
+    const results = await server.started()
+    expect(results.every((r) => r.ok)).toBe(true)
+    expect(server.calls.map((c) => c.text).sort()).toEqual(['And the cart', 'Show prices with the currency'])
+    for (const id of [a, b]) expect(turnsOf(journal(w.hub, id))).toEqual([['accepted', null], ['assigned', 'new'], ['running', null]])
+    expect(server.logs.filter((l) => /hold|silent since/.test(l))).toEqual([])
+  }, 60_000)
+})
+
+describe('the dispatcher keeps its own clock of what is live', () => {
+  it('a message kept in the inbox longer than a request waits is filed, and expires at once', async () => {
+    const w = world()
+    const server = machine(w, 'server', { dispatcher: true, accounts: [{ provider: 'claude', account: accountHash('account-of-server'), used: 10 }] })
+    await server.sync.round()
+    await tables(server, server)
+    // Accepted, kept on disk, then weevilsd was down past the hour before the dispatcher could file it.
+    const id = ulid(T0 - REQUEST_EXPIRES - 60_000)
+    const inbox = path.join(server.home, '.local', 'share', 'weevils', 'threads-inbox.jsonl')
+    fs.writeFileSync(inbox, `${JSON.stringify({ key: 'weevils:k1', thread: id, text: 'Show prices with the currency', source: 'weevils', project: 'shop', at: T0 - REQUEST_EXPIRES - 60_000 })}\n`)
+    await server.threads.start()
+    await server.threads.tick()
+    server.threads.stop()
+    expect(turnsOf(journal(w.hub, id))).toEqual([['accepted', null], ['held', null]])
+    expect(journal(w.hub, id).at(-1)).toMatchObject({ reason: 'expired' })
+    expect(server.calls).toEqual([])
   }, 60_000)
 })

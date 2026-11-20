@@ -156,6 +156,13 @@ describe('the retry rule', () => {
     // A request that ever ran never expires: it is the dispatcher's to finish.
     expect(() => run(accepted(), assigned(1), running(), failed('some'), held('expired'))).toThrow(/expires/)
   })
+  it('stopped: a turn never to be placed (06-dispatch.md, activation) is closed, whatever it went through', () => {
+    // After it ran, after three failures on api: closed all the same, and the turns after it are served.
+    const out = run(accepted(), assigned(1), running(), failed('some', 1, 'api'), assigned(2, true), running(), failed('some', 1, 'api'), assigned(3, true), running(), failed('some', 1, 'api'), held('stopped'))
+    expect(next(out)).toMatchObject({ kind: 'quiet' })
+    expect(next(applyTurn(out, accepted(2)))).toMatchObject({ kind: 'dispatch', turn: 2, attempt: 1 })
+    expect(next(run(accepted(), held('stopped')))).toMatchObject({ kind: 'quiet' })
+  })
   it('the steal: failed machine-lost, no effect before running, some after', () => {
     expect(stolen(run(accepted(), assigned(1)))).toEqual({ turn: 1, state: 'failed', reason: 'machine-lost', effect: 'none' })
     expect(stolen(run(accepted(), assigned(1), running()))).toEqual({ turn: 1, state: 'failed', reason: 'machine-lost', effect: 'some' })

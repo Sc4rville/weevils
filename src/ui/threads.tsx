@@ -38,9 +38,12 @@ function clock(at: number, now: number) {
 /** The one sentence of a paused thread, and whether it comes with « ask again ». Null: nothing for the person to do. */
 export function useHoldSentence() {
   const t = useT(M)
-  return (hold: ThreadHold | undefined): { text: string; again: boolean } | null => {
+  return (hold: ThreadHold | undefined): { text: string; again: boolean; write?: boolean } | null => {
     if (!hold) return null
     switch (hold.reason) {
+      // Never goes on by itself: the person writes again (the composer below), no other action.
+      case 'stopped':
+        return { text: t.stopped, again: false, write: true }
       case 'no-machine':
         return { text: t.noMachine(hold.machine), again: false }
       case 'not-signed-in':
@@ -117,7 +120,8 @@ export function ThreadPage({ id, session }: { id: string; session?: Session }) {
       setSending(null)
     }
   }
-  const hold = view?.state === 'paused' ? sentence(view.hold) : null
+  // A paused thread's sentence; a thread that waits for the person says it stopped, when it did (06-dispatch.md).
+  const hold = view?.state === 'paused' || view?.hold?.reason === 'stopped' ? sentence(view?.hold) : null
   const stateLine = view && (
     <>
       <span aria-hidden>{STATE_CHAR[view.state]}</span> {word(view.state)}
@@ -147,7 +151,7 @@ export function ThreadPage({ id, session }: { id: string; session?: Session }) {
         <div className="in thread-hold" role="status">
           <span>{hold.text}</span>
           {' '}
-          {hold.again && view?.hold?.request ? (
+          {hold.write ? null : hold.again && view?.hold?.request ? (
             <button className="link" onClick={() => void send(view.hold!.request!).catch(() => undefined)}>
               {t.askAgain}
             </button>

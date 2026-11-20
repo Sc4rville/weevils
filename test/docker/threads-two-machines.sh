@@ -12,6 +12,10 @@
 # turn on itself (rule `machine`, rung 2: the session rebuilt from the hub, the preface) and finish it, with one user
 # message, a valid journal and nothing signed in the conversation. Then the laptop comes back and stops writing to the
 # thread (an orphan, if any, becomes a late note). It commits nothing; KEEP=1 keeps the containers.
+#
+# Before all that, the activation: the server already has an old Claude Code session whose last request stopped on a
+# provider error ten days ago (what step 1 recorded on a real install). Switching threads on must never send it to an
+# engine, place it or hold it.
 set -uo pipefail
 root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 work=$(mktemp -d)
@@ -33,6 +37,17 @@ say() { printf '\n\e[30;43m %s \e[0m\n' "$*"; }
 ok() { printf '  \e[32mok\e[0m   %s\n' "$1"; }
 bad() { printf '  \e[31mFAIL\e[0m %s\n' "$1"; fails=$((fails + 1)); }
 
+# An old Claude Code session on the server, ten days ago: a request, then the provider's error (the turn failed, api).
+OLD=0a1d0000-0000-4000-8000-000000000001
+old_session() { # old_session <home> <cwd>: the lines, in that home's ~/.claude/projects
+  local dir="$1/.claude/projects/$(printf '%s' "$2" | sed 's/[^A-Za-z0-9]/-/g')" t
+  t=$(date -u -d '10 days ago' +%Y-%m-%dT%H:%M)
+  local base="\"isSidechain\":false,\"userType\":\"external\",\"cwd\":\"$2\",\"sessionId\":\"$OLD\",\"version\":\"2.1.4\",\"gitBranch\":\"main\""
+  printf 'mkdir -p %q && cat >%q <<EOF\n%s\n%s\nEOF\n' "$dir" "$dir/$OLD.jsonl" \
+    "{\"parentUuid\":null,$base,\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Rename the export button\"},\"uuid\":\"0a1d0000-0000-4000-8000-0000000000a1\",\"timestamp\":\"$t:00.000Z\"}" \
+    "{\"parentUuid\":\"0a1d0000-0000-4000-8000-0000000000a1\",$base,\"type\":\"assistant\",\"message\":{\"id\":\"msg_old\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"<synthetic>\",\"content\":[{\"type\":\"text\",\"text\":\"API Error: 500 Internal server error\"}]},\"isApiErrorMessage\":true,\"error\":\"server_error\",\"uuid\":\"0a1d0000-0000-4000-8000-0000000000a2\",\"timestamp\":\"$t:05.000Z\"}"
+}
+
 # ---------------------------------------------------------------- the two machines, local or in Docker
 if [ "${LOCAL:-0}" = 1 ]; then
   S=http://127.0.0.1:4191
@@ -47,6 +62,7 @@ if [ "${LOCAL:-0}" = 1 ]; then
   git clone -q --bare "$work/seed" "$work/origin/shop.git"
   seed "$work/server" account-of-server
   seed "$work/laptop" account-of-laptop
+  bash -c "$(old_session "$work/server" "$work/server/projects/shop")"
   start_server() {
     (cd "$root" && HOME="$work/server" THREADS_MACHINE=server THREADS_ROLE=server THREADS_PORT=4191 THREADS_PEERS="laptop=$L" THREADS_QUOTA=60 FAKE_TURN_MS=1000 \
       exec node test/docker/threads-machine.ts serve >>"$work/server.log" 2>&1) &
@@ -61,6 +77,7 @@ if [ "${LOCAL:-0}" = 1 ]; then
   kill_laptop() { kill -9 "$laptop_pid" 2>/dev/null; wait "$laptop_pid" 2>/dev/null; }
   report() { (cd "$root" && node test/docker/threads-machine.ts report "$1" "$hub"); }
   logs() { tail -n 40 "$work/server.log" "$work/laptop.log"; }
+  server_log() { cat "$work/server.log"; }
 else
   command -v docker >/dev/null || { echo "docker is not installed (LOCAL=1 runs the same story without it)"; exit 2; }
   image=weevils-threads-test
@@ -96,6 +113,7 @@ DOCKERFILE
   SSH='ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes'
   as "$LC" "mkdir -p ~/projects && GIT_SSH_COMMAND='$SSH' git clone -q user@server:origin/shop.git ~/projects/shop" || { echo "the laptop cannot reach the server over SSH"; exit 1; }
   hub=/home/user/.local/share/weevils/hub.git
+  as "$SC" "$(old_session /home/user /home/user/projects/shop)"
   start_server() {
     docker exec -d -u user -e HOME=/home/user -e THREADS_MACHINE=server -e THREADS_ROLE=server -e THREADS_PORT=4191 -e THREADS_PEERS=laptop=http://laptop:4192 -e THREADS_QUOTA=60 -e FAKE_TURN_MS=1000 \
       -w /opt/weevils "$SC" bash -c 'node test/docker/threads-machine.ts serve >>/tmp/threads.log 2>&1'
@@ -108,6 +126,7 @@ DOCKERFILE
   kill_laptop() { docker kill -s KILL "$LC" >/dev/null; }
   report() { docker exec -u user -w /opt/weevils "$SC" node test/docker/threads-machine.ts report "$1" "$hub"; }
   logs() { docker exec "$SC" tail -n 40 /tmp/threads.log; docker exec "$LC" tail -n 40 /tmp/threads.log 2>/dev/null; }
+  server_log() { docker exec "$SC" cat /tmp/threads.log; }
 fi
 
 json() { node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const o=JSON.parse(s);console.log(eval(process.argv[1]))})' "$1"; }
@@ -123,6 +142,14 @@ start_server
 start_laptop
 wait_for 60 "server up" curl -sf "$S/health" && ok "server answers"
 sleep 15 # both engines.json written and read (every 10 s)
+# The thread the shadow writer made of the old session (titled with its request).
+old_thread() { curl -sf "$S/threads" | json 'o.threads.find(t => /export button/.test(t.title))?.thread ?? ""'; }
+has_old() { [ -n "$(old_thread)" ]; }
+wait_for 30 "the old session recorded" has_old && ok "the old session is a thread ($(old_thread))" || { bad "the old session was never recorded"; logs; exit 1; }
+sleep 10 # a few dispatcher rounds over the old session's thread
+if server_log | grep -q "engine \(open\|resume\) ${OLD:0:8}"; then bad "the old session was sent to an engine"; else ok "the old session was not sent to an engine"; fi
+if server_log | grep -qE '\[threads\] [0-9A-Z]{6} turn [0-9]+\.[0-9]+: '; then bad "the dispatcher decided on a turn from before"; server_log | grep -E '\[threads\] [0-9A-Z]{6} turn [0-9]+\.[0-9]+: ' | head -3; else ok "no turn from before was placed or held"; fi
+[ "$(curl -sf "$S/view/$(old_thread)" | json 'JSON.stringify([o.state, o.hold?.reason ?? null])')" = '["waiting","stopped"]' ] && ok "the app shows it stopped, the person's move" || bad "the old thread's state: $(curl -sf "$S/view/$(old_thread)" | json 'JSON.stringify([o.state, o.hold])')"
 
 say "a message, placed on the laptop (more room)"
 id=$(curl -sf -X POST "$S/send" -H 'content-type: application/json' -d '{"text":"Show prices with the currency","project":"shop"}' | json 'o.thread')
@@ -144,6 +171,10 @@ echo "  $r"
 [ "$(echo "$r" | json 'o.turns.filter(t => t[1] === "failed").map(t => t[2]).join()')" = machine-lost ] && ok "one failure, machine-lost" || bad "unexpected failures"
 [ "$(echo "$r" | json 'o.turns.filter(t => t[1] === "assigned").map(t => t[2]).join()')" = new,machine ] && ok "placed new, then machine" || bad "unexpected placements"
 [ "$(curl -sf "$S/view/$id" | json 'o.state')" = waiting ] && ok "the app's state: your move" || bad "the app's state is not « your move »"
+
+decided=$(server_log | grep -cE '\[threads\] [0-9A-Z]{6} turn [0-9]+\.[0-9]+: ' | tr -d ' ')
+[ "$(server_log | grep -E '\[threads\] [0-9A-Z]{6} turn [0-9]+\.[0-9]+: ' | grep -vc "${id: -6} turn")" = 0 ] && ok "every decision was about the new thread ($decided)" || bad "a decision about another thread"
+if server_log | grep -q "engine \(open\|resume\) ${OLD:0:8}"; then bad "the old session was sent to an engine"; fi
 
 say "the laptop comes back"
 start_laptop

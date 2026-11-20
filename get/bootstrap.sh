@@ -72,7 +72,7 @@ _weevils_get() {
     [ "$OS" = Linux ] || return 0
     seen=$(curl -fsS -m 10 "$BASE/ip" 2>/dev/null) || return 0
     [[ $seen =~ ^[0-9a-f.:]{2,39}$ ]] || return 0
-    addrs=$(ip -o addr show 2>/dev/null | awk '{ print $4 }' || hostname -I 2>/dev/null || true)
+    addrs=$({ ip -o addr show 2>/dev/null | awk '{ print $4 }'; hostname -I 2>/dev/null; } || true)
     case " $(printf '%s\n' $addrs | sed 's,/.*,,' | tr '\n' ' ')" in *" $seen "*) printf '%s' "$seen" ;; esac
   }
   if [ -z "$SID" ]; then

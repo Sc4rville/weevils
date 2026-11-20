@@ -285,7 +285,7 @@ client registration), then send the person's browser to the consent page with PK
   header, its first request and its last messages; `recent` is the last `count` messages. Speakers are named as in
   `thread.md` (User, ChatGPT, Claude, Agent).
 - **`thread_status`**: `waiting for you`, `an agent is working on it`, or `paused:` with the held turn's reason in one
-  sentence (`no-machine`, `no-room`, `not-signed-in`, `only-there`, `attempts`, `expired`) or a failed turn.
+  sentence (`no-machine`, `no-room`, `not-signed-in`, `only-there`, `attempts`, `expired`, `stopped`) or a failed turn.
 - **Texts for the model** (descriptions, results, errors) are English, like the journal; only the consent page is
   translated (`server/i18n/connector.ts`).
 - **The link** `<base>/t/<thread id>` opens the app until the weevbook page has the route.

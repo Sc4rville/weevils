@@ -141,6 +141,8 @@ Rules about changing (the reference scenario's "staying is cheap, changing costs
 | `not-signed-in` | Claude is signed out on laptop. | Opens the sign-in. |
 | `only-there` | This one can only continue on laptop, which is off. | — |
 | `attempts` | It failed three times on an error of its own (`api` or `auth`). | "Try again." |
+| `expired` | It waited more than an hour with no machine: it was set aside. | "Ask again." |
+| `stopped` | Stopped before this version: write again to continue. (The thread is `waiting`, not paused.) | Writing again. |
 
 A held turn is assigned as soon as the table gives an engine: the dispatcher looks again whenever the engine table
 changes, and at least every 60 s. When the table gives another reason, the turn is held again with it, so the
@@ -220,10 +222,11 @@ dispatcher looks at every unfinished thread every 10 s, and at once when a messa
   is marked as not answering, as a failed direct call).
 - **Messages while a turn runs** go to the running engine, which takes them into its turn ([01](01-thread.md)): the
   dispatcher's machine hands them to the holder (`POST /api/weevbook/deliver`), again every 30 s until it takes them.
-- **Expiry.** A request from a chat app (`continue_with_agent`, key `…:req:…`) still held after an hour, that never
-  ran, is held again with reason `expired`. Like `attempts`, it waits for the person ("ask again"), never starts by
-  itself when machines come back, and does not hold back the turns asked after it. The dispatcher applies it at
-  every look, so a request older than an hour when the dispatcher starts ends this way too.
+- **Expiry.** A turn weevils filed that has waited an hour since it last moved, for any reason but `no-room`, is
+  closed: held again with reason `expired` when no engine ever had it, `stopped` once one had. Like `attempts`, it
+  waits for the person ("ask again", or writing again), never starts by itself when machines come back, and does not
+  hold back the turns asked after it. A message kept in the inbox longer than an hour (the dispatcher was down) is
+  filed and expires at once. `no-room` waits: the app said when it goes on.
 - **Three states.** The app shows `working` (a turn is accepted, assigned, running, or failed and being retried),
   `waiting` (every turn is done) and `paused` (a turn is held). `meta.json` keeps its step-1 rule (a failed turn is
   `paused` there); the app reads the journal (`visibleState`). A paused thread says one sentence only when the person
@@ -241,6 +244,40 @@ dispatcher looks at every unfinished thread every 10 s, and at once when a messa
   the default changes (deleting it is a separate proposal).
 - **Accounts.** `engines.json` lists the Claude accounts of `server/claude-accounts.ts` (the home one without them)
   and the signed-in Codex account. The chosen Claude account is made the active one before its session starts.
+
+### Activation: what was there before is never placed
+
+Decided after the first activation on an install with history (500 threads from step 1): within 20 s the dispatcher
+had resumed a ten-day-old turn that a provider error had stopped, and held a dozen others for machines that were off,
+which would have started the day those came back. The rule now (`server/weevbook/live.ts`):
+
+- **Only what weevils filed is the dispatcher's.** A turn is placed only when the message that opened it came from
+  weevils (the app or the connector: `source` `weevils` or `connector`, with a `key`). A turn typed in a provider's
+  own session (`source` `claude` or `codex`, recorded by the shadow writer, failed or not) is never placed, held,
+  retried or expired by the dispatcher. Its session may still go on with it.
+- **And only during the dispatcher's current run.** The machine that runs the dispatcher keeps
+  `DATA_DIR/threads-on.json` (`since`, the start of the run, and `seen`, written every minute). A restart within
+  10 minutes goes on with the same run; the first start, or one after a longer stop (threads off, weevilsd down),
+  begins a new one. A turn of weevils that last moved before the run began (the connector's requests of step 5, or
+  turns that waited while the dispatcher was off) is closed at the dispatcher's next look: `expired` when no engine
+  ever had it, `stopped` once one had.
+- **Closed for good, in the journal, only when weevils takes the thread over.** The provider's turns are not written
+  to at activation (their machine may be off, and would come back to a journal it did not expect). When the person
+  writes to such a thread from weevils, or a turn of weevils waits in it, the provider's turns still open are held
+  with reason `stopped` in the same push, before the new turn; one left in an engine's hands with no working lease
+  and nothing written for longer than a steal takes (130 s) is first `failed` (`machine-lost`).
+- **What the person sees.** A thread whose last turn will never go on (`stopped`, or a provider's turn its session
+  left waiting) is the person's move (`waiting`), with one line: "Stopped before this version: write again to
+  continue." No button: writing again continues it. `meta.json` and the connector's `thread_status` say `paused`
+  there, as before.
+- **Nothing is placed before the engine table was read once** (an empty table would hold every turn `no-machine`),
+  and the dispatcher's machine enters its own table from the `engines.json` it writes, not from the copy the hub
+  still holds from before a restart. A start that fails on the dispatcher's own machine is a `launch` failure: it
+  never marks that machine as not answering (it did, and the next turn was held `only-there`, "silent since").
+- **The weevbook's lock in weevilsd.** The callers of the hub sync (the round, starts, handoffs, the app's reads)
+  shared one lock with no queue: the first to finish let it go while another was still writing, the shadow writer
+  took it, and its recovery removed that write's record (`ENOENT … weevbook/tx/<id>.json.next`). `withBook` now
+  queues its callers; one made inside another runs within it.
 
 **Known limits.** One active Claude account per machine: two threads on two accounts of one machine at once switch
 it back and forth. Sessions the shadow writer opens itself (outside the dispatcher) carry the home account's id. A

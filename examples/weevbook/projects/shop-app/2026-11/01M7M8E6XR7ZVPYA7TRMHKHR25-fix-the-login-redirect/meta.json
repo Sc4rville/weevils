@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "thread": "01M7M8E6XR7ZVPYA7TRMHKHR25",
+  "title": "Fix the login redirect",
+  "project": "shop-app",
+  "created": "2026-11-17T08:02:11Z",
+  "updated": "2026-11-17T09:40:12Z",
+  "state": "waiting",
+  "turns": 2,
+  "events": 35,
+  "sources": [
+    "claude",
+    "weevils"
+  ],
+  "legs": [
+    {
+      "leg": "L1",
+      "engine": "claude:a3f9c1@laptop",
+      "rung": 0,
+      "started": "2026-11-17T08:02:14Z",
+      "ended": "2026-11-17T08:19:02Z"
+    },
+    {
+      "leg": "L2",
+      "engine": "claude:a3f9c1@server",
+      "rung": 2,
+      "started": "2026-11-17T08:19:09Z",
+      "ended": null
+    }
+  ],
+  "checkpoint": {
+    "turn": 2,
+    "kind": "git",
+    "commit": "2fa6e7f779bd349ecca2b112b38d6f85e6ef87f5"
+  },
+  "handoff": {
+    "upTo": 33,
+    "by": "claude:a3f9c1@server"
+  }
+}

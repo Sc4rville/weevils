@@ -159,6 +159,7 @@ http
         const b = await read(req)
         return out(200, await threads.accept(b.thread ?? null, { text: b.text, project: b.project }))
       }
+      if (req.url === '/threads') return out(200, await threads.list())
       const m = /^\/view\/(\w+)$/.exec(req.url ?? '')
       if (m) return out(200, await threads.view(m[1]))
       out(404, {})

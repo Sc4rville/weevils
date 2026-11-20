@@ -1,7 +1,7 @@
 import type http from 'node:http'
 import { describe, expect, it } from 'vitest'
 import { afterEach, beforeEach } from 'vitest'
-import { browserSafe, configureLocalAuth, fromThisMachine, isLocal, localTokenProblem, markInternal, parseLocalToken, trustedFrom, trustedSource } from './http.ts'
+import { browserSafe, clientAddress, configureLocalAuth, fromThisMachine, isLocal, localTokenProblem, markInternal, parseLocalToken, trustedFrom, trustedSource } from './http.ts'
 
 const TOKEN = 'ab'.repeat(32)
 const jailedSockets = new WeakSet<object>()
@@ -154,4 +154,20 @@ it('runtime source overrides inherited author claims; unknown agent runtimes nev
  expect(trustedSource(req(),{sourceThread:'unknown'},lookup)).toBeUndefined()
  expect(trustedSource(req({'x-forwarded-for':'203.0.113.7'}),{sourceThread:'boss'},lookup)).toBeUndefined()
  expect(trustedFrom(req(),{from:'codex',sourceThread:'boss'},lookup)).toBe('weevboss')
+})
+
+describe('the address a sign-in comes from', () => {
+  const at = (headers: Record<string, string>, remoteAddress: string) => clientAddress(({ socket: { remoteAddress }, headers }) as unknown as http.IncomingMessage)
+  it('straight from the network: the connection\'s own address, whatever the headers say', () => {
+    expect(at({}, '203.0.113.7')).toBe('203.0.113.7')
+    expect(at({ 'x-forwarded-for': '198.51.100.1', 'cf-connecting-ip': '198.51.100.2' }, '203.0.113.7')).toBe('203.0.113.7')
+  })
+  it('through the proxy or tunnel on this machine: the address it adds last, never one the client wrote', () => {
+    // Caddy (and nginx with $proxy_add_x_forwarded_for), Cloudflare: the client's own X-Forwarded-For comes first, the
+    // address the proxy saw last.
+    expect(at({ 'x-forwarded-for': '198.51.100.1, 203.0.113.7' }, '127.0.0.1')).toBe('203.0.113.7')
+    expect(at({ 'x-forwarded-for': '203.0.113.7' }, '::1')).toBe('203.0.113.7')
+    expect(at({ 'cf-connecting-ip': '203.0.113.9' }, '::ffff:127.0.0.1')).toBe('203.0.113.9')
+    expect(at({}, '127.0.0.1')).toBe('127.0.0.1')
+  })
 })

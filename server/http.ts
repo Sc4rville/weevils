@@ -61,6 +61,19 @@ export function fromThisMachine(req: http.IncomingMessage): boolean {
   return browserSafe(req)
 }
 
+/**
+ * The address a request really comes from, for counting wrong access codes. Straight from the network: the
+ * connection's own. Through the proxy or tunnel on this machine (Caddy, cloudflared, tailscale serve: a loopback peer),
+ * the address that proxy added last to X-Forwarded-For (the client's own value, if it sent one, comes before it), else
+ * Cloudflare's Cf-Connecting-Ip. Never a header from a client that reached the port directly.
+ */
+export function clientAddress(req: http.IncomingMessage): string {
+  const peer = req.socket.remoteAddress ?? ''
+  if (!LOOPBACK_PEERS.has(peer)) return peer
+  const forwarded = String(header(req, 'x-forwarded-for') ?? '').split(',').map((a) => a.trim()).filter(Boolean).at(-1)
+  return forwarded || String(header(req, 'cf-connecting-ip') ?? '').trim() || peer
+}
+
 /** The header a local caller of weevils (weevils-cli, weevils-update, the main machine of a federation, Vite's dev
  *  proxy) sends: the line of weevils' per-machine token file (DATA_DIR/local-token, 0600, created by weevilsd). */
 export const LOCAL_TOKEN_HEADER = 'x-weevils-local'

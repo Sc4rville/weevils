@@ -36,7 +36,7 @@ import S from './i18n/setup.ts'
 import { LoadSampler, tipRoutes } from './tips.ts'
 import { Hints, hintRoutes } from './hints.ts'
 import { softwareRoutes, softwareCatalog } from './softwares.ts'
-import { browserSafe, configureLocalAuth, isLocal, localTokenProblem, parseLocalToken, trustedFrom, trustedSource } from './http.ts'
+import { browserSafe, clientAddress, configureLocalAuth, isLocal, localTokenProblem, parseLocalToken, trustedFrom, trustedSource } from './http.ts'
 import { startMailBridge } from './mailbridge.ts'
 import { resetAuthors, threadAuthor } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
@@ -525,15 +525,11 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ['POST', /^\/api\/login$/, async (req, res) => {
     const body = await readBody(req)
-    const who = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '').split(',')[0].trim()
-    if (!logins.allowed(who)) {
+    // The right code always gets in; wrong ones wait, and are counted per real client address (server/login-limit.ts).
+    const answer = logins.attempt(clientAddress(req), typeof body.secret === 'string' && sameCode(body.secret, SECRET))
+    if (answer !== 'ok') {
       await new Promise((r) => setTimeout(r, 800))
-      return json(res, 429, { error: tr(M).wrongCode })
-    }
-    if (typeof body.secret !== 'string' || !sameCode(body.secret, SECRET)) {
-      logins.failed(who)
-      await new Promise((r) => setTimeout(r, 800))
-      return json(res, 401, { error: tr(M).wrongCode })
+      return json(res, answer === 'limited' ? 429 : 401, { error: tr(M).wrongCode })
     }
     issueDevice(req, res)
     claimSetup()

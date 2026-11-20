@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "threads": [
+    {
+      "thread": "01M7M8E6XR7ZVPYA7TRMHKHR25",
+      "path": "projects/shop-app/2026-11/01M7M8E6XR7ZVPYA7TRMHKHR25-fix-the-login-redirect",
+      "title": "Fix the login redirect",
+      "project": "shop-app",
+      "updated": "2026-11-17T09:40:12Z",
+      "state": "waiting",
+      "commit": "0191873de94635b3b11cc086de0370cbbe65ca46"
+    },
+    {
+      "thread": "01M7QDKAT85KGENVY3NP4N74YB",
+      "path": "projects/shop-app/2026-11/01M7QDKAT85KGENVY3NP4N74YB-add-csv-export-to-orders",
+      "title": "Add CSV export to orders",
+      "project": "shop-app",
+      "updated": "2026-11-18T14:21:50Z",
+      "state": "waiting",
+      "commit": "35595b282b3582515664ab5aec6d23d83e27b353"
+    },
+    {
+      "thread": "01M7TK6GX01G5BY7YG590JEA4Q",
+      "path": "projects/trip-planner/2026-11/01M7TK6GX01G5BY7YG590JEA4Q-offline-maps-for-the-itinerary",
+      "title": "Offline maps for the itinerary",
+      "project": "trip-planner",
+      "updated": "2026-11-19T20:02:52Z",
+      "state": "waiting",
+      "commit": "c5558e086a3afd7a492f567c09f2b20032b3e1a5"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "thread": "01M7QDKAT85KGENVY3NP4N74YB",
+  "title": "Add CSV export to orders",
+  "project": "shop-app",
+  "created": "2026-11-18T13:30:05Z",
+  "updated": "2026-11-18T14:21:50Z",
+  "state": "waiting",
+  "turns": 3,
+  "events": 48,
+  "sources": [
+    "claude",
+    "codex",
+    "weevils"
+  ],
+  "legs": [
+    {
+      "leg": "L1",
+      "engine": "claude:a3f9c1@laptop",
+      "rung": 0,
+      "started": "2026-11-18T13:30:08Z",
+      "ended": "2026-11-18T13:53:44Z"
+    },
+    {
+      "leg": "L2",
+      "engine": "codex:c81d2e@laptop",
+      "rung": 3,
+      "started": "2026-11-18T13:53:50Z",
+      "ended": null
+    }
+  ],
+  "checkpoint": {
+    "turn": 3,
+    "kind": "git",
+    "commit": "63041c0f5281eb94416496cf30a5c01129c8b584"
+  },
+  "handoff": {
+    "upTo": 47,
+    "by": "codex:c81d2e@laptop"
+  }
+}

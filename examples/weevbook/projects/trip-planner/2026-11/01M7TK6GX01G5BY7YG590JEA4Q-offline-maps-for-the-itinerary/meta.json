@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "thread": "01M7TK6GX01G5BY7YG590JEA4Q",
+  "title": "Offline maps for the itinerary",
+  "project": "trip-planner",
+  "created": "2026-11-19T19:05:40Z",
+  "updated": "2026-11-19T20:02:52Z",
+  "state": "waiting",
+  "turns": 2,
+  "events": 31,
+  "sources": [
+    "claude",
+    "connector",
+    "weevils"
+  ],
+  "legs": [
+    {
+      "leg": "L1",
+      "engine": "claude:a3f9c1@server",
+      "rung": 3,
+      "started": "2026-11-19T19:06:06Z",
+      "ended": null
+    }
+  ],
+  "checkpoint": {
+    "turn": 2,
+    "kind": "git",
+    "commit": "14c2e5e69e69e17d5befbab6d45416d182a0afcd"
+  },
+  "handoff": {
+    "upTo": 23,
+    "by": "claude:a3f9c1@server"
+  }
+}

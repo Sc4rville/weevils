@@ -35,9 +35,9 @@
 # WHAT IT NEVER DOES: send your files, code, conversations or keys anywhere; open a port on your router or firewall;
 # keep a password; run anything from the setup service that is not signed by the release key.
 #
-# THE CODE IT RUNS, to read before: https://github.com/Sc4rville/weevils-oss (public). Each code bundle served to
-# installs (/weevils.bundle, one commit « weevils <rev> ») is published there as the same commit message, after a
-# secret scan. Its signature: /weevils.bundle.sig (check with ssh-keygen -Y verify and /release-key.pub); SHA-256:
+# THE CODE IT RUNS, to read before: https://github.com/Sc4rville/weevils (public). Each code bundle served to
+# installs (/weevils.bundle, one commit « weevils <rev> ») holds the files of public commit <rev>, minus the paths
+# listed in scripts/release-policy.json. Its signature: /weevils.bundle.sig (check with ssh-keygen -Y verify and /release-key.pub); SHA-256:
 # /weevils.bundle.sha256.
 #
 # UNDO, in one line:  ~/weevils/install.sh --uninstall --purge && rm -rf ~/weevils

@@ -83,8 +83,8 @@ or "fix" a secret yourself, and never touch personal configuration outside the s
 
 ### 2c. Copies of this repository
 
-Each bare mirror in `~/projects/.mirrors/*.git` is a copy of this repository kept elsewhere (today: `weevils-oss`,
-a preserved earlier public candidate, refreshed every 6 h outside your sandbox). Compare its `main` tree with the
+Each bare mirror in `~/projects/.mirrors/*.git` is a copy of this repository kept elsewhere (none today; each
+is refreshed every 6 h outside your sandbox). Compare its `main` tree with the
 shared selection of `main` from 2b: files only on one side, files that differ, and how many canonical commits it
 lags (its last commit message names the source revision). Run 2b's trace search on the copy too. **Report only**:
 the decision of 2026-11-12 (the owner's decision log, outside the repository) stops syncing copies without an explicit go.

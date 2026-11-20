@@ -301,6 +301,7 @@ export class Pages {
     // A library serves only the files it lists, not everything below its folders.
     if (page.build?.type === 'library' && rel.startsWith('/m/') && !libraryFiles(page.root).has(rel.slice(1))) return gone()
     const root = page.root
+    // Symlinks are followed on purpose: a library links the media folders it shows under m/ (writeLibraryPage), and serves only the files it lists.
     let file = path.resolve(root, `.${rel}`)
     if (file !== root && !file.startsWith(root + path.sep)) return gone()
     if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html')

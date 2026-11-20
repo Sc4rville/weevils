@@ -6,6 +6,7 @@ export default defineMessages({
   fr: {
     title: (app: string) => `Connecter ${app} à weevils`,
     asks: (app: string) => `${app} demande l’accès à ton weevbook, le carnet de tes conversations.`,
+    onlyYou: (app: string) => `N’autorise que si tu viens de le demander toi-même, depuis ton compte ${app}. Un lien qu’on t’a envoyé : refuse.`,
     can: 'Il pourra :',
     save: (app: string) => `enregistrer des conversations de ${app} dans ton weevbook`,
     read: 'retrouver et lire les fils de ton weevbook',
@@ -25,6 +26,7 @@ export default defineMessages({
   en: {
     title: (app: string) => `Connect ${app} to weevils`,
     asks: (app: string) => `${app} asks to reach your weevbook, the notebook of your conversations.`,
+    onlyYou: (app: string) => `Only allow this if you just asked for it yourself, from your own ${app} account. A link someone sent you: deny.`,
     can: 'It will be able to:',
     save: (app: string) => `save chats from ${app} in your weevbook`,
     read: 'find and read your weevbook’s threads',

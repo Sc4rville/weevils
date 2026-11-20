@@ -51,7 +51,7 @@ export function consentPage(v: ConsentView): string {
     ? `<p class="meta">${esc(t.signedIn)}</p>`
     : `<label for="code">${esc(t.code)}</label><input id="code" name="code" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus>`
   return page(t.title(v.app), `
-<div class="in"><h1>${esc(t.title(v.app))}</h1><p style="margin-top:10px">${esc(t.asks(v.app))}</p></div>
+<div class="in"><h1>${esc(t.title(v.app))}</h1><p style="margin-top:10px">${esc(t.asks(v.app))}</p><p class="meta" style="margin-top:10px">${esc(t.onlyYou(v.app))}</p></div>
 <div class="tone"><div class="in"><p>${esc(t.can)}</p><ul><li>${esc(t.save(v.app))}</li><li>${esc(t.read)}</li><li>${esc(t.agent)}</li></ul><p style="margin-top:10px">${esc(t.cannot)}</p></div></div>
 ${alert}
 <form method="post" action="/mcp/authorize" class="in">

@@ -13,6 +13,9 @@ export default defineMessages({
     /** A session was cut off mid-work (process killed, quota, API error). */
     cutTitle: (project: string) => `${project} : session coupée en plein travail`,
     testBody: 'Les notifications marchent. Je te préviens quand une session t’attend ou a fini.',
+    /** The computer's quick tunnel restarted under a new address (server/tunnel-link.ts). */
+    linkTitle: 'weevils a changé d’adresse',
+    linkBody: (host: string) => `Ouvre ce lien pour retrouver l’app (${host}), puis ajoute-la de nouveau à l’écran d’accueil.`,
   },
   en: {
     badSubscription: 'invalid subscription',
@@ -22,5 +25,7 @@ export default defineMessages({
     doneTitle: (project: string) => `${project} is done`,
     cutTitle: (project: string) => `${project}: session cut off mid-work`,
     testBody: 'Notifications work. I’ll ping you when a session needs you or is done.',
+    linkTitle: 'weevils has a new address',
+    linkBody: (host: string) => `Open this to get back to the app (${host}), then add it to your home screen again.`,
   },
 })

@@ -62,9 +62,21 @@ function install(at: string, names: string, by: string = key) {
   execFileSync('bash', [SIGN_MAIN, commits[names], path.join(get, 'main.txt')], { env: { ...process.env, WEEVILS_RELEASE_KEY: by, WEEVILS_RELEASE_SIGNER: '' } })
   return { home, dir, get }
 }
-function update(i: { home: string; get: string }) {
-  spawnSync('bash', [UPDATE, '--now'], { env: { PATH: process.env.PATH, HOME: i.home, WEEVILS_UPDATE_URL: `file://${i.get}`, ...gitEnv }, encoding: 'utf8', timeout: 60_000 })
-  return fs.readFileSync(path.join(i.home, '.local', 'share', 'weevils', 'update.log'), 'utf8')
+function update(i: { home: string; get: string }, PATH = process.env.PATH) {
+  spawnSync('bash', [UPDATE, '--now'], { env: { PATH, HOME: i.home, WEEVILS_UPDATE_URL: `file://${i.get}`, ...gitEnv }, encoding: 'utf8', timeout: 60_000 })
+  try { return fs.readFileSync(path.join(i.home, '.local', 'share', 'weevils', 'update.log'), 'utf8') } catch { return '' }
+}
+/** The PATH of a Mac as far as locking goes: every command of this one but flock. */
+function pathWithoutFlock() {
+  const bin = path.join(root, 'noflock')
+  if (fs.existsSync(bin)) return bin
+  fs.mkdirSync(bin)
+  for (const dir of (process.env.PATH ?? '').split(':')) {
+    let names: string[] = []
+    try { names = fs.readdirSync(dir) } catch { continue }
+    for (const n of names) if (n !== 'flock' && !fs.existsSync(path.join(bin, n))) try { fs.symlinkSync(path.join(dir, n), path.join(bin, n)) } catch { /* a name taken twice */ }
+  }
+  return bin
 }
 
 describe.skipIf(!haveTools)('weevils-update, a git clone: only the signed commit', { timeout: 30_000 }, () => {
@@ -105,5 +117,19 @@ describe.skipIf(!haveTools)('weevils-update, a git clone: only the signed commit
     const i = install('c2', 'c1')
     expect(update(i)).toMatch(/not a descendant/)
     expect(git(i.dir, 'rev-parse', 'HEAD')).toBe(commits.c2)
+  })
+  it('without flock (a Mac): a lock folder, kept while its run lives, taken over when it died', () => {
+    const noFlock = pathWithoutFlock()
+    const i = install('c1', 'c2')
+    const lock = path.join(i.home, '.local', 'share', 'weevils', 'update.lock.d')
+    fs.mkdirSync(lock, { recursive: true })
+    fs.writeFileSync(path.join(lock, 'pid'), String(process.pid))
+    update(i, noFlock)
+    expect(git(i.dir, 'rev-parse', 'HEAD')).toBe(commits.c1)
+    expect(fs.existsSync(lock)).toBe(true)
+    fs.writeFileSync(path.join(lock, 'pid'), '999999999')
+    expect(update(i, noFlock)).toMatch(/updated to/)
+    expect(git(i.dir, 'rev-parse', 'HEAD')).toBe(commits.c2)
+    expect(fs.existsSync(lock)).toBe(false)
   })
 })

@@ -104,6 +104,11 @@ self.addEventListener('push', e => {
 self.addEventListener('notificationclick', (e) => {
   e.notification.close()
   const url = (e.notification.data && e.notification.data.url) || '/'
+  // Another origin (weevils' new address after its quick tunnel restarted): opened as it is, never handed to a window
+  // of the old, dead address.
+  let away = false
+  try { away = new URL(url, self.location.origin).origin !== self.location.origin } catch { /* a path */ }
+  if (away) return e.waitUntil(self.clients.openWindow(url))
   e.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       for (const c of list) {

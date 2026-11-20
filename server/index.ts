@@ -15,13 +15,14 @@ import FY from './i18n/foryou.ts'
 // Lancer : node server/index.ts (Node 22, TypeScript natif).
 
 import { execFile, spawn } from 'node:child_process'
-import { keepAwake } from './platform.ts'
+import { Awake } from './platform.ts'
+import { TunnelFollower, waitServed } from './tunnel-link.ts'
 import { claimSetup } from './get-claim.ts'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices, claudeAvailable, haiku, ledger, relay as modelRelay } from './fast.ts'
@@ -313,6 +314,25 @@ const loginLink = (req: http.IncomingMessage) => {
   return `${(PUBLIC_URL || `${proto}://${host}`).replace(/\/$/, '')}/#k=${SECRET}`
 }
 
+// A computer's quick tunnel comes back under a new address after each restart: weevils takes it for every link it
+// makes and sends the phone the new login link (server/tunnel-link.ts).
+new TunnelFollower({
+  file: path.join(DATA_DIR, 'link.log'),
+  current: () => PUBLIC_URL,
+  adopt: (url) => {
+    setPublicUrl(url)
+    try { writeConfig({ WEEVILS_PUBLIC_URL: url }) } catch (e) { console.error('[link] config:', (e as Error).message) }
+    // The login link the install keeps for the person (install.sh: login-link, mode 600) follows too.
+    const kept = path.join(DATA_DIR, 'login-link')
+    try { if (fs.existsSync(kept)) fs.writeFileSync(kept, `${url}/#k=${SECRET}\n`, { mode: 0o600 }) } catch { /* kept as it was */ }
+  },
+  announce: async (url) => {
+    await waitServed(url)
+    for (let i = 0; i < 20 && !w.push.enabled; i++) await new Promise((r) => setTimeout(r, 500))
+    await w.push.send({ title: tr(P).linkTitle, body: tr(P).linkBody(new URL(url).host), url: `${url}/#k=${SECRET}`, tag: 'link', category: 'warning' })
+  },
+}).start()
+
 const logins = loginLimiter()
 const cookieToken = (req: http.IncomingMessage) => /(?:^|;\s*)wv=([\w-]+)/.exec(req.headers.cookie ?? '')?.[1]
 /** The cookie names a browser signed in with the access code (or claimed by a real browser on this machine). */
@@ -480,8 +500,10 @@ w.onChange(() => {
   const data = `event: version\ndata: ${w.version}\n\n`
   for (const res of sseClients) res.write(data)
 })
+// A heartbeat the app sees (a comment would not reach it): a stream silent longer than this is one the link holds
+// back, and the app falls back to asking for the version (src/api.ts).
 setInterval(() => {
-  for (const res of sseClients) res.write(': ping\n\n')
+  for (const res of sseClients) res.write(`event: version\ndata: ${w.version}\n\n`)
 }, 25_000)
 
 // ---------------------------------------------------------------- API
@@ -590,6 +612,7 @@ const routes: [string, RegExp, Handler][] = [
     json(res, 200, w.sleep.set(b.on))
   }],
   ['GET', /^\/api\/snapshot$/, (_req, res) => json(res, 200, w.snapshot())],
+  ['GET', /^\/api\/version$/, (_req, res) => json(res, 200, { version: w.version })],
   ['GET', /^\/api\/events$/, (_req, res) => {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' })
     res.write(`event: version\ndata: ${w.version}\n\n`)
@@ -1121,8 +1144,14 @@ server.on('upgrade', (req, socket, head) => {
 })
 
 server.listen(PORT, HOST, () => console.log(`weevilsd → http://${HOST}:${PORT}`))
-// A Mac goes to sleep on its own: awake while weevilsd runs and the Mac is plugged in (WEEVILS_KEEP_AWAKE=0: no).
-keepAwake()
+// A Mac goes to sleep on its own: kept awake while one of its agents works or waits for an answer and the Mac is
+// plugged in, then left to sleep (WEEVILS_KEEP_AWAKE=0: never kept awake).
+if (process.platform === 'darwin') {
+  const awake = new Awake()
+  const look = () => awake.update(w.snapshot().sessions.some((s) => !s.archived && (s.machineId ?? MACHINE.id) === MACHINE.id && (s.status === 'working' || s.status === 'needs_user')))
+  setInterval(look, 30_000).unref()
+  look()
+}
 
 
 // ---------------------------------------------------------------- « How weevils works » (server/pages.ts, docs/LINKS.md)

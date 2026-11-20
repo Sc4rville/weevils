@@ -24,7 +24,9 @@ On your own computer, weevils works the same way, but its agents can reach every
   code (72 random bits; a wrong code waits 800 ms); a browser that logged in keeps a device cookie for a year (log
   out, or the "lost a phone" steps in the README, to revoke it). The setup page and the script say so before the
   install. `--no-link` installs without it: weevils stays on this machine until you set up a private way in
-  (Tailscale, a private network between your own devices).
+  (Tailscale, a private network between your own devices). A quick tunnel gets a new address each time it starts
+  again (a restart, a network change): weevils takes the new one and sends your phone a notification with the new
+  login link (push notifications don't go through the tunnel); the app then has to be added to the home screen again.
 - programs on the computer don't get in without the code either, unless they can read weevils' local token
   (`~/.local/share/weevils/local-token`, readable by your user only), which weevils' own commands send.
 
@@ -42,7 +44,10 @@ In short, as you and in your home folder:
      `~/.local/share/weevils/node`.
    - Claude Code, through Anthropic's own installer.
    - the `weevilsd` service, listening on `127.0.0.1` only.
-   - a few commands in `~/.local/bin`, weevils' hooks in `~/.claude/settings.json`, and an update timer.
+   - a few commands in `~/.local/bin`, weevils' hooks in `~/.claude/settings.json`, and an update timer. The
+     settings file keeps its mode, and stays a symlink if it is one. A `~/.local/bin/tmux` of your own is kept as
+     `tmux.bak-weevils` (weevils' tmux guard runs it) and comes back at uninstall. The hook never holds a session up:
+     one second at most, and nothing to wait for after a tool call.
 3. **No root for missing system tools** (git, curl, tmux, jq, python3) on Debian and Ubuntu: apt downloads your
    distribution's own signed packages as you (`apt-get download`), and they are unpacked in
    `~/.local/share/weevils/sys`, never installed system-wide. On other distributions, or if that fails, the script
@@ -111,9 +116,15 @@ bundle is one commit « weevils <rev> »: the files of that public commit, minus
 ~/weevils/install.sh --uninstall --purge && rm -rf ~/weevils
 ```
 
-That stops and removes the service, the phone link, the update timer, the commands, and the hooks in
-`~/.claude/settings.json` (with `skipDangerousModePermissionPrompt` when weevils wrote it). Node.js links in `~/.local/bin` go too. `--purge` also removes weevils' settings and data, Node.js's files in
-`~/.local/share/weevils/node` included. Claude Code stays, since you may use it without weevils.
+That stops and removes the service, the phone link (weevils' own tunnel only: other Cloudflare tunnels of yours
+stay up), the update timer, the commands, and the hooks in `~/.claude/settings.json` (with
+`skipDangerousModePermissionPrompt` when weevils wrote it). Node.js links in `~/.local/bin` go too, and so do the
+install log (`~/weevils-install.log`), weevils' cache (`~/.cache/weevils`) and Claude Code's trust for weevils' own
+folders in `~/.claude.json`. `--purge` also removes weevils' settings and data, Node.js's files in
+`~/.local/share/weevils/node` included, the copy of your Claude Code settings from before weevils
+(`settings.json.bak-weevils`), and Claude Code's records of weevils' own folders (weevboss's conversations). Claude
+Code stays, since you may use it without weevils. The install log never holds your access code: the login link is
+in `~/.local/share/weevils/login-link`, readable by you only.
 
 ## Reporting a problem
 

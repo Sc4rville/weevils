@@ -106,7 +106,7 @@ The page finds it again, in this order, and never shows the start screen while s
 - **One way on after a failure**: the sizes come as soon as the token is pasted; a refused token shows one "Try
   again"; a stopped install,
   a stalled one, or a final link this browser can't open shows one "Try again", which goes back to the token (Hetzner),
-  the VPS access, or the computer's command.
+  the VPS's command, or the computer's command.
 - **Never a second server without asking**: when the token's account already has a weevils server, the page offers to
   continue on it, and creating another takes a tap on "Create another server anyway" (`another: true`; without it,
   `POST /api/<host>/create` answers `409 exists` with the list). Two taps, or a page reopened during the call, make
@@ -165,7 +165,7 @@ Linux in four places:
   a page that took the setup over by the server's `weevils-sid` label (read with the host's token, in the browser). It only follows a link to the
   address the install reported.
 - **The install reports step names only**, checked against the installer's own titles on both sides, never a line of
-  its log (which holds the access code: it stays on the machine, `~/weevils-install.log`). Two steps are the
+  its log (which stays on the machine, `~/weevils-install.log`, and never holds the access code). Two steps are the
   bootstrap's own and go by name: `tunnel`, and `s_system` while it installs Homebrew on a Mac.
 - **No code from visitors runs here**, and the service starts no program at all.
 - **Rate limits** per client address (setups, server reports, script downloads) and per setup (reports), plus a cap

@@ -4,7 +4,7 @@ import type { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { BREW_DIRS, availableMem, keepAwake, macHasBattery, parseVmStat, servicePath, toolDirs, which, type Exec } from './platform.ts'
+import { Awake, BREW_DIRS, availableMem, keepAwake, macHasBattery, parseVmStat, servicePath, toolDirs, which, type Exec } from './platform.ts'
 
 const HOME = process.env.HOME!
 afterEach(() => vi.unstubAllEnvs())
@@ -192,7 +192,7 @@ describe('keepAwake', () => {
 
   it('a Mac: caffeinate -s tied to our pid (it leaves with us), never waited for', () => {
     const f = fake()
-    expect(keepAwake('darwin', {}, f.start, 777)).toBe(4242)
+    expect(keepAwake('darwin', {}, f.start, 777)?.pid).toBe(4242)
     expect(f.calls).toHaveLength(1)
     expect(f.calls[0].file).toBe('/usr/bin/caffeinate')
     expect(f.calls[0].args).toEqual(['-s', '-w', '777'])
@@ -213,8 +213,8 @@ describe('keepAwake', () => {
     expect(keepAwake('darwin', { WEEVILS_KEEP_AWAKE: '0' }, f.start, 777)).toBeUndefined()
     expect(keepAwake('darwin', { WEEVILS_KEEP_AWAKE: ' 0 ' }, f.start, 777)).toBeUndefined()
     expect(f.calls).toHaveLength(0)
-    expect(keepAwake('darwin', { WEEVILS_KEEP_AWAKE: '1' }, f.start, 777)).toBe(4242)
-    expect(keepAwake('darwin', { WEEVILS_KEEP_AWAKE: '' }, f.start, 777)).toBe(4242)
+    expect(keepAwake('darwin', { WEEVILS_KEEP_AWAKE: '1' }, f.start, 777)?.pid).toBe(4242)
+    expect(keepAwake('darwin', { WEEVILS_KEEP_AWAKE: '' }, f.start, 777)?.pid).toBe(4242)
     expect(f.calls).toHaveLength(2)
   })
 
@@ -236,5 +236,38 @@ describe('keepAwake', () => {
     } finally {
       process.off('uncaughtException', onError)
     }
+  })
+})
+
+describe('Awake: only while there is work', () => {
+  function child() {
+    const c = { exitCode: null as number | null, signalCode: null as string | null, kill: vi.fn(() => { c.signalCode = 'SIGTERM'; return true }) }
+    return c
+  }
+  it('starts caffeinate when work begins, keeps one, stops it a grace period after the work ends', () => {
+    const started: ReturnType<typeof child>[] = []
+    const a = new Awake(() => { const c = child(); started.push(c); return c as never }, 60_000)
+    expect(a.update(false, 0)).toBe(false)
+    expect(started).toHaveLength(0)
+    expect(a.update(true, 1000)).toBe(true)
+    expect(a.update(true, 2000)).toBe(true)
+    expect(started).toHaveLength(1)
+    expect(a.update(false, 30_000)).toBe(true) // within the grace period
+    expect(started[0].kill).not.toHaveBeenCalled()
+    expect(a.update(false, 62_000)).toBe(false)
+    expect(started[0].kill).toHaveBeenCalledWith('SIGTERM')
+    expect(a.update(true, 70_000)).toBe(true)
+    expect(started).toHaveLength(2)
+  })
+  it('a caffeinate that exited is started again while work goes on; none at all (Linux, turned off) is fine', () => {
+    const started: ReturnType<typeof child>[] = []
+    const a = new Awake(() => { const c = child(); started.push(c); return c as never }, 60_000)
+    a.update(true, 0)
+    started[0].exitCode = 0
+    expect(a.update(true, 1000)).toBe(true)
+    expect(started).toHaveLength(2)
+    const none = new Awake(() => undefined)
+    expect(none.update(true, 0)).toBe(false)
+    expect(none.update(false, 10 * 60_000)).toBe(false)
   })
 })

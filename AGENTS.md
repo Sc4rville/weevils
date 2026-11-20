@@ -77,7 +77,7 @@ The summary is `key=value` lines between `--- weevils summary ---` and `--- end 
 | key | meaning |
 |---|---|
 | `status` | `ok`, `needs_sudo` or `failed` (then `error` says why) |
-| `url`, `code`, `link` | the address the phone opens, the access code, and the login link `<url>/#k=<code>` |
+| `url`, `link_file` | the address the phone opens; the file that holds the login link `<url>/#k=<code>` (the access code is never in the log: `cat` that file only for your final message) |
 | `mode` | `public` (HTTPS from anywhere), `lan` (same Wi-Fi, http), `local` (this machine only) |
 | `https`, `port` | `yes`/`no`; the local port weevils listens on (127.0.0.1) |
 | `ask_permissions`, `ask_permissions_new` | `yes` when agents ask before acting (the default; `./install.sh --no-ask-permissions` turns it off, only if the user asks); `ask_permissions_new=yes` when this run switched an older install to asking: tell the user in one sentence |
@@ -153,8 +153,8 @@ Your user may not be technical: write it like a friend who just set something up
 language, short (about 6 lines plus the link), in this order:
 
 1. It's installed (if `ready=no`, the one thing left, step 5).
-2. The link to open on the phone, `link` from the summary, on its own line. It contains their access code: say it
-   works like a password, in a few words.
+2. The link to open on the phone, the line in `link_file` from the summary, on its own line. It contains their access
+   code: say it works like a password, in a few words.
 3. A QR code, when `mode` is `public` or `lan` and `qrencode=yes`: run `qrencode -t UTF8 -m 2 '<link>'` and paste
    its output unchanged in a code block. Never draw or retype a QR code yourself.
 4. Add it to the home screen: iPhone: Share → Add to Home Screen; Android: ⋮ → Install app.

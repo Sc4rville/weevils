@@ -424,7 +424,15 @@ export function readMore(t: Transcript, size: number): boolean {
   return true
 }
 
-function listClaudeFiles(root: string): string[] {
+/** A project folder's .jsonl files, as last listed: its mtime then, and when (this machine's clock) it was listed. */
+type Listing = { mtimeMs: number; listedAt: number; files: string[] }
+
+/**
+ * The .jsonl files of every project folder. A folder is listed again only when its mtime changed (a file added, removed
+ * or renamed changes it; a file that grows does not), or while its last change is too fresh to trust its mtime (two
+ * changes within one tick of the clock look like one). Without `cache`, every folder is listed.
+ */
+function listClaudeFiles(root: string, cache?: Map<string, Listing>): string[] {
   const out: string[] = []
   let dirs: string[] = []
   try {
@@ -432,15 +440,28 @@ function listClaudeFiles(root: string): string[] {
   } catch {
     return out
   }
+  const seen = new Set<string>()
   for (const d of dirs) {
+    const dir = path.join(root, d)
     try {
-      for (const f of fs.readdirSync(path.join(root, d))) if (f.endsWith('.jsonl')) out.push(path.join(root, d, f))
+      const mtimeMs = cache ? fs.statSync(dir).mtimeMs : 0
+      let l = cache?.get(dir)
+      if (!l || l.mtimeMs !== mtimeMs || l.listedAt - mtimeMs < 2000) {
+        l = { mtimeMs, listedAt: Date.now(), files: fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(dir, f)) }
+        cache?.set(dir, l)
+      }
+      seen.add(dir)
+      out.push(...l.files)
     } catch {
       /* pas un dossier */
     }
   }
+  if (cache) for (const dir of cache.keys()) if (!seen.has(dir)) cache.delete(dir)
   return out
 }
+
+/** Scans between two looks at the files too old to follow (scan runs every 1.5 s: about 30 s). */
+const COLD_EVERY = 20
 
 function listCodexFiles(root: string, now: number, recentMs: number): string[] {
   const out: string[] = []
@@ -473,6 +494,13 @@ export class TranscriptStore {
    * with the recent ones from then (core.ts), ready to resume; its own activity stays as it was (not « live »). */
   broughtAt?: (id: string) => number | undefined
   private originBases=new Map<Message,Pick<Message,'role'|'author'|'coordination'|'sourceThreadId'>>()
+  /** The project folders as last listed (listClaudeFiles). */
+  private listings = new Map<string, Listing>()
+  /** Files left aside because they were last written before the recent window: looked at again only every
+   * COLD_EVERY scans (about 30 s), or at the next scan when their session gives news (wake: an old one resumed). */
+  private cold = new Set<string>()
+  private woken = new Set<string>()
+  private scans = 0
 
   constructor(claudeDir: string, codexDir: string, recentMs: number) {
     this.claudeDir = claudeDir
@@ -480,23 +508,36 @@ export class TranscriptStore {
     this.recentMs = recentMs
   }
 
+  /** A session gave news (a hook event): its file is looked at in the next scan, even if it was too old to follow. */
+  wake(id: string) {
+    this.woken.add(`${id}.jsonl`)
+  }
+
   /** Un passage de scan ; renvoie true si au moins un transcript a changé. */
   scan(now: number): boolean {
     let changed = false
+    const coldTurn = this.scans++ % COLD_EVERY === 0
+    // Every file is looked at again on a cold turn (one deleted since is forgotten).
+    if (coldTurn) this.cold.clear()
     const files: [string, Tool][] = [
-      ...listClaudeFiles(this.claudeDir).map((f) => [f, 'claude'] as [string, Tool]),
+      ...listClaudeFiles(this.claudeDir, this.listings).map((f) => [f, 'claude'] as [string, Tool]),
       ...listCodexFiles(this.codexDir, now, this.recentMs).map((f) => [f, 'codex'] as [string, Tool]),
     ]
     for (const [file, tool] of files) {
+      let t = this.byFile.get(file)
+      if (!t && !coldTurn && this.cold.has(file) && !this.woken.has(path.basename(file))) continue
       let st: fs.Stats
       try {
         st = fs.statSync(file)
       } catch {
         continue
       }
-      let t = this.byFile.get(file)
       if (!t) {
-        if (now - st.mtimeMs > this.recentMs) continue
+        if (now - st.mtimeMs > this.recentMs) {
+          this.cold.add(file)
+          continue
+        }
+        this.cold.delete(file)
         t = emptyTranscript(file, tool)
         this.byFile.set(file, t)
       }
@@ -519,6 +560,7 @@ export class TranscriptStore {
         }
       }
     }
+    this.woken.clear()
     const authors = new Map<string, string>()
     for (const t of this.byFile.values()) {
       if (!t.delegationSources?.size) continue

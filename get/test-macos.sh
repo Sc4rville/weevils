@@ -8,12 +8,15 @@
 #   WVTEST_HOST=1 get/test-macos.sh    no Docker: same doubles under this machine's bash (not 3.2)
 #   WVTEST_KEEP=1                      keep the work folder (printed) to read the logs
 #   GET_INSTALLER=<path/install.sh>    the installer whose step titles the service reads (default: this clone's)
-# The first run builds a small image from bash:3.2 (adds curl and nodejs with apk: needs the network once).
+# The command is the one the page shows (curl …/install.sh | bash -s <setup id>): the shared script, its settings read
+# from the service, and the code checked against the release key it pins. The bundle is signed here with a throwaway
+# key the service pins instead (GET_RELEASE_KEY): the real one never leaves its machine.
+# The first run builds a small image from bash:3.2 (adds curl, nodejs and ssh-keygen with apk: needs the network once).
 # Not checked here, only on a real Mac (get/e2e-mac.mjs): Homebrew, launchd, sudo, LibreSSL, BSD tools themselves.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d /tmp/wvget-mac.XXXXXX)
-image=weevils-get-mactest:1 code=SECRET-CODE-123 turl=https://fake-mac-link.trycloudflare.com
+image=weevils-get-mactest:2 code=SECRET-CODE-123 turl=https://fake-mac-link.trycloudflare.com
 pass=0 failed=0 srv=''
 cleanup() {
   [ -z "$srv" ] || kill "$srv" 2>/dev/null || true
@@ -27,17 +30,34 @@ trap cleanup EXIT
 # ---------------------------------------------------------------- where it runs: bash 3.2 in Docker, else this bash
 if [ -z "${WVTEST_HOST:-}" ] && docker image inspect bash:3.2 >/dev/null 2>&1; then
   # The image plus the two real tools the script needs that Alpine lacks (curl, node), and bash where a Mac has it.
-  docker image inspect "$image" >/dev/null 2>&1 || printf 'FROM bash:3.2\nRUN apk add --no-cache curl nodejs && ln -sf /usr/local/bin/bash /bin/bash\n' | docker build -q -t "$image" - >/dev/null 2>&1 || true
+  docker image inspect "$image" >/dev/null 2>&1 || printf 'FROM bash:3.2\nRUN apk add --no-cache curl nodejs openssh-keygen && ln -sf /usr/local/bin/bash /bin/bash\n' | docker build -q -t "$image" - >/dev/null 2>&1 || true
   ! docker image inspect "$image" >/dev/null 2>&1 || docker=1
 fi
 if [ "$docker" = 1 ]; then echo "running in Docker: $(docker run --rm "$image" bash --version | head -1)"
 else echo "running under this machine's bash ($BASH_VERSION): bash 3.2 itself is NOT checked"; fi
+# Without Docker, the fake Mac uses this machine's tools, all but cloudflared: a Mac without Homebrew has none, and the
+# doubles must never start a real tunnel (to a port of this machine).
+real=$PATH
+if [ "$docker" = 0 ]; then
+  real=$work/host
+  node -e 'const fs = require("node:fs"), path = require("node:path"), out = process.argv[1]
+    fs.mkdirSync(out)
+    for (const d of process.env.PATH.split(":")) {
+      let names = []
+      try { names = fs.readdirSync(d) } catch {}
+      for (const n of names) if (n !== "cloudflared") try { fs.symlinkSync(path.join(d, n), path.join(out, n)) } catch {}
+    }' "$real"
+fi
 
 # ---------------------------------------------------------------- the service, and the page's side of a setup
 port=$(node -e 'const s = require("node:net").createServer().listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close() })')
 base=http://127.0.0.1:$port
 echo 'FAKE BUNDLE' >"$work/fake.bundle"
-GET_PORT=$port GET_BASE=$base GET_PREVIEW_KEY=testkey GET_TRUST_PROXY=0 GET_BUNDLE=$work/fake.bundle node "$here/server.mjs" >"$work/server.log" 2>&1 &
+# Signed like a release (get/refresh-bundle.sh: ssh-keygen -Y sign, namespace weevils-release), with a key of the test.
+ssh-keygen -q -t ed25519 -N '' -C weevils-test -f "$work/release"
+ssh-keygen -q -Y sign -n weevils-release -f "$work/release" "$work/fake.bundle"
+printf '%s  weevils.bundle\n' "$(sha256sum "$work/fake.bundle" | cut -d' ' -f1)" >"$work/fake.bundle.sha256"
+GET_PORT=$port GET_BASE=$base GET_PREVIEW_KEY=testkey GET_TRUST_PROXY=0 GET_BUNDLE=$work/fake.bundle GET_RELEASE_KEY=$work/release.pub node "$here/server.mjs" >"$work/server.log" 2>&1 &
 srv=$!
 for _ in $(seq 1 50); do curl -fsS -o /dev/null "$base/health" 2>/dev/null && break; sleep 0.2; done
 cat >"$work/page.mjs" <<'EOF'
@@ -50,7 +70,7 @@ if (cmd === 'new') {
   const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 })
   const j = await api('/api/job', { kind: 'pc', lang: 'en', pub: publicKey.export({ type: 'spki', format: 'der' }).toString('base64') })
   fs.writeFileSync(file, JSON.stringify({ ...j, key: privateKey.export({ type: 'pkcs8', format: 'pem' }) }))
-  console.log(j.sid)
+  console.log(j.command)
 } else {
   const j = JSON.parse(fs.readFileSync(file, 'utf8'))
   const s = await api('/api/status', { sid: j.sid, view: j.view })
@@ -76,6 +96,9 @@ EOF
   printf '#!/bin/sh\necho "openssl $1" >>"$WVT/state/calls"\nexit 1\n' | stub "$w/bin/openssl"
   printf '#!/bin/sh\nexit 44\n' | stub "$w/bin/security"
   printf '#!/bin/sh\n[ "$1" = -p ] && [ -e "$WVT/state/clt" ]\n' | stub "$w/bin/xcode-select"
+  # macOS 15's OpenSSH (ssh-keygen -Y checks the code's signature), and its shasum.
+  printf '#!/bin/sh\n[ "$1" = -V ] && { echo "OpenSSH_9.8p1, LibreSSL 3.3.6" >&2; exit 0; }\nexit 255\n' | stub "$w/bin/ssh"
+  printf '#!/bin/sh\n[ "$1 $2" = "-a 256" ] || exit 1\nshift 2\nPATH=$WVT_REAL exec sha256sum "$@"\n' | stub "$w/bin/shasum"
   printf '#!/bin/sh\necho "pkill $*" >>"$WVT/state/calls"\nexit 1\n' | stub "$w/bin/pkill"
   printf '#!/bin/sh\necho "[QR of $5]"\n' | stub "$w/bin/qrencode"
   printf '#!/bin/sh\n[ "$SCENARIO" = root ] && [ "${1:-}" = -u ] && { echo 0; exit 0; }\nPATH=$WVT_REAL exec id "$@"\n' | stub "$w/bin/id"
@@ -87,6 +110,7 @@ EOF
 case "$*" in
   '-n true' | '-n -v') [ -e "$WVT/state/sudo" ] ;;
   -v) echo "sudo -v" >>"$WVT/state/calls"; : >"$WVT/state/sudo" ;;
+  -k) rm -f "$WVT/state/sudo" ;;
   *) echo "sudo $*" >>"$WVT/state/gnu"; exit 99 ;;
 esac
 EOF
@@ -112,7 +136,11 @@ EOF
 echo "git $*" >>"$WVT/state/calls"
 case "$1" in
   clone) [ "$(cat "$5")" = 'FAKE BUNDLE' ] && mkdir -p "$6/.git" && cp "$WVT/installer" "$6/install.sh" ;;
-  -C) [ "$3 $4 $5" = 'remote set-url origin' ] ;;
+  -C) case "$3" in
+    remote) [ "$3 $4 $5" = 'remote set-url origin' ] ;;
+    log) echo 'weevils abc1234' ;;
+    *) exit 1 ;;
+  esac ;;
   *) exit 1 ;;
 esac
 EOF
@@ -129,6 +157,8 @@ for a in "$@"; do
     https://*) echo "curl $a (unexpected download)" >>"$WVT/state/gnu"; exit 22 ;;
   esac
 done
+# The code changed on its way (the "tampered" scenario): one byte more than what was signed.
+case "$*" in *weevils.bundle\?sid=*) [ "$SCENARIO" = tampered ] && { PATH=$WVT_REAL curl "$@" || exit; echo x >>"$out"; exit 0; } ;; esac
 PATH=$WVT_REAL exec curl "$@"
 EOF
   # Homebrew's installer: needs sudo already unlocked and no question, brings brew and the Command Line Tools.
@@ -183,12 +213,15 @@ for a in "\$@"; do [ "\$prev" != --url ] || url=\$a; prev=\$a; done
 step() { printf '\n %s \n' "\$1"; sleep 0.4; }
 step 'checking the system'; echo '  · run by an AI agent'; echo '  ✓ git, curl, tmux 3.5a, jq, python3'
 step 'getting weevils'; echo "  ✓ \$PWD (abc1234 2026-11-13)"
-step 'your settings'; echo '  · code: $code'
+step 'your settings'; echo '  · name: Test'
 step 'dependencies and app build'
 step 'weevilsd service'
 printf '\n waiting for weevilsd \n'
 if [ -n "\$url" ]; then mode=public; else mode=local url=http://localhost:4179; fi
-printf '\n  ★ weevils is ready\n  %s/#k=%s\n\n--- weevils summary ---\nstatus=ok\nurl=%s\ncode=%s\nlink=%s/#k=%s\nmode=%s\nport=4179\nready=no\nos=macos\narch=arm64\nlang=en\nagent=\n--- end ---\n' "\$url" '$code' "\$url" '$code' "\$url" '$code' "\$mode"
+# The login link goes to a file of the user's alone, never to this log (~/weevils-install.log).
+f=\$HOME/.local/share/weevils/login-link
+mkdir -p "\${f%/*}" && (umask 077 && printf '%s/#k=%s\n' "\$url" '$code' >"\$f")
+printf '\n  ★ weevils is ready\n  link : %s\n\n--- weevils summary ---\nstatus=ok\nurl=%s\nlink_file=%s\nmode=%s\nport=4179\nready=no\nos=macos\narch=arm64\nlang=en\nagent=\n--- end ---\n' "\$f" "\$url" "\$f" "\$mode"
 EOF
 }
 
@@ -197,10 +230,11 @@ run() {
   w=$work/$1 rc=0
   fake_mac "$w"
   # A Mac that already has Homebrew and the Command Line Tools.
-  [ "$1" != bare ] || { mkdir -p "$w/brew/bin" && cp "$w/brew-double" "$w/brew/bin/brew" && : >"$w/state/clt"; }
-  local sid cmd
-  sid=$(node "$work/page.mjs" new "$base" "$w/job.json")
-  cmd="curl -fsSL '$base/i/$sid' | bash"
+  case $1 in bare | tampered) mkdir -p "$w/brew/bin" && cp "$w/brew-double" "$w/brew/bin/brew" && : >"$w/state/clt" ;; esac
+  local cmd
+  # The command the page shows, as it is.
+  cmd=$(node "$work/page.mjs" new "$base" "$w/job.json")
+  printf '%s\n' "$cmd" >"$w/command"
   if [ "$docker" = 1 ]; then
     local t=-t; [ "$2" = tty ] || t=-i
     docker run --rm "$t" --network host --user "$(id -u):$(id -g)" -v "$work:$work" -v "$w/usrbin/git:/usr/bin/git:ro" -v "$w/brew:/opt/homebrew" \
@@ -210,7 +244,7 @@ run() {
     # A terminal of its own (script) or none at all (setsid), like the two Docker runs. Their real paths: the fake
     # Mac's PATH has no setsid.
     local wrap=("$(command -v setsid)" -w bash -c "$cmd"); [ "$2" != tty ] || wrap=("$(command -v script)" -qec "$cmd" /dev/null)
-    env WVT="$w" WVT_REAL="$PATH" WVT_BREW="$w/brew" SCENARIO="$1" HOME="$w/Mac&home" PATH="$w/bin:$w/usrbin:$w/brew/bin:$PATH" "${wrap[@]}" >"$w/out" 2>&1 </dev/null || rc=$?
+    env WVT="$w" WVT_REAL="$real" WVT_BREW="$w/brew" SCENARIO="$1" HOME="$w/Mac&home" PATH="$w/bin:$w/usrbin:$w/brew/bin:$real" "${wrap[@]}" >"$w/out" 2>&1 </dev/null || rc=$?
   fi
   st=$(node "$work/page.mjs" status "$base" "$w/job.json")
 }
@@ -229,6 +263,7 @@ before() { # before <name> <pattern> <pattern>: both in the doubles' journal, in
 echo "— a Mac without Homebrew or the Command Line Tools, in a terminal"
 run fresh tty
 plist="$w/Mac&home/Library/LaunchAgents/com.github.sc4rville.weevils-link.plist"
+check 'the command is the one the page shows: the shared script and the setup id' "grep -qx 'curl -fsSL $base/install.sh | bash -s [a-z2-9]\\{10\\}' '$w/command'"
 is 'the script ends well' "$rc" 0
 is 'the page sees it done' "$(val state)" 'done'
 is 'steps in order: start, each installer title once, the link, done' "$(val steps)" start,s_system,s_source,s_config,s_build,s_service,waiting,tunnel,done
@@ -236,6 +271,7 @@ is 'the sealed link opens with the key of the page (Node, RSA-OAEP SHA-256)' "$(
 is 'the address is the public one of the tunnel' "$(val url) $(val mode)" "$turl public"
 before 'the password is asked once, before Homebrew' '^sudo -v' '^homebrew installed'
 before 'Homebrew (and the Command Line Tools) before git clones' '^homebrew installed' '^git clone -q -b main'
+check 'the code was checked against the pinned key (ssh-keygen -Y verify), not only its checksum' "grep -q 'weevils.bundle.sig' '$w/state/curl' && ! grep -q 'weevils.bundle.sha256' '$w/state/curl'"
 before 'the code before the installer' '^git -C .* remote set-url origin' '^install.sh --agent --lang en \[GIT_TERMINAL_PROMPT=0\]'
 before 'cloudflared from Homebrew, without a question, after the install' '^install.sh --agent --lang en \[' '^brew install cloudflared \[NONINTERACTIVE=1\]'
 before 'an earlier link agent is unloaded before the new one is loaded' '^launchctl bootout gui/[0-9]*/com.github.sc4rville.weevils-link' '^launchctl bootstrap gui/[0-9]*$'
@@ -245,7 +281,8 @@ check 'the agent file: label, kept alive, values XML-escaped' "grep -q '<string>
 check 'the tunnel log is where Linux has it' "grep -q '$turl' '$w/Mac&home/.local/share/weevils/link.log'"
 check 'no systemd, no GNU-only flag, no tool a Mac lacks' "[ ! -s '$w/state/gnu' ]"
 check 'the access code never leaves the machine in clear' "! grep -q '$code' '$w/state/curl'"
-check 'only step names go out: event, step or title, and the sealed link' "! grep '/r/' '$w/state/curl' | grep -v -e 'event=start\$' -e 'event=step --data-urlencode \(step=[a-z_]*\|title=[a-z ]*\)\$' -e 'event=done .*sealed=[A-Za-z0-9+/=]*\$' | grep -q ."
+check 'nor goes into the install log: the link is in a file of the user alone' "! grep -q '$code' '$w/Mac&home/weevils-install.log' && grep -qx '$turl/#k=$code' '$w/Mac&home/.local/share/weevils/login-link'"
+check 'only step names go out: event, step or title, and the sealed link (with the version installed)' "! grep '/r/' '$w/state/curl' | grep -v -e 'event=start\$' -e 'event=step --data-urlencode \(step=[a-z_]*\|title=[a-z ]*\)\$' -e 'event=done .*sealed=[A-Za-z0-9+/=]* --data-urlencode version=[0-9a-f]*\$' | grep -q ."
 check 'openssl was not needed: a Mac seals with Node first' "! grep -q '^openssl' '$w/state/calls'"
 check 'the terminal ends with the link and its QR code' "grep -q '^  $turl/#k=$code' '$w/out' && grep -q '\[QR of $turl/#k=$code\]' '$w/out'"
 
@@ -273,6 +310,12 @@ check 'no password asked, Homebrew not installed again' "! grep -q -e '^sudo' -e
 before 'an earlier background link is stopped, then a new one starts without launchd' '^pkill -u [0-9]* -f cloudflared tunnel' '^cloudflared tunnel --no-autoupdate --url http://127.0.0.1:4179$'
 check 'no agent loaded, no agent file left' "! grep -q '^launchctl bootstrap' '$w/state/calls' && [ ! -e '$w/Mac&home/Library/LaunchAgents/com.github.sc4rville.weevils-link.plist' ]"
 check 'no systemd, no GNU-only flag, no tool a Mac lacks' "[ ! -s '$w/state/gnu' ]"
+
+# ---------------------------------------------------------------- 5. code that is not what the release key signed
+echo "— the code changed on its way"
+run tampered tty
+check 'it stops, the page is told why' "[ '$rc' != 0 ] && [ '$(val state)' = failed ] && printf '%s' \"\$(val error)\" | grep -q 'signature'"
+check 'nothing unpacked, nothing installed' "! grep -q -e '^git clone' -e '^install.sh' '$w/state/calls' && [ ! -e '$w/Mac&home/weevils' ]"
 
 echo
 echo "$pass passed, $failed failed"

@@ -16,6 +16,7 @@ import path from 'node:path'
 import type { MachineFacts, Offer, SshTarget } from '../shared/infra.ts'
 import { CONFIG_DIR, DATA_DIR, DISCOVER, HOME } from './config.ts'
 import { macHasBattery } from './platform.ts'
+import { quietClaude } from './quiet-calls.ts'
 
 const DIR = path.join(DATA_DIR, 'infra')
 const read = (f: string) => {
@@ -216,10 +217,11 @@ export function offer(f: MachineFacts, cores: number, memTotal: number, diskTota
     `Using web search on the provider's own website, find the current public plan that matches these specs, and the next plan up. ` +
     `Reply with JSON only: {"plan": string|null, "price": number|null, "nextPlan": string|null, "nextVcpu": number|null, "nextRamGb": number|null, "nextPrice": number|null, "currency": string|null, "url": string|null}. ` +
     `Prices are the regular monthly price shown on the site. Use null for anything you did not verify on the provider's site. No prose.`
+  const q = quietClaude()
   execFile(
     'claude',
-    ['-p', '--model', 'sonnet', '--tools', 'WebSearch,WebFetch', '--allowedTools', 'WebSearch,WebFetch', '--no-session-persistence', prompt],
-    { timeout: 240_000, maxBuffer: 1 << 20, cwd: os.tmpdir() },
+    ['-p', '--model', 'sonnet', '--tools', 'WebSearch,WebFetch', '--allowedTools', 'WebSearch,WebFetch', '--no-session-persistence', ...q.args, prompt],
+    { timeout: 240_000, maxBuffer: 1 << 20, cwd: q.cwd, env: q.env },
     (err, out) => {
       offerRunning = false
       if (err) return console.error(`[infra] offre : ${err.message.split('\n')[0]}`)

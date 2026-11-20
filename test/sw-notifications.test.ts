@@ -33,3 +33,16 @@ it('removes legacy noise and resolved requests while keeping useful results and 
  await w.dispatch('message',{type:'notification-state',sessions:[{id:'s1',status:'working'},{id:'s2',status:'interrupted'},{id:'s3',status:'done'}]})
  expect(cards.map(n=>n.close.mock.calls.length)).toEqual([1,1,0,0])
 })
+it('opens weevils\' new address itself instead of handing it to a window of the old one',async()=>{
+ const listeners: Record<string, (e: unknown) => void> = {}
+ const openWindow=vi.fn(async()=>null), postMessage=vi.fn(), focus=vi.fn()
+ const clients={matchAll:async()=>[{focus,postMessage}],openWindow}
+ const context=vm.createContext({self:{location:{origin:'https://old-tunnel-name.trycloudflare.com'},clients,addEventListener:(name:string,fn:(e:unknown)=>void)=>{listeners[name]=fn},registration:{}},URL})
+ vm.runInContext(readFileSync('public/sw.js','utf8'),context)
+ const click=async(url:string)=>{let done:Promise<unknown>=Promise.resolve();listeners.notificationclick({notification:{close(){},data:{url}},waitUntil:(p:Promise<unknown>)=>{done=p}});await done}
+ await click('https://new-tunnel-name.trycloudflare.com/#k=code')
+ expect(openWindow).toHaveBeenCalledWith('https://new-tunnel-name.trycloudflare.com/#k=code')
+ expect(postMessage).not.toHaveBeenCalled()
+ await click('/#s=abc')
+ expect(postMessage).toHaveBeenCalledWith({type:'open',url:'/#s=abc'})
+})

@@ -191,7 +191,7 @@ const W = FR ? {
   doneTitle: 'Ton weevils est prêt !', donePhone: 'J’ouvre ton weevils…', open: 'Ouvrir mon weevils',
   home: 'Ensuite, ajoute-le à ton écran d’accueil (iPhone : Partager → Sur l’écran d’accueil ; Android : ⋮ → Installer l’app). weevboss t’accueille et connecte Claude Code ou Codex avec toi.',
   scan: 'Scanne ce code avec l’appareil photo de ton téléphone :', scanNote: 'Ce code te connecte : garde-le pour toi, comme un mot de passe.',
-  openHere: 'L’ouvrir ici', noSeal: 'Ton weevils répond ici. Ton code d’accès est dans ~/weevils-install.log sur la machine.',
+  openHere: 'L’ouvrir ici', noSeal: 'Ton weevils répond ici. Ton lien de connexion est dans ~/.local/share/weevils/login-link sur la machine.',
   failTitle: 'L’installation s’est arrêtée', tryAgain: 'Réessayer',
   backTo: 'Je retrouve ton installation…',
   back: '← Retour',
@@ -208,12 +208,12 @@ const W = FR ? {
   keptHere: 'Cette page garde ton lien 7 jours, jusqu’à ta première connexion à ton weevils.',
   lostKey: 'Ton weevils est prêt, mais ce navigateur ne peut pas ouvrir son lien (il a été scellé pour la page qui a lancé l’installation).',
   claimedNote: 'Tu t’es déjà connecté à ton weevils : cette page ne garde plus son lien.', freshLink: 'Obtenir un nouveau lien',
-  nearTitle: 'Ton installation continue', nearSub: 'Lancée depuis cet appareil, elle continue toute seule. Ce navigateur a perdu sa clé : pour recevoir ici le lien de ton weevils, recolle ton jeton (ou l’accès à ton VPS).', nearReady: 'C’est installé ! Pour recevoir son lien ici :', nearLink: 'Recevoir mon lien ici', notMine: 'Ce n’est pas la mienne : en commencer une',
+  nearTitle: 'Ton installation continue', nearSub: 'Lancée depuis cet appareil, elle continue toute seule. Ce navigateur a perdu sa clé : pour recevoir ici le lien de ton weevils, recolle ton jeton (pour un VPS : recolle sa commande sur le serveur).', nearReady: 'C’est installé ! Pour recevoir son lien ici :', nearLink: 'Recevoir mon lien ici', notMine: 'Ce n’est pas la mienne : en commencer une',
   expired: 'Cette installation n’est plus gardée ici (au bout de 7 jours).',
   e: {
     exists: 'Tu as déjà un serveur weevils sur ce compte {host}.', creating: 'Ton serveur est déjà en cours de création : un instant.', bad_server: 'Choisis un serveur.',
     not_weevils: 'Ce serveur n’a pas été créé par weevils.', no_ip: 'Ce serveur n’a pas encore d’adresse IPv4 : réessaie dans une minute.',
-    reset_failed: '{host} n’a pas pu donner un nouveau mot de passe root à ce serveur. Dans la console {host}, réinitialise son mot de passe root, puis prends « J’ai déjà un VPS » avec son IP et ce mot de passe.',
+    reset_failed: '{host} n’a pas pu donner un nouveau mot de passe root à ce serveur. Dans la console {host}, réinitialise son mot de passe root et connecte-toi en root, puis prends « J’ai déjà un VPS » et colle sa commande sur le serveur.',
     interrupted: 'La page a été coupée pendant la création de ton serveur. Recolle ton jeton : weevils regarde si le serveur existe avant d’en créer un.',
     slow_down: 'Trop d’essais d’un coup : réessaie dans quelques minutes.', busy: 'Beaucoup de monde en ce moment : réessaie dans une minute.',
     bad_token: 'Ce jeton n’a pas la bonne forme : copie-le en entier depuis {host}.', unauthorized: '{host} refuse ce jeton : vérifie qu’il est complet et pas supprimé.',
@@ -279,7 +279,7 @@ const W = FR ? {
   doneTitle: 'Your weevils is ready!', donePhone: 'Opening your weevils…', open: 'Open my weevils',
   home: 'Then add it to your home screen (iPhone: Share → Add to Home Screen; Android: ⋮ → Install app). weevboss welcomes you and connects Claude Code or Codex with you.',
   scan: 'Scan this code with your phone’s camera:', scanNote: 'This code logs you in: keep it to yourself, like a password.',
-  openHere: 'Open it here', noSeal: 'Your weevils answers here. Your access code is in ~/weevils-install.log on the machine.',
+  openHere: 'Open it here', noSeal: 'Your weevils answers here. Your login link is in ~/.local/share/weevils/login-link on the machine.',
   failTitle: 'The install stopped', tryAgain: 'Try again',
   backTo: 'Getting back to your install…',
   back: '← Back',
@@ -296,12 +296,12 @@ const W = FR ? {
   keptHere: 'This page keeps your link for 7 days, until you first log in to your weevils.',
   lostKey: 'Your weevils is ready, but this browser can’t open its link (it was sealed for the page that started the install).',
   claimedNote: 'You already logged in to your weevils: this page no longer keeps its link.', freshLink: 'Get a fresh link',
-  nearTitle: 'Your install is still going', nearSub: 'Started from this device, it keeps going by itself. This browser lost its key: to get your weevils’ link here, paste your token again (or your VPS access).', nearReady: 'It’s installed! To get its link here:', nearLink: 'Get my link here', notMine: 'Not mine: start a new one',
+  nearTitle: 'Your install is still going', nearSub: 'Started from this device, it keeps going by itself. This browser lost its key: to get your weevils’ link here, paste your token again (for a VPS: paste its command on the server again).', nearReady: 'It’s installed! To get its link here:', nearLink: 'Get my link here', notMine: 'Not mine: start a new one',
   expired: 'That setup is no longer kept here (they expire after 7 days).',
   e: {
     exists: 'You already have a weevils server on this {host} account.', creating: 'Your server is already being created: one moment.', bad_server: 'Pick a server.',
     not_weevils: 'This server wasn’t made by weevils.', no_ip: 'This server has no IPv4 address yet: try again in a minute.',
-    reset_failed: '{host} couldn’t set a new root password on this server. In the {host} console, reset its root password, then pick “I already have a VPS” with its IP and that password.',
+    reset_failed: '{host} couldn’t set a new root password on this server. In the {host} console, reset its root password and log in as root, then pick “I already have a VPS” and paste its command on the server.',
     interrupted: 'This page was cut off while your server was being created. Paste your token again: weevils checks for the server before making another.',
     slow_down: 'Too many tries at once: try again in a few minutes.', busy: 'Lots of people right now: try again in a minute.',
     bad_token: 'This token doesn’t look right: copy all of it from {host}.', unauthorized: '{host} refuses this token: check it’s complete and not deleted.',
@@ -803,7 +803,7 @@ function watch(job, onMove, onState, source) {
 }
 const hosted = (kind) => kind !== 'ssh' && kind !== 'pc'
 /** « Try again », the one way after a failure or a lost key: the token again (its screen lists the server weevils made,
- * « Continue on this one »), the VPS access again, or the computer's command again. */
+ * « Continue on this one »), the VPS's command again, or the computer's command again. */
 const tryAgain = (job) => () => { watching++; if (hosted(job.kind)) provider(HOSTS[job.kind] ? job.kind : 'hetzner'); else if (job.kind === 'ssh') ssh(); else { forget(); home() } }
 
 function progress(job, opts = {}) {

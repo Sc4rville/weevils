@@ -12,7 +12,8 @@
 # The messages are plain variables read by name in t(): shellcheck can't see that they are used.
 # shellcheck disable=SC2034
 set -euo pipefail
-# The summary ends with the login link: whatever file this output goes to (~/weevils-install.log) is the user's alone.
+# Whatever file this output goes to (~/weevils-install.log) is the user's alone: it never holds the access code (the
+# login link goes to ~/.local/share/weevils/login-link), but it says what this machine has.
 for _fd in 1 2; do _out=$(readlink "/proc/$$/fd/$_fd" 2>/dev/null || true); [ -n "$_out" ] && [ -f "$_out" ] && [ -O "$_out" ] && chmod 600 "$_out" 2>/dev/null || true; done
 [ ! -f "$HOME/weevils-install.log" ] || [ ! -O "$HOME/weevils-install.log" ] || chmod 600 "$HOME/weevils-install.log" 2>/dev/null || true
 unset _fd _out
@@ -151,6 +152,8 @@ EN_https_down="does not answer yet: check the DNS record, ports 80 and 443 (ufw,
 FR_https_down="ne répond pas encore : vérifie l'enregistrement DNS, les ports 80 et 443 (ufw, pare-feu de l'hébergeur), et : sudo journalctl -u caddy -n 30"
 EN_caddy_bad="Caddy refuses the new config: previous Caddyfile restored, HTTPS skipped."
 FR_caddy_bad="Caddy refuse la nouvelle config : ancien Caddyfile remis, HTTPS laissé de côté."
+EN_web_busy="already answers on ports 80/443 of this server: weevils leaves it as it is and installs no Caddy (to reach weevils through it, have it forward to 127.0.0.1:4179, then run me again with --url https://<your domain>)."
+FR_web_busy="répond déjà sur les ports 80/443 de ce serveur : weevils n'y touche pas et n'installe pas Caddy (pour passer par lui, fais-le renvoyer vers 127.0.0.1:4179, puis relance-moi avec --url https://<ton domaine>)."
 EN_waiting="waiting for weevilsd"
 FR_waiting="j'attends weevilsd"
 EN_down="weevilsd does not answer. Look at: weevils-service status, weevils-service logs"
@@ -275,8 +278,8 @@ EN_mac_intel="Homebrew no longer installs on Intel Macs, and some tools weevils 
 FR_mac_intel="Homebrew ne s'installe plus sur les Mac Intel, et il manque ici des outils dont weevils a besoin. Installe-les avec MacPorts (https://www.macports.org) ou un Homebrew déjà présent (git et python3 viennent aussi avec les outils de développement d'Apple : xcode-select --install), puis relance-moi. Il manque :"
 EN_mac_bg="no desktop session on this Mac (installed over SSH?): weevilsd runs in the background until the next restart. Log in on the Mac's screen and run this installer again: launchd then starts it at every login."
 FR_mac_bg="pas de session ouverte sur l'écran de ce Mac (installation par SSH ?) : weevilsd tourne en arrière-plan jusqu'au prochain redémarrage. Ouvre une session sur le Mac et relance cette installation : launchd le démarrera alors à chaque ouverture de session."
-EN_mac_awake="on a Mac, weevils runs while your session is open; it keeps the Mac awake while it is plugged in (WEEVILS_KEEP_AWAKE=0 to turn that off). A closed laptop lid still puts it to sleep."
-FR_mac_awake="sur un Mac, weevils tourne tant que ta session est ouverte ; il garde le Mac éveillé tant qu'il est branché (WEEVILS_KEEP_AWAKE=0 pour l'éviter). Un portable au capot fermé s'endort quand même."
+EN_mac_awake="on a Mac, weevils runs while your session is open; it keeps the Mac awake while an agent works and the Mac is plugged in (WEEVILS_KEEP_AWAKE=0 to turn that off). A closed laptop lid still puts it to sleep."
+FR_mac_awake="sur un Mac, weevils tourne tant que ta session est ouverte ; il garde le Mac éveillé tant qu'un agent travaille et qu'il est branché (WEEVILS_KEEP_AWAKE=0 pour l'éviter). Un portable au capot fermé s'endort quand même."
 
 # ---------------------------------------------------------------- options
 
@@ -388,6 +391,7 @@ ask() { # ask "question" default → answer on stdout
 # ---------------------------------------------------------------- system
 
 SUDO=''
+WEB_BUSY=''
 SUDO_PW=0
 PM=''
 IS_WSL=0
@@ -523,6 +527,11 @@ check_system() {
     # An agent can't type a password, and a prompt would hang: sudo only when it needs none.
     if [ "$AGENT" = 1 ]; then if sudo -n true 2>/dev/null; then SUDO='sudo -n'; else SUDO=none SUDO_PW=1; fi; fi
   else SUDO=none; fi
+  # Ports 80 and 443 held by another web server: no Caddy, so --domain is set aside (said once, here).
+  if [ -n "$DOMAIN" ] && [ -z "$SECONDARY" ]; then
+    WEB_BUSY=$(web_busy)
+    if [ -n "$WEB_BUSY" ]; then warn "$WEB_BUSY $(t web_busy)"; DOMAIN=''; fi
+  fi
   # --domain sets up Caddy in /etc: without sudo, stop here, before anything is written.
   [ -z "$DOMAIN" ] || [ -n "$SECONDARY" ] || [ "$SUDO" != none ] || no_root caddy
   if [ "$OS" = Darwin ]; then
@@ -757,7 +766,7 @@ configure() {
     [ "$(cfg get WEEVILS_HOST)" != 0.0.0.0 ] || cfg set WEEVILS_HOST 127.0.0.1
   fi
   # (Never on a Mac: --domain sets up Caddy, which weevils does not do there.)
-  if [ "$OS" != Darwin ] && [ -z "$SECONDARY" ] && [ -z "$DOMAIN" ] && [ "$LAN" = 0 ] && [ -z "$(cfg get WEEVILS_PUBLIC_URL)" ] && ! site_mine; then
+  if [ "$OS" != Darwin ] && [ -z "$SECONDARY" ] && [ -z "$DOMAIN" ] && [ -z "$WEB_BUSY" ] && [ "$LAN" = 0 ] && [ -z "$(cfg get WEEVILS_PUBLIC_URL)" ] && ! site_mine; then
     DOMAIN=$(ask "$(t ask_domain)" ""); DOMAIN=${DOMAIN#http://}; DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN%%/*}
     [ -z "$DOMAIN" ] || [[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || { warn "$(t bad_opt) $DOMAIN"; DOMAIN=''; }
   fi
@@ -846,6 +855,36 @@ site_mine() {
   local site=/etc/caddy/weevils.caddy
   [ -f "$site" ] || return 1
   ! grep -q '^# weevils — written by install.sh for ' "$site" || grep -qx "# weevils — written by install.sh for $(id -un)" "$site"
+}
+
+# web_busy — the name of what already serves port 80 or 443 on this machine when it is not Caddy (nginx, Apache,
+# Traefik, Docker…), nothing otherwise. Caddy can't take ports that are held, and that server is not weevils' to
+# change. Caddy itself there is fine: weevils adds its site to it. Without the right to see whose a listener is, a
+# Caddy that runs counts as the one listening.
+web_busy() {
+  local s='' lines names other
+  [ "$OS" != Darwin ] || return 0
+  [ "$SUDO" = none ] || s=$SUDO
+  if command -v ss >/dev/null 2>&1; then lines=$($s ss -Hltnp 2>/dev/null || true)
+  elif command -v netstat >/dev/null 2>&1; then lines=$($s netstat -ltnp 2>/dev/null || true)
+  else return 0; fi
+  lines=$(printf '%s\n' "$lines" | awk '{ n = split($4, a, ":"); if (a[n] == "80" || a[n] == "443") print }')
+  [ -n "$lines" ] || return 0
+  # ss: users:(("nginx",pid=…)); netstat: 123/nginx in its last column.
+  names=$(printf '%s\n' "$lines" | sed -n -e 's/.*users:(("\([^"]*\)".*/\1/p' -e 's#.*[[:space:]][0-9][0-9]*/\([^[:space:]]*\)[[:space:]]*$#\1#p' | sort -u)
+  if [ -z "$names" ]; then
+    pgrep -x caddy >/dev/null 2>&1 && return 0
+    printf '%s' "another web server"
+    return 0
+  fi
+  other=$(printf '%s\n' "$names" | grep -vx caddy | head -1 || true)
+  case $other in
+    '') ;;
+    docker-proxy | dockerd | containerd*) printf 'Docker' ;;
+    apache2 | httpd) printf 'Apache' ;;
+    traefik) printf 'Traefik' ;;
+    *) printf '%s' "$other" ;;
+  esac
 }
 
 https() {
@@ -1036,6 +1075,8 @@ detect() {
 # by: agent (--agent or detected), terminal (a human saw the end screen), script (--yes without a terminal).
 # phoneLink: the end screen printed a link a phone can open (public or lan; the agent then hands it over).
 HANDOFF=$HOME/.local/share/weevils/install.json
+# The login link (<url>/#k=<code>), mode 600: what an agent reads for its final message instead of the install log.
+LINK_FILE=$HOME/.local/share/weevils/login-link
 write_handoff() { # write_handoff url mode
   local by=script agent='' at tmp phone=false
   if [ "$AGENT" = 1 ] && [ -n "$AGENT_NAME" ]; then by=agent agent=$AGENT_NAME; elif [ "$TTY" = 1 ] || [ -t 1 ]; then by=terminal; fi
@@ -1104,9 +1145,15 @@ finish() {
   write_handoff "$url" "$mode"
 
   step "$(t "$title")"
+  # The login link, for whoever needs it again: a file of the user's alone, removed by --uninstall --purge. An agent's
+  # run goes to a log file (~/weevils-install.log): the code is never written there, only where the link is.
+  (umask 077 && mkdir -p "$(dirname "$LINK_FILE")" && printf '%s/#k=%s\n' "$url" "$code" >"$LINK_FILE" && chmod 600 "$LINK_FILE")
   printf '\n  %s : %s%s%s\n' "$(t address)" "$B" "$url" "$R"
-  printf '  %s : %s%s%s\n' "$(t code)" "$B$M" "$code" "$R"
-  printf '  %s : %s\n\n' "$(t link)" "$url/#k=$code"
+  if [ "$AGENT" = 1 ]; then printf '  %s : %s\n\n' "$(t link)" "$LINK_FILE"
+  else
+    printf '  %s : %s%s%s\n' "$(t code)" "$B$M" "$code" "$R"
+    printf '  %s : %s\n\n' "$(t link)" "$url/#k=$code"
+  fi
   if [ "$mode" = local ]; then
     # http://localhost on a phone is the phone itself: no QR code, the ways in instead.
     ip=$(lan_ip)
@@ -1144,7 +1191,8 @@ finish() {
   echo
   [ "$AGENT" = 0 ] || info "$(t agent_next) $DIR/AGENTS.md"
 
-  kv role main; kv url "$url"; kv code "$code"; kv link "$url/#k=$code"; kv mode "$mode"
+  kv role main; kv url "$url"; kv link_file "$LINK_FILE"; kv mode "$mode"
+  [ -z "$WEB_BUSY" ] || kv web_server "$WEB_BUSY"
   kv https "$([ "${url#https://}" != "$url" ] && echo yes || echo no)"; kv port "$port"
   kv ready "$([ "$title" = ready ] && echo yes || echo no)"
   sum_found
@@ -1154,6 +1202,21 @@ finish() {
 }
 
 # ---------------------------------------------------------------- uninstall
+
+# untrust_own <folder> — takes out of ~/.claude.json the projects inside <folder> (weevils' own: weevboss's,
+# automations'), nothing else. Claude Code rewrites that file all the time: a file that doesn't read as JSON is left
+# alone, the new one is written beside it and renamed in one step (with the same mode), and a symlink is followed.
+untrust_own() {
+  local f=$HOME/.claude.json dir=$1 tmp mode
+  [ -f "$f" ] && command -v jq >/dev/null || return 0
+  [ ! -L "$f" ] || f=$(cd "$(dirname "$f")" && cd "$(dirname "$(readlink "$f")")" && pwd)/$(basename "$(readlink "$f")")
+  jq -e --arg d "$dir" '(.projects // {}) | keys | any(. == $d or startswith($d + "/"))' "$f" >/dev/null 2>&1 || return 0
+  tmp=$(mktemp "$f.XXXXXX") || return 0
+  if jq --arg d "$dir" '.projects |= with_entries(select((.key == $d or (.key | startswith($d + "/"))) | not))' "$f" >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    if [ "$OS" = Darwin ]; then mode=$(stat -f %Lp "$f" 2>/dev/null || echo 600); else mode=$(stat -c %a "$f" 2>/dev/null || echo 600); fi
+    chmod "$mode" "$tmp" && mv -f "$tmp" "$f" || rm -f "$tmp"
+  else rm -f "$tmp"; fi
+}
 
 # Removes what install.sh put outside the clone: the service, the commands in ~/.local/bin, the weevils hooks in
 # ~/.claude/settings.json, the @reboot line, the Caddy site. Settings, access code and data stay unless --purge.
@@ -1175,8 +1238,12 @@ uninstall() {
     rm -f "$units/weevilsd.service" "$units/weevils-tunnel.service" "$units/weevils-link.service" "$units/weevils-update.service" "$units/weevils-update.timer"
     systemctl --user daemon-reload >/dev/null 2>&1 || true
   fi
-  # The setup page's link left as a plain background process (no service manager reachable).
-  pkill -u "$(id -u)" -f 'cloudflared tunnel --no-autoupdate --url http://127.0.0.1:' >/dev/null 2>&1 || true
+  # The setup page's link left as a plain background process (no service manager reachable): weevils' own tunnel
+  # only, the one to its port. Other quick tunnels of the person stay up.
+  local wport
+  wport=$([ ! -x "$svc" ] || "$svc" config get WEEVILS_PORT 2>/dev/null || true)
+  [[ "${wport:-}" =~ ^[0-9]+$ ]] || wport=4179
+  pkill -u "$(id -u)" -f "cloudflared tunnel --no-autoupdate --url http://127\.0\.0\.1:$wport( |\$)" >/dev/null 2>&1 || true
   # A Mac: the launchd agents (weevilsd, the tunnel of a secondary machine).
   local plist label
   for plist in "$HOME"/Library/LaunchAgents/com.github.sc4rville.weevils*.plist; do
@@ -1218,8 +1285,12 @@ uninstall() {
   for nb in node npm npx corepack; do
     case $(readlink "$HOME/.local/bin/$nb" 2>/dev/null) in "$HOME/.local/share/weevils/node/"*) rm -f "$HOME/.local/bin/$nb" ;; esac
   done
-  # The tmux guard (server/tmux-guard) stands in ~/.local/bin/tmux: it goes, the real tmux stays.
+  # The tmux guard (server/tmux-guard) stands in ~/.local/bin/tmux: it goes, the real tmux stays, and a tmux of the
+  # person's own that stood there before (kept aside by server/install.sh) comes back.
   ! grep -q 'tmux-guard' "$HOME/.local/bin/tmux" 2>/dev/null || rm -f "$HOME/.local/bin/tmux"
+  if { [ -e "$HOME/.local/bin/tmux.bak-weevils" ] || [ -L "$HOME/.local/bin/tmux.bak-weevils" ]; } && [ ! -e "$HOME/.local/bin/tmux" ] && [ ! -L "$HOME/.local/bin/tmux" ]; then
+    mv "$HOME/.local/bin/tmux.bak-weevils" "$HOME/.local/bin/tmux"
+  fi
   rm -f "$HOME/.local/bin/wv" "$HOME/.local/bin/weevils" "$HOME/.local/bin/weevils-service" "$HOME/.local/bin/weevils-hook" "$HOME/.local/bin/weevils-update"
   ok "$(t un_bin)"
 
@@ -1244,8 +1315,21 @@ uninstall() {
     fi
   fi
 
+  # What weevils left beside its own folders: the install log (it once held the access code), its private cache
+  # (~/.cache/weevils: scratch folders of its model calls), and Claude Code's trust for weevils' own folders
+  # (weevboss's, automations'), in ~/.claude.json.
+  [ ! -f "$HOME/weevils-install.log" ] || [ ! -O "$HOME/weevils-install.log" ] || rm -f "$HOME/weevils-install.log"
+  rm -rf "$HOME/.cache/weevils"
+  untrust_own "$HOME/.local/share/weevils"
+
   if [ "$PURGE" = 1 ]; then
     rm -rf "$CONF_DIR" "$HOME/.local/share/weevils"
+    # The settings as they were before weevils (kept once by server/install.sh), and Claude Code's own records of
+    # weevils' folders (weevboss's conversations): weevils' too.
+    rm -f "$settings.bak-weevils"
+    local enc
+    enc=$(printf '%s' "$HOME/.local/share/weevils" | sed 's/[^A-Za-z0-9]/-/g')
+    for d in "$HOME/.claude/projects/$enc" "$HOME/.claude/projects/$enc"-*; do [ ! -d "$d" ] || rm -rf "$d"; done
     ok "$(t un_purged)"
   else info "$(t un_kept)"; fi
   [ -z "$clone" ] || info "$(t un_clone) $clone"

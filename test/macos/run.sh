@@ -76,6 +76,14 @@ p = d["EnvironmentVariables"]["PATH"].split(":")
 assert "/opt/homebrew/bin" in p and os.path.expanduser("~/.local/bin") in p and len(p) == len(set(p)), p
 assert d["EnvironmentVariables"]["LANG"].endswith("UTF-8"), d
 EOF'
+  check "the update agent: weevils-update every 25 minutes, not at load" in_mac 'python3 - <<EOF
+import plistlib, os
+d = plistlib.load(open(os.path.expanduser("~/Library/LaunchAgents/com.github.sc4rville.weevils-update.plist"), "rb"))
+assert d["Label"] == "com.github.sc4rville.weevils-update" and d["ProgramArguments"] == [os.path.expanduser("~/.local/bin/weevils-update")], d
+assert d["StartInterval"] == 1500 and not d["RunAtLoad"] and "KeepAlive" not in d, d
+EOF'
+  check "  … loaded in launchd" in_mac 'launchctl print gui/501/com.github.sc4rville.weevils-update >/dev/null'
+  check "  … its lock is a folder where flock is missing" in_mac 'command -v flock >/dev/null || { mkdir -p ~/.local/share/weevils/update.lock.d && echo $$ >~/.local/share/weevils/update.lock.d/pid && ~/.local/bin/weevils-update && [ -d ~/.local/share/weevils/update.lock.d ] && rm -rf ~/.local/share/weevils/update.lock.d; }'
   check "weevilsd answers, started by launchd" up
   check "weevils-service status: running under launchd" in_mac '~/.local/bin/weevils-service status | grep -q "running (pid [0-9]*, launchd)"'
   check "the hooks are in ~/.claude/settings.json" in_mac 'grep -q weevils-hook ~/.claude/settings.json'
@@ -93,7 +101,7 @@ EOF'
   check "no crontab, no GNU-only usage" sh -c "docker exec $c sh -c '! grep -q crontab /var/fakemac/calls.log'"
   check "  (gnuisms.log empty)" no_gnuisms
   in_mac '~/weevils/install.sh --uninstall --yes' >/dev/null 2>&1
-  check "uninstall: plist and commands gone, nothing answers" in_mac '[ ! -e ~/Library/LaunchAgents/com.github.sc4rville.weevilsd.plist ] && [ ! -e ~/.local/bin/weevils-service ]'
+  check "uninstall: plist and commands gone, nothing answers" in_mac '[ ! -e ~/Library/LaunchAgents/com.github.sc4rville.weevilsd.plist ] && [ ! -e ~/Library/LaunchAgents/com.github.sc4rville.weevils-update.plist ] && [ ! -e ~/.local/bin/weevils-service ]'
   check "  … nothing answers" down
 fi
 

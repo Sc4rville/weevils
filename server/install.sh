@@ -40,7 +40,15 @@ sed "s/WEEVILS_PORT:-4179/WEEVILS_PORT:-$port/" "$here/weevils-cli" >~/.local/bi
 # Updates by itself (weevils-update, timer below): on unless WEEVILS_AUTO_UPDATE=0.
 install -m 755 "$here/weevils-update" ~/.local/bin/weevils-update
 # tmux guard: ~/.local/bin/tmux, ahead of the real one, refuses to close the live weevils sessions without the
-# server's token (a test script once closed them all through « tmux -L weevils kill-server »).
+# server's token (a test script once closed them all through « tmux -L weevils kill-server »). A tmux of the person's
+# own already there (a build, a wrapper, a link) is kept aside, once, as tmux.bak-weevils: the guard runs it, and
+# install.sh --uninstall puts it back.
+if { [ -e ~/.local/bin/tmux ] || [ -L ~/.local/bin/tmux ]; } && ! grep -q 'tmux-guard' ~/.local/bin/tmux 2>/dev/null; then
+  if [ -e ~/.local/bin/tmux.bak-weevils ] || [ -L ~/.local/bin/tmux.bak-weevils ]; then
+    mv -f ~/.local/bin/tmux ~/.local/bin/tmux.bak-weevils."$(date +%s)"
+  else mv -f ~/.local/bin/tmux ~/.local/bin/tmux.bak-weevils; fi
+  echo "your ~/.local/bin/tmux is kept as ~/.local/bin/tmux.bak-weevils (weevils' tmux guard runs it)"
+fi
 install -m 755 "$here/tmux-guard" ~/.local/bin/tmux
 
 # ---------------------------------------------------------------- Claude Code hooks: weevils-hook on the useful events, other hooks kept
@@ -49,6 +57,22 @@ install -m 755 "$here/tmux-guard" ~/.local/bin/tmux
 # (weevils sessions get their quiet variables per session: QUIET_ENV in server/mux.ts, 'quiet' in wv.)
 settings=~/.claude/settings.json
 [ -s "$settings" ] || echo '{}' >"$settings"
+# Every change is written in one step, a new file beside the real one then renamed, with the mode the file had: a
+# settings.json that is a symlink (dotfiles) stays one, the file it points to gets the change.
+settings_file=$settings
+while [ -L "$settings_file" ]; do
+  link=$(readlink "$settings_file")
+  case $link in /*) settings_file=$link ;; *) settings_file=$(dirname "$settings_file")/$link ;; esac
+done
+put_settings() { # put_settings <file with the new settings>: replaces the settings with it (an empty one is refused)
+  local new mode
+  [ -s "$1" ] || { rm -f "$1"; return 1; }
+  if [ "$(uname -s)" = Darwin ]; then mode=$(stat -f %Lp "$settings_file" 2>/dev/null || echo 600)
+  else mode=$(stat -c %a "$settings_file" 2>/dev/null || echo 600); fi
+  new=$(mktemp "$settings_file.XXXXXX") || { rm -f "$1"; return 1; }
+  cat "$1" >"$new" && chmod "$mode" "$new" && mv -f "$new" "$settings_file"
+  rm -f "$1" "$new"
+}
 # The settings as they were before weevils ever touched them, kept once.
 [ -f "$settings.bak-weevils" ] || cp "$settings" "$settings.bak-weevils"
 tmp=$(mktemp)
@@ -57,7 +81,7 @@ jq --arg cmd "$HOME/.local/bin/weevils-hook" '
   reduce ("SessionStart","UserPromptSubmit","PostToolUse","Notification","Stop","SessionEnd") as $e (.;
     if ([.hooks[$e][]?.hooks[]?.command] | index($cmd)) then .
     else .hooks[$e] = ((.hooks[$e] // []) + [{"hooks":[{"type":"command","command":$cmd}]}]) end)
-' "$settings" >"$tmp" && mv "$tmp" "$settings"
+' "$settings" >"$tmp" && put_settings "$tmp"
 
 # Claude Code's one-time warning about bypass-permissions mode: skipped only for someone who turned permission prompts
 # off (WEEVILS_SAFE=0, install.sh --no-ask-permissions), or it would end the first session (weevboss included) before
@@ -73,19 +97,19 @@ skip_now=$(jq -r '.skipDangerousModePermissionPrompt // false' "$settings")
 if [ "$(cfg get WEEVILS_SAFE)" = 0 ] && [ "$(id -u)" != 0 ]; then
   if [ "$skip_now" != true ]; then
     tmp=$(mktemp)
-    jq '.skipDangerousModePermissionPrompt = true' "$settings" >"$tmp" && mv "$tmp" "$settings"
+    jq '.skipDangerousModePermissionPrompt = true' "$settings" >"$tmp" && put_settings "$tmp"
     mkdir -p "$(dirname "$skip_mark")" && : >"$skip_mark"
   fi
 elif [ "$skip_now" = true ] && weevils_skip; then
   tmp=$(mktemp)
-  jq 'del(.skipDangerousModePermissionPrompt)' "$settings" >"$tmp" && mv "$tmp" "$settings"
+  jq 'del(.skipDangerousModePermissionPrompt)' "$settings" >"$tmp" && put_settings "$tmp"
   rm -f "$skip_mark"
 fi
 # weevils hooks whose script no longer exists on disk are removed (they made every Stop fail). Other hooks: untouched.
 for f in $(jq -r '.hooks[][]?.hooks[]?.command // empty' "$settings" | awk '{print $1}' | sort -u); do
   case "$f" in */weevils-hook | */weevils*/hook.sh) [ -x "$f" ] || {
     tmp=$(mktemp)
-    jq --arg f "$f" '.hooks |= with_entries(.value |= map(.hooks |= map(select((.command // "") | split(" ")[0] != $f)) | select(.hooks | length > 0)))' "$settings" >"$tmp" && mv "$tmp" "$settings"
+    jq --arg f "$f" '.hooks |= with_entries(.value |= map(.hooks |= map(select((.command // "") | split(" ")[0] != $f)) | select(.hooks | length > 0)))' "$settings" >"$tmp" && put_settings "$tmp"
     echo "hook removed (script missing): $f"
   } ;; esac
 done
@@ -312,6 +336,49 @@ EOF
   else
     launchctl bootout "gui/$(id -u)/$prefix.weevils-tunnel" >/dev/null 2>&1 || true
     rm -f "$agents/$prefix.weevils-tunnel.plist"
+  fi
+  # Updates: a look every 25 minutes, as the systemd timer does on Linux; weevils-update itself decides (setting,
+  # plain install, calm moment). Loaded again only when its file changed, and never from an install the updater runs
+  # itself (taking its agent out of launchd would stop it half-way).
+  upd=$agents/$prefix.weevils-update.plist
+  cat >"$upd.new" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- weevils, automatic updates (server/weevils-update; off with WEEVILS_AUTO_UPDATE=0). Written by server/install.sh. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$prefix.weevils-update</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$(xml "$HOME/.local/bin/weevils-update")</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>$(xml "$svc_path")</string>
+    <key>LANG</key><string>en_US.UTF-8</string>
+  </dict>
+  <key>StartInterval</key><integer>1500</integer>
+  <key>RunAtLoad</key><false/>
+  <key>ProcessType</key><string>Background</string>
+  <key>LowPriorityIO</key><true/>
+  <key>Nice</key><integer>10</integer>
+  <key>StandardOutPath</key><string>/dev/null</string>
+  <key>StandardErrorPath</key><string>$(xml "$data/update.log")</string>
+</dict>
+</plist>
+EOF
+  upd_changed=0
+  if cmp -s "$upd.new" "$upd"; then rm -f "$upd.new"; else mv -f "$upd.new" "$upd"; upd_changed=1; fi
+  if [ "${WEEVILS_UPDATING:-0}" != 1 ]; then
+    dom=gui/$(id -u)
+    if ! launchctl print "$dom/$prefix.weevils-update" >/dev/null 2>&1; then
+      launchctl enable "$dom/$prefix.weevils-update" >/dev/null 2>&1 || true
+      launchctl bootstrap "$dom" "$upd" >/dev/null 2>&1 || echo "WARNING: launchd refused $upd: no automatic updates" >&2
+    elif [ "$upd_changed" = 1 ]; then
+      launchctl bootout "$dom/$prefix.weevils-update" >/dev/null 2>&1 || true
+      for _ in $(seq 1 30); do launchctl print "$dom/$prefix.weevils-update" >/dev/null 2>&1 || break; sleep 0.5; done
+      launchctl bootstrap "$dom" "$upd" >/dev/null 2>&1 || echo "WARNING: launchd refused $upd: no automatic updates" >&2
+    fi
   fi
 elif [ "$(uname -s)" = Darwin ]; then
   rm -f "$agents/$prefix.weevilsd.plist" "$agents/$prefix.weevils-tunnel.plist"

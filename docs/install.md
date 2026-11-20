@@ -47,7 +47,10 @@ Or ask your AI agent: paste `install https://github.com/Sc4rville/weevils` into 
    original is kept in `Caddyfile.bak-weevils`). If Caddy rejects the result (say the domain is already a site
    there), both files go back exactly as they were. When ufw is active, it offers to open ports 80 and 443. Then it
    checks that `https://<domain>` answers, and says what to look at (DNS, ports, Caddy logs) when it doesn't. A
-   re-run keeps the site and points it to the current port.
+   re-run keeps the site and points it to the current port. When another web server already answers on ports 80/443
+   (nginx, Apache, Traefik, Docker), Caddy could not take them: the installer leaves that server alone, installs no
+   Caddy and says so; have it forward to weevils' port and run again with `--url`. From the setup page, such a server
+   gets its own secure link instead, as a computer does.
 9. Prints the address, the access code and the login link (`…/#k=<code>`), with its QR code when a phone can open
    it (`--domain`, `--url`, `--lan`, or a `WEEVILS_PUBLIC_URL`). Without any of them, it lists the ways in instead
    (below). It ends on what is already there (your Claude Code projects of the last 3 days, or your repos in
@@ -138,7 +141,9 @@ The same command works on a Mac, Apple Silicon or Intel. What differs from Linux
 - **Service.** A launchd agent of your session, `~/Library/LaunchAgents/com.github.sc4rville.weevilsd.plist`: it
   starts when you log in and is restarted if it stops. It runs in your session because that is where the Keychain,
   which holds Claude Code's login on a Mac, can be reached. `weevils-service start|stop|restart|status|logs` controls
-  it; the logs are in `~/.local/share/weevils/weevilsd.log`. No crontab line on a Mac.
+  it; the logs are in `~/.local/share/weevils/weevilsd.log`. No crontab line on a Mac. Automatic updates are a second
+  agent, `com.github.sc4rville.weevils-update`, which runs `weevils-update` every 25 minutes (as the systemd timer
+  does on Linux; `WEEVILS_AUTO_UPDATE=0` turns it off).
 - **Over SSH.** With no session open on the Mac's screen there is nowhere to load a launchd agent: weevilsd runs as
   a background process until the next restart of the Mac, and the installer says so. Log in on the Mac's screen and
   run the installer again: launchd then starts it at every login.
@@ -153,9 +158,10 @@ The same command works on a Mac, Apple Silicon or Intel. What differs from Linux
 
 Limits on a Mac:
 
-- weevils runs while your session is open. It keeps the Mac awake while it is plugged in (`WEEVILS_KEEP_AWAKE=0` in
-  `~/.config/weevils/env` turns that off), but a laptop with its lid closed still goes to sleep, and your agents
-  stop with it. For agents that work at night, a small VPS is better as the main machine; the Mac can then join it
+- weevils runs while your session is open. While one of your agents works or waits for your answer and the Mac is
+  plugged in, it keeps the Mac awake (`WEEVILS_KEEP_AWAKE=0` in `~/.config/weevils/env` turns that off); five
+  minutes after the last one is done, the Mac sleeps as it would without weevils, and an automation due then waits
+  for it to wake. A laptop with its lid closed still goes to sleep, and your agents stop with it. For agents that work at night, a small VPS is better as the main machine; the Mac can then join it
   with `--secondary`.
 - Two things stay Linux only: the systemd timers shown in the auto band, and the bwrap jail that background tasks
   run in.
@@ -176,8 +182,8 @@ The output ends with a block to parse, `key=value` per line (an agent gets it ev
 status=ok                      # ok | needs_sudo | failed (then error=…)
 role=main
 url=http://localhost:4179      # what the phone opens, without the code
-code=…
-link=http://localhost:4179/#k=…
+link_file=/home/you/.local/share/weevils/login-link   # holds the login link <url>/#k=<code> (mode 600): the
+                               # access code is never in this output, so a log of it gives nothing away
 mode=local                     # public | lan | local
 https=no
 port=4179

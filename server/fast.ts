@@ -12,6 +12,7 @@ import { openaiKey } from './transcribe.ts'
 import { DATA_DIR, TTS_RATE, TTS_VOICE } from './config.ts'
 import { CostLedger, callerOf } from './cost-ledger.ts'
 import { which } from './platform.ts'
+import { quietClaude, quietCodexArgs } from './quiet-calls.ts'
 
 /** Provider failures stay distinct from a malformed content payload. No prompt in error messages. */
 export class ModelError extends Error {
@@ -100,7 +101,8 @@ export function claudeHaiku(prompt: string, timeout = 120_000, schema?: object):
   return runHaiku(prompt, timeout, schema)
 }
 
-/** Une réponse courte de haiku : sans outils, sans session gardée. ~1,6 s mesuré sur le VPS. */
+/** Une réponse courte de haiku : sans outils, sans session gardée, à l'écart de la config de l'utilisateur
+ *  (server/quiet-calls.ts). ~1,6 s mesuré sur le VPS. */
 export function haiku(prompt: string, timeout = 20_000, schema?: object): Promise<string> {
   if (availableTool() === 'codex') {
     const status = providerStatus('codex')
@@ -113,7 +115,8 @@ function runHaiku(prompt: string, timeout: number, schema?: object): Promise<str
   return cachedCall('haiku', prompt, schema, (caller) => {
     const t0 = Date.now()
     return new Promise((resolve, reject) => {
-      const c = execFile(toolCommand('claude'), ['-p', '--model', 'haiku', '--tools', '', '--no-session-persistence', '--output-format', 'json', ...(schema ? ['--json-schema', JSON.stringify(schema)] : []), prompt], { timeout, maxBuffer: 1 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
+      const q = quietClaude()
+      const c = execFile(toolCommand('claude'), ['-p', '--model', 'haiku', '--tools', '', '--no-session-persistence', '--output-format', 'json', ...q.args, ...(schema ? ['--json-schema', JSON.stringify(schema)] : []), prompt], { timeout, maxBuffer: 1 << 20, cwd: q.cwd, env: q.env }, (err, stdout, stderr) => {
         console.log(`[rapide] haiku ${Date.now() - t0} ms${err ? ' · échec' : ''}`)
         if (err) reject(new ModelError(err, String(stdout ?? ''), String(stderr ?? '')))
         else { try { resolve(claudeAnswer(String(stdout ?? ''), schema, caller, 'haiku')) } catch (e) { reject(e) } }
@@ -138,7 +141,8 @@ export function smart(prompt: string, timeout = 90_000, schema?: object): Promis
   return cachedCall(model, prompt, schema, (caller) => {
     const t0 = Date.now()
     return new Promise((resolve, reject) => {
-      const c = execFile(toolCommand('claude'), ['-p', '--model', model, '--tools', '', '--no-session-persistence', '--output-format', 'json', ...(schema ? ['--json-schema', JSON.stringify(schema)] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: os.tmpdir() }, (err, stdout, stderr) => {
+      const q = quietClaude()
+      const c = execFile(toolCommand('claude'), ['-p', '--model', model, '--tools', '', '--no-session-persistence', '--output-format', 'json', ...q.args, ...(schema ? ['--json-schema', JSON.stringify(schema)] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: q.cwd, env: q.env }, (err, stdout, stderr) => {
         console.log(`[rapide] ${model} ${Date.now() - t0} ms${err ? ' · échec' : ''}`)
         if (err) reject(new ModelError(err, String(stdout ?? ''), String(stderr ?? '')))
         else { try { resolve(claudeAnswer(String(stdout ?? ''), schema, caller, model)) } catch (e) { reject(e) } }
@@ -163,7 +167,8 @@ export function relay(prompt: string, timeout = 120_000, schema?: object): Promi
   return new Promise((resolve, reject) => {
     const schemaFile = out + '.schema.json'
     if (schema) fs.writeFileSync(schemaFile, JSON.stringify(schema), { mode: 0o600 })
-    const c = execFile(toolCommand('codex'), ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-o', out, '-c', 'model_reasoning_effort="low"', ...(schema ? ['--output-schema', schemaFile] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: dir, env: { ...process.env, TMPDIR: dir } }, (err, stdout, stderr) => {
+    const bin = toolCommand('codex')
+    const c = execFile(bin, ['exec', '--ephemeral', '--skip-git-repo-check', ...quietCodexArgs(bin), '-s', 'read-only', '-o', out, '-c', 'model_reasoning_effort="low"', ...(schema ? ['--output-schema', schemaFile] : []), prompt], { timeout, maxBuffer: 4 << 20, cwd: dir, env: { ...process.env, TMPDIR: dir } }, (err, stdout, stderr) => {
       let text = ''
       try {
         text = fs.readFileSync(out, 'utf8').trim()

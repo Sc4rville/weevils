@@ -84,6 +84,31 @@ describe('what goes through', () => {
   })
 })
 
+describe('which tmux it runs', () => {
+  /** The guard installed as <bin>/tmux, with no WEEVILS_REAL_TMUX: it finds the real one itself. */
+  function installed(withOwn: boolean) {
+    const bin = path.join(tmp, 'bin')
+    fs.mkdirSync(bin)
+    fs.copyFileSync(GUARD, path.join(bin, 'tmux'))
+    fs.chmodSync(path.join(bin, 'tmux'), 0o755)
+    const other = path.join(tmp, 'other')
+    fs.mkdirSync(other)
+    fs.writeFileSync(path.join(other, 'tmux'), `#!/bin/sh\necho "other $*" >> '${log}'\n`, { mode: 0o755 })
+    // The person's own tmux that stood in <bin> before the guard, kept aside by server/install.sh.
+    if (withOwn) fs.writeFileSync(path.join(bin, 'tmux.bak-weevils'), `#!/bin/sh\necho "own $*" >> '${log}'\n`, { mode: 0o755 })
+    const env = { PATH: `${bin}:${other}:/usr/bin:/bin`, HOME: tmp, WEEVILS_GUARD_DATA: data, WEEVILS_GUARD_FALLBACK: fallback }
+    return (args: string[]) => spawnSync(path.join(bin, 'tmux'), args, { env, encoding: 'utf8' })
+  }
+  it('the tmux the person had in its place, kept aside at install', () => {
+    expect(installed(true)(['ls']).status).toBe(0)
+    expect(reached()).toEqual(['own ls'])
+  })
+  it('else the next tmux on the PATH', () => {
+    expect(installed(false)(['ls']).status).toBe(0)
+    expect(reached()).toEqual(['other ls'])
+  })
+})
+
 const realTmux = spawnSync('sh', ['-c', 'command -v tmux']).stdout?.toString().trim()
 describe.skipIf(!realTmux)('with a real tmux server standing in for the live one', () => {
   it('its sessions survive every refused attempt', () => {

@@ -9,6 +9,7 @@ import path from 'node:path'
 import { haiku } from './fast.ts'
 import { tr, user } from './i18n.ts'
 import { preferredTool, providerStatus } from './provider.ts'
+import { quietCodexArgs } from './quiet-calls.ts'
 import M from './i18n/classify.ts'
 
 export interface CatalogEntry {
@@ -107,7 +108,7 @@ export async function llmClassify(
   await new Promise<void>((resolve, reject) => {
     const child = execFile(
       'codex',
-      ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '--output-schema', schemaFile, '-o', outFile, '-c', 'model_reasoning_effort="low"', prompt],
+      ['exec', '--ephemeral', '--skip-git-repo-check', ...quietCodexArgs(), '-s', 'read-only', '--output-schema', schemaFile, '-o', outFile, '-c', 'model_reasoning_effort="low"', prompt],
       { cwd: workdir, timeout: 240_000, maxBuffer: 16 << 20 },
       (err, _out, stderr) => (err ? reject(new Error(stderr?.toString().slice(-300) || err.message)) : resolve()),
     )

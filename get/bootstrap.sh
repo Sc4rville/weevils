@@ -43,7 +43,8 @@
 # /weevils.bundle.sha256.
 #
 # UNDO, in one line:  ~/weevils/install.sh --uninstall --purge && rm -rf ~/weevils
-# The installer's full log stays here, in ~/weevils-install.log.
+# The installer's full log stays here, in ~/weevils-install.log (without the access code: the login link is in
+# ~/.local/share/weevils/login-link, readable by the user only).
 set -euo pipefail
 
 # The whole script is one function, called on the last line: a download cut short runs nothing.
@@ -371,7 +372,14 @@ _weevils_get() {
   check
 
   # ------------------------------------------------------------ 4. a computer: an HTTPS link for the phone
-  if [ "$MODE" = pc ] && [ "$(sum mode)" = local ] && [ "$link" = 1 ]; then
+  # A server whose ports 80 and 443 another web server already holds (nginx, Traefik, Docker…) gets one too: the
+  # installer left that server alone and installed no Caddy.
+  local web; web=$(sum web_server)
+  if [ "$MODE" = vps ] && [ -n "$web" ] && [ "$(sum mode)" = local ]; then
+    if [ "$UI_LANG" = fr ]; then say "$web répond déjà sur les ports 80/443 ici : weevils n'y touche pas et donne à ce serveur son propre lien sécurisé" # i18n-ignore
+    else say "$web already answers on ports 80/443 here: weevils leaves it alone and gives this server its own secure link instead"; fi
+  fi
+  if { [ "$MODE" = pc ] || [ -n "$web" ]; } && [ "$(sum mode)" = local ] && [ "$link" = 1 ]; then
     event step tunnel
     local port bin arch turl='' state=$HOME/.local/share/weevils
     port=$(sum port)
@@ -473,7 +481,7 @@ EOF
       nohup "$bin" tunnel --no-autoupdate --url "http://127.0.0.1:$port" >>"$tlog" 2>&1 </dev/null &
     fi
     for _ in $(seq 1 60); do
-      turl=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$tlog" | tail -1 || true)
+      turl=$(grep -o 'https://[a-z0-9]*-[a-z0-9-]*\.trycloudflare\.com' "$tlog" | tail -1 || true)
       [ -z "$turl" ] || break
       sleep 1
     done
@@ -502,7 +510,9 @@ EOF
       process.stdout.write(c.publicEncrypt({ key, padding: c.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" }, link).toString("base64"))' 2>/dev/null || true
   }
   local url link mode ready enc='' how order='openssl node' cur
-  url=$(sum url) link=$(sum link) mode=$(sum mode) ready=$(sum ready)
+  # The login link is in a file of the user's alone (the installer's log never holds the access code).
+  url=$(sum url) mode=$(sum mode) ready=$(sum ready)
+  link=$(cat "$(sum link_file)" 2>/dev/null || true)
   # The key of the page following this setup now: another page may have taken it over (« continue on this one »,
   # after the first one was closed). Public; the one this script came with when the service doesn't answer.
   cur=$(curl -fsS -m 10 "$BASE/k/$SID" 2>/dev/null || true)
@@ -518,7 +528,7 @@ EOF
   # The version installed, for the setup page's register of installs: the snapshot's revision (its commit says
   # « weevils <rev> »), else the clone's.
   local version
-  version=$(git -C "$dir" log -1 --format=%s 2>/dev/null | sed -n 's/^weevils \([0-9a-f]\{7,40\}\)$/\1/p')
+  version=$(git -C "$dir" log -1 --format=%s 2>/dev/null | sed -n 's/^weevils \([0-9a-f]\{7,40\}\)$/\1/p' || true)
   [ -n "$version" ] || version=$(git -C "$dir" rev-parse --short HEAD 2>/dev/null || true)
   # The first login on this weevils tells the setup page, once, so it stops keeping the link (server/index.ts reads
   # this file, posts « claimed » to it, and deletes it). Nothing else ever goes back to the setup page.
@@ -527,7 +537,7 @@ EOF
     --data-urlencode "ready=$ready" --data-urlencode "sealed=$enc" --data-urlencode "version=$version"
   echo
   say "ready: $url"
-  [ -n "$enc" ] || say "open the link from $log on your phone (the setup page could not receive it)"
+  [ -n "$enc" ] || say "open the link from $(sum link_file) on your phone (the setup page could not receive it)"
   if [ "$MODE" = pc ]; then
     say "on your phone, open this link (it logs you in, keep it to yourself):"
     printf '\n  %s\n\n' "$link"

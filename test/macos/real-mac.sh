@@ -199,12 +199,14 @@ mask <"$log" | tail -45 | sed 's/^/  | /'
 check "exit code 0" [ "$rc" = 0 ]
 check "status=ok" [ "$(sum status)" = ok ]
 check "lang=fr" [ "$(sum lang)" = fr ]
+check "the access code is not in the log; the login link is in a file of the user alone" sh -c "! grep -qF \"\$(cat ~/.config/weevils/secret)\" '$log' && grep -q '#k=' '$(sum link_file)' && [ \"\$(stat -f %Lp '$(sum link_file)')\" = 600 ]"
 check "it runs from the new folder" sh -c "plutil -p '$plist' | grep -q '$HOME/weevils-piped'"
 port=$(sum port); port=${port:-4179}
 check "it answers" wait_up
 /bin/bash "$HOME/weevils-piped/install.sh" --uninstall --purge --yes >"$out" 2>&1; rc=$?
 check "uninstall --purge" [ "$rc" = 0 ]
 check "settings and data are gone" sh -c "[ ! -e ~/.config/weevils ] && [ ! -e ~/.local/share/weevils ]"
+check "the install log and weevils' cache are gone" sh -c "[ ! -e ~/weevils-install.log ] && [ ! -e ~/.cache/weevils ]"
 check "nothing answers" wait_down
 
 # Leave the Mac as it was.

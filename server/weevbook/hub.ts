@@ -6,6 +6,7 @@
 // repository on the main machine, over the SSH a secondary machine already uses for its tunnel (no new port, no new
 // endpoint). Never blocks the app: everything runs in child processes, bounded in time, and an error is logged once.
 
+import { AsyncLocalStorage } from 'node:async_hooks'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { ulid } from './adapters/adapter.ts'
@@ -212,6 +213,9 @@ export class HubSync {
   private leases = new Map<string, Lease>()
   private chain: Promise<unknown> = Promise.resolve()
   private opening: Promise<boolean> | null = null
+  /** withBook: one caller at a time; the calls nested in it (and whether they wrote). */
+  private bookQueue: Promise<unknown> = Promise.resolve()
+  private readonly holding = new AsyncLocalStorage<{ wrote: boolean }>()
 
   constructor(o: HubOptions) {
     this.o = o
@@ -288,8 +292,26 @@ export class HubSync {
     await writeAtomic(this.statusFile, `${JSON.stringify(this.status, null, 2)}\n`).catch((e) => this.once('status', e))
   }
 
-  /** Under the book's lock (another writer of this machine may hold it for a moment). Undefined: it stayed locked. */
+  /**
+   * Under the book's lock (another writer of this machine may hold it for a moment). Undefined: it stayed locked.
+   *
+   * One caller at a time, in this process too. The lock file keeps other processes and other Weevbooks out, but this
+   * book's lock is the same for every caller of this sync: without the queue, the first caller to finish let the lock
+   * go while another was still writing, the shadow writer took it, and its recovery removed that write's record
+   * (`ENOENT … weevbook/tx/<id>.json.next`). A call made inside another (the same async flow) runs within it.
+   */
   async withBook<T>(fn: () => Promise<T>, wrote: (r: T) => boolean = () => true): Promise<T | undefined> {
+    const inside = this.holding.getStore()
+    if (inside) {
+      const r = await fn()
+      if (wrote(r)) inside.wrote = true
+      return r
+    }
+    const run = this.bookQueue.then(() => this.holding.run({ wrote: false }, () => this.locked(fn, wrote)))
+    this.bookQueue = run.catch(() => undefined)
+    return run
+  }
+  private async locked<T>(fn: () => Promise<T>, wrote: (r: T) => boolean): Promise<T | undefined> {
     if (!(await this.book.lockWait(LOCK_WAIT))) {
       this.once('lock', 'the weevbook stayed locked; next round')
       return undefined
@@ -299,7 +321,8 @@ export class HubSync {
       r = await fn()
       return r
     } finally {
-      await this.book.unlock(r !== undefined && wrote(r)).catch((e) => this.once('unlock', e))
+      const nested = this.holding.getStore()?.wrote ?? false
+      await this.book.unlock(nested || (r !== undefined && wrote(r))).catch((e) => this.once('unlock', e))
     }
   }
 

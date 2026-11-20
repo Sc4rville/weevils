@@ -264,3 +264,57 @@ describe('weevils weevbook sync status | resume', () => {
     expect(lines[0]).toContain('WEEVILS_WEEVBOOK_HUB')
   })
 })
+
+describe('the book of a sync, shared by every caller in weevilsd', () => {
+  it('one caller at a time: the lock is never let go while another caller still writes', async () => {
+    const root = tmp('book')
+    const clock = { t: T0 }
+    const m = machine(root, 'server', path.join(root, 'hub.git'), { here: true, clock })
+    expect(await m.sync.ensure()).toBe(true)
+    let release!: () => void
+    const slow = m.sync.withBook(() => new Promise<string>((r) => (release = () => r('slow'))))
+    const fast = m.sync.withBook(async () => 'fast')
+    await Promise.race([fast, new Promise((r) => setTimeout(r, 600))])
+    // The shadow writer's own Weevbook, in the same process: it must not get the lock while the slow caller holds it
+    // (it would recover, that is undo, the write in progress).
+    const writer = await Weevbook.open(m.dir, 'server')
+    expect(await writer.lock()).toBe(false)
+    release()
+    expect(await slow).toBe('slow')
+    expect(await fast).toBe('fast')
+    expect(await writer.lock()).toBe(true)
+    await writer.unlock(false)
+  })
+
+  it('a write in progress keeps its record while another caller finishes (ENOENT … tx/<id>.json.next)', async () => {
+    const root = tmp('book')
+    const m = machine(root, 'server', path.join(root, 'hub.git'), { here: true, clock: { t: T0 } })
+    expect(await m.sync.ensure()).toBe(true)
+    const tx = path.join(m.dir, '.git', 'weevbook', 'tx', `${ulid(T0)}.json`)
+    // A caller mid-write: the record written beside, as writeAtomic does, renamed into place a moment later.
+    let release!: () => void
+    const a = m.sync.withBook(async () => {
+      await fs.promises.writeFile(`${tx}.next`, '{}')
+      await new Promise<void>((r) => (release = r))
+      await fs.promises.rename(`${tx}.next`, tx)
+      await fs.promises.rm(tx)
+      return 'a'
+    })
+    // Another caller (a start, a handoff) comes and goes meanwhile; then the shadow writer's turn comes.
+    const b = m.sync.withBook(async () => 'b')
+    await Promise.race([b, new Promise((r) => setTimeout(r, 600))])
+    const writer = await Weevbook.open(m.dir, 'server')
+    if (await writer.lock()) await writer.unlock(false)
+    release()
+    expect(await a).toBe('a')
+    expect(await b).toBe('b')
+  })
+
+  it('a call made inside another runs within it, and its write counts', async () => {
+    const root = tmp('book')
+    const m = machine(root, 'server', path.join(root, 'hub.git'), { here: true, clock: { t: T0 } })
+    expect(await m.sync.ensure()).toBe(true)
+    const r = await m.sync.withBook(async () => `outer+${await m.sync.withBook(async () => 'inner')}`, () => false)
+    expect(r).toBe('outer+inner')
+  })
+})

@@ -1,8 +1,9 @@
 # 07 · Vault: every conversation, kept on your GitHub
 
-**Status: design, not built.** This page settles D1 and D2 of [03](03-sync-and-lease.md#open-decisions) the way the
+**Status: design, being built.** This page settles D1 and D2 of [03](03-sync-and-lease.md#open-decisions) the way the
 owner chose on 2026-11-21: the hub of every install is the person's own GitHub, encrypted, whether they have no
-server, one, or ten. Four choices are still open at the end; the page is written with the recommended answer to each.
+server, one, or ten. The owner took the recommended answer to the four decisions at the end (2026-11-21). The person
+feels only what they must: one GitHub sign-in, the recovery code once, the history question, and agreed moves.
 
 ## What it is for, in order
 
@@ -180,7 +181,7 @@ thinking included. A thinking block whose text redaction changed fails its signa
 3. **Slim raw and checkpoints in the vault**, and resuming a thread from them (VAULT-4).
 4. **Lease on GitHub**, weevboss's proposals, direct orders.
 
-## Open decisions
+## Decisions (taken 2026-11-21: the recommended answer to each)
 
 **V1 · Recovery code.** *Recommended:* weevboss gives it once, as 24 words. *Other:* no recovery code (lose every
 machine, lose the vault); or the key on GitHub, encrypted with a passphrase the person chooses.

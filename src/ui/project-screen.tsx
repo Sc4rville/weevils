@@ -15,26 +15,16 @@ import { useApp } from './app-context'
 import { SessionRow } from './bits'
 import { Shell } from './shell'
 import { RequestColumn } from './requests'
+import { TempoIcon } from './tempo'
 import './project-screen.css'
 import { WeevbookLine } from './threads'
+import { inProject } from '../../shared/ask-project.ts'
 
 type Row = LedgerView['asks'][number]
 
 const OLDER_AFTER = 6
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-/** Does this request belong to this project? See the header. Exported for tests. */
-export function inProject(a: Row, project: { id: string; name: string }, byId: Map<string, Session>): boolean {
-  const d = a.dispatches.at(-1)
-  if (d) {
-    const s = byId.get(d.session)
-    if (s) return s.projectId === project.id
-    return (d.label ?? '').split(' · ')[0].trim().toLowerCase() === project.name.toLowerCase()
-  }
-  if (project.name.length < 3) return false
-  return new RegExp(`(^|[^\\p{L}\\p{N}])${escape(project.name)}($|[^\\p{L}\\p{N}])`, 'iu').test(`${a.text} ${a.quote}`)
-}
+export { inProject }
 
 /** Every request of a project, whatever its state. Exported for tests. */
 export function requestsOf(asks: Row[], project: { id: string; name: string }, sessions: Session[]): Row[] {
@@ -79,7 +69,7 @@ export function ProjectPage({ projectId }: { projectId: string }) {
   const done = sessions.filter((s) => s.status === 'done').sort((a, b) => b.lastActivityAt - a.lastActivityAt)
   const shown = all ? done : done.slice(0, OLDER_AFTER)
   return (
-    <Shell slot={colors[projectId] ?? 'agent'} kicker="weevils" title={project?.name ?? '…'}>
+    <Shell slot={colors[projectId] ?? 'agent'} kicker="weevils" title={project?.name ?? '…'} actions={project ? <TempoIcon repo={project.id} /> : undefined}>
       <div className="pj-page">
         {project && <ProjectRequests project={project} />}
         <div className="pj-sessions">

@@ -7,7 +7,7 @@ import type { Session } from '../../shared/api.ts'
 import type { LedgerView } from '../../shared/ledger.ts'
 
 const ledger: { v: LedgerView } = { v: { goals: [], asks: [], pending: [], trace: [], knowledge: [], digestTokens: 0 } }
-vi.mock('../api', () => ({ api: { ledger: async () => ledger.v } }))
+vi.mock('../api', () => ({ api: { ledger: async () => ledger.v, tempo: async () => { throw new Error('none') } } }))
 localStorage.setItem('weevils-language', 'en')
 for (let p: object | null = HTMLElement.prototype; p; p = Object.getPrototypeOf(p)) if (Object.hasOwn(p, 'animate')) delete (p as { animate?: unknown }).animate
 

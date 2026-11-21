@@ -1,4 +1,5 @@
 import type { ModelControls, ModelSelection } from '../shared/model-controls'
+import type { TempoMode, TempoView } from '../shared/tempo.ts'
 // Client de weevilsd : appels REST + flux temps réel (SSE). Aucune donnée fictive.
 
 import { deliver, awaitDelivery } from './outbox'
@@ -154,6 +155,8 @@ export const api = {
   mainAttach: (text: string, files: { name: string; type: string; data: string }[]) => send<{ id: string }>('/api/main/attach', { text, files }),
   memory: () => call<{ items: MemoryItem[] }>('GET', '/api/memory'),
   ledger: () => call<LedgerView>('GET', '/api/boss/ledger'),
+  tempo: () => call<TempoView>('GET', '/api/tempo'),
+  setTempo: (mode: TempoMode, repo?: string | null) => call<TempoView>('POST', '/api/tempo', { mode, repo: repo ?? null }),
   askAction: (id: string, action: 'done' | 'drop' | 'open') => call<{ ask: unknown }>('POST', `/api/boss/asks/${enc(id)}`, { action }),
   addMemory: (text: string) => call<{ item: MemoryItem }>('POST', '/api/memory', { text }),
   editMemory: (id: string, text: string) => call<{ item: MemoryItem }>('PUT', `/api/memory/${enc(id)}`, { text }),

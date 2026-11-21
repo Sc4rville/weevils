@@ -1,4 +1,5 @@
 import { sourceAccessIssue } from './source-access'
+import { TempoLine } from './tempo'
 import { selfProject, improvingProject } from './recursive-identity'
 import { interceptModelControl, openModelControls } from '../model-controls'
 import { effortLabel, modelLabel } from './settings'
@@ -697,6 +698,7 @@ export function FootBand() {
         </Line>
       )}
       <UsageLine />
+      <TempoLine />
       <Line ch="~" go={null} value={t.themeName(theme)} onClick={() => setTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length])}>
         {t.themeLabel}
       </Line>

@@ -98,15 +98,15 @@ describe('screen', () => {
     await render([session('i', { status: 'idle' })])
     expect(host.innerHTML).toBe('')
   })
-  it('bold lines for what runs, the user’s words for the to-do, weight for its state (bold only when it waits on you), a tap opens the session', async () => {
-    ledger.v = { ...ledger.v, asks: [ask('r', { quote: 'fix the  install\npage', dispatches: sent('w') }), ask('s', { dispatches: sent('i'), stale: true })] }
+  it('bold lines for what runs, short titles for the to-do (never a cut sentence), weight for its state (bold only when it waits on you), a tap opens the session', async () => {
+    ledger.v = { ...ledger.v, asks: [ask('r', { title: 'Install page fix', dispatches: sent('w') }), ask('s', { dispatches: sent('i'), stale: true })] }
     const pushed: unknown[] = []
     await render([session('w', { now: 'running tests' }), session('i', { status: 'idle' })], pushed)
     const feed = [...host.querySelectorAll('.pj-feed .pj-line')]
     expect(feed.map((e) => e.textContent)).toEqual(['running tests'])
     expect(feed[0].classList.contains('on')).toBe(true)
     const todo = [...host.querySelectorAll<HTMLButtonElement>('.pj-todo .pj-line')]
-    expect(todo.map((e) => e.textContent)).toEqual(['“fix the install page”', '“words s”'])
+    expect(todo.map((e) => e.textContent)).toEqual(['Install page fix', 'text s'])
     expect(todo[0].className).toBe('pj-line ') // in progress: regular, the bold is for the lines above
     expect(todo[1].classList.contains('rest')).toBe(true)
     act(() => todo[0].click())

@@ -392,3 +392,29 @@ describe('handling: answered, sent or queued', () => {
     expect(ledger.digest()).toContain('SEND NOW')
   })
 })
+
+describe('request titles', () => {
+  it('requests without a short title get one in a single call, live ones first; a failure waits', async () => {
+    let fail = false
+    const { ledger, calls, tick } = rig({ model: async (p) => {
+      if (fail) throw new Error('quota')
+      const ids = [...p.matchAll(/^- (r\d+):/gm)].map((m) => m[1])
+      return JSON.stringify({ items: ids.map((id) => ({ id, title: `Title of ${id}.` })) })
+    } })
+    const a = ledger.add('Remove the current onboarding page so a new user lands directly in weevboss')
+    const b = ledger.add('Improve the For you page in the current app and on next: cut the noise')
+    expect(await ledger.titleAsks()).toBe(2)
+    expect(a.title).toBe(`Title of ${a.id}`)
+    expect(b.title).toBe(`Title of ${b.id}`)
+    expect(await ledger.titleAsks()).toBe(0)
+    const n = calls.length
+    ledger.add('Something else')
+    fail = true
+    expect(await ledger.titleAsks()).toBe(0)
+    expect(await ledger.titleAsks()).toBe(0)
+    expect(calls.length).toBe(n + 1)
+    tick(61 * 60_000)
+    fail = false
+    expect(await ledger.titleAsks()).toBe(1)
+  })
+})

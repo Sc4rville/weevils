@@ -233,6 +233,11 @@ export function readTurn(file: string): TurnRead {
 
 // ---------------------------------------------------------------- the model's answers
 
+/** A request's short title as the model wrote it: one line, 60 characters at most, no final punctuation. */
+export const askTitle = (t: string | undefined) => {
+  const s = (t ?? '').replace(/\s+/g, ' ').trim().replace(/[.:;,!…]+$/, '')
+  return s ? clip(s, 60) : undefined
+}
 const str = { type: 'string' }
 const strs = { type: 'array', items: str }
 export const RECONCILE_SCHEMA = {
@@ -248,8 +253,8 @@ export const RECONCILE_SCHEMA = {
             type: 'array',
             items: {
               type: 'object',
-              properties: { quote: str, text: str, kind: { type: 'string', enum: ['task', 'question'] }, state: { type: 'string', enum: ['open', 'dispatched', 'done'] }, sessions: strs, goal: str, expect: str, merge_into: str },
-              required: ['quote', 'text', 'kind', 'state', 'sessions', 'goal'],
+              properties: { quote: str, text: str, title: str, kind: { type: 'string', enum: ['task', 'question'] }, state: { type: 'string', enum: ['open', 'dispatched', 'done'] }, sessions: strs, goal: str, expect: str, merge_into: str },
+              required: ['quote', 'text', 'title', 'kind', 'state', 'sessions', 'goal'],
             },
           },
           updates: {
@@ -270,7 +275,7 @@ export const RECONCILE_SCHEMA = {
 interface Reconciled {
   messages: {
     m: string
-    requests: { quote: string; text: string; kind: 'task' | 'question'; state: 'open' | 'dispatched' | 'done'; sessions: string[]; goal: string; expect?: string; merge_into?: string }[]
+    requests: { quote: string; text: string; title?: string; kind: 'task' | 'question'; state: 'open' | 'dispatched' | 'done'; sessions: string[]; goal: string; expect?: string; merge_into?: string }[]
     updates: { id: string; status: '' | 'done' | 'dropped' | 'dispatched'; sessions?: string[]; note?: string }[]
     memory: { kind: KnowledgeKind; text: string }[]
     trace: { session?: string; text: string; why?: string; expect?: string }[]
@@ -704,7 +709,10 @@ export class Ledger {
   async reconcile(transcripts: string): Promise<number> {
     if (this.busy) return 0
     const batch = this.ready().slice(0, 6)
-    if (!batch.length) return 0
+    if (!batch.length) {
+      await this.titleAsks()
+      return 0
+    }
     this.busy = true
     try {
       const msgs: MessageToRead[] = batch.map((m) => {
@@ -761,6 +769,7 @@ For each message below, list every distinct request it contains (something ${use
 - ${user} often sends several messages in a burst about one thing: a follow-up, a correction, a precision ("desktop", "on mobile", "and the colour too", "no, the other button"), often in French. Such a message does NOT make a new request: give it "merge_into" = the id of the request it refines (an open request below, or "M<k>.<n>" from an earlier message of this batch), its own "quote", and as "text" the refined request restated whole. Same for a later message that clearly refines an open request. Never merge two different asks, even about the same project: when unsure, make a new request. Else "merge_into" is "".
 - "quote": the exact words of the message that carry this request, copied character for character (one contiguous excerpt, 3 to 40 words). Never paraphrase it, never translate it.
 - "text": the request as one short sentence in ${lang}, complete enough to understand alone (name the project or the thing). An imperative for a task, a question for a question.
+- "title": the request as a short title in ${lang}, 2 to 5 words, naming the thing like a heading ("Onboarding via weevboss", "For you feed overhaul"); never a cut sentence, no final punctuation.
 - "kind": "question" when ${user} only wants an answer or an explanation; "task" when something must be done.
 - "state": "done" when weevboss's reply already answered the question or the turn itself fully did it; "dispatched" when the turn's actions sent it to a session (put their ids in "sessions", 8 characters); else "open".
 - "goal": the id of the goal it clearly moves forward (list below, or one of your new_goals), else "". A question about how something works, a bug in the app, an account or billing matter: "" unless it plainly serves that goal.
@@ -862,6 +871,7 @@ ${blocks.join('\n\n')}`
         const a: Ask = {
           id: this.nextAsk(),
           text: clip(oneLine(q.text), 400),
+          ...(askTitle(q.title) ? { title: askTitle(q.title) } : {}),
           quote,
           src: m.src,
           from: m.from,
@@ -1053,6 +1063,39 @@ ${clip(said, 9000)}`
       for (const g of (got.goals ?? []).slice(0, 5)) if (g?.id && g.title) this.addGoal(g.id, g.title, g.why)
     } catch (e) {
       console.error(`[ledger] goals: ${(e as Error).message.slice(0, 200)}`)
+    }
+  }
+
+  private titlesFailedAt = 0
+  /** Requests recorded before they had a short title (or whose model gave none): titled in one call, the live ones
+   *  first, while nothing else is read. A failure waits an hour. */
+  async titleAsks(): Promise<number> {
+    if (this.busy || this.now() - this.titlesFailedAt < 60 * 60_000) return 0
+    const live = (a: Ask) => a.status === 'open' || a.status === 'dispatched'
+    const todo = this.s.asks.filter((a) => !a.title).sort((a, b) => Number(live(b)) - Number(live(a)) || b.at - a.at).slice(0, 20)
+    if (!todo.length) return 0
+    this.busy = true
+    try {
+      const lang = langName(this.host.lang())
+      const prompt = `Give each request below a short title in ${lang}: 2 to 5 words naming the thing, like a heading ("Onboarding via weevboss", "For you feed overhaul"); never a cut sentence, no final punctuation. Answer with "items": [{ "id", "title" }] for every id.
+
+${todo.map((a) => `- ${a.id}: ${clip(a.text, 300)}`).join('\n')}`
+      const raw = await this.model(prompt, { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { id: str, title: str }, required: ['id', 'title'] } } }, required: ['items'] })
+      const got = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)) as { items?: { id: string; title: string }[] }
+      let n = 0
+      for (const it of got.items ?? []) {
+        const a = todo.find((x) => x.id === it?.id)
+        const title = askTitle(it?.title)
+        if (a && title) { a.title = title; n++ }
+      }
+      if (n) this.save()
+      return n
+    } catch (e) {
+      this.titlesFailedAt = this.now()
+      console.error(`[ledger] titles: ${(e as Error).message.slice(0, 200)}`)
+      return 0
+    } finally {
+      this.busy = false
     }
   }
 

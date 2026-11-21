@@ -39,7 +39,6 @@ import { useLang, useT } from '../i18n'
 import { reveal, useFollow } from './follow'
 import { FollowDown } from './followdown'
 import M from '../i18n/pages'
-import BM from '../i18n/bands'
 import PM from '../i18n/plain-steps'
 import { MemoryPage } from './memory'
 import { RequestsPage } from './requests'
@@ -159,7 +158,6 @@ function SessionPage({ id }: { id: string }) {
   const appLang = useLang()
   const { snap, now, replace, colors } = useApp()
   const t = useT(M)
-  const tb = useT(BM)
   const tp = useT(PM)
   const gone = useGoneTitle()
   const [detail, setDetail] = useState<SessionDetail | null>(null)
@@ -224,9 +222,6 @@ function SessionPage({ id }: { id: string }) {
   const previewUrl = freshSite(preview.url ?? guessPreviewUrl(messages, s, project, snap.config), snap.config.siteKey)
 
 
-  // Before the server takes it, the notice under the thread speaks (« sending… », « try again »); after, the bubble.
-  const busy = (s.turnWorking ?? (s.status === 'working' && !s.background)) || s.queued > 0
-  const pendingLabel = (pid: string) => (pending.find((x) => x.id === pid)?.accepted ? (busy ? tb.readsSoon : tb.received) : '')
   const send = async (text: string, files: Attachment[] = []) => {
     if(interceptModelControl(id,text,files.length))return
     if (sourceIssue) throw new Error(sourceIssue)
@@ -274,7 +269,6 @@ function SessionPage({ id }: { id: string }) {
           {/* One plain line: the state in words a non-developer reads, and for how long it has worked. */}
           <StatusChar s={s.status} /> {s.status === 'needs_user' ? tp.liveWaiting : s.status === 'idle' || s.status === 'done' ? tp.liveDone : st.label}
           {s.status === 'working' && s.workStartedAt != null && <> · {durLong(now - s.workStartedAt)}</>}
-          {s.queued > 0 && <span className="strong"> · {t.queued(s.queued)}</span>}
         </>
       }
       dock={th.voice}
@@ -302,7 +296,7 @@ function SessionPage({ id }: { id: string }) {
             s'il y a déjà une bulle (premier message d'une session lancée) ; remonté au chargement pour que le lot arrive sans
             se dérouler lui non plus. */}
         {(detail || missing || pending.length > 0) && (
-          <Messages session plain key={detail || missing ? 'loaded' : 'early'} messages={messages} pendingLabel={pendingLabel} author={s.tool} working={s.turnWorking ?? (s.status === 'working' && !s.background)} after={th.after} />
+          <Messages session plain key={detail || missing ? 'loaded' : 'early'} messages={messages} author={s.tool} working={s.turnWorking ?? (s.status === 'working' && !s.background)} after={th.after} />
         )}
       </div>
 

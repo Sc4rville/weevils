@@ -231,9 +231,10 @@ describe('bande de weevboss : envoyer ne l’ouvre jamais en plein écran', () =
     expect(peek.textContent).toContain('Tout tourne, deux sessions travaillent.')
     // Le fil est déjà rendu mais caché : l'ouvrir est immédiat.
     expect(document.querySelector<HTMLElement>('#agent-body')!.hidden).toBe(true)
-    // A tap on the messages does not open it: the handle at the band's bottom edge does (a pull or a tap), like automations.
+    // A tap on the conversation opens it full size (Scarville, 2026-11-21); the thin handle too (a pull or a tap).
     await act(async () => (peek as HTMLElement).click())
-    expect(expanded).toEqual([])
+    expect(expanded).toEqual(['agent'])
+    expanded.length = 0
     const grip = document.querySelector<HTMLElement>('.agent-grip')!
     const ev = (type: string, y: number) => grip.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientY: y, button: 0 }))
     await act(async () => { ev('pointerdown', 100); ev('pointerup', 100) })
@@ -300,7 +301,7 @@ describe('le message envoyé se voit tout de suite', () => {
   // Ce qui part de l'aperçu part tout de suite (sans l'animation de sortie) : on lit l'état final.
   beforeAll(() => void (MotionGlobalConfig.skipAnimations = true))
   afterAll(() => void (MotionGlobalConfig.skipAnimations = false))
-  it('une bulle « envoi… » dans l’aperçu dès le tap, remplacée par la vraie à son arrivée', async () => {
+  it('une bulle dans l’aperçu dès le tap, sans mot de livraison, remplacée par la vraie à son arrivée', async () => {
     let open = () => {}
     sent.gate = new Promise((r) => (open = r))
     const s = snap([msg('a', 'assistant', 'salut', 1)])
@@ -309,16 +310,15 @@ describe('le message envoyé se voit tout de suite', () => {
     await submit()
     const peek = document.querySelector('.peek')!
     expect(peek.textContent).toContain('fais le point')
-    expect(peek.textContent).toContain(tr(BM).sending)
+    expect(peek.textContent).not.toMatch(/envoi…|reçu|en attente|en file/)
     // Claude Code l'a écrit dans son transcript : une seule bulle, la vraie.
     render({ ...s, main: [...s.main, msg('u', 'user', 'fais le point', 2)] })
     await act(async () => open())
     await flush()
-    expect(peek.textContent).not.toContain(tr(BM).sending)
     expect(peek.textContent!.split('fais le point').length - 1).toBe(1)
   })
 
-  it('weevboss occupé : la bulle reçue passe « en attente » puis « en file, il le lira » quand elle est dans la pane, jamais « envoi… »', async () => {
+  it('weevboss occupé : la bulle reçue ne dit rien de sa livraison (en attente, en file, reçu : de la plomberie)', async () => {
     sent.receipt = 'm-busy'
     deliveredInPane('m-busy', 'accepted')
     const s = snap([msg('a', 'assistant', 'je bosse', 1)], true)
@@ -327,15 +327,14 @@ describe('le message envoyé se voit tout de suite', () => {
     await submit()
     await flush()
     const peek = document.querySelector('.peek')!
-    expect(peek.textContent).toContain(tr(BM).queued)
-    expect(peek.textContent).not.toContain(tr(BM).sending)
+    const plumbing = /envoi…|reçu|en attente|en file/
+    expect(peek.textContent).not.toMatch(plumbing)
     await act(async () => deliveredInPane('m-busy', 'delivered'))
     await flush()
-    expect(peek.textContent).toContain(tr(BM).readsSoon)
-    // Son tour fini, weevboss ne l'a pas encore écrit dans son transcript : « reçu », toujours là.
+    expect(peek.textContent).not.toMatch(plumbing)
     render({ ...s, mainWorking: false })
     await flush()
-    expect(peek.textContent).toContain(tr(BM).received)
+    expect(peek.textContent).not.toMatch(plumbing)
     expect(peek.textContent).toContain('et aussi le logo')
     sent.receipt = ''
   })
@@ -449,7 +448,6 @@ describe('« weevboss · pour toi » dans la bande du haut', () => {
     expect(words().map((w) => w.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
     const shown = document.querySelector('.band.agent .peek-wrap:not([hidden]) .peek')!
     expect(shown.textContent).toContain('fais le point')
-    expect(shown.textContent).toContain(tr(BM).sending)
     await act(async () => open())
     await flush()
     expect(expanded).not.toContain('agent')

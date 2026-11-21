@@ -4,8 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import type { ForYouItem } from '../../shared/foryou'
 const nav = vi.hoisted(() => ({ push: vi.fn(), conversation: vi.fn() }))
-vi.mock('./app-context', () => ({ useApp: () => ({ push: nav.push }) }))
-vi.mock('./foryou-open', () => ({ useForYouOpen: () => nav.conversation }))
+vi.mock('./app-context', () => ({ useApp: () => ({ push: nav.push, snap: { optimizers: [], h24: [] } }) }))
+vi.mock('./foryou-open', async (orig) => ({ ...(await orig<typeof import('./foryou-open')>()), useForYouOpen: () => nav.conversation }))
 import { FeedText, SoftwareResultLink } from './foryou-links'
 import { setLang } from '../i18n'
 const base: ForYouItem = { id: 'd:mwf42vcp', kind: 'boss', tone: 'neutral', at: 1, who: 'weevboss', text: 'It’s live at https://tux.example.com.', open: { page: 'boss' }, software: { id: 'vps:tux', name: 'TUX', state: 'running', url: 'https://tux.example.com/' } }

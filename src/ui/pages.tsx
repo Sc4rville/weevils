@@ -27,6 +27,7 @@ import { CalmConv, CalmGrid } from './calm'
 import { markSeen } from './seen'
 import { dropSeed, mergePending, peekSeed, seedPending, type Pending } from './pending'
 import { FootError, Shell, swapPage } from './shell'
+import { selfProject } from './recursive-identity'
 import { GoneBack, useGoneTitle } from './gone'
 import { CodeFile } from './codeview'
 import { FsFilePage, FsPage, InfraPage, UsagePage } from './infra'
@@ -248,6 +249,7 @@ function SessionPage({ id }: { id: string }) {
   return (
     <Shell
       slot={colors[s.projectId] ?? 'agent'}
+      identity={!!project && selfProject(project)}
       kicker={project?.name ?? t.sessionsKicker}
       title={s.title}
       scrollHeading

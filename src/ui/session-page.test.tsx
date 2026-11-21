@@ -281,3 +281,15 @@ describe('session page header (r162)', () => {
     expect(planName('some_new_plan')).toBe('Some new plan')
   })
 })
+
+describe('a conversation wears its repo’s colour', () => {
+  it('weevils’ own repo: the page wears its band’s gradient, any other repo its plain colour', async () => {
+    const self: Project = { ...project, workstream: { kind: 'self-improvement', installationId: 'i', target: { machineId: 'vps-machine-42', projectId: 'p', repo: 'weevils' }, evidence: 'repository-identity' } }
+    render(<PageView page={{ kind: 'session', id: 's1' }} />, [session()], [self])
+    await flush()
+    expect(host.querySelector('.page')!.classList.contains('recursive-identity')).toBe(true)
+    render(<PageView page={{ kind: 'session', id: 's1' }} />, [session()], [project])
+    await flush()
+    expect(host.querySelector('.page')!.classList.contains('recursive-identity')).toBe(false)
+  })
+})

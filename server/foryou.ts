@@ -1552,6 +1552,23 @@ export class ForYou {
   }
 
   /**
+   * weevboss's self-check: items still waiting on the person, with a button nobody pressed (merge, land, approve) or a
+   * question. Seen is not enough to leave (a card scrolled past is not a merge done); cost tips are left out.
+   */
+  waitingOnUser(now = this.now()): { key: string; summary: string }[] {
+    const snap = this.w.snapshot()
+    return this.all(snap, now, false)
+      .map((x) => x.item)
+      .filter((i) => i.kind !== 'improve' && i.kind !== 'stat' && (i.actions?.length || i.tone === 'question') && now - i.at > 10 * 60_000 && now - i.at < 3 * 86400_000)
+      .slice(0, 12)
+      .map((i) => ({
+        key: `fy:${i.id}:${i.at}`,
+        // i18n-ignore-next-line
+        summary: `For you${i.seen ? '' : ' (unseen)'} · ${[i.title, i.text].filter(Boolean).join(': ').replace(/\s+/g, ' ').slice(0, 160)}${i.actions?.length ? ` [buttons: ${i.actions.map((a) => a.label).join(', ')}]` : ''}`,
+      }))
+  }
+
+  /**
    * For the snapshot, called by Weevils.snapshot() with the snapshot it is building (never ask the host for it here):
    * the revision and how many items were never under the user's eyes.
    */

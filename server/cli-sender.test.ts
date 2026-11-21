@@ -60,3 +60,9 @@ it('carries the short line the thread shows (--say) for send, new and do, wherev
  await cli(['do','Install the tool'],{})
  expect(seen.at(-1)?.body).toMatchObject({text:'Install the tool',say:''})
 })
+
+it('keeps the actual runtime author and source when safe resumption is requested', async () => {
+ await cli(['send','target','Continue authorized work','--safe-resume'],{CODEX_THREAD_ID:'project-codex',WEEVILS_FROM:'weevboss'})
+ expect(seen.at(-1)?.body).toMatchObject({safeResume:true,sourceThread:'project-codex',from:'agent'})
+ expect(parseSigned(seen.at(-1)!.signed)).toEqual({author:'codex',sourceThreadId:'project-codex',text:'Continue authorized work'})
+})

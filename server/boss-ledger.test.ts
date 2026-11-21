@@ -15,7 +15,7 @@ const session = (id: string, o: Partial<Session> = {}): Session => ({
   workStartedAt: null, origin: 'weevils', controllable: true, live: true, hasScreen: true, subagents: [], background: 0, messageCount: 3, queued: 0, ...o,
 }) as Session
 
-function rig(o: { model?: Model; sessions?: Session[]; journal?: Entry[]; running?: Set<string>; messages?: Record<string, { role: string; text: string; at: number }[]> } = {}) {
+function rig(o: { model?: Model; sessions?: Session[]; journal?: Entry[]; running?: Set<string>; requiresVerification?: boolean; messages?: Record<string, { role: string; text: string; at: number }[]> } = {}) {
   const dir = tmp()
   let now = T0
   const calls: { prompt: string; schema: object }[] = []
@@ -27,6 +27,7 @@ function rig(o: { model?: Model; sessions?: Session[]; journal?: Entry[]; runnin
     journal: () => o.journal ?? [],
     lang: () => 'en',
     user: () => 'Scarville',
+    requiresVerification: () => o.requiresVerification ?? false,
   }
   const ledger = new Ledger({ dir, host, model: async (p, s) => { calls.push({ prompt: p, schema: s }); return model(p, s) }, now: () => now })
   return { dir, ledger, calls, tick: (ms: number) => (now += ms), at: () => now }
@@ -227,6 +228,20 @@ describe('Ledger', () => {
     expect(await r.ledger.closeLoop()).toBe(0)
     expect(judged).toBe(1)
     expect(r.ledger.traceList().map((e) => e.kind)).toContain('report')
+  })
+
+  it('keeps a reported completion open until the boss independently verifies the result', async () => {
+    const id = 'aaaa1111-0000-0000-0000-000000000000'
+    const sessions = [session(id)]
+    const r = rig({ requiresVerification: true, sessions, model: async () => JSON.stringify({ items: [{ n: 1, outcome: 'done', report: 'Preview reported working.' }] }) })
+    const a = r.ledger.add('Fix the preview')
+    r.ledger.link(a.id, id)
+    sessions[0] = { ...sessions[0], status: 'idle', lastActivityAt: T0 + 60_000 }
+    r.tick(200_000)
+    await r.ledger.closeLoop()
+    expect(r.ledger.ask(a.id)).toMatchObject({ status: 'dispatched', progressAt: T0 + 60_000, dispatches: [{ outcome: 'done' }] })
+    r.ledger.setStatus(a.id, 'done', 'weevboss', 'Opened the preview and checked the working result.')
+    expect(r.ledger.ask(a.id)).toMatchObject({ status: 'done', closedBy: 'weevboss' })
   })
 
   it('surfaces stale requests first in a digest that never outgrows its budget', () => {

@@ -715,7 +715,7 @@ const routes: [string, RegExp, Handler][] = [
     const from = trustedFrom(req, body, sourceAuthor)
     // A signed brief: the thread shows its spoken line (--say), or one written for it (server/brief-says.ts).
     if (from) saysFor(String(body.text ?? ''), body.say)
-    json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), from, trustedSource(req,body,sourceAuthor), requestOrigin(req, body, from)))
+    json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), from, trustedSource(req,body,sourceAuthor), requestOrigin(req, body, from), body.safeResume === true))
   }],
   ['POST', /^\/api\/sessions\/([^/]+)\/attach$/, async (req, res, u, [id]) => {
     const body = await readBody(req, 24 << 20)

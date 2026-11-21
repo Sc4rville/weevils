@@ -340,8 +340,43 @@ describe('for you: a feed of posts', () => {
     await open([ITEMS[0]])
     expect(band('al').className).not.toMatch(/invert|fy-t-alert/)
     expect(band('al').getAttribute('style')).not.toContain('--alert')
-    await click(band('al').querySelector('.fy-tap'))
+    await click(band('al').querySelector('.fy-post-head'))
+    await click(host.querySelector('.fy-sheet-go'))
     expect(pushed.length + srv.calls.length).toBeGreaterThan(0)
+  })
+
+  it('a post has nothing to tap inside; tapped, its sheet says the next step in words and takes a word to weevboss', async () => {
+    setLang('en')
+    await open([ITEMS.find((i) => i.id === 'bo')!])
+    expect(band('bo').querySelector('.fy-tap, .fy-taps')).toBeNull()
+    await click(band('bo').querySelector('.fy-post-head'))
+    const sheet = host.querySelector<HTMLElement>('.fy-sheet[role="dialog"]')!
+    expect(sheet.querySelector('.fy-sheet-t')!.textContent).toContain('Three sessions sent this morning')
+    expect([...sheet.querySelectorAll('.fy-sheet-go')].map((b) => b.textContent)).toEqual(['review the two'])
+    const input = sheet.querySelector<HTMLInputElement>('input')!
+    expect(input.placeholder).toBe(t().sheetWrite)
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+      set.call(input, 'merge the second one')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => void sheet.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    await flush()
+    expect(srv.calls).toContain('reply bo merge the second one')
+  })
+
+  it('a post without a choice offers where it comes from, in words', async () => {
+    setLang('en')
+    await open([ITEMS.find((i) => i.id === 'me')!])
+    await click(band('me').querySelector('.fy-post-head'))
+    expect([...host.querySelectorAll('.fy-sheet-go')].map((b) => b.textContent)).toEqual([t().openConversation])
+  })
+
+  it('posts touch; two neighbours in one colour never look like one', async () => {
+    const { altsOf } = await import('./foryou')
+    const c = (id: string) => ({ ...base, id, kind: 'boss' as const, who: 'weevboss', text: id })
+    const colour: Record<string, string> = { a: 'x', b: 'x', c: 'x', d: 'y', e: 'y' }
+    expect(altsOf(['a', 'b', 'c', 'd', 'e'].map(c), (i) => colour[i.id])).toEqual([false, true, false, false, true])
   })
 
   it('a long title is cut to a short line, never on « … »', async () => {

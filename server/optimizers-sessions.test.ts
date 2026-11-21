@@ -32,7 +32,7 @@ type Transcript = import('./transcripts.ts').Transcript
 const MIN = 60_000
 const T0 = Date.parse('2026-11-10T03:00:00Z')
 const projects = path.join(HOME, 'projects')
-const repo = path.join(projects, 'mygame')
+const repo = path.join(projects, 'myshop')
 const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pipe' })
 fs.mkdirSync(repo, { recursive: true })
 git('init', '-q', '-b', 'main')
@@ -92,22 +92,22 @@ afterEach(() => {
 
 describe('auto — the task sessions are real sessions of their project', () => {
   it('a repo task runs in its own worktree (fresh branch), shows in the repo project, then ends done', async () => {
-    const o = await accepted({ title: 'Harden mygame tests', repo: 'mygame' })
+    const o = await accepted({ title: 'Harden myshop tests', repo: 'myshop' })
     const id = o.list()[0].id
     o.tick(T0 + IDLE_MS)
     await flush()
     expect(mux.spawnWv).toHaveBeenCalledTimes(1)
     const [, cwd, , , command, sessionId] = mux.spawnWv.mock.calls[0] as [string, string, string, string, string[], string]
-    expect(cwd).toBe(path.join(projects, '.auto', 'mygame', id))
+    expect(cwd).toBe(path.join(projects, '.auto', 'myshop', id))
     expect(cwd.startsWith(DATA_DIR)).toBe(false)
     expect(command).toContain('--settings')
     // The worktree is there, on its branch; the user's checkout stays on main.
-    expect(execFileSync('git', ['-C', cwd, 'branch', '--show-current']).toString().trim()).toMatch(/^auto\/harden-mygame-tests-\w{4}$/)
+    expect(execFileSync('git', ['-C', cwd, 'branch', '--show-current']).toString().trim()).toMatch(/^auto\/harden-myshop-tests-\w{4}$/)
     expect(git('branch', '--show-current').toString().trim()).toBe('main')
 
     // Starting: the placeholder is in the repo's project, and the runner sees it.
     const seen = w.sessions(Date.now()).find((s) => s.id === sessionId)
-    expect(seen).toMatchObject({ projectId: 'mygame', repo: 'mygame', status: 'working' })
+    expect(seen).toMatchObject({ projectId: 'myshop', repo: 'myshop', status: 'working' })
     o.tick(T0 + IDLE_MS + MIN)
     expect(o.list()[0]).toMatchObject({ state: 'running', sessionId })
 
@@ -115,7 +115,7 @@ describe('auto — the task sessions are real sessions of their project', () => 
     vi.setSystemTime(T0 + IDLE_MS + 10 * MIN)
     w.store.byFile.set('/nowhere/x.jsonl', transcript(sessionId, cwd))
     w.bump()
-    expect(w.sessions(Date.now()).find((s) => s.id === sessionId)).toMatchObject({ projectId: 'mygame', repo: 'mygame' })
+    expect(w.sessions(Date.now()).find((s) => s.id === sessionId)).toMatchObject({ projectId: 'myshop', repo: 'myshop' })
     o.tick(Date.now())
     expect(o.list()[0]).toMatchObject({ state: 'done', lastEvent: 'Done: a report awaits review.' })
   })
@@ -155,7 +155,7 @@ describe('auto — the task sessions are real sessions of their project', () => 
     w.relay = { holdUntil: () => until, autoOnCodex: () => auto, holds: (id: string) => held.has(id), relayOf: () => undefined, relayedBy: () => undefined, covers: () => false, view: () => undefined, bossOn: () => false, boss: undefined } as never
     until = 0
     const o = new Optimizers(w, new Memory(path.join(tmp, 'memory.json')), { file: path.join(tmp, 'optimizers.json'), sys: { load: () => 0.1, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true, jail: async () => true } })
-    vi.mocked(smart).mockResolvedValueOnce(JSON.stringify([{ title: 'Harden cart tests', repo: 'mygame', why: 'w', kind: 'tests', heavy: false, priority: 1, est: 30, prompt: 'Do the thing, then stop and summarise.' }]))
+    vi.mocked(smart).mockResolvedValueOnce(JSON.stringify([{ title: 'Harden cart tests', repo: 'myshop', why: 'w', kind: 'tests', heavy: false, priority: 1, est: 30, prompt: 'Do the thing, then stop and summarise.' }]))
     await o.round(T0)
     const first = o.list()[0]
     vi.mocked(smart).mockResolvedValueOnce(JSON.stringify([{ title: 'Draft the press kit', why: 'w', repo: null, kind: 'content', prompt: 'Draft a press kit, then stop and summarise.' }]))

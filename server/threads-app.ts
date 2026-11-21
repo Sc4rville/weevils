@@ -179,7 +179,7 @@ export function startThreads(o: ThreadsAppOptions): ThreadsApp {
 }
 
 /** The session's topic title (the renamer's) wins over the thread's, which is often only the first words of the brief
- *  that opened it (« Asks from Yann (medium effort… »); the thread's title stands in until the topic is named. */
+ *  that opened it (« Asks from Alex (medium effort… »); the thread's title stands in until the topic is named. */
 export const rowTitle = (session: string, thread: string | undefined, topic: string | undefined): string => (topic ? session : thread || session)
 
 /**

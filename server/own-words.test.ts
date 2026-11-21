@@ -7,7 +7,7 @@ const memory = [
   'wants to make the weevils app open source by Friday, with first access given to whoever responds to his announcement tweet',
   'Wants the weevils project pinned on the main page of the app.',
   'veut tourner des sketchs avec son avatar d’ici vendredi',
-  'wants to ship mygame this year',
+  'wants to ship myshop this year',
 ]
 
 describe('own words', () => {
@@ -30,7 +30,7 @@ describe('own words', () => {
 
   it('lets a new idea through, even tied to the same goal', () => {
     expect(ownIdea({ title: 'Keep renders after RunPod stops', text: 'Your launch trailer lost full-size frames when RunPod credit ran out. I suggest a save step that copies each render to the VPS.' }, memory)).toBeNull()
-    expect(ownIdea({ title: 'Catch broken saves', text: 'Two mygame sessions were cut off while editing the save code. A test that loads an old save would catch a break before release.' }, memory)).toBeNull()
+    expect(ownIdea({ title: 'Catch broken saves', text: 'Two myshop sessions were cut off while editing the save code. A test that loads an old save would catch a break before release.' }, memory)).toBeNull()
     expect(ownIdea({ title: 'Pick your launch excerpt', text: 'Your four weevils films are finished. I suggest preparing a shortlist of three excerpts, with timestamps.' }, memory)).toBeNull()
   })
 
@@ -48,7 +48,7 @@ describe('own words', () => {
     expect(ownTask({ title: 'Pin weevils project on main', why: 'you want it at the top' }, memory)).toEqual({ own: true, why: '' })
     expect(ownTask({ title: 'Pin weevils project on main', why: 'Your idea: the weevils project first on the main page.' }, memory)).toEqual({ own: true, why: null })
     // A new task whose why only hands the goal back keeps its title, loses the parroting why.
-    expect(ownTask({ title: 'Harden the save tests', why: 'You want to ship mygame this year.' }, memory)).toEqual({ own: false, why: '' })
-    expect(ownTask({ title: 'Harden the save tests', why: 'A broken save would go unnoticed before mygame ships.' }, memory)).toEqual({ own: false, why: null })
+    expect(ownTask({ title: 'Harden the save tests', why: 'You want to ship myshop this year.' }, memory)).toEqual({ own: false, why: '' })
+    expect(ownTask({ title: 'Harden the save tests', why: 'A broken save would go unnoticed before myshop ships.' }, memory)).toEqual({ own: false, why: null })
   })
 })

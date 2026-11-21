@@ -48,7 +48,7 @@ const snap = (foryou?: Snapshot['foryou']): Snapshot => ({
   mainQueued: 0,
   devil: { enabled: false, working: false },
   pinnedRepos: [],
-  config: { userName: '', exposeDomain: '', publicHost: '', authors: [{ id: 'instinct', name: 'Instinct', color: '#ff8800' }] },
+  config: { userName: '', exposeDomain: '', publicHost: '', authors: [{ id: 'scout', name: 'Scout', color: '#ff8800' }] },
   ...(foryou ? { foryou } : {}),
 })
 
@@ -212,7 +212,7 @@ describe('l’aperçu de « pour toi »', () => {
     net.feed = feedOf([
       item('b1', { text: 'La page est prête.' }),
       item('s1', { kind: 'session', tone: 'result', who: 'session', projectId: 'p', title: 'refonte', text: 'La navigation fonctionne.' }),
-      item('m1', { kind: 'session', who: 'instinct', text: 'Le devis est prêt.' }),
+      item('m1', { kind: 'session', who: 'scout', text: 'Le devis est prêt.' }),
       ...Array.from({ length: 9 }, (_, i) => item(`x${i}`)),
     ])
     render(snap({ rev: 1, unseen: 12 }), <ForYouPeek />)
@@ -224,7 +224,7 @@ describe('l’aperçu de « pour toi »', () => {
     // Une session parle au nom de son projet ; un auteur extérieur sous son nom.
     expect(strips[1].querySelector('.strong')!.textContent).toBe('atelier')
     expect(strips[1].textContent).toContain('La navigation fonctionne.')
-    expect(strips[2].querySelector('.strong')!.textContent).toBe('Instinct')
+    expect(strips[2].querySelector('.strong')!.textContent).toBe('Scout')
     // Chaque bande a sa couleur.
     for (const s of strips) expect(s.style.getPropertyValue('--c')).not.toBe('')
     // Le nom interne d'une catégorie ne s'affiche jamais.

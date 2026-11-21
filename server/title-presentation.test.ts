@@ -11,16 +11,16 @@ afterEach(()=>fs.rmSync(dir,{recursive:true,force:true}))
 it('keeps translated titles stable through activity changes, locale switches and reload',async()=>{
  const file=path.join(dir,'translations.json')
  const cache=new FeedLocalization(file)
- const source:Titled={title:'Le café de TLO',titleLang:'fr',now:'Prépare le café',nowLang:'fr',at:1,messageCount:4}
- const pending=titlePresentation('a',source,'en',cache,['TLO'])
+ const source:Titled={title:'Le café de TUX',titleLang:'fr',now:'Prépare le café',nowLang:'fr',at:1,messageCount:4}
+ const pending=titlePresentation('a',source,'en',cache,['TUX'])
  expect(pending.title).toBe(source.title)
- await cache.translate(async strings=>Object.fromEntries(Object.entries(strings).map(([k,v])=>[k,v==='Le café de TLO'?'The TLO café':'Prepares the café'])))
- const english=titlePresentation('a',source,'en',cache,['TLO'])
- expect(english).toEqual({title:'The TLO café',now:'Prepares the café'})
- expect(titlePresentation('a',source,'fr',cache,['TLO']).title).toBe(source.title)
- expect(titlePresentation('a',{...source,now:'Le test est prêt',at:2},'en',cache,['TLO']).title).toBe(english.title)
- expect(titlePresentation('a',source,'en',new FeedLocalization(file),['TLO'])).toEqual(english)
- expect(source.title).toBe('Le café de TLO')
+ await cache.translate(async strings=>Object.fromEntries(Object.entries(strings).map(([k,v])=>[k,v==='Le café de TUX'?'The TUX café':'Prepares the café'])))
+ const english=titlePresentation('a',source,'en',cache,['TUX'])
+ expect(english).toEqual({title:'The TUX café',now:'Prepares the café'})
+ expect(titlePresentation('a',source,'fr',cache,['TUX']).title).toBe(source.title)
+ expect(titlePresentation('a',{...source,now:'Le test est prêt',at:2},'en',cache,['TUX']).title).toBe(english.title)
+ expect(titlePresentation('a',source,'en',new FeedLocalization(file),['TUX'])).toEqual(english)
+ expect(source.title).toBe('Le café de TUX')
 })
 
 it('queues legacy generated titles with unknown source language instead of silently leaving short French names',async()=>{

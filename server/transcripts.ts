@@ -685,7 +685,7 @@ const brief = (t: Transcript) => {
 /** Has the session been told what it is about yet? A session opened with a slash command (« /model … ») and weevils'
  *  context block gets its brief a moment later: titled before that, the renamer can only name the place. */
 export const hasBrief = (t: Transcript) => !!brief(t)
-/** A title that names only the place, not the subject (« weevils project », « weevils », « tlo session »): no title. */
+/** A title that names only the place, not the subject (« weevils project », « weevils », « shop-app session »): no title. */
 export const placeTitle = (title: string | undefined, places: (string | undefined)[]) => {
   if (!title) return false
   const f = title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()

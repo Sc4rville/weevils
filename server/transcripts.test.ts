@@ -517,7 +517,7 @@ describe('codex : messages entrants du relais', () => {
 
 it('projects shared signed source metadata on Claude and Codex without changing real users or mail authors',()=>{
  const now=Date.now(), text='Hook integrated. Browser on your side.'
- write(claudeFile(),[user(`[from:codex;thread:source-codex] ${text}`,now-3000),user(text,now-2000),user('[from:gepetto] Mail message',now-1000)])
+ write(claudeFile(),[user(`[from:codex;thread:source-codex] ${text}`,now-3000),user(text,now-2000),user('[from:marlow] Mail message',now-1000)])
  write(codexFile(now),[
   {type:'response_item',timestamp:iso(now-3000),payload:{id:'coord',type:'message',role:'user',content:[{type:'input_text',text:`[from:claude;thread:source-claude] ${text}`}]}},
   {type:'response_item',timestamp:iso(now-2000),payload:{id:'real-user',type:'message',role:'user',content:[{type:'input_text',text}]}},
@@ -526,7 +526,7 @@ it('projects shared signed source metadata on Claude and Codex without changing 
  expect(store.get(UUID)?.messages[0]).toMatchObject({role:'orchestrator',author:'codex',sourceThreadId:'source-codex',coordination:true,text})
  expect(store.get(CODEX_UUID)?.messages[0]).toMatchObject({role:'orchestrator',author:'claude',sourceThreadId:'source-claude',coordination:true,text})
  for(const id of [UUID,CODEX_UUID])expect(store.get(id)?.messages[1]).toMatchObject({role:'user',text})
- expect(store.get(UUID)?.messages[2]).toMatchObject({role:'orchestrator',author:'gepetto',text:'Mail message'})
+ expect(store.get(UUID)?.messages[2]).toMatchObject({role:'orchestrator',author:'marlow',text:'Mail message'})
 })
 
 describe('étiquette d’un appel d’outil', () => {

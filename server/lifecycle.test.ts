@@ -420,7 +420,7 @@ describe('arrière-plan (sous-agents, workflow, commandes)', () => {
     expect(one()).toMatchObject({ status: 'needs_user', background: 1 })
   })
 
-  it('L16b TLO : le tour finit sur une demande (valider RunPod, coller une adresse) avec 6 agents en arrière-plan → « à toi », action « coller », pas « travaille » ; une réponse de l’utilisateur lève l’attente', async () => {
+  it('L16b TUX : le tour finit sur une demande (valider RunPod, coller une adresse) avec 6 agents en arrière-plan → « à toi », action « coller », pas « travaille » ; une réponse de l’utilisateur lève l’attente', async () => {
     const ask = 'J’ai lancé six agents sur la recherche.\n\nValide la facturation RunPod, puis colle-moi l’adresse du pod ici.'
     add(transcript({ lastActivityAt: NOW - 40 * MIN, messages: [{ id: 'u', role: 'user', text: 'go', at: NOW - 50 * MIN }, { id: 'a', role: 'assistant', text: ask, at: NOW - 40 * MIN }], subagents: Array.from({ length: 6 }, (_, i) => sub({ id: `a${i}` })) }))
     w.panes = [pane({ createdAt: NOW - 60 * MIN })]
@@ -760,8 +760,8 @@ it('keeps a newly archived Codex pane archived when its transcript gets linked',
 
 it.each(['claude', 'codex'] as const)('%s completion reports with confirmations are idle; a real question still asks', async (tool) => {
   const t = add(transcript({ tool, messages: [
-    { id: 'u', role: 'user', text: 'reprends TLO', at: NOW - MIN },
-    { id: 'report', role: 'assistant', text: '[VPS] TLO repris par Codex à 16 h 32 : session liée et lecture des fichiers confirmées.\nPod supprimé, weevboss informé, aucune nouvelle dépense ni publication autorisée.', at: NOW },
+    { id: 'u', role: 'user', text: 'reprends TUX', at: NOW - MIN },
+    { id: 'report', role: 'assistant', text: '[VPS] TUX repris par Codex à 16 h 32 : session liée et lecture des fichiers confirmées.\nPod supprimé, weevboss informé, aucune nouvelle dépense ni publication autorisée.', at: NOW },
   ] }))
   w.panes = [pane({ tool })]
   expect(one()).toMatchObject({ status: 'idle' })
@@ -878,7 +878,7 @@ it('shares recursive repository identity between Claude/Codex on a fresh renamed
   const { InstallationIdentity }=await import('./recursive-identity.ts')
   const { MACHINE }=await import('./config.ts')
   const { withLang }=await import('./i18n.ts')
-  const installation=path.join(HOME,'freshproduct'),unrelated=path.join(HOME,'projects','tlo')
+  const installation=path.join(HOME,'freshproduct'),unrelated=path.join(HOME,'projects','tux')
   for(const dir of [installation,unrelated]){
     fs.mkdirSync(dir,{recursive:true})
     const init=spawnSync('git',['init'],{cwd:dir,stdio:'pipe'});expect(init.status).toBe(0)

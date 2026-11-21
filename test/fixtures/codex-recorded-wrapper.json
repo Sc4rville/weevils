@@ -22,7 +22,7 @@
         },
         {
           "type": "input_text",
-          "text": "{\"chunk_id\":\"3a3eac\",\"wall_time_seconds\":0.00001419,\"exit_code\":0,\"original_token_count\":83,\"output\":\" M src/i18n/foryou-formats.ts\\n M src/ui/foryou-formats.css\\n M src/ui/foryou-formats.tsx\\nbed4fd6 feat(feed): add visual format gallery and explicit TLO proposal choices\\nf4788ee fix(feed): stop the editorial voice flood and retire reservoir cards\\n4df0672 feat(session): show verified remote progress separately from agent activity\\n\"}"
+          "text": "{\"chunk_id\":\"3a3eac\",\"wall_time_seconds\":0.00001419,\"exit_code\":0,\"original_token_count\":83,\"output\":\" M src/i18n/foryou-formats.ts\\n M src/ui/foryou-formats.css\\n M src/ui/foryou-formats.tsx\\nbed4fd6 feat(feed): add visual format gallery and explicit TUX proposal choices\\nf4788ee fix(feed): stop the editorial voice flood and retire reservoir cards\\n4df0672 feat(session): show verified remote progress separately from agent activity\\n\"}"
         }
       ]
     }

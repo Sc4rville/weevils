@@ -31,7 +31,7 @@ export async function ghLogin(gh: Gh): Promise<string | null> {
 /** A machine's deploy key on a vault repository, with write access. True when it was added, false when already there. */
 export async function addDeployKey(gh: Gh, repo: string, machine: string, pub: string): Promise<boolean> {
   const body = pub.trim().split(/\s+/).slice(0, 2).join(' ')
-  const keys = await gh(['api', `repos/${repo}/keys`, '--jq', '.[].key'])
+  const keys = await gh(['api', `repos/${repo}/keys`, '--paginate', '--jq', '.[].key'])
   if (keys.code) throw new VaultError(`gh api keys: ${(keys.err || keys.out).trim()}`) // i18n-ignore: gh's own error
   if (keys.out.split('\n').some((k) => k.trim() === body)) return false
   const r = await gh(['api', '-X', 'POST', `repos/${repo}/keys`, '-f', `title=weevils ${machine.slice(0, 8)}`, '-f', `key=${body}`, '-F', 'read_only=false'])

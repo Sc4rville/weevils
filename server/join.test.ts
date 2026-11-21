@@ -303,7 +303,7 @@ esac
       const pub = fs.readFileSync(conf(laptop, 'vault-deploy.pub'), 'utf8').trim().split(' ').slice(0, 2).join(' ')
       // The main machine registered that public key on the vault's repository: write access, a title like step 1's.
       const asked = fs.readFileSync(w.log, 'utf8').trim().split('\n')
-      expect(asked).toEqual(['api user --jq .login', 'api repos/alex/weevbook-vault/keys --jq .[].key', `api -X POST repos/alex/weevbook-vault/keys -f title=weevils ${id.slice(0, 8)} -f key=${pub} -F read_only=false`])
+      expect(asked).toEqual(['api user --jq .login', 'api repos/alex/weevbook-vault/keys --paginate --jq .[].key', `api -X POST repos/alex/weevbook-vault/keys -f title=weevils ${id.slice(0, 8)} -f key=${pub} -F read_only=false`])
       expect(fs.readFileSync(w.keys, 'utf8').trim()).toBe(pub)
       expect(joinedNotes(w.notes)[id].vault).toBe('ok')
       expect(withoutVault(w.notes)).toEqual([])

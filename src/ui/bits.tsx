@@ -4,6 +4,8 @@ import { interceptModelControl } from '../model-controls'
 import { withoutMachinePrefix } from '../../shared/machine-prefix.ts'
 import { sessionNoticeKey } from '../../shared/notices.ts'
 import { firstSentence, isLongBrief } from '../../shared/brief-say.ts'
+import { flowLines, flowParagraph, mermaidFlow } from './diagram'
+import { DiagramView } from './diagram-view'
 import { dismissNotice } from './notice-store'
 import { AnimatePresence, motion, type Transition } from 'motion/react'
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
@@ -629,7 +631,7 @@ export function Prose({ text }: { text: string }) {
         b.kind === 'heading' ? (
           <p key={i} className={`md-h md-h${b.level}`}><Inline text={b.text} /></p>
         ) : b.kind === 'para' ? (
-          <p key={i}><Inline text={b.text} /></p>
+          flowParagraph(b.text) ? <DiagramView key={i} d={flowParagraph(b.text)!} /> : <p key={i}><Inline text={b.text} /></p>
         ) : b.kind === 'list' ? (
           b.ordered ? (
             <ol key={i} start={b.start}>{b.items.map((it, j) => <Item key={j} item={it} />)}</ol>
@@ -648,6 +650,8 @@ export function Prose({ text }: { text: string }) {
               <tbody>{b.rows.map((r, j) => <tr key={j}>{b.head.map((_, k) => <td key={k}><Inline text={r[k] ?? ''} /></td>)}</tr>)}</tbody>
             </table>
           </div>
+        ) : b.kind === 'code' && diagramOf(b) ? (
+          <DiagramView key={i} d={diagramOf(b)!} />
         ) : b.kind === 'code' ? (
           b.body.split('\n').length <= SHORT_CODE ? (
             <div key={i} className="md-code">
@@ -664,6 +668,9 @@ export function Prose({ text }: { text: string }) {
     </div>
   )
 }
+
+/** A ```mermaid flowchart or a ```flow block, drawn (src/ui/diagram.ts); anything else stays code. */
+const diagramOf = (b: { body: string; lang: string }) => (/^mermaid$/i.test(b.lang) ? mermaidFlow(b.body) : /^flow$/i.test(b.lang) ? flowLines(b.body) : null)
 
 /** Code this short reads at a glance: shown, not folded. */
 const SHORT_CODE = 8

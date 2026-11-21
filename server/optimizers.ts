@@ -1,4 +1,5 @@
 import { AutomationWorkspaces } from './automation-workspaces.ts'
+import { autoMerge, updateLive, type MergeResult } from './auto-merge.ts'
 import { preferredTool, providerReady } from './provider.ts'
 // The « auto » band that never sleeps: from the memory and the real projects, weevils proposes background tasks
 // (« optimizers »: harden a repo's tests, watch a topic the user cares about, prepare content, explore an idea they
@@ -469,11 +470,17 @@ export interface Sys {
   refresh: (dir: string, base: string) => Promise<'ff' | 'merged' | 'kept'>
   /** Pushes the task's own branch to origin, never anything else (see pushBranch). */
   push: (dir: string, branch: string, base?: string) => Promise<boolean>
+  /** Lands a safe change (theme, copy, asset) on main by itself (see autoMerge); absent in tests that do not use it. */
+  merge?: (dir: string) => Promise<MergeResult>
+  /** Brings the running app up to a merged commit (see updateLive). */
+  live?: (commit: string) => Promise<boolean>
   /** Tries the jail (bwrap <args> true): true when it holds, false without bwrap on this machine; throws if it fails. */
   jail: (args: string[]) => Promise<boolean>
   /** HEAD of the task's worktree <dir> of <repo>: where a run starts from (undefined outside git). */
   head: (repo: string, dir: string) => Promise<string | undefined>
 }
+/** weevils' own checkout (this server runs from it): the only repository that merges on its own. */
+const APP_DIR = path.resolve(import.meta.dirname, '..')
 const gitWorktree = (repo: string, dir: string, branch: string, base?: string) =>
   new Promise<void>((resolve, reject) =>
     execFile('git', ['-C', repo, 'worktree', 'add', dir, '-b', branch, ...(base ? [base] : [])], { timeout: 60_000 }, (e, _out, err) => (e ? reject(new Error(String(err || e.message).trim().split('\n').pop())) : resolve())),
@@ -555,7 +562,7 @@ export function memGauge(platform: Platform = process.platform, read: () => Prom
 }
 /** The note of a queued task that waits for Claude on a Mac, in every language (a task keeps the one it was given). */
 const MAC_NOTES: string[] = [O.fr.noJailMac, O.en.noJailMac]
-const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: memGauge(), logged: () => preferredTool() === 'codex' ? providerReady() : claudeLogged(), worktree: gitWorktree, base: (repo) => mainRef(repo), refresh: (dir, base) => refreshWorktree(dir, base), push: (dir, branch, base) => pushBranch(dir, branch, base), jail: tryJail, head: headOf }
+const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: memGauge(), logged: () => preferredTool() === 'codex' ? providerReady() : claudeLogged(), worktree: gitWorktree, base: (repo) => mainRef(repo), refresh: (dir, base) => refreshWorktree(dir, base), push: (dir, branch, base) => pushBranch(dir, branch, base), merge: (dir) => autoMerge(dir, APP_DIR), live: (commit) => updateLive(APP_DIR, commit), jail: tryJail, head: headOf }
 
 // ---------------------------------------------------------------- pure helpers (tested)
 
@@ -1756,14 +1763,33 @@ export class Optimizers {
     return true
   }
 
-  /** After a run, its own branch goes to origin (pushBranch: auto/… only, never forced), in the background. */
+  /**
+   * After a run: a safe change (a new theme, copy, an added asset; server/auto-merge.ts) lands on main by itself and
+   * the app is rebuilt, then For you says so; anything else stays a branch awaiting the person's go. Either way its
+   * own branch goes to origin (pushBranch: auto/… only, never forced), in the background.
+   */
   private pushRun(o: Stored) {
     if (!o.repo || !o.branch || o.deletedAt || o.builtin) return
     const place = this.place(o)
     if (!place?.cwd || !fs.existsSync(place.cwd)) return
     const { branch, baseCommit, startedAt, id, title } = o
-    void this.sys
-      .push(place.cwd, branch, baseCommit)
+    const cwd = place.cwd
+    void (this.sys.merge?.(cwd) ?? Promise.resolve<MergeResult>({ merged: false, why: 'off' }))
+      .catch((e): MergeResult => ({ merged: false, why: (e as Error).message }))
+      .then(async (m) => {
+        if (!m.merged) return void (m.why !== 'off' && m.why !== 'not weevils' && console.log(`[auto] « ${title} » reste une branche : ${m.why}`))
+        const r = this.get(id)?.runs?.find((x) => x.startedAt === startedAt)
+        if (r) {
+          r.merged = m.commit
+          this.changed()
+        }
+        console.log(`[auto] « ${title} » fusionnée dans main (${m.kinds.join(', ')}) : ${m.commit.slice(0, 7)}`)
+        if (!(await this.sys.live?.(m.commit).catch(() => false))) return void console.log(`[auto] « ${title} » : l'app en marche n'a pas pu être mise à jour`)
+        const t = tr(O)
+        const text = m.themes.length ? t.themesLive(m.themes) : t.mergedLive(title)
+        this.w.foryou?.add({ id: `auto-live:${id}:${m.commit.slice(0, 12)}`, kind: 'boss', tone: 'neutral', who: 'weevils', title: text, text, open: { page: 'auto', id } })
+      })
+      .then(() => this.sys.push(cwd, branch, baseCommit))
       .then((pushed) => {
         if (!pushed) return
         const r = this.get(id)?.runs?.find((x) => x.startedAt === startedAt)

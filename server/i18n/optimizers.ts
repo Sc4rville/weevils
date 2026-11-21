@@ -145,6 +145,9 @@ export default defineMessages({
     /** The supervisor (optimizers.ts supervise): a run that sat still, and the question it asked, sent to For you. */
     stalled: (min: number) => `immobile depuis ${min} min`,
     askTitle: (t: string) => `« ${t} » a une question`,
+    /** A safe change landed on main and the app was rebuilt (server/auto-merge.ts): said only once it is live. */
+    themesLive: (names: string[]) => names.length > 1 ? `nouveaux thèmes ${names.join(' et ')} dans ton sélecteur` : `nouveau thème ${names[0]} dans ton sélecteur`,
+    mergedLive: (t: string) => `« ${t} » est en ligne`,
     askNudge: "Personne ne peut répondre en direct : ta question est partie dans « pour toi ». Continue le reste de la tâche en prenant l'option la plus sûre, et note ce qui attend une réponse.",
     /** Stopped by Claude itself, back to the queue for later (or failed after a few tries). */
     stall_limit: "limite d'usage atteinte",
@@ -276,6 +279,8 @@ export default defineMessages({
     noWork: 'ended without any answer',
     stalled: (min: number) => `no progress for ${min} min`,
     askTitle: (t: string) => `"${t}" has a question`,
+    themesLive: (names: string[]) => names.length > 1 ? `new themes ${names.join(' and ')} are in your selector` : `new theme ${names[0]} is in your selector`,
+    mergedLive: (t: string) => `"${t}" is live`,
     askNudge: 'Nobody can answer live: your question went to For you. Carry on with the rest of the task, taking the safest option, and note what waits for an answer.',
     stall_limit: 'usage limit reached',
     stall_login: 'Claude login needed',

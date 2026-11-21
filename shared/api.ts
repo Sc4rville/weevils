@@ -427,6 +427,8 @@ export interface AutoRun {
   sessionId?: string
   /** The task's own branch, pushed to origin by weevils after this run. */
   pushed?: string
+  /** The commit this run landed on main by itself (a safe kind: theme, copy, asset; server/auto-merge.ts). */
+  merged?: string
 }
 /** Un fichier produit ou modifié par un passage. abs : chemin absolu sur la machine (page fichier). */
 export interface AutoOutputFile {

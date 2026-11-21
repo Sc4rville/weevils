@@ -3084,13 +3084,15 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .session-page .page-body > .fill { min-height: 12px; }
 .session-page .session-heading .h2 { font-size: 1.25rem; }
 
-.outbox-status { flex: none; font-size: .8125rem; line-height: 1.35; padding-block: 6px; }
-.outbox-status details { padding-block: 4px; overflow-wrap: anywhere; }
-.outbox-status summary { cursor: pointer; min-height: 32px; }
-.outbox-status blockquote { white-space: pre-wrap; margin: 6px 0; padding-inline-start: 10px; border-inline-start: 2px solid currentColor; }
-.outbox-recovery { display: flex; flex-wrap: wrap; gap: 4px 12px; }
-.outbox-excerpt { opacity: .8; }
-.outbox-status .link { min-height: 28px; }
+.outbox-status { flex: none; }
+/* A message that did not arrive: the person's own bubble, its band's lightness kept (so its ink reads as on every band
+   of this theme), its hue turned soft red. One short line under it, one text action: no box, no square button. */
+.msg.delivery-failed { background: oklch(from var(--c) calc(l + var(--dl)) 0.13 25); color: var(--ink); }
+.delivery-failed .delivery-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.delivery-failed .delivery-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 8px 0 0; font-size: .8125rem; }
+.delivery-failed .delivery-cause { font-weight: 750; }
+.delivery-failed .delivery-act { min-height: 32px; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+.delivery-failed .delivery-act .ic { width: 1em; height: 1em; margin-inline-start: 4px; }
 
 .remote-progress { padding-block: 12px; font-size: .9375rem; line-height: 1.45; }
 .remote-progress-title { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; }

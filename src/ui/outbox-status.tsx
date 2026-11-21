@@ -1,39 +1,62 @@
 import { useState } from 'react'
-import { forgetReceipt, retryReceipt, useOutbox, type LocalReceipt } from '../outbox'
+import { markHandedOver, retryReceipt, useOutbox, type LocalReceipt } from '../outbox'
+import { api } from '../api'
 import { useT } from '../i18n'
 import M from '../i18n/outbox'
-import { copyText } from './copy'
-const recoverable = (status: string) => ['failed', 'uncertain', 'sending'].includes(status)
-/** The server never took it and nothing is trying right now: say « not sent yet », never an endless « sending… ». */
-const notSent = (r: LocalReceipt) => r.status === 'sending' && !!(r.stuck || r.trackingLost)
-/** A new attempt is safe only when nothing can have reached the agent: never for « uncertain ». */
-const retryable = (r: LocalReceipt) => r.status === 'failed' || notSent(r)
-/** A reply is not delivery evidence. Only an exact receipt or identical payload with confirmed delivery resolves an error. */
-export function OutboxStatus({ scope, eventId }: { scope: string; eventId?: string }) {
- const rows = useOutbox()
- const t = useT(M)
- const [copied, setCopied] = useState('')
- const [retrying, setRetrying] = useState('')
- const retry = (id: string) => { setRetrying(id); void retryReceipt(id).catch(() => undefined).finally(() => setRetrying(r => r === id ? '' : r)) }
- const label = (r: LocalReceipt) => notSent(r) ? t.notSentYet : t[r.status]
- // Old receipts may contain obsolete advice to open a new session. Keep recovery in the existing conversation.
- const errorText = (error: string) => /^(This session was opened elsewhere,|Cette session a été ouverte ailleurs,)/.test(error) ? t.unavailable : error
- const relevant = rows.filter(r => r.url.startsWith(scope) && (!eventId || !r.eventId || r.eventId === eventId))
- // Only what asks something of the person: a message that did not go, or may not have. On its way, received, held,
- // forwarded are plumbing (Scarville, 2026-11-21: « ça c des trucs de backend on a pas à savoir »).
- const visible = relevant.filter(r => !r.dismissed && (r.status === 'failed' || r.status === 'uncertain' || notSent(r)) && !(r.status === 'failed' && r.fingerprint && relevant.some(done => done.status === 'delivered' && done.fingerprint === r.fingerprint && done.updatedAt >= r.updatedAt)))
- if (!visible.length) return null
- return <div className="outbox-status in" aria-live="polite">{visible.map(r => {
-  const problem = r.status === 'failed' || r.status === 'uncertain' || !!r.stuck
-  return <details key={r.messageId} data-delivery={r.status}>
-   <summary>{label(r)}{r.text && <span className="outbox-excerpt"> — {r.text.slice(0, 100)}{r.text.length > 100 ? '…' : ''}</span>}</summary>
-   {r.text && <blockquote>{r.text}</blockquote>}
-   {r.error && <p className="meta">{errorText(r.error)}</p>}
-   <div className="outbox-recovery">
-    {retryable(r) && <button type="button" className="link" disabled={retrying === r.messageId} onClick={() => retry(r.messageId)}>{t.retry}</button>}
-    {r.text && recoverable(r.status) && <button type="button" className="link" onClick={() => void copyText(r.text!).then(ok => ok && setCopied(r.messageId))}>{copied === r.messageId ? t.copied : t.recover}</button>}
-    {problem && <button type="button" className="link" aria-label={t.closeError} onClick={() => forgetReceipt(r.messageId)}>{t.closeError}</button>}
-   </div>
-  </details>
- })}</div>
+import { useApp } from './app-context'
+import { Icon } from './icons'
+
+/** The server never took it and nothing is trying any more: a confirmed « not sent ». */
+const notSent = (r: LocalReceipt) => r.status === 'sending' && !!r.stuck
+/** The session a message went to, from its address. */
+const sessionOf = (url: string) => { const m = /^\/api\/sessions\/([^/]+)\//.exec(url); return m ? decodeURIComponent(m[1]) : undefined }
+const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
+
+/**
+ * A message that did not reach its agent: the person's own bubble, red, with one short line naming the problem and
+ * « Notify weevboss » (Scarville, 2026-11-21: « juste mon message apparaît rouge et c écrit delivery problem »). Only a
+ * confirmed failure speaks: a slow or unconfirmed send stays silent, and a message that arrived never shows here. No
+ * toast, no notification. Once weevboss has it, the line goes quiet; once the text shows up in the thread, it is gone.
+ * `seen`: the thread's messages, to know when the text finally arrived there.
+ */
+export function OutboxStatus({ scope, eventId, seen = [] }: { scope: string; eventId?: string; seen?: { text: string; at: number }[] }) {
+  const rows = useOutbox()
+  const t = useT(M)
+  // Outside the app (a test, a page of its own) there is no session list: the note links the bare id.
+  let app: ReturnType<typeof useApp> | undefined
+  try { app = useApp() } catch { app = undefined }
+  const [busy, setBusy] = useState('')
+  const [notifyError, setNotifyError] = useState('')
+  const relevant = rows.filter(r => r.url.startsWith(scope) && (!eventId || !r.eventId || r.eventId === eventId))
+  const arrived = (r: LocalReceipt) => !!r.text?.trim() && seen.some(m => m.at >= (r.acceptedAt ?? r.updatedAt) - 1000 && norm(m.text).includes(norm(r.text!)))
+  const superseded = (r: LocalReceipt) => !!r.fingerprint && relevant.some(done => done.messageId !== r.messageId && done.status === 'delivered' && done.fingerprint === r.fingerprint && done.updatedAt >= r.updatedAt)
+  const visible = relevant.filter(r => !r.dismissed && (r.status === 'failed' || notSent(r)) && !superseded(r) && !arrived(r))
+  if (!visible.length) return null
+  const cause = (r: LocalReceipt) => notSent(r) ? t.notSentCause : r.cause === 'unreachable' ? t.unreachableCause : r.cause === 'offline' ? t.offlineCause : t.deliveryProblem
+  const notify = (r: LocalReceipt) => {
+    const id = sessionOf(r.url)
+    const title = id ? app?.snap?.sessions?.find(s => s.id === id)?.title : undefined
+    const where = id ? `[${title || id.slice(0, 8)}](/#s=${id})` : 'weevboss'
+    setBusy(r.messageId); setNotifyError('')
+    void api.main(t.note(where, cause(r), r.messageId, r.text ?? ''))
+      .then(() => markHandedOver(r.messageId))
+      .catch(() => setNotifyError(r.messageId))
+      .finally(() => setBusy(b => b === r.messageId ? '' : b))
+  }
+  return <div className="outbox-status" aria-live="polite">{visible.map(r => {
+    // To weevboss itself, or never taken by the server: weevboss can't be the way round, the same send is.
+    const direct = notSent(r) || !sessionOf(r.url)
+    return <div key={r.messageId} className="msg band tone delivery-failed" data-delivery={r.status}>
+      <div className="in">
+        <span className="who">{t.you}</span>
+        {r.text && <p className="delivery-text">{r.text}</p>}
+        <p className="delivery-line">
+          <span className="delivery-cause">{r.handedOver ? t.onIt : cause(r)}</span>
+          {!r.handedOver && (direct
+            ? <button type="button" className="link delivery-act" disabled={busy === r.messageId} onClick={() => { setBusy(r.messageId); void retryReceipt(r.messageId).catch(() => undefined).finally(() => setBusy('')) }}>{t.retry} <Icon name="arrow" dir="right" /></button>
+            : <button type="button" className="link delivery-act" disabled={busy === r.messageId} onClick={() => notify(r)}>{notifyError === r.messageId ? t.notifyFailed : t.notify} <Icon name="arrow" dir="right" /></button>)}
+        </p>
+      </div>
+    </div>
+  })}</div>
 }

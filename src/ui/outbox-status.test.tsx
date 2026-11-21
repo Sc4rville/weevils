@@ -1,90 +1,74 @@
 // @vitest-environment happy-dom
+// A message that did not arrive: the person's own bubble turns red with its cause and « Notify weevboss » (outbox-status.tsx).
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { beforeEach, afterEach, it, expect, vi } from 'vitest'
 import { setLang } from '../i18n'
-const state = vi.hoisted(() => ({ rows: [] as any[], copied: vi.fn(async () => true), push: vi.fn(), retry: vi.fn(async () => undefined) }))
-vi.mock('../outbox', () => ({ useOutbox: () => state.rows, forgetReceipt: vi.fn(), retryReceipt: state.retry }))
-vi.mock('./copy', () => ({ copyText: state.copied }))
-vi.mock('./app-context', () => ({ useApp: () => ({ push: state.push }) }))
+const state = vi.hoisted(() => ({ rows: [] as any[], retry: vi.fn(async () => undefined), main: vi.fn(async () => ({ id: 'boss' })), handed: vi.fn() }))
+vi.mock('../outbox', () => ({ useOutbox: () => state.rows, retryReceipt: state.retry, markHandedOver: (id: string) => { state.handed(id); state.rows = state.rows.map(r => r.messageId === id ? { ...r, handedOver: true } : r) } }))
+vi.mock('../api', () => ({ api: { main: state.main } }))
+vi.mock('./app-context', () => ({ useApp: () => ({ snap: { sessions: [{ id: 'tux', title: 'architecture vision' }] } }) }))
 import { OutboxStatus } from './outbox-status'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let host: HTMLDivElement, root: Root
-beforeEach(() => { setLang('en'); host = document.createElement('div'); document.body.append(host); root = createRoot(host); state.rows = []; state.copied.mockClear(); state.push.mockClear(); state.retry.mockClear() })
+beforeEach(() => { setLang('en'); host = document.createElement('div'); document.body.append(host); root = createRoot(host); state.rows = []; state.retry.mockClear(); state.main.mockClear(); state.handed.mockClear() })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); setLang(null) })
-it('says nothing while a message is accepted or delivered (plumbing), and scopes a failure to the current conversation', async () => {
- state.rows = [{messageId:'a',url:'/api/main',status:'accepted'}, {messageId:'b',url:'/api/sessions/other/send',status:'failed',text:'x'}]
+const scope = '/api/sessions/tux/'
+const render = (seen: { text: string; at: number }[] = []) => act(async () => root.render(<OutboxStatus scope={scope} seen={seen} />))
+const buttons = () => [...host.querySelectorAll('button')].map(b => b.textContent?.trim())
+
+it('failed → red bubble with its cause and « Notify weevboss » → weevboss is on it → delivered → back to normal', async () => {
+ state.rows = [{ messageId: 'm1', url: '/api/sessions/tux/send', status: 'failed', cause: 'unreachable', text: 'les 4 decisions quoi', acceptedAt: 1000, updatedAt: 1000 }]
+ await render()
+ const bubble = host.querySelector('.msg.delivery-failed')!
+ expect(bubble.textContent).toContain('les 4 decisions quoi')
+ expect(bubble.querySelector('.delivery-cause')?.textContent).toBe('Session unreachable')
+ expect(buttons()).toEqual(['Notify weevboss'])
+ await act(async () => (host.querySelector('button') as HTMLButtonElement).click())
+ expect(state.main).toHaveBeenCalledTimes(1)
+ const note = (state.main.mock.calls[0] as unknown as string[])[0]
+ expect(note).toContain('[architecture vision](/#s=tux)')
+ expect(note).toContain('> les 4 decisions quoi')
+ expect(note).toContain('m1')
+ expect(state.handed).toHaveBeenCalledWith('m1')
+ await render()
+ expect(host.querySelector('.delivery-cause')?.textContent).toBe('weevboss is on it')
+ expect(buttons()).toEqual([])
+ // The text reaches the thread (weevboss got it there): the red bubble is gone.
+ await render([{ text: '[from:weevboss] They asked: les 4 decisions quoi', at: 2000 }])
+ expect(host.textContent).toBe('')
+})
+
+it('says nothing for a slow, unconfirmed or delivered message, nor for one sent elsewhere', async () => {
+ state.rows = [
+  { messageId: 'a', url: '/api/sessions/tux/send', status: 'accepted', text: 'a' },
+  { messageId: 'd', url: '/api/sessions/tux/send', status: 'delivering', text: 'd' },
+  { messageId: 'u', url: '/api/sessions/tux/send', status: 'uncertain', text: 'u', error: 'unconfirmed' },
+  { messageId: 's', url: '/api/sessions/tux/send', status: 'sending', trackingLost: true, text: 's' },
+  { messageId: 'ok', url: '/api/sessions/tux/send', status: 'delivered' },
+  { messageId: 'x', url: '/api/sessions/other/send', status: 'failed', text: 'x' },
+ ]
+ await render()
+ expect(host.textContent).toBe('')
+ expect(host.textContent).not.toMatch(/not sure it arrived/)
+})
+
+it('a failure without a known cause reads « Delivery problem »; a later identical delivered send clears it', async () => {
+ state.rows = [{ messageId: 'f', url: '/api/sessions/tux/send', fingerprint: 'same', status: 'failed', text: 'hello', updatedAt: 1 }]
+ await render()
+ expect(host.querySelector('.delivery-cause')?.textContent).toBe('Delivery problem')
+ state.rows.push({ messageId: 'g', url: '/api/sessions/tux/send', fingerprint: 'same', status: 'delivered', updatedAt: 2 })
+ await render()
+ expect(host.textContent).toBe('')
+})
+
+it('to weevboss itself, or never taken by the server, the way round is « try again », not weevboss', async () => {
+ state.rows = [{ messageId: 'w', url: '/api/main', status: 'failed', text: 'hi' }]
  await act(async () => root.render(<OutboxStatus scope="/api/main" />))
- expect(host.textContent).toBe('')
- state.rows = [{...state.rows[0],status:'delivered',result:{id:'target'}}]
- await act(async () => root.render(<OutboxStatus scope="/api/main" />))
- expect(host.textContent).toBe('')
- expect(host.querySelector('button')).toBeNull()
-})
-it('an uncertain receipt offers recovery, never a button that reinjects the message', async () => {
- state.rows = [{messageId:'a',url:'/api/main',status:'uncertain',text:'original draft'}]
- await act(async () => root.render(<OutboxStatus scope="/api/main" />))
- expect(host.textContent).toContain('not sure it arrived')
- const buttons = host.querySelectorAll('button'); expect(buttons).toHaveLength(2)
- await act(async () => buttons[0].click()); expect(state.copied).toHaveBeenCalledWith('original draft')
-})
-
-it('contextual delivery hides completed and older-event receipts without forgetting their identity',async()=>{
- state.rows=[{messageId:'old',url:'/api/foryou/a/act',status:'uncertain',eventId:'previous'}, {messageId:'current',url:'/api/foryou/a/act',status:'uncertain',eventId:'current'}, {messageId:'elsewhere',url:'/api/foryou/b/reply',status:'uncertain'}]
- await act(async()=>root.render(<OutboxStatus scope="/api/foryou/a/" eventId="current"/>))
- expect(host.querySelectorAll('[data-delivery]')).toHaveLength(1)
- expect(host.textContent).toContain('not sure it arrived')
- state.rows[1]={...state.rows[1],status:'delivered',result:{id:'target'}}
- await act(async()=>root.render(<OutboxStatus scope="/api/foryou/a/" eventId="current"/>))
- expect(host.textContent).toBe('')
- expect(state.rows).toHaveLength(3)
-})
-it.each(['/api/main','/api/foryou/card/reply','/api/sessions/tux/send'])('never renders a delivered success block in %s, but keeps a recoverable failure',async scope=>{
- state.rows=[{messageId:'done',url:scope,status:'delivered',result:{id:'tux'}}]
- await act(async()=>root.render(<OutboxStatus scope={scope}/>))
- expect(host.querySelector('.outbox-status')).toBeNull()
- state.rows.push({messageId:'failed',url:scope,status:'failed',text:'Original message',error:'Not connected'})
- await act(async()=>root.render(<OutboxStatus scope={scope}/>))
- expect(host.textContent).toContain('Not connected')
- expect(host.textContent).not.toMatch(/forwarded to the agent|open conversation|dismiss this status/)
- expect([...host.querySelectorAll('button')].map(b=>b.textContent)).toEqual(['try again','copy the text','close this notice'])
-})
-
-it('a confirmed retry of the exact payload hides the old failure, but a different message does not', async()=>{
- state.rows=[{messageId:'old',url:'/api/main',fingerprint:'same',status:'failed',updatedAt:1,text:'Original message'}, {messageId:'new',url:'/api/main',fingerprint:'different',status:'delivered',updatedAt:2}]
- await act(async()=>root.render(<OutboxStatus scope="/api/main"/>))
- expect(host.querySelector('[data-delivery="failed"]')).not.toBeNull()
- expect(host.querySelector('details')?.open).toBe(false)
- state.rows[1].fingerprint='same'
- await act(async()=>root.render(<OutboxStatus scope="/api/main"/>))
- expect(host.textContent).toBe('')
- expect(state.rows).toHaveLength(2)
-})
-
-it('shows only what needs the person: "not sent", never "sending…", "received" or "waiting for its turn"', async () => {
- state.rows=[{messageId:'s',url:'/api/main',status:'sending'},{messageId:'a',url:'/api/main',status:'accepted'},{messageId:'d',url:'/api/main',status:'delivering'},{messageId:'f',url:'/api/main',status:'failed',text:'hello',trackingLost:true},{messageId:'w',url:'/api/main',status:'accepted',error:'Waiting for an available provider',retryAt:Date.now()+60_000}]
- await act(async()=>root.render(<OutboxStatus scope="/api/main"/>))
- expect([...host.querySelectorAll('summary')].map(s=>s.firstChild?.textContent)).toEqual(['not sent'])
- expect(host.textContent).not.toMatch(/forwarding|confirmation|tracking/)
- // Recovery stays: the text can still be copied back.
- expect([...host.querySelectorAll('button')].some(b=>b.textContent==='copy the text')).toBe(true)
-})
-
-it('a send the server never took reads "not sent yet" with "try again", never an endless "sending…"', async () => {
- state.rows=[{messageId:'lost',url:'/api/sessions/s/send',status:'sending',trackingLost:true,text:'hello'}]
- await act(async()=>root.render(<OutboxStatus scope="/api/sessions/s/"/>))
- expect(host.querySelector('summary')?.firstChild?.textContent).toBe('not sent yet')
- expect(host.textContent).not.toContain('sending…')
- const retry=[...host.querySelectorAll('button')].find(b=>b.textContent==='try again')!
- await act(async()=>retry.click())
- expect(state.retry).toHaveBeenCalledWith('lost')
- // Gave up resuming by itself: the notice can also be closed.
- state.rows=[{...state.rows[0],stuck:true}]
- await act(async()=>root.render(<OutboxStatus scope="/api/sessions/s/"/>))
- expect([...host.querySelectorAll('button')].map(b=>b.textContent)).toEqual(['try again','copy the text','close this notice'])
-})
-it('an uncertain or still-sending message never offers "try again"', async () => {
- state.rows=[{messageId:'u',url:'/api/main',status:'uncertain',text:'a'},{messageId:'s',url:'/api/main',status:'sending',text:'b'}]
- await act(async()=>root.render(<OutboxStatus scope="/api/main"/>))
- expect(host.textContent).not.toContain('try again')
+ expect(buttons()).toEqual(['try again'])
+ state.rows = [{ messageId: 'n', url: '/api/sessions/tux/send', status: 'sending', stuck: true, trackingLost: true, text: 'hey' }]
+ await render()
+ expect(host.querySelector('.delivery-cause')?.textContent).toBe('Not sent: connection lost')
+ await act(async () => (host.querySelector('button') as HTMLButtonElement).click())
+ expect(state.retry).toHaveBeenCalledWith('n')
 })

@@ -15,9 +15,11 @@ export interface Receipt {
   error?: string
   /** Held by the server (OutboxDeferred): it has the message and tries again by itself at this time. */
   retryAt?: number
+  /** A confirmed failure's cause (shared/outbox.ts). */
+  cause?: 'unreachable' | 'offline' | 'refused'
 }
 /** stuck: automatic resumes gave up (RESUME_GIVE_UP_MS); only an explicit « try again » sends it now. */
-export interface LocalReceipt extends Receipt { stuck?: boolean; dismissed?: boolean; locale?: Lang; url: string; fingerprint: string; text?: string; trackingLost?: boolean; eventId?: string; card?: string; payload?: unknown; payloadStored?: boolean; recovered?: boolean }
+export interface LocalReceipt extends Receipt { stuck?: boolean; dismissed?: boolean; locale?: Lang; url: string; fingerprint: string; text?: string; trackingLost?: boolean; eventId?: string; card?: string; payload?: unknown; payloadStored?: boolean; recovered?: boolean; /** « Notify weevboss » was tapped: weevboss has the message and its target. */ handedOver?: boolean }
 const KEY = 'weevils-outbox-v1'
 let rows: LocalReceipt[] = []
 try { rows = JSON.parse(localStorage.getItem(KEY) ?? '[]').filter((r: LocalReceipt) => typeof r.messageId === 'string' && typeof r.url === 'string') } catch { /* unavailable storage */ }
@@ -53,6 +55,11 @@ function update(receipt: LocalReceipt) {
 export function forgetReceipt(id: string) {
   const row = rows.find(r => r.messageId === id)
   if (row && (['delivered', 'failed', 'uncertain'].includes(row.status) || row.stuck)) update({ ...row, dismissed: true })
+}
+/** The failed message went to weevboss (« Notify weevboss »): the line turns quiet, the identity stays. */
+export function markHandedOver(id: string) {
+  const row = rows.find(r => r.messageId === id)
+  if (row) update({ ...row, handedOver: true })
 }
 // Only an unsupported old server has no durable receipt to retain.
 function forgetUntrackedReceipt(id: string) { rows = rows.filter(r => r.messageId !== id); save() }

@@ -326,7 +326,7 @@ export function AgentBand() {
             <Messages messages={main} author="weevboss" working={snap.mainWorking || greeting || !!snap.devil?.working} after={(id) => <>{qa(th.after(id), `${th.a.asking}:${!!th.a.shown}:${th.a.waiting}`)}{chipsOf(id)}</>} chip={chipIn} />
           </div>
           <ThreadPlans />
-          <OutboxStatus scope="/api/main" />
+          <OutboxStatus scope="/api/main" seen={main} />
           {(snap.mainWorking || greeting) && <Working author="weevboss" />}
           {snap.devil?.working && <Working author="devil" />}
         </motion.div>

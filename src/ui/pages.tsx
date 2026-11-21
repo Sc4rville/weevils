@@ -304,7 +304,7 @@ function SessionPage({ id }: { id: string }) {
         )}
       </div>
 
-      <OutboxStatus scope={`/api/sessions/${encodeURIComponent(id)}/`} />
+      <OutboxStatus scope={`/api/sessions/${encodeURIComponent(id)}/`} seen={messages} />
 
       {/* Les bandes d'état (question, travail, coupure) arrivent avec le fil : posées avant lui sur une page vide, elles
           seraient ensuite repoussées d'un coup vers le bas par les messages (ouverture depuis une notification). */}

@@ -346,7 +346,7 @@ empty text with its signature, so the risk was small; the rule keeps it at none.
    - **The first push of an existing weevbook**, measured on the owner's (2026-11-21: read from the real weevbook,
      pushed to bare repositories on the same disk with a throwaway key, at low priority on a machine busy with other
      work): 646 threads and 1,596 MB of raw folders became 138 MB of slim compressed raw lines in one raw
-     repository, sent in 12 pushes (11 writes of the map), and 59 MB of checkpoints for 150 threads in 4 pushes (53 MB
+     repository, sent in 12 pushes (11 writes of the map), and 59 MB of checkpoints (150 bundles, 149 threads) in 4 pushes (53 MB
      of it in three threads whose folders hold large files their origin does not have; the others: 24 KB at the
      median), beside 7 pushes of journals. 9 min 19 s in all (7 min 24 s on a first run with the machine less
      loaded), cut on purpose after the second batch and gone on from there. A push with nothing new: 13 s. A fresh

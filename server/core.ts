@@ -1,4 +1,4 @@
-import { BossWakeups, proactiveEnabled, safeToResume, schedulerOwnsStop, silentOutcome, type Waiting, type WakeEvent } from './boss-wakeups.ts'
+import { BossWakeups, isIntake, proactiveEnabled, safeToResume, schedulerOwnsStop, silentOutcome, type Waiting, type WakeEvent } from './boss-wakeups.ts'
 import { speedMode } from './request-handling.ts'
 import LivingResults from './i18n/living-results.ts'
 import { InstallationIdentity } from './recursive-identity.ts'
@@ -415,6 +415,9 @@ export class Weevils {
   memory: Memory | null = null
   /** The h24 background tasks (server/optimizers.ts), on the main machine. */
   optimizers: Optimizers | null = null
+  /** Tempo (server/tempo-service.ts): which queued requests start now; set by index.ts on the main machine. */
+  tempo: import('./tempo-service.ts').TempoService | null = null
+  private lastIntake = 0
   /** The « for you » stream (server/foryou.ts), on the main machine. */
   foryou: ForYou | null = null
   /** Sleep mode (server/sleep.ts), on the main machine. */
@@ -2528,7 +2531,7 @@ export class Weevils {
   }
 
   private orchestratorWorking(now: number) {
-    if (this.bossTurns && (this.turnStarting || this.bossTurns.queue.some((q) => !q.proactive || this.wakeups?.allowed(speedMode())))) return true
+    if (this.bossTurns && (this.turnStarting || this.bossTurns.queue.some((q) => !q.proactive || this.wakeups?.allowed(speedMode()) || (q.events?.some(isIntake) && this.wakeups?.intakeAllowed(speedMode()))))) return true
     const owner = this.codexBoss()?.id
     const daemon = owner ? this.codexBridge.activityOf?.(owner) : undefined
     const codex = this.codexBoss()?.t
@@ -2642,7 +2645,7 @@ export class Weevils {
     if (!turns || this.turnStarting) return
     const now = Date.now()
     const wakeups = this.wakeups
-    const canWake = () => !!wakeups && wakeups.allowed(speedMode()) && claudeLogged() && preferredTool() !== 'codex'
+    const canWake = () => !!wakeups && (wakeups.allowed(speedMode()) || wakeups.intakeAllowed(speedMode())) && claudeLogged() && preferredTool() !== 'codex'
       && !this.relay?.episode?.() && this.relay?.providerReady?.('claude') !== false
       && (!this.relay?.executionTool || this.relay.executionTool('claude') === 'claude')
     if (wakeups && proactiveEnabled() && now - this.lastWakeScan >= 5000) {
@@ -2653,7 +2656,17 @@ export class Weevils {
       const automated = (id: string) => !!(this.optimizers?.owns(id) || this.optimizers?.autoSession(id))
       wakeups.observe(this.sessions().filter((s) => !turns.isTurn(s.id) && s.id !== this.orchestratorId && !isScratchDir(s.cwd) && !isTestBrief(this.store.get(s.id)?.firstPrompt)), asks, now, { dispatched, automated })
       // The light periodic self-check (every 2 h at most, never in Pause/Standby): free unless something new waits.
-      if (canWake()) wakeups.selfCheck(this.waitingOnUser(now), now)
+      if (canWake() && wakeups.allowed(speedMode())) wakeups.selfCheck(this.waitingOnUser(now), now)
+      // Tempo: the queued requests due now, once a minute (in every mode but Pause; the rule is in server/tempo.ts).
+      if (this.tempo && now - this.lastIntake >= 60_000) {
+        this.lastIntake = now
+        for (const st of this.tempo.intake(asks, now)) {
+          const a = asks.find((x) => x.id === st.ask)
+          if (!a) continue
+          wakeups.intake({ key: `intake:${st.ask}:${Math.floor(now / 3600_000)}`, at: now, request: st.ask, project: st.repo, source: a.src, author: a.from,
+            summary: `Tempo ${st.mode} in ${st.project}: start request ${st.ask} now, ${st.tier} tier${st.why === 'floor' ? ' (it waited its limit)' : ''}: ${a.text}` }) // i18n-ignore: model context, never shown
+        }
+      }
       this.tellOutcomes(now)
     }
     turns.preferUser()
@@ -2676,23 +2689,24 @@ export class Weevils {
     try {
       const id = crypto.randomUUID()
       if (!turns.queue.length) {
-        const events = wakeups!.claim(id, true, now)
+        const events = wakeups!.claim(id, true, now, speedMode())
         if (!events.length) return
         // Reuse cheap state/question judgements; one short Haiku pass rejects routine/no-result batches.
-        const useful = await this.triageWakeups(events)
+        // Tempo's starts are always worth a turn: no triage for a batch of starts only.
+        const useful = events.every(isIntake) ? true : await this.triageWakeups(events)
         if (useful === null) { wakeups!.defer(id); return }
         if (turns.queue.length) turns.foldEvents(events)
         else if (useful) turns.enqueue('', undefined, events, true)
         else return
       } else if (canWake()) {
-        turns.foldEvents(wakeups!.claim(id, false, now))
+        turns.foldEvents(wakeups!.claim(id, false, now, speedMode()))
       }
       turns.preferUser()
       const head = turns.queue[0]
       if (head?.proactive && !canWake()) return
       const turn = await turns.prepare({ id, claude: [...CLAUDE], memory: this.memory?.digest() ?? '', ledger: this.ledger?.digest(undefined, head?.cid) ?? '', ...(head?.events?.length ? { waiting: this.waitingOnUser(now) } : {}) })
       // Preparation can await summaries. A user who spoke in the meantime takes the next turn.
-      if (head?.proactive && (turns.preferUser() || !canWake() || !wakeups!.canLaunch())) return
+      if (head?.proactive && (turns.preferUser() || !canWake() || !wakeups!.canLaunch(Date.now(), id))) return
       // The previous turn is over: its message can be read into the ledger.
       void this.ledgerTick()
       this.orchestratorId = id

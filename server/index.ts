@@ -44,11 +44,14 @@ import { appWriteAllowed, browserSafe, clientAddress, configureLocalAuth, isLoca
 import { startMailBridge } from './mailbridge.ts'
 import { resetAuthors, threadAuthor } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
-import { brief, detail as infraDetail, listDir, readAny, startInfra } from './infra.ts'
+import { brief, detail as infraDetail, listDir, machineInput, readAny, startInfra } from './infra.ts'
 import { jailedAllowed, jailedPeer, ownPeer, sameUserPeer } from './jail-peer.ts'
 import { loginLimiter } from './login-limit.ts'
 import { startDiskUsage } from './disk-usage.ts'
 import { anchorFor, entries as spendEntries, logCalibration, summarize } from './spend.ts'
+import { TempoService } from './tempo-service.ts'
+import { setSpeedModeSource } from './request-handling.ts'
+import { isTempoMode, legacyOf } from '../shared/tempo.ts'
 import { claudeQuota, claudeWindows, quotas, rate as tokenRate, today as usageToday } from './usage.ts'
 import { Relay, defaultDeps } from './relay.ts'
 import { ClaudeAccounts, accountsOn, defaultRoot, setAccounts } from './claude-accounts.ts'
@@ -384,6 +387,33 @@ const health = new ProviderHealth(path.join(DATA_DIR, 'provider-health.json'), a
 })
 const relay = new Relay(w.relayHost(), { ...defaultDeps(() => claudeAccounts.quota(), codexReady), health, ...(accountsOn() ? { accounts: claudeAccounts } : {}) })
 // With threads (WEEVILS_THREADS), the dispatcher moves a thread between accounts and providers: no relay runs.
+// Tempo (docs/product/tempo.md): the modes per repo and the global ceiling, the spend ledger behind their numbers, and
+// the starts of queued requests. The main machine only: it is where weevboss and the request ledger live.
+const tempo = ORCHESTRATOR
+  ? new TempoService({
+      dir: DATA_DIR,
+      entries: () => spendEntries(),
+      quotas: async () => ({ ...(await quotas()), claude: await claudeAccounts.quota() }),
+      machine: machineInput,
+      accounts: () => (accountsOn() ? Math.max(1, claudeAccounts.folders().filter((f) => f.logged).length) : 1),
+      sessions: () => w.snapshot().sessions,
+      projects: () => w.snapshot().projects,
+      calibrationFile: process.env.WEEVILS_SPEND_LOG ?? path.join(DATA_DIR, 'spend-calibration.jsonl'),
+      calibrate: async () => {
+        const q = (await quotas()).claude
+        const es = spendEntries()
+        const first = summarize(es, q)
+        logCalibration(summarize(es, q, Date.now(), anchorFor(first.week.end) ?? undefined), es, q)
+      },
+    })
+  : null
+if (tempo) {
+  w.tempo = tempo
+  setSpeedModeSource(() => legacyOf(tempo.speedMode()))
+  const tick = () => void tempo.tick().catch((e) => console.error(`[tempo] ${(e as Error).message}`))
+  setTimeout(tick, 20_000).unref()
+  setInterval(tick, 10 * 60_000).unref()
+}
 if (!THREADS) {
   w.relay = relay
   setProviderRoute(tool => relay.executionTool(tool))
@@ -1151,6 +1181,22 @@ const routes: [string, RegExp, Handler][] = [
     logCalibration(s, es, q)
     json(res, 200, { ...s, week: { ...s.week, bySession: s.week.bySession.slice(0, 10) } })
   }],
+  // Tempo: the modes, what each would use (from the spend ledger, with sources and confidence), and setting one.
+  ...(tempo ? ([
+    ['GET', /^\/api\/tempo$/, async (_req, res) => json(res, 200, await tempo.view())],
+    ['POST', /^\/api\/tempo$/, async (req, res) => {
+      const b = await readBody(req)
+      if (!isTempoMode(b?.mode)) return json(res, 400, { error: 'tempo_mode_unknown' })
+      const repo = typeof b?.repo === 'string' && b.repo ? b.repo : null
+      try {
+        const v = await tempo.set(b.mode, repo)
+        w.bump()
+        json(res, 200, v)
+      } catch {
+        json(res, 409, { error: 'tempo_mode_locked' })
+      }
+    }],
+  ] as [string, RegExp, Handler][]) : []),
   ['GET', /^\/api\/usage\/today$/, async (_req, res, url) => {
     const sessions = new Map(w.snapshot().sessions.map((s) => [s.id, s]))
     const { rows, models } = usageToday((id) => sessions.get(id))

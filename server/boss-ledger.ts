@@ -5,8 +5,11 @@
 //     user's exact words, checked against the message), links them to the sessions the turn dispatched them to, to a
 //     goal, and writes the trace (who got what, why, what they must report). A message Haiku cannot read after a few
 //     tries becomes one request holding the whole message: still nothing lost.
-//   - Close the loop: when a dispatched session stops, Haiku reads what it said since and closes the request (done),
-//     or notes the question or the failure. A request with no progress for 24 h is stale.
+//   - Close the loop: when a dispatched session stops, Haiku reads what it said since and the commits that landed
+//     since the request was sent (server/ledger-evidence.ts: a session ships several requests in a few commits and
+//     its last words are about something else). A commit that shows the request done closes it, the commit id in its
+//     note; a session's word alone never does. Else the question or the failure is noted. A request at rest is read
+//     again when a later commit speaks of it (a merge made after the session stopped). No progress for 24 h: stale.
 //   - Every turn of weevboss gets a digest of fixed size (open requests, stale first, goals, the rules the user gave),
 //     so it can never forget one, at a bounded cost.
 //   - Knowledge: decisions, rules and project facts, deduplicated, never a secret, searchable with the log
@@ -21,6 +24,7 @@ import path from 'node:path'
 import type { Session, SessionDetail } from '../shared/api.ts'
 import type { Ask, Dispatch, Goal, Knowledge, KnowledgeKind, LedgerView, Outcome, TraceEntry } from '../shared/ledger.ts'
 import { parseSigned } from './authors.ts'
+import type { LandedCommit } from './ledger-evidence.ts'
 import { shortId, tokensOf, type Entry } from './boss-view.ts'
 import { looksSecret } from './memory.ts'
 import { decide, speedMode } from './request-handling.ts'
@@ -72,6 +76,11 @@ export interface LedgerHost {
   memory?(): string
   /** Report-only judgements cannot close requests when proactive verification is available. */
   requiresVerification?(): boolean
+  /** The commits that landed where this session's work ships, since a time (server/ledger-evidence.ts); none for a
+   *  session of another machine or a folder that is not a repository. */
+  commits?(s: Session, since: number): Promise<LandedCommit[]>
+  /** Some of the lines one of those commits changed. */
+  commitChanges?(s: Session, id: string): Promise<string>
 }
 
 // ---------------------------------------------------------------- small helpers
@@ -115,6 +124,40 @@ export function similar(a: string, b: string, at = 0.72): boolean {
   for (const w of x) if (y.has(w)) both++
   return both / Math.min(x.size, y.size) >= 0.9 || both / (x.size + y.size - both) >= at
 }
+
+/** A word without its ending, so « buttons » meets « button » and « removed » meets « remove ». */
+const stem = (w: string) => (w.length > 4 ? w.replace(/(?:ing|ed|es|s)$/, '') : w)
+const stems = (s: string) => new Set(terms(s).filter((w) => w.length >= 3).map(stem))
+/** What a commit says, as words: its message and the names of the files it touched. */
+const commitWords = (c: LandedCommit) => stems(`${c.subject} ${c.body} ${c.files.join(' ')}`)
+
+/**
+ * How much of a request each commit of a list speaks of, from 0 to 1: the share of the request's words found in the
+ * commit, a rare word weighing more than one every commit holds (the project's name, « fix »). `hits`: how many words
+ * met. A filter before the model reads, never a verdict. Exported for tests.
+ */
+export function relevance(all: LandedCommit[]): (request: string, c: LandedCommit) => { share: number; hits: number } {
+  const bags = new Map(all.map((c) => [c, commitWords(c)]))
+  const df = new Map<string, number>()
+  for (const b of bags.values()) for (const w of b) df.set(w, (df.get(w) ?? 0) + 1)
+  const weight = (w: string) => Math.log(1 + all.length / (1 + (df.get(w) ?? 0)))
+  const asked = new Map<string, string[]>()
+  return (request, c) => {
+    const want = asked.get(request) ?? [...stems(request)]
+    asked.set(request, want)
+    const bag = bags.get(c) ?? commitWords(c)
+    let got = 0
+    let total = 0
+    let hits = 0
+    for (const w of want) {
+      total += weight(w)
+      if (bag.has(w)) { got += weight(w); hits++ }
+    }
+    return { share: total ? got / total : 0, hits }
+  }
+}
+/** A commit speaks of a request enough to read the request again. */
+const speaksOf = (r: { share: number; hits: number }) => r.hits >= 2 && r.share >= 0.4
 
 function atomicWrite(file: string, data: string) {
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -285,7 +328,7 @@ interface Reconciled {
 
 export const JUDGE_SCHEMA = {
   type: 'object',
-  properties: { items: { type: 'array', items: { type: 'object', properties: { n: { type: 'number' }, outcome: { type: 'string', enum: ['done', 'question', 'failed', 'progress'] }, report: str }, required: ['n', 'outcome', 'report'] } } },
+  properties: { items: { type: 'array', items: { type: 'object', properties: { n: { type: 'number' }, outcome: { type: 'string', enum: ['done', 'question', 'failed', 'progress'] }, report: str, commit: str }, required: ['n', 'outcome', 'report', 'commit'] } } },
   required: ['items'],
 }
 
@@ -923,12 +966,35 @@ ${blocks.join('\n\n')}`
 
   // ------------------------------------------------ close the loop
 
-  /** Sessions that stopped since they got work: their requests are judged (done, question, failed, progress). */
+  /** The commits that landed for each folder these sessions work in, since the oldest of their requests (30 days at most). */
+  private async landed(items: { a: Ask; d: Dispatch; s: Session }[]): Promise<Map<string, LandedCommit[]>> {
+    const out = new Map<string, LandedCommit[]>()
+    if (!this.host.commits) return out
+    const since = new Map<string, { s: Session; at: number }>()
+    for (const { a, d, s } of items) {
+      const at = Math.max(Math.min(a.at, d.at), this.now() - 30 * DAY)
+      const known = since.get(s.cwd)
+      if (!known || at < known.at) since.set(s.cwd, { s, at })
+    }
+    await Promise.all([...since].map(async ([cwd, { s, at }]) => {
+      out.set(cwd, await this.host.commits!(s, at).catch(() => []))
+    }))
+    return out
+  }
+
+  /**
+   * Sessions that stopped since they got work: their requests are judged (done, question, failed, progress), from what
+   * the session said and from the commits that landed since. A request already judged, its session at rest, is judged
+   * again when later commits landed (at once when one speaks of it, else after a growing wait). Only a commit closes
+   * a request here; a report alone waits for weevboss.
+   */
   async closeLoop(): Promise<number> {
     if (this.judging) return 0
     const t = this.now()
     const sessions = new Map(this.host.sessions().map((s) => [s.id, s]))
-    const due: { a: Ask; d: Dispatch; s: Session }[] = []
+    type Item = { a: Ask; d: Dispatch; s: Session }
+    const due: Item[] = []
+    const resting: Item[] = []
     let touched = false
     for (const a of this.s.asks) {
       if (a.status !== 'dispatched') continue
@@ -936,54 +1002,131 @@ ${blocks.join('\n\n')}`
         const s = sessions.get(d.session)
         if (!s) continue
         if (s.lastActivityAt > a.progressAt && s.lastActivityAt > d.at) { a.progressAt = s.lastActivityAt; touched = true }
-        if (s.status === 'working' || s.lastActivityAt <= d.at + 5000 || (d.judgedAt ?? 0) >= s.lastActivityAt) continue
+        if (s.status === 'working' || s.lastActivityAt <= d.at + 5000) continue
         // Settle a moment before judging (a session that pauses between two steps is not done).
         if (t - s.lastActivityAt < 90_000) continue
-        due.push({ a, d, s })
+        if ((d.judgedAt ?? 0) >= s.lastActivityAt) resting.push({ a, d, s })
+        else due.push({ a, d, s })
       }
     }
     if (touched) this.save()
-    if (!due.length) return 0
+    if (!due.length && !(resting.length && this.host.commits)) return 0
     this.judging = true
     try {
+      const landed = await this.landed([...due, ...resting])
+      const sent = ({ a, d }: Item) => Math.min(a.at, d.at) - 60_000
+      const words = (a: Ask) => `${a.title ?? ''} ${a.text}`
+      const score = new Map([...landed].map(([cwd, list]) => [cwd, relevance(list)]))
+      /** The commits that may answer an item (landed after it was sent), the ones that speak of it most first. */
+      const candidates = (it: Item) => {
+        const rate = score.get(it.s.cwd)
+        return (landed.get(it.s.cwd) ?? []).filter((c) => c.at >= sent(it)).map((c) => ({ c, r: rate!(words(it.a), c) })).sort((x, y) => y.r.share - x.r.share || y.c.at - x.c.at)
+      }
+      // At rest and judged: read again only when commits landed since the last reading, at once when one speaks of
+      // it (or when it was never read against commits), else after a wait that doubles from one hour to a day, for
+      // two weeks (the words of a request and of its commit often differ: « writing box », « composer »).
+      for (const it of resting) {
+        const read = it.d.checkedAt ?? 0
+        const fresh = candidates(it).filter(({ c }) => c.at > read)
+        if (!fresh.length) continue
+        const wait = Math.min(DAY, Math.max(3600_000, read - it.s.lastActivityAt))
+        if (!read || fresh.some(({ r }) => speaksOf(r)) || (t - it.s.lastActivityAt < 14 * DAY && t - read >= wait)) due.push(it)
+      }
+      if (!due.length) return 0
       const items = due.slice(0, 8)
+      const details = new Map<string, Promise<SessionDetail | undefined>>()
+      const detailOf = (s: Session) => details.get(s.id) ?? details.set(s.id, this.host.detail(s.id).catch(() => undefined)).get(s.id)!
       const texts = await Promise.all(items.map(async ({ d, s }) => {
-        const detail = await this.host.detail(s.id).catch(() => undefined)
-        const said = (detail?.messages ?? []).filter((m) => m.at >= d.at && m.role === 'assistant' && m.text?.trim()).slice(-3).map((m) => oneLine(m.text))
+        const said = ((await detailOf(s))?.messages ?? []).filter((m) => m.at >= d.at && m.role === 'assistant' && m.text?.trim()).slice(-3).map((m) => oneLine(m.text))
         return clip(said.join(' / '), 2400)
       }))
+      // The session's own commits: the landed ones its commands or their output name (by id, or by the first words of
+      // their message, as in `git commit -m`), the newest first. Its replies rarely name them.
+      const own = await Promise.all(items.map(async (it) => {
+        const ran = fold(oneLine(((await detailOf(it.s))?.messages ?? []).filter((m) => m.role === 'event' && m.at >= sent(it)).map((m) => `${(m.toolDetails?.commands ?? []).join(' ')} ${m.toolDetails?.output ?? ''}`).join(' '))).slice(-400_000)
+        if (!ran) return []
+        const named = (c: LandedCommit) => ran.includes(c.id) || (c.subject.length >= 16 && ran.includes(fold(oneLine(c.subject)).slice(0, 48)))
+        return candidates(it).map(({ c }) => c).filter(named).sort((x, y) => y.at - x.at).slice(0, 40)
+      }))
+      // What the model reads of the commits: per folder, the closest ones of each item by their words (the four
+      // closest with their files, the very closest with some of its changed lines), the session's own, then the latest
+      // ones by their first line (a request and a commit may not share their words, or their language).
+      const stamp = (at: number) => new Date(at).toISOString().slice(5, 16).replace('T', ' ')
+      const folders = [...new Set(items.map((it) => it.s.cwd))].filter((cwd) => landed.get(cwd)?.length)
+      const near = items.map((it) => candidates(it).filter(({ r }) => r.hits >= 1).slice(0, 8))
+      const close = near.map((list) => list.filter(({ r }) => r.share >= 0.2).slice(0, 4).map(({ c }) => c))
+      const changes = new Map<string, string>()
+      await Promise.all(items.map(async ({ s }, i) => {
+        const c = close[i][0]
+        if (!c || !this.host.commitChanges || changes.has(c.id)) return
+        changes.set(c.id, '')
+        changes.set(c.id, await this.host.commitChanges(s, c.id).catch(() => ''))
+      }))
+      const shown = new Map(folders.map((cwd) => {
+        const here = items.map((it, i) => (it.s.cwd === cwd ? i : -1)).filter((i) => i >= 0)
+        const detailed = new Set(here.flatMap((i) => close[i]))
+        const first = Math.min(...here.map((i) => sent(items[i])))
+        const list = [...new Set([...detailed, ...here.flatMap((i) => [...near[i].map(({ c }) => c), ...own[i]]), ...landed.get(cwd)!.filter((c) => c.at >= first).slice(0, 30)])].sort((x, y) => y.at - x.at)
+        return [cwd, { detailed, list }] as const
+      }))
+      const commitBlock = folders.map((cwd, f) => {
+        const { detailed, list } = shown.get(cwd)!
+        const lines = list.map((c) => {
+          const head = `- ${c.id} · ${stamp(c.at)} · ${c.branch} · ${clip(oneLine(c.subject), 240)}`
+          if (!detailed.has(c)) return head
+          const more = [c.body && `  ${clip(oneLine(c.body), 500)}`, c.files.length && `  files: ${clip(c.files.join(', '), 300)}`, changes.get(c.id) && `  changed lines:\n${changes.get(c.id)!.split('\n').map((l) => `    ${l}`).join('\n')}`].filter(Boolean)
+          return [head, ...more].join('\n')
+        })
+        return `Folder ${f + 1}:\n${lines.join('\n')}`
+      }).join('\n\n')
+      const commitLine = (it: Item, i: number) => {
+        const f = folders.indexOf(it.s.cwd)
+        if (f < 0) return 'Commits: none landed since it was sent'
+        return `Commits: folder ${f + 1}, only those after ${stamp(sent(it))}${own[i].length ? `; made by this session: ${own[i].map((c) => c.id).join(', ')}` : ''}${close[i].length ? `; closest by their words: ${close[i].map((c) => c.id).join(', ')}` : ''}`
+      }
       const user = this.host.user()
-      const prompt = `Each numbered item is a request ${user} made, sent by their assistant weevboss to a coding session, then what the session said since, and its state. For each, decide:
-- "outcome": "done" (the request is fully completed), "question" (the session waits for ${user}'s answer, choice or approval), "failed" (it could not do it, gave up or is blocked), "progress" (only part of it is done, or more work is announced).
-- "report": one plain sentence in ${langName(this.host.lang())}, at most 25 words, saying what came back (the result, a link, a number, the question). No session ids.
+      const prompt = `Each numbered item is a request ${user} made, sent by their assistant weevboss to a coding session, then what the session said since, its state, and where to look for the commits that landed since. For each, decide:
+- "outcome": "done" (the request is fully completed), "question" (what is left is on ${user}: an answer, a choice, an approval, or something only they can do, such as a restart, a merge, a login or a try on their own device), "failed" (the session says it could not do it, gave up or is blocked), "progress" (only part of it is done, more work is announced, or nothing shows it yet).
+- "commit": a session often ships several requests in a few commits, and its last words are about something else. So read the commits of the item's folder: when one of them, landed after the item was sent, shows by its message, its files or its changed lines that this very request was done (not merely the same screen or area, and never the opposite change), give its id; else "". Never an id that is not listed.
+- The commit is the evidence, not the report: the expected report is only what the session was asked to say back. A screenshot, a clip or a confirmation that never came does not keep a request open when a commit shows the work itself done; then the outcome is "done". A request the commits later undid, or that contradicts a newer one, is "question": ${user} must say which they want.
+- Silence is not failure: a session that says nothing of the request, with no commit for it, is "progress".
+- "report": one plain sentence in ${langName(this.host.lang())}, at most 25 words, saying what came back (the result, a link, a number, the question, what ${user} must do). No session ids, no commit ids.
 Answer for every item with its number "n".
 
-${items.map(({ a, d, s }, i) => `${i + 1}. Request: ${a.text}${d.expect ? `\nExpected report: ${d.expect}` : ''}\nSession: ${this.label(s)} · state ${s.status}${s.interrupted ? ` (cut: ${s.interrupted.reason})` : ''}\nIt said: ${texts[i] || '(nothing readable)'}`).join('\n\n')}`
-      let got: { items: { n: number; outcome: Outcome; report: string }[] }
+${items.map(({ a, d, s }, i) => `${i + 1}. Request: ${a.text}${d.expect ? `\nExpected report: ${d.expect}` : ''}\nSession: ${this.label(s)} · state ${s.status}${s.interrupted ? ` (cut: ${s.interrupted.reason})` : ''}\nIt said: ${texts[i] || '(nothing readable)'}\n${commitLine(items[i], i)}`).join('\n\n')}${commitBlock ? `\n\nCommits that landed where the work ships, newest first (id · time · branch · message):\n\n${commitBlock}` : ''}`
+      let got: { items: { n: number; outcome: Outcome; report: string; commit?: string }[] }
       try {
         const raw = await this.model(prompt, JUDGE_SCHEMA)
         got = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1))
       } catch (e) {
         console.error(`[ledger] judge failed: ${(e as Error).message.slice(0, 200)}`)
         // Judged at this activity anyway: no retry storm; the next stop is judged again.
-        for (const { d, s } of items) d.judgedAt = s.lastActivityAt
+        for (const { d, s } of items) { d.judgedAt = s.lastActivityAt; d.checkedAt = this.now() }
         this.save()
         return 0
       }
-      for (const [i, { a, d, s }] of items.entries()) {
+      for (const [i, it] of items.entries()) {
+        const { a, d, s } = it
         const v = got.items?.find((x) => x.n === i + 1)
         d.judgedAt = s.lastActivityAt
-        if (!v || !['done', 'question', 'failed', 'progress'].includes(v.outcome)) continue
+        d.checkedAt = this.now()
+        if (a.status !== 'dispatched' || !v || !['done', 'question', 'failed', 'progress'].includes(v.outcome)) continue
+        // The commit the model names must be one that really landed after the request was sent.
+        const named = /[0-9a-f]{7,40}/.exec(String(v.commit ?? '').toLowerCase())?.[0].slice(0, 8)
+        const proof = named ? candidates(it).find(({ c }) => c.id.startsWith(named))?.c : undefined
         d.outcome = v.outcome
         d.report = clip(oneLine(v.report ?? ''), 300)
         d.reportAt = this.now()
-        a.note = d.report
-        this.trace({ kind: 'report', text: d.report, asks: [a.id], goal: a.goal, session: s.id, who: this.label(s) })
-        if (!this.host.requiresVerification?.() && a.dispatches.every((x) => x.outcome === 'done')) {
+        if (proof) d.evidence = proof.id
+        else delete d.evidence
+        a.note = proof ? clip(`${proof.id} · ${d.report}`, 400) : d.report
+        this.trace({ kind: 'report', text: a.note, asks: [a.id], goal: a.goal, session: s.id, who: this.label(s) })
+        // A commit that shows it closes it. A report alone closes nothing while weevboss verifies results itself.
+        if (v.outcome === 'done' && (proof || (!this.host.requiresVerification?.() && a.dispatches.every((x) => x.outcome === 'done')))) {
           a.status = 'done'
           a.closedAt = this.now()
           a.closedBy = 'auto'
-          this.trace({ kind: 'status', status: 'done', text: a.text, asks: [a.id], goal: a.goal, who: 'auto' })
+          this.trace({ kind: 'status', status: 'done', text: proof ? a.note : a.text, asks: [a.id], goal: a.goal, who: 'auto' })
         }
       }
       this.save()

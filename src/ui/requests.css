@@ -69,6 +69,18 @@
   transition: width 0.4s ease;
 }
 
+/* It waits on the user: words in the bar's place, never a part-filled bar. */
+.rc-waits {
+  flex: none;
+  font-size: 0.75rem;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 5px 6px;
+  color: var(--c);
+  background: var(--ink);
+}
+
 /* Finished or dropped: still there, quieter. */
 .rc-row.c-done .rc-title,
 .rc-row.c-dropped .rc-title,
@@ -134,6 +146,12 @@
 
 .req-dispatch {
   margin-top: 10px;
+}
+
+/* The commit that shows it done. */
+.req-proof {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
 }
 
 .req-who {

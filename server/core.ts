@@ -45,6 +45,7 @@ import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
 import { BOSS_DIR, BOSS_MODELS, BOSS_TURNS, BossTurns, modeSections, orchTranscriptsDir } from './boss-turns.ts'
+import { commitChanges, LandedCache } from './ledger-evidence.ts'
 
 /** What a Claude Code session can switch to from the app's header (one tap, applied before its next turn). */
 const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'max']
@@ -381,6 +382,8 @@ export class Weevils {
     }
   }
   private turnStarting = false
+  /** The commits that landed where a session's work ships, for the request ledger (server/ledger-evidence.ts). */
+  private landed = new LandedCache()
   /** weevboss's request ledger, goals, work trace and knowledge (server/boss-ledger.ts); on the main machine only. */
   ledger: Ledger | null = ORCHESTRATOR ? new Ledger({
     dir: BOSS_DIR,
@@ -395,6 +398,9 @@ export class Weevils {
       user: () => user(),
       memory: () => this.memory?.asText(60) ?? '',
       requiresVerification: () => BOSS_TURNS,
+      // Evidence is read on this machine only: another machine's folder is not here.
+      commits: async (s, since) => (s.machineId === MACHINE.id && s.cwd ? this.landed.get(s.cwd, since) : []),
+      commitChanges: async (s, id) => (s.machineId === MACHINE.id && s.cwd ? commitChanges(s.cwd, id) : ''),
     },
   }) : null
   h24: H24Activity[] = []

@@ -29,6 +29,10 @@ export interface Dispatch {
   reportAt?: number
   /** lastActivityAt of the session when it was last judged (a new stop is judged again). */
   judgedAt?: number
+  /** The commit that shows the request done (its short id), when one landed since it was sent. */
+  evidence?: string
+  /** When the landed commits were last read for it (a later commit that speaks of it is read again). */
+  checkedAt?: number
 }
 
 export interface Ask {

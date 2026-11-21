@@ -2,9 +2,11 @@
 //
 // One column, the same everywhere (a repo's page, the page of all requests): one band per request, like the automation
 // rows. A band is a short title, a small star before it while its session works, and a small bar that says how far it
-// is. What runs now sits on top, then every request ever asked, the newest first, whatever its state: nothing is
+// is; a request that waits on the user (an answer, a restart, a merge) says so in words instead, never a part-filled
+// bar. What runs now sits on top, then every request ever asked, the newest first, whatever its state: nothing is
 // folded away or dropped from the list. A tap opens a request in place: the whole sentence, the user's exact words,
-// where it was sent (a tap opens that session), what came back; « done » and « drop » close it.
+// where it was sent (a tap opens that session), what came back and the commit that shows it; « done » and « drop »
+// close it.
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { SessionStatus } from '../../shared/api.ts'
@@ -58,12 +60,12 @@ export function chipOf(a: Row, session?: SessionStatus | 'gone'): Chip {
   const d = a.dispatches.at(-1)
   if (!d) return 'queued'
   if (session === 'working') return 'running'
-  if (session === 'needs_user') return 'needs'
+  // What is left is the user's (an answer, a restart, a merge): it waits on them however long ago, session gone or not.
+  if (session === 'needs_user' || d.outcome === 'question') return 'needs'
   // Its session finished long ago, or no longer exists, and nobody closed it: nothing is happening, said plainly
-  // (a failure or a question days old included: it opens with the report).
+  // (a failure days old included: it opens with the report).
   if (a.stale || session === 'gone') return 'paused'
   if (session === 'interrupted' || d.outcome === 'failed') return 'blocked'
-  if (d.outcome === 'question') return 'needs'
   return 'check'
 }
 
@@ -104,6 +106,7 @@ export function AskDetail({ a, onAction }: { a: Row; onAction: (action: 'done' |
         <div key={d.session + d.at} className="req-dispatch">
           <button type="button" className="link req-who" onClick={() => push({ kind: 'session', id: d.session })}>→ {who(d, t.aSession)}</button>
           {d.report && <div className="meta">{d.report}</div>}
+          {d.evidence && <div className="meta req-proof">{t.commit(d.evidence)}</div>}
         </div>
       ))}
       {!a.dispatches.length && a.note && <div className="meta">{a.note}</div>}
@@ -122,10 +125,12 @@ export function AskDetail({ a, onAction }: { a: Row; onAction: (action: 'done' |
 }
 
 /** How far a request is, from facts only (never a guessed percent): 0 not started · 1 sent, nothing moving · 2 being
- *  worked on · 3 it came back (to check, or a question for you) · 4 done. Exported for tests. */
-export function stageOf(chip: Chip): 0 | 1 | 2 | 3 | 4 {
+ *  worked on · 3 it came back, to check · 4 done. A request that waits on the user has no bar: `null`, its row says
+ *  so in words. Exported for tests. */
+export function stageOf(chip: Chip): 0 | 1 | 2 | 3 | 4 | null {
+  if (chip === 'needs') return null
   if (chip === 'done') return 4
-  if (chip === 'check' || chip === 'needs') return 3
+  if (chip === 'check') return 3
   if (chip === 'running') return 2
   return chip === 'queued' || chip === 'dropped' ? 0 : 1
 }
@@ -170,7 +175,8 @@ const STEPS = 8
 /**
  * The request column: one band per request, like the automation rows (one colour, each band one small tone step from
  * the one above, no line, no gap). A band is a short title, a small star before it while its session works (the
- * title never moves: the star's place is always kept), and a small bar that says how far it is. Every request is
+ * title never moves: the star's place is always kept), and a small bar that says how far it is, or the words « needs
+ * you » when what is left is the user's. Every request is
  * there whatever its state; a tap opens it in place. `fill`: the column is the whole page, so the tone of its last
  * band runs down to the bottom of the screen (no darker band under the list).
  */
@@ -188,7 +194,9 @@ export function RequestColumn({ asks, onChanged, fill }: { asks: Row[]; onChange
           <button type="button" className="in rc-line" onClick={() => setOpen(open === a.id ? null : a.id)} aria-expanded={open === a.id} aria-label={`${askLabel(a)} · ${t.chip(chip)}`}>
             <span className="rc-star">{chip === 'running' && <span className="spin fluo"><Icon name="star" /></span>}</span>
             <span className="rc-title">{askLabel(a)}</span>
-            <span className="rc-bar" data-stage={stageOf(chip)} aria-hidden><i style={{ width: `${stageOf(chip) * 25}%` }} /></span>
+            {stageOf(chip) === null
+              ? <span className="rc-waits" aria-hidden>{t.chip(chip)}</span>
+              : <span className="rc-bar" data-stage={stageOf(chip)} aria-hidden><i style={{ width: `${stageOf(chip)! * 25}%` }} /></span>}
           </button>
           <Collapse open={open === a.id}>
             <AskDetail a={a} onAction={act(a)} />

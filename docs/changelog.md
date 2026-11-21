@@ -4,6 +4,17 @@ A short summary of what changed after the first working version.
 
 ## 2026-11-21
 
+### Requests close on what shipped, not on what was said last
+- A session often ships several requests in a few commits, and its last words are about something else: those
+  requests stayed open, each with a part-filled bar. When a session stops, each request it holds is now checked
+  against the commits that landed since it was sent (their messages, files and changed lines), on the repository's
+  default branch, the branch checked out in its own folder, and any branch named in `WEEVILS_SHIPPED_BRANCHES` (a
+  preview, a staging site). A commit that shows the request done closes it, the commit's id in its note; a session's
+  word alone never does. A request at rest is read again when a later commit speaks of it (a merge made after the
+  session stopped).
+- A request whose only missing piece is yours (an answer, a restart, a merge) reads **needs you**, in words, in place
+  of a bar, however long ago and even when its session is gone.
+
 ### Autonomous: automations can become factories
 - The automations section is now called **autonomous**. Every automation's small repository says what it is: a
   readable manifest (name, purpose, schedule, scope, where it works), kept in step with the app and never the other

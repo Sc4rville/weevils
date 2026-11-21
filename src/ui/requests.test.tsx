@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 // Requests: one band per request (what runs on top, then the newest first, every state), a star on what runs, a small
-// bar for how far it is; opened in place, a session whose name was never recorded says « a session », never a raw id.
+// bar for how far it is, « needs you » in words when what is left is the user's; opened in place, a session whose name
+// was never recorded says « a session », never a raw id.
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -69,11 +70,29 @@ it('a small star only on what runs right now, its place kept on every band; a sm
   await show([{ id: 'aa', status: 'needs_user' }, { id: '0a1b2c3d4e5f6789', status: 'working' }])
   expect(rows().map((r) => !!r.querySelector('.rc-star .ic'))).toEqual([true, false, false, false])
   expect(rows().every((r) => !!r.querySelector('.rc-star'))).toBe(true)
-  // running 2 · not started 0 · done 4 · a question came back 3
-  expect(rows().map((r) => r.querySelector('.rc-bar')!.getAttribute('data-stage'))).toEqual(['2', '0', '4', '3'])
-  expect(rows().map((r) => r.querySelector<HTMLElement>('.rc-bar i')!.style.width)).toEqual(['50%', '0%', '100%', '75%'])
+  // running 2 · not started 0 · done 4 · a question came back: no bar, it says « needs you »
+  expect(rows().map((r) => r.querySelector('.rc-bar')?.getAttribute('data-stage') ?? null)).toEqual(['2', '0', '4', null])
+  expect(rows().map((r) => r.querySelector<HTMLElement>('.rc-bar i')?.style.width ?? null)).toEqual(['50%', '0%', '100%', null])
+  expect(rows().map((r) => r.querySelector('.rc-waits')?.textContent ?? null)).toEqual([null, null, null, 'needs you'])
   // The state is still said to a screen reader, on the band.
   expect(rows()[0].querySelector('.rc-line')!.getAttribute('aria-label')).toBe('Fix the login page · in progress')
+})
+
+it('a request that waits on the user says so, its session gone and days old included; the commit that shows it is named', async () => {
+  const kept = view.asks
+  view.asks = [{ ...view.asks[1], dispatches: [{ session: 'gone', at: NOW - 3 * 86400_000, outcome: 'question', report: 'Merged; restart the server to turn it on.', evidence: 'ab12cd34' }] }]
+  try {
+    await show([])
+    expect(rows()[0].querySelector('.rc-bar')).toBeNull()
+    expect(rows()[0].querySelector('.rc-waits')!.textContent).toBe('needs you')
+    expect(rows()[0].querySelector('.rc-line')!.getAttribute('aria-label')).toBe('Pick a colour · needs you')
+    await act(async () => host.querySelectorAll<HTMLButtonElement>('.rc-line')[0].click())
+    const text = host.querySelector('.rc-row.open')!.textContent ?? ''
+    expect(text).toContain('Merged; restart the server to turn it on.')
+    expect(text).toContain('commit ab12cd34')
+  } finally {
+    view.asks = kept
+  }
 })
 
 it('a tap opens a request in place: the whole sentence, « a session » (never its id), done and drop', async () => {
@@ -123,7 +142,7 @@ it('the order and the bar come from facts', () => {
   const state = (a: { id: string }) => (a.id === 'old-running' ? 'working' : a.id === 'idle' ? 'idle' : undefined) as never
   const col = columnOf([ask('new', 30, { dispatches: [] }), ask('old-running', 10), ask('idle', 20)], state)
   expect(col.map((x) => x.a.id)).toEqual(['old-running', 'new', 'idle'])
-  expect(['queued', 'paused', 'blocked', 'running', 'check', 'needs', 'done', 'dropped'].map((c) => stageOf(c as never))).toEqual([0, 1, 1, 2, 3, 3, 4, 0])
+  expect(['queued', 'paused', 'blocked', 'running', 'check', 'needs', 'done', 'dropped'].map((c) => stageOf(c as never))).toEqual([0, 1, 1, 2, 3, null, 4, 0])
 })
 
 it('a request on a session that is gone or resting is never « in progress »', () => {
@@ -135,7 +154,10 @@ it('a request on a session that is gone or resting is never « in progress »', 
   expect(chipOf(ask({ stale: true }), 'done')).toBe('paused')
   expect(chipOf(ask({ dispatches: [{ session: 'x', at: 0, outcome: 'failed' }] }), 'done')).toBe('blocked')
   expect(chipOf(ask({ stale: true, dispatches: [{ session: 'x', at: 0, outcome: 'failed' }] }), 'done')).toBe('paused')
-  expect(chipOf(ask({ dispatches: [{ session: 'x', at: 0, outcome: 'question' }] }), 'gone')).toBe('paused')
+  // What is left is the user's: it reads « needs you », however old, its session gone or not; never once it works again.
+  expect(chipOf(ask({ dispatches: [{ session: 'x', at: 0, outcome: 'question' }] }), 'gone')).toBe('needs')
+  expect(chipOf(ask({ stale: true, dispatches: [{ session: 'x', at: 0, outcome: 'question' }] }), 'idle')).toBe('needs')
+  expect(chipOf(ask({ dispatches: [{ session: 'x', at: 0, outcome: 'question' }] }), 'working')).toBe('running')
   expect(chipOf(ask({}), 'needs_user')).toBe('needs')
   expect(chipOf(ask({ dispatches: [] }))).toBe('queued')
 })

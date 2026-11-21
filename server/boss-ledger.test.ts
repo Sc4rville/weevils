@@ -3,7 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Session } from '../shared/api.ts'
-import { actionsOf, Ledger, readTurn, similar, verbatim, type LedgerHost, type Model } from './boss-ledger.ts'
+import { actionsOf, Ledger, readTurn, relevance, similar, verbatim, type LedgerHost, type Model } from './boss-ledger.ts'
+import type { LandedCommit } from './ledger-evidence.ts'
 import type { Entry } from './boss-view.ts'
 import { BossTurns } from './boss-turns.ts'
 
@@ -15,7 +16,7 @@ const session = (id: string, o: Partial<Session> = {}): Session => ({
   workStartedAt: null, origin: 'weevils', controllable: true, live: true, hasScreen: true, subagents: [], background: 0, messageCount: 3, queued: 0, ...o,
 }) as Session
 
-function rig(o: { model?: Model; sessions?: Session[]; journal?: Entry[]; running?: Set<string>; requiresVerification?: boolean; messages?: Record<string, { role: string; text: string; at: number }[]> } = {}) {
+function rig(o: { model?: Model; sessions?: Session[]; journal?: Entry[]; running?: Set<string>; requiresVerification?: boolean; messages?: Record<string, { role: string; text: string; at: number }[]>; commits?: () => LandedCommit[] } = {}) {
   const dir = tmp()
   let now = T0
   const calls: { prompt: string; schema: object }[] = []
@@ -28,6 +29,7 @@ function rig(o: { model?: Model; sessions?: Session[]; journal?: Entry[]; runnin
     lang: () => 'en',
     user: () => 'Scarville',
     requiresVerification: () => o.requiresVerification ?? false,
+    ...(o.commits ? { commits: async (_s: Session, since: number) => o.commits!().filter((c) => c.at >= since), commitChanges: async (_s: Session, id: string) => `+ changed by ${id}` } : {}),
   }
   const ledger = new Ledger({ dir, host, model: async (p, s) => { calls.push({ prompt: p, schema: s }); return model(p, s) }, now: () => now })
   return { dir, ledger, calls, tick: (ms: number) => (now += ms), at: () => now }
@@ -242,6 +244,119 @@ describe('Ledger', () => {
     expect(r.ledger.ask(a.id)).toMatchObject({ status: 'dispatched', progressAt: T0 + 60_000, dispatches: [{ outcome: 'done' }] })
     r.ledger.setStatus(a.id, 'done', 'weevboss', 'Opened the preview and checked the working result.')
     expect(r.ledger.ask(a.id)).toMatchObject({ status: 'done', closedBy: 'weevboss' })
+  })
+
+  const commit = (id: string, at: number, subject: string, o: Partial<LandedCommit> = {}): LandedCommit => ({ id, at, subject, body: '', files: [], branch: 'main', ...o })
+
+  it('closes batched work on the commit that shows it, never on what the session said last', async () => {
+    const id = 'aaaa1111-0000-0000-0000-000000000000'
+    const sessions = [session(id)]
+    const landed = [
+      commit('c0ffee01', T0 + 40_000, 'feat(sidebar): hide the Misc section when it is empty', { files: ['src/ui/sidebar.tsx'] }),
+      commit('c0ffee02', T0 + 50_000, 'fix(thread): the working logo spins only while a turn runs'),
+      commit('0ld0ld00', T0 - 3600_000, 'feat(sidebar): add create button to automations'),
+    ]
+    const prompts: string[] = []
+    const model: Model = async (prompt) => {
+      prompts.push(prompt)
+      // The session's last words are about something else; the model names the commit for the first request, one that
+      // landed before the second was asked, and one that does not exist for the third.
+      return JSON.stringify({ items: [
+        { n: 1, outcome: 'done', report: 'The Misc section is hidden when empty.', commit: 'c0ffee01' },
+        { n: 2, outcome: 'done', report: 'A create button was added.', commit: '0ld0ld00' },
+        { n: 3, outcome: 'done', report: 'Dictation is in the box.', commit: 'deadbeef' },
+      ] })
+    }
+    const ran = { role: 'event', text: 'Bash · commit', at: T0 + 50_000, toolDetails: { commands: ['git commit -qm "fix(thread): the working logo spins only while a turn runs" && git push'] } }
+    const r = rig({ requiresVerification: true, sessions, model, commits: () => landed, messages: { [id]: [ran as never, { role: 'assistant', text: 'Changed the reaction emoji.', at: T0 + 55_000 }] } })
+    const misc = r.ledger.add('Hide the Misc sidebar section')
+    const create = r.ledger.add('Add a create button to Automations')
+    const dictation = r.ledger.add('Add dictation to the writing box')
+    for (const a of [misc, create, dictation]) r.ledger.link(a.id, id)
+    sessions[0] = { ...sessions[0], status: 'idle', lastActivityAt: T0 + 60_000 }
+    r.tick(200_000)
+    expect(await r.ledger.closeLoop()).toBe(3)
+    // The commits are in what the model read: the closest named on the item, with its files and changed lines.
+    expect(prompts[0]).toContain('closest by their words: c0ffee01')
+    expect(prompts[0]).toContain('- c0ffee01 · 11-14 08:00 · main · feat(sidebar): hide the Misc section when it is empty')
+    expect(prompts[0]).toContain('files: src/ui/sidebar.tsx')
+    expect(prompts[0]).toContain('+ changed by c0ffee01')
+    // The commit the session's own commands made is named on every item it may answer.
+    expect(prompts[0].match(/made by this session: c0ffee02/g)).toHaveLength(3)
+    expect(prompts[0]).not.toContain('0ld0ld00')
+    // Closed on the commit, its id in the note.
+    expect(r.ledger.ask(misc.id)).toMatchObject({ status: 'done', closedBy: 'auto', note: 'c0ffee01 · The Misc section is hidden when empty.', dispatches: [{ outcome: 'done', evidence: 'c0ffee01' }] })
+    expect(r.ledger.traceList().filter((e) => e.kind === 'status' && e.status === 'done').map((e) => e.text)).toEqual(['c0ffee01 · The Misc section is hidden when empty.'])
+    // A commit older than the request, or one that is not there, is no evidence: the say-so alone leaves it open.
+    expect(r.ledger.ask(create.id)).toMatchObject({ status: 'dispatched', note: 'A create button was added.' })
+    expect(r.ledger.ask(create.id)!.dispatches[0].evidence).toBeUndefined()
+    expect(r.ledger.ask(dictation.id)).toMatchObject({ status: 'dispatched' })
+    expect(r.ledger.ask(dictation.id)!.dispatches[0].evidence).toBeUndefined()
+  })
+
+  it('reads a resting request again when later commits landed: at once when one speaks of it, else after a wait', async () => {
+    const id = 'aaaa1111-0000-0000-0000-000000000000'
+    const sessions = [session(id)]
+    const landed: LandedCommit[] = []
+    let judged = 0
+    const model: Model = async (prompt) => {
+      judged++
+      const proof = /- (c0ffee03) /.exec(prompt)?.[1] ?? ''
+      return JSON.stringify({ items: [{ n: 1, outcome: proof ? 'done' : 'progress', report: proof ? 'The thin white lines are gone from the sidebar.' : 'Nothing about the sidebar lines yet.', commit: proof }] })
+    }
+    const r = rig({ requiresVerification: true, sessions, model, commits: () => landed })
+    const a = r.ledger.add('Remove the thin white lines in the sidebar')
+    r.ledger.link(a.id, id)
+    sessions[0] = { ...sessions[0], status: 'idle', lastActivityAt: T0 + 60_000 }
+    r.tick(200_000)
+    expect(await r.ledger.closeLoop()).toBe(1)
+    expect(r.ledger.ask(a.id)).toMatchObject({ status: 'dispatched', dispatches: [{ outcome: 'progress' }] })
+    // The session says nothing more, nothing lands: never read again.
+    r.tick(2 * 3600_000)
+    expect(await r.ledger.closeLoop()).toBe(0)
+    // A commit about something else lands: read again (its words may differ from the request's), then not before an hour.
+    landed.push(commit('c0ffee02', r.at(), 'fix(vault): the lease is renewed every five minutes'))
+    r.tick(60_000)
+    expect(await r.ledger.closeLoop()).toBe(1)
+    expect(r.ledger.ask(a.id)).toMatchObject({ status: 'dispatched', dispatches: [{ outcome: 'progress' }] })
+    landed.push(commit('c0ffee05', r.at(), 'docs(vault): the recovery code is said once'))
+    r.tick(600_000)
+    expect(await r.ledger.closeLoop()).toBe(0)
+    // The merge lands and speaks of it: read again at once, closed on it.
+    landed.push(commit('c0ffee03', r.at(), 'fix(sidebar): remove the thin white lines between rows'))
+    r.tick(60_000)
+    expect(await r.ledger.closeLoop()).toBe(1)
+    expect(r.ledger.ask(a.id)).toMatchObject({ status: 'done', closedBy: 'auto', note: 'c0ffee03 · The thin white lines are gone from the sidebar.' })
+    expect(await r.ledger.closeLoop()).toBe(0)
+    expect(judged).toBe(3)
+  })
+
+  it('keeps a request open, with its commit, when what is left is the user\'s', async () => {
+    const id = 'aaaa1111-0000-0000-0000-000000000000'
+    const sessions = [session(id)]
+    const model: Model = async () => JSON.stringify({ items: [{ n: 1, outcome: 'question', report: 'Merged and tested; restart the server to turn it on.', commit: 'c0ffee04' }] })
+    const r = rig({ requiresVerification: true, sessions, model, commits: () => [commit('c0ffee04', T0 + 30_000, 'feat(auto): rename the Automations section to Autonomous')] })
+    const a = r.ledger.add('Rename Automation to Autonomous')
+    r.ledger.link(a.id, id)
+    sessions[0] = { ...sessions[0], status: 'idle', lastActivityAt: T0 + 60_000 }
+    r.tick(200_000)
+    await r.ledger.closeLoop()
+    expect(r.ledger.ask(a.id)).toMatchObject({ status: 'dispatched', dispatches: [{ outcome: 'question', evidence: 'c0ffee04', report: 'Merged and tested; restart the server to turn it on.' }] })
+  })
+
+  it('rates how much of a request a commit speaks of, a word every commit holds weighing little', () => {
+    const list = [
+      commit('a1', T0, 'feat(app): hide the Misc section of the sidebar', { files: ['src/ui/sidebar.tsx'] }),
+      commit('a2', T0, 'feat(app): the automation logo spins while it runs'),
+      commit('a3', T0, 'fix(app): sidebar rows keep their height'),
+    ]
+    const rate = relevance(list)
+    const misc = list.map((c) => rate('Hide Misc sidebar section in the app', c))
+    expect(misc[0].hits).toBeGreaterThanOrEqual(4)
+    expect(misc[0].share).toBeGreaterThan(0.9)
+    expect(misc[1].share).toBeLessThan(0.34)
+    expect(misc[2].share).toBeLessThan(misc[0].share)
+    expect(rate('', list[0])).toEqual({ share: 0, hits: 0 })
   })
 
   it('surfaces stale requests first in a digest that never outgrows its budget', () => {

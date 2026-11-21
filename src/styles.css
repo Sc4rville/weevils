@@ -3076,6 +3076,15 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .chatter > summary::-webkit-details-marker { display: none; }
 .chatter[open] > summary { display: none; }
 .step-raw + .step-raw { margin-top: 10px; }
+/* An action in a step's list: its title on one tap-sized row, the literal command and its result one tap further. */
+.step-action > .step-head { min-height: 40px; }
+.step-action > .step-head .text { font-size: .875rem; }
+.step-action > .step-head::before { content: '›'; flex: none; width: .8em; opacity: .55; transition: transform .15s; }
+.step-action[open] > .step-head::before { transform: rotate(90deg); }
+.step-action > .step-raw { padding: 0 0 10px 1.3em; }
+.step-raw pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; line-height: 1.5; max-height: 20rem; overflow: auto; user-select: text; }
+.step-raw .meta { font-size: .75rem; opacity: .6; margin: 6px 0 2px; }
+.step-raw .step-none { opacity: .45; }
 
 /* Session header: the mini-macro sits beside the title, same row, never pushes anything down. */
 .session-context-row { display: flex; align-items: center; gap: 8px; min-width: 0; }

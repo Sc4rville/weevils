@@ -34,7 +34,6 @@ export default defineMessages({
     outputTruncated: 'Sortie tronquée : seul un extrait est disponible.',
     recordedOutput: 'Sortie enregistrée',
     noRecordedCommand: 'Aucune commande enregistrée pour cette action.',
-    noRecordedOutput: 'Aucune sortie enregistrée pour cette action.',
     older: (n: number) => (n > 1 ? `${n} messages plus anciens` : `${n} message plus ancien`),
     you: 'toi',
     /** Ligne de session : sous-agents, étapes de workflow et commandes qui tournent encore. */
@@ -82,7 +81,6 @@ export default defineMessages({
     outputTruncated: 'Output truncated: only an excerpt is available.',
     recordedOutput: 'Recorded output',
     noRecordedCommand: 'No command recorded for this action.',
-    noRecordedOutput: 'No output recorded for this action.',
     older: (n: number) => `${n} older message${n === 1 ? '' : 's'}`,
     you: 'you',
     background: (n: number) => `${n} in background`,

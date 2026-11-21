@@ -1820,3 +1820,16 @@ describe('the stream makes posts only', () => {
     expect(fy2.feed().items.map((i) => i.kind)).toEqual(['boss'])
   })
 })
+
+describe('older stored tiles', () => {
+  it('a figure or an idea stored before the change is kept as history but never sent', () => {
+    const w = { snapshot: () => ({ sessions: [], machines: [], projects: [], optimizers: [] }) as unknown as Snapshot, bump: () => undefined } as unknown as ForYouHost
+    const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'fy-old-'))
+    const file = path.join(dir2, 'foryou.json')
+    const old = new ForYou(w, { file, shelf: null, extras: true })
+    old.add({ kind: 'milestone', text: '648 commits shipped this week, vs 1677 last week.' })
+    old.post('Prices come from the sheet now.', undefined, undefined, undefined, 'The new menu is live')
+    const fy2 = new ForYou(w, { file, shelf: null })
+    expect(fy2.feed().items.map((i) => i.kind)).toEqual(['boss'])
+  })
+})

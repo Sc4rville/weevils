@@ -1,158 +1,113 @@
-/* The requests page (src/ui/requests.tsx): goals as tone bands, requests as lines, the open one in place. */
+/* Requests (src/ui/requests.tsx): the request column, and a request opened in place. */
 
-.req-group + .req-group {
-  margin-top: 10px;
+/* One band per request, like the automation rows: one colour, each band one small tone step from the one above
+   (the theme's own step, --dl, as .tone), no line, no gap, no shadow. The top band is the first of the list. */
+.rc {
+  width: 100%;
+  min-width: 0;
 }
 
-/* A goal: a short name and « 8/11 », one line. */
-.req-goal-line {
+.rc-row {
+  background: oklch(from var(--c) calc(l + var(--dl) * var(--step, 0) * 0.22) c h);
+}
+
+.rc-line {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding-block: 12px;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 48px;
+  text-align: left;
 }
 
-.req-goal-title {
+/* The star's place is always kept: a title sits at the same spot whether its request runs or not. */
+.rc-star {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rc-star .ic {
+  width: 20px;
+  height: 20px;
+}
+
+.rc-title {
   flex: 1;
   min-width: 0;
-  font-size: 1.125rem;
-  font-weight: 700;
-  line-height: 1.2;
+  font-size: 0.96875rem;
+  font-weight: 650;
+  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
   mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 
-.req-goal-n {
+/* How far it is: a small flat bar, the ink on a faint track. */
+.rc-bar {
   flex: none;
-  font-variant-numeric: tabular-nums;
+  width: 34px;
+  height: 6px;
+  background: color-mix(in oklab, var(--ink) 16%, transparent);
 }
 
-/* A request, closed: its sentence (two lines at most) and where it stands. */
-.row.req-row > .in {
-  align-items: baseline;
-  min-height: 0;
-  padding-block: 12px;
+.rc-bar i {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+  transition: width 0.4s ease;
 }
 
-.req-text {
+/* Finished or dropped: still there, quieter. */
+.rc-row.c-done .rc-title,
+.rc-row.c-dropped .rc-title,
+.rc-row.c-done .rc-bar,
+.rc-row.c-dropped .rc-bar,
+.rc-more .rc-title {
+  opacity: 0.5;
+}
+
+.rc-row.c-dropped .rc-title {
+  text-decoration: line-through;
+}
+
+.rc-more .rc-title {
+  font-size: 0.875rem;
+}
+
+/* A request opened in place, under its title: aligned with it. */
+.rc-row .in.req-detail {
+  padding-left: calc(var(--pad) + 34px);
+  padding-bottom: 12px;
+}
+
+.req-whole {
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.3;
   overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
-.req-item.open .req-text {
-  -webkit-line-clamp: unset;
-  line-clamp: unset;
-}
-
-.req-status {
-  margin-top: 3px;
-  opacity: 0.8;
-}
-
-/* One line: the title, fading at its edge, and its one word on the right. */
-.in.req-line {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  padding-block: 2px;
-}
-
-.req-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-align: left;
-  min-height: 44px;
-}
-
-.req-main .req-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.req-item.open .req-main {
-  align-items: baseline;
-  padding-block: 8px;
-}
-
-.req-main .req-text {
-  white-space: nowrap;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-}
-
-.req-item.open .req-main .req-text {
-  white-space: normal;
-  -webkit-mask-image: none;
-  mask-image: none;
-}
-
-.req-status {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.req-hint {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The status chip: a flat word, filled only when it needs the user. */
-.req-chip {
-  flex: none;
-  font-size: 0.875rem;
-}
-
-/* Only what needs the user stands out. */
-.req-chip.c-needs,
-.req-chip.c-blocked {
-  font-weight: 700;
-}
-
-.req-chip.c-done,
-.req-chip.c-dropped {
-  opacity: 0.7;
-}
-
-.req-sess {
-  align-self: flex-start;
-  max-width: 100%;
-  min-height: 32px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.875rem;
-  font-weight: 650;
-  text-align: left;
+.req-whole + .req-said {
+  margin-top: 8px;
 }
 
 .req-said + .req-said {
   margin-top: 8px;
 }
 
-.req-why {
-  margin-top: 8px;
-}
-
-.req-fold {
-  display: block;
-  width: 100%;
-  text-align: left;
-}
-
-.in.req-detail {
-  padding-bottom: 12px;
+/* What else was said: a row, its time on the right. */
+.req-said-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .req-quote {
@@ -199,6 +154,7 @@
   color: var(--c);
 }
 
+/* A message still being read, above the column. */
 .in.req-pending {
   display: flex;
   gap: 10px;
@@ -213,60 +169,8 @@
   font-weight: 700;
 }
 
-.req-day {
-  padding-block: 14px 4px;
-  text-transform: lowercase;
-}
-
-.req-empty {
-  padding-block: 18px;
-}
-
-/* The trace: time on the left, the words on the right. */
-.in.req-trace {
-  display: flex;
-  gap: 12px;
-  padding-block: 7px;
-}
-
-.req-time {
-  width: 4.6em;
-  white-space: nowrap;
-  flex: none;
-  padding-top: 2px;
-}
-
-.req-trace-body {
-  flex: 1;
-  min-width: 0;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.req-kind {
-  font-weight: 700;
-}
-
-.req-trace.k-request .req-kind,
-.req-trace.k-status .req-kind {
-  opacity: 0.7;
-}
-
-.req-goal-tag {
-  opacity: 0.7;
-}
-
-/* Direct children of the page body (a column that would shrink them): full width like every band. */
-.req-group,
 .req-empty {
   width: 100%;
   box-sizing: border-box;
-}
-
-/* An opened request: what else was said (a row, its time on the right), where it went, what came back. */
-.req-said-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  padding-block: 18px;
 }

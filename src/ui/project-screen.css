@@ -1,18 +1,4 @@
-/* A project's page (src/ui/project-screen.tsx): small calm lines, weight for what is active, air between the groups. */
-
-.pj {
-  padding-block: 2px 14px;
-}
-
-.pj ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.pj-feed + .pj-todo {
-  margin-top: 16px;
-}
+/* A project's page (src/ui/project-screen.tsx): its request column, then its sessions, a little air between them. */
 
 .pj-line {
   display: block;
@@ -45,5 +31,8 @@
 .pj-page {
   width: 100%;
   min-width: 0;
-  padding-top: 12px;
+}
+
+.pj-sessions:not(:empty) {
+  padding-top: 14px;
 }

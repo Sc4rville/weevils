@@ -35,7 +35,7 @@ In the code the feature is called **for you** (`foryou`): « feed » already nam
   user is up to date.
 - **Gestures already taken**: the home stack swipes left to the repos, every page swipes right to go back. A carousel
   must scroll natively and stop the pointer from reaching them.
-- **House rules that bind**: every string in a catalog (fr + en), four themes (light, dark, zen, graphite), flat
+- **House rules that bind**: every string in a catalog (fr + en), every theme (light, dark, zen, graphite, desert, synthwave; see docs/themes.md), flat
   bands, sharp corners, no shadow, character icons, nothing moves under the finger, `bands.test.tsx` (sending never
   opens the full-screen thread).
 

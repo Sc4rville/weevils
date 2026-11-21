@@ -31,6 +31,27 @@
   --fy-who-k: 0.35;
 }
 
+/* Synthwave: dark bands; outside authors brought down to the night; the gradient walks the retro sun. */
+:root[data-theme='synthwave'] {
+  --fy-ok: oklch(from var(--fluo) 0.38 calc(c * 0.45) h);
+  --fy-who-lm: 0;
+  --fy-who-la: 0.36;
+  --fy-who-k: 0.8;
+  --fy-g1: var(--p3);
+  --fy-g2: var(--p6);
+  --fy-g3: var(--p10);
+  --fy-g4: var(--p15);
+}
+
+/* Desert: the gradient walks the dunes, sage → ochre → terracotta → mauve. */
+:root[data-theme='desert'] {
+  --fy-ok: oklch(from var(--fluo) 0.88 calc(c * 0.4) h);
+  --fy-g1: var(--p0);
+  --fy-g2: var(--p5);
+  --fy-g3: var(--p10);
+  --fy-g4: var(--p15);
+}
+
 /* Graphite: greys, and the one blue for what moves. */
 :root[data-theme='graphite'] {
   --fy-ok: oklch(from var(--fluo) 0.88 calc(c * 0.2) h);

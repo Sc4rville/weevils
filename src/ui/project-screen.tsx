@@ -59,11 +59,11 @@ export function useLedger(): { ledger: LedgerView | null; reload: () => void } {
 }
 
 /** A project's requests as the one column, for any page that shows a project (the classic page, next's). */
-export function ProjectRequests({ project }: { project: { id: string; name: string } }) {
+export function ProjectRequests({ project, fill }: { project: { id: string; name: string }; fill?: boolean }) {
   const { snap } = useApp()
   const { ledger, reload } = useLedger()
   const asks = useMemo(() => (ledger ? requestsOf(ledger.asks, project, snap.sessions) : []), [ledger, project.id, project.name, snap.sessions])
-  return <RequestColumn asks={asks} onChanged={reload} />
+  return <RequestColumn asks={asks} onChanged={reload} fill={fill} />
 }
 
 /** A project's own page: its requests, then every session, the open ones first, then the finished ones newest first,

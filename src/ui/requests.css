@@ -7,6 +7,13 @@
   min-width: 0;
 }
 
+/* The column is the whole page: its last band's tone runs down to the bottom of the screen. */
+.rc.fill {
+  flex: 1;
+  padding-bottom: 96px;
+  background: oklch(from var(--c) calc(l + var(--dl) * var(--last, 0) * 0.22) c h);
+}
+
 .rc-row {
   background: oklch(from var(--c) calc(l + var(--dl) * var(--step, 0) * 0.22) c h);
 }

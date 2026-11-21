@@ -144,9 +144,10 @@ const STEPS = 8
  * The request column: one band per request, like the automation rows (one colour, each band one small tone step from
  * the one above, no line, no gap). A band is a short title, a small star before it while its session works (the
  * title never moves: the star's place is always kept), and a small bar that says how far it is. Every request is
- * there whatever its state; a tap opens it in place.
+ * there whatever its state; a tap opens it in place. `fill`: the column is the whole page, so the tone of its last
+ * band runs down to the bottom of the screen (no darker band under the list).
  */
-export function RequestColumn({ asks, onChanged }: { asks: Row[]; onChanged?: () => void }) {
+export function RequestColumn({ asks, onChanged, fill }: { asks: Row[]; onChanged?: () => void; fill?: boolean }) {
   const t = useT(M)
   const { snap } = useApp()
   const [open, setOpen] = useState<string | null>(null)
@@ -158,7 +159,7 @@ export function RequestColumn({ asks, onChanged }: { asks: Row[]; onChanged?: ()
   })
   const act = (a: Row) => (action: 'done' | 'drop' | 'open') => void api.askAction(a.id, action).then(() => onChanged?.()).catch(() => undefined)
   return (
-    <div className="rc">
+    <div className={fill ? 'rc fill' : 'rc'} style={{ '--last': Math.min(Math.max(rows.length - 1, 0), STEPS) } as CSSProperties}>
       {rows.slice(0, shown).map(({ a, chip }, i) => (
         <div key={a.id} className={`rc-row c-${chip}${open === a.id ? ' open' : ''}`} style={{ '--step': Math.min(i, STEPS) } as CSSProperties}>
           <button type="button" className="in rc-line" onClick={() => setOpen(open === a.id ? null : a.id)} aria-expanded={open === a.id} aria-label={`${askLabel(a)} · ${t.chip(chip)}`}>
@@ -212,10 +213,9 @@ export function RequestsPage() {
             </div>
           ))}
           {!v.asks.length && !v.pending.length && <div className="in meta req-empty">{t.nothingOpen}</div>}
-          <RequestColumn asks={v.asks} onChanged={load} />
+          <RequestColumn asks={v.asks} onChanged={load} fill />
         </>
       )}
-      <div style={{ height: 96 }} />
     </Shell>
   )
 }

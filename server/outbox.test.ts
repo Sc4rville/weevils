@@ -104,3 +104,14 @@ it('treats language changes as the same intent while preserving the original dis
  expect(run).toHaveBeenCalledTimes(1)
  expect(run.mock.calls[0][0].url).toBe('/api/foryou/item/act?lang=fr')
 })
+it('a session whose process is gone (its socket never connects) is a confirmed failure, named; any other error stays uncertain', async () => {
+ const gone = Object.assign(new Error('connect ENOENT /x.sock'), { code: 'ENOENT', syscall: 'connect' })
+ const box = new Outbox(dir, vi.fn(async () => { throw gone }))
+ box.accept(id, task); await tick(); await tick()
+ expect(box.get(id)).toMatchObject({ status: 'failed', cause: 'unreachable' })
+ const other = 'test-message-00000002'
+ const box2 = new Outbox(fs.mkdtempSync(path.join(os.tmpdir(), 'wv-outbox-')), vi.fn(async () => { throw Object.assign(new Error('write EPIPE'), { code: 'EPIPE', syscall: 'write' }) }))
+ box2.accept(other, task); await tick(); await tick()
+ expect(box2.get(other)?.status).toBe('uncertain')
+ expect(box2.get(other)?.cause).toBeUndefined()
+})

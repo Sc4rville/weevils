@@ -101,12 +101,6 @@ const getAll = () => (current && state.phase !== 'error' ? current : null)
 /** The id of the item being read aloud right now, if any (the top band's preview marks its strip). */
 export const useVoiceId = (): string | null => useSyncExternalStore(subscribe, getAll, getAll)
 
-/** Where this item's voice message stands. */
-export function useVoice(id: string): VoiceState {
-  const get = () => (current === id ? state : IDLE)
-  return useSyncExternalStore(subscribe, get, get)
-}
-
 /** Tests only. */
 export function resetVoice() {
   clearTimeout(errTimer)

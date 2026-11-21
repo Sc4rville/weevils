@@ -77,7 +77,6 @@ const saveState = (s: TipsState) => {
 }
 const isDebug = () => read(DEBUG) === '1'
 
-export const setTipsOff = (off: boolean) => saveState({ ...loadState(), off })
 const subscribe = (f: () => void) => {
   window.addEventListener(CHANGE, f)
   window.addEventListener('storage', f)

@@ -17,13 +17,6 @@ export function modelLabel(model?: string): string | undefined {
   return nums.length ? `${fam} ${nums.slice(0, 2).join('.')}` : fam
 }
 
-/** « claude-opus-4-1 » → « opus » (le sélecteur) ; un modèle codex est gardé tel quel. */
-export function shortModel(model?: string): string | undefined {
-  if (!model) return undefined
-  const m = /opus|sonnet|haiku|fable/i.exec(model)
-  return m ? m[0].toLowerCase() : model
-}
-
 /**
  * A conversation's settings: weevboss's voice, or the model and effort of a session, each applied in one tap by the
  * server (src/ui/model-controls.tsx). No slash command is typed from here; fast mode, « tidy up » and « start over » are

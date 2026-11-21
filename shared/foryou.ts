@@ -196,5 +196,3 @@ export interface ForYouMark {
   rev: number
   unseen: number
 }
-
-export const FORYOU_KINDS: ForYouKind[] = ['media', 'boss', 'mail', 'proposals', 'session', 'improve', 'alert', 'insight', 'milestone', 'stat']

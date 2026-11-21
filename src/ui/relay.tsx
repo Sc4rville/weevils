@@ -1,7 +1,7 @@
 import { noticeKey, quotaReset, relayPlanNoticeKey } from '../../shared/notices.ts'
 import { Notice, useNotices } from './notice'
 import { dismissNotice, isNoticeDismissed } from './notice-store'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ClaudeAccountLine, RelayMode, RelayPlan, Session } from '../../shared/api.ts'
 import { startSetup } from './setup'
 import { api } from '../api'
@@ -268,26 +268,6 @@ function Accounts({ accounts }: { accounts: ClaudeAccountLine[] }) {
       ))}
       <Line onClick={() => void startSetup('account').catch(() => undefined)}>{t.addAccount}</Line>
     </>
-  )
-}
-
-/** The bottom band: the setting, one line that opens the page. */
-export function RelayPrefLine() {
-  const { snap, push } = useApp()
-  const t = useT(M)
-  // The server writes « until 6 pm » in the time zone of the device.
-  useEffect(() => {
-    try {
-      void api.relaySet({ tz: Intl.DateTimeFormat().resolvedOptions().timeZone }).catch(() => undefined)
-    } catch {
-      /* no time zone: the server's */
-    }
-  }, [])
-  if (!snap.relay) return null
-  return (
-    <Line ch="⇄" meta={t[`mode_${snap.relay.mode}`]} onClick={() => push({ kind: 'relay' })}>
-      {t.pref}
-    </Line>
   )
 }
 

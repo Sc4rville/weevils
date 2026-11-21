@@ -81,7 +81,6 @@ export const PROJECTS_STEP = 3
 export const WAITED_MS = 30 * 60_000
 
 export const DIGEST_MAX = 600
-export const THOUGHT_MAX = 240
 export const IMPROVE_MAX = 400
 export const INSIGHT_MAX = 220
 export const MORE_MAX = 900

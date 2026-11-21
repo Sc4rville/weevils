@@ -169,9 +169,11 @@ proposal: it is the agreement.
 - **VAULT-6** No lease is stolen without the person's agreement or order.
 - **VAULT-7** Each repository stays under 1 GB.
 
-VAULT-4 needs one check first: redaction ([02](02-weevbook.md#redaction)) runs over every string of a raw line,
-thinking included. A thinking block whose text redaction changed fails its signature on resume. Redaction must skip
-`thinking` and `signature` values; what a thinking block says stays encrypted in the vault instead.
+VAULT-4 is built (2026-11-21): raw redaction and the path rewrite of a moved session leave Claude's signed blocks
+(`thinking`, `redacted_thinking`) byte for byte; a thinking block an older redaction changed (one in the owner's ~12,000)
+is dropped at resume, its line's children taking its parent. Measured on a real session with Claude Code 2.1.327: a
+changed thinking block of an earlier turn was accepted by the API anyway, and recent models write the thinking as an
+empty text with its signature, so the risk was small; the rule keeps it at none.
 
 ## Steps
 

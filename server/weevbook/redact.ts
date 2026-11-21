@@ -8,6 +8,13 @@ import { redactToolText } from '../codex-command-details.ts'
 /** One string, whole: no cut at 8,000 characters. */
 export const redactText = (s: string) => redactToolText(s, Infinity)
 
+/**
+ * A block the provider signs (Claude's `thinking` and `redacted_thinking`): the API refuses a conversation in which one
+ * of them differs by a byte from what it wrote, so raw keeps them as they are (docs/spec/07-vault.md, VAULT-4). What
+ * they say is no more exposed than in the provider's own file: the journal's events, which people read, are redacted.
+ */
+export const signedBlock = (v: unknown): boolean => !!v && typeof v === 'object' && !Array.isArray(v) && ((v as { type?: unknown }).type === 'thinking' || (v as { type?: unknown }).type === 'redacted_thinking')
+
 /** A key that names a secret (`api_key`, `Authorization`, `refresh_token`…): its string value is written as [redacted].
  *  The text patterns only see `name = value` inside one string; in a JSON object the name is the key. */
 const SECRET_KEY = /(?:token|password|passwd|secret|api[_-]?key|authorization|cookie)/i
@@ -17,7 +24,8 @@ export const REDACTED = '[redacted]'
  * Every string value inside `v`, redacted. Objects and arrays are copied only where something changed, so an
  * unchanged value comes back as the same object (`redactValue(o) === o`: nothing to redact).
  */
-export function redactValue(v: unknown, key?: string): unknown {
+export function redactValue(v: unknown, key?: string, keepSigned = false): unknown {
+  if (keepSigned && signedBlock(v)) return v
   if (typeof v === 'string') {
     if (key !== undefined && SECRET_KEY.test(key) && v !== '' && v !== REDACTED) return REDACTED
     return redactText(v)
@@ -25,7 +33,7 @@ export function redactValue(v: unknown, key?: string): unknown {
   if (Array.isArray(v)) {
     let out: unknown[] | undefined
     v.forEach((x, i) => {
-      const r = redactValue(x)
+      const r = redactValue(x, undefined, keepSigned)
       if (r !== x) (out ??= v.slice())[i] = r
     })
     return out ?? v
@@ -33,7 +41,7 @@ export function redactValue(v: unknown, key?: string): unknown {
   if (v && typeof v === 'object') {
     let out: Record<string, unknown> | undefined
     for (const [k, x] of Object.entries(v)) {
-      const r = redactValue(x, k)
+      const r = redactValue(x, k, keepSigned)
       if (r !== x) (out ??= { ...(v as Record<string, unknown>) })[k] = r
     }
     return out ?? v
@@ -59,7 +67,7 @@ export function redactRawLine(line: string, parsed?: { value: unknown } | 'not-j
       return JSON.stringify(redactText(line))
     }
   }
-  const r = redactValue(value)
+  const r = redactValue(value, undefined, true)
   return r === value ? line : JSON.stringify(r)
 }
 

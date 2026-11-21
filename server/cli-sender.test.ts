@@ -51,3 +51,12 @@ it('sends the machine\'s local token from its file, never on its command line', 
  expect(tokens.every((t) => t === TEST_LOCAL_TOKEN)).toBe(true)
  expect(fs.readFileSync(path.join(import.meta.dirname, 'weevils-cli'), 'utf8')).toMatch(/curl -H "@\$local_token"/)
 })
+
+it('carries the short line the thread shows (--say) for send, new and do, wherever it is placed',async()=>{
+ await cli(['send','target','A long brief for the agent','--say','Merge the new themes'],{})
+ expect(seen.at(-1)?.body).toMatchObject({text:'A long brief for the agent',say:'Merge the new themes'})
+ await cli(['new','--say=Fix the login page','project','Full brief','codex'],{})
+ expect(seen.at(-1)?.body).toMatchObject({projectId:'project',tool:'codex',text:'Full brief',say:'Fix the login page'})
+ await cli(['do','Install the tool'],{})
+ expect(seen.at(-1)?.body).toMatchObject({text:'Install the tool',say:''})
+})

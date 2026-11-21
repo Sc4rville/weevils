@@ -40,6 +40,8 @@ export interface Message {
   devil?: boolean
   /** Fil de weevboss : les puces de branchement de ce message ([[setup:x]], retirées du texte), montrées en boutons. */
   chips?: string[]
+  /** role orchestrator, long brief: the one spoken line the thread shows in its place (the full text stays a tap away). */
+  say?: string
 }
 
 /** Qui peut signer un message dans une session, à part l'utilisateur : weevboss et les agents externes (config du serveur). */

@@ -16,7 +16,7 @@ let host: HTMLDivElement, root: Root
 const message = (id: string, role: Message['role'], text: string, extra: Partial<Message> = {}): Message => ({ id, role, text, at: 1, ...extra })
 beforeEach(() => { state.sessions = []; setLang('en'); MotionGlobalConfig.skipAnimations = true; host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); setLang(null) })
-it('keeps human messages and boss briefs fully readable, folding only bridge coordination', async () => {
+it('keeps human messages and answers fully readable, folding only bridge coordination', async () => {
  const long = 'A complete paragraph. '.repeat(35)
  const msgs = [message('user', 'user', long), message('boss', 'orchestrator', long, { author: 'weevboss', coordination: true }), message('coord', 'orchestrator', 'Technical exchange', { author: 'codex', coordination: true }), message('external', 'orchestrator', long, { author: 'friend' }), message('answer', 'assistant', long)]
  await act(async () => root.render(<Messages session messages={msgs} author="codex" />))

@@ -85,7 +85,7 @@ export function clusterLine(c: Cluster, w: Words): string {
 /** One short line for the whole group: at most two ideas, in order, no counts (they fit a phone). */
 export function groupLine(cs: Cluster[], w: Words): string {
   const idea = (k: Kind): string => (k === 'read' || k === 'search' ? String(w.readMany) : k === 'edit' || k === 'write' ? String(w.editMany) : String(w[k] ?? w.other))
-  const ideas = cs.map((c) => idea(c.kind)).filter((l, i, all) => all.indexOf(l) === i).slice(0, 2)
+  const ideas = cs.map((c) => (c.kind === 'run' ? String(w.ranCommands) : idea(c.kind))).filter((l, i, all) => all.indexOf(l) === i).slice(0, 2)
   return ideas.map((l, i) => (i ? l.charAt(0).toLowerCase() + l.slice(1) : l)).join(', ')
 }
 
@@ -174,7 +174,9 @@ const WRAP = /^(sudo|heavy|nice|nohup|time|exec|env|command)$/
 
 type Titles = Record<string, any>
 function shellTitle(cmd: string, w: Titles): string | null {
-  for (const seg of segments(cmd)) {
+  // An older event kept only the command's first 90 characters (« … »): its cut last part says nothing reliable.
+  const all = segments(cmd)
+  for (const seg of /…$/.test(cmd.trim()) ? all.slice(0, -1) : all) {
     if (seg.piped) continue
     let a = words(seg.text)
     while (a.length && (/^\w+=/.test(a[0]) || WRAP.test(a[0]) || (a[0] === 'timeout' && /^\d/.test(a[1] ?? '')))) a = a[0] === 'timeout' ? a.slice(2) : a.slice(1)

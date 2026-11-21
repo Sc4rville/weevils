@@ -72,5 +72,14 @@ export default defineConfig({
   // setup-env : HOME jetable et WEEVILS_* fixés avant tout import, jamais la vraie config du développeur.
   // test/live (contre un vrai weevilsd) est trouvé comme les autres mais sauté sans WEEVILS_LIVE_TEST=1.
   // .claude/ : worktrees d'agents (ignorés par git), jamais testés depuis ici.
-  test: { environment: 'node', env: { NODE_ENV: 'test' }, setupFiles: ['test/setup-env.ts'], globalSetup: ['test/global-setup.ts'], exclude: [...configDefaults.exclude, '.claude/**'] },
+  // onUnhandledError : happy-dom rejette `finished` d'une animation annulée (AbortError, comme un navigateur) ; motion
+  // l'annule en démontant un composant, parfois après la fin du test. Ce rejet-là seul est ignoré, tout autre fait échouer.
+  test: {
+    environment: 'node',
+    env: { NODE_ENV: 'test' },
+    setupFiles: ['test/setup-env.ts'],
+    globalSetup: ['test/global-setup.ts'],
+    exclude: [...configDefaults.exclude, '.claude/**'],
+    onUnhandledError: (error) => !(error.name === 'AbortError' && error.message === 'The animation was canceled.'),
+  },
 })

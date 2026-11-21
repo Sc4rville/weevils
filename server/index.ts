@@ -24,13 +24,14 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl, WEEVBOOK, WEEVBOOK_DIR, CONNECTOR, WEEVBOOK_HUB, THREADS, VAULT_DEPLOY_KEY, VAULT_KEY_FILE, VAULT_STAGING, vaultRemote } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, NEXT_DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl, WEEVBOOK, WEEVBOOK_DIR, CONNECTOR, WEEVBOOK_HUB, THREADS, VAULT_DEPLOY_KEY, VAULT_KEY_FILE, VAULT_STAGING, vaultRemote } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices, claudeAvailable, haiku, ledger, relay as modelRelay } from './fast.ts'
 import { CostOptimizer, RUN_EVERY_MS as COST_EVERY_MS } from './cost.ts'
 import CostM from './i18n/cost.ts'
 import { Weevils, isTestBrief } from './core.ts'
+import { uiChoice, uiDirs, UI_COOKIE } from './ui-choice.ts'
 import { lang, requestLang, withLang, setLang, tr, withInstallLang, user, installationLang } from './i18n.ts'
 import M from './i18n/api.ts'
 import PM from './i18n/pages.ts'
@@ -555,9 +556,24 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
 }
 
-function serveStatic(res: http.ServerResponse, pathname: string) {
-  let file = path.join(DIST_DIR, pathname === '/' ? 'index.html' : pathname)
-  if (!file.startsWith(DIST_DIR) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(DIST_DIR, 'index.html')
+function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
+  const pathname = url.pathname
+  const choice = uiChoice({ cookie: req.headers.cookie, query: url.searchParams.get('ui'), nextBuilt: fs.existsSync(path.join(NEXT_DIST_DIR, 'index.html')), fallback: process.env.WEEVILS_UI })
+  // « ?ui=… »: kept for this browser, then the same address without it.
+  if (choice.set) {
+    url.searchParams.delete('ui')
+    res.writeHead(302, { location: `${url.pathname}${url.search}`, 'set-cookie': `${UI_COOKIE}=${choice.set}; Path=/; Max-Age=31536000; SameSite=Lax`, 'cache-control': 'no-store' })
+    return void res.end()
+  }
+  const dirs = uiDirs(choice.ui, { classic: DIST_DIR, next: NEXT_DIST_DIR }, pathname)
+  const index = path.join(dirs[0], 'index.html')
+  let file = index
+  if (pathname !== '/') {
+    for (const dir of dirs) {
+      const f = path.join(dir, pathname)
+      if (f.startsWith(dir + path.sep) && fs.existsSync(f) && !fs.statSync(f).isDirectory()) { file = f; break }
+    }
+  }
   if (!fs.existsSync(file)) return json(res, 503, { error: tr(M).notBuilt })
   const ext = path.extname(file)
   res.writeHead(200, {
@@ -567,9 +583,11 @@ function serveStatic(res: http.ServerResponse, pathname: string) {
     'x-frame-options': 'DENY',
     'content-security-policy': "frame-ancestors 'none'",
     'referrer-policy': 'no-referrer',
+    // The page depends on the interface this browser chose.
+    ...(file === index ? { vary: 'Cookie' } : {}),
   })
   // The app's page carries this installation's language, for the devices that have picked none.
-  if (file === path.join(DIST_DIR, 'index.html')) return void res.end(withInstallLang(fs.readFileSync(file, 'utf8')))
+  if (file === index) return void res.end(withInstallLang(fs.readFileSync(file, 'utf8')))
   fs.createReadStream(file).pipe(res)
 }
 
@@ -1289,11 +1307,11 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
     // A page link: signed in, its keyed files; otherwise the app, which signs in and then opens it.
     const page = req.method === 'GET' || req.method === 'HEAD' ? pageLink(url.pathname) : undefined
     if (page) {
-      if (!authed(req) || !pages.get(page.slug)) return serveStatic(res, '/')
+      if (!authed(req) || !pages.get(page.slug)) return serveStatic(req, res, new URL('/', 'http://local'))
       res.writeHead(302, { location: `/api/page/${pages.key(page.slug)}/${page.slug}/`, 'cache-control': 'no-store' })
       return void res.end()
     }
-    if (!url.pathname.startsWith('/api/')) return serveStatic(res, url.pathname)
+    if (!url.pathname.startsWith('/api/')) return serveStatic(req, res, url)
     // A change asked by a browser comes from the app's own pages only (server/http.ts appWriteAllowed).
     if (!appWriteAllowed(req, PUBLIC_URL)) return json(res, 403, { error: tr(M).signInRequired })
     const keyed = PAGE_KEY_RE.exec(url.pathname)

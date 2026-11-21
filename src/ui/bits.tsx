@@ -351,6 +351,12 @@ const blobToB64 = (b: Blob) =>
     r.readAsDataURL(b)
   })
 
+/** weevils next (next/) only: its box to write in is the roomy one everywhere (several lines, + then mic and send under
+ *  the text). Off in the app. */
+export const composerLook = { multiline: false }
+/** weevils next only: a session's messages carry their author's name too (« you », « claude »…), as weevboss's do. */
+export const threadLook = { authorsInSessions: false }
+
 export function Composer({
   placeholder,
   label,
@@ -366,6 +372,7 @@ export function Composer({
   formRef,
   sayErrors = false,
   horizontal = false,
+  multiline = composerLook.multiline,
   captureSuggestions = false,
   draftKey,
 }: {
@@ -390,6 +397,8 @@ export function Composer({
   sayErrors?: boolean
   /** Native one-line horizontal editor, isolated from page swipe gestures. */
   horizontal?: boolean
+  /** A roomy box (weevils next): several lines, growing with the text up to half the screen. */
+  multiline?: boolean
   /** Stable identity for a draft across title and locale changes. */
   draftKey?: string
   /** Offer pasted/authorized clipboard images before attaching them. */
@@ -434,6 +443,12 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null)
   const capture = useCaptureSuggestion(captureSuggestions && !!onAttach && !disabled)
   const canVoice = voice && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
+  useEffect(() => {
+    const box = field.current
+    if (!multiline || !box) return
+    box.style.height = 'auto'
+    box.style.height = `${Math.min(box.scrollHeight, innerHeight * 0.45)}px`
+  }, [multiline, text])
   useEffect(() => {
     if (draft?.reset) setText('')
     else if (draft?.text) setText((cur) => (cur.trim() ? `${cur.replace(/\s+$/, '')} ${draft.text}` : draft.text))
@@ -575,6 +590,18 @@ export function Composer({
             placeholder={rec === 'on' ? t.listening : rec === 'wait' ? t.transcribing : placeholder}
             aria-label={label}
             enterKeyHint="send"
+            autoComplete="off"
+            disabled={disabled}
+          />
+        ) : multiline ? (
+          <textarea
+            ref={(node) => { field.current = node }}
+            rows={3}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onFocus={onFocus}
+            placeholder={rec === 'on' ? t.listening : rec === 'wait' ? t.transcribing : placeholder}
+            aria-label={label}
             autoComplete="off"
             disabled={disabled}
           />
@@ -1090,7 +1117,7 @@ export function Messages({
             <Bubble
               className={`msg band ${session ? 'session-message' : ''} ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.reaction ? 'has-reaction' : ''}`}
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
-              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : session ? '' : author}`}
+              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : session && !threadLook.authorsInSessions ? '' : author}`}
               copy={g.m.role === 'user' ? userText(g.m.text) : g.m.role === 'orchestrator' ? briefText(g.m.text) : chipLabels(withoutMachinePrefix(g.m.text))}
               mid={g.m.id}
             >

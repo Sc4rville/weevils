@@ -54,6 +54,8 @@ export const LOGS_DIRS = process.env.WEEVILS_LOGS_DIR?.trim() ? [LOGS_DIR] : [pa
 /** Fichiers joints à weevboss (photos, PDF…), déposés en <date>-<nom>. Même dossier par défaut que ceux des sessions. */
 export const INBOX_DIR = process.env.WEEVILS_INBOX_DIR?.trim() || path.join(DATA_DIR, 'inbox')
 export const DIST_DIR = path.resolve(import.meta.dirname, '..', 'dist')
+/** weevils next, the interface every install opens by default (next/, built beside the classic app's dist/). */
+export const NEXT_DIST_DIR = path.resolve(import.meta.dirname, '..', 'next', 'dist')
 
 /** WEEVILS_PRIVATE_DIRS: more folders of yours (colon-separated, relative to the home folder or absolute) that an
  *  automation's jail hides and the file explorer never serves, like weevils' own config (a notes app, a wallet…). */

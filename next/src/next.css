@@ -1,0 +1,227 @@
+/* weevils next — only layout. Every colour comes from the theme tokens of src/styles.css (--agent for weevboss, the
+   project colour --pN for a session, --h24 for what runs alone, --ink for text, --fluo for the working star); a
+   sub-band is the app's `.tone` recipe (one step deeper or brighter, same hue). Nothing here picks a colour. */
+
+html, body { background: var(--agent); overscroll-behavior: none; }
+body { overflow: hidden; }
+
+.nx-stage { position: fixed; inset: 0; overflow: hidden; background: var(--sc, var(--agent)); }
+.nx-center { position: fixed; inset: 0; display: grid; place-items: center; background: var(--agent); color: var(--ink); }
+
+/* weevboss: the whole screen, its colour, nothing else. */
+.nx-boss {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column;
+  background: var(--agent); color: var(--ink);
+  will-change: transform;
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ink) 6%, transparent);
+}
+/* The colour wash while weevboss slides: the session's colour rising from its leading edge, gone once it lands. */
+.nx-wash {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  background: linear-gradient(to top, var(--sc) 0%, color-mix(in oklch, var(--sc) 55%, var(--agent)) 38%, transparent 82%);
+  will-change: opacity;
+}
+.nx-boss > :not(.nx-wash) { position: relative; z-index: 1; }
+
+.nx-top { flex: none; position: relative; }
+.nx-sky { display: block; width: 100%; height: 100%; }
+.nx-menu {
+  position: absolute; left: 10px; width: 44px; height: 44px; padding: 0;
+  display: grid; place-items: center; background: none; border: 0; color: var(--ink);
+}
+
+.nx-scroll {
+  flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+}
+.nx-thread { max-width: 720px; margin: 0 auto; padding: 4px var(--pad) 18px; display: flex; flex-direction: column; gap: 18px; }
+.nx-msg { font-size: 17px; line-height: 1.45; overflow-wrap: anywhere; }
+.nx-msg .text { white-space: pre-wrap; }
+.nx-me {
+  align-self: flex-end; max-width: 86%; padding: 10px 14px;
+  background: color-mix(in oklab, var(--c, var(--agent)) calc(100% - var(--mix)), var(--ink));
+  background: oklch(from var(--c, var(--agent)) calc(l + var(--dl)) calc(c * 1.06) h);
+}
+.nx-who { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+.nx-empty { opacity: .6; text-align: center; margin-top: 30vh; }
+.nx-typing { margin: 0 auto; max-width: 720px; padding: 0 var(--pad) 10px; }
+
+/* The box to write in: the app's composer (a `.tone` sub-band, its bare send arrow, + and mic as `.tool-btn`), in its
+   roomy form. The text takes the whole width; the buttons sit on one row under it: files on the left, mic and send on
+   the right. */
+.nx-boss { --c: var(--agent); }
+.nx-composer { flex: none; padding: 6px 10px calc(var(--safe-b) + 10px); }
+:is(.nx-composer, .nx-session-host) .composer { max-width: 760px; margin: 0 auto; }
+:is(.nx-composer, .nx-session-host) .composer > .in { flex-wrap: wrap; align-items: center; gap: 0 2px; padding: 4px 8px 2px 14px; min-height: 0; }
+:is(.nx-composer, .nx-session-host) .composer textarea {
+  flex: 1 1 100%; order: -1; min-height: 4.4em; max-height: 45dvh; padding: 12px 2px 4px; line-height: 1.4;
+  background: transparent; border: 0; outline: 0; color: var(--ink); font: inherit; font-size: 1.0625rem;
+}
+:is(.nx-composer, .nx-session-host) .composer textarea::placeholder { color: var(--ink); opacity: .5; }
+:is(.nx-composer, .nx-session-host) .composer .prompt { order: 0; }
+:is(.nx-composer, .nx-session-host) .composer .tool-btn[aria-pressed] { margin-left: auto; }
+:is(.nx-composer, .nx-session-host) .composer .send { margin-left: auto; }
+:is(.nx-composer, .nx-session-host) .composer .tool-btn[aria-pressed] ~ .send { margin-left: 0; }
+:is(.nx-composer, .nx-session-host) .attach-line { padding: 8px 14px 0; }
+.nx-send {
+  flex: none; width: 44px; height: 44px; padding: 0; display: grid; place-items: center;
+  background: none; color: var(--ink); border: 0;
+}
+.nx-send:disabled { opacity: .35; }
+
+/* What is left of weevboss over a session: a strip at the top, its logo, an arrow down. */
+.nx-peek {
+  position: absolute !important; left: 0; right: 0; bottom: 0; z-index: 3 !important;
+  display: flex; align-items: center; gap: 10px; padding-left: var(--pad); padding-right: var(--pad);
+  background: var(--agent); touch-action: none; cursor: pointer;
+}
+.nx-peek .nx-row-title { font-weight: 800; }
+/* The strip carried by a session while it slides (main.tsx): at the top of the moving layer, inert. */
+.nx-peek.nx-peek-carried { top: 0; bottom: auto; pointer-events: none; color: var(--ink); }
+.nx-chev .ic { width: 18px; height: 18px; }
+.nx-logo { width: 26px; height: 26px; flex: none; }
+.nx-right { margin-left: auto; }
+
+/* The session under weevboss: its project's colour, full screen. */
+.nx-under { position: absolute; inset: 0; z-index: 1; transform-origin: 50% 0; will-change: transform, opacity; }
+.nx-session { height: 100%; display: flex; flex-direction: column; background: var(--c); color: var(--ink); }
+.nx-head { flex: none; display: flex; align-items: center; gap: 10px; padding: 14px var(--pad) 6px; font-size: 19px; }
+.nx-title { font-weight: 500; }
+.nx-bold { font-weight: 800; }
+.nx-attention, .nx-now { flex: none; margin: 0; padding: 0 var(--pad) 8px calc(var(--pad) + 30px); font-size: 15px; }
+.nx-attention { font-weight: 700; }
+
+/* The side bar: full-width bands of the app, in a drawer from the left. */
+.nx-scrim { position: fixed; inset: 0; z-index: 10; background: color-mix(in oklab, #000 34%, transparent); }
+.nx-side {
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: 11; width: min(86vw, 380px);
+  background: var(--agent); color: var(--ink); touch-action: pan-y;
+  box-shadow: 8px 0 30px color-mix(in oklab, #000 25%, transparent);
+}
+.nx-side-scroll { height: 100%; overflow-y: auto; padding: calc(var(--safe-t) + 8px) 0 calc(var(--safe-b) + 20px); overscroll-behavior: contain; }
+.nx-h { margin: 20px var(--pad) 6px; font-size: 13px; font-weight: 500; letter-spacing: .02em; opacity: .7; }
+.nx-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px var(--pad);
+  border: 0; text-align: left; font: inherit; font-size: 16px; color: var(--ink); text-decoration: none;
+}
+.nx-mark { flex: none; width: 22px; display: grid; place-items: center; }
+.nx-row-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nx-row-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-row-sub { font-size: 13px; opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-active .nx-row-title { font-weight: 800; }
+
+.nx-signin { position: fixed; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: var(--pad); }
+.nx-signin form { display: flex; gap: 8px; }
+.nx-signin input { flex: 1; font: inherit; font-size: 17px; padding: 10px 12px; border: 0; color: var(--ink);
+  background: oklch(from var(--agent) calc(l + var(--dl)) calc(c * 1.06) h); }
+.nx-logo-big { width: 64px; height: 64px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-wash { display: none; }
+}
+.nx-error { font-size: 14px; font-weight: 700; margin: 0 4px 6px; }
+
+/* The side bar's bands, as on the original home: weevboss in the recursive signature at the top, then one band per
+   project in its colour (weevils itself in the signature too), its sessions under its name, then automations on the
+   24/7 colour, then settings. No section titles: the bands and the moving signs say what runs. */
+.nx-boss-row { min-height: 64px; }
+.nx-boss-row .nx-row-title { font-weight: 800; font-size: 18px; }
+.nx-project { padding-bottom: 6px; }
+.nx-project-head { min-height: 54px; padding-top: 12px; gap: 8px; }
+.nx-project-name { font-size: 20px; letter-spacing: -0.01em; }
+.nx-row.nx-sub { min-height: 46px; padding-top: 7px; padding-bottom: 7px; background: transparent; }
+.nx-row.nx-sub.tone { background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h); }
+.nx-row.nx-current { box-shadow: inset 3px 0 0 var(--ink); }
+
+/* The working line under the last message: the app's `.working` (green star, its three breathing dots). */
+.nx-working { font-size: 14px; font-weight: 650; overflow: hidden; }
+.nx-me { transform-origin: 100% 100%; }
+.nx-settings { padding-bottom: 8px; }
+
+/* A project's line in the side bar: its name (folds its sessions), then the app's « / » and « > » (.chars .ch). */
+.nx-project-line { display: flex; align-items: center; padding-right: 6px; }
+.nx-project-line .nx-project-head { flex: 1; min-width: 0; }
+.nx-project-line .chars { display: flex; flex: none; }
+.nx-project-line .ch { background: none; border: 0; color: var(--ink); }
+
+/* The app's session page, under weevboss's strip: in its place in the stack, not over the whole screen. */
+.nx-session-host { position: absolute; inset: 0; }
+.nx-session-host > .page { position: absolute; top: var(--strip, 0px); height: calc(100% - var(--strip, 0px)); z-index: auto; }
+
+
+/* « weevboss · for you »: the app's two words (foryou-top.tsx TopWords), in the middle of the thin band. */
+.nx-words { position: absolute; left: 50%; transform: translateX(-50%); height: 52px; display: flex; align-items: center; }
+.nx-words .fyt-words { width: auto; padding: 0; gap: 14px; }
+/* weevboss's thread and For you, side by side, one at a time. */
+.nx-panes { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.nx-pane { position: absolute; inset: 0; display: flex; flex-direction: column; will-change: transform; }
+/* The app's For you page, in place under the band: its own header (back, title) is the band's words here. */
+.nx-fy > .page { position: absolute; inset: 0; top: 0; height: 100%; z-index: auto; background: transparent; }
+.nx-fy .fy-top { display: none; }
+
+/* A photo you sent: a small thumbnail in your bubble, not the whole picture (main.tsx openPhoto opens it whole). */
+.nx-stage .user-photo { margin-top: 10px; border-radius: 12px; overflow: hidden; line-height: 0; -webkit-tap-highlight-color: transparent; }
+.nx-stage .user-photo img { width: auto; height: auto; max-width: min(208px, 100%); max-height: 168px; min-height: 84px; object-fit: cover; border-radius: 12px; }
+
+/* weevils' own block at the top: weevboss's logo and « weevils » head it (main.tsx ProjectGroup boss). */
+.nx-project-head.nx-boss-row { gap: 12px; min-height: 64px; }
+.nx-project-head.nx-boss-row .nx-project-name { font-weight: 800; }
+.nx-row.nx-more { min-height: 38px; }
+
+/* A session's thread: no lines between messages (2026-11-21: no thin light lines); the bands of who wrote what
+   and the room between messages separate them. weevboss's briefs keep their own tint (styles.css .orch). */
+/* …and every message reads as on weevboss's screen: the same size, the same room, your words a tinted band reaching
+   the right edge, the agent's on the page with the small gap on both sides, each under its author's name. */
+.nx-session-host .session-thread .msg.band { margin-left: var(--pad); }
+.nx-session-host .session-thread .msg.band:not(.tone):not(.orch) { margin-right: var(--pad); }
+/* Someone else prompting this session (weevboss, another agent, a bot: the server's author of a signed message) sits
+   on the right exactly like your own words, reaching the right edge: it is what the agent was asked, not its reply
+   (2026-11-21). It keeps its author's name and colour (bits.tsx authorTone). */
+.nx-session-host .session-thread .msg.band.orch { margin-left: var(--pad); margin-right: 0; }
+.nx-session-host .session-thread .msg.band.tone:not(.orch) { background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h); }
+.nx-session-host .session-thread .msg > .in { padding-block: 10px; }
+.nx-session-host .session-thread .msg .text { font-size: 1.0625rem; line-height: 1.4; }
+.nx-session-host .session-thread .msg .who { opacity: 1; }
+
+/* weevboss's box to write in: a band from one edge to the other, no frame, like the lines of a thread. */
+.nx-composer { padding-left: 0; padding-right: 0; padding-top: 0; }
+:is(.nx-composer, .nx-session-host) .composer { max-width: none; }
+
+/* Your messages on weevboss's screen reach the right edge; its replies keep their margin on the left. */
+.nx-boss .nx-thread { padding-right: 0; }
+.nx-boss .nx-thread > :not(.nx-me):not(:has(.msg.band.tone)) { margin-right: var(--pad); }
+
+/* weevils' block head: its logo opens weevboss, its name folds its sessions (main.tsx ProjectGroup). */
+.nx-boss-row .nx-boss-logo, .nx-boss-row .nx-fold { background: none; border: 0; padding: 0; color: inherit; font: inherit; display: flex; align-items: center; gap: 10px; }
+.nx-boss-row .nx-fold { flex: 1; min-width: 0; min-height: 44px; text-align: left; }
+.nx-boss-row .nx-boss-logo { min-width: 44px; min-height: 44px; }
+
+/* Automations: one colour for all, the rows a gentle staircase like the stacked blocks of the weevils logo: each row
+   one small tone step from the one above (the theme's own step, --dl, as the app's .tone), no line, no gap, no shadow. */
+.nx-autos .nx-row.nx-sub { background: oklch(from var(--c) calc(l + var(--dl) * var(--step, 0) * 0.22) c h); }
+/* Someone else's box carries its colour alone: no edge line on it. */
+.nx-session-host .session-thread .msg.band.orch { border-inline-start: 0; border-inline-end: 0; }
+
+/* An automation (auto.tsx): its overview, centred, in the app's type and icons; nothing decorative. */
+.nx-flip {
+  position: absolute; right: var(--pad); bottom: 6px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 2px;
+  background: none; border: 0; color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 700; opacity: 0.85;
+}
+.nx-flip:active { opacity: 0.55; }
+.nx-flip .icon { width: 18px; height: 18px; }
+.nx-auto-overview .page-head h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.nx-auto-talk .session-context-row { padding-right: 140px; }
+.nx-auto-talk .page-head:not(:has(.session-header-row)) > .in { padding-bottom: 44px; }
+.nx-auto-hero { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 28px var(--pad) 8px; }
+.nx-auto-icon { font-size: 2rem; line-height: 1; }
+.nx-auto-icon .icon { width: 36px; height: 36px; }
+.nx-auto-name { font-size: 1.875rem; font-weight: 800; line-height: 1.15; letter-spacing: -0.01em; }
+.nx-auto-what { margin: 0; max-width: 32ch; font-size: 1.0625rem; line-height: 1.4; opacity: 0.85; }
+.nx-auto-result { margin-top: 10px; font-size: 1.5rem; font-weight: 800; }
+.nx-auto-facts { margin: 18px 0 0; padding: 0 var(--pad); display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
+.nx-auto-fact dt { font-size: 0.8125rem; opacity: 0.7; }
+.nx-auto-fact dd { margin: 2px 0 0; font-size: 1.0625rem; font-weight: 700; display: flex; flex-direction: column; align-items: center; }
+.nx-auto-fact dd .icon { width: 16px; height: 16px; vertical-align: -2px; }
+.nx-auto-fact.go { cursor: pointer; }
+.nx-auto-note { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 34ch; margin-top: 2px; font-weight: 400; font-size: 0.9375rem; opacity: 0.8; }

@@ -220,7 +220,7 @@ On each machine, in weevils' data dir (`~/.local/share/weevils`):
 | `hub.git` | Step 2, on the hub's machine only: the hub ([03](03-sync-and-lease.md#step-2-the-hub-weevils-sets-up)). |
 | `checkpoints/<id>.git` | Step 2: the private repository of a folder without git ([04](04-resume.md#checkpoints)). |
 
-- **Writer** (`server/weevbook/writer.ts`, in weevilsd, only with `WEEVILS_WEEVBOOK=1`): every 3 s it looks at the
+- **Writer** (`server/weevbook/writer.ts`, in weevilsd, on unless `WEEVILS_WEEVBOOK=0`): every 3 s it looks at the
   session files the app reads, one at a time, under the lock, never in the app's loop. An error is logged once and
   stays there.
 - **`weevils weevbook backfill`**: every session file of the machine (`~/.claude/projects/*/*.jsonl`,

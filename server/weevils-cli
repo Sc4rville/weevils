@@ -74,7 +74,7 @@ weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichie
   usage+=$'\n''weevils trace [<objectif>] [n]   weevils trace add "décision" [--goal <id>]' # i18n-ignore
   usage+=$'\n''weevils mem   weevils mem search <mots>   weevils mem add [rule|decision|fact] "texte"   weevils mem rm <id>' # i18n-ignore
   usage+=$'\n''  preuve d’un résultat (post, show) : --demonstrated "où" --verified "environnement" --limit "non vérifié"…' # i18n-ignore
-  usage+=$'\n''weevils weevbook backfill | check [--repair] | compare [--verbose] | resume <fil> [--wait] | sync status' # i18n-ignore
+  usage+=$'\n''weevils weevbook backfill | check [--repair] | compare [--verbose] | resume <fil> [--wait] | sync status | vault setup|push|restore|status' # i18n-ignore
   usage+=$'\n''weevils connector [revoke <id>|chatgpt|claude-ai|all]'
   export WVM_CONNECTOR_OFF='le connecteur est éteint (WEEVILS_CONNECTOR=1 l’allume)' WVM_CONNECTOR_NONE='aucune app de chat connectée' WVM_CONNECTOR_LINE='{id}  {app}  connectée le {created}, utilisée le {used}' WVM_CONNECTOR_REVOKED='connexions retirées : {}' # i18n-ignore
   m_connector_usage='weevils connector revoke <id>|chatgpt|claude-ai|all' # i18n-ignore
@@ -117,7 +117,7 @@ weevils goals [all]   weevils goal add <id> "title" ["why"]   weevils goal note 
 weevils trace [<goal>] [n]   weevils trace add "decision" [--goal <id>]
 weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] "text"   weevils mem rm <id>'
   usage+=$'\n''  evidence of a result (post, show): --demonstrated "where" --verified "environment" --limit "not checked"…'
-  usage+=$'\n''weevils weevbook backfill | check [--repair] | compare [--verbose] | resume <thread> [--wait] | sync status'
+  usage+=$'\n''weevils weevbook backfill | check [--repair] | compare [--verbose] | resume <thread> [--wait] | sync status | vault setup|push|restore|status'
   usage+=$'\n''weevils connector [revoke <id>|chatgpt|claude-ai|all]'
   export WVM_CONNECTOR_OFF='the connector is off (WEEVILS_CONNECTOR=1 turns it on)' WVM_CONNECTOR_NONE='no chat app connected' WVM_CONNECTOR_LINE='{id}  {app}  connected {created}, last used {used}' WVM_CONNECTOR_REVOKED='connections revoked: {}'
   m_connector_usage='weevils connector revoke <id>|chatgpt|claude-ai|all'

@@ -118,9 +118,10 @@ export const MACHINE = {
  * implies the weevbook, and a hub (`here` on the machine that serves the app, `main` on another) when none is set.
  */
 export const THREADS = process.env.WEEVILS_THREADS?.trim() === '1'
-/** The weevbook (docs/spec, step 1): written in DATA_DIR/weevbook next to the app, in shadow, when WEEVILS_WEEVBOOK=1
- *  (or WEEVILS_THREADS=1). Off by default: it changes nothing the app shows or does. */
-export const WEEVBOOK = process.env.WEEVILS_WEEVBOOK?.trim() === '1' || THREADS
+/** The weevbook (docs/spec, step 1): written in DATA_DIR/weevbook next to the app, in shadow. On by default since the
+ *  vault (docs/spec/07-vault.md: every conversation kept from the install on); WEEVILS_WEEVBOOK=0 turns it off, unless
+ *  WEEVILS_THREADS=1 needs it. It changes nothing the app shows or does. */
+export const WEEVBOOK = process.env.WEEVILS_WEEVBOOK?.trim() !== '0' || THREADS
 export const WEEVBOOK_DIR = path.join(DATA_DIR, 'weevbook')
 /** The connector (docs/spec/05-connector.md, step 5): ChatGPT and Claude.ai send chats to the weevbook through /mcp,
  *  once the person allows them. Off unless WEEVILS_CONNECTOR=1: until then /mcp is the app's like any other path. */
@@ -152,6 +153,27 @@ export function weevbookHub(value = process.env.WEEVILS_WEEVBOOK_HUB?.trim() ?? 
 /** The hub threads use when none is set: the machine that serves the app keeps it. */
 const threadsHub = () => (!THREADS ? '' : (process.env.WEEVILS_ORCHESTRATOR || (process.env.WEEVILS_MACHINE ? '0' : '1')) === '1' ? 'here' : 'main')
 export const WEEVBOOK_HUB = weevbookHub(process.env.WEEVILS_WEEVBOOK_HUB?.trim() || threadsHub())
+
+/**
+ * The vault (docs/spec/07-vault.md): the weevbook's journals and attachments, encrypted, pushed to a git remote the
+ * person owns, read only when WEEVBOOK is on. WEEVILS_VAULT: `0` off; a git URL or path: that remote; empty or `1`: the
+ * remote `weevils weevbook vault setup` saved in CONFIG_DIR/vault.json (none: off).
+ */
+export const VAULT_KEY_FILE = path.join(CONFIG_DIR, 'vault.key')
+export const VAULT_DEPLOY_KEY = path.join(CONFIG_DIR, 'vault-deploy')
+export const VAULT_CONF = path.join(CONFIG_DIR, 'vault.json')
+export const VAULT_STAGING = path.join(DATA_DIR, 'vault.git')
+export function vaultRemote(value = process.env.WEEVILS_VAULT?.trim() ?? ''): string | null {
+  if (value === '0') return null
+  if (value && value !== '1') return value
+  try {
+    const remote = (JSON.parse(fs.readFileSync(VAULT_CONF, 'utf8')) as { remote?: unknown }).remote
+    return typeof remote === 'string' && remote ? remote : null
+  } catch {
+    return null
+  }
+}
+export const VAULT = vaultRemote()
 
 /** L'orchestrateur (la bande du haut) tourne sur une seule machine : celle qui sert l'app. */
 export const ORCHESTRATOR = (process.env.WEEVILS_ORCHESTRATOR || (process.env.WEEVILS_MACHINE ? '0' : '1')) === '1'

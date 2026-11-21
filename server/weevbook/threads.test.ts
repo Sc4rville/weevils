@@ -561,7 +561,7 @@ describe('the dispatcher keeps its own clock of what is live', () => {
 
 describe('the conversations list', () => {
   it('leaves out the tasks weevils started by itself, in both languages, and nothing the person wrote', () => {
-    const brief = { title: 'Tidy the docs', branch: 'b', checkout: '/c', report: 'r', inRepo: true, writesReport: false, heavy: false, prompt: 'p', minutes: 30, agreed: '' }
+    const brief = { title: 'Tidy the docs', branch: 'b', checkout: '/c', report: 'r', card: 'c', inRepo: true, writesReport: false, heavy: false, prompt: 'p', minutes: 30, agreed: '' }
     for (const lang of ['fr', 'en'] as const) expect(ownTask(O[lang].brief(brief).slice(0, 60))).toBe(true)
     expect(ownTask('Background tasks: how do they start?')).toBe(false)
     expect(ownTask('Show prices with the currency')).toBe(false)

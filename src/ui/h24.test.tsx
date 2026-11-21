@@ -149,7 +149,7 @@ describe('auto drawer', () => {
 
   it('collapsed automations keeps title/activity only, with language in settings and creation inside the hidden body', async () => {
     render(snap([opt({ id: 'draft', draft: true, title: 'new automation' })]), false)
-    expect(head().querySelector('.h24-title')?.textContent).toBe('automations')
+    expect(head().querySelector('.h24-title')?.textContent).toBe('autonomous')
     expect(head().querySelector('.h24-activity, .auto-sum')).toBeNull() // no caption, no square marker
     expect(host.querySelector('.h24-top .h24-create')).toBeNull()
     expect(host.querySelector('.h24-top .h24-heading .h2')).toBeNull()

@@ -53,7 +53,7 @@ export default defineMessages({
      * to touch. `report` is the file where watch/content/explore write their result. The technical deny list
      * (optimizers.ts DENY) backs these rules.
      */
-    brief: (o: { title: string; branch: string; checkout: string; report: string; inRepo: boolean; writesReport: boolean; heavy: boolean; prompt: string; minutes: number; agreed: string }) =>
+    brief: (o: { title: string; branch: string; checkout: string; report: string; card: string; inRepo: boolean; writesReport: boolean; heavy: boolean; prompt: string; minutes: number; agreed: string }) =>
       `Tâche de fond lancée par weevils pendant que la machine est libre : « ${o.title} ». Personne ne te répond en direct : avance seul jusqu'au bout.\n\n` +
       `Règles, sans exception :\n` +
       (o.inRepo
@@ -66,6 +66,7 @@ export default defineMessages({
       `- ne supprime rien en dehors de ta branche ou de ce dossier ; ne touche à aucun secret (clés, .env, identifiants) ;\n` +
       `- si \`command -v heavy\` répond, préfixe par \`heavy\` les commandes lourdes (builds, tests, installs)${o.heavy ? ' : cette tâche en a' : ''} ;\n` +
       (o.writesReport ? `- écris ton résultat dans ${o.report} (court, clair, en français) ;\n` : '') +
+      `- facultatif : les chiffres à suivre d'un passage à l'autre (pistes trouvées, corrections faites) vont, en JSON, dans ${o.card} : {"summary": "une ligne", "metrics": {"<nom>": <nombre>}} ;\n` +
       `- reste dans le cadre : ${o.minutes > 60 ? `environ ${o.minutes} min de travail au plus` : 'une heure de travail au plus'} ; ce qui demande une décision attend la validation de l'utilisateur.\n\n` +
       `La consigne :\n${o.prompt}\n\n` +
       (o.agreed ? `Ce qui a été convenu avec l'utilisateur avant de la valider (la consigne en tient déjà compte) :\n${o.agreed}\n\n` : '') +
@@ -150,6 +151,11 @@ export default defineMessages({
     mergedLive: (t: string) => `« ${t} » est en ligne`,
     /** The person wrote into a running task's session: the run ends there, the session is theirs (core.ts sendOne). */
     handedOver: 'continuée par toi',
+    /** From automation to factory (docs/automations/PROTOCOL.md): weevboss's one line, and the refusals of the unlock. */
+    factoryLine: (t: string, why: string) => `${t} peut devenir une usine : ${why}.`,
+    factoryWhy: (runs: number, ok: number, of: number) => `${runs} passages, ${ok} réussis sur les ${of} derniers`,
+    factoryUserOnly: 'Seule la personne peut débloquer une usine, depuis l’app.',
+    factoryNotYet: 'Cette automatisation ne peut pas encore devenir une usine.',
     /** A run's work that did not land by itself (optimizers.ts offerLanding): one line and a button in For you. */
     landTitle: (t: string) => `« ${t} » attend ton feu vert`,
     landButton: 'Fusionner',
@@ -213,7 +219,7 @@ export default defineMessages({
     state_failed: 'failed',
     state_refused: 'refused',
     ownWhy: 'Your idea, ready to run.',
-    brief: (o: { title: string; branch: string; checkout: string; report: string; inRepo: boolean; writesReport: boolean; heavy: boolean; prompt: string; minutes: number; agreed: string }) =>
+    brief: (o: { title: string; branch: string; checkout: string; report: string; card: string; inRepo: boolean; writesReport: boolean; heavy: boolean; prompt: string; minutes: number; agreed: string }) =>
       `Background task started by weevils while the machine is free: "${o.title}". Nobody answers you live: carry on alone to the end.\n\n` +
       `Rules, no exception:\n` +
       (o.inRepo
@@ -226,6 +232,7 @@ export default defineMessages({
       `- never delete anything outside your branch or this folder; never touch a secret (keys, .env, credentials);\n` +
       `- if \`command -v heavy\` succeeds, prefix heavy commands (builds, tests, installs) with \`heavy\`${o.heavy ? ': this task has some' : ''};\n` +
       (o.writesReport ? `- write your result to ${o.report} (short and clear, in English);\n` : '') +
+      `- optional: numbers worth following from run to run (leads found, fixes made) go, as JSON, in ${o.card}: {"summary": "one line", "metrics": {"<name>": <number>}};\n` +
       `- stay in scope: ${o.minutes > 60 ? `about ${o.minutes} min of work at most` : 'one hour of work at most'}; anything that needs a decision waits for the user's go.\n\n` +
       `The brief:\n${o.prompt}\n\n` +
       (o.agreed ? `What was agreed with the user before they approved it (the brief already reflects it):\n${o.agreed}\n\n` : '') +
@@ -294,6 +301,11 @@ export default defineMessages({
     themesLive: (names: string[]) => names.length > 1 ? `new themes ${names.join(' and ')} are in your selector` : `new theme ${names[0]} is in your selector`,
     mergedLive: (t: string) => `"${t}" is live`,
     handedOver: 'continued by you',
+    /** From automation to factory (docs/automations/PROTOCOL.md): weevboss's one line, and the refusals of the unlock. */
+    factoryLine: (t: string, why: string) => `${t} can become a factory: ${why}.`,
+    factoryWhy: (runs: number, ok: number, of: number) => `${runs} runs, ${ok} of the last ${of} good`,
+    factoryUserOnly: 'Only the person can unlock a factory, from the app.',
+    factoryNotYet: 'This automation cannot become a factory yet.',
     landTitle: (t: string) => `"${t}" is waiting for your OK`,
     landButton: 'Land it',
     landBrief: 'Land this work: put it on the current main, run the checks, fix what fails, merge it into main and bring the running weevils up to date (rebuild the app; restart the server only if its code changed). Tell me in one sentence what changed.',

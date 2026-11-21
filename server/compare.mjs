@@ -24,6 +24,12 @@ export function parseCrop(s) {
   return { x: n[0], y: n[1], w: n[2], h: n[3] }
 }
 
+/** A crop must fit in its source: said plainly, with the source's size, before any drawing. */
+export function checkCrop(c, size, which) {
+  if (c.x + c.w > size.w || c.y + c.h > size.h) throw new Error(`the ${which} crop ${c.x},${c.y},${c.w},${c.h} goes past its ${size.w}×${size.h} source`)
+  return c
+}
+
 /** Stacked for wide crops, side by side when both are taller than wide (two phone screens read well next to each other). */
 export function layoutFor(a, b, asked = 'auto') {
   if (asked === 'stack' || asked === 'side') return asked
@@ -88,7 +94,7 @@ async function images(before, after, out, o) {
       sizes.push(await page.evaluate(() => { const i = document.querySelector('img'); return { w: i.naturalWidth, h: i.naturalHeight } }))
     }
     const frames = [before, after].map((f, i) => {
-      const crop = (i ? o.cropAfter : o.cropBefore) ?? o.crop ?? { x: 0, y: 0, w: sizes[i].w, h: sizes[i].h }
+      const crop = checkCrop((i ? o.cropAfter : o.cropBefore) ?? o.crop ?? { x: 0, y: 0, w: sizes[i].w, h: sizes[i].h }, sizes[i], i ? 'after' : 'before')
       return { kind: i ? 'after' : 'before', src: pathToFileURL(f).href, w: sizes[i].w, h: sizes[i].h, crop }
     })
     // A file page next to nothing: the two pictures load from disk, no copy in memory.
@@ -119,7 +125,7 @@ async function clips(before, after, out, o) {
     const W = 720
     const parts = [before, after].map((f, i) => {
       const s = probe(f)
-      const c = (i ? o.cropAfter : o.cropBefore) ?? o.crop ?? { x: 0, y: 0, w: s.w, h: s.h }
+      const c = checkCrop((i ? o.cropAfter : o.cropBefore) ?? o.crop ?? { x: 0, y: 0, w: s.w, h: s.h }, s, i ? 'after' : 'before')
       return { f, c, h: Math.round((c.h * W) / c.w / 2) * 2 }
     })
     const H = Math.max(...parts.map((p) => p.h)) + 120

@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 // @ts-expect-error plain JS, no types
-import { comparePage, layoutFor, parseCrop } from './compare.mjs'
+import { checkCrop, comparePage, layoutFor, parseCrop } from './compare.mjs'
 
 const cli = path.join(import.meta.dirname, 'weevils-cli')
 const show = (file: string, caption: string) => spawnSync('bash', [cli, 'show', file, caption], { encoding: 'utf8', env: { ...process.env, WEEVILS_PORT: '1', WEEVILS_LANG: 'en' } })
@@ -12,6 +12,7 @@ describe('weevils compare', () => {
   it('reads a crop and picks the layout from its shape', () => {
     expect(parseCrop('10,20,300,400')).toEqual({ x: 10, y: 20, w: 300, h: 400 })
     expect(() => parseCrop('1,2,3')).toThrow(/bad crop/)
+    expect(() => checkCrop({ x: 0, y: 700, w: 780, h: 400 }, { w: 390, h: 844 }, 'before')).toThrow(/390×844/)
     expect(layoutFor({ w: 390, h: 844 }, { w: 390, h: 844 })).toBe('side')
     expect(layoutFor({ w: 1170, h: 600 }, { w: 1170, h: 600 })).toBe('stack')
     expect(layoutFor({ w: 1170, h: 600 }, { w: 1170, h: 600 }, 'side')).toBe('side')

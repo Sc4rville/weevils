@@ -16,6 +16,7 @@ it('reads the shell commands of a real thread (the ones Yann saw as « Recorded 
   expect(en(bash('git -C ~/projects/weevils status --short'))).toBe('See what changed')
   expect(en(bash('curl -s http://127.0.0.1:4179/api/snapshot | jq .'))).toBe('Call 127.0.0.1:4179/api/snapshot')
   expect(en(bash('ls ~/projects/weevils/server'))).toBe('List server')
+  expect(en(bash('cat $(which expose) | head -80; ls /etc/caddy/'))).toBe('Read expose')
 })
 
 it('prefers the agent\'s own description, and titles the other tools from their arguments', () => {

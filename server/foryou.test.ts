@@ -14,7 +14,7 @@ import type { ForYouItem, ForYouKind } from '../shared/foryou.ts'
 import type { UsageInfo } from '../shared/infra.ts'
 import {
   ForYou, KEEP_MS, LIVE_REACH, MAX_CARDS, MAX_FEED, MAX_ITEMS, MAX_MEDIA, MEDIA_JOIN_MS, OFFLINE_AFTER_MS, REFRESH_MS,
-  HEADLINE_MAX, arrange, keepLive, cleanTitle, headline, firstLine, foryouRoutes, lastWords, withoutPaths, type ForYouDeps, type MachineState,
+  HEADLINE_MAX, arrange, keepLive, cleanTitle, headline, firstLine, foryouRoutes, lastWords, withoutPaths, type ForYouDeps, type ForYouHost, type MachineState,
   resultTitleLine,
 } from './foryou.ts'
 import M from './i18n/foryou.ts'
@@ -70,7 +70,7 @@ let later: (() => void)[]
 let shelf: NonNullable<ForYouDeps['shelf']> & { known: Set<string>; served: string[] }
 
 const make = (deps: ForYouDeps = {}) =>
-  new ForYou(host, { file: path.join(dir, 'foryou.json'), now: () => now, dataDir: '/home/u/.local/share/weevils', machineId: 'test', shelf, later: (fn) => void later.push(fn), ...deps })
+  new ForYou(host, { file: path.join(dir, 'foryou.json'), now: () => now, dataDir: '/home/u/.local/share/weevils', machineId: 'test', shelf, later: (fn) => void later.push(fn), extras: true, ...deps })
 const flush = () => new Promise((r) => setTimeout(r, 0))
 const ids = (fy: ForYou) => fy.feed().items.map((i) => i.id)
 const find = (fy: ForYou, id: string) => fy.feed().items.find((i) => i.id === id)
@@ -1806,5 +1806,17 @@ describe('evidence labels (shared/evidence.ts)', () => {
     expect(media.body?.item?.evidence).toMatchObject({ level: 'demonstrated', limits: fx.evidence.limits })
     const post = await call('/api/foryou/post', { text: 'Checked.', evidence: { verified: 'real iPhone, Safari PWA' } })
     expect(post.body?.item?.evidence).toEqual({ level: 'verified', environment: 'real iPhone, Safari PWA' })
+  })
+})
+
+describe('the stream makes posts only', () => {
+  it('figures alone, proposals, ideas and trivia are never stored once retired (the default)', () => {
+    const w = { snapshot: () => ({ sessions: [], machines: [], projects: [], optimizers: [] }) as unknown as Snapshot, bump: () => undefined } as unknown as ForYouHost
+    const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'fy-posts-'))
+    const fy2 = new ForYou(w, { file: path.join(dir2, 'foryou.json'), shelf: null })
+    for (const kind of ['milestone', 'stat', 'improve', 'insight'] as const) expect(fy2.add({ kind, text: '42 turns today, up from 30 yesterday.' })).toBeNull()
+    const post = fy2.post('Prices come from the sheet now.', undefined, undefined, undefined, 'The new menu is live')
+    expect(post).toMatchObject({ kind: 'boss', title: 'The new menu is live', text: 'Prices come from the sheet now.' })
+    expect(fy2.feed().items.map((i) => i.kind)).toEqual(['boss'])
   })
 })

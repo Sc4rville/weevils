@@ -51,9 +51,10 @@ let host: { snapshot: () => Snapshot; bump: () => void; detailAny: (id: string) 
 let fy: ForYou
 const flush = () => new Promise((r) => setTimeout(r, 0))
 
-const makeStore = () => new ForYou(host, { file: path.join(dir, 'foryou.json'), now: () => now, dataDir: '/home/u/.local/share/weevils', machineId: 'test', later: () => undefined })
+const makeStore = () => new ForYou(host, { file: path.join(dir, 'foryou.json'), now: () => now, dataDir: '/home/u/.local/share/weevils', machineId: 'test', later: () => undefined, extras: true })
 const makeCurator = (deps: CuratorDeps = {}) =>
   new Curator(fy, {
+    extras: true,
     reservoir: false,
     file: path.join(dir, 'curator.json'),
     now: () => now,

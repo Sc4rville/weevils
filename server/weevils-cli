@@ -13,7 +13,7 @@
 #   weevils do "travail" [codex]         une session qui s'en charge (installer, créer un repo…), et demande d'abord si besoin
 #   weevils setup [install | github | ask <brique> | mark <id>]   weevils config set <CLÉ> <valeur>
 #   weevils memory [add "souvenir" | rm <id>]   (ce que weevils retient de l'utilisateur, ~/.config/weevils/memory.json)
-#   weevils post "texte" [--action "libellé::quoi faire"]…   un mot dans « pour toi », avec des boutons si besoin
+#   weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   un post dans « pour toi » (titre en gras en haut)
 #   weevils show <fichier> ["légende"]                       une image ou une vidéo dans « pour toi »
 #   weevils capture <sortie.png|.mp4> [--open "#s=<id>"] [--theme t] [--seconds N] [--frame]   l'app vue d'un téléphone, sans lire le code d'accès
 #   weevils page <dossier|fichier> "titre" --kind <type>      une petite page privée, son lien vivant (docs/LINKS.md)
@@ -67,7 +67,7 @@ weevils recall <id>                  weevils boss
 weevils setup [install | github | ask <brique> [--since <date> | --match <mots>] | mark <id>]   weevils config set <CLÉ> <valeur>
 weevils memory [add "souvenir" | rm <id>]
 weevils page <dossier|fichier> "titre" --kind <type>   weevils page list|library …   weevils pages
-weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichier> ["légende"]' # i18n-ignore
+weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   weevils show <fichier> ["Phrase titre. Pourquoi ça compte."]' # i18n-ignore
   usage+=$'\n''weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]'
   usage+=$'\n''weevils ask add "demande" [--goal <id>]   weevils ask link <id> <session> ["retour attendu"]   weevils ask goal <id> <objectif>' # i18n-ignore
   usage+=$'\n''weevils goals [all]   weevils goal add <id> "titre" ["pourquoi"]   weevils goal note <id> "avancée"   weevils goal done|pause|open <id>' # i18n-ignore
@@ -109,7 +109,7 @@ weevils project new <name>           weevils do "job" [codex]
 weevils recall <id>                  weevils boss
 weevils setup [install | github | ask <brick> [--since <date> | --match <words>] | mark <id>]   weevils config set <KEY> <value>
 weevils memory [add "memory" | rm <id>]
-weevils post "text" [--action "label::what to do"]…      weevils show <file> ["caption"]
+weevils post "text" [--title "title"] [--action "label::what to do"]…      weevils show <file> ["Title sentence. Why it matters."]
 weevils page <folder|file> "title" --kind <kind>   weevils page list|library …   weevils pages
 weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]
 weevils ask add "request" [--goal <id>]   weevils ask link <id> <session> ["expected report"]   weevils ask goal <id> <goal>
@@ -524,9 +524,10 @@ else: print(E['WVM_MEM_NOT_FOUND']+want, file=sys.stderr); sys.exit(1)
     # A word in the « for you » stream, with optional buttons: each --action is "label::brief" (the brief comes back
     # to weevboss when the button is tapped).
     shift
-    text='' actions=()
+    text='' title='' actions=()
     while [ $# -gt 0 ]; do
       case "$1" in
+        --title) title=${2-}; shift; [ $# -gt 0 ] && shift ;;
         --action)
           a=${2-}
           # A label, « :: », something to do: anything else is one clean line.
@@ -538,11 +539,13 @@ else: print(E['WVM_MEM_NOT_FOUND']+want, file=sys.stderr); sys.exit(1)
     done
     [ -n "${text//[[:space:]]/}" ] || { echo "$m_post_empty" >&2; exit 1; }
     for_you post "$m_posted" "$("$py" -c 'import json,sys
-acts=[dict(zip(("label","brief"),(p.strip() for p in a.split("::",1)))) for a in sys.argv[4:]]
+acts=[dict(zip(("label","brief"),(p.strip() for p in a.split("::",1)))) for a in sys.argv[5:]]
 d={"text":sys.argv[1],"actions":acts,"from":sys.argv[2]}
 e=json.loads(sys.argv[3])
 if e: d["evidence"]=e
-print(json.dumps(d))' "$text" "$from" "$(evidence_json)" ${actions[@]+"${actions[@]}"})" ;;
+t=sys.argv[4].strip()
+if t: d["title"]=t
+print(json.dumps(d))' "$text" "$from" "$(evidence_json)" "$title" ${actions[@]+"${actions[@]}"})" ;;
   show)
     # An image or a video in the « for you » stream. The server checks the file (place, type, size) and says why not.
     shift

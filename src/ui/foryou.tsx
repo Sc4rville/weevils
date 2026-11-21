@@ -8,15 +8,17 @@ import { busyOf } from './foryou-busy'
 import { rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
 import { Notice, NoticeClose, useNotice } from './notice'
-import { bigNumber, cardLine, detailLine, formatOf, looksOf, shortLine, streamOf, worthShowing, type ForYouFormat, type ForYouLook } from './foryou-format'
-// « For you »: the stream next to weevboss, full screen. One single stream, no sections, no labels: every item is a
-// full-width band in its own colour, drawn in one of five layouts (src/ui/foryou-format.ts).
+import { cleanSubject, formatOf, postParts, shortLine, streamOf, worthShowing, type ForYouFormat } from './foryou-format'
+import { short } from './auto-model'
+import { shownEvidence } from '../../shared/evidence.ts'
+// « For you »: the stream next to weevboss, full screen. One single feed, no sections: every post is one colour block,
+// apart from the next, its title on top (src/ui/foryou-format.ts).
 import { AnimatePresence, motion, useIsPresent, useReducedMotion, type PanInfo, type Variants } from 'motion/react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import type { ForYouItem, ForYouMedia, ForYouPulse } from '../../shared/foryou.ts'
 import { useApp } from './app-context'
 import { spring, useAuthors } from './bits'
-import { itemSlot, useForYou, type ForYouStore } from './foryou-store'
+import { itemSlot, itemWho, useForYou, type ForYouStore } from './foryou-store'
 import { markSeen as gestureSeen } from './hints'
 import { Icon } from './icons'
 import { usePageChrome } from './shell'
@@ -200,10 +202,10 @@ function MediaStrip({ media }: { media: ForYouMedia[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// The five layouts (src/ui/foryou-format.ts). No speaker, no kind, no frame: big words in the band's colour, a line
-// or two at most, one big tap when something waits.
+// A post (src/ui/foryou-format.ts): one colour block, apart from the next. On top, small, where it comes from and when;
+// then its title in bold; then a short text; then the media, inside the same block; at the bottom, what to tap.
 
-/** A big word to tap: no box, the word itself in the band's colour. quiet: the second choice, smaller and softer. */
+/** A word to tap: no box, the word itself in the band's ink. quiet: the second choice, smaller and softer. */
 function Tap({ label, onTap, quiet, busy }: { label: string; onTap?: () => void; quiet?: boolean; busy?: boolean }) {
   return (
     <button
@@ -225,116 +227,89 @@ function Tap({ label, onTap, quiet, busy }: { label: string; onTap?: () => void;
   )
 }
 
-function ActionCard({ item, fy }: CardProps) {
+/** « 14m », « 3h », « 2d »: when it happened, short. */
+function since(at: number, now: number): string {
+  return at ? short(Math.max(0, now - at), true) : ''
+}
+
+/** Where a post comes from, small: the project (or weevboss, the author), the session it ran in, when, how many runs. */
+function Source({ item }: { item: ForYouItem }) {
+  const t = useT(M)
+  const { snap } = useApp()
+  const authors = useAuthors()
+  const project = snap.projects.find((p) => p.id === item.projectId)?.name
+  const agent = item.who === 'claude' ? 'Claude' : item.who === 'codex' ? 'Codex' : ''
+  const who = project ?? (agent || itemWho(item, authors))
+  const sub = item.kind === 'session' && item.title && cleanSubject(item.title).toLowerCase() !== who.toLowerCase() ? cleanSubject(item.title) : ''
+  const when = since(item.at, Date.now())
+  return (
+    <p className="fy-src">
+      <span className="fy-src-who">{who}</span>
+      {sub && <span className="fy-src-sub ellipsis">{sub}</span>}
+      {when && <span className="fy-src-at">{when}</span>}
+      {!!item.runs && item.runs > 1 && <span className="fy-src-at">{t.runs(item.runs)}</span>}
+    </p>
+  )
+}
+
+function PostMedia({ item }: { item: ForYouItem }) {
+  const media = item.resultGroup?.final ? [item.resultGroup.final] : (item.media ?? [])
+  if (item.composition && !item.resultGroup) return <div className="fy-post-media"><InlineMediaFormats item={item} /></div>
+  if (!media.length) return null
+  return <div className="fy-post-media">{media.length === 2 ? <div className="fy-two">{media.map((m) => <MediaTile key={m.id} m={m} many />)}</div> : <MediaStrip media={media} />}</div>
+}
+
+/** What can be tapped at the bottom of a post: a real question's answers, a cut session's resume, weevboss's own buttons. */
+function PostTaps({ item, fy }: CardProps) {
   const t = useT(M)
   const open = useOpen(item)
   const busy = fy.acting(item.id)
-  if (item.kind === 'proposals') {
-    const c = item.cards?.[0]
-    if (!c) return null
-    const title = shortLine(c.title)
-    return (
-      <div className="in fy-c">
-        <p className="fy-say">{c.own ? t.yourIdea(title) : title}</p>
-        <div className="fy-taps">
-          <Tap label={c.accept || t.tapYes} busy={busy} onTap={() => void fy.act(item.id, 'accept', c.id)} />
-          <Tap quiet label={t.tapNotNow} busy={busy} onTap={() => void fy.act(item.id, 'refuse', c.id)} />
-        </div>
-      </div>
-    )
-  }
   const vp = item.visualProposal
   const actions = vp && !item.actions?.length ? vp.options.slice(0, 2).map((o) => ({ id: `choice:${o.id}`, label: o.label })) : (item.actions?.slice(0, 2) ?? [])
   const answer = item.kind === 'session' && item.tone === 'question'
+  if (!actions.length && !answer && item.kind !== 'alert') return null
   return (
-    <div className="in fy-c">
-      <p className="fy-say">{cardLine(item)}</p>
-      <div className="fy-taps">
-        {actions.length
-          ? actions.map((a, i) => <Tap key={a.id} quiet={i > 0 && !vp} label={busy ? t.sending : shortLine(a.label, 40) || a.label} busy={busy} onTap={() => void fy.act(item.id, a.id)} />)
-          : open && <Tap label={answer ? t.tapAnswer : t.tapLook} onTap={open} />}
-      </div>
+    <div className="fy-taps">
+      {actions.length
+        ? actions.map((a, i) => <Tap key={a.id} quiet={i > 0 && !vp} label={busy ? t.sending : shortLine(a.label, 40) || a.label} busy={busy} onTap={() => void fy.act(item.id, a.id)} />)
+        : open && <Tap label={answer ? t.tapAnswer : t.tapLook} onTap={open} />}
     </div>
   )
 }
 
-/** A text card: the first tap reveals one more line (its detail), the next one opens where it comes from. */
-function useReveal(item: ForYouItem) {
-  const open = useOpen(item)
-  const detail = useMemo(() => detailLine(item), [item])
-  const [shown, setShown] = useState(false)
-  const tap = detail && !shown ? () => setShown(true) : open
-  return { tap, more: shown ? detail : '', can: !!tap }
-}
-
-function ProgressCard({ item }: CardProps) {
+function Post({ item, fy, format }: CardProps & { format: ForYouFormat }) {
   const t = useT(M)
-  const { tap, more, can } = useReveal(item)
-  const num = item.kind === 'milestone' || item.kind === 'stat' ? bigNumber(item) : null
-  const line = num ? shortLine(num.rest || (item.recap ? t.doneOvernight : '')) : cardLine(item)
-  return (
-    <button type="button" className={`in fy-c fy-hit${num ? ' fy-numcard' : ''}`} onClick={tap} disabled={!can}>
-      {num && <span className="fy-num tab">{num.n}</span>}
-      {line && <span className={num ? 'fy-say' : 'fy-say fy-shipped'}>{line}</span>}
-      {more && <span className="fy-more">{more}</span>}
-    </button>
-  )
-}
-
-function LearnCard({ item }: CardProps) {
-  const { tap, more, can } = useReveal(item)
-  return (
-    <button type="button" className="in fy-c fy-hit" onClick={tap} disabled={!can}>
-      <span className="fy-learn">{cardLine(item)}</span>
-      {more && <span className="fy-more">{more}</span>}
-    </button>
-  )
-}
-
-function ThinkCard({ item }: CardProps) {
-  const { tap, more, can } = useReveal(item)
-  return (
-    <button type="button" className="in fy-c fy-hit" onClick={tap} disabled={!can}>
-      <span className="fy-think">{cardLine(item)}</span>
-      {more && <span className="fy-more">{more}</span>}
-    </button>
-  )
-}
-
-function VisualCard({ item }: CardProps) {
-  const media = item.resultGroup?.final ? [item.resultGroup.final] : (item.media ?? [])
-  const caption = shortLine(item.title, 80) || shortLine(item.text, 80)
+  const open = useOpen(item)
+  const { title, text } = useMemo(() => postParts(item), [item])
+  const piece = format === 'piece'
+  const [unfolded, setUnfolded] = useState(false)
+  // A piece unfolds in place first; any other post opens where it comes from.
+  const tap = piece && !unfolded ? () => setUnfolded(true) : open
+  // « Not checked: not checked on a real iPhone » says it twice: the limit keeps its words, without the repeat.
+  const limits = (shownEvidence(item.evidence)?.limits ?? []).map((l) => l.replace(/^\s*not (?:checked|tested|verified)\s+/i, ''))
   return (
     <>
-      {item.composition && !item.resultGroup ? <InlineMediaFormats item={item} /> : media.length === 2 ? (
-        <div className="fy-two">{media.map((m) => <MediaTile key={m.id} m={m} many />)}</div>
-      ) : !!media.length && <MediaStrip media={media} />}
-      {caption && (
-        <div className="in fy-caption">
-          <p className="fy-say small">{caption}</p>
-        </div>
-      )}
+      <button type="button" className="in fy-post-head fy-hit" onClick={tap} disabled={!tap}>
+        <Source item={item} />
+        {title && <span className={`fy-post-t${piece ? ' piece' : ''}`}>{title}</span>}
+        {text && <span className={`fy-post-x${piece ? (unfolded ? ' piece open' : ' piece') : ''}`}>{text}</span>}
+        {piece && !unfolded && <span className="fy-post-more">{t.readOn}</span>}
+      </button>
+      {format === 'visual' && <PostMedia item={item} />}
+      {!!limits.length && <p className="in fy-post-limit">{t.notChecked(limits.join(' · '))}</p>}
+      <div className="in fy-post-foot"><PostTaps item={item} fy={fy} /></div>
     </>
   )
 }
 
-const CARDS: Record<ForYouFormat, (p: CardProps) => ReactNode> = {
-  action: ActionCard,
-  progress: ProgressCard,
-  learn: LearnCard,
-  think: ThinkCard,
-  visual: VisualCard,
-}
+/** The band: its format and tone only (an alert stays calm: never inverted, never red). */
+const bandClass = (item: ForYouItem, format: ForYouFormat) => `band fy-f-${format} fy-t-${item.tone === 'alert' ? 'question' : item.tone}${item.seen ? '' : ' fy-unseen'}${item.workstream?.kind === 'self-improvement' ? ' recursive-identity' : ''}`
 
-/** The band: its layout and tone only (an alert stays calm: never inverted, never red). */
-const bandClass = (item: ForYouItem, format: ForYouFormat, look: ForYouLook = 'fill') => `band fy-f-${format} fy-l-${look} fy-t-${item.tone === 'alert' ? 'question' : item.tone}${item.seen ? '' : ' fy-unseen'}${item.workstream?.kind === 'self-improvement' ? ' recursive-identity' : ''}`
-
-/** One item of the stream. compact: a thin strip (one line), nothing to tap inside. Hidden when it has no layout. */
-export function ForYouItemView({ item, compact, look }: { item: ForYouItem; compact?: boolean; look?: ForYouLook }) {
+/** One post of the stream. compact: a thin strip (one line), nothing to tap inside. Hidden when it has no format. */
+export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: boolean }) {
   const fy = useForYou()
   const { hidden, dismiss } = useNotice(feedNoticeKey(item))
   const { colors, snap } = useApp()
-  const t = useT(M)
   const authors = useAuthors()
   const style = itemSlot(item, colors, authors)
   const band = useRef<HTMLElement>(null)
@@ -356,17 +331,16 @@ export function ForYouItemView({ item, compact, look }: { item: ForYouItem; comp
       <div className={`${bandClass(item, format)} fy-strip${closable ? ' notice-shell' : ''}`} style={style} data-fy={item.id}>
         {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
         <div className="in fy-strip-in">
-          <span className="fy-strip-text ellipsis">{item.kind === 'proposals' && item.cards?.[0]?.own ? t.yourIdea(shortLine(item.cards[0].title)) : cardLine(item)}{links.map((link) => <span key={link.href}> · <LivingLink {...link} /></span>)}</span>
+          <span className="fy-strip-text ellipsis">{postParts(item).title}{links.map((link) => <span key={link.href}> · <LivingLink {...link} /></span>)}</span>
         </div>
       </div>
     )
   }
-  const Card = CARDS[format]
   const err = fy.error(item.id)
   return (
-    <article ref={band} className={`${bandClass(item, format, look)} fy-item${closable ? ' notice-shell' : ''}${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-format={format}>
+    <article ref={band} className={`${bandClass(item, format)} fy-item fy-post${closable ? ' notice-shell' : ''}${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-format={format}>
       {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
-      <Card item={item} fy={fy} />
+      <Post item={item} fy={fy} format={format} />
       {!!links.length && <div className="in fy-page-links">{links.map((link) => <p key={link.href}><LivingLink {...link} /></p>)}</div>}
       <OutboxStatus scope={`/api/foryou/${encodeURIComponent(item.id)}/`} eventId={feedNoticeKey(item)} />
       {err && (
@@ -466,7 +440,7 @@ const LEFT_HOLD = 0.62
 
 /** An item's place in the stream. It comes in once with the house spring. Acted on, it leaves sideways (launched, sent:
  * to the right; refused, dismissed: to the left), a word flashes where it was, then the next ones close the gap. */
-function Slot({ item, index, look, opening: atOpening }: { item: ForYouItem; index: number; look: ForYouLook; opening: boolean }) {
+function Slot({ item, index, opening: atOpening }: { item: ForYouItem; index: number; opening: boolean }) {
   const t = useT(M)
   // Decided once, when it comes in: a slot that came in with the page keeps that entrance for good (were its target to
   // change at the next render, Motion would send « y » back to where it started and every band would sit 22 px low).
@@ -516,7 +490,7 @@ function Slot({ item, index, look, opening: atOpening }: { item: ForYouItem; ind
         </div>
       )}
       <motion.div className="fy-slot-body" variants={variants.body}>
-        <ForYouItemView item={item} look={look} />
+        <ForYouItemView item={item} />
       </motion.div>
     </motion.div>
   )
@@ -527,11 +501,10 @@ function Stream({ items }: { items: ForYouItem[] }) {
   useEffect(() => {
     opening.current = false
   }, [])
-  const looks = useMemo(() => looksOf(items), [items])
   return (
     <AnimatePresence>
       {items.map((it, i) => (
-        <Slot key={it.id} item={it} index={i} look={looks[i]} opening={opening.current} />
+        <Slot key={it.id} item={it} index={i} opening={opening.current} />
       ))}
     </AnimatePresence>
   )

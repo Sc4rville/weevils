@@ -1,5 +1,4 @@
 import type { Software } from '../shared/softwares.ts'
-import reviewedIntents from './foryou-intents-reviewed.json' with { type: 'json' }
 import { feedNoticeKey } from '../shared/notices.ts'
 // The « for you » stream: the store (cap, age, one item per session, what never enters), mail privacy, posts and their
 // buttons, replies, media, live alerts and proposals, seen / dismissed across a restart, the order (arrange) and who
@@ -68,6 +67,16 @@ let host: ReturnType<typeof newHost>
 let later: (() => void)[]
 /** A shelf that knows the files it is told about (the real one is tested in foryou-media.test.ts). */
 let shelf: NonNullable<ForYouDeps['shelf']> & { known: Set<string>; served: string[] }
+
+// What a person reviewed for their own feed lives in their data (<foryou.json>.reviewed.json): neutral examples here,
+// five proposals of which two are covered by the same request.
+const reviewedIntents = [
+  ['i:11111111aaaa', 'Prepare a first notes canvas beside the feed, with discreet cards for free text and images. Preserve their positions between visits.', 's-canvas', 'msg_canvas', 'notes-canvas'],
+  ['i:22222222bbbb', 'Prepare the preview feedback flow with the standard chat composer. Route messages to the session of the current preview.', 's-preview', 'msg_preview', 'preview-feedback'],
+  ['i:33333333cccc', 'Prepare project-based colours for the feed cards in each existing theme, keeping the header unchanged.', 's-colours', 'msg_colours', 'project-colours'],
+  ['i:44444444dddd', 'Prepare a dedicated workspace on the first automation request, with a separate versioned project for each automation.', 's-workspace', 'msg_workspace', 'automation-workspace'],
+  ['d:55555555', 'Implement the proposed automation workspace: create it automatically on the first request and preserve existing history.', 's-workspace', 'msg_workspace', 'automation-workspace'],
+].map(([cardId, brief, sessionId, messageId, slug]) => ({ cardId, actionId: 'a1', brief, sessionId, messageId, intentId: `request:${sessionId}:${messageId}:${slug}` }))
 
 const make = (deps: ForYouDeps = {}) =>
   new ForYou(host, { file: path.join(dir, 'foryou.json'), now: () => now, dataDir: '/home/u/.local/share/weevils', machineId: 'test', shelf, later: (fn) => void later.push(fn), extras: true, ...deps })
@@ -255,7 +264,7 @@ describe('session results', () => {
     await flush()
     expect(find(fy, 's:s1')?.title).toBe('Fix the menu')
     expect(JSON.parse(fs.readFileSync(fy.file, 'utf8')).items[0].title).toBe('Fix the menu')
-    snap.sessions = [session({ title: '[from:gepetto]   Menu, second pass', status: 'needs_user', attention: 'Which font?' })]
+    snap.sessions = [session({ title: '[from:marlow]   Menu, second pass', status: 'needs_user', attention: 'Which font?' })]
     fy.sessionTurn(snap.sessions[0], 'question')
     expect(find(fy, 's:s1')).toMatchObject({ tone: 'question', title: 'Menu, second pass' })
     expect(cleanTitle('[weevils] Old prefix')).toBe('Old prefix')
@@ -558,13 +567,13 @@ describe('sessions that wait or were cut', () => {
 // ---------------------------------------------------------------- mail
 
 describe('mail', () => {
-  const mail = { author: 'gepetto', subject: 'menu  done', text: 'Hi,\n\n> you asked for the menu\nThe menu is in, with the three buttons.\nMore below.\n', target: 'weevboss', mid: '<m1@example.com>', address: 'gepetto@example.com' }
+  const mail = { author: 'marlow', subject: 'menu  done', text: 'Hi,\n\n> you asked for the menu\nThe menu is in, with the three buttons.\nMore below.\n', target: 'weevboss', mid: '<m1@example.com>', address: 'marlow@example.com' }
 
   it('records who, the subject, the first line that says something and the whole text', () => {
     const fy = make()
     fy.mail(mail)
     const [item] = fy.feed().items
-    expect(item).toMatchObject({ kind: 'mail', tone: 'neutral', who: 'gepetto', title: 'menu done', text: 'The menu is in, with the three buttons.', body: mail.text.trim(), open: { page: 'boss' } })
+    expect(item).toMatchObject({ kind: 'mail', tone: 'neutral', who: 'marlow', title: 'menu done', text: 'The menu is in, with the three buttons.', body: mail.text.trim(), open: { page: 'boss' } })
     expect(firstLine('Bonjour Alex,\n\n' + 'a'.repeat(300))).toHaveLength(140)
     // The user's own mail (no author) is not news to them.
     fy.mail({ ...mail, author: '', mid: '<own@x>' })
@@ -579,9 +588,9 @@ describe('mail', () => {
     const write = vi.fn(async () => true)
     const fy = make({ mail: () => ({ write }) })
     fy.mail(mail)
-    expect(fs.readFileSync(fy.file, 'utf8')).toContain('gepetto@example.com')
+    expect(fs.readFileSync(fy.file, 'utf8')).toContain('marlow@example.com')
     const read = JSON.stringify([fy.feed(), fy.feed(now, 'fr'), fy.recent(['mail']), fy.mark(snap)])
-    expect(read).not.toContain('gepetto@example.com')
+    expect(read).not.toContain('marlow@example.com')
     expect(read).not.toContain('<m1@example.com>')
     expect(read).not.toContain('"mail":{')
   })
@@ -592,8 +601,8 @@ describe('mail', () => {
     fy.mail({ ...mail, mid: '<m2@example.com>', text: 'One line only.' })
     const [raw] = fy.rawMails()
     expect(fy.rawMails()).toHaveLength(1)
-    expect(raw).toEqual({ id: raw.id, who: 'gepetto', subject: 'menu done', text: mail.text.trim() })
-    expect(JSON.stringify(raw)).not.toContain('gepetto@example.com')
+    expect(raw).toEqual({ id: raw.id, who: 'marlow', subject: 'menu done', text: mail.text.trim() })
+    expect(JSON.stringify(raw)).not.toContain('marlow@example.com')
     fy.mailLine(raw.id, '  the menu is in,   three buttons ', 'en')
     expect(find(fy, raw.id)).toMatchObject({ text: 'the menu is in, three buttons', body: mail.text.trim() })
     expect(fy.feed(now, 'fr').items.find((i) => i.id === raw.id)?.text).toBe('the menu is in, three buttons')
@@ -620,7 +629,7 @@ describe('mail', () => {
     out = { write }
     expect(fy.feed().items[0].reply).toBe('mail')
     await fy.reply(id, ' thanks ')
-    expect(write).toHaveBeenCalledWith({ to: 'gepetto@example.com', subject: 'menu  done', text: 'thanks', inReplyTo: '<m1@example.com>', author: 'gepetto', target: 'weevboss' })
+    expect(write).toHaveBeenCalledWith({ to: 'marlow@example.com', subject: 'menu  done', text: 'thanks', inReplyTo: '<m1@example.com>', author: 'marlow', target: 'weevboss' })
     expect(host.sendMain).not.toHaveBeenCalled()
     write.mockResolvedValueOnce(false)
     await expect(fy.reply(id, 'again')).rejects.toThrow(M.en.noReply)
@@ -637,7 +646,7 @@ describe('posts', () => {
     expect(item.actions).toHaveLength(2)
     expect(item.text).toHaveLength(1200)
     expect(JSON.stringify(fy.feed())).not.toContain('merge and deploy')
-    expect(fy.post('from a friend', undefined, 'gepetto').who).toBe('gepetto')
+    expect(fy.post('from a friend', undefined, 'marlow').who).toBe('marlow')
     expect(() => fy.post('   ')).toThrow(M.en.emptyText)
   })
 
@@ -1258,7 +1267,7 @@ describe('wired into core', async () => {
     w.bump()
     await settle()
     expect(fy.feed().items).toMatchObject([{ id: 's:s1', tone: 'alert', text: 'Ouch, I got cut off mid-work (unexpected stop). Want me to pick it back up?', actions: [{ id: 'resume', label: 'Resume' }] }])
-    w.mailed({ author: 'gepetto', subject: 'done', text: 'The page is built.', target: 'weevboss', mid: '<m@x>', address: 'g@example.com' })
+    w.mailed({ author: 'marlow', subject: 'done', text: 'The page is built.', target: 'weevboss', mid: '<m@x>', address: 'g@example.com' })
     expect(fy.feed().items.map((i) => i.kind).sort()).toEqual(['mail', 'session'])
     expect(JSON.stringify(fy.feed())).not.toContain('g@example.com')
   })
@@ -1606,6 +1615,7 @@ it('resolves the five reviewed historical proposals to four precise requested ta
   const items = reviewedIntents.map((link,n) => ({id:link.cardId,kind:'improve',tone:'magic',who:'weevils',text:'Prepare the requested work for this existing project.',at:now-n,seen:true,lang:'en',actions:[{id:link.actionId,label:'Prepare',brief:link.brief}]}))
   snap.sessions = [...new Set(reviewedIntents.map(l => l.sessionId))].map(id => session({id,status:'done'}))
   fs.writeFileSync(path.join(dir,'foryou.json'),JSON.stringify({items,rev:1}))
+  fs.writeFileSync(path.join(dir,'foryou.json.reviewed.json'),JSON.stringify({intents:reviewedIntents}))
   const fy=make()
   for(const locale of ['en','fr','en']){
     const result=fy.feed(now,locale).items

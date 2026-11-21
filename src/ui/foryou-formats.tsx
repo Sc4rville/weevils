@@ -59,6 +59,8 @@ export function PictureJourney({ media, frames, label }: { media: ForYouMedia[];
 
 export function ProposalView({ item, fy }: { item: ForYouItem; fy: ForYouStore }) {
   const t = useT(M)
+  const { snap } = useApp()
+  const project = snap?.projects.find(x => x.id === item.projectId)?.name
   const [choice, setChoice] = useState(item.visualProposal?.selected ?? '')
   const p = item.visualProposal
   useEffect(() => setChoice(item.visualProposal?.selected ?? ''), [item.id, item.visualProposal?.selected])
@@ -67,8 +69,7 @@ export function ProposalView({ item, fy }: { item: ForYouItem; fy: ForYouStore }
   const pending = fy.acting(item.id)
   const sent = !!p.selected || fy.leftAs(item.id) === 'sent'
   return <section className="formats-proposal in">
-    {/* i18n-ignore: project name */}
-    <p className="meta">TLO</p><h2>{item.title}</h2><p>{item.text}</p>
+    {project && <p className="meta">{project}</p>}<h2>{item.title}</h2><p>{item.text}</p>
     <TranslationStatus item={item} />
     <div className="formats-contact">{(item.media ?? []).map((m, n) => <figure key={m.id}><figcaption><strong>{n + 1} · {p.frames[n]?.title}</strong><p>{p.frames[n]?.description}</p></figcaption><FullImage media={m} description={p.frames[n]?.description ?? m.name} /></figure>)}</div>
     <fieldset disabled={pending || sent}><legend>{p.question}</legend><p>{p.recommendation}</p>
@@ -94,11 +95,8 @@ export function InlineMediaFormats({ item }: { item: ForYouItem }) {
   })
   const media = allMedia.filter(m => !used.has(m.id))
   const images = media.filter(m => m.type === 'image')
-  const captions: Record<string, { title: string; description: string }> = {
-    '341ba5be815fb245': { title: t.streetTitle, description: t.streetText },
-    'b3fdac9f32927919': { title: t.cafeTitle, description: t.cafeText },
-    'b442c5405b86603a': { title: t.alcoveTitle, description: t.alcoveText },
-  }
+  // What each picture shows, when someone reviewed it for this feed (the instance's own data, never the product's).
+  const captions: Record<string, { title: string; description: string }> = Object.fromEntries(images.flatMap(m => m.caption ? [[m.id, m.caption]] : []))
   let knownPrefix = 0
   while (knownPrefix < images.length && captions[images[knownPrefix].id]) knownPrefix++
   const journey = knownPrefix > 1
@@ -117,27 +115,31 @@ export function FormatsPage() {
   const fy = useForYou()
   const items = fy.feed?.items ?? []
   const media = items.flatMap(i => i.media ?? [])
-  const alcove = media.find(m => m.id === 'b442c5405b86603a')
-  const clip = media.find(m => m.id === '241bbd0062433326')
   const [example, setExample] = useState<ForYouItem | null>(null)
-  useEffect(() => { let live = true; void api.foryouFormats().then(r => { if (live) setExample(r.proposal) }).catch(() => {}); return () => { live = false } }, [appLang])
+  const [pinned, setPinned] = useState<{ result?: string; clip?: string; poster?: string }>({})
+  useEffect(() => { let live = true; void api.foryouFormats().then(r => { if (live) { setExample(r.proposal); setPinned(r.examples ?? {}) } }).catch(() => {}); return () => { live = false } }, [appLang])
+  // The examples are this person's own: the ones they pinned if any, else the latest picture and clip of their feed.
+  const picture = media.find(m => m.id === pinned.result) ?? media.find(m => m.type === 'image' && m.caption) ?? media.find(m => m.type === 'image')
+  const clip = media.find(m => m.id === pinned.clip) ?? media.find(m => m.type === 'video')
+  const clipItem = clip && items.find(i => i.media?.some(m => m.id === clip.id))
+  const poster = media.find(m => m.id === pinned.poster) ?? clipItem?.media?.find(m => m.type === 'image')
   const proposal = items.find(i => i.visualProposal) ?? example
   const [kept, setKept] = useState(() => { try { return localStorage.getItem('weevils:format-choice') ?? '' } catch { return '' } })
   const keep = (id: string) => { setKept(id); try { localStorage.setItem('weevils:format-choice', id) } catch { /* storage unavailable */ } }
   const pick = (id: string) => <button type="button" className="formats-keep" aria-pressed={kept === id} onClick={() => keep(id)}>{kept === id ? t.kept : t.keep}</button>
-  return <Shell slot="agent" kicker="weevils · TLO" title={t.title}>
+  return <Shell slot="agent" kicker="weevils" title={t.title}>
     <div className="formats-gallery">
       <div className="in formats-intro"><p>{t.intro}</p><p className="meta">{t.preference}</p></div>
       <section className="band formats-section" style={tone('p3')}><div className="in">
-        <p className="meta">{t.result}</p><div className="formats-result"><div><h2>{t.resultTitle}</h2><p>{t.resultText}</p>{pick('result')}</div>{alcove ? <FullImage media={alcove} description={t.resultText} /> : <p>{t.missing}</p>}</div>
+        <p className="meta">{t.result}</p><div className="formats-result"><div><h2>{picture?.caption?.title ?? t.resultTitle}</h2><p>{picture?.caption?.description ?? t.resultText}</p>{pick('result')}</div>{picture ? <FullImage media={picture} description={picture.caption?.description ?? t.resultText} /> : <p>{t.missing}</p>}</div>
       </div></section>
       <section className="band formats-section" style={tone('p6')}><div className="in">
         <p className="meta">{t.story}</p><h2>{t.storyTitle}</h2><p>{t.storyText}</p>
         {proposal?.visualProposal ? <PictureJourney media={proposal.media ?? []} frames={proposal.visualProposal.frames} /> : <p>{t.missing}</p>}{pick('story')}
       </div></section>
       <section className="band formats-section" style={tone('p10')}><div className="in">
-        <p className="meta">{t.clip}</p><h2>{t.clipTitle}</h2><p>{t.clipText}</p>
-        {clip ? <PreviewClip media={clip} poster={media.find(m => m.id === '341ba5be815fb245')?.url} title={t.clipTitle} /> : <p>{t.missing}</p>}{pick('clip')}
+        <p className="meta">{t.clip}</p><h2>{clipItem?.title || t.clipTitle}</h2><p>{t.clipText}</p>
+        {clip ? <PreviewClip media={clip} poster={poster?.url} title={clipItem?.title || t.clipTitle} /> : <p>{t.missing}</p>}{pick('clip')}
       </div></section>
       <section className="band formats-section" style={tone('agent')}><p className="in meta">{t.proposal}</p>{proposal ? <ProposalView item={proposal} fy={fy} /> : <p className="in">{t.missing}</p>}<div className="in">{pick('proposal')}</div></section>
     </div>

@@ -24,7 +24,7 @@ it('keeps instructions and explicit transmission separate from selection at phon
  for (const width of [320,390,1440]) {
   window.innerWidth=width
   await act(async()=>root.render(<ProposalView key={width} item={item} fy={fy}/>))
-  const send=()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Send my choice to TLO')!
+  const send=()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Send my choice')!
   expect(send().disabled).toBe(true)
   expect(host.querySelectorAll('img')).toHaveLength(3)
   await act(async()=>host.querySelectorAll<HTMLInputElement>('input')[1].click())
@@ -47,7 +47,7 @@ it('opens complete images and changes the story without publishing or dispatchin
 it('a completed proposal cannot be sent again after reloading',async()=>{
  await act(async()=>root.render(<ProposalView item={{...item,visualProposal:{...item.visualProposal!,selected:'B'}}} fy={fy}/>))
  expect(host.querySelector('fieldset')?.disabled).toBe(true)
- expect([...host.querySelectorAll('button')].find(b=>b.textContent==='Choice sent to TLO')?.disabled).toBe(true)
+ expect([...host.querySelectorAll('button')].find(b=>b.textContent==='Choice sent')?.disabled).toBe(true)
 })
 
 it('recovers the actual image component after a 404 and opens the original URL',async()=>{
@@ -106,7 +106,7 @@ it('reflects server confirmation and disables a pending submission',async()=>{
 
 it('renders all four formats and persists a local preference without sending a choice',async()=>{
  vi.mocked(api.foryouFormats).mockResolvedValue({proposal:item})
- vi.mocked(useForYou).mockReturnValue({...fy,feed:{items:[item,{...item,id:'assets',visualProposal:undefined,media:[{...item.media![0],id:'b442c5405b86603a'},{...item.media![0],id:'241bbd0062433326',type:'video'}]}]}} as ForYouStore)
+ vi.mocked(useForYou).mockReturnValue({...fy,feed:{items:[item,{...item,id:'assets',visualProposal:undefined,media:[{...item.media![0],id:'picture'},{...item.media![0],id:'clip',type:'video'}]}]}} as ForYouStore)
  localStorage.removeItem('weevils:format-choice')
  for(const width of [320,390,1440]) {
   window.innerWidth=width
@@ -122,7 +122,7 @@ it('renders all four formats and persists a local preference without sending a c
 
 it('language switches preserve selection, open instructions and the clip element',async()=>{
  vi.mocked(api.foryouFormats).mockResolvedValue({proposal:item})
- vi.mocked(useForYou).mockReturnValue({...fy,feed:{items:[item,{...item,id:'clip',visualProposal:undefined,media:[{...item.media![0],id:'241bbd0062433326',type:'video'}]}]}} as ForYouStore)
+ vi.mocked(useForYou).mockReturnValue({...fy,feed:{items:[item,{...item,id:'clip',visualProposal:undefined,media:[{...item.media![0],id:'clip',type:'video'}]}]}} as ForYouStore)
  await act(async()=>{setLang('fr');root.render(<FormatsPage/>)})
  await act(async()=>host.querySelectorAll<HTMLInputElement>('input')[1].click())
  const video=host.querySelector('video')!
@@ -154,7 +154,7 @@ it('shows translation progress and original wording without changing the selecte
 })
 
 it('uses the gallery components directly inside existing feed cards without sending or autoplay',async()=>{
- const media:ForYouItem={...item,visualProposal:undefined,media:[{id:'341ba5be815fb245',type:'image',url:'/street',name:'street.png',bytes:1},{id:'b3fdac9f32927919',type:'image',url:'/cafe',name:'cafe.png',bytes:1},{id:'video',type:'video',url:'/clip',name:'clip.mp4',bytes:1}]}
+ const media:ForYouItem={...item,visualProposal:undefined,media:[{id:'street',type:'image',url:'/street',name:'street.png',bytes:1,caption:{title:'Outside the café',description:'The café lights reflect on the cobblestones.'}},{id:'cafe',type:'image',url:'/cafe',name:'cafe.png',bytes:1,caption:{title:'Inside the café',description:'The counter and lanterns give the room a warm glow.'}},{id:'video',type:'video',url:'/clip',name:'clip.mp4',bytes:1}]}
  await act(async()=>root.render(<InlineMediaFormats item={media}/>))
  expect(host.textContent).toContain('Outside the café')
  await act(async()=>[...host.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='Next view')!.click())

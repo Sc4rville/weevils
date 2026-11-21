@@ -9,7 +9,8 @@
 //   check [--repair]    every thread against the invariants of docs/spec; --repair rebuilds thread.md and meta.json
 //   compare [--verbose] what the app shows for each session against what the weevbook holds; exit 1 on a loss
 //   resume <thread> [--wait]   the thread continues on this machine, same provider (step 3, docs/spec/04-resume.md);
-//                       the engine is started through the local weevilsd
+//                       the engine is started through the local weevilsd. With a vault and no hub (or a thread the hub
+//                       never saw), its journal, slim raw lines and checkpoint come from the vault (07-vault.md, step 3)
 //   sync status         how the sync with the hub goes, as weevilsd last wrote it (step 2)
 //   vault setup | push | restore | status | summary   the encrypted copy on the person's GitHub (07-vault.md, vault-cli.ts)
 //   backfill --once     the import at install: nothing when DATA_DIR/weevbook-backfilled is there, which it writes;
@@ -27,7 +28,8 @@ import S from '../i18n/weevbook-sync.ts'
 import type { HubStatus } from './hub.ts'
 import { resumeThread, type Launch } from './resume.ts'
 import { backfill, backfillMarker, type BackfillFilter, type BookPaths } from './backfill.ts'
-import { vaultMain } from './vault-cli.ts'
+import { vaultHere, vaultMain } from './vault-cli.ts'
+import { vaultSource } from './vault-raw.ts'
 import { check } from './check.ts'
 import { compare } from './compare.ts'
 import { Locked } from './store.ts'
@@ -204,14 +206,16 @@ async function resume(args: string[], p: ReturnType<typeof paths>, out: (line: s
     out(s.usage)
     return 2
   }
-  if (!WEEVBOOK || !WEEVBOOK_HUB) {
-    out(s.noHub)
+  // The vault of this machine, when it has one: the source of what the hub does not hold, or the only one.
+  const vault = WEEVBOOK && process.env.WEEVILS_VAULT?.trim() !== '0' ? vaultHere(args) : null
+  if (!WEEVBOOK || (!WEEVBOOK_HUB && !vault)) {
+    out(s.nowhere)
     return 1
   }
   const data = path.dirname(p.dir)
   const r = await resumeThread({
     thread, dir: p.dir, dataDir: data, sessions: p.sessions, machine: p.machine, home: p.home, claudeDir: p.claudeDir, codexDir: p.codexDir,
-    roots: p.roots, projectsDir: PROJECTS_DIR, hub: WEEVBOOK_HUB, wait: args.includes('--wait'), launch: launchThroughWeevilsd,
+    roots: p.roots, projectsDir: PROJECTS_DIR, ...(WEEVBOOK_HUB ? { hub: WEEVBOOK_HUB } : {}), ...(vault ? { vault: vaultSource(vault) } : {}), wait: args.includes('--wait'), launch: launchThroughWeevilsd,
   })
   if (!r.ok) {
     out(s.refused(r.why, r.detail))

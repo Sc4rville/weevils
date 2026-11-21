@@ -4,7 +4,7 @@ import { defineMessages } from '../i18n.ts'
 
 export default defineMessages({
   fr: {
-    usage: 'usage : weevils weevbook vault setup [--remote <url git>] | push | restore [--code "<24 mots>"] | status | summary [--json]',
+    usage: 'usage : weevils weevbook vault setup [--remote <url git>] | push [--progress] | restore [--code "<24 mots>"] | status | summary [--json]',
     noRemote: 'pas de coffre : lance weevils weevbook vault setup (ou mets WEEVILS_VAULT=<url git>)',
     noKey: (file: string) => `pas de clé du coffre dans ${file} : lance weevils weevbook vault setup, ou vault restore --code "<24 mots>"`,
     noGh: 'GitHub n\'est pas connecté sur cette machine : lance gh auth login, puis relance vault setup',
@@ -28,9 +28,15 @@ export default defineMessages({
     key: (has: boolean): string => (has ? 'clé : présente' : 'clé : absente'),
     pushedAt: (at: string | null) => `dernier envoi : ${at ?? 'jamais'}`,
     error: (e: string) => `erreur : ${e}`,
+    journalsSame: 'journaux : rien de nouveau',
+    rawPushed: (threads: number, pushes: number, mb: string, repos: number) => `lignes brutes : ${threads} fils envoyés en ${pushes} envois (${mb} Mo chiffrés) · ${repos} dépôt${repos > 1 ? 's' : ''} de lignes brutes`,
+    rawNoRepo: (n: number) => `${n} fils attendent un dépôt de lignes brutes que cette machine peut écrire (la machine connectée à GitHub le crée et donne l'accès)`,
+    checkpointsPushed: (threads: number, bundles: number, mb: string) => `checkpoints : ${threads} fils envoyés (${bundles} paquets, ${mb} Mo chiffrés)`,
+    checkpointSkipped: (thread: string, mb: number) => `checkpoint de ${thread} : ${mb} Mo, au-dessus de la limite : pas envoyé ; ce fil ne peut continuer que sur cette machine`,
+    rawStatus: (raw: number, checkpoints: number) => `lignes brutes à envoyer : ${raw} fils · checkpoints à envoyer : ${checkpoints}`,
   },
   en: {
-    usage: 'usage: weevils weevbook vault setup [--remote <git url>] | push | restore [--code "<24 words>"] | status | summary [--json]',
+    usage: 'usage: weevils weevbook vault setup [--remote <git url>] | push [--progress] | restore [--code "<24 words>"] | status | summary [--json]',
     noRemote: 'no vault: run weevils weevbook vault setup (or set WEEVILS_VAULT=<git url>)',
     noKey: (file: string) => `no vault key in ${file}: run weevils weevbook vault setup, or vault restore --code "<24 words>"`,
     noGh: 'GitHub is not connected on this machine: run gh auth login, then vault setup again',
@@ -54,5 +60,11 @@ export default defineMessages({
     key: (has: boolean): string => (has ? 'key: present' : 'key: missing'),
     pushedAt: (at: string | null) => `last push: ${at ?? 'never'}`,
     error: (e: string) => `error: ${e}`,
+    journalsSame: 'journals: nothing new',
+    rawPushed: (threads: number, pushes: number, mb: string, repos: number) => `raw lines: ${threads} threads sent in ${pushes} pushes (${mb} MB sealed) · ${repos} raw ${repos > 1 ? 'repositories' : 'repository'}`,
+    rawNoRepo: (n: number) => `${n} threads wait for a raw repository this machine can write (the machine signed in to GitHub makes it and gives access)`,
+    checkpointsPushed: (threads: number, bundles: number, mb: string) => `checkpoints: ${threads} threads sent (${bundles} bundles, ${mb} MB sealed)`,
+    checkpointSkipped: (thread: string, mb: number) => `checkpoint of ${thread}: ${mb} MB, over the limit: not sent; this thread can only continue on this machine`,
+    rawStatus: (raw: number, checkpoints: number) => `raw lines to send: ${raw} threads · checkpoints to send: ${checkpoints}`,
   },
 })

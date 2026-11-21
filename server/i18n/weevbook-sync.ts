@@ -6,6 +6,7 @@ export default defineMessages({
   fr: {
     usage: 'usage : weevils weevbook resume <fil> [--wait] | sync status',
     noHub: 'pas de hub : mets WEEVILS_WEEVBOOK=1 et WEEVILS_WEEVBOOK_HUB (here, main ou une URL git) dans ~/.config/weevils/env, puis redémarre weevilsd',
+    nowhere: 'ni hub ni coffre sur cette machine : lance weevils weevbook vault setup, ou vault restore --code "<24 mots>" (ou règle WEEVILS_WEEVBOOK_HUB)',
     noStatus: (file: string) => `weevilsd n'a pas encore synchronisé (${file} absent) : tourne-t-il avec le hub réglé ?`,
     hub: (url: string, here: boolean, steals: boolean) => `hub : ${url}${here ? ' (sur cette machine)' : ''}${steals ? ' · cette machine reprend les baux des machines muettes' : ''}`,
     state: (state: string, at: string | null, reached: string | null) => `état : ${state} · dernier tour ${at ?? 'jamais'} · hub joint ${reached ?? 'jamais'}`,
@@ -31,6 +32,7 @@ export default defineMessages({
   en: {
     usage: 'usage: weevils weevbook resume <thread> [--wait] | sync status',
     noHub: 'no hub: set WEEVILS_WEEVBOOK=1 and WEEVILS_WEEVBOOK_HUB (here, main or a git URL) in ~/.config/weevils/env, then restart weevilsd',
+    nowhere: 'no hub and no vault on this machine: run weevils weevbook vault setup, or vault restore --code "<24 words>" (or set WEEVILS_WEEVBOOK_HUB)',
     noStatus: (file: string) => `weevilsd has not synced yet (no ${file}): is it running with the hub set?`,
     hub: (url: string, here: boolean, steals: boolean) => `hub: ${url}${here ? ' (on this machine)' : ''}${steals ? ' · this machine steals the leases of silent machines' : ''}`,
     state: (state: string, at: string | null, reached: string | null) => `state: ${state} · last round ${at ?? 'never'} · hub reached ${reached ?? 'never'}`,

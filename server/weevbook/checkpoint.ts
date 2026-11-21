@@ -229,6 +229,33 @@ async function takeShadow(o: TakeOptions, folder: string, timeoutMs: number, at:
  *  hub sync pushes it from. */
 export async function keepInWeevbook(weevbookGitDir: string, from: string, thread: string, timeoutMs = 600_000) {
   await gitOk(['--git-dir', weevbookGitDir, 'fetch', '-q', '--no-tags', '--no-write-fetch-head', from, `+${projectRef(thread)}:${hubRef(thread)}`], { timeoutMs })
+  await noteOrigin(weevbookGitDir, from, thread, timeoutMs).catch(() => undefined)
+}
+
+/** Where the weevbook keeps, by thread, the commits at which a checkpoint's history meets the project's origin. */
+const originFile = (weevbookGitDir: string, thread: string) => path.join(weevbookGitDir, 'weevbook', 'origin', thread)
+
+/**
+ * What a machine that clones the project from its origin already has of this checkpoint (docs/spec/07-vault.md): the
+ * commits where its history meets the origin's branches as this repository last fetched them. Written down while the
+ * project is at hand (a worktree may be gone by the time the vault's bundle is made). No origin: an empty list.
+ */
+async function noteOrigin(weevbookGitDir: string, from: string, thread: string, timeoutMs: number) {
+  const run = (args: string[]) => runGit(['--git-dir', from, ...SAFE, ...args], { timeoutMs: Math.min(timeoutMs, 60_000) })
+  let found: string[] = []
+  if ((await run(['for-each-ref', '--count=1', '--format=%(refname)', 'refs/remotes/origin/'])).stdout.trim()) {
+    const r = await run(['rev-list', '--boundary', projectRef(thread), '--not', '--remotes=origin'])
+    if (r.code !== 0) return
+    found = lines(r.stdout).filter((l) => l.startsWith('-')).map((l) => l.slice(1))
+  }
+  await fsp.mkdir(path.dirname(originFile(weevbookGitDir, thread)), { recursive: true })
+  await fsp.writeFile(originFile(weevbookGitDir, thread), found.join('\n'))
+}
+
+/** The commits noted by noteOrigin for a thread (null: never noted). */
+export async function originNote(weevbookGitDir: string, thread: string): Promise<string[] | null> {
+  const text = await fsp.readFile(originFile(weevbookGitDir, thread), 'utf8').catch(() => null)
+  return text === null ? null : lines(text)
 }
 
 // ---------------------------------------------------------------- restoring on another machine
@@ -251,6 +278,8 @@ export interface RestoreOptions {
   /** The weevbook's repository, and its ref that holds the commit (default refs/checkpoints/<thread>). */
   source: string
   sourceRef?: string
+  /** In place of `source`: the thread's checkpoint bundles from the vault (07-vault.md), in the order they apply. */
+  bundles?: string[]
   dataDir: string
   /** Another session is at work in the folder now: the restore goes beside it. */
   busy?: boolean
@@ -297,6 +326,27 @@ async function apply(c: Ctx, target: string, commit: string, base: string | null
 }
 
 /**
+ * The checkpoint's commits into the repository at `c`: from the weevbook's own repository (the hub's copy), or from
+ * the vault's bundles. A bundle leaves out what the project's origin has: when this clone is behind its origin, the
+ * origin is fetched once and the bundle taken again.
+ */
+async function bring(c: Ctx, o: RestoreOptions) {
+  const to = projectRef(o.thread)
+  if (!o.bundles) {
+    await ok(c, ['fetch', '-q', '--no-tags', '--no-write-fetch-head', o.source, `+${o.sourceRef ?? hubRef(o.thread)}:${to}`])
+    return
+  }
+  let fetched = false
+  for (const b of o.bundles) {
+    const args = ['fetch', '-q', '--no-tags', '--no-write-fetch-head', b, `+${hubRef(o.thread)}:${to}`]
+    if ((await g(c, args)).code === 0) continue
+    if (!fetched) await g(c, ['fetch', '-q', '--no-tags', '--no-write-fetch-head', 'origin', '+refs/heads/*:refs/remotes/origin/*'])
+    fetched = true
+    await ok(c, args)
+  }
+}
+
+/**
  * The checkpoint's files on this machine (docs/spec/04-resume.md, « Restoring »). In the project's own folder only
  * when nothing there would be overwritten: HEAD is the checkpoint's base, and the folder has no change, or only this
  * thread's own earlier state, and no other session works in it. Otherwise in a new git worktree on a new branch
@@ -326,7 +376,7 @@ async function restoreGit(o: RestoreOptions, timeoutMs: number): Promise<Restore
     fresh = true
   }
   const c: Ctx = { cwd: top, env: {}, timeoutMs }
-  await ok(c, ['fetch', '-q', '--no-tags', '--no-write-fetch-head', o.source, `+${o.sourceRef ?? hubRef(o.thread)}:${projectRef(o.thread)}`])
+  await bring(c, o)
   if ((await g(c, ['cat-file', '-e', `${o.commit}^{commit}`])).code !== 0) throw new Error(`checkpoint ${o.commit.slice(0, 12)} is not on the hub`) // i18n-ignore: for the log
   const head = (await g(c, ['rev-parse', '-q', '--verify', 'HEAD^{commit}'])).stdout.trim()
   const branchExists = async (b: string) => (await g(c, ['rev-parse', '-q', '--verify', `refs/heads/${b}`])).code === 0
@@ -370,7 +420,7 @@ async function restoreGit(o: RestoreOptions, timeoutMs: number): Promise<Restore
 
 async function restoreShadow(o: RestoreOptions, timeoutMs: number): Promise<Restored> {
   const repo = await ensureShadow(o.dataDir, o.thread, timeoutMs)
-  await gitOk(['--git-dir', repo, 'fetch', '-q', '--no-tags', '--no-write-fetch-head', o.source, `+${o.sourceRef ?? hubRef(o.thread)}:${projectRef(o.thread)}`], { timeoutMs })
+  await bring({ cwd: path.dirname(repo), env: { GIT_DIR: repo }, timeoutMs }, o)
   if ((await runGit(['--git-dir', repo, 'cat-file', '-e', `${o.commit}^{commit}`], { timeoutMs })).code !== 0) throw new Error(`checkpoint ${o.commit.slice(0, 12)} is not on the hub`) // i18n-ignore: for the log
   let dir = path.resolve(o.dir)
   let mode: Restored['mode'] = 'in-place'

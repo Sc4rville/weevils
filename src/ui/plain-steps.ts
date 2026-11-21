@@ -178,7 +178,8 @@ function shellTitle(cmd: string, w: Titles): string | null {
   const all = segments(cmd)
   for (const seg of /…$/.test(cmd.trim()) ? all.slice(0, -1) : all) {
     if (seg.piped) continue
-    let a = words(seg.text)
+    // « $(which expose) » is the program « expose »; any other substitution stays one word.
+    let a = words(seg.text.replace(/\$\((?:which|command -v|type -p)\s+([\w.-]+)\)/g, '$1').replace(/\$\([^)]*\)/g, '…'))
     while (a.length && (/^\w+=/.test(a[0]) || WRAP.test(a[0]) || (a[0] === 'timeout' && /^\d/.test(a[1] ?? '')))) a = a[0] === 'timeout' ? a.slice(2) : a.slice(1)
     if (a[0] === 'npx') a = a.slice(1)
     const [c0 = '', ...rest] = a

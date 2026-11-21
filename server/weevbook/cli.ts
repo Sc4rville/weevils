@@ -54,7 +54,7 @@ export function paths(args: string[]): BookPaths {
  * (`--once`) with neither, what the join line left on this machine (CONFIG_DIR/backfill.json). Null: a date that is
  * not one.
  */
-export function backfillFilter(args: string[], configDir = CONFIG_DIR): BackfillFilter | null {
+function backfillFilter(args: string[], configDir = CONFIG_DIR): BackfillFilter | null {
   const opt = (name: string) => {
     const i = args.indexOf(name)
     return i >= 0 ? args[i + 1] : undefined

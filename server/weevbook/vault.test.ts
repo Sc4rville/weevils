@@ -464,6 +464,96 @@ describe('a new machine from the vault (step 2)', () => {
   })
 })
 
+describe('with GitHub (a stand-in for gh, and a folder git reaches in place of github.com)', () => {
+  const env = { PATH: process.env.PATH, GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL, GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM }
+  afterEach(() => {
+    for (const [k, v] of Object.entries(env)) if (v === undefined) delete process.env[k]
+    else process.env[k] = v
+  })
+  function github() {
+    const root = path.join(tmp, 'github')
+    const bin = path.join(tmp, 'bin')
+    fs.mkdirSync(bin, { recursive: true })
+    fs.mkdirSync(path.join(root, 'alex'), { recursive: true })
+    const log = path.join(tmp, 'gh.log')
+    const keys = path.join(tmp, 'gh.keys')
+    fs.writeFileSync(keys, '')
+    fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
+printf '%s\\n' "$*" >>"${log}"
+case "$1 $2" in
+  "api user") echo alex ;;
+  "repo view") [ -d "${root}/$3.git" ] ;;
+  "repo create") git init -q --bare "${root}/$3.git" ;;
+  "api repos/alex/weevbook-vault/keys") cat "${keys}" ;;
+  "api -X") for a in "$@"; do case "$a" in key=*) printf '%s\\n' "\${a#key=}" >>"${keys}" ;; esac; done ;;
+  *) exit 1 ;;
+esac
+`, { mode: 0o755 })
+    fs.writeFileSync(path.join(tmp, 'gitconfig'), `[url "${root}/"]\n\tinsteadOf = git@github.com:\n`)
+    process.env.PATH = `${bin}${path.delimiter}${env.PATH}`
+    process.env.GIT_CONFIG_GLOBAL = path.join(tmp, 'gitconfig')
+    process.env.GIT_CONFIG_NOSYSTEM = '1'
+    return { repo: path.join(root, 'alex', 'weevbook-vault.git'), asked: () => fs.readFileSync(log, 'utf8').trim().split('\n'), keys: () => fs.readFileSync(keys, 'utf8').trim().split('\n').filter(Boolean) }
+  }
+  const run = async (name: string, ...args: string[]) => {
+    const out: string[] = []
+    const code = await vaultMain(['vault', ...args, '--data-dir', path.join(tmp, name), '--config-dir', path.join(tmp, `${name}-config`)], (l) => out.push(l))
+    return { code, out: out.join('\n') }
+  }
+
+  const keygen = (() => {
+    try {
+      return !!execFileSync('sh', ['-c', 'command -v ssh-keygen'])
+    } catch {
+      return false
+    }
+  })()
+
+  it.skipIf(!keygen)('setup makes the private repository and this machine\'s deploy key; a new install gets everything back from the 24 words alone', async () => {
+    const gh = github()
+    await makeBook('a')
+    const made = await run('a', 'setup')
+    expect(made.code).toBe(0)
+    expect(made.out).toMatch(/private repository created: alex\/weevbook-vault/)
+    expect(fs.existsSync(gh.repo)).toBe(true)
+    expect(gh.asked()).toContain('repo create alex/weevbook-vault --private --description Encrypted copy kept by weevils')
+    expect(JSON.parse(fs.readFileSync(path.join(tmp, 'a-config', 'vault.json'), 'utf8'))).toEqual({ remote: 'git@github.com:alex/weevbook-vault.git' })
+    const pubA = fs.readFileSync(path.join(tmp, 'a-config', 'vault-deploy.pub'), 'utf8').trim().split(' ').slice(0, 2).join(' ')
+    expect(gh.keys()).toEqual([pubA])
+    const code = recoveryCode(readKey(path.join(tmp, 'a-config', 'vault.key'))!)
+    expect(made.out).toContain(code)
+    expect((await run('a', 'push')).code).toBe(0)
+
+    // A new install whose weevboss tried « setup » first: told a vault exists, no second key made, then the words.
+    const again = await run('b', 'setup')
+    expect(again.code).toBe(1)
+    expect(again.out).toMatch(/already holds a vault/)
+    expect(fs.existsSync(path.join(tmp, 'b-config', 'vault.key'))).toBe(false)
+    expect((await run('b', 'restore', '--code', code)).out).toMatch(/2 threads in the vault · 2 restored/)
+
+    // A new install that goes straight to the words: the vault is found on GitHub, this machine's key added, no
+    // repository ever created.
+    const before = gh.asked().length
+    const back = await run('c', 'restore', '--code', code)
+    expect(back.code).toBe(0)
+    expect(back.out).toMatch(/repository: alex\/weevbook-vault/)
+    expect(back.out).toMatch(/2 threads in the vault · 2 restored/)
+    expect(gh.keys()).toHaveLength(3)
+    expect(gh.asked().slice(before).join('\n')).not.toMatch(/repo create/)
+    expect(JSON.parse(fs.readFileSync(path.join(tmp, 'c-config', 'vault.json'), 'utf8'))).toEqual({ remote: 'git@github.com:alex/weevbook-vault.git' })
+    for (const t of [T1, T2]) expect(journal(path.join(tmp, 'c', 'weevbook', '.git'), t).equals(journal(path.join(tmp, 'a', 'weevbook', '.git'), t))).toBe(true)
+  })
+
+  it('restore on an account with no vault says so and creates nothing', async () => {
+    const gh = github()
+    const r = await run('z', 'restore', '--code', recoveryCode(newKey()))
+    expect(r.code).toBe(1)
+    expect(r.out).toMatch(/no vault on this GitHub account \(alex\/weevbook-vault does not exist\)/)
+    expect(fs.existsSync(gh.repo)).toBe(false)
+    expect(fs.existsSync(path.join(tmp, 'z-config'))).toBe(false)
+  })
+})
+
 describe('what weevboss says once the history is in (vault summary)', () => {
   const day = 86_400_000
   /** A conversation of `engine`, started and last active on the given days before `now`. */

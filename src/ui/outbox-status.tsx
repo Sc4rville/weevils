@@ -19,7 +19,7 @@ const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
  * toast, no notification. Once weevboss has it, the line goes quiet; once the text shows up in the thread, it is gone.
  * `seen`: the thread's messages, to know when the text finally arrived there.
  */
-export function OutboxStatus({ scope, eventId, seen = [] }: { scope: string; eventId?: string; seen?: { text: string; at: number }[] }) {
+export function OutboxStatus({ scope, eventId, seen = [] }: { scope: string; eventId?: string; seen?: { text: string; at: number; role?: string }[] }) {
   const rows = useOutbox()
   const t = useT(M)
   // Outside the app (a test, a page of its own) there is no session list: the note links the bare id.
@@ -28,7 +28,14 @@ export function OutboxStatus({ scope, eventId, seen = [] }: { scope: string; eve
   const [busy, setBusy] = useState('')
   const [notifyError, setNotifyError] = useState('')
   const relevant = rows.filter(r => r.url.startsWith(scope) && (!eventId || !r.eventId || r.eventId === eventId))
-  const arrived = (r: LocalReceipt) => !!r.text?.trim() && seen.some(m => m.at >= (r.acceptedAt ?? r.updatedAt) - 1000 && norm(m.text).includes(norm(r.text!)))
+  // Arrived: the person's text shows up in the thread after it was sent, as their message or inside a brief that
+  // carries it (weevboss got it there). A short text (« ?? ») must be the whole message: it is in too many others.
+  const arrived = (r: LocalReceipt) => {
+    const want = norm(r.text ?? '')
+    if (!want) return false
+    return seen.some(m => (!m.role || m.role === 'user' || m.role === 'orchestrator') && m.at >= (r.acceptedAt ?? r.updatedAt) - 1000
+      && (want.length < 12 ? norm(m.text).replace(/^\[from:[^\]]+\]\s*/, '') === want : norm(m.text).includes(want)))
+  }
   const superseded = (r: LocalReceipt) => !!r.fingerprint && relevant.some(done => done.messageId !== r.messageId && done.status === 'delivered' && done.fingerprint === r.fingerprint && done.updatedAt >= r.updatedAt)
   const visible = relevant.filter(r => !r.dismissed && (r.status === 'failed' || notSent(r)) && !superseded(r) && !arrived(r))
   if (!visible.length) return null

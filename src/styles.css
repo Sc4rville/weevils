@@ -3108,7 +3108,10 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .outbox-status { flex: none; }
 /* A message that did not arrive: the person's own bubble, its band's lightness kept (so its ink reads as on every band
    of this theme), its hue turned soft red. One short line under it, one text action: no box, no square button. */
-.msg.delivery-failed { background: oklch(from var(--c) calc(l + var(--dl)) 0.13 25); color: var(--ink); }
+/* Solid, from the theme's ink: black ink → a light soft red, white ink → a deep soft red, so the ink reads on it in
+   every theme and the thread's gradient never shows through. */
+.outbox-status .msg.band.delivery-failed { background: oklch(from var(--ink) calc(0.84 - l * 0.48) 0.11 22); color: var(--ink); border-inline-start: 5px solid color-mix(in oklab, #e5484d 75%, var(--ink)); }
+.msg.delivery-failed + .msg.delivery-failed { margin-top: 3px; }
 .delivery-failed .delivery-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
 .delivery-failed .delivery-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 8px 0 0; font-size: .8125rem; }
 .delivery-failed .delivery-cause { font-weight: 750; }

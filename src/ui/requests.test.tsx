@@ -26,7 +26,7 @@ for (let p: object | null = HTMLElement.prototype; p; p = Object.getPrototypeOf(
 globalThis.fetch = (async () => new Response('{}')) as typeof fetch
 
 const { setLang } = await import('../i18n')
-const { RequestsPage, chipOf, columnOf, stageOf, stateIn } = await import('./requests')
+const { RequestsPage, chipOf, columnOf, groupsOf, isModelSwitch, stageOf, stateIn } = await import('./requests')
 const { Ctx } = await import('./app-context')
 
 const snap = { version: 1, now: NOW, machines: [], projects: [], sessions: [], h24: [], conversations: [], conversationCounts: { total: 0, pending: 0, byProject: {} }, classifier: { running: false, queued: 0 }, main: [], mainWorking: false, mainHasScreen: true, mainQueued: 0, devil: { enabled: false, working: false }, pinnedRepos: [], config: { userName: '', exposeDomain: '', publicHost: '' } } as unknown as Snapshot
@@ -172,5 +172,28 @@ describe('request headings', () => {
     expect(headingOf('Fix it')).toBe('Fix it')
     expect(headingOf('Rework the Requests page of each repo, weevils included')).toBe('Rework the Requests page')
     expect(headingOf('Look at the photo of the weevils project page')).toBe('Look at the photo')
+  })
+})
+
+describe('a repo page groups requests under their sessions', () => {
+  type R = Parameters<typeof groupsOf>[0][number]
+  const r = (id: string, o: Partial<R> = {}): R => ({ id, text: `text ${id}`, quote: '', src: 'j', from: 'user', at: NOW, kind: 'task', status: 'dispatched', dispatches: [], progressAt: NOW, stale: false, ...o } as R)
+  const s = (id: string, lastActivityAt: number, status: 'working' | 'idle' = 'idle') => ({ id, title: `title ${id}`, status, lastActivityAt, projectId: 'p' }) as Parameters<typeof groupsOf>[1][number]
+  it('the most recently active session first; a gone session keeps the title of its label and the time it was sent; never sent last', () => {
+    const asks = [
+      r('a', { dispatches: [{ session: 's1', at: NOW - 50 }] }),
+      r('b', { dispatches: [{ session: 's2', at: NOW - 40 }] }),
+      r('c', { dispatches: [{ session: 'gone', label: 'weevils · claude · Old work', at: NOW - 5 }] }),
+      r('d', { status: 'open' }),
+    ]
+    const g = groupsOf(asks, [s('s1', NOW - 30), s('s2', NOW - 10)])
+    expect(g.map((x) => x.label)).toEqual(['Old work', 'title s2', 'title s1', ''])
+    expect(g.at(-1)!.rows.map((x) => x.a.id)).toEqual(['d'])
+  })
+  it('a request that only switches a model is not product work', () => {
+    expect(isModelSwitch({ title: 'Switch For you session Opus', text: '' })).toBe(true)
+    expect(isModelSwitch({ title: 'Architecture session top model', text: '' })).toBe(true)
+    expect(isModelSwitch({ title: 'Stop Fable overuse', text: '' })).toBe(false)
+    expect(isModelSwitch({ title: 'Install page fix', text: '' })).toBe(false)
   })
 })

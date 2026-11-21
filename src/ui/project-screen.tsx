@@ -1,5 +1,6 @@
-// A project's page (the « > » beside its « / »): its requests, one column (requests.tsx RequestColumn: one band per
-// request, what runs on top, then the newest first, every state), then its sessions. No headings, no counters.
+// A project's page (the « > » beside its « / »): its sessions, each with its requests just under it (requests.tsx
+// RequestGroups): the most recently active session on top, then the others by recency, the requests never sent at
+// the bottom. « needs you » sits on the session. Then the finished sessions that had no request, a few. No counters.
 //
 // The requests come from weevboss's request ledger (GET /api/boss/ledger). A request belongs to a project through the
 // session it was last sent to (that session's project; a session gone from the snapshot is matched by the project
@@ -14,7 +15,7 @@ import M from '../i18n/project-screen'
 import { useApp } from './app-context'
 import { SessionRow } from './bits'
 import { Shell } from './shell'
-import { RequestColumn } from './requests'
+import { groupsOf, isModelSwitch, RequestGroups } from './requests'
 import { TempoIcon } from './tempo'
 import './project-screen.css'
 import { WeevbookLine } from './threads'
@@ -48,32 +49,42 @@ export function useLedger(): { ledger: LedgerView | null; reload: () => void } {
   return { ledger: v, reload: load }
 }
 
-/** A project's requests as the one column, for any page that shows a project (the classic page, next's). */
-export function ProjectRequests({ project, fill }: { project: { id: string; name: string }; fill?: boolean }) {
+/** The open sessions of a project (not archived, not finished): each is a group, with or without requests. */
+export const openSessionsOf = (sessions: Session[], projectId: string) => sessions.filter((s) => !s.archived && s.projectId === projectId && s.status !== 'done')
+
+/**
+ * A project's requests grouped under their sessions, for any page that shows a project (the classic page, next's).
+ * Requests that only switch a model are left out. `withSessions`: open sessions with no request yet get their group
+ * too (the classic page, where this is the list of sessions; next keeps its sessions in the side bar).
+ */
+export function ProjectRequests({ project, fill, withSessions }: { project: { id: string; name: string }; fill?: boolean; withSessions?: boolean }) {
   const { snap } = useApp()
   const { ledger, reload } = useLedger()
-  const asks = useMemo(() => (ledger ? requestsOf(ledger.asks, project, snap.sessions) : []), [ledger, project.id, project.name, snap.sessions])
-  return <RequestColumn asks={asks} onChanged={reload} fill={fill} />
+  const groups = useMemo(() => {
+    const asks = ledger ? requestsOf(ledger.asks, project, snap.sessions).filter((a) => !isModelSwitch(a)) : []
+    return groupsOf(asks, snap.sessions, withSessions ? openSessionsOf(snap.sessions, project.id) : [])
+  }, [ledger, project.id, project.name, snap.sessions, withSessions])
+  return <RequestGroups groups={groups} onChanged={reload} fill={fill} />
 }
 
-/** A project's own page: its requests, then every session, the open ones first, then the finished ones newest first,
- *  a few, the rest one tap away. */
+/** A project's own page: its sessions with their requests, then the finished sessions that had no request, newest
+ *  first, a few, the rest one tap away. */
 export function ProjectPage({ projectId }: { projectId: string }) {
   const t = useT(M)
   const { snap, colors } = useApp()
+  const { ledger } = useLedger()
   const [all, setAll] = useState(false)
   const project = snap.projects.find((p) => p.id === projectId)
-  const sessions = snap.sessions.filter((s) => !s.archived && s.projectId === projectId)
-  const rank = (s: Session) => (s.status === 'working' ? 0 : s.status === 'needs_user' || s.status === 'interrupted' ? 1 : 2)
-  const open = sessions.filter((s) => s.status !== 'done').sort((a, b) => rank(a) - rank(b) || b.openedAt - a.openedAt)
-  const done = sessions.filter((s) => s.status === 'done').sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+  // A finished session that had requests is already a group above; the others are listed once, here.
+  const sent = new Set((ledger?.asks ?? []).map((a) => a.dispatches.at(-1)?.session).filter(Boolean))
+  const done = snap.sessions.filter((s) => !s.archived && s.projectId === projectId && s.status === 'done' && !sent.has(s.id)).sort((a, b) => b.lastActivityAt - a.lastActivityAt)
   const shown = all ? done : done.slice(0, OLDER_AFTER)
   return (
     <Shell slot={colors[projectId] ?? 'agent'} kicker="weevils" title={project?.name ?? '…'} actions={project ? <TempoIcon repo={project.id} /> : undefined}>
       <div className="pj-page">
-        {project && <ProjectRequests project={project} />}
+        {project && <ProjectRequests project={project} withSessions />}
         <div className="pj-sessions">
-          {[...open, ...shown].map((s) => <SessionRow key={s.id} session={s} />)}
+          {shown.map((s) => <SessionRow key={s.id} session={s} />)}
         </div>
         {done.length > shown.length && (
           <div className="in pj-older">

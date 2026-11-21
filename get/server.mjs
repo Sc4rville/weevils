@@ -281,9 +281,18 @@ const PREVIEWERS = [
 export const previewerOf = (ua) => PREVIEWERS.find(([, re]) => re.test(String(ua || '')))?.[0] || ''
 export const BOT = /bot\b|crawl|spider|slurp|headless|lighthouse|preview|fetch|curl|wget|python|node-fetch|go-http/i
 
+function ownSite(base) {
+  try {
+    const labels = new URL(base).hostname.toLowerCase().split('.')
+    return (labels.length > 2 ? labels.slice(1) : labels).join('.')
+  } catch {
+    return ''
+  }
+}
+
 /** Where a visit comes from: the app it was opened in, else the referring site. iMessage and WhatsApp send none: they
  * count as « direct » (their link previews say where the link was pasted). */
-export function sourceOf(ref, ua) {
+export function sourceOf(ref, ua, base = config().base) {
   ua = String(ua || '')
   if (/Twitter for i(Phone|Pad)|TwitterAndroid/.test(ua)) return 'twitter'
   if (/Instagram/.test(ua)) return 'instagram'
@@ -295,7 +304,9 @@ export function sourceOf(ref, ua) {
   } catch {
     /* no referrer */
   }
-  if (!h || /(^|\.)scarville\.tech$/.test(h)) return 'direct'
+  // The page's own site (GET_BASE's host and the names next to it under the same domain) is not a source.
+  const own = ownSite(base)
+  if (!h || (own && (h === own || h.endsWith(`.${own}`)))) return 'direct'
   const sites = [
     ['twitter', /(^|\.)(t\.co|twitter\.com|x\.com)$/], ['whatsapp', /whatsapp/], ['instagram', /(^|\.)instagram\.com$/],
     ['facebook', /(^|\.)(facebook\.com|fb\.com|fb\.me)$/], ['linkedin', /(^|\.)(linkedin\.com|lnkd\.in)$/], ['reddit', /(^|\.)reddit\.com$/],
@@ -442,7 +453,7 @@ export function createStats(cfg, { onInstalled, onDay } = {}) {
         cur.visits++
         const h = crypto.createHash('sha256').update(salt).update(String(ip)).update('\0').update(String(ua || '')).digest('base64url').slice(0, 16)
         if (!seen.has(h) && seen.size < 200_000) seen.add(h), cur.visitors++
-        bump(cur.sources, sourceOf(ref, ua))
+        bump(cur.sources, sourceOf(ref, ua, cfg.base))
         bump(cur.devices, deviceOf(ua, touch))
         bump(cur.countries, countryOf(tz))
       })

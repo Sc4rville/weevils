@@ -1,5 +1,4 @@
 import type { Software } from '../shared/softwares.ts'
-import reviewedIntents from './foryou-intents-reviewed.json' with { type: 'json' }
 import { feedNoticeKey } from '../shared/notices.ts'
 // The « for you » stream: the store (cap, age, one item per session, what never enters), mail privacy, posts and their
 // buttons, replies, media, live alerts and proposals, seen / dismissed across a restart, the order (arrange) and who
@@ -43,8 +42,8 @@ const MIN = 60_000
 const HOUR = 3600_000
 
 const session = (over: Partial<Session> = {}): Session =>
-  ({ id: 's1', projectId: 'mygame', repo: 'mygame', machineId: 'test', tool: 'claude', title: 'Jump physics', status: 'idle', cwd: '/home/u/projects/mygame', lastActivityAt: T0, origin: 'weevils', controllable: true, live: true, hasScreen: true, messageCount: 4, lastMessage: 'short tail', ...over }) as Session
-const optimizer = (over: Partial<Optimizer> = {}): Optimizer => ({ id: 'o1', title: 'Harden the tests', why: 'you want to ship mygame', repo: 'mygame', kind: 'tests', heavy: false, state: 'proposed', createdAt: T0, ...over })
+  ({ id: 's1', projectId: 'myshop', repo: 'myshop', machineId: 'test', tool: 'claude', title: 'Jump physics', status: 'idle', cwd: '/home/u/projects/myshop', lastActivityAt: T0, origin: 'weevils', controllable: true, live: true, hasScreen: true, messageCount: 4, lastMessage: 'short tail', ...over }) as Session
+const optimizer = (over: Partial<Optimizer> = {}): Optimizer => ({ id: 'o1', title: 'Harden the tests', why: 'you want to ship myshop', repo: 'myshop', kind: 'tests', heavy: false, state: 'proposed', createdAt: T0, ...over })
 const says = (text: string, role: Message['role'] = 'assistant'): Message => ({ id: `m${Math.random()}`, role, text, at: T0 })
 
 let dir: string
@@ -68,6 +67,16 @@ let host: ReturnType<typeof newHost>
 let later: (() => void)[]
 /** A shelf that knows the files it is told about (the real one is tested in foryou-media.test.ts). */
 let shelf: NonNullable<ForYouDeps['shelf']> & { known: Set<string>; served: string[] }
+
+// What a person reviewed for their own feed lives in their data (<foryou.json>.reviewed.json): neutral examples here,
+// five proposals of which two are covered by the same request.
+const reviewedIntents = [
+  ['i:11111111aaaa', 'Prepare a first notes canvas beside the feed, with discreet cards for free text and images. Preserve their positions between visits.', 's-canvas', 'msg_canvas', 'notes-canvas'],
+  ['i:22222222bbbb', 'Prepare the preview feedback flow with the standard chat composer. Route messages to the session of the current preview.', 's-preview', 'msg_preview', 'preview-feedback'],
+  ['i:33333333cccc', 'Prepare project-based colours for the feed cards in each existing theme, keeping the header unchanged.', 's-colours', 'msg_colours', 'project-colours'],
+  ['i:44444444dddd', 'Prepare a dedicated workspace on the first automation request, with a separate versioned project for each automation.', 's-workspace', 'msg_workspace', 'automation-workspace'],
+  ['d:55555555', 'Implement the proposed automation workspace: create it automatically on the first request and preserve existing history.', 's-workspace', 'msg_workspace', 'automation-workspace'],
+].map(([cardId, brief, sessionId, messageId, slug]) => ({ cardId, actionId: 'a1', brief, sessionId, messageId, intentId: `request:${sessionId}:${messageId}:${slug}` }))
 
 const make = (deps: ForYouDeps = {}) =>
   new ForYou(host, { file: path.join(dir, 'foryou.json'), now: () => now, dataDir: '/home/u/.local/share/weevils', machineId: 'test', shelf, later: (fn) => void later.push(fn), extras: true, ...deps })
@@ -154,7 +163,7 @@ describe('session results', () => {
     fy.sessionTurn(s, 'result')
     await flush()
     expect(fy.feed().items).toEqual([
-      { id: 's:s1', kind: 'session', tone: 'result', at: T0, who: 'session', projectId: 'mygame', sessionId: 's1', tool: 'claude', title: 'Jump physics', text: 'The jump now feels right.', reply: 'session', open: { page: 'session', id: 's1' } },
+      { id: 's:s1', kind: 'session', tone: 'result', at: T0, who: 'session', projectId: 'myshop', sessionId: 's1', tool: 'claude', title: 'Jump physics', text: 'The jump now feels right.', reply: 'session', open: { page: 'session', id: 's1' } },
     ])
     fy.seen(['s:s1'])
     expect(find(fy, 's:s1')?.seen).toBe(true)
@@ -208,7 +217,7 @@ describe('session results', () => {
 
   it('attaches the files the last message cites (at most 4, this machine only)', async () => {
     const fy = make()
-    for (const f of ['a.png', 'b.png', 'c.mp4', 'd.png', 'e.png']) shelf.known.add(`/home/u/projects/mygame/out/${f}`)
+    for (const f of ['a.png', 'b.png', 'c.mp4', 'd.png', 'e.png']) shelf.known.add(`/home/u/projects/myshop/out/${f}`)
     threads.s1 = [says('Rendered out/a.png out/b.png out/c.mp4 out/d.png out/e.png and out/missing.png')]
     fy.sessionTurn(session(), 'result')
     await flush()
@@ -222,12 +231,12 @@ describe('session results', () => {
 
   it('the paths of the files shown under the words leave the words, with the « : » that announced them', async () => {
     const fy = make()
-    for (const f of ['menu.png', 'clip.mp4']) shelf.known.add(`/home/u/projects/mygame/out/${f}`)
+    for (const f of ['menu.png', 'clip.mp4']) shelf.known.add(`/home/u/projects/myshop/out/${f}`)
     threads.s1 = [says('The menu is in, here are the renders:\n- out/menu.png\n- out/clip.mp4\n\nTests are green.')]
     fy.sessionTurn(session(), 'result')
     await flush()
     expect(find(fy, 's:s1')).toMatchObject({ text: 'The menu is in, here are the renders.', body: 'The menu is in, here are the renders. Tests are green.', media: [{ name: 'menu.png' }, { name: 'clip.mp4' }] })
-    threads.s1 = [says('Rendu du menu : /home/u/projects/mygame/out/menu.png')]
+    threads.s1 = [says('Rendu du menu : /home/u/projects/myshop/out/menu.png')]
     fy.sessionTurn(session(), 'result')
     await flush()
     expect(find(fy, 's:s1')?.text).toBe('Rendu du menu.')
@@ -255,7 +264,7 @@ describe('session results', () => {
     await flush()
     expect(find(fy, 's:s1')?.title).toBe('Fix the menu')
     expect(JSON.parse(fs.readFileSync(fy.file, 'utf8')).items[0].title).toBe('Fix the menu')
-    snap.sessions = [session({ title: '[from:gepetto]   Menu, second pass', status: 'needs_user', attention: 'Which font?' })]
+    snap.sessions = [session({ title: '[from:marlow]   Menu, second pass', status: 'needs_user', attention: 'Which font?' })]
     fy.sessionTurn(snap.sessions[0], 'question')
     expect(find(fy, 's:s1')).toMatchObject({ tone: 'question', title: 'Menu, second pass' })
     expect(cleanTitle('[weevils] Old prefix')).toBe('Old prefix')
@@ -265,13 +274,13 @@ describe('session results', () => {
 
   it('counts the turns delivered today, in all and per project, without counting as a look', async () => {
     const fy = make()
-    for (const [id, projectId] of [['a', 'mygame'], ['b', 'mygame'], ['c', 'site']]) {
+    for (const [id, projectId] of [['a', 'myshop'], ['b', 'myshop'], ['c', 'site']]) {
       threads[id] = [says(`done ${id}`)]
       fy.sessionTurn(session({ id, projectId }), 'result')
       await flush()
     }
-    expect(fy.deliveredToday()).toEqual({ n: 3, by: { mygame: 2, site: 1 } })
-    expect(make().deliveredToday()).toEqual({ n: 3, by: { mygame: 2, site: 1 } })
+    expect(fy.deliveredToday()).toEqual({ n: 3, by: { myshop: 2, site: 1 } })
+    expect(make().deliveredToday()).toEqual({ n: 3, by: { myshop: 2, site: 1 } })
     expect(fy.wanted()).toBe(false)
     now += 24 * HOUR
     expect(fy.deliveredToday()).toEqual({ n: 0, by: {} })
@@ -307,7 +316,7 @@ describe('session results', () => {
     await flush()
     expect(fy.feed()).toMatchObject({ items: [], pulse: { waiting: 0 } })
     // A background task of the auto band is a session like another.
-    const auto = session({ id: 'a1', cwd: '/home/u/projects/.auto/mygame/abc' })
+    const auto = session({ id: 'a1', cwd: '/home/u/projects/.auto/myshop/abc' })
     threads.a1 = [says('Tests hardened.')]
     fy.sessionTurn(auto, 'result')
     await flush()
@@ -446,7 +455,7 @@ describe('result titles', () => {
   it('recent cards stored without a title, seen or not, are titled once in the background', async () => {
     const title = vi.fn(async (_p: string) => 'I finished the twenty-two still views of the world, the moving ones wait for a GPU.')
     fs.writeFileSync(path.join(dir, 'foryou.json'), JSON.stringify({ rev: 1, items: [
-      { id: 's:old', kind: 'session', tone: 'result', who: 'session', text: 'For TLO', body: 'For TLO: the full version is not operational yet. The 22 fixed views are ready.', at: now - 60_000, seen: true, sum: {} },
+      { id: 's:old', kind: 'session', tone: 'result', who: 'session', text: 'For TUX', body: 'For TUX: the full version is not operational yet. The 22 fixed views are ready.', at: now - 60_000, seen: true, sum: {} },
       { id: 's:ancient', kind: 'session', tone: 'result', who: 'session', text: 'Paused', body: 'Paused: everything is stopped until the go-ahead.', at: now - 30 * 86_400_000, seen: true },
     ] }))
     const fy = make({ title })
@@ -459,7 +468,7 @@ describe('result titles', () => {
   it('the background sweep never asks again before a failed try has waited its delay', async () => {
     const title = vi.fn(async (_p: string) => 'I finished the twenty-two still views of the world, the moving ones wait for a GPU.')
     fs.writeFileSync(path.join(dir, 'foryou.json'), JSON.stringify({ rev: 1, items: [
-      { id: 's:old', kind: 'session', tone: 'result', who: 'session', text: 'For TLO', body: 'For TLO: the full version is not operational yet. The 22 fixed views are ready.', at: now - 60_000, sum: { tries: 1, at: now - 60_000 } },
+      { id: 's:old', kind: 'session', tone: 'result', who: 'session', text: 'For TUX', body: 'For TUX: the full version is not operational yet. The 22 fixed views are ready.', at: now - 60_000, sum: { tries: 1, at: now - 60_000 } },
     ] }))
     const fy = make({ title })
     fy.titleRecentResults(2)
@@ -558,13 +567,13 @@ describe('sessions that wait or were cut', () => {
 // ---------------------------------------------------------------- mail
 
 describe('mail', () => {
-  const mail = { author: 'gepetto', subject: 'menu  done', text: 'Hi,\n\n> you asked for the menu\nThe menu is in, with the three buttons.\nMore below.\n', target: 'weevboss', mid: '<m1@example.com>', address: 'gepetto@example.com' }
+  const mail = { author: 'marlow', subject: 'menu  done', text: 'Hi,\n\n> you asked for the menu\nThe menu is in, with the three buttons.\nMore below.\n', target: 'weevboss', mid: '<m1@example.com>', address: 'marlow@example.com' }
 
   it('records who, the subject, the first line that says something and the whole text', () => {
     const fy = make()
     fy.mail(mail)
     const [item] = fy.feed().items
-    expect(item).toMatchObject({ kind: 'mail', tone: 'neutral', who: 'gepetto', title: 'menu done', text: 'The menu is in, with the three buttons.', body: mail.text.trim(), open: { page: 'boss' } })
+    expect(item).toMatchObject({ kind: 'mail', tone: 'neutral', who: 'marlow', title: 'menu done', text: 'The menu is in, with the three buttons.', body: mail.text.trim(), open: { page: 'boss' } })
     expect(firstLine('Bonjour Alex,\n\n' + 'a'.repeat(300))).toHaveLength(140)
     // The user's own mail (no author) is not news to them.
     fy.mail({ ...mail, author: '', mid: '<own@x>' })
@@ -572,16 +581,16 @@ describe('mail', () => {
     // Once the session exists, the same mail points at it.
     snap.sessions = [session()]
     fy.mail({ ...mail, target: 's1' })
-    expect(fy.feed().items).toMatchObject([{ id: item.id, open: { page: 'session', id: 's1' }, sessionId: 's1', projectId: 'mygame' }])
+    expect(fy.feed().items).toMatchObject([{ id: item.id, open: { page: 'session', id: 's1' }, sessionId: 's1', projectId: 'myshop' }])
   })
 
   it('the sender address stays on the server: in the file, never in what the app reads', () => {
     const write = vi.fn(async () => true)
     const fy = make({ mail: () => ({ write }) })
     fy.mail(mail)
-    expect(fs.readFileSync(fy.file, 'utf8')).toContain('gepetto@example.com')
+    expect(fs.readFileSync(fy.file, 'utf8')).toContain('marlow@example.com')
     const read = JSON.stringify([fy.feed(), fy.feed(now, 'fr'), fy.recent(['mail']), fy.mark(snap)])
-    expect(read).not.toContain('gepetto@example.com')
+    expect(read).not.toContain('marlow@example.com')
     expect(read).not.toContain('<m1@example.com>')
     expect(read).not.toContain('"mail":{')
   })
@@ -592,8 +601,8 @@ describe('mail', () => {
     fy.mail({ ...mail, mid: '<m2@example.com>', text: 'One line only.' })
     const [raw] = fy.rawMails()
     expect(fy.rawMails()).toHaveLength(1)
-    expect(raw).toEqual({ id: raw.id, who: 'gepetto', subject: 'menu done', text: mail.text.trim() })
-    expect(JSON.stringify(raw)).not.toContain('gepetto@example.com')
+    expect(raw).toEqual({ id: raw.id, who: 'marlow', subject: 'menu done', text: mail.text.trim() })
+    expect(JSON.stringify(raw)).not.toContain('marlow@example.com')
     fy.mailLine(raw.id, '  the menu is in,   three buttons ', 'en')
     expect(find(fy, raw.id)).toMatchObject({ text: 'the menu is in, three buttons', body: mail.text.trim() })
     expect(fy.feed(now, 'fr').items.find((i) => i.id === raw.id)?.text).toBe('the menu is in, three buttons')
@@ -620,7 +629,7 @@ describe('mail', () => {
     out = { write }
     expect(fy.feed().items[0].reply).toBe('mail')
     await fy.reply(id, ' thanks ')
-    expect(write).toHaveBeenCalledWith({ to: 'gepetto@example.com', subject: 'menu  done', text: 'thanks', inReplyTo: '<m1@example.com>', author: 'gepetto', target: 'weevboss' })
+    expect(write).toHaveBeenCalledWith({ to: 'marlow@example.com', subject: 'menu  done', text: 'thanks', inReplyTo: '<m1@example.com>', author: 'marlow', target: 'weevboss' })
     expect(host.sendMain).not.toHaveBeenCalled()
     write.mockResolvedValueOnce(false)
     await expect(fy.reply(id, 'again')).rejects.toThrow(M.en.noReply)
@@ -632,12 +641,13 @@ describe('mail', () => {
 describe('posts', () => {
   it('a post: weevboss by default, capped, two buttons at most, their briefs never sent to the app', () => {
     const fy = make()
-    const item = fy.post(`  ${'w'.repeat(1500)}  `, [{ label: 'Ship it', brief: 'merge and deploy' }, { label: 'x', brief: '' }, { label: 'B', brief: 'b' }, { label: 'C', brief: 'c' }, { label: 'D', brief: 'd' }])
-    expect(item).toMatchObject({ kind: 'boss', who: 'weevboss', reply: 'boss', open: { page: 'boss' }, actions: [{ id: 'a1', label: 'Ship it' }, { id: 'a2', label: 'B' }] })
+    const item = fy.post(`  ${'w'.repeat(1500)}  `, [{ label: 'Ship it', brief: 'merge and deploy. Then run the release script in ~/x and tell the user' }, { label: 'x', brief: '' }, { label: 'B', brief: 'b' }, { label: 'C', brief: 'c' }, { label: 'D', brief: 'd' }])
+    // A shorthand label is said with its brief's first plain sentence; the rest of the brief stays on the server.
+    expect(item).toMatchObject({ kind: 'boss', who: 'weevboss', reply: 'boss', open: { page: 'boss' }, actions: [{ id: 'a1', label: 'Merge and deploy' }, { id: 'a2', label: 'B' }] })
     expect(item.actions).toHaveLength(2)
     expect(item.text).toHaveLength(1200)
-    expect(JSON.stringify(fy.feed())).not.toContain('merge and deploy')
-    expect(fy.post('from a friend', undefined, 'gepetto').who).toBe('gepetto')
+    expect(JSON.stringify(fy.feed())).not.toContain('release script')
+    expect(fy.post('from a friend', undefined, 'marlow').who).toBe('marlow')
     expect(() => fy.post('   ')).toThrow(M.en.emptyText)
   })
 
@@ -726,18 +736,27 @@ describe('posts', () => {
     expect(find(fy, 's:s1')?.reply).toBe('session')
   })
 
-  it('a reply under a session item goes to that session, as the user', async () => {
+  it('a word written under a session result goes to weevboss, the post as its context', async () => {
     const fy = make()
     threads.s1 = [says('Done.')]
     fy.sessionTurn(session(), 'result')
     await flush()
     await fy.reply('s:s1', 'and the tests?', undefined, 'user')
-    expect(host.send).toHaveBeenCalledWith('s1', 'and the tests?', undefined, undefined, 'user')
+    expect(host.send).not.toHaveBeenCalled()
+    expect(host.sendMain).toHaveBeenCalledWith('and the tests?', expect.stringContaining('Done.'))
+  })
+
+  it('a shorthand button is said in plain words; a label that already says it stays', async () => {
+    const { humanLabel } = await import('./foryou.ts')
+    expect(humanLabel('Fix stop check', 'Walk through the new first launch myself and fix what breaks. Report back.')).toBe('Walk through the new first launch myself and fix what breaks')
+    expect(humanLabel('Keep all six commands allowed', 'apply the allow-list')).toBe('Keep all six commands allowed')
+    // Nothing technical leaks from a brief: the shorthand stays rather than a path or an id.
+    expect(humanLabel('Fix it', 'run ~/x/fix.sh on 4b5cf1d6 now')).toBe('Fix it')
   })
 
   it('the seam for generated items: language kept, visible in every language, « more » waits for the curator', async () => {
     const fy = make()
-    const item = fy.add({ kind: 'insight', projectId: 'mygame', text: 'Vite pré-bundle les dépendances.', more: true, lang: 'fr' })!
+    const item = fy.add({ kind: 'insight', projectId: 'myshop', text: 'Vite pré-bundle les dépendances.', more: true, lang: 'fr' })!
     expect(fy.feed().items).toMatchObject([{ id: item.id, localization: { status: 'pending', target: 'en' } }])
     expect(fy.mark(snap).unseen).toBe(1)
     expect(fy.feed(now, 'fr').items).toMatchObject([{ id: item.id, kind: 'insight', more: true }])
@@ -772,20 +791,20 @@ describe('media', () => {
   it('« weevils show »: the item finds its session by folder; files shown within two minutes join it', () => {
     const fy = make()
     snap.sessions = [session({ id: 'old', lastActivityAt: T0 - HOUR }), session({ lastActivityAt: T0 }), session({ id: 'other', cwd: '/home/u/projects/site' })]
-    for (const f of ['a.png', 'b.mp4', 'c.png']) shelf.known.add(`/home/u/projects/mygame/out/${f}`)
-    const a = fy.addMedia({ path: 'a.png', caption: 'The new menu', cwd: '/home/u/projects/mygame/out' })
-    expect(a).toMatchObject({ kind: 'media', tone: 'result', who: 'session', sessionId: 's1', projectId: 'mygame', title: 'The new menu', reply: 'session', open: { page: 'session', id: 's1' } })
+    for (const f of ['a.png', 'b.mp4', 'c.png']) shelf.known.add(`/home/u/projects/myshop/out/${f}`)
+    const a = fy.addMedia({ path: 'a.png', caption: 'The new menu', cwd: '/home/u/projects/myshop/out' })
+    expect(a).toMatchObject({ kind: 'media', tone: 'result', who: 'session', sessionId: 's1', projectId: 'myshop', title: 'The new menu', reply: 'session', open: { page: 'session', id: 's1' } })
     expect(a.media).toHaveLength(1)
     fy.seen([a.id])
     now = T0 + MIN
-    const b = fy.addMedia({ path: 'b.mp4', cwd: '/home/u/projects/mygame/out' })
+    const b = fy.addMedia({ path: 'b.mp4', cwd: '/home/u/projects/myshop/out' })
     expect(b.id).toBe(a.id)
     expect(b.media?.map((m) => m.type)).toEqual(['image', 'video'])
     expect(b).toMatchObject({ title: 'The new menu', at: T0 + MIN })
     expect(b.seen).toBeUndefined()
     now = T0 + MIN + MEDIA_JOIN_MS + 1
-    expect(fy.addMedia({ path: 'c.png', cwd: '/home/u/projects/mygame/out' }).id).not.toBe(a.id)
-    expect(() => fy.addMedia({ path: 'nope.png', cwd: '/home/u/projects/mygame' })).toThrow('not a file weevils can show')
+    expect(fy.addMedia({ path: 'c.png', cwd: '/home/u/projects/myshop/out' }).id).not.toBe(a.id)
+    expect(() => fy.addMedia({ path: 'nope.png', cwd: '/home/u/projects/myshop' })).toThrow('not a file weevils can show')
   })
 
   it('one item holds six files at most; no session: weevboss from its folder, else weevils', () => {
@@ -1141,9 +1160,9 @@ describe('routes', () => {
 
   it('post and media: from this machine only, whatever « from » the request claims', async () => {
     const fy = make()
-    shelf.known.add('/home/u/projects/mygame/a.png')
+    shelf.known.add('/home/u/projects/myshop/a.png')
     expect(await call(fy, 'POST', '/api/foryou/post', { text: 'hi', from: 'weevboss' })).toEqual({ status: 403, body: { error: M.en.localOnly } })
-    expect(await call(fy, 'POST', '/api/foryou/media', { path: '/home/u/projects/mygame/a.png' })).toEqual({ status: 403, body: { error: M.en.localOnly } })
+    expect(await call(fy, 'POST', '/api/foryou/media', { path: '/home/u/projects/myshop/a.png' })).toEqual({ status: 403, body: { error: M.en.localOnly } })
     // A page of another local server (another port) is not this machine's CLI either.
     const page = { socket: { remoteAddress: '127.0.0.1' }, headers: { host: '127.0.0.1:4179', origin: 'http://127.0.0.1:4173' } }
     expect((await call(fy, 'POST', '/api/foryou/post', { text: 'hi' }, page)).status).toBe(403)
@@ -1151,7 +1170,7 @@ describe('routes', () => {
     const posted = await call(fy, 'POST', '/api/foryou/post', { text: 'hi', actions: [{ label: 'Go', brief: 'do it' }], from: 'weevils' }, local)
     expect(posted).toMatchObject({ status: 200, body: { item: { kind: 'boss', who: 'weevboss', text: 'hi', actions: [{ id: 'a1', label: 'Go' }] } } })
     expect(await call(fy, 'POST', '/api/foryou/post', { text: '' }, local)).toEqual({ status: 400, body: { error: M.en.emptyText } })
-    expect(await call(fy, 'POST', '/api/foryou/media', { path: '/home/u/projects/mygame/a.png', caption: 'menu', cwd: '/home/u/projects/mygame' }, local)).toMatchObject({ status: 200, body: { item: { kind: 'media', title: 'menu' } } })
+    expect(await call(fy, 'POST', '/api/foryou/media', { path: '/home/u/projects/myshop/a.png', caption: 'menu', cwd: '/home/u/projects/myshop' }, local)).toMatchObject({ status: 200, body: { item: { kind: 'media', title: 'menu' } } })
     expect(await call(fy, 'POST', '/api/foryou/media', { path: '/etc/passwd' }, local)).toMatchObject({ status: 400 })
   })
 
@@ -1258,7 +1277,7 @@ describe('wired into core', async () => {
     w.bump()
     await settle()
     expect(fy.feed().items).toMatchObject([{ id: 's:s1', tone: 'alert', text: 'Ouch, I got cut off mid-work (unexpected stop). Want me to pick it back up?', actions: [{ id: 'resume', label: 'Resume' }] }])
-    w.mailed({ author: 'gepetto', subject: 'done', text: 'The page is built.', target: 'weevboss', mid: '<m@x>', address: 'g@example.com' })
+    w.mailed({ author: 'marlow', subject: 'done', text: 'The page is built.', target: 'weevboss', mid: '<m@x>', address: 'g@example.com' })
     expect(fy.feed().items.map((i) => i.kind).sort()).toEqual(['mail', 'session'])
     expect(JSON.stringify(fy.feed())).not.toContain('g@example.com')
   })
@@ -1291,7 +1310,7 @@ describe('question option routing', () => {
 describe('retired technical events', () => {
   it('cleans persisted commit/build cards and rejects their recreation across restarts', () => {
     const file = path.join(dir, 'foryou.json')
-    const old = ['commit:mygame:abc', 'deploy:abc'].map((id) => ({ id, kind: 'boss', who: 'weevils', text: 'raw engineering log', at: now }))
+    const old = ['commit:myshop:abc', 'deploy:abc'].map((id) => ({ id, kind: 'boss', who: 'weevils', text: 'raw engineering log', at: now }))
     fs.writeFileSync(file, JSON.stringify({ rev: 3, items: [...old, { id: 'd:useful', kind: 'boss', who: 'weevboss', text: 'Your application is ready to use.', at: now }] }))
     const fy = make({ voiceOf: () => 'default' })
     expect(ids(fy)).toContain('d:useful')
@@ -1606,6 +1625,7 @@ it('resolves the five reviewed historical proposals to four precise requested ta
   const items = reviewedIntents.map((link,n) => ({id:link.cardId,kind:'improve',tone:'magic',who:'weevils',text:'Prepare the requested work for this existing project.',at:now-n,seen:true,lang:'en',actions:[{id:link.actionId,label:'Prepare',brief:link.brief}]}))
   snap.sessions = [...new Set(reviewedIntents.map(l => l.sessionId))].map(id => session({id,status:'done'}))
   fs.writeFileSync(path.join(dir,'foryou.json'),JSON.stringify({items,rev:1}))
+  fs.writeFileSync(path.join(dir,'foryou.json.reviewed.json'),JSON.stringify({intents:reviewedIntents}))
   const fy=make()
   for(const locale of ['en','fr','en']){
     const result=fy.feed(now,locale).items
@@ -1699,9 +1719,9 @@ describe('the user’s own ideas are never offered back as weevils’', () => {
   })
 
   it('what the user just told weevboss counts too', () => {
-    transcripts.set('boss', { messages: [{ id: 'u1', role: 'user', text: 'I want a weekly digest of the TLO renders sent every Sunday morning.', at: now - HOUR }] } as never)
+    transcripts.set('boss', { messages: [{ id: 'u1', role: 'user', text: 'I want a weekly digest of the TUX renders sent every Sunday morning.', at: now - HOUR }] } as never)
     const fy = make({ said: () => [] })
-    expect(fy.add({ kind: 'improve', title: 'Sunday TLO digest', text: 'A weekly digest of the TLO renders every Sunday morning would keep you posted.' })).toBeNull()
+    expect(fy.add({ kind: 'improve', title: 'Sunday TUX digest', text: 'A weekly digest of the TUX renders every Sunday morning would keep you posted.' })).toBeNull()
   })
 
   it('cards already published are taken out of the stream, unless the user already acted on them', () => {
@@ -1731,7 +1751,7 @@ describe('the user’s own ideas are never offered back as weevils’', () => {
   })
 
   it('an auto task that carries out the user’s own idea says so, a parroting why is dropped', () => {
-    snap.optimizers = [optimizer({ id: 'pin', title: 'Pin weevils project on main', why: 'you want the weevils project first' }), optimizer({ id: 'tests', title: 'Harden the save tests', why: 'You want to ship mygame this year.' })]
+    snap.optimizers = [optimizer({ id: 'pin', title: 'Pin weevils project on main', why: 'you want the weevils project first' }), optimizer({ id: 'tests', title: 'Harden the save tests', why: 'You want to ship myshop this year.' })]
     const fy = make({ said: () => memory })
     const cards = find(fy, 'proposals')?.cards ?? []
     expect(cards.find((c) => c.id === 'o:pin')).toMatchObject({ why: 'Your idea, ready to run.', own: true })

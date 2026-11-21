@@ -27,7 +27,7 @@ const T0 = new Date('2026-11-10T09:00:00Z').getTime()
 const MIN = 60_000
 
 const session = (over: Partial<Session>): Session =>
-  ({ id: 'x', projectId: 'mygame', repo: 'mygame', machineId: 'test', tool: 'claude', title: 't', status: 'idle', lastActivityAt: T0, messageCount: 6, live: true, ...over }) as Session
+  ({ id: 'x', projectId: 'myshop', repo: 'myshop', machineId: 'test', tool: 'claude', title: 't', status: 'idle', lastActivityAt: T0, messageCount: 6, live: true, ...over }) as Session
 
 let dir: string
 let memory: Memory
@@ -46,7 +46,7 @@ let key: ReturnType<typeof vi.fn>
 let command: ReturnType<typeof vi.fn>
 const make = (extra: Record<string, unknown> = {}) =>
   new Optimizers(
-    { snapshot: () => snap, allRepos: () => ['mygame', 'mygame-site', 'notes'], repoDir: (r: string) => path.join(dir, 'p', r), createIn, bump, store, hooks, detail, send, key, command, ...extra } as never,
+    { snapshot: () => snap, allRepos: () => ['myshop', 'myshop-site', 'notes'], repoDir: (r: string) => path.join(dir, 'p', r), createIn, bump, store, hooks, detail, send, key, command, ...extra } as never,
     memory,
     { file: path.join(dir, 'optimizers.json'), dir: path.join(dir, 'optimizers'), sys },
   )
@@ -54,9 +54,9 @@ const flush = () => new Promise((r) => setTimeout(r, 0))
 const props = (n = 3) =>
   JSON.stringify(
     [
-      { title: 'Harden mygame tests', why: 'you want to ship mygame', repo: 'mygame', kind: 'tests', heavy: true, priority: 1, est: 40, prompt: 'Add tests for the jump physics of mygame, stop at one hour.' },
+      { title: 'Harden myshop tests', why: 'you want to ship myshop', repo: 'myshop', kind: 'tests', heavy: true, priority: 1, est: 40, prompt: 'Add tests for the jump physics of myshop, stop at one hour.' },
       { title: 'Watch indie game fairs', why: 'you want to show the game', repo: null, kind: 'watch', heavy: false, priority: 2, est: 20, prompt: 'Find the indie game fairs of the next six months and list them.' },
-      { title: 'Draft the landing page', why: 'mygame-site is empty', repo: 'mygame-site', kind: 'content', heavy: false, priority: 3, est: 30, prompt: 'Draft a landing page text for mygame in the repo mygame-site.' },
+      { title: 'Draft the landing page', why: 'myshop-site is empty', repo: 'myshop-site', kind: 'content', heavy: false, priority: 3, est: 30, prompt: 'Draft a landing page text for myshop in the repo myshop-site.' },
     ].slice(0, n),
   )
 
@@ -65,7 +65,7 @@ beforeEach(() => {
   vi.setSystemTime(T0)
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'optimizers-'))
   memory = new Memory(path.join(dir, 'memory.json'))
-  snap = { projects: [{ id: 'mygame', name: 'mygame', kind: 'repo', repos: ['mygame', 'mygame-site'], where: {}, lastActivityAt: T0 }], sessions: [], mainWorking: false } as unknown as Snapshot
+  snap = { projects: [{ id: 'myshop', name: 'myshop', kind: 'repo', repos: ['myshop', 'myshop-site'], where: {}, lastActivityAt: T0 }], sessions: [], mainWorking: false } as unknown as Snapshot
   sys = { load: () => 0.2, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true, worktree: vi.fn(async (_repo: string, d: string) => void fs.mkdirSync(d, { recursive: true })), jail: vi.fn(async () => true), head: vi.fn(async () => undefined), base: vi.fn(async () => undefined), refresh: vi.fn(async () => 'kept' as const), push: vi.fn(async () => false) }
   store = new Map()
   hooks = new Map()
@@ -89,29 +89,29 @@ describe('auto — proposals from the model', () => {
   it('keeps a real repo, drops an unknown one, clamps numbers, at most max', () => {
     const raw = [
       { title: 'A', prompt: 'too short title is dropped because it has one letter' },
-      { title: 'Fix tests', repo: 'MyGame', kind: 'tests', priority: 9, est: 900, prompt: 'Fix the failing tests of mygame, one hour max.' },
+      { title: 'Fix tests', repo: 'MyShop', kind: 'tests', priority: 9, est: 900, prompt: 'Fix the failing tests of myshop, one hour max.' },
       { title: 'Ghost repo task', repo: 'not-here', kind: 'weird', prompt: 'Something grounded in a repo that does not exist.' },
-      { title: 'No brief', repo: 'mygame' },
+      { title: 'No brief', repo: 'myshop' },
       { title: 'Fourth one ok', prompt: 'A valid fourth one that should be cut by max.' },
     ]
-    const out = parseProposals(raw, ['mygame', 'notes'], [], 2)
+    const out = parseProposals(raw, ['myshop', 'notes'], [], 2)
     expect(out).toHaveLength(2)
-    expect(out[0]).toMatchObject({ title: 'Fix tests', repo: 'mygame', kind: 'tests', priority: 3, est: 120, heavy: false })
+    expect(out[0]).toMatchObject({ title: 'Fix tests', repo: 'myshop', kind: 'tests', priority: 3, est: 120, heavy: false })
     expect(out[1]).toMatchObject({ title: 'Ghost repo task', repo: null, kind: 'other', priority: 2, est: 30 })
-    expect(parseProposals({ tasks: raw }, ['mygame'], [], 3)).toHaveLength(3)
+    expect(parseProposals({ tasks: raw }, ['myshop'], [], 3)).toHaveLength(3)
     expect(parseProposals('nope', [], [])).toEqual([])
   })
 
   it('never proposes again what was already proposed, refused or done (nor a near copy)', () => {
-    const known = [{ title: 'Harden the mygame tests' }]
-    expect(isRepeat('harden mygame tests!', known)).toBe(true)
+    const known = [{ title: 'Harden the myshop tests' }]
+    expect(isRepeat('harden myshop tests!', known)).toBe(true)
     expect(isRepeat('Watch indie game fairs', known)).toBe(false)
-    const out = parseProposals(JSON.parse(props()), ['mygame', 'mygame-site'], known)
+    const out = parseProposals(JSON.parse(props()), ['myshop', 'myshop-site'], known)
     expect(out.map((p) => p.title)).toEqual(['Watch indie game fairs', 'Draft the landing page'])
   })
 
   it('slugs a title for a branch name', () => {
-    expect(slug('Préparer la page « mygame » !')).toBe('preparer-la-page-mygame')
+    expect(slug('Préparer la page « myshop » !')).toBe('preparer-la-page-myshop')
     expect(slug('!!!')).toBe('task')
   })
 })
@@ -126,16 +126,16 @@ describe('auto — rounds', () => {
   })
 
   it('a round adds up to 3 proposals, then waits while 3 are unanswered; the prompt carries memory, projects and repos', async () => {
-    memory.add('wants to ship mygame this year')
+    memory.add('wants to ship myshop this year')
     const o = make()
     model.mockResolvedValue(props())
     await o.round(T0)
     const p = model.mock.calls[0][0]
-    expect(p).toContain('wants to ship mygame this year')
-    expect(p).toContain('mygame-site')
+    expect(p).toContain('wants to ship myshop this year')
+    expect(p).toContain('myshop-site')
     expect(p).toContain('Propose at most 3 tasks')
     expect(o.list().map((x) => x.state)).toEqual(['proposed', 'proposed', 'proposed'])
-    expect(o.list()[0]).toMatchObject({ title: 'Harden mygame tests', priority: 1, est: 40, heavy: true })
+    expect(o.list()[0]).toMatchObject({ title: 'Harden myshop tests', priority: 1, est: 40, heavy: true })
     expect(o.list()[0]).not.toHaveProperty('prompt')
     expect(o.roundDue(T0 + ROUND_EVERY_MS)).toBe(false)
     expect(bump).toHaveBeenCalled()
@@ -161,7 +161,7 @@ describe('auto — rounds', () => {
     // Nothing new: nothing before the 6 h.
     expect(o.roundDue(T0 + 2 * 3600_000)).toBe(false)
     vi.setSystemTime(T0 + 5 * MIN)
-    memory.add('wants to ship mygame this year')
+    memory.add('wants to ship myshop this year')
     expect(o.roundDue(T0 + 6 * MIN)).toBe(false)
     expect(o.roundDue(T0 + 7 * MIN)).toBe(true)
     // Kept across a restart.
@@ -181,15 +181,15 @@ describe('auto — rounds', () => {
   })
 
   it('titles and why lines are tidy and talk to the user', async () => {
-    expect(tidy('Préparer la page « mygame »', 80)).toBe('Préparer la page mygame')
+    expect(tidy('Préparer la page « myshop »', 80)).toBe('Préparer la page myshop')
     expect(tidy('"Watch" the “indie” fairs , now', 80)).toBe('Watch the indie fairs, now')
     expect(tidy("Tu veux l'écrire « bientôt » ?", 80)).toBe("Tu veux l'écrire bientôt ?")
-    const out = parseProposals([{ title: '« Muscler » les tests', why: 'Un saut cassé passerait inaperçu avant la sortie de « mygame ».', prompt: 'Add tests for the jump physics of mygame.' }], [], [])
-    expect(out[0]).toMatchObject({ title: 'Muscler les tests', why: 'Un saut cassé passerait inaperçu avant la sortie de mygame.' })
+    const out = parseProposals([{ title: '« Muscler » les tests', why: 'Un saut cassé passerait inaperçu avant la sortie de « myshop ».', prompt: 'Add tests for the jump physics of myshop.' }], [], [])
+    expect(out[0]).toMatchObject({ title: 'Muscler les tests', why: 'Un saut cassé passerait inaperçu avant la sortie de myshop.' })
     // The user's wish handed back as a reason is dropped; their own idea says so (server/own-words.ts).
     const said = ['Wants the weevils project pinned on the main page of the app.']
     const own = parseProposals([
-      { title: 'Muscler les tests', why: 'Tu veux sortir mygame cette année.', prompt: 'Add tests for the jump physics of mygame.' },
+      { title: 'Muscler les tests', why: 'Tu veux sortir myshop cette année.', prompt: 'Add tests for the jump physics of myshop.' },
       { title: 'Pin weevils project on main', why: 'You want it first.', prompt: 'Pin the weevils project on the main page of the app.' },
     ], [], [], 3, said)
     expect(own.map((p) => p.why)).toEqual(['', 'Your idea, ready to run.'])
@@ -301,11 +301,11 @@ describe('auto — the runner', () => {
     const [cwd, title, text, args, env] = createIn.mock.calls[0]
     const id = o.list()[0].id
     // Its own worktree beside the repo, on a fresh branch, made by weevils before the session starts.
-    expect(cwd).toBe(path.join(dir, 'p', '.auto', 'mygame', id))
-    expect(sys.worktree).toHaveBeenCalledWith(path.join(dir, 'p', 'mygame'), cwd, expect.stringMatching(/^auto\/harden-mygame-tests-\w{4}$/), undefined)
-    expect(title).toBe('Harden mygame tests')
-    expect(text).toMatch(/on the local branch auto\/harden-mygame-tests-\w{4} made for you/)
-    expect(text).toContain(`never touch the folder ${path.join(dir, 'p', 'mygame')}`)
+    expect(cwd).toBe(path.join(dir, 'p', '.auto', 'myshop', id))
+    expect(sys.worktree).toHaveBeenCalledWith(path.join(dir, 'p', 'myshop'), cwd, expect.stringMatching(/^auto\/harden-myshop-tests-\w{4}$/), undefined)
+    expect(title).toBe('Harden myshop tests')
+    expect(text).toMatch(/on the local branch auto\/harden-myshop-tests-\w{4} made for you/)
+    expect(text).toContain(`never touch the folder ${path.join(dir, 'p', 'myshop')}`)
     expect(text).not.toContain('git worktree add')
     expect(text).toContain('never push')
     expect(text).toContain('`heavy`')
@@ -334,7 +334,7 @@ describe('auto — the runner', () => {
     expect(o.list()[0].state).toBe('running')
     snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: `Done: 12 new tests on branch auto/x. ${'x'.repeat(300)}` })]
     o.tick(T0 + IDLE_MS + 20 * MIN)
-    ;[run] = o.list().filter((x) => x.title === 'Harden mygame tests')
+    ;[run] = o.list().filter((x) => x.title === 'Harden myshop tests')
     expect(run.state).toBe('done')
     expect(run.lastEvent!.startsWith('Done: 12 new tests')).toBe(true)
     expect(run.lastEvent!.length).toBeLessThanOrEqual(160)
@@ -403,19 +403,19 @@ describe('auto — the runner', () => {
     o.tick(T0 + IDLE_MS + 20 * MIN)
     for (let i = 0; i < 5; i++) await flush()
     const [cwd, box] = vi.mocked(sys.merge).mock.calls[0] as unknown as [string, { wrap: string[]; set: Record<string, string> }]
-    expect(cwd).toBe(path.join(dir, 'p', '.auto', 'mygame', o.list()[0].id))
+    expect(cwd).toBe(path.join(dir, 'p', '.auto', 'myshop', o.list()[0].id))
     expect(box.wrap[0]).toBe('bwrap')
     expect(box.set.WEEVILS_SCOPE).toBe('automation')
     expect(add).toHaveBeenCalledTimes(1)
     const card = add.mock.calls[0][0]
-    expect(card).toMatchObject({ kind: 'boss', title: O.en.landTitle('Harden mygame tests'), text: 'It adds a new settings page, not a cleanup.', open: { page: 'session', id: 'sess-1' } })
+    expect(card).toMatchObject({ kind: 'boss', title: O.en.landTitle('Harden myshop tests'), text: 'It adds a new settings page, not a cleanup.', open: { page: 'session', id: 'sess-1' } })
     expect(card.actions).toEqual([{ label: O.en.landButton, brief: O.en.landBrief, op: 'land:sess-1' }])
   })
 
   it('rechecks source access before accept/run and keeps revoked queued work across reload without creating a run',async()=>{
     let allowed=false
     const policy={
-      sourceAccessForRepo:()=>({repo:'mygame',machineId:'test',canExecute:allowed,reason:allowed?'owned-writable':'not-writable'}),
+      sourceAccessForRepo:()=>({repo:'myshop',machineId:'test',canExecute:allowed,reason:allowed?'owned-writable':'not-writable'}),
       assertRepoExecution:()=>{if(!allowed)throw new Error('source read-only')},
     }
     let o=make(policy)
@@ -523,7 +523,7 @@ describe('auto — the runner', () => {
     await flush()
     expect(o.list()[0]).toMatchObject({ state: 'running' })
     expect(add).toHaveBeenCalledTimes(1)
-    expect(add.mock.calls[0][0]).toMatchObject({ kind: 'boss', title: '"Harden mygame tests" has a question', text: 'Do you want to proceed?', open: { page: 'auto' } })
+    expect(add.mock.calls[0][0]).toMatchObject({ kind: 'boss', title: '"Harden myshop tests" has a question', text: 'Do you want to proceed?', open: { page: 'auto' } })
     expect(key).toHaveBeenCalledWith('sess-1', 'esc')
     expect(send).toHaveBeenCalledWith('sess-1', expect.stringContaining('Nobody can answer live'))
     // Once per run.
@@ -534,7 +534,7 @@ describe('auto — the runner', () => {
     // The process went away with only the brief in its transcript: nothing was done → the supervisor relaunches it.
     snap.sessions = [session({ id: 'sess-1', status: 'done', live: false, messageCount: 1, lastMessage: 'Background task…' })]
     o.tick(T0 + IDLE_MS + 30 * MIN)
-    expect(o.list().find((x) => x.title === 'Harden mygame tests')).toMatchObject({ state: 'queued', waiting: 'later', lastEvent: 'ended without any answer' })
+    expect(o.list().find((x) => x.title === 'Harden myshop tests')).toMatchObject({ state: 'queued', waiting: 'later', lastEvent: 'ended without any answer' })
   })
 
   it('a long silent command reads idle, but the turn is still open: not done until it ends', async () => {
@@ -614,7 +614,7 @@ describe('auto — the runner', () => {
   it('tells a stall from a summary', () => {
     for (const m of ["You've hit your limit · resets 3am", 'Claude AI usage limit reached|1762000000', '5-hour limit reached ∙ resets 2pm', 'API Error: 500 {"type":"error"}', 'Failed to authenticate: OAuth session expired', 'Login expired · Please run /login'])
       expect(isStall(m), m).toBe(true)
-    for (const m of ['Added a rate limit test to mygame; the branch awaits review.', 'Done. Usage limits are documented in report.md.', ''])
+    for (const m of ['Added a rate limit test to myshop; the branch awaits review.', 'Done. Usage limits are documented in report.md.', ''])
       expect(isStall(m), m).toBe(false)
     expect(DENY.every((r) => /^(Bash|Read|Edit)\(.+\)$/.test(r) || ['SendMessage', 'ListAgents', 'RemoteTrigger', 'AskUserQuestion'].includes(r))).toBe(true)
     // A trailing « :* » is Claude Code's old prefix syntax: every rule uses wildcards.
@@ -800,9 +800,9 @@ describe('auto — talking a task over (the negotiation)', () => {
     expect(question!.item!.draft).toBe(true)
     expect(o.accept(draft.id)).toBe('busy')
     expect(model.mock.calls[0][0]).toContain(O.en.rules_draft)
-    answer('Every night I will check mygame and leave a report for you to read.', { title: 'Check mygame tests', why: 'you want a daily check', prompt: 'Run the tests of mygame, summarize failures and stop after fifteen minutes.', repo: 'mygame', kind: 'tests', est: 15, every: '1d', window: '01:00-06:00' }, true)
-    const ready = await o.talk(draft.id, 'mygame, every night for fifteen minutes, with the report in Auto', P)
-    expect(ready!.item).toMatchObject({ state: 'proposed', title: 'Check mygame tests', repo: 'mygame', every: 24 * 60 * MIN, est: 15, rev: 1 })
+    answer('Every night I will check myshop and leave a report for you to read.', { title: 'Check myshop tests', why: 'you want a daily check', prompt: 'Run the tests of myshop, summarize failures and stop after fifteen minutes.', repo: 'myshop', kind: 'tests', est: 15, every: '1d', window: '01:00-06:00' }, true)
+    const ready = await o.talk(draft.id, 'myshop, every night for fifteen minutes, with the report in Auto', P)
+    expect(ready!.item).toMatchObject({ state: 'proposed', title: 'Check myshop tests', repo: 'myshop', every: 24 * 60 * MIN, est: 15, rev: 1 })
     expect(ready!.item!.draft).toBeUndefined()
     expect(ready!.item!.talk).toHaveLength(5)
     expect(make().list()[0]).toEqual(ready!.item)
@@ -835,7 +835,7 @@ describe('auto — talking a task over (the negotiation)', () => {
     const answerer = onCodex ? vi.mocked(relayAnswer) : model
     const draft = o.create()
     answerer.mockResolvedValueOnce(JSON.stringify({ reply: 'Where should the report appear?', ready: false, patch: {
-      title: 'Check interaction quality', prompt: 'Check the application daily, fix verified issues and keep a report in Auto.', repo: 'mygame', every: '1d', est: 90,
+      title: 'Check interaction quality', prompt: 'Check the application daily, fix verified issues and keep a report in Auto.', repo: 'myshop', every: '1d', est: 90,
     } }))
     await o.talk(draft.id, 'Vérifie chaque jour, maximum 90 minutes', P)
     const before = structuredClone(o.get(draft.id)!)
@@ -886,7 +886,7 @@ describe('auto — talking a task over (the negotiation)', () => {
     const o = make()
     const draft = o.create()
     const choice = draft.talk![0].suggestions![2]
-    const patch = { title: 'Daily mygame summary', prompt: 'Summarize the progress of mygame, write a short report and stop after fifteen minutes.', repo: 'mygame', every: '1d' }
+    const patch = { title: 'Daily myshop summary', prompt: 'Summarize the progress of myshop, write a short report and stop after fifteen minutes.', repo: 'myshop', every: '1d' }
     model.mockResolvedValueOnce(JSON.stringify({ reply: 'What time should I prepare it?', patch, ready: false, suggestions: ['Every morning at 8', 'Every evening at 6'] }))
     const when = await o.talk(draft.id, choice.text, P)
     expect(when!.item).toMatchObject({ draft: true, state: 'proposed' })
@@ -957,13 +957,13 @@ describe('auto — talking a task over (the negotiation)', () => {
   })
 
   it('every field of a rewrite is checked and clamped, never trusted', () => {
-    const ctx = { repos: ['mygame', 'notes'], tz: P, now: T0 }
-    expect(parsePatch({ est: 900, priority: 0, heavy: 'yes', kind: 'weird', title: '« Tests » e2e de mygame, la nuit, sans rien casser, avec un titre beaucoup trop long', prompt: 'short' }, ctx)).toEqual({
+    const ctx = { repos: ['myshop', 'notes'], tz: P, now: T0 }
+    expect(parsePatch({ est: 900, priority: 0, heavy: 'yes', kind: 'weird', title: '« Tests » e2e de myshop, la nuit, sans rien casser, avec un titre beaucoup trop long', prompt: 'short' }, ctx)).toEqual({
       est: 240,
       priority: 1,
-      title: 'Tests e2e de mygame, la nuit, sans rien casser, avec un titr',
+      title: 'Tests e2e de myshop, la nuit, sans rien casser, avec un titr',
     })
-    expect(parsePatch({ est: 1, priority: 7, repo: 'MyGame', kind: 'tests' }, ctx)).toEqual({ est: 5, priority: 3, repo: 'mygame', kind: 'tests' })
+    expect(parsePatch({ est: 1, priority: 7, repo: 'MyShop', kind: 'tests' }, ctx)).toEqual({ est: 5, priority: 3, repo: 'myshop', kind: 'tests' })
     expect(parsePatch({ repo: 'not-a-repo' }, ctx)).toEqual({})
     expect(parsePatch({ repo: null, every: null, window: null, notBefore: null }, ctx)).toEqual({ repo: null, every: null, window: null, notBefore: null })
     expect(parsePatch({ every: '7d', window: '01:00-06:00', notBefore: '2026-11-11 08:00' }, ctx)).toEqual({ every: 7 * 24 * 60 * MIN, window: { from: 60, to: 360 }, notBefore: Date.parse('2026-11-11T07:00:00Z') })
@@ -975,29 +975,29 @@ describe('auto — talking a task over (the negotiation)', () => {
     expect(parsePatch('nope', ctx)).toEqual({})
     expect(parsePatch([1, 2], ctx)).toEqual({})
     // The brief is the model's, the safety rules are added at launch (never part of it).
-    expect(parsePatch({ prompt: '  Run only the e2e tests of mygame, fix flaky ones, stop at one hour.  ' }, ctx).prompt).toBe('Run only the e2e tests of mygame, fix flaky ones, stop at one hour.')
+    expect(parsePatch({ prompt: '  Run only the e2e tests of myshop, fix flaky ones, stop at one hour.  ' }, ctx).prompt).toBe('Run only the e2e tests of myshop, fix flaky ones, stop at one hour.')
     expect(runLimit(30)).toBe(MAX_RUN_MS)
     expect(runLimit(200)).toBe(300 * MIN)
     expect(runLimit(240)).toBe(360 * MIN)
   })
 
   it('answers with the brief, the memory, the projects and the time in the user zone; rewrites the proposal; the history stays', async () => {
-    memory.add('wants to ship mygame this year')
+    memory.add('wants to ship myshop this year')
     const { o, id } = await proposed()
     answer('It adds tests for the jump physics, on a local branch for you to review.')
     const r1 = await o.talk(id, 'what is it?', P)
     expect(r1).toMatchObject({ reply: 'It adds tests for the jump physics, on a local branch for you to review.', changed: [] })
     const p = model.mock.calls[1][0]
-    expect(p).toContain('Add tests for the jump physics of mygame')
-    expect(p).toContain('wants to ship mygame this year')
-    expect(p).toContain('mygame-site')
+    expect(p).toContain('Add tests for the jump physics of myshop')
+    expect(p).toContain('wants to ship myshop this year')
+    expect(p).toContain('myshop-site')
     expect(p).toContain('2026-11-10 10:00 (Europe/Paris)')
     expect(p).toContain('Sam: what is it?')
     expect(p).toContain('everything; the version on screen')
 
     answer('Done: at night, every week, only the e2e tests.', {
-      title: 'E2E tests of mygame',
-      prompt: 'Run and harden only the end-to-end tests of mygame; fix flaky ones; stop after one hour.',
+      title: 'E2E tests of myshop',
+      prompt: 'Run and harden only the end-to-end tests of myshop; fix flaky ones; stop after one hour.',
       window: '01:00-06:00',
       every: '7d',
       est: 50,
@@ -1008,7 +1008,7 @@ describe('auto — talking a task over (the negotiation)', () => {
     expect(r2!.changed.sort()).toEqual(['est', 'every', 'prompt', 'title', 'window'])
     expect(model.mock.calls[2][0]).toContain('you: It adds tests for the jump physics')
     const v = o.list().find((x) => x.id === id)!
-    expect(v).toMatchObject({ title: 'E2E tests of mygame', repo: 'mygame', est: 50, every: 7 * 24 * 60 * MIN, window: { from: 60, to: 360 }, tz: P, rev: 1, state: 'proposed' })
+    expect(v).toMatchObject({ title: 'E2E tests of myshop', repo: 'myshop', est: 50, every: 7 * 24 * 60 * MIN, window: { from: 60, to: 360 }, tz: P, rev: 1, state: 'proposed' })
     expect(v.changed!.fields.sort()).toEqual(['est', 'every', 'prompt', 'title', 'window'])
     expect(v.talk!.map((l) => l.who)).toEqual(['user', 'auto', 'user', 'auto'])
     expect(v).not.toHaveProperty('prompt')
@@ -1053,7 +1053,7 @@ describe('auto — talking a task over (the negotiation)', () => {
     const first = o.talk(id, 'only the e2e tests', P)
     expect((await o.talk(id, 'and at night', P))!.reply).toBe(O.en.talkBusy)
     expect(o.accept(id)).toBe('busy')
-    release(JSON.stringify({ reply: 'Only the e2e tests now.', patch: { title: 'E2E tests of mygame', prompt: 'Run and harden only the end-to-end tests of mygame, then stop.' } }))
+    release(JSON.stringify({ reply: 'Only the e2e tests now.', patch: { title: 'E2E tests of myshop', prompt: 'Run and harden only the end-to-end tests of myshop, then stop.' } }))
     await first
     expect(model).toHaveBeenCalledTimes(2)
     // The screen still shows the old version (rev 0): refused, the app refreshes.
@@ -1062,8 +1062,8 @@ describe('auto — talking a task over (the negotiation)', () => {
     o.tick(T0 + IDLE_MS)
     await flush()
     const [, title, text] = createIn.mock.calls[0]
-    expect(title).toBe('E2E tests of mygame')
-    expect(text).toContain('Run and harden only the end-to-end tests of mygame')
+    expect(title).toBe('E2E tests of myshop')
+    expect(text).toContain('Run and harden only the end-to-end tests of myshop')
     expect(text).not.toContain('jump physics')
     // The agent knows what was agreed, in a few lines; the safety rules are still there.
     expect(text).toContain('What was agreed with the user')
@@ -1145,8 +1145,8 @@ describe('auto — talking a task over (the negotiation)', () => {
     snap.sessions = [session({ id: 'sess-1', status: 'working', lastMessage: 'Writing the 3rd test.' })]
     detail.mockReturnValue({ messages: [{ role: 'assistant', text: 'Found 2 flaky tests in physics.spec.ts, fixing them.', at: T0 }] })
     answer('It is fixing two flaky tests. From the next run it will only do the e2e tests, every week.', {
-      title: 'E2E tests of mygame',
-      prompt: 'Run and harden only the end-to-end tests of mygame, then stop.',
+      title: 'E2E tests of myshop',
+      prompt: 'Run and harden only the end-to-end tests of myshop, then stop.',
       every: '7d',
       priority: 3,
     })
@@ -1156,7 +1156,7 @@ describe('auto — talking a task over (the negotiation)', () => {
     expect(r!.changed.sort()).toEqual(['every', 'next', 'priority'])
     let v = o.list()[0]
     // The new scope shows as its next run's title; the agent's words were fenced as data.
-    expect(v).toMatchObject({ state: 'running', sessionId: 'sess-1', title: 'Harden mygame tests', priority: 3, every: 7 * 24 * 60 * MIN, next: { title: 'E2E tests of mygame' } })
+    expect(v).toMatchObject({ state: 'running', sessionId: 'sess-1', title: 'Harden myshop tests', priority: 3, every: 7 * 24 * 60 * MIN, next: { title: 'E2E tests of myshop' } })
     expect(model.mock.calls[1][0]).toMatch(/<<<data-([0-9a-f]{8})\nFound 2 flaky tests[^]*\n\1>>>/)
     // Nothing sent to the session, nothing started.
     expect(createIn).toHaveBeenCalledTimes(1)
@@ -1167,10 +1167,10 @@ describe('auto — talking a task over (the negotiation)', () => {
     snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: 2 flaky tests fixed.' })]
     o.tick(T0 + IDLE_MS + 30 * MIN)
     v = o.list(T0 + IDLE_MS + 30 * MIN)[0]
-    expect(v).toMatchObject({ state: 'queued', title: 'E2E tests of mygame' })
+    expect(v).toMatchObject({ state: 'queued', title: 'E2E tests of myshop' })
     o.tick(v.startAt!)
     await flush()
-    expect(createIn.mock.calls[1][2]).toContain('Run and harden only the end-to-end tests of mygame')
+    expect(createIn.mock.calls[1][2]).toContain('Run and harden only the end-to-end tests of myshop')
   })
 
   it('a finished task answers about what it did but changes nothing', async () => {
@@ -1184,7 +1184,7 @@ describe('auto — talking a task over (the negotiation)', () => {
     const r = await o.talk(id, 'what did it do?', P)
     expect(model.mock.calls[1][0]).toContain('Done: 12 new tests.')
     expect(r!.changed).toEqual([])
-    expect(o.list()[0]).toMatchObject({ state: 'done', title: 'Harden mygame tests' })
+    expect(o.list()[0]).toMatchObject({ state: 'done', title: 'Harden myshop tests' })
     expect(o.list()[0].every).toBeUndefined()
     expect(o.list()[0].talk).toHaveLength(2)
   })
@@ -1201,21 +1201,21 @@ describe('auto — talking a task over (the negotiation)', () => {
     await flush()
     expect(createIn).not.toHaveBeenCalled()
     expect(o.list()[0]).toMatchObject({ state: 'queued' })
-    release(JSON.stringify({ reply: 'Only the e2e tests now.', patch: { title: 'E2E tests of mygame', prompt: 'Run and harden only the end-to-end tests of mygame, then stop.' } }))
+    release(JSON.stringify({ reply: 'Only the e2e tests now.', patch: { title: 'E2E tests of myshop', prompt: 'Run and harden only the end-to-end tests of myshop, then stop.' } }))
     expect((await turn)!.changed).toEqual(['title', 'prompt'])
     o.tick(T0 + IDLE_MS + 2 * MIN)
     await flush()
-    expect(createIn.mock.calls[0][1]).toBe('E2E tests of mygame')
+    expect(createIn.mock.calls[0][1]).toBe('E2E tests of myshop')
     // A turn on a running task whose run ends meanwhile: its answer was for the running state, nothing is applied.
     model.mockImplementationOnce(() => new Promise((r) => (release = r)))
     const late = o.talk(id, 'next time only unit tests', P)
     snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: e2e fixed.' })]
     o.tick(T0 + IDLE_MS + 30 * MIN)
     expect(o.list()[0].state).toBe('done')
-    release(JSON.stringify({ reply: 'Next time, only the unit tests.', patch: { every: '7d', title: 'Unit tests of mygame' } }))
+    release(JSON.stringify({ reply: 'Next time, only the unit tests.', patch: { every: '7d', title: 'Unit tests of myshop' } }))
     const r = (await late)!
     expect(r).toMatchObject({ failed: true, changed: [], reply: O.en.talkMoved })
-    expect(o.list()[0]).toMatchObject({ state: 'done', title: 'E2E tests of mygame' })
+    expect(o.list()[0]).toMatchObject({ state: 'done', title: 'E2E tests of myshop' })
     expect(o.list()[0].every).toBeUndefined()
   })
 
@@ -1276,16 +1276,16 @@ describe('auto — talking a task over (the negotiation)', () => {
     o.tick(T0 + IDLE_MS)
     await flush()
     snap.sessions = [session({ id: 'sess-1', status: 'working' })]
-    answer('Next time, only the e2e tests.', { title: 'E2E tests of mygame', prompt: 'Run and harden only the end-to-end tests of mygame, then stop.' })
+    answer('Next time, only the e2e tests.', { title: 'E2E tests of myshop', prompt: 'Run and harden only the end-to-end tests of myshop, then stop.' })
     await o.talk(id, 'next time only e2e', P)
     // A usage limit: back to the queue, with the scope agreed for its next run.
     snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: "You've hit your limit · resets 3pm" })]
     o.tick(T0 + IDLE_MS + 10 * MIN)
     let v = o.list()[0]
-    expect(v).toMatchObject({ state: 'queued', waiting: 'later', title: 'E2E tests of mygame' })
+    expect(v).toMatchObject({ state: 'queued', waiting: 'later', title: 'E2E tests of myshop' })
     expect(v.next).toBeUndefined()
     // Changed again while queued: that one holds, nothing older comes back over it.
-    answer('Unit tests instead.', { title: 'Unit tests of mygame', prompt: 'Run and harden only the unit tests of mygame, then stop.' })
+    answer('Unit tests instead.', { title: 'Unit tests of myshop', prompt: 'Run and harden only the unit tests of myshop, then stop.' })
     await o.talk(id, 'no, the unit tests instead', P)
     const retry = T0 + IDLE_MS + 10 * MIN + RETRY_MS + MIN
     o.tick(retry)
@@ -1294,7 +1294,7 @@ describe('auto — talking a task over (the negotiation)', () => {
     snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: unit tests hardened.' })]
     o.tick(retry + 30 * MIN)
     v = o.list()[0]
-    expect(v).toMatchObject({ state: 'queued', title: 'Unit tests of mygame' })
+    expect(v).toMatchObject({ state: 'queued', title: 'Unit tests of myshop' })
   })
 
   it('a one-off running task keeps no scope for a next run it will never have', async () => {
@@ -1303,7 +1303,7 @@ describe('auto — talking a task over (the negotiation)', () => {
     o.tick(T0 + IDLE_MS)
     await flush()
     snap.sessions = [session({ id: 'sess-1', status: 'working' })]
-    answer('It runs once; that change would serve nothing.', { title: 'E2E tests of mygame', prompt: 'Run and harden only the end-to-end tests of mygame, then stop.' })
+    answer('It runs once; that change would serve nothing.', { title: 'E2E tests of myshop', prompt: 'Run and harden only the end-to-end tests of myshop, then stop.' })
     const r = await o.talk(id, 'next time only e2e', P)
     expect(model.mock.calls[1][0]).toContain('it will not come back (just once)')
     expect(r!.changed).toEqual([])
@@ -1344,7 +1344,7 @@ describe('auto — talking a task over (the negotiation)', () => {
   })
 
   it('an empty string clears nothing', () => {
-    const ctx = { repos: ['mygame', 'notes'], tz: P, now: T0 }
+    const ctx = { repos: ['myshop', 'notes'], tz: P, now: T0 }
     expect(parsePatch({ repo: '', window: '', every: '  ', notBefore: '' }, ctx)).toEqual({})
     expect(parsePatch({ every: 'once', window: 'none' }, ctx)).toEqual({ every: null, window: null })
   })
@@ -1414,7 +1414,7 @@ describe('auto — runs, their outputs, the automation page', () => {
   })
 
   it('records a repo run through the real worktree and private git admin path, preserving the original checkout', async () => {
-    const repo = path.join(dir, 'p', 'mygame')
+    const repo = path.join(dir, 'p', 'myshop')
     fs.mkdirSync(repo, { recursive: true })
     const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' }).trim()
     git(repo, 'init', '-q')
@@ -1429,12 +1429,12 @@ describe('auto — runs, their outputs, the automation page', () => {
       git(r, 'worktree', 'add', '-qb', branch, cwd)
     }
     sys.head = headOf
-    const o = seed({ repo: 'mygame', kind: 'tests' })
+    const o = seed({ repo: 'myshop', kind: 'tests' })
     const start = T0 + IDLE_MS
     o.tick(start)
     await vi.waitFor(() => expect(createIn).toHaveBeenCalledOnce())
     const cwd = createIn.mock.calls[0][0] as string
-    expect(cwd).toBe(path.join(dir, 'p', '.auto', 'mygame', 'a1b2c3'))
+    expect(cwd).toBe(path.join(dir, 'p', '.auto', 'myshop', 'a1b2c3'))
     fs.writeFileSync(path.join(cwd, 'old.txt'), 'after\n')
     fs.writeFileSync(path.join(cwd, 'new.txt'), 'one\ntwo\n')
     git(cwd, 'add', '.')
@@ -1486,7 +1486,7 @@ describe('auto — runs, their outputs, the automation page', () => {
       if (r === 'gone') throw new Error('unknown repo gone')
       return path.join(dir, 'p', r)
     }
-    const o = new Optimizers({ snapshot: () => snap, allRepos: () => ['mygame'], repoDir, createIn, bump, store, hooks, detail, send, key, command } as never, memory, { file: path.join(dir, 'optimizers.json'), dir: path.join(dir, 'optimizers'), sys })
+    const o = new Optimizers({ snapshot: () => snap, allRepos: () => ['myshop'], repoDir, createIn, bump, store, hooks, detail, send, key, command } as never, memory, { file: path.join(dir, 'optimizers.json'), dir: path.join(dir, 'optimizers'), sys })
     o.tick(T0 + IDLE_MS)
     await o.settled()
     const v = o.list(T0 + IDLE_MS)[0]
@@ -1640,7 +1640,7 @@ describe('auto — runs, their outputs, the automation page', () => {
       const url = `/api/optimizers/${draft.id}`
       expect((await call(o, 'POST', `${url}/prepare`, {})).status).toBe(409)
       const review = { expectedRev: 0, expectedTalkAt: draft.talk!.at(-1)!.at,
-        patch: { title: 'Check application quality', prompt: 'Inspect the application and report verified interaction issues.', repo: 'mygame' } }
+        patch: { title: 'Check application quality', prompt: 'Inspect the application and report verified interaction issues.', repo: 'myshop' } }
       const ready = await call(o, 'POST', `${url}/prepare`, review)
       expect(ready).toMatchObject({ status: 200, body: { item: { id: draft.id, state: 'proposed', rev: 1 } } })
       expect(ready.body.item.draft).toBeUndefined()
@@ -1747,7 +1747,7 @@ describe('delete automation: durable cancellation without deleting work',()=>{
  it('cancels a launch still preparing its worktree before it starts an agent',async()=>{
   let release!:()=>void
   sys.worktree=vi.fn(async(_repo:string,cwd:string)=>{await new Promise<void>(r=>{release=r});fs.mkdirSync(cwd,{recursive:true})})
-  const o=seedDelete({repo:'mygame'})
+  const o=seedDelete({repo:'myshop'})
   o.tick(T0+IDLE_MS);await flush()
   expect(sys.worktree).toHaveBeenCalled()
   o.remove('delete-me');release();await flush()
@@ -1896,7 +1896,7 @@ it('does not let an old client discard a user draft by calling the refusal API',
 
 describe('explicit preparation of an existing legacy draft', () => {
  const seed = (patch: Record<string, unknown> = {}) => {
-  const original = { id: 'existing', title: 'Improve interaction quality', why: 'Keep the agreed purpose', prompt: 'Inspect the application, fix verified issues and report in Auto.', kind: 'tests', repo: 'mygame', heavy: false, state: 'proposed', draft: true, userCreated: true, createdAt: T0 - MIN, rev: 5, every: 86400000, est: 90, tz: 'Europe/Paris', talk: [{ who: 'user', text: 'ok jvalidd', at: T0 - 1 }, { who: 'auto', text: 'Everything is ready for you to approve with the app button.', at: T0 }], lifecycle: [{ action: 'restore-draft', at: T0 - 2 }], ...patch }
+  const original = { id: 'existing', title: 'Improve interaction quality', why: 'Keep the agreed purpose', prompt: 'Inspect the application, fix verified issues and report in Auto.', kind: 'tests', repo: 'myshop', heavy: false, state: 'proposed', draft: true, userCreated: true, createdAt: T0 - MIN, rev: 5, every: 86400000, est: 90, tz: 'Europe/Paris', talk: [{ who: 'user', text: 'ok jvalidd', at: T0 - 1 }, { who: 'auto', text: 'Everything is ready for you to approve with the app button.', at: T0 }], lifecycle: [{ action: 'restore-draft', at: T0 - 2 }], ...patch }
   fs.writeFileSync(path.join(dir, 'optimizers.json'), JSON.stringify({ items: [original], lastRoundAt: T0 }))
   return { original, o: make() }
  }
@@ -1965,7 +1965,7 @@ describe('auto — on a Mac', () => {
   const PAGE = 16384
   const mac = (extra: Record<string, unknown> = {}) =>
     new Optimizers(
-      { snapshot: () => snap, allRepos: () => ['mygame', 'mygame-site', 'notes'], repoDir: (r: string) => path.join(dir, 'p', r), createIn, bump, store, hooks, detail, send, key, command, ...extra } as never,
+      { snapshot: () => snap, allRepos: () => ['myshop', 'myshop-site', 'notes'], repoDir: (r: string) => path.join(dir, 'p', r), createIn, bump, store, hooks, detail, send, key, command, ...extra } as never,
       memory,
       { file: path.join(dir, 'optimizers.json'), dir: path.join(dir, 'optimizers'), sys, platform: 'darwin' },
     )
@@ -2109,7 +2109,7 @@ describe('auto — on a Mac', () => {
   it('on Linux the same Codex route writes nothing on the task', async () => {
     const relay = { executionTool: () => 'codex' as const, holdUntil: () => 0, autoOnCodex: () => false, retryAt: () => T0 + 60 * MIN }
     const o = new Optimizers(
-      { snapshot: () => snap, allRepos: () => ['mygame', 'mygame-site', 'notes'], repoDir: (r: string) => path.join(dir, 'p', r), createIn, bump, store, hooks, detail, send, key, command, relay } as never,
+      { snapshot: () => snap, allRepos: () => ['myshop', 'myshop-site', 'notes'], repoDir: (r: string) => path.join(dir, 'p', r), createIn, bump, store, hooks, detail, send, key, command, relay } as never,
       memory,
       { file: path.join(dir, 'optimizers.json'), dir: path.join(dir, 'optimizers'), sys, platform: 'linux' },
     )

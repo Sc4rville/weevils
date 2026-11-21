@@ -51,15 +51,15 @@ const MIN = 60_000
 const DAY = 86_400_000
 const opt = (o: Partial<Optimizer>): Optimizer => ({ id: 'o', title: 't', why: '', repo: null, kind: 'tests', heavy: false, state: 'queued', createdAt: NOW, ...o })
 const runs = [3, 2, 1].map((i) => ({ at: NOW - i * DAY, startedAt: NOW - i * DAY - 9 * MIN, ok: i !== 2, note: `run ${i}`, tokens: 12_000, files: 3 }))
-const daily = opt({ id: 'd', title: 'Daily digest', why: 'every morning, yesterday in one page', repo: 'mygame', every: DAY, window: { from: 420, to: 480 }, waiting: 'time', startAt: NOW + 6 * 3600_000, runs, runCount: 23, tokens: 412_000 })
+const daily = opt({ id: 'd', title: 'Daily digest', why: 'every morning, yesterday in one page', repo: 'myshop', every: DAY, window: { from: 420, to: 480 }, waiting: 'time', startAt: NOW + 6 * 3600_000, runs, runCount: 23, tokens: 412_000 })
 const timer: H24Activity = { id: 'timer:wv-backup.timer', title: 'Backup', kind: 'timer', projectId: null, schedule: '', enabled: true, runState: 'waiting', runStartedAt: null, lastEvent: '', canToggle: true, nextRunAt: NOW + 3600_000, everyMs: DAY, lastRunAt: NOW - 3600_000, lastDurMs: 6 * MIN, lastOk: true, runCount: 60, description: 'copies the projects' }
-const job: H24Activity = { id: 'job:render', title: 'render', kind: 'job', projectId: 'mygame', schedule: '', enabled: true, runState: 'running', runStartedAt: NOW - 3 * MIN, lastEvent: 'step 40/120', canToggle: false }
+const job: H24Activity = { id: 'job:render', title: 'render', kind: 'job', projectId: 'myshop', schedule: '', enabled: true, runState: 'running', runStartedAt: NOW - 3 * MIN, lastEvent: 'step 40/120', canToggle: false }
 
 const snap = (optimizers: Optimizer[], h24: H24Activity[] = []): Snapshot => ({
   version: 1,
   now: NOW,
   machines: [{ id: 'm', name: 'm' }],
-  projects: [{ id: 'mygame', name: 'mygame', kind: 'repo', repos: ['mygame'], where: {}, lastActivityAt: 0 }],
+  projects: [{ id: 'myshop', name: 'myshop', kind: 'repo', repos: ['myshop'], where: {}, lastActivityAt: 0 }],
   sessions: [],
   h24,
   conversations: [],
@@ -85,7 +85,7 @@ function render(s: Snapshot, page: React.ReactNode, theme: Theme = 'light') {
     snap: s,
     now: NOW,
     offline: false,
-    colors: { mygame: 'p3' },
+    colors: { myshop: 'p3' },
     push: (p: unknown) => pushed.push(p),
     replace: () => {},
     back: () => void backs++,
@@ -171,16 +171,16 @@ describe('automation page', () => {
     expect(host.querySelector('.auto-decide')).toBeNull()
     expect(host.querySelector('.auto-kpis')).toBeNull()
     expect(host.querySelectorAll('input')).toHaveLength(1)
-    const ready = { ...draft, draft: undefined, title: 'Daily test report', rev: 1, every: DAY, talk: [...draft.talk!, { who: 'user' as const, text: 'Check mygame every day.', at: NOW }, { who: 'auto' as const, text: 'A daily report of mygame tests, ready to approve.', at: NOW }] }
-    fixtures.talk = { reply: 'A daily report of mygame tests, ready to approve.', item: ready, changed: ['title', 'prompt', 'every'] }
+    const ready = { ...draft, draft: undefined, title: 'Daily test report', rev: 1, every: DAY, talk: [...draft.talk!, { who: 'user' as const, text: 'Check myshop every day.', at: NOW }, { who: 'auto' as const, text: 'A daily report of myshop tests, ready to approve.', at: NOW }] }
+    fixtures.talk = { reply: 'A daily report of myshop tests, ready to approve.', item: ready, changed: ['title', 'prompt', 'every'] }
     const field = host.querySelector<HTMLInputElement>('.composer input')!
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, 'Check mygame every day.')
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, 'Check myshop every day.')
       field.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await act(async () => void host.querySelector<HTMLFormElement>('.composer')!.requestSubmit())
     await flush()
-    expect(calls).toContain('talk new Check mygame every day.')
+    expect(calls).toContain('talk new Check myshop every day.')
     expect(host.querySelector('h1')!.textContent).toBe('Daily test report')
     expect(host.querySelector('.auto-decide')).not.toBeNull()
     expect(host.querySelector('.auto-talk')!.textContent).toContain('ready to approve')
@@ -188,7 +188,7 @@ describe('automation page', () => {
   })
 
   it('a new automation shows no suggestions and no settings: only « Let’s discuss your automation! » and the field', async () => {
-    const first = { who: 'auto' as const, text: 'What do you want to automate?', at: NOW, suggestions: [{ label: 'Daily summary of mygame', text: 'I would like a daily summary of mygame.' }] }
+    const first = { who: 'auto' as const, text: 'What do you want to automate?', at: NOW, suggestions: [{ label: 'Daily summary of myshop', text: 'I would like a daily summary of myshop.' }] }
     const draft = opt({ id: 'new', title: 'new automation', state: 'proposed', draft: true, talk: [first] })
     render(snap([draft]), <AutoPage id="new" />)
     expect(host.querySelectorAll('.auto-suggestions button')).toHaveLength(0)
@@ -205,7 +205,7 @@ describe('automation page', () => {
     expect(k).toMatchObject({ when: 'every day 07:00–08:00', last: '1d ago', length: '9 min', runs: '23' })
     expect(host.textContent).not.toMatch(/tokens|412K|12K/)
     expect(host.querySelector('.auto-flow .name')!.textContent).toBe('in 6h 00m')
-    expect(host.querySelector('.page-head .strong')!.textContent).toBe('mygame')
+    expect(host.querySelector('.page-head .strong')!.textContent).toBe('myshop')
     expect(host.querySelectorAll('button.auto-kpi')).toHaveLength(5)
     await click(host.querySelector('button.auto-kpi'))
     await act(() => new Promise((r) => requestAnimationFrame(() => r(null))))

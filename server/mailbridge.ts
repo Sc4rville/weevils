@@ -16,8 +16,8 @@
 // Sécurité : seuls les expéditeurs déclarés (WEEVILS_AUTHOR_*) passent, et seulement si le serveur de réception atteste
 // SPF ou DKIM aligné sur le domaine de l'expéditeur (Authentication-Results), ou si le secret partagé est présent.
 // Adresse partagée : plusieurs auteurs peuvent écrire depuis la même adresse (typiquement celle du compte du pont :
-// ChatGPT avec son connecteur Gmail, un agent…). L'auteur se reconnaît alors à une étiquette : « [gepetto] » dans l'objet,
-// « [from:gepetto] » ou « from: gepetto » en début de corps, « — gepetto » en signature (casse indifférente). Sans
+// ChatGPT avec son connecteur Gmail, un agent…). L'auteur se reconnaît alors à une étiquette : « [marlow] » dans l'objet,
+// « [from:marlow] » ou « from: marlow » en début de corps, « — marlow » en signature (casse indifférente). Sans
 // étiquette, un mail du compte du pont vient de l'utilisateur lui-même, pour weevboss par défaut.
 // Un mail du compte du pont est authentifié par SPF/DKIM, ou par le libellé Gmail \Sent (seul le compte peut l'avoir envoyé).
 // Anti-boucle : nos propres envois sont reconnus à leurs en-têtes (X-Weevils, Auto-Submitted, Message-ID <weevils-…>),

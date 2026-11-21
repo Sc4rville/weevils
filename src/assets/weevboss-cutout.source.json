@@ -1,5 +1,5 @@
 {
-  "source": "weevboss-official.png, approved Gepetto attachment 1a1ca846279d1693",
+  "source": "weevboss-official.png, the approved attachment 1a1ca846279d1693",
   "method": "Built-in image_gen background-extraction, two edit passes",
   "prompt": "Remove the white background, preserve the complete isometric weevil silhouette and all block vertices. True RGBA transparency, no white matte or halo. Uniform top/front/side planes, no texture, reflection, shadow or new geometry. Center the complete mark with transparent padding.",
   "cleanupPrompt": "Preserve every polygon vertex; use flat top/front/side colours, remove floating pixels and all background, antialias only with adjacent plane colour and alpha.",

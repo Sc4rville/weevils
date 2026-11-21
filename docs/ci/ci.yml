@@ -9,11 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run lint
+      # What a pull request adds: no personal trace, commits signed with a GitHub noreply address.
+      - if: github.event_name == 'pull_request'
+        run: node scripts/check-public.mjs --range "origin/${{ github.base_ref }}..${{ github.event.pull_request.head.sha }}"
       - run: npm test
       - run: npm run build

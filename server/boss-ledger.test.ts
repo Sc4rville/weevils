@@ -37,7 +37,7 @@ const answer = (messages: object[], new_goals: object[] = []) => JSON.stringify(
 
 describe('verbatim', () => {
   it('keeps a quote that is really in the message, whatever the spacing and accents', () => {
-    const msg = "met makzura collab de weevils aussi   et envoie   tout les content à instinct"
+    const msg = "met sam collab de weevils aussi   et envoie   tout les content à scout"
     expect(verbatim('envoie tout les content', msg)).toBe('envoie tout les content')
     expect(verbatim('« ENVOIE tout les content »', msg)).toBe('envoie tout les content')
   })
@@ -100,7 +100,7 @@ describe('Ledger', () => {
   it('splits a dictated message into atomic requests, links the dispatch, keeps exact words, writes the trace', async () => {
     const turns = tmp()
     const s = session('3f2a1b9c-0000-0000-0000-000000000000')
-    const msg = 'le lien marche pas fais en sorte qu il marche et envoie tout les content à instinct et met le default en anglais'
+    const msg = 'le lien marche pas fais en sorte qu il marche et envoie tout les content à scout et met le default en anglais'
     const model: Model = async (prompt) => {
       expect(prompt).toContain(msg)
       expect(prompt).toContain('sent to session 3f2a1b9c')
@@ -108,7 +108,7 @@ describe('Ledger', () => {
         m: 'M1',
         requests: [
           { quote: 'fais en sorte qu il marche', text: 'Fix the onboarding link', kind: 'task', state: 'dispatched', sessions: ['3f2a1b9c'], goal: 'blow-up', expect: 'a working link tested on a phone' },
-          { quote: 'envoie tout les content à instinct', text: 'Send all the content concepts to instinct', kind: 'task', state: 'open', sessions: [], goal: '' },
+          { quote: 'envoie tout les content à scout', text: 'Send all the content concepts to scout', kind: 'task', state: 'open', sessions: [], goal: '' },
           { quote: 'default in English', text: 'Make English the default language', kind: 'task', state: 'open', sessions: [], goal: 'nope' },
         ],
         updates: [],
@@ -157,10 +157,10 @@ describe('Ledger', () => {
   it('applies updates: done, dispatched, and dropped only on the user’s word', async () => {
     let reply = ''
     const { ledger, tick } = rig({ model: async () => reply })
-    const a = ledger.add('Send the videos to instinct')
+    const a = ledger.add('Send the videos to scout')
     const b = ledger.add('Make a stylish link')
     reply = answer([{ m: 'M1', requests: [], updates: [{ id: a.id, status: 'dropped', note: 'not needed' }], memory: [], trace: [] }])
-    ledger.capture('[from:gepetto] forget the videos')
+    ledger.capture('[from:marlow] forget the videos')
     tick(4 * 60_000)
     await ledger.reconcile(tmp())
     expect(ledger.ask(a.id)!.status).toBe('open')
@@ -285,7 +285,7 @@ describe('Ledger', () => {
       e('m2', T0 - 3600_000, 'user', 'fais le trailer'),
       e('a2', T0 - 3599_000, 'assistant', 'Sent.'),
       e('a2.1', T0 - 3599_000, 'event', 'Bash · weevils send 3f2a1b9c "make the trailer"'),
-      e('m3', T0 - 1800_000, 'agent', 'here are two ideas', 'gepetto'),
+      e('m3', T0 - 1800_000, 'agent', 'here are two ideas', 'marlow'),
     ]
     let seen = ''
     const { ledger } = rig({ journal, model: async (p) => { seen = p; return answer([{ m: 'M1', requests: [{ quote: 'fais le trailer', text: 'Make the trailer', kind: 'task', state: 'dispatched', sessions: ['3f2a1b9c'], goal: '' }], updates: [], memory: [], trace: [] }, { m: 'M2', requests: [], updates: [], memory: [], trace: [] }]) } })
@@ -293,7 +293,7 @@ describe('Ledger', () => {
     expect(r).toEqual({ messages: 2, asks: 1 })
     expect(seen).not.toContain('too old')
     expect(seen).toContain('sent to session 3f2a1b9c')
-    expect(seen).toContain('agent gepetto')
+    expect(seen).toContain('agent marlow')
     expect(ledger.asks('open')[0]).toMatchObject({ src: 'm2', status: 'dispatched' })
     expect((await ledger.backfill(24)).messages).toBe(1) // m2 is already in; only the agent message without a request is read again
   })

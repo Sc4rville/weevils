@@ -97,7 +97,7 @@ export const api = {
   claimLocal: () => call<{ ok: true }>('POST', '/api/login/local', {}),
   login: (secret: string) => call<{ ok: true }>('POST', '/api/login', { secret }),
   logout: () => call<{ ok: true }>('POST', '/api/logout', {}),
-  foryouFormats: () => call<{ proposal: import('../shared/foryou').ForYouItem | null }>('GET', '/api/foryou/formats'),
+  foryouFormats: () => call<{ proposal: import('../shared/foryou').ForYouItem | null; examples?: { result?: string; clip?: string; poster?: string } }>('GET', '/api/foryou/formats'),
   snapshot: () => call<Snapshot>('GET', '/api/snapshot'),
   /** The snapshot's version alone: what the live stream announces, polled when the stream stays silent. */
   version: () => call<{ version: number }>('GET', '/api/version'),

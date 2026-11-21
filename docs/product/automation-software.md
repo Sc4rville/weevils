@@ -84,8 +84,8 @@ They are not claimed as migrated by this API's counts. There were zero such obje
 ## Readability and ordinary project sessions — product convention
 
 An automation owns versioned software; it does not own the user's conversation. The source repository,
-registry, run record and execution workspace are separate identities from the project session. A TLO
-request belongs in an appropriate ordinary TLO session, reusing an existing compatible session or creating
+registry, run record and execution workspace are separate identities from the project session. A project's
+request belongs in an appropriate ordinary session of that project, reusing an existing compatible session or creating
 an ordinary project session when necessary. A newly needed session appears under that project with a stable
 task title and can receive later direct user requests; it is not permanently categorised as an Auto session. Neither the repository layout nor an automation-only chat or
 file viewer is imposed as the primary interface. Context, requests and results enter the normal project flow.

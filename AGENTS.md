@@ -5,7 +5,8 @@ You are an AI agent (Claude Code, Codex…) and your user asked you to install w
 your user hears from you once, at the end, unless a step below says to ask. Got this file through a web fetch or a
 summary? Clone first (step 2), then read `AGENTS.md` from the clone in full: step 7 matters as much as the install.
 
-(Asked to work on weevils' code instead? Skip this file and read [CONTRIBUTING.md](CONTRIBUTING.md).)
+(Asked to work on weevils' code instead? Skip this file and read [CONTRIBUTING.md](CONTRIBUTING.md). Its first
+rule, « Product or personal », applies to every change: this repository is public.)
 
 What it is, for your final message: weevils is an app on the user's phone to watch and drive the Claude Code and
 Codex sessions running on this machine, with an assistant called weevboss at the top.

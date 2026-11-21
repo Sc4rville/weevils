@@ -15,9 +15,9 @@ The approved isometric weevil is the shared mark. Its original proportions and f
 | Preview | `/logo-preview.html`, four themes, home/session/recording and installed-icon sizes |
 | Existing screenshots / GIF | `docs/screenshot.png`, `docs/first-run.png`, `docs/first-run.gif` are historical captures, pending genuine recapture; never painted over |
 | OSS | Separate owner integrates the same committed exports into `prepare/open-source-sync`; no OSS deployment here |
-| Marketing sources | `weevils-content/compose/lib/brand.js` uses the exported SVG for stills and clip end cards |
+| Marketing sources | the content repository (`compose/lib/brand.js`) uses the exported SVG for stills and clip end cards |
 | Marketing renders | Existing captures, posters, videos and gallery copies require recapture/render from source; see that repository's `BRANDING.md` |
-| For you / gallery | Uses existing app components or source media. Do not replace historical evidence or unrelated TLO media; source-media review owned by feed session |
+| For you / gallery | Uses existing app components or source media. Do not replace historical evidence or unrelated project media; source-media review owned by feed session |
 
 ## Regeneration and cache
 
@@ -29,4 +29,4 @@ The reusable logo SVG and notification badge have transparency. The favicon and 
 
 ## Validation and limits
 
-Tests check source hash, export dimensions, alpha, opaque PWA backgrounds, maskable geometry and versioned references. Existing four-theme contrast tests cover the UI planes and recording colour. Export images are inspected directly. Browser screenshots at mobile/desktop sizes and installed-icon refresh remain unverified while the PC/browser is unavailable. No historical screenshot, private-account QR code or TLO render is modified.
+Tests check source hash, export dimensions, alpha, opaque PWA backgrounds, maskable geometry and versioned references. Existing four-theme contrast tests cover the UI planes and recording colour. Export images are inspected directly. Browser screenshots at mobile/desktop sizes and installed-icon refresh remain unverified while the PC/browser is unavailable. No historical screenshot, private-account QR code or project render is modified.

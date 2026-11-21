@@ -58,7 +58,7 @@ export default defineMessages({
     /** Hidden note joined to that message (never shown in the thread). */
     actBrief: (post: string, brief: string) => `l'utilisateur a touché ce bouton sous ton mot dans son flux « pour toi » (« ${post} »). À faire : ${brief}`,
     /** Hidden note joined to a reply typed under a post. */
-    replyBrief: (post: string) => `réponds au message ci-dessus : l'utilisateur l'a écrit dans son flux « pour toi », en réponse à ton mot « ${post} »`,
+    replyBrief: (post: string) => `réponds au message ci-dessus : l'utilisateur l'a écrit dans son flux « pour toi », sous le post « ${post} »`,
     /** The prompt that titles a session result card (a light model reads the whole closing message). */
     resultTitle: (project: string, asked: string, text: string) =>
       `Voici le compte rendu de fin de tour d'un agent de code qui travaille sur le projet « ${project} »${asked ? ` ; l'utilisateur lui avait demandé : ${asked}` : ''}.\n\nCompte rendu :\n${text}\n\n` +
@@ -109,7 +109,7 @@ export default defineMessages({
     proposals: (n: number) => (n === 1 ? 'I have an idea for you' : `I have ${n} ideas for you`),
     go: (label: string) => `Go ahead: ${label}`,
     actBrief: (post: string, brief: string) => `the user tapped this button under your post in their "for you" stream ("${post}"). To do: ${brief}`,
-    replyBrief: (post: string) => `answer the message above: the user wrote it in their "for you" stream, as a reply to your post "${post}"`,
+    replyBrief: (post: string) => `answer the message above: the user wrote it in their "for you" stream, under the post "${post}"`,
     resultTitle: (project: string, asked: string, text: string) =>
       `Here is the end-of-turn report of a coding agent working on the project "${project}"${asked ? `; the user had asked it: ${asked}` : ''}.\n\nReport:\n${text}\n\n` +
       `Write the title of this result's card in the user's feed: ONE complete sentence that stands on its own and says what was done or found (or what is blocking), understandable without reading the report. ` +

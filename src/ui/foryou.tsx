@@ -3,7 +3,7 @@ import { LivingLink } from './living-link'
 import { InlineMediaFormats } from './foryou-formats'
 import { OutboxStatus } from './outbox-status'
 import { SaveMediaButton, useLongPressSave } from './save-media'
-import { useForYouOpen } from './foryou-open'
+import { resolveOpen, useForYouOpen } from './foryou-open'
 import { busyOf } from './foryou-busy'
 import { rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
@@ -103,10 +103,12 @@ interface CardProps {
 }
 
 /** Where a tap on the item goes. */
+/** Where the post leads, or undefined when its target is nowhere on this app: then no button is drawn for it. */
 function useOpen(item: ForYouItem): (() => void) | undefined {
   const open = useForYouOpen()
+  const { snap } = useApp()
   const target = item.work?.open ?? item.open ?? (item.sessionId ? ({ page: 'session', id: item.sessionId } as const) : undefined)
-  return target ? () => open(target, item.projectId) : undefined
+  return target && resolveOpen(target, snap, item.projectId) ? () => void open(target, item.projectId) : undefined
 }
 
 

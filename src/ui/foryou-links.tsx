@@ -4,7 +4,7 @@ import { publicWebUrl, webLinks } from '../../shared/web-link'
 import { useT } from '../i18n'
 import M from '../i18n/foryou-links'
 import { useApp } from './app-context'
-import { useForYouOpen } from './foryou-open'
+import { resolveOpen, useForYouOpen } from './foryou-open'
 import './foryou-links.css'
 import { LivingLink, livingLink } from './living-link'
 
@@ -38,14 +38,16 @@ export function FeedText({ text, item }: { text: string; item?: ForYouItem }) {
 /** Opens the current software viewer with GETs only, never openSoftware/launch. */
 export function SoftwareResultLink({ item }: { item: ForYouItem }) {
   const t = useT(M)
-  const { push } = useApp()
+  const { push, snap } = useApp()
   const conversation = useForYouOpen()
   const software = item.software
   if (!software) return null
+  // Its conversation, only when that leads somewhere on this app (never a button that does nothing).
+  const leads = !!item.open && !!resolveOpen(item.open, snap, item.projectId)
   return <div className="fy-software-links">
     {software.state === 'running'
       ? <button type="button" className="fy-btn" onClick={() => push({ kind: 'software', id: software.id })}>{t.open(software.name)}</button>
       : <span className="meta" role="status">{t.unavailable}</span>}
-    {item.open && <button type="button" className="meta fy-software-conversation" onClick={() => conversation(item.open!, item.projectId)}>{t.conversation}</button>}
+    {leads && <button type="button" className="meta fy-software-conversation" onClick={() => void conversation(item.open!, item.projectId)}>{t.conversation}</button>}
   </div>
 }

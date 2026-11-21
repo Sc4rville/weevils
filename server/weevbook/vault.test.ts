@@ -3,7 +3,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EventDraft } from './journal.ts'
 import { backfill, backfillMarker, startFirstBackfill, wanted } from './backfill.ts'
 import { check } from './check.ts'
@@ -80,6 +80,10 @@ const opts = (name: string, remote: string, key: Buffer): VaultOptions => ({ dir
 const allObjects = (gitDir: string) => execFileSync('git', ['--git-dir', gitDir, 'cat-file', '--batch-all-objects', '--batch'], { maxBuffer: 1 << 28 })
 const objectIds = (gitDir: string) => new Set(git(gitDir, 'cat-file', '--batch-all-objects', '--batch-check=%(objectname)').split('\n').filter(Boolean))
 const journal = (gitDir: string, thread: string) => execFileSync('git', ['--git-dir', gitDir, 'cat-file', 'blob', `refs/threads/${thread}:events.jsonl`])
+
+// Every test here runs dozens of git commands against real repositories: seconds on a busy machine (the publish gate
+// runs the whole suite beside other work), far over the default 5 s.
+vi.setConfig({ testTimeout: 60_000 })
 
 describe('sealing (docs/spec/07-vault.md)', () => {
   it('round-trips, and refuses a wrong key, another thread, another kind or a changed byte', () => {

@@ -58,6 +58,7 @@ import { BriefSays } from './brief-says.ts'
 import type { Memory } from './memory.ts'
 import type { Optimizers } from './optimizers.ts'
 import type { Sleep } from './sleep.ts'
+import type { ThemePref } from './theme-pref.ts'
 import type { ForYou, MailIn } from './foryou.ts'
 import { PLAN_MARKER, clockOf, type Relay, type RelayHost } from './relay.ts'
 import R from './i18n/relay.ts'
@@ -390,6 +391,8 @@ export class Weevils {
   foryou: ForYou | null = null
   /** Sleep mode (server/sleep.ts), on the main machine. */
   sleep: Sleep | null = null
+  /** The theme shared by every device (server/theme-pref.ts), on the main machine. */
+  theme: ThemePref | null = null
   /** Codex relay while Claude is at its usage limit (server/relay.ts). */
   relay: Relay | null = null
   /** WEEVILS_THREADS (server/threads-app.ts): each row carries its weevbook thread, one row per thread. */
@@ -1399,6 +1402,7 @@ export class Weevils {
       relay: this.relayView(now, remote.flatMap((r) => r.snap!.relay?.plans ?? [])),
       ...(this.optimizers ? { autoRound: { busy: this.optimizers.roundBusy } } : {}),
       ...(this.sleep ? { sleep: this.sleep.state() } : {}),
+      ...(this.theme?.get() ? { theme: this.theme.get() } : {}),
       config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey, autoUpdate: process.env.WEEVILS_AUTO_UPDATE !== '0', ...(this.threadRows ? { threads: true } : {}), ...(nextUrl() ? { nextUrl: nextUrl() } : {}) },
     }
     this.snapLang = locale

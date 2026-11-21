@@ -62,6 +62,7 @@ import { ledgerRoutes } from './boss-ledger-http.ts'
 import { weevilRoutes } from './weevil.ts'
 import { Optimizers, optimizerRoutes } from './optimizers.ts'
 import { Sleep } from './sleep.ts'
+import { ThemePref } from './theme-pref.ts'
 import { ForYou, foryouRoutes, type MachineState } from './foryou.ts'
 import { ForYouNumbers } from './foryou-numbers.ts'
 import { serveAttachment } from './attachments.ts'
@@ -296,6 +297,8 @@ const foryou = ORCHESTRATOR
 w.foryou = foryou
 // ---------------------------------------------------------------- mode sommeil (server/sleep.ts, machine principale)
 const sleep = new Sleep(path.join(DATA_DIR, 'sleep.json'))
+// The theme, one for every device and address (server/theme-pref.ts).
+w.theme = new ThemePref(path.join(DATA_DIR, 'theme.json'))
 if (ORCHESTRATOR) {
   w.sleep = sleep
   optimizers.sleep = sleep
@@ -690,6 +693,14 @@ const routes: [string, RegExp, Handler][] = [
     if (typeof b?.on !== 'boolean') return json(res, 400, { error: 'sleep_on_boolean' })
     if (!w.sleep) return json(res, 404, { error: 'sleep_unavailable' })
     json(res, 200, w.sleep.set(b.on))
+  }],
+  // The shared theme: { theme } ; POST { theme } (a theme of the app), every device follows through the snapshot.
+  ['GET', /^\/api\/theme$/, (_req, res) => json(res, 200, { theme: w.theme?.get() ?? null })],
+  ['POST', /^\/api\/theme$/, async (req, res) => {
+    const b = await readBody(req).catch(() => ({}))
+    if (!w.theme?.set(b?.theme)) return json(res, 400, { error: 'theme_unknown' })
+    w.bump()
+    json(res, 200, { theme: w.theme.get() })
   }],
   ['GET', /^\/api\/snapshot$/, (_req, res) => json(res, 200, w.snapshot())],
   ['GET', /^\/api\/version$/, (_req, res) => json(res, 200, { version: w.version })],

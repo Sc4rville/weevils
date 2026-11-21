@@ -120,7 +120,10 @@ export default function App() {
     if (live.authed) void loadHints()
   }, [live.authed])
 
-  const setTheme = useCallback((t: Theme) => {
+  // The theme is one for every device and address (server/theme-pref.ts): a pick goes to the server, and the
+  // snapshot brings another device's pick here. For a moment after a local pick, the snapshot's (older) one waits.
+  const pickedAt = useRef(0)
+  const keepTheme = useCallback((t: Theme) => {
     setThemeState(t)
     try {
       localStorage.setItem(THEME_KEY, t)
@@ -128,6 +131,15 @@ export default function App() {
       /* ignoré */
     }
   }, [])
+  const setTheme = useCallback((t: Theme) => {
+    pickedAt.current = Date.now()
+    keepTheme(t)
+    void api.setTheme(t).catch(() => undefined)
+  }, [keepTheme])
+  const shared = live.snap?.theme
+  useEffect(() => {
+    if (isTheme(shared) && Date.now() - pickedAt.current > 4000) keepTheme(shared)
+  }, [shared, keepTheme])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme

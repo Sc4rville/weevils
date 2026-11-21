@@ -1,7 +1,6 @@
 // weevils next — weevboss full screen, a side bar for the rest, and a session that weevboss covers again from the top.
 // Built from weevils' own identity: its themes (src/styles.css tokens), icons and logo, its message renderer (Prose),
 // the green working star, the magenta automation loop, bold for what is active. Data: the same /api, nothing faked.
-import { TempoLine } from '../../src/ui/tempo.tsx'
 import '../../src/styles.css'
 import '../../src/ui/living-link.css'
 import '../../src/ui/foryou.css'
@@ -12,10 +11,10 @@ import { AnimatePresence, MotionConfig, animate, motion, useMotionValue, useTran
 import type { Optimizer, Project, Session, Snapshot } from '../../shared/api.ts'
 import { autoOfSession } from '../../src/ui/auto-model.ts'
 import { improvingProject, mainProjectRank, selfProject } from '../../src/ui/recursive-identity.ts'
-import { Ctx, THEMES, THEME_COLOR, colorSlots, isTheme, type AppCtx, type Page, type Theme } from '../../src/ui/app-context.tsx'
+import { Ctx, THEME_COLOR, colorSlots, isTheme, type AppCtx, type Page, type Theme } from '../../src/ui/app-context.tsx'
 import { PageView } from '../../src/ui/pages.tsx'
-import { LanguageLine } from '../../src/ui/prefs.tsx'
-import { Collapse, Line, WorkingMark, composerLook, spring, threadLook } from '../../src/ui/bits.tsx'
+import { FootBand } from '../../src/ui/bands.tsx'
+import { Collapse, WorkingMark, composerLook, spring, threadLook } from '../../src/ui/bits.tsx'
 
 // Every box to write in next is the roomy one weevboss has (docs/next-interaction.md).
 composerLook.multiline = true
@@ -30,6 +29,8 @@ import { call, useAuth, useSnapshot } from './data.ts'
 import { Sky } from './sky.tsx'
 import { Chat } from './chat.tsx'
 import { slide } from './moves.ts'
+import { registerWorker, useWorker } from './worker.ts'
+import { pageLink } from '../../shared/pages.ts'
 import { toAutos, toBoss, type Reach } from './reach.ts'
 import { FOCUS_BOSS } from '../../src/ui/follow.ts'
 import { NextProjectPage } from './project.tsx'
@@ -202,17 +203,14 @@ function ProjectGroup({ snap, project, color, current, open, page, boss }: { sna
 }
 
 /** still: shown again in place (no slide), as the page that covered it leaves. */
-function SideBar({ snap, colors, theme, setTheme, current, open, close, logout, page, still = false }: {
+function SideBar({ snap, colors, current, open, close, page, still = false }: {
   still?: boolean
   page: (p: Page) => void
   snap: Snapshot
   colors: Record<string, string>
-  theme: Theme
-  setTheme: (t: Theme) => void
   current: string | null
   open: (id: string | null) => void
   close: () => void
-  logout: () => void
 }) {
   // Projects as on the original home: weevils itself first, then what works, then the most recent.
   const last = (p: Project) => Math.max(0, ...snap.sessions.filter((s) => s.projectId === p.id && !s.archived).map((s) => s.lastActivityAt))
@@ -229,7 +227,6 @@ function SideBar({ snap, colors, theme, setTheme, current, open, close, logout, 
   const autos = (snap.optimizers ?? []).filter((o) => o.state !== 'proposed' && o.state !== 'refused')
   const autoRank = (o: Optimizer) => (o.state === 'running' ? 0 : o.state === 'queued' ? 1 : 2)
   autos.sort((a, b) => autoRank(a) - autoRank(b))
-  const bt = useT(BM)
   // « + » as in the app's automations drawer (h24.tsx): a new automation, opened at once on its talk.
   const talks = useTalk()
   const [creating, setCreating] = useState(false)
@@ -294,19 +291,9 @@ function SideBar({ snap, colors, theme, setTheme, current, open, close, logout, 
               </Collapse>
             </section>
           )}
-          {/* Settings as in the app's own settings band (bands.tsx FootBand): its rows (Line), its words; the theme row
-              shows the theme's name and a tap moves to the next one, at once. */}
-          <section className="band nx-settings settings-band" style={{ '--c': `var(--${colors.__foot ?? 'p3'})` } as React.CSSProperties} aria-label={bt.settings}>
-            <div className="in head"><h2 className="h2" style={{ margin: 0 }}>{bt.settings}</h2></div>
-            <Line ch="~" go={null} value={bt.themeName(theme)} onClick={() => setTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length])}>
-              {bt.themeLabel}
-            </Line>
-            <TempoLine />
-            {/* The app's own language line (prefs.tsx): a newcomer picks the language weevboss and the app speak. */}
-            <LanguageLine />
-            <Line ch="→" go={null} onClick={() => { location.href = '/?ui=classic' }}>classic app</Line>
-            <Line ch="x" go={null} onClick={logout}>{bt.logout}</Line>
-          </section>
+          {/* Settings: the app's own band (bands.tsx FootBand), every line of it, so whatever the app adds there shows here
+              too; its last line goes to the classic app. */}
+          <div className="nx-settings"><FootBand switchTo="classic" /></div>
         </div>
       </motion.nav>
     </>
@@ -540,6 +527,17 @@ function App() {
     return () => { removeEventListener('touchstart', start); removeEventListener('touchmove', move) }
   }, [])
 
+  // A page link opened outside the app (/p/<kind>/<slug>, signed in only now): the page, in the app (as App.tsx does).
+  useEffect(() => {
+    if (auth !== 'in') return
+    const page = pageLink(location.pathname)
+    if (!page) return
+    history.replaceState(history.state, '', '/')
+    push({ kind: 'webpage', path: page.path, title: page.slug.replace(/-/g, ' '), pageKind: page.kind })
+  }, [auth]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Notifications, from the app's own service worker: a tap opens its session, or weevboss.
+  useWorker(auth === 'in', snap ?? null, useCallback((to: { session: string } | 'boss') => open(to === 'boss' ? null : to.session), [open]))
+
   if (auth === 'checking') return <main className="nx-center" />
   if (auth === 'out') return <SignIn login={login} />
   if (!snap) return <main className="nx-center"><span className="spin fluo"><Icon name="star" /></span></main>
@@ -602,7 +600,7 @@ function App() {
         </motion.div>
       </motion.section>
       <AnimatePresence>
-        {side && <SideBar still={sideStill} snap={snap} colors={colors} theme={theme} setTheme={setTheme} current={session} open={(id) => (id === null ? open(null) : open(id, true))} close={() => setSide(false)} logout={logout} page={(p) => push(p, true)} />}
+        {side && <SideBar still={sideStill} snap={snap} colors={colors} current={session} open={(id) => (id === null ? open(null) : open(id, true))} close={() => setSide(false)} page={(p) => push(p, true)} />}
       </AnimatePresence>
       <div className="nx-pages">
         {/* Every page, wherever it was asked from, is the app's own page and its own move: in from the right edge,
@@ -655,4 +653,5 @@ function SignIn({ login }: { login: (code: string) => Promise<void> }) {
   )
 }
 
+registerWorker()
 createRoot(document.getElementById('root')!).render(<StrictMode><MotionConfig reducedMotion="user"><App /></MotionConfig></StrictMode>)

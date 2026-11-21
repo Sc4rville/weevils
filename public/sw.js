@@ -34,6 +34,8 @@ async function reloadStale() {
   await Promise.all(
     list.map(async (c) => {
       const version = await versionOf(c)
+      // weevils next (next/src/worker.ts) is another build: never reloaded on a new build of the classic app.
+      if (version?.ui === 'next') return
       // Never navigate away from an unacknowledged send, a draft or attached photos.
       if ((version?.build ?? version) === BUILD) return
       // Old/frozen clients cannot attest that their microphone is safely persisted.

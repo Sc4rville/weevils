@@ -32,7 +32,7 @@
 }
 
 .formats-media-error { width: 100%; padding: 16px 0; }
-.formats-media-error button { text-decoration: underline; }
+.formats-media-error button { font-weight: 750; }
 
 .formats-inline { padding-block: 16px; min-width: 0; overflow-wrap: anywhere; }
 .formats-inline * { min-width: 0; box-sizing: border-box; }
@@ -64,4 +64,4 @@
   filter: none;
 }
 .formats-clip { position: relative; }
-.formats-clip > button:not(.save-media) { display: block; min-height: 44px; padding-block: 12px; text-decoration: underline; }
+.formats-clip > button:not(.save-media) { display: block; min-height: 44px; padding-block: 12px; font-weight: 750; }

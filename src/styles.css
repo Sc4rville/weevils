@@ -329,6 +329,11 @@ button:disabled {
 :focus {
   outline: none;
 }
+/* Nothing in weevils is underlined (Scarville, 2026-11-21: « je veux rien se souligne dans weevils »): a link or an
+   action reads by its weight and colour; focus shows as the halo below. Guarded by test/no-underline.test.ts. */
+a, a:hover, a:focus, a:active, a:visited, button, [role='link'] {
+  text-decoration-line: none;
+}
 :focus-visible {
   outline: var(--focus-halo);
   outline-offset: -2px;
@@ -2090,8 +2095,8 @@ button.copy.done {
 
 /* A tapped setting on its way: the only sign of a change, on the word itself, until the session confirms it. */
 .word.pending {
-  text-decoration: underline dotted;
-  text-underline-offset: 5px;
+  font-weight: 750;
+  opacity: .55;
 }
 
 /* ---------- Icônes : un seul jeu, une seule taille, aucun arrondi ---------- */
@@ -2829,8 +2834,7 @@ button.copy.done {
   font-weight: 400;
 }
 .weevbook-projects .link[aria-pressed='true'] {
-  font-weight: 700;
-  text-decoration: underline;
+  font-weight: 800;
 }
 
 /* Keep the open conversation inside the visual viewport when iOS pans for the keyboard. */
@@ -3115,7 +3119,7 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .delivery-failed .delivery-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
 .delivery-failed .delivery-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 8px 0 0; font-size: .8125rem; }
 .delivery-failed .delivery-cause { font-weight: 750; }
-.delivery-failed .delivery-act { min-height: 32px; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+.delivery-failed .delivery-act { min-height: 32px; font-weight: 850; }
 .delivery-failed .delivery-act .ic { width: 1em; height: 1em; margin-inline-start: 4px; }
 
 .remote-progress { padding-block: 12px; font-size: .9375rem; line-height: 1.45; }

@@ -263,10 +263,10 @@ describe('Ledger', () => {
   })
 
   it('remembers once, refuses secrets, and searches knowledge, requests and the log with ids that lead back', () => {
-    const journal: Entry[] = [{ id: 'abcdef12-3456-0000-0000-000000000000', at: T0, role: 'user', text: 'mets le domaine tryweevils.scarville.tech partout' }]
+    const journal: Entry[] = [{ id: 'abcdef12-3456-0000-0000-000000000000', at: T0, role: 'user', text: 'mets le domaine tryweevils.example.com partout' }]
     const { ledger } = rig({ journal })
-    const k = ledger.remember('decision', 'The public link is tryweevils.scarville.tech', 'abcdef12-3456')
-    expect(ledger.remember('fact', 'the public link is tryweevils.scarville.tech', 'other').id).toBe(k.id)
+    const k = ledger.remember('decision', 'The public link is tryweevils.example.com', 'abcdef12-3456')
+    expect(ledger.remember('fact', 'the public link is tryweevils.example.com', 'other').id).toBe(k.id)
     expect(ledger.knowledge()).toHaveLength(1)
     expect(ledger.knowledge()[0].seen).toBe(2)
     expect(() => ledger.remember('fact', 'the api key is sk-abcdefghijklmnop1234')).toThrow()

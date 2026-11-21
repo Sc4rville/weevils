@@ -826,7 +826,8 @@ export class Curator implements ForYouCurator {
       this.s.digestAt = now
       if (signature(this.fy.w.snapshot().sessions) !== before) return
       if (!d) return void console.log('[foryou] curateur : point de weevboss écarté (vide ou déjà dit)')
-      this.fy.add({ id: `d:${now.toString(36)}`, kind: 'boss', who: 'weevboss', text: d.text, actions: d.actions, lang: l })
+      // A digest tells; it never asks for a tap: automation work lands on its own, decisions come from weevboss itself.
+      this.fy.add({ id: `d:${now.toString(36)}`, kind: 'boss', who: 'weevboss', text: d.text, lang: l })
     }
   }
 

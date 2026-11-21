@@ -1263,7 +1263,8 @@ export class ForYou {
     if (voice) out.voice = voice
     if (i.seen) out.seen = true
     // Said as a person would read it, never as internal shorthand (humanLabel).
-    if (i.actions?.length) out.actions = i.actions.map(({ id, label, brief }): ForYouAction => ({ id, label: humanLabel(label, brief) }))
+    // A digest stored with buttons before they were dropped (curator) tells only.
+    if (i.actions?.length) out.actions = i.id.startsWith('d:') ? [] : i.actions.map(({ id, label, brief }): ForYouAction => ({ id, label: humanLabel(label, brief) }))
     if (i.mediaIds?.length && this.shelf) {
       const captions = this.reviewed().captions
       const media = i.mediaIds.map((id) => this.shelf!.get(id)).filter((e) => !!e).map((e): ForYouMedia => {

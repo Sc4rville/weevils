@@ -383,13 +383,13 @@ describe('the digest', () => {
     expect(prompt).toContain('Sam')
     expect(prompt).not.toContain('[from:')
     const item = fy.feed(now).items.find((i) => i.kind === 'boss')!
-    expect(item).toMatchObject({ who: 'weevboss', tone: 'neutral', reply: 'boss', open: { page: 'boss' }, actions: [{ id: 'a1', label: 'Show me the jump' }] })
+    expect(item).toMatchObject({ who: 'weevboss', tone: 'neutral', reply: 'boss', open: { page: 'boss' } })
+    // A digest tells; it never asks for a tap.
+    expect(item.actions ?? []).toEqual([])
     expect(item.text).toBe('Ok, Jump physics on myshop is back: the double jump is in. Nothing is waiting on you.')
     expect(JSON.stringify(item)).not.toContain('ask the myshop session')
-    expect(kinds('boss')[0].actions?.[0].brief).toContain('ask the myshop session')
-    // The button goes to weevboss with its brief, like one of its own posts.
-    await fy.act(item.id, 'a1')
-    expect(host.sendMain).toHaveBeenCalledWith(expect.stringContaining('Show me the jump'), expect.stringContaining('ask the myshop session'))
+    // Nothing to tap is stored either: the suggested button is dropped at the source.
+    expect(kinds('boss')[0].actions).toBeUndefined()
   })
 
   it('only includes an exact unanswered question from the current conversation', async () => {

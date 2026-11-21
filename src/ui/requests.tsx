@@ -48,7 +48,10 @@ export function headingOf(text: string): string {
   const s = text.replace(/\s+/g, ' ').trim()
   const cut = s.split(BREAK)[0].trim()
   const words = (cut.split(' ').length >= 2 ? cut : s).split(' ')
-  return words.slice(0, 6).join(' ').replace(/[\s,;:.'"’-]+$/, '')
+  const kept = words.slice(0, 6)
+  // Never end on a little word (« … page of each », « … use the »).
+  while (kept.length > 2 && /^(?:the|a|an|of|in|on|at|to|each|every|its|their|your|my|our|this|that|use)$/i.test(kept.at(-1)!)) kept.pop()
+  return kept.join(' ').replace(/[\s,;:.'"’-]+$/, '')
 }
 
 /**

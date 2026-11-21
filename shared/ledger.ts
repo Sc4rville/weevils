@@ -36,6 +36,8 @@ export interface Ask {
   id: string
   /** The request in one plain sentence, in the app's language. */
   text: string
+  /** The request as a short title (2 to 5 words), for lists; older requests get theirs later (boss-ledger titleAsks). */
+  title?: string
   /** The user's exact words. */
   quote: string
   /** The message it came from: a journal id (weevils recall) or a capture id. */

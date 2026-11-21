@@ -14,7 +14,7 @@ import M from '../i18n/project-screen'
 import { useApp } from './app-context'
 import { SessionRow } from './bits'
 import { Shell } from './shell'
-import { chipOf } from './requests'
+import { askLabel, chipOf } from './requests'
 import './project-screen.css'
 import { WeevbookLine } from './threads'
 
@@ -64,8 +64,6 @@ export function todoOf(asks: Row[], project: { id: string; name: string }, sessi
     .sort((x, y) => RANK[x.chip] - RANK[y.chip] || y.a.at - x.a.at)
 }
 
-/** The user's own words on one line; what doesn't fit fades at the edge. */
-const oneLine = (q: string) => q.replace(/\s+/g, ' ').trim()
 
 /** Bold is kept for what runs (the lines above) and what waits on you; sent and in progress stay regular; asleep dims. */
 const weight = (c: Chip) => (c === 'needs' ? 'on' : c === 'paused' || c === 'blocked' ? 'rest' : '')
@@ -114,7 +112,7 @@ export function ProjectNow({ project, sessions }: { project: { id: string; name:
         <ul className="pj-todo" aria-label={t.todo}>
           {shown.map(({ a, chip }) => (
             <li key={a.id}>
-              <button type="button" className={`pj-line ${weight(chip)}`} onClick={() => open(a)} title={a.text}>“{oneLine(a.quote)}”</button>
+              <button type="button" className={`pj-line ${weight(chip)}`} onClick={() => open(a)} title={a.text}>{askLabel(a)}</button>
             </li>
           ))}
           {todo.length > shown.length && (

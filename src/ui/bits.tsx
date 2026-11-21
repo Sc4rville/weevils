@@ -167,9 +167,12 @@ export function SessionRow({ session }: { session: Session }) {
         <span className="st">
           <StatusChar s={session.status} auto={!!autoOfSession(snap, session.id)} />
         </span>
-        <span className="tool-ic">
-          {!thread && <ToolIcon tool={session.tool} />}
-        </span>
+        {/* Threads on, a row has no tool icon: no empty column either, the title sits right by its state. */}
+        {!thread && (
+          <span className="tool-ic">
+            <ToolIcon tool={session.tool} />
+          </span>
+        )}
         <span className="title wrap">
           <span className="session-name">{unread && <span className="dot" aria-hidden />}{text}</span>
           {/* Session Codex ouverte en relais d'une session Claude arrêtée par sa limite d'usage. */}

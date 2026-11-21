@@ -40,6 +40,8 @@ export const shortTitle = (text: string) => {
   const cut = text.split(/: | — | – |\. /)[0].trim()
   return cut.length >= 12 ? cut : text
 }
+/** A request in a list: its short title (the ledger writes one), else the first clause of its sentence. */
+export const askLabel = (a: { title?: string; text: string }) => a.title || shortTitle(a.text)
 
 /**
  * The one word that says where a request stands, read from the real session it was sent to (never from the ledger's
@@ -87,7 +89,7 @@ function AskRow({ a, open, state, onToggle, onAction }: { a: Row; open: boolean;
     <motion.div layout="position" transition={spring} className={`req-item c-${chip}${open ? ' band tone open' : ''}${a.stale ? ' stale' : ''}`}>
       <div className="in req-line">
         <button className="req-main" onClick={onToggle} aria-expanded={open}>
-          <span className="req-text">{open ? a.text : shortTitle(a.text)}</span>
+          <span className="req-text">{open ? a.text : askLabel(a)}</span>
           <span className={`meta req-chip c-${chip}`}>{t.chip(chip)}</span>
         </button>
       </div>

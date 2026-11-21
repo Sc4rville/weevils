@@ -68,7 +68,7 @@ import { chipsInPlace, CONTEXT_BLOCK } from '../shared/setup.ts'
 import { asksUser, type Ask } from '../shared/asks.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { judgeAsk } from './asks-judge.ts'
-import { TranscriptStore, borrowedTitle, digestOf, lastMessageOf, realTitle, titleOf } from './transcripts.ts'
+import { TranscriptStore, borrowedTitle, digestOf, hasBrief, lastMessageOf, placeTitle, realTitle, titleOf } from './transcripts.ts'
 import { emptyBg, subagentSteps } from './background.ts'
 import { failedLine } from '../shared/failed-line.ts'
 import { llmTitles, needsTitle, shortNow, stableTitle, TitleRetry } from './titles.ts'
@@ -1514,7 +1514,12 @@ export class Weevils {
     // Titles written from the app-locale block (« weevils locale setup » on a session that never spoke of locales): forgotten,
     // the renamer writes them again from the real subject.
     for (const t of recent) if (borrowedTitle(t, this.titles.get(t.id)?.title)) this.titles.delete(t.id)
+    // Titles that name only the place (« weevils project »: written before the brief arrived, then kept as the stable
+    // topic): forgotten too, the renamer names the real subject. And no title at all before the session has a brief.
+    const places = (t: Transcript) => [place(t.cwd, PROJECT_ROOTS).repo ?? undefined, path.basename(t.cwd)]
+    for (const t of recent) if (placeTitle(this.titles.get(t.id)?.title, places(t))) this.titles.delete(t.id)
     const todo = recent
+      .filter(hasBrief)
       .filter((t) => needsTitle(this.titles.get(t.id), t.messages.length, now - t.lastActivityAt < STALE_MS, now))
       .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
       .slice(0, 8)

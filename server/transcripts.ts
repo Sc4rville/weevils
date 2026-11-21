@@ -682,6 +682,18 @@ const brief = (t: Transcript) => {
   }
   return undefined
 }
+/** Has the session been told what it is about yet? A session opened with a slash command (« /model … ») and weevils'
+ *  context block gets its brief a moment later: titled before that, the renamer can only name the place. */
+export const hasBrief = (t: Transcript) => !!brief(t)
+/** A title that names only the place, not the subject (« weevils project », « weevils », « tlo session »): no title. */
+export const placeTitle = (title: string | undefined, places: (string | undefined)[]) => {
+  if (!title) return false
+  const f = title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  return places.some((p) => {
+    const n = (p ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+    return !!n && new RegExp(`^(?:(?:the|projet|project|session|repo) )?${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?: (?:project|projet|session|repo|work|app))?$`).test(f) // i18n-ignore: a pattern, never shown
+  })
+}
 const titled = (s: string) => short(oneLine(s).replace(/^[#>*\s-]+/, ''), 60)
 /** The session's title as the app shows it, without the translated « new session » of a session with none yet. */
 export const untranslatedTitleOf = (t: Transcript): string | undefined => {

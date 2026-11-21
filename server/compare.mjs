@@ -8,12 +8,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
+import { GROUND, browser } from './picture.mjs'
 
-export const USAGE = 'usage: weevils compare <before.png|.mp4> <after.png|.mp4> <out.compare.png|.mp4> [--crop x,y,w,h] [--crop-before x,y,w,h] [--crop-after x,y,w,h] [--layout auto|stack|side]'
-/** The ground and the tags: neutral, high contrast on every theme's band (light, dark, purple). */
-export const GROUND = '#e9e6df'
+export { GROUND, browser }
+
+export const USAGE = 'usage: weevils compare <before.png|.mp4|.mmd> <after.png|.mp4|.mmd> <out.compare.png|.mp4> [--crop x,y,w,h] [--crop-before x,y,w,h] [--crop-after x,y,w,h] [--layout auto|stack|side]'
 export const TAGS = { before: { bg: '#111111', fg: '#ffffff' }, after: { bg: '#1fd60a', fg: '#000000' } }
 
 /** "x,y,w,h" in the source's pixels → a box, or undefined. */
@@ -50,34 +50,12 @@ main{display:flex;flex-direction:${layout === 'side' ? 'row' : 'column'};gap:28p
 figure{margin:0}
 .tag{display:inline-block;font-size:26px;font-weight:900;letter-spacing:.06em;padding:6px 14px;line-height:1.1}
 .tag.before{background:${TAGS.before.bg};color:${TAGS.before.fg}}.tag.after{background:${TAGS.after.bg};color:${TAGS.after.fg}}
-.frame{position:relative;overflow:hidden;border:4px solid #111;background:#fff}
+.frame{position:relative;overflow:hidden;border:4px solid #111;background:#111}
 .frame img{position:absolute;max-width:none;display:block}
 </style></head><body><main>${frames.map(frame).join('')}</main></body></html>`
 }
 
-const OWN = path.join(os.homedir(), '.local', 'share', 'weevils', 'capture')
-function loadPlaywright() {
-  const roots = [OWN, process.cwd(), process.env.WEEVILS_PLAYWRIGHT_DIR].filter(Boolean)
-  try { roots.push(execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim()) } catch { /* no npm */ }
-  for (const r of roots) {
-    try { return createRequire(path.join(r, 'x.js'))('playwright-core') } catch { /* next */ }
-  }
-  return null
-}
-function chromiumPath() {
-  const cache = path.join(os.homedir(), '.cache', 'ms-playwright')
-  const dirs = fs.existsSync(cache) ? fs.readdirSync(cache).filter((d) => /^chromium(_headless_shell)?-\d+$/.test(d)).sort((a, b) => Number(b.split('-')[1]) - Number(a.split('-')[1])) : []
-  for (const d of dirs) for (const rel of ['chrome-headless-shell-linux64/chrome-headless-shell', 'chrome-linux/chrome', 'chrome-headless-shell-mac-arm64/chrome-headless-shell', 'chrome-mac/Chromium.app/Contents/MacOS/Chromium']) {
-    const p = path.join(cache, d, rel)
-    if (fs.existsSync(p)) return p
-  }
-  return undefined
-}
-async function browser() {
-  const pw = loadPlaywright()
-  if (!pw) throw new Error('playwright-core is missing: run « weevils capture » once, it installs it')
-  try { return await pw.chromium.launch() } catch { return pw.chromium.launch({ executablePath: chromiumPath() }) }
-}
+const isDiagram = (f) => /\.(mmd|mermaid)$/i.test(f)
 const isVideo = (f) => /\.(mp4|webm|mov|m4v)$/i.test(f)
 const probe = (f) => {
   const out = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', f], { encoding: 'utf8' }).trim().split(',').map(Number)
@@ -155,9 +133,23 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     if (!before || !after || !out) throw new Error(USAGE)
     if (!/\.compare\.(png|mp4)$/i.test(out)) throw new Error('the output name ends in .compare.png or .compare.mp4')
-    if (isVideo(before) !== isVideo(after) || isVideo(before) !== /\.mp4$/i.test(out)) throw new Error('two pictures → .compare.png, two clips → .compare.mp4')
+    if (isDiagram(before) !== isDiagram(after)) throw new Error('two diagrams (.mmd) or two pictures, not one of each')
+    if ((!isDiagram(before) && isVideo(before) !== isVideo(after)) || isVideo(before) !== /\.mp4$/i.test(out)) throw new Error('two pictures → .compare.png, two clips → .compare.mp4')
     const o = { crop: parseCrop(opt('crop')), cropBefore: parseCrop(opt('crop-before')), cropAfter: parseCrop(opt('crop-after')), layout: opt('layout') ?? 'auto' }
     fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true })
+    if (isDiagram(before) && isDiagram(after)) {
+      // Two backend diagrams (server/diagram.mjs), drawn first, then framed side by side like two screens.
+      const { renderDiagram } = await import('./diagram.mjs')
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-compare-'))
+      try {
+        const [b, a] = await Promise.all([[before, 'before'], [after, 'after']].map(([f, k]) => renderDiagram(path.resolve(f), path.join(tmp, `${k}.png`))))
+        await images(b, a, path.resolve(out), { ...o, layout: o.layout === 'auto' ? 'side' : o.layout })
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true })
+      }
+      console.log(path.resolve(out))
+      process.exit(0)
+    }
     await (isVideo(before) ? clips : images)(path.resolve(before), path.resolve(after), path.resolve(out), o)
     console.log(path.resolve(out))
   } catch (e) {

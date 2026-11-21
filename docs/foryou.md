@@ -145,6 +145,21 @@ mark has nothing to cover), then before, then after, each tagged. The caption sa
 carries no caption of its own. `weevils show` refuses a file whose caption or name says before/after (or avant/après)
 unless it ends in `.compare.png` / `.compare.mp4`.
 
+**Diagrams** (`server/diagram.mjs`). Backend work (server, API, data flow, sync, security, automation) is shown as a
+drawn diagram, not a screenshot of a terminal or code. The source is a mermaid flowchart, the subset agents already
+write, with three additions: a kind per part (`:::phone`, `:::machine`, `:::server`, `:::agent`, `:::repo`,
+`:::automation`, `:::data`, `:::cloud`, `:::person`, `:::page`, `:::lock`, `:::notify`; guessed from the words when
+missing), `:::new` / `:::changed` / `:::gone` on what changed, and `==>` for a new flow; a `title:` front matter puts
+a heading with the weevils mark on top. `weevils diagram <flow.mmd> [out.diagram.png]` draws it, `weevils show
+<flow.mmd> "caption"` draws and shows it in one go, `weevils compare <before.mmd> <after.mmd> <out.compare.png>` puts
+two side by side under the BEFORE / AFTER tags. The picture: the compare ground with a black frame (it stands apart
+from every theme), always top to bottom (a phone is taller than wide), white tiles with a black edge and a hard
+shadow, each with its icon from the weevils set on the kind's signature colour, right-angled flows coloured by the
+part they leave (shades at ≥ 4.5:1 on the ground), labels in chips; what changed gets a NEW tag, a stepped
+black-green-black "staircase" shadow and a green glow, a new flow is thick fluo green. At most 8 parts, labels of 28
+characters, no ids: the renderer refuses the rest with a plain sentence. A visible UI change stays a screenshot or a
+clip.
+
 **Evidence labels** (`shared/evidence.ts`). A result says how far it was seen working: *implemented* (« Built »: the
 code exists, nothing seen running), *demonstrated* (« Shown working », with where: a clip, a screenshot, a test
 server) or *verified* (« Verified », with the environment it was checked in, shown next to the label). The level comes

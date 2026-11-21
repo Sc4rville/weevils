@@ -100,13 +100,19 @@ afterEach(() => {
 describe('the conversation view of a thread', () => {
   it('one thread across engine changes reads as one conversation, with no relay trace', async () => {
     const s = session({ thread: T, relayOf: 'old-claude-session' })
-    render(<PageView page={{ kind: 'session', id: 'c1' }} />, snap(true, [s], relay))
+    render(<PageView page={{ kind: 'thread', id: T }} />, snap(true, [s], relay))
     await flush()
     expect(host.querySelector(`[data-thread="${T}"]`)).not.toBeNull()
     expect(text()).toContain('Show prices with the currency')
     expect(text()).toContain('The cart shows the currency too; the tests pass.')
     expect(text()).toContain('your move')
     noRelayTrace()
+  })
+
+  it('a session row opens the one session view, threads on or off (its tool titles, questions, photos)', async () => {
+    render(<PageView page={{ kind: 'session', id: 'c1' }} />, snap(true, [session({ thread: T })], relay))
+    await flush()
+    expect(host.querySelector('[data-thread]')).toBeNull()
   })
 
   it('the row of a thread in a list: its title and state, no tool and no relay sign', () => {

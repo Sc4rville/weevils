@@ -5,6 +5,7 @@ import { effortLabel, modelLabel } from './settings'
 import ModelM from '../i18n/model-controls'
 import { OutboxStatus } from './outbox-status'
 import { createPortal } from 'react-dom'
+import { NextShortcut } from './next-shortcut' // TEMPORARY
 import { AnimatePresence, animate, motion, useMotionValue, type MotionValue } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { Message, Project } from '../../shared/api.ts'
@@ -697,6 +698,7 @@ export function FootBand() {
           {tr(RM).menu}
         </Line>
       )}
+      <NextShortcut />
       <Line ch="x" go={null} onClick={logout}>
         {t.logout}
       </Line>

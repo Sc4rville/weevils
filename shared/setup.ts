@@ -86,7 +86,7 @@ export interface ApplyResult {
 }
 
 /** Les seules clés que « weevils config set » peut écrire ; le reste du fichier de config ne bouge pas. */
-export const SETUP_KEYS = ['DEVIL_API_URL', 'DEVIL_MODEL', 'DEVIL_API_KEY', 'OPENAI_API_KEY', 'CARTESIA_API_KEY', 'CARTESIA_VOICE_ID', 'WEEVILS_MAIL_ADDRESS', 'WEEVILS_MAIL_PASSWORD', 'WEEVILS_USER_NAME', 'WEEVILS_GH_OWNER', 'WEEVILS_AUTO_UPDATE', 'WEEVILS_WEEVBOOK', 'WEEVILS_CONNECTOR', 'WEEVILS_THREADS', 'WEEVILS_BOSS_PROACTIVE', 'WEEVILS_SPEED_MODE'] as const
+export const SETUP_KEYS = ['DEVIL_API_URL', 'DEVIL_MODEL', 'DEVIL_API_KEY', 'OPENAI_API_KEY', 'CARTESIA_API_KEY', 'CARTESIA_VOICE_ID', 'WEEVILS_MAIL_ADDRESS', 'WEEVILS_MAIL_PASSWORD', 'WEEVILS_USER_NAME', 'WEEVILS_GH_OWNER', 'WEEVILS_AUTO_UPDATE', 'WEEVILS_WEEVBOOK', 'WEEVILS_CONNECTOR', 'WEEVILS_THREADS', 'WEEVILS_BOSS_PROACTIVE', 'WEEVILS_SPEED_MODE', /* TEMPORARY: src/ui/next-shortcut.tsx */ 'WEEVILS_NEXT_URL'] as const
 export type SetupKey = (typeof SETUP_KEYS)[number]
 export const isSetupKey = (s: unknown): s is SetupKey => typeof s === 'string' && ((SETUP_KEYS as readonly string[]).includes(s) || /^WEEVILS_AUTHOR_[A-Z0-9_]{1,32}$/.test(s))
 export const SECRET_KEYS: ReadonlySet<string> = new Set(['DEVIL_API_KEY', 'OPENAI_API_KEY', 'CARTESIA_API_KEY', 'WEEVILS_MAIL_PASSWORD'])

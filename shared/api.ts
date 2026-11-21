@@ -558,7 +558,7 @@ export interface Snapshot {
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */
   /** siteKey : clé des pages statiques des repos (/api/site/<clé>/<repo>/), pour le navigateur intégré sans domaine de preview. */
   /** threads: WEEVILS_THREADS is on (docs/spec, step 4): conversations are weevbook threads and nothing shows relays. */
-  config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[]; siteKey?: string; autoUpdate?: boolean; threads?: boolean }
+  config: { userName: string; exposeDomain: string; publicHost: string; authors?: Author[]; siteKey?: string; autoUpdate?: boolean; threads?: boolean; /** TEMPORARY: the new interface's address (WEEVILS_NEXT_URL), src/ui/next-shortcut.tsx. */ nextUrl?: string }
 }
 
 export interface SessionDetail {

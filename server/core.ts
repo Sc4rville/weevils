@@ -149,6 +149,8 @@ interface Persisted {
 }
 
 const STATE_FILE = path.join(DATA_DIR, 'state.json')
+/** TEMPORARY: the new interface's address, for the shortcut in the settings (src/ui/next-shortcut.tsx). https only. */
+const nextUrl = () => { const u = process.env.WEEVILS_NEXT_URL?.trim() ?? ''; return /^https:\/\/[^\s"'<>]+$/.test(u) ? u : '' }
 /** Dernier appel d'outil, en mots : « Bash · Build and deploy » → « build and deploy ». */
 const stepOf = (t: { messages: { role: string; text: string }[] }) => {
   const e = [...t.messages].reverse().find((m) => m.role === 'event')
@@ -1397,7 +1399,7 @@ export class Weevils {
       relay: this.relayView(now, remote.flatMap((r) => r.snap!.relay?.plans ?? [])),
       ...(this.optimizers ? { autoRound: { busy: this.optimizers.roundBusy } } : {}),
       ...(this.sleep ? { sleep: this.sleep.state() } : {}),
-      config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey, autoUpdate: process.env.WEEVILS_AUTO_UPDATE !== '0', ...(this.threadRows ? { threads: true } : {}) },
+      config: { userName: USER_NAME, exposeDomain: EXPOSE_DOMAIN, publicHost: PUBLIC_URL ? new URL(PUBLIC_URL).host : '', authors: publicAuthors(), siteKey: this.siteKey, autoUpdate: process.env.WEEVILS_AUTO_UPDATE !== '0', ...(this.threadRows ? { threads: true } : {}), ...(nextUrl() ? { nextUrl: nextUrl() } : {}) },
     }
     this.snapLang = locale
     // « Pour toi » : sa marque (révision, non vus) se calcule sur le snapshot qu'on vient de poser, sans rappeler snapshot().

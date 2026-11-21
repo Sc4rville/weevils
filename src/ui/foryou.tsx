@@ -267,6 +267,9 @@ function Post({ item, format }: CardProps & { format: ForYouFormat }) {
   )
 }
 
+/** A session's title, short enough for the reply box. */
+const shortTitle = (title: string) => { const t = title.replace(/\s+/g, ' ').trim(); return t.length > 32 ? `${t.slice(0, 31).trimEnd()}…` : t }
+
 /** Where « open » goes, said as a person would: the conversation it came from, weevboss's thread, the place it speaks of. */
 function openLabel(item: ForYouItem, t: { openConversation: string; openThread: string; tapLook: string }): string {
   const target = item.work?.open ?? item.open ?? (item.sessionId ? { page: 'session' as const } : undefined)
@@ -279,9 +282,12 @@ function openLabel(item: ForYouItem, t: { openConversation: string; openThread: 
 function PostSheet({ item, onClose }: { item: ForYouItem; onClose: () => void }) {
   const t = useT(M)
   const fy = useForYou()
-  const { colors } = useApp()
+  const { colors, snap } = useApp()
   const authors = useAuthors()
   const open = useOpen(item)
+  // A post from a session: the reply goes to that session (server/foryou.ts reply), so the box says whom it talks to.
+  const source = item.reply === 'session' && item.sessionId ? snap.sessions.find((s) => s.id === item.sessionId) : undefined
+  const say = source ? t.sheetReplyTo(shortTitle(source.title)) : t.sheetWrite
   const calm = useReducedMotion()
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
@@ -341,8 +347,8 @@ function PostSheet({ item, onClose }: { item: ForYouItem; onClose: () => void })
             </button>
           ))}
           <form className="fy-sheet-say" onSubmit={(e) => { e.preventDefault(); void send() }}>
-            <input value={text} onChange={(e) => setText(e.target.value)} placeholder={t.sheetWrite} aria-label={t.sheetWrite} enterKeyHint="send" />
-            <button type="submit" className="fy-sheet-send" disabled={!text.trim() || sending} aria-label={t.sheetSend}>
+            <input value={text} onChange={(e) => setText(e.target.value)} placeholder={say} aria-label={say} enterKeyHint="send" />
+            <button type="submit" className="fy-sheet-send" disabled={!text.trim() || sending} aria-label={source ? say : t.sheetSend}>
               <Icon name="arrow" dir="up" />
             </button>
           </form>

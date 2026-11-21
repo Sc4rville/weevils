@@ -870,14 +870,24 @@ export class ForYou {
 
   /** « weevils post »: a word in the stream, from weevboss unless another author signs it, with up to two buttons, and the
    *  evidence supplied with it when it reports a result (shared/evidence.ts). */
-  post(text: unknown, actions?: unknown, from?: string, evidence?: unknown, title?: unknown): ForYouItem {
+  /** The project session that ran « weevils post / show » (its CLAUDE_CODE_SESSION_ID…), when this machine knows it
+   *  as one: never weevboss's own thread (its folder is weevils' data). Its posts belong to it, and a reply goes back to it. */
+  private sourceSession(id: unknown): Session | undefined {
+    if (typeof id !== 'string' || !id) return undefined
+    const s = this.w.snapshot().sessions.find((x) => x.id === id && x.machineId === this.machineId)
+    if (!s || !this.eligible(s) || (s.cwd && (s.cwd === this.dataDir || s.cwd.startsWith(this.dataDir + path.sep)))) return undefined
+    return s
+  }
+
+  post(text: unknown, actions?: unknown, from?: string, evidence?: unknown, title?: unknown, source?: unknown): ForYouItem {
     const body = typeof text === 'string' ? text.trim() : ''
     // The post's title, in bold on top (weevils post --title): one short line.
     const head = typeof title === 'string' ? collapse(title).slice(0, POST_TITLE_MAX) : ''
     if (!body) throw new Error(tr(M).emptyText)
     if (technicalEvent('', body) || internalFeedUpdate(body)) throw new Error(tr(M).technicalPost)
     const proof = evidenceInput(evidence)
-    const item: Stored = { id: newId('b'), kind: 'boss', tone: 'neutral', at: this.now(), who: from || 'weevboss', ...(head ? { title: head } : {}), text: clip(body, POST_MAX), actions: this.buttons(actions), reply: 'boss', open: { page: 'boss' }, ...(proof ? { evidence: proof } : {}) }
+    const s = this.sourceSession(source)
+    const item: Stored = { id: newId('b'), kind: 'boss', tone: 'neutral', at: this.now(), who: from || 'weevboss', ...(head ? { title: head } : {}), text: clip(body, POST_MAX), actions: this.buttons(actions), ...(s ? { projectId: s.projectId, sessionId: s.id, tool: s.tool, reply: 'session' as const, open: { page: 'session' as const, id: s.id } } : { reply: 'boss' as const, open: { page: 'boss' as const } }), ...(proof ? { evidence: proof } : {}) }
     this.put(item)
     this.changed()
     return this.view(item, this.w.snapshot())!
@@ -887,18 +897,18 @@ export class ForYou {
    * « weevils show »: a file an agent wants the user to see. Its session is the most recently active one working in
    * (or above) the caller's folder; files shown by the same session within two minutes join one item.
    */
-  addMedia(o: { path: unknown; caption?: unknown; cwd?: unknown; from?: string; evidence?: unknown }): ForYouItem {
+  addMedia(o: { path: unknown; caption?: unknown; cwd?: unknown; from?: string; evidence?: unknown; source?: unknown }): ForYouItem {
     if (!this.shelf) throw new Error(tr(M).noMedia)
     const cwd = typeof o.cwd === 'string' && o.cwd ? path.resolve(o.cwd) : undefined
     const entry = this.shelf.add(String(o.path ?? ''), cwd)
     const caption = clip(collapse(typeof o.caption === 'string' ? o.caption : ''), 320)
     const proof = evidenceInput(o.evidence)
     const snap = this.w.snapshot()
-    const s = cwd
+    const s = this.sourceSession(o.source) ?? (cwd
       ? snap.sessions
           .filter((x) => x.machineId === this.machineId && x.cwd && (cwd === x.cwd || cwd.startsWith(x.cwd + path.sep)) && this.eligible(x))
           .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0]
-      : undefined
+      : undefined)
     const now = this.now()
     const open = this.s.items.find((i) => i.kind === 'media' && !i.gone && now - i.at < MEDIA_JOIN_MS && (i.mediaIds?.length ?? 0) < MAX_MEDIA && (s ? i.sessionId === s.id : !i.sessionId && i.cwd === cwd))
     if (open) {
@@ -1858,7 +1868,10 @@ export class ForYou {
       if (!out || !i.mail?.address) throw new Error(t.mailOff)
       const sent = await out.write({ to: i.mail.address, subject: i.mail.subject, text: body, inReplyTo: i.mail.mid, author: i.who, target: i.mail.target })
       if (!sent) throw new Error(t.noReply)
-    } else if (i.reply === 'session' && i.sessionId && i.tone === 'question') await this.w.send(i.sessionId, body, undefined, undefined, origin)
+    // A post from a session (a result, a picture, a question): the reply goes straight back into that session, as the
+    // person's own message (a request the ledger records against it), the post quoted on top so the agent knows what it
+    // answers. A closed session is resumed by send; one that can't be reached fails as a delivery problem.
+    } else if (i.reply === 'session' && i.sessionId) await this.w.send(i.sessionId, replyWithPost(i, body), undefined, undefined, origin)
     // Anything else written under a post goes to weevboss, the post as its context: it knows where to take it.
     else await this.w.sendMain(body, t.replyBrief(clip(collapse([i.title, i.text].filter(Boolean).join(' — ')), 400)))
     i.seen = true
@@ -1881,6 +1894,12 @@ export class ForYou {
     this.changed()
     return i.moreText
   }
+}
+
+/** The person's reply to a post, for the session that posted it: the post's title quoted on top, then their words. */
+export function replyWithPost(i: { title?: string; text?: string }, body: string): string {
+  const about = clip(collapse(i.title || i.text || ''), 200)
+  return about ? `> ${about}\n\n${body}` : body
 }
 
 // ---------------------------------------------------------------- routes
@@ -1925,7 +1944,7 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
     ['POST', /^\/api\/foryou\/post$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
-      await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, b), b?.evidence, b?.title) }))
+      await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, { from: b?.from }), b?.evidence, b?.title, b?.session) }))
     }],
     ['GET', /^\/api\/foryou\/formats$/, (_req, res, url) => json(res, 200, { proposal: fy.visualExample(langOf(url)), examples: fy.formatExamples() })],
     ['POST', /^\/api\/foryou\/composition$/, async (req, res) => {
@@ -1941,7 +1960,7 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
     ['POST', /^\/api\/foryou\/media$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
-      await run(res, true, () => ({ item: fy.addMedia({ path: b?.path, caption: b?.caption, cwd: b?.cwd, from: trustedFrom(req, b), evidence: b?.evidence }) }))
+      await run(res, true, () => ({ item: fy.addMedia({ path: b?.path, caption: b?.caption, cwd: b?.cwd, from: trustedFrom(req, { from: b?.from }), evidence: b?.evidence, source: b?.session }) }))
     }],
     // GET and HEAD (a player may ask for the size first): the router matches the method exactly.
     ...(['GET', 'HEAD'] as const).map((method): [string, RegExp, Handler] => [method, /^\/api\/foryou\/media\/([\w-]+)$/, (req, res, u, [mid]) => {

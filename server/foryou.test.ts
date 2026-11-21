@@ -736,14 +736,27 @@ describe('posts', () => {
     expect(find(fy, 's:s1')?.reply).toBe('session')
   })
 
-  it('a word written under a session result goes to weevboss, the post as its context', async () => {
+  it('a word written under a session result goes straight back to that session, as the person, the post quoted on top', async () => {
     const fy = make()
     threads.s1 = [says('Done.')]
     fy.sessionTurn(session(), 'result')
     await flush()
     await fy.reply('s:s1', 'and the tests?', undefined, 'user')
-    expect(host.send).not.toHaveBeenCalled()
-    expect(host.sendMain).toHaveBeenCalledWith('and the tests?', expect.stringContaining('Done.'))
+    expect(host.sendMain).not.toHaveBeenCalled()
+    expect(host.send).toHaveBeenCalledWith('s1', expect.stringMatching(/^> .+\n\nand the tests\?$/), undefined, undefined, 'user')
+  })
+
+  it('a post or a picture from a session belongs to it (its id from the command), and the reply goes back there', async () => {
+    const s = session()
+    snap.sessions = [s]
+    const fy = make()
+    const item = fy.post('The red bubble is live.', undefined, 'agent', undefined, 'Red bubble', 's1')
+    expect(item).toMatchObject({ sessionId: 's1', reply: 'session', open: { page: 'session', id: 's1' } })
+    await fy.reply(item.id, 'no underline please', undefined, 'user')
+    expect(host.send).toHaveBeenCalledWith('s1', '> Red bubble\n\nno underline please', undefined, undefined, 'user')
+    expect(host.sendMain).not.toHaveBeenCalled()
+    // An unknown id, or none: weevboss's post, the reply goes to weevboss as before.
+    expect(fy.post('Hello.', undefined, undefined, undefined, undefined, 'nope')).toMatchObject({ reply: 'boss', open: { page: 'boss' } })
   })
 
   it('a shorthand button is said in plain words; a label that already says it stays', async () => {

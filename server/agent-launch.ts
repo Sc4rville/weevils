@@ -5,6 +5,7 @@ import { installationLang, type Lang } from './i18n.ts'
 import PlainVoice from './i18n/plain-voice.ts'
 import LivingResults from './i18n/living-results.ts'
 import ReadableReplies from './i18n/readable-replies.ts'
+import AgentTools from './i18n/agent-tools.ts'
 
 /** Agents ask before acting (answered from the app) unless the person turned that off: WEEVILS_SAFE=0 (installer
  *  --no-ask-permissions). Unset counts as asking. */
@@ -26,7 +27,7 @@ export const CODEX_FLAGS: readonly string[] = codexFlags(SAFE)
 /** The rule, in the installation's language (the one picked in the app), read at launch time. */
 export const plainVoice = (l: Lang = installationLang()): string => PlainVoice[l].rule
 
-export const projectInstructions = (l: Lang = installationLang()): string => plainVoice(l) + '\n\n' + ReadableReplies[l].rule + '\n\n' + LivingResults[l].rule
+export const projectInstructions = (l: Lang = installationLang()): string => plainVoice(l) + '\n\n' + ReadableReplies[l].rule + '\n\n' + AgentTools[l].rule + '\n\n' + LivingResults[l].rule
 
 /** A project session's Claude command: the bare one plus the plain-voice rule appended to Claude Code's system prompt. */
 export const projectClaude = (l?: Lang): string[] => [...CLAUDE, '--append-system-prompt', projectInstructions(l)]

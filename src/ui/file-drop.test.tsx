@@ -86,3 +86,21 @@ it("drops files from the desktop on a thread into that thread's box, not another
   expect(attach).toHaveBeenCalledWith('', [expect.objectContaining({ name: 'notes.pdf' })])
   expect(other).not.toHaveBeenCalled()
 })
+
+it('keeps the line breaks of text pasted in a one-line box: it grows into the roomy box', async () => {
+  act(() => root.render(<Composer label="m" placeholder="m" horizontal onSend={vi.fn()} onAttach={attach} />))
+  const lines = 'error: one\nat two\nat three'
+  expect((await fire(box(), 'paste', data([], { 'text/plain': lines }))).defaultPrevented).toBe(true)
+  const field = box() as HTMLTextAreaElement
+  expect(field.classList.contains('horizontal-editor')).toBe(false)
+  expect(field.value).toBe(lines)
+  expect(document.activeElement).toBe(field)
+  await submit()
+  expect(attach).not.toHaveBeenCalled()
+})
+
+it('lets one-line text paste stay native in a one-line box', async () => {
+  act(() => root.render(<Composer label="m" placeholder="m" onSend={vi.fn()} />))
+  expect((await fire(box(), 'paste', data([], { 'text/plain': 'just one line' }))).defaultPrevented).toBe(false)
+  expect(box().tagName).toBe('INPUT')
+})

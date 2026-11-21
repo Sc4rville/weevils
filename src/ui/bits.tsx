@@ -8,10 +8,10 @@ import { flowLines, flowParagraph, mermaidFlow } from './diagram'
 import { DiagramView } from './diagram-view'
 import { dismissNotice } from './notice-store'
 import { AnimatePresence, motion, type Transition } from 'motion/react'
-import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { api } from '../api'
 import { useCaptureSuggestion } from './capture-suggestion'
-import { pasteHandler, useDropTarget } from './file-drop'
+import { pasteFiles, useDropTarget } from './file-drop'
 import type { Author, Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
 import { chipLabel, chipLabels, type ChipId, dur, inline, isCommand, status, step, userText, userPhotos, userCaption } from './format'
@@ -437,6 +437,16 @@ export function Composer({
     }
   }, [draftState])
   const field = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
+  // Text with line breaks always gets the roomy box, wherever it came from (a paste, a restored draft).
+  const roomy = multiline || text.includes('\n')
+  const caret = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    const at = caret.current
+    if (at === null || !field.current) return
+    caret.current = null
+    field.current.focus()
+    field.current.setSelectionRange(at, at)
+  }, [roomy, text])
   const [busy, setBusy] = useState(false)
   const submitting = useRef(false)
   const [files, setFiles] = useState<Attachment[]>([])
@@ -449,10 +459,10 @@ export function Composer({
   const canVoice = voice && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
   useEffect(() => {
     const box = field.current
-    if (!multiline || !box) return
+    if (!roomy || !box) return
     box.style.height = 'auto'
     box.style.height = `${Math.min(box.scrollHeight, innerHeight * 0.45)}px`
-  }, [multiline, text])
+  }, [roomy, text])
   useEffect(() => {
     if (draft?.reset) setText('')
     else if (draft?.text) setText((cur) => (cur.trim() ? `${cur.replace(/\s+$/, '')} ${draft.text}` : draft.text))
@@ -518,7 +528,19 @@ export function Composer({
     for (const f of list) if (f.type.startsWith('image/')) capture.remember(f)
     void pick(list)
   }
-  const onPaste = canTake ? pasteHandler(take, () => setErr(t.dragFilesInstead)) : undefined
+  // Several lines pasted in a one-line box (a log, some code, a long note from the computer) keep their line breaks: the
+  // box grows into the roomy one for this draft (roomy below) rather than flattening the text into one line.
+  const onPaste = (e: React.ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (canTake && pasteFiles(e, take, () => setErr(t.dragFilesInstead))) return
+    const pastedText = e.clipboardData.getData('text/plain')
+    if (roomy || !/\n/.test(pastedText.trim())) return
+    e.preventDefault()
+    const el = e.currentTarget
+    const at = el.selectionStart ?? el.value.length
+    const end = el.selectionEnd ?? at
+    caret.current = at + pastedText.length
+    setText(el.value.slice(0, at) + pastedText + el.value.slice(end))
+  }
   const formEl = useRef<HTMLFormElement | null>(null)
   useDropTarget(formEl, take, canTake)
 
@@ -585,7 +607,7 @@ export function Composer({
       <div className="in">
         {/* No « > » before the field: its width goes to the text. Only the sending star takes that spot. */}
         {busy && <span className="prompt" aria-hidden><span className="spin"><Icon name="star" /></span></span>}
-        {horizontal ? (
+        {horizontal && !roomy ? (
           <textarea
             ref={(node) => { field.current = node }}
             className="horizontal-editor"
@@ -610,7 +632,7 @@ export function Composer({
             autoComplete="off"
             disabled={disabled}
           />
-        ) : multiline ? (
+        ) : roomy ? (
           <textarea
             ref={(node) => { field.current = node }}
             rows={3}

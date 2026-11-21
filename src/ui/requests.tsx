@@ -137,6 +137,33 @@ export function columnOf(asks: Row[], state: (a: Row) => SessionStatus | 'gone' 
     .sort((x, y) => Number(y.chip === 'running') - Number(x.chip === 'running') || y.a.at - x.a.at)
 }
 
+/** Requests sent to one session within this long of its latest one came in the same brief: one job. */
+const SAME_BRIEF_MS = 2 * 60_000
+
+/**
+ * The state of the session a request was last sent to, as the column reads it. A working session works on what it was
+ * sent last (the latest brief, or anything sent since its current turn began): an older request on that same session
+ * is not « running » any more, its turn ended, so it reads as a session at rest (it came back, to check). Exported for
+ * tests.
+ */
+export function stateIn(asks: Row[], sessions: { id: string; status: SessionStatus; workStartedAt?: number | null }[]): (a: Row) => SessionStatus | 'gone' | undefined {
+  const byId = new Map(sessions.map((x) => [x.id, x]))
+  const latest = new Map<string, number>()
+  for (const a of asks) {
+    const d = a.dispatches.at(-1)
+    if (d) latest.set(d.session, Math.max(latest.get(d.session) ?? 0, d.at))
+  }
+  return (a) => {
+    const d = a.dispatches.at(-1)
+    if (!d) return undefined
+    const s = byId.get(d.session)
+    if (!s) return 'gone'
+    if (s.status !== 'working') return s.status
+    const current = d.at >= (latest.get(d.session) ?? 0) - SAME_BRIEF_MS || (!!s.workStartedAt && d.at >= s.workStartedAt - 60_000)
+    return current ? 'working' : 'idle'
+  }
+}
+
 const PAGE = 40
 const STEPS = 8
 
@@ -152,11 +179,7 @@ export function RequestColumn({ asks, onChanged, fill }: { asks: Row[]; onChange
   const { snap } = useApp()
   const [open, setOpen] = useState<string | null>(null)
   const [shown, setShown] = useState(PAGE)
-  const status = new Map<string, SessionStatus>(snap.sessions.map((x) => [x.id, x.status]))
-  const rows = columnOf(asks, (a) => {
-    const d = a.dispatches.at(-1)
-    return d ? (status.get(d.session) ?? 'gone') : undefined
-  })
+  const rows = columnOf(asks, stateIn(asks, snap.sessions))
   const act = (a: Row) => (action: 'done' | 'drop' | 'open') => void api.askAction(a.id, action).then(() => onChanged?.()).catch(() => undefined)
   return (
     <div className={fill ? 'rc fill' : 'rc'} style={{ '--last': Math.min(Math.max(rows.length - 1, 0), STEPS) } as CSSProperties}>

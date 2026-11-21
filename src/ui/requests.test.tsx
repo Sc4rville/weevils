@@ -25,7 +25,7 @@ for (let p: object | null = HTMLElement.prototype; p; p = Object.getPrototypeOf(
 globalThis.fetch = (async () => new Response('{}')) as typeof fetch
 
 const { setLang } = await import('../i18n')
-const { RequestsPage, chipOf, columnOf, stageOf } = await import('./requests')
+const { RequestsPage, chipOf, columnOf, stageOf, stateIn } = await import('./requests')
 const { Ctx } = await import('./app-context')
 
 const snap = { version: 1, now: NOW, machines: [], projects: [], sessions: [], h24: [], conversations: [], conversationCounts: { total: 0, pending: 0, byProject: {} }, classifier: { running: false, queued: 0 }, main: [], mainWorking: false, mainHasScreen: true, mainQueued: 0, devil: { enabled: false, working: false }, pinnedRepos: [], config: { userName: '', exposeDomain: '', publicHost: '' } } as unknown as Snapshot
@@ -104,6 +104,18 @@ it('nothing is ever cut from the list: 40 bands, then the earlier ones on a tap'
   } finally {
     view.asks = kept
   }
+})
+
+it('a working session runs what it was sent last: its older requests are no longer « running »', () => {
+  const ask = (id: string, at: number, session: string) => ({ ...view.asks[3], id, at, dispatches: [{ session, at }] }) as never
+  const asks = [ask('old', NOW - 5 * 3600_000, 's'), ask('brief-a', NOW - 10 * 60_000, 's'), ask('brief-b', NOW - 9 * 60_000, 's'), ask('other', NOW - 5 * 3600_000, 't'), ask('lost', NOW, 'zz')]
+  const state = stateIn(asks, [{ id: 's', status: 'working', workStartedAt: NOW - 8 * 60_000 }, { id: 't', status: 'working', workStartedAt: null }])
+  expect(asks.map((a) => state(a))).toEqual(['idle', 'working', 'working', 'working', 'gone'])
+  // Sent since the current turn began: running too, even when a later brief exists.
+  const late = [ask('first', NOW - 30 * 60_000, 's'), ask('second', NOW - 20 * 60_000, 's'), ask('third', NOW - 60_000, 's')]
+  const st = stateIn(late, [{ id: 's', status: 'working', workStartedAt: NOW - 21 * 60_000 }])
+  expect(late.map((a) => st(a))).toEqual(['idle', 'working', 'working'])
+  expect(columnOf(asks, state).map((x) => `${x.a.id}:${x.chip}`)).toEqual(['brief-b:running', 'brief-a:running', 'other:running', 'lost:paused', 'old:check'])
 })
 
 it('the order and the bar come from facts', () => {

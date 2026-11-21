@@ -1193,6 +1193,16 @@ button.copy.done {
 .msg.working .who {
   font-size: 0.9375rem;
 }
+/* weevboss at work: the weevils logo walking in place (a small bob and tilt), in the theme's logo tone. */
+.msg.working .working-logo { display: inline-block; width: 1.5em; height: 1.5em; vertical-align: -0.4em; margin-inline-end: .15em; transform-origin: 50% 85%; animation: weevil-walk 1.4s ease-in-out infinite; }
+@keyframes weevil-walk {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-2px) rotate(-6deg); }
+  50% { transform: translateY(0) rotate(0deg); }
+  75% { transform: translateY(-2px) rotate(6deg); }
+}
+@media (prefers-reduced-motion: reduce) { .msg.working .working-logo { animation: weevil-breathe 2.4s ease-in-out infinite; } }
+@keyframes weevil-breathe { 50% { opacity: .6; } }
 
 /* Vert fluo : ce qui travaille, en ce moment. */
 :root {

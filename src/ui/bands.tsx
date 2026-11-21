@@ -5,6 +5,7 @@ import { effortLabel, modelLabel } from './settings'
 import ModelM from '../i18n/model-controls'
 import { OutboxStatus } from './outbox-status'
 import { createPortal } from 'react-dom'
+import { WeevbossLogo } from './logo'
 import { NextShortcut } from './next-shortcut' // TEMPORARY
 import { AnimatePresence, animate, motion, useMotionValue, type MotionValue } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
@@ -319,7 +320,7 @@ export function AgentBand() {
           </div>
           <ThreadPlans />
           <OutboxStatus scope="/api/main" />
-          {snap.mainWorking && <Working author="weevboss" />}
+          {snap.mainWorking && <Working author="weevboss" mark={<WeevbossLogo className="working-logo" />} />}
           {snap.devil?.working && <Working author="devil" />}
         </motion.div>
         {/* Du nouveau en bas pendant qu'on relit plus haut : un « ↓ » flottant y redescend en douceur. */}

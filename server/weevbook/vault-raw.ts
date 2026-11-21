@@ -17,6 +17,9 @@
 // in a folder (a path, as the tests and a home server use) needs no key: the next repository is a folder beside it.
 //
 // Nothing here reads or writes the weevbook's folders or takes its lock: sources are the commits of its thread refs.
+// The journals (vault.ts) and these are pushed apart, each under its own lock and with its own record of what went
+// (weevils-lines.json in the staging repository): in weevilsd the journals go from the app's process, the lines and
+// the code from a process of their own at the lowest priority (vault-worker.ts), and neither waits for the other.
 
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
@@ -29,7 +32,7 @@ import { parseEngine, type Provider } from './journal.ts'
 import { slimRaw } from './slim.ts'
 import { Locked } from './store.ts'
 import { addDeployKey, ghLogin, type Gh } from './vault-github.ts'
-import { NEUTRAL, VaultError, git, githubRepo, isAncestor, mktree, open, openStaging, refsUnder, restoreVault, revParse, seal, sealLarge, sha256, text, vaultSsh, writeBlob, writeState, type State, type VaultOptions } from './vault.ts'
+import { NEUTRAL, VaultError, git, githubRepo, isAncestor, lockStaging, mktree, open, openStaging, refsUnder, restoreVault, revParse, seal, sealLarge, sha256, text, vaultSsh, writeBlob, type VaultOptions } from './vault.ts'
 
 /** A raw repository that passed this gets no new thread (under GitHub's 1 GB recommendation, VAULT-7). */
 export const ROLL_BYTES = 700_000_000
@@ -40,6 +43,8 @@ const GROUP_BYTES = 48 << 20
 const GROUP_REFS = 100
 /** Threads given a raw repository in one write of the map, at most. */
 const WINDOW_THREADS = 200
+/** A thread whose turn never goes quiet has its raw lines sent this often all the same. */
+const RAW_EVERY = 15 * 60_000
 /** How long the answer of `gh api user` is kept. */
 const LOGIN_FOR = 10 * 60_000
 
@@ -52,6 +57,43 @@ const pad = (n: number) => String(n).padStart(3, '0')
 const sshEnv = (ssh?: string): Record<string, string> => (ssh ? { GIT_SSH_COMMAND: ssh } : {})
 const yieldNow = () => new Promise<void>((r) => setImmediate(r))
 
+// ---------------------------------------------------------------- what went, on this machine
+
+/** What this machine pushed of the raw lines and the checkpoints (the staging repository's weevils-lines.json). */
+interface State {
+  /** By thread: the weevbook commit whose raw lines are in the vault (sealed and pushed). */
+  raw: Record<string, string>
+  /** By thread: when its raw lines last went (ms): a turn that never goes quiet is still sent now and then. */
+  rawAt: Record<string, number>
+  /** By thread: the checkpoint commit (refs/checkpoints/<id> of the weevbook) that is in the vault, or was too large. */
+  checkpoints: Record<string, string>
+  /** By raw repository: the sealed bytes this machine pushed to it, and what it last wrote of that in the map. */
+  rawBytes: Record<string, number>
+  rawTold: Record<string, number>
+}
+const linesFile = (staging: string) => path.join(staging, 'weevils-lines.json')
+export async function readLines(staging: string): Promise<State> {
+  const empty: State = { raw: {}, rawAt: {}, checkpoints: {}, rawBytes: {}, rawTold: {} }
+  try {
+    return { ...empty, ...(JSON.parse(await fsp.readFile(linesFile(staging), 'utf8')) as Partial<State>) }
+  } catch {
+    return empty
+  }
+}
+async function writeState(staging: string, s: State) {
+  const tmp = `${linesFile(staging)}.${process.pid}.tmp`
+  await fsp.writeFile(tmp, JSON.stringify(s))
+  await fsp.rename(tmp, linesFile(staging))
+}
+
+/** When a thread was made: the time its id holds (a ULID). */
+const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+function born(id: string): number {
+  let t = 0
+  for (const c of id.slice(0, 10)) t = t * 32 + B32.indexOf(c)
+  return t > 0 && Number.isFinite(t) ? t : 0
+}
+
 // ---------------------------------------------------------------- where the raw repositories are
 
 type Host = { kind: 'github'; owner: string } | { kind: 'path' } | null
@@ -63,6 +105,13 @@ function hostOf(remote: string): Host {
 export const rawRepoName = (n: number) => `weevbook-raw-${pad(n)}`
 /** The n-th raw repository: beside the vault, under the same owner or in the same folder. */
 export const rawRemote = (remote: string, n: number) => remote.replace(/[^/:]+?(\.git)?\/?$/, (_m, ext?: string) => `${rawRepoName(n)}${ext ?? ''}`)
+/** `main` of a raw repository: what it is, and nothing else. */
+const RAW_README = `# weevbook-raw
+
+This repository holds part of an encrypted copy of conversations kept by weevils (https://github.com/Sc4rville/weevils):
+what the AI tools themselves wrote. Nothing here is readable without the vault key, which never leaves the person's
+machines. Do not edit it by hand.
+`
 const keyFile = (keyDir: string, n: number) => path.join(keyDir, `vault-deploy-raw-${pad(n)}`)
 /** The ssh git uses for the n-th raw repository: this machine's key for that repository only. */
 function rawSsh(o: VaultOptions, n: number): string | undefined {
@@ -193,9 +242,17 @@ async function loginOf(gh: Gh, now: number): Promise<string | null> {
   return login
 }
 
+/** A raw repository that was just made gets its `main`: a README (a repository with no branch looks broken on
+ *  github.com). Best effort: the lines do not need it. */
+async function readme(o: VaultOptions, n: number) {
+  const blob = await writeBlob(o.staging, Buffer.from(RAW_README))
+  const commit = await text(o.staging, ['commit-tree', await mktree(o.staging, [`100644 blob ${blob}\tREADME.md`]), '-m', 'vault'], { env: NEUTRAL })
+  await git(o.staging, ['push', '-q', '--no-verify', rawRemote(o.remote, n), `${commit}:refs/heads/main`], { env: sshEnv(rawSsh(o, n)), timeoutMs: o.netMs ?? 120_000, allowFail: true })
+}
+
 /** The sealed bytes the n-th repository holds: what the other machines wrote in the map, and this machine's count. */
 function held(map: RawMap, state: State, machine: string, n: number): number {
-  let sum = Math.max(state.rawBytes?.[n] ?? 0, map.bytes.get(n)?.get(machine) ?? 0)
+  let sum = Math.max(state.rawBytes[n] ?? 0, map.bytes.get(n)?.get(machine) ?? 0)
   for (const [m, b] of map.bytes.get(n) ?? []) if (m !== machine) sum += b
   return sum
 }
@@ -217,18 +274,17 @@ async function upkeep(o: VaultOptions, map: RawMap, state: State, now: number): 
       if (!fs.existsSync(path.join(dir, 'HEAD'))) {
         await fsp.mkdir(dir, { recursive: true })
         await git(dir, ['init', '-q', '--bare', '--initial-branch=main'])
+        await readme(o, next)
       }
       recs.push({ k: 'repo', n: next })
     }
     return addToMap(o, map, recs)
   }
   if (!o.keyDir) return map
-  const mine = new Map<number, string>()
   // One for each repository there is, and one for the next: when that one opens, every machine can write it at once.
   for (let n = 1; n <= Math.max(last, next) + 1; n++) {
     const pub = await myKey(o.keyDir, n)
     if (!pub) break
-    mine.set(n, pub)
     if (!map.keys.get(n)?.get(o.machine)?.has(pub)) recs.push({ k: 'key', n, m: o.machine, pub })
   }
   // With `gh` signed in as the vault's owner: the repositories and the keys. Asked only when there is something to do.
@@ -239,10 +295,12 @@ async function upkeep(o: VaultOptions, map: RawMap, state: State, now: number): 
   if (o.gh && (next || repos.some((n) => waiting(n).length)) && (await loginOf(o.gh, now)) === host.owner) {
     for (const n of repos) {
       const repo = `${host.owner}/${rawRepoName(n)}`
+      let made = false
       if (n === next) {
         if ((await o.gh(['repo', 'view', repo, '--json', 'name'])).code !== 0) {
-          const made = await o.gh(['repo', 'create', repo, '--private', '--description', 'Encrypted copy kept by weevils'])
-          if (made.code) throw new VaultError(`gh repo create: ${(made.err || made.out).trim()}`) // i18n-ignore: gh's own error
+          const r = await o.gh(['repo', 'create', repo, '--private', '--description', 'Encrypted copy kept by weevils'])
+          if (r.code) throw new VaultError(`gh repo create: ${(r.err || r.out).trim()}`) // i18n-ignore: gh's own error
+          made = true
         }
         recs.push({ k: 'repo', n })
       }
@@ -250,6 +308,7 @@ async function upkeep(o: VaultOptions, map: RawMap, state: State, now: number): 
         await addDeployKey(o.gh, repo, w.m, w.pub)
         recs.push({ k: 'access', n, m: w.m, pub: w.pub })
       }
+      if (made) await readme(o, n)
     }
   }
   return addToMap(o, map, recs)
@@ -381,12 +440,47 @@ async function added(staging: string, commit: string, have: string | null): Prom
   return Number(await text(staging, ['rev-list', '--objects', '--disk-usage', commit, ...(have ? [`^${have}`] : [])], { allowFail: true })) || 0
 }
 
+export interface LinesReport { raw: RawReport; checkpoints: CheckpointsReport }
+/** What weevilsd's pusher hands the process that pushes the raw lines and the checkpoints (vault-worker.ts). */
+export interface LinesJob extends Omit<VaultOptions, 'key' | 'gh' | 'now' | 'progress'> {
+  keyFile: string
+  /** The path of `gh`. */
+  gh?: string
+  /** The pusher's clock when it started the job: what is due is decided at that time. */
+  at?: number
+}
+
+const noRaw = (): RawReport => ({ sealed: 0, chunks: 0, bytes: 0, pushes: 0, pushed: 0, waiting: 0, noRepo: 0, differ: [], failed: [], repos: 0 })
+const noCheckpoints = (): CheckpointsReport => ({ sent: 0, bytes: 0, pushes: 0, pushed: 0, skipped: [], failed: [] })
+
+/**
+ * The raw lines, then the checkpoints (step 3), one such push at a time on this machine. An error of one is in its
+ * report and never keeps the other back.
+ */
+export async function pushLines(o: VaultOptions): Promise<LinesReport> {
+  await openStaging(o.staging)
+  let unlock: () => Promise<void>
+  try {
+    unlock = await lockStaging(o.staging, 'lines.lock')
+  } catch (e) {
+    if (!(e instanceof Locked)) throw e
+    return { raw: { ...noRaw(), error: 'the raw lines are being pushed by another process of this machine: it goes on from there' }, checkpoints: noCheckpoints() } // i18n-ignore: log line
+  }
+  try {
+    const state = await readLines(o.staging)
+    const raw = await pushRaw(o, state)
+    return { raw, checkpoints: await pushCheckpoints(o, state) }
+  } finally {
+    await unlock()
+  }
+}
+
 /**
  * Seals what is new in every thread's raw lines and pushes it, a batch at a time: each batch is claimed in the map,
  * sealed, pushed, then recorded, so a push that is cut goes on from the last batch that arrived.
  */
-export async function pushRaw(o: VaultOptions, state: State): Promise<RawReport> {
-  const report: RawReport = { sealed: 0, chunks: 0, bytes: 0, pushes: 0, pushed: 0, waiting: 0, noRepo: 0, differ: [], failed: [], repos: 0 }
+async function pushRaw(o: VaultOptions, state: State): Promise<RawReport> {
+  const report = noRaw()
   try {
     await raw(o, state, report)
   } catch (e) {
@@ -397,34 +491,63 @@ export async function pushRaw(o: VaultOptions, state: State): Promise<RawReport>
   return report
 }
 
+/** The threads whose raw lines are due: their ref moved since they last went, and the turn is over (or they have
+ *  waited long enough). `later`: how long until the first one that waits is due. */
+async function dueRaw(book: string, state: State, o: { rawQuietMs?: number; rawEveryMs?: number }, now: number): Promise<{ due: { id: string; src: string }[]; waiting: number; later?: number }> {
+  const due: { id: string; src: string }[] = []
+  let waiting = 0
+  let later: number | undefined
+  const every = o.rawEveryMs ?? RAW_EVERY
+  for (const l of (await text(book, ['for-each-ref', '--format=%(objectname) %(committerdate:unix) %(refname)', 'refs/threads/'])).split('\n')) {
+    if (!l) continue
+    const [src, at, ref] = l.split(' ')
+    const id = ref.slice('refs/threads/'.length)
+    if (state.raw[id] === src) continue
+    const age = now - Number(at) * 1000
+    // Still being written: after the turn, or now when its lines have waited long enough already (a thread whose
+    // lines never went counts from when it was made).
+    const since = now - (state.rawAt[id] ?? born(id))
+    if (o.rawQuietMs && age < o.rawQuietMs && since < every) {
+      waiting++
+      later = Math.min(later ?? Infinity, o.rawQuietMs - age, every - since)
+      continue
+    }
+    due.push({ id, src })
+  }
+  return { due, waiting, ...(later !== undefined ? { later } : {}) }
+}
+
+/**
+ * Whether the raw lines or the checkpoints have something to send now (weevilsd's pusher asks before it starts the
+ * process that sends them): two git commands and a small file, nothing sealed, nothing fetched.
+ */
+export async function linesDue(o: { dir: string; staging: string; remote: string; rawQuietMs?: number; rawEveryMs?: number; now?: number }): Promise<{ due: boolean; later?: number }> {
+  const book = path.join(path.resolve(o.dir), '.git')
+  if (!fs.existsSync(path.join(book, 'HEAD'))) return { due: false }
+  const state = await readLines(o.staging)
+  const code = [...(await refsUnder(book, 'refs/checkpoints/'))].some(([id, tip]) => state.checkpoints[id] !== tip)
+  // A vault that is neither on GitHub nor in a folder takes no raw lines: only its checkpoints are ever due.
+  if (!hostOf(o.remote)) return { due: code }
+  const r = await dueRaw(book, state, o, o.now ?? Date.now())
+  return { due: r.due.length > 0 || code, ...(r.later !== undefined ? { later: r.later } : {}) }
+}
+
 async function raw(o: VaultOptions, state: State, report: RawReport) {
   const book = path.join(path.resolve(o.dir), '.git')
   if (!fs.existsSync(path.join(book, 'HEAD'))) return
   const now = (o.now ?? Date.now)()
   const roll = o.rollBytes ?? ROLL_BYTES
-  state.raw ??= {}
-  state.rawBytes ??= {}
-  state.rawTold ??= {}
   const done = state.raw
-  const due: { id: string; src: string }[] = []
-  for (const l of (await text(book, ['for-each-ref', '--format=%(objectname) %(committerdate:unix) %(refname)', 'refs/threads/'])).split('\n')) {
-    if (!l) continue
-    const [src, at, ref] = l.split(' ')
-    const id = ref.slice('refs/threads/'.length)
-    if (done[id] === src) continue
-    const age = now - Number(at) * 1000
-    if (o.rawQuietMs && age < o.rawQuietMs) {
-      report.waiting++
-      report.later = Math.min(report.later ?? Infinity, o.rawQuietMs - age)
-      continue
-    }
-    due.push({ id, src })
-  }
+  const sentAt = state.rawAt
+  const d = await dueRaw(book, state, o, now)
+  const due = d.due
+  report.waiting = d.waiting
+  if (d.later !== undefined) report.later = d.later
   if (!hostOf(o.remote)) {
     report.noRepo = due.length
     return
   }
-  let map = await upkeep(o, await readMap(o), state, now)
+  let map = await upkeep(o, await fetchMap(o), state, now)
   report.repos = map.repos.size
   let can = writable(o, map)
   const tracked = await refsUnder(o.staging, 'refs/vault-remote/raw/')
@@ -432,10 +555,10 @@ async function raw(o: VaultOptions, state: State, report: RawReport) {
   due.sort((a, b) => (a.id < b.id ? 1 : -1))
 
   /** What this machine pushed since it last said so in the map, once it is worth a line there. */
-  const tally = (): Rec[] => Object.entries(state.rawBytes!).filter(([n, b]) => b - (state.rawTold![n] ?? 0) >= roll / 32).map(([n, b]): Rec => ({ k: 'bytes', n: Number(n), m: o.machine, b }))
+  const tally = (): Rec[] => Object.entries(state.rawBytes).filter(([n, b]) => b - (state.rawTold[n] ?? 0) >= roll / 32).map(([n, b]): Rec => ({ k: 'bytes', n: Number(n), m: o.machine, b }))
   const write = async (recs: Rec[]) => {
     map = await addToMap(o, map, recs)
-    for (const r of recs) if (r.k === 'bytes') state.rawTold![r.n] = r.b
+    for (const r of recs) if (r.k === 'bytes') state.rawTold[r.n] = r.b
   }
 
   for (let i = 0; i < due.length; ) {
@@ -444,8 +567,10 @@ async function raw(o: VaultOptions, state: State, report: RawReport) {
     const win: { id: string; src: string; files: Awaited<ReturnType<typeof rawFiles>> }[] = []
     for (let source = 0; i < due.length && win.length < WINDOW_THREADS && source < roll / 4; i++) {
       const files = await rawFiles(book, due[i].src)
-      if (!files.length) done[due[i].id] = due[i].src
-      else {
+      if (!files.length) {
+        done[due[i].id] = due[i].src
+        sentAt[due[i].id] = now
+      } else {
         win.push({ ...due[i], files })
         source += files.reduce((s, f) => s + f.size, 0)
       }
@@ -497,8 +622,9 @@ async function raw(o: VaultOptions, state: State, report: RawReport) {
           tracked.set(g.id, g.oid)
           theirs.set(g.id, g.oid)
           done[g.id] = g.src
+          sentAt[g.id] = now
         }
-        state.rawBytes![n] = (state.rawBytes![n] ?? 0) + bytes
+        state.rawBytes[n] = (state.rawBytes[n] ?? 0) + bytes
         report.pushes++
         report.pushed += group.length
         await writeState(o.staging, state)
@@ -516,9 +642,11 @@ async function raw(o: VaultOptions, state: State, report: RawReport) {
           }
           if (!r.commit || r.commit === (tracked.get(g.id) ?? null)) {
             done[g.id] = g.src
+            sentAt[g.id] = now
             continue
           }
-          const size = await added(o.staging, r.commit, tracked.get(g.id) ?? null)
+          // What was sealed just now; for a commit sealed by a push that was cut, what git says it adds.
+          const size = r.bytes || (await added(o.staging, r.commit, tracked.get(g.id) ?? null))
           report.bytes += size
           bytes += size
           group.push({ id: g.id, src: g.src, oid: r.commit })
@@ -537,7 +665,7 @@ async function raw(o: VaultOptions, state: State, report: RawReport) {
 }
 
 /** One thread: the bytes appended to each raw segment since the vault's copy, slim, sealed as one chunk each. */
-async function sealRaw(o: VaultOptions, book: string, g: { id: string; src: string; files: { name: string; oid: string; size: number }[] }, theirs: string | null): Promise<{ commit: string | null; chunks: number; differ: boolean }> {
+async function sealRaw(o: VaultOptions, book: string, g: { id: string; src: string; files: { name: string; oid: string; size: number }[] }, theirs: string | null): Promise<{ commit: string | null; chunks: number; bytes: number; differ: boolean }> {
   const mine = await revParse(o.staging, `refs/raw/${g.id}`)
   const base = await baseOf(o.staging, mine, theirs)
   const m: RawManifest = base ? (JSON.parse(open(o.key, g.id, 'rm', (await git(o.staging, ['cat-file', 'blob', `${base}:m`])).out).toString()) as RawManifest) : { v: 1, thread: g.id, files: {} }
@@ -545,6 +673,7 @@ async function sealRaw(o: VaultOptions, book: string, g: { id: string; src: stri
   const entries = base ? await treeEntries(o.staging, base) : new Map<string, string>()
   let legs: Map<string, string> | null = null
   let chunks = 0
+  let bytes = 0
   let differ = false
   for (const f of g.files) {
     const had = m.files[f.name]
@@ -566,16 +695,18 @@ async function sealRaw(o: VaultOptions, book: string, g: { id: string; src: stri
     entries.set(`c/${n}`, await writeBlob(o.staging, sealed))
     m.files[f.name] = { src: { b: end, h: mark(blob, end) }, chunks: [...(had?.chunks ?? []), { n, b: slim.length }] }
     chunks++
+    bytes += sealed.length
     await yieldNow()
   }
   if (!chunks) {
     if (base && base !== mine) await git(o.staging, ['update-ref', `refs/raw/${g.id}`, base])
-    return { commit: base, chunks: 0, differ }
+    return { commit: base, chunks: 0, bytes: 0, differ }
   }
-  entries.set('m', await writeBlob(o.staging, seal(o.key, g.id, 'rm', Buffer.from(JSON.stringify(m)))))
+  const manifest = seal(o.key, g.id, 'rm', Buffer.from(JSON.stringify(m)))
+  entries.set('m', await writeBlob(o.staging, manifest))
   const commit = await commitOf(o.staging, entries, 'c', base)
   await git(o.staging, ['update-ref', `refs/raw/${g.id}`, commit])
-  return { commit, chunks, differ }
+  return { commit, chunks, bytes: bytes + manifest.length, differ }
 }
 
 // ---------------------------------------------------------------- checkpoints, pushed
@@ -649,8 +780,8 @@ async function present(gitDir: string, oids: string[]): Promise<string[]> {
  * what the vault's earlier bundles and the project's origin already hold. A bundle over the limit is not sent; the
  * manifest says so, and the thread can only continue on this machine. Never anywhere but the vault (RESUME-2).
  */
-export async function pushCheckpoints(o: VaultOptions, state: State): Promise<CheckpointsReport> {
-  const report: CheckpointsReport = { sent: 0, bytes: 0, pushes: 0, pushed: 0, skipped: [], failed: [] }
+async function pushCheckpoints(o: VaultOptions, state: State): Promise<CheckpointsReport> {
+  const report = noCheckpoints()
   try {
     await checkpoints(o, state, report)
   } catch (e) {
@@ -664,7 +795,6 @@ export async function pushCheckpoints(o: VaultOptions, state: State): Promise<Ch
 async function checkpoints(o: VaultOptions, state: State, report: CheckpointsReport) {
   const book = path.join(path.resolve(o.dir), '.git')
   if (!fs.existsSync(path.join(book, 'HEAD'))) return
-  state.checkpoints ??= {}
   const done = state.checkpoints
   const due = [...(await refsUnder(book, 'refs/checkpoints/'))].filter(([id, tip]) => done[id] !== tip)
   if (!due.length) return

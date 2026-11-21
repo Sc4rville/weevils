@@ -4,7 +4,7 @@ Today a conversation with Claude Code or Codex lives in one file, on one machine
 specification describes the next shape: a conversation belongs to you. You start it anywhere, it continues anywhere,
 and the app shows one thread.
 
-**Status: steps 1 to 5, behind flags; the vault's steps 1 and 2.** These pages, the sample in [`examples/weevbook`](../../examples/weevbook), the
+**Status: steps 1 to 5, behind flags; the vault's steps 1 to 3.** These pages, the sample in [`examples/weevbook`](../../examples/weevbook), the
 pure module of the journal ([`server/weevbook/journal.ts`](../../server/weevbook/journal.ts)), the core of the lease,
 the turn and the dispatcher (`lease.ts`, `turn.ts`, `dispatch.ts` next to it), a simulator that drives the three
 together ([`server/weevbook/sim`](../../server/weevbook/sim), `npm run sim`), the local weevbook
@@ -13,11 +13,13 @@ and since steps 2 and 3 the sync with a hub (`hub.ts`), the checkpoints of the c
 of a thread on another machine with the same provider (`resume.ts`, `weevils weevbook resume <thread>`, `weevils
 weevbook sync status`). The writer is on by default since the vault (`WEEVILS_WEEVBOOK=0` turns it off), and the
 first start imports every session of the machine once, in the background; the sync, the checkpoints and the steals are
-off unless `WEEVILS_WEEVBOOK_HUB` is set too. Steps 1 and 2 of the vault ([07](07-vault.md#steps)) are built: journals,
+off unless `WEEVILS_WEEVBOOK_HUB` is set too. Steps 1 to 3 of the vault ([07](07-vault.md#steps)) are built: journals,
 attachments and handoffs encrypted and pushed to the person's own GitHub (`weevils weevbook vault setup | push |
 restore | status | summary`), on once `vault setup` ran or `WEEVILS_VAULT` names a remote; a machine that joins with
 the one line gets the vault in the same exchange, a new machine gets everything back from the recovery code, and
-weevboss sets it up, asks the history question and says the summary in its chat. On, they write next to the app and change nothing the app shows or does;
+weevboss sets it up, asks the history question and says the summary in its chat. With a vault, each turn's code is
+checkpointed, the provider's own lines (slim) and the checkpoints go to the vault too, and `weevils weevbook resume
+<thread>` continues a thread on a machine that never ran it, from the vault alone. On, they write next to the app and change nothing the app shows or does;
 a resume happens only when asked. Step 4 is off unless `WEEVILS_THREADS=1`: then the dispatcher runs in weevilsd,
 a conversation is one thread whatever engines carried it, the app shows three states and the weevbook page, and the
 Codex relay is gone ([06](06-dispatch.md#step-4-the-dispatcher-in-weevilsd), with what making it the default needs). The connector of
@@ -72,7 +74,7 @@ from the last checkpoint of the code.
 | [04 Resume](04-resume.md) | The three rungs of resuming. Checkpoints of the code. The handoff. What happens when a turn fails. |
 | [05 Connector](05-connector.md) | The MCP endpoint for chat apps: five tools, their schemas, uploads in parts, sign-in. |
 | [06 Dispatch](06-dispatch.md) | The engine table and the decision table that picks an engine, with no model call. |
-| [07 Vault](07-vault.md) | Steps 1 and 2 built (journals, attachments and handoffs; the join carries the vault; a new machine from the recovery code; the onboarding in weevboss's chat). Slim raw, checkpoints and the lease on GitHub are design. Every conversation kept on your own GitHub, encrypted; the history imported at install; moves agreed by the person. |
+| [07 Vault](07-vault.md) | Steps 1 to 3 built (journals, attachments and handoffs; the join carries the vault; a new machine from the recovery code; the onboarding in weevboss's chat; slim raw lines in raw repositories, checkpoints as encrypted bundles, a thread resumed from the vault). The lease on GitHub is design. Every conversation kept on your own GitHub, encrypted; the history imported at install; moves agreed by the person. |
 
 Decisions and their reasons are in [`docs/adr`](../adr). Each page lists its invariants: numbered statements that
 tests check. `THREAD-n` and `BOOK-n` are tested today in

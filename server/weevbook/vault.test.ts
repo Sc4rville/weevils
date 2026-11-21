@@ -746,7 +746,7 @@ describe('in weevilsd', () => {
         return null
       }
     }
-    const p = startVaultPusherWhenSet({ dir: path.join(tmp, 'a', 'weevbook'), staging: path.join(tmp, 'a', 'vault.git'), remote: saved, keyFile: path.join(cfg, 'vault.key'), deployKey: path.join(cfg, 'vault-deploy'), machine: MACHINE, intervalMs: 50, pollMs: 20, log: (l) => logs.push(l) })
+    const p = startVaultPusherWhenSet({ dir: path.join(tmp, 'a', 'weevbook'), staging: path.join(tmp, 'a', 'vault.git'), remote: saved, keyFile: path.join(cfg, 'vault.key'), deployKey: path.join(cfg, 'vault-deploy'), machine: MACHINE, intervalMs: 50, pollMs: 20, priority: 0, log: (l) => logs.push(l) })
     await new Promise((r) => setTimeout(r, 80))
     expect(p.started()).toBe(false)
     expect(logs).toEqual([])
@@ -764,7 +764,7 @@ describe('in weevilsd', () => {
     const remote = bareRemote()
     const keyFile = path.join(tmp, 'cfg', 'vault.key')
     const logs: string[] = []
-    const base = { dir: path.join(tmp, 'a', 'weevbook'), staging: path.join(tmp, 'a', 'vault.git'), remote, keyFile, machine: MACHINE, intervalMs: 3_600_000, retryMs: 0, log: (l: string) => logs.push(l) }
+    const base = { dir: path.join(tmp, 'a', 'weevbook'), staging: path.join(tmp, 'a', 'vault.git'), remote, keyFile, machine: MACHINE, intervalMs: 3_600_000, retryMs: 0, priority: 0, log: (l: string) => logs.push(l) }
     const p = startVaultPusher(base)
     await p.flush()
     await p.flush()

@@ -18,6 +18,10 @@ A short summary of what changed after the first working version.
   once, then one question about your history. Every Claude Code and Codex conversation of every machine is kept,
   encrypted, in a private repository of yours; a computer plugged in from weevboss's line keeps its own there too, and
   a new machine gets everything back from the recovery code. Record: `docs/spec/07-vault.md`.
+- A conversation now continues on a machine that never ran it, from your GitHub alone: what the agent itself wrote
+  (its reasoning included, long outputs shortened) and the state of the code at each turn are kept there too,
+  encrypted, and fetched only for the conversation you continue (`weevils weevbook resume <thread>`). Nothing to set
+  up: each machine gets its own access to the repositories by itself.
 
 ### Themes
 - Two new themes in the theme selector: **desert** (désert), a light dusty desert (terracotta top, sage 24/7, sand,

@@ -203,7 +203,9 @@ export async function startTurn(h: StartHost, ins: Instruction): Promise<StartRe
     cwd = folder
   } else if (fromElsewhere || !fs.existsSync(cwd)) {
     const p = await placeAndRestore({ thread: id, events, cwd, gitDir: sync.book.gitDir, git: sync.git, hub: true, vault: h.vault, dataDir: h.dataDir, home: h.home, projectsDir: h.projectsDir, roots: h.roots, claudeDir: h.claudeDir, codexDir: h.codexDir, placeGit: h.git, log: h.log })
-    if (p.onlyThere) return no('no-folder', p.onlyThere)
+    // The code stayed on its machine (a checkpoint too large for the vault): not started here, and not asked again at
+    // once (`stale` is not retried: each try would fetch from the vault).
+    if (p.onlyThere) return no('stale', p.onlyThere)
     cwd = p.cwd
   }
 

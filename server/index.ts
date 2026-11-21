@@ -123,7 +123,7 @@ if (WEEVBOOK) {
   console.log(`[weevbook] shadow writer on: ${WEEVBOOK_DIR}`)
   startFirstBackfill({ dataDir: DATA_DIR, log: (l) => console.log(l) })
   if (vaultOn) {
-    startVaultPusherWhenSet({ dir: WEEVBOOK_DIR, staging: VAULT_STAGING, remote: () => vaultRemote(), keyFile: VAULT_KEY_FILE, deployKey: VAULT_DEPLOY_KEY, machine: MACHINE.id, gh: ghRunner(which('gh') ?? 'gh', 60_000), log: (l) => console.error(l) })
+    startVaultPusherWhenSet({ dir: WEEVBOOK_DIR, staging: VAULT_STAGING, remote: () => vaultRemote(), keyFile: VAULT_KEY_FILE, deployKey: VAULT_DEPLOY_KEY, machine: MACHINE.id, gh: which('gh') ?? 'gh', log: (l) => console.error(l) })
   }
   if (WEEVBOOK_HUB) {
     const sync = new HubSync({ dir: WEEVBOOK_DIR, dataDir: DATA_DIR, sessions, machine: MACHINE.id, hub: WEEVBOOK_HUB, steals: ORCHESTRATOR })

@@ -148,13 +148,14 @@ describe('slim raw in the raw repositories', () => {
     expect(r.raw!.error).toBeUndefined()
     const raw1 = rawRemote(remote, 1)
     expect(raw1).toBe(path.join(tmp, 'github', 'weevbook-raw-001.git'))
-    expect(git(raw1, 'for-each-ref', '--format=%(refname)').split('\n')).toEqual([`refs/raw/${T1}`, `refs/raw/${T2}`])
+    expect(git(raw1, 'for-each-ref', '--format=%(refname)').split('\n')).toEqual(['refs/heads/main', `refs/raw/${T1}`, `refs/raw/${T2}`])
+    expect(git(raw1, 'ls-tree', '--name-only', 'refs/heads/main')).toBe('README.md') // what it is, no data
     expect(git(raw1, 'ls-tree', '-r', '--name-only', `refs/raw/${T1}`)).toMatch(/^c\/[0-9a-f]{64}\nm$/)
     expect(git(raw1, 'log', '--format=%an <%ae> %ad %s', `refs/raw/${T1}`)).toBe('vault <vault@weevils.invalid> Sat Jan 1 00:00:00 2000 +0000 vault')
     // VAULT-1: neither the raw repository nor the vault's map says anything.
     for (const repo of [raw1, remote]) {
       const hay = allObjects(repo)
-      for (const s of [SECRETS.cwd, 'zorblax', SECRETS.ask, 'rounding bug', SECRETS.signature, SECRETS.output, MACHINE, 'toolu_01', 'weevbook-raw', 'ssh-ed25519']) expect(hay.includes(s), s).toBe(false)
+      for (const s of [SECRETS.cwd, 'zorblax', SECRETS.ask, 'rounding bug', SECRETS.signature, SECRETS.output, MACHINE, 'toolu_01', 'raw-001', 'ssh-ed25519']) expect(hay.includes(s), s).toBe(false)
     }
     expect(git(remote, 'for-each-ref', '--format=%(refname)', 'refs/map/')).toBe('refs/map/raw')
 
@@ -279,6 +280,35 @@ describe('slim raw in the raw repositories', () => {
     expect(map.bytes.get(1)!.get(MACHINE)).toBeGreaterThan(roll)
     // The map itself: one ref of the vault, sealed.
     expect(allObjects(remote).includes(ids[0])).toBe(false)
+  })
+
+  it('two machines share the raw repository and the map; the map only moves forward (a write on an old tip is refused)', async () => {
+    const [T1, T2] = [tid(1), tid(2)]
+    const linesA = claudeLines(SECRETS.cwd, 's1')
+    const linesB = claudeLines(SECRETS.cwd, 's2', 1)
+    await makeBook('a', [{ id: T1, lines: linesA }])
+    await makeBook('b', [{ id: T2, lines: linesB }], 'b')
+    const remote = vaultRemote()
+    const key = newKey()
+    const [oa, ob] = [opts('a', remote, key), opts('b', remote, key)]
+    expect((await pushVault(oa)).raw).toMatchObject({ pushed: 1, repos: 1 })
+    const m1 = git(remote, 'rev-parse', 'refs/map/raw')
+    expect((await pushVault(ob)).raw).toMatchObject({ pushed: 1, repos: 1 })
+    const m2 = git(remote, 'rev-parse', 'refs/map/raw')
+    expect(git(remote, 'rev-parse', 'refs/map/raw^')).toBe(m1)
+    // Each one finds the other's thread, in the one repository both write.
+    expect((await readMap(oa)).threads.get(T1)).toBe(1)
+    expect((await fetchRaw(oa, T2)).get(SEG)!.equals(await slimRaw(rawOf(linesB), 'claude', MACHINE))).toBe(true)
+    expect((await fetchRaw(ob, T1)).get(SEG)!.equals(await slimRaw(rawOf(linesA), 'claude', MACHINE))).toBe(true)
+    // What a machine that read the map before the other wrote it would push: git refuses it, the map is untouched.
+    const stale = execFileSync('git', ['--git-dir', oa.staging, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit-tree', `${m1}^{tree}`, '-p', m1, '-m', 'vault'], { encoding: 'utf8' }).trim()
+    expect(() => execFileSync('git', ['--git-dir', oa.staging, 'push', '-q', remote, `${stale}:refs/map/raw`], { stdio: 'pipe' })).toThrow()
+    expect(git(remote, 'rev-parse', 'refs/map/raw')).toBe(m2)
+    // The same thread's lines from both machines (one took it over): the second builds on the first, nothing differs.
+    await makeBook('b', [{ id: T1, lines: linesA }], 'b')
+    const again = await pushVault(ob)
+    expect(again.raw).toMatchObject({ sealed: 0, pushed: 0, differ: [] })
+    expect(again.raw!.error).toBeUndefined()
   })
 
   it('a push that is cut goes on where it stopped: what was sealed is sent as it is, nothing twice', async () => {
@@ -480,6 +510,7 @@ printf '%s\\n' "$*" >>"${log}"
 keysof() { printf '%s/%s' "${keys}" "$(printf '%s' "$1" | tr '/' '_')"; }
 case "$1 $2" in
   "api user") echo alex ;;
+  "auth token") echo gho_stand_in ;;
   "repo view") [ -d "${root}/$3.git" ] ;;
   "repo create") git init -q --bare "${root}/$3.git" ;;
   "api -X") for a in "$@"; do case "$a" in key=*) printf '%s\\n' "\${a#key=}" >>"$(keysof "$4")" ;; esac; done ;;
@@ -496,7 +527,8 @@ esac
       repo: (name: string) => path.join(root, 'alex', `${name}.git`),
       asked: () => fs.readFileSync(log, 'utf8').trim().split('\n'),
       keys: (repo: string) => fs.readFileSync(path.join(keys, `repos_alex_${repo}_keys`), 'utf8').trim().split('\n').filter(Boolean),
-      signedOut: ghRunner(path.join(bin, 'gh-signed-out')),
+      signedIn: path.join(bin, 'gh'),
+      signedOut: path.join(bin, 'gh-signed-out'),
     }
   }
   const pub = (name: string, file: string) => fs.readFileSync(path.join(tmp, `${name}-config`, `${file}.pub`), 'utf8').trim().split(' ').slice(0, 2).join(' ')
@@ -529,7 +561,7 @@ esac
     expect(gh.keys('weevbook-raw-001')).toEqual([pub('a', 'vault-deploy-raw-001')])
     expect(new Set([pub('a', 'vault-deploy'), pub('a', 'vault-deploy-raw-001'), pub('a', 'vault-deploy-raw-002')]).size).toBe(3)
     expect(fs.statSync(path.join(tmp, 'a-config', 'vault-deploy-raw-001')).mode & 0o777).toBe(0o600)
-    expect(git(gh.repo('weevbook-raw-001'), 'for-each-ref', '--format=%(refname)')).toBe(`refs/raw/${T1}`)
+    expect(git(gh.repo('weevbook-raw-001'), 'for-each-ref', '--format=%(refname)').split('\n')).toEqual(['refs/heads/main', `refs/raw/${T1}`])
 
     // A second machine, joined: the vault's address, its key, its own deploy key on the vault; nobody signed in there.
     const cfgB = path.join(tmp, 'b-config')
@@ -539,20 +571,28 @@ esac
     const linesB = claudeLines(SECRETS.cwd, 's2', 1)
     await makeBook('b', [{ id: T2, lines: linesB }], 'b')
     const key = fs.readFileSync(path.join(cfgB, 'vault.key'), 'utf8')
-    const ob: VaultOptions = { dir: path.join(tmp, 'b', 'weevbook'), staging: path.join(tmp, 'b', 'vault.git'), remote: 'git@github.com:alex/weevbook-vault.git', key: Buffer.from(key.trim(), 'base64'), machine: 'b', keyDir: cfgB, gh: gh.signedOut }
+    const ob: VaultOptions = { dir: path.join(tmp, 'b', 'weevbook'), staging: path.join(tmp, 'b', 'vault.git'), remote: 'git@github.com:alex/weevbook-vault.git', key: Buffer.from(key.trim(), 'base64'), machine: 'b', keyDir: cfgB, gh: ghRunner(gh.signedOut) }
     const first = await pushVault(ob)
     // Its journals went; its lines wait for access, which it asked for in the map. Nothing was asked of anybody.
     expect(first.pushed).toBe(1)
     expect(first.raw).toMatchObject({ pushed: 0, noRepo: 1, repos: 1 })
     expect(first.raw!.error).toBeUndefined()
     expect(gh.keys('weevbook-raw-001')).toHaveLength(1)
-    // The machine signed in to GitHub, at its next round, with nothing new of its own: every key the map holds.
-    const round = await cli('a', 'push')
-    expect(round.code).toBe(0)
+    // weevilsd on the machine signed in to GitHub, with nothing new of its own: its pusher makes a round all the same,
+    // and registers every key the map holds.
+    const pusher = (name: string, runner: string) =>
+      startVaultPusher({ dir: path.join(tmp, name, 'weevbook'), staging: path.join(tmp, name, 'vault.git'), remote: 'git@github.com:alex/weevbook-vault.git', keyFile: path.join(tmp, `${name}-config`, 'vault.key'), keyDir: path.join(tmp, `${name}-config`), machine: name === 'a' ? 'test' : name, gh: runner, intervalMs: 3_600_000, priority: 0, idleMs: 1, log: () => undefined })
+    const asked = gh.asked().length
+    const pa = pusher('a', gh.signedIn)
+    await pa.flush()
+    pa.stop()
+    expect(gh.asked().slice(asked)).toContain('auth token')
     expect(gh.keys('weevbook-raw-001')).toEqual([pub('a', 'vault-deploy-raw-001'), pub('b', 'vault-deploy-raw-001')])
-    const second = await pushVault(ob)
-    expect(second.raw).toMatchObject({ pushed: 1, noRepo: 0 })
-    expect(git(gh.repo('weevbook-raw-001'), 'for-each-ref', '--format=%(refname)').split('\n')).toEqual([`refs/raw/${T1}`, `refs/raw/${T2}`])
+    // weevilsd on the second machine: its lines go at its next round, from a process of their own.
+    const pb = pusher('b', gh.signedOut)
+    await pb.flush()
+    pb.stop()
+    expect(git(gh.repo('weevbook-raw-001'), 'for-each-ref', '--format=%(refname)', 'refs/raw/').split('\n')).toEqual([`refs/raw/${T1}`, `refs/raw/${T2}`])
     // Each machine reads the other's lines.
     expect((await fetchRaw(ob, T1)).get(SEG)!.equals(await slimRaw(rawOf(linesA), 'claude', MACHINE))).toBe(true)
     // Keys never leave in clear: the map is sealed like the rest.
@@ -566,21 +606,27 @@ esac
 })
 
 describe('in weevilsd', () => {
-  it('journals go at once, raw lines once the thread is quiet; an error of the raw push is logged once and the journals still go', async () => {
-    const T1 = tid(1)
+  it('journals go at once, raw lines once the thread is quiet, from a process of their own; an error of theirs is logged once and the journals still go', async () => {
+    // A conversation that started just now (its id holds the time, as a ULID does).
+    let t = Date.now()
+    let stamp = ''
+    for (let i = 0; i < 10; i++, t = Math.floor(t / 32)) stamp = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'[t % 32] + stamp
+    const T1 = `${stamp}XDK5FKDXG64FE6ZZ`
     const a = await makeBook('a', [{ id: T1, lines: claudeLines(SECRETS.cwd, 's1') }])
     const remote = vaultRemote()
     const keyFile = path.join(tmp, 'cfg', 'vault.key')
     writeKey(keyFile, newKey())
     const logs: string[] = []
-    const p = startVaultPusher({ dir: a.dir, staging: path.join(tmp, 'a', 'vault.git'), remote, keyFile, machine: MACHINE, intervalMs: 3_600_000, retryMs: 0, rawQuietMs: 2500, log: (l) => logs.push(l) })
+    const clock = { ahead: 0 }
+    const p = startVaultPusher({ dir: a.dir, staging: path.join(tmp, 'a', 'vault.git'), remote, keyFile, machine: MACHINE, intervalMs: 3_600_000, priority: 0, retryMs: 0, rawQuietMs: 10 * 60_000, now: () => Date.now() + clock.ahead, log: (l) => logs.push(l) })
     await p.flush()
     expect(git(remote, 'for-each-ref', '--format=%(refname)', 'refs/threads/')).toBe(`refs/threads/${T1}`)
     const raw1 = rawRemote(remote, 1)
-    expect(git(raw1, 'for-each-ref', '--format=%(refname)')).toBe('') // the turn was written a moment ago
-    await sleep(3600)
+    expect(fs.existsSync(raw1)).toBe(false) // the turn was written a moment ago: nothing was even started for its lines
+    // Eleven minutes later nothing moved in the weevbook: the pusher comes back to them by itself.
+    clock.ahead = 11 * 60_000
     await p.flush()
-    expect(git(raw1, 'for-each-ref', '--format=%(refname)')).toBe(`refs/raw/${T1}`)
+    expect(git(raw1, 'for-each-ref', '--format=%(refname)', 'refs/raw/')).toBe(`refs/raw/${T1}`)
     expect(logs.some((l) => /^\[vault\] raw lines: 1 threads in 1 pushes/.test(l))).toBe(true)
     p.stop()
 
@@ -589,8 +635,7 @@ describe('in weevilsd', () => {
     await more(a, T1, claudeLines(SECRETS.cwd, 's1', 1).slice(6))
     const tip = git(remote, 'rev-parse', `refs/threads/${T1}`)
     logs.length = 0
-    const q = startVaultPusher({ dir: a.dir, staging: path.join(tmp, 'a', 'vault.git'), remote, keyFile, machine: MACHINE, intervalMs: 3_600_000, retryMs: 0, rawQuietMs: 1, log: (l) => logs.push(l) })
-    await sleep(1100)
+    const q = startVaultPusher({ dir: a.dir, staging: path.join(tmp, 'a', 'vault.git'), remote, keyFile, machine: MACHINE, intervalMs: 3_600_000, priority: 0, retryMs: 0, rawQuietMs: 1, log: (l) => logs.push(l) })
     await q.flush()
     await q.flush()
     await q.flush()

@@ -21,17 +21,18 @@
 // (`weevbook-raw-NNN`, refs/raw/<id>), the map that says which repository holds which thread (refs/map/raw here), and
 // the checkpoints of the code as encrypted git bundles (refs/checkpoints/<id> here).
 
-import { execFile } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 import { deriveMeta, ownTask, parseEngine, parseJournal } from './journal.ts'
 import { Locked, Weevbook, threadRefs } from './store.ts'
-import { pushCheckpoints, pushRaw, type CheckpointsReport, type RawReport } from './vault-raw.ts'
-import type { Gh } from './vault-github.ts'
+import { linesDue, pushLines, readLines, type CheckpointsReport, type LinesJob, type LinesReport, type RawReport } from './vault-raw.ts'
+import { ghRunner, type Gh } from './vault-github.ts'
 
 // ---------------------------------------------------------------- sealing
 
@@ -245,8 +246,9 @@ export interface VaultOptions {
   /** A checkpoint bundle over this is not sent (default 50 MB). */
   bundleMax?: number
   /** A thread's raw lines wait until its last commit is this old (default 0: a command pushes at once; weevilsd's
-   *  pusher waits for the turn to go quiet). */
+   *  pusher waits for the turn to go quiet), but never longer than `rawEveryMs` since they last went (15 min). */
   rawQuietMs?: number
+  rawEveryMs?: number
   /** The pieces of work between which the event loop gets its turn (ms of slimming at a stretch; default 8). */
   yieldMs?: number
   now?: () => number
@@ -266,31 +268,24 @@ interface Manifest {
   handoff?: string
 }
 
-export interface State {
+interface State {
   /** By thread: the weevbook commit the staging ref was last built from. */
   threads: Record<string, string>
   /** Every thread was looked at for its handoff.md (step 2): threads pushed before carry none in the vault. */
   handoffs?: boolean
   pushedAt?: string
   error?: string | null
-  /** Step 3. By thread: the weevbook commit whose raw lines are in the vault (sealed and pushed). */
-  raw?: Record<string, string>
-  /** By thread: the checkpoint commit (refs/checkpoints/<id> of the weevbook) that is in the vault, or was too large. */
-  checkpoints?: Record<string, string>
-  /** By raw repository: the sealed bytes this machine pushed to it, and what it last wrote of that in the map. */
-  rawBytes?: Record<string, number>
-  rawTold?: Record<string, number>
 }
 
 const stateFile = (staging: string) => path.join(staging, 'weevils-state.json')
-export async function readState(staging: string): Promise<State> {
+async function readState(staging: string): Promise<State> {
   try {
     return { threads: {}, ...(JSON.parse(await fsp.readFile(stateFile(staging), 'utf8')) as Partial<State>) }
   } catch {
     return { threads: {} }
   }
 }
-export async function writeState(staging: string, s: State) {
+async function writeState(staging: string, s: State) {
   const tmp = `${stateFile(staging)}.${process.pid}.tmp`
   await fsp.writeFile(tmp, JSON.stringify(s))
   await fsp.rename(tmp, stateFile(staging))
@@ -303,9 +298,10 @@ export async function openStaging(staging: string) {
   }
 }
 
-/** One vault command at a time on this machine (weevilsd and the command line). */
-async function lockStaging(staging: string): Promise<() => Promise<void>> {
-  const file = `${staging}.lock`
+/** One vault command at a time on this machine (weevilsd and the command line). `name`: the journals' lock, or the
+ *  one of the raw lines and checkpoints (`lines.lock`), which are pushed apart so that neither waits for the other. */
+export async function lockStaging(staging: string, name = 'lock'): Promise<() => Promise<void>> {
+  const file = `${staging}.${name}`
   for (let i = 0; i < 2; i++) {
     try {
       await fsp.writeFile(file, String(process.pid), { flag: 'wx' })
@@ -319,17 +315,17 @@ async function lockStaging(staging: string): Promise<() => Promise<void>> {
       } catch (e) {
         alive = (e as NodeJS.ErrnoException).code === 'EPERM'
       }
-      if (alive && pid !== process.pid) throw new Locked('vault.lock')
+      if (alive && pid !== process.pid) throw new Locked(`vault.${name}`)
       await fsp.rm(file, { force: true })
     }
   }
-  throw new Locked('vault.lock')
+  throw new Locked(`vault.${name}`)
 }
 
-/** The vault's refs as the remote has them, in refs/vault-remote/ of the staging repository: the threads, `main`, and
- *  the raw map. Never the checkpoints: those are fetched for one thread, when it is resumed. */
+/** The vault's refs as the remote has them, in refs/vault-remote/ of the staging repository: the threads and `main`.
+ *  Never the raw lines or the checkpoints: those are fetched for one thread, when it is resumed. */
 async function fetchRemote(o: VaultOptions) {
-  await git(o.staging, ['fetch', '-q', '--no-tags', '--prune', o.remote, '+refs/threads/*:refs/vault-remote/threads/*', '+refs/heads/*:refs/vault-remote/heads/*', '+refs/map/*:refs/vault-remote/map/*'], {
+  await git(o.staging, ['fetch', '-q', '--no-tags', '--prune', o.remote, '+refs/threads/*:refs/vault-remote/threads/*', '+refs/heads/*:refs/vault-remote/heads/*'], {
     env: o.ssh ? { GIT_SSH_COMMAND: o.ssh } : {}, timeoutMs: o.netMs ?? 300_000,
   })
 }
@@ -372,15 +368,19 @@ export interface PushReport {
   checkpoints?: CheckpointsReport
 }
 
-/** Seals what is new in every thread and pushes it to the vault. */
+/** Seals what is new in every thread and pushes it to the vault: the journals first (they are small, and they are
+ *  what a new machine shows), then the raw lines and the checkpoints (step 3), unless `raw` is false. */
 export async function pushVault(o: VaultOptions): Promise<PushReport> {
   await openStaging(o.staging)
   const unlock = await lockStaging(o.staging)
+  let report: PushReport
   try {
-    return await push(o)
+    report = await push(o)
   } finally {
     await unlock()
   }
+  if (o.raw !== false) Object.assign(report, await pushLines(o))
+  return report
 }
 
 async function push(o: VaultOptions): Promise<PushReport> {
@@ -403,13 +403,7 @@ async function push(o: VaultOptions): Promise<PushReport> {
   }
   if (!report.failed.length) state.handoffs = true
   await writeState(o.staging, state)
-  await send(o, state, remote, report)
-  if (o.raw !== false) {
-    // Journals first: they are small and they are what a new machine shows. Then the lines and the code, in batches.
-    report.raw = await pushRaw(o, state)
-    report.checkpoints = await pushCheckpoints(o, state)
-  }
-  return report
+  return send(o, state, remote, report)
 
   async function sealThread(id: string, src: string) {
     const mine = local.get(id) ?? null
@@ -677,16 +671,17 @@ export async function vaultStatus(o: { dir: string; staging: string; remote: str
   const sources = fs.existsSync(path.join(book, 'HEAD')) ? await refsUnder(book, 'refs/threads/') : new Map<string, string>()
   const has = fs.existsSync(path.join(o.staging, 'HEAD'))
   const state: State = has ? await readState(o.staging) : { threads: {} }
+  const lines = await readLines(o.staging)
   const remote = has ? await refsUnder(o.staging, 'refs/vault-remote/threads/') : new Map<string, string>()
   const local = has ? await refsUnder(o.staging, 'refs/threads/') : new Map<string, string>()
   let pending = 0
   let rawPending = 0
   for (const [id, src] of sources) {
     if (state.threads[id] !== src || local.get(id) !== remote.get(id)) pending++
-    if (state.raw?.[id] !== src) rawPending++
+    if (lines.raw[id] !== src) rawPending++
   }
   let checkpointsPending = 0
-  if (sources.size) for (const [id, tip] of await refsUnder(book, 'refs/checkpoints/')) if (state.checkpoints?.[id] !== tip) checkpointsPending++
+  if (sources.size) for (const [id, tip] of await refsUnder(book, 'refs/checkpoints/')) if (lines.checkpoints[id] !== tip) checkpointsPending++
   return { remote: o.remote, key: o.key, threads: sources.size, pending, remoteThreads: remote.size, pushedAt: state.pushedAt ?? null, error: state.error ?? null, rawPending, checkpointsPending }
 }
 
@@ -718,23 +713,30 @@ export interface PusherOptions {
   /** After a failure, the next try waits this long. */
   retryMs?: number
   log?: (line: string) => void
-  /** Step 3 (VaultOptions): this machine's keys for the raw repositories, `gh` where the person signed in, the sizes. */
+  /** Step 3 (VaultOptions): this machine's keys for the raw repositories, the path of `gh`, the sizes. */
   keyDir?: string
-  gh?: Gh
+  gh?: string
   rollBytes?: number
   bundleMax?: number
   /** A thread's raw lines go once its last commit is this old: between turns, not while one is written (2 min). */
   rawQuietMs?: number
-  /** With `gh`: a round at least this often even when nothing moved here, so that a machine that joined gets its
-   *  access to the raw repositories within that time (15 min). */
+  /** Where `gh` is signed in: a round at least this often even when nothing moved here, so that a machine that
+   *  joined gets its access to the raw repositories within that time (15 min). */
   idleMs?: number
+  /** The clock (tests). */
+  now?: () => number
+  /** The priority of the process that pushes the raw lines and the checkpoints: 19, the lowest (a test that waits
+   *  for it beside a whole suite runs it at 0). */
+  priority?: number
 }
 
 /**
  * weevilsd's vault pusher: every `intervalMs` it looks at the weevbook's thread and checkpoint refs (one git command),
  * and pushes when they changed since the last push (the writer's turn commits, the hub's adoptions, a backfill).
- * Journals go at once; a thread's raw lines once it has been quiet for `rawQuietMs`; checkpoints with them. Errors
- * are logged once and never thrown into the app's loop.
+ * Journals go at once, from here. The raw lines (a thread's, once it has been quiet for `rawQuietMs`) and the
+ * checkpoints go from a process of their own at the lowest priority (vault-worker.ts): megabytes are read, slimmed
+ * and sealed there, never in the app's loop, and the journals never wait for them. Errors are logged once and never
+ * thrown into the app's loop.
  */
 export function startVaultPusher(o: PusherOptions) {
   const interval = o.intervalMs ?? 30_000
@@ -747,14 +749,77 @@ export function startVaultPusher(o: PusherOptions) {
   let stopped = false
   let lastError = ''
   let idle: Promise<void> = Promise.resolve()
-  /** When raw lines that waited for quiet are due, and when the last round ran. */
+  /** The raw lines and checkpoints: when those that waited for quiet are due, when a round last ran for them, the
+   *  process at work, its last error. */
   let dueAt = 0
   let ranAt = 0
-  const idleMs = o.gh ? (o.idleMs ?? 15 * 60_000) : 0
+  let linesFailedAt = 0
+  let linesError = ''
+  let worker: ChildProcess | null = null
+  let working: Promise<void> = Promise.resolve()
+  const clock = o.now ?? Date.now
+  const gh = o.gh ? ghRunner(o.gh, 20_000) : null
+  const idleMs = gh ? (o.idleMs ?? 15 * 60_000) : 0
+  const rawQuietMs = o.rawQuietMs ?? 120_000
 
   async function snapshot() {
     if (!fs.existsSync(path.join(book, 'HEAD'))) return ''
     return sha256(await text(book, ['for-each-ref', '--format=%(objectname) %(refname)', 'refs/threads/', 'refs/checkpoints/']))
+  }
+
+  /** The raw lines and the checkpoints, in their own process. One at a time; its report is logged when it ends. */
+  function lines() {
+    if (worker || stopped) return
+    const job: LinesJob = { dir: o.dir, staging: o.staging, remote: o.remote, keyFile: o.keyFile, machine: o.machine, ssh: o.ssh, keyDir: o.keyDir, gh: o.gh, rollBytes: o.rollBytes, bundleMax: o.bundleMax, rawQuietMs, at: clock() }
+    // Its own process group: stopping the pusher stops it with the git commands it runs.
+    const child = spawn(process.execPath, [...process.execArgv, path.join(path.dirname(fileURLToPath(import.meta.url)), 'vault-worker.ts'), JSON.stringify(job)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true })
+    worker = child
+    if (child.pid) {
+      try {
+        os.setPriority(child.pid, o.priority ?? 19)
+      } catch {
+        /* not allowed: it runs at the normal priority */
+      }
+    }
+    let out = ''
+    let err = ''
+    child.stdout?.on('data', (d: Buffer) => (out += d.toString()))
+    child.stderr?.on('data', (d: Buffer) => (err = (err + d.toString()).slice(-2000)))
+    working = new Promise<void>((resolve) => {
+      const done = (problem: string | null) => {
+        if (worker !== child) return
+        worker = null
+        let late = problem
+        try {
+          const r = JSON.parse(out) as LinesReport
+          if (r.raw.pushed) log(`[vault] raw lines: ${r.raw.pushed} threads in ${r.raw.pushes} pushes (${(r.raw.bytes / 1e6).toFixed(1)} MB sealed)${r.raw.differ.length ? ` · ${r.raw.differ.length} differ from the vault` : ''}`)
+          if (r.checkpoints.pushed) log(`[vault] checkpoints: ${r.checkpoints.pushed} threads (${r.checkpoints.sent} bundles, ${(r.checkpoints.bytes / 1e6).toFixed(1)} MB sealed)`)
+          for (const k of r.checkpoints.skipped) log(`[vault] checkpoint of ${k.thread} is ${(k.bytes / 1e6).toFixed(0)} MB, over the limit: not sent, this thread can only continue on this machine`)
+          if (r.raw.later !== undefined) dueAt = clock() + r.raw.later + 1000
+          late = r.raw.error ?? r.checkpoints.error ?? r.raw.failed[0]?.error ?? r.checkpoints.failed[0]?.error ?? null
+          // Lines that wait for a raw repository this machine can write (the machine signed in to GitHub gives the
+          // access at its next round): looked at again later, without a word.
+          if (!late && r.raw.noRepo && !r.raw.pushed) {
+            linesFailedAt = clock()
+            return resolve()
+          }
+        } catch {
+          late ??= err.trim().split('\n').at(-1) || 'the push of the raw lines stopped'
+        }
+        // What the lines or the code could not do is said once, and tried again later. The journals went all the same.
+        if (late && !stopped) {
+          linesFailedAt = clock()
+          if (late !== linesError) log(`[vault] ${late}`)
+          linesError = late
+        } else if (!late) {
+          linesFailedAt = 0
+          linesError = ''
+        }
+        resolve()
+      }
+      child.on('error', (e) => done(e.message))
+      child.on('exit', (code) => done(code ? `the push of the raw lines stopped (${code})` : null))
+    })
   }
 
   function round() {
@@ -763,28 +828,40 @@ export function startVaultPusher(o: PusherOptions) {
     idle = (async () => {
       try {
         const snap = await snapshot()
-        const now = Date.now()
         if (!snap) return
-        if (snap === last && !failedAt && !(dueAt && now >= dueAt) && !(idleMs && now - ranAt >= idleMs)) return
-        if (failedAt && now - failedAt < retryMs) return
-        const key = readKey(o.keyFile)
-        if (!key) throw new VaultError(`no vault key in ${o.keyFile}: run weevils weevbook vault setup or vault restore`) // i18n-ignore: log line
-        ranAt = now
-        const r = await pushVault({ dir: o.dir, staging: o.staging, remote: o.remote, key, machine: o.machine, ssh: o.ssh, keyDir: o.keyDir, gh: o.gh, rollBytes: o.rollBytes, bundleMax: o.bundleMax, rawQuietMs: o.rawQuietMs ?? 120_000 })
-        last = snap
-        dueAt = r.raw?.later !== undefined ? Date.now() + r.raw.later + 1000 : 0
-        if (r.sealed || r.pushed) log(`[vault] pushed ${r.pushed} refs (${r.sealed} threads, ${r.chunks} chunks, ${r.attachments} attachments)${r.differ.length ? ` · ${r.differ.length} threads differ from the vault` : ''}${r.failed.length ? ` · ${r.failed.length} threads unreadable (${r.failed[0].thread}: ${r.failed[0].error})` : ''}`)
-        if (r.raw?.pushed) log(`[vault] raw lines: ${r.raw.pushed} threads in ${r.raw.pushes} pushes (${(r.raw.bytes / 1e6).toFixed(1)} MB sealed)${r.raw.differ.length ? ` · ${r.raw.differ.length} differ from the vault` : ''}`)
-        if (r.checkpoints?.pushed) log(`[vault] checkpoints: ${r.checkpoints.pushed} threads (${r.checkpoints.sent} bundles, ${(r.checkpoints.bytes / 1e6).toFixed(1)} MB sealed)`)
-        for (const k of r.checkpoints?.skipped ?? []) log(`[vault] checkpoint of ${k.thread} is ${(k.bytes / 1e6).toFixed(0)} MB, over the limit: not sent, this thread can only continue on this machine`)
-        // The journals went; what the lines or the code could not do is said once, and tried again later.
-        const late = r.raw?.error ?? r.checkpoints?.error ?? r.raw?.failed[0]?.error ?? r.checkpoints?.failed[0]?.error
-        if (late) throw new VaultError(late)
-        failedAt = 0
-        lastError = ''
+        const now = clock()
+        // 1. The journals, when the refs moved (or after a failure, once `retryMs` passed).
+        if ((snap !== last || failedAt) && !(failedAt && now - failedAt < retryMs)) {
+          const key = readKey(o.keyFile)
+          if (!key) throw new VaultError(`no vault key in ${o.keyFile}: run weevils weevbook vault setup or vault restore`) // i18n-ignore: log line
+          const r = await pushVault({ dir: o.dir, staging: o.staging, remote: o.remote, key, machine: o.machine, ssh: o.ssh, raw: false })
+          last = snap
+          failedAt = 0
+          lastError = ''
+          dueAt ||= 1 // the lines and the code are looked at below
+          if (r.sealed || r.pushed) log(`[vault] pushed ${r.pushed} refs (${r.sealed} threads, ${r.chunks} chunks, ${r.attachments} attachments)${r.differ.length ? ` · ${r.differ.length} threads differ from the vault` : ''}${r.failed.length ? ` · ${r.failed.length} threads unreadable (${r.failed[0].thread}: ${r.failed[0].error})` : ''}`)
+        }
+        // 2. The raw lines and the checkpoints: when the refs moved, when a thread that waited went quiet, after a
+        //    failure, and, where the person signed in to GitHub, now and then even when nothing moved here: another
+        //    machine may wait for its access to a raw repository (asked of `gh` itself, no network).
+        if (worker || failedAt || (linesFailedAt && now - linesFailedAt < retryMs)) return
+        let go = !!linesFailedAt
+        if (!go && dueAt && now >= dueAt) {
+          const d = await linesDue({ dir: o.dir, staging: o.staging, remote: o.remote, rawQuietMs, now })
+          dueAt = d.later !== undefined ? now + d.later + 1000 : 0
+          go = d.due
+        }
+        if (!go && gh && idleMs && now - ranAt >= idleMs) {
+          ranAt = now
+          go = (await gh(['auth', 'token'])).code === 0
+        }
+        if (go) {
+          ranAt = now
+          lines()
+        }
       } catch (e) {
         if (e instanceof Locked) return
-        failedAt = Date.now()
+        failedAt = clock()
         const msg = (e as Error)?.message ?? String(e)
         if (msg !== lastError) log(`[vault] ${msg}`)
         lastError = msg
@@ -802,11 +879,21 @@ export function startVaultPusher(o: PusherOptions) {
     stop() {
       stopped = true
       clearInterval(timer)
+      if (worker?.pid) {
+        try {
+          process.kill(-worker.pid, 'SIGTERM')
+        } catch {
+          worker.kill()
+        }
+      }
     },
+    /** One round now, to its end: the journals, then the raw lines and checkpoints when they are due. */
     async flush() {
       await idle
+      await working
       round()
       await idle
+      await working
     },
   }
 }

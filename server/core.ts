@@ -2663,7 +2663,7 @@ export class Weevils {
   private waitingOnUser(now: number): Waiting[] {
     const out: Waiting[] = [...(this.foryou?.waitingOnUser(now) ?? [])]
     for (const a of this.ledger?.view().asks ?? []) {
-      if ((a.status === 'open' || a.status === 'dispatched') && now - a.progressAt >= 6 * 3600_000)
+      if ((a.status === 'open' || a.status === 'dispatched') && now - a.progressAt >= 6 * 3600_000 && now - a.progressAt < 3 * 86400_000)
         out.push({ key: `ask:${a.id}:${a.progressAt}`, summary: `Request ${a.id} (${a.status}, no progress for ${Math.round((now - a.progressAt) / 3600_000)} h): ${a.text}` }) // i18n-ignore: model context, never shown
     }
     for (const s of this.sessions()) {

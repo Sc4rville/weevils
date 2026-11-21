@@ -208,6 +208,15 @@ describe('what wakes weevboss, and the self-check', () => {
     expect(later.selfCheck([merge, { key: 'fy:c:2', summary: 'For you · Land it' }], T + 2 * SELF_CHECK_MS)).toBe(true)
     expect(later.pending[0].summary).toBe('For you · Tonight\'s cleanup [buttons: Merge the cleanup] · [new] For you · Land it')
   })
+  it('treats requests already stale when it started watching as history, and wakes on those that go stale later', () => {
+    const w = new BossWakeups(dir())
+    const old = ask({ id: 'old', progressAt: T - 5 * 86400_000 }), recent = ask({ id: 'recent', progressAt: T - 3600_000 })
+    w.observe([], [old, recent], T)
+    w.observe([], [old, recent], T + 5000)
+    expect(w.pending).toHaveLength(0)
+    w.observe([], [old, recent], T + 86400_000)
+    expect(w.pending.map((e) => e.request)).toEqual(['recent'])
+  })
   it('remembers which event-only turns were pushed to the phone', () => {
     const root = dir(), w = new BossWakeups(root)
     w.selfCheck([{ key: 'k', summary: 'Waiting' }], T)

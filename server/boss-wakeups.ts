@@ -107,14 +107,15 @@ export class BossWakeups {
     this.s.sessions = next
     this.s.initialized = true
     for (const a of asks) {
-      if ((a.status === 'open' || a.status === 'dispatched') && now - a.progressAt >= DAY)
+      // A request already stale when weevils started watching is history (the self-check sees recent ones), not news.
+      if ((a.status === 'open' || a.status === 'dispatched') && now - a.progressAt >= DAY && a.progressAt + DAY >= this.s.baselineAt)
         this.add({ key: `stale:${a.id}:${a.progressAt}`, kind: 'stale', at: now, request: a.id, source: a.src, author: a.from, summary: a.text })
     }
     // Superseded, answered or resumed work must not provoke a late follow-up.
     const current = new Map(sessions.map((s) => [s.id, s]))
     this.s.pending = this.s.pending.filter((e) => {
       if (e.kind === 'selfcheck') return now - e.at < DAY
-      if (e.kind === 'stale') return asks.some((a) => a.id === e.request && ['open', 'dispatched'].includes(a.status) && now - a.progressAt >= DAY)
+      if (e.kind === 'stale') return asks.some((a) => a.id === e.request && ['open', 'dispatched'].includes(a.status) && now - a.progressAt >= DAY && a.progressAt + DAY >= (this.s.baselineAt ?? 0))
       const s = current.get(e.session!)
       if (!s || s.archived || s.status === 'working' || s.lastActivityAt !== e.activity) return false
       return e.kind === 'question' ? s.status === 'needs_user' : e.kind === 'interruption' ? s.status === 'interrupted' : ['idle', 'done'].includes(s.status)

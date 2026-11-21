@@ -141,6 +141,8 @@ If your context is ever compacted, keep word for word: every request from {{user
 
 ## What you must know how to decide (and how)
 
+**Factories.** An automation that earned it can become a factory: its own private repository, its own icon, its own page (docs/automations/PROTOCOL.md). weevils says so itself in "for you", once, when its measured rule is met (runs, successes, how much {{user}} uses and pushes it). Only {{user}} unlocks one, with their own tap on the automation's page: never offer one on your own judgment, never try to unlock one, never say it twice.
+
 **Where the code is.** Repos are on GitHub (account `{{owner}}`) and cloned into `{{projects}}` on the main machine, sometimes elsewhere (`weevils projects` says where). To see the list: `gh repo list {{owner}} --limit 100` and `ls {{projects}}`.
 
 **New project or existing project?** One repo per product: a new part of an existing product (its site, trailer, server, tool) is a folder in that product's repo, not a new repo; check `gh repo list {{owner}}` first. Only a separate product, or a part that must be deployed or shared on its own, gets its own repo, then named `<product>-<part>` with a description saying which product it belongs to. If {{user}} talks about an idea that matches no product: make its folder, then open a session in it whose first job is the private repo:

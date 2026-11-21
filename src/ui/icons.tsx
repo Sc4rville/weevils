@@ -12,6 +12,9 @@ const TURN: Record<Dir, number> = { up: 0, right: 90, down: 180, left: 270 }
 /** La boucle de « cycle » et sa pointe, à part : AutoMark les anime séparément. */
 const CYCLE_LOOP = 'M4 14v6h16V4H4v6'
 const CYCLE_HEAD = 'M1 7l3 3 3-3'
+/** Une usine (docs/automations/PROTOCOL.md) : le même carré que la boucle, qui a pris un toit en dents de scie et une
+ *  cheminée. Un seul tracé fermé : FactoryMark y fait tourner le même segment que sur la boucle. */
+const FACTORY = 'M4 20V10l5.5 4v-4l5.5 4V4h5v16z'
 
 const PATHS = {
   // Tracés de base, orientés vers le haut quand ils ont un sens.
@@ -55,6 +58,8 @@ const PATHS = {
   copy: 'M9 9h11v11H9zM15 5V4H4v11h1',
   // Ce qui revient tout seul : la touche « répéter », à angles droits — une boucle ouverte à gauche, sa pointe en bas.
   cycle: `${CYCLE_LOOP}${CYCLE_HEAD}`,
+  // An automation that graduated: the loop's square body with a saw-tooth roof and a chimney.
+  factory: FACTORY,
   // Sleep mode: three « z », staggered up to the right, the last one smaller.
   sleep: 'M2 14h7l-7 7h7M11 7h7l-7 7h7M18 2h4l-4 4h4',
 } as const
@@ -108,6 +113,20 @@ export function AutoMark({ label, className = '' }: { label?: string; className?
       <path className="track" d={CYCLE_LOOP} />
       <path className="run" d={CYCLE_LOOP} pathLength={100} />
       <path d={CYCLE_HEAD} />
+    </svg>
+  )
+}
+
+/**
+ * A factory at work: the mark of what runs on its own (same colour, same travelling segment, same ink outline on light
+ * themes as AutoMark), on the factory's outline instead of the loop.
+ */
+export function FactoryMark({ label, className = '' }: { label?: string; className?: string }) {
+  return (
+    <svg className={`ic auto-mark factory-mark ${className}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="square" strokeLinejoin="miter" strokeMiterlimit={10} role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true} focusable="false">
+      <path className="halo" d={FACTORY} />
+      <path className="track" d={FACTORY} />
+      <path className="run" d={FACTORY} pathLength={100} />
     </svg>
   )
 }

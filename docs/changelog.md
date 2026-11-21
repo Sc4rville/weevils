@@ -4,6 +4,16 @@ A short summary of what changed after the first working version.
 
 ## 2026-11-21
 
+### Autonomous: automations can become factories
+- The automations section is now called **autonomous**. Every automation's small repository says what it is: a
+  readable manifest (name, purpose, schedule, scope, where it works), kept in step with the app and never the other
+  way round: a commit cannot move a schedule or widen an authorization.
+- An automation that earned it (10 runs, a week, 8 of its last 10 good, and used, pushed or proven) can become a
+  **factory**: weevils says so once in For you, and a quiet line on its page unfolds onto **Unlock**. Only your own
+  tap unlocks. A factory gets its own private GitHub repository with its whole history, its own icon, and its own
+  page, drawn by weevils from the panels its manifest declares. Its schedule and rules do not change.
+  Record: `docs/automations/PROTOCOL.md`.
+
 ### A new install opens straight into weevboss's chat
 - No page before the conversation: until weevboss has said hello and a subscription is signed in, the app opens full
   screen in weevboss's thread, on every device and at every launch, ready to type (the home is one back away). The

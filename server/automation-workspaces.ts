@@ -5,6 +5,7 @@ import M from './i18n/automation-workspaces.ts'
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
+import type { ManifestSchedule } from '../shared/factory.ts'
 
 export interface AutomationSoftware {
   id:string; repository:string; revision:string; status:'ready'|'pending-running'; legacyWorkspace:string
@@ -115,6 +116,170 @@ export class AutomationWorkspaces {
     const file=path.join(dir,'src/run.mjs')
     if(!fs.existsSync(file))throw new Error(tr(M).entrypoint)
     return file
+  }
+}
+
+/**
+ * What the manifest mirrors from the scheduler's record (docs/automations/PROTOCOL.md, section 5). The record is the
+ * authority: these fields are written here, never read back to drive a schedule, a scope or a target.
+ */
+export interface ManifestMirror {
+  name: string
+  title: string
+  purpose: string
+  owner: { repo: string } | null
+  schedule: ManifestSchedule
+  scope?: string
+  /** `<kind>/<slug>` of the weevils page its results live on, when a run already published one. */
+  results?: string
+}
+
+const MOTHER_README = `# Automations
+
+Everything weevils runs on its own for you lives here (the protocol: docs/automations/PROTOCOL.md in weevils).
+
+- \`projects/auto-<id>/\`: one small Git repository per automation. \`automation.json\` says what it is (name, purpose,
+  schedule, scope, where it works); \`src/run.mjs\` is what runs; \`PLAYBOOK.md\`, when there is one, is its method.
+- \`registry/\`: the index (id, name, kind, folder; a factory's repository address).
+- \`.versions/\`: read-only snapshots of the exact source each run executes.
+
+The schedule and the rules of an automation are changed in the app, never here: the manifest only mirrors them.
+A factory is an automation that graduated: its folder stays here and is also its own private GitHub repository.
+Nothing in this folder holds a secret, a run's output or a conversation.
+`
+
+/** The files a manifest commit may change for the pinned source to follow it: nothing that is executed. */
+const METADATA_FILES = new Set(['automation.json', 'README.md'])
+
+/** Schema 2 on top of whatever the manifest holds: the mirrored fields replaced, everything else kept, in a fixed order. */
+export function manifestV2(current: Record<string, unknown>, m: ManifestMirror): Record<string, unknown> {
+  const { schemaVersion: _v, id, kind, name, title: _t, purpose: _p, owner: _o, schedule: _s, scope: _c, entrypoint, steps, playbook, results, metrics, runtime, factory, page, ...rest } = current
+  const declared = results && typeof results === 'object' && typeof (results as { page?: unknown }).page === 'string' ? results : undefined
+  return {
+    schemaVersion: 2,
+    id,
+    kind: kind === 'factory' ? 'factory' : 'automation',
+    // The name is given once: a later change of title never renames a repository.
+    name: typeof name === 'string' && name ? name : m.name,
+    title: m.title,
+    purpose: m.purpose,
+    owner: m.owner,
+    schedule: m.schedule,
+    ...(m.scope ? { scope: m.scope } : {}),
+    entrypoint,
+    steps,
+    ...(playbook ? { playbook } : {}),
+    ...(declared ? { results: declared } : m.results ? { results: { page: m.results } } : {}),
+    ...(metrics ? { metrics } : {}),
+    runtime,
+    ...(factory ? { factory } : {}),
+    ...(page ? { page } : {}),
+    ...rest,
+  }
+}
+
+/** Mirror, factory mark and registry: the manifest's own changes, each one commit, never touching what is executed. */
+export class AutomationManifests {
+  readonly w: AutomationWorkspaces
+  constructor(w: AutomationWorkspaces) { this.w = w }
+
+  /** The manifest of a committed revision (the pinned one by default): what weevils trusts. null: unreadable. */
+  read(software: AutomationSoftware, revision = software.revision): Record<string, unknown> | null {
+    try {
+      const m = JSON.parse(git(software.repository, 'show', `${revision}:automation.json`))
+      return m && typeof m === 'object' && !Array.isArray(m) ? m : null
+    } catch {
+      return null
+    }
+  }
+
+  /** Commits someone made to its source: every commit but weevils' own bookkeeping (the adoption, the manifest's
+   *  mirror, the factory mark), which says nothing about how much it grew. 0 when unknown. */
+  commits(software: AutomationSoftware): number {
+    try {
+      return Number(git(software.repository, 'rev-list', '--count', '--invert-grep', '--grep=^chore(auto): ', '--grep=^chore(manifest): ', '--grep=^feat(factory): ', 'HEAD')) || 0
+    } catch {
+      return 0
+    }
+  }
+
+  private clean(dir: string): boolean {
+    try {
+      return git(dir, 'status', '--porcelain') === ''
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Writes `next` as the manifest and commits it. The pinned revision follows only when everything between it and the
+   * new commit is metadata (the manifest, the README): the code that runs is then byte-identical. Otherwise the pin
+   * stays where the person left it.
+   */
+  private write(software: AutomationSoftware, next: Record<string, unknown>, message: string): AutomationSoftware {
+    const file = path.join(software.repository, 'automation.json')
+    atomic(file, next)
+    git(software.repository, 'add', '--', 'automation.json')
+    if (!git(software.repository, 'diff', '--cached', '--name-only', '--', 'automation.json')) return software
+    git(software.repository, 'commit', '--only', '-m', message, '--', 'automation.json')
+    const head = git(software.repository, 'rev-parse', 'HEAD')
+    const changed = git(software.repository, 'diff', '--name-only', software.revision, head).split('\n').filter(Boolean)
+    if (!changed.every((f) => METADATA_FILES.has(f))) return software
+    try {
+      return this.w.select(software, head)
+    } catch {
+      return software
+    }
+  }
+
+  /**
+   * Brings a manifest to schema 2 and keeps its mirror current. Additive and idempotent: nothing to do, nothing
+   * committed. A source that is not ready, has uncommitted work or an unreadable manifest is left exactly as it is.
+   */
+  mirror(software: AutomationSoftware, m: ManifestMirror): AutomationSoftware {
+    if (software.status !== 'ready' || !this.clean(software.repository)) return software
+    const current = this.read(software, 'HEAD')
+    if (!current || current.id !== software.id || current.entrypoint !== 'src/run.mjs') return software
+    const next = manifestV2(current, m)
+    if (JSON.stringify(next) === JSON.stringify(current)) return software
+    return this.write(software, next, current.schemaVersion === 2 ? 'chore(manifest): mirror the scheduler\'s record' : 'chore(manifest): schema 2')
+  }
+
+  /** The unlock's mark: `kind: factory` and when, one commit. The entrypoint and every mirrored field are untouched. */
+  markFactory(software: AutomationSoftware, name: string, unlockedAt: number): AutomationSoftware {
+    if (software.status !== 'ready') throw new Error(tr(M).contract)
+    if (!this.clean(software.repository)) throw new Error(tr(M).dirtySource)
+    const current = this.read(software, 'HEAD')
+    if (!current || current.id !== software.id) throw new Error(tr(M).identity)
+    if (current.kind === 'factory') return software
+    const { factory: _f, page, ...rest } = current
+    const next = { ...rest, kind: 'factory', name, factory: { name, unlockedAt: new Date(unlockedAt).toISOString() }, ...(page ? { page } : {}) }
+    return this.write(software, next, `feat(factory): ${name} becomes a factory`)
+  }
+
+  /** A stranger opening the mother folder reads what it is: written once, never overwritten (it may be edited). */
+  describe() {
+    const file = path.join(this.w.root, 'README.md')
+    if (!fs.existsSync(path.join(this.w.root, '.weevils-owner.json')) || fs.existsSync(file)) return
+    fs.writeFileSync(file, MOTHER_README)
+  }
+
+  /** The registry's line for an automation: where it is, what it is called, what it is, where it is published. */
+  register(id: string, o: { name?: string; kind?: 'automation' | 'factory'; remote?: string }) {
+    const registry = path.join(this.w.root, 'registry')
+    const rel = `automations/${id}.json`
+    const file = path.join(registry, rel)
+    let current: Record<string, unknown>
+    try {
+      current = JSON.parse(fs.readFileSync(file, 'utf8'))
+    } catch {
+      return
+    }
+    const next = { ...current, schemaVersion: 2, ...(o.name ? { name: o.name } : {}), ...(o.kind ? { kind: o.kind } : {}), ...(o.remote ? { remote: o.remote } : {}) }
+    if (JSON.stringify(next) === JSON.stringify(current)) return
+    atomic(file, next)
+    git(registry, 'add', '--', rel)
+    if (git(registry, 'diff', '--cached', '--name-only', '--', rel)) git(registry, 'commit', '--only', '-m', 'chore(auto): update automation entry', '--', rel)
   }
 }
 

@@ -22,7 +22,9 @@ import { reveal, useFollow } from './follow'
 import { Fill, chg } from './h24'
 import { AutoMark, Icon } from './icons'
 import { mergePending, type Pending } from './pending'
-import { FootError, Shell } from './shell'
+import { FootError, Shell, swapPage } from './shell'
+import { PromotionLine, useSeen } from './factory'
+import { FactoryPage } from './factory-page'
 import { VoiceLogo } from './voice'
 import './h24.css'
 
@@ -93,29 +95,38 @@ function useRunDetail(id: string, at: number | undefined, files?: number): AutoR
 const projectName = (snap: { projects: { id: string; name: string }[] }, x: AutoItem) => (x.projectId ? (snap.projects.find((p) => p.id === x.projectId)?.name ?? null) : null)
 const headline = (d: AutoRunDetail | null | undefined, r: AutoRun) => (d?.report ? plain(d.report).split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '').trim() : undefined) || r.note
 
-export function AutoPage({ id }: { id: string }) {
+/** standard: always the standard automation page, even for a factory (next shows the factory's page itself). */
+export function AutoPage({ id, standard = false }: { id: string; standard?: boolean }) {
   // One negotiation state for the whole page (App provides the one shared with the drawer).
   const k = useTalk()
   return (
     <TalkCtx.Provider value={k}>
-      <AutoPageIn id={id} />
+      <AutoPageIn id={id} standard={standard} />
     </TalkCtx.Provider>
   )
 }
 
-function AutoPageIn({ id }: { id: string }) {
+function AutoPageIn({ id, standard }: { id: string; standard: boolean }) {
   const t = useT(M)
   const { item, opt } = useAutoItem(id)
+  // A factory opens on its own page; its talk, schedule and delete stay on the standard page, one tap away (a fade).
+  const [details, setDetails] = useState(false)
+  const flip = (to: boolean) => {
+    swapPage()
+    setDetails(to)
+  }
+  useSeen(opt && !opt.factory ? id : undefined, 'page')
   if (!item)
     return (
       <Shell slot={slotOf(id)} kicker={t.title} title="…">
         <div className="in meta empty">{t.empty}</div>
       </Shell>
     )
-  return <AutoView item={item} opt={opt} />
+  if (opt?.factory && !standard && !details) return <FactoryPage id={id} onConversation={() => flip(true)} />
+  return <AutoView item={item} opt={opt} onFactory={opt?.factory && !standard ? () => flip(false) : undefined} />
 }
 
-function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
+function AutoView({ item: x, opt, onFactory }: { item: AutoItem; opt: Optimizer | null; /** A factory's standard page: back to its own page. */ onFactory?: () => void }) {
   const t = useT(M)
   const { snap, push, back, refresh } = useApp()
   const k = useTalk()
@@ -155,6 +166,12 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
     })
   }
   const actions: ReactNode[] = []
+  if (onFactory)
+    actions.push(
+      <button key="factory" className="ch" onClick={onFactory} aria-label={t.toFactory}>
+        <Icon name="factory" />
+      </button>,
+    )
   // Closing a draft is navigation only. Destruction belongs to the confirmed delete action below.
   if (opt && !proposed && !x.state.match(/^(done|failed)$/)) {
     const paused = x.state === 'paused' || !!opt.paused
@@ -274,6 +291,7 @@ function AutoView({ item: x, opt }: { item: AutoItem; opt: Optimizer | null }) {
 
           <Kpis x={x} runs={runs} flash={f} ask={talkOn ? ask : undefined} onLast={() => runs[0] && push({ kind: 'autorun', id: x.id, at: runs[0].at })} onRuns={toOutputs} />
           {opt && <SleepTrigger o={opt} />}
+          {opt?.promotion && <PromotionLine o={opt} />}
 
           <div ref={outputs}>
             {(runs.length > 0 || x.state === 'running') && <div className="in label">{t.outputs}</div>}
@@ -606,6 +624,7 @@ function Talk({ o }: { o: Optimizer }) {
 // One run.
 
 export function AutoRunPage({ id, at: end }: { id: string; at: number }) {
+  useSeen(id, 'run')
   const t = useT(M)
   const { snap, push } = useApp()
   const { item } = useAutoItem(id)

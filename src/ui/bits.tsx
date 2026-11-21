@@ -28,7 +28,7 @@ import RM from '../i18n/relay'
 import { threadsOn } from './threads-on'
 import { isUnread, useSeen } from './seen'
 import { AutoMark, G, Icon } from './icons'
-import { LivingLink, livingLink } from './living-link'
+import { AppLink, LivingLink, appLink, livingLink } from './living-link'
 import { autoOfSession } from './auto-model'
 
 /** Ressort commun : léger dépassement, pour que les bandes aient de l'inertie. */
@@ -767,6 +767,8 @@ export function Rich({ text, code = true }: { text: string; code?: boolean }) {
           p.s
         ) : p.kind === 'chip' ? (
           <InlineChip key={i} brick={p.brick} />
+        ) : p.kind === 'url' && appLink(p.href) ? (
+          <AppLink key={i} href={p.href} label={p.label} />
         ) : p.kind === 'url' && livingLink(p.href) ? (
           <LivingLink key={i} href={p.href} label={p.label} />
         ) : p.kind === 'url' ? (

@@ -1,6 +1,7 @@
 # 07 · Vault: every conversation, kept on your GitHub
 
-**Status: design, being built.** This page settles D1 and D2 of [03](03-sync-and-lease.md#open-decisions) the way the
+**Status: step 1 built** (`server/weevbook/vault.ts`, `vault-cli.ts`, `vault.test.ts`): journals and attachments,
+the recovery code, the import at install. Steps 2 to 4 are design. This page settles D1 and D2 of [03](03-sync-and-lease.md#open-decisions) the way the
 owner chose on 2026-11-21: the hub of every install is the person's own GitHub, encrypted, whether they have no
 server, one, or ten. The owner took the recommended answer to the four decisions at the end (2026-11-21). The person
 feels only what they must: one GitHub sign-in, the recovery code once, the history question, and agreed moves.
@@ -178,7 +179,28 @@ empty text with its signature, so the risk was small; the rule keeps it at none.
 ## Steps
 
 1. **Vault writer.** Encrypt and push journals, chunks and attachments; the import at install; the recovery code.
-   The plain hub on a machine keeps working beside it for existing installs.
+   The plain hub on a machine keeps working beside it for existing installs. *Built:*
+   - `server/weevbook/vault.ts`: sealing (AES-256-GCM, a format byte then the nonce; zstd from Node's own `zlib`,
+     gzip on a Node without it; associated data: the thread id and the file's kind, `m`, `c` or `a`), the recovery
+     code (BIP39, the English list in `server/weevbook/data`), the push and the restore. The manifest holds the
+     ordered chunks, the journal's length and SHA-256, and the attachments by their file name in the thread. Commits
+     are by `vault <vault@weevils.invalid>`, dated 2000-01-01, message `vault`; `a/` names are the hash of the
+     ciphertext like `c/`, so a known file cannot be recognised by its hash.
+   - Pushing builds the commits in `DATA_DIR/vault.git` from the weevbook's thread refs, fetches the vault first (a
+     thread another machine pushed is built on), and pushes the refs that moved with `--atomic`, by groups of 100,
+     newest threads first. A thread whose journal is not an extension of the vault's (another machine wrote it
+     differently) is left out and counted, until the lease on GitHub (step 4).
+   - Restore decrypts every journal and its attachments into the weevbook (the local raw lines are kept), rebuilds
+     `thread.md` and `meta.json`, and composes `main`. `handoff.md` comes with step 2.
+   - `weevils weevbook vault setup` (with `gh`: the private repository `<login>/weevbook-vault`, this machine's
+     deploy key `CONFIG_DIR/vault-deploy`, the key `CONFIG_DIR/vault.key` and its 24 words printed once, the remote
+     in `CONFIG_DIR/vault.json`; `--remote <url>` skips GitHub), `vault push`, `vault restore [--code "…"]`,
+     `vault status`. Setup against a vault that exists, without its key, refuses and points at `restore`.
+   - In weevilsd: `WEEVILS_VAULT` (`0` off, a git URL, or empty/`1` for the remote setup saved); every 30 s the
+     pusher pushes when the thread refs moved, an error logged once, the next try 5 minutes later.
+   - The writer is on by default (`WEEVILS_WEEVBOOK=0` turns it off) and the first start runs `weevils weevbook
+     backfill --once` at the lowest priority, which writes `DATA_DIR/weevbook-backfilled` when done.
+   - Still to do for step 2: the join carries the vault key and a deploy key (`server/join.ts`).
 2. **A new machine from the vault**, and the onboarding question and summary in weevboss's chat.
 3. **Slim raw and checkpoints in the vault**, and resuming a thread from them (VAULT-4).
 4. **Lease on GitHub**, weevboss's proposals, direct orders.

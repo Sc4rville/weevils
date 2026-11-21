@@ -2,8 +2,12 @@
 // docs/spec/README.md, taken at step 1: through the same adapters, one thread with one leg each, no checkpoint).
 // Idempotent: a session already read is not read again, and running it twice writes nothing the second time.
 
+import { spawn, type ChildProcess } from 'node:child_process'
+import fs from 'node:fs'
 import fsp from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Provider } from './journal.ts'
 import { Locked, Weevbook } from './store.ts'
 import { Sessions, accountOf, codexNames, syncSession, type Source, type SyncResult } from './sync.ts'
@@ -97,4 +101,32 @@ export async function backfill(p: BookPaths, o: { now?: number; onSession?: (r: 
     }
   }
   return report
+}
+
+/** DATA_DIR/weevbook-backfilled: written once the first backfill of this machine went through. */
+export const backfillMarker = (dataDir: string) => path.join(dataDir, 'weevbook-backfilled')
+
+/**
+ * The import at install (docs/spec/07-vault.md#the-history-retroactive-import): when this machine's weevbook was never
+ * backfilled, `weevils weevbook backfill --once` runs in its own process at the lowest priority, so weevilsd and the
+ * agents keep the CPU. It writes the marker when done; cut short (weevilsd stopped), it runs again next start and
+ * reads only what it had not read (backfill is idempotent).
+ */
+export function startFirstBackfill(o: { dataDir: string; log?: (line: string) => void }): ChildProcess | null {
+  const log = o.log ?? ((l: string) => console.error(l))
+  const marker = backfillMarker(o.dataDir)
+  if (fs.existsSync(marker)) return null
+  const cli = path.join(path.dirname(fileURLToPath(import.meta.url)), 'cli.ts')
+  const child = spawn(process.execPath, [...process.execArgv, cli, 'backfill', '--once', '--data-dir', o.dataDir], { stdio: 'ignore' })
+  if (child.pid) {
+    try {
+      os.setPriority(child.pid, 19)
+    } catch {
+      /* not allowed: it runs at the normal priority */
+    }
+  }
+  child.on('error', (e) => log(`[weevbook] first backfill: ${e.message}`))
+  child.on('exit', (code) => log(`[weevbook] first backfill ${fs.existsSync(marker) ? 'done' : `stopped (${code})`}`))
+  log('[weevbook] first backfill of this machine started, in the background')
+  return child
 }

@@ -9,6 +9,8 @@
 //   resume <thread> [--wait]   the thread continues on this machine, same provider (step 3, docs/spec/04-resume.md);
 //                       the engine is started through the local weevilsd
 //   sync status         how the sync with the hub goes, as weevilsd last wrote it (step 2)
+//   vault setup | push | restore | status   the encrypted copy on the person's GitHub (07-vault.md, vault-cli.ts)
+//   backfill --once     the import at install: nothing when DATA_DIR/weevbook-backfilled is there, which it writes
 //
 // Paths can be given for a copy: --data-dir, --claude-dir, --codex-dir (tests, or another machine's files).
 
@@ -21,7 +23,8 @@ import M from '../i18n/weevbook.ts'
 import S from '../i18n/weevbook-sync.ts'
 import type { HubStatus } from './hub.ts'
 import { resumeThread, type Launch } from './resume.ts'
-import { backfill, type BookPaths } from './backfill.ts'
+import { backfill, backfillMarker, type BookPaths } from './backfill.ts'
+import { vaultMain } from './vault-cli.ts'
 import { check } from './check.ts'
 import { compare } from './compare.ts'
 import { Locked } from './store.ts'
@@ -51,6 +54,9 @@ export async function main(args: string[], out: (line: string) => void = (l) => 
   try {
     switch (args[0]) {
       case 'backfill': {
+        const marker = backfillMarker(path.dirname(p.dir))
+        const once = args.includes('--once')
+        if (once && fs.existsSync(marker)) return 0
         const r = await backfill(p, { onSession: (_r, i, n) => process.stderr.isTTY && i % 25 === 0 && process.stderr.write(`\r${t.progress(i, n)}`) })
         if (process.stderr.isTTY) process.stderr.write('\r')
         out(t.backfill(r.sessions, r.created, r.updated, r.unchanged, r.empty))
@@ -58,6 +64,7 @@ export async function main(args: string[], out: (line: string) => void = (l) => 
         if (r.refused) out(t.refused(r.refused))
         for (const f of r.failed) out(t.failed(f.file, f.error))
         out(t.main(r.main))
+        if (once) fs.writeFileSync(marker, `${new Date().toISOString()} ${r.sessions} sessions, ${r.failed.length} failed\n`)
         return r.failed.length ? 1 : 0
       }
       case 'check': {
@@ -97,6 +104,8 @@ export async function main(args: string[], out: (line: string) => void = (l) => 
       }
       case 'resume':
         return await resume(args, p, out)
+      case 'vault':
+        return await vaultMain(args, out)
       case 'sync':
         if (args[1] === 'status') return status(args, out)
         out(tr(S).usage)

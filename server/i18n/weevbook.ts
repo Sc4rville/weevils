@@ -4,7 +4,7 @@ import { defineMessages } from '../i18n.ts'
 
 export default defineMessages({
   fr: {
-    usage: 'usage : weevils weevbook backfill | check [--repair] | compare [--verbose]',
+    usage: 'usage : weevils weevbook backfill | check [--repair] | compare [--verbose] | vault setup|push|restore|status',
     locked: 'le weevbook est verrouillé par un autre processus (weevilsd écrit) : réessaie dans un instant',
     progress: (i: number, n: number) => `${i}/${n} sessions`,
     backfill: (n: number, created: number, updated: number, unchanged: number, empty: number) =>
@@ -31,7 +31,7 @@ export default defineMessages({
     noLoss: 'aucune perte',
   },
   en: {
-    usage: 'usage: weevils weevbook backfill | check [--repair] | compare [--verbose]',
+    usage: 'usage: weevils weevbook backfill | check [--repair] | compare [--verbose] | vault setup|push|restore|status',
     locked: 'the weevbook is locked by another process (weevilsd is writing): try again in a moment',
     progress: (i: number, n: number) => `${i}/${n} sessions`,
     backfill: (n: number, created: number, updated: number, unchanged: number, empty: number) =>

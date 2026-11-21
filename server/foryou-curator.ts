@@ -328,6 +328,9 @@ export function usagePatterns(items: ForYouItem[], snap: Snapshot, now: number, 
 
 export interface CuratorDeps {
   reservoir?: boolean
+  /** Milestones, « improve » ideas and repo trivia: the stream shows none of them now, so none is made (and no model
+   *  call is spent on them) unless a test asks. */
+  extras?: boolean
   /** Default DATA_DIR/foryou-curator.json. */
   file?: string
   now?: () => number
@@ -590,9 +593,10 @@ export class Curator implements ForYouCurator {
    */
   tick(now = this.now()): Promise<void> {
     try {
-      this.milestones(now)
+      // Figures alone are not posts any more (src/ui/foryou-format.ts): no milestone is written unless asked.
+      if (this.deps.extras) this.milestones(now)
       if (!this.fy.wanted(now)) return Promise.resolve()
-      this.stat(now)
+      if (this.deps.extras) this.stat(now)
       if (this.deps.reservoir === true) this.reservoir.ingest(new Set(this.storySources().map(s => s.id)), this.fy.recent(['boss', 'insight', 'improve'], 80).map(i => i.text), now, lang())
       if (this.deps.reservoir === true) this.reservoir.publish(now, new Set(this.storySources().map(s => s.id)), lang(), s => { this.fy.add({ id: s.id, kind: 'boss', who: 'weevboss', title: s.title, text: s.text, lang: lang() }) })
     } catch (e) {
@@ -619,8 +623,8 @@ export class Curator implements ForYouCurator {
     // A question waiting for its clear wording first, then the lines said in passing, then the rest.
     const job = this.translationJob() ?? (probe ? this.batchJob(now, true) :
       m === 'full'
-        ? (this.askJob(now) ?? this.batchJob(now) ?? this.digestJob(now) ?? this.mailJob(now) ?? this.improveJob(now) ?? this.insightJob(now))
-        : (this.askJob(now) ?? this.batchJob(now) ?? this.mailJob(now) ?? this.digestJob(now) ?? this.insightJob(now) ?? this.improveJob(now)))
+        ? (this.askJob(now) ?? this.batchJob(now) ?? this.digestJob(now) ?? this.mailJob(now) ?? this.extraJob(now))
+        : (this.askJob(now) ?? this.batchJob(now) ?? this.mailJob(now) ?? this.digestJob(now) ?? this.extraJob(now)))
     if (!job) { this.probing = false; return Promise.resolve() }
     this.running = (async () => {
       this.spent = false
@@ -888,6 +892,12 @@ export class Curator implements ForYouCurator {
   }
 
   // ---------------------------------------------------------------- improve
+
+  /** The optional generators, only when asked (deps.extras). */
+  private extraJob(now: number): Job | null {
+    if (!this.deps.extras) return null
+    return this.via === 'full' ? (this.improveJob(now) ?? this.insightJob(now)) : (this.insightJob(now) ?? this.improveJob(now))
+  }
 
   private improveJob(now: number): Job | null {
     if (now - this.s.improveAt < IMPROVE_EVERY_MS) return null

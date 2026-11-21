@@ -63,6 +63,10 @@ export const MAX_FEED = 60
 export const VIEW_REACH = MAX_FEED * 3
 export const TEXT_MAX = 600
 export const POST_MAX = 1200
+/** A post's title: one short line, bold on top of the post. */
+export const POST_TITLE_MAX = 100
+/** Kinds the stream no longer shows (figures alone, automated proposals and ideas, generated trivia): never stored as news. */
+const NOT_POSTS = new Set<ForYouKind>(['milestone', 'stat', 'improve', 'insight', 'proposals'])
 export const MAIL_LINE_MAX = 140
 /** A session's line in the stream: what it did, said in passing. The whole closing words unfold under it. */
 export const HEADLINE_MAX = 110
@@ -386,6 +390,9 @@ export interface ForYouCurator {
 }
 
 export interface ForYouDeps {
+  /** The retired producers (figures, quota pace, proposals, ideas, trivia, automation bookkeeping): the stream shows none
+   *  of them now (src/ui/foryou-format.ts), so they are only made when asked (their own tests). */
+  extras?: boolean
   /** Figures that moved (server/foryou-numbers.ts): goals' requests, commits per project, this week vs last. */
   numbers?: ForYouNumbers
   /** Read-only current deployment catalogue, never starts software or model work. */
@@ -848,12 +855,14 @@ export class ForYou {
 
   /** « weevils post »: a word in the stream, from weevboss unless another author signs it, with up to two buttons, and the
    *  evidence supplied with it when it reports a result (shared/evidence.ts). */
-  post(text: unknown, actions?: unknown, from?: string, evidence?: unknown): ForYouItem {
+  post(text: unknown, actions?: unknown, from?: string, evidence?: unknown, title?: unknown): ForYouItem {
     const body = typeof text === 'string' ? text.trim() : ''
+    // The post's title, in bold on top (weevils post --title): one short line.
+    const head = typeof title === 'string' ? collapse(title).slice(0, POST_TITLE_MAX) : ''
     if (!body) throw new Error(tr(M).emptyText)
     if (technicalEvent('', body) || internalFeedUpdate(body)) throw new Error(tr(M).technicalPost)
     const proof = evidenceInput(evidence)
-    const item: Stored = { id: newId('b'), kind: 'boss', tone: 'neutral', at: this.now(), who: from || 'weevboss', text: clip(body, POST_MAX), actions: this.buttons(actions), reply: 'boss', open: { page: 'boss' }, ...(proof ? { evidence: proof } : {}) }
+    const item: Stored = { id: newId('b'), kind: 'boss', tone: 'neutral', at: this.now(), who: from || 'weevboss', ...(head ? { title: head } : {}), text: clip(body, POST_MAX), actions: this.buttons(actions), reply: 'boss', open: { page: 'boss' }, ...(proof ? { evidence: proof } : {}) }
     this.put(item)
     this.changed()
     return this.view(item, this.w.snapshot())!
@@ -867,7 +876,7 @@ export class ForYou {
     if (!this.shelf) throw new Error(tr(M).noMedia)
     const cwd = typeof o.cwd === 'string' && o.cwd ? path.resolve(o.cwd) : undefined
     const entry = this.shelf.add(String(o.path ?? ''), cwd)
-    const caption = clip(collapse(typeof o.caption === 'string' ? o.caption : ''), 200)
+    const caption = clip(collapse(typeof o.caption === 'string' ? o.caption : ''), 320)
     const proof = evidenceInput(o.evidence)
     const snap = this.w.snapshot()
     const s = cwd
@@ -985,6 +994,7 @@ export class ForYou {
    * again; one the user dismissed stays dismissed).
    */
   add(n: NewItem): ForYouItem | null {
+    if (!this.deps.extras && NOT_POSTS.has(n.kind)) return null
     this.syncIntents()
     // A curator proposal is new only when it does not point to authorized work.
     // Unknown source IDs are rejected, never silently treated as new permission.
@@ -1421,9 +1431,14 @@ export class ForYou {
       if (m.online) this.offSince.delete(m.id)
       else if (!this.offSince.has(m.id)) this.offSince.set(m.id, now)
     }
-    const items = [...this.systemAlerts(snap, now), ...this.paceInsights(now), ...(this.deps.numbers?.items(now) ?? [])]
-    const cards = this.cards(snap, now)
-    if (cards.length) items.push({ id: 'proposals', kind: 'proposals', tone: 'neutral', at: 0, who: 'weevils', text: cards.every((c) => c.own) ? tr(M).ownProposals(cards.length) : tr(M).proposals(cards.length), cards, live: true })
+    // Only what needs the user now. Figures alone, quota pace and automated proposals are not posts: the usage page and
+    // the automations page hold them.
+    const items: ForYouItem[] = [...this.systemAlerts(snap, now)]
+    if (this.deps.extras) {
+      items.push(...this.paceInsights(now), ...(this.deps.numbers?.items(now) ?? []))
+      const cards = this.cards(snap, now)
+      if (cards.length) items.push({ id: 'proposals', kind: 'proposals', tone: 'neutral', at: 0, who: 'weevils', text: cards.every((c) => c.own) ? tr(M).ownProposals(cards.length) : tr(M).proposals(cards.length), cards, live: true })
+    }
     const out: ForYouItem[] = []
     for (const i of items) {
       // Migrate earlier raw API reset timestamps: a few milliseconds must never revive a closed quota event.
@@ -1468,6 +1483,8 @@ export class ForYou {
 
   /** An auto task that starts or ends is news, said once each (free: read from the snapshot). */
   private autoEvents(snap: Snapshot) {
+    // Automation bookkeeping (proposed, started, finished) is not news: a run's result comes as its own post.
+    if (!this.deps.extras) return
     const t = tr(M)
     for (const o of snap.optimizers ?? []) {
       const proposed = { id: `auto:proposed:${o.id}`, at: o.createdAt, text: t.autoProposed(o.title), tone: 'neutral' as const }
@@ -1834,7 +1851,7 @@ export class ForYou {
 /**
  * GET /api/foryou[?lang=] → ForYouFeed · POST /api/foryou/seen { ids } · POST /api/foryou/:id/dismiss ·
  * POST /api/foryou/:id/act { action, card? } · POST /api/foryou/:id/reply { text } · POST /api/foryou/:id/more → { text } ·
- * POST /api/foryou/post { text, actions?, from?, evidence? } and POST /api/foryou/media { path, caption?, cwd?, from?,
+ * POST /api/foryou/post { text, title?, actions?, from?, evidence? } and POST /api/foryou/media { path, caption?, cwd?, from?,
  * evidence? } (evidence: { demonstrated?, verified?, limits? }, shared/evidence.ts): from this
  * machine only (weevils post / show) · GET /api/foryou/media/:id → the bytes (the router already checked the cookie).
  */
@@ -1871,7 +1888,7 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
     ['POST', /^\/api\/foryou\/post$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
-      await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, b), b?.evidence) }))
+      await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, b), b?.evidence, b?.title) }))
     }],
     ['GET', /^\/api\/foryou\/formats$/, (_req, res, url) => json(res, 200, { proposal: fy.visualExample(langOf(url)) })],
     ['POST', /^\/api\/foryou\/composition$/, async (req, res) => {

@@ -295,51 +295,44 @@ it('uses the static recursive signature only for structured identity, including 
   expect(band(item.id).classList.contains('recursive-identity')).toBe(true)
   expect(band(item.id).className).not.toMatch(/recursive-working|is-working|fy-drift/)
   expect(band(item.id).getAttribute('data-fy')).toBe(item.id)
-  render(<ForYouItemView item={{...item,workstream:undefined,text:'weevils improves itself',projectId:'weevils'}} compact={compact}/> )
+  render(<ForYouItemView item={{...item,workstream:undefined,text:'weevils improves itself every night now',projectId:'weevils'}} compact={compact}/> )
   expect(band(item.id).classList.contains('recursive-identity')).toBe(false)
  }
  expect(srv.calls.some(c=>/^(act|reply|dismiss) /.test(c))).toBe(false)
 })
 
-describe('for you: one stream, five layouts, no labels', () => {
-  it('one single stream titled only « For you »: no chips, no headers, no speaker or kind words', async () => {
+describe('for you: a feed of posts', () => {
+  it('one single stream titled only « For you »: no chips, no kind words; each post says who, then its bold title on top', async () => {
     setLang('en')
     await open()
     expect(host.querySelector('.fy-people')).toBeNull()
     expect([...host.querySelectorAll('.fy-words .word')].map((w) => w.textContent)).toEqual(['For you'])
     const body = host.querySelector('[data-scroll]')!
-    expect(body.querySelector('.fy-who, .fy-dot, .fy-plus, .fy-bang, .fy-btn, .fy-gauges, .fy-reply, details')).toBeNull()
+    expect(body.querySelector('.fy-who, .fy-dot, .fy-plus, .fy-bang, .fy-btn, .fy-gauges, .fy-reply, details, .fy-num')).toBeNull()
     const text = body.textContent!
-    for (const word of ['Action', 'Progress', 'Learn', 'Think', 'Visual', 'Built', 'From your agents', 'weevboss', 'Juno', 'mygame', 'proposals', 'insight']) expect(text).not.toContain(word)
+    for (const word of ['Action', 'Progress', 'Learn', 'Think', 'Visual', 'proposals', 'insight', 'Harden the tests', 'Your evenings', 'Vite only bundles', '42']) expect(text).not.toContain(word)
+    for (const post of body.querySelectorAll('.fy-post')) {
+      const head = post.querySelector('.fy-post-head')!
+      expect(head.firstElementChild!.className).toBe('fy-src')
+      expect(head.children[1].className).toMatch(/fy-post-t/)
+    }
+    expect(band('se').querySelector('.fy-src')!.textContent).toContain('mygame')
+    expect(band('ma').querySelector('.fy-src')!.textContent).toContain('Juno')
   })
 
-  it('every item takes one of the five layouts; stats without a moved number stay out', async () => {
+  it('every post takes one format; proposals, ideas, trivia and figures stay out', async () => {
     await open()
     const formats = Object.fromEntries([...host.querySelectorAll('[data-fy]')].map((e) => [e.getAttribute('data-fy'), e.getAttribute('data-fy-format')]))
-    expect(formats).toEqual({ al: 'action', me: 'visual', bo: 'action', ma: 'action', pr: 'action', se: 'action', im: 'action', in: 'learn', mi: 'progress' })
-    expect(band('mi').querySelector('.fy-num')!.textContent).toBe('42')
+    expect(formats).toEqual({ al: 'action', me: 'visual', bo: 'note', ma: 'note', se: 'action' })
   })
 
-  it('a proposal is one big tap: yes accepts the card, not now refuses it', async () => {
-    setLang('en')
-    await open([ITEMS.find((i) => i.id === 'pr')!])
-    expect(band('pr').querySelector('.fy-say')!.textContent).toBe('Harden the tests')
-    const [yes, no] = band('pr').querySelectorAll<HTMLButtonElement>('.fy-tap')
-    expect(yes.textContent).toBe(t().tapYes)
-    expect(no.textContent).toBe(t().tapNotNow)
-    await click(yes)
-    expect(srv.calls).toContain('act pr accept c1')
-    resetForYou()
-    await open([ITEMS.find((i) => i.id === 'pr')!])
-    await click(band('pr').querySelectorAll('.fy-tap')[1])
-    expect(srv.calls).toContain('act pr refuse c1')
-  })
-
-  it('the user’s own idea reads as theirs, never as weevils’', async () => {
-    setLang('en')
-    const pr = ITEMS.find((i) => i.id === 'pr')!
-    await open([{ ...pr, cards: [{ ...pr.cards![0], own: true }] }])
-    expect(band('pr').querySelector('.fy-say')!.textContent).toBe(t().yourIdea('Harden the tests'))
+  it('the media sits inside its post, under the title, never as a caption below', async () => {
+    await open([ITEMS.find((i) => i.id === 'me')!])
+    const post = band('me')
+    const kids = [...post.children].map((e) => e.className)
+    expect(kids.findIndex((c) => /fy-post-head/.test(c))).toBeLessThan(kids.findIndex((c) => /fy-post-media/.test(c)))
+    expect(post.querySelector('.fy-caption')).toBeNull()
+    expect(post.querySelector('.fy-post-t')!.textContent).toBe('the new title screen')
   })
 
   it('an alert is calm: a look, never the alert colour or an inverted band', async () => {
@@ -351,11 +344,11 @@ describe('for you: one stream, five layouts, no labels', () => {
     expect(pushed.length + srv.calls.length).toBeGreaterThan(0)
   })
 
-  it('long words are cut to a line or two', async () => {
-    const long = { ...ITEMS.find((i) => i.id === 'in')!, text: 'Vite only bundles for production and ' + 'serves each module on demand during development '.repeat(8) }
+  it('a long title is cut to a short line, never on « … »', async () => {
+    const long = { ...base, id: 'b:long', kind: 'boss' as const, who: 'weevboss', text: 'Vite only bundles for production and ' + 'serves each module on demand during development '.repeat(8) }
     await open([long])
-    const line = band('in').querySelector('.fy-learn')!.textContent!
-    expect(line.length).toBeLessThanOrEqual(120)
+    const line = band('b:long').querySelector('.fy-post-t')!.textContent!
+    expect(line.length).toBeLessThanOrEqual(90)
     expect(line.endsWith('…')).toBe(false)
   })
 

@@ -168,6 +168,8 @@ export interface ForYouItem {
   /** The item can be listened to, as a voice message in its speaker's own voice: the voice id for GET /api/speak/stream?text=…&voice=…
    *  (absent: no speech on this server). Each speaker keeps the same voice. */
   voice?: string
+  /** Set by the app's stream only: this post stands for that many results of the same job (newest shown). */
+  runs?: number
   /** Already under the user's eyes once (any device). */
   seen?: boolean
   /** Computed from the current state (an alert, pending proposals): it leaves on its own when the state does. */

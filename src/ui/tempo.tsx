@@ -35,7 +35,8 @@ export function useTempo(): [TempoView | null, (mode: TempoMode, repo: string | 
   }, [])
   useEffect(() => {
     if (Date.now() - shared.at < 60_000 || shared.inflight) return
-    shared.inflight = api.tempo().then((x) => (publish(x), x)).catch(() => ((shared.inflight = null), null))
+    // No Tempo on this server (another machine, an older weevilsd): no control, nothing else changes.
+    shared.inflight = Promise.resolve().then(() => api.tempo()).then((x) => (publish(x), x)).catch(() => ((shared.inflight = null), null))
   }, [snap.version])
   const set = async (mode: TempoMode, repo: string | null) => publish(await api.setTempo(mode, repo))
   return [v, set]

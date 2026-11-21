@@ -43,18 +43,20 @@ export const NOTHING_REVIEWED: Reviewed = { results: [], captions: {}, examples:
 
 const str = (v: unknown): v is string => typeof v === 'string' && !!v
 const list = <T>(v: unknown, ok: (x: any) => boolean): T[] => (Array.isArray(v) ? v.filter((x) => x && typeof x === 'object' && ok(x)) : [])
-const loaded = new Map<string, { stamp: string; value: Reviewed }>()
+const loaded = new Map<string, { stamp: string; value: Reviewed; at: number }>()
 
-/** Read again only when the file changed. A missing or broken file reviews nothing. */
-export function loadReviewed(file: string): Reviewed {
-  let stamp = ''
-  try {
-    const st = fs.statSync(file)
-    stamp = `${st.size}:${st.mtimeMs}`
-  } catch { return NOTHING_REVIEWED }
+/** Read again only when the file changed, and looked at no more than once every `every` ms (the feed asks for each
+ * item). A missing or broken file reviews nothing. */
+export function loadReviewed(file: string, every = 2000): Reviewed {
   const hit = loaded.get(file)
-  if (hit?.stamp === stamp) return hit.value
+  const now = Date.now()
+  if (hit && now - hit.at < every) return hit.value
+  let st: fs.Stats | undefined
+  try { st = fs.statSync(file, { throwIfNoEntry: false }) } catch { /* unreadable: nothing reviewed */ }
+  const stamp = st ? `${st.size}:${st.mtimeMs}` : ''
+  if (hit?.stamp === stamp) { hit.at = now; return hit.value }
   let value = NOTHING_REVIEWED
+  if (!st) { loaded.set(file, { stamp, value, at: now }); return value }
   try {
     const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, any>
     value = {
@@ -65,7 +67,7 @@ export function loadReviewed(file: string): Reviewed {
       intents: list<IntentLink>(raw.intents, (l) => str(l.cardId) && str(l.actionId) && str(l.brief) && str(l.sessionId) && str(l.messageId) && str(l.intentId)),
     }
   } catch { /* broken file: nothing reviewed, the recorded feed stays */ }
-  loaded.set(file, { stamp, value })
+  loaded.set(file, { stamp, value, at: now })
   return value
 }
 

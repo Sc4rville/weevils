@@ -76,11 +76,12 @@ describe('what one person reviewed, from their own data',()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'reviewed-'))
   try{
    const file=path.join(dir,'foryou.json.reviewed.json')
-   expect(loadReviewed(file)).toBe(NOTHING_REVIEWED)
+   expect(loadReviewed(file,0)).toBe(NOTHING_REVIEWED)
    fs.writeFileSync(file,'{ not json')
-   expect(loadReviewed(file)).toEqual(NOTHING_REVIEWED)
+   expect(loadReviewed(file,0)).toEqual(NOTHING_REVIEWED)
    fs.writeFileSync(file,JSON.stringify({ results:[spec,{ key:'no-anchor' }], captions:{ pic:{ title:'A', description:'B' } }, examples:{ result:'pic' }, editorial:[{ id:'x' }], intents:'nope' }))
-   expect(loadReviewed(file)).toEqual({ results:[spec], captions:{ pic:{ title:'A', description:'B' } }, examples:{ result:'pic' }, editorial:[], intents:[] })
+   expect(loadReviewed(file)).toEqual(NOTHING_REVIEWED) // looked at a moment ago: not read again yet
+   expect(loadReviewed(file,0)).toEqual({ results:[spec], captions:{ pic:{ title:'A', description:'B' } }, examples:{ result:'pic' }, editorial:[], intents:[] })
   }finally{ fs.rmSync(dir,{ recursive:true, force:true }) }
  })
 })

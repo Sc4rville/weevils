@@ -16,7 +16,7 @@ describe('a title names the work', () => {
     expect(weakTitle('weevils-next: request column', { places, request })).toBe(true)
   })
   it('an action naming the work passes', () => {
-    for (const t of ['Remaking the requests page', 'Separating public code from personal config', 'Reconnecting cut sessions'])
+    for (const t of ['Remaking the requests page', 'Splitting public from private', 'Reconnecting cut sessions'])
       expect(weakTitle(t, { places, request })).toBe(false)
   })
   it('the project name in front is cut, the rest kept', () => {
@@ -32,6 +32,7 @@ describe('a title names the work', () => {
     const en = M.en.prompt('Alex', '[]')
     expect(en).toMatch(/action phrase/)
     expect(en).toMatch(/Remaking the requests page/)
+    expect(en).toMatch(/≤ 30 characters/)
     expect(en).toMatch(/not "weevils pump reliability"/)
     expect(en).toMatch(/lifted from the request/)
     const fr = M.fr.prompt('Alex', '[]')

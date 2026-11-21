@@ -4,6 +4,6 @@
 .fy-rail-slide figure { margin: 0; }
 .fy-rail-slide img, .fy-rail-slide video { max-width: 100%; }
 .fy-rail-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding-block: 8px; }
-.fy-rail-controls button { min-height: 44px; min-width: 44px; padding: 12px 4px; text-decoration: underline; white-space: normal; }
+.fy-rail-controls button { min-height: 44px; min-width: 44px; padding: 12px 4px; font-weight: 750; white-space: normal; }
 .fy-rail-controls button:disabled { opacity: .45; cursor: default; }
 .fy-rail-controls .meta { text-align: center; }

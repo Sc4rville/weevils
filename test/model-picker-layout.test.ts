@@ -12,5 +12,6 @@ it('keeps the model picker in the flow and wrapping on a phone-width screen',()=
  expect(own).toMatch(/\.model-controls \.word \{[^}]*white-space: normal/)
  const styles=read('src/styles.css')
  expect(styles).toMatch(/\.words \{[^}]*flex-wrap: wrap/)
- expect(styles).toMatch(/\.word\.pending \{[^}]*text-decoration/)
+ // A setting on its way shows on the word itself (lighter, no underline: nothing in weevils is underlined).
+ expect(styles).toMatch(/\.word\.pending \{[^}]*opacity/)
 })

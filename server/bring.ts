@@ -29,6 +29,7 @@ import zlib from 'node:zlib'
 import type { BringItem, BringSource, BringView } from '../shared/bring.ts'
 import type { Tool } from '../shared/api.ts'
 import { parseTranscriptText, titleOf } from './transcripts.ts'
+import { signedBlock } from './weevbook/redact.ts'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const UUID_END = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
@@ -298,7 +299,50 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
  * name that merely starts the same (« /a/app » does not touch « /a/app2 »). */
 export function rewritePaths(text: string, from: string, to: string): string {
   if (!from || from === to || from === '/') return text
-  return text.replace(new RegExp(`${escapeRe(from)}(?![A-Za-z0-9._-])`, 'g'), to.replace(/\$/g, '$$$$'))
+  const re = new RegExp(`${escapeRe(from)}(?![A-Za-z0-9._-])`, 'g')
+  const by = to.replace(/\$/g, '$$$$')
+  if (!SIGNED_LINE.test(text)) return text.replace(re, by)
+  // A line with a block the provider signs: every string but those blocks' (their bytes must reach the API as written).
+  return text
+    .split('\n')
+    .map((line) => {
+      if (!line.includes(from)) return line
+      if (!SIGNED_LINE.test(line)) return line.replace(re, by)
+      let o: unknown
+      try {
+        o = JSON.parse(line)
+      } catch {
+        return line.replace(re, by)
+      }
+      const r = mapStrings(o, (x) => x.replace(re, by))
+      return r === o ? line : JSON.stringify(r)
+    })
+    .join('\n')
+}
+
+const SIGNED_LINE = /"type":\s*"(?:redacted_)?thinking"/
+
+/** Every string inside `v` through `f`, except inside signed blocks; copied only where something changed. */
+function mapStrings(v: unknown, f: (s: string) => string): unknown {
+  if (typeof v === 'string') return f(v)
+  if (signedBlock(v)) return v
+  if (Array.isArray(v)) {
+    let out: unknown[] | undefined
+    v.forEach((x, i) => {
+      const r = mapStrings(x, f)
+      if (r !== x) (out ??= v.slice())[i] = r
+    })
+    return out ?? v
+  }
+  if (v && typeof v === 'object') {
+    let out: Record<string, unknown> | undefined
+    for (const [k, x] of Object.entries(v)) {
+      const r = mapStrings(x, f)
+      if (r !== x) (out ??= { ...(v as Record<string, unknown>) })[k] = r
+    }
+    return out ?? v
+  }
+  return v
 }
 
 /** The file really is that conversation (its first lines carry its id). */

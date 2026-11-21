@@ -19,6 +19,7 @@ import { OBSERVE_EVERY, STEAL_BOUND, stealable, type Intent } from './lease.ts'
 import { writeAtomic } from './store.ts'
 import { Sessions, accountOf as accountHash, machinePart, sessionKey } from './sync.ts'
 import { assign, next, preface } from './turn.ts'
+import { REDACTED } from './redact.ts'
 
 export interface Launch {
   provider: Provider
@@ -152,10 +153,55 @@ export async function rebuild(book: HubSync['book'], thread: string, events: rea
     const segs = names.filter((n) => n.startsWith(`${e.leg}.${provider}.`) && n.endsWith('.jsonl')).sort()
     let leg = ''
     for (const n of segs) leg += await fsp.readFile(path.join(dir, 'raw', n), 'utf8')
-    text += rewritePaths(leg, e.cwd, cwd)
+    const moved = rewritePaths(leg, e.cwd, cwd)
+    text += provider === 'claude' ? mendThinking(moved) : moved
   }
   return text
 }
+
+/**
+ * A Claude session whose thinking redaction once changed (raw written before signed blocks were kept as they are):
+ * the API refuses the whole conversation for one such block. The block goes, and a line left with nothing in it goes
+ * too, its children taking its parent, so the conversation stays one chain. Only that reasoning is lost.
+ */
+export function mendThinking(text: string): string {
+  if (!text.includes(REDACTED)) return text
+  const parentOf = new Map<string, string | null>()
+  const out: string[] = []
+  for (const line of text.split('\n')) {
+    let o: { uuid?: string; parentUuid?: string | null; message?: { content?: unknown } } | undefined
+    try {
+      o = line.trim() ? JSON.parse(line) : undefined
+    } catch {
+      o = undefined
+    }
+    if (!o || typeof o !== 'object') {
+      out.push(line)
+      continue
+    }
+    let changed = false
+    const content = o.message?.content
+    if (Array.isArray(content) && content.some(damaged)) {
+      const kept = content.filter((b) => !damaged(b))
+      if (!kept.length && o.uuid) {
+        parentOf.set(o.uuid, o.parentUuid ?? null)
+        continue
+      }
+      o = { ...o, message: { ...o.message, content: kept } }
+      changed = true
+    }
+    let p = o.parentUuid
+    while (p && parentOf.has(p)) p = parentOf.get(p)!
+    if (p !== o.parentUuid) {
+      o = { ...o, parentUuid: p ?? null }
+      changed = true
+    }
+    out.push(changed ? JSON.stringify(o) : line)
+  }
+  return out.join('\n')
+}
+
+const damaged = (b: unknown) => !!b && typeof b === 'object' && (b as { type?: unknown }).type === 'thinking' && String((b as { thinking?: unknown }).thinking ?? '').includes(REDACTED)
 
 /** Where the provider looks for the session here; an existing file is kept beside (`.before-weevbook`). */
 export async function destination(provider: Provider, session: string, cwd: string, claudeDir: string, codexDir: string, now: number): Promise<string> {

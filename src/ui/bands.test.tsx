@@ -231,9 +231,10 @@ describe('bande de weevboss : envoyer ne l’ouvre jamais en plein écran', () =
     expect(peek.textContent).toContain('Tout tourne, deux sessions travaillent.')
     // Le fil est déjà rendu mais caché : l'ouvrir est immédiat.
     expect(document.querySelector<HTMLElement>('#agent-body')!.hidden).toBe(true)
-    // A tap on the messages does not open it: the handle at the band's bottom edge does (a pull or a tap), like automations.
+    // A tap on the conversation opens it full size (Scarville, 2026-11-21); the thin handle too (a pull or a tap).
     await act(async () => (peek as HTMLElement).click())
-    expect(expanded).toEqual([])
+    expect(expanded).toEqual(['agent'])
+    expanded.length = 0
     const grip = document.querySelector<HTMLElement>('.agent-grip')!
     const ev = (type: string, y: number) => grip.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientY: y, button: 0 }))
     await act(async () => { ev('pointerdown', 100); ev('pointerup', 100) })

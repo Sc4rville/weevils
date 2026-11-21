@@ -111,6 +111,9 @@ function Peek({ onOpen, visible, sent, messages }: { onOpen: () => void; visible
       role="button"
       tabIndex={0}
       aria-label={t.openChat}
+      // A tap on the conversation opens it full size again (Scarville, 2026-11-21: « tu cliques sur la conv ça
+      // l'agrandit »); a finger scrolling it fires no click. The handle below still pulls it open as a drawer.
+      onClick={onOpen}
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}
     >
       <div className="peek-list">
@@ -275,13 +278,8 @@ export function AgentBand() {
     </button>
   )
 
-  // With the main controls: sleep mode (one tap before bed), then the devil.
-  const controls = (
-    <span className="agent-ctrls">
-      <SleepButton />
-      {devilButton}
-    </span>
-  )
+  // With the main controls: the devil. Sleep mode sits on the drawer's handle row (below).
+  const controls = <span className="agent-ctrls">{devilButton}</span>
 
   const dr = useBossDrawer(open, () => setExpanded('agent'), () => setExpanded(null))
   const band = (
@@ -366,7 +364,12 @@ export function AgentBand() {
           le champ pose les questions du parcours, une à la fois (src/ui/setup.tsx). */}
       {/* The handle, about a centimetre above the field (Scarville, 2026-11-17): pull it down to open, push it up to close, or
           tap it. Under the field it sat on the keyboard's toolbar and the home indicator, where closing failed. */}
-      <div className="agent-grip" onPointerDown={dr.grab} aria-hidden><span /></div>
+      {/* Thin, like the automations' handle (Scarville, 2026-11-21: « petit et fin comme dans automation »); sleep mode at
+          its right end, where the stray edge bar was (« mets le sleep mode à sa place »). */}
+      <div className="agent-grip-row">
+        <div className="agent-grip" onPointerDown={dr.grab} aria-hidden><span /></div>
+        <span className="agent-sleep" onPointerDown={(e) => e.stopPropagation()}><SleepButton /></span>
+      </div>
       {flow ? <SetupComposer /> : <Composer placeholder={t.agentPlaceholder} label={t.agentLabel} onSend={send} onAttach={attach} anyFile voice sayErrors horizontal captureSuggestions draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="chevron" dir="right" />} />}
     </motion.section>
   )

@@ -15,6 +15,7 @@
 #   weevils memory [add "souvenir" | rm <id>]   (ce que weevils retient de l'utilisateur, ~/.config/weevils/memory.json)
 #   weevils post "texte" [--action "libellé::quoi faire"]…   un mot dans « pour toi », avec des boutons si besoin
 #   weevils show <fichier> ["légende"]                       une image ou une vidéo dans « pour toi »
+#   weevils capture <sortie.png|.mp4> [--open "#s=<id>"] [--theme t] [--seconds N] [--frame]   l'app vue d'un téléphone, sans lire le code d'accès
 #   weevils page <dossier|fichier> "titre" --kind <type>      une petite page privée, son lien vivant (docs/LINKS.md)
 #     weevils page list <items.json> "titre" [--kind …] · page library "titre" <dossier>… · pages · page rm <slug>
 #     post et show, quand ils rapportent un résultat : --demonstrated "où ça a tourné" · --verified "environnement vérifié"
@@ -392,6 +393,18 @@ for m in shown:
     print(f\"{who}: {t[:width]}\" + ('…' if len(t)>width else ''))
 if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
 " "${3:-}" ;;
+  capture)
+    # A phone-sized picture or clip of this weevils, signed in with a short-lived token the server mints: never read
+    # the access code yourself (server/capture.mjs, server/capture-tokens.ts).
+    shift
+    tok=$(curl -sf -m 10 -X POST -H 'content-type: application/json' --data-binary '{}' "$base/api/capture/token" | "$py" -c 'import json,sys; print(json.load(sys.stdin)["token"])') || { echo "weevils capture: $WVM_ERROR" >&2; exit 1; }
+    svc_conf=$HOME/.config/weevils/service.conf
+    # shellcheck disable=SC1090
+    wv_dir=$( { [ -f "$svc_conf" ] && . "$svc_conf"; } >/dev/null 2>&1; printf '%s' "${WEEVILS_DIR:-}")
+    # shellcheck disable=SC1090
+    wv_node=$( { [ -f "$svc_conf" ] && . "$svc_conf"; } >/dev/null 2>&1; printf '%s' "${WEEVILS_NODE:-}")
+    wv_dir=${wv_dir:-$HOME/weevils}
+    WEEVILS_CAPTURE_TOKEN=$tok WEEVILS_CAPTURE_BASE=$base exec "${wv_node:-node}" "$wv_dir/server/capture.mjs" "$@" ;;
   recall)
     # A line of weevboss's log (server/boss-view.ts), back to the original word for word.
     want=${2:?$a_id}

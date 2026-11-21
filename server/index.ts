@@ -8,6 +8,7 @@ import { openSiteFile, siteFile, siteKey, siteKeyOk } from './site.ts'
 import { loadTokens, saveTokens as saveDeviceTokens } from './device-tokens.ts'
 import { Outbox, OutboxError } from './outbox.ts'
 import { executeOutbox, originOf, outboxRoute } from './outbox-http.ts'
+import { CaptureTokens, CAPTURE_TTL_MS } from './capture-tokens.ts'
 import { bossDoor } from './boss-door.ts'
 import OM from './i18n/outbox.ts'
 import { rawEngineeringNotice } from '../shared/feed-text.ts'
@@ -386,9 +387,16 @@ new TunnelFollower({
 }).start()
 
 const logins = loginLimiter()
+/** `weevils capture`: a few minutes of sign-in for a headless browser on this machine (server/capture-tokens.ts). */
+const captures = new CaptureTokens()
 const cookieToken = (req: http.IncomingMessage) => /(?:^|;\s*)wv=([\w-]+)/.exec(req.headers.cookie ?? '')?.[1]
 /** The cookie names a browser signed in with the access code (or claimed by a real browser on this machine). */
 const hasDevice = (req: http.IncomingMessage) => {
+  const t = cookieToken(req)
+  return !!t && (tokens.has(t) || captures.valid(t))
+}
+/** A browser signed in with the access code, not a capture's short-lived sign-in: only it speaks as the user. */
+const hasRealDevice = (req: http.IncomingMessage) => {
   const t = cookieToken(req)
   return !!t && tokens.has(t)
 }
@@ -422,7 +430,7 @@ function connectorOn() {
 if (CONNECTOR) connectorOn()
 
 // Who may speak as the user into weevboss's thread: a signed-in browser, never a script on this machine (server/boss-door.ts).
-const door = bossDoor({ hasDevice, isBossTarget: (id) => w.isBossTarget(id), sourceAuthor, refusal: () => tr(M).bossUserOnly })
+const door = bossDoor({ hasDevice: hasRealDevice, isBossTarget: (id) => w.isBossTarget(id), sourceAuthor, refusal: () => tr(M).bossUserOnly })
 /**
  * Who a message to a session comes from (RequestOrigin, core.ts send): the person in the app (originOf), or weevboss
  * relaying the person (`weevils send --for-user`): weevboss's own pane (its runtime thread or its token, never a jailed
@@ -790,6 +798,12 @@ const routes: [string, RegExp, Handler][] = [
     if (!/^[a-z][a-zA-Z0-9:-]{0,40}$/.test(id)) return json(res, 400, { error: tr(S).badBrick })
     setup.mark(id)
     json(res, 200, { ok: true })
+  }],
+  // « weevils capture » : a short-lived sign-in for a headless browser, so an agent records the app without ever
+  // reading the access code. Local only; it never speaks as the user (boss door) and lapses in minutes.
+  ['POST', /^\/api\/capture\/token$/, async (req, res) => {
+    if (!isLocal(req)) return json(res, 403, { error: tr(S).localOnly })
+    json(res, 200, { token: captures.mint(), ttl: CAPTURE_TTL_MS })
   }],
   // « weevils config set » : seulement depuis la machine (weevboss), seulement les clés prévues.
   ['POST', /^\/api\/setup\/config$/, async (req, res) => {

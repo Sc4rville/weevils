@@ -1,7 +1,9 @@
 # 07 · Vault: every conversation, kept on your GitHub
 
-**Status: step 1 built** (`server/weevbook/vault.ts`, `vault-cli.ts`, `vault.test.ts`): journals and attachments,
-the recovery code, the import at install. Steps 2 to 4 are design. This page settles D1 and D2 of [03](03-sync-and-lease.md#open-decisions) the way the
+**Status: steps 1 and 2 built** (`server/weevbook/vault.ts`, `vault-cli.ts`, `vault-github.ts`, `vault.test.ts`,
+`server/join.test.ts`): journals, attachments and handoffs, the recovery code, the import at install and its choices,
+the join that carries the vault, a new machine from the vault, the summary, and the onboarding in weevboss's chat.
+Steps 3 and 4 are design. This page settles D1 and D2 of [03](03-sync-and-lease.md#open-decisions) the way the
 owner chose on 2026-11-21: the hub of every install is the person's own GitHub, encrypted, whether they have no
 server, one, or ten. The owner took the recommended answer to the four decisions at the end (2026-11-21). The person
 feels only what they must: one GitHub sign-in, the recovery code once, the history question, and agreed moves.
@@ -52,7 +54,8 @@ everything; a new machine fetches the vault and has everything.
 | Raw lines, full | the threads it ran, and those it resumed | no |
 | Raw lines, **slim** | — | all threads |
 | Attachments | the threads it ran | all threads |
-| `thread.md`, `handoff.md`, `index.json` | rebuilt from the journal | no (rebuilt) |
+| `thread.md`, `index.json` | rebuilt from the journal | no (rebuilt) |
+| `handoff.md` | the threads that have one | all threads that have one (step 2: a model writes it and the journal keeps only its SHA-256, so it cannot be rebuilt) |
 
 **Slim raw.** Measured on the owner's server (2026-11-21, ~600 threads, two weeks): 1,083 MB of Claude raw lines, of
 which 575 MB are tool results over 20 KB and the `toolUseResult` copies Claude Code keeps next to them; the thinking
@@ -73,6 +76,7 @@ weevbook-vault                         refs/threads/<thread id>  → a commit wh
   m                                    the manifest: ordered list of chunk names, encrypted (small)
   c/<sha256>                           one chunk: events appended in one push, zstd, encrypted
   a/<sha256>                           one attachment, encrypted
+  h                                    handoff.md as the journal last recorded it, encrypted (replaced when rewritten)
                                        refs/leases/<thread id>   → lease.json, encrypted
                                        refs/checkpoints/<thread id> → an encrypted git bundle of the turn
                                        refs/heads/main           → only a README (what this is, no data)
@@ -100,7 +104,9 @@ own deploy key** with write access to those repositories only. The `gh` token it
 - A machine joined with one line ([install, several machines](../install.md#several-machines)) gets its deploy key from the main machine in the same
   exchange, and pushes to GitHub directly. The joined machine's narrow SSH key to the server stays as it is: it no
   longer needs to reach any hub there.
-- A new raw repository gets every machine's key when it is created.
+- A new raw repository gets every machine's key when it is created. (Found at step 2: GitHub accepts a deploy key
+  on one repository only, "key is already in use" on a second. With raw repositories, step 3, each machine needs one
+  key per repository, or the access model changes; today there is one repository and one key per machine.)
 - Removing a machine removes its deploy keys.
 
 ## The vault key
@@ -200,8 +206,50 @@ empty text with its signature, so the risk was small; the rule keeps it at none.
      pusher pushes when the thread refs moved, an error logged once, the next try 5 minutes later.
    - The writer is on by default (`WEEVILS_WEEVBOOK=0` turns it off) and the first start runs `weevils weevbook
      backfill --once` at the lowest priority, which writes `DATA_DIR/weevbook-backfilled` when done.
-   - Still to do for step 2: the join carries the vault key and a deploy key (`server/join.ts`).
-2. **A new machine from the vault**, and the onboarding question and summary in weevboss's chat.
+2. **A new machine from the vault**, and the onboarding question and summary in weevboss's chat. *Built:*
+   - **The join carries the vault** (`server/join.sh`, `server/join.ts`, `server/weevbook/vault-github.ts`): join.sh
+     makes a second key for the vault only (`CONFIG_DIR/vault-deploy`) and sends its public half with the one-time
+     code; the main machine, when it has a vault, registers it on the vault's repository through `gh api` (write
+     access, title `weevils <machine id>`) and answers with `vault_remote` and `vault_key`; join.sh writes
+     `vault.json` and `vault.key` (0600, never over another vault's key), so that machine's weevilsd pushes its own
+     first import. No vault on the main machine, or `gh` not signed in there: the join is what it was and says
+     nothing; why is kept by machine in `DATA_DIR/vault-machines.json`, which `weevils setup` and `vault summary` show
+     (pasting that computer's line again fixes it). The join's forced-command SSH key is untouched. A one-time code no
+     longer starts with a dash (`bash -s -x…` took one line in 64 for a bash option).
+   - **The import choices**: `weevils weevbook backfill --since <date>` (sessions whose last line is on or after that
+     day) and `--match <words>` (every word in the title, Codex's thread name or the first request; case and accents
+     ignored). The default stays everything. For another computer they ride on its join line, after the code
+     (`… | bash -s <code> --since 2026-10-01`, `--match 'words'`; `weevils setup ask machine --since … | --match …`
+     posts it): join.sh checks them and leaves `CONFIG_DIR/backfill.json`, which that machine's first import
+     (`backfill --once`) reads.
+   - **Restore** also brings `handoff.md` back, sealed in the vault as `h` (the manifest keeps its SHA-256): written
+     only when it is the one the journal's last `handoff` event records. On a machine that already has threads it
+     merges, thread by thread: the same journal is left alone, a longer one here stays and is pushed next, a shorter
+     one is completed, a differing one is left out and counted. A thread already checked against the same commit is
+     not opened again. `vault restore --code` on a machine with no remote saved finds `<login>/weevbook-vault`
+     through `gh` and adds this machine's deploy key (it never creates a repository); words of another vault are not
+     kept. The restored threads are what `/api/threads` lists (`threadRefs`: title, project, state, `handoff.md`).
+   - **`weevils weevbook vault summary [--json]`**: `conversations`, `machines` and `by_machine`, `accounts` by
+     provider, `oldest`, `remote` (`owner/repo`), `claude_window`, `import` (`running` or `done`), `pending`,
+     `fetched`, `missing` (machines plugged in without the vault). It fetches the vault and opens the other machines'
+     threads in memory, keeping their few facts by commit in `DATA_DIR/vault.git/weevils-summary.json`; nothing is
+     written to the weevbook. `claude_window` is true when the Claude conversation that has been quiet the longest is
+     about `cleanupPeriodDays` old (30 by default, read from `~/.claude/settings.json`; 7 days before to 3 days after).
+   - **In weevilsd** the pusher starts as soon as a vault is set (the remote and the key, looked for every 30 s): no
+     restart after `vault setup`, `vault restore` or a join.
+   - **weevboss's onboarding, by talking only** (`server/orchestrator.<lang>.md`, `firstRunBrief` and
+     `githubDevice` in `server/setup.ts`): `weevils setup github` runs `gh auth login --web` and posts the code and
+     the github.com/login/device link in weevboss's name (gh is installed first when missing); when the code was typed,
+     weevboss is handed the next step and runs `weevils weevbook vault setup` itself, gives the 24 words once, asks the
+     history question, says the summary sentence from `vault summary --json` ("the last 30 days" when
+     `claude_window`), and offers the Claude.ai and ChatGPT export once. `weevils setup` has a `vault` line with what
+     was said already (`weevils setup mark vault:code | vault:history | vault:summary | vault:export`). A new install
+     that finds a vault on the person's GitHub (`vault: found`) asks for the recovery code in the chat.
+   - *Deviations.* `handoff.md` is in the vault (the table above said rebuilt). A machine does not fetch the other
+     machines' threads into its weevbook by itself: `vault restore` does it when asked, and the summary reads them in
+     memory (an automatic restore next to a hub's own sync waits for the lease on GitHub, step 4). The accounts counted
+     are the ones the import could name: sessions read at install carry the account signed in then. When the main
+     machine cannot give a join line (no public https address), the vault does not reach the other computer yet.
 3. **Slim raw and checkpoints in the vault**, and resuming a thread from them (VAULT-4).
 4. **Lease on GitHub**, weevboss's proposals, direct orders.
 
@@ -226,5 +274,5 @@ after a delay the person sets.
 - [`server/weevbook/backfill.ts`](../../server/weevbook/backfill.ts): the import of a machine's sessions, run by hand
   today (`weevils weevbook backfill`).
 - [`server/weevbook/redact.ts`](../../server/weevbook/redact.ts): `redactRawLine`, which VAULT-4 changes.
-- [`server/join.ts`](../../server/join.ts): the one-line join, which will carry the vault key and the deploy key.
+- [`server/join.ts`](../../server/join.ts): the one-line join, which carries the vault key and the deploy key.
 - [`server/conversations.ts`](../../server/conversations.ts): the import of Claude.ai and ChatGPT exports.

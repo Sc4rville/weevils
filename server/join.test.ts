@@ -1,6 +1,6 @@
 // Another computer plugged in from one line: the one-time code, the key it authorizes (held to one tunnel port and one
 // forced command), and that forced command refusing anything but registering that same machine.
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
@@ -39,6 +39,11 @@ describe('a one-time code', () => {
     expect(join.open(code)).toBeNull()
     expect(keys()).toBe(`${authorizedLine('/home/user/.local/bin/weevils-service', 'laptop', 4192, KEY)}\n`)
     expect(fs.statSync(path.join(dir, '.ssh', 'authorized_keys')).mode & 0o777).toBe(0o600)
+  })
+
+  it('never starts with a dash, which bash would take for an option of its own (the line is « bash -s <code> »)', () => {
+    const { join } = setup()
+    for (let i = 0; i < 400; i++) expect(join.create('user@host')).toMatch(/^[A-Za-z0-9_][A-Za-z0-9_-]{31}$/)
   })
 
   it('expires after an hour; a wrong or malformed code is refused, a malformed key does not spend it', () => {
@@ -176,4 +181,299 @@ it('join.sh parses as bash and never runs before it is whole', () => {
   execFileSync('bash', ['-n', path.join(import.meta.dirname, 'join.sh')])
   expect(sh.trimEnd().split('\n').at(-1)).toBe('main "$@"')
   expect(sh).toContain('--secondary "$alias"')
+})
+
+// docs/spec/07-vault.md, step 2: the join carries the vault. The real join.sh runs against the real route; GitHub is a
+// stand-in (a `gh` that records what it is asked, and a bare repository git reaches in place of github.com).
+describe('the join carries the vault', async () => {
+  const { Weevbook } = await import('./weevbook/store.ts')
+  const { backfill } = await import('./weevbook/backfill.ts')
+  const { main: weevbook } = await import('./weevbook/cli.ts')
+  const { vaultMain } = await import('./weevbook/vault-cli.ts')
+  const { readKey } = await import('./weevbook/vault.ts')
+  const { ghRunner, joinedNotes, shareVault, withoutVault } = await import('./weevbook/vault-github.ts')
+  const FX = path.resolve(import.meta.dirname, '../test/fixtures/weevbook/home')
+  const dirs = ['--claude-dir', path.join(FX, 'claude', 'projects'), '--codex-dir', path.join(FX, 'codex', 'sessions')]
+  const tools = ['curl', 'ssh', 'ssh-keygen', 'git'].every((c) => {
+    try {
+      return !!execFileSync('sh', ['-c', `command -v ${c}`])
+    } catch {
+      return false
+    }
+  })
+  const git = (gitDir: string, ...args: string[]) => execFileSync('git', ['--git-dir', gitDir, ...args], { encoding: 'utf8' }).trim()
+  const GITHUB = 'git@github.com:alex/weevbook-vault.git'
+  const T1 = '01M7HSBBM02XDK5FKDXG64FE62'
+
+  /** The main machine: a weevbook with one thread, `gh` signed in as alex (or not), and a vault on « GitHub » when asked. */
+  async function world(o: { vault: boolean; signedIn?: boolean }) {
+    const root = tmp()
+    // git reaches github.com's repositories in a folder of the test.
+    const github = path.join(root, 'github')
+    execFileSync('git', ['init', '-q', '--bare', path.join(github, 'alex', 'weevbook-vault.git')])
+    fs.writeFileSync(path.join(root, 'gitconfig'), `[url "${github}/"]\n\tinsteadOf = git@github.com:\n`)
+    process.env.GIT_CONFIG_GLOBAL = path.join(root, 'gitconfig')
+    process.env.GIT_CONFIG_NOSYSTEM = '1'
+    const log = path.join(root, 'gh.log')
+    const keys = path.join(root, 'gh.keys')
+    fs.writeFileSync(keys, '')
+    const gh = path.join(root, 'gh')
+    fs.writeFileSync(gh, `#!/bin/sh
+printf '%s\\n' "$*" >>"${log}"
+case "$1 $2" in
+  "api user") ${o.signedIn === false ? 'exit 1' : 'echo alex'} ;;
+  "api repos/alex/weevbook-vault/keys") cat "${keys}" ;;
+  "api -X") for a in "$@"; do case "$a" in key=*) printf '%s\\n' "\${a#key=}" >>"${keys}" ;; esac; done ;;
+  *) exit 1 ;;
+esac
+`, { mode: 0o755 })
+    const data = path.join(root, 'main-data')
+    const cfg = path.join(root, 'main-config')
+    const book = await Weevbook.open(path.join(data, 'weevbook'), 'box')
+    await book.lock()
+    await book.append(T1, {
+      events: [
+        { id: '01M7HSBBM00000000000000001', at: '2026-11-16T09:00:00.000Z', leg: null, type: 'meta', thread: T1, project: 'infra' },
+        { id: '01M7HSBBM00000000000000002', at: '2026-11-16T09:00:00.000Z', leg: 'L1', type: 'leg.start', engine: 'claude:abc123@box', session: 's1', cwd: '/home/user/projects/infra', rung: 0, epoch: 1 },
+        { id: '01M7HSBBM00000000000000003', at: '2026-11-16T09:00:01.000Z', leg: 'L1', type: 'meta', title: 'Rotate the backups' },
+        { id: '01M7HSBBM00000000000000004', at: '2026-11-16T09:00:02.000Z', leg: 'L1', type: 'message', role: 'user', text: 'rotate them', source: 'claude' },
+      ],
+    })
+    await book.commitThread(T1, 'turn 1')
+    await book.unlock(true)
+    if (o.vault) {
+      expect(await vaultMain(['vault', 'setup', '--remote', GITHUB, '--data-dir', data, '--config-dir', cfg], () => undefined)).toBe(0)
+      expect(await vaultMain(['vault', 'push', '--data-dir', data, '--config-dir', cfg], () => undefined)).toBe(0)
+    }
+    const { join, keys: authorized } = setup()
+    const notes = path.join(data, 'vault-machines.json')
+    const remote = () => {
+      try {
+        return (JSON.parse(fs.readFileSync(path.join(cfg, 'vault.json'), 'utf8')) as { remote: string }).remote
+      } catch {
+        return null
+      }
+    }
+    const server = http.createServer(async (req, res) => {
+      const url = new URL(req.url ?? '/', 'http://x')
+      const ctx = { join, machine: 'Box', lang: 'en', hostKeys: (h: string) => [`${h} ssh-ed25519 KEY`], onJoined: () => undefined, vault: (id: string, pub: string) => shareVault({ remote: remote(), keyFile: path.join(cfg, 'vault.key'), id, pub, gh: ghRunner(gh, 10_000), notes }) }
+      if (!(await joinRoute(req, res, url.pathname, ctx))) {
+        res.writeHead(418)
+        res.end()
+      }
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+    /** The line pasted on another computer: the script as this weevils serves it, run by bash with the code (and options). */
+    const paste = async (home: string, ...args: string[]) => {
+      const script = await (await fetch(`${base}/api/join.sh`)).text()
+      const installer = path.join(root, 'install-stub.sh')
+      fs.writeFileSync(installer, 'printf "%s\\n" "$@" >"$HOME/install-args"\n')
+      // (Not execFileSync: the server that answers lives in this process, so bash must not block it.)
+      return new Promise<{ code: number; err: string }>((resolve) => {
+        const p = spawn('bash', ['-s', ...args], { env: { PATH: process.env.PATH, HOME: home, LANG: 'C', WEEVILS_INSTALL_SH: installer }, stdio: ['pipe', 'ignore', 'pipe'] })
+        let err = ''
+        p.stderr.on('data', (d) => (err += d))
+        p.on('exit', (code) => resolve({ code: code ?? 1, err }))
+        p.stdin.end(script)
+      })
+    }
+    return { root, data, cfg, book, join, authorized, notes, log, keys, github: path.join(github, 'alex', 'weevbook-vault.git'), paste, close: () => server.close() }
+  }
+  const conf = (home: string, f: string) => path.join(home, '.config', 'weevils', f)
+  const installed = (home: string) => fs.readFileSync(path.join(home, 'install-args'), 'utf8').trim().split('\n')
+
+  it.skipIf(!tools)('a machine that joins gets its deploy key on the vault, the remote and the key (0600); its own history reaches the vault', async () => {
+    const w = await world({ vault: true })
+    try {
+      const laptop = path.join(w.root, 'laptop')
+      fs.mkdirSync(laptop)
+      const r = await w.paste(laptop, w.join.create('user@weevils.example.com'))
+      expect([r.code, r.err]).toEqual([0, expect.stringContaining('Key accepted')])
+      // Nothing about the vault is said, and the installer ran as it always did.
+      expect(r.err).not.toMatch(/vault|GitHub/i)
+      const args = installed(laptop)
+      const id = args[args.indexOf('--machine') + 1]
+      expect(args).toEqual(['--yes', '--lang', 'en', '--secondary', 'weevils-box', '--machine', id])
+
+      // What step 1 expects, where it expects it: the same key as the main machine, the remote, this machine's deploy key.
+      expect(readKey(conf(laptop, 'vault.key'))!.equals(readKey(path.join(w.cfg, 'vault.key'))!)).toBe(true)
+      expect(JSON.parse(fs.readFileSync(conf(laptop, 'vault.json'), 'utf8'))).toEqual({ remote: GITHUB })
+      for (const f of ['vault.key', 'vault.json', 'vault-deploy']) expect([f, fs.statSync(conf(laptop, f)).mode & 0o777]).toEqual([f, 0o600])
+      const pub = fs.readFileSync(conf(laptop, 'vault-deploy.pub'), 'utf8').trim().split(' ').slice(0, 2).join(' ')
+      // The main machine registered that public key on the vault's repository: write access, a title like step 1's.
+      const asked = fs.readFileSync(w.log, 'utf8').trim().split('\n')
+      expect(asked).toEqual(['api user --jq .login', 'api repos/alex/weevbook-vault/keys --jq .[].key', `api -X POST repos/alex/weevbook-vault/keys -f title=weevils ${id.slice(0, 8)} -f key=${pub} -F read_only=false`])
+      expect(fs.readFileSync(w.keys, 'utf8').trim()).toBe(pub)
+      expect(joinedNotes(w.notes)[id].vault).toBe('ok')
+      expect(withoutVault(w.notes)).toEqual([])
+      // The join's own SSH key is what it was: one forced command, the tunnel's port, and not the vault's key.
+      const ssh = fs.readFileSync(path.join(laptop, '.ssh', 'weevils_ed25519.pub'), 'utf8').trim()
+      expect(w.authorized()).toBe(`${authorizedLine('/home/user/.local/bin/weevils-service', id, 4192, ssh)}\n`)
+      expect(w.authorized()).not.toContain(pub.split(' ')[1])
+      // The vault key never reached a log or the join's records.
+      const secret = fs.readFileSync(conf(laptop, 'vault.key'), 'utf8').trim()
+      for (const f of [w.log, w.notes, path.join(w.root, 'main-data', 'weevbook', 'index.json')]) if (fs.existsSync(f)) expect(fs.readFileSync(f, 'utf8')).not.toContain(secret)
+
+      // That machine's weevilsd: its first import, then its pusher. Its history is in the vault, beside the main machine's.
+      const data = path.join(laptop, '.local', 'share', 'weevils')
+      const made = await backfill({ dir: path.join(data, 'weevbook'), sessions: path.join(data, 'weevbook-sessions.jsonl'), claudeDir: path.join(FX, 'claude', 'projects'), codexDir: path.join(FX, 'codex', 'sessions'), home: laptop, machine: id, roots: ['/home/alex/projects'] }, { now: Date.parse('2026-11-20T00:00:00Z') })
+      expect(made.created).toBeGreaterThan(0)
+      expect(await vaultMain(['vault', 'push', '--data-dir', data, '--config-dir', path.join(laptop, '.config', 'weevils')], () => undefined)).toBe(0)
+      expect(git(w.github, 'for-each-ref', '--format=%(refname)', 'refs/threads/').split('\n')).toHaveLength(1 + made.created)
+      // And the main machine reads it back with its own key: the laptop's conversations, by their titles.
+      expect(await vaultMain(['vault', 'restore', '--data-dir', w.data, '--config-dir', w.cfg], () => undefined)).toBe(0)
+      const titles = (await (await Weevbook.open(path.join(w.data, 'weevbook'), 'box')).refs()).map((x) => x.meta.title)
+      expect(titles).toContain('Rotate the backups')
+      expect(titles).toContain('Checkout fixes')
+      expect(titles).toHaveLength(1 + made.created)
+
+      // The same computer again (a new line): the same key, registered once.
+      expect((await w.paste(laptop, w.join.create('user@weevils.example.com'))).code).toBe(0)
+      expect(fs.readFileSync(w.keys, 'utf8').trim().split('\n')).toHaveLength(1)
+    } finally {
+      w.close()
+    }
+  }, 60_000)
+
+  it.skipIf(!tools)('no vault on the main machine: the join is what it was, nothing is said, and the missing piece is recorded', async () => {
+    const w = await world({ vault: false })
+    try {
+      const laptop = path.join(w.root, 'laptop')
+      fs.mkdirSync(laptop)
+      const r = await w.paste(laptop, w.join.create('user@weevils.example.com'))
+      expect(r.code).toBe(0)
+      expect(r.err.trim().split('\n')).toHaveLength(1) // « Key accepted… » and nothing else
+      const args = installed(laptop)
+      const id = args[args.indexOf('--machine') + 1]
+      expect(args).toEqual(['--yes', '--lang', 'en', '--secondary', 'weevils-box', '--machine', id])
+      expect(fs.existsSync(conf(laptop, 'vault.key'))).toBe(false)
+      expect(fs.existsSync(conf(laptop, 'vault.json'))).toBe(false)
+      expect(fs.existsSync(w.log)).toBe(false) // GitHub was not asked anything
+      expect(withoutVault(w.notes)).toEqual([{ machine: id, why: 'no-vault' }])
+      const ssh = fs.readFileSync(path.join(laptop, '.ssh', 'weevils_ed25519.pub'), 'utf8').trim()
+      expect(w.authorized()).toBe(`${authorizedLine('/home/user/.local/bin/weevils-service', id, 4192, ssh)}\n`)
+    } finally {
+      w.close()
+    }
+  }, 30_000)
+
+  it.skipIf(!tools)('a vault but GitHub not signed in on the main machine: joined all the same, no key handed over, recorded', async () => {
+    const w = await world({ vault: true, signedIn: false })
+    try {
+      const laptop = path.join(w.root, 'laptop')
+      fs.mkdirSync(laptop)
+      expect((await w.paste(laptop, w.join.create('user@weevils.example.com'))).code).toBe(0)
+      const id = installed(laptop).at(-1)!
+      expect(fs.existsSync(conf(laptop, 'vault.key'))).toBe(false)
+      expect(fs.readFileSync(w.keys, 'utf8')).toBe('')
+      expect(withoutVault(w.notes)).toEqual([{ machine: id, why: 'no-github' }])
+    } finally {
+      w.close()
+    }
+  }, 30_000)
+
+  it.skipIf(!tools)('the line says what to bring of that computer: --since or --match reach its first import; a bad one stops before the code is spent', async () => {
+    const w = await world({ vault: true })
+    try {
+      const laptop = path.join(w.root, 'laptop')
+      fs.mkdirSync(laptop)
+      const code = w.join.create('user@weevils.example.com')
+      for (const bad of [['--since', 'last week'], ['--match', 'a "quoted" word'], ['--match', 'back\\slash']]) {
+        const r = await w.paste(laptop, code, ...bad)
+        expect([bad, r.code]).toEqual([bad, 1])
+      }
+      expect(w.join.open(code)).not.toBeNull()
+      expect((await w.paste(laptop, code, '--since', '2026-11-18')).code).toBe(0)
+      expect(fs.readFileSync(conf(laptop, 'backfill.json'), 'utf8')).toBe('{"since":"2026-11-18"}\n')
+      const data = path.join(laptop, '.local', 'share', 'weevils')
+      const out: string[] = []
+      expect(await weevbook(['backfill', '--once', '--data-dir', data, '--config-dir', path.join(laptop, '.config', 'weevils'), ...dirs], (l) => out.push(l))).toBe(0)
+      expect(out.join('\n')).toMatch(/^3 sessions: /)
+
+      const desk = path.join(w.root, 'desk')
+      fs.mkdirSync(desk)
+      expect((await w.paste(desk, w.join.create('user@weevils.example.com'), '--match', 'checkout fixes')).code).toBe(0)
+      expect(JSON.parse(fs.readFileSync(conf(desk, 'backfill.json'), 'utf8'))).toEqual({ match: 'checkout fixes' })
+      const out2: string[] = []
+      await weevbook(['backfill', '--once', '--data-dir', path.join(desk, 'data'), '--config-dir', path.join(desk, '.config', 'weevils'), ...dirs], (l) => out2.push(l))
+      expect(out2.join('\n')).toMatch(/^1 sessions: 1 threads created/)
+    } finally {
+      w.close()
+    }
+  }, 60_000)
+
+  it('the answer carries the vault only when there is one, and only what join.sh can write safely', async () => {
+    const { join } = setup()
+    const joined: string[] = []
+    const answers: ({ remote: string; key: string } | null)[] = [
+      { remote: 'git@github.com:alex/weevbook-vault.git', key: Buffer.alloc(32, 7).toString('base64') },
+      null,
+      { remote: 'git@github.com:alex/x.git"; rm -rf ~', key: Buffer.alloc(32, 7).toString('base64') },
+      { remote: 'git@github.com:alex/weevbook-vault.git', key: 'short' },
+    ]
+    const asked: string[][] = []
+    const server = http.createServer(async (req, res) => {
+      const url = new URL(req.url ?? '/', 'http://x')
+      await joinRoute(req, res, url.pathname, { join, machine: 'Box', lang: 'fr', hostKeys: () => [], onJoined: (id) => joined.push(id), vault: async (id, pub) => (asked.push([id, pub]), answers.shift() ?? null) })
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+    const post = async (name: string, vault?: string) => (await (await fetch(`${base}/api/join/${join.create('user@host')}`, { method: 'POST', body: new URLSearchParams({ id: name, key: `ssh-ed25519 ${name[0].toUpperCase().repeat(68)} weevils@${name}`, ...(vault ? { vault } : {}) }) })).text()).split('\n').filter((l) => l.startsWith('vault_'))
+    try {
+      const pub = `ssh-ed25519 ${'V'.repeat(68)} weevils-vault`
+      expect(await post('alpha', pub)).toEqual(['vault_remote=git@github.com:alex/weevbook-vault.git', `vault_key=${Buffer.alloc(32, 7).toString('base64')}`])
+      expect(asked).toEqual([['alpha', pub]])
+      expect(await post('bravo', pub)).toEqual([]) // no vault on this machine
+      expect(await post('charlie', pub)).toEqual([]) // a remote that is not a plain address
+      expect(await post('delta', pub)).toEqual([]) // not a key
+      // An older join.sh, or a key that is not one: the vault is not asked at all.
+      expect(await post('echo')).toEqual([])
+      expect(await post('foxtrot', 'command="sh" ssh-ed25519 AAAA')).toEqual([])
+      expect(asked).toHaveLength(4)
+      expect(joined).toEqual(['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot'])
+    } finally {
+      server.close()
+    }
+  })
+})
+
+// What weevboss types (server/orchestrator.*.md) reaches weevilsd as it is: the choice for the other computer's
+// history, and GitHub's sign-in by its code.
+it('weevils setup ask machine --since | --match and weevils setup github, from the command to the server', async () => {
+  const seen: { url: string; body: unknown }[] = []
+  const server = http.createServer((req, res) => {
+    let data = ''
+    req.on('data', (c) => (data += c)).on('end', () => {
+      seen.push({ url: req.url ?? '', body: data ? JSON.parse(data) : null })
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(req.url === '/api/setup/github' ? { ok: true, state: 'posted' } : { ok: true }))
+    })
+  })
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+  const dir = path.join(process.env.HOME!, '.local', 'share', 'weevils')
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'local-token'), `X-Weevils-Local: ${'ab'.repeat(32)}\n`, { mode: 0o600 })
+  const cli = (...args: string[]) =>
+    new Promise<string>((resolve, reject) => {
+      const p = spawn('bash', [path.join(import.meta.dirname, 'weevils-cli'), ...args], { env: { PATH: process.env.PATH, HOME: process.env.HOME, WEEVILS_LANG: 'en', WEEVILS_PORT: String((server.address() as { port: number }).port) }, stdio: ['ignore', 'pipe', 'pipe'] })
+      let out = ''
+      p.stdout.on('data', (d) => (out += d))
+      p.on('exit', (code) => (code ? reject(new Error(`exit ${code}`)) : resolve(out.trim())))
+    })
+  try {
+    expect(await cli('setup', 'ask', 'machine')).toBe('ok')
+    expect(await cli('setup', 'ask', 'machine', '--since', '2026-10-01')).toBe('ok')
+    expect(await cli('setup', 'ask', 'machine', '--match', 'invoice exporter')).toBe('ok')
+    expect(await cli('setup', 'mark', 'vault:summary')).toBe('ok')
+    expect(await cli('setup', 'github')).toBe('posted')
+    expect(seen).toEqual([
+      { url: '/api/setup/ask', body: { brick: 'machine' } },
+      { url: '/api/setup/ask', body: { brick: 'machine', since: '2026-10-01' } },
+      { url: '/api/setup/ask', body: { brick: 'machine', match: 'invoice exporter' } },
+      { url: '/api/setup/mark', body: { id: 'vault:summary' } },
+      { url: '/api/setup/github', body: null },
+    ])
+  } finally {
+    server.close()
+  }
 })

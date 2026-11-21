@@ -8,6 +8,11 @@
 // that key into ~/.ssh/authorized_keys, held to the reverse tunnel's one port and to registering that one machine (a
 // forced `weevils-service remote-shell <id> <port>`: no shell, no other command, no other forward), and answers where to
 // connect. The script then runs install.sh --secondary through that key: the federation already in place does the rest.
+//
+// The join carries the vault (docs/spec/07-vault.md): join.sh also makes a deploy key for the vault and sends its public
+// half; when this machine has a vault, that key is registered on the vault's repository and the answer carries the
+// vault's remote and key, so the new machine keeps its own conversations there too. No vault here, or GitHub not signed
+// in: the join is what it always was, and says nothing.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import type http from 'node:http'
@@ -19,6 +24,9 @@ const MAX_OPEN = 4
 const CODE_RE = /^[A-Za-z0-9_-]{20,64}$/
 const KEY_RE = /^(ssh-ed25519|ecdsa-sha2-nistp(?:256|384|521)|ssh-rsa) ([A-Za-z0-9+/]{40,2000}={0,3})(?: [^\r\n"\\]{0,200})?$/
 const TAG = 'weevils-join:'
+/** What join.sh accepts for the vault: a git remote without anything a shell or JSON would read, a 32-byte key in base64. */
+const VAULT_REMOTE_RE = /^[A-Za-z0-9@:/._~+-]{1,300}$/
+const VAULT_KEY_RE = /^[A-Za-z0-9+/]{43}=$/
 
 export interface JoinCode {
   hash: string
@@ -119,7 +127,9 @@ export class Join {
     const codes = this.read()
     const open = codes.filter((c) => !c.used)
     while (open.length >= MAX_OPEN) codes.splice(codes.indexOf(open.shift()!), 1)
-    const code = crypto.randomBytes(24).toString('base64url')
+    // Never a leading dash: the line is `bash -s <code>`, and bash would read it as one of its own options.
+    let code = crypto.randomBytes(24).toString('base64url')
+    while (code.startsWith('-')) code = crypto.randomBytes(24).toString('base64url')
     codes.push({ hash: sha(code), at: this.now(), target, port: freePort(this.d.remotes(), codes.map((c) => c.port)) })
     this.write(codes)
     return code
@@ -175,6 +185,9 @@ export interface JoinRouteCtx {
   /** sshd's host keys, for the other computer's known_hosts. */
   hostKeys?: (host: string) => string[]
   onJoined: (id: string) => void
+  /** The vault for that machine (server/weevbook/vault-github.ts shareVault): its deploy key in, the remote and the
+   *  vault key out; null when there is none to give. */
+  vault?: (id: string, pub: string) => Promise<{ remote: string; key: string } | null>
 }
 
 /** GET /api/join.sh (the script, public like bring.sh) and POST /api/join/<code>. True when it answered. */
@@ -206,6 +219,15 @@ export async function joinRoute(req: http.IncomingMessage, res: http.ServerRespo
   console.log(`[join] ${r.id}: key authorized, tunnel port ${r.port}`)
   ctx.onJoined(r.id)
   const lines = [`id=${r.id}`, `port=${r.port}`, `target=${r.target}`, `alias=weevils-${slugId(ctx.machine) || 'main'}`, `lang=${ctx.lang === 'fr' ? 'fr' : 'en'}`, ...(ctx.hostKeys ?? knownHosts)(host).map((k) => `known=${k}`)]
+  // The vault, when there is one: never a reason for the join to fail.
+  const pub = (form.get('vault') ?? '').trim()
+  if (ctx.vault && KEY_RE.test(pub)) {
+    const v = await ctx.vault(r.id, pub).catch(() => null)
+    if (v && VAULT_REMOTE_RE.test(v.remote) && VAULT_KEY_RE.test(v.key)) {
+      lines.push(`vault_remote=${v.remote}`, `vault_key=${v.key}`)
+      console.log(`[join] ${r.id}: vault given`)
+    }
+  }
   text(200, lines.join('\n') + '\n')
   return true
 }

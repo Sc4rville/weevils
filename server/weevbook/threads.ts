@@ -20,7 +20,7 @@ import { Dispatcher, type Instruction } from './dispatcher.ts'
 import { PUBLISH_EVERY, factsOf, machineEngines, publishEngines, readEngines, type EngineSource } from './engines.ts'
 import { activeRecently, checkHandoff, handoffEvent, nextHandoff } from './handoff.ts'
 import { HubSync, draft, openLeg, safeTurns } from './hub.ts'
-import { parseEngine, parseJournal, slugify, type EventDraft, type JournalEvent, type LegId, type MetaEvent, type Provider } from './journal.ts'
+import { ownTask, parseEngine, parseJournal, slugify, type EventDraft, type JournalEvent, type LegId, type MetaEvent, type Provider } from './journal.ts'
 import { OBSERVE_EVERY, STEAL_BOUND, stealable } from './lease.ts'
 import { REQUEST_EXPIRES, beginRun, filedByWeevils, liveness, oursWaiting, saveRun, waitsForEngine } from './live.ts'
 import { pushEvents, readThread, type StartResult } from './start.ts'
@@ -668,11 +668,8 @@ function holdFacts(reason: string, input: DecideInput | undefined, project: stri
   return { reason }
 }
 
-/**
- * A task weevils started by itself while the machine was free (server/i18n/optimizers.ts `brief`, the first words of
- * its first message, so its title): the « auto » band shows it, it is not one of the person's conversations.
- */
-export const ownTask = (title: string) => /^(Background task started by weevils|Tâche de fond lancée par weevils)\b/.test(title)
+// A task weevils started by itself while the machine was free: the « auto » band shows it (journal.ts).
+export { ownTask }
 
 const norm = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 

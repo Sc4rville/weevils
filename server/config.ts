@@ -173,7 +173,6 @@ export function vaultRemote(value = process.env.WEEVILS_VAULT?.trim() ?? ''): st
     return null
   }
 }
-export const VAULT = vaultRemote()
 
 /** L'orchestrateur (la bande du haut) tourne sur une seule machine : celle qui sert l'app. */
 export const ORCHESTRATOR = (process.env.WEEVILS_ORCHESTRATOR || (process.env.WEEVILS_MACHINE ? '0' : '1')) === '1'

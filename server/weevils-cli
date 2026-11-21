@@ -11,7 +11,7 @@
 #   weevils new <projet> "message" [codex]   weevils projects
 #   weevils project new <nom>            le dossier d'un nouveau projet (avec git), dans le dossier des projets
 #   weevils do "travail" [codex]         une session qui s'en charge (installer, créer un repo…), et demande d'abord si besoin
-#   weevils setup [install | ask <brique> | mark <id>]      weevils config set <CLÉ> <valeur>
+#   weevils setup [install | github | ask <brique> | mark <id>]   weevils config set <CLÉ> <valeur>
 #   weevils memory [add "souvenir" | rm <id>]   (ce que weevils retient de l'utilisateur, ~/.config/weevils/memory.json)
 #   weevils post "texte" [--action "libellé::quoi faire"]…   un mot dans « pour toi », avec des boutons si besoin
 #   weevils show <fichier> ["légende"]                       une image ou une vidéo dans « pour toi »
@@ -64,7 +64,7 @@ if [ "$(wv_lang)" = fr ]; then
 weevils resume <id>                  weevils new <projet> "message" [codex]   weevils projects
 weevils project new <nom>            weevils do "travail" [codex]
 weevils recall <id>                  weevils boss
-weevils setup [install | ask <brique> | mark <id>]   weevils config set <CLÉ> <valeur>
+weevils setup [install | github | ask <brique> [--since <date> | --match <mots>] | mark <id>]   weevils config set <CLÉ> <valeur>
 weevils memory [add "souvenir" | rm <id>]
 weevils page <dossier|fichier> "titre" --kind <type>   weevils page list|library …   weevils pages
 weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichier> ["légende"]' # i18n-ignore
@@ -107,7 +107,7 @@ else
 weevils resume <id>                  weevils new <project> "message" [codex]  weevils projects
 weevils project new <name>           weevils do "job" [codex]
 weevils recall <id>                  weevils boss
-weevils setup [install | ask <brick> | mark <id>]   weevils config set <KEY> <value>
+weevils setup [install | github | ask <brick> [--since <date> | --match <words>] | mark <id>]   weevils config set <KEY> <value>
 weevils memory [add "memory" | rm <id>]
 weevils post "text" [--action "label::what to do"]…      weevils show <file> ["caption"]
 weevils page <folder|file> "title" --kind <kind>   weevils page list|library …   weevils pages
@@ -458,9 +458,19 @@ if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
     case "${2:-}" in
       '') curl -sf -m 30 "$base/api/setup" ;;
       install) curl -sf -m 30 "$base/api/setup/install" ;;
+      github)
+        # GitHub's device sign-in: its code and the github.com/login/device link are said in weevboss's thread; prints
+        # what happened (signed-in: nothing to do · posted: the person types the code · failed: said in the thread).
+        curl -sf -m 240 -X POST "$base/api/setup/github" | json "print(d.get('state') or 'failed')" ;;
       ask|mark)
+        # « ask machine --since 2026-10-01 » / « --match "words" »: the line for another computer then says what to
+        # bring of its history (server/join.sh).
         key=brick; [ "$2" = mark ] && key=id
-        "$py" -c 'import json,sys; print(json.dumps({sys.argv[1]:sys.argv[2]}))' "$key" "${3:?}" \
+        "$py" -c 'import json,sys
+a=sys.argv[3:]; o={sys.argv[1]:sys.argv[2]}
+for k in ("since","match"):
+    if "--"+k in a and a.index("--"+k)+1 < len(a): o[k]=a[a.index("--"+k)+1]
+print(json.dumps(o))' "$key" "${3:?}" "${@:4}" \
           | curl -sf -m 30 -H 'content-type: application/json' --data-binary @- "$base/api/setup/$2" >/dev/null && echo ok ;;
       *) echo "$usage"; exit 1 ;;
     esac ;;

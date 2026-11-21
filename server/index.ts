@@ -24,7 +24,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl, WEEVBOOK, WEEVBOOK_DIR, CONNECTOR, WEEVBOOK_HUB, THREADS, VAULT, VAULT_DEPLOY_KEY, VAULT_KEY_FILE, VAULT_STAGING } from './config.ts'
+import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, CONFIG_FILE, DATA_DIR, DIST_DIR, HOME, HOOK_PORT, HOST, INBOX_DIR, KILL_AFTER_MS, MACHINE, ORCHESTRATOR, ORCH_DIR, PORT, PROJECTS_DIR, PROJECT_ROOTS, PUBLIC_URL, setPublicUrl, WEEVBOOK, WEEVBOOK_DIR, CONNECTOR, WEEVBOOK_HUB, THREADS, VAULT_DEPLOY_KEY, VAULT_KEY_FILE, VAULT_STAGING, vaultRemote } from './config.ts'
 import { openaiKey, transcribe } from './transcribe.ts'
 import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcutAuthed, shortcutToken, speakStream, voiceTurn } from './voicepipe.ts'
 import { cartesia, cartesiaVoices, claudeAvailable, haiku, ledger, relay as modelRelay } from './fast.ts'
@@ -78,7 +78,8 @@ import { Bring, realGit } from './bring.ts'
 import { HubSync, checkpointHook } from './weevbook/hub.ts'
 import { startWeevbookWriter } from './weevbook/writer.ts'
 import { startFirstBackfill } from './weevbook/backfill.ts'
-import { startVaultPusher, vaultSsh } from './weevbook/vault.ts'
+import { startVaultPusherWhenSet } from './weevbook/vault.ts'
+import { ghRunner, shareVault } from './weevbook/vault-github.ts'
 import { Connector, reposUnder } from './connector/tools.ts'
 import { Join, joinRoute, remotesIn } from './join.ts'
 import { newProjectFolder } from './project-folder.ts'
@@ -101,7 +102,8 @@ let threadsApp: ThreadsApp | null = null
 // The weevbook, in shadow (docs/spec, step 1): on unless WEEVILS_WEEVBOOK=0. It reads the same session files as the
 // app, on its own timer, and changes nothing the app shows or does. The first start imports every session of this
 // machine once, in a low-priority process (07-vault.md, the import at install). With a vault (WEEVILS_VAULT, or the
-// remote `weevils weevbook vault setup` saved), the threads are encrypted and pushed to it as their refs move.
+// remote `weevils weevbook vault setup` saved), the threads are encrypted and pushed to it as their refs move; a vault
+// set up while weevilsd runs (weevboss does it in its chat, a join brings it) starts being pushed within a minute.
 // With a hub (WEEVILS_WEEVBOOK_HUB, step 2): each turn's code is checkpointed, threads and checkpoints are pushed to the
 // hub every 20 s, and the main machine steals the leases of machines gone silent. Nothing shows in the app either.
 if (WEEVBOOK) {
@@ -113,9 +115,8 @@ if (WEEVBOOK) {
   })
   console.log(`[weevbook] shadow writer on: ${WEEVBOOK_DIR}`)
   startFirstBackfill({ dataDir: DATA_DIR, log: (l) => console.log(l) })
-  if (VAULT) {
-    startVaultPusher({ dir: WEEVBOOK_DIR, staging: VAULT_STAGING, remote: VAULT, keyFile: VAULT_KEY_FILE, machine: MACHINE.id, ssh: vaultSsh(VAULT_DEPLOY_KEY), log: (l) => console.error(l) })
-    console.log('[vault] pusher on')
+  if (process.env.WEEVILS_VAULT?.trim() !== '0') {
+    startVaultPusherWhenSet({ dir: WEEVBOOK_DIR, staging: VAULT_STAGING, remote: () => vaultRemote(), keyFile: VAULT_KEY_FILE, deployKey: VAULT_DEPLOY_KEY, machine: MACHINE.id, log: (l) => console.error(l) })
   }
   if (WEEVBOOK_HUB) {
     const sync = new HubSync({ dir: WEEVBOOK_DIR, dataDir: DATA_DIR, sessions, machine: MACHINE.id, hub: WEEVBOOK_HUB, steals: ORCHESTRATOR })
@@ -214,6 +215,8 @@ const join = new Join({
   file: path.join(DATA_DIR, 'join.json'), authorizedKeys: path.join(HOME, '.ssh', 'authorized_keys'), service: path.join(HOME, '.local', 'bin', 'weevils-service'),
   remotes: () => remotesIn(CONFIG_FILE), machineIds: () => w.snapshot().machines.map((m) => m.id),
 })
+// The vault for a machine that joins (07-vault.md): its deploy key on the vault's repository, the remote and the key back.
+const joinVault = (id: string, pub: string) => shareVault({ remote: vaultRemote(), keyFile: VAULT_KEY_FILE, id, pub, gh: ghRunner(which('gh') ?? 'gh', 20_000), notes: path.join(DATA_DIR, 'vault-machines.json') })
 // weevboss creates projects there, and a job handed to a session (weevils do) runs there.
 if (ORCHESTRATOR) fs.mkdirSync(PROJECTS_DIR, { recursive: true })
 const setup = new Setup({
@@ -780,8 +783,15 @@ const routes: [string, RegExp, Handler][] = [
     const b = await readBody(req)
     if (!isBrick(b.brick)) return json(res, 400, { error: tr(S).badBrick })
     const again = b.again === true && (b.brick === 'claude' || b.brick === 'codex')
-    const flow = await setup.ask(b.brick, b.device ? asDevice(b.device) : undefined, again)
+    // Another computer's line, with what to bring of its history (weevils setup ask machine --since … | --match …).
+    const bring = b.brick === 'machine' ? { since: typeof b.since === 'string' ? b.since : undefined, match: typeof b.match === 'string' ? b.match : undefined } : {}
+    const flow = await setup.ask(b.brick, b.device ? asDevice(b.device) : undefined, again, bring)
     json(res, 200, { ok: true, flow, said: setup.lastSaid ?? undefined, open: setup.takeOpen() })
+  }],
+  // « weevils setup github »: GitHub's device sign-in, its code and link said in weevboss's thread. From the machine only.
+  ['POST', /^\/api\/setup\/github$/, async (req, res) => {
+    if (!isLocal(req)) return json(res, 403, { error: tr(S).localOnly })
+    json(res, 200, { ok: true, state: await setup.githubDevice(), said: setup.lastSaid ?? undefined })
   }],
   ['POST', /^\/api\/setup\/apply$/, async (req, res) => {
     const b = await readBody(req, 64 << 10)
@@ -1211,7 +1221,7 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
     // A computer bringing its conversations: its one-time code is its key, not the access code (server/bring.ts).
     if (url.pathname.startsWith('/api/bring') && (url.pathname === '/api/bring.sh' || url.pathname.startsWith('/api/bring/pc/')) && (await bring.pcRoute(req, res, url.pathname))) return
     // Another computer joining from its line: the one-time code is its key (server/join.ts).
-    if (ORCHESTRATOR && url.pathname.startsWith('/api/join') && (await joinRoute(req, res, url.pathname, { join, machine: MACHINE.id, lang: installationLang(), onJoined: (id) => setup.joined(id) }))) return
+    if (ORCHESTRATOR && url.pathname.startsWith('/api/join') && (await joinRoute(req, res, url.pathname, { join, machine: MACHINE.id, lang: installationLang(), onJoined: (id) => setup.joined(id), vault: joinVault }))) return
     const site = SITE_RE.exec(url.pathname)
     if (site && req.method === 'GET') return serveSite(res, site[1], site[2], site[3])
     // Le Raccourci Siri n'a pas de cookie : son jeton personnel n'ouvre que le tour de parole et le son qui va avec.

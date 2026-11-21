@@ -570,6 +570,10 @@ export function renderThread(events: readonly JournalEvent[]): string {
   return `${blocks.join('\n\n')}\n`
 }
 
+/** A task weevils started by itself (server/i18n/optimizers.ts `brief`, the first words of its first message, so its
+ *  title): not one of the person's conversations (threads.ts, the vault's summary). */
+export const ownTask = (title: string) => /^(Background task started by weevils|Tâche de fond lancée par weevils)\b/.test(title)
+
 export interface ThreadMeta {
   v: number
   thread: string

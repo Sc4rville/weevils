@@ -27,7 +27,7 @@ import { preferredTool, providerStatus, providerReady, codexLogged } from './pro
 import type { MachineFacts } from '../shared/infra.ts'
 import { CONTEXT_BLOCK, FIELDS, isSecretName, type Brick, type Device } from '../shared/setup.ts'
 import { BOSS, resetAuthors, authors } from './authors.ts'
-import { CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL, USER_NAME } from './config.ts'
+import { CONFIG_FILE, DATA_DIR, HOME, HOST, MACHINE, PORT, PUBLIC_URL, USER_NAME, VAULT_KEY_FILE, vaultRemote } from './config.ts'
 import { claudeLoggedIn } from './claude-credentials.ts'
 import * as claudeLogin from './claude-login.ts'
 import { accounts } from './claude-accounts.ts'
@@ -45,6 +45,9 @@ import type { Memory } from './memory.ts'
 import { quotas } from './usage.ts'
 import type { Join } from './join.ts'
 import { isTunnelUrl } from './tunnel-link.ts'
+import { backfillMarker } from './weevbook/backfill.ts'
+import { githubRepo } from './weevbook/vault.ts'
+import { VAULT_REPO, withoutVault } from './weevbook/vault-github.ts'
 
 const FILE = path.join(DATA_DIR, 'setup.json')
 /** En deçà, un message automatique identique n'est pas reposté (voir Setup.add). */
@@ -105,6 +108,11 @@ export interface SetupState {
   projectNames: string[]
   /** The connector (ChatGPT, Claude.ai) answers on /mcp. */
   connector: boolean
+  /** The vault (docs/spec/07-vault.md): every conversation kept, encrypted, on the person's own GitHub. `found`: one
+   * exists on their GitHub and this machine has no key for it (a new install: the recovery code opens it). `imported`:
+   * this machine's own history is in its weevbook. `without`: machines plugged in that do not keep theirs there.
+   * `said`: what weevboss marked as said in its chat (code, history, summary, export). */
+  vault: { state: 'on' | 'found' | 'none'; repo?: string; imported: boolean; without: string[]; said: string[] }
 }
 
 export interface SetupDeps {
@@ -217,6 +225,22 @@ async function github(force = false) {
   }
   ghCache = { at: Date.now(), v }
   return v
+}
+
+/** The vault of this install: set up here, found on the person's GitHub without its key here, or none. */
+let vaultSeen: { at: number; login: string; there: boolean } | null = null
+async function vault(gh: { logged: boolean; login?: string }, said: string[]): Promise<SetupState['vault']> {
+  const rest = { imported: fs.existsSync(backfillMarker(DATA_DIR)), without: withoutVault(path.join(DATA_DIR, 'vault-machines.json')).map((m) => m.machine), said }
+  const remote = vaultRemote()
+  if (remote && fs.existsSync(VAULT_KEY_FILE)) return { state: 'on', repo: githubRepo(remote) ?? remote, ...rest }
+  const bin = which('gh')
+  if (!gh.logged || !gh.login || !bin) return { state: 'none', ...rest }
+  // Asked of GitHub at most every ten minutes while there is none (a vault found stays found).
+  if (!vaultSeen || vaultSeen.login !== gh.login || (!vaultSeen.there && Date.now() - vaultSeen.at > 10 * 60_000)) {
+    const r = await run(bin, ['api', `repos/${gh.login}/${VAULT_REPO}`, '-q', '.name'], 8000)
+    vaultSeen = { at: Date.now(), login: gh.login, there: r.ok && !!r.out }
+  }
+  return vaultSeen.there ? { state: 'found', repo: `${gh.login}/${VAULT_REPO}`, ...rest } : { state: 'none', ...rest }
 }
 
 function osName(): string {
@@ -618,6 +642,9 @@ export class Setup {
   private codexLogin: ChildProcess | null = null
   private codexLoginStarting: Promise<boolean> | null = null
   private codexLoginShown = false
+  /** « gh auth login » waiting for the code to be typed on github.com, and what the thread showed for it. */
+  private githubLogin: ChildProcess | null = null
+  private githubShown: string | null = null
   /** Sur un Mac, « joignable de partout » part chez weevboss dès le tap : quand, pour qu'un double tap ne le confie pas deux fois. */
   private reachAt = 0
   /** La dernière explication postée par une puce : un second tap ne la répète pas. */
@@ -749,6 +776,7 @@ export class Setup {
       projects: this.deps.feed().projects,
       projectNames: (this.deps.feed().names ?? []).slice(0, 8),
       connector: process.env.WEEVILS_CONNECTOR?.trim() === '1',
+      vault: await vault(gh, ['code', 'history', 'summary', 'export'].filter((x) => this.p.marks[`vault:${x}`])),
     }
     this.cache = { at: Date.now(), v }
     return v
@@ -915,6 +943,88 @@ export class Setup {
     })
   }
 
+  /**
+   * GitHub by talking (the vault needs it once, docs/spec/07-vault.md): gh's device sign-in, the way Codex signs in.
+   * weevboss's thread gets one sentence with the code and the github.com/login/device link; once the person has typed
+   * it there, weevboss is told and carries on by itself. gh is installed first when it is missing.
+   */
+  async githubDevice(): Promise<'signed-in' | 'posted' | 'failed'> {
+    const t = tr(M)
+    let s = await this.detect(true)
+    if (s.github.logged) return 'signed-in'
+    if (this.githubLogin && this.githubLogin.exitCode === null && this.githubShown) return this.say(this.githubShown, true), 'posted'
+    if (!s.github.installed) {
+      const r = await this.install('gh', s)
+      if (!r.ok) return this.say(t.githubDeviceFail(r.why)), 'failed'
+      s = await this.detect(true)
+    }
+    if (await this.launchGithubLogin()) return 'posted'
+    this.say(t.githubDeviceFail(t.noAnswer))
+    return 'failed'
+  }
+
+  private launchGithubLogin(): Promise<boolean> {
+    const t = tr(M)
+    if (this.githubLogin && this.githubLogin.exitCode === null) this.githubLogin.kill()
+    // A token in the environment would make gh refuse to store a sign-in of its own.
+    const env = shellEnv()
+    delete env.GH_TOKEN
+    delete env.GITHUB_TOKEN
+    return new Promise((resolve) => {
+      const proc = spawn(which('gh') ?? 'gh', ['auth', 'login', '--hostname', 'github.com', '--git-protocol', 'https', '--web', '--scopes', 'workflow'], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+      this.githubLogin = proc
+      this.githubShown = null
+      let out = ''
+      const timer = setTimeout(() => resolve(false), 25_000)
+      const onData = (d: Buffer) => {
+        out += d.toString()
+        const clean = out.replace(ANSI, '')
+        const url = /https:\/\/github\.com\/login\/device[^\s]*/.exec(clean)?.[0]
+        const code = /\b([A-Z0-9]{4}-[A-Z0-9]{4})\b/.exec(clean)?.[1]
+        if (url && code && !this.githubShown) {
+          clearTimeout(timer)
+          this.githubShown = t.githubDevice(url, code)
+          this.say(this.githubShown)
+          resolve(true)
+        }
+      }
+      proc.stdout.on('data', onData)
+      proc.stderr.on('data', onData)
+      proc.on('error', () => (clearTimeout(timer), resolve(false)))
+      proc.on('exit', (code) => {
+        clearTimeout(timer)
+        const shown = this.githubLogin === proc && !!this.githubShown
+        if (this.githubLogin === proc) this.githubLogin = null
+        if (!shown) return resolve(false)
+        this.githubShown = null
+        if (code === 0) {
+          // (Marked now: watch() must not announce this sign-in a second time, in its own words.)
+          this.p.githubLogged = true
+          void this.githubSignedIn().catch((e) => console.log(`[setup] GitHub: ${short(e)}`))
+        }
+        // gh's reason, not its own prompt lines (the code, the address).
+        else if (code !== null) this.say(t.githubDeviceFail(lastLine(out.split('\n').filter((l) => !/one-time code|Open this URL|clipboard|exit status/.test(l)).join('\n')) || t.noAnswer))
+      })
+    })
+  }
+
+  /** The code was typed on github.com: git uses that sign-in too, and weevboss carries on with what it needed it for. */
+  private async githubSignedIn() {
+    ghCache = null
+    this.cache = null
+    const gh = await github(true)
+    this.p.githubLogged = gh.logged
+    this.save()
+    if (!gh.logged) return
+    const bin = which('gh')
+    if (bin) void run(bin, ['auth', 'setup-git'], 6000)
+    if (!process.env.WEEVILS_GH_OWNER && gh.login) writeConfig({ WEEVILS_GH_OWNER: gh.login })
+    console.log(`[setup] GitHub branché (${gh.login ?? ''})`)
+    const t = tr(M)
+    if (!providerReady()) return void this.say(t.githubOk(gh.login ?? ''))
+    await this.deps.handoff(t.githubDeviceDone, githubBrief(gh.login ?? '', (await this.detect(true)).vault.state))
+  }
+
   /** Ce qui a changé tout seul (une connexion faite dans un terminal) : dit une fois. */
   private async watch() {
     let changed = this.watchJoin()
@@ -931,7 +1041,7 @@ export class Setup {
       changed = true
       await this.codexReady()
     }
-    if (!this.p.githubLogged && which('gh')) {
+    if (!this.p.githubLogged && !this.githubLogin && which('gh')) {
       const gh = await github()
       if (gh.logged) {
         this.p.githubLogged = true
@@ -962,7 +1072,7 @@ export class Setup {
    * ce qui se fait sans rien demander (installer, lancer une connexion). Vrai : le champ du bas pose maintenant les
    * questions de la brique. again (claude, codex) : une session lue « déconnectée » à l'écran, on se reconnecte même si
    * une connexion est enregistrée (elle a expiré). */
-  async ask(brick: Brick, device?: Device, again = false): Promise<boolean> {
+  async ask(brick: Brick, device?: Device, again = false, bring: { since?: string; match?: string } = {}): Promise<boolean> {
     const s = await this.detect(true)
     const t = tr(M)
     const d = device ?? this.p.device
@@ -1017,7 +1127,10 @@ export class Setup {
           const code = this.deps.join!.create(`${s.machine.user}@${host}`)
           this.p.joining = { at: Date.now() }
           this.save()
-          post(t.joinLine(`curl -fsSL ${s.url.replace(/\/+$/, '')}/api/join.sh | bash -s ${code}`))
+          const line = t.joinLine(`curl -fsSL ${s.url.replace(/\/+$/, '')}/api/join.sh | bash -s ${code}${joinChoice(bring)}`)
+          // A line that says what to bring is always shown, even right after a plain one (the person just chose).
+          if (joinChoice(bring)) this.lastAsk = { brick, id: this.say(line), text: line }
+          else post(line)
           return false
         }
         // L'état de la machine vient d'être dit (accueil) : pas deux fois de suite.
@@ -1555,6 +1668,7 @@ export class Setup {
       `projects in the feed: ${s.projects} · weevils clone: ${s.clone}`,
       `connector (ChatGPT, Claude.ai): ${s.connector ? `on at ${s.url.replace(/\/+$/, '')}/mcp` : 'off (weevils setup ask connector turns it on)'}`,
       `another computer from one line: ${this.deps.join && joinHost(s) ? 'yes (weevils setup ask machine)' : 'no (needs this weevils at a public https address)'}`,
+      vaultLine(s.vault),
       `proposed already: ${Object.keys(this.p.marks).filter((k) => !k.startsWith('tip:') && !k.startsWith('gesture:')).map((k) => `${k} (${ago(k)})`).join(', ') || 'nothing'}`,
       `gestures not discovered yet: ${GESTURES.filter(([id, h]) => !seen.has(h) && !this.p.marks[`gesture:${id}`]).map(([id, , w]) => `${id} = ${w}`).join(' | ') || 'none'}`,
       `tips not given yet: ${TIPS.filter(([id]) => !this.p.marks[`tip:${id}`]).map(([id, w]) => `${id} = ${w}`).join(' | ') || 'none'}`,
@@ -1597,14 +1711,58 @@ export function firstRunBrief(s: SetupState, joinable: boolean): string {
     `reached at ${s.url} (${s.reach}${s.https ? ', https' : ''})`,
     `agents ask before acting ${yes(s.security.safe)}`,
     `connector for ChatGPT and Claude.ai: ${s.connector ? 'on' : 'off'}`,
+    `their conversations kept on their own GitHub (the vault): ${s.vault.state === 'on' ? `yes (${s.vault.repo})` : s.vault.state === 'found' ? 'a vault exists on their GitHub, not opened on this machine' : 'not yet'}`,
   ]
+  // The vault is part of the welcome (docs/spec/07-vault.md): the one next step, by talking.
+  const keep =
+    s.vault.state === 'on'
+      ? !s.vault.said.includes('summary')
+        ? 'their conversations are kept → when `weevils weevbook vault summary --json` says the import is done, say the summary sentence once, then `weevils setup mark vault:summary`;'
+        : !s.vault.said.includes('export')
+          ? 'their history is in → offer once their Claude.ai and ChatGPT export, then `weevils setup mark vault:export`;'
+          : ''
+      : s.vault.state === 'found'
+        ? 'a vault of theirs is on their GitHub → ask for their 24-word recovery code here in the chat, then `weevils weevbook vault restore --code "…"`;'
+        : `their conversations are not kept yet → once Claude Code is signed in, without being asked: ${s.github.logged ? '' : '`weevils setup github` (posts the code and the link of GitHub in your name), then '}\`weevils weevbook vault setup\`, the 24 words once, the history question (your instructions say how);`
   return [
     `first days with the user: onboarding is this conversation, there is nothing else in the app (no tour, no button, no checklist). What weevils already detected, so never ask about it: ${facts.join(' · ')}.`,
     'Speak plainly and briefly; never explain how weevils works inside. What only the user can do comes as one sentence at the moment it helps, in this thread:',
     `another computer → \`weevils setup ask machine\` (${joinable ? 'posts the one line to paste in a terminal there' : 'this machine cannot take one from a single line: it posts what to do'});`,
     'ChatGPT or Claude.ai, only when relevant or asked → `weevils setup ask connector` (turns it on, posts the address and the clicks);',
+    ...(keep ? [keep] : []),
     'a subscription to sign in → `weevils setup ask claude` or `weevils setup ask codex` (posts the link). A first real request beats any setup: do it first.',
   ].join(' ')
+}
+
+/** What the join line adds after its code when the person gave a date or a few words for that computer's history
+ * (server/join.sh reads them): nothing else than a day and plain words ever reaches the line they paste. */
+export function joinChoice(o: { since?: string; match?: string }): string {
+  const since = /^\d{4}-\d{2}-\d{2}$/.test(o.since ?? '') ? ` --since ${o.since}` : ''
+  const words = (o.match ?? '').normalize('NFC').replace(/[^\p{L}\p{N} ._-]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)
+  return `${since}${words ? ` --match '${words}'` : ''}`
+}
+
+/** `weevils setup`: where the vault stands, and what weevboss said of it already (its own marks). A vault set up
+ * outside its chat (by hand, before this existed) has nothing left to say. */
+export function vaultLine(v: SetupState['vault']): string {
+  const yes = (b: boolean) => (b ? 'yes' : 'no')
+  const marked = (id: string) => v.said.includes(id)
+  const without = v.without.length ? ` · plugged in without it (their line again fixes it): ${v.without.join(', ')}` : ''
+  if (v.state === 'none') return `vault: none (weevils setup github when GitHub is not signed in, then weevils weevbook vault setup)${without}`
+  if (v.state === 'found') return `vault: found on their GitHub (${v.repo}), not opened on this machine (ask for the recovery code, then weevils weevbook vault restore --code "…")`
+  if (!v.said.length) return `vault: on (${v.repo}) · set up outside your chat: nothing to say about it unless asked${without}`
+  return `vault: on (${v.repo}) · this machine's history imported ${yes(v.imported)} · recovery code given ${yes(marked('code'))} · history question asked ${yes(marked('history'))} · summary said ${yes(marked('summary'))} · Claude.ai and ChatGPT export offered ${yes(marked('export'))}${without}`
+}
+
+/** What weevboss is handed when the person has typed GitHub's code: it carries on with what it needed GitHub for. */
+export function githubBrief(login: string, vault: SetupState['vault']['state']): string {
+  const next =
+    vault === 'none'
+      ? 'If it was to keep their conversations: run `weevils weevbook vault setup` now, give the 24 words it prints once with the one sentence, then ask the history question, the way your instructions say.'
+      : vault === 'found'
+        ? 'A vault of theirs already exists on their GitHub: ask for their 24-word recovery code, then run `weevils weevbook vault restore --code "…"`.'
+        : ''
+  return `GitHub is signed in on this machine now${login ? ` (${login})` : ''}: the user typed the code on github.com, they did not write this message. Carry on with what you needed GitHub for, in one short message. ${next}`.trim()
 }
 
 /** Where another computer reaches this one over SSH, when the line can be given at all: the other computer fetches it

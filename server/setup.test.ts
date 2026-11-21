@@ -259,7 +259,7 @@ describe('never a command for the user to type', () => {
               texts.push(...said, t.reachMacDomain('weevils.example.com'), t.machine(m), t.welcomeClaudeInstall(m.host), t.machineAsk(s), t.voiceAsk(s), t.securityAsk(s), t.githubAsk(s), installStatus(s))
             }
       }
-      texts.push(t.welcomeClaudeLink, t.welcomeCodex, t.welcomeReady, t.welcomeSeen(3, ['a', 'b'], ['laptop']), t.claudeLink('https://claude.com/x'), t.claudeFail('expired'), t.codexFail('x'), t.providerLater('Codex'), t.codexCode('https://auth.openai.com/codex/device', 'ABCD-EFGH'), t.machineNone, t.machineIn('root@203.0.113.7', 'Ubuntu'), t.githubNoCli('404'), t.quotaAsk([]), t.mailAsk, t.devilAsk(false, ''), t.joinKey('laptop'), t.joinOnline('laptop'), t.connectorNeedsHttps('http://127.0.0.1:4179'), t.delegated)
+      texts.push(t.welcomeClaudeLink, t.welcomeCodex, t.welcomeReady, t.welcomeSeen(3, ['a', 'b'], ['laptop']), t.claudeLink('https://claude.com/x'), t.claudeFail('expired'), t.codexFail('x'), t.providerLater('Codex'), t.codexCode('https://auth.openai.com/codex/device', 'ABCD-EFGH'), t.machineNone, t.machineIn('root@203.0.113.7', 'Ubuntu'), t.githubNoCli('404'), t.quotaAsk([]), t.mailAsk, t.devilAsk(false, ''), t.joinKey('laptop'), t.joinOnline('laptop'), t.connectorNeedsHttps('http://127.0.0.1:4179'), t.delegated, t.githubDevice('https://github.com/login/device', 'AB12-CD34'), t.githubDeviceFail('expired_token'), t.githubDeviceDone)
       for (const x of texts) expect(x, x).not.toMatch(COMMAND)
     })
     // The only lines the person pastes: the one for another computer, and a sign-in that only works in a terminal.

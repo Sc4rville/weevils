@@ -4,6 +4,12 @@ A short summary of what changed after the first working version.
 
 ## 2026-11-21
 
+### Your conversations, on your own GitHub
+- weevboss sets it up in its chat: one GitHub sign-in (a code typed on github.com), a 24-word recovery code given
+  once, then one question about your history. Every Claude Code and Codex conversation of every machine is kept,
+  encrypted, in a private repository of yours; a computer plugged in from weevboss's line keeps its own there too, and
+  a new machine gets everything back from the recovery code. Record: `docs/spec/07-vault.md`.
+
 ### Themes
 - Two new themes in the theme selector: **desert** (désert), a light dusty desert (terracotta top, sage 24/7, sand,
   projects in powdered earth tones, a turquoise star); **synthwave**, a dark 80s neon night (violet-black bands,

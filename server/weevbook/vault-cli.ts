@@ -1,32 +1,36 @@
-// `weevils weevbook vault setup | push | restore | status` (docs/spec/07-vault.md, step 1), run from cli.ts.
+// `weevils weevbook vault setup | push | restore | status | summary` (docs/spec/07-vault.md, steps 1 and 2), run from cli.ts.
 //
 //   setup [--remote <url>]   with gh logged in: the private repository <user>/weevbook-vault (made when missing), this
 //                            machine's deploy key on it, the vault key and its recovery code (printed once, here
 //                            only), and the remote saved in CONFIG_DIR/vault.json. --remote: any git URL, no GitHub.
 //   push                     seals what is new and pushes it
-//   restore [--code "<24 words>"]   fetches the vault and decrypts every journal into this machine's weevbook
+//   restore [--code "<24 words>"]   fetches the vault and decrypts every journal into this machine's weevbook; on a
+//                            machine with no remote saved yet (a new install), finds the person's vault on GitHub first
 //   status                   what is waiting, and the last push
+//   summary [--json]         what weevboss says once the history is in: how many conversations, from which machines
+//                            and accounts, since when, where they live (reads the vault, writes nothing to the weevbook)
 //
 // --data-dir and --config-dir point at a copy (tests). The key itself is never printed.
 
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { DATA_DIR, MACHINE, VAULT_CONF, VAULT_DEPLOY_KEY, VAULT_KEY_FILE, VAULT_STAGING, vaultRemote } from '../config.ts'
+import { DATA_DIR, HOME, MACHINE, VAULT_CONF, VAULT_DEPLOY_KEY, VAULT_KEY_FILE, VAULT_STAGING, vaultRemote } from '../config.ts'
 import { tr } from '../i18n.ts'
+import { which } from '../platform.ts'
 import V from '../i18n/weevbook-vault.ts'
-import { VaultError, keyFromCode, newKey, pushVault, readKey, recoveryCode, remoteHasVault, restoreVault, vaultSsh, vaultStatus, writeKey } from './vault.ts'
+import { backfillMarker } from './backfill.ts'
+import { VaultError, keyFromCode, newKey, pushVault, readKey, recoveryCode, remoteHasVault, restoreVault, vaultSsh, vaultStatus, vaultSummary, writeKey } from './vault.ts'
+import { VAULT_REPO, addDeployKey, ghLogin, ghRunner, withoutVault } from './vault-github.ts'
 
-const REPO = 'weevbook-vault'
-
-function run(cmd: string, args: string[], input?: string): Promise<{ code: number; out: string; err: string }> {
-  return new Promise((resolve) => {
-    const child = execFile(cmd, args, { encoding: 'utf8', timeout: 120_000, env: { ...process.env, GH_PROMPT_DISABLED: '1', GIT_TERMINAL_PROMPT: '0' } }, (e, out, err) => {
-      resolve({ code: e ? (typeof (e as { code?: unknown }).code === 'number' ? (e as { code: number }).code : 1) : 0, out: String(out), err: String(err) })
-    })
-    child.stdin?.on('error', () => undefined)
-    child.stdin?.end(input ?? '')
-  })
+/** Claude Code's `cleanupPeriodDays` on this machine (30 when it is not set). */
+function claudeWindow(): number {
+  try {
+    const n = (JSON.parse(fs.readFileSync(path.join(HOME, '.claude', 'settings.json'), 'utf8')) as { cleanupPeriodDays?: unknown }).cleanupPeriodDays
+    return typeof n === 'number' && n > 0 ? n : 30
+  } catch {
+    return 30
+  }
 }
 
 export async function vaultMain(args: string[], out: (line: string) => void): Promise<number> {
@@ -53,6 +57,8 @@ export async function vaultMain(args: string[], out: (line: string) => void): Pr
     }
   }
   const ssh = vaultSsh(files.deploy)
+  // gh where weevilsd installs it when the machine has none (~/.local/bin), whatever this shell's PATH says.
+  const gh = ghRunner(which('gh') ?? 'gh')
   try {
     switch (args[1]) {
       case 'setup':
@@ -69,17 +75,25 @@ export async function vaultMain(args: string[], out: (line: string) => void): Pr
         return r.failed.length ? 1 : 0
       }
       case 'restore': {
-        const remote = opt('--remote') ?? savedRemote()
-        if (!remote) return fail(t.noRemote)
+        // The words are checked before anything is asked of GitHub.
         const code = opt('--code')
-        if (code) {
-          writeKey(files.key, keyFromCode(code))
+        const typed = code ? keyFromCode(code) : null
+        // A new install: the person's vault on GitHub, and this machine's deploy key on it (never a new repository).
+        const remote = opt('--remote') ?? savedRemote() ?? (await github(false))
+        if (!remote) return 1
+        const fresh = !!typed && !readKey(files.key)
+        if (typed) {
+          writeKey(files.key, typed)
           out(t.keySaved)
         }
         const key = readKey(files.key)
         if (!key) return fail(t.noKey(files.key))
         if (!savedRemote()) saveRemote(remote)
-        const r = await restoreVault({ dir, staging: files.staging, remote, key, machine: MACHINE.id, ssh })
+        const r = await restoreVault({ dir, staging: files.staging, remote, key, machine: MACHINE.id, ssh: vaultSsh(files.deploy) }).catch((e: Error) => {
+          // Words of another vault: not kept, so the right ones can be given next.
+          if (fresh && /cannot decrypt/.test(e.message)) fs.rmSync(files.key, { force: true })
+          throw e
+        })
         out(t.restored(r.threads, r.restored, r.same, r.ahead))
         if (r.differ.length) out(t.differ(r.differ.length))
         return 0
@@ -94,6 +108,20 @@ export async function vaultMain(args: string[], out: (line: string) => void): Pr
         out(t.pushedAt(s.pushedAt))
         if (s.error) out(t.error(s.error))
         return s.error || !s.key ? 1 : 0
+      }
+      case 'summary': {
+        const remote = savedRemote()
+        const key = readKey(files.key)
+        const s = await vaultSummary({ dir, staging: files.staging, remote, key, machine: MACHINE.id, ssh, imported: fs.existsSync(backfillMarker(data)), windowDays: claudeWindow() })
+        // Machines that joined without the vault (no vault then, or GitHub not signed in here): their line again fixes it.
+        const missing = withoutVault(path.join(data, 'vault-machines.json'))
+        if (args.includes('--json')) out(JSON.stringify({ ...s, missing }))
+        else {
+          out(t.summary(s.conversations, s.machines, s.oldest?.slice(0, 10) ?? null))
+          out(s.vault ? t.remote(s.remote ?? '') : t.noRemote)
+          if (s.claude_window) out(t.window)
+        }
+        return 0
       }
       default:
         out(t.usage)
@@ -113,36 +141,32 @@ export async function vaultMain(args: string[], out: (line: string) => void): Pr
     fs.writeFileSync(files.conf, `${JSON.stringify({ remote }, null, 2)}\n`, { mode: 0o600 })
   }
 
-  async function setup(given: string | undefined): Promise<number> {
-    let remote = given
-    if (!remote) {
-      const user = await run('gh', ['api', 'user', '--jq', '.login'])
-      const login = user.out.trim()
-      if (user.code || !login) return fail(t.noGh)
-      const repo = `${login}/${REPO}`
-      if ((await run('gh', ['repo', 'view', repo, '--json', 'name'])).code === 0) out(t.repoThere(repo))
-      else {
-        const made = await run('gh', ['repo', 'create', repo, '--private', '--description', 'Encrypted copy kept by weevils'])
-        if (made.code) throw new VaultError(`gh repo create: ${(made.err || made.out).trim()}`) // i18n-ignore: gh's own error
-        out(t.repoCreated(repo))
-      }
-      // This machine's deploy key, write access, this repository only.
-      if (!fs.existsSync(files.deploy)) {
-        fs.mkdirSync(path.dirname(files.deploy), { recursive: true, mode: 0o700 })
-        const kg = await run('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', 'weevils-vault', '-f', files.deploy])
-        if (kg.code) throw new VaultError(`ssh-keygen: ${kg.err.trim()}`) // i18n-ignore: ssh-keygen's own error
-      }
-      const pub = fs.readFileSync(`${files.deploy}.pub`, 'utf8').trim()
-      const body = pub.split(' ').slice(0, 2).join(' ')
-      const keys = await run('gh', ['api', `repos/${repo}/keys`, '--jq', '.[].key'])
-      const added = !keys.out.split('\n').some((k) => k.trim() === body)
-      if (added) {
-        const r = await run('gh', ['api', '-X', 'POST', `repos/${repo}/keys`, '-f', `title=weevils ${MACHINE.id.slice(0, 8)}`, '-f', `key=${body}`, '-F', 'read_only=false'])
-        if (r.code) throw new VaultError(`gh api keys: ${(r.err || r.out).trim()}`) // i18n-ignore: gh's own error
-      }
-      out(t.deployKey(added))
-      remote = `git@github.com:${repo}.git`
+  /** The person's vault repository on GitHub (made when `create`), with this machine's deploy key: its remote, or null
+   *  (said why). */
+  async function github(create: boolean): Promise<string | null> {
+    const login = await ghLogin(gh)
+    if (!login) return out(t.noGh), null
+    const repo = `${login}/${VAULT_REPO}`
+    if ((await gh(['repo', 'view', repo, '--json', 'name'])).code === 0) out(t.repoThere(repo))
+    else if (!create) return out(t.noVaultThere(repo)), null
+    else {
+      const made = await gh(['repo', 'create', repo, '--private', '--description', 'Encrypted copy kept by weevils'])
+      if (made.code) throw new VaultError(`gh repo create: ${(made.err || made.out).trim()}`) // i18n-ignore: gh's own error
+      out(t.repoCreated(repo))
     }
+    // This machine's deploy key, write access, this repository only.
+    if (!fs.existsSync(files.deploy)) {
+      fs.mkdirSync(path.dirname(files.deploy), { recursive: true, mode: 0o700 })
+      const kg = await new Promise<string>((resolve) => execFile('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', 'weevils-vault', '-f', files.deploy], (e, _out, err) => resolve(e ? String(err).trim() || e.message : '')))
+      if (kg) throw new VaultError(`ssh-keygen: ${kg}`) // i18n-ignore: ssh-keygen's own error
+    }
+    out(t.deployKey(await addDeployKey(gh, repo, MACHINE.id, fs.readFileSync(`${files.deploy}.pub`, 'utf8'))))
+    return `git@github.com:${repo}.git`
+  }
+
+  async function setup(given: string | undefined): Promise<number> {
+    const remote = given ?? (await github(true))
+    if (!remote) return 1
     saveRemote(remote)
     out(t.remote(remote))
     if (readKey(files.key)) out(t.keyThere)

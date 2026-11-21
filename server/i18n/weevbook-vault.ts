@@ -1,9 +1,10 @@
-// Messages of `weevils weevbook vault setup | push | restore | status` (server/weevbook/cli.ts, docs/spec/07-vault.md).
+// Messages of `weevils weevbook vault setup | push | restore | status | summary` (server/weevbook/vault-cli.ts,
+// docs/spec/07-vault.md).
 import { defineMessages } from '../i18n.ts'
 
 export default defineMessages({
   fr: {
-    usage: 'usage : weevils weevbook vault setup [--remote <url git>] | push | restore [--code "<24 mots>"] | status',
+    usage: 'usage : weevils weevbook vault setup [--remote <url git>] | push | restore [--code "<24 mots>"] | status | summary [--json]',
     noRemote: 'pas de coffre : lance weevils weevbook vault setup (ou mets WEEVILS_VAULT=<url git>)',
     noKey: (file: string) => `pas de clé du coffre dans ${file} : lance weevils weevbook vault setup, ou vault restore --code "<24 mots>"`,
     noGh: 'GitHub n\'est pas connecté sur cette machine : lance gh auth login, puis relance vault setup',
@@ -14,7 +15,10 @@ export default defineMessages({
     code: 'Ton code de secours, 24 mots. Garde-le en lieu sûr, comme un mot de passe : avec lui, une nouvelle machine récupère tout. Il ne sera plus jamais affiché.',
     keyThere: 'la clé du coffre est déjà sur cette machine (son code de secours a été donné à sa création)',
     remote: (url: string) => `coffre : ${url}`,
-    next: 'weevilsd pousse le coffre à son prochain démarrage (ou maintenant : weevils weevbook vault push)',
+    next: 'weevilsd commence à pousser le coffre dans la minute (ou maintenant : weevils weevbook vault push)',
+    noVaultThere: (repo: string) => `pas de coffre sur ce compte GitHub (${repo} n'existe pas) : lance weevils weevbook vault setup`,
+    summary: (n: number, machines: string[], oldest: string | null) => `${n} conversations${machines.length ? ` · machines : ${machines.join(', ')}` : ''}${oldest ? ` · depuis le ${oldest}` : ''}`,
+    window: 'Claude Code efface ses sessions après 30 jours : l\'historique Claude commence là',
     pushed: (threads: number, sealed: number, chunks: number, attachments: number, refs: number) => `${threads} fils · ${sealed} chiffrés à nouveau (${chunks} morceaux, ${attachments} pièces jointes) · ${refs} refs envoyées`,
     nothing: 'rien de nouveau : rien envoyé',
     differ: (n: number) => `${n} fils diffèrent du coffre (une autre machine les a écrits) : laissés de côté`,
@@ -26,7 +30,7 @@ export default defineMessages({
     error: (e: string) => `erreur : ${e}`,
   },
   en: {
-    usage: 'usage: weevils weevbook vault setup [--remote <git url>] | push | restore [--code "<24 words>"] | status',
+    usage: 'usage: weevils weevbook vault setup [--remote <git url>] | push | restore [--code "<24 words>"] | status | summary [--json]',
     noRemote: 'no vault: run weevils weevbook vault setup (or set WEEVILS_VAULT=<git url>)',
     noKey: (file: string) => `no vault key in ${file}: run weevils weevbook vault setup, or vault restore --code "<24 words>"`,
     noGh: 'GitHub is not connected on this machine: run gh auth login, then vault setup again',
@@ -37,7 +41,10 @@ export default defineMessages({
     code: 'Your recovery code, 24 words. Keep it somewhere safe, like a password: with it, a new machine gets everything back. It will never be shown again.',
     keyThere: 'the vault key is already on this machine (its recovery code was given when it was made)',
     remote: (url: string) => `vault: ${url}`,
-    next: 'weevilsd pushes the vault when it next starts (or now: weevils weevbook vault push)',
+    next: 'weevilsd starts pushing the vault within a minute (or now: weevils weevbook vault push)',
+    noVaultThere: (repo: string) => `no vault on this GitHub account (${repo} does not exist): run weevils weevbook vault setup`,
+    summary: (n: number, machines: string[], oldest: string | null) => `${n} conversations${machines.length ? ` · machines: ${machines.join(', ')}` : ''}${oldest ? ` · since ${oldest}` : ''}`,
+    window: 'Claude Code deletes its sessions after 30 days: the Claude history starts there',
     pushed: (threads: number, sealed: number, chunks: number, attachments: number, refs: number) => `${threads} threads · ${sealed} sealed again (${chunks} chunks, ${attachments} attachments) · ${refs} refs sent`,
     nothing: 'nothing new: nothing sent',
     differ: (n: number) => `${n} threads differ from the vault (another machine wrote them): left out`,

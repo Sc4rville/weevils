@@ -264,7 +264,7 @@ export function AgentBand() {
   const chipIn = (b: ChipId, id: string) => (b.startsWith('key:') ? <KeyChip name={b.slice(4)} /> : lastWith.get(b) === id ? <Chip brick={b as Brick} inline /> : null)
 
   // The main control: sleep mode, where the devil (« le chat ») button was (Scarville, 2026-11-21). No devil button.
-  const controls = <span className="agent-ctrls"><SleepButton /></span>
+  const controls = <span className="agent-ctrls"><NextShortcut /><SleepButton /></span>
 
   const dr = useBossDrawer(open, () => setExpanded('agent'), () => setExpanded(null))
   const band = (
@@ -698,7 +698,6 @@ export function FootBand() {
           {tr(RM).menu}
         </Line>
       )}
-      <NextShortcut />
       <Line ch="x" go={null} onClick={logout}>
         {t.logout}
       </Line>

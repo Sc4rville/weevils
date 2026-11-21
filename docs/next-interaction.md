@@ -97,6 +97,19 @@ once, and the code follows. Behaviour is never flipped back and forth.
   - your messages on weevboss's screen reach the right edge;
   - weevboss and the weevils repo are one block at the top of the side bar.
 
+## From the classic app
+
+next takes the classic app's light features as they are, never as copies, so they follow by themselves
+(scripts/next-parity.test.ts keeps them):
+- **Settings**: the app's settings band whole (machines, subscriptions, Tempo, theme, language, requests, log out); its
+  last line goes to the classic app.
+- **Notifications**: the app's service worker and push subscription; a tap opens its session, or weevboss.
+- **Page links** (/p/…) opened outside the app: the page, once signed in.
+
+Left out on purpose (clutter, or a duplicate of what next shows another way): the 24-hour band (the Autonomous
+section), the second opinion, the relay page (reached from the subscriptions), weevbook, the calm grid, the hint
+bubbles, tip cards and ghost finger.
+
 ## Audit, 2026-11-21
 
 Each screen and gesture was checked against the rules above and against the classic app, in a phone-sized test

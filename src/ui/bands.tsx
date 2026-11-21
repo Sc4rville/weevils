@@ -669,7 +669,8 @@ function machinesMeta(machines: { online?: boolean }[]) {
   return t.onlineOf(on, machines.length)
 }
 
-export function FootBand() {
+/** switchTo: the other interface its last line opens (weevils next from here; next shows this band with « classic »). */
+export function FootBand({ switchTo = 'next' }: { switchTo?: 'next' | 'classic' } = {}) {
   const t = useT(M)
   const { snap, theme, setTheme, offline, colors, logout, push } = useApp()
   // The relay writes « until 6 pm » in this device's time zone (the Codex relay row moved to the subscriptions page).
@@ -708,9 +709,9 @@ export function FootBand() {
           {tr(RM).menu}
         </Line>
       )}
-      {/* weevils next is the app's interface; this one stays as its fallback, and this line goes back. */}
-      <Line ch="→" go={null} onClick={() => { location.href = '/?ui=next' }}>
-        {t.toNext}
+      {/* weevils next is the app's interface; the classic one stays as its fallback: this line goes to the other. */}
+      <Line ch="→" go={null} onClick={() => { location.href = `/?ui=${switchTo}` }}>
+        {switchTo === 'next' ? t.toNext : t.toClassic}
       </Line>
       <Line ch="x" go={null} onClick={logout}>
         {t.logout}

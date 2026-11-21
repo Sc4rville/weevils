@@ -44,7 +44,7 @@ import { keepWarm, warmCues } from './voicepipe.ts'
 import { detectLang } from '../shared/detect-lang.ts'
 import { devilConfig, devilMessages, devilSend, devilWorking } from './devil.ts'
 import { claudeLogged, withoutContext, type Setup } from './setup.ts'
-import { BOSS_DIR, BOSS_MODELS, BOSS_TURNS, BossTurns, modeSections, orchTranscriptsDir } from './boss-turns.ts'
+import { BOSS_DIR, BOSS_MODELS, BOSS_TURNS, BossTurns, modeSections, sessionsDigest, orchTranscriptsDir } from './boss-turns.ts'
 
 /** What a Claude Code session can switch to from the app's header (one tap, applied before its next turn). */
 const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'max']
@@ -2455,8 +2455,17 @@ export class Weevils {
     // Pendant la limite de Claude, Codex répond à sa place : ses échanges sont dans le même fil. Un message qui n'est
     // que du contexte (la reprise d'un message resté sans réponse) ne s'affiche pas.
     // Incoming agent coordination belongs to the recipient transcript, not the user-facing boss chat.
+    // A turn weevboss ran on its own shows only its final message, once done: a draft the length guard sent back
+    // (server/boss-short.mjs) never reaches the thread.
+    const proactive = new Set(this.wakeups?.claims.filter((c) => c.proactive).map((c) => c.id) ?? [])
     const own = this.bossTranscripts()
-      .flatMap((t) => t.messages.filter((m) => m.role !== 'event' && m.role !== 'orchestrator' && (t.tool === 'claude' || m.at >= (boss?.since ?? 0) - 60_000)))
+      .flatMap((t) => {
+        const kept = t.messages.filter((m) => m.role !== 'event' && m.role !== 'orchestrator' && (t.tool === 'claude' || m.at >= (boss?.since ?? 0) - 60_000))
+        if (!proactive.has(t.id)) return kept
+        if (this.toSession(t, Date.now()).status === 'working') return kept.filter((m) => m.role !== 'assistant')
+        const last = kept.findLast((m) => m.role === 'assistant')
+        return kept.filter((m) => m.role !== 'assistant' || m === last)
+      })
       .map((m) => (m.role === 'user' ? { ...m, text: withoutContext(m.text).trim() } : m))
       .filter((m) => m.text && (m.role !== 'assistant' || !silentOutcome(m.text)))
     const msgs = [...own, ...devilMessages(), ...(this.setup?.messages() ?? [])]
@@ -2637,7 +2646,7 @@ export class Weevils {
       turns.preferUser()
       const head = turns.queue[0]
       if (head?.proactive && !canWake()) return
-      const turn = await turns.prepare({ id, claude: [...CLAUDE], memory: this.memory?.digest() ?? '', ledger: this.ledger?.digest(undefined, head?.cid) ?? '', ...(head?.events?.length ? { waiting: this.waitingOnUser(now) } : {}) })
+      const turn = await turns.prepare({ id, claude: [...CLAUDE], memory: this.memory?.digest() ?? '', ledger: this.ledger?.digest(undefined, head?.cid) ?? '', sessions: this.sessionsForTurn(), ...(head?.events?.length ? { waiting: this.waitingOnUser(now) } : {}) })
       // Preparation can await summaries. A user who spoke in the meantime takes the next turn.
       if (head?.proactive && (turns.preferUser() || !canWake() || !wakeups!.canLaunch())) return
       // The previous turn is over: its message can be read into the ledger.
@@ -2677,6 +2686,17 @@ export class Weevils {
       out.push({ key: `cut:${s.noticeId ?? `${s.id}:${s.interrupted.at}`}`, summary: `Session ${s.id.slice(0, 8)} « ${s.title} » cut mid-work (${s.interrupted.reason})` }) // i18n-ignore: model context, never shown
     }
     return out
+  }
+
+  /** The open sessions for a weevboss turn's hidden context (never its own turns or automation runs' scratch work). */
+  private sessionsForTurn(): string {
+    try {
+      const snap = this.snapshot()
+      const names = new Map(snap.projects.map((p) => [p.id, p.name]))
+      return sessionsDigest(snap.sessions.filter((s) => !this.bossTurns?.isTurn(s.id) && s.id !== this.orchestratorId), (id) => names.get(id) ?? id)
+    } catch {
+      return ''
+    }
   }
 
   /** An event-only turn that had something to say reaches the phone: weevboss's line, a tap opens its thread. */

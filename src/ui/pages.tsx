@@ -31,7 +31,7 @@ import { GoneBack, useGoneTitle } from './gone'
 import { CodeFile } from './codeview'
 import { FsFilePage, FsPage, InfraPage, UsagePage } from './infra'
 import { RelayPage, SessionRelay } from './relay'
-import { ThreadPage, WeevbookPage, threadOf, threadsOn } from './threads'
+import { ThreadPage, WeevbookPage, threadsOn } from './threads'
 import { listFiles } from './repofiles'
 import { useThreadAsk } from './askthread'
 import { durLong, status, toolName } from './format'
@@ -58,8 +58,10 @@ export function PageView({ page }: { page: Page }) {
     case 'archived':
       return <ArchivedSessions />
     case 'session':
-      // Threads on: a session that carries a thread opens the thread, one conversation whatever engines carried it.
-      return threadOf(snap, page.id) ? <ThreadPage id={threadOf(snap, page.id)!} session={snap.sessions.find((s) => s.id === page.id)} /> : <SessionPage id={page.id} />
+      // One session view for every install, threads on or off: its tool titles, its questions with their buttons, its
+      // photos, the briefs one tap away (Yann, 2026-11-21). A whole thread, every engine that carried it, stays one tap
+      // away in the weevbook (kind 'thread').
+      return <SessionPage id={page.id} />
     case 'weevbook':
       return <WeevbookPage projectId={page.projectId} />
     case 'thread':

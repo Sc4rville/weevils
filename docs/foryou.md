@@ -136,6 +136,15 @@ The store keeps `{ id, path, type, bytes, mtime }`; the route serves only regist
 the cwd when present, so the item knows its project. Files cited in the closing message of a turn are registered the
 same way (same checks, at most 4, dot-directories refused).
 
+**Before/after** (`server/compare.mjs`). A change shown as two states is one picture or one clip, made by
+`weevils compare <before> <after> <out.compare.png|.mp4> [--crop x,y,w,h] [--crop-before …] [--crop-after …]
+[--layout auto|stack|side]`: a neutral ground (#e9e6df) that stands apart from every theme's band, two frames with a
+black edge, each under a big tag (BEFORE black, AFTER fluo green), cropped on the same area and zoomed to the frame's
+width; stacked for wide crops, side by side when both are tall. Two clips become one: a neutral opening card (the play
+mark has nothing to cover), then before, then after, each tagged. The caption says what changed, once; the picture
+carries no caption of its own. `weevils show` refuses a file whose caption or name says before/after (or avant/après)
+unless it ends in `.compare.png` / `.compare.mp4`.
+
 **Evidence labels** (`shared/evidence.ts`). A result says how far it was seen working: *implemented* (« Built »: the
 code exists, nothing seen running), *demonstrated* (« Shown working », with where: a clip, a screenshot, a test
 server) or *verified* (« Verified », with the environment it was checked in, shown next to the label). The level comes

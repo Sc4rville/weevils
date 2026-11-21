@@ -26,7 +26,8 @@ import { REQUEST_EXPIRES, beginRun, filedByWeevils, liveness, oursWaiting, saveR
 import { pushEvents, readThread, type StartResult } from './start.ts'
 import { threadRefs } from './store.ts'
 import { machinePart } from './sync.ts'
-import { effectOf, next, type Turn } from './turn.ts'
+import { effectOf, holdAll, next, type Turn } from './turn.ts'
+import { MOVE_RULES } from './proposals.ts'
 import { openSession, threadMessages, titleOf, visibleState } from './view.ts'
 
 export { REQUEST_EXPIRES } from './live.ts'
@@ -78,6 +79,15 @@ export interface ThreadsOptions {
   write?: (provider: Provider, prompt: string) => Promise<string>
   /** A thread changed (the app reads it again). */
   changed?: (thread: string) => void
+  /**
+   * 07-vault.md, step 4: a move the table chose (rules `account`, `machine`, `provider`) is the person's to agree to.
+   * `ask` proposes it the first time and says where it stands; until `agreed` the turn is held (`agreement`). `clear`:
+   * the thread's turn no longer waits for a move. Absent: the dispatcher moves by itself, as before.
+   */
+  moves?: {
+    ask(m: { thread: string; turn: number; rule: string; from: string; engine: string; reason: string; title: string }): 'agreed' | 'open' | 'declined'
+    clear(thread: string): void
+  }
   now?: () => number
   log?: (line: string) => void
 }
@@ -93,6 +103,8 @@ export class Threads {
   private readonly forwarded = new Map<string, number>()
   private readonly holds = new Map<string, ThreadHold>()
   private lastWorking = new Set<string>()
+  /** Threads with a move proposed and not yet run. */
+  private readonly asked = new Set<string>()
   private readonly handoffs = new Map<string, number>()
   private handoffBusy = false
   private refsCache: { key: string; lines: ThreadLine[]; handoffs: Map<string, string> } | null = null
@@ -402,6 +414,24 @@ export class Threads {
       record: (d) => this.log(`${thread.slice(-6)} turn ${d.turn}.${d.attempt}: ${d.output.rule}${d.output.engine ? ` → ${d.output.engine}` : ` (${d.output.hold})`}: ${d.output.reason}`),
     })
     if (p.kind === 'none') return
+    // A move to another account, machine or provider waits for the person's yes (07-vault.md, VAULT-6).
+    if (p.kind === 'start' && this.o.moves && MOVE_RULES.includes(p.ins.rule)) {
+      const from = events.findLast((e) => e.type === 'leg.start')
+      const said = this.o.moves.ask({ thread, turn: p.ins.turn, rule: p.ins.rule, from: from?.type === 'leg.start' ? from.engine : '', engine: p.ins.engine, reason: p.ins.reason, title: titleOf(events) })
+      if (said !== 'agreed') {
+        this.asked.add(thread)
+        this.d.unplaced(thread)
+        const changes = holdAll(turns, 'hold', 'agreement') // i18n-ignore: journal data
+        if (!changes.length) return
+        const sync = this.o.sync
+        const now = this.now()
+        const leg = openLeg(events)?.leg ?? null
+        await sync.serial(() => pushEvents(sync, thread, tip, changes.map((c) => draft(now, leg, { type: 'turn', ...c })), (ev) => ({ engine: openLeg(ev)?.engine ?? null, leg: openLeg(ev)?.leg ?? null, state: 'idle' }), `turn ${changes[0].turn} (held) · ${this.o.machine}`))
+        this.o.changed?.(thread)
+        return
+      }
+    }
+    if (this.asked.delete(thread)) this.o.moves?.clear(thread)
     if (p.kind === 'hold') {
       if (p.decision) this.holds.set(thread, holdFacts(p.decision.hold ?? 'no-machine', p.input, project))
       if (!p.changes.length) return

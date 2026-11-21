@@ -58,8 +58,13 @@ export interface ResumeOptions {
   hub?: { url: string; here: boolean }
   /** The vault, when this machine has one: what the hub does not hold of the thread is fetched from it. */
   vault?: VaultSource
-  /** Without a hub: a turn at work elsewhere is taken for stopped once its thread was silent this long (SILENT_FOR). */
+  /** Without a hub, for a thread that has no lease on the vault yet (pushed before step 4): a turn at work elsewhere
+   *  is taken for stopped once its thread was silent this long (SILENT_FOR). */
   silentMs?: number
+  /** Without a hub: the person said to take it even from a machine that still renews its lease (07-vault.md, step 4). */
+  force?: boolean
+  /** The person named the engine ("send this to Claude on …"): refused when it is not the thread's own provider. */
+  provider?: Provider
   /** Starts the provider on the session with its first request (weevilsd: w.send; the command line: the local API). */
   launch: (l: Launch) => Promise<void>
   /** The hub sync of this process, when there is one: one lease client and one order of writes. */
@@ -99,7 +104,8 @@ export type ResumeResult =
     }
   | {
       ok: false
-      why: 'unreachable' | 'unknown' | 'held' | 'here' | 'own-leg' | 'attempts' | 'busy' | 'hold' | 'no-session' | 'rejected' | 'launch'
+      /** `other-provider`: the engine asked for is not the thread's (`detail`: the thread's provider). */
+      why: 'unreachable' | 'unknown' | 'held' | 'here' | 'own-leg' | 'attempts' | 'busy' | 'hold' | 'no-session' | 'rejected' | 'launch' | 'other-provider'
       detail: string
       /** held: how long until a steal is allowed, by this clock. */
       wait?: number
@@ -387,6 +393,7 @@ export async function resumeThread(o: ResumeOptions): Promise<ResumeResult> {
   const last = legs.at(-1)
   if (!last || last.type !== 'leg.start') return fail('no-session', 'the thread has no provider session yet')
   const provider = parseEngine(last.engine)!.provider
+  if (o.provider && o.provider !== provider) return fail('other-provider', provider)
   const turns = safeTurns(events)
   const nx = next(turns)
   if (nx.kind === 'busy') return fail('busy', `turn ${nx.turn} is ${nx.state} in the journal`)
@@ -521,24 +528,33 @@ export async function resumeThread(o: ResumeOptions): Promise<ResumeResult> {
   }
 }
 
-/** A turn at work on another machine is taken for stopped once the thread has been silent this long (no lease on the
- *  vault yet: 07-vault.md, step 4). */
+/** A thread with no lease on the vault (pushed before step 4): a turn at work on another machine is taken for stopped
+ *  once the thread has been silent this long. */
 export const SILENT_FOR = 10 * 60_000
 
 /**
  * The same resume on a machine whose only source for the thread is the vault (no hub, or a hub that never saw it):
- * the journal is brought up to date from the vault, the slim raw lines and the checkpoint bundles are fetched for this
- * thread alone, and the new leg is written in this machine's weevbook, which its vault pusher sends. There is no lease
- * on the vault yet: the person asked for this resume, and a turn still marked at work on another machine is ended as
- * `machine-lost` only when that thread has been silent for `SILENT_FOR`.
+ * the journal is brought up to date from the vault, the thread's lease on the vault is taken (07-vault.md, step 4),
+ * the slim raw lines and the checkpoint bundles are fetched for this thread alone, and the new leg is written in this
+ * machine's weevbook, which its vault pusher sends with the lease. Every caller is the person's order or agreement
+ * (VAULT-6): an idle lease is taken over, a working one whose machine went silent is stolen, and one still renewed is
+ * refused unless `force`.
  */
 async function resumeLocal(o: ResumeOptions, t0: number): Promise<ResumeResult> {
+  const claimed = { yes: false }
+  const out = await resumeFromVault(o, t0, claimed)
+  // Refused after the lease was taken: it is given back, idle (a launch that failed wrote its own end, pushed idle).
+  if (!out.ok && claimed.yes) await o.vault!.release(o.thread).catch((e: Error) => o.log?.(`[vault] ${o.thread}: lease not released (${e.message})`))
+  return out
+}
+
+async function resumeFromVault(o: ResumeOptions, t0: number, claimed: { yes: boolean }): Promise<ResumeResult> {
   const vault = o.vault!
   const now = o.now ?? Date.now
   const me = machinePart(o.machine)
   const id = o.thread
   try {
-    await vault.refresh(id)
+    if ((await vault.refresh(id)).differ) return fail('rejected', 'this machine wrote the thread another way than the vault holds it: it continues on the machine that took it')
   } catch (e) {
     return fail('unreachable', `the vault did not answer: ${(e as Error).message}`)
   }
@@ -560,9 +576,23 @@ async function resumeLocal(o: ResumeOptions, t0: number): Promise<ResumeResult> 
   const last = events.filter((e) => e.type === 'leg.start').at(-1)
   if (!last || last.type !== 'leg.start') return fail('no-session', 'the thread has no provider session yet')
   const provider = parseEngine(last.engine)!.provider
+  if (o.provider && o.provider !== provider) return fail('other-provider', provider)
   let turns = safeTurns(events)
   const live = next(turns)
-  if (live.kind === 'busy') {
+  // The lease on the vault: taken over idle, stolen from a silent machine, or (`force`) from one that still renews it.
+  let claim: Awaited<ReturnType<VaultSource['claim']>>
+  try {
+    claim = await vault.claim(id, o.force)
+  } catch (e) {
+    return fail('unreachable', `the vault did not answer: ${(e as Error).message}`)
+  }
+  if (!claim.ok) {
+    if (claim.why === 'held') return fail('held', `${claim.holder} is at work on ${claim.turn !== undefined ? `turn ${claim.turn}` : 'it'} (its lease was renewed ${Math.round(claim.agoMs / 1000)} s ago)`, { wait: claim.wait, holder: claim.holder })
+    return fail(claim.why, claim.why === 'unreachable' ? 'the vault did not answer' : 'the thread moved on the vault meanwhile: try again')
+  }
+  claimed.yes = true
+  if (live.kind === 'busy' && !claim.stole && !o.force) {
+    // No working lease said who holds it (a thread pushed before step 4): the journal's own silence decides.
     const quiet = now() - Date.parse(events.at(-1)!.at)
     const silent = o.silentMs ?? SILENT_FOR
     if (quiet < silent) return fail('held', `turn ${live.turn} was at work on ${parseEngine(last.engine)!.machine} ${Math.round(quiet / 1000)} s ago`, { wait: silent - quiet, holder: parseEngine(last.engine)!.machine })
@@ -632,6 +662,8 @@ async function resumeLocal(o: ResumeOptions, t0: number): Promise<ResumeResult> 
   }, true)
   if (!wrote) return fail('rejected', 'the thread moved meanwhile: try again')
   events = (await read()) ?? events
+  // The new leg reaches the vault now, with its lease (weevilsd's pusher sends it within the minute otherwise).
+  await vault.push().catch((e: Error) => o.log?.(`[vault] ${id}: not pushed yet (${e.message})`))
 
   // The provider session: recorded first (the writer must never take the file for a new thread), then written.
   const sessions = new Sessions(o.sessions)
@@ -678,7 +710,7 @@ async function resumeLocal(o: ResumeOptions, t0: number): Promise<ResumeResult> 
     file,
     session,
     restored,
-    stole: !!lost,
+    stole: claim.stole || !!lost,
     launched,
     ms: Date.now() - t0,
   }

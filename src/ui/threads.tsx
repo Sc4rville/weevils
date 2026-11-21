@@ -55,6 +55,9 @@ export function useHoldSentence() {
         return { text: t.attempts, again: true }
       case 'expired':
         return { text: t.expired, again: true }
+      // A move that waits for a yes: weevboss asked in its own thread, the answer goes there.
+      case 'agreement':
+        return { text: t.agreement, again: false }
       // no-room: the accounts start again by themselves; the state line says when.
       default:
         return null

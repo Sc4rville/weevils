@@ -21,7 +21,8 @@ import { parseJournal, validateJournal, type EventDraft, type JournalEvent, type
 import { STEAL_BOUND, parseLease } from './lease.ts'
 import { startTurn, type Launcher, type StartResult } from './start.ts'
 import O from '../i18n/optimizers.ts'
-import { REQUEST_EXPIRES, Threads, ownTask, type Peer } from './threads.ts'
+import { askMove, clearMoves, settle, type Proposal } from './proposals.ts'
+import { REQUEST_EXPIRES, Threads, ownTask, type Peer, type ThreadsOptions } from './threads.ts'
 import { prefaceSign } from './turn.ts'
 import { startWeevbookWriter } from './writer.ts'
 
@@ -68,7 +69,7 @@ function world() {
  * A machine running weevilsd with threads on: a clone of the project, a writer, a hub sync, the Threads service, and
  * fake engines (accounts with a quota each) that write session files like the real CLIs.
  */
-function machine(w: ReturnType<typeof world>, name: string, o: { dispatcher?: boolean; accounts: { provider: Provider; account: string; used: number }[]; failStarts?: number }) {
+function machine(w: ReturnType<typeof world>, name: string, o: { dispatcher?: boolean; accounts: { provider: Provider; account: string; used: number }[]; failStarts?: number; moves?: ThreadsOptions['moves'] }) {
   const home = path.join(w.root, name)
   const data = path.join(home, '.local', 'share', 'weevils')
   const projects = path.join(home, 'projects')
@@ -138,7 +139,7 @@ function machine(w: ReturnType<typeof world>, name: string, o: { dispatcher?: bo
       signedIn: true,
       quota: async () => ({ ok: true, source: 'test', at: clock.t, windows: [{ kind: 'session', percent: quotas.get(`${a.provider}:${a.account}`)!, resetsAt: clock.t + 3 * 3600_000 }, { kind: 'week', percent: 5, resetsAt: clock.t + 5 * 86400_000 }] }),
     }))
-  const threads = new Threads({ sync, machine: name, dispatcher: !!o.dispatcher, preferred: 'claude', inboxFile: path.join(data, 'threads-inbox.jsonl'), projects: () => ['shop'], sources: engines, start, deliver: async () => {}, peers: () => peers, now: () => clock.t, log })
+  const threads = new Threads({ sync, machine: name, dispatcher: !!o.dispatcher, preferred: 'claude', inboxFile: path.join(data, 'threads-inbox.jsonl'), projects: () => ['shop'], sources: engines, start, deliver: async () => {}, peers: () => peers, now: () => clock.t, log, ...(o.moves ? { moves: o.moves } : {}) })
   /** Every start sent here, finished. */
   const started = async () => {
     const out: StartResult[] = []
@@ -313,6 +314,52 @@ describe('threads in weevilsd: message → turn → dispatch → lease → engin
     expect(view.messages.filter((m) => m.role === 'user').map((m) => m.text)).toEqual(['Show prices with the currency'])
     expect(view.messages.at(-1)).toMatchObject({ role: 'assistant', text: 'The cart shows the currency too; the tests pass.' })
     noTrace(view)
+  }, 120_000)
+
+  it('07 step 4: with moves agreed, a move to another account is proposed with the table\'s reason and held; nothing starts before the yes', async () => {
+    const w = world()
+    const a = accountHash('account-of-server')
+    const file = path.join(w.root, 'proposals.json')
+    const said: Proposal[] = []
+    const moves = { ask: (m: Parameters<typeof askMove>[1]) => askMove(file, m, w.clock.t, (p) => said.push(p)), clear: (thread: string) => clearMoves(file, thread, w.clock.t) }
+    const server = machine(w, 'server', { dispatcher: true, accounts: [{ provider: 'claude', account: a, used: 10 }, { provider: 'claude', account: 'b0b0b0', used: 40 }], moves })
+    await server.sync.round()
+    await tables(server, server)
+
+    // A first turn is no move: it starts without a question. Its account then stops on its usage limit.
+    server.acts.push('quota')
+    const { thread: id } = await server.threads.accept(null, { text: 'Show prices with the currency', project: 'shop' })
+    await server.threads.step(id)
+    await server.started()
+    await server.settle()
+    expect(said).toEqual([])
+    expect(turnsOf(journal(w.hub, id))).toEqual([['accepted', null], ['assigned', 'new'], ['running', null], ['failed', 'quota']])
+
+    // The table says « account »: proposed once, with its own reason line; the turn is held, no engine is called.
+    server.quotas.set(`claude:${a}`, 100)
+    await server.threads.step(id)
+    await server.threads.step(id)
+    expect(await server.started()).toEqual([])
+    expect(server.calls).toHaveLength(1)
+    expect(said).toHaveLength(1)
+    expect(said[0]).toMatchObject({ kind: 'account', thread: id, title: 'Show prices with the currency', from: `claude:${a}@server`, to: 'b0b0b0', state: 'open' })
+    expect(said[0].reason).toContain('b0b0b0')
+    const held = journal(w.hub, id).findLast((e): e is TurnEvent => e.type === 'turn')
+    expect(held).toMatchObject({ turn: 1, state: 'held', rule: 'hold', reason: 'agreement' })
+    expect(validateJournal(journal(w.hub, id))).toEqual([])
+    expect(await server.threads.view(id)).toMatchObject({ state: 'paused', hold: { reason: 'agreement' } })
+
+    // The yes: the same move goes, on the same session, with the preface; the journal carries the reason proposed.
+    settle(file, said[0].id, 'agreed', w.clock.t)
+    await server.threads.step(id)
+    await server.started()
+    expect(server.calls[1]).toMatchObject({ how: 'resume', provider: 'claude', account: 'b0b0b0', session: server.calls[0].session })
+    await server.settle()
+    const events = journal(w.hub, id)
+    expect(turnsOf(events)).toEqual([['accepted', null], ['assigned', 'new'], ['running', null], ['failed', 'quota'], ['held', null], ['assigned', 'account'], ['running', null], ['done', null]])
+    expect(events.findLast((e): e is TurnEvent => e.type === 'turn' && e.state === 'assigned')?.reason).toBe(said[0].reason)
+    expect(said).toHaveLength(1)
+    expect((await server.threads.view(id))!.state).toBe('waiting')
   }, 120_000)
 
   it('a machine lost mid-turn: the dispatcher takes the lease and the turn continues on the other machine', async () => {

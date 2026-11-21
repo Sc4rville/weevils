@@ -28,6 +28,14 @@ export const OBSERVE_EVERY = 10_000
  */
 export const STEAL_BOUND = Math.max(LIFETIME + GRACE + SKEW, OBSERVE_EVERY + UNCHANGED) + OBSERVE_EVERY
 
+/** The three durations of a lease. The hub's are the constants above; the vault's are slower (vault-lease.ts). */
+export interface Timing {
+  lifetime: number
+  grace: number
+  unchanged: number
+}
+export const HUB_TIMING: Timing = { lifetime: LIFETIME, grace: GRACE, unchanged: UNCHANGED }
+
 // ---------------------------------------------------------------- lease.json
 
 export type LeaseState = 'working' | 'idle'
@@ -131,21 +139,22 @@ export interface Refusal {
 }
 
 /** May this machine steal the working lease it sees? Both conditions of the spec, on its own clock. */
-export function stealable(seen: Seen, now: number): { ok: boolean; wait: number } {
+export function stealable(seen: Seen, now: number, timing: Timing = HUB_TIMING): { ok: boolean; wait: number } {
   const l = seen.lease
   if (!l || l.state !== 'working' || !seen.commit) return { ok: false, wait: Infinity }
-  const expired = Date.parse(l.expires) + GRACE - now
-  const unchanged = seen.since + UNCHANGED - now
+  const expired = Date.parse(l.expires) + timing.grace - now
+  const unchanged = seen.since + timing.unchanged - now
   const wait = Math.max(expired, unchanged, 0)
   return { ok: wait === 0, wait }
 }
 
 /**
  * The lease this machine may push now, and the value the hub must still have; or why not. A steal is only planned
- * when asked for, because its thread commit must carry `turn failed` and `leg.end`.
+ * when asked for, because its thread commit must carry `turn failed` and `leg.end`. `order`: the person asked for it.
  */
-export function plan(machine: string, thread: string, seen: Seen, intent: Intent, now: number, opts: { steal?: boolean } = {}): Plan | Refusal {
+export function plan(machine: string, thread: string, seen: Seen, intent: Intent, now: number, opts: { steal?: boolean; order?: boolean; timing?: Timing } = {}): Plan | Refusal {
   const old = seen.lease
+  const timing = opts.timing ?? HUB_TIMING
   const fresh = (epoch: number, taken: string): Lease => ({
     v: 1,
     thread,
@@ -157,15 +166,16 @@ export function plan(machine: string, thread: string, seen: Seen, intent: Intent
     ...(intent.state === 'working' ? { turn: intent.turn } : {}),
     taken,
     renewed: iso(now),
-    expires: iso(now + LIFETIME),
+    expires: iso(now + timing.lifetime),
     tip: intent.tip !== undefined ? intent.tip : (seen.tip ?? null),
   })
   if (!seen.commit || !old) return { op: 'take', lease: fresh(1, iso(now)), expect: null }
   if (old.holder === machine) return { op: 'renew', lease: fresh(old.epoch, old.taken), expect: seen.commit }
   if (old.state === 'idle') return { op: 'take-idle', lease: fresh(old.epoch + 1, iso(now)), expect: seen.commit }
-  const s = stealable(seen, now)
+  const s = stealable(seen, now, timing)
   if (!opts.steal) return { op: null, why: 'held', wait: s.wait }
-  if (!s.ok) return { op: null, why: 'not-yet', wait: s.wait }
+  // The person's own order (07-vault.md, VAULT-6) is the one steal the clock rules do not bound.
+  if (!s.ok && !opts.order) return { op: null, why: 'not-yet', wait: s.wait }
   return { op: 'steal', lease: fresh(old.epoch + 1, iso(now)), expect: seen.commit }
 }
 
@@ -269,6 +279,17 @@ interface PushItem extends Renewal {
   leaseCommit: string
 }
 
+/** How a lease is written in its commit. The hub's is plain (`lease.json`, dated and signed by its machine); the
+ *  vault's is sealed, in a commit that says nothing (vault-lease.ts). */
+export interface LeaseFormat {
+  file: string
+  encode(l: Lease): string
+  /** Null: not a lease this machine can read. */
+  decode(text: string, thread: string): Lease | null
+  /** The environment and subject of the commit. */
+  commit(l: Lease, now: number): { env: Record<string, string>; subject: string }
+}
+
 export interface LeaseClientOptions {
   /** This machine's weevils id: `holder` in the leases it writes. */
   machine: string
@@ -277,6 +298,10 @@ export interface LeaseClientOptions {
   now: () => number
   /** The hub's remote name in this repository. */
   remote?: string
+  /** Where what was fetched is kept (default refs/hub). */
+  tracking?: string
+  format?: LeaseFormat
+  timing?: Timing
 }
 
 /**
@@ -288,6 +313,9 @@ export class LeaseClient {
   private readonly git: GitRunner
   private readonly now: () => number
   private readonly remote: string
+  private readonly tracking: string
+  private readonly format: LeaseFormat
+  readonly timing: Timing
   private readonly known = new Map<string, Seen>()
 
   constructor(o: LeaseClientOptions) {
@@ -295,6 +323,24 @@ export class LeaseClient {
     this.git = o.git
     this.now = o.now
     this.remote = o.remote ?? 'hub'
+    this.tracking = o.tracking ?? 'refs/hub'
+    this.timing = o.timing ?? HUB_TIMING
+    const machine = o.machine
+    this.format = o.format ?? {
+      file: 'lease.json',
+      encode: serializeLease,
+      decode: parseLease,
+      commit(l, now) {
+        const date = `${Math.floor(now / 1000)} +0000`
+        return {
+          env: {
+            GIT_AUTHOR_NAME: 'weevils', GIT_AUTHOR_EMAIL: `${machine}@weevils.invalid`, GIT_AUTHOR_DATE: date,
+            GIT_COMMITTER_NAME: 'weevils', GIT_COMMITTER_EMAIL: `${machine}@weevils.invalid`, GIT_COMMITTER_DATE: date,
+          },
+          subject: `lease · ${l.holder} · epoch ${l.epoch} · ${l.state}`,
+        }
+      },
+    }
   }
 
   /** What this machine last saw of the thread's lease, without asking the hub. */
@@ -302,28 +348,68 @@ export class LeaseClient {
     return this.known.get(thread)
   }
 
+  /** The leases this machine holds, as far as it knows. */
+  mine(): { thread: string; lease: Lease }[] {
+    const out: { thread: string; lease: Lease }[] = []
+    for (const [thread, s] of this.known) if (s.lease?.holder === this.machine) out.push({ thread, lease: s.lease })
+    return out
+  }
+
   /** Reads the thread ref, the lease ref and the orphan refs of one thread from the hub. Null: unreachable. */
   async fetch(thread: string): Promise<Fetched | null> {
+    const T = this.tracking
     const f = await this.git(['fetch', '--quiet', '--prune', '--no-tags', this.remote,
-      `+refs/leases/${thread}*:refs/hub/leases/${thread}*`,
-      `+refs/threads/${thread}*:refs/hub/threads/${thread}*`,
-      `+refs/orphans/${thread}/*:refs/hub/orphans/${thread}/*`])
+      `+refs/leases/${thread}*:${T}/leases/${thread}*`,
+      `+refs/threads/${thread}*:${T}/threads/${thread}*`,
+      `+refs/orphans/${thread}/*:${T}/orphans/${thread}/*`])
     if (f.code !== 0) return null
-    const refs = await this.git(['for-each-ref', '--format=%(objectname) %(refname)', `refs/hub/leases/${thread}`, `refs/hub/threads/${thread}`, `refs/hub/orphans/${thread}/`])
+    const refs = await this.git(['for-each-ref', '--format=%(objectname) %(refname)', `${T}/leases/${thread}`, `${T}/threads/${thread}`, `${T}/orphans/${thread}/`])
     let commit: string | null = null
     let tip: string | null = null
     const orphans: Fetched['orphans'] = []
     for (const line of refs.stdout.split('\n')) {
       const [sha, ref] = line.split(' ')
       if (!ref) continue
-      if (ref === `refs/hub/leases/${thread}`) commit = sha
-      else if (ref === `refs/hub/threads/${thread}`) tip = sha
-      else if (ref.startsWith(`refs/hub/orphans/${thread}/`)) orphans.push({ ref: ref.replace('refs/hub/', 'refs/'), commit: sha })
+      if (ref === `${T}/leases/${thread}`) commit = sha
+      else if (ref === `${T}/threads/${thread}`) tip = sha
+      else if (ref.startsWith(`${T}/orphans/${thread}/`)) orphans.push({ ref: `refs/${ref.slice(T.length + 1)}`, commit: sha })
     }
-    const lease = commit ? parseLease((await this.git(['cat-file', 'blob', `${commit}:lease.json`])).stdout) : null
-    const seen = observe(this.known.get(thread), commit, lease, tip, this.now())
+    const seen = observe(this.known.get(thread), commit, commit ? await this.read(commit, thread) : null, tip, this.now())
     this.known.set(thread, seen)
     return { seen, orphans }
+  }
+
+  private async read(commit: string, thread: string): Promise<Lease | null> {
+    const prev = this.known.get(thread)
+    if (prev?.commit === commit) return prev.lease
+    return this.format.decode((await this.git(['cat-file', 'blob', `${commit}:${this.format.file}`])).stdout, thread)
+  }
+
+  /**
+   * Every lease of the hub, read in one go (`fetch`: the lease refs are asked of the hub first; else as last fetched;
+   * thread tips are as last fetched either way). Each is observed like a single reading: `since` only moves when its
+   * commit does. Null: unreachable.
+   */
+  async readAll(fetch = true): Promise<Map<string, Seen> | null> {
+    const T = this.tracking
+    if (fetch && (await this.git(['fetch', '--quiet', '--prune', '--no-tags', this.remote, `+refs/leases/*:${T}/leases/*`])).code !== 0) return null
+    const refs = await this.git(['for-each-ref', '--format=%(objectname) %(refname)', `${T}/leases/`, `${T}/threads/`])
+    const leases = new Map<string, string>()
+    const tips = new Map<string, string>()
+    for (const line of refs.stdout.split('\n')) {
+      const [sha, ref] = line.split(' ')
+      if (!ref) continue
+      if (ref.startsWith(`${T}/leases/`)) leases.set(ref.slice(T.length + 8), sha)
+      else tips.set(ref.slice(T.length + 9), sha)
+    }
+    const out = new Map<string, Seen>()
+    for (const thread of new Set([...leases.keys(), ...tips.keys()])) {
+      const commit = leases.get(thread) ?? null
+      const seen = observe(this.known.get(thread), commit, commit ? await this.read(commit, thread) : null, tips.get(thread) ?? null, this.now())
+      this.known.set(thread, seen)
+      out.set(thread, seen)
+    }
+    return out
   }
 
   /** take, take over idle, or renew (go idle included), whichever the rules allow. Fetches first if it knows nothing. */
@@ -331,14 +417,32 @@ export class LeaseClient {
     return this.single(thread, intent, false)
   }
 
-  /** The steal: only when the lease is working, expired by `GRACE`, and unchanged for `UNCHANGED` on this clock. */
-  async steal(thread: string, intent: Intent): Promise<Outcome> {
-    return this.single(thread, intent, true)
+  /** The steal: only when the lease is working, expired by `GRACE`, and unchanged for `UNCHANGED` on this clock; or
+   *  on the person's order (`order`), whatever the clock says. */
+  async steal(thread: string, intent: Intent, o: { order?: boolean } = {}): Promise<Outcome> {
+    return this.single(thread, intent, true, o.order)
   }
 
-  private async single(thread: string, intent: Intent, steal: boolean): Promise<Outcome> {
+  /**
+   * Each thread with its lease in one atomic push: taken, taken over idle or renewed, whichever the rules allow; never
+   * a steal. A lease another machine holds working is refused here, before anything is pushed (SYNC-10 for the rest).
+   */
+  async hold(items: readonly Renewal[]): Promise<Map<string, Outcome>> {
+    const out = new Map<string, Outcome>()
+    const ready: PushItem[] = []
+    for (const r of items) {
+      const seen = this.known.get(r.thread) ?? { commit: null, lease: null, tip: null, since: this.now() }
+      const p = plan(this.machine, r.thread, seen, r.intent, this.now(), { timing: this.timing })
+      if (!p.op) out.set(r.thread, { ok: false, why: 'refused', wait: p.wait })
+      else ready.push({ ...r, plan: p, leaseCommit: await this.leaseCommit(p.lease) })
+    }
+    for (const [t, o] of await this.pushAll(ready)) out.set(t, o)
+    return out
+  }
+
+  private async single(thread: string, intent: Intent, steal: boolean, order = false): Promise<Outcome> {
     if (!this.known.has(thread) && !(await this.fetch(thread))) return { ok: false, why: 'unreachable' }
-    const p = plan(this.machine, thread, this.known.get(thread)!, intent, this.now(), { steal })
+    const p = plan(this.machine, thread, this.known.get(thread)!, intent, this.now(), { steal, order, timing: this.timing })
     if (!p.op) return { ok: false, why: 'refused', wait: p.wait }
     if (p.op === 'renew' && !steal) return (await this.renew([{ thread, intent }])).get(thread)!
     return (await this.pushAll([{ thread, intent, plan: p, leaseCommit: await this.leaseCommit(p.lease) }])).get(thread)!
@@ -358,7 +462,7 @@ export class LeaseClient {
         out.set(r.thread, { ok: false, why: 'lost', holder: seen?.lease?.holder ?? null })
         continue
       }
-      const p = plan(this.machine, r.thread, seen, r.intent, this.now()) as Plan
+      const p = plan(this.machine, r.thread, seen, r.intent, this.now(), { timing: this.timing }) as Plan
       ready.push({ ...r, plan: p, leaseCommit: await this.leaseCommit(p.lease) })
     }
     for (const [t, o] of await this.pushAll(ready)) out.set(t, o)
@@ -400,7 +504,7 @@ export class LeaseClient {
         // This machine's own earlier push landed (its answer was lost): go on from that lease, once.
         if (where === 'holder' && it.plan.op !== 'take' && !retried.has(it.thread)) {
           retried.add(it.thread)
-          const p = plan(this.machine, it.thread, f.seen, it.intent, this.now()) as Plan
+          const p = plan(this.machine, it.thread, f.seen, it.intent, this.now(), { timing: this.timing }) as Plan
           rest.push({ ...it, plan: p, leaseCommit: await this.leaseCommit(p.lease) })
           continue
         }
@@ -448,14 +552,9 @@ export class LeaseClient {
 
   /** A lease commit: one file, lease.json, no parent. Dated by this machine's clock. */
   private async leaseCommit(l: Lease): Promise<string> {
-    const blob = (await this.git(['hash-object', '-w', '--stdin'], { input: serializeLease(l) })).stdout.trim()
-    const tree = (await this.git(['mktree'], { input: `100644 blob ${blob}\tlease.json\n` })).stdout.trim()
-    const date = `${Math.floor(this.now() / 1000)} +0000`
-    const env = {
-      GIT_AUTHOR_NAME: 'weevils', GIT_AUTHOR_EMAIL: `${this.machine}@weevils.invalid`, GIT_AUTHOR_DATE: date,
-      GIT_COMMITTER_NAME: 'weevils', GIT_COMMITTER_EMAIL: `${this.machine}@weevils.invalid`, GIT_COMMITTER_DATE: date,
-    }
-    const subject = `lease · ${l.holder} · epoch ${l.epoch} · ${l.state}`
+    const blob = (await this.git(['hash-object', '-w', '--stdin'], { input: this.format.encode(l) })).stdout.trim()
+    const tree = (await this.git(['mktree'], { input: `100644 blob ${blob}\t${this.format.file}\n` })).stdout.trim()
+    const { env, subject } = this.format.commit(l, this.now())
     const c = await this.git(['commit-tree', tree, '-m', subject], { env })
     if (c.code !== 0) throw new Error(`commit-tree: ${c.stderr.trim()}`) // i18n-ignore
     return c.stdout.trim()

@@ -214,8 +214,11 @@ Decided with step 3. `server/weevbook/resume.ts` (`resumeThread`) implements it;
   bundles, applied on the machine's own clone of the project) when neither the weevbook's repository nor the hub has
   the commit the journal names. A checkpoint that was too large for the vault holds the thread: `only-there`. With no
   hub, or for a thread the hub never saw, the journal comes from the vault too and the leg is written in this
-  machine's weevbook; there is no lease on the vault yet, so a turn at work on another machine is ended as
-  `machine-lost` only once its thread has been silent for ten minutes.
+  machine's weevbook. The thread's lease on the vault is taken first ([07](07-vault.md#moving-a-conversation), step 4):
+  taken over when idle, stolen when its machine went silent, refused while that machine still renews it unless the
+  person said so (`--force`). Every such resume is the person's order or agreement (VAULT-6). A thread with no lease
+  on the vault yet keeps step 3's rule: a turn at work on another machine is ended as `machine-lost` only once its
+  thread has been silent for ten minutes.
 - **Known limit**: the adapter of the resumed leg reads that leg's events only, so its own record of an earlier
   effect starts at the new leg; `turn.ts` and the journal (THREAD-10) still keep the effect sticky.
 

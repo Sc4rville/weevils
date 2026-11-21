@@ -143,6 +143,7 @@ Rules about changing (the reference scenario's "staying is cheap, changing costs
 | `attempts` | It failed three times on an error of its own (`api` or `auth`). | "Try again." |
 | `expired` | It waited more than an hour with no machine: it was set aside. | "Ask again." |
 | `stopped` | Stopped before this version: write again to continue. (The thread is `waiting`, not paused.) | Writing again. |
+| `agreement` | weevboss is waiting for your yes to continue elsewhere. | Answering weevboss. |
 
 A held turn is assigned as soon as the table gives an engine: the dispatcher looks again whenever the engine table
 changes, and at least every 60 s. When the table gives another reason, the turn is held again with it, so the
@@ -278,6 +279,25 @@ which would have started the day those came back. The rule now (`server/weevbook
   shared one lock with no queue: the first to finish let it go while another was still writing, the shadow writer
   took it, and its recovery removed that write's record (`ENOENT … weevbook/tx/<id>.json.next`). `withBook` now
   queues its callers; one made inside another runs within it.
+
+### Moves are agreed (07, step 4)
+
+Decided with the vault's step 4 ([07](07-vault.md#moving-a-conversation)): a conversation changes account, machine or
+provider only when the person agrees. The table is unchanged and `decide` stays pure; what changed is what weevilsd
+does with three of its rows.
+
+- **`account`, `machine`, `provider` are proposals.** When the table chooses one of them, the dispatcher's machine
+  writes a proposal with the row's own `reason` (`DATA_DIR/weevbook-proposals.json`), weevboss says it in one line, and
+  the turn is `held` with reason `agreement`: no engine is called, the reservation ends. `new`, `stay` and `back` go
+  as before (`back` returns to an engine the thread already had).
+- **On the yes** (`weevils weevbook agree`) the same turn is looked at again and that move goes; the `assigned` event
+  carries the reason as proposed when the table has not changed. **On the no** the turn stays held; that rule is not
+  proposed again for that turn. When the table no longer says to move (the account has room again: `stay`), the open
+  proposal is withdrawn and the turn goes on where it is.
+- **The steal of a silent holder is still the hub's own** ([03](03-sync-and-lease.md)): the turn is ended as
+  `machine-lost` and the lease left idle after 130 s; placing it on another machine is then the proposal.
+- The simulator drives `Dispatcher` without this: its runs move by themselves, as before. DISP-9 reads, in weevilsd:
+  a held turn's reason is the table's, or `agreement`.
 
 **Known limits.** One active Claude account per machine: two threads on two accounts of one machine at once switch
 it back and forth. Sessions the shadow writer opens itself (outside the dispatcher) carry the home account's id. A

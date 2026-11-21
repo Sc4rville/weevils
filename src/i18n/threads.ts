@@ -15,6 +15,8 @@ export default defineMessages({
     onlyThere: (machine?: string) => `Le code de cette conversation n’est que sur ${machine ?? 'une autre machine'} : allume-la pour continuer.`,
     attempts: 'Ça s’est arrêté trois fois de suite.',
     expired: 'Cette demande a attendu plus d’une heure sans machine : elle a été laissée de côté.',
+    /** A move to another account, machine or provider waits for the person's yes (weevboss asked in its thread). */
+    agreement: 'weevboss attend ton accord pour continuer ailleurs.',
     /** A turn that will never go on by itself (before threads were on, or left too long). */
     stopped: 'Arrêté avant cette version : écris à nouveau pour continuer.',
     askAgain: 'redemander',
@@ -41,6 +43,7 @@ export default defineMessages({
     onlyThere: (machine?: string) => `The code of this conversation is only on ${machine ?? 'another machine'}: turn it on to continue.`,
     attempts: 'It stopped three times in a row.',
     expired: 'This request waited more than an hour with no machine: it was set aside.',
+    agreement: 'weevboss is waiting for your yes to continue elsewhere.',
     stopped: 'Stopped before this version: write again to continue.',
     askAgain: 'ask again',
     continue: 'continue',

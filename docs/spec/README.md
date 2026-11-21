@@ -19,7 +19,7 @@ restore | status | summary`), on once `vault setup` ran or `WEEVILS_VAULT` names
 the one line gets the vault in the same exchange, a new machine gets everything back from the recovery code, and
 weevboss sets it up, asks the history question and says the summary in its chat. With a vault, each turn's code is
 checkpointed, the provider's own lines (slim) and the checkpoints go to the vault too, and `weevils weevbook resume
-<thread>` continues a thread on a machine that never ran it, from the vault alone. On, they write next to the app and change nothing the app shows or does;
+<thread>` continues a thread on a machine that never ran it, from the vault alone. Since step 4 each thread has its lease on the vault, a machine gone silent or a move the dispatcher chose becomes a proposal weevboss says in one line, and `weevils weevbook move` is the person's direct order ([07](07-vault.md#moving-a-conversation)). On, they write next to the app and change nothing the app shows or does;
 a resume happens only when asked. Step 4 is off unless `WEEVILS_THREADS=1`: then the dispatcher runs in weevilsd,
 a conversation is one thread whatever engines carried it, the app shows three states and the weevbook page, and the
 Codex relay is gone ([06](06-dispatch.md#step-4-the-dispatcher-in-weevilsd), with what making it the default needs). The connector of
@@ -74,7 +74,7 @@ from the last checkpoint of the code.
 | [04 Resume](04-resume.md) | The three rungs of resuming. Checkpoints of the code. The handoff. What happens when a turn fails. |
 | [05 Connector](05-connector.md) | The MCP endpoint for chat apps: five tools, their schemas, uploads in parts, sign-in. |
 | [06 Dispatch](06-dispatch.md) | The engine table and the decision table that picks an engine, with no model call. |
-| [07 Vault](07-vault.md) | Steps 1 to 3 built (journals, attachments and handoffs; the join carries the vault; a new machine from the recovery code; the onboarding in weevboss's chat; slim raw lines in raw repositories, checkpoints as encrypted bundles, a thread resumed from the vault). The lease on GitHub is design. Every conversation kept on your own GitHub, encrypted; the history imported at install; moves agreed by the person. |
+| [07 Vault](07-vault.md) | Steps 1 to 4 built (journals, attachments and handoffs; the join carries the vault; a new machine from the recovery code; the onboarding in weevboss's chat; slim raw lines in raw repositories, checkpoints as encrypted bundles, a thread resumed from the vault) and step 4 (the lease on the vault, weevboss's proposals, direct orders). Every conversation kept on your own GitHub, encrypted; the history imported at install; moves agreed by the person. |
 
 Decisions and their reasons are in [`docs/adr`](../adr). Each page lists its invariants: numbered statements that
 tests check. `THREAD-n` and `BOOK-n` are tested today in
@@ -132,6 +132,10 @@ Every number in these pages, in one place. They are starting values, to be tuned
 | Clock grace before a steal | 30 s | 03 |
 | The dispatcher reads `working` leases | every 10 s | 03 |
 | A dead holder's lease is stolen, at the latest | 130 s after its last renewal (clocks within 30 s) | 03 |
+| Lease on the vault: renewal while a turn runs | every 5 min | 07 |
+| Lease on the vault: lifetime after a renewal | 10 min | 07 |
+| Lease on the vault: unchanged before it counts as silent (then a proposal, never a steal) | 10 min, and 30 s past its lifetime | 07 |
+| The machine that serves the app reads the vault's leases | every 2 min while another machine works, every 10 otherwise | 07 |
 | A held message handed again to the holder | every 30 s | 03 |
 | An engine chosen that has not started the turn | decided again after 30 s | 03 |
 | Largest journal line | 1 MiB | 02 |

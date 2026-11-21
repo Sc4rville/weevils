@@ -6,6 +6,8 @@
 //   c/<sha256>   one chunk: the journal bytes appended since the previous push, compressed then encrypted, immutable
 //   a/<sha256>   one attachment, encrypted
 //   h            handoff.md as the journal last recorded it, encrypted (step 2: a model wrote it, the journal cannot rebuild it)
+// refs/leases/<id> → a commit with one file, `l`: the thread's lease, encrypted (step 4, vault-lease.ts); every push of
+// a thread carries it, compare-and-swap, so that one machine at a time writes a thread;
 // and refs/heads/main → a README only. Names are hashes of the ciphertext; commits have a fixed neutral author, date
 // and message: no title, project, path, machine or account name leaves in clear.
 //
@@ -33,6 +35,8 @@ import { deriveMeta, ownTask, parseEngine, parseJournal } from './journal.ts'
 import { Locked, Weevbook, threadRefs } from './store.ts'
 import { linesDue, pushLines, readLines, type CheckpointsReport, type LinesJob, type LinesReport, type RawReport } from './vault-raw.ts'
 import { ghRunner, type Gh } from './vault-github.ts'
+import { intentAt, renewVaultLeases, vaultLeases } from './vault-lease.ts'
+import { parseLease, type LeaseClient } from './lease.ts'
 
 // ---------------------------------------------------------------- sealing
 
@@ -40,8 +44,8 @@ const VERSION = 1
 const ZSTD = 1
 const GZIP = 2
 /** m, c, a, h: a thread's manifest, journal chunk, attachment, handoff. Step 3: rm and rc, a thread's raw manifest and
- *  raw chunk; km and kb, its checkpoints' manifest and one bundle; x, a piece of the raw map. */
-export type Kind = 'm' | 'c' | 'a' | 'h' | 'rm' | 'rc' | 'km' | 'kb' | 'x'
+ *  raw chunk; km and kb, its checkpoints' manifest and one bundle; x, a piece of the raw map. Step 4: l, its lease. */
+export type Kind = 'm' | 'c' | 'a' | 'h' | 'rm' | 'rc' | 'km' | 'kb' | 'x' | 'l'
 const hasZstd = typeof (zlib as { zstdCompressSync?: unknown }).zstdCompressSync === 'function'
 
 export class VaultError extends Error {}
@@ -254,6 +258,11 @@ export interface VaultOptions {
   now?: () => number
   /** Progress of a long push (the first one of an existing weevbook), one line per batch sent. */
   progress?: (line: string) => void
+  /** Step 4: this machine syncs with a hub (03): where the hub's lease names it, the vault's lease follows. */
+  hub?: boolean
+  /** Step 4: the lease client of this process (weevilsd's pusher keeps one: it remembers the leases it holds, to
+   *  renew them). Default: one for this push. */
+  leases?: LeaseClient
 }
 
 interface Manifest {
@@ -322,10 +331,10 @@ export async function lockStaging(staging: string, name = 'lock'): Promise<() =>
   throw new Locked(`vault.${name}`)
 }
 
-/** The vault's refs as the remote has them, in refs/vault-remote/ of the staging repository: the threads and `main`.
- *  Never the raw lines or the checkpoints: those are fetched for one thread, when it is resumed. */
+/** The vault's refs as the remote has them, in refs/vault-remote/ of the staging repository: the threads, their leases
+ *  and `main`. Never the raw lines or the checkpoints: those are fetched for one thread, when it is resumed. */
 async function fetchRemote(o: VaultOptions) {
-  await git(o.staging, ['fetch', '-q', '--no-tags', '--prune', o.remote, '+refs/threads/*:refs/vault-remote/threads/*', '+refs/heads/*:refs/vault-remote/heads/*'], {
+  await git(o.staging, ['fetch', '-q', '--no-tags', '--prune', o.remote, '+refs/threads/*:refs/vault-remote/threads/*', '+refs/leases/*:refs/vault-remote/leases/*', '+refs/heads/*:refs/vault-remote/heads/*'], {
     env: o.ssh ? { GIT_SSH_COMMAND: o.ssh } : {}, timeoutMs: o.netMs ?? 300_000,
   })
 }
@@ -363,6 +372,8 @@ export interface PushReport {
   differ: string[]
   /** Threads that could not be read this time. */
   failed: { thread: string; error: string }[]
+  /** Step 4: threads not sent because another machine holds their lease (they continue there). */
+  elsewhere: { thread: string; holder: string | null }[]
   /** Step 3: what went to the raw repositories and to refs/checkpoints (absent: a push of journals only). */
   raw?: RawReport
   checkpoints?: CheckpointsReport
@@ -385,7 +396,7 @@ export async function pushVault(o: VaultOptions): Promise<PushReport> {
 
 async function push(o: VaultOptions): Promise<PushReport> {
   const book = path.join(path.resolve(o.dir), '.git')
-  const report: PushReport = { threads: 0, sealed: 0, chunks: 0, attachments: 0, pushed: 0, differ: [], failed: [] }
+  const report: PushReport = { threads: 0, sealed: 0, chunks: 0, attachments: 0, pushed: 0, differ: [], failed: [], elsewhere: [] }
   const state = await readState(o.staging)
   await fetchRemote(o)
   const sources = fs.existsSync(path.join(book, 'HEAD')) ? await refsUnder(book, 'refs/threads/') : new Map<string, string>()
@@ -485,24 +496,52 @@ async function send(o: VaultOptions, state: State, remote: Map<string, string>, 
   // Send every ref the remote does not have yet, newest threads first, in atomic groups.
   const now = await refsUnder(o.staging, 'refs/threads/')
   const send = [...now].filter(([id, oid]) => remote.get(id) !== oid).sort(([a], [b]) => (a < b ? 1 : -1))
-  const specs: { spec: string; ref: string; oid: string }[] = []
-  const remoteMain = await revParse(o.staging, 'refs/vault-remote/heads/main')
-  if (!remoteMain) {
+  const env: Record<string, string> = o.ssh ? { GIT_SSH_COMMAND: o.ssh } : {}
+  if (!(await revParse(o.staging, 'refs/vault-remote/heads/main'))) {
     const readme = await readmeCommit(o.staging)
     await git(o.staging, ['update-ref', 'refs/heads/main', readme])
-    specs.push({ spec: `${readme}:refs/heads/main`, ref: 'refs/vault-remote/heads/main', oid: readme })
+    await git(o.staging, ['push', '-q', '--no-verify', o.remote, `${readme}:refs/heads/main`], { env, timeoutMs: o.netMs ?? 600_000 })
+    await git(o.staging, ['update-ref', 'refs/vault-remote/heads/main', readme])
+    report.pushed++
   }
-  for (const [id, oid] of send) specs.push({ spec: `${oid}:refs/threads/${id}`, ref: `refs/vault-remote/threads/${id}`, oid })
-  for (let i = 0; i < specs.length; i += 100) {
-    const group = specs.slice(i, i + 100)
-    await git(o.staging, ['push', '-q', '--atomic', '--no-verify', o.remote, ...group.map((s) => s.spec)], { env: o.ssh ? { GIT_SSH_COMMAND: o.ssh } : {}, timeoutMs: o.netMs ?? 600_000 })
-    for (const s of group) await git(o.staging, ['update-ref', s.ref, s.oid])
-    report.pushed += group.length
+  // Each thread goes with its lease, compare-and-swap (step 4): taken when it has none, taken over when it is idle,
+  // renewed when it is this machine's. A thread another machine holds at work, or took meanwhile, is left out.
+  const leases = o.leases ?? vaultLeases(o)
+  if (send.length) await leases.readAll(false)
+  const book = path.join(path.resolve(o.dir), '.git')
+  for (let i = 0; i < send.length; i += 100) {
+    const group = send.slice(i, i + 100)
+    const items = []
+    for (const [id, oid] of group) items.push({ thread: id, intent: { ...(await intentAt(book, state.threads[id] ?? '', o.machine)), tip: oid } })
+    const out = await leases.hold(items)
+    for (const [id, oid] of group) {
+      const r = out.get(id)
+      if (r?.ok) {
+        await git(o.staging, ['update-ref', `refs/vault-remote/threads/${id}`, oid])
+        report.pushed++
+      } else if (!r || r.why === 'unreachable') throw new VaultError('git push: the vault did not answer') // i18n-ignore: for the log
+      else if (r.why === 'refused' && o.hub && (await hubHolds(book, id, o.machine))) {
+        // With a hub on a machine, the hub's lease says who writes the thread (03): the vault's follows it.
+        const led = await leases.steal(id, items.find((x) => x.thread === id)!.intent, { order: true })
+        if (!led.ok) throw new VaultError('git push: the vault moved meanwhile') // i18n-ignore: for the log
+        await git(o.staging, ['update-ref', `refs/vault-remote/threads/${id}`, oid])
+        report.pushed++
+      } else if (r.why === 'refused') report.elsewhere.push({ thread: id, holder: leases.seen(id)?.lease?.holder ?? null })
+      else if (r.holder && r.holder !== o.machine) report.elsewhere.push({ thread: id, holder: r.holder })
+      // Refused for another reason than its lease (the thread moved on the vault under this push): tried again later.
+      else throw new VaultError('git push: the vault moved meanwhile') // i18n-ignore: for the log
+    }
   }
   state.pushedAt = new Date().toISOString()
   state.error = null
   await writeState(o.staging, state)
   return report
+}
+
+/** This machine holds the thread's lease on its hub (03-sync-and-lease.md), as the weevbook last read or pushed it. */
+async function hubHolds(book: string, thread: string, machine: string): Promise<boolean> {
+  const r = await git(book, ['cat-file', 'blob', `refs/hub/leases/${thread}:lease.json`], { allowFail: true })
+  return r.code === 0 && parseLease(r.out.toString())?.holder === machine
 }
 
 // ---------------------------------------------------------------- restore
@@ -723,6 +762,8 @@ export interface PusherOptions {
   /** Where `gh` is signed in: a round at least this often even when nothing moved here, so that a machine that
    *  joined gets its access to the raw repositories within that time (15 min). */
   idleMs?: number
+  /** This machine syncs with a hub (VaultOptions.hub). */
+  hub?: boolean
   /** The clock (tests). */
   now?: () => number
   /** The priority of the process that pushes the raw lines and the checkpoints: 19, the lowest (a test that waits
@@ -761,6 +802,40 @@ export function startVaultPusher(o: PusherOptions) {
   const gh = o.gh ? ghRunner(o.gh, 20_000) : null
   const idleMs = gh ? (o.idleMs ?? 15 * 60_000) : 0
   const rawQuietMs = o.rawQuietMs ?? 120_000
+  /** Step 4: this machine's leases on the vault. One client for the life of the pusher: it remembers what it holds. */
+  let leases: LeaseClient | null = null
+  let leasesRead = false
+  let leasesAt = 0
+  let leaseError = ''
+  const elsewhere = new Set<string>()
+
+  /** The working leases of this machine, renewed every five minutes while their turn runs (vault-lease.ts). */
+  async function renew(now: number) {
+    try {
+      const key = leases ? null : readKey(o.keyFile)
+      if (!leases && key) leases = vaultLeases({ staging: o.staging, remote: o.remote, key, machine: o.machine, ssh: o.ssh, now: clock })
+      if (!leases) return
+      // After a start, what this machine holds is read from the vault once (again five minutes later when it is away).
+      if (!leasesRead && now - leasesAt >= retryMs) {
+        leasesAt = now
+        await openStaging(o.staging)
+        const unlock = await lockStaging(o.staging)
+        try {
+          leasesRead = !!(await leases.readAll(true))
+        } finally {
+          await unlock()
+        }
+      }
+      const r = await renewVaultLeases({ dir: o.dir, staging: o.staging, machine: o.machine, now: clock }, leases)
+      for (const l of r.lost) log(`[vault] ${l.thread} continues on ${l.to ?? 'another machine'}: this machine no longer writes it to the vault`)
+      leaseError = ''
+    } catch (e) {
+      if (e instanceof Locked) return
+      const msg = (e as Error)?.message ?? String(e)
+      if (msg !== leaseError) log(`[vault] leases: ${msg}`)
+      leaseError = msg
+    }
+  }
 
   async function snapshot() {
     if (!fs.existsSync(path.join(book, 'HEAD'))) return ''
@@ -830,11 +905,17 @@ export function startVaultPusher(o: PusherOptions) {
         const snap = await snapshot()
         if (!snap) return
         const now = clock()
+        // 0. The leases of the turns that run here.
+        await renew(now)
         // 1. The journals, when the refs moved (or after a failure, once `retryMs` passed).
         if ((snap !== last || failedAt) && !(failedAt && now - failedAt < retryMs)) {
           const key = readKey(o.keyFile)
           if (!key) throw new VaultError(`no vault key in ${o.keyFile}: run weevils weevbook vault setup or vault restore`) // i18n-ignore: log line
-          const r = await pushVault({ dir: o.dir, staging: o.staging, remote: o.remote, key, machine: o.machine, ssh: o.ssh, raw: false })
+          const r = await pushVault({ dir: o.dir, staging: o.staging, remote: o.remote, key, machine: o.machine, ssh: o.ssh, raw: false, now: clock, hub: o.hub, ...(leases ? { leases } : {}) })
+          for (const x of r.elsewhere) {
+            if (!elsewhere.has(x.thread)) log(`[vault] ${x.thread} continues on ${x.holder ?? 'another machine'}: not pushed from here`)
+            elsewhere.add(x.thread)
+          }
           last = snap
           failedAt = 0
           lastError = ''

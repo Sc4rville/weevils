@@ -18,8 +18,10 @@ export const COUNTED: readonly FailReason[] = ['api', 'auth']
 /** The `reason` of a held turn: the app maps each to one sentence and one action (docs/spec/06-dispatch.md).
  *  `expired`: a request that waited more than an hour without an engine (05-connector.md, step 4). `stopped`: a turn
  *  the dispatcher will never place: weevils did not file it (it was typed in the provider's own session, or came
- *  before threads were on), or it waited too long after it had run (06-dispatch.md, « Activation »). */
-export type HoldReason = 'no-machine' | 'no-room' | 'not-signed-in' | 'only-there' | 'attempts' | 'expired' | 'stopped'
+ *  before threads were on), or it waited too long after it had run (06-dispatch.md, « Activation »).
+ *  `agreement`: the table chose another account, machine or provider, and that move waits for the person's yes
+ *  (07-vault.md, step 4); it goes on by itself once agreed. */
+export type HoldReason = 'no-machine' | 'no-room' | 'not-signed-in' | 'only-there' | 'attempts' | 'expired' | 'stopped' | 'agreement'
 /** Held for a reason the table cannot lift: the turn waits for the person (try again, ask again, write again), and the
  *  turns after it are served. */
 export const WAITS_FOR_YOU: readonly string[] = ['attempts', 'expired', 'stopped']

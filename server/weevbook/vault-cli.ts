@@ -16,7 +16,7 @@
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { DATA_DIR, HOME, MACHINE, VAULT_CONF, VAULT_DEPLOY_KEY, VAULT_KEY_FILE, VAULT_STAGING, vaultRemote } from '../config.ts'
+import { DATA_DIR, HOME, MACHINE, VAULT_CONF, VAULT_DEPLOY_KEY, VAULT_KEY_FILE, VAULT_STAGING, WEEVBOOK_HUB, vaultRemote } from '../config.ts'
 import { tr } from '../i18n.ts'
 import { which } from '../platform.ts'
 import V from '../i18n/weevbook-vault.ts'
@@ -96,9 +96,10 @@ export async function vaultMain(args: string[], out: (line: string) => void): Pr
         if (!remote) return fail(t.noRemote)
         const key = readKey(files.key)
         if (!key) return fail(t.noKey(files.key))
-        const r = await pushVault({ dir, staging: files.staging, remote, key, machine: MACHINE.id, ssh, keyDir: path.dirname(files.deploy), gh, ...(args.includes('--progress') ? { progress: out } : {}) })
+        const r = await pushVault({ dir, staging: files.staging, remote, key, machine: MACHINE.id, ssh, keyDir: path.dirname(files.deploy), gh, hub: !!WEEVBOOK_HUB, ...(args.includes('--progress') ? { progress: out } : {}) })
         out(r.sealed || r.pushed ? t.pushed(r.threads, r.sealed, r.chunks, r.attachments, r.pushed) : r.raw?.pushed || r.checkpoints?.pushed ? t.journalsSame : t.nothing)
         if (r.differ.length) out(t.differ(r.differ.length))
+        if (r.elsewhere.length) out(t.elsewhere(r.elsewhere.length, [...new Set(r.elsewhere.map((x) => x.holder ?? '?'))].join(', ')))
         for (const f of r.failed) out(t.error(`${f.thread}: ${f.error}`))
         // Step 3: the raw lines and the checkpoints.
         const raw = r.raw

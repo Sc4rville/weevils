@@ -794,3 +794,20 @@ export function readAny(p: string): { path: string; size: number; binary: boolea
   const binary = buf.subarray(0, 8000).includes(0)
   return { path: full, size: st.size, binary, content: binary ? '' : buf.toString('utf8'), truncated: st.size > max }
 }
+
+// ---------------------------------------------------------------- pour Tempo (server/tempo.ts)
+
+/** La machine telle que Tempo la compte : cœurs, mémoire, disque libre, et l'offre de l'hébergeur quand elle est connue. */
+export async function machineInput(): Promise<import('./tempo.ts').MachineInput> {
+  const m = meminfo()
+  const d = disk()
+  const cores = effectiveCores()
+  let host: import('./tempo.ts').MachineInput['host']
+  try {
+    const o = offer(await facts(), cores, m.total, d.total)
+    if (o) host = { ...(o.plan ? { plan: o.plan } : {}), ...(o.nextPlan ? { nextPlan: o.nextPlan } : {}), ...(o.nextVcpu ? { nextVcpu: o.nextVcpu } : {}), ...(o.nextRamGb ? { nextRamGb: o.nextRamGb } : {}), ...(o.nextPrice != null ? { nextPrice: o.nextPrice } : {}), ...(o.currency ? { currency: o.currency } : {}) }
+  } catch {
+    /* pas d'offre connue : Tempo dit seulement les cœurs et la mémoire qu'il faudrait */
+  }
+  return { cores, memGb: m.total / 1024 ** 3, diskFreeGb: Math.max(0, d.total - d.used) / 1024 ** 3, at: Date.now(), ...(host ? { host } : {}) }
+}

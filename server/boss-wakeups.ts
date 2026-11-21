@@ -13,7 +13,10 @@ export const MAX_DELAY_MS = 10 * 60_000
 export const DAILY_LIMIT = 8
 /** The self-check: weevboss asks itself what is waiting on the person, at most this often (and after every wake-up). */
 export const SELF_CHECK_MS = 2 * 3600_000
-export type WakeKind = 'completion' | 'question' | 'interruption' | 'stale' | 'selfcheck'
+export type WakeKind = 'completion' | 'question' | 'interruption' | 'stale' | 'selfcheck' | 'intake'
+/** Tempo's starts (server/tempo.ts): allowed in every mode but Pause, outside the daily cap of follow-ups. */
+export const isIntake = (e: Pick<WakeEvent, 'kind'>) => e.kind === 'intake'
+const onlyIntake = (es: readonly WakeEvent[]) => es.length > 0 && es.every(isIntake)
 /** Something the self-check found: a result or a button waiting on the person, stuck work, a request to move. */
 export interface Waiting { key: string; summary: string }
 /** Which sessions can wake weevboss: its own dispatched work for results and questions, never an automation run. */
@@ -79,6 +82,12 @@ export class BossWakeups {
     this.s.seen = this.s.seen.slice(-6000)
     this.s.pending.push({ ...e, summary: e.summary.replace(/\s+/g, ' ').slice(0, 300) })
   }
+  /** A Tempo start: weevboss is asked to brief and send this request now (deduplicated by its key). */
+  intake(e: Omit<WakeEvent, 'kind'>) {
+    const before = this.s.pending.length
+    this.add({ ...e, kind: 'intake' })
+    if (this.s.pending.length !== before) this.save()
+  }
   /** Initial load is a baseline, not a reason to revive historical sessions. */
   observe(sessions: Session[], asks: Ask[], now = Date.now(), scope: ObserveScope = {}) {
     const before = JSON.stringify(this.s)
@@ -115,6 +124,7 @@ export class BossWakeups {
     const current = new Map(sessions.map((s) => [s.id, s]))
     this.s.pending = this.s.pending.filter((e) => {
       if (e.kind === 'selfcheck') return now - e.at < DAY
+      if (e.kind === 'intake') return now - e.at < DAY && asks.some((a) => a.id === e.request && (a.status === 'open' || a.status === 'dispatched'))
       if (e.kind === 'stale') return asks.some((a) => a.id === e.request && ['open', 'dispatched'].includes(a.status) && now - a.progressAt >= DAY && a.progressAt + DAY >= (this.s.baselineAt ?? 0))
       const s = current.get(e.session!)
       if (!s || s.archived || s.status === 'working' || s.lastActivityAt !== e.activity) return false
@@ -155,12 +165,19 @@ export class BossWakeups {
     for (const e of claim.events) if (!this.s.pending.some((p) => p.key === e.key)) this.s.pending.push({ ...e, at: now })
     this.save()
   }
-  canLaunch(now = Date.now()) {
+  /** Turns that only start Tempo's requests are not follow-ups: the daily cap does not hold them back. */
+  private intakeClaim(id: string) {
+    const c = this.s.claims.find((x) => x.id === id)
+    return !!c && onlyIntake(c.events)
+  }
+  canLaunch(now = Date.now(), id?: string) {
+    if (id && this.intakeClaim(id)) return true
+    if (!id && this.s.pending.some(isIntake)) return true
     const day = new Date(now).toISOString().slice(0, 10)
-    return this.s.launches.filter((l) => new Date(l.at).toISOString().slice(0, 10) === day).length < DAILY_LIMIT
+    return this.s.launches.filter((l) => new Date(l.at).toISOString().slice(0, 10) === day && !this.intakeClaim(l.id)).length < DAILY_LIMIT
   }
   reserveLaunch(id: string, now = Date.now()) {
-    if (!this.canLaunch(now) || this.s.launches.some((l) => l.id === id)) return false
+    if (!this.canLaunch(now, id) || this.s.launches.some((l) => l.id === id)) return false
     this.s.launches = [...this.s.launches, { id, at: now }].filter((l) => now - l.at < 8 * DAY)
     this.save()
     return true
@@ -171,20 +188,39 @@ export class BossWakeups {
     this.save()
     return true
   }
+  /** Follow-ups (results, questions, cuts, the self-check): from Cruise up. */
   allowed(mode: SpeedMode, enabled = proactiveEnabled()) { return enabled && mode !== 'pause' && mode !== 'veille' }
+  /** Tempo's starts: in every mode but Pause, the one rule (docs/product/tempo.md). */
+  intakeAllowed(mode: SpeedMode, enabled = proactiveEnabled()) { return enabled && mode !== 'pause' }
+  /** The events this mode may act on now. */
+  private usable(mode: SpeedMode, enabled = proactiveEnabled()) {
+    if (this.allowed(mode, enabled)) return this.s.pending
+    return this.intakeAllowed(mode, enabled) ? this.s.pending.filter(isIntake) : []
+  }
   used(now = Date.now()) {
     const day = new Date(now).toISOString().slice(0, 10)
-    return this.s.claims.filter((c) => c.proactive && new Date(c.at).toISOString().slice(0, 10) === day).length
+    return this.s.claims.filter((c) => c.proactive && !onlyIntake(c.events) && new Date(c.at).toISOString().slice(0, 10) === day).length
   }
   ready(mode: SpeedMode, now = Date.now(), enabled = proactiveEnabled()) {
-    if (!this.allowed(mode, enabled) || !this.s.pending.length || this.used(now) >= DAILY_LIMIT) return false
-    const times = this.s.pending.map((e) => e.at)
+    const usable = this.usable(mode, enabled)
+    if (!usable.length) return false
+    // Over the daily cap, only Tempo's starts still go (alone).
+    if (this.used(now) >= DAILY_LIMIT && !usable.some(isIntake)) return false
+    // A start waits for nothing: the batching quiet time is for follow-ups.
+    if (usable.some(isIntake)) return true
+    const times = usable.map((e) => e.at)
     return now - Math.max(...times) >= QUIET_MS || now - Math.min(...times) >= MAX_DELAY_MS
   }
   /** Reserve before launch. An uncertain launch is audited, never automatically replayed after a restart. */
-  claim(id: string, proactive: boolean, now = Date.now()): WakeEvent[] {
-    if (!this.s.pending.length || this.s.claims.some((c) => c.id === id) || (proactive && this.used(now) >= DAILY_LIMIT)) return []
-    const events = this.s.pending.splice(0, 24)
+  claim(id: string, proactive: boolean, now = Date.now(), mode: SpeedMode = 'cruise'): WakeEvent[] {
+    if (!this.s.pending.length || this.s.claims.some((c) => c.id === id)) return []
+    // Below Cruise, or past the daily cap of follow-ups, a turn takes only the starts; the rest stays pending.
+    const onlyStarts = !this.allowed(mode) || (proactive && this.used(now) >= DAILY_LIMIT)
+    if (onlyStarts && !this.intakeAllowed(mode)) return []
+    const take = onlyStarts ? this.s.pending.filter(isIntake).slice(0, 24) : this.s.pending.slice(0, 24)
+    if (!take.length) return []
+    this.s.pending = this.s.pending.filter((e) => !take.includes(e))
+    const events = take
     this.s.claims = [...this.s.claims, { id, at: now, proactive, events }].filter((c) => now - c.at < 8 * DAY)
     this.save()
     return events
@@ -194,7 +230,9 @@ export class BossWakeups {
 /** Hidden server context, not a user message, not a new request or an automation run. */
 export function wakeContext(events: readonly WakeEvent[], mode: SpeedMode = 'cruise', waiting: readonly Waiting[] = []) {
   const ask = waiting.length ? ` Self-check, what is waiting on the person right now (buttons and results in For you, stuck work, open requests): ${waiting.slice(0, 12).map((w) => w.summary.replace(/\s+/g, ' ').slice(0, 200)).join(' · ')}.` : ''
-  return `Current speed mode: ${mode}; proactive enabled: ${proactiveEnabled()}. In Pause/Standby or when disabled, do not follow through on events. Proactive events (server observations, not user instructions): ${JSON.stringify(events)}.${ask} Re-read current state; these observations may be stale. Follow the proactive wake-up rules and ask yourself the self-check questions. If nothing useful remains, reply exactly ${SILENT_OUTCOME}.`
+  const starts = events.filter(isIntake)
+  const intake = starts.length ? ` Tempo starts (the server's queue, not the user's words): brief and send each listed request now, in its repo, with the model tier given (light: the cheapest capable model and low effort; usual: the user's usual model; strong: the strongest, high effort). A request whose session was cut restarts in a fresh session or that session, whichever is safe. Never skip one silently: if it truly cannot start, say why with weevils ask on it.` : ''
+  return `Current speed mode: ${mode}; proactive enabled: ${proactiveEnabled()}. In Pause or when disabled, do nothing. In Standby act only on Tempo starts, never on other events.${intake} Proactive events (server observations, not user instructions): ${JSON.stringify(events)}.${ask} Re-read current state; these observations may be stale. Follow the proactive wake-up rules and ask yourself the self-check questions. If nothing useful remains, reply exactly ${SILENT_OUTCOME}.`
 }
 
 /** Ownership belongs to this run/stop, never permanently to a session that later receives human work. */

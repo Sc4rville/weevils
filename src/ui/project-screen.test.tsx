@@ -7,7 +7,7 @@ import type { Session } from '../../shared/api.ts'
 import type { LedgerView } from '../../shared/ledger.ts'
 
 const ledger: { v: LedgerView } = { v: { goals: [], asks: [], pending: [], trace: [], knowledge: [], digestTokens: 0 } }
-vi.mock('../api', () => ({ api: { ledger: async () => ledger.v } }))
+vi.mock('../api', () => ({ api: { ledger: async () => ledger.v, tempo: async () => { throw new Error('none') } } }))
 localStorage.setItem('weevils-language', 'en')
 for (let p: object | null = HTMLElement.prototype; p; p = Object.getPrototypeOf(p)) if (Object.hasOwn(p, 'animate')) delete (p as { animate?: unknown }).animate
 
@@ -60,20 +60,30 @@ afterEach(() => {
 })
 
 describe('page', () => {
-  it('the request column (what runs on top, short titles, done ones kept), then every session: open ones first, finished ones newest first, 6 then the rest on a tap', async () => {
-    ledger.v = { ...ledger.v, asks: [ask('old', { status: 'done', title: 'Old thing', at: NOW - 90 * MIN, dispatches: sent('d0') }), ask('q', { status: 'open', text: 'make the weevils page calmer', title: 'Calmer weevils page', at: NOW - 5 * MIN }), ask('r', { title: 'Install page fix', at: NOW - 30 * MIN, dispatches: sent('w') }), ask('else', { dispatches: sent('other') })] }
+  it('sessions with their requests under them, the most recently active first; needs you on the session; never-sent requests last; model switches left out; then finished sessions without requests', async () => {
+    ledger.v = { ...ledger.v, asks: [
+      ask('old', { status: 'done', title: 'Old thing', at: NOW - 90 * MIN, dispatches: sent('d0') }),
+      ask('q', { status: 'open', text: 'make the weevils page calmer', title: 'Calmer weevils page', at: NOW - 5 * MIN }),
+      ask('r', { title: 'Install page fix', at: NOW - 30 * MIN, dispatches: sent('w') }),
+      ask('m', { title: 'Switch For you session Opus', at: NOW - 20 * MIN, dispatches: sent('w') }),
+      ask('else', { dispatches: sent('other') }),
+    ] }
     const done = Array.from({ length: 8 }, (_, i) => session(`d${i}`, { status: 'done', title: `done ${i}`, lastActivityAt: NOW - (i + 2) * 60 * MIN }))
-    const sessions = [...done, session('w', { now: 'running tests' }), session('other', { projectId: 'q' }), session('a', { status: 'archived' as never, archived: true })]
+    const sessions = [...done, session('w', { now: 'running tests' }), session('i', { status: 'needs_user', lastActivityAt: NOW - 3 * MIN }), session('other', { projectId: 'q' }), session('a', { status: 'archived' as never, archived: true })]
     const ctx = { snap: { sessions, projects: [{ id: 'p', name: 'weevils', kind: 'repo', repos: ['weevils'], where: {}, lastActivityAt: NOW }], machines: [], version: 1, asksOpen: 1 }, colors: {}, now: NOW, push: () => {}, back: () => {} } as never
     await act(async () => root.render(<Ctx.Provider value={ctx}><ProjectPage projectId="p" /></Ctx.Provider>))
     await act(async () => new Promise((r) => setTimeout(r, 10)))
-    expect([...host.querySelectorAll('.rc-title')].map((e) => e.textContent)).toEqual(['Install page fix', 'Calmer weevils page', 'Old thing'])
-    expect([...host.querySelectorAll('.rc-row')].map((r) => !!r.querySelector('.rc-star .ic'))).toEqual([true, false, false])
+    const rows = [...host.querySelectorAll('.rc-row')]
+    expect(rows.map((r) => `${r.classList.contains('rc-head') ? '# ' : '- '}${r.querySelector('.rc-title')!.textContent}`)).toEqual([
+      '# title w', '- Install page fix', '# title i', '# done 0', '- Old thing', '# not sent yet', '- Calmer weevils page',
+    ])
+    expect(rows.map((r) => !!r.querySelector('.rc-star .ic'))).toEqual([false, true, false, false, false, false, false])
+    expect(rows.map((r) => r.querySelector('.rc-waits')?.textContent ?? '')).toEqual(['', '', 'needs you', '', '', '', ''])
     const names = () => [...host.querySelectorAll('.session-name')].map((e) => e.textContent)
-    expect(names()).toEqual(['title w', 'done 0', 'done 1', 'done 2', 'done 3', 'done 4', 'done 5'])
+    expect(names()).toEqual(['done 1', 'done 2', 'done 3', 'done 4', 'done 5', 'done 6'])
     const older = host.querySelector<HTMLButtonElement>('.pj-older button')!
-    expect(older.textContent).toBe('2 older sessions')
+    expect(older.textContent).toBe('1 older session')
     act(() => older.click())
-    expect(names()).toHaveLength(9)
+    expect(names()).toHaveLength(7)
   })
 })

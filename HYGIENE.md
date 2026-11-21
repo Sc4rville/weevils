@@ -20,6 +20,7 @@ file too: a rule changed here applies from the next run.
 | H-9 | No known high or critical vulnerability in dependencies stays unreported for more than one run. | Safety of everyone who installs weevils. | `npm audit`, every run including quiet ones. |
 | H-10 | Copies of this repository (mirrors in `~/projects/.mirrors`) are compared, never synced, by the automation. | Decision of 2026-11-12: one canonical source. | Section 2c. |
 | H-11 | Entry points are declared in `knip.json`; dead-code findings count only when knip runs with it and a plain text search agrees. | Without them knip called the server itself, the service worker, the `get/` scripts and a lazily imported dependency unused (13 false files, 2 false dependencies); with them, zero. | `npx knip` with `knip.json`, section 2. Introduced 2026-11-14. |
+| H-12 | The full check passes inside an automation's own session as it is (sandbox, push guard, young pid 1); a test that needs the host's process table, sandbox or push rights injects them, or says it skips. | 2026-11-21: 39 tests failed only because of the session they ran in (36 pushing to temporary local repos through the no-push guard, 2 probing the real sandbox, 1 assuming an old pid 1), which hid whether the code was green; 3 fixed here, the push helper is a proposal. | Section 4: run the check as is first and list the failures that disappear outside the session; until the push proposal lands, the run reruns with the guard's two local-path rules neutralised (network pushes stay blocked). Introduced 2026-11-21. |
 
 ## Accepted exceptions
 
@@ -31,6 +32,12 @@ Deliberate choices the automation must not report again. One line each: what, wh
   product identity, not a personal trace (renaming the labels would orphan installed services). 2026-11-14.
 - The public install entry `get.<domain>` named in `get/`, `server/weevils-update` and their docs: the product's
   own hosted entry point, overridable by environment. 2026-11-14.
+- The `](url)` placeholders in `server/orchestrator.{en,fr}.md` (the prompt shows the model the link syntax) and the
+  sample attachment link in `docs/spec/02-weevbook.md` (an example message): not broken links. Hygienist, 2026-11-21.
+- Secret-looking strings in tests and fixtures (`ghp_…`, `sk-…`, key headers, URL credentials): fakes that exercise the
+  redaction code; a hit counts only if it is new and does not look fake. Hygienist, 2026-11-21.
+- `tryweevils.<domain>` in `README.md`, `SECURITY.md` and `get/`: the product's public setup page, like `get.<domain>`.
+  Hygienist, 2026-11-21.
 
 ## Retired rules
 
@@ -40,6 +47,20 @@ None yet.
 
 Newest first, last 10 runs (older ones in `docs/hygiene/history.md`).
 
+- 2026-11-21 · main 9327369 · full
+  - Context: `main`'s history was rewritten on 2026-11-20; this run's branch was still on the old line and was reset
+    onto the new `main` (it had no commits of its own).
+  - Cleaner: seven pieces of code nothing read are gone; knip knows the structured-session pump is an entry point; a
+    test fixture no longer carries the owner's host; three tests no longer fail just because they run inside an
+    automation's sandbox. Full check green (2,986 tests, build), tests leave no file behind, no secret, no known
+    vulnerability, no real TODO.
+  - Invented: H-12, the full check must pass inside an automation's own session.
+  - Proposed: 146 branches live on the old history and can never merge into `main`: 121 hold nothing `main` lacks
+    (prune, list in the report), 25 hold unique work to replay onto the new `main`, including the night-lens and
+    find-ux automations' branches; automation worktrees created before the rewrite stay on the old line. A git
+    helper for tests that push to temporary repos so the session's push guard does not break them. `SECRET_KEYS`
+    in `shared/setup.ts` is unused (security-adjacent, the owner decides). Two updates within range: motion, ws.
+  - Held: nothing. Not run: the copy check (reading the mirror was refused in this session).
 - 2026-11-14 · first run (by hand) · main 17c1bf0 · full
   - Cleaner: 4 exports nothing used are gone; test fixtures no longer carry a real home directory; full check green
     (1,865 tests, build), tests leave no file behind, no secret, no known vulnerability, no real TODO left.
@@ -50,4 +71,4 @@ Newest first, last 10 runs (older ones in `docs/hygiene/history.md`).
   - Held: real home paths in two other test fixtures, both being edited by live work.
 - 2026-11-14 · set up · rules H-1 to H-10 written from the owner's brief; no run yet.
 
-<!-- hygiene:last-full main=17c1bf03e401cc850b3c2fa3dafaf3fbe7c7f415 branches=029dc8e5a11b at=2026-11-14T07:20:50.276Z -->
+<!-- hygiene:last-full main=6d4c2d9d4718ebdf012cb34de8cb2abde2de6678 branches=0ef7aac5ad84 at=2026-11-21T01:05:36.059Z -->

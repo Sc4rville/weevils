@@ -232,6 +232,27 @@ describe('claude : phases et messages', () => {
     expect(one().messages.at(-1)).toMatchObject({ role: 'event', text: 'Bash · Build' })
   })
 
+  it('a Claude action keeps what its title is made from, and a command its short redacted result', () => {
+    const now = Date.now()
+    write(claudeFile(), [
+      user('go', now - 4000),
+      assistant([
+        { type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'curl -H "Authorization: Bearer sk-abcdefghijklmnop" http://x/api' } },
+        { type: 'tool_use', id: 'r1', name: 'Read', input: { file_path: '/home/u/projects/app/src/api.ts', offset: 100, limit: 26 } },
+      ], now - 3000, { stop_reason: 'tool_use' }),
+      user([{ type: 'tool_result', tool_use_id: 'b1', content: 'line\n'.repeat(600) + 'token=supersecretvalue' }, { type: 'tool_result', tool_use_id: 'r1', content: 'file body' }], now - 2000),
+    ])
+    store.scan(now)
+    const [b, r] = one().messages.filter((m) => m.role === 'event')
+    expect(b.toolDetails!.calls).toEqual([{ name: 'Bash' }])
+    expect(b.toolDetails!.commands[0]).not.toContain('sk-abcdefghijklmnop')
+    expect(b.toolDetails!.output!.length).toBeLessThanOrEqual(1500)
+    expect(b.toolDetails!.outputTruncated).toBe(true)
+    expect(r.toolDetails).toMatchObject({ calls: [{ name: 'Read' }], commands: [], args: { file: '/home/u/projects/app/src/api.ts', lines: '100-125' } })
+    // A file's whole content is not a result worth keeping.
+    expect(r.toolDetails!.output).toBeUndefined()
+  })
+
   it('sidechain, méta et sorties de commandes ignorées', () => {
     const now = Date.now()
     write(claudeFile(), [

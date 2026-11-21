@@ -22,7 +22,7 @@ import C from '../i18n/copy'
 import { getLang, tr, useT } from '../i18n'
 import M from '../i18n/bits'
 import PM from '../i18n/plain-steps'
-import { clusters, clusterLine, groupLine } from './plain-steps'
+import { actionTitle, clusters, clusterLine, groupLine } from './plain-steps'
 import D from '../i18n/devil'
 import RM from '../i18n/relay'
 import { threadsOn } from './threads-on'
@@ -852,19 +852,6 @@ function group(messages: Message[]): Group[] {
   return out
 }
 
-/** The closed fold of project session threads: a plain line, the raw or long content behind a tap. */
-function Fold({ head, className = '', label, children }: { head: ReactNode; className?: string; label?: string; children: ReactNode }) {
-  return (
-    <details className={`step-detail ${className}`}>
-      <summary className="step-head" title={label}>
-        <span className="text">{head}</span>
-        
-      </summary>
-      <div className="step-content">{children}</div>
-    </details>
-  )
-}
-
 /** A brief from weevboss or another agent as shown: without the hidden ⟦weevils …⟧ context block (locale, steps) that rides on it. */
 const briefText = (text: string) => userText(withoutMachinePrefix(text))
 
@@ -872,11 +859,12 @@ const briefText = (text: string) => userText(withoutMachinePrefix(text))
 function PlainSteps({ steps, live }: { steps: Message[]; live: boolean }) {
   const mid = steps[0].id
   const listId = useId()
-  const t = useT(M)
   const w = useT(PM)
   const [open, setOpen] = useState(false)
   const cs = useMemo(() => clusters(steps), [steps])
-  const head = live ? clusterLine(cs[cs.length - 1], w) : groupLine(cs, w)
+  // A finished single action reads as its own title; a group as one or two ideas.
+  const head = live ? clusterLine(cs[cs.length - 1], w) : steps.length === 1 ? actionTitle(steps[0], w) : groupLine(cs, w)
+  // One tap opens the actions themselves, each with a title saying what it was for; a single one opens at once.
   return (
     <div className="msg band event plain" data-mid={mid}>
       <button type="button" className="in steps-head" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={open ? listId : undefined}>
@@ -886,22 +874,29 @@ function PlainSteps({ steps, live }: { steps: Message[]; live: boolean }) {
       </button>
       <Collapse open={open}>
         <div id={listId} className="in steps-list">
-          {cs.map((c, ci) => (
-            <Fold key={c.steps[0].id + ci} head={clusterLine(c, w)}>
-                {c.steps.map((s) => (
-                  <div key={s.id} className="step-raw">
-                    <div className="meta">{w.rawTitle}</div>
-                    {s.toolDetails?.commands.length ? <>{s.toolDetails.commands.map((command, i) => <pre key={i}>{command}</pre>)}</> : <pre>{s.text}</pre>}
-                    {s.toolDetails?.commandsTruncated && <p className="meta">{t.commandTruncated}</p>}
-                    {s.toolDetails?.output ? <><div className="meta">{t.recordedOutput}</div><pre>{s.toolDetails.output}</pre></> : <p className="meta">{w.unverified}</p>}
-                    {s.toolDetails?.outputTruncated && <p className="meta">{t.outputTruncated}</p>}
-                  </div>
-                ))}
-            </Fold>
-          ))}
+          {steps.map((s) => <Action key={s.id} s={s} open={steps.length === 1} />)}
         </div>
       </Collapse>
     </div>
+  )
+}
+
+/** One recorded action: its title; a tap shows the literal command (redacted) and what it gave back, when kept. */
+function Action({ s, open }: { s: Message; open: boolean }) {
+  const t = useT(M)
+  const w = useT(PM)
+  const title = useMemo(() => actionTitle(s, w), [s, w])
+  const d = s.toolDetails
+  return (
+    <details className="step-action" open={open || undefined}>
+      <summary className="step-head"><span className="text">{title}</span></summary>
+      <div className="step-raw">
+        {d?.commands.length ? d.commands.map((command, i) => <pre key={i}>{command}</pre>) : <pre>{s.text}</pre>}
+        {d?.commandsTruncated && <p className="meta">{t.commandTruncated}</p>}
+        {d?.output ? <><div className="meta">{w.aResult}</div><pre>{d.output}</pre></> : <p className="meta step-none">{w.aNone}</p>}
+        {d?.outputTruncated && <p className="meta">{t.outputTruncated}</p>}
+      </div>
+    </details>
   )
 }
 
@@ -916,6 +911,7 @@ function RawSteps({ steps, live }: { steps: Message[]; live: boolean }) {
   const t = useT(M)
   const [open, setOpen] = useState(false)
   const tools=useT(ToolM)
+  const w = useT(PM)
   const label = (message: Message) => {
     const category = message.toolDetails?.kinds?.length ? message.toolDetails.kinds.map(k => tools[k as keyof typeof tools] ?? step(message.text)).join(' · ') : step(message.text)
     const commands = message.toolDetails?.summaryCommands?.filter(Boolean).join(', ')
@@ -935,8 +931,7 @@ function RawSteps({ steps, live }: { steps: Message[]; live: boolean }) {
           {steps.map((s) => (
             <details key={s.id} className="step-detail">
               <summary className="step-head">
-                <span className="text">{label(s)}</span>
-                
+                <span className="text">{actionTitle(s, w)}</span>
               </summary>
               <div className="step-content">
                 {!!s.toolDetails?.calls?.length && <>
@@ -945,7 +940,7 @@ function RawSteps({ steps, live }: { steps: Message[]; live: boolean }) {
                 </>}
                 {s.toolDetails?.commands.length ? <><div className="meta">{t.recordedCommand}</div>{s.toolDetails.commands.map((command, i) => <pre key={i}>{command}</pre>)}</> : <p className="meta">{t.noRecordedCommand}</p>}
                 {s.toolDetails?.commandsTruncated && <p className="meta">{t.commandTruncated}</p>}
-                {s.toolDetails?.output ? <><div className="meta">{t.recordedOutput}</div><pre>{s.toolDetails.output}</pre></> : <p className="meta">{t.noRecordedOutput}</p>}
+                {s.toolDetails?.output ? <><div className="meta">{t.recordedOutput}</div><pre>{s.toolDetails.output}</pre></> : <p className="meta step-none">{w.aNone}</p>}
                 {s.toolDetails?.outputTruncated && <p className="meta">{t.outputTruncated}</p>}
               </div>
             </details>

@@ -15,7 +15,7 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); se
 const thread = [
   m('a', 'assistant', 'I will start by looking at the checkout code to understand how payment is wired. Then I will fix the button and run everything.'),
   ...['CheckoutForm.tsx', 'PayButton.tsx', 'cart.ts'].map((f, i) => m(`r${i}`, 'event', `Read · /home/user/projects/shop/src/${f}`)),
-  m('g', 'event', 'Grep · handlePay --include=*.ts'),
+  m('g', 'event', 'Grep · handlePay', { toolDetails: { calls: [{ name: 'Grep' }], commands: [], args: { pattern: 'handlePay', path: 'src' } } }),
   m('e', 'event', 'Edit · /home/user/projects/shop/src/PayButton.tsx'),
   m('t', 'event', 'Bash · npx vitest run --reporter=dot', { toolDetails: { commands: ['npx vitest run --reporter=dot'], output: '3 failed' } }),
 ]
@@ -38,17 +38,27 @@ it('while it works, only the live step says what happens now', async () => {
   expect(host.querySelectorAll('.steps-head')).toHaveLength(1)
   expect(host.querySelector('.steps-head .spin')).not.toBeNull()
 })
-it('expanded: one plain line per goal; raw commands and results only inside closed details; missing evidence said', async () => {
+it('one tap opens the actions themselves, each titled by what it was for; the literal command and result one tap further', async () => {
   await act(async () => root.render(<Messages session plain messages={thread} author="claude" />))
   await tapMessage()
   await act(async () => host.querySelector<HTMLButtonElement>('.steps-head')!.click())
-  const lines = [...host.querySelectorAll('.steps-list .step-head .text')].map((e) => e.textContent)
-  expect(lines).toEqual(['Reading the code · 3', 'Searching the code', 'Editing the pay button code', 'Running tests'])
-  for (const l of lines) expect(l).not.toMatch(FORBIDDEN)
-  for (const d of host.querySelectorAll('.step-detail')) expect((d as HTMLDetailsElement).open).toBe(false)
-  expect(host.querySelector('.step-content')!.textContent).toContain('CheckoutForm.tsx')
-  expect(host.querySelector('.step-content')!.textContent).toContain('No result recorded')
-  expect(host.textContent).toContain('3 failed')
+  const titles = [...host.querySelectorAll('.steps-list .step-action > .step-head .text')].map((e) => e.textContent)
+  expect(titles).toEqual(['Read src/CheckoutForm.tsx', 'Read src/PayButton.tsx', 'Read src/cart.ts', 'Search src for "handlePay"', 'Edit src/PayButton.tsx', 'Run the tests'])
+  expect(host.textContent).not.toContain('Recorded action')
+  for (const d of host.querySelectorAll('.step-action')) expect((d as HTMLDetailsElement).open).toBe(false)
+  const tests = [...host.querySelectorAll<HTMLDetailsElement>('.step-action')].at(-1)!
+  expect(tests.querySelector('pre')!.textContent).toBe('npx vitest run --reporter=dot')
+  expect(tests.textContent).toContain('3 failed')
+  // Nothing kept: one quiet phrase inside, never a sentence under every row.
+  expect(host.querySelectorAll('.step-none')).toHaveLength(5)
+  expect(host.textContent).not.toContain('nothing is claimed')
+})
+it('a single action opens straight away on the first tap', async () => {
+  await act(async () => root.render(<Messages session plain messages={[thread[0], thread[5]]} author="claude" />))
+  await tapMessage()
+  await act(async () => host.querySelector<HTMLButtonElement>('.steps-head')!.click())
+  expect(host.querySelectorAll('.step-action')).toHaveLength(1)
+  expect(host.querySelector<HTMLDetailsElement>('.step-action')!.open).toBe(true)
 })
 it('French mode speaks French, and the weevboss thread (not plain) is untouched', async () => {
   setLang('fr')

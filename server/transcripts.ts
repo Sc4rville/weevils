@@ -151,6 +151,32 @@ function push(t: Transcript, m: Message) {
   if (t.messages.length > max) t.messages.splice(0, t.messages.length - max)
 }
 
+/** Claude tools whose result is worth a look (a command's output, what a search found), not a file's whole content. */
+const KEEPS_RESULT = /^(Bash|Grep|Glob|WebSearch)$/
+const RESULT_MAX = 1500
+/** A Claude tool call as the thread's action list reads it: its own description, the command (redacted) and the few
+ *  arguments its title is made from. */
+export function claudeToolDetails(name: string, input: Record<string, unknown> | undefined): NonNullable<Message['toolDetails']> {
+  const i = input ?? {}
+  const str = (k: string, max = 200) => (typeof i[k] === 'string' && i[k] ? redactToolText(oneLine(i[k] as string), max) : undefined)
+  const num = (k: string) => (typeof i[k] === 'number' && Number.isFinite(i[k]) ? (i[k] as number) : undefined)
+  const offset = num('offset'), limit = num('limit')
+  const command = name === 'Bash' ? str('command', 8000) : undefined
+  const args = Object.fromEntries(Object.entries({
+    file: str('file_path') ?? str('notebook_path'),
+    lines: limit !== undefined ? `${offset ?? 1}-${(offset ?? 1) + limit - 1}` : offset !== undefined ? `${offset}-` : undefined,
+    pattern: str('pattern', 120),
+    path: str('path'),
+    url: str('url'),
+    query: str('query', 120),
+  }).filter(([, v]) => v !== undefined)) as NonNullable<NonNullable<Message['toolDetails']>['args']>
+  return {
+    calls: [{ name, ...(str('description', 300) ? { description: str('description', 300) } : {}) }],
+    commands: command ? [command] : [],
+    ...(Object.keys(args).length ? { args } : {}),
+  }
+}
+
 export function toolSummary(name: string, input: Record<string, unknown> | undefined): string {
   const i = input ?? {}
   const pick = (k: string) => (typeof i[k] === 'string' ? (i[k] as string) : '')
@@ -242,6 +268,12 @@ function claudeLine(t: Transcript, o: any) {
           push(t, userMsg(`${o.uuid}-t`, String(part.text), at))
         } else if (part?.type === 'tool_result') {
           t.phase = 'working'
+          // What a command or a search gave back, kept short and redacted: one tap away in the thread, never shown by default.
+          const event = typeof part.tool_use_id === 'string' ? t.messages.findLast((m) => m.role === 'event' && m.id === part.tool_use_id) : undefined
+          if (event?.toolDetails && KEEPS_RESULT.test(event.toolDetails.calls?.[0]?.name ?? '')) {
+            const r = toolOutputDetails(part.content)
+            if (r.output) Object.assign(event.toolDetails, { output: r.output.slice(0, RESULT_MAX), outputTruncated: r.outputTruncated || r.output.length > RESULT_MAX })
+          }
         }
       }
     }
@@ -260,7 +292,7 @@ function claudeLine(t: Transcript, o: any) {
         else push(t, { id: `${msg.id ?? o.uuid}-${t.messages.length}`, role: 'assistant', text: part.text.trim(), at })
         t.lastAssistantId = msg.id
       } else if (part?.type === 'tool_use') {
-        push(t, { id: part.id ?? `${o.uuid}-tool`, role: 'event', text: redactToolText(toolSummary(part.name, part.input)), at })
+        push(t, { id: part.id ?? `${o.uuid}-tool`, role: 'event', text: redactToolText(toolSummary(part.name, part.input)), toolDetails: claudeToolDetails(part.name, part.input), at })
         t.lastAssistantId = undefined
       }
     }

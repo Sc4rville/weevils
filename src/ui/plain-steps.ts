@@ -119,3 +119,135 @@ export function liveNote(
   if (last?.role === 'event') return { text: clusterLine({ kind: kindOf(last), steps: [last] }, w).replace(/ ·.*$/, ''), state: 'working' }
   return { text: String(w.other), state: 'working' }
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// One action's title in the list under a step: what it is for, in a few words (« Search src/api.ts for "auto" »,
+// « Read src/api.ts lines 100-125 », « Run the tests »). Deterministic, from the recorded call: the agent's own
+// description when it gave one, else its tool and arguments. The literal command stays one tap further.
+
+/** « /home/me/projects/weevils/src/ui/api.ts » → « src/ui/api.ts »: the project folder and anything above it go. */
+export function shortPath(p: string): string {
+  const s = p.trim().replace(/^["']|["']$/g, '').replace(/^(?:~|\/home\/[^/]+|\/Users\/[^/]+|\/root)\/(?:projects|code|src|dev)\/[^/]+\/?/, '').replace(/^\.\//, '')
+  if (!s) return '.'
+  const parts = s.split('/').filter(Boolean)
+  return s.startsWith('/') || s.startsWith('~') ? parts.slice(-2).join('/') : parts.length > 3 ? `…/${parts.slice(-2).join('/')}` : parts.join('/')
+}
+const cut = (s: string, n = 36) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+const pattern = (p: string) => cut(p.replace(/\\([|().[\]{}*+?])/g, '$1').replace(/^\^|\$$/g, ''))
+const host = (u: string) => { try { const x = new URL(u); return x.host + (x.pathname.length > 1 ? cut(x.pathname, 24) : '') } catch { return cut(u, 40) } }
+
+/** Shell words, quotes understood (no expansion). */
+function words(s: string): string[] {
+  const out: string[] = []
+  let cur = '', q = '', any = false
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (q) { if (c === q) q = ''; else if (c === '\\' && q === '"' && /["\\$`]/.test(s[i + 1] ?? '')) cur += s[++i]; else cur += c; continue }
+    if (c === '"' || c === "'") { q = c; any = true; continue }
+    if (c === '\\' && i + 1 < s.length) { cur += s[++i]; any = true; continue }
+    if (/\s/.test(c)) { if (cur || any) out.push(cur); cur = ''; any = false; continue }
+    cur += c
+  }
+  if (cur || any) out.push(cur)
+  return out
+}
+/** The commands of a line, split on ; && || | and newlines outside quotes. */
+function segments(cmd: string): { text: string; piped: boolean }[] {
+  const out: { text: string; piped: boolean }[] = []
+  let cur = '', q = '', piped = false
+  const push = (nextPiped: boolean) => { if (cur.trim()) out.push({ text: cur.trim(), piped }); cur = ''; piped = nextPiped }
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i]
+    if (q) { if (c === q) q = ''; else if (c === '\\') { cur += c + (cmd[++i] ?? ''); continue } cur += c; continue }
+    if (c === '"' || c === "'") { q = c; cur += c; continue }
+    if (c === '\\') { cur += c + (cmd[++i] ?? ''); continue }
+    if (c === ';' || c === '\n') { push(false); continue }
+    if ((c === '&' || c === '|') && cmd[i + 1] === c) { i++; push(false); continue }
+    if (c === '|') { push(true); continue }
+    cur += c
+  }
+  push(false)
+  return out
+}
+const SKIP = /^(cd|export|set|source|\.|sleep|true|unset|pushd|popd|mkdir|clear)$/
+const WRAP = /^(sudo|heavy|nice|nohup|time|exec|env|command)$/
+
+type Titles = Record<string, any>
+function shellTitle(cmd: string, w: Titles): string | null {
+  for (const seg of segments(cmd)) {
+    if (seg.piped) continue
+    let a = words(seg.text)
+    while (a.length && (/^\w+=/.test(a[0]) || WRAP.test(a[0]) || (a[0] === 'timeout' && /^\d/.test(a[1] ?? '')))) a = a[0] === 'timeout' ? a.slice(2) : a.slice(1)
+    if (a[0] === 'npx') a = a.slice(1)
+    const [c0 = '', ...rest] = a
+    const c = c0.split('/').at(-1) ?? c0
+    if (!c || SKIP.test(c)) continue
+    const args = rest.filter((x) => !x.startsWith('-'))
+    const joined = rest.join(' ')
+    if (/^(grep|egrep|rg|ag|ack)$/.test(c)) {
+      const e = rest.indexOf('-e')
+      const p = e >= 0 ? rest[e + 1] : args[0]
+      const where = (e >= 0 ? args : args.slice(1)).filter((x) => x !== p)
+      return p ? w.aSearch(pattern(p), where.length === 1 && where[0] !== '.' ? shortPath(where[0]) : undefined) : null
+    }
+    if (c === 'sed' && /-n/.test(joined)) {
+      const range = /(\d+)\s*,\s*(\d+)\s*p/.exec(joined)
+      const file = args.filter((x) => !/^\d+\s*,?\s*\d*\s*p$/.test(x)).at(-1)
+      if (file) return w.aRead(shortPath(file), range ? `${range[1]}-${range[2]}` : undefined)
+    }
+    if (/^(cat|head|tail|less|more|wc|bat|nl)$/.test(c) && args.length) return w.aRead(shortPath(args.filter((x) => !/^\d+$/.test(x)).at(-1) ?? args[0]))
+    if (/^(ls|tree|du)$/.test(c)) return w.aList(shortPath(args.at(-1) ?? '.'))
+    if (c === 'find' || c === 'fd') {
+      const n = rest.indexOf('-name') >= 0 ? rest[rest.indexOf('-name') + 1] : rest.indexOf('-iname') >= 0 ? rest[rest.indexOf('-iname') + 1] : c === 'fd' ? args[0] : undefined
+      return n ? w.aFind(pattern(n)) : w.aList(shortPath(args[0] ?? '.'))
+    }
+    if (c === 'git') {
+      const sub = rest.find((x, i) => !x.startsWith('-') && rest[i - 1] !== '-C') ?? ''
+      return w.aGit(sub)
+    }
+    if (/^(vitest|jest|pytest|mocha|rspec)$/.test(c) || (c === 'playwright' && args[0] === 'test') || (/^(cargo|go)$/.test(c) && args[0] === 'test')) return w.aTests
+    if (c === 'tsc') return w.aTypes
+    if (/^(npm|pnpm|yarn|bun)$/.test(c)) {
+      const [s0 = '', s1 = ''] = args
+      if (/^(test|t)$/.test(s0) || (s0 === 'run' && /^test/.test(s1))) return w.aTests
+      if (/^(install|i|ci|add)$/.test(s0)) return w.aInstall
+      if (s0 === 'run' && /^build/.test(s1)) return w.aBuild
+      if (s0 === 'run' && /typecheck|tsc/.test(s1)) return w.aTypes
+      return w.aRun(`${c} ${s0 === 'run' ? s1 : s0}`.trim())
+    }
+    if (/^(pip|pip3|apt|apt-get|brew)$/.test(c) && /^(install|add)$/.test(args[0] ?? '')) return w.aInstall
+    if (/^(curl|wget|http)$/.test(c)) { const u = args.find((x) => /^https?:|^\/|^localhost|^127\./.test(x)); return u ? w.aCall(host(u)) : w.aRun(c) }
+    if (/^(node|python|python3|bash|sh|tsx|ts-node|deno|ruby)$/.test(c) && args[0] && !/^-/.test(args[0])) return w.aRun(shortPath(args[0]).split('/').at(-1)!)
+    if (/^(weevils|docker|systemctl|journalctl|gh|tmux|zellij|ssh)$/.test(c)) return w.aRun(cut(`${c} ${args.slice(0, c === 'gh' ? 2 : 1).join(' ')}`.trim(), 30))
+    return w.aRun(cut(c, 24))
+  }
+  return null
+}
+
+export function actionTitle(m: Message, w: Titles): string {
+  const d = m.toolDetails
+  const text = m.text ?? ''
+  const i = text.indexOf(' · ')
+  const tool = (d?.calls?.[0]?.name ?? (i < 0 ? text : text.slice(0, i))).replace(/^mcp__.*__/, '')
+  const said = d?.calls?.[0]?.description?.trim()
+  if (said) return cut(said.replace(/[.。]$/, ''), 90)
+  const a = d?.args ?? {}
+  const rest = i < 0 ? '' : text.slice(i + 3).trim()
+  switch (tool.toLowerCase()) {
+    case 'read': return w.aRead(shortPath(a.file ?? rest), a.lines)
+    case 'edit': case 'multiedit': case 'notebookedit': return w.aEdit(shortPath(a.file ?? rest))
+    case 'write': return w.aWrite(shortPath(a.file ?? rest))
+    case 'grep': return w.aSearch(pattern(a.pattern ?? rest), a.path ? shortPath(a.path) : undefined)
+    case 'glob': return w.aFind(pattern(a.pattern ?? rest))
+    case 'websearch': return w.aWeb(cut(a.query ?? rest))
+    case 'webfetch': return w.aOpen(host(a.url ?? rest))
+    case 'todowrite': case 'update_plan': return w.aPlan
+    case 'askuserquestion': return w.aAsk
+    case 'view_image': return w.aLook
+    case 'skill': return rest ? w.aSkill(cut(rest, 30)) : String(w.skill)
+    case 'agent': case 'task': return rest ? cut(rest, 90) : String(w.delegate)
+  }
+  const cmd = d?.commands?.[0] ?? (/^(bash|shell|exec_command|local_shell)$/i.test(tool) ? rest : '')
+  const fromShell = cmd ? shellTitle(cmd, w) : null
+  return fromShell ?? clusterLine({ kind: kindOf(m), steps: [m] }, w)
+}

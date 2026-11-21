@@ -297,13 +297,15 @@ export function RequestGroups({ groups, onChanged, fill }: { groups: Group[]; on
     const needs = s?.status === 'needs_user' || (s?.status !== 'working' && g.rows.some((r) => r.chip === 'needs'))
     const runsHere = g.rows.some((r) => r.chip === 'running')
     const star = s?.status === 'working' && !runsHere
+    const waits = t.chip('needs')
+    const headLabel = needs ? `${g.label} · ${waits}` : g.label
     out.push(
       <div key={`g:${g.key}`} className={`rc-row rc-head${g.key ? '' : ' rc-unsent'}`} style={{ '--step': Math.min(step++, STEPS) } as CSSProperties}>
         {g.key ? (
-          <button type="button" className="in rc-line" onClick={() => (s ? push({ kind: 'session', id: s.id }) : undefined)} disabled={!s} aria-label={needs ? `${g.label} · ${t.chip('needs')}` : g.label}>
+          <button type="button" className="in rc-line" onClick={() => (s ? push({ kind: 'session', id: s.id }) : undefined)} disabled={!s} aria-label={headLabel}>
             <span className="rc-star">{star && <span className="spin fluo"><Icon name="star" /></span>}</span>
             <span className="rc-title">{g.label || t.aSession}</span>
-            {needs && <span className="rc-waits" aria-hidden>{t.chip('needs')}</span>}
+            {needs && <span className="rc-waits" aria-hidden>{waits}</span>}
           </button>
         ) : (
           <div className="in rc-line">

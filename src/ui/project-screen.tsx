@@ -80,7 +80,7 @@ export function ProjectPage({ projectId }: { projectId: string }) {
   const done = snap.sessions.filter((s) => !s.archived && s.projectId === projectId && s.status === 'done' && !sent.has(s.id)).sort((a, b) => b.lastActivityAt - a.lastActivityAt)
   const shown = all ? done : done.slice(0, OLDER_AFTER)
   return (
-    <Shell slot={colors[projectId] ?? 'agent'} kicker="weevils" title={project?.name ?? '…'} actions={project ? <TempoIcon repo={project.id} /> : undefined}>
+    <Shell slot={colors[projectId] ?? 'agent'} kicker="weevils" title={project ? t.requestsFor(project.name) : '…'} actions={project ? <TempoIcon repo={project.id} /> : undefined}>
       <div className="pj-page">
         {project && <ProjectRequests project={project} withSessions />}
         <div className="pj-sessions">

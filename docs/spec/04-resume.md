@@ -209,6 +209,13 @@ Decided with step 3. `server/weevbook/resume.ts` (`resumeThread`) implements it;
 - **No waiting turn**: the leg moves here (`leg.end`, `leg.start`), nothing is started; the user goes on from the app.
 - **In the end-to-end test** (`hub.e2e.test.ts`): the steal 90 s after the last renewal, then the resume (restore,
   rebuild, push, start) in about 0.3 s.
+- **From the vault** ([07](07-vault.md#steps), step 3): what this machine does not hold of the thread comes from the
+  vault, for that thread alone: its slim raw lines when a leg of the session has none here, its checkpoint (encrypted
+  bundles, applied on the machine's own clone of the project) when neither the weevbook's repository nor the hub has
+  the commit the journal names. A checkpoint that was too large for the vault holds the thread: `only-there`. With no
+  hub, or for a thread the hub never saw, the journal comes from the vault too and the leg is written in this
+  machine's weevbook; there is no lease on the vault yet, so a turn at work on another machine is ended as
+  `machine-lost` only once its thread has been silent for ten minutes.
 - **Known limit**: the adapter of the resumed leg reads that leg's events only, so its own record of an earlier
   effect starts at the new leg; `turn.ts` and the journal (THREAD-10) still keep the effect sticky.
 
@@ -269,7 +276,7 @@ To be tested with two machines at step 3, and by the simulator at step 4.
   model (`nextHandoff`, falling back to the journal's), and the first request of rung 3 (`firstRequest`): the signed
   preface, the handoff, the events after `upTo`, the last 24 messages within 20,000 characters, the request.
   [`start.ts`](../../server/weevbook/start.ts) runs rungs 0 to 3 for the dispatcher ([06](06-dispatch.md#step-4-the-dispatcher-in-weevilsd)).
-- The state of the code is saved only with a hub set (step 2).
+- The state of the code is saved only with a hub set (step 2), or a vault (07, step 3).
 
 ## Not in v1
 

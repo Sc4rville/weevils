@@ -265,7 +265,9 @@ and the main machine's host keys in `~/.ssh/known_hosts`, and runs `install.sh -
 says when the key came in and when the machine is online. The joined machine keeps its conversations in your vault
 too ([spec 07](spec/07-vault.md)): the same exchange registers a deploy key of its own on the vault's repository and
 hands it the vault's address and key (`~/.config/weevils/vault.json`, `vault.key`, `vault-deploy`); `--since
-<YYYY-MM-DD>` or `--match '<words>'` after the code bring only part of its history. A main machine on a laptop, or one only reachable over plain
+<YYYY-MM-DD>` or `--match '<words>'` after the code bring only part of its history. What its agents themselves wrote
+goes to raw repositories beside the vault, with a key of its own for each (`vault-deploy-raw-NNN`, made by the machine;
+the main machine registers it within a quarter of an hour, nobody is asked anything). A main machine on a laptop, or one only reachable over plain
 http (this machine, the home network), cannot take another computer this way: weevboss asks for that computer's
 address in a masked field instead.
 

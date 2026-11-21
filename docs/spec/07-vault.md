@@ -1,9 +1,11 @@
 # 07 · Vault: every conversation, kept on your GitHub
 
-**Status: steps 1 and 2 built** (`server/weevbook/vault.ts`, `vault-cli.ts`, `vault-github.ts`, `vault.test.ts`,
-`server/join.test.ts`): journals, attachments and handoffs, the recovery code, the import at install and its choices,
-the join that carries the vault, a new machine from the vault, the summary, and the onboarding in weevboss's chat.
-Steps 3 and 4 are design. This page settles D1 and D2 of [03](03-sync-and-lease.md#open-decisions) the way the
+**Status: steps 1 to 3 built** (`server/weevbook/vault.ts`, `vault-raw.ts`, `slim.ts`, `vault-cli.ts`,
+`vault-github.ts`, `vault.test.ts`, `vault-raw.test.ts`, `slim.test.ts`, `server/join.test.ts`): journals, attachments
+and handoffs, the recovery code, the import at install and its choices, the join that carries the vault, a new machine
+from the vault, the summary, the onboarding in weevboss's chat, and since step 3 the raw lines (slim), the checkpoints
+of the code, the access every machine gets to the raw repositories, and a thread resumed from the vault on a machine
+that never ran it. Step 4 is design. This page settles D1 and D2 of [03](03-sync-and-lease.md#open-decisions) the way the
 owner chose on 2026-11-21: the hub of every install is the person's own GitHub, encrypted, whether they have no
 server, one, or ten. The owner took the recommended answer to the four decisions at the end (2026-11-21). The person
 feels only what they must: one GitHub sign-in, the recovery code once, the history question, and agreed moves.
@@ -64,6 +66,25 @@ marker between (`[… 412 KB kept on <machine> …]`), and `toolUseResult` objec
 reads them). Everything else is kept byte for byte, thinking blocks and their signatures included. A provider resumes
 from slim raw: the model sees a long command output shortened, the way a person would scroll past it.
 
+As built (`server/weevbook/slim.ts`, step 3):
+
+- **A line that is not cut is the identical bytes.** A line that is cut is spliced as text, never parsed and written
+  again: only the cut value changes, so a signed block, a uuid or a number next to it keeps every byte. Lines keep
+  their order.
+- **Claude.** In `message.content`, each `tool_result`: its `content` when it is a string, or each of its `text`
+  blocks, over 20 KB. The line's own `toolUseResult` (an object or a list) over 2 KB goes.
+- **A picture is not cut in the middle.** Measured again at step 3: of the tool results over 20 KB, 370 MB of 374 are
+  pictures (screenshots an agent read), and a base64 picture with its middle removed makes the provider refuse the
+  whole conversation. A picture over 20 KB inside a tool result becomes the marker alone, as a text block
+  (`[… image, 412 KB kept on <machine> …]`). A picture the person pasted in a message is not a tool result: kept.
+- **Codex.** The same first rule on what a tool or a command gave back: `output` of the `custom_tool_call_output` and
+  `function_call_output` response items (a string, or its `input_text` and `input_image` items) and
+  `aggregated_output` of a completed `CommandExecution`. `reasoning.encrypted_content` and `compacted` lines are
+  untouched.
+- **The machine named** is the one the leg ran on, as the journal says (`leg.start`).
+- Measured on the same server at step 3 (644 threads): 1,157 MB of Claude raw and 343 MB of Codex raw become 495 MB
+  and 176 MB slim, 134 MB once compressed.
+
 ## The format on GitHub
 
 Encryption is per file, not per repository: the lease needs GitHub to see real refs and commits
@@ -77,8 +98,11 @@ weevbook-vault                         refs/threads/<thread id>  → a commit wh
   c/<sha256>                           one chunk: events appended in one push, zstd, encrypted
   a/<sha256>                           one attachment, encrypted
   h                                    handoff.md as the journal last recorded it, encrypted (replaced when rewritten)
-                                       refs/leases/<thread id>   → lease.json, encrypted
-                                       refs/checkpoints/<thread id> → an encrypted git bundle of the turn
+                                       refs/leases/<thread id>   → lease.json, encrypted (step 4)
+                                       refs/checkpoints/<thread id> → m + b/<sha256>: one encrypted git bundle per
+                                                                    checkpoint sent, and their manifest
+                                       refs/map/raw              → one small encrypted file per write: which raw
+                                                                    repository holds which thread, and who may write it
                                        refs/heads/main           → only a README (what this is, no data)
 
 weevbook-raw-NNN                       refs/raw/<thread id>      → m + c/<sha256>, slim raw chunks
@@ -94,6 +118,25 @@ weevbook-raw-NNN                       refs/raw/<thread id>      → m + c/<sha2
 - Raw repositories: a new `weevbook-raw-NNN` when the current one passes 700 MB, under GitHub's 1 GB recommendation.
   At the owner's pace (≈ 25 MB of slim compressed raw a day) that is one repository every month or so. The vault
   itself grows by ≈ 1 MB a day.
+- **A raw chunk** is, for one raw segment of a thread (`L1.claude.0001.jsonl`), the bytes appended since the last
+  push, whole lines only, slim, compressed, sealed. The raw manifest keeps, per segment, how much of the source is in
+  the vault (with the hash of the last 64 KB before that point, to recognise it next time) and its chunks in order.
+- **The map** (`refs/map/raw`) is what a machine that holds only the vault key and access to the vault's repository
+  needs to find a thread's raw lines: one sealed file per write, never rewritten, holding records: a raw repository
+  exists; a thread lives in the n-th one (written once, for good: a thread's later lines go where its first went); the
+  sealed bytes a machine pushed to the n-th one (how its size is known without asking GitHub: every machine adds up
+  what all of them wrote, a line in the map each time a machine's own count moved by 1/32 of the limit); a machine's
+  public key for the n-th one, and that key registered. It is pushed on the vault's tip or not at all, and a thread is
+  claimed there before its lines are pushed, so two machines never give one thread two repositories.
+- **VAULT-7 as built.** New threads are given a repository a window at a time (at most a quarter of the limit of raw
+  lines to read); a repository that passed 700 MB takes no new thread. It can end at most a quarter over, plus what
+  its threads still write: under 1 GB.
+- **A checkpoint bundle** is `git bundle` of the thread's checkpoint ref, without what the bundles before it already
+  carry and without what the project's own origin has (the commits where the checkpoint's history meets the origin's
+  branches, noted when the checkpoint is taken). A machine that clones the project from its origin applies the
+  bundles in order; when its clone is behind the origin, the origin is fetched first. A bundle over 50 MB is not sent:
+  the manifest says which machine kept it, and the thread can only continue there (the rule of a checkpoint of `kind:
+  none`, [04](04-resume.md#failure-cases)).
 
 ## Access to GitHub
 
@@ -104,10 +147,30 @@ own deploy key** with write access to those repositories only. The `gh` token it
 - A machine joined with one line ([install, several machines](../install.md#several-machines)) gets its deploy key from the main machine in the same
   exchange, and pushes to GitHub directly. The joined machine's narrow SSH key to the server stays as it is: it no
   longer needs to reach any hub there.
-- A new raw repository gets every machine's key when it is created. (Found at step 2: GitHub accepts a deploy key
-  on one repository only, "key is already in use" on a second. With raw repositories, step 3, each machine needs one
-  key per repository, or the access model changes; today there is one repository and one key per machine.)
-- Removing a machine removes its deploy keys.
+- Removing a machine removes its deploy keys (not built: nothing removes a machine yet).
+
+**The raw repositories (step 3).** GitHub accepts a deploy key on one repository only ("key is already in use" on a
+second), so the vault's key cannot open them. The design, with nothing for the person to do:
+
+1. **One key per machine and per raw repository**: `~/.config/weevils/vault-deploy-raw-NNN`, made by the machine
+   itself, the private half never leaving it.
+2. **Each machine publishes the public halves in the map**, sealed like everything else: one for every raw repository
+   there is, and one for the next. It can always do that: it holds the vault key and its key on the vault's
+   repository.
+3. **The machine where the person signed in with `gh`** (the vault's owner there) makes `weevbook-raw-NNN` when the
+   map has none, or when the last one passed its size, and registers on each raw repository every key the map holds
+   for it, with write access (`gh api repos/<owner>/weevbook-raw-NNN/keys`). It writes "exists" and "registered" in
+   the map. It does this at every push of its own, and at least every 15 minutes when nothing moves there.
+4. **A machine writes a raw repository once the map says its key is registered**, with that key alone. Until then
+   its journals and checkpoints go (the vault's repository), its raw lines wait: a machine that just joined waits at
+   most those 15 minutes, a new raw repository is writable by every machine the moment it opens (their keys were
+   published ahead).
+5. A machine with `gh` signed in under another account, or with no `ssh-keygen`, publishes nothing and waits.
+
+A vault kept in a folder (`vault setup --remote /path/to/vault.git`: a disk, a home server's own files, the tests)
+needs none of this: the next raw repository is a folder beside it, made by whichever machine needs it. A vault on
+another kind of git remote takes journals and checkpoints; its raw lines are not sent (nothing can make the next
+repository there).
 
 ## The vault key
 
@@ -147,7 +210,8 @@ days" when that is all there is, never "everything".
 ## A new machine
 
 It fetches the vault and decrypts every journal into its weevbook: the whole history is in the app at once (≈ 30 MB
-for the owner's two weeks). Raw lines and checkpoints are fetched only for a thread it resumes.
+for the owner's two weeks). Raw lines and checkpoints are fetched only for a thread it resumes: the map says which raw
+repository, that thread's one ref is fetched from it, and its checkpoint ref from the vault; nothing else comes.
 
 ## Moving a conversation
 
@@ -250,7 +314,60 @@ empty text with its signature, so the risk was small; the rule keeps it at none.
      memory (an automatic restore next to a hub's own sync waits for the lease on GitHub, step 4). The accounts counted
      are the ones the import could name: sessions read at install carry the account signed in then. When the main
      machine cannot give a join line (no public https address), the vault does not reach the other computer yet.
-3. **Slim raw and checkpoints in the vault**, and resuming a thread from them (VAULT-4).
+3. **Slim raw and checkpoints in the vault**, and resuming a thread from them (VAULT-4). *Built:*
+   - **Slim raw** (`server/weevbook/slim.ts`): the two cuts, as « Slim raw » above says them.
+   - **Raw in the vault** (`server/weevbook/vault-raw.ts`): the raw repositories, the chunks, the map and the size
+     rule of « The format on GitHub »; the keys of « Access to GitHub ». Sources are the commits of the weevbook's
+     thread refs: the weevbook's lock is never taken and its folders are never read.
+   - **Checkpoints in the vault**: the bundles of « The format on GitHub », in `refs/checkpoints/<thread id>` of the
+     vault's repository, never anywhere else (RESUME-2). With a vault and no hub the code of each turn is now
+     checkpointed too (it was only with a hub); with neither, nothing changes.
+   - **One push, in this order**: journals (as before), then raw lines, then checkpoints. The journals have their
+     lock and their record of what went, the lines and the code have theirs (`weevils-lines.json` in the staging
+     repository): neither waits for the other. Raw lines go a batch at a time: threads are claimed in the map,
+     sealed, pushed (at most 100 refs and about 48 MB a push), then recorded. A push that is cut goes on from the
+     last batch that arrived, and what was sealed and not sent is sent as it is. An error in the raw lines or the
+     checkpoints never keeps the journals back.
+   - **In weevilsd**: the pusher of step 1 does it all. Journals go from the app's process when the thread refs
+     move, as before. The raw lines and the checkpoints go from a process of their own at the lowest priority
+     (`vault-worker.ts`), started only when something is due: a thread's raw lines once its last commit is two
+     minutes old (between turns), or 15 minutes after they last went for a turn that never goes quiet; checkpoints
+     with them. Megabytes of lines are read, slimmed and sealed there, never in the app's loop. An error is logged
+     once and tried again five minutes later.
+   - **Resume from the vault** (`resume.ts`, `start.ts`): `weevils weevbook resume <thread>` and the dispatcher's
+     start take from the vault what this machine does not hold of the thread: its slim raw lines, when a leg of the
+     session has none here, and its checkpoint, when the weevbook's repository (and the hub) does not have the commit
+     the journal names. The session is rebuilt as in rung 2 (folder rewritten, signed blocks as they are, VAULT-4),
+     the code restored from the bundles on the machine's own clone. On a machine with no hub, or for a thread the hub
+     never saw, the journal comes from the vault too and the new leg is written in this machine's weevbook, which its
+     pusher sends: `leg.end`, `assigned`, `leg.start` (rung 2), `running`, as with a hub.
+   - **`vault push [--progress]`, `vault status`**: the raw lines and checkpoints sent, those that wait and why, a
+     checkpoint that stayed on its machine.
+   - **The first push of an existing weevbook**, measured on the owner's (2026-11-21: read from the real weevbook,
+     pushed to bare repositories on the same disk with a throwaway key, at low priority on a machine busy with other
+     work): 646 threads and 1,596 MB of raw folders became 138 MB of slim compressed raw lines in one raw
+     repository, sent in 12 pushes (11 writes of the map), and 59 MB of checkpoints (150 bundles, 149 threads) in 4 pushes (53 MB
+     of it in three threads whose folders hold large files their origin does not have; the others: 24 KB at the
+     median), beside 7 pushes of journals. 9 min 19 s in all (7 min 24 s on a first run with the machine less
+     loaded), cut on purpose after the second batch and gone on from there. A push with nothing new: 13 s. A fresh
+     machine then restored the 652 journals, fetched three threads' raw lines (a Claude one of 54 MB, a Codex one of
+     97 MB, the newest) in 1 to 3.5 s each, equal byte for byte to the slim of the source, and held three raw refs:
+     no other thread was fetched.
+   - **Not solved here: the vault's own repository does not roll over.** It holds the journals, the map and the
+     checkpoints. At the owner's pace the checkpoints add about 4 MB a day (a first bundle of a thread is what its
+     folder holds that the origin does not; a large folder without git costs its size once per thread), the journals
+     1 MB: several months before 700 MB. Before then the checkpoints should move to the raw repositories, which roll
+     over, or the vault's repository should get a successor.
+   - *Deviations.* A picture inside a tool result is replaced whole by the marker, not cut (« Slim raw »). The
+     marker names the machine the leg ran on. **No lease on the vault yet** (step 4): on a machine without a hub, a
+     resume is the person's order; a turn the journal still shows at work on another machine is ended as
+     `machine-lost` only when that thread has been silent for ten minutes, and refused before. If the other machine
+     was alive after all, the two journals differ and the vault keeps the first one pushed, counting the other
+     (step 1's rule). Fetched raw lines are not written into the weevbook: they go straight into the rebuilt session
+     (the table above says "raw, full: those it resumed"; what a machine holds of a thread it resumed is its own
+     leg's lines). Raw lines need a vault on GitHub or in a folder. A checkpoint whose project folder is gone and
+     that was taken before step 3 (no note of where it meets the origin) travels with its whole history, or not at
+     all over 50 MB.
 4. **Lease on GitHub**, weevboss's proposals, direct orders.
 
 ## Decisions (taken 2026-11-21: the recommended answer to each)
@@ -273,6 +390,8 @@ after a delay the person sets.
   and the lease, over any git remote. The vault adds encryption between the weevbook and the remote.
 - [`server/weevbook/backfill.ts`](../../server/weevbook/backfill.ts): the import of a machine's sessions, run by hand
   today (`weevils weevbook backfill`).
-- [`server/weevbook/redact.ts`](../../server/weevbook/redact.ts): `redactRawLine`, which VAULT-4 changes.
+- [`server/weevbook/redact.ts`](../../server/weevbook/redact.ts): `redactRawLine`, which VAULT-4 changed.
+- [`server/weevbook/slim.ts`](../../server/weevbook/slim.ts), [`vault-raw.ts`](../../server/weevbook/vault-raw.ts):
+  step 3.
 - [`server/join.ts`](../../server/join.ts): the one-line join, which carries the vault key and the deploy key.
 - [`server/conversations.ts`](../../server/conversations.ts): the import of Claude.ai and ChatGPT exports.

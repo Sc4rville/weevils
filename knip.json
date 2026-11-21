@@ -5,6 +5,7 @@
     "server/index.ts",
     "server/agent-coordinate.mjs",
     "server/claude-pump.mjs",
+    "server/weevbook/vault-worker.ts",
     "server/i18n/api.ts",
     "public/sw.js",
     "get/*.{mjs,js}",

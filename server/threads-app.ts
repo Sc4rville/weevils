@@ -26,6 +26,7 @@ import { slugify, type Provider } from './weevbook/journal.ts'
 import { startTurn, type Launcher, type StartResult } from './weevbook/start.ts'
 import { Sessions, accountOf, machinePart } from './weevbook/sync.ts'
 import { Threads, type Peer } from './weevbook/threads.ts'
+import type { VaultSource } from './weevbook/vault-raw.ts'
 import { realTitle } from './transcripts.ts'
 
 type Json = (res: http.ServerResponse, status: number, body: unknown) => void
@@ -44,6 +45,8 @@ export interface ThreadsAppOptions {
   roots: string[]
   projectsDir: string
   preferred: Provider
+  /** This machine's vault, when it has one now (docs/spec/07-vault.md, step 3). */
+  vault?: () => VaultSource | undefined
   log?: (line: string) => void
 }
 
@@ -98,7 +101,7 @@ export function startThreads(o: ThreadsAppOptions): ThreadsApp {
     },
   }
   const start = (ins: Instruction) =>
-    startTurn({ sync, sessionsFile, dataDir: o.dataDir, machine: o.machine, home: o.home, claudeDir: o.claudeDir, codexDir: o.codexDir, roots: o.roots, projectsDir: o.projectsDir, launch, folderOf, log: o.log }, ins)
+    startTurn({ sync, sessionsFile, dataDir: o.dataDir, machine: o.machine, home: o.home, claudeDir: o.claudeDir, codexDir: o.codexDir, roots: o.roots, projectsDir: o.projectsDir, launch, folderOf, vault: o.vault?.(), log: o.log }, ins)
   const sources = (): EngineSource[] => {
     const out: EngineSource[] = []
     const claude = providerStatus('claude')

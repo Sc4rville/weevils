@@ -352,5 +352,5 @@ describe('search_weevbook, read_thread, thread_status', () => {
       expect(text(r).length, kind).toBeLessThanOrEqual(LIMITS[kind])
       expect(() => JSON.parse(text(r)), kind).toThrow()
     }
-  })
+  }, 30_000) // fourteen conversations written through git: 2 s alone, over the default 5 s beside a whole suite on a busy machine
 })

@@ -152,8 +152,11 @@ describe('the vault on a git remote', () => {
     const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-')
     const needles = [...Object.values(SECRETS), slug(SECRETS.title), slug(SECRETS.title2), MACHINE, 'zorblax', 'Zorblax', 'alex', 'payroll', 'events.jsonl', 'flow.png', 'attachments/']
     for (const s of needles) expect(hay.includes(s), s).toBe(false)
-    // Names: thread ids and main only; commits from the neutral author with a fixed message.
-    expect(git(remote, 'for-each-ref', '--format=%(refname)').split('\n').sort()).toEqual(['refs/heads/main', `refs/threads/${T1}`, `refs/threads/${T2}`])
+    // Names: thread ids, main, and the raw map (step 3: sealed like the rest, searched above); commits from the
+    // neutral author with a fixed message.
+    expect(git(remote, 'for-each-ref', '--format=%(refname)').split('\n').sort()).toEqual(['refs/heads/main', 'refs/map/raw', `refs/threads/${T1}`, `refs/threads/${T2}`])
+    expect(git(remote, 'log', '--format=%an <%ae> %ad %s', 'refs/map/raw')).toBe('vault <vault@weevils.invalid> Sat Jan 1 00:00:00 2000 +0000 vault')
+    expect(git(remote, 'ls-tree', '--name-only', 'refs/map/raw')).toMatch(/^[0-9a-f]{64}$/)
     expect(git(remote, 'log', '--format=%an <%ae> %ad %s', `refs/threads/${T1}`)).toBe('vault <vault@weevils.invalid> Sat Jan 1 00:00:00 2000 +0000 vault')
     expect(git(remote, 'ls-tree', '-r', '--name-only', `refs/threads/${T1}`).split('\n').map((p) => p.replace(/[0-9a-f]{64}/, 'H'))).toEqual(['a/H', 'c/H', 'm'])
     expect(git(remote, 'ls-tree', '--name-only', 'refs/heads/main')).toBe('README.md')
@@ -480,16 +483,20 @@ describe('with GitHub (a stand-in for gh, and a folder git reaches in place of g
     fs.mkdirSync(bin, { recursive: true })
     fs.mkdirSync(path.join(root, 'alex'), { recursive: true })
     const log = path.join(tmp, 'gh.log')
-    const keys = path.join(tmp, 'gh.keys')
+    // The deploy keys of each repository (step 3: the raw repositories have their own).
+    const keyDir = path.join(tmp, 'gh.keys')
+    fs.mkdirSync(keyDir, { recursive: true })
+    const keys = path.join(keyDir, 'repos_alex_weevbook-vault_keys')
     fs.writeFileSync(keys, '')
     fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
 printf '%s\\n' "$*" >>"${log}"
+keysof() { printf '%s/%s' "${keyDir}" "$(printf '%s' "$1" | tr '/' '_')"; }
 case "$1 $2" in
   "api user") echo alex ;;
   "repo view") [ -d "${root}/$3.git" ] ;;
   "repo create") git init -q --bare "${root}/$3.git" ;;
-  "api repos/alex/weevbook-vault/keys") cat "${keys}" ;;
-  "api -X") for a in "$@"; do case "$a" in key=*) printf '%s\\n' "\${a#key=}" >>"${keys}" ;; esac; done ;;
+  "api -X") for a in "$@"; do case "$a" in key=*) printf '%s\\n' "\${a#key=}" >>"$(keysof "$4")" ;; esac; done ;;
+  "api repos/"*) f="$(keysof "$2")"; [ ! -f "$f" ] || cat "$f" ;;
   *) exit 1 ;;
 esac
 `, { mode: 0o755 })
@@ -739,7 +746,7 @@ describe('in weevilsd', () => {
         return null
       }
     }
-    const p = startVaultPusherWhenSet({ dir: path.join(tmp, 'a', 'weevbook'), staging: path.join(tmp, 'a', 'vault.git'), remote: saved, keyFile: path.join(cfg, 'vault.key'), deployKey: path.join(cfg, 'vault-deploy'), machine: MACHINE, intervalMs: 50, pollMs: 20, log: (l) => logs.push(l) })
+    const p = startVaultPusherWhenSet({ dir: path.join(tmp, 'a', 'weevbook'), staging: path.join(tmp, 'a', 'vault.git'), remote: saved, keyFile: path.join(cfg, 'vault.key'), deployKey: path.join(cfg, 'vault-deploy'), machine: MACHINE, intervalMs: 50, pollMs: 20, priority: 0, log: (l) => logs.push(l) })
     await new Promise((r) => setTimeout(r, 80))
     expect(p.started()).toBe(false)
     expect(logs).toEqual([])
@@ -757,7 +764,7 @@ describe('in weevilsd', () => {
     const remote = bareRemote()
     const keyFile = path.join(tmp, 'cfg', 'vault.key')
     const logs: string[] = []
-    const base = { dir: path.join(tmp, 'a', 'weevbook'), staging: path.join(tmp, 'a', 'vault.git'), remote, keyFile, machine: MACHINE, intervalMs: 3_600_000, retryMs: 0, log: (l: string) => logs.push(l) }
+    const base = { dir: path.join(tmp, 'a', 'weevbook'), staging: path.join(tmp, 'a', 'vault.git'), remote, keyFile, machine: MACHINE, intervalMs: 3_600_000, retryMs: 0, priority: 0, log: (l: string) => logs.push(l) }
     const p = startVaultPusher(base)
     await p.flush()
     await p.flush()

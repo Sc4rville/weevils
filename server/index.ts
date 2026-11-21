@@ -80,6 +80,8 @@ import { startWeevbookWriter } from './weevbook/writer.ts'
 import { startFirstBackfill } from './weevbook/backfill.ts'
 import { startVaultPusherWhenSet } from './weevbook/vault.ts'
 import { ghRunner, shareVault } from './weevbook/vault-github.ts'
+import { vaultHere } from './weevbook/vault-cli.ts'
+import { vaultSource } from './weevbook/vault-raw.ts'
 import { Connector, reposUnder } from './connector/tools.ts'
 import { Join, joinRoute, remotesIn } from './join.ts'
 import { newProjectFolder } from './project-folder.ts'
@@ -106,17 +108,22 @@ let threadsApp: ThreadsApp | null = null
 // set up while weevilsd runs (weevboss does it in its chat, a join brings it) starts being pushed within a minute.
 // With a hub (WEEVILS_WEEVBOOK_HUB, step 2): each turn's code is checkpointed, threads and checkpoints are pushed to the
 // hub every 20 s, and the main machine steals the leases of machines gone silent. Nothing shows in the app either.
+// With a vault (07-vault.md, step 3) the code is checkpointed too, and the pusher sends the raw lines, slim, and the
+// checkpoints, encrypted. With neither, no checkpoint is taken and nothing leaves, as before.
 if (WEEVBOOK) {
   const sessions = path.join(DATA_DIR, 'weevbook-sessions.jsonl')
+  const vaultOn = process.env.WEEVILS_VAULT?.trim() !== '0'
+  const takeCheckpoint = checkpointHook({ dataDir: DATA_DIR, home: HOME, weevbookGitDir: path.join(WEEVBOOK_DIR, '.git'), log: (l) => console.error(l) })
   startWeevbookWriter({
     dir: WEEVBOOK_DIR, sessions, machine: MACHINE.id, home: HOME, codexDir: CODEX_DIR, roots: PROJECT_ROOTS,
     sources: () => [...w.store.byFile.values()].map((t) => ({ file: t.file, provider: t.tool })),
-    ...(WEEVBOOK_HUB ? { checkpoint: checkpointHook({ dataDir: DATA_DIR, home: HOME, weevbookGitDir: path.join(WEEVBOOK_DIR, '.git'), log: (l) => console.error(l) }) } : {}),
+    // A vault may be set up while weevilsd runs: looked for when a turn ends (two small files).
+    ...(WEEVBOOK_HUB ? { checkpoint: takeCheckpoint } : vaultOn ? { checkpoint: async (turn: Parameters<typeof takeCheckpoint>[0]) => (vaultRemote() && fs.existsSync(VAULT_KEY_FILE) ? takeCheckpoint(turn) : null) } : {}),
   })
   console.log(`[weevbook] shadow writer on: ${WEEVBOOK_DIR}`)
   startFirstBackfill({ dataDir: DATA_DIR, log: (l) => console.log(l) })
-  if (process.env.WEEVILS_VAULT?.trim() !== '0') {
-    startVaultPusherWhenSet({ dir: WEEVBOOK_DIR, staging: VAULT_STAGING, remote: () => vaultRemote(), keyFile: VAULT_KEY_FILE, deployKey: VAULT_DEPLOY_KEY, machine: MACHINE.id, log: (l) => console.error(l) })
+  if (vaultOn) {
+    startVaultPusherWhenSet({ dir: WEEVBOOK_DIR, staging: VAULT_STAGING, remote: () => vaultRemote(), keyFile: VAULT_KEY_FILE, deployKey: VAULT_DEPLOY_KEY, machine: MACHINE.id, gh: which('gh') ?? 'gh', log: (l) => console.error(l) })
   }
   if (WEEVBOOK_HUB) {
     const sync = new HubSync({ dir: WEEVBOOK_DIR, dataDir: DATA_DIR, sessions, machine: MACHINE.id, hub: WEEVBOOK_HUB, steals: ORCHESTRATOR })
@@ -124,7 +131,12 @@ if (WEEVBOOK) {
     console.log(`[weevbook] hub sync on: ${WEEVBOOK_HUB.url}${ORCHESTRATOR ? ' (steals the leases of silent machines)' : ''}`)
     // Threads (step 4): every message goes to the dispatcher, which runs on the machine that serves the app.
     if (THREADS) {
-      threadsApp = startThreads({ w, sync, machine: MACHINE.id, dispatcher: ORCHESTRATOR, dataDir: DATA_DIR, home: HOME, claudeDir: CLAUDE_DIR, codexDir: CODEX_DIR, roots: PROJECT_ROOTS, projectsDir: PROJECTS_DIR, preferred: preferredTool(), log: (l) => console.log(l) })
+      // A turn the dispatcher gives this machine, for a thread the hub holds no line or checkpoint of: the vault's.
+      const vault = () => {
+        const v = vaultOn ? vaultHere([]) : null
+        return v ? vaultSource(v) : undefined
+      }
+      threadsApp = startThreads({ w, sync, machine: MACHINE.id, dispatcher: ORCHESTRATOR, dataDir: DATA_DIR, home: HOME, claudeDir: CLAUDE_DIR, codexDir: CODEX_DIR, roots: PROJECT_ROOTS, projectsDir: PROJECTS_DIR, preferred: preferredTool(), vault, log: (l) => console.log(l) })
       w.threadRows = threadsApp.rows
       console.log(`[threads] on${ORCHESTRATOR ? ': this machine runs the dispatcher' : ''}`)
     }

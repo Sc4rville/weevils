@@ -10,14 +10,14 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { claudeSlug, place, realGit, type PlaceDeps } from '../bring.ts'
-import { restoreCheckpoint } from './checkpoint.ts'
+import { claudeSlug, type PlaceDeps } from '../bring.ts'
 import type { Instruction } from './dispatcher.ts'
 import { firstRequest, journalHandoff } from './handoff.ts'
-import { HubSync, REMOTE, draft, legCount, openLeg, safeTurns } from './hub.ts'
-import { parseEngine, slugify, type CheckpointEvent, type EventDraft, type JournalEvent, type LegId, type MetaEvent, type Provider } from './journal.ts'
+import { HubSync, draft, legCount, openLeg, safeTurns } from './hub.ts'
+import { parseEngine, type EventDraft, type JournalEvent, type LegId, type MetaEvent, type Provider } from './journal.ts'
 import type { Intent, Seen } from './lease.ts'
-import { busyByFiles, countLines, destination, findSession, rebuild } from './resume.ts'
+import { countLines, destination, findSession, placeAndRestore, rebuild, vaultRaw } from './resume.ts'
+import type { VaultSource } from './vault-raw.ts'
 import { Sessions, machinePart, sessionKey } from './sync.ts'
 import { assign, next, preface, prefaceSign } from './turn.ts'
 
@@ -44,6 +44,8 @@ export interface StartHost {
   /** The folder of a project on this machine, for a thread that has no leg yet. */
   folderOf: (project: string | null) => string | null
   git?: PlaceDeps['git']
+  /** The vault, when this machine has one: the lines and the code the hub does not hold come from it (07-vault.md). */
+  vault?: VaultSource
   now?: () => number
   log?: (line: string) => void
   /** How long a new Codex session may take to write its file (ms). */
@@ -200,25 +202,11 @@ export async function startTurn(h: StartHost, ins: Instruction): Promise<StartRe
     if (!folder) return no('no-folder', `${project ?? 'the thread'} has no folder here`)
     cwd = folder
   } else if (fromElsewhere || !fs.existsSync(cwd)) {
-    const checkpoints = events.filter((e): e is CheckpointEvent => e.type === 'checkpoint')
-    await sync.git(['fetch', '--quiet', '--no-tags', REMOTE, `+refs/checkpoints/${id}:refs/hub/checkpoints/${id}`])
-    let ck: CheckpointEvent | undefined
-    for (const c of [...checkpoints].reverse()) {
-      if (c.kind === 'none' || !c.commit) continue
-      if ((await sync.git(['cat-file', '-e', `${c.commit}^{commit}`])).code === 0) {
-        ck = c
-        break
-      }
-    }
-    const existed = new Set(await fsp.readdir(h.projectsDir).catch(() => [] as string[]))
-    const p = await place({ cwd, origin: ck?.repo, branch: ck?.branch }, { home: h.home, projectsDir: h.projectsDir, roots: h.roots, claudeDir: h.claudeDir, codexDir: h.codexDir, git: h.git ?? realGit })
-    const fresh = path.dirname(p.to) === path.resolve(h.projectsDir) && !existed.has(path.basename(p.to))
+    const p = await placeAndRestore({ thread: id, events, cwd, gitDir: sync.book.gitDir, git: sync.git, hub: true, vault: h.vault, dataDir: h.dataDir, home: h.home, projectsDir: h.projectsDir, roots: h.roots, claudeDir: h.claudeDir, codexDir: h.codexDir, placeGit: h.git, log: h.log })
+    // The code stayed on its machine (a checkpoint too large for the vault): not started here, and not asked again at
+    // once (`stale` is not retried: each try would fetch from the vault).
+    if (p.onlyThere) return no('stale', p.onlyThere)
     cwd = p.cwd
-    if (ck && (ck.kind === 'git' || ck.kind === 'shadow')) {
-      const slug = `${slugify(title).slice(0, 40) || 'thread'}-${id.slice(-6).toLowerCase()}`
-      const restored = await restoreCheckpoint({ kind: ck.kind, commit: ck.commit!, base: ck.base, branch: ck.branch, repo: ck.repo, thread: id, slug, dir: p.to, fresh, source: sync.book.gitDir, sourceRef: `refs/hub/checkpoints/${id}`, dataDir: h.dataDir, busy: busyByFiles(h.claudeDir)(p.cwd) })
-      if (restored.mode === 'worktree' || restored.mode === 'beside') cwd = path.join(restored.dir, path.relative(p.to, p.cwd))
-    }
   }
 
   // A new Claude session takes the id given; a Codex one is known once its file is written.
@@ -252,7 +240,11 @@ export async function startTurn(h: StartHost, ins: Instruction): Promise<StartRe
   await sessions.load()
   let file = sessionFile ?? ''
   if (native && session && (ins.rung === 2 || !sessionFile)) {
-    const text = await sync.withBook(async () => rebuild(sync.book, id, all, provider, session!, cwd))
+    const slim = await vaultRaw(sync.book, h.vault, id, all, provider, session).catch((e: Error) => {
+      h.log?.(`[vault] raw lines of ${id}: ${e.message}`)
+      return undefined
+    })
+    const text = await sync.withBook(async () => rebuild(sync.book, id, all, provider, session!, cwd, slim))
     file = await destination(provider, session, cwd, h.claudeDir, h.codexDir, now())
     await sessions.record({ key: sessionKey({ file, provider }), thread: id, leg, provider, file, lines: countLines(text ?? ''), offset: Buffer.byteLength(text ?? ''), rawBytes: 0, base: countLines(text ?? ''), moved: false })
     await fsp.mkdir(path.dirname(file), { recursive: true })

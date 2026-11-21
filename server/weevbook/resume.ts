@@ -6,20 +6,27 @@
 //
 // `weevils weevbook resume <thread>` calls it. Step 4's dispatcher starts turns with start.ts, which uses the same
 // pieces (the session rebuilt from raw, the checkpoint restored) for every rung.
+//
+// With a vault (docs/spec/07-vault.md, step 3) a thread this machine never ran resumes too: its slim raw lines and
+// its checkpoint are fetched from the vault, for that thread alone, when the hub does not have them; and on a machine
+// with no hub at all, the thread's journal comes from the vault and the leg is written here (resumeLocal).
 
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { claudeSlug, place, realGit, rewritePaths, type PlaceDeps } from '../bring.ts'
 import { restoreCheckpoint, type Restored } from './checkpoint.ts'
 import { decide, threadFacts, type MachineFacts, type Quota } from './dispatch.ts'
 import { HubSync, REMOTE, draft, legCount, openLeg, safeTurns } from './hub.ts'
 import { parseEngine, slugify, type CheckpointEvent, type EventDraft, type JournalEvent, type LegId, type MetaEvent, type Provider } from './journal.ts'
-import { OBSERVE_EVERY, STEAL_BOUND, stealable, type Intent } from './lease.ts'
-import { writeAtomic } from './store.ts'
+import { OBSERVE_EVERY, STEAL_BOUND, stealable, type GitRunner, type Intent } from './lease.ts'
+import { Weevbook, writeAtomic } from './store.ts'
 import { Sessions, accountOf as accountHash, machinePart, sessionKey } from './sync.ts'
-import { assign, next, preface } from './turn.ts'
+import { assign, next, preface, stolen } from './turn.ts'
 import { REDACTED } from './redact.ts'
+import { hubRunner } from './gitrun.ts'
+import type { VaultSource } from './vault-raw.ts'
 
 export interface Launch {
   provider: Provider
@@ -47,7 +54,12 @@ export interface ResumeOptions {
   codexDir: string
   roots: string[]
   projectsDir: string
-  hub: { url: string; here: boolean }
+  /** The hub (absent: this machine has none, and the thread comes from the vault alone). */
+  hub?: { url: string; here: boolean }
+  /** The vault, when this machine has one: what the hub does not hold of the thread is fetched from it. */
+  vault?: VaultSource
+  /** Without a hub: a turn at work elsewhere is taken for stopped once its thread was silent this long (SILENT_FOR). */
+  silentMs?: number
   /** Starts the provider on the session with its first request (weevilsd: w.send; the command line: the local API). */
   launch: (l: Launch) => Promise<void>
   /** The hub sync of this process, when there is one: one lease client and one order of writes. */
@@ -143,20 +155,121 @@ export function findSession(provider: Provider, session: string, claudeDir: stri
 }
 export const countLines = (text: string) => text.split('\n').length - 1
 
-/** The raw lines of every leg of `session`, in order, each leg's folder rewritten to `cwd` (04-resume.md, rung 2). */
-export async function rebuild(book: HubSync['book'], thread: string, events: readonly JournalEvent[], provider: Provider, session: string, cwd: string): Promise<string> {
+/**
+ * The raw lines of every leg of `session`, in order, each leg's folder rewritten to `cwd` (04-resume.md, rung 2).
+ * `vault`: the thread's slim raw from the vault (07-vault.md), used for the legs this machine holds no line of.
+ */
+export async function rebuild(book: HubSync['book'], thread: string, events: readonly JournalEvent[], provider: Provider, session: string, cwd: string, vault?: Map<string, Buffer>): Promise<string> {
   const dir = book.abs(book.pathOf(thread)!)
   const names = await fsp.readdir(path.join(dir, 'raw')).catch(() => [] as string[])
   let text = ''
   for (const e of events) {
     if (e.type !== 'leg.start' || e.session !== session || parseEngine(e.engine)?.provider !== provider || !e.leg) continue
-    const segs = names.filter((n) => n.startsWith(`${e.leg}.${provider}.`) && n.endsWith('.jsonl')).sort()
+    const mine = (n: string) => n.startsWith(`${e.leg}.${provider}.`) && n.endsWith('.jsonl')
+    const segs = names.filter(mine).sort()
     let leg = ''
     for (const n of segs) leg += await fsp.readFile(path.join(dir, 'raw', n), 'utf8')
+    if (!segs.length && vault) for (const n of [...vault.keys()].filter(mine).sort()) leg += vault.get(n)!.toString()
     const moved = rewritePaths(leg, e.cwd, cwd)
     text += provider === 'claude' ? mendThinking(moved) : moved
   }
   return text
+}
+
+/**
+ * The thread's slim raw from the vault, when a leg of `session` has no raw line on this machine (a thread restored
+ * from the vault, or one whose machine never reached the hub). Undefined: nothing is missing, or there is no vault.
+ */
+export async function vaultRaw(book: HubSync['book'], vault: VaultSource | undefined, thread: string, events: readonly JournalEvent[], provider: Provider, session: string): Promise<Map<string, Buffer> | undefined> {
+  if (!vault) return undefined
+  const rel = book.pathOf(thread)
+  const names = rel ? await fsp.readdir(path.join(book.abs(rel), 'raw')).catch(() => [] as string[]) : []
+  const missing = events.some((e) => e.type === 'leg.start' && e.session === session && parseEngine(e.engine)?.provider === provider && !!e.leg && !names.some((n) => n.startsWith(`${e.leg}.${provider}.`)))
+  return missing ? vault.raw(thread) : undefined
+}
+
+export interface Placed {
+  /** The folder the engine works in. */
+  cwd: string
+  restored: Restored | null
+  /** The thread's newest checkpoint stayed on its machine (too large for the vault): it can only continue there. */
+  onlyThere?: string
+}
+
+/**
+ * Steps 2 and 3 of rung 2: where the project lives here (found or cloned), and the thread's last checkpoint restored
+ * there. The checkpoint is the newest one the journal names that the weevbook's repository holds (its own, or the
+ * hub's, fetched by `git`); with none there, the newest one the vault's bundles bring. With none at all the folder is
+ * used as found.
+ */
+export async function placeAndRestore(o: {
+  thread: string
+  events: readonly JournalEvent[]
+  /** The last leg's folder, on the machine it ran on. */
+  cwd: string
+  /** The weevbook's repository, and its runner with the hub as remote (null: no hub). */
+  gitDir: string
+  git: GitRunner
+  hub: boolean
+  vault?: VaultSource
+  dataDir: string
+  home: string
+  projectsDir: string
+  roots: string[]
+  claudeDir: string
+  codexDir: string
+  placeGit?: PlaceDeps['git']
+  busy?: (cwd: string) => boolean
+  log?: (line: string) => void
+}): Promise<Placed> {
+  const id = o.thread
+  const checkpoints = o.events.filter((e): e is CheckpointEvent => e.type === 'checkpoint')
+  const kept = checkpoints.filter((c) => c.kind !== 'none' && !!c.commit)
+  if (o.hub) await o.git(['fetch', '--quiet', '--no-tags', REMOTE, `+refs/checkpoints/${id}:refs/hub/checkpoints/${id}`])
+  let ck: CheckpointEvent | undefined
+  for (const c of [...kept].reverse()) {
+    if ((await o.git(['cat-file', '-e', `${c.commit}^{commit}`])).code === 0) {
+      ck = c
+      break
+    }
+  }
+  // The hub's copy, or this machine's own ref (a thread whose checkpoints were taken here, with no hub).
+  let sourceRef = `refs/hub/checkpoints/${id}`
+  if (ck && (await o.git(['rev-parse', '-q', '--verify', `${sourceRef}^{commit}`])).code !== 0) sourceRef = `refs/checkpoints/${id}`
+  let bundles: string[] | undefined
+  let tmp: string | null = null
+  try {
+    if (!ck && o.vault && kept.length) {
+      tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'weevils-checkpoint-'))
+      const got = await o.vault.checkpoint(id, tmp).catch((e: Error) => {
+        // With a hub the vault is the second source: the folder is then used as found, as when no checkpoint was pushed.
+        if (!o.hub) throw e
+        o.log?.(`[vault] checkpoint of ${id}: ${e.message}`)
+        return null
+      })
+      if (got) {
+        const tips = new Set(got.tips)
+        ck = kept.findLast((c) => tips.has(c.commit!))
+        if (got.skipped && ck !== kept.at(-1)) return { cwd: o.cwd, restored: null, onlyThere: `the code of this thread can only continue on ${got.skipped.machine}: its last checkpoint is ${Math.round(got.skipped.bytes / 1e6)} MB, more than the vault takes` } // i18n-ignore: the reason of a hold, as dispatch.ts writes it
+        if (ck) bundles = got.bundles
+      }
+    }
+    const existed = new Set(await fsp.readdir(o.projectsDir).catch(() => [] as string[]))
+    const p = await place({ cwd: o.cwd, origin: ck?.repo, branch: ck?.branch }, { home: o.home, projectsDir: o.projectsDir, roots: o.roots, claudeDir: o.claudeDir, codexDir: o.codexDir, git: o.placeGit ?? realGit })
+    const fresh = path.dirname(p.to) === path.resolve(o.projectsDir) && !existed.has(path.basename(p.to))
+    let cwd = p.cwd
+    let restored: Restored | null = null
+    if (ck && (ck.kind === 'git' || ck.kind === 'shadow')) {
+      const title = o.events.findLast((e): e is MetaEvent => e.type === 'meta' && !!e.title)?.title ?? ''
+      const slug = `${slugify(title).slice(0, 40) || 'thread'}-${id.slice(-6).toLowerCase()}`
+      const busy = (o.busy ?? busyByFiles(o.claudeDir))(p.cwd)
+      restored = await restoreCheckpoint({ kind: ck.kind, commit: ck.commit!, base: ck.base, branch: ck.branch, repo: ck.repo, thread: id, slug, dir: p.to, fresh, source: o.gitDir, sourceRef, ...(bundles ? { bundles } : {}), dataDir: o.dataDir, busy })
+      if (restored.mode === 'worktree' || restored.mode === 'beside') cwd = path.join(restored.dir, path.relative(p.to, p.cwd))
+    }
+    return { cwd, restored }
+  } finally {
+    if (tmp) await fsp.rm(tmp, { recursive: true, force: true })
+  }
 }
 
 /**
@@ -229,7 +342,8 @@ export async function resumeThread(o: ResumeOptions): Promise<ResumeResult> {
   const now = o.now ?? Date.now
   const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
   const me = machinePart(o.machine)
-  const sync = o.sync ?? new HubSync({ dir: o.dir, dataDir: o.dataDir, sessions: o.sessions, machine: o.machine, hub: o.hub, steals: false, now, log: o.log, ssh: o.ssh })
+  if (!o.sync && !o.hub) return o.vault ? resumeLocal(o, t0) : fail('unreachable', 'no hub and no vault on this machine')
+  const sync = o.sync ?? new HubSync({ dir: o.dir, dataDir: o.dataDir, sessions: o.sessions, machine: o.machine, hub: o.hub!, steals: false, now, log: o.log, ssh: o.ssh })
   if (!(await sync.ensure())) return fail('unreachable', sync.status.error ?? 'the hub did not answer')
   const id = o.thread
 
@@ -240,7 +354,8 @@ export async function resumeThread(o: ResumeOptions): Promise<ResumeResult> {
     const f = await sync.serial(() => sync.client.fetch(id))
     if (!f) return fail('unreachable', 'fetch')
     const l = f.seen.lease
-    if (!l || !f.seen.tip) return fail('unknown', 'the hub has no such thread')
+    // The hub never saw it: with a vault, the thread comes from there (the hub sync takes it up afterwards).
+    if (!l || !f.seen.tip) return o.vault ? resumeLocal(o, t0) : fail('unknown', 'the hub has no such thread')
     if (l.state !== 'working') break
     if (l.holder === o.machine) return fail('here', `a turn of this thread runs on this machine (${l.engine ?? '?'})`, { holder: l.holder })
     const s = stealable(f.seen, now())
@@ -302,26 +417,10 @@ export async function resumeThread(o: ResumeOptions): Promise<ResumeResult> {
   const session = last.session
   const sessionFile = findSession(provider, session, o.claudeDir, o.codexDir)
   if (rung === 2 || !sessionFile) {
-    await sync.git(['fetch', '--quiet', '--no-tags', REMOTE, `+refs/checkpoints/${id}:refs/hub/checkpoints/${id}`])
-    let ck: CheckpointEvent | undefined
-    for (const c of [...checkpoints].reverse()) {
-      if (c.kind === 'none' || !c.commit) continue
-      if ((await sync.git(['cat-file', '-e', `${c.commit}^{commit}`])).code === 0) {
-        ck = c
-        break
-      }
-    }
-    const existed = new Set(await fsp.readdir(o.projectsDir).catch(() => [] as string[]))
-    const p = await place({ cwd: last.cwd, origin: ck?.repo, branch: ck?.branch }, { home: o.home, projectsDir: o.projectsDir, roots: o.roots, claudeDir: o.claudeDir, codexDir: o.codexDir, git: o.git ?? realGit })
-    const fresh = path.dirname(p.to) === path.resolve(o.projectsDir) && !existed.has(path.basename(p.to))
+    const p = await placeAndRestore({ thread: id, events, cwd: last.cwd, gitDir: book.gitDir, git: sync.git, hub: true, vault: o.vault, dataDir: o.dataDir, home: o.home, projectsDir: o.projectsDir, roots: o.roots, claudeDir: o.claudeDir, codexDir: o.codexDir, placeGit: o.git, busy: o.busy, log: o.log })
+    if (p.onlyThere) return fail('hold', `only-there: ${p.onlyThere}`)
     cwd = p.cwd
-    if (ck && (ck.kind === 'git' || ck.kind === 'shadow')) {
-      const title = events.findLast((e): e is MetaEvent => e.type === 'meta' && !!e.title)?.title ?? ''
-      const slug = `${slugify(title).slice(0, 40) || 'thread'}-${id.slice(-6).toLowerCase()}`
-      const busy = (o.busy ?? busyByFiles(o.claudeDir))(p.cwd)
-      restored = await restoreCheckpoint({ kind: ck.kind, commit: ck.commit!, base: ck.base, branch: ck.branch, repo: ck.repo, thread: id, slug, dir: p.to, fresh, source: book.gitDir, sourceRef: `refs/hub/checkpoints/${id}`, dataDir: o.dataDir, busy })
-      if (restored.mode === 'worktree' || restored.mode === 'beside') cwd = path.join(restored.dir, path.relative(p.to, p.cwd))
-    }
+    restored = p.restored
   }
 
   // 5. The journal and the lease, in one push: leg.end (moved), assigned, leg.start, running.
@@ -361,7 +460,11 @@ export async function resumeThread(o: ResumeOptions): Promise<ResumeResult> {
   await sessions.load()
   let file = sessionFile ?? ''
   if (rung === 2 || !sessionFile) {
-    const text = await sync.withBook(async () => rebuild(book, id, (await book.thread(id))!.journal.events, provider, session, cwd))
+    const slim = await vaultRaw(book, o.vault, id, events, provider, session).catch((e: Error) => {
+      o.log?.(`[vault] raw lines of ${id}: ${e.message}`)
+      return undefined
+    })
+    const text = await sync.withBook(async () => rebuild(book, id, (await book.thread(id))!.journal.events, provider, session, cwd, slim))
     file = await destination(provider, session, cwd, o.claudeDir, o.codexDir, now())
     const key = sessionKey({ file, provider })
     await sessions.record({ key, thread: id, leg, provider, file, lines: countLines(text ?? ''), offset: Buffer.byteLength(text ?? ''), rawBytes: 0, base: countLines(text ?? ''), moved: false })
@@ -413,6 +516,169 @@ export async function resumeThread(o: ResumeOptions): Promise<ResumeResult> {
     session,
     restored,
     stole,
+    launched,
+    ms: Date.now() - t0,
+  }
+}
+
+/** A turn at work on another machine is taken for stopped once the thread has been silent this long (no lease on the
+ *  vault yet: 07-vault.md, step 4). */
+export const SILENT_FOR = 10 * 60_000
+
+/**
+ * The same resume on a machine whose only source for the thread is the vault (no hub, or a hub that never saw it):
+ * the journal is brought up to date from the vault, the slim raw lines and the checkpoint bundles are fetched for this
+ * thread alone, and the new leg is written in this machine's weevbook, which its vault pusher sends. There is no lease
+ * on the vault yet: the person asked for this resume, and a turn still marked at work on another machine is ended as
+ * `machine-lost` only when that thread has been silent for `SILENT_FOR`.
+ */
+async function resumeLocal(o: ResumeOptions, t0: number): Promise<ResumeResult> {
+  const vault = o.vault!
+  const now = o.now ?? Date.now
+  const me = machinePart(o.machine)
+  const id = o.thread
+  try {
+    await vault.refresh(id)
+  } catch (e) {
+    return fail('unreachable', `the vault did not answer: ${(e as Error).message}`)
+  }
+  const book = await Weevbook.open(o.dir, o.machine)
+  /** Under the weevbook's lock, as the writer of this machine takes it. */
+  const withBook = async <T>(fn: () => Promise<T>, writes = false): Promise<T> => {
+    if (!(await book.lockWait(30_000))) throw new Error('the weevbook stayed locked') // i18n-ignore: for the log
+    try {
+      return await fn()
+    } finally {
+      await book.unlock(writes)
+    }
+  }
+  const read = () => withBook(async () => (await book.thread(id))?.journal.events ?? null)
+  let events = await read()
+  if (!events) return fail('unknown', 'neither this machine nor the vault has such a thread')
+  const open = openLeg(events)
+  if (open && parseEngine(open.engine)?.machine === me) return fail('own-leg', `its leg ${open.leg} is this machine's own session ${open.session}: continue it in the app`)
+  const last = events.filter((e) => e.type === 'leg.start').at(-1)
+  if (!last || last.type !== 'leg.start') return fail('no-session', 'the thread has no provider session yet')
+  const provider = parseEngine(last.engine)!.provider
+  let turns = safeTurns(events)
+  const live = next(turns)
+  if (live.kind === 'busy') {
+    const quiet = now() - Date.parse(events.at(-1)!.at)
+    const silent = o.silentMs ?? SILENT_FOR
+    if (quiet < silent) return fail('held', `turn ${live.turn} was at work on ${parseEngine(last.engine)!.machine} ${Math.round(quiet / 1000)} s ago`, { wait: silent - quiet, holder: parseEngine(last.engine)!.machine })
+  }
+  // What the journal will say once the other machine's turn and leg are closed: decided on before anything is written.
+  const closing: EventDraft[] = []
+  const lost = live.kind === 'busy' ? stolen(turns) : null
+  const t = now()
+  if (lost) closing.push(draft(t, open?.leg ?? null, { type: 'turn', ...lost }))
+  if (open) closing.push(draft(t, open.leg, { type: 'leg.end', reason: lost ? 'machine-lost' : 'moved', by: o.machine })) // i18n-ignore: journal data
+  if (lost) turns = safeTurns([...events, { ...closing[0], v: 1, seq: events.length + 1 } as JournalEvent])
+  const nx = next(turns)
+  if (nx.kind === 'busy') return fail('busy', `turn ${nx.turn} is ${nx.state} in the journal`)
+  if (nx.kind === 'hold') return fail('attempts', `turn ${nx.turn} failed ${3} times on api or auth: it waits for "try again"`)
+
+  // The engine, as with a hub: this machine's, of the thread's own provider.
+  const account = o.account ?? ((p: Provider) => accountHash(p, o.home, path.dirname(o.codexDir)))
+  const mine = `${provider}:${account(provider)}@${me}`
+  const project = events.find((e): e is MetaEvent => e.type === 'meta' && e.project !== undefined)?.project ?? null
+  const ckEvent = events.filter((e): e is CheckpointEvent => e.type === 'checkpoint').at(-1)
+  const old = parseEngine(last.engine)!
+  const table: MachineFacts[] = [{ machine: me, seen: t, answers: true, projects: project ? [project] : [], engines: [{ engine: mine, signedIn: true }] }]
+  if (old.machine !== me) table.push({ machine: old.machine, seen: 0, answers: false, projects: [], engines: [{ engine: last.engine, signedIn: true }] })
+  const dispatching = nx.kind === 'dispatch'
+  const facts = threadFacts(events, { project, cloneable: !!ckEvent?.repo, retry: dispatching && nx.retry, turn: dispatching ? nx.turn : turns.length })
+  const d = decide({ now: t, thread: facts, table: { machines: table, quotas: { [`${provider}:${account(provider)}`]: zero(t) } }, ledger: [], preferred: provider })
+  if (d.rule === 'hold' || !d.engine) return fail('hold', `${d.hold ?? 'hold'}: ${d.reason}`)
+  if (parseEngine(d.engine)?.provider !== provider) return fail('hold', `only ${provider} resumes in step 3`)
+  const rung: 1 | 2 = d.rung === 1 ? 1 : 2
+
+  // The lines and the code, from the vault, for this thread alone.
+  const session = last.session
+  const sessionFile = findSession(provider, session, o.claudeDir, o.codexDir)
+  let cwd = last.cwd
+  let restored: Restored | null = null
+  let slim: Map<string, Buffer> | undefined
+  if (rung === 2 || !sessionFile) {
+    try {
+      slim = await vaultRaw(book, vault, id, events, provider, session)
+    } catch (e) {
+      return fail('unreachable', `the vault did not give the thread's lines: ${(e as Error).message}`)
+    }
+    const probe = await withBook(() => rebuild(book, id, events!, provider, session, last.cwd, slim))
+    if (!probe) return fail('no-session', 'the vault does not hold the lines of this conversation yet: its machine has not pushed them')
+    const p = await placeAndRestore({ thread: id, events, cwd: last.cwd, gitDir: book.gitDir, git: hubRunner(book.gitDir), hub: false, vault, dataDir: o.dataDir, home: o.home, projectsDir: o.projectsDir, roots: o.roots, claudeDir: o.claudeDir, codexDir: o.codexDir, placeGit: o.git, busy: o.busy, log: o.log })
+    if (p.onlyThere) return fail('hold', `only-there: ${p.onlyThere}`)
+    cwd = p.cwd
+    restored = p.restored
+  }
+
+  // The journal, here: the other machine's leg closed, this one opened, the turn running.
+  const leg = `L${legCount(events) + 1}` as LegId
+  const epoch = Math.max(0, ...events.map((e) => (e.type === 'leg.start' ? e.epoch : 0))) + 1
+  const seen = events.length
+  const wrote = await withBook(async () => {
+    const cur = (await book.thread(id))?.journal.events ?? []
+    if (cur.length !== seen) return false // the writer of this machine, or a restore, wrote meanwhile
+    const at = now()
+    const drafts: EventDraft[] = [...closing]
+    if (dispatching) drafts.push(draft(at, null, { type: 'turn', ...assign(turns, nx.turn, d.engine!, d.rule, d.reason) }))
+    drafts.push(draft(at, leg, { type: 'leg.start', engine: d.engine!, session, cwd, rung, epoch }))
+    if (dispatching) drafts.push(draft(at, leg, { type: 'turn', turn: nx.turn, state: 'running' }))
+    const r = await book.append(id, { events: drafts })
+    if (r.refused) throw new Error('the journal refused the resume') // i18n-ignore: for the log
+    await book.commitThread(id, `${dispatching ? `turn ${nx.turn} (running) · ` : ''}resume · ${provider} · ${o.machine}`)
+    return true
+  }, true)
+  if (!wrote) return fail('rejected', 'the thread moved meanwhile: try again')
+  events = (await read()) ?? events
+
+  // The provider session: recorded first (the writer must never take the file for a new thread), then written.
+  const sessions = new Sessions(o.sessions)
+  await sessions.load()
+  let file = sessionFile ?? ''
+  if (rung === 2 || !sessionFile) {
+    const text = await withBook(() => rebuild(book, id, events!, provider, session, cwd, slim))
+    file = await destination(provider, session, cwd, o.claudeDir, o.codexDir, now())
+    await sessions.record({ key: sessionKey({ file, provider }), thread: id, leg, provider, file, lines: countLines(text), offset: Buffer.byteLength(text), rawBytes: 0, base: countLines(text), moved: false })
+    await fsp.mkdir(path.dirname(file), { recursive: true })
+    await writeAtomic(file, text)
+  } else {
+    const text = await fsp.readFile(sessionFile, 'utf8')
+    await sessions.record({ key: sessionKey({ file: sessionFile, provider }), thread: id, leg, provider, file: sessionFile, lines: countLines(text), offset: Buffer.byteLength(text), rawBytes: 0, base: countLines(text), moved: false })
+  }
+
+  let launched = false
+  if (dispatching) {
+    const accepted = events.find((e) => e.type === 'turn' && e.turn === nx.turn && e.state === 'accepted')
+    const asked = accepted && accepted.type === 'turn' && accepted.message ? events.find((e) => e.id === accepted.message) : undefined
+    const text = nx.resume || !asked || asked.type !== 'message' ? preface(id, events, nx.turn) : asked.text
+    try {
+      await o.launch({ provider, session, cwd, file, text, thread: id, turn: nx.turn })
+      launched = true
+    } catch (e) {
+      // The engine did not start: the attempt failed with no effect, its leg ends.
+      await withBook(async () => {
+        const at = now()
+        await book.append(id, { events: [draft(at, leg, { type: 'turn', turn: nx.turn, state: 'failed', reason: 'api', effect: 'none' }), draft(at, leg, { type: 'leg.end', reason: 'error', by: o.machine })] }) // i18n-ignore: journal data
+        await book.commitThread(id, `turn ${nx.turn} (failed) · ${provider} · ${o.machine}`)
+      }, true).catch(() => undefined)
+      return fail('launch', (e as Error).message)
+    }
+  }
+  return {
+    ok: true,
+    turn: dispatching ? nx.turn : null,
+    ...(dispatching ? { attempt: (turns[nx.turn - 1]?.attempts.length ?? 0) + 1, resume: nx.resume } : {}),
+    leg,
+    rung,
+    engine: d.engine,
+    rule: d.rule,
+    cwd,
+    file,
+    session,
+    restored,
+    stole: !!lost,
     launched,
     ms: Date.now() - t0,
   }

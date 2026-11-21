@@ -3,7 +3,8 @@
 //   setup [--remote <url>]   with gh logged in: the private repository <user>/weevbook-vault (made when missing), this
 //                            machine's deploy key on it, the vault key and its recovery code (printed once, here
 //                            only), and the remote saved in CONFIG_DIR/vault.json. --remote: any git URL, no GitHub.
-//   push                     seals what is new and pushes it
+//   push                     seals what is new and pushes it: journals, then the raw lines (slim) and the checkpoints
+//                            of the code, in batches (step 3); --progress prints a line per batch
 //   restore [--code "<24 words>"]   fetches the vault and decrypts every journal into this machine's weevbook; on a
 //                            machine with no remote saved yet (a new install), finds the person's vault on GitHub first
 //   status                   what is waiting, and the last push
@@ -20,8 +21,48 @@ import { tr } from '../i18n.ts'
 import { which } from '../platform.ts'
 import V from '../i18n/weevbook-vault.ts'
 import { backfillMarker } from './backfill.ts'
-import { VaultError, keyFromCode, newKey, pushVault, readKey, recoveryCode, remoteHasVault, restoreVault, vaultSsh, vaultStatus, vaultSummary, writeKey } from './vault.ts'
+import { VaultError, keyFromCode, newKey, pushVault, readKey, recoveryCode, remoteHasVault, restoreVault, vaultSsh, vaultStatus, vaultSummary, writeKey, type VaultOptions } from './vault.ts'
 import { VAULT_REPO, addDeployKey, ghLogin, ghRunner, withoutVault } from './vault-github.ts'
+
+/** Where a command finds this machine's vault: the real places, or a copy's (--data-dir, --config-dir: tests). */
+function vaultFiles(args: string[]) {
+  const opt = (name: string) => {
+    const i = args.indexOf(name)
+    return i >= 0 ? args[i + 1] : undefined
+  }
+  const data = opt('--data-dir') ?? DATA_DIR
+  const config = opt('--config-dir')
+  return {
+    data,
+    config,
+    key: config ? path.join(config, 'vault.key') : VAULT_KEY_FILE,
+    deploy: config ? path.join(config, 'vault-deploy') : VAULT_DEPLOY_KEY,
+    conf: config ? path.join(config, 'vault.json') : VAULT_CONF,
+    staging: opt('--data-dir') ? path.join(data, 'vault.git') : VAULT_STAGING,
+    remote(): string | null {
+      if (!config) return vaultRemote()
+      try {
+        return (JSON.parse(fs.readFileSync(path.join(config, 'vault.json'), 'utf8')) as { remote?: string }).remote ?? null
+      } catch {
+        return null
+      }
+    },
+  }
+}
+
+/** This machine's vault as a command uses it (null: no vault set up here, or no key yet). */
+export function vaultHere(args: string[]): VaultOptions | null {
+  const f = vaultFiles(args)
+  const remote = f.remote()
+  let key: Buffer | null = null
+  try {
+    key = remote ? readKey(f.key) : null
+  } catch {
+    /* not a key */
+  }
+  if (!remote || !key) return null
+  return { dir: path.join(f.data, 'weevbook'), staging: f.staging, remote, key, machine: MACHINE.id, ssh: vaultSsh(f.deploy), keyDir: path.dirname(f.deploy), gh: ghRunner(which('gh') ?? 'gh') }
+}
 
 /** Claude Code's `cleanupPeriodDays` on this machine (30 when it is not set). */
 function claudeWindow(): number {
@@ -39,23 +80,10 @@ export async function vaultMain(args: string[], out: (line: string) => void): Pr
     const i = args.indexOf(name)
     return i >= 0 ? args[i + 1] : undefined
   }
-  const data = opt('--data-dir') ?? DATA_DIR
-  const config = opt('--config-dir')
-  const files = {
-    key: config ? path.join(config, 'vault.key') : VAULT_KEY_FILE,
-    deploy: config ? path.join(config, 'vault-deploy') : VAULT_DEPLOY_KEY,
-    conf: config ? path.join(config, 'vault.json') : VAULT_CONF,
-    staging: opt('--data-dir') ? path.join(data, 'vault.git') : VAULT_STAGING,
-  }
+  const files = vaultFiles(args)
+  const data = files.data
   const dir = path.join(data, 'weevbook')
-  const savedRemote = () => {
-    if (!config) return vaultRemote()
-    try {
-      return (JSON.parse(fs.readFileSync(files.conf, 'utf8')) as { remote?: string }).remote ?? null
-    } catch {
-      return null
-    }
-  }
+  const savedRemote = () => files.remote()
   const ssh = vaultSsh(files.deploy)
   // gh where weevilsd installs it when the machine has none (~/.local/bin), whatever this shell's PATH says.
   const gh = ghRunner(which('gh') ?? 'gh')
@@ -68,11 +96,21 @@ export async function vaultMain(args: string[], out: (line: string) => void): Pr
         if (!remote) return fail(t.noRemote)
         const key = readKey(files.key)
         if (!key) return fail(t.noKey(files.key))
-        const r = await pushVault({ dir, staging: files.staging, remote, key, machine: MACHINE.id, ssh })
-        out(r.sealed || r.pushed ? t.pushed(r.threads, r.sealed, r.chunks, r.attachments, r.pushed) : t.nothing)
+        const r = await pushVault({ dir, staging: files.staging, remote, key, machine: MACHINE.id, ssh, keyDir: path.dirname(files.deploy), gh, ...(args.includes('--progress') ? { progress: out } : {}) })
+        out(r.sealed || r.pushed ? t.pushed(r.threads, r.sealed, r.chunks, r.attachments, r.pushed) : r.raw?.pushed || r.checkpoints?.pushed ? t.journalsSame : t.nothing)
         if (r.differ.length) out(t.differ(r.differ.length))
         for (const f of r.failed) out(t.error(`${f.thread}: ${f.error}`))
-        return r.failed.length ? 1 : 0
+        // Step 3: the raw lines and the checkpoints.
+        const raw = r.raw
+        const cks = r.checkpoints
+        if (raw?.pushed) out(t.rawPushed(raw.pushed, raw.pushes, (raw.bytes / 1e6).toFixed(1), raw.repos))
+        if (raw?.noRepo) out(t.rawNoRepo(raw.noRepo))
+        if (raw?.differ.length) out(t.differ(raw.differ.length))
+        if (cks?.pushed) out(t.checkpointsPushed(cks.pushed, cks.sent, (cks.bytes / 1e6).toFixed(1)))
+        for (const k of cks?.skipped ?? []) out(t.checkpointSkipped(k.thread, Math.round(k.bytes / 1e6)))
+        const late = [...(raw?.failed ?? []), ...(cks?.failed ?? [])].map((f) => `${f.thread}: ${f.error}`).concat([raw?.error, cks?.error].filter((e): e is string => !!e))
+        for (const e of late) out(t.error(e))
+        return r.failed.length || late.length ? 1 : 0
       }
       case 'restore': {
         // The words are checked before anything is asked of GitHub.
@@ -105,6 +143,7 @@ export async function vaultMain(args: string[], out: (line: string) => void): Pr
         out(t.remote(s.remote))
         out(t.key(s.key))
         out(t.status(s.threads, s.pending, s.remoteThreads))
+        out(t.rawStatus(s.rawPending, s.checkpointsPending))
         out(t.pushedAt(s.pushedAt))
         if (s.error) out(t.error(s.error))
         return s.error || !s.key ? 1 : 0

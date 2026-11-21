@@ -341,6 +341,62 @@ describe('auto — the runner', () => {
     expect(run.endedAt).toBe(T0 + IDLE_MS + 20 * MIN)
   })
 
+  it('the person writes into a running task’s session: the run ends « continued by you », keeps its ids, and nothing lands or is pushed behind that session', async () => {
+    sys.merge = vi.fn(async () => ({ merged: false as const, why: 'x' }))
+    const o = await accepted(1)
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    expect(o.list()[0]).toMatchObject({ state: 'running', sessionId: 'sess-1' })
+    expect(o.autoSession('sess-1')).toBeTruthy()
+    snap.sessions = [session({ id: 'sess-1', status: 'working' })]
+    o.handOver('sess-1', T0 + IDLE_MS + MIN)
+    const run = o.list()[0]
+    expect(run.state).toBe('done')
+    expect(run.lastEvent).toBe(O.en.handedOver)
+    expect(run.runs?.at(-1)).toMatchObject({ sessionId: 'sess-1', handedOver: T0 + IDLE_MS + MIN })
+    // An ordinary session of the person's from now on: not the automation's any more.
+    expect(o.autoSession('sess-1')).toBeUndefined()
+    expect(o.owns('sess-1')).toBe(false)
+    await flush()
+    expect(sys.merge).not.toHaveBeenCalled()
+    expect(sys.push).not.toHaveBeenCalled()
+  })
+
+  it('safe work landed on main and the running app took it: only then For you says the new theme is in the selector', async () => {
+    const add = vi.fn()
+    sys.merge = vi.fn(async () => ({ merged: true as const, commit: 'abc1234def', kinds: ['theme' as const], themes: ['desert'] }))
+    sys.live = vi.fn(async () => true)
+    const o = await accepted(1, { foryou: { add } })
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: the desert theme.' })]
+    o.tick(T0 + IDLE_MS + 20 * MIN)
+    for (let i = 0; i < 5; i++) await flush()
+    expect(sys.live).toHaveBeenCalledWith('abc1234def')
+    expect(o.list()[0].runs?.at(-1)?.merged).toBe('abc1234def')
+    expect(add).toHaveBeenCalledWith(expect.objectContaining({ title: O.en.themesLive(['desert']) }))
+  })
+
+  it('a run whose work could not land by itself is never left on its branch in silence: one plain line and « Land it » in For you; the checks ran in the run’s jail', async () => {
+    const add = vi.fn()
+    sys.merge = vi.fn(async () => ({ merged: false as const, why: 'server/core.ts needs review' }))
+    sys.push = vi.fn(async () => true)
+    const o = await accepted(1, { foryou: { add } })
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: a server fix on the branch.' })]
+    o.tick(T0 + IDLE_MS + 20 * MIN)
+    for (let i = 0; i < 5; i++) await flush()
+    const [cwd, box] = vi.mocked(sys.merge).mock.calls[0] as unknown as [string, { wrap: string[]; set: Record<string, string> }]
+    expect(cwd).toBe(path.join(dir, 'p', '.auto', 'mygame', o.list()[0].id))
+    expect(box.wrap[0]).toBe('bwrap')
+    expect(box.set.WEEVILS_SCOPE).toBe('automation')
+    expect(add).toHaveBeenCalledTimes(1)
+    const card = add.mock.calls[0][0]
+    expect(card).toMatchObject({ kind: 'boss', title: O.en.landTitle('Harden mygame tests'), text: O.en.landReview, open: { page: 'session', id: 'sess-1' } })
+    expect(card.actions).toEqual([{ label: O.en.landButton, brief: O.en.landBrief, op: 'land:sess-1' }])
+  })
+
   it('rechecks source access before accept/run and keeps revoked queued work across reload without creating a run',async()=>{
     let allowed=false
     const policy={

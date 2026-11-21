@@ -61,6 +61,17 @@ type Git = (dir: string, args: string[], timeout?: number) => Promise<string | n
 /** Runs a command in <dir>: true when it exits 0. */
 type Run = (dir: string, cmd: string, args: string[], timeout: number) => Promise<boolean>
 export const runOk: Run = (dir, cmd, args, timeout) => new Promise((resolve) => execFile(cmd, args, { cwd: dir, timeout, maxBuffer: 64 << 20 }, (e) => resolve(!e)))
+/**
+ * Where the checks run: the run's own jail and environment (Optimizers.jail, guardEnv). The checks execute what the
+ * automation wrote (its tests, its node_modules' binaries): never with more rights than the run itself had.
+ */
+export type Sandbox = { wrap: string[]; set: Record<string, string>; unset: string[] }
+const sandboxed = (run: Run, box: Sandbox | undefined): Run => (dir, cmd, args, timeout) => {
+  if (!box) return run(dir, cmd, args, timeout)
+  const env = [...box.unset.filter((k) => /^[A-Za-z_]\w*$/.test(k)).flatMap((k) => ['-u', k]), ...Object.entries(box.set).filter(([k]) => /^[A-Za-z_]\w*$/.test(k)).map(([k, v]) => `${k}=${v}`)]
+  const [head, ...rest] = [...box.wrap, 'env', ...env, cmd, ...args]
+  return run(dir, head, rest, timeout)
+}
 const gitOut: Git = (dir, args, timeout = 30_000) => new Promise((resolve) => execFile('git', ['-C', dir, ...args], { timeout }, (e, out) => resolve(e ? null : String(out).trim())))
 
 export type MergeResult = { merged: false; why: string } | { merged: true; commit: string; kinds: SafeKind[]; themes: string[] }
@@ -70,7 +81,8 @@ export type MergeResult = { merged: false; why: string } | { merged: true; commi
  * check (typecheck, i18n, the tests related to the change), push fast-forward. <app> is weevils' own checkout: any
  * other repository is never merged here.
  */
-export async function autoMerge(dir: string, app: string, git: Git = gitOut, run: Run = runOk): Promise<MergeResult> {
+export async function autoMerge(dir: string, app: string, box?: Sandbox, git: Git = gitOut, plain: Run = runOk): Promise<MergeResult> {
+  const run = sandboxed(plain, box)
   const [mine, ours] = await Promise.all([git(dir, ['remote', 'get-url', 'origin']), git(app, ['remote', 'get-url', 'origin'])])
   if (!mine || mine !== ours) return { merged: false, why: 'not weevils' }
   if ((await git(dir, ['status', '--porcelain'])) !== '') return { merged: false, why: 'uncommitted changes' }
@@ -89,7 +101,9 @@ export async function autoMerge(dir: string, app: string, git: Git = gitOut, run
   for (const [args, t] of [[['run', 'typecheck'], 300_000], [['run', 'i18n:check'], 120_000]] as const)
     if (!(await run(dir, 'npm', [...args], t))) return { merged: false, why: `npm ${args.join(' ')} failed` }
   if (!(await run(dir, 'npx', ['vitest', 'run', '--changed', 'origin/main', '--passWithNoTests'], 600_000))) return { merged: false, why: 'tests failed' }
-  if ((await git(dir, ['push', '-q', 'origin', 'HEAD:refs/heads/main'], 120_000)) === null) return { merged: false, why: 'push refused (main moved?)' }
+  // To the repository main is fetched from (`remote get-url` gives the fetch URL): a checkout may point its pushes
+  // elsewhere on purpose (weevils' own: pushurl to a private archive), main lives where it is fetched.
+  if ((await git(dir, ['push', '-q', mine, 'HEAD:refs/heads/main'], 120_000)) === null) return { merged: false, why: 'push refused (main moved?)' }
   const commit = (await git(dir, ['rev-parse', 'HEAD'])) ?? ''
   return { merged: true, commit, kinds: v.kinds, themes: v.themes }
 }
@@ -103,5 +117,6 @@ export async function updateLive(app: string, commit: string, git: Git = gitOut,
   if ((await git(app, ['status', '--porcelain', '--untracked-files=no'])) !== '') return false
   if ((await git(app, ['fetch', '-q', 'origin', 'main'], 60_000)) === null) return false
   if ((await git(app, ['merge', '-q', '--ff-only', commit], 60_000)) === null) return false
+  // weevils' own vite (the app checkout's node_modules, never the run's): the CSS and copy are only bundled.
   return run(app, 'npx', ['vite', 'build'], 600_000)
 }

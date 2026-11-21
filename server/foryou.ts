@@ -26,7 +26,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import type http from 'node:http'
 import path from 'node:path'
-import type { InterruptReason, Message, Session, SessionDetail, Snapshot } from '../shared/api.ts'
+import type { InterruptReason, Message, RequestOrigin, Session, SessionDetail, Snapshot } from '../shared/api.ts'
 import type { ForYouAction, ForYouCard, ForYouFeed, ForYouGauge, ForYouItem, ForYouKind, ForYouMark, ForYouMedia, ForYouOpen, ForYouPulse, ForYouTone } from '../shared/foryou.ts'
 import { isLang } from '../shared/i18n.ts'
 import { evidenceInput, evidenceLabel, mergeEvidence, type EvidenceInput } from '../shared/evidence.ts'
@@ -36,6 +36,7 @@ import type { Level, UsageInfo } from '../shared/infra.ts'
 import { DATA_DIR, MACHINE } from './config.ts'
 import type { MediaShelf } from './foryou-media.ts'
 import { isLocal, trustedFrom } from './http.ts'
+import { originOf } from './outbox-http.ts'
 import { installationLang, lang, tr, withLang, type Lang } from './i18n.ts'
 import CM from './i18n/core.ts'
 import M from './i18n/foryou.ts'
@@ -346,7 +347,7 @@ export interface ForYouHost {
   snapshot(): Snapshot
   bump(): void
   detailAny(id: string): Promise<SessionDetail | undefined>
-  send(id: string, text: string, from?: string): Promise<{ id: string }>
+  send(id: string, text: string, from?: string, sourceThreadId?: string, origin?: RequestOrigin): Promise<{ id: string }>
   sendMain(text: string, brief?: string): Promise<{ id: string }>
   resume(id: string): Promise<{ id: string }>
   close(id: string): Promise<unknown>
@@ -1665,21 +1666,22 @@ export class ForYou {
     return reply ? clip(reply.text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim(), 1200) : undefined
   }
 
-  async act(id: string, action: string, card?: string, l?: unknown): Promise<void | IntentResult> {
-    const result = await this.actRaw(id, action, card, l)
+  /** origin 'user': the tap came from the person (the route says so: a signed-in browser, not a script). */
+  async act(id: string, action: string, card?: string, l?: unknown, origin?: RequestOrigin): Promise<void | IntentResult> {
+    const result = await this.actRaw(id, action, card, l, origin)
     return result ? { ...result, open: this.appOpen(result.open) } : result
   }
 
-  private async actRaw(id: string, action: string, card?: string, l?: unknown): Promise<void | IntentResult> {
+  private async actRaw(id: string, action: string, card?: string, l?: unknown, origin?: RequestOrigin): Promise<void | IntentResult> {
     const key = card ?? id
     const previous = this.actionFlights.get(key)
     if (previous) return previous
-    const next = this.actOnce(id, action, card, l)
+    const next = this.actOnce(id, action, card, l, origin)
     this.actionFlights.set(key, next)
     try { return await next } finally { this.actionFlights.delete(key) }
   }
 
-  private async actOnce(id: string, action: string, card?: string, l?: unknown): Promise<void | IntentResult> {
+  private async actOnce(id: string, action: string, card?: string, l?: unknown, origin?: RequestOrigin): Promise<void | IntentResult> {
     this.syncIntents()
     const t = withLang(l, () => tr(M))
     if (id === 'proposals') {
@@ -1723,6 +1725,15 @@ export class ForYou {
     const direct = i.actions?.find(a => a.id === action && a.op)
     if (direct) {
       if (i.gone) throw new Error(t.notFound)
+      // « Land it » under a run's work that did not land by itself (optimizers.ts offerLanding): the person's tap hands
+      // the run's own session over to them, with the brief to land it (core.ts sendOne). Only the person's own tap.
+      if (direct.op!.startsWith('land:')) {
+        if (origin !== 'user') throw new Error(t.noAction)
+        await this.w.send(direct.op!.slice(5), direct.brief, undefined, undefined, 'user')
+        i.gone = true
+        this.changed()
+        return
+      }
       if (!this.deps.op) throw new Error(t.noAction)
       await this.deps.op(direct.op!)
       i.gone = true
@@ -1737,7 +1748,7 @@ export class ForYou {
     if (i.visualProposal && i.sessionId) {
       const choice = i.visualProposal.options.find(o => action === `choice:${o.id}`)
       if (!choice || !this.w.snapshot().sessions.some(s => s.id === i.sessionId && s.controllable)) throw new Error(t.noAction)
-      await this.w.send(i.sessionId, `${i.title}\n${choice.label}\n\n${choice.instruction}`)
+      await this.w.send(i.sessionId, `${i.title}\n${choice.label}\n\n${choice.instruction}`, undefined, undefined, origin)
       i.visualProposal.selected = choice.id
     } else if (i.kind === 'session' && action === 'resume' && i.sessionId) await this.w.resume(i.sessionId)
     else if (i.kind === 'session' && action.startsWith('opt:') && i.sessionId) {
@@ -1748,7 +1759,7 @@ export class ForYou {
       if (version !== questionKey(i)) throw new Error(t.cardGone)
       const label = /^(0|[1-9]\d*)$/.test(index) ? i.q?.options?.[Number(index)] : undefined
       if (!label) throw new Error(t.noAction)
-      await this.w.send(i.sessionId, label)
+      await this.w.send(i.sessionId, label, undefined, undefined, origin)
     } else {
       const a = i.actions?.find((x) => x.id === action)
       if (!a) throw new Error(t.noAction)
@@ -1765,7 +1776,7 @@ export class ForYou {
   }
 
   /** Words typed under an item: to its session, to weevboss (with the post as a hidden note), or by mail to its author. */
-  async reply(id: string, text: unknown, l?: unknown): Promise<void> {
+  async reply(id: string, text: unknown, l?: unknown, origin?: RequestOrigin): Promise<void> {
     const t = withLang(l, () => tr(M))
     const body = typeof text === 'string' ? text.trim() : ''
     if (!body) throw new Error(t.emptyText)
@@ -1776,7 +1787,7 @@ export class ForYou {
       if (!out || !i.mail?.address) throw new Error(t.mailOff)
       const sent = await out.write({ to: i.mail.address, subject: i.mail.subject, text: body, inReplyTo: i.mail.mid, author: i.who, target: i.mail.target })
       if (!sent) throw new Error(t.noReply)
-    } else if (i.reply === 'session' && i.sessionId) await this.w.send(i.sessionId, body)
+    } else if (i.reply === 'session' && i.sessionId) await this.w.send(i.sessionId, body, undefined, undefined, origin)
     else if (i.reply === 'boss') await this.w.sendMain(body, t.replyBrief(clip(collapse(i.text || i.title || ''), 400)))
     else throw new Error(t.noReply)
     i.seen = true
@@ -1873,11 +1884,11 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
     }],
     ['POST', /^\/api\/foryou\/([^/]+)\/act$/, async (req, res, url, [raw]) => {
       const b = await readBody(req)
-      await run(res, exists(id(raw)), () => fy.act(id(raw), String(b?.action ?? ''), typeof b?.card === 'string' ? b.card : undefined, langOf(url)))
+      await run(res, exists(id(raw)), () => fy.act(id(raw), String(b?.action ?? ''), typeof b?.card === 'string' ? b.card : undefined, langOf(url), originOf(req, b)))
     }],
     ['POST', /^\/api\/foryou\/([^/]+)\/reply$/, async (req, res, url, [raw]) => {
       const b = await readBody(req)
-      await run(res, exists(id(raw)), () => fy.reply(id(raw), b?.text, langOf(url)))
+      await run(res, exists(id(raw)), () => fy.reply(id(raw), b?.text, langOf(url), originOf(req, b)))
     }],
     ['POST', /^\/api\/foryou\/([^/]+)\/more$/, async (_req, res, url, [raw]) => {
       await run(res, exists(id(raw)), async () => ({ text: await fy.more(id(raw), langOf(url)) }))

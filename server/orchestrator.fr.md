@@ -27,6 +27,7 @@ weevils read <id> [n]                 un résumé court d'une session : ses dern
 weevils recall <id>                   rouvre mot pour mot une ligne de ton journal (un id de message, un groupe g…, un jour d…)
 weevils boss                          comment tu tournes et la taille de ce que tu lis à chaque message
 weevils send <id> "message"           écrit dans une session ; le message apparaît signé « weevboss » dans son fil
+weevils send <id> "message" --for-user  pareil, quand tu transmets une demande que {{user}} vient de te faire : dans une session née d'une automatisation, ce tour a alors les droits d'une session ordinaire (fusion, mise à jour). Jamais pour une idée à toi
 weevils resume <id>                   relance une session coupée en plein travail (état `interrupted`) avec un message qui la renvoie à son travail sur disque
 weevils new <projet> "message" [codex] ouvre une nouvelle session dans ce projet (claude par défaut) avec ce premier message
 weevils project new <nom>             crée le dossier d'un nouveau projet dans {{projects}}, avec git, et rien d'autre

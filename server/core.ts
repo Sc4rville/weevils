@@ -25,7 +25,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { AutoDetail, AutoRun, AutoRunDetail, ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, Session, SessionDetail, Snapshot, Subagent, SubagentDetail, Tool } from '../shared/api.ts'
+import type { AutoDetail, AutoRun, AutoRunDetail, ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, RequestOrigin, Session, SessionDetail, Snapshot, Subagent, SubagentDetail, Tool } from '../shared/api.ts'
 import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, insideRoots, LOGS_DIRS, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
@@ -49,7 +49,7 @@ const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'max']
 const CLAUDE_MODELS = ['fable', 'opus', 'sonnet', 'haiku'].map((id) => ({ id, label: id, efforts: CLAUDE_EFFORTS, defaultEffort: 'medium' }))
 const family = (model?: string) => /opus|sonnet|haiku|fable/i.exec(model ?? '')?.[0].toLowerCase()
 
-import { recordOrigin, type BossOrigin } from './boss-origins.ts'
+import { readOrigins, recordOrigin, type BossOrigin } from './boss-origins.ts'
 import { Ledger } from './boss-ledger.ts'
 import { claudeHaiku } from './fast.ts'
 import type { Memory } from './memory.ts'
@@ -60,7 +60,7 @@ import { PLAN_MARKER, clockOf, type Relay, type RelayHost } from './relay.ts'
 import R from './i18n/relay.ts'
 import { parseTimerShow } from './schedule.ts'
 import { extractLinks, journalRuns, tailLines, unitDescriptions, type JournalRun } from './auto-runs.ts'
-import { chipsInPlace } from '../shared/setup.ts'
+import { chipsInPlace, CONTEXT_BLOCK } from '../shared/setup.ts'
 import { asksUser, type Ask } from '../shared/asks.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { judgeAsk } from './asks-judge.ts'
@@ -1682,13 +1682,33 @@ export class Weevils {
     return { ok: true }
   }
 
-  /** Écrit dans la session ; si elle n'a plus de processus, la rouvre dans une pane weevils. */
-  async send(id: string, text: string, from?: string, sourceThreadId?: string): Promise<{ id: string; control?: 'model' }> {
-    if (this.foryou && !from) return this.foryou.directRequest(text, this.resolveId(id), () => this.sendOne(id, text, from, sourceThreadId))
-    return this.sendOne(id, text, from, sourceThreadId)
+  /**
+   * Écrit dans la session ; si elle n'a plus de processus, la rouvre dans une pane weevils.
+   * origin 'user': the person's own request, told by the route that received it (the app on a signed-in device, a For
+   * you tap, weevboss relaying the person with --for-user), never guessed from the words. It is what lets a turn in a
+   * session an automation started run as an ordinary session (see AUTO_HANDOVER below).
+   */
+  async send(id: string, text: string, from?: string, sourceThreadId?: string, origin?: RequestOrigin): Promise<{ id: string; control?: 'model' }> {
+    if (this.foryou && !from) return this.foryou.directRequest(text, this.resolveId(id), () => this.sendOne(id, text, from, sourceThreadId, origin))
+    return this.sendOne(id, text, from, sourceThreadId, origin)
   }
 
-  private async sendOne(id: string, text: string, from?: string, sourceThreadId?: string): Promise<{ id: string; control?: 'model' }> {
+  /**
+   * A session an automation run started (Optimizers.autoSession: not handed over yet) lives in the run's jail. A
+   * message from the person takes it over: the jailed process is closed and the same conversation resumes as an
+   * ordinary session (no jail, no automation deny list, the usual rights and rules), with a hidden note telling the
+   * agent so; the run's record keeps its ids and says it was handed over. Anyone else (an agent, weevboss on its own,
+   * an unsigned caller) reaches it only inside its jail: a live pane gets the message, a closed one is never resumed
+   * outside the jail (it used to be, for any sender).
+   */
+  private autoHandover(real: string, origin: RequestOrigin | undefined, live: boolean): 'user' | 'jail' | null {
+    if (!this.optimizers?.autoSession(real)) return null
+    if (origin === 'user') return 'user'
+    if (live) return 'jail'
+    throw new OutboxError(409, tr(M).autoNeedsYou)
+  }
+
+  private async sendOne(id: string, text: string, from?: string, sourceThreadId?: string, origin?: RequestOrigin): Promise<{ id: string; control?: 'model' }> {
     if (isModelControl(text)) return {id:this.resolveId(id),control:'model'}
     if (/^\/(?:model|effort)\s+/i.test(text.trim())) { await this.command(id,text);return {id:this.resolveId(id),control:'model'} }
     // Signé par un auteur (weevboss, un agent externe) : le fil le montre comme son message, pas celui de l'utilisateur.
@@ -1721,7 +1741,19 @@ export class Weevils {
     }
     this.assertSourceExecution(s.cwd)
     this.guardProvider(s)
-    if (s.tool === 'codex' && this.codexBridge.can(real)) {
+    const handover = this.autoHandover(real, origin, !!this.paneFor(real))
+    if (handover === 'user') {
+      const pane = this.paneFor(real)
+      if (pane) {
+        await killWv(pane.name).catch(() => undefined)
+        this.panes = this.panes.filter((p) => p.name !== pane.name)
+      }
+      this.optimizers!.handOver(real)
+      const block = text.match(CONTEXT_BLOCK)
+      text = block ? text.slice(0, block.index) + joinContext(block[0], tr(M).autoHandover) : text + joinContext('', tr(M).autoHandover)
+      console.log(`[sessions] ${real.slice(0, 8)} : automatisation reprise par la personne, session ordinaire`)
+    }
+    if (handover !== 'user' && s.tool === 'codex' && this.codexBridge.can(real)) {
       await this.codexBridge.send(real, text)
       this.foryou?.resolveSession(s)
       return { id: real }
@@ -1796,14 +1828,21 @@ export class Weevils {
       throw new OutboxDeferred(this.relay.retryAt(), tr(OutboxM).providerWaiting)
     }
   }
-  async attach(id: string, text: string, files: { name: string; type: string; data: string }[]): Promise<{ id: string }> {
+  async attach(id: string, text: string, files: { name: string; type: string; data: string }[], origin?: RequestOrigin): Promise<{ id: string }> {
     const remote = this.remoteFor(id)
     if (remote) return remote.call('POST', `/api/sessions/${encodeURIComponent(id)}/attach`, { text, files })
-    if (!files.length) return this.send(id, text)
+    if (!files.length) return this.send(id, text, undefined, undefined, origin)
     const target = this.relay?.deliveryTarget?.(this.resolveId(id)) ?? this.resolveId(id)
     const s = this.snapshot().sessions.find(s => s.id === target)
     if (s) { this.assertSourceExecution(s.cwd);this.guardProvider(s) }
-    return this.send(id, withFiles(text, saveInbox(path.join(DATA_DIR, 'inbox'), files)))
+    return this.send(id, withFiles(text, saveInbox(path.join(DATA_DIR, 'inbox'), files)), undefined, undefined, origin)
+  }
+
+  /** weevboss is in a turn the person started (from the app or by voice, boss/origins.jsonl, the last 30 min): what lets
+   *  its `weevils send --for-user` speak for them (index.ts requestOrigin). */
+  bossServingUser(now = Date.now()): boolean {
+    const last = readOrigins(BOSS_DIR).at(-1)
+    return !!last && (last.origin === 'device' || last.origin === 'live') && now - last.at < 30 * 60_000
   }
 
   /** Fichiers (photos, PDF, zip…) pour l'orchestrateur : déposés dans INBOX_DIR/<date>-<nom>, le message dit « (fichier : /chemin) ». */

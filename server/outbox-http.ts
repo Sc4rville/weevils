@@ -1,13 +1,23 @@
 import { Readable } from 'node:stream'
 import type http from 'node:http'
 import { OutboxError, type OutboxTask } from './outbox.ts'
-import { markInternal } from './http.ts'
+import { automated, isLocal, markInternal } from './http.ts'
+import type { RequestOrigin } from '../shared/api.ts'
 import { tr, withLang } from './i18n.ts'
 import M from './i18n/outbox.ts'
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, params: string[]) => Promise<void> | void
 const replays = new WeakSet<object>()
 /** A request rebuilt by executeOutbox: its doors (who may speak as the user) were checked when the intent was accepted. */
 export const isReplay = (req: http.IncomingMessage) => replays.has(req)
+/**
+ * The person themselves behind a request to a session or a For you card (RequestOrigin 'user'): a signed-in browser
+ * that is not a script, never a loopback caller (agents, the CLI, an automation's jail). A replayed intent carries the
+ * origin checked on its original request (index.ts, at accept), never the client's word for it.
+ */
+export function originOf(req: http.IncomingMessage, body: { origin?: unknown } | null | undefined): RequestOrigin | undefined {
+  if (isReplay(req)) return body?.origin === 'user' ? 'user' : undefined
+  return !isLocal(req) && !automated(req) ? 'user' : undefined
+}
 export const outboxRoute = (pathname: string) => /^\/api\/(?:main(?:\/attach)?|sessions\/[^/]+\/(?:send|attach)|foryou\/[^/]+\/(?:reply|act))$/.test(pathname)
 /** Replay a persisted, authenticated intent through the same handlers, never through the network. */
 export async function executeOutbox(task: OutboxTask, routes: [string, RegExp, Handler][]) {

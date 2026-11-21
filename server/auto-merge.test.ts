@@ -71,29 +71,41 @@ describe('autoMerge', () => {
   it('rebases, checks, then pushes fast-forward to main (never forced)', async () => {
     const { git, calls } = fakeGit(ok)
     const runs: string[] = []
-    const r = await autoMerge('/wt', '/app', git, async (_d, cmd, args) => (runs.push([cmd, ...args].join(' ')), true))
+    const r = await autoMerge('/wt', '/app', undefined, git, async (_d, cmd, args) => (runs.push([cmd, ...args].join(' ')), true))
     expect(r).toEqual({ merged: true, commit: 'abc1234def', kinds: ['theme', 'copy'], themes: ['desert'] })
     expect(calls.map((c) => c.slice(1).join(' '))).toContain('rebase -q origin/main')
     const push = calls.find((c) => c[1] === 'push')!
-    expect(push.slice(1)).toEqual(['push', '-q', 'origin', 'HEAD:refs/heads/main'])
+    // main lives where it is fetched from, even when the checkout's pushurl points elsewhere
+    expect(push.slice(1)).toEqual(['push', '-q', 'https://github.com/x/weevils.git', 'HEAD:refs/heads/main'])
     expect(push.join(' ')).not.toMatch(/-f\b|--force/)
     expect(runs).toEqual(['npm run typecheck', 'npm run i18n:check', 'npx vitest run --changed origin/main --passWithNoTests'])
   })
+  it('the checks run inside the run’s own jail and environment (they execute what the automation wrote)', async () => {
+    const { git } = fakeGit(ok)
+    const runs: string[] = []
+    const box = { wrap: ['bwrap', '--dev-bind', '/', '/', '--'], set: { WEEVILS_SCOPE: 'automation' }, unset: ['GH_TOKEN'] }
+    await autoMerge('/wt', '/app', box, git, async (_d, cmd, args) => (runs.push([cmd, ...args].join(' ')), true))
+    expect(runs).toEqual([
+      'bwrap --dev-bind / / -- env -u GH_TOKEN WEEVILS_SCOPE=automation npm run typecheck',
+      'bwrap --dev-bind / / -- env -u GH_TOKEN WEEVILS_SCOPE=automation npm run i18n:check',
+      'bwrap --dev-bind / / -- env -u GH_TOKEN WEEVILS_SCOPE=automation npx vitest run --changed origin/main --passWithNoTests',
+    ])
+  })
   it('red checks: no push', async () => {
     const { git, calls } = fakeGit(ok)
-    const r = await autoMerge('/wt', '/app', git, async (_d, _c, args) => !args.includes('vitest'))
+    const r = await autoMerge('/wt', '/app', undefined, git, async (_d, _c, args) => !args.includes('vitest'))
     expect(r).toEqual({ merged: false, why: 'tests failed' })
     expect(calls.some((c) => c[1] === 'push')).toBe(false)
   })
   it('a conflict with main: the rebase is aborted, the branch stays', async () => {
     const { git, calls } = fakeGit({ ...ok, 'rebase -q': null })
-    expect(await autoMerge('/wt', '/app', git, async () => true)).toEqual({ merged: false, why: 'conflicts with main' })
+    expect(await autoMerge('/wt', '/app', undefined, git, async () => true)).toEqual({ merged: false, why: 'conflicts with main' })
     expect(calls.some((c) => c.slice(1).join(' ') === 'rebase --abort')).toBe(true)
   })
   it('server changes: no checks run, no push', async () => {
     const { git, calls } = fakeGit({ ...ok, 'diff --name-status': 'M\tsrc/styles.css\nM\tserver/core.ts' })
     let ran = false
-    const r = await autoMerge('/wt', '/app', git, async () => (ran = true))
+    const r = await autoMerge('/wt', '/app', undefined, git, async () => (ran = true))
     expect(r.merged).toBe(false)
     expect(ran).toBe(false)
     expect(calls.some((c) => c[1] === 'push')).toBe(false)
@@ -101,7 +113,7 @@ describe('autoMerge', () => {
   it('another repository never merges here', async () => {
     const calls: string[][] = []
     const git = async (dir: string, args: string[]) => (calls.push(args), dir === '/app' ? 'https://github.com/x/weevils.git' : 'https://github.com/x/other.git')
-    expect(await autoMerge('/wt', '/app', git, async () => true)).toEqual({ merged: false, why: 'not weevils' })
+    expect(await autoMerge('/wt', '/app', undefined, git, async () => true)).toEqual({ merged: false, why: 'not weevils' })
     expect(calls.some((c) => c[0] === 'rebase' || c[0] === 'push')).toBe(false)
   })
 })

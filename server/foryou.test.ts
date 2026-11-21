@@ -652,6 +652,18 @@ describe('posts', () => {
     await expect(fy.act(item.id, 'a1')).rejects.toThrow(M.en.notFound)
   })
 
+  it('« Land it » under an automation’s work: the person’s own tap hands the run’s session to them with the brief; any other caller is refused', async () => {
+    const op = vi.fn(async () => undefined)
+    const fy = make({ op })
+    const item = fy.add({ id: 'auto-land:x:1', kind: 'boss', who: 'weevils', title: '"Fix" is waiting for your OK', text: 'Its changes touch the server.', open: { page: 'session', id: 'run-s' }, actions: [{ label: 'Land it', brief: 'Land this work.', op: 'land:run-s' }] })!
+    await expect(fy.act(item.id, 'a1')).rejects.toThrow(M.en.noAction)
+    expect(host.send).not.toHaveBeenCalled()
+    await fy.act(item.id, 'a1', undefined, undefined, 'user')
+    expect(host.send).toHaveBeenCalledWith('run-s', 'Land this work.', undefined, undefined, 'user')
+    expect(op).not.toHaveBeenCalled()
+    expect(host.sendMain).not.toHaveBeenCalled()
+  })
+
   it('a tapped button sends once and becomes a link to the existing work', async () => {
     const fy = make()
     const { id } = fy.post('Three things are ready.', [{ label: 'Ship it', brief: 'merge and deploy' }])
@@ -719,8 +731,8 @@ describe('posts', () => {
     threads.s1 = [says('Done.')]
     fy.sessionTurn(session(), 'result')
     await flush()
-    await fy.reply('s:s1', 'and the tests?')
-    expect(host.send).toHaveBeenCalledWith('s1', 'and the tests?')
+    await fy.reply('s:s1', 'and the tests?', undefined, 'user')
+    expect(host.send).toHaveBeenCalledWith('s1', 'and the tests?', undefined, undefined, 'user')
   })
 
   it('the seam for generated items: language kept, visible in every language, « more » waits for the curator', async () => {
@@ -1262,7 +1274,7 @@ describe('question option routing', () => {
     fy.askRead('s:s1', { ask: true, question: 'Which colour?', options: ['Blue', 'Green'] })
     const oldChoice = find(fy, 's:s1')!.actions![1].id
     await fy.act('s:s1', oldChoice)
-    expect(host.send).toHaveBeenCalledWith('s1', 'Green')
+    expect(host.send).toHaveBeenCalledWith('s1', 'Green', undefined, undefined, undefined)
     expect(host.sendMain).not.toHaveBeenCalled()
     q.attention = 'Which size should I use?'
     fy.sessionTurn(q, 'question')
@@ -1469,7 +1481,7 @@ describe('explicit visual proposals', () => {
     expect(host.send).not.toHaveBeenCalled()
     await Promise.all([fy.act(item.id, 'choice:B'), fy.act(item.id, 'choice:B')])
     expect(host.send).toHaveBeenCalledTimes(1)
-    expect(host.send).toHaveBeenCalledWith('s1', expect.stringContaining('Adjust private preview only'))
+    expect(host.send).toHaveBeenCalledWith('s1', expect.stringContaining('Adjust private preview only'), undefined, undefined, undefined)
     expect(host.sendMain).not.toHaveBeenCalled()
     expect(find(fy, item.id)).toBeUndefined()
     const loaded = make()

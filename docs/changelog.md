@@ -9,6 +9,14 @@ A short summary of what changed after the first working version.
   projects in powdered earth tones, a turquoise star); **synthwave**, a dark 80s neon night (violet-black bands,
   projects in the retro-sun gradient violet → pink → orange → yellow, a cyan star). Record: `docs/themes.md`.
 
+### Automations land their work
+- Safe automation output (a new theme, copy, an added image) merges into main by itself once its checks pass (run in
+  the automation's own sandbox), then the running weevils rebuilds and For you says so. Everything else gets one line in
+  For you, « … is waiting for your OK », and a **Land it** button: no work left stranded on a branch.
+- Writing into a session an automation started (from the app, a For you tap, or weevboss passing on your request) makes
+  that conversation an ordinary session of yours: same context, no new session, and it may merge and update weevils.
+  Nobody else can take a closed automation session out of its sandbox. Record: `docs/automations/auto-merge.md`.
+
 ## 2026-11-20
 
 ### The first run is a conversation with weevboss

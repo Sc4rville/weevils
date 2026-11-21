@@ -148,6 +148,16 @@ export default defineMessages({
     /** A safe change landed on main and the app was rebuilt (server/auto-merge.ts): said only once it is live. */
     themesLive: (names: string[]) => names.length > 1 ? `nouveaux thèmes ${names.join(' et ')} dans ton sélecteur` : `nouveau thème ${names[0]} dans ton sélecteur`,
     mergedLive: (t: string) => `« ${t} » est en ligne`,
+    /** The person wrote into a running task's session: the run ends there, the session is theirs (core.ts sendOne). */
+    handedOver: 'continuée par toi',
+    /** A run's work that did not land by itself (optimizers.ts offerLanding): one line and a button in For you. */
+    landTitle: (t: string) => `« ${t} » attend ton feu vert`,
+    landButton: 'Fusionner',
+    landBrief: 'Fusionne ce travail : remets-le sur le main actuel, lance les vérifications, corrige ce qui échoue, fusionne-le dans main et mets weevils en marche à jour (reconstruis l’app ; redémarre le serveur seulement si son code a changé). Dis-moi en une phrase ce qui a changé.',
+    landReview: 'Ses changements touchent le serveur, l’installation, la sécurité ou les données : ils attendent ton accord.',
+    landChecks: 'Ses vérifications ont échoué : une session peut corriger et fusionner.',
+    landMoved: 'main a bougé entre-temps : une session peut le remettre à jour et fusionner.',
+    landOtherRepo: 'C’est dans un autre projet : la fusion attend ton accord.',
     askNudge: "Personne ne peut répondre en direct : ta question est partie dans « pour toi ». Continue le reste de la tâche en prenant l'option la plus sûre, et note ce qui attend une réponse.",
     /** Stopped by Claude itself, back to the queue for later (or failed after a few tries). */
     stall_limit: "limite d'usage atteinte",
@@ -281,6 +291,14 @@ export default defineMessages({
     askTitle: (t: string) => `"${t}" has a question`,
     themesLive: (names: string[]) => names.length > 1 ? `new themes ${names.join(' and ')} are in your selector` : `new theme ${names[0]} is in your selector`,
     mergedLive: (t: string) => `"${t}" is live`,
+    handedOver: 'continued by you',
+    landTitle: (t: string) => `"${t}" is waiting for your OK`,
+    landButton: 'Land it',
+    landBrief: 'Land this work: put it on the current main, run the checks, fix what fails, merge it into main and bring the running weevils up to date (rebuild the app; restart the server only if its code changed). Tell me in one sentence what changed.',
+    landReview: 'Its changes touch the server, the installer, security or data: they wait for your OK.',
+    landChecks: 'Its checks failed: a session can fix it and land it.',
+    landMoved: 'main moved meanwhile: a session can catch up and land it.',
+    landOtherRepo: 'It is in another project: landing it waits for your OK.',
     askNudge: 'Nobody can answer live: your question went to For you. Carry on with the rest of the task, taking the safest option, and note what waits for an answer.',
     stall_limit: 'usage limit reached',
     stall_login: 'Claude login needed',

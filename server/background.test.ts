@@ -663,7 +663,8 @@ describe('dans le store', () => {
     expect(t.subagents.map((s) => [s.id, s.status])).toEqual([['s1', 'done']])
   })
 
-  it('X3 coupé par la borne de sûreté puis réécrit, fil muet depuis plus d’une heure : relu tant que claude vit, repasse working', () => {
+  // Needs pid 1 started over 2 h ago; inside a fresh sandbox (bwrap, a container) pid 1 is the sandbox itself.
+  it.skipIf((procInfo(1)?.startedAt ?? 0) > Date.now() - 2 * 3600_000)('X3 coupé par la borne de sûreté puis réécrit, fil muet depuis plus d’une heure : relu tant que claude vit, repasse working', () => {
     const claudeDir = path.join(root, 'claude')
     const f = path.join(claudeDir, '-home-u-projects-demo', `${SID}.jsonl`)
     const now = Date.now()

@@ -149,9 +149,15 @@ function Peek({ onOpen, visible, sent, messages }: { onOpen: () => void; visible
           {working && (
             <motion.div key="working" layout="position" className="peek-item" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={soft}>
               <div className="in">
-                <span className="spin fluo" onClick={(e) => tapHint('star', e.currentTarget) && e.stopPropagation()}>
-                  <Icon name="star" />
-                </span>
+                {snap.mainWorking ? (
+                  <span className="peek-working" onClick={(e) => tapHint('star', e.currentTarget) && e.stopPropagation()}>
+                    <WeevbossLogo className="working-logo" />
+                  </span>
+                ) : (
+                  <span className="spin fluo" onClick={(e) => tapHint('star', e.currentTarget) && e.stopPropagation()}>
+                    <Icon name="star" />
+                  </span>
+                )}
               </div>
             </motion.div>
           )}

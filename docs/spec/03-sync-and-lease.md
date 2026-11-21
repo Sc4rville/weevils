@@ -294,6 +294,8 @@ To be tested with two real repositories at step 2, and by the simulator at step 
 
 ## Open decisions
 
+D1 and D2 are settled by [07 Vault](07-vault.md): every install's hub is the person's GitHub, encrypted.
+
 **D1 · A hub for people without a server.** A person with a laptop and a desktop has no machine that is always on.
 The hub could be a private repository on their own GitHub account, created by weevils at setup (`gh` is already
 optional in the install). The lease protocol above works on GitHub as it is.

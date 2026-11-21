@@ -383,6 +383,12 @@ export default function App() {
         if (stackRef.current.at(-1)?.kind !== 'relay') push({ kind: 'relay' })
         return
       }
+      // « /#foryou » : For you (a link weevboss wrote, or a capture).
+      if (/#foryou\b/.test(url)) {
+        history.replaceState(history.state, '', location.pathname)
+        if (stackRef.current.at(-1)?.kind !== 'foryou') push({ kind: 'foryou' })
+        return
+      }
       // « /#boss » : weevboss spoke up on its own (a proactive message): its thread, at the top.
       if (/#boss\b/.test(url)) {
         history.replaceState(history.state, '', location.pathname)

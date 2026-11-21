@@ -16,6 +16,7 @@
 #   weevils post "texte" [--action "libellé::quoi faire"]…   un mot dans « pour toi », avec des boutons si besoin
 #   weevils show <fichier> ["légende"]                       une image ou une vidéo dans « pour toi »
 #   weevils capture <sortie.png|.mp4> [--open "#s=<id>"] [--theme t] [--seconds N] [--frame]   l'app vue d'un téléphone, sans lire le code d'accès
+#   weevils compare <avant> <après> <sortie.compare.png|.mp4> [--crop x,y,w,h]   un avant/après lisible d'un coup d'œil (avant de weevils show)
 #   weevils page <dossier|fichier> "titre" --kind <type>      une petite page privée, son lien vivant (docs/LINKS.md)
 #     weevils page list <items.json> "titre" [--kind …] · page library "titre" <dossier>… · pages · page rm <slug>
 #     post et show, quand ils rapportent un résultat : --demonstrated "où ça a tourné" · --verified "environnement vérifié"
@@ -91,7 +92,7 @@ weevils post "texte" [--action "libellé::quoi faire"]…   weevils show <fichie
   m_mem_empty='souvenir vide : weevils memory add "souvenir"' m_mem_no_id='quel souvenir ? weevils memory rm <id>' # i18n-ignore
   m_post_empty='rien à poster : weevils post "texte" [--action "libellé::quoi faire"]' m_posted='posté dans « pour toi »' # i18n-ignore
   m_action_bad='une action s’écrit "libellé::quoi faire"' # i18n-ignore
-  m_show_no_file='quel fichier ? weevils show <fichier> ["légende"]' m_shown='affiché dans « pour toi »' # i18n-ignore
+  m_show_no_file='quel fichier ? weevils show <fichier> ["légende"]' m_show_compare='un avant/après se fait avec weevils compare <avant> <après> <sortie.compare.png> [--crop x,y,w,h], puis weevils show de ce fichier' m_shown='affiché dans « pour toi »' # i18n-ignore
   m_page_usage='weevils page <dossier|fichier> "titre" --kind opportunities|library|preview|report|render
 weevils page list <items.json> "titre" [--kind opportunities] · weevils page library "titre" <dossier>…
 weevils pages · weevils page machine · weevils page rm <slug>' # i18n-ignore
@@ -134,7 +135,7 @@ weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] 
   m_mem_empty='empty memory: weevils memory add "memory"' m_mem_no_id='which memory? weevils memory rm <id>'
   m_post_empty='nothing to post: weevils post "text" [--action "label::what to do"]' m_posted='posted in "for you"'
   m_action_bad='an action is written "label::what to do"'
-  m_show_no_file='which file? weevils show <file> ["caption"]' m_shown='shown in "for you"'
+  m_show_no_file='which file? weevils show <file> ["caption"]' m_show_compare='a before/after is made with weevils compare <before> <after> <out.compare.png> [--crop x,y,w,h], then weevils show that file' m_shown='shown in "for you"'
   m_page_usage='weevils page <folder|file> "title" --kind opportunities|library|preview|report|render
 weevils page list <items.json> "title" [--kind opportunities] · weevils page library "title" <folder>…
 weevils pages · weevils page machine · weevils page rm <slug>'
@@ -405,6 +406,16 @@ if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
     wv_node=$( { [ -f "$svc_conf" ] && . "$svc_conf"; } >/dev/null 2>&1; printf '%s' "${WEEVILS_NODE:-}")
     wv_dir=${wv_dir:-$HOME/weevils}
     WEEVILS_CAPTURE_TOKEN=$tok WEEVILS_CAPTURE_BASE=$base exec "${wv_node:-node}" "$wv_dir/server/capture.mjs" "$@" ;;
+  compare)
+    # One before/after a phone reads at a glance: two framed states under big BEFORE / AFTER tags (server/compare.mjs).
+    shift
+    svc_conf=$HOME/.config/weevils/service.conf
+    # shellcheck disable=SC1090
+    wv_dir=$( { [ -f "$svc_conf" ] && . "$svc_conf"; } >/dev/null 2>&1; printf '%s' "${WEEVILS_DIR:-}")
+    # shellcheck disable=SC1090
+    wv_node=$( { [ -f "$svc_conf" ] && . "$svc_conf"; } >/dev/null 2>&1; printf '%s' "${WEEVILS_NODE:-}")
+    wv_dir=${wv_dir:-$HOME/weevils}
+    exec "${wv_node:-node}" "$wv_dir/server/compare.mjs" "$@" ;;
   recall)
     # A line of weevboss's log (server/boss-view.ts), back to the original word for word.
     want=${2:?$a_id}
@@ -555,6 +566,10 @@ print(json.dumps(d))' "$text" "$from" "$(evidence_json)" ${actions[@]+"${actions
     done
     [ -n "${file//[[:space:]]/}" ] || { echo "$m_show_no_file" >&2; exit 1; }
     case "$file" in /*) ;; "~/"*) file=$HOME/${file#"~/"} ;; *) file=$PWD/$file ;; esac
+    # A before/after is one image or clip made by weevils compare (two framed, tagged, cropped states), never a raw pair.
+    if printf '%s %s' "$caption" "${file##*/}" | grep -qiE '(^|[^[:alpha:]])(before|after|avant|apr[eè]s)([^[:alpha:]]|$)' && ! printf '%s' "$file" | grep -qiE '\.compare\.(png|mp4)$'; then # i18n-ignore: words matched, not shown
+      echo "$m_show_compare" >&2; exit 1
+    fi
     for_you media "$m_shown" "$("$py" -c 'import json,sys
 d={"path":sys.argv[1],"caption":sys.argv[2],"cwd":sys.argv[3],"from":sys.argv[4]}
 e=json.loads(sys.argv[5])

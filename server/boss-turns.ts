@@ -3,6 +3,8 @@
 // restart of weevilsd. Messages that arrive during a turn wait their turn here, persisted on disk.
 
 import { speedMode } from './request-handling.ts'
+import type { Session } from '../shared/api.ts'
+import { fileURLToPath } from 'node:url'
 import { wakeContext, type Waiting, type WakeEvent } from './boss-wakeups.ts'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -29,6 +31,19 @@ export const BOSS_EFFORT = process.env.WEEVILS_BOSS_EFFORT || 'medium'
 const readOr = (file: string) => { try { return fs.readFileSync(file, 'utf8') } catch { return '' } }
 /** Where Claude Code keeps the orchestrator's transcripts and its memory folder. */
 export const orchTranscriptsDir = (claudeDir = CLAUDE_DIR, orchDir = ORCH_DIR) => path.join(claudeDir, orchDir.replace(/[^a-zA-Z0-9]/g, '-'))
+
+/** The proactive length guard (a Stop hook on event-only turns): server/boss-short.mjs. */
+const SHORT_HOOK = fileURLToPath(new URL('./boss-short.mjs', import.meta.url))
+
+/**
+ * The open sessions, as `weevils sessions` prints them, read when the turn starts: in the turn's hidden context so it
+ * answers without spending a tool call (~5 s each) on the list it needs on most messages. Bounded.
+ */
+export function sessionsDigest(sessions: readonly Session[], names: (projectId: string) => string, max = 30): string {
+  const rows = sessions.filter((s) => !s.archived && (s.status !== 'done' || s.background)).sort((a, b) => Number(b.status === 'interrupted') - Number(a.status === 'interrupted') || b.lastActivityAt - a.lastActivityAt)
+  const lines = rows.slice(0, max).map((s) => [`${s.id.slice(0, 8)}  ${names(s.projectId)} ${s.tool} @${s.machineId} ${s.status} ${s.title}`, s.now ? ` · ${s.now}` : '', s.background ? ` · ${s.background} in background` : '', s.interrupted ? ` · cut (${s.interrupted.reason})` : ''].join('').replace(/\s+/g, ' ')) // i18n-ignore: model context, never shown
+  return lines.length ? lines.join('\n') + (rows.length > max ? `\n… ${rows.length - max} more: weevils sessions` : '') : 'none open' // i18n-ignore: model context
+}
 
 /** The weevils subcommands weevboss's instructions call (server/orchestrator.*.md). */
 export const BOSS_WEEVILS = ['sessions', 'read', 'recall', 'boss', 'send', 'resume', 'new', 'do', 'project', 'projects', 'setup', 'config', 'memory', 'post', 'show', 'page', 'pages', 'asks', 'ask', 'goals', 'goal', 'trace', 'mem', 'connector'] as const
@@ -225,7 +240,7 @@ export class BossTurns {
   }
 
   /** Builds the view and the command of the next turn (the head of the queue). */
-  async prepare(o: { id: string; claude: string[]; memory: string; ledger?: string; instructions?: string; summaryMs?: number; now?: number; waiting?: readonly Waiting[] }): Promise<PreparedTurn> {
+  async prepare(o: { id: string; claude: string[]; memory: string; ledger?: string; instructions?: string; summaryMs?: number; now?: number; waiting?: readonly Waiting[]; sessions?: string }): Promise<PreparedTurn> {
     const q = this.s.queue[0]
     if (!q) throw new Error('empty queue') // i18n-ignore : internal guard, never shown
     const now = o.now ?? Date.now()
@@ -238,7 +253,8 @@ export class BossTurns {
     // The request ledger's digest (fixed budget): open requests, stale first, goals, the user's rules.
     const ledger = o.ledger?.trim() ? `your request ledger right now (this message is not in it yet):\n${o.ledger.trim()}` : ''
     const eventContext = q.events?.length ? wakeContext(q.events, speedMode(), o.waiting) : ''
-    const block = [...parts, eventContext, ledger, recent].filter(Boolean).join(' — ').replace(/⟧/g, ']')
+    const live = o.sessions?.trim() ? `open sessions right now (what weevils sessions prints, read as this turn started; run it again only after you changed something):\n${o.sessions.trim()}` : ''
+    const block = [...parts, eventContext, live, ledger, recent].filter(Boolean).join(' — ').replace(/⟧/g, ']')
     const prompt = block ? `${text} ⟦weevils — ${block}⟧` : text
     const turns = path.join(this.dir, 'turns')
     fs.mkdirSync(turns, { recursive: true })
@@ -257,7 +273,8 @@ export class BossTurns {
       // Lean by construction: its CLAUDE.md (and the same AGENTS.md for Codex) is already in the cached prefix, not loaded again uncached, no
       // skill listing, and no MCP connectors (Bash, Read, weevils… are what it needs; WEEVILS_BOSS_MCP=1 brings them back).
       // Its permission profile rides along: what it may do with nobody there to answer.
-      '--settings', JSON.stringify({ claudeMdExcludes: [path.join(ORCH_DIR, 'CLAUDE.md'), path.join(ORCH_DIR, 'AGENTS.md')], permissions: bossPermissions(ORCH_DIR, this.transcripts) }),
+      // An event-only turn also gets the length guard: a message it writes on its own is a notification, short or rewritten.
+      '--settings', JSON.stringify({ claudeMdExcludes: [path.join(ORCH_DIR, 'CLAUDE.md'), path.join(ORCH_DIR, 'AGENTS.md')], permissions: bossPermissions(ORCH_DIR, this.transcripts), ...(q.proactive ? { hooks: { Stop: [{ hooks: [{ type: 'command', command: `${JSON.stringify(process.execPath)} ${JSON.stringify(SHORT_HOOK)}` }] }] } } : {}) }),
       '--disable-slash-commands',
       ...(BOSS_MCP ? [] : ['--strict-mcp-config']),
       '--model', q.proactive ? 'sonnet' : this.model,

@@ -84,6 +84,8 @@ import { startThreads, threadsRoutes, type ThreadsApp } from './threads-app.ts'
 
 const w = new Weevils()
 const sourceAuthor = (id: string) => threadAuthor(id, source => w.store.get(source), w.bossConversation(), ORCH_DIR)
+/** A signed brief's spoken line: the sender's own (`weevils send|new --say`), else asked of the cheap model at once. */
+const saysFor = (text: string, say: unknown) => (typeof say === 'string' && say.trim() ? w.says.given(text, say) : w.says.want(text))
 // Bring your conversations (server/bring.ts): another computer's Claude Code and Codex conversations, resumed here.
 const bring = new Bring({
   home: HOME, projectsDir: PROJECTS_DIR, roots: PROJECT_ROOTS, claudeDir: CLAUDE_DIR, codexDir: CODEX_DIR,
@@ -711,6 +713,8 @@ const routes: [string, RegExp, Handler][] = [
     door.guard(req, u.pathname, body)
     // « from » (weevils, ou un auteur déclaré) n'est accepté que d'une requête locale (l'orchestrateur, la commande weevils), jamais du téléphone.
     const from = trustedFrom(req, body, sourceAuthor)
+    // A signed brief: the thread shows its spoken line (--say), or one written for it (server/brief-says.ts).
+    if (from) saysFor(String(body.text ?? ''), body.say)
     json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), from, trustedSource(req,body,sourceAuthor), requestOrigin(req, body, from)))
   }],
   ['POST', /^\/api\/sessions\/([^/]+)\/attach$/, async (req, res, u, [id]) => {
@@ -846,6 +850,7 @@ const routes: [string, RegExp, Handler][] = [
   ['POST', /^\/api\/sessions$/, async (req, res) => {
     const body = await readBody(req)
     const tool = body.tool === 'codex' ? 'codex' : 'claude'
+    if (trustedFrom(req, body, sourceAuthor)) saysFor(String(body.text ?? ''), body.say)
     json(
       res,
       200,

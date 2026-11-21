@@ -51,7 +51,8 @@ const family = (model?: string) => /opus|sonnet|haiku|fable/i.exec(model ?? '')?
 
 import { readOrigins, recordOrigin, type BossOrigin } from './boss-origins.ts'
 import { Ledger } from './boss-ledger.ts'
-import { claudeHaiku } from './fast.ts'
+import { claudeHaiku, haiku } from './fast.ts'
+import { BriefSays } from './brief-says.ts'
 import type { Memory } from './memory.ts'
 import type { Optimizers } from './optimizers.ts'
 import type { Sleep } from './sleep.ts'
@@ -496,6 +497,8 @@ export class Weevils {
   /** Titres écrits par le renommeur, par session. */
   private directCodexBoss?: { pane?: string; sessionId?: string; since: number }
   titles = new Map<string, Titled>()
+  /** The spoken line a thread shows for a long brief (server/brief-says.ts). */
+  readonly says = new BriefSays(path.join(DATA_DIR, 'brief-says.json'), (prompt) => (process.env.VITEST ? Promise.reject(new Error('no model in tests')) : haiku(prompt, 90_000))) // i18n-ignore: internal
   private codexBridge = new CodexBridge(process.env.WEEVILS_CODEX_SOCKET ?? '', undefined, () => this.bump(), path.join(DATA_DIR,'session-names.json'), () =>
     this.store.all().filter(t => t.tool === 'codex' && t.originator !== 'codex_exec' && Date.now()-t.lastActivityAt < RECENT_MS).map(t => t.id))
   private progressReader = new SessionProgressReader()
@@ -535,6 +538,7 @@ export class Weevils {
       const origin=origins(id,message)
       return origin?{author:origin.author,sourceThreadId:origin.sourceThreadId}:undefined
     }
+    this.says.onChange = () => this.bump()
     this.migrateCategories()
     if (ORCHESTRATOR) {
       this.prepareOrchestrator()
@@ -1191,7 +1195,8 @@ export class Weevils {
       background: running.length,
       turnWorking,
       ...(!relayedBy ? { progress: this.progressReader.read(t.cwd, now) } : {}),
-      lastMessage: lastMessageOf(t),
+      // A long brief as its spoken line (server/brief-says.ts), never its first 120 characters.
+      lastMessage: ((m) => (m?.role === 'orchestrator' ? this.says.get(m.text) : undefined))(t.messages.findLast((x) => x.role !== 'event')) ?? lastMessageOf(t),
       messageCount: t.messages.length,
       settings: (t.model || t.approval || t.effort || this.codexBridge.settingsOf?.(t.id) || this.modelWish.has(t.id) ? { model: t.model, approval: t.approval, effort: t.effort, ...this.codexBridge.settingsOf?.(t.id), ...(this.modelWish.has(t.id) ? this.claudeSelected(t.id) : {}) } : undefined),
       // Une file ne survit pas à la fin du tour : si la session ne travaille plus, tout a été traité.
@@ -1651,7 +1656,7 @@ export class Weevils {
     const session = this.snapshot().sessions.find((s) => s.id === real && s.machineId === MACHINE.id)
     if (!session) return undefined
     const t = this.store.get(real)
-    return { session, messages: t?.messages ?? [] }
+    return { session, messages: this.says.attach(t?.messages ?? []) }
   }
 
   /** Détail d'un sous-agent, d'une étape de workflow ou d'une commande d'arrière-plan : ses derniers pas (lus par la fin). */

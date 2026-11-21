@@ -11,7 +11,7 @@
 
 import type http from 'node:http'
 import path from 'node:path'
-import type { Session } from '../shared/api.ts'
+import type { Message, Session } from '../shared/api.ts'
 import type { ThreadState } from '../shared/threads.ts'
 import { MAIN, accounts } from './claude-accounts.ts'
 import { reposUnder } from './connector/tools.ts'
@@ -26,6 +26,7 @@ import { slugify, type Provider } from './weevbook/journal.ts'
 import { startTurn, type Launcher, type StartResult } from './weevbook/start.ts'
 import { Sessions, accountOf, machinePart } from './weevbook/sync.ts'
 import { Threads, type Peer } from './weevbook/threads.ts'
+import { realTitle } from './transcripts.ts'
 
 type Json = (res: http.ServerResponse, status: number, body: unknown) => void
 type ReadBody = (req: http.IncomingMessage) => Promise<any>
@@ -52,6 +53,8 @@ export interface ThreadsApp {
   rows(sessions: Session[]): Session[]
   /** This machine starts a turn the dispatcher gave it. */
   start(ins: Instruction): Promise<StartResult>
+  /** Long signed briefs carry their spoken line (server/brief-says.ts). */
+  says?(messages: Message[]): Message[]
 }
 
 /** The Claude account of an engine id (its six hex characters) among the user's accounts here; null: the main one. */
@@ -158,14 +161,18 @@ export function startThreads(o: ThreadsAppOptions): ThreadsApp {
         out.push(s)
         continue
       }
-      const row = { ...s, ...rowState(s, states.get(thread)), thread, ...(titles.get(thread) ? { title: titles.get(thread)! } : {}) }
+      const row = { ...s, ...rowState(s, states.get(thread)), thread, title: rowTitle(s.title, titles.get(thread), realTitle(o.w.titles?.get(s.id)?.title)) }
       const cur = best.get(thread)
       if (!cur || row.lastActivityAt > cur.lastActivityAt) best.set(thread, row)
     }
     return [...out, ...best.values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
   }
-  return { threads, rows, start }
+  return { threads, rows, start, says: (m) => o.w.says?.attach(m) ?? m }
 }
+
+/** The session's topic title (the renamer's) wins over the thread's, which is often only the first words of the brief
+ *  that opened it (« Asks from Yann (medium effort… »); the thread's title stands in until the topic is named. */
+export const rowTitle = (session: string, thread: string | undefined, topic: string | undefined): string => (topic ? session : thread || session)
 
 /**
  * A session row says what its thread says (one of three states), not what its engine did: a usage limit or an error
@@ -191,7 +198,7 @@ export function threadsRoutes(app: ThreadsApp, json: Json, readBody: ReadBody, i
     ['GET', /^\/api\/threads\/([0-9A-HJKMNP-TV-Z]{26})$/, async (_req, res, _u, [id]) => {
       const v = await t.view(id)
       if (!v) return json(res, 404, { error: 'not found' }) // i18n-ignore: an API answer the app does not show
-      json(res, 200, v)
+      json(res, 200, app.says ? { ...v, messages: app.says(v.messages) } : v)
     }],
     ['POST', /^\/api\/threads\/([0-9A-HJKMNP-TV-Z]{26})\/send$/, async (req, res, _u, [id]) => {
       const body = await readBody(req)

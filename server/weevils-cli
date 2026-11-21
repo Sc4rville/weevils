@@ -4,7 +4,7 @@
 # X-Weevils-Local) : pas de code à fournir. Dans la prison d'une automatisation, ce fichier est caché : weevilsd la
 # reconnaît à son espace de processus et ne lui ouvre que ses routes (server/jail-peer.ts).
 #
-#   weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
+#   weevils sessions                     weevils read <id> [n]        weevils send <id> "message" [--say "ligne courte"]
 #   weevils recall <id>                  rouvre mot pour mot une ligne du journal de weevboss (message, groupe g…, jour d…)
 #   weevils boss                         comment tourne weevboss et la taille de ce qu'il lit à chaque message
 #   weevils resume <id>                  relance une session coupée en plein travail (état « interrupted »)
@@ -59,7 +59,7 @@ wv_lang() {
 }
 if [ "$(wv_lang)" = fr ]; then
   # i18n-ignore : messages français, l'anglais est juste en dessous (même chose dans la branche else)
-  usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
+  usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message" [--say "phrase courte"]
 weevils resume <id>                  weevils new <projet> "message" [codex]   weevils projects
 weevils project new <nom>            weevils do "travail" [codex]
 weevils recall <id>                  weevils boss
@@ -102,7 +102,7 @@ weevils pages · weevils page machine · weevils page rm <slug>' # i18n-ignore
   m_mem_usage='weevils mem search <mots> · mem add [rule|decision|fact] "texte" · mem rm <id>' # i18n-ignore
   m_evidence_bad='--demonstrated, --verified et --limit attendent un texte : où, dans quel environnement, ce qui manque' # i18n-ignore
 else
-  usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message"
+  usage='weevils sessions                     weevils read <id> [n]        weevils send <id> "message" [--say "short line"]
 weevils resume <id>                  weevils new <project> "message" [codex]  weevils projects
 weevils project new <name>           weevils do "job" [codex]
 weevils recall <id>                  weevils boss
@@ -217,6 +217,22 @@ d,v,l=sys.argv[1],sys.argv[2],sys.argv[3:]
 e={k:x for k,x in (("demonstrated",d),("verified",v),("limits",l)) if x}
 print(json.dumps(e) if e else "null")' "$ev_demo" "$ev_ver" ${ev_limits[@]+"${ev_limits[@]}"}
 }
+
+# send / new / do: --say "…" (anywhere after the command) is the one short line the thread shows in place of a long
+# brief, said like a manager to a colleague; the agent still gets the whole brief (server/brief-says.ts).
+say=''
+case "${1:-}" in
+  send|new|do)
+    args=()
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --say) say=${2-}; shift $(( $# > 1 ? 2 : 1 )) ;;
+        --say=*) say=${1#--say=}; shift ;;
+        *) args+=("$1"); shift ;;
+      esac
+    done
+    set -- ${args[@]+"${args[@]}"} ;;
+esac
 
 # An automation's run (server/optimizers.ts guardEnv sets WEEVILS_SCOPE=automation): only its permission profile's
 # subcommands (AUTO_WEEVILS there); the rest (the ledger's writes, memory, setup, config, resume…) is refused here too.
@@ -390,7 +406,7 @@ if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
     text=${3:?$a_msg}
     # --for-user: weevboss passing on the person's own request (the server checks it is weevboss, in a turn they started).
     for_user=0; [ "${4:-}" = --for-user ] && for_user=1
-    out=$("$py" -c 'import json,sys; d={"text":sys.argv[1],"from":sys.argv[2],"sourceThread":sys.argv[3]}; d.update({"forUser":True} if sys.argv[4]=="1" else {}); print(json.dumps(d))' "$text" "$sender_from" "$source_thread" "$for_user" \
+    out=$("$py" -c 'import json,sys; d={"text":sys.argv[1],"from":sys.argv[2],"sourceThread":sys.argv[3],"say":sys.argv[5]}; d.update({"forUser":True} if sys.argv[4]=="1" else {}); print(json.dumps(d))' "$text" "$sender_from" "$source_thread" "$for_user" "$say" \
       | curl -s -m 40 -w '\n%{http_code}' -H 'content-type: application/json' --data-binary @- "$base/api/sessions/$id/send")
     code=${out##*$'\n'}
     if [ "$code" = 200 ]; then printf "$m_sent\n" "${id:0:8}"
@@ -405,7 +421,7 @@ if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
     project=${2:?$a_project}
     text=${3:?$a_first}
     tool=claude; [ "${4:-}" = codex ] && tool=codex
-    "$py" -c 'import json,sys; print(json.dumps({"projectId":sys.argv[1],"tool":sys.argv[2],"text":sys.argv[3],"from":sys.argv[4],"sourceThread":sys.argv[5]}))' "$project" "$tool" "$text" "$sender_from" "$source_thread" \
+    "$py" -c 'import json,sys; print(json.dumps({"projectId":sys.argv[1],"tool":sys.argv[2],"text":sys.argv[3],"from":sys.argv[4],"sourceThread":sys.argv[5],"say":sys.argv[6]}))' "$project" "$tool" "$text" "$sender_from" "$source_thread" "$say" \
       | curl -sf -m 30 -H 'content-type: application/json' --data-binary @- "$base/api/sessions" | json "print(E['WVM_NEW']+d['id'][:8])" ;;
   project)
     # Le dossier d'un nouveau projet, avec git : <dossier des projets>/<nom>. Rien d'autre (le repo GitHub, le code :
@@ -419,7 +435,7 @@ if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
     # quand les agents demandent avant d'agir.
     text=${2:?$a_job}
     tool=claude; [ "${3:-}" = codex ] && tool=codex
-    "$py" -c 'import json,sys; print(json.dumps({"projectId":"","tool":sys.argv[1],"text":sys.argv[2],"from":sys.argv[3],"sourceThread":sys.argv[4]}))' "$tool" "$text" "$sender_from" "$source_thread" \
+    "$py" -c 'import json,sys; print(json.dumps({"projectId":"","tool":sys.argv[1],"text":sys.argv[2],"from":sys.argv[3],"sourceThread":sys.argv[4],"say":sys.argv[5]}))' "$tool" "$text" "$sender_from" "$source_thread" "$say" \
       | curl -sf -m 30 -H 'content-type: application/json' --data-binary @- "$base/api/sessions" | json "print(E['WVM_NEW']+d['id'][:8])" ;;
   setup)
     # L'état réel de chaque brique (machine, Claude Code, GitHub, voix, diable, e-mail…), la marche à suivre pour

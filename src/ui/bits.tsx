@@ -3,6 +3,7 @@ import ToolM from '../i18n/codex-tools'
 import { interceptModelControl } from '../model-controls'
 import { withoutMachinePrefix } from '../../shared/machine-prefix.ts'
 import { sessionNoticeKey } from '../../shared/notices.ts'
+import { firstSentence, isLongBrief } from '../../shared/brief-say.ts'
 import { dismissNotice } from './notice-store'
 import { AnimatePresence, motion, type Transition } from 'motion/react'
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
@@ -100,6 +101,22 @@ function Clamp({ text, full = false }: { text: string; full?: boolean }) {
           {open ? t.showLess : t.readAll}
         </button>
       )}
+    </>
+  )
+}
+
+/** A brief weevboss (or another agent) sent into a session: a long one reads as one spoken line, like a manager to a
+ *  colleague (its --say line, else one written for it, else its first sentence); the whole brief is one tap away. */
+function Brief({ text, say, full }: { text: string; say?: string; full?: boolean }) {
+  const t = useT(M)
+  const [open, setOpen] = useState(false)
+  if (!isLongBrief(text)) return <Clamp text={text} full={full} />
+  return (
+    <>
+      {open ? <Clamp text={text} full /> : <div className="text brief-say">{say || firstSentence(text)}</div>}
+      <button type="button" className="link small" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        {open ? t.showLess : t.fullBrief}
+      </button>
     </>
   )
 }
@@ -944,9 +961,9 @@ function Coordination({ folded, author, sourceThreadId, children }: { folded: bo
 const WINDOW = 60
 
 /** The request a session works on, pinned above its older messages: its first sentence on one line; a tap shows it all. */
-function AskedLine({ text, who, tone, style }: { text: string; who: string; tone: string; style?: React.CSSProperties }) {
+function AskedLine({ text, line, who, tone, style }: { text: string; line?: string; who: string; tone: string; style?: React.CSSProperties }) {
   const [open, setOpen] = useState(false)
-  const first = text.split(/(?<=[.!?:])\s|\n/)[0].trim() || text
+  const first = line || text.split(/(?<=[.!?:])\s|\n/)[0].trim() || text
   return (
     <div className={`msg band session-asked ${tone}`} style={style}>
       <button type="button" className="in session-asked-line" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
@@ -1042,7 +1059,7 @@ export function Messages({
     <AnimatePresence initial={false}>
       {pinned.map((m) => (
         <Appear key={`ask-${m.id}`}>
-          <AskedLine text={m.role === 'user' ? userCaption(m.text) : briefText(m.text)} who={m.role === 'user' ? t.you : authorOf(m.author).name} tone={m.role === 'user' ? 'tone' : authorTone(authorOf(m.author)).className} style={m.role === 'orchestrator' ? authorTone(authorOf(m.author)).style : undefined} />
+          <AskedLine text={m.role === 'user' ? userCaption(m.text) : briefText(m.text)} line={m.role === 'orchestrator' ? m.say : undefined} who={m.role === 'user' ? t.you : authorOf(m.author).name} tone={m.role === 'user' ? 'tone' : authorTone(authorOf(m.author)).className} style={m.role === 'orchestrator' ? authorTone(authorOf(m.author)).style : undefined} />
         </Appear>
       ))}
       {hidden > 0 && (
@@ -1078,7 +1095,7 @@ export function Messages({
                   ))}
                 </>
               ) : g.m.role === 'orchestrator' ? (
-                <Clamp text={briefText(g.m.text)} full={session} />
+                session ? <Brief text={briefText(g.m.text)} say={g.m.say} full /> : <Clamp text={briefText(g.m.text)} />
               ) : (
                 <ChipSlot.Provider value={chip ? (b) => chip(b, g.m.id) : null}>
                   <Prose text={withoutMachinePrefix(g.m.text)} />

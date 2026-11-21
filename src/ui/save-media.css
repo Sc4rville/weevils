@@ -1,31 +1,35 @@
-/* Save to the camera roll: a small square on the media's corner, the band's ink, never in the way of the picture. */
+/* Save to the camera roll: a bare glyph on the media's corner, no box. White with a soft shadow so it reads over any
+   picture or video in every theme; its words (saving, again, failed) beside it, same shadow. A long press saves too. */
 .save-media {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 6px;
+  right: 6px;
   z-index: 2;
-  min-width: 40px;
-  height: 40px;
+  min-width: 44px;
+  height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   padding-inline: 10px;
-  background: color-mix(in oklab, var(--ink) 78%, transparent);
-  color: var(--c);
+  background: none;
+  color: #fff;
   font-size: 14px;
   font-weight: 700;
+  opacity: .88;
+  filter: drop-shadow(0 0 4px rgb(0 0 0 / .55)) drop-shadow(0 1px 1px rgb(0 0 0 / .45));
 }
 .save-media .ic {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
+}
+.save-media.saving,
+.save-media.again,
+.save-media.failed {
+  opacity: 1;
 }
 .save-media.saving .ic {
   animation: save-media-wait 0.9s ease-in-out infinite alternate;
-}
-.save-media.again,
-.save-media.failed {
-  background: var(--ink);
 }
 @keyframes save-media-wait {
   to { opacity: 0.35; }

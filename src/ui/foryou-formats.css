@@ -59,6 +59,9 @@
   top: auto;
   bottom: 2px;
   right: 0;
+  /* On the band, not over the picture: the band's ink, no shadow. */
+  color: var(--ink);
+  filter: none;
 }
 .formats-clip { position: relative; }
 .formats-clip > button:not(.save-media) { display: block; min-height: 44px; padding-block: 12px; text-decoration: underline; }

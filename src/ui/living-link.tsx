@@ -71,6 +71,49 @@ export function LivingLink({ href, label }: { href: string; label?: string }) {
   )
 }
 
+/**
+ * A link to a place in the app, written by weevboss: `/#s=<session id or its first 8 characters>` opens that session,
+ * `/#foryou` opens For you. Same living look as a page link (sessions blue, For you green); a tap stays in the app.
+ */
+export function appLink(href: string): { kind: 'session'; id: string } | { kind: 'foryou' } | undefined {
+  let u: URL
+  try {
+    u = new URL(href, 'http://local')
+  } catch {
+    return undefined
+  }
+  const ours = u.host === 'local' || (typeof location !== 'undefined' && u.host === location.host)
+  if (!ours || (u.pathname !== '/' && u.pathname !== '')) return undefined
+  const s = /^#s=([A-Za-z0-9_-]{4,})$/.exec(u.hash)
+  if (s) return { kind: 'session', id: s[1] }
+  return /^#foryou$/.test(u.hash) ? { kind: 'foryou' } : undefined
+}
+
+export function AppLink({ href, label }: { href: string; label: string }) {
+  const link = appLink(href)!
+  let app: ReturnType<typeof useApp> | null = null
+  try {
+    app = useApp()
+  } catch {}
+  return (
+    <a
+      className={`living ${link.kind === 'session' ? 'lk-preview' : 'lk-opportunities'}`}
+      href={href}
+      onClick={(e) => {
+        e.stopPropagation()
+        if (!app || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+        e.preventDefault()
+        if (link.kind === 'foryou') return app.push({ kind: 'foryou' })
+        // weevboss writes the short id it reads in its session list; the app opens the full one.
+        const full = app.snap.sessions.find((x) => x.id === link.id) ?? app.snap.sessions.find((x) => x.id.startsWith(link.id))
+        app.push({ kind: 'session', id: full?.id ?? link.id })
+      }}
+    >
+      {label}
+    </a>
+  )
+}
+
 /** The page itself, in the app: its title, then the page. */
 export function WebPage({ path, title, pageKind }: { path: string; title: string; pageKind: PageKind }) {
   const t = useT(M)

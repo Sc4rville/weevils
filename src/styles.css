@@ -612,6 +612,9 @@ button:disabled {
 }
 
 .msg .text {
+  /* Firm text on every band: a touch above regular weight so a reply reads at a glance on a coloured band; bold steps
+     clearly above it (.md strong, 800). */
+  font-weight: 450;
   font-size: 1.0625rem;
   line-height: 1.4;
   white-space: pre-wrap;
@@ -628,7 +631,7 @@ button:disabled {
 .md-h1 { font-size: 1.25rem; }
 .md-h2 { font-size: 1.1563rem; }
 .md-h3 { font-size: 1.0625rem; }
-.md strong { font-weight: 700; }
+.md strong { font-weight: 800; }
 .md ul, .md ol { padding-inline-start: 1.3em; white-space: normal; }
 .md li + li { margin-top: .3em; }
 .md li > ul { margin-top: .3em; }

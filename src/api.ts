@@ -87,6 +87,8 @@ export const api = {
   setUpdates: (on: boolean) => call<{ on: boolean }>('POST', '/api/updates', { on }),
   /** Sleep mode: on before bed, off on wake (the server keeps it, the morning recap follows). */
   setSleep: (on: boolean) => call<SleepState>('POST', '/api/sleep', { on }),
+  /** The theme for every device and address of this weevils (server/theme-pref.ts). */
+  setTheme: (theme: string) => call<{ theme: string }>('POST', '/api/theme', { theme }),
   thinkLayout: (body: unknown) => call<{revision:number;positions:{id:string;x:number;y:number}[];evidence:string[]}>('POST','/api/think/organise',body),
   think: () => call<import('../shared/think').ThinkBoard>('GET','/api/think'),
   saveThink: (board: import('../shared/think').ThinkBoard) => call<import('../shared/think').ThinkBoard>('PUT','/api/think',board),

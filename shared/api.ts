@@ -555,6 +555,8 @@ export interface Snapshot {
   autoRound?: { busy: boolean }
   /** Sleep mode (server/sleep.ts), on the main machine. */
   sleep?: SleepState
+  /** The theme picked for every device (server/theme-pref.ts); absent until someone picks one. */
+  theme?: string
   /** Réglages de l'utilisateur utiles à l'app (fichier de config du serveur). */
   /** siteKey : clé des pages statiques des repos (/api/site/<clé>/<repo>/), pour le navigateur intégré sans domaine de preview. */
   /** threads: WEEVILS_THREADS is on (docs/spec, step 4): conversations are weevbook threads and nothing shows relays. */

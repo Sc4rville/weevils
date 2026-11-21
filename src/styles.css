@@ -731,6 +731,19 @@ button:disabled {
   flex: none;
 }
 
+/* A conversation of weevils' own repo (shell.tsx identity): the gradient of its band (foryou.css .recursive-identity),
+   set here again because `.page { background }` above resets it. Its bands (head, composer, your messages) let the
+   gradient through, one step lighter or deeper as everywhere; text stays on the hues of the band it was opened from. */
+.page.recursive-identity {
+  background-color: var(--c);
+  background-image: linear-gradient(115deg, var(--fy-g1), var(--fy-g2), var(--fy-g3), var(--fy-g4), var(--fy-g1));
+  background-size: 420% 100%;
+  background-position: 0% 50%;
+}
+.page.recursive-identity .tone {
+  background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h / 0.5);
+}
+
 .page-head .in {
   padding-bottom: 12px;
 }

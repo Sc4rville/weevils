@@ -12,6 +12,9 @@ import M from '../i18n/shell'
 import { useLateral } from './lateral'
 
 const color = (slot: string) => ({ '--c': `var(--${slot})` }) as CSSProperties
+/** The base of weevils' own gradient (its first two hues), for what is drawn on --c inside the page (its head band, your
+ *  messages, the composer), so all of it reads as the one gradient. */
+const IDENTITY = { '--c': 'color-mix(in oklch, var(--fy-g1), var(--fy-g2) 30%)' } as CSSProperties
 
 /**
  * Pages ouvertes, la plus haute en dernier. Tant qu'une page est ouverte, tout ce qui pourrait dépasser (fond de la fenêtre
@@ -140,6 +143,7 @@ export function Shell({
   scrollHeading = false,
   sessionLayout = false,
   liveNote,
+  identity = false,
 }: {
   slot: string
   kicker: string
@@ -168,6 +172,9 @@ export function Shell({
   sessionLayout?: boolean
   /** Session header: one short live line beside the title (never below it: the header does not grow). */
   liveNote?: ReactNode
+  /** weevils' own repo: the page wears its band's colour, the recursive gradient (foryou.css .recursive-identity),
+   *  not a plain slot, so a conversation opened from that band keeps its colour. */
+  identity?: boolean
 }) {
   const app = useApp()
   const t = useT(M)
@@ -192,8 +199,8 @@ export function Shell({
   return (
     <motion.div
       ref={page}
-      className={`${split ? 'page split' : 'page'}${sessionLayout ? ' session-page' : ''}`}
-      style={color(slot)}
+      className={`${split ? 'page split' : 'page'}${sessionLayout ? ' session-page' : ''}${identity ? ' recursive-identity' : ''}`}
+      style={identity ? IDENTITY : color(slot)}
       {...(lateral
         ? {}
         : {

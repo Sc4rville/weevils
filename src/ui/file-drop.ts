@@ -22,19 +22,24 @@ export function onlyFileAddresses(data: DataTransfer | null): boolean {
   return list.length > 0 && list.every((l) => /^file:\/\//i.test(l))
 }
 
-/** A paste handler for a message field: files become attachments, file addresses a hint, text stays native. */
-export function pasteHandler(take: (files: File[]) => void, hint: () => void) {
-  return (e: ReactClipboardEvent<HTMLElement>) => {
-    const files = pastedFiles(e.clipboardData)
-    if (files.length) {
-      e.preventDefault()
-      take(files)
-    } else if (onlyFileAddresses(e.clipboardData)) {
-      e.preventDefault()
-      hint()
-    }
+/** Files of a paste taken (true), or file addresses answered with a hint (true); plain text left to the field (false). */
+export function pasteFiles(e: ReactClipboardEvent<HTMLElement>, take: (files: File[]) => void, hint: () => void): boolean {
+  const files = pastedFiles(e.clipboardData)
+  if (files.length) {
+    e.preventDefault()
+    take(files)
+    return true
   }
+  if (onlyFileAddresses(e.clipboardData)) {
+    e.preventDefault()
+    hint()
+    return true
+  }
+  return false
 }
+
+/** A paste handler for a message field: files become attachments, file addresses a hint, text stays native. */
+export const pasteHandler = (take: (files: File[]) => void, hint: () => void) => (e: ReactClipboardEvent<HTMLElement>) => { pasteFiles(e, take, hint) }
 
 type Target = { el: () => HTMLElement | null; take: (files: File[]) => void }
 const targets: Target[] = []

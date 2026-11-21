@@ -632,11 +632,12 @@ describe('mail', () => {
 describe('posts', () => {
   it('a post: weevboss by default, capped, two buttons at most, their briefs never sent to the app', () => {
     const fy = make()
-    const item = fy.post(`  ${'w'.repeat(1500)}  `, [{ label: 'Ship it', brief: 'merge and deploy' }, { label: 'x', brief: '' }, { label: 'B', brief: 'b' }, { label: 'C', brief: 'c' }, { label: 'D', brief: 'd' }])
-    expect(item).toMatchObject({ kind: 'boss', who: 'weevboss', reply: 'boss', open: { page: 'boss' }, actions: [{ id: 'a1', label: 'Ship it' }, { id: 'a2', label: 'B' }] })
+    const item = fy.post(`  ${'w'.repeat(1500)}  `, [{ label: 'Ship it', brief: 'merge and deploy. Then run the release script in ~/x and tell the user' }, { label: 'x', brief: '' }, { label: 'B', brief: 'b' }, { label: 'C', brief: 'c' }, { label: 'D', brief: 'd' }])
+    // A shorthand label is said with its brief's first plain sentence; the rest of the brief stays on the server.
+    expect(item).toMatchObject({ kind: 'boss', who: 'weevboss', reply: 'boss', open: { page: 'boss' }, actions: [{ id: 'a1', label: 'Merge and deploy' }, { id: 'a2', label: 'B' }] })
     expect(item.actions).toHaveLength(2)
     expect(item.text).toHaveLength(1200)
-    expect(JSON.stringify(fy.feed())).not.toContain('merge and deploy')
+    expect(JSON.stringify(fy.feed())).not.toContain('release script')
     expect(fy.post('from a friend', undefined, 'gepetto').who).toBe('gepetto')
     expect(() => fy.post('   ')).toThrow(M.en.emptyText)
   })
@@ -726,13 +727,22 @@ describe('posts', () => {
     expect(find(fy, 's:s1')?.reply).toBe('session')
   })
 
-  it('a reply under a session item goes to that session, as the user', async () => {
+  it('a word written under a session result goes to weevboss, the post as its context', async () => {
     const fy = make()
     threads.s1 = [says('Done.')]
     fy.sessionTurn(session(), 'result')
     await flush()
     await fy.reply('s:s1', 'and the tests?', undefined, 'user')
-    expect(host.send).toHaveBeenCalledWith('s1', 'and the tests?', undefined, undefined, 'user')
+    expect(host.send).not.toHaveBeenCalled()
+    expect(host.sendMain).toHaveBeenCalledWith('and the tests?', expect.stringContaining('Done.'))
+  })
+
+  it('a shorthand button is said in plain words; a label that already says it stays', async () => {
+    const { humanLabel } = await import('./foryou.ts')
+    expect(humanLabel('Fix stop check', 'Walk through the new first launch myself and fix what breaks. Report back.')).toBe('Walk through the new first launch myself and fix what breaks')
+    expect(humanLabel('Keep all six commands allowed', 'apply the allow-list')).toBe('Keep all six commands allowed')
+    // Nothing technical leaks from a brief: the shorthand stays rather than a path or an id.
+    expect(humanLabel('Fix it', 'run ~/x/fix.sh on 4b5cf1d6 now')).toBe('Fix it')
   })
 
   it('the seam for generated items: language kept, visible in every language, « more » waits for the curator', async () => {

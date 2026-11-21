@@ -579,7 +579,10 @@ describe('improve', () => {
     expect(prompt).toContain('not set up yet: voice')
     expect(prompt).toContain('No swap: add 4 GB.')
     const item = fy.feed(now).items.find((i) => i.kind === 'improve')!
-    expect(item).toMatchObject({ tone: 'magic', who: 'weevils', title: 'A morning recap', reply: 'boss', actions: [{ id: 'a1', label: 'Set it up' }] })
+    expect(item).toMatchObject({ tone: 'magic', who: 'weevils', title: 'A morning recap', reply: 'boss' })
+    // A shorthand label is said as its brief's first plain sentence (humanLabel).
+    expect(item.actions).toHaveLength(1)
+    expect(item.actions![0].label.split(' ').length).toBeGreaterThanOrEqual(3)
     now += IMPROVE_EVERY_MS - MIN
     looked()
     await fresh.tick(now)

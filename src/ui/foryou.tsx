@@ -8,13 +8,13 @@ import { busyOf } from './foryou-busy'
 import { rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
 import { Notice, NoticeClose, useNotice } from './notice'
-import { cleanSubject, formatOf, postParts, shortLine, streamOf, worthShowing, type ForYouFormat } from './foryou-format'
+import { cleanSubject, formatOf, postParts, streamOf, worthShowing, type ForYouFormat } from './foryou-format'
 import { short } from './auto-model'
 import { shownEvidence } from '../../shared/evidence.ts'
 // « For you »: the stream next to weevboss, full screen. One single feed, no sections: every post is one colour block,
 // apart from the next, its title on top (src/ui/foryou-format.ts).
 import { AnimatePresence, motion, useIsPresent, useReducedMotion, type PanInfo, type Variants } from 'motion/react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import type { ForYouItem, ForYouMedia, ForYouPulse } from '../../shared/foryou.ts'
 import { useApp } from './app-context'
 import { spring, useAuthors } from './bits'
@@ -205,28 +205,6 @@ function MediaStrip({ media }: { media: ForYouMedia[] }) {
 // A post (src/ui/foryou-format.ts): one colour block, apart from the next. On top, small, where it comes from and when;
 // then its title in bold; then a short text; then the media, inside the same block; at the bottom, what to tap.
 
-/** A word to tap: no box, the word itself in the band's ink. quiet: the second choice, smaller and softer. */
-function Tap({ label, onTap, quiet, busy }: { label: string; onTap?: () => void; quiet?: boolean; busy?: boolean }) {
-  return (
-    <button
-      type="button"
-      className={quiet ? 'fy-tap quiet' : 'fy-tap'}
-      disabled={!onTap || busy}
-      onClick={() => {
-        if (!quiet) buzz()
-        onTap?.()
-      }}
-    >
-      {label}
-      {!quiet && (
-        <span className="fy-tap-go" aria-hidden>
-          <Icon name="arrow" dir="right" />
-        </span>
-      )}
-    </button>
-  )
-}
-
 /** « 14m », « 3h », « 2d »: when it happened, short. */
 function since(at: number, now: number): string {
   return at ? short(Math.max(0, now - at), true) : ''
@@ -259,37 +237,22 @@ function PostMedia({ item }: { item: ForYouItem }) {
   return <div className="fy-post-media">{media.length === 2 ? <div className="fy-two">{media.map((m) => <MediaTile key={m.id} m={m} many />)}</div> : <MediaStrip media={media} />}</div>
 }
 
-/** What can be tapped at the bottom of a post: a real question's answers, a cut session's resume, weevboss's own buttons. */
-function PostTaps({ item, fy }: CardProps) {
-  const t = useT(M)
-  const open = useOpen(item)
-  const busy = fy.acting(item.id)
-  const vp = item.visualProposal
-  const actions = vp && !item.actions?.length ? vp.options.slice(0, 2).map((o) => ({ id: `choice:${o.id}`, label: o.label })) : (item.actions?.slice(0, 2) ?? [])
-  const answer = item.kind === 'session' && item.tone === 'question'
-  if (!actions.length && !answer && item.kind !== 'alert') return null
-  return (
-    <div className="fy-taps">
-      {actions.length
-        ? actions.map((a, i) => <Tap key={a.id} quiet={i > 0 && !vp} label={busy ? t.sending : shortLine(a.label, 40) || a.label} busy={busy} onTap={() => void fy.act(item.id, a.id)} />)
-        : open && <Tap label={answer ? t.tapAnswer : t.tapLook} onTap={open} />}
-    </div>
-  )
-}
+/** Opens a post's sheet (ForYouPage provides it). */
+const SheetCtx = createContext<((item: ForYouItem) => void) | null>(null)
 
-function Post({ item, fy, format }: CardProps & { format: ForYouFormat }) {
+function Post({ item, format }: CardProps & { format: ForYouFormat }) {
   const t = useT(M)
-  const open = useOpen(item)
+  const sheet = useContext(SheetCtx)
   const { title, text } = useMemo(() => postParts(item), [item])
   const piece = format === 'piece'
   const [unfolded, setUnfolded] = useState(false)
-  // A piece unfolds in place first; any other post opens where it comes from.
-  const tap = piece && !unfolded ? () => setUnfolded(true) : open
+  // A piece unfolds in place first; then (and for every other post) a tap opens its sheet: what to do next, a word to write.
+  const tap = piece && !unfolded ? () => setUnfolded(true) : sheet ? () => sheet(item) : undefined
   // « Not checked: not checked on a real iPhone » says it twice: the limit keeps its words, without the repeat.
   const limits = (shownEvidence(item.evidence)?.limits ?? []).map((l) => l.replace(/^\s*not (?:checked|tested|verified)\s+/i, ''))
   return (
     <>
-      <button type="button" className="in fy-post-head fy-hit" onClick={tap} disabled={!tap}>
+      <button type="button" className="in fy-post-head fy-hit" onClick={tap} disabled={!tap} aria-haspopup="dialog">
         <Source item={item} />
         {title && <span className={`fy-post-t${piece ? ' piece' : ''}`}>{title}</span>}
         {text && <span className={`fy-post-x${piece ? (unfolded ? ' piece open' : ' piece') : ''}`}>{text}</span>}
@@ -297,8 +260,93 @@ function Post({ item, fy, format }: CardProps & { format: ForYouFormat }) {
       </button>
       {format === 'visual' && <PostMedia item={item} />}
       {!!limits.length && <p className="in fy-post-limit">{t.notChecked(limits.join(' · '))}</p>}
-      <div className="in fy-post-foot"><PostTaps item={item} fy={fy} /></div>
+      <div className="in fy-post-foot" />
     </>
+  )
+}
+
+/** Where « open » goes, said as a person would: the conversation it came from, weevboss's thread, the place it speaks of. */
+function openLabel(item: ForYouItem, t: { openConversation: string; openThread: string; tapLook: string }): string {
+  const target = item.work?.open ?? item.open ?? (item.sessionId ? { page: 'session' as const } : undefined)
+  if (!target) return ''
+  return target.page === 'session' ? t.openConversation : target.page === 'boss' ? t.openThread : t.tapLook
+}
+
+/** A post, tapped: a sheet slides up in the post's colour with its next step in plain words, a second one when there is
+ * a real choice, and a field to tell weevboss what to do about it. Little text, nothing to learn. */
+function PostSheet({ item, onClose }: { item: ForYouItem; onClose: () => void }) {
+  const t = useT(M)
+  const fy = useForYou()
+  const { colors } = useApp()
+  const authors = useAuthors()
+  const open = useOpen(item)
+  const calm = useReducedMotion()
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+  const { title } = postParts(item)
+  const vp = item.visualProposal
+  const actions = vp && !item.actions?.length ? vp.options.slice(0, 2).map((o) => ({ id: `choice:${o.id}`, label: o.label })) : (item.actions?.slice(0, 2) ?? [])
+  const where = open ? openLabel(item, t) : ''
+  const steps: { key: string; label: string; run: () => void }[] = actions.length
+    ? actions.map((a) => ({ key: a.id, label: a.label, run: () => { buzz(); void fy.act(item.id, a.id); onClose() } }))
+    : open && where ? [{ key: 'open', label: where, run: () => { onClose(); open() } }] : []
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    addEventListener('keydown', esc)
+    return () => removeEventListener('keydown', esc)
+  }, [onClose])
+  const send = async () => {
+    const words = text.trim()
+    if (!words || sending) return
+    setSending(true)
+    buzz()
+    try {
+      await fy.reply(item.id, words)
+      onClose()
+    } catch {
+      setSending(false)
+    }
+  }
+  return (
+    <motion.div className="fy-sheet-back" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: calm ? 0 : 0.18 }} onClick={onClose}>
+      <motion.div
+        className={`band fy-sheet${item.workstream?.kind === 'self-improvement' ? ' recursive-identity' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        style={itemSlot(item, colors, authors)}
+        initial={calm ? { opacity: 0 } : { y: '100%' }}
+        animate={calm ? { opacity: 1 } : { y: 0 }}
+        exit={calm ? { opacity: 0 } : { y: '100%' }}
+        transition={spring}
+        drag={calm ? false : 'y'}
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={{ top: 0, bottom: 0.8 }}
+        onDragEnd={(_, info) => {
+          if (info.offset.y > 90 || info.velocity.y > 500) onClose()
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="in fy-sheet-in">
+          <span className="fy-sheet-grip" aria-hidden />
+          <p className="fy-sheet-t">{title}</p>
+          {steps.map((s, i) => (
+            <button key={s.key} type="button" className={i ? 'fy-sheet-go quiet' : 'fy-sheet-go'} onClick={s.run} disabled={fy.acting(item.id)}>
+              <span>{s.label}</span>
+              <span className="fy-sheet-go-ic" aria-hidden>
+                <Icon name="arrow" dir="right" />
+              </span>
+            </button>
+          ))}
+          <form className="fy-sheet-say" onSubmit={(e) => { e.preventDefault(); void send() }}>
+            <input value={text} onChange={(e) => setText(e.target.value)} placeholder={t.sheetWrite} aria-label={t.sheetWrite} enterKeyHint="send" />
+            <button type="submit" className="fy-sheet-send" disabled={!text.trim() || sending} aria-label={t.sheetSend}>
+              <Icon name="arrow" dir="up" />
+            </button>
+          </form>
+        </div>
+      </motion.div>
+    </motion.div>
   )
 }
 
@@ -306,7 +354,7 @@ function Post({ item, fy, format }: CardProps & { format: ForYouFormat }) {
 const bandClass = (item: ForYouItem, format: ForYouFormat) => `band fy-f-${format} fy-t-${item.tone === 'alert' ? 'question' : item.tone}${item.seen ? '' : ' fy-unseen'}${item.workstream?.kind === 'self-improvement' ? ' recursive-identity' : ''}`
 
 /** One post of the stream. compact: a thin strip (one line), nothing to tap inside. Hidden when it has no format. */
-export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: boolean }) {
+export function ForYouItemView({ item, compact, alt }: { item: ForYouItem; compact?: boolean; alt?: boolean }) {
   const fy = useForYou()
   const { hidden, dismiss } = useNotice(feedNoticeKey(item))
   const { colors, snap } = useApp()
@@ -338,7 +386,7 @@ export function ForYouItemView({ item, compact }: { item: ForYouItem; compact?: 
   }
   const err = fy.error(item.id)
   return (
-    <article ref={band} className={`${bandClass(item, format)} fy-item fy-post${closable ? ' notice-shell' : ''}${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-format={format}>
+    <article ref={band} className={`${bandClass(item, format)} fy-item fy-post${alt ? ' fy-alt' : ''}${closable ? ' notice-shell' : ''}${inView ? ' fy-inview' : ''}`} style={style} data-fy={item.id} data-fy-format={format}>
       {closable && <NoticeClose about={item.title ?? item.text} onClose={() => { dismiss(); void fy.dismiss(item.id) }} />}
       <Post item={item} fy={fy} format={format} />
       {!!links.length && <div className="in fy-page-links">{links.map((link) => <p key={link.href}><LivingLink {...link} /></p>)}</div>}
@@ -440,7 +488,7 @@ const LEFT_HOLD = 0.62
 
 /** An item's place in the stream. It comes in once with the house spring. Acted on, it leaves sideways (launched, sent:
  * to the right; refused, dismissed: to the left), a word flashes where it was, then the next ones close the gap. */
-function Slot({ item, index, opening: atOpening }: { item: ForYouItem; index: number; opening: boolean }) {
+function Slot({ item, index, alt, opening: atOpening }: { item: ForYouItem; index: number; alt: boolean; opening: boolean }) {
   const t = useT(M)
   // Decided once, when it comes in: a slot that came in with the page keeps that entrance for good (were its target to
   // change at the next render, Motion would send « y » back to where it started and every band would sit 22 px low).
@@ -490,10 +538,18 @@ function Slot({ item, index, opening: atOpening }: { item: ForYouItem; index: nu
         </div>
       )}
       <motion.div className="fy-slot-body" variants={variants.body}>
-        <ForYouItemView item={item} />
+        <ForYouItemView item={item} alt={alt} />
       </motion.div>
     </motion.div>
   )
+}
+
+/** Posts touch: the colour change alone tells one from the next. Two neighbours in the same colour: the second takes
+ * its colour a step deeper (or lighter), so the edge always shows, in every theme. */
+export function altsOf(items: ForYouItem[], colorOf: (i: ForYouItem) => string): boolean[] {
+  const out: boolean[] = []
+  items.forEach((it, i) => out.push(i > 0 && colorOf(it) === colorOf(items[i - 1]) && !out[i - 1]))
+  return out
 }
 
 function Stream({ items }: { items: ForYouItem[] }) {
@@ -501,10 +557,13 @@ function Stream({ items }: { items: ForYouItem[] }) {
   useEffect(() => {
     opening.current = false
   }, [])
+  const { colors } = useApp()
+  const authors = useAuthors()
+  const alts = useMemo(() => altsOf(items, (i) => String((itemSlot(i, colors, authors) as Record<string, unknown>)['--c'] ?? '')), [items, colors, authors])
   return (
     <AnimatePresence>
       {items.map((it, i) => (
-        <Slot key={it.id} item={it} index={i} opening={opening.current} />
+        <Slot key={it.id} item={it} index={i} alt={alts[i]} opening={opening.current} />
       ))}
     </AnimatePresence>
   )
@@ -544,6 +603,8 @@ export function ForYouPage(_: { who?: string } = {}) {
   const toTop = (smooth: boolean) => body.current?.scrollTo?.({ top: 0, behavior: smooth && !reduced() ? 'smooth' : 'auto' })
   // One single stream: no filter, no section; only items that have a layout, at most STREAM_CAP of them.
   const shown = useMemo(() => streamOf(fy.items), [fy.items])
+  const [sheet, setSheet] = useState<ForYouItem | null>(null)
+  const closeSheet = useCallback(() => setSheet(null), [])
 
   return (
     <motion.div ref={page} className="page fy-page" style={slot('agent')} {...move} role="dialog" aria-modal="true" aria-label={t.title}>
@@ -584,7 +645,9 @@ export function ForYouPage(_: { who?: string } = {}) {
             </Notice>
           )}
         </AnimatePresence>
-        <Stream items={shown} />
+        <SheetCtx.Provider value={setSheet}>
+          <Stream items={shown} />
+        </SheetCtx.Provider>
         {fy.feed &&
           (shown.length ? (
             <div className="fy-end">
@@ -599,6 +662,7 @@ export function ForYouPage(_: { who?: string } = {}) {
           ))}
         <div className="fill" />
       </div>
+      <AnimatePresence>{sheet && <PostSheet key={sheet.id} item={sheet} onClose={closeSheet} />}</AnimatePresence>
     </motion.div>
   )
 }

@@ -6,7 +6,7 @@ import type { ForYouItem } from '../shared/foryou.ts'
 import { editorialText, reviewedEditorial } from './foryou-editorial.ts'
 import reviewed from './foryou-editorial-reviewed.json' with { type: 'json' }
 import { FeedLocalization, presentation } from './foryou-localization.ts'
-import { ForYou } from './foryou.ts'
+import { ForYou, humanLabel } from './foryou.ts'
 
 it('simplifies delegation without inventing an outcome, in either locale', () => {
   expect(editorialText('I suggest asking weevboss to prepare a project rotation.', 400)).toBe('Prepare a project rotation.')
@@ -68,7 +68,7 @@ it('projects a stored real card through EN FR EN without rewriting its source or
     const views = ['en', 'fr', 'en'].map(l => fy.feed(now, l).items.find(i => i.id === edit.id)!)
     expect(views.every(Boolean)).toBe(true)
     for (const item of views) {
-      expect(item).toMatchObject({ id: edit.id, at: now, seen: true, text: edit.text, editorial: { original: { text: edit.source } }, actions: [{ id: 'a1', label: original.actions[0].label }] })
+      expect(item).toMatchObject({ id: edit.id, at: now, seen: true, text: edit.text, editorial: { original: { text: edit.source } }, actions: [{ id: 'a1', label: humanLabel(original.actions[0].label, original.actions[0].brief) }] })
       expect(item.actions![0]).not.toHaveProperty('brief')
     }
     expect(views[1].localization?.status).toBe('pending')

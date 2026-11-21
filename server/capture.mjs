@@ -14,8 +14,10 @@ const token = process.env.WEEVILS_CAPTURE_TOKEN
 const base = process.env.WEEVILS_CAPTURE_BASE || 'http://127.0.0.1:4179'
 if (!out || !token) { console.error('usage: weevils capture <out.png|out.mp4> [--open "#s=<session id>"] [--theme <name>] [--seconds N] [--size 390x844] [--frame] [--wait ms]'); process.exit(2) }
 
+/** weevils' own copy, installed here the first time a capture needs it (no root, no global install). */
+const OWN = path.join(os.homedir(), '.local', 'share', 'weevils', 'capture')
 function loadPlaywright() {
-  const roots = [process.cwd(), path.dirname(new URL(import.meta.url).pathname), process.env.WEEVILS_PLAYWRIGHT_DIR].filter(Boolean)
+  const roots = [OWN, process.cwd(), path.dirname(new URL(import.meta.url).pathname), process.env.WEEVILS_PLAYWRIGHT_DIR].filter(Boolean)
   try { roots.push(execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim()) } catch { /* no npm */ }
   for (const r of roots) {
     try { return createRequire(path.join(r, 'x.js'))('playwright-core') } catch { /* next */ }
@@ -34,7 +36,15 @@ function chromiumPath() {
   return undefined
 }
 
-const pw = loadPlaywright()
+let pw = loadPlaywright()
+if (!pw) {
+  console.error('weevils capture: installing playwright-core once, in weevils\' own folder…')
+  fs.mkdirSync(OWN, { recursive: true })
+  spawnSync('npm', ['install', '--silent', '--no-audit', '--no-fund', '--prefix', OWN, 'playwright-core'], { stdio: ['ignore', 'ignore', 'inherit'] })
+  pw = loadPlaywright()
+  // Its own browser and video encoder (kept in playwright's cache, beside any other version).
+  if (pw) spawnSync(process.execPath, [path.join(OWN, 'node_modules', 'playwright-core', 'cli.js'), 'install', 'chromium-headless-shell', 'ffmpeg'], { stdio: ['ignore', 'ignore', 'inherit'] })
+}
 if (!pw) { console.error('weevils capture: playwright-core is not installed (npm i -g playwright-core, then npx playwright-core install chromium-headless-shell)'); process.exit(3) }
 const [w, h] = (opt('size', '390x844')).split('x').map(Number)
 const seconds = Number(opt('seconds', '0'))

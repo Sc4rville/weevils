@@ -673,7 +673,7 @@ export const borrowedTitle = (t: Transcript, title: string | undefined) =>
   !!title && (LOCALE_TITLE.test(title) || (/\blocale\b/i.test(title) && !t.messages.some((m) => (m.role === 'user' || m.role === 'orchestrator') && /\blocale\b/i.test(withoutWeevilsBlock(m.text)))))
 const unsigned = (s: string | undefined) => (s ? withoutWeevilsBlock(parseSigned(s)?.text ?? s) : s)
 /** The first real brief: a slash command (« /effort high », « /model … ») tells nothing of the subject. */
-const brief = (t: Transcript) => {
+export const brief = (t: Transcript) => {
   const first = unsigned(t.firstPrompt)?.trim()
   if (first && !first.startsWith('/')) return first
   for (const m of t.messages) if (m.role === 'user' || m.role === 'orchestrator') {

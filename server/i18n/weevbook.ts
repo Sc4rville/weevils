@@ -4,7 +4,9 @@ import { defineMessages } from '../i18n.ts'
 
 export default defineMessages({
   fr: {
-    usage: 'usage : weevils weevbook backfill | check [--repair] | compare [--verbose] | vault setup|push|restore|status',
+    usage: 'usage : weevils weevbook backfill [--since <date> | --match <mots>] | check [--repair] | compare [--verbose] | vault setup|push|restore|status|summary',
+    badSince: '--since attend une date, par exemple 2026-10-01',
+    skipped: (n: number) => `${n} sessions laissées de côté par --since ou --match`,
     locked: 'le weevbook est verrouillé par un autre processus (weevilsd écrit) : réessaie dans un instant',
     progress: (i: number, n: number) => `${i}/${n} sessions`,
     backfill: (n: number, created: number, updated: number, unchanged: number, empty: number) =>
@@ -31,7 +33,9 @@ export default defineMessages({
     noLoss: 'aucune perte',
   },
   en: {
-    usage: 'usage: weevils weevbook backfill | check [--repair] | compare [--verbose] | vault setup|push|restore|status',
+    usage: 'usage: weevils weevbook backfill [--since <date> | --match <words>] | check [--repair] | compare [--verbose] | vault setup|push|restore|status|summary',
+    badSince: '--since takes a date, for example 2026-10-01',
+    skipped: (n: number) => `${n} sessions left out by --since or --match`,
     locked: 'the weevbook is locked by another process (weevilsd is writing): try again in a moment',
     progress: (i: number, n: number) => `${i}/${n} sessions`,
     backfill: (n: number, created: number, updated: number, unchanged: number, empty: number) =>

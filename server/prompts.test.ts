@@ -18,6 +18,48 @@ describe('prompts FR/EN', () => {
     }
   })
 
+  // docs/spec/07-vault.md: keeping the person's conversations on their own GitHub is part of the welcome, and it is
+  // only talk. Both templates carry the same steps, the commands weevboss runs itself, and the spec's own sentences.
+  it('weevboss learns the vault in both languages: GitHub by its code, the 24 words once, the history question, the summary, the export', () => {
+    const md = (l: string) => fs.readFileSync(path.join(import.meta.dirname, `orchestrator.${l}.md`), 'utf8')
+    for (const l of ['fr', 'en']) {
+      for (const x of [
+        'weevils setup github', 'github.com/login/device',
+        '`weevils weevbook vault setup`', '`weevils setup mark vault:code`',
+        '`weevils setup mark vault:history`', '`weevils setup ask machine`', '`weevils setup ask machine --since 2026-10-01`', '`weevils setup ask machine --match "',
+        '`weevils weevbook vault summary --json`', '`claude_window`', '`import`', '`pending`', '`weevils setup mark vault:summary`',
+        'Claude.ai', 'ChatGPT', '`weevils setup mark vault:export`',
+        '`vault: found`', '`weevils weevbook vault restore --code "',
+      ]) expect(md(l), `${l}: ${x}`).toContain(x)
+      // By talking only: its own paragraph shows no chip, and names nothing weevboss could not run when agents ask
+      // before acting (weevils commands only).
+      const bullet = /\n- \*\*(?:Their conversations|Ses conversations)[\s\S]*?(?=\n- \*\*)/.exec(md(l))?.[0] ?? ''
+      expect(bullet.length).toBeGreaterThan(2000)
+      expect(bullet).not.toMatch(/\[\[setup:/)
+      for (const cmd of bullet.match(/`[^`]+`/g) ?? []) if (/^`[a-z]+ /.test(cmd)) expect(cmd, `${l}: ${cmd}`).toMatch(/^`weevils (setup|weevbook)[ `]/)
+    }
+    const en = md('en')
+    const spec = fs.readFileSync(path.join(import.meta.dirname, '../docs/spec/07-vault.md'), 'utf8').replace(/\n> ?/g, ' ').replace(/\s+/g, ' ')
+    for (const said of [
+      'Keep this somewhere safe, like a password: with it, a new machine gets everything back',
+      'Your server is ready to carry your work. Want me to bring over your whole history, or do you have a date or a few conversations in mind?',
+      'Done: 412 conversations from your MacBook and this server, across two Claude accounts and Codex. From today they\'re yours, not Claude\'s, not OpenAI\'s, not any one machine\'s. They live in your private GitHub, and you can reopen and continue any of them right here. Machines and subscriptions come and go; your work stays. You\'re independent now.',
+    ]) {
+      expect(en, said).toContain(said)
+      expect(spec, said).toContain(said) // the spec's words, not a paraphrase
+    }
+    expect(en).toContain('Never write those words again')
+    expect(en).toContain('say "the last 30 days of your conversations", never "everything" or "your whole history"')
+    const fr = md('fr')
+    for (const said of [
+      '« Garde-le en lieu sûr, comme un mot de passe : avec lui, une nouvelle machine récupère tout. »',
+      '« Ton serveur est prêt à porter ton travail. Tu veux que je ramène tout ton historique, ou tu as une date ou quelques conversations en tête ? »',
+      'C\'est fait : 412 conversations de ton MacBook et de ce serveur, sur deux comptes Claude et Codex.',
+      'N\'écris plus jamais ces mots',
+      'dis « les 30 derniers jours de tes conversations », jamais « tout » ni « tout ton historique »',
+    ]) expect(fr, said).toContain(said)
+  })
+
   it('les prompts français gardent leurs clés, les anglais demandent l’anglais', () => {
     expect(Object.keys(JSON.parse(Titles.fr.item('a', 'claude', 'x', 'd', ['r'])))).toEqual(['id', 'outil', 'ou', 'debut', 'derniers_echanges'])
     expect(Object.keys(JSON.parse(Classify.fr.item('a', 't', 'e')))).toEqual(['id', 'titre', 'extrait'])

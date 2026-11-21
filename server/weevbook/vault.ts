@@ -5,11 +5,12 @@
 //   m            the manifest, encrypted: the ordered chunk names, the journal's length and SHA-256, the attachments
 //   c/<sha256>   one chunk: the journal bytes appended since the previous push, compressed then encrypted, immutable
 //   a/<sha256>   one attachment, encrypted
+//   h            handoff.md as the journal last recorded it, encrypted (step 2: a model wrote it, the journal cannot rebuild it)
 // and refs/heads/main → a README only. Names are hashes of the ciphertext; commits have a fixed neutral author, date
 // and message: no title, project, path, machine or account name leaves in clear.
 //
 // Every file is sealed with AES-256-GCM under the 32-byte vault key, a random 12-byte nonce, and as associated data
-// the thread id and the file's kind (m, c or a): a chunk moved to another thread, or put in place of a manifest, fails
+// the thread id and the file's kind (m, c, a or h): a chunk moved to another thread, or put in place of a manifest, fails
 // to open. The plain text is compressed first (zstd when this Node has it, else gzip; a format byte says which).
 //
 // Pushing builds the commits in a local bare repository (DATA_DIR/vault.git) from the weevbook's own thread refs, then
@@ -23,14 +24,15 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import { fileURLToPath } from 'node:url'
-import { Locked, Weevbook } from './store.ts'
+import { deriveMeta, ownTask, parseEngine, parseJournal } from './journal.ts'
+import { Locked, Weevbook, threadRefs } from './store.ts'
 
 // ---------------------------------------------------------------- sealing
 
 const VERSION = 1
 const ZSTD = 1
 const GZIP = 2
-type Kind = 'm' | 'c' | 'a'
+type Kind = 'm' | 'c' | 'a' | 'h'
 const hasZstd = typeof (zlib as { zstdCompressSync?: unknown }).zstdCompressSync === 'function'
 
 export class VaultError extends Error {}
@@ -218,11 +220,15 @@ interface Manifest {
   chunks: { n: string; b: number }[]
   /** The thread's attachment files (attachments/<sha256>.<ext>) → their name in a/. */
   attachments: Record<string, string>
+  /** handoff.md, in `h`: the SHA-256 of its text (the one the journal's last `handoff` event records, BOOK-8). */
+  handoff?: string
 }
 
 interface State {
   /** By thread: the weevbook commit the staging ref was last built from. */
   threads: Record<string, string>
+  /** Every thread was looked at for its handoff.md (step 2): threads pushed before carry none in the vault. */
+  handoffs?: boolean
   pushedAt?: string
   error?: string | null
 }
@@ -342,13 +348,15 @@ async function push(o: VaultOptions): Promise<PushReport> {
       report.failed.push({ thread: id, error: (e as Error).message })
     }
   }
+  if (!report.failed.length) state.handoffs = true
   await writeState(o.staging, state)
   return send(o, state, remote, report)
 
   async function sealThread(id: string, src: string) {
     const mine = local.get(id) ?? null
     const theirs = remote.get(id) ?? null
-    if (state.threads[id] === src && mine && mine === theirs) return
+    // Nothing moved since the last push (a thread pushed before step 2 is looked at once more, for its handoff.md).
+    if (state.threads[id] === src && mine && mine === theirs && (state.handoffs || !(await text(book, ['ls-tree', src, '--', 'handoff.md'])))) return
     let base = mine
     if (theirs && theirs !== mine && (!mine || !(await isAncestor(o.staging, theirs, mine)))) base = theirs // ahead of us, or another machine's
     const m: Manifest = base ? await readManifest(o, id, base) : { v: 1, thread: id, journal: { bytes: 0, sha256: sha256('') }, chunks: [], attachments: {} }
@@ -365,7 +373,14 @@ async function push(o: VaultOptions): Promise<PushReport> {
     })
     const newFiles = files.filter((f) => !(f.name in m.attachments))
     const tail = journal.subarray(m.journal.bytes)
-    if (!tail.length && !newFiles.length) {
+    // handoff.md, when it is not the one the vault holds (a manifest an older weevils rewrote may name one its tree lost).
+    let handoff: Buffer | null = null
+    const hOid = (await text(book, ['ls-tree', src, '--', 'handoff.md'])).split(/\s+/)[2]
+    if (hOid) {
+      const plain = (await git(book, ['cat-file', 'blob', hOid])).out
+      if (sha256(plain) !== m.handoff || !base || !(await text(o.staging, ['ls-tree', base, '--', 'h']))) handoff = plain
+    }
+    if (!tail.length && !newFiles.length && !handoff) {
       if (base && base !== mine) await git(o.staging, ['update-ref', `refs/threads/${id}`, base])
       state.threads[id] = src
       return
@@ -395,12 +410,16 @@ async function push(o: VaultOptions): Promise<PushReport> {
       m.attachments[f.name] = n
       report.attachments++
     }
+    if (handoff) {
+      entries.set('h', await writeBlob(o.staging, seal(o.key, id, 'h', handoff)))
+      m.handoff = sha256(handoff)
+    }
     entries.set('m', await writeBlob(o.staging, seal(o.key, id, 'm', Buffer.from(JSON.stringify(m)))))
     const sub = async (dir: 'c' | 'a') => {
       const list = [...entries].filter(([k]) => k.startsWith(`${dir}/`)).map(([k, oid]) => `100644 blob ${oid}\t${k.slice(2)}`)
       return list.length ? `040000 tree ${await mktree(o.staging, list)}\t${dir}` : null
     }
-    const root = [`100644 blob ${entries.get('m')}\tm`, await sub('c'), await sub('a')].filter((x): x is string => !!x)
+    const root = [`100644 blob ${entries.get('m')}\tm`, entries.has('h') ? `100644 blob ${entries.get('h')}\th` : null, await sub('c'), await sub('a')].filter((x): x is string => !!x)
     const tree = await mktree(o.staging, root)
     const commit = await text(o.staging, ['commit-tree', tree, ...(base ? ['-p', base] : []), '-m', 'vault'], { env: NEUTRAL })
     await git(o.staging, ['update-ref', `refs/threads/${id}`, commit])
@@ -445,7 +464,41 @@ export interface RestoreReport {
   main: string | null
 }
 
-/** Fetches the vault and decrypts every journal and attachment into the local weevbook. */
+/** The SHA-256 the journal's last `handoff` event records for handoff.md (null: no handoff yet). */
+function lastHandoff(journal: Buffer): string | null {
+  if (!journal.includes('"type":"handoff"')) return null
+  for (const line of journal.toString().split('\n').reverse()) {
+    if (!line.includes('"type":"handoff"')) continue
+    try {
+      const e = JSON.parse(line) as { type?: string; sha256?: unknown }
+      if (e.type === 'handoff' && typeof e.sha256 === 'string') return e.sha256
+    } catch {
+      /* a cut line */
+    }
+  }
+  return null
+}
+
+/** A thread's journal as the vault holds it at `tip`: its chunks opened and joined, checked against the manifest. */
+async function readJournal(o: VaultOptions, id: string, tip: string): Promise<{ m: Manifest; journal: Buffer }> {
+  const m = await readManifest(o, id, tip)
+  const parts: Buffer[] = []
+  for (const c of m.chunks) {
+    const sealed = (await git(o.staging, ['cat-file', 'blob', `${tip}:c/${c.n}`])).out
+    const plain = open(o.key, id, 'c', sealed)
+    if (plain.length !== c.b) throw new VaultError(`chunk ${c.n} of ${id} has ${plain.length} bytes, not ${c.b}`) // i18n-ignore: technical error
+    parts.push(plain)
+  }
+  const journal = Buffer.concat(parts)
+  if (journal.length !== m.journal.bytes || sha256(journal) !== m.journal.sha256) throw new VaultError(`the journal of ${id} does not match its manifest`) // i18n-ignore: technical error
+  return { m, journal }
+}
+
+/**
+ * Fetches the vault and decrypts every journal, attachment and handoff.md into the local weevbook. On a machine that
+ * already has threads it merges, thread by thread: the same journal is left alone, a longer one here stays (this
+ * machine pushes it next), a shorter one here is completed, and one that differs is left out and counted.
+ */
 export async function restoreVault(o: VaultOptions): Promise<RestoreReport> {
   await openStaging(o.staging)
   const unlock = await lockStaging(o.staging)
@@ -463,17 +516,19 @@ async function restore(o: VaultOptions): Promise<RestoreReport> {
   const report: RestoreReport = { threads: remote.size, restored: 0, same: 0, ahead: 0, differ: [], main: null }
   const state = await readState(o.staging)
   const idx = path.join(o.staging, `restore-index-${process.pid}`)
+  const staged = await refsUnder(o.staging, 'refs/threads/')
+  const here = await refsUnder(book.gitDir, 'refs/threads/')
   for (const [id, tip] of remote) {
-    const m = await readManifest(o, id, tip)
-    const parts: Buffer[] = []
-    for (const c of m.chunks) {
-      const sealed = (await git(o.staging, ['cat-file', 'blob', `${tip}:c/${c.n}`])).out
-      const plain = open(o.key, id, 'c', sealed)
-      if (plain.length !== c.b) throw new VaultError(`chunk ${c.n} of ${id} has ${plain.length} bytes, not ${c.b}`) // i18n-ignore: technical error
-      parts.push(plain)
+    // Built from, or already checked against, this very commit of the weevbook: nothing to read again.
+    if (here.has(id) && staged.get(id) === tip && state.threads[id] === here.get(id)) {
+      report.same++
+      continue
     }
-    const journal = Buffer.concat(parts)
-    if (journal.length !== m.journal.bytes || sha256(journal) !== m.journal.sha256) throw new VaultError(`the journal of ${id} does not match its manifest`) // i18n-ignore: technical error
+    const { m, journal } = await readJournal(o, id, tip)
+    // handoff.md comes back when the vault holds the one this journal last recorded.
+    const want = lastHandoff(journal)
+    const sealedH = want && m.handoff === want ? await git(o.staging, ['cat-file', 'blob', `${tip}:h`], { allowFail: true }) : null
+    const kept = sealedH?.code === 0 ? want : null
     if (!(await book.lockWait())) throw new Locked('weevbook.lock')
     let wrote = false
     try {
@@ -481,8 +536,17 @@ async function restore(o: VaultOptions): Promise<RestoreReport> {
       const have = mine ? (await git(book.gitDir, ['cat-file', 'blob', `${mine}:events.jsonl`], { allowFail: true })).out : Buffer.alloc(0)
       const haveFiles = new Set(mine ? (await text(book.gitDir, ['ls-tree', '-r', '--name-only', mine, '--', 'attachments/'])).split('\n').filter(Boolean) : [])
       const missing = Object.keys(m.attachments).filter((f) => !haveFiles.has(f))
-      if (have.equals(journal) && !missing.length) report.same++
-      else if (have.length >= journal.length && have.subarray(0, journal.length).equals(journal) && !missing.length) report.ahead++
+      const haveHandoff = mine ? await git(book.gitDir, ['cat-file', 'blob', `${mine}:handoff.md`], { allowFail: true }) : null
+      const needHandoff = !!kept && !(haveHandoff?.code === 0 && sha256(haveHandoff.out) === kept)
+      const equal = have.equals(journal)
+      if (equal && !missing.length && !needHandoff) {
+        report.same++
+        // Checked once: the next restore and the next push pass over it (unless this machine holds files the vault lacks).
+        if (mine && haveFiles.size === Object.keys(m.attachments).length) {
+          await git(o.staging, ['update-ref', `refs/threads/${id}`, tip])
+          state.threads[id] = mine
+        }
+      } else if (!equal && have.length >= journal.length && have.subarray(0, journal.length).equals(journal) && !missing.length) report.ahead++
       else if (have.length > journal.length || !journal.subarray(0, have.length).equals(have)) report.differ.push(id)
       else {
         // The local tree (raw lines…) with the vault's journal and the attachments it lacks.
@@ -497,6 +561,11 @@ async function restore(o: VaultOptions): Promise<RestoreReport> {
         for (const f of missing) {
           const sealed = (await git(o.staging, ['cat-file', 'blob', `${tip}:a/${m.attachments[f]}`])).out
           await add(f, open(o.key, id, 'a', sealed))
+        }
+        if (needHandoff) {
+          const plain = open(o.key, id, 'h', sealedH!.out)
+          if (sha256(plain) !== kept) throw new VaultError(`handoff.md of ${id} does not match its manifest`) // i18n-ignore: technical error
+          await add('handoff.md', plain)
         }
         const tree = await text(book.gitDir, ['write-tree'], { env })
         await fsp.rm(idx, { force: true })
@@ -644,5 +713,158 @@ export function startVaultPusher(o: PusherOptions) {
       round()
       await idle
     },
+  }
+}
+
+/**
+ * The pusher from the moment this machine has a vault: now, or as soon as `vault setup`, `vault restore` or a join
+ * saves the remote and the key while weevilsd runs (weevboss sets the vault up in its chat: no restart).
+ */
+export function startVaultPusherWhenSet(o: Omit<PusherOptions, 'remote' | 'ssh'> & { remote: () => string | null; deployKey: string; pollMs?: number }) {
+  const log = o.log ?? ((l: string) => console.error(l))
+  let pusher: ReturnType<typeof startVaultPusher> | null = null
+  let timer: NodeJS.Timeout | null = null
+  const begin = () => {
+    const remote = o.remote()
+    if (!remote || !fs.existsSync(o.keyFile)) return false
+    pusher = startVaultPusher({ ...o, remote, ssh: vaultSsh(o.deployKey) })
+    log('[vault] pusher on')
+    return true
+  }
+  if (!begin()) {
+    timer = setInterval(() => {
+      if (begin() && timer) clearInterval(timer)
+    }, o.pollMs ?? 30_000)
+    timer.unref?.()
+  }
+  return {
+    started: () => !!pusher,
+    stop() {
+      if (timer) clearInterval(timer)
+      pusher?.stop()
+    },
+  }
+}
+
+// ---------------------------------------------------------------- summary
+
+/** What weevboss needs for its sentence once the history is in (docs/spec/07-vault.md, « The history »). */
+export interface VaultSummary {
+  /** This machine has a vault (a remote and its key). */
+  vault: boolean
+  /** Where the conversations live: `owner/repo` on GitHub, else the remote as it is. */
+  remote: string | null
+  conversations: number
+  /** The machines they come from. */
+  machines: string[]
+  by_machine: Record<string, number>
+  /** Provider accounts, by provider: { claude: 2, codex: 1 }. */
+  accounts: Record<string, number>
+  /** The oldest conversation's first day (ISO), null without any. */
+  oldest: string | null
+  /** Claude Code's own cleanup (30 days by default) likely cut the history: say "the last 30 days", never "everything". */
+  claude_window: boolean
+  /** This machine's first import: still reading its sessions, or done. */
+  import: 'running' | 'done'
+  /** Conversations of this machine not in the vault yet. */
+  pending: number
+  /** The vault was read just now (false: no vault, or it could not be reached: the numbers are this machine's last view). */
+  fetched: boolean
+}
+
+interface Facts { tip: string; own: boolean; created: string; updated: string; engines: string[] }
+
+/** `owner/repo` of a remote on github.com (null: another host, or a path). */
+export const githubRepo = (remote: string) => /^(?:git@github\.com:|ssh:\/\/git@github\.com\/|https:\/\/github\.com\/)([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(remote)?.[1] ?? null
+
+/**
+ * Every conversation this machine has and every one the vault holds from the other machines, counted once. The
+ * vault's threads that are not here are opened in memory (nothing is written to the weevbook) and their few facts kept
+ * by commit in the staging repository, so the next summary only reads what moved.
+ */
+export async function vaultSummary(o: { dir: string; staging: string; remote: string | null; key: Buffer | null; machine: string; ssh?: string; imported: boolean; now?: number; windowDays?: number; netMs?: number }): Promise<VaultSummary> {
+  const now = o.now ?? Date.now()
+  const book = path.join(path.resolve(o.dir), '.git')
+  const facts = new Map<string, Omit<Facts, 'tip'>>()
+  if (fs.existsSync(path.join(book, 'HEAD'))) {
+    for (const r of await threadRefs(book)) facts.set(r.id, { own: ownTask(r.meta.title), created: r.meta.created, updated: r.meta.updated, engines: r.meta.legs.map((l) => l.engine) })
+  }
+  let fetched = false
+  let pending = 0
+  if (o.remote && o.key) {
+    const vo: VaultOptions = { dir: o.dir, staging: o.staging, remote: o.remote, key: o.key, machine: o.machine, ssh: o.ssh, netMs: o.netMs ?? 60_000 }
+    await openStaging(o.staging)
+    try {
+      const unlock = await lockStaging(o.staging)
+      try {
+        await fetchRemote(vo)
+        fetched = true
+      } finally {
+        await unlock()
+      }
+    } catch {
+      /* the pusher holds it, or the network is away: this machine's last view of the vault */
+    }
+    const file = path.join(o.staging, 'weevils-summary.json')
+    let cache: Record<string, Facts> = {}
+    try {
+      cache = JSON.parse(await fsp.readFile(file, 'utf8')) as Record<string, Facts>
+    } catch {
+      /* first summary */
+    }
+    const next: Record<string, Facts> = {}
+    for (const [id, tip] of await refsUnder(o.staging, 'refs/vault-remote/threads/')) {
+      if (facts.has(id)) continue
+      let f = cache[id]?.tip === tip ? cache[id] : null
+      if (!f) {
+        const meta = deriveMeta(parseJournal((await readJournal(vo, id, tip)).journal.toString()).events)
+        f = { tip, own: ownTask(meta.title), created: meta.created, updated: meta.updated, engines: meta.legs.map((l) => l.engine) }
+      }
+      next[id] = f
+      facts.set(id, f)
+    }
+    await fsp.writeFile(file, JSON.stringify(next)).catch(() => undefined)
+    pending = (await vaultStatus({ dir: o.dir, staging: o.staging, remote: o.remote, key: true })).pending
+  }
+  const byMachine = new Map<string, number>()
+  const accounts = new Map<string, Set<string>>()
+  let conversations = 0
+  let oldest: string | null = null
+  let claudeQuietest = Infinity
+  for (const f of facts.values()) {
+    if (f.own || !f.created) continue
+    conversations++
+    if (!oldest || f.created < oldest) oldest = f.created
+    const seen = new Set<string>()
+    let claude = false
+    for (const e of f.engines) {
+      const p = parseEngine(e)
+      if (!p) continue
+      seen.add(p.machine)
+      if (p.provider === 'claude') claude = true
+      if (!accounts.has(p.provider)) accounts.set(p.provider, new Set())
+      accounts.get(p.provider)!.add(p.account)
+    }
+    for (const m of seen) byMachine.set(m, (byMachine.get(m) ?? 0) + 1)
+    if (claude) claudeQuietest = Math.min(claudeQuietest, Date.parse(f.updated) || Infinity)
+  }
+  // Claude Code deletes a session `cleanupPeriodDays` (30) after its last line: when the Claude conversation that has
+  // been quiet the longest is about that old, older ones were very likely deleted before weevils could read them.
+  const window = o.windowDays ?? 30
+  const quiet = (now - claudeQuietest) / 86_400_000
+  const machines = [...byMachine.keys()].sort((a, b) => (byMachine.get(b)! - byMachine.get(a)!) || (a < b ? -1 : 1))
+  return {
+    vault: !!(o.remote && o.key),
+    remote: o.remote ? (githubRepo(o.remote) ?? o.remote) : null,
+    conversations,
+    machines,
+    by_machine: Object.fromEntries(machines.map((m) => [m, byMachine.get(m)!])),
+    // An account weevils could not name (signed out when its sessions were read) counts only when it is the only one.
+    accounts: Object.fromEntries([...accounts].sort(([a], [b]) => (a < b ? -1 : 1)).map(([p, set]) => [p, Math.max(1, [...set].filter((a) => a !== 'unknown').length)])),
+    oldest,
+    claude_window: Number.isFinite(quiet) && quiet >= window - 7 && quiet <= window + 3,
+    import: o.imported ? 'done' : 'running',
+    pending,
+    fetched,
   }
 }

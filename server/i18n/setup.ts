@@ -149,6 +149,10 @@ export default defineMessages({
     githubOk: (login: string): string => `GitHub branché : ${login}. Glisse le fil vers la gauche pour voir tes repos ; le + en met un dans le fil, et je peux en créer pour tes idées.`,
     githubFail: (why: string): string => `GitHub refuse ce jeton (${why}). Vérifie qu’il a les droits repo et read:org, puis réessaie :`,
     githubNoCli: (why: string): string => `J’ai gardé le jeton, mais l’outil GitHub ne s’installe pas sur la machine (${why}) : demande-moi de réessayer.`,
+    // ---- GitHub en parlant (le coffre, docs/spec/07-vault.md) : le code de GitHub, tapé sur github.com.
+    githubDevice: (url: string, code: string): string => `Connecte ton GitHub, une seule fois : ouvre [github.com/login/device](${url}) et tape ce code : **${code}** (valable 15 minutes). Je continue dès que c’est fait.`,
+    githubDeviceFail: (why: string): string => `La connexion à GitHub n’a pas abouti (${why}). Dis-moi quand tu veux réessayer.`,
+    githubDeviceDone: 'GitHub est connecté.',
     // ---- voix
     voiceAsk: (s: SetupState): string => {
       const spoken =
@@ -378,6 +382,9 @@ export default defineMessages({
     githubOk: (login: string): string => `GitHub plugged in: ${login}. Swipe the feed left to see your repos; the + puts one in the feed, and I can create new ones for your ideas.`,
     githubFail: (why: string): string => `GitHub rejects this token (${why}). Check it has the repo and read:org scopes, then try again:`,
     githubNoCli: (why: string): string => `I kept the token, but the GitHub tool won’t install on the machine (${why}): ask me to try again.`,
+    githubDevice: (url: string, code: string): string => `Sign in to your GitHub, just once: open [github.com/login/device](${url}) and type this code: **${code}** (valid 15 minutes). I’ll carry on as soon as it’s done.`,
+    githubDeviceFail: (why: string): string => `GitHub didn’t sign in (${why}). Tell me when you want to try again.`,
+    githubDeviceDone: 'GitHub is connected.',
     voiceAsk: (s: SetupState): string => {
       const spoken =
         s.voice.spoken === 'cartesia'

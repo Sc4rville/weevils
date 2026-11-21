@@ -3,27 +3,30 @@
 // It works on this machine's files directly, in its own process: weevilsd keeps running, and the weevbook's lock
 // lets one of them write at a time.
 //
-//   backfill            every Claude Code and Codex session of this machine into the weevbook (idempotent)
+//   backfill            every Claude Code and Codex session of this machine into the weevbook (idempotent);
+//                       --since <date> only those active since that day, --match <words> only those whose title or
+//                       first request holds the words
 //   check [--repair]    every thread against the invariants of docs/spec; --repair rebuilds thread.md and meta.json
 //   compare [--verbose] what the app shows for each session against what the weevbook holds; exit 1 on a loss
 //   resume <thread> [--wait]   the thread continues on this machine, same provider (step 3, docs/spec/04-resume.md);
 //                       the engine is started through the local weevilsd
 //   sync status         how the sync with the hub goes, as weevilsd last wrote it (step 2)
-//   vault setup | push | restore | status   the encrypted copy on the person's GitHub (07-vault.md, vault-cli.ts)
-//   backfill --once     the import at install: nothing when DATA_DIR/weevbook-backfilled is there, which it writes
+//   vault setup | push | restore | status | summary   the encrypted copy on the person's GitHub (07-vault.md, vault-cli.ts)
+//   backfill --once     the import at install: nothing when DATA_DIR/weevbook-backfilled is there, which it writes;
+//                       it takes the --since or --match the join line left in CONFIG_DIR/backfill.json (server/join.sh)
 //
 // Paths can be given for a copy: --data-dir, --claude-dir, --codex-dir (tests, or another machine's files).
 
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, HOME, MACHINE, PORT, PROJECTS_DIR, PROJECT_ROOTS, WEEVBOOK, WEEVBOOK_HUB } from '../config.ts'
+import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, DATA_DIR, HOME, MACHINE, PORT, PROJECTS_DIR, PROJECT_ROOTS, WEEVBOOK, WEEVBOOK_HUB } from '../config.ts'
 import { tr } from '../i18n.ts'
 import M from '../i18n/weevbook.ts'
 import S from '../i18n/weevbook-sync.ts'
 import type { HubStatus } from './hub.ts'
 import { resumeThread, type Launch } from './resume.ts'
-import { backfill, backfillMarker, type BookPaths } from './backfill.ts'
+import { backfill, backfillMarker, type BackfillFilter, type BookPaths } from './backfill.ts'
 import { vaultMain } from './vault-cli.ts'
 import { check } from './check.ts'
 import { compare } from './compare.ts'
@@ -46,6 +49,32 @@ export function paths(args: string[]): BookPaths {
   }
 }
 
+/**
+ * What a backfill takes: `--since <date>` and `--match <words>` of the command line; for the import at install
+ * (`--once`) with neither, what the join line left on this machine (CONFIG_DIR/backfill.json). Null: a date that is
+ * not one.
+ */
+function backfillFilter(args: string[], configDir = CONFIG_DIR): BackfillFilter | null {
+  const opt = (name: string) => {
+    const i = args.indexOf(name)
+    return i >= 0 ? args[i + 1] : undefined
+  }
+  let since = opt('--since')
+  let match = opt('--match')
+  if (since === undefined && match === undefined && args.includes('--once')) {
+    try {
+      const saved = JSON.parse(fs.readFileSync(path.join(opt('--config-dir') ?? configDir, 'backfill.json'), 'utf8')) as { since?: unknown; match?: unknown }
+      if (typeof saved.since === 'string') since = saved.since
+      if (typeof saved.match === 'string') match = saved.match
+    } catch {
+      /* no choice left: everything */
+    }
+  }
+  const at = since === undefined ? undefined : Date.parse(since)
+  if (at !== undefined && !Number.isFinite(at)) return null
+  return { ...(at !== undefined ? { since: at } : {}), ...(match?.trim() ? { match: match.trim() } : {}) }
+}
+
 /** Runs one command; its exit code. `out` receives each line (stdout by default). */
 export async function main(args: string[], out: (line: string) => void = (l) => console.log(l)): Promise<number> {
   const t = tr(M)
@@ -57,9 +86,15 @@ export async function main(args: string[], out: (line: string) => void = (l) => 
         const marker = backfillMarker(path.dirname(p.dir))
         const once = args.includes('--once')
         if (once && fs.existsSync(marker)) return 0
-        const r = await backfill(p, { onSession: (_r, i, n) => process.stderr.isTTY && i % 25 === 0 && process.stderr.write(`\r${t.progress(i, n)}`) })
+        const filter = backfillFilter(args)
+        if (!filter) {
+          out(t.badSince)
+          return 2
+        }
+        const r = await backfill(p, { ...filter, onSession: (_r, i, n) => process.stderr.isTTY && i % 25 === 0 && process.stderr.write(`\r${t.progress(i, n)}`) })
         if (process.stderr.isTTY) process.stderr.write('\r')
         out(t.backfill(r.sessions, r.created, r.updated, r.unchanged, r.empty))
+        if (r.skipped) out(t.skipped(r.skipped))
         out(t.written(r.events, r.lines))
         if (r.refused) out(t.refused(r.refused))
         for (const f of r.failed) out(t.failed(f.file, f.error))

@@ -262,7 +262,10 @@ one `permitopen` (the tunnel's port, reserved from 4192 when the code was made),
 `weevils-service remote-shell <id> <port>`, which only answers the connection check and registers that same machine
 on that same port (no shell, nothing else). The script then writes a `weevils-<main id>` alias in `~/.ssh/config`
 and the main machine's host keys in `~/.ssh/known_hosts`, and runs `install.sh --secondary` through it. The thread
-says when the key came in and when the machine is online. A main machine on a laptop, or one only reachable over plain
+says when the key came in and when the machine is online. The joined machine keeps its conversations in your vault
+too ([spec 07](spec/07-vault.md)): the same exchange registers a deploy key of its own on the vault's repository and
+hands it the vault's address and key (`~/.config/weevils/vault.json`, `vault.key`, `vault-deploy`); `--since
+<YYYY-MM-DD>` or `--match '<words>'` after the code bring only part of its history. A main machine on a laptop, or one only reachable over plain
 http (this machine, the home network), cannot take another computer this way: weevboss asks for that computer's
 address in a masked field instead.
 

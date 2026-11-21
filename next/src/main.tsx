@@ -1,6 +1,7 @@
 // weevils next — weevboss full screen, a side bar for the rest, and a session that weevboss covers again from the top.
 // Built from weevils' own identity: its themes (src/styles.css tokens), icons and logo, its message renderer (Prose),
 // the green working star, the magenta automation loop, bold for what is active. Data: the same /api, nothing faked.
+import { TempoLine } from '../../src/ui/tempo.tsx'
 import '../../src/styles.css'
 import '../../src/ui/living-link.css'
 import '../../src/ui/foryou.css'
@@ -13,6 +14,7 @@ import { autoOfSession } from '../../src/ui/auto-model.ts'
 import { improvingProject, mainProjectRank, selfProject } from '../../src/ui/recursive-identity.ts'
 import { Ctx, THEMES, THEME_COLOR, colorSlots, isTheme, type AppCtx, type Page, type Theme } from '../../src/ui/app-context.tsx'
 import { PageView } from '../../src/ui/pages.tsx'
+import { LanguageLine } from '../../src/ui/prefs.tsx'
 import { Collapse, Line, WorkingMark, composerLook, spring, threadLook } from '../../src/ui/bits.tsx'
 
 // Every box to write in next is the roomy one weevboss has (docs/next-interaction.md).
@@ -299,7 +301,10 @@ function SideBar({ snap, colors, theme, setTheme, current, open, close, logout, 
             <Line ch="~" go={null} value={bt.themeName(theme)} onClick={() => setTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length])}>
               {bt.themeLabel}
             </Line>
-            <Line ch="→" go={null} onClick={() => { location.href = '/?ui=classic' }}>Classic app</Line>
+            <TempoLine />
+            {/* The app's own language line (prefs.tsx): a newcomer picks the language weevboss and the app speak. */}
+            <LanguageLine />
+            <Line ch="→" go={null} onClick={() => { location.href = '/?ui=classic' }}>classic app</Line>
             <Line ch="x" go={null} onClick={logout}>{bt.logout}</Line>
           </section>
         </div>

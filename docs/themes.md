@@ -23,6 +23,9 @@ working star `--fluo`, the 16 project slots `--p0…--p15`, voice logo `--anim-*
 - project colours are slots, not hues: a project keeps its slot in every theme, only the slot's colour changes. Keep
   slots ordered (neighbours close, slots ≥ 2 apart distinct): the For you cards and feed bands rely on it.
 
+- landing: a theme run's branch merges into main by itself once the checks pass, and weevils then posts "new theme X
+  is in your selector" (docs/automations/auto-merge.md). The run's own post never says the theme is live.
+
 ## The themes
 
 | id | fr / en | kind | idea | project slots | what moves |

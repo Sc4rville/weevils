@@ -46,3 +46,26 @@ it('replays the persisted app locale after await even when the worker uses anoth
  }]]
  await withLang('en',()=>executeOutbox({url:'/api/main',body:{text:'hello'},lane:'main',locale:'fr'},routes))
 })
+
+it('the person behind a request (originOf): a signed-in browser that is not a script; never a loopback caller; a replay keeps what its original request was', async () => {
+ const { configureLocalAuth } = await import('./http.ts')
+ const { originOf } = await import('./outbox-http.ts')
+ const TOKEN = 'cd'.repeat(32)
+ configureLocalAuth({ token: TOKEN })
+ try {
+  const r = (headers: Record<string, string>, remoteAddress: string) => ({ socket: { remoteAddress }, headers: { host: 'weevils.example', ...headers } }) as unknown as http.IncomingMessage
+  expect(originOf(r({}, '203.0.113.9'), {})).toBe('user')
+  // A script driving a browser, the CLI with the machine's token: not the person.
+  expect(originOf(r({ 'x-weevils-automated': '1' }, '203.0.113.9'), {})).toBeUndefined()
+  expect(originOf(r({ 'x-weevils-local': TOKEN, host: '127.0.0.1:4179' }, '127.0.0.1'), { origin: 'user' })).toBeUndefined()
+  // A replayed intent: what was checked at accept, never more.
+  let seen: unknown[] = []
+  const routes: Parameters<typeof executeOutbox>[1] = [['POST', /^\/api\/sessions\/s\/send$/, async (req, res) => {
+   let body = ''; for await (const c of req) body += c
+   seen.push(originOf(req, JSON.parse(body))); res.writeHead(200); res.end('{}')
+  }]]
+  await executeOutbox({ url: '/api/sessions/s/send', body: { text: 'x', origin: 'user' } } as never, routes)
+  await executeOutbox({ url: '/api/sessions/s/send', body: { text: 'x' } } as never, routes)
+  expect(seen).toEqual(['user', undefined])
+ } finally { configureLocalAuth(null) }
+})

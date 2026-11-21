@@ -1,3 +1,4 @@
+import type { RequestOrigin } from '../shared/api.ts'
 import { collectionReaders } from './page-collections.ts'
 import { markdownFileRoutes } from './markdown-files.ts'
 import { proposeThinkLayout } from './think-ai.ts'
@@ -6,7 +7,7 @@ import { previewTarget } from './preview-target.ts'
 import { openSiteFile, siteFile, siteKey, siteKeyOk } from './site.ts'
 import { loadTokens, saveTokens as saveDeviceTokens } from './device-tokens.ts'
 import { Outbox, OutboxError } from './outbox.ts'
-import { executeOutbox, outboxRoute } from './outbox-http.ts'
+import { executeOutbox, originOf, outboxRoute } from './outbox-http.ts'
 import { bossDoor } from './boss-door.ts'
 import OM from './i18n/outbox.ts'
 import { rawEngineeringNotice } from '../shared/feed-text.ts'
@@ -417,6 +418,16 @@ if (CONNECTOR) connectorOn()
 
 // Who may speak as the user into weevboss's thread: a signed-in browser, never a script on this machine (server/boss-door.ts).
 const door = bossDoor({ hasDevice, isBossTarget: (id) => w.isBossTarget(id), sourceAuthor, refusal: () => tr(M).bossUserOnly })
+/**
+ * Who a message to a session comes from (RequestOrigin, core.ts send): the person in the app (originOf), or weevboss
+ * relaying the person (`weevils send --for-user`): weevboss's own pane (its runtime thread or its token, never a jailed
+ * caller), during a turn the person started from the app or by voice (boss/origins.jsonl). Never read from the words.
+ */
+function requestOrigin(req: http.IncomingMessage, body: { origin?: unknown; forUser?: unknown }, from: string | undefined): RequestOrigin | undefined {
+  const own = originOf(req, body)
+  if (own || from !== 'weevboss' || body.forUser !== true) return own
+  return isLocal(req) && !jailedPeer(req.socket) && w.bossServingUser() ? 'user' : undefined
+}
 
 // ---------------------------------------------------------------- utilitaires
 
@@ -699,13 +710,14 @@ const routes: [string, RegExp, Handler][] = [
     const body = await readBody(req)
     door.guard(req, u.pathname, body)
     // « from » (weevils, ou un auteur déclaré) n'est accepté que d'une requête locale (l'orchestrateur, la commande weevils), jamais du téléphone.
-    json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), trustedFrom(req, body, sourceAuthor), trustedSource(req,body,sourceAuthor)))
+    const from = trustedFrom(req, body, sourceAuthor)
+    json(res, 200, await w.send(decodeURIComponent(id), String(body.text ?? ''), from, trustedSource(req,body,sourceAuthor), requestOrigin(req, body, from)))
   }],
   ['POST', /^\/api\/sessions\/([^/]+)\/attach$/, async (req, res, u, [id]) => {
     const body = await readBody(req, 24 << 20)
     door.guard(req, u.pathname, body)
     const files = Array.isArray(body.files) ? body.files.filter((f: any) => typeof f?.data === 'string').map((f: any) => ({ name: String(f.name ?? 'photo'), type: String(f.type ?? 'image/jpeg'), data: String(f.data) })) : []
-    json(res, 200, await w.attach(decodeURIComponent(id), String(body.text ?? ''), files))
+    json(res, 200, await w.attach(decodeURIComponent(id), String(body.text ?? ''), files, originOf(req, body)))
   }],
   ['GET', /^\/api\/voices$/, async (_req, res) => json(res, 200, cartesia() ? { enabled: true, voices: await cartesiaVoices(), current: w.voiceId } : { enabled: false, voices: [] })],
   ['POST', /^\/api\/voices$/, async (req, res) => {
@@ -1189,10 +1201,14 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
       door.guard(req, url.pathname, body) // checked here, on the request itself: the replay is this machine's
       const from = trustedFrom(req, body, sourceAuthor)
       const source = trustedSource(req,body,sourceAuthor)
+      const origin = requestOrigin(req, body, from)
       delete body.from
       delete body.sourceThread // Persist only source identity validated on the original request.
+      delete body.origin
+      delete body.forUser
       if (from) body.from = from
       if (source) body.sourceThread = source
+      if (origin) body.origin = origin
       const session = /^\/api\/sessions\/([^/]+)\//.exec(url.pathname)
       const id = session ? decodeURIComponent(session[1]) : url.pathname.startsWith('/api/main') ? w.bossConversation() ?? undefined : undefined
       const lane = id ?? (url.pathname.startsWith('/api/main') ? 'main' : url.pathname)

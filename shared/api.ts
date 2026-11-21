@@ -427,7 +427,16 @@ export interface AutoRun {
   sessionId?: string
   /** The task's own branch, pushed to origin by weevils after this run. */
   pushed?: string
+  /** The commit this run landed on main by itself (a safe kind: theme, copy, asset; server/auto-merge.ts). */
+  merged?: string
+  /** When the person wrote into this run's session: from then on it is an ordinary session of theirs (core.ts sendOne). */
+  handedOver?: number
 }
+/**
+ * Who a message to a session comes from, told by the route that received it, never guessed from its words: 'user' is
+ * the person (the app on a signed-in device, a For you tap, weevboss relaying the person with --for-user).
+ */
+export type RequestOrigin = 'user'
 /** Un fichier produit ou modifié par un passage. abs : chemin absolu sur la machine (page fichier). */
 export interface AutoOutputFile {
   path: string

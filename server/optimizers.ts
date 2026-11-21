@@ -1,4 +1,5 @@
 import { AutomationWorkspaces } from './automation-workspaces.ts'
+import { autoMerge, updateLive, type MergeResult, type Sandbox } from './auto-merge.ts'
 import { preferredTool, providerReady } from './provider.ts'
 // The « auto » band that never sleeps: from the memory and the real projects, weevils proposes background tasks
 // (« optimizers »: harden a repo's tests, watch a topic the user cares about, prepare content, explore an idea they
@@ -390,6 +391,8 @@ export function jailArgs(o: { home: string; hide: string[]; roots: string[]; rw:
 export interface Supervision { at: number; action: 'relaunch' | 'gave-up' | 'asked'; why: string }
 
 type Stored = Optimizer & {
+  /** Its runs' sessions the person took over by writing to them (core.ts sendOne): ordinary sessions of theirs since. */
+  handedOver?: string[]
   proposalPreparation?: { at: number; source: 'conversation' | 'review'; revision: number; requestHash?: string }
   lifecycle?: {at:number;action:'refuse'|'restore-draft';source?:'api'|'internal';priorEndedAt?:number;wasDraft?:boolean}[]
   creationKey?: string
@@ -469,11 +472,17 @@ export interface Sys {
   refresh: (dir: string, base: string) => Promise<'ff' | 'merged' | 'kept'>
   /** Pushes the task's own branch to origin, never anything else (see pushBranch). */
   push: (dir: string, branch: string, base?: string) => Promise<boolean>
+  /** Lands a safe change (theme, copy, asset) on main by itself (see autoMerge); absent in tests that do not use it. */
+  merge?: (dir: string, box?: Sandbox) => Promise<MergeResult>
+  /** Brings the running app up to a merged commit (see updateLive). */
+  live?: (commit: string) => Promise<boolean>
   /** Tries the jail (bwrap <args> true): true when it holds, false without bwrap on this machine; throws if it fails. */
   jail: (args: string[]) => Promise<boolean>
   /** HEAD of the task's worktree <dir> of <repo>: where a run starts from (undefined outside git). */
   head: (repo: string, dir: string) => Promise<string | undefined>
 }
+/** weevils' own checkout (this server runs from it): the only repository that merges on its own. */
+const APP_DIR = path.resolve(import.meta.dirname, '..')
 const gitWorktree = (repo: string, dir: string, branch: string, base?: string) =>
   new Promise<void>((resolve, reject) =>
     execFile('git', ['-C', repo, 'worktree', 'add', dir, '-b', branch, ...(base ? [base] : [])], { timeout: 60_000 }, (e, _out, err) => (e ? reject(new Error(String(err || e.message).trim().split('\n').pop())) : resolve())),
@@ -555,9 +564,18 @@ export function memGauge(platform: Platform = process.platform, read: () => Prom
 }
 /** The note of a queued task that waits for Claude on a Mac, in every language (a task keeps the one it was given). */
 const MAC_NOTES: string[] = [O.fr.noJailMac, O.en.noJailMac]
-const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: memGauge(), logged: () => preferredTool() === 'codex' ? providerReady() : claudeLogged(), worktree: gitWorktree, base: (repo) => mainRef(repo), refresh: (dir, base) => refreshWorktree(dir, base), push: (dir, branch, base) => pushBranch(dir, branch, base), jail: tryJail, head: headOf }
+const realSys: Sys = { load: () => os.loadavg()[0], cpus: () => os.cpus().length || 1, free: memGauge(), logged: () => preferredTool() === 'codex' ? providerReady() : claudeLogged(), worktree: gitWorktree, base: (repo) => mainRef(repo), refresh: (dir, base) => refreshWorktree(dir, base), push: (dir, branch, base) => pushBranch(dir, branch, base), merge: (dir, box) => autoMerge(dir, APP_DIR, box), live: (commit) => updateLive(APP_DIR, commit), jail: tryJail, head: headOf }
 
 // ---------------------------------------------------------------- pure helpers (tested)
+
+/** Why a run's work did not land by itself (autoMerge's reason), in one plain line for For you. */
+export function landingWhy(why: string): string {
+  const t = tr(O)
+  if (why === 'not weevils') return t.landOtherRepo
+  if (/failed$/.test(why)) return t.landChecks
+  if (why === 'conflicts with main' || why.startsWith('push refused')) return t.landMoved
+  return t.landReview
+}
 
 /** The runs as the app reads them: newest first (stored oldest first), an older line ({ at, ok, note }) starting when
  *  it ended. */
@@ -859,6 +877,9 @@ export class Optimizers {
       push: (dir, branch, base) => (sys.push ?? realSys.push)(dir, branch, base),
       jail: (args) => (sys.jail ?? realSys.jail)(args),
       head: (repo, d) => (sys.head ?? realSys.head)(repo, d),
+      // Landing on main and updating the running app: the real ones only for the real runner, never in a test that
+      // injects its own machine without them.
+      ...(opts.sys ? { merge: sys.merge, live: sys.live } : { merge: realSys.merge, live: realSys.live }),
     }
     this.s = (() => {
       try {
@@ -1756,14 +1777,44 @@ export class Optimizers {
     return true
   }
 
-  /** After a run, its own branch goes to origin (pushBranch: auto/… only, never forced), in the background. */
+  /**
+   * After a run: a safe change (a new theme, copy, an added asset; server/auto-merge.ts) lands on main by itself and
+   * the app is rebuilt, then For you says so; anything else stays a branch awaiting the person's go. Either way its
+   * own branch goes to origin (pushBranch: auto/… only, never forced), in the background.
+   */
   private pushRun(o: Stored) {
     if (!o.repo || !o.branch || o.deletedAt || o.builtin) return
+    // Taken over by the person: the branch is their session's now, nothing lands or moves behind its back.
+    if (o.sessionId && o.handedOver?.includes(o.sessionId)) return
     const place = this.place(o)
     if (!place?.cwd || !fs.existsSync(place.cwd)) return
-    const { branch, baseCommit, startedAt, id, title } = o
-    void this.sys
-      .push(place.cwd, branch, baseCommit)
+    const { branch, baseCommit, startedAt, id, title, sessionId } = o
+    const cwd = place.cwd
+    let left: { merged: false; why: string } | undefined
+    // The checks run what the automation wrote: inside its own jail and environment, like the run itself.
+    const box = async (): Promise<Sandbox> => {
+      const guard = this.guard()
+      return { wrap: await this.jail(o, cwd, guard, o.tool === 'codex' ? ['.codex'] : []), ...guardEnv(guard, process.env, this.platform) }
+    }
+    void (this.sys.merge ? box().then((b) => this.sys.merge!(cwd, b)) : Promise.resolve<MergeResult>({ merged: false, why: 'off' }))
+      .catch((e): MergeResult => ({ merged: false, why: (e as Error).message }))
+      .then(async (m) => {
+        if (!m.merged) {
+          left = m
+          return void (m.why !== 'off' && m.why !== 'not weevils' && console.log(`[auto] « ${title} » reste une branche : ${m.why}`))
+        }
+        const r = this.get(id)?.runs?.find((x) => x.startedAt === startedAt)
+        if (r) {
+          r.merged = m.commit
+          this.changed()
+        }
+        console.log(`[auto] « ${title} » fusionnée dans main (${m.kinds.join(', ')}) : ${m.commit.slice(0, 7)}`)
+        if (!(await this.sys.live?.(m.commit).catch(() => false))) return void console.log(`[auto] « ${title} » : l'app en marche n'a pas pu être mise à jour`)
+        const t = tr(O)
+        const text = m.themes.length ? t.themesLive(m.themes) : t.mergedLive(title)
+        this.w.foryou?.add({ id: `auto-live:${id}:${m.commit.slice(0, 12)}`, kind: 'boss', tone: 'neutral', who: 'weevils', title: text, text, open: { page: 'auto', id } })
+      })
+      .then(() => this.sys.push(cwd, branch, baseCommit))
       .then((pushed) => {
         if (!pushed) return
         const r = this.get(id)?.runs?.find((x) => x.startedAt === startedAt)
@@ -1772,8 +1823,18 @@ export class Optimizers {
           this.changed()
         }
         console.log(`[auto] « ${title} » : branche ${branch} poussée`)
+        // Work that did not land by itself is never left on its branch in silence: one plain line in For you, and a
+        // button that hands the run's own session to the person to land it (core.ts sendOne, origin 'user').
+        if (left && left.why !== 'off' && sessionId) this.offerLanding(id, startedAt ?? Date.now(), title, sessionId, left.why)
       })
       .catch((e) => console.error(`[auto] push de « ${title} » : ${(e as Error).message}`))
+  }
+
+  /** For you: « <title> » waits for your OK, why in plain words, and « Land it » (foryou.ts act, op land:<session>). */
+  private offerLanding(id: string, startedAt: number, title: string, sessionId: string, why: string) {
+    const t = tr(O)
+    const text = landingWhy(why)
+    this.w.foryou?.add({ id: `auto-land:${id}:${startedAt}`, kind: 'boss', tone: 'neutral', who: 'weevils', title: t.landTitle(title), text, open: { page: 'session', id: sessionId }, actions: [{ label: t.landButton, brief: t.landBrief, op: `land:${sessionId}` }] })
   }
 
   /** The agent's turn has not ended: its transcript waits for a tool's result and no Stop hook came since. */
@@ -1959,9 +2020,35 @@ export class Optimizers {
     return true
   }
 
-  /** The session of one of the tasks (its current or last run). */
+  /** The session of one of the tasks (its current or last run), unless the person took it over. */
   owns(sessionId: string): boolean {
-    return this.s.items.some((o) => !!o.sessionId && (o.sessionId === sessionId || this.w.sessionIdOf?.(o.sessionId) === sessionId))
+    return this.s.items.some((o) => !!o.sessionId && !o.handedOver?.includes(sessionId) && (o.sessionId === sessionId || this.w.sessionIdOf?.(o.sessionId) === sessionId))
+  }
+
+  /**
+   * The task whose run (current or any past one) started this session, while it is still under the automation's rules:
+   * the person has not taken it over. core.ts sendOne keeps such a session in its jail for anyone but the person.
+   */
+  autoSession(sessionId: string): Optimizer | undefined {
+    const same = (x?: string) => !!x && (x === sessionId || this.w.sessionIdOf?.(x) === sessionId)
+    return this.s.items.find((o) => !o.handedOver?.includes(sessionId) && (same(o.sessionId) || !!o.runs?.some((r) => same(r.sessionId))))
+  }
+
+  /**
+   * The person wrote into a run's session (core.ts sendOne): it is an ordinary session of theirs from now on. A run
+   * still going ends there, done and « continued by you » (its branch is the session's now: nothing merged or pushed
+   * behind its back); the run's line keeps its ids and says when it was handed over.
+   */
+  handOver(sessionId: string, now = Date.now()) {
+    const o = this.s.items.find((x) => x === this.autoSession(sessionId))
+    if (!o) return
+    const current = !!o.sessionId && (o.sessionId === sessionId || this.w.sessionIdOf?.(o.sessionId) === sessionId)
+    o.handedOver = [...new Set([...(o.handedOver ?? []), sessionId, ...(current && o.sessionId ? [o.sessionId] : [])])].slice(-MAX_RUNS)
+    if (o.state === 'running' && current) this.finish(o, now, true, tr(O).handedOver)
+    const r = [...(o.runs ?? [])].reverse().find((x) => x.sessionId === sessionId || (current && x.sessionId === o.sessionId))
+    if (r) r.handedOver = now
+    console.log(`[auto] « ${o.title} » : session ${sessionId.slice(0, 8)} reprise par la personne`)
+    this.changed()
   }
 
   /** Claude is back (or gone): tasks that waited for it are released, and the queue is looked at now. */

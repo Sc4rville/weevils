@@ -27,6 +27,7 @@ weevils read <id> [n]                 a short summary of a session: its last exc
 weevils recall <id>                   reopens a line of your log word for word (a message id, a group g…, a day d…)
 weevils boss                          how you run and the size of what you read on each message
 weevils send <id> "message"           writes into a session; the message shows up signed "weevboss" in its thread
+weevils send <id> "message" --for-user  the same, when you pass on a request {{user}} just made: in a session an automation started, that turn then has an ordinary session's rights (merge, update). Never for an idea of your own
 weevils resume <id>                   restarts a session cut off mid-work (state `interrupted`) with a message sending it back to its work on disk
 weevils new <project> "message" [codex] opens a new session in that project (claude by default) with this first message
 weevils project new <name>            makes the folder of a new project in {{projects}}, with git, and nothing else

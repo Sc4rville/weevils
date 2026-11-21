@@ -55,6 +55,8 @@ export interface ThreadsApp {
   start(ins: Instruction): Promise<StartResult>
   /** Long signed briefs carry their spoken line (server/brief-says.ts). */
   says?(messages: Message[]): Message[]
+  /** The topic title of a thread, when one of its sessions was named (server/titles.ts). */
+  topic?(thread: string): string | undefined
 }
 
 /** The Claude account of an engine id (its six hex characters) among the user's accounts here; null: the main one. */
@@ -167,7 +169,13 @@ export function startThreads(o: ThreadsAppOptions): ThreadsApp {
     }
     return [...out, ...best.values()].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
   }
-  return { threads, rows, start, says: (m) => o.w.says?.attach(m) ?? m }
+  // A thread's topic: the renamer's title of a session it ran in (the thread's own is often the brief's first words).
+  const topic = (thread: string): string | undefined => {
+    let found: string | undefined
+    for (const r of sessions.all()) if (r.thread === thread) found = realTitle(o.w.titles?.get(r.key.slice(r.key.indexOf(':') + 1))?.title) ?? found
+    return found
+  }
+  return { threads, rows, start, says: (m) => o.w.says?.attach(m) ?? m, topic }
 }
 
 /** The session's topic title (the renamer's) wins over the thread's, which is often only the first words of the brief
@@ -193,12 +201,13 @@ export function threadsRoutes(app: ThreadsApp, json: Json, readBody: ReadBody, i
   return [
     ['GET', /^\/api\/threads$/, async (_req, res, url) => {
       const project = url.searchParams.get('project') ?? undefined
-      json(res, 200, await t.list({ project, q: url.searchParams.get('q') ?? undefined }))
+      const list = await t.list({ project, q: url.searchParams.get('q') ?? undefined })
+      json(res, 200, { ...list, threads: list.threads.map((l) => ({ ...l, title: app.topic?.(l.thread) ?? l.title })) })
     }],
     ['GET', /^\/api\/threads\/([0-9A-HJKMNP-TV-Z]{26})$/, async (_req, res, _u, [id]) => {
       const v = await t.view(id)
       if (!v) return json(res, 404, { error: 'not found' }) // i18n-ignore: an API answer the app does not show
-      json(res, 200, app.says ? { ...v, messages: app.says(v.messages) } : v)
+      json(res, 200, { ...v, title: app.topic?.(id) ?? v.title, messages: app.says ? app.says(v.messages) : v.messages })
     }],
     ['POST', /^\/api\/threads\/([0-9A-HJKMNP-TV-Z]{26})\/send$/, async (req, res, _u, [id]) => {
       const body = await readBody(req)

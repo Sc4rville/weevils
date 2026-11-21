@@ -40,8 +40,16 @@ export const shortTitle = (text: string) => {
   const cut = text.split(/: | — | – |\. /)[0].trim()
   return cut.length >= 12 ? cut : text
 }
-/** A request in a list: its short title (the ledger writes one), else the first clause of its sentence. */
-export const askLabel = (a: { title?: string; text: string }) => a.title || shortTitle(a.text)
+/** A request in a list: its short title (the ledger writes one), else a heading made from its sentence: the words
+ *  before the first clause break, six at most, never a sentence cut with « … ». */
+export const askLabel = (a: { title?: string; text: string }) => a.title || headingOf(a.text)
+const BREAK = /[:;,.?!(]|\s[—–-]\s|\s(?:so|so that|and|with|to|then|because|instead|without|by|when|where|which|that|in the|on the|inside)\s/i
+export function headingOf(text: string): string {
+  const s = text.replace(/\s+/g, ' ').trim()
+  const cut = s.split(BREAK)[0].trim()
+  const words = (cut.split(' ').length >= 2 ? cut : s).split(' ')
+  return words.slice(0, 6).join(' ').replace(/[\s,;:.'"’-]+$/, '')
+}
 
 /**
  * The one word that says where a request stands, read from the real session it was sent to (never from the ledger's

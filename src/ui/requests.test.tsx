@@ -3,7 +3,7 @@
 // the page title carries no glyph.
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LedgerView } from '../../shared/ledger.ts'
 import type { Snapshot } from '../../shared/api.ts'
 
@@ -98,4 +98,15 @@ it('a title fits one line: its first clause; the sentence stays whole when there
   expect(shortTitle('Prepare the source link fix: show the whole path to the user')).toBe('Prepare the source link fix')
   expect(shortTitle('Fix login')).toBe('Fix login')
   expect(shortTitle('Fix: a')).toBe('Fix: a')
+})
+
+import { headingOf } from './requests'
+describe('request headings', () => {
+  it('the words before the first clause break, six at most, never cut with an ellipsis', () => {
+    expect(headingOf('Audit the public weevils main branch to separate the public parts')).toBe('Audit the public weevils main branch')
+    expect(headingOf('Design a per-repo speed mode with a stylish, ergonomic name')).toBe('Design a per-repo speed mode')
+    expect(headingOf('Improve the For you page in the current app and on next: cut the noise')).toBe('Improve the For you page')
+    expect(headingOf('Remove the current onboarding page so a new user lands directly in weevboss')).toBe('Remove the current onboarding page')
+    expect(headingOf('Fix it')).toBe('Fix it')
+  })
 })

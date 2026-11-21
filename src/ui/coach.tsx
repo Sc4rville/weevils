@@ -70,7 +70,7 @@ const lat = () => Number(document.documentElement.dataset.lat ?? 0)
 /** Par ordre de priorité : le premier utile dans le contexte du moment est mimé. */
 const GESTURES: Gesture[] = [
   // La page des repos : les logiciels sont à un glissé de plus vers la gauche.
-  { done: 'softwares', move: 'edge-left', where: (c) => (!c.page && lat() === 1 ? rect('.lat-edge') : null) },
+  { done: 'softwares', move: 'edge-left', where: (c) => (!c.page && lat() === 1 ? rect('.lat-grip') : null) },
   // Une page ouverte : on revient en glissant depuis le bord gauche.
   { done: 'g-back', move: 'swipe-right', where: (c) => (c.page ? rect('.page') : null) },
   // Le fil de weevboss ouvert : un mot se tape pour l'expliquer ; on le referme en tirant vers le bas.
@@ -78,7 +78,7 @@ const GESTURES: Gesture[] = [
   { done: 'g-collapse', move: 'pull-down', where: (c) => (c.agentOpen && !c.page ? rect('#agent-body .chat') : null) },
   { done: 'g-copy', move: 'press', where: (c) => (c.agentOpen && !c.page ? rect('.band.agent .ask-thread [data-mid]') : null) },
   // Le fil des projets : les repos sont à un glissé vers la gauche (surtout quand il est vide).
-  { done: 'repos', move: 'edge-left', where: (c) => (!c.agentOpen && !c.page && lat() === 0 ? rect('.lat-edge') : null) },
+  { done: 'repos', move: 'edge-left', where: (c) => (!c.agentOpen && !c.page && lat() === 0 ? rect('.lat-grip') : null) },
   // Des projets : un tap sur le nom les replie.
   { done: 'g-fold', move: 'tap', where: (c) => (!c.agentOpen && !c.page && c.projects > 0 ? firstRect('.band[data-project] .head-name .name') : null) },
   // Le logo de weevboss : on lui parle d'un tap (la bulle dit la suite au premier tap).

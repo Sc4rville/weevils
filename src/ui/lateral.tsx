@@ -325,8 +325,9 @@ export function LateralDeck({ nav, active }: { nav: LateralNav; active: boolean 
           </Layer>
         ) : null,
       )}
-      {/* The edge still pulls the next screen; no bar drawn on it (Scarville, 2026-11-21: the stray little button). */}
-      {active && !overview && rest < LAST && <div className="lat-edge" style={{ width: EDGE }} onPointerDown={pull} aria-hidden />}
+      {active && !overview && rest < LAST && <div className="lat-edge" style={{ width: EDGE }} onPointerDown={pull} aria-hidden>
+          <span className="lat-grip" />
+        </div>}
       {overview && <div className="lat-over" onPointerDown={browse} aria-hidden />}
     </>
   )

@@ -43,7 +43,7 @@ export function OutboxStatus({ scope, eventId, seen = [] }: { scope: string; eve
   const notify = (r: LocalReceipt) => {
     const id = sessionOf(r.url)
     const title = id ? app?.snap?.sessions?.find(s => s.id === id)?.title : undefined
-    const where = id ? `[${title || id.slice(0, 8)}](/#s=${id})` : 'weevboss'
+    const where = id ? `[${title || id.slice(0, 8)}](/#s=${id})` : r.url.startsWith('/api/foryou/') ? '[For you](/#foryou)' : 'weevboss'
     setBusy(r.messageId); setNotifyError('')
     void api.main(t.note(where, cause(r), r.messageId, r.text ?? ''))
       .then(() => markHandedOver(r.messageId))
@@ -51,8 +51,9 @@ export function OutboxStatus({ scope, eventId, seen = [] }: { scope: string; eve
       .finally(() => setBusy(b => b === r.messageId ? '' : b))
   }
   return <div className="outbox-status" aria-live="polite">{visible.map(r => {
-    // To weevboss itself, or never taken by the server: weevboss can't be the way round, the same send is.
-    const direct = notSent(r) || !sessionOf(r.url)
+    // To weevboss itself, or never taken by the server: weevboss can't be the way round, the same send is. A reply under
+    // a For you post that did not reach its session goes to weevboss like a session message.
+    const direct = notSent(r) || r.url.startsWith('/api/main')
     return <div key={r.messageId} className="msg band tone delivery-failed" data-delivery={r.status}>
       <div className="in">
         <span className="who">{t.you}</span>

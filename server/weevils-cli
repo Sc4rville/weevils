@@ -47,6 +47,8 @@ from=${WEEVILS_FROM:-weevils}
 # A project agent is not weevboss. Session sends/new resolve an available source thread on the local server.
 sender_from=${WEEVILS_FROM:-agent}
 source_thread=${CODEX_THREAD_ID:-${CODEX_SESSION_ID:-${CLAUDE_SESSION_ID:-}}}
+# The session running this command, for what it puts in « for you » (post, show): a reply there comes back to it.
+caller_session=${source_thread:-${CLAUDE_CODE_SESSION_ID:-}}
 if [ -n "$source_thread" ]; then sender_from=agent; fi
 py=python3
 # weevils' own node and code (service.conf), for the scripts that draw pictures (compare, diagram).
@@ -580,13 +582,14 @@ else: print(E['WVM_MEM_NOT_FOUND']+want, file=sys.stderr); sys.exit(1)
     done
     [ -n "${text//[[:space:]]/}" ] || { echo "$m_post_empty" >&2; exit 1; }
     for_you post "$m_posted" "$("$py" -c 'import json,sys
-acts=[dict(zip(("label","brief"),(p.strip() for p in a.split("::",1)))) for a in sys.argv[5:]]
+acts=[dict(zip(("label","brief"),(p.strip() for p in a.split("::",1)))) for a in sys.argv[6:]]
 d={"text":sys.argv[1],"actions":acts,"from":sys.argv[2]}
 e=json.loads(sys.argv[3])
 if e: d["evidence"]=e
 t=sys.argv[4].strip()
 if t: d["title"]=t
-print(json.dumps(d))' "$text" "$from" "$(evidence_json)" "$title" ${actions[@]+"${actions[@]}"})" ;;
+if sys.argv[5]: d["session"]=sys.argv[5]
+print(json.dumps(d))' "$text" "$from" "$(evidence_json)" "$title" "$caller_session" ${actions[@]+"${actions[@]}"})" ;;
   show)
     # An image or a video in the « for you » stream. The server checks the file (place, type, size) and says why not.
     shift
@@ -607,9 +610,10 @@ print(json.dumps(d))' "$text" "$from" "$(evidence_json)" "$title" ${actions[@]+"
     fi
     for_you media "$m_shown" "$("$py" -c 'import json,sys
 d={"path":sys.argv[1],"caption":sys.argv[2],"cwd":sys.argv[3],"from":sys.argv[4]}
+if sys.argv[6]: d["session"]=sys.argv[6]
 e=json.loads(sys.argv[5])
 if e: d["evidence"]=e
-print(json.dumps(d))' "$file" "$caption" "$PWD" "$from" "$(evidence_json)")" ;;
+print(json.dumps(d))' "$file" "$caption" "$PWD" "$from" "$(evidence_json)" "$caller_session")" ;;
   pages)
     # The living-link pages of this machine (server/pages.ts): kind, title, link.
     ledger GET /api/pages | json 'print("\n".join(p["slug"]+"  ["+p["kind"]+"] "+p["title"] for p in d["pages"]))' ;;

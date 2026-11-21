@@ -31,9 +31,9 @@ describe('living link colours', () => {
   it('gives the app one rule per kind and theme, and one inside weevboss bubbles', () => {
     const css = linkCss()
     for (const kind of PAGE_KINDS) {
-      expect(css).toContain(`:root a.living.lk-${kind}{`)
-      for (const t of ['dark', 'zen', 'graphite', 'desert', 'synthwave']) expect(css).toContain(`:root[data-theme='${t}'] a.living.lk-${kind}{`)
-      expect(css).toContain(`:root[data-theme='graphite'] .msg.orch a.living.lk-${kind}{`)
+      expect(css).toContain(`:root .living.lk-${kind}{`)
+      for (const t of ['dark', 'zen', 'graphite', 'desert', 'synthwave']) expect(css).toContain(`:root[data-theme='${t}'] .living.lk-${kind}{`)
+      expect(css).toContain(`:root[data-theme='graphite'] .msg.orch .living.lk-${kind}{`)
     }
   })
 })

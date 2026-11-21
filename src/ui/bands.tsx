@@ -22,7 +22,7 @@ import { isUnread, useSeen } from './seen'
 import { Collapse, Composer, INSTANT, Line, Messages, SessionRow, Working, authorTone, spring, useAuthors } from './bits'
 import B from '../i18n/bits'
 import { plain, userText, type ChipId } from './format'
-import { AutoMark, FilledIcon, G, Icon } from './icons'
+import { AutoMark, G, Icon } from './icons'
 import { KeepSessionOrder } from './session-order'
 import PM from '../i18n/project-screen'
 import TM from '../i18n/threads'
@@ -31,11 +31,11 @@ import { ThreadPlans } from './relay'
 import { LanguageLine } from './prefs'
 import { UsageLine } from './infra'
 import { TokenMeter } from './rate'
-import { setDevil, useDevil } from './devil'
+import { useDevil } from './devil'
 import { markSeen, tapHint } from './hints'
 import { flash, keepInPlace, reveal, useFollow } from './follow'
 import { mergePending, type Pending } from './pending'
-import { Chip, KeyChip, SetupChips, SetupComposer, askSetup, flowVoice, useFlow, useWelcome } from './setup'
+import { Chip, KeyChip, SetupChips, SetupComposer, flowVoice, useFlow, useWelcome } from './setup'
 import { ForYouPeek, TopWords, useTop, type Top } from './foryou-top'
 import { SleepButton } from './night'
 
@@ -183,7 +183,6 @@ const qa = (node: ReactNode, k: string) => (node ? <QaInView k={k}>{node}</QaInV
 
 export function AgentBand() {
   const t = useT(M)
-  const td = useT(D)
   const { snap, expanded, setExpanded, push } = useApp()
   const open = expanded === 'agent'
   // « weevboss · pour toi » : ce que montre l'aperçu de la bande réduite, mémorisé sur l'appareil. Sans flux côté
@@ -194,19 +193,10 @@ export function AgentBand() {
     if (x === 'foryou' && (open || top === 'foryou')) return push({ kind: 'foryou' })
     if (!open) setTop(x)
   }
-  // Devil mode : le diablotin, toujours là à droite du logo. Branché, un tap bascule (bande orange, réponses en vert,
-  // même fil) ; pas branché, un tap demande à weevboss de proposer le branchement, dans son fil.
+  // Devil mode: its header button is gone (Scarville, 2026-11-21); a devil already on still shows (orange band).
   const devilOn = useDevil(!!snap.devil?.enabled)
   const flow = useFlow()
   useWelcome()
-  const tapDevil = (el: Element) => {
-    if (!snap.devil?.enabled) {
-      void askSetup('devil')
-      return
-    }
-    if (tapHint('devil', el)) return
-    setDevil(!devilOn)
-  }
   const body = useRef<HTMLDivElement>(null)
   const form = useRef<HTMLFormElement>(null)
   const [draft, setDraft] = useState({ text: '', n: 0, reset: false })
@@ -272,14 +262,8 @@ export function AgentBand() {
   // Un secret demandé ([[setup:key:NOM]]) : toujours un bouton (le recoller remplace l'ancienne valeur).
   const chipIn = (b: ChipId, id: string) => (b.startsWith('key:') ? <KeyChip name={b.slice(4)} /> : lastWith.get(b) === id ? <Chip brick={b as Brick} inline /> : null)
 
-  const devilButton = (
-    <button className={`devil-btn ${devilOn ? 'on' : ''}`} onClick={(e) => tapDevil(e.currentTarget)} aria-pressed={devilOn} aria-label={devilOn ? td.on : td.off}>
-      <FilledIcon name="devil" />
-    </button>
-  )
-
-  // With the main controls: the devil. Sleep mode sits on the drawer's handle row (below).
-  const controls = <span className="agent-ctrls">{devilButton}</span>
+  // The main control: sleep mode, where the devil (« le chat ») button was (Scarville, 2026-11-21). No devil button.
+  const controls = <span className="agent-ctrls"><SleepButton /></span>
 
   const dr = useBossDrawer(open, () => setExpanded('agent'), () => setExpanded(null))
   const band = (
@@ -364,12 +348,8 @@ export function AgentBand() {
           le champ pose les questions du parcours, une à la fois (src/ui/setup.tsx). */}
       {/* The handle, about a centimetre above the field (Scarville, 2026-11-17): pull it down to open, push it up to close, or
           tap it. Under the field it sat on the keyboard's toolbar and the home indicator, where closing failed. */}
-      {/* Thin, like the automations' handle (Scarville, 2026-11-21: « petit et fin comme dans automation »); sleep mode at
-          its right end, where the stray edge bar was (« mets le sleep mode à sa place »). */}
-      <div className="agent-grip-row">
-        <div className="agent-grip" onPointerDown={dr.grab} aria-hidden><span /></div>
-        <span className="agent-sleep" onPointerDown={(e) => e.stopPropagation()}><SleepButton /></span>
-      </div>
+      {/* Thin, like the automations' handle (Scarville, 2026-11-21: « petit et fin comme dans automation »). */}
+      <div className="agent-grip" onPointerDown={dr.grab} aria-hidden><span /></div>
       {flow ? <SetupComposer /> : <Composer placeholder={t.agentPlaceholder} label={t.agentLabel} onSend={send} onAttach={attach} anyFile voice sayErrors horizontal captureSuggestions draft={draft} formRef={form} prompt={snap.mainWorking ? <span className="spin fluo"><Icon name="star" /></span> : <Icon name="chevron" dir="right" />} />}
     </motion.section>
   )

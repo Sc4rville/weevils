@@ -201,6 +201,11 @@ export const which = (cmd: string): string | null => whichIn(cmd, process.platfo
 /** Claude Code connecté : les identifiants de /login, une clé dans l'environnement, ou sur un Mac le trousseau (server/claude-credentials.ts). */
 export const claudeLogged = (): boolean => claudeLoggedIn()
 
+/** The log without its sign-in prompts for a provider that is signed in now (pure, tested). */
+export function staleSignIns<T extends { role: string; text: string }>(log: T[], logged: { claude: boolean; codex: boolean }): T[] {
+  return log.filter((m) => !(m.role === 'assistant' && ((logged.claude && m.text.includes('[[setup:claude]]')) || (logged.codex && m.text.includes('[[setup:codex]]')))))
+}
+
 let ghCache: { at: number; v: { installed: boolean; logged: boolean; login?: string } } | null = null
 async function github(force = false) {
   if (!force && ghCache && Date.now() - ghCache.at < 60_000) return ghCache.v
@@ -670,8 +675,13 @@ export class Setup {
     return { provider: preferredTool(), ready: providerReady(), providers: this.providers(), codex: codexLogged(), claude: claudeLogged(), voice: !!(cartesia() || edgeTts()), dictation: !!process.env.OPENAI_API_KEY?.trim(), github: ghCache?.v.logged ?? true, welcomed: !!this.p.welcomed }
   }
 
-  /** Les messages écrits au nom de weevboss (et les réponses des parcours), à mêler à son fil. */
-  messages = () => this.p.log
+  /**
+   * Les messages écrits au nom de weevboss (et les réponses des parcours), à mêler à son fil. A sign-in prompt (a line
+   * of weevils' carrying the Claude or Codex sign-in chip) is gone as soon as that sign-in works: kept in the log, never
+   * shown to a signed-in person (Scarville, 2026-11-21: five « Sign in to Claude Code to continue with this agent » left
+   * from a moment on 11-18 when Claude looked signed out).
+   */
+  messages = () => staleSignIns(this.p.log, { claude: claudeLogged(), codex: codexLogged() })
   welcomed = () => !!this.p.welcomed
 
   /** Le seul passage des messages automatiques de weevboss (parcours, confirmations, coupures) et de leurs réponses.

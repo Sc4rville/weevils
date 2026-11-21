@@ -2116,16 +2116,19 @@ button.copy.done {
   gap: 8px;
 }
 
-/* Un aplat de l'encre sur le fond de la bande, gras, angles vifs. */
+/* No box (Scarville: only the coloured living-link look): the living link's drifting colours (src/ui/living-link.css,
+   readable on every band in every theme), bold, with a tap target as tall as a button. */
 .setup-chip {
   min-height: 40px;
-  padding: 8px 14px;
-  background: var(--ink);
-  color: var(--c, var(--agent));
-  font-weight: 750;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  font: inherit;
+  font-weight: 800;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  cursor: pointer;
 }
 
 .setup-chip .ic {
@@ -2579,15 +2582,16 @@ button.copy.done {
    à la hauteur du texte, qui passe à la ligne avec lui. Sur un message plus ancien, son libellé seul, en gras. */
 .text .setup-chip.inline {
   min-height: 0;
-  padding: 2px 8px;
+  padding: 0;
   margin: 0 2px;
-  gap: 6px;
+  gap: 4px;
   vertical-align: baseline;
   font: inherit;
-  font-weight: 750;
-  line-height: 1.35;
+  font-weight: 800;
+  line-height: inherit;
   white-space: normal;
   text-align: left;
+  display: inline;
 }
 
 .text .setup-chip.inline .ic {
@@ -3116,6 +3120,16 @@ main.stack {
 }
 
 /* The grip on the right edge: tap it to open the next screen, or pull it to the left. */
+.lat-grip {
+  position: absolute;
+  right: 6px;
+  top: calc(50% - 28px);
+  width: 5px;
+  height: 56px;
+  background: var(--ink);
+  opacity: 0.35;
+}
+
 .lat-layer input,
 .lat-layer textarea {
   -webkit-user-select: text;
@@ -3123,16 +3137,9 @@ main.stack {
 }
 
 /* ---------- weevboss drawer handle (src/ui/bands.tsx useBossDrawer) ---------- */
-.agent-grip-row {
-  flex: none;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-}
 /* As thin as the automations' handle (.h24-grip): a short 2px line, a slim touch strip. */
 .agent-grip {
-  grid-column: 2;
-  width: 120px;
+  flex: none;
   height: 22px;
   display: grid;
   place-items: center;
@@ -3146,14 +3153,6 @@ main.stack {
   height: 2px;
   background: currentColor;
   opacity: 0.3;
-}
-/* Sleep mode, at the handle row's right end. */
-.agent-sleep {
-  grid-column: 3;
-  justify-self: end;
-  padding-right: var(--pad, 16px);
-  display: flex;
-  align-items: center;
 }
 .agent.open { will-change: transform; }
 

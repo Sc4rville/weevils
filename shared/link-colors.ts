@@ -161,16 +161,16 @@ export function linkColors(theme: LinkTheme): Record<PageKind, [string, string]>
   return Object.fromEntries(Object.entries(LINK_HUES).map(([k, [a, b]]) => [k, [rgbToHex(linkShade(theme, a)), rgbToHex(linkShade(theme, b))]])) as Record<PageKind, [string, string]>
 }
 
-/** The app's rules: `[data-theme=…] a.living.lk-<kind>` gets its two colours (light is also the default theme), and
+/** The app's rules: `[data-theme=…] .living.lk-<kind>` gets its two colours (light is also the default theme), and
  *  inside weevboss's message bubble its own. An outside author's bubble (.msg.orch.ext) has a colour of its own,
  *  unknown here: links there take the text colour, which that bubble is made to carry. */
 export function linkCss(): string {
   const out: string[] = []
   for (const theme of APP_THEMES) {
     const root = theme === 'light' ? ':root' : `:root[data-theme='${theme}']`
-    for (const [k, [a, b]] of Object.entries(linkColors(theme))) out.push(`${root} a.living.lk-${k}{--lk-a:${a};--lk-b:${b}}`)
-    for (const [k, [a, b]] of Object.entries(linkColors(`${theme}-bubble`))) out.push(`${root} .msg.orch a.living.lk-${k}{--lk-a:${a};--lk-b:${b}}`)
+    for (const [k, [a, b]] of Object.entries(linkColors(theme))) out.push(`${root} .living.lk-${k}{--lk-a:${a};--lk-b:${b}}`)
+    for (const [k, [a, b]] of Object.entries(linkColors(`${theme}-bubble`))) out.push(`${root} .msg.orch .living.lk-${k}{--lk-a:${a};--lk-b:${b}}`)
   }
-  out.push(':root .msg.orch.ext a.living,:root[data-theme] .msg.orch.ext a.living{--lk-a:var(--ink);--lk-b:var(--ink)}')
+  out.push(':root .msg.orch.ext .living,:root[data-theme] .msg.orch.ext .living{--lk-a:var(--ink);--lk-b:var(--ink)}')
   return out.join('\n')
 }

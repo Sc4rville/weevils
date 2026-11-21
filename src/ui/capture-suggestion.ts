@@ -4,7 +4,7 @@ export const CAPTURE_OFFER_MS = 10_000
 const fingerprint = async (blob: Blob) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()))].join(',')
 
 /** A clipboard image is a proposal, never an attachment or an automatic send.
- * iOS has no web screenshot event; explicit paste always works when it carries an image.
+ * iOS has no web screenshot event. An explicit paste is not a proposal: the composer attaches it (file-drop.ts).
  * Background reads are attempted only with an already-granted persistent permission. */
 export function useCaptureSuggestion(enabled: boolean) {
   const [candidate, setCandidate] = useState<{ file: File; url: string; expires: number } | null>(null)
@@ -20,6 +20,10 @@ export function useCaptureSuggestion(enabled: boolean) {
     setCandidate({ file, url: URL.createObjectURL(file), expires: Date.now() + CAPTURE_OFFER_MS })
   }, [enabled])
   const clear = useCallback(() => { version.current++; setCandidate(null) }, [])
+  /** An image the person pasted themselves: attached already, never offered again. */
+  const remember = useCallback((file: Blob) => {
+    void fingerprint(file).then((hash) => { last.current = hash }).catch(() => { /* No SubtleCrypto: nothing to compare. */ })
+  }, [])
   useEffect(() => {
     if (!candidate) return
     const timer = setTimeout(clear, Math.max(0, candidate.expires - Date.now()))
@@ -67,5 +71,5 @@ export function useCaptureSuggestion(enabled: boolean) {
       navigator.clipboard?.removeEventListener?.('clipboardchange', read)
     }
   }, [enabled, offer])
-  return { candidate: enabled ? candidate : null, offer, clear }
+  return { candidate: enabled ? candidate : null, offer, clear, remember }
 }

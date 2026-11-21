@@ -11,6 +11,7 @@ import { AnimatePresence, motion, type Transition } from 'motion/react'
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { api } from '../api'
 import { useCaptureSuggestion } from './capture-suggestion'
+import { pasteHandler, useDropTarget } from './file-drop'
 import type { Author, Message, Session } from '../../shared/api.ts'
 import { useApp } from './app-context'
 import { chipLabel, chipLabels, type ChipId, dur, inline, isCommand, status, step, userText, userPhotos, userCaption } from './format'
@@ -324,6 +325,9 @@ async function raw(file: File): Promise<Attachment> {
   return { name: file.name, type: file.type || 'application/octet-stream', data: btoa(bin) }
 }
 
+/** A file from the computer, ready to send: photos made lighter, anything else as it is. */
+export const toAttachment = (file: File) => (file.type.startsWith('image/') ? shrink(file) : raw(file))
+
 async function shrink(file: File): Promise<Attachment> {
   try {
     const bmp = await createImageBitmap(file)
@@ -494,7 +498,7 @@ export function Composer({
     if (!list?.length) return
     setBusy(true)
     try {
-      const got = await Promise.all([...list].slice(0, 6).map((f) => (anyFile && !f.type.startsWith('image/') ? raw(f) : shrink(f))))
+      const got = await Promise.all([...list].slice(0, 6).map(toAttachment))
       setFiles((f) => [...f, ...got].slice(0, 6))
     } catch (e) {
       setErr((e as Error).message)
@@ -503,6 +507,20 @@ export function Composer({
       if (picker.current) picker.current.value = ''
     }
   }
+
+  // Pasted or dropped from the computer (a screenshot, a copied image, files from the desktop): attached at once, like
+  // the + button, and sent only with the message. The pasted image is remembered, so weevboss's clipboard offer
+  // doesn't propose it again.
+  const canTake = !!onAttach && !disabled
+  const take = (list: File[]) => {
+    if (!canTake) return
+    setErr(null)
+    for (const f of list) if (f.type.startsWith('image/')) capture.remember(f)
+    void pick(list)
+  }
+  const onPaste = canTake ? pasteHandler(take, () => setErr(t.dragFilesInstead)) : undefined
+  const formEl = useRef<HTMLFormElement | null>(null)
+  useDropTarget(formEl, take, canTake)
 
   const toggleRec = async () => {
     if (rec === 'wait') return
@@ -545,11 +563,14 @@ export function Composer({
   }
 
   return (
-    <form ref={formRef} className={`composer band ${className}`} aria-busy={busy} data-draft={!!text || !!files.length} onSubmit={submit}>
+    <form ref={(node) => { formEl.current = node; if (formRef) formRef.current = node }} className={`composer band ${className}`} aria-busy={busy} data-draft={!!text || !!files.length} onSubmit={submit}>
       {(files.length > 0 || err) && (
         <div className="in meta attach-line">
           {files.length > 0 && (
             <>
+              <span className="attach-thumbs" aria-hidden>
+                {files.map((f, i) => f.type.startsWith('image/') ? <img key={i} src={`data:${f.type};base64,${f.data}`} alt="" /> : <span key={i} className="attach-file ellipsis">{f.name}</span>)}
+              </span>
               <span className="strong">
                 {t.attached(files.length, files.every((f) => f.type.startsWith('image/')))}
               </span>
@@ -573,11 +594,7 @@ export function Composer({
             value={text.replace(/\r?\n/g, ' ')}
             onChange={(e) => setText(e.target.value.replace(/\r?\n/g, ' '))}
             onFocus={onFocus}
-            onPaste={(e) => {
-              if (!captureSuggestions || !onAttach || disabled) return
-              const file = [...e.clipboardData.files].find((f) => f.type.startsWith('image/'))
-              if (file) { e.preventDefault(); capture.offer(file) }
-            }}
+            onPaste={onPaste}
             onKeyDown={(e) => {
               if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return
               e.preventDefault()
@@ -600,6 +617,7 @@ export function Composer({
             value={text}
             onChange={(e) => setText(e.target.value)}
             onFocus={onFocus}
+            onPaste={onPaste}
             placeholder={rec === 'on' ? t.listening : rec === 'wait' ? t.transcribing : placeholder}
             aria-label={label}
             autoComplete="off"
@@ -611,6 +629,7 @@ export function Composer({
             value={text}
             onChange={(e) => setText(e.target.value)}
             onFocus={onFocus}
+            onPaste={onPaste}
             placeholder={rec === 'on' ? t.listening : rec === 'wait' ? t.transcribing : placeholder}
             aria-label={label}
             enterKeyHint="send"

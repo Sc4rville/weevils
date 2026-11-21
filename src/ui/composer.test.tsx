@@ -34,20 +34,13 @@ const pasted = (file?: File) => {
 }
 const proposal = () => host.querySelector<HTMLButtonElement>('.capture-offer')
 
-it('offers a pasted photo for ten seconds, without attaching or sending, then restores +', () => {
-  vi.useFakeTimers(); render()
-  expect(pasted(new File(['photo'], 'capture.png', { type: 'image/png' })).defaultPrevented).toBe(true)
-  expect(proposal()).not.toBeNull(); expect(attach).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled()
-  act(() => vi.advanceTimersByTime(CAPTURE_OFFER_MS - 1)); expect(proposal()).not.toBeNull()
-  act(() => vi.advanceTimersByTime(1)); expect(proposal()).toBeNull()
-  expect(host.querySelector('[aria-label="attach a photo"]')).not.toBeNull()
-  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:clipboard-proposal')
-})
-it('only attaches after touching the proposal, and only sends after explicit submit', async () => {
+it('attaches a pasted screenshot at once, with its thumbnail, and sends it only on submit', async () => {
   render({ text: 'look at this', n: 1 })
-  pasted(new File(['photo'], 'capture.png', { type: 'image/png' }))
-  await act(async () => { proposal()!.click() })
+  let event!: Event
+  await act(async () => { event = pasted(new File(['photo'], 'capture.png', { type: 'image/png' })) })
+  expect(event.defaultPrevented).toBe(true)
   expect(proposal()).toBeNull(); expect(host.textContent).toContain('1 photo')
+  expect(host.querySelector('.attach-thumbs img')).not.toBeNull()
   expect(attach).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled()
   await act(async () => host.querySelector('form')!.requestSubmit())
   expect(attach).toHaveBeenCalledWith('look at this', [expect.objectContaining({ name: 'capture.png', type: 'image/png' })])
@@ -87,8 +80,8 @@ it('does not poll or request access when the browser does not support persistent
   await act(async () => window.dispatchEvent(new Event('focus')))
   expect(read).not.toHaveBeenCalled()
   expect(proposal()).toBeNull()
-  pasted(new File(['photo'], 'manual.png', { type: 'image/png' }))
-  expect(proposal()).not.toBeNull()
+  await act(async () => { pasted(new File(['photo'], 'manual.png', { type: 'image/png' })) })
+  expect(host.textContent).toContain('1 photo')
 })
 it('offers an authorized clipboard image at focus, then does not resurface the same expired image', async () => {
   vi.useFakeTimers()
@@ -109,7 +102,7 @@ it('offers an authorized clipboard image at focus, then does not resurface the s
   expect(read).toHaveBeenCalledTimes(2)
   expect(proposal()).toBeNull()
 })
-it('does not re-offer an explicitly pasted image when returning to the app after expiry', async () => {
+it('does not offer back an image the person already pasted', async () => {
   vi.useFakeTimers()
   vi.spyOn(document, 'hasFocus').mockReturnValue(true)
   vi.spyOn(navigator.permissions, 'query').mockResolvedValue({ state: 'granted' } as PermissionStatus)
@@ -119,8 +112,7 @@ it('does not re-offer an explicitly pasted image when returning to the app after
   vi.spyOn(crypto.subtle, 'digest').mockResolvedValue(new Uint8Array([4, 5, 6]).buffer)
   render()
   await act(async () => { pasted(file) })
-  expect(proposal()).not.toBeNull()
-  act(() => vi.advanceTimersByTime(CAPTURE_OFFER_MS))
+  expect(proposal()).toBeNull(); expect(host.textContent).toContain('1 photo')
   await act(async () => { window.dispatchEvent(new Event('focus')) })
   expect(read).toHaveBeenCalledOnce()
   expect(proposal()).toBeNull()

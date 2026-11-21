@@ -1518,6 +1518,16 @@ button.copy.done {
   min-height: 28px;
 }
 
+/* What is attached, seen before it leaves: photos as small squares, files by name. */
+.attach-thumbs { display: flex; gap: 6px; min-width: 0; }
+.attach-thumbs img { width: 36px; height: 36px; object-fit: cover; display: block; box-shadow: 2px 2px 0 var(--ink); }
+.attach-file { max-width: 14ch; font-weight: 750; font-size: 0.85em; padding: 2px 6px; box-shadow: inset 0 0 0 2px var(--ink); }
+
+/* Files dragged from the computer over a thread: the box that will take them says so. */
+[data-dropping] { box-shadow: inset 0 0 0 3px var(--fluo, var(--ink)); }
+[data-dropping]::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: color-mix(in oklab, var(--fluo, var(--ink)) 12%, transparent); }
+.composer[data-dropping], .fy-sheet-say[data-dropping] { position: relative; }
+
 /* ---------- La conversation avec weevils : grandit, mais pas plus que la moitié de l'écran ---------- */
 
 .chat {

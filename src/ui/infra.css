@@ -5,7 +5,8 @@
   --warn: #d95f00;
   --crit: #d4001c;
 }
-[data-theme='dark'] {
+[data-theme='dark'],
+:root[data-theme='synthwave'] {
   --warn: #ffa347;
   --crit: #ff5a6a;
 }

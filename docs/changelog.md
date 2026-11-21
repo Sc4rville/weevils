@@ -2,6 +2,13 @@
 
 A short summary of what changed after the first working version.
 
+## 2026-11-21
+
+### Themes
+- Two new themes in the theme selector: **desert** (désert), a light dusty desert (terracotta top, sage 24/7, sand,
+  projects in powdered earth tones, a turquoise star); **synthwave**, a dark 80s neon night (violet-black bands,
+  projects in the retro-sun gradient violet → pink → orange → yellow, a cyan star). Record: `docs/themes.md`.
+
 ## 2026-11-20
 
 ### The first run is a conversation with weevboss

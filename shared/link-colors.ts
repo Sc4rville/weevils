@@ -17,7 +17,7 @@ export const LINK_HUES: Record<PageKind, [number, number]> = {
   render: [15, 350],
 }
 
-const APP_THEMES = ['light', 'dark', 'zen', 'graphite'] as const
+const APP_THEMES = ['light', 'dark', 'zen', 'graphite', 'desert', 'synthwave'] as const
 export type LinkTheme = (typeof APP_THEMES)[number] | `${(typeof APP_THEMES)[number]}-bubble` | 'page-light' | 'page-dark'
 export const LINK_THEMES: LinkTheme[] = [...APP_THEMES, ...APP_THEMES.map((t) => `${t}-bubble` as const), 'page-light', 'page-dark']
 
@@ -80,12 +80,16 @@ const shift = (base: Rgb, dl: number, k: number): Rgb => {
 
 const ok = (l: number, c: number, h: number) => clamp(oklchToRgb([l, c, h]))
 const palette = (l: number, c: number) => Array.from({ length: 16 }, (_, i) => ok(l, c, 5 + 22.5 * i))
+/** The nightly themes' slots (src/styles.css): one hue arc from h0 to h1, lightness cycling over ls. */
+const arc = (h0: number, h1: number, ls: number[], c: number) => Array.from({ length: 16 }, (_, i) => ok(ls[i % ls.length], c, (((h0 + ((h1 - h0) * i) / 15) % 360) + 360) % 360))
 /** Each app theme's weevboss band (--agent) and its --dl. */
-const AGENT: Record<'light' | 'dark' | 'zen' | 'graphite', { agent: Rgb; dl: number }> = {
+const AGENT: Record<(typeof APP_THEMES)[number], { agent: Rgb; dl: number }> = {
   light: { agent: hexToRgb('#b39bff'), dl: -0.075 },
   dark: { agent: hexToRgb('#5522b5'), dl: 0.07 },
   zen: { agent: ok(0.83, 0.03, 315), dl: -0.06 },
   graphite: { agent: ok(0.82, 0, 0), dl: -0.045 },
+  desert: { agent: hexToRgb('#d9a07e'), dl: -0.06 },
+  synthwave: { agent: hexToRgb('#1e0b3a'), dl: 0.06 },
 }
 /** Every background a living link can sit on: in a theme, the page, the weevboss band, the project bands (--p0…--p15),
  *  the h24, devil and calm bands; in a « -bubble » row, weevboss's message inside a session thread (.msg.orch: its band
@@ -104,6 +108,10 @@ function grounds(theme: LinkTheme): Rgb[] {
       return [AGENT.zen.agent, ...palette(0.84, 0.05), ok(0.89, 0.04, 85), ok(0.78, 0.075, 50), ok(0.86, 0.05, 150), ok(0.9, 0.025, 165)]
     case 'graphite':
       return [AGENT.graphite.agent, ...Array.from({ length: 16 }, (_, i) => ok(0.97 - 0.011 * i, 0, 0)), ok(0.88, 0, 0), ok(0.77, 0, 0), ok(0.93, 0, 0), ok(0.94, 0, 0)]
+    case 'desert':
+      return [AGENT.desert.agent, ...arc(150, -30, [0.92, 0.87, 0.82, 0.77], 0.065), ok(0.86, 0.04, 140), ok(0.8, 0.07, 20), ok(0.89, 0.035, 70), ok(0.96, 0.016, 80)]
+    case 'synthwave':
+      return [AGENT.synthwave.agent, ...arc(300, 445, [0.22, 0.28, 0.34, 0.4], 0.12), ok(0.32, 0.13, 335), ok(0.32, 0.1, 20), ok(0.3, 0.08, 280), ok(0.17, 0.05, 295)]
     case 'page-light':
       return [hexToRgb('#ffffff')]
     default:
@@ -112,7 +120,7 @@ function grounds(theme: LinkTheme): Rgb[] {
 }
 export const LINK_GROUNDS: Record<LinkTheme, Rgb[]> = Object.fromEntries(LINK_THEMES.map((t) => [t, grounds(t)])) as Record<LinkTheme, Rgb[]>
 /** Rows whose grounds are dark: their links are lighter than the grounds, the others darker. */
-const LIGHT_TEXT = new Set<LinkTheme>(['dark', 'dark-bubble', 'page-dark'])
+const LIGHT_TEXT = new Set<LinkTheme>(['dark', 'dark-bubble', 'synthwave', 'synthwave-bubble', 'page-dark'])
 
 // ---------------------------------------------------------------- the shade of each hue
 

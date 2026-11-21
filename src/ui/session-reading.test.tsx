@@ -7,8 +7,8 @@ import type { Message, Session } from '../../shared/api'
 import { Composer, Messages } from './bits'
 import { useThreadAsk } from './askthread'
 import { setLang } from '../i18n'
-const state = vi.hoisted(() => ({ word: true, sessions: [] as Session[] }))
-vi.mock('./app-context', () => ({ useApp: () => ({ snap: { config: { authors: [], userName: 'Scarville' }, projects: [], machines: [], sessions: state.sessions }, push: vi.fn() }) }))
+const state = vi.hoisted(() => ({ word: true, sessions: [] as Session[], push: (() => {}) as (p: unknown) => void }))
+vi.mock('./app-context', () => ({ useApp: () => ({ snap: { config: { authors: [], userName: 'Scarville' }, projects: [], machines: [], sessions: state.sessions }, push: (p: unknown) => state.push(p) }) }))
 vi.mock('./ask', () => ({ useAsk: () => ({ reset() {} }), AskVoice: () => null, AskPanel: () => <div data-actions /> }))
 vi.mock('./textpick', async original => ({ ...await original<typeof import('./textpick')>(), wordUnder: () => state.word ? { col: 0, word: [0, 5] } : null, anchorRow: () => () => {} }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -219,4 +219,17 @@ it('never folds human messages or boss briefs based on source ids or body signat
  expect(host.querySelectorAll('[data-mid]')).toHaveLength(4)
  expect(host.textContent).toContain('literal user quotation')
  expect(host.textContent).toContain('Actual boss brief')
+})
+
+it('several photos in one message sit side by side in one row, and a tap opens them whole, one swipe from the next', async () => {
+ const pushed: unknown[] = []
+ state.push = (p) => void pushed.push(p)
+ const text = 'look (photo: /tmp/a.png) (photo: /tmp/b.png) (photo: /tmp/c.png)'
+ await act(async () => root.render(<Messages session messages={[message('u', 'user', text), message('one', 'user', 'just one (photo: /tmp/d.png)')]} author="codex" />))
+ const row = host.querySelector('[data-mid="u"] .user-photos')!
+ expect(row.classList.contains('row')).toBe(true)
+ expect(row.querySelectorAll('a.user-photo')).toHaveLength(3)
+ expect(host.querySelector('[data-mid="one"] .user-photos')!.classList.contains('row')).toBe(false)
+ await act(async () => row.querySelectorAll<HTMLAnchorElement>('a.user-photo')[1].click())
+ expect(pushed).toEqual([{ kind: 'media', type: 'image', url: '/api/attachments?path=%2Ftmp%2Fb.png', name: 'b.png', set: ['a', 'b', 'c'].map((n) => ({ url: `/api/attachments?path=%2Ftmp%2F${n}.png`, name: `${n}.png` })) }])
 })

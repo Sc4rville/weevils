@@ -5,4 +5,4 @@
 .lost-feature-toggle { min-height: 44px; min-width: 88px; border: 2px solid currentColor; border-radius: 0; padding: 8px 12px; }
 .lost-feature-toggle[aria-checked="true"] { font-weight: 750; text-decoration: underline; text-underline-offset: 4px; }
 .lost-feature p { max-width: 60ch; }
-.lost-feature button:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+.lost-feature button:focus-visible { outline: var(--focus-halo); outline-offset: 3px; }

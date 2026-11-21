@@ -320,9 +320,21 @@ button:disabled {
   opacity: 0.62;
 }
 
+/* Focus: never a black box (2026-11-21: a black frame appeared on a tap). A field shows where you type
+   by its caret alone; a button or a link reached with the keyboard gets a soft halo of its own ink (--focus-halo), the
+   one focus hint of the app. Tested: src/ui/focus-ring.test.ts. */
+:root {
+  --focus-halo: 2px solid color-mix(in oklab, currentColor 28%, transparent);
+}
+:focus {
+  outline: none;
+}
 :focus-visible {
-  outline: 3px solid currentColor;
-  outline-offset: -3px;
+  outline: var(--focus-halo);
+  outline-offset: -2px;
+}
+:is(input, textarea, select, [contenteditable]):focus-visible {
+  outline: none;
 }
 
 /* ---------- Bandes ---------- */
@@ -1120,7 +1132,7 @@ input:focus-visible {
 .step-calls p { margin-block: 4px 8px; }
 .step-content pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8125rem; line-height: 1.5; max-height: 24rem; overflow: auto; user-select: text; }
 .step-content .meta { font-size: .8125rem; opacity: .75; }
-.step-head:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.step-head:focus-visible { outline: var(--focus-halo); outline-offset: 2px; }
 
 .snippet .link {
   min-height: 36px;
@@ -2896,6 +2908,12 @@ html[data-keyboard] .agent:not(.open) .fyt-words {
 /* A user's attached photo stays in their thread, with access to the full image. */
 .user-photo { display: block; margin-top: 12px; width: fit-content; max-width: 100%; }
 .user-photo img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; }
+/* Several photos in one message (bits.tsx UserPhotos): one row of equal thumbnails, side by side, scrolling sideways
+   when they do not fit, never a stack filling the screen. */
+.user-photos.row { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none; }
+.user-photos.row::-webkit-scrollbar { display: none; }
+.user-photos.row .user-photo { flex: none; margin-top: 0; scroll-snap-align: start; }
+.user-photos.row .user-photo img { width: 104px; height: 148px; min-height: 0; max-width: none; max-height: none; object-fit: cover; object-position: top; }
 /* Every notification can be hidden independently of the session or action behind it. */
 .notice-shell { position: relative; }
 .notice-close {
@@ -2912,7 +2930,7 @@ html[data-keyboard] .agent:not(.open) .fyt-words {
 }
 .notice-close svg { width: 22px; height: 22px; }
 .notice-close:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
-.notice-close:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
+.notice-close:focus-visible { outline: var(--focus-halo); outline-offset: -4px; }
 .notice-shell > .in, .notice-shell.in,
 .notice-shell > button:not(.notice-close) > .in { padding-right: calc(var(--pad) + 44px); }
 .notice-shell:not(.band, .fy-item) { min-height: 48px; padding-right: 48px; }
@@ -3055,11 +3073,14 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 
 /* A session is a continuous reading surface. Technical details stay optional. */
 .session-thread .msg.band:not(.orch) { background: transparent; color: inherit; }
-/* Preserve the signed brief's original author colour in continuous session reading. */
+/* Preserve the signed brief's original author colour in continuous session reading. Someone else prompting the
+   session (weevboss, another agent, a bot) sits on the right, on your side: it is what the agent was asked, not its
+   reply (2026-11-21). Its author's name and colour stay, its edge line on the right. */
 .session-thread .msg.band.orch {
   background: oklch(from var(--who-c, var(--agent)) calc(l + var(--dl) * 1.8) calc(c * 1.1) h);
   color: var(--ink);
-  border-inline-start: 3px solid currentColor;
+  margin-left: calc(var(--pad) * 2.5);
+  border-inline-end: 3px solid currentColor;
 }
 .session-thread .msg > .in { padding-block: 12px; }
 .session-thread .msg .text { font-size: 1rem; line-height: 1.5; }

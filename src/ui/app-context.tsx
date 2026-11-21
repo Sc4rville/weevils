@@ -44,7 +44,7 @@ export type Page =
   | { kind: 'formats' }
   | { kind: 'foryou'; who?: string }
   /** Un média du flux, seul, en grand. */
-  | { kind: 'media'; url: string; type: 'image' | 'video'; name: string }
+  | { kind: 'media'; url: string; type: 'image' | 'video'; name: string; /** The photos it was sent with: a swipe goes from one to the next. */ set?: { url: string; name: string }[] }
   | { kind: 'webpage'; path: string; title: string; pageKind: import('../../shared/pages').PageKind }
   /** Une automatisation (tâche, proposition, timer, job) et l'un de ses passages (at : sa fin). */
   | { kind: 'auto'; id: string }

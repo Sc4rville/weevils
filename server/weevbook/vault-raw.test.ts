@@ -764,11 +764,12 @@ describe('a thread resumed from the vault on a machine that never ran it', () =>
         execFileSync('node', [FAKE, '--resume', l.session, l.text], { cwd: l.cwd, env: { ...process.env, HOME: server.home }, stdio: 'pipe' })
       },
     }
-    // No lease on the vault yet: a turn written a moment ago on another machine is not taken.
+    // The laptop holds the thread's lease on the vault, working, renewed a moment ago: not taken without the
+    // person saying so (step 4), and then stolen.
     const held = await resumeThread(base)
     expect(held).toMatchObject({ ok: false, why: 'held', holder: 'laptop' })
     expect(launched).toHaveLength(0)
-    const r = await resumeThread({ ...base, silentMs: 0 })
+    const r = await resumeThread({ ...base, force: true })
     expect(r).toMatchObject({ ok: true, turn: 2, attempt: 2, resume: true, rung: 2, rule: 'machine', leg: 'L2', cwd: server.repo, session: SESSION, stole: true, launched: true })
     if (!r.ok) return
     // The code of turn 1, from the bundle, on the server's own clone.

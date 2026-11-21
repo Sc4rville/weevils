@@ -292,6 +292,21 @@ To be tested with two real repositories at step 2, and by the simulator at step 
 | `main` is composed by two machines at once | One push is rejected; that machine composes again. |
 | A hub without atomic push | Refused at setup. |
 
+## The lease on the vault
+
+Machines that share a vault and no hub ([07](07-vault.md#moving-a-conversation), step 4) use this page's lease over
+the vault's remote: the same `lease.json`, the same operations, the same pushes (`lease.ts` takes its format and its
+durations from its caller; the hub's are the ones above). Three things differ there:
+
+- **Sealed.** The lease is encrypted under the vault key, in a commit that names nobody (VAULT-1).
+- **Slow.** Renewed every 5 minutes; `expires` is `renewed` + 10 minutes; silent 30 s after, once unchanged for 10
+  minutes on the watcher's clock.
+- **Never stolen by itself** (VAULT-6). A silent lease becomes a proposal weevboss says in one line. The steal of this
+  page runs on the person's yes or order, and an order may take a lease that is still renewed (`plan` with `order`):
+  the person is the one authority the clock rules do not bound.
+
+No orphan ref and no late note there yet: a machine that lost a thread keeps its late events in its own weevbook.
+
 ## Open decisions
 
 D1 and D2 are settled by [07 Vault](07-vault.md): every install's hub is the person's GitHub, encrypted.
@@ -343,7 +358,8 @@ Ship steps 1 to 3 with own-server and no-hub only.*
 
 ## Not in v1
 
-- Encryption (D2), and therefore GitHub as a hub (D1).
+- Encryption of a hub (D2) and GitHub as a hub (D1): the vault of [07](07-vault.md) is what was built instead, beside
+  the hub on a machine.
 - Several people sharing one weevbook.
 - Garbage collection of old lease commits and of checkpoints of closed threads (git's own `gc` handles unreachable
   lease commits). Checkpoints are kept forever in step 2: the hook never lets a checkpoint ref go backwards or away.

@@ -1,11 +1,12 @@
 # 07 · Vault: every conversation, kept on your GitHub
 
-**Status: steps 1 to 3 built** (`server/weevbook/vault.ts`, `vault-raw.ts`, `slim.ts`, `vault-cli.ts`,
-`vault-github.ts`, `vault.test.ts`, `vault-raw.test.ts`, `slim.test.ts`, `server/join.test.ts`): journals, attachments
+**Status: steps 1 to 4 built** (`server/weevbook/vault.ts`, `vault-raw.ts`, `slim.ts`, `vault-cli.ts`,
+`vault-github.ts`, `vault-lease.ts`, `proposals.ts`, `move-cli.ts`, `server/moves-app.ts`; `vault.test.ts`,
+`vault-raw.test.ts`, `vault-lease.test.ts`, `slim.test.ts`, `server/join.test.ts`): journals, attachments
 and handoffs, the recovery code, the import at install and its choices, the join that carries the vault, a new machine
-from the vault, the summary, the onboarding in weevboss's chat, and since step 3 the raw lines (slim), the checkpoints
+from the vault, the summary, the onboarding in weevboss's chat, since step 3 the raw lines (slim), the checkpoints
 of the code, the access every machine gets to the raw repositories, and a thread resumed from the vault on a machine
-that never ran it. Step 4 is design. This page settles D1 and D2 of [03](03-sync-and-lease.md#open-decisions) the way the
+that never ran it, and since step 4 the lease on the vault, weevboss's proposals and the person's direct orders. This page settles D1 and D2 of [03](03-sync-and-lease.md#open-decisions) the way the
 owner chose on 2026-11-21: the hub of every install is the person's own GitHub, encrypted, whether they have no
 server, one, or ten. The owner took the recommended answer to the four decisions at the end (2026-11-21). The person
 feels only what they must: one GitHub sign-in, the recovery code once, the history question, and agreed moves.
@@ -98,7 +99,7 @@ weevbook-vault                         refs/threads/<thread id>  → a commit wh
   c/<sha256>                           one chunk: events appended in one push, zstd, encrypted
   a/<sha256>                           one attachment, encrypted
   h                                    handoff.md as the journal last recorded it, encrypted (replaced when rewritten)
-                                       refs/leases/<thread id>   → lease.json, encrypted (step 4)
+                                       refs/leases/<thread id>   → l: lease.json, encrypted (step 4)
                                        refs/checkpoints/<thread id> → m + b/<sha256>: one encrypted git bundle per
                                                                     checkpoint sent, and their manifest
                                        refs/map/raw              → one small encrypted file per write: which raw
@@ -228,6 +229,50 @@ The dispatcher of [06](06-dispatch.md) keeps its table; its automatic moves beco
 line. A direct order ("send this to Claude on vps-1", "use two accounts and three servers for this") skips the
 proposal: it is the agreement.
 
+As built (step 4), for machines that share a vault and no hub:
+
+- **The lease on the vault** (`vault-lease.ts`, with `lease.ts` as it is: the same rules, the same pushes). Every push
+  of a thread carries its lease, compare-and-swap, in the same atomic push: taken when the thread has none, taken
+  over when it is idle, renewed when it is this machine's. It is `working` while the journal shows a turn at work on an
+  engine of the pusher's own machine, `idle` otherwise. A thread whose lease another machine holds at work, or took
+  meanwhile, is left out of the push and counted (`vault push` says on which machine it continues).
+- **What GitHub holds of it.** `refs/leases/<thread id>` → a commit with no parent and one file, `l`: `lease.json`
+  sealed like everything else (the vault key, the thread id as associated data, its own kind), in a commit by `vault
+  <vault@weevils.invalid>`, dated 2000-01-01, message `vault`. No holder, engine, epoch or state is readable (VAULT-1).
+- **The numbers.** Renewed every 5 minutes while its turn runs (weevilsd's pusher; the working leases of one machine
+  go in one push), and by each push of the thread. `expires` is `renewed` + 10 minutes. Silent: past `expires` + 30 s
+  **and** the same lease commit seen for 10 minutes by the watcher's own clock.
+- **The watch.** The machine that serves the app (where weevboss lives) reads the vault's leases every 2 minutes
+  while another machine has a turn at work, every 10 otherwise. A working lease gone silent is never taken: it becomes
+  a **proposal**. So does a move the dispatcher's table chose (rules `account`, `machine`, `provider`), with the
+  table's own reason line; that turn is held (`agreement`) until the answer.
+- **Proposals** (`proposals.ts`) live in `DATA_DIR/weevbook-proposals.json`: they survive a restart. One cause is asked
+  once: a silence is its lease commit (a machine that came back and went silent again is another silence), a
+  dispatcher's move is its rule, thread and turn. Declined, agreed or still open, the same cause never makes a second
+  proposal. A proposal whose cause went away before an answer (the machine renewed its lease, the turn could stay
+  after all) is withdrawn: a late yes moves nothing.
+- **One line, one yes.** weevilsd posts the proposal in weevboss's thread, in weevboss's name and the person's
+  language, with a notification: "**laptop** has been silent for 12 min. Shall I continue “Add CSV export” here, on
+  server?" (several conversations of one silent machine: one line for all). On the yes weevboss runs `weevils weevbook
+  agree`, on the no `weevils weevbook decline`. weevboss's instructions say it never moves anything by itself.
+- **The commands** (weevboss runs them; `weevbook` was already in its allowed list):
+  `weevils weevbook proposals [--json]` · `agree [<id>]` · `decline [<id>]` (no id: every open one) ·
+  `move <session|thread> --to <machine> [--engine claude|codex] [--account <name>] [--force]` · `machines [--json]`.
+  Machines are named by their id or name (`WEEVILS_MACHINE`, `WEEVILS_MACHINE_NAME`); a conversation by its thread id
+  or by the id of its provider session, as `weevils sessions` shows it.
+- **A direct order** is `move`: no proposal. The local weevilsd resumes the thread itself, or asks the weevilsd of the
+  machine named (through the tunnel it already has to it). An idle lease is taken over; one whose machine went silent
+  is stolen; one still renewed is refused ("the laptop is at work on it right now"), and taken with `--force` once the
+  person said so. `--account` makes that Claude account the active one first.
+- **The resume** is step 3's, with the lease in front: the thread's lease is taken `working` before anything is
+  written (so that no machine takes it over meanwhile), given back idle when the resume is refused, and the resumed
+  journal is pushed at once with its lease. The steal writes `turn failed` (`machine-lost`) and `leg.end`
+  (`machine-lost`) as in 03.
+
+**A known limit.** weevboss and the phone app live on the machine that serves the app. If that machine itself dies,
+no weevboss is left to propose anything: the person opens weevils on another machine and gives the order there
+(`weevils weevbook move <thread> --to <that machine>`, or `resume <thread>`).
+
 ## Invariants
 
 - **VAULT-1** No byte pushed to GitHub, outside `main`'s README, is readable without the vault key: a test pushes a
@@ -237,7 +282,9 @@ proposal: it is the agreement.
 - **VAULT-3** A push never rewrites a chunk: the objects of the remote only grow by the new turn's chunks.
 - **VAULT-4** A Claude session rebuilt from slim raw resumes, and its thinking blocks reach the API unchanged.
 - **VAULT-5** A backfill run twice pushes nothing the second time.
-- **VAULT-6** No lease is stolen without the person's agreement or order.
+- **VAULT-6** No lease is stolen without the person's agreement or order. (The lease on the vault. A hub on a machine
+  keeps the steal of [03](03-sync-and-lease.md); with threads on, what follows it, placing the turn on another machine,
+  account or provider, is a proposal too.)
 - **VAULT-7** Each repository stays under 1 GB.
 
 VAULT-4 is built (2026-11-21): raw redaction and the path rewrite of a moved session leave Claude's signed blocks
@@ -353,22 +400,72 @@ empty text with its signature, so the risk was small; the rule keeps it at none.
      machine then restored the 652 journals, fetched three threads' raw lines (a Claude one of 54 MB, a Codex one of
      97 MB, the newest) in 1 to 3.5 s each, equal byte for byte to the slim of the source, and held three raw refs:
      no other thread was fetched.
+   - **On the real GitHub** (2026-11-21, the owner's weevilsd, its real vault): weevilsd's pusher created the private
+     raw repository and registered the machine's key by itself; the first push sent 652 threads of raw lines in 13
+     pushes (138.3 MB sealed) and 151 checkpoints (58.9 MB) in about 5 minutes. A fresh folder restored 652 journals
+     from GitHub in 90 s: 651 byte-equal to the source, the 652nd the live conversation, further along at the source
+     and a byte prefix of it. Three threads' raw lines were fetched in about 4 s each (54 MB of Claude raw → 19 MB
+     slim, 97 MB of Codex raw → 12.5 MB slim), every segment equal to the slim of the source, and only those three
+     raw refs were fetched. A Claude session rebuilt from fetched slim raw into another folder (paths rewritten) was
+     resumed by the real Claude Code 2.1.327: it answered from the conversation's memory and quoted the cut marker.
+     So the real GitHub and a real `claude --resume` are verified for step 3. Not verified: macOS, git before 2.31,
+     a real `codex resume`.
    - **Not solved here: the vault's own repository does not roll over.** It holds the journals, the map and the
      checkpoints. At the owner's pace the checkpoints add about 4 MB a day (a first bundle of a thread is what its
      folder holds that the origin does not; a large folder without git costs its size once per thread), the journals
      1 MB: several months before 700 MB. Before then the checkpoints should move to the raw repositories, which roll
      over, or the vault's repository should get a successor.
    - *Deviations.* A picture inside a tool result is replaced whole by the marker, not cut (« Slim raw »). The
-     marker names the machine the leg ran on. **No lease on the vault yet** (step 4): on a machine without a hub, a
-     resume is the person's order; a turn the journal still shows at work on another machine is ended as
-     `machine-lost` only when that thread has been silent for ten minutes, and refused before. If the other machine
-     was alive after all, the two journals differ and the vault keeps the first one pushed, counting the other
-     (step 1's rule). Fetched raw lines are not written into the weevbook: they go straight into the rebuilt session
+     marker names the machine the leg ran on. No lease on the vault at step 3: on a machine without a hub, a turn the
+     journal still showed at work on another machine was ended as `machine-lost` once its thread had been silent for
+     ten minutes (step 4 replaced that with the lease; the rule stays only for a thread that has no lease yet). Fetched raw lines are not written into the weevbook: they go straight into the rebuilt session
      (the table above says "raw, full: those it resumed"; what a machine holds of a thread it resumed is its own
      leg's lines). Raw lines need a vault on GitHub or in a folder. A checkpoint whose project folder is gone and
      that was taken before step 3 (no note of where it meets the origin) travels with its whole history, or not at
      all over 50 MB.
-4. **Lease on GitHub**, weevboss's proposals, direct orders.
+4. **Lease on GitHub**, weevboss's proposals, direct orders. *Built:* « Moving a conversation » above says it as
+   built. In short:
+   - `server/weevbook/lease.ts` takes a format (how a lease is written in its commit), where fetched refs are kept and
+     its three durations; the hub's are the defaults, unchanged. `vault-lease.ts` is the vault's: sealed, slow, never
+     stolen by itself. `vault.ts` pushes every thread with its lease and renews the working ones.
+   - `server/weevbook/proposals.ts`: the store, the watch, the move. `server/moves-app.ts`: weevilsd's side (the line
+     in weevboss's thread, the routes `/api/weevbook/machines | thread | move | agree`, local only).
+     `server/weevbook/move-cli.ts`: the commands.
+   - `resume.ts`: on a machine with no hub the lease on the vault is taken first; step 3's ten minutes of silence
+     stay only for a thread with no lease on the vault (pushed by a weevils older than this step).
+   - `threads.ts`: with threads on, a move the table chose waits for the yes (`held`, reason `agreement`; the app
+     says "weevboss is waiting for your yes to continue elsewhere").
+   - *Tests* (`vault-lease.test.ts`, two weevbooks on one vault in a folder): VAULT-6 (a machine goes silent, nothing
+     moves, one line; on the yes the thread resumes on the other with the lease taken, epoch 2; the old machine's
+     later push is left out); a hub's lease leading the vault's; the renewal at five minutes and not before, idle with the push that ends the turn; a
+     proposal across a restart; a declined one never asked again, a new silence asked once more, a machine that came
+     back withdrawing the question; a direct order on an idle thread, on one at work (refused, then `--force`), by
+     session id, to an unknown machine, with another engine; a thread whose lease another machine holds left out of
+     the push; VAULT-1 with lease refs on the remote. `threads.test.ts`: a dispatcher's move proposed with the table's
+     reason, held, started on the yes. `lease.test.ts`, `hub.test.ts`, `hub.e2e.test.ts` and the simulator pass as
+     they were: a hub's lease is written and stolen as before.
+   - *Deviations.* **A hub keeps its own steal**: VAULT-6 is built for the lease on the vault; with a hub on a
+     machine the lease of 03 is still stolen after 130 s (the turn is ended as `machine-lost`, the lease left idle),
+     and only what follows, placing the turn elsewhere, became a proposal (with `WEEVILS_THREADS=1`). On such a
+     machine the vault is a copy: its pushes carry leases too, and where the hub's lease names the machine, the
+     vault's lease follows it instead of holding the push back; `move` there is 03's resume (`--force` does not
+     apply). **An order names
+     the thread's own provider**: `move --engine` with another provider is refused; a change of provider by order
+     needs the dispatcher's start (rung 3), not built for a vault alone. **The line is weevilsd's**, in weevboss's
+     name, so that it is one line whatever the model does; weevboss says it itself only when its thread does not
+     carry it. **No orphan and no late note on the vault**: a machine that lost a thread keeps what it wrote after in
+     its own weevbook; its pushes of that thread are left out (`vault push` counts them, `differ` or continuing
+     elsewhere), and that thread cannot be moved back to it while its copy differs from the vault's. **The provider of
+     the machine that lost is not stopped** (as on a hub: step 2 of 03). **A lease taken for a resume is `working`
+     with turn 0** until the resumed thread is pushed. **Old lease commits** stay on GitHub as unreachable objects
+     until its own garbage collection (three small objects a renewal).
+   - *Not verified.* The lease against the real GitHub (every test is a vault in a folder; the pushes are the ones
+     step 3 verified there, with `--force-with-lease` added). Two real machines: the watch across a real silence, a
+     move forwarded to another machine's weevilsd through its tunnel, `--account` with several Claude accounts.
+     weevboss itself answering a yes (its instructions and its allowed commands are tested, not the model). macOS,
+     git before 2.31, a real `codex resume`.
+5. **An army for one task**, next: "use two accounts and three servers for this" is one order that fans a task out
+   over several machines and accounts. Not in step 4: an order moves one conversation to one machine.
 
 ## Decisions (taken 2026-11-21: the recommended answer to each)
 

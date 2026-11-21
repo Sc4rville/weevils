@@ -25,7 +25,7 @@ import type { HubSync } from './weevbook/hub.ts'
 import { slugify, type Provider } from './weevbook/journal.ts'
 import { startTurn, type Launcher, type StartResult } from './weevbook/start.ts'
 import { Sessions, accountOf, machinePart } from './weevbook/sync.ts'
-import { Threads, type Peer } from './weevbook/threads.ts'
+import { Threads, type Peer, type ThreadsOptions } from './weevbook/threads.ts'
 import type { VaultSource } from './weevbook/vault-raw.ts'
 import { realTitle } from './transcripts.ts'
 
@@ -47,6 +47,8 @@ export interface ThreadsAppOptions {
   preferred: Provider
   /** This machine's vault, when it has one now (docs/spec/07-vault.md, step 3). */
   vault?: () => VaultSource | undefined
+  /** Step 4: the dispatcher's moves to another account, machine or provider wait for the person's yes. */
+  moves?: ThreadsOptions['moves']
   log?: (line: string) => void
 }
 
@@ -135,6 +137,7 @@ export function startThreads(o: ThreadsAppOptions): ThreadsApp {
     peers,
     write: (provider, prompt) => (provider === 'claude' ? claudeHaiku(prompt, 180_000) : codexSmall(prompt, 180_000)),
     changed: () => w.bump(),
+    ...(o.moves ? { moves: o.moves } : {}),
     log: o.log,
   })
   void threads.start()

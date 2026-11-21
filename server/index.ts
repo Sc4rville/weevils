@@ -88,6 +88,7 @@ import { newProjectFolder } from './project-folder.ts'
 import { ConnectorAuth, codeFingerprint } from './connector/oauth.ts'
 import { connectorHttp } from './connector/http.ts'
 import { startThreads, threadsRoutes, type ThreadsApp } from './threads-app.ts'
+import { startMoves } from './moves-app.ts'
 
 const w = new Weevils()
 const sourceAuthor = (id: string) => threadAuthor(id, source => w.store.get(source), w.bossConversation(), ORCH_DIR)
@@ -101,6 +102,7 @@ const bring = new Bring({
 w.store.broughtAt = bring.broughtAt
 w.start()
 let threadsApp: ThreadsApp | null = null
+let moves: ReturnType<typeof startMoves> | null = null
 // The weevbook, in shadow (docs/spec, step 1): on unless WEEVILS_WEEVBOOK=0. It reads the same session files as the
 // app, on its own timer, and changes nothing the app shows or does. The first start imports every session of this
 // machine once, in a low-priority process (07-vault.md, the import at install). With a vault (WEEVILS_VAULT, or the
@@ -123,23 +125,32 @@ if (WEEVBOOK) {
   console.log(`[weevbook] shadow writer on: ${WEEVBOOK_DIR}`)
   startFirstBackfill({ dataDir: DATA_DIR, log: (l) => console.log(l) })
   if (vaultOn) {
-    startVaultPusherWhenSet({ dir: WEEVBOOK_DIR, staging: VAULT_STAGING, remote: () => vaultRemote(), keyFile: VAULT_KEY_FILE, deployKey: VAULT_DEPLOY_KEY, machine: MACHINE.id, gh: which('gh') ?? 'gh', log: (l) => console.error(l) })
+    startVaultPusherWhenSet({ dir: WEEVBOOK_DIR, staging: VAULT_STAGING, remote: () => vaultRemote(), keyFile: VAULT_KEY_FILE, deployKey: VAULT_DEPLOY_KEY, machine: MACHINE.id, gh: which('gh') ?? 'gh', hub: !!WEEVBOOK_HUB, log: (l) => console.error(l) })
   }
+  let sync: HubSync | undefined
   if (WEEVBOOK_HUB) {
-    const sync = new HubSync({ dir: WEEVBOOK_DIR, dataDir: DATA_DIR, sessions, machine: MACHINE.id, hub: WEEVBOOK_HUB, steals: ORCHESTRATOR })
+    sync = new HubSync({ dir: WEEVBOOK_DIR, dataDir: DATA_DIR, sessions, machine: MACHINE.id, hub: WEEVBOOK_HUB, steals: ORCHESTRATOR })
     sync.start()
     console.log(`[weevbook] hub sync on: ${WEEVBOOK_HUB.url}${ORCHESTRATOR ? ' (steals the leases of silent machines)' : ''}`)
-    // Threads (step 4): every message goes to the dispatcher, which runs on the machine that serves the app.
-    if (THREADS) {
-      // A turn the dispatcher gives this machine, for a thread the hub holds no line or checkpoint of: the vault's.
-      const vault = () => {
-        const v = vaultOn ? vaultHere([]) : null
-        return v ? vaultSource(v) : undefined
-      }
-      threadsApp = startThreads({ w, sync, machine: MACHINE.id, dispatcher: ORCHESTRATOR, dataDir: DATA_DIR, home: HOME, claudeDir: CLAUDE_DIR, codexDir: CODEX_DIR, roots: PROJECT_ROOTS, projectsDir: PROJECTS_DIR, preferred: preferredTool(), vault, log: (l) => console.log(l) })
-      w.threadRows = threadsApp.rows
-      console.log(`[threads] on${ORCHESTRATOR ? ': this machine runs the dispatcher' : ''}`)
+  }
+  // Moves are agreed (07-vault.md, step 4): `weevils weevbook move | agree` come here, and the machine that serves the
+  // app, with a vault and no hub, watches the vault's leases: a machine gone silent makes weevboss ask, in one line.
+  const vaultNow = () => (vaultOn ? vaultHere([]) : null)
+  moves = startMoves({
+    w, machine: MACHINE, dataDir: DATA_DIR, home: HOME, claudeDir: CLAUDE_DIR, codexDir: CODEX_DIR, roots: PROJECT_ROOTS, projectsDir: PROJECTS_DIR,
+    ...(WEEVBOOK_HUB ? { hub: WEEVBOOK_HUB } : {}), ...(sync ? { sync } : {}), vault: vaultNow, watch: ORCHESTRATOR && vaultOn && !WEEVBOOK_HUB,
+    poke: (thread) => threadsApp?.threads.poke(thread), log: (l) => console.log(l),
+  })
+  // Threads (step 4): every message goes to the dispatcher, which runs on the machine that serves the app.
+  if (sync && THREADS) {
+    // A turn the dispatcher gives this machine, for a thread the hub holds no line or checkpoint of: the vault's.
+    const vault = () => {
+      const v = vaultNow()
+      return v ? vaultSource(v) : undefined
     }
+    threadsApp = startThreads({ w, sync, machine: MACHINE.id, dispatcher: ORCHESTRATOR, dataDir: DATA_DIR, home: HOME, claudeDir: CLAUDE_DIR, codexDir: CODEX_DIR, roots: PROJECT_ROOTS, projectsDir: PROJECTS_DIR, preferred: preferredTool(), vault, ...(ORCHESTRATOR ? { moves: moves.moves } : {}), log: (l) => console.log(l) })
+    w.threadRows = threadsApp.rows
+    console.log(`[threads] on${ORCHESTRATOR ? ': this machine runs the dispatcher' : ''}`)
   }
 }
 startInfra()
@@ -1161,6 +1172,7 @@ const routes: [string, RegExp, Handler][] = [
   // La mémoire vit sur la machine principale seulement (404 ailleurs, comme weevils memory le dit).
   ...(ORCHESTRATOR ? memoryRoutes(memory, json, readBody) : []),
   ...(threadsApp ? threadsRoutes(threadsApp, json, readBody, isLocal) : []),
+  ...(moves ? moves.routes(json, readBody, isLocal) : []),
   // weevboss's requests, goals, work trace and knowledge (server/boss-ledger.ts), main machine only.
   ...(w.ledger ? ledgerRoutes(w.ledger, json, readBody, isLocal) : []),
   // The weevil's questions were removed: an old open app only ever hears « nothing » (server/weevil.ts).

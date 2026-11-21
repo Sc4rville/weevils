@@ -152,9 +152,11 @@ describe('the vault on a git remote', () => {
     const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-')
     const needles = [...Object.values(SECRETS), slug(SECRETS.title), slug(SECRETS.title2), MACHINE, 'zorblax', 'Zorblax', 'alex', 'payroll', 'events.jsonl', 'flow.png', 'attachments/']
     for (const s of needles) expect(hay.includes(s), s).toBe(false)
-    // Names: thread ids, main, and the raw map (step 3: sealed like the rest, searched above); commits from the
-    // neutral author with a fixed message.
-    expect(git(remote, 'for-each-ref', '--format=%(refname)').split('\n').sort()).toEqual(['refs/heads/main', 'refs/map/raw', `refs/threads/${T1}`, `refs/threads/${T2}`])
+    // Names: thread ids, main, the raw map (step 3) and each thread's lease (step 4), sealed like the rest and
+    // searched above; commits from the neutral author with a fixed message.
+    expect(git(remote, 'for-each-ref', '--format=%(refname)').split('\n').sort()).toEqual(['refs/heads/main', `refs/leases/${T1}`, `refs/leases/${T2}`, 'refs/map/raw', `refs/threads/${T1}`, `refs/threads/${T2}`])
+    expect(git(remote, 'log', '--format=%an <%ae> %ad %s', `refs/leases/${T1}`)).toBe('vault <vault@weevils.invalid> Sat Jan 1 00:00:00 2000 +0000 vault')
+    expect(git(remote, 'ls-tree', '--name-only', `refs/leases/${T1}`)).toBe('l')
     expect(git(remote, 'log', '--format=%an <%ae> %ad %s', 'refs/map/raw')).toBe('vault <vault@weevils.invalid> Sat Jan 1 00:00:00 2000 +0000 vault')
     expect(git(remote, 'ls-tree', '--name-only', 'refs/map/raw')).toMatch(/^[0-9a-f]{64}$/)
     expect(git(remote, 'log', '--format=%an <%ae> %ad %s', `refs/threads/${T1}`)).toBe('vault <vault@weevils.invalid> Sat Jan 1 00:00:00 2000 +0000 vault')
@@ -213,8 +215,9 @@ describe('the vault on a git remote', () => {
     expect(r).toMatchObject({ sealed: 1, chunks: 1, attachments: 0, pushed: 1 })
     const after = objectIds(remote)
     for (const o of before) expect(after.has(o)).toBe(true)
-    // One chunk, one manifest, two trees (c and the root), one commit.
-    expect(after.size - before.size).toBe(5)
+    // One chunk, one manifest, two trees (c and the root), one commit; and the thread's lease, renewed by the push
+    // (step 4): its file, its tree, its commit.
+    expect(after.size - before.size).toBe(8)
     const newTree = git(remote, 'ls-tree', '-r', `refs/threads/${T1}`, 'c', 'a')
     for (const l of oldTree.split('\n')) expect(newTree.split('\n')).toContain(l)
     expect(git(remote, 'rev-parse', `refs/threads/${T1}^`)).toBe(oldTip)

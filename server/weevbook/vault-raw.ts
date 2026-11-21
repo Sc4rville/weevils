@@ -32,7 +32,8 @@ import { parseEngine, type Provider } from './journal.ts'
 import { slimRaw } from './slim.ts'
 import { Locked } from './store.ts'
 import { addDeployKey, ghLogin, type Gh } from './vault-github.ts'
-import { NEUTRAL, VaultError, git, githubRepo, isAncestor, lockStaging, mktree, open, openStaging, refsUnder, restoreVault, revParse, seal, sealLarge, sha256, text, vaultSsh, writeBlob, type VaultOptions } from './vault.ts'
+import { claimLease, releaseLease, type Claim } from './vault-lease.ts'
+import { NEUTRAL, VaultError, git, githubRepo, isAncestor, lockStaging, mktree, open, openStaging, pushVault, refsUnder, restoreVault, revParse, seal, sealLarge, sha256, text, vaultSsh, writeBlob, type VaultOptions } from './vault.ts'
 
 /** A raw repository that passed this gets no new thread (under GitHub's 1 GB recommendation, VAULT-7). */
 export const ROLL_BYTES = 700_000_000
@@ -959,24 +960,42 @@ export async function fetchCheckpoint(o: VaultOptions, thread: string, dir: stri
   return { bundles, tips: m.bundles.map((b) => b.tip), ...(m.skipped ? { skipped: m.skipped } : {}) }
 }
 
-/** What a resume asks of the vault (resume.ts, start.ts): one thread's journal, lines and code, and nothing more. */
+/** What a resume asks of the vault (resume.ts, start.ts): one thread's journal, lines, code and lease, and nothing more. */
 export interface VaultSource {
-  /** The thread's journal as the vault has it, merged into this machine's weevbook. */
-  refresh(thread: string): Promise<void>
+  /** The thread's journal as the vault has it, merged into this machine's weevbook. `differ`: this machine wrote the
+   *  thread another way than the vault holds it (it went on after another machine took it): it cannot resume it. */
+  refresh(thread: string): Promise<{ differ: boolean }>
   raw(thread: string): Promise<Map<string, Buffer>>
   checkpoint(thread: string, dir: string): Promise<FetchedCheckpoint | null>
+  /** Step 4: the thread's lease on the vault, taken for this machine on the person's order or agreement
+   *  (vault-lease.ts). `force`: even from a machine that still renews it. */
+  claim(thread: string, force?: boolean): Promise<Claim>
+  /** A claim given back (the resume did not happen): the lease goes idle. */
+  release(thread: string): Promise<void>
+  /** The journals pushed now with their leases, when nothing else is pushing (weevilsd's pusher sends them otherwise). */
+  push(): Promise<void>
 }
 
 export function vaultSource(o: VaultOptions): VaultSource {
   return {
     async refresh(thread) {
       try {
-        await restoreVault(o, { only: thread })
+        return { differ: (await restoreVault(o, { only: thread })).differ.includes(thread) }
       } catch (e) {
         if (!(e instanceof Locked)) throw e // weevilsd's pusher is at work: the copy this machine has
+        return { differ: false }
       }
     },
     raw: (thread) => fetchRaw(o, thread),
     checkpoint: (thread, dir) => fetchCheckpoint(o, thread, dir),
+    claim: (thread, force) => claimLease(o, thread, force),
+    release: (thread) => releaseLease(o, thread),
+    async push() {
+      try {
+        await pushVault({ ...o, raw: false })
+      } catch (e) {
+        if (!(e instanceof Locked)) throw e
+      }
+    },
   }
 }

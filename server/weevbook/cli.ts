@@ -11,8 +11,11 @@
 //   resume <thread> [--wait]   the thread continues on this machine, same provider (step 3, docs/spec/04-resume.md);
 //                       the engine is started through the local weevilsd. With a vault and no hub (or a thread the hub
 //                       never saw), its journal, slim raw lines and checkpoint come from the vault (07-vault.md, step 3)
+//                       and its lease on the vault is taken (step 4); --force: even from a machine still at work on it
 //   sync status         how the sync with the hub goes, as weevilsd last wrote it (step 2)
 //   vault setup | push | restore | status | summary   the encrypted copy on the person's GitHub (07-vault.md, vault-cli.ts)
+//   proposals | agree | decline | move | machines     moves between machines, accounts and providers, agreed or ordered
+//                       (07-vault.md, step 4; move-cli.ts)
 //   backfill --once     the import at install: nothing when DATA_DIR/weevbook-backfilled is there, which it writes;
 //                       it takes the --since or --match the join line left in CONFIG_DIR/backfill.json (server/join.sh)
 //
@@ -25,10 +28,12 @@ import { CLAUDE_DIR, CODEX_DIR, CONFIG_DIR, DATA_DIR, HOME, MACHINE, PORT, PROJE
 import { tr } from '../i18n.ts'
 import M from '../i18n/weevbook.ts'
 import S from '../i18n/weevbook-sync.ts'
+import MV from '../i18n/weevbook-move.ts'
 import type { HubStatus } from './hub.ts'
 import { resumeThread, type Launch } from './resume.ts'
 import { backfill, backfillMarker, type BackfillFilter, type BookPaths } from './backfill.ts'
 import { vaultHere, vaultMain } from './vault-cli.ts'
+import { moveMain } from './move-cli.ts'
 import { vaultSource } from './vault-raw.ts'
 import { check } from './check.ts'
 import { compare } from './compare.ts'
@@ -143,6 +148,12 @@ export async function main(args: string[], out: (line: string) => void = (l) => 
         return await resume(args, p, out)
       case 'vault':
         return await vaultMain(args, out)
+      case 'proposals':
+      case 'agree':
+      case 'decline':
+      case 'move':
+      case 'machines':
+        return await moveMain(args, out)
       case 'sync':
         if (args[1] === 'status') return status(args, out)
         out(tr(S).usage)
@@ -150,6 +161,7 @@ export async function main(args: string[], out: (line: string) => void = (l) => 
       default:
         out(t.usage)
         out(tr(S).usage)
+        out(tr(MV).usage)
         return 2
     }
   } catch (e) {
@@ -215,7 +227,7 @@ async function resume(args: string[], p: ReturnType<typeof paths>, out: (line: s
   const data = path.dirname(p.dir)
   const r = await resumeThread({
     thread, dir: p.dir, dataDir: data, sessions: p.sessions, machine: p.machine, home: p.home, claudeDir: p.claudeDir, codexDir: p.codexDir,
-    roots: p.roots, projectsDir: PROJECTS_DIR, ...(WEEVBOOK_HUB ? { hub: WEEVBOOK_HUB } : {}), ...(vault ? { vault: vaultSource(vault) } : {}), wait: args.includes('--wait'), launch: launchThroughWeevilsd,
+    roots: p.roots, projectsDir: PROJECTS_DIR, ...(WEEVBOOK_HUB ? { hub: WEEVBOOK_HUB } : {}), ...(vault ? { vault: vaultSource(vault) } : {}), wait: args.includes('--wait'), force: args.includes('--force'), launch: launchThroughWeevilsd,
   })
   if (!r.ok) {
     out(s.refused(r.why, r.detail))

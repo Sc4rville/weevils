@@ -2,6 +2,8 @@
 // orchestrator's folder (same CLAUDE.md, same tools: Bash, weevils, Read…), launched in a tmux pane so it survives a
 // restart of weevilsd. Messages that arrive during a turn wait their turn here, persisted on disk.
 
+import { speedMode } from './request-handling.ts'
+import { wakeContext, type Waiting, type WakeEvent } from './boss-wakeups.ts'
 import fs from 'node:fs'
 import path from 'node:path'
 import { CLAUDE_DIR, DATA_DIR, ORCH_DIR } from './config.ts'
@@ -81,6 +83,8 @@ export interface Queued {
   text: string
   at: number
   tries?: number
+  proactive?: boolean
+  events?: WakeEvent[]
   /** Capture id of the message in the request ledger (server/boss-ledger.ts). */
   cid?: string
 }
@@ -127,15 +131,36 @@ export class BossTurns {
 
   private save() {
     fs.mkdirSync(this.dir, { recursive: true })
-    fs.writeFileSync(this.file, JSON.stringify(this.s, null, 1))
+    fs.writeFileSync(`${this.file}.tmp`, JSON.stringify(this.s, null, 1))
+    fs.renameSync(`${this.file}.tmp`, this.file)
   }
 
   get queue(): readonly Queued[] { return this.s.queue }
   isTurn(id: string | undefined) { return !!id && this.s.turns.includes(id) }
   lastTurn(): string | undefined { return this.s.turns.at(-1) }
 
-  enqueue(text: string, cid?: string) {
-    this.s.queue.push({ text, at: Date.now(), ...(cid ? { cid } : {}) })
+  enqueue(text: string, cid?: string, events?: WakeEvent[], proactive = false) {
+    this.s.queue.push({ text, at: Date.now(), ...(cid ? { cid } : {}), ...(events?.length ? { events, proactive } : {}) })
+    this.save()
+  }
+
+  /** A human message received while an event-only turn was preparing gets the events and the next slot. */
+  preferUser() {
+    if (!this.s.queue[0]?.proactive) return false
+    const index = this.s.queue.findIndex((q) => !q.proactive)
+    if (index < 0) return false
+    const [event] = this.s.queue.splice(0, 1)
+    const [user] = this.s.queue.splice(index - 1, 1)
+    user.events = [...(user.events ?? []), ...(event.events ?? [])]
+    this.s.queue.unshift(user)
+    this.save()
+    return true
+  }
+
+  foldEvents(events: WakeEvent[]) {
+    if (!events.length || !this.s.queue.length) return
+    const q = this.s.queue[0]
+    q.events = [...(q.events ?? []), ...events]
     this.save()
   }
 
@@ -145,7 +170,7 @@ export class BossTurns {
     if (!q) return
     q.tries = (q.tries ?? 0) + 1
     console.error(`[weevboss] tour refusé (${q.tries}/3) : ${e.message}`)
-    if (q.tries >= 3) this.s.queue.shift()
+    if (q.proactive || q.tries >= 3) this.s.queue.shift()
     this.save()
   }
 
@@ -200,7 +225,7 @@ export class BossTurns {
   }
 
   /** Builds the view and the command of the next turn (the head of the queue). */
-  async prepare(o: { id: string; claude: string[]; memory: string; ledger?: string; instructions?: string; summaryMs?: number; now?: number }): Promise<PreparedTurn> {
+  async prepare(o: { id: string; claude: string[]; memory: string; ledger?: string; instructions?: string; summaryMs?: number; now?: number; waiting?: readonly Waiting[] }): Promise<PreparedTurn> {
     const q = this.s.queue[0]
     if (!q) throw new Error('empty queue') // i18n-ignore : internal guard, never shown
     const now = o.now ?? Date.now()
@@ -212,7 +237,8 @@ export class BossTurns {
     const recent = view.recent ? `the latest exchanges of your thread before this message, word for word, oldest first (ids work with weevils recall):\n${view.recent}` : ''
     // The request ledger's digest (fixed budget): open requests, stale first, goals, the user's rules.
     const ledger = o.ledger?.trim() ? `your request ledger right now (this message is not in it yet):\n${o.ledger.trim()}` : ''
-    const block = [...parts, ledger, recent].filter(Boolean).join(' — ').replace(/⟧/g, ']')
+    const eventContext = q.events?.length ? wakeContext(q.events, speedMode(), o.waiting) : ''
+    const block = [...parts, eventContext, ledger, recent].filter(Boolean).join(' — ').replace(/⟧/g, ']')
     const prompt = block ? `${text} ⟦weevils — ${block}⟧` : text
     const turns = path.join(this.dir, 'turns')
     fs.mkdirSync(turns, { recursive: true })
@@ -234,13 +260,14 @@ export class BossTurns {
       '--settings', JSON.stringify({ claudeMdExcludes: [path.join(ORCH_DIR, 'CLAUDE.md'), path.join(ORCH_DIR, 'AGENTS.md')], permissions: bossPermissions(ORCH_DIR, this.transcripts) }),
       '--disable-slash-commands',
       ...(BOSS_MCP ? [] : ['--strict-mcp-config']),
-      '--model', this.model,
-      '--effort', this.effort,
+      '--model', q.proactive ? 'sonnet' : this.model,
+      '--effort', q.proactive ? 'low' : this.effort,
+      ...(q.proactive ? ['--max-turns', '12'] : []),
     ]
     // The prompt goes through a file (stdin): no tmux command-length limit, the whole message reaches the turn.
     const command = ['env', ...(BOSS_MCP ? [] : ['ENABLE_CLAUDEAI_MCP_SERVERS=false']), 'bash', '-c', 'f=$1; shift; exec "$@" < "$f"', 'weevboss-turn', promptFile, bin, ...args]
     this.save()
-    return { id: o.id, command, stableTokens: view.stableTokens, recentTokens: view.recentTokens + tokensOf(text), ledgerTokens: tokensOf(ledger), rebuilt: view.rebuilt }
+    return { id: o.id, command, stableTokens: view.stableTokens, recentTokens: view.recentTokens + tokensOf(text) + tokensOf(eventContext), ledgerTokens: tokensOf(ledger), rebuilt: view.rebuilt }
   }
 
   /** The head turn is running: it leaves the queue (returned), its id joins the turns. */
@@ -248,7 +275,7 @@ export class BossTurns {
     const q = this.s.queue.shift()
     this.s.turns = [...this.s.turns, t.id].slice(-2000)
     this.save()
-    fs.appendFileSync(path.join(this.dir, 'metrics.jsonl'), JSON.stringify({ id: t.id, at: Date.now(), stable: t.stableTokens, recent: t.recentTokens, ledger: t.ledgerTokens ?? 0, rebuilt: t.rebuilt }) + '\n')
+    fs.appendFileSync(path.join(this.dir, 'metrics.jsonl'), JSON.stringify({ id: t.id, at: Date.now(), stable: t.stableTokens, recent: t.recentTokens, ledger: t.ledgerTokens ?? 0, proactive: !!q?.proactive, events: q?.events?.map((e) => e.key), rebuilt: t.rebuilt }) + '\n')
     return q
   }
 

@@ -405,8 +405,10 @@ if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
     id=$(resolve "${2:?$a_id}")
     text=${3:?$a_msg}
     # --for-user: weevboss passing on the person's own request (the server checks it is weevboss, in a turn they started).
-    for_user=0; [ "${4:-}" = --for-user ] && for_user=1
-    out=$("$py" -c 'import json,sys; d={"text":sys.argv[1],"from":sys.argv[2],"sourceThread":sys.argv[3],"say":sys.argv[5]}; d.update({"forUser":True} if sys.argv[4]=="1" else {}); print(json.dumps(d))' "$text" "$sender_from" "$source_thread" "$for_user" "$say" \
+    # --safe-resume: weevboss resuming an interrupted session on its own (the server refuses anything unsafe).
+    for_user=0; safe_resume=0
+    for flag in "${@:4}"; do case $flag in --for-user) for_user=1 ;; --safe-resume) safe_resume=1 ;; esac; done
+    out=$("$py" -c 'import json,sys; d={"text":sys.argv[1],"from":sys.argv[2],"sourceThread":sys.argv[3],"say":sys.argv[5]}; d.update({"forUser":True} if sys.argv[4]=="1" else {}); d.update({"safeResume":True} if sys.argv[6]=="1" else {}); print(json.dumps(d))' "$text" "$sender_from" "$source_thread" "$for_user" "$say" "$safe_resume" \
       | curl -s -m 40 -w '\n%{http_code}' -H 'content-type: application/json' --data-binary @- "$base/api/sessions/$id/send")
     code=${out##*$'\n'}
     if [ "$code" = 200 ]; then printf "$m_sent\n" "${id:0:8}"

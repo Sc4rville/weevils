@@ -24,7 +24,7 @@ export function setSpeedModeSource(fn: () => SpeedMode | undefined) {
 /** The current speed mode; « cruise » while the modes are not live. */
 export function speedMode(): SpeedMode {
   try {
-    const m = source()
+    const m = source() ?? process.env.WEEVILS_SPEED_MODE
     return m === 'pause' || m === 'veille' || m === 'cruise' || m === 'turbo' || m === 'max' ? m : 'cruise'
   } catch {
     return 'cruise'

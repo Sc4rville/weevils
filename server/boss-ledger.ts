@@ -70,6 +70,8 @@ export interface LedgerHost {
   user(): string
   /** What weevils remembers about the user (to name their goals on the first run). */
   memory?(): string
+  /** Report-only judgements cannot close requests when proactive verification is available. */
+  requiresVerification?(): boolean
 }
 
 // ---------------------------------------------------------------- small helpers
@@ -966,9 +968,8 @@ ${items.map(({ a, d, s }, i) => `${i + 1}. Request: ${a.text}${d.expect ? `\nExp
         d.report = clip(oneLine(v.report ?? ''), 300)
         d.reportAt = this.now()
         a.note = d.report
-        a.progressAt = this.now()
         this.trace({ kind: 'report', text: d.report, asks: [a.id], goal: a.goal, session: s.id, who: this.label(s) })
-        if (a.dispatches.every((x) => x.outcome === 'done')) {
+        if (!this.host.requiresVerification?.() && a.dispatches.every((x) => x.outcome === 'done')) {
           a.status = 'done'
           a.closedAt = this.now()
           a.closedBy = 'auto'

@@ -371,6 +371,12 @@ export default function App() {
         if (stackRef.current.at(-1)?.kind !== 'relay') push({ kind: 'relay' })
         return
       }
+      // « /#boss » : weevboss spoke up on its own (a proactive message): its thread, at the top.
+      if (/#boss\b/.test(url)) {
+        history.replaceState(history.state, '', location.pathname)
+        setTimeout(() => focusBoss(), 0)
+        return
+      }
       const m = /#s=([^&]+)/.exec(url)
       if (!m) return
       history.replaceState(history.state, '', location.pathname)

@@ -10,6 +10,7 @@
 // The journal is read from the orchestrator's transcripts (the old interactive conversation and every turn since), so
 // nothing is lost and the app's thread keeps reading the same transcripts as before.
 
+import { silentOutcome } from './boss-wakeups.ts'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -60,7 +61,7 @@ export function entriesOfLine(o: any): Entry[] {
     const out: Entry[] = []
     content.forEach((p: any, i: number) => {
       const pid = i ? `${id}.${i}` : id
-      if (p?.type === 'text' && typeof p.text === 'string' && p.text.trim()) out.push({ id: pid, at, role: 'assistant', text: p.text.trim() })
+      if (p?.type === 'text' && typeof p.text === 'string' && p.text.trim() && !silentOutcome(p.text)) out.push({ id: pid, at, role: 'assistant', text: p.text.trim() })
       else if (p?.type === 'tool_use') {
         const input = p.input ?? {}
         const detail = [input.command, input.description, input.file_path, input.prompt, input.pattern, input.url].find((v) => typeof v === 'string' && v.trim())
@@ -105,6 +106,7 @@ export class BossJournal {
         if (!line) continue
         try {
           const e = JSON.parse(line) as Entry
+          if (e.role === 'assistant' && silentOutcome(e.text)) continue
           if (!this.ids.has(e.id)) { this.ids.add(e.id); this.list.push(e) }
         } catch { /* a torn last line */ }
       }

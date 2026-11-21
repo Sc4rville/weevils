@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // calls : les arguments sans le choix du serveur ; sockets : le serveur visé (« -L <nom> », sinon « default »).
 // firsts : le tout premier argument de chaque appel à tmux (« -u » : UTF-8 quelle que soit la locale, voir mux.ts).
-const sh = vi.hoisted(() => ({ commands: [] as string[], calls: [] as string[][], sockets: [] as string[], firsts: [] as string[], out: '', by: {} as Record<string, string | null>, fail: false }))
+const sh = vi.hoisted(() => ({ commands: [] as string[], calls: [] as string[][], sockets: [] as string[], firsts: [] as string[], out: '', by: {} as Record<string, string | null>, fail: false, stderr: 'no server running on /tmp/tmux-1000/default' }))
 vi.mock('node:child_process', () => ({
   execFile: (_cmd: string, args: string[], _opts: unknown, cb: (err: Error | null, stdout: string, stderr: string) => void) => {
     sh.commands.push(_cmd)
@@ -17,7 +17,7 @@ vi.mock('node:child_process', () => ({
     sh.calls.push(args[0] === '-L' ? args.slice(2) : args)
     sh.sockets.push(socket)
     const out = socket in sh.by ? sh.by[socket] : sh.out
-    if (sh.fail || out === null) cb(new Error('no server running'), '', 'no server running on /tmp/tmux-1000/default')
+    if (sh.fail || out === null) cb(new Error(sh.stderr || 'Command failed: tmux list-sessions'), '', sh.stderr)
     else cb(null, out, '')
   },
 }))
@@ -32,6 +32,7 @@ beforeEach(() => {
   sh.by = {}
   sh.out = ''
   sh.fail = false
+  sh.stderr = 'no server running on /tmp/tmux-1000/default'
 })
 afterEach(() => {
   vi.useRealTimers()
@@ -133,6 +134,20 @@ describe('listWv', () => {
   it('pas de serveur tmux : aucune session', async () => {
     sh.fail = true
     expect(await mux.listWv()).toEqual([])
+  })
+
+  it('server socket gone or refusing: no session either', async () => {
+    sh.fail = true
+    sh.stderr = 'error connecting to /tmp/tmux-1000/weevils (No such file or directory)'
+    expect(await mux.listWv()).toEqual([])
+    sh.stderr = 'error connecting to /tmp/tmux-1000/weevils (Connection refused)'
+    expect(await mux.listWv()).toEqual([])
+  })
+
+  it('any other failure (a timeout under load) throws instead of answering « no session » (21/11: every live pump forgotten)', async () => {
+    sh.fail = true
+    sh.stderr = ''
+    await expect(mux.listWv()).rejects.toThrow(/list-sessions failed/)
   })
 })
 

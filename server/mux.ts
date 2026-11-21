@@ -111,8 +111,14 @@ function parse(out: string): WvSession[] {
 }
 
 /** Sessions wv-* du serveur dédié, puis celles lancées avant lui sur le serveur par défaut (elles y finissent leur vie). */
+/** tmux's answers that mean « no server here », hence no session. Anything else (a timeout under load, a crash) is not
+ * an empty list: read as one, it made every live session look gone at once (21/11, 18:50). */
+const NO_SERVER = /no server running|error connecting to|no such file or directory|server exited unexpectedly/i
 export async function listWv(): Promise<WvSession[]> {
-  const read = (socket: string[]) => tmux(['list-sessions', '-F', FORMAT], undefined, socket).then(parse, () => [] as WvSession[]) // pas de serveur = aucune session
+  const read = (socket: string[]) => tmux(['list-sessions', '-F', FORMAT], undefined, socket).then(parse, (e: Error) => {
+    if (NO_SERVER.test(e.message)) return [] as WvSession[]
+    throw new Error(`tmux list-sessions failed: ${e.message}`) // i18n-ignore : journal technique
+  })
   const [own, old] = await Promise.all([read(['-L', SOCKET]), read([])])
   const seen = new Set(own.map((s) => s.name))
   legacy.clear()

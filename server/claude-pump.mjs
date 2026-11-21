@@ -118,7 +118,7 @@ function send(text) {
   userMessage(text)
 }
 
-const server = net.createServer((c) => {
+const serve = (c) => {
   let input = ''
   c.on('data', (d) => {
     input += d
@@ -136,9 +136,26 @@ const server = net.createServer((c) => {
     } catch (e) { c.end(JSON.stringify({ ok: false, error: e.message, state }) + '\n') }
   })
   c.on('error', () => undefined)
-})
+}
+let server = net.createServer(serve)
 try { fs.unlinkSync(sockPath) } catch { /* first start */ }
 server.listen(sockPath, () => fs.chmodSync(sockPath, 0o600))
+
+// Self-healing: if something removes this pump's files while it runs (on 21/11 a tmux listing that timed out under load
+// made weevilsd forget every live pump, and seven sessions stopped receiving), the pump puts them back within seconds
+// instead of running on unreachable. close() unlinks the path, so the old server is closed before the new one binds.
+let healing = false
+function heal() {
+  if (healing || state.exited) return
+  if (!fs.existsSync(stateFile)) save()
+  if (fs.existsSync(sockPath)) return
+  healing = true
+  try { server.close() } catch { /* already closed */ }
+  server = net.createServer(serve)
+  server.on('error', (e) => { healing = false; log(`· socket not restored: ${e.message}`) })
+  server.listen(sockPath, () => { healing = false; try { fs.chmodSync(sockPath, 0o600) } catch { /* gone again: next check */ } log('· socket restored') })
+}
+setInterval(heal, Number(process.env.WEEVILS_PUMP_HEAL_MS) || 3000).unref()
 
 function stop(code) {
   state.exited = { code, at: Date.now() }; state.working = false; state.ready = false; save()

@@ -53,3 +53,22 @@ test('the pump drives a stream-json Claude: ready, message, question and answer,
   await call(sock, { op: 'interrupt' })
   await until(() => !state().working)
 })
+
+test('self-healing: files removed under a running pump come back, and it answers again on its socket', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pump-'))
+  fs.writeFileSync(path.join(dir, 'fake.mjs'), FAKE)
+  child = spawn(process.execPath, [path.join(import.meta.dirname, 'claude-pump.mjs'), dir, 'wv-h', '-', '--', process.execPath, path.join(dir, 'fake.mjs'), '--session-id', 'S2'], { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, WEEVILS_PUMP_HEAL_MS: '100' } })
+  let screen = ''
+  child.stdout!.on('data', (d) => { screen += d })
+  const sock = path.join(dir, 'wv-h.sock')
+  const json = path.join(dir, 'wv-h.json')
+  await until(() => fs.existsSync(sock) && fs.existsSync(json))
+  await until(() => { try { return JSON.parse(fs.readFileSync(json, 'utf8')).ready } catch { return false } })
+  fs.unlinkSync(sock); fs.unlinkSync(json)
+  await expect(call(sock, { op: 'state' })).rejects.toThrow(/ENOENT/)
+  await until(() => fs.existsSync(sock) && fs.existsSync(json))
+  expect(screen).toContain('socket restored')
+  expect((await call(sock, { op: 'send', text: 'again' })).ok).toBe(true)
+  await until(() => screen.includes('echo again'))
+  fs.rmSync(dir, { recursive: true, force: true })
+})

@@ -1,0 +1,15 @@
+#!/bin/sh
+# weevils public guard, installed by scripts/install-hooks.sh into this clone's .git/hooks (every worktree shares it).
+# A push to the public repository is checked before it leaves: built on the public history, no personal trace, no
+# secret, commits signed with a GitHub noreply address (scripts/check-public.mjs, CONTRIBUTING.md « Product or
+# personal »). Any other remote (a fork, the private repository) is left alone.
+case "$2" in
+  *[Ss]c4rville/weevils|*[Ss]c4rville/weevils.git|*[Ss]c4rville/weevils/) ;;
+  *) exit 0 ;;
+esac
+dir=$(git rev-parse --git-common-dir)/hooks/weevils-public
+if ! command -v node >/dev/null 2>&1 || [ ! -f "$dir/check-public.mjs" ]; then
+  echo "weevils guard: the public guard is incomplete (node, or $dir): run scripts/install-hooks.sh. Push refused." >&2
+  exit 1
+fi
+exec node "$dir/check-public.mjs" --pre-push "$1" "$2"

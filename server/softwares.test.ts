@@ -46,14 +46,14 @@ const repo = (name: string, origin?: string, extra: Partial<RepoFacts> = {}): Re
 })
 
 describe('regroupement des repos', () => {
-  const GAME = 'https://github.com/Sc4rville/mygame.git'
+  const GAME = 'https://github.com/Sc4rville/myshop.git'
   const list = [
-    repo('mygame', GAME),
-    repo('mygame-trailer', GAME, { branch: 'trailer-v2', lastCommitAt: 5000 }),
-    repo('mygame-v3-action', 'git@github.com:Sc4rville/mygame.git', { branch: 'trailer-v2' }),
+    repo('myshop', GAME),
+    repo('myshop-trailer', GAME, { branch: 'trailer-v2', lastCommitAt: 5000 }),
+    repo('myshop-v3-action', 'git@github.com:Sc4rville/myshop.git', { branch: 'trailer-v2' }),
     repo('weevils', 'https://github.com/Sc4rville/weevils.git'),
-    repo('weevils-content', 'https://github.com/Sc4rville/weevils-content.git', { lastCommitAt: 9000 }),
-    repo('lws-demo', 'https://github.com/Sc4rville/lastwebstudios.git', { lastCommitAt: 3000 }),
+    repo('weevils-site', 'https://github.com/Sc4rville/weevils-site.git', { lastCommitAt: 9000 }),
+    repo('lws-demo', 'https://github.com/Sc4rville/studio-site.git', { lastCommitAt: 3000 }),
     repo('lws-wip', undefined, { lastCommitAt: 2000 }),
     repo('lws-oss', undefined, { git: false, branch: undefined, lastCommitAt: 9999 }),
     repo('pli', 'https://github.com/Sc4rville/pli.git', { branch: 'master' }),
@@ -62,15 +62,15 @@ describe('regroupement des repos', () => {
   const by = (k: string) => groups.find((g) => g.key === k)!
 
   it('fusionne les variantes et worktrees de même origine', () => {
-    expect(by('mygame').repos.map((r) => r.name)).toEqual(['mygame', 'mygame-trailer', 'mygame-v3-action'])
-    expect(by('mygame').main.name).toBe('mygame')
-    expect(by('mygame').name).toBe('mygame')
+    expect(by('myshop').repos.map((r) => r.name)).toEqual(['myshop', 'myshop-trailer', 'myshop-v3-action'])
+    expect(by('myshop').main.name).toBe('myshop')
+    expect(by('myshop').name).toBe('myshop')
   })
 
-  it("sépare un repo de la famille dont l'origine diffère (weevils-content ≠ weevils)", () => {
+  it("sépare un repo de la famille dont l'origine diffère (weevils-site ≠ weevils)", () => {
     expect(by('weevils').repos.map((r) => r.name)).toEqual(['weevils'])
-    expect(by('weevils-content').repos.map((r) => r.name)).toEqual(['weevils-content'])
-    expect(by('weevils-content').name).toBe('weevils-content')
+    expect(by('weevils-site').repos.map((r) => r.name)).toEqual(['weevils-site'])
+    expect(by('weevils-site').name).toBe('weevils-site')
   })
 
   it("les copies sans origine rejoignent l'origine dominante ; le principal est sur la branche par défaut, avec git", () => {
@@ -82,7 +82,7 @@ describe('regroupement des repos', () => {
 
   it('la copie principale et la clé ne changent pas avec un commit récent', () => {
     const lws = [
-      repo('lws-demo', 'https://github.com/x/lastwebstudios.git', { lastCommitAt: 1000 }),
+      repo('lws-demo', 'https://github.com/x/studio-site.git', { lastCommitAt: 1000 }),
       repo('lws-wip', undefined, { lastCommitAt: 9000 }),
       repo('lws-rookie', undefined, { lastCommitAt: 5000 }),
     ]
@@ -109,8 +109,8 @@ describe('regroupement des repos', () => {
   })
 
   it('normalise les origines', () => {
-    expect(normOrigin('https://github.com/Sc4rville/mygame.git')).toBe('github.com/sc4rville/mygame')
-    expect(normOrigin('git@github.com:Sc4rville/mygame.git')).toBe('github.com/sc4rville/mygame')
+    expect(normOrigin('https://github.com/Sc4rville/myshop.git')).toBe('github.com/sc4rville/myshop')
+    expect(normOrigin('git@github.com:Sc4rville/myshop.git')).toBe('github.com/sc4rville/myshop')
     expect(normOrigin('ssh://git@gitlab.com:2222/a/b/')).toBe('gitlab.com/a/b')
     expect(normOrigin('')).toBeUndefined()
   })
@@ -138,8 +138,8 @@ describe('port du projet', () => {
   })
 
   it('lit la doc seulement près du nom du projet', () => {
-    expect(declaredPort({ name: 'mygame', docs: 'mygame tourne en local sur le port 4173.' })).toBe(4173)
-    expect(declaredPort({ name: 'mygame', docs: 'weevilsd écoute sur le port 4179.' + ' '.repeat(400) + 'mygame' })).toBeUndefined()
+    expect(declaredPort({ name: 'myshop', docs: 'myshop tourne en local sur le port 4173.' })).toBe(4173)
+    expect(declaredPort({ name: 'myshop', docs: 'weevilsd écoute sur le port 4179.' + ' '.repeat(400) + 'myshop' })).toBeUndefined()
   })
 
   it('alloue un port stable, libre, non retenu par un autre logiciel', () => {
@@ -178,9 +178,9 @@ describe('sites Caddy', () => {
     })
   })
   it('lit un proxy 127.0.0.1 derrière un matcher, et une racine statique, sans les commentaires', () => {
-    const s = parseCaddySite('mygame.caddy', `# site PERMANENT : reverse_proxy localhost:1\nmygame.example.com {\n\thandle /api/* {\n\t\treverse_proxy 127.0.0.1:4173\n\t}\n\thandle {\n\t\troot * /home/u/projects/mygame/dist\n\t\tfile_server\n\t}\n}\n`)!
+    const s = parseCaddySite('myshop.caddy', `# site PERMANENT : reverse_proxy localhost:1\nmyshop.example.com {\n\thandle /api/* {\n\t\treverse_proxy 127.0.0.1:4173\n\t}\n\thandle {\n\t\troot * /home/u/projects/myshop/dist\n\t\tfile_server\n\t}\n}\n`)!
     expect(s.proxies).toEqual([{ host: '127.0.0.1', port: 4173 }])
-    expect(s.root).toBe('/home/u/projects/mygame/dist')
+    expect(s.root).toBe('/home/u/projects/myshop/dist')
   })
   it('lit un amont distant (conteneur)', () => {
     expect(parseCaddySite('essai.caddy', 'essai.example.com {\n\treverse_proxy 172.30.99.10:8080\n}')!.proxies).toEqual([{ host: '172.30.99.10', port: 8080 }])
@@ -212,7 +212,7 @@ describe('sortie', () => {
     expect(tailLines(Array.from({ length: 60 }, (_, i) => `l${i}`).join('\n'))).toHaveLength(40)
   })
   it('lit un service systemd', () => {
-    expect(parseUnit('[Service]\nWorkingDirectory=%h/projects/mygame\nExecStart=/usr/bin/env node ops/vps/server.mjs\n').workdir).toMatch(/\/projects\/mygame$/)
+    expect(parseUnit('[Service]\nWorkingDirectory=%h/projects/myshop\nExecStart=/usr/bin/env node ops/vps/server.mjs\n').workdir).toMatch(/\/projects\/myshop$/)
     expect(parseUnit('ExecStart=/usr/bin/python3 /srv/bot/main.py --x').paths).toEqual(['/srv/bot/main.py'])
   })
   it('nom DNS sûr', () => {
@@ -257,10 +257,10 @@ describe('avancement', () => {
     expect(signalsHash(a)).not.toBe(signalsHash({ ...a, deployed: true }))
   })
   it('lit la réponse du modèle avec méfiance', () => {
-    const raw = 'Voici : {"items":[{"id":"mygame","phase":2,"percent":140,"reason":"en ligne"},{"id":"inconnu","phase":1,"percent":5,"reason":""},{"id":"pli","phase":7,"percent":5}]}'
-    const m = parseEstimates(raw, new Set(['mygame', 'pli']))
-    expect([...m.keys()]).toEqual(['mygame'])
-    expect(m.get('mygame')).toEqual({ phase: 2, percent: 100, reason: 'en ligne' })
+    const raw = 'Voici : {"items":[{"id":"myshop","phase":2,"percent":140,"reason":"en ligne"},{"id":"inconnu","phase":1,"percent":5,"reason":""},{"id":"pli","phase":7,"percent":5}]}'
+    const m = parseEstimates(raw, new Set(['myshop', 'pli']))
+    expect([...m.keys()]).toEqual(['myshop'])
+    expect(m.get('myshop')).toEqual({ phase: 2, percent: 100, reason: 'en ligne' })
     expect(parseEstimates('pas de json', new Set(['x'])).size).toBe(0)
   })
   it('compte les visiteurs distincts : de vraies personnes seulement, sans robots, scanners ni adresses de l’utilisateur', () => {

@@ -9,11 +9,17 @@ Personal configuration, accounts and data are not product source.
 Merging to `main` is releasing. The setup server (`get/follow-main.sh`, every 2 minutes) picks up the new `main`
 commit, runs `npm ci`, `npm run lint`, the tests and the build on it in a throwaway worktree, and only if they pass:
 builds the bundle (`get/make-bundle.sh`: release-policy exclusions, a personal-trace check, signed by the
-`weevils-signer` user), serves it, and mirrors the same revision to the public repository. A red commit is never
-published: installs stay on the last good one. Every install's `weevils-update` then takes it within about 30
+`weevils-signer` user) and serves it. A red commit never reaches an install: installs stay on the last good one.
+This repository is the public one, so a merged commit is public at once, before that gate: what may be public is
+checked earlier, at the push (`scripts/check-public.mjs`, CONTRIBUTING.md « Product or personal »). Every install's `weevils-update` then takes it within about 30
 minutes, only if the signature checks and the snapshot is newer than the one installed.
 
 ## Every product change
+
+Product goes to public `main`, generic; what is personal stays in the person's config or a private repository
+(CONTRIBUTING.md, « Product or personal »). Private work reaches public `main` one way only: a branch cut from public
+`main`, the commits cherry-picked onto it, `npm run check`, a push of that branch to the public repository (the
+pre-push guard checks it), a pull request there.
 
 1. Work from current canonical `main`, or an existing feature branch in this repository. Preserve other workers'
    dirty files. Use a separate worktree when needed; do not copy an old release tree back over current product code.

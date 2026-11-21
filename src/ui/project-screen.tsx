@@ -1,12 +1,12 @@
-// A project's page (the « > » beside its « / » on the home band): what is being done right now across all its sessions,
-// then its to-do (the user's open requests sent to it), then its sessions. No headings, no counters, no boxes: weight says what is active.
+// A project's page (the « > » beside its « / »): its requests, one column (requests.tsx RequestColumn: one band per
+// request, what runs on top, then the newest first, every state), then its sessions. No headings, no counters.
 //
-// The to-do comes from weevboss's request ledger (GET /api/boss/ledger). A request belongs to a project through the
+// The requests come from weevboss's request ledger (GET /api/boss/ledger). A request belongs to a project through the
 // session it was last sent to (that session's project; a session gone from the snapshot is matched by the project
 // name its dispatch label starts with), or, never sent, when its words name the project.
 
-import { useEffect, useRef, useState } from 'react'
-import type { Session, SessionStatus } from '../../shared/api.ts'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Session } from '../../shared/api.ts'
 import type { LedgerView } from '../../shared/ledger.ts'
 import { api } from '../api'
 import { useT } from '../i18n'
@@ -14,25 +14,13 @@ import M from '../i18n/project-screen'
 import { useApp } from './app-context'
 import { SessionRow } from './bits'
 import { Shell } from './shell'
-import { askLabel, chipOf } from './requests'
+import { RequestColumn } from './requests'
 import './project-screen.css'
 import { WeevbookLine } from './threads'
 
 type Row = LedgerView['asks'][number]
-type Chip = ReturnType<typeof chipOf>
 
-const FEED_MAX = 4
-const TODO_MAX = 6
 const OLDER_AFTER = 6
-
-/** What runs now in a project, newest first: one short plain line per working session (its current activity). */
-export function feedOf(sessions: Session[]): { id: string; text: string }[] {
-  return sessions
-    .filter((s) => !s.archived && s.status === 'working')
-    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
-    .slice(0, FEED_MAX)
-    .map((s) => ({ id: s.id, text: (s.now || s.title).trim() }))
-}
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -48,28 +36,14 @@ export function inProject(a: Row, project: { id: string; name: string }, byId: M
   return new RegExp(`(^|[^\\p{L}\\p{N}])${escape(project.name)}($|[^\\p{L}\\p{N}])`, 'iu').test(`${a.text} ${a.quote}`)
 }
 
-/** Waiting on you first, then what moves, then what waits to be checked or started, then what sleeps. */
-const RANK: Record<Chip, number> = { needs: 0, running: 1, check: 2, queued: 3, blocked: 4, paused: 5, done: 9, dropped: 9 }
-
-/** The project's open requests, in reading order, each with its chip. Exported for tests. */
-export function todoOf(asks: Row[], project: { id: string; name: string }, sessions: Session[]): { a: Row; chip: Chip }[] {
+/** Every request of a project, whatever its state. Exported for tests. */
+export function requestsOf(asks: Row[], project: { id: string; name: string }, sessions: Session[]): Row[] {
   const byId = new Map(sessions.map((s) => [s.id, s]))
-  const stateOf = (a: Row): SessionStatus | 'gone' | undefined => {
-    const d = a.dispatches.at(-1)
-    return d ? (byId.get(d.session)?.status ?? 'gone') : undefined
-  }
-  return asks
-    .filter((a) => (a.status === 'open' || a.status === 'dispatched') && inProject(a, project, byId))
-    .map((a) => ({ a, chip: chipOf(a, stateOf(a)) }))
-    .sort((x, y) => RANK[x.chip] - RANK[y.chip] || y.a.at - x.a.at)
+  return asks.filter((a) => inProject(a, project, byId))
 }
 
-
-/** Bold is kept for what runs (the lines above) and what waits on you; sent and in progress stay regular; asleep dims. */
-const weight = (c: Chip) => (c === 'needs' ? 'on' : c === 'paused' || c === 'blocked' ? 'rest' : '')
-
 /** The ledger, read while the project is open: again when a request opens or closes, at most every 30 s otherwise. */
-function useLedger(): LedgerView | null {
+export function useLedger(): { ledger: LedgerView | null; reload: () => void } {
   const { snap } = useApp()
   const [v, setV] = useState<LedgerView | null>(null)
   const last = useRef(0)
@@ -81,53 +55,19 @@ function useLedger(): LedgerView | null {
   useEffect(() => {
     if (Date.now() - last.current > 30_000) load()
   }, [snap.version])
-  return v
+  return { ledger: v, reload: load }
 }
 
-/** What is being done now, then the to-do. Nothing running and nothing open: nothing at all. */
-export function ProjectNow({ project, sessions }: { project: { id: string; name: string }; sessions: Session[] }) {
-  const t = useT(M)
-  const { push, snap } = useApp()
-  const ledger = useLedger()
-  const feed = feedOf(sessions)
-  const todo = ledger ? todoOf(ledger.asks, project, snap.sessions) : []
-  const shown = todo.slice(0, TODO_MAX)
-  const open = (a: Row) => {
-    const d = a.dispatches.at(-1)
-    push(d && snap.sessions.some((s) => s.id === d.session) ? { kind: 'session', id: d.session } : { kind: 'requests' })
-  }
-  if (!feed.length && !todo.length) return null
-  return (
-    <div className="in pj">
-      {!!feed.length && (
-        <ul className="pj-feed" aria-label={t.now}>
-          {feed.map((f) => (
-            <li key={f.id}>
-              <button type="button" className="pj-line on" onClick={() => push({ kind: 'session', id: f.id })}>{f.text}</button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {!!shown.length && (
-        <ul className="pj-todo" aria-label={t.todo}>
-          {shown.map(({ a, chip }) => (
-            <li key={a.id}>
-              <button type="button" className={`pj-line ${weight(chip)}`} onClick={() => open(a)} title={a.text}>{askLabel(a)}</button>
-            </li>
-          ))}
-          {todo.length > shown.length && (
-            <li>
-              <button type="button" className="pj-line rest" onClick={() => push({ kind: 'requests' })}>{t.more(todo.length - shown.length)}</button>
-            </li>
-          )}
-        </ul>
-      )}
-    </div>
-  )
+/** A project's requests as the one column, for any page that shows a project (the classic page, next's). */
+export function ProjectRequests({ project, fill }: { project: { id: string; name: string }; fill?: boolean }) {
+  const { snap } = useApp()
+  const { ledger, reload } = useLedger()
+  const asks = useMemo(() => (ledger ? requestsOf(ledger.asks, project, snap.sessions) : []), [ledger, project.id, project.name, snap.sessions])
+  return <RequestColumn asks={asks} onChanged={reload} fill={fill} />
 }
 
-/** A project's own page (the « > » beside its « / »): what runs now, its to-do, then every session, the open ones first,
- *  then the finished ones newest first, a few, the rest one tap away. The home band keeps its own behaviour. */
+/** A project's own page: its requests, then every session, the open ones first, then the finished ones newest first,
+ *  a few, the rest one tap away. */
 export function ProjectPage({ projectId }: { projectId: string }) {
   const t = useT(M)
   const { snap, colors } = useApp()
@@ -141,8 +81,10 @@ export function ProjectPage({ projectId }: { projectId: string }) {
   return (
     <Shell slot={colors[projectId] ?? 'agent'} kicker="weevils" title={project?.name ?? '…'}>
       <div className="pj-page">
-        {project && <ProjectNow project={project} sessions={sessions} />}
-        {[...open, ...shown].map((s) => <SessionRow key={s.id} session={s} />)}
+        {project && <ProjectRequests project={project} />}
+        <div className="pj-sessions">
+          {[...open, ...shown].map((s) => <SessionRow key={s.id} session={s} />)}
+        </div>
         {done.length > shown.length && (
           <div className="in pj-older">
             <button type="button" className="pj-line rest" onClick={() => setAll(true)}>{t.older(done.length - shown.length)}</button>

@@ -57,7 +57,7 @@ export function tailLines(text: string, max = 40): string[] {
     .map((l) => (l.length > 160 ? `${l.slice(0, 159)}…` : l))
 }
 
-/** https://github.com/Sc4rville/mygame.git, git@github.com:Sc4rville/mygame → github.com/sc4rville/mygame. */
+/** https://github.com/Owner/app.git, git@github.com:Owner/app → github.com/owner/app. */
 export function normOrigin(url?: string): string | undefined {
   const s = url?.trim().replace(/\/+$/, '').replace(/\.git$/, '')
   if (!s) return undefined
@@ -102,7 +102,7 @@ export function mainOf(rs: RepoFacts[]): RepoFacts {
 
 /**
  * Repos → logiciels. Même famille (shop-api, shop-web → shop) et même origine : un seul logiciel (variantes, worktrees).
- * Un repo de la famille dont l'origine diffère de l'origine dominante en est séparé (weevils-content ≠ weevils). Les
+ * Un repo de la famille dont l'origine diffère de l'origine dominante en est séparé (weevils-site ≠ weevils). Les
  * copies sans origine rejoignent l'origine dominante de leur famille.
  */
 export function groupRepos(list: RepoFacts[]): RepoGroup[] {

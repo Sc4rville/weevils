@@ -49,7 +49,7 @@ const ITEMS: ForYouItem[] = [
     kind: 'media',
     tone: 'result',
     who: 'session',
-    projectId: 'mygame',
+    projectId: 'myshop',
     sessionId: 's9',
     title: 'the new title screen',
     text: 'the new title screen',
@@ -74,11 +74,11 @@ const ITEMS: ForYouItem[] = [
       { id: 'c3', title: 'Draft the page', why: '', source: 'boss', kind: 'content' },
     ],
   },
-  { ...base, id: 'se', kind: 'session', tone: 'question', who: 'session', projectId: 'mygame', sessionId: 's1', title: 'fix the login', text: 'Should I keep the old cookie?', reply: 'session', actions: [{ id: 'resume', label: 'resume' }] },
+  { ...base, id: 'se', kind: 'session', tone: 'question', who: 'session', projectId: 'myshop', sessionId: 's1', title: 'fix the login', text: 'Should I keep the old cookie?', reply: 'session', actions: [{ id: 'resume', label: 'resume' }] },
   { ...base, id: 'im', kind: 'improve', tone: 'magic', who: 'weevils', title: 'Your evenings', text: 'Most of your sessions start after 9 pm: queue them for the night.', actions: [{ id: 'do', label: 'do it' }], reply: 'boss' },
-  { ...base, id: 'in', kind: 'insight', who: 'weevils', projectId: 'mygame', text: 'Vite only bundles for production.', more: true },
+  { ...base, id: 'in', kind: 'insight', who: 'weevils', projectId: 'myshop', text: 'Vite only bundles for production.', more: true },
   { ...base, id: 'mi', kind: 'milestone', who: 'weevils', title: 'turns delivered today', text: '42 turns delivered today, up from 30 yesterday' },
-  { ...base, id: 'st', kind: 'stat', who: 'weevils', title: 'this week', text: '', gauges: [{ label: 'usage', value: 71, max: 100, shown: '71 %', hot: true }, { label: 'mygame', value: 12, max: 18, shown: '12 of 18', projectId: 'mygame' }] },
+  { ...base, id: 'st', kind: 'stat', who: 'weevils', title: 'this week', text: '', gauges: [{ label: 'usage', value: 71, max: 100, shown: '71 %', hot: true }, { label: 'myshop', value: 12, max: 18, shown: '12 of 18', projectId: 'myshop' }] },
 ]
 const feed = (items: ForYouItem[], rev = 1): ForYouFeed => ({ rev, items, pulse: { working: 2, waiting: 1, delivered: 7, auto: 3 } })
 
@@ -87,7 +87,7 @@ const snap = (rev: number | null = 1): Snapshot => ({
   version: rev ?? 1,
   now: NOW,
   machines: [{ id: 'm', name: 'm' }],
-  projects: [{ id: 'mygame', name: 'mygame', kind: 'repo', repos: ['mygame'], where: {}, lastActivityAt: 0 }],
+  projects: [{ id: 'myshop', name: 'myshop', kind: 'repo', repos: ['myshop'], where: {}, lastActivityAt: 0 }],
   sessions: [],
   h24: [],
   conversations: [],
@@ -112,7 +112,7 @@ function render(node: React.ReactNode, s = snap()) {
     snap: s,
     now: NOW,
     offline: false,
-    colors: { mygame: 'p4' },
+    colors: { myshop: 'p4' },
     push: (p: unknown) => pushed.push(p),
     replace: () => {},
     back: () => pushed.push('back'),
@@ -316,7 +316,7 @@ describe('for you: a feed of posts', () => {
       expect(head.firstElementChild!.className).toBe('fy-src')
       expect(head.children[1].className).toMatch(/fy-post-t/)
     }
-    expect(band('se').querySelector('.fy-src')!.textContent).toContain('mygame')
+    expect(band('se').querySelector('.fy-src')!.textContent).toContain('myshop')
     expect(band('ma').querySelector('.fy-src')!.textContent).toContain('Juno')
   })
 
@@ -340,8 +340,43 @@ describe('for you: a feed of posts', () => {
     await open([ITEMS[0]])
     expect(band('al').className).not.toMatch(/invert|fy-t-alert/)
     expect(band('al').getAttribute('style')).not.toContain('--alert')
-    await click(band('al').querySelector('.fy-tap'))
+    await click(band('al').querySelector('.fy-post-head'))
+    await click(host.querySelector('.fy-sheet-go'))
     expect(pushed.length + srv.calls.length).toBeGreaterThan(0)
+  })
+
+  it('a post has nothing to tap inside; tapped, its sheet says the next step in words and takes a word to weevboss', async () => {
+    setLang('en')
+    await open([ITEMS.find((i) => i.id === 'bo')!])
+    expect(band('bo').querySelector('.fy-tap, .fy-taps')).toBeNull()
+    await click(band('bo').querySelector('.fy-post-head'))
+    const sheet = host.querySelector<HTMLElement>('.fy-sheet[role="dialog"]')!
+    expect(sheet.querySelector('.fy-sheet-t')!.textContent).toContain('Three sessions sent this morning')
+    expect([...sheet.querySelectorAll('.fy-sheet-go')].map((b) => b.textContent)).toEqual(['review the two'])
+    const input = sheet.querySelector<HTMLInputElement>('input')!
+    expect(input.placeholder).toBe(t().sheetWrite)
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+      set.call(input, 'merge the second one')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => void sheet.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    await flush()
+    expect(srv.calls).toContain('reply bo merge the second one')
+  })
+
+  it('a post without a choice offers where it comes from, in words', async () => {
+    setLang('en')
+    await open([ITEMS.find((i) => i.id === 'me')!])
+    await click(band('me').querySelector('.fy-post-head'))
+    expect([...host.querySelectorAll('.fy-sheet-go')].map((b) => b.textContent)).toEqual([t().openConversation])
+  })
+
+  it('posts touch; two neighbours in one colour never look like one', async () => {
+    const { altsOf } = await import('./foryou')
+    const c = (id: string) => ({ ...base, id, kind: 'boss' as const, who: 'weevboss', text: id })
+    const colour: Record<string, string> = { a: 'x', b: 'x', c: 'x', d: 'y', e: 'y' }
+    expect(altsOf(['a', 'b', 'c', 'd', 'e'].map(c), (i) => colour[i.id])).toEqual([false, true, false, false, true])
   })
 
   it('a long title is cut to a short line, never on « … »', async () => {

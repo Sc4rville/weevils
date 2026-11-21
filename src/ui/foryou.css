@@ -1468,17 +1468,10 @@ button.fy-hit {
 
 /* ---------- Posts (src/ui/foryou-format.ts): one post = one colour block, apart from the next ---------- */
 
-/* The ground between posts: the page's colour taken far down, so every block stands out whatever its own colour
-   (a weevboss post on the weevboss page included). */
-.fy-page .fy-body {
-  background: oklch(from var(--agent) calc(l * 0.5) calc(c * 0.7) h);
-}
-.fy-page .fy-slot-body {
-  padding-bottom: 12px;
-}
-.fy-page .fy-slot:first-of-type .fy-slot-body,
-.fy-page .fy-fresh + .fy-slot .fy-slot-body {
-  padding-top: 12px;
+/* Posts touch: the colour change alone delimits them. A post in the same colour as the one above takes it a step
+   deeper (lighter on dark themes: --dl follows the theme), so the edge always shows. */
+.fy-post.fy-alt {
+  background: oklch(from var(--c) calc(l + var(--dl) * 1.7) calc(c * 1.08) h);
 }
 
 .fy-post-head {
@@ -1599,12 +1592,132 @@ button.fy-hit {
 .fy-post-foot {
   padding-bottom: 14px;
 }
-.fy-post-foot .fy-taps {
-  margin-top: 2px;
-}
-.fy-post-foot:not(:has(.fy-taps)) {
-  padding-bottom: 12px;
-}
 .fy-post .fy-page-links {
   padding-bottom: 6px;
+}
+
+/* ---------- A post's sheet: its next step in plain words, and a word to weevboss ---------- */
+
+.fy-sheet-back {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  background: color-mix(in oklab, var(--ink) 28%, transparent);
+}
+[data-theme='dark'] .fy-sheet-back,
+[data-theme='synthwave'] .fy-sheet-back {
+  background: rgb(0 0 0 / 0.45);
+}
+
+.fy-sheet {
+  width: 100%;
+  touch-action: none;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+.fy-sheet-in {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding-top: 10px;
+}
+
+.fy-sheet-grip {
+  align-self: center;
+  width: 36px;
+  height: 4px;
+  margin-bottom: 14px;
+  background: currentColor;
+  opacity: 0.35;
+}
+
+.fy-sheet-t {
+  margin: 0 0 10px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.35;
+  opacity: 0.72;
+}
+
+/* The next step: a sentence to tap, the band's own tone behind it. */
+.fy-sheet-go {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 56px;
+  padding: 14px 16px;
+  text-align: left;
+  font: inherit;
+  font-size: 1.0625rem;
+  font-weight: 750;
+  line-height: 1.3;
+  color: inherit;
+  background: oklch(from var(--c) calc(l + var(--dl) * 1.4) calc(c * 1.06) h);
+}
+.fy-sheet-go.quiet {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  background: transparent;
+  min-height: 48px;
+}
+.fy-sheet-go:disabled {
+  opacity: 0.5;
+}
+.fy-sheet-go-ic {
+  flex: none;
+  display: inline-flex;
+}
+.fy-sheet-go-ic .ic {
+  width: 20px;
+  height: 20px;
+}
+
+/* The field: the band's tone, no line, the send arrow at its end. */
+.fy-sheet-say {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-left: 16px;
+  background: oklch(from var(--c) calc(l + var(--dl) * 0.8) c h);
+}
+.fy-sheet-say input {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 1rem;
+}
+.fy-sheet-say input::placeholder {
+  color: inherit;
+  opacity: 0.55;
+}
+.fy-sheet-send {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: inherit;
+}
+.fy-sheet-send:disabled {
+  opacity: 0.35;
+}
+.fy-sheet-send .ic {
+  width: 20px;
+  height: 20px;
 }

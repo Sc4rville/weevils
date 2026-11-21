@@ -56,7 +56,7 @@ const snap = (optimizers: Optimizer[], h24: H24Activity[] = []): Snapshot => ({
   version: 1,
   now: NOW,
   machines: [{ id: 'm', name: 'm' }],
-  projects: [{ id: 'mygame', name: 'mygame', kind: 'repo', repos: ['mygame'], where: {}, lastActivityAt: 0 }],
+  projects: [{ id: 'myshop', name: 'myshop', kind: 'repo', repos: ['myshop'], where: {}, lastActivityAt: 0 }],
   sessions: [],
   h24,
   conversations: [],
@@ -83,7 +83,7 @@ function render(s: Snapshot, open = true) {
     snap: s,
     now: NOW,
     offline: false,
-    colors: { mygame: 'p3' },
+    colors: { myshop: 'p3' },
     push: (p: unknown) => pushed.push(p),
     replace: () => {},
     back: () => {},
@@ -127,7 +127,7 @@ afterEach(() => {
 })
 
 describe('auto drawer', () => {
-  const running = (o: Partial<Optimizer> = {}) => opt({ id: 'r', state: 'running', title: 'Profile loader', repo: 'mygame', startedAt: NOW - 5 * 60_000, sessionId: 's1', ...o })
+  const running = (o: Partial<Optimizer> = {}) => opt({ id: 'r', state: 'running', title: 'Profile loader', repo: 'myshop', startedAt: NOW - 5 * 60_000, sessionId: 's1', ...o })
   const timer: H24Activity = { id: 'timer:wv-sync.timer', title: 'sync', kind: 'timer', projectId: null, schedule: '', enabled: true, runState: 'waiting', runStartedAt: null, lastEvent: '', canToggle: true, nextRunAt: NOW + 14 * 60_000, everyMs: 6 * 3600_000 }
   const head = () => host.querySelector('.h24-head')!
   const names = () => [...host.querySelectorAll('.auto-band .auto-name')].map((n) => n.textContent)

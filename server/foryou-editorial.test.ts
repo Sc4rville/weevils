@@ -4,13 +4,23 @@ import path from 'node:path'
 import { expect, it } from 'vitest'
 import type { ForYouItem } from '../shared/foryou.ts'
 import { editorialText, reviewedEditorial } from './foryou-editorial.ts'
-import reviewed from './foryou-editorial-reviewed.json' with { type: 'json' }
+import type { EditorialEdit } from './foryou-results.ts'
 import { FeedLocalization, presentation } from './foryou-localization.ts'
-import { ForYou } from './foryou.ts'
+import { ForYou, humanLabel } from './foryou.ts'
+
+// What a person reviewed for their own feed lives in their data (<foryou.json>.reviewed.json): neutral examples here.
+const reviewed: EditorialEdit[] = [
+  { id: 'd:chat0001', kind: 'boss',
+    source: 'In the app, chat is being integrated into the existing preview reader, so you can message while keeping the page in view. Keeping your browsing position intact as you use the chat is part of that work.',
+    text: 'Chat is being added beside the preview, so you can message while keeping the page in view.' },
+  { id: 'i:1b6e4c74eee3', kind: 'improve',
+    source: 'Your recent feed contains many consecutive shop-app updates, while 31 of your last 34 sessions were on another project. I suggest asking weevboss to prepare a project rotation for For you, so repeated milestones leave room for your other work.',
+    text: 'shop-app updates are crowding For you. Preview a feed order that gives other projects room.' },
+]
 
 it('simplifies delegation without inventing an outcome, in either locale', () => {
   expect(editorialText('I suggest asking weevboss to prepare a project rotation.', 400)).toBe('Prepare a project rotation.')
-  expect(editorialText('Demande à weevboss de préparer une palette pour TLO.', 400)).toBe('Préparer une palette pour TLO.')
+  expect(editorialText('Demande à weevboss de préparer une palette pour shop-app.', 400)).toBe('Préparer une palette pour shop-app.')
   const progress = 'Chat is being added beside the preview. It is not ready yet.'
   expect(editorialText(progress, 400)).toBe(progress)
 })
@@ -27,14 +37,14 @@ it('reviews only exact generated sources, retaining original wording and every n
   for (const edit of reviewed) {
     const item = { id: edit.id, kind: edit.kind, tone: 'neutral', who: 'weevboss', at: 42, text: edit.source, seen: true, actions: [{ id: 'a1', label: 'Review' }], media: [{ id: 'pic', name: 'source.png', url: '/api/media/pic', type: 'image', bytes: 42 }] } as ForYouItem
     const source = structuredClone(item)
-    const result = reviewedEditorial(item, item.text)
+    const result = reviewedEditorial(item, item.text, reviewed)
     expect(result.text).toBe(edit.text)
     expect(result.editorial?.original.text).toBe(edit.source)
     expect({ ...result, text: item.text, editorial: undefined }).toEqual({ ...item, editorial: undefined })
     expect(item).toEqual(source)
-    expect(reviewedEditorial({ ...item, text: 'A later result.' }, 'A later result.').text).toBe('A later result.')
-    expect(reviewedEditorial({ ...item, id: 'b:custom' }, item.text)).toEqual({ ...item, id: 'b:custom' })
-    expect(reviewedEditorial({ ...item, kind: 'media' }, item.text).text).toBe(item.text)
+    expect(reviewedEditorial({ ...item, text: 'A later result.' }, 'A later result.', reviewed).text).toBe('A later result.')
+    expect(reviewedEditorial({ ...item, id: 'b:custom' }, item.text, reviewed)).toEqual({ ...item, id: 'b:custom' })
+    expect(reviewedEditorial({ ...item, kind: 'media' }, item.text, reviewed).text).toBe(item.text)
   }
 })
 it('uses a new translation revision, preserves old cache and original wording on reload', () => {
@@ -44,7 +54,7 @@ it('uses a new translation revision, preserves old cache and original wording on
     const edit = reviewed[0]
     const source = { id: edit.id, kind: edit.kind, tone: 'neutral', who: 'weevboss', at: 42, text: edit.source } as ForYouItem
     const previous = cache.project(source, 'fr', 'en')
-    const next = reviewedEditorial(source, source.text)
+    const next = reviewedEditorial(source, source.text, reviewed)
     const french = cache.project(next, 'fr', 'en')
     expect(french.localization?.revision).not.toBe(previous.localization?.revision)
     expect(french.localization?.status).toBe('pending')
@@ -62,13 +72,14 @@ it('projects a stored real card through EN FR EN without rewriting its source or
     const edit = reviewed.find(e => e.id === 'i:1b6e4c74eee3')!
     const original = { id: edit.id, kind: 'improve', who: 'weevboss', tone: 'neutral', at: now, text: edit.source, lang: 'en', seen: true, actions: [{ id: 'a1', label: 'Prepare project rotation', brief: 'Prepare the rotation without changing any underlying records.' }] }
     fs.writeFileSync(file, JSON.stringify({ rev: 5, items: [original] }))
+    fs.writeFileSync(`${file}.reviewed.json`, JSON.stringify({ editorial: reviewed }))
     const host = { snapshot: () => ({ sessions: [], projects: [], optimizers: [], machines: [], config: {} }), bump() {} } as unknown as ConstructorParameters<typeof ForYou>[0]
     const make = () => new ForYou(host, { file, now: () => now, dataDir: dir, machineId: 'test', later: () => undefined, extras: true })
     const fy = make()
     const views = ['en', 'fr', 'en'].map(l => fy.feed(now, l).items.find(i => i.id === edit.id)!)
     expect(views.every(Boolean)).toBe(true)
     for (const item of views) {
-      expect(item).toMatchObject({ id: edit.id, at: now, seen: true, text: edit.text, editorial: { original: { text: edit.source } }, actions: [{ id: 'a1', label: original.actions[0].label }] })
+      expect(item).toMatchObject({ id: edit.id, at: now, seen: true, text: edit.text, editorial: { original: { text: edit.source } }, actions: [{ id: 'a1', label: humanLabel(original.actions[0].label, original.actions[0].brief) }] })
       expect(item.actions![0]).not.toHaveProperty('brief')
     }
     expect(views[1].localization?.status).toBe('pending')

@@ -58,11 +58,11 @@ describe('import des exports', () => {
 describe('classement', () => {
   const catalog = [
     { id: 'lws', name: 'lws', repos: ['lws-demo', 'lws-oss'] },
-    { id: 'mygame', name: 'mygame', repos: ['mygame', 'mygame-trailer'] },
+    { id: 'myshop', name: 'myshop', repos: ['myshop', 'myshop-trailer'] },
   ]
   it('un nom de repo dans l’échange suffit, le plus précis gagne', () => {
     expect(ruleMatch('On simplifie lws-demo ?', catalog)?.id).toBe('lws')
-    expect(ruleMatch('le trailer de mygame-trailer', catalog)?.id).toBe('mygame')
+    expect(ruleMatch('le trailer de myshop-trailer', catalog)?.id).toBe('myshop')
   })
   it('pas de faux positif sur un mot courant', () => {
     expect(ruleMatch('Une recette rapide ?', catalog)).toBeNull()
@@ -192,7 +192,7 @@ describe('catégories inventées supprimées', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-db-'))
     const s = new ConversationStore(dir)
     s.import([
-      { id: 'a', source: 'chatgpt', title: 'Budget du jeu', createdAt: 1, updatedAt: 2, messages: [{ role: 'user', text: 'Combien coûte un trailer pour mygame ?', at: 1 }, { role: 'assistant', text: 'Environ…', at: 2 }] },
+      { id: 'a', source: 'chatgpt', title: 'Budget du jeu', createdAt: 1, updatedAt: 2, messages: [{ role: 'user', text: 'Combien coûte un trailer pour myshop ?', at: 1 }, { role: 'assistant', text: 'Environ…', at: 2 }] },
       { id: 'b', source: 'claude', title: 'Site vitrine', createdAt: 1, updatedAt: 3, messages: [{ role: 'user', text: 'Refais la home de lws-demo', at: 1 }] },
     ] as any)
     const cash = s.ensureCategory('cash')
@@ -204,7 +204,7 @@ describe('catégories inventées supprimées', async () => {
     expect(s.corrections()).toEqual([])
     expect(s.unclassified(10).map((c) => c.id).sort()).toEqual(['a', 'b'])
     const t = tr(CM)
-    expect(s.excerpt('a').startsWith(t.said(t.me, 'Combien coûte un trailer pour mygame'))).toBe(true)
+    expect(s.excerpt('a').startsWith(t.said(t.me, 'Combien coûte un trailer pour myshop'))).toBe(true)
     s.db.close()
     fs.rmSync(dir, { recursive: true })
   })
@@ -257,10 +257,10 @@ describe('message trop long pour le terminal', async () => {
   const path = await import('node:path')
   it('un manifeste de 40 Ko passe par un fichier : l’agent reçoit le début (signé) et le chemin, jamais « command too long »', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-long-'))
-    const text = `[from:gepetto] À WEEVBOSS. ${'Nous vivons à une frontière. '.repeat(1400)}FIN`
+    const text = `[from:marlow] À WEEVBOSS. ${'Nous vivons à une frontière. '.repeat(1400)}FIN`
     const out = fitTerminal(text, dir)
     expect(Buffer.byteLength(out)).toBeLessThan(TERMINAL_MAX)
-    expect(out.startsWith('[from:gepetto] À WEEVBOSS.')).toBe(true)
+    expect(out.startsWith('[from:marlow] À WEEVBOSS.')).toBe(true)
     const file = /(\/\S+\.md)/.exec(out)![1]
     expect(fs.readFileSync(file, 'utf8')).toBe(text)
     expect(fitTerminal('court', dir)).toBe('court')

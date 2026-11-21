@@ -6,7 +6,7 @@ describe('session titles that name only the place', () => {
   it('a title that is the repo, with or without « project », is no title', () => {
     expect(placeTitle('weevils project', ['weevils', 'weevils'])).toBe(true)
     expect(placeTitle('Weevils', ['weevils'])).toBe(true)
-    expect(placeTitle('tlo session', ['tlo'])).toBe(true)
+    expect(placeTitle('tux session', ['tux'])).toBe(true)
     expect(placeTitle('projet weevils', ['weevils'])).toBe(true)
   })
   it('a title about a subject stays, even when it names the repo', () => {

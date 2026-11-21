@@ -59,7 +59,7 @@ export function PageView({ page }: { page: Page }) {
       return <ArchivedSessions />
     case 'session':
       // One session view for every install, threads on or off: its tool titles, its questions with their buttons, its
-      // photos, the briefs one tap away (Yann, 2026-11-21). A whole thread, every engine that carried it, stays one tap
+      // photos, the briefs one tap away (Scarville, 2026-11-21). A whole thread, every engine that carried it, stays one tap
       // away in the weevbook (kind 'thread').
       return <SessionPage id={page.id} />
     case 'weevbook':

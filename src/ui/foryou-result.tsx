@@ -11,11 +11,12 @@ export function ResultCard({ item, sourceControls }: { item: ForYouItem; sourceC
   const group = item.resultGroup!
   const storage = `weevils-result-history:${group.key}`
   const [expanded, setExpanded] = useState(() => { try { return localStorage.getItem(storage) === 'open' } catch { return false } })
-  return <section className="fy-result in" aria-label={t.title}>
-    <h2>{t.title}</h2><p>{t.intro}</p>
+  const title = group.title ?? t.title
+  return <section className="fy-result in" aria-label={title}>
+    <h2>{title}</h2>{group.intro && <p>{group.intro}</p>}
     <p className="meta">{t.quality}</p>
     <time dateTime={new Date(group.finalAt).toISOString()}>{new Date(group.finalAt).toLocaleString(intlLocale())}</time>
-    {group.final ? <FullImage media={group.final} description={t.title} /> : <p role="status">{t.unavailable}</p>}
+    {group.final ? <FullImage media={group.final} description={title} /> : <p role="status">{t.unavailable}</p>}
     {group.newerUpdate && <p role="status">{t.newer}</p>}
     <details open={expanded} onToggle={e => {
       const open = e.currentTarget.open
@@ -28,12 +29,12 @@ export function ResultCard({ item, sourceControls }: { item: ForYouItem; sourceC
         {source.title && <p>{source.title}</p>}{source.text && <p>{source.text}</p>}
         {source.body && source.body !== source.text && <p className="fy-result-source">{source.body}</p>}
         <TranslationStatus item={source} />
-        {source.media?.length ? source.media.map(media => <FullImage key={media.id} media={media} description={t.title} />) : <p>{t.missing}</p>}
+        {source.media?.length ? source.media.map(media => <FullImage key={media.id} media={media} description={title} />) : <p>{t.missing}</p>}
         {sourceControls(source)}
       </article>)}
     </details>
     {!!group.otherMedia.length && <section aria-label={t.other} className="fy-result-other"><p className="meta">{t.other}</p>
-      {group.otherMedia.map(media => <FullImage key={media.id} media={media} description={media.name === 'studio_p.png' ? t.studio : media.name} />)}
+      {group.otherMedia.map(media => <FullImage key={media.id} media={media} description={group.otherTitles?.[media.name] ?? media.name} />)}
     </section>}
   </section>
 }

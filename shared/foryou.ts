@@ -26,6 +26,8 @@ export interface ForYouMedia {
   /** File name, for the accessible label. */
   name: string
   bytes: number
+  /** What the picture shows, when someone reviewed it for this feed. */
+  caption?: { title: string; description: string }
 }
 
 /** A bar of a « stat » item (or under any item): where something stands. value/max draw the bar; shown is the figure in words (« 71 % », « 12 sur 18 »). */
@@ -122,7 +124,12 @@ export interface ForYouItem {
   composition?: { layout: 'split' | 'rail'; panels: { mediaId: string; title: string; text: string }[] }
   /** Read-only projection of verified sources; source records remain independently addressable. */
   resultGroup?: {
-    key: 'tlo-alcove'
+    key: string
+    /** The piece's name and one line about it, in the app's language, as its reviewer wrote them. */
+    title?: string
+    intro?: string
+    /** Names for otherMedia, by file name. */
+    otherTitles?: Record<string, string>
     final?: ForYouMedia
     finalAt: number
     history: ForYouItem[]

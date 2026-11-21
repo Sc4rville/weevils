@@ -1,0 +1,33 @@
+{
+  "publicRepo": "github.com/Sc4rville/weevils",
+  "historyRoot": "5d3f735dfedbaf0176be89ef6e4200077c7b11cf",
+  "enforcedSince": "2026-11-21T17:15:00Z",
+  "identity": ["@users\\.noreply\\.github\\.com$", "^noreply@github\\.com$"],
+  "neutralUsers": [
+    "user", "u", "me", "you", "x", "test", "someone", "name", "username", "runner", "root", "ubuntu", "debian", "admin",
+    "alex", "sam", "bob", "ana", "ana.b", "alice", "mac", "private"
+  ],
+  "mailboxProviders": [
+    "gmail.com", "googlemail.com", "outlook.com", "outlook.fr", "hotmail.com", "hotmail.fr", "live.com", "live.fr",
+    "yahoo.com", "yahoo.fr", "icloud.com", "me.com", "proton.me", "protonmail.com", "pm.me", "gmx.com", "gmx.fr",
+    "orange.fr", "free.fr", "laposte.net", "wanadoo.fr", "sfr.fr", "hey.com", "fastmail.com"
+  ],
+  "neutralMailboxes": ["you", "toi", "me", "moi", "user", "someone", "name", "alex", "sam", "y", "y.nom", "weevils-1234"],
+  "forbiddenPaths": [
+    ".env", ".env.*", ".claude/**", ".codex/**", ".ssh/**", ".config/**", ".local/**",
+    "reports/**", "content/**", "recordings/**", "voice-archive/**", "voice-archives/**", "docs/incidents/**",
+    "docs/decisions.md", "harness-interface-kit/**", "*.pem", "*.key", "*.bundle", "cookies*.txt",
+    "id_rsa", "id_ed25519", "login-link", "memory.json", "vapid.json", "public-guard.txt"
+  ],
+  "skip": ["package-lock.json"],
+  "allow": [
+    { "rule": "path", "file": ".env.example", "why": "the documented sample, no value in it" },
+    { "rule": "key", "file": "get/get.test.ts", "why": "a throwaway key generated for the signature tests" },
+    { "rule": "key", "file": "server/codex-command-details.test.ts", "why": "a fake block that exercises the redaction" },
+    { "rule": "key", "file": "scripts/check-public.mjs", "why": "the pattern itself" },
+    { "rule": "key", "file": "scripts/check-public.test.ts", "why": "fakes that exercise this guard" },
+    { "rule": "home", "file": "scripts/check-public.test.ts", "why": "fakes that exercise this guard" },
+    { "rule": "mail", "file": "scripts/check-public.test.ts", "why": "fakes that exercise this guard" },
+    { "rule": "marker", "file": "scripts/check-public.test.ts", "why": "fakes that exercise this guard" }
+  ]
+}

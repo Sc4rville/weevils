@@ -1088,7 +1088,7 @@ export function Messages({
             <div onClick={(e) => toggleSteps(g.m.id, e)}>
             <Coordination folded={session && g.m.role === 'orchestrator' && !!g.m.coordination && authorOf(g.m.author).id !== 'weevboss'} author={authorOf(g.m.author).name} sourceThreadId={g.m.sourceThreadId}>
             <Bubble
-              className={`msg band ${session ? 'session-message' : ''} ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''}`}
+              className={`msg band ${session ? 'session-message' : ''} ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''} ${g.m.reaction ? 'has-reaction' : ''}`}
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
               who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : session ? '' : author}`}
               copy={g.m.role === 'user' ? userText(g.m.text) : g.m.role === 'orchestrator' ? briefText(g.m.text) : chipLabels(withoutMachinePrefix(g.m.text))}
@@ -1110,6 +1110,7 @@ export function Messages({
                   <Prose text={withoutMachinePrefix(g.m.text)} />
                 </ChipSlot.Provider>
               )}
+              {g.m.reaction && <Reaction emoji={g.m.reaction} />}
             </Bubble>
             {after?.(g.m.id)}
             </Coordination>
@@ -1117,6 +1118,21 @@ export function Messages({
           </Appear>
         ),
       )}
+    </AnimatePresence>
+  )
+}
+
+/** What is being done with a message you wrote (server/reactions.ts): one emoji on its corner, like a WhatsApp
+ *  reaction; a light pop each time it changes (👀 → 📤 → ✅). Read out for screen readers. */
+export function Reaction({ emoji }: { emoji: string }) {
+  const t = useT(M)
+  return (
+    <AnimatePresence initial={false} mode="popLayout">
+      <motion.span key={emoji} className="reaction" role="img" aria-label={t.reaction(emoji)}
+        initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 520, damping: 22 }}>
+        {emoji}
+      </motion.span>
     </AnimatePresence>
   )
 }

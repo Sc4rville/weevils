@@ -1,9 +1,9 @@
 import type { ForYouItem } from '../shared/foryou.ts'
-import reviewed from './foryou-editorial-reviewed.json' with { type: 'json' }
+import type { EditorialEdit } from './foryou-results.ts'
 
 /** Reviewed against the original sources, not inferred from a headline. Exact source
  * matching makes this an editorial revision, never an overwrite of a later update. */
-export function reviewedEditorial(item: ForYouItem, original: string): ForYouItem {
+export function reviewedEditorial(item: ForYouItem, original: string, reviewed: EditorialEdit[]): ForYouItem {
   const edit = reviewed.find(e => e.id === item.id && e.kind === item.kind && e.source === original)
   if (!edit) return item
   return { ...item, text: edit.text, editorial: { original: { text: original } } }

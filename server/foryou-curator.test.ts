@@ -33,10 +33,10 @@ const MIN = 60_000
 const HOUR = 3600_000
 
 const session = (over: Partial<Session> = {}): Session =>
-  ({ id: 's1', projectId: 'mygame', repo: 'mygame', machineId: 'test', tool: 'claude', title: 'Jump physics', status: 'idle', cwd: '/home/u/projects/mygame', openedAt: T0 - HOUR, lastActivityAt: T0, origin: 'weevils', controllable: true, live: true, hasScreen: true, messageCount: 4, lastMessage: 'tail', ...over }) as Session
+  ({ id: 's1', projectId: 'myshop', repo: 'myshop', machineId: 'test', tool: 'claude', title: 'Jump physics', status: 'idle', cwd: '/home/u/projects/myshop', openedAt: T0 - HOUR, lastActivityAt: T0, origin: 'weevils', controllable: true, live: true, hasScreen: true, messageCount: 4, lastMessage: 'tail', ...over }) as Session
 const says = (text: string): Message => ({ id: `m${Math.random()}`, role: 'assistant', text, at: T0 })
 const usage = (percent: number, ok = true): UsageInfo => ({ claude: { ok, windows: [{ kind: 'session', percent: 12, resetsAt: null }, { kind: 'week', percent, resetsAt: null }], source: 't', at: T0 }, codex: { ok: false, windows: [], source: 't', at: T0 } })
-const DIGEST = JSON.stringify({ text: 'Ok, Jump physics on mygame is back: the double jump is in. Nothing is waiting on you.', thought: 'Actually, when you think about it, the jump is the whole game.', actions: [{ label: 'Show me the jump', brief: 'ask the mygame session for a clip of the double jump and show it' }] })
+const DIGEST = JSON.stringify({ text: 'Ok, Jump physics on myshop is back: the double jump is in. Nothing is waiting on you.', thought: 'Actually, when you think about it, the jump is the whole game.', actions: [{ label: 'Show me the jump', brief: 'ask the myshop session for a clip of the double jump and show it' }] })
 const IMPROVE = JSON.stringify({ title: 'A morning recap', text: 'Most of your turns end in the morning. I can post the recap at noon.', action: { label: 'Set it up', brief: 'post a recap in the stream every day at noon, then confirm' } })
 const INSIGHT = JSON.stringify({ about: 'vitest', text: 'Vitest runs only the tests touched by a change in watch mode. Ask your agents to keep it running while they work.' })
 
@@ -60,7 +60,7 @@ const makeCurator = (deps: CuratorDeps = {}) =>
     now: () => now,
     logged: () => logged,
     usage: () => known,
-    memory: () => ({ digest: () => '- wants to ship mygame this year' }),
+    memory: () => ({ digest: () => '- wants to ship myshop this year' }),
     repoDir: (repo) => path.join(dir, 'p', repo),
     facts: async () => facts ?? { deps: [], files: [], commits: [] },
     ...deps,
@@ -85,7 +85,7 @@ beforeEach(() => {
   known = usage(40)
   logged = true
   facts = null
-  snap = { machines: [{ id: 'test', name: 'vps', online: true }], projects: [{ id: 'mygame', name: 'mygame' }, { id: 'site', name: 'the site' }, { id: 'notes', name: 'notes' }], sessions: [], optimizers: [], config: { authors: [{ id: 'weevboss', name: 'weevboss', color: '' }, { id: 'gepetto', name: 'Gepetto', color: '#3fc1f0' }] } } as unknown as Snapshot
+  snap = { machines: [{ id: 'test', name: 'vps', online: true }], projects: [{ id: 'myshop', name: 'myshop' }, { id: 'site', name: 'the site' }, { id: 'notes', name: 'notes' }], sessions: [], optimizers: [], config: { authors: [{ id: 'weevboss', name: 'weevboss', color: '' }, { id: 'marlow', name: 'Marlow', color: '#3fc1f0' }] } } as unknown as Snapshot
   host = {
     snapshot: () => snap,
     bump: vi.fn(() => {}),
@@ -115,14 +115,14 @@ describe('what the curator accepts from the model', () => {
     expect(d.text).toMatch(/^Ok, Jump physics/)
     expect(d).not.toHaveProperty('thought')
     expect(d.actions).toEqual([{ label: 'Show me the jump', brief: expect.stringContaining('double jump') }])
-    expect(parseDigest({ text: ' "All good 🎉  on   mygame, the menu is in and waits for you." ', actions: [{ label: 'A', brief: 'short' }, { label: 'Go on', brief: 'continue the menu on mygame' }, { label: 'Two', brief: 'a second real brief' }, { label: 'Three', brief: 'a third real brief' }] })).toEqual({
-      text: 'All good on mygame, the menu is in and waits for you.',
-      actions: [{ label: 'Go on', brief: 'continue the menu on mygame' }, { label: 'Two', brief: 'a second real brief' }],
+    expect(parseDigest({ text: ' "All good 🎉  on   myshop, the menu is in and waits for you." ', actions: [{ label: 'A', brief: 'short' }, { label: 'Go on', brief: 'continue the menu on myshop' }, { label: 'Two', brief: 'a second real brief' }, { label: 'Three', brief: 'a third real brief' }] })).toEqual({
+      text: 'All good on myshop, the menu is in and waits for you.',
+      actions: [{ label: 'Go on', brief: 'continue the menu on myshop' }, { label: 'Two', brief: 'a second real brief' }],
     })
     // The thought that only says the recap again is dropped; the recap stays.
-    expect(parseDigest({ text: 'The menu of mygame is in and waits for your look.', thought: 'The menu of mygame is in, waits for your look.' })).toEqual({ text: 'The menu of mygame is in and waits for your look.' })
+    expect(parseDigest({ text: 'The menu of myshop is in and waits for your look.', thought: 'The menu of myshop is in, waits for your look.' })).toEqual({ text: 'The menu of myshop is in and waits for your look.' })
     for (const bad of [null, 'text', [], {}, { text: '' }, { text: 'ok' }, { text: 42 }]) expect(parseDigest(bad)).toBeNull()
-    expect(parseDigest({ text: 'Ok, jump physics on mygame is back, the double jump is in; nothing is waiting on you.' }, [d.text])).toBeNull()
+    expect(parseDigest({ text: 'Ok, jump physics on myshop is back, the double jump is in; nothing is waiting on you.' }, [d.text])).toBeNull()
     expect(parseDigest({ text: `${'A long sentence about the day. '.repeat(40)}` })).toBeNull()
   })
 
@@ -255,7 +255,7 @@ describe('the budget', () => {
     const c = makeCurator()
     facts = { deps: ['vitest'], files: ['package.json'], commits: ['Add the jump physics'] }
     for (const id of ['s1', 's2', 's3']) await deliver(id, `Turn of ${id} is done.`)
-    fy.mail({ author: 'gepetto', subject: 'menu', text: 'Hello,\n\nThe menu is in.\nThe tests are left, I will do them tomorrow.', target: 'weevboss', mid: '<m1@x>', address: 'g@example.com' })
+    fy.mail({ author: 'marlow', subject: 'menu', text: 'Hello,\n\nThe menu is in.\nThe tests are left, I will do them tomorrow.', target: 'weevboss', mid: '<m1@x>', address: 'g@example.com' })
     looked()
     model.mockResolvedValueOnce(DIGEST).mockResolvedValueOnce(IMPROVE).mockResolvedValueOnce(INSIGHT)
     cheap.mockResolvedValue('[{"n": 1, "line": "the menu is in, the tests are for tomorrow"}]')
@@ -269,7 +269,7 @@ describe('the budget', () => {
     await c.tick(now)
     expect(calls()).toBe(3)
     expect(kinds('improve')).toHaveLength(1)
-    expect(model.mock.calls[1][0]).toContain('wants to ship mygame this year')
+    expect(model.mock.calls[1][0]).toContain('wants to ship myshop this year')
     await c.tick(now)
     expect(calls()).toBe(4)
     expect(kinds('insight')).toHaveLength(1)
@@ -379,17 +379,17 @@ describe('the digest', () => {
     expect(prompt).toContain('The double jump is in, with its tests.')
     expect(prompt).not.toContain('Which font for the menu?')
     expect(prompt).toContain('1 turn delivered')
-    expect(prompt).toContain('wants to ship mygame this year')
+    expect(prompt).toContain('wants to ship myshop this year')
     expect(prompt).toContain('Sam')
     expect(prompt).not.toContain('[from:')
     const item = fy.feed(now).items.find((i) => i.kind === 'boss')!
-    expect(item).toMatchObject({ who: 'weevboss', tone: 'neutral', reply: 'boss', open: { page: 'boss' }, actions: [{ id: 'a1', label: 'Show me the jump' }] })
-    expect(item.text).toBe('Ok, Jump physics on mygame is back: the double jump is in. Nothing is waiting on you.')
-    expect(JSON.stringify(item)).not.toContain('ask the mygame session')
-    expect(kinds('boss')[0].actions?.[0].brief).toContain('ask the mygame session')
-    // The button goes to weevboss with its brief, like one of its own posts.
-    await fy.act(item.id, 'a1')
-    expect(host.sendMain).toHaveBeenCalledWith(expect.stringContaining('Show me the jump'), expect.stringContaining('ask the mygame session'))
+    expect(item).toMatchObject({ who: 'weevboss', tone: 'neutral', reply: 'boss', open: { page: 'boss' } })
+    // A digest tells; it never asks for a tap.
+    expect(item.actions ?? []).toEqual([])
+    expect(item.text).toBe('Ok, Jump physics on myshop is back: the double jump is in. Nothing is waiting on you.')
+    expect(JSON.stringify(item)).not.toContain('ask the myshop session')
+    // Nothing to tap is stored either: the suggested button is dropped at the source.
+    expect(kinds('boss')[0].actions).toBeUndefined()
   })
 
   it('only includes an exact unanswered question from the current conversation', async () => {
@@ -445,13 +445,13 @@ describe('the digest', () => {
     expect(model).toHaveBeenCalledTimes(1)
     now += 2 * MIN
     looked()
-    model.mockResolvedValue(JSON.stringify({ text: 'The menu came back on mygame, with its three screens; the font is yours to pick.' }))
+    model.mockResolvedValue(JSON.stringify({ text: 'The menu came back on myshop, with its three screens; the font is yours to pick.' }))
     await c.tick(now)
     expect(model).toHaveBeenCalledTimes(2)
     expect(model.mock.calls[1][0]).toContain('The menu is in.')
     // Only what is new since the last word, and that word is given so it is not said again.
     expect(model.mock.calls[1][0]).not.toContain('The double jump is in.')
-    expect(model.mock.calls[1][0]).toContain('Ok, Jump physics on mygame is back')
+    expect(model.mock.calls[1][0]).toContain('Ok, Jump physics on myshop is back')
     now += DIGEST_EVERY_MS
     looked()
     await c.tick(now)
@@ -485,7 +485,7 @@ describe('mail lines', () => {
   it.each([0, 1])('rewrites session results in a batch with %i mails', async (count) => {
     fs.writeFileSync(path.join(dir, 'curator.json'), JSON.stringify({ digestAt: now, improveAt: now, insightAt: now }))
     await deliver('s1', 'I finished the double jump.\n\n' + 'I checked the landing behaviour in the game. '.repeat(8))
-    if (count) fy.mail({ author: 'gepetto', subject: 'menu', text: 'Hello,\n\nThe menu is finished and ready for review.', target: 'weevboss', mid: '<mixed@x>', address: 'g@example.com' })
+    if (count) fy.mail({ author: 'marlow', subject: 'menu', text: 'Hello,\n\nThe menu is finished and ready for review.', target: 'weevboss', mid: '<mixed@x>', address: 'g@example.com' })
     cheap.mockResolvedValue(JSON.stringify(Array.from({ length: count + 1 }, (_, i) => ({ n: i + 1, line: i === count ? 'I tuned the double jump; try landing twice.' : 'The menu is ready for your look.' }))))
     looked()
     await makeCurator().tick(now)
@@ -493,7 +493,7 @@ describe('mail lines', () => {
     expect(cheap).toHaveBeenCalledTimes(1)
   })
 
-  const mail = (n: number, text = `Hello,\n\nMail ${n} says the menu is in.\nAnd much more below, with details.`) => fy.mail({ author: 'gepetto', subject: `subject ${n}`, text, target: 'weevboss', mid: `<m${n}@x>`, address: 'g@example.com' })
+  const mail = (n: number, text = `Hello,\n\nMail ${n} says the menu is in.\nAnd much more below, with details.`) => fy.mail({ author: 'marlow', subject: `subject ${n}`, text, target: 'weevboss', mid: `<m${n}@x>`, address: 'g@example.com' })
 
   it('one haiku call for up to six mails still raw and unseen; the whole mail stays, the first line is the fallback', async () => {
     const c = makeCurator()
@@ -501,7 +501,7 @@ describe('mail lines', () => {
       now += 1000
       mail(n)
     }
-    fy.mail({ author: 'gepetto', subject: 'short', text: 'Just one line here.', target: 'weevboss', mid: '<short@x>', address: 'g@example.com' })
+    fy.mail({ author: 'marlow', subject: 'short', text: 'Just one line here.', target: 'weevboss', mid: '<short@x>', address: 'g@example.com' })
     const seen = stored().find((i) => i.title === 'subject 8')!
     fy.seen([seen.id])
     model.mockResolvedValue(DIGEST)
@@ -513,7 +513,7 @@ describe('mail lines', () => {
     expect(cheap).toHaveBeenCalledTimes(1)
     const prompt = cheap.mock.calls[0][0]
     expect((prompt.match(/^### \d/gm) ?? []).length).toBe(MAIL_BATCH)
-    expect(prompt).toContain('From: Gepetto')
+    expect(prompt).toContain('From: Marlow')
     expect(prompt).not.toContain('subject 8')
     expect(prompt).not.toContain('Just one line here.')
     expect(prompt).not.toContain('g@example.com')
@@ -553,12 +553,12 @@ describe('mail lines', () => {
 
 describe('improve', () => {
   it('counts the patterns first: sessions per project and time of day, cuts and why, long waits, auto tasks, unused bricks', async () => {
-    for (const [id, project] of [['a', 'mygame'], ['b', 'mygame'], ['c', 'site']]) await deliver(id, `Turn ${id} done.`, { projectId: project })
+    for (const [id, project] of [['a', 'myshop'], ['b', 'myshop'], ['c', 'site']]) await deliver(id, `Turn ${id} done.`, { projectId: project })
     snap.sessions.push(session({ id: 'cut1', status: 'interrupted', interrupted: { reason: 'died', at: now } }), session({ id: 'w1', status: 'needs_user', attention: 'Which font?', lastActivityAt: now - 45 * MIN }), session({ id: 'w2', status: 'needs_user', lastActivityAt: now - 5 * MIN }))
     snap.optimizers = [{ id: 'o1', state: 'done' }, { id: 'o2', state: 'failed' }, { id: 'o3', state: 'proposed' }, { id: 'o4', state: 'proposed' }] as Optimizer[]
     snap.setup = { claude: true, voice: false, dictation: true, github: false, welcomed: true }
     const p = usagePatterns(fy.recent(['session'], 200), snap, now)
-    expect(p).toMatchObject({ projects: [['mygame', 2], ['the site', 1]], cuts: 1, waited: 1, auto: { done: 1, failed: 1, unanswered: 2 }, unused: ['voice', 'github'], sessions: 3 })
+    expect(p).toMatchObject({ projects: [['myshop', 2], ['the site', 1]], cuts: 1, waited: 1, auto: { done: 1, failed: 1, unanswered: 2 }, unused: ['voice', 'github'], sessions: 3 })
     expect(p.hours.morning + p.hours.afternoon + p.hours.evening + p.hours.night).toBe(3)
     expect(p.cutWhy).toHaveLength(1)
   })
@@ -575,11 +575,14 @@ describe('improve', () => {
     await fresh.tick(now)
     expect(model).toHaveBeenCalledTimes(1)
     const prompt = model.mock.calls[0][0]
-    expect(prompt).toContain('Sessions per project (last 14 days): mygame 3')
+    expect(prompt).toContain('Sessions per project (last 14 days): myshop 3')
     expect(prompt).toContain('not set up yet: voice')
     expect(prompt).toContain('No swap: add 4 GB.')
     const item = fy.feed(now).items.find((i) => i.kind === 'improve')!
-    expect(item).toMatchObject({ tone: 'magic', who: 'weevils', title: 'A morning recap', reply: 'boss', actions: [{ id: 'a1', label: 'Set it up' }] })
+    expect(item).toMatchObject({ tone: 'magic', who: 'weevils', title: 'A morning recap', reply: 'boss' })
+    // A shorthand label is said as its brief's first plain sentence (humanLabel).
+    expect(item.actions).toHaveLength(1)
+    expect(item.actions![0].label.split(' ').length).toBeGreaterThanOrEqual(3)
     now += IMPROVE_EVERY_MS - MIN
     looked()
     await fresh.tick(now)
@@ -611,12 +614,12 @@ describe('insight', () => {
     await c.tick(now)
     expect(model).toHaveBeenCalledTimes(1)
     const prompt = model.mock.calls[0][0]
-    expect(prompt).toContain('"mygame"')
+    expect(prompt).toContain('"myshop"')
     expect(prompt).toContain('Declared dependencies: vitest, react')
     expect(prompt).toContain('- Add the jump physics')
     expect(prompt).toContain('What an agent just did there: Jump physics: The double jump is in.')
     const item = fy.feed(now).items.find((i) => i.kind === 'insight')!
-    expect(item).toMatchObject({ id: `i:mygame:${dayKey(now)}`, projectId: 'mygame', more: true, who: 'weevils' })
+    expect(item).toMatchObject({ id: `i:myshop:${dayKey(now)}`, projectId: 'myshop', more: true, who: 'weevils' })
     // Same repo, same day: never again, even two hours later.
     now += INSIGHT_EVERY_MS
     await deliver('s1', 'The double jump is tuned.')
@@ -669,7 +672,7 @@ describe('insight', () => {
 
   it('« more » answers nothing when the day is spent, a window is nearly full or Claude is logged out', async () => {
     const c = makeCurator()
-    const item = fy.add({ id: 'i:mygame:w', kind: 'insight', projectId: 'mygame', text: 'Vitest runs only the tests touched by a change.', more: true, lang: 'en' })!
+    const item = fy.add({ id: 'i:myshop:w', kind: 'insight', projectId: 'myshop', text: 'Vitest runs only the tests touched by a change.', more: true, lang: 'en' })!
     model.mockResolvedValue('A longer answer about Vitest.')
     known = usage(90)
     expect(await c.more(item)).toBe('')
@@ -748,7 +751,7 @@ describe('where the day stands', () => {
   it('one item a day while the app looks, replaced in place every four hours: usage windows, turns per project, the auto queue', async () => {
     const c = makeCurator()
     model.mockResolvedValue(DIGEST)
-    for (const [id, project] of [['a', 'mygame'], ['b', 'mygame'], ['c', 'site']]) await deliver(id, `Turn ${id} done.`, { projectId: project, repo: undefined })
+    for (const [id, project] of [['a', 'myshop'], ['b', 'myshop'], ['c', 'site']]) await deliver(id, `Turn ${id} done.`, { projectId: project, repo: undefined })
     snap.optimizers = [{ id: 'o1', state: 'running' }, { id: 'o2', state: 'queued' }, { id: 'o3', state: 'queued' }] as Optimizer[]
     known = usage(71)
     // Not looking: no bars.
@@ -762,7 +765,7 @@ describe('where the day stands', () => {
     expect(item.gauges).toEqual([
       { label: 'Claude · 5 h window', value: 12, max: 100, shown: '12%' },
       { label: 'Claude · week', value: 71, max: 100, shown: '71%' },
-      { label: 'mygame', value: 2, max: 3, shown: '2 of 3', projectId: 'mygame' },
+      { label: 'myshop', value: 2, max: 3, shown: '2 of 3', projectId: 'myshop' },
       { label: 'the site', value: 1, max: 3, shown: '1 of 3', projectId: 'site' },
       { label: 'Automations', value: 1, max: 3, shown: '1 running, 2 waiting' },
     ])
@@ -800,7 +803,7 @@ describe('relay and concurrent more requests', () => {
     known.codex = { ok: true, windows: [{ kind: 'week', percent: 9, resetsAt: null }], source: 'test', at: now }
     const relay = vi.fn(async () => 'Here is a longer explanation about this repo and its tests.')
     const c = makeCurator({ relay })
-    const item = fy.add({ kind: 'insight', projectId: 'mygame', text: 'Vitest checks the landing behaviour.', more: true })!
+    const item = fy.add({ kind: 'insight', projectId: 'myshop', text: 'Vitest checks the landing behaviour.', more: true })!
     expect(c.mode()).toBe('relay')
     await c.more(item)
     expect(relay).toHaveBeenCalledTimes(1)
@@ -815,7 +818,7 @@ describe('relay and concurrent more requests', () => {
     const gate = new Promise<void>((r) => { release = r })
     const relay = vi.fn(async () => 'The answer uses the available Codex subscription instead.')
     const c = makeCurator({ relay, facts: async () => { await gate; return { deps: ['vitest'], files: [], commits: [] } } })
-    const item = fy.add({ kind: 'insight', projectId: 'mygame', text: 'Vitest checks the landing behaviour.', more: true })!
+    const item = fy.add({ kind: 'insight', projectId: 'myshop', text: 'Vitest checks the landing behaviour.', more: true })!
     const pending = c.more(item)
     known = usage(99)
     known.codex = { ok: true, windows: [{ kind: 'week', percent: 9, resetsAt: null }], source: 'test', at: now }
@@ -842,8 +845,8 @@ describe('last available budget slot', () => {
     let release!: () => void
     const gate = new Promise<void>((r) => { release = r })
     const c = makeCurator({ facts: async () => { await gate; return { deps: ['vitest'], files: [], commits: [] } } })
-    const a = fy.add({ id: 'i:a', kind: 'insight', projectId: 'mygame', text: 'Vitest checks the game.', more: true })!
-    const b = fy.add({ id: 'i:b', kind: 'insight', projectId: 'mygame', text: 'React renders the game.', more: true })!
+    const a = fy.add({ id: 'i:a', kind: 'insight', projectId: 'myshop', text: 'Vitest checks the game.', more: true })!
+    const b = fy.add({ id: 'i:b', kind: 'insight', projectId: 'myshop', text: 'React renders the game.', more: true })!
     model.mockResolvedValue('Here is a longer answer about the tests and the game.')
     const first = c.more(a), second = c.more(b)
     release()
@@ -858,7 +861,7 @@ it('fills a persistent batch with one budgeted call and publishes while generati
   looked()
   model.mockResolvedValueOnce(JSON.stringify({ items: [
     { title: 'A silent scene', format: 'idea', text: 'Try a silent storyboard where an avatar loses its shadow.', sources: ['goals'] },
-    { title: 'Your first player', format: 'question', text: 'Which friend would you ask to try the first level of mygame?', sources: ['goals'] },
+    { title: 'Your first player', format: 'question', text: 'Which friend would you ask to try the first level of myshop?', sources: ['goals'] },
   ] }))
   const c = makeCurator({ reservoir: true })
   await c.tick()
@@ -895,7 +898,7 @@ it('re-arms publication from its recorded time instead of skipping an early inte
     const q = new Reservoir(file)
     q.add([
       { title: 'A silent scene', format: 'idea', text: 'Try a silent storyboard where an avatar loses its shadow.', sources: ['goals'] },
-      { title: 'Your first player', format: 'question', text: 'Which friend would you ask to try the first level of mygame?', sources: ['goals'] },
+      { title: 'Your first player', format: 'question', text: 'Which friend would you ask to try the first level of myshop?', sources: ['goals'] },
     ], new Set(['goals']), [], T0, 'en')
     q.last = T0 + 40
     q.save()

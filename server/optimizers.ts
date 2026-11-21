@@ -631,7 +631,7 @@ const oneLine = (s: unknown, max: number) =>
     .trim()
 
 /**
- * A title or a why line as the app shows it: one line, no quotes around words (« mygame », "the site" → mygame, the
+ * A title or a why line as the app shows it: one line, no quotes around words (« my-app », "the site" → my-app, the
  * site); apostrophes stay.
  */
 export function tidy(s: unknown, max: number): string {
@@ -826,7 +826,7 @@ export function fmtSpan(ms: number): string {
   return `${Math.round(ms / 60_000)}min`
 }
 
-/** Branch-safe short name: « Harden the tests of mygame » → « harden-the-tests-of-mygame ». */
+/** Branch-safe short name: « Harden the tests of my-app » → « harden-the-tests-of-my-app ». */
 export function slug(title: string): string {
   return norm(title).replace(/ /g, '-').slice(0, 32).replace(/-+$/, '') || 'task'
 }

@@ -7,16 +7,16 @@ import type { ForYouItem } from '../shared/foryou.ts'
 let dir:string, file:string, now:number
 beforeEach(()=>{dir=fs.mkdtempSync(path.join(os.tmpdir(),'feed-loc-'));file=path.join(dir,'translations.json');now=1000})
 afterEach(()=>fs.rmSync(dir,{recursive:true,force:true}))
-const item=():ForYouItem=>({id:'i:one',at:42,kind:'insight',tone:'neutral',who:'weevils',text:'Le café est prêt pour TLO.',seen:true,media:[{id:'pic',name:'café.png',url:'/api/media/pic',type:'image',bytes:42}],actions:[{id:'a1',label:'Ouvrir le café'}]})
-const run=async(s:Record<string,string>)=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,v==='Le café est prêt pour TLO.'?'The café is ready for TLO.':v==='Ouvrir le café'?'Open the café':v]))
+const item=():ForYouItem=>({id:'i:one',at:42,kind:'insight',tone:'neutral',who:'weevils',text:'Le café est prêt pour TUX.',seen:true,media:[{id:'pic',name:'café.png',url:'/api/media/pic',type:'image',bytes:42}],actions:[{id:'a1',label:'Ouvrir le café'}]})
+const run=async(s:Record<string,string>)=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,v==='Le café est prêt pour TUX.'?'The café is ready for TUX.':v==='Ouvrir le café'?'Open the café':v]))
 it('retains originals, identities, read state, media and actions through FR EN FR, reload and cache reuse',async()=>{
  const c=new FeedLocalization(file,()=>now),source=item()
  expect(c.project(source,'fr','fr')).toEqual(source)
- const pending=c.project(source,'en','fr',['TLO']);expect(pending.localization?.status).toBe('pending');expect(pending.text).toBe(source.text)
+ const pending=c.project(source,'en','fr',['TUX']);expect(pending.localization?.status).toBe('pending');expect(pending.text).toBe(source.text)
  await c.translate(run)
- const en=c.project(source,'en','fr',['TLO']);expect(en.text).toBe('The café is ready for TLO.');expect(en.actions).toEqual([{id:'a1',label:'Open the café'}]);expect(en.media).toEqual(source.media);expect(en.seen).toBe(true);expect(en.at).toBe(42);expect(en.id).toBe(source.id)
+ const en=c.project(source,'en','fr',['TUX']);expect(en.text).toBe('The café is ready for TUX.');expect(en.actions).toEqual([{id:'a1',label:'Open the café'}]);expect(en.media).toEqual(source.media);expect(en.seen).toBe(true);expect(en.at).toBe(42);expect(en.id).toBe(source.id)
  expect(c.project(source,'fr','fr')).toEqual(source)
- expect(new FeedLocalization(file).project(source,'en','fr',['TLO'])).toEqual(en)
+ expect(new FeedLocalization(file).project(source,'en','fr',['TUX'])).toEqual(en)
  expect(c.job()).toBeNull();expect(source).toEqual(item())
 })
 it('rejects provider failure and wrong shapes, retains original and retries after backoff',async()=>{
@@ -29,18 +29,18 @@ it('rejects provider failure and wrong shapes, retains original and retries afte
 it('keys variants by source revision and never installs a stale answer on edited content',async()=>{
  const c=new FeedLocalization(file,()=>now),old=item();c.project(old,'en','fr')
  let resolve!:(v:Record<string,string>)=>void
- const work=c.translate(()=>new Promise(r=>resolve=r));const edited={...old,text:'Le jardin est prêt pour TLO.'}
+ const work=c.translate(()=>new Promise(r=>resolve=r));const edited={...old,text:'Le jardin est prêt pour TUX.'}
  const next=c.project(edited,'en','fr');resolve(await run({'0/text':old.text,'0/actions.0.label':old.actions![0].label}));await work
  expect(c.project(edited,'en','fr').localization?.status).toBe('pending');expect(c.project(edited,'en','fr').localization?.revision).toBe(next.localization?.revision)
  expect(c.project(old,'fr','fr')).toEqual(old)
 })
 it('protects quotes, proper names, numeric facts and authoritative instructions',async()=>{
- const c=new FeedLocalization(file,()=>now),s={...item(),text:'TLO propose 3 images : « garde mon café ».',visualProposal:{question:'Quel rythme ?',recommendation:'Garder le rythme.',caveat:'Aucun rendu.',frames:[],options:[{id:'B',label:'Garder',description:'Les mêmes images.',instruction:'Ne rien publier.'}],selected:'B'}} satisfies ForYouItem
- c.project(s,'en','fr',['TLO']);await c.translate(async source=>Object.fromEntries(Object.keys(source).map(k=>[k,'The new 4 pictures are ready.'])))
- const projected=c.project(s,'en','fr',['TLO']);expect(projected.localization?.status).toBe('failed');expect(projected.visualProposal?.selected).toBe('B');expect(s.visualProposal.options[0].instruction).toBe('Ne rien publier.')
+ const c=new FeedLocalization(file,()=>now),s={...item(),text:'TUX propose 3 images : « garde mon café ».',visualProposal:{question:'Quel rythme ?',recommendation:'Garder le rythme.',caveat:'Aucun rendu.',frames:[],options:[{id:'B',label:'Garder',description:'Les mêmes images.',instruction:'Ne rien publier.'}],selected:'B'}} satisfies ForYouItem
+ c.project(s,'en','fr',['TUX']);await c.translate(async source=>Object.fromEntries(Object.keys(source).map(k=>[k,'The new 4 pictures are ready.'])))
+ const projected=c.project(s,'en','fr',['TUX']);expect(projected.localization?.status).toBe('failed');expect(projected.visualProposal?.selected).toBe('B');expect(s.visualProposal.options[0].instruction).toBe('Ne rien publier.')
 })
 it('batches several cards in one budgeted call, without merging their identities',async()=>{
- const c=new FeedLocalization(file,()=>now);for(let n=0;n<5;n++)c.project({...item(),text:`Le café est prêt pour TLO. ${n}`},'en','fr')
+ const c=new FeedLocalization(file,()=>now);for(let n=0;n<5;n++)c.project({...item(),text:`Le café est prêt pour TUX. ${n}`},'en','fr')
  const provider=vi.fn(async(s:Record<string,string>)=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,v.replace('Le café est prêt pour','The café is ready for').replace('Ouvrir le café','Open the café')])))
  await c.translate(provider);expect(provider).toHaveBeenCalledTimes(1);expect(c.job()).toBeNull()
 })
@@ -56,7 +56,7 @@ it('protects a project name only as a name, not inside ordinary words, and accep
 it('translates requested feed cards before background legacy title history',async()=>{
  const c=new FeedLocalization(file,()=>now)
  for(let n=0;n<12;n++)c.project({...item(),text:`Le titre du projet ${n}`},'en','fr')
- const visible={...item(),text:'Le café est prêt pour TLO.'}
+ const visible={...item(),text:'Le café est prêt pour TUX.'}
  c.project(visible,'en','fr',[],true)
  const provider=vi.fn(async(s:Record<string,string>)=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,v.replace('Le titre du projet','The project title').replace('Le café est prêt pour','The café is ready for').replace('Ouvrir le café','Open the café')])))
  await c.translate(provider)
@@ -101,13 +101,13 @@ it('does not mistake an English summary for an entirely English card when its hi
 })
 
 it('localizes authored composition copy through the same revision cache without changing layout or media references',async()=>{
- const c=new FeedLocalization(file,()=>now),s:ForYouItem={...item(),composition:{layout:'split',panels:[{mediaId:'pic',title:'Le café',text:'Le café est prêt pour TLO.'}]}}
- c.project(s,'en','fr',['TLO'])
- await c.translate(async fields=>Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,v==='Le café'?'The café':v==='Le café est prêt pour TLO.'?'The café is ready for TLO.':v==='Ouvrir le café'?'Open the café':v])))
- const en=c.project(s,'en','fr',['TLO'])
- expect(en.composition).toEqual({layout:'split',panels:[{mediaId:'pic',title:'The café',text:'The café is ready for TLO.'}]})
+ const c=new FeedLocalization(file,()=>now),s:ForYouItem={...item(),composition:{layout:'split',panels:[{mediaId:'pic',title:'Le café',text:'Le café est prêt pour TUX.'}]}}
+ c.project(s,'en','fr',['TUX'])
+ await c.translate(async fields=>Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,v==='Le café'?'The café':v==='Le café est prêt pour TUX.'?'The café is ready for TUX.':v==='Ouvrir le café'?'Open the café':v])))
+ const en=c.project(s,'en','fr',['TUX'])
+ expect(en.composition).toEqual({layout:'split',panels:[{mediaId:'pic',title:'The café',text:'The café is ready for TUX.'}]})
  expect(en.media).toEqual(s.media);expect(en.id).toBe(s.id)
  const changed={...s,composition:{...s.composition!,panels:[{...s.composition!.panels[0],text:'Le café sera prêt demain.'}]}}
- expect(c.project(changed,'en','fr',['TLO']).localization?.status).toBe('pending')
- expect(new FeedLocalization(file).project(s,'en','fr',['TLO']).composition).toEqual(en.composition)
+ expect(c.project(changed,'en','fr',['TUX']).localization?.status).toBe('pending')
+ expect(new FeedLocalization(file).project(s,'en','fr',['TUX']).composition).toEqual(en.composition)
 })

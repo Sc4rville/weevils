@@ -1,23 +1,22 @@
-// The requests page (bottom of the machines band): weevboss's request ledger, read by the user in plain words.
+// Requests: weevboss's request ledger, read by the user in plain words.
 //
-// One page, no tabs, no counters: the goals (a short name and « 8/11 »), each with its open requests, then the requests
-// with no goal, then the messages still being read, then what is closed, folded. A request is one line: a short title
-// and one honest word read from its real session (in progress, waiting on you, stuck, to check, not started), with
-// how long it has been quiet when it is not in progress. A tap opens it in place: the user's exact words, where it
-// was sent (a tap opens that session), what came back; « done » and « drop » close it. The work journal (trace) stays
-// in `weevils trace`: nobody read it here.
+// One column, the same everywhere (a repo's page, the page of all requests): one band per request, like the automation
+// rows. A band is a short title, a small star before it while its session works, and a small bar that says how far it
+// is. What runs now sits on top, then every request ever asked, the newest first, whatever its state: nothing is
+// folded away or dropped from the list. A tap opens a request in place: the whole sentence, the user's exact words,
+// where it was sent (a tap opens that session), what came back; « done » and « drop » close it.
 
-import { motion } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { SessionStatus } from '../../shared/api.ts'
-import type { Ask, Dispatch } from '../../shared/ledger.ts'
+import type { Dispatch } from '../../shared/ledger.ts'
 import type { LedgerView } from '../../shared/ledger.ts'
 import { noticeKey } from '../../shared/notices.ts'
 import { api } from '../api'
 import { getLang, useT } from '../i18n'
 import M from '../i18n/requests'
 import { useApp } from './app-context'
-import { Collapse, spring } from './bits'
+import { Collapse } from './bits'
+import { Icon } from './icons'
 import { Notice } from './notice'
 import { Shell } from './shell'
 import './requests.css'
@@ -34,12 +33,6 @@ const who = (d: Dispatch, none: string) => {
 
 type Chip = 'queued' | 'running' | 'blocked' | 'needs' | 'check' | 'paused' | 'done' | 'dropped'
 
-/** A title that fits one line: its first clause (« Prepare the fix: show the… » → « Prepare the fix »). The whole
- *  sentence stays in the opened request. */
-export const shortTitle = (text: string) => {
-  const cut = text.split(/: | — | – |\. /)[0].trim()
-  return cut.length >= 12 ? cut : text
-}
 /** A request in a list: its short title (the ledger writes one), else a heading made from its sentence: the words
  *  before the first clause break, six at most, never a sentence cut with « … ». */
 export const askLabel = (a: { title?: string; text: string }) => a.title || headingOf(a.text)
@@ -90,95 +83,142 @@ function Drop({ onDrop }: { onDrop: () => void }) {
   )
 }
 
-function AskRow({ a, open, state, onToggle, onAction }: { a: Row; open: boolean; state?: SessionStatus | 'gone'; onToggle: () => void; onAction: (action: 'done' | 'drop' | 'open') => void }) {
+/** What an opened request shows, in place: the whole sentence, the user's exact words, where it was sent (a tap opens
+ *  that session), what came back, and « done » / « drop » (or « reopen »). Shared by the request column. */
+export function AskDetail({ a, onAction }: { a: Row; onAction: (action: 'done' | 'drop' | 'open') => void }) {
   const t = useT(M)
   const { push } = useApp()
   const live = a.status === 'open' || a.status === 'dispatched'
-  const chip = chipOf(a, state)
   const words = [{ quote: a.quote, at: a.at, from: a.from }, ...(a.more ?? [])]
   return (
-    <motion.div layout="position" transition={spring} className={`req-item c-${chip}${open ? ' band tone open' : ''}${a.stale ? ' stale' : ''}`}>
-      <div className="in req-line">
-        <button className="req-main" onClick={onToggle} aria-expanded={open}>
-          <span className="req-text">{open ? a.text : askLabel(a)}</span>
-          <span className={`meta req-chip c-${chip}`}>{t.chip(chip)}</span>
-        </button>
-      </div>
-      <Collapse open={open}>
-        <div className="in req-detail">
-          {/* The title already says the request: a quote only when the words differ (a follow-up, a longer original). */}
-          {words.filter((w) => w.quote.trim() !== a.text.trim()).map((w, i) => (
-            <div key={i} className="req-said req-said-row">
-              <span className="req-quote">“{w.quote}”</span>
-              <span className="meta">{hhmm(w.at)}</span>
-            </div>
-          ))}
-          {a.dispatches.map((d) => (
-            <div key={d.session + d.at} className="req-dispatch">
-              <button type="button" className="link req-who" onClick={() => push({ kind: 'session', id: d.session })}>→ {who(d, t.aSession)}</button>
-              {d.report && <div className="meta">{d.report}</div>}
-            </div>
-          ))}
-          {!a.dispatches.length && a.note && <div className="meta">{a.note}</div>}
-          <div className="req-actions">
-            {live ? (
-              <>
-                <button className="req-btn" onClick={() => onAction('done')}>{t.markDone}</button>
-                <Drop onDrop={() => onAction('drop')} />
-              </>
-            ) : (
-              <button className="req-btn" onClick={() => onAction('open')}>{t.reopen}</button>
-            )}
-          </div>
+    <div className="in req-detail">
+      <div className="req-whole">{a.text}</div>
+      {/* The sentence already says the request: a quote only when the words differ (a follow-up, a longer original). */}
+      {words.filter((w) => w.quote.trim() !== a.text.trim()).map((w, i) => (
+        <div key={i} className="req-said req-said-row">
+          <span className="req-quote">“{w.quote}”</span>
+          <span className="meta">{hhmm(w.at)}</span>
         </div>
-      </Collapse>
-    </motion.div>
-  )
-}
-
-function GoalHead({ g }: { g: LedgerView['goals'][number] }) {
-  return (
-    <div className="band tone req-goal">
-      <div className="in req-goal-line">
-        <span className="req-goal-title">{shortTitle(g.title)}</span>
-        <span className="meta req-goal-n">{g.done}/{g.total}</span>
+      ))}
+      {a.dispatches.map((d) => (
+        <div key={d.session + d.at} className="req-dispatch">
+          <button type="button" className="link req-who" onClick={() => push({ kind: 'session', id: d.session })}>→ {who(d, t.aSession)}</button>
+          {d.report && <div className="meta">{d.report}</div>}
+        </div>
+      ))}
+      {!a.dispatches.length && a.note && <div className="meta">{a.note}</div>}
+      <div className="req-actions">
+        {live ? (
+          <>
+            <button className="req-btn" onClick={() => onAction('done')}>{t.markDone}</button>
+            <Drop onDrop={() => onAction('drop')} />
+          </>
+        ) : (
+          <button className="req-btn" onClick={() => onAction('open')}>{t.reopen}</button>
+        )}
       </div>
     </div>
   )
 }
 
+/** How far a request is, from facts only (never a guessed percent): 0 not started · 1 sent, nothing moving · 2 being
+ *  worked on · 3 it came back (to check, or a question for you) · 4 done. Exported for tests. */
+export function stageOf(chip: Chip): 0 | 1 | 2 | 3 | 4 {
+  if (chip === 'done') return 4
+  if (chip === 'check' || chip === 'needs') return 3
+  if (chip === 'running') return 2
+  return chip === 'queued' || chip === 'dropped' ? 0 : 1
+}
+
+/** The column's order: what runs right now on top, then every request, the newest asked first. Exported for tests. */
+export function columnOf(asks: Row[], state: (a: Row) => SessionStatus | 'gone' | undefined): { a: Row; chip: Chip }[] {
+  return asks
+    .map((a) => ({ a, chip: chipOf(a, state(a)) }))
+    .sort((x, y) => Number(y.chip === 'running') - Number(x.chip === 'running') || y.a.at - x.a.at)
+}
+
+/** Requests sent to one session within this long of its latest one came in the same brief: one job. */
+const SAME_BRIEF_MS = 2 * 60_000
+
+/**
+ * The state of the session a request was last sent to, as the column reads it. A working session works on what it was
+ * sent last (the latest brief, or anything sent since its current turn began): an older request on that same session
+ * is not « running » any more, its turn ended, so it reads as a session at rest (it came back, to check). Exported for
+ * tests.
+ */
+export function stateIn(asks: Row[], sessions: { id: string; status: SessionStatus; workStartedAt?: number | null }[]): (a: Row) => SessionStatus | 'gone' | undefined {
+  const byId = new Map(sessions.map((x) => [x.id, x]))
+  const latest = new Map<string, number>()
+  for (const a of asks) {
+    const d = a.dispatches.at(-1)
+    if (d) latest.set(d.session, Math.max(latest.get(d.session) ?? 0, d.at))
+  }
+  return (a) => {
+    const d = a.dispatches.at(-1)
+    if (!d) return undefined
+    const s = byId.get(d.session)
+    if (!s) return 'gone'
+    if (s.status !== 'working') return s.status
+    const current = d.at >= (latest.get(d.session) ?? 0) - SAME_BRIEF_MS || (!!s.workStartedAt && d.at >= s.workStartedAt - 60_000)
+    return current ? 'working' : 'idle'
+  }
+}
+
+const PAGE = 40
+const STEPS = 8
+
+/**
+ * The request column: one band per request, like the automation rows (one colour, each band one small tone step from
+ * the one above, no line, no gap). A band is a short title, a small star before it while its session works (the
+ * title never moves: the star's place is always kept), and a small bar that says how far it is. Every request is
+ * there whatever its state; a tap opens it in place. `fill`: the column is the whole page, so the tone of its last
+ * band runs down to the bottom of the screen (no darker band under the list).
+ */
+export function RequestColumn({ asks, onChanged, fill }: { asks: Row[]; onChanged?: () => void; fill?: boolean }) {
+  const t = useT(M)
+  const { snap } = useApp()
+  const [open, setOpen] = useState<string | null>(null)
+  const [shown, setShown] = useState(PAGE)
+  const rows = columnOf(asks, stateIn(asks, snap.sessions))
+  const act = (a: Row) => (action: 'done' | 'drop' | 'open') => void api.askAction(a.id, action).then(() => onChanged?.()).catch(() => undefined)
+  return (
+    <div className={fill ? 'rc fill' : 'rc'} style={{ '--last': Math.min(Math.max(rows.length - 1, 0), STEPS) } as CSSProperties}>
+      {rows.slice(0, shown).map(({ a, chip }, i) => (
+        <div key={a.id} className={`rc-row c-${chip}${open === a.id ? ' open' : ''}`} style={{ '--step': Math.min(i, STEPS) } as CSSProperties}>
+          <button type="button" className="in rc-line" onClick={() => setOpen(open === a.id ? null : a.id)} aria-expanded={open === a.id} aria-label={`${askLabel(a)} · ${t.chip(chip)}`}>
+            <span className="rc-star">{chip === 'running' && <span className="spin fluo"><Icon name="star" /></span>}</span>
+            <span className="rc-title">{askLabel(a)}</span>
+            <span className="rc-bar" data-stage={stageOf(chip)} aria-hidden><i style={{ width: `${stageOf(chip) * 25}%` }} /></span>
+          </button>
+          <Collapse open={open === a.id}>
+            <AskDetail a={a} onAction={act(a)} />
+          </Collapse>
+        </div>
+      ))}
+      {rows.length > shown && (
+        <div className="rc-row" style={{ '--step': STEPS } as CSSProperties}>
+          <button type="button" className="in rc-line rc-more" onClick={() => setShown(shown + PAGE)}>
+            <span className="rc-star" />
+            <span className="rc-title">{t.earlier(rows.length - shown)}</span>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Every request, all repos: the same column. The messages still being read sit above it. */
 export function RequestsPage() {
   const t = useT(M)
   const { snap, colors } = useApp()
   const [v, setV] = useState<LedgerView | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [open, setOpen] = useState<string | null>(null)
-  const [showDone, setShowDone] = useState(false)
-  const [showPaused, setShowPaused] = useState(false)
   const last = useRef(0)
   const load = useCallback(() => api.ledger().then((r) => { last.current = Date.now(); setV(r); setErr(null) }).catch((e) => setErr((e as Error).message)), [])
   useEffect(() => void load(), [snap.asksOpen, load])
   useEffect(() => {
     if (Date.now() - last.current > 8000) void load()
   }, [snap.version, load])
-
-  const act = (a: Ask) => (action: 'done' | 'drop' | 'open') => void api.askAction(a.id, action).then(load).catch((e) => setErr((e as Error).message))
-
-  const stateOf = (a: Row): SessionStatus | 'gone' | undefined => {
-    const d = a.dispatches.at(-1)
-    return d ? (sessionState.get(d.session) ?? 'gone') : undefined
-  }
-  const asks = v?.asks ?? []
-  const sessionState = new Map<string, SessionStatus>(snap.sessions.map((x) => [x.id, x.status]))
-  const open_ = asks.filter((a) => a.status === 'open' || a.status === 'dispatched')
-  // Where nothing happens (paused) is folded under one line: the page shows what moves or waits on you.
-  const live = open_.filter((a) => chipOf(a, stateOf(a)) !== 'paused')
-  const paused = open_.filter((a) => chipOf(a, stateOf(a)) === 'paused').sort((x, y) => y.at - x.at)
-  const closed = asks.filter((a) => a.status === 'done' || a.status === 'dropped').sort((x, y) => (y.closedAt ?? y.at) - (x.closedAt ?? x.at))
-  // What waits on you first, then the newest.
-  const order = (l: Row[]) => [...l].sort((x, y) => Number(chipOf(y, stateOf(y)) === 'needs') - Number(chipOf(x, stateOf(x)) === 'needs') || y.at - x.at)
-  const goals = (v?.goals ?? []).filter((g) => g.status === 'active')
-  const row = (a: Row) => <AskRow key={a.id} a={a} state={stateOf(a)} open={open === a.id} onToggle={() => setOpen(open === a.id ? null : a.id)} onAction={act(a)} />
 
   return (
     <Shell slot={colors.__foot ?? 'p3'} kicker="weevboss" title={t.title}>
@@ -189,49 +229,16 @@ export function RequestsPage() {
       )}
       {v && (
         <>
-          {goals.map((g) => {
-            const mine = order(live.filter((a) => a.goal === g.id))
-            if (!mine.length) return null
-            return (
-              <section key={g.id} className="req-group">
-                <GoalHead g={g} />
-                {mine.map(row)}
-              </section>
-            )
-          })}
-          {live.some((a) => !a.goal || !goals.some((g) => g.id === a.goal)) && (
-            <section className="req-group">
-              <div className="in meta strong req-day">{t.noGoal}</div>
-              {order(live.filter((a) => !a.goal || !goals.some((g) => g.id === a.goal))).map(row)}
-            </section>
-          )}
-          {!!v.pending.length && (
-            <section className="req-group">
-              <div className="in meta strong req-day">{t.reading}</div>
-              {v.pending.map((p) => (
-                <div key={p.cid} className="in req-pending">
-                  <span className="st" aria-hidden>…</span>
-                  <span className="req-quote small">“{p.text}”</span>
-                </div>
-              ))}
-            </section>
-          )}
-          {!live.length && !v.pending.length && <div className="in meta req-empty">{t.nothingOpen}</div>}
-          {!!paused.length && (
-            <section className="req-group">
-              <button className="in meta strong req-day req-fold" aria-expanded={showPaused} onClick={() => setShowPaused(!showPaused)}>{t.pausedN(paused.length)}</button>
-              <Collapse open={showPaused}>{paused.map(row)}</Collapse>
-            </section>
-          )}
-          {!!closed.length && (
-            <section className="req-group">
-              <button className="in meta strong req-day req-fold" aria-expanded={showDone} onClick={() => setShowDone(!showDone)}>{t.closedN(closed.length)}</button>
-              <Collapse open={showDone}>{closed.slice(0, 30).map(row)}</Collapse>
-            </section>
-          )}
+          {v.pending.map((p) => (
+            <div key={p.cid} className="in req-pending">
+              <span className="st" aria-hidden>…</span>
+              <span className="req-quote small">“{p.text}”</span>
+            </div>
+          ))}
+          {!v.asks.length && !v.pending.length && <div className="in meta req-empty">{t.nothingOpen}</div>}
+          <RequestColumn asks={v.asks} onChanged={load} fill />
         </>
       )}
-      <div style={{ height: 96 }} />
     </Shell>
   )
 }

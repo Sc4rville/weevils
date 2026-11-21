@@ -62,8 +62,8 @@ describe('autoList: what runs without asking', () => {
   })
 
   it('places a task in the project of its repo, a job in its project or its family', () => {
-    const xs = list([opt({ id: 'a', repo: 'mygame-site' })], [act({ id: 'job:b', group: 'notes', runState: 'running', everyMs: DAY })], [project('mygame', ['mygame', 'mygame-site']), project('notes', ['notes'])])
-    expect(xs.find((x) => x.id === 'a')!.projectId).toBe('mygame')
+    const xs = list([opt({ id: 'a', repo: 'myshop-site' })], [act({ id: 'job:b', group: 'notes', runState: 'running', everyMs: DAY })], [project('myshop', ['myshop', 'myshop-site']), project('notes', ['notes'])])
+    expect(xs.find((x) => x.id === 'a')!.projectId).toBe('myshop')
     expect(xs.find((x) => x.id === 'job:b')!.projectId).toBe('notes')
   })
 

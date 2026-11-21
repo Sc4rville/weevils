@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
-// The first run is a conversation with weevboss: the app asks weevilsd for the welcome (src/ui/setup.tsx useWelcome),
-// weevboss's thread opens on its hello, and there is nothing else: no tour, no card, no button, no step to tick. The
-// person answers in the ordinary composer.
+// The first run is a conversation with weevboss: the app opens straight into its thread (src/App.first-run.test.tsx),
+// asks weevilsd for the welcome (src/ui/setup.tsx useWelcome), and the hello arrives there. There is nothing else: no
+// page before it, no tour, no card, no button, no step to tick. The person answers in the ordinary composer.
 import { act } from 'react'
 import { MotionGlobalConfig } from 'motion/react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -28,18 +28,19 @@ vi.mock('./voice', () => ({ VoiceLogo: () => null }))
 const { AgentBand } = await import('./bands')
 const { Ctx } = await import('./app-context')
 const { FOCUS_BOSS } = await import('./follow')
+const { startsInChat } = await import('./setup')
 const { resetForYou } = await import('./foryou-store')
 
 const HELLO =
   'Hi Sam, I’m weevboss. I can already see your 3 projects (weevils, notes and site). To think, I use your own Claude subscription. Open [Claude’s sign-in page](https://claude.ai/oauth/authorize?code=abc), accept, then paste the code it shows here.'
 
-const snap = (main: Message[], welcomed: boolean): Snapshot =>
+const snap = (main: Message[], welcomed: boolean, ready = false): Snapshot =>
   ({
     version: 1, now: Date.now(), machines: [], projects: [], sessions: [], h24: [], conversations: [],
     conversationCounts: { total: 0, pending: 0, byProject: {} }, classifier: { running: false, queued: 0 },
     main, mainWorking: false, mainHasScreen: false, mainQueued: 0, devil: { enabled: false, working: false }, pinnedRepos: [],
     config: { userName: 'Sam', exposeDomain: '', publicHost: '' },
-    setup: { provider: 'claude', ready: false, claude: false, voice: false, dictation: false, github: false, welcomed },
+    setup: { provider: 'claude', ready, claude: ready, voice: false, dictation: false, github: false, welcomed },
   }) as Snapshot
 
 let root: Root
@@ -110,4 +111,49 @@ it('a device that comes after the welcome opens nothing and asks nothing', async
   await flush()
   expect(server.welcome).toEqual([])
   expect(focused).toEqual([])
+})
+
+it('while the hello is on its way, the thread shows weevboss at work, never its stand-in line', async () => {
+  const standIn: Message = { id: 'hello', role: 'assistant', text: 'Tell me what to do: I read your sessions.', at: 1 }
+  render(snap([standIn], false), true)
+  // From the first frame: nothing to read that would be replaced a second later.
+  expect(document.body.textContent).not.toContain('Tell me what to do: I read your sessions.')
+  expect(document.body.querySelector('.msg.working')).not.toBeNull()
+  await flush()
+  // weevilsd answered; its hello comes with the next snapshot, and the working mark leaves with it.
+  expect(document.body.textContent).not.toContain('Tell me what to do: I read your sessions.')
+  render(snap([{ id: 'setup-hello', role: 'assistant', text: HELLO, at: Date.now() }], true), true)
+  await flush()
+  expect(document.body.textContent).toContain('Hi Sam, I’m weevboss.')
+  expect(document.body.querySelector('.msg.working')).toBeNull()
+})
+
+it('an install that already served keeps its thread as it is (no hello to wait for)', async () => {
+  const standIn: Message = { id: 'hello', role: 'assistant', text: 'Tell me what to do: I read your sessions.', at: 1 }
+  render(snap([standIn], true, true), true)
+  await flush()
+  expect(document.body.textContent).toContain('Tell me what to do: I read your sessions.')
+  expect(document.body.querySelector('.msg.working')).toBeNull()
+})
+
+it('tips, hint bubbles and the ghost finger wait for the end of the first run: a subscription signed in', async () => {
+  render(snap([], false), true)
+  await flush()
+  expect(localStorage.getItem('weevils-onboarded')).toBeNull()
+  render(snap([{ id: 'setup-hello', role: 'assistant', text: HELLO, at: Date.now() }], true, false), true)
+  await flush()
+  expect(localStorage.getItem('weevils-onboarded')).toBeNull()
+  render(snap([{ id: 'setup-hello', role: 'assistant', text: HELLO, at: Date.now() }], true, true), true)
+  await flush()
+  expect(localStorage.getItem('weevils-onboarded')).toBe('1')
+})
+
+it('a new install starts in the conversation until weevboss said hello and a subscription is signed in', () => {
+  expect(startsInChat(snap([], false, false))).toBe(true)
+  expect(startsInChat(snap([], false, true))).toBe(true)
+  expect(startsInChat(snap([], true, false))).toBe(true)
+  expect(startsInChat(snap([], true, true))).toBe(false)
+  // A machine without weevboss, or an older server that does not say whether a subscription is signed in.
+  expect(startsInChat({})).toBe(false)
+  expect(startsInChat({ setup: { claude: true, voice: false, dictation: false, github: false, welcomed: true } })).toBe(false)
 })

@@ -37,7 +37,7 @@ import { useDevil } from './devil'
 import { markSeen, tapHint } from './hints'
 import { flash, keepInPlace, reveal, useFollow } from './follow'
 import { mergePending, type Pending } from './pending'
-import { Chip, KeyChip, SetupChips, SetupComposer, flowVoice, useFlow, useWelcome } from './setup'
+import { Chip, KeyChip, SetupChips, SetupComposer, flowVoice, useFlow, useWelcome, withoutStandIn } from './setup'
 import { ForYouPeek, TopWords, useTop, type Top } from './foryou-top'
 import { SleepButton } from './night'
 
@@ -204,7 +204,8 @@ export function AgentBand() {
   // Devil mode: its header button is gone (Scarville, 2026-11-21); a devil already on still shows (orange band).
   const devilOn = useDevil(!!snap.devil?.enabled)
   const flow = useFlow()
-  useWelcome()
+  // First launch: weevboss's hello is on its way; the thread shows it at work, never its stand-in line.
+  const greeting = useWelcome()
   const body = useRef<HTMLDivElement>(null)
   const form = useRef<HTMLFormElement>(null)
   const [draft, setDraft] = useState({ text: '', n: 0, reset: false })
@@ -212,7 +213,7 @@ export function AgentBand() {
   // Le message envoyé s'affiche tout de suite (aperçu et fil), avant que Claude Code l'écrive dans son transcript (qui
   // peut attendre la fin de la réponse en cours) : une bulle « envoi… », remplacée par la vraie quand elle arrive.
   const [pending, setPending] = useState<Pending[]>([])
-  const main = useMemo(() => mergePending(snap.main, pending), [snap.main, pending])
+  const main = useMemo(() => mergePending(withoutStandIn(snap.main, greeting), pending), [snap.main, pending, greeting])
   useEffect(() => {
     // Arrivées (ou perdues depuis longtemps) : on les oublie. Une bulle reçue par weevboss reste jusqu'à son transcript
     // (Claude Code n'y écrit un message glissé en plein tour qu'en le lisant) : elle ne disparaît pas au bout de 15 min.
@@ -229,7 +230,7 @@ export function AgentBand() {
   const th = useThreadAsk(main, { title: 'weevboss', tool: 'weevboss' })
   const onSel = open && th.selected
   // Un mot sélectionné et sa réponse, sous un message : le suivi ne les pousse pas hors de l'écran.
-  const chat = useFollow(body, open, 80, `${main.length}:${tail?.id}:${tail?.text.length}:${snap.mainWorking}:${!!snap.devil?.working}`, open && th.hold)
+  const chat = useFollow(body, open, 80, `${main.length}:${tail?.id}:${tail?.text.length}:${snap.mainWorking || greeting}:${!!snap.devil?.working}`, open && th.hold)
   // Chaque envoi (clavier, logo, pièce jointe) : l'aperçu et le fil redescendent pour montrer le message et sa réponse.
   const [sent, setSent] = useState(0)
   const mainReply = snap.main.filter((m) => m.role === 'assistant').at(-1)
@@ -322,11 +323,11 @@ export function AgentBand() {
           aria-live="polite"
         >
           <div ref={th.ref} className="ask-thread">
-            <Messages messages={main} author="weevboss" working={snap.mainWorking || !!snap.devil?.working} after={(id) => <>{qa(th.after(id), `${th.a.asking}:${!!th.a.shown}:${th.a.waiting}`)}{chipsOf(id)}</>} chip={chipIn} />
+            <Messages messages={main} author="weevboss" working={snap.mainWorking || greeting || !!snap.devil?.working} after={(id) => <>{qa(th.after(id), `${th.a.asking}:${!!th.a.shown}:${th.a.waiting}`)}{chipsOf(id)}</>} chip={chipIn} />
           </div>
           <ThreadPlans />
           <OutboxStatus scope="/api/main" />
-          {snap.mainWorking && <Working author="weevboss" />}
+          {(snap.mainWorking || greeting) && <Working author="weevboss" />}
           {snap.devil?.working && <Working author="devil" />}
         </motion.div>
         {/* Du nouveau en bas pendant qu'on relit plus haut : un « ↓ » flottant y redescend en douceur. */}

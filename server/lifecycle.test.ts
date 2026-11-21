@@ -578,6 +578,18 @@ describe('session coupée en plein travail', () => {
     expect(one()?.status).toBe('interrupted')
   })
 
+  it('C3b a tmux listing that fails (timeout under load) is not « every pane gone »: panes kept, nothing cut', async () => {
+    add(transcript({ lastActivityAt: NOW - MIN }))
+    const p = pane()
+    mux.listWv.mockResolvedValue([p])
+    w.hooks.set('s1', { event: 'UserPromptSubmit', at: NOW, pid: ALIVE })
+    await tick()
+    mux.listWv.mockRejectedValue(new Error('tmux list-sessions failed: Command failed (timeout)'))
+    await tick()
+    expect(w.panes.map((x) => x.name)).toEqual([PANE])
+    expect(one()?.status).toBe('working')
+  })
+
   it('C4 arrêtée sans fin voulue avec du travail non commité : coupée ; dossier propre : terminée', async () => {
     for (const dirty of [true, false]) {
       w = new Weevils()

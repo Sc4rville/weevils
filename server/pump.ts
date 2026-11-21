@@ -71,7 +71,22 @@ export async function pumpReady(name: string, deadlineMs = 20_000): Promise<bool
   return false
 }
 
-/** Leftover files of a pump whose pane is gone. */
-export function pumpForget(name: string) {
+/** True while this pid is a running claude-pump (on Linux the command line is checked too: a pid can be reused). */
+export function pumpAlive(pid: number | undefined): boolean {
+  if (!pid || pid <= 0) return false
+  try { process.kill(pid, 0) } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EPERM') return false }
+  try { return fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').includes('claude-pump') } catch { return true /* no /proc (a Mac): kill(0) said alive */ }
+}
+
+/** Leftover files of a pump whose pane is gone. Never those of a pump still running: removing its socket would leave a
+ * live session unreachable (21/11: a tmux listing that failed under load looked like « every pane gone »). Returns
+ * whether the files were removed. */
+export function pumpForget(name: string): boolean {
+  const st = pumpState(name)
+  if (st && !st.exited && pumpAlive(st.pid)) {
+    console.error(`[structured] ${name}: pane not listed but its pump (pid ${st.pid}) still runs, files kept`)
+    return false
+  }
   for (const ext of ['json', 'sock', 'first']) try { fs.unlinkSync(path.join(PUMP_DIR, `${name}.${ext}`)) } catch { /* already gone */ }
+  return true
 }

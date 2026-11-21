@@ -778,7 +778,12 @@ export class Weevils {
 
   /** tmux est le registre : on relit les sessions wv-* et leur écran. */
   private async watchPanes() {
-    const found = await listWv()
+    let found: Awaited<ReturnType<typeof listWv>>
+    try { found = await listWv() } catch (e) {
+      // An unreadable listing is not « every session gone »: keep the panes as they were and read again next tick.
+      console.error(`[sessions] ${(e as Error).message}; panes kept as they were`)
+      return
+    }
     const next: ManagedPane[] = []
     for (const p of found) {
       const prev = this.panes.find((x) => x.name === p.name)
@@ -2021,7 +2026,7 @@ export class Weevils {
       // its state as messages. If the TUI cannot reach the server it exits at once: then the ordinary tmux launch.
       const name = await this.spawn('codex', cwd, title, ['codex', '--remote', `unix://${socket}`, ...projectCodexFlags(), ...(text ? [text] : [])]).catch(() => undefined)
       await sleep(6000)
-      if (name && (await listWv()).some((p) => p.name === name)) return { id: name }
+      if (name && (await listWv().catch(() => [])).some((p) => p.name === name)) return { id: name }
       console.error(`[structured] codex ${name ?? ''} could not use the shared app-server, falling back to the tmux path`)
       if (name) this.panes = this.panes.filter((p) => p.name !== name)
     }

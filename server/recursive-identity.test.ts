@@ -17,7 +17,7 @@ it('uses canonical Git identity across renamed installations/worktrees, not proj
  const identity=new InstallationIdentity(app,'machine-a')
  expect(identity.classify(tree,'actual-project','renamed-app')).toMatchObject({kind:'self-improvement',evidence:'repository-identity',target:{machineId:'machine-a'}})
  expect(identity.classify(other,'weevils','weevils')).toBeUndefined()
- expect(identity.classify(other,'tlo','tlo')).toBeUndefined()
+ expect(identity.classify(other,'tux','tux')).toBeUndefined()
  expect(identity.classify(app,'actual-project','renamed-app','automation-target')?.evidence).toBe('automation-target')
  expect(new InstallationIdentity(app,'machine-b').installationId).not.toBe(identity.installationId)
  expect(new InstallationIdentity(tree,'machine-a').installationId).toBe(identity.installationId)

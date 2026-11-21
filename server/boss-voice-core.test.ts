@@ -61,7 +61,7 @@ afterEach(() => {
 
 it('a [test] message never reaches weevboss, nor any agent', async () => {
   await expect(w.sendMain('[test] What time of day is best for a code review?')).rejects.toMatchObject({ status: 409, message: CoreM.en.testNotInBoss })
-  await expect(w.sendMain('[from:gepetto] TEST ping the boss')).rejects.toMatchObject({ status: 409 })
+  await expect(w.sendMain('[from:marlow] TEST ping the boss')).rejects.toMatchObject({ status: 409 })
   expect(mux.spawnWv).not.toHaveBeenCalled()
   expect(mux.sendText).not.toHaveBeenCalled()
   expect(readOrigins(BOSS_DIR)).toEqual([])

@@ -1502,7 +1502,7 @@ button.copy.done {
   background: oklch(from var(--who-c, var(--agent)) calc(l + var(--dl) * 1.8) calc(c * 1.1) h);
 }
 
-/* Agent externe (géométrie, instinct…) : même bulle, sa couleur (config du serveur). En sombre, la même teinte assombrie comme la palette. */
+/* Agent externe (un auteur déclaré dans la config du serveur) : même bulle, sa couleur (config du serveur). En sombre, la même teinte assombrie comme la palette. */
 .msg.orch.ext {
   /* Author hue, on a light band that can carry the theme's dark text. */
   --who-c: oklch(from var(--who) 0.82 calc(c * 0.55) h);

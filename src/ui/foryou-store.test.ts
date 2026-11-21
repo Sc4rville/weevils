@@ -374,7 +374,7 @@ describe('for you: colours and speakers', () => {
   it('names the speaker', () => {
     expect(itemWho(item({ id: '1' }), authors)).toBe('weevboss')
     expect(itemWho(item({ id: '2', who: 'juno' }), authors)).toBe('Juno')
-    expect(itemWho(item({ id: '3', who: 'session', title: 'fix login' }), authors, 'mygame')).toBe('mygame')
+    expect(itemWho(item({ id: '3', who: 'session', title: 'fix login' }), authors, 'myshop')).toBe('myshop')
     expect(itemWho(item({ id: '4', who: 'session', title: 'fix login' }), authors)).toBe('fix login')
   })
 

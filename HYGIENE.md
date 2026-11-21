@@ -9,7 +9,7 @@ file too: a rule changed here applies from the next run.
 
 | Id | Rule | Why | Checked by |
 |---|---|---|---|
-| H-1 | No secret and no personal trace of a machine (owner e-mail, name, home path, hostname, private domain) in the shared source or in new history. Fixtures use `/home/user` and `user@example.com`. | This repository is the open-source distribution. | Section 2b of the method, over `scripts/release.py export`. |
+| H-1 | No secret and no personal trace of a machine (owner e-mail, name, home path, hostname, private domain) in the shared source or in new history. Fixtures use `/home/user` and `user@example.com`. | This repository is the open-source distribution. | `scripts/check-public.mjs` (`npm run lint`, the pre-push hook) and section 2b of the method, over `scripts/release.py export`. |
 | H-2 | Never edit a file another session or branch is working on (dirty in a worktree, on a branch active in the last 72 h, or in a working session's folder). | Hygiene must never collide with live work. | The hot set, section 1. |
 | H-3 | A cleanup reaches `main` only when `npm run check && npm run build` is green on top of the current `main` and the tests leave no file behind. | A green branch on an old base proves nothing. | Section 4. |
 | H-4 | Deleting real code (more than 40 lines, or a whole source file), branches or history is always a proposal, never a silent fix. | Recoverable mistakes only. | Triage, section 3. |

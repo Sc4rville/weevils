@@ -20,7 +20,7 @@ describe('formatOf', () => {
     ['a result with media is visual', { kind: 'session', tone: 'result', media }, 'visual'],
     ['a neutral session hides', { kind: 'session', tone: 'neutral' }, null],
     ['media is visual', { kind: 'media', media }, 'visual'],
-    ['a result group is visual', { kind: 'media', resultGroup: { key: 'tlo-alcove', final: media[0], finalAt: 1, history: [], otherMedia: [], newerUpdate: false } }, 'visual'],
+    ['a result group is visual', { kind: 'media', resultGroup: { key: 'shop-alcove', final: media[0], finalAt: 1, history: [], otherMedia: [], newerUpdate: false } }, 'visual'],
     ['weevboss asking with buttons is action', { kind: 'boss', actions: [{ id: 'a', label: 'do' }] }, 'action'],
     ['a digest never asks for a tap', { kind: 'boss', id: 'd:1', actions: [{ id: 'a', label: 'do' }] }, 'note'],
     ['a boss word is a note', { kind: 'boss' }, 'note'],

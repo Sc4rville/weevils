@@ -72,7 +72,7 @@ const detail = (over: Partial<InfraDetail> = {}): InfraDetail => ({
   episodes: [],
   days: [],
   servers: [
-    { port: 4173, name: 'vite', dir: '/home/alex/projects/mygame', url: 'https://mygame.example.tech' },
+    { port: 4173, name: 'vite', dir: '/home/alex/projects/myshop', url: 'https://myshop.example.tech' },
     { port: 8080, name: 'caddy' },
   ],
   consumers: [{ kind: 'process', label: 'node', count: 1, mem: 1024 ** 3, cpu: 12, parts: [] }] as unknown as InfraDetail['consumers'],
@@ -87,7 +87,7 @@ beforeEach(() => {
   state.push.mockClear()
   state.setup = []
   state.said = []
-  state.snap = { machines: [{ id: 'vps', name: 'vps', online: true }], sessions: [], projects: [{ id: 'p', name: 'mygame', repos: ['mygame'] }] } as unknown as Snapshot
+  state.snap = { machines: [{ id: 'vps', name: 'vps', online: true }], sessions: [], projects: [{ id: 'p', name: 'myshop', repos: ['myshop'] }] } as unknown as Snapshot
   state.infra = detail()
   host = document.createElement('div')
   document.body.append(host)
@@ -118,7 +118,7 @@ it('machines page: one line per machine, name and online / offline, nothing tech
   expect(text).toContain('vpsonline')
   expect(text).toContain('laptopoffline')
   // The default view: names and states only.
-  for (const gone of ['CPU', 'GB', 'Ubuntu', 'srv1', '203.0.113.7', 'node', 'mygame', 'caddy', '4173', 'x86_64', 'kvm', 'up for']) expect(text).not.toContain(gone)
+  for (const gone of ['CPU', 'GB', 'Ubuntu', 'srv1', '203.0.113.7', 'node', 'myshop', 'caddy', '4173', 'x86_64', 'kvm', 'up for']) expect(text).not.toContain(gone)
   expect(host.querySelector('.strong')?.textContent).toBe('vps')
   expect(host.innerHTML).not.toContain(terminalIcon)
 })
@@ -132,7 +132,7 @@ it('machines page: a tap opens memory, disk, up for and the host, never the CPU,
   expect(text).toContain('memory8.0 GB / 16.0 GB')
   expect(text).toContain('disk40.0 GB / 100 GB')
   expect(text).toContain('hostHostinger')
-  for (const gone of ['CPU', '42', 'Ubuntu', 'node', 'mygame', 'caddy', 'srv1']) expect(text).not.toContain(gone)
+  for (const gone of ['CPU', '42', 'Ubuntu', 'node', 'myshop', 'caddy', 'srv1']) expect(text).not.toContain(gone)
   // weevboss runs on it: this weevils cannot remove itself.
   expect(row('remove')).toBeUndefined()
 })
@@ -165,13 +165,13 @@ it('machines page: a failed read says so in plain words, never the raw error', a
 })
 
 it('files: folder name as kicker, no « machine:/path », « home folder » instead of ~, plain error', async () => {
-  state.fs = { path: '/home/alex/projects', home: '/home/alex', entries: [{ name: 'mygame', dir: true, size: 0 }] }
+  state.fs = { path: '/home/alex/projects', home: '/home/alex', entries: [{ name: 'myshop', dir: true, size: 0 }] }
   await render(<FsPage machine="vps" path="/home/alex/projects" />)
   expect(host.querySelector('[data-kicker]')!.textContent).toBe('alex')
   expect(host.querySelector('[data-meta]')!.textContent).toBe('1 item')
   expect(host.textContent).not.toContain('vps:')
-  await act(async () => row('mygame/')!.click())
-  expect(state.push).toHaveBeenCalledWith({ kind: 'fs', machine: 'vps', path: '/home/alex/projects/mygame' })
+  await act(async () => row('myshop/')!.click())
+  expect(state.push).toHaveBeenCalledWith({ kind: 'fs', machine: 'vps', path: '/home/alex/projects/myshop' })
 
   state.fs = { path: '/', home: '/home/alex', entries: [], error: 'EACCES: permission denied' }
   await render(<FsPage machine="vps" path="/" />)

@@ -1,4 +1,4 @@
-import { ALCOVE_SOURCE, alcoveFinal, groupAlcove } from './foryou-results.ts'
+import { groupResult, loadReviewed, resultFinal, say, type Reviewed } from './foryou-results.ts'
 import { isScratchDir } from './scratch.ts'
 import { FeedLocalization } from './foryou-localization.ts'
 import { OutboxError } from './outbox.ts'
@@ -7,7 +7,6 @@ import { reviewedEditorial } from './foryou-editorial.ts'
 import { softwareResult, type SoftwareCatalog } from './foryou-software.ts'
 import { projectFeedWorkstream } from './foryou-workstream.ts'
 import { WorkIntents, intentDispatch, substantive, briefKey, isWorkRequest, type IntentResult, type WorkIntent } from './foryou-intents.ts'
-import reviewedIntents from './foryou-intents-reviewed.json' with { type: 'json' }
 import { canonicalAlertId, feedNoticeKey, isRequestNotice, quotaReset, sessionNoticeKey } from '../shared/notices.ts'
 // « For you »: the stream next to weevboss (docs/foryou.md, contract in shared/foryou.ts). Main machine only.
 //
@@ -804,7 +803,7 @@ export class ForYou {
 
   /** Observe explicit request sources, not titles or a session's idle/done flag. */
   private syncIntents(snap = this.w.snapshot()) {
-    for (const link of reviewedIntents) {
+    for (const link of this.reviewed().intents) {
       const item = this.get(link.cardId)
       if (!item?.actions?.some(a => a.id === link.actionId && a.brief === link.brief)) continue
       if (!snap.sessions.some(s => s.id === link.sessionId)) continue
@@ -843,7 +842,7 @@ export class ForYou {
   }
 
   private actionIntent(item: Stored, action: NonNullable<Stored['actions']>[number]) {
-    const reviewed = reviewedIntents.find(link => link.cardId === item.id && link.actionId === action.id && link.brief === action.brief)
+    const reviewed = this.reviewed().intents.find(link => link.cardId === item.id && link.actionId === action.id && link.brief === action.brief)
     return this.intents.get(reviewed?.intentId) ?? this.intents.find(action.brief, item.projectId, action.sourceIntentId) ?? this.intents.get(`card:${item.id}:${action.id}`)
   }
 
@@ -932,6 +931,12 @@ export class ForYou {
     this.changed()
     return this.view(item, snap)!
   }
+
+  /** What this person reviewed by hand for their own feed (<foryou.json>.reviewed.json); nothing by default. */
+  private reviewed(): Reviewed { return loadReviewed(`${this.file}.reviewed.json`) }
+
+  /** Media the formats page shows first, when this person pinned some. */
+  formatExamples(): Reviewed['examples'] { return this.reviewed().examples }
 
   visualExample(l?: unknown): ForYouItem | null {
     const item = this.s.items.find(i => i.visualProposal)
@@ -1260,10 +1265,16 @@ export class ForYou {
     // Said as a person would read it, never as internal shorthand (humanLabel).
     if (i.actions?.length) out.actions = i.actions.map(({ id, label, brief }): ForYouAction => ({ id, label: humanLabel(label, brief) }))
     if (i.mediaIds?.length && this.shelf) {
-      const media = i.mediaIds.map((id) => this.shelf!.get(id)).filter((e) => !!e).map((e): ForYouMedia => this.shelf!.view(e!))
+      const captions = this.reviewed().captions
+      const media = i.mediaIds.map((id) => this.shelf!.get(id)).filter((e) => !!e).map((e): ForYouMedia => {
+        const m = this.shelf!.view(e!)
+        const c = captions[m.id]
+        const title = say(c?.title, lang()), description = say(c?.description, lang())
+        return title && description ? { ...m, caption: { title, description } } : m
+      })
       if (media.length) out.media = media
     }
-    if (i.kind === 'media' && !out.media && i.id !== ALCOVE_SOURCE && !i.composition) return null
+    if (i.kind === 'media' && !out.media && !this.reviewed().results.some(r => r.anchor === i.id) && !i.composition) return null
     if (i.kind === 'mail') {
       // Written in the mail's own language, like the first line it replaces: shown whatever the app's language.
       if (i.sum?.text) out.text = i.sum.text
@@ -1310,7 +1321,7 @@ export class ForYou {
       out.text = text
       if (out.actions) out.actions = out.actions.filter(a => !internalFeedUpdate(a.label))
     }
-    const result = humanFeedItem(reviewedEditorial(out, i.text))
+    const result = humanFeedItem(reviewedEditorial(out, i.text, this.reviewed().editorial))
     // A button already tapped: the card says what became of it (sent, then weevboss's answer) instead of offering it
     // again; the other buttons stay under it. Work that existed before the card (unrelated tasks it points to) and a
     // second work tapped on the same card stay one tap away, as « View existing work ».
@@ -1583,8 +1594,13 @@ export class ForYou {
       const languages = new Map(sources.map(x => [x.item.id, x.lang]))
       const items = keepLive(arrange(sources.map(x => projectFeedWorkstream(humanFeedItem(x.item), snap)), now), MAX_FEED)
         .map(item => this.localization.project(item, cur, languages.get(item.id), snap.projects.map(p => p.name), true))
-      const anchor = this.s.items.find(i => i.id === ALCOVE_SOURCE)
-      return { rev: this.s.rev, items: groupAlcove(items, items.some(i => i.id === ALCOVE_SOURCE) ? alcoveFinal(this.shelf, anchor?.cwd) : undefined), pulse: this.pulse(snap, now) }
+      // What this person reviewed by hand (the instance's own data): a verified result leads its card.
+      let grouped = items
+      for (const spec of this.reviewed().results) {
+        if (!grouped.some(i => i.id === spec.anchor)) continue
+        grouped = groupResult(grouped, spec, resultFinal(spec, this.shelf, this.s.items.find(i => i.id === spec.anchor)?.cwd), cur)
+      }
+      return { rev: this.s.rev, items: grouped, pulse: this.pulse(snap, now) }
     })
   }
 
@@ -1910,7 +1926,7 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
       await run(res, true, () => ({ item: fy.post(b?.text, b?.actions, trustedFrom(req, b), b?.evidence, b?.title) }))
     }],
-    ['GET', /^\/api\/foryou\/formats$/, (_req, res, url) => json(res, 200, { proposal: fy.visualExample(langOf(url)) })],
+    ['GET', /^\/api\/foryou\/formats$/, (_req, res, url) => json(res, 200, { proposal: fy.visualExample(langOf(url)), examples: fy.formatExamples() })],
     ['POST', /^\/api\/foryou\/composition$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })

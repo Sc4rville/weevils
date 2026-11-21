@@ -16,13 +16,13 @@ const H = 3600_000
 
 const session = (over: Partial<Session> = {}): Session => ({
   id: 's1',
-  projectId: 'mygame',
-  repo: 'mygame',
+  projectId: 'myshop',
+  repo: 'myshop',
   machineId: 'vps',
   tool: 'claude',
   title: 'fix the jump',
   status: 'working',
-  cwd: '/home/u/projects/mygame',
+  cwd: '/home/u/projects/myshop',
   openedAt: NOW - 2 * H,
   lastActivityAt: NOW - 60_000,
   workStartedAt: null,

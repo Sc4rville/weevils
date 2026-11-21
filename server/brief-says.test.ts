@@ -10,7 +10,7 @@ import { setLang } from './i18n.ts'
 let dir: string
 beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'says-')); setLang('en', true) })
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }))
-const long = 'Asks from Yann (medium effort, usual weevils conventions). ' + 'Merge the branch auto/creative-weevils-themes-91c5 after tests, restart the server, confirm in the selector. '.repeat(2)
+const long = 'Asks from Alex (medium effort, usual weevils conventions). ' + 'Merge the branch auto/creative-weevils-themes-91c5 after tests, restart the server, confirm in the selector. '.repeat(2)
 const boss = (text: string, id = 'm1'): Message => ({ id, role: 'orchestrator', author: 'weevboss', text, at: 1 })
 const flush = () => new Promise((r) => setTimeout(r, 0))
 
@@ -68,7 +68,7 @@ it('cleans a line: one line, no quotes, phone length', () => {
 
 it('a session row keeps its topic title over the brief-like thread title', async () => {
   const { rowTitle } = await import('./threads-app.ts')
-  expect(rowTitle('weevils themes', 'Asks from Yann (medium effort, usual…', 'weevils themes')).toBe('weevils themes')
-  expect(rowTitle('Asks from Yann (medium…', 'Asks from Yann (medium effort, usual…', undefined)).toBe('Asks from Yann (medium effort, usual…')
+  expect(rowTitle('weevils themes', 'Asks from Alex (medium effort, usual…', 'weevils themes')).toBe('weevils themes')
+  expect(rowTitle('Asks from Alex (medium…', 'Asks from Alex (medium effort, usual…', undefined)).toBe('Asks from Alex (medium effort, usual…')
   expect(rowTitle('New session', undefined, undefined)).toBe('New session')
 })

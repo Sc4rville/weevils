@@ -4,7 +4,7 @@
 link, opens it on a phone or a computer, and ends up on their own weevils without typing anything (or, for a computer,
 by pasting one command in its terminal). Open to anyone since 2026-11-14, with one link for everyone. Pasted on
 Twitter/X, iMessage or WhatsApp, it shows a share card (Open Graph and Twitter tags in `index.html`; the image,
-`og.png`, 1200×630, comes from Sc4rville/weevils-content, `productions/og/weevils-og-ask.png`, and its URL carries
+`og.png`, 1200×630, comes from the content repository (`productions/og/weevils-og-ask.png`), and its URL carries
 `?v=<first 8 characters of its sha256>` so that X fetches the new card when it changes).
 
 1. A short page (English by default, a small FR switch) says what weevils is, then right away: **plug in your
@@ -196,7 +196,7 @@ Counters only, one file a day in `<GET_DATA>/stats` (mode 600), deleted after 90
 - **The install register**, `<GET_DATA>/installs.csv`, appended and never rewritten: time, how (Hetzner,
   own VPS, computer; Hostinger in older lines), rough country, the version installed, a random id tied to nothing, and whether the line was rebuilt
   from Caddy's log. Kept for good, with the records (best day for visits and for installs, `records.json`), and backed
-  up every day in the private repository Sc4rville/weevils-stats (`get/backup-stats.sh`, the `weevils-get-backup` timer).
+  up every day in a private repository of whoever runs the service (`GET_STATS_REPO`, `get/backup-stats.sh`, the `weevils-get-backup` timer).
 - **Where to see it**: the private page `/stats/<GET_STATS_KEY>` (records first, the funnel, sources, devices,
   countries, previews, the register and its CSV, the days); `node get/stats.mjs [days] | --csv | --json`; and in the
   weevils of this machine, « for you » (with `GET_NOTIFY`): a word at each successful install (« Someone just installed
@@ -215,7 +215,7 @@ GET_PORT=4182 GET_BASE=https://get.scarville.tech node get/server.mjs
 | env | meaning |
 |---|---|
 | `GET_BASE` | public URL of this service (used in the install command and cloud-init) |
-| `GET_PREVIEW_KEY` | gate everything behind `/?k=<key>` (unset on scarville.tech since the launch) |
+| `GET_PREVIEW_KEY` | gate everything behind `/?k=<key>` (unset on the official page since the launch) |
 | `GET_REPO` | the repository installs clone (default GitHub) |
 | `GET_BUNDLE` | the signed code snapshot installs and their updates download: a bundle built by `get/make-bundle.sh [<rev>] [<out>] [<checkout>]` (one squashed commit, no history), kept on `origin/main` by `get/refresh-bundle.sh` (the `weevils-get-bundle` timer, every 2 min). It is what every install gets, so it must hold the installer that supports macOS; the file is read at each download, replacing it needs no restart |
 | `GET_INSTALLER` | the `install.sh` the allowed step titles are read from, at start (default: this clone's). Same titles as the bundle's |
@@ -223,12 +223,13 @@ GET_PORT=4182 GET_BASE=https://get.scarville.tech node get/server.mjs
 | `GET_ALLOW_TARGETS`, `GET_TARGET_URLS` | tests only: a private machine address accepted, and the URL its weevils gets (`ip=url`) |
 | `GET_DATA` | where the stats, the install register and the records are kept (default `~/.local/share/weevils-get`) |
 | `GET_STATS_KEY` | the private stats page, `/stats/<key>` (off without it) |
+| `GET_STATS_REPO` | a private repository of yours the install register is backed up to every day (`get/backup-stats.sh`; no backup without it) |
 | `GET_NOTIFY` | the weevils on this machine (`http://127.0.0.1:4179`): a word in its « for you » at each install and each day |
 | `GET_PUBLIC_COUNT` | `1`: « N people already run weevils » on the page (off by default) |
 | `GET_CODE_URL` | the public repository the page links to once GitHub says it is public (default `github.com/Sc4rville/weevils`) |
 | `GET_HANDOFF` | the RAM file a stopping service hands its setups in progress to the next one through (default `/dev/shm/weevils-get-<uid>.jobs`; empty: none) |
 
-On scarville.tech: systemd user unit `weevils-get`, env in `~/.config/weevils-get/env`, Caddy site
+On the official host: systemd user unit `weevils-get`, env in `~/.config/weevils-get/env`, Caddy site
 `/etc/caddy/sites/get.caddy` for both `get.scarville.tech` and `tryweevils.scarville.tech` (explicit `127.0.0.1`, so
 the dev-server reaper leaves it alone; `lb_try_duration` holds requests while the service restarts).
 

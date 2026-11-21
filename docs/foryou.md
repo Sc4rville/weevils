@@ -127,6 +127,36 @@ Class `ForYou(w, deps)`, built like `Optimizers`: JSON file `DATA_DIR/foryou.jso
 | `POST /api/foryou/media` (local only) | `weevils show` |
 | `GET /api/foryou/media/:id` | the bytes, with `Range`, video MIME types, auth cookie |
 
+### 3.2b What one person reviewed (`server/foryou-results.ts`)
+
+Hand-reviewed presentation of one person's own feed is their data, never the product's: it names their projects,
+sessions and files. It lives next to the feed, in `<data>/foryou.json.reviewed.json` (absent by default: the feed is
+shown as recorded), read again whenever the file changes:
+
+```json
+{
+  "results":   [{ "key": "shop-alcove", "anchor": "<feed item id>", "projectId": "shop-app", "sessionId": "<id>",
+                  "title": { "en": "The alcove", "fr": "L’alcôve" }, "intro": "One line about the piece.",
+                  "final": { "file": "renders/alcove_l.png", "sha256": "<hex>", "at": 1794337730636 },
+                  "media": { "ids": ["<media id>"], "names": "^alcove_[pl]\\.png$" },
+                  "otherTitles": { "studio_p.png": "The studio" } }],
+  "captions":  { "<media id>": { "title": "Outside the café", "description": "What the picture shows." } },
+  "examples":  { "result": "<media id>", "clip": "<media id>", "poster": "<media id>" },
+  "editorial": [{ "id": "<item id>", "kind": "improve", "source": "<the exact recorded text>", "text": "<the reviewed wording>" }],
+  "intents":   [{ "cardId": "<item id>", "actionId": "a1", "brief": "<the action's exact brief>", "sessionId": "<id>",
+                  "messageId": "<id>", "intentId": "request:<session>:<message>:<slug>" }]
+}
+```
+
+- `results`: a verified result leads its card (`resultGroup`): the finished file (relative to the anchor's working
+  folder) only while its bytes match the hash, the media of the same piece folded under it as history, the reviewer's
+  title and intro in the app's language (a plain string is the same in every language).
+- `captions`: what a picture shows, carried on the media (`caption`) and used by the in-card rails.
+- `examples`: media the formats page (`/#formats`) shows first; without them it takes the latest picture and clip of
+  the person's own feed.
+- `editorial`: a wording corrected against its exact source; a later text is never overwritten.
+- `intents`: a proposal tied to the request that already covers it, so it is not asked twice.
+
 ### 3.3 Media (`server/foryou-media.ts`)
 
 `weevils show <path> ["caption"]` registers a file: it must exist under the projects roots, the inbox or weevils'
@@ -298,8 +328,8 @@ Not checked yet, to do on a device or with real traffic:
 Known rough edges: an image has no height until it loads (the server sends no dimensions), so what is below
 shifts once; the « sent » band is white in the dark theme; the line wraps on two lines with four counts; a card
 leaving the carousel shows no word; no per-author voice override; a session's `weevils post` is signed weevboss;
-the stream is main-machine only (media of a secondary machine cannot be shown); the demo world of
-`weevils-content` is not seeded with a stream yet.
+the stream is main-machine only (media of a secondary machine cannot be shown); the demo world of the
+content repository is not seeded with a stream yet.
 
 ### Handover (November 10, 2026, Claude at its weekly limit — Codex takes over)
 

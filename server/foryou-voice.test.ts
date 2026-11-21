@@ -23,7 +23,7 @@ describe('the voices of the stream', () => {
     provider = null
     const v = make()
     expect(v.of('weevboss', 'en')).toBeUndefined()
-    expect(v.of('gepetto', 'en')).toBeUndefined()
+    expect(v.of('marlow', 'en')).toBeUndefined()
   })
 
   it('weevboss keeps the voice of the app: an id the speak route reads as « none given »', () => {
@@ -37,18 +37,18 @@ describe('the voices of the stream', () => {
 
   it('the pick is stable, moves on from a voice already taken, and shares one only when none is left', () => {
     const list = ['a', 'b', 'c']
-    const first = pickVoice('gepetto', list)!
-    expect(pickVoice('gepetto', list)).toBe(first)
+    const first = pickVoice('marlow', list)!
+    expect(pickVoice('marlow', list)).toBe(first)
     expect(list).toContain(first)
-    const second = pickVoice('gepetto', list, [first])!
+    const second = pickVoice('marlow', list, [first])!
     expect(second).not.toBe(first)
-    expect(pickVoice('gepetto', list, list)).toBe(first)
-    expect(pickVoice('gepetto', [])).toBeUndefined()
+    expect(pickVoice('marlow', list, list)).toBe(first)
+    expect(pickVoice('marlow', [])).toBeUndefined()
   })
 
   it('the free voice: each author its own from the fixed list, in the language read, never the app’s, the same after a restart', () => {
     const v = make()
-    const authors = ['gepetto', 'instinct', 'juno', 'sentinel', 'atlas']
+    const authors = ['marlow', 'scout', 'juno', 'sentinel', 'atlas']
     for (const l of ['fr', 'en'] as const) {
       const got = authors.map((a) => v.of(a, l)!)
       expect(new Set(got).size).toBe(authors.length)
@@ -62,7 +62,7 @@ describe('the voices of the stream', () => {
       const again = make()
       expect([...authors].reverse().map((a) => again.of(a, l))).toEqual([...got].reverse())
     }
-    expect(v.of('gepetto', 'fr')).not.toBe(v.of('gepetto', 'en'))
+    expect(v.of('marlow', 'fr')).not.toBe(v.of('marlow', 'en'))
     for (const l of ['fr', 'en'] as const) {
       expect(EDGE_VOICES[l]).not.toContain(TTS_VOICE[l])
       expect(new Set(EDGE_VOICES[l]).size).toBe(EDGE_VOICES[l].length)
@@ -79,39 +79,39 @@ describe('the voices of the stream', () => {
     let list = ['v-boss', 'v1', 'v2', 'v3']
     const v = make({ bossVoice: () => 'v-boss', list: async () => (asked++, list) })
     expect(v.of('weevboss', 'fr')).toBe(DEFAULT_VOICE)
-    expect(v.of('gepetto', 'fr')).toBeUndefined()
-    expect(v.of('instinct', 'fr')).toBeUndefined()
+    expect(v.of('marlow', 'fr')).toBeUndefined()
+    expect(v.of('scout', 'fr')).toBeUndefined()
     await flush()
     expect(asked).toBe(1)
-    const g = v.of('gepetto', 'fr')!
-    const i = v.of('instinct', 'fr')!
+    const g = v.of('marlow', 'fr')!
+    const i = v.of('scout', 'fr')!
     expect(['v1', 'v2', 'v3']).toContain(g)
     expect(['v1', 'v2', 'v3']).toContain(i)
     expect(i).not.toBe(g)
     // The provider's list changes, the server restarts and the list is not loaded yet: the same voices.
     list = ['other']
     const again = make({ bossVoice: () => 'v-boss', list: async () => (asked++, list) })
-    expect(again.of('gepetto', 'fr')).toBe(g)
-    expect(again.of('instinct', 'fr')).toBe(i)
+    expect(again.of('marlow', 'fr')).toBe(g)
+    expect(again.of('scout', 'fr')).toBe(i)
     expect(asked).toBe(1)
   })
 
   it('Cartesia without a chosen voice: the first two of the list are left to the app', async () => {
     provider = 'cartesia'
     const v = make({ list: async () => ['f1', 'm1', 'f2', 'm2'] })
-    v.of('gepetto', 'en')
+    v.of('marlow', 'en')
     await flush()
-    expect(['f2', 'm2']).toContain(v.of('gepetto', 'en'))
-    expect(['f2', 'm2']).toContain(v.of('instinct', 'en'))
+    expect(['f2', 'm2']).toContain(v.of('marlow', 'en'))
+    expect(['f2', 'm2']).toContain(v.of('scout', 'en'))
   })
 
   it('a list that cannot be read: no voice for the authors, weevboss still speaks, no retry at every read', async () => {
     provider = 'cartesia'
     let asked = 0
     const v = make({ list: async () => (asked++, Promise.reject(new Error('503'))) })
-    expect(v.of('gepetto', 'fr')).toBeUndefined()
+    expect(v.of('marlow', 'fr')).toBeUndefined()
     await flush()
-    expect(v.of('gepetto', 'fr')).toBeUndefined()
+    expect(v.of('marlow', 'fr')).toBeUndefined()
     await flush()
     expect(asked).toBe(1)
     expect(v.of('weevboss', 'fr')).toBe(DEFAULT_VOICE)

@@ -67,6 +67,7 @@ from the last checkpoint of the code.
 | [04 Resume](04-resume.md) | The three rungs of resuming. Checkpoints of the code. The handoff. What happens when a turn fails. |
 | [05 Connector](05-connector.md) | The MCP endpoint for chat apps: five tools, their schemas, uploads in parts, sign-in. |
 | [06 Dispatch](06-dispatch.md) | The engine table and the decision table that picks an engine, with no model call. |
+| [07 Vault](07-vault.md) | Design, not built. Every conversation kept on your own GitHub, encrypted; the history imported at install; moves agreed by the person. |
 
 Decisions and their reasons are in [`docs/adr`](../adr). Each page lists its invariants: numbered statements that
 tests check. `THREAD-n` and `BOOK-n` are tested today in

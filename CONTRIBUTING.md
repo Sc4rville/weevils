@@ -56,6 +56,47 @@ that talks to a live server is opt-in: `WEEVILS_LIVE_TEST=1 npx vitest run test/
 - `install.sh` (the installer), `server/install.sh` (commands, hooks, service), `server/wv` (the `wv` command).
 - `test/docker/`, `test/macos/`: installer tests (Linux, macOS). `scripts/fresh.sh`: a blank install in Docker.
 
+## Product or personal
+
+This repository is public, and merging to `main` ships to every install. So every change answers one question
+first: is this for everyone, or is it mine?
+
+- **Product** (here, on `main`): features, UI, behaviour, conventions, prompts, docs. What the owner asks for is
+  product unless it names something of theirs: build it for every weevils user, generic, with a default that works on
+  a blank install.
+- **Personal** (never here): names of people, agents and private projects; domains, addresses, home folders, host
+  names, machines and providers' accounts; e-mail addresses; keys, tokens and access codes; the content of one's feed,
+  memory, reports and automations. It lives in that person's config, outside the repository: `~/.config/weevils/env`
+  (settings, `WEEVILS_*`), `~/.local/share/weevils/` (data, memory, what they reviewed for their own feed), or a
+  private repository of theirs.
+- **A feature that needs a personal value gets a setting** with a sane default (an environment variable, a file in
+  the data folder): never a constant in the code, never a feature that only works on one machine. Removing or hiding
+  the feature is not the fix.
+- **Examples and fixtures are neutral**: `/home/user`, `user@example.com`, `alex`, `shop-app`, `203.0.113.7`. Commit
+  messages and pull request texts are public too: no first name, no private project name, no quote that carries one.
+- **Commits carry a GitHub noreply e-mail**, never a personal address (`scripts/install-hooks.sh` sets it).
+
+The guard enforces it in two places:
+
+- `npm run check` runs `scripts/check-public.mjs` over the tracked files: real home folders, real-looking mailboxes,
+  private keys, files that only belong on a machine, and the traces of the machine it runs on (its home folder, host
+  name and public addresses). The publish gate runs the same check before an install gets a commit.
+- `scripts/install-hooks.sh`, once per clone, installs a pre-push hook that checks every push to the public
+  repository: built on the public history, the same rules on what the push adds (lines and commit messages), the
+  owner's own markers, noreply identities, and gitleaks for secrets when it is installed (commits written before the
+  guard existed, `enforcedSince`, are spared those two rules only). The owner's markers (names,
+  domains, private projects) are one regular expression per line in `~/.config/weevils/public-guard.txt`: they stay
+  out of the repository, like what they name. `node scripts/check-public.mjs --audit` lists where they already are.
+
+Never push around the guard (`--no-verify`). A deliberate fake carries `public-guard:allow` on its line with the
+reason (`gitleaks:allow` for a fake secret); a new neutral example or an accepted exception goes in
+`scripts/public-guard.json`.
+
+**From private to public.** Work that is not ready, or not for everyone, stays in a private repository (automations
+push their `auto/*` branches there). To publish a piece of it: branch from the public `main`, bring the commits over
+(cherry-pick; never a merge of a private history), run `npm run check`, push that branch to the public repository and
+open the pull request there. Nothing reaches public `main` any other way, and nothing is ever force-pushed to it.
+
 ## Rules of the house
 
 Session controls, delivery and activity must follow the [shared product contract](docs/product/session-contract.md), for both agents and a fresh profile.

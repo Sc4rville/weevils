@@ -14,7 +14,7 @@ let host: HTMLDivElement, root: Root
 beforeEach(() => { setLang('en'); host = document.createElement('div'); document.body.append(host); root = createRoot(host); state.rows = []; state.retry.mockClear(); state.main.mockClear(); state.handed.mockClear() })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); setLang(null) })
 const scope = '/api/sessions/tux/'
-const render = (seen: { text: string; at: number }[] = []) => act(async () => root.render(<OutboxStatus scope={scope} seen={seen} />))
+const render = (seen: { text: string; at: number; role?: string }[] = []) => act(async () => root.render(<OutboxStatus scope={scope} seen={seen} />))
 const buttons = () => [...host.querySelectorAll('button')].map(b => b.textContent?.trim())
 
 it('failed → red bubble with its cause and « Notify weevboss » → weevboss is on it → delivered → back to normal', async () => {
@@ -71,4 +71,12 @@ it('to weevboss itself, or never taken by the server, the way round is « try ag
  expect(host.querySelector('.delivery-cause')?.textContent).toBe('Not sent: connection lost')
  await act(async () => (host.querySelector('button') as HTMLButtonElement).click())
  expect(state.retry).toHaveBeenCalledWith('n')
+})
+
+it('a short text is not « arrived » because an agent reply happens to contain it', async () => {
+ state.rows = [{ messageId: 'q', url: '/api/sessions/tux/send', status: 'failed', text: '??', acceptedAt: 1000, updatedAt: 1000 }]
+ await render([{ text: 'What do you mean ?? Here are the 4 decisions', at: 2000, role: 'assistant' }, { text: 'not this ?? either', at: 2000, role: 'user' }])
+ expect(host.querySelector('.delivery-failed')).not.toBeNull()
+ await render([{ text: '??', at: 2000, role: 'user' }])
+ expect(host.textContent).toBe('')
 })

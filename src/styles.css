@@ -3304,3 +3304,12 @@ main.stack {
 /* The open weevboss head: the model line starts on the same left edge as « weevboss  for you » above it. */
 .agent.open .agent-model { display: flex; justify-content: flex-start; align-self: stretch; width: 100%; box-sizing: border-box; padding-left: calc(var(--pad) + 38px); text-align: left; }
 .agent.open .agent-model > .link { margin: 0; font-weight: 400; } /* not a selection: regular weight */
+
+/* A reaction on a message you wrote (bits.tsx Reaction): one emoji astride its bottom-right edge, like WhatsApp; no
+   box, a soft shadow so it reads on every theme and every band. */
+.msg.has-reaction { position: relative; margin-bottom: 12px; }
+.msg .reaction {
+  position: absolute; right: 14px; bottom: -12px; z-index: 1;
+  font-size: 1.125rem; line-height: 1; pointer-events: none;
+  filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.35));
+}

@@ -42,6 +42,9 @@ export interface Message {
   chips?: string[]
   /** role orchestrator, long brief: the one spoken line the thread shows in its place (the full text stays a tap away). */
   say?: string
+  /** A message the person (or another author) wrote: what is being done with it, one emoji on its corner (server/reactions.ts:
+   *  from the request ledger, weevboss's turn, the session's state, or an agent's explicit `weevils react`). */
+  reaction?: string
 }
 
 /** Qui peut signer un message dans une session, à part l'utilisateur : weevboss et les agents externes (config du serveur). */

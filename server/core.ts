@@ -27,7 +27,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { AutoDetail, AutoRun, AutoRunDetail, ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, RequestOrigin, Session, SessionDetail, Snapshot, Subagent, SubagentDetail, Tool } from '../shared/api.ts'
+import type { AutoDetail, AutoRun, AutoRunDetail, ConversationDetail, ConversationSummary, H24Activity, InterruptReason, Message, Project, RequestOrigin, Session, SessionDetail, SessionStatus, Snapshot, Subagent, SubagentDetail, Tool } from '../shared/api.ts'
 import { CLAUDE_DIR, CODEX_DIR, DATA_DIR, EXPOSE_DOMAIN, PUBLIC_URL, USER_NAME, DONE_AFTER_MS, HOME, KILL_AFTER_MS, INBOX_DIR, insideRoots, LOGS_DIRS, MACHINE, ORCHESTRATOR, ORCH_DIR, PROJECT_ROOTS, PROJECTS_DIR, RECENT_MS, REMOTES, STALE_MS } from './config.ts'
 import { Remote, parseRemotes } from './remotes.ts'
 import { ConversationStore, parseExport, readExportFile } from './conversations.ts'
@@ -74,6 +74,7 @@ import { failedLine } from '../shared/failed-line.ts'
 import { llmTitles, needsTitle, shortNow, stableTitle, TitleRetry } from './titles.ts'
 import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
+import { ExplicitReactions, isEmoji, withBossReactions, withSessionReactions } from './reactions.ts'
 import type { WvSession } from './mux.ts'
 import { pumpCall, pumpCommand, pumpForget, pumpReady, pumpState, structuredOn } from './pump.ts'
 import { accounts, accountsOn } from './claude-accounts.ts'
@@ -343,6 +344,27 @@ export class Weevils {
   assertRepoExecution(repo:string) { this.assertSourceExecution(this.repoDir(repo)) }
   store = new TranscriptStore(CLAUDE_DIR, CODEX_DIR, RECENT_MS)
   private messageOrigins = new MessageOrigins(path.join(DATA_DIR,'message-origins.json'))
+  /** Reactions an agent set by hand (`weevils react`): the rest is read from real state (server/reactions.ts). */
+  readonly reactions = new ExplicitReactions(path.join(DATA_DIR, 'reactions.json'))
+  /** `weevils react`: an agent sets the reaction on one of the person's messages (weevboss's thread, or a session's with
+   *  session), by its id or its first characters; none or « last »: the latest one. Empty emoji: back to the state's. */
+  async react(emoji: string, o: { session?: string; message?: string; by?: string }): Promise<{ id: string; emoji: string }> {
+    const e = emoji.trim()
+    if (e && !isEmoji(e)) throw new Error('one emoji') // i18n-ignore: the CLI's error, for agents
+    const msgs = o.session ? (await this.detailAny(o.session))?.messages ?? [] : this.orchestratorMessages()
+    const asked = msgs.filter((m) => m.role === 'user' || (o.session && m.role === 'orchestrator'))
+    const want = o.message && o.message !== 'last' ? o.message : undefined
+    const m = want ? asked.find((x) => x.id === want) ?? asked.find((x) => x.id.startsWith(want)) : asked.at(-1)
+    if (!m) throw new Error('no such message') // i18n-ignore: the CLI's error, for agents
+    this.reactions.set(m.id, e, o.by)
+    this.bump()
+    return { id: m.id, emoji: e }
+  }
+  /** The session's status by id, for reactions: read once per call, only when needed. */
+  private statusLookup(): (id: string) => SessionStatus | undefined {
+    let map: Map<string, SessionStatus> | undefined
+    return (id) => (map ??= new Map(this.sessions().map((x) => [x.id, x.status]))).get(id)
+  }
   hooks = new Map<string, HookState>()
   panes: ManagedPane[] = []
   orchestratorId: string | null = null
@@ -1679,7 +1701,7 @@ export class Weevils {
     const session = this.snapshot().sessions.find((s) => s.id === real && s.machineId === MACHINE.id)
     if (!session) return undefined
     const t = this.store.get(real)
-    return { session, messages: this.says.attach(t?.messages ?? []) }
+    return { session, messages: withSessionReactions(this.says.attach(t?.messages ?? []), { status: session?.status, explicit: this.reactions }) }
   }
 
   /** Détail d'un sous-agent, d'une étape de workflow ou d'une commande d'arrière-plan : ses derniers pas (lus par la fin). */
@@ -2476,7 +2498,15 @@ export class Weevils {
     if (!msgs.length && ORCHESTRATOR) {
       return [{ id: 'hello', role: 'assistant', text: tr(M).hello, at: Date.now() }]
     }
-    return msgs
+    // Each of your messages says what is being done with it (server/reactions.ts).
+    const pending = this.ledger?.pending.filter((m) => m.from === 'user').map((m) => m.at) ?? []
+    return withBossReactions(msgs, {
+      asks: this.ledger?.asks('all') ?? [],
+      sessionStatus: this.statusLookup(),
+      working: this.orchestratorWorking(Date.now()),
+      pendingSince: pending.length ? Math.min(...pending) : undefined,
+      explicit: this.reactions,
+    })
   }
 
   private orchestratorWorking(now: number) {

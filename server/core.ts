@@ -69,10 +69,10 @@ import { chipsInPlace, CONTEXT_BLOCK } from '../shared/setup.ts'
 import { asksUser, type Ask } from '../shared/asks.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { judgeAsk } from './asks-judge.ts'
-import { TranscriptStore, borrowedTitle, digestOf, hasBrief, lastMessageOf, placeTitle, realTitle, titleOf } from './transcripts.ts'
+import { TranscriptStore, borrowedTitle, digestOf, brief, hasBrief, lastMessageOf, placeTitle, realTitle, titleOf } from './transcripts.ts'
 import { emptyBg, subagentSteps } from './background.ts'
 import { failedLine } from '../shared/failed-line.ts'
-import { llmTitles, needsTitle, shortNow, stableTitle, TitleRetry } from './titles.ts'
+import { llmTitles, needsTitle, shortNow, stableTitle, TITLE_RULE, TitleRetry, weakTitle, withoutPlace } from './titles.ts'
 import type { Titled } from './titles.ts'
 import type { Transcript } from './transcripts.ts'
 import { ExplicitReactions, isEmoji, withBossReactions, withSessionReactions } from './reactions.ts'
@@ -1551,6 +1551,12 @@ export class Weevils {
     // topic): forgotten too, the renamer names the real subject. And no title at all before the session has a brief.
     const places = (t: Transcript) => [place(t.cwd, PROJECT_ROOTS).repo ?? undefined, path.basename(t.cwd)]
     for (const t of recent) if (placeTitle(this.titles.get(t.id)?.title, places(t))) this.titles.delete(t.id)
+    // Titles that do not name the work (written under an older rule, the project's name in front, the request's own
+    // words lifted): forgotten, the renamer names the work as an action (titles.ts TITLE_RULE).
+    for (const t of recent) {
+      const v = this.titles.get(t.id)
+      if (v && (v.rule !== TITLE_RULE || weakTitle(v.title, { places: places(t), request: brief(t) }))) this.titles.delete(t.id)
+    }
     const todo = recent
       .filter(hasBrief)
       .filter((t) => needsTitle(this.titles.get(t.id), t.messages.length, now - t.lastActivityAt < STALE_MS, now))
@@ -1570,8 +1576,9 @@ export class Weevils {
         const t = todo.find((x) => x.id === r.id)
         if (t) {
           const previous = this.titles.get(r.id)
-          const title = realTitle(t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) || realTitle(t.customTitle) || stableTitle(realTitle(previous?.title), r.title, r.topicChanged)
-          this.titles.set(r.id, { title, titleLang: title === previous?.title ? previous.titleLang ?? detectLang(title) ?? undefined : lang(), now: r.now, nowLang: lang(), at: now, messageCount: t.messages.length })
+          const proposed = withoutPlace(r.title, places(t))
+          const title = realTitle(t.tool === 'codex' ? this.codexBridge.nameOf?.(t.id) : undefined) || realTitle(t.customTitle) || stableTitle(realTitle(previous?.title), proposed, r.topicChanged)
+          this.titles.set(r.id, { title, titleLang: title === previous?.title ? previous.titleLang ?? detectLang(title) ?? undefined : lang(), now: r.now, nowLang: lang(), at: now, messageCount: t.messages.length, rule: TITLE_RULE })
         }
       }
       this.persist()

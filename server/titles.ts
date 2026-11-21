@@ -24,6 +24,8 @@ export interface Titled {
   nowLang?: Lang
   title: string
   now: string
+  /** The naming rule it was written under (TITLE_RULE): an older one is written again. */
+  rule?: number
   /** Quand le titre a été écrit, et sur combien de messages : pour savoir quand renommer à nouveau. */
   at: number
   messageCount: number
@@ -108,6 +110,34 @@ export function needsTitle(prev: Titled | undefined, messageCount: number, live:
   if (live) return age >= 2 * 60_000
   // Session finie : un dernier titre quand le fil a bougé depuis.
   return age >= 2 * 60_000
+}
+
+/** 2 (2026-11-21): a title names the work as a short action (« Remaking the requests page »), never words lifted from
+ *  the request (« architecture vision ») nor the project's name in front (« weevils pump reliability »). Titles written
+ *  under an older rule are written again once. */
+export const TITLE_RULE = 2
+
+const words = (s: string) => s.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+
+/** The project's or repository's name at the head of a title (« weevils pump reliability », « weevils next »): gone,
+ *  the rest kept, its first letter up. Only the name alone stays as it was (placeTitle forgets it). */
+export function withoutPlace(title: string, places: (string | undefined)[]): string {
+  for (const p of places) {
+    const n = (p ?? '').trim()
+    if (!n) continue
+    const m = new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s:·–-]+(.+)$`, 'iu').exec(title.trim()) // i18n-ignore: a pattern, never shown
+    if (m) return m[1].charAt(0).toUpperCase() + m[1].slice(1)
+  }
+  return title
+}
+
+/** A title that does not name the work: the project's name in front, or the request's own words lifted whole
+ *  (« architecture vision » from a request about it). */
+export function weakTitle(title: string | undefined, o: { places: (string | undefined)[]; request?: string }): boolean {
+  if (!title) return false
+  if (withoutPlace(title, o.places) !== title) return true
+  const t = words(title)
+  return !!t && !!o.request && ` ${words(o.request)} `.includes(` ${t} `)
 }
 
 /** Micro-actions never rename the topic; only an explicit switch of subject does. */

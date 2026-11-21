@@ -4,7 +4,6 @@ import { interceptModelControl, openModelControls } from '../model-controls'
 import { effortLabel, modelLabel } from './settings'
 import ModelM from '../i18n/model-controls'
 import { OutboxStatus } from './outbox-status'
-import { useOutbox } from '../outbox'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, animate, motion, useMotionValue, type MotionValue } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
@@ -65,7 +64,7 @@ const PEEK_TAIL = 280
  * L'aperçu vivant du fil, dans la bande réduite : les récents en bas, les anciens remontent et s'estompent.
  * Il défile au doigt pour remonter l'historique (sans entraîner la page) ; un tap simple ouvre la conversation.
  */
-function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () => void; visible: boolean; sent: number; messages: Message[]; pendingLabel: (id: string) => string }) {
+function Peek({ onOpen, visible, sent, messages }: { onOpen: () => void; visible: boolean; sent: number; messages: Message[] }) {
   const t = useT(M)
   const tb = useT(B)
   const td = useT(D)
@@ -118,7 +117,7 @@ function Peek({ onOpen, visible, sent, messages, pendingLabel }: { onOpen: () =>
         <AnimatePresence initial={false} mode="popLayout">
           {items.map((m) => {
             const tone = m.role === 'orchestrator' ? authorTone(authorOf(m.author)) : null
-            const who = `${m.role === 'user' ? tb.you : m.role === 'orchestrator' ? authorOf(m.author).name : m.devil ? td.devil : 'weevboss'}${m.id.startsWith('pending-') ? ` · ${pendingLabel(m.id)}` : ''}`
+            const who = `${m.role === 'user' ? tb.you : m.role === 'orchestrator' ? authorOf(m.author).name : m.devil ? td.devil : 'weevboss'}`
             const full = (m.role === 'user' ? userText(m.text) : plain(m.text)).replace(/\s+/g, ' ')
             // Le dernier : sa fin, entière (la réponse qui s'écrit reste lisible, en bas, là où l'aperçu la suit).
             const isLast = m.id === last?.id
@@ -222,16 +221,8 @@ export function AgentBand() {
       return next.length === p.length ? p : next
     })
   }, [snap.main])
-  // Chaque bulle suit son reçu (src/outbox.ts) : « envoi… » tant que le serveur ne l'a pas, « en attente » tant qu'il ne
-  // l'a pas mise dans la pane, puis « reçu », ou « en file » si weevboss travaille. Jamais « envoi… » pour un message reçu.
-  const receipts = useOutbox()
-  const pendingLabel = (id: string) => {
-    const p = pending.find((x) => x.id === id)
-    if (!p?.accepted) return t.sending
-    const status = p.messageId ? (receipts.find((r) => r.messageId === p.messageId)?.status ?? 'accepted') : 'delivered'
-    if (status !== 'delivered') return t.queued
-    return snap.mainWorking || snap.mainQueued > 0 ? t.readsSoon : t.received
-  }
+  // A sent bubble carries no delivery word (« sending », « received », « queued »): plumbing the person need not
+  // know (Scarville, 2026-11-21). Only a failure speaks, in OutboxStatus, with what to do.
   const tail = main.at(-1)
   // Le fil ouvert s'interroge comme un fichier ; avec une sélection, le logo pose sa question dessus (réponse sur place).
   const th = useThreadAsk(main, { title: 'weevboss', tool: 'weevboss' })
@@ -324,7 +315,7 @@ export function AgentBand() {
           {snap.foryou && !open && controls}
         </div>
         <div className="peek-wrap" hidden={open || dr.shown || top !== 'boss'}>
-          <Peek onOpen={() => setExpanded('agent')} visible={!open && top === 'boss'} sent={sent} messages={main} pendingLabel={pendingLabel} />
+          <Peek onOpen={() => setExpanded('agent')} visible={!open && top === 'boss'} sent={sent} messages={main} />
         </div>
         {/* L'aperçu de « pour toi » : à côté de celui du fil, dans la même boîte ; l'un ou l'autre est caché, aucun démonté. */}
         {snap.foryou && (
@@ -341,7 +332,7 @@ export function AgentBand() {
           aria-live="polite"
         >
           <div ref={th.ref} className="ask-thread">
-            <Messages messages={main} author="weevboss" working={snap.mainWorking || !!snap.devil?.working} pendingLabel={pendingLabel} after={(id) => <>{qa(th.after(id), `${th.a.asking}:${!!th.a.shown}:${th.a.waiting}`)}{chipsOf(id)}</>} chip={chipIn} />
+            <Messages messages={main} author="weevboss" working={snap.mainWorking || !!snap.devil?.working} after={(id) => <>{qa(th.after(id), `${th.a.asking}:${!!th.a.shown}:${th.a.waiting}`)}{chipsOf(id)}</>} chip={chipIn} />
           </div>
           <ThreadPlans />
           <OutboxStatus scope="/api/main" />

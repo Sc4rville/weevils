@@ -19,13 +19,6 @@ export default defineMessages({
     openChat: 'ouvrir la conversation avec weevboss',
     agentPlaceholder: 'dis-moi quoi faire',
     agentLabel: 'message à weevboss',
-    /** Bulle envoyée, pas encore dans le fil : en route, ou en file derrière la réponse en cours. */
-    sending: 'envoi…',
-    queued: 'en attente',
-    /** Dans la pane de weevboss (confirmé par le serveur), pas encore dans son transcript. */
-    received: 'reçu',
-    /** Reçu pendant qu'il travaille : Claude Code le lit à la fin de son tour. */
-    readsSoon: 'en file, il le lira dans un instant',
     withFiles: (n: number) => `(${n} fichier${n > 1 ? 's' : ''})`,
     /** Bouton flottant « ↓ » du fil ouvert : du nouveau en bas pendant qu'on relit. */
     toEnd: 'du nouveau en bas : y descendre',
@@ -97,10 +90,6 @@ export default defineMessages({
     openChat: 'open the conversation with weevboss',
     agentPlaceholder: 'tell me what to do',
     agentLabel: 'message to weevboss',
-    sending: 'sending…',
-    queued: 'queued',
-    received: 'received',
-    readsSoon: 'queued, it will read it in a moment',
     withFiles: (n: number) => `(${n} file${n === 1 ? '' : 's'})`,
     toEnd: 'new messages below: scroll down',
 

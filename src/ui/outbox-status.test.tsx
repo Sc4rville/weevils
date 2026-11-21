@@ -12,10 +12,10 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 let host: HTMLDivElement, root: Root
 beforeEach(() => { setLang('en'); host = document.createElement('div'); document.body.append(host); root = createRoot(host); state.rows = []; state.copied.mockClear(); state.push.mockClear(); state.retry.mockClear() })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); setLang(null) })
-it('distinguishes acceptance from delivery and scopes the notice to the current conversation', async () => {
- state.rows = [{messageId:'a',url:'/api/main',status:'accepted'}, {messageId:'b',url:'/api/sessions/other/send',status:'delivered'}]
+it('says nothing while a message is accepted or delivered (plumbing), and scopes a failure to the current conversation', async () => {
+ state.rows = [{messageId:'a',url:'/api/main',status:'accepted'}, {messageId:'b',url:'/api/sessions/other/send',status:'failed',text:'x'}]
  await act(async () => root.render(<OutboxStatus scope="/api/main" />))
- expect(host.textContent).toContain('received'); expect(host.textContent).not.toMatch(/sending…|forwarded to the agent/)
+ expect(host.textContent).toBe('')
  state.rows = [{...state.rows[0],status:'delivered',result:{id:'target'}}]
  await act(async () => root.render(<OutboxStatus scope="/api/main" />))
  expect(host.textContent).toBe('')
@@ -30,10 +30,10 @@ it('an uncertain receipt offers recovery, never a button that reinjects the mess
 })
 
 it('contextual delivery hides completed and older-event receipts without forgetting their identity',async()=>{
- state.rows=[{messageId:'old',url:'/api/foryou/a/act',status:'accepted',eventId:'previous'}, {messageId:'current',url:'/api/foryou/a/act',status:'accepted',eventId:'current'}, {messageId:'elsewhere',url:'/api/foryou/b/reply',status:'uncertain'}]
+ state.rows=[{messageId:'old',url:'/api/foryou/a/act',status:'uncertain',eventId:'previous'}, {messageId:'current',url:'/api/foryou/a/act',status:'uncertain',eventId:'current'}, {messageId:'elsewhere',url:'/api/foryou/b/reply',status:'uncertain'}]
  await act(async()=>root.render(<OutboxStatus scope="/api/foryou/a/" eventId="current"/>))
  expect(host.querySelectorAll('[data-delivery]')).toHaveLength(1)
- expect(host.textContent).toContain('received')
+ expect(host.textContent).toContain('not sure it arrived')
  state.rows[1]={...state.rows[1],status:'delivered',result:{id:'target'}}
  await act(async()=>root.render(<OutboxStatus scope="/api/foryou/a/" eventId="current"/>))
  expect(host.textContent).toBe('')
@@ -61,10 +61,10 @@ it('a confirmed retry of the exact payload hides the old failure, but a differen
  expect(state.rows).toHaveLength(2)
 })
 
-it('speaks plain words: "sending…" only until the server has it, then "received", "not sent", no tracking jargon', async () => {
+it('shows only what needs the person: "not sent", never "sending…", "received" or "waiting for its turn"', async () => {
  state.rows=[{messageId:'s',url:'/api/main',status:'sending'},{messageId:'a',url:'/api/main',status:'accepted'},{messageId:'d',url:'/api/main',status:'delivering'},{messageId:'f',url:'/api/main',status:'failed',text:'hello',trackingLost:true},{messageId:'w',url:'/api/main',status:'accepted',error:'Waiting for an available provider',retryAt:Date.now()+60_000}]
  await act(async()=>root.render(<OutboxStatus scope="/api/main"/>))
- expect([...host.querySelectorAll('summary')].map(s=>s.firstChild?.textContent)).toEqual(['sending…','received','received','not sent','received, waiting for its turn'])
+ expect([...host.querySelectorAll('summary')].map(s=>s.firstChild?.textContent)).toEqual(['not sent'])
  expect(host.textContent).not.toMatch(/forwarding|confirmation|tracking/)
  // Recovery stays: the text can still be copied back.
  expect([...host.querySelectorAll('button')].some(b=>b.textContent==='copy the text')).toBe(true)

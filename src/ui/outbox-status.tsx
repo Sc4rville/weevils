@@ -15,12 +15,13 @@ export function OutboxStatus({ scope, eventId }: { scope: string; eventId?: stri
  const [copied, setCopied] = useState('')
  const [retrying, setRetrying] = useState('')
  const retry = (id: string) => { setRetrying(id); void retryReceipt(id).catch(() => undefined).finally(() => setRetrying(r => r === id ? '' : r)) }
- // Accepted: the server has it, even while the agent is busy. Held (OutboxDeferred): it has it and will try again itself.
- const label = (r: LocalReceipt) => notSent(r) ? t.notSentYet : r.status === 'accepted' && (r.retryAt || r.error) ? t.waiting : t[r.status]
+ const label = (r: LocalReceipt) => notSent(r) ? t.notSentYet : t[r.status]
  // Old receipts may contain obsolete advice to open a new session. Keep recovery in the existing conversation.
  const errorText = (error: string) => /^(This session was opened elsewhere,|Cette session a été ouverte ailleurs,)/.test(error) ? t.unavailable : error
  const relevant = rows.filter(r => r.url.startsWith(scope) && (!eventId || !r.eventId || r.eventId === eventId))
- const visible = relevant.filter(r => !r.dismissed && r.status !== 'delivered' && !(r.status === 'failed' && r.fingerprint && relevant.some(done => done.status === 'delivered' && done.fingerprint === r.fingerprint && done.updatedAt >= r.updatedAt)))
+ // Only what asks something of the person: a message that did not go, or may not have. On its way, received, held,
+ // forwarded are plumbing (Scarville, 2026-11-21: « ça c des trucs de backend on a pas à savoir »).
+ const visible = relevant.filter(r => !r.dismissed && (r.status === 'failed' || r.status === 'uncertain' || notSent(r)) && !(r.status === 'failed' && r.fingerprint && relevant.some(done => done.status === 'delivered' && done.fingerprint === r.fingerprint && done.updatedAt >= r.updatedAt)))
  if (!visible.length) return null
  return <div className="outbox-status in" aria-live="polite">{visible.map(r => {
   const problem = r.status === 'failed' || r.status === 'uncertain' || !!r.stuck

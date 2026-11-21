@@ -141,14 +141,14 @@ describe('session page: no terminal', () => {
 })
 
 describe('session page header', () => {
-  it('no machine id, no background count, one settings control, plain words for the app preview and queued messages', async () => {
+  it('no machine id, no background count, one settings control, plain words for the app preview, no queued-messages count', async () => {
     localStorage.removeItem('weevils-preview:s1')
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ background: 2, queued: 3 })])
     await flush()
     const all = text(host)
     expect(all).not.toContain('vps-machine-42')
     expect(all).not.toContain('in background')
-    expect(all).toContain('3 messages waiting')
+    expect(all).not.toMatch(/messages? waiting/)
     expect(byText('settings')).toBeUndefined()
     expect(host.querySelectorAll('button[aria-controls="session-settings"]')).toHaveLength(1)
     expect(byText('browser')).toBeUndefined()
@@ -229,7 +229,7 @@ describe('files and new session pages', () => {
   })
 })
 
-describe('session page: a sent message says it arrived', () => {
+describe('session page: a sent message carries no delivery word', () => {
   const typeAndSend = async (value: string) => {
     const field = host.querySelector<HTMLInputElement | HTMLTextAreaElement>('form input:not([type=file]), form textarea')!
     await act(async () => {
@@ -239,25 +239,26 @@ describe('session page: a sent message says it arrived', () => {
     await act(async () => void host.querySelector('form')!.requestSubmit())
   }
   const bubble = () => text([...host.querySelectorAll('.session-message')].find((m) => text(m).includes('ship it')) ?? null)
-  it('no label while on its way (the notice below speaks), then « received » once the server has it', async () => {
+  const plumbing = /you ·|received|queued|sending…|read it in a moment/
+  it('neither on its way nor once the server has it (Scarville: « des trucs de backend »)', async () => {
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [session()])
     await flush()
     await typeAndSend('ship it')
     await flush()
     expect(bubble()).toContain('ship it')
-    expect(bubble()).not.toMatch(/you ·|received/)
+    expect(bubble()).not.toMatch(plumbing)
     await act(async () => calls.release?.())
     await flush()
-    expect(bubble()).toContain('you · received')
+    expect(bubble()).not.toMatch(plumbing)
   })
-  it('the agent busy: received, and it will read it in a moment, never « sending… »', async () => {
+  it('the agent busy: still nothing, only « working »', async () => {
     render(<PageView page={{ kind: 'session', id: 's1' }} />, [session({ status: 'working', turnWorking: true, workStartedAt: NOW - MIN })])
     await flush()
     await typeAndSend('ship it')
     await act(async () => calls.release?.())
     await flush()
-    expect(bubble()).toContain('queued, it will read it in a moment')
-    expect(text(host)).not.toContain('sending…')
+    expect(bubble()).not.toMatch(plumbing)
+    expect(text(host)).not.toMatch(/sending…|queued/)
   })
 })
 

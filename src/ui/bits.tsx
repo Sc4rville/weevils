@@ -977,14 +977,12 @@ export function useAuthors() {
 export const authorTone = (a: Author) => (a.color ? { className: 'tone orch ext', style: { '--who': a.color } as React.CSSProperties } : { className: 'tone orch', style: undefined })
 
 /** after(id) : ce qui s'affiche sous un message (la barre de questions d'askthread.tsx), id = data-mid du message. */
-/** pendingLabel : la mention des bulles envoyées pas encore arrivées dans le fil (ids « pending-… », src/ui/pending.ts). */
 export function Messages({
   messages,
   author,
   working = false,
   after,
   chip,
-  pendingLabel,
   session = false,
   plain = false,
 }: {
@@ -994,7 +992,6 @@ export function Messages({
   after?: (id: string) => ReactNode
   /** Une puce de branchement écrite dans le message id : son bouton, à sa place dans la phrase (null : son libellé). */
   chip?: (brick: ChipId, id: string) => ReactNode
-  pendingLabel?: string | ((id: string) => string)
   /** Full session reading: continuous prose and optional technical coordination. */
   session?: boolean
   /** Project session thread: plain one-line actions, short intermediate chatter. Never the weevboss thread. */
@@ -1041,11 +1038,6 @@ export function Messages({
     })
   }
   const authorOf = useAuthors()
-  // An empty label says nothing (no dangling « · »).
-  const pendingTag = (id: string) => {
-    const label = !pendingLabel || !id.startsWith('pending-') ? '' : typeof pendingLabel === 'function' ? pendingLabel(id) : pendingLabel
-    return label ? ` · ${label}` : ''
-  }
   return (
     <AnimatePresence initial={false}>
       {pinned.map((m) => (
@@ -1072,7 +1064,7 @@ export function Messages({
             <Bubble
               className={`msg band ${session ? 'session-message' : ''} ${g.m.role === 'user' ? 'tone' : g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).className : ''} ${g.m.devil && g.m.role === 'assistant' ? 'devil' : ''}`}
               style={g.m.role === 'orchestrator' ? authorTone(authorOf(g.m.author)).style : undefined}
-              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : session ? '' : author}${pendingTag(g.m.id)}`}
+              who={`${g.m.role === 'user' ? t.you : g.m.role === 'orchestrator' ? authorOf(g.m.author).name : g.m.devil ? td.devil : session ? '' : author}`}
               copy={g.m.role === 'user' ? userText(g.m.text) : g.m.role === 'orchestrator' ? briefText(g.m.text) : chipLabels(withoutMachinePrefix(g.m.text))}
               mid={g.m.id}
             >

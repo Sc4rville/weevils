@@ -63,7 +63,7 @@ it('projects a stored real card through EN FR EN without rewriting its source or
     const original = { id: edit.id, kind: 'improve', who: 'weevboss', tone: 'neutral', at: now, text: edit.source, lang: 'en', seen: true, actions: [{ id: 'a1', label: 'Prepare project rotation', brief: 'Prepare the rotation without changing any underlying records.' }] }
     fs.writeFileSync(file, JSON.stringify({ rev: 5, items: [original] }))
     const host = { snapshot: () => ({ sessions: [], projects: [], optimizers: [], machines: [], config: {} }), bump() {} } as unknown as ConstructorParameters<typeof ForYou>[0]
-    const make = () => new ForYou(host, { file, now: () => now, dataDir: dir, machineId: 'test', later: () => undefined })
+    const make = () => new ForYou(host, { file, now: () => now, dataDir: dir, machineId: 'test', later: () => undefined, extras: true })
     const fy = make()
     const views = ['en', 'fr', 'en'].map(l => fy.feed(now, l).items.find(i => i.id === edit.id)!)
     expect(views.every(Boolean)).toBe(true)

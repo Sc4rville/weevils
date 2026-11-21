@@ -1519,8 +1519,11 @@ export class ForYou {
     const out: { item: ForYouItem; lang?: Lang }[] = []
     // Only the newest stored items are read for a view (view() is the costly part): the stream shows MAX_FEED at
     // most, the rest stays stored as history, untouched.
-    const recent = this.s.items.length > VIEW_REACH ? [...this.s.items].sort((a, b) => b.at - a.at).slice(0, VIEW_REACH) : this.s.items
+    const kept = this.deps.extras ? this.s.items : this.s.items.filter((i) => !NOT_POSTS.has(i.kind))
+    const recent = kept.length > VIEW_REACH ? [...kept].sort((a, b) => b.at - a.at).slice(0, VIEW_REACH) : kept
     for (const i of recent) {
+      // Stored before the stream became posts only: kept as history, never sent (they would take a post's place).
+      if (!this.deps.extras && NOT_POSTS.has(i.kind)) continue
       const item = this.view(i, snap)
       if (item) out.push({ item, lang: i.lang })
     }

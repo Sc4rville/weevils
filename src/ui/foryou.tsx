@@ -670,19 +670,29 @@ export function ForYouPage(_: { who?: string } = {}) {
 }
 
 /** One media of the stream, alone and whole, on the page's colour (never black). Back: the chevron or a swipe right. */
-export function MediaPage({ url, type, name }: { url: string; type: 'image' | 'video'; name: string }) {
+export function MediaPage({ url, type, name, set }: { url: string; type: 'image' | 'video'; name: string; set?: { url: string; name: string }[] }) {
   const t = useT(M)
   const { back } = useApp()
   const page = useRef<HTMLDivElement>(null)
   const video = useRef<HTMLVideoElement>(null)
   const picture = useRef<HTMLImageElement>(null)
+  const reel = useRef<HTMLDivElement>(null)
+  // Several photos sent together: one reel, a swipe from one to the next, opened on the one tapped.
+  const many = type === 'image' && !!set && set.length > 1 ? set : null
+  const [at, setAt] = useState(() => Math.max(0, many?.findIndex((p) => p.url === url) ?? 0))
+  const shown = many ? many[at] ?? many[0] : { url, name }
+  useLayoutEffect(() => {
+    const el = reel.current
+    if (el) el.scrollLeft = at * el.clientWidth
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   usePageChrome('agent', page)
   const move = usePageMotion()
   // A long press on the photo saves it, as the system's own callout would (the host turns that callout off). A video
   // keeps its long presses for the player's bar.
-  useLongPressSave(picture, { url, name, type })
-  // The player's own bar (scrubbing) keeps its drags.
+  useLongPressSave(many ? reel : picture, { url: shown.url, name: shown.name, type })
+  // The player's own bar (scrubbing) keeps its drags; so does the reel (its swipe goes to the next photo).
   useOwnSwipe(video, type === 'video')
+  useOwnSwipe(reel, !!many)
   return (
     <motion.div ref={page} className="page fy-viewer" style={slot('agent')} {...move} role="dialog" aria-modal="true" aria-label={name}>
       <div className="fy-viewer-top">
@@ -690,7 +700,15 @@ export function MediaPage({ url, type, name }: { url: string; type: 'image' | 'v
           <Icon name="chevron" dir="left" />
         </button>
       </div>
-      <div className="fy-stage save-media-host">{type === 'video' ? <video ref={video} src={url} controls autoPlay playsInline loop aria-label={name} /> : <img ref={picture} src={url} alt={name} draggable={false} />}<SaveMediaButton target={{ url, name, type }} /></div>
+      <div className="fy-stage save-media-host">
+        {type === 'video' ? <video ref={video} src={url} controls autoPlay playsInline loop aria-label={name} />
+          : many ? (
+            <div ref={reel} className="fy-reel" onScroll={(e) => { const el = e.currentTarget; setAt(Math.round(el.scrollLeft / Math.max(1, el.clientWidth))) }}>
+              {many.map((p) => <img key={p.url} src={p.url} alt={p.name} draggable={false} />)}
+            </div>
+          ) : <img ref={picture} src={url} alt={name} draggable={false} />}
+        <SaveMediaButton target={{ url: shown.url, name: shown.name, type }} />
+      </div>
     </motion.div>
   )
 }

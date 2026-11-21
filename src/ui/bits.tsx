@@ -1097,11 +1097,7 @@ export function Messages({
               {g.m.role === 'user' ? (
                 <>
                   <Clamp text={userCaption(g.m.text)} full={session} />
-                  {userPhotos(g.m.text).map((file) => (
-                    <a key={file} className="user-photo" href={`/api/attachments?path=${encodeURIComponent(file)}`} target="_blank" rel="noopener noreferrer">
-                      <img src={`/api/attachments?path=${encodeURIComponent(file)}`} alt={file.split('/').at(-1) ?? ''} loading="lazy" />
-                    </a>
-                  ))}
+                  <UserPhotos files={userPhotos(g.m.text)} />
                 </>
               ) : g.m.role === 'orchestrator' ? (
                 session ? <Brief text={briefText(g.m.text)} say={g.m.say} full /> : <Clamp text={briefText(g.m.text)} />
@@ -1119,6 +1115,25 @@ export function Messages({
         ),
       )}
     </AnimatePresence>
+  )
+}
+
+/** The photos a message carries. One: its thumbnail. Several: one row of equal thumbnails, side by side, that scrolls
+ *  sideways when they do not fit (2026-11-21: three screenshots stacked filled the screen). A tap opens it whole in
+ *  the app's viewer, where a swipe goes from one to the next (foryou.tsx MediaPage, its set). */
+export function UserPhotos({ files }: { files: string[] }) {
+  const { push } = useApp()
+  if (!files.length) return null
+  const set = files.map((file) => ({ url: `/api/attachments?path=${encodeURIComponent(file)}`, name: file.split('/').at(-1) ?? '' }))
+  return (
+    <div className={set.length > 1 ? 'user-photos row' : 'user-photos'}>
+      {set.map((p) => (
+        <a key={p.url} className="user-photo" href={p.url} target="_blank" rel="noopener noreferrer"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); push({ kind: 'media', url: p.url, type: 'image', name: p.name, ...(set.length > 1 ? { set } : {}) }) }}>
+          <img src={p.url} alt={p.name} loading="lazy" />
+        </a>
+      ))}
+    </div>
   )
 }
 

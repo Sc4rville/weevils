@@ -95,6 +95,6 @@ p.tip-text {
 
 .tip-x:focus-visible,
 .tip-body:focus-visible {
-  outline: 3px solid var(--ink);
+  outline: var(--focus-halo);
   outline-offset: -6px;
 }

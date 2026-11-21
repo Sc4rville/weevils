@@ -142,7 +142,7 @@
 }
 
 .sw-phase.big:focus-visible {
-  outline: 3px solid var(--ink);
+  outline: var(--focus-halo);
   outline-offset: 3px;
 }
 

@@ -111,7 +111,7 @@ export function PageView({ page }: { page: Page }) {
     case 'foryou':
       return <ForYouPage who={page.who} />
     case 'media':
-      return <MediaPage url={page.url} type={page.type} name={page.name} />
+      return <MediaPage url={page.url} type={page.type} name={page.name} set={page.set} />
     case 'auto':
       return <AutoPage id={page.id} />
     case 'autorun':

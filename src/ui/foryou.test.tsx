@@ -372,6 +372,50 @@ describe('for you: a feed of posts', () => {
     expect([...host.querySelectorAll('.fy-sheet-go')].map((b) => b.textContent)).toEqual([t().openConversation])
   })
 
+  it('« Look » on an automation’s post opens that automation’s page (the factory proposal is there), never a drawer the host may not have', async () => {
+    setLang('en')
+    const post = { ...base, id: 'factory:a1', kind: 'boss' as const, who: 'weevboss', text: 'Ad maker can become a factory: 38 runs, 9 of the last 10 good.', open: { page: 'auto' as const, id: 'a1' } }
+    srv.feed = feed([post])
+    render(<ForYouPage />, { ...snap(), optimizers: [{ id: 'a1', title: 'Ad maker', why: '', repo: null, kind: 'other', heavy: false, state: 'queued', createdAt: NOW }] })
+    await flush()
+    await click(band('factory:a1').querySelector('.fy-post-head'))
+    expect([...host.querySelectorAll('.fy-sheet-go')].map((b) => b.textContent)).toEqual([t().tapLook])
+    await click(host.querySelector('.fy-sheet-go'))
+    expect(pushed).toEqual([{ kind: 'auto', id: 'a1' }])
+  })
+
+  // A post's step never leads nowhere: every destination does something that can be seen.
+  it.each<[string, ForYouItem['open'], unknown[]]>([
+    ['a session', { page: 'session', id: 's1' }, [{ kind: 'session', id: 's1' }]],
+    ['weevboss’s thread', { page: 'boss', mid: 'm9' }, [{ boss: { mid: 'm9', flash: true } }]],
+    ['an automation that is gone: the list of automations', { page: 'auto', id: 'deleted' }, ['home', { kind: 'auto', id: undefined }]],
+    ['the automations', { page: 'auto' }, ['home', { kind: 'auto', id: undefined }]],
+    ['the usage page', { page: 'usage' }, [{ kind: 'usage' }]],
+    ['the machine', { page: 'machine' }, [{ kind: 'machine', projectId: 'myshop' }]],
+  ])('the step of a post about %s does something', async (_name, target, seen) => {
+    setLang('en')
+    const onBoss = (e: Event) => void pushed.push({ boss: (e as CustomEvent).detail })
+    window.addEventListener('weevils:focus-boss', onBoss)
+    try {
+      await open([{ ...base, id: 'p1', kind: 'boss', who: 'weevboss', projectId: 'myshop', text: 'Something to look at.', open: target }])
+      await click(band('p1').querySelector('.fy-post-head'))
+      expect(host.querySelectorAll('.fy-sheet-go')).toHaveLength(1)
+      await click(host.querySelector('.fy-sheet-go'))
+      expect(pushed).toEqual(seen)
+    } finally {
+      window.removeEventListener('weevils:focus-boss', onBoss)
+    }
+  })
+
+  it('a destination this app cannot reach draws no button: the sheet keeps its field, nothing is dead', async () => {
+    setLang('en')
+    await open([{ ...base, id: 'p1', kind: 'boss', who: 'weevboss', text: 'From a newer server.', open: { page: 'hologram' } as unknown as ForYouItem['open'] }])
+    await click(band('p1').querySelector('.fy-post-head'))
+    expect(host.querySelector('.fy-sheet[role="dialog"]')).not.toBeNull()
+    expect(host.querySelectorAll('.fy-sheet-go')).toHaveLength(0)
+    expect(host.querySelector('.fy-sheet input')).not.toBeNull()
+  })
+
   it('posts touch; two neighbours in one colour never look like one', async () => {
     const { altsOf } = await import('./foryou')
     const c = (id: string) => ({ ...base, id, kind: 'boss' as const, who: 'weevboss', text: id })

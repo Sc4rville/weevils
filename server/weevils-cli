@@ -70,6 +70,7 @@ weevils memory [add "souvenir" | rm <id>]
 weevils page <dossier|fichier> "titre" --kind <type>   weevils page list|library …   weevils pages
 weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   weevils show <fichier> ["Phrase titre. Pourquoi ça compte."]' # i18n-ignore
   usage+=$'\n''weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]'
+  usage+=$'\n''weevils react <emoji> [<message>|last] [--session <id>]   une réaction sur un message de la personne' # i18n-ignore
   usage+=$'\n''weevils ask add "demande" [--goal <id>]   weevils ask link <id> <session> ["retour attendu"]   weevils ask goal <id> <objectif>' # i18n-ignore
   usage+=$'\n''weevils goals [all]   weevils goal add <id> "titre" ["pourquoi"]   weevils goal note <id> "avancée"   weevils goal done|pause|open <id>' # i18n-ignore
   usage+=$'\n''weevils trace [<objectif>] [n]   weevils trace add "décision" [--goal <id>]' # i18n-ignore
@@ -113,6 +114,7 @@ weevils memory [add "memory" | rm <id>]
 weevils post "text" [--title "title"] [--action "label::what to do"]…      weevils show <file> ["Title sentence. Why it matters."]
 weevils page <folder|file> "title" --kind <kind>   weevils page list|library …   weevils pages
 weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]
+weevils react <emoji> [<message>|last] [--session <id>]   a reaction on one of the person’s messages
 weevils ask add "request" [--goal <id>]   weevils ask link <id> <session> ["expected report"]   weevils ask goal <id> <goal>
 weevils goals [all]   weevils goal add <id> "title" ["why"]   weevils goal note <id> "progress"   weevils goal done|pause|open <id>
 weevils trace [<goal>] [n]   weevils trace add "decision" [--goal <id>]
@@ -425,6 +427,16 @@ if not full and len(msgs)>len(shown): print(E['WVM_MORE'].format(s['id'][:8]))
     printf '%s' "${out%$'\n'*}" | json "print(d['text'])" ;;
   boss)
     curl -sf -m 8 "$base/api/boss" | json "print(' · '.join(f'{k}: {v}' for k,v in d.items() if v is not None))" ;;
+  react)
+    # A reaction on one of the person's messages (an emoji on its corner, like WhatsApp), for what the request ledger
+    # does not say: weevils react <emoji> [<message id>|last] [--session <id>]. An empty emoji ("") removes it.
+    emoji=${2?$a_msg}; target=last; session=''
+    shift 2; while [ $# -gt 0 ]; do case $1 in --session) session=$(resolve "${2:?$a_id}"); shift 2 ;; *) target=$1; shift ;; esac; done
+    out=$("$py" -c 'import json,sys; print(json.dumps({"emoji":sys.argv[1],"message":sys.argv[2],"session":sys.argv[3],"from":sys.argv[4]}))' "$emoji" "$target" "$session" "$sender_from" \
+      | curl -s -m 20 -w '\n%{http_code}' -H 'content-type: application/json' --data-binary @- "$base/api/react")
+    code=${out##*$'\n'}
+    if [ "$code" = 200 ]; then printf '%s\n' "${out%$'\n'*}" | json "print((d['emoji'] or '-') + ' ' + d['id'][:12])"
+    else printf '%s\n' "${out%$'\n'*}" >&2; exit 1; fi ;;
   send)
     id=$(resolve "${2:?$a_id}")
     text=${3:?$a_msg}

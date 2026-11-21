@@ -722,6 +722,16 @@ const routes: [string, RegExp, Handler][] = [
     w.bump()
     json(res, 200, { theme: w.theme.get() })
   }],
+  // An agent's explicit reaction on one of the person's messages (`weevils react`, server/reactions.ts): this machine only.
+  ['POST', /^\/api\/react$/, async (req, res) => {
+    if (!isLocal(req) || jailedPeer(req.socket)) return json(res, 403, { error: tr(PM).localOnly })
+    const b = await readBody(req).catch(() => ({})) as { emoji?: unknown; session?: unknown; message?: unknown; from?: unknown }
+    try {
+      json(res, 200, await w.react(String(b.emoji ?? ''), { session: typeof b.session === 'string' && b.session ? b.session : undefined, message: typeof b.message === 'string' ? b.message : undefined, by: typeof b.from === 'string' ? b.from : undefined }))
+    } catch (e) {
+      json(res, 400, { error: (e as Error).message })
+    }
+  }],
   ['GET', /^\/api\/snapshot$/, (_req, res) => json(res, 200, w.snapshot())],
   ['GET', /^\/api\/version$/, (_req, res) => json(res, 200, { version: w.version })],
   ['GET', /^\/api\/events$/, (_req, res) => {

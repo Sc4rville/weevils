@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { FIELDS, isBrick, isSecretName, type ApplyResult, type Brick, type Device, type SetupField } from '../../shared/setup.ts'
+import type { Message, Snapshot } from '../../shared/api.ts'
 import { api } from '../api'
 import { ensurePush } from '../push'
 import { tr, useT } from '../i18n'
@@ -14,8 +15,10 @@ import { Bring } from './bring'
 import './living-link' // the living-link colours, for the chips' look
 
 // Accueil et branchements, côté app (contrat : shared/setup.ts, serveur : server/setup.ts).
+// - startsInChat : a new install opens straight into weevboss's conversation, full screen: no home page, no welcome
+//   page, no step to tick first (App.tsx). Onboarding is that conversation and nothing else.
 // - useWelcome : au premier lancement, weevilsd écrit l'accueil de weevboss dans son fil, d'après l'état réel (une
-//   brique à la fois, avec sa puce), et le fil s'ouvre pour qu'on le lise arriver. C'est tout l'onboarding.
+//   brique à la fois, avec sa puce) ; le fil, déjà ouvert, le montre arriver. C'est tout l'onboarding.
 // - SetupChips : les boutons sous un message de weevboss. Un tap lance le branchement : une action sur place
 //   (notifications, adresse Siri), ou weevboss dit ce que ça apporte (et installe ce qui manque) puis le champ du bas
 //   pose les questions. Jamais de commande à taper.
@@ -113,24 +116,66 @@ export const askSetup = (brick: Brick) => void startSetup(brick).catch(() => und
 
 // ---------------------------------------------------------------- accueil
 
-/** Premier lancement : weevboss accueille dans son fil, ouvert en haut de l'écran. Un appareil qui arrive après
- * (l'accueil déjà fait ailleurs) est simplement noté comme accueilli : bulles et astuces peuvent venir. */
-export function useWelcome() {
+/** A new install: weevboss has not said hello yet, or no subscription is signed in for it to think with. The app
+ * then opens straight into weevboss's conversation, on every device and at every launch, until that is done: there is
+ * nothing else to do first, and no other page to learn. A machine without weevboss (no `setup`) has no first run. */
+export const startsInChat = (snap: Pick<Snapshot, 'setup'>) => !!snap.setup && (!snap.setup.welcomed || snap.setup.ready === false)
+
+/** The hello's stand-in (server/core.ts): what an empty thread shows. Never shown while the real hello is on its way. */
+const STAND_IN = 'hello'
+/** After weevilsd's answer, the hello still has to come with the next snapshot: waited for this long at most. */
+const HELLO_MS = 4000
+
+/** Premier lancement : weevboss accueille dans son fil, déjà ouvert en plein écran (App.tsx). Un appareil qui arrive
+ * après (l'accueil déjà fait ailleurs, un abonnement connecté) est simplement noté comme accueilli : bulles et astuces
+ * peuvent venir.
+ * Returns true while the hello is being written (asked, not in the thread yet): the thread then shows weevboss at
+ * work rather than its stand-in line. */
+export function useWelcome(): boolean {
   const { snap } = useApp()
   const welcomed = snap.setup?.welcomed
   const asked = useRef(false)
+  /** true: asked, no answer yet; a string: the hello's id, not in the thread yet. */
+  const [wait, setWait] = useState<string | true | null>(() => (welcomed === false ? true : null))
   useEffect(() => {
     if (welcomed === undefined || asked.current) return
     asked.current = true
     // Le fil s'ouvre sur l'accueil une fois écrit (une installation qui a déjà servi n'en a pas : rien ne s'ouvre).
-    if (!welcomed) void api.setupWelcome(device()).then((r) => r.mid && focusBoss({ mid: r.mid }), () => (asked.current = false))
+    if (!welcomed) {
+      setWait(true)
+      void api.setupWelcome(device()).then(
+        (r) => {
+          setWait(r.mid ?? null)
+          if (r.mid) focusBoss({ mid: r.mid })
+        },
+        () => {
+          asked.current = false
+          setWait(null)
+        },
+      )
+    }
+  }, [welcomed])
+  // The first run is over (the hello said, a subscription signed in): only then may hint bubbles, tip cards and the
+  // ghost finger come (hints.tsx, tips.tsx, coach.tsx read this). Until then, the conversation is all there is.
+  const over = !!snap.setup && !startsInChat(snap)
+  useEffect(() => {
+    if (!over) return
     try {
       localStorage.setItem('weevils-onboarded', '1')
     } catch {
       /* stockage indisponible */
     }
-  }, [welcomed])
+  }, [over])
+  useEffect(() => {
+    if (typeof wait !== 'string') return
+    const t = setTimeout(() => setWait(null), HELLO_MS)
+    return () => clearTimeout(t)
+  }, [wait])
+  return wait === true || (typeof wait === 'string' && !snap.main.some((m) => m.id === wait))
 }
+
+/** The thread while the hello is on its way: without the stand-in line. */
+export const withoutStandIn = (main: Message[], greeting: boolean) => (greeting ? main.filter((m) => m.id !== STAND_IN) : main)
 
 // ---------------------------------------------------------------- les boutons sous un message
 

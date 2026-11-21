@@ -21,6 +21,7 @@ import { LateralDeck, useLateralNav } from './ui/lateral'
 import { adoptUnknown } from './ui/seen'
 import { useDevil } from './ui/devil'
 import { NightBand, useNightChrome } from './ui/night'
+import { startsInChat } from './ui/setup'
 import { FOCUS_BOSS, flash, flashBossMessage, focusBoss, keepInPlace, reveal, takeBossOnReturn, toTop, when, type FocusBoss } from './ui/follow'
 import { ensurePush } from './push'
 import { useT } from './i18n'
@@ -362,6 +363,26 @@ export default function App() {
     window.addEventListener(FOCUS_BOSS, on)
     return () => window.removeEventListener(FOCUS_BOSS, on)
   }, [beginBoss])
+
+  // A new install opens straight into weevboss's conversation, full screen and ready to type: no home page first, no
+  // welcome page, nothing to tick (src/ui/setup.tsx startsInChat). Decided once, on the first snapshot, during render:
+  // the home is never painted, and the conversation is simply there (it does not slide in). A launch that asks for
+  // something else (a notification's session, a page link) keeps its own destination. Back goes to the home.
+  const [entry, setEntry] = useState<'chat' | 'home' | null>(null)
+  if (live.snap && entry === null) {
+    const chat = startsInChat(live.snap) && !/^#(s=|relay|formats|foryou)\b/.test(location.hash) && !pageLink(location.pathname)
+    setEntry(chat ? 'chat' : 'home')
+    if (chat) setExpanded('agent')
+  }
+  useEffect(() => {
+    if (entry !== 'chat' || agentEntry.current) return
+    bossOrigin.current = { y: 0, expanded: null }
+    agentEntry.current = true
+    history.pushState({ w: 0, agent: true }, '')
+    // Ready to type where a keyboard is at hand. On a phone the field waits for a tap: focusing it would raise the
+    // keyboard over weevboss's hello (and an iPhone ignores a focus no finger asked for).
+    if (matchMedia('(pointer: fine)').matches) document.querySelector<HTMLElement>('.band.agent form.composer textarea, .band.agent form.composer input:not([type=file])')?.focus({ preventScroll: true })
+  }, [entry])
 
   // Notification touchée : « /#s=<id> » au lancement, ou message du service worker si l'app est déjà ouverte.
   const ready = !!live.snap

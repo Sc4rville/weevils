@@ -4,6 +4,15 @@ A short summary of what changed after the first working version.
 
 ## 2026-11-21
 
+### A new install opens straight into weevboss's chat
+- No page before the conversation: until weevboss has said hello and a subscription is signed in, the app opens full
+  screen in weevboss's thread, on every device and at every launch, ready to type (the home is one back away). The
+  hello is shown being written, not preceded by a stand-in line. Hint bubbles, tip cards and the ghost finger wait for
+  the end of that first run. In weevils next too, where weevboss's screen already is the first one: it now asks for
+  the hello and has the question field of a setup (masked for a secret).
+- Kept, outside the chat: the access-code screen, only when the app is opened without its login link (the server
+  cannot be reached without it), and the setup chips and masked fields in the chat.
+
 ### Your conversations, on your own GitHub
 - weevboss sets it up in its chat: one GitHub sign-in (a code typed on github.com), a 24-word recovery code given
   once, then one question about your history. Every Claude Code and Codex conversation of every machine is kept,

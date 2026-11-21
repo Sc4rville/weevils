@@ -192,7 +192,8 @@ function menuAt(lines: string[], ci: number): Menu | undefined {
   if (!hasFooter && !(options.length >= 2 && (numbered || asks || titled))) return undefined
   // Nothing but status lines may follow a menu without a footer: otherwise it is quoted text in the thread.
   if (!hasFooter && !titled && lines.slice(b + 1).some((l) => !blank(l) && !RULE.test(l) && !/^\s*[─━]+\s*\S*\s*─?\s*$/.test(l))) return undefined
-  const heading = lines.slice(top, a).map((l) => l.trim()).filter((l) => l && !DASHED.test(l) && !RULE.test(l))
+  // Claude Code's own tips (« Tip: auto mode handles these prompts for you… ») are never the dialog's words.
+  const heading = lines.slice(top, a).map((l) => l.trim()).filter((l) => l && !DASHED.test(l) && !RULE.test(l) && !/^Tip:\s/.test(l))
   return { heading, options, selected, footer, numbered }
 }
 
@@ -253,6 +254,8 @@ function titleOf(c: Ctx): string {
 /** Plain labels for permission answers. */
 function answerLabel(raw: string): string {
   const t = tr(M)
+  // Newer Claude Code: « Yes, and switch to auto mode · auto mode handles these prompts for you ».
+  if (/^yes,? and switch to auto mode\b/i.test(raw)) return t.allowAuto
   if (/during this session|for this session|for the session|for this conversation|switch to accept edits|accept edits/i.test(raw)) return t.allowSession
   if (/don.?t ask (?:me )?again|always allow|in the future|^yes,? and (?:allow|always)/i.test(raw) && !/^no\b/i.test(raw)) return t.allowAlways
   if (/^yes$|^yes,? (?:proceed|allow|run|just this once|once|grant)\b|^allow(?: once)?$|^approve$/i.test(raw)) return t.allow
@@ -268,11 +271,16 @@ function boxed(lines: string[]): string[] {
   const start = lines.findIndex((l) => DASHED.test(l))
   if (start < 0) return []
   const end = lines.findIndex((l, i) => i > start && DASHED.test(l))
-  return lines.slice(start + 1, end < 0 ? undefined : end).map((l) => l.trim()).filter(Boolean)
+  const rows = lines.slice(start + 1, end < 0 ? undefined : end).filter((l) => l.trim())
+  // Newer Claude Code draws a bar before a command (« │ npm test », the bar already blanked by clean()): its rows sit
+  // deeper than the dialog's own text and are one command wrapped to the terminal's width, so one line again.
+  const col = Math.min(...lines.slice(0, start).filter((l) => l.trim() && !RULE.test(l)).map(indent))
+  if (rows.length > 1 && Number.isFinite(col) && rows.every((l) => indent(l) >= col + 2)) return [rows.map((l) => l.trim()).join(' ')]
+  return rows.map((l) => l.trim())
 }
 
 /** Looks like shell text (a path, a pipe, a redirection, a heredoc, a well-known command word), not a sentence. */
-const SHELLY = /[/\\;|<>`$=]|&&|^(?:cd|python3?|node|npx|npm|pnpm|yarn|bun|git|bash|sh|ls|cat|rm|mv|cp|curl|wget|ffmpeg|docker|make|sed|grep|find|tmux)\b/i
+const SHELLY = /[\\;|<>`$=]|&&|(?:^|\s)[~.]{0,2}\/\S|\S\/\S*\.\w+|^(?:cd|python3?|node|npx|npm|pnpm|yarn|bun|git|bash|sh|ls|cat|rm|mv|cp|curl|wget|ffmpeg|docker|make|sed|grep|find|tmux)\b/i
 
 /** « Claude wants to run a command (why) »: never the command itself in the question; the command goes in the detail. */
 function runQuestion(agent: Agent, cmd: string, why: string[]): { question: string; detail: string } {
@@ -291,10 +299,12 @@ function permission(c: Ctx, rawRegion: string[]): { question: string; detail?: s
   const q = questionLine(h) ?? ''
   const header = h[0] ?? ''
   const box = boxed(rawRegion)
-  const boilerplate = /^\/permissions to update|^Permission rule .* requires confirmation|^Esc to cancel|^Tab to amend|^Do you want|^Would you like/i
+  // Claude Code's own lines around the dialog, never the agent's words: its rules, its keys, its tips (« Tip: auto mode
+  // handles these prompts for you »), its « This command requires approval ».
+  const boilerplate = /^\/permissions to update|^Permission rule .* requires confirmation|^Esc to cancel|^Tab to amend|^Do you want|^Would you like|^Tip:\s|^This command requires approval\b/i
   const qAt = h.findIndex((l) => l.includes(q) && q)
   const scope = c.agent === 'codex' && qAt >= 0 ? h.slice(qAt + 1) : h.slice(1)
-  const extra = scope.filter((l) => !boilerplate.test(l) && !box.includes(l) && !l.includes(q || '\u0000'))
+  const extra = scope.filter((l) => !boilerplate.test(l) && !box.some((b) => b === l || (b.length > l.length && b.includes(l))) && !l.includes(q || '\u0000'))
   let m: RegExpExecArray | null
   if ((m = /^Do you want to (create|make this edit to|edit|overwrite|delete) (.+)\?$/i.exec(q))) {
     const file = m[2].split('/').pop() ?? m[2]
@@ -325,6 +335,8 @@ function permission(c: Ctx, rawRegion: string[]): { question: string; detail?: s
     const what = box[0] ?? extra[0]
     // A command shown as the dialog's own title (newer Claude Code): plain words up front, the command behind « details ».
     if (SHELLY.test(header)) return runQuestion(c.agent, header, what && what !== header && !SHELLY.test(what) ? [what] : [])
+    // A command under a plain line (its title out of view): the plain line is why it runs.
+    if (what && SHELLY.test(what) && c.agent === 'claude' && box[0] === what && !SHELLY.test(header)) return runQuestion(c.agent, what, [header])
     if (what && SHELLY.test(what)) return { question: header, detail: shorten(what, 160) }
     return { question: what ? `${header} · ${shorten(what)}` : header }
   }

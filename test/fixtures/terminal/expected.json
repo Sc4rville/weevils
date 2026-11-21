@@ -261,6 +261,18 @@
  "claude-43-spontaneous-nudges-fullscreen-renderer-a.txt": {
   "kind": "none"
  },
+ "claude-R6-bash-tip-title-out-of-view.txt": {
+  "kind": "question",
+  "name": "permission",
+  "question": "Claude wants to run a command: check capture/show tool usage",
+  "detail": "weevils capture --help 2>&1 | head -40; weevils show --help 2>&1 | head -30; ls ~/.cache/ms-playwright 2>/dev/null; npm ls -g 2>/dev/null | head",
+  "labels": [
+   "Allow",
+   "Always allow",
+   "Allow, and switch to auto mode",
+   "Deny"
+  ]
+ },
  "claude-live-A1-theme.txt": {
   "kind": "auto",
   "name": "theme",
@@ -569,6 +581,18 @@
   "labels": [
    "Allow",
    "Always allow",
+   "Deny"
+  ]
+ },
+ "claude-live-R6-bash-auto-mode-tip.txt": {
+  "kind": "question",
+  "name": "permission",
+  "question": "Claude wants to run a command: check capture/show tool usage",
+  "detail": "weevils capture --help 2>&1 | head -40; weevils show --help 2>&1 | head -30; ls ~/.cache/ms-playwright 2>/dev/null; npm ls -g 2>/dev/null | head",
+  "labels": [
+   "Allow",
+   "Always allow",
+   "Allow, and switch to auto mode",
    "Deny"
   ]
  },

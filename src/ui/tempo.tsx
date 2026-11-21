@@ -226,7 +226,7 @@ function TempoCard({ m, current, onUse }: { m: TempoModeView; current: boolean; 
         <span className="meta">{[t.agents(AGENTS[m.id]), m.needHours ? t.needs(m.needHours) : m.id === 'pause' ? '' : t.anyPlan].filter(Boolean).join(' · ')}</span>
       </div>
       <p className="tempo-card-example">{t.example(m.id)}</p>
-      {m.id !== 'pause' && <p className="tempo-card-rate">{line}{sure ? <span className="meta"> {sure}</span> : null}</p>}
+      {m.id !== 'pause' && <p className="tempo-card-rate">{line}{sure ? <span className="meta tempo-card-sure">{sure}</span> : null}</p>}
       {!m.unlocked ? (
         <p className="tempo-card-opens"><b>{t.opensWith}</b> {opens.join(' · ')}</p>
       ) : current ? (

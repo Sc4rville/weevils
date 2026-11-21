@@ -20,6 +20,7 @@ export default defineMessages({
     allow: 'Autoriser',
     allowSession: 'Autoriser pour cette session',
     allowAlways: 'Toujours autoriser',
+    allowAuto: 'Autoriser, et passer en mode auto',
     deny: 'Refuser',
     denyAlways: 'Toujours refuser',
     // Plans
@@ -76,6 +77,7 @@ export default defineMessages({
     allow: 'Allow',
     allowSession: 'Allow for this session',
     allowAlways: 'Always allow',
+    allowAuto: 'Allow, and switch to auto mode',
     deny: 'Deny',
     denyAlways: 'Always deny',
     planReady: (who: Who) => `${nameOf(who)}’s plan is ready. Go ahead?`,

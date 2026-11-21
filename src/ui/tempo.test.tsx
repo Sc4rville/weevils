@@ -81,6 +81,9 @@ describe('the Tempo icon', () => {
     const card = host.querySelector('.tempo-card')!
     expect(card.textContent).toMatch(/Fleet/)
     expect(card.textContent).toMatch(/Two repos rebuilt side by side\./)
+    // How sure the figures are is its own line under the sentence, never run on after its full stop.
+    expect(card.querySelector('.tempo-card-rate')!.firstChild!.textContent).toMatch(/of your VPS\.$/)
+    expect(card.querySelector('.tempo-card-sure')?.textContent).toBe('rough: 6 days of history')
     expect(card.textContent).toMatch(/Opens with 2 subscriptions · a VPS with 8 cores and 15 GB · KVM 8, 73\.99 USD a month/)
     expect(host.querySelector('.tempo-use')).toBeNull()
   })

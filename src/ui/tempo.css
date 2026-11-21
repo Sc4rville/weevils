@@ -136,6 +136,12 @@
   font-size: 0.9375rem;
   line-height: 1.35;
 }
+
+/* How sure the figures are, under the sentence (as on the side band), never run on after its full stop. */
+.tempo-card-sure {
+  display: block;
+  margin-top: 2px;
+}
 .tempo-card-opens {
   margin: 10px 0 0;
   font-size: 0.9375rem;

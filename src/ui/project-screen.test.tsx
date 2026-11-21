@@ -87,3 +87,15 @@ describe('page', () => {
     expect(names()).toHaveLength(7)
   })
 })
+
+describe('a project with nothing asked yet', () => {
+  it('says so, rather than a blank page (next opens it from a new project\'s « > »)', async () => {
+    ledger.v = { ...ledger.v, asks: [] }
+    const { ProjectRequests } = await import('./project-screen')
+    const ctx = { snap: { sessions: [], projects: [{ id: 'p', name: 'notes', kind: 'repo', repos: ['notes'], where: {}, lastActivityAt: NOW }], machines: [], version: 1, asksOpen: 0 }, colors: {}, now: NOW, push: () => {}, back: () => {} } as never
+    await act(async () => root.render(<Ctx.Provider value={ctx}><ProjectRequests project={{ id: 'p', name: 'notes' }} fill /></Ctx.Provider>))
+    await act(async () => new Promise((r) => setTimeout(r, 10)))
+    expect(host.querySelector('.req-empty')?.textContent).toBe('no request yet')
+    expect(host.querySelectorAll('.rc-row')).toHaveLength(0)
+  })
+})

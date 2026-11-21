@@ -12,6 +12,7 @@ import type { LedgerView } from '../../shared/ledger.ts'
 import { api } from '../api'
 import { useT } from '../i18n'
 import M from '../i18n/project-screen'
+import RM from '../i18n/requests'
 import { useApp } from './app-context'
 import { SessionRow } from './bits'
 import { Shell } from './shell'
@@ -64,7 +65,14 @@ export function ProjectRequests({ project, fill, withSessions }: { project: { id
     const asks = ledger ? requestsOf(ledger.asks, project, snap.sessions).filter((a) => !isModelSwitch(a)) : []
     return groupsOf(asks, snap.sessions, withSessions ? openSessionsOf(snap.sessions, project.id) : [])
   }, [ledger, project.id, project.name, snap.sessions, withSessions])
+  // A project with nothing asked yet says so, in the words of the page of all requests, rather than a blank page.
+  if (ledger && !groups.length) return <EmptyRequests />
   return <RequestGroups groups={groups} onChanged={reload} fill={fill} />
+}
+
+function EmptyRequests() {
+  const t = useT(RM)
+  return <div className="in meta req-empty">{t.nothingOpen}</div>
 }
 
 /** A project's own page: its sessions with their requests, then the finished sessions that had no request, newest

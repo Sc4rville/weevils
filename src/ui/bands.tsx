@@ -706,6 +706,10 @@ export function FootBand() {
           {tr(RM).menu}
         </Line>
       )}
+      {/* weevils next is the app's interface; this one stays as its fallback, and this line goes back. */}
+      <Line ch="→" go={null} onClick={() => { location.href = '/?ui=next' }}>
+        {t.toNext}
+      </Line>
       <Line ch="x" go={null} onClick={logout}>
         {t.logout}
       </Line>

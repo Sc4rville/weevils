@@ -804,11 +804,14 @@ build() {
   # A secondary machine serves no app: only the main one builds it.
   [ -z "$SECONDARY" ] || return 0
   stamp="$(git rev-parse HEAD 2>/dev/null) $(git status --porcelain 2>/dev/null | sha256 | cut -c1-16)"
-  if [ -f dist/index.html ] && [ -f dist/.weevils-stamp ] && [ "$(cat dist/.weevils-stamp)" = "$stamp" ]; then ok "$(t build_ok)"
+  # Two interfaces from one build: weevils next (next/dist/, what the app opens) and the classic app (dist/, its fallback,
+  # « ?ui=classic »).
+  if [ -f dist/index.html ] && [ -f next/dist/index.html ] && [ -f dist/.weevils-stamp ] && [ "$(cat dist/.weevils-stamp)" = "$stamp" ]; then ok "$(t build_ok)"
   else
     quiet npx --no-update-notifier vite build
+    quiet npx --no-update-notifier vite build -c next/vite.config.ts
     echo "$stamp" >dist/.weevils-stamp
-    ok "vite build → dist/"
+    ok "vite build → dist/, next/dist/"
   fi
 }
 

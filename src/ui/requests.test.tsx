@@ -108,5 +108,7 @@ describe('request headings', () => {
     expect(headingOf('Improve the For you page in the current app and on next: cut the noise')).toBe('Improve the For you page')
     expect(headingOf('Remove the current onboarding page so a new user lands directly in weevboss')).toBe('Remove the current onboarding page')
     expect(headingOf('Fix it')).toBe('Fix it')
+    expect(headingOf('Rework the Requests page of each repo, weevils included')).toBe('Rework the Requests page')
+    expect(headingOf('Look at the photo of the weevils project page')).toBe('Look at the photo')
   })
 })

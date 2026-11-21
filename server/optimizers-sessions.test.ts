@@ -45,7 +45,7 @@ const flush = async () => {
   for (let i = 0; i < 200 && !mux.spawnWv.mock.calls.length; i++) await new Promise((r) => setTimeout(r, 10))
   await new Promise((r) => setTimeout(r, 0))
 }
-const make = () => new Optimizers(w, new Memory(path.join(tmp, 'memory.json')), { file: path.join(tmp, 'optimizers.json'), sys: { load: () => 0.1, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true } })
+const make = () => new Optimizers(w, new Memory(path.join(tmp, 'memory.json')), { file: path.join(tmp, 'optimizers.json'), sys: { load: () => 0.1, cpus: () => 4, free: () => 8 * 1024 ** 3, logged: () => true, jail: async () => true } })
 async function accepted(task: Record<string, unknown>) {
   const o = make()
   vi.mocked(smart).mockResolvedValueOnce(JSON.stringify([{ why: 'w', kind: 'tests', heavy: false, priority: 1, est: 30, prompt: 'Do the thing, then stop and summarise.', ...task }]))

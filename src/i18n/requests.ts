@@ -25,6 +25,9 @@ export default defineMessages({
     /** Le commit qui montre la demande faite. */
     commit: (id: string) => `commit ${id}`,
     earlier: (n: number) => `plus anciennes · ${n}`,
+    /** The group of requests never sent to a session, at the bottom of a repo's page. */
+    notSent: 'pas encore envoyées',
+    moreDone: (n: number) => `${n} de plus, finie${n > 1 ? 's' : ''}`,
     openSession: 'ouvrir la session',
   },
   en: {
@@ -48,6 +51,8 @@ export default defineMessages({
     chip: (k: string) => ({ queued: 'not started', running: 'in progress', blocked: 'stuck', needs: 'needs you', check: 'to check', paused: 'paused', done: 'done', dropped: 'dropped' })[k] ?? k,
     commit: (id: string) => `commit ${id}`,
     earlier: (n: number) => `earlier · ${n}`,
+    notSent: 'not sent yet',
+    moreDone: (n: number) => `${n} more, finished`,
     openSession: 'open the session',
   },
 })

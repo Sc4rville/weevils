@@ -204,3 +204,35 @@
   box-sizing: border-box;
   padding-block: 18px;
 }
+
+/* A repo's page: a session is a band with its title, bolder; its requests sit just under it, indented, quieter.
+   The same staircase runs through both; no line, no box. */
+.rc-head .rc-title {
+  font-size: 1.0625rem;
+  font-weight: 800;
+}
+.rc-head button.rc-line:disabled {
+  opacity: 1;
+}
+.rc-sub .rc-line {
+  min-height: 42px;
+  padding-left: calc(var(--pad) + 22px);
+}
+.rc-sub .rc-title {
+  font-size: 0.9375rem;
+  font-weight: 550;
+}
+.rc-sub.open .in.req-detail {
+  padding-left: calc(var(--pad) + 56px);
+}
+/* The requests never sent: a quiet heading closes the list. */
+.rc-unsent .rc-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  opacity: 0.6;
+}
+.rc-fold .rc-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  opacity: 0.55;
+}

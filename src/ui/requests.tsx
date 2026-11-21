@@ -8,8 +8,8 @@
 // where it was sent (a tap opens that session), what came back and the commit that shows it; « done » and « drop »
 // close it.
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
-import type { SessionStatus } from '../../shared/api.ts'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import type { Session, SessionStatus } from '../../shared/api.ts'
 import type { Dispatch } from '../../shared/ledger.ts'
 import type { LedgerView } from '../../shared/ledger.ts'
 import { noticeKey } from '../../shared/notices.ts'
@@ -169,8 +169,63 @@ export function stateIn(asks: Row[], sessions: { id: string; status: SessionStat
   }
 }
 
+/** Requests that only switch a session's model or effort (« Switch For you session Opus », « Architecture session top
+ *  model »): settings asked in passing, not product work; a repo's page leaves them out. Read on the short title.
+ *  Exported for tests. */
+const MODEL_WORD = /\b(opus|sonnet|haiku|fable|mythos|codex|gpt-?\d[\w.-]*|model|modèle|effort)\b/i
+const SWITCH_WORD = /\b(switch|swap|move|use|run|put|set|change|top|passe[rz]?|mets?|bascule[rz]?|change[rz]?|session)\b/i
+export function isModelSwitch(a: { title?: string; text: string }): boolean {
+  const label = askLabel(a)
+  return MODEL_WORD.test(label) && SWITCH_WORD.test(label.replace(MODEL_WORD, ''))
+}
+
+export interface Group {
+  /** The session's id; '' for the requests never sent. */
+  key: string
+  session?: Session
+  /** The session's plain title (a session gone: the title its dispatch label kept). */
+  label: string
+  /** When the session was last active: the one order of the groups, the most recent on top. */
+  at: number
+  rows: { a: Row; chip: Chip }[]
+}
+
+/** « weevils · claude · Onboarding link » → « Onboarding link ». */
+const titleOfLabel = (label?: string) => {
+  const p = (label ?? '').split(' · ')
+  return p.length >= 3 ? p.slice(2).join(' · ') : (label ?? '')
+}
+
+/**
+ * Requests grouped under the session they were last sent to: the most recently active session first, then the others
+ * by recency; inside a group what runs first, then the newest. Requests never sent make one group at the bottom.
+ * `idle`: open sessions with no request yet, shown as their own (empty) group. Exported for tests.
+ */
+export function groupsOf(asks: Row[], sessions: Session[], idle: Session[] = []): Group[] {
+  const byId = new Map(sessions.map((x) => [x.id, x]))
+  const state = stateIn(asks, sessions)
+  const groups = new Map<string, Group>()
+  for (const a of asks) {
+    const d = a.dispatches.at(-1)
+    const key = d?.session ?? ''
+    let g = groups.get(key)
+    if (!g) {
+      const s = d ? byId.get(d.session) : undefined
+      g = { key, ...(s ? { session: s } : {}), label: s?.title || titleOfLabel(d?.label), at: s?.lastActivityAt ?? 0, rows: [] }
+      groups.set(key, g)
+    }
+    if (!g.session && d) g.at = Math.max(g.at, d.at)
+    g.rows.push({ a, chip: chipOf(a, state(a)) })
+  }
+  for (const s of idle) if (!groups.has(s.id)) groups.set(s.id, { key: s.id, session: s, label: s.title, at: s.lastActivityAt, rows: [] })
+  for (const g of groups.values()) g.rows.sort((x, y) => Number(y.chip === 'running') - Number(x.chip === 'running') || y.a.at - x.a.at)
+  return [...groups.values()].sort((x, y) => Number(x.key === '') - Number(y.key === '') || y.at - x.at)
+}
+
 const PAGE = 40
 const STEPS = 8
+/** Finished requests a session group shows before folding the older ones. */
+const FOLD_AFTER = 2
 
 /**
  * The request column: one band per request, like the automation rows (one colour, each band one small tone step from
@@ -208,6 +263,104 @@ export function RequestColumn({ asks, onChanged, fill }: { asks: Row[]; onChange
           <button type="button" className="in rc-line rc-more" onClick={() => setShown(shown + PAGE)}>
             <span className="rc-star" />
             <span className="rc-title">{t.earlier(rows.length - shown)}</span>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A repo's requests, grouped under their sessions: a session is one band with its plain title (a tap opens it), with
+ * « needs you » when what is left is the user's, and its requests just under it, indented, one band each, a small
+ * star on the one being worked on and a small bar for how far it is. Same bands, same staircase as the column; no box,
+ * no line. The requests never sent close the list, under a quiet heading.
+ */
+export function RequestGroups({ groups, onChanged, fill }: { groups: Group[]; onChanged?: () => void; fill?: boolean }) {
+  const t = useT(M)
+  const { push } = useApp()
+  const [open, setOpen] = useState<string | null>(null)
+  const [shown, setShown] = useState(PAGE)
+  const [unfolded, setUnfolded] = useState<Set<string>>(new Set())
+  const act = (a: Row) => (action: 'done' | 'drop' | 'open') => void api.askAction(a.id, action).then(() => onChanged?.()).catch(() => undefined)
+  const out: ReactNode[] = []
+  let step = 0
+  let count = 0
+  let hidden = 0
+  for (const g of groups) {
+    if (count >= shown) {
+      hidden += g.rows.length || 1
+      continue
+    }
+    const s = g.session
+    // What is left is the user's: the session asks, or one of its requests came back with a question while it rests.
+    const needs = s?.status === 'needs_user' || (s?.status !== 'working' && g.rows.some((r) => r.chip === 'needs'))
+    const runsHere = g.rows.some((r) => r.chip === 'running')
+    const star = s?.status === 'working' && !runsHere
+    const waits = t.chip('needs')
+    const headLabel = needs ? `${g.label} · ${waits}` : g.label
+    out.push(
+      <div key={`g:${g.key}`} className={`rc-row rc-head${g.key ? '' : ' rc-unsent'}`} style={{ '--step': Math.min(step++, STEPS) } as CSSProperties}>
+        {g.key ? (
+          <button type="button" className="in rc-line" onClick={() => (s ? push({ kind: 'session', id: s.id }) : undefined)} disabled={!s} aria-label={headLabel}>
+            <span className="rc-star">{star && <span className="spin fluo"><Icon name="star" /></span>}</span>
+            <span className="rc-title">{g.label || t.aSession}</span>
+            {needs && <span className="rc-waits" aria-hidden>{waits}</span>}
+          </button>
+        ) : (
+          <div className="in rc-line">
+            <span className="rc-star" />
+            <span className="rc-title">{t.notSent}</span>
+          </div>
+        )}
+      </div>,
+    )
+    count++
+    // A session keeps its open requests in view and its last FOLD_AFTER finished ones; the older finished ones fold
+    // behind one quiet line, so a long-lived session never pushes the others off the screen.
+    const closed = g.rows.filter((r) => r.chip === 'done' || r.chip === 'dropped')
+    const folded = unfolded.has(g.key) ? [] : closed.slice(FOLD_AFTER)
+    const rows = g.rows.filter((r) => !folded.includes(r))
+    for (const { a, chip } of rows) {
+      if (count >= shown) {
+        hidden++
+        continue
+      }
+      const stage = stageOf(chip) ?? 3
+      out.push(
+        <div key={a.id} className={`rc-row rc-sub c-${chip}${open === a.id ? ' open' : ''}`} style={{ '--step': Math.min(step++, STEPS) } as CSSProperties}>
+          <button type="button" className="in rc-line" onClick={() => setOpen(open === a.id ? null : a.id)} aria-expanded={open === a.id} aria-label={`${askLabel(a)} · ${t.chip(chip)}`}>
+            <span className="rc-star">{chip === 'running' && <span className="spin fluo"><Icon name="star" /></span>}</span>
+            <span className="rc-title">{askLabel(a)}</span>
+            <span className="rc-bar" data-stage={stage} aria-hidden><i style={{ width: `${stage * 25}%` }} /></span>
+          </button>
+          <Collapse open={open === a.id}>
+            <AskDetail a={a} onAction={act(a)} />
+          </Collapse>
+        </div>,
+      )
+      count++
+    }
+    if (folded.length && count < shown) {
+      out.push(
+        <div key={`f:${g.key}`} className="rc-row rc-sub rc-fold" style={{ '--step': Math.min(step++, STEPS) } as CSSProperties}>
+          <button type="button" className="in rc-line" onClick={() => setUnfolded(new Set([...unfolded, g.key]))}>
+            <span className="rc-star" />
+            <span className="rc-title">{t.moreDone(folded.length)}</span>
+          </button>
+        </div>,
+      )
+      count++
+    }
+  }
+  return (
+    <div className={fill ? 'rc fill' : 'rc'} style={{ '--last': Math.min(Math.max(step - 1, 0), STEPS) } as CSSProperties}>
+      {out}
+      {hidden > 0 && (
+        <div className="rc-row" style={{ '--step': STEPS } as CSSProperties}>
+          <button type="button" className="in rc-line rc-more" onClick={() => setShown(shown + PAGE)}>
+            <span className="rc-star" />
+            <span className="rc-title">{t.earlier(hidden)}</span>
           </button>
         </div>
       )}

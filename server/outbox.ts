@@ -18,6 +18,8 @@ export class OutboxDeferred extends OutboxError {
   readonly retryAt: number
   constructor(retryAt: number, message: string) { super(429, message); this.retryAt = retryAt }
 }
+/** A socket that never connected (ENOENT, ECONNREFUSED): the message was never written anywhere. */
+export const notConnected = (error: unknown) => ['ENOENT', 'ECONNREFUSED'].includes((error as { code?: string })?.code ?? '') && (error as { syscall?: string }).syscall === 'connect'
 const canonical = (v: any): string => Array.isArray(v) ? `[${v.map(canonical).join(',')}]` : v && typeof v === 'object' ? `{${Object.keys(v).sort().map(k => JSON.stringify(k)+':'+canonical(v[k])).join(',')}}` : JSON.stringify(v)
 const hashOf = (v: unknown) => crypto.createHash('sha256').update(canonical(v)).digest('hex')
 /** At-most-once dispatch. An interrupted delivery is uncertain, never automatically reinjected. */
@@ -87,16 +89,19 @@ export class Outbox {
       try { this.save(e) } catch { e.status = 'uncertain'; e.error = tr(M).uncertain; this.lanes.delete(lane); console.error('[outbox] persistence failed before dispatch'); continue }
       void deliveryContext.run({ messageId: e.messageId }, () => this.run(e.task!)).then(result => {
         e.status = 'delivered'; e.result = result; if (result?.id) e.id = result.id
-        delete e.task; delete e.retryAt; delete e.error
+        delete e.task; delete e.retryAt; delete e.error; delete e.cause
       }, error => {
         if (error instanceof OutboxDeferred) {
           e.status = 'accepted'; e.error = error.message
           e.retryAt = Math.max(Date.now() + 60_000, Number.isFinite(error.retryAt) ? error.retryAt : 0)
           return
         }
-        // Only an explicit refusal before dispatch can be called a failure.
-        e.status = error instanceof OutboxError && error.status < 500 ? 'failed' : 'uncertain'
-        e.error = e.status === 'failed' ? error.message : tr(M).uncertain
+        // Only what proves nothing reached the agent is a failure: an explicit refusal before dispatch, or a connection
+        // that never opened (the session's process is gone: nothing was written to it). Anything else is uncertain.
+        const unreached = notConnected(error)
+        e.status = unreached || (error instanceof OutboxError && error.status < 500) ? 'failed' : 'uncertain'
+        e.error = unreached ? tr(M).unreachable : e.status === 'failed' ? error.message : tr(M).uncertain
+        if (e.status === 'failed') e.cause = unreached ? 'unreachable' : 'refused'
       }).finally(() => {
         e.updatedAt = Date.now()
         try { this.save(e) } catch { console.error('[outbox] receipt persistence failed') }

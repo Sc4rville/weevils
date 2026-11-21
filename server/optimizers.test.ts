@@ -372,14 +372,29 @@ describe('auto — the runner', () => {
     snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: the desert theme.' })]
     o.tick(T0 + IDLE_MS + 20 * MIN)
     for (let i = 0; i < 5; i++) await flush()
-    expect(sys.live).toHaveBeenCalledWith('abc1234def')
+    expect(sys.live).toHaveBeenCalledWith('abc1234def', undefined)
     expect(o.list()[0].runs?.at(-1)?.merged).toBe('abc1234def')
     expect(add).toHaveBeenCalledWith(expect.objectContaining({ title: O.en.themesLive(['desert']) }))
   })
 
+  it('work inside its automation\'s job lands with no card, and the server restarts when its code changed', async () => {
+    const add = vi.fn()
+    sys.merge = vi.fn(async () => ({ merged: true as const, commit: 'feed1234', kinds: ['scope' as const], themes: [], restart: true }))
+    sys.live = vi.fn(async () => true)
+    const o = await accepted(1, { foryou: { add } })
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: dead code removed.' })]
+    o.tick(T0 + IDLE_MS + 20 * MIN)
+    for (let i = 0; i < 5; i++) await flush()
+    expect(sys.live).toHaveBeenCalledWith('feed1234', true)
+    expect(o.list()[0].runs?.at(-1)?.merged).toBe('feed1234')
+    expect(add).not.toHaveBeenCalled()
+  })
+
   it('a run whose work could not land by itself is never left on its branch in silence: one plain line and « Land it » in For you; the checks ran in the run’s jail', async () => {
     const add = vi.fn()
-    sys.merge = vi.fn(async () => ({ merged: false as const, why: 'server/core.ts needs review' }))
+    sys.merge = vi.fn(async () => ({ merged: false as const, why: 'scope:It adds a new settings page, not a cleanup.' }))
     sys.push = vi.fn(async () => true)
     const o = await accepted(1, { foryou: { add } })
     o.tick(T0 + IDLE_MS)
@@ -393,7 +408,7 @@ describe('auto — the runner', () => {
     expect(box.set.WEEVILS_SCOPE).toBe('automation')
     expect(add).toHaveBeenCalledTimes(1)
     const card = add.mock.calls[0][0]
-    expect(card).toMatchObject({ kind: 'boss', title: O.en.landTitle('Harden mygame tests'), text: O.en.landReview, open: { page: 'session', id: 'sess-1' } })
+    expect(card).toMatchObject({ kind: 'boss', title: O.en.landTitle('Harden mygame tests'), text: 'It adds a new settings page, not a cleanup.', open: { page: 'session', id: 'sess-1' } })
     expect(card.actions).toEqual([{ label: O.en.landButton, brief: O.en.landBrief, op: 'land:sess-1' }])
   })
 

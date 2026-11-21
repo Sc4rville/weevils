@@ -348,6 +348,9 @@ export interface Optimizer {
   title: string
   /** Pourquoi elle est proposée, une phrase (le lien avec un souvenir ou un projet). */
   why: string
+  /** Its job in one plain sentence: the person's standing authorization. A run that stays inside it lands on its own
+   *  (server/auto-merge.ts ScopeJudge); written once from what the person set it up for, then kept. */
+  scope?: string
   /** Repo où elle tourne (null : dans son propre dossier de travail, hors repo). */
   repo: string | null
   kind: 'tests' | 'watch' | 'content' | 'explore' | 'other'

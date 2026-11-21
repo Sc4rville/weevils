@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest'
-import { addedThemes, autoMerge, classify, updateLive } from './auto-merge.ts'
+import { describe, expect, it, vi } from 'vitest'
+import { addedThemes, autoMerge, classify, reserved, touchesServer, updateLive } from './auto-merge.ts'
+import { landingWhy, scopePrompt } from './optimizers.ts'
 
 const M = (path: string) => ({ status: 'M', path })
 const A = (path: string) => ({ status: 'A', path })
+const R = (path: string, added: number) => ({ status: 'M', path, added })
 const theme = [":root[data-theme='desert'] {", '  --ink: #1f120a;', '}', ":root[data-theme='synthwave'] {"]
 
 describe('what merges on its own', () => {
@@ -16,6 +18,12 @@ describe('what merges on its own', () => {
   it('an added image', () => {
     expect(classify([A('public/icons/new.png')], [])).toMatchObject({ safe: true, kinds: ['asset'] })
   })
+  it('a pure cleanup: code only removed (server included), whole dead files deleted, tests fixed', () => {
+    const v = classify([R('server/foryou-curator.ts', 0), R('shared/foryou.ts', 0), R('src/ui/format.ts', 0), { status: 'D', path: 'src/ui/old.tsx' }, R('server/background.test.ts', 2)], [])
+    expect(v).toEqual({ safe: true, kinds: ['cleanup'], themes: [] })
+    expect(touchesServer([R('server/foryou-curator.ts', 0)])).toBe(true)
+    expect(touchesServer([R('src/ui/format.ts', 0), R('server/background.test.ts', 2)])).toBe(false)
+  })
   it('reads the themes a CSS diff adds', () => {
     expect(addedThemes(theme)).toEqual(['desert', 'synthwave'])
     expect(addedThemes(["[data-theme='dark'] .hint,"])).toEqual([])
@@ -25,6 +33,11 @@ describe('what merges on its own', () => {
 describe('what stays a branch awaiting approval', () => {
   it.each([
     ['server logic', [M('server/optimizers.ts'), M('src/styles.css')]],
+    ['an added line in server code, even among removals', [R('server/foryou-curator.ts', 0), R('server/core.ts', 1)]],
+    ['a removal from the installer', [R('install.sh', 0)]],
+    ['a removal from a sign-in file', [R('server/claude-login.ts', 0)]],
+    ['a removal from the agents\' instructions', [R('server/orchestrator.en.md', 0)]],
+    ['a removal of unknown size', [M('server/core.ts')]],
     ['install', [M('install.sh')]],
     ['dependencies', [M('package.json')]],
     ['scripts', [A('scripts/x.mjs')]],
@@ -135,5 +148,54 @@ describe('updateLive', () => {
     let built = false
     expect(await updateLive('/app', 'abc', git, async () => (built = true))).toBe(false)
     expect(built).toBe(false)
+  })
+})
+
+describe('an automation\'s own job lands on its own', () => {
+  const base = { 'remote get-url': 'git@github.com:me/weevils.git', status: '', 'diff --name-status': 'M\tserver/core.ts\nM\tHYGIENE.md\nM\tknip.json', 'diff --numstat': '3\t1\tserver/core.ts\n22\t1\tHYGIENE.md\n1\t0\tknip.json', 'diff -U0': '', 'log --format': 'chore(hygiene): dead code', 'rev-parse': 'c0ffee' }
+  it('in scope: lands after the whole suite, and asks for a restart since server code changed', async () => {
+    const { git } = fakeGit(base)
+    const runs: string[] = []
+    const seen: string[] = []
+    const r = await autoMerge('/wt', '/app', undefined, git, async (_d, cmd, args) => (runs.push([cmd, ...args].join(' ')), true), async (c) => (seen.push(c.files, c.commits), { inScope: true, why: '' }))
+    expect(r).toEqual({ merged: true, commit: 'c0ffee', kinds: ['scope'], themes: [], restart: true })
+    expect(runs.at(-1)).toBe('npx vitest run')
+    expect(seen[0]).toContain('M server/core.ts (+3)')
+    expect(seen[1]).toBe('chore(hygiene): dead code')
+  })
+  it('out of scope: waits, with the judge\'s plain sentence for the card', async () => {
+    const { git, calls } = fakeGit(base)
+    const r = await autoMerge('/wt', '/app', undefined, git, async () => true, async () => ({ inScope: false, why: 'It adds a new settings page, not a cleanup.' }))
+    expect(r).toEqual({ merged: false, why: 'scope:It adds a new settings page, not a cleanup.' })
+    expect(calls.some((c) => c[1] === 'push')).toBe(false)
+    expect(landingWhy(r.merged ? '' : r.why)).toBe('It adds a new settings page, not a cleanup.')
+  })
+  it('keys and passwords, and the agents\' instructions, stay the person\'s call: the judge is not even asked', async () => {
+    const { git } = fakeGit({ ...base, 'diff --name-status': 'M\tserver/device-tokens.ts', 'diff --numstat': '0\t3\tserver/device-tokens.ts' })
+    const judge = vi.fn(async () => ({ inScope: true, why: '' }))
+    const r = await autoMerge('/wt', '/app', undefined, git, async () => true, judge)
+    expect(r).toEqual({ merged: false, why: 'review:security:server/device-tokens.ts' })
+    expect(judge).not.toHaveBeenCalled()
+    expect(reserved([M('CLAUDE.md')])).toBe('review:instructions:CLAUDE.md')
+  })
+  it('no answer from the judge: the change waits', async () => {
+    const { git } = fakeGit(base)
+    expect(await autoMerge('/wt', '/app', undefined, git, async () => true, async () => null)).toEqual({ merged: false, why: 'scope unknown' })
+  })
+  it('the scope question names the job, the change, the language, and asks for a scope only when none is stored', () => {
+    const q = scopePrompt('Repo Hygienist: clean the repo', true, { files: 'M server/core.ts (+0)', commits: 'dead code' }, 'English')
+    expect(q).toContain('Repo Hygienist: clean the repo')
+    expect(q).toContain('M server/core.ts (+0)')
+    expect(q).toContain('scope: one plain sentence in English')
+    expect(scopePrompt('x', false, { files: '', commits: '' }, 'English')).not.toContain('scope: one plain sentence')
+  })
+  it('the running weevils restarts after a server change, only once the app is rebuilt', async () => {
+    const restart = vi.fn()
+    const { git } = fakeGit({ 'symbolic-ref': 'main', status: '' })
+    expect(await updateLive('/app', 'c0ffee', git, async () => true, restart)).toBe(true)
+    expect(restart).toHaveBeenCalledTimes(1)
+    const failed = vi.fn()
+    expect(await updateLive('/app', 'c0ffee', git, async () => false, failed)).toBe(false)
+    expect(failed).not.toHaveBeenCalled()
   })
 })

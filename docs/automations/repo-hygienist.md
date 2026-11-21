@@ -101,10 +101,13 @@ Safe means mechanical, behavior-preserving, small and provable by the full check
 - making a test that leaks files write into a temp folder;
 - correcting a doc command, path, env var or link that is verifiably wrong;
 - fixing a lint or type error whose fix is obvious;
-- `npm audit fix` without `--force` when it only touches patch or minor versions.
+- `npm audit fix` without `--force` when it only touches patch or minor versions;
+- pruning a local branch that holds no unique work: fully merged into `main` (`git branch -d`, never `-D`), no
+  worktree attached, no live session on it. List each pruned name with its last commit in the report so it can be
+  restored.
 
-Never safe, always a proposal: deleting more than 40 lines of real code or any whole source file; deleting or
-renaming branches; history rewrites; major version bumps; refactoring duplicated logic; anything in a hot file;
+Never safe, always a proposal: deleting more than 40 lines of real code or any whole source file; deleting a branch
+with commits found nowhere else (unmerged work), or renaming one; history rewrites; major version bumps; refactoring duplicated logic; anything in a hot file;
 the installer, updater, `get/` and release scripts; `LICENSE`; anything about a secret. Not done at all: dropping
 `export` from symbols used only in their own file. It is churn that conflicts with the many open branches; the
 report counts them, a future guard can stop new ones.
@@ -118,7 +121,8 @@ After the fixes: `git merge --no-edit main` again, then the full check `heavy np
 then `git status --porcelain` must be empty (the tests left nothing behind). Red: drop the commits of this run that
 caused it (they are yours, on your branch) and run again; still red, drop all of this run's fixes and say why. The
 branch is "ready to merge" only when the full check is green on top of the current `main`. You never merge it
-yourself: the morning post carries the merge button and weevboss re-runs the check before merging.
+yourself: when the run ends, weevils lands it on `main` on its own (this automation is the owner's standing
+authorization for its job; `server/auto-merge.ts` re-runs the whole test suite first). No merge button.
 
 ## 5. Invent or evolve one rule
 
@@ -141,17 +145,15 @@ to "Retired" with the reason). Never weaken or retire a security rule. No new ru
 ## 7. The morning post
 
 Publishing into the owner's own For you feed on this machine is approved for this automation (nothing leaves the
-machine). One post per run, at most two buttons, only when there is something worth saying:
+machine). One post per run, only when there is something worth saying, and a button only for what stays the owner's call:
 
-`weevils post "<2-4 short sentences>" --action "Merge the cleanup::<brief>" [--action "<label>::<brief>"]`
+`weevils post "<2-4 short sentences>" [--action "<label>::<brief>"]`
 
 - The text says what got cleaner (concretely, in plain words), the one invented rule, and anything that needs the
   owner. Spoken English, may be read aloud. No file paths, commit ids, counts dumps, logs or jargon.
-- `Merge the cleanup` only when the branch is ready to merge. Its brief, self-contained for weevboss: "In the
-  weevils repo, merge branch `<branch>` at `<commit>` into `main` only if, after merging the current `main` into it,
-  `npm run check && npm run build` is green; push `main`; answer in one line. Details: `<report path>`."
-- Second button only for the most important proposal (for example pruning merged branches, with the exact list of
-  names and commits in the report so any can be restored).
+- No button for the cleanup itself: it lands on its own. One button at most, for the most important proposal that
+  needs the owner (for example deleting branches with unmerged work, with the exact names and commits in the report
+  so any can be restored), with one plain sentence saying why it needs them.
 
 ## Q. Quiet pass
 

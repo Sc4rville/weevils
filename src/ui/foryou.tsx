@@ -17,7 +17,9 @@ import { AnimatePresence, motion, useIsPresent, useReducedMotion, type PanInfo, 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import type { ForYouItem, ForYouMedia, ForYouPulse } from '../../shared/foryou.ts'
 import { useApp } from './app-context'
-import { spring, useAuthors } from './bits'
+import { spring, toAttachment, useAuthors, type Attachment } from './bits'
+import { api } from '../api'
+import { pasteHandler, useDropTarget } from './file-drop'
 import { itemSlot, itemWho, useForYou, type ForYouStore } from './foryou-store'
 import { markSeen as gestureSeen } from './hints'
 import { Icon } from './icons'
@@ -303,13 +305,29 @@ function PostSheet({ item, onClose }: { item: ForYouItem; onClose: () => void })
     addEventListener('keydown', esc)
     return () => removeEventListener('keydown', esc)
   }, [onClose])
+  // Files pasted or dropped from the computer go with the reply, to the same place a reply goes (server/foryou.ts reply):
+  // the session the post came from, the post quoted on top; otherwise weevboss, told which post it answers. A mail has
+  // no way to carry them, so its box takes none.
+  const [files, setFiles] = useState<Attachment[]>([])
+  const [fileErr, setFileErr] = useState('')
+  const takesFiles = item.kind !== 'mail'
+  const box = useRef<HTMLFormElement>(null)
+  const take = (list: File[]) => {
+    setFileErr('')
+    void Promise.all(list.slice(0, 6).map(toAttachment)).then((got) => setFiles((f) => [...f, ...got].slice(0, 6))).catch((e: Error) => setFileErr(e.message))
+  }
+  useDropTarget(box, take, takesFiles && !sending)
   const send = async () => {
     const words = text.trim()
-    if (!words || sending) return
+    if ((!words && !files.length) || sending) return
     setSending(true)
     buzz()
     try {
-      await fy.reply(item.id, words)
+      if (files.length) {
+        if (source) await api.attach(source.id, words ? `> ${title}\n\n${words}` : `> ${title}`, files)
+        else await api.mainAttach([words, t.sheetFilesAbout(title)].filter(Boolean).join('\n\n'), files)
+        fy.markSeen([item.id])
+      } else await fy.reply(item.id, words)
       onClose()
     } catch {
       setSending(false)
@@ -346,9 +364,22 @@ function PostSheet({ item, onClose }: { item: ForYouItem; onClose: () => void })
               </span>
             </button>
           ))}
-          <form className="fy-sheet-say" onSubmit={(e) => { e.preventDefault(); void send() }}>
-            <input value={text} onChange={(e) => setText(e.target.value)} placeholder={say} aria-label={say} enterKeyHint="send" />
-            <button type="submit" className="fy-sheet-send" disabled={!text.trim() || sending} aria-label={source ? say : t.sheetSend}>
+          {(files.length > 0 || fileErr) && (
+            <div className="meta attach-line fy-sheet-files">
+              {files.length > 0 && (
+                <>
+                  <span className="attach-thumbs" aria-hidden>
+                    {files.map((f, i) => f.type.startsWith('image/') ? <img key={i} src={`data:${f.type};base64,${f.data}`} alt="" /> : <span key={i} className="attach-file ellipsis">{f.name}</span>)}
+                  </span>
+                  <button type="button" className="link small" onClick={() => setFiles([])}>{t.sheetRemoveFiles}</button>
+                </>
+              )}
+              {fileErr && <span>! {fileErr}</span>}
+            </div>
+          )}
+          <form ref={box} className="fy-sheet-say" onSubmit={(e) => { e.preventDefault(); void send() }}>
+            <input value={text} onChange={(e) => setText(e.target.value)} onPaste={takesFiles ? pasteHandler(take, () => setFileErr(t.sheetDragInstead)) : undefined} placeholder={say} aria-label={say} enterKeyHint="send" />
+            <button type="submit" className="fy-sheet-send" disabled={(!text.trim() && !files.length) || sending} aria-label={source ? say : t.sheetSend}>
               <Icon name="arrow" dir="up" />
             </button>
           </form>

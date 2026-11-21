@@ -11,6 +11,7 @@ import { Icon } from './icons'
 import { flash, focusBoss, focusBossSoon } from './follow'
 import { setTop } from './foryou-top'
 import { Bring } from './bring'
+import './living-link' // the living-link colours, for the chips' look
 
 // Accueil et branchements, côté app (contrat : shared/setup.ts, serveur : server/setup.ts).
 // - useWelcome : au premier lancement, weevilsd écrit l'accueil de weevboss dans son fil, d'après l'état réel (une
@@ -184,9 +185,21 @@ export async function runBrick(brick: Brick, primary = false): Promise<{ ok: boo
   }
 }
 
+/** Claude and Codex signed in now (the snapshot's setup flags); outside the app, neither. */
+function useSignedIn(): { claude: boolean; codex: boolean } {
+  let setup: { claude?: boolean; codex?: boolean } | undefined
+  try {
+    setup = useApp().snap.setup
+  } catch {
+    /* outside the app */
+  }
+  return { claude: !!setup?.claude, codex: !!setup?.codex }
+}
+
 /** Le bouton d'une puce : sous un message, ou à sa place dans la phrase de weevboss (inline). */
 export function Chip({ brick, inline = false }: { brick: Brick; inline?: boolean }) {
   const t = useT(M)
+  const signedIn = useSignedIn()
   const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle')
   const [note, setNote] = useState<string | null>(null)
   const go = async () => {
@@ -197,9 +210,11 @@ export function Chip({ brick, inline = false }: { brick: Brick; inline?: boolean
     setNote(r.note ?? null)
     setState(r.ok ? 'done' : 'error')
   }
+  // A sign-in already done is never offered again, whatever message still carries its chip.
+  if ((brick === 'claude' || brick === 'codex') && signedIn[brick] && state !== 'done') return null
   return (
     <>
-      <button type="button" className={`setup-chip ${inline ? 'inline' : ''} ${state}`} onClick={() => void go()} disabled={state === 'busy'}>
+      <button type="button" className={`setup-chip living lk-preview ${inline ? 'inline' : ''} ${state}`} onClick={() => void go()} disabled={state === 'busy'}>
         {state === 'busy' ? <span className="spin"><Icon name="star" /></span> : state === 'done' ? <Icon name="check" /> : state === 'error' ? <Icon name="bang" /> : <Icon name="arrow" dir="right" />} {t[`chip_${brick}`]}
       </button>
       {note && <span className="meta setup-note">{note}</span>}
@@ -218,7 +233,7 @@ export function openKey(name: string) {
 export function KeyChip({ name }: { name: string }) {
   const t = useT(M)
   return (
-    <button type="button" className="setup-chip inline" onClick={() => openKey(name)}>
+    <button type="button" className="setup-chip living lk-preview inline" onClick={() => openKey(name)}>
       <Icon name="hash" /> {t.keyChip(name)}
     </button>
   )

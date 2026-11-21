@@ -1,7 +1,8 @@
 /* Living links (docs/LINKS.md): bold, in two colours of their kind, drifting slowly like the recursive signature.
    The colours are computed per theme so each link reads at WCAG AA on every band (shared/link-colors.ts, injected
    by living-link.tsx as --lk-a / --lk-b); the text colour is the fallback. */
-a.living {
+/* .living: a page link (<a>) or an in-thread action (a setup chip, a <button>): the same look, no box. */
+.living {
   font-weight: 800;
   text-decoration: none;
   overflow-wrap: anywhere;
@@ -17,7 +18,7 @@ a.living {
 }
 @keyframes lk-drift { to { background-position: 100% 50%; } }
 @media (prefers-reduced-motion: reduce) {
-  a.living { animation: none; }
+  .living { animation: none; }
 }
 
 .lp-frame {

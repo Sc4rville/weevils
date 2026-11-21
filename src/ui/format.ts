@@ -79,7 +79,7 @@ export type Inline = { kind: 'text'; s: string } | { kind: 'url'; href: string; 
 /** Domaines nus reconnus sans https:// (« myaccount.google.com/… ») : seulement des extensions courantes, pour ne pas prendre « core.ts » pour un site. */
 const TLD = 'com|org|net|io|dev|app|tech|fr|ai|co|me|gg|xyz|eu|uk|de|be|ch|ca|us|tv|ly|cloud|site|page'
 const URL_RE = new RegExp(
-  String.raw`\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)|` + '`([^`\\n]+)`' + String.raw`|(https?:\/\/[^\s<>"'` + '`' + String.raw`]+)|(?<![@\w.\/-])((?:[a-z0-9-]+\.)+(?:${TLD})(?:\/[^\s<>"'` + '`' + String.raw`]*)?)(?![\w@-])`,
+  String.raw`\[([^\]\n]+)\]\(([^)\s]*)\)|` + '`([^`\\n]+)`' + String.raw`|(https?:\/\/[^\s<>"'` + '`' + String.raw`]+)|(?<![@\w.\/-])((?:[a-z0-9-]+\.)+(?:${TLD})(?:\/[^\s<>"'` + '`' + String.raw`]*)?)(?![\w@-])`,
   'gi',
 )
 
@@ -118,9 +118,12 @@ function inlineText(text: string, code: boolean): Inline[] {
   }
   for (const m of text.matchAll(URL_RE)) {
     const i = m.index ?? 0
-    if (m[1] && m[2]) {
+    if (m[1] && m[2] !== undefined) {
       push(text.slice(last, i))
-      out.push({ kind: 'url', href: m[2], label: m[1] })
+      // A markdown link: a web or app address is a link; any other target (« (#) », a placeholder, a file name) leaves
+      // its label as words, never the raw « [label](target) ».
+      if (/^https?:\/\//i.test(m[2]) || /^\/(?!\/)/.test(m[2])) out.push({ kind: 'url', href: m[2], label: m[1] })
+      else push(m[1])
       last = i + m[0].length
     } else if (m[3] !== undefined) {
       push(text.slice(last, i))

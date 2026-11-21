@@ -689,21 +689,31 @@
   transform: scale(1.03);
 }
 
+/* A video: one bare play glyph in the middle, white with a soft shadow, no box; it fades away while the video plays
+   under the eyes (muted) and comes back when it rests. */
 .fy-media-mark {
   position: absolute;
-  left: var(--pad);
-  bottom: 12px;
-  width: 36px;
-  height: 36px;
+  inset: 0;
   display: grid;
   place-items: center;
-  background: var(--ink);
-  color: var(--c);
+  pointer-events: none;
+  color: #fff;
+  filter: drop-shadow(0 0 6px rgb(0 0 0 / .5)) drop-shadow(0 1px 2px rgb(0 0 0 / .4));
+  opacity: .9;
+  transition: opacity .5s ease;
 }
-
+.fy-inview .fy-media-mark {
+  opacity: 0;
+}
 .fy-media-mark .ic {
-  width: 16px;
-  height: 16px;
+  width: 44px;
+  height: 44px;
+}
+.fy-media-mark .ic * {
+  fill: currentColor;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fy-media-mark { transition: none; }
 }
 
 .fy-cap .in {

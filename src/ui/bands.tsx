@@ -326,7 +326,7 @@ export function AgentBand() {
           </div>
           <ThreadPlans />
           <OutboxStatus scope="/api/main" />
-          {snap.mainWorking && <Working author="weevboss" mark={<WeevbossLogo className="working-logo" />} />}
+          {snap.mainWorking && <Working author="weevboss" />}
           {snap.devil?.working && <Working author="devil" />}
         </motion.div>
         {/* Du nouveau en bas pendant qu'on relit plus haut : un « ↓ » flottant y redescend en douceur. */}

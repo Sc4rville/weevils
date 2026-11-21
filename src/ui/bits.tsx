@@ -28,6 +28,7 @@ import RM from '../i18n/relay'
 import { threadsOn } from './threads-on'
 import { isUnread, useSeen } from './seen'
 import { AutoMark, G, Icon } from './icons'
+import { WeevbossLogo } from './logo'
 import { AppLink, LivingLink, appLink, livingLink } from './living-link'
 import { autoOfSession } from './auto-model'
 
@@ -1119,20 +1120,40 @@ export function Messages({
 
 /** L'agent travaille : une ligne vivante en bas du fil. */
 /** mark: the sign of life in place of the green star (AutoMark for an automation). */
-export function Working({ author, since, mark }: { author: string; since?: number | null; mark?: ReactNode }) {
+/**
+ * The working line's content. weevboss: its logo wiggling, then the three dots, no words (the label is for screen
+ * readers). Anyone else: the green star, « … is working », the dots. Shared by the app and next.
+ */
+export function WorkingMark({ author, since, mark }: { author: string; since?: number | null; mark?: ReactNode }) {
   const { now } = useApp()
   const t = useT(M)
+  const dots = (
+    <span className="dots" aria-hidden>
+      <i />
+      <i />
+      <i />
+    </span>
+  )
+  if (author === 'weevboss')
+    return (
+      <span className="who boss-working" role="status" aria-label={t.working(author)}>
+        <WeevbossLogo className="working-logo" />
+        {dots}
+      </span>
+    )
+  return (
+    <span className="who">
+      {mark ?? <span className="spin fluo"><Icon name="star" /></span>} {t.working(author)}{since ? ` · ${dur(now - since)}` : ''}
+      {dots}
+    </span>
+  )
+}
+
+export function Working({ author, since, mark }: { author: string; since?: number | null; mark?: ReactNode }) {
   return (
     <motion.div className="msg band working" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={spring}>
       <div className="in">
-        <span className="who">
-          {mark ?? <span className="spin fluo"><Icon name="star" /></span>} {t.working(author)}{since ? ` · ${dur(now - since)}` : ''}
-          <span className="dots" aria-hidden>
-            <i />
-            <i />
-            <i />
-          </span>
-        </span>
+        <WorkingMark author={author} since={since} mark={mark} />
       </div>
     </motion.div>
   )

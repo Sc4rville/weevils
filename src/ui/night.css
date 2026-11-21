@@ -88,6 +88,10 @@
   top: 0;
   right: var(--pad);
 }
+/* TEMPORARY: the shortcut to the new interface (src/ui/next-shortcut.tsx), the sleep button's twin. */
+.next-shortcut { width: 36px; height: 36px; display: grid; place-items: end center; flex: none; color: inherit; opacity: .7; }
+.next-shortcut .ic { width: 18px; height: 18px; }
+.agent-nav .agent-ctrls .next-shortcut,
 .agent-nav .agent-ctrls .devil-btn,
 .agent-nav .agent-ctrls .sleep-btn {
   position: static;
@@ -96,7 +100,7 @@
   place-items: center;
 }
 html .agent:not(.open).has-foryou .agent-nav .fyt-words {
-  padding-right: calc(var(--pad) + 96px);
+  padding-right: calc(var(--pad) + 140px);
 }
 
 /* ---------- The night band: ghosts at work under a slow sky ---------- */

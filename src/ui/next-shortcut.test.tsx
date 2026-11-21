@@ -12,11 +12,13 @@ let host: HTMLDivElement, root: Root
 beforeEach(() => { setLang('en'); host = document.createElement('div'); document.body.append(host); root = createRoot(host) })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); setLang(null) })
 
-it('is absent without an address, and a quiet settings row with one', async () => {
+it('is absent without an address, and a one-tap link with one', async () => {
   state.nextUrl = undefined
   await act(async () => root.render(<NextShortcut />))
   expect(host.textContent).toBe('')
   state.nextUrl = 'https://next.example.com'
   await act(async () => root.render(<NextShortcut key="b" />))
-  expect(host.querySelector('button.row')!.textContent).toContain('new interface')
+  const a = host.querySelector('a.next-shortcut')!
+  expect(a.getAttribute('href')).toBe('https://next.example.com')
+  expect(a.getAttribute('aria-label')).toBe('new interface')
 })

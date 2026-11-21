@@ -23,7 +23,9 @@ it('prefers the agent\'s own description, and titles the other tools from their 
   expect(en(ev('Read · /home/yann/projects/weevils/src/api.ts', { calls: [{ name: 'Read' }], commands: [], args: { file: '/home/yann/projects/weevils/src/api.ts', lines: '100-125' } }))).toBe('Read src/api.ts lines 100-125')
   expect(en(ev('Grep · automations', { calls: [{ name: 'Grep' }], commands: [], args: { pattern: 'automations', path: '/home/yann/projects/weevils/server' } }))).toBe('Search server for "automations"')
   expect(en(ev('WebSearch · mermaid bundle size', { calls: [{ name: 'WebSearch' }], commands: [], args: { query: 'mermaid bundle size' } }))).toBe('Search the web for "mermaid bundle size"')
-  // An older event with no recorded details: from its line.
+  // An older event with no recorded details: from its line; a command cut at 90 characters never yields a broken title.
+  expect(en(ev('Bash · cd ~/projects/weevils && grep -rn "expose\\|DIST_DIR" server/*.ts | head; cat sites/x.caddy; sed -n 1,2p "a b…'))).toBe('Search server/*.ts for "expose|DIST_DIR"')
+  expect(en(ev('Bash · cd ~/projects/weevils; grep -n "export interface Optimizer \\|expose)…'))).toBe('Running command')
   expect(en(ev('Edit · /home/user/projects/shop/src/PayButton.tsx'))).toBe('Edit src/PayButton.tsx')
   expect(actionTitle(bash('npm test'), W.fr)).toBe('Lancer les tests')
 })

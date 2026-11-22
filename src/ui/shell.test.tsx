@@ -51,3 +51,16 @@ it('session header: the live note sits in the title row (header does not grow), 
     await act(async () => root.unmount()); host.remove()
   }
 })
+
+it('the window under an open page wears that page’s own colour: weevils’ repo its gradient base, never its slot’s hue', async () => {
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
+  const pageC = () => document.documentElement.style.getPropertyValue('--page-c')
+  try {
+    await act(async () => root.render(<Shell slot="p3" kicker="weevils" title="t" identity sessionLayout><p>m</p></Shell>))
+    expect(pageC()).toContain('--fy-g1')
+    expect(pageC()).not.toContain('--p3')
+    await act(async () => root.render(<Shell slot="p2" kicker="other" title="t" sessionLayout><p>m</p></Shell>))
+    expect(pageC()).toBe('var(--p2)')
+  } finally { await act(async () => root.unmount()); host.remove() }
+  expect(pageC()).toBe('')
+})

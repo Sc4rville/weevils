@@ -3,8 +3,9 @@
 // A device without a stored theme keeps its own choice until someone picks one.
 import fs from 'node:fs'
 
-/** The themes the app knows (src/ui/app-context.tsx THEMES). Anything else is refused. */
-export const THEME_IDS = ['light', 'dark', 'zen', 'graphite', 'desert', 'synthwave'] as const
+/** A theme id as the app writes them (src/ui/app-context.tsx THEMES): the server keeps any well-formed one, so a new
+ *  theme needs no server change and no restart; each client applies only the themes it knows (isTheme). */
+export const isThemeId = (v: unknown): v is string => typeof v === 'string' && /^[a-z][a-z0-9-]{1,23}$/.test(v)
 
 export class ThemePref {
   private value: string | undefined
@@ -13,15 +14,15 @@ export class ThemePref {
     this.file = file
     try {
       const t = JSON.parse(fs.readFileSync(file, 'utf8'))?.theme
-      if ((THEME_IDS as readonly string[]).includes(t)) this.value = t
+      if (isThemeId(t)) this.value = t
     } catch { /* no theme picked yet */ }
   }
   get(): string | undefined {
     return this.value
   }
-  /** False when the theme is unknown (nothing changes). */
+  /** False when the value is not a theme id (nothing changes). */
   set(theme: unknown): boolean {
-    if (typeof theme !== 'string' || !(THEME_IDS as readonly string[]).includes(theme)) return false
+    if (!isThemeId(theme)) return false
     if (theme === this.value) return true
     this.value = theme
     fs.writeFileSync(this.file, JSON.stringify({ theme, at: Date.now() }) + '\n', { mode: 0o600 })

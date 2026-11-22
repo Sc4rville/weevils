@@ -13,7 +13,10 @@ working star `--fluo`, the 16 project slots `--p0…--p15`, voice logo `--anim-*
 - `src/styles.css`: `--auto-fluo` (AutoMark), `--alert`; `src/ui/h24.css`: `--automated-ink`; `src/ui/infra.css`:
   `--warn`/`--crit` when the defaults clash; `src/ui/foryou.css`: `--fy-ok`, `--fy-who-*`, `--fy-g1…4` when needed;
 - a **dark** theme also joins every `[data-theme='dark']` rule (`.msg.orch.ext`, `.peek-item.orch.ext`, `.wv-flash`,
-  `.hint`, `::highlight(wv-ask)`, `--warn`/`--crit`): the defaults assume a light theme;
+  `.hint`, `::highlight(wv-ask)`, `.fy-sheet-back`, `--warn`/`--crit`; `grep -rn "data-theme='synthwave'" src` lists them):
+  the defaults assume a light theme;
+- the server needs nothing: it keeps any well-formed theme id (`server/theme-pref.ts`), each app applies only the
+  themes it knows;
 - `shared/link-colors.ts`: the theme's grounds (agent band, 16 slots, h24, devil, calm) so living links get a shade
   that reads on it; a dark theme also goes in `LIGHT_TEXT`;
 - tests: add the id to the theme lists in the tests (`grep -rn "'graphite'" src test`) and to `ADDED` in

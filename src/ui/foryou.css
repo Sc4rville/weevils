@@ -1633,7 +1633,8 @@ button.fy-hit {
   background: color-mix(in oklab, var(--ink) 28%, transparent);
 }
 [data-theme='dark'] .fy-sheet-back,
-[data-theme='synthwave'] .fy-sheet-back {
+[data-theme='synthwave'] .fy-sheet-back,
+[data-theme='vaporwave'] .fy-sheet-back {
   background: rgb(0 0 0 / 0.45);
 }
 

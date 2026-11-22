@@ -92,7 +92,9 @@ once, and the code follows. Behaviour is never flipped back and forth.
   Tapping it is one motion in from the right, weevboss's strip travelling with it.
 - **A session's screen gives the thread the room** (2026-11-22): its head is one compact row (the back chevron, the
   title, the model; no repo name, no logo: its colour says the repo) with no second gap under weevboss's strip; the box to write in is one line while
-  empty, on the row of its +, mic and send, and grows as you type; under it, only the phone's own bottom inset. The
+  empty, on the row of its +, mic and send, and grows as you type; under it, only the phone's own bottom inset.
+  Whatever shows under the page (that inset, the bounce) wears the page's own colour, never another band's
+  (weevils' repo: its gradient's base). The
   « new below » mark (a « ? » when a question waits) is a quiet tone of the page, never a dark block over the text.
 - **Focus never draws a black box**: a field shows where you type by its caret; a button reached with the keyboard
   gets the app's one soft halo.

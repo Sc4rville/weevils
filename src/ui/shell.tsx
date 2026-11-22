@@ -20,7 +20,7 @@ const IDENTITY = { '--c': 'color-mix(in oklch, var(--fy-g1), var(--fy-g2) 30%)' 
  * Pages ouvertes, la plus haute en dernier. Tant qu'une page est ouverte, tout ce qui pourrait dépasser (fond de la fenêtre
  * sous le clavier iOS, zone de rebond, barre d'état) prend sa couleur : rien d'un autre écran ne transparaît.
  */
-const open: { slot: string; el: HTMLElement | null }[] = []
+const open: { slot: string; el: HTMLElement | null; color?: string }[] = []
 function applyTop(theme: Theme) {
   const top = open[open.length - 1]
   const root = document.documentElement
@@ -31,24 +31,26 @@ function applyTop(theme: Theme) {
     meta?.setAttribute('content', THEME_COLOR[theme])
     return
   }
-  root.style.setProperty('--page-c', `var(--${top.slot})`)
+  // The page's own colour, never only its slot's: weevils' repo wears its gradient's base, not the slot's hue, and
+  // the window under it (the iPhone's bottom inset, the bounce, the keyboard's gap) must read as the same page.
+  root.style.setProperty('--page-c', top.color ?? `var(--${top.slot})`)
   root.dataset.page = top.slot
   if (top.el) meta?.setAttribute('content', getComputedStyle(top.el).backgroundColor)
 }
 
 /** Une page ouverte teinte toute la fenêtre (fond, barre d'état) et masque le fil : à appeler depuis chaque page plein écran. */
-export function usePageChrome(slot: string, page: React.RefObject<HTMLElement | null>, on = true) {
+export function usePageChrome(slot: string, page: React.RefObject<HTMLElement | null>, on = true, color?: string) {
   const { theme } = useApp()
   useEffect(() => {
     if (!on) return
-    const entry = { slot, el: page.current }
+    const entry = { slot, el: page.current, color }
     open.push(entry)
     applyTop(theme)
     return () => {
       open.splice(open.indexOf(entry), 1)
       applyTop(theme)
     }
-  }, [slot, theme, page, on])
+  }, [slot, theme, page, on, color])
 }
 
 /** La page suivante remplace celle-ci (session lancée depuis « nouvelle session », conversation reprise) : l'une s'efface
@@ -186,7 +188,7 @@ export function Shell({
   useEffect(() => {
     if (!lateral) heading.current?.focus({ preventScroll: true })
   }, [lateral])
-  usePageChrome(slot, page, !lateral)
+  usePageChrome(slot, page, !lateral, identity ? (IDENTITY as Record<string, string>)['--c'] : undefined)
   const [split, unsplit] = useSplit(!!side)
   const details = (
     <>

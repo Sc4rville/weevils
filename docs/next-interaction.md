@@ -17,6 +17,7 @@ once, and the code follows. Behaviour is never flipped back and forth.
   The **Autonomous** section (what runs on its own: automations and factories; it was « Automations » until
   2026-11-21, docs/automations/PROTOCOL.md) folds the same way, from its name. Its rows are one colour, a gentle staircase: each row
   one small tone step from the one above, like the stacked blocks of the weevils logo; no lines, no gaps, no shadows.
+  Its last row runs straight into the settings below: colour alone separates the bands, never a strip (2026-11-22).
   A « + » right of its name, in the column of the projects' « > », makes a new automation and opens its talk, as the
   app's drawer does.
 - **An automation row always opens the automation** (2026-11-21). Once accepted, it opens on its overview: its

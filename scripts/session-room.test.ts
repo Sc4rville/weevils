@@ -30,3 +30,9 @@ it('next: no second top gap, a one-line box on its buttons’ row, only the real
   expect(body(css, '.nx-session-host .composer > .in')).toMatch(/flex-wrap:\s*nowrap/)
   expect(body(css, '.nx-session-host .composer > .in > textarea')).toMatch(/min-height:\s*0/)
 })
+
+it('both apps: a session head drops the repo name and the logo; the chevron, the title and the model share the row', () => {
+  const css = read('src/styles.css')
+  expect(body(css, '.page-head > .in > .session-header-row .back .meta')).toMatch(/display:\s*none/)
+  expect(fs.readFileSync(path.join(root, 'src/ui/pages.tsx'), 'utf8')).not.toMatch(/dock=\{th\.voice\}/)
+})

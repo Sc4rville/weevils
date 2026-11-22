@@ -275,7 +275,6 @@ function SessionPage({ id }: { id: string }) {
           {s.status === 'working' && s.workStartedAt != null && <> · {durLong(now - s.workStartedAt)}</>}
         </>
       }
-      dock={th.voice}
       float={<FollowDown show={follow.behind} urgent={s.status === 'needs_user'} body={body} toEnd={toEnd} />}
       bodyRef={body}
       side={preview.open ? <Preview session={s} project={project} url={previewUrl} suggestions={suggestions} onUrl={(url) => setPreview({ url })} onClose={() => setPreview({ open: false, full: false })} full={preview.full} onFull={(full) => setPreview({ full })} /> : undefined}

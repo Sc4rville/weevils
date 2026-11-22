@@ -3276,16 +3276,18 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .session-now[data-state="working"] { opacity: .75; }
 .session-now[data-state="calm"] { opacity: .5; }
 
-/* One compact row for a session's head (2026-11-22): back and repo, the title, the model, the avatar. The thread gets
-   the height of the second row back; the title still opens the top of the thread when tapped. */
-.page-head > .in:has(> .session-header-row) { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; padding-bottom: 0; }
+/* One compact row for a session's head (2026-11-22): the back chevron, the title, the model. No repo name and no logo
+   (the head's colour already says which repo): the title and the model get the width, with room between them. The
+   title still opens the top of the thread when tapped. */
+.page-head > .in:has(> .session-header-row) { display: flex; flex-wrap: wrap; align-items: center; gap: 0 10px; padding-bottom: 0; }
 .page-head > .in > .session-header-row { display: contents; }
-.page-head > .in > .session-header-row .back { order: 1; flex: 0 0 auto; max-width: 34%; }
+.page-head > .in > .session-header-row .back { order: 1; flex: none; }
+.page-head > .in > .session-header-row .back .meta { display: none; }
 .page-head > .in > .session-context-row { order: 2; flex: 1 1 0; }
 .page-head > .in > .session-context-row .session-context { max-width: 100%; min-height: 44px; }
 .page-head > .in > .session-context-row .session-now { flex-shrink: 3; }
-.page-head > .in > .session-header-row .session-header-controls { order: 3; flex: 0 1 auto; max-width: 31%; }
-.page-head > .in > .session-header-row .session-header-controls button { font-size: .72rem; line-height: 1.15; }
+.page-head > .in > .session-header-row .session-header-controls { order: 3; flex: 0 1 auto; max-width: 42%; }
+.page-head > .in > .session-header-row .session-header-controls button { font-size: .78rem; line-height: 1.2; }
 .page-head > .in > .session-header-row .session-header-voice { order: 4; }
 .page-head > .in:has(> .session-header-row) > :not(.session-header-row):not(.session-context-row) { order: 5; flex-basis: 100%; }
 /* A long agent message in a project session: its plain summary reads as body text; the full text opens below. */

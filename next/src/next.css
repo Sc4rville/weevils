@@ -127,6 +127,9 @@ body { overflow: hidden; }
 .nx-boss-row { min-height: 64px; }
 .nx-boss-row .nx-row-title { font-weight: 800; font-size: 18px; }
 .nx-project { padding-bottom: 6px; }
+/* Colour alone delimits the side bar's bands (2026-11-22): a band whose last row wears its own tone (the Autonomous
+   staircase, a toned session row) ends on that row, never on a strip of its darker base, the look of a separator. */
+.nx-project.nx-autos, .nx-project:has(.nx-row.nx-sub.tone:last-child) { padding-bottom: 0; }
 .nx-project-head { min-height: 54px; padding-top: 12px; gap: 8px; }
 .nx-project-name { font-size: 20px; letter-spacing: -0.01em; }
 .nx-row.nx-sub { min-height: 46px; padding-top: 7px; padding-bottom: 7px; background: transparent; }

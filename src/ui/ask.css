@@ -143,6 +143,7 @@
 }
 
 [data-theme='dark'] ::highlight(wv-ask),
-[data-theme='synthwave'] ::highlight(wv-ask) {
+[data-theme='synthwave'] ::highlight(wv-ask),
+[data-theme='vaporwave'] ::highlight(wv-ask) {
   background-color: rgb(255 255 255 / 0.24);
 }

@@ -12,7 +12,7 @@ it('keeps the same cropped geometry and bounded box for all four themes with uni
   await act(async()=>root.render(<><WeevbossLogo className="voice-svg" title="weevboss"/><WeevbossLogo className="tr-logo"/></>))
   const logo=host.querySelector('svg')!
   const image=logo.querySelector('image')!
-  for(const theme of ['light','dark','zen','graphite','desert','synthwave']) {
+  for(const theme of ['light','dark','zen','graphite','desert','synthwave','botanical','vaporwave']) {
    document.documentElement.dataset.theme=theme
    expect(host.querySelector('svg')).toBe(logo)
    expect(logo.getAttribute('viewBox')).toBe('106 126 1046 1046')
@@ -33,7 +33,7 @@ it('bounds the voice control independently of viewport height and isolates each 
  expect(rule).toContain('width: 56px')
  expect(rule).toContain('height: 56px')
  expect(rule).not.toContain('dvh')
- expect(css.match(/--logo-filter:/g)).toHaveLength(6)
+ expect(css.match(/--logo-filter:/g)).toHaveLength(8)
  expect(css).toContain('filter: var(--logo-filter, none)')
  expect(css).toContain('.session-header-voice .voice-logo { width: 44px; height: 44px;')
 })

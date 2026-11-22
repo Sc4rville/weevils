@@ -36,6 +36,8 @@ working star `--fluo`, the 16 project slots `--p0…--p15`, voice logo `--anim-*
 | `graphite` | graphite / graphite | light | all greys, one blue for what moves | no hue: 16 grey steps | one blue for everything |
 | `desert` | désert / desert | light | late-afternoon desert: terracotta top, sage 24/7, sand calm band, umber ink | **powdered earth** sage → ochre → terracotta → clay rose → mauve (180° arc, chroma 0.065: the first *dusty* palette), 4 steps | turquoise-jewel star, cochineal-red AutoMark, burnt-sienna 24/7 title |
 | `synthwave` | synthwave / synthwave | dark | 80s neon night: violet-black top, magenta horizon 24/7, pale-pink ink | **retro sun** violet → magenta → pink → coral → orange → yellow (145° arc through red), 4 neon intensities | grid-cyan star, neon-pink AutoMark, sun-yellow 24/7 title |
+| `botanical` | botanique / botanical | light | herbarium plate: leaf-green top, petal-pink 24/7, cream paper calm band, forest-floor ink | **greens** straw → leaf → fern → eucalyptus → sky (140° arc centred on green, chroma 0.085), 4 steps: the first light theme built on greens | flower-fuchsia star, iris-violet AutoMark, berry 24/7 title |
+| `vaporwave` | vaporwave / vaporwave | dark | pastel dusk of an empty mall: dusk-teal top, powder-pink 24/7, deep indigo calm band, lavender-white ink | **muted pastels** teal → cyan → periwinkle → lavender → orchid → pink (180° cool-to-pink arc, chroma 0.075: dusty, not neon), 4 steps | mint star, bubblegum-pink AutoMark, peach 24/7 title |
 
 ## Log
 
@@ -130,10 +132,33 @@ real-app screenshots (onboarding) in en and fr plus slot swatches at 1280×900 a
 an empty home. Lesson for next runs: start that throwaway server with `env -i` (clean environment), or it inherits the
 machine's mail bridge settings and reads the real inbox.
 
+### 2026-11-22 — botanical, vaporwave
+
+Sixth nightly run. Two directions from the list below, one light, one dark.
+
+- **botanical** (botanique): a herbarium plate. Leaf-green top band (`#A6D2A7`), petal-pink 24/7, cream paper calm
+  band, rose-hip devil band, forest-floor ink `#0c1f10`. Projects only in greens and their neighbours, from straw
+  through leaf and fern to eucalyptus and a pale sky (140° arc, four steps, chroma 0.085). The flowers carry what
+  moves: fuchsia working star, iris-violet AutoMark, berry 24/7 title. For you gradient straw → leaf → fern →
+  eucalyptus. First try started the arc at hue 80, which read as peach on the first project: moved to 100 (straw).
+- **vaporwave**: the pastel answer to synthwave. Dusk-teal top band (`#0D3343`), powder-pink 24/7, deep indigo calm
+  band, lavender-white ink `#f7f3ff`. Projects in muted pastels on a cool-to-pink arc (teal → periwinkle → lavender →
+  orchid → pink), four depths, low chroma, where synthwave is saturated and warm. Mint star, bubblegum-pink AutoMark,
+  peach 24/7 title. Joins every dark-theme rule.
+
+Checked: contrast, logo and link-colour tests (both passed at the first values), whole front-end suite (src, test,
+shared: all green), typecheck, i18n; real-app screenshots in en and fr at 1280×900 and 390×844 plus slot swatches,
+from a throwaway server (`env -i`, empty home, its own access code, own ports for the app and the hooks). Not
+touched: `server/` (its git-heavy tests fail inside the automation worktree, as on the untouched branch). Tooling
+note for next runs: no Docker for this user and no `~/.local/share/weevils/capture`; playwright-core from another
+project with `executablePath` set to the cached `chromium_headless_shell` works.
+
 ## Directions not taken yet (ideas for the next runs)
 
 - **High contrast / accessibility**: pure black and white bands with thick separators, AAA text everywhere.
-- **Vaporwave / pastel dark**: a dark theme with candy-pastel slots (synthwave is saturated neon).
-- **Forest day / botanical**: a light green-dominant theme (no light theme centres on greens yet).
+- **Candy-pastel dark**: brighter, sugary pastel slots on black (vaporwave stays dusty and low-chroma).
+- **Forest night**: a dark green theme (botanical is the day version; moss, never shipped, was its warm cousin).
 - **Newsprint / ink wash**: grey paper, sumi-ink black, one red seal.
+- **Ocean day / coastal**: light sand-and-surf theme, blues dominant (no light theme centres on blues yet).
+- **Art deco**: black and gold, emerald and cream; metallic accents.
 - **Seasonal / time of day**: a theme that follows the clock (dawn → noon → dusk → night) needs a product decision first.

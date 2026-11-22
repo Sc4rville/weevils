@@ -12,7 +12,7 @@ vi.mock('../src/ui/app-context',()=>({useApp:()=>({snap:{config:{authors:[]},pro
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const css=fs.readFileSync('src/styles.css','utf8').replace(/\/\*[\s\S]*?\*\//g,'')
 const brief='Check the result and preserve the existing work.'
-it.each(['light','dark','zen','graphite','desert','synthwave'])('preserves the same signed brief from Claude and Codex history through the %s session presentation',async theme=>{
+it.each(['light','dark','zen','graphite','desert','synthwave','botanical','vaporwave'])('preserves the same signed brief from Claude and Codex history through the %s session presentation',async theme=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'boss-presentation-'))
  const claude=path.join(dir,'claude'),codex=path.join(dir,'codex'),now=Date.now(),d=new Date(now)
  const cf=path.join(claude,'project','aaaaaaaa-1111-4111-8111-111111111111.jsonl')

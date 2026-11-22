@@ -13,6 +13,8 @@
 :root[data-theme='dark'] { --automated-ink: #ceff39; }
 :root[data-theme='desert'] { --automated-ink: #7a2a14; }
 :root[data-theme='synthwave'] { --automated-ink: #ffd36b; }
+:root[data-theme='botanical'] { --automated-ink: #8a1a52; }
+:root[data-theme='vaporwave'] { --automated-ink: #ffcfa8; }
 :root[data-theme='zen'] { --automated-ink: #9223d8; }
 :root[data-theme='graphite'] { --automated-ink: #165cdb; }
 .h24.band { overflow: hidden; }

@@ -2,6 +2,14 @@
 
 A short summary of what changed after the first working version.
 
+## 2026-11-22
+
+### Themes
+- Two new themes in the theme selector: **botanical** (botanique), a light herbarium plate (leaf-green top, petal-pink
+  24/7, cream paper, projects in greens from straw to eucalyptus, a fuchsia flower star); **vaporwave**, a dark
+  pastel dusk (dusk-teal top, powder-pink 24/7, projects in muted teal → lavender → pink, a mint star). Record:
+  `docs/themes.md`.
+
 ## 2026-11-21
 
 ### Requests close on what shipped, not on what was said last

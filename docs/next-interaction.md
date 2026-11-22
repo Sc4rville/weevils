@@ -89,6 +89,10 @@ once, and the code follows. Behaviour is never flipped back and forth.
   swipe goes from one photo to the next.
 - **A conversation wears its repo's colour**, the one of its band in the side bar (weevils' own repo: its gradient).
   Tapping it is one motion in from the right, weevboss's strip travelling with it.
+- **A session's screen gives the thread the room** (2026-11-22): its head is one compact row (back and repo, the
+  title, the model, the avatar) with no second gap under weevboss's strip; the box to write in is one line while
+  empty, on the row of its +, mic and send, and grows as you type; under it, only the phone's own bottom inset. The
+  « new below » mark (a « ? » when a question waits) is a quiet tone of the page, never a dark block over the text.
 - **Focus never draws a black box**: a field shows where you type by its caret; a button reached with the keyboard
   gets the app's one soft halo.
 - **Next's own layout choices**, the only ones (2026-11-21):

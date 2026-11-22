@@ -104,3 +104,8 @@ it('lets one-line text paste stay native in a one-line box', async () => {
   expect((await fire(box(), 'paste', data([], { 'text/plain': 'just one line' }))).defaultPrevented).toBe(false)
   expect(box().tagName).toBe('INPUT')
 })
+
+it('a roomy box asked for (weevils next) starts one line tall; one made roomy by pasted lines opens on three', () => {
+  act(() => root.render(<Composer label="m" placeholder="m" multiline onSend={vi.fn()} />))
+  expect(host.querySelector('textarea')!.getAttribute('rows')).toBe('1')
+})

@@ -146,7 +146,18 @@ body { overflow: hidden; }
 
 /* The app's session page, under weevboss's strip: in its place in the stack, not over the whole screen. */
 .nx-session-host { position: absolute; inset: 0; }
-.nx-session-host > .page { position: absolute; top: var(--strip, 0px); height: calc(100% - var(--strip, 0px)); z-index: auto; }
+.nx-session-host > .page { position: absolute; top: var(--strip, 0px); bottom: 0; height: auto; z-index: auto; }
+/* A session's screen gives the thread the room (docs/next-interaction.md, 2026-11-22). weevboss's strip above already
+   covers the status bar: the head adds no second gap. The box to write in is one line while empty, on the row of its
+   +, mic and send, and grows as you type; under it, only the phone's own bottom inset, in the box's colour. */
+.nx-session-host > .page > .page-head { padding-top: 0; }
+.nx-session-host .page-foot { padding-bottom: 0; }
+.nx-session-host .page-foot .composer { padding-bottom: var(--safe-b); }
+.nx-session-host .composer > .in { flex-wrap: nowrap; align-items: flex-end; padding: 0 4px 0 2px; }
+.nx-session-host .composer > .in > textarea { order: 0; flex: 1 1 auto; min-width: 0; min-height: 0; padding: 11px 4px; }
+.nx-session-host .composer > .in > .prompt { order: -2; align-self: center; }
+.nx-session-host .composer > .in > .tool-btn:not([aria-pressed]) { order: -1; }
+.nx-session-host .composer > .in > .tool-btn[aria-pressed], .nx-session-host .composer > .in > .send { margin-left: 0; }
 
 
 /* « weevboss · for you »: the app's two words (foryou-top.tsx TopWords), in the middle of the thin band. */

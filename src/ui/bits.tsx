@@ -635,7 +635,9 @@ export function Composer({
         ) : roomy ? (
           <textarea
             ref={(node) => { field.current = node }}
-            rows={3}
+            // A roomy box asked for (weevils next) starts one line tall and grows with the text; its look (CSS) may
+            // keep a taller resting height. A box made roomy by pasted lines opens on three.
+            rows={multiline ? 1 : 3}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onFocus={onFocus}

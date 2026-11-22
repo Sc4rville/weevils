@@ -915,14 +915,15 @@ a, a:hover, a:focus, a:active, a:visited, button, [role='link'] {
   position: absolute;
   right: calc(var(--pad) - 6px);
   bottom: 8px;
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
-  font-size: 1.375rem;
+  font-size: 1.125rem;
   font-weight: 800;
-  background: var(--ink);
-  color: var(--c);
+  /* Quiet: a step of the page's own tone, never a dark block over the text (2026-11-22). */
+  background: oklch(from var(--c) calc(l + var(--dl)) c h);
+  color: var(--ink);
 }
 
 .page-float.no-foot .follow-down {
@@ -3272,6 +3273,19 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .session-now { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .68rem; line-height: 1; padding: 3px 0; opacity: .65; }
 .session-now[data-state="working"] { opacity: .75; }
 .session-now[data-state="calm"] { opacity: .5; }
+
+/* One compact row for a session's head (2026-11-22): back and repo, the title, the model, the avatar. The thread gets
+   the height of the second row back; the title still opens the top of the thread when tapped. */
+.page-head > .in:has(> .session-header-row) { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; padding-bottom: 0; }
+.page-head > .in > .session-header-row { display: contents; }
+.page-head > .in > .session-header-row .back { order: 1; flex: 0 0 auto; max-width: 34%; }
+.page-head > .in > .session-context-row { order: 2; flex: 1 1 0; }
+.page-head > .in > .session-context-row .session-context { max-width: 100%; min-height: 44px; }
+.page-head > .in > .session-context-row .session-now { flex-shrink: 3; }
+.page-head > .in > .session-header-row .session-header-controls { order: 3; flex: 0 1 auto; max-width: 31%; }
+.page-head > .in > .session-header-row .session-header-controls button { font-size: .72rem; line-height: 1.15; }
+.page-head > .in > .session-header-row .session-header-voice { order: 4; }
+.page-head > .in:has(> .session-header-row) > :not(.session-header-row):not(.session-context-row) { order: 5; flex-basis: 100%; }
 /* A long agent message in a project session: its plain summary reads as body text; the full text opens below. */
 
 /* No little squares anywhere (Scarville, 2026-11-16): unread, unseen and activity markers are not drawn. What they meant

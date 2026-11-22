@@ -41,8 +41,8 @@ it.each(['light','dark','zen','graphite','desert','synthwave','botanical','vapor
     const rules=[...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(m=>m[1].includes('.session-thread') && m[1].trim().split(',').some(s=>{try{return bubble.matches(s.trim())}catch{return false}}))
     const backgrounds=rules.map(m=>m[2].match(/background:\s*([^;]+)/)?.[1]).filter(Boolean)
     expect(backgrounds.at(-1)).toContain('var(--who-c, var(--agent))')
-    // Someone else's prompt sits on the right, on the person's side: its edge line is on the right.
-    expect(rules.some(m=>m[2].includes('border-inline-end: 3px solid currentColor'))).toBe(true)
+    // Only the person's own words sit on the right; someone else's prompt is their mirror: its edge line on the left.
+    expect(rules.some(m=>m[2].includes('border-inline-start: 3px solid currentColor'))).toBe(true)
    }
   }
  }finally{await act(async()=>root.unmount());host.remove();delete document.documentElement.dataset.theme;MotionGlobalConfig.skipAnimations=false;fs.rmSync(dir,{recursive:true,force:true})}

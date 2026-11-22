@@ -185,10 +185,10 @@ body { overflow: hidden; }
    the right edge, the agent's on the page with the small gap on both sides, each under its author's name. */
 .nx-session-host .session-thread .msg.band { margin-left: var(--pad); }
 .nx-session-host .session-thread .msg.band:not(.tone):not(.orch) { margin-right: var(--pad); }
-/* Someone else prompting this session (weevboss, another agent, a bot: the server's author of a signed message) sits
-   on the right exactly like your own words, reaching the right edge: it is what the agent was asked, not its reply
-   (2026-11-21). It keeps its author's name and colour (bits.tsx authorTone). */
-.nx-session-host .session-thread .msg.band.orch { margin-left: var(--pad); margin-right: 0; }
+/* Someone else prompting this session (weevboss, another agent, an automation, a bot: the server's author of a signed
+   message) is the mirror of your own words: against the left edge (2026-11-22; only yours sit on the right). It keeps
+   its author's name and colour (bits.tsx authorTone). */
+.nx-session-host .session-thread .msg.band.orch { margin-left: 0; margin-right: var(--pad); }
 .nx-session-host .session-thread .msg.band.tone:not(.orch) { background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h); }
 .nx-session-host .session-thread .msg > .in { padding-block: 10px; }
 .nx-session-host .session-thread .msg .text { font-size: 1.0625rem; line-height: 1.4; }

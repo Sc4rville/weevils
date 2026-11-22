@@ -3197,14 +3197,16 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 
 /* A session is a continuous reading surface. Technical details stay optional. */
 .session-thread .msg.band:not(.orch) { background: transparent; color: inherit; }
-/* Preserve the signed brief's original author colour in continuous session reading. Someone else prompting the
-   session (weevboss, another agent, a bot) sits on the right, on your side: it is what the agent was asked, not its
-   reply (2026-11-21). Its author's name and colour stay, its edge line on the right. */
+/* Preserve the signed brief's original author colour in continuous session reading. Only your own words sit on the
+   right; someone else prompting the session (weevboss, another agent, an automation, a bot) is their mirror, against
+   the left edge (2026-11-22, replacing « on the right » of 2026-11-21). Its author's name and colour stay, its edge
+   line on the left. */
 .session-thread .msg.band.orch {
   background: oklch(from var(--who-c, var(--agent)) calc(l + var(--dl) * 1.8) calc(c * 1.1) h);
   color: var(--ink);
-  margin-left: calc(var(--pad) * 2.5);
-  border-inline-end: 3px solid currentColor;
+  margin-left: 0;
+  margin-right: calc(var(--pad) * 2.5);
+  border-inline-start: 3px solid currentColor;
 }
 .session-thread .msg > .in { padding-block: 12px; }
 .session-thread .msg .text { font-size: 1rem; line-height: 1.5; }

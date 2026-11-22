@@ -139,7 +139,7 @@ Every number in these pages, in one place. They are starting values, to be tuned
 | A held message handed again to the holder | every 30 s | 03 |
 | An engine chosen that has not started the turn | decided again after 30 s | 03 |
 | Largest journal line | 1 MiB | 02 |
-| Largest raw segment | 16 MiB | 02 |
+| Largest raw segment | 16 MiB (a new one is sealed at 1 MiB) | 02 |
 | Largest untracked file in a checkpoint | 5 MiB | 04 |
 | Largest folder without git that is checkpointed | 200 MiB or 20,000 files | 04 |
 | Failures of a turn on `api` or `auth` before it is held | 3 | 04 |

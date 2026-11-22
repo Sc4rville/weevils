@@ -170,7 +170,16 @@ const LEG = /^L[1-9]\d*$/
 const SHA256 = /^[0-9a-f]{64}$/
 const ENGINE = /^(claude|codex):([a-z0-9][a-z0-9-]*)@([A-Za-z0-9][A-Za-z0-9_.-]*)$/
 export const MAX_LINE_BYTES = 1 << 20
+/** The largest raw segment, and the largest raw line (a line over it is written as an « omitted » marker). */
 export const MAX_RAW_BYTES = 16 << 20
+/**
+ * Where a raw segment is sealed: the next line that would take it past 1 MiB starts the next segment (a line bigger
+ * than that stands alone in its own). git keeps a whole new copy of a file each time it changes, so a segment that grew
+ * to 16 MiB added up to 16 MiB to the history at every turn, and git's packing then made a laptop's fans spin. A sealed
+ * segment never changes again: each turn adds at most 1 MiB, and the sealed ones cost nothing more. Segments written
+ * before (up to MAX_RAW_BYTES) stay as they are.
+ */
+export const RAW_SEGMENT_BYTES = 1 << 20
 
 /** « claude:main@laptop » → its three parts; null when it is not an engine id. */
 export function parseEngine(engine: string): { provider: Provider; account: string; machine: string } | null {

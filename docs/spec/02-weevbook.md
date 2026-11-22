@@ -86,7 +86,7 @@ A new title or project moves the folder on `main`. The thread's own git ref has 
 | `meta.json` | generated | `renderMeta(events)`: see below. |
 | `handoff.md` | written | The handoff ([04](04-resume.md#the-handoff)). Absent until the first `handoff` event. Its SHA-256 is in that event. |
 | `attachments/<sha256><.ext>` | written | The bytes of one `attachment` event. `<.ext>` is the lower-cased extension of the event's `name`, when it has a plain one. The same file sent twice is stored once. |
-| `raw/<leg>.<provider>.<nnnn>.jsonl` | written | The provider session's lines for that leg, in order, redacted. Segments are numbered from `0001`; a new one starts before the current one would pass 16 MiB. Only what the provider wrote during the leg: a leg that resumes a session starts where the previous leg's raw ends. |
+| `raw/<leg>.<provider>.<nnnn>.jsonl` | written | The provider session's lines for that leg, in order, redacted. Segments are numbered from `0001`; a new one starts before the current one would pass 1 MiB (a single line bigger than that stands alone in its own segment). Segments written before 2026-11-22 may reach 16 MiB and stay as they are. Only what the provider wrote during the leg: a leg that resumes a session starts where the previous leg's raw ends. |
 
 `meta.json`, for the first sample thread:
 
@@ -128,6 +128,12 @@ move), `paused` (a turn is held or failed: the app says what to do).
   Decided at step 1: copying a 16 MiB segment to add one line, every few seconds of a live session, writes far more
   than the session itself; nothing reads the files between a crash and the next start but weevils, which undoes the
   write first.
+- Raw segments are sealed at 1 MiB (decided 2026-11-22). git keeps a whole new copy of a file each time it changes: a
+  segment that grew to 16 MiB added up to 16 MiB to the history at every turn, a weevbook reached several GB, and
+  git's repacking of it at full priority on every core made a laptop's fans spin. A sealed segment never changes again,
+  so each commit adds at most 1 MiB of raw, and the weevbook's `git gc --auto` runs on one core at the lowest priority,
+  at most once an hour (`gentleGc`, `server/weevbook/gitrun.ts`). The hub's own gc after a push is off
+  (`receive.autogc=false`); the machine that keeps the hub tidies it the same way.
 - `thread.md` and `meta.json` are rebuilt after every append. When in doubt they are rebuilt: nothing reads them as
   truth.
 - An event the journal refuses (`appendEvent` throws) is not dropped: a `note` of kind `debug` holds it in `data`.
@@ -184,7 +190,7 @@ Checked by `validateFolder` on one thread folder (BOOK-2 by `extendsJournal` on 
 - **BOOK-5** Every `attachment` event has its file, whose SHA-256 and size match. No file in `attachments/` is
   without an event.
 - **BOOK-6** Every raw file is named for a leg of the thread and that leg's provider; segments run `0001`, `0002`, …
-  with no gap; each holds JSON lines and is at most 16 MiB.
+  with no gap; each holds JSON lines and is at most 16 MiB (new segments are sealed at 1 MiB, unless one line is bigger).
 - **BOOK-7** `events.jsonl` is UTF-8 with line feeds only, one JSON object per line in the canonical field order, no
   blank line, a final line feed, and no line over 1 MiB.
 - **BOOK-8** `handoff.md` exists exactly when the journal has a `handoff` event; its SHA-256 is the one in the last

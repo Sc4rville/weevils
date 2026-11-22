@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { MAX_RAW_BYTES, parseJournal, renderThread, validateFolder, validateJournal, type EventDraft } from './journal.ts'
+import { MAX_RAW_BYTES, RAW_SEGMENT_BYTES, parseJournal, renderThread, validateFolder, validateJournal, type EventDraft } from './journal.ts'
 import { README, Weevbook, walk } from './store.ts'
 
 let dir: string
@@ -120,19 +120,55 @@ describe('the local weevbook', () => {
     expect(validateFolder(f)).toEqual([])
   })
 
-  it('starts a new raw segment before one would pass 16 MiB', async () => {
+  it('seals a raw segment at 1 MiB: a bigger line stands alone in its own, none passes 16 MiB', async () => {
     const b = await book()
     const big = JSON.stringify({ type: 'user', text: 'x'.repeat(7 << 20) })
     await b.append(T, { events: [...start(), said('big')], raw: { leg: 'L1', provider: 'claude', lines: [big, big] } })
     await b.append(T, { events: [], raw: { leg: 'L1', provider: 'claude', lines: [big, '{"n":1}'] } })
     const raw = fs.readdirSync(path.join(b.abs(b.pathOf(T)!), 'raw')).sort()
-    expect(raw).toEqual(['L1.claude.0001.jsonl', 'L1.claude.0002.jsonl'])
+    expect(raw).toEqual(['L1.claude.0001.jsonl', 'L1.claude.0002.jsonl', 'L1.claude.0003.jsonl', 'L1.claude.0004.jsonl'])
     for (const r of raw) expect(fs.statSync(path.join(b.abs(b.pathOf(T)!), 'raw', r)).size).toBeLessThanOrEqual(MAX_RAW_BYTES)
     expect(await b.rawLines(T, 'L1', 'claude')).toBe(4)
     // Read again from the disk, by another process.
     const other = await Weevbook.open(b.dir, 'laptop')
     expect(await other.rawLines(T, 'L1', 'claude')).toBe(4)
     expect(await other.rawBytes(T, 'L1', 'claude')).toBe(3 * (big.length + 1) + 8)
+  })
+
+  it('adds at most one segment of 1 MiB to the history per write: the sealed ones are never stored again', async () => {
+    const b = await book()
+    const line = JSON.stringify({ type: 'assistant', text: 'y'.repeat(50_000) })
+    await b.append(T, { events: [...start(), said('go')] })
+    for (let turn = 0; turn < 60; turn++) {
+      await b.append(T, { events: [], raw: { leg: 'L1', provider: 'claude', lines: [line] } })
+      await b.commitThread(T, `turn ${turn}`)
+    }
+    const dir = path.join(b.abs(b.pathOf(T)!), 'raw')
+    const raw = fs.readdirSync(dir).sort()
+    expect(raw.length).toBe(Math.ceil(60 / Math.floor(RAW_SEGMENT_BYTES / (line.length + 1))))
+    for (const r of raw) expect(fs.statSync(path.join(dir, r)).size).toBeLessThanOrEqual(RAW_SEGMENT_BYTES)
+    // Every version of every raw file the history keeps: the growing one's, each a little bigger, and once each sealed.
+    const blobs = new Set(git(b, 'rev-list', '--objects', `refs/threads/${T}`).split('\n').filter((l) => / raw\//.test(l)).map((l) => l.split(' ')[0]))
+    const stored = [...blobs].reduce((sum, oid) => sum + Number(git(b, 'cat-file', '-s', oid)), 0)
+    // 60 writes of 50 KB: about 3 MB of raw. With one growing 3 MB file, the history would keep ~90 MB of versions.
+    expect(stored).toBeLessThan(40 << 20)
+    expect(validateFolder(await folder(b))).toEqual([])
+  })
+
+  it('keeps a segment written before at its size, and goes on in a new one', async () => {
+    const b = await book()
+    const line = JSON.stringify({ type: 'user', text: 'z'.repeat(1 << 20) })
+    await b.append(T, { events: [...start(), said('old')], raw: { leg: 'L1', provider: 'claude', lines: [line] } })
+    // A segment of 3 MiB, as an older weevils wrote them (up to 16 MiB).
+    const dir = path.join(b.abs(b.pathOf(T)!), 'raw')
+    fs.writeFileSync(path.join(dir, 'L1.claude.0001.jsonl'), `${line}\n${line}\n${line}\n`)
+    await b.unlock(true)
+    const reopened = await Weevbook.open(b.dir, 'laptop')
+    expect(await reopened.lock()).toBe(true)
+    await reopened.append(T, { events: [], raw: { leg: 'L1', provider: 'claude', lines: ['{"n":1}'] } })
+    expect(fs.readdirSync(dir).sort()).toEqual(['L1.claude.0001.jsonl', 'L1.claude.0002.jsonl'])
+    expect(fs.readFileSync(path.join(dir, 'L1.claude.0002.jsonl'), 'utf8')).toBe('{"n":1}\n')
+    expect(await reopened.rawLines(T, 'L1', 'claude')).toBe(4)
   })
 
   it('undoes a write a crash cut short: the journal and raw go back together', async () => {

@@ -24,10 +24,11 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import {
-  FORMAT, Journal, JournalError, MAX_LINE_BYTES, MAX_RAW_BYTES, UNSORTED, attachmentFile, parseJournal, renderMeta, renderThread,
+  FORMAT, Journal, JournalError, MAX_LINE_BYTES, MAX_RAW_BYTES, RAW_SEGMENT_BYTES, UNSORTED, attachmentFile, parseJournal, renderMeta, renderThread,
   serializeEvent, slugify, threadFolder, type EventDraft, type JournalEvent, type Provider, type ThreadMeta,
 } from './journal.ts'
 import { ulid } from './adapters/adapter.ts'
+import { gentleGc } from './gitrun.ts'
 import { redactEvent } from './redact.ts'
 
 /** The weevbook's own README.md (generated, the same on every machine). */
@@ -380,7 +381,7 @@ export class Weevbook {
       } else add(draft)
     }
 
-    // Raw: the current segment grows until the next line would pass 16 MiB; then the next one starts.
+    // Raw: the current segment grows until the next line would pass RAW_SEGMENT_BYTES (1 MiB); then the next one starts.
     const segments = new Map<string, { base: number; text: string[] }>()
     if (batch.raw?.lines.length) {
       const { leg, provider } = batch.raw
@@ -392,7 +393,7 @@ export class Weevbook {
           line = JSON.stringify({ weevbook: 'omitted', reason: 'line over 16 MiB', bytes: n - 1, sha256: crypto.createHash('sha256').update(line).digest('hex') }) // i18n-ignore: raw marker
           n = Buffer.byteLength(line) + 1
         }
-        if (r.size > 0 && r.size + n > MAX_RAW_BYTES) Object.assign(r, { segment: r.segment + 1, size: 0 })
+        if (r.size > 0 && r.size + n > RAW_SEGMENT_BYTES) Object.assign(r, { segment: r.segment + 1, size: 0 })
         const name = `raw/${key}.${String(r.segment).padStart(4, '0')}.jsonl`
         const seg = segments.get(name) ?? { base: r.size, text: [] }
         seg.text.push(line, '\n')
@@ -625,9 +626,10 @@ export class Weevbook {
   async isAncestor(commit: string, tip: string): Promise<boolean> {
     return git(this.gitDir, ['merge-base', '--is-ancestor', commit, tip]).then(() => true, () => false)
   }
-  /** Packs loose objects once there are many (a long thread rewrites its raw segment at each turn). */
+  /** Packs loose objects once there are many: gently, on one core at the lowest priority, at most once an hour
+   *  (gitrun.ts gentleGc). */
   async tidy() {
-    await git(this.gitDir, ['gc', '--auto', '--quiet']).catch(() => undefined)
+    await gentleGc(this.gitDir).catch(() => undefined)
   }
 }
 

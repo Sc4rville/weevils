@@ -3,6 +3,7 @@
 // that would point the command at the user's repository by accident).
 
 import { execFile } from 'node:child_process'
+import fs from 'node:fs'
 import type { GitResult, GitRunner } from './lease.ts'
 
 /** Variables that would make a command act on another repository or index than the one it names. */
@@ -59,4 +60,36 @@ export function hubRunner(gitDir: string, o: { ssh?: string; netMs?: number; loc
       timeoutMs: net ? (o.netMs ?? 60_000) : (o.localMs ?? 60_000),
     })
   }
+}
+
+/**
+ * `git gc --auto` of one of weevils' own repositories (the weevbook, the hub), gently. With git's defaults a repack
+ * uses every core at full priority: on a laptop with a weevbook of a few GB, that made the fans spin and the machine
+ * lag (seen on a Mac, 2026-11-22). Here: one core (pack.threads=1), a small delta window, the lowest priority (macOS:
+ * `taskpolicy -b`, its background class: efficiency cores, throttled disk; elsewhere `nice -n 19`), and at most once an
+ * hour per repository. git still decides whether there is anything to do, and does it detached, in the background.
+ */
+export const GC_EVERY = 60 * 60_000
+const lastGc = new Map<string, number>()
+
+/** The command line of a gentle gc: [program, ...arguments]. */
+export function gentleGcCommand(platform: NodeJS.Platform = process.platform, taskpolicy = fs.existsSync('/usr/sbin/taskpolicy')): string[] {
+  const gc = ['git', '-c', 'pack.threads=1', '-c', 'pack.windowMemory=64m', '-c', 'gc.autoDetach=true', 'gc', '--auto', '--quiet']
+  if (platform === 'darwin' && taskpolicy) return ['/usr/sbin/taskpolicy', '-b', ...gc]
+  if (platform === 'win32') return gc
+  return ['nice', '-n', '19', ...gc]
+}
+
+/** A gentle `git gc --auto` of `gitDir` (above); false when it was skipped (one ran less than GC_EVERY ago). */
+export function gentleGc(gitDir: string, o: { now?: number; command?: string[] } = {}): Promise<boolean> {
+  const now = o.now ?? Date.now()
+  if (now - (lastGc.get(gitDir) ?? -Infinity) < GC_EVERY) return Promise.resolve(false)
+  lastGc.set(gitDir, now)
+  const [cmd, ...args] = o.command ?? gentleGcCommand()
+  const env: Record<string, string | undefined> = { ...process.env }
+  for (const k of INHERITED) delete env[k]
+  Object.assign(env, { GIT_DIR: gitDir, LC_ALL: 'C', GIT_TERMINAL_PROMPT: '0' })
+  return new Promise((resolve) => {
+    execFile(cmd, args, { env, timeout: 10 * 60_000, killSignal: 'SIGKILL' }, () => resolve(true))
+  })
 }

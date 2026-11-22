@@ -11,7 +11,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { ulid } from './adapters/adapter.ts'
 import { hubRef, keepInWeevbook, takeCheckpoint, type CheckpointFields } from './checkpoint.ts'
-import { gitOk, hubRunner, runGit, sshCommand } from './gitrun.ts'
+import { gentleGc, gitOk, hubRunner, runGit, sshCommand } from './gitrun.ts'
 import { parseJournal, type EventDraft, type JournalEvent, type LegId } from './journal.ts'
 import { LeaseClient, OBSERVE_EVERY, RENEW_EVERY, lateNote, orphanRef as orphanRefOf, parseLease, stealable, type GitRunner, type Intent, type Lease, type Outcome, type Seen } from './lease.ts'
 import { Weevbook, composeMain, writeAtomic } from './store.ts'
@@ -141,6 +141,9 @@ export async function ensureHubRepo(dir: string) {
   }
   await gitOk(['--git-dir', dir, 'config', 'receive.advertiseAtomic', 'true'])
   await gitOk(['--git-dir', dir, 'config', 'core.logAllRefUpdates', 'false'])
+  // git's own gc after each push would repack at full priority on every core: weevils tidies the hub gently instead
+  // (gentleGc, from each round of the machine that keeps it).
+  await gitOk(['--git-dir', dir, 'config', 'receive.autogc', 'false'])
   const hook = path.join(dir, 'hooks', 'pre-receive')
   if ((await fsp.readFile(hook, 'utf8').catch(() => '')) !== HUB_HOOK) {
     await fsp.mkdir(path.dirname(hook), { recursive: true })
@@ -472,6 +475,8 @@ export class HubSync {
       if (this.o.hub.here && this.now() - this.composedAt >= COMPOSE_EVERY) {
         this.composedAt = this.now()
         await this.composeHub().catch((e) => this.once('compose', e))
+        // The hub's own gc is off (receive.autogc): it is tidied here, gently, at most once an hour.
+        void gentleGc(this.o.hub.url).catch(() => undefined)
       }
       this.status.working = Object.entries(this.status.held).filter(([, h]) => h.state === 'working').map(([id]) => id)
       const refs = await this.refMap('refs/threads/', 'refs/hub/threads/')

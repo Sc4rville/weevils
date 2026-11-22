@@ -28,7 +28,7 @@ export interface BookPaths {
   roots: string[]
 }
 
-/** Every provider session file of this machine, oldest first: ~/.claude/projects/<folder>/<id>.jsonl (as the app
+/** Every provider session file of this machine, newest first: ~/.claude/projects/<folder>/<id>.jsonl (as the app
  *  reads them) and every day of ~/.codex/sessions. */
 export async function allSessions(claudeDir: string, codexDir: string): Promise<Source[]> {
   const out: (Source & { mtime: number })[] = []
@@ -47,7 +47,9 @@ export async function allSessions(claudeDir: string, codexDir: string): Promise<
     }
   }
   await walk(codexDir)
-  return out.sort((a, b) => a.mtime - b.mtime || (a.file < b.file ? -1 : 1)).map(({ file, provider }) => ({ file, provider }))
+  // The most recent first: an import of a long history brings back the work in progress before the old conversations
+  // (a thread's id comes from its session's own time, so the order changes nothing else).
+  return out.sort((a, b) => b.mtime - a.mtime || (a.file < b.file ? -1 : 1)).map(({ file, provider }) => ({ file, provider }))
 }
 
 /** Which sessions an import takes: all of them by default. */

@@ -54,7 +54,8 @@ export interface Message {
 /** A real win: a conversation moved to another machine with its history, a machine joining for the first time, a
  *  request verified done, work landed on main, the vault in sync. id is stable per event (it fires once); at is when
  *  it happened. */
-export type WinKind = 'move' | 'machine' | 'done' | 'land' | 'vault'
+/** said: a result weevboss verified and marked in its reply ([[win]]**…**, shared/wins.ts). */
+export type WinKind = 'move' | 'machine' | 'done' | 'land' | 'vault' | 'said'
 export interface Win {
   id: string
   kind: WinKind

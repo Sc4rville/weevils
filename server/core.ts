@@ -68,6 +68,7 @@ import R from './i18n/relay.ts'
 import { parseTimerShow } from './schedule.ts'
 import { extractLinks, journalRuns, tailLines, unitDescriptions, type JournalRun } from './auto-runs.ts'
 import { chipsInPlace, CONTEXT_BLOCK } from '../shared/setup.ts'
+import { threadWins } from '../shared/wins.ts'
 import { asksUser, type Ask } from '../shared/asks.ts'
 import { createRepo, describeRepos, listRepos, loadBlurbs, remoteFile, remoteFiles } from './github.ts'
 import { judgeAsk } from './asks-judge.ts'
@@ -2567,13 +2568,13 @@ export class Weevils {
     }
     // Each of your messages says what is being done with it (server/reactions.ts).
     const pending = this.ledger?.pending.filter((m) => m.from === 'user').map((m) => m.at) ?? []
-    return withBossReactions(msgs, {
+    return threadWins(withBossReactions(msgs, {
       asks: this.ledger?.asks('all') ?? [],
       sessionStatus: this.statusLookup(),
       working: this.orchestratorWorking(Date.now()),
       pendingSince: pending.length ? Math.min(...pending) : undefined,
       explicit: this.reactions,
-    })
+    }))
   }
 
   private orchestratorWorking(now: number) {

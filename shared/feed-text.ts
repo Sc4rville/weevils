@@ -1,3 +1,4 @@
+import { withoutWinMarks } from './wins.ts'
 import { withoutMachinePrefix } from './machine-prefix.ts'
 import type { ForYouItem } from './foryou.ts'
 
@@ -10,7 +11,7 @@ export function rawEngineeringNotice(id: string, text = ''): boolean {
 
 /** Keep the human result in the feed; technical evidence stays in the session itself. */
 export function humanFeedText(text: string): string {
-  text = withoutMachinePrefix(text)
+  text = withoutWinMarks(withoutMachinePrefix(text))
   const urls: string[] = []
   text = text.replace(/https?:\/\/[^\s<>"']+|\/p\/(?:opportunities|library|preview|report|render)\/[a-z0-9][a-z0-9-]{0,79}/g, (url) => `§LINK${urls.push(url) - 1}§`)
   return text

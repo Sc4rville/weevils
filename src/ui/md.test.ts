@@ -29,3 +29,16 @@ describe('spans', () => {
     expect(spans('[x](https://a.io/_b_)')).toEqual([{ kind: 'text', s: '[x](https://a.io/_b_)' }])
   })
 })
+
+describe('a win weevboss marked', () => {
+  it('[[win]]**…** is a coloured phrase; ordinary bold stays bold; a lone marker never shows', () => {
+    expect(spans('By the way, [[win]]**Pli now continues on the VPS**, with all its history.')).toEqual([
+      { kind: 'text', s: 'By the way, ' },
+      { kind: 'win', s: 'Pli now continues on the VPS' },
+      { kind: 'text', s: ', with all its history.' },
+    ])
+    expect(spans('**not yet**: on a branch')).toEqual([{ kind: 'strong', s: 'not yet' }, { kind: 'text', s: ': on a branch' }])
+    expect(spans('done [[win]] here')).toEqual([{ kind: 'text', s: 'done here' }])
+  })
+})
+

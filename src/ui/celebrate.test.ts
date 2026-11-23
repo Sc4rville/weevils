@@ -84,4 +84,15 @@ describe('celebrateWin', () => {
     expect(burst?.parentElement).toBe(document.body)
     expect(burst?.querySelectorAll('i').length).toBeGreaterThanOrEqual(18)
   })
+
+  it('a message with a marked phrase: the phrase shines and the confetti leave from it, no band sweep', async () => {
+    const el = line()
+    el.innerHTML = '<div class="text md"><p>By the way, <strong class="win">Pli now continues on the VPS</strong>.</p></div>'
+    celebrateWin({ id: 'said:r1', at: Date.now() - 500, kind: 'said' }, el)
+    await settle()
+    expect(el.querySelector('strong.win')?.classList.contains('win-shine')).toBe(true)
+    expect(el.querySelector('.win-sweep')).toBeNull()
+    expect(document.querySelector('.win-burst')).not.toBeNull()
+  })
 })
+

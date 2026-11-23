@@ -710,19 +710,6 @@
   object-fit: cover;
 }
 
-/* Much taller than the cap (a phone capture, a portrait clip): shown whole on the tone, never cut to a slice
-   (mediaFit() in foryou.tsx decides: at most an eighth of a media is ever cut). */
-.fy-media.contain img,
-.fy-media.contain video {
-  height: 62dvh;
-  object-fit: contain;
-}
-
-.fy-media-strip.many .fy-media img,
-.fy-media-strip.many .fy-media video {
-  height: min(62dvh, 96vw);
-}
-
 /* A slow drift while it is under the eyes. */
 .fy-media img {
   transition: transform 9s ease-out;
@@ -1256,12 +1243,6 @@
   overflow-wrap: anywhere;
 }
 
-/* Long screenshots keep readable text at column width; the viewer retains the whole file. */
-.fy-media.crop img {
-  height: min(48dvh, 420px);
-  object-fit: cover;
-  object-position: top;
-}
 /* Screenshots should stay still so their text remains readable. */
 .fy-media.fy-inview img { transform: none; }
 

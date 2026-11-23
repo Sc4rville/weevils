@@ -5,6 +5,7 @@ import { OutboxStatus } from './outbox-status'
 import { SaveMediaButton, useLongPressSave } from './save-media'
 import { resolveOpen, useForYouOpen } from './foryou-open'
 import { busyOf } from './foryou-busy'
+import { MockupFrame, mockupOf, sideOf } from './foryou-mockup'
 import { rawEngineeringNotice } from '../../shared/feed-text.ts'
 import { closableFeedNotice, feedNoticeKey, noticeKey } from '../../shared/notices.ts'
 import { Notice, NoticeClose, useNotice } from './notice'
@@ -128,24 +129,10 @@ export function waveOf(id: string, n: number): number[] {
 }
 
 // ---------------------------------------------------------------------------
-// Media: edge to edge, the video plays muted while it is under the eyes, a tap opens it alone, with sound.
+// Media: each one in its mockup (src/ui/foryou-mockup.tsx), sized to the post; the video plays muted while it is under
+// the eyes, a tap opens it alone, with sound.
 
-/** How much of a media the stream may cut to fill its box: a little. Beyond, it is shown whole on the band's tone. */
-const CROP_MAX = 0.12
-/** The tallest a media gets in the stream, as a share of the screen (foryou.css: 62dvh). */
-const MEDIA_CAP = 0.62
-
-/** cover: it fills its box (at most CROP_MAX of it is cut) · contain: whole, on the tone, in a box of the capped height. */
-export function mediaFit(w: number, h: number, boxW: number, boxH: number, fixed: boolean): 'cover' | 'contain' {
-  if (!(w > 0 && h > 0 && boxW > 0 && boxH > 0)) return 'cover'
-  const natural = (boxW * h) / w // its height at the box's width
-  // A box that follows the media (one media alone): only what goes over the cap is cut.
-  if (!fixed) return natural > boxH * (1 + CROP_MAX) ? 'contain' : 'cover'
-  const kept = Math.min(natural / boxH, boxH / natural)
-  return kept < 1 - CROP_MAX ? 'contain' : 'cover'
-}
-
-function MediaTile({ m, many }: { m: ForYouMedia; many: boolean }) {
+function MediaTile({ m }: { m: ForYouMedia }) {
   const t = useT(M)
   const { push } = useApp()
   const tile = useRef<HTMLDivElement>(null)
@@ -153,14 +140,13 @@ function MediaTile({ m, many }: { m: ForYouMedia; many: boolean }) {
   const inView = useInView(tile, 0.6)
   const target = { url: m.url, name: m.name, type: m.type }
   const notOpen = useLongPressSave(tile, target)
-  const [fit, setFit] = useState<'cover' | 'contain' | 'crop'>('cover')
+  // The size the server read from the file's header, else the one the browser finds once it loads.
+  const [size, setSize] = useState<{ w: number; h: number } | null>(m.w && m.h ? { w: m.w, h: m.h } : null)
   const [focus, setFocus] = useState<{ flat: boolean; at: number } | null>(null)
   const sized = (w: number, h: number) => {
-    const el = tile.current
-    if (!el) return
-    const cap = MEDIA_CAP * (window.innerHeight || 0)
-    setFit(m.type === 'image' && h / w > 1.6 ? 'crop' : mediaFit(w, h, el.clientWidth, many ? Math.min(cap, 0.96 * (window.innerWidth || 0)) : cap, many))
+    if (w > 0 && h > 0 && (size?.w !== w || size?.h !== h)) setSize({ w, h })
   }
+  const { kind, sr } = mockupOf(m, size?.w, size?.h)
   // Muted, and only while it is under the eyes.
   useEffect(() => {
     const v = video.current
@@ -173,13 +159,15 @@ function MediaTile({ m, many }: { m: ForYouMedia; many: boolean }) {
     }
   }, [inView])
   return (
-    <div ref={tile} className={`fy-media save-media-host ${fit}${inView ? ' fy-inview' : ''}${focus?.flat ? ' fy-flat' : ''}`}>
+    <div ref={tile} className={`fy-media fy-mocked save-media-host${inView ? ' fy-inview' : ''}${focus?.flat ? ' fy-flat' : ''}`}>
     <button type="button" className="fy-media-hit" onClickCapture={notOpen} onClick={() => push({ kind: 'media', url: m.url, type: m.type, name: m.name })} aria-label={t.openMedia(m.name)}>
-      {m.type === 'video' ? (
-        <video ref={video} src={m.url} playsInline muted loop preload="metadata" onLoadedMetadata={(e) => sized(e.currentTarget.videoWidth, e.currentTarget.videoHeight)} />
-      ) : (
-        <img src={m.url} alt="" loading="lazy" decoding="async" draggable={false} style={focus ? { objectPosition: `50% ${focus.at}%` } : undefined} onLoad={(e) => { const el = e.currentTarget; sized(el.naturalWidth, el.naturalHeight); setFocus(busyOf(el)) }} />
-      )}
+      <MockupFrame kind={kind} sr={sr} side={sideOf(m.id)}>
+        {m.type === 'video' ? (
+          <video ref={video} src={m.url} playsInline muted loop preload="metadata" onLoadedMetadata={(e) => sized(e.currentTarget.videoWidth, e.currentTarget.videoHeight)} />
+        ) : (
+          <img src={m.url} alt="" loading="lazy" decoding="async" draggable={false} style={focus && kind !== 'phone' ? { objectPosition: `50% ${focus.at}%` } : undefined} onLoad={(e) => { const el = e.currentTarget; sized(el.naturalWidth, el.naturalHeight); setFocus(busyOf(el)) }} />
+        )}
+      </MockupFrame>
       {m.type === 'video' && (
         <span className="fy-media-mark" aria-hidden>
           <Icon name="play" />
@@ -199,7 +187,7 @@ function MediaStrip({ media }: { media: ForYouMedia[] }) {
   return (
     <div ref={strip} className={many ? 'fy-media-strip many' : 'fy-media-strip'} role={many ? 'group' : undefined} aria-label={many ? t.mediaStrip(media.length) : undefined}>
       {media.map((m) => (
-        <MediaTile key={m.id} m={m} many={many} />
+        <MediaTile key={m.id} m={m} />
       ))}
     </div>
   )
@@ -238,7 +226,7 @@ function PostMedia({ item }: { item: ForYouItem }) {
   const media = item.resultGroup?.final ? [item.resultGroup.final] : (item.media ?? [])
   if (item.composition && !item.resultGroup) return <div className="fy-post-media"><InlineMediaFormats item={item} /></div>
   if (!media.length) return null
-  return <div className="fy-post-media">{media.length === 2 ? <div className="fy-two">{media.map((m) => <MediaTile key={m.id} m={m} many />)}</div> : <MediaStrip media={media} />}</div>
+  return <div className="fy-post-media">{media.length === 2 ? <div className="fy-two">{media.map((m) => <MediaTile key={m.id} m={m} />)}</div> : <MediaStrip media={media} />}</div>
 }
 
 /** Opens a post's sheet (ForYouPage provides it). */

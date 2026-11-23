@@ -32,7 +32,7 @@ vi.mock('../api', () => {
 
 const { MotionGlobalConfig } = await import('motion/react')
 MotionGlobalConfig.skipAnimations = true
-const { ForYouPage, ForYouItemView, MediaPage, mediaFit, waveOf } = await import('./foryou')
+const { ForYouPage, ForYouItemView, MediaPage, waveOf } = await import('./foryou')
 const { resetVoice } = await import('./foryou-voice')
 const { resetForYou } = await import('./foryou-store')
 const { Ctx, setSettledNow } = await import('./app-context')
@@ -214,27 +214,32 @@ describe('for you: voice bars', () => {
   })
 })
 
-describe('for you: figures, the line, media fit', () => {
+describe('for you: figures, the line, media mockups', () => {
 
   it('no status readout above the stream: it is content, not a control panel', async () => {
     await open()
     expect(host.querySelector('.fy-pulse')).toBeNull()
   })
 
-  it('a media is never cut by more than a little: beyond, it is shown whole', () => {
-    // One media alone on a phone (390 wide, cap 523): landscape and near-square fill, a portrait clip is shown whole.
-    expect(mediaFit(1280, 720, 390, 523, false)).toBe('cover')
-    expect(mediaFit(1170, 1560, 390, 523, false)).toBe('cover')
-    expect(mediaFit(1000, 1480, 390, 523, false)).toBe('cover') // 577 high: 9 % over the cap
-    expect(mediaFit(720, 1280, 390, 523, false)).toBe('contain')
-    // Wide screen, in the 760 column (cap 496): the portrait clip would lose two thirds.
-    expect(mediaFit(720, 1280, 760, 496, false)).toBe('contain')
-    expect(mediaFit(1280, 720, 760, 496, false)).toBe('cover')
-    // Several side by side: the box is fixed, so both ways count.
-    expect(mediaFit(1280, 720, 335, 374, true)).toBe('contain')
-    expect(mediaFit(1000, 1100, 335, 374, true)).toBe('cover')
-    // Not known yet.
-    expect(mediaFit(0, 0, 390, 523, false)).toBe('cover')
+  it('a media sits in its mockup on the post colour: no box around it, sized from the size the server read', async () => {
+    const shot = { id: 'p1', type: 'image' as const, url: '/api/foryou/media/p1', name: 'lab.png', bytes: 1, w: 1170, h: 2532 }
+    await open([{ ...ITEMS.find((i) => i.id === 'me')!, media: [shot] }])
+    const tile = band('me').querySelector('.fy-media')!
+    expect(tile.classList.contains('fy-mocked')).toBe(true)
+    const mock = tile.querySelector<HTMLElement>('.fy-mock')!
+    expect(mock.dataset.mockup).toBe('phone')
+    expect(Number(mock.style.getPropertyValue('--sr'))).toBeCloseTo(2532 / 1170, 2)
+    expect(mock.querySelector('.fy-mock-screen img')!.getAttribute('src')).toBe('/api/foryou/media/p1')
+  })
+
+  it('a clip plays inside its mockup; a forced mockup wins over the pick', async () => {
+    const clip = { id: 'v1', type: 'video' as const, url: '/api/foryou/media/v1', name: 'run.mp4', bytes: 2 }
+    const still = { id: 'r1', type: 'image' as const, url: '/api/foryou/media/r1', name: 'render.png', bytes: 1, w: 1600, h: 900, mockup: 'tablet' as const }
+    await open([{ ...ITEMS.find((i) => i.id === 'me')!, media: [clip, still] }])
+    const mocks = [...band('me').querySelectorAll<HTMLElement>('.fy-mock')]
+    expect(mocks.map((m) => m.dataset.mockup)).toEqual(['cinema', 'tablet'])
+    const video = mocks[0].querySelector('.fy-mock-screen video')! as HTMLVideoElement
+    expect(video.muted && video.loop && video.hasAttribute('playsinline')).toBe(true)
   })
 })
 

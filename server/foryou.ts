@@ -897,10 +897,10 @@ export class ForYou {
    * « weevils show »: a file an agent wants the user to see. Its session is the most recently active one working in
    * (or above) the caller's folder; files shown by the same session within two minutes join one item.
    */
-  addMedia(o: { path: unknown; caption?: unknown; cwd?: unknown; from?: string; evidence?: unknown; source?: unknown }): ForYouItem {
+  addMedia(o: { path: unknown; caption?: unknown; mockup?: unknown; cwd?: unknown; from?: string; evidence?: unknown; source?: unknown }): ForYouItem {
     if (!this.shelf) throw new Error(tr(M).noMedia)
     const cwd = typeof o.cwd === 'string' && o.cwd ? path.resolve(o.cwd) : undefined
-    const entry = this.shelf.add(String(o.path ?? ''), cwd)
+    const entry = this.shelf.add(String(o.path ?? ''), cwd, o.mockup)
     const caption = clip(collapse(typeof o.caption === 'string' ? o.caption : ''), 320)
     const proof = evidenceInput(o.evidence)
     const snap = this.w.snapshot()
@@ -1960,7 +1960,7 @@ export function foryouRoutes(fy: ForYou, json: Json, readBody: ReadBody): [strin
     ['POST', /^\/api\/foryou\/media$/, async (req, res) => {
       const b = await readBody(req)
       if (!isLocal(req)) return json(res, 403, { error: tr(M).localOnly })
-      await run(res, true, () => ({ item: fy.addMedia({ path: b?.path, caption: b?.caption, cwd: b?.cwd, from: trustedFrom(req, { from: b?.from }), evidence: b?.evidence, source: b?.session }) }))
+      await run(res, true, () => ({ item: fy.addMedia({ path: b?.path, caption: b?.caption, mockup: b?.mockup, cwd: b?.cwd, from: trustedFrom(req, { from: b?.from }), evidence: b?.evidence, source: b?.session }) }))
     }],
     // GET and HEAD (a player may ask for the size first): the router matches the method exactly.
     ...(['GET', 'HEAD'] as const).map((method): [string, RegExp, Handler] => [method, /^\/api\/foryou\/media\/([\w-]+)$/, (req, res, u, [mid]) => {

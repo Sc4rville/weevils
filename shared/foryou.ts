@@ -4,6 +4,7 @@
 
 import type { Tool, WorkstreamIdentity } from './api.ts'
 import type { ForYouEvidence } from './evidence.ts'
+import type { Mockup } from './mockup.ts'
 
 /**
  * What an item is. The names are internal (never shown):
@@ -26,6 +27,11 @@ export interface ForYouMedia {
   /** File name, for the accessible label. */
   name: string
   bytes: number
+  /** Pixel size, when the file's header said it (otherwise the app reads it once the media loads). */
+  w?: number
+  h?: number
+  /** The mockup asked for with `weevils show --mockup`; otherwise the app picks one (shared/mockup.ts pickMockup). */
+  mockup?: Mockup
   /** What the picture shows, when someone reviewed it for this feed. */
   caption?: { title: string; description: string }
 }

@@ -1449,7 +1449,7 @@ export class Weevils {
       machines: [...new Map([
         { ...MACHINE, online: true },
         // Une machine distante : seulement ce qui se calcule (nom, en ligne), jamais sa description.
-        ...this.remotes.filter((r) => r.snap?.machines[0]?.id !== MACHINE.id).map((r) => ({ id: r.snap?.machines[0]?.id ?? r.id, name: r.snap?.machines[0]?.name ?? r.id, online: r.online })),
+        ...this.remotes.filter((r) => r.snap?.machines[0]?.id !== MACHINE.id).map((r) => ({ id: r.snap?.machines[0]?.id ?? r.id, name: r.snap?.machines[0]?.name ?? r.id, online: r.online, ...(r.online || !r.away ? {} : { away: r.away() }) })),
       ].map((m) => [m.id, { ...m, name: this.factory.names[m.id] || m.name, ...(this.factory.machinesOff.includes(m.id) ? { off: true } : {}) }])).values()],
       projects: this.withConversationProjects(this.projects(sessions, remote.flatMap((r) => r.snap!.projects)), now),
       sessions,

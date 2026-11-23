@@ -1432,6 +1432,7 @@ function factoryDeps(): FactoryDeps {
     writeConfig,
     pin: (repo, pinned) => w.pinRepo(repo, pinned),
     pinned: () => w.pinnedRepos,
+    rejoin: () => setup.rejoinLine(),
     startTalk: (machineId, name, kind, provider, text) =>
       w.create({ projectId: '', machineId, tool: w.factory.intelOff.includes('codex') ? 'claude' : preferredTool(), text: `${text.trim()}\n\n${talkContext(name, kind, provider)}`, title: name }),
   }

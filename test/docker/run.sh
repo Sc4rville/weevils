@@ -255,6 +255,22 @@ run_systemd() {
     docker network connect "$net" "$c3"
     check "main: desk online again within a minute (the stale port reclaimed)" online_desk
     check "main: the thread says nothing for a blip under 10 minutes" as_test '! jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk has not answered"'
+
+    say "systemd: a machine that does not answer says why on the main machine, never a bare offline"
+    away_desk() { as_test "for i in \$(seq 30); do curl -sf -H @\$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e '.machines[] | select(.id==\"desk\" and .online==false and .away.why==\"$1\" and (.away.since | type) == \"number\")' >/dev/null && exit 0; sleep 1; done; exit 1"; }
+    as_3 'systemctl --user stop weevilsd'
+    check "main: desk's link is up but weevils there is stopped: why=stopped, since a time" away_desk stopped
+    as_3 'systemctl --user start weevilsd'
+    check "main: desk online again once weevils runs there" online_desk
+    check "main: a fresh line to paste on desk, from its card" as_test 'curl -sf -H @$HOME/.local/share/weevils/local-token -H content-type:application/json -d "{\"machine\":\"desk\"}" http://127.0.0.1:4179/api/factory/rejoin | jq -er .line | grep -qE "^curl -fsSL https://weevils.test/api/join.sh [|] bash -s [A-Za-z0-9_-]{20,}$"'
+
+    say "systemd: a machine that lost its role before the fix (an update made it a main machine of its own) comes back at its next update"
+    # What the update without the fix did: server/install.sh as a main machine, its tunnel removed, its role main.
+    check "third: made a main machine of its own, as the old update did" as_3 'bash weevils/server/install.sh main >/dev/null 2>&1; grep -qx WEEVILS_ROLE=main ~/.config/weevils/service.conf && ! systemctl --user is-active weevils-tunnel'
+    check "main: desk does not answer: why=link, since a time" away_desk link
+    check "third: its next update (install.sh --agent --no-update) finds its join key and becomes secondary again" as_3 'cd weevils && WEEVILS_NO_UPDATE=1 ./install.sh --agent --no-update >/tmp/heal.log 2>&1; grep -qx status=ok /tmp/heal.log && grep -qx role=secondary /tmp/heal.log || { tail -20 /tmp/heal.log; exit 1; }'
+    check "third: secondary on the same port its key may open, tunnel active" as_3 'grep -qx WEEVILS_ROLE=secondary ~/.config/weevils/service.conf && grep -qx WEEVILS_MAIN_HOST=weevils-testbox ~/.config/weevils/service.conf && grep -qx WEEVILS_TUNNEL_PORT=4193 ~/.config/weevils/service.conf && systemctl --user is-active weevils-tunnel && grep -qx WEEVILS_ORCHESTRATOR=0 ~/.config/weevils/env'
+    check "main: desk online again, nothing pasted" online_desk
   fi
 
   say "systemd: reboot"

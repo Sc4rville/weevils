@@ -13,7 +13,7 @@ import { LOCAL_TOKEN_HEADER, parseLocalToken } from './http.ts'
 /** Where the main machine keeps the local token of the secondary machine <id>. */
 export const remoteTokenFile = (id: string, dir = CONFIG_DIR) => path.join(dir, 'remotes', `${id.replace(/[^A-Za-z0-9_.-]/g, '_')}.token`)
 
-import type { Session, Snapshot } from '../shared/api.ts'
+import type { MachineAway, Session, Snapshot } from '../shared/api.ts'
 import { lang, tr } from './i18n.ts'
 import M from './i18n/remotes.ts'
 
@@ -31,6 +31,11 @@ export class Remote {
   private bookAt = 0
   private bookBusy = false
   private gitDir: string
+  /** The last time it answered, on disk (a restart here keeps « since 15:03 »), and why it does not now. */
+  private seenFile: string
+  private seenAt: number | null = null
+  private seenSaved = 0
+  private why: MachineAway['why'] = 'link'
 
   constructor(id: string, url: string, onChange: () => void, o: { dataDir?: string; weevbookDir?: string } = {}) {
     this.id = id
@@ -40,6 +45,27 @@ export class Remote {
     this.kept = new KeptRows(path.join(o.dataDir ?? DATA_DIR, 'remotes', `${id.replace(/[^A-Za-z0-9_.-]/g, '_')}.rows.json`))
     this.keptRows = this.kept.load()
     this.gitDir = path.join(o.weevbookDir ?? WEEVBOOK_DIR, '.git')
+    const dataDir = o.dataDir ?? DATA_DIR
+    this.seenFile = path.join(dataDir, 'remotes', `${id.replace(/[^A-Za-z0-9_.-]/g, '_')}.seen`)
+    this.seenAt = readSeen(this.seenFile, path.join(dataDir, 'remotes', `${id.replace(/[^A-Za-z0-9_.-]/g, '_')}.rows.json`))
+  }
+
+  /** Why it does not answer, and since when (server/core.ts puts it on the machine, the app says it in one line). */
+  away(): MachineAway {
+    return { why: this.why, since: this.seenAt }
+  }
+
+  /** It answered: written at most once a minute while it does, so the time it stopped is known within a minute. */
+  private seen(now = Date.now()) {
+    this.seenAt = now
+    if (now - this.seenSaved < 60_000) return
+    this.seenSaved = now
+    try {
+      fs.mkdirSync(path.dirname(this.seenFile), { recursive: true })
+      fs.writeFileSync(this.seenFile, String(now))
+    } catch {
+      // A full disk: kept in memory.
+    }
   }
 
   /** The machine's id as its rows carry it (its own snapshot's, else the one its kept rows had, else the name given). */
@@ -91,7 +117,7 @@ export class Remote {
   async poll() {
     try {
       const res = await fetch(`${this.url}/api/snapshot`, { headers: this.headers(), signal: AbortSignal.timeout(2500) })
-      if (!res.ok) throw new Error(String(res.status))
+      if (!res.ok) throw Object.assign(new Error(String(res.status)), { status: res.status })
       let s = (await res.json()) as Snapshot
       const owner = s.machines?.[0]
       // A reverse tunnel can accidentally lead back to us. Never ingest our own aggregate.
@@ -108,6 +134,8 @@ export class Remote {
       }
       const changed = !this.online || s.version !== this.snap?.version
       this.snap = s
+      if (!this.online) this.seenSaved = 0
+      this.seen()
       this.online = true
       if (changed) {
         this.keptRows = sessions
@@ -115,9 +143,16 @@ export class Remote {
         this.bookAt = 0
         this.onChange()
       }
-    } catch {
-      if (this.online) {
+    } catch (e) {
+      const why = awayWhy(e)
+      if (this.online || why !== this.why) {
+        // The minute it stopped answering, kept: « since » is when it was last seen, not when this was written.
+        if (this.online && this.seenAt) {
+          this.seenSaved = 0
+          this.seen(this.seenAt)
+        }
         this.online = false
+        this.why = why
         this.onChange()
       }
       await this.refreshBook().catch(() => undefined)
@@ -140,6 +175,35 @@ export class Remote {
     if (!res.ok) throw Object.assign(new Error(data.error ?? tr(M).failed(this.id, res.status)), { status: res.status })
     return data
   }
+}
+
+/** The last time a machine answered: its own file, else when its kept rows were last written (a machine that stopped
+ *  before this file existed), else null. */
+function readSeen(file: string, rows: string): number | null {
+  try {
+    const n = Number(fs.readFileSync(file, 'utf8').trim())
+    if (Number.isFinite(n) && n > 0) return n
+  } catch {
+    // none yet
+  }
+  try {
+    return Math.round(fs.statSync(rows).mtimeMs)
+  } catch {
+    return null
+  }
+}
+
+/** What a failed look at a machine says about it. Through the reverse SSH tunnel:
+ *  - nothing listens on its port here (refused), or the call hangs (a tunnel whose far end is asleep): no link;
+ *  - the tunnel takes the call then closes it, or answers an error: weevils on that machine does not answer;
+ *  - 401 / 403: it answers, but no longer trusts this machine's token. */
+export function awayWhy(e: unknown): MachineAway['why'] {
+  const err = e as { status?: number; name?: string; code?: string; cause?: { code?: string; name?: string } }
+  if (err?.status === 401 || err?.status === 403) return 'key'
+  if (typeof err?.status === 'number') return 'stopped'
+  const code = err?.cause?.code ?? err?.code ?? ''
+  if (code === 'ECONNRESET' || code === 'UND_ERR_SOCKET' || code === 'EPIPE') return 'stopped'
+  return 'link'
 }
 
 /** WEEVILS_REMOTES="pc=http://127.0.0.1:4192,autre=http://…" */

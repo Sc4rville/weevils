@@ -890,6 +890,21 @@ export class Setup {
     await this.askClaude(s, again)
   }
 
+  /** The one line that plugs a computer in, with a new one-time code; null when other computers cannot reach this one
+   *  over SSH. The same computer pasting it again keeps its name (server/join.ts): it is also how one that lost its
+   *  link comes back (Your factory, a machine that does not answer: « Copy the line »). */
+  private async joinCommand(s: SetupState, extra = ''): Promise<string | null> {
+    const host = this.deps.join ? joinHost(s) : null
+    if (!host || !(await (this.deps.sshd ?? sshdUp)())) return null
+    const code = this.deps.join!.create(`${s.machine.user}@${host}`)
+    return `curl -fsSL ${s.url.replace(/\/+$/, '')}/api/join.sh | bash -s ${code}${extra}`
+  }
+
+  /** A fresh line for a machine of yours that does not answer any more (Your factory). */
+  async rejoinLine(): Promise<string | null> {
+    return this.joinCommand(await this.detect())
+  }
+
   /** Another computer's key came in through its line (server/join.ts): weevilsd says it, then says when it shows up. */
   joined(id: string) {
     this.p.joining = { at: Date.now(), id }
@@ -1441,12 +1456,11 @@ export class Setup {
       }
       case 'machine': {
         // This machine can be reached from anywhere over SSH: the other computer only needs one line, pasted there.
-        const host = this.deps.join ? joinHost(s) : null
-        if (host && (await (this.deps.sshd ?? sshdUp)())) {
-          const code = this.deps.join!.create(`${s.machine.user}@${host}`)
+        const cmd = await this.joinCommand(s, joinChoice(bring))
+        if (cmd) {
           this.p.joining = { at: Date.now() }
           this.save()
-          const line = t.joinLine(`curl -fsSL ${s.url.replace(/\/+$/, '')}/api/join.sh | bash -s ${code}${joinChoice(bring)}`)
+          const line = t.joinLine(cmd)
           // A line that says what to bring is always shown, even right after a plain one (the person just chose).
           if (joinChoice(bring)) this.lastAsk = { brick, id: this.say(line), text: line }
           else post(line)

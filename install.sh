@@ -328,6 +328,19 @@ if [ -z "$SECONDARY" ] && [ "$UNINSTALL" = 0 ] && [ -f "$HOME/.config/weevils/se
   fi
   unset _svc _tp
 fi
+# A machine that joined and lost its role before that fix (its first update re-ran this without --secondary: a main
+# machine of its own, no tunnel): what join.sh wrote is still there, its key and the main machine's alias in
+# ~/.ssh/config. When the main machine still lets that key in, it is a secondary machine again, on that alias; its
+# tunnel port comes back from the main machine (server/install.sh asks it). A key the main machine no longer accepts, an
+# alias that is not join.sh's, or no answer: nothing changes. --uninstall: nothing either.
+if [ -z "$SECONDARY" ] && [ "$UNINSTALL" = 0 ] && [ -f "$HOME/.ssh/weevils_ed25519" ] && [ -f "$HOME/.ssh/config" ] && command -v ssh >/dev/null 2>&1; then
+  _alias=$(awk '/^# weevils \(join\.sh\): the main machine$/ { getline; if ($1 == "Host") print $2 }' "$HOME/.ssh/config" 2>/dev/null | tail -1)
+  if [[ "$_alias" =~ ^weevils-[a-z0-9-]+$ ]] &&
+    ssh -o BatchMode=yes -o ConnectTimeout=10 "$_alias" true </dev/null >/dev/null 2>&1; then
+    SECONDARY=$_alias
+  fi
+  unset _alias
+fi
 
 # Values checked before anything runs. A domain may come as a URL: only the host is kept.
 DOMAIN=${DOMAIN#http://}; DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN%%/*}

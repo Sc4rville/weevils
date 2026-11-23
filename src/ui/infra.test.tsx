@@ -38,6 +38,7 @@ vi.mock('../api', () => ({
     usage: async () => (state.usage instanceof Error ? Promise.reject(state.usage) : state.usage),
     usageToday: async () => state.today,
     main: async (text: string) => (state.said.push(text), { id: 'm1' }),
+    rejoin: async (machine: string) => (state.said.push(`rejoin ${machine}`), { line: 'curl -fsSL https://w.example/api/join.sh | bash -s FRESH' }),
   },
 }))
 
@@ -274,4 +275,28 @@ it('subscription: a reopened app shows the last figures at once, even while weev
   root = createRoot(host)
   await render(<fresh.UsageLine />)
   expect(host.textContent).toContain('Claude 40% · Codex 3%')
+})
+
+// Never a bare « offline » (src/ui/away.tsx): why and since when in one plain line, then one tap copies a fresh line.
+it('machines page: a machine that does not answer says why and since when, and one tap copies the line that brings it back', async () => {
+  const since = new Date(); since.setHours(15, 3, 0, 0)
+  state.snap.machines = [{ id: 'vps', name: 'vps', online: true }, { id: 'kusaila', name: 'kusaila', online: false, away: { why: 'link', since: since.getTime() } }] as Snapshot['machines']
+  state.infra = new Error('offline')
+  const copied: string[] = []
+  class Item { constructor(public parts: Record<string, Promise<Blob>>) {} }
+  vi.stubGlobal('ClipboardItem', Item)
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write: async (items: Item[]) => void copied.push(await (await items[0].parts['text/plain']).text()), writeText: async () => {} } })
+  await render(<InfraPage />)
+  await tapRow('kusaila')
+  const time = since.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })
+  expect(host.textContent).toContain(`No news from kusaila since ${time}: it’s off or asleep, or weevils on it lost its link.`)
+  expect(host.textContent).not.toContain('not reachable')
+  await tapRow('Copy the line to paste on kusaila')
+  expect(state.said).toContain('rejoin kusaila')
+  expect(copied).toEqual(['curl -fsSL https://w.example/api/join.sh | bash -s FRESH'])
+  expect(host.textContent).toContain('Copied. Paste it in a terminal on kusaila')
+  expect(host.querySelector('.away-line')?.textContent).toContain('bash -s FRESH')
+  // It can still be removed from there.
+  expect(row('remove')).toBeDefined()
+  vi.unstubAllGlobals()
 })

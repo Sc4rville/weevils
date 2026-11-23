@@ -381,6 +381,7 @@ a.nx-fx-main { text-decoration: none; }
 .nx-mx-strip { display: flex; align-items: center; gap: 12px; padding: 0 var(--pad) 10px; font-size: 13px; }
 .nx-mx-strip .nx-fx-bar { flex: 0 1 90px; }
 .nx-mx-figs { flex: 1; min-width: 0; opacity: .8; }
+.nx-mx-away { display: block; font-size: 15px; }
 .nx-mx-panel { flex: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 700; }
 .nx-mx-panel .ic { width: 13px; height: 13px; }
 .page-body > .nx-mx-strip { padding-top: 14px; }

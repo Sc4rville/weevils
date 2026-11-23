@@ -291,6 +291,18 @@ export interface Machine {
   online?: boolean
   /** Turned off in Your factory: nothing new starts there. */
   off?: boolean
+  /** A machine of yours that does not answer: why, as this one sees it, and since when. */
+  away?: MachineAway
+}
+
+/** Why another machine does not answer:
+ *  - link: nothing reaches it (it is off or asleep, or weevils on it lost its link to this one);
+ *  - stopped: its link is there, but weevils on it does not answer (stopped, or still starting);
+ *  - key: it answers, but refuses this machine (its key changed: an update or a new line puts it back). */
+export interface MachineAway {
+  why: 'link' | 'stopped' | 'key'
+  /** The last time it answered (ms); null when this machine never saw it answer. */
+  since: number | null
 }
 
 export interface H24Activity {

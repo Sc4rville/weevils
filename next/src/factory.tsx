@@ -20,6 +20,7 @@ import { PageView } from '../../src/ui/pages.tsx'
 import { seedPending } from '../../src/ui/pending.ts'
 import { askSetup, openKey } from '../../src/ui/setup.tsx'
 import { Shell } from '../../src/ui/shell.tsx'
+import { AwayLine } from '../../src/ui/away.tsx'
 import { TempoBand, useTempo } from '../../src/ui/tempo.tsx'
 import { call } from './data.ts'
 import { foldPrefs, saveFold } from './fold.ts'
@@ -568,6 +569,14 @@ export function FactorySection({ snap, colors, page, toBoss }: {
 /** Its health in plain figures, and for a server, its host's own dashboard: at the top of its conversation. */
 function MachineStrip({ m }: { m: FactoryMachine | undefined }) {
   if (!m) return null
+  // Never a bare « Offline »: why, since when, and the line that brings it back (src/ui/away.tsx).
+  if (!m.online && m.away) {
+    return (
+      <div className="nx-mx-strip nx-mx-away">
+        <AwayLine name={m.name} away={m.away} line={() => call<{ line: string }>('POST', '/api/factory/rejoin', { machine: m.id }).then((r) => r.line)} />
+      </div>
+    )
+  }
   const figs = [m.cpu != null && `CPU ${m.cpu}%`, m.mem != null && `Memory ${m.mem}%`, m.disk != null && `Disk ${m.disk}%`].filter(Boolean).join(' · ')
   return (
     <div className="nx-mx-strip">
@@ -618,7 +627,7 @@ export function NextMachinePage({ id }: { id: string }) {
   return (
     <div ref={box} className="nx-machine">
       <Shell slot="calm" kicker="your factory" title={name}
-        foot={talk ? undefined : <Composer placeholder={`Talk to ${name}…`} label={`Message to ${name}`} onSend={send} sayErrors />}>
+        foot={talk || m?.online === false ? undefined : <Composer placeholder={`Talk to ${name}…`} label={`Message to ${name}`} onSend={send} sayErrors />}>
         <MachineStrip m={m} />
         {err && <p className="in meta" role="alert">{err}</p>}
         {talk && <p className="nx-empty"><span className="spin fluo"><Icon name="star" /></span></p>}

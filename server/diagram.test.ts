@@ -51,13 +51,15 @@ describe('weevils diagram', () => {
     expect(() => parseDiagram('flowchart TD\n a[session 3fa9c2e1] --> b')).toThrow(/plain words/)
   })
 
-  it('draws tiles with their icons, a NEW tag and the staircase shadow on what changed', () => {
+  it('draws tiles with their icons, a NEW tag and a deeper green block on what changed, faces never stacked copies', () => {
     const html = diagramPage(parseDiagram(FLOW))
     expect(html).toContain('History now syncs')
     expect(html).toContain('data-node="allow"')
     expect(html.match(/class="flag">NEW</g)).toHaveLength(1)
     expect(html).toContain(KINDS.lock.icon)
-    expect(html).toMatch(/\.tile\.new,\.tile\.changed\{[^}]*3px 3px 0 #111,6px 6px 0 #128f00,9px 9px 0 #111/)
+    expect(html).toMatch(/\.tile\.new,\.tile\.changed\{[^}]*--side:#1fd60a;--base:#128f00/)
+    expect(html).toMatch(/\.tile::before\{[^}]*clip-path:polygon/)
+    expect(html).not.toMatch(/\d+px \d+px 0 #111,\d+px \d+px 0/)
     expect(html).not.toMatch(/<script[^>]+src=/) // nothing loaded from the network
   })
 

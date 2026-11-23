@@ -1,5 +1,5 @@
 // A media of a post inside its mockup (shared/mockup.ts): a phone, a window, a tablet, a print, a screen or a board,
-// drawn in CSS (foryou-mockup.css), sized to the post, on the post's own colour. The media fills the mockup's screen.
+// drawn in CSS (foryou-mockup.css) as solid blocks of the logo (a front, a side face, a bottom face), sized to the post, on the post's own colour. The media fills the mockup's screen.
 import type { CSSProperties, ReactNode } from 'react'
 import { pickMockup, screenRatio, type Mockup } from '../../shared/mockup.ts'
 import type { ForYouMedia } from '../../shared/foryou.ts'
@@ -19,6 +19,8 @@ export const sideOf = (id: string) => (hash(id) % 2 ? 1 : -1)
 export function MockupFrame({ kind, sr, side, children }: { kind: Mockup; sr: number; side: number; children: ReactNode }) {
   return (
     <span className={`fy-mock fy-mock-${kind}`} data-mockup={kind} style={{ '--sr': sr, '--s': side } as CSSProperties}>
+      <span className="fy-mock-side" aria-hidden="true" />
+      <span className="fy-mock-base" aria-hidden="true" />
       <span className="fy-mock-screen">{children}</span>
     </span>
   )

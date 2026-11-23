@@ -47,7 +47,7 @@
   width: min(var(--mw), var(--mx), calc(var(--cap) / var(--sr)));
   aspect-ratio: 1 / var(--sr);
   /* While it loads: a dark screen, never a white box. */
-  background: #0d0d10;
+  background: #211b2e;
 }
 .fy-media.fy-mocked .fy-mock .fy-mock-screen > :is(img, video) {
   width: 100%;
@@ -66,67 +66,95 @@
   background: linear-gradient(118deg, rgb(255 255 255 / 0.09) 0 24%, rgb(255 255 255 / 0) 24.4%);
 }
 
-/* The thickness: hard steps on the side that faces the eye (the weevils staircase), then a soft shadow on the band. */
-.fy-mock-phone,
-.fy-mock-tablet,
-.fy-mock-cinema {
-  background: #09090c;
-  box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 0.17),
-    calc(var(--s) * -1px) 1px 0 #2a2a31,
-    calc(var(--s) * -2px) 2px 0 #222228,
-    calc(var(--s) * -3px) 3px 0 #1b1b20,
-    calc(var(--s) * -4px) 4px 0 #141418,
-    calc(var(--s) * -14px) 28px 44px -16px rgb(0 0 0 / 0.5);
+/* The thickness, in the language of the weevils logo: a solid block, never stacked copies. Two flat faces, the side
+   that faces the eye (--s, the way the mockup turns) and the bottom, each one shade of the logo, joined at the corner on
+   one clean edge. Sharp corners everywhere, as on the logo's blocks. --d is the depth; the bottom shows a little less. */
+.fy-mock {
+  --d: 9px;
+  --dx: var(--d);
+  --dy: calc(var(--d) * 0.75);
+  --face-top: #9f7aea;
+  --face-mid: #49405f;
+  --face-dark: #211b2e;
+  /* Under the side face's edge only: no hairline of the post's colour between the front and its faces. */
+  box-shadow: calc(var(--s) * 1px) 1px 0 var(--face-mid);
+}
+.fy-mock-side,
+.fy-mock-base {
+  position: absolute;
+  pointer-events: none;
+  transform: scaleX(var(--s));
+}
+.fy-mock-side {
+  top: 0;
+  left: calc(50% + var(--s) * 50% + (var(--s) - 1) * var(--dx) / 2);
+  width: var(--dx);
+  height: calc(100% + var(--dy));
+  background: var(--face-mid);
+  clip-path: polygon(0 0, 100% var(--dy), 100% 100%, 0 100%);
+}
+.fy-mock-base {
+  top: 100%;
+  left: calc((var(--s) - 1) * var(--dx) / 2);
+  width: calc(100% + var(--dx));
+  height: var(--dy);
+  background: var(--face-dark);
+  clip-path: polygon(0 0, calc(100% - var(--dx)) 0, 100% 100%, var(--dx) 100%);
 }
 
-/* phone: an app seen on a phone. A taller capture shows its top, as on the phone itself. */
+/* phone: an app seen on a phone, a slab of the logo's violet. A taller capture shows its top, as on the phone itself. */
 .fy-mock-phone {
   --mw: 60cqw;
   --mx: 290px;
-  padding: 8px;
-  border-radius: 40px;
-}
-.fy-mock-phone .fy-mock-screen {
-  border-radius: 32px;
+  --d: 10px;
+  padding: 8px 8px 14px;
+  background: var(--face-top);
 }
 .fy-mock-phone .fy-mock-screen > :is(img, video) {
   object-position: top;
 }
-/* The earpiece, in the top edge. */
-.fy-mock-phone::before {
+/* The earpiece, a slot in the top edge; the button, a square in the bottom one. */
+.fy-mock-phone::before,
+.fy-mock-phone::after {
   content: '';
   position: absolute;
-  top: 3px;
   left: 50%;
-  width: 18%;
-  height: 2.5px;
-  border-radius: 2px;
   transform: translateX(-50%);
-  background: #26262d;
+  background: var(--face-dark);
+}
+.fy-mock-phone::before {
+  top: 3px;
+  width: 18%;
+  height: 2px;
+}
+.fy-mock-phone::after {
+  bottom: 4px;
+  width: 6px;
+  height: 6px;
+  background: var(--face-mid);
+}
+.fy-mock-phone .fy-mock-screen,
+.fy-mock-tablet .fy-mock-screen,
+.fy-mock-cinema .fy-mock-screen {
+  background: var(--face-dark);
 }
 
-/* tablet: a wider screen in a thicker edge. */
+/* tablet: a wider screen in a wider edge. */
 .fy-mock-tablet {
   --mw: 82cqw;
   --mx: 520px;
   --cap: 50dvh;
+  --d: 12px;
   padding: 12px;
-  border-radius: 24px;
-}
-.fy-mock-tablet .fy-mock-screen {
-  border-radius: 12px;
+  background: var(--face-top);
 }
 
-/* cinema: a clip on a screen, a small chin with its light. */
+/* cinema: a clip on a screen, a chin with its green light. */
 .fy-mock-cinema {
   --mw: 92cqw;
   --mx: 720px;
   padding: 6px 6px 15px;
-  border-radius: 12px;
-}
-.fy-mock-cinema .fy-mock-screen {
-  border-radius: 6px;
+  background: var(--face-top);
 }
 .fy-mock-cinema::before {
   content: '';
@@ -135,65 +163,42 @@
   left: 50%;
   width: 5px;
   height: 5px;
-  border-radius: 50%;
   transform: translateX(-50%);
   background: #3ddc84;
-  box-shadow: 0 0 6px #3ddc84;
 }
 
-/* browser: a desktop capture in a window, its bar with three dots and an empty address. */
+/* browser: a desktop capture in a window, its bar with three squares and an empty address. */
 .fy-mock-browser {
   --mw: 92cqw;
   --mx: 720px;
   --cap: 50dvh;
   --ry: -11deg;
   padding-top: 22px;
-  border-radius: 10px;
   background:
-    radial-gradient(circle, #ff6b5a 0 3.4px, transparent 3.9px) 4px 3px / 16px 16px no-repeat,
-    radial-gradient(circle, #ffc53d 0 3.4px, transparent 3.9px) 17px 3px / 16px 16px no-repeat,
-    radial-gradient(circle, #3ddc84 0 3.4px, transparent 3.9px) 30px 3px / 16px 16px no-repeat,
-    #f1eee8;
-  box-shadow:
-    inset 0 0 0 1px rgb(0 0 0 / 0.08),
-    calc(var(--s) * -2px) 2px 0 rgb(0 0 0 / 0.22),
-    calc(var(--s) * -4px) 4px 0 rgb(0 0 0 / 0.14),
-    calc(var(--s) * -6px) 6px 0 rgb(0 0 0 / 0.08),
-    calc(var(--s) * -14px) 26px 44px -16px rgb(0 0 0 / 0.45);
+    linear-gradient(#ff6b5a 0 0) 8px 8px / 6px 6px no-repeat,
+    linear-gradient(#ffc53d 0 0) 18px 8px / 6px 6px no-repeat,
+    linear-gradient(#3ddc84 0 0) 28px 8px / 6px 6px no-repeat,
+    var(--face-top);
 }
 .fy-mock-browser::before {
   content: '';
   position: absolute;
-  top: 5.5px;
+  top: 6px;
   left: 28%;
   width: 44%;
-  height: 11px;
-  border-radius: 6px;
-  background: #fff;
-}
-.fy-mock-browser .fy-mock-screen {
-  border-radius: 0 0 10px 10px;
+  height: 10px;
+  background: rgb(255 255 255 / 0.4);
 }
 .fy-inview .fy-mock-browser {
   --ry: -4deg;
 }
 
-/* print: a still or a render, a lifted print on a stack of steps. */
+/* print: a still or a render, mounted on a thin block that leans. */
 .fy-mock-print {
   --ry: -6deg;
   --rx: 14deg;
   --rz: -2.4deg;
-  border-radius: 4px;
-  box-shadow:
-    calc(var(--s) * -3px) 3px 0 rgb(0 0 0 / 0.2),
-    calc(var(--s) * -6px) 6px 0 rgb(0 0 0 / 0.12),
-    calc(var(--s) * -9px) 9px 0 rgb(0 0 0 / 0.07),
-    calc(var(--s) * -14px) 30px 46px -18px rgb(0 0 0 / 0.5);
-}
-.fy-mock-print .fy-mock-screen {
-  border-radius: 4px;
-  outline: 1px solid rgb(255 255 255 / 0.3);
-  outline-offset: -1px;
+  --d: 6px;
 }
 .fy-inview .fy-mock-print {
   --ry: -3deg;
@@ -201,7 +206,7 @@
   --rz: -1deg;
 }
 
-/* board: a diagram or a before/after, black edge, black-green-black staircase; flat under the eyes, to be read. */
+/* board: a diagram or a before/after on a thick block, flat under the eyes, to be read. */
 .fy-mock-board {
   --mw: 88cqw;
   --mx: 640px;
@@ -209,11 +214,9 @@
   --ry: 0deg;
   --rx: 16deg;
   --rz: 0deg;
-  border: 3px solid #111;
-  box-shadow:
-    4px 4px 0 #111,
-    8px 8px 0 #3ddc84,
-    12px 12px 0 #111;
+  --d: 12px;
+  padding: 5px;
+  background: var(--face-top);
 }
 .fy-mock-board .fy-mock-screen {
   background: #e9e6df;
@@ -231,6 +234,7 @@
 .fy-media-strip.many .fy-mocked .fy-mock {
   --cap: min(48dvh, 78vw);
   --mw: 80cqw;
+  --d: 7px;
 }
 .fy-two .fy-media.fy-mocked {
   aspect-ratio: auto;
@@ -243,6 +247,7 @@
 .fy-two .fy-mocked .fy-mock {
   --cap: 40dvh;
   --mw: 86cqw;
+  --d: 7px;
 }
 
 @media (prefers-reduced-motion: reduce) {

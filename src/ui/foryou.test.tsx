@@ -230,6 +230,8 @@ describe('for you: figures, the line, media mockups', () => {
     expect(mock.dataset.mockup).toBe('phone')
     expect(Number(mock.style.getPropertyValue('--sr'))).toBeCloseTo(2532 / 1170, 2)
     expect(mock.querySelector('.fy-mock-screen img')!.getAttribute('src')).toBe('/api/foryou/media/p1')
+    // Its thickness is two solid faces, as on the weevils logo, out of the reader's way.
+    expect([...mock.querySelectorAll('[aria-hidden="true"]')].map((f) => f.className)).toEqual(['fy-mock-side', 'fy-mock-base'])
   })
 
   it('a clip plays inside its mockup; a forced mockup wins over the pick', async () => {

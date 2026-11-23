@@ -2,8 +2,9 @@
 // Input: a mermaid flowchart, the subset agents already write, plus a kind per part (`:::server`, `:::phone`…) and
 // `:::new` on what changed (`==>` for a new or changed flow). Output: a PNG in the weevils identity: a neutral framed card
 // (the same ground as weevils compare, so it reads on every theme's band), one tile per part with its icon from the
-// weevils set (24 grid, square ends, right angles), right-angled flows coloured by the part they leave, and the stepped
-// "staircase" shadow plus a NEW tag on what changed. Always top to bottom: a phone is taller than wide.
+// weevils set (24 grid, square ends, right angles), right-angled flows coloured by the part they leave, every tile a solid
+// block as in the weevils logo (a side face and a bottom face, each one flat shade, never stacked copies), and a deeper
+// green block plus a NEW tag on what changed. Always top to bottom: a phone is taller than wide.
 // Uses the same playwright-core as `weevils capture` / `weevils compare`.
 import fs from 'node:fs'
 import os from 'node:os'
@@ -169,7 +170,10 @@ main{position:relative;display:flex;flex-direction:column;gap:58px}
 .row{display:flex;justify-content:center;gap:16px;position:relative;z-index:1}
 main.loops{padding:0 26px 34px 0}
 main.loops .tile:not(.wide){width:auto;flex:0 1 104px}main.loops .tile.wide{width:230px}
-.tile{position:relative;z-index:2;background:#fff;border:3px solid #111;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 8px 11px;width:104px;text-align:center;box-shadow:4px 4px 0 #111}
+.tile{--b:3px;--d:6px;--side:#49405f;--base:#211b2e;position:relative;z-index:2;background:#fff;border:var(--b) solid #111;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 8px 11px;width:104px;text-align:center}
+.tile::before,.tile::after{content:'';position:absolute;pointer-events:none}
+.tile::before{top:calc(-1 * var(--b));left:calc(100% + var(--b));width:var(--d);height:calc(100% + 2 * var(--b) + var(--d) * .75);background:var(--side);clip-path:polygon(0 0,100% calc(var(--d) * .75),100% 100%,0 100%)}
+.tile::after{top:calc(100% + var(--b));left:calc(-1 * var(--b));width:calc(100% + 2 * var(--b) + var(--d));height:calc(var(--d) * .75);background:var(--base);clip-path:polygon(0 0,calc(100% - var(--d)) 0,100% 100%,var(--d) 100%)}
 .tile.wide{flex-direction:row;width:250px;text-align:left;gap:12px;padding:10px 12px}
 .badge{width:46px;height:46px;flex:none;background:var(--k);border:3px solid #111;display:grid;place-items:center}
 .badge svg{width:26px;height:26px}
@@ -177,9 +181,10 @@ main.loops .tile:not(.wide){width:auto;flex:0 1 104px}main.loops .tile.wide{widt
 .label{font-size:17px;font-weight:850;line-height:1.12;overflow-wrap:anywhere}
 .wide .label{font-size:19px}
 .sub{font-size:13px;font-weight:600;color:#444;line-height:1.2}
-.tile.new,.tile.changed{z-index:1;border-width:4px;box-shadow:3px 3px 0 #111,6px 6px 0 ${FRESH},9px 9px 0 #111,0 0 28px 10px rgb(31 214 10 / .42)}
+.tile.new,.tile.changed{--b:4px;--d:10px;--side:#1fd60a;--base:${FRESH};z-index:1;box-shadow:0 0 28px 10px rgb(31 214 10 / .42)}
 .flag{position:absolute;top:-15px;right:-10px;background:#1fd60a;color:#000;font-size:13px;font-weight:900;letter-spacing:.08em;padding:3px 8px;border:2px solid #111}
 .tile.gone{background:transparent;border-style:dashed;box-shadow:none;opacity:.55}
+.tile.gone::before,.tile.gone::after{content:none}
 .tile.gone .label{text-decoration:line-through}
 svg.flows{position:absolute;left:0;top:0;overflow:visible;z-index:0}
 .chip{position:absolute;z-index:2;transform:translate(-50%,-50%);background:#fff;border:2.5px solid var(--c);color:var(--c);font-size:13px;font-weight:800;padding:2px 8px;white-space:nowrap}

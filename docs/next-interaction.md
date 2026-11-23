@@ -24,7 +24,7 @@ once, and the code follows. Behaviour is never flipped back and forth.
   name in the middle in bold, what it does in one line, a big living link to what it produced (the page its newest run
   published, else that run's results), then its next run, its schedule, its last run and how it went, its count, where
   it works. A small « Conversation » in its header (no box) flips, with the app's fade, to the conversation it runs in
-  (to read it or take it over); « Overview » flips back. A draft or a proposal opens on the app's own talk page.
+  (to read it or take it over); there it is exactly a session's screen (the same head, thread and box), and the automation's own icon, the last item of that one-row head, flips back to « Overview » (2026-11-23: never drawn over the title or the model). A draft or a proposal opens on the app's own talk page.
 - **A factory has its own icon and its own page.** In the Autonomous section an automation wears the loop, a
   factory the factory icon (the same square with a saw-tooth roof and a chimney); while one runs, its own mark
   travels its outline. A factory's row opens on the page its manifest declares, drawn by the app's own `FactoryPage`

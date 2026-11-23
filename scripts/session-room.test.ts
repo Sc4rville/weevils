@@ -25,10 +25,10 @@ it('both apps: « new below » is a quiet tone of the page, never an ink block',
 it('next: no second top gap, a one-line box on its buttons’ row, only the real bottom inset', () => {
   const css = read('next/src/next.css')
   expect(body(css, '.nx-session-host > .page > .page-head')).toMatch(/padding-top:\s*0/)
-  expect(body(css, '.nx-session-host .page-foot')).toMatch(/padding-bottom:\s*0/)
-  expect(body(css, '.nx-session-host .page-foot .composer')).toMatch(/padding-bottom:\s*var\(--safe-b\)/)
-  expect(body(css, '.nx-session-host .composer > .in')).toMatch(/flex-wrap:\s*nowrap/)
-  expect(body(css, '.nx-session-host .composer > .in > textarea')).toMatch(/min-height:\s*0/)
+  expect(body(css, '.session-page .page-foot')).toMatch(/padding-bottom:\s*0/)
+  expect(body(css, '.session-page .page-foot .composer')).toMatch(/padding-bottom:\s*var\(--safe-b\)/)
+  expect(body(css, '.session-page .composer > .in')).toMatch(/flex-wrap:\s*nowrap/)
+  expect(body(css, '.session-page .composer > .in > textarea')).toMatch(/min-height:\s*0/)
 })
 
 it('both apps: a session head drops the repo name and the logo; the chevron, the title and the model share the row', () => {

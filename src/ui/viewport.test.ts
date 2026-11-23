@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest'
-import { trackViewport } from './viewport'
+import { fullHeight, trackViewport } from './viewport'
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 it('keeps navigation below the iOS status bar as the keyboard shrinks and pans the visible viewport', () => {
   const vv = Object.assign(new EventTarget(), { height: 844, offsetTop: 0 })
@@ -45,4 +45,17 @@ it('resamples after keyboard dismissal and page restore even without a viewport 
   expect(document.documentElement.style.getPropertyValue('--vvh')).toBe('700px')
   stop()
   vi.useRealTimers()
+})
+
+it('an installed app whose viewport comes out a status bar short gets the whole screen height, nothing else does', () => {
+  const win = (standalone: boolean, inner: number, landscape = false) => ({
+    innerHeight: inner, screen: { width: 390, height: 844 } as Screen, navigator: { standalone } as unknown as Navigator,
+    matchMedia: (q: string) => ({ matches: q.includes('landscape') ? landscape : false }) as MediaQueryList,
+  })
+  expect(fullHeight(win(true, 797), 797)).toBe(844)
+  expect(fullHeight(win(true, 844), 844)).toBe(0)
+  expect(fullHeight(win(false, 797), 797)).toBe(0)
+  // A desktop window much smaller than its screen is not that bug.
+  expect(fullHeight(win(true, 500), 500)).toBe(0)
+  expect(fullHeight(win(true, 343, true), 343)).toBe(390)
 })

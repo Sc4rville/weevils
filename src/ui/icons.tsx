@@ -55,6 +55,8 @@ const PATHS = {
   play: 'M7 4l12 8-12 8z',
   grip: 'M7 9h10M7 15h10',
   file: 'M6 3h8l4 4v14H6z',
+  // A repository: a square folder, its tab square too.
+  repo: 'M3 5h7v3h11v12H3zM3 8h7',
   copy: 'M9 9h11v11H9zM15 5V4H4v11h1',
   // Ce qui revient tout seul : la touche « répéter », à angles droits — une boucle ouverte à gauche, sa pointe en bas.
   cycle: `${CYCLE_LOOP}${CYCLE_HEAD}`,

@@ -7,9 +7,10 @@ body { overflow: hidden; }
 
 .nx-stage { position: fixed; inset: 0; overflow: hidden; background: var(--sc, var(--agent)); }
 /* Installed on an iPhone, a fixed screen can stop a status bar's height short of the bottom edge, and the window shows
-   under it. There, the stage takes the whole screen's height; the window under it wears the open page's own colour
+   under it. There, the stage takes the whole screen's height (--full-h); the window under it wears the open page's own colour
    anyway (shell.tsx usePageChrome), never a foreign band. */
-@media (display-mode: standalone) { .nx-stage { bottom: auto; height: max(100%, 100lvh); } }
+/* (--full-h is set only there, src/ui/viewport.ts.) The side bar and its veil reach the bottom edge the same way. */
+.nx-stage, .nx-scrim, .nx-side { bottom: auto; height: var(--full-h, 100%); }
 .nx-center { position: fixed; inset: 0; display: grid; place-items: center; background: var(--agent); color: var(--ink); }
 
 /* weevboss: the whole screen, its colour, nothing else. */
@@ -102,7 +103,11 @@ body { overflow: hidden; }
   background: var(--agent); color: var(--ink); touch-action: pan-y;
   box-shadow: 8px 0 30px color-mix(in oklab, #000 25%, transparent);
 }
-.nx-side-scroll { height: 100%; overflow-y: auto; padding: calc(var(--safe-t) + 8px) 0 calc(var(--safe-b) + 20px); overscroll-behavior: contain; }
+.nx-side-scroll { height: 100%; overflow-y: auto; padding: calc(var(--safe-t) + 8px) 0 0; overscroll-behavior: contain; display: flex; flex-direction: column; }
+.nx-side-scroll > * { flex: none; }
+/* The last band (settings) runs down to the bottom edge: no strip of another colour under it. */
+.nx-side-scroll > .nx-settings { flex: 1 0 auto; display: flex; flex-direction: column; padding-bottom: 0; }
+.nx-settings > .settings-band { flex: 1 0 auto; padding-bottom: calc(var(--safe-b) + 20px); }
 .nx-h { margin: 20px var(--pad) 6px; font-size: 13px; font-weight: 500; letter-spacing: .02em; opacity: .7; }
 .nx-row {
   display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px var(--pad);
@@ -143,7 +148,8 @@ body { overflow: hidden; }
 /* The working line under the last message: the app's `.working` (green star, its three breathing dots). */
 .nx-working { font-size: 14px; font-weight: 650; overflow: hidden; }
 .nx-me { transform-origin: 100% 100%; }
-.nx-settings { padding-bottom: 8px; }
+/* Its name reads like the other section names (Autonomous): bold in the side bar means active, never a static label. */
+.nx-settings .settings-band .head .h2 { font-size: 20px; font-weight: 400; letter-spacing: -0.01em; }
 
 /* A project's line in the side bar: its name (folds its sessions), then the app's « / » and « > » (.chars .ch). */
 .nx-project-line { display: flex; align-items: center; padding-right: 6px; }
@@ -213,6 +219,12 @@ body { overflow: hidden; }
 .nx-boss-row .nx-boss-logo, .nx-boss-row .nx-fold { background: none; border: 0; padding: 0; color: inherit; font: inherit; display: flex; align-items: center; gap: 10px; }
 .nx-boss-row .nx-fold { flex: 1; min-width: 0; min-height: 44px; text-align: left; }
 .nx-boss-row .nx-boss-logo { min-width: 44px; min-height: 44px; }
+/* Every repo row: a thin square repo mark in the weevils logo's column (same box, same size), its name starting
+   exactly under the « w » of weevils. */
+.nx-repo-row { gap: 12px; }
+.nx-repo-mark { flex: none; width: 44px; display: flex; align-items: center; }
+.nx-repo-mark .ic { width: 26px; height: 26px; }
+.nx-repo-mark .ic path { stroke-width: 1.5; }
 
 /* Automations: one colour for all, the rows a gentle staircase like the stacked blocks of the weevils logo: each row
    one small tone step from the one above (the theme's own step, --dl, as the app's .tone), no line, no gap, no shadow. */

@@ -103,7 +103,9 @@ export default defineMessages({
     claudeTerminal: (why: string, line: string): string => `Je n’arrive pas à lancer la connexion de Claude d’ici (${why}). Dans un terminal sur cette machine, tape \`${line}\` et connecte-toi : je le verrai tout seul.`,
     claudeFail: (why: string): string => `Claude n’accepte pas ce code (${/wasn.t accepted|invalid|expired/i.test(why) ? 'incomplet, expiré ou déjà utilisé' : why}). Voici un nouveau lien :`,
     // ---- Accueil (premier lancement, Setup.welcome) : bonjour, ce que weevils voit déjà, puis la seule chose qui manque.
-    welcomeHello: (name: string): string => `Salut${name ? ` ${name}` : ''}, moi c’est weevboss.`,
+    welcomeHello: (name: string, where: string): string => `Salut${name ? ` ${name}` : ''}, moi c’est weevboss. Avec weevils, tu crées des choses avec l’IA depuis ton téléphone : tu me dis ce que tu veux (un jeu, un site, un petit outil…), des agents IA le construisent ${where}, et tu les suis ici, étape par étape.`,
+    welcomeWhere: (m: MachineInfo): string => (['laptop', 'desktop', 'wsl'].includes(m.kind) ? (m.mac ? 'sur ton Mac' : 'sur ton ordinateur') : m.kind === 'container' ? 'sur cette machine' : 'sur ton serveur'),
+    welcomeYours: (sub: string): string => `Tout reste à toi : les agents utilisent ton propre abonnement ${sub}, ton code reste sur ta machine, et weevils lui-même est gratuit.`,
     welcomeSeen: (count: number, names: string[], machines: string[]): string => {
       const shown = names.slice(0, 4)
       const and = (l: string[]) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} et ${l.at(-1)}` : l[0] ?? '')
@@ -112,11 +114,13 @@ export default defineMessages({
       const m = machines.length ? `${machines.length > 1 ? `tes machines ${and(machines)} sont branchées` : `ta machine ${machines[0]} est branchée`} aussi` : ''
       return p && m ? `${p}, et ${m}.` : p ? `${p}.` : m ? `${m[0].toUpperCase()}${m.slice(1)}.` : ''
     },
-    welcomeReady: 'Dis-moi ce que tu veux faire : un jeu, un site, un petit outil, une question sur ton code…',
-    welcomeClaude: 'Pour réfléchir, j’utilise ton propre abonnement Claude.',
-    welcomeClaudeLink: 'Pour réfléchir, j’utilise ton propre abonnement Claude : le lien de connexion arrive juste en dessous.',
-    welcomeClaudeInstall: (host: string): string => `Pour réfléchir, j’utilise ton propre abonnement Claude : j’installe d’abord Claude Code sur ${host}, le lien de connexion suit dans une minute.`,
-    welcomeCodex: 'Pour réfléchir, j’utilise ton abonnement ChatGPT, par Codex : le code de connexion arrive juste en dessous.',
+    welcomeReady: (name: string): string => `${name} est déjà connecté, alors on commence : dis-moi ce que tu veux faire, un jeu, un site, un petit outil, une question sur ton code…`,
+    welcomeClaude: 'Pour commencer, connecte ton compte Claude, une seule fois.',
+    welcomeClaudeLink: 'Pour commencer, connecte ton compte Claude, une seule fois : le lien arrive juste en dessous.',
+    welcomeClaudeInstall: (host: string): string => `Pour commencer, j’installe Claude Code sur ${host}, puis tu connectes ton compte Claude : le lien suit dans une minute.`,
+    welcomeCodex: 'Pour commencer, connecte ton compte ChatGPT, par Codex : le code arrive juste en dessous.',
+    welcomeGuest: 'Une question en attendant ? Pose-la-moi.',
+    claudeReadyJob: 'Claude est connecté : je lance ce que tu m’as demandé.',
     claudeReady: 'Claude Code est connecté : je suis prêt. Dis-moi ce que tu veux faire, par exemple « crée un repo pour mon idée de… » ou « où en est mon projet ? ».',
     claudeOk: 'Claude Code est connecté sur cette machine.',
     notLoggedShort: 'Pour tout le reste, il me faut Claude Code connecté sur cette machine.',
@@ -346,7 +350,9 @@ export default defineMessages({
     claudeLink: (url: string): string => `Open [Claude’s sign-in page](${url}), accept, then paste the code it shows here.`,
     claudeTerminal: (why: string, line: string): string => `I can’t start Claude’s sign-in from here (${why}). In a terminal on this machine, type \`${line}\` and sign in: I’ll notice on my own.`,
     claudeFail: (why: string): string => `Claude doesn’t accept this code (${/wasn.t accepted|invalid|expired/i.test(why) ? 'incomplete, expired or already used' : why}). Here’s a new link:`,
-    welcomeHello: (name: string): string => `Hi${name ? ` ${name}` : ''}, I’m weevboss.`,
+    welcomeHello: (name: string, where: string): string => `Hi${name ? ` ${name}` : ''}, I’m weevboss. With weevils you make things with AI from your phone: you tell me what you want (a game, a website, a small tool…), AI agents build it ${where}, and you follow them here, step by step.`,
+    welcomeWhere: (m: MachineInfo): string => (['laptop', 'desktop', 'wsl'].includes(m.kind) ? (m.mac ? 'on your Mac' : 'on your computer') : m.kind === 'container' ? 'on this machine' : 'on your server'),
+    welcomeYours: (sub: string): string => `It all stays yours: the agents use your own ${sub} subscription, your code stays on your machine, and weevils itself is free.`,
     welcomeSeen: (count: number, names: string[], machines: string[]): string => {
       const shown = names.slice(0, 4)
       const and = (l: string[]) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0] ?? '')
@@ -355,11 +361,13 @@ export default defineMessages({
       const m = machines.length ? `${and(machines)} ${machines.length > 1 ? 'are' : 'is'} plugged in too` : ''
       return p && m ? `${p}, and ${m}.` : p ? `${p}.` : m ? `${m[0].toUpperCase()}${m.slice(1)}.` : ''
     },
-    welcomeReady: 'Tell me what you’d like to make: a game, a website, a small tool, a question about your code…',
-    welcomeClaude: 'To think, I use your own Claude subscription.',
-    welcomeClaudeLink: 'To think, I use your own Claude subscription: the sign-in link comes right below.',
-    welcomeClaudeInstall: (host: string): string => `To think, I use your own Claude subscription: I’m installing Claude Code on ${host} first, the sign-in link follows in a minute.`,
-    welcomeCodex: 'To think, I use your ChatGPT subscription, through Codex: the sign-in code comes right below.',
+    welcomeReady: (name: string): string => `${name} is already connected, so let’s start: tell me what you’d like to make, a game, a website, a small tool, a question about your code…`,
+    welcomeClaude: 'To start, connect your Claude account, just once.',
+    welcomeClaudeLink: 'To start, connect your Claude account, just once: the link comes right below.',
+    welcomeClaudeInstall: (host: string): string => `To start, I’m installing Claude Code on ${host}, then you connect your Claude account: the link follows in a minute.`,
+    welcomeCodex: 'To start, connect your ChatGPT account, through Codex: the code comes right below.',
+    welcomeGuest: 'Any question meanwhile? Just ask.',
+    claudeReadyJob: 'Claude is signed in: I’m starting what you asked.',
     claudeReady: 'Claude Code is signed in: I’m ready. Tell me what you want to do, like “create a repo for my idea about…” or “where’s my project at?”.',
     claudeOk: 'Claude Code is signed in on this machine.',
     notLoggedShort: 'For everything else, I need Claude Code signed in on this machine.',

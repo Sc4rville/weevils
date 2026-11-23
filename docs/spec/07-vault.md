@@ -352,6 +352,14 @@ empty text with its signature, so the risk was small; the rule keeps it at none.
      then a near-invisible sync; `server/setup.ts` `watchSync` and `act`, `server/sync-progress.ts`, `SyncLine` in
      `src/ui/setup.tsx`, shown by next's weevboss thread). No model decides any of it, and nothing is a button: actions
      are links in the sentence (`/#do=github | server | later | recovery`, `src/ui/living-link.tsx`).
+     0. The hello is three short messages (2026-11-23, the owner: « a real onboarding, not just hi I'm weevboss, or it
+        looks like a scam »): what weevils is (you say what you want from your phone, AI agents build it on your
+        machine, you follow them here), that it all stays yours (your own subscription, your code on your machine,
+        weevils free), then what weevils sees and the one next step. Before the person's own Claude is signed in, the
+        instance's owner may lend a sign-in (`WEEVILS_GUEST_CLAUDE_DIR`, a signed-in Claude Code config folder;
+        `server/guest-brain.ts`): questions get a short answer as weevboss (no tool, no file, at most 30 answers), a
+        request to make something is kept and started the moment their Claude is signed in, and the sign-in link
+        comes back when it has scrolled away. Without a loan, every message gets the sign-in link, as before.
      1. The hello carries « [Connect your GitHub](/#do=github) and I'll keep all your conversations there, yours. »
         when GitHub is not signed in (and after Claude's sign-in, the same link). The link starts gh's device sign-in
         and posts its code and link in weevboss's name.

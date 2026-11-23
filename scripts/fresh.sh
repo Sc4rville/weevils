@@ -14,6 +14,8 @@
 #   up --with-claude: Claude Code already signed in, as most newcomers have it — only the current access token of this
 #   machine's login is copied in (never the refresh token: refreshing a copy would sign the original out); it expires
 #   within hours, then the instance is back to "not signed in".
+#   up --guest-claude: the same copy, lent to weevboss only (WEEVILS_GUEST_CLAUDE_DIR): before the newcomer signs in
+#   their own Claude, their questions get real answers instead of the sign-in link again. --no-guest-claude: none.
 #
 # Settings (port, public url, host name, access code) are kept in ~/.config/weevils-fresh/. The container listens on
 # 127.0.0.1:<port> only: put a reverse proxy in front for HTTPS (Caddy: reverse_proxy 127.0.0.1:<port>).
@@ -25,13 +27,14 @@ conf=$conf_dir/env
 image=$name
 
 mkdir -p "$conf_dir"
-[ -f "$conf" ] || printf 'FRESH_PORT=4177\nFRESH_URL=\nFRESH_HOST=myserver\nFRESH_CLAUDE=\n' >"$conf"
+[ -f "$conf" ] || printf 'FRESH_PORT=4177\nFRESH_URL=\nFRESH_HOST=myserver\nFRESH_CLAUDE=\nFRESH_GUEST=\n' >"$conf"
 # shellcheck disable=SC1090
 . "$conf"
 [ -s "$conf_dir/secret" ] || (umask 077 && head -c 9 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n' >"$conf_dir/secret")
 secret=$(cat "$conf_dir/secret")
 FRESH_CLAUDE=${FRESH_CLAUDE:-}
-save() { printf 'FRESH_PORT=%s\nFRESH_URL=%s\nFRESH_HOST=%s\nFRESH_CLAUDE=%s\n' "$FRESH_PORT" "$FRESH_URL" "$FRESH_HOST" "$FRESH_CLAUDE" >"$conf"; }
+FRESH_GUEST=${FRESH_GUEST:-}
+save() { printf 'FRESH_PORT=%s\nFRESH_URL=%s\nFRESH_HOST=%s\nFRESH_CLAUDE=%s\nFRESH_GUEST=%s\n' "$FRESH_PORT" "$FRESH_URL" "$FRESH_HOST" "$FRESH_CLAUDE" "$FRESH_GUEST" >"$conf"; }
 
 # The access token of this machine's Claude login, without its refresh token, as a credentials file on stdout.
 claude_login() {
@@ -57,10 +60,14 @@ start() {
   docker rm -f "$name" >/dev/null 2>&1 || true
   docker run -d --name "$name" --hostname "$FRESH_HOST" --init --restart unless-stopped \
     --cpus 2 --memory 2g --pids-limit 1024 --security-opt no-new-privileges \
-    -p "127.0.0.1:$FRESH_PORT:4179" -e FRESH_URL="$FRESH_URL" -e FRESH_SECRET="$secret" "$image" >/dev/null
+    -p "127.0.0.1:$FRESH_PORT:4179" -e FRESH_URL="$FRESH_URL" -e FRESH_SECRET="$secret" \
+    -e WEEVILS_GUEST_CLAUDE_DIR=/home/me/.config/weevils/guest-claude "$image" >/dev/null
   if [ "$FRESH_CLAUDE" = 1 ]; then
     claude_login | docker exec -i "$name" sh -c 'umask 077 && mkdir -p ~/.claude && cat > ~/.claude/.credentials.json'
     docker exec "$name" sh -c 'f=~/.claude.json; [ -s "$f" ] || echo "{}" > "$f"; python3 -c "import json,sys; p=sys.argv[1]; d=json.load(open(p)); d[\"hasCompletedOnboarding\"]=True; json.dump(d,open(p,\"w\"))" "$f"'
+  fi
+  if [ "$FRESH_GUEST" = 1 ]; then
+    claude_login | docker exec -i "$name" sh -c 'umask 077 && mkdir -p ~/.config/weevils/guest-claude && cat > ~/.config/weevils/guest-claude/.credentials.json'
   fi
   for _ in $(seq 1 40); do curl -fs "http://127.0.0.1:$FRESH_PORT/api/me" >/dev/null 2>&1 && break; sleep 0.5; done
   curl -fs "http://127.0.0.1:$FRESH_PORT/api/me" >/dev/null || { echo "weevilsd did not answer, see: $0 logs" >&2; exit 1; }
@@ -82,6 +89,8 @@ case "$cmd" in
         --host) FRESH_HOST=$2; shift ;;
         --with-claude) FRESH_CLAUDE=1 ;;
         --without-claude) FRESH_CLAUDE='' ;;
+        --guest-claude) FRESH_GUEST=1 ;;
+        --no-guest-claude) FRESH_GUEST='' ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
       esac
       shift
@@ -95,5 +104,5 @@ case "$cmd" in
   status) docker ps -a --filter "name=^$name$" --format '{{.Names}}: {{.Status}} ({{.Ports}})' ;;
   logs) exec docker logs -f --tail 100 "$name" ;;
   down) docker rm -f "$name" >/dev/null 2>&1 && echo "stopped" || echo "not running" ;;
-  *) sed -n 2,14p "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n 2,19p "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

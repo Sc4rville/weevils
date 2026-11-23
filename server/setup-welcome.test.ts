@@ -26,6 +26,12 @@ vi.mock('./claude-login.ts', () => ({
   }),
 }))
 vi.mock('./claude-credentials.ts', () => ({ claudeLoggedIn: () => auth.ready }))
+const guest = vi.hoisted(() => ({ dir: null as string | null, reply: null as null | { text: string; task: boolean }, asked: [] as Record<string, unknown>[] }))
+vi.mock('./guest-brain.ts', async (orig) => ({
+  ...(await orig<typeof import('./guest-brain.ts')>()),
+  guestDir: () => guest.dir,
+  guestAnswer: async (o: Record<string, unknown>) => (guest.asked.push(o), guest.reply),
+}))
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-welcome-'))
 process.env.WEEVILS_CONFIG = path.join(dir, 'env')
 process.env.WEEVILS_LANG = 'en'
@@ -58,28 +64,38 @@ beforeEach(() => {
 })
 
 describe('the hello', () => {
-  it('ready: who it is, what it already sees, then what to ask; no button, nothing about how it works', () => {
+  // The owner, 2026-11-23: a real onboarding, not just « hi I'm weevboss » (it looks like a scam).
+  it('three short messages: what weevils is, that it stays theirs, then what it sees and what to ask; no button', () => {
     auth.ready = true
-    const text = greeting(state({ projects: 3, projectNames: ['weevils', 'notes', 'site'], others: ['laptop'] }), both)
-    expect(text).toBe('Hi, I’m weevboss. I can already see your 3 projects (weevils, notes and site), and laptop is plugged in too. Tell me what you’d like to make: a game, a website, a small tool, a question about your code… [Connect your GitHub](/#do=github) and I’ll keep all your conversations there, yours.')
+    const lines = greeting(state({ projects: 3, projectNames: ['weevils', 'notes', 'site'], machine: { ...machine, kind: 'desktop', others: ['laptop'] } }), both)
+    expect(lines).toEqual([
+      'Hi, I’m weevboss. With weevils you make things with AI from your phone: you tell me what you want (a game, a website, a small tool…), AI agents build it on your computer, and you follow them here, step by step.',
+      'It all stays yours: the agents use your own Claude subscription, your code stays on your machine, and weevils itself is free.',
+      'I can already see your 3 projects (weevils, notes and site), and laptop is plugged in too. Claude is already connected, so let’s start: tell me what you’d like to make, a game, a website, a small tool, a question about your code… [Connect your GitHub](/#do=github) and I’ll keep all your conversations there, yours.',
+    ])
     const fr = withLang('fr', () => greeting(state({ projects: 12, projectNames: ['a', 'b', 'c', 'd'] }), both))
-    expect(fr).toBe('Salut, moi c’est weevboss. Je vois déjà tes 12 projets (a, b, c, d…). Dis-moi ce que tu veux faire : un jeu, un site, un petit outil, une question sur ton code… [Connecte ton GitHub](/#do=github) et je garde toutes tes conversations là-bas, à toi.')
-    expect(greeting(state(), both)).toBe('Hi, I’m weevboss. Tell me what you’d like to make: a game, a website, a small tool, a question about your code… [Connect your GitHub](/#do=github) and I’ll keep all your conversations there, yours.')
+    expect(fr[0]).toContain('Avec weevils, tu crées des choses avec l’IA depuis ton téléphone')
+    expect(fr[2]).toBe('Je vois déjà tes 12 projets (a, b, c, d…). Claude est déjà connecté, alors on commence : dis-moi ce que tu veux faire, un jeu, un site, un petit outil, une question sur ton code… [Connecte ton GitHub](/#do=github) et je garde toutes tes conversations là-bas, à toi.')
     // GitHub already connected: the sync line follows by itself, nothing to offer.
-    expect(greeting(state({ github: { installed: true, logged: true, login: 'alex' } }), both)).toBe('Hi, I’m weevboss. Tell me what you’d like to make: a game, a website, a small tool, a question about your code…')
-    for (const t of [text, fr]) expect(t).not.toMatch(/\[\[setup:|relay|thread|weevbook|session|fil\b/i)
+    expect(greeting(state({ github: { installed: true, logged: true, login: 'alex' } }), both)[2]).toBe('Claude is already connected, so let’s start: tell me what you’d like to make, a game, a website, a small tool, a question about your code…')
+    // Where the agents work, in the person's words.
+    expect(greeting(state(), both)[0]).toContain('build it on your server')
+    for (const t of [...lines, ...fr]) expect(t).not.toMatch(/\[\[setup:|relay|thread|weevbook|session|fil\b/i)
   })
 
   it('no subscription signed in: Claude’s link in the hello itself, the code pasted here', () => {
-    const text = greeting(state({ projects: 1, projectNames: ['notes'] }), both, 'https://claude.ai/oauth/authorize?code=abc')
-    expect(text).toBe('Hi, I’m weevboss. I can already see your project (notes). To think, I use your own Claude subscription. Open [Claude’s sign-in page](https://claude.ai/oauth/authorize?code=abc), accept, then paste the code it shows here.')
-    expect(greeting(state({ claude: { installed: true, logged: false } }), both)).toContain('the sign-in link comes right below')
-    expect(greeting(state({ claude: { installed: false, logged: false } }), both)).toContain('I’m installing Claude Code on box first')
+    const lines = greeting(state({ projects: 1, projectNames: ['notes'] }), both, 'https://claude.ai/oauth/authorize?code=abc')
+    expect(lines[2]).toBe('I can already see your project (notes). To start, connect your Claude account, just once. Open [Claude’s sign-in page](https://claude.ai/oauth/authorize?code=abc), accept, then paste the code it shows here.')
+    // A lent sign-in (server/guest-brain.ts): questions are welcome meanwhile.
+    expect(greeting(state(), both, 'https://claude.ai/x', true)[2]).toMatch(/paste the code it shows here\. Any question meanwhile\? Just ask\.$/)
+    expect(greeting(state({ claude: { installed: true, logged: false } }), both)[2]).toContain('the link comes right below')
+    expect(greeting(state({ claude: { installed: false, logged: false } }), both)[2]).toContain('I’m installing Claude Code on box')
     auth.tool = 'codex'
-    expect(greeting(state(), both)).toContain('your ChatGPT subscription, through Codex')
+    expect(greeting(state(), both)[2]).toContain('your ChatGPT account, through Codex')
+    expect(greeting(state(), both)[1]).toContain('your own ChatGPT subscription')
     auth.tool = 'claude'
-    expect(greeting(state(), { claude: false, codex: true })).toContain('through Codex')
-    expect(withLang('fr', () => greeting(state(), both, 'https://claude.ai/x'))).toContain('colle ici le code qu’elle affiche')
+    expect(greeting(state(), { claude: false, codex: true })[2]).toContain('through Codex')
+    expect(withLang('fr', () => greeting(state(), both, 'https://claude.ai/x')[2])).toContain('colle ici le code qu’elle affiche')
   })
 })
 
@@ -157,7 +173,8 @@ describe('the first run, end to end', () => {
     const { it: s, texts } = make({}, state({ claude: { installed: true, logged: false }, projects: 1, projectNames: ['notes'] }))
     const mid = await s.welcome({ os: 'linux', mobile: false, standalone: false })
     expect(mid).toBeTruthy()
-    expect(texts()).toEqual(['Hi, I’m weevboss. I can already see your project (notes). To think, I use your own Claude subscription. Open [Claude’s sign-in page](https://claude.ai/oauth/authorize?code=abc), accept, then paste the code it shows here.'])
+    expect(texts()).toHaveLength(3)
+    expect(texts()[2]).toBe('I can already see your project (notes). To start, connect your Claude account, just once. Open [Claude’s sign-in page](https://claude.ai/oauth/authorize?code=abc), accept, then paste the code it shows here.')
     expect(await s.welcome({ os: 'linux', mobile: false, standalone: false })).toBeUndefined()
     // Something else typed first: the link again, no button.
     await s.offline('hello?')
@@ -174,6 +191,28 @@ describe('the first run, end to end', () => {
     expect(ctx).not.toContain(code)
     expect(ctx).toContain('(a sign-in code, not shown)')
     expect(ctx).toContain('onboarding is this conversation')
+  })
+
+  // The owner, 2026-11-23: until their own Claude is in, a newcomer's questions are answered, not met with the link again.
+  it('with a lent sign-in: questions answered as weevboss, a request kept and started once their Claude is in', async () => {
+    guest.dir = '/lent'
+    const { it: s, texts, delegate } = make({}, state({ claude: { installed: true, logged: false } }))
+    await s.welcome({ os: 'linux', mobile: false, standalone: false })
+    expect(texts()[2]).toMatch(/Any question meanwhile\? Just ask\.$/)
+    guest.reply = { text: 'weevils itself is free: you only use your own Claude subscription.', task: false }
+    await s.offline('is it free?')
+    expect(texts().slice(-2)).toEqual(['is it free?', 'weevils itself is free: you only use your own Claude subscription.'])
+    expect(guest.asked.at(-1)).toMatchObject({ dir: '/lent', lang: 'en', text: 'is it free?' })
+    guest.reply = { text: 'I kept it: I start as soon as your Claude is signed in.', task: true }
+    await s.offline('make me a snake game')
+    expect(texts().at(-2)).toBe('I kept it: I start as soon as your Claude is signed in.')
+    expect(texts().at(-1)).toContain('Open [Claude’s sign-in page]')
+    auth.pending = { url: 'https://claude.ai/oauth/authorize?code=abc' }
+    await s.offline('Xy7_aBcDeFgHiJkLmNoPqRsTuV#st4te-123')
+    expect(texts()).toContain('Claude is signed in: I’m starting what you asked.')
+    expect(delegate).toHaveBeenCalledWith('make me a snake game', '')
+    // No answer from the loan: the sign-in link, as without one.
+    guest.dir = null
   })
 
   it('tells a pasted code from a sentence', () => {

@@ -47,6 +47,7 @@ import type { Join } from './join.ts'
 import { isTunnelUrl } from './tunnel-link.ts'
 import { backfillMarker } from './weevbook/backfill.ts'
 import { syncProgress } from './sync-progress.ts'
+import { GUEST_TURNS, guestAnswer, guestDir } from './guest-brain.ts'
 import { recoveryCode, readKey } from './weevbook/vault.ts'
 import { vaultMain } from './weevbook/vault-cli.ts'
 import { githubRepo } from './weevbook/vault.ts'
@@ -172,6 +173,8 @@ interface Persisted {
   memorySeen?: { sig: string; boss: string | null }
   /** The first days: weevboss's turns get what weevils detected and how onboarding goes (firstRunBrief). */
   firstRun?: { at: number; turns: number }
+  /** Answers given on the lent sign-in before the person's own Claude (server/guest-brain.ts). */
+  guestTurns?: number
   /** Another computer's line was given (then its key came in: id): said once it shows up online. */
   joining?: { at: number; id?: string }
   /** The user's messages that were a sign-in code: never passed on to the model. */
@@ -662,6 +665,8 @@ export class Setup {
   lastSaid: string | null = null
   /** The official sign-in page the tap that asked for it opens at once (Claude), handed out once. */
   private openUrl: string | undefined
+  /** The last Claude sign-in link said in the thread: said again only once it has scrolled away (guestReply). */
+  private linkSaid = ''
   takeOpen(): string | undefined {
     const u = this.openUrl
     this.openUrl = undefined
@@ -675,7 +680,7 @@ export class Setup {
     this.p = (() => {
       try {
         const raw = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Partial<Persisted>
-        return { log: (raw.log ?? []).filter((m) => !m.id.startsWith('demo-')), marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, codexWaiting: raw.codexWaiting, githubLogged: raw.githubLogged, pending: raw.pending, memorySeen: raw.memorySeen, firstRun: raw.firstRun, joining: raw.joining, hidden: raw.hidden }
+        return { log: (raw.log ?? []).filter((m) => !m.id.startsWith('demo-')), marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, codexWaiting: raw.codexWaiting, githubLogged: raw.githubLogged, pending: raw.pending, memorySeen: raw.memorySeen, firstRun: raw.firstRun, joining: raw.joining, hidden: raw.hidden, guestTurns: raw.guestTurns }
       } catch {
         return { log: [], marks: {}, bossSeenAt: 0 }
       }
@@ -811,7 +816,10 @@ export class Setup {
       // Claude Code here and signed out: its sign-in link goes in the hello itself (a few seconds at most; later, it
       // follows on its own: the same sign-in, askClaude below).
       const link = !ready && tool === 'claude' && s.claude.installed ? await Promise.race([this.startClaudeLogin().catch(() => ''), sleep(8000).then(() => '')]) : ''
-      mid = this.say(greeting(s, this.providers(), link))
+      if (link) this.linkSaid = link
+      const [first, ...rest] = greeting(s, this.providers(), link, !ready && tool === 'claude' && !!guestDir())
+      mid = this.say(first)
+      for (const line of rest) this.say(line)
       this.p.firstRun = { at: Date.now(), turns: 0 }
       if (!ready && !link) void (tool === 'codex' ? this.askCodex(s) : this.askClaude(s, false, true)).catch((e) => console.log(`[setup] ${short(e)}`))
     }
@@ -825,8 +833,8 @@ export class Setup {
   private async claudeReady() {
     this.cache = null
     const gh = await github().catch(() => ({ logged: true }))
-    this.say(gh.logged ? tr(M).claudeReady : `${tr(M).claudeReady} ${tr(M).welcomeGithub}`)
     const job = this.p.pending
+    this.say(job ? tr(M).claudeReadyJob : gh.logged ? tr(M).claudeReady : `${tr(M).claudeReady} ${tr(M).welcomeGithub}`)
     if (job && providerReady()) {
       this.p.pending = undefined
       this.save()
@@ -1320,6 +1328,7 @@ export class Setup {
     if (!url) return this.say(t.claudeTerminal(lastLine(claudeLogin.output(this.loginDeps())) || t.noAnswer, 'claude')), false
     if (this.p.log.at(-1)?.text !== t.claudeLink(url)) this.say(t.claudeLink(url))
     this.openUrl = url
+    this.linkSaid = url
     return true
   }
 
@@ -1390,6 +1399,7 @@ export class Setup {
       return this.applyClaude({ code: typed })
     }
     this.userSays(text)
+    if (await this.guestReply(text, typed)) return
     const brick = guessBrick(typed)
     const t = tr(M)
     if (brick && brick !== 'claude' && brick !== 'codex') {
@@ -1402,6 +1412,27 @@ export class Setup {
       this.say(t.providerLater(preferredTool() === 'codex' ? 'Codex' : 'Claude Code'))
     }
     await this.askProvider()
+  }
+
+  /** Before their own Claude: a real answer on the instance owner's lent sign-in, when there is one (server/guest-brain.ts).
+   * A request to make something is kept and started once they are signed in; the sign-in link comes back only when it
+   * has scrolled out of sight. False: nothing lent (or no answer), the caller says what is missing. */
+  private async guestReply(text: string, typed: string): Promise<boolean> {
+    const dir = guestDir()
+    if (!dir || preferredTool() === 'codex' || (this.p.guestTurns ?? 0) >= GUEST_TURNS) return false
+    const history = this.p.log
+      .slice(-11, -1)
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({ role: m.role as 'user' | 'assistant', text: withoutContext(m.text) }))
+    const r = await guestAnswer({ dir, bin: which('claude') ?? 'claude', lang: lang(), history, text: typed })
+    if (!r) return false
+    this.p.guestTurns = (this.p.guestTurns ?? 0) + 1
+    if (r.task) this.p.pending = { text, brief: '' }
+    this.save()
+    this.say(r.text)
+    const link = this.linkSaid
+    if (r.task || !link || !this.p.log.slice(-6).some((m) => m.text.includes(link))) await this.askProvider()
+    return true
   }
 
   mark(id: string) {
@@ -1794,18 +1825,25 @@ export const offersServer = (m: Pick<MachineInfo, 'alwaysOn' | 'kind'>): boolean
 export const providerTool = (providers: { claude: boolean; codex: boolean }): 'claude' | 'codex' =>
   preferredTool() === 'codex' || (!providers.claude && providers.codex) ? 'codex' : 'claude'
 
-/** weevboss's hello on first launch: who it is, what weevils already sees (projects, other machines), then either
- * "tell me what you want done" or the one thing it needs, the subscription's sign-in (with Claude's link when there is
- * one). No button, no tour, nothing about how weevils works. Pure (tested). */
-export function greeting(s: SetupState, providers: { claude: boolean; codex: boolean }, link = ''): string {
+/** weevboss's hello on first launch, three short messages: what weevils is (things made with AI from the phone, built
+ * on their machine), that it all stays theirs (their own subscription, their code, weevils free), then what weevils
+ * already sees and either "tell me what to make" or the one thing it needs, the subscription's sign-in (with Claude's
+ * link when there is one; with a lent sign-in, questions are welcome meanwhile). No button. Pure (tested). */
+export function greeting(s: SetupState, providers: { claude: boolean; codex: boolean }, link = '', guest = false): string[] {
   const t = tr(M)
+  const ready = providerReady()
+  const codex = (ready ? preferredTool() : providerTool(providers)) === 'codex'
   const seen = t.welcomeSeen(s.projects, s.projectNames, s.machine.others)
-  const head = [t.welcomeHello(USER_NAME), seen].filter(Boolean).join(' ')
+  const ask = guest ? ` ${t.welcomeGuest}` : ''
   // GitHub, one link away: the conversations are kept there (the sync line follows once it is connected).
-  if (providerReady()) return `${head} ${t.welcomeReady}${s.github.logged || s.vault.state !== 'none' ? '' : ` ${t.welcomeGithub}`}`
-  if (providerTool(providers) === 'codex') return `${head} ${t.welcomeCodex}`
-  if (link) return `${head} ${t.welcomeClaude} ${t.claudeLink(link)}`
-  return `${head} ${s.claude.installed ? t.welcomeClaudeLink : t.welcomeClaudeInstall(s.machine.host)}`
+  const next = ready
+    ? `${t.welcomeReady(codex ? 'Codex' : 'Claude')}${s.github.logged || s.vault.state !== 'none' ? '' : ` ${t.welcomeGithub}`}`
+    : codex
+      ? t.welcomeCodex
+      : link
+        ? `${t.welcomeClaude} ${t.claudeLink(link)}${ask}`
+        : `${s.claude.installed ? t.welcomeClaudeLink : t.welcomeClaudeInstall(s.machine.host)}${ask}`
+  return [t.welcomeHello(USER_NAME, t.welcomeWhere(s.machine)), t.welcomeYours(codex ? 'ChatGPT' : 'Claude'), [seen, next].filter(Boolean).join(' ')]
 }
 
 /** What weevboss is told in its first days (every turn: they do not remember): what weevils detected, so it asks none

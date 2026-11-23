@@ -25,6 +25,9 @@ philosophical, never filler.
    proposals and pieces, with what became of them. Also read the latest report of the UX consistency audit
    (`git log auto/find-ux-inconsistencies-156a --oneline -- reports/ux-consistency`, then `git show` its newest
    report) so you never propose again what it already found.
+6. Read what the person pointed at themselves: `weevils captures --ui` lists the screens they captured with the app's
+   camera since your last run (each with their line, the screen, the conversation and the theme; the picture's path
+   under it). A capture is a first-hand remark on the interface: it outranks anything you would guess.
 
 ## 1. Pick a persona and one concrete journey
 

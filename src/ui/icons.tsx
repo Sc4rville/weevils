@@ -40,6 +40,8 @@ const PATHS = {
   mic: 'M9 3h6v10H9zM5 10v6h14v-6M12 16v5M8 21h8',
   enter: 'M19 5v8H6M10 9l-4 4 4 4',
   compact: 'M12 3v11M6 9l6 6 6-6M4 20h16',
+  // The app's camera (next/src/camera.tsx): a body, its raised top, a square lens.
+  camera: 'M3 7h4l2-3h6l2 3h4v13H3zM9 10.5h6v6H9z',
   /** Save to the device (camera roll, downloads). */
   save: 'M12 3v11M6 9l6 6 6-6M4 20h16',
   theme: 'M4 4h16v16H4zM12 4v16',

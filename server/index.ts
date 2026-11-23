@@ -30,7 +30,7 @@ import { addChunk, clip, cue, finishUpload, logMarks, newShortcutToken, shortcut
 import { cartesia, cartesiaVoices, claudeAvailable, haiku, ledger, relay as modelRelay } from './fast.ts'
 import { CostOptimizer, RUN_EVERY_MS as COST_EVERY_MS } from './cost.ts'
 import CostM from './i18n/cost.ts'
-import { Weevils, isTestBrief } from './core.ts'
+import { Weevils, isTestBrief, joinContext, withFiles } from './core.ts'
 import { uiChoice, uiDirs, UI_COOKIE } from './ui-choice.ts'
 import { lang, requestLang, withLang, setLang, tr, withInstallLang, user, installationLang } from './i18n.ts'
 import M from './i18n/api.ts'
@@ -72,6 +72,8 @@ import { ThemePref } from './theme-pref.ts'
 import { ForYou, foryouRoutes, type MachineState } from './foryou.ts'
 import { ForYouNumbers } from './foryou-numbers.ts'
 import { serveAttachment } from './attachments.ts'
+import { Captures } from './captures.ts'
+import CapM from './i18n/captures.ts'
 import { MediaShelf } from './foryou-media.ts'
 import { Curator } from './foryou-curator.ts'
 import { Voices, voiceParam } from './foryou-voice.ts'
@@ -316,6 +318,7 @@ const machineStates = async (): Promise<MachineState[]> => {
 let tipLoad: { at: number; loads: MachineLoad[] } = { at: 0, loads: [] }
 // La voix de chacun dans le flux : weevboss garde celle de l'app, chaque auteur extérieur a la sienne (server/foryou-voice.ts).
 const voices = new Voices({ bossVoice: () => w.voiceId ?? cartesia()?.voice })
+const captureLibrary = new Captures(DATA_DIR)
 const mediaShelf = new MediaShelf({ file: path.join(DATA_DIR, 'foryou-media.json'), roots: [...PROJECT_ROOTS, INBOX_DIR, DATA_DIR] })
 const foryou = ORCHESTRATOR
   ? new ForYou(w, {
@@ -1034,7 +1037,24 @@ const routes: [string, RegExp, Handler][] = [
     json(res, 200, await w.commandMain(String(body.command ?? '')))
   }],
   ['GET', /^\/api\/attachments$/, (_req, res, url) => {
-    serveAttachment(res, url.searchParams.get('path') ?? '', [INBOX_DIR, path.join(DATA_DIR, 'inbox')])
+    serveAttachment(res, url.searchParams.get('path') ?? '', [INBOX_DIR, path.join(DATA_DIR, 'inbox'), captureLibrary.dir])
+  }],
+  // The app's camera (next/src/camera.tsx, server/captureLibrary.ts): the library, newest first, searchable.
+  ['GET', /^\/api\/captures$/, (_req, res, url) => {
+    const p = url.searchParams
+    json(res, 200, { dir: captureLibrary.dir, captures: captureLibrary.list({ q: p.get('q') ?? undefined, group: p.get('group') ?? undefined, tag: p.get('tag') ?? undefined, limit: Number(p.get('limit')) || undefined }) })
+  }],
+  // One capture: kept in the library, then handed back with the message to send (its thumbnail and what it shows).
+  // The app sends that message itself, through its usual door and outbox, to weevboss or the open session.
+  ['POST', /^\/api\/captures$/, async (req, res) => {
+    const body = await readBody(req, 24 << 20)
+    let c
+    try { c = captureLibrary.save(body) } catch { return json(res, 400, { error: tr(CapM).notImage }) }
+    const to = typeof body.to === 'string' ? body.to : ''
+    const session = to && to !== 'weevboss' ? w.snapshot().sessions.find((s) => s.id === to) : undefined
+    const message = withFiles(String(body.text ?? ''), [{ path: c.file, image: true }]) + joinContext('', tr(CapM).note(c, captureLibrary.dir))
+    // A session on another machine cannot open this file: the app sends the picture itself there (its attach route).
+    json(res, 200, { id: c.id, file: c.file, message, note: tr(CapM).note(c, captureLibrary.dir), here: !session || session.machineId === MACHINE.id })
   }],
   ['POST', /^\/api\/main\/attach$/, async (req, res, u) => {
     const body = await readBody(req, 48 << 20)

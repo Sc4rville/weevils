@@ -43,6 +43,7 @@ import { TalkCtx, useTalk, useTalks } from '../../src/ui/auto-talk.ts'
 import { useApp } from '../../src/ui/app-context.tsx'
 import { TopWords, useTop } from '../../src/ui/foryou-top.tsx'
 import { ForYouPage } from '../../src/ui/foryou.tsx'
+import { Camera, type Spot } from './camera.tsx'
 
 const THEME_KEY = 'weevils-theme'
 /** One motion for every move in next (docs/next-interaction.md): the app's own page spring (bits.tsx spring), the
@@ -544,6 +545,27 @@ function App() {
   // Notifications, from the app's own service worker: a tap opens its session, or weevboss.
   useWorker(auth === 'in', snap ?? null, useCallback((to: { session: string } | 'boss') => open(to === 'boss' ? null : to.session), [open]))
 
+  // What the camera records with a capture (camera.tsx): the screen on top, its conversation or page, theme, size.
+  const spotRef = useRef<() => Spot>(() => ({ context: {} }))
+  spotRef.current = () => {
+    const top = pages.at(-1)?.p
+    const sid = top ? (top.kind === 'session' ? top.id : undefined) : session ?? undefined
+    const s = sid ? snap?.sessions.find((x) => x.id === sid) : undefined
+    const proj = s ? snap?.projects.find((x) => x.id === s.projectId) : top && 'projectId' in top ? snap?.projects.find((x) => x.id === top.projectId) : undefined
+    const screen = top ? top.kind : session ? 'session' : side ? 'side bar' : document.querySelector('.nx-fy') ? 'for you' : 'weevboss'
+    const page = top && top.kind !== 'session' ? pageFacts(top) : undefined
+    return {
+      context: {
+        ui: 'next', screen, theme, viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio || 1 },
+        ...(s ? { sessionId: s.id, sessionTitle: s.title } : {}),
+        ...(proj ? { projectId: proj.id, project: proj.name } : {}),
+        ...(page ? { page } : {}),
+      },
+      ...(s ? { session: { id: s.id, title: s.title || 'Untitled', self: !!proj && selfProject(proj) } } : {}),
+    }
+  }
+  const spot = useCallback(() => spotRef.current(), [])
+
   if (auth === 'checking') return <main className="nx-center" />
   if (auth === 'out') return <SignIn login={login} />
   if (!snap) return <main className="nx-center"><span className="spin fluo"><Icon name="star" /></span></main>
@@ -618,10 +640,19 @@ function App() {
           })}
         </AnimatePresence>
       </div>
+      <Camera spot={spot} />
     </div>
     </TalkHost>
     </Ctx.Provider>
   )
+}
+
+/** A page as the camera names it: its kind, what identifies it, its title when it has one. */
+function pageFacts(p: Page): { kind: string; id?: string; title?: string } {
+  const r = p as Record<string, unknown>
+  const id = ['id', 'projectId', 'path', 'url'].map((k) => r[k]).find((v) => typeof v === 'string') as string | undefined
+  const title = typeof r.title === 'string' ? r.title : typeof r.name === 'string' ? r.name : undefined
+  return { kind: p.kind, ...(id ? { id } : {}), ...(title ? { title } : {}) }
 }
 
 /** weevboss's strip over a session: its logo (wiggling with the three dots while it works, bits.tsx WorkingMark), its

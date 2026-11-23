@@ -352,3 +352,42 @@ body { overflow: hidden; }
 .nx-mx-panel { flex: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 700; }
 .nx-mx-panel .ic { width: 13px; height: 13px; }
 .page-body > .nx-mx-strip { padding-top: 14px; }
+/* The camera (camera.tsx): a small mark on the right edge, the ink of whatever is under it, never a box. A tap freezes
+   the screen (a light veil, a thin frame); a drag draws the part to take, the rest darkened; then one band at the top
+   to send it, out of the keyboard's way. */
+.cam-mark {
+  position: fixed; right: 0; z-index: 1000; width: 44px; height: 44px; padding: 0 10px 0 0;
+  display: grid; place-items: center end; background: none; border: 0; color: var(--ink); opacity: .34;
+  touch-action: none; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+}
+.cam-mark .ic { width: 20px; height: 20px; }
+.cam-mark.cam-on { opacity: .9; z-index: 1002; }
+.cam-freeze { position: fixed; inset: 0; z-index: 1001; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.cam-still { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.cam-veil {
+  position: absolute; inset: 0; pointer-events: none;
+  background: color-mix(in oklab, var(--ink) 7%, transparent);
+  outline: 2px solid color-mix(in oklab, var(--ink) 40%, transparent); outline-offset: -2px;
+}
+.cam-picking .cam-veil {
+  inset: auto; background: none; outline: 2px solid var(--ink); outline-offset: 0;
+  box-shadow: 0 0 0 200vmax color-mix(in oklab, #000 40%, transparent);
+}
+.cam-sheet {
+  position: absolute; left: 0; right: 0; top: 0; --c: var(--agent);
+  display: flex; align-items: flex-start; gap: 14px; padding: calc(var(--safe-t) + 12px) var(--pad) 14px;
+}
+.cam-thumb { flex: none; display: block; max-width: 76px; max-height: 104px; border-radius: 8px; object-fit: contain; }
+.cam-say { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.cam-say input {
+  width: 100%; padding: 6px 0; background: none; border: 0; outline: 0; border-radius: 0;
+  color: var(--ink); font: inherit; font-size: 17px;
+}
+.cam-say input::placeholder { color: var(--ink); opacity: .5; }
+.cam-to { display: flex; flex-wrap: wrap; gap: 2px 20px; }
+.cam-to button {
+  max-width: 100%; padding: 6px 0; border: 0; font: inherit; font-size: 17px; font-weight: 800;
+  background-color: transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+}
+.cam-to button:disabled { opacity: .5; }
+.cam-error { font-size: 14px; opacity: .75; }

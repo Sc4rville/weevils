@@ -87,6 +87,7 @@ weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   we
   usage+=$'\n''weevils ask add "demande" [--goal <id>]   weevils ask link <id> <session> ["retour attendu"]   weevils ask goal <id> <objectif>' # i18n-ignore
   usage+=$'\n''weevils goals [all]   weevils goal add <id> "titre" ["pourquoi"]   weevils goal note <id> "avancée"   weevils goal done|pause|open <id>' # i18n-ignore
   usage+=$'\n''weevils trace [<objectif>] [n]   weevils trace add "décision" [--goal <id>]' # i18n-ignore
+  usage+=$'\n''weevils captures [mots] [--ui] [--json]   les écrans pris avec l’appareil photo de l’app, les plus récents d’abord' # i18n-ignore
   usage+=$'\n''weevils mem   weevils mem search <mots>   weevils mem add [rule|decision|fact] "texte"   weevils mem rm <id>' # i18n-ignore
   usage+=$'\n''  preuve d’un résultat (post, show) : --demonstrated "où" --verified "environnement" --limit "non vérifié"…' # i18n-ignore
   usage+=$'\n''weevils weevbook backfill | check [--repair] | compare [--verbose] | resume <fil> [--wait] | sync status | vault setup|push|restore|status' # i18n-ignore
@@ -133,6 +134,7 @@ weevils react <emoji> [<message>|last] [--session <id>]   a reaction on one of t
 weevils ask add "request" [--goal <id>]   weevils ask link <id> <session> ["expected report"]   weevils ask goal <id> <goal>
 weevils goals [all]   weevils goal add <id> "title" ["why"]   weevils goal note <id> "progress"   weevils goal done|pause|open <id>
 weevils trace [<goal>] [n]   weevils trace add "decision" [--goal <id>]
+weevils captures [words] [--ui] [--json]   screens captured with the app camera, newest first
 weevils mem   weevils mem search <words>   weevils mem add [rule|decision|fact] "text"   weevils mem rm <id>'
   usage+=$'\n''  evidence of a result (post, show): --demonstrated "where" --verified "environment" --limit "not checked"…'
   usage+=$'\n''weevils weevbook backfill | check [--repair] | compare [--verbose] | resume <thread> [--wait] | sync status | vault setup|push|restore|status'
@@ -389,6 +391,18 @@ for s in rows:
     cut=(f\" · {E['WVM_CUT']} ({s['interrupted']['reason']})\") if s.get('interrupted') else ''
     print(f\"{s['id'][:8]}  {names.get(s['projectId'],s['projectId']):<14} {s['tool']:<6} @{s['machineId']:<4} {s['status']:<11} {s['title']}{now}{bg}{cut}\")
 " ;;
+  captures)
+    # The app's camera library (server/captures.ts): newest first; words filter, --ui only UI feedback, --json raw.
+    shift; q=(); tag=''; raw=''
+    while [ $# -gt 0 ]; do case "$1" in --ui) tag=ui ;; --json) raw=1 ;; *) q+=("$1") ;; esac; shift; done
+    out=$(curl -sf -m 8 -G "$base/api/captures" --data-urlencode "q=${q[*]:-}" --data-urlencode "tag=$tag")
+    if [ -n "$raw" ]; then printf '%s\n' "$out"; else printf '%s' "$out" | json "
+import datetime
+for c in d['captures']:
+    when=datetime.datetime.fromtimestamp(c['at']/1000).strftime('%Y-%m-%d %H:%M')
+    what=' · '.join(x for x in [c.get('screen'), c.get('sessionTitle') or (c.get('page') or {}).get('title'), c.get('text')] if x)
+    print(f\"{c['id']}  {when}  {c['group']:<14} {what}\n          {c['file']}\")
+"; fi ;;
   projects)
     curl -sf -m 8 "$base/api/snapshot" | json "
 for p in d['projects']:

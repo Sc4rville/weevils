@@ -134,6 +134,24 @@ once, and the code follows. Behaviour is never flipped back and forth.
   - your messages on weevboss's screen reach the right edge;
   - weevboss and the weevils repo are one block at the top of the side bar.
 
+## The camera (2026-11-23)
+
+- **A small camera mark sits on the right edge of every screen**, in the ink of what is under it, faded, never a
+  box. Drag it up or down the edge to move it (its place is kept); it steps aside while you type.
+- **A tap freezes the app**: a light veil and a thin frame, nothing written. From then on the screen shown is the
+  picture that will be sent. The mark becomes a cross: a tap lets go.
+- **A double tap takes the whole screen; a drag draws the part to take** (the rest darkens).
+- **Then one band at the top**: the picture small, a line to add if you want, and where it goes as coloured words:
+  weevboss, and the conversation that is open, when one is. A tap on a word sends; a touch outside the band goes back
+  to choosing.
+- **weevils makes the picture itself**, from its own page, drawn again by the phone's browser (same fonts, theme and
+  scroll positions): never the phone's screenshot, so nothing lands in the camera roll.
+- **It is kept in one library**, `~/.local/share/weevils/captures/<project or screen>/`, each picture with what it
+  shows (screen, conversation, page, theme, size, region, time); `weevils captures [words] [--ui]` searches it. The
+  thread shows only its small thumbnail; the agent reads the picture and that context.
+- **About the interface**: what goes to weevboss, or to a session working on weevils itself, carries the tag « ui »
+  for the improvement loop (Night lens reads it).
+
 ## From the classic app
 
 next takes the classic app's light features as they are, never as copies, so they follow by themselves

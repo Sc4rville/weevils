@@ -10,6 +10,7 @@ import path from 'node:path'
 import { tr } from './i18n.ts'
 import M from './i18n/foryou-media.ts'
 import type { ForYouMedia } from '../shared/foryou.ts'
+import { isMockup, type Mockup } from '../shared/mockup.ts'
 
 export type MediaType = 'image' | 'video'
 
@@ -23,10 +24,16 @@ export interface ShelfEntry {
   name: string
   /** Last registration: the cap drops the oldest. */
   at: number
+  /** Pixel size, read from the file's header at registration (the app sizes its mockup before the bytes arrive);
+   *  0 × 0 when the header does not say. */
+  w?: number
+  h?: number
+  /** The mockup asked for with `weevils show --mockup` (shared/mockup.ts); otherwise the app picks one. */
+  mockup?: Mockup
 }
 
 /** Why a file was refused: `reason` is the catalog key (the message is already in the server's language). */
-export type MediaReason = 'missing' | 'notFile' | 'outside' | 'badType' | 'badHeader' | 'tooBig'
+export type MediaReason = 'missing' | 'notFile' | 'outside' | 'badType' | 'badHeader' | 'tooBig' | 'badMockup'
 export class MediaRefused extends Error {
   reason: MediaReason
   constructor(reason: MediaReason, message: string) {
@@ -88,6 +95,80 @@ export function sniff(b: Uint8Array): MediaType | null {
   }
   // Old QuickTime files start straight with an atom, without « ftyp ».
   if (['moov', 'mdat', 'wide', 'free', 'skip'].some((a) => at(a, 4))) return 'video'
+  return null
+}
+
+/** Bytes read to find a still's size: a JPEG's frame header can come after its metadata. */
+const SIZE_HEAD = 256 * 1024
+
+/** Width and height of a PNG, GIF, WebP or JPEG from its first bytes; null when they do not say (AVIF, a cut file). */
+export function imageSize(b: Uint8Array): { w: number; h: number } | null {
+  const buf = Buffer.from(b.buffer, b.byteOffset, b.byteLength)
+  const at = (s: string, o = 0) => buf.length >= o + s.length && buf.toString('latin1', o, o + s.length) === s
+  const ok = (w: number, h: number) => (w > 0 && h > 0 && w < 100000 && h < 100000 ? { w, h } : null)
+  if (at('\x89PNG\r\n\x1a\n') && at('IHDR', 12) && buf.length >= 24) return ok(buf.readUInt32BE(16), buf.readUInt32BE(20))
+  if ((at('GIF87a') || at('GIF89a')) && buf.length >= 10) return ok(buf.readUInt16LE(6), buf.readUInt16LE(8))
+  if (at('RIFF') && at('WEBP', 8) && buf.length >= 30) {
+    if (at('VP8 ', 12)) return ok(buf.readUInt16LE(26) & 0x3fff, buf.readUInt16LE(28) & 0x3fff)
+    if (at('VP8L', 12)) {
+      const v = buf.readUInt32LE(21)
+      return ok((v & 0x3fff) + 1, ((v >> 14) & 0x3fff) + 1)
+    }
+    if (at('VP8X', 12)) return ok(buf.readUIntLE(24, 3) + 1, buf.readUIntLE(27, 3) + 1)
+    return null
+  }
+  if (buf.length >= 4 && buf[0] === 0xff && buf[1] === 0xd8) {
+    let o = 2
+    while (o + 9 < buf.length) {
+      if (buf[o] !== 0xff) return null
+      const marker = buf[o + 1]
+      if (marker === 0xff) { o++; continue }
+      const len = buf.readUInt16BE(o + 2)
+      // A frame header (SOF0…SOF15, not DHT/JPG/DAC): height then width.
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) return ok(buf.readUInt16BE(o + 7), buf.readUInt16BE(o + 5))
+      o += 2 + len
+    }
+  }
+  return null
+}
+
+/** Width and height of an MP4 / MOV clip, from the header of its first picture track (moov › trak › tkhd), turned
+ * when the track is rotated (a phone held upright); null for a WebM or a file that does not say. Reads box headers only. */
+export function videoSize(fd: number, size: number): { w: number; h: number } | null {
+  const head = Buffer.alloc(16)
+  const box = (at: number): { type: string; start: number; end: number } | null => {
+    if (at + 8 > size || fs.readSync(fd, head, 0, 16, at) < 8) return null
+    let len = head.readUInt32BE(0), start = at + 8
+    if (len === 1) { len = Number(head.readBigUInt64BE(8)); start = at + 16 } else if (len === 0) len = size - at
+    return len >= start - at ? { type: head.toString('latin1', 4, 8), start, end: Math.min(size, at + len) } : null
+  }
+  const kids = function* (from: number, to: number) {
+    for (let at = from, n = 0; at < to && n < 4096; n++) {
+      const b = box(at)
+      if (!b) return
+      yield b
+      at = b.end
+    }
+  }
+  for (const top of kids(0, size)) {
+    if (top.type !== 'moov') continue
+    for (const trak of kids(top.start, top.end)) {
+      if (trak.type !== 'trak') continue
+      for (const t of kids(trak.start, trak.end)) {
+        if (t.type !== 'tkhd') continue
+        const body = Buffer.alloc(Math.min(96, t.end - t.start))
+        fs.readSync(fd, body, 0, body.length, t.start)
+        const v1 = body[0] === 1
+        const m = v1 ? 52 : 40 // the matrix; width and height follow it, in 16.16
+        if (body.length < m + 44) break
+        const w = Math.round(body.readUInt32BE(m + 36) / 65536), h = Math.round(body.readUInt32BE(m + 40) / 65536)
+        if (!(w > 0 && h > 0)) break // a sound track
+        const turned = body.readInt32BE(m) === 0 && body.readInt32BE(m + 4) !== 0
+        return turned ? { w: h, h: w } : { w, h }
+      }
+    }
+    return null
+  }
   return null
 }
 
@@ -206,6 +287,22 @@ export class MediaShelf {
     }
   }
 
+  /** A media's pixel size, from its headers; null for a format that does not say it early (AVIF, WebM). */
+  private sizeOf(file: string, type: MediaType): { w: number; h: number } | null {
+    let fd: number | undefined
+    try {
+      fd = fs.openSync(file, 'r')
+      if (type === 'video') return videoSize(fd, fs.fstatSync(fd).size)
+      const buf = Buffer.alloc(SIZE_HEAD)
+      const n = fs.readSync(fd, buf, 0, SIZE_HEAD, 0)
+      return imageSize(buf.subarray(0, n))
+    } catch {
+      return null
+    } finally {
+      if (fd !== undefined) fs.closeSync(fd)
+    }
+  }
+
   private save() {
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true })
@@ -217,7 +314,8 @@ export class MediaShelf {
     }
   }
 
-  add(p: string, cwd?: string): ShelfEntry {
+  /** `mockup`: the one asked for by `weevils show --mockup`; an unknown name is refused, none keeps the app's pick. */
+  add(p: string, cwd?: string, mockup?: unknown): ShelfEntry {
     const t = tr(M)
     const abs = this.absolute(p, cwd)
     if (!abs) throw new MediaRefused('missing', t.missing)
@@ -238,9 +336,13 @@ export class MediaShelf {
     const cap = this.caps[kind.type]
     if (st.size > cap) throw new MediaRefused('tooBig', t.tooBig(Math.max(1, Math.floor(cap / (1024 * 1024)))))
     if (!this.looksLike(real, kind.type)) throw new MediaRefused('badHeader', t.badHeader(ext))
+    if (mockup !== undefined && mockup !== '' && !isMockup(mockup)) throw new MediaRefused('badMockup', t.badMockup)
 
     const id = crypto.createHash('sha256').update(real).digest('hex').slice(0, 16)
-    const entry: ShelfEntry = { id, path: real, type: kind.type, bytes: st.size, mtime: Math.round(st.mtimeMs), name: path.basename(real), at: Date.now() }
+    const size = this.sizeOf(real, kind.type)
+    // Shown again without --mockup: the earlier choice for this file stays.
+    const chosen = isMockup(mockup) ? mockup : this.entries.get(id)?.mockup
+    const entry: ShelfEntry = { id, path: real, type: kind.type, bytes: st.size, mtime: Math.round(st.mtimeMs), name: path.basename(real), at: Date.now(), ...(size ?? { w: 0, h: 0 }), ...(chosen ? { mockup: chosen } : {}) }
     this.entries.delete(id)
     this.entries.set(id, entry)
     if (this.entries.size > MAX_ENTRIES) {
@@ -297,6 +399,11 @@ export class MediaShelf {
         if (!this.looksLike(e.path, e.type)) throw new Error()
         e.bytes = st.size
         e.mtime = mtime
+        Object.assign(e, this.sizeOf(e.path, e.type) ?? { w: 0, h: 0 })
+        this.save()
+      } else if (e.w === undefined) {
+        // Registered before sizes were kept: read once (0 × 0: its header does not say, never read again).
+        Object.assign(e, this.sizeOf(e.path, e.type) ?? { w: 0, h: 0 })
         this.save()
       }
       return e
@@ -316,7 +423,7 @@ export class MediaShelf {
   }
 
   view(e: ShelfEntry): ForYouMedia {
-    return { id: e.id, type: e.type, url: '/api/foryou/media/' + e.id, name: e.name, bytes: e.bytes }
+    return { id: e.id, type: e.type, url: '/api/foryou/media/' + e.id, name: e.name, bytes: e.bytes, ...(e.w && e.h ? { w: e.w, h: e.h } : {}), ...(e.mockup ? { mockup: e.mockup } : {}) }
   }
 
   /** download: « Content-Disposition: attachment » (a save, where no share sheet exists); otherwise inline, named too. */

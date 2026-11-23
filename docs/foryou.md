@@ -166,6 +166,17 @@ The store keeps `{ id, path, type, bytes, mtime }`; the route serves only regist
 the cwd when present, so the item knows its project. Files cited in the closing message of a turn are registered the
 same way (same checks, at most 4, dot-directories refused).
 
+**Mockups** (`shared/mockup.ts`, `src/ui/foryou-mockup.tsx`). In a post, every picture or clip sits in a mockup drawn
+in CSS, sized to the post, on the post's own colour (no box around it): `phone` (an app on a phone, slightly turned,
+with a stepped edge for its thickness), `browser` (a desktop window), `tablet`, `print` (a still or a render, a
+lifted print), `cinema` (a clip on a screen), `board` (a diagram or a before/after, flat on a staircase shadow). The
+shelf reads a still's pixel size from its header, so the mockup is sized before the bytes arrive; a clip's size comes
+with its metadata. `pickMockup` decides: `.diagram.` / `.compare.` files → board; 2:1 or taller → phone (a longer
+capture shows its top); wide and named like a screen (screenshot, capture, desktop, page…) → browser; 4:3 named like
+a screen → tablet; otherwise print for a still, cinema for a clip. `weevils show <file> --mockup <name>` forces one
+(kept for that file). The mockup turns slightly while the post is off-screen and settles almost flat in view
+(transform only, nothing at all with reduced motion); the full-screen viewer shows the media bare.
+
 **Before/after** (`server/compare.mjs`). A change shown as two states is one picture or one clip, made by
 `weevils compare <before> <after> <out.compare.png|.mp4> [--crop x,y,w,h] [--crop-before …] [--crop-after …]
 [--layout auto|stack|side]`: a neutral ground (#e9e6df) that stands apart from every theme's band, two frames with a

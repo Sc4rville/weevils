@@ -6,7 +6,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { tr } from './i18n.ts'
 import M from './i18n/foryou-media.ts'
-import { MAX_ENTRIES, MediaRefused, MediaShelf, citedPaths, disposition, mimeOf, parseRange, sniff } from './foryou-media.ts'
+import { MAX_ENTRIES, MediaRefused, MediaShelf, citedPaths, disposition, imageSize, mimeOf, parseRange, sniff, videoSize } from './foryou-media.ts'
 
 // The media shelf of « for you » (server/foryou-media.ts): temp folders only, never the real projects or data.
 const PNG = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(40, 1)])
@@ -199,6 +199,84 @@ describe('MediaShelf.add', () => {
     expect(reason(() => s.add(w.put(path.join(w.game, 'big.mp4'), Buffer.concat([MP4, Buffer.alloc(3 * 1024 * 1024)]))))).toBe('tooBig | ' + t.tooBig(3))
     // The real caps
     expect(tr(M).tooBig(25)).toContain('25')
+  })
+})
+
+/** A real-looking header of each kind, for a given size. */
+const sized = {
+  png: (w: number, h: number) => { const b = Buffer.alloc(33); Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').copy(b); b.writeUInt32BE(w, 16); b.writeUInt32BE(h, 20); return b },
+  gif: (w: number, h: number) => { const b = Buffer.alloc(16); b.write('GIF89a'); b.writeUInt16LE(w, 6); b.writeUInt16LE(h, 8); return b },
+  webp: (w: number, h: number) => { const b = Buffer.alloc(30); b.write('RIFF'); b.write('WEBPVP8X', 8); b.writeUIntLE(w - 1, 24, 3); b.writeUIntLE(h - 1, 27, 3); return b },
+  // SOI, an APP0 segment to skip, then a baseline frame header (SOF0): length, precision, height, width.
+  jpg: (w: number, h: number) => { const sof = Buffer.from([0xff, 0xc0, 0, 17, 8, h >> 8, h & 255, w >> 8, w & 255, 3]); return Buffer.concat([Buffer.from('ffd8ffe000104a46494600010100000100010000', 'hex'), sof, Buffer.alloc(16)]) },
+}
+
+/** A minimal MP4: ftyp, then moov › trak › tkhd (version 0) of a sound track and of a picture track, maybe turned. */
+const clip = (w: number, h: number, turned = false) => {
+  const box = (type: string, ...body: Buffer[]) => { const b = Buffer.concat(body); const head = Buffer.alloc(8); head.writeUInt32BE(b.length + 8); head.write(type, 4, 'latin1'); return Buffer.concat([head, b]) }
+  const tkhd = (tw: number, th: number) => {
+    const b = Buffer.alloc(84) // version/flags 4, times and ids 20, reserved 8, layer… 8, matrix 36, width, height
+    b.writeInt32BE(turned ? 0 : 0x10000, 40); b.writeInt32BE(turned ? 0x10000 : 0, 44)
+    b.writeUInt32BE(tw * 65536, 76); b.writeUInt32BE(th * 65536, 80)
+    return box('tkhd', b)
+  }
+  return Buffer.concat([MP4.subarray(0, MP4.readUInt32BE(0)), box('moov', box('mvhd', Buffer.alloc(100)), box('trak', tkhd(0, 0)), box('trak', tkhd(w, h))), box('mdat', Buffer.alloc(64))])
+}
+
+describe('mockups: the size of a still and the mockup asked for', () => {
+  it('reads the size of an MP4 from its picture track, turned when the phone was held upright', () => {
+    const w = world()
+    try {
+      const size = (b: Buffer) => { const f = w.put(path.join(w.game, 'c.mp4'), b); const fd = fs.openSync(f, 'r'); try { return videoSize(fd, b.length) } finally { fs.closeSync(fd) } }
+      expect(size(clip(390, 844))).toEqual({ w: 390, h: 844 })
+      expect(size(clip(1920, 1080, true))).toEqual({ w: 1080, h: 1920 })
+      expect(size(MP4)).toBeNull()
+      expect(size(WEBM)).toBeNull()
+      expect(w.shelf().view(w.shelf().add(w.put(path.join(w.game, 'phone.mp4'), clip(390, 844))))).toMatchObject({ w: 390, h: 844 })
+    } finally {
+      fs.rmSync(w.top, { recursive: true, force: true })
+    }
+  })
+
+  it('reads the pixel size of a PNG, a GIF, a WebP and a JPEG from their first bytes; null when they do not say', () => {
+    expect(imageSize(sized.png(1170, 2532))).toEqual({ w: 1170, h: 2532 })
+    expect(imageSize(sized.gif(320, 240))).toEqual({ w: 320, h: 240 })
+    expect(imageSize(sized.webp(1920, 1080))).toEqual({ w: 1920, h: 1080 })
+    expect(imageSize(sized.jpg(1600, 900))).toEqual({ w: 1600, h: 900 })
+    for (const b of [PNG, AVIF, MP4, Buffer.alloc(0), sized.png(1170, 2532).subarray(0, 20)]) expect(imageSize(b)).toBeNull()
+  })
+
+  it('the shelf keeps the size and a forced mockup, sends both to the app, and refuses an unknown mockup', () => {
+    const w = world()
+    try {
+      const s = w.shelf()
+      const shot = w.put(path.join(w.game, 'out', 'lab.png'), sized.png(1170, 2532))
+      expect(s.view(s.add(shot))).toMatchObject({ w: 1170, h: 2532 })
+      expect(s.view(s.add(shot)).mockup).toBeUndefined()
+      expect(s.view(s.add(shot, undefined, 'browser')).mockup).toBe('browser')
+      // Shown again without --mockup: the choice stays; and it survives a new shelf.
+      expect(s.view(s.add(shot)).mockup).toBe('browser')
+      expect(w.shelf().view(w.shelf().get(s.add(shot).id)!)).toMatchObject({ w: 1170, h: 2532, mockup: 'browser' })
+      expect(reason(() => s.add(shot, undefined, 'hologram'))).toBe(`badMockup | ${tr(M).badMockup}`)
+      // A file whose header does not say: no size (the app reads it once it loads).
+      expect(s.view(s.add(w.put(path.join(w.game, 'clip.mp4'), MP4)))).not.toHaveProperty('w')
+    } finally {
+      fs.rmSync(w.top, { recursive: true, force: true })
+    }
+  })
+
+  it('an entry stored before sizes were kept gets its size once, when it is next read', () => {
+    const w = world()
+    try {
+      const shot = w.put(path.join(w.game, 'out', 'old.png'), sized.png(390, 844))
+      const e = w.shelf().add(shot)
+      const raw = JSON.parse(fs.readFileSync(w.file, 'utf8'))
+      for (const x of raw.entries) { delete x.w; delete x.h }
+      fs.writeFileSync(w.file, JSON.stringify(raw))
+      expect(w.shelf().view(w.shelf().get(e.id)!)).toMatchObject({ w: 390, h: 844 })
+    } finally {
+      fs.rmSync(w.top, { recursive: true, force: true })
+    }
   })
 })
 
@@ -541,6 +619,9 @@ describe('weevils post / show (the CLI)', () => {
     expect((await cli(['show', '~/pics/a.png'], { cwd: dir })).rc).toBe(0)
     expect(last().body.path).toBe(path.join(home, 'pics/a.png'))
     expect((await cli(['show', 'a.png'], { cwd: dir, lang: 'fr' })).out).toBe('affiché dans « pour toi »\n')
+    // --mockup forces the device or support; the server checks the name.
+    expect((await cli(['show', 'shot.png', '--mockup', 'browser', 'The new settings'], { cwd: dir })).rc).toBe(0)
+    expect(last().body).toEqual({ path: path.join(dir, 'shot.png'), caption: 'The new settings', mockup: 'browser', cwd: dir, from: 'weevils' })
   })
 
   it('show / post: the evidence flags become a structured field, never guessed from the words', async () => {

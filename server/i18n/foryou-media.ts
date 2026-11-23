@@ -9,6 +9,7 @@ export default defineMessages({
     badType: 'ni une image ni une vidéo (png, jpg, gif, webp, avif, mp4, webm, mov, m4v)',
     badHeader: (ext: string) => `le contenu ne ressemble pas à un .${ext}`,
     tooBig: (mb: number) => `trop lourd : ${mb} Mo max`,
+    badMockup: `--mockup : phone, browser, tablet, print, cinema ou board`,
     gone: 'média introuvable',
   },
   en: {
@@ -18,6 +19,7 @@ export default defineMessages({
     badType: 'neither an image nor a video (png, jpg, gif, webp, avif, mp4, webm, mov, m4v)',
     badHeader: (ext: string) => `the content does not look like a .${ext}`,
     tooBig: (mb: number) => `too big: ${mb} MB max`,
+    badMockup: `--mockup: phone, browser, tablet, print, cinema or board`,
     gone: 'media not found',
   },
 })

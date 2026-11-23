@@ -14,7 +14,7 @@
 #   weevils setup [install | github | ask <brique> | mark <id>]   weevils config set <CLÉ> <valeur>
 #   weevils memory [add "souvenir" | rm <id>]   (ce que weevils retient de l'utilisateur, ~/.config/weevils/memory.json)
 #   weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   un post dans « pour toi » (titre en gras en haut)
-#   weevils show <fichier> ["légende"]                       une image ou une vidéo dans « pour toi »
+#   weevils show <fichier> ["légende"] [--mockup phone|browser|tablet|print|cinema|board]   une image ou une vidéo dans « pour toi », dans sa maquette
 #   weevils capture <sortie.png|.mp4> [--open "#s=<id>"] [--theme t] [--seconds N] [--frame]   l'app vue d'un téléphone, sans lire le code d'accès
 #   weevils compare <avant> <après> <sortie.compare.png|.mp4> [--crop x,y,w,h]   un avant/après lisible d'un coup d'œil (avant de weevils show)
 #   weevils diagram <schéma.mmd> [sortie.diagram.png]   un travail backend dessiné (flowchart mermaid → image weevils) ; weevils show <schéma.mmd> le fait seul
@@ -80,7 +80,7 @@ weevils recall <id>                  weevils boss
 weevils setup [install | github | ask <brique> [--since <date> | --match <mots>] | mark <id>]   weevils config set <CLÉ> <valeur>
 weevils memory [add "souvenir" | rm <id>]
 weevils page <dossier|fichier> "titre" --kind <type>   weevils page list|library …   weevils pages
-weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   weevils show <fichier> ["Phrase titre. Pourquoi ça compte."]' # i18n-ignore
+weevils post "texte" [--title "titre"] [--action "libellé::quoi faire"]…   weevils show <fichier> ["Phrase titre. Pourquoi ça compte."] [--mockup phone|browser|tablet|print|cinema|board]' # i18n-ignore
   usage+=$'\n''weevils diagram <schéma.mmd> [sortie.diagram.png]   weevils compare <avant> <après> <sortie.compare.png>' # i18n-ignore
   usage+=$'\n''weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]'
   usage+=$'\n''weevils react <emoji> [<message>|last] [--session <id>]   une réaction sur un message de la personne' # i18n-ignore
@@ -126,7 +126,7 @@ weevils project new <name>           weevils do "job" [codex]
 weevils recall <id>                  weevils boss
 weevils setup [install | github | ask <brick> [--since <date> | --match <words>] | mark <id>]   weevils config set <KEY> <value>
 weevils memory [add "memory" | rm <id>]
-weevils post "text" [--title "title"] [--action "label::what to do"]…      weevils show <file> ["Title sentence. Why it matters."]
+weevils post "text" [--title "title"] [--action "label::what to do"]…      weevils show <file> ["Title sentence. Why it matters."] [--mockup phone|browser|tablet|print|cinema|board]
 weevils diagram <flow.mmd> [out.diagram.png]   weevils compare <before> <after> <out.compare.png>
 weevils page <folder|file> "title" --kind <kind>   weevils page list|library …   weevils pages
 weevils asks [open|all|stale|done]   weevils ask done|drop|open <id> ["note"]
@@ -607,10 +607,12 @@ print(json.dumps(d))' "$text" "$from" "$(evidence_json)" "$title" "$caller_sessi
   show)
     # An image or a video in the « for you » stream. The server checks the file (place, type, size) and says why not.
     shift
-    file='' caption='' n=0
+    file='' caption='' mockup='' n=0
     while [ $# -gt 0 ]; do
       case "$1" in
         --demonstrated|--verified|--limit) evidence_flag "$1" "${2-}"; shift; [ $# -gt 0 ] && shift ;;
+        # The device or support the media is shown in (shared/mockup.ts); without it, the app picks one.
+        --mockup) mockup=${2-}; shift; [ $# -gt 0 ] && shift ;;
         *) n=$((n + 1)); [ $n = 1 ] && file=$1; [ $n = 2 ] && caption=$1; shift ;;
       esac
     done
@@ -625,9 +627,10 @@ print(json.dumps(d))' "$text" "$from" "$(evidence_json)" "$title" "$caller_sessi
     for_you media "$m_shown" "$("$py" -c 'import json,sys
 d={"path":sys.argv[1],"caption":sys.argv[2],"cwd":sys.argv[3],"from":sys.argv[4]}
 if sys.argv[6]: d["session"]=sys.argv[6]
+if sys.argv[7]: d["mockup"]=sys.argv[7]
 e=json.loads(sys.argv[5])
 if e: d["evidence"]=e
-print(json.dumps(d))' "$file" "$caption" "$PWD" "$from" "$(evidence_json)" "$caller_session")" ;;
+print(json.dumps(d))' "$file" "$caption" "$PWD" "$from" "$(evidence_json)" "$caller_session" "$mockup")" ;;
   pages)
     # The living-link pages of this machine (server/pages.ts): kind, title, link.
     ledger GET /api/pages | json 'print("\n".join(p["slug"]+"  ["+p["kind"]+"] "+p["title"] for p in d["pages"]))' ;;

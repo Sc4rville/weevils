@@ -34,7 +34,7 @@ import { ConversationStore, parseExport, readExportFile } from './conversations.
 import { llmClassify, ruleMatch } from './classify.ts'
 import { Push } from './push.ts'
 import type { CatalogEntry } from './classify.ts'
-import { MISC, familyOf, place, projectLabel } from './projects.ts'
+import { MISC, familyOf, motherRepos, place, projectLabel } from './projects.ts'
 import { locale } from '../shared/i18n.ts'
 import M from './i18n/core.ts'
 import type { FactoryState } from './your-factory.ts'
@@ -3239,6 +3239,11 @@ export class Weevils {
     const root = this.repoRoot(repo)
     if (!root) throw new Error(tr(M).repoNotFound)
     return path.join(root, repo)
+  }
+
+  /** This machine's products, one per mother repo (projects.ts motherRepos): Your factory's Projects. */
+  motherRepos() {
+    return motherRepos(this.allRepos().flatMap((name) => { try { return [{ name, dir: this.repoDir(name) }] } catch { return [] } }))
   }
 
   /** Tous les repos de cette machine (pour lancer une session ailleurs que dans un projet actif). */

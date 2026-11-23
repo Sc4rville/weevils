@@ -63,6 +63,22 @@ const slotOf = (id: string) => `p${[...id].reduce((h, c) => (h * 31 + c.charCode
 
 /** Reserved project ids (server/projects.ts): automations' own folder, and Misc. */
 const HIDDEN_IDS = new Set(['auto', 'divers'])
+/** An automation's own folder (server/projects.ts isAutomationFolder): autonomous's, never a project. */
+const AUTOMATION_FOLDER = /^auto-[0-9a-f]{10}$/
+
+type Mother = { id: string; name: string; repos: string[] }
+/** An older machine answers with its folders only: grouped here the way the server does it, by product name. */
+export function mothersOf(folders: string[]): Mother[] {
+  const by = new Map<string, Mother>()
+  for (const f of folders) {
+    if (AUTOMATION_FOLDER.test(f) || f === 'automations') continue
+    const id = (f.split(/[-_.]/)[0] || f).toLowerCase()
+    const m = by.get(id) ?? { id, name: id, repos: [] }
+    m.repos.push(f)
+    by.set(id, m)
+  }
+  return [...by.values()].sort((a, b) => a.name.localeCompare(b.name))
+}
 
 /** A project is in the side bar: never once switched off (whatever its conversations do: off means off at once);
  *  else pinned (the app's pin), or with conversations. One rule, used by the side bar and by its switch here. */
@@ -106,7 +122,7 @@ type Row = { id: string; name: string; repos: string[]; project: Project | null 
  *  block at the top, and those switched off whose project left with their last pin, so they can be switched back on. */
 export function factoryProjects(snap: Snapshot): Row[] {
   const projects = snap.projects.filter((p) => !HIDDEN_IDS.has(p.id) && p.kind !== 'installation' && !selfProject(p))
-  const gone = (snap.hiddenProjects ?? []).filter((id) => !snap.projects.some((p) => p.id === id || p.repos.includes(id)))
+  const gone = (snap.hiddenProjects ?? []).filter((id) => !HIDDEN_IDS.has(id) && !AUTOMATION_FOLDER.test(id) && !snap.projects.some((p) => p.id === id || p.repos.includes(id)))
   return [
     ...projects.map((p): Row => ({ id: p.id, name: p.name, repos: p.repos, project: p })),
     ...gone.map((id): Row => ({ id, name: id, repos: [id], project: null })),
@@ -389,11 +405,11 @@ export function FactorySection({ snap, colors, page, toBoss }: {
   const [adding, setAdding] = useState(false)
   const [more, setMore] = useState(false)
   const [v, patch] = useFactory(open)
-  const [repos, setRepos] = useState<string[] | null>(null)
+  const [mothers, setMothers] = useState<Mother[] | null>(null)
   const here = snap.machines[0]?.id
   useEffect(() => {
     if (!more || !here) return
-    void call<{ repos: string[] }>('GET', `/api/repos?machine=${encodeURIComponent(here)}`).then((r) => setRepos(r.repos), () => setRepos([]))
+    void call<{ repos: string[]; mothers?: Mother[] }>('GET', `/api/repos?machine=${encodeURIComponent(here)}`).then((r) => setMothers(r.mothers ?? mothersOf(r.repos)), () => setMothers([]))
   }, [more, here])
 
   const busyOn = (id: string) => snap.sessions.filter((s) => !s.archived && s.status === 'working' && (s.machineId ?? here) === id).length
@@ -412,8 +428,10 @@ export function FactorySection({ snap, colors, page, toBoss }: {
   }
   useFlips(snap)
   const rows = factoryProjects(snap)
-  const known = new Set(rows.flatMap((r) => [r.id, ...r.repos]))
-  const others: Row[] = (repos ?? []).filter((r) => !known.has(r)).map((r) => ({ id: r, name: r, repos: [r], project: null }))
+  // Already there: every row, and every project weevils knows (its own block at the top included).
+  const known = new Set([...rows, ...snap.projects].flatMap((r) => [r.id, ...r.repos]))
+  // What can be added: one band per product (its mother repo, server/projects.ts motherRepos), never one per folder.
+  const others: Row[] = (mothers ?? []).filter((m) => !known.has(m.id) && !m.repos.some((r) => known.has(r))).map((m) => ({ id: m.id, name: m.name, repos: m.repos, project: null }))
   const showProject = (r: Row, on: boolean) => {
     flipProject(r.id, on)
     void call('POST', '/api/factory/project', { id: r.id, repos: r.repos, shown: on }).catch(() => flipProject(r.id, null))

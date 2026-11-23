@@ -71,7 +71,7 @@ const SHA = /^[0-9a-f]{40,64}$/
 
 const run = (cmd: string, args: string[], o: { cwd?: string; env?: NodeJS.ProcessEnv; onOut?: (s: string) => void; job?: Job } = {}) =>
   new Promise<number>((resolve) => {
-    const child = spawn(cmd, args, { cwd: o.cwd, env: { ...process.env, ...o.env }, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
+    const child = spawn(cmd, args, { cwd: o.cwd, env: o.env ?? process.env, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
     if (o.job) o.job.child = child
     const out = (b: Buffer) => o.onOut?.(b.toString('utf8'))
     child.stdout.on('data', out)

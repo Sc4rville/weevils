@@ -147,7 +147,8 @@ tunnel_port=${WEEVILS_TUNNEL_PORT:-}
 # A re-run keeps the port the main machine gave at the join: this machine's key may only listen there.
 if [ -z "$tunnel_port" ] && [ "$role" = secondary ] && [ -f ~/.config/weevils/service.conf ]; then
   # shellcheck disable=SC1090
-  tunnel_port=$( . ~/.config/weevils/service.conf; [ "${WEEVILS_ROLE:-}" = secondary ] && [ "${WEEVILS_MAIN_HOST:-}" = "$main_host" ] && printf '%s' "${WEEVILS_TUNNEL_PORT:-}")
+  # (|| : another role or main machine is no error: no port kept, the main machine gives it below.)
+  tunnel_port=$( . ~/.config/weevils/service.conf; [ "${WEEVILS_ROLE:-}" = secondary ] && [ "${WEEVILS_MAIN_HOST:-}" = "$main_host" ] && printf '%s' "${WEEVILS_TUNNEL_PORT:-}") || tunnel_port=''
   [[ "$tunnel_port" =~ ^[0-9]+$ ]] || tunnel_port=''
 fi
 if [ "$role" = secondary ]; then

@@ -59,11 +59,15 @@ it('server/install.sh without arguments keeps the role; a re-run keeps the tunne
   expect(role(home(SECONDARY), ['main'])).toBe('main|')
   expect(role(home(null))).toBe('main|')
   expect(role(home(SECONDARY.replace('WEEVILS_MAIN_HOST=weevils-vps', 'WEEVILS_MAIN_HOST=')))).toBe('main|')
-  const port = (h: string, mainHost: string, env = {}) => bash(h, `set -euo pipefail\nrole=secondary main_host=${mainHost}\n${serverPort}\nprintf '%s' "$tunnel_port"`, env)
+  // « end »: the block never stops the installer (set -e), whatever service.conf holds.
+  const port = (h: string, mainHost: string, env = {}) => bash(h, `set -euo pipefail\nrole=secondary main_host=${mainHost}\n${serverPort}\nprintf '%s|end' "$tunnel_port"`, env).replace(/\|end$/, '')
   expect(port(home(SECONDARY), 'weevils-vps')).toBe('4196')
   expect(port(home(SECONDARY), 'weevils-vps', { WEEVILS_TUNNEL_PORT: '4300' })).toBe('4300')
   // Another main machine: its own port, asked to it.
   expect(port(home(SECONDARY), 'another-box')).toBe('')
+  // A machine an old update made main (the heal below): no port kept, and the installer goes on.
+  expect(port(home(SECONDARY.replace('=secondary', '=main')), 'weevils-vps')).toBe('')
+  expect(bash(home(SECONDARY.replace('=secondary', '=main')), `set -euo pipefail\nrole=secondary main_host=weevils-vps\n${serverPort}\necho on`)).toBe('on')
 })
 
 // A machine that already lost its role (its first update ran an installer without this fix: WEEVILS_ROLE=main, no

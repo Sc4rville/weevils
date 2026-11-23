@@ -19,8 +19,8 @@ export default defineMessages({
 
     badRepo: 'repo invalide',
     sourceReadOnly: 'Ce dépôt source est en lecture seule pour weevils. Aucun travail n’a été lancé ; les sessions déjà actives continuent.',
-    machineOff: (name: string) => `${name} est éteinte dans factory : rallume-la pour y lancer du travail.`,
-    intelOff: (name: string) => `${name} est coupé dans factory : rallume-le pour l’utiliser.`,
+    machineOff: (name: string) => `${name} est éteinte dans ton usine : rallume-la pour y lancer du travail.`,
+    intelOff: (name: string) => `${name} est coupé dans ton usine : rallume-le pour l’utiliser.`,
     installationReadOnly: 'Cette installation ne contient pas de dépôt source. Elle est consultable, mais aucun travail ne peut y être lancé.',
     repoNotFound: 'repo introuvable',
     pathRefused: 'chemin refusé',
@@ -90,8 +90,8 @@ export default defineMessages({
 
     badRepo: 'invalid repo',
     sourceReadOnly: 'This source repository is read-only for weevils. No work was started; existing active sessions continue.',
-    machineOff: (name: string) => `${name} is turned off in factory: turn it back on to start work there.`,
-    intelOff: (name: string) => `${name} is turned off in factory: turn it back on to use it.`,
+    machineOff: (name: string) => `${name} is turned off in your factory: turn it back on to start work there.`,
+    intelOff: (name: string) => `${name} is turned off in your factory: turn it back on to use it.`,
     installationReadOnly: 'This installation has no source checkout. It is available to view, but work cannot be started here.',
     repoNotFound: 'repo not found',
     pathRefused: 'path not allowed',

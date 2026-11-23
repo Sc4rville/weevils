@@ -12,7 +12,7 @@ import M from '../../src/i18n/project-screen.ts'
 export function NextProjectPage({ projectId }: { projectId: string }) {
   const t = useT(M)
   const { snap, colors } = useApp()
-  // A product weevils has no conversation for yet (factory > Projects, its « > »): its page all the same, empty
+  // A product weevils has no conversation for yet (Your factory > Projects, its « > »): its page all the same, empty
   // until something is asked there.
   const project = snap.projects.find((p) => p.id === projectId) ?? { id: projectId, name: projectId, kind: 'repo' as const, repos: [], where: {}, lastActivityAt: 0 }
   return (

@@ -1,4 +1,4 @@
-// factory (docs/next-interaction.md, « factory »): the machines weevils works on, the intelligence it works
+// Your factory (docs/next-interaction.md, « Your factory »): the machines weevils works on, the intelligence it works
 // with (subscriptions and API keys), the projects in the side bar, read and switched from weevils next's side bar.
 //
 // Nothing here is guessed: a machine's health is its own measurement (server/infra.ts brief), its kind and host come

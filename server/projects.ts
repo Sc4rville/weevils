@@ -78,7 +78,7 @@ export function originOf(dir: string): string | undefined {
 
 export interface MotherRepo { id: string; name: string; repos: string[] }
 
-/** factory's Projects (2026-11-23): one band per product, its mother repo, never one per folder. A folder counts
+/** Your factory's Projects (2026-11-23): one band per product, its mother repo, never one per folder. A folder counts
  *  only if it is a git repo; its worktrees and clones (the same origin) and its parts (« <product>-<part> », as the
  *  side bar already groups them, familyOf) fold into it; an automation's folders never count. */
 export function motherRepos(folders: { name: string; dir: string }[]): MotherRepo[] {

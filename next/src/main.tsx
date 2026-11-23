@@ -219,7 +219,7 @@ function SideBar({ snap, colors, current, open, close, page, still = false }: {
   const busy = (p: Project) => snap.sessions.some((s) => s.projectId === p.id && !s.archived && live(s))
   // « auto » is where automations without a repo run: backend, never a project of yours (an automation shows on its
   // own row below). « Misc » shows only when one of its conversations needs you.
-  // factory decides which projects are here (factory.tsx inSideBar): never one switched off there, pinned ones
+  // Your factory decides which projects are here (factory.tsx inSideBar): never one switched off there, pinned ones
   // always, the others while they have conversations; a switch just flipped shows here at once (shownNow).
   useFlips(snap)
   const projects = snap.projects
@@ -306,10 +306,10 @@ function SideBar({ snap, colors, current, open, close, page, still = false }: {
               </Collapse>
             </section>
           )}
-          {/* factory: machines, intelligence, projects and the global Tempo (factory.tsx). */}
+          {/* Your factory: machines, intelligence, projects and the global Tempo (factory.tsx). */}
           <FactorySection snap={snap} colors={colors} page={page} toBoss={close} />
           {/* Settings: the app's own band (bands.tsx FootBand), every other line of it, so whatever the app adds there
-              shows here too; machines, subscriptions and Tempo live in factory; its last line goes to the classic app. */}
+              shows here too; machines, subscriptions and Tempo live in Your factory; its last line goes to the classic app. */}
           <div className="nx-settings"><FootBand switchTo="classic" factory mark={<span className="nx-repo-mark" aria-hidden><Icon name="settings" /></span>} /></div>
         </div>
       </motion.nav>

@@ -1,7 +1,7 @@
 // An automation in weevils next (docs/next-interaction.md, « Automations »). Once accepted, it opens on its overview:
 // its name in the middle, what it does in one line, a big living link to what it produced, then when it runs, how it
 // runs and how its last run went. A small « Conversation » in the header flips to the conversation it runs in (the
-// app's own session page, to read or to take over), and « Overview » flips back, with the app's own swap (a fade).
+// app's own session page, exactly as every session's, to read or to take over), and its icon flips back, with the app's own swap (a fade).
 // Not accepted yet (a draft, a proposal) or not a task (a timer, a job): the app's own automation page, its talk.
 // Reused from the current app: Shell, the automation model and its words, LivingLink, AutoPage, PageView, swapPage.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
@@ -38,7 +38,8 @@ function useRuns(id: string, key: string): { detail: AutoDetail | null; newest: 
   return { detail, newest }
 }
 
-/** The small flip, at the bottom right of whichever page is shown (its head band), no box. */
+/** The small flip, no box: « Conversation » at the bottom right of the overview's head band; on the conversation,
+ *  the automation's own icon alone, the last item of the session's head row (its label says « Overview »). */
 function Flip({ host, children, onClick, label }: { host: HTMLElement | null; children: ReactNode; onClick: () => void; label: string }) {
   if (!host) return null
   return createPortal(<button className="nx-flip" onClick={onClick} aria-label={label}>{children}</button>, host)
@@ -50,8 +51,12 @@ export function NextAutoPage({ id }: { id: string }) {
   const [view, setView] = useState<'overview' | 'talk'>('overview')
   const box = useRef<HTMLDivElement>(null)
   const [head, setHead] = useState<HTMLElement | null>(null)
-  // The head band of the page shown now: where the flip sits (found again after each flip).
-  useLayoutEffect(() => { setHead(box.current?.querySelector<HTMLElement>('.page-head') ?? null) }, [view, !!o])
+  // Where the flip sits, found again after each flip: on a conversation, one more item at the end of the session's own
+  // one-row head (the same head as every session's, never drawn over its title or model); elsewhere, the head band.
+  useLayoutEffect(() => {
+    const b = box.current
+    setHead(b?.querySelector<HTMLElement>('.session-header-row')?.parentElement ?? b?.querySelector<HTMLElement>('.page-head') ?? null)
+  }, [view, !!o])
   // Not accepted yet, or not a task: the app's own page (where an automation is talked into shape).
   if (!o || o.state === 'proposed' || o.state === 'refused' || o.draft) return <AutoPage id={id} />
   const session = o.sessionId && snap.sessions.some((s) => s.id === o.sessionId) ? o.sessionId : null
@@ -64,7 +69,7 @@ export function NextAutoPage({ id }: { id: string }) {
       {view === 'overview' ? (o.factory ? <FactoryPage id={id} heroName headAction={false} kicker="Autonomous" onConversation={talk ? flip : undefined} /> : <Overview id={id} />) : session ? <PageView page={{ kind: 'session', id: session }} /> : <AutoPage id={id} standard />}
       {talk && (
         <Flip host={head} onClick={flip} label={view === 'overview' ? `Conversation of ${o.title}` : `Overview of ${o.title}`}>
-          {view === 'overview' ? <><Icon name="bubble" /><span>Conversation</span></> : <><Icon name={o.factory ? 'factory' : 'cycle'} /><span>Overview</span></>}
+          {view === 'overview' ? <><Icon name="bubble" /><span>Conversation</span></> : <Icon name={o.factory ? 'factory' : 'cycle'} />}
         </Flip>
       )}
     </div>

@@ -55,18 +55,18 @@ body { overflow: hidden; }
    the right. */
 .nx-boss { --c: var(--agent); }
 .nx-composer { flex: none; padding: 6px 10px calc(var(--safe-b) + 10px); }
-:is(.nx-composer, .nx-session-host) .composer { max-width: 760px; margin: 0 auto; }
-:is(.nx-composer, .nx-session-host) .composer > .in { flex-wrap: wrap; align-items: center; gap: 0 2px; padding: 4px 8px 2px 14px; min-height: 0; }
-:is(.nx-composer, .nx-session-host) .composer textarea {
+:is(.nx-composer, .session-page) .composer { max-width: 760px; margin: 0 auto; }
+:is(.nx-composer, .session-page) .composer > .in { flex-wrap: wrap; align-items: center; gap: 0 2px; padding: 4px 8px 2px 14px; min-height: 0; }
+:is(.nx-composer, .session-page) .composer textarea {
   flex: 1 1 100%; order: -1; min-height: 4.4em; max-height: 45dvh; padding: 12px 2px 4px; line-height: 1.4;
   background: transparent; border: 0; outline: 0; color: var(--ink); font: inherit; font-size: 1.0625rem;
 }
-:is(.nx-composer, .nx-session-host) .composer textarea::placeholder { color: var(--ink); opacity: .5; }
-:is(.nx-composer, .nx-session-host) .composer .prompt { order: 0; }
-:is(.nx-composer, .nx-session-host) .composer .tool-btn[aria-pressed] { margin-left: auto; }
-:is(.nx-composer, .nx-session-host) .composer .send { margin-left: auto; }
-:is(.nx-composer, .nx-session-host) .composer .tool-btn[aria-pressed] ~ .send { margin-left: 0; }
-:is(.nx-composer, .nx-session-host) .attach-line { padding: 8px 14px 0; }
+:is(.nx-composer, .session-page) .composer textarea::placeholder { color: var(--ink); opacity: .5; }
+:is(.nx-composer, .session-page) .composer .prompt { order: 0; }
+:is(.nx-composer, .session-page) .composer .tool-btn[aria-pressed] { margin-left: auto; }
+:is(.nx-composer, .session-page) .composer .send { margin-left: auto; }
+:is(.nx-composer, .session-page) .composer .tool-btn[aria-pressed] ~ .send { margin-left: 0; }
+:is(.nx-composer, .session-page) .attach-line { padding: 8px 14px 0; }
 .nx-send {
   flex: none; width: 44px; height: 44px; padding: 0; display: grid; place-items: center;
   background: none; color: var(--ink); border: 0;
@@ -158,13 +158,13 @@ body { overflow: hidden; }
    covers the status bar: the head adds no second gap. The box to write in is one line while empty, on the row of its
    +, mic and send, and grows as you type; under it, only the phone's own bottom inset, in the box's colour. */
 .nx-session-host > .page > .page-head { padding-top: 0; }
-.nx-session-host .page-foot { padding-bottom: 0; }
-.nx-session-host .page-foot .composer { padding-bottom: var(--safe-b); }
-.nx-session-host .composer > .in { flex-wrap: nowrap; align-items: flex-end; padding: 0 4px 0 2px; }
-.nx-session-host .composer > .in > textarea { order: 0; flex: 1 1 auto; min-width: 0; min-height: 0; padding: 11px 4px; }
-.nx-session-host .composer > .in > .prompt { order: -2; align-self: center; }
-.nx-session-host .composer > .in > .tool-btn:not([aria-pressed]) { order: -1; }
-.nx-session-host .composer > .in > .tool-btn[aria-pressed], .nx-session-host .composer > .in > .send { margin-left: 0; }
+.session-page .page-foot { padding-bottom: 0; }
+.session-page .page-foot .composer { padding-bottom: var(--safe-b); }
+.session-page .composer > .in { flex-wrap: nowrap; align-items: flex-end; padding: 0 4px 0 2px; }
+.session-page .composer > .in > textarea { order: 0; flex: 1 1 auto; min-width: 0; min-height: 0; padding: 11px 4px; }
+.session-page .composer > .in > .prompt { order: -2; align-self: center; }
+.session-page .composer > .in > .tool-btn:not([aria-pressed]) { order: -1; }
+.session-page .composer > .in > .tool-btn[aria-pressed], .session-page .composer > .in > .send { margin-left: 0; }
 
 
 /* « weevboss · for you »: the app's two words (foryou-top.tsx TopWords), in the middle of the thin band. */
@@ -190,20 +190,20 @@ body { overflow: hidden; }
    and the room between messages separate them. weevboss's briefs keep their own tint (styles.css .orch). */
 /* …and every message reads as on weevboss's screen: the same size, the same room, your words a tinted band reaching
    the right edge, the agent's on the page with the small gap on both sides, each under its author's name. */
-.nx-session-host .session-thread .msg.band { margin-left: var(--pad); }
-.nx-session-host .session-thread .msg.band:not(.tone):not(.orch) { margin-right: var(--pad); }
+.session-page .session-thread .msg.band { margin-left: var(--pad); }
+.session-page .session-thread .msg.band:not(.tone):not(.orch) { margin-right: var(--pad); }
 /* Someone else prompting this session (weevboss, another agent, an automation, a bot: the server's author of a signed
    message) is the mirror of your own words: against the left edge (2026-11-22; only yours sit on the right). It keeps
    its author's name and colour (bits.tsx authorTone). */
-.nx-session-host .session-thread .msg.band.orch { margin-left: 0; margin-right: var(--pad); }
-.nx-session-host .session-thread .msg.band.tone:not(.orch) { background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h); }
-.nx-session-host .session-thread .msg > .in { padding-block: 10px; }
-.nx-session-host .session-thread .msg .text { font-size: 1.0625rem; line-height: 1.4; }
-.nx-session-host .session-thread .msg .who { opacity: 1; }
+.session-page .session-thread .msg.band.orch { margin-left: 0; margin-right: var(--pad); }
+.session-page .session-thread .msg.band.tone:not(.orch) { background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h); }
+.session-page .session-thread .msg > .in { padding-block: 10px; }
+.session-page .session-thread .msg .text { font-size: 1.0625rem; line-height: 1.4; }
+.session-page .session-thread .msg .who { opacity: 1; }
 
 /* weevboss's box to write in: a band from one edge to the other, no frame, like the lines of a thread. */
 .nx-composer { padding-left: 0; padding-right: 0; padding-top: 0; }
-:is(.nx-composer, .nx-session-host) .composer { max-width: none; }
+:is(.nx-composer, .session-page) .composer { max-width: none; }
 
 /* Your messages on weevboss's screen reach the right edge; its replies keep their margin on the left. */
 .nx-boss .nx-thread { padding-right: 0; }
@@ -218,7 +218,7 @@ body { overflow: hidden; }
    one small tone step from the one above (the theme's own step, --dl, as the app's .tone), no line, no gap, no shadow. */
 .nx-autos .nx-row.nx-sub { background: oklch(from var(--c) calc(l + var(--dl) * var(--step, 0) * 0.22) c h); }
 /* Someone else's box carries its colour alone: no edge line on it. */
-.nx-session-host .session-thread .msg.band.orch { border-inline-start: 0; border-inline-end: 0; }
+.session-page .session-thread .msg.band.orch { border-inline-start: 0; border-inline-end: 0; }
 
 /* An automation (auto.tsx): its overview, centred, in the app's type and icons; nothing decorative. */
 .nx-flip {
@@ -229,7 +229,8 @@ body { overflow: hidden; }
 .nx-flip:active { opacity: 0.55; }
 .nx-flip .icon { width: 18px; height: 18px; }
 .nx-auto-overview .page-head h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.nx-auto-talk .session-context-row { padding-right: 140px; }
+/* On its conversation, the flip is one more item of the session's own one-row head: never over the title or model. */
+.nx-auto-talk .page-head > .in:has(> .session-header-row) > .nx-flip.nx-flip { position: static; order: 4; flex: none; flex-basis: auto; min-width: 40px; justify-content: center; }
 .nx-auto-talk .page-head:not(:has(.session-header-row)) > .in { padding-bottom: 44px; }
 .nx-auto-hero { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 28px var(--pad) 8px; }
 .nx-auto-icon { font-size: 2rem; line-height: 1; }

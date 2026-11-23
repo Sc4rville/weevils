@@ -19,9 +19,9 @@ it('next: someone else’s prompt reaches the left edge, the mirror of yours on 
   const f = path.join(root, 'next/src/next.css')
   if (!fs.existsSync(f)) return
   const css = fs.readFileSync(f, 'utf8')
-  const orch = body(css, '.nx-session-host .session-thread .msg.band.orch')
+  const orch = body(css, '.session-page .session-thread .msg.band.orch')
   expect(orch).toMatch(/margin-left:\s*0/)
   expect(orch).toMatch(/margin-right:\s*var\(--pad\)/)
   // Your own words keep reaching the right edge.
-  expect(body(css, '.nx-session-host .session-thread .msg.band:not(.tone):not(.orch)')).toMatch(/margin-right:\s*var\(--pad\)/)
+  expect(body(css, '.session-page .session-thread .msg.band:not(.tone):not(.orch)')).toMatch(/margin-right:\s*var\(--pad\)/)
 })

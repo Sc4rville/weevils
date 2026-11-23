@@ -316,8 +316,9 @@ body { overflow: hidden; }
 .nx-fx-word { background: none; border: 0; padding: 6px 2px; color: inherit; font: inherit; font-size: 14px; opacity: .75; }
 .nx-fx-word.strong { font-weight: 800; opacity: 1; }
 
-/* A project's band: its own repo colour on the swatch, the staircase behind. */
-.nx-fx-swatch { display: block; width: 14px; height: 14px; background: var(--pc); }
+/* A project's band wears its repo's colour, as in the side bar, with the repo mark. */
+.nx-fx-band.nx-fx-project { background: var(--c) !important; }
+.nx-fx-project .nx-mark .ic path { stroke-width: 1.5; }
 
 /* The global Tempo: its name and mode on the left, six cells on the right, filled up to the mode in use, each a tone
    step brighter than the last; a finger dragged across moves it. */

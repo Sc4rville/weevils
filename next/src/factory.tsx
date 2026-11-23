@@ -420,9 +420,9 @@ export function FactorySection({ snap, colors, page, toBoss }: {
           {rows.map((r) => {
             const on = shownNow[r.id] ?? r.shown
             return (
-              <Band key={r.id} step={step(pOpen)} depth={2} className={`nx-fx-project ${on ? '' : 'nx-fx-dim'}`} style={{ '--pc': `var(--${colors[r.id] ?? slotOf(r.id)})` } as CSSProperties}>
+              <Band key={r.id} step={step(pOpen)} depth={2} className={`nx-fx-project ${on ? '' : 'nx-fx-dim'}`} style={{ '--c': `var(--${colors[r.id] ?? slotOf(r.id)})` } as CSSProperties}>
                 <button className="nx-fx-main" onClick={r.project ? () => page({ kind: 'project', projectId: r.id }) : undefined} disabled={!r.project}>
-                  <span className="nx-mark"><i className="nx-fx-swatch" /></span>
+                  <span className="nx-mark"><Icon name="repo" /></span>
                   <span className="nx-row-title">{r.name}</span>
                 </button>
                 <Switch on={on} label={`${r.name} in the side bar`} onChange={(v2) => showProject(r, v2)} />

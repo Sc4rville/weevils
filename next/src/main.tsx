@@ -10,7 +10,7 @@ import { createRoot } from 'react-dom/client'
 import { AnimatePresence, MotionConfig, animate, motion, useMotionValue, useTransform, type PanInfo } from 'motion/react'
 import type { Optimizer, Project, Session, Snapshot } from '../../shared/api.ts'
 import { autoOfSession } from '../../src/ui/auto-model.ts'
-import { trackFullHeight } from '../../src/ui/viewport.ts'
+import { screenHeight, trackFullHeight } from '../../src/ui/viewport.ts'
 import { improvingProject, mainProjectRank, selfProject } from '../../src/ui/recursive-identity.ts'
 import { Ctx, THEME_COLOR, colorSlots, isTheme, type AppCtx, type Page, type Theme } from '../../src/ui/app-context.tsx'
 import { PageView } from '../../src/ui/pages.tsx'
@@ -90,13 +90,15 @@ function useTheme(shared: string | undefined): [Theme, (t: Theme) => void] {
 
 /** The real height of the screen and of the status bar (the strip sits under it). */
 function useScreen() {
-  const [h, setH] = useState(innerHeight)
+  // The stage's own height (src/ui/viewport.ts screenHeight): installed on an iPhone it can be a status bar taller than
+  // innerHeight, and weevboss's strip, placed from it, would then sit that much too low over the session's head.
+  const [h, setH] = useState(() => screenHeight())
   const [safeT, setSafeT] = useState(0)
   useLayoutEffect(() => {
     const probe = document.createElement('div')
     probe.style.cssText = 'position:fixed;top:0;height:env(safe-area-inset-top);visibility:hidden'
     document.body.appendChild(probe)
-    const read = () => { setH(innerHeight); setSafeT(probe.getBoundingClientRect().height) }
+    const read = () => { setH(screenHeight()); setSafeT(probe.getBoundingClientRect().height) }
     read()
     addEventListener('resize', read)
     return () => { removeEventListener('resize', read); probe.remove() }

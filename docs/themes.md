@@ -26,8 +26,31 @@ working star `--fluo`, the 16 project slots `--p0…--p15`, voice logo `--anim-*
 - project colours are slots, not hues: a project keeps its slot in every theme, only the slot's colour changes. Keep
   slots ordered (neighbours close, slots ≥ 2 apart distinct): the For you cards and feed bands rely on it.
 
+- **texture** (optional, encouraged): a theme can lay a matter over the whole window with `--texture` (one or more CSS
+  images: gradients, `repeating-*-gradient`, `conic-gradient`, inline SVG as a `data:` URI with `feTurbulence` for
+  grain), `--texture-size`, `--texture-position`, `--texture-blend` (a `mix-blend-mode`: normal, multiply, screen,
+  overlay, soft-light, darken, lighten) and `--texture-opacity` (≤ 0.12). It sits over everything (`html::after` in
+  `src/styles.css`), never takes a tap, fetches nothing; `test/theme-contrast.test.ts` holds the bounds. Seen in
+  coastal (sand grain and tide ripples, multiply) and deco (gold fan scales in offset rows);
 - landing: a theme run's branch merges into main by itself once the checks pass, and weevils then posts "new theme X
   is in your selector" (docs/automations/auto-merge.md). The run's own post never says the theme is live.
+
+## The bar for a new theme (from the person, 2026-11-23)
+
+« More creative, take risks, play with texture. » A new theme is not a new palette on the same flat bands: it is a
+world. Each run picks at least one bold move and says which:
+
+- **a texture** that carries the idea (paper fibre, risograph halftone, CRT scanlines, linen, terrazzo, marble veins,
+  brushed metal, blueprint grid, film grain, knit, stained glass leading…);
+- **a typeface** from what the phone already has (`--font`: a system stack such as `ui-serif, Georgia, serif`,
+  `ui-monospace, Menlo, monospace`, `"Avenir Next", Futura, ui-sans-serif`, `"American Typewriter", Courier, monospace`),
+  always with a generic family last; never a downloaded font;
+- **a palette nobody would expect** (clashing pairs, near-monochrome with one scream, two-tone duotone).
+
+Risks are welcome; only the measured floor is not negotiable: the contrast test, slots ≥ 2 apart distinct, the
+texture bounds, both languages, phone and desktop. Each run lands its themes on main by itself (no question to the
+person, no branch left waiting): keep the worktree clean (screenshots and scratch files outside it, in `/tmp`), commit
+everything the themes need, and the checks decide.
 
 ## The themes
 
@@ -40,8 +63,8 @@ working star `--fluo`, the 16 project slots `--p0…--p15`, voice logo `--anim-*
 | `desert` | désert / desert | light | late-afternoon desert: terracotta top, sage 24/7, sand calm band, umber ink | **powdered earth** sage → ochre → terracotta → clay rose → mauve (180° arc, chroma 0.065: the first *dusty* palette), 4 steps | turquoise-jewel star, cochineal-red AutoMark, burnt-sienna 24/7 title |
 | `synthwave` | synthwave / synthwave | dark | 80s neon night: violet-black top, magenta horizon 24/7, pale-pink ink | **retro sun** violet → magenta → pink → coral → orange → yellow (145° arc through red), 4 neon intensities | grid-cyan star, neon-pink AutoMark, sun-yellow 24/7 title |
 | `botanical` | botanique / botanical | light | herbarium plate: leaf-green top, petal-pink 24/7, cream paper calm band, forest-floor ink | **greens** straw → leaf → fern → eucalyptus → sky (140° arc centred on green, chroma 0.085), 4 steps: the first light theme built on greens | flower-fuchsia star, iris-violet AutoMark, berry 24/7 title |
-| `coastal` | littoral / coastal | light | a day at the seaside: surf-blue top, sand 24/7, sea-spray calm band, navy ink | **blues** sea foam → turquoise → azure → cornflower → lavender (160° arc centred on blue, chroma 0.07), 4 steps: the first light theme centred on blues | buoy-red star, kelp-green AutoMark, harbour-blue 24/7 title |
-| `deco` | art déco / art deco | dark | black lacquer and gold leaf: gilded-black top, emerald 24/7, oxblood devil band, cream ink | **metals and patinas** verdigris → malachite → brass → gold → bronze → copper (140° arc, chroma 0.085), 4 steps | gold-leaf star, jade AutoMark, champagne 24/7 title |
+| `coastal` | littoral / coastal | light | a day at the seaside: surf-blue top, sand 24/7, sea-spray calm band, navy ink; **texture** wet-sand grain and tide ripples | **blues** sea foam → turquoise → azure → cornflower → lavender (160° arc centred on blue, chroma 0.07), 4 steps: the first light theme centred on blues | buoy-red star, kelp-green AutoMark, harbour-blue 24/7 title |
+| `deco` | art déco / art deco | dark | black lacquer and gold leaf: gilded-black top, emerald 24/7, oxblood devil band, cream ink; **texture** gold fan scales | **metals and patinas** verdigris → malachite → brass → gold → bronze → copper (140° arc, chroma 0.085), 4 steps | gold-leaf star, jade AutoMark, champagne 24/7 title |
 | `vaporwave` | vaporwave / vaporwave | dark | pastel dusk of an empty mall: dusk-teal top, powder-pink 24/7, deep indigo calm band, lavender-white ink | **muted pastels** teal → cyan → periwinkle → lavender → orchid → pink (180° cool-to-pink arc, chroma 0.075: dusty, not neon), 4 steps | mint star, bubblegum-pink AutoMark, peach 24/7 title |
 
 ## Log
@@ -182,6 +205,15 @@ reads a colour of chroma under about 0.02 as hueless when a rule derives a shade
 chroma ≥ 0.02 (or exactly 0, like graphite), and check the composer's computed colour in the browser. desert's and
 botanical's calm bands (chroma 0.016) take a faint pink tint in that one derived shade; untouched here.
 
+### 2026-11-23 (later) — textures
+
+The person asked for bolder themes with texture, landing by themselves. Added the texture layer (`--texture*`, above),
+its bounds in the contrast test, and gave the two newest themes one each: coastal a wet-sand grain with tide ripples
+(two `data:` SVGs, multiply, 0.12), deco a gold fan-scale pattern (two offset radial gradients, 0.1). Also fixed why
+the coastal/deco run did not land by itself: a `shots-tmp/` folder an earlier run left in the worktree counted as
+uncommitted work (`server/auto-merge.ts` now looks at tracked files only), and the push of the branch, refused as
+non-fast-forward, hid the « Land it » line (now offered either way).
+
 ## Directions not taken yet (ideas for the next runs)
 
 - **High contrast / accessibility**: pure black and white bands with thick separators, AAA text everywhere.
@@ -191,4 +223,9 @@ botanical's calm bands (chroma 0.016) take a faint pink tint in that one derived
 - **Glacier / arctic**: a near-white icy light theme with one aurora accent (coastal is warm-sand and blues; this would
   be cold and almost monochrome).
 - **Lacquer red / ukiyo-e**: a dark vermilion-and-indigo woodblock theme (deco is black and gold).
+- **Thermal receipt**: off-white paper with a faint fibre, monospace type, everything in one faded grey-violet ink.
+- **Chalkboard**: slate green-black, dusty chalk grain, a hand-ish serif; slots as coloured chalks.
+- **Topographic**: contour lines as the texture, slots as altitude tints from sea to snow.
+- **Terrazzo**: speckled stone chips (radial-gradient dots) on warm plaster, a loud clashing palette.
+- **CRT terminal**: scanlines (repeating-linear-gradient) and monospace over phosphor green, a slight vignette.
 - **Seasonal / time of day**: a theme that follows the clock (dawn → noon → dusk → night) needs a product decision first.

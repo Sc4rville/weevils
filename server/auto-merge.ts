@@ -126,7 +126,8 @@ export async function autoMerge(dir: string, app: string, box?: Sandbox, git: Gi
   const run = sandboxed(plain, box)
   const [mine, ours] = await Promise.all([git(dir, ['remote', 'get-url', 'origin']), git(app, ['remote', 'get-url', 'origin'])])
   if (!mine || mine !== ours) return { merged: false, why: 'not weevils' }
-  if ((await git(dir, ['status', '--porcelain'])) !== '') return { merged: false, why: 'uncommitted changes' }
+  // Only tracked work counts: a run's leftovers (screenshots, scratch files) are never committed, so they never land.
+  if ((await git(dir, ['status', '--porcelain', '--untracked-files=no'])) !== '') return { merged: false, why: 'uncommitted changes' }
   if ((await git(dir, ['fetch', '-q', 'origin', 'main'], 60_000)) === null) return { merged: false, why: 'fetch failed' }
   if ((await git(dir, ['rebase', '-q', 'origin/main'], 120_000)) === null) {
     await git(dir, ['rebase', '--abort'])

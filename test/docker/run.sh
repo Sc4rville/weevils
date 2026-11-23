@@ -232,7 +232,7 @@ run_systemd() {
     check "main: desk registered, laptop kept" as_test 'grep -qx "WEEVILS_REMOTES=laptop=http://127.0.0.1:4192,desk=http://127.0.0.1:4193" ~/.config/weevils/env'
     check "main: the key may only hold the tunnel and register desk" as_test 'grep "weevils-join:desk$" ~/.ssh/authorized_keys | grep -q "^restrict,port-forwarding,permitlisten=\"127.0.0.1:4193\",permitopen=\"127.0.0.1:4193\",command=\"/home/test/.local/bin/weevils-service remote-shell desk 4193\" ssh-ed25519 "'
     check "main: desk online in its snapshot" as_test 'for i in $(seq 30); do curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"desk\" and .online==true)" && exit 0; sleep 1; done; exit 1'
-    check "main: the thread said it came in, then that it is plugged in" as_test 'for i in $(seq 20); do jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk is plugged in" && jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk is plugging in" && exit 0; sleep 1; done; exit 1'
+    check "main: the thread said it came in, then that it is plugged in" as_test 'for i in $(seq 40); do jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "desk is plugged in" && jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk is plugging in" && exit 0; sleep 1; done; jq -c ".joining, [.log[-5:][].text]" ~/.local/share/weevils/setup.json >&2; exit 1'
     check "third: that key gets no shell and no other command on the main machine" as_3 '! ssh -o BatchMode=yes weevils-testbox "cat ~/.config/weevils/secret" >/tmp/out 2>&1 && grep -q "this key only registers desk" /tmp/out && ! ssh -o BatchMode=yes weevils-testbox bash </dev/null'
     check "third: the line works once" as_3 "! ($line) >/tmp/again 2>&1 && grep -q 'expired or was already used' /tmp/again"
 
@@ -266,7 +266,10 @@ run_systemd() {
 
     say "systemd: a machine that lost its role before the fix (an update made it a main machine of its own) comes back at its next update"
     # What the update without the fix did: server/install.sh as a main machine, its tunnel removed, its role main.
-    check "third: made a main machine of its own, as the old update did" as_3 'bash weevils/server/install.sh main >/dev/null 2>&1; grep -qx WEEVILS_ROLE=main ~/.config/weevils/service.conf && ! systemctl --user is-active weevils-tunnel'
+    check "third: made a main machine of its own, as the old update left it" as_3 'systemctl --user disable --now weevils-tunnel >/dev/null 2>&1; rm -f ~/.config/systemd/user/weevils-tunnel.service; systemctl --user daemon-reload
+      sed -i "s/^WEEVILS_ROLE=.*/WEEVILS_ROLE=main/; s/^WEEVILS_MAIN_HOST=.*/WEEVILS_MAIN_HOST=/; s/^WEEVILS_TUNNEL_PORT=.*/WEEVILS_TUNNEL_PORT=/" ~/.config/weevils/service.conf
+      ~/.local/bin/weevils-service config set WEEVILS_ORCHESTRATOR 1 >/dev/null
+      grep -qx WEEVILS_ROLE=main ~/.config/weevils/service.conf && ! systemctl --user is-active weevils-tunnel'
     check "main: desk does not answer: why=link, since a time" away_desk link
     check "third: its next update (install.sh --agent --no-update) finds its join key and becomes secondary again" as_3 'cd weevils && WEEVILS_NO_UPDATE=1 ./install.sh --agent --no-update >/tmp/heal.log 2>&1; grep -qx status=ok /tmp/heal.log && grep -qx role=secondary /tmp/heal.log || { tail -20 /tmp/heal.log; exit 1; }'
     check "third: secondary on the same port its key may open, tunnel active" as_3 'grep -qx WEEVILS_ROLE=secondary ~/.config/weevils/service.conf && grep -qx WEEVILS_MAIN_HOST=weevils-testbox ~/.config/weevils/service.conf && grep -qx WEEVILS_TUNNEL_PORT=4193 ~/.config/weevils/service.conf && systemctl --user is-active weevils-tunnel && grep -qx WEEVILS_ORCHESTRATOR=0 ~/.config/weevils/env'

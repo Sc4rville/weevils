@@ -869,11 +869,11 @@ describe('a Mac', () => {
     await vi.waitFor(() => expect(mac.text()).toContain('curl -fsSL https://get.example/i/abcdefghjk | bash'), { timeout: 20_000 })
     expect(mac.calls).toContain('/api/job')
     expect(mac.text()).toContain('Connect this computer')
-    expect(mac.text()).toContain('Better: a server')
-    expect(mac.text()).toContain('your phone and computer are off')
+    expect(mac.text()).toContain('Or straight on a server')
+    expect(mac.text()).toContain('even with your computer off')
     expect(mac.text()).toContain('Mac password')
     expect(mac.text()).not.toMatch(/Linux for now|take a VPS/)
-    // Same screen for Linux, without the Mac note; a phone gets servers first and no command.
+    // Same screen for Linux, without the Mac note; a phone gets the person's computer first (recommended) and no command.
     const linux = await firstScreen(LINUX)
     await vi.waitFor(() => expect(linux.text()).toContain('curl -fsSL https://get.example/i/abcdefghjk | bash'), { timeout: 20_000 })
     expect(linux.text()).toContain('Connect this computer')
@@ -886,7 +886,13 @@ describe('a Mac', () => {
     expect(phone.text()).toContain('I already have a VPS')
     expect(phone.text()).toContain('My computer')
     // A Mac works (bootstrap.sh handles Darwin): the computer option names it, never « Linux » alone.
-    expect(phone.text()).toContain('Mac, Linux, or Windows with WSL.')
+    expect(phone.text()).toContain('Mac, Linux or Windows.')
+    // Start where the conversations are (2026-11-22): the computer comes first and is the recommended one; the
+    // subscription it needs is said up front.
+    const t = phone.text()
+    expect(t.indexOf('My computer')).toBeLessThan(t.indexOf('Create a server for me at Hetzner'))
+    expect(t).toMatch(/My computer\s*recommended/)
+    expect(t).toContain('You need a Claude (or ChatGPT) subscription.')
     expect(page).not.toMatch(/\(Linux\)|Linux only|Linux seulement/)
     expect(phone.text()).not.toMatch(/Hostinger|hPanel/)
     expect(phone.text()).not.toContain('curl')
@@ -894,7 +900,7 @@ describe('a Mac', () => {
     const fr = await firstScreen(MAC, 'fr')
     expect(fr.text()).toContain('Branche cet ordinateur')
     expect(fr.text()).toContain('mot de passe du Mac')
-    expect((await firstScreen(IPHONE, 'fr')).text()).toContain('Mac, Linux, ou Windows avec WSL.')
+    expect((await firstScreen(IPHONE, 'fr')).text()).toContain('Mac, Linux ou Windows.')
     expect(page).not.toMatch(/Hostinger|hPanel/)
     expect(page).not.toMatch(/Linux for now|Linux pour l’instant|prends un VPS|take a VPS/)
   }, 60_000)

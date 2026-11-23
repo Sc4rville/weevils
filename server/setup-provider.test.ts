@@ -59,6 +59,14 @@ it('« sign in again » from a signed-out session starts a fresh login even with
   expect(setup.takeOpen()).toBe('https://claude.ai/oauth/authorize?code=1')
   expect(process.env.WEEVILS_PROVIDER).toBeUndefined()
 })
+it('« ChatGPT? Connect it » in the hello (/#do=codex): weevboss switches to Codex and its code follows in the thread', async () => {
+  const tap = setup.act('codex')
+  await vi.waitFor(() => expect(auth.spawn).toHaveBeenCalledTimes(1))
+  child.stdout.emit('data', Buffer.from('https://auth.openai.com/codex/device\nABCD-EFGH'))
+  expect(await tap).toBe(true)
+  expect(process.env.WEEVILS_PROVIDER).toBe('codex')
+  expect(setup.messages().at(-1)?.text).toContain('ABCD-EFGH')
+})
 it('rejects an unavailable provider before changing the configured selection', async () => {
   vi.spyOn(setup, 'providers').mockReturnValue({ claude: true, codex: false })
   await expect(setup.chooseProvider('codex')).rejects.toThrow(/not available/)

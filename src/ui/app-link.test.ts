@@ -12,6 +12,7 @@ describe('links weevboss writes to a place in the app', () => {
     // weevboss's own action links: only the known ones, on this app.
     expect(appLink('/#do=github')).toEqual({ kind: 'do', action: 'github' })
     expect(appLink('/#do=later')).toEqual({ kind: 'do', action: 'later' })
+    expect(appLink('/#do=codex')).toEqual({ kind: 'do', action: 'codex' })
     expect(appLink('/#do=rm')).toBeUndefined()
     expect(appLink('https://elsewhere.example/#do=github')).toBeUndefined()
   })

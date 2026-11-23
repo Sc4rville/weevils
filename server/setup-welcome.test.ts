@@ -64,38 +64,40 @@ beforeEach(() => {
 })
 
 describe('the hello', () => {
-  // The owner, 2026-11-23: a real onboarding, not just « hi I'm weevboss » (it looks like a scam).
-  it('three short messages: what weevils is, that it stays theirs, then what it sees and what to ask; no button', () => {
+  // The owner, 2026-11-23: a real onboarding, not just « hi I'm weevboss » (it looks like a scam); then: fewer
+  // messages, an upbeat first one, and weevils as the place for all their AI agents and machines, not a site maker.
+  it('two messages: what weevils is and that it stays theirs, then what it sees and what to ask; no button', () => {
     auth.ready = true
     const lines = greeting(state({ projects: 3, projectNames: ['weevils', 'notes', 'site'], machine: { ...machine, kind: 'desktop', others: ['laptop'] } }), both)
     expect(lines).toEqual([
-      'Hi, I’m weevboss. With weevils you make things with AI from your phone: you tell me what you want (a game, a website, a small tool…), AI agents build it on your computer, and you follow them here, step by step.',
-      'It all stays yours: the agents use your own Claude subscription, your code stays on your machine, and weevils itself is free.',
+      'Hi, I’m weevboss! 👋 weevils brings **all your AI agents and all your machines** together in one place, right in your pocket: Claude Code, Codex, your computer, your servers. You call the shots, I keep the whole crew moving 🚀 Your own AI subscription, your code stays home, and weevils is free.',
       'I can already see your 3 projects (weevils, notes and site), and laptop is plugged in too. Claude is already connected, so let’s start: tell me what you’d like to make, a game, a website, a small tool, a question about your code… [Connect your GitHub](/#do=github) and I’ll keep all your conversations there, yours.',
     ])
     const fr = withLang('fr', () => greeting(state({ projects: 12, projectNames: ['a', 'b', 'c', 'd'] }), both))
-    expect(fr[0]).toContain('Avec weevils, tu crées des choses avec l’IA depuis ton téléphone')
-    expect(fr[2]).toBe('Je vois déjà tes 12 projets (a, b, c, d…). Claude est déjà connecté, alors on commence : dis-moi ce que tu veux faire, un jeu, un site, un petit outil, une question sur ton code… [Connecte ton GitHub](/#do=github) et je garde toutes tes conversations là-bas, à toi.')
+    expect(fr[0]).toBe('Salut, moi c’est weevboss ! 👋 weevils réunit **tous tes agents IA et toutes tes machines** au même endroit, dans ta poche : Claude Code, Codex, ton ordi, tes serveurs. Tu donnes le cap, je fais tourner toute l’équipe 🚀 Ton propre abonnement IA, ton code reste chez toi, et weevils est gratuit.')
+    expect(fr[1]).toBe('Je vois déjà tes 12 projets (a, b, c, d…). Claude est déjà connecté, alors on commence : dis-moi ce que tu veux faire, un jeu, un site, un petit outil, une question sur ton code… [Connecte ton GitHub](/#do=github) et je garde toutes tes conversations là-bas, à toi.')
     // GitHub already connected: the sync line follows by itself, nothing to offer.
-    expect(greeting(state({ github: { installed: true, logged: true, login: 'alex' } }), both)[2]).toBe('Claude is already connected, so let’s start: tell me what you’d like to make, a game, a website, a small tool, a question about your code…')
-    // Where the agents work, in the person's words.
-    expect(greeting(state(), both)[0]).toContain('build it on your server')
+    expect(greeting(state({ github: { installed: true, logged: true, login: 'alex' } }), both)[1]).toBe('Claude is already connected, so let’s start: tell me what you’d like to make, a game, a website, a small tool, a question about your code…')
     for (const t of [...lines, ...fr]) expect(t).not.toMatch(/\[\[setup:|relay|thread|weevbook|session|fil\b/i)
   })
 
-  it('no subscription signed in: Claude’s link in the hello itself, the code pasted here', () => {
+  // The owner, 2026-11-23: « who says they have Claude? »: the sign-in is for those who do, a plan for those who don't.
+  // Then: « why a Claude subscription? start with what you have »: ChatGPT is the other pick, one link away.
+  it('no subscription signed in: Claude’s link in the hello itself, ChatGPT as the other pick, a plan if they have none', () => {
     const lines = greeting(state({ projects: 1, projectNames: ['notes'] }), both, 'https://claude.ai/oauth/authorize?code=abc')
-    expect(lines[2]).toBe('I can already see your project (notes). To start, connect your Claude account, just once. Open [Claude’s sign-in page](https://claude.ai/oauth/authorize?code=abc), accept, then paste the code it shows here.')
+    expect(lines[1]).toBe('I can already see your project (notes). To start, my agents need an AI subscription, Claude or ChatGPT, your pick. Claude? Open [Claude’s sign-in page](https://claude.ai/oauth/authorize?code=abc), accept, then paste the code it shows here. ChatGPT? [Connect it](/#do=codex). No subscription yet? [Pick a Claude plan](https://claude.com/pricing), then come back here.')
+    // A machine that cannot run Codex: Claude only.
+    expect(greeting(state(), { claude: true, codex: false }, 'https://claude.ai/x')[1]).toBe('To start, my agents need a Claude subscription. Got one? Open [Claude’s sign-in page](https://claude.ai/x), accept, then paste the code it shows here. No subscription yet? [Pick a Claude plan](https://claude.com/pricing), then come back here.')
     // A lent sign-in (server/guest-brain.ts): questions are welcome meanwhile.
-    expect(greeting(state(), both, 'https://claude.ai/x', true)[2]).toMatch(/paste the code it shows here\. Any question meanwhile\? Just ask\.$/)
-    expect(greeting(state({ claude: { installed: true, logged: false } }), both)[2]).toContain('the link comes right below')
-    expect(greeting(state({ claude: { installed: false, logged: false } }), both)[2]).toContain('I’m installing Claude Code on box')
+    expect(greeting(state(), both, 'https://claude.ai/x', true)[1]).toMatch(/\[Pick a Claude plan\]\(https:\/\/claude\.com\/pricing\), then come back here\. Any question meanwhile\? Just ask\.$/)
+    expect(greeting(state({ claude: { installed: true, logged: false } }), both)[1]).toContain('the link comes right below')
+    expect(greeting(state({ claude: { installed: false, logged: false } }), both)[1]).toContain('I’m installing Claude Code on box')
     auth.tool = 'codex'
-    expect(greeting(state(), both)[2]).toContain('your ChatGPT account, through Codex')
-    expect(greeting(state(), both)[1]).toContain('your own ChatGPT subscription')
+    expect(greeting(state(), both)[1]).toContain('your ChatGPT account, through Codex')
+    expect(greeting(state(), both)[0]).toContain('Your own AI subscription')
     auth.tool = 'claude'
-    expect(greeting(state(), { claude: false, codex: true })[2]).toContain('through Codex')
-    expect(withLang('fr', () => greeting(state(), both, 'https://claude.ai/x')[2])).toContain('colle ici le code qu’elle affiche')
+    expect(greeting(state(), { claude: false, codex: true })[1]).toContain('through Codex')
+    expect(withLang('fr', () => greeting(state(), both, 'https://claude.ai/x')[1])).toBe('Pour commencer, mes agents ont besoin d’un abonnement IA, Claude ou ChatGPT, au choix. Claude ? Ouvre [la page de connexion de Claude](https://claude.ai/x), accepte, puis colle ici le code qu’elle affiche. ChatGPT ? [Connecte-le](/#do=codex). Pas encore d’abonnement ? [Choisis une offre Claude](https://claude.com/pricing), puis reviens ici.')
   })
 })
 
@@ -173,8 +175,8 @@ describe('the first run, end to end', () => {
     const { it: s, texts } = make({}, state({ claude: { installed: true, logged: false }, projects: 1, projectNames: ['notes'] }))
     const mid = await s.welcome({ os: 'linux', mobile: false, standalone: false })
     expect(mid).toBeTruthy()
-    expect(texts()).toHaveLength(3)
-    expect(texts()[2]).toBe('I can already see your project (notes). To start, connect your Claude account, just once. Open [Claude’s sign-in page](https://claude.ai/oauth/authorize?code=abc), accept, then paste the code it shows here.')
+    expect(texts()).toHaveLength(2)
+    expect(texts()[1]).toBe('I can already see your project (notes). To start, my agents need an AI subscription, Claude or ChatGPT, your pick. Claude? Open [Claude’s sign-in page](https://claude.ai/oauth/authorize?code=abc), accept, then paste the code it shows here. ChatGPT? [Connect it](/#do=codex). No subscription yet? [Pick a Claude plan](https://claude.com/pricing), then come back here.')
     expect(await s.welcome({ os: 'linux', mobile: false, standalone: false })).toBeUndefined()
     // Something else typed first: the link again, no button.
     await s.offline('hello?')
@@ -198,7 +200,7 @@ describe('the first run, end to end', () => {
     guest.dir = '/lent'
     const { it: s, texts, delegate } = make({}, state({ claude: { installed: true, logged: false } }))
     await s.welcome({ os: 'linux', mobile: false, standalone: false })
-    expect(texts()[2]).toMatch(/Any question meanwhile\? Just ask\.$/)
+    expect(texts()[1]).toMatch(/Any question meanwhile\? Just ask\.$/)
     guest.reply = { text: 'weevils itself is free: you only use your own Claude subscription.', task: false }
     await s.offline('is it free?')
     expect(texts().slice(-2)).toEqual(['is it free?', 'weevils itself is free: you only use your own Claude subscription.'])

@@ -940,7 +940,7 @@ const routes: [string, RegExp, Handler][] = [
   ['GET', /^\/api\/setup\/sync$/, async (_req, res) => {
     json(res, 200, await syncProgress())
   }],
-  // A link in weevboss's words (/#do=github | server | later | recovery): what the person tapped.
+  // A link in weevboss's words (/#do=github | codex | server | later | recovery): what the person tapped.
   ['POST', /^\/api\/setup\/do$/, async (req, res) => {
     const b = await readBody(req)
     if (typeof b.action !== 'string') return json(res, 400, { error: tr(S).badBrick })

@@ -1162,6 +1162,14 @@ export class Setup {
         if ((await this.githubDevice()) === 'signed-in') void this.watch()
         return true
       }
+      case 'codex':
+        // ChatGPT rather than Claude, from the hello: weevboss thinks with Codex from now on, its code follows here.
+        try {
+          await this.chooseProvider('codex', device)
+        } catch (e) {
+          this.say(e instanceof Error ? e.message : String(e))
+        }
+        return true
       case 'server':
         await this.ask('machine', device)
         return true
@@ -1914,10 +1922,13 @@ export const offersServer = (m: Pick<MachineInfo, 'alwaysOn' | 'kind'>): boolean
 export const providerTool = (providers: { claude: boolean; codex: boolean }): 'claude' | 'codex' =>
   preferredTool() === 'codex' || (!providers.claude && providers.codex) ? 'codex' : 'claude'
 
-/** weevboss's hello on first launch, three short messages: what weevils is (things made with AI from the phone, built
- * on their machine), that it all stays theirs (their own subscription, their code, weevils free), then what weevils
- * already sees and either "tell me what to make" or the one thing it needs, the subscription's sign-in (with Claude's
- * link when there is one; with a lent sign-in, questions are welcome meanwhile). No button. Pure (tested). */
+/** weevboss's hello on first launch, two messages: an upbeat first one, what weevils is (all their AI agents and
+ * machines in one place, in their pocket) and that it all stays theirs (their own subscription, their code, weevils
+ * free), then what weevils already sees and either "tell me what to make" or the one thing it needs, the
+ * subscription's sign-in (with Claude's link when there is one, and ChatGPT through Codex as the other pick when this
+ * machine can run it, never assuming they already pay for one: where to get a plan follows; with a lent sign-in,
+ * questions are welcome meanwhile).
+ * No button. Pure (tested). */
 export function greeting(s: SetupState, providers: { claude: boolean; codex: boolean }, link = '', guest = false): string[] {
   const t = tr(M)
   const ready = providerReady()
@@ -1930,9 +1941,9 @@ export function greeting(s: SetupState, providers: { claude: boolean; codex: boo
     : codex
       ? t.welcomeCodex
       : link
-        ? `${t.welcomeClaude} ${t.claudeLink(link)}${ask}`
+        ? `${t.welcomeClaude(providers.codex)} ${t.claudeLink(link)}${providers.codex ? ` ${t.welcomeChatgpt}` : ''} ${t.welcomeNoClaude}${ask}`
         : `${s.claude.installed ? t.welcomeClaudeLink : t.welcomeClaudeInstall(s.machine.host)}${ask}`
-  return [t.welcomeHello(USER_NAME, t.welcomeWhere(s.machine)), t.welcomeYours(codex ? 'ChatGPT' : 'Claude'), [seen, next].filter(Boolean).join(' ')]
+  return [t.welcomeHello(USER_NAME), [seen, next].filter(Boolean).join(' ')]
 }
 
 /** What weevboss is told in its first days (every turn: they do not remember): what weevils detected, so it asks none

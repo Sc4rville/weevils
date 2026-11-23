@@ -93,9 +93,10 @@ export function appLink(href: string): { kind: 'session'; id: string } | { kind:
   return /^#foryou$/.test(u.hash) ? { kind: 'foryou' } : undefined
 }
 
-/** What a link in weevboss's own words does where it is (server/setup.ts act): sign GitHub in, set a server up, « later »,
- *  show the recovery code. Never a button: a living link in the sentence (2026-11-22). */
-export const DO_ACTIONS = ['github', 'server', 'later', 'recovery'] as const
+/** What a link in weevboss's own words does where it is (server/setup.ts act): sign GitHub in, pick ChatGPT (Codex)
+ *  instead of Claude, set a server up, « later », show the recovery code. Never a button: a living link in the sentence
+ *  (2026-11-22). */
+export const DO_ACTIONS = ['github', 'codex', 'server', 'later', 'recovery'] as const
 export type DoAction = (typeof DO_ACTIONS)[number]
 
 export function AppLink({ href, label }: { href: string; label: string }) {

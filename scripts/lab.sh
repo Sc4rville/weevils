@@ -47,7 +47,7 @@ case "$cmd" in
       git -C "$root" fetch -q "$remote" main
       git -C "$root" worktree add -q -B lab/onboarding "$tree" "$remote/main"
     fi
-    (cd "$tree" && { [ -d node_modules ] || npm ci --no-audit --no-fund >/dev/null; } && npx vite build >/dev/null && npx vite build -c next/vite.config.ts >/dev/null)
+    (cd "$tree" && { [ -d node_modules ] || npm ci --include=dev --no-audit --no-fund >/dev/null; } && npx vite build >/dev/null && npx vite build -c next/vite.config.ts >/dev/null)
     "$tree/scripts/fresh.sh" up --port "$port" ${url:+--url "$url"} --without-claude --guest-claude --lab "$tree" "$dir" >/dev/null
     start_watch
     "$tree/scripts/fresh.sh" link ;;

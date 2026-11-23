@@ -229,11 +229,10 @@ body { overflow: hidden; }
 /* weevils' block head: its logo opens weevboss, its name folds its sessions (main.tsx ProjectGroup). */
 .nx-boss-row .nx-boss-logo, .nx-boss-row .nx-fold { background: none; border: 0; padding: 0; color: inherit; font: inherit; display: flex; align-items: center; gap: 10px; }
 .nx-boss-row .nx-fold { flex: 1; min-width: 0; min-height: 44px; text-align: left; }
-/* The logo is as wide as every band's icon; its tap target reaches into the gap after it, so the name stays close. */
-.nx-boss-row .nx-boss-logo { min-width: var(--mark-w); min-height: 44px; padding-right: var(--mark-gap); margin-right: calc(-1 * var(--mark-gap)); }
-/* Every band's head (weevils, a repo, autonomous, your factory, settings): its icon in one column, the weevils logo's,
-   and its name close after it, one small gap on every band, so every name starts under the « w » of weevils. */
-:root { --mark-w: 26px; --mark-gap: 12px; }
+.nx-boss-row .nx-boss-logo { min-width: var(--mark-w); min-height: 44px; }
+/* Every band's head (weevils, a repo, autonomous, your factory, settings): its icon in one column, the weevils logo's
+   (a 44px tap target), and its name after the same gap on every band, so every name starts under the « w » of weevils. */
+:root { --mark-w: 44px; --mark-gap: 12px; }
 .nx-repo-row { gap: var(--mark-gap); }
 .nx-repo-mark { flex: none; width: var(--mark-w); display: flex; align-items: center; }
 .nx-repo-mark .ic { width: 26px; height: 26px; }

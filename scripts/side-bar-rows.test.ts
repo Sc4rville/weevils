@@ -11,12 +11,12 @@ const body = (sel: string) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(
 const px = (b: string, prop: string) => Number(new RegExp(`${prop}:\\s*(\\d+)px`).exec(b)?.[1])
 
 it("a repo row's mark takes the weevils logo's column and its name starts under the weevils name", () => {
-  // One icon column and one small gap for every band: the column is exactly the icon's width, the name right after it.
+  // One icon column and one gap for every band; the column keeps the logo's 44px tap target (the gap as it was).
   expect(body('.nx-repo-mark')).toMatch(/width:\s*var\(--mark-w\)/)
   expect(body('.nx-boss-row .nx-boss-logo')).toMatch(/min-width:\s*var\(--mark-w\)/)
   for (const sel of ['.nx-repo-row', '.nx-project-head.nx-boss-row', '.nx-settings .settings-band > .in.head']) expect(body(sel)).toMatch(/gap:\s*var\(--mark-gap\)/)
-  expect(px(body(':root'), '--mark-w')).toBe(px(body('.nx-logo'), 'width'))
-  expect(px(body(':root'), '--mark-gap')).toBeLessThanOrEqual(12)
+  expect(px(body(':root'), '--mark-w')).toBe(44)
+  expect(px(body(':root'), '--mark-gap')).toBe(12)
   expect(px(body('.nx-repo-mark .ic'), 'width')).toBe(px(body('.nx-logo'), 'width'))
   expect(body('.nx-repo-mark .ic:not(.auto-mark) path')).toMatch(/stroke-width:\s*1\.5/)
 })

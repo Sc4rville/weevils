@@ -37,3 +37,9 @@ it('every folded band is one height, one token; the side bar ends with its last 
   expect(body('.nx-side')).toMatch(/background:\s*transparent/)
   expect(css).not.toMatch(/\.nx-side-scroll > \.nx-settings\s*\{[^}]*flex:\s*1/)
 })
+
+it("next places weevboss's strip from the stage's own height, never innerHeight alone (no second jump over a session's head)", () => {
+  const main = fs.readFileSync(path.join(root, 'next/src/main.tsx'), 'utf8')
+  expect(main).toMatch(/useState\(\(\) => screenHeight\(\)\)/)
+  expect(main).not.toMatch(/setH\(innerHeight\)/)
+})

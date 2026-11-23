@@ -59,3 +59,11 @@ it('an installed app whose viewport comes out a status bar short gets the whole 
   expect(fullHeight(win(true, 500), 500)).toBe(0)
   expect(fullHeight(win(true, 343, true), 343)).toBe(390)
 })
+
+it("what is placed from the screen's height uses the stage's own height, a status bar taller in an installed app", async () => {
+  const { screenHeight } = await import('./viewport')
+  const win = (standalone: boolean, inner: number) => ({ innerHeight: inner, screen: { width: 390, height: 844 } as Screen, navigator: { standalone } as unknown as Navigator, matchMedia: () => ({ matches: false }) as unknown as MediaQueryList })
+  // Installed, the viewport 47px short: the stage takes 844, so does weevboss's strip's arithmetic (next/src/main.tsx).
+  expect(screenHeight(win(true, 797))).toBe(844)
+  expect(screenHeight(win(false, 797))).toBe(797)
+})

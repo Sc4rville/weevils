@@ -87,3 +87,7 @@ export function trackFullHeight() {
     root.style.removeProperty('--full-h')
   }
 }
+
+/** The height every full screen takes (--full-h when an installed app's viewport comes out short, else the window's):
+ *  whatever is placed from the screen's height (weevils next's strip) must use this one, never innerHeight alone. */
+export const screenHeight = (w: Pick<Window, 'innerHeight' | 'screen' | 'matchMedia' | 'navigator'> = window) => fullHeight(w, w.innerHeight) || w.innerHeight

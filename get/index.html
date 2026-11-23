@@ -144,14 +144,14 @@ const W = FR ? {
   stats: 'Statistiques anonymes : des compteurs seulement, sans cookie ni adresse IP gardée, conservés 90 jours.',
   count: (n) => n > 1 ? `${n} personnes utilisent déjà weevils` : `${n} personne utilise déjà weevils`,
   plug: 'Branche ta machine',
-  plugSub: 'Un serveur fait tourner tes agents même téléphone et ordinateur éteints. Prêt en quelques minutes.',
+  plugSub: 'Commence sur ton ordinateur, là où sont déjà tes conversations Claude Code : prêt en deux minutes, rien à payer. Il te faut un abonnement Claude (ou ChatGPT).',
   rec: 'conseillé',
-  hz: 'Crée-moi un serveur chez Hetzner', hzSub: 'On crée le serveur pour toi. Conseillé pour des agents qui tournent 24 h/24 : facturé à l’heure, vérification d’identité à l’inscription.',
+  hz: 'Crée-moi un serveur chez Hetzner', hzSub: 'On crée le serveur pour toi : tes agents tournent 24 h/24, même ordinateur éteint. Facturé à l’heure ; Hetzner vérifie ton identité à l’inscription (parfois un jour).',
   vps: 'J’ai déjà un VPS', vpsSub: 'Loué n’importe où : une commande à coller sur le serveur, weevils s’y installe tout seul.',
-  pc: 'Mon ordinateur', pcSub: 'Mac, Linux, ou Windows avec WSL. Les agents tournent sur cet ordinateur, avec tes droits, et seulement quand il est allumé.',
+  pc: 'Mon ordinateur', pcSub: 'Mac, Linux ou Windows. Les agents tournent sur cet ordinateur, avec tes droits, quand il est allumé ; un serveur peut venir plus tard.',
   thisPc: 'Branche cet ordinateur', thisPcSub: 'Colle cette commande dans un terminal de cet ordinateur, ou donne-la à ton assistant IA. Ensuite, un QR code ouvre weevils sur ton téléphone. Les agents tourneront ici, avec tes droits.',
   pcWhat: 'Elle installe weevils dans ton dossier personnel et vérifie la signature du code. Ton mot de passe n’est demandé que s’il manque un outil système, pour cette seule commande. Les agents demandent avant d’agir. Elle se retire en une ligne.', pcNet: 'À savoir : pour que ton téléphone le joigne de partout, cet ordinateur reçoit un lien HTTPS public. Il répond alors depuis Internet, derrière ton code d’accès. Pour l’éviter, ajoute --no-link à la fin de la commande : weevils reste sur cet ordinateur, et Tailscale (un réseau privé entre tes appareils) pourra le relier à ton téléphone plus tard.', pcRead: 'Lire le script', pcSec: 'Notes de sécurité',
-  better: 'Mieux : un serveur', betterSub: 'Un serveur fait tourner tes agents même téléphone et ordinateur éteints, et ton téléphone les joint de partout. Même parcours, 2 minutes de plus.',
+  better: 'Ou directement un serveur', betterSub: 'Un serveur fait tourner tes agents même ordinateur éteint. Rien ne presse : weevboss te le proposera une fois que tout marche.',
   macNote: 'Sur un Mac, le terminal est l’app Terminal. Elle peut demander une fois le mot de passe du Mac (rien ne s’affiche quand tu le tapes).',
   winNote: 'Sous Windows, colle-la dans PowerShell : weevils s’installe dans Ubuntu (WSL). Un VPS reste le plus simple.',
   onWindows: 'Sous Windows (PowerShell) :',
@@ -232,14 +232,14 @@ const W = FR ? {
   stats: 'Anonymous stats: counters only, no cookie and no IP address kept, deleted after 90 days.',
   count: (n) => n > 1 ? `${n} people already run weevils` : `${n} person already runs weevils`,
   plug: 'Plug in your machine',
-  plugSub: 'A server keeps your agents working while your phone and computer are off. Ready in a few minutes.',
+  plugSub: 'Start on your computer, where your Claude Code conversations already are: ready in two minutes, nothing to pay. You need a Claude (or ChatGPT) subscription.',
   rec: 'recommended',
-  hz: 'Create a server for me at Hetzner', hzSub: 'We create the server for you. Recommended for agents that run 24/7: billed by the hour, ID check at sign-up.',
+  hz: 'Create a server for me at Hetzner', hzSub: 'We create the server for you: your agents work 24/7, even with your computer off. Billed by the hour; Hetzner checks your ID at sign-up (sometimes a day).',
   vps: 'I already have a VPS', vpsSub: 'Rented anywhere: one command to paste on the server, and weevils installs itself.',
-  pc: 'My computer', pcSub: 'Mac, Linux, or Windows with WSL. Agents run on this computer, with your rights, and only while it’s on.',
+  pc: 'My computer', pcSub: 'Mac, Linux or Windows. Agents run on this computer, with your rights, while it’s on; a server can come later.',
   thisPc: 'Connect this computer', thisPcSub: 'Paste this command in a terminal on this computer, or give it to your AI assistant. Then a QR code opens weevils on your phone. Agents will run here, with your rights.',
   pcWhat: 'It installs weevils in your home folder and checks the code’s signature. Your password is asked only if a system tool is missing, for that one command. Agents ask before acting. It comes off in one line.', pcNet: 'Good to know: so your phone can reach it from anywhere, this computer gets a public HTTPS link. It then answers from the Internet, behind your access code. To avoid that, add --no-link at the end of the command: weevils stays on this computer, and Tailscale (a private network between your devices) can link it to your phone later.', pcRead: 'Read the script', pcSec: 'Security notes',
-  better: 'Better: a server', betterSub: 'A server keeps your agents working while your phone and computer are off, and your phone reaches them from anywhere. Same flow, 2 more minutes.',
+  better: 'Or straight on a server', betterSub: 'A server keeps your agents working even with your computer off. No rush: weevboss offers it once everything works.',
   macNote: 'On a Mac, the terminal is the Terminal app. It may ask for your Mac password once (nothing shows while you type).',
   winNote: 'On Windows, paste it in PowerShell: weevils installs in Ubuntu (WSL). A VPS is still the simplest.',
   onWindows: 'On Windows (PowerShell):',
@@ -519,7 +519,8 @@ function home(notice) {
   // Coming back needs no button: the link, this browser, or the Hetzner token (it finds the server weevils made).
   const top = typeof notice === 'string' && notice ? h('div', { class: 'err' }, notice) : null
   const intro = band('b5', top, h('h2', {}, W.plug), h('p', { class: 'small' }, W.plugSub))
-  const hz = [choiceBtn('b1', W.hz, W.hzSub, () => provider('hetzner'), W.rec)]
+  // Start where the conversations are (2026-11-22): the computer first; a server is advice for later, never a gate.
+  const hz = [choiceBtn('b1', W.hz, W.hzSub, () => provider('hetzner'))]
   const vps = choiceBtn('b2', W.vps, W.vpsSub, () => ssh())
   if (computer) {
     // A computer: connect it right here, and still suggest a VPS.
@@ -527,7 +528,7 @@ function home(notice) {
     const cmdBand = band('b3', top, h('h2', {}, W.thisPc), h('p', {}, W.thisPcSub), note ? h('p', { class: 'small' }, note) : null, pcBox(true))
     return show(cmdBand, band('b5', h('h2', {}, W.better), h('p', { class: 'small' }, W.betterSub)), ...hz, vps)
   }
-  show(intro, ...hz, vps, choiceBtn('b3', W.pc, W.pcSub, () => pc()))
+  show(intro, choiceBtn('b3', W.pc, W.pcSub, () => pc(), W.rec), ...hz, vps)
 }
 
 // --- (a) a server created for you, at Hetzner

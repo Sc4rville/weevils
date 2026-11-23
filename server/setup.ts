@@ -1860,7 +1860,7 @@ export function vaultLine(v: SetupState['vault']): string {
 export function githubBrief(login: string, vault: SetupState['vault']['state']): string {
   const next =
     vault === 'none'
-      ? 'Keeping their conversations on GitHub is weevils’ own job: it says so itself in your thread, never mention it.'
+      ? 'Keeping their conversations on GitHub is weevils’ own job (`weevils setup` shows it on its `vault` line): it says so itself in your thread, never mention it.'
       : vault === 'found'
         ? 'A vault of theirs already exists on their GitHub: ask for their 24-word recovery code, then run `weevils weevbook vault restore --code "…"`.'
         : ''

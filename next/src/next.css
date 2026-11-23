@@ -453,7 +453,8 @@ body { overflow: hidden; }
   padding: 24px var(--pad) 48px;
 }
 .page-body:has(> .nx-ideas) > .fill { flex: 0; }
-.nx-idea { display: grid; text-align: center; }
+/* Each line keeps two lines of room, so an idea of one line taking over from one of two never moves the other. */
+.nx-idea { display: grid; align-items: center; text-align: center; min-height: calc(2 * 1.25 * 22px + 8px); }
 .nx-idea > * { grid-area: 1 / 1; }
 .nx-idea-text {
   font: inherit; font-size: 22px; font-weight: 500; line-height: 1.25; letter-spacing: -0.01em;

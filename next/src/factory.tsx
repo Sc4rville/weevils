@@ -340,13 +340,14 @@ export function FactorySection({ snap, colors, page, toBoss }: {
   const [iOpen, iFold] = useFold('__factory_intel')
   const [pOpen, pFold] = useFold('__factory_projects')
   const [adding, setAdding] = useState(false)
+  const [more, setMore] = useState(false)
   const [v, patch] = useFactory(open)
   const [repos, setRepos] = useState<string[] | null>(null)
   const here = snap.machines[0]?.id
   useEffect(() => {
-    if (!pOpen || !here) return
+    if (!more || !here) return
     void call<{ repos: string[] }>('GET', `/api/repos?machine=${encodeURIComponent(here)}`).then((r) => setRepos(r.repos), () => setRepos([]))
-  }, [pOpen, here])
+  }, [more, here])
 
   const busyOn = (id: string) => snap.sessions.filter((s) => !s.archived && s.status === 'working' && (s.machineId ?? here) === id).length
   const machines = v?.machines ?? snap.machines.map((m): FactoryMachine => ({ id: m.id, name: m.name, kind: null, online: m.online !== false, off: !!m.off, here: m.id === here, load: null, level: 'ok' }))
@@ -366,10 +367,12 @@ export function FactorySection({ snap, colors, page, toBoss }: {
     .filter((p) => !HIDDEN_IDS.has(p.id) && p.kind !== 'installation')
   const known = new Set(projects.flatMap((p) => p.repos))
   const bare = (repos ?? []).filter((r) => !known.has(r) && !projects.some((p) => p.id === r))
-  const rows = [
-    ...projects.map((p) => ({ id: p.id, name: p.name, repos: p.repos, project: p as Project | null, shown: inSideBar(snap, p) })),
-    ...bare.map((r) => ({ id: r, name: r, repos: [r], project: null as Project | null, shown: snap.pinnedRepos.includes(r) })),
-  ].sort((a, b) => Number(b.shown) - Number(a.shown) || a.name.localeCompare(b.name))
+  // The projects weevils knows (with conversations, or pinned), those in the side bar first; « + » unfolds the other
+  // repos of this machine, to pin one.
+  type Row = { id: string; name: string; repos: string[]; project: Project | null; shown: boolean }
+  const rows: Row[] = projects.map((p) => ({ id: p.id, name: p.name, repos: p.repos, project: p, shown: inSideBar(snap, p) }))
+    .sort((a, b) => Number(b.shown) - Number(a.shown) || a.name.localeCompare(b.name))
+  const others: Row[] = bare.map((r) => ({ id: r, name: r, repos: [r], project: null, shown: snap.pinnedRepos.includes(r) }))
   const [shownNow, setShownNow] = useState<Record<string, boolean>>({})
   useEffect(() => setShownNow({}), [snap.version])
   const showProject = (r: (typeof rows)[number], on: boolean) => {
@@ -417,23 +420,30 @@ export function FactorySection({ snap, colors, page, toBoss }: {
         </Collapse>
         <LevelHead step={step()} name="Projects" open={pOpen} onFold={pFold} />
         <Collapse open={pOpen}>
-          {rows.map((r) => {
-            const on = shownNow[r.id] ?? r.shown
-            return (
-              <Band key={r.id} step={step(pOpen)} depth={2} className={`nx-fx-project ${on ? '' : 'nx-fx-dim'}`} style={{ '--c': `var(--${colors[r.id] ?? slotOf(r.id)})` } as CSSProperties}>
-                <button className="nx-fx-main" onClick={r.project ? () => page({ kind: 'project', projectId: r.id }) : undefined} disabled={!r.project}>
-                  <span className="nx-mark"><Icon name="repo" /></span>
-                  <span className="nx-row-title">{r.name}</span>
-                </button>
-                <Switch on={on} label={`${r.name} in the side bar`} onChange={(v2) => showProject(r, v2)} />
-              </Band>
-            )
-          })}
+          {rows.map((r) => projectBand(r, step(pOpen), 2))}
+          <PlusBand step={step(pOpen)} label="Add a project" open={more} onClick={() => setMore((m) => !m)} />
+          <Collapse open={more}>
+            {others.map((r) => projectBand(r, step(pOpen && more), 3))}
+          </Collapse>
         </Collapse>
         <TempoCells step={step()} />
       </Collapse>
     </section>
   )
+
+  /** A project's band: its repo colour and mark, a tap to its page, its switch for the side bar. */
+  function projectBand(r: Row, at: number, depth: number) {
+    const on = shownNow[r.id] ?? r.shown
+    return (
+      <Band key={r.id} step={at} depth={depth} className={`nx-fx-project ${on ? '' : 'nx-fx-dim'}`} style={{ '--c': `var(--${colors[r.id] ?? slotOf(r.id)})` } as CSSProperties}>
+        <button className="nx-fx-main" onClick={r.project ? () => page({ kind: 'project', projectId: r.id }) : undefined} disabled={!r.project}>
+          <span className="nx-mark"><Icon name="repo" /></span>
+          <span className="nx-row-title">{r.name}</span>
+        </button>
+        <Switch on={on} label={`${r.name} in the side bar`} onChange={(v2) => showProject(r, v2)} />
+      </Band>
+    )
+  }
 }
 
 // ---------------------------------------------------------------- a machine's page

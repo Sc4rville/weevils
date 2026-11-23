@@ -49,6 +49,12 @@ export function panelUrl(provider: string | undefined): string | undefined {
   return PANELS.find(([re]) => re.test(provider))?.[1]
 }
 
+/** The host as people say it: « Hostinger Operations UAB » → « Hostinger », « Hetzner Online GmbH » → « Hetzner ». */
+export function hostName(org: string | undefined): string | undefined {
+  const first = org?.trim().split(/[\s,]+/)[0]?.replace(/[.,]+$/, '')
+  return first || undefined
+}
+
 /** One figure for a machine's health: the fullest of processor, memory and disk, and how worried to be. */
 export function health(b: { cpu: number; mem: number; disk?: number }): { load: number; level: Level } {
   const disk = b.disk ?? 0
@@ -142,7 +148,7 @@ export async function factoryView(d: FactoryDeps): Promise<FactoryView> {
         load: h?.load ?? null,
         level: h?.level ?? 'ok',
         ...(b && h ? { cpu: Math.round(b.cpu), mem: Math.round(b.mem), ...(b.disk != null ? { disk: b.disk } : {}) } : {}),
-        ...(f?.provider ? { provider: f.provider } : {}),
+        ...(f?.provider ? { provider: hostName(f.provider) } : {}),
         ...(panelUrl(f?.provider) ? { panel: panelUrl(f?.provider) } : {}),
         ...(talk && d.sessions().some((s) => s.id === talk && !s.archived) ? { talk } : {}),
       }

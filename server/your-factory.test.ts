@@ -5,7 +5,7 @@ import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { Session } from '../shared/api.ts'
 import type { QuotaInfo } from '../shared/infra.ts'
-import { applyKeys, factoryRoutes, factoryView, health, leftOf, machineKind, panelUrl, type FactoryDeps, type FactoryState } from './your-factory.ts'
+import { applyKeys, factoryRoutes, factoryView, health, hostName, leftOf, machineKind, panelUrl, type FactoryDeps, type FactoryState } from './your-factory.ts'
 
 const q = (windows: QuotaInfo['windows'], plan?: string): QuotaInfo => ({ ok: true, windows, source: 'test', at: 1, ...(plan ? { plan } : {}) })
 const sess = (id: string, status: Session['status'], machineId?: string) => ({ id, status, machineId, archived: false }) as unknown as Session
@@ -51,6 +51,8 @@ describe('what the factory reads', () => {
     expect(machineKind(null)).toBeNull()
     expect(panelUrl('Hostinger International')).toMatch(/^https:\/\/hpanel\.hostinger\.com/)
     expect(panelUrl('Some Unknown Host')).toBeUndefined()
+    expect(hostName('Hostinger Operations UAB')).toBe('Hostinger')
+    expect(hostName('DigitalOcean, LLC')).toBe('DigitalOcean')
   })
   it('folds processor, memory and disk into one health figure', () => {
     expect(health({ cpu: 10, mem: 30, disk: 88 })).toEqual({ load: 88, level: 'warn' })

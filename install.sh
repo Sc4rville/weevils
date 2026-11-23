@@ -1294,7 +1294,7 @@ uninstall() {
   if { [ -e "$HOME/.local/bin/tmux.bak-weevils" ] || [ -L "$HOME/.local/bin/tmux.bak-weevils" ]; } && [ ! -e "$HOME/.local/bin/tmux" ] && [ ! -L "$HOME/.local/bin/tmux" ]; then
     mv "$HOME/.local/bin/tmux.bak-weevils" "$HOME/.local/bin/tmux"
   fi
-  rm -f "$HOME/.local/bin/wv" "$HOME/.local/bin/weevils" "$HOME/.local/bin/weevils-service" "$HOME/.local/bin/weevils-hook" "$HOME/.local/bin/weevils-update"
+  rm -f "$HOME/.local/bin/wv" "$HOME/.local/bin/weevils" "$HOME/.local/bin/weevils-service" "$HOME/.local/bin/weevils-hook" "$HOME/.local/bin/weevils-update" "$HOME/.local/bin/weevilsd"
   ok "$(t un_bin)"
 
   # (Not on a Mac: the install never writes a crontab there, and reading it asks for a privacy permission.)

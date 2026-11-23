@@ -67,15 +67,17 @@ if [ "$only" = all ] || [ "$only" = brew ]; then
   install brew --agent --lang en
   check "exit code 0" [ "$(rc brew)" = 0 ]
   check "status=ok, os=macos, arch=arm64, service=launchd" [ "$(sum brew status) $(sum brew os) $(sum brew arch) $(sum brew service)" = "ok macos arm64 launchd" ]
-  check "the plist: label, node from Homebrew, KeepAlive, AbandonProcessGroup, PATH, LANG" in_mac 'python3 - <<EOF
+  check "the plist: label, runs ~/.local/bin/weevilsd (not node), KeepAlive, AbandonProcessGroup, LANG" in_mac 'python3 - <<EOF
 import plistlib, os
 d = plistlib.load(open(os.path.expanduser("~/Library/LaunchAgents/com.github.sc4rville.weevilsd.plist"), "rb"))
-assert d["Label"] == "com.github.sc4rville.weevilsd" and d["ProgramArguments"] == ["/opt/homebrew/bin/node", "server/index.ts"], d
+assert d["Label"] == "com.github.sc4rville.weevilsd" and d["ProgramArguments"] == [os.path.expanduser("~/.local/bin/weevilsd")], d
 assert d["KeepAlive"] and d["RunAtLoad"] and d["AbandonProcessGroup"], d
-p = d["EnvironmentVariables"]["PATH"].split(":")
-assert "/opt/homebrew/bin" in p and os.path.expanduser("~/.local/bin") in p and len(p) == len(set(p)), p
-assert d["EnvironmentVariables"]["LANG"].endswith("UTF-8"), d
+assert "PATH" not in d["EnvironmentVariables"] and d["EnvironmentVariables"]["LANG"].endswith("UTF-8"), d
 EOF'
+  check "  … service.conf: node from Homebrew, PATH" in_mac '. ~/.config/weevils/service.conf && [ "$WEEVILS_NODE" = /opt/homebrew/bin/node ] && python3 -c "
+import os, sys
+p = sys.argv[1].split(\":\")
+assert \"/opt/homebrew/bin\" in p and os.path.expanduser(\"~/.local/bin\") in p and len(p) == len(set(p)), p" "$WEEVILS_PATH"'
   check "the update agent: weevils-update every 25 minutes, not at load" in_mac 'python3 - <<EOF
 import plistlib, os
 d = plistlib.load(open(os.path.expanduser("~/Library/LaunchAgents/com.github.sc4rville.weevils-update.plist"), "rb"))
@@ -95,8 +97,12 @@ EOF'
   in_mac '~/.local/bin/weevils-service start' >/dev/null 2>&1
   check "start: it answers" up
   code=$(in_mac 'cat ~/.config/weevils/secret')
+  calls=$(in_mac 'wc -l </var/fakemac/calls.log' | tr -d ' ')
   install brew2 --agent --lang en
   check "a second run: status=ok, same access code" [ "$(sum brew2 status) $(in_mac 'cat ~/.config/weevils/secret')" = "ok $code" ]
+  # macOS announces every load of an agent ("Background Items Added"): an unchanged one is restarted in place.
+  check "  … weevilsd restarted in place (kickstart -k), no agent loaded again" in_mac "tail -n +$((calls + 1)) /var/fakemac/calls.log >/tmp/calls2 && grep -q 'launchctl kickstart -k gui/501/com.github.sc4rville.weevilsd' /tmp/calls2 && ! grep -E 'launchctl (bootstrap|bootout)' /tmp/calls2"
+  check "  … and it answers" up
   check "--domain is refused on a Mac" in_mac '! ~/weevils/install.sh --agent --domain example.com >/tmp/d.log 2>&1 && grep -q "status=failed" /tmp/d.log'
   check "no crontab, no GNU-only usage" sh -c "docker exec $c sh -c '! grep -q crontab /var/fakemac/calls.log'"
   check "  (gnuisms.log empty)" no_gnuisms

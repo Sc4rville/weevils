@@ -4,6 +4,12 @@ A short summary of what changed after the first working version.
 
 ## 2026-11-23
 
+### macOS
+- No more "Background Items Added: node" notifications all day: every update and every restart took the launchd
+  agent out of launchd and loaded it again, which macOS announces each time, named after the agent's program, node.
+  The agent now runs `~/.local/bin/weevilsd` (it starts node, whose path and PATH come from `service.conf`), its file
+  is only rewritten when it changes, and a restart with the same file is a `launchctl kickstart -k`.
+
 ### Themes
 - Two new themes in the theme selector: **coastal** (littoral), a light seaside day (surf-blue top, sand 24/7, sea-spray
   calm band, navy ink, projects in blues from sea foam through turquoise and azure to lavender, a buoy-red star);

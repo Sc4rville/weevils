@@ -1,6 +1,5 @@
 import type { Ask } from './asks.ts'
 import type { ForYouMark } from './foryou.ts'
-import type { FactoryPanel, MetricRef, PromotionReason } from './factory.ts'
 
 // Contrat entre weevilsd (VPS) et l'app. Horodatages en millisecondes, compteurs toujours dérivés côté app.
 
@@ -424,33 +423,10 @@ export interface Optimizer {
   acceptedAt?: number
   /** Automatisation intégrée à weevilsd (server/cost.ts) : elle tourne dans le serveur, sans session d'agent. */
   builtin?: 'cost'
-  /** Its stable short name in the mother folder (docs/automations/PROTOCOL.md): a factory's repository name. */
+  /** Its stable short name in the mother folder (docs/automations/PROTOCOL.md). */
   name?: string
-  /** It graduated (the person's own tap): its repository, and the panels its manifest declares for its page. */
-  factory?: FactoryInfo
-  /** Present only while it is eligible to become a factory and was not put off: why, in measured facts. */
-  promotion?: { reasons: PromotionReason[] }
   /** The weevils page its results live on (`<kind>/<slug>`): from its manifest, else the newest run that named one. */
   resultsPage?: string
-}
-
-/** A factory (PROTOCOL.md, sections 9 and 11). remote: pushed to GitHub, waiting for it (no GitHub connected, or the
- *  push failed: `note` says which), or local on purpose. */
-export interface FactoryInfo {
-  name: string
-  unlockedAt: number
-  /** `<owner>/<name>` on GitHub, once created. */
-  repository?: string
-  remote: 'pushed' | 'pending' | 'local'
-  /** pending: what it waits for. github: no GitHub connected; secret: its source holds what looks like a secret
-   *  (`detail` names the kinds, never a value); origin: it already has another origin; taken: both names exist
-   *  (`detail`); name: its name cannot be a repository's; failed: the push did not go through. */
-  note?: 'github' | 'secret' | 'origin' | 'taken' | 'name' | 'failed'
-  detail?: string
-  /** The page its manifest declares, checked (shared/factory.ts parsePanels); absent: the default page. */
-  panels?: FactoryPanel[]
-  /** The numbers its manifest declares, for their labels. */
-  metrics?: MetricRef[]
 }
 
 /** Un passage d'une automatisation : at = fin, startedAt = début. */

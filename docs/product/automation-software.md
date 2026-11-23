@@ -1,8 +1,8 @@
 # Automation software lifecycle
 
 This is shared product behavior for Claude, Codex and every installation. It does not depend on personal memory.
-The conventions built on it (the automation folder, manifest schema 2, run cards, the path from automation to
-factory, the factory's page) are in [the Autonomous protocol](../automations/PROTOCOL.md).
+The conventions built on it (the automation folder, manifest schema 2, run cards) are in
+[the Autonomous protocol](../automations/PROTOCOL.md).
 
 ## Delete the automation, keep its work
 

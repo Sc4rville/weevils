@@ -14,7 +14,7 @@ once, and the code follows. Behaviour is never flipped back and forth.
   the app's own motion (`Collapse`) and is remembered, as on the classic home. Its « / » and « > » keep their own
   taps. In the weevils block at the top, the logo opens weevboss and the name folds, like every project's name
   (2026-11-21; this replaces « the logo and the name open weevboss »).
-  The **Autonomous** section (what runs on its own: automations and factories; it was « Automations » until
+  The **Autonomous** section (what runs on its own; it was « Automations » until
   2026-11-21, docs/automations/PROTOCOL.md) folds the same way, from its name. Its rows are one colour, a gentle staircase: each row
   one small tone step from the one above, like the stacked blocks of the weevils logo; no lines, no gaps, no shadows.
   Its last row runs straight into the settings below: colour alone separates the bands, never a strip (2026-11-22).
@@ -37,12 +37,6 @@ once, and the code follows. Behaviour is never flipped back and forth.
   published, else that run's results), then its next run, its schedule, its last run and how it went, its count, where
   it works. A small « Conversation » in its header (no box) flips, with the app's fade, to the conversation it runs in
   (to read it or take it over); there it is exactly a session's screen (the same head, thread and box), and the automation's own icon, the last item of that one-row head, flips back to « Overview » (2026-11-23: never drawn over the title or the model). A draft or a proposal opens on the app's own talk page.
-- **A factory has its own icon and its own page.** In the Autonomous section an automation wears the loop, a
-  factory the factory icon (the same square with a saw-tooth roof and a chimney); while one runs, its own mark
-  travels its outline. A factory's row opens on the page its manifest declares, drawn by the app's own `FactoryPage`
-  (`src/ui/factory-page.tsx`): the same small flip goes to its conversation and back. An automation that earned it
-  shows one quiet line under its overview's facts, « Ready to become a factory »: a tap unfolds what the unlock does
-  and its two answers. Nothing else in next says « factory »: no badge, no counter.
 - **Your factory** (2026-11-23; drawn « your factory », lowercase: briefly « factory » the same day, back to « your factory »): one band right under Autonomous, the same height, the same staircase, folded until
   opened (and remembered). Open, it holds four bands, each one tone step below the last: **Machines**, **Intelligence**,
   **Projects**, and the global **Tempo**. A level's name unfolds its own bands the same way (one per thing, a step

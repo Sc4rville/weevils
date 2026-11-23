@@ -10,9 +10,8 @@ import { focusBoss } from './follow'
 export type OpenStep = { to: 'page'; page: Page } | { to: 'boss'; mid?: string } | { to: 'autos' }
 
 /**
- * What a target leads to on this snapshot. An automation opens on its own page (where its facts, its talk and, when it
- * earned it, its factory proposal are); one that no longer exists, or a target that names none, opens the list of
- * automations. null: a target this app does not know (a newer server): the post then shows no button for it.
+ * What a target leads to on this snapshot. An automation opens on its own page (where its facts and its talk are);
+ * one that no longer exists, or a target that names none, opens the list of automations. null: a target this app does not know (a newer server): the post then shows no button for it.
  */
 export function resolveOpen(target: ForYouOpen | undefined, snap: Pick<Snapshot, 'optimizers' | 'h24'>, projectId?: string): OpenStep | null {
   if (!target) return null

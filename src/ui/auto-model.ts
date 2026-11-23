@@ -41,8 +41,6 @@ export interface AutoItem {
   title: string
   /** Its family in the drawer (Optimizer.group). */
   group?: string
-  /** It graduated (docs/automations/PROTOCOL.md): the factory icon, its own page. */
-  factory?: boolean
   state: AutoState
   /** waiting / queued: what holds it (busy, load, ram, queue, later, time, paused). */
   waiting?: Optimizer['waiting']
@@ -157,7 +155,6 @@ export function fromOptimizer(o: Optimizer, projectId: string | null = null, now
     src: 'optimizer',
     title: o.title,
     group: o.group,
-    ...(o.factory ? { factory: true } : {}),
     state,
     waiting: o.waiting,
     startedAt: o.startedAt ?? null,

@@ -5,7 +5,7 @@ import M from './i18n/automation-workspaces.ts'
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import type { ManifestSchedule } from '../shared/factory.ts'
+import type { ManifestSchedule } from '../shared/automation-manifest.ts'
 
 export interface AutomationSoftware {
   id:string; repository:string; revision:string; status:'ready'|'pending-running'; legacyWorkspace:string
@@ -140,11 +140,10 @@ Everything weevils runs on its own for you lives here (the protocol: docs/automa
 
 - \`projects/auto-<id>/\`: one small Git repository per automation. \`automation.json\` says what it is (name, purpose,
   schedule, scope, where it works); \`src/run.mjs\` is what runs; \`PLAYBOOK.md\`, when there is one, is its method.
-- \`registry/\`: the index (id, name, kind, folder; a factory's repository address).
+- \`registry/\`: the index (id, name, kind, folder).
 - \`.versions/\`: read-only snapshots of the exact source each run executes.
 
 The schedule and the rules of an automation are changed in the app, never here: the manifest only mirrors them.
-A factory is an automation that graduated: its folder stays here and is also its own private GitHub repository.
 Nothing in this folder holds a secret, a run's output or a conversation.
 `
 
@@ -153,12 +152,12 @@ const METADATA_FILES = new Set(['automation.json', 'README.md'])
 
 /** Schema 2 on top of whatever the manifest holds: the mirrored fields replaced, everything else kept, in a fixed order. */
 export function manifestV2(current: Record<string, unknown>, m: ManifestMirror): Record<string, unknown> {
-  const { schemaVersion: _v, id, kind, name, title: _t, purpose: _p, owner: _o, schedule: _s, scope: _c, entrypoint, steps, playbook, results, metrics, runtime, factory, page, ...rest } = current
+  const { schemaVersion: _v, id, kind: _k, name, title: _t, purpose: _p, owner: _o, schedule: _s, scope: _c, entrypoint, steps, playbook, results, metrics, runtime, ...rest } = current
   const declared = results && typeof results === 'object' && typeof (results as { page?: unknown }).page === 'string' ? results : undefined
   return {
     schemaVersion: 2,
     id,
-    kind: kind === 'factory' ? 'factory' : 'automation',
+    kind: 'automation',
     // The name is given once: a later change of title never renames a repository.
     name: typeof name === 'string' && name ? name : m.name,
     title: m.title,
@@ -172,13 +171,11 @@ export function manifestV2(current: Record<string, unknown>, m: ManifestMirror):
     ...(declared ? { results: declared } : m.results ? { results: { page: m.results } } : {}),
     ...(metrics ? { metrics } : {}),
     runtime,
-    ...(factory ? { factory } : {}),
-    ...(page ? { page } : {}),
     ...rest,
   }
 }
 
-/** Mirror, factory mark and registry: the manifest's own changes, each one commit, never touching what is executed. */
+/** Mirror and registry: the manifest's own changes, each one commit, never touching what is executed. */
 export class AutomationManifests {
   readonly w: AutomationWorkspaces
   constructor(w: AutomationWorkspaces) { this.w = w }
@@ -190,16 +187,6 @@ export class AutomationManifests {
       return m && typeof m === 'object' && !Array.isArray(m) ? m : null
     } catch {
       return null
-    }
-  }
-
-  /** Commits someone made to its source: every commit but weevils' own bookkeeping (the adoption, the manifest's
-   *  mirror, the factory mark), which says nothing about how much it grew. 0 when unknown. */
-  commits(software: AutomationSoftware): number {
-    try {
-      return Number(git(software.repository, 'rev-list', '--count', '--invert-grep', '--grep=^chore(auto): ', '--grep=^chore(manifest): ', '--grep=^feat(factory): ', 'HEAD')) || 0
-    } catch {
-      return 0
     }
   }
 
@@ -245,18 +232,6 @@ export class AutomationManifests {
     return this.write(software, next, current.schemaVersion === 2 ? 'chore(manifest): mirror the scheduler\'s record' : 'chore(manifest): schema 2')
   }
 
-  /** The unlock's mark: `kind: factory` and when, one commit. The entrypoint and every mirrored field are untouched. */
-  markFactory(software: AutomationSoftware, name: string, unlockedAt: number): AutomationSoftware {
-    if (software.status !== 'ready') throw new Error(tr(M).contract)
-    if (!this.clean(software.repository)) throw new Error(tr(M).dirtySource)
-    const current = this.read(software, 'HEAD')
-    if (!current || current.id !== software.id) throw new Error(tr(M).identity)
-    if (current.kind === 'factory') return software
-    const { factory: _f, page, ...rest } = current
-    const next = { ...rest, kind: 'factory', name, factory: { name, unlockedAt: new Date(unlockedAt).toISOString() }, ...(page ? { page } : {}) }
-    return this.write(software, next, `feat(factory): ${name} becomes a factory`)
-  }
-
   /** A stranger opening the mother folder reads what it is: written once, never overwritten (it may be edited). */
   describe() {
     const file = path.join(this.w.root, 'README.md')
@@ -264,8 +239,8 @@ export class AutomationManifests {
     fs.writeFileSync(file, MOTHER_README)
   }
 
-  /** The registry's line for an automation: where it is, what it is called, what it is, where it is published. */
-  register(id: string, o: { name?: string; kind?: 'automation' | 'factory'; remote?: string }) {
+  /** The registry's line for an automation: where it is, what it is called, what it is. */
+  register(id: string, o: { name?: string }) {
     const registry = path.join(this.w.root, 'registry')
     const rel = `automations/${id}.json`
     const file = path.join(registry, rel)
@@ -275,7 +250,7 @@ export class AutomationManifests {
     } catch {
       return
     }
-    const next = { ...current, schemaVersion: 2, ...(o.name ? { name: o.name } : {}), ...(o.kind ? { kind: o.kind } : {}), ...(o.remote ? { remote: o.remote } : {}) }
+    const next = { ...current, schemaVersion: 2, ...(o.name ? { name: o.name } : {}), kind: 'automation' }
     if (JSON.stringify(next) === JSON.stringify(current)) return
     atomic(file, next)
     git(registry, 'add', '--', rel)

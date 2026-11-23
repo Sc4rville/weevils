@@ -192,10 +192,6 @@ export const api = {
   pauseOptimizer: (id: string, paused: boolean) => call<{ ok: boolean }>('POST', `/api/optimizers/${enc(id)}/pause`, { paused }),
   /** Maintenant, dès que la machine est libre. */
   runOptimizer: (id: string) => call<{ ok: boolean }>('POST', `/api/optimizers/${enc(id)}/run`, {}),
-  /** From automation to factory (docs/automations/PROTOCOL.md): one open counted, the unlock, « not now ». */
-  autoSeen: (id: string, what: 'page' | 'run' | 'results' | 'card') => call<{ ok: boolean }>('POST', `/api/auto/${enc(id)}/seen`, { what }),
-  unlockFactory: (id: string) => call<{ item: Optimizer }>('POST', `/api/auto/${enc(id)}/factory/unlock`, {}),
-  laterFactory: (id: string) => call<{ item: Optimizer }>('POST', `/api/auto/${enc(id)}/factory/later`, {}),
   /** The trigger without a model: « when I sleep », and whether it stops on wake. */
   autoTrigger: (id: string, t: { onSleep?: boolean; stopOnWake?: boolean }) => call<{ item: Optimizer }>('POST', `/api/optimizers/${enc(id)}/trigger`, t),
   conversations: (opts: { project?: string; q?: string }) => call<{ conversations: ConversationSummary[] }>('GET', `/api/conversations?${new URLSearchParams(opts)}`),

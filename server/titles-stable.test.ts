@@ -25,3 +25,15 @@ it('bounds title retry delay at one hour', () => {
   expect(retry.ready(3_599_999)).toBe(false)
   expect(retry.ready(3_600_000)).toBe(true)
 })
+
+it('a title follows the current work: the namer is asked for topicChanged in every answer format, on a new request too', async () => {
+  const M = (await import('./i18n/titles.ts')).default
+  for (const l of ['en', 'fr'] as const) {
+    // Without Codex (no output schema) the format said in the prompt is all the model sees: it must carry the field,
+    // or no title ever moves again.
+    expect(M[l].jsonOnly).toContain('"topicChanged"')
+    const p = M[l].prompt('Alex', '[]')
+    expect(p).not.toMatch(/ONLY when the user explicitly|UNIQUEMENT si l’utilisateur demande explicitement/)
+    expect(p).toMatch(/previousTitle/)
+  }
+})

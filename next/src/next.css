@@ -147,6 +147,10 @@ body { overflow: hidden; }
 .nx-settings .settings-band { padding-bottom: 0; }
 .nx-settings .settings-band > .in.head { min-height: var(--band-h); padding-top: 0; padding-bottom: 0; display: flex; align-items: center; box-sizing: border-box; }
 .nx-project-name { font-size: 20px; letter-spacing: -0.01em; }
+/* The working star of a project sits in one column, just left of its « / », whatever the name's length: the name
+   takes the room, the star ends the row's tap area (2026-11-23). */
+.nx-project-line .nx-project-name { flex: 1 1 auto; min-width: 0; }
+.nx-project-line .nx-project-head > .spin, .nx-boss-row .nx-fold > .spin { flex: none; }
 .nx-row.nx-sub { min-height: 46px; padding-top: 7px; padding-bottom: 7px; background: transparent; }
 .nx-row.nx-sub.tone { background: oklch(from var(--c) calc(l + var(--dl)) calc(c * 1.06) h); }
 .nx-row.nx-current { box-shadow: inset 3px 0 0 var(--ink); }

@@ -43,3 +43,10 @@ it("next places weevboss's strip from the stage's own height, never innerHeight 
   expect(main).toMatch(/useState\(\(\) => screenHeight\(\)\)/)
   expect(main).not.toMatch(/setH\(innerHeight\)/)
 })
+
+it("a project's working star sits in one column just left of its « / »: the name takes the room before it", () => {
+  expect(body('.nx-project-line .nx-project-name')).toMatch(/flex:\s*1 1 auto/)
+  expect(body('.nx-project-line .nx-project-name')).toMatch(/min-width:\s*0/)
+  expect(body('.nx-project-line .nx-project-head')).toMatch(/flex:\s*1/)
+  expect(body('.nx-boss-row .nx-fold')).toMatch(/flex:\s*1/)
+})

@@ -40,7 +40,8 @@ once, and the code follows. Behaviour is never flipped back and forth.
 - **Your factory** (2026-11-23; drawn « your factory », lowercase: briefly « factory » the same day, back to « your factory »): one band right under Autonomous, the same height, the same staircase, folded until
   opened (and remembered). Open, it holds four bands, each one tone step below the last: **Machines**, **Intelligence**,
   **Projects**, and the global **Tempo**. A level's name unfolds its own bands the same way (one per thing, a step
-  further in), its last band a « + ». No section titles, no boxes, no buttons beyond the switches.
+  further in), its last band a « + ». No section titles, no boxes, no buttons beyond the switches. Nothing in it is bold (2026-11-23): its levels, machines, Tempo
+  and projects read in regular weight, their order told by size and colour alone.
   - **Machines**: one band per machine: a computer or a server icon (what the machine found out about itself), its
     name (hold it to rename it in place), a thin health bar under the name (the fullest of processor, memory and disk;
     ink, then orange, then red; no figures there), and on the right a plain rectangular switch. Off: nothing new starts

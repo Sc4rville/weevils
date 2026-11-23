@@ -119,6 +119,9 @@ body { overflow: hidden; }
 .nx-row-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-row-sub { font-size: 13px; opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-active .nx-row-title { font-weight: 800; }
+/* …but never inside your factory (2026-11-23): its levels, machines, Tempo and projects read in regular weight, their
+   order told by size and colour alone. */
+.nx-factory .nx-fx-band .nx-row-title { font-weight: 400; }
 
 .nx-signin { position: fixed; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: var(--pad); }
 .nx-signin form { display: flex; gap: 8px; }
@@ -292,11 +295,11 @@ body { overflow: hidden; }
   -webkit-touch-callout: none; user-select: none;
 }
 .nx-fx-main:disabled { cursor: default; opacity: 1; }
-.nx-fx-level { font-weight: 700; font-size: 17px; }
+.nx-fx-level { font-weight: 400; font-size: 17px; }
 .nx-fx-text { flex: 1; gap: 5px; }
-.nx-fx-plan { font-weight: 500; opacity: .6; }
+.nx-fx-plan { font-weight: 400; opacity: .6; }
 .nx-fx-dim .nx-fx-main { opacity: .5; }
-.nx-fx-name { flex: 1; min-width: 0; font: inherit; font-weight: 700; color: var(--ink); background: transparent; border: 0; outline: 0; padding: 4px 0;
+.nx-fx-name { flex: 1; min-width: 0; font: inherit; font-weight: 400; color: var(--ink); background: transparent; border: 0; outline: 0; padding: 4px 0;
   box-shadow: inset 0 -2px 0 color-mix(in oklab, var(--ink) 40%, transparent); }
 
 /* The switch: a plain rectangle, its square knob; on, filled with the ink and the knob in the band's colour. */
@@ -335,13 +338,13 @@ body { overflow: hidden; }
 [data-theme='light'] .nx-fx-busy, [data-theme='zen'] .nx-fx-busy, [data-theme='coastal'] .nx-fx-busy, [data-theme='botanical'] .nx-fx-busy, [data-theme='desert'] .nx-fx-busy { color: oklch(0.55 0.22 var(--nx-hue)); }
 @keyframes nx-hue { to { --nx-hue: 360deg; } }
 .nx-fx-logo .tool-svg { display: block; }
-.nx-fx-initial { display: grid; place-items: center; width: 18px; height: 18px; border: 2px solid currentColor; font-size: 11px; font-weight: 800; line-height: 1; }
+.nx-fx-initial { display: grid; place-items: center; width: 18px; height: 18px; border: 2px solid currentColor; font-size: 11px; font-weight: 400; line-height: 1; }
 
 /* Turning off a machine at work: one short line, two words. */
 .nx-fx-confirm { gap: 14px; font-size: 14px; }
 .nx-fx-ask { flex: 1; min-width: 0; }
 .nx-fx-word { background: none; border: 0; padding: 6px 2px; color: inherit; font: inherit; font-size: 14px; opacity: .75; }
-.nx-fx-word.strong { font-weight: 800; opacity: 1; }
+.nx-fx-word.strong { font-weight: 400; opacity: 1; }
 
 /* A project's band wears its repo's colour, as in the side bar, with the repo mark. */
 .nx-fx-band.nx-fx-project { background: var(--c) !important; }
@@ -352,7 +355,7 @@ body { overflow: hidden; }
 .nx-fx-tempo { flex-wrap: wrap; row-gap: 4px; }
 .nx-fx-hint { flex-basis: 100%; font-size: 13px; opacity: .8; }
 .nx-fx-tempo-name { flex: none; width: 92px; display: flex; flex-direction: column; gap: 2px; }
-.nx-fx-mode { font-size: 13px; font-weight: 700; line-height: 1.25; }
+.nx-fx-mode { font-size: 13px; font-weight: 400; line-height: 1.25; }
 .nx-fx-cells { flex: 1; min-width: 0; height: 32px; display: flex; touch-action: none; cursor: ew-resize; outline: 0; }
 .nx-fx-cells:focus-visible { box-shadow: var(--focus-halo); }
 .nx-fx-cell { flex: 1; display: grid; place-items: center; color: var(--ink); opacity: .38; transition: background-color .16s, opacity .16s; }

@@ -99,3 +99,13 @@ it('your factory > Projects: a small switch, then the side bar’s own « / » a
   // The same right edge as a repo's row in the side bar.
   expect(px(body('.nx-fx-band.nx-fx-project'), 'padding-right')).toBe(px(body('.nx-project-line'), 'padding-right'))
 })
+
+it('nothing inside your factory is bold: hierarchy by size and colour only', () => {
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => /\.nx-fx-|\.nx-factory/.test(m[1]))
+  for (const [, sel, decl] of rules) {
+    const w = /font-weight:\s*(\d+)/.exec(decl)?.[1]
+    if (w) expect(`${sel.trim()} ${w}`).toBe(`${sel.trim()} 400`)
+  }
+  // A busy machine stays regular too (bold = an active band of the side bar, never inside your factory).
+  expect(body('.nx-factory .nx-fx-band .nx-row-title')).toMatch(/font-weight:\s*400/)
+})

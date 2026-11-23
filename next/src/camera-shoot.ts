@@ -8,11 +8,15 @@ import { isMark, type Box } from './camera-geometry.ts'
 const WEBKIT = typeof navigator !== 'undefined' && /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent)
 /** Past this, the picture is given up (the screen unfreezes and says so): never a frozen screen that waits forever. */
 export const SHOOT_MS = 20_000
+/** The picture given up past SHOOT_MS (the line then says it took too long). */
+export class SlowShot extends Error {}
+/** An empty picture, in place of a photo off the screen during the copy. */
+const NONE = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='
 
 /** The page drawn again by the browser itself, at the size of the screen; the camera's own layers left out. */
 export async function shoot(): Promise<HTMLCanvasElement> {
   let timer: ReturnType<typeof setTimeout> | undefined
-  const late = new Promise<never>((_, ko) => { timer = setTimeout(() => ko(new Error('capture too slow')), SHOOT_MS) }) // i18n-ignore
+  const late = new Promise<never>((_, ko) => { timer = setTimeout(() => ko(new SlowShot('capture too slow')), SHOOT_MS) }) // i18n-ignore
   try {
     return await Promise.race([make(), late])
   } finally {
@@ -38,17 +42,20 @@ async function make(): Promise<HTMLCanvasElement> {
   const w = innerWidth
   // Installed on an iPhone, the stage can be a status bar taller than innerHeight (src/ui/viewport.ts).
   const h = screenHeight()
-  // The copy waits for every picture of the page to load, even far off screen: Safari never loads a photo of the
-  // thread that is not near the screen (loading="lazy"), so it waited its whole timeout, 8 s (2026-11-23). Those are
-  // set aside for the copy (they are not in the picture), and put back just after.
-  const parked: [HTMLImageElement, string | null, string | null][] = []
+  // Photos off the screen are left out of the copy, at their size (the page keeps its layout): they are not in the
+  // picture. The copy waited for each one to load, and Safari never loads a photo of the thread far from the screen
+  // (loading="lazy"): 8 s (2026-11-23). And each one loaded was copied into the picture: megabytes for an iPhone to
+  // draw on a long thread. Put back just after.
+  const parked: [HTMLImageElement, string | null, string | null, string | null][] = []
   document.querySelectorAll('img').forEach((img) => {
-    if (img.complete || isMark(img)) return
+    if (isMark(img)) return
     const r = img.getBoundingClientRect()
     if (r.bottom > 0 && r.top < h && r.right > 0 && r.left < w) return
-    parked.push([img, img.getAttribute('src'), img.getAttribute('srcset')])
+    parked.push([img, img.getAttribute('src'), img.getAttribute('srcset'), img.getAttribute('style')])
+    img.style.width = `${r.width}px`
+    img.style.height = `${r.height}px`
     img.removeAttribute('srcset')
-    img.removeAttribute('src')
+    img.setAttribute('src', NONE)
   })
   let svg: SVGElement
   try {
@@ -72,9 +79,12 @@ async function make(): Promise<HTMLCanvasElement> {
     })
   } finally {
     named.forEach((el) => el.removeAttribute('data-wv-ph'))
-    for (const [img, src, set] of parked) {
+    for (const [img, src, set, style] of parked) {
       if (set !== null) img.setAttribute('srcset', set)
       if (src !== null) img.setAttribute('src', src)
+      else img.removeAttribute('src')
+      if (style !== null) img.setAttribute('style', style)
+      else img.removeAttribute('style')
     }
   }
   return draw(svg, w, h, Math.min(devicePixelRatio || 1, 2), bg)
@@ -99,14 +109,14 @@ async function draw(svg: SVGElement, w: number, h: number, scale: number, bg: st
   }
   paint()
   // Safari fills in the SVG's own pictures (photos, textures, fonts) over the next draws: drawn again until two passes
-  // agree, at most eight (under a second).
+  // agree, three at least (the first two can both miss them), ten at most (about a second).
   if (WEBKIT) {
     let before = print(g, c)
-    for (let i = 0; i < 8; i++) {
-      await new Promise((r) => setTimeout(r, 80))
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 90))
       paint()
       const now = print(g, c)
-      if (now === before) break
+      if (now === before && i >= 2) break
       before = now
     }
   }

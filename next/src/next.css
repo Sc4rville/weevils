@@ -423,9 +423,21 @@ body { overflow: hidden; }
 .cam-wait { position: absolute; left: 50%; top: 46%; width: 28px; height: 28px; margin: -14px 0 0 -14px; display: grid; place-items: center; pointer-events: none; }
 .cam-wait .ic { width: 28px; height: 28px; }
 .cam-error {
-  position: fixed; left: 0; right: 0; top: calc(var(--safe-t) + 14px); z-index: 1003; text-align: center;
-  font-size: 15px; font-weight: 700; color: var(--ink); pointer-events: none;
+  position: fixed; left: 12px; right: 12px; top: calc(var(--safe-t) + 10px); z-index: 1003; display: flex; align-items: center;
+  gap: 10px; padding: 10px 6px 10px 14px; font-size: 15px; font-weight: 700; color: var(--ink); background: Canvas;
+  box-shadow: 3px 3px 0 var(--ink);
 }
+.cam-error span { flex: 1; }
+/* The way out, at the top of the frozen screen and on the failure line: a cross big enough for a thumb. */
+.cam-close, .cam-error-off {
+  display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; color: var(--ink);
+  -webkit-tap-highlight-color: transparent;
+}
+.cam-close {
+  position: absolute; top: calc(var(--safe-t) + 8px); right: 8px; z-index: 2; background: Canvas; opacity: .92;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+.cam-close .ic, .cam-error-off .ic { width: 18px; height: 18px; }
 /* The capture in the box to write in: a small square on the row of buttons, a small cross on its corner. */
 .held-capture { position: relative; flex: none; order: 0; width: 36px; height: 36px; margin: 6px 12px 6px 4px; }
 .held-capture img { width: 36px; height: 36px; display: block; object-fit: cover; object-position: top; box-shadow: 2px 2px 0 var(--ink); }

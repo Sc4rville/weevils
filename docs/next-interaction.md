@@ -158,8 +158,15 @@ once, and the code follows. Behaviour is never flipped back and forth.
 - **Three taps at most** (2026-11-23, from a real iPhone): the mark freezes the app (a light veil, a thin frame,
   nothing written) and a finger shows the double tap, twice, very fast, then is gone; **a double tap takes the whole
   screen, a drawn part takes that part** (the rest darkens); the capture is then **attached**. A single tap on the
-  frozen screen lets go, so does the mark (a cross while frozen). A picture slow to come shows a turning star; past
-  20 s the screen unfreezes and says « No capture. Try again. »: never a frozen screen with no way out.
+  frozen screen lets go, so do the cross at its top and the mark (a cross while frozen). The double tap counts from
+  the first finger lifted to the second one down, within 0.45 s (0.35 s from lift to lift missed a real thumb, and
+  the screen let go instead), and is known as soon as the second finger is down. A picture slow to come shows a
+  turning star; past 20 s, or when a step fails, the screen unfreezes and a line at the top says which step (the
+  picture not made, too slow, not attached), with a cross: never a frozen screen with no way out.
+- **The app updates itself**: an iPhone keeps the installed app in memory for hours, so a fix could be live and still
+  not on the phone (the camera of the morning kept running there). Each time the app comes back to the screen, and
+  every 5 minutes, it asks which build is served; another one and nothing under way (a word being written, a capture
+  held or frozen, a send), it loads again. Each capture carries the build that made it and how long its picture took.
 - **Attached, not sent**: no sheet. The capture waits as a small square in the box to write in, weevboss's and every
   conversation's (a small cross removes it), follows you from screen to screen, and goes with the next message sent
   from any of them, with its words. On a screen without a box (For you, the side bar, a page) the mark itself shows
@@ -167,7 +174,8 @@ once, and the code follows. Behaviour is never flipped back and forth.
 - **weevils makes the picture itself**, from its own page, drawn again by the phone's browser (same fonts, theme and
   scroll positions): never the phone's screenshot, so nothing lands in the camera roll. On Safari it took 19 s on a
   real thread (the library drew the picture again once per image, each time later, and waited for photos far off
-  screen that Safari never loads): both are left out, about a second now.
+  screen that Safari never loads): both are left out, about a second now. Photos off the screen are left out of the
+  copy at their size (a long thread was megabytes for the phone to draw).
 - **It is kept in one library**, `~/.local/share/weevils/captures/<project or screen>/`, each picture with what it
   shows (screen, conversation, page, theme, size, region, time); `weevils captures [words] [--ui]` searches it. The
   thread shows only its small thumbnail; the agent reads the picture and that context.

@@ -23,13 +23,22 @@ export function place(clientY: number, h: number): number {
 export const mark = { 'data-wv-camera': '' } as const
 export const isMark = (n: Node) => n instanceof Element && n.hasAttribute('data-wv-camera')
 
-/** How long a first tap waits for its second (a double tap) before it counts alone. */
-export const TAP_MS = 350
+/** How long a first tap waits for its second (a double tap) before it counts alone: from the finger lifted to the
+ *  finger down again. 0.35 s from lift to lift missed a real thumb's double tap: the screen let go instead (2026-11-23). */
+export const TAP_MS = 450
+/** How far the second tap of a double tap may land from the first, in screen pixels. */
+export const TAP_PX = 60
+/** Past this, a finger held without drawing is not a tap. */
+export const PRESS_MS = 600
 
-/** A finger lifted without drawing, on the frozen screen: the second of a double tap (soon after the first, close to
- *  it), a tap alone, or none (held too long to be a tap). */
-export function tapKind(last: { at: number; x: number; y: number }, now: { at: number; x: number; y: number }, pressMs: number): 'double' | 'single' | 'none' {
-  if (pressMs > 600) return 'none'
-  if (last.at && now.at - last.at < TAP_MS && Math.hypot(now.x - last.x, now.y - last.y) < 44) return 'double'
-  return 'single'
+export interface Tap { x: number; y: number; at: number; t?: number }
+
+/** A finger going down on the frozen screen soon after a tap, close to it: the second tap of a double tap. « at » is
+ *  when the page saw it, « t » when the phone did (the event's own time): either is enough, so a page busy making the
+ *  picture, that sees both taps late, still counts them as one double tap. */
+export function secondTap(last: Tap | null, now: Tap): boolean {
+  if (!last) return false
+  if (Math.hypot(now.x - last.x, now.y - last.y) >= TAP_PX) return false
+  const soon = (a?: number, b?: number) => a !== undefined && b !== undefined && a > 0 && b >= a && b - a < TAP_MS
+  return soon(last.at, now.at) || soon(last.t, now.t)
 }

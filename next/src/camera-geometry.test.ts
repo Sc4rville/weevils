@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { place, region, tapKind, TAP_MS } from './camera-geometry.ts'
+import { place, region, secondTap, TAP_MS } from './camera-geometry.ts'
 
 describe('camera geometry', () => {
   it('draws the same box whichever way the finger goes', () => {
@@ -14,12 +14,14 @@ describe('camera geometry', () => {
     expect(place(844, 844)).toBe(0.8)
     expect(place(422, 844)).toBe(0.5)
   })
-  it('tells a double tap from a tap alone and from a finger held down', () => {
-    const first = { at: 1000, x: 200, y: 500 }
-    expect(tapKind({ at: 0, x: 0, y: 0 }, first, 80)).toBe('single')
-    expect(tapKind(first, { at: 1000 + 120, x: 206, y: 497 }, 70)).toBe('double')
-    expect(tapKind(first, { at: 1000 + TAP_MS + 30, x: 200, y: 500 }, 70)).toBe('single')
-    expect(tapKind(first, { at: 1100, x: 320, y: 500 }, 70)).toBe('single')
-    expect(tapKind({ at: 0, x: 0, y: 0 }, first, 900)).toBe('none')
+  it('counts a second tap from the lifted finger, generously, by either clock', () => {
+    const first = { at: 1000, t: 1000, x: 200, y: 500 }
+    expect(secondTap(null, first)).toBe(false)
+    // A thumb's double tap: down again 0.3 s after the lift (it missed with the earlier 0.35 s from lift to lift).
+    expect(secondTap(first, { at: 1300, t: 1300, x: 206, y: 497 })).toBe(true)
+    expect(secondTap(first, { at: 1000 + TAP_MS + 30, t: 1000 + TAP_MS + 30, x: 200, y: 500 })).toBe(false)
+    expect(secondTap(first, { at: 1100, t: 1100, x: 320, y: 500 })).toBe(false)
+    // The page was busy making the picture: it saw the second tap late, the phone did not.
+    expect(secondTap(first, { at: 1900, t: 1200, x: 200, y: 500 })).toBe(true)
   })
 })

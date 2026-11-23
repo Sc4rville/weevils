@@ -33,6 +33,7 @@ import { slide } from './moves.ts'
 import { foldPrefs, saveFold } from './fold.ts'
 import { closesSideBar } from './keys.ts'
 import { registerWorker, useWorker } from './worker.ts'
+import { keepFresh } from './fresh.ts'
 import { pageLink } from '../../shared/pages.ts'
 import { toAutos, toBoss, type Reach } from './reach.ts'
 import { FOCUS_BOSS } from '../../src/ui/follow.ts'
@@ -713,4 +714,5 @@ function SignIn({ login }: { login: (code: string) => Promise<void> }) {
 }
 
 registerWorker()
+keepFresh()
 createRoot(document.getElementById('root')!).render(<StrictMode><MotionConfig reducedMotion="user"><App /></MotionConfig></StrictMode>)

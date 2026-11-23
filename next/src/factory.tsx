@@ -247,6 +247,16 @@ function TempoCells({ step }: { step: number }) {
   const track = useRef<HTMLDivElement>(null)
   const timer = useRef<number | null>(null)
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), [])
+  // The finger on the cells is theirs alone: caught on the cells themselves, before the side bar's own swipe (which
+  // closes it) can see it — React's handlers run only after the side bar's.
+  const onDown = useRef<(e: PointerEvent) => void>(() => undefined)
+  useEffect(() => {
+    const el = track.current
+    if (!el) return
+    const h = (e: PointerEvent) => { e.stopPropagation(); onDown.current(e) }
+    el.addEventListener('pointerdown', h)
+    return () => el.removeEventListener('pointerdown', h)
+  }, [!!v])
   if (!v) return null
   const cells = TEMPO_MODES.slice(1)
   const open = (m: TempoMode) => v.modes.find((x) => x.id === m)?.unlocked ?? false
@@ -261,13 +271,11 @@ function TempoCells({ step }: { step: number }) {
     while (i > 0 && !open(cells[i])) i--
     return { mode: cells[i], wanted }
   }
-  const down = (e: React.PointerEvent) => {
-    // The side bar's own swipe (closing it) never starts from here.
-    e.stopPropagation()
+  onDown.current = (e: PointerEvent) => {
     const x0 = e.clientX
     let moved = false
     let last: TempoMode | null = null
-    const el = e.currentTarget as HTMLElement
+    const el = track.current!
     el.setPointerCapture?.(e.pointerId)
     const move = (ev: PointerEvent) => {
       if (!moved && Math.abs(ev.clientX - x0) < 6) return
@@ -307,7 +315,7 @@ function TempoCells({ step }: { step: number }) {
           <span className="nx-fx-mode">{t.name(locked ?? chosen)}</span>
         </span>
         <div ref={track} className={`nx-fx-cells ${drag ? 'dragging' : ''}`} role="slider" aria-label={t.globalAria(t.name(chosen))}
-          aria-valuemin={0} aria-valuemax={cells.length} aria-valuenow={lit + 1} aria-valuetext={t.name(chosen)} tabIndex={0} onPointerDown={down}
+          aria-valuemin={0} aria-valuemax={cells.length} aria-valuenow={lit + 1} aria-valuetext={t.name(chosen)} tabIndex={0}
           onKeyDown={(e) => {
             const i = TEMPO_MODES.indexOf(v.global) + (e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0)
             const m = TEMPO_MODES[i]

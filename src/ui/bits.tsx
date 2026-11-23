@@ -31,7 +31,7 @@ import { isUnread, useSeen } from './seen'
 import { AutoMark, G, Icon } from './icons'
 import { WeevbossLogo } from './logo'
 import { AppLink, LivingLink, appLink, livingLink } from './living-link'
-import { autoOfSession } from './auto-model'
+import { autoOfSession, slotOf } from './auto-model'
 
 /** Ressort commun : léger dépassement, pour que les bandes aient de l'inertie. */
 export const spring: Transition = { type: 'spring', stiffness: 420, damping: 32, mass: 0.9 }
@@ -1061,12 +1061,14 @@ function AskedLine({ text, line, who, tone, style }: { text: string; line?: stri
 export function useAuthors() {
   const { snap } = useApp()
   const list = snap.config.authors
+  const autos = snap.optimizers
   return useMemo(() => {
-    const byId = new Map((list ?? []).map((a) => [a.id, a]))
+    // An automation signs its own brief with its id (server/optimizers.ts launch): its name, its band's colour.
+    const byId = new Map<string, Author>([...(autos ?? []).map((o) => [o.id, { id: o.id, name: o.title, color: `var(--${slotOf(o.id)})` }] as const), ...(list ?? []).map((a) => [a.id, a] as const)])
     // Un auteur inconnu de la config (agent externe retiré, démo du pont e-mail) : une couleur stable de la palette.
     const tint = (id: string) => `var(--p${[...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 16})`
     return (id?: string): Author => byId.get(id ?? 'weevboss') ?? { id: id ?? 'weevboss', name: id ?? 'weevboss', color: id && id !== 'weevboss' ? tint(id) : '' }
-  }, [list])
+  }, [list, autos])
 }
 
 /** Classe et style d'une bulle signée : le violet de weevboss, ou la couleur de l'agent externe. */

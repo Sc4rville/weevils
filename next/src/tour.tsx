@@ -119,12 +119,19 @@ export function TourLayer({ stop, i, n, next, skip }: { stop: Stop | null; i: nu
   const at = rect ? captionAt(rect, innerHeight, capH) : null
   const left = rect ? Math.min(Math.max(12, rect.left), vw - width - 12) : 12
   const last = i + 1 === n
+  // Around the place, never past the screen's edges (a band that reaches them, the menu in its corner).
+  const vh = typeof innerHeight === 'number' ? innerHeight : 844
+  const halo = rect && (() => {
+    const top = Math.max(2, rect.top - pad)
+    const left = Math.max(2, rect.left - pad)
+    return { top, left, width: Math.min(vw - 2, rect.left + rect.width + pad) - left, height: Math.min(vh - 2, rect.bottom + pad) - top }
+  })()
   return (
     <div className="nx-tour" aria-live="polite">
       <AnimatePresence>
-        {rect && (
+        {halo && (
           <motion.div key="halo" className="nx-tour-halo" aria-hidden initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{ top: rect.top - pad, left: rect.left - pad, width: rect.width + pad * 2, height: rect.height + pad * 2 }} />
+            style={halo} />
         )}
       </AnimatePresence>
       <AnimatePresence mode="wait">

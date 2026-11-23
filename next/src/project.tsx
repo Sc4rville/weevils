@@ -12,8 +12,9 @@ import M from '../../src/i18n/project-screen.ts'
 export function NextProjectPage({ projectId }: { projectId: string }) {
   const t = useT(M)
   const { snap, colors } = useApp()
-  const project = snap.projects.find((p) => p.id === projectId)
-  if (!project) return <Shell slot="agent" kicker="weevils" title="…"><div /></Shell>
+  // A product weevils has no conversation for yet (Your factory > Projects, its « > »): its page all the same, empty
+  // until something is asked there.
+  const project = snap.projects.find((p) => p.id === projectId) ?? { id: projectId, name: projectId, kind: 'repo' as const, repos: [], where: {}, lastActivityAt: 0 }
   return (
     <Shell slot={colors[projectId] ?? 'agent'} kicker="weevils" title={t.requestsFor(project.name)} actions={<TempoIcon repo={project.id} />}>
       <ProjectRequests project={project} fill />

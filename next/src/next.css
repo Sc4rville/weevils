@@ -309,6 +309,17 @@ body { overflow: hidden; }
 .nx-switch.on { background: var(--ink); border-color: var(--ink); }
 .nx-switch.on i { transform: translateX(18px); background: var(--c); }
 @media (prefers-reduced-motion: reduce) { .nx-switch, .nx-switch i { transition: none; } }
+/* A project's switch (Your factory > Projects): the same switch, smaller and lighter, so the row reads as its name;
+   its tap target stays a finger wide. */
+.nx-switch.small { width: 26px; height: 15px; margin: 0 2px 0 6px; border-width: 1.5px; border-color: color-mix(in oklab, var(--ink) 35%, transparent); }
+.nx-switch.small::before { content: ''; position: absolute; inset: -15px -9px; }
+.nx-switch.small i { top: 2px; left: 2px; width: 8px; height: 8px; background: color-mix(in oklab, var(--ink) 35%, transparent); }
+.nx-switch.small.on { background: var(--ink); border-color: var(--ink); }
+.nx-switch.small.on i { transform: translateX(11px); background: var(--c); }
+/* …and the side bar's « / » and « > » on its right, as on a repo's row (.nx-project-line .chars). */
+.nx-fx-band.nx-fx-project { padding-right: 6px; }
+.nx-fx-project .chars { display: flex; flex: none; margin-left: 0; }
+.nx-fx-project .ch { background: none; border: 0; color: var(--ink); }
 
 /* A thin bar under a name: a machine's health (how full: ink, then orange, then red), a subscription's power (what is
    left: the working green, then orange, then red). */

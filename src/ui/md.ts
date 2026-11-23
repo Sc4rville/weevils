@@ -101,7 +101,8 @@ export function blocks(text: string): Block[] {
 }
 
 /** Inline emphasis around the bits Rich already reads (links, `code`, chips): bold and italic, never inside code. */
-export type Span = { kind: 'text' | 'strong' | 'em'; s: string }
+/** win: a bold phrase weevboss marked as a verified result (`[[win]]**…**`, shared/wins.ts): coloured, celebrated once. */
+export type Span = { kind: 'text' | 'strong' | 'em' | 'win'; s: string }
 
 const EMPH = /(`[^`\n]+`)|\*\*(?=\S)(.+?)(?<=\S)\*\*|__(?=\S)(.+?)(?<=\S)__|(?<![\w*])\*(?=[^\s*])([^*\n]+?)(?<=\S)\*(?![\w*])|(?<![\w_])_(?=[^\s_])([^_\n]+?)(?<=\S)_(?![\w_])/g
 
@@ -117,12 +118,16 @@ export function spans(text: string): Span[] {
     const i = m.index ?? 0
     // A link's target may hold underscores or stars: a match inside « (http…) » is left as text.
     if (!m[1] && /\]\([^)\s]*$/.test(text.slice(0, i))) continue
-    push('text', text.slice(last, i))
+    const before = text.slice(last, i)
+    const marked = !!(m[2] ?? m[3]) && /\[\[win\]\][ \t]?$/.test(before)
+    push('text', marked ? before.replace(/\[\[win\]\][ \t]?$/, '') : before)
     if (m[1]) push('text', m[1])
-    else if (m[2] ?? m[3]) push('strong', (m[2] ?? m[3])!)
+    else if (m[2] ?? m[3]) push(marked ? 'win' : 'strong', (m[2] ?? m[3])!)
     else push('em', (m[4] ?? m[5])!)
     last = i + m[0].length
   }
   push('text', text.slice(last))
-  return out
+  // A marker left alone (not before a bold phrase) never shows.
+  for (const p of out) if (p.kind === 'text' && p.s.includes('[[win]]')) p.s = p.s.replace(/\[\[win\]\][ \t]?/g, '')
+  return out.filter((p) => p.s)
 }

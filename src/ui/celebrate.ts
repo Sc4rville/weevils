@@ -122,11 +122,16 @@ function play(el: HTMLElement, id: string) {
     return
   }
   navigator.vibrate?.([10, 60, 14])
-  // The sweep: a band of the theme's colours crosses the line, left to right.
+  // A phrase weevboss marked ([[win]]**…**): its colours run through it once, and the confetti leave from it.
+  const phrases = [...el.querySelectorAll<HTMLElement>('strong.win')]
+  const anchor = phrases[0] ?? el
+  for (const ph of phrases) ph.classList.add('win-shine')
+  if (phrases.length) setTimeout(() => phrases.forEach((ph) => ph.classList.remove('win-shine')), 1400)
+  // Otherwise the sweep: a band of the theme's colours crosses the line, left to right.
   const sweep = document.createElement('span')
   sweep.className = 'win-sweep'
   sweep.style.background = `linear-gradient(100deg, transparent 0%, color-mix(in oklab, ${a} 38%, transparent) 28%, color-mix(in oklab, ${b} 34%, transparent) 52%, color-mix(in oklab, ${c} 30%, transparent) 74%, transparent 100%)`
-  layer.appendChild(sweep)
+  if (!phrases.length) layer.appendChild(sweep)
   sweep.animate([{ transform: 'translateX(-100%)' }, { transform: 'translateX(100%)' }], { duration: 1050, easing: 'cubic-bezier(.45,.05,.25,1)', fill: 'forwards' })
   // A small lift of the line itself, as it is touched by the sweep.
   el.animate([{ transform: 'none' }, { transform: 'scale(1.012)', offset: 0.35 }, { transform: 'none' }], { duration: 560, easing: 'cubic-bezier(.3,.7,.3,1)' })
@@ -136,9 +141,9 @@ function play(el: HTMLElement, id: string) {
   burst.className = 'win-burst'
   burst.setAttribute('aria-hidden', 'true')
   document.body.appendChild(burst)
-  const r0 = el.getBoundingClientRect()
+  const r0 = anchor.getBoundingClientRect()
   const place = () => {
-    const r = el.isConnected ? el.getBoundingClientRect() : r0
+    const r = anchor.isConnected ? anchor.getBoundingClientRect() : r0
     burst.style.transform = `translate(${r.left}px, ${r.top}px)`
     burst.style.width = `${r.width}px`
   }
@@ -147,7 +152,7 @@ function play(el: HTMLElement, id: string) {
     place()
     raf = requestAnimationFrame(follow)
   })
-  const n = Math.max(22, Math.min(36, Math.round(r0.width / 11)))
+  const n = Math.max(phrases.length ? 18 : 22, Math.min(36, Math.round(r0.width / 11)))
   const anims: Animation[] = []
   for (let i = 0; i < n; i++) {
     const p = document.createElement('i')

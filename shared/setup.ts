@@ -1,3 +1,4 @@
+import { withoutWinMarks } from './wins.ts'
 // Accueil et branchements par weevboss : le contrat entre weevilsd (server/setup.ts) et l'app (src/ui/setup.tsx).
 //
 // weevboss accueille et guide dans son propre fil. Ses messages (ceux du modèle comme ceux que weevilsd écrit en son
@@ -120,6 +121,7 @@ export const CHIP = /\[\[setup:([a-z]+)\]\]/g
 /** Le texte sans ses puces (pour l'afficher, le lire à voix haute ou le résumer), et les briques qu'elles désignent. */
 export function splitChips(text: string): { text: string; chips: Brick[] } {
   const chips: Brick[] = []
+  text = withoutWinMarks(text)
   const clean = text.replace(CHIP, (_m, b: string) => {
     if (isBrick(b) && !chips.includes(b)) chips.push(b)
     return ''

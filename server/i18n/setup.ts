@@ -138,7 +138,7 @@ export default defineMessages({
     joinLine: (line: string): string =>
       `Sur ton autre ordinateur, ouvre un terminal et colle cette ligne :\n\n\`${line}\`\n\nElle marche une fois, pendant une heure. Je te dis ici quand il est branché.`,
     joinKey: (id: string): string => `${id} se branche : weevils s’installe dessus, quelques minutes.`,
-    joinOnline: (name: string): string => `${name} est branché : je peux y lancer des agents.`,
+    joinOnline: (name: string): string => `[[win]]**${name} est branché** : je peux y lancer des agents.`,
     linkDown: (name: string): string => `${name} ne répond plus depuis 10 minutes. S’il est allumé, lance \`weevils-service restart\` dessus.`,
     linkBack: (name: string): string => `${name} est de nouveau connecté.`,
     joinFailed: (id: string, why: string, fix: string): string =>
@@ -162,7 +162,7 @@ export default defineMessages({
     githubDeviceFail: (why: string): string => `La connexion à GitHub n’a pas abouti (${why}). Dis-moi quand tu veux réessayer.`,
     githubDeviceDone: 'GitHub est connecté.',
     syncStart: 'Tu es connecté à GitHub et à Claude. Je synchronise tes conversations pour que tu puisses les reprendre depuis n’importe quelle machine ou abonnement.',
-    syncDone: (n: number): string => `C’est fait : ${n > 1 ? `tes ${n} conversations sont` : n === 1 ? 'ta conversation est' : 'tes conversations sont'} à toi maintenant, en sécurité sur ton GitHub. 🎉 Garde ton [code de secours](/#do=recovery) en lieu sûr : avec lui, une nouvelle machine récupère tout.`,
+    syncDone: (n: number): string => `[[win]]**C’est fait** : ${n > 1 ? `tes ${n} conversations sont` : n === 1 ? 'ta conversation est' : 'tes conversations sont'} à toi maintenant, en sécurité sur ton GitHub. 🎉 Garde ton [code de secours](/#do=recovery) en lieu sûr : avec lui, une nouvelle machine récupère tout.`,
     vpsOffer: 'Pour que weevils travaille 24 h/24, même ordinateur éteint, je te conseille un serveur (environ 5 €/mois). Je peux [le mettre en place maintenant](/#do=server), ou [te le rappeler plus tard](/#do=later).',
     vpsLater: 'D’accord, je t’en reparlerai quand ce sera utile.',
     recoveryCode: (words: string): string => `Ton code de secours, à garder comme un mot de passe (avec lui, une nouvelle machine récupère toutes tes conversations) :\n\n\`${words}\``,
@@ -387,7 +387,7 @@ export default defineMessages({
     joinLine: (line: string): string =>
       `On your other computer, open a terminal and paste this line:\n\n\`${line}\`\n\nIt works once, for an hour. I’ll tell you here when that computer is plugged in.`,
     joinKey: (id: string): string => `${id} is plugging in: weevils is installing there, a few minutes.`,
-    joinOnline: (name: string): string => `${name} is plugged in: I can run agents there now.`,
+    joinOnline: (name: string): string => `[[win]]**${name} is plugged in**: I can run agents there now.`,
     linkDown: (name: string): string => `${name} has not answered for 10 minutes. If it is on, run \`weevils-service restart\` on it.`,
     linkBack: (name: string): string => `${name} is connected again.`,
     joinFailed: (id: string, why: string, fix: string): string =>
@@ -409,7 +409,7 @@ export default defineMessages({
     githubDeviceFail: (why: string): string => `GitHub didn’t sign in (${why}). Tell me when you want to try again.`,
     githubDeviceDone: 'GitHub is connected.',
     syncStart: 'You’re connected to GitHub and Claude. I’m syncing your conversations so you can pick them up from any machine or subscription.',
-    syncDone: (n: number): string => `Done: ${n > 1 ? `your ${n} conversations are` : n === 1 ? 'your conversation is' : 'your conversations are'} yours now, safe on your GitHub. 🎉 Keep your [recovery code](/#do=recovery) somewhere safe: with it, a new machine gets everything back.`,
+    syncDone: (n: number): string => `[[win]]**Done**: ${n > 1 ? `your ${n} conversations are` : n === 1 ? 'your conversation is' : 'your conversations are'} yours now, safe on your GitHub. 🎉 Keep your [recovery code](/#do=recovery) somewhere safe: with it, a new machine gets everything back.`,
     vpsOffer: 'To keep weevils working 24/7, even with your computer off, I recommend a server (about €5/month). I can [set it up now](/#do=server), or [remind you later](/#do=later).',
     vpsLater: 'Sure, I’ll bring it up again when it helps.',
     recoveryCode: (words: string): string => `Your recovery code, to keep like a password (with it, a new machine gets all your conversations back):\n\n\`${words}\``,

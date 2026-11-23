@@ -3663,3 +3663,18 @@ main.stack {
   display: block;
   will-change: transform, opacity;
 }
+
+/* A result weevboss verified and marked ([[win]]**…**): its bold words in the theme's lively colours, mixed with the
+   text colour so they read on every band and theme; their colours run through them once when it is celebrated. */
+.md strong.win {
+  --win-a: color-mix(in oklab, var(--auto-fluo) 60%, var(--ink));
+  --win-b: color-mix(in oklab, var(--fluo) 45%, var(--ink));
+  background: linear-gradient(90deg, var(--win-a), var(--win-b), var(--win-a)) 0 0 / 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.md strong.win.win-shine { animation: win-shine 1.3s cubic-bezier(.45,.05,.25,1); }
+@keyframes win-shine { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .md strong.win.win-shine { animation: none; } }

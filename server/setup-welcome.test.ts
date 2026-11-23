@@ -245,7 +245,7 @@ describe('another computer, by talking', () => {
     expect(texts().at(-1)).toBe('laptop is plugging in: weevils is installing there, a few minutes.')
     machines.push({ id: 'laptop', name: 'laptop', online: true })
     await (s as unknown as { watch: () => Promise<void> }).watch()
-    expect(texts().at(-1)).toBe('laptop is plugged in: I can run agents there now.')
+    expect(texts().at(-1)).toBe('[[win]]**laptop is plugged in**: I can run agents there now.')
     // A real win (the machine is online): the line carries it, the key's line does not.
     const said = s.messages()
     expect(said.at(-1)?.win).toMatchObject({ kind: 'machine', id: expect.stringMatching(/^machine:laptop:/) })
@@ -422,7 +422,7 @@ describe('the sync said by weevils, then the server offer', () => {
   it('the lines, with their links in the sentence (never a button)', () => {
     const t = withLang('en', () => ({ start: tr(M).syncStart, done: tr(M).syncDone(340), one: tr(M).syncDone(1), offer: tr(M).vpsOffer }))
     expect(t.start).toBe('You’re connected to GitHub and Claude. I’m syncing your conversations so you can pick them up from any machine or subscription.')
-    expect(t.done).toBe('Done: your 340 conversations are yours now, safe on your GitHub. 🎉 Keep your [recovery code](/#do=recovery) somewhere safe: with it, a new machine gets everything back.')
+    expect(t.done).toBe('[[win]]**Done**: your 340 conversations are yours now, safe on your GitHub. 🎉 Keep your [recovery code](/#do=recovery) somewhere safe: with it, a new machine gets everything back.')
     expect(t.one).toContain('your conversation is yours now')
     expect(t.offer).toContain('I can [set it up now](/#do=server), or [remind you later](/#do=later).')
     for (const x of Object.values(t)) expect(x).not.toMatch(/\[\[setup:/)

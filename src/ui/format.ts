@@ -1,3 +1,4 @@
+import { withoutWinMarks } from '../../shared/wins.ts'
 import type { SessionStatus } from '../../shared/api.ts'
 import { tr } from '../i18n'
 import M from '../i18n/format'
@@ -12,7 +13,7 @@ export type ChipId = Brick | `key:${string}`
 /** Une puce de branchement écrite dans le texte de weevboss (« [[setup:mail]] »), par son libellé : « brancher le pont e-mail ». */
 export const chipLabel = (c: ChipId): string => (c.startsWith('key:') ? tr(S).keyChip(c.slice(4)) : tr(S)[`chip_${c as Brick}`])
 /** Le texte avec ses puces lues comme leur libellé (aperçus, copie) : la phrase reste lisible, jamais « via . ». */
-export const chipLabels = (text: string): string => text.replace(ANY_CHIP, (m, k: string | undefined, b: string | undefined) => chipOf(k, b) ? chipLabel(chipOf(k, b)!) : m)
+export const chipLabels = (text: string): string => withoutWinMarks(text).replace(ANY_CHIP, (m, k: string | undefined, b: string | undefined) => chipOf(k, b) ? chipLabel(chipOf(k, b)!) : m)
 const chipOf = (k: string | undefined, b: string | undefined): ChipId | null => (k ? (isSecretName(k) ? `key:${k}` : null) : isBrick(b) ? b : null)
 
 /** The tool a session runs on, as its product name (« Claude », « Codex »): never the lowercase id. */

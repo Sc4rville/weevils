@@ -784,7 +784,7 @@ function Inline({ text }: { text: string }) {
     <>
       {parts.map((p, i) =>
         // Nested: what is inside bold or italic is read again (a link, a command, italic inside bold).
-        p.kind === 'strong' ? <strong key={i}><Inline text={p.s} /></strong> : p.kind === 'em' ? <em key={i}><Inline text={p.s} /></em> : <Rich key={i} text={p.s} />,
+        p.kind === 'strong' ? <strong key={i}><Inline text={p.s} /></strong> : p.kind === 'win' ? <strong key={i} className="win"><Inline text={p.s} /></strong> : p.kind === 'em' ? <em key={i}><Inline text={p.s} /></em> : <Rich key={i} text={p.s} />,
       )}
     </>
   )

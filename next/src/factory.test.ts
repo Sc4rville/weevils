@@ -3,7 +3,7 @@
 // the server agrees. Your factory's Projects keeps an off project listed, in place, to switch it back on.
 import { afterEach, expect, it } from 'vitest'
 import type { Project, Snapshot } from '../../shared/api.ts'
-import { factoryProjects, flipProject, inSideBar, shownNow } from './factory.tsx'
+import { factoryProjects, flipProject, inSideBar, mothersOf, shownNow } from './factory.tsx'
 
 const p = (id: string, repos = [id]): Project => ({ id, name: id, kind: 'repo', repos, where: {}, lastActivityAt: 0 })
 const snap = (over: Partial<Snapshot>) => ({ pinnedRepos: [], hiddenProjects: [], sessions: [], projects: [], ...over }) as unknown as Snapshot
@@ -29,4 +29,14 @@ it('a flipped switch shows at once and is not undone by a snapshot that does not
 it('keeps an off project listed in Projects, in a fixed order, even once its last pin is gone', () => {
   const rows = factoryProjects(snap({ projects: [p('weevils'), p('shop', ['shop-web']), p('auto')], hiddenProjects: ['shop', 'notes'] }))
   expect(rows.map((r) => r.id)).toEqual(['notes', 'shop', 'weevils'])
+})
+it('Projects never lists an automation folder, even one switched off', () => {
+  const rows = factoryProjects(snap({ projects: [p('auto', ['auto-084b98e88f'])], hiddenProjects: ['auto-2061533ece', 'auto', 'ants'] }))
+  expect(rows.map((r) => r.id)).toEqual(['ants'])
+})
+it('an older machine’s plain folder list still comes out as one band per product', () => {
+  expect(mothersOf(['game', 'game-gpu', 'game-v3-drop-fin', 'auto-2061533ece', 'automations', 'shop-site'])).toEqual([
+    { id: 'game', name: 'game', repos: ['game', 'game-gpu', 'game-v3-drop-fin'] },
+    { id: 'shop', name: 'shop', repos: ['shop-site'] },
+  ])
 })

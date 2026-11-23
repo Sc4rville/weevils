@@ -53,3 +53,45 @@ export function place(cwd: string, roots: string[]): Placement {
   }
   return { projectId: MISC, projectName: projectLabel(MISC), kind: 'invented', repo: null }
 }
+
+/** A folder an automation works in (auto-<its id>): it belongs to autonomous, never to Projects. */
+export const isAutomationFolder = (name: string) => /^auto-[0-9a-f]{10}$/.test(name)
+
+/** The GitHub (or other) repo a git folder pushes to, « owner/name », from its origin; a worktree reads its main
+ *  repo's config. undefined: not a git folder; '' a git folder with no origin. */
+export function originOf(dir: string): string | undefined {
+  let git = path.join(dir, '.git')
+  try {
+    if (fs.statSync(git).isFile()) {
+      const to = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(git, 'utf8'))?.[1]?.trim()
+      if (!to) return undefined
+      git = path.resolve(dir, to)
+      try { git = path.resolve(git, fs.readFileSync(path.join(git, 'commondir'), 'utf8').trim()) } catch { /* a plain gitdir link */ }
+    }
+    const config = fs.readFileSync(path.join(git, 'config'), 'utf8')
+    const url = /\[remote "origin"\][^[]*?\burl\s*=\s*(\S+)/.exec(config)?.[1] ?? ''
+    return url.replace(/\.git$/, '').replace(/\/+$/, '').split(/[/:]/).slice(-2).join('/').toLowerCase()
+  } catch {
+    return undefined
+  }
+}
+
+export interface MotherRepo { id: string; name: string; repos: string[] }
+
+/** Your factory's Projects (2026-11-23): one band per product, its mother repo, never one per folder. A folder counts
+ *  only if it is a git repo; its worktrees and clones (the same origin) and its parts (« <product>-<part> », as the
+ *  side bar already groups them, familyOf) fold into it; an automation's folders never count. */
+export function motherRepos(folders: { name: string; dir: string }[]): MotherRepo[] {
+  const byFamily = new Map<string, MotherRepo>()
+  for (const f of folders) {
+    if (isAutomationFolder(f.name)) continue
+    const origin = originOf(f.dir)
+    if (origin === undefined) continue
+    const id = familyOf(origin ? origin.split('/').pop()! : f.name)
+    const m = byFamily.get(id) ?? { id, name: id, repos: [] }
+    m.repos.push(f.name)
+    byFamily.set(id, m)
+  }
+  for (const m of byFamily.values()) m.repos.sort((a, b) => Number(b === m.id) - Number(a === m.id) || a.length - b.length || a.localeCompare(b))
+  return [...byFamily.values()].sort((a, b) => a.name.localeCompare(b.name))
+}

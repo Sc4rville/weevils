@@ -1121,7 +1121,7 @@ const routes: [string, RegExp, Handler][] = [
   }],
   ['GET', /^\/api\/repos$/, async (_req, res, url) => {
     const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)
-    json(res, 200, remote ? await remote.call('GET', '/api/repos') : { repos: w.allRepos() })
+    json(res, 200, remote ? await remote.call('GET', '/api/repos') : { repos: w.allRepos(), mothers: w.motherRepos() })
   }],
   ['GET', /^\/api\/repos\/([^/]+)\/files$/, async (_req, res, url, [repo]) => {
     const remote = w.remoteById(url.searchParams.get('machine') ?? undefined)

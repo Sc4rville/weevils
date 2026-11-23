@@ -412,6 +412,21 @@ describe('auto — the runner', () => {
     expect(card.actions).toEqual([{ label: O.en.landButton, brief: O.en.landBrief, op: 'land:sess-1' }])
   })
 
+  it('a push refused (the branch moved on the remote) still hands the work over: « Land it » in For you', async () => {
+    const add = vi.fn()
+    sys.merge = vi.fn(async () => ({ merged: false as const, why: 'uncommitted changes' }))
+    sys.push = vi.fn(async () => false)
+    const o = await accepted(1, { foryou: { add } })
+    o.tick(T0 + IDLE_MS)
+    await flush()
+    snap.sessions = [session({ id: 'sess-1', status: 'idle', lastMessage: 'Done: two themes on the branch.' })]
+    o.tick(T0 + IDLE_MS + 20 * MIN)
+    for (let i = 0; i < 5; i++) await flush()
+    expect(add).toHaveBeenCalledTimes(1)
+    expect(add.mock.calls[0][0].actions).toEqual([{ label: O.en.landButton, brief: O.en.landBrief, op: 'land:sess-1' }])
+    expect(o.list()[0].runs?.at(-1)?.pushed).toBeUndefined()
+  })
+
   it('rechecks source access before accept/run and keeps revoked queued work across reload without creating a run',async()=>{
     let allowed=false
     const policy={

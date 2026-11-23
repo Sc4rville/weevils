@@ -69,3 +69,14 @@ it.each(ADDED)('%s: two project slots at least 2 apart stay distinct (For you ca
       expect(d, `${theme} p${i} / p${j}`).toBeGreaterThanOrEqual(0.05)
     }
 })
+
+// A texture lies over the whole window, text included (src/styles.css html::after): faint enough to leave every
+// contrast above standing, never a tap target, and only the blend modes that keep text legible.
+it.each(THEMES)('%s: its texture, if any, stays a faint matter over the text', (theme) => {
+  const v = vars(theme)
+  if (!v.texture) return
+  expect(Number(v['texture-opacity']), `${theme} texture opacity`).toBeGreaterThan(0)
+  expect(Number(v['texture-opacity']), `${theme} texture opacity`).toBeLessThanOrEqual(0.12)
+  expect(['normal', 'multiply', 'screen', 'overlay', 'soft-light', 'darken', 'lighten'], `${theme} texture blend`).toContain(v['texture-blend'] ?? 'normal')
+  expect(v.texture, `${theme} texture: CSS images only, nothing fetched`).not.toMatch(/url\(\s*["']?(https?:|\/\/|\.|\/)/)
+})

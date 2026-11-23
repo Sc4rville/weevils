@@ -30,7 +30,8 @@ on its own.
 
 ## The order
 
-1. Rebase the task branch on the current `origin/main` (a conflict aborts: the branch stays).
+1. Rebase the task branch on the current `origin/main` (a conflict aborts: the branch stays). Tracked files left
+   uncommitted stop it; untracked leftovers (a run's screenshots, scratch files) do not, and never land.
 2. Classify the result (above).
 3. Checks: `npm run typecheck`, `npm run i18n:check`, `vitest run --changed origin/main` (the tests the change touches;
    the whole suite for a cleanup, in-scope work or any server change),
@@ -49,7 +50,8 @@ An automation's own posts must not claim its work is live: weevils posts that it
 ## What did not land is handed over, never stranded
 
 A run whose work did not merge by itself (it goes beyond its automation's job, or touches what stays the person's;
-its checks failed; main moved; another repository) still has its branch pushed, and For you gets one plain line
+its checks failed; main moved; another repository) still has its branch pushed (when the push is refused, the work
+stays in the run's worktree), and For you gets one plain line
 saying why (the judge's own sentence when it went beyond the job), « "<title>" is waiting
 for your OK », with a **Land it** button (`optimizers.ts offerLanding`, op `land:<session>`). The person's tap sends
 the run's own session a brief to land it (rebase, checks, merge into main, update the running weevils), as the person.

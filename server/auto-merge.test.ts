@@ -123,6 +123,14 @@ describe('autoMerge', () => {
     expect(ran).toBe(false)
     expect(calls.some((c) => c[1] === 'push')).toBe(false)
   })
+  it('a run’s leftovers (untracked screenshots, scratch files) never hold it back; tracked edits left uncommitted do', async () => {
+    const { git, calls } = fakeGit(ok)
+    expect((await autoMerge('/wt', '/app', undefined, git, async () => true)).merged).toBe(true)
+    expect(calls.find((c) => c[1] === 'status')!.slice(1)).toEqual(['status', '--porcelain', '--untracked-files=no'])
+    const dirty = fakeGit({ ...ok, 'status --porcelain': ' M src/styles.css' })
+    expect(await autoMerge('/wt', '/app', undefined, dirty.git, async () => true)).toEqual({ merged: false, why: 'uncommitted changes' })
+    expect(dirty.calls.some((c) => c[1] === 'push')).toBe(false)
+  })
   it('another repository never merges here', async () => {
     const calls: string[][] = []
     const git = async (dir: string, args: string[]) => (calls.push(args), dir === '/app' ? 'https://github.com/x/weevils.git' : 'https://github.com/x/other.git')

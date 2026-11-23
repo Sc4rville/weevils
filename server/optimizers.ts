@@ -2170,16 +2170,18 @@ export class Optimizers {
       })
       .then(() => this.sys.push(cwd, branch, baseCommit))
       .then((pushed) => {
-        if (!pushed) return
-        const r = this.get(id)?.runs?.find((x) => x.startedAt === startedAt)
-        if (r) {
-          r.pushed = branch
-          this.changed()
-        }
-        console.log(`[auto] « ${title} » : branche ${branch} poussée`)
-        // Work that did not land by itself is never left on its branch in silence: one plain line in For you, and a
-        // button that hands the run's own session to the person to land it (core.ts sendOne, origin 'user').
-        if (left && left.why !== 'off' && sessionId) this.offerLanding(id, startedAt ?? Date.now(), title, sessionId, left.why)
+        if (pushed) {
+          const r = this.get(id)?.runs?.find((x) => x.startedAt === startedAt)
+          if (r) {
+            r.pushed = branch
+            this.changed()
+          }
+          console.log(`[auto] « ${title} » : branche ${branch} poussée`)
+        } else if (left) console.log(`[auto] « ${title} » : branche ${branch} non poussée (rien de neuf, ou refusée)`)
+        // Work that did not land by itself is never left on its branch in silence, pushed or not (a push refused as
+        // non-fast-forward used to hide it): one plain line in For you, and a button that hands the run's own session
+        // to the person to land it (core.ts sendOne, origin 'user'); the work is in the run's worktree either way.
+        if (left && left.why !== 'off' && left.why !== 'nothing to merge' && sessionId) this.offerLanding(id, startedAt ?? Date.now(), title, sessionId, left.why)
       })
       .catch((e) => console.error(`[auto] push de « ${title} » : ${(e as Error).message}`))
   }

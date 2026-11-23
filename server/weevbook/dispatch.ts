@@ -4,6 +4,7 @@
 // no model, no randomness, the same input always gives the same decision (DISP-1), and the decision says which row
 // matched and the facts it used (DISP-2). Nothing in the app imports this module yet.
 
+import { sameRepo } from '../bring.ts'
 import { parseEngine, type JournalEvent, type Provider, type TurnEvent } from './journal.ts'
 
 // ---------------------------------------------------------------- the numbers (docs/spec/README.md, constants)
@@ -53,6 +54,9 @@ export interface MachineFacts {
   answers?: boolean
   /** Projects present on the machine. */
   projects: readonly string[]
+  /** Origins of the repositories cloned on the machine (as `sameRepo` compares them): with one of the thread's, a
+   *  machine can take a thread whose code does not travel (`kind: none`) and bring that code over itself. */
+  repos?: readonly string[]
   /** The engines of this machine; an account is an engine only where it is signed in. */
   engines: readonly { engine: string; signedIn: boolean }[]
 }
@@ -88,6 +92,9 @@ export interface ThreadFacts {
   doneHere: number
   /** The kind of the thread's last checkpoint, if any. `none`: the code cannot travel. */
   checkpoint: 'git' | 'shadow' | 'none' | null
+  /** The origin of the repository the thread works in, when known: a machine with a clone of it can take the thread
+   *  even with `checkpoint: none` (resume.ts then compares the two and carries the uncommitted files). */
+  repo?: string | null
   /** The thread had messages before the turn being placed (a chat from the connector). */
   history: boolean
   /** The table is read after a failure of this turn (true) or for a turn just accepted (false). */
@@ -101,6 +108,8 @@ export interface DecideInput {
   ledger: readonly Reservation[]
   /** The install's preferred provider (row `new`). */
   preferred: Provider
+  /** A machine the person ordered the thread off (a move): never a candidate, whether it is alive or not. */
+  away?: string
 }
 
 export interface Decision {
@@ -155,10 +164,19 @@ class View {
   }
   silentSince(machine: string): string {
     const m = this.machines.get(machine)
-    return m ? `${machine} has been silent since ${hhmm(m.seen)}` : `${machine} is unknown`
+    if (m && this.away === machine && this.alive(machine)) return `${machine} is on, and the person moves the thread off it`
+    // seen 0: no engines.json read yet (a machine that just joined, or one only asked directly): no time to give.
+    return m ? (m.seen > 0 ? `${machine} has been silent since ${hhmm(m.seen)}` : `${machine} has not answered`) : `${machine} is unknown`
   }
   has(machine: string, project: string | null): boolean {
     return project === null || !!this.machines.get(machine)?.projects.includes(project)
+  }
+  /** The machine has a clone of `repo`. */
+  hasRepo(machine: string, repo: string | null | undefined): boolean {
+    return !!repo && !!this.machines.get(machine)?.repos?.some((r) => sameRepo(r, repo))
+  }
+  get away(): string | undefined {
+    return this.i.away
   }
   /** 5-hour use with this account's reservations, and week use, now. Null: never read. */
   usage(account: string): { five: number; week: number; resetsAt: number | null } | null {
@@ -188,7 +206,7 @@ class View {
   /** Engines that may take the turn: alive, signed in on their machine, with room under `under`. Most room first, then id. */
   pick(filter: (e: Engine) => boolean, under: number, first?: (e: Engine) => number): Engine[] {
     return this.engines
-      .filter((e) => e.signedIn && this.alive(e.machine) && filter(e) && this.room(accountOf(e.engine), under))
+      .filter((e) => e.signedIn && e.machine !== this.i.away && this.alive(e.machine) && filter(e) && this.room(accountOf(e.engine), under))
       .map((e, i) => ({ e, i, k: first?.(e) ?? 0, l: this.load(accountOf(e.engine)) }))
       .sort((a, b) => a.k - b.k || a.l - b.l || a.i - b.i)
       .map((x) => x.e)
@@ -225,7 +243,8 @@ export function decide(i: DecideInput): Decision {
 
   const E = parseEngine(t.last)!
   const eAccount = accountOf(t.last)
-  const eHere = (m: string) => !kindNone || m === E.machine
+  // The code goes where it can: anywhere with a checkpoint that travels, else on E's machine or a clone of its repository.
+  const eHere = (m: string) => !kindNone || m === E.machine || v.hasRepo(m, t.repo)
   const resumeRung = (e: Engine): 1 | 2 | 3 => {
     const s = t.sessions[e.provider]
     if (!s) return 3
@@ -247,25 +266,27 @@ export function decide(i: DecideInput): Decision {
     }
   }
 
-  // stay: its engine is alive, signed in, and under 97 %.
+  // stay: its engine is alive, signed in, and under 97 % (and the person did not move the thread off its machine).
   const eSigned = v.engines.some((e) => e.engine === t.last && e.signedIn)
-  if (v.alive(E.machine) && eSigned && v.room(eAccount, STAY_UNDER)) {
+  const eAway = i.away === E.machine
+  if (!eAway && v.alive(E.machine) && eSigned && v.room(eAccount, STAY_UNDER)) {
     return { rule: 'stay', engine: t.last, rung: 1, reason: `the engine of the last leg is alive; ${v.describe(eAccount, true)}`, reserve: reservation(v, t.last, RESERVE) } // i18n-ignore: journal data (DISP-2)
   }
-  const why = !v.alive(E.machine) ? v.silentSince(E.machine) : !eSigned ? `${eAccount.replace(':', ' ')} is signed out on ${E.machine}` : v.describe(eAccount)
+  const why = !v.alive(E.machine) || eAway ? v.silentSince(E.machine) : !eSigned ? `${eAccount.replace(':', ' ')} is signed out on ${E.machine}` : v.describe(eAccount)
 
   // account: another account of the same provider on the same machine.
-  if (v.alive(E.machine)) {
+  if (v.alive(E.machine) && !eAway) {
     const c = v.pick((e) => e.machine === E.machine && e.provider === E.provider && accountOf(e.engine) !== eAccount, ENTER_UNDER)[0]
     if (c) return { rule: 'account', engine: c.engine, rung: 1, reason: `${why}; ${v.describe(accountOf(c.engine))} on ${c.machine}`, reserve: reservation(v, c.engine, RESERVE_MOVE) } // i18n-ignore: journal data (DISP-2)
   }
 
-  // machine: the same provider on another machine that has the project (or can clone it); the code must travel.
-  if (!kindNone) {
-    const c = v.pick((e) => e.machine !== E.machine && e.provider === E.provider && (v.has(e.machine, t.project) || t.cloneable), ENTER_UNDER, (e) => (accountOf(e.engine) === eAccount ? 0 : 1))[0]
+  // machine: the same provider on another machine that has the project (or can clone it); the code must travel, or
+  // the machine has a clone of the thread's repository and brings the code over itself.
+  {
+    const c = v.pick((e) => e.machine !== E.machine && e.provider === E.provider && (kindNone ? v.hasRepo(e.machine, t.repo) : v.has(e.machine, t.project) || t.cloneable), ENTER_UNDER, (e) => (accountOf(e.engine) === eAccount ? 0 : 1))[0]
     if (c) {
       const same = accountOf(c.engine) === eAccount
-      const has = v.has(c.machine, t.project) ? `has ${t.project ?? 'the thread'}` : `can clone ${t.project}`
+      const has = kindNone ? `has a clone of ${t.repo}` : v.has(c.machine, t.project) ? `has ${t.project ?? 'the thread'}` : `can clone ${t.project}`
       return { rule: 'machine', engine: c.engine, rung: 2, reason: `${why}; ${c.machine} ${has} and ${same ? 'the same account: ' : ''}${v.describe(accountOf(c.engine))}`, reserve: reservation(v, c.engine, same ? RESERVE : RESERVE_MOVE) } // i18n-ignore: journal data (DISP-2)
     }
   }
@@ -282,9 +303,14 @@ export function decide(i: DecideInput): Decision {
 /** No row matched: which of the four reasons, in this order: only-there, no-machine, not-signed-in, no-room. */
 function hold(v: View, t: ThreadFacts, eMachine: string | null): Decision {
   const out = (h: HoldReason, reason: string): Decision => ({ rule: 'hold', engine: null, rung: null, reason, hold: h })
-  if (eMachine && t.checkpoint === 'none' && !v.alive(eMachine)) return out('only-there', `the code of this thread can only continue on ${eMachine}; ${v.silentSince(eMachine)}`)
-  const machines = [...new Set(v.engines.map((e) => e.machine))]
-  const usable = (m: string) => v.alive(m) && (v.has(m, t.project) || (t.cloneable && t.checkpoint !== 'none' && eMachine !== null)) && (t.checkpoint !== 'none' || m === eMachine)
+  const machines = [...new Set(v.engines.map((e) => e.machine))].filter((m) => m !== v.away)
+  const clone = machines.filter((m) => v.alive(m) && v.hasRepo(m, t.repo))
+  if (eMachine && t.checkpoint === 'none' && (!v.alive(eMachine) || v.away === eMachine) && !clone.length) {
+    const others = machines.filter((m) => m !== eMachine)
+    const none = others.length ? `; ${t.repo ? `no clone of ${t.repo}` : 'its repository is not known'} on ${others.join(', ')}` : ''
+    return out('only-there', `the code of this thread can only continue on ${eMachine}; ${v.silentSince(eMachine)}${none}`)
+  }
+  const usable = (m: string) => v.alive(m) && (v.has(m, t.project) || (t.cloneable && t.checkpoint !== 'none' && eMachine !== null)) && (t.checkpoint !== 'none' || m === eMachine || v.hasRepo(m, t.repo))
   const on = machines.filter(usable)
   if (!on.length) return out('no-machine', `no machine that has ${t.project ?? 'the thread'} is on`)
   const signed = v.engines.filter((e) => on.includes(e.machine) && e.signedIn)

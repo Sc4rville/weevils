@@ -12,7 +12,8 @@ import { claudeSlug, rewritePaths } from '../bring.ts'
 import { keepInWeevbook, restoreCheckpoint, takeCheckpoint } from './checkpoint.ts'
 import { checkpointHook } from './hub.ts'
 import { parseJournal, validateJournal, type EventDraft, type JournalEvent, type TurnEvent } from './journal.ts'
-import { placeAndRestore, rebuild, resumeThread, type Launch } from './resume.ts'
+import { currentFolder, readCodeState, readFiles } from './code-state.ts'
+import { placeAndRestore, rebuild, resumeThread, type Launch, type SourceMachine } from './resume.ts'
 import { slimRaw } from './slim.ts'
 import { Weevbook } from './store.ts'
 import { Sessions } from './sync.ts'
@@ -682,14 +683,19 @@ describe('a thread resumed from the vault on a machine that never ran it', () =>
     fs.mkdirSync(path.dirname(file), { recursive: true })
     let parent: string | null = null
     let k = 0
+    // A session that `cd`s writes its later lines with the new folder (the file stays where it was opened).
+    let here = cwd
     const line = (type: 'user' | 'assistant', message: unknown, extra: Record<string, unknown> = {}) => {
       const uuid = `00000000-0000-4000-8000-${String(++k).padStart(12, '0')}`
-      fs.appendFileSync(file, `${JSON.stringify({ parentUuid: parent, isSidechain: false, userType: 'external', cwd, sessionId: session, version: '2.1.4', gitBranch: 'main', type, message, ...extra, uuid, timestamp: new Date().toISOString() })}\n`)
+      fs.appendFileSync(file, `${JSON.stringify({ parentUuid: parent, isSidechain: false, userType: 'external', cwd: here, sessionId: session, version: '2.1.4', gitBranch: 'main', type, message, ...extra, uuid, timestamp: new Date().toISOString() })}\n`)
       parent = uuid
     }
     const assistant = (content: unknown[], stop: string) => line('assistant', { id: `msg_${k}`, type: 'message', role: 'assistant', model: 'claude-sonnet-4-5', content, stop_reason: stop })
     return {
       file,
+      cd: (dir: string) => {
+        here = dir
+      },
       user: (text: string) => line('user', { role: 'user', content: text }),
       tool: (id: string, name: string, input: unknown, thinking?: string) => assistant([...(thinking ? [{ type: 'thinking', thinking, signature: `sig-${id}` }] : []), { type: 'tool_use', id, name, input }], 'tool_use'),
       result: (id: string, text: string, copy = false) => line('user', { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: text }] }, copy ? { toolUseResult: { stdout: text, stderr: '' } } : {}),
@@ -823,5 +829,99 @@ describe('a thread resumed from the vault on a machine that never ran it', () =>
     expect(placed.restored).toEqual({ dir: desk.repo, mode: 'in-place' })
     expect(fs.readFileSync(path.join(desk.repo, 'src/cart.ts'), 'utf8')).toContain('€')
     expect(fs.readFileSync(path.join(desk.repo, 'src/money.ts'), 'utf8')).toContain('€')
+  }, 120_000)
+
+  it('a conversation opened in the home folder that works in a repository: moved to a clone of it, its uncommitted files carried, a conflict named, nothing touched on the machine left', async () => {
+    const seed = path.join(tmp, 'seed')
+    fs.mkdirSync(path.join(seed, 'src'), { recursive: true })
+    fs.writeFileSync(path.join(seed, 'src', 'money.ts'), 'export const fmt = (n: number) => `${n}`\n')
+    fs.writeFileSync(path.join(seed, 'src', 'cart.ts'), 'export const cart = 1\n')
+    work(seed, 'init', '-q')
+    work(seed, 'add', '-A')
+    work(seed, 'commit', '-qm', 'first')
+    const origin = path.join(tmp, 'origin', 'shop.git')
+    work(seed, 'clone', '-q', '--bare', seed, origin)
+    const remote = vaultRemote()
+    const key = newKey()
+    const laptop = machine('laptop', origin)
+    const server = machine('server', origin)
+
+    // The laptop: a commit pushed to the origin (the server's clone has not fetched it), then work left uncommitted.
+    fs.writeFileSync(path.join(laptop.repo, 'README.md'), 'shop\n')
+    work(laptop.repo, 'add', 'README.md')
+    work(laptop.repo, 'commit', '-qm', 'readme')
+    work(laptop.repo, 'push', '-q', 'origin', 'HEAD')
+    fs.writeFileSync(path.join(laptop.repo, 'src', 'money.ts'), 'export const fmt = (n: number) => `${n} €`\n')
+    fs.writeFileSync(path.join(laptop.repo, 'NOTES.md'), 'only on the laptop\n')
+    fs.writeFileSync(path.join(laptop.repo, 'src', 'cart.ts'), 'export const cart = 3 // laptop\n')
+    // The server's own uncommitted change to one of those files: it is kept.
+    fs.writeFileSync(path.join(server.repo, 'src', 'cart.ts'), 'export const cart = 2 // server\n')
+    const serverHead = work(server.repo, 'rev-parse', 'HEAD')
+    work(server.repo, 'fetch', '-q', 'origin') // as a clone that pulled once: the commit is known, its branch behind
+    work(server.repo, 'update-ref', 'refs/remotes/origin/main', serverHead)
+
+    // Opened in the home folder (checkpoint: none), then `cd` into the repository.
+    const lw = laptop.writer()
+    const a = claudeSession(laptop.home, laptop.home, SESSION)
+    a.user('Wire the shop to my Claude subscription')
+    a.cd(laptop.repo)
+    a.tool('toolu_h1', 'Bash', { command: 'git status --short' })
+    a.result('toolu_h1', ' M src/money.ts')
+    a.answer('Done: prices show the currency.')
+    await settle(lw)
+    lw.stop()
+    const sessionsA = new Sessions(laptop.sessions)
+    await sessionsA.load()
+    const id = sessionsA.get(`claude:${SESSION}`)!.thread
+    const journalA = (await (await Weevbook.open(laptop.dir, 'laptop')).thread(id))!.journal.events
+    expect(journalA.findLast((e) => e.type === 'checkpoint')).toMatchObject({ kind: 'none', reason: 'home folder' })
+    await pushVault(laptop.vault(remote, key))
+
+    const vs = server.vault(remote, key)
+    await restoreVault(vs)
+    const launched: Launch[] = []
+    const base = {
+      thread: id, dir: server.dir, dataDir: server.data, sessions: server.sessions, machine: 'server', home: server.home,
+      claudeDir: server.claudeDir, codexDir: path.join(server.home, '.codex', 'sessions'), roots: [path.join(server.home, 'projects')],
+      projectsDir: path.join(server.home, 'projects'), vault: vaultSource(vs), launch: async (l: Launch) => void launched.push(l),
+    }
+    // The laptop does not answer: the thread's repository is not known, the code can only continue there; and the
+    // reason gives no made-up time of silence.
+    const silent = await resumeThread({ ...base, source: async () => null })
+    expect(silent).toMatchObject({ ok: false, why: 'hold', detail: 'only-there: the code of this thread can only continue on laptop; laptop has not answered; its repository is not known on server' })
+
+    // The laptop answers (it is on, the person moves the thread off it): its code state, then its files.
+    const asked: string[][] = []
+    const live: SourceMachine = {
+      code: await readCodeState(currentFolder(a.file, 'claude')!),
+      files: async (paths) => {
+        asked.push(paths)
+        return readFiles(laptop.repo, paths)
+      },
+    }
+    expect(live.code).toMatchObject({ folder: laptop.repo, origin, unpushed: [] })
+    const laptopBefore = Object.fromEntries(['src/money.ts', 'src/cart.ts', 'NOTES.md'].map((f) => [f, fs.readFileSync(path.join(laptop.repo, f), 'utf8')]))
+    const r = await resumeThread({ ...base, source: async (m) => (m === 'laptop' ? live : null) })
+    expect(r).toMatchObject({ ok: true, rule: 'machine', rung: 2, leg: 'L2', session: SESSION, launched: false })
+    if (!r.ok) return
+    // Pulled forward to the laptop's commit; the laptop's uncommitted files here, the server's own change kept.
+    expect(r.code).toMatchObject({ folder: server.repo, checked: true, pulled: live.code!.head, left: [{ path: 'src/cart.ts', why: 'changed on both machines: this copy kept' }] })
+    expect([...r.code!.carried].sort()).toEqual(['NOTES.md', 'src/money.ts'])
+    expect(r.code!.line).toContain('left on laptop: src/cart.ts (changed on both machines: this copy kept)')
+    expect(asked.flat().sort()).toEqual(['NOTES.md', 'src/money.ts'])
+    expect(fs.readFileSync(path.join(server.repo, 'src', 'money.ts'), 'utf8')).toContain('€')
+    expect(fs.readFileSync(path.join(server.repo, 'NOTES.md'), 'utf8')).toBe('only on the laptop\n')
+    expect(fs.readFileSync(path.join(server.repo, 'src', 'cart.ts'), 'utf8')).toBe('export const cart = 2 // server\n')
+    expect(work(server.repo, 'rev-parse', 'HEAD')).toBe(live.code!.head)
+    // Nothing moved on the laptop.
+    for (const [f, text] of Object.entries(laptopBefore)) expect(fs.readFileSync(path.join(laptop.repo, f), 'utf8')).toBe(text)
+    // One conversation: the same session, its whole history rebuilt here, the journal going on with a second leg.
+    const rebuilt = fs.readFileSync(r.file, 'utf8')
+    expect(rebuilt).toContain('Wire the shop to my Claude subscription')
+    expect(rebuilt).toContain('Done: prices show the currency.')
+    const journal = (await (await Weevbook.open(server.dir, 'server')).thread(id))!.journal.events as JournalEvent[]
+    expect(validateJournal(journal)).toEqual([])
+    expect(journal.filter((e) => e.type === 'leg.start').map((e) => (e as { engine: string }).engine.split('@')[1])).toEqual(['laptop', 'server'])
+    expect(journal.find((e) => e.type === 'leg.end')).toMatchObject({ leg: 'L1', reason: 'moved', by: 'server' })
   }, 120_000)
 })

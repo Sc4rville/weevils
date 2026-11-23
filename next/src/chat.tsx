@@ -126,13 +126,15 @@ export function Chat({ id, messages: thread, working: busy, author, placeholder,
         </div>
       </div>
       <div className={`nx-composer${remarking ? ' lab-on' : ''}`}>
-        {id === null && lab.state && <LabSwitch on={lab.on} busy={lab.busy} toggle={lab.toggle} />}
         {remarking && lab.state && <LabList state={lab.state} />}
+        <div className="lab-field">
+        {id === null && lab.state && <LabSwitch on={lab.on} busy={lab.busy} toggle={lab.toggle} />}
         {flow && id === null && !remarking ? <SetupComposer /> : (
         <AppComposer multiline voice anyFile={id === null} sayErrors draftKey={remarking ? 'lab:remark' : `session:${id ?? '__main'}`} placeholder={remarking ? lt.remark : placeholder} label={remarking ? lt.remark : label}
           captureTo={{ to: id ?? 'weevboss', feedback: id === null }}
           onSend={(text) => submit(text).then(() => undefined)} onAttach={(text, files) => submit(text, files).then(() => undefined)} />
         )}
+        </div>
       </div>
     </>
   )

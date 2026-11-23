@@ -1,8 +1,8 @@
 /* The onboarding lab (next/src/lab.tsx): a small green switch on the field's corner, the field tinted green while it
    takes remarks, the remarks above it. Colour only: no underline, no label. */
-.nx-composer { position: relative; }
+.lab-field { position: relative; }
 .lab-switch {
-  position: absolute; top: -6px; right: 18px; z-index: 2; width: 22px; height: 22px; padding: 0; border-radius: 50%;
+  position: absolute; top: -11px; right: 18px; z-index: 2; width: 22px; height: 22px; padding: 0; border-radius: 50%;
   border: 2px solid #34d27b; background: transparent; opacity: .55; -webkit-tap-highlight-color: transparent;
 }
 .lab-switch::after { content: ''; position: absolute; inset: -12px; } /* a finger-sized target around a small dot */

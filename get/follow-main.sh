@@ -21,9 +21,11 @@ if [ "$new" != "$old" ] && [ "${WEEVILS_GET_REQUIRE_CI:-1}" != 0 ]; then
     wt=$(mktemp -d "${XDG_CACHE_HOME:-$HOME/.cache}/weevils-ci.XXXXXX")
     git -C "$live" worktree add -q --detach "$wt" "$new"
     # In this machine's heavy-job queue (server/heavy), like the sessions' own tests: never all at once with them.
-    heavy=$HOME/.local/bin/weevils-heavy; q=; [ -x "$heavy" ] && q="$heavy --here --"
+    # It lowers their priority itself (niceness 10, as before): no second nice inside, which made it 19 and the
+    # tests slow enough to time out behind the agents.
+    heavy=$HOME/.local/bin/weevils-heavy; q="nice -n 10"; [ -x "$heavy" ] && q="$heavy --here --"
     # shellcheck disable=SC2086
-    if (cd "$wt" && $q sh -c 'npm ci --no-audit --no-fund && npm run lint && nice npx vitest run --retry 2 && npm run build') >"$verdicts/$new.log" 2>&1; then v=green; else v=red; fi
+    if (cd "$wt" && $q sh -c 'npm ci --no-audit --no-fund && npm run lint && npx vitest run --retry 2 && npm run build') >"$verdicts/$new.log" 2>&1; then v=green; else v=red; fi
     git -C "$live" worktree remove --force "$wt" || rm -rf "$wt"
     echo "$v" >"$verdicts/$new"
     ls -1t "$verdicts" | tail -n +41 | sed "s|^|$verdicts/|" | xargs -r rm -f

@@ -174,7 +174,8 @@ async function offloadOnce(helper: { id: string; name: string }, from: string): 
 
 function runHere(): Promise<number> {
   return new Promise((resolve) => {
-    const child = spawn('nice', ['-n', '10', ...argv], { stdio: 'inherit', env: { ...process.env, WEEVILS_HEAVY: '1' } })
+    // Niceness 10, not 10 more: a caller already lowered (the CI under nice) is not pushed to the bottom (19).
+    const child = spawn('nice', ['-n', String(Math.max(0, 10 - os.getPriority())), ...argv], { stdio: 'inherit', env: { ...process.env, WEEVILS_HEAVY: '1' } })
     const fwd = (sig: NodeJS.Signals) => () => child.kill(sig)
     for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(s, fwd(s))
     child.on('error', (e) => {

@@ -28,3 +28,12 @@ it('the screen, the side bar and its veil reach the bottom edge of an installed 
   expect(body('.nx-scrim')).toMatch(/height:\s*var\(--full-h, 100%\)/)
   expect(body('.nx-stage')).toMatch(/height:\s*var\(--full-h, 100%\)/)
 })
+
+it('every folded band is one height, one token; the side bar ends with its last band, nothing fills under it', () => {
+  for (const sel of ['.nx-boss-row', '.nx-project-head', '.nx-project-head.nx-boss-row', '.nx-settings .settings-band > .in.head']) expect(body(sel)).toMatch(/min-height:\s*var\(--band-h\)/)
+  expect(body('.nx-project-head')).toMatch(/padding-top:\s*0/)
+  expect(body('.nx-project')).toMatch(/padding-bottom:\s*0/)
+  expect(body('.nx-settings .settings-band')).toMatch(/padding-bottom:\s*0/)
+  expect(body('.nx-side')).toMatch(/background:\s*transparent/)
+  expect(css).not.toMatch(/\.nx-side-scroll > \.nx-settings\s*\{[^}]*flex:\s*1/)
+})

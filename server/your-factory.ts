@@ -102,6 +102,8 @@ export interface FactoryState {
   intelOff: string[]
   hidden: string[]
   talks: Record<string, string>
+  /** Tests and builds go to an idle machine when theirs is busy (server/heavy/jobs.ts): on unless false. */
+  shareJobs?: boolean
 }
 
 export interface FactoryDeps {
@@ -123,6 +125,8 @@ export interface FactoryDeps {
   env?: NodeJS.ProcessEnv
   pin: (repo: string, pinned: boolean) => void
   pinned: () => string[]
+  /** Heavy jobs running on another machine now (server/heavy/jobs.ts Hub). */
+  away?: () => { name: string; n: number }[]
   /** Starts the machine's own conversation, with the person's first words. */
   startTalk: (machineId: string, name: string, kind: MachineKind | null, provider: string | undefined, text: string) => Promise<{ id: string }>
 }
@@ -173,7 +177,7 @@ export async function factoryView(d: FactoryDeps): Promise<FactoryView> {
     if (!off && !(d.env ?? process.env)[k.name] && !configValue(d.configFile, k.name)) continue
     intelligence.push({ id, kind: 'key', brand: k.brand, name: k.label, left: null, resetsAt: null, off, toggle: true })
   }
-  return { machines, intelligence }
+  return { machines, intelligence, ...(machines.length > 1 ? { share: { on: st.shareJobs !== false, away: d.away?.() ?? [] } } : {}) }
 }
 
 /** The routes (main machine only). Errors are refusals in plain words (400). */
@@ -208,6 +212,16 @@ export function factoryRoutes(d: FactoryDeps, json: Json, readBody: ReadBody): [
         }
       }
       json(res, 200, { ok: true, stopped })
+    }],
+    // Tests and builds sent to an idle machine when theirs is busy: on / off.
+    ['POST', /^\/api\/factory\/share$/, async (req, res) => {
+      const b = await readBody(req)
+      if (typeof b.on !== 'boolean') return json(res, 400, { error: t().cantSwitch })
+      d.change((f) => {
+        if (b.on) delete f.shareJobs
+        else f.shareJobs = false
+      })
+      json(res, 200, { ok: true })
     }],
     // A subscription or a key, on / off (Claude carries weevboss itself: it stays on).
     ['POST', /^\/api\/factory\/intelligence$/, async (req, res) => {

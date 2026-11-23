@@ -4,6 +4,18 @@ A short summary of what changed after the first working version.
 
 ## 2026-11-23
 
+### Tests and builds
+- One queue per machine: the sessions' tests, builds, checks and lints (npm, npx, pnpm, yarn, bun, cargo, go,
+  pytest) wait for one of its slots, 2 on a 4-core server (`WEEVILS_HEAVY_SLOTS`), and for room (load under 1.5 ×
+  its cores, 2 GB free), first come first served, instead of a dozen suites at once that all time out. A run narrowed
+  to some files skips the line at a lower priority; installs, dev servers and watchers never wait. The CI's checks
+  take a slot too. `weevils-heavy --status` shows the line; `WEEVILS_HEAVY_QUEUE=0` turns it off.
+- With two machines or more, a busy machine's tests and builds run on an idle one (connected, nothing heavy of its
+  own, load under half its cores), on the session's exact working tree, and their output, exit code and the files
+  they wrote come back to the session. Only the job moves, never the conversation; installs and renders stay where
+  they are. One line in Your factory > Machines, on by default; `WEEVILS_TAKE_JOBS=0` on a machine keeps others'
+  jobs off it.
+
 ### Installer
 - Never a system upgrade: only the missing packages (`pacman -S --needed`, the database refreshed once for those
   packages only when the mirrors 404; `apt-get install`, `dnf install`, `zypper install`, `apk add`, `brew install`

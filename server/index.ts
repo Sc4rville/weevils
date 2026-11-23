@@ -47,6 +47,9 @@ import { resetAuthors, threadAuthor } from './authors.ts'
 import { explain, grepRepo, readExplain } from './explain.ts'
 import { brief, detail as infraDetail, listDir, machineInput, readAny, startInfra } from './infra.ts'
 import { jailedAllowed, jailedPeer, ownPeer, sameUserPeer } from './jail-peer.ts'
+import { Hub, hubRoutes, Runner, runnerRoutes } from './heavy/jobs.ts'
+import { installShims } from './heavy/shims.ts'
+import { setSessionShims } from './mux.ts'
 import { loginLimiter } from './login-limit.ts'
 import { startDiskUsage } from './disk-usage.ts'
 import { anchorFor, entries as spendEntries, logCalibration, summarize } from './spend.ts'
@@ -102,6 +105,18 @@ import { startThreads, threadsRoutes, type ThreadsApp } from './threads-app.ts'
 import { startMoves } from './moves-app.ts'
 
 const w = new Weevils()
+// The heavy-job queue (server/heavy): the stand-ins that send the sessions' tests and builds through it, first in the
+// PATH of every session started from now on; the runner that takes jobs from the user's other machines; on the main
+// machine, the hub that sends a busy machine's jobs to an idle one.
+void installShims({ dataDir: DATA_DIR, repo: path.resolve(import.meta.dirname, '..'), port: PORT }).then(setSessionShims)
+const jobsTrusted = (req: http.IncomingMessage) => isLocal(req) && !jailedPeer(req.socket)
+const runner = new Runner()
+const hub = new Hub({
+  remotes: () => w.remotes,
+  name: (id) => w.snapshot().machines.find((m) => m.id === id)?.name ?? id,
+  share: () => w.factory.shareJobs !== false,
+  off: () => w.factory.machinesOff,
+})
 // Your factory: API keys turned off stay out of the environment from the start (server/your-factory.ts).
 applyKeys(w.factory.intelOff, CONFIG_FILE)
 const sourceAuthor = (id: string) => threadAuthor(id, source => w.store.get(source), w.bossConversation(), ORCH_DIR)
@@ -736,6 +751,8 @@ type Handler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, p
 const think = new ThinkStore(path.join(DATA_DIR, 'think.json'))
 let thinkLayoutBusy = false
 const routes: [string, RegExp, Handler][] = [
+  ...runnerRoutes(runner, json, jobsTrusted),
+  ...(ORCHESTRATOR ? hubRoutes(hub, json, jobsTrusted, () => ({ id: MACHINE.id, name: w.snapshot().machines[0]?.name ?? MACHINE.id })) : []),
   ['POST', /^\/api\/think\/organise$/, async (req,res) => {
     const body=await readBody(req); const board=think.read();
     if(thinkLayoutBusy)return json(res,429,{error:'think_layout_busy'});
@@ -1389,6 +1406,7 @@ function factoryDeps(): FactoryDeps {
     state: () => w.factory,
     change: (fn) => w.setFactory(fn),
     machines: () => w.snapshot().machines,
+    away: () => hub.awayNow().map((a) => ({ name: a.name, n: a.n })),
     hereId: MACHINE.id,
     briefs: async () => {
       const here = brief()

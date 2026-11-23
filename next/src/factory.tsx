@@ -261,6 +261,23 @@ function MachineBand({ m, step, busy, onOpen, onPatch }: { m: FactoryMachine; st
   )
 }
 
+/** One line under the machines, with two or more: a busy machine's tests and builds run on an idle one. */
+function ShareBand({ share, step, onPatch }: { share: NonNullable<FactoryView['share']>; step: number; onPatch: (on: boolean) => void }) {
+  const turn = (on: boolean) => {
+    onPatch(on)
+    void call('POST', '/api/factory/share', { on }).then(load, load)
+  }
+  const away = share.on ? share.away.map((a) => `${a.n} on ${a.name}`).join(', ') : ''
+  return (
+    <Band step={step} depth={2} className={`${share.on ? '' : 'nx-fx-dim'} ${away ? 'nx-active' : ''}`}>
+      <span className="nx-fx-main">
+        <span className="nx-row-text nx-fx-text"><span className="nx-row-title">{away ? `Tests and builds: ${away}` : 'Tests and builds go to an idle machine'}</span></span>
+      </span>
+      <Switch on={share.on} label="Tests and builds go to an idle machine" onChange={turn} />
+    </Band>
+  )
+}
+
 // ---------------------------------------------------------------- intelligence
 
 function IntelBand({ x, step, onOpen, onPatch }: { x: FactoryIntel; step: number; onOpen?: () => void; onPatch: (p: Partial<FactoryIntel>) => void }) {
@@ -457,6 +474,7 @@ export function FactorySection({ snap, colors, page, toBoss }: {
               onOpen={() => page({ kind: 'machine', projectId: '', machine: m.id })}
               onPatch={(p) => patch((x) => ({ ...x, machines: x.machines.map((y) => (y.id === m.id ? { ...y, ...p } : y)) }))} />
           ))}
+          {v?.share && <ShareBand share={v.share} step={step(mOpen)} onPatch={(on) => patch((x) => ({ ...x, share: x.share && { ...x.share, on } }))} />}
           <PlusBand step={step(mOpen)} label="Add a machine" onClick={() => { toBoss(); askSetup('machine') }} />
         </Collapse>
         <LevelHead step={step()} name="Intelligence" open={iOpen} onFold={iFold} />

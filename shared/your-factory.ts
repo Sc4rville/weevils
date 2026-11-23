@@ -50,6 +50,9 @@ export interface FactoryIntel {
 export interface FactoryView {
   machines: FactoryMachine[]
   intelligence: FactoryIntel[]
+  /** With two machines or more: tests and builds go to an idle machine when the one they start on is busy
+   *  (server/heavy/jobs.ts). `away`: those running elsewhere now, by machine. */
+  share?: { on: boolean; away: { name: string; n: number }[] }
 }
 
 /** The API keys that are intelligence (a model provider), by the name weevils' setup stores them under

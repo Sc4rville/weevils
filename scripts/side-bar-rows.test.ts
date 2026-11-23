@@ -14,7 +14,7 @@ it("a repo row's mark takes the weevils logo's column and its name starts under 
   expect(px(body('.nx-repo-mark'), 'width')).toBe(px(body('.nx-boss-row .nx-boss-logo'), 'min-width'))
   expect(px(body('.nx-repo-row'), 'gap')).toBe(px(body('.nx-project-head.nx-boss-row'), 'gap'))
   expect(px(body('.nx-repo-mark .ic'), 'width')).toBe(px(body('.nx-logo'), 'width'))
-  expect(body('.nx-repo-mark .ic path')).toMatch(/stroke-width:\s*1\.5/)
+  expect(body('.nx-repo-mark .ic:not(.auto-mark) path')).toMatch(/stroke-width:\s*1\.5/)
 })
 
 it('settings read like Autonomous; the Autonomous name carries nothing beside it', () => {
@@ -49,4 +49,14 @@ it("a project's working star sits in one column just left of its « / »: the na
   expect(body('.nx-project-line .nx-project-name')).toMatch(/min-width:\s*0/)
   expect(body('.nx-project-line .nx-project-head')).toMatch(/flex:\s*1/)
   expect(body('.nx-boss-row .nx-fold')).toMatch(/flex:\s*1/)
+})
+
+it('Autonomous and Your factory are laid out like weevils and the repos: an icon in the logo column, the name under the « w »', () => {
+  const main = fs.readFileSync(path.join(root, 'next/src/main.tsx'), 'utf8')
+  const factory = fs.readFileSync(path.join(root, 'next/src/factory.tsx'), 'utf8')
+  // Autonomous: its own icon works, lit and turning while something runs, at rest otherwise; no star on its row.
+  expect(main).toMatch(/nx-repo-mark nx-autos-mark[^\n]*\? <AutoMark \/> : <Icon name="cycle" \/>/)
+  const autosHead = /<button className="nx-row nx-project-head nx-repo-row" onClick=\{foldAutos\}[\s\S]*?<\/button>/.exec(main)![0]
+  expect(autosHead).not.toMatch(/spin fluo|name="star"/)
+  expect(factory).toMatch(/nx-project-head nx-repo-row[\s\S]{0,300}<Icon name="factory" \/>/)
 })

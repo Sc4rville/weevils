@@ -394,7 +394,9 @@ export function FactorySection({ snap, colors, page, toBoss }: {
   return (
     <section className="nx-project nx-factory band" style={{ '--c': 'var(--calm)' } as CSSProperties}>
       <div className="nx-project-line">
-        <button className="nx-row nx-project-head" onClick={fold} aria-expanded={open}>
+        <button className="nx-row nx-project-head nx-repo-row" onClick={fold} aria-expanded={open}>
+          {/* Its icon in the weevils logo's column, its name under the « w », like every band of the side bar. */}
+          <span className="nx-repo-mark" aria-hidden><Icon name="factory" /></span>
           <span className="nx-row-title nx-project-name">Your factory</span>
         </button>
       </div>

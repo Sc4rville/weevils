@@ -23,6 +23,9 @@ once, and the code follows. Behaviour is never flipped back and forth.
   **Settings** fold the same way, from their name: folded to their one band unless this device last left them open
   (2026-11-23), in both apps. Their name is regular weight, like Autonomous: bold in the side bar means active.
   **A repo row** carries a thin square repo mark in the weevils logo's column, its name under the « w » of weevils.
+  **Autonomous** and **Your factory** are laid out the same way (2026-11-23): their icon in that column (the loop; the
+  factory), their name under the « w ». A project shows that it works by its star, on the right, in one column just
+  left of its « / »; Autonomous by its own icon alone, which lights up and turns while anything in it runs.
   Every folded band (weevils, each repo, Autonomous, settings) has one and the same height. The side bar ends with
   its last band: under it, what is behind shows through, never a filler band (2026-11-23).
 - **An automation row always opens the automation** (2026-11-21). Once accepted, it opens on its overview: its

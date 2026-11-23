@@ -1,5 +1,6 @@
 // A media of a post inside its mockup (shared/mockup.ts): a phone, a window, a tablet, a print, a screen or a board,
-// drawn in CSS (foryou-mockup.css) as solid blocks of the logo (a front, a side face, a bottom face), sized to the post, on the post's own colour. The media fills the mockup's screen.
+// drawn in CSS (foryou-mockup.css), sized to the post, on the post's own colour. The media fills the mockup's screen. The
+// side and bottom faces give the board its solid thickness (like the weevils logo); the others do not show them.
 import type { CSSProperties, ReactNode } from 'react'
 import { pickMockup, screenRatio, type Mockup } from '../../shared/mockup.ts'
 import type { ForYouMedia } from '../../shared/foryou.ts'

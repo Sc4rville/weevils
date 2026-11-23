@@ -31,7 +31,7 @@ import S from '../i18n/weevbook-sync.ts'
 import MV from '../i18n/weevbook-move.ts'
 import type { HubStatus } from './hub.ts'
 import { resumeThread, type Launch } from './resume.ts'
-import { backfill, backfillMarker, type BackfillFilter, type BookPaths } from './backfill.ts'
+import { backfill, backfillMarker, backfillProgressFile, type BackfillFilter, type BookPaths } from './backfill.ts'
 import { vaultHere, vaultMain } from './vault-cli.ts'
 import { moveMain } from './move-cli.ts'
 import { vaultSource } from './vault-raw.ts'
@@ -98,7 +98,25 @@ export async function main(args: string[], out: (line: string) => void = (l) => 
           out(t.badSince)
           return 2
         }
-        const r = await backfill(p, { ...filter, onSession: (_r, i, n) => process.stderr.isTTY && i % 25 === 0 && process.stderr.write(`\r${t.progress(i, n)}`) })
+        // The import at install says how far it got (DATA_DIR/weevbook-backfill.json): the sync line of the onboarding.
+        const progress = backfillProgressFile(path.dirname(p.dir))
+        let noted = 0
+        const note = (i: number, n: number) => {
+          if (!once || (i < n && Date.now() - noted < 1000)) return
+          noted = Date.now()
+          try {
+            fs.writeFileSync(progress, JSON.stringify({ done: i, total: n, at: noted }))
+          } catch {
+            /* a progress line is not worth failing the import */
+          }
+        }
+        const r = await backfill(p, {
+          ...filter,
+          onSession: (_r, i, n) => {
+            note(i, n)
+            if (process.stderr.isTTY && i % 25 === 0) process.stderr.write(`\r${t.progress(i, n)}`)
+          },
+        })
         if (process.stderr.isTTY) process.stderr.write('\r')
         out(t.backfill(r.sessions, r.created, r.updated, r.unchanged, r.empty))
         if (r.skipped) out(t.skipped(r.skipped))

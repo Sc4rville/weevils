@@ -90,8 +90,11 @@ export function withBossReactions(msgs: Message[], o: { asks: Ask[]; sessionStat
     const explicit = o.explicit?.get(m.id)
     // Received and not read into the ledger yet (its turn runs, or the ledger has it waiting): 👀.
     const seen = (i === lastUser && o.working) || (o.pendingSince !== undefined && m.at >= o.pendingSince - 5_000)
-    const r = explicit ?? messageReaction(o.asks.filter((a) => fromSrc(m.id, a.src)), o.sessionStatus) ?? (seen ? REACTIONS.seen : undefined)
-    return r ? { ...m, reaction: r } : m
+    const asks = o.asks.filter((a) => fromSrc(m.id, a.src))
+    const r = explicit ?? messageReaction(asks, o.sessionStatus) ?? (seen ? REACTIONS.seen : undefined)
+    // Waiting on the person: which session asks, so the thread can say it and open it in one tap.
+    const waitingOn = r === REACTIONS.waiting ? asks.map((a) => a.dispatches.at(-1)?.session).find((id) => !!id && o.sessionStatus(id) === 'needs_user') : undefined
+    return r ? { ...m, reaction: r, ...(waitingOn ? { waitingOn } : {}) } : m
   })
 }
 

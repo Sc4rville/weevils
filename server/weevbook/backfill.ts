@@ -155,6 +155,19 @@ export async function backfill(p: BookPaths, o: BackfillFilter & { now?: number;
 /** DATA_DIR/weevbook-backfilled: written once the first backfill of this machine went through. */
 export const backfillMarker = (dataDir: string) => path.join(dataDir, 'weevbook-backfilled')
 
+/** DATA_DIR/weevbook-backfill.json: how far the first backfill got ({ done, total, at }), while it runs. */
+export const backfillProgressFile = (dataDir: string) => path.join(dataDir, 'weevbook-backfill.json')
+
+/** How far the first backfill got: null before it started (or when its file is unreadable). */
+export function backfillProgress(dataDir: string): { done: number; total: number } | null {
+  try {
+    const p = JSON.parse(fs.readFileSync(backfillProgressFile(dataDir), 'utf8')) as { done?: unknown; total?: unknown }
+    return typeof p.done === 'number' && typeof p.total === 'number' ? { done: p.done, total: p.total } : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * The import at install (docs/spec/07-vault.md#the-history-retroactive-import): when this machine's weevbook was never
  * backfilled, `weevils weevbook backfill --once` runs in its own process at the lowest priority, so weevilsd and the

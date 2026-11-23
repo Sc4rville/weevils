@@ -1180,6 +1180,7 @@ export function Messages({
               )}
               {g.m.reaction && <Reaction emoji={g.m.reaction} />}
             </Bubble>
+            {!session && g.m.waitingOn && <WaitingOn id={g.m.waitingOn} />}
             {after?.(g.m.id)}
             </Coordination>
             </div>
@@ -1206,6 +1207,20 @@ export function UserPhotos({ files }: { files: string[] }) {
         </a>
       ))}
     </div>
+  )
+}
+
+/** Under your message in weevboss's thread, while the session it went to asks you something (❓): who waits, as a link
+ *  that opens that session at its question. Nothing else tells a newcomer their project stopped for their OK. */
+function WaitingOn({ id }: { id: string }) {
+  const t = useT(M)
+  const { snap } = useApp()
+  const s = snap.sessions.find((x) => x.id === id)
+  if (!s || s.status !== 'needs_user') return null
+  return (
+    <p className="waiting-on">
+      <AppLink href={`/#s=${id}`} label={t.waitingOn(s.title || id.slice(0, 8))} />
+    </p>
   )
 }
 

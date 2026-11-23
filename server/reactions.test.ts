@@ -45,6 +45,13 @@ describe('reactions, from real state', () => {
     explicit.set('u1', '')
     expect(withBossReactions(msgs, { asks, sessionStatus: st({}), working: false, explicit })[0].reaction).toBe(R.done)
   })
+  it("weevboss's thread: a message waiting on you says which session asks (the thread links to it)", () => {
+    const msgs = [user('u1'), reply('a1')]
+    const asks = [ask({ src: 'u1', status: 'dispatched', dispatches: sent('s1') })]
+    const waiting = withBossReactions(msgs, { asks, sessionStatus: st({ s1: 'needs_user' }), working: false })
+    expect(waiting[0]).toMatchObject({ reaction: R.waiting, waitingOn: 's1' })
+    expect(withBossReactions(msgs, { asks, sessionStatus: st({ s1: 'working' }), working: false })[0].waitingOn).toBeUndefined()
+  })
   it("a session's thread: only the latest message you (or another author) wrote, while it works or asks you", () => {
     const msgs: Message[] = [user('u1'), reply('a1'), { id: 'o1', role: 'orchestrator', author: 'weevboss', text: 'z', at: 3 }]
     expect(withSessionReactions(msgs, { status: 'working' }).map((m) => m.reaction)).toEqual([undefined, undefined, R.working])

@@ -46,6 +46,8 @@ export interface Message {
   /** A message the person (or another author) wrote: what is being done with it, one emoji on its corner (server/reactions.ts:
    *  from the request ledger, weevboss's turn, the session's state, or an agent's explicit `weevils react`). */
   reaction?: string
+  /** weevboss's thread, a message whose reaction is ❓: the session that waits on the person (its question). */
+  waitingOn?: string
 }
 
 /** Qui peut signer un message dans une session, à part l'utilisateur : weevboss et les agents externes (config du serveur). */
@@ -576,7 +578,7 @@ export interface Snapshot {
   /** Devil mode : modèle branché (DEVIL_API_URL) et réponse en cours. */
   devil: { enabled: boolean; working: boolean }
   /** Ce qui est branché (server/setup.ts) : les bulles renvoient vers weevboss quand un réglage manque. */
-  setup?: { provider?: Tool; ready?: boolean; codex?: boolean; providers?: { claude: boolean; codex: boolean }; claude: boolean; voice: boolean; dictation: boolean; github: boolean; welcomed: boolean }
+  setup?: { provider?: Tool; ready?: boolean; codex?: boolean; providers?: { claude: boolean; codex: boolean }; claude: boolean; voice: boolean; dictation: boolean; github: boolean; welcomed: boolean; /** The onboarding's sync is on its way (its line shows under weevboss's words). */ syncing?: boolean }
   /** Repos épinglés au fil des projets (présents même sans session). */
   pinnedRepos: string[]
   /** Projects taken out of the side bar in Your factory (they come back while one of their conversations works or

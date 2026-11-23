@@ -3625,6 +3625,12 @@ main.stack {
   font-size: 1.125rem; line-height: 1; pointer-events: none;
   filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.35));
 }
+/* Under your message, while the session it went to waits for your OK (bits.tsx WaitingOn): one living link, on the
+   message's right edge, under its ❓. */
+.waiting-on { margin: 4px var(--pad, 18px) 10px; text-align: right; font-size: 0.95rem; }
 
 /* Settings fold from their name (bands.tsx FootBand): the name is the button, nothing drawn around it. */
 .settings-fold { display: block; width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+
+/* The onboarding's sync line (setup.tsx SyncLine): small, quiet, under weevboss's words; it counts by itself. */
+.sync-line { margin: -8px 0 0; padding-left: var(--pad, 18px); font-size: 0.85rem; opacity: 0.75; font-variant-numeric: tabular-nums; }

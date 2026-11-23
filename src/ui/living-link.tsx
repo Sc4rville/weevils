@@ -1,6 +1,8 @@
 // Living links (docs/LINKS.md): a link to a page weevils serves (/p/<kind>/<slug>) is bold, in its kind's colours,
 // slowly drifting; a tap opens the page in place, full width, behind the weevils login.
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import { api } from '../api'
+import { device } from './setup'
 import { pageLink, type PageInfo, type PageKind } from '../../shared/pages'
 import { useT } from '../i18n'
 import M from '../i18n/living-link'
@@ -75,7 +77,7 @@ export function LivingLink({ href, label }: { href: string; label?: string }) {
  * A link to a place in the app, written by weevboss: `/#s=<session id or its first 8 characters>` opens that session,
  * `/#foryou` opens For you. Same living look as a page link (sessions blue, For you green); a tap stays in the app.
  */
-export function appLink(href: string): { kind: 'session'; id: string } | { kind: 'foryou' } | undefined {
+export function appLink(href: string): { kind: 'session'; id: string } | { kind: 'foryou' } | { kind: 'do'; action: DoAction } | undefined {
   let u: URL
   try {
     u = new URL(href, 'http://local')
@@ -86,8 +88,15 @@ export function appLink(href: string): { kind: 'session'; id: string } | { kind:
   if (!ours || (u.pathname !== '/' && u.pathname !== '')) return undefined
   const s = /^#s=([A-Za-z0-9_-]{4,})$/.exec(u.hash)
   if (s) return { kind: 'session', id: s[1] }
+  const d = /^#do=([a-z]+)$/.exec(u.hash)
+  if (d && (DO_ACTIONS as readonly string[]).includes(d[1])) return { kind: 'do', action: d[1] as DoAction }
   return /^#foryou$/.test(u.hash) ? { kind: 'foryou' } : undefined
 }
+
+/** What a link in weevboss's own words does where it is (server/setup.ts act): sign GitHub in, set a server up, « later »,
+ *  show the recovery code. Never a button: a living link in the sentence (2026-11-22). */
+export const DO_ACTIONS = ['github', 'server', 'later', 'recovery'] as const
+export type DoAction = (typeof DO_ACTIONS)[number]
 
 export function AppLink({ href, label }: { href: string; label: string }) {
   const link = appLink(href)!
@@ -95,12 +104,22 @@ export function AppLink({ href, label }: { href: string; label: string }) {
   try {
     app = useApp()
   } catch {}
+  const [busy, setBusy] = useState(false)
   return (
     <a
-      className={`living ${link.kind === 'session' ? 'lk-preview' : 'lk-opportunities'}`}
+      className={`living ${link.kind === 'session' ? 'lk-preview' : link.kind === 'do' ? 'lk-preview do' : 'lk-opportunities'}${busy ? ' busy' : ''}`}
       href={href}
+      aria-busy={busy || undefined}
       onClick={(e) => {
         e.stopPropagation()
+        if (link.kind === 'do') {
+          // Done here, whatever the app around it: the answer comes in weevboss's thread.
+          e.preventDefault()
+          if (busy) return
+          setBusy(true)
+          void api.setupDo(link.action, device()).catch(() => undefined).finally(() => setBusy(false))
+          return
+        }
         if (!app || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
         e.preventDefault()
         if (link.kind === 'foryou') return app.push({ kind: 'foryou' })

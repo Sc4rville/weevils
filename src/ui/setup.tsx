@@ -415,3 +415,37 @@ export function SetupComposer() {
     </form>
   )
 }
+
+/**
+ * The onboarding's sync line (docs/spec/07-vault.md « The onboarding »): under weevboss's « I'm syncing your
+ * conversations… », a small line that counts by itself (« 120 of 340 synced ») and is gone once they are all on the
+ * person's GitHub. Nothing to tap, nothing to wait for. Asked only while the snapshot says the sync is on its way.
+ */
+export function SyncLine() {
+  const t = useT(M)
+  let syncing = false
+  try {
+    syncing = !!useApp().snap.setup?.syncing
+  } catch {
+    /* outside the app */
+  }
+  const [p, setP] = useState<{ synced: number; total: number } | null>(null)
+  useEffect(() => {
+    if (!syncing) return setP(null)
+    let live = true
+    const look = () =>
+      api.setupSync().then((r) => live && setP(r.state === 'running' ? { synced: r.synced, total: r.total } : null)).catch(() => undefined)
+    void look()
+    const timer = window.setInterval(look, 3000)
+    return () => {
+      live = false
+      window.clearInterval(timer)
+    }
+  }, [syncing])
+  if (!syncing || !p) return null
+  return (
+    <p className="sync-line meta" role="status">
+      {t.syncLine(p.synced, p.total)}
+    </p>
+  )
+}

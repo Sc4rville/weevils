@@ -143,6 +143,10 @@ export const api = {
   /** Un secret demandé par un agent ([[setup:key:NOM]]) : la valeur part au serveur, rien ne revient. */
   setupKey: (name: string, value: string) => call<{ ok: true }>('POST', '/api/setup/key', { name, value }),
   setupDone: (brick: Brick) => call<{ ok: true }>('POST', '/api/setup/done', { brick }),
+  /** A link in weevboss's words (/#do=…): GitHub's sign-in, the server setup, « later », the recovery code. */
+  setupDo: (action: string, device: Device) => call<{ ok: true }>('POST', '/api/setup/do', { action, device }),
+  /** The onboarding's sync line: how many of this machine's conversations are on the person's GitHub. */
+  setupSync: () => call<{ state: 'off' | 'running' | 'done'; synced: number; total: number }>('GET', '/api/setup/sync'),
   setupLink: () => call<{ link: string }>('GET', '/api/setup/link'),
   bringLink: () => call<{ code: string }>('POST', '/api/bring/link'),
   bringView: () => call<BringView>('GET', '/api/bring'),

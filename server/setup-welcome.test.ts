@@ -60,10 +60,12 @@ describe('the hello', () => {
   it('ready: who it is, what it already sees, then what to ask; no button, nothing about how it works', () => {
     auth.ready = true
     const text = greeting(state({ projects: 3, projectNames: ['weevils', 'notes', 'site'], others: ['laptop'] }), both)
-    expect(text).toBe('Hi, I’m weevboss. I can already see your 3 projects (weevils, notes and site), and laptop is plugged in too. Tell me what you want done: an idea, a fix, a question about your code.')
+    expect(text).toBe('Hi, I’m weevboss. I can already see your 3 projects (weevils, notes and site), and laptop is plugged in too. Tell me what you’d like to make: a game, a website, a small tool, a question about your code… [Connect your GitHub](/#do=github) and I’ll keep all your conversations there, yours.')
     const fr = withLang('fr', () => greeting(state({ projects: 12, projectNames: ['a', 'b', 'c', 'd'] }), both))
-    expect(fr).toBe('Salut, moi c’est weevboss. Je vois déjà tes 12 projets (a, b, c, d…). Dis-moi ce que tu veux faire : une idée, un correctif, une question sur ton code.')
-    expect(greeting(state(), both)).toBe('Hi, I’m weevboss. Tell me what you want done: an idea, a fix, a question about your code.')
+    expect(fr).toBe('Salut, moi c’est weevboss. Je vois déjà tes 12 projets (a, b, c, d…). Dis-moi ce que tu veux faire : un jeu, un site, un petit outil, une question sur ton code… [Connecte ton GitHub](/#do=github) et je garde toutes tes conversations là-bas, à toi.')
+    expect(greeting(state(), both)).toBe('Hi, I’m weevboss. Tell me what you’d like to make: a game, a website, a small tool, a question about your code… [Connect your GitHub](/#do=github) and I’ll keep all your conversations there, yours.')
+    // GitHub already connected: the sync line follows by itself, nothing to offer.
+    expect(greeting(state({ github: { installed: true, logged: true, login: 'alex' } }), both)).toBe('Hi, I’m weevboss. Tell me what you’d like to make: a game, a website, a small tool, a question about your code…')
     for (const t of [text, fr]) expect(t).not.toMatch(/\[\[setup:|relay|thread|weevbook|session|fil\b/i)
   })
 
@@ -94,21 +96,23 @@ describe('what weevboss is told in its first days', () => {
   })
 
   // docs/spec/07-vault.md: the vault is part of the welcome, and each state has one next step, by talking.
-  it('the vault: none → GitHub by its code then setup; found → the recovery code; on → the summary once', () => {
+  it('the vault: weevils says the sync itself; none → the GitHub link; found → the recovery code; on → the export once', () => {
     const none = firstRunBrief(state(), true)
     expect(none).toContain('their conversations kept on their own GitHub (the vault): not yet')
-    expect(none).toContain('`weevils setup github` (posts the code and the link of GitHub in your name), then `weevils weevbook vault setup`, the 24 words once, the history question')
-    // GitHub already signed in: straight to the vault.
+    expect(none).toContain('GitHub not connected → their hello has its link; offer it again once, only when it helps, as this link in your sentence: [Connect your GitHub](/#do=github)')
+    expect(none).toContain('said by weevils itself in your thread')
+    expect(none).not.toContain('vault setup')
+    // GitHub already signed in: weevils starts the sync itself, nothing left to weevboss.
     const logged = firstRunBrief(state({ github: { installed: true, logged: true, login: 'alex' } }), true)
     expect(logged).not.toContain('weevils setup github')
-    expect(logged).toContain('without being asked: `weevils weevbook vault setup`')
+    expect(logged).not.toContain('vault setup')
+    expect(logged).not.toContain('Connect your GitHub')
     const found = firstRunBrief(state({ vault: { state: 'found', repo: 'alex/weevbook-vault', imported: false, without: [], said: [] } }), true)
     expect(found).toContain('a vault exists on their GitHub, not opened on this machine')
     expect(found).toContain('ask for their 24-word recovery code here in the chat, then `weevils weevbook vault restore --code "…"`')
     expect(found).not.toContain('vault setup')
     const on = (said: string[]) => firstRunBrief(state({ vault: { state: 'on', repo: 'alex/weevbook-vault', imported: true, without: [], said } }), true)
     expect(on(['code', 'history'])).toContain('(the vault): yes (alex/weevbook-vault)')
-    expect(on(['code', 'history'])).toContain('`weevils weevbook vault summary --json` says the import is done, say the summary sentence once, then `weevils setup mark vault:summary`')
     expect(on(['code', 'history'])).not.toContain('vault setup')
     // Said: not again. Then the export, once; then nothing more about it.
     expect(on(['code', 'history', 'summary'])).not.toContain('vault summary')
@@ -117,7 +121,7 @@ describe('what weevboss is told in its first days', () => {
   })
 
   it('`weevils setup` says where the vault stands, what was said already, and which computers lack it', () => {
-    expect(vaultLine({ state: 'none', imported: false, without: [], said: [] })).toBe('vault: none (weevils setup github when GitHub is not signed in, then weevils weevbook vault setup)')
+    expect(vaultLine({ state: 'none', imported: false, without: [], said: [] })).toBe('vault: none (weevils makes it and says so itself once GitHub is connected; GitHub not signed in: the link [Connect your GitHub](/#do=github))')
     expect(vaultLine({ state: 'found', repo: 'alex/weevbook-vault', imported: false, without: [], said: [] })).toContain('found on their GitHub (alex/weevbook-vault), not opened on this machine')
     expect(vaultLine({ state: 'on', repo: 'alex/weevbook-vault', imported: true, without: ['desk'], said: ['code', 'history'] })).toBe(
       'vault: on (alex/weevbook-vault) · this machine\'s history imported yes · recovery code given yes · history question asked yes · summary said no · Claude.ai and ChatGPT export offered no · plugged in without it (their line again fixes it): desk',
@@ -128,7 +132,8 @@ describe('what weevboss is told in its first days', () => {
 
   it('what weevboss is handed once GitHub’s code was typed: the next step for the vault, and that the person wrote nothing', () => {
     expect(githubBrief('alex', 'none')).toMatch(/^GitHub is signed in on this machine now \(alex\): the user typed the code on github\.com, they did not write this message\./)
-    expect(githubBrief('alex', 'none')).toContain('run `weevils weevbook vault setup` now, give the 24 words it prints once')
+    expect(githubBrief('alex', 'none')).toContain('weevils’ own job: it says so itself in your thread, never mention it')
+    expect(githubBrief('alex', 'none')).not.toContain('vault setup')
     expect(githubBrief('alex', 'found')).toContain('`weevils weevbook vault restore --code "…"`')
     expect(githubBrief('', 'on')).not.toContain('vault')
   })
@@ -291,7 +296,7 @@ esac
       const [said, brief] = handoff.mock.calls[0] as unknown as string[]
       expect(said).toBe('GitHub is connected.')
       expect(brief).toContain('GitHub is signed in on this machine now (alex)')
-      expect(brief).toContain('weevils weevbook vault setup')
+      expect(brief).toContain('never mention it')
       // No button, no command for the person, and the generic « GitHub plugged in » line is not added on top.
       expect(texts()).toHaveLength(1)
       expect(texts()[0]).not.toMatch(/\[\[setup:|`/)

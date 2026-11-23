@@ -5,7 +5,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { OutboxStatus } from '../../src/ui/outbox-status.tsx'
 import { ThreadPlans } from '../../src/ui/relay.tsx'
-import { Chip, KeyChip, SetupChips, SetupComposer, useFlow, useWelcome, withoutStandIn } from '../../src/ui/setup.tsx'
+import { Chip, KeyChip, SetupChips, SetupComposer, SyncLine, useFlow, useWelcome, withoutStandIn } from '../../src/ui/setup.tsx'
 import type { ChipId } from '../../src/ui/format.ts'
 import type { Brick } from '../../shared/setup.ts'
 import { AnimatePresence, motion } from 'motion/react'
@@ -87,6 +87,7 @@ export function Chat({ id, messages: thread, working: busy, author, placeholder,
           {loading && <p className="nx-empty"><span className="spin fluo"><Icon name="star" /></span></p>}
           {!loading && shown.length === 0 && !pending.length && empty && <p className="nx-empty">{empty}</p>}
           {messages && <Messages messages={messages} author={author} working={working} {...(id === null ? bossChips(messages) : {})} />}
+          {id === null && <SyncLine />}
           {id === null && <ThreadPlans />}
           <AnimatePresence initial={false}>
             {pending.map((p) => (

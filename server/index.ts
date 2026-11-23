@@ -85,6 +85,7 @@ import { Bring, realGit } from './bring.ts'
 import { HubSync, checkpointHook } from './weevbook/hub.ts'
 import { startWeevbookWriter } from './weevbook/writer.ts'
 import { startFirstBackfill } from './weevbook/backfill.ts'
+import { syncProgress } from './sync-progress.ts'
 import { startVaultPusherWhenSet } from './weevbook/vault.ts'
 import { ghRunner, shareVault } from './weevbook/vault-github.ts'
 import { vaultHere } from './weevbook/vault-cli.ts'
@@ -255,7 +256,12 @@ const joinVault = (id: string, pub: string) => shareVault({ remote: vaultRemote(
 if (ORCHESTRATOR) fs.mkdirSync(PROJECTS_DIR, { recursive: true })
 const setup = new Setup({
   bump: () => w.bump(),
-  feed: () => ({ machines: w.snapshot().machines, projects: w.snapshot().projects.length, names: w.snapshot().projects.map((p) => p.name) }),
+  // The person's own projects: weevils' own install (its checkout, or the installation entry) is not one of theirs.
+  feed: () => {
+    const snap = w.snapshot()
+    const mine = snap.projects.filter((p) => p.kind !== 'installation' && p.workstream?.kind !== 'self-improvement')
+    return { machines: snap.machines, projects: mine.length, names: mine.map((p) => p.name) }
+  },
   remoteFacts: async () => (await Promise.all(w.remotes.filter((r) => r.online).map((r) => r.call<MachineFacts>('GET', '/api/infra/facts').catch(() => null)))).filter((f): f is MachineFacts => !!f),
   devices: () => tokens.size,
   push: () => w.push.count,
@@ -264,6 +270,8 @@ const setup = new Setup({
   hasHistory: () => w.snapshot().main.some((m) => m.role === 'user'),
   startMail: restartMail,
   handoff: (text, brief) => w.sendMain(text, brief),
+  // A session of theirs ended a turn: they have seen weevils work.
+  worked: () => w.snapshot().sessions.some((x) => x.status === 'idle' || x.status === 'done'),
   memory: () => w.memory,
   // Turn mode: the memory sits in every turn's view; the thread only hears when it changed.
   bossId: () => (w.bossTurns ? 'turns' : w.bossConversation()),
@@ -879,6 +887,17 @@ const routes: [string, RegExp, Handler][] = [
     const bring = b.brick === 'machine' ? { since: typeof b.since === 'string' ? b.since : undefined, match: typeof b.match === 'string' ? b.match : undefined } : {}
     const flow = await setup.ask(b.brick, b.device ? asDevice(b.device) : undefined, again, bring)
     json(res, 200, { ok: true, flow, said: setup.lastSaid ?? undefined, open: setup.takeOpen() })
+  }],
+  // The onboarding's sync line (« 120 of 340 synced »): how many of this machine's conversations are in the vault.
+  ['GET', /^\/api\/setup\/sync$/, async (_req, res) => {
+    json(res, 200, await syncProgress())
+  }],
+  // A link in weevboss's words (/#do=github | server | later | recovery): what the person tapped.
+  ['POST', /^\/api\/setup\/do$/, async (req, res) => {
+    const b = await readBody(req)
+    if (typeof b.action !== 'string') return json(res, 400, { error: tr(S).badBrick })
+    const ok = await setup.act(b.action, b.device ? asDevice(b.device) : undefined)
+    json(res, ok ? 200 : 400, ok ? { ok: true, said: setup.lastSaid ?? undefined } : { error: tr(S).badBrick })
   }],
   // « weevils setup github »: GitHub's device sign-in, its code and link said in weevboss's thread. From the machine only.
   ['POST', /^\/api\/setup\/github$/, async (req, res) => {

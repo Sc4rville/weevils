@@ -34,3 +34,4 @@
   border: 0;
   background: transparent;
 }
+.living.busy { opacity: 0.55; }

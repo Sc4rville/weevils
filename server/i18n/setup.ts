@@ -112,7 +112,7 @@ export default defineMessages({
       const m = machines.length ? `${machines.length > 1 ? `tes machines ${and(machines)} sont branchées` : `ta machine ${machines[0]} est branchée`} aussi` : ''
       return p && m ? `${p}, et ${m}.` : p ? `${p}.` : m ? `${m[0].toUpperCase()}${m.slice(1)}.` : ''
     },
-    welcomeReady: 'Dis-moi ce que tu veux faire : une idée, un correctif, une question sur ton code.',
+    welcomeReady: 'Dis-moi ce que tu veux faire : un jeu, un site, un petit outil, une question sur ton code…',
     welcomeClaude: 'Pour réfléchir, j’utilise ton propre abonnement Claude.',
     welcomeClaudeLink: 'Pour réfléchir, j’utilise ton propre abonnement Claude : le lien de connexion arrive juste en dessous.',
     welcomeClaudeInstall: (host: string): string => `Pour réfléchir, j’utilise ton propre abonnement Claude : j’installe d’abord Claude Code sur ${host}, le lien de connexion suit dans une minute.`,
@@ -146,13 +146,20 @@ export default defineMessages({
       s.github.logged
         ? `GitHub est branché${s.github.login ? ` (${s.github.login})` : ''}. Glisse le fil vers la gauche pour voir tes repos ; le + en met un dans le fil.`
         : `Avec GitHub branché, je vois tous tes repos, j’en crée pour tes idées et je range les sessions par projet. Crée un jeton sur [cette page GitHub](${GH_TOKEN_URL}) (« Generate token » en bas), copie-le et colle-le en bas.`,
-    githubOk: (login: string): string => `GitHub branché : ${login}. Glisse le fil vers la gauche pour voir tes repos ; le + en met un dans le fil, et je peux en créer pour tes idées.`,
+    githubOk: (login: string): string => `GitHub branché : ${login}. Je peux créer des repos pour tes idées.`,
     githubFail: (why: string): string => `GitHub refuse ce jeton (${why}). Vérifie qu’il a les droits repo et read:org, puis réessaie :`,
     githubNoCli: (why: string): string => `J’ai gardé le jeton, mais l’outil GitHub ne s’installe pas sur la machine (${why}) : demande-moi de réessayer.`,
     // ---- GitHub en parlant (le coffre, docs/spec/07-vault.md) : le code de GitHub, tapé sur github.com.
     githubDevice: (url: string, code: string): string => `Connecte ton GitHub, une seule fois : ouvre [github.com/login/device](${url}) et tape ce code : **${code}** (valable 15 minutes). Je continue dès que c’est fait.`,
     githubDeviceFail: (why: string): string => `La connexion à GitHub n’a pas abouti (${why}). Dis-moi quand tu veux réessayer.`,
     githubDeviceDone: 'GitHub est connecté.',
+    syncStart: 'Tu es connecté à GitHub et à Claude. Je synchronise tes conversations pour que tu puisses les reprendre depuis n’importe quelle machine ou abonnement.',
+    syncDone: (n: number): string => `C’est fait : ${n > 1 ? `tes ${n} conversations sont` : n === 1 ? 'ta conversation est' : 'tes conversations sont'} à toi maintenant, en sécurité sur ton GitHub. 🎉 Garde ton [code de secours](/#do=recovery) en lieu sûr : avec lui, une nouvelle machine récupère tout.`,
+    vpsOffer: 'Pour que weevils travaille 24 h/24, même ordinateur éteint, je te conseille un serveur (environ 5 €/mois). Je peux [le mettre en place maintenant](/#do=server), ou [te le rappeler plus tard](/#do=later).',
+    vpsLater: 'D’accord, je t’en reparlerai quand ce sera utile.',
+    recoveryCode: (words: string): string => `Ton code de secours, à garder comme un mot de passe (avec lui, une nouvelle machine récupère toutes tes conversations) :\n\n\`${words}\``,
+    recoveryShown: 'Ton code de secours a déjà été montré, plus haut : je ne le réécris pas.',
+    welcomeGithub: '[Connecte ton GitHub](/#do=github) et je garde toutes tes conversations là-bas, à toi.',
     // ---- voix
     voiceAsk: (s: SetupState): string => {
       const spoken =
@@ -348,7 +355,7 @@ export default defineMessages({
       const m = machines.length ? `${and(machines)} ${machines.length > 1 ? 'are' : 'is'} plugged in too` : ''
       return p && m ? `${p}, and ${m}.` : p ? `${p}.` : m ? `${m[0].toUpperCase()}${m.slice(1)}.` : ''
     },
-    welcomeReady: 'Tell me what you want done: an idea, a fix, a question about your code.',
+    welcomeReady: 'Tell me what you’d like to make: a game, a website, a small tool, a question about your code…',
     welcomeClaude: 'To think, I use your own Claude subscription.',
     welcomeClaudeLink: 'To think, I use your own Claude subscription: the sign-in link comes right below.',
     welcomeClaudeInstall: (host: string): string => `To think, I use your own Claude subscription: I’m installing Claude Code on ${host} first, the sign-in link follows in a minute.`,
@@ -379,12 +386,19 @@ export default defineMessages({
       s.github.logged
         ? `GitHub is plugged in${s.github.login ? ` (${s.github.login})` : ''}. Swipe the feed left to see your repos; the + puts one in the feed.`
         : `With GitHub plugged in, I see all your repos, create new ones for your ideas, and sort sessions by project. Create a token on [this GitHub page](${GH_TOKEN_URL}) (“Generate token” at the bottom), copy it, and paste it below.`,
-    githubOk: (login: string): string => `GitHub plugged in: ${login}. Swipe the feed left to see your repos; the + puts one in the feed, and I can create new ones for your ideas.`,
+    githubOk: (login: string): string => `GitHub plugged in: ${login}. I can create repos for your ideas.`,
     githubFail: (why: string): string => `GitHub rejects this token (${why}). Check it has the repo and read:org scopes, then try again:`,
     githubNoCli: (why: string): string => `I kept the token, but the GitHub tool won’t install on the machine (${why}): ask me to try again.`,
     githubDevice: (url: string, code: string): string => `Sign in to your GitHub, just once: open [github.com/login/device](${url}) and type this code: **${code}** (valid 15 minutes). I’ll carry on as soon as it’s done.`,
     githubDeviceFail: (why: string): string => `GitHub didn’t sign in (${why}). Tell me when you want to try again.`,
     githubDeviceDone: 'GitHub is connected.',
+    syncStart: 'You’re connected to GitHub and Claude. I’m syncing your conversations so you can pick them up from any machine or subscription.',
+    syncDone: (n: number): string => `Done: ${n > 1 ? `your ${n} conversations are` : n === 1 ? 'your conversation is' : 'your conversations are'} yours now, safe on your GitHub. 🎉 Keep your [recovery code](/#do=recovery) somewhere safe: with it, a new machine gets everything back.`,
+    vpsOffer: 'To keep weevils working 24/7, even with your computer off, I recommend a server (about €5/month). I can [set it up now](/#do=server), or [remind you later](/#do=later).',
+    vpsLater: 'Sure, I’ll bring it up again when it helps.',
+    recoveryCode: (words: string): string => `Your recovery code, to keep like a password (with it, a new machine gets all your conversations back):\n\n\`${words}\``,
+    recoveryShown: 'Your recovery code was already shown, above: I won’t write it again.',
+    welcomeGithub: '[Connect your GitHub](/#do=github) and I’ll keep all your conversations there, yours.',
     voiceAsk: (s: SetupState): string => {
       const spoken =
         s.voice.spoken === 'cartesia'

@@ -46,6 +46,9 @@ import { quotas } from './usage.ts'
 import type { Join } from './join.ts'
 import { isTunnelUrl } from './tunnel-link.ts'
 import { backfillMarker } from './weevbook/backfill.ts'
+import { syncProgress } from './sync-progress.ts'
+import { recoveryCode, readKey } from './weevbook/vault.ts'
+import { vaultMain } from './weevbook/vault-cli.ts'
 import { githubRepo } from './weevbook/vault.ts'
 import { VAULT_REPO, withoutVault } from './weevbook/vault-github.ts'
 
@@ -133,6 +136,8 @@ export interface SetupDeps {
   /** Confie un travail à weevboss : « text » s'affiche dans son fil comme venant de l'utilisateur, « brief » (la marche
    * à suivre exacte) l'accompagne dans le bloc ⟦weevils …⟧, jamais affiché. */
   handoff: (text: string, brief: string) => Promise<unknown>
+  /** The person has seen weevils work: a session of theirs ended a turn (the server offer waits for it). */
+  worked?: () => boolean
   /** Ce que weevils retient de l'utilisateur (server/memory.ts) : null sur une machine secondaire. */
   memory?: () => Memory | null
   /** La conversation de weevboss où ira le prochain message (id de sa session Claude), null quand ce message en ouvrira
@@ -645,6 +650,9 @@ export class Setup {
   /** « gh auth login » waiting for the code to be typed on github.com, and what the thread showed for it. */
   private githubLogin: ChildProcess | null = null
   private githubShown: string | null = null
+  /** GitHub's sign-in started from the person's own link (the sync line says the rest) rather than for weevboss. */
+  private githubForSync = false
+  private syncing = false
   /** Sur un Mac, « joignable de partout » part chez weevboss dès le tap : quand, pour qu'un double tap ne le confie pas deux fois. */
   private reachAt = 0
   /** La dernière explication postée par une puce : un second tap ne la répète pas. */
@@ -699,7 +707,7 @@ export class Setup {
   }
 
   flags() {
-    return { provider: preferredTool(), ready: providerReady(), providers: this.providers(), codex: codexLogged(), claude: claudeLogged(), voice: !!(cartesia() || edgeTts()), dictation: !!process.env.OPENAI_API_KEY?.trim(), github: ghCache?.v.logged ?? true, welcomed: !!this.p.welcomed }
+    return { provider: preferredTool(), ready: providerReady(), providers: this.providers(), codex: codexLogged(), claude: claudeLogged(), voice: !!(cartesia() || edgeTts()), dictation: !!process.env.OPENAI_API_KEY?.trim(), github: ghCache?.v.logged ?? true, welcomed: !!this.p.welcomed, syncing: !!this.p.marks['sync:start'] && !this.p.marks['vault:summary'] }
   }
 
   /**
@@ -815,7 +823,8 @@ export class Setup {
    * weevboss, quand un projet en a besoin : à ce moment-là, la personne a quelque chose à demander. */
   private async claudeReady() {
     this.cache = null
-    this.say(tr(M).claudeReady)
+    const gh = await github().catch(() => ({ logged: true }))
+    this.say(gh.logged ? tr(M).claudeReady : `${tr(M).claudeReady} ${tr(M).welcomeGithub}`)
     const job = this.p.pending
     if (job && providerReady()) {
       this.p.pending = undefined
@@ -1022,6 +1031,8 @@ export class Setup {
     console.log(`[setup] GitHub branché (${gh.login ?? ''})`)
     const t = tr(M)
     if (!providerReady()) return void this.say(t.githubOk(gh.login ?? ''))
+    // From the person's own link: the sync line says it all (watch() says it within seconds).
+    if (this.githubForSync) return void this.watch()
     await this.deps.handoff(t.githubDeviceDone, githubBrief(gh.login ?? '', (await this.detect(true)).vault.state))
   }
 
@@ -1049,7 +1060,95 @@ export class Setup {
         this.say(tr(M).githubOk(gh.login ?? ''))
       }
     }
+    if (await this.watchSync().catch((e) => (console.log(`[setup] sync: ${short(e)}`), false))) changed = true
     if (changed) this.save()
+  }
+
+  /**
+   * The onboarding's sync (docs/spec/07-vault.md « The onboarding »), said by weevils itself, never left to a model:
+   * once Claude and GitHub are both connected, the vault is made and one line says the conversations are syncing (the
+   * app shows « 120 of 340 synced » under it); once every one is in, one line says they are the person's now, with the
+   * recovery code one tap away; then, once the person has seen weevils work and when this machine is not on day and
+   * night, the server offer, as two links (set it up now, remind you later). True when something was said.
+   */
+  private async watchSync(): Promise<boolean> {
+    if (!providerReady() || !this.p.githubLogged || this.syncing) return false
+    const marks = this.p.marks
+    const t = tr(M)
+    if (!marks['sync:start']) {
+      // A new install (it had the first-run welcome) or the person's own link; an older install is offered it instead.
+      if (!this.p.firstRun && !this.githubForSync) return false
+      const s = await this.detect(true)
+      if (!s.github.logged) return false
+      if (s.vault.state === 'found') return false // their recovery code first: weevboss asks for it
+      if (s.vault.state === 'on') {
+        // Set up before (by hand, or by an older weevils): nothing to announce.
+        marks['sync:start'] = marks['vault:summary'] = Date.now()
+        return true
+      }
+      this.syncing = true
+      try {
+        const out: string[] = []
+        // The recovery code it prints is not kept: the app shows it from the key, when the person taps for it.
+        const code = await vaultMain(['setup'], (l) => out.push(l.replace(/^([a-z]+ ){23}[a-z]+$/, '…')))
+        if (code !== 0) {
+          console.log(`[setup] vault setup: ${out.filter(Boolean).at(-1) ?? code}`)
+          return false
+        }
+      } finally {
+        this.syncing = false
+      }
+      this.cache = null
+      marks['sync:start'] = Date.now()
+      this.say(t.syncStart)
+      return true
+    }
+    if (!marks['vault:summary']) {
+      const p = await syncProgress()
+      if (p.state !== 'done') return false
+      marks['vault:summary'] = Date.now()
+      this.say(t.syncDone(p.total))
+      const m = (await this.detect()).machine
+      if (m.alwaysOn !== true && m.kind !== 'vps' && m.kind !== 'server') marks['vps:due'] = Date.now()
+      return true
+    }
+    if (marks['vps:due'] && !marks['vps:offer'] && !marks['vps:later'] && (this.deps.worked?.() ?? true)) {
+      marks['vps:offer'] = Date.now()
+      this.say(t.vpsOffer)
+      return true
+    }
+    return false
+  }
+
+  /** A link weevboss wrote in its own words (/#do=…): what the person tapped, done here. */
+  async act(action: string, device?: Device): Promise<boolean> {
+    const t = tr(M)
+    switch (action) {
+      case 'github': {
+        this.githubForSync = true
+        if ((await this.githubDevice()) === 'signed-in') void this.watch()
+        return true
+      }
+      case 'server':
+        await this.ask('machine', device)
+        return true
+      case 'later':
+        this.mark('vps:later')
+        this.say(t.vpsLater)
+        return true
+      case 'recovery': {
+        if (this.p.marks['vault:code']) return this.say(t.recoveryShown), true
+        const key = readKey(VAULT_KEY_FILE)
+        if (!key) return false
+        this.mark('vault:code')
+        // The 24 words are shown, never kept in what weevboss reads of its thread.
+        const id = this.say(t.recoveryCode(recoveryCode(key)))
+        this.p.hidden = [...(this.p.hidden ?? []), id].slice(-50)
+        this.save()
+        return true
+      }
+    }
+    return false
   }
 
   /** Another computer plugged in from its line: said once it answers. True when something changed. */
@@ -1690,7 +1789,8 @@ export function greeting(s: SetupState, providers: { claude: boolean; codex: boo
   const t = tr(M)
   const seen = t.welcomeSeen(s.projects, s.projectNames, s.machine.others)
   const head = [t.welcomeHello(USER_NAME), seen].filter(Boolean).join(' ')
-  if (providerReady()) return `${head} ${t.welcomeReady}`
+  // GitHub, one link away: the conversations are kept there (the sync line follows once it is connected).
+  if (providerReady()) return `${head} ${t.welcomeReady}${s.github.logged || s.vault.state !== 'none' ? '' : ` ${t.welcomeGithub}`}`
   if (providerTool(providers) === 'codex') return `${head} ${t.welcomeCodex}`
   if (link) return `${head} ${t.welcomeClaude} ${t.claudeLink(link)}`
   return `${head} ${s.claude.installed ? t.welcomeClaudeLink : t.welcomeClaudeInstall(s.machine.host)}`
@@ -1713,17 +1813,18 @@ export function firstRunBrief(s: SetupState, joinable: boolean): string {
     `connector for ChatGPT and Claude.ai: ${s.connector ? 'on' : 'off'}`,
     `their conversations kept on their own GitHub (the vault): ${s.vault.state === 'on' ? `yes (${s.vault.repo})` : s.vault.state === 'found' ? 'a vault exists on their GitHub, not opened on this machine' : 'not yet'}`,
   ]
-  // The vault is part of the welcome (docs/spec/07-vault.md): the one next step, by talking.
+  // The vault is part of the welcome (docs/spec/07-vault.md « The onboarding »): weevils says the sync itself; weevboss
+  // only offers GitHub when it is missing, asks for a found vault's code, and offers the chat apps' export once.
   const keep =
-    s.vault.state === 'on'
-      ? !s.vault.said.includes('summary')
-        ? 'their conversations are kept → when `weevils weevbook vault summary --json` says the import is done, say the summary sentence once, then `weevils setup mark vault:summary`;'
-        : !s.vault.said.includes('export')
-          ? 'their history is in → offer once their Claude.ai and ChatGPT export, then `weevils setup mark vault:export`;'
+    s.vault.state === 'found'
+      ? 'a vault of theirs is on their GitHub → ask for their 24-word recovery code here in the chat, then `weevils weevbook vault restore --code "…"`;'
+      : s.vault.state === 'on'
+        ? s.vault.said.includes('summary') && !s.vault.said.includes('export')
+          ? 'their conversations are kept (weevils said so) → offer once their Claude.ai and ChatGPT export, then `weevils setup mark vault:export`;'
           : ''
-      : s.vault.state === 'found'
-        ? 'a vault of theirs is on their GitHub → ask for their 24-word recovery code here in the chat, then `weevils weevbook vault restore --code "…"`;'
-        : `their conversations are not kept yet → once Claude Code is signed in, without being asked: ${s.github.logged ? '' : '`weevils setup github` (posts the code and the link of GitHub in your name), then '}\`weevils weevbook vault setup\`, the 24 words once, the history question (your instructions say how);`
+        : !s.github.logged
+          ? 'GitHub not connected → their hello has its link; offer it again once, only when it helps, as this link in your sentence: [Connect your GitHub](/#do=github);'
+          : ''
   return [
     `first days with the user: onboarding is this conversation, there is nothing else in the app (no tour, no button, no checklist). What weevils already detected, so never ask about it: ${facts.join(' · ')}.`,
     'Speak plainly and briefly; never explain how weevils works inside. What only the user can do comes as one sentence at the moment it helps, in this thread:',
@@ -1731,6 +1832,7 @@ export function firstRunBrief(s: SetupState, joinable: boolean): string {
     'ChatGPT or Claude.ai, only when relevant or asked → `weevils setup ask connector` (turns it on, posts the address and the clicks);',
     ...(keep ? [keep] : []),
     'a subscription to sign in → `weevils setup ask claude` or `weevils setup ask codex` (posts the link). A first real request beats any setup: do it first.',
+    'Keeping their conversations on their GitHub is said by weevils itself in your thread (the sync line, “done”, the recovery code, the server offer as links): never repeat or announce any of it.',
   ].join(' ')
 }
 
@@ -1748,7 +1850,7 @@ export function vaultLine(v: SetupState['vault']): string {
   const yes = (b: boolean) => (b ? 'yes' : 'no')
   const marked = (id: string) => v.said.includes(id)
   const without = v.without.length ? ` · plugged in without it (their line again fixes it): ${v.without.join(', ')}` : ''
-  if (v.state === 'none') return `vault: none (weevils setup github when GitHub is not signed in, then weevils weevbook vault setup)${without}`
+  if (v.state === 'none') return `vault: none (weevils makes it and says so itself once GitHub is connected; GitHub not signed in: the link [Connect your GitHub](/#do=github))${without}`
   if (v.state === 'found') return `vault: found on their GitHub (${v.repo}), not opened on this machine (ask for the recovery code, then weevils weevbook vault restore --code "…")`
   if (!v.said.length) return `vault: on (${v.repo}) · set up outside your chat: nothing to say about it unless asked${without}`
   return `vault: on (${v.repo}) · this machine's history imported ${yes(v.imported)} · recovery code given ${yes(marked('code'))} · history question asked ${yes(marked('history'))} · summary said ${yes(marked('summary'))} · Claude.ai and ChatGPT export offered ${yes(marked('export'))}${without}`
@@ -1758,7 +1860,7 @@ export function vaultLine(v: SetupState['vault']): string {
 export function githubBrief(login: string, vault: SetupState['vault']['state']): string {
   const next =
     vault === 'none'
-      ? 'If it was to keep their conversations: run `weevils weevbook vault setup` now, give the 24 words it prints once with the one sentence, then ask the history question, the way your instructions say.'
+      ? 'Keeping their conversations on GitHub is weevils’ own job: it says so itself in your thread, never mention it.'
       : vault === 'found'
         ? 'A vault of theirs already exists on their GitHub: ask for their 24-word recovery code, then run `weevils weevbook vault restore --code "…"`.'
         : ''

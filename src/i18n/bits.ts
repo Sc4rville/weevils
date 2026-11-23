@@ -37,6 +37,7 @@ export default defineMessages({
     noRecordedCommand: 'Aucune commande enregistrée pour cette action.',
     older: (n: number) => (n > 1 ? `${n} messages plus anciens` : `${n} message plus ancien`),
     you: 'toi',
+    waitingOn: (title: string) => `${title} attend ton accord`,
     reaction: (e: string) => ({ '👀': 'vu', '📤': 'envoyé à une session', '🛠️': 'en cours', '✅': 'fait', '❓': 'attend ta réponse', '💬': 'répondu', '🤷': 'laissé de côté' } as Record<string, string>)[e] ?? e,
     /** Ligne de session : sous-agents, étapes de workflow et commandes qui tournent encore. */
     background: (n: number) => `${n} en arrière-plan`,
@@ -86,6 +87,7 @@ export default defineMessages({
     noRecordedCommand: 'No command recorded for this action.',
     older: (n: number) => `${n} older message${n === 1 ? '' : 's'}`,
     you: 'you',
+    waitingOn: (title: string) => `${title} is waiting for your OK`,
     reaction: (e: string) => ({ '👀': 'seen', '📤': 'sent to a session', '🛠️': 'being worked on', '✅': 'done', '❓': 'waiting on you', '💬': 'answered', '🤷': 'left aside' } as Record<string, string>)[e] ?? e,
     background: (n: number) => `${n} in background`,
     resume: 'resume',

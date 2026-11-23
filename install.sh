@@ -315,6 +315,20 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+# A re-run on a machine that joined another one (by hand, or weevils-update after each new version) keeps it what it
+# is: a secondary machine, its main machine, and its tunnel port there (the only one its key may open). Without this, a
+# re-run made it a main machine of its own and took its tunnel down: it never showed up on the main machine again.
+if [ -z "$SECONDARY" ] && [ "$UNINSTALL" = 0 ] && [ -f "$HOME/.config/weevils/service.conf" ]; then
+  # shellcheck disable=SC1091
+  _svc=$( . "$HOME/.config/weevils/service.conf" 2>/dev/null; printf '%s\n%s\n%s' "${WEEVILS_ROLE:-}" "${WEEVILS_MAIN_HOST:-}" "${WEEVILS_TUNNEL_PORT:-}") || _svc=''
+  if [ "$(printf '%s\n' "$_svc" | sed -n 1p)" = secondary ] && [ -n "$(printf '%s\n' "$_svc" | sed -n 2p)" ]; then
+    SECONDARY=$(printf '%s\n' "$_svc" | sed -n 2p)
+    _tp=$(printf '%s\n' "$_svc" | sed -n 3p)
+    [ -n "${WEEVILS_TUNNEL_PORT:-}" ] || ! [[ "$_tp" =~ ^[0-9]+$ ]] || export WEEVILS_TUNNEL_PORT=$_tp
+  fi
+  unset _svc _tp
+fi
+
 # Values checked before anything runs. A domain may come as a URL: only the host is kept.
 DOMAIN=${DOMAIN#http://}; DOMAIN=${DOMAIN#https://}; DOMAIN=${DOMAIN%%/*}
 BAD_VAL=''

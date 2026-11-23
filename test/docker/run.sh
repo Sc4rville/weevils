@@ -235,6 +235,26 @@ run_systemd() {
     check "main: the thread said it came in, then that it is plugged in" as_test 'for i in $(seq 20); do jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk is plugged in" && jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk is plugging in" && exit 0; sleep 1; done; exit 1'
     check "third: that key gets no shell and no other command on the main machine" as_3 '! ssh -o BatchMode=yes weevils-testbox "cat ~/.config/weevils/secret" >/tmp/out 2>&1 && grep -q "this key only registers desk" /tmp/out && ! ssh -o BatchMode=yes weevils-testbox bash </dev/null'
     check "third: the line works once" as_3 "! ($line) >/tmp/again 2>&1 && grep -q 'expired or was already used' /tmp/again"
+
+    say "systemd: an update on the third machine (the installer again, without --secondary) keeps it plugged in"
+    online_desk() { as_test 'for i in $(seq 60); do curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"desk\" and .online==true)" >/dev/null && exit 0; sleep 1; done; exit 1'; }
+    check "third: install.sh --agent --no-update, as weevils-update runs it, says role=secondary" as_3 'cd weevils && WEEVILS_NO_UPDATE=1 ./install.sh --agent --no-update >/tmp/upd.log 2>&1; grep -qx status=ok /tmp/upd.log && grep -qx role=secondary /tmp/upd.log || { tail -20 /tmp/upd.log; exit 1; }'
+    check "third: still secondary on the same port, tunnel active" as_3 'grep -qx WEEVILS_ROLE=secondary ~/.config/weevils/service.conf && grep -qx WEEVILS_TUNNEL_PORT=4193 ~/.config/weevils/service.conf && systemctl --user is-active weevils-tunnel'
+    check "main: desk online after its update" online_desk
+    check "third: server/install.sh without arguments keeps it secondary" as_3 'bash weevils/server/install.sh >/dev/null 2>&1; grep -qx WEEVILS_ROLE=secondary ~/.config/weevils/service.conf && systemctl --user is-active weevils-tunnel'
+    check "main: still the same remotes" as_test 'grep -qx "WEEVILS_REMOTES=laptop=http://127.0.0.1:4192,desk=http://127.0.0.1:4193" ~/.config/weevils/env'
+
+    say "systemd: the third machine's connection dies without a word (sleep, another network): it comes back by itself"
+    # Its network goes, the tunnel's ssh is killed meanwhile: the main machine never hears of it and keeps the port.
+    local tpid
+    tpid=$(docker exec "$c3" bash -c 'pgrep -u test -f "ssh -NT .*-R 127.0.0.1:4193"' | head -1)
+    docker network disconnect "$net" "$c3"
+    docker exec "$c3" kill -9 "$tpid"
+    check "main: the dead connection still holds desk's port" as_test 'ss -ltnH | grep -q "127.0.0.1:4193 "'
+    sleep 3
+    docker network connect "$net" "$c3"
+    check "main: desk online again within a minute (the stale port reclaimed)" online_desk
+    check "main: the thread says nothing for a blip under 10 minutes" as_test '! jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk has not answered"'
   fi
 
   say "systemd: reboot"

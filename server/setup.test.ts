@@ -269,6 +269,11 @@ describe('never a command for the user to type', () => {
       expect(join.match(/`[^`]+`/g)).toEqual(['`curl -fsSL https://weevils.example.com/api/join.sh | bash -s CODE`'])
       expect(t.claudeTerminal('no answer', 'claude').match(/`[^`]+`/g)).toEqual(['`claude`'])
       expect(t.codexTerminal('no answer', 'codex login').match(/`[^`]+`/g)).toEqual(['`codex login`'])
+      // Another computer that did not install, or that stopped answering: the one command to run on it.
+      expect(t.joinFailed('desk', 'weevils could not install a package it needs on this computer: tmux.', 'sudo pacman -S --needed tmux').match(/`[^`]+`/g)).toEqual(['`sudo pacman -S --needed tmux`'])
+      expect(t.joinFailed('desk', 'the installation stopped.', '').match(/`[^`]+`/g)).toBeNull()
+      expect(t.linkDown('desk').match(/`[^`]+`/g)).toEqual(['`weevils-service restart`'])
+      expect(t.linkBack('desk')).not.toMatch(COMMAND)
       // The connector's address is a link to copy, not a command.
       expect(t.connectorHow('https://weevils.example.com/mcp', false).match(/`[^`]+`/g)).toEqual(['`https://weevils.example.com/mcp`'])
     })
@@ -363,6 +368,47 @@ describe('weevboss automatic messages are never posted twice', async () => {
     expect(log.at(-2)?.role).toBe('user')
     expect(setup.lastSaid).toBe(log.at(-1)?.id)
     expect(setup.lastSaid).not.toBe(first)
+  })
+})
+
+describe('another machine that stops answering', async () => {
+  const { Setup } = await import('./setup.ts')
+  let machines: { id: string; name: string; online?: boolean }[] = []
+  const setup = new Setup({
+    bump: () => undefined,
+    feed: () => ({ machines, projects: 0 }),
+    remoteFacts: async () => [],
+    devices: () => 1,
+    push: () => 0,
+    shortcut: () => false,
+    seen: () => [],
+    hasHistory: () => true,
+    startMail: () => undefined,
+    handoff: async () => undefined,
+  })
+  const watch = (now: number) => (setup as unknown as { watchLinks(now: number): boolean }).watchLinks(now)
+  const texts = () => setup.messages().map((m) => m.text)
+  it('is said once after 10 minutes, with the command to run on it, and again when it is back', () => {
+    const t0 = 1_000_000
+    machines = [{ id: 'box', name: 'box', online: true }, { id: 'desk', name: 'desk', online: true }, { id: 'pc', name: 'pc', online: false }]
+    expect(watch(t0)).toBe(false)
+    machines[1].online = false
+    expect(watch(t0 + 1000)).toBe(false)
+    expect(watch(t0 + 9 * 60_000)).toBe(false)
+    expect(watch(t0 + 11 * 60_000)).toBe(true)
+    expect(texts().filter((x) => x.startsWith('desk'))).toEqual([expect.stringContaining('`weevils-service restart`')])
+    expect(watch(t0 + 30 * 60_000)).toBe(false)
+    // pc never answered since this weevilsd started: unplugged long ago, nothing to say.
+    expect(texts().some((x) => x.startsWith('pc'))).toBe(false)
+    machines[1].online = true
+    expect(watch(t0 + 31 * 60_000)).toBe(true)
+    expect(texts().filter((x) => x.startsWith('desk')).length).toBe(2)
+    // A short blip (under 10 minutes) says nothing.
+    machines[1].online = false
+    expect(watch(t0 + 32 * 60_000)).toBe(false)
+    machines[1].online = true
+    expect(watch(t0 + 35 * 60_000)).toBe(false)
+    expect(texts().filter((x) => x.startsWith('desk')).length).toBe(2)
   })
 })
 

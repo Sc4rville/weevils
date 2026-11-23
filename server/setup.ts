@@ -1059,6 +1059,7 @@ export class Setup {
   /** Ce qui a changé tout seul (une connexion faite dans un terminal) : dit une fois. */
   private async watch() {
     let changed = this.watchJoin()
+    changed = this.watchLinks() || changed
     if (!this.p.welcomed) {
       if (changed) this.save()
       return
@@ -1178,6 +1179,37 @@ export class Setup {
       }
     }
     return false
+  }
+
+  /** Machines seen online since this weevilsd started, when each stopped answering, and those already said. */
+  private links = { seen: new Set<string>(), down: new Map<string, number>(), said: new Set<string>() }
+
+  /** Another machine that was connected and has not answered for 10 minutes: said once, with the one thing to do on
+   * it; said again when it is back. A machine not seen since this weevilsd started says nothing (long unplugged). */
+  private watchLinks(now = Date.now()): boolean {
+    const l = this.links
+    let changed = false
+    for (const m of this.deps.feed().machines) {
+      if (m.online === undefined) continue
+      const name = m.name || m.id
+      if (m.online) {
+        l.seen.add(m.id)
+        l.down.delete(m.id)
+        if (l.said.delete(m.id)) {
+          this.say(tr(M).linkBack(name))
+          changed = true
+        }
+        continue
+      }
+      if (!l.seen.has(m.id) || l.said.has(m.id)) continue
+      const since = l.down.get(m.id) ?? now
+      l.down.set(m.id, since)
+      if (now - since < 10 * 60_000) continue
+      l.said.add(m.id)
+      this.say(tr(M).linkDown(name))
+      changed = true
+    }
+    return changed
   }
 
   /** Another computer plugged in from its line: said once it answers. True when something changed. */

@@ -8,7 +8,7 @@ import { expect, it } from 'vitest'
 const root = path.resolve(import.meta.dirname, '..')
 const next = fs.readFileSync(path.join(root, 'next/src/main.tsx'), 'utf8')
 
-it('next shows the app’s own settings band, its machines, subscriptions and Tempo moved to Your factory', () => {
+it('next shows the app’s own settings band, its machines, subscriptions and Tempo moved to factory', () => {
   expect(next).toMatch(/<FootBand switchTo="classic" factory( mark=\{[^\n]*\})? \/>/)
   expect(next).toMatch(/<FactorySection /)
   expect(next).not.toMatch(/<LanguageLine|<TempoLine|<UsageLine/)

@@ -34,7 +34,7 @@ const PATHS = {
   // Bulle de parole : un rectangle, sa pointe en bas à gauche.
   bubble: 'M3 4h18v12H11l-5 4v-4H3z',
   machine: 'M3 4h18v12H3zM8 20h8',
-  // A server at a host: two stacked units, each with its light (Your factory, next to « machine », a computer).
+  // A server at a host: two stacked units, each with its light (factory, next to « machine », a computer).
   server: 'M3 3h18v7H3zM3 14h18v7H3zM7 6.5h3M7 17.5h3',
   more: 'M5 12h1M11.5 12h1M18 12h1',
   mic: 'M9 3h6v10H9zM5 10v6h14v-6M12 16v5M8 21h8',

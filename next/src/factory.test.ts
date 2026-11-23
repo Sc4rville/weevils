@@ -1,6 +1,6 @@
-// Which projects the side bar shows (factory.tsx): switched off in Your factory, never (at once, whatever its
+// Which projects the side bar shows (factory.tsx): switched off in factory, never (at once, whatever its
 // conversations do); pinned, always; the others while they have conversations. A flip shows at once and holds until
-// the server agrees. Your factory's Projects keeps an off project listed, in place, to switch it back on.
+// the server agrees. factory's Projects keeps an off project listed, in place, to switch it back on.
 import { afterEach, expect, it } from 'vitest'
 import type { Project, Snapshot } from '../../shared/api.ts'
 import { factoryProjects, flipProject, inSideBar, mothersOf, shownNow } from './factory.tsx'

@@ -670,7 +670,7 @@ function machinesMeta(machines: { online?: boolean }[]) {
 }
 
 /** switchTo: the other interface its last line opens (weevils next from here; next shows this band with « classic »).
- *  factory: machines, subscriptions and Tempo live in Your factory instead (weevils next's side bar). */
+ *  factory: machines, subscriptions and Tempo live in factory instead (weevils next's side bar). */
 const SETTINGS_FOLD = 'weevils-settings-open'
 /** Settings stay folded to their one band unless this device last left them open. */
 export const settingsFolded = () => { try { return localStorage.getItem(SETTINGS_FOLD) !== '1' } catch { return true } }

@@ -1987,7 +1987,7 @@ export class Optimizers {
     // Paused by the user: skipped until played again. Asked to run now: first in line, whatever its time.
     const later = (o: Stored) => !!o.retryAt && o.retryAt > now
     const blocked=(o:Stored)=>!!o.repo&&this.w.sourceAccessForRepo?.(o.repo)?.canExecute===false
-    // This machine turned off in Your factory: nothing starts here until it is turned back on.
+    // This machine turned off in factory: nothing starts here until it is turned back on.
     const machineOff = this.w.machineOff?.(undefined) ?? false
     const ready = queue.filter((o) => !machineOff && !blocked(o) && (!this.auto || this.s.adoptionPaused || o.software?.status==='ready') && !o.paused && !later(o) && !this.sleepHeld(o, now) && this.timeAt(o, now) <= now).sort((a, b) => Number(!!b.runNow) - Number(!!a.runNow) || Number(!!b.onSleep) - Number(!!a.onSleep))
     // What the user wants run never waits for other agents to rest (they may work all day, or till morning as the

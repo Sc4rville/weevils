@@ -154,12 +154,12 @@ interface Persisted {
   announced?: (string | [string, number])[]
   archived?: string[]
   closedByUs?: [string, number][]
-  /** Your factory (docs/next-interaction.md): machine names given in the app, machines and intelligence turned off,
+  /** factory (docs/next-interaction.md): machine names given in the app, machines and intelligence turned off,
    *  projects taken out of the side bar, each machine's own conversation. */
   factory?: FactoryState
 }
 
-/** Your factory's settings, on the main machine (state.json; server/your-factory.ts). */
+/** factory's settings, on the main machine (state.json; server/your-factory.ts). */
 const freshFactory = (): FactoryState => ({ names: {}, machinesOff: [], intelOff: [], hidden: [], talks: {} })
 
 const STATE_FILE = path.join(DATA_DIR, 'state.json')
@@ -522,7 +522,7 @@ export class Weevils {
     this.bump()
   }
 
-  /** Your factory: change its settings (a name given, a machine or an intelligence turned off, a project taken out of
+  /** factory: change its settings (a name given, a machine or an intelligence turned off, a project taken out of
    *  the side bar, a machine's conversation), kept in state.json and shown at once. */
   setFactory(change: (f: FactoryState) => void) {
     change(this.factory)
@@ -530,7 +530,7 @@ export class Weevils {
     this.snap = null
     this.bump()
   }
-  /** The machine a session would start on is turned off in Your factory. */
+  /** The machine a session would start on is turned off in factory. */
   machineOff(id: string | undefined) {
     return this.factory.machinesOff.includes(id || MACHINE.id)
   }
@@ -2033,7 +2033,7 @@ export class Weevils {
     if(project?.kind==='installation')throw new OutboxError(403,tr(M).installationReadOnly)
     const repoGuess = input.repo ?? project?.repos[0]
     const machineId = input.machineId ?? (repoGuess ? project?.where[repoGuess] : undefined)
-    // Your factory: nothing new starts on a machine you turned off, nor with an intelligence you turned off.
+    // factory: nothing new starts on a machine you turned off, nor with an intelligence you turned off.
     if (this.machineOff(machineId)) throw new OutboxError(409, tr(M).machineOff(this.snapshot().machines.find((m) => m.id === (machineId || MACHINE.id))?.name ?? machineId ?? MACHINE.name))
     if (this.factory.intelOff.includes(input.tool)) throw new OutboxError(409, tr(M).intelOff(input.tool === 'codex' ? 'Codex' : 'Claude'))
     const remote = this.remoteById(machineId)
@@ -3241,7 +3241,7 @@ export class Weevils {
     return path.join(root, repo)
   }
 
-  /** This machine's products, one per mother repo (projects.ts motherRepos): Your factory's Projects. */
+  /** This machine's products, one per mother repo (projects.ts motherRepos): factory's Projects. */
   motherRepos() {
     return motherRepos(this.allRepos().flatMap((name) => { try { return [{ name, dir: this.repoDir(name) }] } catch { return [] } }))
   }

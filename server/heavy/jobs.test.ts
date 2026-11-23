@@ -179,3 +179,17 @@ describe('the hub', () => {
     expect(off.status).toBe(409)
   })
 })
+
+describe('the tools a job finds', () => {
+  it('takes the login shell’s PATH with printenv, whatever the shell (fish has no "$@")', async () => {
+    const { loginPath } = await import('./jobs.ts')
+    const fake = path.join(os.tmpdir(), `fake-fish-${process.pid}`)
+    // A shell that understands nothing but its -lc command run as a program, like fish running printenv.
+    fs.writeFileSync(fake, '#!/bin/sh\n[ "$2" = "printenv PATH" ] || exit 9\necho "Welcome to fish"\necho /home/user/.cargo/bin:/usr/bin\n', { mode: 0o755 })
+    try {
+      expect(await loginPath(fake, '/usr/bin:/home/user/.local/bin')).toBe('/home/user/.cargo/bin:/usr/bin:/home/user/.local/bin')
+    } finally {
+      fs.rmSync(fake, { force: true })
+    }
+  })
+})

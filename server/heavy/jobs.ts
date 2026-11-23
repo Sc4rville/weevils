@@ -8,7 +8,7 @@
 // - The hub (the main machine): says which machines can take a job now (online, not turned off in Your factory,
 //   sharing on, and idle: nothing heavy running or waiting there, load under half its cores), and passes the job's
 //   requests to the machine chosen. Never a conversation: only the command, and its result back to the session.
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import type http from 'node:http'
@@ -130,6 +130,19 @@ export function writtenSince(root: string, since: number, max = 20_000): string[
   return out
 }
 
+/**
+ * The PATH the user's own terminal has (their login shell's: ~/.cargo/bin, nvm…) ahead of weevilsd's. Asked with
+ * `printenv`, a program and not shell syntax, so any login shell answers it the same way (fish included, CachyOS's).
+ */
+export function loginPath(shell: string, own = process.env.PATH ?? ''): Promise<string> {
+  return new Promise((resolve) => {
+    execFile(shell, ['-lc', 'printenv PATH'], { timeout: 8000, env: { ...process.env, WEEVILS_HEAVY: '1' } }, (_e, out) => {
+      const login = String(out ?? '').trim().split('\n').pop() ?? ''
+      resolve([...new Set([...login.split(':'), ...own.split(':')].filter((d) => d.startsWith('/')))].join(':'))
+    })
+  })
+}
+
 export interface RunnerOptions {
   /** Where the copies of the repositories live (default ~/.cache/weevils-jobs). */
   dir?: string
@@ -145,6 +158,7 @@ export class Runner {
   readonly dir: string
   private env: NodeJS.ProcessEnv
   private shell: string
+  private path?: Promise<string>
   readonly maxBundle: number
   private maxFiles: number
 
@@ -164,6 +178,11 @@ export class Runner {
     } catch {
       /* nothing yet */
     }
+  }
+
+  /** The tools the job finds: the user's login PATH (asked once), then weevilsd's. */
+  private userPath() {
+    return (this.path ??= loginPath(this.shell, this.env.PATH))
   }
 
   private repo(key: string) {
@@ -288,7 +307,7 @@ export class Runner {
           const sum = crypto.createHash('sha256').update(fs.readFileSync(path.join(d, inst.lock))).digest('hex')
           const stamp = path.join(this.dir, job.key, `deps-${crypto.createHash('sha1').update(d).digest('hex').slice(0, 12)}`)
           if (fs.existsSync(path.join(d, 'node_modules')) && fs.existsSync(stamp) && fs.readFileSync(stamp, 'utf8') === sum) continue
-          const code = await run(this.shell, ['-lc', 'exec "$@"', 'sh', ...inst.argv], { cwd: d, env: { ...this.env, WEEVILS_HEAVY: '1' }, onOut: say, job })
+          const code = await run(inst.argv[0], inst.argv.slice(1), { cwd: d, env: { ...this.env, PATH: await this.userPath(), WEEVILS_HEAVY: '1' }, onOut: say, job })
           if (code !== 0) throw new Error(`${inst.argv.join(' ')}: exit ${code}`) // i18n-ignore: machine-to-machine
           fs.writeFileSync(stamp, sum)
         }
@@ -298,7 +317,7 @@ export class Runner {
       if (job.stopped) throw Object.assign(new Error('stopped'), { setup: true }) // i18n-ignore: machine-to-machine
       job.phase = 'running'
       const since = Date.now() - 1000
-      job.code = await run(this.shell, ['-lc', 'exec nice -n 10 "$@"', 'sh', ...job.argv], { cwd: path.join(work, job.dir), env: { ...this.env, WEEVILS_HEAVY: '1' }, onOut: say, job })
+      job.code = await run('nice', ['-n', '10', ...job.argv], { cwd: path.join(work, job.dir), env: { ...this.env, PATH: await this.userPath(), WEEVILS_HEAVY: '1' }, onOut: say, job })
       // What the job wrote (a build's output, an updated snapshot), packed for the sender.
       const files = writtenSince(work, since)
       if (files.length) {

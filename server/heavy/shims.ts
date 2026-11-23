@@ -8,7 +8,7 @@
 //
 // The stand-ins are written when weevilsd starts, for the tools this machine has (a stand-in for a tool that is not
 // installed would make `which cargo` lie), and removed when a tool is gone.
-import { execFile } from 'node:child_process'
+import { loginPath } from './jobs.ts'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -176,8 +176,9 @@ const put = (file: string, text: string) => {
 /** The tools this machine has: in weevilsd's PATH or in the user's login shell's (where ~/.cargo/bin often is). */
 export async function presentTools(shell = process.env.SHELL || '/bin/sh', own = shimDirOf()): Promise<Set<Tool>> {
   const found = new Set<Tool>()
+  const dirs = (await loginPath(shell)).split(':')
   for (const t of TOOLS) {
-    for (const d of (process.env.PATH ?? '').split(':')) {
+    for (const d of dirs) {
       if (!d || d === own) continue
       try {
         fs.accessSync(path.join(d, t), fs.constants.X_OK)
@@ -188,10 +189,6 @@ export async function presentTools(shell = process.env.SHELL || '/bin/sh', own =
       }
     }
   }
-  const login = await new Promise<string>((resolve) => {
-    execFile(shell, ['-lc', `for t in ${TOOLS.join(' ')}; do command -v "$t" >/dev/null 2>&1 && echo "$t"; done`], { timeout: 8000, env: { ...process.env, WEEVILS_HEAVY: '1' } }, (_e, out) => resolve(String(out ?? '')))
-  })
-  for (const t of login.split('\n')) if ((TOOLS as readonly string[]).includes(t.trim())) found.add(t.trim() as Tool)
   return found
 }
 

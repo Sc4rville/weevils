@@ -154,6 +154,16 @@ export class Runner {
     this.shell = o.shell ?? (this.env.SHELL || '/bin/sh')
     this.maxBundle = o.maxBundle ?? 600 << 20
     this.maxFiles = o.maxFiles ?? 300 << 20
+    // Working folders claimed by jobs of an earlier run of weevilsd: free again.
+    try {
+      for (const e of fs.readdirSync(this.dir, { withFileTypes: true })) {
+        const p = path.join(this.dir, e.name)
+        if (e.isFile() && e.name.endsWith('.tgz')) fs.rmSync(p, { force: true })
+        else if (e.isDirectory()) for (const f of fs.readdirSync(p)) if (f.endsWith('.busy')) fs.rmSync(path.join(p, f), { recursive: true, force: true })
+      }
+    } catch {
+      /* nothing yet */
+    }
   }
 
   private repo(key: string) {
@@ -288,7 +298,7 @@ export class Runner {
       if (job.stopped) throw Object.assign(new Error('stopped'), { setup: true }) // i18n-ignore: machine-to-machine
       job.phase = 'running'
       const since = Date.now() - 1000
-      job.code = await run(this.shell, ['-lc', 'exec nice -n 10 "$@"', 'sh', ...job.argv], { cwd: path.join(work, job.dir), env: { ...this.env, WEEVILS_HEAVY: '1', CI: this.env.CI ?? '' }, onOut: say, job })
+      job.code = await run(this.shell, ['-lc', 'exec nice -n 10 "$@"', 'sh', ...job.argv], { cwd: path.join(work, job.dir), env: { ...this.env, WEEVILS_HEAVY: '1' }, onOut: say, job })
       // What the job wrote (a build's output, an updated snapshot), packed for the sender.
       const files = writtenSince(work, since)
       if (files.length) {

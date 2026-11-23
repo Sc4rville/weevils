@@ -880,11 +880,16 @@ describe('a Mac', () => {
     expect(t).toContain('A game')
     expect(t).toContain('Love it')
     // The computer first, then a VPS of one's own, then one created at Hetzner; the subscription said up front.
-    expect(t.indexOf('On my computer')).toBeLessThan(t.indexOf('My own VPS'))
-    expect(t.indexOf('My own VPS')).toBeLessThan(t.indexOf('Create a VPS for me'))
+    expect(t.indexOf('On my PC')).toBeLessThan(t.indexOf('On my VPS'))
+    expect(t.indexOf('On my VPS')).toBeLessThan(t.indexOf('Create a VPS for me'))
     expect(t).toContain('your own Claude or ChatGPT subscription')
     // A computer alone works only while it is on: said plainly, with what a VPS changes.
-    expect(t).toContain('weevils and its agents work only while it’s on. A VPS keeps them working with your computer off.')
+    expect(t).toContain('with your PC alone, your agents work only while it’s on. A VPS keeps them working with your PC off.')
+    // Everything in one place: said in the hello, and shown with our blocks joining weevboss's.
+    expect(t).toContain('all your AI agents and machines together')
+    expect([...phone.app.querySelectorAll('.all .blk')].map((b) => b.textContent)).toEqual(['Claude Code', 'Codex', 'your PC', 'your servers', 'your projects', 'weevboss'])
+    // weevils has no rounded corners.
+    expect(page).not.toMatch(/border-radius: (?!0;)/)
     expect(t).not.toMatch(/Hostinger|hPanel|curl/)
     expect(page).not.toMatch(/\(Linux\)|Linux only|Linux seulement/)
     // A pick is the visitor's next message, and its step follows in the same thread.
@@ -895,25 +900,25 @@ describe('a Mac', () => {
     const hi = await firstScreen(IPHONE)
     ;(hi.app.querySelector('textarea') as HTMLTextAreaElement).value = 'hello there'
     hi.app.querySelector('form')!.dispatchEvent(new hi.document.defaultView!.Event('submit', { cancelable: true }) as unknown as Event)
-    expect(hi.text()).toContain('Hi! First, weevils needs a home')
+    expect(hi.text()).toContain('Hi! First, where should your agents work?')
   })
 
   it('gives a computer its command in one tap from the reply, Mac and Linux alike', async () => {
     const mac = await firstScreen(MAC)
     expect(mac.calls).not.toContain('/api/job')
     answer(mac)
-    expect(mac.text()).toContain('On this computer')
+    expect(mac.text()).toContain('On my Mac')
     pick(mac, 'pc')
     await vi.waitFor(() => expect(mac.text()).toContain('curl -fsSL https://get.example/i/abcdefghjk | bash'), { timeout: 20_000 })
     expect(mac.calls).toContain('/api/job')
-    expect(mac.text()).toContain('Connect this computer')
+    expect(mac.text()).toContain('Paste this on your Mac')
     expect(mac.text()).toContain('Mac password')
     expect(mac.text()).not.toMatch(/Linux for now|take a VPS/)
     const linux = await firstScreen(LINUX)
     answer(linux)
     pick(linux, 'pc')
     await vi.waitFor(() => expect(linux.text()).toContain('curl -fsSL https://get.example/i/abcdefghjk | bash'), { timeout: 20_000 })
-    expect(linux.text()).toContain('Connect this computer')
+    expect(linux.text()).toContain('Paste this on your PC')
     expect(linux.text()).not.toContain('Mac password')
     // French, and no sentence left that sends a Mac away.
     const fr = await firstScreen(MAC, 'fr')
@@ -921,11 +926,11 @@ describe('a Mac', () => {
     answer(fr)
     expect(fr.text()).toContain('que quand il est allumé')
     pick(fr, 'pc')
-    expect(fr.text()).toContain('Branche cet ordinateur')
+    expect(fr.text()).toContain('Colle ça sur ton Mac')
     expect(fr.text()).toContain('mot de passe du Mac')
     const frPhone = await firstScreen(IPHONE, 'fr')
     answer(frPhone)
-    expect(frPhone.text()).toContain('Sur mon ordinateur')
+    expect(frPhone.text()).toContain('Sur mon PC')
     expect(page).not.toMatch(/Hostinger|hPanel/)
     expect(page).not.toMatch(/Linux for now|Linux pour l’instant|prends un VPS|take a VPS/)
   }, 60_000)

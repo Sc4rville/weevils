@@ -153,7 +153,7 @@ describe('the local weevbook', () => {
     // 60 writes of 50 KB: about 3 MB of raw. With one growing 3 MB file, the history would keep ~90 MB of versions.
     expect(stored).toBeLessThan(40 << 20)
     expect(validateFolder(await folder(b))).toEqual([])
-  })
+  }, 30_000) // 60 git commits: about 4 s alone on a 4-core server, more behind a full suite
 
   it('keeps a segment written before at its size, and goes on in a new one', async () => {
     const b = await book()

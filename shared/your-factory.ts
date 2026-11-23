@@ -1,6 +1,7 @@
 // Your factory (docs/next-interaction.md, « Your factory »): what weevils works with, in the side bar of weevils next —
 // the machines, the intelligence (subscriptions and API keys), the projects and the global Tempo. Read with
 // GET /api/factory, changed with POST /api/factory/… (server/your-factory.ts). Percentages from 0 to 100.
+import type { MachineAway } from './api.ts'
 import type { Level } from './infra.ts'
 
 export type MachineKind = 'pc' | 'server'
@@ -27,6 +28,8 @@ export interface FactoryMachine {
   provider?: string
   /** Its own conversation, once started. */
   talk?: string
+  /** Why it does not answer, and since when (only while it does not). */
+  away?: MachineAway
 }
 
 /** Whose logo a line wears. */

@@ -20,6 +20,7 @@ import { PageView } from '../../src/ui/pages.tsx'
 import { seedPending } from '../../src/ui/pending.ts'
 import { askSetup, openKey } from '../../src/ui/setup.tsx'
 import { Shell } from '../../src/ui/shell.tsx'
+import { AwayLine } from '../../src/ui/away.tsx'
 import { TempoBand, useTempo } from '../../src/ui/tempo.tsx'
 import { call } from './data.ts'
 import { foldPrefs, saveFold } from './fold.ts'
@@ -193,6 +194,22 @@ function PlusBand({ step, label, onClick, open }: { step: number; label: string;
 
 // ---------------------------------------------------------------- machines
 
+/** A factory machine with the snapshot's live state: online, and why not. */
+function liveMachine(m: FactoryMachine, live: Snapshot['machines']): FactoryMachine {
+  const l = live.find((x) => x.id === m.id)
+  if (!l) return m
+  const { away: _gone, ...rest } = m
+  return { ...rest, online: l.online !== false, ...(l.online === false && l.away ? { away: l.away } : {}) }
+}
+
+/** Just switched: « connecting… » until it is online (or « switching off… » until it is not), 30 s at most. */
+const switching = new Map<string, { on: boolean; at: number }>()
+const isSwitching = (m: FactoryMachine) => {
+  const s = switching.get(m.id)
+  if (!s || Date.now() - s.at > 30_000 || s.on === m.online) return null
+  return s.on ? 'connecting' : 'disconnecting'
+}
+
 function MachineBand({ m, step, busy, onOpen, onPatch }: { m: FactoryMachine; step: number; busy: number; onOpen: () => void; onPatch: (p: Partial<FactoryMachine>) => void }) {
   const [editing, setEditing] = useState(false)
   const [confirm, setConfirm] = useState(false)
@@ -216,6 +233,7 @@ function MachineBand({ m, step, busy, onOpen, onPatch }: { m: FactoryMachine; st
     // Off with agents at work there: one short line first.
     if (!on && busy > 0 && !confirm) return setConfirm(true)
     setConfirm(false)
+    if (!m.here) switching.set(m.id, { on, at: Date.now() })
     onPatch({ off: !on })
     void call('POST', '/api/factory/machine', { id: m.id, off: !on }).then(load, load)
   }
@@ -245,6 +263,7 @@ function MachineBand({ m, step, busy, onOpen, onPatch }: { m: FactoryMachine; st
             <span className="nx-row-text nx-fx-text">
               <span className="nx-row-title">{m.name}</span>
               {m.load != null && m.online && <Bar pct={m.load} level={m.level} />}
+              {!m.here && <MachineState m={m} />}
             </span>
           </button>
         )}
@@ -276,6 +295,13 @@ function ShareBand({ share, step, onPatch }: { share: NonNullable<FactoryView['s
       <Switch on={share.on} label="Tests and builds go to an idle machine" onChange={turn} />
     </Band>
   )
+}
+
+/** Another machine's state in a word, on its band: connected, connecting…, installing…, off, offline. */
+function MachineState({ m }: { m: FactoryMachine }) {
+  const sw = isSwitching(m)
+  const word = sw === 'connecting' ? 'connecting…' : sw === 'disconnecting' ? 'switching off…' : m.online ? 'connected' : m.off ? 'off' : m.away?.why === 'joining' ? 'installing…' : 'offline'
+  return <span className={`nx-fx-state ${m.online && !sw ? 'on' : ''}`}>{word}</span>
 }
 
 // ---------------------------------------------------------------- intelligence
@@ -436,7 +462,12 @@ export function FactorySection({ snap, colors, page, toBoss }: {
   }, [more, here])
 
   const busyOn = (id: string) => snap.sessions.filter((s) => !s.archived && s.status === 'working' && (s.machineId ?? here) === id).length
-  const machines = v?.machines ?? snap.machines.map((m): FactoryMachine => ({ id: m.id, name: m.name, kind: null, online: m.online !== false, off: !!m.off, here: m.id === here, load: null, level: 'ok' }))
+  // Online and why not come from the live snapshot (pushed as they change): a machine switched on shows « connected »
+  // within seconds, not at the factory's next read.
+  const machines = (v?.machines ?? snap.machines.map((m): FactoryMachine => ({ id: m.id, name: m.name, kind: null, online: m.online !== false, off: !!m.off, here: m.id === here, load: null, level: 'ok' })))
+    .map((m) => liveMachine(m, snap.machines))
+  // Machines plugged in since the factory was read: listed at once.
+  for (const m of snap.machines) if (!machines.some((x) => x.id === m.id)) machines.push(liveMachine({ id: m.id, name: m.name, kind: null, online: false, off: !!m.off, here: false, load: null, level: 'ok' }, snap.machines))
   const intel = v?.intelligence ?? []
   const onDemand = v?.onDemand ?? []
   const ranked = onDemand.filter((x) => x.rank != null).length
@@ -568,6 +599,15 @@ export function FactorySection({ snap, colors, page, toBoss }: {
 /** Its health in plain figures, and for a server, its host's own dashboard: at the top of its conversation. */
 function MachineStrip({ m }: { m: FactoryMachine | undefined }) {
   if (!m) return null
+  // Never a bare « Offline »: off, connecting, or why and since when, with the line that brings it back (src/ui/away.tsx).
+  if (!m.online && !m.here) {
+    return (
+      <div className="nx-mx-strip nx-mx-away">
+        <AwayLine name={m.name} away={m.away} off={m.off} connecting={isSwitching(m) === 'connecting'}
+          line={() => call<{ line: string }>('POST', '/api/factory/rejoin', { machine: m.id }).then((r) => r.line)} />
+      </div>
+    )
+  }
   const figs = [m.cpu != null && `CPU ${m.cpu}%`, m.mem != null && `Memory ${m.mem}%`, m.disk != null && `Disk ${m.disk}%`].filter(Boolean).join(' · ')
   return (
     <div className="nx-mx-strip">
@@ -587,7 +627,8 @@ function MachineStrip({ m }: { m: FactoryMachine | undefined }) {
 export function NextMachinePage({ id }: { id: string }) {
   const { snap } = useApp()
   const [v] = useFactory(true)
-  const m = v?.machines.find((x) => x.id === id)
+  const found = v?.machines.find((x) => x.id === id)
+  const m = found && liveMachine(found, snap.machines)
   const name = m?.name ?? snap.machines.find((x) => x.id === id)?.name ?? id
   const [started, setStarted] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -618,7 +659,7 @@ export function NextMachinePage({ id }: { id: string }) {
   return (
     <div ref={box} className="nx-machine">
       <Shell slot="calm" kicker="your factory" title={name}
-        foot={talk ? undefined : <Composer placeholder={`Talk to ${name}…`} label={`Message to ${name}`} onSend={send} sayErrors />}>
+        foot={talk || m?.online === false ? undefined : <Composer placeholder={`Talk to ${name}…`} label={`Message to ${name}`} onSend={send} sayErrors />}>
         <MachineStrip m={m} />
         {err && <p className="in meta" role="alert">{err}</p>}
         {talk && <p className="nx-empty"><span className="spin fluo"><Icon name="star" /></span></p>}

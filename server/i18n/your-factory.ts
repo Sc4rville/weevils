@@ -6,6 +6,7 @@ export default defineMessages({
   fr: {
     unknownMachine: 'Machine inconnue.',
     cantSwitch: 'Ceci ne se coupe pas d’ici.',
+    noRejoin: 'Cette machine n’est pas joignable par SSH depuis un autre ordinateur : demande à weevboss d’ajouter une machine.',
     server: 'un serveur',
     serverAt: (host: string) => `un serveur chez ${host}`,
     pc: 'un ordinateur de la personne',
@@ -16,6 +17,7 @@ export default defineMessages({
   en: {
     unknownMachine: 'Unknown machine.',
     cantSwitch: 'This one can’t be switched from here.',
+    noRejoin: 'Other computers can’t reach this one over SSH: ask weevboss to add a machine.',
     server: 'a server',
     serverAt: (host: string) => `a server at ${host}`,
     pc: 'a computer of the person’s',

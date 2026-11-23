@@ -145,6 +145,31 @@ describe('what the factory switches', () => {
     await route(d, 'POST', '/api/factory/talk', { machine: 'laptop', text: 'again' })
     expect(d.startTalk).toHaveBeenCalledTimes(1)
   })
+  it('a machine that does not answer: why and since when on its card, and a fresh line that brings it back', async () => {
+    const away = { why: 'link' as const, since: 1_795_446_182_000 }
+    const rejoin = vi.fn(async () => 'curl -fsSL https://w.example/api/join.sh | bash -s CODE')
+    const d = deps({ machines: () => [{ id: 'box', name: 'box', online: true }, { id: 'laptop', name: 'laptop', online: false, away }], rejoin })
+    const v = await factoryView(d)
+    expect(v.machines.find((m) => m.id === 'laptop')).toMatchObject({ online: false, away })
+    expect(v.machines.find((m) => m.id === 'box')!.away).toBeUndefined()
+    expect((await route(d, 'POST', '/api/factory/rejoin', { machine: 'laptop' })).out).toEqual({ line: 'curl -fsSL https://w.example/api/join.sh | bash -s CODE' })
+    // Not for this machine itself, nor one it does not know; and said plainly when no line can be made here.
+    expect((await route(d, 'POST', '/api/factory/rejoin', { machine: 'box' })).status).toBe(400)
+    expect((await route(d, 'POST', '/api/factory/rejoin', { machine: 'nope' })).status).toBe(400)
+    expect(rejoin).toHaveBeenCalledTimes(1)
+    const none = await route(deps({ rejoin: async () => null }), 'POST', '/api/factory/rejoin', { machine: 'laptop' })
+    expect(none.status).toBe(409)
+    expect(none.out.error).toMatch(/SSH/)
+  })
+  it('the switch drives another machine’s link, never this one’s', async () => {
+    const power = vi.fn()
+    const d = deps({ power })
+    await route(d, 'POST', '/api/factory/machine', { id: 'laptop', off: true })
+    await route(d, 'POST', '/api/factory/machine', { id: 'laptop', off: false })
+    await route(d, 'POST', '/api/factory/machine', { id: 'box', off: true })
+    await route(d, 'POST', '/api/factory/machine', { id: 'laptop', name: 'Laptop' })
+    expect(power.mock.calls).toEqual([['laptop', false], ['laptop', true]])
+  })
 })
 
 /** setup.ts writeConfig in small: replaces or adds a line of the test's config file. */

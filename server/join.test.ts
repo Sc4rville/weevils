@@ -6,13 +6,13 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { authorizedLine, failText, freePort, Join, JOIN_TTL, joinRoute, knownHosts, slugId } from './join.ts'
+import { authorizedLine, failText, freePort, Join, JOIN_TTL, joinRoute, knownHosts, portBusy, slugId } from './join.ts'
 
 const KEY = `ssh-ed25519 ${'A'.repeat(68)} weevils@laptop`
 const KEY2 = `ssh-ed25519 ${'B'.repeat(68)} weevils@desk`
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'join-'))
 
-function setup(remotes = '', ids: string[] = ['box'], now = { t: 1_000_000 }) {
+function setup(remotes = '', ids: string[] = ['box'], now = { t: 1_000_000 }, busy: (port: number) => boolean = () => false) {
   const dir = tmp()
   const join = new Join({
     file: path.join(dir, 'data', 'join.json'),
@@ -20,6 +20,7 @@ function setup(remotes = '', ids: string[] = ['box'], now = { t: 1_000_000 }) {
     service: '/home/user/.local/bin/weevils-service',
     remotes: () => remotes,
     machineIds: () => ids,
+    busy,
     now: () => now.t,
   })
   return { dir, join, now, keys: () => fs.readFileSync(path.join(dir, '.ssh', 'authorized_keys'), 'utf8') }
@@ -65,6 +66,33 @@ describe('a one-time code', () => {
     const a = join.create('user@host')
     const b = join.create('user@host')
     expect([join.open(a)?.port, join.open(b)?.port]).toEqual([4193, 4194])
+  })
+
+  // A PC, 23/11: its line gave it 4193, which a preview server left running for 13 days held; its tunnel was refused
+  // every 11 s and it never showed up. A port anything listens on is never given, nor one a key here already holds.
+  it('never gives a port something already listens on, even one taken after the line was made', () => {
+    const held = new Set([4192, 4193])
+    expect(freePort('', [], (p) => held.has(p))).toBe(4194)
+    const { join, keys } = setup('', ['box'], { t: 1_000_000 }, (p) => held.has(p))
+    const code = join.create('user@host')
+    expect(join.open(code)?.port).toBe(4194)
+    held.add(4194)
+    expect(join.use(code, 'desk', KEY)).toMatchObject({ ok: true, id: 'desk', port: 4195 })
+    expect(keys()).toContain('permitlisten="127.0.0.1:4195"')
+    expect(keys()).toContain('remote-shell desk 4195"')
+    // The key just written holds 4195: the next line gets another one.
+    expect(join.open(join.create('user@host'))?.port).toBe(4196)
+  })
+
+  it('sees a real listener on any address', async () => {
+    const net = await import('node:net')
+    const srv = net.createServer().listen(0, '0.0.0.0')
+    await new Promise((r) => srv.once('listening', r))
+    const port = (srv.address() as { port: number }).port
+    expect(portBusy(port)).toBe(true)
+    srv.close()
+    await new Promise((r) => srv.once('close', r))
+    expect(portBusy(port)).toBe(false)
   })
 
   it('names the machine like install.sh, never twice the same; the same computer again keeps its id and line', () => {

@@ -1,4 +1,5 @@
 import { noticeKey } from '../../shared/notices.ts'
+import type { MachineAway } from '../../shared/api.ts'
 import { Notice } from './notice'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { FsListing, InfraDetail, Level, QuotaInfo, QuotaWindow, SpendSummary, UsageInfo, UsageToday } from '../../shared/infra.ts'
@@ -13,6 +14,7 @@ import { CodeFile } from './codeview'
 import { ago, durLong } from './format'
 import { Shell } from './shell'
 import { askSetup } from './setup'
+import { AwayLine } from './away'
 import './infra.css'
 
 const quotaLevel = (p: number): Level => (p >= 90 ? 'crit' : p >= 75 ? 'warn' : 'ok')
@@ -71,7 +73,7 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
             <Line ch="@" go={null} value={m.online === false ? t.offline : t.online} className={m.online === false ? 'off' : ''} onClick={() => setOpen(open === m.id ? null : m.id)}>
               {m.online === false ? m.name : <span className="strong">{m.name}</span>}
             </Line>
-            <Collapse open={open === m.id}>{open === m.id && <MachineDetail id={m.id} name={m.name} />}</Collapse>
+            <Collapse open={open === m.id}>{open === m.id && <MachineDetail id={m.id} name={m.name} away={m.online === false ? m.away : undefined} off={!!m.off} />}</Collapse>
           </div>
         ))}
         {/* Weevboss asks the questions in its thread (host, address, password): nothing else to type here. */}
@@ -84,7 +86,7 @@ export function InfraPage({ machine, projectId }: { machine?: string; projectId?
   )
 }
 
-function MachineDetail({ id, name }: { id: string; name: string }) {
+function MachineDetail({ id, name, away, off = false }: { id: string; name: string; away?: MachineAway; off?: boolean }) {
   const t = useT(M)
   const [d, setD] = useState<InfraDetail | null>(null)
   const [err, setErr] = useState(false)
@@ -120,7 +122,12 @@ function MachineDetail({ id, name }: { id: string; name: string }) {
   if (!d)
     return (
       <div className="mx-detail">
-        <div className="in meta mx-note" role={err ? 'alert' : undefined}>{err ? t.cantRead : '…'}</div>
+        {/* A machine of yours that does not answer: why, since when, and the line that brings it back. */}
+        {away ? (
+          <AwayLine name={name} away={away} off={off} line={() => api.rejoin(id).then((r) => r.line)} />
+        ) : (
+          <div className="in meta mx-note" role={err ? 'alert' : undefined}>{err ? t.cantRead : '…'}</div>
+        )}
         {removeLine}
       </div>
     )

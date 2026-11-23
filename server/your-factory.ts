@@ -12,7 +12,7 @@ import fs from 'node:fs'
 import type http from 'node:http'
 import { KEYS, ON_DEMAND, ON_DEMAND_VAR, type FactoryIntel, type FactoryMachine, type FactoryOnDemand, type FactoryView, type MachineKind, type OnDemandId } from '../shared/your-factory.ts'
 import type { Level, MachineBrief, MachineFacts, QuotaInfo } from '../shared/infra.ts'
-import type { Session } from '../shared/api.ts'
+import type { MachineAway, Session } from '../shared/api.ts'
 import { tr } from './i18n.ts'
 import M from './i18n/your-factory.ts'
 
@@ -169,7 +169,7 @@ export interface FactoryDeps {
   state: () => FactoryState
   change: (fn: (f: FactoryState) => void) => void
   /** This machine first, then the others: name and online as the snapshot has them. */
-  machines: () => { id: string; name: string; online?: boolean }[]
+  machines: () => { id: string; name: string; online?: boolean; away?: MachineAway }[]
   hereId: string
   briefs: () => Promise<MachineBrief[]>
   facts: (id: string) => Promise<MachineFacts | null>
@@ -190,6 +190,10 @@ export interface FactoryDeps {
   writeConfig?: (changes: Record<string, string>) => void
   /** How a provider's meter is fetched (tests give their own). */
   fetch?: typeof fetch
+  /** Another machine's link follows its switch: off cuts it now, on lets it in again (server/index.ts machinePower). */
+  power?: (id: string, on: boolean) => void
+  /** A fresh one-time line that plugs a computer back in (null: other computers cannot reach this one over SSH). */
+  rejoin?: () => Promise<string | null>
   /** Starts the machine's own conversation, with the person's first words. */
   startTalk: (machineId: string, name: string, kind: MachineKind | null, provider: string | undefined, text: string) => Promise<{ id: string }>
 }
@@ -218,6 +222,7 @@ export async function factoryView(d: FactoryDeps): Promise<FactoryView> {
         ...(f?.provider ? { provider: hostName(f.provider) } : {}),
         ...(panelUrl(f?.provider) ? { panel: panelUrl(f?.provider) } : {}),
         ...(talk && d.sessions().some((s) => s.id === talk && !s.archived) ? { talk } : {}),
+        ...(m.online === false && m.away ? { away: m.away } : {}),
       }
     }),
   )
@@ -297,6 +302,7 @@ export function factoryRoutes(d: FactoryDeps, json: Json, readBody: ReadBody): [
           f.machinesOff = f.machinesOff.filter((x) => x !== id)
           if (b.off) f.machinesOff.push(id)
         })
+        if (id !== d.hereId) d.power?.(id, !b.off)
         if (b.off) {
           const here = d.hereId
           for (const s of d.sessions().filter((x) => working(x) && (x.machineId ?? here) === id)) {
@@ -363,6 +369,15 @@ export function factoryRoutes(d: FactoryDeps, json: Json, readBody: ReadBody): [
         if (!b.shown) f.hidden.push(id)
       })
       json(res, 200, { ok: true })
+    }],
+    // A machine of yours that does not answer: the one line that brings it back, pasted on it (the same computer keeps
+    // its name). Asked on a tap, never made ahead: each line is a one-time code, valid an hour.
+    ['POST', /^\/api\/factory\/rejoin$/, async (req, res) => {
+      const b = await readBody(req)
+      if (!known(b.machine) || b.machine === d.hereId) return json(res, 400, { error: t().unknownMachine })
+      const line = await d.rejoin?.().catch(() => null)
+      if (!line) return json(res, 409, { error: t().noRejoin })
+      json(res, 200, { line })
     }],
     // A machine's own conversation: started with the person's first words, then found again from its band.
     ['POST', /^\/api\/factory\/talk$/, async (req, res) => {

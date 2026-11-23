@@ -147,7 +147,8 @@ tunnel_port=${WEEVILS_TUNNEL_PORT:-}
 # A re-run keeps the port the main machine gave at the join: this machine's key may only listen there.
 if [ -z "$tunnel_port" ] && [ "$role" = secondary ] && [ -f ~/.config/weevils/service.conf ]; then
   # shellcheck disable=SC1090
-  tunnel_port=$( . ~/.config/weevils/service.conf; [ "${WEEVILS_ROLE:-}" = secondary ] && [ "${WEEVILS_MAIN_HOST:-}" = "$main_host" ] && printf '%s' "${WEEVILS_TUNNEL_PORT:-}")
+  # (|| : another role or main machine is no error: no port kept, the main machine gives it below.)
+  tunnel_port=$( . ~/.config/weevils/service.conf; [ "${WEEVILS_ROLE:-}" = secondary ] && [ "${WEEVILS_MAIN_HOST:-}" = "$main_host" ] && printf '%s' "${WEEVILS_TUNNEL_PORT:-}") || tunnel_port=''
   [[ "$tunnel_port" =~ ^[0-9]+$ ]] || tunnel_port=''
 fi
 if [ "$role" = secondary ]; then
@@ -243,13 +244,13 @@ After=network-online.target weevilsd.service
 StartLimitIntervalSec=0
 
 [Service]
-# Before each connection: the main machine lets go of this machine's port when a connection it still believes alive
-# holds it (the computer slept, changed network: sshd there only notices hours later, and until then every new tunnel
-# is refused). Best effort ('-'): an older main machine says no, and the tunnel tries as before.
-ExecStartPre=-$(command -v ssh) -o BatchMode=yes -o ConnectTimeout=10 $main_host weevils-service reclaim
-ExecStart=$(command -v ssh) -NT -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -R 127.0.0.1:$tunnel_port:127.0.0.1:$port $main_host
+# weevils-service tunnel: the main machine first says whether this machine may connect and on which port (it waits
+# there while this machine is switched off in the app, lets go of a port a dead connection still holds, moves one
+# another program took), then the reverse tunnel: ssh -R 127.0.0.1:<port there>:127.0.0.1:$port $main_host.
+Environment=PATH=$(dirname "$(command -v ssh)"):/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/weevils-service tunnel
 Restart=always
-RestartSec=10
+RestartSec=3
 
 [Install]
 WantedBy=default.target
@@ -345,18 +346,15 @@ EOF
   <key>Label</key><string>$prefix.weevils-tunnel</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$(xml "$(command -v ssh)")</string>
-    <string>-NT</string>
-    <string>-o</string><string>BatchMode=yes</string>
-    <string>-o</string><string>ServerAliveInterval=20</string>
-    <string>-o</string><string>ServerAliveCountMax=3</string>
-    <string>-o</string><string>ExitOnForwardFailure=yes</string>
-    <string>-R</string><string>127.0.0.1:$tunnel_port:127.0.0.1:$port</string>
-    <string>$(xml "$main_host")</string>
+    <string>/bin/bash</string>
+    <string>$(xml "$HOME/.local/bin/weevils-service")</string>
+    <string>tunnel</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>$(xml "$(dirname "$(command -v ssh)"):/usr/local/bin:/usr/bin:/bin")</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>ThrottleInterval</key><integer>10</integer>
+  <key>ThrottleInterval</key><integer>3</integer>
   <key>StandardOutPath</key><string>$(xml "$data/tunnel.log")</string>
   <key>StandardErrorPath</key><string>$(xml "$data/tunnel.log")</string>
 </dict>

@@ -79,3 +79,93 @@ it('weevils-service add-remote keeps a secondary machine\'s token (0600), and re
   expect(fs.readFileSync(f, 'utf8')).toBe(line + '\n')
   fs.rmSync(home, { recursive: true, force: true })
 })
+
+// A machine that does not answer is never a bare « offline » (src/ui/away.tsx): why, as seen from here, and since when,
+// kept on disk so a restart here still says « since 15:03 ».
+it('says why a machine does not answer, and since when, across a restart', async () => {
+  const fs = await import('node:fs')
+  const os = await import('node:os')
+  const path = await import('node:path')
+  const { awayWhy } = await import('./remotes.ts')
+  // What fetch throws through the reverse tunnel (checked against node's own errors).
+  expect(awayWhy(new TypeError('fetch failed', { cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }) }))).toBe('link')
+  expect(awayWhy(new DOMException('timeout', 'TimeoutError'))).toBe('link')
+  expect(awayWhy(new TypeError('fetch failed', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) }))).toBe('stopped')
+  expect(awayWhy(Object.assign(new Error('502'), { status: 502 }))).toBe('stopped')
+  expect(awayWhy(Object.assign(new Error('401'), { status: 401 }))).toBe('key')
+
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-away-'))
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-11-23T15:00:00Z'))
+  let answer: 'ok' | 'refused' | 'closed' | 401 = 'ok'
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    if (answer === 'ok') return Response.json({ version: 1, machines: [{ id: 'laptop' }], sessions: [], h24: [] })
+    if (answer === 401) return new Response('{}', { status: 401 })
+    throw new TypeError('fetch failed', { cause: { code: answer === 'refused' ? 'ECONNREFUSED' : 'UND_ERR_SOCKET' } })
+  }))
+  const changed = vi.fn()
+  const r = new Remote('laptop', 'http://127.0.0.1:4196', changed, { dataDir, weevbookDir: dataDir })
+  expect(r.away()).toEqual({ why: 'link', since: null })
+  r.start()
+  await vi.advanceTimersByTimeAsync(3 * 60_000)
+  const last = Date.now() - (Date.now() % 2000)
+  expect(r.online).toBe(true)
+  answer = 'refused'
+  await vi.advanceTimersByTimeAsync(10_000)
+  expect(r.online).toBe(false)
+  const since = r.away().since!
+  expect(r.away().why).toBe('link')
+  expect(Math.abs(since - last)).toBeLessThanOrEqual(2000)
+  // Its link comes back but weevils there does not answer; then it no longer lets this machine in.
+  answer = 'closed'
+  await vi.advanceTimersByTimeAsync(2000)
+  expect(r.away()).toEqual({ why: 'stopped', since })
+  answer = 401
+  await vi.advanceTimersByTimeAsync(2000)
+  expect(r.away()).toEqual({ why: 'key', since })
+  // weevilsd restarts here: the same « since », read back.
+  const again = new Remote('laptop', 'http://127.0.0.1:4196', vi.fn(), { dataDir, weevbookDir: dataDir })
+  expect(again.away().since).toBe(since)
+  fs.rmSync(dataDir, { recursive: true, force: true })
+})
+
+// A machine plugged in from its line is listed at once, as installing; why its install stopped, if it did; and a port
+// another program holds here (it answers, but not as weevils).
+it('a machine just plugged in says installing, then why its install stopped; a foreign program on its port says so', async () => {
+  const fs = await import('node:fs')
+  const os = await import('node:os')
+  const path = await import('node:path')
+  const { awayWhy } = await import('./remotes.ts')
+  expect(awayWhy(Object.assign(new Error('404'), { status: 404 }))).toBe('port')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-join-'))
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-11-23T18:40:00Z'))
+  let answer: 'none' | 'foreign' | 'ok' = 'none'
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    if (answer === 'ok') return Response.json({ version: 1, machines: [{ id: 'studio' }], sessions: [], h24: [] })
+    if (answer === 'foreign') return new Response('<html>Directory listing</html>', { status: 200 })
+    throw new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } })
+  }))
+  const r = new Remote('studio', 'http://127.0.0.1:4195', vi.fn(), { dataDir, weevbookDir: dataDir })
+  r.joined()
+  const at = Date.now()
+  r.start()
+  await vi.advanceTimersByTimeAsync(4000)
+  expect(r.away()).toEqual({ why: 'joining', since: at })
+  // Known across a restart here.
+  expect(new Remote('studio', 'http://127.0.0.1:4195', vi.fn(), { dataDir, weevbookDir: dataDir }).away().why).toBe('joining')
+  r.failed('weevils could not install a package it needs on this computer: tmux', 'sudo pacman -S --needed tmux')
+  expect(r.away()).toEqual({ why: 'failed', since: at, detail: 'weevils could not install a package it needs on this computer: tmux', fix: 'sudo pacman -S --needed tmux' })
+  // A fresh line pasted again: installing again.
+  r.joined()
+  expect(r.away().why).toBe('joining')
+  answer = 'ok'
+  await vi.advanceTimersByTimeAsync(2000)
+  expect(r.online).toBe(true)
+  answer = 'foreign'
+  await vi.advanceTimersByTimeAsync(2000)
+  expect(r.online).toBe(false)
+  expect(r.away().why).toBe('port')
+  r.stop()
+  fs.rmSync(dataDir, { recursive: true, force: true })
+})

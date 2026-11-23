@@ -229,6 +229,8 @@ export const api = {
   files: (repo: string, machine: string) => call<{ files: string[] }>('GET', `/api/repos/${enc(repo)}/files?machine=${enc(machine)}`),
   explain: (body: ExplainRequest) => call<ExplainReply>('POST', '/api/explain', body),
   infra: (machine: string) => call<InfraDetail>('GET', `/api/infra?machine=${enc(machine)}`),
+  /** A fresh one-time line that plugs a machine of yours back in, pasted on it (server/your-factory.ts). */
+  rejoin: (machine: string) => call<{ line: string }>('POST', '/api/factory/rejoin', { machine }),
   fs: (machine: string, path: string) => call<FsListing>('GET', `/api/fs?machine=${enc(machine)}&path=${enc(path)}`),
   fsFile: (machine: string, path: string) => call<FileContent>('GET', `/api/fs/file?machine=${enc(machine)}&path=${enc(path)}`),
   usage: () => call<UsageInfo>('GET', '/api/usage'),

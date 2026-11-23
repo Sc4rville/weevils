@@ -268,6 +268,37 @@ const join = new Join({
   file: path.join(DATA_DIR, 'join.json'), authorizedKeys: path.join(HOME, '.ssh', 'authorized_keys'), service: path.join(HOME, '.local', 'bin', 'weevils-service'),
   remotes: () => remotesIn(CONFIG_FILE), machineIds: () => w.snapshot().machines.map((m) => m.id),
 })
+// A machine plugged in from its line: in the list at once (installing), on the port its key may open, kept in
+// WEEVILS_REMOTES so its own installer finds it there (no restart); and why, if its install stopped.
+const SERVICE_BIN = path.join(HOME, '.local', 'bin', 'weevils-service')
+function machineJoined(id: string, port: number) {
+  const url = `http://127.0.0.1:${port}`
+  const rest = remotesIn(CONFIG_FILE).split(',').map((x) => x.trim()).filter((x) => x && !x.startsWith(`${id}=`))
+  writeConfig({ WEEVILS_REMOTES: [...rest, `${id}=${url}`].join(',') })
+  w.addRemote(id, url).joined()
+  setup.joined(id)
+}
+function machineJoinFailed(id: string, why: string, fix: string) {
+  w.remotes.find((r) => r.id === id)?.failed(why, fix)
+  setup.joinFailed(id, why, fix)
+}
+// Your factory's switch drives another machine's link: off, its tunnel is cut here and its next one waits (weevils-service
+// hold, which reads remotes/<id>.off) until it is switched on, which lets it in within a second.
+const offFlag = (id: string) => path.join(CONFIG_DIR, 'remotes', `${id.replace(/[^A-Za-z0-9_.-]/g, '_')}.off`)
+function machinePower(id: string, on: boolean) {
+  if (id === MACHINE.id || !w.remotes.some((r) => r.id === id)) return
+  try {
+    if (on) fs.rmSync(offFlag(id), { force: true })
+    else {
+      fs.mkdirSync(path.dirname(offFlag(id)), { recursive: true, mode: 0o700 })
+      fs.writeFileSync(offFlag(id), '')
+      execFile(SERVICE_BIN, ['drop', id], { timeout: 15_000 }, () => undefined)
+    }
+  } catch (e) {
+    console.error('[machines] switch:', (e as Error).message)
+  }
+}
+for (const r of w.remotes) machinePower(r.id, !w.factory.machinesOff.includes(r.id))
 // The vault for a machine that joins (07-vault.md): its deploy key on the vault's repository, the remote and the key back.
 const joinVault = (id: string, pub: string) => shareVault({ remote: vaultRemote(), keyFile: VAULT_KEY_FILE, id, pub, gh: ghRunner(which('gh') ?? 'gh', 20_000), notes: path.join(DATA_DIR, 'vault-machines.json') })
 // weevboss creates projects there, and a job handed to a session (weevils do) runs there.
@@ -1432,6 +1463,8 @@ function factoryDeps(): FactoryDeps {
     writeConfig,
     pin: (repo, pinned) => w.pinRepo(repo, pinned),
     pinned: () => w.pinnedRepos,
+    rejoin: () => setup.rejoinLine(),
+    power: machinePower,
     startTalk: (machineId, name, kind, provider, text) =>
       w.create({ projectId: '', machineId, tool: w.factory.intelOff.includes('codex') ? 'claude' : preferredTool(), text: `${text.trim()}\n\n${talkContext(name, kind, provider)}`, title: name }),
   }
@@ -1502,7 +1535,7 @@ const server = http.createServer((req, res) => withLang(requestLang(req), async 
     // A computer bringing its conversations: its one-time code is its key, not the access code (server/bring.ts).
     if (url.pathname.startsWith('/api/bring') && (url.pathname === '/api/bring.sh' || url.pathname.startsWith('/api/bring/pc/')) && (await bring.pcRoute(req, res, url.pathname))) return
     // Another computer joining from its line: the one-time code is its key (server/join.ts).
-    if (ORCHESTRATOR && url.pathname.startsWith('/api/join') && (await joinRoute(req, res, url.pathname, { join, machine: MACHINE.id, lang: installationLang(), onJoined: (id) => setup.joined(id), onFailed: (id, why, fix) => setup.joinFailed(id, why, fix), vault: joinVault }))) return
+    if (ORCHESTRATOR && url.pathname.startsWith('/api/join') && (await joinRoute(req, res, url.pathname, { join, machine: MACHINE.id, lang: installationLang(), onJoined: machineJoined, onFailed: machineJoinFailed, vault: joinVault }))) return
     const site = SITE_RE.exec(url.pathname)
     if (site && req.method === 'GET') return serveSite(res, site[1], site[2], site[3])
     // Le Raccourci Siri n'a pas de cookie : son jeton personnel n'ouvre que le tour de parole et le son qui va avec.

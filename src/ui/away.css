@@ -1,0 +1,13 @@
+/* A machine that does not answer (away.tsx): its plain line, then the one tap that brings it back. No box, no pill. */
+.away { display: grid; gap: 8px; padding-block: 10px; }
+.away p { margin: 0; line-height: 1.4; }
+.away-why { font-weight: 600; }
+.away-copy {
+  justify-self: start; padding: 4px 0; border: 0; font: inherit; font-weight: 800; text-align: start; cursor: pointer;
+}
+.away-copy:disabled { opacity: .6; }
+.away-done, .away-err { opacity: .85; }
+.away-line {
+  display: block; font-size: 12px; line-height: 1.4; word-break: break-all; user-select: all; -webkit-user-select: all;
+  opacity: .8;
+}

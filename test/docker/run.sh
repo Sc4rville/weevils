@@ -190,7 +190,7 @@ run_systemd() {
   check "secondary: weevilsd and tunnel active, no weevboss, no app build" as_2 'systemctl --user is-active weevilsd weevils-tunnel && grep -qx WEEVILS_ORCHESTRATOR=0 ~/.config/weevils/env && grep -qx WEEVILS_MACHINE=laptop ~/.config/weevils/env && test ! -e weevils/dist/index.html'
   check "main: WEEVILS_REMOTES registered by the secondary" as_test 'grep -qx "WEEVILS_REMOTES=laptop=http://127.0.0.1:4192" ~/.config/weevils/env'
   check "main: the second machine is online in its snapshot" as_test 'for i in $(seq 30); do curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"laptop\" and .online==true)" && exit 0; sleep 1; done; exit 1'
-  check "secondary: units name the main host given, nothing hardcoded" as_2 'grep -q "ExecStart=.* mainbox$" ~/.config/systemd/user/weevils-tunnel.service && ! grep -rqiE "\bvps\b|scarville|scarville" ~/.config/systemd/user/ ~/.config/weevils/'
+  check "secondary: units name the main host given, nothing hardcoded" as_2 'grep -qx "ExecStart=%h/.local/bin/weevils-service tunnel" ~/.config/systemd/user/weevils-tunnel.service && grep -qx WEEVILS_MAIN_HOST=mainbox ~/.config/weevils/service.conf && pgrep -u test -f "ssh -T .*-R 127.0.0.1:4192:127.0.0.1:4179 mainbox" >/dev/null && ! grep -rqiE "\bvps\b|scarville|scarville" ~/.config/systemd/user/ ~/.config/weevils/'
   check "secondary re-run is idempotent (same tunnel port)" as_2 'cd weevils && ./install.sh --yes --secondary mainbox >/dev/null && grep -q "WEEVILS_TUNNEL_PORT=4192" ~/.config/weevils/service.conf'
   check "main: still a single remote entry" as_test '[ "$(grep -c "^WEEVILS_REMOTES=" ~/.config/weevils/env)" = 1 ] && grep -qx "WEEVILS_REMOTES=laptop=http://127.0.0.1:4192" ~/.config/weevils/env'
 
@@ -232,7 +232,7 @@ run_systemd() {
     check "main: desk registered, laptop kept" as_test 'grep -qx "WEEVILS_REMOTES=laptop=http://127.0.0.1:4192,desk=http://127.0.0.1:4193" ~/.config/weevils/env'
     check "main: the key may only hold the tunnel and register desk" as_test 'grep "weevils-join:desk$" ~/.ssh/authorized_keys | grep -q "^restrict,port-forwarding,permitlisten=\"127.0.0.1:4193\",permitopen=\"127.0.0.1:4193\",command=\"/home/test/.local/bin/weevils-service remote-shell desk 4193\" ssh-ed25519 "'
     check "main: desk online in its snapshot" as_test 'for i in $(seq 30); do curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"desk\" and .online==true)" && exit 0; sleep 1; done; exit 1'
-    check "main: the thread said it came in, then that it is plugged in" as_test 'for i in $(seq 20); do jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk is plugged in" && jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk is plugging in" && exit 0; sleep 1; done; exit 1'
+    check "main: the thread said it came in, then that it is plugged in" as_test 'for i in $(seq 40); do jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "desk is plugged in" && jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk is plugging in" && exit 0; sleep 1; done; jq -c ".joining, [.log[-5:][].text]" ~/.local/share/weevils/setup.json >&2; exit 1'
     check "third: that key gets no shell and no other command on the main machine" as_3 '! ssh -o BatchMode=yes weevils-testbox "cat ~/.config/weevils/secret" >/tmp/out 2>&1 && grep -q "this key only registers desk" /tmp/out && ! ssh -o BatchMode=yes weevils-testbox bash </dev/null'
     check "third: the line works once" as_3 "! ($line) >/tmp/again 2>&1 && grep -q 'expired or was already used' /tmp/again"
 
@@ -247,7 +247,7 @@ run_systemd() {
     say "systemd: the third machine's connection dies without a word (sleep, another network): it comes back by itself"
     # Its network goes, the tunnel's ssh is killed meanwhile: the main machine never hears of it and keeps the port.
     local tpid
-    tpid=$(docker exec "$c3" bash -c 'pgrep -u test -f "ssh -NT .*-R 127.0.0.1:4193"' | head -1)
+    tpid=$(docker exec "$c3" bash -c 'pgrep -u test -f "ssh -T .*-R 127.0.0.1:4193"' | head -1)
     docker network disconnect "$net" "$c3"
     docker exec "$c3" kill -9 "$tpid"
     check "main: the dead connection still holds desk's port" as_test 'grep -q "0100007F:1061 00000000:0000 0A" /proc/net/tcp'
@@ -255,6 +255,75 @@ run_systemd() {
     docker network connect "$net" "$c3"
     check "main: desk online again within a minute (the stale port reclaimed)" online_desk
     check "main: the thread says nothing for a blip under 10 minutes" as_test '! jq -r ".log[].text" ~/.local/share/weevils/setup.json | grep -q "^desk has not answered"'
+
+    say "systemd: a machine that does not answer says why on the main machine, never a bare offline"
+    away_desk() { as_test "for i in \$(seq 30); do curl -sf -H @\$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e '.machines[] | select(.id==\"desk\" and .online==false and .away.why==\"$1\" and (.away.since | type) == \"number\")' >/dev/null && exit 0; sleep 1; done; exit 1"; }
+    as_3 'systemctl --user stop weevilsd'
+    check "main: desk's link is up but weevils there is stopped: why=stopped, since a time" away_desk stopped
+    as_3 'systemctl --user start weevilsd'
+    check "main: desk online again once weevils runs there" online_desk
+    check "main: a fresh line to paste on desk, from its card" as_test 'curl -sf -H @$HOME/.local/share/weevils/local-token -H content-type:application/json -d "{\"machine\":\"desk\"}" http://127.0.0.1:4179/api/factory/rejoin | jq -er .line | grep -qE "^curl -fsSL https://weevils.test/api/join.sh [|] bash -s [A-Za-z0-9_-]{20,}$"'
+
+    say "systemd: a machine that lost its role before the fix (an update made it a main machine of its own) comes back at its next update"
+    # What the update without the fix did: server/install.sh as a main machine, its tunnel removed, its role main.
+    check "third: made a main machine of its own, as the old update left it" as_3 'systemctl --user disable --now weevils-tunnel >/dev/null 2>&1; rm -f ~/.config/systemd/user/weevils-tunnel.service; systemctl --user daemon-reload
+      sed -i "s/^WEEVILS_ROLE=.*/WEEVILS_ROLE=main/; s/^WEEVILS_MAIN_HOST=.*/WEEVILS_MAIN_HOST=/; s/^WEEVILS_TUNNEL_PORT=.*/WEEVILS_TUNNEL_PORT=/" ~/.config/weevils/service.conf
+      ~/.local/bin/weevils-service config set WEEVILS_ORCHESTRATOR 1 >/dev/null
+      grep -qx WEEVILS_ROLE=main ~/.config/weevils/service.conf && ! systemctl --user is-active weevils-tunnel'
+    check "main: desk does not answer: why=link, since a time" away_desk link
+    check "third: its next update (install.sh --agent --no-update) finds its join key and becomes secondary again" as_3 'cd weevils && WEEVILS_NO_UPDATE=1 ./install.sh --agent --no-update >/tmp/heal.log 2>&1; grep -qx status=ok /tmp/heal.log && grep -qx role=secondary /tmp/heal.log || { grep -iE "error|warn|fail|denied|usage|unknown|not |cannot|line [0-9]" /tmp/heal.log | head -14; exit 1; }'
+    check "third: secondary on the same port its key may open, tunnel active" as_3 'grep -qx WEEVILS_ROLE=secondary ~/.config/weevils/service.conf && grep -qx WEEVILS_MAIN_HOST=weevils-testbox ~/.config/weevils/service.conf && grep -qx WEEVILS_TUNNEL_PORT=4193 ~/.config/weevils/service.conf && systemctl --user is-active weevils-tunnel && grep -qx WEEVILS_ORCHESTRATOR=0 ~/.config/weevils/env'
+    check "main: desk online again, nothing pasted" online_desk
+
+    say "systemd: the switch in the app drives desk's link, fast (nothing to do on desk)"
+    switch_desk() { as_test "curl -sf -H @\$HOME/.local/share/weevils/local-token -H content-type:application/json -d '{\"id\":\"desk\",\"off\":$1}' http://127.0.0.1:4179/api/factory/machine >/dev/null"; }
+    desk_is() { as_test "for i in \$(seq 240); do curl -sf -H @\$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e '.machines[] | select(.id==\"desk\" and .online==$1)' >/dev/null && exit 0; sleep 0.25; done; exit 1"; }
+    timed() { local t0 t1; t0=$(date +%s%N); "$@" || return 1; t1=$(date +%s%N); echo "$(( (t1 - t0) / 1000000 ))"; }
+    local ms_off ms_on
+    switch_desk true; ms_off=$(timed desk_is false || echo fail)
+    check "main: switched off, desk disconnected (${ms_off} ms)" test "$ms_off" != fail
+    check "main: and it stays off (its tunnel waits on the main machine)" as_test 'sleep 8; curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"desk\" and .online==false and .off==true)" >/dev/null'
+    switch_desk false; ms_on=$(timed desk_is true || echo fail)
+    check "main: switched on, desk connected (${ms_on} ms from the tap)" test "$ms_on" != fail
+    check "  … both within 10 s" test "${ms_off/fail/99999}" -lt 10000 -a "${ms_on/fail/99999}" -lt 10000
+
+    say "systemd: another program takes desk's port on the main machine (a forgotten preview): desk moves by itself"
+    as_3 'systemctl --user stop weevils-tunnel'
+    desk_is false
+    as_test 'cd /tmp && (setsid python3 -m http.server 4193 --bind 0.0.0.0 >/tmp/preview.log 2>&1 & echo $! >/tmp/preview.pid)'
+    check "main: desk's port now answers as another program (why=port)" away_desk port
+    as_3 'systemctl --user start weevils-tunnel'
+    check "main: desk online again, on a free port" online_desk
+    check "third: its new port written on both sides, never the taken one" bash -c "p=\$(docker exec -u test $c3 sed -n 's/^WEEVILS_TUNNEL_PORT=//p' /home/test/.config/weevils/service.conf); [ -n \"\$p\" ] && [ \"\$p\" != 4193 ] && docker exec -u test $c grep -q \"permitlisten=\\\"127.0.0.1:\$p\\\".*weevils-join:desk\$\" /home/test/.ssh/authorized_keys && docker exec -u test $c grep -q \"desk=http://127.0.0.1:\$p\" /home/test/.config/weevils/env"
+    check "main: the other program left alone" as_test 'kill -0 "$(cat /tmp/preview.pid)" && kill "$(cat /tmp/preview.pid)"'
+
+    say "systemd: a fourth machine plugged in while the port its line reserved is taken: listed at once, connected"
+    local c4=weevils-test-sd4-$tag line4 port4 jpid
+    containers+=("$c4")
+    docker run -d --name "$c4" --hostname studio --network "$net" --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock "$image" >/dev/null
+    docker exec "$c4" systemctl is-system-running --wait >/dev/null 2>&1
+    docker exec "$c4" bash -c 'apt-get update -qq >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends curl ca-certificates openssh-client >/dev/null 2>&1'
+    docker exec "$c4" bash -c "echo '$ip weevils.test' >>/etc/hosts"
+    docker cp "$work/caddy-root.crt" "$c4:/usr/local/share/ca-certificates/weevils-test.crt"
+    docker exec "$c4" update-ca-certificates >/dev/null 2>&1
+    docker cp "$work/weevils.git" "$c4:/srv/weevils.git"
+    docker cp "$work/weevils/install.sh" "$c4:/srv/install.sh"
+    docker exec "$c4" chown -R test:test /srv/weevils.git /srv/install.sh
+    fake_claude "$c4" /home/test
+    as_4() { docker exec -u test -w /home/test -e XDG_RUNTIME_DIR=/run/user/1000 -e WEEVILS_REPO=/srv/weevils.git -e WEEVILS_INSTALL_SH=/srv/install.sh "$c4" bash -c "$1"; }
+    as_test '~/.local/bin/weevils setup ask machine >/dev/null'
+    line4=$(as_test 'jq -r ".log[-1].text" ~/.local/share/weevils/setup.json 2>/dev/null' | grep -oE 'curl -fsSL https://weevils\.test/api/join\.sh \| bash -s [A-Za-z0-9_-]{20,}' | head -1 || true)
+    port4=$(as_test 'jq -r "[.codes[] | select(.used == null)] | last | .port" ~/.local/share/weevils/join.json')
+    check "main: a line for the fourth machine, its port reserved ($port4)" test -n "$line4" -a -n "$port4"
+    as_test "cd /tmp && (setsid python3 -m http.server $port4 --bind 127.0.0.1 >/tmp/preview4.log 2>&1 & echo \$! >/tmp/preview4.pid)"
+    as_4 "$line4" >"$work/join4.log" 2>&1 &
+    jpid=$!
+    check "main: studio listed within seconds of the line, as installing" as_test 'for i in $(seq 90); do curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"studio\" and .online==false and .away.why==\"joining\")" >/dev/null && exit 0; sleep 1; done; exit 1'
+    if wait "$jpid"; then passes=$((passes + 1)); echo "  ok   the line ran on the fourth machine"
+    else fails=$((fails + 1)); echo "  FAIL the line on the fourth machine"; tail -30 "$work/join4.log"; fi
+    check "studio: its tunnel on another port than the taken one" as_4 "p=\$(sed -n 's/^WEEVILS_TUNNEL_PORT=//p' ~/.config/weevils/service.conf); [ -n \"\$p\" ] && [ \"\$p\" != $port4 ] && systemctl --user is-active weevils-tunnel"
+    check "main: studio connected" as_test 'for i in $(seq 60); do curl -sf -H @$HOME/.local/share/weevils/local-token http://127.0.0.1:4179/api/snapshot | jq -e ".machines[] | select(.id==\"studio\" and .online==true)" >/dev/null && exit 0; sleep 1; done; exit 1'
+    check "main: the program on the reserved port left alone" as_test 'kill -0 "$(cat /tmp/preview4.pid)" && kill "$(cat /tmp/preview4.pid)"'
   fi
 
   say "systemd: reboot"

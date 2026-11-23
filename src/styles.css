@@ -329,6 +329,90 @@
   --dl: 0.06;
 }
 
+/* Littoral (coastal) : une journée au bord de la mer. Bande du haut bleu houle, 24/7 sable, bande calme écume ;
+   encre bleu marine. Projets dans les bleus, de l'écume verte au turquoise, à l'azur, au bleuet puis à la lavande,
+   quatre crans. Ce qui travaille a le rouge corail d'une bouée, ce qui tourne tout seul le vert du varech. */
+:root[data-theme='coastal'] {
+  color-scheme: light;
+  --ink: #030d22;
+  --logo-filter: grayscale(1) sepia(.15) hue-rotate(180deg) brightness(.35);
+  --agent: #9FD0E8;
+  --devil: oklch(0.82 0.075 35);
+  --devil-reply: oklch(0.92 0.03 190);
+  --h24: oklch(0.9 0.045 80);
+  --calm: oklch(0.965 0.02 225);
+  --calm-soft: 0.02;
+  --fluo: oklch(0.4 0.15 32);
+  /* Les 16 emplacements : écume → turquoise → azur → bleuet → lavande, quatre crans. */
+  --p0: oklch(0.86 0.07 150.0);
+  --p1: oklch(0.815 0.07 160.7);
+  --p2: oklch(0.77 0.07 171.3);
+  --p3: oklch(0.725 0.07 182.0);
+  --p4: oklch(0.86 0.07 192.7);
+  --p5: oklch(0.815 0.07 203.3);
+  --p6: oklch(0.77 0.07 214.0);
+  --p7: oklch(0.725 0.07 224.7);
+  --p8: oklch(0.86 0.07 235.3);
+  --p9: oklch(0.815 0.07 246.0);
+  --p10: oklch(0.77 0.07 256.7);
+  --p11: oklch(0.725 0.07 267.3);
+  --p12: oklch(0.86 0.07 278.0);
+  --p13: oklch(0.815 0.07 288.7);
+  --p14: oklch(0.77 0.07 299.3);
+  --p15: oklch(0.725 0.07 310.0);
+  /* Logo vocal : bouée, houle, sable. */
+  --anim-rec: oklch(0.55 0.2 28);
+  --anim-wait: oklch(0.4 0.15 32);
+  --anim-ready: oklch(0.4 0.15 32);
+  --anim-1: oklch(0.55 0.12 230);
+  --anim-2: oklch(0.6 0.16 35);
+  --anim-3: oklch(0.8 0.11 85);
+  --mix: 10%;
+  --dl: -0.06;
+}
+
+/* Art déco (deco) : laque noire et feuille d'or. Bande du haut noir laqué, 24/7 émeraude, bande calme presque noire ;
+   encre crème. Projets du vert-de-gris au laiton, à l'or, au bronze puis au cuivre, quatre crans, les métaux et leurs
+   patines. Ce qui travaille brille comme l'or, ce qui tourne tout seul a le vert pâle du jade. */
+:root[data-theme='deco'] {
+  color-scheme: dark;
+  --ink: #f8f0dc;
+  --logo-filter: grayscale(1) brightness(.3) invert(1);
+  --agent: oklch(0.2 0.028 85);
+  --devil: oklch(0.3 0.09 20);
+  --devil-reply: oklch(0.28 0.04 85);
+  --h24: oklch(0.3 0.07 165);
+  --calm: oklch(0.15 0.022 85);
+  --calm-soft: -0.03;
+  --fluo: oklch(0.86 0.14 88);
+  /* Les 16 emplacements : vert-de-gris → laiton → or → bronze → cuivre, quatre crans. */
+  --p0: oklch(0.22 0.085 175.0);
+  --p1: oklch(0.28 0.085 165.7);
+  --p2: oklch(0.34 0.085 156.3);
+  --p3: oklch(0.4 0.085 147.0);
+  --p4: oklch(0.22 0.085 137.7);
+  --p5: oklch(0.28 0.085 128.3);
+  --p6: oklch(0.34 0.085 119.0);
+  --p7: oklch(0.4 0.085 109.7);
+  --p8: oklch(0.22 0.085 100.3);
+  --p9: oklch(0.28 0.085 91.0);
+  --p10: oklch(0.34 0.085 81.7);
+  --p11: oklch(0.4 0.085 72.3);
+  --p12: oklch(0.22 0.085 63.0);
+  --p13: oklch(0.28 0.085 53.7);
+  --p14: oklch(0.34 0.085 44.3);
+  --p15: oklch(0.4 0.085 35.0);
+  /* Logo vocal : or, jade, crème. */
+  --anim-rec: oklch(0.7 0.2 25);
+  --anim-wait: oklch(0.86 0.14 88);
+  --anim-ready: oklch(0.86 0.14 88);
+  --anim-1: oklch(0.82 0.1 170);
+  --anim-2: oklch(0.8 0.13 75);
+  --anim-3: oklch(0.92 0.04 90);
+  --mix: 10%;
+  --dl: 0.06;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1413,6 +1497,15 @@ button.copy.done {
   --auto-fluo: oklch(0.84 0.11 350);
 }
 
+/* Littoral : vert varech. Art déco : jade. */
+:root[data-theme='coastal'] {
+  --auto-fluo: oklch(0.38 0.08 150);
+}
+
+:root[data-theme='deco'] {
+  --auto-fluo: oklch(0.85 0.09 175);
+}
+
 .auto-mark {
   color: var(--auto-fluo);
 }
@@ -1647,6 +1740,7 @@ button.copy.done {
 }
 [data-theme='dark'] .msg.orch.ext,
 [data-theme='vaporwave'] .msg.orch.ext,
+[data-theme='deco'] .msg.orch.ext,
 [data-theme='synthwave'] .msg.orch.ext {
   --who-c: oklch(from var(--who) 0.44 calc(c * 0.95) h);
   /* Keep the external bubble dark enough for its white text and living links. */
@@ -2451,6 +2545,7 @@ button.copy.done {
 
 [data-theme='dark'] .peek-item.orch.ext,
 [data-theme='vaporwave'] .peek-item.orch.ext,
+[data-theme='deco'] .peek-item.orch.ext,
 [data-theme='synthwave'] .peek-item.orch.ext {
   --who-c: oklch(from var(--who) 0.44 calc(c * 0.95) h);
 }
@@ -2626,6 +2721,14 @@ button.copy.done {
   --alert: #f5333f;
 }
 
+:root[data-theme='coastal'] {
+  --alert: oklch(0.5 0.19 25);
+}
+
+:root[data-theme='deco'] {
+  --alert: #f5333f;
+}
+
 .alert {
   color: var(--alert);
 }
@@ -2741,6 +2844,7 @@ button.copy.done {
 
 [data-theme='dark'] .wv-flash,
 [data-theme='vaporwave'] .wv-flash,
+[data-theme='deco'] .wv-flash,
 [data-theme='synthwave'] .wv-flash,
 [data-theme='graphite'] .wv-flash {
   animation-name: wv-flash-dark;

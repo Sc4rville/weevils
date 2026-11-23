@@ -7,7 +7,8 @@
 }
 [data-theme='dark'],
 :root[data-theme='synthwave'],
-:root[data-theme='vaporwave'] {
+:root[data-theme='vaporwave'],
+:root[data-theme='deco'] {
   --warn: #ffa347;
   --crit: #ff5a6a;
 }

@@ -831,7 +831,8 @@ describe('a thread resumed from the vault on a machine that never ran it', () =>
     expect(fs.readFileSync(path.join(desk.repo, 'src/money.ts'), 'utf8')).toContain('€')
   }, 120_000)
 
-  it('a conversation opened in the home folder that works in a repository: moved to a clone of it, its uncommitted files carried, a conflict named, nothing touched on the machine left', async () => {
+  /** A conversation opened in the home folder of a laptop that then works in a repository the server also has. */
+  async function homeFolderThread() {
     const seed = path.join(tmp, 'seed')
     fs.mkdirSync(path.join(seed, 'src'), { recursive: true })
     fs.writeFileSync(path.join(seed, 'src', 'money.ts'), 'export const fmt = (n: number) => `${n}`\n')
@@ -887,6 +888,11 @@ describe('a thread resumed from the vault on a machine that never ran it', () =>
     }
     // The laptop does not answer: the thread's repository is not known, the code can only continue there; and the
     // reason gives no made-up time of silence.
+    return { laptop, server, a, id, base, launched, origin }
+  }
+
+  it('a conversation opened in the home folder that works in a repository: moved to a clone of it, its uncommitted files carried, a conflict named, nothing touched on the machine left', async () => {
+    const { laptop, server, a, id, base, origin } = await homeFolderThread()
     const silent = await resumeThread({ ...base, source: async () => null })
     expect(silent).toMatchObject({ ok: false, why: 'hold', detail: 'only-there: the code of this thread can only continue on laptop; laptop has not answered; its repository is not known on server' })
 
@@ -923,5 +929,18 @@ describe('a thread resumed from the vault on a machine that never ran it', () =>
     expect(validateJournal(journal)).toEqual([])
     expect(journal.filter((e) => e.type === 'leg.start').map((e) => (e as { engine: string }).engine.split('@')[1])).toEqual(['laptop', 'server'])
     expect(journal.find((e) => e.type === 'leg.end')).toMatchObject({ leg: 'L1', reason: 'moved', by: 'server' })
+  }, 120_000)
+
+  it('the laptop does not answer: refused, then forced on the synced copy, saying its changes stayed there unchecked', async () => {
+    const { server, id, base } = await homeFolderThread()
+    const silent = { ...base, source: async () => null }
+    expect(await resumeThread(silent)).toMatchObject({ ok: false, why: 'hold', detail: expect.stringMatching(/^only-there: .*laptop has not answered/) as string })
+    const r = await resumeThread({ ...silent, force: true })
+    expect(r).toMatchObject({ ok: true, rung: 2, leg: 'L2', session: SESSION, code: { checked: false, carried: [], line: expect.stringContaining('laptop did not answer: its uncommitted changes, if any, stay there and were not checked') } })
+    if (!r.ok) return
+    expect(fs.readFileSync(r.file, 'utf8')).toContain('Wire the shop to my Claude subscription')
+    expect(fs.readFileSync(path.join(server.repo, 'src', 'money.ts'), 'utf8')).not.toContain('€') // nothing was carried
+    const journal = (await (await Weevbook.open(server.dir, 'server')).thread(id))!.journal.events as JournalEvent[]
+    expect(validateJournal(journal)).toEqual([])
   }, 120_000)
 })

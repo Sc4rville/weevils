@@ -171,6 +171,8 @@ export interface Session {
   relayedBy?: string
   /** With WEEVILS_THREADS: the weevbook thread this session carries. One thread is one row, whatever engine runs it. */
   thread?: string
+  /** Its machine does not answer now: the row is what was synced (server/offline-machines.ts), readable, not live. */
+  offline?: boolean
 }
 
 /** Relais Codex quand Claude atteint sa limite : auto (Codex écrit son plan puis l'exécute), ask (le plan attend un oui), never. */

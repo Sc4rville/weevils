@@ -284,7 +284,7 @@ function SessionPage({ id }: { id: string }) {
           {sourceIssue && <div className="in meta" role="status">{sourceIssue}</div>}
           <Composer
             draftKey={`session:${s.id}`}
-            placeholder={sourceIssue ? '' : s.controllable ? (s.live ? t.writeTo(toolName(s.tool)) : t.resumeWith(toolName(s.tool))) : t.readOnly}
+            placeholder={sourceIssue ? '' : s.offline ? t.offlineOn(snap.machines.find((m) => m.id === s.machineId)?.name ?? s.machineId) : s.controllable ? (s.live ? t.writeTo(toolName(s.tool)) : t.resumeWith(toolName(s.tool))) : t.readOnly}
             label={t.composerLabel(s.title)}
             onSend={send}
             onAttach={send}

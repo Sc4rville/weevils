@@ -71,13 +71,13 @@ describe('the hello', () => {
     const lines = greeting(state({ projects: 3, projectNames: ['weevils', 'notes', 'site'], machine: { ...machine, kind: 'desktop', others: ['laptop'] } }), both)
     expect(lines).toEqual([
       'Hi, I’m weevboss! 👋 weevils brings **all your AI agents and all your machines** together in one place, right in your pocket: Claude Code, Codex, your computer, your servers. You call the shots, I keep the whole crew moving 🚀 Your own AI subscription, your code stays home, and weevils is free.',
-      'I can already see your 3 projects (weevils, notes and site), and laptop is plugged in too. Claude is already connected, so let’s start: tell me what you’d like to make, a game, a website, a small tool, a question about your code… [Connect your GitHub](/#do=github) and I’ll keep all your conversations there, yours.',
+      'I can already see your 3 projects (weevils, notes and site), and laptop is plugged in too. Claude is already connected, so let’s start: tell me what you’d like to make, a game, a website, a small tool, a question about your code… Or first, [a one-minute tour](/#do=tour) of the app.',
     ])
     const fr = withLang('fr', () => greeting(state({ projects: 12, projectNames: ['a', 'b', 'c', 'd'] }), both))
     expect(fr[0]).toBe('Salut, moi c’est weevboss ! 👋 weevils réunit **tous tes agents IA et toutes tes machines** au même endroit, dans ta poche : Claude Code, Codex, ton ordi, tes serveurs. Tu donnes le cap, je fais tourner toute l’équipe 🚀 Ton propre abonnement IA, ton code reste chez toi, et weevils est gratuit.')
-    expect(fr[1]).toBe('Je vois déjà tes 12 projets (a, b, c, d…). Claude est déjà connecté, alors on commence : dis-moi ce que tu veux faire, un jeu, un site, un petit outil, une question sur ton code… [Connecte ton GitHub](/#do=github) et je garde toutes tes conversations là-bas, à toi.')
-    // GitHub already connected: the sync line follows by itself, nothing to offer.
-    expect(greeting(state({ github: { installed: true, logged: true, login: 'alex' } }), both)[1]).toBe('Claude is already connected, so let’s start: tell me what you’d like to make, a game, a website, a small tool, a question about your code…')
+    expect(fr[1]).toBe('Je vois déjà tes 12 projets (a, b, c, d…). Claude est déjà connecté, alors on commence : dis-moi ce que tu veux faire, un jeu, un site, un petit outil, une question sur ton code… Ou d’abord, [un tour d’une minute](/#do=tour) de l’app.')
+    // GitHub is the next step, offered on its own once the thread is calm (server/journey.ts): never in the hello.
+    expect(greeting(state({ github: { installed: true, logged: true, login: 'alex' } }), both)[1]).toBe('Claude is already connected, so let’s start: tell me what you’d like to make, a game, a website, a small tool, a question about your code… Or first, [a one-minute tour](/#do=tour) of the app.')
     for (const t of [...lines, ...fr]) expect(t).not.toMatch(/\[\[setup:|relay|thread|weevbook|session|fil\b/i)
   })
 
@@ -187,7 +187,9 @@ describe('the first run, end to end', () => {
     await s.offline(code)
     expect(auth.submitted).toEqual([code])
     expect(texts()).toContain(code)
-    expect(texts().at(-1)).toMatch(/^Claude Code is signed in/)
+    // The first milestone: a win, what it opens, one example to try, then the tour.
+    expect(texts().at(-1)).toBe('[[win]]**Claude is connected**: your agents can build now. Try it: [make me a small notes app](/#do=try.notes). Or first, [a one-minute tour](/#do=tour) of the app.')
+    expect(s.messages().at(-1)?.win).toMatchObject({ kind: 'step', id: 'step:brain' })
     for (const t of texts()) expect(t).not.toContain('[[setup:')
     const ctx = s.contextFor()
     expect(ctx).not.toContain(code)
@@ -211,7 +213,7 @@ describe('the first run, end to end', () => {
     expect(texts().at(-1)).toContain('Open [Claude’s sign-in page]')
     auth.pending = { url: 'https://claude.ai/oauth/authorize?code=abc' }
     await s.offline('Xy7_aBcDeFgHiJkLmNoPqRsTuV#st4te-123')
-    expect(texts()).toContain('Claude is signed in: I’m starting what you asked.')
+    expect(texts()).toContain('[[win]]**Claude is connected**: I’m starting what you asked.')
     expect(delegate).toHaveBeenCalledWith('make me a snake game', '')
     // No answer from the loan: the sign-in link, as without one.
     guest.dir = null
@@ -435,5 +437,99 @@ describe('the sync said by weevils, then the server offer', () => {
     expect(offersServer({ kind: 'desktop', alwaysOn: true })).toBe(false)
     expect(offersServer({ kind: 'vps', alwaysOn: true })).toBe(false)
     expect(offersServer({ kind: 'server', alwaysOn: null })).toBe(false)
+  })
+})
+
+// The journey after the hello (server/journey.ts, docs/onboarding.md): the tour, one step at a time when the thread is
+// calm, a milestone per step passed with one example to try, then at most one discovery a day through weevboss.
+describe('the journey', () => {
+  const pc = { os: 'linux' as const, mobile: false, standalone: false }
+  type Inner = { watch: () => Promise<void>; p: { firstRun?: { at: number; turns: number }; marks: Record<string, number> } }
+  const inner = (s: unknown) => s as Inner
+
+  it('the tour finished: the next step at once, by what it lets them do', async () => {
+    auth.ready = true
+    const { it: s, texts } = make()
+    await s.welcome(pc)
+    expect(texts()[1]).toContain('[a one-minute tour](/#do=tour)')
+    expect(await s.act('toured')).toBe(true)
+    expect(texts().at(-1)).toBe('That’s it, you know your way around. Next step, [connect your GitHub](/#do=github): your conversations are kept there, yours for good, and your agents save your code to it.')
+    expect(await s.act('tourskip')).toBe(true)
+    expect(texts().at(-1)).toBe('No problem: ask me for the tour anytime.')
+  })
+
+  it('one step at a time, to someone here, only once the thread is calm and weevboss idle; two passed by and weevils stops', async () => {
+    auth.ready = true
+    const thread = { lastAt: Date.now(), working: false, lastUserAt: 0 }
+    const { it: s, texts } = make({ thread: () => thread }, state({ github: { installed: true, logged: true } }))
+    await s.welcome(pc)
+    const n = texts().length
+    await inner(s).watch()
+    expect(texts()).toHaveLength(n)
+    const t0 = Date.now()
+    vi.spyOn(Date, 'now').mockReturnValue(t0 + 120_000)
+    thread.working = true
+    await inner(s).watch()
+    expect(texts()).toHaveLength(n)
+    thread.working = false
+    // Nobody wrote since the hello: nothing piles up in an empty thread.
+    await inner(s).watch()
+    expect(texts()).toHaveLength(n)
+    // They asked something: the hello offered the tour, GitHub is in, the phone comes next.
+    thread.lastUserAt = t0 + 1000
+    await inner(s).watch()
+    expect(texts().at(-1)).toBe('Next step, [put weevils on your phone](/#do=phone): your agents in your pocket, you answer from anywhere.')
+    // The phone passed by, then notifications passed by: weevils says nothing more by itself.
+    vi.spyOn(Date, 'now').mockReturnValue(t0 + 300_000)
+    await inner(s).watch()
+    expect(texts().at(-1)).toMatch(/^Next step, \[put weevils/)
+    thread.lastUserAt = t0 + 250_000
+    await inner(s).watch()
+    expect(texts().at(-1)).toMatch(/^Next step, \[turn on notifications\]\(\/#do=push\)/)
+    vi.spyOn(Date, 'now').mockReturnValue(t0 + 500_000)
+    thread.lastUserAt = t0 + 450_000
+    const before = texts().length
+    await inner(s).watch()
+    expect(texts()).toHaveLength(before)
+    vi.restoreAllMocks()
+  })
+
+  it('milestones: the phone (a second device), notifications; each a win with one example to try', async () => {
+    auth.ready = true
+    let devices = 1
+    const { it: s, texts } = make({ devices: () => devices, thread: () => ({ lastAt: Date.now(), working: false }) })
+    await s.welcome(pc)
+    devices = 2
+    await inner(s).watch()
+    expect(texts().at(-1)).toBe('[[win]]**weevils is on your phone**: your agents in your pocket, ask and answer from anywhere. Try it: [what are my agents up to?](/#do=try.status)')
+    expect(s.messages().at(-1)?.win).toMatchObject({ kind: 'step', id: 'step:phone' })
+    await inner(s).watch()
+    expect(texts().filter((t) => t.includes('on your phone**'))).toHaveLength(1)
+    s.done('push')
+    expect(texts().at(-1)).toMatch(/^\[\[win\]\]\*\*Notifications are on\*\*: .*\[ping me when a one-minute job is done\]\(\/#do=try\.ping\)$/)
+    s.done('push')
+    expect(texts().at(-1)).toBe('Notifications are on for this device.')
+  })
+
+  it('an example tapped goes to weevboss as the person’s own request, with its brief; an unknown one does nothing', async () => {
+    auth.ready = true
+    const { it: s, handoff, delegate } = make()
+    await s.welcome(pc)
+    expect(await s.act('try.notes')).toBe(true)
+    expect(handoff).toHaveBeenCalledWith('Make me a small notes app', expect.stringMatching(/^The user tapped an example to try/))
+    expect(delegate).not.toHaveBeenCalled()
+    expect(await s.act('try.rmrf')).toBe(false)
+  })
+
+  it('from the next day, weevboss’s hidden block may carry one discovery; never on the first day, never once one was given', async () => {
+    auth.ready = true
+    const { it: s } = make()
+    await s.welcome(pc)
+    expect(s.contextFor()).not.toContain('one discovery for the user today')
+    inner(s).p.firstRun!.at = Date.now() - 30 * 3600_000
+    for (const k of Object.keys(inner(s).p.marks)) inner(s).p.marks[k] -= 30 * 3600_000
+    expect(s.contextFor()).toContain('one discovery for the user today, at most')
+    s.mark('discover:github')
+    expect(s.contextFor()).not.toContain('one discovery for the user today')
   })
 })

@@ -52,6 +52,8 @@ import { recoveryCode, readKey } from './weevbook/vault.ts'
 import { vaultMain } from './weevbook/vault-cli.ts'
 import { githubRepo } from './weevbook/vault.ts'
 import { VAULT_REPO, withoutVault } from './weevbook/vault-github.ts'
+import { discoveryHint, isTry, mayOffer, nextStep, stepDone, STEPS, tryBrief, type JourneyFacts, type Step } from './journey.ts'
+import J from './i18n/journey.ts'
 
 const FILE = path.join(DATA_DIR, 'setup.json')
 const LAB_ON = !!process.env.WEEVILS_LAB_DIR?.trim()
@@ -156,6 +158,9 @@ export interface SetupDeps {
   join?: Join
   /** sshd answers here (tests replace the probe). */
   sshd?: () => Promise<boolean>
+  /** weevboss's whole thread (its model's replies too): when the last message came, and whether it is at work. The
+   * journey offers its next step only once it has been quiet for a while (server/journey.ts mayOffer). */
+  thread?: () => { lastAt: number; working: boolean; lastUserAt?: number }
 }
 
 interface Persisted {
@@ -182,6 +187,10 @@ interface Persisted {
   joining?: { at: number; id?: string }
   /** The user's messages that were a sign-in code: never passed on to the model. */
   hidden?: string[]
+  /** The onboarding journey (server/journey.ts): devices signed in at the hello, when weevils offered a step by itself,
+   * the step offered last (passed by or not), how many were passed by in a row, the turns of a day that carried a
+   * discovery for weevboss. */
+  journey?: { devices0: number; offers: number[]; pending?: Step; ignored: number; hinted?: { day: string; n: number } }
 }
 
 // ---------------------------------------------------------------- détection
@@ -683,7 +692,7 @@ export class Setup {
     this.p = (() => {
       try {
         const raw = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Partial<Persisted>
-        return { log: (raw.log ?? []).filter((m) => !m.id.startsWith('demo-')), marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, codexWaiting: raw.codexWaiting, githubLogged: raw.githubLogged, pending: raw.pending, memorySeen: raw.memorySeen, firstRun: raw.firstRun, joining: raw.joining, hidden: raw.hidden, guestTurns: raw.guestTurns }
+        return { log: (raw.log ?? []).filter((m) => !m.id.startsWith('demo-')), marks: raw.marks ?? {}, bossSeenAt: raw.bossSeenAt ?? 0, device: raw.device, welcomed: raw.welcomed, claudeLogged: raw.claudeLogged, codexWaiting: raw.codexWaiting, githubLogged: raw.githubLogged, pending: raw.pending, memorySeen: raw.memorySeen, firstRun: raw.firstRun, joining: raw.joining, hidden: raw.hidden, guestTurns: raw.guestTurns, journey: raw.journey }
       } catch {
         return { log: [], marks: {}, bossSeenAt: 0 }
       }
@@ -828,6 +837,9 @@ export class Setup {
       mid = this.say(first)
       for (const line of rest) this.say(line)
       this.p.firstRun = { at: Date.now(), turns: 0 }
+      this.p.journey = { devices0: this.deps.devices(), offers: [], ignored: 0 }
+      // Ready already: the hello offered the tour.
+      if (ready) this.p.marks['offer:tour'] = Date.now()
       if (!ready && !link) void (tool === 'codex' ? this.askCodex(s) : this.askClaude(s, false, true)).catch((e) => console.log(`[setup] ${short(e)}`))
     }
     this.save()
@@ -841,7 +853,9 @@ export class Setup {
     this.cache = null
     const gh = await github().catch(() => ({ logged: true }))
     const job = this.p.pending
-    this.say(job ? tr(M).claudeReadyJob : gh.logged ? tr(M).claudeReady : `${tr(M).claudeReady} ${tr(M).welcomeGithub}`)
+    // A new install: the first milestone, with what it opens and one example (or the request kept meanwhile), then the tour.
+    if (this.p.firstRun && !this.p.marks['won:brain']) this.wonBrain('Claude', !!job)
+    else this.say(job ? tr(M).claudeReadyJob : gh.logged ? tr(M).claudeReady : `${tr(M).claudeReady} ${tr(M).welcomeGithub}`)
     if (job && providerReady()) {
       this.p.pending = undefined
       this.save()
@@ -1085,6 +1099,7 @@ export class Setup {
       }
     }
     if (await this.watchSync().catch((e) => (console.log(`[setup] sync: ${short(e)}`), false))) changed = true
+    else if (await this.watchJourney().catch((e) => (console.log(`[setup] journey: ${short(e)}`), false))) changed = true
     if (changed) this.save()
   }
 
@@ -1139,7 +1154,14 @@ export class Setup {
       const p = await syncProgress()
       if (p.state !== 'done') return false
       marks['vault:summary'] = Date.now()
-      this.sayWin(t.syncDone(p.total), { id: `vault:${marks['vault:summary']}`, kind: 'vault' })
+      // A new install: the GitHub milestone, with what it opens (their conversations, to pick up) and one example.
+      const first = !!this.p.firstRun && !marks['won:github']
+      if (first) {
+        marks['won:github'] = Date.now()
+        const j = this.p.journey
+        if (j?.pending === 'github') (j.pending = undefined), (j.ignored = 0)
+      }
+      this.sayWin(`${t.syncDone(p.total)}${first ? ` ${tr(J).wonRecap}` : ''}`, { id: `vault:${marks['vault:summary']}`, kind: 'vault' })
       const m = (await this.detect()).machine
       if (offersServer(m)) marks['vps:due'] = Date.now()
       return true
@@ -1152,10 +1174,105 @@ export class Setup {
     return false
   }
 
+  // ---------------------------------------------------------------- the journey (server/journey.ts)
+
+  /** What the journey reads of the real state. Quick: the last detection, the devices and notifications as they are. */
+  private journeyFacts(s: SetupState | undefined = this.cache?.v): JourneyFacts {
+    return {
+      ready: providerReady(),
+      github: !!s?.github.logged || (s ? s.vault.state !== 'none' : !!this.p.githubLogged),
+      first: this.p.device,
+      devices: this.deps.devices(),
+      devicesAtHello: this.p.journey?.devices0 ?? 1,
+      push: this.deps.push(),
+      others: s?.machine.others.length ?? 0,
+      alwaysOn: s ? s.machine.alwaysOn === true || s.machine.kind === 'vps' || s.machine.kind === 'server' : false,
+      marks: this.p.marks,
+    }
+  }
+
+  /** A milestone: said once, as a real win the app celebrates. */
+  private won(step: string, text: string) {
+    this.p.marks[`won:${step}`] = Date.now()
+    // The step offered last is taken: weevils may go on offering the next ones.
+    const j = this.p.journey
+    if (j && j.pending === step) (j.pending = undefined), (j.ignored = 0)
+    this.sayWin(text, { id: `step:${step}`, kind: 'step' })
+  }
+
+  /** The subscription is in: the first milestone, one example to try (or the request kept meanwhile), then the tour. */
+  private wonBrain(name: string, job: boolean) {
+    const j = tr(J)
+    const tour = !stepDone('tour', this.journeyFacts())
+    if (tour && !job) this.p.marks['offer:tour'] = Date.now()
+    this.won('brain', job ? j.wonBrainJob(name) : `${j.wonBrain(name)}${tour ? ` ${j.tourOffer}` : ''}`)
+  }
+
+  /** The line that offers a step, by what it lets the person do. */
+  private offerLine(step: Step, s: SetupState | undefined): string {
+    const j = tr(J)
+    if (step === 'machine') return s && offersServer(s.machine) ? tr(M).vpsOffer : j.offer_computer
+    return step === 'tour' ? j.tourOffer : j[`offer_${step}`]
+  }
+
+  /** Offers a step now (once), and remembers it; a server offer is the sync's own (vps:offer). */
+  private offer(step: Step, s: SetupState | undefined): string {
+    const j = this.p.journey ?? (this.p.journey = { devices0: 1, offers: [], ignored: 0 })
+    this.p.marks[`offer:${step}`] = Date.now()
+    if (step === 'machine' && s && offersServer(s.machine)) this.p.marks['vps:offer'] = Date.now()
+    j.pending = step
+    return this.offerLine(step, s)
+  }
+
+  /**
+   * In the first days, once the thread is calm: the milestones the state proves by itself (another device signed in:
+   * the phone), then the next step, one at a time. A step offered and passed by counts; after two in a row, weevils
+   * stops offering and weevboss brings them up later, one a day at most (contextFor). True when something was said.
+   */
+  private async watchJourney(now = Date.now()): Promise<boolean> {
+    const first = this.p.firstRun
+    if (!first || !this.p.journey || !providerReady()) return false
+    const s = this.cache?.v ?? (await this.detect().catch(() => undefined))
+    const f = this.journeyFacts(s)
+    const j = this.p.journey
+    // The phone: a second device signed in since the hello (the first one was a computer).
+    if (!this.p.marks['won:phone'] && !f.first?.mobile && stepDone('phone', f)) {
+      this.won('phone', tr(J).wonPhone)
+      return true
+    }
+    const thread = this.deps.thread?.() ?? { lastAt: this.p.log.at(-1)?.at ?? 0, working: false, lastUserAt: 0 }
+    const lastAt = Math.max(thread.lastAt, this.p.log.at(-1)?.at ?? 0)
+    // Only to someone here: they wrote or passed a step since the last offer (the hello's counts). Away, nothing piles up.
+    const since = Math.max(first.at, j.offers.at(-1) ?? 0)
+    const engaged = Math.max(thread.lastUserAt ?? 0, this.p.log.findLast((m) => m.role === 'user')?.at ?? 0, ...Object.entries(this.p.marks).filter(([k]) => /^(won|tour):/.test(k)).map(([, v]) => v))
+    if (engaged <= since) return false
+    if (!mayOffer({ now, firstRunAt: first.at, lastThreadAt: lastAt, bossWorking: thread.working, flowOpen: false, offers: j.offers, ignored: j.ignored })) return false
+    const step = nextStep(f)
+    if (!step) return false
+    // The step offered last: taken (its state is done) or passed by.
+    if (j.pending) j.ignored = stepDone(j.pending, f) ? 0 : j.ignored + 1
+    if (j.ignored >= 2) return true
+    j.offers = [...j.offers.filter((t) => now - t < 86_400_000), now]
+    this.say(this.offer(step, s))
+    return true
+  }
+
   /** A link weevboss wrote in its own words (/#do=…): what the person tapped, done here. */
   async act(action: string, device?: Device): Promise<boolean> {
     this.labStep({ kind: 'do', action, device })
     const t = tr(M)
+    // An example to try (a milestone's link): that very request, sent to weevboss as the person's own.
+    const tried = /^try\.([a-z]+)$/.exec(action)?.[1]
+    if (tried !== undefined) {
+      if (!isTry(tried)) return false
+      this.mark(`try:${tried}`)
+      // Straight to weevboss's thread (never a session, even when agents ask first: it is a request, not a terminal job);
+      // before the sign-in, kept and started once it is done.
+      const say = tr(J)[`try_${tried}`]
+      if (providerReady()) await this.deps.handoff(say, tryBrief(tried))
+      else await this.handoff(say, tryBrief(tried))
+      return true
+    }
     switch (action) {
       case 'github': {
         this.githubForSync = true
@@ -1176,6 +1293,30 @@ export class Setup {
       case 'later':
         this.mark('vps:later')
         this.say(t.vpsLater)
+        return true
+      // The guided tour (next/src/tour.tsx) is played by the app; the classic app has none: it says where it is.
+      case 'tour':
+        this.say(tr(J).tourClassic)
+        return true
+      case 'toured': {
+        this.mark('tour:done')
+        const j = tr(J)
+        // Finished: the next step at once, the person is in the mood for it.
+        const s = await this.detect().catch(() => undefined)
+        const step = providerReady() ? nextStep(this.journeyFacts(s)) : null
+        this.say(step ? `${j.tourDone} ${this.offer(step, s)}` : `${j.tourDone} ${j.tourEnd}`)
+        return true
+      }
+      case 'tourskip':
+        this.mark('tour:skip')
+        this.say(tr(J).tourSkip)
+        return true
+      case 'phone':
+      case 'push':
+        await this.ask(action, device)
+        return true
+      case 'computer':
+        await this.ask('machine', device)
         return true
       case 'recovery': {
         if (this.p.marks['vault:code']) return this.say(t.recoveryShown), true
@@ -1232,7 +1373,14 @@ export class Setup {
     this.p.joining = undefined
     if (m) {
       this.cache = null
-      this.sayWin(tr(M).joinOnline(m.name || m.id), { id: `machine:${m.id}:${j.at}`, kind: 'machine' })
+      const name = m.name || m.id
+      // A new install: what it opens, one example to try.
+      const first = !!this.p.firstRun && !this.p.marks['won:machine']
+      if (first) {
+        this.p.marks['won:machine'] = Date.now()
+        if (this.p.journey?.pending === 'machine') (this.p.journey.pending = undefined), (this.p.journey.ignored = 0)
+      }
+      this.sayWin(`${tr(M).joinOnline(name)}${first ? ` ${tr(J).wonMachine(name)}` : ''}`, { id: `machine:${m.id}:${j.at}`, kind: 'machine' })
     }
     return true
   }
@@ -1428,8 +1576,9 @@ export class Setup {
     this.p.codexWaiting = false
     this.save()
     const primary = preferredTool() === 'codex'
-    this.say(primary ? tr(M).codexPrimaryReady : tr(M).codexReady)
     const job = this.p.pending
+    if (primary && this.p.firstRun && !this.p.marks['won:brain']) this.wonBrain('Codex', !!job)
+    else this.say(primary ? tr(M).codexPrimaryReady : tr(M).codexReady)
     if (primary && providerReady() && job) {
       this.p.pending = undefined
       this.save()
@@ -1540,7 +1689,9 @@ export class Setup {
   /** Une action faite côté app (notifications activées, adresse Siri copiée) : weevboss le confirme. */
   done(brick: Brick) {
     const t = tr(M)
-    if (brick === 'push') this.say(t.pushOk)
+    // The first time, a milestone: what notifications open, and one example that sends one.
+    if (brick === 'push' && this.p.firstRun && !this.p.marks['won:push'] && providerReady()) this.won('push', tr(J).wonPush)
+    else if (brick === 'push') this.say(t.pushOk)
     if (brick === 'shortcut') this.say(t.shortcutOk)
     this.cache = null
   }
@@ -1848,8 +1999,22 @@ export class Setup {
       void this.detect().catch(() => undefined)
       this.save()
     }
+    // The days after: at most one discovery a day, when it fits (server/journey.ts).
+    const hint = this.discovery()
+    if (hint) parts.push(hint)
     if (memory) parts.push(memory)
     return parts.length ? ` ⟦weevils — ${parts.join(' — ').replace(/⟧/g, ']')}⟧` : ''
+  }
+
+  /** The discovery line of this turn, counted: a day's messages carry it eight times at most. */
+  private discovery(now = Date.now()): string {
+    const j = this.p.journey
+    if (!j) return ''
+    const day = new Date(now).toISOString().slice(0, 10)
+    const hinted = j.hinted?.day === day ? j.hinted.n : 0
+    const hint = discoveryHint(this.journeyFacts(), { now, firstRunAt: this.p.firstRun?.at, hintedToday: hinted })
+    if (hint) j.hinted = { day, n: hinted + 1 }
+    return hint
   }
 
   /** weevboss repart d'une conversation vide dans la même pane (/clear, /new) : son prochain message reçoit la mémoire. */
@@ -1877,6 +2042,17 @@ export class Setup {
     const digest = m.digest()
     if (!digest) return seen?.sig && !newConversation ? 'what weevils remembers about the user: nothing anymore (they cleared it)' : ''
     return `what weevils remembers about the user (newest first; use it naturally when it helps, never recite it; full list with ids: weevils memory): ${digest.replace(/\n/g, ' ')}`
+  }
+
+  /** `weevils setup`: where the onboarding journey stands (server/journey.ts), for weevboss. */
+  private journeyLine(): string {
+    if (!this.p.journey) return ''
+    const f = this.journeyFacts()
+    const m = this.p.marks
+    const ago = (t: number) => `${Math.round((Date.now() - t) / 3600_000)}h ago`
+    const steps = STEPS.map((x) => `${x} ${stepDone(x, f) ? 'done' : m[`offer:${x}`] ? `offered ${ago(m[`offer:${x}`])}` : 'not yet'}`).join(', ')
+    const given = Object.keys(m).filter((k) => k.startsWith('discover:')).map((k) => `${k.slice(9)} (${ago(m[k])})`)
+    return `onboarding journey: ${steps}${m['tour:skip'] && !m['tour:done'] ? ' (tour skipped)' : ''} · discoveries given: ${given.join(', ') || 'none'} (one a day at most, offered in your hidden block when one may be said)`
   }
 
   /** « weevils setup » : l'état de chaque brique, les gestes pas encore découverts, les astuces pas encore données. */
@@ -1908,6 +2084,7 @@ export class Setup {
       `proposed already: ${Object.keys(this.p.marks).filter((k) => !k.startsWith('tip:') && !k.startsWith('gesture:')).map((k) => `${k} (${ago(k)})`).join(', ') || 'nothing'}`,
       `gestures not discovered yet: ${GESTURES.filter(([id, h]) => !seen.has(h) && !this.p.marks[`gesture:${id}`]).map(([id, , w]) => `${id} = ${w}`).join(' | ') || 'none'}`,
       `tips not given yet: ${TIPS.filter(([id]) => !this.p.marks[`tip:${id}`]).map(([id, w]) => `${id} = ${w}`).join(' | ') || 'none'}`,
+      this.journeyLine(),
       `welcomed in the thread: ${yes(!!this.p.welcomed)}${this.p.device ? ` (first opened on ${this.p.device.mobile ? 'a phone' : 'a computer'}, ${this.p.device.os})` : ''}`,
       installedBy(),
     ]
@@ -1935,9 +2112,9 @@ export function greeting(s: SetupState, providers: { claude: boolean; codex: boo
   const codex = (ready ? preferredTool() : providerTool(providers)) === 'codex'
   const seen = t.welcomeSeen(s.projects, s.projectNames, s.machine.others)
   const ask = guest ? ` ${t.welcomeGuest}` : ''
-  // GitHub, one link away: the conversations are kept there (the sync line follows once it is connected).
+  // Ready: what to make, or first the tour (server/journey.ts); GitHub is the next step, offered on its own.
   const next = ready
-    ? `${t.welcomeReady(codex ? 'Codex' : 'Claude')}${s.github.logged || s.vault.state !== 'none' ? '' : ` ${t.welcomeGithub}`}`
+    ? `${t.welcomeReady(codex ? 'Codex' : 'Claude')} ${tr(J).tourOffer}`
     : codex
       ? t.welcomeCodex
       : link
@@ -1976,7 +2153,7 @@ export function firstRunBrief(s: SetupState, joinable: boolean): string {
           ? 'GitHub not connected → their hello has its link; offer it again once, only when it helps, as this link in your sentence: [Connect your GitHub](/#do=github);'
           : ''
   return [
-    `first days with the user: onboarding is this conversation, there is nothing else in the app (no tour, no button, no checklist). What weevils already detected, so never ask about it: ${facts.join(' · ')}.`,
+    `first days with the user: onboarding is this conversation (no checklist, no screen; the one-minute tour of the interface starts from a link in your thread, [take the tour](/#do=tour), and never blocks). weevils itself says the milestones and offers the next step, one at a time, when your thread is calm: never repeat them. What weevils already detected, so never ask about it: ${facts.join(' · ')}.`,
     'Speak plainly and briefly; never explain how weevils works inside. What only the user can do comes as one sentence at the moment it helps, in this thread:',
     `another computer → \`weevils setup ask machine\` (${joinable ? 'posts the one line to paste in a terminal there' : 'this machine cannot take one from a single line: it posts what to do'});`,
     'ChatGPT or Claude.ai, only when relevant or asked → `weevils setup ask connector` (turns it on, posts the address and the clicks);',

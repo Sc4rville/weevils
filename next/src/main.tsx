@@ -46,6 +46,7 @@ import { TopWords, useTop } from '../../src/ui/foryou-top.tsx'
 import { ForYouPage } from '../../src/ui/foryou.tsx'
 import { Camera, type Spot } from './camera.tsx'
 import { NewPage, PageStudio, PagesSection, type NxPage } from './pages.tsx'
+import { TourLayer, useTour } from './tour.tsx'
 
 const THEME_KEY = 'weevils-theme'
 /** One motion for every move in next (docs/next-interaction.md): the app's own page spring (bits.tsx spring), the
@@ -565,6 +566,26 @@ function App() {
   // Notifications, from the app's own service worker: a tap opens its session, or weevboss.
   useWorker(auth === 'in', snap ?? null, useCallback((to: { session: string } | 'boss') => open(to === 'boss' ? null : to.session), [open]))
 
+  // The guided tour (tour.tsx), started from weevboss's thread: each stop brings its screen, the side bar or weevboss's.
+  const snapRef = useRef(snap)
+  snapRef.current = snap
+  const tour = useTour(
+    () => {
+      const sn = snapRef.current
+      return {
+        projects: sn?.projects.filter((x) => x.id !== AUTO_DIR && x.id !== MISC && !selfProject(x) && shownNow(sn, x)).length ?? 0,
+        automations: (sn?.optimizers ?? []).filter((o) => o.state !== 'proposed' && o.state !== 'refused').length,
+        foryou: !!sn?.foryou,
+      }
+    },
+    (screen) => {
+      setPages([])
+      if (screen === 'side') return setSide(true)
+      setSide(false)
+      if (session) open(null)
+    },
+  )
+
   // What the camera records with a capture (camera.tsx): the screen on top, its conversation or page, theme, size.
   const spotRef = useRef<() => Spot>(() => ({ context: {} }))
   spotRef.current = () => {
@@ -664,6 +685,7 @@ function App() {
         </AnimatePresence>
       </div>
       <Camera spot={spot} />
+      <TourLayer {...tour} />
     </div>
     </TalkHost>
     </Ctx.Provider>

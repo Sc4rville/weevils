@@ -281,6 +281,11 @@ const setup = new Setup({
   delegate: (text, brief) => w.create({ projectId: '', tool: preferredTool(), text: `${text}\n\n${brief}` }),
   connectorOn: () => connectorOn(),
   join: ORCHESTRATOR ? join : undefined,
+  // The onboarding journey offers its next step only once weevboss's whole thread is quiet (server/journey.ts).
+  thread: () => {
+    const snap = w.snapshot()
+    return { lastAt: snap.main.at(-1)?.at ?? 0, working: !!snap.mainWorking, lastUserAt: snap.main.findLast((m) => m.role === 'user')?.at ?? 0 }
+  },
 })
 w.setup = setup
 // The onboarding lab (server/lab.ts): a builder's dev tool, off unless WEEVILS_LAB_DIR is set.
@@ -940,10 +945,12 @@ const routes: [string, RegExp, Handler][] = [
   ['GET', /^\/api\/setup\/sync$/, async (_req, res) => {
     json(res, 200, await syncProgress())
   }],
-  // A link in weevboss's words (/#do=github | codex | server | later | recovery): what the person tapped.
+  // A link in weevboss's words (/#do=github | codex | server | later | recovery | tour… | try.<example>): what the person tapped.
   ['POST', /^\/api\/setup\/do$/, async (req, res) => {
     const b = await readBody(req)
     if (typeof b.action !== 'string') return json(res, 400, { error: tr(S).badBrick })
+    // An example to try speaks to weevboss as the person: a signed-in browser's tap only (server/boss-door.ts).
+    if (b.action.startsWith('try.') && !door.speaksForUser(req)) return json(res, 403, { error: tr(M).bossUserOnly })
     const ok = await setup.act(b.action, b.device ? asDevice(b.device) : undefined)
     json(res, ok ? 200 : 400, ok ? { ok: true, said: setup.lastSaid ?? undefined } : { error: tr(S).badBrick })
   }],

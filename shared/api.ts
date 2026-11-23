@@ -55,7 +55,7 @@ export interface Message {
  *  request verified done, work landed on main, the vault in sync. id is stable per event (it fires once); at is when
  *  it happened. */
 /** said: a result weevboss verified and marked in its reply ([[win]]**…**, shared/wins.ts). */
-export type WinKind = 'move' | 'machine' | 'done' | 'land' | 'vault' | 'said'
+export type WinKind = 'move' | 'machine' | 'done' | 'land' | 'vault' | 'said' | 'step'
 export interface Win {
   id: string
   kind: WinKind

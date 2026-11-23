@@ -141,3 +141,7 @@ export function chipsInPlace(text: string): { text: string; chips: Brick[] } {
 
 /** Le bloc de contexte ajouté à un message envoyé à weevboss (ce que weevilsd a écrit en son nom) : jamais affiché. */
 export const CONTEXT_BLOCK = /\s*⟦weevils[^⟧]*⟧\s*$/
+
+/** The onboarding's examples to try (server/journey.ts): a milestone's link /#do=try.<id> sends that request to weevboss. */
+export const TRIES = ['notes', 'recap', 'status', 'ping', 'machine'] as const
+export type Try = (typeof TRIES)[number]

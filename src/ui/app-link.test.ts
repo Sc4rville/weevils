@@ -15,5 +15,12 @@ describe('links weevboss writes to a place in the app', () => {
     expect(appLink('/#do=codex')).toEqual({ kind: 'do', action: 'codex' })
     expect(appLink('/#do=rm')).toBeUndefined()
     expect(appLink('https://elsewhere.example/#do=github')).toBeUndefined()
+    // The onboarding journey's steps and its examples to try (server/journey.ts), nothing else.
+    expect(appLink('/#do=tour')).toEqual({ kind: 'do', action: 'tour' })
+    expect(appLink('/#do=push')).toEqual({ kind: 'do', action: 'push' })
+    expect(appLink('/#do=try.notes')).toEqual({ kind: 'do', action: 'try.notes' })
+    expect(appLink('/#do=try.rmrf')).toBeUndefined()
+    expect(appLink('/#do=toured')).toBeUndefined()
+    expect(appLink('/#do=github.x')).toBeUndefined()
   })
 })

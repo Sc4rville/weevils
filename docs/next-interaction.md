@@ -155,6 +155,14 @@ once, and the code follows. Behaviour is never flipped back and forth.
   - your messages on weevboss's screen reach the right edge;
   - weevboss and the weevils repo are one block at the top of the side bar.
 
+## The guided tour (2026-11-23)
+
+- **Started from weevboss's thread**, never by itself: a link in its words (« a one-minute tour », `/#do=tour`).
+- **It never blocks**: a light veil that takes no tap, a halo around one place at a time that glides to the next, and
+  one line in weevboss's voice on an inverted band (what the place gives you, a count, « skip the tour »). The side bar
+  opens and closes by itself with its own spring; a place off screen scrolls into view. The first stop asks for the real
+  tap (the menu); the others are a tap-through. Escape or « skip » ends it. Stops and words: docs/onboarding.md.
+
 ## The camera (2026-11-23)
 
 - **A small camera mark sits on the right edge of every screen**, in the ink of what is under it, faded, never a

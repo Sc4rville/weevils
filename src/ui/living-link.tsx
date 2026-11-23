@@ -11,6 +11,8 @@ import { Icon } from './icons'
 import { Shell } from './shell'
 import './living-link.css'
 import { linkCss } from '../../shared/link-colors'
+import { startTour } from './tour-bus'
+import { TRIES, type Try } from '../../shared/setup'
 
 // The colours of each kind in each theme (shared/link-colors.ts), once per document.
 if (typeof document !== 'undefined' && !document.getElementById('lk-colors')) {
@@ -88,16 +90,19 @@ export function appLink(href: string): { kind: 'session'; id: string } | { kind:
   if (!ours || (u.pathname !== '/' && u.pathname !== '')) return undefined
   const s = /^#s=([A-Za-z0-9_-]{4,})$/.exec(u.hash)
   if (s) return { kind: 'session', id: s[1] }
-  const d = /^#do=([a-z]+)$/.exec(u.hash)
-  if (d && (DO_ACTIONS as readonly string[]).includes(d[1])) return { kind: 'do', action: d[1] as DoAction }
+  const d = /^#do=([a-z]+(?:\.[a-z]+)?)$/.exec(u.hash)
+  if (d && isDoAction(d[1])) return { kind: 'do', action: d[1] }
   return /^#foryou$/.test(u.hash) ? { kind: 'foryou' } : undefined
 }
 
 /** What a link in weevboss's own words does where it is (server/setup.ts act): sign GitHub in, pick ChatGPT (Codex)
- *  instead of Claude, set a server up, « later », show the recovery code. Never a button: a living link in the sentence
- *  (2026-11-22). */
-export const DO_ACTIONS = ['github', 'codex', 'server', 'later', 'recovery'] as const
-export type DoAction = (typeof DO_ACTIONS)[number]
+ *  instead of Claude, set a server up, « later », show the recovery code; the onboarding journey's steps (the tour,
+ *  the phone, notifications, another computer) and its examples to try (try.<example>, server/journey.ts TRIES).
+ *  Never a button: a living link in the sentence (2026-11-22). */
+export const DO_ACTIONS = ['github', 'codex', 'server', 'later', 'recovery', 'tour', 'phone', 'push', 'computer'] as const
+export type DoAction = (typeof DO_ACTIONS)[number] | `try.${Try}`
+const isDoAction = (x: string): x is DoAction =>
+  (DO_ACTIONS as readonly string[]).includes(x) || (x.startsWith('try.') && (TRIES as readonly string[]).includes(x.slice(4)))
 
 export function AppLink({ href, label }: { href: string; label: string }) {
   const link = appLink(href)!
@@ -117,6 +122,8 @@ export function AppLink({ href, label }: { href: string; label: string }) {
           // Done here, whatever the app around it: the answer comes in weevboss's thread.
           e.preventDefault()
           if (busy) return
+          // The tour plays here when this app has one (next); else the server says where it is.
+          if (link.action === 'tour' && startTour()) return
           setBusy(true)
           void api.setupDo(link.action, device()).catch(() => undefined).finally(() => setBusy(false))
           return

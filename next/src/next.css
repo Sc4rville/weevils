@@ -485,3 +485,28 @@ body { overflow: hidden; }
 }
 .nx-live iframe.ready { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .nx-live iframe { transition: none; } }
+
+/* The guided tour (tour.tsx): a halo around the place, a light veil around it that never takes a tap, and one line in
+   weevboss's voice on an inverted band (ink on the page colour turned around), sharp corners, bold. */
+.nx-tour { position: fixed; inset: 0; z-index: 990; pointer-events: none; }
+.nx-tour-halo {
+  position: fixed; outline: 2px solid var(--ink); outline-offset: 0;
+  box-shadow: 0 0 0 200vmax color-mix(in oklab, #000 30%, transparent);
+  transition: top .45s cubic-bezier(.2, .8, .2, 1), left .45s cubic-bezier(.2, .8, .2, 1), width .45s cubic-bezier(.2, .8, .2, 1), height .45s cubic-bezier(.2, .8, .2, 1);
+  animation: nx-tour-breathe 1.8s ease-in-out infinite;
+}
+@keyframes nx-tour-breathe { 50% { outline-offset: 4px; } }
+.nx-tour-line {
+  position: fixed; z-index: 995; pointer-events: auto; padding: 14px 14px 10px;
+  background: var(--ink); color: var(--agent); font-weight: 700; font-size: 16px; line-height: 1.35;
+}
+.nx-tour-line p { margin: 0 0 10px; }
+.nx-tour-logo { width: 18px; height: 18px; vertical-align: -3px; margin-right: 4px; filter: none; }
+.nx-tour-steps { display: flex; align-items: center; gap: 14px; font-size: 14px; }
+.nx-tour-count { opacity: .6; font-weight: 600; font-variant-numeric: tabular-nums; }
+.nx-tour-steps button { all: unset; cursor: pointer; font: inherit; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
+.nx-tour-skip { opacity: .7; font-weight: 600 !important; }
+.nx-tour-next, .nx-tour-tap { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+.nx-tour-steps .ic { width: 16px; height: 16px; }
+.nx-tour-steps button:focus-visible { outline: var(--focus-halo); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .nx-tour-halo { transition: none; animation: none; } }

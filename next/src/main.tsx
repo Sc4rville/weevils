@@ -31,6 +31,7 @@ import { Sky } from './sky.tsx'
 import { Chat } from './chat.tsx'
 import { slide } from './moves.ts'
 import { foldPrefs, saveFold } from './fold.ts'
+import { closesSideBar } from './keys.ts'
 import { registerWorker, useWorker } from './worker.ts'
 import { pageLink } from '../../shared/pages.ts'
 import { toAutos, toBoss, type Reach } from './reach.ts'
@@ -250,6 +251,14 @@ function SideBar({ snap, colors, current, open, close, page, still = false }: {
     if (far || fling) close()
     else void animate(x, 0, PANEL)
   }
+  // Escape on a computer's keyboard closes it, as a tap outside it does.
+  const closeNow = useRef(close)
+  closeNow.current = close
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (closesSideBar(e)) closeNow.current() }
+    addEventListener('keydown', esc)
+    return () => removeEventListener('keydown', esc)
+  }, [])
   // A drag that ends over a row is not a tap on it.
   const dragged = useRef(false)
   const noTapAfterDrag = (e: React.MouseEvent) => { if (dragged.current) { e.preventDefault(); e.stopPropagation() } }

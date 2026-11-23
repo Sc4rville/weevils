@@ -9,7 +9,7 @@ once, and the code follows. Behaviour is never flipped back and forth.
 - **The base screen is weevboss**: its thread, or For you beside it (the words « weevboss · for you » at the top).
 - **The side bar is a drawer from the left**; its veil covers the screen to the very bottom edge (installed on a phone too). The ☰ button or an edge swipe opens it, and the edge swipe works on
   weevboss's screen only. It follows the finger. It closes past 38 % of its width or on a fling, and a tap outside it
-  closes it too.
+  closes it too, as does Escape on a computer's keyboard (2026-11-23).
 - **In the side bar, a project's name folds its sessions away or brings them back.** The fold opens and closes with
   the app's own motion (`Collapse`) and is remembered, as on the classic home. Its « / » and « > » keep their own
   taps. In the weevils block at the top, the logo opens weevboss and the name folds, like every project's name

@@ -2,7 +2,7 @@ import { sourceAccessIssue } from './source-access'
 import { TempoLine } from './tempo'
 import { selfProject, improvingProject } from './recursive-identity'
 import { interceptModelControl, openModelControls } from '../model-controls'
-import { effortLabel, modelLabel } from './settings'
+import { modelLine } from './settings'
 import ModelM from '../i18n/model-controls'
 import { OutboxStatus } from './outbox-status'
 import { createPortal } from 'react-dom'
@@ -732,5 +732,5 @@ export function FootBand({ switchTo = 'next' }: { switchTo?: 'next' | 'classic' 
 
 function MainModelControl({model,effort}:{model?:string;effort?:string}) {
  const t=useT(ModelM)
- return <button type="button" className="link" onClick={()=>openModelControls('__main')} aria-label={t.title}>{[modelLabel(model),effortLabel(effort)].filter(Boolean).join(' · ')||t.title}</button>
+ return <button type="button" className="link" onClick={()=>openModelControls('__main')} aria-label={t.title}>{modelLine(model,effort)||t.title}</button>
 }

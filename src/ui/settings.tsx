@@ -5,6 +5,8 @@ import { VoicePicker } from './voice'
 
 /** Effort dans la langue de l'app (« effort élevé », « high effort ») : lu à l'appel. */
 export const effortLabel = (e?: string) => (e ? tr(M).effortLabel(e) : undefined)
+/** A model and its effort on one short line, as a header shows them (« opus 5.5 · medium »): the level alone. */
+export const modelLine = (model?: string, effort?: string) => [modelLabel(model), effort ? tr(M).effortWord(effort) : undefined].filter(Boolean).join(' · ')
 
 /** Le modèle avec sa version exacte, pour l'en-tête : « claude-fable-5-1 » → « fable 5.1 », « claude-sonnet-5 » →
  * « sonnet 5 », « claude-3-5-sonnet-20241022 » → « sonnet 3.5 » ; un modèle codex (gpt-…) ou inconnu tel quel. */

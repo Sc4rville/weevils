@@ -3419,7 +3419,7 @@ html[data-keyboard] .agent:not(.open) .agent-nav .fyt-words {
 .page-head > .in > .session-context-row .session-context { max-width: 100%; min-height: 44px; }
 .page-head > .in > .session-context-row .session-now { flex-shrink: 3; }
 .page-head > .in > .session-header-row .session-header-controls { order: 3; flex: 0 1 auto; max-width: 42%; }
-.page-head > .in > .session-header-row .session-header-controls button { font-size: .78rem; line-height: 1.2; }
+.page-head > .in > .session-header-row .session-header-controls button { font-size: .78rem; line-height: 1.2; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .page-head > .in > .session-header-row .session-header-voice { order: 4; }
 .page-head > .in:has(> .session-header-row) > :not(.session-header-row):not(.session-context-row) { order: 5; flex-basis: 100%; }
 /* A long agent message in a project session: its plain summary reads as body text; the full text opens below. */

@@ -6,6 +6,7 @@ import { useState } from 'react'
 import type { MachineAway } from '../../shared/api.ts'
 import { intlLocale, useT } from '../i18n'
 import M from '../i18n/away'
+import './living-link.css'
 import './away.css'
 
 /** « 15:03 » today, « yesterday 15:03 », else « Nov 21 ». */
@@ -73,7 +74,7 @@ export function AwayLine({ name, away, line: getLine }: { name: string; away: Ma
           {line && <code className="away-line">{line}</code>}
         </>
       ) : (
-        <button className="away-copy" disabled={state === 'busy'} onClick={copy}>
+        <button className="away-copy living" disabled={state === 'busy'} onClick={copy}>
           {state === 'busy' ? t.copying : t.copy(name)}
         </button>
       )}

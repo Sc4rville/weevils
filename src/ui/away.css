@@ -3,8 +3,7 @@
 .away p { margin: 0; line-height: 1.4; }
 .away-why { font-weight: 600; }
 .away-copy {
-  justify-self: start; padding: 4px 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 700;
-  text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+  justify-self: start; padding: 4px 0; border: 0; font: inherit; font-weight: 800; text-align: start; cursor: pointer;
 }
 .away-copy:disabled { opacity: .6; }
 .away-done, .away-err { opacity: .85; }

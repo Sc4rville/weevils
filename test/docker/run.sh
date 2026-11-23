@@ -271,7 +271,7 @@ run_systemd() {
       ~/.local/bin/weevils-service config set WEEVILS_ORCHESTRATOR 1 >/dev/null
       grep -qx WEEVILS_ROLE=main ~/.config/weevils/service.conf && ! systemctl --user is-active weevils-tunnel'
     check "main: desk does not answer: why=link, since a time" away_desk link
-    check "third: its next update (install.sh --agent --no-update) finds its join key and becomes secondary again" as_3 'cd weevils && WEEVILS_NO_UPDATE=1 ./install.sh --agent --no-update >/tmp/heal.log 2>&1; grep -qx status=ok /tmp/heal.log && grep -qx role=secondary /tmp/heal.log || { tail -20 /tmp/heal.log; exit 1; }'
+    check "third: its next update (install.sh --agent --no-update) finds its join key and becomes secondary again" as_3 'cd weevils && WEEVILS_NO_UPDATE=1 ./install.sh --agent --no-update >/tmp/heal.log 2>&1; grep -qx status=ok /tmp/heal.log && grep -qx role=secondary /tmp/heal.log || { grep -iE "error|warn|fail|denied|usage|unknown|not |cannot|line [0-9]" /tmp/heal.log | head -14; exit 1; }'
     check "third: secondary on the same port its key may open, tunnel active" as_3 'grep -qx WEEVILS_ROLE=secondary ~/.config/weevils/service.conf && grep -qx WEEVILS_MAIN_HOST=weevils-testbox ~/.config/weevils/service.conf && grep -qx WEEVILS_TUNNEL_PORT=4193 ~/.config/weevils/service.conf && systemctl --user is-active weevils-tunnel && grep -qx WEEVILS_ORCHESTRATOR=0 ~/.config/weevils/env'
     check "main: desk online again, nothing pasted" online_desk
   fi

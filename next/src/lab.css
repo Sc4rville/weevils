@@ -1,0 +1,27 @@
+/* The onboarding lab (next/src/lab.tsx): a small green switch on the field's corner, the field tinted green while it
+   takes remarks, the remarks above it. Colour only: no underline, no label. */
+.nx-composer { position: relative; }
+.lab-switch {
+  position: absolute; top: -6px; right: 18px; z-index: 2; width: 22px; height: 22px; padding: 0; border-radius: 50%;
+  border: 2px solid #34d27b; background: transparent; opacity: .55; -webkit-tap-highlight-color: transparent;
+}
+.lab-switch::after { content: ''; position: absolute; inset: -12px; } /* a finger-sized target around a small dot */
+.lab-switch.on { background: #34d27b; opacity: 1; }
+.lab-switch.busy { animation: lab-pulse 1s ease-in-out infinite; opacity: 1; }
+@keyframes lab-pulse { 50% { box-shadow: 0 0 0 7px rgba(52, 210, 123, .25); } }
+.nx-composer.lab-on .composer > .in { background: rgba(52, 210, 123, .16); box-shadow: inset 0 0 0 1.5px rgba(52, 210, 123, .7); }
+.lab-list { max-height: 32dvh; overflow-y: auto; padding: 4px 16px 6px; font-size: .9rem; line-height: 1.35; }
+.lab-item { margin: 0 0 8px; }
+.lab-item .said { opacity: .6; }
+.lab-item .change { display: block; color: #6ee7a6; }
+.lab-item.working .said, .lab-item.waiting .said { animation: lab-fade 1.2s ease-in-out infinite; }
+@keyframes lab-fade { 50% { opacity: .25; } }
+.lab-item.failed .change { color: #ff8a8a; }
+.lab-item.undone { opacity: .35; }
+.lab-acts { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0; }
+.lab-acts .why { color: #ff8a8a; flex-basis: 100%; }
+.lab-act { background: none; border: 0; padding: 4px 0; font: inherit; color: #6ee7a6; text-decoration: none; }
+.lab-item .lab-act { padding: 0; margin-left: 0; }
+.lab-act:disabled { opacity: .4; }
+.lab-act.busy { animation: lab-fade 1.2s ease-in-out infinite; }
+.lab-act.failed { color: #ff8a8a; }

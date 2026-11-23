@@ -8,6 +8,7 @@ import OM from './i18n/outbox'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AskResult, Brick, Device } from '../shared/setup.ts'
 import type { BringView } from '../shared/bring.ts'
+import type { LabState } from '../shared/lab.ts'
 import { getLang, localeHeaders, subscribeLang, tr, type Lang } from './i18n'
 import M from './i18n/app'
 import type { FsListing, InfraDetail, SpendSummary, TokenRate, UsageInfo, UsageToday } from '../shared/infra.ts'
@@ -151,6 +152,10 @@ export const api = {
   /** The onboarding's sync line: how many of this machine's conversations are on the person's GitHub. */
   setupSync: () => call<{ state: 'off' | 'running' | 'done'; synced: number; total: number }>('GET', '/api/setup/sync'),
   setupLink: () => call<{ link: string }>('GET', '/api/setup/link'),
+  /** The onboarding lab (a builder's dev tool, server/lab.ts): its remarks, a remark, undo / keep / start over. */
+  lab: () => call<LabState>('GET', '/api/lab'),
+  labRemark: (text: string, context: string[], files?: { name: string; type: string; data: string }[]) => call<{ ok: true; id: string }>('POST', '/api/lab/remark', { text, context, files }),
+  labDo: (kind: 'undo' | 'keep' | 'reset', id?: string) => call<{ ok: true }>('POST', `/api/lab/${kind}`, id ? { id } : {}),
   bringLink: () => call<{ code: string }>('POST', '/api/bring/link'),
   bringView: () => call<BringView>('GET', '/api/bring'),
   bring: (source: string, key: string) => call<{ ok: boolean }>('POST', '/api/bring', { source, key }),

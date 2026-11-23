@@ -2620,6 +2620,8 @@ export class Weevils {
     if (!chosen && this.setup && !providerReady()) { await this.setup.offline(text); return { id: 'setup' } }
     if (!chosen) throw new OutboxDeferred(this.relay?.retryAt() ?? Date.now() + 60_000, tr(OutboxM).providerWaiting)
     if (this.bossWorking(chosen === 'claude' ? 'codex' : 'claude')) throw new OutboxDeferred(this.relay?.retryAt() ?? Date.now() + 60_000, tr(OutboxM).providerWaiting)
+    // The onboarding lab: this step is weevboss's model's, not one weevils plays again (server/lab.ts).
+    this.setup?.labLeft()
     // Into the request ledger before anything can fail: what the user asks is never lost (server/boss-ledger.ts).
     const cid = this.captureAsk(text, brief)
     if (chosen === 'codex') {

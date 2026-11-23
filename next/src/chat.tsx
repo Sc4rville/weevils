@@ -16,6 +16,10 @@ import { Icon } from '../../src/ui/icons.tsx'
 import { visible } from './data.ts'
 import { userCaption, userPhotos } from '../../src/ui/format.ts'
 import { stillPending, type Pending } from './pending.ts'
+import { LabList, LabSwitch, useLab } from './lab.tsx'
+import { api } from '../../src/api.ts'
+import { useT } from '../../src/i18n/index.ts'
+import LM from '../../src/i18n/lab.ts'
 
 /** weevboss's setup buttons, as in the app's weevboss band (bands.tsx): on the last message that carries each one,
  *  in its sentence ([[setup:x]]) or under it; a secret asked for is always a button. */
@@ -65,7 +69,18 @@ export function Chat({ id, messages: thread, working: busy, author, placeholder,
   useEffect(() => setPending([]), [id])
   const waiting = working || pending.length > 0
 
+  // The onboarding lab, when this instance runs it (next/src/lab.tsx): on weevboss's screen only.
+  const lab = useLab()
+  const remarking = id === null && lab.on
+  const lt = useT(LM)
+
   const submit = async (text: string, files?: Attachment[]) => {
+    if (remarking) {
+      // A remark about the onboarding, with what the screen shows: never a newcomer's message.
+      const context = shown.slice(-10).map((m) => `${m.role === 'user' ? 'newcomer' : 'weevboss'}: ${m.text}`)
+      await api.labRemark(text, context, files?.map((f) => ({ name: f.name, type: f.type, data: f.data })))
+      return
+    }
     const key = crypto.randomUUID()
     // A capture comes as its path in the library and what it shows (held-capture.ts): the stand-in shows it as the thread
     // will, its picture and your words only.
@@ -110,9 +125,11 @@ export function Chat({ id, messages: thread, working: busy, author, placeholder,
           <OutboxStatus scope={id === null ? '/api/main' : `/api/sessions/${encodeURIComponent(id)}/`} />
         </div>
       </div>
-      <div className="nx-composer">
-        {flow && id === null ? <SetupComposer /> : (
-        <AppComposer multiline voice anyFile={id === null} sayErrors draftKey={`session:${id ?? '__main'}`} placeholder={placeholder} label={label}
+      <div className={`nx-composer${remarking ? ' lab-on' : ''}`}>
+        {id === null && lab.state && <LabSwitch on={lab.on} busy={lab.busy} toggle={lab.toggle} />}
+        {remarking && lab.state && <LabList state={lab.state} />}
+        {flow && id === null && !remarking ? <SetupComposer /> : (
+        <AppComposer multiline voice anyFile={id === null} sayErrors draftKey={remarking ? 'lab:remark' : `session:${id ?? '__main'}`} placeholder={remarking ? lt.remark : placeholder} label={remarking ? lt.remark : label}
           captureTo={{ to: id ?? 'weevboss', feedback: id === null }}
           onSend={(text) => submit(text).then(() => undefined)} onAttach={(text, files) => submit(text, files).then(() => undefined)} />
         )}

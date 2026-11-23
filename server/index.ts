@@ -86,6 +86,7 @@ import { HubSync, checkpointHook } from './weevbook/hub.ts'
 import { startWeevbookWriter } from './weevbook/writer.ts'
 import { startFirstBackfill } from './weevbook/backfill.ts'
 import { syncProgress } from './sync-progress.ts'
+import { Lab } from './lab.ts'
 import { startVaultPusherWhenSet } from './weevbook/vault.ts'
 import { ghRunner, shareVault } from './weevbook/vault-github.ts'
 import { vaultHere } from './weevbook/vault-cli.ts'
@@ -280,6 +281,9 @@ const setup = new Setup({
   join: ORCHESTRATOR ? join : undefined,
 })
 w.setup = setup
+// The onboarding lab (server/lab.ts): a builder's dev tool, off unless WEEVILS_LAB_DIR is set.
+const lab = process.env.WEEVILS_LAB_DIR?.trim() ? new Lab(process.env.WEEVILS_LAB_DIR.trim(), DATA_DIR, () => setup.restep()) : null
+if (lab) setInterval(() => void lab.tick(), 2000).unref()
 
 // ---------------------------------------------------------------- mémoire, auto (machine principale)
 
@@ -898,6 +902,29 @@ const routes: [string, RegExp, Handler][] = [
     if (typeof b.action !== 'string') return json(res, 400, { error: tr(S).badBrick })
     const ok = await setup.act(b.action, b.device ? asDevice(b.device) : undefined)
     json(res, ok ? 200 : 400, ok ? { ok: true, said: setup.lastSaid ?? undefined } : { error: tr(S).badBrick })
+  }],
+  // The onboarding lab (server/lab.ts), off unless WEEVILS_LAB_DIR is set: the remarks and what changed, a remark, undo/keep/reset.
+  ['GET', /^\/api\/lab$/, async (_req, res) => json(res, 200, lab ? lab.state() : { on: false, items: [] })],
+  ['POST', /^\/api\/lab\/remark$/, async (req, res) => {
+    if (!lab) return json(res, 404, { error: 'off' }) // i18n-ignore: a dev tool's answer, never shown
+    const b = await readBody(req, 48 << 20)
+    const text = typeof b.text === 'string' ? b.text : ''
+    const files = Array.isArray(b.files) ? b.files : []
+    // Captures come as their path in the library ((photo: /…) in the words), files as themselves.
+    const pictures = [
+      ...[...text.matchAll(/\(photo\s*:\s*(\/[^)\n]+)\)/g)].map((m) => m[1].trim()).filter((f) => f.startsWith(HOME + '/') && fs.existsSync(f)).map((f) => ({ name: path.basename(f), data: fs.readFileSync(f) })),
+      ...files.filter((f: { data?: unknown }) => typeof f?.data === 'string').map((f: { name?: string; data: string }) => ({ name: String(f.name ?? 'file.png'), data: Buffer.from(f.data, 'base64') })),
+    ]
+    const words = text.replace(/\(photo\s*:\s*\/[^)\n]+\)/g, '').replace(/⟦[^⟧]*⟧/g, '').trim()
+    if (!words && !pictures.length) return json(res, 400, { error: 'empty' }) // i18n-ignore: a dev tool's answer, never shown
+    const context = Array.isArray(b.context) ? b.context.filter((x: unknown) => typeof x === 'string').map((x: string) => x.slice(0, 1500)) : []
+    json(res, 200, { ok: true, id: lab.remark(words, context, pictures) })
+  }],
+  ['POST', /^\/api\/lab\/(undo|keep|reset)$/, async (req, res, _url, m) => {
+    if (!lab) return json(res, 404, { error: 'off' }) // i18n-ignore: a dev tool's answer, never shown
+    const b = await readBody(req)
+    lab.request(m[0] as 'undo' | 'keep' | 'reset', typeof b.id === 'string' ? b.id : undefined)
+    json(res, 200, { ok: true })
   }],
   // « weevils setup github »: GitHub's device sign-in, its code and link said in weevboss's thread. From the machine only.
   ['POST', /^\/api\/setup\/github$/, async (req, res) => {

@@ -54,6 +54,9 @@ import { githubRepo } from './weevbook/vault.ts'
 import { VAULT_REPO, withoutVault } from './weevbook/vault-github.ts'
 
 const FILE = path.join(DATA_DIR, 'setup.json')
+const LAB_ON = !!process.env.WEEVILS_LAB_DIR?.trim()
+const LAB_STEP = path.join(DATA_DIR, 'lab-step.json')
+type LabStep = { kind: 'welcome'; device: Device } | { kind: 'say'; text: string } | { kind: 'do'; action: string; device?: Device }
 /** En deçà, un message automatique identique n'est pas reposté (voir Setup.add). */
 const REPEAT_MS = 30 * 60_000
 /** The first days: weevboss's turns get firstRunBrief, for three days or 40 messages. */
@@ -804,6 +807,7 @@ export class Setup {
    * (offline()). An installation that already talked to weevboss is not welcomed. */
   async welcome(device: Device): Promise<string | undefined> {
     if (this.p.welcomed) return
+    this.labStep({ kind: 'welcome', device })
     this.p.welcomed = true
     this.p.device = device
     const s = await this.detect(true)
@@ -1139,6 +1143,7 @@ export class Setup {
 
   /** A link weevboss wrote in its own words (/#do=…): what the person tapped, done here. */
   async act(action: string, device?: Device): Promise<boolean> {
+    this.labStep({ kind: 'do', action, device })
     const t = tr(M)
     switch (action) {
       case 'github': {
@@ -1386,7 +1391,47 @@ export class Setup {
    * branchement (« qu'est-ce que je dois installer ? », « comment je branche github ? ») à partir de l'état réel. Le
    * reste reçoit la marche à suivre pour connecter Claude Code. */
   async offline(text: string) {
+    this.labStep({ kind: 'say', text })
     await this.offlineReply(text)
+  }
+
+  // ---------------------------------------------------------------- the onboarding lab (server/lab.ts)
+
+  /** In the lab only: the state just before each step weevils plays (the hello, a message before the sign-in, a link
+   * tapped), so a change to the onboarding's code can be seen at once, on the same step (restep). */
+  private labStep(step: LabStep) {
+    if (!LAB_ON) return
+    try {
+      fs.writeFileSync(LAB_STEP, JSON.stringify({ ...step, p: this.p }))
+    } catch (e) {
+      console.log(`[lab] ${short(e)}`)
+    }
+  }
+
+  /** A message went to weevboss's model: that step is not weevils' to play again. */
+  labLeft() {
+    if (LAB_ON) fs.rmSync(LAB_STEP, { force: true })
+  }
+
+  /** The last step again, with the code now running: back to the state before it, then the same hello, message or link. */
+  async restep(): Promise<boolean> {
+    const step = (() => {
+      try {
+        return JSON.parse(fs.readFileSync(LAB_STEP, 'utf8')) as LabStep & { p: Persisted }
+      } catch {
+        return null
+      }
+    })()
+    if (!step) return false
+    this.p = step.p
+    this.cache = null
+    this.syncing = false
+    this.save()
+    if (step.kind === 'welcome') await this.welcome(step.device)
+    else if (step.kind === 'say') await this.offline(step.text)
+    else await this.act(step.action, step.device)
+    this.deps.bump()
+    return true
   }
 
   private async offlineReply(text: string) {

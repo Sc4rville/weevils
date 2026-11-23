@@ -132,6 +132,9 @@ once, and the code follows. Behaviour is never flipped back and forth.
 - **Photos you sent** are a small rounded thumbnail in your message; several sent together sit side by side in one
   row that scrolls sideways (2026-11-21). A tap opens the app's photo viewer, pushed in like any screen, where a
   swipe goes from one photo to the next.
+- **The side bar's bands meet directly and run to the screen's edge** (2026-11-23): no scrollbar strip on a
+  computer, no strip of a band's darker base under autonomous or pages, no line or gap at any boundary (weevils, the
+  repos, autonomous, pages, your factory, settings). Depth comes from the bands' own tones only.
 - **Enter sends on a computer** (2026-11-23): in every box to write a message in (weevboss, a session, an automation's
   chat, a new page, the first run), a physical keyboard sends with Enter and adds a line with Shift+Enter; never while
   an input method is still composing a word. On a phone, the on-screen Return adds a line and the send button sends.

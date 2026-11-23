@@ -108,7 +108,11 @@ body { overflow: hidden; }
 .nx-side-scroll {
   height: 100%; overflow-y: auto; padding: calc(var(--safe-t) + 8px) 0 var(--safe-b); overscroll-behavior: contain;
   background: linear-gradient(var(--agent), var(--agent)) top / 100% calc(var(--safe-t) + 8px) no-repeat local;
+  /* Every band runs to the screen's edge (2026-11-23): a computer's scrollbar would leave a strip of what is behind
+     between the bands and the edge. The bands still scroll (wheel, trackpad, finger). */
+  scrollbar-width: none;
 }
+.nx-side-scroll::-webkit-scrollbar { display: none; }
 .nx-h { margin: 20px var(--pad) 6px; font-size: 13px; font-weight: 500; letter-spacing: .02em; opacity: .7; }
 .nx-row {
   display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px var(--pad);
@@ -144,7 +148,7 @@ body { overflow: hidden; }
 .nx-project:has(.nx-row.nx-sub) { padding-bottom: 6px; }
 /* Colour alone delimits the side bar's bands (2026-11-22): a band whose last row wears its own tone (the Autonomous
    staircase, a toned session row) ends on that row, never on a strip of its darker base, the look of a separator. */
-.nx-project.nx-autos, .nx-project:has(.nx-row.nx-sub.tone:last-child) { padding-bottom: 0; }
+.nx-project.nx-autos, .nx-project.nx-autos:has(.nx-row.nx-sub), .nx-project:has(.nx-row.nx-sub.tone:last-child) { padding-bottom: 0; }
 .nx-project-head { min-height: var(--band-h); padding-top: 0; padding-bottom: 0; gap: 8px; }
 /* Every folded band is one height (--band-h): weevils, each repo, Autonomous, settings — a regular staircase. */
 .nx-settings .settings-band { padding-bottom: 0; }

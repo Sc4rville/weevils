@@ -109,3 +109,15 @@ it('nothing inside your factory is bold: hierarchy by size and colour only', () 
   // A busy machine stays regular too (bold = an active band of the side bar, never inside your factory).
   expect(body('.nx-factory .nx-fx-band .nx-row-title')).toMatch(/font-weight:\s*400/)
 })
+
+it('bands meet directly and run to the screen edge: no scrollbar strip, no base-colour strip under autonomous or pages', () => {
+  // A computer's scrollbar left a strip of what is behind between the bands and the edge (2026-11-23).
+  const scroll = css.match(/\.nx-side-scroll\s*\{([^}]*)\}/)![1]
+  expect(scroll).toMatch(/scrollbar-width:\s*none/)
+  expect(css).toMatch(/\.nx-side-scroll::-webkit-scrollbar\s*\{\s*display:\s*none/)
+  // The rule giving a band with rows 6px under its last row must lose, for autonomous and pages, to the one that
+  // ends them on their last row: the same :has() weight, written after it.
+  const end = css.match(/([^{}]*)\{\s*padding-bottom:\s*0;?\s*\}/g)!.find((r) => r.includes('.nx-project.nx-autos'))!
+  expect(end).toContain('.nx-project.nx-autos:has(.nx-row.nx-sub)')
+  expect(css.indexOf(end)).toBeGreaterThan(css.indexOf('.nx-project:has(.nx-row.nx-sub) { padding-bottom: 6px; }'))
+})

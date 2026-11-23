@@ -19,7 +19,7 @@ import { SessionQuestion } from './session-question'
 import { CutBand } from './cut-band'
 import { ConversationPage, ConversationsPage, ImportPage } from './convs'
 import { Preview, freshSite, guessPreviewUrl, urlsInMessages, usePreviewState } from './preview'
-import { effortLabel, modelLabel } from './settings'
+import { modelLine } from './settings'
 import { ModelPicker } from './model-controls'
 import { ReposPage } from './repos'
 import { SoftwarePage, SoftwaresPage } from './softwares'
@@ -255,7 +255,7 @@ function SessionPage({ id }: { id: string }) {
       scrollHeading
       sessionLayout
       headerControls={<button className="link inline" onClick={() => setShowSettings((v) => !v)} aria-label={t.changeModel} aria-pressed={showSettings} aria-controls="session-settings">
-            {[modelLabel(s.settings?.model), effortLabel(s.settings?.effort)].filter(Boolean).join(' · ') || t.model}
+            {modelLine(s.settings?.model, s.settings?.effort) || t.model}
           </button>}
       underHeader={showSettings && (
           <div id="session-settings">

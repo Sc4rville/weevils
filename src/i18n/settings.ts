@@ -1,8 +1,8 @@
 import { defineMessages } from './index'
 
-const FR_WORD: Record<string, string> = { low: 'bas', medium: 'moyen', high: 'haut', max: 'max' }
+const FR_WORD: Record<string, string> = { low: 'bas', medium: 'moyen', high: 'haut', xhigh: 'très haut', max: 'max' }
 const FR_LABEL: Record<string, string> = { low: 'effort faible', medium: 'effort moyen', high: 'effort élevé', max: 'effort max' }
-const EN_WORD: Record<string, string> = { low: 'low', medium: 'medium', high: 'high', max: 'max' }
+const EN_WORD: Record<string, string> = { low: 'low', medium: 'medium', high: 'high', xhigh: 'extra high', max: 'max' }
 const EN_LABEL: Record<string, string> = { low: 'low effort', medium: 'medium effort', high: 'high effort', max: 'max effort' }
 
 export default defineMessages({

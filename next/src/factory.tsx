@@ -12,6 +12,7 @@ import { TEMPO_MODES, type TempoMode } from '../../shared/tempo.ts'
 import { useT } from '../../src/i18n/index.ts'
 import TM from '../../src/i18n/tempo.ts'
 import { useApp, type Page } from '../../src/ui/app-context.tsx'
+import { selfProject } from '../../src/ui/recursive-identity.ts'
 import { Collapse, Composer, ToolIcon } from '../../src/ui/bits.tsx'
 import { focusBoss } from '../../src/ui/follow.ts'
 import { Icon } from '../../src/ui/icons.tsx'
@@ -63,15 +64,53 @@ const slotOf = (id: string) => `p${[...id].reduce((h, c) => (h * 31 + c.charCode
 /** Reserved project ids (server/projects.ts): automations' own folder, and Misc. */
 const HIDDEN_IDS = new Set(['auto', 'divers'])
 
-/** A project is in the side bar: pinned (the app's pin), or with conversations and not taken out. One rule, used by
- *  the side bar and by its switch here. */
+/** A project is in the side bar: never once switched off (whatever its conversations do: off means off at once);
+ *  else pinned (the app's pin), or with conversations. One rule, used by the side bar and by its switch here. */
 export function inSideBar(snap: Snapshot, p: Project): boolean {
+  if (snap.hiddenProjects?.includes(p.id)) return false
   if (p.repos.some((r) => snap.pinnedRepos.includes(r)) || snap.pinnedRepos.includes(p.id)) return true
-  const mine = snap.sessions.filter((s) => s.projectId === p.id && !s.archived)
-  if (!mine.length) return false
-  // Taken out: back by itself while one of its conversations works or needs you.
-  if (snap.hiddenProjects?.includes(p.id)) return mine.some((s) => s.status === 'working' || s.status === 'needs_user' || s.status === 'interrupted')
-  return true
+  return snap.sessions.some((s) => s.projectId === p.id && !s.archived)
+}
+
+/** A switch just flipped, shown at once by the switch and by the side bar until the server's snapshot says the same
+ *  (then forgotten): never undone by an unrelated snapshot arriving meanwhile. */
+const flipped = new Map<string, boolean>()
+const flipSubs = new Set<() => void>()
+const flipEmit = () => flipSubs.forEach((f) => f())
+export function flipProject(id: string, on: boolean | null) {
+  if (on === null) flipped.delete(id)
+  else flipped.set(id, on)
+  flipEmit()
+}
+/** Whether a project shows in the side bar now: a switch just flipped, else the rule. */
+export function shownNow(snap: Snapshot, p: Project): boolean {
+  return flipped.get(p.id) ?? inSideBar(snap, p)
+}
+/** Re-renders on a flip, and forgets the flips the snapshot now agrees with. */
+export function useFlips(snap: Snapshot) {
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const f = () => tick((n) => n + 1)
+    flipSubs.add(f)
+    return () => void flipSubs.delete(f)
+  }, [])
+  useEffect(() => {
+    let changed = false
+    for (const [id, on] of flipped) if (!!snap.hiddenProjects?.includes(id) === !on) { flipped.delete(id); changed = true }
+    if (changed) flipEmit()
+  }, [snap])
+}
+
+type Row = { id: string; name: string; repos: string[]; project: Project | null }
+/** Your factory's Projects, in a fixed order (a switch never moves its band): every project weevils knows but its own
+ *  block at the top, and those switched off whose project left with their last pin, so they can be switched back on. */
+export function factoryProjects(snap: Snapshot): Row[] {
+  const projects = snap.projects.filter((p) => !HIDDEN_IDS.has(p.id) && p.kind !== 'installation' && !selfProject(p))
+  const gone = (snap.hiddenProjects ?? []).filter((id) => !snap.projects.some((p) => p.id === id || p.repos.includes(id)))
+  return [
+    ...projects.map((p): Row => ({ id: p.id, name: p.name, repos: p.repos, project: p })),
+    ...gone.map((id): Row => ({ id, name: id, repos: [id], project: null })),
+  ].sort((a, b) => a.name.localeCompare(b.name))
 }
 
 // ---------------------------------------------------------------- small parts
@@ -371,21 +410,13 @@ export function FactorySection({ snap, colors, page, toBoss }: {
     if (id.startsWith('key:')) { focusBoss({ flash: false }); openKey(id.slice(4)) }
     else askSetup(id === 'account' ? 'account' : 'codex')
   }
-  const projects = snap.projects
-    .filter((p) => !HIDDEN_IDS.has(p.id) && p.kind !== 'installation')
-  const known = new Set(projects.flatMap((p) => p.repos))
-  const bare = (repos ?? []).filter((r) => !known.has(r) && !projects.some((p) => p.id === r))
-  // The projects weevils knows (with conversations, or pinned), those in the side bar first; « + » unfolds the other
-  // repos of this machine, to pin one.
-  type Row = { id: string; name: string; repos: string[]; project: Project | null; shown: boolean }
-  const rows: Row[] = projects.map((p) => ({ id: p.id, name: p.name, repos: p.repos, project: p, shown: inSideBar(snap, p) }))
-    .sort((a, b) => Number(b.shown) - Number(a.shown) || a.name.localeCompare(b.name))
-  const others: Row[] = bare.map((r) => ({ id: r, name: r, repos: [r], project: null, shown: snap.pinnedRepos.includes(r) }))
-  const [shownNow, setShownNow] = useState<Record<string, boolean>>({})
-  useEffect(() => setShownNow({}), [snap.version])
-  const showProject = (r: (typeof rows)[number], on: boolean) => {
-    setShownNow((s) => ({ ...s, [r.id]: on }))
-    void call('POST', '/api/factory/project', { id: r.id, repos: r.repos, shown: on }).catch(() => setShownNow((s) => { const { [r.id]: _, ...rest } = s; return rest }))
+  useFlips(snap)
+  const rows = factoryProjects(snap)
+  const known = new Set(rows.flatMap((r) => [r.id, ...r.repos]))
+  const others: Row[] = (repos ?? []).filter((r) => !known.has(r)).map((r) => ({ id: r, name: r, repos: [r], project: null }))
+  const showProject = (r: Row, on: boolean) => {
+    flipProject(r.id, on)
+    void call('POST', '/api/factory/project', { id: r.id, repos: r.repos, shown: on }).catch(() => flipProject(r.id, null))
   }
 
   // The staircase: every band one small step from the one above it, counting only what is unfolded (as Autonomous).
@@ -443,7 +474,7 @@ export function FactorySection({ snap, colors, page, toBoss }: {
 
   /** A project's band: its repo colour and mark, a tap to its page, its switch for the side bar. */
   function projectBand(r: Row, at: number, depth: number) {
-    const on = shownNow[r.id] ?? r.shown
+    const on = flipped.get(r.id) ?? (r.project ? inSideBar(snap, r.project) : snap.pinnedRepos.includes(r.id) && !snap.hiddenProjects?.includes(r.id))
     return (
       <Band key={r.id} step={at} depth={depth} className={`nx-fx-project ${on ? '' : 'nx-fx-dim'}`} style={{ '--c': `var(--${colors[r.id] ?? slotOf(r.id)})` } as CSSProperties}>
         <button className="nx-fx-main" onClick={r.project ? () => page({ kind: 'project', projectId: r.id }) : undefined} disabled={!r.project}>

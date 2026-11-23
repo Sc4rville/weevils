@@ -57,9 +57,12 @@ once, and the code follows. Behaviour is never flipped back and forth.
     app's subscriptions page. « + » unfolds what can be added (another Claude account, Codex, the API keys missing); a
     tap brings weevboss's screen: a sign-in through weevboss, a key only ever in the masked field.
   - **Projects**: one band per project weevils knows, in its own colour with the repo mark, and a switch: on, it is
-    pinned (the app's own pin) and stays in the side bar even with no conversation; off, it leaves the side bar, and
-    comes back by itself while one of its conversations works or needs you. A project never touched shows while it
-    has conversations. « + » unfolds the other repos of this machine, each with the same switch to pin it.
+    pinned (the app's own pin) and stays in the side bar even with no conversation; off, it leaves the side bar at
+    once, whatever its conversations are doing, and stays out (on every device) until switched back on (2026-11-23:
+    it no longer comes back by itself while one works). The switch and the side bar change the moment it is flipped.
+    The list keeps a fixed order (weevils' own block excepted) and an off project stays in it, dimmed, even once its
+    last pin is gone, to switch it back on. A project never touched shows while it has conversations. « + » unfolds
+    the other repos of this machine, each with the same switch to pin it.
   - **Tempo**: the global Tempo as six cells (Standby to Swarm), filled up to the mode in use; you drag a finger across
     to change it (a tap does nothing); past the left edge is Pause. Locked modes stay out of reach and, while the finger
     is on one, say what opens it. After a change the app's own slim Tempo band slides in with what it will use.

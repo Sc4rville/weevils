@@ -37,7 +37,7 @@ import { toAutos, toBoss, type Reach } from './reach.ts'
 import { FOCUS_BOSS } from '../../src/ui/follow.ts'
 import { NextProjectPage } from './project.tsx'
 import { NextAutoPage } from './auto.tsx'
-import { FactorySection, NextMachinePage, inSideBar } from './factory.tsx'
+import { FactorySection, NextMachinePage, shownNow, useFlips } from './factory.tsx'
 import { AutoIcon } from '../../src/ui/factory.tsx'
 import { TalkCtx, useTalk, useTalks } from '../../src/ui/auto-talk.ts'
 import { useApp } from '../../src/ui/app-context.tsx'
@@ -218,10 +218,11 @@ function SideBar({ snap, colors, current, open, close, page, still = false }: {
   const busy = (p: Project) => snap.sessions.some((s) => s.projectId === p.id && !s.archived && live(s))
   // « auto » is where automations without a repo run: backend, never a project of yours (an automation shows on its
   // own row below). « Misc » shows only when one of its conversations needs you.
-  // Your factory decides which projects are here (factory.tsx inSideBar): pinned ones always, the others while they
-  // have conversations, unless taken out (then only while one of them works or needs you).
+  // Your factory decides which projects are here (factory.tsx inSideBar): never one switched off there, pinned ones
+  // always, the others while they have conversations; a switch just flipped shows here at once (shownNow).
+  useFlips(snap)
   const projects = snap.projects
-    .filter((p) => p.id !== AUTO_DIR && (p.id === MISC ? snap.sessions.some((s) => s.projectId === p.id && !s.archived) : inSideBar(snap, p)))
+    .filter((p) => p.id !== AUTO_DIR && (p.id === MISC ? snap.sessions.some((s) => s.projectId === p.id && !s.archived) : shownNow(snap, p)))
     .filter((p) => p.id !== MISC || snap.sessions.some((s) => s.projectId === p.id && !s.archived && (s.status === 'needs_user' || s.status === 'interrupted')))
     .sort((a, b) => mainProjectRank(a, busy(a) ? 0 : 1) - mainProjectRank(b, busy(b) ? 0 : 1) || last(b) - last(a))
   const self = snap.projects.find((p) => selfProject(p))

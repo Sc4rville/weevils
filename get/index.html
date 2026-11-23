@@ -167,7 +167,7 @@
   .pl.p1 { width: 150px; height: 150px; right: -40px; top: 22%; background: color-mix(in oklab, var(--b) 75%, transparent); transform: rotate(45deg); }
   .pl.p2 { width: 120px; height: 104px; left: -30px; top: 48%; border: 0; background: color-mix(in oklab, var(--c) 85%, transparent); clip-path: polygon(50% 0, 100% 100%, 0 100%); animation-duration: 11s; }
   .pl.p3 { width: 76px; height: 76px; right: 16%; top: 58%; border-radius: 50%; border-width: 3px; background: transparent; animation-duration: 7s; }
-  .pl.p4 { width: 44px; height: 44px; left: 58%; top: 16%; background: var(--d); transform: rotate(12deg); animation-duration: 8s; }
+  .pl.p4 { width: 44px; height: 44px; right: 7%; top: 9%; background: var(--d); transform: rotate(12deg); animation-duration: 8s; }
   .pl.p5 { width: 230px; height: 230px; left: 24%; top: 30%; border-color: rgba(0,0,0,.18); background: transparent; transform: rotate(45deg); animation-duration: 14s; }
   @keyframes drift { to { translate: 0 -14px; rotate: 8deg; } }
   /* Our icons on stage: tiles at several depths that pop in one after the other, then float; a tap spins one. */
@@ -190,6 +190,7 @@
   @keyframes run-back { from { transform: translateX(calc(100vw + 70px)) scale(var(--s, 1)); } to { transform: translateX(-70px) scale(var(--s, 1)); } }
   @keyframes step { 50% { translate: 0 -4px; rotate: -4deg; } }
   @keyframes jump { 40% { translate: 0 -46px; rotate: 360deg; } }
+  @media (max-width: 519px) { .pl.p1 { top: 40%; } .pl.p4 { top: 37%; right: 46%; } .pl.p5 { top: 42%; } }
   body.deep .scene { display: none; }
   body.deep header.hero { min-height: 0; }
   @media (min-width: 760px) { header.hero { min-height: min(70vh, 640px); } .tile { width: 56px; height: 56px; } .tile svg { width: 28px; height: 28px; } .runner { width: 62px; height: 62px; } }
@@ -661,6 +662,16 @@ function card(kind) {
   return h('a', { class: `card k-${kind}${chat.pick === kind ? ' on' : ''}`, href: `#${kind === 'pc' ? 'computer' : kind === 'new' ? 'hetzner' : 'vps'}`, onclick: (e) => { e.preventDefault(); choose(kind) } },
     h('div', {}, h('b', {}, title), h('span', {}, sub)), h('div', { class: 'go' }, chat.pick === kind ? '✓' : '→'))
 }
+// Cards come alive under the pointer or the finger: they lean toward it, a light follows it.
+document.addEventListener('pointermove', (e) => {
+  const c = e.target?.closest?.('.card')
+  if (!c || calm()) return
+  const r = c.getBoundingClientRect()
+  const x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5
+  c.style.transform = `perspective(700px) rotateX(${(-y * 7).toFixed(2)}deg) rotateY(${(x * 9).toFixed(2)}deg) translateY(-2px)`
+  c.style.backgroundImage = `radial-gradient(circle at ${((x + 0.5) * 100).toFixed(0)}% ${((y + 0.5) * 100).toFixed(0)}%, rgba(255,255,255,.55), transparent 60%)`
+}, { passive: true })
+document.addEventListener('pointerout', (e) => { const c = e.target?.closest?.('.card'); if (c && !c.contains(e.relatedTarget)) { c.style.transform = ''; c.style.backgroundImage = '' } })
 function choose(kind) {
   watching++
   setChat({ pick: kind })
@@ -1222,10 +1233,11 @@ function world() {
   const layer = (d, ...kids) => { const l = h('div', { class: 'layer' }, ...kids); l.style.setProperty('--d', d); return l }
   // Where the tiles stand (percent of the scene), how deep (parallax), their colour: clear of the title, top left.
   const spots = [[78, 12, 26, 'machine', 'k1'], [88, 40, 18, 'server', ''], [64, 44, 12, 'terminal', 'k2'], [8, 66, 22, 'bubble', 'k3'], [44, 60, 8, 'factory', ''], [72, 70, 30, 'star', 'k4'], [26, 80, 16, 'mic', ''], [90, 74, 10, 'camera', 'k2'], [52, 30, 6, 'agents', 'k3']]
-  const narrow = innerWidth < 520
+  const narrow = window.innerWidth < 520
   const tiles = spots.filter((_, i) => !narrow || i !== 4 && i !== 8).map(([x, y, d, name, k], i) => {
     const t = h('span', { class: `tile ${k}` }, svg(ICONS[name]))
-    Object.assign(t.style, { left: `calc(${x}% - 23px)`, top: `${y}%`, animationDelay: `${300 + i * 90}ms, ${i * 0.37}s` })
+    // On a phone the title takes the top third: the tiles stay below it.
+    Object.assign(t.style, { left: `calc(${x}% - 23px)`, top: `${narrow ? 36 + y * 0.58 : y}%`, animationDelay: `${300 + i * 90}ms, ${i * 0.37}s` })
     t.addEventListener('pointerdown', () => { t.classList.remove('spin'); void t.offsetWidth; t.classList.add('spin'); navigator.vibrate?.(6); confettiAt(t, 8) })
     t.addEventListener('animationend', (e) => { if (e.animationName === 'spin-tile') t.classList.remove('spin') })
     return layer(d, t)
@@ -1261,18 +1273,19 @@ function world() {
     live++
     runners.append(r)
   }
-  if (calm()) { spawn(innerWidth * 0.22); spawn(innerWidth * 0.64); return }
+  if (calm()) { spawn(window.innerWidth * 0.22); spawn(window.innerWidth * 0.64); return }
   spawn(); setTimeout(spawn, 1300)
   setInterval(() => { if (!document.body.classList.contains('deep') && Math.random() < 0.8) spawn() }, 2600)
   // Parallax: the pointer (or a finger) over the page, and the scroll.
   let raf = 0, px = 0, py = 0
-  const apply = () => { raf = 0; scene.style.setProperty('--px', px.toFixed(3)); scene.style.setProperty('--py', py.toFixed(3)); scene.style.setProperty('--sy', Math.min(2, scrollY / 100).toFixed(3)) }
-  const ask = () => { raf ||= requestAnimationFrame(apply) }
-  addEventListener('pointermove', (e) => { px = (e.clientX / innerWidth - 0.5) * 2; py = (e.clientY / innerHeight - 0.5) * 2; ask() }, { passive: true })
-  addEventListener('scroll', ask, { passive: true })
+  const apply = () => { raf = 0; scene.style.setProperty('--px', px.toFixed(3)); scene.style.setProperty('--py', py.toFixed(3)); scene.style.setProperty('--sy', Math.min(2, window.scrollY / 100).toFixed(3)) }
+  const ask = () => { raf ||= window.requestAnimationFrame(apply) }
+  window.addEventListener('pointermove', (e) => { px = (e.clientX / window.innerWidth - 0.5) * 2; py = (e.clientY / window.innerHeight - 0.5) * 2; ask() }, { passive: true })
+  window.addEventListener('scroll', ask, { passive: true })
 }
 
-world()
+// Decoration: never in the way of the page if a browser lacks something.
+try { world() } catch {}
 hit('open')
 ;(async () => {
   const ref = fromLink(location.hash)

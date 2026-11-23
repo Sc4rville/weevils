@@ -40,3 +40,13 @@ it('an older machine’s plain folder list still comes out as one band per produ
     { id: 'shop', name: 'shop', repos: ['shop-site'] },
   ])
 })
+
+it('on demand: switching a provider on, off or first renumbers the fallback order at once, in the server’s order', async () => {
+  const { reorder } = await import('./factory.tsx')
+  const od = (id: string, rank: number | null, connected = true) => ({ id, name: id, key: `${id.toUpperCase()}_API_KEY`, connected, rank, credit: null, perHour: null, console: '' }) as never
+  const list = [od('runpod', 1), od('vast', 2), od('lambda', null, false)]
+  const ids = (l: { id: string; rank: number | null }[]) => l.map((x) => [x.id, x.rank])
+  expect(ids(reorder(list, 'vast', 'first'))).toEqual([['vast', 1], ['runpod', 2], ['lambda', null]])
+  expect(ids(reorder(list, 'runpod', 'off'))).toEqual([['vast', 1], ['runpod', null], ['lambda', null]])
+  expect(ids(reorder(reorder(list, 'runpod', 'off'), 'runpod', 'on'))).toEqual([['vast', 1], ['runpod', 2], ['lambda', null]])
+})

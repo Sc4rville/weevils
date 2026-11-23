@@ -10,7 +10,7 @@
 
 import fs from 'node:fs'
 import type http from 'node:http'
-import { KEYS, type FactoryIntel, type FactoryMachine, type FactoryView, type MachineKind } from '../shared/your-factory.ts'
+import { KEYS, ON_DEMAND, ON_DEMAND_VAR, type FactoryIntel, type FactoryMachine, type FactoryOnDemand, type FactoryView, type MachineKind, type OnDemandId } from '../shared/your-factory.ts'
 import type { Level, MachineBrief, MachineFacts, QuotaInfo } from '../shared/infra.ts'
 import type { Session } from '../shared/api.ts'
 import { tr } from './i18n.ts'
@@ -85,15 +85,72 @@ export function configValue(file: string, name: string): string | undefined {
   return undefined
 }
 
+/** Every key Your factory switches: the intelligence's and the on-demand providers'. */
+const SWITCHED = [...KEYS.map((k) => k.name), ...ON_DEMAND.map((p) => p.key)]
+
 /** Keys turned off stay in the config file but leave weevils' environment (and so the agents it starts). */
 export function applyKeys(off: readonly string[], file: string, env: NodeJS.ProcessEnv = process.env) {
-  for (const k of KEYS) {
-    if (off.includes(`key:${k.name}`)) delete env[k.name]
-    else if (!env[k.name]) {
-      const v = configValue(file, k.name)
-      if (v) env[k.name] = v
+  for (const name of SWITCHED) {
+    if (off.includes(`key:${name}`)) delete env[name]
+    else if (!env[name]) {
+      const v = configValue(file, name)
+      if (v) env[name] = v
     }
   }
+}
+
+/** The keys turned off, intelligence and on demand alike, as applyKeys reads them. */
+export function keysOff(f: Pick<FactoryState, 'intelOff' | 'onDemandOff'>): string[] {
+  return [...f.intelOff, ...(f.onDemandOff ?? []).flatMap((id) => ON_DEMAND.filter((p) => p.id === id).map((p) => `key:${p.key}`))]
+}
+
+/** The fallback order: the providers the setting names first, in its order, then every other one switched on, in
+ *  ON_DEMAND's order. Only providers switched on (a key there, not turned off) ever appear. */
+export function onDemandOrder(raw: string | undefined, on: readonly OnDemandId[]): OnDemandId[] {
+  const said = (raw ?? '').split(/[\s,]+/).filter((x): x is OnDemandId => on.includes(x as OnDemandId))
+  return [...new Set([...said, ...on])]
+}
+
+type Meter = { refused?: boolean; credit: number | null; perHour: number | null }
+const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? Math.round(x * 100) / 100 : null)
+const UNKNOWN: Meter = { credit: null, perHour: null }
+
+/** A provider's own meter, read with its key: the credit left, and what runs there costs per hour now. Nothing is
+ *  guessed: a figure the provider does not give stays null; a key it refuses says so. */
+export async function readMeter(id: OnDemandId, key: string, f: typeof fetch = fetch): Promise<Meter> {
+  const ask = (url: string, init: RequestInit = {}) =>
+    f(url, { ...init, headers: { authorization: `Bearer ${key}`, ...(init.headers as Record<string, string> | undefined) }, signal: AbortSignal.timeout(5000) })
+  const refused = (r: Response) => r.status === 401 || r.status === 403
+  try {
+    if (id === 'runpod') {
+      const r = await ask('https://api.runpod.io/graphql', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: 'query { myself { clientBalance currentSpendPerHr } }' }) })
+      if (refused(r)) return { ...UNKNOWN, refused: true }
+      const me = r.ok ? ((await r.json()) as { data?: { myself?: { clientBalance?: unknown; currentSpendPerHr?: unknown } } })?.data?.myself : null
+      return me ? { credit: num(me.clientBalance), perHour: num(me.currentSpendPerHr) } : UNKNOWN
+    }
+    const r = await ask('https://console.vast.ai/api/v0/users/current/')
+    if (refused(r)) return { ...UNKNOWN, refused: true }
+    if (!r.ok) return UNKNOWN
+    const u = (await r.json()) as { credit?: unknown }
+    const list = await ask('https://console.vast.ai/api/v0/instances/').then((x) => (x.ok ? x.json() : null)).catch(() => null) as { instances?: { actual_status?: string; dph_total?: unknown }[] } | null
+    const running = Array.isArray(list?.instances) ? list.instances.filter((i) => i?.actual_status === 'running') : null
+    return { credit: num(u.credit), perHour: running ? num(running.reduce((a, i) => a + (num(i.dph_total) ?? 0), 0)) : null }
+  } catch {
+    return UNKNOWN
+  }
+}
+
+/** Meters are read at most once a minute per key (the side bar asks every 15 s while open). */
+const meters = new Map<OnDemandId, { at: number; key: string; v: Promise<Meter> }>()
+export function resetMeters() {
+  meters.clear()
+}
+function meter(id: OnDemandId, key: string, f?: typeof fetch): Promise<Meter> {
+  const hit = meters.get(id)
+  if (hit && hit.key === key && Date.now() - hit.at < 60_000) return hit.v
+  const v = readMeter(id, key, f)
+  meters.set(id, { at: Date.now(), key, v })
+  return v
 }
 
 export interface FactoryState {
@@ -104,6 +161,8 @@ export interface FactoryState {
   talks: Record<string, string>
   /** Tests and builds go to an idle machine when theirs is busy (server/heavy/jobs.ts): on unless false. */
   shareJobs?: boolean
+  /** On-demand providers turned off (missing in a state written before they existed). */
+  onDemandOff?: string[]
 }
 
 export interface FactoryDeps {
@@ -127,6 +186,10 @@ export interface FactoryDeps {
   pinned: () => string[]
   /** Heavy jobs running on another machine now (server/heavy/jobs.ts Hub). */
   away?: () => { name: string; n: number }[]
+  /** Writes settings to weevils' config (setup.ts writeConfig): the fallback order agents read. */
+  writeConfig?: (changes: Record<string, string>) => void
+  /** How a provider's meter is fetched (tests give their own). */
+  fetch?: typeof fetch
   /** Starts the machine's own conversation, with the person's first words. */
   startTalk: (machineId: string, name: string, kind: MachineKind | null, provider: string | undefined, text: string) => Promise<{ id: string }>
 }
@@ -177,7 +240,37 @@ export async function factoryView(d: FactoryDeps): Promise<FactoryView> {
     if (!off && !(d.env ?? process.env)[k.name] && !configValue(d.configFile, k.name)) continue
     intelligence.push({ id, kind: 'key', brand: k.brand, name: k.label, left: null, resetsAt: null, off, toggle: true })
   }
-  return { machines, intelligence, ...(machines.length > 1 ? { share: { on: st.shareJobs !== false, away: d.away?.() ?? [] } } : {}) }
+  return { machines, intelligence, ...(machines.length > 1 ? { share: { on: st.shareJobs !== false, away: d.away?.() ?? [] } } : {}), onDemand: await onDemandView(d) }
+}
+
+/** The key of a provider, wherever it is (switched off, it is only in the config file). */
+const keyOf = (d: FactoryDeps, name: string) => (d.env ?? process.env)[name] || configValue(d.configFile, name)
+
+/** The fallback order as it stands, written back to the setting agents read when it changed (a key added, one
+ *  switched off). */
+export function syncOrder(d: FactoryDeps): OnDemandId[] {
+  const off = d.state().onDemandOff ?? []
+  const on = ON_DEMAND.filter((p) => keyOf(d, p.key) && !off.includes(p.id)).map((p) => p.id)
+  const raw = configValue(d.configFile, ON_DEMAND_VAR)
+  const order = onDemandOrder(raw, on)
+  const value = order.join(',') || 'none'
+  if (raw !== value && d.writeConfig) d.writeConfig({ [ON_DEMAND_VAR]: value })
+  return order
+}
+
+/** On demand, in the fallback order: first the providers switched on, then those turned off, then those with no key. */
+export async function onDemandView(d: FactoryDeps): Promise<FactoryOnDemand[]> {
+  const order = syncOrder(d)
+  const list = await Promise.all(
+    ON_DEMAND.map(async (p): Promise<FactoryOnDemand> => {
+      const key = keyOf(d, p.key)
+      const rank = order.indexOf(p.id)
+      const m = key && rank >= 0 ? await meter(p.id, key, d.fetch) : UNKNOWN
+      return { id: p.id, name: p.name, key: p.key, connected: !!key, rank: rank >= 0 ? rank + 1 : null, ...(m.refused ? { refused: true } : {}), credit: m.credit, perHour: m.perHour, console: p.console }
+    }),
+  )
+  const place = (x: FactoryOnDemand) => (x.rank ?? (x.connected ? 100 : 200))
+  return list.sort((a, b) => place(a) - place(b))
 }
 
 /** The routes (main machine only). Errors are refusals in plain words (400). */
@@ -232,7 +325,27 @@ export function factoryRoutes(d: FactoryDeps, json: Json, readBody: ReadBody): [
         f.intelOff = f.intelOff.filter((x) => x !== id)
         if (b.off) f.intelOff.push(id)
       })
-      applyKeys(d.state().intelOff, d.configFile, d.env)
+      applyKeys(keysOff(d.state()), d.configFile, d.env)
+      json(res, 200, { ok: true })
+    }],
+    // An on-demand provider: on / off (its key leaves weevils' environment and the fallback order, never deleted), or
+    // put first in the fallback order.
+    ['POST', /^\/api\/factory\/on-demand$/, async (req, res) => {
+      const b = await readBody(req)
+      const p = ON_DEMAND.find((x) => x.id === b.id)
+      if (!p || (typeof b.off !== 'boolean' && b.first !== true)) return json(res, 400, { error: t().cantSwitch })
+      if (typeof b.off === 'boolean') {
+        d.change((f) => {
+          f.onDemandOff = (f.onDemandOff ?? []).filter((x) => x !== p.id)
+          if (b.off) f.onDemandOff.push(p.id)
+        })
+        applyKeys(keysOff(d.state()), d.configFile, d.env)
+      }
+      if (b.first === true) {
+        const order = syncOrder(d)
+        if (order.includes(p.id)) d.writeConfig?.({ [ON_DEMAND_VAR]: [p.id, ...order.filter((x) => x !== p.id)].join(',') })
+      }
+      syncOrder(d)
       json(res, 200, { ok: true })
     }],
     // A project in the side bar or out of it. In: its repos pinned (the app's own pin, POST /api/github/pin), so it

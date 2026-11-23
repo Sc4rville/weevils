@@ -41,7 +41,9 @@ once, and the code follows. Behaviour is never flipped back and forth.
   opened (and remembered). Open, it holds four bands, each one tone step below the last: **Machines**, **Intelligence**,
   **Projects**, and the global **Tempo**. A level's name unfolds its own bands the same way (one per thing, a step
   further in), its last band a « + ». No section titles, no boxes, no buttons beyond the switches. Nothing in it is bold (2026-11-23): its levels, machines, Tempo
-  and projects read in regular weight, their order told by size and colour alone.
+  and projects read in regular weight, their order told by size and colour alone. Each level wears a small solid mark
+  left of its name, in ink, the weight of the Claude and Codex logos, in one column (2026-11-23): a graphics card
+  (Machines), a brain (Intelligence), GitHub's mark (Projects), a lightning bolt (Tempo).
   - **Machines**: one band per machine: a computer or a server icon (what the machine found out about itself), its
     name (hold it to rename it in place), a thin health bar under the name (the fullest of processor, memory and disk;
     ink, then orange, then red; no figures there), and on the right a plain rectangular switch. Off: nothing new starts
@@ -49,6 +51,16 @@ once, and the code follows. Behaviour is never flipped back and forth.
     it, its icon slowly moves through the colours. A tap opens the machine's own conversation: its health in figures
     and, for a server whose host is known, a link to the host's dashboard, on top; then the field, and once written to,
     the app's own session page (run on that machine). « + » brings weevboss's screen with its « add a machine » setup.
+    **on demand** (2026-11-23), the band just above that « + », a square clock: compute paid by the hour (a GPU for a
+    render, a model, a long job). It folds like a level; under it, one band per provider weevils reads (RunPod,
+    Vast.ai), the same height as a machine's, its initial in a small square like a key's under Intelligence. No key yet:
+    dimmed, a tap brings weevboss's screen with the masked field for that key (never typed anywhere else). With its key:
+    on the right, one figure from the provider's own meter, small and regular: « $0.44/h » while something runs there,
+    else the credit left, « $6.70 » (« key refused » in the warning colour when the provider says so); then the switch. Off: the
+    key leaves weevils' environment, never deleted. The bands switched on read in the fallback order (the first is
+    tried first, the next when it has no credit or no free GPU); with more than one on, each carries its place, a plain
+    numeral right of its figures, and a tap on it puts that provider first. The order is the setting
+    `WEEVILS_ON_DEMAND` agents read. A tap on a provider with its key opens its own console.
   - **Intelligence**: one band per subscription or API key, its provider's logo in monochrome (the app's own), its plan,
     a power bar under its name (what is left of its fullest window, from the provider's own meter: the working green,
     then orange, then red) and a switch where turning it off is possible (Codex: never handed work; a key: taken out of
@@ -62,9 +74,11 @@ once, and the code follows. Behaviour is never flipped back and forth.
     The list keeps a fixed order (weevils' own block excepted) and an off project stays in it, dimmed, even once its
     last pin is gone, to switch it back on. A project never touched shows while it has conversations. « + » unfolds
     the other repos of this machine, each with the same switch to pin it.
-  - **Tempo**: the global Tempo as six cells (Standby to Swarm), filled up to the mode in use; you drag a finger across
-    to change it (a tap does nothing); past the left edge is Pause. Locked modes stay out of reach and, while the finger
-    is on one, say what opens it. After a change the app's own slim Tempo band slides in with what it will use.
+  - **Tempo**: the global Tempo as six square cells (Standby to Swarm), filled up to the mode in use, each filled cell
+    denser in ink than the last: the colour alone says the mode, no glyph in the cells and no mode name under « Tempo »
+    (2026-11-23). A tap on a cell sets that mode; a tap on the mode in use pauses (nothing filled). No slider, no drag.
+    A locked cell stays faint; tapped, it changes nothing and says for a moment what opens it. After a change the app's
+    own slim Tempo band slides in with what it will use.
   Machines, subscriptions and Tempo then leave next's settings (the classic app keeps them there).
   **Projects** lists products, never folders (2026-11-23): one band per mother repo. Clones and worktrees of the same
   remote, and a product's « <product>-<part> » repos, fold into it; an automation's folders (auto-…) belong to

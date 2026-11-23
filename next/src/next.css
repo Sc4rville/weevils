@@ -350,20 +350,32 @@ body { overflow: hidden; }
 .nx-fx-band.nx-fx-project { background: var(--c) !important; }
 .nx-fx-project .nx-mark .ic path { stroke-width: 1.5; }
 
-/* The global Tempo: its name and mode on the left, six cells on the right, filled up to the mode in use, each a tone
-   step brighter than the last; a finger dragged across moves it. */
+/* The global Tempo: its mark and name on the left, six cells on the right, filled up to the mode in use, each filled
+   cell denser in ink than the last: the colour alone says the mode (no glyph, no caption). A tap on a cell sets it. */
 .nx-fx-tempo { flex-wrap: wrap; row-gap: 4px; }
-.nx-fx-hint { flex-basis: 100%; font-size: 13px; opacity: .8; }
-.nx-fx-tempo-name { flex: none; width: 92px; display: flex; flex-direction: column; gap: 2px; }
-.nx-fx-mode { font-size: 13px; font-weight: 400; line-height: 1.25; }
-.nx-fx-cells { flex: 1; min-width: 0; height: 32px; display: flex; touch-action: none; cursor: ew-resize; outline: 0; }
-.nx-fx-cells:focus-visible { box-shadow: var(--focus-halo); }
-.nx-fx-cell { flex: 1; display: grid; place-items: center; color: var(--ink); opacity: .38; transition: background-color .16s, opacity .16s; }
-.nx-fx-cell .ic { width: 15px; height: 15px; }
-.nx-fx-cell.on { opacity: .9; background: oklch(from var(--c) calc(l + var(--dl) * (2.2 + var(--i) * 0.55)) calc(c * 1.4) h); }
-.nx-fx-cell.locked { opacity: .16; }
-.nx-fx-cell.at { opacity: 1; background: var(--ink); color: var(--c); }
-.nx-fx-cells.dragging .nx-fx-cell { transition: none; }
+.nx-fx-hint { flex-basis: 100%; font-size: 13px; opacity: .8; padding-left: 34px; }
+.nx-fx-tempo-name { flex: none; display: flex; align-items: center; gap: 12px; min-height: 44px; padding-right: 6px; }
+.nx-fx-cells { flex: 1; min-width: 0; max-width: 260px; margin-left: auto; height: 32px; display: flex; gap: 3px; }
+.nx-fx-cell {
+  flex: 1; min-width: 0; padding: 0; border: 0; border-radius: 0; cursor: pointer; touch-action: manipulation;
+  background: color-mix(in oklab, var(--ink) 8%, transparent); transition: background-color .18s;
+  -webkit-tap-highlight-color: transparent; position: relative;
+}
+/* A finger-sized target around each cell, without moving them apart. */
+.nx-fx-cell::before { content: ''; position: absolute; inset: -6px -1.5px; }
+.nx-fx-cell:focus-visible { outline: none; box-shadow: var(--focus-halo); }
+.nx-fx-cell.on { background: color-mix(in oklab, var(--ink) calc(18% + var(--i) * 14%), transparent); }
+.nx-fx-cell.locked { background: color-mix(in oklab, var(--ink) 3%, transparent); cursor: default; }
+
+/* On demand (Machines): a provider's figures on the right of its name, small and regular; its place in the fallback
+   order a plain numeral (a tap puts it first); a key the provider refuses reads in the warning colour. */
+a.nx-fx-main { text-decoration: none; }
+.nx-fx-od .nx-row-title { flex: none; }
+.nx-fx-val { margin-left: auto; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 14px; opacity: .75; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nx-fx-val.warn { opacity: 1; color: var(--warn, oklch(0.62 0.17 60)); }
+.nx-fx-rank { flex: none; width: 26px; min-height: 44px; padding: 0; background: none; border: 0; color: var(--ink); font: inherit; font-size: 14px; font-variant-numeric: tabular-nums; opacity: .75; }
+.nx-fx-rank:disabled { opacity: .75; cursor: default; }
+.nx-fx-logo .mark { display: block; }
 
 /* A machine's page: its health and host on top, under the head of its conversation. */
 .nx-mx-strip { display: flex; align-items: center; gap: 12px; padding: 0 var(--pad) 10px; font-size: 13px; }

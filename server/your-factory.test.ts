@@ -5,7 +5,7 @@ import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { Session } from '../shared/api.ts'
 import type { QuotaInfo } from '../shared/infra.ts'
-import { applyKeys, factoryRoutes, factoryView, health, hostName, leftOf, machineKind, panelUrl, type FactoryDeps, type FactoryState } from './your-factory.ts'
+import { applyKeys, configValue, factoryRoutes, factoryView, health, hostName, keysOff, leftOf, machineKind, onDemandOrder, panelUrl, readMeter, resetMeters, type FactoryDeps, type FactoryState } from './your-factory.ts'
 
 const q = (windows: QuotaInfo['windows'], plan?: string): QuotaInfo => ({ ok: true, windows, source: 'test', at: 1, ...(plan ? { plan } : {}) })
 const sess = (id: string, status: Session['status'], machineId?: string) => ({ id, status, machineId, archived: false }) as unknown as Session
@@ -31,6 +31,7 @@ function deps(over: Partial<FactoryDeps> = {}): FactoryDeps & { st: FactoryState
     pin: vi.fn(),
     pinned: () => [] as string[],
     startTalk: vi.fn(async () => ({ id: 'talk-1' })),
+    fetch: (async () => { throw new Error('no network in tests') }) as unknown as typeof fetch,
     ...over,
   }
   return d
@@ -143,5 +144,87 @@ describe('what the factory switches', () => {
     sessions = [...sessions, sess('talk-1', 'idle')]
     await route(d, 'POST', '/api/factory/talk', { machine: 'laptop', text: 'again' })
     expect(d.startTalk).toHaveBeenCalledTimes(1)
+  })
+})
+
+/** setup.ts writeConfig in small: replaces or adds a line of the test's config file. */
+const writer = (file: string) => (changes: Record<string, string>) => {
+  let lines = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean) : []
+  for (const [k, v] of Object.entries(changes)) lines = [...lines.filter((l) => !l.startsWith(`${k}=`)), `${k}=${v}`]
+  fs.writeFileSync(file, lines.join('\n') + '\n')
+}
+const answer = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+/** A provider's API in small: RunPod's GraphQL and Vast.ai's REST, keyed by the bearer they are given. */
+function providers(over: { runpod?: Response; vastUser?: Response; vastList?: Response } = {}) {
+  return vi.fn(async (url: string | URL | Request) => {
+    const u = String(url)
+    if (u.includes('runpod')) return over.runpod ?? answer(200, { data: { myself: { clientBalance: 6.7021, currentSpendPerHr: 0.44 } } })
+    if (u.endsWith('/users/current/')) return over.vastUser ?? answer(200, { credit: 12.5 })
+    return over.vastList ?? answer(200, { instances: [{ actual_status: 'running', dph_total: 0.3 }, { actual_status: 'exited', dph_total: 0.9 }, { actual_status: 'running', dph_total: 0.25 }] })
+  }) as unknown as typeof fetch
+}
+
+describe('on demand', () => {
+  it('orders the providers switched on: the setting first, then the others, never one switched off', () => {
+    expect(onDemandOrder(undefined, ['runpod', 'vast'])).toEqual(['runpod', 'vast'])
+    expect(onDemandOrder('vast,runpod', ['runpod', 'vast'])).toEqual(['vast', 'runpod'])
+    expect(onDemandOrder('vast', ['runpod'])).toEqual(['runpod'])
+    expect(onDemandOrder('none', [])).toEqual([])
+    expect(onDemandOrder('lambda, vast', ['runpod', 'vast'])).toEqual(['vast', 'runpod'])
+  })
+  it('reads each provider’s own meter, and says when a key is refused', async () => {
+    expect(await readMeter('runpod', 'k', providers())).toEqual({ credit: 6.7, perHour: 0.44 })
+    expect(await readMeter('vast', 'k', providers())).toEqual({ credit: 12.5, perHour: 0.55 })
+    expect(await readMeter('runpod', 'k', providers({ runpod: answer(401, {}) }))).toEqual({ refused: true, credit: null, perHour: null })
+    expect(await readMeter('vast', 'k', providers({ vastUser: answer(403, {}) }))).toEqual({ refused: true, credit: null, perHour: null })
+    // A figure the provider does not give stays unknown, never zero.
+    expect(await readMeter('vast', 'k', providers({ vastList: answer(500, {}) }))).toEqual({ credit: 12.5, perHour: null })
+    expect(await readMeter('runpod', 'k', (async () => { throw new Error('offline') }) as unknown as typeof fetch)).toEqual({ credit: null, perHour: null })
+  })
+  it('sends the key only to its own provider, as a bearer', async () => {
+    const f = providers()
+    await readMeter('runpod', 'rp-secret', f)
+    const [url, init] = (f as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(String(url)).toBe('https://api.runpod.io/graphql')
+    expect((init as RequestInit).headers).toMatchObject({ authorization: 'Bearer rp-secret' })
+  })
+  it('lists every provider, those switched on first with their figures, and writes the order agents read', async () => {
+    resetMeters()
+    const d = deps({ fetch: providers() })
+    d.writeConfig = writer(d.configFile)
+    fs.writeFileSync(d.configFile, 'RUNPOD_API_KEY=rp-test\n')
+    const v = await factoryView(d)
+    expect(v.onDemand).toEqual([
+      expect.objectContaining({ id: 'runpod', connected: true, rank: 1, credit: 6.7, perHour: 0.44 }),
+      expect.objectContaining({ id: 'vast', connected: false, rank: null, credit: null }),
+    ])
+    expect(configValue(d.configFile, 'WEEVILS_ON_DEMAND')).toBe('runpod')
+    expect(JSON.stringify(v)).not.toContain('rp-test')
+  })
+  it('switches a provider off (out of the order and the environment, key kept), back on, and puts one first', async () => {
+    resetMeters()
+    const env: NodeJS.ProcessEnv = { RUNPOD_API_KEY: 'rp-test', VAST_API_KEY: 'va-test' }
+    const d = deps({ fetch: providers(), env })
+    d.writeConfig = writer(d.configFile)
+    fs.writeFileSync(d.configFile, 'RUNPOD_API_KEY=rp-test\nVAST_API_KEY=va-test\n')
+    await factoryView(d)
+    expect(configValue(d.configFile, 'WEEVILS_ON_DEMAND')).toBe('runpod,vast')
+    await route(d, 'POST', '/api/factory/on-demand', { id: 'vast', first: true })
+    expect(configValue(d.configFile, 'WEEVILS_ON_DEMAND')).toBe('vast,runpod')
+    await route(d, 'POST', '/api/factory/on-demand', { id: 'vast', off: true })
+    expect(d.st.onDemandOff).toEqual(['vast'])
+    expect(env.VAST_API_KEY).toBeUndefined()
+    expect(configValue(d.configFile, 'WEEVILS_ON_DEMAND')).toBe('runpod')
+    expect(configValue(d.configFile, 'VAST_API_KEY')).toBe('va-test')
+    const v = await factoryView(d)
+    expect(v.onDemand?.map((x) => [x.id, x.rank])).toEqual([['runpod', 1], ['vast', null]])
+    expect(v.onDemand?.[1]).toMatchObject({ connected: true, credit: null })
+    await route(d, 'POST', '/api/factory/on-demand', { id: 'runpod', off: true })
+    expect(configValue(d.configFile, 'WEEVILS_ON_DEMAND')).toBe('none')
+    await route(d, 'POST', '/api/factory/on-demand', { id: 'vast', off: false })
+    expect(env.VAST_API_KEY).toBe('va-test')
+    expect(configValue(d.configFile, 'WEEVILS_ON_DEMAND')).toBe('vast')
+    expect((await route(d, 'POST', '/api/factory/on-demand', { id: 'lambda', off: true })).status).toBe(400)
+    expect(keysOff(d.st)).toEqual(['key:RUNPOD_API_KEY'])
   })
 })

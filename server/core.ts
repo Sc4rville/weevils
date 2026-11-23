@@ -162,7 +162,7 @@ interface Persisted {
 }
 
 /** Your factory's settings, on the main machine (state.json; server/your-factory.ts). */
-const freshFactory = (): FactoryState => ({ names: {}, machinesOff: [], intelOff: [], hidden: [], talks: {} })
+const freshFactory = (): FactoryState => ({ names: {}, machinesOff: [], intelOff: [], hidden: [], talks: {}, onDemandOff: [] })
 
 const STATE_FILE = path.join(DATA_DIR, 'state.json')
 /** TEMPORARY: the new interface's address, for the shortcut in the settings (src/ui/next-shortcut.tsx). https only. */

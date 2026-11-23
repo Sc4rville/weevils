@@ -47,13 +47,46 @@ export interface FactoryIntel {
   toggle: boolean
 }
 
+/** On demand: compute paid by the hour (a GPU for a render, a model, a long job), reached with the provider's API key. */
+export type OnDemandId = 'runpod' | 'vast'
+
+export interface FactoryOnDemand {
+  id: OnDemandId
+  name: string
+  /** The key's name in weevils' config (typed only in the masked field). */
+  key: string
+  /** A key is there. */
+  connected: boolean
+  /** Its place in the fallback order (1: tried first, the next when it has no credit or no free GPU); null: off, or
+   *  no key. */
+  rank: number | null
+  /** The provider refused the key. */
+  refused?: boolean
+  /** Credit left, in US dollars (null: not known). */
+  credit: number | null
+  /** What runs there costs this much per hour now, in US dollars (0: nothing runs; null: not known). */
+  perHour: number | null
+  /** The provider's own console. */
+  console: string
+}
+
 export interface FactoryView {
   machines: FactoryMachine[]
   intelligence: FactoryIntel[]
   /** With two machines or more: tests and builds go to an idle machine when the one they start on is busy
    *  (server/heavy/jobs.ts). `away`: those running elsewhere now, by machine. */
   share?: { on: boolean; away: { name: string; n: number }[] }
+  /** Missing from an older weevilsd. */
+  onDemand?: FactoryOnDemand[]
 }
+
+/** The on-demand providers weevils reads (credit, spend per hour), by the key name its setup stores them under. */
+export const ON_DEMAND: { id: OnDemandId; key: string; name: string; console: string }[] = [
+  { id: 'runpod', key: 'RUNPOD_API_KEY', name: 'RunPod', console: 'https://console.runpod.io/' }, // i18n-ignore: a product's name
+  { id: 'vast', key: 'VAST_API_KEY', name: 'Vast.ai', console: 'https://cloud.vast.ai/' }, // i18n-ignore: a product's name
+]
+/** The setting agents read: the providers switched on, comma-separated, first tried first (« none »: all off). */
+export const ON_DEMAND_VAR = 'WEEVILS_ON_DEMAND'
 
 /** The API keys that are intelligence (a model provider), by the name weevils' setup stores them under
  *  (~/.config/weevils/env). Read by the server; the app offers the missing ones under Intelligence's « + ». */

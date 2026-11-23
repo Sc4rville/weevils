@@ -71,6 +71,8 @@ const PATHS = {
   cycle: `${CYCLE_LOOP}${CYCLE_HEAD}`,
   // factory, in next's side bar: a saw-tooth roof and a chimney.
   factory: FACTORY,
+  // By the hour (Your factory's « on demand »): a square clock, its two hands at right angles.
+  clock: 'M3 3h18v18H3zM12 7v5h4',
   // Sleep mode: three « z », staggered up to the right, the last one smaller.
   sleep: 'M2 14h7l-7 7h7M11 7h7l-7 7h7M18 2h4l-4 4h4',
 } as const
@@ -90,6 +92,34 @@ export function FilledIcon({ name, label, className = '' }: { name: FilledName; 
   return (
     <svg className={`ic ${className}`} viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd" shapeRendering="crispEdges" role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true} focusable="false">
       <path d={FILLED[name]} />
+    </svg>
+  )
+}
+
+/**
+ * Marks: solid, rounded where the thing is, the weight of the providers' logos (Claude, Codex: ToolIcon) rather than
+ * the line set above. Your factory's levels wear them: a graphics card (Machines), a brain (Intelligence), GitHub's
+ * mark (Projects), a lightning bolt (Tempo). One colour, the ink's; holes cut with evenodd.
+ */
+const MARKS = {
+  // A graphics card seen from the side: its bracket, one big fan and its hub, three cooling fins, the connector.
+  gpu: 'M1 3h2.2v18H1zM4.2 4.5h19.3v13H4.2zM10.2 6.2a4.8 4.8 0 1 0 0 9.6a4.8 4.8 0 1 0 0-9.6zM10.2 9.4a1.6 1.6 0 1 0 0 3.2a1.6 1.6 0 1 0 0-3.2zM16.4 7h1.3v8h-1.3zM18.8 7h1.3v8h-1.3zM21.2 7h1.3v8h-1.3zM6.5 17.5h13V20h-13z',
+  // A brain from above: one hemisphere with its folds, drawn twice (mirrored), a gap between them.
+  brain: 'M11.2 3.6C10.3 2.6 8.6 2.4 7.6 3.3C5.9 3 4.4 4.2 4.4 5.9C2.9 6.5 2.1 8.2 2.7 9.7C1.6 10.9 1.6 12.9 2.8 14C2.3 15.8 3.2 17.6 5 18C5.6 19.8 7.5 20.8 9.2 20.2C9.9 20.9 10.6 21 11.2 20.8ZM5.2 9.4c1.4-.25 2.7.3 3.4 1.4l-1.2.8c-.5-.7-1.3-1-2.2-.9zM7.9 5.7c.25 1.2-.1 2.3-1 3.1l.95 1c1.2-1.1 1.6-2.6 1.4-4.2zM4.7 14.4c1.3.45 2.6.15 3.5-.75l.95 1c-1.3 1.15-2.9 1.55-4.8 1zM8.8 15.6c.65 1 .75 2.1.35 3.2l1.3.45c.55-1.45.4-2.95-.45-4.25z',
+  // GitHub's own mark.
+  github: 'M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12',
+  // A small lightning bolt (Tempo).
+  bolt: 'M14 1.5L4.5 13.5H11L9.5 22.5L19.5 10H13z',
+} as const
+export type MarkName = keyof typeof MARKS
+/** Drawn twice, the second mirrored: a symmetric mark kept to one half. */
+const MIRRORED = new Set<MarkName>(['brain'])
+
+export function Mark({ name, size = 18, label }: { name: MarkName; size?: number; label?: string }) {
+  return (
+    <svg className={`mark mark-${name}`} width={size} height={size} viewBox="0 0 24 24" fill="currentColor" role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true} focusable="false">
+      <path fillRule="evenodd" d={MARKS[name]} />
+      {MIRRORED.has(name) && <path fillRule="evenodd" d={MARKS[name]} transform="matrix(-1 0 0 1 24 0)" />}
     </svg>
   )
 }

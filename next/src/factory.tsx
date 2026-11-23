@@ -7,7 +7,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Project, Snapshot } from '../../shared/api.ts'
-import { KEYS, type Brand, type FactoryIntel, type FactoryMachine, type FactoryView } from '../../shared/your-factory.ts'
+import { KEYS, type Brand, type FactoryIntel, type FactoryMachine, type FactoryOnDemand, type FactoryView } from '../../shared/your-factory.ts'
 import { TEMPO_MODES, type TempoMode } from '../../shared/tempo.ts'
 import { useT } from '../../src/i18n/index.ts'
 import TM from '../../src/i18n/tempo.ts'
@@ -15,12 +15,11 @@ import { useApp, type Page } from '../../src/ui/app-context.tsx'
 import { selfProject } from '../../src/ui/recursive-identity.ts'
 import { Collapse, Composer, ToolIcon } from '../../src/ui/bits.tsx'
 import { focusBoss } from '../../src/ui/follow.ts'
-import { G, Icon } from '../../src/ui/icons.tsx'
+import { G, Icon, Mark, type MarkName } from '../../src/ui/icons.tsx'
 import { PageView } from '../../src/ui/pages.tsx'
 import { seedPending } from '../../src/ui/pending.ts'
 import { askSetup, openKey } from '../../src/ui/setup.tsx'
 import { Shell } from '../../src/ui/shell.tsx'
-import { TEMPO_ICONS } from '../../src/ui/tempo-icons.ts'
 import { TempoBand, useTempo } from '../../src/ui/tempo.tsx'
 import { call } from './data.ts'
 import { foldPrefs, saveFold } from './fold.ts'
@@ -168,11 +167,12 @@ function Band({ step, depth, className = '', children, style }: { step: number; 
   )
 }
 
-/** A level's own band (Machines, Intelligence, Projects): its name folds what is under it. */
-function LevelHead({ step, name, open, onFold, sign }: { step: number; name: string; open: boolean; onFold: () => void; sign?: ReactNode }) {
+/** A level's own band (Machines, Intelligence, Projects): its solid mark, its name, which folds what is under it. */
+function LevelHead({ step, name, mark, open, onFold, sign }: { step: number; name: string; mark: MarkName; open: boolean; onFold: () => void; sign?: ReactNode }) {
   return (
     <Band step={step} depth={1}>
       <button className="nx-fx-main" onClick={onFold} aria-expanded={open}>
+        <span className="nx-mark nx-fx-logo"><Mark name={mark} size={20} /></span>
         <span className="nx-row-title nx-fx-level">{name}</span>
         {sign}
       </button>
@@ -307,74 +307,40 @@ function planName(plan: string) {
 
 // ---------------------------------------------------------------- tempo
 
-/** The global Tempo: six cells, Standby to Swarm, filled up to the mode in use; a finger dragged across them moves
- *  it (no tap: a tap changes nothing). Past the left edge: Pause. Locked modes stay out of reach and say what opens
- *  them while the finger is on them. Every mode but Pause keeps taking requests (docs/product/tempo.md). */
-function TempoCells({ step }: { step: number }) {
+/** The global Tempo: six cells, Standby to Swarm, filled up to the mode in use, each one denser than the last: the
+ *  colour alone says the mode (no glyph, no caption). A tap on a cell sets that mode; a tap on the mode in use pauses
+ *  (nothing filled). A locked cell changes nothing and says, for a moment, what opens it. Every mode but Pause keeps
+ *  taking requests (docs/product/tempo.md). */
+export function TempoCells({ step }: { step: number }) {
   const t = useT(TM)
   const [v, set] = useTempo()
-  const [drag, setDrag] = useState<TempoMode | null>(null)
   const [locked, setLocked] = useState<TempoMode | null>(null)
   const [band, setBand] = useState<TempoMode | null>(null)
-  const track = useRef<HTMLDivElement>(null)
   const timer = useRef<number | null>(null)
-  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), [])
-  // The finger on the cells is theirs alone: caught on the cells themselves, before the side bar's own swipe (which
-  // closes it) can see it — React's handlers run only after the side bar's.
-  const onDown = useRef<(e: PointerEvent) => void>(() => undefined)
-  useEffect(() => {
-    const el = track.current
-    if (!el) return
-    const h = (e: PointerEvent) => { e.stopPropagation(); onDown.current(e) }
-    el.addEventListener('pointerdown', h)
-    return () => el.removeEventListener('pointerdown', h)
-  }, [!!v])
+  const hint = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current)
+    if (hint.current) clearTimeout(hint.current)
+  }, [])
   if (!v) return null
   const cells = TEMPO_MODES.slice(1)
   const open = (m: TempoMode) => v.modes.find((x) => x.id === m)?.unlocked ?? false
-  const chosen = drag ?? v.global
-  const lit = cells.indexOf(chosen)
-  const at = (x: number): { mode: TempoMode; wanted: TempoMode } => {
-    const r = track.current!.getBoundingClientRect()
-    const pos = ((x - r.left) / r.width) * cells.length
-    if (pos < 0.28) return { mode: 'pause', wanted: 'pause' }
-    let i = Math.max(0, Math.min(cells.length - 1, Math.floor(pos)))
-    const wanted = cells[i]
-    while (i > 0 && !open(cells[i])) i--
-    return { mode: cells[i], wanted }
-  }
-  onDown.current = (e: PointerEvent) => {
-    const x0 = e.clientX
-    let moved = false
-    let last: TempoMode | null = null
-    const el = track.current!
-    el.setPointerCapture?.(e.pointerId)
-    const move = (ev: PointerEvent) => {
-      if (!moved && Math.abs(ev.clientX - x0) < 6) return
-      moved = true
-      const { mode, wanted } = at(ev.clientX)
-      if (mode !== last) navigator.vibrate?.(4)
-      last = mode
-      setDrag(mode)
-      setLocked(wanted !== mode && !open(wanted) ? wanted : null)
+  const lit = cells.indexOf(v.global)
+  const tap = (m: TempoMode) => {
+    navigator.vibrate?.(6)
+    if (!open(m)) {
+      setLocked(m)
+      if (hint.current) clearTimeout(hint.current)
+      hint.current = window.setTimeout(() => setLocked(null), 4000)
+      return
     }
-    const up = () => {
-      el.removeEventListener('pointermove', move)
-      el.removeEventListener('pointerup', up)
-      el.removeEventListener('pointercancel', up)
-      setDrag(null)
-      setLocked(null)
-      if (!moved || !last || last === v.global) return
-      const m = last
-      void set(m, null).then(() => {
-        setBand(m)
-        if (timer.current) clearTimeout(timer.current)
-        timer.current = window.setTimeout(() => setBand(null), 5200)
-      }).catch(() => undefined)
-    }
-    el.addEventListener('pointermove', move)
-    el.addEventListener('pointerup', up)
-    el.addEventListener('pointercancel', up)
+    setLocked(null)
+    const next = m === v.global ? 'pause' : m
+    void set(next, null).then(() => {
+      setBand(next)
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => setBand(null), 5200)
+    }).catch(() => undefined)
   }
   const lockedView = locked ? v.modes.find((x) => x.id === locked) : undefined
   const u = lockedView?.unlock
@@ -383,20 +349,14 @@ function TempoCells({ step }: { step: number }) {
     <>
       <Band step={step} depth={1} className="nx-fx-tempo">
         <span className="nx-fx-tempo-name">
+          <span className="nx-mark nx-fx-logo"><Mark name="bolt" size={20} /></span>
           <span className="nx-row-title nx-fx-level">{t.title}</span>
-          <span className="nx-fx-mode">{t.name(locked ?? chosen)}</span>
         </span>
-        <div ref={track} className={`nx-fx-cells ${drag ? 'dragging' : ''}`} role="slider" aria-label={t.globalAria(t.name(chosen))}
-          aria-valuemin={0} aria-valuemax={cells.length} aria-valuenow={lit + 1} aria-valuetext={t.name(chosen)} tabIndex={0}
-          onKeyDown={(e) => {
-            const i = TEMPO_MODES.indexOf(v.global) + (e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0)
-            const m = TEMPO_MODES[i]
-            if (m && m !== v.global && (m === 'pause' || open(m))) void set(m, null)
-          }}>
+        <div className="nx-fx-cells" role="radiogroup" aria-label={t.globalAria(t.name(v.global))}>
           {cells.map((m, i) => (
-            <span key={m} className={['nx-fx-cell', i <= lit && 'on', i === lit && 'at', !open(m) && 'locked'].filter(Boolean).join(' ')} style={{ '--i': i } as CSSProperties}>
-              <Icon name={TEMPO_ICONS[m]} />
-            </span>
+            <button key={m} type="button" role="radio" aria-checked={m === v.global} aria-disabled={!open(m)} aria-label={t.name(m)}
+              className={['nx-fx-cell', i <= lit && 'on', !open(m) && 'locked'].filter(Boolean).join(' ')} style={{ '--i': i } as CSSProperties}
+              onClick={(e) => { e.stopPropagation(); tap(m) }} />
           ))}
         </div>
         {locked && opens && <span className="nx-fx-hint">{t.opensWith} {opens}</span>}
@@ -404,6 +364,51 @@ function TempoCells({ step }: { step: number }) {
       <TempoBand v={v} mode={band} repo={null} onOpen={() => setBand(null)} />
     </>
   )
+}
+
+// ---------------------------------------------------------------- on demand
+
+/** Dollars as a provider bills them: « $6.70 ». */
+const usd = (x: number) => `$${x.toFixed(2)}`
+
+/** One on-demand provider: its initial, its name, then one figure from its own meter (per hour while something runs
+ *  there, else the credit left), its place in the fallback order when there is more than one, and its switch. No key yet: dimmed, a
+ *  tap brings weevboss's screen with the masked field for its key. */
+function OnDemandBand({ p, step, ranked, onKey, onTurn, onFirst }: { p: FactoryOnDemand; step: number; ranked: number; onKey: () => void; onTurn: (on: boolean) => void; onFirst: () => void }) {
+  // One figure, the one that matters now: what runs there costs per hour, else the credit left.
+  const value = !p.connected || p.rank == null ? '' : p.refused ? 'key refused' : p.perHour ? `${usd(p.perHour)}/h` : p.credit != null ? usd(p.credit) : ''
+  const said = [p.credit != null ? `${usd(p.credit)} left` : '', p.perHour ? `${usd(p.perHour)} an hour now` : ''].filter(Boolean).join(', ')
+  return (
+    <Band step={step} depth={3} className={`nx-fx-od ${p.connected && p.rank != null ? '' : 'nx-fx-dim'}`}>
+      {p.connected ? (
+        <a className="nx-fx-main" href={p.console} target="_blank" rel="noreferrer" aria-label={`${p.name}${p.refused ? ', key refused' : said ? `, ${said}` : ''}`}>
+          <span className="nx-mark nx-fx-logo"><span className="nx-fx-initial" aria-hidden>{p.name.slice(0, 1)}</span></span>
+          <span className="nx-row-title">{p.name}</span>
+          {value && <span className={`nx-fx-val ${p.refused ? 'warn' : ''}`}>{value}</span>}
+        </a>
+      ) : (
+        <button className="nx-fx-main" onClick={onKey} aria-label={`Connect ${p.name}`}>
+          <span className="nx-mark nx-fx-logo"><span className="nx-fx-initial" aria-hidden>{p.name.slice(0, 1)}</span></span>
+          <span className="nx-row-title">{p.name}</span>
+        </button>
+      )}
+      {ranked > 1 && p.rank != null && (
+        <button type="button" className="nx-fx-rank" aria-label={p.rank === 1 ? `${p.name} is tried first` : `Try ${p.name} first`} disabled={p.rank === 1} onClick={onFirst}>{p.rank}</button>
+      )}
+      {p.connected && <Switch on={p.rank != null} label={`${p.name} on`} onChange={onTurn} />}
+    </Band>
+  )
+}
+
+/** The on-demand list with one provider moved: switched on (last of the order), off, or first. Ranks renumbered, the
+ *  list in the server's order (ranked, then off, then no key): what the side bar shows before the server answers. */
+export function reorder(list: FactoryOnDemand[], id: string, to: 'on' | 'off' | 'first'): FactoryOnDemand[] {
+  const order: string[] = list.filter((x) => x.rank != null && x.id !== id).sort((a, b) => a.rank! - b.rank!).map((x) => x.id)
+  if (to === 'first') order.unshift(id)
+  if (to === 'on') order.push(id)
+  const ranked = list.map((x) => ({ ...x, rank: order.includes(x.id) ? order.indexOf(x.id) + 1 : null }))
+  const place = (x: FactoryOnDemand) => x.rank ?? (x.connected ? 100 : 200)
+  return ranked.sort((a, b) => place(a) - place(b))
 }
 
 // ---------------------------------------------------------------- the band
@@ -419,6 +424,7 @@ export function FactorySection({ snap, colors, page, toBoss }: {
   const [mOpen, mFold] = useFold('__factory_machines')
   const [iOpen, iFold] = useFold('__factory_intel')
   const [pOpen, pFold] = useFold('__factory_projects')
+  const [oOpen, oFold] = useFold('__factory_ondemand')
   const [adding, setAdding] = useState(false)
   const [more, setMore] = useState(false)
   const [v, patch] = useFactory(open)
@@ -432,6 +438,12 @@ export function FactorySection({ snap, colors, page, toBoss }: {
   const busyOn = (id: string) => snap.sessions.filter((s) => !s.archived && s.status === 'working' && (s.machineId ?? here) === id).length
   const machines = v?.machines ?? snap.machines.map((m): FactoryMachine => ({ id: m.id, name: m.name, kind: null, online: m.online !== false, off: !!m.off, here: m.id === here, load: null, level: 'ok' }))
   const intel = v?.intelligence ?? []
+  const onDemand = v?.onDemand ?? []
+  const ranked = onDemand.filter((x) => x.rank != null).length
+  const moveOnDemand = (id: string, to: 'on' | 'off' | 'first') => {
+    patch((x) => ({ ...x, onDemand: reorder(x.onDemand ?? [], id, to) }))
+    void call('POST', '/api/factory/on-demand', to === 'first' ? { id, first: true } : { id, off: to === 'off' }).then(load, load)
+  }
   const has = new Set(intel.map((x) => x.id))
   const addable = [
     ...(snap.relay?.accounts ? [{ id: 'account', name: 'Another Claude account', brand: 'claude' as Brand }] : []),
@@ -467,7 +479,7 @@ export function FactorySection({ snap, colors, page, toBoss }: {
         </button>
       </div>
       <Collapse open={open}>
-        <LevelHead step={step()} name="Machines" open={mOpen} onFold={mFold} />
+        <LevelHead step={step()} name="Machines" mark="gpu" open={mOpen} onFold={mFold} />
         <Collapse open={mOpen}>
           {machines.map((m) => (
             <MachineBand key={m.id} m={m} step={step(mOpen)} busy={busyOn(m.id)}
@@ -475,9 +487,27 @@ export function FactorySection({ snap, colors, page, toBoss }: {
               onPatch={(p) => patch((x) => ({ ...x, machines: x.machines.map((y) => (y.id === m.id ? { ...y, ...p } : y)) }))} />
           ))}
           {v?.share && <ShareBand share={v.share} step={step(mOpen)} onPatch={(on) => patch((x) => ({ ...x, share: x.share && { ...x.share, on } }))} />}
+          {/* On demand: compute paid by the hour, one band per provider under its own fold, in the fallback order. */}
+          {onDemand.length > 0 && (
+            <>
+              <Band step={step(mOpen)} depth={2}>
+                <button className="nx-fx-main" onClick={oFold} aria-expanded={oOpen}>
+                  <span className="nx-mark"><Icon name="clock" /></span>
+                  <span className="nx-row-title">on demand</span>
+                </button>
+              </Band>
+              <Collapse open={oOpen}>
+                {onDemand.map((p) => (
+                  <OnDemandBand key={p.id} p={p} step={step(mOpen && oOpen)} ranked={ranked}
+                    onKey={() => { toBoss(); focusBoss({ flash: false }); openKey(p.key) }}
+                    onTurn={(on) => moveOnDemand(p.id, on ? 'on' : 'off')} onFirst={() => moveOnDemand(p.id, 'first')} />
+                ))}
+              </Collapse>
+            </>
+          )}
           <PlusBand step={step(mOpen)} label="Add a machine" onClick={() => { toBoss(); askSetup('machine') }} />
         </Collapse>
-        <LevelHead step={step()} name="Intelligence" open={iOpen} onFold={iFold} />
+        <LevelHead step={step()} name="Intelligence" mark="brain" open={iOpen} onFold={iFold} />
         <Collapse open={iOpen}>
           {intel.map((x) => (
             <IntelBand key={x.id} x={x} step={step(iOpen)} onOpen={x.kind === 'subscription' ? () => page({ kind: 'usage' }) : undefined}
@@ -495,7 +525,7 @@ export function FactorySection({ snap, colors, page, toBoss }: {
             ))}
           </Collapse>
         </Collapse>
-        <LevelHead step={step()} name="Projects" open={pOpen} onFold={pFold} />
+        <LevelHead step={step()} name="Projects" mark="github" open={pOpen} onFold={pFold} />
         <Collapse open={pOpen}>
           {rows.map((r) => projectBand(r, step(pOpen), 2))}
           <PlusBand step={step(pOpen)} label="Add a project" open={more} onClick={() => setMore((m) => !m)} />

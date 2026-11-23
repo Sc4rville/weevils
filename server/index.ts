@@ -63,7 +63,7 @@ import { ProviderHealth } from './provider-health.ts'
 import { preferredTool, providerStatus, setProviderRoute } from './provider.ts'
 import type { InfraDetail, MachineBrief, MachineFacts, Reach, TokenRate, UsageToday } from '../shared/infra.ts'
 import { facts } from './discover.ts'
-import { applyKeys, factoryRoutes, talkContext, type FactoryDeps } from './your-factory.ts'
+import { applyKeys, factoryRoutes, keysOff, talkContext, type FactoryDeps } from './your-factory.ts'
 import { Setup, installPlan, shellEnv, which, writeConfig } from './setup.ts'
 import { isBrick, isSecretName, isSetupKey, type Device } from '../shared/setup.ts'
 import { Memory, memoryRoutes } from './memory.ts'
@@ -118,7 +118,7 @@ const hub = new Hub({
   off: () => w.factory.machinesOff,
 })
 // Your factory: API keys turned off stay out of the environment from the start (server/your-factory.ts).
-applyKeys(w.factory.intelOff, CONFIG_FILE)
+applyKeys(keysOff(w.factory), CONFIG_FILE)
 const sourceAuthor = (id: string) => threadAuthor(id, source => w.store.get(source), w.bossConversation(), ORCH_DIR)
 /** A signed brief's spoken line: the sender's own (`weevils send|new --say`), else asked of the cheap model at once. */
 const saysFor = (text: string, say: unknown) => (typeof say === 'string' && say.trim() ? w.says.given(text, say) : w.says.want(text))
@@ -214,7 +214,7 @@ readMailKeys()
 mailSeen = mailKeys()
 fs.watchFile(CONFIG_FILE, { interval: 3000 }, () => {
   // Your factory: a key turned off stays out of the environment, even written again (server/your-factory.ts).
-  applyKeys(w.factory.intelOff, CONFIG_FILE)
+  applyKeys(keysOff(w.factory), CONFIG_FILE)
   readMailKeys()
   if (mailKeys() === mailSeen) return
   resetAuthors()
@@ -1429,6 +1429,7 @@ function factoryDeps(): FactoryDeps {
     accounts: () => (accountsOn() ? claudeAccounts.view() : undefined),
     codex: codexReady,
     configFile: CONFIG_FILE,
+    writeConfig,
     pin: (repo, pinned) => w.pinRepo(repo, pinned),
     pinned: () => w.pinnedRepos,
     startTalk: (machineId, name, kind, provider, text) =>

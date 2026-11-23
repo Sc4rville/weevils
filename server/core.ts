@@ -1568,7 +1568,7 @@ export class Weevils {
     }
     const todo = recent
       .filter(hasBrief)
-      .filter((t) => needsTitle(this.titles.get(t.id), t.messages.length, now - t.lastActivityAt < STALE_MS, now))
+      .filter((t) => needsTitle(this.titles.get(t.id), t.messages.length, now - t.lastActivityAt < STALE_MS, now, t.messages.at(-1)?.at))
       .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
       .slice(0, 8)
     if (!todo.length) return

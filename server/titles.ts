@@ -98,11 +98,12 @@ export async function llmTitles(items: TitleInput[], workdir: string): Promise<{
 }
 
 /** Faut-il (re)nommer cette session ? Un nouveau titre quand le fil a avancé, pas à chaque message. */
-export function needsTitle(prev: Titled | undefined, messageCount: number, live: boolean, now: number): boolean {
+export function needsTitle(prev: Titled | undefined, messageCount: number, live: boolean, now: number, lastMessageAt = 0): boolean {
   if (messageCount < 2) return false
   if (!prev) return true
-  const grown = messageCount - prev.messageCount
-  if (grown <= 0) return false
+  // A long session keeps only its newest messages (a fixed window): its count stops growing, so a message newer than
+  // the last naming counts as growth too, or a long session would keep its first title forever.
+  if (messageCount <= prev.messageCount && lastMessageAt <= prev.at) return false
   const age = now - prev.at
   // Activité effacée par un nouveau message : à réécrire tout de suite.
   if (!prev.now && live) return true

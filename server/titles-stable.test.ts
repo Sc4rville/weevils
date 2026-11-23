@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { stableTitle, TitleRetry } from './titles.ts'
+import { needsTitle, stableTitle, TitleRetry } from './titles.ts'
 it('keeps the subject through work steps and changes it only for an explicit new topic', () => {
   expect(stableTitle('Le feed pour toi', 'Déploie le tri')).toBe('Le feed pour toi')
   expect(stableTitle('Le feed pour toi', 'Apparence et réglages', true)).toBe('Apparence et réglages')
@@ -36,4 +36,15 @@ it('a title follows the current work: the namer is asked for topicChanged in eve
     expect(p).not.toMatch(/ONLY when the user explicitly|UNIQUEMENT si l’utilisateur demande explicitement/)
     expect(p).toMatch(/previousTitle/)
   }
+})
+
+it('a long session is renamed too: its window of messages stops growing, a newer message still counts', () => {
+  const MIN = 60_000, T = 1_000 * MIN
+  const prev = { title: 'Polishing newcomer settings', now: 'x', at: T, messageCount: 400 }
+  // Same window size, nothing new since the last naming: nothing to do.
+  expect(needsTitle(prev, 400, true, T + 10 * MIN, T - MIN)).toBe(false)
+  // Same window size, newer messages: named again (the two-minute pace still holds).
+  expect(needsTitle(prev, 400, true, T + MIN, T + 30_000)).toBe(false)
+  expect(needsTitle(prev, 400, true, T + 10 * MIN, T + 5 * MIN)).toBe(true)
+  expect(needsTitle(prev, 400, false, T + 10 * MIN, T + 5 * MIN)).toBe(true)
 })
